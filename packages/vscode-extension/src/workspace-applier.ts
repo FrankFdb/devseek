@@ -1,0 +1,1168 @@
+import * as vscode from 'vscode';
+import * as nodePath from 'path';
+import * as fs from 'fs';
+import { ChangeAction, createChangeAction, ResolvedGeneratedArtifact, summarizeChangeActions } from './change-plan';
+import { GeneratedArtifact, GeneratedFile, looksLikeRawToolCallText, parseGeneratedArtifacts } from './generated-file-parser';
+import { CppValidationPolicy, planCppValidation } from './validation-planner';
+import { getWorkspaceRootUri } from './workspace-roots';
+import { isFileProtected } from './protected-files';
+
+export interface ApplyWorkflowStatus {
+  phase: 'apply' | 'validate' | 'repair';
+  state: 'started' | 'completed' | 'skipped' | 'passed' | 'failed';
+  title: string;
+  detail?: string;
+}
+
+export interface AutoValidationResult {
+  ran: boolean;
+  ok: boolean;
+  command: string;
+  exitCode: number | null;
+  output: string;
+  cwd: string;
+  mode?: 'compile-only' | 'compile-link' | 'compile-run' | 'cmake';
+  reason?: string;
+}
+
+export interface ApplyWorkflowResult {
+  applied: boolean;
+  changeCount: number;
+  changedPaths: string[];
+  validation?: AutoValidationResult;
+}
+
+export interface AppliedChangeRecord {
+  path: string;
+  existed: boolean;
+  oldContent: string;
+  newContent: string;
+}
+
+type ApplyWorkflowReporter = (status: ApplyWorkflowStatus) => void | Thenable<void>;
+type AppliedChangeReporter = (change: AppliedChangeRecord) => void | Thenable<void>;
+
+interface PreparedChange {
+  action: ChangeAction;
+  targetUri: vscode.Uri;
+  relPath: string;
+  exists: boolean;
+  oldContent: string;
+  newContent: string;
+}
+
+export async function previewGeneratedArtifactsWithPrompt(raw: string, requestPrompt?: string): Promise<void> {
+  const prepared = await prepareChanges(raw, requestPrompt);
+  if (prepared.length === 0) {
+    vscode.window.showInformationMessage('DeepSeek: 未检测到可应用的文件或 diff。');
+    return;
+  }
+
+  await previewPreparedChanges(prepared, 'DeepSeek: 选择要预览的文件');
+}
+
+export async function previewGeneratedArtifactPathWithPrompt(raw: string, targetPath: string, requestPrompt?: string): Promise<void> {
+  const prepared = await prepareChanges(raw, requestPrompt);
+  const selected = selectPreparedChangesByPath(prepared, targetPath);
+  if (selected.length === 0) {
+    vscode.window.showInformationMessage(`DeepSeek: 未找到目标文件变更：${targetPath}`);
+    return;
+  }
+
+  await previewPreparedChanges(selected, `DeepSeek: 目标匹配到 ${selected.length} 个变更，选择要预览的文件`);
+}
+
+export async function applyGeneratedArtifactsWithPrompt(
+  raw: string,
+  requestPrompt?: string,
+  reporter?: ApplyWorkflowReporter,
+  autoApply = false,
+  onAppliedChange?: AppliedChangeReporter,
+  preferredAbsolutePaths?: string[],
+): Promise<ApplyWorkflowResult> {
+  const prepared = await prepareChanges(raw, requestPrompt, preferredAbsolutePaths);
+  return applyPreparedChanges(prepared, reporter, autoApply, undefined, requestPrompt, onAppliedChange, preferredAbsolutePaths);
+}
+
+export async function applyGeneratedArtifactPathWithPrompt(
+  raw: string,
+  targetPath: string,
+  requestPrompt?: string,
+  reporter?: ApplyWorkflowReporter,
+  autoApply = false,
+  onAppliedChange?: AppliedChangeReporter,
+  preferredAbsolutePaths?: string[],
+): Promise<ApplyWorkflowResult> {
+  const prepared = await prepareChanges(raw, requestPrompt, preferredAbsolutePaths);
+  const selected = selectPreparedChangesByPath(prepared, targetPath);
+  return applyPreparedChanges(selected, reporter, autoApply, targetPath, requestPrompt, onAppliedChange, preferredAbsolutePaths);
+}
+
+async function applyPreparedChanges(
+  prepared: PreparedChange[],
+  reporter?: ApplyWorkflowReporter,
+  autoApply = false,
+  targetPathForMsg?: string,
+  requestPrompt?: string,
+  onAppliedChange?: AppliedChangeReporter,
+  preferredAbsolutePaths?: string[],
+): Promise<ApplyWorkflowResult> {
+  const root = getWorkspaceRoot(requestPrompt, preferredAbsolutePaths);
+  const pathContext = root ? buildPathResolutionContext(root, requestPrompt, preferredAbsolutePaths) : undefined;
+  if (prepared.length === 0) {
+    if (targetPathForMsg) {
+      vscode.window.showInformationMessage(`DeepSeek: 未检测到可应用的目标文件变更：${targetPathForMsg}`);
+    } else {
+      vscode.window.showInformationMessage('DeepSeek: 未检测到可应用的文件或 diff。');
+    }
+    return {
+      applied: false,
+      changeCount: 0,
+      changedPaths: [],
+    };
+  }
+
+  const summary = summarizeChangeActions(prepared.map((change) => change.action));
+  if (!autoApply) {
+    const choice = await vscode.window.showWarningMessage(
+      `DeepSeek 将应用 ${prepared.length} 个文件变更（新建 ${summary.creates}，覆盖 ${summary.overwrites}，局部补丁 ${summary.patches}）。是否继续？`,
+      { modal: false },
+      '预览第一个',
+      '应用全部',
+      '取消',
+    );
+
+    if (choice === '预览第一个') {
+      await openPreview(prepared[0]);
+      const applyAfterPreview = await vscode.window.showInformationMessage('是否应用全部 DeepSeek 文件变更？', '应用全部', '取消');
+      if (applyAfterPreview !== '应用全部') {
+        return {
+          applied: false,
+          changeCount: 0,
+          changedPaths: [],
+        };
+      }
+    } else if (choice !== '应用全部') {
+      return {
+        applied: false,
+        changeCount: 0,
+        changedPaths: [],
+      };
+    }
+  }
+
+  // Detect drift BEFORE writing — if any file would land in the wrong place, abort cleanly
+  // without touching the workspace at all.
+  const drift = detectWriteDrift(prepared, root, pathContext);
+  if (drift) {
+    await reportWorkflow(reporter, {
+      phase: 'apply',
+      state: 'failed',
+      title: '已阻止写入（路径漂移）',
+      detail: drift,
+    });
+    vscode.window.showErrorMessage('DeepSeek: 检测到路径漂移，本轮变更已阻止，工作区未作任何修改。');
+    return {
+      applied: false,
+      changeCount: 0,
+      changedPaths: [],
+    };
+  }
+
+  const protectedChange = prepared.find((change) => isFileProtected(change.targetUri.fsPath, root?.fsPath ?? ''));
+  if (protectedChange) {
+    const rel = protectedChange.relPath || nodePath.basename(protectedChange.targetUri.fsPath);
+    await reportWorkflow(reporter, {
+      phase: 'apply',
+      state: 'failed',
+      title: '已阻止写入（受保护文件）',
+      detail: `${rel} 匹配 devseek.protectedFiles 规则`,
+    });
+    vscode.window.showErrorMessage(`DeepSeek: 已阻止写入受保护文件 ${rel}。`);
+    return {
+      applied: false,
+      changeCount: 0,
+      changedPaths: [],
+    };
+  }
+
+  await reportWorkflow(reporter, {
+    phase: 'apply',
+    state: 'started',
+    title: '正在应用文件变更',
+    detail: `共 ${prepared.length} 个变更，新建 ${summary.creates}，覆盖 ${summary.overwrites}，补丁 ${summary.patches}${targetPathForMsg ? `\n目标: ${targetPathForMsg}` : ''}`,
+  });
+
+  await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title: 'DeepSeek: 正在应用文件变更...', cancellable: false },
+    async () => {
+      for (const change of prepared) {
+        const parent = vscode.Uri.file(nodePath.dirname(change.targetUri.fsPath));
+        await vscode.workspace.fs.createDirectory(parent);
+        await vscode.workspace.fs.writeFile(change.targetUri, Buffer.from(change.newContent, 'utf8'));
+      }
+    },
+  );
+
+  vscode.window.showInformationMessage(`DeepSeek: 已应用 ${prepared.length} 个文件变更`);
+  await vscode.window.showTextDocument(prepared[0].targetUri, { preview: false });
+
+  await reportWorkflow(reporter, {
+    phase: 'apply',
+    state: 'completed',
+    title: '文件应用完成',
+    detail: prepared.slice(0, 6).map((change) => change.relPath).join('\n'),
+  });
+
+  await reportWorkflow(reporter, {
+    phase: 'validate',
+    state: 'started',
+    title: '正在执行自动编译/验证',
+    detail: '根据变更路径自动选择构建命令',
+  });
+
+  const validation = await runAutoValidation(prepared.map((p) => p.relPath), root);
+  if (!validation) {
+    await reportWorkflow(reporter, {
+      phase: 'validate',
+      state: 'skipped',
+      title: '未执行自动验证',
+      detail: '未识别到可自动验证的目标（bridge / extension / C++ 目录项目）。',
+    });
+    await reportAppliedChanges(prepared, onAppliedChange);
+    return {
+      applied: true,
+      changeCount: prepared.length,
+      changedPaths: prepared.map((p) => p.relPath),
+    };
+  }
+
+  await reportWorkflow(reporter, {
+    phase: 'validate',
+    state: validation.ok ? 'passed' : 'failed',
+    title: validation.ok ? '自动验证通过' : '自动验证失败',
+    detail: `模式: ${validation.mode || 'unknown'}\n原因: ${validation.reason || 'n/a'}\n命令: ${validation.command}\nexitCode: ${validation.exitCode ?? 'null'}\n${validation.output.trim().slice(0, 1200)}`,
+  });
+
+  if (!validation.ok && autoApply) {
+    await rollbackPreparedChanges(prepared);
+    await reportWorkflow(reporter, {
+      phase: 'apply',
+      state: 'completed',
+      title: '自动验证失败，已回滚文件变更',
+      detail: prepared.slice(0, 6).map((change) => change.relPath).join('\n'),
+    });
+    vscode.window.showErrorMessage('DeepSeek: 自动验证失败，本轮自动应用的文件变更已回滚。');
+    return {
+      applied: false,
+      changeCount: 0,
+      changedPaths: [],
+      validation,
+    };
+  }
+
+  await reportAppliedChanges(prepared, onAppliedChange);
+
+  return {
+    applied: true,
+    changeCount: prepared.length,
+    changedPaths: prepared.map((p) => p.relPath),
+    validation,
+  };
+}
+
+async function reportAppliedChanges(
+  prepared: PreparedChange[],
+  onAppliedChange?: AppliedChangeReporter,
+): Promise<void> {
+  if (!onAppliedChange) return;
+  for (const change of prepared) {
+    await onAppliedChange({
+      path: change.relPath,
+      existed: change.exists,
+      oldContent: change.oldContent,
+      newContent: change.newContent,
+    });
+  }
+}
+
+function selectPreparedChangesByPath(prepared: PreparedChange[], targetPath: string): PreparedChange[] {
+  const wanted = normalizeTargetPath(targetPath);
+  if (!wanted) return [];
+
+  const exact = prepared.filter((change) => normalizeTargetPath(change.relPath) === wanted);
+  if (exact.length > 0) return exact;
+
+  const fileName = nodePath.posix.basename(wanted);
+  if (!fileName) return [];
+  return prepared.filter((change) => nodePath.posix.basename(normalizeTargetPath(change.relPath) || '') === fileName);
+}
+
+function normalizeTargetPath(path: string): string {
+  return (path || '')
+    .trim()
+    .replace(/^a\//, '')
+    .replace(/^b\//, '')
+    .replace(/^\.\//, '')
+    .replace(/#L\d+$/i, '')
+    .replace(/:\d+(?::\d+)?$/i, '')
+    .replace(/\\/g, '/');
+}
+
+async function prepareChanges(raw: string, requestPrompt?: string, preferredAbsolutePaths?: string[]): Promise<PreparedChange[]> {
+  const root = getWorkspaceRoot(requestPrompt, preferredAbsolutePaths);
+  if (!root) throw new Error('DeepSeek: 当前没有打开工作区，无法写入文件。');
+  const pathContext = buildPathResolutionContext(root, requestPrompt, preferredAbsolutePaths);
+
+  let artifacts = parseGeneratedArtifacts(raw);
+  const fallbackArtifacts = inferFallbackArtifacts(raw, requestPrompt, root);
+  if (artifacts.length === 0) {
+    artifacts = fallbackArtifacts;
+  } else {
+    const uniquePaths = new Set(artifacts.map((a) => a.path)).size;
+    if (looksLikeBrokenSingleFileParse(artifacts) && fallbackArtifacts.length > 0) {
+      artifacts = fallbackArtifacts;
+    } else if (uniquePaths <= 1 && fallbackArtifacts.length > uniquePaths) {
+      artifacts = fallbackArtifacts;
+    }
+  }
+  if (artifacts.length === 0) return [];
+
+  const changes: PreparedChange[] = [];
+  for (const artifact of artifacts) {
+    const resolvedPath = resolveArtifactPath(artifact.path, root, pathContext);
+    if (!resolvedPath) continue;
+    const relPath = alignRelPathToScope(resolvedPath, root, pathContext);
+
+    const resolved: ResolvedGeneratedArtifact = {
+      ...(artifact as GeneratedArtifact),
+      resolvedPath: relPath,
+      confidence: relPath.includes('/') ? 'high' : 'medium',
+      reason: 'response-explicit-path',
+    } as ResolvedGeneratedArtifact;
+
+    const targetUri = vscode.Uri.joinPath(root, ...relPath.split('/'));
+    const exists = await fileExists(targetUri);
+    const action = createChangeAction(resolved, exists);
+    const oldContent = exists ? await readText(targetUri) : '';
+    const newContent = action.type === 'patch-file'
+      ? applyUnifiedDiff(oldContent, action.diff, relPath)
+      : ensureFinalNewline(action.content);
+    if (looksLikeRawToolCallText(newContent)) continue;
+
+    changes.push({ action, targetUri, relPath, exists, oldContent, newContent });
+  }
+
+  return dedupeChanges(changes);
+}
+
+interface PathResolutionContext {
+  preferredDirs: string[];
+  hintedFiles: string[];
+  scopedDirs: string[];
+  strictScope: boolean;
+  forceCodeDir: boolean;
+}
+
+function buildPathResolutionContext(root: vscode.Uri, requestPrompt?: string, preferredAbsolutePaths?: string[]): PathResolutionContext {
+  const preferredDirs: string[] = [];
+  const hintedFiles: string[] = [];
+  const scopedDirs: string[] = [];
+  const rootPath = root.fsPath.replace(/\\/g, '/').replace(/\/$/, '');
+  const text = requestPrompt || '';
+
+  // Priority-0: actual attached file absolute paths (highest confidence for path resolution)
+  // Do NOT add to scopedDirs to avoid over-restricting drift detection for non-compile prompts.
+  if (preferredAbsolutePaths && preferredAbsolutePaths.length > 0) {
+    for (const absPath of preferredAbsolutePaths) {
+      const rel = sanitizeWorkspacePath(absPath, root);
+      if (!rel) continue;
+      hintedFiles.push(rel);
+      const dir = nodePath.posix.dirname(rel);
+      if (dir && dir !== '.') {
+        preferredDirs.push(dir);
+      }
+    }
+  }
+
+  const cwdMatches = text.match(/\bcwd\s*=\s*([^\n\r]+)/gi) || [];
+  for (const raw of cwdMatches) {
+    const value = raw.replace(/\bcwd\s*=\s*/i, '').trim().replace(/^['"`]+|['"`]+$/g, '');
+    if (!value) continue;
+    const rel = sanitizeWorkspacePath(value, root);
+    if (rel) {
+      preferredDirs.push(rel);
+      scopedDirs.push(rel);
+      continue;
+    }
+    const normalized = value.replace(/\\/g, '/');
+    if (normalized.startsWith(rootPath + '/')) {
+      const dir = normalized.slice(rootPath.length + 1).replace(/\/$/, '');
+      preferredDirs.push(dir);
+      scopedDirs.push(dir);
+    }
+  }
+
+  // Internal DevSeek metadata directories must never appear in preferredDirs — user
+  // project files should not be placed there even if .devseek/memory.md (or rules.md)
+  // appears in the editorPrompt context block and its path gets extracted by the regex.
+  const INTERNAL_DIRS = new Set(['.devseek']);
+  const isInternalDir = (dir: string) =>
+    dir === '.devseek' || dir.startsWith('.devseek/');
+
+  const pathRe = /([A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|json|md|css|scss|html|py|java|go|rs|c|cc|cpp|cxx|h|hpp|sh|sql))/gi;
+  let m: RegExpExecArray | null;
+  while ((m = pathRe.exec(text)) !== null) {
+    const candidate = (m[1] || '').trim();
+    if (!candidate) continue;
+    const rel = sanitizeWorkspacePath(candidate, root);
+    if (rel) {
+      // Skip: do not let .devseek/** contaminate directory hints for user project files
+      if (isInternalDir(nodePath.posix.dirname(rel))) continue;
+      hintedFiles.push(rel);
+      const dir = nodePath.posix.dirname(rel);
+      void INTERNAL_DIRS;  // suppress unused-variable warning
+      if (dir && dir !== '.') {
+        preferredDirs.push(dir);
+        scopedDirs.push(dir);
+      }
+      continue;
+    }
+
+    // Absolute path to workspace file.
+    const normalized = candidate.replace(/\\/g, '/');
+    if (normalized.startsWith(rootPath + '/')) {
+      const relAbs = normalized.slice(rootPath.length + 1);
+      hintedFiles.push(relAbs);
+      const dir = nodePath.posix.dirname(relAbs);
+      if (dir && dir !== '.') {
+        preferredDirs.push(dir);
+        scopedDirs.push(dir);
+      }
+    }
+  }
+
+  // Capture directory-like tokens (for prompts such as "编译code/fish").
+  const FAKE_TOOL_SEGS = new Set(['list_dir', 'read_file', 'grep_search', 'run_terminal', 'get_errors', 'manage_todo_list', 'task_complete']);
+  const dirTokenRe = /(?:^|[\s'"`(])([A-Za-z0-9_.-]+\/[A-Za-z0-9_./-]*[A-Za-z0-9_.-])(?=$|[\s'"`),;:])/g;
+  while ((m = dirTokenRe.exec(text)) !== null) {
+    const candidate = (m[1] || '').trim();
+    if (!candidate) continue;
+    // Skip tokens where every segment is a fake tool name (e.g. "list_dir/read_file/grep_search/run_terminal")
+    if (candidate.split('/').every(seg => FAKE_TOOL_SEGS.has(seg))) continue;
+    const rel = sanitizeWorkspacePath(candidate, root);
+    if (!rel) continue;
+    const uri = vscode.Uri.joinPath(root, ...rel.split('/'));
+    if (fs.existsSync(uri.fsPath) && fs.statSync(uri.fsPath).isDirectory()) {
+      const dir = rel.replace(/\/$/, '');
+      preferredDirs.push(dir);
+      scopedDirs.push(dir);
+      continue;
+    }
+
+    const base = nodePath.posix.basename(rel);
+    const likelyDir = !base.includes('.');
+    if (likelyDir) {
+      const dir = rel.replace(/\/$/, '');
+      preferredDirs.push(dir);
+      scopedDirs.push(dir);
+    }
+  }
+
+  const commandScopedDirs = inferScopedDirsFromCommandText(text, root);
+  for (const dir of commandScopedDirs) {
+    preferredDirs.push(dir);
+    scopedDirs.push(dir);
+  }
+
+  const forceCodeDir = /(?:code\s*目录|code目录|code\/|code\s+dir|code\s+folder)/i.test(text);
+  if (forceCodeDir) {
+    preferredDirs.unshift('code');
+    scopedDirs.unshift('code');
+  }
+
+  const compileLikePrompt = /编译|构建|运行|recompile|compile|build|run/i.test(text);
+
+  return {
+    preferredDirs: dedupeStringList(preferredDirs).filter(d => !isInternalDir(d)),
+    hintedFiles: dedupeStringList(hintedFiles),
+    scopedDirs: dedupeStringList(scopedDirs).filter(d => !isInternalDir(d)),
+    strictScope: compileLikePrompt && scopedDirs.length > 0,
+    forceCodeDir,
+  };
+}
+
+function inferScopedDirsFromCommandText(text: string, root: vscode.Uri): string[] {
+  const dirs: string[] = [];
+  const commandLines = text.match(/(?:^|\n)\s*(?:command|cmd)\s*[:=].*/gi) || [];
+  const compileLines = text.match(/(?:^|\n).*\b(?:g\+\+|gcc|clang\+\+|clang|cmake|make|ninja|npm\s+run\s+build)\b.*/gi) || [];
+  const merged = [...commandLines, ...compileLines].join('\n');
+  if (!merged.trim()) return dirs;
+
+  const pathRe = /([A-Za-z0-9_./-]+\.(?:cpp|cc|cxx|c|h|hpp|ts|tsx|js|jsx|py|java|go|rs))/gi;
+  let m: RegExpExecArray | null;
+  while ((m = pathRe.exec(merged)) !== null) {
+    const rel = sanitizeWorkspacePath((m[1] || '').trim(), root);
+    if (!rel) continue;
+    const dir = nodePath.posix.dirname(rel);
+    if (dir && dir !== '.') dirs.push(dir);
+  }
+
+  return dedupeStringList(dirs);
+}
+
+function alignRelPathToScope(relPath: string, root: vscode.Uri, ctx: PathResolutionContext): string {
+  const clean = relPath.replace(/\\/g, '/');
+  const scoped = (ctx.scopedDirs || []).filter(Boolean);
+  if (scoped.length === 0) return clean;
+
+  if (scoped.some((dir) => clean === dir || clean.startsWith(`${dir}/`))) return clean;
+
+  const base = nodePath.posix.basename(clean);
+  if (!base || base === '.' || base === '..') return clean;
+
+  // If the path already has multiple segments, the LLM gave an explicit relative path.
+  // Trust it as-is — remapping it to scopedDirs would cause path drift (e.g. code/agent/x.h → docs/agent/x.h).
+  if (clean.includes('/')) return clean;
+
+  // Bare filename: try to match against an existing file in scoped dirs first.
+  for (const dir of scoped) {
+    const candidate = nodePath.posix.join(dir, base);
+    const candidateUri = vscode.Uri.joinPath(root, ...candidate.split('/'));
+    if (fs.existsSync(candidateUri.fsPath)) return candidate;
+  }
+
+  // No existing match: remap bare filename into the first scoped dir.
+  return nodePath.posix.join(scoped[0], base);
+}
+
+function resolveArtifactPath(path: string, root: vscode.Uri, ctx: PathResolutionContext): string | undefined {
+  const direct = sanitizeWorkspacePath(path, root);
+
+  // Always compute basename first so hintedFiles can override any LLM-guessed directory.
+  // This handles the case where the LLM outputs 'src/foo.cpp' but the real file is 'code/foo.cpp'.
+  const baseName = nodePath.posix.basename((direct || path).replace(/\\/g, '/'));
+  if (baseName && baseName !== '.' && baseName !== '..') {
+    // Priority-0: attached (hinted) file path is authoritative — it overrides any LLM-guessed path,
+    // including multi-segment paths like 'src/3d_sphere.cpp' when the real file is 'code/3d_sphere.cpp'.
+    const hintedExact = ctx.hintedFiles.find(
+      (hf) => nodePath.posix.basename(hf) === baseName,
+    );
+    if (hintedExact) return hintedExact;
+  }
+
+  const isCodeFile = /\.(?:cpp|cc|cxx|c|h|hpp|ts|tsx|js|jsx|mjs|cjs|py|java|go|rs|sh|bash)$/i.test(baseName);
+  if (ctx.forceCodeDir && isCodeFile && baseName && baseName !== '.' && baseName !== '..') {
+    const directNorm = direct || '';
+    if (!directNorm.startsWith('code/')) return nodePath.posix.join('code', baseName);
+  }
+
+  if (direct && direct.includes('/')) return direct;
+
+  if (!baseName || baseName === '.' || baseName === '..') return direct || undefined;
+
+  // If reply only provides bare filename, anchor to the most relevant directory from request context.
+  // Skip directories that are semantically incompatible with the file's extension
+  // (e.g. a .cpp file should not land in a docs/ directory).
+  const isDocDir = (dir: string) => /(^|\/)docs?(?:\/|$)/i.test(dir);
+
+  for (const dir of ctx.preferredDirs) {
+    if (isCodeFile && isDocDir(dir)) continue;
+    const candidate = nodePath.posix.join(dir, baseName);
+    const uri = vscode.Uri.joinPath(root, ...candidate.split('/'));
+    if (fs.existsSync(uri.fsPath)) return candidate;
+  }
+
+  // Fallback: use first preferred dir that is compatible with the file type.
+  const compatibleDir = ctx.preferredDirs.find((dir) => !(isCodeFile && isDocDir(dir)));
+  if (compatibleDir) {
+    return nodePath.posix.join(compatibleDir, baseName);
+  }
+
+  return direct || undefined;
+}
+
+function dedupeStringList(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    if (!value || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
+
+function detectWriteDrift(
+  prepared: PreparedChange[],
+  root: vscode.Uri | undefined,
+  ctx: PathResolutionContext | undefined,
+): string | undefined {
+  if (!root || !ctx) return undefined;
+
+  const preferredDirs = (ctx.preferredDirs || []).filter(Boolean);
+  const scopedDirs = (ctx.scopedDirs || []).filter(Boolean);
+
+  // Files explicitly rooted at a known source dir (code/, src/, lib/, test/, etc.) are
+  // never drift — the LLM stated an unambiguous path.
+  const isExplicitSourceRoot = /^(?:code|src|lib|test|tests|include|pkg|packages|modules)\//i;
+
+  for (const change of prepared) {
+    const rel = change.relPath.replace(/\\/g, '/');
+
+    if (ctx.strictScope && scopedDirs.length > 0) {
+      // If the path is rooted under a recognised source directory, skip strictScope check.
+      if (!isExplicitSourceRoot.test(rel)) {
+        const inScope = scopedDirs.some((dir) => rel === dir || rel.startsWith(`${dir}/`));
+        if (!inScope) {
+          // Allow sibling directories: a file is in-scope if it lives under the parent of any
+          // scoped dir.  Example: scopedDir = "huida_uav/src/oam" → parent = "huida_uav/src",
+          // so "huida_uav/src/spray/disk.cpp" is a valid sibling and must not be blocked.
+          // Using the parent (not just the first segment) keeps the check precise enough that
+          // a completely unrelated top-level directory is still rejected.
+          const scopedParents = scopedDirs
+            .map((dir) => nodePath.posix.dirname(dir))
+            .filter((p) => p && p !== '.');
+          const underSiblingScope = scopedParents.some(
+            (parent) => rel.startsWith(`${parent}/`) || rel === parent,
+          );
+          if (!underSiblingScope) {
+            return `严格作用域限制触发：文件 ${rel} 不在目标目录 ${scopedDirs.join(', ')} 内`;
+          }
+        }
+      }
+    }
+
+    if (preferredDirs.length === 0) continue;
+
+    // Files rooted at a known source directory are never considered drift.
+    if (isExplicitSourceRoot.test(rel)) continue;
+
+    const underPreferred = preferredDirs.some((dir) => rel === dir || rel.startsWith(`${dir}/`));
+    if (underPreferred) {
+      // Even if under a preferred dir, flag code files written into doc-like directories.
+      const isCodeFile = /\.(?:cpp|cc|cxx|c|h|hpp|ts|tsx|js|jsx|mjs|cjs|py|java|go|rs|sh|bash)$/i.test(rel);
+      const inDocDir = /(^|\/)docs?(?:\/|$)/i.test(nodePath.posix.dirname(rel));
+      if (isCodeFile && inDocDir) {
+        return `代码文件 ${rel} 被写入文档目录，疑似路径漂移（代码文件不应出现在 docs/ 目录）`;
+      }
+      continue;
+    }
+
+    if (!rel.includes('/')) {
+      return `文件 ${rel} 被写入工作区根目录，但提示上下文偏向目录: ${preferredDirs.join(', ')}`;
+    }
+  }
+
+  return undefined;
+}
+
+async function rollbackPreparedChanges(prepared: PreparedChange[]): Promise<void> {
+  for (const change of [...prepared].reverse()) {
+    if (change.exists) {
+      await vscode.workspace.fs.writeFile(change.targetUri, Buffer.from(change.oldContent, 'utf8'));
+      continue;
+    }
+
+    try {
+      await vscode.workspace.fs.delete(change.targetUri, { useTrash: false });
+    } catch {
+      // Ignore rollback delete errors for files that do not exist.
+    }
+  }
+}
+
+function inferFallbackArtifacts(raw: string, requestPrompt: string | undefined, root: vscode.Uri): GeneratedArtifact[] {
+  const sectionArtifacts = inferNumberedSectionArtifacts(raw, requestPrompt, root);
+  if (sectionArtifacts.length > 0) return sectionArtifacts;
+
+  const blocks = extractCodeBlocks(raw).filter((b) => {
+    if (!b.content.trim()) return false;
+    if (/^diff|patch$/i.test(b.language || '')) return false;
+    if (looksLikeFileTreeBlock(b.content) || looksLikeClassDiagramBlock(b.content)) return false;
+    return true;
+  });
+  if (blocks.length === 0) return [];
+
+  const explicitPath = inferPathFromText(`${requestPrompt || ''}\n${raw}`);
+  const filePath = explicitPath || inferDefaultPathFromLanguage(blocks[0].language, root);
+  if (!filePath) return [];
+
+  const artifact: GeneratedFile = {
+    type: 'file',
+    path: filePath,
+    language: blocks[0].language,
+    content: blocks[0].content,
+  };
+  return [artifact];
+}
+
+function inferNumberedSectionArtifacts(raw: string, requestPrompt: string | undefined, root: vscode.Uri): GeneratedArtifact[] {
+  const normalized = raw.replace(/\r\n/g, '\n');
+  const lines = normalized.split('\n');
+  const sectionRe = /^\s*\d+[.)]\s+([A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|json|md|css|scss|html|py|java|go|rs|c|cc|cpp|cxx|h|hpp|sh|sql))(?:\s*[-—–:：].*)?\s*$/i;
+  const headingIndexes: Array<{ idx: number; path: string }> = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(sectionRe);
+    if (m) headingIndexes.push({ idx: i, path: m[1] });
+  }
+  if (headingIndexes.length < 2) return [];
+
+  const projectRootFromTree = inferProjectTreeRoot(lines);
+  const topicDir = inferTopicDirectoryName(requestPrompt || raw, root);
+  const baseDir = projectRootFromTree || topicDir;
+  const artifacts: GeneratedArtifact[] = [];
+
+  for (let i = 0; i < headingIndexes.length; i++) {
+    const start = headingIndexes[i].idx + 1;
+    const end = i + 1 < headingIndexes.length ? headingIndexes[i + 1].idx : lines.length;
+    const rawContent = lines.slice(start, end).join('\n');
+    const content = cleanNarrativeSectionContent(rawContent);
+    if (!content) continue;
+    if (looksLikeFileTreeBlock(content) || looksLikeClassDiagramBlock(content)) continue;
+
+    const path = headingIndexes[i].path.includes('/')
+      ? headingIndexes[i].path
+      : joinPath(baseDir, headingIndexes[i].path);
+    if (!isLikelySourceForPath(content, path)) continue;
+
+    artifacts.push({
+      type: 'file',
+      path,
+      language: guessLanguage(path),
+      content,
+    });
+  }
+
+  return dedupeArtifactsByPath(artifacts);
+}
+
+function extractCodeBlocks(text: string): Array<{ language?: string; content: string }> {
+  const blocks: Array<{ language?: string; content: string }> = [];
+  const re = /```([^\n`]*)\n([\s\S]*?)```/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const language = (m[1] || '').trim().split(/\s+/)[0] || undefined;
+    const content = (m[2] || '').trim();
+    if (!content) continue;
+    if (/^(bash|shell|sh|zsh|console)$/i.test(language || '') && !content.includes('#include') && !content.includes('def ') && !content.includes('class ')) {
+      continue;
+    }
+    blocks.push({ language, content });
+  }
+  return blocks;
+}
+
+function inferProjectTreeRoot(lines: string[]): string | undefined {
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].trim().match(/^([A-Za-z0-9_.-]+)\/$/);
+    if (!m) continue;
+    const root = m[1];
+    const nextChunk = lines.slice(i + 1, i + 8).join('\n');
+    if (/[├└]──\s+/.test(nextChunk)) {
+      return root.replace(/^\.?\/?/, '').replace(/\/$/, '');
+    }
+  }
+  return undefined;
+}
+
+function inferTopicDirectoryName(text: string, root: vscode.Uri): string {
+  const source = text.toLowerCase();
+  const hasCodeDir = require('fs').existsSync(nodePath.join(root.fsPath, 'code'));
+  const base = hasCodeDir ? 'code' : '';
+
+  let topic = 'generated-snippet';
+  if (/c\+\+|cpp|类|继承|多态|层次|shape|circle|rect/.test(source)) {
+    topic = 'class-hierarchy';
+  } else if (/python|py/.test(source)) {
+    topic = 'python-demo';
+  } else if (/react|tsx|jsx/.test(source)) {
+    topic = 'frontend-demo';
+  }
+  return joinPath(base, topic);
+}
+
+function cleanNarrativeSectionContent(text: string): string {
+  const cleaned = text
+    .split('\n')
+    .filter((line) => !/^\s*(插入|复制)\s*$/i.test(line.trim()))
+    .join('\n')
+    .trim();
+
+  if (!cleaned) return '';
+  const fenced = cleaned.match(/```[^\n`]*\n([\s\S]*?)```/);
+  if (fenced && fenced[1]) return fenced[1].trim();
+  return cleaned;
+}
+
+function looksLikeFileTreeBlock(content: string): boolean {
+  const lines = content.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return false;
+  const treeLike = lines.filter((l) => /[├└]──|\|--|`--/.test(l) || /\w+\/$/.test(l));
+  return treeLike.length >= Math.max(2, Math.floor(lines.length / 2));
+}
+
+function looksLikeClassDiagramBlock(content: string): boolean {
+  const lines = content.split('\n').map((l) => l.trim()).filter(Boolean);
+  if (lines.length === 0) return false;
+  const boxChars = lines.filter((l) => /[┌┐└┘│─▼▲]/.test(l));
+  return boxChars.length >= Math.max(3, Math.floor(lines.length / 2));
+}
+
+function isLikelySourceForPath(content: string, path: string): boolean {
+  const ext = path.split('.').pop()?.toLowerCase() || '';
+  const c = content.trim();
+  if (!c) return false;
+  if (looksLikeFileTreeBlock(c) || looksLikeClassDiagramBlock(c)) return false;
+  if (/^(?:g\+\+|gcc|clang\+\+|clang|cmake|make|npm|python)\b/im.test(c)) return false;
+
+  if (['h', 'hpp', 'c', 'cc', 'cpp', 'cxx'].includes(ext)) {
+    return /#include|#ifndef|#define|#pragma\s+once|class\s+\w+|int\s+main\s*\(|\{[\s\S]*\}/m.test(c);
+  }
+  if (ext === 'py') return /def\s+\w+\(|class\s+\w+|if\s+__name__\s*==\s*['"]__main__['"]/.test(c);
+  if (ext === 'ts' || ext === 'js' || ext === 'tsx' || ext === 'jsx') {
+    return /(?:export\s+|import\s+|function\s+|class\s+|const\s+\w+\s*=)/.test(c);
+  }
+  return c.length >= 20;
+}
+
+function dedupeArtifactsByPath(artifacts: GeneratedArtifact[]): GeneratedArtifact[] {
+  const seen = new Set<string>();
+  const result: GeneratedArtifact[] = [];
+  for (const artifact of artifacts) {
+    if (seen.has(artifact.path)) continue;
+    seen.add(artifact.path);
+    result.push(artifact);
+  }
+  return result;
+}
+
+function looksLikeBrokenSingleFileParse(artifacts: GeneratedArtifact[]): boolean {
+  if (artifacts.length !== 1) return false;
+  const first = artifacts[0];
+  if (first.type !== 'file') return false;
+  return looksLikeFileTreeBlock(first.content) || looksLikeClassDiagramBlock(first.content);
+}
+
+function inferPathFromText(text: string): string | undefined {
+  const re = /([A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|json|md|css|scss|html|py|java|go|rs|c|cc|cpp|cxx|h|hpp|sh|sql))/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const candidate = m[1].replace(/^\.\//, '').replace(/^\//, '');
+    // Skip paths that contain git conflict/SEARCH/REPLACE segment names
+    if (candidate.split('/').some((seg) => seg === 'SEARCH' || seg === 'REPLACE')) continue;
+    return candidate;
+  }
+  return undefined;
+}
+
+function inferDefaultPathFromLanguage(language: string | undefined, root: vscode.Uri): string | undefined {
+  const codeDirExists = nodePath.join(root.fsPath, 'code');
+  const hasCodeDir = require('fs').existsSync(codeDirExists);
+  const base = hasCodeDir ? 'code' : '';
+
+  const lang = (language || '').toLowerCase();
+  if (lang === 'cpp' || lang === 'c++' || lang === 'cc' || lang === 'cxx') return joinPath(base, 'main.cpp');
+  if (lang === 'c') return joinPath(base, 'main.c');
+  if (lang === 'python' || lang === 'py') return joinPath(base, 'main.py');
+  if (lang === 'typescript' || lang === 'ts') return joinPath(base, 'main.ts');
+  if (lang === 'tsx') return joinPath(base, 'main.tsx');
+  if (lang === 'javascript' || lang === 'js') return joinPath(base, 'main.js');
+  if (lang === 'jsx') return joinPath(base, 'main.jsx');
+  if (lang === 'java') return joinPath(base, 'Main.java');
+  if (lang === 'go') return joinPath(base, 'main.go');
+  if (lang === 'rust' || lang === 'rs') return joinPath(base, 'main.rs');
+  return joinPath(base, 'main.txt');
+}
+
+function joinPath(base: string, file: string): string {
+  return base ? `${base}/${file}` : file;
+}
+
+async function reportWorkflow(reporter: ApplyWorkflowReporter | undefined, status: ApplyWorkflowStatus): Promise<void> {
+  if (!reporter) return;
+  await reporter(status);
+}
+
+function getWorkspaceRoot(requestPrompt?: string, preferredAbsolutePaths?: string[]): vscode.Uri | undefined {
+  return getWorkspaceRootUri(requestPrompt, preferredAbsolutePaths);
+}
+
+function sanitizeWorkspacePath(path: string, root: vscode.Uri): string | undefined {
+  let p = path.replace(/\\/g, '/').trim();
+  const rootPath = root.fsPath.replace(/\\/g, '/').replace(/\/$/, '');
+  const homePath = process.env.HOME ? process.env.HOME.replace(/\\/g, '/').replace(/\/$/, '') : '';
+
+  p = p.replace(/^\.\//, '').replace(/^a\//, '').replace(/^b\//, '');
+  // Strip shebang artifact (second defense layer — parser should catch first).
+  p = p.replace(/^!+/, '');
+  if (p.startsWith('~/') && homePath) p = `${homePath}/${p.slice(2)}`;
+  if (p.startsWith(rootPath + '/')) p = p.slice(rootPath.length + 1);
+
+  p = nodePath.posix.normalize(p);
+  if (!p || p === '.' || p.startsWith('../') || p.includes('/../') || nodePath.posix.isAbsolute(p) || p.startsWith('~/')) return undefined;
+  // Reject paths that contain git conflict marker or SEARCH/REPLACE segment names.
+  if (p.split('/').some((seg) => seg === 'SEARCH' || seg === 'REPLACE')) return undefined;
+  // Reject system-directory roots (e.g. "bin/bash", "usr/include/...").
+  const firstSegLc = p.split('/')[0].toLowerCase();
+  const APPLIER_SYSTEM_DIRS = new Set([
+    'bin', 'sbin', 'usr', 'etc', 'dev', 'proc', 'sys', 'var', 'tmp',
+    'run', 'home', 'root', 'opt', 'lib', 'lib64', 'boot', 'mnt', 'media', 'srv',
+  ]);
+  if (APPLIER_SYSTEM_DIRS.has(firstSegLc)) return undefined;
+  return p;
+}
+
+async function fileExists(uri: vscode.Uri): Promise<boolean> {
+  try { await vscode.workspace.fs.stat(uri); return true; } catch { return false; }
+}
+
+async function readText(uri: vscode.Uri): Promise<string> {
+  const bytes = await vscode.workspace.fs.readFile(uri);
+  return Buffer.from(bytes).toString('utf8');
+}
+
+function ensureFinalNewline(text: string): string {
+  return text.endsWith('\n') ? text : text + '\n';
+}
+
+function dedupeChanges(changes: PreparedChange[]): PreparedChange[] {
+  const byPath = new Map<string, PreparedChange>();
+  for (const change of changes) {
+    if (!byPath.has(change.relPath)) byPath.set(change.relPath, change);
+  }
+  return [...byPath.values()];
+}
+
+async function openPreview(change: PreparedChange): Promise<void> {
+  const language = guessLanguage(change.relPath);
+  const doc = await vscode.workspace.openTextDocument({
+    content: change.newContent,
+    language,
+  });
+
+  if (change.exists) {
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      change.targetUri,
+      doc.uri,
+      `DeepSeek 预览：${change.relPath}`,
+      { preview: true },
+    );
+  } else {
+    const emptyDoc = await vscode.workspace.openTextDocument({
+      content: '',
+      language,
+    });
+    await vscode.commands.executeCommand(
+      'vscode.diff',
+      emptyDoc.uri,
+      doc.uri,
+      `DeepSeek 新建预览：${change.relPath}`,
+      { preview: true },
+    );
+  }
+}
+
+async function previewPreparedChanges(prepared: PreparedChange[], placeHolder: string): Promise<void> {
+  if (prepared.length === 1) {
+    await openPreview(prepared[0]);
+    return;
+  }
+
+  const pick = await vscode.window.showQuickPick(
+    [
+      {
+        label: '$(files) 依次预览全部',
+        description: `${prepared.length} 个文件`,
+        detail: '按顺序打开每个文件的预览视图',
+        index: -1,
+      },
+      ...prepared.map((change, index) => ({
+        label: change.relPath,
+        description: change.exists ? '修改' : '新建',
+        detail: `第 ${index + 1} / ${prepared.length} 个变更`,
+        index,
+      })),
+    ],
+    {
+      placeHolder,
+      matchOnDescription: true,
+      matchOnDetail: true,
+    },
+  );
+
+  if (!pick) return;
+
+  if (pick.index === -1) {
+    for (const change of prepared) {
+      await openPreview(change);
+    }
+    return;
+  }
+
+  await openPreview(prepared[pick.index]);
+}
+
+function guessLanguage(path: string): string | undefined {
+  const ext = path.split('.').pop()?.toLowerCase();
+  const map: Record<string, string> = {
+    ts: 'typescript', tsx: 'typescriptreact', js: 'javascript', jsx: 'javascriptreact',
+    py: 'python', cpp: 'cpp', cc: 'cpp', cxx: 'cpp', c: 'c', h: 'c', hpp: 'cpp',
+    json: 'json', md: 'markdown', css: 'css', scss: 'scss', html: 'html',
+    yaml: 'yaml', yml: 'yaml', sh: 'shellscript', sql: 'sql', java: 'java', go: 'go', rs: 'rust',
+  };
+  return ext ? map[ext] : undefined;
+}
+
+function applyUnifiedDiff(original: string, diff: string, relPath: string): string {
+  const originalLines = original.replace(/\r\n/g, '\n').split('\n');
+  if (originalLines.length > 0 && originalLines[originalLines.length - 1] === '') originalLines.pop();
+  const diffLines = diff.replace(/\r\n/g, '\n').split('\n');
+  const result: string[] = [];
+  let oldIndex = 0;
+
+  let i = 0;
+  while (i < diffLines.length) {
+    const line = diffLines[i];
+    if (!line.startsWith('@@')) {
+      i++;
+      continue;
+    }
+
+    const m = line.match(/^@@\s+-(\d+)(?:,(\d+))?\s+\+(\d+)(?:,(\d+))?\s+@@/);
+    if (!m) throw new Error(`DeepSeek: 无法解析 diff hunk（${relPath}）`);
+
+    const oldStart = Number(m[1]);
+    const copyUntil = Math.max(0, oldStart - 1);
+    while (oldIndex < copyUntil && oldIndex < originalLines.length) {
+      result.push(originalLines[oldIndex]);
+      oldIndex++;
+    }
+
+    i++;
+    while (i < diffLines.length && !diffLines[i].startsWith('@@')) {
+      const hunkLine = diffLines[i];
+      if (hunkLine.startsWith('+')) {
+        result.push(hunkLine.slice(1));
+      } else if (hunkLine.startsWith('-')) {
+        oldIndex++;
+      } else if (hunkLine.startsWith(' ')) {
+        result.push(hunkLine.slice(1));
+        oldIndex++;
+      } else if (hunkLine.startsWith('\\ No newline at end of file')) {
+        // ignore marker
+      }
+      i++;
+    }
+  }
+
+  while (oldIndex < originalLines.length) {
+    result.push(originalLines[oldIndex]);
+    oldIndex++;
+  }
+
+  return ensureFinalNewline(result.join('\n'));
+}
+
+async function runAutoValidation(changedPaths: string[], root?: vscode.Uri): Promise<AutoValidationResult | null> {
+  if (!root) return null;
+  const config = vscode.workspace.getConfiguration('devseek');
+
+  const hasBridge = changedPaths.some((p) => p.startsWith('packages/bridge/'));
+  const hasExtension = changedPaths.some((p) => p.startsWith('packages/vscode-extension/'));
+  const cppRelated = changedPaths.filter((p) => /\.(cpp|cc|cxx|c|h|hpp)$/i.test(p));
+
+  if (hasBridge) {
+    return runShell('npm run build', nodePath.join(root.fsPath, 'packages', 'bridge'));
+  }
+  if (hasExtension) {
+    return runShell('npm run compile', nodePath.join(root.fsPath, 'packages', 'vscode-extension'));
+  }
+  if (cppRelated.length > 0) {
+    const cppPolicy = config.get<CppValidationPolicy>('cppValidationPolicy', 'conservative');
+    return runCppAutoValidation(root.fsPath, cppRelated, cppPolicy);
+  }
+
+  return null;
+}
+
+async function runCppAutoValidation(
+  rootFsPath: string,
+  cppRelated: string[],
+  cppPolicy: CppValidationPolicy,
+): Promise<AutoValidationResult | null> {
+  const fsNode = require('fs');
+  const plan = planCppValidation(cppRelated, rootFsPath, fsNode, cppPolicy);
+  if (!plan) return null;
+
+  const result = await runShell(plan.command, plan.cwd);
+  let merged: AutoValidationResult = {
+    ...result,
+    mode: plan.mode,
+    reason: plan.reason,
+  };
+
+  if (merged.ok && plan.mode === 'compile-only') {
+    const execCheck = await tryPostCompileExecutionCheck(plan.cwd, fsNode);
+    if (execCheck) {
+      merged = {
+        ...execCheck,
+        mode: execCheck.ok ? 'compile-run' : 'compile-run',
+        reason: execCheck.ok ? 'post-compile-execution-check-passed' : 'post-compile-execution-check-failed',
+      };
+    }
+  }
+
+  return merged;
+}
+
+async function tryPostCompileExecutionCheck(
+  cwd: string,
+  fsNode: { readdirSync: (p: string) => string[]; readFileSync: (p: string, enc: string) => string },
+): Promise<AutoValidationResult | null> {
+  try {
+    const files = fsNode.readdirSync(cwd)
+      .filter((name: string) => /\.(cpp|cc|cxx|c)$/i.test(name))
+      .map((name: string) => nodePath.join(cwd, name));
+    if (files.length === 0) return null;
+
+    const mains = files.filter((abs: string) => {
+      try {
+        return /\bint\s+main\s*\(/.test(fsNode.readFileSync(abs, 'utf8'));
+      } catch {
+        return false;
+      }
+    });
+
+    if (mains.length !== 1) return null;
+
+    const outPath = nodePath.join(cwd, 'deepseek_auto_exec');
+    const command = `g++ -std=c++17 ${files.map(shellQuote).join(' ')} -o ${shellQuote(outPath)} && ${shellQuote(outPath)}`;
+    return await runShell(command, cwd);
+  } catch {
+    return null;
+  }
+}
+
+async function runShell(command: string, cwd: string): Promise<AutoValidationResult> {
+  return new Promise((resolve) => {
+    const cp = require('child_process');
+    cp.exec(command, { cwd, timeout: 180000 }, (error: Error & { code?: number }, stdout: string, stderr: string) => {
+      const exitCode = typeof error?.code === 'number' ? error.code : 0;
+      resolve({
+        ran: true,
+        ok: !error,
+        command,
+        exitCode,
+        output: `${stdout || ''}\n${stderr || ''}`,
+        cwd,
+      });
+    });
+  });
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}

@@ -1,0 +1,342 @@
+import * as vscode from 'vscode';
+import * as cp from 'child_process';
+import * as nodePath from 'path';
+import * as fs from 'fs';
+import * as crypto from 'crypto';
+import * as os from 'os';
+import { getWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
+
+const DEFAULT_PORT = 3721;
+const TOKEN_REL_PATH = nodePath.join('.devseek', 'bridge-token');
+let extensionRootFsPath: string | undefined;
+
+export function setBridgeExtensionRoot(fsPath: string): void {
+  extensionRootFsPath = fsPath;
+}
+
+function getPort(): number {
+  return vscode.workspace.getConfiguration('devseek').get<number>('serverPort', DEFAULT_PORT);
+}
+
+function baseUrl(): string {
+  return `http://127.0.0.1:${getPort()}`;
+}
+
+function getBridgeToken(): string {
+  const tokenRoot = getBridgeTokenRoot();
+  const tokenPath = nodePath.join(tokenRoot, TOKEN_REL_PATH);
+  try {
+    const existing = fs.readFileSync(tokenPath, 'utf8').trim();
+    if (existing) return existing;
+  } catch {
+    // Create below.
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  fs.mkdirSync(nodePath.dirname(tokenPath), { recursive: true });
+  fs.writeFileSync(tokenPath, token, { encoding: 'utf8', mode: 0o600 });
+  return token;
+}
+
+function getBridgeWorkspaceRoot(): string {
+  return getWorkspaceRootFsPath('', [])
+    ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    ?? extensionRootFsPath
+    ?? process.cwd();
+}
+
+function getBridgeTokenRoot(): string {
+  return getWorkspaceRootFsPath('', [])
+    ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    ?? nodePath.join(os.tmpdir(), 'devseek-netai');
+}
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  return { ...(extra ?? {}), 'X-DevSeek-Token': getBridgeToken() };
+}
+
+export interface ChatOptions {
+  prompt: string;
+  newSession?: boolean;
+  timeoutMs?: number;
+  stream?: boolean;
+  /** 模型模式：fast = V3（默认），r1 = DeepThink R1 */
+  mode?: 'fast' | 'r1';
+  onDelta?: (delta: string) => void;
+  /** 附件文件绝对路径，通过 DeepSeek 网页原生上传机制发送 */
+  files?: string[];
+}
+
+/** 检查 bridge server 是否在线 */
+export async function ping(): Promise<boolean> {
+  try {
+    const res = await fetch(`${baseUrl()}/ping`, { signal: AbortSignal.timeout(3000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** 获取 bridge 状态 */
+export async function status(): Promise<{ idle: boolean; queueLength: number; browserReady: boolean } | null> {
+  try {
+    const res = await fetch(`${baseUrl()}/status`, { headers: authHeaders(), signal: AbortSignal.timeout(800) });
+    if (!res.ok) return null;
+    return res.json() as Promise<{ idle: boolean; queueLength: number; browserReady: boolean }>;
+  } catch {
+    return null;
+  }
+}
+
+/** 取消当前请求 */
+export async function cancel(): Promise<void> {
+  await fetch(`${baseUrl()}/cancel`, { method: 'POST', headers: authHeaders(), signal: AbortSignal.timeout(3000) }).catch(() => {});
+}
+
+/** 关闭正在运行的 Bridge（用于重启前调用） */
+async function shutdownBridge(): Promise<void> {
+  try {
+    await fetch(`${baseUrl()}/shutdown`, { method: 'POST', headers: authHeaders(), signal: AbortSignal.timeout(2000) });
+    await new Promise<void>(r => setTimeout(r, 400)); // 等待进程退出
+  } catch { /* 已经不在线，忽略 */ }
+}
+
+/** 触发重新登录（bridge 会打开可见浏览器） */
+export async function relogin(): Promise<boolean> {
+  try {
+    const res = await fetch(`${baseUrl()}/relogin`, { method: 'POST', headers: authHeaders(), signal: AbortSignal.timeout(5000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** 预附加文件到 DeepSeek UI（在 sendMessage 前提前上传，下次 /chat 可省去文件附加等待）*/
+export async function preattachFiles(filePaths: string[]): Promise<void> {
+  if (!filePaths || filePaths.length === 0) return;
+  await fetch(`${baseUrl()}/preattach`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ files: filePaths }),
+    signal: AbortSignal.timeout(60000),
+  }).catch(() => { /* silent */ });
+}
+
+// ----------------------------------------------------------------
+// Bridge auto-start
+// ----------------------------------------------------------------
+let _bridgeProc: cp.ChildProcess | undefined;
+
+function findBridgeRuntime(workspaceRoot: string): { bridgeDir: string; serverJs: string; source: 'bundled' | 'workspace' } | null {
+  if (extensionRootFsPath) {
+    const bundledBridgeDir = nodePath.join(extensionRootFsPath, 'bridge');
+    const bundledServerJs = nodePath.join(bundledBridgeDir, 'server.js');
+    if (fs.existsSync(bundledServerJs)) {
+      return { bridgeDir: bundledBridgeDir, serverJs: bundledServerJs, source: 'bundled' };
+    }
+  }
+
+  const workspaceBridgeDir = nodePath.join(workspaceRoot, 'packages', 'bridge');
+  const workspaceServerJs = nodePath.join(workspaceBridgeDir, 'dist', 'server.js');
+  if (fs.existsSync(workspaceServerJs)) {
+    return { bridgeDir: workspaceBridgeDir, serverJs: workspaceServerJs, source: 'workspace' };
+  }
+
+  return null;
+}
+
+/**
+ * 确保 Bridge 已运行。若未运行则自动在工作区中启动。
+ * forceRestart=true：先关闭旧实例再重启（确保运行最新版本）。
+ * 返回 true 表示 Bridge 已就绪，false 表示无法启动。
+ */
+export async function ensureBridgeRunning(forceRestart = false): Promise<boolean> {
+  // 已经在线且不强制重启
+  if (!forceRestart && await ping() && await status()) return true;
+
+  // 强制重启：先优雅关闭旧实例
+  if (forceRestart && await ping()) {
+    await shutdownBridge();
+    // 若旧进程不支持 /shutdown（旧版无此接口），用 fuser 强杀端口
+    if (await ping()) {
+      const port = getPort();
+      cp.spawnSync('fuser', ['-k', `${port}/tcp`], { stdio: 'ignore' });
+      await new Promise<void>(r => setTimeout(r, 600));
+    }
+  }
+
+  // 找工作区根目录
+  const wsRoot = getBridgeWorkspaceRoot();
+  const runtime = findBridgeRuntime(wsRoot);
+
+  if (!runtime) return false;
+
+  // 如果上一个进程还活着，先结束它
+  if (_bridgeProc && !_bridgeProc.killed) {
+    try { _bridgeProc.kill(); } catch { /* ignore */ }
+  }
+
+  // 以 headless=true 启动（不弹出可见浏览器；重新登录流程会单独打开）
+  const token = getBridgeToken();
+  const logFile = require('fs').openSync('/tmp/bridge_out.log', 'a');
+  _bridgeProc = cp.spawn('node', [runtime.serverJs], {
+    cwd: runtime.bridgeDir,
+    env: {
+      ...process.env,
+      HEADLESS: 'true',
+      WORKSPACE_ROOT: wsRoot,
+      BRIDGE_PORT: String(getPort()),
+      DEVSEEK_BRIDGE_TOKEN: token,
+    },
+    stdio: ['ignore', logFile, logFile],
+    detached: false,
+  });
+
+  _bridgeProc.on('error', () => { _bridgeProc = undefined; });
+  _bridgeProc.on('exit', () => { _bridgeProc = undefined; });
+
+  // 等待最多 15 秒，每 600ms 轮询一次
+  const deadline = Date.now() + 15000;
+  while (Date.now() < deadline) {
+    await new Promise<void>(r => setTimeout(r, 600));
+    if (await ping()) return true;
+  }
+  return false;
+}
+
+/**
+ * 读取工作区文件内容（通过 bridge /index/file 接口）。
+ * 如果 bridge 尚未索引该文件，直接用 VS Code API 读取作为回退。
+ */
+export async function readWorkspaceFile(relPath: string, preferredAbsolutePaths?: string[]): Promise<string | null> {
+  // 优先从 bridge 读取（bridge 可能有更完整的索引）
+  try {
+    const res = await fetch(
+      `${baseUrl()}/index/file?path=${encodeURIComponent(relPath)}`,
+      { headers: authHeaders(), signal: AbortSignal.timeout(5000) },
+    );
+    if (res.ok) {
+      const json = await res.json() as { content?: string; error?: string };
+      if (json.content !== undefined) return json.content;
+    }
+  } catch { /* fall through to VS Code API */ }
+
+  // 回退：VS Code API 直接读
+  const target = resolveWorkspaceFileUri(relPath, preferredAbsolutePaths);
+  if (!target) return null;
+  try {
+    const stat = await vscode.workspace.fs.stat(target);
+    if (stat.type === vscode.FileType.Directory) return null;
+    const bytes = await vscode.workspace.fs.readFile(target);
+    return Buffer.from(bytes).toString('utf8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 发送 chat 请求。
+ * stream=true 时通过 onDelta 回调推送增量文本，返回完整文本。
+ * stream=false 时直接返回完整文本。
+ */
+export async function chat(opts: ChatOptions): Promise<string> {
+  const config = vscode.workspace.getConfiguration('devseek');
+  const useStream = opts.stream !== false;
+
+  const body = JSON.stringify({
+    prompt: opts.prompt,
+    newSession: opts.newSession ?? config.get<boolean>('newSessionPerRequest', false),
+    stream: useStream,
+    timeoutMs: opts.timeoutMs ?? config.get<number>('requestTimeoutMs', 120000),
+    mode: opts.mode,
+    files: opts.files,
+  });
+
+  // Always use the streaming path when stream=true, even when no onDelta is
+  // provided.  Falling through to the non-stream fetch was wrong in two ways:
+  //  1. The request body already has stream:true → server sends SSE text-event-stream
+  //     → res.json() throws "Unexpected token 'd', "data: {"de"... is not valid JSON"
+  //  2. The non-stream path uses AbortSignal.timeout(62s) which is far too short
+  //     for large files; the stream path uses timeoutMs×10 (up to 20 min).
+  if (useStream) {
+    return chatStream(body, opts.onDelta ?? (() => {}));
+  }
+
+  const res = await fetch(`${baseUrl()}/chat`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json' }),
+    body,
+    signal: AbortSignal.timeout(opts.timeoutMs ?? config.get<number>('requestTimeoutMs', 120000)),
+  });
+
+  const json = await res.json() as { content?: string; error?: string };
+  if (!res.ok || json.error) {
+    if (res.status === 401 || json.error === 'LOGIN_REQUIRED') throw new Error('LOGIN_REQUIRED');
+    throw new Error(json.error || `HTTP ${res.status}`);
+  }
+  return json.content || '';
+}
+
+async function chatStream(body: string, onDelta: (delta: string) => void): Promise<string> {
+  const config = vscode.workspace.getConfiguration('devseek');
+  const timeoutMs = JSON.parse(body).timeoutMs ?? config.get<number>('requestTimeoutMs', 120000);
+
+  // SSE 流可能跨越多次"继续生成"，总耗时大幅超过单轮 timeoutMs。
+  // HTTP 连接超时设为单轮的 10 倍（最少 10 分钟），由 Bridge 侧 Playwright deadline 负责实际终止。
+  const httpTimeout = Math.max(timeoutMs * 10, 600_000);
+  const res = await fetch(`${baseUrl()}/chat`, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json', 'Accept': 'text/event-stream' }),
+    body,
+    signal: AbortSignal.timeout(httpTimeout),
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    // 401 表示需要重新登录，使用特殊错误消息以便上层识别
+    if (res.status === 401) throw new Error('LOGIN_REQUIRED');
+    throw new Error(`HTTP ${res.status}: ${text}`);
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('No response body');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let fullText = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6).trim();
+      if (!data) continue;
+      try {
+        const parsed = JSON.parse(data) as { delta?: string; done?: boolean; error?: string };
+        if (parsed.error) {
+          if (parsed.error === 'LOGIN_REQUIRED') throw new Error('LOGIN_REQUIRED');
+          throw new Error(parsed.error);
+        }
+        if (parsed.delta) {
+          if (parsed.delta.startsWith('\x00RESET\x00')) {
+            // 全量替换信号：清空已积累内容，重新开始
+            fullText = parsed.delta.slice(7);
+            onDelta('\x00RESET\x00' + fullText);
+          } else {
+            fullText += parsed.delta;
+            onDelta(parsed.delta);
+          }
+        }
+      } catch (e) {
+        if ((e as Error).message && !(e instanceof SyntaxError)) throw e;
+      }
+    }
+  }
+
+  return fullText;
+}

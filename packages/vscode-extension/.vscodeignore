@@ -1,0 +1,16 @@
+.vscode/**
+node_modules/**
+src/**
+tsconfig.json
+**/*.map
+**/.gitignore
+**/.vscodeignore
+.vscode-test/**
+out/**
+# 排除 monorepo 根目录和兄弟包文件
+../../**
+../bridge/**
+../shared/**
+# 排除 media 下的构建临时文件
+media/*.tgz
+media/package/**

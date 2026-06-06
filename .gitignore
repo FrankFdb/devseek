@@ -1,0 +1,32 @@
+# Dependencies and package manager caches
+node_modules/
+.npm/
+.pnpm-store/
+.yarn/
+
+# Build and packaged artifacts
+dist/
+packages/**/dist/
+packages/vscode-extension/media/
+*.vsix
+*.tgz
+*.log
+
+# Generated reports, probes, and runtime artifacts
+artifacts/
+backups/
+code/
+aircraft/
+probe_mermaid*.js
+packages/vscode-extension/test/unit/*.bundle.cjs
+
+# Local tool/editor state
+.agents/
+.codex/
+.devseek/
+.noop*/
+.vscode/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

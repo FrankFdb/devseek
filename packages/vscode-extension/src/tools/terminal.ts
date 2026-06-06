@@ -1,0 +1,253 @@
+/**
+ * run_in_terminal tool — P2-3
+ * 在 VS Code 集成终端中执行命令，捕获输出并返回
+ * 供 agent-loop 和用户命令调用
+ *
+ * 安全策略：
+ * - 拒绝明显危险的命令（rm -rf /、dd if=...）
+ * - 默认超时 30s，可配置
+ * - 在工作区根目录执行，不跨越工作区
+ */
+import * as vscode from 'vscode';
+import * as cp from 'child_process';
+import * as nodePath from 'path';
+import { getWorkspaceRootFsPath } from '../workspace-roots';
+
+export interface TerminalRunOptions {
+  /** 要执行的 shell 命令 */
+  command: string;
+  /** 执行目录（绝对路径）；不传则用工作区根目录 */
+  cwd?: string;
+  /** 超时毫秒，默认 30000 */
+  timeoutMs?: number;
+  /** 是否在 VS Code 集成终端显示（可见模式），默认 false（静默模式） */
+  visible?: boolean;
+  /** User explicitly confirmed a command with package-manager/sudo/network side effects. */
+  allowRisky?: boolean;
+}
+
+export interface TerminalRunResult {
+  ok: boolean;
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+  /** stdout + stderr 合并（常用于错误报告） */
+  output: string;
+  /** 截断后的输出摘要（前 1500 字符），适合直接注入 prompt */
+  summary: string;
+}
+
+/** 危险命令黑名单（正则） */
+const DANGEROUS_PATTERNS = [
+  /\brm\s+-rf?\s+\/(?!\w)/,      // rm -rf /
+  /\bdd\s+if=\/dev\/(zero|random|urandom)\s+of=\/dev\/(sd|nvme|mmcblk)/,  // dd 覆盖磁盘
+  /\bmkfs\b/,                    // 格式化分区
+  />\s*\/dev\/(sd|nvme|mmcblk)/, // 重定向到磁盘设备
+  /\bsudo\s+rm\s+-rf/,           // sudo rm -rf
+];
+
+const RISKY_PATTERNS = [
+  /\bsudo\b/,
+  /\b(?:apt|apt-get|dnf|yum|pacman|brew|choco)\s+(?:install|remove|upgrade|update)\b/,
+  /\b(?:npm|pnpm|yarn|bun)\s+(?:install|add|remove|update|upgrade)\b/,
+  /\b(?:pip|pip3|python3?\s+-m\s+pip)\s+install\b/,
+  /\b(?:curl|wget)\b[\s\S]*\|\s*(?:sh|bash|zsh|python|python3)\b/,
+  /[`$]\(/,
+  />\s*\/(?:etc|usr|bin|sbin|var|root)\b/,
+];
+
+function isSafeCommand(cmd: string, allowRisky = false): { ok: boolean; reason?: string } {
+  if (DANGEROUS_PATTERNS.some(p => p.test(cmd))) {
+    return { ok: false, reason: '匹配危险操作模式' };
+  }
+  if (!allowRisky && RISKY_PATTERNS.some(p => p.test(cmd))) {
+    return { ok: false, reason: '需要用户显式确认的高风险命令（sudo / 包管理器 / 网络脚本 / 系统写入等）' };
+  }
+  return { ok: true };
+}
+
+/**
+ * 在后台（child_process）静默执行命令，捕获 stdout+stderr。
+ * 这是最常用的路径，适合 agent 自动调用。
+ */
+/** Server/daemon commands that block indefinitely — reject immediately instead of timing out. */
+const SERVER_COMMAND_RE = /\b(http\.server|SimpleHTTPServer|livereload|webpack.*--watch|nodemon|ng serve|vite\b|next dev|flask run|rails s|php.*-S|nc\s+-l|python\s+-m\s+http)/i;
+
+/** sudo needs password — user must authenticate in an interactive terminal first. */
+const SUDO_PASSWORD_RE = /terminal is required to read the password|a password is required|sudo.*password/i;
+
+function patchCommand(cmd: string): string {
+  return cmd;
+}
+
+export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult> {
+  const { timeoutMs = 30000 } = opts;
+  const command = patchCommand(opts.command);
+
+  // Block long-running server commands — they would always time out (30s) and
+  // the exit-1 confuses the AI into retrying.  Return a clear error immediately.
+  if (SERVER_COMMAND_RE.test(command)) {
+    const msg = `（服务器命令不支持：该命令会持续运行，无法在 agent 模式中使用。若需预览 HTML 文件，请直接在浏览器中打开 code/ 目录下的文件。）`;
+    return Promise.resolve({ ok: false, exitCode: -1, stdout: '', stderr: msg, output: msg, summary: msg });
+  }
+
+  const safety = isSafeCommand(command, opts.allowRisky === true);
+  if (!safety.ok) {
+    const result: TerminalRunResult = {
+      ok: false, exitCode: -1,
+      stdout: '', stderr: `安全检查: 命令被拒绝（${safety.reason || '未知风险'}）`,
+      output: `安全检查: 命令被拒绝（${safety.reason || '未知风险'}）`,
+      summary: '安全检查: 命令被拒绝',
+    };
+    return Promise.resolve(result);
+  }
+
+  // 解析 cwd
+  const workspaceRoot = getWorkspaceRootSafe();
+  const cwd = opts.cwd ?? workspaceRoot ?? process.cwd();
+
+  // Resolve shell: use full path to bash to avoid ENOENT when VS Code's
+  // extension host runs with a minimal PATH that lacks /usr/bin or /bin.
+  const shellBin = process.platform === 'win32' ? 'cmd.exe'
+    : (['/bin/bash', '/usr/bin/bash', '/usr/local/bin/bash'].find(p => require('fs').existsSync(p)) ?? 'bash');
+  const shellArgs = process.platform === 'win32' ? ['/c', command] : ['-c', command];
+
+  return new Promise((resolve) => {
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    const child = cp.spawn(shellBin, shellArgs, {
+      cwd,
+      env: {
+        ...process.env,
+        TERM: 'dumb',
+        FORCE_COLOR: '0',
+        PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+      },
+      timeout: timeoutMs,
+    });
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+    }, timeoutMs);
+
+    child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+    child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      const output = (stdout + (stderr ? '\n[stderr]\n' + stderr : '')).trim();
+      const exitCode = timedOut ? -1 : (code ?? -1);
+      const ok = !timedOut && exitCode === 0;
+      const summary = timedOut
+        ? `[超时 ${timeoutMs}ms] 命令: ${command}\n${output.slice(0, 800)}`
+        : `[exitCode=${exitCode}] ${output.slice(0, 1500)}`;
+
+      resolve({ ok, exitCode, stdout: stdout.trim(), stderr: stderr.trim(), output, summary });
+    });
+
+    child.on('error', (e) => {
+      clearTimeout(timer);
+      const msg = `启动命令失败: ${e.message}`;
+      resolve({ ok: false, exitCode: -1, stdout: '', stderr: msg, output: msg, summary: msg });
+    });
+  });
+}
+
+/**
+ * 在 VS Code 集成终端中可见地运行命令（不捕获输出）。
+ * 适合用户需要交互的场景。
+ */
+export function runInVisibleTerminal(command: string, terminalName = 'DeepSeek'): vscode.Terminal {
+  const workspaceRoot = getWorkspaceRootSafe();
+  const terminal = vscode.window.createTerminal({
+    name: terminalName,
+    cwd: workspaceRoot ?? undefined,
+  });
+  terminal.show(true);
+  terminal.sendText(command);
+  return terminal;
+}
+
+/** 将终端输出格式化为 prompt 可注入的文本块 */
+export function formatTerminalOutputForPrompt(cmd: string, result: TerminalRunResult): string {
+  const lines = [`[终端命令] ${cmd}`, `[退出码] ${result.exitCode}`];
+  if (result.stdout) lines.push(`[stdout]\n${result.stdout.slice(0, 1200)}`);
+  if (result.stderr) lines.push(`[stderr]\n${result.stderr.slice(0, 800)}`);
+
+  // ── Diagnostic hints: let the AI identify root cause immediately ──────────
+  const combined = result.output;
+
+  // sudo needs password — this is a user-action issue, not a retryable command error.
+  if (SUDO_PASSWORD_RE.test(combined)) {
+    lines.push(
+      `[SUDO_PASSWORD_REQUIRED]\n` +
+      `当前环境 sudo 凭证未缓存，无法自动执行需要 root 权限的命令。\n` +
+      `解决方案（请直接告知用户）：\n` +
+      `1. 在 VSCode 集成终端（Ctrl+\`）手动执行一次 sudo ls 并输入密码\n` +
+      `2. sudo 凭证缓存 15 分钟，缓存期间 AI 可自动执行 sudo 命令\n` +
+      `3. 完成后重新发送请求即可继续`,
+    );
+  }
+
+  // apt package not found — suggest correct diagnosis steps.
+  if (/Unable to locate package/.test(combined)) {
+    const pkgMatch = combined.match(/Unable to locate package (\S+)/);
+    const pkg = pkgMatch ? pkgMatch[1] : '';
+    const baseName = pkg.replace(/[0-9].*$/, '').replace(/-dev$/, '');
+    lines.push(
+      `[APT_PACKAGE_NOT_FOUND]\n` +
+      `包 ${pkg} 在当前 apt 源中找不到。诊断步骤：\n` +
+      `1. 先运行 sudo apt-get update 刷新包列表\n` +
+      `2. 用 apt-cache search ${baseName} 搜索正确的包名\n` +
+      `3. 检查架构：dpkg --print-architecture — 确认源与架构匹配`,
+    );
+  }
+
+  // Binary not found after compilation — the build "succeeded" but the output binary is missing.
+  // Typical causes: wrong working directory when running ./binary, cmake output path is build/ not cwd.
+  if (result.exitCode === 127 || /No such file or directory/i.test(combined)) {
+    // Only fire when this looks like a run-attempt (not a compile step)
+    const isRunAttempt = /^\s*\.\//.test(cmd) || /\bexecv|execlp\b/.test(combined);
+    if (isRunAttempt) {
+      lines.push(
+        `[BINARY_NOT_FOUND]\n` +
+        `命令 "${cmd}" 找不到可执行文件（exit 127 / No such file or directory）。\n` +
+        `常见原因：\n` +
+        `1. cmake 编译输出在 build/ 子目录，而非当前目录 — 应运行 build/binary_name 而不是 ./binary_name\n` +
+        `2. 编译步骤实际上失败了（查看上方 make/cmake 输出确认）\n` +
+        `3. 可执行文件名与实际生成的文件名不一致\n` +
+        `请先用 ls build/ 或 find . -type f -executable 确认二进制文件位置，再运行。`,
+      );
+    }
+  }
+
+  // sed -i compatibility: GNU sed (Linux) requires -i '' on BSD/macOS; BSD sed requires
+  // sed -i '' on macOS. On Linux, "sed -i 'ls/.../' file" fails with "unknown option to 's'".
+  // Copilot/Claude Code pattern: detect tool-specific error patterns and emit a targeted hint
+  // with the correct form so the AI self-corrects without guessing.
+  if (/\bsed\b/.test(cmd) && result.exitCode !== 0) {
+    if (/unknown option to|unterminated `s' command|extra characters after command/i.test(combined)) {
+      lines.push(
+        `[SED_SYNTAX_ERROR]\n` +
+        `sed 命令语法错误。本机为 Linux/GNU sed，注意：\n` +
+        `1. 正确格式：sed -i 's/旧内容/新内容/g' filename  （Linux/GNU sed 不需要空字符串参数）\n` +
+        `2. 错误范例："sed -i 'ls/pattern/' file"中的 l 是未知选项\n` +
+        `3. 特殊字符需转义：路径中的 / 用 \\/ 替代，或改用其他分隔符如 |：sed -i 's|old|new|g' file\n` +
+        `建议：优先使用 Python 或直接用 read_file+create_file 替换文件内容，比 sed 更可靠。`,
+      );
+    }
+  }
+
+  return lines.join('\n');
+}
+
+function getWorkspaceRootSafe(): string | undefined {
+  try {
+    return getWorkspaceRootFsPath('', []) ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  } catch {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  }
+}

@@ -1,0 +1,427 @@
+{
+  "name": "devseek-netai",
+  "displayName": "DevSeek",
+  "description": "DevSeek — AI-powered coding agent with local compilation, multi-round repair, and universal learning",
+  "version": "1.0.0",
+  "publisher": "devseek-netai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/local/devseek-netai"
+  },
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "devseek.explain",
+        "title": "DevSeek: 解释代码",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.fix",
+        "title": "DevSeek: 修复 Bug",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.refactor",
+        "title": "DevSeek: 重构代码",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.genTest",
+        "title": "DevSeek: 生成单元测试",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.runTests",
+        "title": "DevSeek: 运行测试",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.genDoc",
+        "title": "DevSeek: 生成文档注释",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.ask",
+        "title": "DevSeek: 自定义提问",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.openChat",
+        "title": "DevSeek: 打开对话面板",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.inlineChat",
+        "title": "DevSeek: 行内聊天 (Ctrl+I)",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.triggerCompletion",
+        "title": "DevSeek: 触发行内补全 (Alt+\\)",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.generateCommit",
+        "title": "DevSeek: 生成提交信息 ✨",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.applyDiff",
+        "title": "DevSeek: 应用代码修改 (Diff 视图)",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.runTerminalCommand",
+        "title": "DevSeek: 运行命令并分析输出",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.showMemoryFiles",
+        "title": "DevSeek: 查看 Agent 记忆文件 (Show Memory Files)",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.addFileToChat",
+        "title": "Add to DS Chat",
+        "category": "DevSeek",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "devseek.switchProvider",
+        "title": "DevSeek: 切换 LLM Provider",
+        "category": "DevSeek"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "when": "editorHasSelection",
+          "command": "devseek.explain",
+          "group": "deepseek@1"
+        },
+        {
+          "when": "editorHasSelection",
+          "command": "devseek.fix",
+          "group": "deepseek@2"
+        },
+        {
+          "when": "editorHasSelection",
+          "command": "devseek.refactor",
+          "group": "deepseek@3"
+        },
+        {
+          "when": "editorHasSelection",
+          "command": "devseek.genTest",
+          "group": "deepseek@4"
+        },
+        {
+          "when": "editorHasSelection",
+          "command": "devseek.genDoc",
+          "group": "deepseek@5"
+        },
+        {
+          "when": "editorHasSelection",
+          "command": "devseek.ask",
+          "group": "deepseek@6"
+        },
+        {
+          "when": "editorHasSelection",
+          "command": "devseek.inlineChat",
+          "group": "deepseek@7"
+        },
+        {
+          "when": "editorHasSelection",
+          "command": "devseek.applyDiff",
+          "group": "deepseek@8"
+        }
+      ],
+      "scm/title": [
+        {
+          "command": "devseek.generateCommit",
+          "group": "deepseek"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "devseek.addFileToChat",
+          "group": "deepseek@1",
+          "when": "explorerResourceIsFolder || resourceLangId"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "devseek.addFileToChat",
+          "group": "deepseek@1"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "devseek.openChat",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d"
+      },
+      {
+        "command": "devseek.ask",
+        "key": "ctrl+shift+a",
+        "mac": "cmd+shift+a",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "devseek.inlineChat",
+        "key": "ctrl+i",
+        "mac": "ctrl+i",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "devseek.triggerCompletion",
+        "key": "alt+\\",
+        "when": "editorTextFocus"
+      }
+    ],
+    "configuration": {
+      "title": "DevSeek",
+      "properties": {
+        "devseek.serverPort": {
+          "type": "number",
+          "default": 3721,
+          "description": "本地 Bridge 服务端口"
+        },
+        "devseek.newSessionPerRequest": {
+          "type": "boolean",
+          "default": false,
+          "description": "每次请求是否新建 DeepSeek 对话"
+        },
+        "devseek.language": {
+          "type": "string",
+          "default": "zh",
+          "enum": [
+            "zh",
+            "en"
+          ],
+          "description": "AI 回复语言"
+        },
+        "devseek.maxContextLines": {
+          "type": "number",
+          "default": 100,
+          "description": "自动注入的最大上下文行数（光标周围）"
+        },
+        "devseek.requestTimeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "description": "单次请求超时时间（毫秒）"
+        },
+        "devseek.autoFixRounds": {
+          "type": "number",
+          "default": 6,
+          "minimum": 0,
+          "maximum": 6,
+          "description": "自动验证失败后回传 DeepSeek 的最大闭环修复轮次（0=关闭）"
+        },
+        "devseek.autoApplyPolicy": {
+          "type": "string",
+          "default": "conservative",
+          "enum": [
+            "conservative",
+            "balanced",
+            "aggressive"
+          ],
+          "description": "自动落地策略：conservative=严格门控，balanced=常规门控，aggressive=宽松门控"
+        },
+        "devseek.localExecutionFirst": {
+          "type": "boolean",
+          "default": true,
+          "description": "对明确的编译/运行附件请求，优先由插件本地推导并执行命令；失败后再将最小必要错误与文件发送给 DeepSeek"
+        },
+        "devseek.executionApproval": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "confirm"
+          ],
+          "description": "本地执行审批策略：auto=插件直接执行，confirm=执行前由用户确认"
+        },
+        "devseek.cppValidationPolicy": {
+          "type": "string",
+          "default": "conservative",
+          "enum": [
+            "conservative",
+            "balanced",
+            "aggressive"
+          ],
+          "description": "C++ 自动验证策略：默认最小目标 compile-only；aggressive 才会优先运行"
+        },
+        "devseek.completionEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否启用行内 Ghost Text 代码补全（默认关闭，因延迟较高；用 Alt+\\ 也可手动触发）"
+        },
+        "devseek.completionTriggerDelay": {
+          "type": "number",
+          "default": 800,
+          "description": "打字停顿多少毫秒后自动触发补全（默认 800ms；0 = 禁用自动触发，依靠手动 Alt+\\）"
+        },
+        "devseek.contextTokenBudget": {
+          "type": "number",
+          "default": 8000,
+          "description": "上下文注入的 token 预算上限（粗估 1 token ≈ 4 英文字符）"
+        },
+        "devseek.generatedContentDisplayMode": {
+          "type": "string",
+          "default": "hidden",
+          "enum": [
+            "hidden",
+            "collapsed",
+            "full"
+          ],
+          "description": "生成文件正文在聊天面板的显示模式：hidden=仅显示文件映射与操作（默认），collapsed=折叠正文，full=完整显示"
+        },
+        "devseek.workingCopyStyle": {
+          "type": "string",
+          "default": "detailed",
+          "enum": [
+            "concise",
+            "detailed"
+          ],
+          "description": "Working 区阶段文案风格：concise=简洁，detailed=详细（默认）"
+        },
+        "devseek.provider": {
+          "type": "string",
+          "default": "bridge",
+          "enum": [
+            "bridge",
+            "deepseek-api",
+            "openai-compat"
+          ],
+          "enumDescriptions": [
+            "通过本地 Bridge 浏览器自动化访问 DeepSeek 网页（无需 API Key）",
+            "直接调用 DeepSeek 官方 API（需要填写 devseek.apiKey）",
+            "对接任意 OpenAI 兼容服务：Ollama / LM Studio / Groq / Azure OpenAI 等"
+          ],
+          "description": "LLM Provider 选择：bridge=网页自动化，deepseek-api=官方 API"
+        },
+        "devseek.apiKey": {
+          "type": "string",
+          "default": "",
+          "description": "DeepSeek API Key（使用 deepseek-api Provider 时必填，从 platform.deepseek.com 获取）"
+        },
+        "devseek.model": {
+          "type": "string",
+          "default": "deepseek-chat",
+          "enum": [
+            "deepseek-chat",
+            "deepseek-reasoner"
+          ],
+          "enumDescriptions": [
+            "DeepSeek V3 对话模型（推荐，速度快）",
+            "DeepSeek R1 推理模型（慢但逻辑更强）"
+          ],
+          "description": "使用 DeepSeek API 时的模型选择"
+        },
+        "devseek.openaiCompatBaseUrl": {
+          "type": "string",
+          "default": "http://localhost:11434/v1",
+          "description": "OpenAI 兼容服务的 Base URL（Ollama/LM Studio/OpenAI/Groq 等）"
+        },
+        "devseek.openaiCompatApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "OpenAI 兼容服务 API Key（本地服务可留空）"
+        },
+        "devseek.openaiCompatModel": {
+          "type": "string",
+          "default": "llama3",
+          "description": "OpenAI 兼容服务的模型名称（如 llama3、gpt-4o、mistral 等）"
+        },
+        "devseek.autopilotMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "自动驾驶模式：开启后 Agent 执行完成时自动接受全部文件改动，无需手动 Keep/Undo 确认"
+        },
+        "devseek.autoInjectActiveEditor": {
+          "type": "boolean",
+          "default": false,
+          "description": "自动注入当前文件：开启后发送消息时自动把当前打开文件名+语言注入 prompt。关闭（默认）则不自动附加，需手动用 @file 附件。"
+        },
+        "devseek.agentEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Agent 模式：开启时自动解析意图并执行多轮编辑（Architect+Editor 两阶段），关闭时强制走普通单轮对话。可在状态栏 🤖 Agent 按钮实时切换。"
+        },
+        "devseek.maxAgentRounds": {
+          "type": "number",
+          "default": 25,
+          "minimum": 1,
+          "maximum": 200,
+          "description": "Agent 循环最大轮次（超过后自动停止）。普通任务默认 25，复杂任务可调高，Autopilot 模式下最高生效。"
+        },
+        "devseek.editAutoAcceptDelay": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "description": "Agent 完成后自动接受全部待定 AI 修改的等待秒数（0 = 不自动接受）。对应 Copilot chat.editing.autoAccept。"
+        },
+        "devseek.protectedFiles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Agent 禁止自动修改的文件 glob 列表（如 '.env', '**/*.pem', 'config/prod.yml'）。对应 Copilot chat.tools.edits.autoApprove。示例：[\".env\", \"**/*.key\", \"config/production.*\"]"
+        }
+      }
+    },
+    "viewsContainers": {
+      "secondarySidebar": [
+        {
+          "id": "devseek-sidebar",
+          "title": "DevSeek",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "devseek-sidebar": [
+        {
+          "id": "devseek.chatViewLauncher",
+          "name": "DevSeek Chat",
+          "type": "webview",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "viewsWelcome": []
+  },
+  "scripts": {
+    "compile": "npx esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap",
+    "watch": "npx esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
+    "vscode:prepublish": "npm run compile",
+    "test": "node test/run-all.mjs",
+    "test:human-input": "node test/devseek-human-input-harness.mjs",
+    "test:deepseek-web-e2e": "node test/devseek-human-input-harness.mjs --real-bridge",
+    "test:deepseek-agent-steer-e2e": "node test/devseek-human-input-harness.mjs --real-agent-steer",
+    "test:extension-host": "node test/devseek-extension-host-harness.mjs",
+    "test:bridge-smoke": "node test/devseek-bridge-smoke.mjs",
+    "test:watch": "node --test --watch test/unit/*.test.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.21.4",
+    "marked": "^18.0.2",
+    "mermaid": "^11.14.0",
+    "typescript": "^5.4.5"
+  }
+}

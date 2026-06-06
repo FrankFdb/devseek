@@ -1,0 +1,611 @@
+/**
+ * Workflow Compliance Test — verifies that DevSeek source code contains the
+ * implementation markers required by COPILOT_AGENT_WORKFLOW.md.
+ *
+ * This is a static-analysis / "spec grep" test: it reads source files and
+ * checks that required symbols/patterns are present. No VS Code runtime is
+ * needed. It can NOT replace a full E2E test, but it catches accidental
+ * regressions (e.g. deleting a command or removing a key handler).
+ *
+ * Run standalone: node test/unit/workflow-compliance.test.mjs
+ * Run via suite:  node test/run-all.mjs
+ */
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const root = path.resolve(__dirname, '../../');
+
+/** Read a file relative to the extension root. */
+function src(relPath) {
+  const absPath = path.join(root, relPath);
+  if (!existsSync(absPath)) throw new Error(`File not found: ${absPath}`);
+  return readFileSync(absPath, 'utf8');
+}
+
+/** Assert that `content` includes `pattern` (string or regex). */
+function assertContains(content, pattern, msg) {
+  if (typeof pattern === 'string') {
+    assert.ok(content.includes(pattern), `${msg} — expected to find: "${pattern}"`);
+  } else {
+    assert.match(content, pattern, msg);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §一 / §五: Agent loop — core execution
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('§1 Agent loop: AGENTIC_ROUNDS_NORMAL constant exists', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'AGENTIC_ROUNDS_NORMAL', '§1 normal round limit');
+});
+
+test('§1 Agent loop: AGENTIC_ROUNDS_AUTOPILOT constant exists', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'AGENTIC_ROUNDS_AUTOPILOT', '§1 autopilot round limit');
+});
+
+test('§2/§3 Tool system: parseFakeToolCalls exists', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'parseFakeToolCalls', '§3 fake tool call parser');
+});
+
+test('§3 Tools: manage_todo_list handler present', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'manage_todo_list', '§3 todo list tool');
+});
+
+test('§3 Tools: task_complete handler present', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'task_complete', '§3 task complete tool');
+});
+
+test('§3 Tools: memory_write handler present', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'memory_write', '§3 memory write tool');
+});
+
+test('§3 Tools: run_terminal handler present', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'run_terminal', '§3 terminal tool');
+});
+
+test('§3 Tools: mcp__ routing present', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'mcp__', '§3 MCP tool routing');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §八: File editing model + Keep/Undo
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('§8.3 File edits: computePendingHunks function present', () => {
+  const code = src('src/extension.ts');
+  assertContains(code, 'computePendingHunks', '§8.3 hunk computation');
+});
+
+test('§8.3 File edits: renderPendingContentFromHunks function present', () => {
+  const code = src('src/extension.ts');
+  assertContains(code, 'renderPendingContentFromHunks', '§8.3 hunk rendering');
+});
+
+test('§8.3 File edits: keepPendingHunk function present', () => {
+  const code = src('src/extension.ts');
+  assertContains(code, 'keepPendingHunk', '§8.3 keep hunk');
+});
+
+test('§8.3 File edits: undoPendingHunk function present', () => {
+  const code = src('src/extension.ts');
+  assertContains(code, 'undoPendingHunk', '§8.3 undo hunk');
+});
+
+test('§8.3 File edits: PendingEditDecorationProvider class present (⬝ badge)', () => {
+  const code = src('src/extension.ts');
+  assertContains(code, 'PendingEditDecorationProvider', '§8.3 explorer badge');
+});
+
+test('§8.3 File edits: editAutoAcceptDelay setting present', () => {
+  const pkg = src('package.json');
+  assertContains(pkg, 'editAutoAcceptDelay', '§8.3 auto-accept delay setting');
+});
+
+test('§8.3 File edits: protectedFiles setting present', () => {
+  const pkg = src('package.json');
+  assertContains(pkg, 'protectedFiles', '§8.3 protected files glob setting');
+});
+
+test('Config namespace: contributed settings use devseek.*', () => {
+  const pkg = JSON.parse(src('package.json'));
+  const props = pkg.contributes?.configuration?.properties ?? {};
+  const keys = Object.keys(props);
+  assert.ok(keys.length > 0, 'package.json must contribute configuration properties');
+  assert.deepEqual(
+    keys.filter((key) => !key.startsWith('devseek.')),
+    [],
+    'all contributed settings must use devseek.*',
+  );
+});
+
+test('Config namespace: legacy deepseek reads are limited to migration', () => {
+  const files = [
+    'src/extension.ts',
+    'src/bridge-client.ts',
+    'src/context-builder.ts',
+    'src/workspace-applier.ts',
+    'src/llm/provider-router.ts',
+    'src/llm/providers/bridge.ts',
+    'src/llm/providers/deepseek-api.ts',
+    'src/llm/providers/openai-compat.ts',
+  ];
+  const hits = [];
+  for (const file of files) {
+    const code = src(file);
+    const re = /getConfiguration\(['"]deepseek['"]\)/g;
+    let match;
+    while ((match = re.exec(code)) !== null) {
+      hits.push(`${file}:${match.index}`);
+    }
+  }
+  assert.equal(hits.length, 1, 'only migration may read legacy deepseek settings');
+  assert.ok(src('src/extension.ts').includes("const legacy = vscode.workspace.getConfiguration('deepseek')"));
+});
+
+test('§8.3 File edits: workspace applier enforces protectedFiles', () => {
+  const code = src('src/workspace-applier.ts');
+  assertContains(code, 'isFileProtected', 'workspace applier checks protected files before write');
+  assertContains(code, '已阻止写入（受保护文件）', 'protected file write is blocked in apply workflow');
+});
+
+test('§8.3 File edits: code directory prompts force generated code paths under code/', () => {
+  const applier = src('src/workspace-applier.ts');
+  assertContains(applier, 'forceCodeDir', 'workspace applier tracks explicit code directory scope');
+  assert.match(
+    applier,
+    /forceCodeDir[\s\S]*?preferredDirs\.unshift\('code'\)[\s\S]*?scopedDirs\.unshift\('code'\)/,
+    'code directory prompt must seed code/ as preferred and scoped directory',
+  );
+  assert.match(
+    applier,
+    /ctx\.forceCodeDir && isCodeFile[\s\S]*?nodePath\.posix\.join\('code', baseName\)/,
+    'generated code artifacts must be remapped to code/<basename> when user asks for code directory',
+  );
+
+  const agentLoop = src('src/agent-loop.ts');
+  assertContains(agentLoop, 'promptLooksLikeCppProgram', 'agent loop detects C++ prompts separately from C');
+  assertContains(agentLoop, 'contentLooksLikeCppProgram', 'agent loop detects C++ content separately from C');
+  assert.match(
+    agentLoop,
+    /promptRequestsCodeDirectory\(userPrompt\)[\s\S]*?p = `code\/\$\{nodePath\.posix\.basename\(p\)\}`/,
+    'create_file/write_file must force code artifact basenames under code/',
+  );
+  assert.doesNotMatch(
+    agentLoop,
+    /编写\.\*程序[\s\S]{0,120}weekend_feeling\.c/,
+    'generic "编写程序" must not route C++ tasks to the old .c fallback',
+  );
+});
+
+test('Path memory: tool callbacks use inferred workspace root instead of workspaceFolders[0]', () => {
+  const code = src('src/extension.ts');
+  assert.match(
+    code,
+    /onReadFile: async \(filePath: string, workDir\?: string\)[\s\S]*?const agWsRootFs = agWsRoot;/,
+    'free-explore read_file must anchor to inferred agWsRoot',
+  );
+  assert.match(
+    code,
+    /onGrepSearch: async \(pattern: string, path\?: string, _isRegexp\?: boolean, workDir\?: string\)[\s\S]*?const agWsRootFs = agWsRoot;/,
+    'free-explore grep_search must anchor to inferred agWsRoot',
+  );
+  assert.match(
+    code,
+    /const wsRootPath = wsRoot\.fsPath;[\s\S]*?candidate\.startsWith\(wsRootPath\)/,
+    'editor read_file workDir validation must use the selected task workspace root',
+  );
+  assert.doesNotMatch(
+    code,
+    /const wsRootPath = vscode\.workspace\.workspaceFolders\?\.\[0\]\?\.uri\.fsPath \?\? '';/,
+    'editor read_file must not fall back to workspaceFolders[0] after wsRoot is known',
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §八 NEW: Inline diff view (diff-decorator.ts)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('§8 Inline diff: diff-decorator.ts file exists', () => {
+  assert.ok(existsSync(path.join(root, 'src/diff-decorator.ts')), 'diff-decorator.ts must exist');
+});
+
+test('§8 Inline diff: DiffDecorationManager class present', () => {
+  const code = src('src/diff-decorator.ts');
+  assertContains(code, 'DiffDecorationManager', 'DiffDecorationManager class');
+});
+
+test('§8 Inline diff: CodeLensProvider implemented', () => {
+  const code = src('src/diff-decorator.ts');
+  assertContains(code, 'provideCodeLenses', 'CodeLens provider method');
+});
+
+test('§8 Inline diff: Keep hunk command registered', () => {
+  const code = src('src/extension.ts');
+  assertContains(code, '_devseek.diffKeepHunk', 'keep hunk command');
+});
+
+test('§8 Inline diff: Undo hunk command registered', () => {
+  const code = src('src/extension.ts');
+  assertContains(code, '_devseek.diffUndoHunk', 'undo hunk command');
+});
+
+test('§8 Inline diff: revealNextPendingHunk method present', () => {
+  const code = src('src/diff-decorator.ts');
+  assertContains(code, 'revealNextPendingHunk', 'auto-navigate to next hunk');
+});
+
+test('§8 Inline diff: diffDecoManager wired in registerPendingEditChange', () => {
+  const code = src('src/extension.ts');
+  assertContains(code, 'diffDecoManager?.activate', 'deco manager activated on file edit');
+});
+
+test('§8 Inline diff: diffDecoManager.deactivateAll wired in keepAllPendingEdits', () => {
+  const code = src('src/extension.ts');
+  assertContains(code, 'diffDecoManager?.deactivateAll', 'deactivate all on keep-all/undo-all');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §8.5 Queue/Steer
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('§8.5 Queue: queuedAgentMsg present in webview.js', () => {
+  const code = src('media/webview.js');
+  assertContains(code, 'queuedAgentMsg', '§8.5 queue message');
+});
+
+test('§8.5 Steer: agent-queue-indicator present in webview.js', () => {
+  const code = src('media/webview.js');
+  assertContains(code, 'agent-queue-indicator', '§8.5 queue UI indicator');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §8.6 Memory
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('§8.6 Memory: showMemoryFiles command registered', () => {
+  const code = src('src/extension.ts');
+  assertContains(code, 'devseek.showMemoryFiles', '§8.6 show memory files command');
+});
+
+test('§8.6 Memory: showMemoryFiles command in package.json', () => {
+  const pkg = src('package.json');
+  assertContains(pkg, 'devseek.showMemoryFiles', '§8.6 command declared in package.json');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §九: Vision / image input
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('§9 Vision: pendingImages array in webview.js', () => {
+  const code = src('media/webview.js');
+  assertContains(code, 'pendingImages', '§9 pending images array');
+});
+
+test('§9 Vision: images sent in chat message from webview.js', () => {
+  const code = src('media/webview.js');
+  assertContains(code, 'images: pendingImages', '§9 images in postMessage');
+});
+
+test('§9 Vision: msg.images handled in extension.ts', () => {
+  const code = src('src/extension.ts');
+  assertContains(code, 'msg.images', '§9 images received and passed to runChat');
+});
+
+test('§9 Vision: injectVisionStyles function in webview.js', () => {
+  const code = src('media/webview.js');
+  assertContains(code, 'injectVisionStyles', '§9 vision CSS styles injected');
+});
+
+test('§9 Vision: paste handler for image capture in webview.js', () => {
+  const code = src('media/webview.js');
+  assertContains(code, "addEventListener('paste'", '§9 paste handler for image capture');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §二 / §七: Working box display
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('§7 Working box: buildFinishedLabel function present', () => {
+  const code = src('media/webview.js');
+  assertContains(code, 'buildFinishedLabel', '§7 finished label builder');
+});
+
+test('§7 Working box: aut-steps-list element used', () => {
+  const code = src('media/webview.js');
+  assertContains(code, 'aut-steps-list', '§7 steps list container');
+});
+
+test('§7 Todos widget: agent-todos-widget element present', () => {
+  const code = src('media/webview.js');
+  assertContains(code, 'agent-todos-widget', '§7 todos widget');
+});
+
+test('§7 Todos widget: model text manage_todo_list is parsed immediately', () => {
+  const code = src('media/webview.js');
+  assertContains(code, 'agentTodoParseBuffer', 'DeepSeek stream todo parse buffer');
+  assertContains(code, 'extractTodoItemsFromModelText', 'DeepSeek raw todo parser');
+  assertContains(code, 'maybeHandleTodoUpdateFromModelText', 'DeepSeek raw todo display hook');
+  assert.match(
+    code,
+    /msg\.type === 'delta'[\s\S]*?agentTodoParseBuffer \+= msg\.text[\s\S]*?maybeHandleTodoUpdateFromModelText\(agentTodoParseBuffer\)/,
+    'delta stream must parse manage_todo_list as soon as it is received',
+  );
+  assert.match(
+    code,
+    /msg\.type === 'resetResponse'[\s\S]*?agentTodoParseBuffer = msg\.text \|\| ''[\s\S]*?maybeHandleTodoUpdateFromModelText\(agentTodoParseBuffer\)/,
+    'RESET/full-text stream must parse manage_todo_list as soon as it is received',
+  );
+});
+
+test('§7 File changes widget: agent-file-changes-widget element present', () => {
+  const code = src('media/webview.js');
+  assertContains(code, 'agent-file-changes-widget', '§7 file changes widget');
+});
+
+test('§7 Agent feedback: ASUM waits for working completion before visible prose', () => {
+  const code = src('media/webview.js');
+  assertContains(code, 'ensureAgentProseBubbleVisible', 'agent prose bubble placement helper');
+  assertContains(code, 'hasActiveAgentWorkingContainer', 'ASUM visibility must check active Working state');
+  assert.match(
+    code,
+    /msg\.text\.startsWith\(_asPfx\)[\s\S]*?currentRaw \+= _sumDelta;[\s\S]*?hasActiveAgentWorkingContainer\(\)[\s\S]*?return;[\s\S]*?ensureAgentProseBubbleVisible\(\);[\s\S]*?scheduleStreamingBubbleRender\(\);/,
+    'ASUM deltas must stay deferred while Working is active, then render after completion',
+  );
+});
+
+test('§7 Agent feedback: final prose is placed after working box', () => {
+  const code = src('media/webview.js');
+  assertContains(code, 'placeTurnAfterLatestAgentWorking', 'final prose placement helper');
+  assert.ok(
+    !code.includes('moveLatestAgentWorkingAfterTurn'),
+    'completion must not move the working box after the final prose bubble',
+  );
+});
+
+test('§7 Agent feedback: pre-plan resetResponse is suppressed', () => {
+  const code = src('media/webview.js');
+  assert.match(
+    code,
+    /msg\.type === 'resetResponse'[\s\S]*?isAgentMode && !agentPlanDone[\s\S]*?return;/,
+    'agent resetResponse must be gated until plan completion to avoid hidden/stale plan prose',
+  );
+});
+
+test('§7 Working box: resetResponse updates visible progress', () => {
+  const code = src('media/webview.js');
+  assert.match(
+    code,
+    /msg\.type === 'resetResponse'[\s\S]*?updateWorkingEntry\('request', '分析请求', '模型已开始响应', 'passed'\)[\s\S]*?已接收[\s\S]*?updateWorkingEntry\('response',/,
+    'Bridge RESET streaming must update the Working box just like incremental delta streaming',
+  );
+});
+
+test('§7 Todos: agent snapshots override model todo state', () => {
+  const code = src('media/webview.js');
+  assertContains(code, '__agentState', 'agent-owned todo snapshots are marked');
+  assert.match(
+    code,
+    /authoritativeAgentState[\s\S]*?!authoritativeAgentState && agentToolTodos\.length > 0/,
+    'authoritative agent todo snapshots must bypass stale model merge state',
+  );
+  assert.match(
+    code,
+    /'failed': 5,\s*'completed': 4,\s*'in-progress': 3/,
+    'completed todos must not be overwritten by stale in-progress status',
+  );
+});
+
+test('§7 Todos: full model snapshots preserve distinct code/program tasks', () => {
+  const code = src('media/webview.js');
+  assertContains(code, 'incomingLooksFullSnapshot', 'todo merge must detect full snapshots');
+  assert.match(
+    code,
+    /if \(!incomingLooksFullSnapshot && pos < 0 && next && next\.title\)[\s\S]*?normalizeTodoCategory\(prev\) === nextCat/,
+    'category-based todo merging is allowed only for partial updates, not full snapshots',
+  );
+  assert.match(
+    code,
+    /var key = item\.id != null \? \('id:' \+ item\.id\) : normalizeTodoKey\(item\)/,
+    'dedupeTodoItems must prefer explicit ids so multiple code/program todos are not collapsed',
+  );
+});
+
+test('Agentic loop: fallback todos are shown only after real tool work starts', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'fallbackTodosVisible', 'fallback todo visibility guard');
+  assertContains(code, 'roundHasVisibleTodoUpdate', 'fallback guard must distinguish valid todo payloads from empty tool calls');
+  assert.match(
+    code,
+    /roundHasWorkTools && !todoEverSet && !fallbackTodosVisible && currentTodos\.length > 0[\s\S]*?callbacks\.onTodoUpdate\(currentTodos\)/,
+    'fallback todos must be revealed on first work-tool round, not preflight',
+  );
+  assert.doesNotMatch(
+    code,
+    /tools\.some\(t => t\.name === 'manage_todo_list'\)\) todoEverSet = true/,
+    'empty or malformed manage_todo_list calls must not suppress fallback todos',
+  );
+  assert.doesNotMatch(
+    code,
+    /currentTodos = initialTodos;[\s\S]{0,120}callbacks\.onTodoUpdate\?\.\(initialTodos\)/,
+    'initial inferred todos must not be pushed before work starts',
+  );
+});
+
+test('§7 Final summary: done refreshes visible prose with files and validation', () => {
+  const code = src('media/webview.js');
+  assertContains(code, 'agentValidationSummary', 'validation result is tracked for final prose');
+  assertContains(code, 'refreshVisibleAgentProseFromCurrentRaw', 'done phase refreshes existing prose bubble');
+  assert.match(
+    code,
+    /msg\.phase === 'done'[\s\S]*?refreshVisibleAgentProseFromCurrentRaw\(\);/,
+    'done phase must update already-visible ASUM prose with latest state',
+  );
+});
+
+test('Agent loop: task_complete does not bypass final editedFiles accounting', () => {
+  const code = src('src/agent-loop.ts');
+  assert.match(
+    code,
+    /executeFakeToolsForLoop\(tools, callbacks, editorWorkdir, \{ currentTaskIndex: taskIndex, taskTotal: allTasks\.length, deferDoneStatus: true \}\)/,
+    'editor task_complete must defer final done to runAgentLoop',
+  );
+  assert.match(
+    code,
+    /if \(result\.applied && result\.path\)[\s\S]*?callbacks\.onTaskCheckpoint\?\.\(i \+ 1[\s\S]*?if \(result\.taskComplete\)/,
+    'runAgentLoop must record applied result before honoring task_complete break',
+  );
+});
+
+test('Agent loop: file tools and validation use ground-truth outcomes', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, "'replace_file'", 'replace_file tool calls must be handled as file writes, not prose');
+  assertContains(code, 'looksLikeRawToolCallText(content)', 'file write tools must block raw tool transcript content');
+  assertContains(code, "['path', 'filePath', 'filepath', 'filename', 'targetPath']", 'file write tools must accept common path aliases from DeepSeek/Copilot-style schemas');
+  assertContains(code, "['content', 'contents', 'text', 'body']", 'file write tools must accept common content aliases');
+  assertContains(code, '缺少 path/filePath', 'malformed file write calls must return explicit feedback instead of silently doing nothing');
+  assertContains(code, 'interface ValidationOutcome', 'compile validation must return structured outcome');
+  assert.match(
+    code,
+    /validationOutcome[\s\S]*?validationFailed[\s\S]*?callbacks\.onTodoUpdate/,
+    'validation failure must update todo state instead of only emitting a status line',
+  );
+  assert.match(
+    code,
+    /finalFailed[\s\S]*?state: finalFailed === 0 \? 'completed' : 'failed'/,
+    'final done state must include validation failure',
+  );
+});
+
+test('Agentic loop: repeated terminal failures enter root-cause recovery before retry', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'getTerminalRecoveryProtocol', 'terminal recovery protocol helper');
+  assertContains(code, '根因分析', 'recovery prompt must require root-cause analysis');
+  assertContains(code, '禁止再次执行同一命令直到完成根因修复', 'recovery prompt must block blind retry');
+  assertContains(code, 'read_file / grep_search / get_errors', 'recovery prompt must require evidence collection');
+  assertContains(code, 'create_file / write_file 或 SEARCH/REPLACE', 'recovery prompt must require a repair action');
+  assert.match(
+    code,
+    /blockedRepeatedTerminalToolIndexes[\s\S]*?toolsToExecute[\s\S]*?executeFakeToolsForLoop\(\s*toolsToExecute,/,
+    'runAgenticLoop must filter repeated run_terminal calls before executing tools',
+  );
+  assertContains(code, 'lastProgressEpoch', 'terminal repeats must be compared against file-write progress');
+});
+
+test('Agentic loop: terminal completion evidence requires successful validation output', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'TerminalEvidence', 'terminal evidence model must exist');
+  assertContains(code, 'parseFormattedTerminalExitCode', 'terminal evidence must parse formatted exit codes');
+  assertContains(code, 'resolveCompilerOutputPath', 'compiler -o artifact path must be detected');
+  assertContains(code, 'isExecutableFile', 'compiler output must be checked on disk');
+  assertContains(code, '验证命令未通过，不能把编译/运行/测试标记为完成', 'failed validation must be fed back to the agent');
+  assert.match(
+    code,
+    /terminalEvidence\.push\(evidenceResult\.evidence\)/,
+    'terminal evidence must be recorded separately from raw terminal commands',
+  );
+  assert.match(
+    code,
+    /const successfulEvidence = terminalEvidence\.filter\(e => e\.ok\);[\s\S]*?requiresRunEvidence/,
+    'completion evidence must require successful terminal evidence, not merely any command execution',
+  );
+});
+
+test('Agentic loop: terminal must not be used as a fallback file writer', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'detectShellFileWriteCommand', 'agent loop must detect shell redirection/tee file writes');
+  assertContains(code, '已阻止', 'shell file writes must be blocked with explicit feedback');
+  assertContains(code, 'run_terminal 仅用于编译、运行、测试、查询', 'terminal feedback must route model back to file tools');
+  assert.doesNotMatch(
+    code,
+    /改用 run_terminal 通过 printf 或 cat 命令写入文件/,
+    'file-tool failure recovery must not recommend shell fallback writes',
+  );
+});
+
+test('Agentic loop: markdown fallback writes C++ code blocks as real artifacts', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'promptLooksLikeCppProgram(userPrompt)', 'markdown fallback must detect C++ prompts');
+  assert.match(
+    code,
+    /const blockRe = \/```\(\?:c\|cpp\|cxx\|cc\|c\\\+\\\+\)\\s\*\\n/,
+    'markdown fallback must scan cpp/cxx/cc code fences, not only c fences',
+  );
+  assertContains(code, "defaultCodeArtifactBasename(userPrompt)}${ext}", 'fallback path must use prompt-aware default basename and extension');
+  assertContains(code, '创建/修改文件必须调用 create_file 工具并提供完整 content', 'agent prompt must forbid natural-language-only file creation');
+});
+
+test('Agentic loop: final summary never exposes backend tool transcripts', () => {
+  const agentLoop = src('src/agent-loop.ts');
+  assertContains(agentLoop, 'cleanAgentFinalSummaryForUser', 'agent loop must sanitize final summaries');
+  assert.match(
+    agentLoop,
+    /const visibleCompleteSummary = cleanAgentFinalSummaryForUser\(completeSummary\);[\s\S]*?title: cleanAbort \? `已中断/,
+    'phase:done title must use sanitized completion summary',
+  );
+  assert.match(
+    agentLoop,
+    /visibleCompleteSummary \|\| fileSummary \|\| '任务已完成。'/,
+    'ASUM final prose must use sanitized completion summary',
+  );
+
+  const webview = src('media/webview.js');
+  assertContains(webview, 'cleanAgentFinalProseForUser', 'webview must sanitize agent final prose');
+  assert.match(
+    webview,
+    /var strippedForEnd = cleanAgentFinalProseForUser\(currentRaw\);/,
+    'webview endResponse must sanitize currentRaw before rendering final bubble',
+  );
+  assert.match(
+    webview,
+    /containsAgentInternalTranscript\(endBubble\.textContent \|\| ''\)/,
+    'webview must remove final bubbles containing internal terminal transcripts',
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §3 Tool call filtering
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('§3 Tool filtering: stripToolCallBlocks function present', () => {
+  // May be in agent-loop.ts or extension.ts
+  const agentLoop = src('src/agent-loop.ts');
+  const ext = src('src/extension.ts');
+  const found = agentLoop.includes('stripToolCallBlocks') || ext.includes('stripToolCallBlocks');
+  assert.ok(found, '§3 stripToolCallBlocks must exist in agent-loop.ts or extension.ts');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// §8.4: Checkpoint (断线续传)
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('§8.4 Checkpoint: saveAgentCheckpoint present', () => {
+  const code = src('src/extension.ts');
+  assertContains(code, 'saveAgentCheckpoint', '§8.4 checkpoint save');
+});
+
+test('§8.4 Checkpoint: loadAgentCheckpoint present', () => {
+  const code = src('src/extension.ts');
+  assertContains(code, 'loadAgentCheckpoint', '§8.4 checkpoint load');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MCP integration
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('MCP: McpManager class exists', () => {
+  const code = src('src/mcp/client.ts');
+  assertContains(code, 'McpManager', 'MCP client class');
+});
