@@ -1,6 +1,11 @@
 import { chromium, Browser, BrowserContext, Page, ElementHandle } from 'playwright';
-import { SELECTORS, DEEPSEEK_URL } from './config';
+import { DEEPSEEK_URL } from './config';
+import { DEEPSEEK_DOM_SELECTORS as SELECTORS } from './deepseek-dom-selectors';
+import { extractDeepSeekResponse, isLoginUrl } from './response-extractor';
 import { getStorageStatePath, loadCookies, saveCookies } from './session';
+import { BrowserSession } from './browser-session';
+import { ConversationDriver } from './conversation-driver';
+import { checkBridgeHealth } from './bridge-health-check';
 
 export interface SendOptions {
   newSession?: boolean;
@@ -75,6 +80,12 @@ export class DeepSeekAgent {
   private currentMode: 'fast' | 'r1' = 'fast';
   /** 预上传的文件路径（用于批次预附加，sendMessage 时跳过重复附加） */
   private _preAttachedFiles: string[] = [];
+  private readonly browserSession = new BrowserSession(
+    () => this.browser,
+    () => this.context,
+    () => this.page,
+  );
+  private readonly conversationDriver = new ConversationDriver(SELECTORS);
 
   private readonly options: Required<AgentOptions>;
 
@@ -119,14 +130,14 @@ export class DeepSeekAgent {
       await page.waitForTimeout(1000);
       const url = page.url();
       // 如果在登录页，继续等待
-      if (/sign[_-]?in|login|auth|register/i.test(url)) continue;
+      if (isLoginUrl(url)) continue;
       // 检测聊天输入框（登录后才有）
       const chatInput = await findElement(page, SELECTORS.chatInput);
       if (!chatInput) continue;
       // 多等 2 秒确认页面稳定且 Cookie 已全部写入
       await page.waitForTimeout(2000);
       // 再次检查 URL 没有跳转
-      if (/sign[_-]?in|login|auth|register/i.test(page.url())) continue;
+      if (isLoginUrl(page.url())) continue;
       confirmed = true;
       break;
     }
@@ -207,9 +218,11 @@ export class DeepSeekAgent {
       // 涅樣备用：如果 networkidle 超时，至少等 3秒
       await page.waitForTimeout(3000);
     }
-    const url = page.url();
+    const snapshot = await this.conversationDriver.captureSnapshot(page);
+    const health = checkBridgeHealth(this.browserSession.snapshot(), snapshot.loggedInIndicatorCount);
+    const url = snapshot.url || page.url();
     console.log('[agent] checkLoginState URL:', url);
-    if (/sign[_-]?in|login|auth|register/i.test(url)) {
+    if (!health.browserReady || isLoginUrl(url)) {
       console.log('[agent] Detected login redirect, not logged in.');
       return false;
     }
@@ -219,7 +232,7 @@ export class DeepSeekAgent {
       // 再等 500ms 确认页面没有跳转到登录页
       await page.waitForTimeout(500);
       const finalUrl = page.url();
-      if (/sign[_-]?in|login|auth|register/i.test(finalUrl)) return false;
+      if (isLoginUrl(finalUrl)) return false;
       console.log('[agent] Login confirmed: chat input found.');
       return true;
     } catch {
@@ -1060,7 +1073,7 @@ export class DeepSeekAgent {
         }
         return '';
       })()`);
-      return ((text as string) || '').trim();
+      return extractDeepSeekResponse({ assistantMessages: [String(text || '')] }).lastAnswer;
     } catch { /* ignore */ }
     return '';
   }

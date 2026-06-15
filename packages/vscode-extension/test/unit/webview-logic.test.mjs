@@ -66,14 +66,57 @@ function normalizeGeneratedContentDisplayMode(mode) {
 }
 
 function stripToolCallBlocks(text) {
-  return String(text || '')
-    .replace(/\[TOOL:\w+\s*\{[\s\S]*?\}\]/g, '')
-    .replace(/Calling\s*:?(?:\s+tool)?\s*\[?`?\w+`?\]?\s*\{[\s\S]*?\}/gi, '')
-    .trim();
+  const raw = String(text || '');
+  let result = '';
+  let i = 0;
+  let removedInternalBlock = false;
+  while (i < raw.length) {
+    if (raw[i] === '[') {
+      const lookahead = raw.slice(i, Math.min(i + 60, raw.length));
+      const m = lookahead.match(/^\[TOOL:(\w+)\s*(?:\]?\s*)\{/);
+      if (m) {
+        removedInternalBlock = true;
+        const bracePos = raw.indexOf('{', i);
+        let depth = 1;
+        let inStr = false;
+        let j = bracePos + 1;
+        while (j < raw.length && depth > 0) {
+          const ch = raw[j];
+          if (inStr) {
+            if (ch === '\\') j++;
+            else if (ch === '"') inStr = false;
+          } else if (ch === '"') {
+            inStr = true;
+          } else if (ch === '{') {
+            depth++;
+          } else if (ch === '}') {
+            depth--;
+          }
+          j++;
+        }
+        while (j < raw.length && (raw[j] === ' ' || raw[j] === '\t')) j++;
+        if (j < raw.length && raw[j] === ']') j++;
+        i = j;
+        continue;
+      }
+      if (/^\[TOOL:(\w+)\b/.test(lookahead)) {
+        removedInternalBlock = true;
+        break;
+      }
+    }
+    result += raw[i];
+    i++;
+  }
+  const beforeCallingCleanup = result;
+  result = result.replace(/Calling\s*:?(?:\s+tool)?\s*\[?`?\w+`?\]?\s*\{[\s\S]*?\}/gi, '');
+  removedInternalBlock = removedInternalBlock || result !== beforeCallingCleanup;
+  const cleaned = result.trim();
+  return removedInternalBlock ? cleaned.replace(/[ \t]*\n[ \t]*\n[ \t]*/g, '\n') : cleaned;
 }
 
 function containsAgentInternalTranscript(text) {
-  return /(?:^|\n)\s*(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
+  return /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
+    || /(?:^|\n)\s*(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
     || /(?:^|\n)\s*\[(?:工具结果|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(text)
     || /\b(?:run_terminal|manage_todo_list|task_complete|stdout|stderr|exitCode|exit code)\b/i.test(text)
     || /(?:^|\n)\s*\$\s+\S+/.test(text)
@@ -87,6 +130,7 @@ function cleanAgentFinalProseForUser(text) {
   const lines = cleaned.split('\n').filter((line) => {
     const s = line.trim();
     if (!s) return true;
+    if (/^\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(s)) return false;
     if (/^(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
     if (/^\[(?:工具结果|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(s)) return false;
     if (/^\$\s+\S+/.test(s)) return false;
@@ -96,6 +140,22 @@ function cleanAgentFinalProseForUser(text) {
   cleaned = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
   if (!cleaned || containsAgentInternalTranscript(cleaned)) return '';
   return cleaned.length > 800 ? cleaned.slice(0, 797).trimEnd() + '...' : cleaned;
+}
+
+function sanitizeAgentVisibleDelta(text) {
+  const raw = String(text || '');
+  if (!raw) return '';
+  const cleaned = stripToolCallBlocks(raw);
+  if (!cleaned && (raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw))) return '';
+  return cleaned;
+}
+
+function sanitizeVisibleDeltaForMode(text, isAgentMode) {
+  const raw = String(text || '');
+  if (isAgentMode || raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw)) {
+    return sanitizeAgentVisibleDelta(raw);
+  }
+  return raw;
 }
 
 // ── escapeHtml tests ──────────────────────────────────────────────────────────
@@ -228,6 +288,37 @@ test('agent final prose: strips replace_file transcript from final user text', (
 test('agent final prose: keeps normal user-facing summary', () => {
   const summary = '已完成：创建 `code/weekend.c`，并验证程序可以正常运行。';
   assert.equal(cleanAgentFinalProseForUser(summary), summary);
+});
+
+test('agent final prose: strips create_file tool containing C++ braces', () => {
+  const leaked = [
+    '我会创建文件。',
+    '[TOOL:create_file {"path":"code/hello_world.cpp","content":"#include <iostream>\\nint main() {\\n  std::cout << \\"Hello, World!\\" << std::endl;\\n  return 0;\\n}\\n"}]',
+    '[TOOL:run_terminal {"command":"g++ code/hello_world.cpp -o code/hello_world && ./code/hello_world"}]',
+  ].join('\n');
+  assert.equal(cleanAgentFinalProseForUser(leaked), '');
+});
+
+test('agent final prose: drops incomplete streaming tool prefix', () => {
+  assert.equal(stripToolCallBlocks('准备写入\n[TOOL:create_file'), '准备写入');
+});
+
+test('non-agent delta: suppresses raw tool calls from restored web session', () => {
+  const leaked = '[TOOL:manage_todo_list {"todoList":[{"id":1,"title":"创建 Hello World","status":"in-progress"}]}]';
+  assert.equal(sanitizeVisibleDeltaForMode(leaked, false), '');
+});
+
+test('non-agent delta: suppresses screenshot-like multi-tool transcript', () => {
+  const leaked = [
+    '[TOOL:manage_todo_list {"todoList":[{"id":"1","title":"创建 Hello World","status":"in-progress"}]}]',
+    '[TOOL:create_file {"path":"code/hello.cpp","content":"#include <iostream>\\nint main() { return 0; }\\n"}]',
+    '[TOOL:run_terminal {"command":"cd /home/ff/work/devseek_netai/code && g++ hello.cpp -o hello"}]',
+  ].join('\n');
+  assert.equal(sanitizeVisibleDeltaForMode(leaked, false), '');
+});
+
+test('non-agent delta: keeps ordinary chat text', () => {
+  assert.equal(sanitizeVisibleDeltaForMode('Hello! 我在。', false), 'Hello! 我在。');
 });
 
 // ── Context files row logic tests ─────────────────────────────────────────────

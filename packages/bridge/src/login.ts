@@ -7,7 +7,8 @@
  */
 import { chromium } from 'playwright';
 import { getStorageStatePath, loadCookies, saveCookies } from './session';
-import { DEEPSEEK_URL, SELECTORS } from './config';
+import { DEEPSEEK_URL } from './config';
+import { DEEPSEEK_DOM_SELECTORS as SELECTORS } from './deepseek-dom-selectors';
 
 async function main() {
   console.log('=== DeepSeek NetAI — 首次登录向导 ===');

@@ -1,10 +1,14 @@
 import { parseGeneratedArtifacts } from './generated-file-parser';
+import { classifyIntent } from './intent/intent-classifier';
+import { ExecutionMode, ToolKind } from './intent/intent-types';
 
 export type ChatIntentKind = 'chat' | 'code-change';
 export type AutoApplyPolicy = 'conservative' | 'balanced' | 'aggressive';
+export { ExecutionMode, ToolKind };
 
 export interface ChatIntentDecision {
   kind: ChatIntentKind;
+  mode: ExecutionMode;
   addStructuredHint: boolean;
   autoApplyEligible: boolean;
   confidence: number;
@@ -12,25 +16,18 @@ export interface ChatIntentDecision {
   signals: string[];
   blockers: string[];
   reason: string;
+  requiresConfirmation: boolean;
+  allowedToolKinds: ToolKind[];
 }
 
 /**
- * Intent Router — Structural Signals Only (no vocabulary/keyword matching).
+ * Intent Router — compatibility facade.
  *
- * Design principle (same as Copilot/Claude Code):
- * Keyword lists are brittle — they break with language variation, paraphrasing,
- * and mixed-language prompts. The LLM (decomposer, Phase-0) is the authoritative
- * judge of intent. The router's sole job is:
- *   1. Gate "explicit no-change" requests (user commanded it — structural signal).
- *   2. Default everything else to code-change → let the LLM decide the actual plan.
- *
- * "Explicit no-change" is detected via a COMMAND pattern, not vocabulary inference.
- * The user must explicitly opt out using phrases that are unambiguous commands
- * regardless of language (不要修改 / only discuss / just chat / etc.).
+ * Product routing now starts with an explicit execution mode:
+ * smalltalk, qa, inspect, plan, edit, run, destructive.
+ * This file keeps the historical public API used by extension.ts while the
+ * application layer is being split into smaller services.
  */
-
-/** User explicitly commands: do NOT modify files — only discuss. */
-const NO_CHANGE_RE = /(不要修改|无需修改|只讨论|仅讨论|只分析|仅分析|不要落地|先不要改|不需要代码|不要apply|不做变更|just\s+(?:chat|talk|discuss|explain)|only\s+(?:explain|discuss|answer))/i;
 
 /** A concrete file path in the prompt is a structural fact about what the user is working with. */
 const EXPLICIT_PATH_RE = /([A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|json|md|css|scss|html|py|java|go|rs|c|cc|cpp|cxx|h|hpp|sh|sql))/i;
@@ -39,60 +36,30 @@ const EXPLICIT_PATH_RE = /([A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|json|md|css|scss|h
 const RESPONSE_DECLINE_RE = /(无法|不能|抱歉|仅供参考|示例|example|伪代码|不建议直接使用)/i;
 
 /**
- * Decide the intent of a user prompt using structural signals only.
- *
- * Default: code-change (agent mode always active; LLM corrects if it's a discussion).
- * Exception: explicit "don't change files" command → chat.
- *
- * This replaces the former keyword-scoring approach.  Keyword scoring was the wrong
- * abstraction — the same meaning can be expressed in infinite ways across languages.
- * The decomposer (LLM, Phase-0) is responsible for classifying intent with full semantic
- * understanding.  The router just ensures we enter the agent loop.
+ * Decide the product execution mode for a user prompt.
+ * Backward compatibility:
+ * - edit/run/destructive are exposed as historical "code-change".
+ * - smalltalk/qa/inspect/plan are exposed as historical "chat" to prevent
+ *   accidental auto-apply while read-only agent workflows are introduced.
  */
 export function decideChatIntent(prompt: string): ChatIntentDecision {
-  const text = (prompt || '').trim();
-  if (!text) {
-    return {
-      kind: 'chat',
-      addStructuredHint: false,
-      autoApplyEligible: false,
-      confidence: 0,
-      score: 0,
-      signals: [],
-      blockers: ['empty-prompt'],
-      reason: 'empty-prompt',
-    };
-  }
+  const classification = classifyIntent(prompt);
+  const mutatingMode = classification.mode === 'edit'
+    || classification.mode === 'run'
+    || classification.mode === 'destructive';
 
-  // Structural gate: user explicitly commands no file changes.
-  if (NO_CHANGE_RE.test(text)) {
-    return {
-      kind: 'chat',
-      addStructuredHint: false,
-      autoApplyEligible: false,
-      confidence: 0.9,
-      score: -5,
-      signals: [],
-      blockers: ['explicit-no-change'],
-      reason: 'explicit-no-change',
-    };
-  }
-
-  // Structural signal: prompt contains a file path → slightly higher confidence.
-  const hasPath = EXPLICIT_PATH_RE.test(text);
-  const confidence = hasPath ? 0.85 : 0.70;
-
-  // Default: code-change. The LLM (decomposer) will decide whether to modify files,
-  // explain, analyze, or explore — with full semantic understanding of the request.
   return {
-    kind: 'code-change',
-    addStructuredHint: true,
-    autoApplyEligible: true,
-    confidence,
-    score: hasPath ? 4 : 2,
-    signals: hasPath ? ['explicit-file-path'] : ['default-agent'],
-    blockers: [],
-    reason: hasPath ? 'file-path-detected' : 'default-agent-mode',
+    kind: mutatingMode ? 'code-change' : 'chat',
+    mode: classification.mode,
+    addStructuredHint: mutatingMode,
+    autoApplyEligible: classification.mode === 'edit',
+    confidence: classification.confidence,
+    score: classification.score,
+    signals: classification.signals,
+    blockers: classification.blockers,
+    reason: classification.reason,
+    requiresConfirmation: classification.requiresConfirmation,
+    allowedToolKinds: classification.allowedToolKinds,
   };
 }
 
@@ -136,23 +103,24 @@ export function shouldAutoApplyFromResponse(
  * Determines whether the request should use the two-phase Agent Loop
  * (Architect + Editor) instead of a single-turn chat.
  *
- * Plan A: Default-agent approach (mirrors Claude Code's always-agent design).
- * ALL requests enter the agent loop unless the user explicitly opts out with
- * a "don't change" phrase (NO_CHANGE_RE). The agent Architect phase decides
- * whether to read/write files or just answer conversationally — this is more
- * reliable than regex-based intent guessing.
- *
- * Rationale vs Copilot/Claude Code:
- *  - Copilot: uses separate UI entry points (Edit/Chat/Inline) to route intent
- *  - Claude Code: all prompts → agent loop, LLM decides which tools to call
- *  - This plugin: no separate UI modes → default-agent is the closest equivalent
- *
- * Only exception: explicit "don't change" (NO_CHANGE_RE blocker) → chat mode.
+ * Product-mode gate for the current two-phase Agent Loop.
+ * Plain smalltalk and QA must never enter agent mode. Read-only modes can use
+ * the agent only when there is concrete workspace context to inspect.
  */
 export function shouldUseAgentMode(
   intent: ChatIntentDecision,
-  _files: string[],
+  files: string[],
 ): boolean {
+  if (intent.blockers.includes('empty-prompt')) return false;
   if (intent.blockers.includes('explicit-no-change')) return false;
-  return true;
+  if (intent.requiresConfirmation) return false;
+
+  if (intent.mode === 'smalltalk' || intent.mode === 'qa') return false;
+
+  if (intent.mode === 'inspect' || intent.mode === 'plan') {
+    return files.length > 0 || intent.signals.includes('explicit-file-path');
+  }
+
+  if (intent.kind === 'chat') return false;
+  return intent.kind === 'code-change';
 }

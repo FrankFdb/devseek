@@ -6,7 +6,8 @@
     "dev": "ts-node --project tsconfig.json src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "login": "ts-node --project tsconfig.json src/login.ts"
+    "login": "ts-node --project tsconfig.json src/login.ts",
+    "test": "node --test test/response-extractor.test.mjs test/bridge-health-check.test.mjs"
   },
   "dependencies": {
     "@devseek-netai/shared": "*",

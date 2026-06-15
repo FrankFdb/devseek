@@ -30,6 +30,7 @@ export interface ApplyWorkflowResult {
   changeCount: number;
   changedPaths: string[];
   validation?: AutoValidationResult;
+  rolledBack?: boolean;
 }
 
 export interface AppliedChangeRecord {
@@ -41,6 +42,10 @@ export interface AppliedChangeRecord {
 
 type ApplyWorkflowReporter = (status: ApplyWorkflowStatus) => void | Thenable<void>;
 type AppliedChangeReporter = (change: AppliedChangeRecord) => void | Thenable<void>;
+
+export interface ApplyGeneratedArtifactsOptions {
+  rollbackOnValidationFailure?: boolean;
+}
 
 interface PreparedChange {
   action: ChangeAction;
@@ -79,9 +84,10 @@ export async function applyGeneratedArtifactsWithPrompt(
   autoApply = false,
   onAppliedChange?: AppliedChangeReporter,
   preferredAbsolutePaths?: string[],
+  options?: ApplyGeneratedArtifactsOptions,
 ): Promise<ApplyWorkflowResult> {
   const prepared = await prepareChanges(raw, requestPrompt, preferredAbsolutePaths);
-  return applyPreparedChanges(prepared, reporter, autoApply, undefined, requestPrompt, onAppliedChange, preferredAbsolutePaths);
+  return applyPreparedChanges(prepared, reporter, autoApply, undefined, requestPrompt, onAppliedChange, preferredAbsolutePaths, options);
 }
 
 export async function applyGeneratedArtifactPathWithPrompt(
@@ -92,10 +98,11 @@ export async function applyGeneratedArtifactPathWithPrompt(
   autoApply = false,
   onAppliedChange?: AppliedChangeReporter,
   preferredAbsolutePaths?: string[],
+  options?: ApplyGeneratedArtifactsOptions,
 ): Promise<ApplyWorkflowResult> {
   const prepared = await prepareChanges(raw, requestPrompt, preferredAbsolutePaths);
   const selected = selectPreparedChangesByPath(prepared, targetPath);
-  return applyPreparedChanges(selected, reporter, autoApply, targetPath, requestPrompt, onAppliedChange, preferredAbsolutePaths);
+  return applyPreparedChanges(selected, reporter, autoApply, targetPath, requestPrompt, onAppliedChange, preferredAbsolutePaths, options);
 }
 
 async function applyPreparedChanges(
@@ -106,9 +113,11 @@ async function applyPreparedChanges(
   requestPrompt?: string,
   onAppliedChange?: AppliedChangeReporter,
   preferredAbsolutePaths?: string[],
+  options?: ApplyGeneratedArtifactsOptions,
 ): Promise<ApplyWorkflowResult> {
   const root = getWorkspaceRoot(requestPrompt, preferredAbsolutePaths);
   const pathContext = root ? buildPathResolutionContext(root, requestPrompt, preferredAbsolutePaths) : undefined;
+  const rollbackOnValidationFailure = options?.rollbackOnValidationFailure !== false;
   if (prepared.length === 0) {
     if (targetPathForMsg) {
       vscode.window.showInformationMessage(`DeepSeek: 未检测到可应用的目标文件变更：${targetPathForMsg}`);
@@ -193,11 +202,15 @@ async function applyPreparedChanges(
     detail: `共 ${prepared.length} 个变更，新建 ${summary.creates}，覆盖 ${summary.overwrites}，补丁 ${summary.patches}${targetPathForMsg ? `\n目标: ${targetPathForMsg}` : ''}`,
   });
 
+  const createdDirs = new Set<string>();
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: 'DeepSeek: 正在应用文件变更...', cancellable: false },
     async () => {
       for (const change of prepared) {
         const parent = vscode.Uri.file(nodePath.dirname(change.targetUri.fsPath));
+        for (const dir of collectMissingParentDirs(parent.fsPath, root?.fsPath)) {
+          createdDirs.add(dir);
+        }
         await vscode.workspace.fs.createDirectory(parent);
         await vscode.workspace.fs.writeFile(change.targetUri, Buffer.from(change.newContent, 'utf8'));
       }
@@ -244,8 +257,8 @@ async function applyPreparedChanges(
     detail: `模式: ${validation.mode || 'unknown'}\n原因: ${validation.reason || 'n/a'}\n命令: ${validation.command}\nexitCode: ${validation.exitCode ?? 'null'}\n${validation.output.trim().slice(0, 1200)}`,
   });
 
-  if (!validation.ok && autoApply) {
-    await rollbackPreparedChanges(prepared);
+  if (!validation.ok && autoApply && rollbackOnValidationFailure) {
+    await rollbackPreparedChanges(prepared, createdDirs);
     await reportWorkflow(reporter, {
       phase: 'apply',
       state: 'completed',
@@ -258,6 +271,7 @@ async function applyPreparedChanges(
       changeCount: 0,
       changedPaths: [],
       validation,
+      rolledBack: true,
     };
   }
 
@@ -657,7 +671,7 @@ function detectWriteDrift(
   return undefined;
 }
 
-async function rollbackPreparedChanges(prepared: PreparedChange[]): Promise<void> {
+async function rollbackPreparedChanges(prepared: PreparedChange[], createdDirs?: Set<string>): Promise<void> {
   for (const change of [...prepared].reverse()) {
     if (change.exists) {
       await vscode.workspace.fs.writeFile(change.targetUri, Buffer.from(change.oldContent, 'utf8'));
@@ -668,6 +682,41 @@ async function rollbackPreparedChanges(prepared: PreparedChange[]): Promise<void
       await vscode.workspace.fs.delete(change.targetUri, { useTrash: false });
     } catch {
       // Ignore rollback delete errors for files that do not exist.
+    }
+  }
+
+  await cleanupCreatedEmptyDirs(createdDirs);
+}
+
+function collectMissingParentDirs(parentFsPath: string, rootFsPath?: string): string[] {
+  if (!rootFsPath) return [];
+  const root = nodePath.resolve(rootFsPath);
+  let current = nodePath.resolve(parentFsPath);
+  const dirs: string[] = [];
+
+  while (current && current !== root && current.startsWith(root + nodePath.sep)) {
+    if (!fs.existsSync(current)) {
+      dirs.push(current);
+    }
+    const next = nodePath.dirname(current);
+    if (next === current) break;
+    current = next;
+  }
+
+  return dirs.reverse();
+}
+
+async function cleanupCreatedEmptyDirs(createdDirs?: Set<string>): Promise<void> {
+  if (!createdDirs || createdDirs.size === 0) return;
+  const dirs = [...createdDirs].sort((a, b) => b.length - a.length);
+  for (const dir of dirs) {
+    try {
+      if (!fs.existsSync(dir)) continue;
+      const entries = await vscode.workspace.fs.readDirectory(vscode.Uri.file(dir));
+      if (entries.length > 0) continue;
+      await vscode.workspace.fs.delete(vscode.Uri.file(dir), { useTrash: false });
+    } catch {
+      // Best-effort cleanup: rollback correctness is about file contents first.
     }
   }
 }

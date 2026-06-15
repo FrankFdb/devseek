@@ -60,6 +60,15 @@ import { runLocalExecution, LocalExecutionPlan, planLocalExecution } from './exe
 import { McpToolRef } from './mcp/client';
 import { getProjectRulesSync, wrapRulesAsContext, getProjectMemorySync, wrapMemoryAsContext } from './project-rules';
 import { getCommandHints } from './agent-learner';
+import type { AgentStatusEvent } from './agent/events';
+import {
+  findFirstToolCallStart,
+  parseFakeToolCalls,
+  stripToolCallBlocks,
+  type FakeTool,
+} from './agent/fake-tool-parser';
+import { AgentToolExecutor } from './agent/tool-executor';
+import { WorkspaceEditService } from './workspace/edit-service';
 
 // ----------------------------------------------------------------
 // Reporter types (passed in from extension.ts)
@@ -67,135 +76,14 @@ import { getCommandHints } from './agent-learner';
 
 // ── L-2/L-3: AI 可调用工具类型 ──────────────────────────────────────────────────
 
+const workspaceEditService = new WorkspaceEditService();
+const agentToolExecutor = new AgentToolExecutor();
+
 export interface TodoItem {
   id: number;
   title: string;
   /** Copilot-compatible status values */
   status: 'not-started' | 'in-progress' | 'completed' | 'failed';
-}
-
-interface FakeTool {
-  name: string;
-  input: Record<string, unknown>;
-}
-
-const KNOWN_FAKE_TOOL_NAMES = new Set([
-  'read_file', 'grep_search', 'file_search', 'semantic_search', 'list_dir', 'get_errors',
-  'run_terminal', 'memory_write', 'get_changed_files', 'create_directory', 'fetch_webpage',
-  'vscode_listCodeUsages', 'run_vscode_command', 'create_file', 'write_file', 'replace_file',
-  'manage_todo_list', 'task_complete',
-]);
-
-function findJsonObjectEnd(text: string, start: number): number {
-  let depth = 0;
-  let inStr = false;
-  for (let j = start; j < text.length; j++) {
-    const ch = text[j];
-    if (inStr) {
-      if (ch === '\\') j++;
-      else if (ch === '"') inStr = false;
-    } else {
-      if (ch === '"') inStr = true;
-      else if (ch === '{') depth++;
-      else if (ch === '}') {
-        depth--;
-        if (depth === 0) return j;
-      }
-    }
-  }
-  return -1;
-}
-
-function stripCallingToolBlocks(text: string): string {
-  let out = '';
-  let i = 0;
-  const callRe = /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
-  while (i < text.length) {
-    callRe.lastIndex = i;
-    const m = callRe.exec(text);
-    if (!m) {
-      out += text.slice(i);
-      break;
-    }
-    const name = m[1];
-    if (!KNOWN_FAKE_TOOL_NAMES.has(name) && !name.startsWith('mcp__')) {
-      out += text.slice(i, callRe.lastIndex);
-      i = callRe.lastIndex;
-      continue;
-    }
-    let jsonStart = text.indexOf('{', callRe.lastIndex);
-    if (jsonStart < 0) {
-      out += text.slice(i);
-      break;
-    }
-    const jsonEnd = findJsonObjectEnd(text, jsonStart);
-    if (jsonEnd < 0) {
-      out += text.slice(i);
-      break;
-    }
-    out += text.slice(i, m.index);
-    let next = jsonEnd + 1;
-    while (next < text.length && /[ \t\r\n`]/.test(text[next])) next++;
-    i = next;
-  }
-  return out;
-}
-
-function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | null {
-  const rawName = typeof obj.tool === 'string'
-    ? obj.tool
-    : typeof obj.name === 'string'
-      ? obj.name
-      : '';
-  const name = rawName.trim();
-  if (!name || (!KNOWN_FAKE_TOOL_NAMES.has(name) && !name.startsWith('mcp__'))) return null;
-  const maybeArgs = obj.arguments ?? obj.parameters ?? obj.args;
-  let input: Record<string, unknown>;
-  if (maybeArgs && typeof maybeArgs === 'object' && !Array.isArray(maybeArgs)) {
-    input = maybeArgs as Record<string, unknown>;
-  } else {
-    input = {};
-    for (const [k, v] of Object.entries(obj)) {
-      if (!['tool', 'name', 'arguments', 'parameters', 'args'].includes(k)) input[k] = v;
-    }
-  }
-  return { name, input };
-}
-
-function stripJsonToolPayloads(text: string): string {
-  let result = text.replace(/```(?:json|JSON)?\s*\n([\s\S]*?)```/g, (full, inner) => {
-    const trimmed = String(inner || '').trim();
-    if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return full;
-    try {
-      const parsed = JSON.parse(trimmed) as unknown;
-      if (Array.isArray(parsed)) {
-        return parsed.some(item => item && typeof item === 'object' && jsonObjectToFakeTool(item as Record<string, unknown>)) ? '' : full;
-      }
-      if (parsed && typeof parsed === 'object' && jsonObjectToFakeTool(parsed as Record<string, unknown>)) return '';
-    } catch { /* keep non-tool JSON */ }
-    return full;
-  });
-
-  let i = 0;
-  let out = '';
-  while (i < result.length) {
-    const start = result.indexOf('{', i);
-    if (start < 0) { out += result.slice(i); break; }
-    out += result.slice(i, start);
-    const end = findJsonObjectEnd(result, start);
-    if (end < 0) { out += result.slice(start); break; }
-    const candidate = result.slice(start, end + 1);
-    let stripped = false;
-    try {
-      const parsed = JSON.parse(candidate) as unknown;
-      if (parsed && typeof parsed === 'object' && jsonObjectToFakeTool(parsed as Record<string, unknown>)) {
-        stripped = true;
-      }
-    } catch { /* keep non-tool JSON */ }
-    if (!stripped) out += candidate;
-    i = end + 1;
-  }
-  return out;
 }
 
 function normalizeAgentUserAnnouncement(text: string): string {
@@ -259,275 +147,6 @@ function cleanAgentFinalSummaryForUser(text: string): string {
 
 function agentAnnouncementKey(text: string): string {
   return normalizeAgentUserAnnouncement(text).toLowerCase().replace(/\s+/g, ' ').slice(0, 160);
-}
-
-function findFirstToolCallStart(text: string): number {
-  const indexes: number[] = [];
-  const bracket = text.indexOf('[TOOL:');
-  if (bracket >= 0) indexes.push(bracket);
-  const callRe = /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
-  let cm: RegExpExecArray | null;
-  while ((cm = callRe.exec(text)) !== null) {
-    const name = cm[1];
-    if (KNOWN_FAKE_TOOL_NAMES.has(name) || name.startsWith('mcp__')) indexes.push(cm.index);
-  }
-  let searchAt = 0;
-  while (searchAt < text.length) {
-    const start = text.indexOf('{', searchAt);
-    if (start < 0) break;
-    const end = findJsonObjectEnd(text, start);
-    if (end < 0) {
-      const tail = text.slice(start);
-      if (/"tool"\s*:\s*"[A-Za-z_]\w*"/.test(tail)) indexes.push(start);
-      break;
-    }
-    try {
-      const parsed = JSON.parse(text.slice(start, end + 1)) as unknown;
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && jsonObjectToFakeTool(parsed as Record<string, unknown>)) {
-        indexes.push(start);
-      }
-    } catch { /* ignore non-tool JSON */ }
-    searchAt = end + 1;
-  }
-  return indexes.length ? Math.min(...indexes) : -1;
-}
-
-/**
- * Parse [TOOL:name {...}] blocks from LLM output.
- * These are "fake" tool calls the AI outputs as text when native function
- * calling is unavailable (bridge provider limitation).
- *
- * Also handles fallback formats produced by some models under DeepSeek R1:
- *   1. Markdown ```json\n[{"tool":"name","param":...}]\n``` array blocks
- *   2. Bare JSON arrays [{"tool":"name",...}]
- */
-function stripToolCallBlocks(text: string): string {
-  let result = '';
-  let i = 0;
-  const len = text.length;
-  while (i < len) {
-    if (text[i] === '[') {
-      const lookahead = text.slice(i, Math.min(i + 60, len));
-      const m = lookahead.match(/^\[TOOL:(\w+)\s*\{/);
-      if (m) {
-        const bracePos = text.indexOf('{', i);
-        if (bracePos < 0) { result += text[i]; i++; continue; }
-        let depth = 1;
-        let j = bracePos + 1;
-        while (j < len && depth > 0) {
-          if (text[j] === '{') depth++;
-          else if (text[j] === '}') depth--;
-          j++;
-        }
-        while (j < len && (text[j] === ' ' || text[j] === '\t')) j++;
-        if (j < len && text[j] === ']') j++;
-        i = j;
-        continue;
-      }
-    }
-    result += text[i];
-    i++;
-  }
-  // Also strip [TOOL:name] {...} variant (closing ] before JSON)
-  result = result.replace(/\[TOOL:\w+\]\s*\{[^]*?\}(?:\n|$)/gm, '');
-  // Also strip DeepSeek web pseudo tool calls:
-  //   Calling `manage_todo_list` / Call: run_terminal
-  //   {"todoList":[...]}
-  result = stripCallingToolBlocks(result);
-  result = stripJsonToolPayloads(result);
-  // Also strip <tool_call>...</tool_call> and <tool_calls>...</tool_calls> blocks
-  const noXml = result
-    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
-    .replace(/<tool_calls>[\s\S]*?<\/tool_calls>/gi, '');
-  return noXml.replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function parseFakeToolCalls(text: string): FakeTool[] {
-  const tools: FakeTool[] = [];
-  // ── Primary format: [TOOL:name {...}] or [TOOL:name] {...} ─────────────────
-  const re = /\[TOOL:(\w+)\s*/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    const name = m[1];
-    let jsonStart = m.index + m[0].length;
-    // Skip optional closing ']' (format: [TOOL:name] {json})
-    if (text[jsonStart] === ']') jsonStart++;
-    // Skip whitespace
-    while (jsonStart < text.length && (text[jsonStart] === ' ' || text[jsonStart] === '\t' || text[jsonStart] === '\n' || text[jsonStart] === '\r')) jsonStart++;
-    if (text[jsonStart] !== '{') continue;
-    let depth = 0; let inStr = false; let j = jsonStart;
-    for (; j < text.length; j++) {
-      const ch = text[j];
-      if (inStr) {
-        if (ch === '\\') { j++; }      // skip escaped char
-        else if (ch === '"') { inStr = false; }
-      } else {
-        if (ch === '"') { inStr = true; }
-        else if (ch === '{') { depth++; }
-        else if (ch === '}') { depth--; if (depth === 0) break; }
-      }
-    }
-    if (depth !== 0) continue; // malformed — unclosed brace
-    const jsonStr = text.slice(jsonStart, j + 1);
-    try {
-      tools.push({ name, input: JSON.parse(jsonStr) });
-    } catch { /* ignore malformed JSON */ }
-  }
-
-  // ── Fallback 1b: DeepSeek web pseudo-call format ─────────────────────────
-  // Production traces sometimes stream:
-  //   Calling `manage_todo_list`
-  //   {"todoList":[...]}
-  // or the JSON is wrapped in a ```json fence. Treat it as a tool call instead
-  // of letting the raw "Calling" transcript leak into the chat bubble.
-  if (tools.length === 0) {
-    const callRe = /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
-    let cm: RegExpExecArray | null;
-    while ((cm = callRe.exec(text)) !== null) {
-      const name = cm[1];
-      if (!KNOWN_FAKE_TOOL_NAMES.has(name) && !name.startsWith('mcp__')) continue;
-      let jsonStart = text.indexOf('{', callRe.lastIndex);
-      if (jsonStart < 0) continue;
-      const fenceEnd = text.indexOf('```', callRe.lastIndex);
-      if (fenceEnd >= 0 && fenceEnd < jsonStart) {
-        const afterFenceNewline = text.indexOf('\n', fenceEnd);
-        const fencedJsonStart = afterFenceNewline >= 0 ? text.indexOf('{', afterFenceNewline) : -1;
-        if (fencedJsonStart >= 0) jsonStart = fencedJsonStart;
-      }
-      const jsonEnd = findJsonObjectEnd(text, jsonStart);
-      if (jsonEnd < 0) continue;
-      try {
-        tools.push({ name, input: JSON.parse(text.slice(jsonStart, jsonEnd + 1)) });
-        callRe.lastIndex = jsonEnd + 1;
-      } catch { /* ignore malformed */ }
-    }
-  }
-
-  // ── Fallback 1c: bare JSON object with tool payload ──────────────────────
-  // DeepSeek web may output only { "todoList": [...] } without [TOOL:...] or
-  // "Calling". Treat this as manage_todo_list so planning does not fall through
-  // into generic generated-file parsing.
-  if (tools.length === 0) {
-    const start = text.indexOf('{');
-    if (start >= 0) {
-      const end = findJsonObjectEnd(text, start);
-      if (end >= 0) {
-        try {
-          const obj = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
-          const toolObj = jsonObjectToFakeTool(obj);
-          if (toolObj) {
-            tools.push(toolObj);
-          } else if (Array.isArray(obj.todoList)) {
-            tools.push({ name: 'manage_todo_list', input: { todoList: obj.todoList } });
-          } else if (typeof obj.summary === 'string' && /(?:完成|结束|complete|done)/i.test(text)) {
-            tools.push({ name: 'task_complete', input: { summary: obj.summary } });
-          }
-        } catch { /* ignore non-tool JSON */ }
-      }
-    }
-  }
-
-  // ── Fallback format: ```json\n[{...}]\n``` or bare [{...}] arrays ──────────
-  // Some models (DeepSeek R1 under certain prompts) use JSON code blocks instead
-  // of the [TOOL:...] format.  Each array element may use either:
-  //   {"tool":"name","param":...}   — flat key "tool"
-  //   [{"tool":"run_terminal","command":"..."}] — as seen in production traces
-  if (tools.length === 0) {
-    // Match ```json ... ``` blocks AND bare JSON arrays in the same pass
-    const jsonBlockRe = /(?:```json\s*)(\[[\s\S]*?\])(?:\s*```)|(?<![A-Za-z\[])(\[[\s\S]{2,3000}?\])/g;
-    let bm: RegExpExecArray | null;
-    while ((bm = jsonBlockRe.exec(text)) !== null) {
-      const jsonCandidate = (bm[1] || bm[2] || '').trim();
-      if (!jsonCandidate.startsWith('[')) continue;
-      let parsed: unknown;
-      try { parsed = JSON.parse(jsonCandidate); } catch { continue; }
-      if (!Array.isArray(parsed)) continue;
-      for (const item of parsed as unknown[]) {
-        if (typeof item !== 'object' || item === null) continue;
-        const obj = item as Record<string, unknown>;
-        const converted = jsonObjectToFakeTool(obj);
-        if (converted) {
-          tools.push(converted);
-          continue;
-        }
-        // Support both {"tool":"name",...} and {"id":1,"title":...,"status":...}
-        // Only extract actual tool calls (must have "tool" key with known tool name)
-        const toolName = typeof obj['tool'] === 'string' ? (obj['tool'] as string) : null;
-        if (!toolName) continue;
-        // Build input: everything except the "tool" key itself
-        const input: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(obj)) {
-          if (k !== 'tool') input[k] = v;
-        }
-      tools.push({ name: toolName, input });
-      }
-    }
-  }
-
-  // ── Fallback 3: <tool_call> XML format (DeepSeek native) ─────────────────
-  // Format A:  <tool_call>\ntool_name\n{...}\n</tool_call>
-  // Format B:  <tool_call>\n{"name":"tool_name","arguments":{...}}\n</tool_call>
-  if (tools.length === 0) {
-    const xmlRe = /<tool_call>([\s\S]*?)<\/tool_call>/gi;
-    let xm: RegExpExecArray | null;
-    while ((xm = xmlRe.exec(text)) !== null) {
-      const inner = xm[1].trim();
-      // Format B: JSON object with "name" key
-      if (inner.startsWith('{')) {
-        try {
-          const obj = JSON.parse(inner) as Record<string, unknown>;
-          const tName = typeof obj['name'] === 'string' ? obj['name'] as string : null;
-          if (tName) {
-            const inp = (obj['arguments'] ?? obj['parameters'] ?? obj['args'] ?? {}) as Record<string, unknown>;
-            tools.push({ name: tName, input: inp });
-            continue;
-          }
-        } catch { /* fall through to Format A */ }
-      }
-      // Format A: first line is tool name, rest is JSON
-      const nl = inner.indexOf('\n');
-      if (nl < 0) continue;
-      const tName = inner.slice(0, nl).trim();
-      const jsonPart = inner.slice(nl + 1).trim();
-      if (!tName || !jsonPart.startsWith('{')) continue;
-      try {
-        tools.push({ name: tName, input: JSON.parse(jsonPart) });
-      } catch { /* ignore malformed */ }
-    }
-  }
-
-  // ── Fallback 4: <tool_calls><invoke name="..."><parameter .../></invoke></tool_calls>
-  // DeepSeek web output format when model uses its own tool-calling syntax.
-  // <parameter> can appear as:
-  //   <parameter name="foo" value="..."/>           (self-closing with value attr)
-  //   <parameter name="foo">some content</parameter> (text content)
-  if (tools.length === 0) {
-    const invokeRe = /<invoke\s+name="([^"]+)">([\s\S]*?)<\/invoke>/gi;
-    let im: RegExpExecArray | null;
-    while ((im = invokeRe.exec(text)) !== null) {
-      const tName = im[1].trim();
-      const body = im[2];
-      const input: Record<string, unknown> = {};
-      // Match self-closing: <parameter name="x" value="..."/>
-      const selfRe = /<parameter\s+name="([^"]+)"\s+value="([\s\S]*?)"\s*\/>/gi;
-      let pm: RegExpExecArray | null;
-      while ((pm = selfRe.exec(body)) !== null) {
-        const pName = pm[1];
-        const pVal = pm[2];
-        try { input[pName] = JSON.parse(pVal); } catch { input[pName] = pVal; }
-      }
-      // Match block: <parameter name="x">...</parameter>
-      const blockRe = /<parameter\s+name="([^"]+)">([\s\S]*?)<\/parameter>/gi;
-      while ((pm = blockRe.exec(body)) !== null) {
-        const pName = pm[1];
-        const pVal = pm[2].trim();
-        try { input[pName] = JSON.parse(pVal); } catch { input[pName] = pVal; }
-      }
-      tools.push({ name: tName, input });
-    }
-  }
-
-  return tools;
 }
 
 function extractPlanningTodoItems(text: string): TodoItem[] {
@@ -1102,40 +721,6 @@ function getTerminalRecoveryProtocol(cmd: string, attempt: number): string {
   ].join('\n');
 }
 
-/** Maps a FakeTool to {kind, label} for early streaming activity display (shown before execution). */
-function toolCallToEarlyActivity(tool: FakeTool): { kind: string; label: string } | null {
-  const inp = tool.input as Record<string, unknown>;
-  switch (tool.name) {
-    case 'run_terminal': {
-      const cmd = String(inp.command ?? inp.cmd ?? '').trim().slice(0, 60);
-      return { kind: 'terminal', label: cmd };
-    }
-    case 'create_file':
-    case 'write_file':
-    case 'replace_file': {
-      const p = String(inp.path ?? inp.filePath ?? '').trim();
-      return { kind: 'write', label: p };
-    }
-    case 'read_file': {
-      const p = String(inp.path ?? inp.filePath ?? '').trim();
-      return { kind: 'read', label: p };
-    }
-    case 'list_dir': {
-      const p = String(inp.path ?? inp.dirPath ?? '').trim();
-      return { kind: 'list', label: p || '.' };
-    }
-    case 'grep_search': {
-      const q = String(inp.query ?? inp.pattern ?? inp.includePattern ?? '').trim().slice(0, 50);
-      return { kind: 'search', label: q };
-    }
-    case 'manage_todo_list':
-    case 'task_complete':
-      return null;
-    default:
-      return { kind: 'terminal', label: tool.name };
-  }
-}
-
 async function applyMarkdownFileArtifactsForLoop(
   text: string,
   userPrompt: string,
@@ -1182,20 +767,16 @@ async function applyMarkdownFileArtifactsForLoop(
       }
     }
     callbacks.onToolActivity?.('write', artifact.path);
-    const existed = fs.existsSync(resolvedAbs);
-    const oldContent = existed ? fs.readFileSync(resolvedAbs, 'utf8') : '';
-    const dir = nodePath.dirname(resolvedAbs);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(resolvedAbs, artifact.content, 'utf8');
-    await callbacks.onAppliedChange({ path: resolvedAbs, existed, oldContent, newContent: artifact.content });
+    const writeResult = workspaceEditService.writeTextFileSync(resolvedAbs, artifact.content);
+    await callbacks.onAppliedChange({ path: resolvedAbs, ...writeResult });
     const newLines = artifact.content.split('\n').length;
-    const oldLines = oldContent ? oldContent.split('\n').length : 0;
+    const oldLines = writeResult.oldContent ? writeResult.oldContent.split('\n').length : 0;
     writtenFiles.push({
       path: resolvedAbs,
       basename: nodePath.basename(resolvedAbs),
       linesAdded: newLines,
       linesRemoved: oldLines,
-      action: existed ? 'modify' : 'create',
+      action: writeResult.existed ? 'modify' : 'create',
     });
     feedback.push(`[generated_file: ${artifact.path}] 已写入 (${newLines} 行)`);
   }
@@ -1445,7 +1026,7 @@ async function executeFakeToolsForLoop(
           parts.push(`[memory_write] 失败：${(err as Error).message}`);
         }
       }
-    } else if ((tool.name === 'create_file' || tool.name === 'write_file' || tool.name === 'replace_file') && callbacks.onAppliedChange) {
+    } else if (agentToolExecutor.isFileWrite(tool) && callbacks.onAppliedChange) {
       // Unified file create/overwrite — works for new files AND full rewrites.
       // Matching Copilot's #edit/editFiles for the agentic free-explore loop.
       const rawPath = getStringInput(tool.input, ['path', 'filePath', 'filepath', 'filename', 'targetPath']);
@@ -1489,10 +1070,7 @@ async function executeFakeToolsForLoop(
             parts.push(`[${tool.name}: ${rawPath}] 错误: 目标是目录，不是文件：${absPath}`);
             continue;
           }
-          const oldContent = existed ? fs.readFileSync(absPath, 'utf8') : '';
-          const dir = nodePath.dirname(absPath);
-          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-          fs.writeFileSync(absPath, content, 'utf8');
+          const writeResult = workspaceEditService.writeTextFileSync(absPath, content);
           const stat = fs.statSync(absPath);
           if (!stat.isFile() || stat.size === 0) {
             const failN = (createFileFailCounts.get(rawPath) || 0) + 1;
@@ -1502,15 +1080,15 @@ async function executeFakeToolsForLoop(
             parts.push(errMsg);
             continue;
           }
-          await callbacks.onAppliedChange({ path: absPath, existed, oldContent, newContent: content });
+          await callbacks.onAppliedChange({ path: absPath, ...writeResult });
           const newLines = content.split('\n').length;
-          const oldLines = oldContent ? oldContent.split('\n').length : 0;
+          const oldLines = writeResult.oldContent ? writeResult.oldContent.split('\n').length : 0;
           writtenFiles.push({
             path: absPath,
             basename: nodePath.basename(absPath),
             linesAdded: newLines,
             linesRemoved: oldLines,
-            action: existed ? 'modify' : 'create',
+            action: writeResult.existed ? 'modify' : 'create',
           });
           parts.push(`[${tool.name}: ${rawPath}] 已写入 ${nodePath.relative(defaultWorkdir ?? nodePath.dirname(absPath), absPath).replace(/\\/g, '/')} (${newLines} 行)`);
         } catch (err) {
@@ -1791,38 +1369,7 @@ function consumeUserSteerMessages(callbacks: AgentLoopCallbacks): ChatMessage[] 
     }));
 }
 
-export interface AgentStatusMessage {
-  type: 'agentStatus';
-  /** Overall agent phase */
-  phase: 'plan' | 'execute' | 'validate' | 'done' | 'error' | 'analyzeFile' | 'analyzeSummary';
-  /** Current task being executed (undefined during plan phase) */
-  taskId?: string;
-  taskFile?: string;
-  taskAction?: AgentTaskAction;
-  taskDesc?: string;
-  /** 1-based index of current task */
-  taskIndex?: number;
-  /** Total number of tasks */
-  taskTotal?: number;
-  state: 'started' | 'completed' | 'failed' | 'skipped';
-  title: string;
-  detail?: string;
-  /** Rough count of lines added/removed — for diff badge display only */
-  linesAdded?: number;
-  linesRemoved?: number;
-  /** G-1: planning reasoning bullet text — shown above task rows in the thinking box */
-  planningText?: string;
-  /** G-1: planning reasoning detail (multi-line prose) — shown in collapsible card below header */
-  planningDetail?: string;
-  /** Files edited during this agent run — populated in the done phase for the File Changes widget */
-  editedFiles?: Array<{
-    path: string;
-    basename: string;
-    linesAdded?: number;
-    linesRemoved?: number;
-    action: string;
-  }>;
-}
+export type AgentStatusMessage = AgentStatusEvent;
 
 export interface AgentLoopResult {
   tasksTotal: number;
@@ -2124,10 +1671,11 @@ function buildEditorPrompt(
   // For create action there's no existing content
   const isCreate = task.action === 'create';
 
-  // Prior-round analysis context — injected when user issues a follow-up like
-  // "按照建议优化代码". Without this the Editor AI has no idea what "建议" refers to.
+  // Prior-round analysis/session context — injected when user issues a follow-up
+  // like "按照建议优化代码" or "再添加一个". Without this the Editor has no idea
+  // what "建议/再/它" refers to.
   const analysisSection = analysisContext
-    ? [`【上轮分析建议 — 实现时必须严格参考以下建议】`, analysisContext.slice(0, 3000), ``].join('\n')
+    ? [`【同一会话上下文 — 实现时必须参考】`, analysisContext.slice(0, 3000), ``].join('\n')
     : '';
 
   // Project rules from .devseek/rules.md — injected if present
@@ -2670,10 +2218,9 @@ ${loopRes.feedbackForAI}
           return { applied: false, raw, ...(taskCompleteByAI ? { taskComplete: true } : {}) };
         }
       }
-      // Write the modified content directly to disk
+      // Write through the workspace edit service so Agent write paths stay centralized.
       try {
-        const targetUri = vscode.Uri.file(task.absPath);
-        await vscode.workspace.fs.writeFile(targetUri, Buffer.from(srResult.result, 'utf8'));
+        workspaceEditService.writeTextFileSync(task.absPath, srResult.result);
         // Update cache so subsequent tasks on the same file see this result
         contentCache.set(task.absPath, srResult.result);
         await callbacks.onAppliedChange({
@@ -3331,6 +2878,7 @@ export async function runAgenticLoop(
   workspaceRoot: string,
   mode: 'fast' | 'r1' | undefined,
   callbacks: AgentLoopCallbacks,
+  sessionContextText = '',
 ): Promise<AgentLoopResult> {
   const rules  = getProjectRulesSync();
   const memory = getProjectMemorySync();
@@ -3346,13 +2894,17 @@ export async function runAgenticLoop(
   const promptRequiresTools = /(?:编写|创建|新建|修改|生成|实现|运行|修复|添加|删除|更新|改造|重构|build|compile|test|run|create|write|modify|fix|implement)/i.test(userPrompt);
   const isWorkTool = (name: string) => !['manage_todo_list', 'task_complete', 'memory_write'].includes(name);
 
+  const sessionContextSection = sessionContextText.trim()
+    ? `\n\n【同一会话上下文】\n${sessionContextText.trim()}\n\n【当前用户消息】\n${userPrompt}`
+    : `\n\n${userPrompt}`;
+
   // Full conversation history (Claude Code pattern: accumulate all rounds)
   const messages: ChatMessage[] = [
-    { role: 'user', content: systemPrompt + '\n\n' + userPrompt },
+    { role: 'user', content: systemPrompt + sessionContextSection },
   ];
 
   let roundCount = 0;
-  let totalChars = systemPrompt.length + userPrompt.length;
+  let totalChars = systemPrompt.length + sessionContextSection.length;
   let hadTaskComplete = false;
   let completeSummary = '';
   let failedReason = '';
@@ -3464,7 +3016,7 @@ export async function runAgenticLoop(
           const actKey = t.name + ':' + JSON.stringify(t.input ?? {}).slice(0, 50);
           if (!sEarlyToolsEmitted.has(actKey)) {
             sEarlyToolsEmitted.add(actKey);
-            const earlyAct = toolCallToEarlyActivity(t);
+            const earlyAct = agentToolExecutor.plan(t).activity;
             if (earlyAct) {
               callbacks.onToolActivity(earlyAct.kind as Parameters<typeof callbacks.onToolActivity>[0], earlyAct.label);
             }
@@ -3672,6 +3224,13 @@ export async function runAgenticLoop(
       : [];
     lastMissingEvidence = missingAfterTools;
 
+    if (!callbacks.signal?.aborted && promptRequiresTools && sawWorkTool && missingAfterTools.length === 0) {
+      if (loopRes.completeSummary !== undefined) {
+        completeSummary = loopRes.completeSummary ?? '';
+      }
+      break;
+    }
+
     if ((loopRes.taskComplete || loopRes.allTodosCompleted) && missingAfterTools.length > 0 && !callbacks.signal?.aborted) {
       noToolRounds++;
       if (callbacks.onTodoUpdate && currentTodos.length > 0) {
@@ -3775,8 +3334,8 @@ export async function runAgenticLoop(
 
   return {
     tasksTotal: 1,
-    tasksApplied: 0,
-    tasksFailed: 0,
-    changedPaths: [],
+    tasksApplied: allWrittenFiles.length > 0 ? 1 : 0,
+    tasksFailed: cleanAbort || failedReason ? 1 : 0,
+    changedPaths: [...new Set(allWrittenFiles.map(f => f.path))],
   };
 }

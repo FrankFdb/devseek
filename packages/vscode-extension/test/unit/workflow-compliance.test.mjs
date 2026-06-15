@@ -161,6 +161,26 @@ test('§8.3 File edits: workspace applier enforces protectedFiles', () => {
   assertContains(code, '已阻止写入（受保护文件）', 'protected file write is blocked in apply workflow');
 });
 
+test('§8.3 File edits: closed-loop validation failure keeps files for repair', () => {
+  const applier = src('src/workspace-applier.ts');
+  assertContains(applier, 'rollbackOnValidationFailure', 'workspace applier exposes validation rollback policy');
+  assertContains(applier, 'rolledBack?: boolean', 'apply result records rollback state');
+  assertContains(applier, 'collectMissingParentDirs', 'rollback path tracks directories created by this apply');
+  assertContains(applier, 'cleanupCreatedEmptyDirs', 'rollback path removes empty directories created by this apply');
+
+  const extension = src('src/extension.ts');
+  assert.match(
+    extension,
+    /applyGeneratedArtifactsWithPrompt\([\s\S]*?workflowReporter[\s\S]*?\{ rollbackOnValidationFailure: false \}/,
+    'automatic code-generation apply must keep failed files so runClosedLoopRepair can iterate',
+  );
+  assert.match(
+    extension,
+    /current = await applyGeneratedArtifactsWithPrompt\([\s\S]*?\{ rollbackOnValidationFailure: false \}/,
+    'repair rounds must keep failed repair files for the next validation loop',
+  );
+});
+
 test('§8.3 File edits: code directory prompts force generated code paths under code/', () => {
   const applier = src('src/workspace-applier.ts');
   assertContains(applier, 'forceCodeDir', 'workspace applier tracks explicit code directory scope');
@@ -471,7 +491,11 @@ test('Agent loop: task_complete does not bypass final editedFiles accounting', (
 
 test('Agent loop: file tools and validation use ground-truth outcomes', () => {
   const code = src('src/agent-loop.ts');
-  assertContains(code, "'replace_file'", 'replace_file tool calls must be handled as file writes, not prose');
+  const registry = src('src/agent/tool-registry.ts');
+  const executor = src('src/agent/tool-executor.ts');
+  assertContains(registry, 'replace_file', 'replace_file tool calls must be registered as file writes, not prose');
+  assertContains(executor, 'isFileWriteTool', 'tool executor must use ToolRegistry file-write classification');
+  assertContains(code, 'agentToolExecutor.isFileWrite(tool)', 'agent loop must use ToolExecutor file-write classification');
   assertContains(code, 'looksLikeRawToolCallText(content)', 'file write tools must block raw tool transcript content');
   assertContains(code, "['path', 'filePath', 'filepath', 'filename', 'targetPath']", 'file write tools must accept common path aliases from DeepSeek/Copilot-style schemas');
   assertContains(code, "['content', 'contents', 'text', 'body']", 'file write tools must accept common content aliases');
@@ -575,6 +599,29 @@ test('Agentic loop: final summary never exposes backend tool transcripts', () =>
   );
 });
 
+test('Agentic free-explore: follow-up turns keep same-session context', () => {
+  const ext = src('src/extension.ts');
+  const agentLoop = src('src/agent-loop.ts');
+  assertContains(ext, 'buildAgenticSessionContext', 'extension must build same-session context for free-explore agent');
+  assertContains(ext, '这是同一个聊天 session 的后续消息', 'session context must explicitly mark follow-up messages');
+  assertContains(ext, '不要泛化为分析整个 code 目录', 'follow-up context must prevent broad code-directory reinterpretation');
+  assert.match(
+    ext,
+    /runAgenticLoop\([\s\S]*?, agSessionContext\)/,
+    'free-explore runAgenticLoop call must receive same-session context',
+  );
+  assert.match(
+    ext,
+    /nonBridgeChatHistory\.push\(\{ role: 'user', content: userDisplay \}\);[\s\S]*?saveCurrentSession\(\);[\s\S]*?webview\.postMessage\(\{ type: 'endResponse' \}\);[\s\S]*?return;/,
+    'free-explore branch must persist session history before returning',
+  );
+  assert.match(
+    agentLoop,
+    /sessionContextText = ''[\s\S]*?【同一会话上下文】[\s\S]*?【当前用户消息】/,
+    'agentic loop must inject same-session context before the current prompt',
+  );
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §3 Tool call filtering
 // ─────────────────────────────────────────────────────────────────────────────
@@ -585,6 +632,176 @@ test('§3 Tool filtering: stripToolCallBlocks function present', () => {
   const ext = src('src/extension.ts');
   const found = agentLoop.includes('stripToolCallBlocks') || ext.includes('stripToolCallBlocks');
   assert.ok(found, '§3 stripToolCallBlocks must exist in agent-loop.ts or extension.ts');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Architecture refactor boundaries
+// ─────────────────────────────────────────────────────────────────────────────
+
+test('Architecture: webview protocol types exist and extension uses inbound protocol', () => {
+  const protocol = src('src/ui/webview-protocol.ts');
+  const ext = src('src/extension.ts');
+  assertContains(protocol, 'WebviewInboundMessage', 'typed inbound webview protocol must exist');
+  assertContains(protocol, 'WebviewOutboundMessage', 'typed outbound webview protocol must exist');
+  assertContains(protocol, 'AgentStatusEvent', 'typed agent status event must exist');
+  assertContains(ext, "import type { WebviewInboundMessage }", 'extension must use typed inbound webview message');
+  assertContains(ext, 'type WebviewMessage = WebviewInboundMessage', 'extension WebviewMessage must be protocol alias');
+});
+
+test('Architecture: PermissionService maps ExecutionMode to tool policy', () => {
+  const service = src('src/app/permission-service.ts');
+  const ext = src('src/extension.ts');
+  const controller = src('src/app/chat-controller.ts');
+  assertContains(service, 'buildToolPolicy', 'permission service must build mode tool policies');
+  assertContains(service, 'decideToolPermission', 'permission service must decide tool permissions');
+  assertContains(service, "case 'inspect'", 'permission service must handle inspect mode');
+  assertContains(service, "case 'destructive'", 'permission service must handle destructive mode');
+  assertContains(controller, 'const toolPolicy = buildToolPolicy(intent.mode)', 'chat controller must bind tool policy from intent mode');
+  assertContains(ext, 'const { intentRoutingText, intent, toolPolicy, workflow } = routeDecision', 'runChat must use routed tool policy');
+  assertContains(ext, "decideToolPermission(toolPolicy, 'edit')", 'file writes must check ToolPolicy');
+  assertContains(ext, "decideToolPermission(toolPolicy, 'terminal')", 'terminal commands must check ToolPolicy');
+});
+
+test('Architecture: WorkflowService selects agent entry outside extension inline gate', () => {
+  const service = src('src/app/workflow-service.ts');
+  const ext = src('src/extension.ts');
+  const controller = src('src/app/chat-controller.ts');
+  assertContains(service, 'selectWorkflow', 'workflow service must expose selectWorkflow');
+  assertContains(service, 'confirmation-required', 'workflow service must route destructive confirmation outside agent');
+  assertContains(controller, 'const workflow = selectWorkflow', 'chat controller must delegate workflow selection');
+  assertContains(ext, 'chatRouteController.decide', 'extension must delegate route selection to ChatRouteController');
+  assertContains(ext, 'if (workflow.useAgent)', 'extension must use selected workflow for agent entry');
+});
+
+test('Architecture: ChatRouteController owns intent/workflow routing', () => {
+  const controller = src('src/app/chat-controller.ts');
+  const ext = src('src/extension.ts');
+  const testFile = src('test/unit/chat-controller.test.mjs');
+  assertContains(controller, 'class ChatRouteController', 'chat route controller class must exist');
+  assertContains(controller, 'getIntentRoutingText', 'chat route controller must isolate visible user text for routing');
+  assertContains(controller, 'lookupLearnedIntent', 'chat route controller must preserve learned intent hook');
+  assertContains(ext, 'new ChatRouteController()', 'extension must construct chat route controller');
+  assertContains(testFile, 'routes by visible user text', 'chat route controller must have behavior tests');
+});
+
+test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
+  const ext = src('src/extension.ts');
+  assert.match(
+    ext,
+    /const initialRouteDecision = chatRouteController\.decide[\s\S]*?if \(initialRouteDecision\.intent\.mode === 'smalltalk'\)[\s\S]*?webview\.postMessage\(\{ type: 'endResponse' \}\);[\s\S]*?return;[\s\S]*?const _storedSummary/,
+    'smalltalk must return before restored session summary/history is injected',
+  );
+  assertContains(ext, "const canApplyArtifacts = intent.kind === 'code-change'", 'artifact parsing must be gated by code-change intent');
+  assert.match(
+    ext,
+    /const parsedArtifacts = canApplyArtifacts \? parseGeneratedArtifacts\(finalResponseForArtifacts\) : \[\]/,
+    'non-code-change responses must not be parsed into pending file edits',
+  );
+  assert.match(
+    ext,
+    /const finalResponseForUser = noAgentCodeChat \? stripToolCallBlocks\(finalResponse\) : finalResponse;[\s\S]*?const finalResponseForArtifacts = noAgentCodeChat \? finalResponseForUser : finalResponse;/,
+    'no-agent code chat must strip fake tool protocol before display and artifact parsing',
+  );
+});
+
+test('Architecture: SessionService owns session metadata operations', () => {
+  const service = src('src/app/session-service.ts');
+  const ext = src('src/extension.ts');
+  assertContains(service, 'class SessionService', 'session service class must exist');
+  assertContains(service, 'saveSessionMeta', 'session service must save session metadata');
+  assertContains(service, 'deleteSession', 'session service must delete session data keys');
+  assertContains(ext, 'getSessionService()?.saveSessionMeta(meta)', 'extension saveSessionMeta facade must delegate to SessionService');
+  assertContains(ext, 'getSessionService()?.deleteSession(id)', 'extension deleteSession facade must delegate to SessionService');
+});
+
+test('Architecture: PendingEditService owns pending edit record map', () => {
+  const service = src('src/app/pending-edit-service.ts');
+  const ext = src('src/extension.ts');
+  assertContains(service, 'class PendingEditService', 'pending edit service class must exist');
+  assertContains(service, 'findLatestByPath', 'pending edit service must expose path lookup');
+  assertContains(ext, 'new PendingEditService<PendingEditRecord>()', 'extension pending edit state must use PendingEditService');
+});
+
+test('Architecture: fake tool parser is split from Agent Loop executor', () => {
+  const parser = src('src/agent/fake-tool-parser.ts');
+  const agentLoop = src('src/agent-loop.ts');
+  assertContains(parser, 'parseFakeToolCalls', 'fake tool parser must expose parseFakeToolCalls');
+  assertContains(parser, 'stripToolCallBlocks', 'fake tool parser must expose transcript stripping');
+  assertContains(parser, 'findFirstToolCallStart', 'fake tool parser must expose streaming boundary detection');
+  assertContains(agentLoop, "from './agent/fake-tool-parser'", 'agent loop must import fake tool parser module');
+});
+
+test('Architecture: ToolRegistry owns agent tool metadata', () => {
+  const registry = src('src/agent/tool-registry.ts');
+  const executor = src('src/agent/tool-executor.ts');
+  const agentLoop = src('src/agent-loop.ts');
+  assertContains(registry, 'AGENT_TOOL_DEFINITIONS', 'tool registry must expose tool definitions');
+  assertContains(registry, 'isFileWriteTool', 'tool registry must identify file write tools');
+  assertContains(registry, 'getToolActivity', 'tool registry must own activity metadata');
+  assertContains(executor, 'class AgentToolExecutor', 'tool executor must expose execution boundary');
+  assertContains(executor, 'classifyToolKind', 'tool executor must classify tool kind for permission policy');
+  assertContains(agentLoop, "from './agent/tool-executor'", 'agent loop must import tool executor module');
+  assertContains(agentLoop, 'agentToolExecutor.isFileWrite(tool)', 'file write branch must use tool executor helper');
+  assertContains(agentLoop, 'agentToolExecutor.plan(t).activity', 'early activity display must use tool executor helper');
+  assert.doesNotMatch(agentLoop, /function toolCallToEarlyActivity/, 'agent loop must not keep local tool activity registry');
+});
+
+test('Architecture: AgentEvent union lives in agent layer', () => {
+  const events = src('src/agent/events.ts');
+  const protocol = src('src/ui/webview-protocol.ts');
+  const agentLoop = src('src/agent-loop.ts');
+  assertContains(events, 'export type AgentEvent', 'agent event union must exist');
+  assertContains(events, 'interface AgentStatusEvent', 'agent status event must live in agent layer');
+  assertContains(protocol, "from '../agent/events'", 'webview protocol must import agent events');
+  assertContains(agentLoop, "from './agent/events'", 'agent loop must import agent status from agent layer');
+});
+
+test('Architecture: WorkspaceEditService owns Agent Loop file writes', () => {
+  const service = src('src/workspace/edit-service.ts');
+  const agentLoop = src('src/agent-loop.ts');
+  assertContains(service, 'class WorkspaceEditService', 'workspace edit service class must exist');
+  assertContains(service, 'writeTextFileSync', 'workspace edit service must expose text-file write boundary');
+  assertContains(agentLoop, 'new WorkspaceEditService()', 'agent loop must construct workspace edit service');
+  assertContains(agentLoop, 'workspaceEditService.writeTextFileSync', 'agent loop writes must go through workspace edit service');
+  assert.doesNotMatch(agentLoop, /fs\.writeFileSync/, 'agent loop must not write workspace files directly');
+});
+
+test('Architecture: Bridge DOM selectors live in a DeepSeek selector registry', () => {
+  const selectors = src('../bridge/src/deepseek-dom-selectors.ts');
+  const agent = src('../bridge/src/deepseek-agent.ts');
+  const login = src('../bridge/src/login.ts');
+  const config = src('../bridge/src/config.ts');
+  assertContains(selectors, 'DEEPSEEK_DOM_SELECTORS', 'bridge selector registry must exist');
+  assertContains(selectors, 'chatInput', 'selector registry must include chat input selectors');
+  assertContains(agent, "from './deepseek-dom-selectors'", 'DeepSeekAgent must use selector registry directly');
+  assertContains(login, "from './deepseek-dom-selectors'", 'login flow must use selector registry directly');
+  assertContains(config, "export { DEEPSEEK_DOM_SELECTORS, SELECTORS }", 'config must keep selector compatibility export');
+});
+
+test('Architecture: Bridge response extraction has a contract-tested boundary', () => {
+  const extractor = src('../bridge/src/response-extractor.ts');
+  const agent = src('../bridge/src/deepseek-agent.ts');
+  const contract = src('../bridge/test/response-extractor.test.mjs');
+  assertContains(extractor, 'extractDeepSeekResponse', 'bridge response extractor must expose extraction function');
+  assertContains(extractor, 'isLoginUrl', 'bridge response extractor must own login URL detection');
+  assertContains(agent, "from './response-extractor'", 'DeepSeekAgent must use response extractor');
+  assertContains(agent, 'extractDeepSeekResponse', 'DeepSeekAgent final text must pass through response extractor');
+  assertContains(contract, 'extracts the last non-empty assistant answer', 'bridge response extractor must have contract test');
+});
+
+test('Architecture: Bridge has session, driver, and health-check boundaries', () => {
+  const session = src('../bridge/src/browser-session.ts');
+  const driver = src('../bridge/src/conversation-driver.ts');
+  const health = src('../bridge/src/bridge-health-check.ts');
+  const agent = src('../bridge/src/deepseek-agent.ts');
+  const contract = src('../bridge/test/bridge-health-check.test.mjs');
+  assertContains(session, 'class BrowserSession', 'bridge browser session boundary must exist');
+  assertContains(driver, 'class ConversationDriver', 'bridge conversation driver boundary must exist');
+  assertContains(health, 'checkBridgeHealth', 'bridge health check boundary must exist');
+  assertContains(agent, "from './browser-session'", 'DeepSeekAgent must use BrowserSession');
+  assertContains(agent, "from './conversation-driver'", 'DeepSeekAgent must use ConversationDriver');
+  assertContains(agent, "from './bridge-health-check'", 'DeepSeekAgent must use BridgeHealthCheck');
+  assertContains(contract, 'BridgeHealthCheck: reports logged-in indicator', 'bridge health check must have contract test');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

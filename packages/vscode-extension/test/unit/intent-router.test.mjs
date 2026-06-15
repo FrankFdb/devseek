@@ -42,53 +42,92 @@ test('decideChatIntent: empty prompt → chat intent', () => {
   assert.ok(result.blockers.includes('empty-prompt'));
 });
 
-test('decideChatIntent: pure question → code-change (default-agent, LLM decides)', () => {
-  // Design: no keyword routing. All non-empty prompts default to code-change.
-  // The Architect LLM decides whether to write files or just answer conversationally.
+test('decideChatIntent: pure question → qa chat intent', () => {
   const result = decideChatIntent('什么是单例模式？');
-  assert.equal(result.kind, 'code-change');
+  assert.equal(result.kind, 'chat');
+  assert.equal(result.mode, 'qa');
+  assert.equal(result.autoApplyEligible, false);
 });
 
-test('decideChatIntent: "解释这段代码" → code-change (default-agent, LLM decides)', () => {
-  // Same: keyword 解释 is NOT routed to chat — that was the old brittle approach.
-  // Only explicit "不要修改" command overrides to chat.
+test('decideChatIntent: "解释这段代码" → inspect read-only intent', () => {
   const result = decideChatIntent('解释这段代码');
-  assert.equal(result.kind, 'code-change');
+  assert.equal(result.kind, 'chat');
+  assert.equal(result.mode, 'inspect');
+  assert.deepEqual(result.allowedToolKinds, ['read', 'search', 'diagnostics']);
+});
+
+test('decideChatIntent: "hello" → smalltalk chat intent', () => {
+  const result = decideChatIntent('hello');
+  assert.equal(result.kind, 'chat');
+  assert.equal(result.mode, 'smalltalk');
+  assert.equal(result.autoApplyEligible, false);
+  assert.equal(shouldUseAgentMode(result, []), false);
+});
+
+test('decideChatIntent: truncated "ello" → smalltalk chat intent', () => {
+  const result = decideChatIntent('ello');
+  assert.equal(result.kind, 'chat');
+  assert.equal(result.mode, 'smalltalk');
+  assert.equal(result.autoApplyEligible, false);
+  assert.equal(shouldUseAgentMode(result, ['/path/to/main.cpp']), false);
+});
+
+test('decideChatIntent: greeting plus product question → qa chat intent', () => {
+  const result = decideChatIntent('你好，能介绍一下 React 吗');
+  assert.equal(result.kind, 'chat');
+  assert.equal(result.mode, 'qa');
+  assert.equal(shouldUseAgentMode(result, []), false);
 });
 
 test('decideChatIntent: "修复代码中的函数" → code-change intent', () => {
   const result = decideChatIntent('修复这个函数中的bug');
   assert.equal(result.kind, 'code-change');
+  assert.equal(result.mode, 'edit');
 });
 
 test('decideChatIntent: "实现一个函数" → code-change intent', () => {
   const result = decideChatIntent('实现一个排序函数');
   assert.equal(result.kind, 'code-change');
+  assert.equal(result.mode, 'edit');
 });
 
 test('decideChatIntent: "编写C++程序" → code-change intent', () => {
   const result = decideChatIntent('编写一个C++ 程序，打印hello deepseek');
   assert.equal(result.kind, 'code-change');
+  assert.equal(result.mode, 'edit');
 });
 
 test('decideChatIntent: "重构代码" → code-change intent', () => {
   const result = decideChatIntent('重构这段代码');
   assert.equal(result.kind, 'code-change');
+  assert.equal(result.mode, 'edit');
 });
 
 test('decideChatIntent: "不要修改，只分析" → blocks code-change', () => {
   const result = decideChatIntent('不要修改，只分析这段代码是否有性能问题');
   // Should have no-change blocker or downgrade to chat
   assert.ok(result.blockers.includes('explicit-no-change') || result.kind === 'chat');
+  assert.equal(result.kind, 'chat');
+});
+
+test('decideChatIntent: destructive request requires confirmation', () => {
+  const result = decideChatIntent('删除 code/main.cpp 并重置项目');
+  assert.equal(result.kind, 'code-change');
+  assert.equal(result.mode, 'destructive');
+  assert.equal(result.autoApplyEligible, false);
+  assert.equal(result.requiresConfirmation, true);
 });
 
 test('decideChatIntent: returns required fields', () => {
   const result = decideChatIntent('修改文件main.cpp');
   assert.ok(typeof result.kind === 'string');
+  assert.ok(typeof result.mode === 'string');
   assert.ok(typeof result.confidence === 'number');
   assert.ok(Array.isArray(result.signals));
   assert.ok(Array.isArray(result.blockers));
+  assert.ok(Array.isArray(result.allowedToolKinds));
   assert.ok(typeof result.reason === 'string');
+  assert.ok(typeof result.requiresConfirmation === 'boolean');
   assert.ok(result.confidence >= 0 && result.confidence <= 1);
 });
 
@@ -113,11 +152,9 @@ test('shouldUseAgentMode: code-change no files → true (agent creates from scra
   assert.equal(shouldUseAgentMode(intent, []), true);
 });
 
-test('shouldUseAgentMode: non-explicit-no-change prompt → true (default-agent)', () => {
-  // Design: only explicit "不要修改" blockers opt out of agent mode.
-  // '你好，能介绍一下 React 吗' has no explicit-no-change signal → agent mode.
+test('shouldUseAgentMode: qa prompt → false', () => {
   const intent = decideChatIntent('你好，能介绍一下 React 吗');
-  assert.equal(shouldUseAgentMode(intent, []), true);
+  assert.equal(shouldUseAgentMode(intent, []), false);
 });
 
 test('shouldUseAgentMode: files present → true', () => {
@@ -127,14 +164,23 @@ test('shouldUseAgentMode: files present → true', () => {
 
 test('shouldUseAgentMode: explicit no-change + chat intent + files → false', () => {
   const intent = decideChatIntent('不要修改，只分析代码结构');
-  assert.equal(shouldUseAgentMode(intent, ['/path/to/file.ts']),
-    intent.blockers.includes('explicit-no-change') && intent.kind !== 'code-change' ? false : true);
+  assert.equal(shouldUseAgentMode(intent, ['/path/to/file.ts']), false);
 });
 
 test('shouldUseAgentMode: even analysis intent with files → true (agent reads file)', () => {
   const intent = decideChatIntent('分析这段代码');
   // Files present — agent mode should be triggered to read files
   assert.equal(shouldUseAgentMode(intent, ['/path/to/code.ts']), true);
+});
+
+test('shouldUseAgentMode: analysis intent without files → false', () => {
+  const intent = decideChatIntent('分析这段代码');
+  assert.equal(shouldUseAgentMode(intent, []), false);
+});
+
+test('shouldUseAgentMode: destructive intent is blocked until confirmation workflow exists', () => {
+  const intent = decideChatIntent('删除 code/main.cpp 并重置项目');
+  assert.equal(shouldUseAgentMode(intent, ['/path/to/main.cpp']), false);
 });
 
 // ── shouldAutoApplyFromResponse tests ────────────────────────────────────────
@@ -161,13 +207,10 @@ test('shouldAutoApplyFromResponse: code-change intent + artifact → conservativ
   assert.equal(typeof result, 'boolean');
 });
 
-test('shouldAutoApplyFromResponse: default-agent intent + artifact + aggressive → true', () => {
-  // Design: 解释单例模式 is code-change by default → autoApplyEligible = true.
-  // aggressive policy with valid artifact → applies.
+test('shouldAutoApplyFromResponse: qa intent + artifact + aggressive → false', () => {
   const intent = decideChatIntent('解释单例模式');
   const result = shouldAutoApplyFromResponse(intent, MOCK_RESPONSE_WITH_ARTIFACT, 'aggressive');
-  // aggressive with artifact → true (LLM-generated code gets applied)
-  assert.equal(result, true);
+  assert.equal(result, false);
 });
 
 test('shouldAutoApplyFromResponse: discussion-only response → false for conservative', () => {

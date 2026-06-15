@@ -1,0 +1,312 @@
+# DevSeek 意图识别检讨：从 `hello` 误触发编程任务说起
+
+日期：2026-06-15
+
+## 结论摘要
+
+用户输入 `hello` 时，合理意图应优先判定为寒暄/普通聊天，而不是“编写 Hello World 程序”。DevSeek 当前误触发的根因不是单个 `hello` 关键词，而是路由策略过度偏向 agent：除空输入和显式“不要修改/只讨论”外，几乎所有非空输入都会进入可读写的编程智能体流程。
+
+成熟编程智能体的共同做法不是“让模型猜一切”，而是用多层边界控制行为：
+
+1. 入口模式区分：Ask/Chat、Plan、Edit、Agent。
+2. 权限模式约束：只读、工作区可写、全权限、自动审批。
+3. 工具执行前检查：写文件、运行命令、联网、越界访问需要权限或明确任务。
+4. 模型规划只在边界内行动：模型可以判断下一步，但不能绕过模式和权限。
+
+DevSeek 最推荐的改造方向：保留 Agent 能力，但新增“意图分层 + 默认安全模式”。简单寒暄和普通问题走 Chat；代码解释/排查默认只读 Explore/Plan；只有明确创建、修改、运行、修复、生成等任务，或者用户手动开启 Agent/Autopilot，才允许写文件和运行命令。
+
+## 现象复盘：为什么 `hello` 会变成编写程序
+
+当前 DevSeek 的意图路由在 `packages/vscode-extension/src/intent-router.ts` 中定义：
+
+- `ChatIntentKind` 只有 `chat` 和 `code-change`。
+- 空输入返回 `chat`。
+- 显式 no-change 语句，如“不要修改”“只讨论”“only explain”，返回 `chat`。
+- 其他所有非空输入默认返回 `code-change`，原因标记为 `default-agent-mode`。
+- `shouldUseAgentMode()` 只要没有 `explicit-no-change` blocker 就返回 `true`。
+
+这意味着：
+
+```text
+hello -> code-change -> agent mode
+你好 -> code-change -> agent mode
+什么是单例模式？ -> code-change -> agent mode
+```
+
+测试也把这个行为固化了。`packages/vscode-extension/test/unit/intent-router.test.mjs` 中已有用例明确认为“纯问题”和“你好，能介绍一下 React 吗”都应进入 agent mode。
+
+进入 agentic loop 后，系统提示词把模型定义为“拥有完整工具访问权限的编程智能体”，并在工具示例中出现：
+
+```text
+[TOOL:create_file {"path":"code/hello.cpp","content":"文件全部内容"}]
+```
+
+同时要求“开始前先用 manage_todo_list 列出所有子任务”“创建/修改文件必须调用 create_file”。当用户只输入 `hello` 时，模型处在“我是编程 agent，应推进任务”的上下文里，很容易把 `hello` 过度补全成经典 Hello World 编程任务。
+
+`promptRequiresTools` 虽然会判断用户提示是否包含“编写/创建/运行/修复”等词，但它发生在已经进入 agentic loop 之后，主要用于完成证据检查，并不是进入 agent 或允许工具调用的前置闸门。因此即使 `hello` 本身不要求工具，只要模型输出工具调用，DevSeek 仍可能执行。
+
+## 竞品做法梳理
+
+### GitHub Copilot
+
+GitHub Copilot Chat 明确区分多个模式：Agent、Plan、Ask。官方文档描述：
+
+- Agent mode 用于让 Copilot 自主完成一个设定任务。
+- Plan mode 用于生成详细实现计划。
+- Ask mode 用于回答编码问题和提供代码建议。
+- 用户通过 chat view 底部的 agents dropdown 切换模式。
+
+官方还说明 Agent mode 适合“有明确任务，并希望 Copilot 自主编辑代码”的场景；在 agent mode 下，Copilot 会决定要修改哪些文件、提供代码变更和终端命令，并迭代修复问题。
+
+对意图识别的启示：
+
+- Copilot 不把所有输入都混进同一个可写 agent 入口。
+- “问问题”默认可以留在 Ask。
+- “改代码”进入 Edit/Agent 是用户显式选择的体验。
+- Copilot 也有自动推断 chat participants 和 skill 的能力，但这是选择专业能力/上下文，不等于无条件写文件。
+
+参考：
+
+- GitHub Docs: Chat in IDE, Copilot Chat agents, Agent/Plan/Ask modes  
+  https://docs.github.com/en/copilot/how-tos/chat-with-copilot/chat-in-ide
+
+### Claude Code
+
+Claude Code 的核心边界是 permission mode，而不是只靠模型自觉。官方文档说明：
+
+- default：默认只读自动执行，写文件/运行命令等需要审批。
+- acceptEdits：读、文件编辑、常见文件系统命令可自动执行。
+- plan：只读，用于改动前探索代码库。
+- auto：后台安全检查后自动批准更多工具调用。
+- bypassPermissions：隔离环境中才建议使用的高权限模式。
+
+Claude Code 权限文档还强调：权限规则由 Claude Code 执行，而不是模型执行；提示词或 `CLAUDE.md` 会影响 Claude 想做什么，但不会改变 Claude Code 允许什么。
+
+对意图识别的启示：
+
+- “模式/权限”是产品层硬边界，不是 prompt 约定。
+- Plan mode 是天然的误伤缓冲区：可以读和分析，但不能改源文件。
+- 自动模式也不是无条件放权，而是有安全检查和保护路径。
+
+参考：
+
+- Claude Code Docs: Choose a permission mode  
+  https://code.claude.com/docs/en/permission-modes
+- Claude Code Docs: Configure permissions  
+  https://code.claude.com/docs/en/permissions
+
+### OpenAI Codex
+
+Codex IDE/CLI 同样把能力边界拆成“模式 + 沙箱 + 审批”。官方资料说明：
+
+- Codex IDE 默认可在 Agent mode 中读取文件、编辑工作区、运行工作目录内命令。
+- 如果只想聊天或先计划，应切换到 Chat。
+- 默认本地安全模型是工作区写入 + 按需审批：可以在工作区内进行常规工作，但访问网络、越过工作区等需要审批。
+- sandbox 决定技术上能做什么，approval policy 决定越界时何时停下来问用户。
+- `read-only` 模式允许检查文件，但不能无审批编辑文件或运行命令。
+
+对意图识别的启示：
+
+- Codex 可以默认 Agent，但它有清晰的 Chat 切换和权限选择器。
+- “Ask Codex anything”不等于“任何输入都应该写文件”。
+- 安全行为依靠沙箱/权限执行，而不是模型自己永远不误判。
+
+参考：
+
+- OpenAI Developers: Agent approvals & security  
+  https://developers.openai.com/codex/agent-approvals-security
+- OpenAI Developers: Sandbox  
+  https://developers.openai.com/codex/concepts/sandboxing
+- OpenAI Codex manual, IDE extension features and permissions  
+  https://developers.openai.com/codex/codex-manual.md
+
+## DevSeek 现状评价
+
+### 做得好的地方
+
+1. 有 `NO_CHANGE_RE`，用户明确说“不修改/只讨论”时能走 chat。
+2. 有工具结果证据检查，能避免“没写文件/没运行命令却声称完成”。
+3. 有终端安全检查和 autopilot 设置，部分高风险命令会阻断或确认。
+4. 有 todo、terminal evidence、generated artifact parsing 等 agent 执行基础设施。
+
+### 主要问题
+
+1. 意图类型过少：只有 `chat` 和 `code-change`，无法表达寒暄、普通问答、只读解释、工作区探索、计划、编辑、运行验证等不同风险等级。
+2. 默认值过激：非空输入默认 `code-change`，`shouldUseAgentMode()` 默认 true。
+3. 缺少“纯聊天/寒暄”硬规则：`hello`、`hi`、`你好`、`谢谢`、`在吗` 等不应进入 agent。
+4. 进入 agent 后缺少工具权限降级：即使用户没有表达写文件意图，模型仍能输出 `create_file`。
+5. 示例污染：系统提示里的 `code/hello.cpp` 示例会强化“hello -> Hello World 程序”的联想。
+6. 测试方向有偏差：现有测试把“你好，能介绍一下 React 吗”期望为 agent mode，这与用户直觉和 Copilot/Claude/Codex 的分层体验不一致。
+
+## 推荐的意图模型
+
+建议将 DevSeek 意图拆成以下层级：
+
+| Intent | 用户例子 | 默认能力 | 是否可写 | 是否可运行命令 |
+| --- | --- | --- | --- | --- |
+| `smalltalk` | `hello`、`你好`、`谢谢` | 普通回复 | 否 | 否 |
+| `qa` | `什么是闭包？` | 普通问答，可给示例 | 否 | 否 |
+| `explain` | `解释这个文件`、附文件问“这段代码做什么” | 只读读取上下文 | 否 | 否 |
+| `inspect` | `帮我看看为什么报错`、`定位问题` | 只读搜索/读取/诊断 | 否，除非用户确认 | 只读/安全命令 |
+| `plan` | `先给方案`、`怎么改比较好` | 只读分析 + 计划 | 否 | 否或只读 |
+| `edit` | `修改 main.cpp`、`修复这个 bug` | 编辑相关文件 | 是 | 必要时确认/受策略限制 |
+| `create` | `在 code 目录创建 C++ 程序` | 创建文件 | 是 | 必要时确认/受策略限制 |
+| `run` | `编译并运行`、`跑测试` | 执行命令 | 视任务而定 | 是，需安全检查 |
+| `destructive` | `删除/重置/清空/覆盖` | 高风险 | 必须确认 | 必须确认 |
+
+`hello` 应命中 `smalltalk`，直接回复类似：
+
+```text
+你好！需要我帮你看代码、解释问题，还是做一个修改？
+```
+
+## 推荐路由策略
+
+### 第一层：显式模式优先
+
+如果 UI 有模式选择，优先尊重用户选择：
+
+- Chat：永不写文件，不运行命令。
+- Plan/Explore：可读文件，可搜索，可给方案，不写文件。
+- Agent：允许写文件和运行命令，但仍受权限策略约束。
+- Autopilot：减少确认，但不能绕过安全边界。
+
+如果没有显式模式，就走自动意图识别。
+
+### 第二层：安全短路
+
+以下输入直接走 Chat，不进入 agent：
+
+- 纯寒暄：`hello`、`hi`、`你好`、`早上好`、`在吗`。
+- 礼貌/结束语：`谢谢`、`ok`、`好的`。
+- 极短且没有工程动作的输入：1-3 个词，且不包含文件名、错误信息、命令、编程动词。
+
+注意：不能把单词 `hello` 当成 Hello World 编程任务。只有出现“写/创建/生成/编写/程序/C++/打印/hello world/code目录”等明确动作和产物词时，才进入 create/edit。
+
+### 第三层：只读优先
+
+如果用户的问题可能和代码有关但没有明确要求改动：
+
+- `解释这个报错`
+- `这个函数有什么问题`
+- `为什么编译失败`
+- `帮我看看`
+
+默认进入 `inspect` 或 `plan`，只允许 read/search/get_errors/read-only terminal。需要写文件时，先给结论并询问：
+
+```text
+我定位到问题在 main.cpp:42。要我直接修改吗？
+```
+
+### 第四层：写操作需要明确触发
+
+允许 `create_file/write_file/replace_file` 的条件至少满足一个：
+
+1. 用户显式要求创建/修改/修复/实现/生成/重构。
+2. 用户选择 Agent/Edit 模式。
+3. 用户在只读分析后点击“应用修改/继续修改”。
+4. 会话上下文中存在明确的未完成编辑目标，且当前输入是续作，如“继续”“按这个改”。
+
+### 第五层：命令执行独立判断
+
+`run_terminal` 不应因为进入 Agent 就随便执行。建议分级：
+
+- 只读命令：`ls`、`pwd`、`grep`、`find`、`cat/head/tail` 可在 inspect 中使用。
+- 构建/测试命令：用户明确要求验证，或已经完成代码修改后可执行。
+- 长运行/联网/包管理/删除/权限命令：必须确认或阻断。
+
+## 建议实现方式
+
+### IntentDecision 结构
+
+建议替换当前二元结构：
+
+```ts
+type IntentKind =
+  | 'smalltalk'
+  | 'qa'
+  | 'explain'
+  | 'inspect'
+  | 'plan'
+  | 'edit'
+  | 'create'
+  | 'run'
+  | 'destructive';
+
+interface IntentDecision {
+  kind: IntentKind;
+  confidence: number;
+  mode: 'chat' | 'read-only-agent' | 'plan' | 'edit-agent' | 'full-agent';
+  allowedTools: Array<'read_file' | 'grep_search' | 'get_errors' | 'run_terminal' | 'create_file' | 'write_file' | 'replace_file'>;
+  requiresConfirmation: boolean;
+  reason: string;
+  signals: string[];
+  blockers: string[];
+}
+```
+
+### 规则 + 模型双层识别
+
+最稳妥不是纯正则，也不是纯 LLM，而是组合：
+
+1. 高精度规则先处理短路场景：空输入、寒暄、明确 no-change、明确 destructive。
+2. 结构信号识别：文件路径、选中文本、附加文件、诊断错误、命令片段、diff、stack trace。
+3. 动作词识别：创建/修改/修复/运行/测试/解释/分析/计划。
+4. 低置信度时不执行写操作，转 Chat 或询问。
+5. 可选：再用小模型/主模型做 `intent_classify` JSON，但分类结果只能收窄权限，不能扩大到危险权限。
+
+### Prompt 调整
+
+agentic system prompt 中应删除或弱化 `code/hello.cpp` 这类会污染短输入的示例。工具示例应使用中性路径：
+
+```text
+[TOOL:create_file {"path":"src/example.ext","content":"..."}]
+```
+
+并加入强规则：
+
+```text
+如果用户只是寒暄、感谢、确认、或提出普通问题，不要调用工具，不要创建文件，直接自然回复。
+只有用户明确要求创建/修改/运行/修复代码，才调用写文件或终端工具。
+```
+
+但注意：prompt 只能作为第二道防线，第一道防线仍应是产品层路由和工具权限。
+
+## 验收用例
+
+| 输入 | 期望 intent | 期望行为 |
+| --- | --- | --- |
+| `hello` | `smalltalk` | 只回复问候，不创建文件 |
+| `你好` | `smalltalk` | 只回复问候 |
+| `谢谢` | `smalltalk` | 只回复 |
+| `什么是单例模式？` | `qa` | 普通解释，不读写文件 |
+| `解释 main.cpp` | `explain` | 可读 `main.cpp`，不写文件 |
+| `帮我看看这个报错` + diagnostics | `inspect` | 只读排查，必要时询问是否修复 |
+| `在 code 目录创建 hello world C++ 程序` | `create` | 创建源码，可编译运行 |
+| `编译并运行 code/hello.cpp` | `run` | 执行编译/运行，展示结果 |
+| `修复 main.cpp 的空指针问题` | `edit` | 修改文件，验证 |
+| `删除整个项目重新生成` | `destructive` | 必须确认，默认不执行 |
+
+## 最推荐方案
+
+短期先做三件事：
+
+1. 在 `decideChatIntent()` 前增加寒暄/短输入短路：`hello`、`hi`、`你好` 等直接 `chat`。
+2. 把“无明确动作词但进入 agent”的默认权限降为 read-only，不允许 `create_file/write_file/run_terminal`。
+3. 修改单测：`你好，能介绍一下 React 吗` 应为 `chat` 或 `qa`，不是 agent mode。
+
+中期做完整分层：
+
+1. 新增 `IntentKind` 多分类。
+2. 新增 `read-only-agent`，用于解释、排查、计划。
+3. 将工具权限与 intent 绑定。
+4. 只有明确 edit/create/run 或用户手动 Agent 时启用可写 agent。
+
+长期对齐成熟产品：
+
+1. UI 上提供 Chat / Plan / Agent / Autopilot 明确模式。
+2. 引入 Codex/Claude Code 风格的权限选择器。
+3. 对写文件、运行命令、联网、删除、越界访问做统一审批模型。
+4. 将“模型想做什么”和“产品允许做什么”彻底分离。
+
+一句话：DevSeek 不应该问“这个 prompt 能不能被解释成编程任务”，而应该问“用户有没有明确授权我进入会改文件/跑命令的编程流程”。对 `hello`，答案显然是否。

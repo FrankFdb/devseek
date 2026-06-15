@@ -33,7 +33,7 @@ import {
   selectRepairFiles,
   shouldPreferLocalExecution,
 } from './execution-planner';
-import { AutoApplyPolicy, decideChatIntent, shouldAutoApplyFromResponse, shouldUseAgentMode } from './intent-router';
+import { AutoApplyPolicy, shouldAutoApplyFromResponse } from './intent-router';
 import { clearSessionHabits, lookupLearnedIntent, recordIntentOutcome } from './intent-learner';
 import {
   initAgentLearner, clearLearnerSession, emitLearningEvent,
@@ -46,67 +46,18 @@ import { McpManager } from './mcp/client';
 import { fenceLangForFile } from './utils';
 import { DiffDecorationManager, type DiffRecordInfo } from './diff-decorator';
 import { isFileProtected } from './protected-files';
+import { decideToolPermission } from './app/permission-service';
+import { ChatRouteController } from './app/chat-controller';
+import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
+import { SessionService, type SessionMeta } from './app/session-service';
+import { PendingEditService } from './app/pending-edit-service';
+import type { WebviewInboundMessage } from './ui/webview-protocol';
+import { stripToolCallBlocks } from './agent/fake-tool-parser';
 
 // ----------------------------------------------------------------
 // Types
 // ----------------------------------------------------------------
-interface SessionMeta {
-  id: string;
-  title: string;
-  createdAt: number;
-  updatedAt?: number;
-  /** Number of conversation turns (user message count) */
-  messageCount?: number;
-  /** Number of distinct files touched in this session */
-  fileCount?: number;
-  /** File basenames touched (up to 8) */
-  changedFiles?: string[];
-  /** Ultra-compact digest (~150 chars) for session list preview */
-  digest?: string;
-}
-
-interface WebviewMessage {
-  type: 'chat' | 'cancel' | 'clearHistory' | 'ready' | 'insertCode' | 'relogin'
-      | 'runCommand' | 'getProblems' | 'resolveFile' | 'getStatus' | 'setMode'
-  | 'previewGeneratedFiles' | 'applyGeneratedFiles' | 'openGeneratedPath'
-  | 'previewGeneratedPath' | 'applyGeneratedPath'
-  | 'keepPendingEdit' | 'undoPendingEdit' | 'openPendingEdit'
-  | 'keepPendingHunk' | 'undoPendingHunk'
-  | 'keepAllPendingEdits' | 'undoAllPendingEdits'
-  | 'setAutopilot' | 'clearContext' | 'agentToggle'
-  | 'terminalConfirmReply' | 'runInVsTerminal' | 'agentSteer'
-  | 'listSessions' | 'loadSession' | 'deleteSession' | 'saveSession'
-  | 'resumeAgentCheckpoint' | 'dismissAgentCheckpoint';
-  text?: string;
-  code?: string;
-  newSession?: boolean;
-  command?: string;
-  path?: string;
-  editId?: string;
-  hunkId?: string;
-  hunkLine?: number;
-  line?: number;
-  prompt?: string;
-  mode?: 'fast' | 'r1';
-  files?: string[];
-  images?: string[];
-  autoApply?: boolean;
-  autopilot?: boolean;
-  enabled?: boolean;
-  forceNoAgent?: boolean;
-  /** G-2: fields for terminalConfirmReply */
-  confirmId?: string;
-  allow?: boolean;
-  alwaysAllow?: boolean;
-  /** G-3: exit code from terminal command */
-  exitCode?: number | null;
-  /** tool activity chip (read/search/list/terminal) */
-  activityKind?: string;
-  activityLabel?: string;
-  activityTotal?: number;
-  /** session management */
-  id?: string;
-}
+type WebviewMessage = WebviewInboundMessage;
 
 interface PendingItem {
   userDisplay: string;
@@ -154,7 +105,8 @@ interface DiffOp {
 let extensionUriGlobal: vscode.Uri;
 let viewProvider: DeepSeekViewProvider;
 let lastLocalExecutionPlan: LocalExecutionPlan | undefined;
-const pendingEdits = new Map<string, PendingEditRecord>();
+const pendingEdits = new PendingEditService<PendingEditRecord>();
+const chatRouteController = new ChatRouteController();
 /** G-2: pending terminal confirm Promises keyed by confirmId */
 const pendingTerminalConfirms = new Map<string, (allow: boolean, alwaysAllow?: boolean) => void>();
 /** G-5: Keep/Undo status bar item (shown when active file has pending AI edits) */
@@ -178,8 +130,14 @@ let extContext: vscode.ExtensionContext;
 const sessionRecentFiles = new Map<string, string>();
 /** 当前活跃的 session ID */
 let activeSessionId = '';
+const AGENT_CODE_FILE_RE = /(?:^|\/)(?:Makefile|CMakeLists\.txt)$|\.(cpp|c|h|hpp|cc|cxx|ts|tsx|js|jsx|mjs|py|rs|go|java|cs|rb|php|swift|kt|scala|dart|lua|r)$/i;
+const SESSION_CONTINUATION_RE = /(?:^\s*(?:再|继续|接着|然后|另外|顺便|也|把它|这个|上个|上次|刚才|刚刚|添加|加一个|改|改成|优化|修复|运行|编译|测试|验证))|(?:\b(?:continue|also|then|next|add|change|modify|update|fix|run|compile|test|verify)\b)|(?:\b(?:it|that|this|previous|last one)\b)/i;
 // P3-5: MCP manager (singleton; initialized lazily in activate)
 const mcpManager = new McpManager();
+
+function getSessionService(): SessionService | undefined {
+  return extContext ? new SessionService(extContext.workspaceState) : undefined;
+}
 
 const CONFIG_KEYS_TO_MIGRATE = [
   'serverPort',
@@ -243,6 +201,14 @@ interface AgentTaskCheckpoint {
   completedCount: number;       // tasks already done before interruption
   savedAt: number;
   sessionId: string;
+}
+
+interface AgentSessionState {
+  lastUserPrompt: string;
+  lastSummary: string;
+  changedPaths: string[];
+  completed: boolean;
+  savedAt: number;
 }
 
 /** Save or clear the agent task checkpoint. Pass null to clear (completed). */
@@ -920,7 +886,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
             wv.postMessage({ type: 'workflowStatus', ...status });
           }, msg.autoApply === true, async (change) => {
             await registerPendingEditChange(wv, change);
-          }, msg.files);
+          }, msg.files, { rollbackOnValidationFailure: msg.autoApply !== true });
 
           if (result.applied && result.validation && !result.validation.ok) {
             const originalPrompt = msg.prompt || '请根据自动验证失败结果继续修复，直到通过。';
@@ -1272,7 +1238,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         if (!id || !extContext) break;
         saveCurrentSession();
         activeSessionId = id;
-        extContext.workspaceState.update('devseek.activeSessionId', id);
+        getSessionService()?.setActiveSessionId(id);
         const files = extContext.workspaceState.get<Record<string, string>>(
           `deepseek.session.${id}.files`, {},
         ) ?? {};
@@ -1298,14 +1264,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
           : _baseHistory;
         lastConversationFiles = [];
         lastAnalysisText = extContext.workspaceState.get<string>(`deepseek.session.${id}.analysisText`, '') ?? '';
-        // Restore lastAgentChangedPaths from the saved file paths so "continue working on X"
-        // requests can resolve the correct file without needing explicit re-attachment.
-        const _wsRoot0 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-        lastAgentChangedPaths = Object.values(files)
-          .filter(abs => abs && _wsRoot0 && abs.startsWith(_wsRoot0))
-          .map(abs => nodePath.relative(_wsRoot0, abs).replace(/\\/g, '/'))
-          .filter(rel => rel && !rel.startsWith('..'))
-          .slice(0, 10);
+        restoreLastAgentPathsFromSession(id);
         // Send full history for rich session display, include changedFiles from meta
         const loadedMeta = getSessions().find(s => s.id === id);
         wv.postMessage({ type: 'sessionLoaded', id, history: loadedHistory, summary: loadedSummary,
@@ -1534,6 +1493,132 @@ function toContextDisplayLabels(files: string[]): string[] {
   return labels;
 }
 
+function relPathFromWorkspace(workspaceRoot: string, absPath: string): string | null {
+  if (!workspaceRoot || !absPath) return null;
+  try {
+    const rel = nodePath.relative(workspaceRoot, absPath).replace(/\\/g, '/');
+    if (!rel || rel.startsWith('..') || nodePath.isAbsolute(rel)) return null;
+    return rel;
+  } catch {
+    return null;
+  }
+}
+
+function absPathFromWorkspaceRel(workspaceRoot: string, relPath: string): string | null {
+  if (!workspaceRoot || !relPath) return null;
+  const abs = nodePath.isAbsolute(relPath) ? relPath : nodePath.join(workspaceRoot, relPath);
+  const resolved = nodePath.resolve(abs);
+  const root = nodePath.resolve(workspaceRoot);
+  if (resolved !== root && !resolved.startsWith(root + nodePath.sep)) return null;
+  return fs.existsSync(resolved) ? resolved : null;
+}
+
+function isLikelySessionContinuation(prompt: string): boolean {
+  const text = prompt.trim();
+  if (!text) return false;
+  if (SESSION_CONTINUATION_RE.test(text)) return true;
+  return text.length <= 40 && /(?:吧|一下|一点|一个|几个|些|more|again)$/i.test(text);
+}
+
+function loadAgentSessionState(sessionId = activeSessionId): AgentSessionState | undefined {
+  if (!extContext || !sessionId) return undefined;
+  return extContext.workspaceState.get<AgentSessionState>(`deepseek.session.${sessionId}.agentState`);
+}
+
+function saveAgentSessionState(state: AgentSessionState | null, sessionId = activeSessionId): void {
+  if (!extContext || !sessionId) return;
+  extContext.workspaceState.update(`deepseek.session.${sessionId}.agentState`, state ?? undefined);
+}
+
+function restoreLastAgentPathsFromSession(sessionId = activeSessionId): void {
+  const state = loadAgentSessionState(sessionId);
+  if (state?.changedPaths?.length) {
+    lastAgentChangedPaths = state.changedPaths.slice(0, 12);
+    return;
+  }
+  const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+  const files = extContext?.workspaceState.get<Record<string, string>>(
+    `deepseek.session.${sessionId}.files`, {},
+  ) ?? {};
+  lastAgentChangedPaths = Object.values(files)
+    .map(abs => relPathFromWorkspace(wsRoot, abs))
+    .filter((rel): rel is string => Boolean(rel))
+    .slice(0, 10);
+}
+
+function resolveSessionContinuationFiles(workspaceRoot: string, prompt: string): string[] {
+  if (!workspaceRoot || !isLikelySessionContinuation(prompt)) return [];
+
+  const candidates: string[] = [];
+  const state = loadAgentSessionState();
+  for (const rel of state?.changedPaths ?? []) candidates.push(rel);
+  for (const rel of lastAgentChangedPaths) candidates.push(rel);
+  for (const abs of sessionRecentFiles.values()) {
+    const rel = relPathFromWorkspace(workspaceRoot, abs);
+    if (rel) candidates.push(rel);
+  }
+
+  const resolved = [...new Set(candidates)]
+    .map(rel => absPathFromWorkspaceRel(workspaceRoot, rel))
+    .filter((abs): abs is string => Boolean(abs));
+  const codeFirst = resolved.filter(p => AGENT_CODE_FILE_RE.test(p));
+  if (codeFirst.length === 0) return [];
+  const supporting = resolved.filter(p => !AGENT_CODE_FILE_RE.test(p)).slice(0, 3);
+  return [...codeFirst.slice(0, 6), ...supporting];
+}
+
+function buildAgenticSessionContext(workspaceRoot: string, currentPrompt: string): string {
+  if (!workspaceRoot) return '';
+  const state = loadAgentSessionState();
+
+  const recentHistory = nonBridgeChatHistory
+    .slice(-6)
+    .map((entry) => {
+      const role = entry.role === 'user' ? '用户' : '助手';
+      const content = typeof entry.content === 'string'
+        ? entry.content
+        : JSON.stringify(entry.content);
+      return `- ${role}: ${content.replace(/\s+/g, ' ').slice(0, 700)}`;
+    });
+
+  const recentFiles = [...new Set(sessionRecentFiles.values())]
+    .filter(Boolean)
+    .map(abs => relPathFromWorkspace(workspaceRoot, abs) ?? abs)
+    .filter(p => p && !p.startsWith('..'))
+    .slice(0, 12);
+
+  if (recentHistory.length === 0 && recentFiles.length === 0 && !state?.lastSummary) return '';
+
+  const lines: string[] = [
+    '这是同一个聊天 session 的后续消息。当前用户消息如果是短句、追问、纠错或反馈，必须优先基于下面的上一轮上下文继续处理；不要把它当作全新任务，也不要默认扫描整个工作区目录。',
+    `当前用户消息：${currentPrompt}`,
+  ];
+  if (state?.lastSummary) {
+    lines.push('上一轮 Agent 状态：');
+    lines.push(`- 用户目标：${state.lastUserPrompt}`);
+    lines.push(`- 执行结果：${state.completed ? '已完成' : '未完成或需要复核'}`);
+    lines.push(`- 摘要：${state.lastSummary.slice(0, 800)}`);
+    if (state.changedPaths.length > 0) {
+      lines.push('- 涉及文件：');
+      lines.push(...state.changedPaths.slice(0, 12).map(p => `  - ${p}`));
+    }
+  }
+  if (lastAgentChangedPaths.length > 0) {
+    lines.push('上一轮 Agent 涉及/修改的文件：');
+    lines.push(...lastAgentChangedPaths.slice(0, 10).map(p => `- ${p}`));
+  }
+  if (recentFiles.length > 0) {
+    lines.push('本 session 最近文件记忆：');
+    lines.push(...recentFiles.map(p => `- ${p}`));
+  }
+  if (recentHistory.length > 0) {
+    lines.push('最近对话摘要：');
+    lines.push(...recentHistory);
+  }
+  lines.push('执行要求：若用户反馈“没有看到/找不到/不对/继续/重新编译/运行”等，先核查上一轮目标文件和目录的真实状态，再修复或验证；不要泛化为分析整个 code 目录。');
+  return lines.join('\n').slice(0, 6000);
+}
+
 /**
  * Detect an explicit file-extension filter in the user prompt, e.g. ".hpp" or "*.hpp".
  * Returns a strict regex like /\.hpp$/i when found, otherwise undefined.
@@ -1590,6 +1675,12 @@ function discoverFilesFromDirectoryPrompt(
   return candidates[0].files;
 }
 
+function buildSmalltalkReply(prompt: string): string {
+  const text = (prompt || '').trim().toLowerCase();
+  if (/^(?:hi|hello|ello|hey)[\s!.?]*$/.test(text)) return 'Hello! 我在。';
+  return '你好，我在。';
+}
+
 async function runChat(
   webview: vscode.Webview,
   userDisplay: string,
@@ -1632,7 +1723,7 @@ async function runChat(
     })();
     // Start new session
     activeSessionId = generateSessionId();
-    extContext?.workspaceState.update('devseek.activeSessionId', activeSessionId);
+    getSessionService()?.setActiveSessionId(activeSessionId);
     saveSessionMeta({ id: activeSessionId, title: userDisplay.slice(0, 50), createdAt: Date.now(), updatedAt: Date.now() });
     sessionRecentFiles.clear();
     saveCurrentSessionFiles();
@@ -1649,6 +1740,38 @@ async function runChat(
     lastConversationFiles = [];
     webview.postMessage({ type: 'contextFiles', files: [] });
   }
+
+  const initialRouteDecision = chatRouteController.decide({
+    userDisplay,
+    prompt,
+    files: effectiveFiles,
+    agentEnabled: vscode.workspace.getConfiguration('devseek').get<boolean>('agentEnabled', true),
+    forceNoAgent,
+    lookupLearnedIntent: extContext ? (text) => lookupLearnedIntent(text, extContext!) : undefined,
+  });
+
+  if (initialRouteDecision.intent.mode === 'smalltalk') {
+    if (newSession) {
+      webview.postMessage({ type: 'newSessionStarted' });
+    }
+    webview.postMessage({ type: 'userMessage', text: userDisplay, prompt, images });
+    webview.postMessage({
+      type: 'startResponse',
+      prompt: initialRouteDecision.intentRoutingText,
+      expectGeneratedArtifacts: false,
+      agentMode: false,
+    });
+    webview.postMessage({ type: 'delta', text: buildSmalltalkReply(initialRouteDecision.intentRoutingText) });
+    webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
+    webview.postMessage({ type: 'endResponse' });
+    if (extContext) recordIntentOutcome(initialRouteDecision.intentRoutingText, 'chat', activeSessionId, extContext);
+    if (activeChatAbortController === abortCtrl) {
+      activeChatAbortController = null;
+      activeAgentSteerQueue.length = 0;
+    }
+    return;
+  }
+
   // If this is the first user message of a restored session (history was not pre-loaded
   // on startup to avoid cross-session bleed), lazily inject the saved summary now so the
   // LLM has the right context. This only fires once: after first injection, history is
@@ -1676,6 +1799,17 @@ async function runChat(
       }
     }
   }
+
+  let sessionContinuationNote = '';
+  if (!newSession && !userExplicitlyAttachedFiles && effectiveFiles.length === 0) {
+    const workspaceRootForContinuation = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+    const continuationFiles = resolveSessionContinuationFiles(workspaceRootForContinuation, prompt);
+    if (continuationFiles.length > 0) {
+      effectiveFiles = continuationFiles;
+      sessionContinuationNote = `_[同一 session 续作] 已自动恢复上一轮工作文件：${toContextDisplayLabels(continuationFiles).join('、')}_\n\n`;
+    }
+  }
+
   if (effectiveFiles.length > 0) {
     lastConversationFiles = [...effectiveFiles];
     // L2: register attached files to session memory for later path resolution
@@ -1710,21 +1844,21 @@ async function runChat(
     webview.postMessage({ type: 'newSessionStarted' });
   }
   webview.postMessage({ type: 'userMessage', text: userDisplay, prompt, images });
-  // Check learned habits first (L2→L1→L0) before falling back to regex router
-  let intent = decideChatIntent(prompt);
-  if (extContext) {
-    const _learnedKind = lookupLearnedIntent(prompt, extContext);
-    if (_learnedKind !== null) {
-      intent = { ...intent, kind: _learnedKind, signals: ['learned-habit', ...intent.signals] };
-    }
-  }
+  const routeDecision = chatRouteController.decide({
+    userDisplay,
+    prompt,
+    files: effectiveFiles,
+    agentEnabled: vscode.workspace.getConfiguration('devseek').get<boolean>('agentEnabled', true),
+    forceNoAgent,
+    lookupLearnedIntent: extContext ? (text) => lookupLearnedIntent(text, extContext!) : undefined,
+  });
+  const { intentRoutingText, intent, toolPolicy, workflow } = routeDecision;
   const workflowReporter = async (status: ApplyWorkflowStatus): Promise<void> => {
     webview.postMessage({ type: 'workflowStatus', ...status });
   };
 
   // ── Agent Mode: two-phase Architect + Editor loop ────────────────────────
-  const agentEnabledByConfig = vscode.workspace.getConfiguration('devseek').get<boolean>('agentEnabled', true);
-  if (!forceNoAgent && agentEnabledByConfig && shouldUseAgentMode(intent, effectiveFiles)) {
+  if (workflow.useAgent) {
     // 只有 bridge provider 才需要检查 bridge 连接
     if (getActiveProviderType() === 'bridge') {
       const online2 = await status();
@@ -1743,6 +1877,9 @@ async function runChat(
     // P5: carry agentMode so webview can set isAgentMode synchronously on receipt
     webview.postMessage({ type: 'startResponse', prompt, expectGeneratedArtifacts: true, agentMode: true });
     // Emit the auto-discovery note as the first delta so the user knows files were found
+    if (sessionContinuationNote) {
+      webview.postMessage({ type: 'delta', text: sessionContinuationNote });
+    }
     if (autoDiscoveredNote) {
       webview.postMessage({ type: 'delta', text: autoDiscoveredNote });
     }
@@ -1755,8 +1892,7 @@ async function runChat(
       // ── Agentic routing: no code files → free-explore loop (Claude Code style) ──
       // This mirrors Copilot's principle: "no Working Set → no Architect phase".
       // The LLM drives tool exploration directly; we skip decomposeTask entirely.
-      const CODE_FILE_RE = /\.(cpp|c|h|hpp|cc|cxx|ts|tsx|js|jsx|mjs|py|rs|go|java|cs|rb|php|swift|kt|scala|dart|lua|r)$/i;
-      const hasCodeFiles = effectiveFiles.some(f => CODE_FILE_RE.test(f));
+      const hasCodeFiles = effectiveFiles.some(f => AGENT_CODE_FILE_RE.test(f));
       // Unified agentic loop handles all tasks without attached code files:
       // investigation (log/CSV analysis), pure code creation (no attached files),
       // and mixed data-file tasks. The loop now has create_file + all read tools,
@@ -1766,8 +1902,9 @@ async function runChat(
         // No code file attachments → agentic free-explore (investigate) mode
         const agWsRootPath = getWorkspaceRootFsPath(prompt, effectiveFiles);
         const agWsRoot = agWsRootPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+        const agSessionContext = buildAgenticSessionContext(agWsRoot, userDisplay);
         // Non-code files (logs, csvs, etc.) are passed directly
-        const dataFiles = effectiveFiles.filter(f => !CODE_FILE_RE.test(f));
+        const dataFiles = effectiveFiles.filter(f => !AGENT_CODE_FILE_RE.test(f));
         // Unlock webview delta gate: free-explore mode has no plan phase,
         // so send a no-op plan:completed so agentPlanDone = true immediately.
         postAgent({ type: 'agentStatus', phase: 'plan', state: 'completed', title: '', taskTotal: 0, detail: '' });
@@ -1806,6 +1943,11 @@ async function runChat(
             fs.appendFileSync(memPath, entry, 'utf8');
           },
           onBeforeFileWrite: async (absPath: string): Promise<boolean> => {
+            const writePermission = decideToolPermission(toolPolicy, 'edit');
+            if (writePermission.action === 'deny') {
+              webview.postMessage({ type: 'agentNotice', kind: 'warn', text: `当前 ${intent.mode} 模式不允许写入文件（${writePermission.reason}）。` });
+              return false;
+            }
             const wsRoot2 = agWsRoot;
             if (isFileProtected(absPath, wsRoot2)) {
               const relPath = wsRoot2 ? nodePath.relative(wsRoot2, absPath).replace(/\\/g, '/') : nodePath.basename(absPath);
@@ -1833,8 +1975,12 @@ async function runChat(
             ? (fakeName, args) => mcpManager.callTool(fakeName, args)
             : undefined,
           onTerminalCommand: async (command, workdir) => {
+            const terminalPermission = decideToolPermission(toolPolicy, 'terminal');
+            if (terminalPermission.action === 'deny') {
+              return `（命令未执行：当前 ${intent.mode} 模式不允许终端工具：${terminalPermission.reason}）`;
+            }
             const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-            if (!isAutopilot) {
+            if (terminalPermission.action === 'requireConfirm' || !isAutopilot) {
               const confirmId = `tc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
               const confirmResult = await new Promise<{ allow: boolean; alwaysAllow?: boolean; reason?: string }>((resolve) => {
                 pendingTerminalConfirms.set(confirmId, (allow, alwaysAllow) => resolve({ allow, alwaysAllow }));
@@ -2070,8 +2216,42 @@ async function runChat(
             if (completedUpToIndex === null) { saveAgentCheckpoint(null); webview.postMessage({ type: 'agentCheckpointCleared' }); }
           },
           autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
+        }, agSessionContext);
+        if (agResult.changedPaths.length > 0) {
+          lastAgentChangedPaths = agResult.changedPaths.map(p => {
+            const fsPath = nodePath.isAbsolute(p) ? p : nodePath.join(agWsRoot, p);
+            return agWsRoot ? nodePath.relative(agWsRoot, fsPath).replace(/\\/g, '/') : p;
+          }).filter(p => p && !p.startsWith('..'));
+          emitLearningEvent({ type: 'files_cochanged', paths: lastAgentChangedPaths, sessionId: activeSessionId });
+          agResult.changedPaths.forEach(p => {
+            const absPath = nodePath.isAbsolute(p) ? p : nodePath.join(agWsRoot, p);
+            registerToMemory(absPath);
+          });
+        }
+        const agChangedDetails = lastAgentChangedPaths.length > 0
+          ? '\n**涉及文件（workspace 相对路径）：**\n' + lastAgentChangedPaths.map(p => `  - ${p}`).join('\n')
+          : '';
+        agentHistoryText = `[Agentic] ${prompt.slice(0, 80)} → done (${agResult.tasksTotal} rounds)${agChangedDetails}`;
+        saveAgentSessionState({
+          lastUserPrompt: userDisplay,
+          lastSummary: agentHistoryText,
+          changedPaths: lastAgentChangedPaths.slice(0, 12),
+          completed: agResult.tasksFailed === 0,
+          savedAt: Date.now(),
         });
-        agentHistoryText = `[Agentic] ${prompt.slice(0, 80)} → done (${agResult.tasksTotal} rounds)`;
+        nonBridgeChatHistory.push({ role: 'user', content: userDisplay });
+        nonBridgeChatHistory.push({ role: 'assistant', content: agentHistoryText });
+        if (nonBridgeChatHistory.length > 40) nonBridgeChatHistory = nonBridgeChatHistory.slice(-40);
+        if (extContext && activeSessionId) {
+          const existingMeta = getSessions().find(s => s.id === activeSessionId);
+          if (existingMeta) {
+            saveSessionMeta({ ...existingMeta, updatedAt: Date.now() });
+          } else {
+            saveSessionMeta({ id: activeSessionId, title: userDisplay.slice(0, 50), createdAt: Date.now(), updatedAt: Date.now() });
+          }
+          saveCurrentSession();
+          recordIntentOutcome(intentRoutingText, 'code-change', activeSessionId, extContext);
+        }
         scheduleAutoAccept(webview);
         webview.postMessage({ type: 'endResponse' });
         return;
@@ -2081,6 +2261,12 @@ async function runChat(
       // (Skipped when resuming from a checkpoint — tasks are already known.)
       let tasks: import('./agent-task-decomposer').AgentTask[];
       let _decomposeProse = '';
+      const _wsFolderForContext = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      const sessionContextForAgent = buildAgenticSessionContext(_wsFolderForContext, userDisplay);
+      const shouldInjectSessionContext = sessionContextForAgent && isLikelySessionContinuation(userDisplay);
+      const promptForAgent = shouldInjectSessionContext
+        ? `${prompt}\n\n【同一会话续作上下文】\n${sessionContextForAgent}`
+        : prompt;
 
       if (resumeFromIndex !== undefined && resumeTasks && resumeTasks.length > 0) {
         // ── Resume path: restore tasks from checkpoint, skip LLM decompose ──
@@ -2121,7 +2307,7 @@ async function runChat(
               }
             : undefined;
         const decomposeResult = await decomposeTask(
-          prompt, effectiveFiles, mode,
+          promptForAgent, effectiveFiles, mode,
           (progress) => {
             postAgent({ type: 'agentStatus', phase: 'plan', state: 'started', title: progress });
           },
@@ -2137,7 +2323,7 @@ async function runChat(
             : undefined,
         );
 
-        tasks = decomposeResult.ok ? decomposeResult.tasks : inferTasksFromFiles(effectiveFiles, prompt);
+        tasks = decomposeResult.ok ? decomposeResult.tasks : inferTasksFromFiles(effectiveFiles, promptForAgent);
         _decomposeProse = decomposeResult.prose ?? '';
 
         // If tasks is empty (decompose failed or produced no tasks), show an error
@@ -2192,7 +2378,10 @@ async function runChat(
       const wsRootPath = getWorkspaceRootFsPath(prompt, effectiveFiles);
       const wsRoot = wsRootPath ? vscode.Uri.file(wsRootPath) : vscode.workspace.workspaceFolders?.[0]?.uri;
       if (wsRoot) {
-        const loopResult = await runAgentLoop(tasks, prompt, mode, wsRoot, {
+        const editorSessionContext = shouldInjectSessionContext
+          ? [lastAnalysisText, sessionContextForAgent].filter(Boolean).join('\n\n')
+          : (lastAnalysisText || undefined);
+        const loopResult = await runAgentLoop(tasks, promptForAgent, mode, wsRoot, {
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
               webview.postMessage({ type: 'resetResponse', text: delta.slice(7) });
@@ -2227,6 +2416,11 @@ async function runChat(
           // P-SEC: sensitive file protection — confirm before writing .env / *.pem / *.key etc.
           // §8.3: also enforce user-configured devseek.protectedFiles glob list (hard block, no confirm)
           onBeforeFileWrite: async (absPath: string): Promise<boolean> => {
+            const writePermission = decideToolPermission(toolPolicy, 'edit');
+            if (writePermission.action === 'deny') {
+              webview.postMessage({ type: 'agentNotice', kind: 'warn', text: `当前 ${intent.mode} 模式不允许写入文件（${writePermission.reason}）。` });
+              return false;
+            }
             const wsRoot2 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
             // §8.3: hard-block user-configured protected files (Copilot chat.tools.edits.autoApprove equivalent)
             if (isFileProtected(absPath, wsRoot2)) {
@@ -2258,8 +2452,12 @@ async function runChat(
           // P4-1: run_terminal tool — AI can execute shell commands from agent loop
           // G-2: replaced showWarningMessage modal with an inline confirm card in the webview
           onTerminalCommand: async (command, workdir) => {
+            const terminalPermission = decideToolPermission(toolPolicy, 'terminal');
+            if (terminalPermission.action === 'deny') {
+              return `（命令未执行：当前 ${intent.mode} 模式不允许终端工具：${terminalPermission.reason}）`;
+            }
             const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-            if (!isAutopilot) {
+            if (terminalPermission.action === 'requireConfirm' || !isAutopilot) {
               const confirmId = `tc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
               const confirmResult = await new Promise<{ allow: boolean; alwaysAllow?: boolean; reason?: string }>((resolve) => {
                 pendingTerminalConfirms.set(confirmId, (allow, alwaysAllow) => resolve({ allow, alwaysAllow }));
@@ -2536,7 +2734,7 @@ async function runChat(
             }
             // Save current progress so the user can resume later
             saveAgentCheckpoint({
-              userPrompt: prompt,
+              userPrompt: promptForAgent,
               displayPrompt: userDisplay,
               mode,
               wsRootFsPath: wsRoot.fsPath,
@@ -2555,7 +2753,7 @@ async function runChat(
               savedAt: Date.now(),
             });
           },
-        }, lastAnalysisText || undefined, resumeFromIndex ?? 0);
+        }, editorSessionContext, resumeFromIndex ?? 0);
         // P14: persist analysisText from this round for injection into next round's plan
         if (loopResult.analysisText) {
           lastAnalysisText = loopResult.analysisText;
@@ -2567,8 +2765,11 @@ async function runChat(
           const _wsRootFs = wsRoot ? (typeof wsRoot === 'string' ? wsRoot : (wsRoot as vscode.Uri).fsPath) : '';
           lastAgentChangedPaths = loopResult.changedPaths.map(p => {
             const fsPath = typeof p === 'string' ? p : (p as vscode.Uri).fsPath;
-            return _wsRootFs ? nodePath.relative(_wsRootFs, fsPath) : fsPath;
-          });
+            const absPath = nodePath.isAbsolute(fsPath)
+              ? fsPath
+              : (_wsRootFs ? nodePath.join(_wsRootFs, fsPath) : fsPath);
+            return _wsRootFs ? relPathFromWorkspace(_wsRootFs, absPath) : fsPath.replace(/\\/g, '/');
+          }).filter((rel): rel is string => Boolean(rel));
           emitLearningEvent({ type: 'files_cochanged', paths: lastAgentChangedPaths, sessionId: activeSessionId });
           // L2: register absolute paths to session memory for later resolution.
           // changedPaths from workspace-applier are workspace-relative strings;
@@ -2613,12 +2814,26 @@ async function runChat(
           _changedDetails,
           _analysisSnippet,
         ].filter(Boolean).join('\n') || `[Agent] 已完成 ${tasks.length} 个子任务`;
+        saveAgentSessionState({
+          lastUserPrompt: userDisplay,
+          lastSummary: agentHistoryText,
+          changedPaths: lastAgentChangedPaths.slice(0, 12),
+          completed: loopResult.tasksFailed === 0,
+          savedAt: Date.now(),
+        });
       }
     } catch (e) {
       const msg = (e as Error).message;
       postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: `Agent 执行出错：${msg}` });
       webview.postMessage({ type: 'error', text: msg, loginRequired: msg === 'LOGIN_REQUIRED' });
       agentHistoryText = agentHistoryText || `[Agent 执行出错] ${msg.slice(0, 200)}`;
+      saveAgentSessionState({
+        lastUserPrompt: userDisplay,
+        lastSummary: agentHistoryText,
+        changedPaths: lastAgentChangedPaths.slice(0, 12),
+        completed: false,
+        savedAt: Date.now(),
+      });
     }
 
     // L1a: persist agent turn to session history so sessions can be saved and restored
@@ -2635,7 +2850,7 @@ async function runChat(
         }
         saveCurrentSession();
         // Record agent-mode outcome for learning
-        recordIntentOutcome(prompt, 'code-change', activeSessionId, extContext);
+        recordIntentOutcome(intentRoutingText, 'code-change', activeSessionId, extContext);
       }
     }
 
@@ -2721,7 +2936,7 @@ async function runChat(
       }
     }
 
-    if (effectiveFiles.length > 0) {
+    if (effectiveFiles.length > 0 && intent.kind === 'code-change') {
       // 有附件时使用含实际路径的具体格式示例，覆盖泛化提示
       // 仅当用户本轮显式附加了文件，或对话历史为空（首轮）时才注入格式提示
       // 避免历史中已有文件内容时重复注入，浪费 token
@@ -2750,6 +2965,25 @@ async function runChat(
     const localExecutionFirst = config.get<boolean>('localExecutionFirst', true);
     const executionApproval = config.get<'auto' | 'confirm'>('executionApproval', 'auto');
     const workspaceRoot = getWorkspaceRootFsPath(finalPrompt, effectiveFiles);
+    let routeFiles = effectiveFiles;
+    const noAgentCodeChat = !workflow.useAgent && intent.kind === 'code-change';
+
+    if (intent.kind === 'chat' && effectiveFiles.length > 0) {
+      const attachmentContext = buildLocalAttachmentContextPrompt(finalPrompt, effectiveFiles, { workspaceRoot });
+      finalPrompt = attachmentContext.prompt;
+      if (attachmentContext.inlinedFiles.length > 0) {
+        routeFiles = [];
+      }
+    }
+
+    if (noAgentCodeChat) {
+      finalPrompt = [
+        '[系统] 当前为 no-agent 普通对话模式。禁止输出 [TOOL:...]、JSON 工具调用、create_file/write_file/replace_file 等内部工具协议。',
+        '如需给出文件修改，请使用普通 Markdown：文件路径标题 + 完整代码块。',
+        '',
+        finalPrompt,
+      ].join('\n');
+    }
 
     if (localExecutionFirst) {
       let localPlan: LocalExecutionPlan | undefined;
@@ -2863,7 +3097,7 @@ async function runChat(
 
           const applyResult = await applyGeneratedArtifactsWithPrompt(repairResponse, repairPrompt, workflowReporter, true, async (change) => {
             await registerPendingEditChange(webview, change);
-          }, repairFiles);
+          }, repairFiles, { rollbackOnValidationFailure: false });
           if (!applyResult.applied) {
             await workflowReporter({
               phase: 'repair',
@@ -2883,38 +3117,50 @@ async function runChat(
       displayPrompt: userDisplay,
       newSession,
       mode,
-      files: effectiveFiles,
+      files: routeFiles,
       images,
+      stream: noAgentCodeChat ? false : undefined,
       trackHistory: true, // 主聊天调用维护对话历史（多轮记忆）
       signal: chatSignal,
-      onDelta: (delta) => {
-        if (delta.startsWith('\x00RESET\x00')) {
-          webview.postMessage({ type: 'resetResponse', text: delta.slice(7) });
-        } else {
-          webview.postMessage({ type: 'delta', text: delta });
-        }
-      },
+      onDelta: noAgentCodeChat ? undefined : (delta) => {
+          if (delta.startsWith('\x00RESET\x00')) {
+            webview.postMessage({ type: 'resetResponse', text: delta.slice(7) });
+          } else {
+            webview.postMessage({ type: 'delta', text: delta });
+          }
+        },
       onUsage: (usage) => {
         webview.postMessage({ type: 'tokenUsage', promptTokens: usage.promptTokens, completionTokens: usage.completionTokens });
       },
     });
 
+    const finalResponseForUser = noAgentCodeChat ? stripToolCallBlocks(finalResponse) : finalResponse;
+    const finalResponseForArtifacts = noAgentCodeChat ? finalResponseForUser : finalResponse;
+    if (noAgentCodeChat) {
+      webview.postMessage({
+        type: 'delta',
+        text: finalResponseForUser || '（no-agent 模式已忽略模型返回的内部工具调用；请重试，或开启 Agent 模式执行工具调用。）',
+      });
+    }
+
     // P10 (收紧)：只有 code-change 意图才解析文件候选。
     // 问题B修复：analyze/explain 意图即使有文件附件也绝不触发文件检测面板。
     if (intent.kind === 'code-change' && (intent.addStructuredHint || effectiveFiles.length > 0)) {
-      await emitResponseMeta(webview, finalResponse);
+      await emitResponseMeta(webview, finalResponseForArtifacts);
     } else {
       webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
     }
 
-    const parsedArtifacts = parseGeneratedArtifacts(finalResponse);
-    let responseToApply = finalResponse;
-    let shouldApplyToReviewQueue = parsedArtifacts.length > 0 || shouldAutoApplyFromResponse(intent, finalResponse, autoApplyPolicy);
+    const canApplyArtifacts = intent.kind === 'code-change';
+    const parsedArtifacts = canApplyArtifacts ? parseGeneratedArtifacts(finalResponseForArtifacts) : [];
+    let responseToApply = finalResponseForArtifacts;
+    let shouldApplyToReviewQueue = canApplyArtifacts
+      && (parsedArtifacts.length > 0 || shouldAutoApplyFromResponse(intent, finalResponseForArtifacts, autoApplyPolicy));
 
     // 兜底1：注入已知路径让 parser 能关联代码块
-    if (!shouldApplyToReviewQueue && effectiveFiles.length > 0 && /```[\s\S]*?```/.test(finalResponse)) {
-      responseToApply = injectFileHintsIntoResponse(finalResponse, effectiveFiles);
-      if (responseToApply !== finalResponse) {
+    if (canApplyArtifacts && !shouldApplyToReviewQueue && effectiveFiles.length > 0 && /```[\s\S]*?```/.test(finalResponseForArtifacts)) {
+      responseToApply = injectFileHintsIntoResponse(finalResponseForArtifacts, effectiveFiles);
+      if (responseToApply !== finalResponseForArtifacts) {
         const hintedArtifacts = parseGeneratedArtifacts(responseToApply);
         if (hintedArtifacts.length > 0) {
           shouldApplyToReviewQueue = true;
@@ -2923,7 +3169,7 @@ async function runChat(
     }
 
     // 兜底2：注入仍然失败 → 追问 DeepSeek 按标准格式重新整理输出（参考 Aider 的 retry 思路）
-    if (!shouldApplyToReviewQueue && effectiveFiles.length > 0 && /```[\s\S]*?```/.test(finalResponse)) {
+    if (canApplyArtifacts && !shouldApplyToReviewQueue && effectiveFiles.length > 0 && /```[\s\S]*?```/.test(finalResponseForArtifacts)) {
       const reformatReq = buildReformatPrompt(effectiveFiles);
       webview.postMessage({ type: 'delta', text: '\n\n---\n_[系统] 未识别到文件路径标注，正在请求按标准格式重新整理输出…_\n' });
       try {
@@ -2952,7 +3198,7 @@ async function runChat(
     if (shouldApplyToReviewQueue) {
       const firstApply = await applyGeneratedArtifactsWithPrompt(responseToApply, finalPrompt, workflowReporter, true, async (change) => {
         await registerPendingEditChange(webview, change);
-      }, effectiveFiles);
+      }, effectiveFiles, { rollbackOnValidationFailure: false });
       if (firstApply.applied && firstApply.validation && !firstApply.validation.ok) {
         await runClosedLoopRepair(webview, workflowReporter, finalPrompt, mode, firstApply);
       }
@@ -2983,7 +3229,7 @@ async function runChat(
     }
   } finally {
     // Record chat-mode outcome for learning
-    if (extContext) recordIntentOutcome(prompt, intent.kind as 'chat' | 'code-change', activeSessionId, extContext);
+    if (extContext) recordIntentOutcome(intentRoutingText, intent.kind as 'chat' | 'code-change', activeSessionId, extContext);
     // 释放 AbortController 引用，防止内存泄漏
     if (activeChatAbortController === abortCtrl) {
       activeChatAbortController = null;
@@ -3067,6 +3313,7 @@ async function runClosedLoopRepair(
         await registerPendingEditChange(webview, change);
       },
       lastConversationFiles,
+      { rollbackOnValidationFailure: false },
     );
     if (!current.applied) {
       await reporter({
@@ -3984,18 +4231,15 @@ function getNonce(): string {
 // ================================================================
 
 function generateSessionId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  return getSessionService()?.generateSessionId() ?? (Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
 }
 
 function getSessions(): SessionMeta[] {
-  return extContext?.workspaceState.get<SessionMeta[]>('devseek.sessions', []) ?? [];
+  return getSessionService()?.getSessions() ?? [];
 }
 
 function saveSessionMeta(meta: SessionMeta): void {
-  if (!extContext) return;
-  const sessions = getSessions().filter(s => s.id !== meta.id);
-  sessions.unshift(meta);
-  extContext.workspaceState.update('devseek.sessions', sessions.slice(0, 100));
+  getSessionService()?.saveSessionMeta(meta);
 }
 
 function saveCurrentSession(): void {
@@ -4072,12 +4316,7 @@ ${histText}`;
     const digestLine = lines.find(l => l.length > 15 && !l.startsWith('#') && !l.startsWith('-') && !l.startsWith('*'));
     const digest = (digestLine || lines[0] || summary).replace(/[#*`]/g, '').trim().slice(0, 150);
     // Update SessionMeta with digest
-    const sessions = extContext.workspaceState.get<SessionMeta[]>('devseek.sessions', []) ?? [];
-    const idx = sessions.findIndex(s => s.id === sessionId);
-    if (idx >= 0) {
-      sessions[idx] = { ...sessions[idx], digest };
-      extContext.workspaceState.update('devseek.sessions', sessions);
-    }
+    getSessionService()?.updateSessionMeta(sessionId, { digest });
   } catch {
     // compact failure is non-critical, ignore
   }
@@ -4097,18 +4336,13 @@ function registerToMemory(absPath: string): void {
 }
 
 function deleteSession(id: string): void {
-  if (!extContext) return;
-  const sessions = getSessions().filter(s => s.id !== id);
-  extContext.workspaceState.update('devseek.sessions', sessions);
-  void extContext.workspaceState.update(`deepseek.session.${id}.history`, undefined);
-  void extContext.workspaceState.update(`deepseek.session.${id}.files`, undefined);
-  void extContext.workspaceState.update(`deepseek.session.${id}.summary`, undefined);
-  void extContext.workspaceState.update(`deepseek.session.${id}.analysisText`, undefined);
+  getSessionService()?.deleteSession(id);
 }
 
 function initOrRestoreSession(): void {
   if (!extContext) return;
-  const savedId = extContext.workspaceState.get<string>('devseek.activeSessionId', '');
+  const sessionService = getSessionService();
+  const savedId = sessionService?.getActiveSessionId() ?? '';
   const sessions = getSessions();
   if (savedId && sessions.some(s => s.id === savedId)) {
     activeSessionId = savedId;
@@ -4126,16 +4360,10 @@ function initOrRestoreSession(): void {
     // L2: restore analysis context from workspaceState (persists analyze findings across reload)
     const savedAnalysis = extContext.workspaceState.get<string>(`deepseek.session.${savedId}.analysisText`, '') ?? '';
     if (savedAnalysis) lastAnalysisText = savedAnalysis;
-    // Restore lastAgentChangedPaths from saved file paths for file resolution on next request
-    const _wsRoot0Init = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-    lastAgentChangedPaths = Object.values(files)
-      .filter(abs => abs && _wsRoot0Init && abs.startsWith(_wsRoot0Init))
-      .map(abs => nodePath.relative(_wsRoot0Init, abs).replace(/\\/g, '/'))
-      .filter(rel => rel && !rel.startsWith('..'))
-      .slice(0, 10);
+    restoreLastAgentPathsFromSession(savedId);
   } else {
     activeSessionId = generateSessionId();
-    extContext.workspaceState.update('devseek.activeSessionId', activeSessionId);
+    sessionService?.setActiveSessionId(activeSessionId);
   }
 }
 
