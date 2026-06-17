@@ -190,7 +190,7 @@ export async function runLLMAgentLoop(
   callbacks: LoopCallbacks,
   maxRounds = MAX_ROUNDS,
 ): Promise<string> {
-  const history: HistoryEntry[] = [];
+  const history: HistoryEntry[] = [{ role: 'user', content: userPrompt }];
   const provider = getActiveProvider();
   const projectRules = await getProjectRules();
   const systemPrompt = buildSystemPrompt(projectRules);
@@ -209,8 +209,6 @@ export async function runLLMAgentLoop(
     const messages: ChatMessage[] = [
       { role: 'system', content: systemPrompt },
       ...compressedHistory,
-      // 第一轮是原始问题；后续轮次如有历史则无需重复
-      ...(round === 1 ? [{ role: 'user' as const, content: userPrompt }] : []),
     ];
 
     // 如果第一轮之后无新 user 消息（纯续跑），提示 AI 继续

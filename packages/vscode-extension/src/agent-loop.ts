@@ -55,6 +55,10 @@ import {
   ApplyWorkflowStatus,
   ApplyWorkflowResult,
 } from './workspace-applier';
+import {
+  resolveGeneratedArtifactPathForPrompt,
+  resolveWorkspaceWritePath,
+} from './workspace/path-resolver';
 import { looksLikeRawToolCallText, parseGeneratedArtifacts } from './generated-file-parser';
 import { runLocalExecution, LocalExecutionPlan, planLocalExecution } from './execution-planner';
 import { McpToolRef } from './mcp/client';
@@ -546,14 +550,7 @@ function inferInitialAgenticTodos(userPrompt: string): TodoItem[] {
 }
 
 function normalizeGeneratedArtifactPathForAgent(rawPath: string, userPrompt: string): string {
-  const p = (rawPath || '').trim().replace(/\\/g, '/').replace(/^\.\//, '');
-  if (!p || nodePath.isAbsolute(p)) return p;
-  if (promptRequestsCodeDirectory(userPrompt) && isCodeArtifactPath(p)) {
-    const base = nodePath.posix.basename(p);
-    if (p.startsWith('code/')) return p;
-    if (base && base !== '.' && base !== '..') return `code/${base}`;
-  }
-  return p;
+  return resolveGeneratedArtifactPathForPrompt(rawPath, userPrompt);
 }
 
 function promptRequestsCodeDirectory(userPrompt: string): boolean {
@@ -580,34 +577,45 @@ function defaultCodeArtifactBasename(userPrompt: string): string {
   return /(?:三维|3d|3D|OpenGL|GLUT|动画世界)/i.test(userPrompt) ? '3d_world' : 'main';
 }
 
-function normalizeExplicitFileWritePathForAgent(rawPath: string, userPrompt: string, content: string): { path: string; note?: string } {
-  let p = (rawPath || '').trim().replace(/\\/g, '/').replace(/^\.\//, '');
-  if (!p) return { path: p };
-  const original = p;
-  if (promptRequestsCodeDirectory(userPrompt) && (isCodeArtifactPath(p) || p.endsWith('/') || p === 'code' || !nodePath.posix.extname(p))) {
-    const wantsCpp = promptLooksLikeCppProgram(userPrompt) || contentLooksLikeCppProgram(content);
-    const wantsC = !wantsCpp && (promptLooksLikeCProgram(userPrompt) || contentLooksLikeCProgram(content));
-    const ext = wantsCpp ? '.cpp' : wantsC ? '.c' : (nodePath.posix.extname(p) || '.txt');
-    if (p.endsWith('/') || p === 'code') {
-      p = `code/${defaultCodeArtifactBasename(userPrompt)}${ext}`;
-    } else if (!nodePath.posix.extname(p)) {
-      p = p.includes('/') ? `code/${nodePath.posix.basename(p)}${ext}` : `code/${p}${ext}`;
-    } else if (isCodeArtifactPath(p) && !p.startsWith('code/')) {
-      p = `code/${nodePath.posix.basename(p)}`;
-    } else if (wantsCpp && !/\.(?:cpp|cc|cxx|hpp|h)$/i.test(p)) {
-      p = `code/${nodePath.posix.basename(p).replace(/\.[^/.]+$/, '')}.cpp`;
-    } else if (wantsC && !/\.(?:c|h)$/i.test(p)) {
-      p = `code/${nodePath.posix.basename(p).replace(/\.[^/.]+$/, '')}.c`;
-    }
-  } else {
-    p = normalizeGeneratedArtifactPathForAgent(p, userPrompt);
+function normalizeExplicitFileWritePathForAgent(
+  rawPath: string,
+  userPrompt: string,
+  content: string,
+  workspaceRootFsPath?: string,
+  defaultWorkdir?: string,
+): { path: string; absPath?: string; note?: string } {
+  const resolved = resolveWorkspaceWritePath(rawPath, {
+    requestPrompt: userPrompt,
+    content,
+    workspaceRootFsPath,
+    defaultWorkdir,
+  });
+  if (resolved) {
+    return {
+      path: resolved.relPath,
+      absPath: resolved.absPath,
+      ...(resolved.note ? { note: resolved.note } : {}),
+    };
   }
-  return p === original ? { path: p } : { path: p, note: `路径“${original}”不满足当前任务的源码文件要求，已纠正为“${p}”` };
+
+  const p = normalizeGeneratedArtifactPathForAgent(rawPath, userPrompt);
+  return { path: p };
 }
 
 function isInsideWorkspace(absPath: string, workspaceRoot: string): boolean {
   const rel = nodePath.relative(workspaceRoot, absPath);
   return rel === '' || (!!rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel));
+}
+
+function inferWorkspaceRootForAgentTool(defaultWorkdir?: string): string {
+  if (defaultWorkdir) {
+    for (const folder of vscode.workspace.workspaceFolders ?? []) {
+      if (isInsideWorkspace(defaultWorkdir, folder.uri.fsPath)) {
+        return folder.uri.fsPath;
+      }
+    }
+  }
+  return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? defaultWorkdir ?? process.cwd();
 }
 
 function shellQuote(value: string): string {
@@ -729,7 +737,7 @@ async function applyMarkdownFileArtifactsForLoop(
 ): Promise<{ feedbackForAI: string; writtenFiles: WrittenFileEvidence[] }> {
   const parsed = parseGeneratedArtifacts(text)
     .filter((artifact): artifact is Extract<ReturnType<typeof parseGeneratedArtifacts>[number], { type: 'file' }> => artifact.type === 'file')
-    .map(artifact => ({ path: normalizeGeneratedArtifactPathForAgent(artifact.path, userPrompt), content: artifact.content }));
+    .map(artifact => ({ path: artifact.path, content: artifact.content }));
   const inferred = parsed.length > 0 ? [] : inferCArtifactFromMarkdown(text, userPrompt);
   const candidates = parsed.length > 0 ? parsed : inferred;
   const feedback: string[] = [];
@@ -738,19 +746,21 @@ async function applyMarkdownFileArtifactsForLoop(
 
   for (const artifact of candidates) {
     if (!artifact.path || !artifact.content.trim()) continue;
-    if (!isLikelyWritableFilePathForAgent(artifact.path)) {
+    const resolvedWrite = resolveWorkspaceWritePath(artifact.path, {
+      requestPrompt: userPrompt,
+      content: artifact.content,
+      workspaceRootFsPath: workspaceRoot,
+      defaultWorkdir: workspaceRoot,
+    });
+    if (!resolvedWrite) {
+      feedback.push(`[generated_file: ${artifact.path}] 跳过（无法解析为工作区内路径）`);
+      continue;
+    }
+    if (!isLikelyWritableFilePathForAgent(resolvedWrite.relPath)) {
       feedback.push(`[generated_file: ${artifact.path}] 跳过（目标是目录或缺少文件名）`);
       continue;
     }
-    const absPath = nodePath.isAbsolute(artifact.path)
-      ? artifact.path
-      : nodePath.join(workspaceRoot, artifact.path);
-    const resolvedRoot = nodePath.resolve(workspaceRoot);
-    const resolvedAbs = nodePath.resolve(absPath);
-    if (!resolvedAbs.startsWith(resolvedRoot + nodePath.sep) && resolvedAbs !== resolvedRoot) {
-      feedback.push(`[generated_file: ${artifact.path}] 跳过（路径在工作区外）`);
-      continue;
-    }
+    const resolvedAbs = resolvedWrite.absPath;
     if (seen.has(resolvedAbs)) continue;
     seen.add(resolvedAbs);
     try {
@@ -766,7 +776,7 @@ async function applyMarkdownFileArtifactsForLoop(
         continue;
       }
     }
-    callbacks.onToolActivity?.('write', artifact.path);
+    callbacks.onToolActivity?.('write', resolvedWrite.relPath);
     const writeResult = workspaceEditService.writeTextFileSync(resolvedAbs, artifact.content);
     await callbacks.onAppliedChange({ path: resolvedAbs, ...writeResult });
     const newLines = artifact.content.split('\n').length;
@@ -778,7 +788,7 @@ async function applyMarkdownFileArtifactsForLoop(
       linesRemoved: oldLines,
       action: writeResult.existed ? 'modify' : 'create',
     });
-    feedback.push(`[generated_file: ${artifact.path}] 已写入 (${newLines} 行)`);
+    feedback.push(`[generated_file: ${artifact.path}] 已写入 ${resolvedWrite.relPath} (${newLines} 行)`);
   }
 
   return { feedbackForAI: feedback.join('\n'), writtenFiles };
@@ -788,7 +798,14 @@ async function executeFakeToolsForLoop(
   tools: FakeTool[],
   callbacks: AgentLoopCallbacks,
   defaultWorkdir?: string,
-  taskContext?: { currentTaskIndex: number; taskTotal: number; deferDoneStatus?: boolean; requireWorkBeforeComplete?: boolean; userPrompt?: string },
+  taskContext?: {
+    currentTaskIndex: number;
+    taskTotal: number;
+    deferDoneStatus?: boolean;
+    requireWorkBeforeComplete?: boolean;
+    userPrompt?: string;
+    workspaceRoot?: string;
+  },
 ): Promise<ToolLoopResult> {
   let taskComplete = false;
   let toolCallsMade = false;
@@ -811,6 +828,7 @@ async function executeFakeToolsForLoop(
   // This is the Copilot/Claude Code pattern: orchestrator owns task-sequence state,
   // not the model.
   const isLastTask = !taskContext || taskContext.currentTaskIndex >= taskContext.taskTotal;
+  const workspaceRoot = taskContext?.workspaceRoot ?? inferWorkspaceRootForAgentTool(defaultWorkdir);
 
   for (let toolIndex = 0; toolIndex < tools.length; toolIndex++) {
     const tool = tools[toolIndex];
@@ -1040,7 +1058,7 @@ async function executeFakeToolsForLoop(
         callbacks.onToolActivity?.('write', rawPath);
         try {
           const taskPrompt = taskContext?.userPrompt ?? '';
-          const normalized = normalizeExplicitFileWritePathForAgent(rawPath, taskPrompt, content);
+          const normalized = normalizeExplicitFileWritePathForAgent(rawPath, taskPrompt, content, workspaceRoot, defaultWorkdir);
           if (normalized.note) parts.push(`[${tool.name}: ${rawPath}] 诊断: ${normalized.note}`);
           if (!content && requiresCodeArtifactForEvidence(taskPrompt)) {
             parts.push(`[${tool.name}: ${rawPath}] 错误: content 为空，不能创建空源码文件。请提供完整文件内容。`);
@@ -1050,12 +1068,9 @@ async function executeFakeToolsForLoop(
             parts.push(`[${tool.name}: ${rawPath}] 错误: content 是工具调用文本，不是文件内容，已阻止写入。请只把目标文件源码放入 content。`);
             continue;
           }
-          const targetPath = normalized.path;
-          const absPath = nodePath.isAbsolute(targetPath)
-            ? targetPath
-            : nodePath.join(defaultWorkdir ?? '', targetPath);
-          if (defaultWorkdir && !isInsideWorkspace(absPath, defaultWorkdir)) {
-            parts.push(`[${tool.name}: ${rawPath}] 错误: 目标路径不在工作区内，已阻止写入：${absPath}`);
+          const absPath = normalized.absPath;
+          if (!absPath) {
+            parts.push(`[${tool.name}: ${rawPath}] 错误: 无法解析为工作区内文件路径，已阻止写入。`);
             continue;
           }
           if (callbacks.onBeforeFileWrite) {
@@ -1090,14 +1105,13 @@ async function executeFakeToolsForLoop(
             linesRemoved: oldLines,
             action: writeResult.existed ? 'modify' : 'create',
           });
-          parts.push(`[${tool.name}: ${rawPath}] 已写入 ${nodePath.relative(defaultWorkdir ?? nodePath.dirname(absPath), absPath).replace(/\\/g, '/')} (${newLines} 行)`);
+          parts.push(`[${tool.name}: ${rawPath}] 已写入 ${normalized.path} (${newLines} 行)`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           const code = typeof err === 'object' && err && 'code' in err ? String((err as NodeJS.ErrnoException).code) : '';
           if ((code === 'EACCES' || code === 'EPERM') && callbacks.onTerminalCommand) {
-            const normalized = normalizeExplicitFileWritePathForAgent(rawPath, taskContext?.userPrompt ?? '', content);
-            const absPath = nodePath.isAbsolute(normalized.path) ? normalized.path : nodePath.join(defaultWorkdir ?? '', normalized.path);
-            const dir = nodePath.dirname(absPath);
+            const normalized = normalizeExplicitFileWritePathForAgent(rawPath, taskContext?.userPrompt ?? '', content, workspaceRoot, defaultWorkdir);
+            const dir = normalized.absPath ? nodePath.dirname(normalized.absPath) : (defaultWorkdir ?? workspaceRoot);
             callbacks.onToolActivity?.('terminal', `请求修复写入权限: ${nodePath.basename(dir)}`);
             const repair = await callbacks.onTerminalCommand(`chmod u+w ${shellQuote(dir)}`, defaultWorkdir);
             parts.push(`[${tool.name}: ${rawPath}] 权限不足: ${msg}\n[permission_repair]\n${repair}`);
@@ -1841,7 +1855,14 @@ async function executeAnalysisConsolidated(
         callbacks.signal,
         i === 0 ? newSession : false, // only the first file uses newSession
       );
-      await executeFakeToolsForLoop(fTools, callbacks);
+      const analyzeWorkdir = t.absPath ? nodePath.dirname(t.absPath) : undefined;
+      await executeFakeToolsForLoop(fTools, callbacks, analyzeWorkdir, {
+        currentTaskIndex: i + 1,
+        taskTotal: total,
+        deferDoneStatus: true,
+        userPrompt,
+        workspaceRoot: inferWorkspaceRootForAgentTool(analyzeWorkdir),
+      });
       fileAnalyses.push({ file: basename, text: fileText });
 
       await callbacks.onAgentStatus({
@@ -2085,7 +2106,13 @@ async function executeTask(
         );
         execMessages.push({ role: 'assistant', content: text });
         // Pass analyzeWorkdir so run_terminal defaults to task directory when AI omits workdir.
-        const loopRes = await executeFakeToolsForLoop(tools, callbacks, analyzeWorkdir, { currentTaskIndex: taskIndex, taskTotal: allTasks.length, deferDoneStatus: true });
+        const loopRes = await executeFakeToolsForLoop(tools, callbacks, analyzeWorkdir, {
+          currentTaskIndex: taskIndex,
+          taskTotal: allTasks.length,
+          deferDoneStatus: true,
+          userPrompt,
+          workspaceRoot: workspaceRoot.fsPath,
+        });
         if (loopRes.taskComplete) { return { applied: false, raw: analyzeRaw, taskComplete: true }; }
         if (!loopRes.toolCallsMade) break;
         execMessages.push({
@@ -2161,7 +2188,13 @@ async function executeTask(
       taskMessages.push({ role: 'assistant', content: text });
       raw = text;
 
-      const loopRes = await executeFakeToolsForLoop(tools, callbacks, editorWorkdir, { currentTaskIndex: taskIndex, taskTotal: allTasks.length, deferDoneStatus: true });
+      const loopRes = await executeFakeToolsForLoop(tools, callbacks, editorWorkdir, {
+        currentTaskIndex: taskIndex,
+        taskTotal: allTasks.length,
+        deferDoneStatus: true,
+        userPrompt,
+        workspaceRoot: workspaceRoot.fsPath,
+      });
       if (loopRes.taskComplete) {
         // For create/modify tasks: if the AI emitted file content + task_complete
         // in the same response, fall through to the file-writing path instead of
@@ -2324,7 +2357,13 @@ ${loopRes.feedbackForAI}
     try {
       const { text: rText, tools: rTools } = await chatViaProvider(retryPrompt, mode, undefined, history, callbacks.signal, false);
       retryRaw = rText;
-      await executeFakeToolsForLoop(rTools, callbacks);
+      await executeFakeToolsForLoop(rTools, callbacks, editorWorkdir, {
+        currentTaskIndex: taskIndex,
+        taskTotal: allTasks.length,
+        deferDoneStatus: true,
+        userPrompt,
+        workspaceRoot: workspaceRoot.fsPath,
+      });
     } catch { /* retry failed, fall through */ }
 
     if (retryRaw) {
@@ -2418,6 +2457,71 @@ interface ValidationOutcome {
   reason?: string;
 }
 
+function getAgentAutoFixRounds(): number {
+  const configured = vscode.workspace.getConfiguration('devseek').get<number>('autoFixRounds', 6);
+  return Math.max(0, Math.min(6, configured));
+}
+
+function selectValidationRepairTarget(validation: ValidationOutcome, modifiedPaths: string[]): string | undefined {
+  const haystack = `${validation.command ?? ''}\n${validation.detail ?? ''}`;
+  const mentioned = modifiedPaths.find((filePath) => haystack.includes(nodePath.basename(filePath)));
+  return mentioned ?? modifiedPaths[0];
+}
+
+function buildValidationRepairContext(
+  baseContext: string | undefined,
+  validation: ValidationOutcome,
+  repairRound: number,
+  maxRepairRounds: number,
+  modifiedPaths: string[],
+): string {
+  const validationContext = [
+    '【自动验证失败，需要继续修复】',
+    `修复轮次: ${repairRound}/${maxRepairRounds}`,
+    `失败原因: ${validation.reason ?? 'validation-failed'}`,
+    validation.command ? `失败命令: ${validation.command}` : '',
+    '失败输出:',
+    '```text',
+    (validation.detail || '（无输出）').slice(0, 6000),
+    '```',
+    '',
+    '请像 Claude Code/Codex 的闭环执行一样处理：先根据失败输出定位根因，再最小修改相关源码，修改后系统会自动重新编译/运行验证。',
+    '不要只解释原因，不要把失败状态标记为完成。',
+    modifiedPaths.length > 0
+      ? `本轮已变更的可验证文件: ${modifiedPaths.map((p) => nodePath.basename(p)).join('、')}`
+      : '',
+  ].filter(Boolean).join('\n');
+  return [baseContext, validationContext].filter(Boolean).join('\n\n');
+}
+
+function makeValidationRepairTask(
+  absPath: string,
+  workspaceRoot: vscode.Uri,
+  validation: ValidationOutcome,
+  repairRound: number,
+): AgentTask {
+  const rel = nodePath.relative(workspaceRoot.fsPath, absPath).replace(/\\/g, '/');
+  return {
+    id: `validation-repair-${repairRound}`,
+    file: rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel) ? rel : nodePath.basename(absPath),
+    absPath,
+    action: 'modify',
+    desc: `修复自动验证失败（${validation.reason ?? 'validation-failed'}）`,
+  };
+}
+
+function buildTerminalFailureRepairFeedback(failure: TerminalEvidence, missing: string[]): string {
+  return [
+    '【系统反馈】刚才的终端验证没有通过，不能结束任务。',
+    `缺少: ${missing.join('、')}`,
+    `失败命令: ${failure.command}`,
+    `exitCode: ${failure.exitCode ?? 'unknown'}`,
+    failure.detail ? `诊断: ${failure.detail}` : '',
+    '',
+    '请继续执行真实修复流程：read_file / grep_search / get_errors 定位根因，使用 create_file / write_file 或 SEARCH/REPLACE 修改文件，然后重新 run_terminal 编译/运行/测试。',
+  ].filter(Boolean).join('\n');
+}
+
 async function runValidation(
   changedPaths: string[],
   workspaceRoot: vscode.Uri,
@@ -2493,6 +2597,7 @@ async function runValidation(
         detail: `终端运行: ${runCmd}`,
       });
       const output = await callbacks.onTerminalCommand(runCmd, compilePlan.cwd);
+      const evidence = analyzeTerminalEvidence(runCmd, output, compilePlan.cwd);
       // G-4: truncate and feed output back into sessionHistory so LLM sees actual results
       const truncated = output.length > 2000
         ? output.slice(0, 2000) + `\n[输出已截断，共 ${output.length} 字符]`
@@ -2502,6 +2607,27 @@ async function runValidation(
           role: 'assistant',
           content: `程序执行输出：\n\`\`\`\n${truncated}\n\`\`\``,
         });
+      }
+      if (!evidence.ran || !evidence.evidence.ok) {
+        const detail = [
+          evidence.evidence.detail,
+          `exitCode=${evidence.evidence.exitCode ?? 'unknown'}`,
+          truncated,
+        ].filter(Boolean).join('\n');
+        await callbacks.onAgentStatus({
+          type: 'agentStatus',
+          phase: 'validate',
+          state: 'failed',
+          title: '执行失败',
+          detail: detail.slice(0, 1200),
+        });
+        return {
+          ran: true,
+          ok: false,
+          command: runCmd,
+          detail,
+          reason: evidence.evidence.kind === 'compile-run' ? 'compile-run-failed' : 'run-failed',
+        };
       }
       await callbacks.onAgentStatus({
         type: 'agentStatus',
@@ -2727,12 +2853,117 @@ export async function runAgentLoop(
     .map(t => t.absPath!);
   let validationOutcome: ValidationOutcome | undefined;
   if (modifiedPaths.length > 0) {
-    // Derive wantRun from task plan (LLM-decided), not from raw prompt keywords.
-    // An analyze task whose desc mentions run_terminal means the LLM planned execution.
+    // Derive wantRun from both the user's explicit request and task plan.
+    // If the user asked to run/execute, validation must include runtime failures
+    // such as exitCode=139/Segmentation fault instead of stopping at compile-only.
     const wantRun = tasks.some(
       t => t.action === 'analyze' && /run_terminal|运行程序|执行程序|compile.*run|build.*run/i.test(t.desc)
-    );
+    ) || requiresRunEvidence(userPrompt);
     validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, sessionHistory);
+
+    const maxRepairRounds = getAgentAutoFixRounds();
+    for (let repairRound = 1;
+      validationOutcome && !validationOutcome.ok && repairRound <= maxRepairRounds && !callbacks.signal?.aborted;
+      repairRound += 1) {
+      const repairTarget = selectValidationRepairTarget(validationOutcome, modifiedPaths);
+      if (!repairTarget) break;
+
+      await callbacks.onAgentStatus({
+        type: 'agentStatus',
+        phase: 'repair',
+        state: 'started',
+        title: `第 ${repairRound} 轮自动修复验证失败`,
+        detail: `命令: ${validationOutcome.command ?? 'unknown'}\n${(validationOutcome.detail ?? '').slice(0, 1200)}`,
+        taskTotal: tasks.length,
+      });
+
+      if (callbacks.onTodoUpdate && tasks.length > 0) {
+        await callbacks.onTodoUpdate([
+          ...tasks.map((t, j) => ({
+            id: j + 1,
+            title: t.desc,
+            status: 'completed' as const,
+          })),
+          {
+            id: tasks.length + repairRound,
+            title: `修复验证失败：${nodePath.basename(repairTarget)}`,
+            status: 'in-progress' as const,
+          },
+        ]);
+      }
+
+      const repairTask = makeValidationRepairTask(repairTarget, workspaceRoot, validationOutcome, repairRound);
+      const repairContext = buildValidationRepairContext(
+        analysisContext,
+        validationOutcome,
+        repairRound,
+        maxRepairRounds,
+        modifiedPaths,
+      );
+      const repairResult = await executeTask(
+        repairTask,
+        1,
+        [repairTask],
+        userPrompt,
+        mode,
+        workspaceRoot,
+        callbacks,
+        contentCache,
+        sessionHistory.length > 0 ? [...sessionHistory] : undefined,
+        repairContext,
+        false,
+      );
+
+      if (repairResult.networkError) {
+        callbacks.onTaskCheckpoint?.(tasks.length, []);
+        await callbacks.onAgentStatus({
+          type: 'agentStatus',
+          phase: 'done',
+          state: 'failed',
+          title: `网络中断，验证修复第 ${repairRound} 轮暂停`,
+          detail: '修复任务已暂停，重连后可重新发起验证。',
+          taskTotal: tasks.length,
+        });
+        return { tasksTotal: tasks.length, tasksApplied, tasksFailed: tasksFailed + 1, changedPaths };
+      }
+
+      if (repairResult.raw) {
+        await callbacks.onResponseMeta(repairResult.raw);
+      }
+
+      if (repairResult.applied && repairResult.path) {
+        if (!changedPaths.includes(repairResult.path)) changedPaths.push(repairResult.path);
+        tasksApplied += 1;
+        editedFileRecords.push({
+          path: repairResult.path,
+          basename: nodePath.basename(repairResult.path),
+          linesAdded: repairResult.linesAdded,
+          linesRemoved: repairResult.linesRemoved,
+          action: 'modify',
+        });
+        sessionHistory.push({
+          role: 'assistant',
+          content: `第 ${repairRound} 轮自动修复已修改 ${nodePath.basename(repairResult.path)}，准备重新验证。`,
+        });
+      } else {
+        tasksFailed += 1;
+        sessionHistory.push({
+          role: 'assistant',
+          content: `第 ${repairRound} 轮自动修复未能应用到 ${nodePath.basename(repairTarget)}。`,
+        });
+        await callbacks.onAgentStatus({
+          type: 'agentStatus',
+          phase: 'repair',
+          state: 'failed',
+          title: '自动修复未产出可应用变更',
+          detail: `目标文件: ${nodePath.basename(repairTarget)}`,
+          taskTotal: tasks.length,
+        });
+        break;
+      }
+
+      validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, sessionHistory);
+    }
   }
   const validationFailed = validationOutcome ? !validationOutcome.ok : false;
   if (validationFailed && callbacks.onTodoUpdate && tasks.length > 0) {
@@ -3186,7 +3417,14 @@ export async function runAgenticLoop(
       toolsToExecute,
       callbacks,
       workspaceRoot,
-      { currentTaskIndex: Number.MAX_SAFE_INTEGER, taskTotal: 1, deferDoneStatus: true, requireWorkBeforeComplete: missingBeforeTools.length > 0, userPrompt },
+      {
+        currentTaskIndex: Number.MAX_SAFE_INTEGER,
+        taskTotal: 1,
+        deferDoneStatus: true,
+        requireWorkBeforeComplete: missingBeforeTools.length > 0,
+        userPrompt,
+        workspaceRoot,
+      },
     );
 
     if (loopRes.todoItems?.length) {
@@ -3275,7 +3513,22 @@ export async function runAgenticLoop(
       continue;
     }
 
-    if (!loopRes.toolCallsMade && loopWarnings.length === 0) break;
+    if (!loopRes.toolCallsMade && loopWarnings.length === 0) {
+      const missingNow = promptRequiresTools
+        ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+        : [];
+      const lastFailedTerminal = [...allTerminalEvidence]
+        .reverse()
+        .find(e => !e.ok && e.kind !== 'other');
+      if (lastFailedTerminal && missingNow.length > 0 && noToolRounds < 2 && !callbacks.signal?.aborted) {
+        noToolRounds++;
+        const retryMessage = buildTerminalFailureRepairFeedback(lastFailedTerminal, missingNow);
+        messages.push({ role: 'user', content: retryMessage });
+        totalChars += retryMessage.length;
+        continue;
+      }
+      break;
+    }
 
     // Inject tool results into next round
     const combinedFeedback = [artifactApply.feedbackForAI, loopRes.feedbackForAI, ...loopWarnings].filter(Boolean).join('\n\n');

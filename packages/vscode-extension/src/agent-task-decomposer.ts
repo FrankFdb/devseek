@@ -15,6 +15,7 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { chat } from './bridge-client';
 import { getProjectRulesSync, wrapRulesAsContext, getProjectMemorySync, wrapMemoryAsContext } from './project-rules';
+import { detectWorkspacePathScope } from './workspace/path-resolver';
 
 // ----------------------------------------------------------------
 // Public types
@@ -129,84 +130,7 @@ function detectPromptDir(
   attachedFiles: string[],
   activeEditorFile?: string,
 ): { promptDir: string | undefined; promptDirIsExplicit: boolean } {
-  let promptDir: string | undefined;
-  let promptDirIsExplicit = false;
-
-  if (userPrompt) {
-    // 1. Labelled patterns:  指定路径：/path  |  在/path  |  到/path
-    // \s* (not \s+) allows "都在/abs/path" (zero spaces before path)
-    const labeledRe = /(?:指定\s*)?(?:路径|目录|工作目录|dir)[：:]\s*([^\s，。！？\n`'"]+)|(?:在|到|into|in|under|at|放到|创建到)\s*`?([^\s，。！？\n`'"]+)`?/gi;
-    let m: RegExpExecArray | null;
-    while ((m = labeledRe.exec(userPrompt)) !== null) {
-      const candidate = (m[1] || m[2] || '').trim().replace(/[，。！？：；]+$/, '');
-      if (!candidate) continue;
-      const expanded = candidate.startsWith('~') ? candidate.replace(/^~/, process.env.HOME ?? '') : candidate;
-      try {
-        if (nodePath.isAbsolute(expanded)) {
-          const stat = fs.existsSync(expanded) ? fs.statSync(expanded) : null;
-          promptDir = stat?.isDirectory() ? expanded : (fs.existsSync(nodePath.dirname(expanded)) ? expanded : undefined);
-          if (promptDir) { promptDirIsExplicit = true; break; }
-        }
-      } catch { /* ignore */ }
-    }
-    // 2. Bare absolute path anywhere in prompt (e.g. pasted path)
-    // Prefix class includes CJK so "都在/path" and "在/abs/path" are matched
-    if (!promptDir) {
-      const bareAbsRe = /(?:^|[\s，。！？：；`'"\u4e00-\u9fff\u3000-\u303f])(\/([\w.~-]+\/)+[\w.~-]*)/g;
-      while ((m = bareAbsRe.exec(userPrompt)) !== null) {
-        const candidate = m[1].trim().replace(/[，。！？：；]+$/, '');
-        try {
-          if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
-            promptDir = candidate; promptDirIsExplicit = true; break;
-          }
-        } catch { /* ignore */ }
-      }
-    }
-    // 3. Relative paths with slash:  code/3d_demo  or  src/components
-    if (!promptDir) {
-      const relRe = /(?:在|到|into|in|under|at|路径[：:]|目录[：:])\s*`?([A-Za-z0-9_./-]{2,}\/[A-Za-z0-9_./-]+)`?/i;
-      const relM = userPrompt.match(relRe);
-      if (relM) {
-        const candidate = relM[1].replace(/[，。！？：；]+$/, '');
-        for (const wf of vscode.workspace.workspaceFolders ?? []) {
-          const abs = nodePath.join(wf.uri.fsPath, candidate);
-          if (fs.existsSync(abs) && fs.statSync(abs).isDirectory()) { promptDir = abs; promptDirIsExplicit = true; break; }
-          const parentAbs = nodePath.join(wf.uri.fsPath, nodePath.dirname(candidate));
-          if (fs.existsSync(parentAbs)) { promptDir = abs; promptDirIsExplicit = true; break; }
-        }
-      }
-    }
-  }
-
-  // 4. Inferred anchor (Copilot pattern): derive project root from attached files / active editor.
-  // Attached files take priority: they represent the canonical project context.
-  if (!promptDir) {
-    const SRC_LIKE = new Set([
-      'src', 'include', 'lib', 'test', 'tests', 'bin', 'cmd', 'app',
-      'core', 'utils', 'components', 'views', 'pages', 'models', 'services',
-      'source', 'sources', 'headers', 'impl', 'internal', 'common', 'shared',
-    ]);
-    const wsRoot0 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (wsRoot0) {
-      const anchorFile = attachedFiles.length > 0 ? attachedFiles[0] : activeEditorFile;
-      if (anchorFile) {
-        let dir = nodePath.dirname(anchorFile);
-        while (
-          dir !== wsRoot0 &&
-          dir.startsWith(wsRoot0 + '/') &&
-          SRC_LIKE.has(nodePath.basename(dir).toLowerCase())
-        ) {
-          dir = nodePath.dirname(dir);
-        }
-        if (dir !== wsRoot0 && dir.startsWith(wsRoot0 + '/')) {
-          promptDir = dir;
-          promptDirIsExplicit = false;
-        }
-      }
-    }
-  }
-
-  return { promptDir, promptDirIsExplicit };
+  return detectWorkspacePathScope(userPrompt, attachedFiles, activeEditorFile);
 }
 
 // ----------------------------------------------------------------

@@ -6,6 +6,15 @@ import { GeneratedArtifact, GeneratedFile, looksLikeRawToolCallText, parseGenera
 import { CppValidationPolicy, planCppValidation } from './validation-planner';
 import { getWorkspaceRootUri } from './workspace-roots';
 import { isFileProtected } from './protected-files';
+import {
+  WorkspacePathContext,
+  alignRelPathToScope,
+  buildWorkspacePathContext,
+  detectWriteDriftForRelPaths,
+  normalizeWorkspaceTargetPath,
+  resolveArtifactPathInWorkspace,
+  resolveGeneratedArtifactPathForPrompt as resolveGeneratedArtifactPathInWorkspaceForPrompt,
+} from './workspace/path-resolver';
 
 export interface ApplyWorkflowStatus {
   phase: 'apply' | 'validate' | 'repair';
@@ -116,7 +125,7 @@ async function applyPreparedChanges(
   options?: ApplyGeneratedArtifactsOptions,
 ): Promise<ApplyWorkflowResult> {
   const root = getWorkspaceRoot(requestPrompt, preferredAbsolutePaths);
-  const pathContext = root ? buildPathResolutionContext(root, requestPrompt, preferredAbsolutePaths) : undefined;
+  const pathContext = root ? buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths) : undefined;
   const rollbackOnValidationFailure = options?.rollbackOnValidationFailure !== false;
   if (prepared.length === 0) {
     if (targetPathForMsg) {
@@ -313,20 +322,13 @@ function selectPreparedChangesByPath(prepared: PreparedChange[], targetPath: str
 }
 
 function normalizeTargetPath(path: string): string {
-  return (path || '')
-    .trim()
-    .replace(/^a\//, '')
-    .replace(/^b\//, '')
-    .replace(/^\.\//, '')
-    .replace(/#L\d+$/i, '')
-    .replace(/:\d+(?::\d+)?$/i, '')
-    .replace(/\\/g, '/');
+  return normalizeWorkspaceTargetPath(path);
 }
 
 async function prepareChanges(raw: string, requestPrompt?: string, preferredAbsolutePaths?: string[]): Promise<PreparedChange[]> {
   const root = getWorkspaceRoot(requestPrompt, preferredAbsolutePaths);
   if (!root) throw new Error('DeepSeek: 当前没有打开工作区，无法写入文件。');
-  const pathContext = buildPathResolutionContext(root, requestPrompt, preferredAbsolutePaths);
+  const pathContext = buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths);
 
   let artifacts = parseGeneratedArtifacts(raw);
   const fallbackArtifacts = inferFallbackArtifacts(raw, requestPrompt, root);
@@ -344,7 +346,7 @@ async function prepareChanges(raw: string, requestPrompt?: string, preferredAbso
 
   const changes: PreparedChange[] = [];
   for (const artifact of artifacts) {
-    const resolvedPath = resolveArtifactPath(artifact.path, root, pathContext);
+    const resolvedPath = resolveArtifactPathInWorkspace(artifact.path, root, pathContext);
     if (!resolvedPath) continue;
     const relPath = alignRelPathToScope(resolvedPath, root, pathContext);
 
@@ -370,305 +372,21 @@ async function prepareChanges(raw: string, requestPrompt?: string, preferredAbso
   return dedupeChanges(changes);
 }
 
-interface PathResolutionContext {
-  preferredDirs: string[];
-  hintedFiles: string[];
-  scopedDirs: string[];
-  strictScope: boolean;
-  forceCodeDir: boolean;
-}
-
-function buildPathResolutionContext(root: vscode.Uri, requestPrompt?: string, preferredAbsolutePaths?: string[]): PathResolutionContext {
-  const preferredDirs: string[] = [];
-  const hintedFiles: string[] = [];
-  const scopedDirs: string[] = [];
-  const rootPath = root.fsPath.replace(/\\/g, '/').replace(/\/$/, '');
-  const text = requestPrompt || '';
-
-  // Priority-0: actual attached file absolute paths (highest confidence for path resolution)
-  // Do NOT add to scopedDirs to avoid over-restricting drift detection for non-compile prompts.
-  if (preferredAbsolutePaths && preferredAbsolutePaths.length > 0) {
-    for (const absPath of preferredAbsolutePaths) {
-      const rel = sanitizeWorkspacePath(absPath, root);
-      if (!rel) continue;
-      hintedFiles.push(rel);
-      const dir = nodePath.posix.dirname(rel);
-      if (dir && dir !== '.') {
-        preferredDirs.push(dir);
-      }
-    }
-  }
-
-  const cwdMatches = text.match(/\bcwd\s*=\s*([^\n\r]+)/gi) || [];
-  for (const raw of cwdMatches) {
-    const value = raw.replace(/\bcwd\s*=\s*/i, '').trim().replace(/^['"`]+|['"`]+$/g, '');
-    if (!value) continue;
-    const rel = sanitizeWorkspacePath(value, root);
-    if (rel) {
-      preferredDirs.push(rel);
-      scopedDirs.push(rel);
-      continue;
-    }
-    const normalized = value.replace(/\\/g, '/');
-    if (normalized.startsWith(rootPath + '/')) {
-      const dir = normalized.slice(rootPath.length + 1).replace(/\/$/, '');
-      preferredDirs.push(dir);
-      scopedDirs.push(dir);
-    }
-  }
-
-  // Internal DevSeek metadata directories must never appear in preferredDirs — user
-  // project files should not be placed there even if .devseek/memory.md (or rules.md)
-  // appears in the editorPrompt context block and its path gets extracted by the regex.
-  const INTERNAL_DIRS = new Set(['.devseek']);
-  const isInternalDir = (dir: string) =>
-    dir === '.devseek' || dir.startsWith('.devseek/');
-
-  const pathRe = /([A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|json|md|css|scss|html|py|java|go|rs|c|cc|cpp|cxx|h|hpp|sh|sql))/gi;
-  let m: RegExpExecArray | null;
-  while ((m = pathRe.exec(text)) !== null) {
-    const candidate = (m[1] || '').trim();
-    if (!candidate) continue;
-    const rel = sanitizeWorkspacePath(candidate, root);
-    if (rel) {
-      // Skip: do not let .devseek/** contaminate directory hints for user project files
-      if (isInternalDir(nodePath.posix.dirname(rel))) continue;
-      hintedFiles.push(rel);
-      const dir = nodePath.posix.dirname(rel);
-      void INTERNAL_DIRS;  // suppress unused-variable warning
-      if (dir && dir !== '.') {
-        preferredDirs.push(dir);
-        scopedDirs.push(dir);
-      }
-      continue;
-    }
-
-    // Absolute path to workspace file.
-    const normalized = candidate.replace(/\\/g, '/');
-    if (normalized.startsWith(rootPath + '/')) {
-      const relAbs = normalized.slice(rootPath.length + 1);
-      hintedFiles.push(relAbs);
-      const dir = nodePath.posix.dirname(relAbs);
-      if (dir && dir !== '.') {
-        preferredDirs.push(dir);
-        scopedDirs.push(dir);
-      }
-    }
-  }
-
-  // Capture directory-like tokens (for prompts such as "编译code/fish").
-  const FAKE_TOOL_SEGS = new Set(['list_dir', 'read_file', 'grep_search', 'run_terminal', 'get_errors', 'manage_todo_list', 'task_complete']);
-  const dirTokenRe = /(?:^|[\s'"`(])([A-Za-z0-9_.-]+\/[A-Za-z0-9_./-]*[A-Za-z0-9_.-])(?=$|[\s'"`),;:])/g;
-  while ((m = dirTokenRe.exec(text)) !== null) {
-    const candidate = (m[1] || '').trim();
-    if (!candidate) continue;
-    // Skip tokens where every segment is a fake tool name (e.g. "list_dir/read_file/grep_search/run_terminal")
-    if (candidate.split('/').every(seg => FAKE_TOOL_SEGS.has(seg))) continue;
-    const rel = sanitizeWorkspacePath(candidate, root);
-    if (!rel) continue;
-    const uri = vscode.Uri.joinPath(root, ...rel.split('/'));
-    if (fs.existsSync(uri.fsPath) && fs.statSync(uri.fsPath).isDirectory()) {
-      const dir = rel.replace(/\/$/, '');
-      preferredDirs.push(dir);
-      scopedDirs.push(dir);
-      continue;
-    }
-
-    const base = nodePath.posix.basename(rel);
-    const likelyDir = !base.includes('.');
-    if (likelyDir) {
-      const dir = rel.replace(/\/$/, '');
-      preferredDirs.push(dir);
-      scopedDirs.push(dir);
-    }
-  }
-
-  const commandScopedDirs = inferScopedDirsFromCommandText(text, root);
-  for (const dir of commandScopedDirs) {
-    preferredDirs.push(dir);
-    scopedDirs.push(dir);
-  }
-
-  const forceCodeDir = /(?:code\s*目录|code目录|code\/|code\s+dir|code\s+folder)/i.test(text);
-  if (forceCodeDir) {
-    preferredDirs.unshift('code');
-    scopedDirs.unshift('code');
-  }
-
-  const compileLikePrompt = /编译|构建|运行|recompile|compile|build|run/i.test(text);
-
-  return {
-    preferredDirs: dedupeStringList(preferredDirs).filter(d => !isInternalDir(d)),
-    hintedFiles: dedupeStringList(hintedFiles),
-    scopedDirs: dedupeStringList(scopedDirs).filter(d => !isInternalDir(d)),
-    strictScope: compileLikePrompt && scopedDirs.length > 0,
-    forceCodeDir,
-  };
-}
-
-function inferScopedDirsFromCommandText(text: string, root: vscode.Uri): string[] {
-  const dirs: string[] = [];
-  const commandLines = text.match(/(?:^|\n)\s*(?:command|cmd)\s*[:=].*/gi) || [];
-  const compileLines = text.match(/(?:^|\n).*\b(?:g\+\+|gcc|clang\+\+|clang|cmake|make|ninja|npm\s+run\s+build)\b.*/gi) || [];
-  const merged = [...commandLines, ...compileLines].join('\n');
-  if (!merged.trim()) return dirs;
-
-  const pathRe = /([A-Za-z0-9_./-]+\.(?:cpp|cc|cxx|c|h|hpp|ts|tsx|js|jsx|py|java|go|rs))/gi;
-  let m: RegExpExecArray | null;
-  while ((m = pathRe.exec(merged)) !== null) {
-    const rel = sanitizeWorkspacePath((m[1] || '').trim(), root);
-    if (!rel) continue;
-    const dir = nodePath.posix.dirname(rel);
-    if (dir && dir !== '.') dirs.push(dir);
-  }
-
-  return dedupeStringList(dirs);
-}
-
-function alignRelPathToScope(relPath: string, root: vscode.Uri, ctx: PathResolutionContext): string {
-  const clean = relPath.replace(/\\/g, '/');
-  const scoped = (ctx.scopedDirs || []).filter(Boolean);
-  if (scoped.length === 0) return clean;
-
-  if (scoped.some((dir) => clean === dir || clean.startsWith(`${dir}/`))) return clean;
-
-  const base = nodePath.posix.basename(clean);
-  if (!base || base === '.' || base === '..') return clean;
-
-  // If the path already has multiple segments, the LLM gave an explicit relative path.
-  // Trust it as-is — remapping it to scopedDirs would cause path drift (e.g. code/agent/x.h → docs/agent/x.h).
-  if (clean.includes('/')) return clean;
-
-  // Bare filename: try to match against an existing file in scoped dirs first.
-  for (const dir of scoped) {
-    const candidate = nodePath.posix.join(dir, base);
-    const candidateUri = vscode.Uri.joinPath(root, ...candidate.split('/'));
-    if (fs.existsSync(candidateUri.fsPath)) return candidate;
-  }
-
-  // No existing match: remap bare filename into the first scoped dir.
-  return nodePath.posix.join(scoped[0], base);
-}
-
-function resolveArtifactPath(path: string, root: vscode.Uri, ctx: PathResolutionContext): string | undefined {
-  const direct = sanitizeWorkspacePath(path, root);
-
-  // Always compute basename first so hintedFiles can override any LLM-guessed directory.
-  // This handles the case where the LLM outputs 'src/foo.cpp' but the real file is 'code/foo.cpp'.
-  const baseName = nodePath.posix.basename((direct || path).replace(/\\/g, '/'));
-  if (baseName && baseName !== '.' && baseName !== '..') {
-    // Priority-0: attached (hinted) file path is authoritative — it overrides any LLM-guessed path,
-    // including multi-segment paths like 'src/3d_sphere.cpp' when the real file is 'code/3d_sphere.cpp'.
-    const hintedExact = ctx.hintedFiles.find(
-      (hf) => nodePath.posix.basename(hf) === baseName,
-    );
-    if (hintedExact) return hintedExact;
-  }
-
-  const isCodeFile = /\.(?:cpp|cc|cxx|c|h|hpp|ts|tsx|js|jsx|mjs|cjs|py|java|go|rs|sh|bash)$/i.test(baseName);
-  if (ctx.forceCodeDir && isCodeFile && baseName && baseName !== '.' && baseName !== '..') {
-    const directNorm = direct || '';
-    if (!directNorm.startsWith('code/')) return nodePath.posix.join('code', baseName);
-  }
-
-  if (direct && direct.includes('/')) return direct;
-
-  if (!baseName || baseName === '.' || baseName === '..') return direct || undefined;
-
-  // If reply only provides bare filename, anchor to the most relevant directory from request context.
-  // Skip directories that are semantically incompatible with the file's extension
-  // (e.g. a .cpp file should not land in a docs/ directory).
-  const isDocDir = (dir: string) => /(^|\/)docs?(?:\/|$)/i.test(dir);
-
-  for (const dir of ctx.preferredDirs) {
-    if (isCodeFile && isDocDir(dir)) continue;
-    const candidate = nodePath.posix.join(dir, baseName);
-    const uri = vscode.Uri.joinPath(root, ...candidate.split('/'));
-    if (fs.existsSync(uri.fsPath)) return candidate;
-  }
-
-  // Fallback: use first preferred dir that is compatible with the file type.
-  const compatibleDir = ctx.preferredDirs.find((dir) => !(isCodeFile && isDocDir(dir)));
-  if (compatibleDir) {
-    return nodePath.posix.join(compatibleDir, baseName);
-  }
-
-  return direct || undefined;
-}
-
-function dedupeStringList(values: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const value of values) {
-    if (!value || seen.has(value)) continue;
-    seen.add(value);
-    out.push(value);
-  }
-  return out;
+export function resolveGeneratedArtifactPathForPrompt(
+  rawPath: string,
+  requestPrompt?: string,
+  preferredAbsolutePaths?: string[],
+): string {
+  return resolveGeneratedArtifactPathInWorkspaceForPrompt(rawPath, requestPrompt, preferredAbsolutePaths);
 }
 
 function detectWriteDrift(
   prepared: PreparedChange[],
   root: vscode.Uri | undefined,
-  ctx: PathResolutionContext | undefined,
+  ctx: WorkspacePathContext | undefined,
 ): string | undefined {
-  if (!root || !ctx) return undefined;
-
-  const preferredDirs = (ctx.preferredDirs || []).filter(Boolean);
-  const scopedDirs = (ctx.scopedDirs || []).filter(Boolean);
-
-  // Files explicitly rooted at a known source dir (code/, src/, lib/, test/, etc.) are
-  // never drift — the LLM stated an unambiguous path.
-  const isExplicitSourceRoot = /^(?:code|src|lib|test|tests|include|pkg|packages|modules)\//i;
-
-  for (const change of prepared) {
-    const rel = change.relPath.replace(/\\/g, '/');
-
-    if (ctx.strictScope && scopedDirs.length > 0) {
-      // If the path is rooted under a recognised source directory, skip strictScope check.
-      if (!isExplicitSourceRoot.test(rel)) {
-        const inScope = scopedDirs.some((dir) => rel === dir || rel.startsWith(`${dir}/`));
-        if (!inScope) {
-          // Allow sibling directories: a file is in-scope if it lives under the parent of any
-          // scoped dir.  Example: scopedDir = "huida_uav/src/oam" → parent = "huida_uav/src",
-          // so "huida_uav/src/spray/disk.cpp" is a valid sibling and must not be blocked.
-          // Using the parent (not just the first segment) keeps the check precise enough that
-          // a completely unrelated top-level directory is still rejected.
-          const scopedParents = scopedDirs
-            .map((dir) => nodePath.posix.dirname(dir))
-            .filter((p) => p && p !== '.');
-          const underSiblingScope = scopedParents.some(
-            (parent) => rel.startsWith(`${parent}/`) || rel === parent,
-          );
-          if (!underSiblingScope) {
-            return `严格作用域限制触发：文件 ${rel} 不在目标目录 ${scopedDirs.join(', ')} 内`;
-          }
-        }
-      }
-    }
-
-    if (preferredDirs.length === 0) continue;
-
-    // Files rooted at a known source directory are never considered drift.
-    if (isExplicitSourceRoot.test(rel)) continue;
-
-    const underPreferred = preferredDirs.some((dir) => rel === dir || rel.startsWith(`${dir}/`));
-    if (underPreferred) {
-      // Even if under a preferred dir, flag code files written into doc-like directories.
-      const isCodeFile = /\.(?:cpp|cc|cxx|c|h|hpp|ts|tsx|js|jsx|mjs|cjs|py|java|go|rs|sh|bash)$/i.test(rel);
-      const inDocDir = /(^|\/)docs?(?:\/|$)/i.test(nodePath.posix.dirname(rel));
-      if (isCodeFile && inDocDir) {
-        return `代码文件 ${rel} 被写入文档目录，疑似路径漂移（代码文件不应出现在 docs/ 目录）`;
-      }
-      continue;
-    }
-
-    if (!rel.includes('/')) {
-      return `文件 ${rel} 被写入工作区根目录，但提示上下文偏向目录: ${preferredDirs.join(', ')}`;
-    }
-  }
-
-  return undefined;
+  void root;
+  return detectWriteDriftForRelPaths(prepared.map((change) => change.relPath), ctx);
 }
 
 async function rollbackPreparedChanges(prepared: PreparedChange[], createdDirs?: Set<string>): Promise<void> {
@@ -936,31 +654,6 @@ async function reportWorkflow(reporter: ApplyWorkflowReporter | undefined, statu
 
 function getWorkspaceRoot(requestPrompt?: string, preferredAbsolutePaths?: string[]): vscode.Uri | undefined {
   return getWorkspaceRootUri(requestPrompt, preferredAbsolutePaths);
-}
-
-function sanitizeWorkspacePath(path: string, root: vscode.Uri): string | undefined {
-  let p = path.replace(/\\/g, '/').trim();
-  const rootPath = root.fsPath.replace(/\\/g, '/').replace(/\/$/, '');
-  const homePath = process.env.HOME ? process.env.HOME.replace(/\\/g, '/').replace(/\/$/, '') : '';
-
-  p = p.replace(/^\.\//, '').replace(/^a\//, '').replace(/^b\//, '');
-  // Strip shebang artifact (second defense layer — parser should catch first).
-  p = p.replace(/^!+/, '');
-  if (p.startsWith('~/') && homePath) p = `${homePath}/${p.slice(2)}`;
-  if (p.startsWith(rootPath + '/')) p = p.slice(rootPath.length + 1);
-
-  p = nodePath.posix.normalize(p);
-  if (!p || p === '.' || p.startsWith('../') || p.includes('/../') || nodePath.posix.isAbsolute(p) || p.startsWith('~/')) return undefined;
-  // Reject paths that contain git conflict marker or SEARCH/REPLACE segment names.
-  if (p.split('/').some((seg) => seg === 'SEARCH' || seg === 'REPLACE')) return undefined;
-  // Reject system-directory roots (e.g. "bin/bash", "usr/include/...").
-  const firstSegLc = p.split('/')[0].toLowerCase();
-  const APPLIER_SYSTEM_DIRS = new Set([
-    'bin', 'sbin', 'usr', 'etc', 'dev', 'proc', 'sys', 'var', 'tmp',
-    'run', 'home', 'root', 'opt', 'lib', 'lib64', 'boot', 'mnt', 'media', 'srv',
-  ]);
-  if (APPLIER_SYSTEM_DIRS.has(firstSegLc)) return undefined;
-  return p;
 }
 
 async function fileExists(uri: vscode.Uri): Promise<boolean> {

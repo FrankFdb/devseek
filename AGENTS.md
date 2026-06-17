@@ -9,6 +9,9 @@ small enough that automatic context compaction is unlikely to trigger.
 - Prefer targeted file reads (`sed -n`, `rg -n` with explicit paths, `head`) over
   recursive listings.
 - Keep command output capped and summarize findings instead of dumping full files.
+- After changing DevSeek extension or bridge behavior, run the default local
+  release loop unless the user explicitly says otherwise: compile the VS Code
+  extension, package the latest VSIX, then install that VSIX locally.
 - If a task needs repository discovery, start with:
 
 ```bash

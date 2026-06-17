@@ -7,7 +7,14 @@ node_modules/
 # Build and packaged artifacts
 dist/
 packages/**/dist/
-packages/vscode-extension/media/
+packages/vscode-extension/media/*
+!packages/vscode-extension/media/
+!packages/vscode-extension/media/codicon.css
+!packages/vscode-extension/media/codicon.ttf
+!packages/vscode-extension/media/icon.svg
+!packages/vscode-extension/media/marked.umd.js
+!packages/vscode-extension/media/mermaid.min.js
+!packages/vscode-extension/media/webview.js
 *.vsix
 *.tgz
 *.log

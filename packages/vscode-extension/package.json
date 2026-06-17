@@ -282,13 +282,13 @@
         },
         "devseek.generatedContentDisplayMode": {
           "type": "string",
-          "default": "hidden",
+          "default": "collapsed",
           "enum": [
             "hidden",
             "collapsed",
             "full"
           ],
-          "description": "生成文件正文在聊天面板的显示模式：hidden=仅显示文件映射与操作（默认），collapsed=折叠正文，full=完整显示"
+          "description": "生成文件正文在聊天面板的显示模式：hidden=仅显示文件映射与操作，collapsed=折叠正文（默认），full=完整显示"
         },
         "devseek.workingCopyStyle": {
           "type": "string",

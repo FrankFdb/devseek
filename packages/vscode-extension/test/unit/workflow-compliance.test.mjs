@@ -183,25 +183,36 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
 
 test('§8.3 File edits: code directory prompts force generated code paths under code/', () => {
   const applier = src('src/workspace-applier.ts');
-  assertContains(applier, 'forceCodeDir', 'workspace applier tracks explicit code directory scope');
+  const resolver = src('src/workspace/path-resolver.ts');
+  assertContains(applier, './workspace/path-resolver', 'workspace applier delegates path decisions to shared resolver');
+  assertContains(resolver, 'forceCodeDir', 'shared path resolver tracks explicit code directory scope');
+  assertContains(resolver, 'inferPromptDirectoryHints', 'shared path resolver extracts explicit project directory anchors from prompts');
   assert.match(
-    applier,
-    /forceCodeDir[\s\S]*?preferredDirs\.unshift\('code'\)[\s\S]*?scopedDirs\.unshift\('code'\)/,
-    'code directory prompt must seed code/ as preferred and scoped directory',
+    resolver,
+    /forceCodeDir[\s\S]*?!scopedDirs\.some[\s\S]*?preferredDirs\.push\('code'\)[\s\S]*?scopedDirs\.push\('code'\)/,
+    'code directory prompt must seed code/ as fallback scope without overriding specific project dirs',
   );
   assert.match(
-    applier,
+    resolver,
     /ctx\.forceCodeDir && isCodeFile[\s\S]*?nodePath\.posix\.join\('code', baseName\)/,
     'generated code artifacts must be remapped to code/<basename> when user asks for code directory',
   );
 
   const agentLoop = src('src/agent-loop.ts');
+  const extension = src('src/extension.ts');
   assertContains(agentLoop, 'promptLooksLikeCppProgram', 'agent loop detects C++ prompts separately from C');
   assertContains(agentLoop, 'contentLooksLikeCppProgram', 'agent loop detects C++ content separately from C');
+  assertContains(agentLoop, 'resolveWorkspaceWritePath', 'agent loop delegates create_file/write_file path decisions to shared resolver');
+  assert.match(
+    extension,
+    /const PATH_RE = \/\(\(\?:~\\\/\|\\\/\)\?/,
+    'directory auto-discovery must recognize absolute paths from user prompts',
+  );
+  assertContains(extension, 'pathResolutionHints', 'response meta and apply must keep prompt directory scope');
   assert.match(
     agentLoop,
-    /promptRequestsCodeDirectory\(userPrompt\)[\s\S]*?p = `code\/\$\{nodePath\.posix\.basename\(p\)\}`/,
-    'create_file/write_file must force code artifact basenames under code/',
+    /resolveWorkspaceWritePath\(rawPath,\s*\{[\s\S]*?requestPrompt: userPrompt[\s\S]*?content[\s\S]*?workspaceRootFsPath[\s\S]*?defaultWorkdir[\s\S]*?\}\)/,
+    'create_file/write_file must resolve against user prompt, workspace root, and task workdir',
   );
   assert.doesNotMatch(
     agentLoop,
@@ -479,7 +490,7 @@ test('Agent loop: task_complete does not bypass final editedFiles accounting', (
   const code = src('src/agent-loop.ts');
   assert.match(
     code,
-    /executeFakeToolsForLoop\(tools, callbacks, editorWorkdir, \{ currentTaskIndex: taskIndex, taskTotal: allTasks\.length, deferDoneStatus: true \}\)/,
+    /executeFakeToolsForLoop\(tools,\s*callbacks,\s*editorWorkdir,\s*\{[\s\S]*?currentTaskIndex: taskIndex[\s\S]*?taskTotal: allTasks\.length[\s\S]*?deferDoneStatus: true[\s\S]*?userPrompt[\s\S]*?workspaceRoot: workspaceRoot\.fsPath[\s\S]*?\}\)/,
     'editor task_complete must defer final done to runAgentLoop',
   );
   assert.match(
@@ -511,6 +522,11 @@ test('Agent loop: file tools and validation use ground-truth outcomes', () => {
     /finalFailed[\s\S]*?state: finalFailed === 0 \? 'completed' : 'failed'/,
     'final done state must include validation failure',
   );
+  assertContains(code, 'buildValidationRepairContext', 'agent validation failures must build a repair context');
+  assertContains(code, 'makeValidationRepairTask', 'agent validation failures must create an internal repair task');
+  assertContains(code, '第 ${repairRound} 轮自动修复验证失败', 'agent validation failures must enter an automatic repair loop');
+  assertContains(code, 'analyzeTerminalEvidence(runCmd, output, compilePlan.cwd)', 'runtime validation must parse terminal exit status');
+  assertContains(code, 'run-failed', 'non-zero runtime exits must be reported as failed validation');
 });
 
 test('Agentic loop: repeated terminal failures enter root-cause recovery before retry', () => {
@@ -535,6 +551,7 @@ test('Agentic loop: terminal completion evidence requires successful validation 
   assertContains(code, 'resolveCompilerOutputPath', 'compiler -o artifact path must be detected');
   assertContains(code, 'isExecutableFile', 'compiler output must be checked on disk');
   assertContains(code, '验证命令未通过，不能把编译/运行/测试标记为完成', 'failed validation must be fed back to the agent');
+  assertContains(code, 'buildTerminalFailureRepairFeedback', 'terminal failure prose must be converted into a repair instruction');
   assert.match(
     code,
     /terminalEvidence\.push\(evidenceResult\.evidence\)/,
@@ -545,6 +562,15 @@ test('Agentic loop: terminal completion evidence requires successful validation 
     /const successfulEvidence = terminalEvidence\.filter\(e => e\.ok\);[\s\S]*?requiresRunEvidence/,
     'completion evidence must require successful terminal evidence, not merely any command execution',
   );
+});
+
+test('Directory discovery skips generated build artifacts', () => {
+  const ext = src('src/extension.ts');
+  const planner = src('src/execution-planner.ts');
+  assertContains(ext, '.devseek-builds', 'directory attachments must skip DevSeek build directories');
+  assertContains(ext, 'CMakeFiles', 'directory attachments must skip CMake generated trees');
+  assertContains(planner, '.devseek-builds', 'execution planner discovery must skip DevSeek build directories');
+  assertContains(planner, 'CMakeFiles', 'execution planner discovery must skip CMake generated trees');
 });
 
 test('Agentic loop: terminal must not be used as a fallback file writer', () => {
@@ -701,6 +727,26 @@ test('Architecture: smalltalk cannot inherit restored session context or apply a
     ext,
     /const finalResponseForUser = noAgentCodeChat \? stripToolCallBlocks\(finalResponse\) : finalResponse;[\s\S]*?const finalResponseForArtifacts = noAgentCodeChat \? finalResponseForUser : finalResponse;/,
     'no-agent code chat must strip fake tool protocol before display and artifact parsing',
+  );
+});
+
+test('Architecture: no-agent code chat streams sanitized visible deltas', () => {
+  const ext = src('src/extension.ts');
+  assertContains(ext, 'const postChatDelta', 'main chat response must centralize visible delta posting');
+  assertContains(ext, 'onDelta: postChatDelta', 'no-agent code chat must keep streaming enabled');
+  assert.ok(
+    !/stream:\s*noAgentCodeChat\s*\?\s*false/.test(ext),
+    'no-agent code chat must not disable provider streaming',
+  );
+  assertContains(
+    ext,
+    'noAgentCodeChat ? stripToolCallBlocks(fullText) : fullText',
+    'reset/full-text deltas must hide fake tool protocol in no-agent code chat',
+  );
+  assertContains(
+    ext,
+    'const visibleDelta = noAgentCodeChat ? stripToolCallBlocks(delta) : delta',
+    'incremental deltas must hide fake tool protocol in no-agent code chat',
   );
 });
 

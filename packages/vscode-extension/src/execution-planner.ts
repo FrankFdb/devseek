@@ -23,11 +23,15 @@ const EXECUTION_REQUEST_RE = /(编译|构建|build|compile|运行|执行|run|测
 const RUN_REQUEST_RE = /(运行|执行|run)/i;
 const PROMPT_FILE_RE = /(^|[^A-Za-z0-9_./-])([A-Za-z0-9_./-]+\.(?:cpp|cc|cxx|c|h|hpp|py|js))(?=$|[^A-Za-z0-9_./-])/g;
 const PROMPT_DIR_RE = /(^|[^A-Za-z0-9_./-])([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\/?)(?=$|[^A-Za-z0-9_./-])/g;
+const PROMPT_ABSOLUTE_PATH_RE = /\/[^\s'"`，。！？；：\n]+/g;
 const REPEAT_EXEC_RE = /((再次|重新|重试|再来).*(编译|构建|运行|执行))|((编译|构建|运行|执行).*(再次|重新|重试|再来))|\b(retry|re-run|rerun|run again|compile again)\b/i;
 const CPP_SOURCE_RE = /\.(cpp|cc|cxx|c)$/i;
 const CPP_HEADER_RE = /\.(h|hpp)$/i;
 const PYTHON_RE = /\.py$/i;
 const JS_RE = /\.js$/i;
+const LOCAL_SOURCE_RE = /\.(cpp|cc|cxx|c|h|hpp|py|js)$/i;
+const SKIP_DISCOVERY_DIR_RE = /^(build|dist|node_modules|\.git|\.cache|__pycache__|target|out|bin|obj|\.vscode|\.idea|\.devseek-build|\.devseek-builds|CMakeFiles)$/i;
+const MAX_DISCOVERED_FILES = 80;
 
 export function shouldPreferLocalExecution(prompt: string, files?: string[], workspaceRoot?: string): boolean {
   if (!prompt || !EXECUTION_REQUEST_RE.test(prompt)) return false;
@@ -141,9 +145,12 @@ function planCmakeExecution(targetDir: string, dirFiles: string[], runRequested:
   const cmakeFile = nodePath.join(targetDir, 'CMakeLists.txt');
   if (!fs.existsSync(cmakeFile)) return null;
   const buildDir = nodePath.join(targetDir, '.devseek-build');
-  const command = runRequested
-    ? `cmake -S ${q(targetDir)} -B ${q(buildDir)} && cmake --build ${q(buildDir)} && ctest --test-dir ${q(buildDir)} --output-on-failure`
-    : `cmake -S ${q(targetDir)} -B ${q(buildDir)} && cmake --build ${q(buildDir)}`;
+  const buildCommand = `cmake -S ${q(targetDir)} -B ${q(buildDir)} && cmake --build ${q(buildDir)}`;
+  const executableTarget = detectCmakeExecutableTarget(cmakeFile);
+  const runCommand = executableTarget
+    ? `(test -x ${q(nodePath.join(buildDir, executableTarget))} && ${q(nodePath.join(buildDir, executableTarget))} || ctest --test-dir ${q(buildDir)} --output-on-failure)`
+    : `ctest --test-dir ${q(buildDir)} --output-on-failure`;
+  const command = runRequested ? `${buildCommand} && ${runCommand}` : buildCommand;
   return {
     command,
     cwd: targetDir,
@@ -237,8 +244,8 @@ function discoverPromptCandidates(prompt: string, workspaceRoot?: string): strin
   if (!prompt || !workspaceRoot) return [];
 
   const out: string[] = [];
-  const filePaths = extractAll(prompt, PROMPT_FILE_RE);
-  const dirPaths = extractAll(prompt, PROMPT_DIR_RE);
+  const filePaths = dedupe([...extractAll(prompt, PROMPT_FILE_RE), ...extractAbsolutePaths(prompt)]);
+  const dirPaths = dedupe([...extractAll(prompt, PROMPT_DIR_RE), ...extractAbsolutePaths(prompt)]);
 
   for (const relOrAbs of filePaths) {
     const resolved = resolveCandidatePath(relOrAbs, workspaceRoot);
@@ -250,13 +257,15 @@ function discoverPromptCandidates(prompt: string, workspaceRoot?: string): strin
   for (const relOrAbsDir of dirPaths) {
     const resolvedDir = resolveCandidatePath(relOrAbsDir, workspaceRoot);
     if (!resolvedDir || !fs.existsSync(resolvedDir) || !fs.statSync(resolvedDir).isDirectory()) continue;
-    const entries = fs.readdirSync(resolvedDir)
-      .map((name) => nodePath.join(resolvedDir, name))
-      .filter((p) => fs.existsSync(p) && fs.statSync(p).isFile() && /\.(cpp|cc|cxx|c|h|hpp|py|js)$/i.test(p));
-    out.push(...entries);
+    out.push(...collectSourceFiles(resolvedDir, MAX_DISCOVERED_FILES));
   }
 
   return dedupe(out);
+}
+
+function extractAbsolutePaths(text: string): string[] {
+  const matches = text.match(PROMPT_ABSOLUTE_PATH_RE) || [];
+  return matches.map((value) => cleanPathToken(value)).filter(Boolean);
 }
 
 function extractAll(text: string, re: RegExp): string[] {
@@ -265,14 +274,14 @@ function extractAll(text: string, re: RegExp): string[] {
   let m: RegExpExecArray | null;
   const regex = new RegExp(re.source, re.flags);
   while ((m = regex.exec(source)) !== null) {
-    const candidate = (m[2] || m[1] || '').trim();
+    const candidate = cleanPathToken((m[2] || m[1] || '').trim());
     if (candidate) result.push(candidate);
   }
   return result;
 }
 
 function resolveCandidatePath(relOrAbs: string, workspaceRoot: string): string | null {
-  const cleaned = relOrAbs.replace(/^['"`]+|['"`]+$/g, '');
+  const cleaned = cleanPathToken(relOrAbs);
   if (!cleaned) return null;
   if (nodePath.isAbsolute(cleaned)) return cleaned;
 
@@ -283,6 +292,57 @@ function resolveCandidatePath(relOrAbs: string, workspaceRoot: string): string |
   if (fs.existsSync(codeScoped)) return codeScoped;
 
   return direct;
+}
+
+function collectSourceFiles(dir: string, maxFiles: number): string[] {
+  const out: string[] = [];
+
+  function walk(current: string): void {
+    if (out.length >= maxFiles) return;
+    let entries: string[] = [];
+    try {
+      entries = fs.readdirSync(current);
+    } catch {
+      return;
+    }
+
+    for (const name of entries) {
+      if (out.length >= maxFiles) return;
+      if (SKIP_DISCOVERY_DIR_RE.test(name)) continue;
+      const fullPath = nodePath.join(current, name);
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(fullPath);
+      } catch {
+        continue;
+      }
+      if (stat.isDirectory()) {
+        walk(fullPath);
+      } else if (stat.isFile() && LOCAL_SOURCE_RE.test(name)) {
+        out.push(fullPath);
+      }
+    }
+  }
+
+  walk(dir);
+  return out;
+}
+
+function detectCmakeExecutableTarget(cmakeFile: string): string | null {
+  try {
+    const content = fs.readFileSync(cmakeFile, 'utf8');
+    const match = content.match(/\badd_executable\s*\(\s*([A-Za-z0-9_.+-]+)/i);
+    return match?.[1] || null;
+  } catch {
+    return null;
+  }
+}
+
+function cleanPathToken(value: string): string {
+  return (value || '')
+    .replace(/^['"`]+|['"`]+$/g, '')
+    .replace(/[，。！？；：:]+$/g, '')
+    .trim();
 }
 
 function buildCompileOnlyCommand(targets: string[]): string {

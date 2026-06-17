@@ -363,7 +363,7 @@ export class DeepSeekAgent {
       }
       return c;
     })()`).catch(() => 0) as number;
-    const baselineText = await this.getLastAssistantText(page).catch(() => '');
+    const baselineText = await this.getStreamingAssistantText(page).catch(() => '');
 
     // 提交：优先找发送按钮，找不到就按 Enter
     const sendBtn = await findElement(page, SELECTORS.sendButton);
@@ -642,7 +642,7 @@ export class DeepSeekAgent {
           // 不 continue，立即进入下方内容读取
         } else {
           // 方案2：文本内容变化（DeepSeek 复用容器，计数不变但内容已更新）
-          const t = await this.getLastAssistantText(page);
+          const t = await this.getStreamingAssistantText(page);
           if (t.length > 0 && t !== baselineText) {
             console.log(`[agent] New AI content detected via text diff (len: ${t.length})`);
             newMsgSeen = true;
@@ -657,7 +657,7 @@ export class DeepSeekAgent {
         }
       }
 
-      const currentText = await this.getLastAssistantText(page);
+      const currentText = await this.getStreamingAssistantText(page);
       const combinedText = accumulatedPrefix
         ? accumulatedPrefix + '\n\n' + currentText
         : currentText;
@@ -683,7 +683,7 @@ export class DeepSeekAgent {
         console.log('[agent] Clicked "继续生成", resuming generation...');
         try {
           // 保存当前已收内容为前缀，下一轮生成流会在新消息块上添加
-          const currentRoundText = await this.getLastAssistantText(page);
+          const currentRoundText = await this.getStreamingAssistantText(page);
           if (currentRoundText) {
             accumulatedPrefix = accumulatedPrefix
               ? accumulatedPrefix + '\n\n' + currentRoundText
@@ -835,6 +835,70 @@ export class DeepSeekAgent {
       require('fs').appendFileSync('/tmp/bridge_diag.log',
         new Date().toISOString() + ' [final-dump]\n' + html + '\n\n');
     } catch { /* ignore */ }
+  }
+
+  /** 生成中使用的轻量文本快照。
+   * 完整 Markdown/代码块还原留到最终阶段做，避免流式轮询被重型 DOM 转换拖慢。
+   */
+  private async getStreamingAssistantText(page: Page): Promise<string> {
+    try {
+      const text = await page.evaluate(`(function(){
+        function isVisible(el) {
+          if (!el || !el.getBoundingClientRect) return false;
+          var rect = el.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) return false;
+          var style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+          return !style || (style.display !== 'none' && style.visibility !== 'hidden');
+        }
+
+        function cleanText(el) {
+          var clone = el.cloneNode(true);
+          var noisy = clone.querySelectorAll(
+            'button, style, script, svg, [class*="copy"], [class*="toolbar"], ' +
+            '[class*="action"], [class*="cite"], [class*="citation"], ' +
+            '[class*="reference"], [class*="footnote"]'
+          );
+          for (var i = 0; i < noisy.length; i++) noisy[i].remove();
+          return (clone.innerText || clone.textContent || '')
+            .replace(/\\u00a0/g, ' ')
+            .replace(/[ \\t]+\\n/g, '\\n')
+            .trim();
+        }
+
+        function hasAssistantContent(el) {
+          return !!(el && el.querySelector && el.querySelector(
+            '[class*="ds-markdown"], [class*="markdown-body"], [class*="markdown"], pre, code, table, p, ol, ul'
+          ));
+        }
+
+        var seen = [];
+        var candidates = [];
+        function add(el) {
+          if (!el || seen.indexOf(el) >= 0 || !isVisible(el) || !hasAssistantContent(el)) return;
+          seen.push(el);
+          var text = cleanText(el);
+          if (text) candidates.push(text);
+        }
+
+        var messages = document.querySelectorAll('[class*="ds-message"]');
+        for (var mi = 0; mi < messages.length; mi++) add(messages[mi]);
+
+        var markdown = document.querySelectorAll('[class*="ds-markdown"], [class*="markdown-body"], [class*="markdown"]');
+        for (var i = 0; i < markdown.length; i++) {
+          var root = markdown[i].closest('[class*="ds-message"], [data-role="assistant"], [class*="assistant"], [class*="bot"]') || markdown[i];
+          add(root);
+        }
+
+        if (candidates.length === 0) {
+          var assistantRoots = document.querySelectorAll('[data-role="assistant"], div[class*="assistant"], div[class*="bot"]');
+          for (var ai = 0; ai < assistantRoots.length; ai++) add(assistantRoots[ai]);
+        }
+
+        return candidates.length ? candidates[candidates.length - 1] : '';
+      })()`);
+      return extractDeepSeekResponse({ assistantMessages: [String(text || '')] }).lastAnswer;
+    } catch { /* ignore */ }
+    return '';
   }
 
   private _diagnosticDone = false;
