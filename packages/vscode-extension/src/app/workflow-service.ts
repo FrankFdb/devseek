@@ -13,6 +13,7 @@ export interface WorkflowSelectionInput {
   files: string[];
   agentEnabled: boolean;
   forceNoAgent?: boolean;
+  intentConfirmed?: boolean;
 }
 
 export interface WorkflowSelection {
@@ -22,9 +23,9 @@ export interface WorkflowSelection {
 }
 
 export function selectWorkflow(input: WorkflowSelectionInput): WorkflowSelection {
-  const { intent, files, agentEnabled, forceNoAgent } = input;
+  const { intent, files, agentEnabled, forceNoAgent, intentConfirmed } = input;
 
-  if (intent.requiresConfirmation) {
+  if (intent.requiresConfirmation && !intentConfirmed) {
     return { kind: 'confirmation-required', useAgent: false, reason: 'intent-requires-confirmation' };
   }
 
@@ -36,7 +37,11 @@ export function selectWorkflow(input: WorkflowSelectionInput): WorkflowSelection
     return { kind: 'plain-chat', useAgent: false, reason: 'agent-disabled' };
   }
 
-  if (!shouldUseAgentMode(intent, files)) {
+  const agentModeIntent = intentConfirmed && intent.requiresConfirmation
+    ? { ...intent, requiresConfirmation: false }
+    : intent;
+
+  if (!shouldUseAgentMode(agentModeIntent, files)) {
     return { kind: 'plain-chat', useAgent: false, reason: `mode-${intent.mode}-does-not-use-agent` };
   }
 
@@ -49,6 +54,8 @@ export function selectWorkflow(input: WorkflowSelectionInput): WorkflowSelection
       return { kind: 'run-agent', useAgent: true, reason: 'run-workflow' };
     case 'edit':
       return { kind: 'edit-agent', useAgent: true, reason: 'edit-workflow' };
+    case 'destructive':
+      return { kind: 'edit-agent', useAgent: true, reason: 'confirmed-destructive-workflow' };
     default:
       return { kind: 'plain-chat', useAgent: false, reason: `mode-${intent.mode}-not-agent-routable` };
   }

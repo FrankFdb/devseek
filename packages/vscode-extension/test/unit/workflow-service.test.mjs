@@ -63,4 +63,12 @@ test('WorkflowService: destructive requests require confirmation outside agent',
   assert.equal(selected.useAgent, false);
 });
 
+test('WorkflowService: confirmed destructive requests route to edit agent', () => {
+  const intent = decideChatIntent('删除 code/main.cpp');
+  const selected = selectWorkflow({ intent, files: ['/tmp/main.cpp'], agentEnabled: true, intentConfirmed: true });
+  assert.equal(selected.kind, 'edit-agent');
+  assert.equal(selected.useAgent, true);
+  assert.equal(selected.reason, 'confirmed-destructive-workflow');
+});
+
 console.log('\nWorkflow service tests passed.\n');

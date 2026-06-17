@@ -12,6 +12,7 @@ export interface ChatRouteInput {
   files: string[];
   agentEnabled: boolean;
   forceNoAgent?: boolean;
+  intentConfirmed?: boolean;
   lookupLearnedIntent?: (text: string) => 'chat' | 'code-change' | null;
   autoApplyPolicy?: AutoApplyPolicy;
 }
@@ -40,6 +41,7 @@ export class ChatRouteController {
       files: input.files,
       agentEnabled: input.agentEnabled,
       forceNoAgent: input.forceNoAgent,
+      intentConfirmed: input.intentConfirmed,
     });
 
     return {

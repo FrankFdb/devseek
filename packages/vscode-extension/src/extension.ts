@@ -48,6 +48,7 @@ import { DiffDecorationManager, type DiffRecordInfo } from './diff-decorator';
 import { isFileProtected } from './protected-files';
 import { decideToolPermission } from './app/permission-service';
 import { ChatRouteController } from './app/chat-controller';
+import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { SessionService, type SessionMeta } from './app/session-service';
 import { PendingEditService } from './app/pending-edit-service';
@@ -861,7 +862,22 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         }
         break;
       case 'chat':
-        if (msg.text) { await runChat(wv, msg.text, msg.prompt ?? msg.text, msg.newSession ?? false, msg.mode, msg.files, msg.forceNoAgent === true, undefined, undefined, msg.images); }
+        if (msg.text) {
+          await runChat(
+            wv,
+            msg.text,
+            msg.prompt ?? msg.text,
+            msg.newSession ?? false,
+            msg.mode,
+            msg.files,
+            msg.forceNoAgent === true,
+            undefined,
+            undefined,
+            msg.images,
+            msg.intentConfirmed === true,
+            msg.suppressUserMessage === true,
+          );
+        }
         break;
       case 'agentSteer': {
         const steerText = (msg.prompt ?? msg.text ?? '').trim();
@@ -1681,6 +1697,24 @@ function buildSmalltalkReply(prompt: string): string {
   return '你好，我在。';
 }
 
+async function requestInlineTerminalConfirmation(
+  webview: vscode.Webview,
+  command: string,
+  workdir = '',
+  timeoutMs = 60000,
+): Promise<{ allow: boolean; alwaysAllow?: boolean; reason?: string }> {
+  const confirmId = `tc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  return new Promise((resolve) => {
+    pendingTerminalConfirms.set(confirmId, (allow, alwaysAllow) => resolve({ allow, alwaysAllow }));
+    webview.postMessage({ type: 'terminalConfirm', command, workdir, confirmId });
+    setTimeout(() => {
+      if (pendingTerminalConfirms.delete(confirmId)) {
+        resolve({ allow: false, reason: '您未在 60 秒内确认，命令未执行。' });
+      }
+    }, timeoutMs);
+  });
+}
+
 async function runChat(
   webview: vscode.Webview,
   userDisplay: string,
@@ -1695,6 +1729,8 @@ async function runChat(
   resumeTasks?: import('./agent-task-decomposer').AgentTask[],
   /** base64 image data URLs for vision input */
   images?: string[],
+  intentConfirmed = false,
+  suppressUserMessage = false,
 ): Promise<void> {
   // 为本次请求创建独立 AbortController，停止按钮可随时中断
   activeChatAbortController?.abort();
@@ -1747,6 +1783,7 @@ async function runChat(
     files: effectiveFiles,
     agentEnabled: vscode.workspace.getConfiguration('devseek').get<boolean>('agentEnabled', true),
     forceNoAgent,
+    intentConfirmed,
     lookupLearnedIntent: extContext ? (text) => lookupLearnedIntent(text, extContext!) : undefined,
   });
 
@@ -1754,7 +1791,9 @@ async function runChat(
     if (newSession) {
       webview.postMessage({ type: 'newSessionStarted' });
     }
-    webview.postMessage({ type: 'userMessage', text: userDisplay, prompt, images });
+    if (!suppressUserMessage) {
+      webview.postMessage({ type: 'userMessage', text: userDisplay, prompt, images });
+    }
     webview.postMessage({
       type: 'startResponse',
       prompt: initialRouteDecision.intentRoutingText,
@@ -1843,16 +1882,49 @@ async function runChat(
   if (newSession) {
     webview.postMessage({ type: 'newSessionStarted' });
   }
-  webview.postMessage({ type: 'userMessage', text: userDisplay, prompt, images });
+  if (!suppressUserMessage) {
+    webview.postMessage({ type: 'userMessage', text: userDisplay, prompt, images });
+  }
   const routeDecision = chatRouteController.decide({
     userDisplay,
     prompt,
     files: effectiveFiles,
     agentEnabled: vscode.workspace.getConfiguration('devseek').get<boolean>('agentEnabled', true),
     forceNoAgent,
+    intentConfirmed,
     lookupLearnedIntent: extContext ? (text) => lookupLearnedIntent(text, extContext!) : undefined,
   });
   const { intentRoutingText, intent, toolPolicy, workflow } = routeDecision;
+  const preExecutionInteraction = buildPreExecutionInteraction({
+    userText: intentRoutingText,
+    prompt,
+    files: effectiveFiles,
+    intent,
+    workflow,
+    intentConfirmed,
+  });
+  if (preExecutionInteraction) {
+    webview.postMessage({
+      type: 'intentConfirmation',
+      request: {
+        ...preExecutionInteraction,
+        original: {
+          text: userDisplay,
+          prompt,
+          files: effectiveFiles.length > 0 ? effectiveFiles : undefined,
+          images,
+          newSession: false,
+          mode,
+          forceNoAgent,
+        },
+      },
+    });
+    if (activeChatAbortController === abortCtrl) {
+      activeChatAbortController = null;
+      activeAgentSteerQueue.length = 0;
+    }
+    return;
+  }
   const workflowReporter = async (status: ApplyWorkflowStatus): Promise<void> => {
     webview.postMessage({ type: 'workflowStatus', ...status });
   };
@@ -1905,9 +1977,36 @@ async function runChat(
         const agSessionContext = buildAgenticSessionContext(agWsRoot, userDisplay);
         // Non-code files (logs, csvs, etc.) are passed directly
         const dataFiles = effectiveFiles.filter(f => !AGENT_CODE_FILE_RE.test(f));
-        // Unlock webview delta gate: free-explore mode has no plan phase,
-        // so send a no-op plan:completed so agentPlanDone = true immediately.
-        postAgent({ type: 'agentStatus', phase: 'plan', state: 'completed', title: '', taskTotal: 0, detail: '' });
+        // Free-explore mode has no Architect decomposition phase, but the UI still
+        // needs a visible beginning before the model's first tool call arrives.
+        postAgent({
+          type: 'agentStatus',
+          phase: 'plan',
+          state: 'started',
+          title: '分析任务，准备探索工作区',
+          taskTotal: 0,
+          detail: '正在理解请求，并准备读取相关文件、生成执行步骤。',
+        });
+        postAgent({
+          type: 'agentStatus',
+          phase: 'plan',
+          state: 'completed',
+          title: '已确定执行方式：Agent 自主探索',
+          taskTotal: 0,
+          detail: [
+            '1. 理解需求和工作区范围',
+            '2. 读取或搜索相关文件',
+            '3. 按需创建或修改文件',
+            '4. 编译、运行或验证结果',
+          ].join('\n'),
+        });
+        postAgent({
+          type: 'agentStatus',
+          phase: 'execute',
+          state: 'started',
+          title: '开始执行：等待模型返回任务列表和工具调用',
+          detail: '后续读取、搜索、写入和终端命令会继续显示在这里。',
+        });
         const agResult = await runAgenticLoop(prompt, dataFiles, agWsRoot, mode, {
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
@@ -2997,17 +3096,16 @@ async function runChat(
         lastLocalExecutionPlan = localPlan;
 
         if (executionApproval === 'confirm') {
-          const choice = await vscode.window.showInformationMessage(
-            `DevSeek 将执行本地命令：${localPlan.command}`,
-            '执行',
-            '取消',
-          );
-          if (choice !== '执行') {
+          const confirmResult = await requestInlineTerminalConfirmation(webview, localPlan.command, localPlan.cwd);
+          if (confirmResult.alwaysAllow) {
+            await vscode.workspace.getConfiguration('devseek').update('autopilotMode', true, vscode.ConfigurationTarget.Global);
+          }
+          if (!confirmResult.allow) {
             await workflowReporter({
               phase: 'validate',
               state: 'skipped',
               title: '本地执行已取消',
-              detail: '用户取消了本地编译/运行命令。',
+              detail: confirmResult.reason ?? '用户取消了本地编译/运行命令。',
             });
             webview.postMessage({ type: 'endResponse' });
             return;

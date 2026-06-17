@@ -50,6 +50,26 @@ test('ChatRouteController: preserves edit workflow for real edit requests', () =
   assert.equal(decision.workflow.kind, 'edit-agent');
 });
 
+test('ChatRouteController: destructive workflow waits for visible confirmation', () => {
+  const controller = new ChatRouteController();
+  const pending = controller.decide({
+    userDisplay: '删除 code/main.cpp',
+    prompt: '删除 code/main.cpp',
+    files: ['/tmp/main.cpp'],
+    agentEnabled: true,
+  });
+  const confirmed = controller.decide({
+    userDisplay: '删除 code/main.cpp',
+    prompt: '删除 code/main.cpp',
+    files: ['/tmp/main.cpp'],
+    agentEnabled: true,
+    intentConfirmed: true,
+  });
+
+  assert.equal(pending.workflow.kind, 'confirmation-required');
+  assert.equal(confirmed.workflow.kind, 'edit-agent');
+});
+
 test('getIntentRoutingText: strips only attachment badge lines', () => {
   assert.equal(getIntentRoutingText('📎 `a.ts`\n\nello', 'fallback'), 'ello');
   assert.equal(getIntentRoutingText('', 'fallback'), 'fallback');

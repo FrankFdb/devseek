@@ -36,6 +36,8 @@ export interface WebviewInboundMessage {
   autopilot?: boolean;
   enabled?: boolean;
   forceNoAgent?: boolean;
+  intentConfirmed?: boolean;
+  suppressUserMessage?: boolean;
   confirmId?: string;
   allow?: boolean;
   alwaysAllow?: boolean;
@@ -60,4 +62,5 @@ export type WebviewOutboundMessage =
   | { type: 'todoUpdate'; items: unknown[] }
   | { type: 'contextFiles'; files: string[] }
   | { type: 'terminalConfirm'; command: string; workdir: string; confirmId: string }
+  | { type: 'intentConfirmation'; request: unknown }
   | { type: string; [key: string]: unknown };
