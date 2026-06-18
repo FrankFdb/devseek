@@ -23,7 +23,7 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { buildToolPolicy, decideToolPermission } = req(bundlePath);
+const { buildToolPolicy, decideToolPermission, PermissionKernel } = req(bundlePath);
 
 test('PermissionService: smalltalk allows no tools', () => {
   const policy = buildToolPolicy('smalltalk');
@@ -37,6 +37,8 @@ test('PermissionService: inspect is read-only', () => {
   const policy = buildToolPolicy('inspect');
   assert.equal(decideToolPermission(policy, 'read').action, 'allow');
   assert.equal(decideToolPermission(policy, 'search').action, 'allow');
+  assert.equal(decideToolPermission(policy, 'network').action, 'allow');
+  assert.equal(decideToolPermission(policy, 'memory').action, 'deny');
   assert.equal(decideToolPermission(policy, 'edit').action, 'deny');
   assert.equal(decideToolPermission(policy, 'terminal').action, 'deny');
 });
@@ -44,6 +46,7 @@ test('PermissionService: inspect is read-only', () => {
 test('PermissionService: plan can plan but not mutate', () => {
   const policy = buildToolPolicy('plan');
   assert.equal(decideToolPermission(policy, 'plan').action, 'allow');
+  assert.equal(decideToolPermission(policy, 'memory').action, 'allow');
   assert.equal(decideToolPermission(policy, 'edit').action, 'deny');
   assert.equal(decideToolPermission(policy, 'terminal').action, 'deny');
 });
@@ -52,6 +55,21 @@ test('PermissionService: edit allows writes and confirms terminal', () => {
   const policy = buildToolPolicy('edit');
   assert.equal(decideToolPermission(policy, 'edit').action, 'allow');
   assert.equal(decideToolPermission(policy, 'terminal').action, 'requireConfirm');
+});
+
+test('PermissionService: protected workspace writes require confirmation', () => {
+  const policy = buildToolPolicy('edit');
+  const kernel = new PermissionKernel(policy);
+  const decision = kernel.decide({
+    kind: 'edit',
+    toolName: 'write_file',
+    risk: 'medium',
+    mutatesWorkspace: true,
+    protectedPath: true,
+  });
+
+  assert.equal(decision.action, 'requireConfirm');
+  assert.match(decision.reason, /protected-path/);
 });
 
 test('PermissionService: run confirms terminal and denies edits', () => {
@@ -65,6 +83,8 @@ test('PermissionService: destructive requires user confirmation', () => {
   assert.equal(policy.requireUserConfirmation, true);
   assert.equal(decideToolPermission(policy, 'edit').action, 'requireConfirm');
   assert.equal(decideToolPermission(policy, 'terminal').action, 'requireConfirm');
+  assert.equal(decideToolPermission(policy, 'vscode').action, 'requireConfirm');
+  assert.equal(decideToolPermission(policy, 'mcp').action, 'requireConfirm');
 });
 
 console.log('\nPermission service tests passed.\n');

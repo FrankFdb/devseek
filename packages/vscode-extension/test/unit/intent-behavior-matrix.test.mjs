@@ -49,6 +49,11 @@ const { parseGeneratedArtifacts } = req(bundle(
 
 const controller = new ChatRouteController();
 
+const READ_TOOLS = ['read', 'search', 'diagnostics', 'network'];
+const PLAN_TOOLS = [...READ_TOOLS, 'plan', 'memory'];
+const EDIT_TOOLS = [...PLAN_TOOLS, 'edit', 'terminal'];
+const RUN_TOOLS = [...READ_TOOLS, 'plan', 'memory', 'terminal'];
+
 function decide(input) {
   return controller.decide({
     userDisplay: input.userDisplay ?? input.prompt,
@@ -157,7 +162,7 @@ const routingCases = [
     title: 'explicit no-change inspection stays non-agent',
     prompt: '不要修改，只分析这个文件',
     files: ['/tmp/main.ts'],
-    expect: { kind: 'chat', mode: 'inspect', workflow: 'plain-chat', useAgent: false, tools: ['read', 'search', 'diagnostics'] },
+    expect: { kind: 'chat', mode: 'inspect', workflow: 'plain-chat', useAgent: false, tools: READ_TOOLS },
     blocker: 'explicit-no-change',
     toolActions: { read: 'allow', search: 'allow', diagnostics: 'allow', edit: 'deny', terminal: 'deny' },
   },
@@ -166,7 +171,7 @@ const routingCases = [
     title: 'file inspection uses read-only agent',
     prompt: '解释这段代码',
     files: ['/tmp/main.ts'],
-    expect: { kind: 'chat', mode: 'inspect', workflow: 'inspect-agent', useAgent: true, tools: ['read', 'search', 'diagnostics'] },
+    expect: { kind: 'chat', mode: 'inspect', workflow: 'inspect-agent', useAgent: true, tools: READ_TOOLS },
     toolActions: { read: 'allow', search: 'allow', diagnostics: 'allow', edit: 'deny', terminal: 'deny' },
   },
   {
@@ -174,7 +179,7 @@ const routingCases = [
     title: 'project architecture plan uses plan agent when context exists',
     prompt: '给出这个项目的重构方案',
     files: ['/tmp/src/index.ts'],
-    expect: { kind: 'chat', mode: 'plan', workflow: 'plan-agent', useAgent: true, tools: ['read', 'search', 'diagnostics', 'plan'] },
+    expect: { kind: 'chat', mode: 'plan', workflow: 'plan-agent', useAgent: true, tools: PLAN_TOOLS },
     toolActions: { read: 'allow', plan: 'allow', edit: 'deny', terminal: 'deny' },
   },
   {
@@ -182,7 +187,7 @@ const routingCases = [
     title: 'no-change planning request becomes read-only inspection',
     prompt: '给出这个项目的重构方案，先不要修改代码',
     files: ['/tmp/src/index.ts'],
-    expect: { kind: 'chat', mode: 'inspect', workflow: 'plain-chat', useAgent: false, tools: ['read', 'search', 'diagnostics'] },
+    expect: { kind: 'chat', mode: 'inspect', workflow: 'plain-chat', useAgent: false, tools: READ_TOOLS },
     blocker: 'explicit-no-change',
     toolActions: { read: 'allow', plan: 'deny', edit: 'deny', terminal: 'deny' },
   },
@@ -190,42 +195,42 @@ const routingCases = [
     id: 'EDIT-001',
     title: 'create and run C++ hello world is edit workflow',
     prompt: '创建一个 hello world C++ 程序并运行',
-    expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: ['read', 'search', 'diagnostics', 'plan', 'edit', 'terminal'] },
+    expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: EDIT_TOOLS },
     toolActions: { read: 'allow', edit: 'allow', terminal: 'requireConfirm' },
   },
   {
     id: 'EDIT-002',
     title: 'write C++ hello program is edit workflow',
     prompt: '编写一个 C++ 程序，打印 hello',
-    expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: ['read', 'search', 'diagnostics', 'plan', 'edit', 'terminal'] },
+    expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: EDIT_TOOLS },
     toolActions: { read: 'allow', edit: 'allow', terminal: 'requireConfirm' },
   },
   {
     id: 'EDIT-003',
     title: 'fix compile error prefers edit over run',
     prompt: '修复 main.cpp 编译错误',
-    expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: ['read', 'search', 'diagnostics', 'plan', 'edit', 'terminal'] },
+    expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: EDIT_TOOLS },
     toolActions: { read: 'allow', edit: 'allow', terminal: 'requireConfirm' },
   },
   {
     id: 'RUN-001',
     title: 'run tests is terminal-confirmed run workflow',
     prompt: '运行测试',
-    expect: { kind: 'code-change', mode: 'run', workflow: 'run-agent', useAgent: true, tools: ['read', 'search', 'diagnostics', 'terminal'] },
+    expect: { kind: 'code-change', mode: 'run', workflow: 'run-agent', useAgent: true, tools: RUN_TOOLS },
     toolActions: { read: 'allow', edit: 'deny', terminal: 'requireConfirm' },
   },
   {
     id: 'RUN-002',
     title: 'compile explicit file is terminal-confirmed run workflow',
     prompt: '编译 code/hello.cpp',
-    expect: { kind: 'code-change', mode: 'run', workflow: 'run-agent', useAgent: true, tools: ['read', 'search', 'diagnostics', 'terminal'] },
+    expect: { kind: 'code-change', mode: 'run', workflow: 'run-agent', useAgent: true, tools: RUN_TOOLS },
     toolActions: { read: 'allow', edit: 'deny', terminal: 'requireConfirm' },
   },
   {
     id: 'RUN-003',
     title: 'execution-result follow-up is terminal-confirmed run workflow',
     prompt: '能执行，看到执行结果吗',
-    expect: { kind: 'code-change', mode: 'run', workflow: 'run-agent', useAgent: true, tools: ['read', 'search', 'diagnostics', 'terminal'] },
+    expect: { kind: 'code-change', mode: 'run', workflow: 'run-agent', useAgent: true, tools: RUN_TOOLS },
     signal: 'follow-up-run-request',
     toolActions: { read: 'allow', edit: 'deny', terminal: 'requireConfirm' },
   },
@@ -233,7 +238,7 @@ const routingCases = [
     id: 'RUN-004',
     title: 'direct Chinese execute-result request is a follow-up run workflow',
     prompt: '请执行，给出执行结果',
-    expect: { kind: 'code-change', mode: 'run', workflow: 'run-agent', useAgent: true, tools: ['read', 'search', 'diagnostics', 'terminal'] },
+    expect: { kind: 'code-change', mode: 'run', workflow: 'run-agent', useAgent: true, tools: RUN_TOOLS },
     signal: 'follow-up-run-request',
     toolActions: { read: 'allow', edit: 'deny', terminal: 'requireConfirm' },
   },
@@ -249,7 +254,7 @@ const routingCases = [
     title: 'forceNoAgent disables agent but keeps edit permissions',
     prompt: '修改 main.cpp',
     forceNoAgent: true,
-    expect: { kind: 'code-change', mode: 'edit', workflow: 'plain-chat', useAgent: false, tools: ['read', 'search', 'diagnostics', 'plan', 'edit', 'terminal'] },
+    expect: { kind: 'code-change', mode: 'edit', workflow: 'plain-chat', useAgent: false, tools: EDIT_TOOLS },
     toolActions: { read: 'allow', edit: 'allow', terminal: 'requireConfirm' },
   },
 ];

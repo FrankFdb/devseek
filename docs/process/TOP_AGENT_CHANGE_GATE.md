@@ -68,6 +68,23 @@
 
 ---
 
+**变更标题**：Phase 3 工具协议与权限内核（2026-06-18）
+- **需求归因**：能力缺口 + 架构债务 — DevSeek 后续要支持 DeepSeek Web 默认实现、API Provider、VS Code 插件/CLI/非 VS Code UI 多入口，不能继续让工具调用、权限和证据散落在入口层。
+- **影响能力层**：工具协议、权限、Agent 执行、Provider 适配、意图路由、审计证据。
+- **架构影响**：
+  - `packages/vscode-extension/src/agent/tool-registry.ts` 升级为工具契约注册表，包含 schema、risk、allowedModes、mutatesWorkspace、requiresTerminal。
+  - 新增 `packages/vscode-extension/src/agent/tool-call-normalizer.ts`，统一文本伪工具与 native function calling。
+  - `packages/vscode-extension/src/app/permission-service.ts` 升级为 `PermissionKernel`，覆盖 read/search/diagnostics/network/plan/memory/edit/terminal/vscode/mcp。
+  - `packages/vscode-extension/src/agent/tool-executor.ts` 输出 `ToolResult` 与 `EvidenceRef[]`，未注册工具执行前拒绝。
+- **方案选择理由**：对标 Claude Code / Codex / Copilot 的成熟方式，模型只提出工具调用，宿主负责工具注册、权限判定、证据记录和执行边界；这样后续多 Provider 与多入口不会复制安全逻辑。
+- **主链路验证**：文本伪工具和 API native function calling 归一为同一 `ToolCall`；已注册网络/记忆/VS Code/MCP 工具进入统一权限策略；合法工具计划输出 evidence。
+- **回退链路验证**：未注册工具拒绝；Plan 模式拒绝 edit/terminal；Edit 模式写受保护路径需要确认；Destructive 模式需要用户确认。
+- **结果判据变化**：后续任何新增工具必须先进入 `ToolRegistry`，再经 `PermissionKernel`，并产生 `EvidenceRef`；Provider 不能直接执行工具或绕过权限。
+- **文档更新**：`docs/architecture/05-代码重构实施计划.md` / `docs/release/CHANGELOG.md` / `docs/process/TOP_AGENT_CHANGE_GATE.md`。
+- **备份/发布动作**：本轮为 extension 行为边界变更，需执行全量测试、compile、package、verify packaged bridge、install VSIX。
+
+---
+
 **变更标题**：DeepSeek Web 流式收口与过程信息折叠（2026-06-18）
 - **需求归因**：体验退化 + 可靠性风险 — DeepSeek 网页已经完成回复时，插件仍因保守稳定窗口和最终固定等待延迟展示结果；早期上下文说明还会占用主对话空间。
 - **影响能力层**：模型 Provider、Bridge 响应提取、WebView 展示、Agent 过程记录。

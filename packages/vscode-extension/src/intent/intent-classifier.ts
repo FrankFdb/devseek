@@ -26,11 +26,11 @@ const QA_RE = /(什么是|为什么|怎么理解|区别|原理|概念|介绍一�
 
 const CODE_CONTEXT_RE = /(代码|文件|项目|函数|类|模块|报错|错误|日志|异常|栈|依赖|配置|接口|组件|脚本|code|file|project|function|class|module|error|log|exception|stack|config|component|script)/i;
 
-const READ_ONLY_TOOLS: ToolKind[] = ['read', 'search', 'diagnostics'];
-const PLAN_TOOLS: ToolKind[] = ['read', 'search', 'diagnostics', 'plan'];
-const EDIT_TOOLS: ToolKind[] = ['read', 'search', 'diagnostics', 'plan', 'edit'];
-const RUN_TOOLS: ToolKind[] = ['read', 'search', 'diagnostics', 'terminal'];
-const ALL_AGENT_TOOLS: ToolKind[] = ['read', 'search', 'diagnostics', 'plan', 'edit', 'terminal', 'vscode-command', 'mcp'];
+const READ_ONLY_TOOLS: ToolKind[] = ['read', 'search', 'diagnostics', 'network'];
+const PLAN_TOOLS: ToolKind[] = [...READ_ONLY_TOOLS, 'plan', 'memory'];
+const EDIT_TOOLS: ToolKind[] = [...PLAN_TOOLS, 'edit', 'terminal'];
+const RUN_TOOLS: ToolKind[] = [...READ_ONLY_TOOLS, 'plan', 'memory', 'terminal'];
+const ALL_AGENT_TOOLS: ToolKind[] = [...EDIT_TOOLS, 'vscode', 'vscode-command', 'mcp'];
 
 function baseDecision(
   mode: IntentClassification['mode'],

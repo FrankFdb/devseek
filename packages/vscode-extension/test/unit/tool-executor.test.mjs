@@ -26,6 +26,9 @@ test('AgentToolExecutor: classifies mutating and terminal tools', () => {
   assert.equal(classifyToolKind('create_file'), 'edit');
   assert.equal(classifyToolKind('run_terminal'), 'terminal');
   assert.equal(classifyToolKind('read_file'), 'read');
+  assert.equal(classifyToolKind('fetch_webpage'), 'network');
+  assert.equal(classifyToolKind('memory_write'), 'memory');
+  assert.equal(classifyToolKind('run_vscode_command'), 'vscode');
   assert.equal(classifyToolKind('mcp__server__tool'), 'mcp');
 });
 
@@ -43,8 +46,51 @@ test('AgentToolExecutor: plans activity and permission', () => {
   );
 
   assert.equal(plan.kind, 'terminal');
+  assert.equal(plan.risk, 'high');
+  assert.equal(plan.registered, true);
   assert.equal(plan.activity.kind, 'terminal');
   assert.equal(plan.permission.action, 'requireConfirm');
+  assert.deepEqual(plan.evidence, [{ kind: 'terminal', label: 'npm test' }]);
+});
+
+test('AgentToolExecutor: rejects unregistered tools before execution', () => {
+  const executor = new AgentToolExecutor();
+  const plan = executor.plan(
+    { name: 'unknown_magic', input: {} },
+    {
+      mode: 'edit',
+      allowedToolKinds: ['read', 'search', 'diagnostics', 'network', 'plan', 'memory', 'edit', 'terminal'],
+      requireConfirmationKinds: ['terminal'],
+      deniedToolKinds: [],
+      requireUserConfirmation: false,
+    },
+  );
+
+  assert.equal(plan.registered, false);
+  assert.equal(plan.permission.action, 'deny');
+  assert.equal(plan.permission.reason, 'tool-not-registered:unknown_magic');
+});
+
+test('AgentToolExecutor: emits unified tool results with evidence refs', () => {
+  const executor = new AgentToolExecutor();
+  const plan = executor.plan(
+    { name: 'fetch_webpage', input: { url: 'https://example.com' } },
+    {
+      mode: 'inspect',
+      allowedToolKinds: ['read', 'search', 'diagnostics', 'network'],
+      requireConfirmationKinds: [],
+      deniedToolKinds: [],
+      requireUserConfirmation: false,
+    },
+  );
+  const result = executor.toResult(plan, { output: 'ok' });
+
+  assert.equal(plan.kind, 'network');
+  assert.deepEqual(plan.evidence, [{ kind: 'network', label: 'https://example.com' }]);
+  assert.equal(result.ok, true);
+  assert.equal(result.toolName, 'fetch_webpage');
+  assert.equal(result.output, 'ok');
+  assert.deepEqual(result.evidence, plan.evidence);
 });
 
 test('AgentToolExecutor: detects file write tools', () => {

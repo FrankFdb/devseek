@@ -1,58 +1,151 @@
-import type { ToolKind } from '../intent/intent-types';
 import type { ToolPolicy, ToolPermissionDecision } from '../app/permission-service';
 import { decideToolPermission } from '../app/permission-service';
+import type { ToolKind } from '../intent/intent-types';
 import type { FakeTool } from './fake-tool-parser';
+import type { ToolCall } from './tool-call-normalizer';
+import { normalizeToolCall, toolCallToFakeTool } from './tool-call-normalizer';
 import {
-  AGENT_TOOL_DEFINITIONS,
-  AgentToolActivity,
+  type AgentToolActivity,
+  getToolDefinition,
   getToolActivity,
   isFileWriteTool,
 } from './tool-registry';
 
+export interface EvidenceRef {
+  kind: ToolKind | 'tool-call' | 'workspace';
+  label: string;
+  ref?: string;
+}
+
+export interface ToolResult {
+  ok: boolean;
+  toolName: string;
+  output?: string;
+  error?: string;
+  evidence: EvidenceRef[];
+  permission?: ToolPermissionDecision;
+}
+
+export interface ToolResultInput {
+  ok?: boolean;
+  output?: string;
+  error?: string;
+  evidence?: EvidenceRef[];
+}
+
 export interface AgentToolExecutionPlan {
   tool: FakeTool;
   kind: ToolKind;
+  risk: ToolCall['risk'];
+  registered: boolean;
   activity: AgentToolActivity | null;
+  call: ToolCall;
+  evidence: EvidenceRef[];
   permission?: ToolPermissionDecision;
 }
 
 export class AgentToolExecutor {
-  plan(tool: FakeTool, policy?: ToolPolicy): AgentToolExecutionPlan {
-    const kind = classifyToolKind(tool.name);
+  plan(tool: FakeTool | ToolCall, policy?: ToolPolicy): AgentToolExecutionPlan {
+    const call = isNormalizedToolCall(tool) ? tool : normalizeToolCall(tool, 'fake-tool');
+    const definition = call.definition ?? getToolDefinition(call.name);
+    const normalizedTool = toolCallToFakeTool(call);
+    const permission = definition
+      ? policy
+        ? decideToolPermission(policy, {
+          kind: call.kind,
+          toolName: call.name,
+          risk: call.risk,
+          mutatesWorkspace: definition.mutatesWorkspace,
+          protectedPath: hasProtectedWorkspacePath(call.input),
+        })
+        : undefined
+      : { action: 'deny' as const, reason: `tool-not-registered:${call.name || 'unknown'}` };
+
     return {
-      tool,
-      kind,
-      activity: getToolActivity(tool),
-      permission: policy ? decideToolPermission(policy, kind) : undefined,
+      tool: normalizedTool,
+      kind: call.kind,
+      risk: call.risk,
+      registered: Boolean(definition),
+      activity: getToolActivity(normalizedTool),
+      call,
+      evidence: buildEvidenceRefs(call),
+      permission,
     };
   }
 
   isFileWrite(tool: FakeTool): boolean {
     return isFileWriteTool(tool.name);
   }
+
+  toResult(plan: AgentToolExecutionPlan, result: ToolResultInput = {}): ToolResult {
+    return {
+      ok: result.ok ?? !result.error,
+      toolName: plan.tool.name,
+      output: result.output,
+      error: result.error,
+      evidence: [...plan.evidence, ...(result.evidence ?? [])],
+      permission: plan.permission,
+    };
+  }
 }
 
 export function classifyToolKind(name: string): ToolKind {
-  const def = AGENT_TOOL_DEFINITIONS[name];
-  if (def?.requiresTerminal) return 'terminal';
-  if (def?.mutatesWorkspace) return 'edit';
-  if (name === 'run_vscode_command' || name === 'vscode_listCodeUsages') return 'vscode-command';
-  if (name.startsWith('mcp__')) return 'mcp';
+  return getToolDefinition(name)?.kind ?? 'plan';
+}
 
-  switch (def?.activityKind) {
+function buildEvidenceRefs(call: ToolCall): EvidenceRef[] {
+  const input = call.input;
+  const activity = getToolActivity(toolCallToFakeTool(call));
+  const label = activity?.label || stringField(input, 'path', 'filePath', 'query', 'pattern', 'url', 'command') || call.name;
+
+  switch (call.kind) {
+    case 'terminal':
+      return [{ kind: 'terminal', label: stringField(input, 'command', 'cmd') || call.name }];
+    case 'network':
+      return [{ kind: 'network', label: stringField(input, 'url') || call.name }];
+    case 'edit':
     case 'read':
-      return 'read';
+      return [{ kind: call.kind, label }];
     case 'search':
-    case 'web':
-      return 'search';
-    case 'list':
-      return 'search';
+      return [{ kind: 'search', label }];
     case 'diagnostics':
-      return 'diagnostics';
+      return [{ kind: 'diagnostics', label: 'workspace diagnostics' }];
     case 'memory':
-    case 'todo':
-      return 'plan';
-    default:
-      return 'plan';
+      return [{ kind: 'memory', label: preview(stringField(input, 'content', 'text') || call.name) }];
+    case 'vscode':
+    case 'vscode-command':
+      return [{ kind: call.kind, label: stringField(input, 'command') || call.name }];
+    case 'mcp':
+      return [{ kind: 'mcp', label: call.name }];
+    case 'plan':
+      return [{ kind: 'plan', label: call.name }];
   }
+}
+
+function isNormalizedToolCall(tool: FakeTool | ToolCall): tool is ToolCall {
+  return 'registered' in tool && 'source' in tool && 'risk' in tool;
+}
+
+function hasProtectedWorkspacePath(input: Record<string, unknown>): boolean {
+  const value = stringField(input, 'path', 'filePath', 'targetPath');
+  if (!value) return false;
+  const normalized = value.replace(/\\/g, '/').replace(/^\/+/, '');
+  return normalized === '.git'
+    || normalized.startsWith('.git/')
+    || normalized === '.env'
+    || normalized.startsWith('.env.')
+    || normalized.startsWith('.ssh/')
+    || normalized.includes('/.git/');
+}
+
+function stringField(input: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = input[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return '';
+}
+
+function preview(value: string): string {
+  return value.length > 80 ? `${value.slice(0, 77)}...` : value;
 }

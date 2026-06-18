@@ -6,6 +6,17 @@
 
 ## [Unreleased] — 2026-06-18
 
+### Phase 3 工具协议与权限内核
+
+- 对标 Claude Code / Codex / Copilot 的成熟 Agent 工具链，把 DevSeek 工具能力收口为“工具注册表 + ToolCall 归一化 + PermissionKernel + ToolResult/EvidenceRef”的统一边界。
+- `agent/tool-registry.ts` 增加 schema、risk、allowed modes、mutatesWorkspace、requiresTerminal，并覆盖 read/search/diagnostics/network/plan/memory/edit/terminal/vscode/mcp 工具域。
+- 新增 `agent/tool-call-normalizer.ts`，兼容文本伪工具和 API native function calling，为后续 DeepSeek API、OpenAI-compatible、VS Code LM Provider 共用工具协议打底。
+- `app/permission-service.ts` 升级为 `PermissionKernel`，保留 `decideToolPermission` 兼容入口；未授权工具域拒绝，终端和破坏性模式需要确认，受保护路径写入需要确认。
+- `agent/tool-executor.ts` 输出统一 `AgentToolExecutionPlan`、`ToolResult`、`EvidenceRef[]`，未注册工具在执行前拒绝。
+- 意图层工具域与权限策略对齐：Inspect 支持网络读取，Plan/Edit/Run 支持记忆工具，Destructive 覆盖 VS Code command 和 MCP。
+- 新增 `tool-call-normalizer.test.mjs`，扩展 permission、tool-registry、tool-executor、intent matrix 与 architecture boundary 回归。
+- 验证：Phase 3 目标测试通过；`npm test --workspace=packages/vscode-extension` 通过，32 个 suite 全部通过；`git diff --check` 通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npm run extension:package` 通过；`npm run verify:packaged-bridge` 通过；`code --install-extension packages/vscode-extension/devseek-netai-latest.vsix --force` 安装成功。
+
 ### [BUG FIX] DeepSeek Web 流式收口与过程信息折叠
 
 - 缩短 DeepSeek Web bridge 的流式完成判定：看到停止状态消失后使用短稳定窗口收口，避免网页已经结束但插件继续等待保守稳定窗口。

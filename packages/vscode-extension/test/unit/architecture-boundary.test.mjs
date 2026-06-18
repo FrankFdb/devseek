@@ -67,6 +67,7 @@ test('Phase 0: domain roots expose explicit public boundaries', () => {
     'src/agent/index.ts': [
       './events',
       './fake-tool-parser',
+      './tool-call-normalizer',
       './tool-executor',
       './tool-registry',
     ],

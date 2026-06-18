@@ -11,11 +11,16 @@ export type ToolKind =
   | 'read'
   | 'search'
   | 'diagnostics'
+  | 'network'
   | 'plan'
+  | 'memory'
   | 'edit'
   | 'terminal'
+  | 'vscode'
   | 'vscode-command'
   | 'mcp';
+
+export type ToolRisk = 'low' | 'medium' | 'high' | 'destructive';
 
 export interface IntentClassification {
   mode: ExecutionMode;

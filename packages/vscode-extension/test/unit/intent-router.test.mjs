@@ -53,7 +53,7 @@ test('decideChatIntent: "解释这段代码" → inspect read-only intent', () =
   const result = decideChatIntent('解释这段代码');
   assert.equal(result.kind, 'chat');
   assert.equal(result.mode, 'inspect');
-  assert.deepEqual(result.allowedToolKinds, ['read', 'search', 'diagnostics']);
+  assert.deepEqual(result.allowedToolKinds, ['read', 'search', 'diagnostics', 'network']);
 });
 
 test('decideChatIntent: "hello" → smalltalk chat intent', () => {
@@ -105,7 +105,7 @@ test('decideChatIntent: execution result follow-up → run intent', () => {
   assert.ok(result.signals.includes('run-request'));
   assert.ok(result.signals.includes('follow-up-run-request'));
   assert.equal(result.signals.includes('explicit-file-path'), false);
-  assert.deepEqual(result.allowedToolKinds, ['read', 'search', 'diagnostics', 'terminal']);
+  assert.deepEqual(result.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'plan', 'memory', 'terminal']);
   assert.equal(shouldUseAgentMode(result, []), true);
 });
 

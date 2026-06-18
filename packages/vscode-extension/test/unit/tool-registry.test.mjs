@@ -22,7 +22,9 @@ execSync(
 const req = createRequire(import.meta.url);
 const {
   AGENT_TOOL_DEFINITIONS,
+  getToolDefinition,
   getToolActivity,
+  isRegisteredToolName,
   isFileWriteTool,
 } = req(bundlePath);
 
@@ -35,7 +37,20 @@ test('ToolRegistry: identifies workspace file write tools', () => {
 
 test('ToolRegistry: exposes mutating metadata for write tools', () => {
   assert.equal(AGENT_TOOL_DEFINITIONS.create_file.mutatesWorkspace, true);
+  assert.equal(AGENT_TOOL_DEFINITIONS.create_file.kind, 'edit');
+  assert.equal(AGENT_TOOL_DEFINITIONS.create_file.risk, 'medium');
+  assert.deepEqual(AGENT_TOOL_DEFINITIONS.create_file.schema.required, ['path', 'content']);
   assert.equal(AGENT_TOOL_DEFINITIONS.run_terminal.requiresTerminal, true);
+  assert.equal(AGENT_TOOL_DEFINITIONS.fetch_webpage.kind, 'network');
+  assert.equal(AGENT_TOOL_DEFINITIONS.memory_write.kind, 'memory');
+  assert.equal(AGENT_TOOL_DEFINITIONS.run_vscode_command.kind, 'vscode');
+});
+
+test('ToolRegistry: resolves registered and MCP tools', () => {
+  assert.equal(isRegisteredToolName('read_file'), true);
+  assert.equal(isRegisteredToolName('not_a_tool'), false);
+  assert.equal(getToolDefinition('mcp__repo__search').kind, 'mcp');
+  assert.equal(getToolDefinition('mcp__repo__search').risk, 'medium');
 });
 
 test('ToolRegistry: maps tools to activity display labels', () => {
