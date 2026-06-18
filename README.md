@@ -9,9 +9,9 @@
 1. 默认最小修改，优先复用既有模块与接口。
 2. 若现有架构无法承载新功能，可以重构，但必须先更新需求与设计，并明确边界变化。
 3. 所有新增功能与行为变更，必须同步更新：
-  - `docs/需求分析.md`
-  - `docs/软件设计.md`
-  - `docs/CHANGELOG.md`
+  - `docs/requirements/02-顶级编程智能体需求基线.md` 或 `docs/requirements/03-产品需求分析.md`
+  - `docs/architecture/03-顶级编程智能体重构设计.md` 或对应编号设计文档
+  - `docs/release/CHANGELOG.md`
 4. 重要架构变更、高风险功能和阶段版本应在 `backups/<版本>-<日期>/` 保留可回查快照。
 5. 排障优先沿“需求 -> 设计 -> 代码 -> 变更日志 -> 备份”链路定位，避免直接在现有代码上盲目试错。
 
@@ -72,9 +72,12 @@ deepseek_netai/
 ├── backups/                    # 版本备份（含可直接安装的 .vsix）
 │   └── v1.7-2026-04-30/
 │       └── devseek-netai-v1.7.vsix   ← 最新版本
-├── docs/需求分析.md            # 完整需求文档（含可行性审计）
-├── docs/软件设计.md            # Copilot 风格文件生成/修改能力的软件设计
-├── docs/CHANGELOG.md           # 版本变更日志
+├── docs/README.md              # 文档索引与维护规则
+├── docs/requirements/          # 需求、路线图、意图识别策略
+├── docs/architecture/          # 编号架构设计、Provider 设计、重构实施计划
+├── docs/process/               # 变更闸门与工程治理
+├── docs/release/               # 版本变更日志
+├── docs/archive/               # 历史报告、专项分析、一次性材料
 ├── packages/
 │   ├── shared/                 # 共享类型定义
 │   ├── bridge/                 # 本地桥接服务（Playwright + Express）

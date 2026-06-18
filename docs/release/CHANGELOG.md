@@ -6,6 +6,41 @@
 
 ## [Unreleased] — 2026-06-18
 
+### 运行形态与界面解耦设计
+
+- 新增 `docs/requirements/09-运行形态与界面解耦需求.md`，确认 DevSeek 不应只作为 VS Code 插件设计，而应支持 VS Code、CLI、非交互 JSONL、非 VS Code 图形界面和跨平台运行。
+- `docs/requirements/02-顶级编程智能体需求基线.md` 新增 REQ-N，明确 Headless Agent Core、Surface Adapter、VS Code 首发入口、CLI 交互、CLI 非交互、Desktop/local Web、跨平台和共享状态。
+- 新增 `docs/architecture/10-运行形态与界面解耦架构设计.md`，设计 `AgentApplicationService`、`SurfaceAdapter`、`AgentCommand` / `AgentEvent`、`PlatformRuntimeAdapter`、`ShellAdapter`、`PathAdapter`。
+- `docs/architecture/05-代码重构实施计划.md` 新增 Phase 10“运行形态与界面解耦”，原工程完整性和顶级增强阶段顺延。
+- 创建并切换到 `devseek-multi` 分支，用于承接 Headless Agent Core、Surface Adapter、CLI、跨平台 adapter 和多构建矩阵大重构。
+- 补充多目标构建矩阵：shared/core、bridge、VS Code extension、CLI TUI、CLI JSONL、future desktop/local web 需要明确 build/test/package/release profile。
+- `docs/requirements/references/01/02/03` 补充 Claude Code、Codex、Copilot 多入口和跨平台实现参考。
+- 验证：活跃 Markdown 相对链接校验通过，26 个文件无断链；`git diff --check` 通过。
+
+### 程序员智能编程体需求完备性审计
+
+- 新增 `docs/requirements/08-程序员智能编程体需求完备性审计.md`，按程序员真实工作场景确认需求覆盖，并将缺口回填到 REQ-A/D/E/G/H/M。
+- 新增 `docs/requirements/references/04-other-coding-agents.md`，补充 Cursor、Devin Desktop / Windsurf Cascade、Cline、Aider、Gemini CLI 的能力参考。
+- `docs/requirements/02-顶级编程智能体需求基线.md` 新增 REQ-M，补齐工程环境、语言/运行时支持、依赖治理、预览验证、当前文档 grounding、成本预算、任务回放和 issue/PR/TODO 来源。
+- 新增 `docs/architecture/09-程序员工程完整性架构设计.md`，设计工程上下文、内容排除、代码库索引、环境识别、语言运行时能力矩阵、冲突检测、预算和回放评测边界。
+- `docs/architecture/05-代码重构实施计划.md` 新增 Phase 10“程序员工程完整性补强”。
+- 语言支持从“语言识别”提升为 `REQ-M8` 和 `LanguageRuntimeRegistry`，按语言声明索引、诊断、格式化、构建、测试、运行、依赖管理和降级策略。
+- 验证：活跃 Markdown 相对链接校验通过，24 个文件无断链；`git diff --check` 通过。
+
+### 模型 Provider 默认实现与 API 接入设计
+
+- `docs/requirements/02-顶级编程智能体需求基线.md` 新增 REQ-L，明确 DeepSeek Web 是默认 Provider，其他大模型通过 API Provider 直接接入同一 Agent Runtime。
+- `docs/architecture/02-模型供应商与工具协议架构设计.md` 补充 `ProviderConfigService`、默认 Provider 策略、API Provider 配置、secret 引用、fallback 和验收标准。
+- `docs/architecture/01/05/06/07` 同步 Provider 边界：所有 Provider 必须共享工具协议、权限、质量门禁、历史任务和记忆边界。
+
+### 历史任务与续作需求设计
+
+- `docs/requirements/02-顶级编程智能体需求基线.md` 新增 REQ-K，明确历史任务保存、任务列表、打开续作、幂等恢复、会话/记忆分层、隐私清理和导出。
+- 新增 `docs/architecture/08-历史任务与续作架构设计.md`，设计 `TaskHistoryStore`、`TaskRunRecord`、`TaskTimelineService`、`ResumeContextBuilder`、历史任务状态图、打开续作时序和 UI 信息架构。
+- `docs/architecture/01/03/04/06/07` 补入历史任务与续作链路，区分聊天历史、任务事实、checkpoint、ReviewLedger 和 MemoryService。
+- `docs/architecture/05-代码重构实施计划.md` 将 Phase 7 调整为“历史任务与 DeepSeek Web 异常恢复”，将 Phase 9 补充历史任务 UI 协议。
+- 代码重构第一原则更新为：实现必须符合设计原则和架构边界；必要时先小步重构边界，再落功能。
+
 ### 本地执行失败修复范围收敛
 
 - 新增本地编译/执行诊断解析，优先从 gcc/clang/MSVC/CMake 风格输出中提取 `file:line:column`。
@@ -16,13 +51,35 @@
 
 ### 文档目录整理
 
-- `docs/` 根目录收敛为索引、变更日志、变更闸门、需求和设计文档。
-- `docs/agent/` 只保留长期维护的 Agent 能力、Provider、对标流程和显示规范文档。
+- `docs/` 根目录收敛为索引，活跃文档按软件工程生命周期拆分到 `requirements/`、`architecture/`、`process/`、`release/`。
+- Agent 能力路线图、能力矩阵和意图识别策略归入 `docs/requirements/`；软件设计、架构重构评估和 Provider 架构归入 `docs/architecture/`。
+- Copilot 工作流和显示风格长参考不再作为日常维护入口，分别归入 `docs/archive/agent/` 与 `docs/archive/ui/`。
 - 审计报告、同步报告、专项分析、迭代纪要、旧计划统一归入 `docs/archive/` 子分类。
 - 新增 `docs/archive/README.md` 说明归档目录职责和使用规则。
 
+### 需求文档编号与顶级智能体目标基线
+
+- `docs/requirements/` 活跃需求文档编号化为 `01` 到 `05`，保留必要维护入口，降低后续迭代找错文档的风险。
+- 新增 `docs/requirements/01-当前需求现状.md`，集中记录 DevSeek 当前需求、既有能力和与顶级编程智能体的差距。
+- 重写 `docs/requirements/02-顶级编程智能体需求基线.md`，结合 Claude Code、OpenAI Codex、GitHub Copilot 的官方能力资料，整理为 DevSeek 后续优化目标。
+- 新增 `docs/requirements/references/`，单独保存 Claude Code、OpenAI Codex、GitHub Copilot 官方能力参考摘要与链接，作为后续需求评审的可查依据。
+
+### 记忆体需求与架构重构设计
+
+- 新增 `docs/requirements/06-记忆体需求.md`，明确 M0-M6 记忆分层、MEM-01~MEM-14、读写策略、隐私阻断和后续重构推进方式。
+- 新增 `docs/requirements/07-架构重构需求澄清.md`，把本轮重构范围收敛到 REQ-A/B/C/D/E/I，并明确六大设计原则约束。
+- `docs/architecture/` 活跃设计文档编号化为 `01` 到 `05`；旧架构重构评估移入 `docs/archive/architecture/`。
+- 重写 `docs/architecture/01-顶级编程智能体总体架构设计.md`、`02-模型供应商与工具协议架构设计.md`、`03-Agent运行时与工作流重构设计.md`，基于新需求设计 Agent 分层、服务边界、权限流、工具协议、状态机和 UI 事件协议。
+- 重写 `docs/architecture/04-记忆体架构设计.md`，设计 MemoryService、schema、scope、状态图、读取注入、写入审批、敏感信息阻断和迁移步骤。
+- 重写 `docs/architecture/05-代码重构实施计划.md`，按现有代码差异拆分 ProjectInstructionService、MemoryService、ToolRegistry、PermissionService、Plan Mode、Pending Edit、Provider Runtime、UI 协议等阶段。
+- 新增 `docs/architecture/06-竞品实现方式对标审计与设计修正.md`，审计 Claude Code / Codex / Copilot 正式产品实现方式，补充 QualityGate、TaskCheckpoint、ProviderRecovery、IdempotencyGuard。
+- 新增 `docs/architecture/07-DeepSeek网页异常与恢复设计.md`，覆盖 DeepSeek Web 输出错误、网页不稳定、登录失效、验证码/限流、DOM 变化、输出截断、重复副作用、上下文漂移等异常对策。
+
 #### 验证
 
+- `git diff --check` 通过。
+- 文档相对链接校验通过：20 个 Markdown 文件无断链。
+- 旧活跃路径扫描通过：未发现旧主题目录和旧根入口残留。
 - `node packages/vscode-extension/test/unit/execution-planner.test.mjs` 通过。
 - `npm test --workspace=packages/vscode-extension` 通过：26 个 suite 全部通过。
 - `npm run compile --workspace=packages/vscode-extension` 通过。
@@ -37,7 +94,7 @@
 
 #### 1. 主对话 prose 与 Working/Thinking 职责重新收口
 
-- 参考 `docs/agent/COPILOT_DISPLAY_STYLE_REFERENCE.md` §4、§25、§26，最终用户反馈保持为主对话 prose，Working/Thinking 仅承载过程细节。
+- 参考 `docs/archive/ui/COPILOT_DISPLAY_STYLE_REFERENCE.md` §4、§25、§26，最终用户反馈保持为主对话 prose，Working/Thinking 仅承载过程细节。
 - `media/webview.js` 在 `ASUM` 流式总结、`resetResponse`、`done` 阶段都会确保 prose 气泡位于最新 Working 框下方。
 - `done` 阶段会刷新已经可见的 prose，把稍后到达的文件变更与验证结果补入最终摘要，避免“总结一闪而过”或被折叠框吞掉。
 
@@ -291,9 +348,9 @@
 
 #### 文档更新
 
-- `DEEPSEEK_AGENT_IMPROVEMENT_REQUIREMENTS.md §八`：G-1~G-6 状态从 ❌ 全部更新为 ✅；路线图 Sprint G-A/B/C 标注已完成
-- `DEEPSEEK_AGENT_IMPROVEMENT_REQUIREMENTS.md §九 A-3`：标注已修复
-- `软件设计.md` v2.7 → v2.8：新增 §2.16 文件/目录上下文作用域设计
+- `docs/requirements/04-Agent优化路线图.md §八`：G-1~G-6 状态从 ❌ 全部更新为 ✅；路线图 Sprint G-A/B/C 标注已完成
+- `docs/requirements/04-Agent优化路线图.md §九 A-3`：标注已修复
+- `docs/architecture/01-顶级编程智能体总体架构设计.md`：沉淀文件/目录上下文作用域设计到新总体架构
 
 ---
 
@@ -305,11 +362,11 @@
 
 - **归档（4 文件 → `docs/archive/`）**：`archive/iterations/ITERATION_2026-05-09_P3-4.md`、`archive/iterations/ITERATION_2026-05-09_P3-5.md`、`archive/iterations/ITERATION_2026-05-09_P4-1.md`（三个已完成 sprint 纪要）、`archive/reports/AUDIT_REPORT_2026-05-12.md`（4 项问题均已解决）
 - **`docs/README.md`**：补全 `agent/` 目录文件索引（`COPILOT_AGENT_WORKFLOW.md`、`OPTIMIZATION_PLAN_*.md`）；归档表新增 4 项；修正第 3.2 节目录树
-- **`docs/TOP_AGENT_CHANGE_GATE.md §6`**：补充最近 4 条变更记录（2026-05-10 ~ 2026-05-12 两轮）
-- **`docs/agent/TOP_AGENT_FEATURE_REQUIREMENTS.md`**：能力矩阵将 v2.15/v2.16/v2.18 已上线功能从 ❌ → ✅；新增 6 行（manage_todo_list、task_complete、自动驾驶、File Changes 等）
-- **`docs/需求分析.md`**：文档头版本 v2.16 → v2.17，日期 2026-05-10 → 2026-05-13
-- **`docs/agent/DEEPSEEK_AGENT_IMPROVEMENT_REQUIREMENTS.md`**：新增 §九 架构债务（A-1~A-3）；AUDIT_REPORT 链接更新为 archive 路径
-- **`docs/软件设计.md §2.15`**：记录 `src/utils.ts` 实现状态
+- **`docs/process/TOP_AGENT_CHANGE_GATE.md §6`**：补充最近 4 条变更记录（2026-05-10 ~ 2026-05-12 两轮）
+- **`docs/requirements/02-顶级编程智能体需求基线.md`**：能力矩阵将 v2.15/v2.16/v2.18 已上线功能从 ❌ → ✅；新增 6 行（manage_todo_list、task_complete、自动驾驶、File Changes 等）
+- **`docs/requirements/03-产品需求分析.md`**：文档头版本 v2.16 → v2.17，日期 2026-05-10 → 2026-05-13
+- **`docs/requirements/04-Agent优化路线图.md`**：新增 §九 架构债务（A-1~A-3）；AUDIT_REPORT 链接更新为 archive 路径
+- **`docs/architecture/01-顶级编程智能体总体架构设计.md`**：记录 `src/utils.ts` 实现状态
 
 #### 代码安全修复
 
@@ -328,7 +385,7 @@
 
 ### 架构设计原则 + File Changes 框实现（v2.18）
 
-#### 新增两条架构设计原则（`docs/软件设计.md` §2.14/§2.15）
+#### 新增两条架构设计原则（现纳入 `docs/architecture/01-顶级编程智能体总体架构设计.md`）
 
 - **§2.14 架构优先原则**：禁止临时补丁作为常规迭代路径；所有修改必须推动框架向顶级智能体架构进化，演进路径文档可追溯。
 - **§2.15 代码目录设计原则**：新增文件必须按能力层归属放置，禁止跨层耦合；文件命名服从现有惯例；通用函数集中于 `src/utils.ts`；一功能一模块。
@@ -350,9 +407,9 @@
 - 新增 `afc-*` CSS 类族（`afc-header`/`afc-title`/`afc-stats`/`afc-added`/`afc-removed`/`afc-close`/`afc-list`/`afc-row`/`afc-row-name`/`afc-row-stat`）
 
 **文档更新**：
-- `docs/agent/COPILOT_DISPLAY_STYLE_REFERENCE.md`：§8.2 改为"均已解决"表格，§8.3 新增 3 条已完成项，§10.2 新增实现架构详情，§九 更新为"无待处理项"
-- `docs/agent/COPILOT_AGENT_WORKFLOW.md`：§7.2 File Changes 框标记 ✅ 已对齐
-- `docs/软件设计.md`：新增 §2.14/§2.15 设计原则
+- `docs/archive/ui/COPILOT_DISPLAY_STYLE_REFERENCE.md`：§8.2 改为"均已解决"表格，§8.3 新增 3 条已完成项，§10.2 新增实现架构详情，§九 更新为"无待处理项"
+- `docs/archive/agent/COPILOT_AGENT_WORKFLOW.md`：§7.2 File Changes 框标记 ✅ 已对齐
+- `docs/architecture/01-顶级编程智能体总体架构设计.md`：纳入设计原则
 
 ---
 
@@ -364,9 +421,9 @@
 
 #### 文档更新内容
 
-- `需求分析.md` → v2.17：新增变更日志条目 + 专题 C（6 项 Copilot 执行行为规格 G-1 ~ G-6）
-- `软件设计.md` → v2.7：新增第四章（6 项实现规格，含消息协议/HTML 结构/CSS 类/改动位置）
-- `docs/agent/DEEPSEEK_AGENT_IMPROVEMENT_REQUIREMENTS.md`：新增第八章差距分析（含优先级矩阵和路线图）
+- `docs/requirements/03-产品需求分析.md` → v2.17：新增变更日志条目 + 专题 C（6 项 Copilot 执行行为规格 G-1 ~ G-6）
+- `docs/architecture/01-顶级编程智能体总体架构设计.md`：纳入消息协议、HTML 结构、CSS 类和改动位置的设计约束
+- `docs/requirements/04-Agent优化路线图.md`：新增第八章差距分析（含优先级矩阵和路线图）
 - `docs/archive/plans/OPTIMIZATION_PLAN_2026-05-13.md`：Sprint G-A/B/C/D 优化计划，含具体实现步骤、风险缓解和验收标准
 
 #### 识别的 6 项差距
@@ -536,7 +593,7 @@
 - 明确所有新增功能必须同步更新需求文档、设计文档与变更日志
 - 明确重要架构变更必须纳入版本备份与追溯链路，保证问题可快速定位
 - 新增“顶级编程智能体工程规则”：每次代码修改必须先过需求/架构/策略/验证/回退闸门，禁止补丁式修改作为默认策略
-- 新增统一执行模板：docs/TOP_AGENT_CHANGE_GATE.md，作为每次功能改动的强制检查入口
+- 新增统一执行模板：`docs/process/TOP_AGENT_CHANGE_GATE.md`，作为每次功能改动的强制检查入口
 - 需求文档升级至 v2.11，新增“统一变更闸门执行（强制）”与“Definition of Done（强制）”
 - 设计文档升级至 v2.2，新增“顶级智能体变更闸门实现约束”，要求主链路与回退链路双验收
 
@@ -576,7 +633,7 @@
 
 ## [v1.7] — 2026-04-30 ✅ 已发布
 
-**vsix**: `backups/v1.7-2026-04-30/devseek-netai-v1.7.vsix`  
+**vsix**: `backups/v1.7-2026-04-30/devseek-netai-v1.7.vsix`
 **源码备份**: `backups/v1.7-2026-04-30/`
 
 ### 修复

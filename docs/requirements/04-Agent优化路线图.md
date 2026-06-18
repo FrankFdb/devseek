@@ -2,15 +2,16 @@
 
 > **📌 主迭代入口** — 新会话恢复任务时首先读本文件。完整文档体系见 [docs/README.md](../README.md)。
 
-> 基于对 GitHub Copilot Chat（VS Code 1.112.0，`github.copilot-chat-0.40.1`）深度源码逆向分析  
-> 分析来源：`workbench.desktop.main.js` + `extension.js`（NLS strings + 业务逻辑）  
-> 编写日期：2026-05-12  
+> 基于对 GitHub Copilot Chat（VS Code 1.112.0，`github.copilot-chat-0.40.1`）深度源码逆向分析
+> 分析来源：`workbench.desktop.main.js` + `extension.js`（NLS strings + 业务逻辑）
+> 编写日期：2026-05-12
 > 文档目的：指导 DeepSeek 插件对齐 Copilot 的智能行为模式与显示逻辑
 
 **关联文档：**
-- [LLM_PROVIDER_ARCHITECTURE.md](./LLM_PROVIDER_ARCHITECTURE.md) — 多模型接入架构设计（DeepSeek 网页 / API / OpenAI 兼容 / VS Code LM）
-- [TOP_AGENT_FEATURE_REQUIREMENTS.md](./TOP_AGENT_FEATURE_REQUIREMENTS.md) — 顶级 AI 编程助手功能需求全景（Copilot / Cursor / Claude Code / Aider 对比）
-- [archive/AUDIT_REPORT_2026-05-12.md](../archive/AUDIT_REPORT_2026-05-12.md) — 各文档审计报告（已归档，4 项问题均已解决于 v2.18）
+- [02-模型供应商与工具协议架构设计.md](../architecture/02-模型供应商与工具协议架构设计.md) — 多模型能力契约、工具协议和降级策略
+- [02-顶级编程智能体需求基线.md](./02-顶级编程智能体需求基线.md) — Claude Code / Codex / Copilot 对标后的 DevSeek 目标需求基线
+- [06-记忆体需求.md](./06-记忆体需求.md) — DevSeek 记忆体分层、读写规则、隐私边界和重构推进方式
+- [archive/reports/AUDIT_REPORT_2026-05-12.md](../archive/reports/AUDIT_REPORT_2026-05-12.md) — 各文档审计报告（已归档，4 项问题均已解决于 v2.18）
 
 ---
 
@@ -338,7 +339,7 @@ async function runAgentLoop(userPrompt: string, tools: Tool[], callbacks: Callba
   for (let round = 0; round < maxRounds; round++) {
     // 注入当前 todo 上下文
     const todoContext = getCurrentTodoItems();
-    
+
     // 调用 LLM（携带完整历史 + 工具定义）
     const response = await callLLM({
       messages: history,
@@ -353,7 +354,7 @@ async function runAgentLoop(userPrompt: string, tools: Tool[], callbacks: Callba
       callbacks.onAgentStatus({ phase: 'execute', toolName: toolCall.name });
       const result = await executeTool(toolCall);
       toolResults.push({ toolCallId: toolCall.id, content: result });
-      
+
       // 特殊处理
       if (toolCall.name === 'task_complete') {
         callbacks.onAgentStatus({ phase: 'done' });
@@ -599,7 +600,7 @@ Copilot 的 agent system prompt 关键规则（源自逆向分析，可参考采
 | B-1 | webview.js 全功能失效（卡"连接中"、无法发消息） | `renderTodosContent` 函数体被意外重复，产生游离 `}`，整体 SyntaxError | `media/webview.js` | 2026-05-09 |
 | B-2 | 选择 DeepSeek API 后仍走网页路径 | 6 处 `chat()` hard-code import from `bridge-client`，绕过 provider 路由 | `extension.ts` | 2026-05-09 |
 | B-3 | API Key 401 无法更新密钥 | `_ensureApiKey` 有 key 时直接 return；缺少 401 错误传播链 | `deepseek-api.ts`, `provider-router.ts`, `extension.ts` | 2026-05-09 |
-| B-4 | `code/agent/` 文件被误判为路径漂移 | `alignRelPathToScope` 对多级路径强制 remap 到 scopedDirs（活跃编辑器在 `docs/agent/`） | `workspace-applier.ts` | 2026-05-09 |
+| B-4 | `code/agent/` 文件被误判为路径漂移 | `alignRelPathToScope` 对多级路径强制 remap 到 scopedDirs（活跃编辑器位于旧 Agent 文档目录） | `workspace-applier.ts` | 2026-05-09 |
 | B-5 | Inline Chat 在 API 模式下报"Bridge 未运行" | `deepseek.inlineChat` 使用 `await ping()` 而非 provider 可用性检查 | `extension.ts` | 2026-05-09 |
 | B-6 | API 模式多轮对话丢失上下文 | `routeChat` 对非 bridge provider 每次只发单条消息，无历史记忆 | `extension.ts` | 2026-05-09 |
 | B-7 | 右键菜单命令在 API 模式下全部失效 | `dispatch()` 调用 `ping()` 强依赖 bridge；`applyDiff()` 同样硬编码 `chat()` | `commands/index.ts` | 2026-05-09 |
@@ -640,7 +641,7 @@ DeepSeek（当前）:
     ✓  修复 idle_rpm 上界笔误    (codicon-pass, --vscode-charts-green)
     ✓  添加工况验证              (codicon-pass, --vscode-charts-green)
     ●  更新文档                  (codicon-record, --vscode-charts-blue)
-    
+
   [清空 ✕]
 ```
 
@@ -648,7 +649,7 @@ DeepSeek（当前）:
 
 | B-7 | `@workspace` 不生效（resolveFile 无特殊分支） | `resolveFile` handler 直接调 `readWorkspaceFile`，无 `workspace` 特判 | `extension.ts` | 2026-05-09 |
 
-*本文档基于 VS Code 1.112.0 / github.copilot-chat-0.40.1 源码逆向分析。*  
+*本文档基于 VS Code 1.112.0 / github.copilot-chat-0.40.1 源码逆向分析。*
 *每次实现改进后在第六节路线图中更新状态。最后更新：2026-05-09（P3-2 @workspace，P3-3 diff 预览，B-6 对话历史）*
 
 ---
@@ -680,7 +681,7 @@ DeepSeek（当前）:
 **当前插件状态**：Working 区直接从任务行开始，无规划推理文字展示。
 
 **实现路径**：
-1. `agent-loop.ts`：检测 AI 首轮输出中工具调用块之前的纯文字 → `postAgent({ planningText })` 
+1. `agent-loop.ts`：检测 AI 首轮输出中工具调用块之前的纯文字 → `postAgent({ planningText })`
 2. `media/webview.js`：渲染 `.aut-plan-bullet`（第 0 项，不计数）
 3. 若无纯文字前缀，静默跳过
 
@@ -698,7 +699,7 @@ DeepSeek（当前）:
 
 **当前插件状态**：使用 `vscode.window.showWarningMessage`（`extension.ts` line 1206）—— 弹出阻塞全局的 VS Code modal。
 
-**实现路径**（完整规格见软件设计.md §4.2）：
+**实现路径**（完整规格见 [03-Agent运行时与工作流重构设计.md](../architecture/03-Agent运行时与工作流重构设计.md) 的工具执行与权限设计）：
 1. `extension.ts`：`onTerminalCommand` 回调改为：发 `terminalConfirm` 消息 + await Promise（by confirmId）
 2. `media/webview.js`：处理 `terminalConfirm` → 在聊天流末尾插入 `.terminal-confirm-card`
 3. 用户点击 Allow/Skip → 发 `terminalConfirmReply` → extension resolve Promise
@@ -718,7 +719,7 @@ DeepSeek（当前）:
 **当前插件状态**：终端执行状态通过 agentStatus 卡片展示在 Working 区，无独立 "Ran" 行样式。
 
 **实现路径**：
-1. `extension.ts`：命令执行完成后（无论 Allow/Skip），发 `{ type: 'terminalRanNotice', command, exitCode }` 
+1. `extension.ts`：命令执行完成后（无论 Allow/Skip），发 `{ type: 'terminalRanNotice', command, exitCode }`
 2. `media/webview.js`：在当前响应区末尾插入 `.ran-command-row`（含截断命令文字 + 状态图标）
 
 **优先级**：P3（视觉完整度，非阻塞功能）
@@ -752,7 +753,7 @@ DeepSeek（当前）:
 
 **当前插件状态**：pe-panel（底部 L1 层）已有全局 Keep All / Undo All；编辑器标题覆层（L0）未实现。
 
-**实现路径**（两方案，完整规格见软件设计.md §4.5）：  
+**实现路径**（两方案，完整规格见 [03-Agent运行时与工作流重构设计.md](../architecture/03-Agent运行时与工作流重构设计.md) 的文件变更与事件协议设计）：
 - 方案 A（快速）：`vscode.window.createStatusBarItem` 模拟，监听活跃编辑器变化，显示 Keep/Undo 入口
 - 方案 B（完整）：`package.json` `menus.editor/title` contribution point + `deepseek.hasPendingEdit` context key
 

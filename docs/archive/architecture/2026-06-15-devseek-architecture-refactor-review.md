@@ -47,7 +47,7 @@ extension.ts
 
 ## 3. 与既有设计文档的符合度
 
-仓库已有 `docs/软件设计.md`，其中提出的理想边界是：
+仓库已有 `docs/architecture/软件设计.md`，其中提出的理想边界是：
 
 - Bridge 只负责 DeepSeek Web 交互。
 - WebView 只负责渲染和用户触发。
