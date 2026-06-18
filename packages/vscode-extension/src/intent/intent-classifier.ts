@@ -14,6 +14,8 @@ const DESTRUCTIVE_RE = /(删除|清空|覆盖|重置|移除|删掉|干掉|drop|d
 
 const RUN_RE = /(运行|执行|编译|构建|测试|跑一下|验证|启动|调试|run|execute|compile|build|test|debug|start)/i;
 
+const FOLLOW_UP_RUN_RE = /(?:能(?:否)?(?:执行|运行|编译|构建|测试|验证)|看(?:一下|下|看)?(?:执行|运行|编译|构建|测试|验证)?结果|看到(?:执行|运行|编译|构建|测试|验证)?结果|(?:给(?:我)?|输出|展示|显示|提供|返回).{0,12}(?:执行|运行|编译|构建|测试|验证)?结果|(?:执行|运行|编译|构建|测试|验证|跑)(?:一下|下|一遍|一次)?(?:看看|看结果)|(?:执行|运行|编译|构建|测试|验证|跑).{0,8}结果|(?:show|see|view).{0,20}(?:result|output)|(?:can|could).{0,20}(?:run|execute|compile|build|test|verify))/i;
+
 const PLAN_RE = /(方案|计划|设计|架构|怎么改|如何改|重构计划|实施步骤|roadmap|plan|design|architecture|approach)/i;
 
 const EXPLICIT_PLAN_RE = /(方案|计划|架构|怎么改|如何改|重构计划|实施步骤|roadmap|plan|architecture|approach)/i;
@@ -61,6 +63,7 @@ export function classifyIntent(prompt: string): IntentClassification {
   const withoutGreeting = text.replace(GREETING_PREFIX_RE, '').trim();
   const hasPath = EXPLICIT_PATH_RE.test(text);
   const hasCodeContext = CODE_CONTEXT_RE.test(text) || hasPath;
+  const isFollowUpRunRequest = !hasPath && FOLLOW_UP_RUN_RE.test(text);
 
   if (GREETING_ONLY_RE.test(text)) {
     return baseDecision('smalltalk', 0.95, -4, ['greeting-only'], 'greeting-only', []);
@@ -115,12 +118,15 @@ export function classifyIntent(prompt: string): IntentClassification {
   }
 
   if (RUN_RE.test(text)) {
+    const signals = ['run-request'];
+    if (isFollowUpRunRequest) signals.push('follow-up-run-request');
+    if (hasPath) signals.push('explicit-file-path');
     return baseDecision(
       'run',
-      hasPath ? 0.86 : 0.78,
+      hasPath ? 0.86 : isFollowUpRunRequest ? 0.84 : 0.78,
       hasPath ? 4 : 3,
-      hasPath ? ['run-request', 'explicit-file-path'] : ['run-request'],
-      hasPath ? 'run-with-file-path' : 'run-request',
+      signals,
+      hasPath ? 'run-with-file-path' : isFollowUpRunRequest ? 'follow-up-run-request' : 'run-request',
       RUN_TOOLS,
     );
   }

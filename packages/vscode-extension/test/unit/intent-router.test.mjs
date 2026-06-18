@@ -97,6 +97,18 @@ test('decideChatIntent: "编写C++程序" → code-change intent', () => {
   assert.equal(result.mode, 'edit');
 });
 
+test('decideChatIntent: execution result follow-up → run intent', () => {
+  const result = decideChatIntent('能执行，看到执行结果吗');
+  assert.equal(result.kind, 'code-change');
+  assert.equal(result.mode, 'run');
+  assert.equal(result.autoApplyEligible, false);
+  assert.ok(result.signals.includes('run-request'));
+  assert.ok(result.signals.includes('follow-up-run-request'));
+  assert.equal(result.signals.includes('explicit-file-path'), false);
+  assert.deepEqual(result.allowedToolKinds, ['read', 'search', 'diagnostics', 'terminal']);
+  assert.equal(shouldUseAgentMode(result, []), true);
+});
+
 test('decideChatIntent: "重构代码" → code-change intent', () => {
   const result = decideChatIntent('重构这段代码');
   assert.equal(result.kind, 'code-change');

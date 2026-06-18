@@ -27,11 +27,13 @@ import { detectWorkspacePathScope } from './workspace/path-resolver';
 import { parseGeneratedArtifacts, type GeneratedArtifact } from './generated-file-parser';
 import {
   buildExecutionRepairPrompt,
+  buildLocalExecutionFailureMessage,
   buildLocalExecutionSuccessMessage,
   isRepeatExecutionRequest,
   LocalExecutionPlan,
   planLocalExecution,
   runLocalExecution,
+  shouldRepairLocalExecutionFailure,
   shouldPreferLocalExecution,
 } from './execution-planner';
 import { AutoApplyPolicy, shouldAutoApplyFromResponse } from './intent-router';
@@ -54,8 +56,8 @@ import { buildLocalAttachmentContextPrompt } from './app/local-attachment-contex
 import { SessionService, type SessionMeta } from './app/session-service';
 import {
   appendSessionContinuationContext,
-  isLikelySessionContinuation,
-  shouldInjectSessionContinuation,
+  shouldInjectSessionContinuationForIntent,
+  shouldRestoreSessionFiles,
 } from './app/session-continuation';
 import { PendingEditService } from './app/pending-edit-service';
 import type { WebviewInboundMessage } from './ui/webview-protocol';
@@ -66,6 +68,11 @@ import {
   buildLocalExecutionRepairTasks,
   relPathFromRepairWorkspace,
 } from './local-execution-repair';
+import {
+  DEFAULT_SOURCE_FILE_RE,
+  shouldIncludeDiscoveredSourceFile,
+  shouldSkipDiscoveryDir,
+} from './file-discovery';
 
 // ----------------------------------------------------------------
 // Types
@@ -930,6 +937,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
             line: msg.line,
             generatedText: msg.text,
             requestPrompt: msg.prompt,
+            preferredAbsolutePaths: msg.files,
           });
         }
         break;
@@ -1416,8 +1424,7 @@ function buildWorkspaceFileTree(): string {
 // the need for manual @file upload and the associated browser-upload latency.
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SOURCE_FILE_RE = /\.(cpp|cc|cxx|c|h|hpp|ts|tsx|js|jsx|py|java|go|rs|md|json|yaml|yml|sh|bash)$/i;
-const SKIP_DIR_RE = /^(build|dist|node_modules|\.git|\.cache|__pycache__|target|out|bin|obj|\.vscode|\.idea|docs|test|tests)$/i;
+const SOURCE_FILE_RE = DEFAULT_SOURCE_FILE_RE;
 const MAX_AUTO_FILES = 20;
 const MAX_AUTO_SCAN_DIRS = 300;
 const MAX_AUTO_SCAN_MS = 120;
@@ -1487,10 +1494,11 @@ function enumerateSourceFilesIn(dirPath: string, extFilter?: RegExp): string[] {
     try { entries = fs.readdirSync(cur, { withFileTypes: true }); } catch { continue; }
     for (const e of entries) {
       if (result.length >= MAX_AUTO_FILES) break;
-      if (e.isFile() && filter.test(e.name)) {
-        result.push(nodePath.join(cur, e.name));
-      } else if (e.isDirectory() && !SKIP_DIR_RE.test(e.name)) {
-        queue.push(nodePath.join(cur, e.name));
+      const childPath = nodePath.join(cur, e.name);
+      if (e.isFile() && shouldIncludeDiscoveredSourceFile(childPath, filter)) {
+        result.push(childPath);
+      } else if (e.isDirectory() && !shouldSkipDiscoveryDir(e.name)) {
+        queue.push(childPath);
       }
     }
   }
@@ -1566,8 +1574,12 @@ function restoreLastAgentPathsFromSession(sessionId = activeSessionId): void {
     .slice(0, 10);
 }
 
-function resolveSessionContinuationFiles(workspaceRoot: string, prompt: string): string[] {
-  if (!workspaceRoot || !isLikelySessionContinuation(prompt)) return [];
+function resolveSessionContinuationFiles(
+  workspaceRoot: string,
+  prompt: string,
+  intent?: { mode?: string; signals?: readonly string[] },
+): string[] {
+  if (!workspaceRoot || !shouldRestoreSessionFiles(prompt, intent)) return [];
 
   const candidates: string[] = [];
   const state = loadAgentSessionState();
@@ -1847,7 +1859,11 @@ async function runChat(
   let sessionContinuationNote = '';
   if (!newSession && !userExplicitlyAttachedFiles && effectiveFiles.length === 0) {
     const workspaceRootForContinuation = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-    const continuationFiles = resolveSessionContinuationFiles(workspaceRootForContinuation, prompt);
+    const continuationFiles = resolveSessionContinuationFiles(
+      workspaceRootForContinuation,
+      prompt,
+      initialRouteDecision.intent,
+    );
     if (continuationFiles.length > 0) {
       effectiveFiles = continuationFiles;
       sessionContinuationNote = `_[同一 session 续作] 已自动恢复上一轮工作文件：${toContextDisplayLabels(continuationFiles).join('、')}_\n\n`;
@@ -1946,9 +1962,20 @@ async function runChat(
   const workflowReporter = async (status: ApplyWorkflowStatus): Promise<void> => {
     webview.postMessage({ type: 'workflowStatus', ...status });
   };
+  const localPreflightConfig = vscode.workspace.getConfiguration('devseek');
+  const shouldBypassAgentForLocalExecution = (() => {
+    if (!localPreflightConfig.get<boolean>('localExecutionFirst', true)) return false;
+    if (intent.mode !== 'run') return false;
+    const workspaceRootForLocal = getWorkspaceRootFsPath(prompt, pathResolutionHints);
+    if (shouldPreferLocalExecution(prompt, effectiveFiles, workspaceRootForLocal)) {
+      return !!planLocalExecution(prompt, effectiveFiles || [], workspaceRootForLocal);
+    }
+    return isRepeatExecutionRequest(prompt) && !!lastLocalExecutionPlan;
+  })();
 
   // ── Agent Mode: two-phase Architect + Editor loop ────────────────────────
   if (workflow.useAgent) {
+  if (!shouldBypassAgentForLocalExecution) {
     // 只有 bridge provider 才需要检查 bridge 连接
     if (getActiveProviderType() === 'bridge') {
       const online2 = await status();
@@ -2380,7 +2407,11 @@ async function runChat(
       let _decomposeProse = '';
       const _wsFolderForContext = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
       const sessionContextForAgent = buildAgenticSessionContext(_wsFolderForContext, userDisplay);
-      const shouldInjectSessionContext = shouldInjectSessionContinuation(userDisplay, sessionContextForAgent);
+      const shouldInjectSessionContext = shouldInjectSessionContinuationForIntent(
+        userDisplay,
+        sessionContextForAgent,
+        intent,
+      );
       const promptForAgent = shouldInjectSessionContext
         ? appendSessionContinuationContext(prompt, sessionContextForAgent)
         : prompt;
@@ -2975,6 +3006,7 @@ async function runChat(
     webview.postMessage({ type: 'endResponse' });
     return;
   }
+  }
   // ── End Agent Mode ────────────────────────────────────────────────────────
 
   // 只有 bridge provider 才需要检查 bridge 连接
@@ -3081,7 +3113,7 @@ async function runChat(
     const autoApplyPolicy = config.get<AutoApplyPolicy>('autoApplyPolicy', 'conservative');
     const localExecutionFirst = config.get<boolean>('localExecutionFirst', true);
     const executionApproval = config.get<'auto' | 'confirm'>('executionApproval', 'auto');
-    const workspaceRoot = getWorkspaceRootFsPath(finalPrompt, pathResolutionHints);
+    const workspaceRoot = getWorkspaceRootFsPath(prompt, pathResolutionHints);
     let routeFiles = effectiveFiles;
     const noAgentCodeChat = !workflow.useAgent && intent.kind === 'code-change';
 
@@ -3115,7 +3147,7 @@ async function runChat(
 
     if (!newSession) {
       const sessionContextForChat = buildAgenticSessionContext(workspaceRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '', userDisplay);
-      if (shouldInjectSessionContinuation(userDisplay, sessionContextForChat)) {
+      if (shouldInjectSessionContinuationForIntent(userDisplay, sessionContextForChat, intent)) {
         finalPrompt = appendSessionContinuationContext(finalPrompt, sessionContextForChat);
       }
     }
@@ -3151,7 +3183,7 @@ async function runChat(
         await workflowReporter({
           phase: 'validate',
           state: 'started',
-          title: '插件正在本地编译/执行附件',
+          title: localPlan.mode === 'run-only' ? '插件正在本地执行已有程序' : '插件正在本地编译/执行',
           detail: `模式: ${localPlan.mode}\n原因: ${localPlan.reason}\n命令: ${localPlan.command}`,
         });
 
@@ -3168,6 +3200,12 @@ async function runChat(
           if (localResult.ok) {
             emitLearningEvent({ type: 'command_succeeded', command: localPlan.command, context: prompt.slice(0, 80), sessionId: activeSessionId });
             webview.postMessage({ type: 'delta', text: buildLocalExecutionSuccessMessage(localPlan, localResult) });
+            webview.postMessage({ type: 'endResponse' });
+            return;
+          }
+
+          if (!shouldRepairLocalExecutionFailure(localPlan, localResult)) {
+            webview.postMessage({ type: 'delta', text: buildLocalExecutionFailureMessage(localPlan, localResult) });
             webview.postMessage({ type: 'endResponse' });
             return;
           }
@@ -3262,6 +3300,7 @@ async function runChat(
               registerAppliedChange: (change) => registerPendingEditChange(webview, change),
               registerToMemory,
               sessionRecentFiles,
+              repairFiles: repairTasks.map((task) => task.absPath).filter((absPath): absPath is string => Boolean(absPath)),
               mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
               onMcpToolCall: mcpManager.hasMcpTools
                 ? (fakeName, args) => mcpManager.callTool(fakeName, args)
@@ -3444,6 +3483,7 @@ async function runClosedLoopRepair(
   const config = vscode.workspace.getConfiguration('devseek');
   let maxRounds = Math.max(0, Math.min(6, config.get<number>('autoFixRounds', 6)));
   let current = initialApply;
+  let priorRepairRejection = '';
 
   for (let round = 1; round <= maxRounds; round += 1) {
     const validation = current.validation;
@@ -3472,7 +3512,8 @@ async function runClosedLoopRepair(
       detail: `基于验证失败结果回传 DeepSeek：\n命令: ${validation.command}\nexitCode: ${validation.exitCode ?? 'null'}`,
     });
 
-    const repairPrompt = buildRepairPrompt(originalPrompt, current.changedPaths, validation, round);
+    const repairPrompt = buildRepairPrompt(originalPrompt, current.changedPaths, validation, round, priorRepairRejection);
+    priorRepairRejection = '';
     let repairResponse = '';
     let resetNoticeSent = false;
 
@@ -3498,7 +3539,7 @@ async function runClosedLoopRepair(
       return;
     }
 
-    current = await applyGeneratedArtifactsWithPrompt(
+    const repairApply = await applyGeneratedArtifactsWithPrompt(
       repairResponse,
       repairPrompt,
       reporter,
@@ -3509,7 +3550,22 @@ async function runClosedLoopRepair(
       preferredAbsolutePaths,
       { rollbackOnValidationFailure: false },
     );
-    if (!current.applied) {
+    if (!repairApply.applied) {
+      if (responseClaimsStatusOk(repairResponse) && !validation.ok && round < maxRounds) {
+        priorRepairRejection = [
+          '上一轮 DeepSeek 只返回 STATUS: OK 或“无需修改”，但 DevSeek 本地验证仍是失败状态。',
+          `失败命令: ${validation.command}`,
+          `exitCode: ${validation.exitCode ?? 'null'}`,
+          '请不要再自判 OK；必须输出至少一个可应用的文件变更，或输出 STATUS: NG。',
+        ].join('\n');
+        await reporter({
+          phase: 'repair',
+          state: 'started',
+          title: '已拒绝模型 STATUS: OK，自验证仍失败',
+          detail: priorRepairRejection,
+        });
+        continue;
+      }
       await reporter({
         phase: 'repair',
         state: 'failed',
@@ -3518,6 +3574,7 @@ async function runClosedLoopRepair(
       });
       return;
     }
+    current = repairApply;
 
     if (round >= maxRounds) {
       const validationNow = current.validation;
@@ -3597,14 +3654,17 @@ async function requestManualFixGuidance(originalPrompt: string, command: string,
 function buildRepairPrompt(
   originalPrompt: string,
   changedPaths: string[],
-  validation: { command: string; exitCode: number | null; output: string; cwd: string },
+  validation: { command: string; exitCode: number | null; output: string; cwd: string; ok?: boolean; mode?: string; reason?: string },
   round: number,
+  priorRepairRejection = '',
 ): string {
   const paths = changedPaths.length > 0 ? changedPaths.join('\n') : '（未知）';
   const output = (validation.output || '').trim().slice(0, 6000);
   return [
     '你是一个严格执行修复闭环的高级编程助手。',
     `这是第 ${round} 轮自动修复。上一次自动验证失败，请直接修复。`,
+    '注意：本地验证状态为 FAILED。即使 stdout 中出现成功文本，或旧日志里出现 exitCode=0，也不能把本轮判定为 OK；验证是否通过只由 DevSeek 下一轮本地命令决定。',
+    priorRepairRejection ? `\n上一轮无效修复反馈：\n${priorRepairRejection}` : '',
     '',
     '原始需求：',
     originalPrompt,
@@ -3615,6 +3675,7 @@ function buildRepairPrompt(
     `自动验证命令（cwd=${validation.cwd}）：`,
     validation.command,
     '',
+    `验证状态：FAILED${validation.mode ? ` mode=${validation.mode}` : ''}${validation.reason ? ` reason=${validation.reason}` : ''}`,
     `验证结果：exitCode=${validation.exitCode ?? 'null'}`,
     '```text',
     output || '（无输出）',
@@ -3624,9 +3685,14 @@ function buildRepairPrompt(
     '输出格式要求：',
     '1. 多文件时，按“文件 1：path/to/file.ext”+ 对应代码块 输出。',
     '2. 不要输出目录树、流程图、编译命令说明。',
-    '3. 若确认可通过验证，在末尾单独输出一行：STATUS: OK',
-    '4. 若无法修复，在末尾单独输出一行：STATUS: NG',
+    '3. 当前本地验证已失败，禁止只输出 STATUS: OK 或“无需修改”。',
+    '4. 若能修复，必须输出至少一个已落地文件的完整源码或可应用补丁。',
+    '5. 若无法修复，在末尾单独输出一行：STATUS: NG',
   ].join('\n');
+}
+
+function responseClaimsStatusOk(text: string): boolean {
+  return /(?:^|\n)\s*STATUS\s*:\s*OK\s*(?:\n|$)/i.test(text || '');
 }
 
 function appendStructuredGenerationHint(prompt: string): string {
@@ -4620,15 +4686,13 @@ async function addResourceToChat(resource?: vscode.Uri): Promise<void> {
 
 async function collectDirectoryFiles(root: vscode.Uri, maxFiles: number, extFilter?: RegExp): Promise<vscode.Uri[]> {
   const collected: vscode.Uri[] = [];
-  // Directories that are not source code (documentation, tests, build artifacts)
-  const SKIP_DIRS = /^(build|dist|node_modules|\.git|\.cache|__pycache__|target|out|bin|obj|\.vscode|\.idea|docs|test|tests|\.devseek-build|\.devseek-builds|CMakeFiles)$/i;
 
   async function walk(dir: vscode.Uri): Promise<void> {
     if (collected.length >= maxFiles) return;
     const entries = await vscode.workspace.fs.readDirectory(dir);
     for (const [name, type] of entries) {
       if (collected.length >= maxFiles) return;
-      if (SKIP_DIRS.test(name)) continue;
+      if (shouldSkipDiscoveryDir(name)) continue;
 
       const child = vscode.Uri.joinPath(dir, name);
       if (type === vscode.FileType.Directory) {
@@ -4638,7 +4702,7 @@ async function collectDirectoryFiles(root: vscode.Uri, maxFiles: number, extFilt
       if (type !== vscode.FileType.File) continue;
       // Apply extension filter: if caller provided one, use it; otherwise use SOURCE_FILE_RE
       const filter = extFilter ?? SOURCE_FILE_RE;
-      if (!filter.test(name)) continue;
+      if (!shouldIncludeDiscoveredSourceFile(child.fsPath, filter)) continue;
 
       collected.push(child);
     }
@@ -4656,6 +4720,7 @@ interface OpenGeneratedPathOptions {
   line?: number;
   generatedText?: string;
   requestPrompt?: string;
+  preferredAbsolutePaths?: string[];
 }
 
 function getGeneratedContentDisplayMode(): GeneratedContentDisplayMode {
@@ -4728,6 +4793,7 @@ async function emitResponseMeta(
     type: 'responseMeta',
     hasGeneratedArtifacts: generatedPaths.length > 0,
     generatedPaths,
+    pathHints: preferredAbsolutePaths ?? [],
   });
 }
 
@@ -4755,11 +4821,14 @@ async function workspacePathExists(workspaceRoot: vscode.Uri, relativePath: stri
 
 async function openWorkspacePathInEditor(options: OpenGeneratedPathOptions): Promise<void> {
   const parsed = parsePathRef(options.rawPath, options.line);
+  const preferredAbsolutePaths = options.preferredAbsolutePaths && options.preferredAbsolutePaths.length > 0
+    ? options.preferredAbsolutePaths
+    : lastConversationFiles;
   const normalized = normalizePathForMeta(
-    resolveGeneratedArtifactPathForPrompt(parsed.path, options.requestPrompt, lastConversationFiles),
+    resolveGeneratedArtifactPathForPrompt(parsed.path, options.requestPrompt, preferredAbsolutePaths),
   );
   const targetLine = parsed.line;
-  const target = resolveWorkspaceFileUri(normalized, lastConversationFiles);
+  const target = resolveWorkspaceFileUri(normalized, preferredAbsolutePaths);
   if (!target) {
     vscode.window.showWarningMessage('DeepSeek: 当前没有打开工作区，无法定位文件。');
     return;

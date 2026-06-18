@@ -3092,6 +3092,7 @@ ${mcpSection}
 	- memory_write / 项目记忆属于智能体内部能力，不要放进 manage_todo_list，也不要作为用户可见任务展示
 	- 创建/修改文件必须调用 create_file 工具并提供完整 content；“我正在创建/将创建/现在创建”这类自然语言不算执行
 	- 用户指定“code 目录/code目录”时，必须把源码写到 ${workspaceRoot}/code/ 下；不要只描述创建，也不要把文件写到扩展目录或临时目录
+	- 你已经拥有 run_terminal/read_file/create_file 等工具；禁止声称“无法执行命令/无法访问文件/只是对话模式”。需要执行时必须调用 run_terminal，并以真实退出码和输出作为证据
 	- 只有实际写入源码文件后，才能把“代码/程序/实现”类子任务标为 completed；只有实际调用 run_terminal 得到编译/运行/测试结果后，才能把“编译/运行/测试/验证”类子任务标为 completed
 - 先思考"需要哪些信息"，再决定调用哪些工具
 - 一轮内可输出多个 [TOOL:...] 块（并行调用）
@@ -3133,7 +3134,10 @@ export async function runAgenticLoop(
     memory ?? undefined,
   );
 
-  const promptRequiresTools = /(?:编写|创建|新建|修改|生成|实现|运行|修复|添加|删除|更新|改造|重构|build|compile|test|run|create|write|modify|fix|implement)/i.test(userPrompt);
+  const promptRequiresTools =
+    requiresCodeArtifactForEvidence(userPrompt)
+    || requiresCommandEvidence(userPrompt)
+    || /(?:创建|新建|修改|生成|修复|添加|删除|更新|改造|重构|看(?:一下)?(?:运行|执行)?结果|看到(?:运行|执行)?结果|输出效果|效果|create|write|modify|fix|implement)/i.test(userPrompt);
   const isWorkTool = (name: string) => !['manage_todo_list', 'task_complete', 'memory_write'].includes(name);
 
   const sessionContextSection = sessionContextText.trim()

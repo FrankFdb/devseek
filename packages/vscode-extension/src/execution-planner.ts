@@ -1,11 +1,16 @@
 import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import {
+  EXECUTION_SOURCE_FILE_RE,
+  shouldIncludeDiscoveredSourceFile,
+  shouldSkipDiscoveryDir,
+} from './file-discovery';
 
 export interface LocalExecutionPlan {
   command: string;
   cwd: string;
-  mode: 'compile-only' | 'compile-run' | 'cmake' | 'script-run';
+  mode: 'compile-only' | 'compile-run' | 'cmake' | 'script-run' | 'run-only';
   reason: string;
   attachedFiles: string[];
   targetFiles: string[];
@@ -19,6 +24,16 @@ export interface LocalExecutionResult {
   output: string;
 }
 
+export interface LocalExecutionDiagnostic {
+  filePath: string;
+  line?: number;
+  column?: number;
+  severity: 'error' | 'warning' | 'note';
+  message: string;
+  raw: string;
+  source: 'compiler' | 'cmake';
+}
+
 const EXECUTION_REQUEST_RE = /(编译|构建|build|compile|运行|执行|run|测试|test|验证|verify)/i;
 const RUN_REQUEST_RE = /(运行|执行|启动|测试|test|run|execute|看结果|输出效果|运行效果)/i;
 const PROMPT_FILE_RE = /(^|[^A-Za-z0-9_./-])([A-Za-z0-9_./-]+\.(?:cpp|cc|cxx|c|h|hpp|py|js))(?=$|[^A-Za-z0-9_./-])/g;
@@ -29,9 +44,18 @@ const CPP_SOURCE_RE = /\.(cpp|cc|cxx|c)$/i;
 const CPP_HEADER_RE = /\.(h|hpp)$/i;
 const PYTHON_RE = /\.py$/i;
 const JS_RE = /\.js$/i;
-const LOCAL_SOURCE_RE = /\.(cpp|cc|cxx|c|h|hpp|py|js)$/i;
-const SKIP_DISCOVERY_DIR_RE = /^(build|dist|node_modules|\.git|\.cache|__pycache__|target|out|bin|obj|\.vscode|\.idea|\.devseek-build|\.devseek-builds|CMakeFiles)$/i;
+const LOCAL_SOURCE_RE = EXECUTION_SOURCE_FILE_RE;
 const MAX_DISCOVERED_FILES = 80;
+const LOCAL_EXECUTION_TIMEOUT_MS: Record<LocalExecutionPlan['mode'], number> = {
+  'compile-only': 15_000,
+  'compile-run': 30_000,
+  cmake: 120_000,
+  'script-run': 30_000,
+  'run-only': 30_000,
+};
+const BUILD_FAILURE_RE = /(?:^|\n)[^:\n]+\.(?:c|cc|cpp|cxx|h|hpp):\d+(?::\d+)?:\s+(?:fatal\s+)?error:|undefined reference|ld(?:\.exe)?:|collect2: error|cmake error|make(?:\[\d+\])?: \*\*\*|ninja: build stopped|clang(?:\+\+)?: (?:fatal )?error|g\+\+: (?:fatal )?error|gcc: (?:fatal )?error/i;
+const DIAGNOSTIC_SOURCE_EXT_RE = /\.(?:c|cc|cpp|cxx|h|hpp|py|js|ts|tsx|mjs|jsx)$/i;
+const MAX_REPAIR_FILES = 4;
 
 export function shouldPreferLocalExecution(prompt: string, files?: string[], workspaceRoot?: string): boolean {
   if (!prompt || !EXECUTION_REQUEST_RE.test(prompt)) return false;
@@ -71,28 +95,74 @@ export function isRepeatExecutionRequest(prompt: string): boolean {
   return REPEAT_EXEC_RE.test(prompt || '');
 }
 
+export function shouldRepairLocalExecutionFailure(plan: LocalExecutionPlan, result: LocalExecutionResult): boolean {
+  if (result.ok) return false;
+  if (plan.mode === 'compile-only') return true;
+  if (plan.mode === 'run-only' || plan.mode === 'script-run') return false;
+  return BUILD_FAILURE_RE.test(`${result.output || ''}\n${result.command || ''}`);
+}
+
 export async function runLocalExecution(plan: LocalExecutionPlan): Promise<LocalExecutionResult> {
   return new Promise((resolve) => {
-    cp.exec(plan.command, { cwd: plan.cwd, timeout: 180000 }, (error: Error & { code?: number }, stdout: string, stderr: string) => {
+    const timeoutMs = LOCAL_EXECUTION_TIMEOUT_MS[plan.mode] ?? 30_000;
+    cp.exec(plan.command, { cwd: plan.cwd, timeout: timeoutMs, encoding: 'utf8' }, (error: cp.ExecException | null, stdout: string, stderr: string) => {
+      const output = `${stdout || ''}\n${stderr || ''}`.trim();
+      const timedOut = !!error && (error.killed || /timed out|timeout/i.test(error.message || ''));
+      const exitCode = !error ? 0 : timedOut ? 124 : (typeof error.code === 'number' ? error.code : null);
       resolve({
         ok: !error,
         command: plan.command,
         cwd: plan.cwd,
-        exitCode: typeof error?.code === 'number' ? error.code : 0,
-        output: `${stdout || ''}\n${stderr || ''}`.trim(),
+        exitCode,
+        output: timedOut
+          ? [output, `[DevSeek] 命令超时，已终止（timeout ${timeoutMs}ms）。这通常表示程序仍在运行、等待输入或构建卡住；自动验证按失败处理。`].filter(Boolean).join('\n')
+          : (output || (error ? error.message : '')),
       });
     });
   });
 }
 
 export function selectRepairFiles(plan: LocalExecutionPlan, result: LocalExecutionResult): string[] {
+  const diagnostics = parseLocalExecutionDiagnostics(plan, result)
+    .filter((d) => d.severity === 'error');
+  const diagnosticFiles = uniqueExistingPaths(diagnostics.map((d) => d.filePath));
+  if (diagnosticFiles.length > 0) return diagnosticFiles.slice(0, MAX_REPAIR_FILES);
+
   const output = result.output || '';
   const preferred = plan.attachedFiles.filter((filePath) => {
     const base = nodePath.basename(filePath);
     return output.includes(base);
   });
-  if (preferred.length > 0) return preferred.slice(0, 8);
-  return plan.targetFiles.length > 0 ? plan.targetFiles.slice(0, 8) : plan.attachedFiles.slice(0, 8);
+  if (preferred.length > 0) return uniqueExistingPaths(preferred).slice(0, MAX_REPAIR_FILES);
+
+  const fallback = plan.targetFiles.length > 0 ? plan.targetFiles : plan.attachedFiles;
+  return uniqueExistingPaths(fallback).slice(0, MAX_REPAIR_FILES);
+}
+
+export function parseLocalExecutionDiagnostics(
+  plan: LocalExecutionPlan,
+  result: LocalExecutionResult,
+): LocalExecutionDiagnostic[] {
+  const diagnostics: LocalExecutionDiagnostic[] = [];
+  const seen = new Set<string>();
+  const lines = (result.output || '').split(/\r?\n/);
+
+  for (const line of lines) {
+    const parsed = parseDiagnosticLine(line, plan);
+    if (!parsed) continue;
+    const key = [
+      nodePath.resolve(parsed.filePath),
+      parsed.line ?? '',
+      parsed.column ?? '',
+      parsed.severity,
+      parsed.message,
+    ].join('\0');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    diagnostics.push(parsed);
+  }
+
+  return diagnostics;
 }
 
 export function buildExecutionRepairPrompt(
@@ -100,9 +170,19 @@ export function buildExecutionRepairPrompt(
   plan: LocalExecutionPlan,
   result: LocalExecutionResult,
 ): string {
+  const repairFiles = selectRepairFiles(plan, result);
+  const repairFileSet = new Set(repairFiles.map((filePath) => nodePath.resolve(filePath)));
+  const diagnosticSummary = parseLocalExecutionDiagnostics(plan, result)
+    .filter((d) => repairFileSet.has(nodePath.resolve(d.filePath)))
+    .slice(0, 12)
+    .map((d) => {
+      const loc = [toDisplayPath(plan.cwd, d.filePath), d.line, d.column].filter((v) => v !== undefined && v !== '').join(':');
+      return `${loc}: ${d.message}`;
+    });
+
   return [
     '你是一个严格的编程修复助手。插件已经先在本地执行了编译/运行验证，但失败了。',
-    '请只修复必要文件，并输出可直接应用的文件变更，不要解释。',
+    '请只修复本次失败直接定位到的必要文件，并输出可直接应用的文件变更，不要解释。',
     '',
     '原始用户请求：',
     originalPrompt,
@@ -114,7 +194,14 @@ export function buildExecutionRepairPrompt(
     `command=${plan.command}`,
     '',
     '附件中发送给你的最小相关文件：',
-    selectRepairFiles(plan, result).map((filePath) => toDisplayPath(plan.cwd, filePath)).join('\n') || '（无）',
+    repairFiles.map((filePath) => toDisplayPath(plan.cwd, filePath)).join('\n') || '（无）',
+    '',
+    '本次失败定位：',
+    diagnosticSummary.join('\n') || '未从终端输出解析到明确 file:line 诊断，已退回执行计划中的最小候选文件。',
+    '',
+    '修复范围约束：',
+    '优先只读取和修改上面的定位文件；只有工具证据证明根因跨文件时，才扩大到相关文件。',
+    '不要把当前工作区的其他 VS Code 诊断当作本次任务一起修复。',
     '',
     `执行结果：exitCode=${result.exitCode ?? 'null'}`,
     '```text',
@@ -132,7 +219,9 @@ export function buildExecutionRepairPrompt(
 export function buildLocalExecutionSuccessMessage(plan: LocalExecutionPlan, result: LocalExecutionResult): string {
   const body = truncate(result.output || '（无输出）', 1200);
   return [
-    '插件已先在本地完成编译/执行验证。',
+    plan.mode === 'run-only'
+      ? '插件已先在本地找到可执行文件并直接执行。'
+      : '插件已先在本地完成编译/执行验证。',
     `模式: ${plan.mode}`,
     `原因: ${plan.reason}`,
     `命令: ${plan.command}`,
@@ -141,12 +230,155 @@ export function buildLocalExecutionSuccessMessage(plan: LocalExecutionPlan, resu
   ].filter(Boolean).join('\n');
 }
 
+export function buildLocalExecutionFailureMessage(plan: LocalExecutionPlan, result: LocalExecutionResult): string {
+  const body = truncate(result.output || '（无输出）', 1200);
+  return [
+    plan.mode === 'run-only'
+      ? '插件已先在本地找到可执行文件并直接执行，但程序返回非 0 退出码。'
+      : '插件已按本地执行计划运行命令，但失败类型不是编译/构建错误，未进入自动修复。',
+    `模式: ${plan.mode}`,
+    `原因: ${plan.reason}`,
+    `命令: ${plan.command}`,
+    `exitCode: ${result.exitCode ?? 'null'}`,
+    body ? `输出:\n${body}` : '',
+  ].filter(Boolean).join('\n');
+}
+
+function parseDiagnosticLine(line: string, plan: LocalExecutionPlan): LocalExecutionDiagnostic | null {
+  const sourceMatch = line.match(/((?:[A-Za-z]:)?[^:\n]*?[^:\n/\\]+\.(?:c|cc|cpp|cxx|h|hpp|py|js|ts|tsx|mjs|jsx)):(\d+)(?::(\d+))?:\s*((?:fatal\s+)?(?:error|warning|note))\b:?\s*(.*)$/i);
+  if (sourceMatch) {
+    const filePath = resolveOutputFilePath(sourceMatch[1], plan);
+    if (filePath) {
+      return {
+        filePath,
+        line: Number(sourceMatch[2]),
+        column: sourceMatch[3] ? Number(sourceMatch[3]) : undefined,
+        severity: normalizeDiagnosticSeverity(sourceMatch[4]),
+        message: sourceMatch[5]?.trim() || sourceMatch[4].trim(),
+        raw: line,
+        source: 'compiler',
+      };
+    }
+  }
+
+  const msvcMatch = line.match(/((?:[A-Za-z]:)?[^(]+?\.(?:c|cc|cpp|cxx|h|hpp|py|js|ts|tsx|mjs|jsx))\((\d+)(?:,(\d+))?\):\s*((?:fatal\s+)?(?:error|warning|note))\b[^:]*:?\s*(.*)$/i);
+  if (msvcMatch) {
+    const filePath = resolveOutputFilePath(msvcMatch[1], plan);
+    if (filePath) {
+      return {
+        filePath,
+        line: Number(msvcMatch[2]),
+        column: msvcMatch[3] ? Number(msvcMatch[3]) : undefined,
+        severity: normalizeDiagnosticSeverity(msvcMatch[4]),
+        message: msvcMatch[5]?.trim() || msvcMatch[4].trim(),
+        raw: line,
+        source: 'compiler',
+      };
+    }
+  }
+
+  const cmakeMatch = line.match(/CMake\s+(Error|Warning)\s+at\s+(.*?CMakeLists\.txt):(\d+)(?:\s|\(|:)(.*)$/i);
+  if (cmakeMatch) {
+    const filePath = resolveOutputFilePath(cmakeMatch[2], plan);
+    if (filePath) {
+      return {
+        filePath,
+        line: Number(cmakeMatch[3]),
+        severity: /error/i.test(cmakeMatch[1]) ? 'error' : 'warning',
+        message: cmakeMatch[4]?.trim() || `CMake ${cmakeMatch[1]}`,
+        raw: line,
+        source: 'cmake',
+      };
+    }
+  }
+
+  return null;
+}
+
+function normalizeDiagnosticSeverity(value: string): LocalExecutionDiagnostic['severity'] {
+  if (/warning/i.test(value)) return 'warning';
+  if (/note/i.test(value)) return 'note';
+  return 'error';
+}
+
+function resolveOutputFilePath(rawPath: string, plan: LocalExecutionPlan): string | null {
+  const cleaned = cleanPathToken(rawPath).replace(/^['"`]+|['"`]+$/g, '');
+  if (!cleaned) return null;
+
+  const planned = findPlannedFileByOutputToken(cleaned, plan);
+  if (planned) return planned;
+
+  const normalized = cleaned.replace(/\\/g, nodePath.sep);
+  const direct = nodePath.isAbsolute(normalized)
+    ? normalized
+    : nodePath.resolve(plan.cwd, normalized);
+  if (fs.existsSync(direct)) return direct;
+
+  if (/^CMakeLists\.txt$/i.test(cleaned)) {
+    const cmakeFile = nodePath.join(plan.cwd, 'CMakeLists.txt');
+    if (fs.existsSync(cmakeFile)) return cmakeFile;
+  }
+
+  if (DIAGNOSTIC_SOURCE_EXT_RE.test(cleaned) || /CMakeLists\.txt$/i.test(cleaned)) return direct;
+  return null;
+}
+
+function findPlannedFileByOutputToken(rawToken: string, plan: LocalExecutionPlan): string | null {
+  const token = rawToken.replace(/\\/g, '/').replace(/^\.\//, '');
+  const plannedFiles = dedupe([...plan.targetFiles, ...plan.attachedFiles]);
+  const exactMatches: string[] = [];
+  const suffixMatches: string[] = [];
+  const basenameMatches: string[] = [];
+
+  for (const filePath of plannedFiles) {
+    const abs = nodePath.resolve(filePath).replace(/\\/g, '/');
+    const relToCwd = nodePath.relative(plan.cwd, filePath).replace(/\\/g, '/').replace(/^\.\//, '');
+    if (abs === token || relToCwd === token) exactMatches.push(filePath);
+    if (abs.endsWith(`/${token}`)) suffixMatches.push(filePath);
+    if (nodePath.basename(filePath) === token) basenameMatches.push(filePath);
+  }
+
+  if (exactMatches.length === 1) return exactMatches[0];
+  if (suffixMatches.length === 1) return suffixMatches[0];
+  if (basenameMatches.length === 1) return basenameMatches[0];
+  return null;
+}
+
+function uniqueExistingPaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const filePath of paths) {
+    const resolved = nodePath.resolve(filePath);
+    if (seen.has(resolved)) continue;
+    seen.add(resolved);
+    try {
+      if (fs.statSync(resolved).isFile()) out.push(resolved);
+    } catch {
+      // Ignore stale candidates from truncated compiler output.
+    }
+  }
+  return out;
+}
+
 function planCmakeExecution(targetDir: string, dirFiles: string[], runRequested: boolean): LocalExecutionPlan | null {
   const cmakeFile = nodePath.join(targetDir, 'CMakeLists.txt');
   if (!fs.existsSync(cmakeFile)) return null;
   const buildDir = nodePath.join(targetDir, '.devseek-build');
   const buildCommand = `cmake -S ${q(targetDir)} -B ${q(buildDir)} && cmake --build ${q(buildDir)}`;
   const executableTarget = detectCmakeExecutableTarget(cmakeFile);
+  if (runRequested) {
+    const existingExecutable = findExistingCmakeExecutable(targetDir, buildDir, executableTarget);
+    if (existingExecutable) {
+      return {
+        command: q(existingExecutable),
+        cwd: targetDir,
+        mode: 'run-only',
+        reason: 'cmake-existing-executable-run',
+        attachedFiles: dirFiles,
+        targetFiles: dirFiles,
+      };
+    }
+  }
   const runCommand = executableTarget
     ? `if test -x ${q(nodePath.join(buildDir, executableTarget))}; then ${q(nodePath.join(buildDir, executableTarget))}; else ctest --test-dir ${q(buildDir)} --output-on-failure; fi`
     : `ctest --test-dir ${q(buildDir)} --output-on-failure`;
@@ -174,6 +406,20 @@ function planCppExecution(targetDir: string, dirFiles: string[], runRequested: b
   // Detect required library flags (e.g. -lGL -lGLU -lglut for OpenGL programs)
   const libFlags = detectCppLibFlags(sourceFiles);
   const libFlagsSuffix = libFlags ? ` ${libFlags}` : '';
+
+  if (runRequested) {
+    const existingExecutable = findExistingCppExecutable(targetDir, sourceFiles, mainSources);
+    if (existingExecutable) {
+      return {
+        command: q(existingExecutable),
+        cwd: targetDir,
+        mode: 'run-only',
+        reason: 'cpp-existing-executable-run',
+        attachedFiles: dirFiles,
+        targetFiles: sourceFiles,
+      };
+    }
+  }
 
   if (mainSources.length === 1) {
     const compileBase = `${compiler} ${sourceFiles.map(q).join(' ')} -o ${q(exeOut)}${libFlagsSuffix}`;
@@ -227,6 +473,86 @@ function planScriptExecution(targetDir: string, dirFiles: string[], runRequested
   }
 
   return null;
+}
+
+function findExistingCmakeExecutable(targetDir: string, buildDir: string, executableTarget: string | null): string | null {
+  const candidates: string[] = [];
+  if (executableTarget) {
+    for (const name of platformExecutableNames(executableTarget)) {
+      candidates.push(
+        nodePath.join(buildDir, name),
+        nodePath.join(buildDir, 'Debug', name),
+        nodePath.join(buildDir, 'Release', name),
+        nodePath.join(targetDir, name),
+      );
+    }
+  }
+  candidates.push(...scanExecutableFiles(buildDir), ...scanExecutableFiles(targetDir));
+  return firstExecutable(candidates);
+}
+
+function findExistingCppExecutable(targetDir: string, sourceFiles: string[], mainSources: string[]): string | null {
+  const priorityNames = [
+    'deepseek_auto_exec',
+    ...mainSources.map((filePath) => nodePath.basename(filePath, nodePath.extname(filePath))),
+    nodePath.basename(targetDir),
+    'a.out',
+  ];
+  const priorityCandidates = priorityNames.flatMap((name) =>
+    platformExecutableNames(name).map((candidate) => nodePath.join(targetDir, candidate)),
+  );
+  const sourceSet = new Set(sourceFiles.map((filePath) => nodePath.resolve(filePath)));
+  const scanned = scanExecutableFiles(targetDir).filter((filePath) => !sourceSet.has(nodePath.resolve(filePath)));
+  return firstExecutable([...priorityCandidates, ...scanned]);
+}
+
+function platformExecutableNames(name: string): string[] {
+  if (process.platform !== 'win32' || /\.exe$/i.test(name)) return [name];
+  return [name, `${name}.exe`];
+}
+
+function scanExecutableFiles(dir: string): string[] {
+  let entries: string[] = [];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return [];
+  }
+  const candidates = entries
+    .map((name) => nodePath.join(dir, name))
+    .filter((filePath) => isExecutableCandidate(filePath));
+  return candidates.sort((a, b) => {
+    try {
+      return fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs;
+    } catch {
+      return 0;
+    }
+  });
+}
+
+function firstExecutable(candidates: string[]): string | null {
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const resolved = nodePath.resolve(candidate);
+    if (seen.has(resolved)) continue;
+    seen.add(resolved);
+    if (isExecutableCandidate(resolved)) return resolved;
+  }
+  return null;
+}
+
+function isExecutableCandidate(filePath: string): boolean {
+  const base = nodePath.basename(filePath);
+  if (!base || base.startsWith('.')) return false;
+  if (/\.(?:c|cc|cpp|cxx|h|hpp|o|obj|a|so|dylib|dll|lib|dSYM|txt|md|json|ts|tsx|js|jsx|map)$/i.test(base)) return false;
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile()) return false;
+    if (process.platform === 'win32') return /\.(?:exe|bat|cmd|ps1)$/i.test(base) || !nodePath.extname(base);
+    return (stat.mode & 0o111) !== 0;
+  } catch {
+    return false;
+  }
 }
 
 function groupByDirectory(files: string[]): Map<string, string[]> {
@@ -308,7 +634,6 @@ function collectSourceFiles(dir: string, maxFiles: number): string[] {
 
     for (const name of entries) {
       if (out.length >= maxFiles) return;
-      if (SKIP_DISCOVERY_DIR_RE.test(name)) continue;
       const fullPath = nodePath.join(current, name);
       let stat: fs.Stats;
       try {
@@ -317,8 +642,9 @@ function collectSourceFiles(dir: string, maxFiles: number): string[] {
         continue;
       }
       if (stat.isDirectory()) {
+        if (shouldSkipDiscoveryDir(name)) continue;
         walk(fullPath);
-      } else if (stat.isFile() && LOCAL_SOURCE_RE.test(name)) {
+      } else if (stat.isFile() && shouldIncludeDiscoveredSourceFile(fullPath, LOCAL_SOURCE_RE)) {
         out.push(fullPath);
       }
     }

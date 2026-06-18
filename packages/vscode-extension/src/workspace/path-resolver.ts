@@ -353,6 +353,9 @@ export function alignRelPathToScope(relPath: string, root: vscode.Uri, ctx: Work
   const base = nodePath.posix.basename(clean);
   if (!base || base === '.' || base === '..') return clean;
 
+  const parentAnchored = anchorParentLevelPathToScope(clean, scoped);
+  if (parentAnchored) return parentAnchored;
+
   const anchored = anchorRelativePathToScope(clean, root, scoped);
   if (anchored) return anchored;
 
@@ -422,6 +425,7 @@ export function sanitizeWorkspacePath(path: string, root: vscode.Uri): string | 
   p = expandHomePath(p);
   p = p.replace(/^\.\//, '').replace(/^a\//, '').replace(/^b\//, '');
   p = p.replace(/^!+/, '');
+  if (looksLikePathLabelNoise(p)) return undefined;
   if (p.startsWith(rootPath + '/')) p = p.slice(rootPath.length + 1);
 
   p = nodePath.posix.normalize(p);
@@ -435,6 +439,30 @@ export function sanitizeWorkspacePath(path: string, root: vscode.Uri): string | 
   ]);
   if (SYSTEM_DIRS.has(firstSegLc)) return undefined;
   return p;
+}
+
+function looksLikePathLabelNoise(path: string): boolean {
+  const normalized = (path || '').trim();
+  if (!normalized) return false;
+  const withoutDrive = normalized.replace(/^[A-Za-z]:\//, '');
+  if (/[\u2022\uFF08\uFF09\uFF1A]/.test(withoutDrive)) return true;
+  if (/[()（）][：:]\//.test(withoutDrive)) return true;
+  return withoutDrive.split('/').some((seg) => /[：:]\s*$/.test(seg) || /[()（）]\s*$/.test(seg));
+}
+
+function anchorParentLevelPathToScope(clean: string, scopedDirs: string[]): string | undefined {
+  if (!clean.includes('/')) return undefined;
+  const base = nodePath.posix.basename(clean);
+  if (!isCodeLikeFileName(base)) return undefined;
+  const cleanDir = nodePath.posix.dirname(clean);
+  if (!cleanDir || cleanDir === '.') return undefined;
+
+  for (const dir of scopedDirs) {
+    const parent = nodePath.posix.dirname(dir);
+    if (!parent || parent === '.') continue;
+    if (cleanDir === parent) return nodePath.posix.join(dir, base);
+  }
+  return undefined;
 }
 
 function anchorRelativePathToScope(clean: string, root: vscode.Uri, scopedDirs: string[]): string | undefined {

@@ -133,6 +133,72 @@ function detectPromptDir(
   return detectWorkspacePathScope(userPrompt, attachedFiles, activeEditorFile);
 }
 
+function workspaceRelativePathForAbs(absPath: string): string {
+  const normalized = absPath.replace(/\\/g, '/');
+  for (const wf of vscode.workspace.workspaceFolders ?? []) {
+    const root = wf.uri.fsPath.replace(/\\/g, '/').replace(/\/$/, '');
+    if (normalized === root) return nodePath.basename(normalized);
+    if (normalized.startsWith(root + '/')) return normalized.slice(root.length + 1);
+  }
+  return nodePath.basename(absPath);
+}
+
+function isInsideDir(absPath: string, dir: string): boolean {
+  const rel = nodePath.relative(nodePath.resolve(dir), nodePath.resolve(absPath));
+  return rel === '' || (!!rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel));
+}
+
+function normalizePlanPathKey(pathValue: string): string {
+  return (pathValue || '')
+    .trim()
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/^a\//, '')
+    .replace(/^b\//, '')
+    .replace(/^\/+/, '')
+    .toLowerCase();
+}
+
+function stripPromptDirAlias(fileRel: string, promptDir: string): string {
+  let clean = fileRel.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
+  const promptDirRel = workspaceRelativePathForAbs(promptDir).replace(/\/$/, '');
+  const aliases = new Set<string>();
+  if (promptDirRel && promptDirRel !== nodePath.basename(promptDir)) {
+    const parts = promptDirRel.split('/').filter(Boolean);
+    for (let i = parts.length; i >= 1; i -= 1) {
+      aliases.add(parts.slice(0, i).join('/'));
+    }
+  }
+  aliases.add(nodePath.basename(promptDir));
+
+  const ordered = [...aliases].filter(Boolean).sort((a, b) => b.length - a.length);
+  for (const alias of ordered) {
+    if (clean === alias) return '';
+    if (clean.startsWith(alias + '/')) {
+      clean = clean.slice(alias.length + 1);
+      break;
+    }
+  }
+  return clean;
+}
+
+function resolveTaskInsidePromptDir(taskFile: string, promptDir: string): { absPath: string; relPath: string } {
+  const relSource = nodePath.isAbsolute(taskFile)
+    ? workspaceRelativePathForAbs(taskFile)
+    : taskFile;
+  const stripped = stripPromptDirAlias(relSource, promptDir);
+  const safeParts = stripped
+    .split('/')
+    .filter(p => p !== '..' && p !== '.' && p !== '');
+  const resolved = safeParts.length > 0
+    ? nodePath.join(promptDir, ...safeParts)
+    : nodePath.join(promptDir, nodePath.basename(taskFile));
+  return {
+    absPath: resolved,
+    relPath: workspaceRelativePathForAbs(resolved),
+  };
+}
+
 // ----------------------------------------------------------------
 // System prompt builders
 // ----------------------------------------------------------------
@@ -155,6 +221,7 @@ function buildDecomposeSystemPrompt(
   // Architect only needs 150 lines to plan — full content goes to Editor.
   const fileSections = attachedFiles.map((absPath, i) => {
     const basename = nodePath.basename(absPath);
+    const relPath = workspaceRelativePathForAbs(absPath);
     const ext = (basename.split('.').pop() ?? '').toLowerCase();
     const langMap: Record<string, string> = {
       cpp: 'cpp', cc: 'cpp', cxx: 'cpp', c: 'c', h: 'c', hpp: 'cpp',
@@ -163,9 +230,9 @@ function buildDecomposeSystemPrompt(
     };
     const lang = langMap[ext] ?? ext;
     const content = readFileContentSafe(absPath, READ_MAX_LINES);
-    if (!content) return `  ${i + 1}. ${basename}  （无法读取内容）`;
+    if (!content) return `  ${i + 1}. ${relPath}  （无法读取内容）`;
     return [
-      `  ${i + 1}. **${basename}**`,
+      `  ${i + 1}. **${relPath}**`,
       '```' + lang,
       content,
       '```',
@@ -450,10 +517,26 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
 
   if (!Array.isArray(plan.tasks)) return [];
 
-  // Build a basename → absPath lookup from attached files
-  const basenameMap = new Map<string, string>();
+  // ── Derive working directory anchor via shared helper ────────────────────
+  // detectPromptDir() runs the same 4-priority detection as buildDecomposeSystemPrompt
+  // (which already injected the result into the system prompt so the AI outputs full paths).
+  // Here we use it a second time for: path lookup filtering + confine block.
+  const { promptDir, promptDirIsExplicit } = detectPromptDir(userPrompt, attachedFiles, activeEditorFile);
+
+  const exactPathMap = new Map<string, string>();
+  const basenameBuckets = new Map<string, string[]>();
+  const addPathLookup = (absPath: string) => {
+    if (promptDir && promptDirIsExplicit && !isInsideDir(absPath, promptDir)) return;
+    const rel = workspaceRelativePathForAbs(absPath);
+    exactPathMap.set(normalizePlanPathKey(rel), absPath);
+    const baseKey = nodePath.basename(absPath).toLowerCase();
+    const bucket = basenameBuckets.get(baseKey) ?? [];
+    bucket.push(absPath);
+    basenameBuckets.set(baseKey, bucket);
+  };
+
   for (const absPath of attachedFiles) {
-    basenameMap.set(nodePath.basename(absPath).toLowerCase(), absPath);
+    addPathLookup(absPath);
   }
   // Also inject recently-changed paths from prior session so follow-up requests
   // ("rewrite the program", "add a feature") resolve to the same directory instead
@@ -462,31 +545,20 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
     for (const relPath of priorFindings.recentlyChangedPaths) {
       for (const folder of vscode.workspace.workspaceFolders ?? []) {
         const abs = nodePath.join(folder.uri.fsPath, ...relPath.split('/'));
-        const key = nodePath.basename(relPath).toLowerCase();
-        // Only set if not already provided by an explicit attachment (attachments take priority)
-        if (!basenameMap.has(key) && fs.existsSync(abs)) {
-          basenameMap.set(key, abs);
+        // Only add existing recent files. Explicit attachments keep priority because
+        // exactPathMap is path-keyed and basename lookup below only accepts unique names.
+        if (fs.existsSync(abs)) {
+          addPathLookup(abs);
         }
       }
     }
   }
 
-  // ── Derive working directory anchor via shared helper ────────────────────
-  // detectPromptDir() runs the same 4-priority detection as buildDecomposeSystemPrompt
-  // (which already injected the result into the system prompt so the AI outputs full paths).
-  // Here we use it a second time for: basenameMap filtering + confine block.
-  const { promptDir, promptDirIsExplicit } = detectPromptDir(userPrompt, attachedFiles, activeEditorFile);
-
-  // When promptDir is EXPLICITLY specified, restrict the basenameMap to only files UNDER
-  // that directory — preventing cross-directory name collisions (e.g. docs/README.md
-  // being picked up instead of code/3d_demo/README.md).
-  // For INFERRED promptDir we do NOT filter, so explicitly attached files from other
-  // locations are still resolved correctly via their original basenameMap entries.
-  if (promptDir && promptDirIsExplicit) {
-    for (const [key, val] of Array.from(basenameMap.entries())) {
-      if (!val.startsWith(promptDir + nodePath.sep) && !val.startsWith(promptDir + '/')) {
-        basenameMap.delete(key);
-      }
+  const basenameMap = new Map<string, string>();
+  for (const [key, bucket] of basenameBuckets.entries()) {
+    const unique = [...new Set(bucket.map(p => nodePath.resolve(p)))];
+    if (unique.length === 1) {
+      basenameMap.set(key, unique[0]);
     }
   }
 
@@ -514,8 +586,9 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
     const id = (raw.id || `t${seq}`).replace(/\s+/g, '-');
     const rawActionStr = (raw.action || 'modify').toLowerCase();
     const action = (VALID_ACTIONS.has(rawActionStr) ? rawActionStr : 'modify') as AgentTaskAction;
-    // Primary lookup: basename in attached files
-    let absPath = basenameMap.get(nodePath.basename(file).toLowerCase());
+    // Primary lookup: exact attached/recent path, then unique basename in the scoped workset.
+    let absPath = exactPathMap.get(normalizePlanPathKey(file))
+      ?? basenameMap.get(nodePath.basename(file).toLowerCase());
     // If AI output an absolute path directly, use it as-is and normalise to workspace-relative.
     if (!absPath && nodePath.isAbsolute(file)) {
       if (fs.existsSync(file)) {
@@ -546,6 +619,10 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
         const byName = nodePath.join(folder.uri.fsPath, nodePath.basename(file));
         if (fs.existsSync(byName)) { absPath = byName; break; }
       }
+    }
+
+    if (absPath) {
+      file = workspaceRelativePathForAbs(absPath);
     }
 
     tasks.push({ id, file, action, desc, absPath });
@@ -579,47 +656,18 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
   // This prevents over-aggressive confinement when the user has attached files from
   // outside the current project (e.g. a monorepo-level docs/requirements.md).
   if (promptDir) {
-    const sep = nodePath.sep;
-    const pd = promptDir.endsWith(sep) || promptDir.endsWith('/') ? promptDir : promptDir + '/';
-    const pdFwd = pd.replace(/\\/g, '/');
     for (const task of finalTasks) {
-      const absNorm = task.absPath?.replace(/\\/g, '/');
-      if (absNorm && absNorm.startsWith(pdFwd)) continue; // already inside promptDir
+      if (task.absPath && isInsideDir(task.absPath, promptDir)) {
+        task.file = workspaceRelativePathForAbs(task.absPath);
+        continue;
+      }
 
       // For inferred promptDir: skip redirect when the file was already resolved and
       // the task is not a create (modify/analyze of an existing file → keep its location).
       if (!promptDirIsExplicit && task.absPath !== undefined && task.action !== 'create') continue;
-      // task.file is the LLM-supplied path (e.g. "test/run_tests.sh") — treat it as
-      // relative to promptDir rather than relative to the workspace root.
-      let fileRel = task.file.replace(/\\/g, '/').replace(/^\.\//,  '');
-
-      // Strip workspace-root-relative prefix if task.file already embeds promptDir's path.
-      // e.g. LLM outputs "code/3d_demo/test/run_tests.sh" when promptDir = ".../code/3d_demo"
-      //   → strip "code/3d_demo/" → "test/run_tests.sh"
-      for (const wf of vscode.workspace.workspaceFolders ?? []) {
-        const wfNorm = wf.uri.fsPath.replace(/\\/g, '/').replace(/\/$/, '');
-        const pdNorm = promptDir.replace(/\\/g, '/');
-        if (pdNorm.startsWith(wfNorm + '/')) {
-          const pdRel = pdNorm.slice(wfNorm.length + 1) + '/'; // e.g. "code/3d_demo/"
-          if (fileRel.startsWith(pdRel)) { fileRel = fileRel.slice(pdRel.length); break; }
-        }
-      }
-
-      // Security: remove traversal components
-      const safeParts = fileRel.split('/').filter(p => p !== '..' && p !== '.' && p !== '');
-      const resolved = safeParts.length > 0
-        ? nodePath.join(promptDir, ...safeParts)
-        : nodePath.join(promptDir, nodePath.basename(task.file));
-      task.absPath = resolved;
-
-      // Update task.file to workspace-root-relative path for display consistency
-      for (const wf of vscode.workspace.workspaceFolders ?? []) {
-        const wfSlash = (wf.uri.fsPath + '/').replace(/\\/g, '/');
-        if (resolved.replace(/\\/g, '/').startsWith(wfSlash)) {
-          task.file = resolved.replace(/\\/g, '/').slice(wfSlash.length);
-          break;
-        }
-      }
+      const resolved = resolveTaskInsidePromptDir(task.file, promptDir);
+      task.absPath = resolved.absPath;
+      task.file = resolved.relPath;
     }
   }
 
@@ -635,6 +683,7 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
       for (const task of finalTasks) {
         if (task.action === 'create' && !task.absPath && !task.file.includes('/')) {
           task.absPath = nodePath.join(sessionDir, task.file);
+          task.file = workspaceRelativePathForAbs(task.absPath);
         }
       }
     }
@@ -657,10 +706,11 @@ export function inferTasksFromFiles(
   void userPrompt; // kept in signature for API compatibility
 
   return attachedFiles.map((absPath, i) => {
-    const basename = nodePath.basename(absPath);
+    const relPath = workspaceRelativePathForAbs(absPath);
+    const basename = nodePath.basename(relPath);
     return {
       id: `t${i + 1}`,
-      file: basename,
+      file: relPath,
       action: 'analyze' as AgentTaskAction,
       desc: `分析 ${basename}`,
       absPath,

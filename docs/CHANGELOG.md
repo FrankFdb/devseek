@@ -4,6 +4,33 @@
 
 ---
 
+## [Unreleased] — 2026-06-18
+
+### 本地执行失败修复范围收敛
+
+- 新增本地编译/执行诊断解析，优先从 gcc/clang/MSVC/CMake 风格输出中提取 `file:line:column`。
+- 本地失败进入 Agent 修复时，只把本次终端失败明确定位到的文件作为修复任务；无法定位时才退回执行计划中的最小候选文件。
+- `get_errors` 在本地修复闭环中限制到本次修复文件范围，避免把全工作区无关诊断发送给 DeepSeek。
+- 修复 prompt 明确要求围绕本次失败定位读取、修改、重新验证，禁止顺手修复无关项目问题。
+- 增加多文件 C++、CMakeLists、无明确定位 fallback 的单元测试。
+
+### 文档目录整理
+
+- `docs/` 根目录收敛为索引、变更日志、变更闸门、需求和设计文档。
+- `docs/agent/` 只保留长期维护的 Agent 能力、Provider、对标流程和显示规范文档。
+- 审计报告、同步报告、专项分析、迭代纪要、旧计划统一归入 `docs/archive/` 子分类。
+- 新增 `docs/archive/README.md` 说明归档目录职责和使用规则。
+
+#### 验证
+
+- `node packages/vscode-extension/test/unit/execution-planner.test.mjs` 通过。
+- `npm test --workspace=packages/vscode-extension` 通过：26 个 suite 全部通过。
+- `npm run compile --workspace=packages/vscode-extension` 通过。
+- `npm run extension:package` 通过，生成 `devseek-netai-latest.vsix`。
+- `code --install-extension devseek-netai-latest.vsix --force` 安装成功。
+
+---
+
 ## [Unreleased] — 2026-06-03
 
 ### Agent 显示流与 Todos 状态对齐 Copilot 风格
@@ -276,7 +303,7 @@
 
 #### 文档审计与归档
 
-- **归档（4 文件 → `docs/archive/`）**：`ITERATION_2026-05-09_P3-4.md`、`ITERATION_2026-05-09_P3-5.md`、`ITERATION_2026-05-09_P4-1.md`（三个已完成 sprint 纪要）、`AUDIT_REPORT_2026-05-12.md`（4 项问题均已解决）
+- **归档（4 文件 → `docs/archive/`）**：`archive/iterations/ITERATION_2026-05-09_P3-4.md`、`archive/iterations/ITERATION_2026-05-09_P3-5.md`、`archive/iterations/ITERATION_2026-05-09_P4-1.md`（三个已完成 sprint 纪要）、`archive/reports/AUDIT_REPORT_2026-05-12.md`（4 项问题均已解决）
 - **`docs/README.md`**：补全 `agent/` 目录文件索引（`COPILOT_AGENT_WORKFLOW.md`、`OPTIMIZATION_PLAN_*.md`）；归档表新增 4 项；修正第 3.2 节目录树
 - **`docs/TOP_AGENT_CHANGE_GATE.md §6`**：补充最近 4 条变更记录（2026-05-10 ~ 2026-05-12 两轮）
 - **`docs/agent/TOP_AGENT_FEATURE_REQUIREMENTS.md`**：能力矩阵将 v2.15/v2.16/v2.18 已上线功能从 ❌ → ✅；新增 6 行（manage_todo_list、task_complete、自动驾驶、File Changes 等）
@@ -340,7 +367,7 @@
 - `需求分析.md` → v2.17：新增变更日志条目 + 专题 C（6 项 Copilot 执行行为规格 G-1 ~ G-6）
 - `软件设计.md` → v2.7：新增第四章（6 项实现规格，含消息协议/HTML 结构/CSS 类/改动位置）
 - `docs/agent/DEEPSEEK_AGENT_IMPROVEMENT_REQUIREMENTS.md`：新增第八章差距分析（含优先级矩阵和路线图）
-- `docs/agent/OPTIMIZATION_PLAN_2026-05-13.md`（新建）：Sprint G-A/B/C/D 优化计划，含具体实现步骤、风险缓解和验收标准
+- `docs/archive/plans/OPTIMIZATION_PLAN_2026-05-13.md`：Sprint G-A/B/C/D 优化计划，含具体实现步骤、风险缓解和验收标准
 
 #### 识别的 6 项差距
 

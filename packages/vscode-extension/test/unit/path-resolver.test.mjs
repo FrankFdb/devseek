@@ -120,4 +120,31 @@ test('path-resolver: explicit code subdirectory beats same-name root directory f
   }
 });
 
+test('path-resolver: session scoped writes do not drift to code parent directory', () => {
+  const { root, projectDir } = createWorkspaceWithDuplicateShapeManager();
+  try {
+    const prompt = `继续在 ${projectDir} 目录中修改，并编译运行看结果`;
+
+    const parentCodeWrite = resolveWorkspaceWritePath('code/Circle.cpp', {
+      requestPrompt: prompt,
+      content: '#include "Circle.h"\n',
+      workspaceRootFsPath: root,
+      defaultWorkdir: root,
+    });
+    assert.equal(parentCodeWrite.relPath, 'code/shape_manager/Circle.cpp');
+    assert.equal(parentCodeWrite.absPath, path.join(projectDir, 'Circle.cpp'));
+
+    const noisyLabelWrite = resolveWorkspaceWritePath('code）：/Circle.h', {
+      requestPrompt: prompt,
+      content: '#ifndef CIRCLE_H\n#define CIRCLE_H\n#endif\n',
+      workspaceRootFsPath: root,
+      defaultWorkdir: root,
+    });
+    assert.equal(noisyLabelWrite.relPath, 'code/shape_manager/Circle.h');
+    assert.equal(noisyLabelWrite.absPath, path.join(projectDir, 'Circle.h'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 console.log('\nShared path resolver tests passed.\n');

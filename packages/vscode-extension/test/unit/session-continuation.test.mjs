@@ -19,7 +19,10 @@ const req = createRequire(import.meta.url);
 const {
   appendSessionContinuationContext,
   isLikelySessionContinuation,
+  isRunContinuationIntent,
+  shouldInjectSessionContinuationForIntent,
   shouldInjectSessionContinuation,
+  shouldRestoreSessionFiles,
 } = req(bundlePath);
 
 test('Session continuation: detects correction about modifying original code', () => {
@@ -30,6 +33,36 @@ test('Session continuation: detects correction about modifying original code', (
 test('Session continuation: detects explicit same-session follow-up wording', () => {
   assert.equal(isLikelySessionContinuation('在上一轮基础上继续加测试'), true);
   assert.equal(isLikelySessionContinuation('不要重新写，基于已有代码修改'), true);
+});
+
+test('Session continuation: leaves execution/result wording to intent classification', () => {
+  const runIntent = { mode: 'run', signals: ['run-request', 'follow-up-run-request'] };
+  assert.equal(isLikelySessionContinuation('能执行，看到执行结果吗'), false);
+  assert.equal(isLikelySessionContinuation('看一下运行结果'), false);
+  assert.equal(isRunContinuationIntent(runIntent), true);
+  assert.equal(shouldRestoreSessionFiles('能执行，看到执行结果吗', runIntent), true);
+  assert.equal(
+    shouldInjectSessionContinuationForIntent('能执行，看到执行结果吗', '上一轮文件：src/main.cpp', runIntent),
+    true,
+  );
+});
+
+test('Session continuation: restores files for direct execute-result follow-up', () => {
+  const runIntent = { mode: 'run', signals: ['run-request', 'follow-up-run-request'] };
+  assert.equal(shouldRestoreSessionFiles('请执行，给出执行结果', runIntent), true);
+  assert.equal(
+    shouldInjectSessionContinuationForIntent('请执行，给出执行结果', '上一轮文件：code/shape_manager/main.cpp', runIntent),
+    true,
+  );
+});
+
+test('Session continuation: explicit run targets do not inherit previous files', () => {
+  const runIntent = {
+    mode: 'run',
+    signals: ['run-request', 'follow-up-run-request', 'explicit-file-path'],
+  };
+  assert.equal(isRunContinuationIntent(runIntent), false);
+  assert.equal(shouldRestoreSessionFiles('编译 code/hello.cpp', runIntent), false);
 });
 
 test('Session continuation: does not inject without context', () => {

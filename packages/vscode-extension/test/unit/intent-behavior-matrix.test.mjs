@@ -222,6 +222,22 @@ const routingCases = [
     toolActions: { read: 'allow', edit: 'deny', terminal: 'requireConfirm' },
   },
   {
+    id: 'RUN-003',
+    title: 'execution-result follow-up is terminal-confirmed run workflow',
+    prompt: '能执行，看到执行结果吗',
+    expect: { kind: 'code-change', mode: 'run', workflow: 'run-agent', useAgent: true, tools: ['read', 'search', 'diagnostics', 'terminal'] },
+    signal: 'follow-up-run-request',
+    toolActions: { read: 'allow', edit: 'deny', terminal: 'requireConfirm' },
+  },
+  {
+    id: 'RUN-004',
+    title: 'direct Chinese execute-result request is a follow-up run workflow',
+    prompt: '请执行，给出执行结果',
+    expect: { kind: 'code-change', mode: 'run', workflow: 'run-agent', useAgent: true, tools: ['read', 'search', 'diagnostics', 'terminal'] },
+    signal: 'follow-up-run-request',
+    toolActions: { read: 'allow', edit: 'deny', terminal: 'requireConfirm' },
+  },
+  {
     id: 'DANGER-001',
     title: 'delete request requires confirmation and does not run agent',
     prompt: '删除 code/main.cpp',

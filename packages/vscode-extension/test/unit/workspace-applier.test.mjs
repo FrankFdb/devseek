@@ -119,6 +119,9 @@ function createShapeManagerWorkspace() {
   const projectDir = path.join(root, 'code', 'shape_manager');
   mkdirSync(projectDir, { recursive: true });
   writeFileSync(path.join(projectDir, 'CMakeLists.txt'), 'project(old_shape_manager)\n');
+  for (const name of ['Circle.cpp', 'Rectangle.cpp', 'Triangle.cpp', 'Circle.h', 'Rectangle.h', 'Triangle.h', 'Shape.h', 'main.cpp']) {
+    writeFileSync(path.join(projectDir, name), `// old ${name}\n`);
+  }
   fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
   return { root, projectDir };
 }
@@ -176,6 +179,57 @@ test('workspace-applier: bare CMakeLists.txt prefers the explicit project direct
     assert.deepEqual(result.changedPaths, ['code/shape_manager/CMakeLists.txt']);
     assert.match(readFileSync(path.join(projectDir, 'CMakeLists.txt'), 'utf8'), /shape_manager_bare/);
     assert.equal(existsSync(path.join(root, 'code', 'CMakeLists.txt')), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('workspace-applier: generated basename files use project path hints instead of code root', async () => {
+  const { root, projectDir } = createShapeManagerWorkspace();
+  try {
+    const raw = [
+      'Circle.cpp',
+      '```cpp',
+      '#include "Circle.h"',
+      'void drawCircle() {}',
+      '```',
+      '',
+      'Rectangle.cpp',
+      '```cpp',
+      '#include "Rectangle.h"',
+      'void drawRectangle() {}',
+      '```',
+      '',
+      'Triangle.cpp',
+      '```cpp',
+      '#include "Triangle.h"',
+      'void drawTriangle() {}',
+      '```',
+    ].join('\n');
+    const prompt = '请应用识别到的候选文件修改';
+    const preferredFiles = ['Circle.cpp', 'Rectangle.cpp', 'Triangle.cpp']
+      .map(name => path.join(projectDir, name));
+
+    const result = await applyGeneratedArtifactsWithPrompt(
+      raw,
+      prompt,
+      undefined,
+      true,
+      undefined,
+      preferredFiles,
+      { rollbackOnValidationFailure: false },
+    );
+
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.changedPaths, [
+      'code/shape_manager/Circle.cpp',
+      'code/shape_manager/Rectangle.cpp',
+      'code/shape_manager/Triangle.cpp',
+    ]);
+    assert.match(readFileSync(path.join(projectDir, 'Circle.cpp'), 'utf8'), /drawCircle/);
+    assert.equal(existsSync(path.join(root, 'code', 'Circle.cpp')), false);
+    assert.equal(existsSync(path.join(root, 'code', 'Rectangle.cpp')), false);
+    assert.equal(existsSync(path.join(root, 'code', 'Triangle.cpp')), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -253,6 +307,48 @@ test('workspace-applier: explicit missing code subdirectory still wins over same
     assert.deepEqual(result.changedPaths, ['code/shape_manager/main.cpp']);
     assert.match(readFileSync(path.join(projectDir, 'main.cpp'), 'utf8'), /correct/);
     assert.match(readFileSync(path.join(wrongDir, 'main.cpp'), 'utf8'), /return 99/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('workspace-applier: compile-only C++ validation does not run the produced program', { skip: !hasCommand('g++') && 'g++ is not installed' }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-'));
+  const projectDir = path.join(root, 'code', 'compile_only_demo');
+  try {
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, 'main.cpp'), 'int main() { return 0; }\n');
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+
+    const raw = [
+      'compile_only_demo/main.cpp',
+      '```cpp',
+      'int main() { return 17; }',
+      '```',
+    ].join('\n');
+    const prompt = `请修改 ${projectDir}，只做本地编译确认`;
+    const statuses = [];
+
+    const result = await applyGeneratedArtifactsWithPrompt(
+      raw,
+      prompt,
+      (status) => statuses.push(status),
+      true,
+      undefined,
+      undefined,
+      { rollbackOnValidationFailure: false },
+    );
+
+    assert.equal(result.applied, true);
+    assert.equal(result.validation?.ok, true);
+    assert.equal(result.validation?.mode, 'compile-only');
+    assert.doesNotMatch(result.validation?.reason || '', /post-compile/i);
+    assert.match(result.validation?.command || '', /-fsyntax-only/);
+    assert.doesNotMatch(result.validation?.command || '', /deepseek_auto_exec/);
+    assert.equal(
+      statuses.some((status) => status.phase === 'validate' && status.state === 'passed' && /自动验证通过/.test(status.title)),
+      true,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

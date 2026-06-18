@@ -66,6 +66,22 @@
 
 ---
 
+**变更标题**：本地执行失败修复范围收敛 + 文档目录归档整理（2026-06-18）
+- **需求归因**：实现缺陷 + 体验退化 + 文档债务 — 编译/执行失败后，DevSeek 会把项目中无关诊断一起送入 DeepSeek 修复上下文；`docs/` 中阶段性报告和活跃文档混放，恢复上下文成本高。
+- **影响能力层**：修复层（本地失败定位与任务生成）、验证层（终端证据解析）、规划层（Agent 修复范围约束）、文档治理。
+- **架构影响**：
+  - `execution-planner.ts` 负责解析本次终端失败诊断，并输出最小修复文件集。
+  - `local-execution-repair.ts` 只消费定位结果生成修复任务，`get_errors` 限定到本轮修复文件。
+  - `docs/README.md` 收敛为活跃文档索引，历史报告迁入 `docs/archive/` 子分类。
+- **方案选择理由**：参考 Claude Code / Codex 的闭环行为，修复上下文应以当前失败证据为中心，由工具读取和验证逐步扩大范围，而不是把全项目诊断一次性交给模型。
+- **主链路验证**：多文件 C++ 编译错误仅选择具体报错文件；CMake 错误可定位到 `CMakeLists.txt`；本地修复 prompt 包含本次失败定位和范围约束。
+- **回退链路验证**：终端输出无法解析具体文件时，退回执行计划中的最小候选文件；`get_errors` 在定位文件无 VS Code 诊断时返回明确提示，不扩大到全工作区。
+- **结果判据变化**：本地失败修复从“最多 8 个相关/回退文件”变为“明确诊断文件优先，最多 4 个；无定位才 fallback”。
+- **文档更新**：`docs/README.md`、`docs/archive/README.md`、`docs/CHANGELOG.md`、本文件。
+- **备份/发布动作**：编译、扩展测试、VSIX 打包和本地安装均完成。
+
+---
+
 **变更标题**：Agent 显示流与 Todos 状态对齐 Copilot 风格（2026-06-03）
 - **需求归因**：体验退化 + 实现缺陷 — DeepSeek 网页反馈已返回但主对话显示不稳定；Todos 与真实执行状态不同步；最后任务 `task_complete` 可能绕过 editedFiles/验证统计
 - **影响能力层**：展示层（WebView prose / Working / Todos）+ 执行层（runAgentLoop 最终 done 汇总）+ 验证层（验证结果进入最终摘要）
@@ -95,7 +111,7 @@
 - **主链路验证**：`npm run compile --workspace=packages/vscode-extension`；`npm run build --workspace=packages/bridge`；`npm test --workspace=packages/vscode-extension` 沙箱外 6 suite 全通过
 - **回退链路验证**：新增静态测试确认旧 `deepseek` 配置读取仅存在于迁移函数；新增静态测试确认 `workspace-applier.ts` 写入前检查 `isFileProtected`
 - **结果判据变化**：用户配置以 `devseek.*` 为唯一正式命名空间；旧 `deepseek.*` 仅作为迁移输入；受保护文件在统一应用层被阻止
-- **文档更新**：`docs/CHANGELOG.md` / 根 `CHANGELOG.md` / `docs/AUDIT_REPORT_2026-06-03.md` / `docs/TOP_AGENT_CHANGE_GATE.md`
+- **文档更新**：`docs/CHANGELOG.md` / 根 `CHANGELOG.md` / `docs/archive/reports/AUDIT_REPORT_2026-06-03.md` / `docs/TOP_AGENT_CHANGE_GATE.md`
 - **备份/发布动作**：已重新编译 extension dist；未打包 VSIX
 
 ---

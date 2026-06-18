@@ -52,6 +52,11 @@ export interface AppliedChangeRecord {
 type ApplyWorkflowReporter = (status: ApplyWorkflowStatus) => void | Thenable<void>;
 type AppliedChangeReporter = (change: AppliedChangeRecord) => void | Thenable<void>;
 
+const CPP_COMPILE_VALIDATION_TIMEOUT_MS = 15_000;
+const CPP_RUN_VALIDATION_TIMEOUT_MS = 30_000;
+const PROJECT_BUILD_VALIDATION_TIMEOUT_MS = 120_000;
+const CMAKE_RUN_VALIDATION_TIMEOUT_MS = 30_000;
+
 export interface ApplyGeneratedArtifactsOptions {
   rollbackOnValidationFailure?: boolean;
 }
@@ -817,10 +822,10 @@ async function runAutoValidation(changedPaths: string[], root?: vscode.Uri, requ
   const cppRelated = changedPaths.filter((p) => /\.(cpp|cc|cxx|c|h|hpp)$/i.test(p));
 
   if (hasBridge) {
-    return runShell('npm run build', nodePath.join(root.fsPath, 'packages', 'bridge'));
+    return runShell('npm run build', nodePath.join(root.fsPath, 'packages', 'bridge'), PROJECT_BUILD_VALIDATION_TIMEOUT_MS);
   }
   if (hasExtension) {
-    return runShell('npm run compile', nodePath.join(root.fsPath, 'packages', 'vscode-extension'));
+    return runShell('npm run compile', nodePath.join(root.fsPath, 'packages', 'vscode-extension'), PROJECT_BUILD_VALIDATION_TIMEOUT_MS);
   }
   if (cppRelated.length > 0) {
     const cppPolicy = config.get<CppValidationPolicy>('cppValidationPolicy', 'conservative');
@@ -840,76 +845,42 @@ async function runCppAutoValidation(
   const plan = planCppValidation(cppRelated, rootFsPath, fsNode, cppPolicy, { run: shouldRun });
   if (!plan) return null;
 
-  const result = await runShell(plan.command, plan.cwd);
-  let merged: AutoValidationResult = {
+  const timeoutMs = plan.mode === 'compile-run'
+    ? CPP_RUN_VALIDATION_TIMEOUT_MS
+    : plan.mode === 'cmake' && shouldRun
+      ? CMAKE_RUN_VALIDATION_TIMEOUT_MS
+      : plan.mode === 'cmake'
+        ? PROJECT_BUILD_VALIDATION_TIMEOUT_MS
+        : CPP_COMPILE_VALIDATION_TIMEOUT_MS;
+  const result = await runShell(plan.command, plan.cwd, timeoutMs);
+  return {
     ...result,
     mode: plan.mode,
     reason: plan.reason,
   };
-
-  if (merged.ok && plan.mode === 'compile-only') {
-    const execCheck = await tryPostCompileExecutionCheck(plan.cwd, fsNode);
-    if (execCheck) {
-      merged = {
-        ...execCheck,
-        mode: execCheck.ok ? 'compile-run' : 'compile-run',
-        reason: execCheck.ok ? 'post-compile-execution-check-passed' : 'post-compile-execution-check-failed',
-      };
-    }
-  }
-
-  return merged;
 }
 
 function shouldRunCppValidation(prompt: string): boolean {
   return /(?:运行|执行|启动|测试|test|run|execute|看结果|输出效果|运行效果)/i.test(prompt || '');
 }
 
-async function tryPostCompileExecutionCheck(
-  cwd: string,
-  fsNode: { readdirSync: (p: string) => string[]; readFileSync: (p: string, enc: string) => string },
-): Promise<AutoValidationResult | null> {
-  try {
-    const files = fsNode.readdirSync(cwd)
-      .filter((name: string) => /\.(cpp|cc|cxx|c)$/i.test(name))
-      .map((name: string) => nodePath.join(cwd, name));
-    if (files.length === 0) return null;
-
-    const mains = files.filter((abs: string) => {
-      try {
-        return /\bint\s+main\s*\(/.test(fsNode.readFileSync(abs, 'utf8'));
-      } catch {
-        return false;
-      }
-    });
-
-    if (mains.length !== 1) return null;
-
-    const outPath = nodePath.join(cwd, 'deepseek_auto_exec');
-    const command = `g++ -std=c++17 ${files.map(shellQuote).join(' ')} -o ${shellQuote(outPath)} && ${shellQuote(outPath)}`;
-    return await runShell(command, cwd);
-  } catch {
-    return null;
-  }
-}
-
-async function runShell(command: string, cwd: string): Promise<AutoValidationResult> {
+async function runShell(command: string, cwd: string, timeoutMs: number): Promise<AutoValidationResult> {
   return new Promise((resolve) => {
     const cp = require('child_process');
-    cp.exec(command, { cwd, timeout: 180000 }, (error: Error & { code?: number }, stdout: string, stderr: string) => {
-      const exitCode = typeof error?.code === 'number' ? error.code : 0;
+    cp.exec(command, { cwd, timeout: timeoutMs }, (error: Error & { code?: number; killed?: boolean; signal?: string }, stdout: string, stderr: string) => {
+      const timedOut = !!error && (error.killed || /timed out|timeout/i.test(error.message || ''));
+      const exitCode = !error ? 0 : timedOut ? 124 : (typeof error.code === 'number' ? error.code : null);
+      const output = `${stdout || ''}\n${stderr || ''}`.trim();
       resolve({
         ran: true,
         ok: !error,
         command,
         exitCode,
-        output: `${stdout || ''}\n${stderr || ''}`,
+        output: timedOut
+          ? [output, `[DevSeek] 命令超时，已终止（timeout ${timeoutMs}ms）。这通常表示程序仍在运行、等待输入或构建卡住；自动验证按失败处理。`].filter(Boolean).join('\n')
+          : output,
         cwd,
       });
     });
   });
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }

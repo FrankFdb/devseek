@@ -24,6 +24,8 @@ export interface LocalExecutionResult {
 const COMPILE_INTENT_RE = /(编译|compile|构建|build|g\+\+|gcc|clang\+\+)/i;
 const RUN_INTENT_RE = /(运行|执行|run|execute|启动|测试|test|看结果|输出效果|运行效果)/i;
 const CPP_RE = /\.(cpp|cc|cxx|c)$/i;
+const CPP_COMPILE_TIMEOUT_MS = 15_000;
+const CPP_RUN_TIMEOUT_MS = 30_000;
 
 export function decideLocalExecution(prompt: string, files: string[] | undefined): LocalExecutionDecision | null {
   const attached = (files || []).filter(Boolean);
@@ -63,14 +65,19 @@ export function decideLocalExecution(prompt: string, files: string[] | undefined
 
 export async function runLocalExecution(decision: LocalExecutionDecision): Promise<LocalExecutionResult> {
   return new Promise((resolve) => {
-    cp.exec(decision.command, { cwd: decision.cwd, timeout: 180000 }, (error: Error & { code?: number }, stdout: string, stderr: string) => {
-      const code = typeof error?.code === 'number' ? error.code : 0;
+    const timeoutMs = decision.compileOnly ? CPP_COMPILE_TIMEOUT_MS : CPP_RUN_TIMEOUT_MS;
+    cp.exec(decision.command, { cwd: decision.cwd, timeout: timeoutMs, encoding: 'utf8' }, (error: cp.ExecException | null, stdout: string, stderr: string) => {
+      const output = `${stdout || ''}\n${stderr || ''}`.trim();
+      const timedOut = !!error && (error.killed || /timed out|timeout/i.test(error.message || ''));
+      const exitCode = !error ? 0 : timedOut ? 124 : (typeof error.code === 'number' ? error.code : null);
       resolve({
         ok: !error,
         command: decision.command,
         cwd: decision.cwd,
-        exitCode: typeof code === 'number' ? code : null,
-        output: `${stdout || ''}\n${stderr || ''}`,
+        exitCode,
+        output: timedOut
+          ? [output, `[DevSeek] 命令超时，已终止（timeout ${timeoutMs}ms）。这通常表示程序仍在运行、等待输入或构建卡住；自动验证按失败处理。`].filter(Boolean).join('\n')
+          : output,
         relatedFiles: decision.relatedFiles,
       });
     });

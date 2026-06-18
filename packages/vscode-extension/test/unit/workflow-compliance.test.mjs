@@ -176,9 +176,23 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
   );
   assert.match(
     extension,
-    /current = await applyGeneratedArtifactsWithPrompt\([\s\S]*?\{ rollbackOnValidationFailure: false \}/,
+    /const repairApply = await applyGeneratedArtifactsWithPrompt\([\s\S]*?\{ rollbackOnValidationFailure: false \}/,
     'repair rounds must keep failed repair files for the next validation loop',
   );
+  assertContains(extension, 'responseClaimsStatusOk', 'closed-loop repair must detect model self-claimed STATUS OK');
+  assertContains(extension, '已拒绝模型 STATUS: OK，自验证仍失败', 'model STATUS OK must not override failed local validation');
+  assertContains(extension, '本地验证状态为 FAILED', 'repair prompt must make failed local validation authoritative');
+  assertContains(extension, '禁止只输出 STATUS: OK', 'repair prompt must forbid OK-only responses after failed validation');
+});
+
+test('§8.3 File edits: validation timeout is reported as failed evidence', () => {
+  const applier = src('src/workspace-applier.ts');
+  const planner = src('src/execution-planner.ts');
+  const localExecution = src('src/local-execution.ts');
+  for (const code of [applier, planner, localExecution]) {
+    assertContains(code, 'timedOut ? 124', 'timed-out local commands must not be reported as exitCode 0');
+    assertContains(code, '自动验证按失败处理', 'timeout evidence must tell DeepSeek/local repair it is a failure');
+  }
 });
 
 test('§8.3 File edits: code directory prompts force generated code paths under code/', () => {
@@ -583,10 +597,16 @@ test('Agentic loop: terminal completion evidence requires successful validation 
 test('Directory discovery skips generated build artifacts', () => {
   const ext = src('src/extension.ts');
   const planner = src('src/execution-planner.ts');
-  assertContains(ext, '.devseek-builds', 'directory attachments must skip DevSeek build directories');
-  assertContains(ext, 'CMakeFiles', 'directory attachments must skip CMake generated trees');
-  assertContains(planner, '.devseek-builds', 'execution planner discovery must skip DevSeek build directories');
-  assertContains(planner, 'CMakeFiles', 'execution planner discovery must skip CMake generated trees');
+  const discovery = src('src/file-discovery.ts');
+  assertContains(ext, 'shouldSkipDiscoveryDir', 'directory attachments must use shared discovery skip policy');
+  assertContains(ext, 'shouldIncludeDiscoveredSourceFile', 'auto directory discovery must filter generated source-like artifacts');
+  assertContains(planner, 'shouldSkipDiscoveryDir', 'execution planner discovery must use shared skip policy');
+  assertContains(planner, 'shouldIncludeDiscoveredSourceFile', 'execution planner discovery must filter generated source-like artifacts');
+  assertContains(discovery, '.devseek-builds', 'shared discovery policy must skip DevSeek build directories');
+  assertContains(discovery, 'devseek-build', 'shared discovery policy must skip legacy DevSeek build directories');
+  assertContains(discovery, 'CMakeFiles', 'shared discovery policy must skip CMake generated trees');
+  assertContains(discovery, 'compiler_depend', 'shared discovery policy must skip CMake dependency timestamp files');
+  assertContains(discovery, 'CompilerId', 'shared discovery policy must skip CMake compiler probe sources');
 });
 
 test('Directory discovery uses local context instead of DeepSeek web upload', () => {
@@ -604,6 +624,13 @@ test('Directory discovery uses local context instead of DeepSeek web upload', ()
     /routeFiles = routeFiles\.filter\(\(?f\)? => !autoDiscoveredFileSet\.has\(f\)\)/,
     'auto-discovered files must be removed from bridge upload routeFiles',
   );
+});
+
+test('Agent validation completion settles spinner instead of leaving validation animation running', () => {
+  const webview = src('media/webview.js');
+  assertContains(webview, 'settleAgentValidationSpinner', 'agent validate completion must settle the live spinner');
+  assertContains(webview, 'aut-spinner-label is-settled', 'settled validate spinner must disable shimmer styling');
+  assertContains(webview, "msg.state === 'skipped'", 'skipped validation must also settle the spinner');
 });
 
 test('Agentic loop: terminal must not be used as a fallback file writer', () => {

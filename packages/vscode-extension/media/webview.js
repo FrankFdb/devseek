@@ -56,7 +56,7 @@ let generatedContentDisplayMode = 'collapsed';
 let workingCopyStyle = 'detailed';
 let suppressGeneratedStreaming = false;
 let expectGeneratedArtifacts = false;
-let currentResponseMeta = { hasGeneratedArtifacts: false, generatedPaths: [] };
+let currentResponseMeta = { hasGeneratedArtifacts: false, generatedPaths: [], pathHints: [] };
 let readySettled = false;
 let editingUserTurn = null;
 let userPinnedToBottom = true;
@@ -3464,7 +3464,8 @@ function addAgentStatus(msg) {
       }
       return;
     }
-    if (msg.state === 'completed' || msg.state === 'passed' || msg.state === 'failed') {
+    if (msg.state === 'completed' || msg.state === 'passed' || msg.state === 'failed' || msg.state === 'skipped') {
+      settleAgentValidationSpinner(msg);
       agentValidationSummary = {
         state: msg.state === 'failed' ? 'failed' : 'completed',
         title: msg.title || '验证完成',
@@ -3594,6 +3595,20 @@ function addAgentStatus(msg) {
     }, 160);
     maybeScrollToBottom();
   }
+}
+
+function settleAgentValidationSpinner(msg) {
+  if (!agentExecContainer || !agentExecContainer.isConnected || agentExecContainer.hasAttribute('data-done')) return;
+  var autDets = agentExecContainer.querySelector('.aut-details');
+  var row = autDets ? autDets.querySelector('.aut-spinner-row') : null;
+  if (!row) return;
+  var failed = msg.state === 'failed';
+  var skipped = msg.state === 'skipped';
+  var icon = failed ? 'codicon-error' : skipped ? 'codicon-dash' : 'codicon-check';
+  row.classList.add('is-settled');
+  row.innerHTML = '<i class="codicon ' + icon + ' aut-spinner-settled-icon"></i>'
+    + '<span class="aut-spinner-label is-settled' + (failed ? ' is-failed' : '') + '">'
+    + escapeHtml(msg.title || (failed ? '验证失败' : skipped ? '已跳过验证' : '验证完成')) + '</span>';
 }
 
 /**
@@ -4081,6 +4096,10 @@ function injectWorkingAreaStyles() {
     '.aut-spinner-row { display:flex; align-items:center; gap:5px; padding:4px 2px; margin-top:3px; }',
     '.aut-spinner-dot { font-size:8px; opacity:0.55; color:var(--vscode-descriptionForeground); }',
     '.aut-spinner-label { font-size:var(--vscode-chat-font-size-body-s,0.923em); font-style:italic; background:linear-gradient(90deg,var(--vscode-descriptionForeground,rgba(180,180,180,.65)) 0%,var(--vscode-descriptionForeground,rgba(180,180,180,.65)) 30%,var(--vscode-chat-thinkingShimmer,rgba(255,255,255,.9)) 50%,var(--vscode-descriptionForeground,rgba(180,180,180,.65)) 70%,var(--vscode-descriptionForeground,rgba(180,180,180,.65)) 100%); background-size:400% 100%; background-clip:text; -webkit-background-clip:text; -webkit-text-fill-color:transparent; animation:autShimmer 2.5s linear infinite; }',
+    '.aut-spinner-row.is-settled { opacity:.78; }',
+    '.aut-spinner-settled-icon { font-size:12px; color:var(--vscode-charts-green,rgba(120,220,150,.9)); }',
+    '.aut-spinner-label.is-settled { animation:none; background:none; -webkit-text-fill-color:unset; color:var(--vscode-descriptionForeground,rgba(204,204,204,.75)); font-style:normal; }',
+    '.aut-spinner-label.is-settled.is-failed, .aut-spinner-row.is-settled .codicon-error { color:var(--vscode-errorForeground,rgba(255,130,130,.9)); }',
     /* ── P-P: analysis mode done = plain borderless text (Copilot: "Analyzed X" pure text line) ── */
     '.aut-container[data-done][data-analyze] { border:none !important; padding:1px 0; margin:0 0 2px 0; }',
     '.aut-container[data-analyze] .aut-details[data-done] .aut-status-icon { display:none; }',
@@ -4635,7 +4654,12 @@ function addCompletionSummaryCard() {
       btn.textContent = item.path.split('/').pop() || item.path;    /* W5: basename */
       btn.title = item.path;
       btn.addEventListener('click', function() {
-        vscode.postMessage({ type: 'openGeneratedPath', path: item.path });
+        vscode.postMessage({
+          type: 'openGeneratedPath',
+          path: item.path,
+          prompt: currentRequestPrompt,
+          files: currentResponseMeta.pathHints || []
+        });
       });
       filesEl.appendChild(btn);
     });
@@ -5374,7 +5398,7 @@ window.addEventListener('message', function(event) {
     isGenerating = true; currentRaw = ''; hadResetRender = false;
     suppressGeneratedStreaming = false;
     expectGeneratedArtifacts = !!msg.expectGeneratedArtifacts;
-    currentResponseMeta = { hasGeneratedArtifacts: false, generatedPaths: [] };
+    currentResponseMeta = { hasGeneratedArtifacts: false, generatedPaths: [], pathHints: [] };
     completionSummaryEmitted = false;
     completionSummaryHasQueue = false;
     agentDoneSummaryInserted = false;
@@ -5708,7 +5732,7 @@ window.addEventListener('message', function(event) {
     hadResetRender = false;
     suppressGeneratedStreaming = false;
     expectGeneratedArtifacts = false;
-    currentResponseMeta = { hasGeneratedArtifacts: false, generatedPaths: [] };
+    currentResponseMeta = { hasGeneratedArtifacts: false, generatedPaths: [], pathHints: [] };
     stopGenerating();
     // §8.5 Queue: after agent completes, auto-send any queued message
     if (_wasAgentMode && queuedAgentMsg) {
@@ -5729,6 +5753,7 @@ window.addEventListener('message', function(event) {
     currentResponseMeta = {
       hasGeneratedArtifacts: !!msg.hasGeneratedArtifacts,
       generatedPaths: Array.isArray(msg.generatedPaths) ? msg.generatedPaths : [],
+      pathHints: Array.isArray(msg.pathHints) ? msg.pathHints : [],
     };
 
     if (currentBubble && currentResponseMeta.hasGeneratedArtifacts && normalizeGeneratedContentDisplayMode(generatedContentDisplayMode) !== 'full') {

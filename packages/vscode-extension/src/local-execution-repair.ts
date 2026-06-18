@@ -3,6 +3,7 @@ import * as nodePath from 'path';
 import * as vscode from 'vscode';
 import {
   buildExecutionRepairPrompt,
+  parseLocalExecutionDiagnostics,
   type LocalExecutionPlan,
   type LocalExecutionResult,
   selectRepairFiles,
@@ -26,6 +27,7 @@ export interface LocalExecutionRepairCallbacksDeps {
   registerAppliedChange: (change: AppliedChangeRecord) => Promise<void>;
   registerToMemory: (absPath: string) => void;
   sessionRecentFiles: Map<string, string>;
+  repairFiles?: string[];
   mcpToolRefs?: AgentLoopCallbacks['mcpToolRefs'];
   onMcpToolCall?: AgentLoopCallbacks['onMcpToolCall'];
   signal?: AbortSignal;
@@ -48,8 +50,18 @@ export function buildLocalExecutionRepairTasks(
   workspaceRoot: string,
 ): AgentTask[] {
   const selected = selectRepairFiles(plan, result);
-  const fallback = plan.targetFiles.length > 0 ? plan.targetFiles : plan.attachedFiles;
-  const repairFiles = [...new Set([...selected, ...fallback])]
+  const diagnostics = parseLocalExecutionDiagnostics(plan, result);
+  const diagnosticByPath = new Map<string, string>();
+  for (const diagnostic of diagnostics) {
+    const key = nodePath.resolve(diagnostic.filePath);
+    if (diagnosticByPath.has(key)) continue;
+    const loc = diagnostic.line
+      ? `${diagnostic.line}${diagnostic.column ? `:${diagnostic.column}` : ''}`
+      : '';
+    diagnosticByPath.set(key, [loc, diagnostic.message].filter(Boolean).join(' '));
+  }
+
+  const repairFiles = [...new Set(selected.map((filePath) => nodePath.resolve(filePath)))]
     .filter((filePath) => {
       try {
         return fs.statSync(filePath).isFile() && LOCAL_REPAIR_SOURCE_FILE_RE.test(filePath);
@@ -57,18 +69,21 @@ export function buildLocalExecutionRepairTasks(
         return false;
       }
     })
-    .slice(0, 8);
+    .slice(0, 4);
 
   return repairFiles.map((absPath, index) => {
     const rel = relPathFromRepairWorkspace(workspaceRoot, absPath) ?? nodePath.basename(absPath);
+    const diagnostic = diagnosticByPath.get(nodePath.resolve(absPath));
     return {
       id: `local-execution-repair-${index + 1}`,
       file: rel,
       absPath,
       action: 'modify',
-      desc: index === 0
-        ? `修复本地执行失败（exitCode=${result.exitCode ?? 'null'}）`
-        : `检查并修复相关文件：${nodePath.basename(absPath)}`,
+      desc: diagnostic
+        ? `修复 ${rel}:${diagnostic}`
+        : (index === 0
+            ? `修复本地执行失败（exitCode=${result.exitCode ?? 'null'}）`
+            : `检查并修复相关文件：${nodePath.basename(absPath)}`),
     };
   });
 }
@@ -85,7 +100,8 @@ export function buildLocalExecutionAgentRepairPrompt(
     '【Agent 闭环要求（按 Claude Code / Codex 风格处理）】',
     `这是第 ${round} 轮本地执行失败后的自动修复。上面的终端输出是工具结果，不是最终答案。`,
     '不要依赖网页附件上传；请使用本地工具 read_file / grep_search / list_dir / run_terminal 读取和验证。',
-    '必须先定位根因，再用 create_file/write_file 或 SEARCH/REPLACE 修改必要源码文件。',
+    '必须先围绕“本次失败定位”读取根因文件，再用 create_file/write_file 或 SEARCH/REPLACE 修改必要源码文件。',
+    '不要顺手修复工作区中与本次命令失败无关的其他诊断。',
     `修复后必须重新运行验证命令：${plan.command}`,
     '只有验证通过，才能报告完成；如果仍失败，继续基于新输出修复。',
   ].join('\n');
@@ -103,10 +119,12 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
     registerAppliedChange,
     registerToMemory,
     sessionRecentFiles,
+    repairFiles,
     mcpToolRefs,
     onMcpToolCall,
     signal,
   } = deps;
+  const repairFileSet = new Set((repairFiles ?? []).map((filePath) => nodePath.resolve(filePath)));
 
   const resolveReadablePath = (filePath: string, workDir?: string): string | null => {
     const tryCandidate = (candidate: string): string | null => {
@@ -196,9 +214,18 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
     },
     onGetErrors: async () => {
       const diagnostics = vscode.languages.getDiagnostics()
-        .filter(([uri, items]) => isPathInsideRoot(uri.fsPath, workspaceRoot) && items.some(d => d.severity === vscode.DiagnosticSeverity.Error))
+        .filter(([uri, items]) => {
+          const resolved = nodePath.resolve(uri.fsPath);
+          if (!isPathInsideRoot(resolved, workspaceRoot)) return false;
+          if (repairFileSet.size > 0 && !repairFileSet.has(resolved)) return false;
+          return items.some(d => d.severity === vscode.DiagnosticSeverity.Error);
+        })
         .slice(0, 20);
-      if (diagnostics.length === 0) return '（当前没有 VS Code 诊断错误）';
+      if (diagnostics.length === 0) {
+        return repairFileSet.size > 0
+          ? '（本次定位文件没有 VS Code 诊断错误；请以终端失败输出为准，不要修复其他文件诊断）'
+          : '（当前没有 VS Code 诊断错误）';
+      }
       return diagnostics.map(([uri, items]) => {
         const rel = relPathFromRepairWorkspace(workspaceRoot, uri.fsPath) ?? uri.fsPath;
         return items
