@@ -6,6 +6,13 @@
 
 ## [Unreleased] — 2026-06-18
 
+### 需求与设计覆盖最终审计
+
+- 新增 `docs/architecture/11-需求设计覆盖最终审计.md`，审计 REQ-A~N、MEM-01~14 与 ARCH-01~10 的覆盖关系。
+- 结论：需求完备性通过；设计覆盖性条件通过；ARCH-05 Phase 0~11 可直接执行，P2/P3 与 Phase 12 增强能力编码前需要补专项详细设计。
+- `docs/architecture/05-代码重构实施计划.md` 补充 REQ-A2 `/init` 等价项目指令生成到 Phase 1，并把 hooks/skills/subagents/MCP 的专项详细设计列为 Phase 12 前置条件。
+- `docs/README.md` 和 `docs/requirements/07-架构重构需求澄清.md` 增加 ARCH-11 入口。
+
 ### 运行形态与界面解耦设计
 
 - 新增 `docs/requirements/09-运行形态与界面解耦需求.md`，确认 DevSeek 不应只作为 VS Code 插件设计，而应支持 VS Code、CLI、非交互 JSONL、非 VS Code 图形界面和跨平台运行。

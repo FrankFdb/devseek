@@ -20,6 +20,7 @@
 | [architecture/08-历史任务与续作架构设计.md](architecture/08-历史任务与续作架构设计.md) | 架构设计 | 历史任务保存、显示、打开和继续工作 |
 | [architecture/09-程序员工程完整性架构设计.md](architecture/09-程序员工程完整性架构设计.md) | 架构设计 | 代码库索引、工程环境、语言/运行时支持、忽略规则、冲突、预算和回放评测 |
 | [architecture/10-运行形态与界面解耦架构设计.md](architecture/10-运行形态与界面解耦架构设计.md) | 架构设计 | Headless Agent Core、Surface Adapter、CLI、JSONL、跨平台 Platform Runtime、构建矩阵 |
+| [architecture/11-需求设计覆盖最终审计.md](architecture/11-需求设计覆盖最终审计.md) | 架构审计 | 需求完备性、设计覆盖性、可直接执行范围和条件通过项 |
 | [architecture/05-代码重构实施计划.md](architecture/05-代码重构实施计划.md) | 实施计划 | 按需求和设计推进代码重构与测试 |
 | [requirements/04-Agent优化路线图.md](requirements/04-Agent优化路线图.md) | 需求/路线图 | Agent 能力路线图和待办入口 |
 | [process/TOP_AGENT_CHANGE_GATE.md](process/TOP_AGENT_CHANGE_GATE.md) | 工程过程 | 每次变更前后的检查清单、DoD、最近变更记录 |
@@ -56,6 +57,7 @@
 | [architecture/08-历史任务与续作架构设计.md](architecture/08-历史任务与续作架构设计.md) | TaskHistoryStore、TaskRunRecord、任务列表、打开续作和隐私清理设计 |
 | [architecture/09-程序员工程完整性架构设计.md](architecture/09-程序员工程完整性架构设计.md) | EngineeringContextService、ContentExclusionService、CodebaseIndexService、EnvironmentProfileService、LanguageRuntimeRegistry、ConflictGuard、UsageBudgetService 设计 |
 | [architecture/10-运行形态与界面解耦架构设计.md](architecture/10-运行形态与界面解耦架构设计.md) | AgentApplicationService、SurfaceAdapter、AgentCommand/AgentEvent、PlatformRuntimeAdapter、BuildProfile 设计 |
+| [architecture/11-需求设计覆盖最终审计.md](architecture/11-需求设计覆盖最终审计.md) | REQ-A~N、MEM-01~14 和 ARCH-01~10 的最终覆盖审计 |
 
 ### 过程与发布
 
@@ -84,5 +86,5 @@
 1. 新建文档前先判断是否能补充到现有活跃文档。
 2. 长期维护文档按 `requirements/`、`architecture/`、`process/`、`release/` 分类；一次性材料直接放入 `docs/archive/<category>/`。
 3. 完成功能或修复后，至少更新 [release/CHANGELOG.md](release/CHANGELOG.md) 和 [process/TOP_AGENT_CHANGE_GATE.md](process/TOP_AGENT_CHANGE_GATE.md)。
-4. 改到架构边界时，同步更新 [architecture/01-顶级编程智能体总体架构设计.md](architecture/01-顶级编程智能体总体架构设计.md)、[architecture/02-模型供应商与工具协议架构设计.md](architecture/02-模型供应商与工具协议架构设计.md)、[architecture/03-Agent运行时与工作流重构设计.md](architecture/03-Agent运行时与工作流重构设计.md)、[architecture/04-记忆体架构设计.md](architecture/04-记忆体架构设计.md)、[architecture/07-DeepSeek网页异常与恢复设计.md](architecture/07-DeepSeek网页异常与恢复设计.md)、[architecture/08-历史任务与续作架构设计.md](architecture/08-历史任务与续作架构设计.md)、[architecture/09-程序员工程完整性架构设计.md](architecture/09-程序员工程完整性架构设计.md)、[architecture/10-运行形态与界面解耦架构设计.md](architecture/10-运行形态与界面解耦架构设计.md) 或对应编号设计文档。
+4. 改到架构边界时，同步更新 [architecture/01-顶级编程智能体总体架构设计.md](architecture/01-顶级编程智能体总体架构设计.md)、[architecture/02-模型供应商与工具协议架构设计.md](architecture/02-模型供应商与工具协议架构设计.md)、[architecture/03-Agent运行时与工作流重构设计.md](architecture/03-Agent运行时与工作流重构设计.md)、[architecture/04-记忆体架构设计.md](architecture/04-记忆体架构设计.md)、[architecture/07-DeepSeek网页异常与恢复设计.md](architecture/07-DeepSeek网页异常与恢复设计.md)、[architecture/08-历史任务与续作架构设计.md](architecture/08-历史任务与续作架构设计.md)、[architecture/09-程序员工程完整性架构设计.md](architecture/09-程序员工程完整性架构设计.md)、[architecture/10-运行形态与界面解耦架构设计.md](architecture/10-运行形态与界面解耦架构设计.md)、[architecture/11-需求设计覆盖最终审计.md](architecture/11-需求设计覆盖最终审计.md) 或对应编号设计文档。
 5. 改到产品行为时，同步更新 [requirements/02-顶级编程智能体需求基线.md](requirements/02-顶级编程智能体需求基线.md)、[requirements/03-产品需求分析.md](requirements/03-产品需求分析.md) 或对应 Agent/Intent 文档。
