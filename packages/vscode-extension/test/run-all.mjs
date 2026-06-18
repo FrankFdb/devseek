@@ -13,6 +13,7 @@ const rootDir = path.resolve(__dirname, '../');
 
 const suites = [
   'test/unit/agent-working-state.test.mjs',
+  'test/unit/architecture-boundary.test.mjs',
   'test/unit/agent-display-regression.test.mjs',
   'test/unit/webview-logic.test.mjs',
   'test/unit/intent-router.test.mjs',

@@ -68,6 +68,23 @@
 
 ---
 
+**变更标题**：Phase 0 架构守卫实现（2026-06-18）
+- **需求归因**：架构债务 + 代码重构计划执行 — 进入 Phase 1/2 前，先用测试守住入口边界，避免继续向 `extension.ts` 和 `agent-loop.ts` 堆新业务。
+- **影响能力层**：架构守卫、测试治理、领域导出边界、记忆体重构前置类型边界。
+- **架构影响**：
+  - 新增 `packages/vscode-extension/src/app/index.ts`、`agent/index.ts`、`workspace/index.ts`、`llm/index.ts`、`memory/index.ts`。
+  - 新增 `packages/vscode-extension/src/memory/types.ts`。
+  - 新增 `packages/vscode-extension/test/unit/architecture-boundary.test.mjs`，并纳入 `test/run-all.mjs`。
+  - `docs/architecture/05-代码重构实施计划.md` 记录 Phase 0 基线。
+- **方案选择理由**：按 ARCH-05 先建立边界和守卫，再迁移职责；本轮不改变用户行为，只让后续重构有自动化约束。
+- **主链路验证**：新增架构测试通过；27 个 unit suite 全部通过；领域边界入口独立 esbuild bundle 通过。
+- **回退链路验证**：本轮不改变运行时调用路径；如守卫误伤，可只调整测试预算或边界声明，不影响插件使用。
+- **结果判据变化**：后续新增业务不能让 `extension.ts` / `agent-loop.ts` 超过 Phase 0 基线；新模块应从对应领域边界导出。
+- **文档更新**：`docs/architecture/05-代码重构实施计划.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npm run compile --workspace=packages/vscode-extension` 通过；`npm run extension:package` 通过；`code --install-extension devseek-netai-latest.vsix --force` 安装成功。
+
+---
+
 **变更标题**：需求与设计覆盖最终审计（2026-06-18 LAST）
 - **需求归因**：需求治理 + 架构审计 — 进入代码重构前，需要确认需求是否完备、设计是否覆盖所有需求、哪些阶段可以直接执行。
 - **影响能力层**：需求治理、架构设计、代码重构计划、测试治理、追溯治理。

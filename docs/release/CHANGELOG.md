@@ -6,6 +6,14 @@
 
 ## [Unreleased] — 2026-06-18
 
+### Phase 0 架构守卫实现
+
+- 新增 `packages/vscode-extension/src/app/index.ts`、`agent/index.ts`、`workspace/index.ts`、`llm/index.ts`、`memory/index.ts`，建立 app、agent、workspace、llm、memory 的公开导出边界。
+- 新增 `packages/vscode-extension/src/memory/types.ts`，先按 ARCH-04/MEM schema 建立记忆体类型边界，不改变运行行为。
+- 新增 `packages/vscode-extension/test/unit/architecture-boundary.test.mjs` 并纳入 `test/run-all.mjs`，守卫 `extension.ts` / `agent-loop.ts` 基线行数，阻止新业务继续默认堆入 legacy 入口。
+- 更新 `docs/architecture/05-代码重构实施计划.md` Phase 0 基线记录。
+- 验证：新增架构测试通过；`npm test --workspace=packages/vscode-extension` 通过，27 个 suite 全部通过；领域边界入口独立 esbuild bundle 通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npm run extension:package` 通过；`code --install-extension devseek-netai-latest.vsix --force` 安装成功。
+
 ### 需求与设计覆盖最终审计
 
 - 新增 `docs/architecture/11-需求设计覆盖最终审计.md`，审计 REQ-A~N、MEM-01~14 与 ARCH-01~10 的覆盖关系。
