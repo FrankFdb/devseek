@@ -6,6 +6,15 @@
 
 ## [Unreleased] — 2026-06-18
 
+### Phase 1 项目指令与上下文装配
+
+- 新增 `ProjectInstructionService`，统一发现 `AGENTS.md`、`.devseek/rules.md`、`.github/copilot-instructions.md`、`CLAUDE.md`，支持近目录指令链、来源报告和预算截断。
+- 新增 `ProjectInitService`，聊天输入 `/init` 时生成 `.devseek/rules.md` 项目指令草稿，默认不写盘。
+- 新增 `ContextAssemblyService`，统一装配项目指令、legacy memory 等上下文并输出预算报告。
+- `project-rules.ts` 改为兼容适配器，旧调用路径继续可用，但底层委托 Phase 1 新服务。
+- 新增 `project-instruction-service.test.mjs`、`project-init-service.test.mjs`、`context-assembly-service.test.mjs` 并纳入全量单测。
+- 验证：Phase 1 新增测试通过；架构守卫通过；`npm test --workspace=packages/vscode-extension` 通过，30 个 suite 全部通过；领域边界入口独立 esbuild bundle 通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npm run extension:package` 通过；`code --install-extension devseek-netai-latest.vsix --force` 安装成功。
+
 ### Phase 0 架构守卫实现
 
 - 新增 `packages/vscode-extension/src/app/index.ts`、`agent/index.ts`、`workspace/index.ts`、`llm/index.ts`、`memory/index.ts`，建立 app、agent、workspace、llm、memory 的公开导出边界。

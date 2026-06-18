@@ -4,7 +4,7 @@ import * as nodePath from 'path';
 import { chat, ping, cancel, relogin, status, readWorkspaceFile, ensureBridgeRunning, preattachFiles, setBridgeExtensionRoot } from './bridge-client';
 import { createProviderStatusBar, getActiveProvider, getActiveProviderType, promptUpdateApiKey } from './llm/provider-router';
 import { type ChatMessage, type TokenUsage } from './llm/types';
-import { getProjectRules, wrapRulesAsContext, invalidateProjectRulesCache, getProjectMemorySync, wrapMemoryAsContext } from './project-rules';
+import { getProjectRules, invalidateProjectRulesCache, getProjectMemorySync, assembleProjectRulesAndMemoryContext } from './project-rules';
 import {
   explainCode, fixBug, refactorCode, genTest, genDoc, askQuestion,
   generateCommitMessage, applyDiff, runTests,
@@ -53,6 +53,7 @@ import { decideToolPermission } from './app/permission-service';
 import { ChatRouteController } from './app/chat-controller';
 import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
+import { isProjectInitRequest, ProjectInitService, renderProjectInitDraftMarkdown } from './app/project-init-service';
 import { SessionService, type SessionMeta } from './app/session-service';
 import {
   appendSessionContinuationContext,
@@ -1757,15 +1758,9 @@ async function runChat(
   const chatSignal = abortCtrl.signal;
   const consumeAgentSteer = (): string[] => activeAgentSteerQueue.splice(0, activeAgentSteerQueue.length);
 
-  // ── Context scope: per-message ──────────────────────────────────────────
-  // Files attached to a message are valid for THAT message only.
-  // When user sends a new message without explicit file attachments, context
-  // is cleared so stale directory/folder references don't bleed over.
-  // (Conversation TEXT history is still maintained via sessionHistory/nonBridgeChatHistory.)
   let effectiveFiles = normalizeConversationFiles(files);
   const userExplicitlyAttachedFiles = effectiveFiles.length > 0;
   if (newSession) {
-    // L1b: save & compact current session before clearing (fire-and-forget)
     const histSnap = [...nonBridgeChatHistory];
     const prevSessionId = activeSessionId;
     saveCurrentSession();
@@ -1774,7 +1769,6 @@ async function runChat(
         await compactAndSaveHistory(histSnap, prevSessionId);
       }
     })();
-    // Start new session
     activeSessionId = generateSessionId();
     getSessionService()?.setActiveSessionId(activeSessionId);
     saveSessionMeta({ id: activeSessionId, title: userDisplay.slice(0, 50), createdAt: Date.now(), updatedAt: Date.now() });
@@ -1792,6 +1786,19 @@ async function runChat(
     // does not silently bleed into this request.
     lastConversationFiles = [];
     webview.postMessage({ type: 'contextFiles', files: [] });
+  }
+
+  if (isProjectInitRequest(userDisplay) || isProjectInitRequest(prompt)) {
+    if (newSession) webview.postMessage({ type: 'newSessionStarted' });
+    if (!suppressUserMessage) webview.postMessage({ type: 'userMessage', text: userDisplay, prompt, images });
+    webview.postMessage({ type: 'startResponse', prompt, expectGeneratedArtifacts: false, agentMode: false });
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const text = root ? renderProjectInitDraftMarkdown(new ProjectInitService().generateDraft({ workspaceRoot: root })) : '请先打开一个工作区，再使用 `/init` 生成 DevSeek 项目指令草稿。';
+    webview.postMessage({ type: 'delta', text });
+    webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
+    webview.postMessage({ type: 'endResponse' });
+    if (activeChatAbortController === abortCtrl) activeChatAbortController = null;
+    return;
   }
 
   const initialRouteDecision = chatRouteController.decide({
@@ -3043,17 +3050,10 @@ async function runChat(
     let finalPrompt = prompt;
     const config = vscode.workspace.getConfiguration('devseek');
 
-    // P1-4: 注入项目规则（.devseek/rules.md）
+    // P1: inject project instructions and legacy memory through ContextAssemblyService.
     const projectRules = await getProjectRules();
-    if (projectRules) {
-      finalPrompt = wrapRulesAsContext(projectRules) + '\n\n---\n\n' + finalPrompt;
-    }
-
-    // P3: 注入 AI 项目记忆（.devseek/memory.md）— Claude Code memory_write 对标
     const projectMemory = getProjectMemorySync();
-    if (projectMemory) {
-      finalPrompt = wrapMemoryAsContext(projectMemory) + '\n\n---\n\n' + finalPrompt;
-    }
+    finalPrompt = assembleProjectRulesAndMemoryContext(finalPrompt, projectRules, projectMemory);
 
     // Non-agent chat: inject a brief system context so the LLM knows it lives inside a
     // VS Code plugin that has Agent mode with file-reading tools. This prevents the LLM

@@ -68,6 +68,24 @@
 
 ---
 
+**变更标题**：Phase 1 项目指令与上下文装配（2026-06-18）
+- **需求归因**：能力缺口 + 架构重构计划执行 — 项目规则不能只读取 `.devseek/rules.md`，需要对齐 Codex/Claude/Copilot 的指令发现链，并为上下文预算可视化和 `/init` 打基础。
+- **影响能力层**：项目指令、上下文装配、聊天入口、测试治理。
+- **架构影响**：
+  - 新增 `packages/vscode-extension/src/app/project-instruction-service.ts`。
+  - 新增 `packages/vscode-extension/src/app/project-init-service.ts`。
+  - 新增 `packages/vscode-extension/src/app/context-assembly-service.ts`。
+  - `packages/vscode-extension/src/project-rules.ts` 变为兼容适配器。
+  - VS Code 聊天入口接入 `/init` 草稿生成。
+- **方案选择理由**：按 ARCH-05 Phase 1 先把项目指令发现、初始化草稿和上下文装配迁到 app 服务层；`extension.ts` 只保留组合根接线，且不突破 Phase 0 行数基线。
+- **主链路验证**：Phase 1 新增测试通过；30 个 unit suite 全部通过；领域边界入口独立 esbuild bundle 通过。
+- **回退链路验证**：旧 `getProjectRules` / `wrapRulesAsContext` 调用保留；如新发现链有问题，可在 `project-rules.ts` 适配层回退。
+- **结果判据变化**：后续项目指令相关能力必须进入 `ProjectInstructionService` / `ProjectInitService` / `ContextAssemblyService`，不得直接在 `extension.ts` 拼 prompt。
+- **文档更新**：`docs/architecture/05-代码重构实施计划.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npm run compile --workspace=packages/vscode-extension` 通过；`npm run extension:package` 通过；`code --install-extension devseek-netai-latest.vsix --force` 安装成功。
+
+---
+
 **变更标题**：Phase 0 架构守卫实现（2026-06-18）
 - **需求归因**：架构债务 + 代码重构计划执行 — 进入 Phase 1/2 前，先用测试守住入口边界，避免继续向 `extension.ts` 和 `agent-loop.ts` 堆新业务。
 - **影响能力层**：架构守卫、测试治理、领域导出边界、记忆体重构前置类型边界。
