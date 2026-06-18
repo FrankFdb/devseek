@@ -68,6 +68,24 @@
 
 ---
 
+**变更标题**：Phase 2 MemoryService P0（2026-06-18）
+- **需求归因**：能力缺口 + 架构债务 — 项目记忆写入不能散落在 VS Code 入口和修复流程里，必须对齐顶级编程智能体的“模型提出意图、宿主治理持久化”边界。
+- **影响能力层**：记忆体、上下文装配、Agent 工具协议、权限安全、测试治理。
+- **架构影响**：
+  - 新增 `packages/vscode-extension/src/memory/memory-store.ts`。
+  - 新增 `packages/vscode-extension/src/memory/sensitive-memory-guard.ts`。
+  - 新增 `packages/vscode-extension/src/app/memory-service.ts`。
+  - `agent-loop.ts` 的 `memory_write` 改为 `MemoryWriteProposal`。
+  - `extension.ts`、`local-execution-repair.ts`、`project-rules.ts` 接入 MemoryService。
+- **方案选择理由**：参考 Claude Code/Codex/Copilot 的宿主工具治理模式，让 Agent 不接触持久化文件路径；MemoryService 统一处理结构化 schema、敏感信息阻断、legacy 导入和生命周期。
+- **主链路验证**：Agent `memory_write` proposal 可写入 `.devseek/memory.json`，项目记忆上下文由 MemoryService 注入。
+- **回退链路验证**：敏感 token 写入被阻断且不落盘；`.devseek/memory.md` 仍可作为 legacy memory 被导入到 prompt context。
+- **结果判据变化**：后续记忆体改动必须通过 MemoryService；`agent-loop.ts` 不得出现 `.devseek/memory.md`、`memory.md` 或直接文件写入。
+- **文档更新**：`docs/architecture/05-代码重构实施计划.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npm test --workspace=packages/vscode-extension` 通过，31 个 suite 全部通过；compile/package/verify packaged bridge/install VSIX 均完成。
+
+---
+
 **变更标题**：Phase 1 项目指令与上下文装配（2026-06-18）
 - **需求归因**：能力缺口 + 架构重构计划执行 — 项目规则不能只读取 `.devseek/rules.md`，需要对齐 Codex/Claude/Copilot 的指令发现链，并为上下文预算可视化和 `/init` 打基础。
 - **影响能力层**：项目指令、上下文装配、聊天入口、测试治理。

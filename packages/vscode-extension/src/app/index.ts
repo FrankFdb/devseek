@@ -2,6 +2,7 @@ export * from './chat-controller';
 export * from './context-assembly-service';
 export * from './interaction-service';
 export * from './local-attachment-context';
+export * from './memory-service';
 export * from './pending-edit-service';
 export * from './permission-service';
 export * from './project-init-service';

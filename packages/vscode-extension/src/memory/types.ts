@@ -46,3 +46,10 @@ export interface MemoryWriteProposal {
   tags?: string[];
   requiresUserApproval: boolean;
 }
+
+export interface MemoryWriteResult {
+  record?: MemoryRecord;
+  blocked: boolean;
+  reason?: string;
+  sensitiveMatches: string[];
+}

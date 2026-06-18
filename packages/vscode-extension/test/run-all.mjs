@@ -15,6 +15,7 @@ const suites = [
   'test/unit/agent-working-state.test.mjs',
   'test/unit/architecture-boundary.test.mjs',
   'test/unit/project-instruction-service.test.mjs',
+  'test/unit/memory-service.test.mjs',
   'test/unit/project-init-service.test.mjs',
   'test/unit/context-assembly-service.test.mjs',
   'test/unit/agent-display-regression.test.mjs',

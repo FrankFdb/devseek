@@ -6,6 +6,15 @@
 
 ## [Unreleased] — 2026-06-18
 
+### Phase 2 MemoryService P0
+
+- 新增 `MemoryStore`、`SensitiveMemoryGuard`、`MemoryService`，把项目记忆从散落文件 append 收敛到结构化服务边界。
+- `memory_write` 改为 `MemoryWriteProposal`：Agent 只表达写入意图，宿主服务负责敏感信息拦截、持久化和生命周期。
+- 新记忆写入 `.devseek/memory.json`；`.devseek/memory.md` 保留为 legacy 导入和手工查看入口。
+- `extension.ts`、本地执行修复流程、`project-rules.ts` 已迁入 MemoryService，项目记忆上下文由服务统一装配。
+- 新增 `memory-service.test.mjs`，覆盖 schema/scope/status、敏感信息阻断、legacy markdown 导入、disable/delete 生命周期；架构守卫新增 Agent Loop 不知道记忆文件路径的静态测试。
+- 验证：`npm test --workspace=packages/vscode-extension` 通过，31 个 suite 全部通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npm run extension:package` 通过；`npm run verify:packaged-bridge` 通过；`code --install-extension packages/vscode-extension/devseek-netai-latest.vsix --force` 安装成功。
+
 ### Phase 1 项目指令与上下文装配
 
 - 新增 `ProjectInstructionService`，统一发现 `AGENTS.md`、`.devseek/rules.md`、`.github/copilot-instructions.md`、`CLAUDE.md`，支持近目录指令链、来源报告和预算截断。

@@ -1,13 +1,11 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
 import {
   ProjectInstructionService,
   wrapProjectInstructionsAsContext,
 } from './app/project-instruction-service';
 import { ContextAssemblyService, type ContextSource } from './app/context-assembly-service';
+import { MemoryService } from './app/memory-service';
 
-const MEMORY_FILENAME = '.devseek/memory.md';
 const MAX_MEMORY_CHARS = 3000;
 
 let _cached: string | null | undefined = undefined;
@@ -64,7 +62,7 @@ export function assembleProjectRulesAndMemoryContext(
       id: 'project-memory',
       kind: 'memory',
       label: 'AI 项目记忆',
-      path: '.devseek/memory.md',
+      path: 'DevSeek MemoryService',
       content: projectMemory,
       priority: 20,
     });
@@ -72,31 +70,18 @@ export function assembleProjectRulesAndMemoryContext(
   return new ContextAssemblyService().assemble(prompt, sources).prompt;
 }
 
-// ── Project Memory (.devseek/memory.md) — AI-writable persistent knowledge ──
+// ── Project Memory — AI-writable persistent knowledge managed by MemoryService ──
 
-/** 同步读取 .devseek/memory.md（AI 自主写入的项目知识库）。返回 null 表示文件不存在。 */
+/** 同步读取 DevSeek 项目记忆。返回 null 表示没有可用记忆。 */
 export function getProjectMemorySync(): string | null {
-  const p = _findFile(MEMORY_FILENAME);
-  if (!p) return null;
-  try {
-    const content = fs.readFileSync(p, 'utf8').trim();
-    return content.slice(0, MAX_MEMORY_CHARS) || null;
-  } catch { return null; }
+  const root = getWorkspaceRoots()[0];
+  if (!root) return null;
+  return new MemoryService({ workspaceRoot: root }).retrievePromptContext(MAX_MEMORY_CHARS);
 }
 
 /** 将 AI 记忆内容包装为适合插入 prompt 的格式 */
 export function wrapMemoryAsContext(memory: string): string {
-  return `[AI 项目记忆 — .devseek/memory.md]\n${memory}\n[/AI 项目记忆]`;
-}
-
-function _findFile(filename: string): string | null {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders?.length) return null;
-  for (const folder of folders) {
-    const p = path.join(folder.uri.fsPath, filename);
-    if (fs.existsSync(p)) return p;
-  }
-  return null;
+  return `[AI 项目记忆 — DevSeek MemoryService]\n${memory}\n[/AI 项目记忆]`;
 }
 
 function getWorkspaceRoots(): string[] {

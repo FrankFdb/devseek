@@ -53,6 +53,7 @@ import { decideToolPermission } from './app/permission-service';
 import { ChatRouteController } from './app/chat-controller';
 import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
+import { MemoryService } from './app/memory-service';
 import { isProjectInitRequest, ProjectInitService, renderProjectInitDraftMarkdown } from './app/project-init-service';
 import { SessionService, type SessionMeta } from './app/session-service';
 import {
@@ -2084,14 +2085,8 @@ async function runChat(
           onTodoUpdate: (items) => { webview.postMessage({ type: 'todoUpdate', items }); },
           onUserSteer: consumeAgentSteer,
           onTaskComplete: (_summary) => { /* phase:done handled inside runAgenticLoop */ },
-          onMemoryWrite: async (content: string) => {
-            const wsPath = agWsRoot;
-            if (!wsPath) return;
-            const memPath = nodePath.join(wsPath, '.devseek', 'memory.md');
-            const dir = nodePath.dirname(memPath);
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            const entry = `\n## ${new Date().toISOString().slice(0, 10)}\n${content.slice(0, 500)}\n`;
-            fs.appendFileSync(memPath, entry, 'utf8');
+          onMemoryWrite: async (proposal) => {
+            if (agWsRoot) new MemoryService({ workspaceRoot: agWsRoot }).acceptWriteProposal(proposal);
           },
           onBeforeFileWrite: async (absPath: string): Promise<boolean> => {
             const writePermission = decideToolPermission(toolPolicy, 'edit');
@@ -2558,15 +2553,10 @@ async function runChat(
           // L-3: AI called task_complete — phase:done is emitted by executeFakeToolsForLoop
           // directly via callbacks.onAgentStatus; do NOT duplicate it here.
           onTaskComplete: (_summary) => { /* side-effect hook; phase:done handled in agent-loop */ },
-          // P3: AI called memory_write — Claude Code pattern: AI-writable persistent knowledge
-          onMemoryWrite: async (content: string) => {
+          // P3: AI called memory_write — host service validates and persists it.
+          onMemoryWrite: async (proposal) => {
             const wsPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            if (!wsPath) return;
-            const memPath = nodePath.join(wsPath, '.devseek', 'memory.md');
-            const dir = nodePath.dirname(memPath);
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            const entry = `\n## ${new Date().toISOString().slice(0, 10)}\n${content.slice(0, 500)}\n`;
-            fs.appendFileSync(memPath, entry, 'utf8');
+            if (wsPath) new MemoryService({ workspaceRoot: wsPath }).acceptWriteProposal(proposal);
           },
           // P-SEC: sensitive file protection — confirm before writing .env / *.pem / *.key etc.
           // §8.3: also enforce user-configured devseek.protectedFiles glob list (hard block, no confirm)
@@ -5318,12 +5308,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showWarningMessage('DevSeek: 请先打开一个工作区');
         return;
       }
-      const memPath = nodePath.join(wsPath, '.devseek', 'memory.md');
-      const dir = nodePath.dirname(memPath);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      if (!fs.existsSync(memPath)) {
-        fs.writeFileSync(memPath, '# DevSeek Agent Memory\n\n<!-- AI 可通过 memory_write 工具向本文件追加内容，内容在每次 agent 调用时注入 system prompt。-->\n', 'utf8');
-      }
+      const memPath = new MemoryService({ workspaceRoot: wsPath }).ensureLegacyMemoryFile();
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(memPath));
       await vscode.window.showTextDocument(doc);
     }],

@@ -73,6 +73,7 @@ import {
 } from './agent/fake-tool-parser';
 import { AgentToolExecutor } from './agent/tool-executor';
 import { WorkspaceEditService } from './workspace/edit-service';
+import type { MemoryWriteProposal } from './memory/types';
 
 // ----------------------------------------------------------------
 // Reporter types (passed in from extension.ts)
@@ -278,7 +279,7 @@ ${isSingle || isLast ? `
 获取当前 VS Code 编译/诊断错误（类型错误、语法错误等）：
 [TOOL:get_errors {}]
 
-将重要发现写入项目记忆（.devseek/memory.md，供未来 session 使用）。
+将重要发现写入项目记忆（由 DevSeek MemoryService 管理，供未来 session 使用）。
 触发时机：发现架构规律、非显而易见的约定、反复出现的错误原因时主动写入：
 [TOOL:memory_write {"content":"关键记录内容（100字以内）"}]
 
@@ -1047,9 +1048,10 @@ async function executeFakeToolsForLoop(
         : '';
       if (content) {
         try {
-          await callbacks.onMemoryWrite(content);
+          await callbacks.onMemoryWrite({
+            type: 'verified-experience', scope: 'repository', content, source: { kind: 'agent' }, reason: 'Agent memory_write tool', tags: ['agent'], requiresUserApproval: false,
+          });
           parts.push(`[memory_write] 已写入记忆：${content.slice(0, 80)}`);
-          // Route to tool-activity (Working box), NOT to chat text
           callbacks.onToolActivity?.('memory', `记忆已保存: ${content.slice(0, 60)}`);
         } catch (err) {
           parts.push(`[memory_write] 失败：${(err as Error).message}`);
@@ -1271,11 +1273,7 @@ export interface AgentLoopCallbacks {
    * Returns true to signal the loop should stop.
    */
   onTaskComplete?: (summary: string) => void | Promise<void>;
-  /**
-   * P3: AI called memory_write — append content to .devseek/memory.md.
-   * Implements Claude Code’s “memory_write” tool (AI-writable persistent knowledge).
-   */
-  onMemoryWrite?: (content: string) => Promise<void>;
+  onMemoryWrite?: (proposal: MemoryWriteProposal) => Promise<void>;
   /**
    * P3-5: AI called an MCP tool (mcp__server__tool) — route to McpManager.
    * Return the tool's text output so it can be injected back into the conversation.
@@ -3073,7 +3071,7 @@ ${rulesSection}${memSection}${filesSection}
 执行 shell 命令（最强大：grep/awk/find/cat/head/wc/编译/运行等）：
 [TOOL:run_terminal {"command":"grep -n 'error' /path/file.log | tail -30"}]
 
-将重要发现写入项目记忆（.devseek/memory.md）：
+将重要发现写入项目记忆（由 DevSeek MemoryService 管理）：
 [TOOL:memory_write {"content":"关键记录内容（100字以内）"}]
 
 创建或完整覆写文件（提供绝对路径或相对 workspaceRoot 的路径）：

@@ -79,6 +79,8 @@ test('Phase 0: domain roots expose explicit public boundaries', () => {
       './types',
     ],
     'src/memory/index.ts': [
+      './memory-store',
+      './sensitive-memory-guard',
       './types',
     ],
   };
@@ -121,12 +123,19 @@ test('Phase 0: domain modules do not import legacy entry points or UI internals'
   assert.deepEqual(violations, []);
 });
 
-test('Phase 0: memory boundary starts with schema types only', () => {
+test('Phase 2: memory boundary exposes schema, store, and guard only', () => {
   const memoryFiles = readdirSync(path.join(root, 'src/memory')).filter(name => name.endsWith('.ts')).sort();
-  assert.deepEqual(memoryFiles, ['index.ts', 'types.ts']);
+  assert.deepEqual(memoryFiles, ['index.ts', 'memory-store.ts', 'sensitive-memory-guard.ts', 'types.ts']);
 
   const types = read('src/memory/types.ts');
   for (const field of ['id', 'type', 'scope', 'content', 'source', 'confidence', 'createdAt', 'updatedAt', 'ttl', 'lastUsedAt', 'status', 'tags']) {
     assert.match(types, new RegExp(`\\b${field}\\b`), `MemoryRecord includes ${field}`);
   }
+});
+
+test('Phase 2: agent loop memory_write does not know persistence file paths', () => {
+  const agentLoop = read('src/agent-loop.ts');
+  assert.doesNotMatch(agentLoop, /\.devseek\/memory\.md|memory\.md/, 'agent-loop must not mention legacy memory file paths');
+  assert.doesNotMatch(agentLoop, /appendFileSync|writeFileSync|mkdirSync/, 'agent-loop must not persist memory directly');
+  assert.match(agentLoop, /onMemoryWrite\?: \(proposal: MemoryWriteProposal\)/, 'agent-loop emits structured memory proposals');
 });

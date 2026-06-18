@@ -11,6 +11,7 @@ import {
 import type { AgentTask } from './agent-task-decomposer';
 import type { AgentLoopCallbacks } from './agent-loop';
 import type { AppliedChangeRecord, ApplyWorkflowStatus } from './workspace-applier';
+import { MemoryService } from './app/memory-service';
 import { decideToolPermission, type ToolPolicy } from './app/permission-service';
 import { isFileProtected } from './protected-files';
 
@@ -262,10 +263,8 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
       const confirmResult = await confirmTerminal(`⚠️ 写入敏感文件：${relPath}`, '');
       return confirmResult.allow;
     },
-    onMemoryWrite: async (content) => {
-      const memPath = nodePath.join(workspaceRoot, '.devseek', 'memory.md');
-      fs.mkdirSync(nodePath.dirname(memPath), { recursive: true });
-      fs.appendFileSync(memPath, `\n## ${new Date().toISOString().slice(0, 10)}\n${content.slice(0, 500)}\n`);
+    onMemoryWrite: async (proposal) => {
+      new MemoryService({ workspaceRoot }).acceptWriteProposal(proposal);
     },
     mcpToolRefs,
     onMcpToolCall,
