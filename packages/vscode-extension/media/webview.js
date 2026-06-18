@@ -1853,31 +1853,40 @@ function addUserSteerBubble(markdown) {
   scrollToBottom(true);
 }
 
+function summarizeAgentAnnouncement(text) {
+  var raw = stripToolCallBlocks(String(text || ''))
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/[#*_`>\[\]()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (/AGENTS\.md|CLAUDE\.md|copilot-instructions|项目指令|Project Instruction/i.test(raw)) {
+    return '项目指令上下文';
+  }
+  if (/memory|记忆/i.test(raw)) return '项目记忆上下文';
+  if (!raw) return '过程说明';
+  return raw.length > 88 ? raw.slice(0, 86) + '…' : raw;
+}
+
 function addAgentAnnouncementBubble(text) {
   if (!text || !messagesEl) { return; }
   // Remove the "analyzing" placeholder when first real announcement arrives
   var _oldAnalyzing = document.getElementById('agent-analyzing-indicator');
   if (_oldAnalyzing) _oldAnalyzing.remove();
-  // Copilot-style ordering: user-visible assistant prose is a normal chat turn.
-  // The live Working card follows the latest prose turn instead of staying pinned
-  // at the first assistant position. This makes the transcript read like an
-  // interaction: user → assistant feedback → working/progress → more feedback.
-  var activeWorkingTurn = null;
-  if (agentExecContainer && agentExecContainer.isConnected && !agentExecContainer.hasAttribute('data-done')) {
-    activeWorkingTurn = agentExecContainer.closest('.turn');
-  }
-  var turn = document.createElement('div');
-  turn.className = 'turn assistant-turn';
-  markTurnEnter(turn);
-  var bubble = document.createElement('div');
-  bubble.className = 'assistant-bubble agent-phase-b-bubble';
-  bubble.innerHTML = md(text);
-  if (!pruneEmptyRenderedBlocks(bubble)) { return; }
-  turn.appendChild(bubble);
-  messagesEl.appendChild(turn);
-  if (activeWorkingTurn && activeWorkingTurn.isConnected) {
-    messagesEl.appendChild(activeWorkingTurn);
-  }
+  var container = ensureAgentProgressContainer('Preparing context');
+  var rows = container ? container.querySelector('.aut-rows') : null;
+  if (!rows) return;
+  var details = document.createElement('details');
+  details.className = 'agent-announcement-details';
+  var summary = document.createElement('summary');
+  summary.className = 'agent-announcement-summary';
+  summary.innerHTML = '<i class="codicon codicon-info"></i><span>' + escapeHtml(summarizeAgentAnnouncement(text)) + '</span>';
+  var body = document.createElement('div');
+  body.className = 'agent-announcement-body';
+  body.innerHTML = md(text);
+  if (!pruneEmptyRenderedBlocks(body)) return;
+  details.appendChild(summary);
+  details.appendChild(body);
+  rows.appendChild(details);
   ensureWorkingAreaAttached();
   maybeScrollToBottom();
 }
@@ -4146,8 +4155,13 @@ function injectWorkingAreaStyles() {
     '.afc-row-dir { font-size:9px; opacity:.5; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
     '.afc-row-stat { font-size:10px; white-space:nowrap; margin-left:4px; flex-shrink:0; }',
     '.afc-hint { font-size:10px; opacity:.45; padding:2px 6px 4px; text-align:center; }',
-    /* ── Phase B announcement bubble (行动宣告) ── */
-    '.agent-phase-b-bubble { font-size:12px; opacity:.92; margin:3px 0 6px 0; line-height:1.5; }',
+    /* ── Agent process notes: collapsed by default, queryable after final result ── */
+    '.agent-announcement-details { margin:2px 0 3px 0; border-left:2px solid rgba(99,179,255,.28); padding-left:6px; font-size:11px; color:var(--vscode-descriptionForeground,rgba(204,204,204,.72)); }',
+    '.agent-announcement-summary { list-style:none; display:flex; align-items:center; gap:5px; min-width:0; cursor:pointer; line-height:1.45; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }',
+    '.agent-announcement-summary::-webkit-details-marker { display:none; }',
+    '.agent-announcement-summary .codicon { flex-shrink:0; font-size:12px; opacity:.72; }',
+    '.agent-announcement-summary span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }',
+    '.agent-announcement-body { margin:4px 0 5px 0; line-height:1.5; color:var(--vscode-foreground); opacity:.9; overflow-wrap:anywhere; }',
     /* ── §8.5 Queue indicator ── */
     '#agent-queue-indicator { display:none; align-items:center; gap:5px; font-size:11px; padding:3px 6px 3px 8px; background:rgba(99,179,255,.07); border:1px solid rgba(99,179,255,.22); border-radius:5px; margin-bottom:3px; }',
     '.aqi-icon { flex-shrink:0; font-size:11px; }',

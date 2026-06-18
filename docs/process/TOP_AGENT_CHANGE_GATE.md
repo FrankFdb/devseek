@@ -68,6 +68,22 @@
 
 ---
 
+**变更标题**：DeepSeek Web 流式收口与过程信息折叠（2026-06-18）
+- **需求归因**：体验退化 + 可靠性风险 — DeepSeek 网页已经完成回复时，插件仍因保守稳定窗口和最终固定等待延迟展示结果；早期上下文说明还会占用主对话空间。
+- **影响能力层**：模型 Provider、Bridge 响应提取、WebView 展示、Agent 过程记录。
+- **架构影响**：
+  - `packages/bridge/src/deepseek-agent.ts` 缩短流式完成稳定窗口，移除无条件最终等待，诊断 dump 改为显式环境变量开启。
+  - `packages/vscode-extension/media/webview.js` 将 `agentAnnouncement` 收敛到 Working 折叠记录。
+  - 新增 `packages/bridge/test/deepseek-agent-latency-guards.test.mjs`，扩展 WebView 逻辑测试。
+- **方案选择理由**：对齐 Claude Code/Codex/Copilot 的交互方式：过程信息可追溯但默认折叠，最终结果一到即进入主对话，不把用户卡在固定 timeout 或过程文本中。
+- **主链路验证**：DeepSeek Web 流式 delta 仍实时进入 VS Code；生成完成后按短稳定窗口收口；最终结果保持主对话显示。
+- **回退链路验证**：长回复的“继续生成”逻辑保留；代码标签仅在需要时点击；诊断仍可通过 `DEVSEEK_BRIDGE_DIAG=1` 开启。
+- **结果判据变化**：Bridge 不得重新引入 `stableFor >= 20/35` 或无条件 `waitForTimeout(600)`；`agentAnnouncement` 不得作为主对话 bubble 展示。
+- **文档更新**：`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npm test --workspace=packages/bridge`、`npm run build --workspace=packages/bridge`、`npm test --workspace=packages/vscode-extension`、`npm run compile --workspace=packages/vscode-extension`、`npm run extension:package`、`npm run verify:packaged-bridge` 已通过；最新 VSIX 已本地安装。
+
+---
+
 **变更标题**：Phase 2 MemoryService P0（2026-06-18）
 - **需求归因**：能力缺口 + 架构债务 — 项目记忆写入不能散落在 VS Code 入口和修复流程里，必须对齐顶级编程智能体的“模型提出意图、宿主治理持久化”边界。
 - **影响能力层**：记忆体、上下文装配、Agent 工具协议、权限安全、测试治理。

@@ -7,6 +7,12 @@ import { BrowserSession } from './browser-session';
 import { ConversationDriver } from './conversation-driver';
 import { checkBridgeHealth } from './bridge-health-check';
 
+const STREAM_POLL_INTERVAL_MS = 80;
+const STOP_DISAPPEARED_STABLE_TICKS = 5;
+const READY_INPUT_STABLE_TICKS = 10;
+const CONTINUE_GENERATION_RESUME_WAIT_MS = 250;
+const CODE_TAB_RENDER_WAIT_MS = 180;
+
 export interface SendOptions {
   newSession?: boolean;
   timeoutMs?: number;
@@ -649,10 +655,10 @@ export class DeepSeekAgent {
             lastText = t;
             onDelta('\x00RESET\x00' + t);
             stableFor = 0;
-            await page.waitForTimeout(80);
+            await page.waitForTimeout(STREAM_POLL_INTERVAL_MS);
             continue;
           }
-          await page.waitForTimeout(80);
+          await page.waitForTimeout(STREAM_POLL_INTERVAL_MS);
           continue;
         }
       }
@@ -666,9 +672,7 @@ export class DeepSeekAgent {
         onDelta('\x00RESET\x00' + combinedText);
         lastText = combinedText;
         stableFor = 0;
-        // Text is still growing — reset the deadline so we never time out
-        // mid-generation. The idle threshold (stableFor >= 35) will handle
-        // completion detection.
+        // Text is still growing; reset the deadline so we never time out mid-generation.
         deadline = Date.now() + timeoutMs;
       } else if (combinedText.length < lastText.length) {
         stableFor = 0;
@@ -702,11 +706,11 @@ export class DeepSeekAgent {
             }
             return c;
           })()`).catch(() => 0) as number;
-          await page.waitForTimeout(600); // 等待新一轮生成开始
+          await page.waitForTimeout(CONTINUE_GENERATION_RESUME_WAIT_MS);
         } catch (e) {
           console.warn('[agent] Error after clicking continue button:', (e as Error).message);
         }
-        await page.waitForTimeout(80);
+        await page.waitForTimeout(STREAM_POLL_INTERVAL_MS);
         continue;
       }
 
@@ -723,18 +727,16 @@ export class DeepSeekAgent {
         sawStopButton = true;
         stableFor = 0;
       } else if (lastText.length > 0) {
-        if (sawStopButton && stableFor >= 20) {
-          break; // 生成结束：stop 按钮已消失 + 1.6s 文本稳定 → 退出
+        if (sawStopButton && stableFor >= STOP_DISAPPEARED_STABLE_TICKS) {
+          break;
         }
-        if (stableFor >= 35) break; // ~2.8s 无新增且未见 stop 按钮 → 完成
+        if (stableFor >= READY_INPUT_STABLE_TICKS) break;
       }
 
-      await page.waitForTimeout(80);
+      await page.waitForTimeout(STREAM_POLL_INTERVAL_MS);
     }
 
-    // 所有退出路径统一：点开"代码"标签页，等待渲染，再做最终提取
     await this._clickCodeTabs(page);
-    await page.waitForTimeout(600);
     await this._dumpLastMsg(page);
     const postText = await this.getLastAssistantText(page);
     const finalText = accumulatedPrefix
@@ -789,7 +791,6 @@ export class DeepSeekAgent {
 
     console.log('[agent] Response complete.');
     await this._clickCodeTabs(page);
-    await page.waitForTimeout(600);
     await this._dumpLastMsg(page);
     const text = await this.getLastAssistantText(page);
     await saveCookies(this.context!);
@@ -805,22 +806,25 @@ export class DeepSeekAgent {
       // 找到所有 role="tab"、直接文本为"代码"、且当前未选中的标签
       const tabs = page.locator('[role="tab"]').filter({ hasText: /^代码/ });
       const count = await tabs.count().catch(() => 0);
+      let clicked = false;
       for (let i = 0; i < count; i++) {
         try {
           const tab = tabs.nth(i);
           const selected = await tab.getAttribute('aria-selected').catch(() => 'true');
           if (selected !== 'true') {
             await tab.click({ force: true, timeout: 2000 });
-            await page.waitForTimeout(300);
+            clicked = true;
+            await page.waitForTimeout(CODE_TAB_RENDER_WAIT_MS);
           }
         } catch { /* ignore individual tab errors */ }
       }
-      await page.waitForTimeout(500);
+      if (clicked) await page.waitForTimeout(CODE_TAB_RENDER_WAIT_MS);
     } catch { /* ignore */ }
   }
 
   /** 将最后一条 AI 消息的 innerHTML dump 到 /tmp/bridge_diag.log */
   private async _dumpLastMsg(page: Page): Promise<void> {
+    if (process.env.DEVSEEK_BRIDGE_DIAG !== '1') return;
     try {
       const html = await page.evaluate(`(function(){
         var msgs = document.querySelectorAll('[class*="ds-message"]');
@@ -908,7 +912,7 @@ export class DeepSeekAgent {
    */
   private async getLastAssistantText(page: Page): Promise<string> {
     // 一次性诊断：记录 DOM 结构，便于调试 Mermaid 提取问题
-    if (!this._diagnosticDone) {
+    if (process.env.DEVSEEK_BRIDGE_DIAG === '1' && !this._diagnosticDone) {
       this._diagnosticDone = true;
       try {
         const diagInfo = await page.evaluate(`(function(){

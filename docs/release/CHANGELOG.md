@@ -6,6 +6,15 @@
 
 ## [Unreleased] — 2026-06-18
 
+### [BUG FIX] DeepSeek Web 流式收口与过程信息折叠
+
+- 缩短 DeepSeek Web bridge 的流式完成判定：看到停止状态消失后使用短稳定窗口收口，避免网页已经结束但插件继续等待保守稳定窗口。
+- 移除最终提取阶段的无条件 600ms 等待；只有存在需要切换的“代码”标签时才等待短暂渲染。
+- `/tmp/bridge_diag.log` 诊断写入改为仅在 `DEVSEEK_BRIDGE_DIAG=1` 时开启，避免正常对话每轮额外 dump。
+- `agentAnnouncement` 不再作为主对话气泡展示；改为 Working 区中的一行折叠过程记录，最终结果出来后仍可展开查询。
+- 新增 bridge latency 静态守卫和 WebView 过程信息折叠守卫。
+- 验证：`npm test --workspace=packages/bridge` 通过，9 个测试全部通过；`npm run build --workspace=packages/bridge` 通过；`npm test --workspace=packages/vscode-extension` 通过，31 个 suite 全部通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npm run extension:package` 通过；`npm run verify:packaged-bridge` 通过；`code --install-extension packages/vscode-extension/devseek-netai-latest.vsix --force` 安装成功。
+
 ### Phase 2 MemoryService P0
 
 - 新增 `MemoryStore`、`SensitiveMemoryGuard`、`MemoryService`，把项目记忆从散落文件 append 收敛到结构化服务边界。

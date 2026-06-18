@@ -349,4 +349,12 @@ test('context files: cleared on clearHistory', () => {
   assert.deepEqual(inheritedContextFiles, []);
 });
 
+test('agent announcement: process prose is collapsed into Working details', () => {
+  const webview = readFileSync(path.join(rootDir, 'media/webview.js'), 'utf8');
+  assert.match(webview, /function summarizeAgentAnnouncement/);
+  assert.match(webview, /ensureAgentProgressContainer\('Preparing context'\)/);
+  assert.match(webview, /agent-announcement-details/);
+  assert.doesNotMatch(webview, /agent-phase-b-bubble/);
+});
+
 console.log('\n✅ All webview logic tests passed!\n');
