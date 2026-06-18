@@ -379,6 +379,14 @@ function requiresRunEvidence(text: string): boolean {
   return /(?:运行|执行|run|execute)/i.test(text);
 }
 
+function requiresTestEvidence(text: string): boolean {
+  return /(?:测试|test)/i.test(text);
+}
+
+function requiresRuntimeValidation(text: string): boolean {
+  return requiresRunEvidence(text) || requiresTestEvidence(text) || /(?:启动|看结果|输出效果|运行效果)/i.test(text);
+}
+
 function getMissingCompletionEvidence(
   userPrompt: string,
   todos: TodoItem[],
@@ -397,6 +405,9 @@ function getMissingCompletionEvidence(
   if (requiresRunEvidence(text)) {
     const hasRunEvidence = successfulEvidence.some(e => e.kind === 'run' || e.kind === 'test' || e.kind === 'compile-run');
     if (!hasRunEvidence) missing.push('成功的程序运行结果');
+  } else if (requiresTestEvidence(text)) {
+    const hasTestEvidence = successfulEvidence.some(e => e.kind === 'test' || e.kind === 'run' || e.kind === 'compile-run');
+    if (!hasTestEvidence) missing.push('成功的测试/运行结果');
   } else if (requiresCommandEvidence(text) && successfulEvidence.length === 0) {
     missing.push('成功的编译/运行/测试命令结果');
   }
@@ -2858,7 +2869,7 @@ export async function runAgentLoop(
     // such as exitCode=139/Segmentation fault instead of stopping at compile-only.
     const wantRun = tasks.some(
       t => t.action === 'analyze' && /run_terminal|运行程序|执行程序|compile.*run|build.*run/i.test(t.desc)
-    ) || requiresRunEvidence(userPrompt);
+    ) || requiresRuntimeValidation(userPrompt);
     validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, sessionHistory);
 
     const maxRepairRounds = getAgentAutoFixRounds();

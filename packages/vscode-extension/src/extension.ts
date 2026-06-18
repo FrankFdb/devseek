@@ -32,7 +32,6 @@ import {
   LocalExecutionPlan,
   planLocalExecution,
   runLocalExecution,
-  selectRepairFiles,
   shouldPreferLocalExecution,
 } from './execution-planner';
 import { AutoApplyPolicy, shouldAutoApplyFromResponse } from './intent-router';
@@ -61,6 +60,12 @@ import {
 import { PendingEditService } from './app/pending-edit-service';
 import type { WebviewInboundMessage } from './ui/webview-protocol';
 import { stripToolCallBlocks } from './agent/fake-tool-parser';
+import {
+  buildLocalExecutionAgentCallbacks,
+  buildLocalExecutionAgentRepairPrompt,
+  buildLocalExecutionRepairTasks,
+  relPathFromRepairWorkspace,
+} from './local-execution-repair';
 
 // ----------------------------------------------------------------
 // Types
@@ -1867,16 +1872,21 @@ async function runChat(
   // clutters the DeepSeek web upload list.
   const isWriteRequest = /(编写|创建|新建|写一个|写个|generate\s*a|create\s*a|write\s*a)/i.test(prompt);
   let autoDiscoveredNote = '';
+  let autoDiscoveredFiles: string[] = [];
   if (effectiveFiles.length === 0 && !isWriteRequest) {
     const discovered = discoverFilesFromDirectoryPrompt(prompt, vscode.workspace.workspaceFolders ?? []);
     if (discovered.length > 0) {
       effectiveFiles = discovered;
+      autoDiscoveredFiles = discovered;
       // Do NOT persist auto-discovered files to lastConversationFiles — they are
       // ephemeral context for this request only and must not bleed into the next message.
+      // They are also local-context files, not DeepSeek web attachments. Passing
+      // them to the browser upload panel can time out before the prompt is sent.
       const names = discovered.map(p => nodePath.basename(p)).join('、');
       autoDiscoveredNote = `_[自动识别目录] 已加载 ${discovered.length} 个文件：${names}_\n\n`;
     }
   }
+  const autoDiscoveredFileSet = new Set(autoDiscoveredFiles);
 
   const promptScope = detectWorkspacePathScope(prompt, effectiveFiles);
   const pathResolutionHints = [
@@ -3075,12 +3085,23 @@ async function runChat(
     let routeFiles = effectiveFiles;
     const noAgentCodeChat = !workflow.useAgent && intent.kind === 'code-change';
 
-    if (intent.kind === 'chat' && effectiveFiles.length > 0) {
+    const shouldInlineLocalFiles = effectiveFiles.length > 0
+      && (intent.kind === 'chat' || noAgentCodeChat || autoDiscoveredFiles.length > 0);
+    if (shouldInlineLocalFiles) {
       const attachmentContext = buildLocalAttachmentContextPrompt(finalPrompt, effectiveFiles, { workspaceRoot });
       finalPrompt = attachmentContext.prompt;
       if (attachmentContext.inlinedFiles.length > 0) {
-        routeFiles = [];
+        const inlinedFileSet = new Set(attachmentContext.inlinedFiles);
+        routeFiles = routeFiles.filter((f) => {
+          const resolved = nodePath.isAbsolute(f)
+            ? nodePath.resolve(f)
+            : nodePath.resolve(workspaceRoot || process.cwd(), f);
+          return !inlinedFileSet.has(resolved);
+        });
       }
+    }
+    if (autoDiscoveredFileSet.size > 0) {
+      routeFiles = routeFiles.filter(f => !autoDiscoveredFileSet.has(f));
     }
 
     if (noAgentCodeChat) {
@@ -3183,40 +3204,90 @@ async function runChat(
             phase: 'repair',
             state: 'started',
             title: `第 ${round + 1} 轮本地失败修复`,
-            detail: '将最小错误上下文和最小相关文件发送给 DeepSeek 进行修复。',
+            detail: '将本地失败输出升级为 Agent 闭环：读取文件、定位根因、修改并重新验证。',
           });
 
-          const repairPrompt = buildExecutionRepairPrompt(prompt, localPlan, localResult);
+          const repairPrompt = buildLocalExecutionAgentRepairPrompt(prompt, localPlan, localResult, round + 1);
           const _errHint = getErrorFixHint(localResult.output);
           const repairPromptWithHint = _errHint
             ? `${repairPrompt}\n\n【历史同类错误修复参考】\n${_errHint}`
             : repairPrompt;
-          const repairFiles = selectRepairFiles(localPlan, localResult);
-          const repairResponse = await routeChat({
-            prompt: repairPromptWithHint,
-            newSession: false,
-            mode,
-            files: repairFiles,
-            onDelta: (delta) => {
-              if (delta.startsWith('\x00RESET\x00')) {
-                webview.postMessage({ type: 'resetResponse', text: delta.slice(7) });
-              } else {
-                webview.postMessage({ type: 'delta', text: delta });
-              }
-            },
-          });
+          const repairWsRoot = workspaceRoot
+            || vscode.workspace.getWorkspaceFolder(vscode.Uri.file(localPlan.cwd))?.uri.fsPath
+            || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+            || localPlan.cwd;
+          const repairTasks = buildLocalExecutionRepairTasks(localPlan, localResult, repairWsRoot);
 
-          await emitResponseMeta(webview, repairResponse, repairPrompt, repairFiles);
-
-          const applyResult = await applyGeneratedArtifactsWithPrompt(repairResponse, repairPrompt, workflowReporter, true, async (change) => {
-            await registerPendingEditChange(webview, change);
-          }, repairFiles, { rollbackOnValidationFailure: false });
-          if (!applyResult.applied) {
+          if (repairTasks.length === 0) {
             await workflowReporter({
               phase: 'repair',
               state: 'failed',
-              title: 'DevSeek 未返回可应用修复',
-              detail: '本地执行失败后，DevSeek 返回内容无法解析为文件变更。',
+              title: '未找到可交给 Agent 修复的源码文件',
+              detail: '本地执行失败后，未能从执行计划中解析出可修改文件。',
+            });
+            webview.postMessage({ type: 'endResponse' });
+            return;
+          }
+
+          webview.postMessage({
+            type: 'agentStatus',
+            phase: 'plan',
+            state: 'started',
+            title: '本地执行失败，进入 Agent 修复',
+            detail: '参考 Claude Code / Codex 的闭环策略：失败输出 → 读/搜源码 → 修改 → 重跑验证。',
+            taskTotal: repairTasks.length,
+          });
+          webview.postMessage({
+            type: 'agentStatus',
+            phase: 'plan',
+            state: 'completed',
+            title: `已生成 ${repairTasks.length} 个修复子任务`,
+            detail: repairTasks.map((t, i) => `${i + 1}. [${t.action}] ${nodePath.basename(t.file)} — ${t.desc}`).join('\n'),
+            taskTotal: repairTasks.length,
+          });
+
+          const repairLoop = await runAgentLoop(
+            repairTasks,
+            repairPromptWithHint,
+            mode,
+            vscode.Uri.file(repairWsRoot),
+            buildLocalExecutionAgentCallbacks({
+              webview,
+              workflowReporter,
+              workspaceRoot: repairWsRoot,
+              defaultWorkdir: localPlan.cwd,
+              toolPolicy,
+              consumeAgentSteer,
+              confirmTerminal: (command, workdir) => requestInlineTerminalConfirmation(webview, command, workdir ?? ''),
+              registerAppliedChange: (change) => registerPendingEditChange(webview, change),
+              registerToMemory,
+              sessionRecentFiles,
+              mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
+              onMcpToolCall: mcpManager.hasMcpTools
+                ? (fakeName, args) => mcpManager.callTool(fakeName, args)
+                : undefined,
+              signal: chatSignal,
+            }),
+            undefined,
+            0,
+          );
+
+          if (repairLoop.changedPaths.length > 0) {
+            repairLoop.changedPaths.forEach((p) => {
+              const absPath = nodePath.isAbsolute(p) ? p : nodePath.join(repairWsRoot, p);
+              registerToMemory(absPath);
+            });
+            lastAgentChangedPaths = repairLoop.changedPaths
+              .map(p => relPathFromRepairWorkspace(repairWsRoot, nodePath.isAbsolute(p) ? p : nodePath.join(repairWsRoot, p)))
+              .filter((rel): rel is string => Boolean(rel));
+          }
+
+          if (repairLoop.tasksApplied === 0 && repairLoop.tasksFailed > 0) {
+            await workflowReporter({
+              phase: 'repair',
+              state: 'failed',
+              title: 'Agent 未能落地修复',
+              detail: '本轮没有产生可应用的文件修改，停止本地执行闭环。',
             });
             webview.postMessage({ type: 'endResponse' });
             return;
@@ -4323,6 +4394,7 @@ async function routeChat(opts: RouteChatOpts): Promise<string> {
       timeoutMs: opts.timeoutMs,
       onUsage: opts.onUsage,
       signal: opts.signal,
+      files: opts.files,
     });
 
     recordTrackedChatHistory(opts, response);
@@ -4341,6 +4413,7 @@ async function routeChat(opts: RouteChatOpts): Promise<string> {
           timeoutMs: opts.timeoutMs,
           onUsage: opts.onUsage,
           signal: opts.signal,
+          files: opts.files,
         });
         recordTrackedChatHistory(opts, retryResponse);
         return retryResponse;

@@ -529,6 +529,22 @@ test('Agent loop: file tools and validation use ground-truth outcomes', () => {
   assertContains(code, 'run-failed', 'non-zero runtime exits must be reported as failed validation');
 });
 
+test('Local execution failures escalate into Agent repair instead of browser upload repair', () => {
+  const ext = src('src/extension.ts');
+  const repair = src('src/local-execution-repair.ts');
+  assertContains(ext, 'buildLocalExecutionRepairTasks(localPlan, localResult, repairWsRoot)', 'local failures must build concrete repair tasks');
+  assertContains(ext, 'runAgentLoop(', 'local failures must enter the tool-capable agent loop');
+  assertContains(ext, '本地执行失败，进入 Agent 修复', 'UI must show the repair escalation');
+  assertContains(repair, '按 Claude Code / Codex 风格处理', 'repair prompt must follow coding-agent closed-loop behavior');
+  assertContains(repair, '不要依赖网页附件上传', 'repair must use local tools rather than DeepSeek browser uploads');
+  assertContains(repair, 'read_file / grep_search / list_dir / run_terminal', 'repair prompt must require local evidence tools');
+  assert.doesNotMatch(
+    ext,
+    /const repairFiles = selectRepairFiles\(localPlan, localResult\)[\s\S]*?routeChat\(\{[\s\S]*?files:\s*repairFiles/,
+    'local execution repair must not route files through browser upload',
+  );
+});
+
 test('Agentic loop: repeated terminal failures enter root-cause recovery before retry', () => {
   const code = src('src/agent-loop.ts');
   assertContains(code, 'getTerminalRecoveryProtocol', 'terminal recovery protocol helper');
@@ -571,6 +587,23 @@ test('Directory discovery skips generated build artifacts', () => {
   assertContains(ext, 'CMakeFiles', 'directory attachments must skip CMake generated trees');
   assertContains(planner, '.devseek-builds', 'execution planner discovery must skip DevSeek build directories');
   assertContains(planner, 'CMakeFiles', 'execution planner discovery must skip CMake generated trees');
+});
+
+test('Directory discovery uses local context instead of DeepSeek web upload', () => {
+  const ext = src('src/extension.ts');
+  assertContains(ext, 'autoDiscoveredFiles', 'auto-discovered files must be tracked separately');
+  assertContains(ext, 'autoDiscoveredFileSet', 'auto-discovered files must have an upload exclusion set');
+  assertContains(ext, 'browser upload panel can time out before the prompt is sent', 'source must document why auto-discovered files skip web upload');
+  assert.match(
+    ext,
+    /shouldInlineLocalFiles[\s\S]*autoDiscoveredFiles\.length > 0/,
+    'auto-discovered files must be inlined into the prompt when needed',
+  );
+  assert.match(
+    ext,
+    /routeFiles = routeFiles\.filter\(\(?f\)? => !autoDiscoveredFileSet\.has\(f\)\)/,
+    'auto-discovered files must be removed from bridge upload routeFiles',
+  );
 });
 
 test('Agentic loop: terminal must not be used as a fallback file writer', () => {

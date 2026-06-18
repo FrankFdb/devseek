@@ -22,7 +22,7 @@ export interface LocalExecutionResult {
 }
 
 const COMPILE_INTENT_RE = /(编译|compile|构建|build|g\+\+|gcc|clang\+\+)/i;
-const RUN_INTENT_RE = /(运行|执行|run|启动)/i;
+const RUN_INTENT_RE = /(运行|执行|run|execute|启动|测试|test|看结果|输出效果|运行效果)/i;
 const CPP_RE = /\.(cpp|cc|cxx|c)$/i;
 
 export function decideLocalExecution(prompt: string, files: string[] | undefined): LocalExecutionDecision | null {

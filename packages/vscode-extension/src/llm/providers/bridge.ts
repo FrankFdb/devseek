@@ -25,6 +25,7 @@ export class BridgeProvider implements LLMProvider {
       onDelta: opts.onDelta,
       timeoutMs: opts.timeoutMs ?? cfg.get<number>('requestTimeoutMs', 120000),
       mode: opts.mode,
+      files: opts.files,
     });
   }
 }

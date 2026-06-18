@@ -12,6 +12,13 @@ small enough that automatic context compaction is unlikely to trigger.
 - After changing DevSeek extension or bridge behavior, run the default local
   release loop unless the user explicitly says otherwise: compile the VS Code
   extension, package the latest VSIX, then install that VSIX locally.
+- For all DevSeek fixes and feature work, compare the same problem against how
+  Claude Code and Codex handle it, then optimize DevSeek toward the best coding
+  agent behavior for that class of problem.
+- All code additions and modifications must follow DevSeek's design principles.
+  If the necessary change exposes code that violates those principles, consider
+  refactoring as part of the fix instead of piling more logic onto the wrong
+  boundary.
 - If a task needs repository discovery, start with:
 
 ```bash

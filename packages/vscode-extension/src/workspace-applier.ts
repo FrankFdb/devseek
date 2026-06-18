@@ -243,7 +243,7 @@ async function applyPreparedChanges(
     detail: '根据变更路径自动选择构建命令',
   });
 
-  const validation = await runAutoValidation(prepared.map((p) => p.relPath), root);
+  const validation = await runAutoValidation(prepared.map((p) => p.relPath), root, requestPrompt);
   if (!validation) {
     await reportWorkflow(reporter, {
       phase: 'validate',
@@ -808,7 +808,7 @@ function applyUnifiedDiff(original: string, diff: string, relPath: string): stri
   return ensureFinalNewline(result.join('\n'));
 }
 
-async function runAutoValidation(changedPaths: string[], root?: vscode.Uri): Promise<AutoValidationResult | null> {
+async function runAutoValidation(changedPaths: string[], root?: vscode.Uri, requestPrompt?: string): Promise<AutoValidationResult | null> {
   if (!root) return null;
   const config = vscode.workspace.getConfiguration('devseek');
 
@@ -824,7 +824,7 @@ async function runAutoValidation(changedPaths: string[], root?: vscode.Uri): Pro
   }
   if (cppRelated.length > 0) {
     const cppPolicy = config.get<CppValidationPolicy>('cppValidationPolicy', 'conservative');
-    return runCppAutoValidation(root.fsPath, cppRelated, cppPolicy);
+    return runCppAutoValidation(root.fsPath, cppRelated, cppPolicy, shouldRunCppValidation(requestPrompt || ''));
   }
 
   return null;
@@ -834,9 +834,10 @@ async function runCppAutoValidation(
   rootFsPath: string,
   cppRelated: string[],
   cppPolicy: CppValidationPolicy,
+  shouldRun: boolean,
 ): Promise<AutoValidationResult | null> {
   const fsNode = require('fs');
-  const plan = planCppValidation(cppRelated, rootFsPath, fsNode, cppPolicy);
+  const plan = planCppValidation(cppRelated, rootFsPath, fsNode, cppPolicy, { run: shouldRun });
   if (!plan) return null;
 
   const result = await runShell(plan.command, plan.cwd);
@@ -858,6 +859,10 @@ async function runCppAutoValidation(
   }
 
   return merged;
+}
+
+function shouldRunCppValidation(prompt: string): boolean {
+  return /(?:运行|执行|启动|测试|test|run|execute|看结果|输出效果|运行效果)/i.test(prompt || '');
 }
 
 async function tryPostCompileExecutionCheck(

@@ -20,7 +20,7 @@ export interface LocalExecutionResult {
 }
 
 const EXECUTION_REQUEST_RE = /(编译|构建|build|compile|运行|执行|run|测试|test|验证|verify)/i;
-const RUN_REQUEST_RE = /(运行|执行|run)/i;
+const RUN_REQUEST_RE = /(运行|执行|启动|测试|test|run|execute|看结果|输出效果|运行效果)/i;
 const PROMPT_FILE_RE = /(^|[^A-Za-z0-9_./-])([A-Za-z0-9_./-]+\.(?:cpp|cc|cxx|c|h|hpp|py|js))(?=$|[^A-Za-z0-9_./-])/g;
 const PROMPT_DIR_RE = /(^|[^A-Za-z0-9_./-])([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\/?)(?=$|[^A-Za-z0-9_./-])/g;
 const PROMPT_ABSOLUTE_PATH_RE = /\/[^\s'"`，。！？；：\n]+/g;
@@ -148,7 +148,7 @@ function planCmakeExecution(targetDir: string, dirFiles: string[], runRequested:
   const buildCommand = `cmake -S ${q(targetDir)} -B ${q(buildDir)} && cmake --build ${q(buildDir)}`;
   const executableTarget = detectCmakeExecutableTarget(cmakeFile);
   const runCommand = executableTarget
-    ? `(test -x ${q(nodePath.join(buildDir, executableTarget))} && ${q(nodePath.join(buildDir, executableTarget))} || ctest --test-dir ${q(buildDir)} --output-on-failure)`
+    ? `if test -x ${q(nodePath.join(buildDir, executableTarget))}; then ${q(nodePath.join(buildDir, executableTarget))}; else ctest --test-dir ${q(buildDir)} --output-on-failure; fi`
     : `ctest --test-dir ${q(buildDir)} --output-on-failure`;
   const command = runRequested ? `${buildCommand} && ${runCommand}` : buildCommand;
   return {

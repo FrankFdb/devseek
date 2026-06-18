@@ -123,6 +123,15 @@ function createShapeManagerWorkspace() {
   return { root, projectDir };
 }
 
+function hasCommand(command) {
+  try {
+    execSync(`${command} --version`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 test('workspace-applier: short project path anchors to explicit code subdirectory', async () => {
   const { root, projectDir } = createShapeManagerWorkspace();
   try {
@@ -244,6 +253,58 @@ test('workspace-applier: explicit missing code subdirectory still wins over same
     assert.deepEqual(result.changedPaths, ['code/shape_manager/main.cpp']);
     assert.match(readFileSync(path.join(projectDir, 'main.cpp'), 'utf8'), /correct/);
     assert.match(readFileSync(path.join(wrongDir, 'main.cpp'), 'utf8'), /return 99/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('workspace-applier: requested CMake runtime validation catches segfault', { skip: !hasCommand('cmake') && 'cmake is not installed' }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-'));
+  const projectDir = path.join(root, 'code', 'shape_manager');
+  try {
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, 'CMakeLists.txt'), [
+      'cmake_minimum_required(VERSION 3.10)',
+      'project(shape_manager)',
+      'add_executable(shape_manager main.cpp)',
+      '',
+    ].join('\n'));
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+
+    const raw = [
+      'shape_manager/main.cpp',
+      '```cpp',
+      '#include <iostream>',
+      'int main() {',
+      '  std::cout << "before crash" << std::endl;',
+      '  int *p = nullptr;',
+      '  *p = 1;',
+      '  return 0;',
+      '}',
+      '```',
+    ].join('\n');
+    const prompt = `请修改 ${projectDir}，然后编译和测试，看结果`;
+    const statuses = [];
+
+    const result = await applyGeneratedArtifactsWithPrompt(
+      raw,
+      prompt,
+      (status) => statuses.push(status),
+      true,
+      undefined,
+      undefined,
+      { rollbackOnValidationFailure: false },
+    );
+
+    assert.equal(result.applied, true);
+    assert.equal(result.validation?.ok, false);
+    assert.equal(result.validation?.reason, 'cmake-build-and-run-requested');
+    assert.match(result.validation?.command || '', /if test -x/);
+    assert.match(result.validation?.output || '', /before crash|Segmentation fault|core dumped/i);
+    assert.equal(
+      statuses.some((status) => status.phase === 'validate' && status.state === 'failed' && /自动验证失败/.test(status.title)),
+      true,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

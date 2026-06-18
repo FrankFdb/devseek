@@ -40,6 +40,8 @@ export interface LLMChatOptions {
   signal?: AbortSignal;
   /** DeepSeek 模型模式：fast = V3（默认），r1 = DeepThink R1 */
   mode?: 'fast' | 'r1';
+  /** Bridge 专用：通过 DeepSeek 网页上传控件发送的附件绝对路径 */
+  files?: string[];
   /**
    * Bridge 专用：true = 清除浏览器会话历史后再发送本次消息。
    * 用于 Agent 各子任务调用，防止 decompose JSON 计划污染后续分析输出。

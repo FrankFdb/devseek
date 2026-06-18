@@ -9,6 +9,10 @@ export interface PlannedValidation {
 
 export type CppValidationPolicy = 'conservative' | 'balanced' | 'aggressive';
 
+export interface CppValidationOptions {
+  run?: boolean;
+}
+
 const CPP_SOURCE_RE = /\.(cpp|cc|cxx|c)$/i;
 const CPP_HEADER_RE = /\.(h|hpp)$/i;
 
@@ -17,6 +21,7 @@ export function planCppValidation(
   rootFsPath: string,
   fsNode: { existsSync: (p: string) => boolean; readdirSync: (p: string) => string[]; readFileSync: (p: string, enc: string) => string },
   policy: CppValidationPolicy = 'conservative',
+  options: CppValidationOptions = {},
 ): PlannedValidation | null {
   const cppRelated = changedPaths.filter((p) => /\.(cpp|cc|cxx|c|h|hpp)$/i.test(p));
   if (cppRelated.length === 0) return null;
@@ -34,12 +39,21 @@ export function planCppValidation(
   if (fsNode.existsSync(cmakeFile)) {
     const buildDir = nodePath.join(targetDir, '.devseek-build');
     const buildOnly = `cmake -S ${q(targetDir)} -B ${q(buildDir)} && cmake --build ${q(buildDir)}`;
-    const runWithTests = `${buildOnly} && ctest --test-dir ${q(buildDir)} --output-on-failure`;
+    const shouldRun = !!options.run || policy === 'aggressive';
+    if (shouldRun) {
+      const runCommand = buildCmakeRunCommand(cmakeFile, buildDir, fsNode);
+      return {
+        command: `${buildOnly} && ${runCommand}`,
+        cwd: rootFsPath,
+        mode: 'cmake',
+        reason: options.run ? 'cmake-build-and-run-requested' : 'cmake-build-and-test',
+      };
+    }
     return {
-      command: policy === 'aggressive' ? runWithTests : buildOnly,
+      command: buildOnly,
       cwd: rootFsPath,
       mode: 'cmake',
-      reason: policy === 'aggressive' ? 'cmake-build-and-test' : 'cmake-build-only-safe-default',
+      reason: 'cmake-build-only-safe-default',
     };
   }
 
@@ -71,7 +85,7 @@ export function planCppValidation(
     const compileTargets = fallbackCompileTargets.length > 0 ? fallbackCompileTargets : sourceFiles.slice(0, 4);
     if (compileTargets.length === 0) return null;
 
-    if (policy === 'aggressive' && changedMainSources.length === 1) {
+    if ((options.run || policy === 'aggressive') && changedMainSources.length === 1) {
       const chosenMain = changedMainSources[0];
       const nonMain = sourceFiles.filter((abs) => abs !== chosenMain && !hasMainFunction(abs, fsNode));
       const linkSet = uniqueAbsPaths([...nonMain, chosenMain]);
@@ -80,7 +94,7 @@ export function planCppValidation(
         command: `g++ ${linkSet.map(q).join(' ')} -o ${q(exeOut)} && ${q(exeOut)}`,
         cwd: targetDir,
         mode: 'compile-run',
-        reason: 'multi-main-aggressive-single-entry-run',
+        reason: options.run ? 'multi-main-single-entry-run-requested' : 'multi-main-aggressive-single-entry-run',
       };
     }
 
@@ -97,12 +111,12 @@ export function planCppValidation(
     const compileSet = uniqueAbsPaths(sourceFiles);
     const exeOut = nodePath.join(targetDir, 'deepseek_auto_exec');
 
-    if (policy === 'aggressive' && changedSources.length > 0) {
+    if (options.run || (policy === 'aggressive' && changedSources.length > 0)) {
       return {
         command: `g++ ${compileSet.map(q).join(' ')} -o ${q(exeOut)} && ${q(exeOut)}`,
         cwd: targetDir,
         mode: 'compile-run',
-        reason: 'single-main-aggressive-run',
+        reason: options.run ? 'single-main-run-requested' : 'single-main-aggressive-run',
       };
     }
 
@@ -134,6 +148,32 @@ export function planCppValidation(
     mode: 'compile-only',
     reason: 'fallback-minimal-compile-only',
   };
+}
+
+function buildCmakeRunCommand(
+  cmakeFile: string,
+  buildDir: string,
+  fsNode: { readFileSync: (p: string, enc: string) => string },
+): string {
+  const executableTarget = detectCmakeExecutableTarget(cmakeFile, fsNode);
+  if (!executableTarget) {
+    return `ctest --test-dir ${q(buildDir)} --output-on-failure`;
+  }
+  const executablePath = nodePath.join(buildDir, executableTarget);
+  return `if test -x ${q(executablePath)}; then ${q(executablePath)}; else ctest --test-dir ${q(buildDir)} --output-on-failure; fi`;
+}
+
+function detectCmakeExecutableTarget(
+  cmakeFile: string,
+  fsNode: { readFileSync: (p: string, enc: string) => string },
+): string | null {
+  try {
+    const content = fsNode.readFileSync(cmakeFile, 'utf8');
+    const match = content.match(/\badd_executable\s*\(\s*([A-Za-z0-9_.+-]+)/i);
+    return match?.[1] || null;
+  } catch {
+    return null;
+  }
 }
 
 function inferImpactedSourcesByHeader(

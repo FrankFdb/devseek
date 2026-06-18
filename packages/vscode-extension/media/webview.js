@@ -2382,8 +2382,12 @@ function highlightSource(source, lang) {
 }
 
 function addWorkflowStatus(msg) {
-  // 始终记录 Working 条目（供 fsr-body 快照），与是否渲染 DOM 卡片解耦
-  updateWorkingEntryFromWorkflow(msg);
+  // Agent mode has its own authoritative Working surface. Keep workflow entries
+  // only for completion snapshots so local validation/repair statuses do not
+  // create a second live spinner under the agent task list.
+  var renderLiveWorkflow = !isAgentMode;
+  updateWorkingEntryFromWorkflow(msg, { render: renderLiveWorkflow });
+  if (!renderLiveWorkflow) return;
   if (!shouldRenderWorkflowStatus(msg)) return;
 
   var key = workflowStatusKey(msg);
@@ -2964,6 +2968,27 @@ function finalizeExecContainer(container, isFailed) {
   agentLastFinalizedContainer = container;
 }
 
+function finalizeActiveAgentWorkingContainers(isFailed) {
+  var active = messagesEl
+    ? messagesEl.querySelectorAll('.aut-container:not([data-done])')
+    : document.querySelectorAll('.aut-container:not([data-done])');
+  for (var i = 0; i < active.length; i++) {
+    finalizeExecContainer(active[i], isFailed);
+  }
+  if (agentExecContainer && agentExecContainer.isConnected && !agentExecContainer.hasAttribute('data-done')) {
+    finalizeExecContainer(agentExecContainer, isFailed);
+  }
+}
+
+function hasAgentFailureState() {
+  if (agentValidationSummary && agentValidationSummary.state === 'failed') return true;
+  if (agentTodos.some(function(t) { return t.state === 'failed'; })) return true;
+  if (agentToolTodos.some(function(t) { return t.status === 'failed'; })) return true;
+  return Array.from(workingEntries.values()).some(function(entry) {
+    return entry && entry.state === 'failed';
+  });
+}
+
 /**
  * P-Q: Route \x00AFILE:filename\x00content delta into the current aut-container's
  * analysis body, streaming AI prose/code directly inside the Working box (Copilot style).
@@ -3101,7 +3126,7 @@ function prepareAgentToolActivityContainer(kind, label) {
   var container = ensureAgentProgressContainer(nextLabel);
   container.setAttribute('data-active-tool-kind', kind || 'tool');
   container.setAttribute('data-active-tool-label', nextToolKey);
-  setAgentContainerLabel(container, nextLabel, true);
+  setAgentContainerLabel(container, agentCurrentTaskLabel || nextLabel, true);
   return container;
 }
 
@@ -3432,6 +3457,13 @@ function addAgentStatus(msg) {
 
   // ── Validate phase ───────────────────────────────────────────────────────
   if (msg.phase === 'validate') {
+    if (msg.state === 'started') {
+      if (agentExecContainer && agentExecContainer.isConnected && !agentExecContainer.hasAttribute('data-done')) {
+        var validateSpin = agentExecContainer.querySelector('.aut-spinner-label');
+        if (validateSpin) validateSpin.textContent = msg.title || '正在执行验证';
+      }
+      return;
+    }
     if (msg.state === 'completed' || msg.state === 'passed' || msg.state === 'failed') {
       agentValidationSummary = {
         state: msg.state === 'failed' ? 'failed' : 'completed',
@@ -3512,14 +3544,7 @@ function addAgentStatus(msg) {
     agentTaskCards.clear();
     agentPlanCard = null;
     var doneFailed = msg.state === 'failed';
-    // Finalize all active task containers; the agentExecContainer reference can be
-    // stale/null when todoUpdate and phase:done race each other.
-    var activeDoneContainers = document.querySelectorAll('.aut-container:not([data-done])');
-    for (var dc = 0; dc < activeDoneContainers.length; dc++) {
-      finalizeExecContainer(activeDoneContainers[dc], doneFailed);
-    }
-    // Finalize the last active task container as an extra safety path.
-    finalizeExecContainer(agentExecContainer, doneFailed);
+    finalizeActiveAgentWorkingContainers(doneFailed);
     agentExecContainer = null;
     agentCurrentTaskIndex = -1;
     if (msg.phase === 'done') setWorkingSessionState('idle', '');
@@ -4821,6 +4846,7 @@ function resetWorkingArea() {
   }
   
   var doReset = function() {
+    stopWorkingShimmer();
     workingEntries = new Map();
     workingSessionState = 'idle';
     workingSessionSummary = '';
@@ -4870,17 +4896,18 @@ function resetWorkingArea() {
   }
 }
 
-function updateWorkingEntry(key, title, detail, state) {
+function updateWorkingEntry(key, title, detail, state, options) {
   workingEntries.set(key, {
     title: title || '',
     detail: normalizeWorkingDetail(detail || ''),
     state: state || 'started',
     updatedAt: Date.now(),
   });
-  renderWorkingArea();
+  if (!options || options.render !== false) renderWorkingArea();
 }
 
-function updateWorkingEntryFromWorkflow(msg) {
+function updateWorkingEntryFromWorkflow(msg, options) {
+  var shouldRender = !options || options.render !== false;
   var key = workflowStatusKey(msg);
   var phaseLabel = msg.phase === 'apply'
     ? '写入文件'
@@ -4890,8 +4917,8 @@ function updateWorkingEntryFromWorkflow(msg) {
   var state = msg.state || 'started';
   var title = buildWorkingTitle(phaseLabel, msg.title || '', state);
   var detail = buildWorkingDetail(msg.phase, state, msg.detail || '');
-  updateWorkingEntry(key, title, detail, state);
-  if (msg.state === 'started') {
+  updateWorkingEntry(key, title, detail, state, { render: shouldRender });
+  if (shouldRender && msg.state === 'started') {
     setWorkingSessionState('running', getWorkingCopyStrategy().stageRunning(phaseLabel));
   }
 }
@@ -5530,6 +5557,8 @@ window.addEventListener('message', function(event) {
   } else if (msg.type === 'endResponse') {
     clearStreamRenderTimer();
     clearAnalysisRenderTimer();
+    var _wasAgentMode = isAgentMode;
+    if (_wasAgentMode) finalizeActiveAgentWorkingContainers(hasAgentFailureState());
     // If deferred bubble was never placed (no streaming prose arrived), insert it now
     // after the latest Working box so final feedback is not hidden in the thinking area.
     if (agentDeferredBubbleTurn) {
@@ -5680,7 +5709,6 @@ window.addEventListener('message', function(event) {
     suppressGeneratedStreaming = false;
     expectGeneratedArtifacts = false;
     currentResponseMeta = { hasGeneratedArtifacts: false, generatedPaths: [] };
-    var _wasAgentMode = isAgentMode; // capture before stopGenerating/resetWorkingArea resets it
     stopGenerating();
     // §8.5 Queue: after agent completes, auto-send any queued message
     if (_wasAgentMode && queuedAgentMsg) {
@@ -5719,6 +5747,7 @@ window.addEventListener('message', function(event) {
   } else if (msg.type === 'error') {
     clearStreamRenderTimer();
     clearAnalysisRenderTimer();
+    if (isAgentMode) finalizeActiveAgentWorkingContainers(true);
     // 如果思考气泡还没收到任何内容（纯 thinking-dots 状态），从 DOM 中移除它
     if (currentBubble && currentRaw === '') {
       const turn = currentBubble.closest('.turn');

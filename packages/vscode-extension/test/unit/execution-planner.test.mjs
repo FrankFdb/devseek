@@ -58,14 +58,43 @@ test('ExecutionPlanner: absolute directory run request produces a local CMake ru
     assert.equal(plan.mode, 'cmake');
     assert.equal(plan.cwd, projectDir);
     assert.match(plan.command, /cmake -S/);
-    assert.match(plan.command, /test -x/);
+    assert.match(plan.command, /if test -x/);
     assert.match(plan.command, /shape_manager/);
+    assert.equal(
+      plan.command.includes('|| ctest'),
+      false,
+      'runtime failure must not be masked by falling through to ctest',
+    );
     assert.ok(plan.attachedFiles.some((filePath) => filePath.endsWith('main.cpp')));
     assert.equal(
       plan.attachedFiles.some((filePath) => filePath.includes('CMakeCXXCompilerId.cpp')),
       false,
       'CMake compiler probe sources must not enter DevSeek repair context',
     );
+  } finally {
+    fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ExecutionPlanner: CMake test request runs executable instead of build-only', () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-exec-'));
+  try {
+    const projectDir = path.join(workspaceRoot, 'code', 'shape_manager');
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(path.join(projectDir, 'CMakeLists.txt'), [
+      'cmake_minimum_required(VERSION 3.10)',
+      'project(ShapeManager)',
+      'add_executable(shape_manager main.cpp)',
+      '',
+    ].join('\n'));
+    fs.writeFileSync(path.join(projectDir, 'main.cpp'), 'int main() { return 0; }\n');
+
+    const plan = planLocalExecution(`${projectDir} 请编译和测试`, [], workspaceRoot);
+    assert.ok(plan);
+    assert.equal(plan.mode, 'cmake');
+    assert.equal(plan.reason, 'cmake-local-build-and-test');
+    assert.match(plan.command, /if test -x/);
+    assert.match(plan.command, /shape_manager/);
   } finally {
     fs.rmSync(workspaceRoot, { recursive: true, force: true });
   }
