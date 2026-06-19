@@ -2761,7 +2761,14 @@ function stripAgentGeneratedCodeBlocks(text) {
  * @param {Array<{id:number,title:string,status:string,action?:string,desc?:string}>} items
  */
 function handleTodoUpdate(items) {
-  if (!items || !items.length) return;
+  if (!items || !items.length) {
+    agentToolTodos = [];
+    if (todosWidgetEl) {
+      todosWidgetEl.style.display = 'none';
+      todosWidgetEl.innerHTML = '';
+    }
+    return;
+  }
   var authoritativeAgentState = items.some(function(it) { return it && it.__agentState === true; });
 
   // NOTE: do NOT overwrite agentTodos here.

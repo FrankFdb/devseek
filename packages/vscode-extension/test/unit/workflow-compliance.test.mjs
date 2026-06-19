@@ -615,6 +615,27 @@ test('Agentic loop: terminal completion evidence requires successful validation 
   );
 });
 
+test('Agentic loop: workspace writes use ValidationService for automatic validation evidence', () => {
+  const code = src('src/agent-loop.ts');
+  const autoValidation = src('src/agent/auto-validation.ts');
+  assertContains(code, 'runAgentAutoValidationForWrites', 'agent loop must run automatic validation after file writes');
+  assertContains(autoValidation, 'ValidationService', 'automatic validation boundary must depend on the unified validation service');
+  assertContains(autoValidation, 'validateWorkspaceChanges({', 'automatic validation must call ValidationService.validateWorkspaceChanges');
+  assertContains(autoValidation, 'validationResultToTerminalEvidence', 'automatic validation must be converted into completion evidence');
+  assertContains(autoValidation, '自动验证命令未通过，不能把编译/运行/测试标记为完成', 'failed automatic validation must block task completion');
+});
+
+test('Agent run boundaries reset stale todo and pending-edit review scope', () => {
+  const ext = src('src/extension.ts');
+  const pending = src('src/app/pending-edit-service.ts');
+  const webview = src('media/webview.js');
+  assertContains(pending, 'resetForNewScope', 'pending edit service must expose a new review-scope reset');
+  assertContains(ext, 'beginAgentRunReviewScope(webview)', 'agent runs must start with a fresh file-review scope');
+  assertContains(ext, "webview.postMessage({ type: 'todoUpdate', items: [] })", 'agent runs must clear stale visible todos at start');
+  assertContains(webview, 'if (!items || !items.length)', 'webview todo handler must accept empty todo reset messages');
+  assertContains(webview, "todosWidgetEl.style.display = 'none'", 'empty todo reset must hide the stale todo widget');
+});
+
 test('Directory discovery skips generated build artifacts', () => {
   const ext = src('src/extension.ts');
   const planner = src('src/execution-planner.ts');

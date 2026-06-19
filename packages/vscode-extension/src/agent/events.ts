@@ -10,7 +10,7 @@ export interface AgentEditedFileEvent {
 
 export interface AgentStatusEvent {
   type: 'agentStatus';
-  phase: 'plan' | 'execute' | 'validate' | 'done' | 'error' | 'analyzeFile' | 'analyzeSummary';
+  phase: 'plan' | 'execute' | 'validate' | 'repair' | 'done' | 'error' | 'analyzeFile' | 'analyzeSummary';
   taskId?: string;
   taskFile?: string;
   taskAction?: AgentTaskAction;

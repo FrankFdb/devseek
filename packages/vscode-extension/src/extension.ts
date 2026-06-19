@@ -368,6 +368,14 @@ function postPendingEdits(webview: vscode.Webview): void {
   pendingEditDecorationProvider?.refresh();
 }
 
+function beginAgentRunReviewScope(webview: vscode.Webview): void {
+  const staleRecords = pendingEdits.resetForNewScope();
+  for (const record of staleRecords) closePendingEditDiffTabAsync(record);
+  diffDecoManager?.deactivateAll();
+  postPendingEdits(webview);
+  webview.postMessage({ type: 'todoUpdate', items: [] });
+}
+
 function postPendingActionNotice(
   webview: vscode.Webview,
   notice: {
@@ -1873,6 +1881,7 @@ async function runChat(
       }
     }
 
+    beginAgentRunReviewScope(webview);
     // P5: carry agentMode so webview can set isAgentMode synchronously on receipt
     webview.postMessage({ type: 'startResponse', prompt, expectGeneratedArtifacts: true, agentMode: true });
     // Emit the auto-discovery note as the first delta so the user knows files were found

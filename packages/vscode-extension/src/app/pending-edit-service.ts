@@ -49,6 +49,16 @@ export class PendingEditService<T extends PendingEditRecordLike> {
     this.records.clear();
   }
 
+  get size(): number {
+    return this.records.size;
+  }
+
+  resetForNewScope(): T[] {
+    const stale = Array.from(this.records.values()).sort((a, b) => a.createdAt - b.createdAt);
+    this.records.clear();
+    return stale;
+  }
+
   values(): IterableIterator<T> {
     return this.records.values();
   }

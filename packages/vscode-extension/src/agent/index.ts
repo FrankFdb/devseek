@@ -1,3 +1,4 @@
+export * from './auto-validation';
 export * from './events';
 export * from './fake-tool-parser';
 export * from './tool-call-normalizer';

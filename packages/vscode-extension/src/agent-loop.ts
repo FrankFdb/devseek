@@ -82,15 +82,18 @@ import {
   shouldBlockUnverifiedSourceOverwrite,
 } from './agent/write-guard';
 import {
+  classifyTerminalEvidenceCommand,
   getMissingCompletionEvidence,
   requiresCodeArtifactForEvidence,
   requiresCommandEvidence,
+  requiresFileChangeEvidence,
   requiresRuntimeValidation,
   type TerminalEvidence,
-  type TerminalEvidenceKind,
   type WrittenFileEvidence,
 } from './agent/completion-evidence';
+import { runAgentAutoValidationForWrites } from './agent/auto-validation';
 import { WorkspaceEditService } from './workspace/edit-service';
+import type { CppValidationPolicy } from './validation-planner';
 import type { MemoryWriteProposal } from './memory/types';
 
 // ----------------------------------------------------------------
@@ -400,23 +403,6 @@ function shellTokenizeSimple(command: string): string[] {
   return tokens;
 }
 
-function classifyTerminalEvidenceCommand(command: string): TerminalEvidenceKind {
-  const c = command.trim();
-  const lower = c.toLowerCase();
-  const compileLike = /\b(?:g\+\+|gcc|clang\+\+|clang|cmake|make|ninja)\b/.test(lower)
-    || /\b(?:npm|pnpm|yarn|bun)\s+run\s+(?:build|compile)\b/.test(lower)
-    || /\bcargo\s+build\b|\bgo\s+build\b|\bdotnet\s+build\b/.test(lower);
-  const testLike = /\b(?:npm|pnpm|yarn|bun)\s+(?:test|run\s+test)\b/.test(lower)
-    || /\b(?:pytest|go\s+test|cargo\s+test|dotnet\s+test|ctest)\b/.test(lower);
-  const runLike = /(?:^|[;&|]\s*)(?:\.\/|\/)[^\s;&|]+/.test(c)
-    || /\b(?:python3?|node|java|cargo\s+run|go\s+run|dotnet\s+run)\b/.test(lower);
-  if (compileLike && runLike) return 'compile-run';
-  if (testLike) return 'test';
-  if (runLike) return 'run';
-  if (compileLike) return 'compile';
-  return 'other';
-}
-
 function resolveCompilerOutputPath(command: string, workdir: string): string | undefined {
   const tokens = shellTokenizeSimple(command);
   const compilerIndex = tokens.findIndex(t => /^(?:g\+\+|gcc|clang\+\+|clang)(?:-\d+)?$/.test(nodePath.basename(t)));
@@ -494,10 +480,11 @@ function markMissingEvidenceTodosIncomplete(todos: TodoItem[], missing: string[]
 
 function inferInitialAgenticTodos(userPrompt: string): TodoItem[] {
   const items: TodoItem[] = [];
+  const needsFile = requiresFileChangeEvidence(userPrompt);
   const needsCode = requiresCodeArtifactForEvidence(userPrompt);
   const needsCommand = requiresCommandEvidence(userPrompt) || /(?:程序|代码|动画|运行效果|效果)/i.test(userPrompt);
-  if (needsCode) {
-    items.push({ id: items.length + 1, title: '创建/更新代码文件', status: 'in-progress' });
+  if (needsFile) {
+    items.push({ id: items.length + 1, title: needsCode ? '创建/更新代码文件' : '创建/更新文件', status: 'in-progress' });
   }
   if (needsCommand) {
     items.push({ id: items.length + 1, title: '编译/运行并验证结果', status: needsCode ? 'not-started' : 'in-progress' });
@@ -3069,9 +3056,12 @@ export async function runAgenticLoop(
   );
 
   const promptRequiresTools =
-    requiresCodeArtifactForEvidence(userPrompt)
+    requiresFileChangeEvidence(userPrompt)
     || requiresCommandEvidence(userPrompt)
     || /(?:创建|新建|修改|生成|修复|添加|删除|更新|改造|重构|看(?:一下)?(?:运行|执行)?结果|看到(?:运行|执行)?结果|输出效果|效果|create|write|modify|fix|implement)/i.test(userPrompt);
+  const cppValidationPolicy = vscode.workspace
+    .getConfiguration('devseek')
+    .get<CppValidationPolicy>('cppValidationPolicy', 'conservative');
   const isWorkTool = (name: string) => !['manage_todo_list', 'task_complete', 'memory_write'].includes(name);
 
   const sessionContextSection = sessionContextText.trim()
@@ -3100,6 +3090,7 @@ export async function runAgenticLoop(
   let fallbackTodosVisible = false;
   // Accumulate files written across all rounds for the phase:done editedFiles payload.
   const allWrittenFiles: Array<{path: string; basename: string; linesAdded: number; linesRemoved: number; action: string}> = [];
+  let autoValidatedWriteCount = 0;
 
   // Announce Working box to webview — neutral action (not 'analyze') so the
   // container doesn't get data-analyze and won't auto-collapse, regardless of
@@ -3251,10 +3242,20 @@ export async function runAgenticLoop(
         noToolRounds = 0;
         allWrittenFiles.push(...artifactApply.writtenFiles);
         progressEpoch++;
+        const autoValidation = await runAgentAutoValidationForWrites(
+          allWrittenFiles.slice(autoValidatedWriteCount),
+          workspaceRoot,
+          userPrompt,
+          callbacks,
+          cppValidationPolicy,
+        );
+        autoValidatedWriteCount = allWrittenFiles.length;
+        if (autoValidation.evidence) allTerminalEvidence.push(autoValidation.evidence);
+        const validationFeedback = autoValidation.feedbackForAI ? `\n\n${autoValidation.feedbackForAI}` : '';
         const missingAfterArtifact = getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence);
         const continueMessage = missingAfterArtifact.length > 0
-          ? `【系统反馈】已从你输出的文件代码块落地文件，但仍缺少${missingAfterArtifact.join('、')}。请继续调用 run_terminal 编译/运行/测试，完成后再 task_complete。\n${artifactApply.feedbackForAI}`
-          : `【系统反馈】已从你输出的文件代码块落地文件。请根据工具结果更新 todo，并在必要时调用 task_complete。\n${artifactApply.feedbackForAI}`;
+          ? `【系统反馈】已从你输出的文件代码块落地文件，但仍缺少${missingAfterArtifact.join('、')}。请继续调用实际工具修复或补充验证，完成后再 task_complete。\n${artifactApply.feedbackForAI}${validationFeedback}`
+          : `【系统反馈】已从你输出的文件代码块落地文件。请根据工具结果更新 todo，并在必要时调用 task_complete。\n${artifactApply.feedbackForAI}${validationFeedback}`;
         messages.push({ role: 'user', content: continueMessage });
         totalChars += continueMessage.length;
         continue;
@@ -3398,6 +3399,18 @@ export async function runAgenticLoop(
     if (loopRes.terminalEvidence?.length) {
       allTerminalEvidence.push(...loopRes.terminalEvidence);
     }
+    const autoValidation = await runAgentAutoValidationForWrites(
+      allWrittenFiles.slice(autoValidatedWriteCount),
+      workspaceRoot,
+      userPrompt,
+      callbacks,
+      cppValidationPolicy,
+    );
+    autoValidatedWriteCount = allWrittenFiles.length;
+    if (autoValidation.evidence) {
+      allTerminalEvidence.push(autoValidation.evidence);
+    }
+    const autoValidationFeedback = autoValidation.feedbackForAI ?? '';
 
     // Loop detection: track terminal command signatures across rounds.
     // If the same command is executed 2+ times without making progress, inject
@@ -3436,7 +3449,7 @@ export async function runAgenticLoop(
         currentTodos = markMissingEvidenceTodosIncomplete(currentTodos, missingAfterTools);
         await callbacks.onTodoUpdate(currentTodos);
       }
-      const retryMessage = `【系统反馈】不能结束任务。当前仍缺少可验证的${missingAfterTools.join('、')}。请继续调用实际工具完成缺失项：需要代码时用 create_file/write_file 写入源码；需要验证时用 run_terminal 编译/运行/测试；完成后再调用 task_complete，summary 必须只基于真实工具结果。`;
+      const retryMessage = `【系统反馈】不能结束任务。当前仍缺少可验证的${missingAfterTools.join('、')}。请继续调用实际工具完成缺失项：需要代码时用 create_file/write_file 写入源码；需要验证时用 run_terminal 编译/运行/测试；完成后再调用 task_complete，summary 必须只基于真实工具结果。${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`;
       messages.push({ role: 'user', content: retryMessage });
       totalChars += retryMessage.length;
       continue;
@@ -3492,7 +3505,7 @@ export async function runAgenticLoop(
     }
 
     // Inject tool results into next round
-    const combinedFeedback = [artifactApply.feedbackForAI, loopRes.feedbackForAI, ...loopWarnings].filter(Boolean).join('\n\n');
+    const combinedFeedback = [artifactApply.feedbackForAI, loopRes.feedbackForAI, autoValidationFeedback, ...loopWarnings].filter(Boolean).join('\n\n');
     const feedback = `[工具结果 Round ${roundCount}]\n${combinedFeedback}`;
     messages.push({ role: 'user', content: feedback });
     totalChars += feedback.length;

@@ -48,6 +48,17 @@ test('PendingEditService: clear removes all records', () => {
   assert.equal(Array.from(service.values()).length, 0);
 });
 
+test('PendingEditService: resetForNewScope returns stale records and starts an empty review scope', () => {
+  const service = new PendingEditService();
+  service.set('old-1', { id: 'old-1', path: 'code/simple_test.c', createdAt: 1 });
+  service.set('old-2', { id: 'old-2', path: 'code/test_workspace_edit.c', createdAt: 2 });
+
+  const stale = service.resetForNewScope();
+
+  assert.deepEqual(stale.map(record => record.path), ['code/simple_test.c', 'code/test_workspace_edit.c']);
+  assert.deepEqual(Array.from(service.values()), []);
+});
+
 test('PendingEditService: computes disjoint pending hunks deterministically', () => {
   const hunks = computePendingHunks('r1', 'a\nb\nc\nd\ne', 'A\nb\nc\nd\nE');
 

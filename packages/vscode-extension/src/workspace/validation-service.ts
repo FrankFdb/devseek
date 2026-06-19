@@ -1,6 +1,6 @@
 import * as nodePath from 'path';
 import * as fs from 'fs';
-import { exec } from 'child_process';
+import { exec, type ExecException } from 'child_process';
 import { planCppValidation, type CppValidationPolicy } from '../validation-planner';
 
 export type ValidationMode = 'compile-only' | 'compile-link' | 'compile-run' | 'cmake';
@@ -51,7 +51,11 @@ export class ValidationService {
 
   constructor(options: ValidationServiceOptions = {}) {
     this.commandRunner = options.commandRunner ?? runShell;
-    this.fsNode = options.fsNode ?? fs;
+    this.fsNode = options.fsNode ?? {
+      existsSync: fs.existsSync,
+      readdirSync: (path) => fs.readdirSync(path),
+      readFileSync: (path, encoding) => fs.readFileSync(path, encoding as BufferEncoding),
+    };
   }
 
   async validateWorkspaceChanges(input: ValidateWorkspaceChangesInput): Promise<AutoValidationResult | null> {
@@ -125,8 +129,8 @@ export function shouldRunCppValidation(prompt: string): boolean {
 
 async function runShell(invocation: ValidationCommandInvocation): Promise<AutoValidationResult> {
   return new Promise((resolve) => {
-    exec(invocation.command, { cwd: invocation.cwd, timeout: invocation.timeoutMs }, (
-      error: Error & { code?: number; killed?: boolean; signal?: string },
+    exec(invocation.command, { cwd: invocation.cwd, timeout: invocation.timeoutMs, encoding: 'utf8' }, (
+      error: ExecException | null,
       stdout: string,
       stderr: string,
     ) => {

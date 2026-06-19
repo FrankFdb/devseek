@@ -35,6 +35,7 @@ const req = createRequire(import.meta.url);
 const {
   getMissingCompletionEvidence,
   requiresCodeArtifactForEvidence,
+  requiresFileChangeEvidence,
 } = req(bundlePath);
 
 const prompt = '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题';
@@ -56,6 +57,34 @@ test('completion evidence: read-only analysis does not require code edit evidenc
 
 test('completion evidence: common Chinese implementation wording requires code evidence', () => {
   assert.equal(requiresCodeArtifactForEvidence('写一个排序算法并放到 code 目录'), true);
+});
+
+test('completion evidence: markdown file creation requires file evidence but not code validation', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-evidence-docs-'));
+  try {
+    const file = path.join(root, 'docs', 'manual-phase5-smoke.md');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, '# Phase 5 smoke\n');
+    const docsPrompt = '创建 docs/manual-phase5-smoke.md，内容为 Phase 5 smoke';
+
+    assert.equal(requiresFileChangeEvidence(docsPrompt), true);
+    assert.equal(requiresCodeArtifactForEvidence(docsPrompt), false);
+    assert.deepEqual(
+      getMissingCompletionEvidence(docsPrompt, [], [], []),
+      ['文件修改结果'],
+    );
+    assert.deepEqual(
+      getMissingCompletionEvidence(
+        docsPrompt,
+        [],
+        [{ path: file, basename: 'manual-phase5-smoke.md', linesAdded: 1, linesRemoved: 0, action: 'create' }],
+        [],
+      ),
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('completion evidence: code edit requires successful validation evidence', () => {
