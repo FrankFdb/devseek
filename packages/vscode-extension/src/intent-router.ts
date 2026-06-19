@@ -112,7 +112,7 @@ export function shouldUseAgentMode(
   files: string[],
 ): boolean {
   if (intent.blockers.includes('empty-prompt')) return false;
-  if (intent.blockers.includes('explicit-no-change')) return false;
+  if (intent.blockers.includes('explicit-no-change') && intent.mode !== 'inspect') return false;
   if (intent.requiresConfirmation) return false;
 
   if (intent.mode === 'smalltalk' || intent.mode === 'qa') return false;

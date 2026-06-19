@@ -174,9 +174,17 @@ test('shouldUseAgentMode: files present → true', () => {
   assert.equal(shouldUseAgentMode(intent, ['/path/to/main.cpp']), true);
 });
 
-test('shouldUseAgentMode: explicit no-change + chat intent + files → false', () => {
+test('shouldUseAgentMode: explicit no-change inspection + files → true read-only agent', () => {
   const intent = decideChatIntent('不要修改，只分析代码结构');
-  assert.equal(shouldUseAgentMode(intent, ['/path/to/file.ts']), false);
+  assert.equal(intent.mode, 'inspect');
+  assert.equal(shouldUseAgentMode(intent, ['/path/to/file.ts']), true);
+});
+
+test('shouldUseAgentMode: explicit no-change inspection + explicit path → true read-only agent', () => {
+  const intent = decideChatIntent('帮我查看 packages/vscode-extension/src/app/workflow-service.ts 的工作流状态机是否清晰，不要修改代码');
+  assert.equal(intent.mode, 'inspect');
+  assert.ok(intent.signals.includes('explicit-file-path'));
+  assert.equal(shouldUseAgentMode(intent, []), true);
 });
 
 test('shouldUseAgentMode: even analysis intent with files → true (agent reads file)', () => {

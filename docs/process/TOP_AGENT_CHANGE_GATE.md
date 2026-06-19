@@ -68,6 +68,25 @@
 
 ---
 
+**变更标题**：Phase 4 截图用例审计修复（2026-06-19）
+- **需求归因**：实现缺陷 + 体验退化 — 用户实测 4 个 Phase 4 case 暴露 PlanReview 被绕过、只读检查退化为假工具普通聊天、历史上下文污染候选文件的问题。
+- **影响能力层**：理解、规划、执行前确认、只读检查、输出清理、Workspace Apply 路径解析。
+- **架构影响**：
+  - `intent-classifier.ts` 为 explicit no-change + path 保留 `explicit-file-path` 信号。
+  - `intent-router.ts` 允许 inspect 模式在 explicit no-change 下使用只读 agent。
+  - `workflow-service.ts` 将实施型复杂重构的 PlanReview 前置到 Agent 开关之前，并区分纯规划与实施型重构。
+  - `extension.ts` 将候选文件检测/应用的路径解析上下文从增强 `finalPrompt` 改为当前用户 prompt。
+  - `workspace/path-resolver.ts` 与 `workspace-applier.ts` 增加单文件目标范围保护。
+  - `fake-tool-parser.ts` 清理 `Calling: bash` shell transcript 展示噪声。
+- **方案选择理由**：参考 Claude Code / Codex / Copilot 的宿主边界治理方式，把“当前任务范围、历史上下文、工具权限”拆开处理；模型可以参考历史，但写入解析必须只信当前任务边界。
+- **主链路验证**：复杂实施型重构先 PlanReview；只读文件检查进入 inspect agent；单文件修复不会把历史 `Rectangle.cpp` 放入待应用区。
+- **回退链路验证**：纯“给出重构方案”仍进入 `planning` 而不是 PlanReview；shell calling transcript 被清理但已知工具 JSON transcript 仍可解析。
+- **结果判据变化**：后续候选文件/写入路径解析不得使用包含记忆和历史的增强 prompt；只读 inspect 可以用工具读取，但权限内核必须拒绝 edit/terminal。
+- **文档更新**：`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npm test --workspace=packages/vscode-extension` 已通过，33 个 suite 全部通过；`git diff --check`、compile、package、verify packaged bridge、安装最新 VSIX 均完成。
+
+---
+
 **变更标题**：Phase 4 Workflow 状态机与 PlanReview（2026-06-19）
 - **需求归因**：能力缺口 + 架构债务 — DevSeek 需要像 Claude Code / Codex / Copilot 一样，在复杂重构前先进入计划/审查状态，并由宿主权限内核阻止计划阶段写盘或执行命令。
 - **影响能力层**：理解、规划、权限、用户确认、Agent 执行、UI 协议、任务事实记录。

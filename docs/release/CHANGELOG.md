@@ -6,6 +6,16 @@
 
 ## [Unreleased] — 2026-06-19
 
+### [BUG FIX] Phase 4 截图用例审计修复
+
+- 修复复杂重构请求在 Agent 关闭或普通聊天路径下绕过 PlanReview 的问题；实施型大范围重构现在会先进入 `plan_review`，纯“给出方案/计划”仍走只读 `planning`。
+- 修复“不要修改代码”的文件检查退化为普通网页聊天的问题；明确文件/附件的只读检查会进入 `inspect-agent`，只允许 read/search/diagnostics/network，不允许 edit/terminal。
+- 修复 DeepSeek Web 返回 `Calling: bash` 伪调用时主聊天区裸露命令块的问题，普通展示会清理 shell calling transcript。
+- 修复文件候选解析使用增强后的 `finalPrompt` 导致历史任务文件名污染本轮路径解析的问题；候选文件检测和写入路径解析只使用当前用户 prompt 与当前 path hints。
+- 增加显式单文件修复保护：当前 prompt 明确目标文件且不是多文件/重构扩范围请求时，历史里的无关 artifact（如 `Rectangle.cpp`）不会进入待应用区。
+- 新增/更新 workflow、intent matrix、chat-controller、fake-tool-parser、path-resolver、workspace-applier 回归测试。
+- 验证：`npm test --workspace=packages/vscode-extension` 通过，33 个 suite 全部通过；`git diff --check` 通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npm run extension:package` 通过；`npm run verify:packaged-bridge` 通过；`code --install-extension packages/vscode-extension/devseek-netai-latest.vsix --force` 安装成功。
+
 ### Phase 4 Workflow 状态机与 PlanReview
 
 - 对标 Claude Code / Codex / Copilot 的计划优先执行方式，把 DevSeek 的 workflow 从简单路由升级为应用层状态机。

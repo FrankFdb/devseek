@@ -214,6 +214,21 @@ export function resolveGeneratedArtifactPathForPrompt(
   return alignRelPathToScope(resolvedPath, root, pathContext);
 }
 
+export function isGeneratedArtifactAllowedForPrompt(
+  resolvedRelPath: string,
+  requestPrompt?: string,
+  preferredAbsolutePaths?: string[],
+): boolean {
+  const root = getWorkspaceRootUri(requestPrompt, preferredAbsolutePaths);
+  if (!root) return true;
+
+  const ctx = buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths);
+  if (!shouldRestrictGeneratedArtifactsToHintedFiles(ctx, requestPrompt)) return true;
+
+  const normalized = normalizeWorkspaceTargetPath(resolvedRelPath);
+  return ctx.hintedFiles.some((hint) => normalizeWorkspaceTargetPath(hint) === normalized);
+}
+
 export function resolveWorkspaceWritePath(
   rawPath: string,
   options: ResolveWorkspaceWritePathOptions = {},
@@ -588,6 +603,14 @@ function expandHomePath(value: string): string {
 
 function promptRequestsCodeDirectory(userPrompt: string): boolean {
   return /(?:code\s*目录|code目录|code\/|code\s+dir|code\s+folder)/i.test(userPrompt);
+}
+
+function shouldRestrictGeneratedArtifactsToHintedFiles(ctx: WorkspacePathContext, requestPrompt = ''): boolean {
+  if (ctx.hintedFiles.length === 0) return false;
+  const text = requestPrompt || '';
+  const expandsScope = /(创建|新建|新增|添加|拆分|抽取|迁移|重构|改造|多文件|多个文件|整个|全部|create|add|split|extract|move|rename|refactor)/i.test(text);
+  if (expandsScope) return false;
+  return /(修复|修正|修改|改一下|优化|完善|fix|modify|update|repair)/i.test(text) || ctx.hintedFiles.length === 1;
 }
 
 function promptLooksLikeCppProgram(userPrompt: string): boolean {

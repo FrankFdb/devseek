@@ -71,11 +71,13 @@ export function classifyIntent(prompt: string): IntentClassification {
 
   if (EXPLICIT_NO_CHANGE_RE.test(text)) {
     const mode = hasCodeContext || INSPECT_RE.test(text) ? 'inspect' : 'qa';
+    const signals = [mode === 'inspect' ? 'read-only-inspection' : 'explicit-no-change'];
+    if (hasPath) signals.push('explicit-file-path');
     return baseDecision(
       mode,
       0.9,
       -3,
-      [mode === 'inspect' ? 'read-only-inspection' : 'explicit-no-change'],
+      signals,
       'explicit-no-change',
       mode === 'inspect' ? READ_ONLY_TOOLS : [],
       ['explicit-no-change'],

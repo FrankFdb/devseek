@@ -68,6 +68,24 @@ test('ChatRouteController: complex refactor starts in plan review with plan perm
   assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
 });
 
+test('ChatRouteController: explicit read-only file inspection uses inspect policy', () => {
+  const controller = new ChatRouteController();
+  const decision = controller.decide({
+    userDisplay: '帮我查看 packages/vscode-extension/src/app/workflow-service.ts 的工作流状态机是否清晰，不要修改代码',
+    prompt: '帮我查看 packages/vscode-extension/src/app/workflow-service.ts 的工作流状态机是否清晰，不要修改代码',
+    files: [],
+    agentEnabled: true,
+  });
+
+  assert.equal(decision.intent.mode, 'inspect');
+  assert.equal(decision.workflow.kind, 'inspect-agent');
+  assert.equal(decision.workflow.state, 'inspect');
+  assert.equal(decision.toolPolicy.mode, 'inspect');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('read'), true);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
+});
+
 test('ChatRouteController: destructive workflow waits for visible confirmation', () => {
   const controller = new ChatRouteController();
   const pending = controller.decide({

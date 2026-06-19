@@ -23,7 +23,7 @@ import {
   type ApplyWorkflowStatus,
   type ApplyWorkflowResult,
 } from './workspace-applier';
-import { detectWorkspacePathScope } from './workspace/path-resolver';
+import { detectWorkspacePathScope, isGeneratedArtifactAllowedForPrompt } from './workspace/path-resolver';
 import { parseGeneratedArtifacts, type GeneratedArtifact } from './generated-file-parser';
 import {
   buildExecutionRepairPrompt,
@@ -3368,7 +3368,7 @@ async function runChat(
     // P10 (收紧)：只有 code-change 意图才解析文件候选。
     // 问题B修复：analyze/explain 意图即使有文件附件也绝不触发文件检测面板。
     if (intent.kind === 'code-change' && (intent.addStructuredHint || pathResolutionHints.length > 0)) {
-      await emitResponseMeta(webview, finalResponseForArtifacts, finalPrompt, pathResolutionHints);
+      await emitResponseMeta(webview, finalResponseForArtifacts, prompt, pathResolutionHints);
     } else {
       webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
     }
@@ -3418,11 +3418,11 @@ async function runChat(
     }
 
     if (shouldApplyToReviewQueue) {
-      const firstApply = await applyGeneratedArtifactsWithPrompt(responseToApply, finalPrompt, workflowReporter, true, async (change) => {
+      const firstApply = await applyGeneratedArtifactsWithPrompt(responseToApply, prompt, workflowReporter, true, async (change) => {
         await registerPendingEditChange(webview, change);
       }, pathResolutionHints, { rollbackOnValidationFailure: false });
       if (firstApply.applied && firstApply.validation && !firstApply.validation.ok) {
-        await runClosedLoopRepair(webview, workflowReporter, finalPrompt, mode, firstApply, pathResolutionHints);
+        await runClosedLoopRepair(webview, workflowReporter, prompt, mode, firstApply, pathResolutionHints);
       }
     }
   } catch (e) {
@@ -4760,6 +4760,7 @@ async function emitResponseMeta(
     const normalized = normalizePathForMeta(
       resolveGeneratedArtifactPathForPrompt(artifact.path, requestPrompt, preferredAbsolutePaths),
     );
+    if (!isGeneratedArtifactAllowedForPrompt(normalized, requestPrompt, preferredAbsolutePaths)) continue;
     const key = `${artifact.type}:${normalized}`;
     if (seen.has(key)) continue;
     seen.add(key);

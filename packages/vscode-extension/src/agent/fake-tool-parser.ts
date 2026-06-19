@@ -65,6 +65,18 @@ function stripCallingToolBlocks(text: string): string {
   return out;
 }
 
+function stripCallingFenceBlocks(text: string): string {
+  return text
+    .replace(
+      /(?:^|\n)[ \t]*(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(bash|shell|sh|zsh|console)`?\]?[^\n]*\n[ \t]*```(?:bash|shell|sh|zsh|console)?\s*\n[\s\S]*?```/gi,
+      '\n',
+    )
+    .replace(
+      /(?:^|\n)[ \t]*(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(bash|shell|sh|zsh|console)`?\]?[^\n]*(?=\n|$)/gi,
+      '\n',
+    );
+}
+
 export function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | null {
   const rawName = typeof obj.tool === 'string'
     ? obj.tool
@@ -201,6 +213,7 @@ export function stripToolCallBlocks(text: string): string {
   removedInternalBlock = removedInternalBlock || result !== beforeBracketCleanup;
 
   const beforeCallingCleanup = result;
+  result = stripCallingFenceBlocks(result);
   result = stripCallingToolBlocks(result);
   removedInternalBlock = removedInternalBlock || result !== beforeCallingCleanup;
 

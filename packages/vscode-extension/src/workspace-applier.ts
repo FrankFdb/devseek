@@ -14,6 +14,7 @@ import {
   normalizeWorkspaceTargetPath,
   resolveArtifactPathInWorkspace,
   resolveGeneratedArtifactPathForPrompt as resolveGeneratedArtifactPathInWorkspaceForPrompt,
+  isGeneratedArtifactAllowedForPrompt,
 } from './workspace/path-resolver';
 
 export interface ApplyWorkflowStatus {
@@ -354,6 +355,7 @@ async function prepareChanges(raw: string, requestPrompt?: string, preferredAbso
     const resolvedPath = resolveArtifactPathInWorkspace(artifact.path, root, pathContext);
     if (!resolvedPath) continue;
     const relPath = alignRelPathToScope(resolvedPath, root, pathContext);
+    if (!isGeneratedArtifactAllowedForPrompt(relPath, requestPrompt, preferredAbsolutePaths)) continue;
 
     const resolved: ResolvedGeneratedArtifact = {
       ...(artifact as GeneratedArtifact),

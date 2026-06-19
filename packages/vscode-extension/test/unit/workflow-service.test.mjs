@@ -60,9 +60,33 @@ test('WorkflowService: complex refactor enters plan review with plan policy', ()
 
   assert.equal(selected.kind, 'plan-agent');
   assert.equal(selected.state, 'plan_review');
+  assert.equal(selected.useAgent, false);
   assert.equal(selected.requiresPlanReview, true);
   assert.equal(selected.toolPolicyMode, 'plan');
   assert.ok(selected.allowedTransitions.some(t => t.event === 'approve-plan' && t.to === 'editing'));
+});
+
+test('WorkflowService: plan review is enforced even when agent toggle is off', () => {
+  const prompt = '重构整个项目代码，拆分 workflow runtime 和 provider 权限模块';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: false, prompt });
+
+  assert.equal(selected.kind, 'plan-agent');
+  assert.equal(selected.state, 'plan_review');
+  assert.equal(selected.requiresPlanReview, true);
+  assert.equal(selected.reason, 'plan-review-required');
+});
+
+test('WorkflowService: explicit planning request stays in planning state', () => {
+  const prompt = '给出这个项目的重构方案';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: ['/tmp/src/index.ts'], agentEnabled: true, prompt });
+
+  assert.equal(selected.kind, 'plan-agent');
+  assert.equal(selected.state, 'planning');
+  assert.equal(selected.useAgent, true);
+  assert.equal(selected.requiresPlanReview, false);
+  assert.equal(selected.toolPolicyMode, 'plan');
 });
 
 test('WorkflowService: approved plan review can transition to editing', () => {

@@ -184,6 +184,33 @@ test('workspace-applier: bare CMakeLists.txt prefers the explicit project direct
   }
 });
 
+test('workspace-applier: single explicit file fix rejects stale unrelated generated artifacts', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-single-target-'));
+  const appDir = path.join(root, 'packages', 'vscode-extension', 'src', 'app');
+  mkdirSync(appDir, { recursive: true });
+  writeFileSync(path.join(appDir, 'workflow-service.ts'), 'export const ok = true;\n');
+  fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+
+  try {
+    const raw = [
+      '文件 1: Rectangle.cpp',
+      '```cpp',
+      '#include "Rectangle.h"',
+      'double Rectangle::area() const { return width * height; }',
+      '```',
+    ].join('\n');
+    const prompt = '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题';
+
+    const result = await applyGeneratedArtifactsWithPrompt(raw, prompt, undefined, true);
+
+    assert.equal(result.applied, false);
+    assert.deepEqual(result.changedPaths, []);
+    assert.equal(existsSync(path.join(appDir, 'Rectangle.cpp')), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('workspace-applier: generated basename files use project path hints instead of code root', async () => {
   const { root, projectDir } = createShapeManagerWorkspace();
   try {

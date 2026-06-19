@@ -67,6 +67,10 @@ export class WorkflowStateMachine {
       return makeSelection('confirmation-required', 'confirmation_required', false, 'intent-requires-confirmation', intent.mode);
     }
 
+    if (!intentConfirmed && requiresPlanReview(input)) {
+      return makeSelection('plan-agent', 'plan_review', false, 'plan-review-required', 'plan', true);
+    }
+
     if (forceNoAgent) {
       return makeSelection('plain-chat', 'plain_chat', false, 'force-no-agent', intent.mode);
     }
@@ -91,9 +95,6 @@ export class WorkflowStateMachine {
       case 'run':
         return makeSelection('run-agent', 'running', true, 'run-workflow', 'run');
       case 'edit':
-        if (requiresPlanReview(input)) {
-          return makeSelection('plan-agent', 'plan_review', true, 'plan-review-required', 'plan', true);
-        }
         return makeSelection('edit-agent', 'editing', true, 'edit-workflow', 'edit');
       case 'destructive':
         return makeSelection('edit-agent', 'editing', true, 'confirmed-destructive-workflow', 'destructive');
@@ -179,11 +180,18 @@ function transitionsFor(state: WorkflowState): WorkflowTransition[] {
 }
 
 function requiresPlanReview(input: WorkflowSelectionInput): boolean {
-  if (input.intent.mode !== 'edit') return false;
+  if (!['edit', 'plan'].includes(input.intent.mode)) return false;
   if (input.intentConfirmed) return false;
   const text = `${input.userText ?? ''}\n${input.prompt ?? ''}`.trim();
   if (!text) return false;
+  if (input.intent.mode === 'plan' && isPlanningOnlyRequest(text)) return false;
   const hasBroadScope = /(整个|全部|全局|项目|仓库|系统|架构|多入口|跨平台|跨模块|模块化|runtime|workflow|provider|权限|状态机)/i.test(text);
   const hasComplexAction = /(重构|改造|拆分|迁移|重写|优化架构|革命性|架构设计|refactor|re-architect|architecture)/i.test(text);
   return (hasBroadScope && hasComplexAction) || input.files.length > 3;
+}
+
+function isPlanningOnlyRequest(text: string): boolean {
+  const hasPlanningTerm = /(方案|计划|设计|怎么改|如何改|重构计划|实施步骤|roadmap|plan|design|approach)/i.test(text);
+  const hasImplementationTerm = /(代码|实现|修改|改造|拆分|迁移|重写|接入|落地|执行|模块化|runtime|workflow|provider|权限|状态机|code|implement|split|migrate|rewrite)/i.test(text);
+  return hasPlanningTerm && !hasImplementationTerm;
 }

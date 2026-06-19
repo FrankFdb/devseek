@@ -65,6 +65,7 @@ Module._load = function loadWithVscodeMock(request, parent, isMain) {
 const req = createRequire(import.meta.url);
 const {
   detectWorkspacePathScope,
+  isGeneratedArtifactAllowedForPrompt,
   resolveGeneratedArtifactPathForPrompt,
   resolveWorkspaceWritePath,
 } = req(bundlePath);
@@ -142,6 +143,32 @@ test('path-resolver: session scoped writes do not drift to code parent directory
     });
     assert.equal(noisyLabelWrite.relPath, 'code/shape_manager/Circle.h');
     assert.equal(noisyLabelWrite.absPath, path.join(projectDir, 'Circle.h'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('path-resolver: current single-file prompt rejects stale history artifact names', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-path-single-target-'));
+  const appDir = path.join(root, 'packages', 'vscode-extension', 'src', 'app');
+  mkdirSync(appDir, { recursive: true });
+  writeFileSync(path.join(appDir, 'workflow-service.ts'), 'export const ok = true;\n');
+  fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+
+  try {
+    const prompt = '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题';
+    assert.equal(
+      resolveGeneratedArtifactPathForPrompt('workflow-service.ts', prompt),
+      'packages/vscode-extension/src/app/workflow-service.ts',
+    );
+    assert.equal(
+      isGeneratedArtifactAllowedForPrompt('packages/vscode-extension/src/app/workflow-service.ts', prompt),
+      true,
+    );
+    assert.equal(
+      isGeneratedArtifactAllowedForPrompt('packages/vscode-extension/src/app/Rectangle.cpp', prompt),
+      false,
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

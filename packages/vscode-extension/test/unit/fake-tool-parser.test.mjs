@@ -58,6 +58,19 @@ test('FakeToolParser: strips raw tool transcripts from user-facing text', () => 
   assert.equal(stripToolCallBlocks(text), '准备执行验证。\n完成。');
 });
 
+test('FakeToolParser: strips displayed shell calling transcript blocks', () => {
+  const text = [
+    '我先找到这个文件：',
+    'Calling: bash',
+    '```bash',
+    'find packages -name "workflow-service.ts" -type f',
+    '```',
+    '然后继续分析。',
+  ].join('\n');
+
+  assert.equal(stripToolCallBlocks(text), '我先找到这个文件：\n然后继续分析。');
+});
+
 test('FakeToolParser: detects the first tool call start for streaming UI', () => {
   const text = '先说明一下\n{"tool":"write_file","path":"code/hello.cpp","content":"int main(){}"}';
   assert.equal(findFirstToolCallStart(text), text.indexOf('{'));
