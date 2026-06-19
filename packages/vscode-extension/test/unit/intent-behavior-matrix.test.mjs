@@ -193,12 +193,12 @@ const routingCases = [
   },
   {
     id: 'PLAN-002',
-    title: 'no-change planning request becomes read-only inspect agent',
-    prompt: '给出这个项目的重构方案，先不要修改代码',
+    title: 'no-change planning request stays read-only plan agent',
+    prompt: '给出这个项目的重构方案，不要修改代码',
     files: ['/tmp/src/index.ts'],
-    expect: { kind: 'chat', mode: 'inspect', workflow: 'inspect-agent', useAgent: true, tools: READ_TOOLS },
+    expect: { kind: 'chat', mode: 'plan', workflow: 'plan-agent', useAgent: true, tools: PLAN_TOOLS },
     blocker: 'explicit-no-change',
-    toolActions: { read: 'allow', plan: 'deny', edit: 'deny', terminal: 'deny' },
+    toolActions: { read: 'allow', plan: 'allow', edit: 'deny', terminal: 'deny' },
   },
   {
     id: 'EDIT-001',

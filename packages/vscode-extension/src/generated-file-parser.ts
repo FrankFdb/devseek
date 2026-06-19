@@ -68,6 +68,27 @@ function looksLikeToolOrSummaryJson(content: string): boolean {
   }
 }
 
+function looksLikeShellCommandFenceForNonShellFile(content: string, fenceInfo: string, path: string): boolean {
+  const lang = (extractLanguage(fenceInfo) || '').toLowerCase();
+  const shellishFence = /^(?:bash|sh|shell|zsh|console|terminal|cmd|powershell|pwsh)$/i.test(lang);
+  const genericFence = !lang || /^(?:code|text|plain|plaintext)$/i.test(lang);
+  if (!shellishFence && !genericFence) return false;
+
+  const cleanPath = normalizeCandidatePath(path) || path;
+  if (/\.(?:sh|bash|zsh|ps1|cmd|bat)$/i.test(cleanPath)) return false;
+  return looksLikeShellCommandBlock(content);
+}
+
+function looksLikeShellCommandBlock(content: string): boolean {
+  return content
+    .split(/\r?\n/)
+    .map(line => line.trim().replace(/^\$\s*/, '').replace(/^>\s*/, ''))
+    .filter(Boolean)
+    .some(line => /^(?:cat|type|get-content|find|rg|grep|sed|head|tail|ls|dir|pwd|cd|npm|npx|pnpm|yarn|node|git|python|python3|bash|sh|zsh|cmd|powershell|pwsh|mkdir|cp|mv|rm|touch|code|g\+\+|gcc|clang|make|cmake|go|cargo|pytest|mvn|gradle|docker|curl|wget)\b/i.test(line)
+      || /(?:^|\s)(?:&&|\|\||[|;])(?:\s|$)/.test(line)
+      || /(?:^|\s)\d?>&?\S/.test(line));
+}
+
 export function parseGeneratedArtifacts(markdown: string): GeneratedArtifact[] {
   const artifacts: GeneratedArtifact[] = [];
   const seenPatches = new Set<string>();
@@ -108,6 +129,7 @@ export function parseGeneratedArtifacts(markdown: string): GeneratedArtifact[] {
     const pathFromContext = findPathBefore(markdown.slice(0, m.index));
     const path = pathFromFence || pathFromCode?.path || pathFromContext;
     if (!path) continue;
+    if (looksLikeShellCommandFenceForNonShellFile(content, fenceInfo, path)) continue;
     if (looksLikeToolOrSummaryJson(content) || looksLikeRawToolCallText(content)) continue;
 
     let clean = normalizeCandidatePath(path);

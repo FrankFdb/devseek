@@ -350,7 +350,7 @@ function scheduleAnalysisBodyRender(body) {
       analysisRenderBody = null;
       if (!b || !b.isConnected) return;
       analysisLastRenderTs = Date.now();
-      b.innerHTML = md(stripToolCallBlocks(b._raw)) + '<span class="cursor"></span>';
+      b.innerHTML = md(sanitizeAgentVisibleText(b._raw)) + '<span class="cursor"></span>';
       pruneEmptyRenderedBlocks(b);
       scrollAgentProgressToBottom();
     });
@@ -1469,6 +1469,10 @@ function isWebviewShellTranscriptName(name) {
   return !!WEBVIEW_SHELL_TRANSCRIPT_NAMES[String(name || '').toLowerCase()];
 }
 
+function makeWebviewAnyCallingRegex() {
+  return /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?([A-Za-z_]\w*)`?\]?)?/gi;
+}
+
 function webviewLineEndAfter(text, index) {
   var next = text.indexOf('\n', Math.max(0, index));
   return next < 0 ? text.length : next + 1;
@@ -1488,6 +1492,10 @@ function isWebviewShellCommandLine(line) {
   var first = String(line || '').trim().replace(/^\$\s*/, '').replace(/^>\s*/, '');
   return /^(?:cat|type|get-content|find|rg|grep|sed|head|tail|ls|dir|pwd|cd|npm|npx|pnpm|yarn|node|git|python|python3|bash|sh|zsh|cmd|powershell|pwsh|mkdir|cp|mv|rm|touch|code|g\+\+|gcc|clang|make|cmake|go|cargo|pytest|mvn|gradle|docker|curl|wget)\b/i.test(first)
     || /[|;&<>]/.test(first);
+}
+
+function webviewLooksLikeShellCommandBlock(text) {
+  return String(text || '').split(/\r?\n/).some(function(line) { return isWebviewShellCommandLine(line); });
 }
 
 function findWebviewFenceEnd(text, fenceStart) {
@@ -1510,13 +1518,17 @@ function findWebviewShellTranscriptEnd(text, callEnd) {
   if (cursor >= text.length) return text.length;
 
   if (/^[ \t]*```/.test(text.slice(cursor, cursor + 8))) {
-    return findWebviewFenceEnd(text, cursor);
+    var headerEnd = webviewLineEndAfter(text, cursor + 3);
+    var close = text.indexOf('```', headerEnd);
+    var contentEnd = close >= 0 ? close : text.length;
+    if (!webviewLooksLikeShellCommandBlock(text.slice(headerEnd, contentEnd))) return callEnd;
+    return close >= 0 ? webviewLineEndAfter(text, close + 3) : text.length;
   }
 
   var firstLineEnd = webviewLineEndAfter(text, cursor);
   var firstLine = text.slice(cursor, firstLineEnd);
   if (!isWebviewShellCommandLine(firstLine)) {
-    return text.length;
+    return callEnd;
   }
 
   var end = firstLineEnd;
@@ -1531,18 +1543,19 @@ function findWebviewShellTranscriptEnd(text, callEnd) {
 function stripCallingShellTranscriptBlocksFromText(text) {
   var out = '';
   var i = 0;
-  var callRe = /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
+  var callRe = makeWebviewAnyCallingRegex();
   while (i < text.length) {
     callRe.lastIndex = i;
     var m = callRe.exec(text);
     if (!m) { out += text.slice(i); break; }
-    if (!isWebviewShellTranscriptName(m[1])) {
+    var end = findWebviewShellTranscriptEnd(text, callRe.lastIndex);
+    if ((m[1] && !isWebviewShellTranscriptName(m[1])) || end <= callRe.lastIndex) {
       out += text.slice(i, m.index + 1);
       i = m.index + 1;
       continue;
     }
     out += text.slice(i, m.index);
-    i = findWebviewShellTranscriptEnd(text, callRe.lastIndex);
+    i = end;
   }
   return out;
 }
@@ -1721,22 +1734,26 @@ function stripToolCallBlocks(text) {
   return removedInternalBlock ? cleaned.replace(/[ \t]*\n[ \t]*\n[ \t]*/g, '\n') : cleaned;
 }
 
-function sanitizeAgentVisibleDelta(text) {
-  var raw = String(text || '');
-  if (!raw) return '';
-  var cleaned = stripToolCallBlocks(raw);
-  if (!cleaned && (raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw))) return '';
-  return cleaned;
-}
-
 function stripIncompleteCallingTail(text) {
   var raw = String(text || '');
-  var m = /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.exec(raw);
+  var m = /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.exec(raw);
   return m ? raw.slice(0, m.index).trimEnd() : raw;
 }
 
 function containsPotentialInternalCallingTail(text) {
-  return /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.test(String(text || ''));
+  return /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.test(String(text || ''));
+}
+
+function sanitizeAgentVisibleDelta(text) {
+  return sanitizeAgentVisibleText(text);
+}
+
+function sanitizeAgentVisibleText(text) {
+  var raw = String(text || '');
+  if (!raw) return '';
+  var cleaned = stripIncompleteCallingTail(stripToolCallBlocks(raw)).trim();
+  if (!cleaned && (raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw) || containsPotentialInternalCallingTail(raw))) return '';
+  return cleaned;
 }
 
 function sanitizeAssistantVisibleText(text) {
@@ -1748,13 +1765,13 @@ function sanitizeAssistantVisibleText(text) {
 }
 
 function renderVisibleAssistantText(text) {
-  return isAgentMode ? stripToolCallBlocks(text || '') : sanitizeAssistantVisibleText(text || '');
+  return isAgentMode ? sanitizeAgentVisibleText(text || '') : sanitizeAssistantVisibleText(text || '');
 }
 
 function containsAgentInternalTranscript(text) {
   return /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
-    || /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
-    || /(?:^|\n)\s*(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
+    || /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
+    || /(?:^|\n)\s*(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
     || /(?:^|\n)\s*\[(?:工具结果|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(text)
     || /\b(?:run_terminal|manage_todo_list|task_complete|stdout|stderr|exitCode|exit code)\b/i.test(text)
     || /(?:^|\n)\s*\$\s+\S+/.test(text)
@@ -1773,8 +1790,8 @@ function cleanAgentFinalProseForUser(text) {
     var s = line.trim();
     if (!s) return true;
     if (/^\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(s)) return false;
-    if (/^(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(s)) return false;
-    if (/^(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
+    if (/^(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(s)) return false;
+    if (/^(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
     if (/^\[(?:工具结果|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(s)) return false;
     if (/^\$\s+\S+/.test(s)) return false;
     if (/^(?:stdout|stderr|exitCode|exit code|命令输出|执行命令|终端输出)\s*[:：]/i.test(s)) return false;
@@ -3036,7 +3053,7 @@ function finalizeExecContainer(container, isFailed) {
   if (autDets) {
     var _analysisBodyFin = autDets.querySelector('.aut-analysis-body');
     if (_analysisBodyFin && _analysisBodyFin._raw) {
-      var _analysisRawFin = stripToolCallBlocks(_analysisBodyFin._raw).trim();
+      var _analysisRawFin = sanitizeAgentVisibleText(_analysisBodyFin._raw);
       _analysisBodyFin.innerHTML = md(_analysisRawFin);
       enhanceCodeVisuals(_analysisBodyFin);
       renderMermaidBlocks(_analysisBodyFin).then(function() { addCodeToolbars(_analysisBodyFin); maybeScrollToBottom(); });
@@ -3199,17 +3216,71 @@ function ensureAgentProgressContainer(label) {
   return agentExecContainer;
 }
 
+var AGENT_ACTIVITY_DISPLAY = {
+  read: { target: 'file', labelTarget: 'file', labelVerb: 'Reading', spinnerVerb: 'Reading', stepVerb: 'Read', icon: 'codicon-file-text', basename: true },
+  search: { target: 'code', labelTarget: 'code', labelVerb: 'Searching', spinnerVerb: 'Searching', stepVerb: 'Searched for', icon: 'codicon-search', max: 60 },
+  list: { target: 'directory', labelTarget: 'directory', labelVerb: 'Listing', spinnerVerb: 'Listing', stepVerb: 'Listed', icon: 'codicon-list-flat' },
+  write: { target: 'file', labelTarget: 'file', labelVerb: 'Writing', spinnerVerb: 'Writing', stepVerb: 'Wrote', icon: 'codicon-edit', basename: true },
+  web: { target: 'webpage', labelTarget: 'webpage', labelVerb: 'Fetching', spinnerVerb: 'Fetching', stepVerb: 'Fetched', icon: 'codicon-globe', max: 60 },
+  diagnostics: { target: 'workspace diagnostics', labelTarget: 'diagnostics', labelVerb: 'Checking', spinnerVerb: 'Checking', stepVerb: 'Checked', icon: 'codicon-warning' },
+  'vscode-command': { target: 'VS Code command', labelTarget: 'VS Code command', labelVerb: 'Running', spinnerVerb: 'Running', stepVerb: 'Ran', icon: 'codicon-extensions', max: 50 },
+  mcp: { target: 'tool', labelTarget: 'tool', labelVerb: 'Calling', spinnerVerb: 'Calling', stepVerb: 'Called', icon: 'codicon-plug', max: 50 },
+  terminal: { target: 'command', labelTarget: 'command', labelVerb: 'Running', spinnerVerb: 'Running', stepVerb: 'Ran', icon: 'codicon-terminal', max: 50, shellPrefix: true },
+};
+
+function getAgentActivityDisplay(kind) {
+  return AGENT_ACTIVITY_DISPLAY[kind] || {
+    target: 'tool',
+    labelTarget: '',
+    labelVerb: 'Working',
+    spinnerVerb: 'Running',
+    stepVerb: 'Ran',
+    icon: 'codicon-terminal',
+    max: 50,
+    shellPrefix: true,
+  };
+}
+
+function formatAgentActivityTarget(value, spec) {
+  var target = String(value || '').replace(/\\/g, '/');
+  if (spec && spec.basename) target = target.split('/').pop() || target;
+  var max = (spec && spec.max) || 0;
+  if (max > 0 && target.length > max) target = target.slice(0, max) + '\u2026';
+  return target;
+}
+
 function buildAgentToolActivityLabel(kind, label) {
+  var spec = getAgentActivityDisplay(kind);
   var raw = String(label || '').replace(/\s+/g, ' ').trim();
   var target = raw.replace(/\\/g, '/').split('/').pop() || raw;
   if (target.length > 52) target = target.slice(0, 50) + '…';
-  if (kind === 'read') return 'Reading ' + (target || 'file');
-  if (kind === 'search') return 'Searching ' + (target || 'code');
-  if (kind === 'list') return 'Listing ' + (target || 'directory');
-  if (kind === 'write') return 'Writing ' + (target || 'file');
-  if (kind === 'web') return 'Fetching ' + (target || 'webpage');
-  if (kind === 'terminal') return 'Running ' + (target || 'command');
-  return 'Working ' + (target || '');
+  return spec.labelVerb + ' ' + (target || spec.labelTarget || spec.target || '');
+}
+
+function normalizeAgentToolActivityKind(kind) {
+  var raw = kind == null ? '' : String(kind).trim();
+  if (!raw || raw === 'undefined' || raw === 'null' || raw === '[object Object]') return 'read';
+  return raw;
+}
+
+function normalizeAgentToolActivityLabel(label) {
+  if (label == null) return '';
+  var raw = String(label).replace(/\s+/g, ' ').trim();
+  if (raw === 'undefined' || raw === 'null' || raw === '[object Object]') return '';
+  return raw;
+}
+
+function defaultAgentToolActivityTarget(kind) {
+  return getAgentActivityDisplay(kind).target || 'tool';
+}
+
+function formatAgentToolActivityStep(kind, label) {
+  var spec = getAgentActivityDisplay(kind);
+  var target = formatAgentActivityTarget(label, spec) || spec.target || 'tool';
+  return {
+    icon: spec.icon || 'codicon-terminal',
+    html: spec.stepVerb + ' <code>' + (spec.shellPrefix ? '$ ' : '') + escapeHtml(target) + '</code>',
+  };
 }
 
 function activeAgentContainerHasProcessRows(container) {
@@ -5603,16 +5674,21 @@ window.addEventListener('message', function(event) {
       var _afSep = msg.text.indexOf('\x00', _afPfx.length);
       if (_afSep > _afPfx.length) {
         // P-Q: stream analysis content inside Working box (not af-cards)
-        var _afVisible = isAgentMode ? sanitizeAgentVisibleDelta(msg.text.slice(_afSep + 1)) : msg.text.slice(_afSep + 1);
-        if (_afVisible) routeAnalysisToWorkingBox(msg.text.slice(_afPfx.length, _afSep), _afVisible);
+        var _afRaw = msg.text.slice(_afSep + 1);
+        if (_afRaw) routeAnalysisToWorkingBox(msg.text.slice(_afPfx.length, _afSep), _afRaw);
       }
       return;
     }
     if (msg.text && msg.text.startsWith(_asPfx)) {
       // P-Q/P-P: summary → currentRaw → deferred prose bubble below Working boxes (Copilot style)
-      var _sumDelta = isAgentMode ? sanitizeAgentVisibleDelta(msg.text.slice(_asPfx.length)) : msg.text.slice(_asPfx.length);
+      var _sumDelta = msg.text.slice(_asPfx.length);
       if (!_sumDelta) return;
-      currentRaw += _sumDelta;
+      if (_sumDelta.startsWith('\x00RESET\x00')) {
+        currentRaw = _sumDelta.slice(7);
+      } else {
+        currentRaw += _sumDelta;
+      }
+      if (isAgentMode && !renderVisibleAssistantText(currentRaw)) return;
       if (currentBubble) {
         if (isAgentMode && hasActiveAgentWorkingContainer()) {
           clearStreamRenderTimer();
@@ -5623,9 +5699,10 @@ window.addEventListener('message', function(event) {
       }
       return;
     }
-    var _visibleDelta = isAgentMode ? sanitizeAgentVisibleDelta(msg.text) : msg.text;
+    var _visibleDelta = msg.text;
     if (!_visibleDelta) return;
     currentRaw += _visibleDelta;
+    if (isAgentMode && !renderVisibleAssistantText(currentRaw)) return;
     if (currentBubble) {
       if (isAgentMode) ensureAgentProseBubbleVisible();
       if (!suppressGeneratedStreaming && shouldSuppressGeneratedStreaming(currentRequestPrompt, currentRaw)) {
@@ -6152,13 +6229,14 @@ window.addEventListener('message', function(event) {
     }
   } else if (msg.type === 'agentToolActivity') {
     // Append one readable step row per tool call (Copilot-style: "Searched for X", "Read Y")
-    var actKind = msg.activityKind || 'read';
-    var actLabel = msg.activityLabel || '';
+    var actKind = normalizeAgentToolActivityKind(msg.activityKind);
+    var actLabel = normalizeAgentToolActivityLabel(msg.activityLabel);
+    var actDisplayLabel = actLabel || defaultAgentToolActivityTarget(actKind);
     // 'label' kind: AI pre-tool intent → update Working box label only (no step row, no bubble).
     // Copilot never shows pre-tool prose as chat messages; it only updates the Working header.
     if (actKind === 'label') {
-      if (actLabel && agentExecContainer && agentExecContainer.isConnected) {
-        var labelTrunc = actLabel.length > 42 ? actLabel.slice(0, 40) + '\u2026' : actLabel;
+      if (actDisplayLabel && agentExecContainer && agentExecContainer.isConnected) {
+        var labelTrunc = actDisplayLabel.length > 42 ? actDisplayLabel.slice(0, 40) + '\u2026' : actDisplayLabel;
         var intentLblEl = agentExecContainer.querySelector('.aut-label');
         if (intentLblEl && !agentExecContainer.hasAttribute('data-done') && !activeAgentContainerHasProcessRows(agentExecContainer)) {
           intentLblEl.textContent = labelTrunc;
@@ -6171,7 +6249,7 @@ window.addEventListener('message', function(event) {
     }
     if (actKind === 'todo' || actKind === 'memory') return;
     prepareAgentToolActivityContainer(actKind, actLabel);
-    var seenLabel = String(actLabel || '').replace(/\s+/g, ' ').trim();
+    var seenLabel = String(actDisplayLabel || '').replace(/\s+/g, ' ').trim();
     if (actKind === 'read' || actKind === 'write' || actKind === 'list') {
       seenLabel = seenLabel.replace(/\\/g, '/').split('/').pop() || seenLabel;
     }
@@ -6196,42 +6274,11 @@ window.addEventListener('message', function(event) {
     }
     if (actRow) {
       // Format Copilot-style step description
-      var stepIcon, stepHtml;
-      if (actKind === 'read') {
-        var readBase = actLabel.replace(/\\/g, '/').split('/').pop() || actLabel;
-        stepIcon = 'codicon-file-text';
-        stepHtml = 'Read <code>' + escapeHtml(readBase) + '</code>';
-      } else if (actKind === 'search') {
-        var searchTrunc = actLabel.length > 60 ? actLabel.slice(0, 60) + '\u2026' : actLabel;
-        stepIcon = 'codicon-search';
-        stepHtml = 'Searched for <code>' + escapeHtml(searchTrunc) + '</code>';
-      } else if (actKind === 'list') {
-        stepIcon = 'codicon-list-flat';
-        stepHtml = 'Listed <code>' + escapeHtml(actLabel) + '</code>';
-      } else if (actKind === 'write') {
-        var writeBase = actLabel.replace(/\\/g, '/').split('/').pop() || actLabel;
-        stepIcon = 'codicon-edit';
-        stepHtml = 'Wrote <code>' + escapeHtml(writeBase) + '</code>';
-      } else if (actKind === 'todo') {
-        var todoTrunc = actLabel.length > 80 ? actLabel.slice(0, 78) + '\u2026' : actLabel;
-        stepIcon = 'codicon-checklist';
-        stepHtml = 'Updated todos' + (todoTrunc ? ': <code>' + escapeHtml(todoTrunc) + '</code>' : '');
-      } else if (actKind === 'memory') {
-        stepIcon = 'codicon-bookmark';
-        stepHtml = 'Saved to memory: <code>' + escapeHtml(actLabel.slice(0, 60)) + '</code>';
-      } else if (actKind === 'web') {
-        var webTrunc = actLabel.length > 60 ? actLabel.slice(0, 60) + '\u2026' : actLabel;
-        stepIcon = 'codicon-globe';
-        stepHtml = 'Fetched <code>' + escapeHtml(webTrunc) + '</code>';
-      } else {
-        var cmdTrunc = actLabel.length > 50 ? actLabel.slice(0, 50) + '\u2026' : actLabel;
-        stepIcon = 'codicon-terminal';
-        stepHtml = 'Ran <code>$ ' + escapeHtml(cmdTrunc) + '</code>';
-      }
+      var step = formatAgentToolActivityStep(actKind, actDisplayLabel);
       var stepEl = document.createElement('div');
       stepEl.className = (actKind === 'terminal') ? 'aut-step aut-step-terminal' : 'aut-step';
-      stepEl.innerHTML = '<i class="codicon ' + stepIcon + ' aut-step-icon"></i>'
-        + '<span class="aut-step-text">' + stepHtml + '</span>';
+      stepEl.innerHTML = '<i class="codicon ' + step.icon + ' aut-step-icon"></i>'
+        + '<span class="aut-step-text">' + step.html + '</span>';
       actRow.appendChild(stepEl);
       // Auto-scroll steps list to bottom so newest activity is always visible (Copilot §26.2)
       actRow.scrollTop = actRow.scrollHeight;
@@ -6242,8 +6289,8 @@ window.addEventListener('message', function(event) {
         if (actDets && !actDets.hasAttribute('data-done')) {
           var actSpinLbl = actDets.querySelector('.aut-spinner-label');
           if (actSpinLbl) {
-            var spinActWord = actKind === 'read' ? 'Reading' : actKind === 'search' ? 'Searching' : actKind === 'list' ? 'Listing' : actKind === 'write' ? 'Writing' : actKind === 'todo' ? 'Planning' : actKind === 'memory' ? 'Saving' : actKind === 'web' ? 'Fetching' : 'Running';
-            var spinActTarget = actLabel.replace(/\\/g, '/').split('/').pop() || actLabel;
+            var spinActWord = getAgentActivityDisplay(actKind).spinnerVerb || 'Running';
+            var spinActTarget = actDisplayLabel.replace(/\\/g, '/').split('/').pop() || actDisplayLabel;
             if (spinActTarget.length > 35) spinActTarget = spinActTarget.slice(0, 33) + '\u2026';
             actSpinLbl.textContent = spinActWord + (spinActTarget ? ' ' + spinActTarget : '\u2026');
           }

@@ -122,6 +122,17 @@ test('decideChatIntent: "不要修改，只分析" → blocks code-change', () =
   assert.equal(result.kind, 'chat');
 });
 
+test('decideChatIntent: no-change refactor plan stays read-only planning', () => {
+  const result = decideChatIntent('制定一个重构 src/agent/tool-executor.ts 的计划，但不要改代码');
+  assert.equal(result.kind, 'chat');
+  assert.equal(result.mode, 'plan');
+  assert.ok(result.signals.includes('read-only-planning'));
+  assert.ok(result.signals.includes('explicit-file-path'));
+  assert.ok(result.blockers.includes('explicit-no-change'));
+  assert.deepEqual(result.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'plan', 'memory']);
+  assert.equal(shouldUseAgentMode(result, []), true);
+});
+
 test('decideChatIntent: destructive request requires confirmation', () => {
   const result = decideChatIntent('删除 code/main.cpp 并重置项目');
   assert.equal(result.kind, 'code-change');

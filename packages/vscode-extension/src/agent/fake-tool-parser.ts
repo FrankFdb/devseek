@@ -15,7 +15,11 @@ const SHELL_TRANSCRIPT_NAMES = new Set([
 ]);
 
 function makeCallingRegex(): RegExp {
-  return /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
+  return /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?([A-Za-z_]\w*)`?\]?/gi;
+}
+
+function makeAnyCallingRegex(): RegExp {
+  return /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?([A-Za-z_]\w*)`?\]?)?/gi;
 }
 
 function isRegisteredFakeToolName(name: string): boolean {
@@ -23,7 +27,7 @@ function isRegisteredFakeToolName(name: string): boolean {
 }
 
 function isShellTranscriptName(name: string): boolean {
-  return SHELL_TRANSCRIPT_NAMES.has(name.toLowerCase());
+  return SHELL_TRANSCRIPT_NAMES.has(String(name || '').toLowerCase());
 }
 
 function isShellCommandLine(line: string): boolean {
@@ -125,7 +129,7 @@ function findShellTranscriptEnd(text: string, callEnd: number): number {
   }
 
   let end = pos;
-  const callLineRe = /^(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?[A-Za-z_]\w*`?\]?/i;
+  const callLineRe = /^(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?[A-Za-z_]\w*`?\]?/i;
   while (end < text.length) {
     const next = lineEndAfter(text, end);
     const line = text.slice(end, next);
@@ -139,12 +143,14 @@ function findShellTranscriptEnd(text: string, callEnd: number): number {
 function stripCallingShellTranscriptBlocks(text: string): string {
   let out = '';
   let last = 0;
-  const callRe = makeCallingRegex();
+  const callRe = makeAnyCallingRegex();
   let m: RegExpExecArray | null;
   while ((m = callRe.exec(text)) !== null) {
-    if (!isShellTranscriptName(m[1])) continue;
+    if (m[1] && !isShellTranscriptName(m[1])) continue;
+    const extracted = extractShellTranscriptCommand(text, callRe.lastIndex);
+    if (!extracted) continue;
     out += text.slice(last, m.index).replace(/[ \t]+$/, '');
-    const end = findShellTranscriptEnd(text, callRe.lastIndex);
+    const end = extracted.end;
     if (out && !out.endsWith('\n') && end > callRe.lastIndex && end < text.length) {
       out += '\n';
     }
@@ -215,11 +221,13 @@ export function findFirstToolCallStart(text: string): number {
   const indexes: number[] = [];
   const bracket = text.indexOf('[TOOL:');
   if (bracket >= 0) indexes.push(bracket);
-  const callRe = makeCallingRegex();
+  const callRe = makeAnyCallingRegex();
   let cm: RegExpExecArray | null;
   while ((cm = callRe.exec(text)) !== null) {
     const name = cm[1];
-    if (isRegisteredFakeToolName(name) || isShellTranscriptName(name)) indexes.push(cm.index);
+    if ((name && (isRegisteredFakeToolName(name) || isShellTranscriptName(name))) || extractShellTranscriptCommand(text, callRe.lastIndex)) {
+      indexes.push(cm.index);
+    }
   }
   let searchAt = 0;
   while (searchAt < text.length) {
@@ -388,7 +396,7 @@ function extractShellTranscriptCommand(text: string, callEnd: number): { command
   }
 
   const lines: string[] = [];
-  const callLineRe = /^(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?[A-Za-z_]\w*`?\]?/i;
+  const callLineRe = /^(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?[A-Za-z_]\w*`?\]?/i;
   let end = pos;
   while (end < text.length) {
     const next = lineEndAfter(text, end);
@@ -404,10 +412,10 @@ function extractShellTranscriptCommand(text: string, callEnd: number): { command
 
 function parseShellTranscriptToolCalls(text: string): FakeTool[] {
   const tools: FakeTool[] = [];
-  const callRe = makeCallingRegex();
+  const callRe = makeAnyCallingRegex();
   let cm: RegExpExecArray | null;
   while ((cm = callRe.exec(text)) !== null) {
-    if (!isShellTranscriptName(cm[1])) continue;
+    if (cm[1] && !isShellTranscriptName(cm[1])) continue;
     const extracted = extractShellTranscriptCommand(text, callRe.lastIndex);
     if (!extracted) continue;
     tools.push(shellCommandToFakeTool(extracted.command));

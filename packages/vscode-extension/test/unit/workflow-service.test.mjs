@@ -111,6 +111,19 @@ test('WorkflowService: explicit planning request stays in planning state', () =>
   assert.equal(selected.toolPolicyMode, 'plan');
 });
 
+test('WorkflowService: no-change refactor plan stays planning with plan policy', () => {
+  const prompt = '制定一个重构 src/agent/tool-executor.ts 的计划，但不要改代码';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: true, prompt });
+
+  assert.equal(intent.mode, 'plan');
+  assert.equal(selected.kind, 'plan-agent');
+  assert.equal(selected.state, 'planning');
+  assert.equal(selected.useAgent, true);
+  assert.equal(selected.requiresPlanReview, false);
+  assert.equal(selected.toolPolicyMode, 'plan');
+});
+
 test('WorkflowService: approved plan review can transition to editing', () => {
   const prompt = '重构整个项目代码，拆分 workflow runtime 和 provider 权限模块';
   const intent = decideChatIntent(prompt);

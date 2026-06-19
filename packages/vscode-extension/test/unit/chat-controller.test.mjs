@@ -103,6 +103,24 @@ test('ChatRouteController: explicit file inspection ignores disabled agent toggl
   assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
 });
 
+test('ChatRouteController: explicit no-change refactor plan uses plan workflow', () => {
+  const controller = new ChatRouteController();
+  const decision = controller.decide({
+    userDisplay: '制定一个重构 src/agent/tool-executor.ts 的计划，但不要改代码',
+    prompt: '制定一个重构 src/agent/tool-executor.ts 的计划，但不要改代码',
+    files: [],
+    agentEnabled: false,
+  });
+
+  assert.equal(decision.intent.mode, 'plan');
+  assert.equal(decision.workflow.kind, 'plan-agent');
+  assert.equal(decision.workflow.state, 'planning');
+  assert.equal(decision.workflow.useAgent, true);
+  assert.equal(decision.toolPolicy.mode, 'plan');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
+});
+
 test('ChatRouteController: explicit file fix ignores disabled agent toggle for controlled edit tools', () => {
   const controller = new ChatRouteController();
   const decision = controller.decide({

@@ -1,6 +1,6 @@
 import { IntentClassification, ToolKind } from './intent-types';
 
-const EXPLICIT_NO_CHANGE_RE = /(不要修改|无需修改|只讨论|仅讨论|只分析|仅分析|不要落地|先不要改|不需要代码|不要apply|不做变更|just\s+(?:chat|talk|discuss|explain)|only\s+(?:explain|discuss|answer))/i;
+const EXPLICIT_NO_CHANGE_RE = /(不要修改|无需修改|不要改|别改|只讨论|仅讨论|只分析|仅分析|不要落地|先不要改|不需要代码|不要apply|不做变更|just\s+(?:chat|talk|discuss|explain)|only\s+(?:explain|discuss|answer))/i;
 
 const EXPLICIT_PATH_RE = /([A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|json|md|css|scss|html|py|java|go|rs|c|cc|cpp|cxx|h|hpp|sh|sql))/i;
 
@@ -70,8 +70,19 @@ export function classifyIntent(prompt: string): IntentClassification {
   }
 
   if (EXPLICIT_NO_CHANGE_RE.test(text)) {
-    const mode = hasCodeContext || INSPECT_RE.test(text) ? 'inspect' : 'qa';
-    const signals = [mode === 'inspect' ? 'read-only-inspection' : 'explicit-no-change'];
+    const isReadOnlyPlanning = EXPLICIT_PLAN_RE.test(text) && hasCodeContext;
+    const mode = isReadOnlyPlanning
+      ? 'plan'
+      : hasCodeContext || INSPECT_RE.test(text)
+        ? 'inspect'
+        : 'qa';
+    const signals = [
+      mode === 'plan'
+        ? 'read-only-planning'
+        : mode === 'inspect'
+          ? 'read-only-inspection'
+          : 'explicit-no-change',
+    ];
     if (hasPath) signals.push('explicit-file-path');
     return baseDecision(
       mode,
@@ -79,7 +90,7 @@ export function classifyIntent(prompt: string): IntentClassification {
       -3,
       signals,
       'explicit-no-change',
-      mode === 'inspect' ? READ_ONLY_TOOLS : [],
+      mode === 'plan' ? PLAN_TOOLS : mode === 'inspect' ? READ_ONLY_TOOLS : [],
       ['explicit-no-change'],
     );
   }

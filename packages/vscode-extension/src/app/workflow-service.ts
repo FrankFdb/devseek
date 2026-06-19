@@ -207,6 +207,9 @@ function requiresPlanReview(input: WorkflowSelectionInput): boolean {
 
 function isPlanningOnlyRequest(text: string): boolean {
   const hasPlanningTerm = /(方案|计划|设计|怎么改|如何改|重构计划|实施步骤|roadmap|plan|design|approach)/i.test(text);
-  const hasImplementationTerm = /(代码|实现|修改|改造|拆分|迁移|重写|接入|落地|执行|模块化|runtime|workflow|provider|权限|状态机|code|implement|split|migrate|rewrite)/i.test(text);
+  const actionableText = text
+    .replace(/(?:但|先|暂时|目前)?\s*(?:不要|无需|不需要|别|先不要)\s*(?:改|修改|实现|写|落地|执行|apply)?\s*(?:代码|code)?/gi, '')
+    .replace(/(?:no|without)\s+(?:code|implementation|changes?)/gi, '');
+  const hasImplementationTerm = /(代码|实现|修改|改造|拆分|迁移|重写|接入|落地|执行|模块化|runtime|workflow|provider|权限|状态机|code|implement|split|migrate|rewrite)/i.test(actionableText);
   return hasPlanningTerm && !hasImplementationTerm;
 }

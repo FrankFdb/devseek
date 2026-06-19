@@ -114,6 +114,32 @@ test('FakeToolParser: parses shell find transcript as file_search', () => {
   assert.deepEqual(tools[0].input, { glob: 'packages/vscode-extension/src/app/**/workflow-service.ts' });
 });
 
+test('FakeToolParser: parses nameless Calling shell fence as read_file', () => {
+  const text = [
+    '好的，我先查看文件。 Calling:',
+    '```bash',
+    'cat packages/vscode-extension/src/agent/tool-executor.ts 2>/dev/null',
+    '```',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'read_file');
+  assert.deepEqual(tools[0].input, { path: 'packages/vscode-extension/src/agent/tool-executor.ts' });
+  assert.equal(stripToolCallBlocks(text), '好的，我先查看文件。');
+});
+
+test('FakeToolParser: keeps ordinary nameless Calling prose', () => {
+  const text = [
+    'Calling:',
+    '这不是命令，只是一段普通说明。',
+  ].join('\n');
+
+  assert.equal(parseFakeToolCalls(text).length, 0);
+  assert.equal(findFirstToolCallStart(text), -1);
+  assert.equal(stripToolCallBlocks(text), text);
+});
+
 test('FakeToolParser: detects the first tool call start for streaming UI', () => {
   const text = '先说明一下\n{"tool":"write_file","path":"code/hello.cpp","content":"int main(){}"}';
   assert.equal(findFirstToolCallStart(text), text.indexOf('{'));

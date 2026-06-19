@@ -119,6 +119,33 @@ test('parseGeneratedArtifacts: raw tool transcript inside a code block is not fi
   assert.ok(!artifacts.some((a) => a.path === 'person.cpp'));
 });
 
+test('parseGeneratedArtifacts: shell command fence with source path is not a file candidate', () => {
+  const text = [
+    '我先定位并读取 packages/vscode-extension/src/app/workflow-service.ts： Calling: bash',
+    '```CODE',
+    'find packages/vscode-extension/src/app -name "workflow-service.ts" -type f',
+    '```',
+    'Calling: bash',
+    '```bash',
+    'cat packages/vscode-extension/src/app/workflow-service.ts 2>/dev/null',
+    '```',
+  ].join('\n');
+  const artifacts = parseGeneratedArtifacts(text);
+  assert.equal(artifacts.length, 0);
+});
+
+test('parseGeneratedArtifacts: source-language block that starts with shell-like word remains a file', () => {
+  const text = `src/query.ts
+\`\`\`typescript
+find(items);
+export const ok = true;
+\`\`\``;
+  const artifacts = parseGeneratedArtifacts(text);
+  assert.equal(artifacts.length, 1);
+  assert.equal(artifacts[0].path, 'src/query.ts');
+  assert.ok(artifacts[0].content.includes('find(items);'));
+});
+
 test('parseGeneratedArtifacts: loose create_file tool with unescaped C++ string content', () => {
   const text = '[TOOL:create_file {"filePath":"code/deepseek_self_loop/main.cpp","content":"#include <iostream>\\nint main() { std::cout << "DEEPSEEK_AGENT_SELF_LOOP_OK" << std::endl; return 0; }"}]';
   const artifacts = parseGeneratedArtifacts(text);

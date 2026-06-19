@@ -1330,7 +1330,7 @@ export interface AgentLoopCallbacks {
    * AI called a file/search/list/terminal tool during agent loop.
    * Shown as a compact activity chip in the working area ("Read N files ▾").
    */
-  onToolActivity?: (kind: 'read' | 'search' | 'list' | 'terminal' | 'memory' | 'write' | 'web' | 'todo', label: string) => void;
+  onToolActivity?: (kind: 'read' | 'search' | 'list' | 'terminal' | 'memory' | 'write' | 'web' | 'todo' | 'label' | 'diagnostics' | 'vscode-command' | 'mcp', label: string) => void;
   /**
    * AI called get_changed_files — return git status/diff of current workspace.
    * Corresponds to Copilot's #search/changes tool.
@@ -3232,7 +3232,7 @@ export async function runAgenticLoop(
       // This prevents the "no activity" perception while waiting for the full response.
       if (callbacks.onToolActivity && sAccum.length >= sNextSpinnerUpdate) {
         sNextSpinnerUpdate = sAccum.length + 300;
-        callbacks.onToolActivity('label' as Parameters<typeof callbacks.onToolActivity>[0], `思考中 (${sAccum.length} 字符)…`);
+        callbacks.onToolActivity('label', `思考中 (${sAccum.length} 字符)…`);
       }
       if (!sEarlyFired && callbacks.onTodoUpdate && sAccum.length >= sNextCheck) {
         sNextCheck = sAccum.length + 150; // check again in 150 chars
@@ -3297,7 +3297,7 @@ export async function runAgenticLoop(
       // The first sentence of the reasoning becomes "Working: <intent>" in the header.
       const firstSentence = userAnnouncement.split(/[。！\n]/)[0].slice(0, 60).trim();
       if (firstSentence && callbacks.onToolActivity) {
-        callbacks.onToolActivity?.('label' as Parameters<typeof callbacks.onToolActivity>[0], firstSentence);
+        callbacks.onToolActivity?.('label', firstSentence);
       }
       // Do NOT call onAgentAnnouncement — no chat bubble for pre-tool rounds.
     }
