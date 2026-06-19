@@ -49,20 +49,33 @@ const CODE_FILE_EXTENSIONS = new Set([
 ]);
 
 const FILE_CHANGE_RE = /(?:写|创建|新建|生成|编写|实现|开发|做(?:一个|一款)?|修复|修改|改进|改造|重构|更新|添加|删除|create|write|implement|develop|fix|repair|modify|edit|refactor|update|add|delete)/i;
-const CODE_TARGET_RE = /(?:代码|源码|程序|脚本|算法|功能|组件|文件|游戏|网页|页面|应用|component|class|function|algorithm|app|web|c\+\+|cpp|c语言|python|javascript|typescript|java|golang|rust|\.c\b|\.cc\b|\.cpp\b|\.h\b|\.hpp\b|\.py\b|\.js\b|\.jsx\b|\.ts\b|\.tsx\b|\.mjs\b|\.java\b|\.go\b|\.rs\b|\.cs\b|\.php\b|\.rb\b|\.swift\b|\.kt\b|\.html\b|\.css\b|\.vue\b|\.svelte\b|\.sh\b)/i;
+const CODE_TARGET_RE = /(?:代码|源码|程序|脚本|算法|功能|组件|游戏|网页|页面|应用|component|class|function|algorithm|app|web|c\+\+|cpp|c语言|python|javascript|typescript|java|golang|rust|\.c\b|\.cc\b|\.cpp\b|\.h\b|\.hpp\b|\.py\b|\.js\b|\.jsx\b|\.ts\b|\.tsx\b|\.mjs\b|\.java\b|\.go\b|\.rs\b|\.cs\b|\.php\b|\.rb\b|\.swift\b|\.kt\b|\.html\b|\.css\b|\.vue\b|\.svelte\b|\.sh\b)/i;
 const FILE_PATH_TARGET_RE = /(?:^|[^\w/.-])(?:\.{0,2}\/)?[\w.-]+(?:\/[\w.-]+)*\.[A-Za-z0-9]{1,12}\b/;
 const READ_ONLY_RE = /(?:(?:不要|不用|无需|不需要|禁止).{0,8}(?:修改代码|改代码|写代码|写入文件)|(?:只|仅).{0,6}(?:分析|评估|说明|解释|计划|审计|查看|确认)|do not .{0,20}(?:modify|edit|change|write))/i;
+const GENERIC_EVIDENCE_TODO_TITLES = new Set([
+  '创建/更新文件',
+  '编译/运行并验证结果',
+]);
 
 export function isCodeArtifactPath(filePath: string): boolean {
   return CODE_FILE_EXTENSIONS.has(nodePath.extname(filePath).toLowerCase());
 }
 
 function buildEvidenceText(userPrompt: string, todos: CompletionTodo[]): string {
-  return `${userPrompt}\n${todos.map(t => t.title).join('\n')}`.toLowerCase();
+  const promptIntentText = stripInlineFileContent(userPrompt);
+  const todoText = todos
+    .map(t => t.title.trim())
+    .filter(title => !GENERIC_EVIDENCE_TODO_TITLES.has(title))
+    .join('\n');
+  return `${promptIntentText}\n${todoText}`.toLowerCase();
 }
 
 function explicitlyReadOnly(text: string): boolean {
   return READ_ONLY_RE.test(text);
+}
+
+function stripInlineFileContent(text: string): string {
+  return text.replace(/(?:内容为|内容是|内容如下|content\s*(?:is|:)|with\s+content)\s*[:：]?\s*[\s\S]*$/i, '');
 }
 
 export function requiresFileChangeEvidence(text: string): boolean {
@@ -84,7 +97,7 @@ function requiresRunEvidence(text: string): boolean {
 }
 
 function requiresTestEvidence(text: string): boolean {
-  return /(?:测试|test)/i.test(text);
+  return /(?:测试|run\s+tests?|execute\s+tests?|npm\s+test|pnpm\s+test|yarn\s+test|bun\s+test|unit\s+tests?|pytest|go\s+test|cargo\s+test)/i.test(text);
 }
 
 export function requiresRuntimeValidation(text: string): boolean {

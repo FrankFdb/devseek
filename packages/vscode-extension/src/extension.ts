@@ -49,7 +49,8 @@ import { McpManager } from './mcp/client';
 import { fenceLangForFile } from './utils';
 import { DiffDecorationManager, type DiffRecordInfo } from './diff-decorator';
 import { isFileProtected } from './protected-files';
-import { decideToolPermission } from './app/permission-service';
+import { decideToolPermission, type ToolPolicy } from './app/permission-service';
+import { decideTerminalCommandPermission, type TerminalCommandRiskClass } from './app/terminal-command-policy';
 import { ChatRouteController } from './app/chat-controller';
 import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
@@ -119,6 +120,8 @@ const pendingEdits = new PendingEditService<PendingEditRecord>();
 const chatRouteController = new ChatRouteController();
 /** G-2: pending terminal confirm Promises keyed by confirmId */
 const pendingTerminalConfirms = new Map<string, (allow: boolean, alwaysAllow?: boolean) => void>();
+/** Session-scoped terminal classes explicitly trusted by the user. */
+const trustedTerminalRiskClasses = new Set<TerminalCommandRiskClass>();
 /** G-5: Keep/Undo status bar item (shown when active file has pending AI edits) */
 let keepUndoStatusBar: vscode.StatusBarItem | undefined;
 /** Inline editor decorations + CodeLens for pending AI edits (Copilot-parity) */
@@ -1616,6 +1619,58 @@ async function requestInlineTerminalConfirmation(
   });
 }
 
+async function runAgentTerminalCommandWithPermission(input: {
+  webview: vscode.Webview;
+  command: string;
+  workdir?: string;
+  workspaceRoot?: string;
+  mode: string;
+  toolPolicy: ToolPolicy;
+}): Promise<string> {
+  const { webview, command, workdir, workspaceRoot, mode, toolPolicy } = input;
+  const terminalPermission = decideToolPermission(toolPolicy, 'terminal');
+  if (terminalPermission.action === 'deny') {
+    return `（命令未执行：当前 ${mode} 模式不允许终端工具：${terminalPermission.reason}）`;
+  }
+
+  const terminalDecision = decideTerminalCommandPermission({
+    command,
+    workdir,
+    workspaceRoot,
+  });
+  const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
+  const remembered = terminalDecision.canRememberDecision && trustedTerminalRiskClasses.has(terminalDecision.risk);
+  let confirmedByUser = false;
+
+  if (!isAutopilot && terminalPermission.action === 'requireConfirm' && terminalDecision.requiresConfirmation && !remembered) {
+    const confirmResult = await requestInlineTerminalConfirmation(webview, command, workdir ?? '');
+    if (confirmResult.alwaysAllow && terminalDecision.canRememberDecision) {
+      trustedTerminalRiskClasses.add(terminalDecision.risk);
+    }
+    if (!confirmResult.allow) {
+      return `（命令未执行：${confirmResult.reason ?? '用户拒绝'}）`;
+    }
+    confirmedByUser = true;
+  }
+
+  const { runCommand, formatTerminalOutputForPrompt } = await import('./tools/terminal');
+  const result = await runCommand({
+    command,
+    cwd: workdir,
+    visible: false,
+    allowRisky: !isAutopilot && (confirmedByUser || remembered),
+  });
+  const outputPreview = result.output.slice(0, 4000);
+  webview.postMessage({
+    type: 'terminalRanNotice',
+    command,
+    workdir: workdir ?? '',
+    exitCode: result.exitCode,
+    output: outputPreview,
+  });
+  return formatTerminalOutputForPrompt(command, result);
+}
+
 async function runChat(
   webview: vscode.Webview,
   userDisplay: string,
@@ -2004,32 +2059,14 @@ async function runChat(
             ? (fakeName, args) => mcpManager.callTool(fakeName, args)
             : undefined,
           onTerminalCommand: async (command, workdir) => {
-            const terminalPermission = decideToolPermission(toolPolicy, 'terminal');
-            if (terminalPermission.action === 'deny') {
-              return `（命令未执行：当前 ${intent.mode} 模式不允许终端工具：${terminalPermission.reason}）`;
-            }
-            const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-            if (terminalPermission.action === 'requireConfirm' || !isAutopilot) {
-              const confirmId = `tc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-              const confirmResult = await new Promise<{ allow: boolean; alwaysAllow?: boolean; reason?: string }>((resolve) => {
-                pendingTerminalConfirms.set(confirmId, (allow, alwaysAllow) => resolve({ allow, alwaysAllow }));
-                webview.postMessage({ type: 'terminalConfirm', command, workdir: workdir ?? '', confirmId });
-                setTimeout(() => {
-                  if (pendingTerminalConfirms.delete(confirmId)) {
-                    resolve({ allow: false, reason: '您未在 60 秒内确认，命令未执行。' });
-                  }
-                }, 60000);
-              });
-              if (confirmResult.alwaysAllow) {
-                await vscode.workspace.getConfiguration('devseek').update('autopilotMode', true, vscode.ConfigurationTarget.Global);
-              }
-              if (!confirmResult.allow) return `（命令未执行：${(confirmResult as { allow: boolean; reason?: string }).reason ?? '用户拒绝'}）`;
-            }
-            const { runCommand, formatTerminalOutputForPrompt } = await import('./tools/terminal');
-            const result = await runCommand({ command, cwd: workdir, visible: false, allowRisky: !isAutopilot });
-            const outputPreview = result.output.slice(0, 4000);
-            webview.postMessage({ type: 'terminalRanNotice', command, workdir: workdir ?? '', exitCode: result.exitCode, output: outputPreview });
-            return formatTerminalOutputForPrompt(command, result);
+            return runAgentTerminalCommandWithPermission({
+              webview,
+              command,
+              workdir,
+              workspaceRoot: agWsRoot,
+              mode: intent.mode,
+              toolPolicy,
+            });
           },
           onReadFile: async (filePath: string, workDir?: string) => {
             const agWsRootFs = agWsRoot;
@@ -2480,39 +2517,14 @@ async function runChat(
           // P4-1: run_terminal tool — AI can execute shell commands from agent loop
           // G-2: replaced showWarningMessage modal with an inline confirm card in the webview
           onTerminalCommand: async (command, workdir) => {
-            const terminalPermission = decideToolPermission(toolPolicy, 'terminal');
-            if (terminalPermission.action === 'deny') {
-              return `（命令未执行：当前 ${intent.mode} 模式不允许终端工具：${terminalPermission.reason}）`;
-            }
-            const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-            if (terminalPermission.action === 'requireConfirm' || !isAutopilot) {
-              const confirmId = `tc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-              const confirmResult = await new Promise<{ allow: boolean; alwaysAllow?: boolean; reason?: string }>((resolve) => {
-                pendingTerminalConfirms.set(confirmId, (allow, alwaysAllow) => resolve({ allow, alwaysAllow }));
-                webview.postMessage({ type: 'terminalConfirm', command, workdir: workdir ?? '', confirmId });
-                // G10: Timeout returns a clear error message so the AI knows the command
-                // was NOT executed, rather than silently returning empty/false.
-                setTimeout(() => {
-                  if (pendingTerminalConfirms.delete(confirmId)) {
-                    resolve({
-                      allow: false,
-                      reason: '您未在 60 秒内确认，命令未执行。如需自动执行，请在设置中开启 Autopilot 模式。',
-                    });
-                  }
-                }, 60000);
-              });
-              if (confirmResult.alwaysAllow) {
-                await vscode.workspace.getConfiguration('devseek').update('autopilotMode', true, vscode.ConfigurationTarget.Global);
-              }
-              // G10: Return the reason so the AI can see WHY the command was not executed
-              if (!confirmResult.allow) return `（命令未执行：${(confirmResult as { allow: boolean; reason?: string }).reason ?? '用户拒绝'}）`;
-            }
-            const { runCommand, formatTerminalOutputForPrompt } = await import('./tools/terminal');
-            const result = await runCommand({ command, cwd: workdir, visible: false, allowRisky: !isAutopilot });
-            // G-3: notify webview so it can show a "Ran command" row with output
-            const outputPreview = result.output.slice(0, 4000);
-            webview.postMessage({ type: 'terminalRanNotice', command, workdir: workdir ?? '', exitCode: result.exitCode, output: outputPreview });
-            return formatTerminalOutputForPrompt(command, result);
+            return runAgentTerminalCommandWithPermission({
+              webview,
+              command,
+              workdir,
+              workspaceRoot: wsRoot.fsPath,
+              mode: intent.mode,
+              toolPolicy,
+            });
           },
           // P5-3: read_file tool — AI can read workspace files during agent loop
           // workDir = absolute path of the current task's directory (passed by executeFakeToolsForLoop).

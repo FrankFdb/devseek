@@ -4418,7 +4418,7 @@ function handleTerminalConfirm(msg) {
     + '<button class="tc-btn tc-allow-main" data-confirm-id="' + cidSafe + '" data-allow="true">允许</button>'
     + '<button class="tc-btn tc-allow-arrow" data-confirm-id="' + cidSafe + '" data-dd="' + ddId + '" title="更多选项">▾</button>'
     + '<div class="tc-dropdown" id="' + ddId + '">'
-    + '<button class="tc-btn tc-dd-item" data-confirm-id="' + cidSafe + '" data-allow="true" data-always="true">始终允许</button>'
+    + '<button class="tc-btn tc-dd-item" data-confirm-id="' + cidSafe + '" data-allow="true" data-always="true">本会话允许同类</button>'
     + '</div>'
     + '</div>'
     + '<button class="tc-btn tc-skip" data-confirm-id="' + cidSafe + '" data-allow="false">跳过</button>'

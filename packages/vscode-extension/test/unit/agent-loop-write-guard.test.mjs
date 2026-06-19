@@ -68,6 +68,17 @@ test('AgentLoop write guard: still detects config/doc shell write targets', () =
   );
 });
 
+test('AgentLoop write guard: detects Python open/write shell write targets', () => {
+  assert.equal(
+    detectShellFileWriteCommand('python3 -c "with open(\'/workspace/docs/manual-phase5-smoke.md\', \'w\') as f: f.write(\'# Phase 5 smoke\\n\')"'),
+    '/workspace/docs/manual-phase5-smoke.md',
+  );
+  assert.equal(
+    detectShellFileWriteCommand('python -c "from pathlib import Path; Path(\'docs/plan.md\').write_text(\'notes\')"'),
+    'docs/plan.md',
+  );
+});
+
 test('AgentLoop write guard: blocks nested file payload drift into an unrelated target path', () => {
   const decision = detectNestedFilePayloadDrift({
     targetAbsPath: '/workspace/packages/vscode-extension/src/app/AGENTS.md',

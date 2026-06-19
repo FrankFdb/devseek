@@ -3011,10 +3011,10 @@ ${mcpSection}
 	- 开始前先用 manage_todo_list 列出所有子任务（Copilot 规划阶段）
 	- 每个子任务开始时标为 in-progress，完成时标为 completed
 	- memory_write / 项目记忆属于智能体内部能力，不要放进 manage_todo_list，也不要作为用户可见任务展示
-	- 创建/修改文件必须调用 create_file 工具并提供完整 content；“我正在创建/将创建/现在创建”这类自然语言不算执行
+	- 创建/修改文件必须调用 create_file 工具并提供完整 content；“我正在创建/将创建/现在创建”这类自然语言不算执行；不要用 run_terminal 里的 python/echo/tee/cat 重定向写文件
 	- 用户指定“code 目录/code目录”时，必须把源码写到 ${workspaceRoot}/code/ 下；不要只描述创建，也不要把文件写到扩展目录或临时目录
 	- 你已经拥有 run_terminal/read_file/create_file 等工具；禁止声称“无法执行命令/无法访问文件/只是对话模式”。需要执行时必须调用 run_terminal，并以真实退出码和输出作为证据
-	- 只有实际写入源码文件后，才能把“代码/程序/实现”类子任务标为 completed；只有实际调用 run_terminal 得到编译/运行/测试结果后，才能把“编译/运行/测试/验证”类子任务标为 completed
+	- 只有实际写入目标文件后，才能把“创建/修改文件”类子任务标为 completed；只有代码/程序任务需要编译/运行/测试结果；文档/配置写入任务用文件存在和内容证据即可
 - 先思考"需要哪些信息"，再决定调用哪些工具
 - 一轮内可输出多个 [TOOL:...] 块（并行调用）
 - 工具结果会在下一轮作为上下文提供给你
@@ -3299,7 +3299,7 @@ export async function runAgenticLoop(
         : [];
       if (!callbacks.signal?.aborted && missingWithoutTools.length > 0 && noToolRounds < 4) {
         noToolRounds++;
-        const retryMessage = `【系统反馈】不能停在检查目录或说明阶段。当前缺少${missingWithoutTools.join('、')}。请立即调用 create_file 写入完整源码文件；随后调用 run_terminal 编译并运行验证。不要把 memory_write/项目记忆列为用户 todo。`;
+        const retryMessage = `【系统反馈】不能停在检查目录或说明阶段。当前缺少${missingWithoutTools.join('、')}。请立即调用 create_file/write_file 写入目标文件；只有代码/程序任务才需要随后调用 run_terminal 编译、运行或测试。不要把 memory_write/项目记忆列为用户 todo。`;
         messages.push({ role: 'user', content: retryMessage });
         totalChars += retryMessage.length;
         continue;

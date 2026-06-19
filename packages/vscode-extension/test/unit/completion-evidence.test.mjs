@@ -87,6 +87,36 @@ test('completion evidence: markdown file creation requires file evidence but not
   }
 });
 
+test('completion evidence: generic file todos do not turn markdown creation into code evidence', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-evidence-docs-todo-'));
+  try {
+    const file = path.join(root, 'docs', 'manual-phase5-smoke.md');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, '# Phase 5 smoke\nworkspace edit service manual test\n');
+    const docsPrompt = '创建 docs/manual-phase5-smoke.md，内容为 # Phase 5 smoke workspace edit service manual test';
+    const todos = [
+      { title: '创建/更新文件' },
+      { title: '编译/运行并验证结果' },
+    ];
+
+    assert.equal(
+      requiresCodeArtifactForEvidence(`${docsPrompt}\n${todos.map(t => t.title).join('\n')}`),
+      false,
+    );
+    assert.deepEqual(
+      getMissingCompletionEvidence(
+        docsPrompt,
+        todos,
+        [{ path: file, basename: 'manual-phase5-smoke.md', linesAdded: 2, linesRemoved: 0, action: 'create' }],
+        [{ command: 'test -f docs/manual-phase5-smoke.md', kind: 'other', ok: true, exitCode: 0 }],
+      ),
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('completion evidence: code edit requires successful validation evidence', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-evidence-'));
   try {

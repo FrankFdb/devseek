@@ -89,15 +89,17 @@ export function resolveAgentToolEvidencePath(rawPath: string, workspaceRoot: str
 }
 
 export function detectShellFileWriteCommand(cmd: string): string | undefined {
-  const patterns: RegExp[] = [
-    /\bcat\s*>\s*([^\s;&|]+)/i,
-    /\b(?:printf|echo)\b[\s\S]*?(?<!\d)>{1,2}\s*([^\s;&|]+)/i,
-    /\btee\s+(?:-a\s+)?([^\s;&|]+)/i,
+  const patterns: Array<{ regexp: RegExp; targetGroup: number }> = [
+    { regexp: /\bcat\s*>\s*([^\s;&|]+)/i, targetGroup: 1 },
+    { regexp: /\b(?:printf|echo)\b[\s\S]*?(?<!\d)>{1,2}\s*([^\s;&|]+)/i, targetGroup: 1 },
+    { regexp: /\btee\s+(?:-a\s+)?([^\s;&|]+)/i, targetGroup: 1 },
+    { regexp: /\bpython3?\s+-c\s+["'][\s\S]*?\bopen\(\s*(['"])([^'"]+)\1\s*,\s*(['"])[^'"]*[wax+][^'"]*\3/i, targetGroup: 2 },
+    { regexp: /\bpython3?\s+-c\s+["'][\s\S]*?\bPath\(\s*(['"])([^'"]+)\1\s*\)\.write_(?:text|bytes)\s*\(/i, targetGroup: 2 },
   ];
   for (const pattern of patterns) {
-    const match = pattern.exec(cmd);
+    const match = pattern.regexp.exec(cmd);
     if (!match) continue;
-    const target = cleanShellTarget(match[1] || '');
+    const target = cleanShellTarget(match[pattern.targetGroup] || '');
     if (target && isSourcePath(target)) return target;
   }
   return undefined;
