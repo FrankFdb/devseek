@@ -46,6 +46,7 @@ const suites = [
   'test/unit/generated-file-parser.test.mjs',
   'test/unit/llm-agent-loop.test.mjs',
   'test/unit/pending-edit-workflow.test.mjs',
+  'test/unit/vision-message-format.test.mjs',
   'test/unit/workflow-compliance.test.mjs',
 ];
 

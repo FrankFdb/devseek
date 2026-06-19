@@ -851,7 +851,12 @@ test('Architecture: PendingEditService owns pending edit record map', () => {
   const ext = src('src/extension.ts');
   assertContains(service, 'class PendingEditService', 'pending edit service class must exist');
   assertContains(service, 'findLatestByPath', 'pending edit service must expose path lookup');
+  assertContains(service, 'computePendingHunks', 'pending edit service must own hunk computation');
+  assertContains(service, 'renderPendingContentFromHunks', 'pending edit service must own hunk rendering');
+  assertContains(service, 'allHunksResolved', 'pending edit service must own hunk resolution checks');
   assertContains(ext, 'new PendingEditService<PendingEditRecord>()', 'extension pending edit state must use PendingEditService');
+  assert.doesNotMatch(ext, /function\s+(computePendingHunks|renderPendingContentFromHunks|allHunksResolved|lcsDiffOps)\b/, 'extension.ts must not define pending edit hunk algorithms');
+  assert.doesNotMatch(ext, /interface\s+DiffOp\b/, 'extension.ts must not own pending edit diff internals');
 });
 
 test('Architecture: fake tool parser is split from Agent Loop executor', () => {

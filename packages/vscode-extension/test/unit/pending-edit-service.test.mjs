@@ -16,7 +16,12 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { PendingEditService } = req(bundlePath);
+const {
+  allHunksResolved,
+  computePendingHunks,
+  PendingEditService,
+  renderPendingContentFromHunks,
+} = req(bundlePath);
 
 test('PendingEditService: stores and removes records by id', () => {
   const service = new PendingEditService();
@@ -41,6 +46,36 @@ test('PendingEditService: clear removes all records', () => {
   service.set('2', { id: '2', path: 'b', createdAt: 2 });
   service.clear();
   assert.equal(Array.from(service.values()).length, 0);
+});
+
+test('PendingEditService: computes disjoint pending hunks deterministically', () => {
+  const hunks = computePendingHunks('r1', 'a\nb\nc\nd\ne', 'A\nb\nc\nd\nE');
+
+  assert.equal(hunks.length, 2);
+  assert.deepEqual(hunks.map(h => h.id), ['r1-h1', 'r1-h2']);
+  assert.deepEqual(hunks.map(h => h.oldLines), [['a'], ['e']]);
+  assert.deepEqual(hunks.map(h => h.newLines), [['A'], ['E']]);
+  assert.ok(hunks.every(h => h.resolution === 'pending'));
+});
+
+test('PendingEditService: renders kept and undone hunk resolutions in order', () => {
+  const hunks = computePendingHunks('r2', 'a\nb\nc\nd', 'A\nb\nC\nd');
+  hunks[0].resolution = 'kept';
+  hunks[1].resolution = 'undone';
+
+  const result = renderPendingContentFromHunks({ oldContent: 'a\nb\nc\nd', hunks });
+
+  assert.equal(result, 'A\nb\nc\nd');
+  assert.equal(allHunksResolved({ hunks }), true);
+});
+
+test('PendingEditService: pending hunk keeps record unresolved', () => {
+  const hunks = computePendingHunks('r3', 'a\nb', 'A\nB');
+  hunks[0].resolution = 'kept';
+
+  assert.equal(allHunksResolved({ hunks }), true);
+  hunks[0].resolution = 'pending';
+  assert.equal(allHunksResolved({ hunks }), false);
 });
 
 console.log('\nPending edit service tests passed.\n');
