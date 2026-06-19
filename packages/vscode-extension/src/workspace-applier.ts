@@ -210,6 +210,22 @@ async function applyPreparedChanges(
     };
   }
 
+  const truncatingOverwrite = prepared.find((change) => isSuspiciousTruncatingOverwrite(change, requestPrompt));
+  if (truncatingOverwrite) {
+    await reportWorkflow(reporter, {
+      phase: 'apply',
+      state: 'failed',
+      title: '已阻止写入（疑似截断覆盖）',
+      detail: buildTruncatingOverwriteDetail(truncatingOverwrite),
+    });
+    vscode.window.showErrorMessage(`DeepSeek: 已阻止 ${truncatingOverwrite.relPath} 的疑似截断覆盖，本轮未写入文件。`);
+    return {
+      applied: false,
+      changeCount: 0,
+      changedPaths: [],
+    };
+  }
+
   await reportWorkflow(reporter, {
     phase: 'apply',
     state: 'started',
@@ -394,6 +410,45 @@ function detectWriteDrift(
 ): string | undefined {
   void root;
   return detectWriteDriftForRelPaths(prepared.map((change) => change.relPath), ctx);
+}
+
+function isSuspiciousTruncatingOverwrite(change: PreparedChange, requestPrompt?: string): boolean {
+  if (change.action.type !== 'overwrite-file' || !change.exists) return false;
+  if (allowsLargeRewrite(requestPrompt)) return false;
+
+  const oldContent = change.oldContent.trim();
+  const newContent = change.newContent.trim();
+  if (oldContent.length < 400) return false;
+  if (!newContent) return true;
+
+  const oldLines = countMeaningfulLines(oldContent);
+  const newLines = countMeaningfulLines(newContent);
+  const shortByBytes = newContent.length < Math.max(120, oldContent.length * 0.25);
+  const shortByLines = oldLines >= 40 && newLines < Math.max(8, oldLines * 0.35);
+  return shortByBytes || shortByLines;
+}
+
+function allowsLargeRewrite(requestPrompt?: string): boolean {
+  const text = String(requestPrompt || '');
+  if (/(重写|重新实现|从零|全量覆盖|替换整个|rewrite|reimplement|from\s+scratch|replace\s+(?:the\s+)?entire)/i.test(text)) {
+    return true;
+  }
+  return /(清空|删除|移除|clear|delete|remove)/i.test(text)
+    && /(文件|整个|全部|全量|file|\.[A-Za-z0-9]+(?:\s|$|[，。,.]))/i.test(text);
+}
+
+function countMeaningfulLines(text: string): number {
+  return text.split(/\r?\n/).filter((line) => line.trim().length > 0).length;
+}
+
+function buildTruncatingOverwriteDetail(change: PreparedChange): string {
+  const oldLines = countMeaningfulLines(change.oldContent);
+  const newLines = countMeaningfulLines(change.newContent);
+  return [
+    `${change.relPath} 原文件约 ${oldLines} 行，新候选约 ${newLines} 行。`,
+    '当前请求不是明确的整文件重写/删除，已按安全策略阻止写入。',
+    '请让模型输出局部 diff，或明确说明要整文件重写后再执行。',
+  ].join('\n');
 }
 
 async function rollbackPreparedChanges(prepared: PreparedChange[], createdDirs?: Set<string>): Promise<void> {

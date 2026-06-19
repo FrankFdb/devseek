@@ -211,6 +211,39 @@ test('workspace-applier: single explicit file fix rejects stale unrelated genera
   }
 });
 
+test('workspace-applier: blocks suspicious truncating overwrite for small fix request', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-truncating-overwrite-'));
+  const appDir = path.join(root, 'packages', 'vscode-extension', 'src', 'app');
+  mkdirSync(appDir, { recursive: true });
+  const target = path.join(appDir, 'workflow-service.ts');
+  const original = Array.from({ length: 120 }, (_, i) => `export const value${i} = ${i};`).join('\n') + '\n';
+  writeFileSync(target, original);
+  fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+
+  try {
+    const raw = [
+      'packages/vscode-extension/src/app/workflow-service.ts',
+      '```ts',
+      'export {};',
+      '```',
+    ].join('\n');
+    const prompt = '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题';
+    const statuses = [];
+
+    const result = await applyGeneratedArtifactsWithPrompt(raw, prompt, (status) => statuses.push(status), true);
+
+    assert.equal(result.applied, false);
+    assert.deepEqual(result.changedPaths, []);
+    assert.equal(readFileSync(target, 'utf8'), original);
+    assert.equal(
+      statuses.some((status) => status.phase === 'apply' && status.state === 'failed' && status.title === '已阻止写入（疑似截断覆盖）'),
+      true,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('workspace-applier: generated basename files use project path hints instead of code root', async () => {
   const { root, projectDir } = createShapeManagerWorkspace();
   try {

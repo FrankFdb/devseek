@@ -65,6 +65,84 @@ function normalizeGeneratedContentDisplayMode(mode) {
   return 'collapsed';
 }
 
+const SHELL_TRANSCRIPT_NAMES = {
+  bash: true, shell: true, sh: true, zsh: true, console: true, terminal: true,
+  cmd: true, powershell: true, pwsh: true,
+};
+
+function isShellTranscriptName(name) {
+  return !!SHELL_TRANSCRIPT_NAMES[String(name || '').toLowerCase()];
+}
+
+function lineEndAfter(text, index) {
+  const next = text.indexOf('\n', Math.max(0, index));
+  return next < 0 ? text.length : next + 1;
+}
+
+function skipBlankLines(text, index) {
+  let cursor = index;
+  while (cursor < text.length) {
+    const end = lineEndAfter(text, cursor);
+    if (text.slice(cursor, end).trim()) break;
+    cursor = end;
+  }
+  return cursor;
+}
+
+function isShellCommandLine(line) {
+  const first = String(line || '').trim().replace(/^\$\s*/, '').replace(/^>\s*/, '');
+  return /^(?:cat|type|get-content|find|rg|grep|sed|head|tail|ls|dir|pwd|cd|npm|npx|pnpm|yarn|node|git|python|python3|bash|sh|zsh|cmd|powershell|pwsh|mkdir|cp|mv|rm|touch|code|g\+\+|gcc|clang|make|cmake|go|cargo|pytest|mvn|gradle|docker|curl|wget)\b/i.test(first)
+    || /[|;&<>]/.test(first);
+}
+
+function fenceEnd(text, fenceStart) {
+  let search = lineEndAfter(text, fenceStart);
+  while (search < text.length) {
+    const idx = text.indexOf('```', search);
+    if (idx < 0) return text.length;
+    const lineStart = idx === 0 ? 0 : text.lastIndexOf('\n', idx - 1) + 1;
+    if (/^[ \t]*```/.test(text.slice(lineStart, idx + 3))) {
+      return lineEndAfter(text, idx + 3);
+    }
+    search = idx + 3;
+  }
+  return text.length;
+}
+
+function shellTranscriptEnd(text, callEnd) {
+  const cursor = skipBlankLines(text, lineEndAfter(text, callEnd));
+  if (cursor >= text.length) return text.length;
+  if (/^[ \t]*```/.test(text.slice(cursor, cursor + 8))) return fenceEnd(text, cursor);
+  const firstLineEnd = lineEndAfter(text, cursor);
+  if (!isShellCommandLine(text.slice(cursor, firstLineEnd))) return text.length;
+  let end = firstLineEnd;
+  while (end < text.length) {
+    const lineEnd = lineEndAfter(text, end);
+    if (!text.slice(end, lineEnd).trim()) return lineEnd;
+    end = lineEnd;
+  }
+  return text.length;
+}
+
+function stripCallingShellTranscriptBlocksFromText(text) {
+  let out = '';
+  let i = 0;
+  const callRe = /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
+  while (i < text.length) {
+    callRe.lastIndex = i;
+    const m = callRe.exec(text);
+    if (!m) { out += text.slice(i); break; }
+    if (!isShellTranscriptName(m[1])) {
+      out += text.slice(i, m.index + 1);
+      i = m.index + 1;
+      continue;
+    }
+    out += text.slice(i, m.index);
+    i = shellTranscriptEnd(text, callRe.lastIndex);
+  }
+  return out;
+}
+
 function stripToolCallBlocks(text) {
   const raw = String(text || '');
   let result = '';
@@ -107,6 +185,9 @@ function stripToolCallBlocks(text) {
     result += raw[i];
     i++;
   }
+  const beforeShellCleanup = result;
+  result = stripCallingShellTranscriptBlocksFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeShellCleanup;
   const beforeCallingCleanup = result;
   result = result.replace(/Calling\s*:?(?:\s+tool)?\s*\[?`?\w+`?\]?\s*\{[\s\S]*?\}/gi, '');
   removedInternalBlock = removedInternalBlock || result !== beforeCallingCleanup;
@@ -116,6 +197,7 @@ function stripToolCallBlocks(text) {
 
 function containsAgentInternalTranscript(text) {
   return /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
+    || /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
     || /(?:^|\n)\s*(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
     || /(?:^|\n)\s*\[(?:工具结果|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(text)
     || /\b(?:run_terminal|manage_todo_list|task_complete|stdout|stderr|exitCode|exit code)\b/i.test(text)
@@ -131,6 +213,7 @@ function cleanAgentFinalProseForUser(text) {
     const s = line.trim();
     if (!s) return true;
     if (/^\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(s)) return false;
+    if (/^(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(s)) return false;
     if (/^(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
     if (/^\[(?:工具结果|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(s)) return false;
     if (/^\$\s+\S+/.test(s)) return false;
@@ -313,6 +396,28 @@ test('non-agent delta: suppresses screenshot-like multi-tool transcript', () => 
     '[TOOL:manage_todo_list {"todoList":[{"id":"1","title":"创建 Hello World","status":"in-progress"}]}]',
     '[TOOL:create_file {"path":"code/hello.cpp","content":"#include <iostream>\\nint main() { return 0; }\\n"}]',
     '[TOOL:run_terminal {"command":"cd /home/ff/work/devseek_netai/code && g++ hello.cpp -o hello"}]',
+  ].join('\n');
+  assert.equal(sanitizeVisibleDeltaForMode(leaked, false), '');
+});
+
+test('non-agent delta: strips inline bash calling transcript with fenced command', () => {
+  const leaked = [
+    '我需要先找到并读取 `workflow-service.ts` 文件。 Calling: bash',
+    '```CODE',
+    'find packages/vscode-extension/src/app -name "workflow-service.ts" -type f',
+    '```',
+  ].join('\n');
+  const cleaned = sanitizeVisibleDeltaForMode(leaked, false);
+  assert.match(cleaned, /我需要先找到并读取/);
+  assert.doesNotMatch(cleaned, /Calling|bash|find packages|CODE/);
+});
+
+test('non-agent delta: suppresses standalone bash transcript', () => {
+  const leaked = [
+    'Calling: bash',
+    '```bash',
+    'cat packages/vscode-extension/src/app/workflow-service.ts',
+    '```',
   ].join('\n');
   assert.equal(sanitizeVisibleDeltaForMode(leaked, false), '');
 });

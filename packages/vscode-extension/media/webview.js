@@ -1460,6 +1460,93 @@ var WEBVIEW_TOOL_NAMES = {
   manage_todo_list: true, task_complete: true,
 };
 
+var WEBVIEW_SHELL_TRANSCRIPT_NAMES = {
+  bash: true, shell: true, sh: true, zsh: true, console: true, terminal: true,
+  cmd: true, powershell: true, pwsh: true,
+};
+
+function isWebviewShellTranscriptName(name) {
+  return !!WEBVIEW_SHELL_TRANSCRIPT_NAMES[String(name || '').toLowerCase()];
+}
+
+function webviewLineEndAfter(text, index) {
+  var next = text.indexOf('\n', Math.max(0, index));
+  return next < 0 ? text.length : next + 1;
+}
+
+function webviewSkipBlankLines(text, index) {
+  var cursor = index;
+  while (cursor < text.length) {
+    var end = webviewLineEndAfter(text, cursor);
+    if (text.slice(cursor, end).trim()) break;
+    cursor = end;
+  }
+  return cursor;
+}
+
+function isWebviewShellCommandLine(line) {
+  var first = String(line || '').trim().replace(/^\$\s*/, '').replace(/^>\s*/, '');
+  return /^(?:cat|type|get-content|find|rg|grep|sed|head|tail|ls|dir|pwd|cd|npm|npx|pnpm|yarn|node|git|python|python3|bash|sh|zsh|cmd|powershell|pwsh|mkdir|cp|mv|rm|touch|code|g\+\+|gcc|clang|make|cmake|go|cargo|pytest|mvn|gradle|docker|curl|wget)\b/i.test(first)
+    || /[|;&<>]/.test(first);
+}
+
+function findWebviewFenceEnd(text, fenceStart) {
+  var firstLineEnd = webviewLineEndAfter(text, fenceStart);
+  var search = firstLineEnd;
+  while (search < text.length) {
+    var idx = text.indexOf('```', search);
+    if (idx < 0) return text.length;
+    var lineStart = idx === 0 ? 0 : text.lastIndexOf('\n', idx - 1) + 1;
+    if (/^[ \t]*```/.test(text.slice(lineStart, idx + 3))) {
+      return webviewLineEndAfter(text, idx + 3);
+    }
+    search = idx + 3;
+  }
+  return text.length;
+}
+
+function findWebviewShellTranscriptEnd(text, callEnd) {
+  var cursor = webviewSkipBlankLines(text, webviewLineEndAfter(text, callEnd));
+  if (cursor >= text.length) return text.length;
+
+  if (/^[ \t]*```/.test(text.slice(cursor, cursor + 8))) {
+    return findWebviewFenceEnd(text, cursor);
+  }
+
+  var firstLineEnd = webviewLineEndAfter(text, cursor);
+  var firstLine = text.slice(cursor, firstLineEnd);
+  if (!isWebviewShellCommandLine(firstLine)) {
+    return text.length;
+  }
+
+  var end = firstLineEnd;
+  while (end < text.length) {
+    var lineEnd = webviewLineEndAfter(text, end);
+    if (!text.slice(end, lineEnd).trim()) return lineEnd;
+    end = lineEnd;
+  }
+  return text.length;
+}
+
+function stripCallingShellTranscriptBlocksFromText(text) {
+  var out = '';
+  var i = 0;
+  var callRe = /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
+  while (i < text.length) {
+    callRe.lastIndex = i;
+    var m = callRe.exec(text);
+    if (!m) { out += text.slice(i); break; }
+    if (!isWebviewShellTranscriptName(m[1])) {
+      out += text.slice(i, m.index + 1);
+      i = m.index + 1;
+      continue;
+    }
+    out += text.slice(i, m.index);
+    i = findWebviewShellTranscriptEnd(text, callRe.lastIndex);
+  }
+  return out;
+}
+
 function stripCallingToolBlocksFromText(text) {
   var out = '';
   var i = 0;
@@ -1617,6 +1704,9 @@ function stripToolCallBlocks(text) {
   //   Calling `manage_todo_list`
   //   {"todoList":[...]}
   // These are internal tool transcripts and must never render as assistant prose.
+  var beforeShellCleanup = result;
+  result = stripCallingShellTranscriptBlocksFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeShellCleanup;
   var beforeCallingCleanup = result;
   result = stripCallingToolBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeCallingCleanup;
@@ -1641,6 +1731,7 @@ function sanitizeAgentVisibleDelta(text) {
 
 function containsAgentInternalTranscript(text) {
   return /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
+    || /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
     || /(?:^|\n)\s*(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
     || /(?:^|\n)\s*\[(?:工具结果|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(text)
     || /\b(?:run_terminal|manage_todo_list|task_complete|stdout|stderr|exitCode|exit code)\b/i.test(text)
@@ -1660,6 +1751,7 @@ function cleanAgentFinalProseForUser(text) {
     var s = line.trim();
     if (!s) return true;
     if (/^\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(s)) return false;
+    if (/^(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(s)) return false;
     if (/^(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
     if (/^\[(?:工具结果|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(s)) return false;
     if (/^\$\s+\S+/.test(s)) return false;

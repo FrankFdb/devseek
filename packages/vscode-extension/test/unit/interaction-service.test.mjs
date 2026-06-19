@@ -80,6 +80,8 @@ test('InteractionService: complex refactor asks for plan review first', () => {
   assert.equal(request?.kind, 'planReview');
   assert.equal(request.options[0].id, 'plan');
   assert.equal(request.options[1].id, 'continue');
+  assert.match(request.options[0].prompt, /推荐默认边界/);
+  assert.match(request.options[0].prompt, /不要输出大量 A\/B\/C 问卷/);
   assert.match(request.details.join('\n'), /权限模式：plan/);
 });
 
