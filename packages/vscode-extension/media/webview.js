@@ -303,7 +303,7 @@ function clearAnalysisRenderTimer() {
 
 function renderStreamingBubbleNow() {
   if (!currentBubble) return;
-  var streamDisplay = isAgentMode ? stripToolCallBlocks(currentRaw) : currentRaw;
+  var streamDisplay = renderVisibleAssistantText(currentRaw);
   currentBubble.innerHTML = md(streamDisplay) + '<span class="cursor"></span>';
   pruneEmptyRenderedBlocks(currentBubble);
   streamRenderPending = false;
@@ -1727,6 +1727,28 @@ function sanitizeAgentVisibleDelta(text) {
   var cleaned = stripToolCallBlocks(raw);
   if (!cleaned && (raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw))) return '';
   return cleaned;
+}
+
+function stripIncompleteCallingTail(text) {
+  var raw = String(text || '');
+  var m = /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.exec(raw);
+  return m ? raw.slice(0, m.index).trimEnd() : raw;
+}
+
+function containsPotentialInternalCallingTail(text) {
+  return /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.test(String(text || ''));
+}
+
+function sanitizeAssistantVisibleText(text) {
+  var raw = String(text || '');
+  if (!raw) return '';
+  var cleaned = stripIncompleteCallingTail(stripToolCallBlocks(raw)).trim();
+  if (!cleaned && (raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw) || containsPotentialInternalCallingTail(raw))) return '';
+  return cleaned;
+}
+
+function renderVisibleAssistantText(text) {
+  return isAgentMode ? stripToolCallBlocks(text || '') : sanitizeAssistantVisibleText(text || '');
 }
 
 function containsAgentInternalTranscript(text) {
@@ -5490,7 +5512,7 @@ window.addEventListener('message', function(event) {
         if (staleParent) staleParent.remove();
       } else {
         // Has partial content — strip the cursor but keep the text
-        currentBubble.innerHTML = md(stripToolCallBlocks(currentRaw));
+        currentBubble.innerHTML = md(renderVisibleAssistantText(currentRaw));
       }
       currentBubble = null;
       currentRaw = '';
@@ -5668,7 +5690,7 @@ window.addEventListener('message', function(event) {
 
       // 生成已结束，立即渲染（不带光标），这样 mermaid 图表尽早显示
       var resetBubble = currentBubble;
-      var displayRaw = isAgentMode ? stripToolCallBlocks(currentRaw) : currentRaw;
+      var displayRaw = renderVisibleAssistantText(currentRaw);
       resetBubble.innerHTML = md(displayRaw);
       if (isAgentMode && !pruneEmptyRenderedBlocks(resetBubble)) {
         if (resetBubble.parentElement) resetBubble.parentElement.remove();
@@ -5788,16 +5810,21 @@ window.addEventListener('message', function(event) {
             addGeneratedFilesActions(endBubble, currentRaw, currentRequestPrompt);
             maybeScrollToBottom();
           } else {
-            endBubble.innerHTML = md(currentRaw);
-            pruneEmptyRenderedBlocks(endBubble);
-            enhanceCodeVisuals(endBubble);
-            pruneEmptyRenderedBlocks(endBubble);
-            renderMermaidBlocks(endBubble).then(function() {
-              addCodeToolbars(endBubble);
+            var nonAgentEndDisplay = sanitizeAssistantVisibleText(currentRaw);
+            if (nonAgentEndDisplay) {
+              endBubble.innerHTML = md(nonAgentEndDisplay);
               pruneEmptyRenderedBlocks(endBubble);
-              addGeneratedFilesActions(endBubble, currentRaw, currentRequestPrompt);
-              maybeScrollToBottom();
-            });
+              enhanceCodeVisuals(endBubble);
+              pruneEmptyRenderedBlocks(endBubble);
+              renderMermaidBlocks(endBubble).then(function() {
+                addCodeToolbars(endBubble);
+                pruneEmptyRenderedBlocks(endBubble);
+                addGeneratedFilesActions(endBubble, currentRaw, currentRequestPrompt);
+                maybeScrollToBottom();
+              });
+            } else if (endBubble.parentElement) {
+              endBubble.parentElement.remove();
+            }
           }
         } else {
           if (forceHiddenAtEnd) {
@@ -5885,7 +5912,7 @@ window.addEventListener('message', function(event) {
       if (turn) turn.remove();
     } else if (currentBubble) {
       // 有部分内容：保留已显示内容，去掉光标
-      currentBubble.innerHTML = md(currentRaw);
+      currentBubble.innerHTML = md(renderVisibleAssistantText(currentRaw));
     }
     stopGenerating();
     if (msg.loginRequired) {

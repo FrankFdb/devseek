@@ -233,12 +233,27 @@ function sanitizeAgentVisibleDelta(text) {
   return cleaned;
 }
 
+function stripIncompleteCallingTail(text) {
+  const raw = String(text || '');
+  const m = /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.exec(raw);
+  return m ? raw.slice(0, m.index).trimEnd() : raw;
+}
+
+function containsPotentialInternalCallingTail(text) {
+  return /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.test(String(text || ''));
+}
+
+function sanitizeAssistantVisibleText(text) {
+  const raw = String(text || '');
+  if (!raw) return '';
+  const cleaned = stripIncompleteCallingTail(stripToolCallBlocks(raw)).trim();
+  if (!cleaned && (raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw) || containsPotentialInternalCallingTail(raw))) return '';
+  return cleaned;
+}
+
 function sanitizeVisibleDeltaForMode(text, isAgentMode) {
   const raw = String(text || '');
-  if (isAgentMode || raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw)) {
-    return sanitizeAgentVisibleDelta(raw);
-  }
-  return raw;
+  return isAgentMode ? sanitizeAgentVisibleDelta(raw) : sanitizeAssistantVisibleText(raw);
 }
 
 // ── escapeHtml tests ──────────────────────────────────────────────────────────
@@ -410,6 +425,21 @@ test('non-agent delta: strips inline bash calling transcript with fenced command
   const cleaned = sanitizeVisibleDeltaForMode(leaked, false);
   assert.match(cleaned, /我需要先找到并读取/);
   assert.doesNotMatch(cleaned, /Calling|bash|find packages|CODE/);
+});
+
+test('non-agent accumulated render: hides split bash calling transcript', () => {
+  let accumulated = '我需要先找到并读取 `workflow-service.ts` 文件。 Calling:';
+  assert.equal(sanitizeVisibleDeltaForMode(accumulated, false), '我需要先找到并读取 `workflow-service.ts` 文件。');
+
+  accumulated += [
+    ' bash',
+    '```CODE',
+    'cat packages/vscode-extension/src/app/workflow-service.ts 2>/dev/null',
+    '```',
+  ].join('\n');
+  const cleaned = sanitizeVisibleDeltaForMode(accumulated, false);
+  assert.match(cleaned, /我需要先找到并读取/);
+  assert.doesNotMatch(cleaned, /Calling|bash|cat packages|CODE/);
 });
 
 test('non-agent delta: suppresses standalone bash transcript', () => {
