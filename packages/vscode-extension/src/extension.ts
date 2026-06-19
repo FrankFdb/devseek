@@ -2158,10 +2158,10 @@ async function runChat(
               return null;
             };
             if (nodePath.isAbsolute(filePath)) { const r = tryRead(filePath); if (r !== null) return r; }
+            if (workDir) { const r = tryRead(nodePath.resolve(workDir, filePath)); if (r !== null) return r; }
             const byBasename = sessionRecentFiles.get(nodePath.basename(filePath).toLowerCase());
             if (byBasename) { const r = tryRead(byBasename); if (r !== null) return r; }
             if (agWsRootFs) { const r = tryRead(nodePath.join(agWsRootFs, filePath)); if (r !== null) return r; }
-            if (workDir) { const r = tryRead(nodePath.resolve(workDir, filePath)); if (r !== null) return r; }
             const content = await readWorkspaceFile(filePath, []);
             if (!content) throw new Error(`找不到文件：${filePath}`);
             return content.slice(0, 8000);
@@ -2641,21 +2641,21 @@ async function runChat(
               try { if (statSync(p).isFile()) return readFileSync(p, 'utf8').slice(0, 8000); } catch {}
               return null;
             }
-            // P0: sessionRecentFiles dict — basename or rel-path lookup first
-            const byBasename = sessionRecentFiles.get(nodePath.basename(filePath).toLowerCase());
-            if (byBasename) { const r = tryRead(byBasename); if (r !== null) return r; }
-            const byRel = sessionRecentFiles.get(filePath);
-            if (byRel && byRel !== byBasename) { const r = tryRead(byRel); if (r !== null) return r; }
-            // P1: workDir-relative (path.resolve handles ../ correctly)
-            if (workDir && !nodePath.isAbsolute(filePath)) {
-              const candidate = nodePath.resolve(workDir, filePath);
-              const wsRootPath = wsRoot.fsPath;
-              if (wsRootPath && candidate.startsWith(wsRootPath)) {
-                const r = tryRead(candidate);
-                if (r !== null) return r;
-              }
-            }
-            // P2: normal workspace-relative / absolute resolution via bridge + VS Code API.
+	            // P1: workDir-relative (path.resolve handles ../ correctly)
+	            if (workDir && !nodePath.isAbsolute(filePath)) {
+	              const candidate = nodePath.resolve(workDir, filePath);
+	              const wsRootPath = wsRoot.fsPath;
+	              if (wsRootPath && candidate.startsWith(wsRootPath)) {
+	                const r = tryRead(candidate);
+	                if (r !== null) return r;
+	              }
+	            }
+	            // P2: sessionRecentFiles dict — basename or rel-path lookup after task scope
+	            const byBasename = sessionRecentFiles.get(nodePath.basename(filePath).toLowerCase());
+	            if (byBasename) { const r = tryRead(byBasename); if (r !== null) return r; }
+	            const byRel = sessionRecentFiles.get(filePath);
+	            if (byRel && byRel !== byBasename) { const r = tryRead(byRel); if (r !== null) return r; }
+	            // P3: normal workspace-relative / absolute resolution via bridge + VS Code API.
             const content = await readWorkspaceFile(filePath, []);
             if (!content) throw new Error(`找不到文件：${filePath}`);
             return content.slice(0, 8000);

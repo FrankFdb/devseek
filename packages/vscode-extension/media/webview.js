@@ -660,11 +660,13 @@ function loadSessionMessages(history, summary, changedFiles, messageCount, creat
         ? '▾ 对话记录 (' + history.length + '条)'
         : '▸ 对话记录 (' + history.length + '条)';
     });
+    var lastUserPrompt = '';
     history.forEach(function(m) {
       if (m.role === 'user') {
+        lastUserPrompt = m.content || '';
         histWrap.appendChild(createRestoredUserTurn(m.content));
       } else if (m.role === 'assistant') {
-        histWrap.appendChild(createRestoredAssistantTurn(m.content));
+        histWrap.appendChild(createRestoredAssistantTurn(m.content, lastUserPrompt));
       }
     });
     messagesEl.appendChild(histToggle);
@@ -688,13 +690,12 @@ function createRestoredUserTurn(text) {
   return turn;
 }
 
-function createRestoredAssistantTurn(text) {
+function createRestoredAssistantTurn(text, promptText) {
   var turn = document.createElement('div');
   turn.className = 'turn assistant-turn';
   var bubble = document.createElement('div');
   bubble.className = 'assistant-bubble';
-  bubble.innerHTML = md(text);
-  addCodeToolbars(bubble);
+  renderRestoredAssistantContent(bubble, text, promptText);
   turn.appendChild(bubble);
   return turn;
 }
@@ -5349,9 +5350,19 @@ function shouldSuppressGeneratedStreaming(promptText, rawText) {
 
   if (countGeneratedFileCandidates(rawText || '') >= 1) return true;
 
+  return promptLooksLikeGeneratedContentRequest(promptText);
+}
+
+function promptLooksLikeGeneratedContentRequest(promptText) {
   var p = (promptText || '').toLowerCase();
   return /(创建|生成|新建|编写|create|generate|scaffold|boilerplate)/i.test(p)
     && /(文件|目录|folder|file|code\/[a-z0-9_./-]+)/i.test(p);
+}
+
+function shouldCollapseRestoredGeneratedContent(promptText, rawText) {
+  if (normalizeGeneratedContentDisplayMode(generatedContentDisplayMode) === 'full') return false;
+  if (countGeneratedFileCandidates(rawText || '') >= 1) return true;
+  return promptLooksLikeGeneratedContentRequest(promptText);
 }
 
 function renderGeneratedStreamingPlaceholder(container, rawText) {
@@ -5446,6 +5457,32 @@ function renderGeneratedFinalPlaceholder(container, rawText) {
   }
 }
 
+function finishAssistantContentRender(container, onDone) {
+  pruneEmptyRenderedBlocks(container);
+  enhanceCodeVisuals(container);
+  collapseTerminalOutputBlocks(container);
+  pruneEmptyRenderedBlocks(container);
+  renderMermaidBlocks(container).then(function() {
+    addCodeToolbars(container);
+    pruneEmptyRenderedBlocks(container);
+    if (typeof onDone === 'function') onDone();
+  });
+}
+
+function renderRestoredAssistantContent(container, text, promptText) {
+  var visibleText = renderVisibleAssistantText(text || '');
+  if (!visibleText) {
+    container.innerHTML = '';
+    return;
+  }
+  if (shouldCollapseRestoredGeneratedContent(promptText, visibleText)) {
+    container.innerHTML = buildResponseWithCollapsedCode(visibleText);
+  } else {
+    container.innerHTML = md(visibleText);
+  }
+  finishAssistantContentRender(container);
+}
+
 function extractRequestedFileCount(promptText) {
   if (!promptText) return 0;
   var m = String(promptText).match(/(输出|生成|创建|新建)\s*(\d+)\s*(个|份)?\s*文件/i);
@@ -5480,13 +5517,7 @@ function getResponseMetaPathRefs() {
 
 function renderAssistantBody(container, rawText) {
   container.innerHTML = md(rawText);
-  pruneEmptyRenderedBlocks(container);
-  enhanceCodeVisuals(container);
-  pruneEmptyRenderedBlocks(container);
-  renderMermaidBlocks(container).then(function() {
-    addCodeToolbars(container);
-    pruneEmptyRenderedBlocks(container);
-  });
+  finishAssistantContentRender(container);
 }
 
 function extractGeneratedPathRefs(rawText) {

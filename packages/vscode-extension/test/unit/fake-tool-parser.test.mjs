@@ -48,6 +48,21 @@ test('FakeToolParser: parses DeepSeek Calling transcript format', () => {
   assert.equal(tools[0].input.command, 'npm test');
 });
 
+test('FakeToolParser: parses bash Calling JSON command payload as shell command', () => {
+  const text = [
+    '我先查找这个文件。',
+    'Calling: bash',
+    '{"command":"find /home/ff/work/devseek_netai/packages/vscode-extension/src/app -name \\"*.ts\\" 2>/dev/null | head -1"}',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'file_search');
+  assert.deepEqual(tools[0].input, {
+    glob: '/home/ff/work/devseek_netai/packages/vscode-extension/src/app/**/*.ts',
+  });
+});
+
 test('FakeToolParser: strips raw tool transcripts from user-facing text', () => {
   const text = [
     '准备执行验证。',

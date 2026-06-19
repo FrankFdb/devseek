@@ -237,10 +237,24 @@ test('§8.3 File edits: code directory prompts force generated code paths under 
 
 test('Path memory: tool callbacks use inferred workspace root instead of workspaceFolders[0]', () => {
   const code = src('src/extension.ts');
+  const freeExploreReadStart = code.indexOf('onReadFile: async (filePath: string, workDir?: string)');
+  const freeExploreReadEnd = code.indexOf('onGrepSearch: async (pattern: string, path?: string, _isRegexp?: boolean, workDir?: string)', freeExploreReadStart);
+  const freeExploreReadBlock = code.slice(freeExploreReadStart, freeExploreReadEnd);
+  const editorReadStart = code.indexOf('onReadFile: async (filePath, workDir?: string)');
+  const editorReadEnd = code.indexOf('// grep_search tool', editorReadStart);
+  const editorReadBlock = code.slice(editorReadStart, editorReadEnd);
   assert.match(
     code,
     /onReadFile: async \(filePath: string, workDir\?: string\)[\s\S]*?const agWsRootFs = agWsRoot;/,
     'free-explore read_file must anchor to inferred agWsRoot',
+  );
+  assert.ok(
+    freeExploreReadBlock.indexOf('nodePath.resolve(workDir, filePath)') < freeExploreReadBlock.indexOf('nodePath.join(agWsRootFs, filePath)'),
+    'free-explore read_file must prefer task workDir before workspace-root fallback',
+  );
+  assert.ok(
+    freeExploreReadBlock.indexOf('nodePath.resolve(workDir, filePath)') < freeExploreReadBlock.indexOf('sessionRecentFiles.get'),
+    'free-explore read_file must prefer task workDir before session basename memory',
   );
   assert.match(
     code,
@@ -251,6 +265,10 @@ test('Path memory: tool callbacks use inferred workspace root instead of workspa
     code,
     /const wsRootPath = wsRoot\.fsPath;[\s\S]*?candidate\.startsWith\(wsRootPath\)/,
     'editor read_file workDir validation must use the selected task workspace root',
+  );
+  assert.ok(
+    editorReadBlock.indexOf('nodePath.resolve(workDir, filePath)') < editorReadBlock.indexOf('sessionRecentFiles.get'),
+    'editor read_file must prefer task workDir before session basename memory',
   );
   assert.doesNotMatch(
     code,
@@ -561,11 +579,12 @@ test('Local execution failures escalate into Agent repair instead of browser upl
 
 test('Agentic loop: repeated terminal failures enter root-cause recovery before retry', () => {
   const code = src('src/agent-loop.ts');
+  const recovery = src('src/agent/write-guard.ts');
   assertContains(code, 'getTerminalRecoveryProtocol', 'terminal recovery protocol helper');
-  assertContains(code, '根因分析', 'recovery prompt must require root-cause analysis');
-  assertContains(code, '禁止再次执行同一命令直到完成根因修复', 'recovery prompt must block blind retry');
-  assertContains(code, 'read_file / grep_search / get_errors', 'recovery prompt must require evidence collection');
-  assertContains(code, 'create_file / write_file 或 SEARCH/REPLACE', 'recovery prompt must require a repair action');
+  assertContains(recovery, '根因分析', 'recovery prompt must require root-cause analysis');
+  assertContains(recovery, '禁止再次执行同一命令直到完成根因修复', 'recovery prompt must block blind retry');
+  assertContains(recovery, 'read_file / grep_search / get_errors', 'recovery prompt must require evidence collection');
+  assertContains(recovery, 'create_file / write_file 或 SEARCH/REPLACE', 'recovery prompt must require a repair action');
   assert.match(
     code,
     /blockedRepeatedTerminalToolIndexes[\s\S]*?toolsToExecute[\s\S]*?executeFakeToolsForLoop\(\s*toolsToExecute,/,

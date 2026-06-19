@@ -72,6 +72,14 @@ import {
   type FakeTool,
 } from './agent/fake-tool-parser';
 import { AgentToolExecutor } from './agent/tool-executor';
+import {
+  detectShellFileWriteCommand,
+  getTerminalRecoveryProtocol,
+  isInsideWorkspacePath,
+  makeTerminalCmdSignature,
+  resolveAgentToolEvidencePath,
+  shouldBlockUnverifiedSourceOverwrite,
+} from './agent/write-guard';
 import { WorkspaceEditService } from './workspace/edit-service';
 import type { MemoryWriteProposal } from './memory/types';
 
@@ -329,6 +337,8 @@ interface ToolLoopResult {
   terminalEvidence?: TerminalEvidence[];
   /** Files written (created or overwritten) during this tool loop iteration. */
   writtenFiles?: Array<{path: string; basename: string; linesAdded: number; linesRemoved: number; action: string}>;
+  /** Files successfully read through read_file during this tool loop iteration. */
+  readFiles?: string[];
 }
 
 type WrittenFileEvidence = {path: string; basename: string; linesAdded: number; linesRemoved: number; action: string};
@@ -614,15 +624,10 @@ function normalizeExplicitFileWritePathForAgent(
   return { path: p };
 }
 
-function isInsideWorkspace(absPath: string, workspaceRoot: string): boolean {
-  const rel = nodePath.relative(workspaceRoot, absPath);
-  return rel === '' || (!!rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel));
-}
-
 function inferWorkspaceRootForAgentTool(defaultWorkdir?: string): string {
   if (defaultWorkdir) {
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
-      if (isInsideWorkspace(defaultWorkdir, folder.uri.fsPath)) {
+      if (isInsideWorkspacePath(defaultWorkdir, folder.uri.fsPath)) {
         return folder.uri.fsPath;
       }
     }
@@ -662,26 +667,6 @@ function inferCArtifactFromMarkdown(text: string, userPrompt: string): Array<{pa
   return results;
 }
 
-/** Normalizes a terminal command to a stable dedup key for stuck-loop detection. */
-function makeTerminalCmdSignature(cmd: string): string {
-  return cmd.trim().replace(/\s+/g, ' ').slice(0, 120);
-}
-
-/** Returns targeted guidance when the AI repeats the same terminal command. */
-function getLoopBreakFeedback(cmd: string): string {
-  const c = cmd.trimStart();
-  if (/^ls[\s-]|^ls$/.test(c)) {
-    return '停止反复用 ls 检查文件。文件不存在 → 直接调用 create_file 写入完整内容；文件存在 → 直接读取或编译，不要再 ls 了。';
-  }
-  if (/^cat\s/.test(c)) {
-    return '停止反复 cat 读文件。内容不对 → 直接调用 create_file 重写；内容正确 → 直接进行下一步，不要再 cat 了。';
-  }
-  if (/\bg\+\+\b|\bgcc\b/.test(cmd)) {
-    return '编译命令多次失败。请先用 read_file 确认源文件内容，内容有误则先用 create_file 修正，再尝试编译。';
-  }
-  return '相同命令已重复多次没有进展，请改变策略：直接调用 create_file 写入目标文件的完整内容。';
-}
-
 function getStringInput(input: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {
     const value = input[key];
@@ -698,54 +683,15 @@ function getFileContentInput(input: Record<string, unknown>): string {
   return '';
 }
 
-function cleanShellTarget(raw: string): string {
-  return raw.trim()
-    .replace(/^['"]|['"]$/g, '')
-    .replace(/^\$?{?workspaceRoot}?\//, '')
-    .replace(/^\$?{?workspaceFolder}?\//, '');
-}
-
-function isSourceLikeShellTarget(target: string): boolean {
-  const base = nodePath.posix.basename(target.replace(/\\/g, '/'));
-  if (!base) return false;
-  if (['Makefile', 'Dockerfile', 'CMakeLists.txt'].includes(base)) return true;
-  return /\.(?:c|cc|cpp|cxx|h|hpp|ts|tsx|js|jsx|mjs|cjs|py|java|go|rs|sh|bash|zsh|sql|vue|svelte|html|css|scss|json|md|txt)$/i.test(base);
-}
-
-function detectShellFileWriteCommand(cmd: string): string | undefined {
-  const patterns: RegExp[] = [
-    /\bcat\s*>\s*([^\s;&|]+)/i,
-    /\b(?:printf|echo)\b[\s\S]*?(?<!\d)>{1,2}\s*([^\s;&|]+)/i,
-    /\btee\s+(?:-a\s+)?([^\s;&|]+)/i,
-  ];
-  for (const pattern of patterns) {
-    const match = pattern.exec(cmd);
-    if (!match) continue;
-    const target = cleanShellTarget(match[1] || '');
-    if (target && isSourceLikeShellTarget(target)) return target;
-  }
-  return undefined;
-}
-
-function getTerminalRecoveryProtocol(cmd: string, attempt: number): string {
-  const sig = makeTerminalCmdSignature(cmd);
-  return [
-    `【循环检测 / Copilot式恢复】终端命令 "${sig.slice(0, 90)}" 已在没有文件改动进展的情况下第 ${attempt} 次出现，系统已跳过本次重复执行。`,
-    getLoopBreakFeedback(cmd),
-    `下一轮必须按以下顺序处理，禁止再次执行同一命令直到完成根因修复：`,
-    `1. 根因分析：基于上一轮终端输出指出真正失败原因，不要只说“重试”。`,
-    `2. 证据收集：使用 read_file / grep_search / get_errors 查看相关源码、配置或诊断。`,
-    `3. 修复动作：使用 create_file / write_file 或 SEARCH/REPLACE 实际修改错误位置；如果根因是命令参数错误，则改用正确命令。`,
-    `4. 验证：只有在完成修复动作或换成正确命令后，才允许 run_terminal 编译/运行/测试。`,
-    `完成报告必须说明根因、修复文件/命令、验证结果。`,
-  ].join('\n');
-}
-
 async function applyMarkdownFileArtifactsForLoop(
   text: string,
   userPrompt: string,
   workspaceRoot: string,
   callbacks: AgentLoopCallbacks,
+  writeGuard?: {
+    requireReadBeforeOverwrite?: boolean;
+    readEvidencePaths?: Iterable<string>;
+  },
 ): Promise<{ feedbackForAI: string; writtenFiles: WrittenFileEvidence[] }> {
   const parsed = parseGeneratedArtifacts(text)
     .filter((artifact): artifact is Extract<ReturnType<typeof parseGeneratedArtifacts>[number], { type: 'file' }> => artifact.type === 'file')
@@ -781,6 +727,18 @@ async function applyMarkdownFileArtifactsForLoop(
         continue;
       }
     } catch { /* allow normal write path to report errors */ }
+    const existed = fs.existsSync(resolvedAbs);
+    if (writeGuard?.requireReadBeforeOverwrite) {
+      const guard = shouldBlockUnverifiedSourceOverwrite({
+        absPath: resolvedAbs,
+        existed,
+        readEvidencePaths: writeGuard.readEvidencePaths,
+      });
+      if (guard.block) {
+        feedback.push(`[generated_file: ${artifact.path}] 跳过：${guard.reason}`);
+        continue;
+      }
+    }
     if (callbacks.onBeforeFileWrite) {
       const allowed = await callbacks.onBeforeFileWrite(resolvedAbs);
       if (!allowed) {
@@ -817,6 +775,8 @@ async function executeFakeToolsForLoop(
     requireWorkBeforeComplete?: boolean;
     userPrompt?: string;
     workspaceRoot?: string;
+    requireReadBeforeOverwrite?: boolean;
+    readEvidencePaths?: string[];
   },
 ): Promise<ToolLoopResult> {
   let taskComplete = false;
@@ -825,6 +785,7 @@ async function executeFakeToolsForLoop(
   let allTodosCompleted = false;
   const parts: string[] = [];
   const writtenFiles: Array<{path: string; basename: string; linesAdded: number; linesRemoved: number; action: string}> = [];
+  const readFiles: string[] = [];
   const terminalCommands: string[] = [];
   const terminalEvidence: TerminalEvidence[] = [];
   let deferredCompletedTodoItems: TodoItem[] | undefined;
@@ -841,6 +802,7 @@ async function executeFakeToolsForLoop(
   // not the model.
   const isLastTask = !taskContext || taskContext.currentTaskIndex >= taskContext.taskTotal;
   const workspaceRoot = taskContext?.workspaceRoot ?? inferWorkspaceRootForAgentTool(defaultWorkdir);
+  const readEvidencePaths = new Set(taskContext?.readEvidencePaths ?? []);
 
   for (let toolIndex = 0; toolIndex < tools.length; toolIndex++) {
     const tool = tools[toolIndex];
@@ -954,6 +916,11 @@ async function executeFakeToolsForLoop(
           // task working directory context, not just workspace root).
           const content = await callbacks.onReadFile(filePath, defaultWorkdir);
           callbacks.onToolActivity?.('read', filePath);
+          const readEvidencePath = resolveAgentToolEvidencePath(filePath, workspaceRoot, defaultWorkdir);
+          if (readEvidencePath) {
+            readFiles.push(readEvidencePath);
+            readEvidencePaths.add(readEvidencePath);
+          }
           // Silent: file content goes to AI context only (shown as chip in Working box)
           parts.push(`[read_file: ${filePath}]\n${content}`);
         } catch (err) {
@@ -1098,6 +1065,17 @@ async function executeFakeToolsForLoop(
             parts.push(`[${tool.name}: ${rawPath}] 错误: 目标是目录，不是文件：${absPath}`);
             continue;
           }
+          if (taskContext?.requireReadBeforeOverwrite) {
+            const guard = shouldBlockUnverifiedSourceOverwrite({
+              absPath,
+              existed,
+              readEvidencePaths,
+            });
+            if (guard.block) {
+              parts.push(`[${tool.name}: ${rawPath}] 错误: ${guard.reason}`);
+              continue;
+            }
+          }
           const writeResult = workspaceEditService.writeTextFileSync(absPath, content);
           const stat = fs.statSync(absPath);
           if (!stat.isFile() || stat.size === 0) {
@@ -1241,6 +1219,7 @@ async function executeFakeToolsForLoop(
     terminalCommands: terminalCommands.length > 0 ? terminalCommands : undefined,
     terminalEvidence: terminalEvidence.length > 0 ? terminalEvidence : undefined,
     writtenFiles: writtenFiles.length > 0 ? writtenFiles : undefined,
+    readFiles: readFiles.length > 0 ? readFiles : undefined,
   };
 }
 
@@ -3158,6 +3137,7 @@ export async function runAgenticLoop(
   let currentTodos: TodoItem[] = [];
   let lastMissingEvidence: string[] = [];
   const announcedProseKeys = new Set<string>();
+  const allReadEvidencePaths = new Set<string>();
   // Whether the AI has called manage_todo_list yet.
   let todoEverSet = false;
   let fallbackTodosVisible = false;
@@ -3304,7 +3284,10 @@ export async function runAgenticLoop(
 
     if (!tools.length) {
       const artifactApply = promptRequiresTools
-        ? await applyMarkdownFileArtifactsForLoop(text, userPrompt, workspaceRoot, callbacks)
+        ? await applyMarkdownFileArtifactsForLoop(text, userPrompt, workspaceRoot, callbacks, {
+          requireReadBeforeOverwrite: true,
+          readEvidencePaths: allReadEvidencePaths,
+        })
         : { feedbackForAI: '', writtenFiles: [] as WrittenFileEvidence[] };
       if (artifactApply.writtenFiles.length > 0) {
         sawWorkTool = true;
@@ -3399,7 +3382,10 @@ export async function runAgenticLoop(
 
     const hasExplicitFileWriteTool = tools.some(t => t.name === 'create_file' || t.name === 'write_file');
     const artifactApply = !hasExplicitFileWriteTool
-      ? await applyMarkdownFileArtifactsForLoop(text, userPrompt, workspaceRoot, callbacks)
+      ? await applyMarkdownFileArtifactsForLoop(text, userPrompt, workspaceRoot, callbacks, {
+        requireReadBeforeOverwrite: true,
+        readEvidencePaths: allReadEvidencePaths,
+      })
       : { feedbackForAI: '', writtenFiles: [] as WrittenFileEvidence[] };
     if (artifactApply.writtenFiles.length > 0) {
       allWrittenFiles.push(...artifactApply.writtenFiles);
@@ -3437,6 +3423,8 @@ export async function runAgenticLoop(
         requireWorkBeforeComplete: missingBeforeTools.length > 0,
         userPrompt,
         workspaceRoot,
+        requireReadBeforeOverwrite: true,
+        readEvidencePaths: [...allReadEvidencePaths],
       },
     );
 
@@ -3446,6 +3434,9 @@ export async function runAgenticLoop(
     if (loopRes.writtenFiles?.length) {
       allWrittenFiles.push(...loopRes.writtenFiles);
       progressEpoch++;
+    }
+    if (loopRes.readFiles?.length) {
+      for (const readPath of loopRes.readFiles) allReadEvidencePaths.add(readPath);
     }
     if (loopRes.terminalEvidence?.length) {
       allTerminalEvidence.push(...loopRes.terminalEvidence);

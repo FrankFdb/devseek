@@ -609,4 +609,13 @@ test('agent announcement: process prose is collapsed into Working details', () =
   assert.doesNotMatch(webview, /agent-phase-b-bubble/);
 });
 
+test('session history: restored assistant messages keep collapsible rendering', () => {
+  const webview = readFileSync(path.join(rootDir, 'media/webview.js'), 'utf8');
+  assert.ok(/function renderRestoredAssistantContent/.test(webview), 'history restore must use a dedicated assistant renderer');
+  assert.ok(/createRestoredAssistantTurn\(m\.content,\s*lastUserPrompt\)/.test(webview), 'history restore must pass the previous user prompt');
+  assert.ok(/renderRestoredAssistantContent\(bubble,\s*text,\s*promptText\)/.test(webview), 'assistant history turns must not render raw md directly');
+  assert.ok(/buildResponseWithCollapsedCode/.test(webview), 'generated code in history must stay collapsible');
+  assert.ok(/collapseTerminalOutputBlocks/.test(webview), 'terminal output in history must stay collapsible');
+});
+
 console.log('\n✅ All webview logic tests passed!\n');

@@ -353,8 +353,34 @@ function globJoin(root: string, name: string): string {
   return `${cleanRoot}/**/${cleanName}`;
 }
 
+function shellJsonCommandPayload(command: string): { command: string; workdir?: string } | null {
+  const trimmed = command.trim();
+  if (!trimmed.startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    const obj = parsed as Record<string, unknown>;
+    const rawCommand = typeof obj.command === 'string'
+      ? obj.command
+      : typeof obj.cmd === 'string'
+        ? obj.cmd
+        : '';
+    const shellCommand = rawCommand.trim();
+    if (!shellCommand) return null;
+    const workdir = typeof obj.workdir === 'string' && obj.workdir.trim()
+      ? obj.workdir.trim()
+      : undefined;
+    return { command: shellCommand, workdir };
+  } catch {
+    return null;
+  }
+}
+
 function shellCommandToFakeTool(command: string): FakeTool {
-  const cleaned = cleanShellCommand(command);
+  let cleaned = cleanShellCommand(command);
+  const payload = shellJsonCommandPayload(cleaned);
+  const workdir = payload?.workdir;
+  if (payload) cleaned = cleanShellCommand(payload.command);
   const firstLine = cleaned.split(/\r?\n/).find(Boolean) ?? cleaned;
 
   const catMatch = firstLine.match(/^(?:cat|type|Get-Content)\s+(.+)$/i);
@@ -379,7 +405,7 @@ function shellCommandToFakeTool(command: string): FakeTool {
     };
   }
 
-  return { name: 'run_terminal', input: { command: cleaned } };
+  return { name: 'run_terminal', input: { command: cleaned, ...(workdir ? { workdir } : {}) } };
 }
 
 function extractShellTranscriptCommand(text: string, callEnd: number): { command: string; end: number } | null {
