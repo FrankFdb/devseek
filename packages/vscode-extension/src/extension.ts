@@ -56,6 +56,7 @@ import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { MemoryService } from './app/memory-service';
 import { isProjectInitRequest, ProjectInitService, renderProjectInitDraftMarkdown } from './app/project-init-service';
+import { tryBuildReadOnlyInspectionResult } from './app/read-only-inspection-service';
 import { SessionService, type SessionMeta } from './app/session-service';
 import {
   appendSessionContinuationContext,
@@ -1904,6 +1905,41 @@ async function runChat(
     }
     return;
   }
+
+  const directInspectionRoot = getWorkspaceRootFsPath(prompt, pathResolutionHints)
+    ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+    ?? '';
+  const directInspection = workflow.kind === 'inspect-agent' && intent.mode === 'inspect' && resumeFromIndex === undefined
+    ? tryBuildReadOnlyInspectionResult({ prompt: intentRoutingText, workspaceRoot: directInspectionRoot })
+    : null;
+  if (directInspection) {
+    webview.postMessage({
+      type: 'startResponse',
+      prompt: intentRoutingText,
+      expectGeneratedArtifacts: false,
+      agentMode: false,
+    });
+    webview.postMessage({ type: 'delta', text: directInspection.text });
+    webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
+    webview.postMessage({ type: 'endResponse' });
+    recordTrackedChatHistory({
+      prompt: intentRoutingText,
+      displayPrompt: userDisplay,
+      newSession,
+      mode,
+      files: effectiveFiles,
+      images,
+      trackHistory: true,
+      signal: chatSignal,
+    }, directInspection.text);
+    if (extContext) recordIntentOutcome(intentRoutingText, 'chat', activeSessionId, extContext);
+    if (activeChatAbortController === abortCtrl) {
+      activeChatAbortController = null;
+      activeAgentSteerQueue.length = 0;
+    }
+    return;
+  }
+
   const workflowReporter = async (status: ApplyWorkflowStatus): Promise<void> => {
     webview.postMessage({ type: 'workflowStatus', ...status });
   };

@@ -969,6 +969,18 @@ test('Architecture: ValidationService owns automatic validation execution', () =
   assert.doesNotMatch(applier, /planCppValidation|child_process|runShell|runCppAutoValidation/, 'workspace applier must not own validation execution internals');
 });
 
+test('Architecture: simple read-only file inspection bypasses agent loop', () => {
+  const extension = src('src/extension.ts');
+  const service = src('src/app/read-only-inspection-service.ts');
+  assertContains(service, 'tryBuildReadOnlyInspectionResult', 'deterministic read-only inspection service must exist');
+  assertContains(extension, 'tryBuildReadOnlyInspectionResult', 'extension must call deterministic read-only inspection service');
+  assert.match(
+    extension,
+    /tryBuildReadOnlyInspectionResult[\s\S]*?recordTrackedChatHistory[\s\S]*?return;[\s\S]*?runAgenticLoop/,
+    'simple read-only file inspection must complete before runAgenticLoop starts',
+  );
+});
+
 test('Architecture: Bridge DOM selectors live in a DeepSeek selector registry', () => {
   const selectors = src('../bridge/src/deepseek-dom-selectors.ts');
   const agent = src('../bridge/src/deepseek-agent.ts');

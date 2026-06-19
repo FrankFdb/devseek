@@ -27,6 +27,7 @@ const suites = [
   'test/unit/interaction-service.test.mjs',
   'test/unit/local-attachment-context.test.mjs',
   'test/unit/file-discovery.test.mjs',
+  'test/unit/read-only-inspection-service.test.mjs',
   'test/unit/intent-behavior-matrix.test.mjs',
   'test/unit/permission-service.test.mjs',
   'test/unit/terminal-command-policy.test.mjs',
