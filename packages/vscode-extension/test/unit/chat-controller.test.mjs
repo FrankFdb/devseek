@@ -86,6 +86,39 @@ test('ChatRouteController: explicit read-only file inspection uses inspect polic
   assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
 });
 
+test('ChatRouteController: explicit file inspection ignores disabled agent toggle for controlled read tools', () => {
+  const controller = new ChatRouteController();
+  const decision = controller.decide({
+    userDisplay: '帮我查看 packages/vscode-extension/src/app/workflow-service.ts 的工作流状态机是否清晰，不要修改代码',
+    prompt: '帮我查看 packages/vscode-extension/src/app/workflow-service.ts 的工作流状态机是否清晰，不要修改代码',
+    files: [],
+    agentEnabled: false,
+  });
+
+  assert.equal(decision.intent.mode, 'inspect');
+  assert.equal(decision.workflow.kind, 'inspect-agent');
+  assert.equal(decision.workflow.useAgent, true);
+  assert.equal(decision.toolPolicy.mode, 'inspect');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('read'), true);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+});
+
+test('ChatRouteController: explicit file fix ignores disabled agent toggle for controlled edit tools', () => {
+  const controller = new ChatRouteController();
+  const decision = controller.decide({
+    userDisplay: '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题',
+    prompt: '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题',
+    files: [],
+    agentEnabled: false,
+  });
+
+  assert.equal(decision.intent.mode, 'edit');
+  assert.equal(decision.workflow.kind, 'edit-agent');
+  assert.equal(decision.workflow.useAgent, true);
+  assert.equal(decision.toolPolicy.mode, 'edit');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+});
+
 test('ChatRouteController: destructive workflow waits for visible confirmation', () => {
   const controller = new ChatRouteController();
   const pending = controller.decide({

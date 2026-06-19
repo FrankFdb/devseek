@@ -71,9 +71,57 @@ test('FakeToolParser: strips displayed shell calling transcript blocks', () => {
   assert.equal(stripToolCallBlocks(text), '我先找到这个文件：\n然后继续分析。');
 });
 
+test('FakeToolParser: strips inline shell transcript blocks with CODE fences', () => {
+  const text = [
+    '我需要先查看 workflow-service.ts 文件的内容，然后找出明显的问题。 Calling: bash',
+    '```CODE',
+    'cat packages/vscode-extension/src/app/workflow-service.ts 2>/dev/null || echo "File not found"',
+    '```',
+    '接着分析。',
+  ].join('\n');
+
+  assert.equal(
+    stripToolCallBlocks(text),
+    '我需要先查看 workflow-service.ts 文件的内容，然后找出明显的问题。\n接着分析。',
+  );
+});
+
+test('FakeToolParser: parses shell cat transcript as read_file', () => {
+  const text = [
+    '我先读取这个文件： Calling: bash',
+    '```CODE',
+    'cat packages/vscode-extension/src/app/workflow-service.ts 2>/dev/null || echo "File not found"',
+    '```',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'read_file');
+  assert.deepEqual(tools[0].input, { path: 'packages/vscode-extension/src/app/workflow-service.ts' });
+});
+
+test('FakeToolParser: parses shell find transcript as file_search', () => {
+  const text = [
+    'Calling: bash',
+    '```CODE',
+    'find packages/vscode-extension/src/app -name "workflow-service.ts" -type f 2>/dev/null',
+    '```',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'file_search');
+  assert.deepEqual(tools[0].input, { glob: 'packages/vscode-extension/src/app/**/workflow-service.ts' });
+});
+
 test('FakeToolParser: detects the first tool call start for streaming UI', () => {
   const text = '先说明一下\n{"tool":"write_file","path":"code/hello.cpp","content":"int main(){}"}';
   assert.equal(findFirstToolCallStart(text), text.indexOf('{'));
+});
+
+test('FakeToolParser: detects shell transcript start for streaming UI', () => {
+  const text = '我先查看文件： Calling: bash\n```CODE\ncat package.json\n```';
+  assert.equal(findFirstToolCallStart(text), text.indexOf('Calling'));
 });
 
 console.log('\nFake tool parser tests passed.\n');

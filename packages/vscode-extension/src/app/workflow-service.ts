@@ -75,7 +75,7 @@ export class WorkflowStateMachine {
       return makeSelection('plain-chat', 'plain_chat', false, 'force-no-agent', intent.mode);
     }
 
-    if (!agentEnabled) {
+    if (!agentEnabled && !shouldForceControlledWorkspaceWorkflow(input)) {
       return makeSelection('plain-chat', 'plain_chat', false, 'agent-disabled', intent.mode);
     }
 
@@ -177,6 +177,21 @@ function transitionsFor(state: WorkflowState): WorkflowTransition[] {
     default:
       return [];
   }
+}
+
+function shouldForceControlledWorkspaceWorkflow(input: WorkflowSelectionInput): boolean {
+  if (input.forceNoAgent) return false;
+  if (input.intent.requiresConfirmation && !input.intentConfirmed) return false;
+  if (['smalltalk', 'qa', 'destructive'].includes(input.intent.mode)) return false;
+
+  const hasConcreteWorkspaceTarget = input.files.length > 0
+    || input.intent.signals.includes('explicit-file-path');
+  if (!hasConcreteWorkspaceTarget) return false;
+
+  // Explicit file tasks must stay inside DevSeek's tool/permission runtime.
+  // Plain web chat leaks model-side pseudo tools such as "Calling: bash" and
+  // cannot observe local workspace state, while inspect/edit/run workflows can.
+  return ['inspect', 'plan', 'edit', 'run'].includes(input.intent.mode);
 }
 
 function requiresPlanReview(input: WorkflowSelectionInput): boolean {

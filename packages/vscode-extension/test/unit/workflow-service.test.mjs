@@ -77,6 +77,28 @@ test('WorkflowService: plan review is enforced even when agent toggle is off', (
   assert.equal(selected.reason, 'plan-review-required');
 });
 
+test('WorkflowService: explicit file inspection stays controlled when agent toggle is off', () => {
+  const prompt = '帮我查看 packages/vscode-extension/src/app/workflow-service.ts 的工作流状态机是否清晰，不要修改代码';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: false, prompt });
+
+  assert.equal(selected.kind, 'inspect-agent');
+  assert.equal(selected.state, 'inspect');
+  assert.equal(selected.useAgent, true);
+  assert.equal(selected.toolPolicyMode, 'inspect');
+});
+
+test('WorkflowService: explicit file edit stays controlled when agent toggle is off', () => {
+  const prompt = '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: false, prompt });
+
+  assert.equal(selected.kind, 'edit-agent');
+  assert.equal(selected.state, 'editing');
+  assert.equal(selected.useAgent, true);
+  assert.equal(selected.toolPolicyMode, 'edit');
+});
+
 test('WorkflowService: explicit planning request stays in planning state', () => {
   const prompt = '给出这个项目的重构方案';
   const intent = decideChatIntent(prompt);

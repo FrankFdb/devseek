@@ -10,6 +10,33 @@ export const KNOWN_FAKE_TOOL_NAMES = new Set([
   'manage_todo_list', 'task_complete',
 ]);
 
+const SHELL_TRANSCRIPT_NAMES = new Set([
+  'bash', 'shell', 'sh', 'zsh', 'console', 'terminal', 'cmd', 'powershell', 'pwsh',
+]);
+
+function makeCallingRegex(): RegExp {
+  return /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
+}
+
+function isRegisteredFakeToolName(name: string): boolean {
+  return KNOWN_FAKE_TOOL_NAMES.has(name) || name.startsWith('mcp__');
+}
+
+function isShellTranscriptName(name: string): boolean {
+  return SHELL_TRANSCRIPT_NAMES.has(name.toLowerCase());
+}
+
+function isShellCommandLine(line: string): boolean {
+  const first = line.trim().replace(/^\$\s*/, '').replace(/^>\s*/, '');
+  if (!first) return false;
+  return /^(?:cat|type|get-content|find|rg|grep|sed|head|tail|ls|dir|pwd|cd|npm|npx|pnpm|yarn|node|git|python|python3|bash|sh|zsh|cmd|powershell|pwsh|mkdir|cp|mv|rm|touch|code|g\+\+|gcc|clang|make|cmake|go|cargo|pytest|mvn|gradle|docker|curl|wget)\b/i.test(first)
+    || /[|;&<>]/.test(first);
+}
+
+function looksLikeShellCommandBlock(text: string): boolean {
+  return text.split(/\r?\n/).some(line => isShellCommandLine(line));
+}
+
 export function findJsonObjectEnd(text: string, start: number): number {
   let depth = 0;
   let inStr = false;
@@ -33,7 +60,7 @@ export function findJsonObjectEnd(text: string, start: number): number {
 function stripCallingToolBlocks(text: string): string {
   let out = '';
   let i = 0;
-  const callRe = /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
+  const callRe = makeCallingRegex();
   while (i < text.length) {
     callRe.lastIndex = i;
     const m = callRe.exec(text);
@@ -42,7 +69,7 @@ function stripCallingToolBlocks(text: string): string {
       break;
     }
     const name = m[1];
-    if (!KNOWN_FAKE_TOOL_NAMES.has(name) && !name.startsWith('mcp__')) {
+    if (!isRegisteredFakeToolName(name)) {
       out += text.slice(i, callRe.lastIndex);
       i = callRe.lastIndex;
       continue;
@@ -65,16 +92,66 @@ function stripCallingToolBlocks(text: string): string {
   return out;
 }
 
-function stripCallingFenceBlocks(text: string): string {
-  return text
-    .replace(
-      /(?:^|\n)[ \t]*(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(bash|shell|sh|zsh|console)`?\]?[^\n]*\n[ \t]*```(?:bash|shell|sh|zsh|console)?\s*\n[\s\S]*?```/gi,
-      '\n',
-    )
-    .replace(
-      /(?:^|\n)[ \t]*(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(bash|shell|sh|zsh|console)`?\]?[^\n]*(?=\n|$)/gi,
-      '\n',
-    );
+function lineEndAfter(text: string, index: number): number {
+  const lineEnd = text.indexOf('\n', index);
+  return lineEnd < 0 ? text.length : lineEnd + 1;
+}
+
+function skipBlankLines(text: string, index: number): number {
+  let pos = index;
+  while (pos < text.length) {
+    const end = lineEndAfter(text, pos);
+    const line = text.slice(pos, end).trim();
+    if (line) break;
+    pos = end;
+  }
+  return pos;
+}
+
+function findShellTranscriptEnd(text: string, callEnd: number): number {
+  let pos = lineEndAfter(text, callEnd);
+  pos = skipBlankLines(text, pos);
+
+  if (text.startsWith('```', pos)) {
+    const headerEnd = lineEndAfter(text, pos + 3);
+    const close = text.indexOf('```', headerEnd);
+    return close >= 0 ? lineEndAfter(text, close + 3) : text.length;
+  }
+
+  const firstLineEnd = lineEndAfter(text, pos);
+  const firstLine = text.slice(pos, firstLineEnd);
+  if (!isShellCommandLine(firstLine)) {
+    return lineEndAfter(text, callEnd);
+  }
+
+  let end = pos;
+  const callLineRe = /^(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?[A-Za-z_]\w*`?\]?/i;
+  while (end < text.length) {
+    const next = lineEndAfter(text, end);
+    const line = text.slice(end, next);
+    const trimmed = line.trim();
+    if (!trimmed || callLineRe.test(trimmed)) break;
+    end = next;
+  }
+  return end;
+}
+
+function stripCallingShellTranscriptBlocks(text: string): string {
+  let out = '';
+  let last = 0;
+  const callRe = makeCallingRegex();
+  let m: RegExpExecArray | null;
+  while ((m = callRe.exec(text)) !== null) {
+    if (!isShellTranscriptName(m[1])) continue;
+    out += text.slice(last, m.index).replace(/[ \t]+$/, '');
+    const end = findShellTranscriptEnd(text, callRe.lastIndex);
+    if (out && !out.endsWith('\n') && end > callRe.lastIndex && end < text.length) {
+      out += '\n';
+    }
+    last = end;
+    callRe.lastIndex = end;
+  }
+  return out + text.slice(last);
 }
 
 export function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | null {
@@ -84,7 +161,7 @@ export function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | n
       ? obj.name
       : '';
   const name = rawName.trim();
-  if (!name || (!KNOWN_FAKE_TOOL_NAMES.has(name) && !name.startsWith('mcp__'))) return null;
+  if (!name || !isRegisteredFakeToolName(name)) return null;
   const maybeArgs = obj.arguments ?? obj.parameters ?? obj.args;
   let input: Record<string, unknown>;
   if (maybeArgs && typeof maybeArgs === 'object' && !Array.isArray(maybeArgs)) {
@@ -138,11 +215,11 @@ export function findFirstToolCallStart(text: string): number {
   const indexes: number[] = [];
   const bracket = text.indexOf('[TOOL:');
   if (bracket >= 0) indexes.push(bracket);
-  const callRe = /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
+  const callRe = makeCallingRegex();
   let cm: RegExpExecArray | null;
   while ((cm = callRe.exec(text)) !== null) {
     const name = cm[1];
-    if (KNOWN_FAKE_TOOL_NAMES.has(name) || name.startsWith('mcp__')) indexes.push(cm.index);
+    if (isRegisteredFakeToolName(name) || isShellTranscriptName(name)) indexes.push(cm.index);
   }
   let searchAt = 0;
   while (searchAt < text.length) {
@@ -213,7 +290,7 @@ export function stripToolCallBlocks(text: string): string {
   removedInternalBlock = removedInternalBlock || result !== beforeBracketCleanup;
 
   const beforeCallingCleanup = result;
-  result = stripCallingFenceBlocks(result);
+  result = stripCallingShellTranscriptBlocks(result);
   result = stripCallingToolBlocks(result);
   removedInternalBlock = removedInternalBlock || result !== beforeCallingCleanup;
 
@@ -229,6 +306,114 @@ export function stripToolCallBlocks(text: string): string {
 
   const cleaned = noXml.replace(/\n{3,}/g, '\n\n').trim();
   return removedInternalBlock ? cleaned.replace(/[ \t]*\n[ \t]*\n[ \t]*/g, '\n') : cleaned;
+}
+
+function shellToken(raw: string): string {
+  const text = raw.trim();
+  if (!text) return '';
+  const quote = text[0];
+  if (quote === '"' || quote === "'") {
+    const end = text.indexOf(quote, 1);
+    return (end >= 0 ? text.slice(1, end) : text.slice(1)).trim();
+  }
+  const match = text.match(/^[^\s|;&<>]+/);
+  return (match?.[0] ?? '').trim();
+}
+
+function cleanShellCommand(command: string): string {
+  return command
+    .split(/\r?\n/)
+    .map(line => line.trim().replace(/^\$\s*/, '').replace(/^>\s*/, ''))
+    .filter(Boolean)
+    .join('\n')
+    .trim();
+}
+
+function cleanShellPath(path: string): string {
+  return path
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+    .replace(/^\.\//, '')
+    .replace(/^\$?{?workspaceRoot}?\//, '')
+    .replace(/^\$?{?workspaceFolder}?\//, '');
+}
+
+function globJoin(root: string, name: string): string {
+  const cleanRoot = cleanShellPath(root).replace(/\/+$/, '');
+  const cleanName = cleanShellPath(name);
+  if (!cleanRoot || cleanRoot === '.') return `**/${cleanName}`;
+  return `${cleanRoot}/**/${cleanName}`;
+}
+
+function shellCommandToFakeTool(command: string): FakeTool {
+  const cleaned = cleanShellCommand(command);
+  const firstLine = cleaned.split(/\r?\n/).find(Boolean) ?? cleaned;
+
+  const catMatch = firstLine.match(/^(?:cat|type|Get-Content)\s+(.+)$/i);
+  if (catMatch) {
+    const target = cleanShellPath(shellToken(catMatch[1]));
+    if (target) return { name: 'read_file', input: { path: target } };
+  }
+
+  const findMatch = firstLine.match(/^find\s+(.+?)\s+-name\s+(['"]?)([^'"\s]+)\2/i);
+  if (findMatch) {
+    return { name: 'file_search', input: { glob: globJoin(findMatch[1], findMatch[3]) } };
+  }
+
+  const rgMatch = firstLine.match(/^rg\s+(?:-[A-Za-z0-9]+\s+)*(['"])(.*?)\1(?:\s+(.+))?$/i);
+  if (rgMatch) {
+    return {
+      name: 'grep_search',
+      input: {
+        pattern: rgMatch[2],
+        ...(rgMatch[3] ? { path: cleanShellPath(shellToken(rgMatch[3])) } : {}),
+      },
+    };
+  }
+
+  return { name: 'run_terminal', input: { command: cleaned } };
+}
+
+function extractShellTranscriptCommand(text: string, callEnd: number): { command: string; end: number } | null {
+  let pos = lineEndAfter(text, callEnd);
+  pos = skipBlankLines(text, pos);
+
+  if (text.startsWith('```', pos)) {
+    const headerEnd = lineEndAfter(text, pos + 3);
+    const close = text.indexOf('```', headerEnd);
+    const contentEnd = close >= 0 ? close : text.length;
+    const command = text.slice(headerEnd, contentEnd).trim();
+    const end = close >= 0 ? lineEndAfter(text, close + 3) : text.length;
+    return command && looksLikeShellCommandBlock(command) ? { command, end } : null;
+  }
+
+  const lines: string[] = [];
+  const callLineRe = /^(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?[A-Za-z_]\w*`?\]?/i;
+  let end = pos;
+  while (end < text.length) {
+    const next = lineEndAfter(text, end);
+    const line = text.slice(end, next);
+    const trimmed = line.trim();
+    if (!trimmed || callLineRe.test(trimmed)) break;
+    lines.push(line);
+    end = next;
+  }
+  const command = lines.join('').trim();
+  return command && looksLikeShellCommandBlock(command) ? { command, end } : null;
+}
+
+function parseShellTranscriptToolCalls(text: string): FakeTool[] {
+  const tools: FakeTool[] = [];
+  const callRe = makeCallingRegex();
+  let cm: RegExpExecArray | null;
+  while ((cm = callRe.exec(text)) !== null) {
+    if (!isShellTranscriptName(cm[1])) continue;
+    const extracted = extractShellTranscriptCommand(text, callRe.lastIndex);
+    if (!extracted) continue;
+    tools.push(shellCommandToFakeTool(extracted.command));
+    callRe.lastIndex = extracted.end;
+  }
+  return tools;
 }
 
 export function parseFakeToolCalls(text: string): FakeTool[] {
@@ -261,11 +446,11 @@ export function parseFakeToolCalls(text: string): FakeTool[] {
   }
 
   if (tools.length === 0) {
-    const callRe = /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
+    const callRe = makeCallingRegex();
     let cm: RegExpExecArray | null;
     while ((cm = callRe.exec(text)) !== null) {
       const name = cm[1];
-      if (!KNOWN_FAKE_TOOL_NAMES.has(name) && !name.startsWith('mcp__')) continue;
+      if (!isRegisteredFakeToolName(name)) continue;
       let jsonStart = text.indexOf('{', callRe.lastIndex);
       if (jsonStart < 0) continue;
       const fenceEnd = text.indexOf('```', callRe.lastIndex);
@@ -281,6 +466,10 @@ export function parseFakeToolCalls(text: string): FakeTool[] {
         callRe.lastIndex = jsonEnd + 1;
       } catch { /* ignore malformed */ }
     }
+  }
+
+  if (tools.length === 0) {
+    tools.push(...parseShellTranscriptToolCalls(text));
   }
 
   if (tools.length === 0) {
