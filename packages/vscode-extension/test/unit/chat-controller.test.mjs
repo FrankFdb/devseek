@@ -137,6 +137,23 @@ test('ChatRouteController: explicit file fix ignores disabled agent toggle for c
   assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
 });
 
+test('ChatRouteController: explicit file fix is not downgraded by webview no-agent payload', () => {
+  const controller = new ChatRouteController();
+  const decision = controller.decide({
+    userDisplay: '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题',
+    prompt: '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题',
+    files: [],
+    agentEnabled: false,
+    forceNoAgent: true,
+  });
+
+  assert.equal(decision.intent.mode, 'edit');
+  assert.equal(decision.workflow.kind, 'edit-agent');
+  assert.equal(decision.workflow.useAgent, true);
+  assert.equal(decision.toolPolicy.mode, 'edit');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+});
+
 test('ChatRouteController: destructive workflow waits for visible confirmation', () => {
   const controller = new ChatRouteController();
   const pending = controller.decide({

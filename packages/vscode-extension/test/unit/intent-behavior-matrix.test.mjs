@@ -223,9 +223,10 @@ const routingCases = [
   },
   {
     id: 'EDIT-004',
-    title: 'explicit file fix stays controlled when agent toggle is off',
+    title: 'explicit file fix stays controlled when webview sends no-agent payload',
     prompt: '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题',
     agentEnabled: false,
+    forceNoAgent: true,
     expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: EDIT_TOOLS },
     toolActions: { read: 'allow', edit: 'allow', terminal: 'requireConfirm' },
   },
@@ -268,8 +269,8 @@ const routingCases = [
   },
   {
     id: 'CTRL-001',
-    title: 'forceNoAgent disables agent but keeps edit permissions',
-    prompt: '修改 main.cpp',
+    title: 'forceNoAgent disables ambiguous edit agent but keeps edit permissions',
+    prompt: '修复这个 bug',
     forceNoAgent: true,
     expect: { kind: 'code-change', mode: 'edit', workflow: 'plain-chat', useAgent: false, tools: EDIT_TOOLS },
     toolActions: { read: 'allow', edit: 'allow', terminal: 'requireConfirm' },

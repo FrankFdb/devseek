@@ -62,6 +62,7 @@ export function selectWorkflow(input: WorkflowSelectionInput): WorkflowSelection
 export class WorkflowStateMachine {
   select(input: WorkflowSelectionInput): WorkflowSelection {
     const { intent, files, agentEnabled, forceNoAgent, intentConfirmed } = input;
+    const controlledWorkspaceWorkflow = shouldUseControlledWorkspaceWorkflow(input);
 
     if (intent.requiresConfirmation && !intentConfirmed) {
       return makeSelection('confirmation-required', 'confirmation_required', false, 'intent-requires-confirmation', intent.mode);
@@ -71,11 +72,11 @@ export class WorkflowStateMachine {
       return makeSelection('plan-agent', 'plan_review', false, 'plan-review-required', 'plan', true);
     }
 
-    if (forceNoAgent) {
+    if (forceNoAgent && !controlledWorkspaceWorkflow) {
       return makeSelection('plain-chat', 'plain_chat', false, 'force-no-agent', intent.mode);
     }
 
-    if (!agentEnabled && !shouldForceControlledWorkspaceWorkflow(input)) {
+    if (!agentEnabled && !controlledWorkspaceWorkflow) {
       return makeSelection('plain-chat', 'plain_chat', false, 'agent-disabled', intent.mode);
     }
 
@@ -179,8 +180,7 @@ function transitionsFor(state: WorkflowState): WorkflowTransition[] {
   }
 }
 
-function shouldForceControlledWorkspaceWorkflow(input: WorkflowSelectionInput): boolean {
-  if (input.forceNoAgent) return false;
+function shouldUseControlledWorkspaceWorkflow(input: WorkflowSelectionInput): boolean {
   if (input.intent.requiresConfirmation && !input.intentConfirmed) return false;
   if (['smalltalk', 'qa', 'destructive'].includes(input.intent.mode)) return false;
 
