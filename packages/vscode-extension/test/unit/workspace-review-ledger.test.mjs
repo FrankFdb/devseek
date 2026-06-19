@@ -61,6 +61,13 @@ test('ReviewLedger: records files, validation evidence, and unfinished items', (
     mode: 'compile-only',
     reason: 'extension-change',
   });
+  ledger.recordQualityGate({
+    status: 'fail',
+    summary: 'QualityGate 未通过：自动验证失败。',
+    evidenceRefs: ['validation:failed:npm test'],
+    risks: ['编译失败，不能完成。'],
+    requiredActions: ['修复 TypeScript 编译错误。'],
+  });
   ledger.addUnfinishedItem('修复 TypeScript 编译错误');
 
   const snapshot = ledger.snapshot();
@@ -70,14 +77,17 @@ test('ReviewLedger: records files, validation evidence, and unfinished items', (
   assert.equal(snapshot.validation.command, 'npm test');
   assert.equal(snapshot.validation.exitCode, 1);
   assert.deepEqual(snapshot.validation.failureFiles, ['src/app.ts']);
+  assert.equal(snapshot.qualityGate.status, 'fail');
+  assert.deepEqual(snapshot.qualityGate.evidenceRefs, ['validation:failed:npm test']);
   assert.deepEqual(snapshot.unfinishedItems, ['修复 TypeScript 编译错误']);
 });
 
-test('ReviewLedger: skipped validation keeps explicit reason', () => {
+test('ReviewLedger: skipped validation keeps explicit reason and blocked quality gate', () => {
   const ledger = new ReviewLedger();
   ledger.recordValidationSkipped('no-auto-target');
 
-  assert.deepEqual(ledger.snapshot().validation, {
+  const snapshot = ledger.snapshot();
+  assert.deepEqual(snapshot.validation, {
     ran: false,
     ok: null,
     command: '',
@@ -86,6 +96,27 @@ test('ReviewLedger: skipped validation keeps explicit reason', () => {
     reason: 'no-auto-target',
     summary: '未执行自动验证: no-auto-target',
     failureFiles: [],
+  });
+  assert.equal(snapshot.qualityGate.status, 'blocked');
+  assert.match(snapshot.qualityGate.summary, /未评估/);
+});
+
+test('ReviewLedger: records accepted QualityGate risk source', () => {
+  const ledger = new ReviewLedger();
+  ledger.recordQualityGate({
+    status: 'blocked',
+    summary: 'QualityGate 阻塞：无自动验证目标。',
+    evidenceRefs: ['validation:blocked:no-auto-validation-target'],
+    risks: ['无法证明运行时行为正确。'],
+    alternativeChecks: ['人工检查文档内容。'],
+    requiredActions: ['用户确认风险后继续。'],
+    acceptedRisk: { source: 'user', note: '仅文档变更', acceptedAt: 123 },
+  });
+
+  assert.deepEqual(ledger.snapshot().qualityGate.acceptedRisk, {
+    source: 'user',
+    note: '仅文档变更',
+    acceptedAt: 123,
   });
 });
 

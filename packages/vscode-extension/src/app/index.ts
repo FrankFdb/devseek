@@ -7,6 +7,8 @@ export * from './pending-edit-service';
 export * from './permission-service';
 export * from './project-init-service';
 export * from './project-instruction-service';
+export * from './quality-gate-service';
+export * from './verification-planner';
 export * from './session-continuation';
 export * from './session-service';
 export * from './task-ledger';

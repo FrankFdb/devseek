@@ -1,19 +1,42 @@
-import * as nodePath from 'path';
 import * as fs from 'fs';
 import { exec, type ExecException } from 'child_process';
-import { planCppValidation, type CppValidationPolicy } from '../validation-planner';
+import type { CppValidationPolicy } from '../validation-planner';
+import {
+  CPP_COMPILE_VALIDATION_TIMEOUT_MS,
+  CPP_RUN_VALIDATION_TIMEOUT_MS,
+  CMAKE_RUN_VALIDATION_TIMEOUT_MS,
+  FILE_CHECK_VALIDATION_TIMEOUT_MS,
+  PROJECT_BUILD_VALIDATION_TIMEOUT_MS,
+  VerificationPlanner,
+  type ValidationMode,
+  type VerificationPlan,
+} from '../app/verification-planner';
 
-export type ValidationMode = 'compile-only' | 'compile-link' | 'compile-run' | 'cmake' | 'file-check';
+export {
+  CPP_COMPILE_VALIDATION_TIMEOUT_MS,
+  CPP_RUN_VALIDATION_TIMEOUT_MS,
+  CMAKE_RUN_VALIDATION_TIMEOUT_MS,
+  FILE_CHECK_VALIDATION_TIMEOUT_MS,
+  PROJECT_BUILD_VALIDATION_TIMEOUT_MS,
+  type ValidationMode,
+};
 
-export interface AutoValidationResult {
+export interface ValidationCommandResult {
   ran: boolean;
   ok: boolean;
   command: string;
   exitCode: number | null;
   output: string;
   cwd: string;
+}
+
+export interface AutoValidationResult extends ValidationCommandResult {
+  status: 'passed' | 'failed' | 'blocked';
   mode?: ValidationMode;
   reason?: string;
+  plan?: VerificationPlan;
+  risks: string[];
+  alternativeChecks: string[];
 }
 
 export interface ValidationCommandInvocation {
@@ -22,10 +45,11 @@ export interface ValidationCommandInvocation {
   timeoutMs: number;
 }
 
-export type ValidationCommandRunner = (invocation: ValidationCommandInvocation) => Promise<AutoValidationResult>;
+export type ValidationCommandRunner = (invocation: ValidationCommandInvocation) => Promise<ValidationCommandResult>;
 
 export interface ValidationServiceOptions {
   commandRunner?: ValidationCommandRunner;
+  verificationPlanner?: Pick<VerificationPlanner, 'planWorkspaceChanges'>;
   fsNode?: {
     existsSync: (path: string) => boolean;
     readdirSync: (path: string) => string[];
@@ -40,23 +64,14 @@ export interface ValidateWorkspaceChangesInput {
   cppValidationPolicy?: CppValidationPolicy;
 }
 
-export const CPP_COMPILE_VALIDATION_TIMEOUT_MS = 15_000;
-export const CPP_RUN_VALIDATION_TIMEOUT_MS = 30_000;
-export const PROJECT_BUILD_VALIDATION_TIMEOUT_MS = 120_000;
-export const CMAKE_RUN_VALIDATION_TIMEOUT_MS = 30_000;
-export const FILE_CHECK_VALIDATION_TIMEOUT_MS = 10_000;
-
-const NON_CODE_FILE_EXTENSIONS = new Set([
-  '.md', '.txt', '.json', '.jsonc', '.yaml', '.yml', '.toml', '.ini',
-  '.csv', '.tsv', '.log', '.xml', '.html', '.css',
-]);
-
 export class ValidationService {
   private readonly commandRunner: ValidationCommandRunner;
+  private readonly verificationPlanner: Pick<VerificationPlanner, 'planWorkspaceChanges'>;
   private readonly fsNode: NonNullable<ValidationServiceOptions['fsNode']>;
 
   constructor(options: ValidationServiceOptions = {}) {
     this.commandRunner = options.commandRunner ?? runShell;
+    this.verificationPlanner = options.verificationPlanner ?? new VerificationPlanner();
     this.fsNode = options.fsNode ?? {
       existsSync: fs.existsSync,
       readdirSync: (path) => fs.readdirSync(path),
@@ -65,114 +80,59 @@ export class ValidationService {
   }
 
   async validateWorkspaceChanges(input: ValidateWorkspaceChangesInput): Promise<AutoValidationResult | null> {
-    const rootFsPath = input.rootFsPath;
-    if (!rootFsPath) return null;
+    const plan = this.verificationPlanner.planWorkspaceChanges({
+      rootFsPath: input.rootFsPath,
+      changedPaths: input.changedPaths,
+      requestPrompt: input.requestPrompt,
+      cppValidationPolicy: input.cppValidationPolicy,
+      fsNode: this.fsNode,
+    });
+    if (plan.kind === 'blocked') return blockedValidationEvidence(plan);
 
-    const changedPaths = input.changedPaths;
-    const hasBridge = changedPaths.some((path) => path.startsWith('packages/bridge/'));
-    const hasExtension = changedPaths.some((path) => path.startsWith('packages/vscode-extension/'));
-    const cppRelated = changedPaths.filter((path) => /\.(cpp|cc|cxx|c|h|hpp)$/i.test(path));
-    const fileCheckPaths = changedPaths.filter((path) => isNonCodeValidationPath(path));
-
-    if (hasBridge) {
-      return this.runCommand({
-        command: 'npm run build',
-        cwd: nodePath.join(rootFsPath, 'packages', 'bridge'),
-        timeoutMs: PROJECT_BUILD_VALIDATION_TIMEOUT_MS,
-      });
-    }
-    if (hasExtension) {
-      return this.runCommand({
-        command: 'npm run compile',
-        cwd: nodePath.join(rootFsPath, 'packages', 'vscode-extension'),
-        timeoutMs: PROJECT_BUILD_VALIDATION_TIMEOUT_MS,
-      });
-    }
-    if (cppRelated.length > 0) {
-      return this.validateCppChanges(
-        rootFsPath,
-        cppRelated,
-        input.cppValidationPolicy ?? 'conservative',
-        shouldRunCppValidation(input.requestPrompt || ''),
-      );
-    }
-    if (fileCheckPaths.length > 0 && shouldValidateNonCodeFiles(input.requestPrompt || '')) {
-      return this.validateNonCodeFiles(rootFsPath, fileCheckPaths);
-    }
-
-    return null;
-  }
-
-  private async validateNonCodeFiles(
-    rootFsPath: string,
-    changedPaths: string[],
-  ): Promise<AutoValidationResult> {
-    const command = changedPaths
-      .slice(0, 8)
-      .map((relPath) => {
-        const quoted = shellQuote(relPath);
-        return `test -f ${quoted} && wc -c ${quoted} && sed -n '1,80p' ${quoted}`;
-      })
-      .join(' && ');
     const result = await this.runCommand({
-      command,
-      cwd: rootFsPath,
-      timeoutMs: FILE_CHECK_VALIDATION_TIMEOUT_MS,
+      command: plan.command,
+      cwd: plan.cwd,
+      timeoutMs: plan.timeoutMs,
     });
     return {
       ...result,
-      mode: 'file-check',
-      reason: 'non-code-file-validation',
-    };
-  }
-
-  private async validateCppChanges(
-    rootFsPath: string,
-    cppRelated: string[],
-    cppPolicy: CppValidationPolicy,
-    shouldRun: boolean,
-  ): Promise<AutoValidationResult | null> {
-    const plan = planCppValidation(cppRelated, rootFsPath, this.fsNode, cppPolicy, { run: shouldRun });
-    if (!plan) return null;
-
-    const timeoutMs = plan.mode === 'compile-run'
-      ? CPP_RUN_VALIDATION_TIMEOUT_MS
-      : plan.mode === 'cmake' && shouldRun
-        ? CMAKE_RUN_VALIDATION_TIMEOUT_MS
-        : plan.mode === 'cmake'
-          ? PROJECT_BUILD_VALIDATION_TIMEOUT_MS
-          : CPP_COMPILE_VALIDATION_TIMEOUT_MS;
-
-    const result = await this.runCommand({ command: plan.command, cwd: plan.cwd, timeoutMs });
-    return {
-      ...result,
+      status: result.ok ? 'passed' : 'failed',
       mode: plan.mode,
       reason: plan.reason,
+      plan,
+      risks: result.ok ? [] : ['自动验证命令失败，不能把 QualityGate 标记为通过。'],
+      alternativeChecks: [],
     };
   }
 
-  private async runCommand(invocation: ValidationCommandInvocation): Promise<AutoValidationResult> {
+  private async runCommand(invocation: ValidationCommandInvocation): Promise<ValidationCommandResult> {
     return this.commandRunner(invocation);
   }
 }
 
-export function shouldRunCppValidation(prompt: string): boolean {
-  return /(?:运行|执行|启动|测试|test|run|execute|看结果|输出效果|运行效果)/i.test(prompt || '');
+function blockedValidationEvidence(plan: VerificationPlan): AutoValidationResult {
+  return {
+    ran: false,
+    ok: false,
+    status: 'blocked',
+    command: '',
+    exitCode: null,
+    output: [
+      `未执行自动验证: ${plan.reason}`,
+      ...plan.risks,
+      '替代检查:',
+      ...plan.alternativeChecks.map((check) => `- ${check}`),
+    ].join('\n'),
+    cwd: plan.cwd,
+    mode: plan.mode,
+    reason: plan.reason,
+    plan,
+    risks: plan.risks,
+    alternativeChecks: plan.alternativeChecks,
+  };
 }
 
-export function shouldValidateNonCodeFiles(prompt: string): boolean {
-  return /(?:创建|新建|生成|写|写入|更新|添加|修改|验证|确认|检查|显示|读取|是否存在|内容|create|write|update|add|verify|check|show|read|display|exist)/i.test(prompt || '');
-}
-
-function isNonCodeValidationPath(relPath: string): boolean {
-  return NON_CODE_FILE_EXTENSIONS.has(nodePath.extname(relPath).toLowerCase());
-}
-
-function shellQuote(value: string): string {
-  return `'${String(value).replace(/'/g, `'\\''`)}'`;
-}
-
-async function runShell(invocation: ValidationCommandInvocation): Promise<AutoValidationResult> {
+async function runShell(invocation: ValidationCommandInvocation): Promise<ValidationCommandResult> {
   return new Promise((resolve) => {
     exec(invocation.command, { cwd: invocation.cwd, timeout: invocation.timeoutMs, encoding: 'utf8' }, (
       error: ExecException | null,

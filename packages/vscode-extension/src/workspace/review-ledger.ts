@@ -25,15 +25,43 @@ export interface ReviewValidationRecord {
   failureFiles: string[];
 }
 
+export interface ReviewQualityGateRiskAcceptance {
+  source: 'user' | 'policy';
+  note?: string;
+  acceptedAt: number;
+}
+
+export interface ReviewQualityGateInput {
+  status: 'pass' | 'fail' | 'blocked';
+  summary: string;
+  evidenceRefs?: string[];
+  risks?: string[];
+  alternativeChecks?: string[];
+  requiredActions?: string[];
+  acceptedRisk?: ReviewQualityGateRiskAcceptance;
+}
+
+export interface ReviewQualityGateRecord {
+  status: 'pass' | 'fail' | 'blocked';
+  summary: string;
+  evidenceRefs: string[];
+  risks: string[];
+  alternativeChecks: string[];
+  requiredActions: string[];
+  acceptedRisk?: ReviewQualityGateRiskAcceptance;
+}
+
 export interface ReviewLedgerSnapshot {
   files: ChangeSetSummary;
   validation: ReviewValidationRecord;
+  qualityGate: ReviewQualityGateRecord;
   unfinishedItems: string[];
 }
 
 export class ReviewLedger {
   private changeSet = new ChangeSet([]);
   private validation: ReviewValidationRecord = makeSkippedValidation('not-run');
+  private qualityGate: ReviewQualityGateRecord = makeQualityGateNotEvaluated();
   private unfinishedItems: string[] = [];
 
   recordChangeSet(changeSet: ChangeSet): void {
@@ -48,6 +76,10 @@ export class ReviewLedger {
     this.validation = makeSkippedValidation(reason);
   }
 
+  recordQualityGate(qualityGate: ReviewQualityGateInput): void {
+    this.qualityGate = normalizeQualityGateRecord(qualityGate);
+  }
+
   addUnfinishedItem(item: string): void {
     const trimmed = item.trim();
     if (trimmed) this.unfinishedItems.push(trimmed);
@@ -57,6 +89,7 @@ export class ReviewLedger {
     return {
       files: this.changeSet.summary(),
       validation: this.validation,
+      qualityGate: this.qualityGate,
       unfinishedItems: [...this.unfinishedItems],
     };
   }
@@ -127,6 +160,29 @@ function makeSkippedValidation(reason: string): ReviewValidationRecord {
     reason,
     summary: summarizeValidation({ ran: false, reason }),
     failureFiles: [],
+  };
+}
+
+export function normalizeQualityGateRecord(input: ReviewQualityGateInput): ReviewQualityGateRecord {
+  return {
+    status: input.status,
+    summary: input.summary || `QualityGate ${input.status}`,
+    evidenceRefs: input.evidenceRefs ?? [],
+    risks: input.risks ?? [],
+    alternativeChecks: input.alternativeChecks ?? [],
+    requiredActions: input.requiredActions ?? [],
+    ...(input.acceptedRisk ? { acceptedRisk: input.acceptedRisk } : {}),
+  };
+}
+
+function makeQualityGateNotEvaluated(): ReviewQualityGateRecord {
+  return {
+    status: 'blocked',
+    summary: 'QualityGate 未评估。',
+    evidenceRefs: [],
+    risks: ['尚未生成 QualityGate 结果。'],
+    alternativeChecks: [],
+    requiredActions: ['运行验证或记录阻塞原因。'],
   };
 }
 

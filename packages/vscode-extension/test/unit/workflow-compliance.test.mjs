@@ -953,6 +953,7 @@ test('Architecture: Workspace review ledger owns apply result summary', () => {
   assertContains(changeSet, 'class ChangeSet', 'workspace ChangeSet must exist');
   assertContains(reviewLedger, 'class ReviewLedger', 'workspace ReviewLedger must exist');
   assertContains(reviewLedger, 'failureFiles', 'ReviewLedger must record validation failure files');
+  assertContains(reviewLedger, 'qualityGate', 'ReviewLedger must record QualityGate results');
   assertContains(applier, 'new ReviewLedger()', 'workspace applier must construct review ledger');
   assertContains(applier, 'review?: ReviewLedgerSnapshot', 'apply workflow result must expose review snapshot');
   assertContains(applier, 'review: ledger.snapshot()', 'workspace applier must return ledger snapshots');
@@ -960,10 +961,15 @@ test('Architecture: Workspace review ledger owns apply result summary', () => {
 
 test('Architecture: ValidationService owns automatic validation execution', () => {
   const service = src('src/workspace/validation-service.ts');
+  const planner = src('src/app/verification-planner.ts');
+  const qualityGate = src('src/app/quality-gate-service.ts');
   const applier = src('src/workspace-applier.ts');
   assertContains(service, 'class ValidationService', 'validation service class must exist');
   assertContains(service, 'validateWorkspaceChanges', 'validation service must expose workspace validation entry');
-  assertContains(service, 'planCppValidation', 'validation service must own C++ validation planning integration');
+  assertContains(planner, 'class VerificationPlanner', 'verification planner class must exist');
+  assertContains(planner, 'planCppValidation', 'verification planner must own C++ validation planning integration');
+  assertContains(qualityGate, 'class QualityGateService', 'quality gate service class must exist');
+  assertContains(applier, 'new QualityGateService()', 'workspace applier must evaluate quality gate');
   assertContains(service, 'runShell', 'validation service must own shell execution');
   assertContains(applier, 'new ValidationService()', 'workspace applier must delegate validation to service');
   assert.doesNotMatch(applier, /planCppValidation|child_process|runShell|runCppAutoValidation/, 'workspace applier must not own validation execution internals');

@@ -20,9 +20,10 @@ import { createChangeSet } from './workspace/change-set';
 import { WorkspaceEditService } from './workspace/edit-service';
 import { ReviewLedger, type ReviewLedgerSnapshot } from './workspace/review-ledger';
 import { ValidationService, type AutoValidationResult } from './workspace/validation-service';
+import { QualityGateService, type QualityGateDecision } from './app/quality-gate-service';
 
 export interface ApplyWorkflowStatus {
-  phase: 'apply' | 'validate' | 'repair';
+  phase: 'apply' | 'validate' | 'quality' | 'repair';
   state: 'started' | 'completed' | 'skipped' | 'passed' | 'failed';
   title: string;
   detail?: string;
@@ -33,6 +34,7 @@ export interface ApplyWorkflowResult {
   changeCount: number;
   changedPaths: string[];
   validation?: AutoValidationResult;
+  qualityGate?: QualityGateDecision;
   rolledBack?: boolean;
   review?: ReviewLedgerSnapshot;
 }
@@ -138,6 +140,7 @@ async function applyPreparedChanges(
   const changeSet = createChangeSetFromPrepared(prepared);
   const ledger = new ReviewLedger();
   const workspaceEditService = new WorkspaceEditService();
+  const qualityGateService = new QualityGateService();
   ledger.recordChangeSet(changeSet);
   const summary = changeSet.summary();
   if (!autoApply) {
@@ -275,17 +278,30 @@ async function applyPreparedChanges(
   const validation = await runAutoValidation(prepared.map((p) => p.relPath), root, requestPrompt);
   if (!validation) {
     ledger.recordValidationSkipped('no-auto-validation-target');
+    const qualityGate = qualityGateService.evaluate({
+      changedPaths: changeSet.changedPaths,
+      validation: null,
+    });
+    ledger.recordQualityGate(qualityGate);
+    ledger.addUnfinishedItem('QualityGate 阻塞：缺少自动验证证据');
     await reportWorkflow(reporter, {
       phase: 'validate',
       state: 'skipped',
       title: '未执行自动验证',
       detail: '未识别到可自动验证的目标（bridge / extension / C++ 目录项目）。',
     });
+    await reportWorkflow(reporter, {
+      phase: 'quality',
+      state: 'failed',
+      title: 'QualityGate 阻塞',
+      detail: renderQualityGateDetail(qualityGate),
+    });
     await reportAppliedChanges(prepared, onAppliedChange);
     return {
       applied: true,
       changeCount: summary.total,
       changedPaths: changeSet.changedPaths,
+      qualityGate,
       review: ledger.snapshot(),
     };
   }
@@ -296,6 +312,22 @@ async function applyPreparedChanges(
     state: validation.ok ? 'passed' : 'failed',
     title: validation.ok ? '自动验证通过' : '自动验证失败',
     detail: `模式: ${validation.mode || 'unknown'}\n原因: ${validation.reason || 'n/a'}\n命令: ${validation.command}\nexitCode: ${validation.exitCode ?? 'null'}\n${validation.output.trim().slice(0, 1200)}`,
+  });
+
+  const qualityGate = qualityGateService.evaluate({
+    changedPaths: changeSet.changedPaths,
+    validation,
+  });
+  ledger.recordQualityGate(qualityGate);
+  await reportWorkflow(reporter, {
+    phase: 'quality',
+    state: qualityGate.status === 'pass' ? 'passed' : 'failed',
+    title: qualityGate.status === 'pass'
+      ? 'QualityGate 通过'
+      : qualityGate.status === 'fail'
+        ? 'QualityGate 未通过'
+        : 'QualityGate 阻塞',
+    detail: renderQualityGateDetail(qualityGate),
   });
 
   if (!validation.ok && autoApply && rollbackOnValidationFailure) {
@@ -313,13 +345,16 @@ async function applyPreparedChanges(
       changeCount: 0,
       changedPaths: [],
       validation,
+      qualityGate,
       rolledBack: true,
       review: ledger.snapshot(),
     };
   }
 
-  if (!validation.ok) {
+  if (qualityGate.status === 'fail') {
     ledger.addUnfinishedItem('自动验证失败，需要根据验证输出继续修复');
+  } else if (qualityGate.status === 'blocked') {
+    ledger.addUnfinishedItem('QualityGate 阻塞：需要补充验证或用户确认风险');
   }
   await reportAppliedChanges(prepared, onAppliedChange);
 
@@ -328,6 +363,7 @@ async function applyPreparedChanges(
     changeCount: summary.total,
     changedPaths: changeSet.changedPaths,
     validation,
+    qualityGate,
     review: ledger.snapshot(),
   };
 }
@@ -747,6 +783,16 @@ function joinPath(base: string, file: string): string {
 async function reportWorkflow(reporter: ApplyWorkflowReporter | undefined, status: ApplyWorkflowStatus): Promise<void> {
   if (!reporter) return;
   await reporter(status);
+}
+
+function renderQualityGateDetail(qualityGate: QualityGateDecision): string {
+  return [
+    qualityGate.summary,
+    qualityGate.evidenceRefs.length > 0 ? `证据: ${qualityGate.evidenceRefs.join(', ')}` : '',
+    qualityGate.risks.length > 0 ? `风险:\n${qualityGate.risks.map((risk) => `- ${risk}`).join('\n')}` : '',
+    qualityGate.alternativeChecks.length > 0 ? `替代检查:\n${qualityGate.alternativeChecks.map((check) => `- ${check}`).join('\n')}` : '',
+    qualityGate.requiredActions.length > 0 ? `后续动作:\n${qualityGate.requiredActions.map((action) => `- ${action}`).join('\n')}` : '',
+  ].filter(Boolean).join('\n');
 }
 
 function getWorkspaceRoot(requestPrompt?: string, preferredAbsolutePaths?: string[]): vscode.Uri | undefined {

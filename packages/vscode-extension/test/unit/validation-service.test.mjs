@@ -65,7 +65,7 @@ test('ValidationService: selects bridge build before extension compile when brid
   assert.equal(result.cwd, path.join('/repo', 'packages', 'bridge'));
 });
 
-test('ValidationService: returns null for paths without automatic validation target', async () => {
+test('ValidationService: returns blocked evidence for paths without automatic validation target', async () => {
   const invocations = [];
   const service = new ValidationService({ commandRunner: makeRunner(invocations) });
 
@@ -74,7 +74,12 @@ test('ValidationService: returns null for paths without automatic validation tar
     changedPaths: ['docs/readme.md'],
   });
 
-  assert.equal(result, null);
+  assert.equal(result.ran, false);
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.reason, 'no-auto-validation-target');
+  assert.ok(result.risks.some((risk) => /无法证明/.test(risk)));
+  assert.ok(result.alternativeChecks.some((check) => /人工/.test(check)));
   assert.deepEqual(invocations, []);
 });
 
@@ -89,6 +94,7 @@ test('ValidationService: validates requested markdown writes with file checks, n
   });
 
   assert.equal(result.ok, true);
+  assert.equal(result.status, 'passed');
   assert.equal(result.mode, 'file-check');
   assert.equal(result.reason, 'non-code-file-validation');
   assert.match(result.command, /test -f/);
@@ -134,6 +140,7 @@ test('ValidationService: preserves failed command evidence', async () => {
   });
 
   assert.equal(result.ok, false);
+  assert.equal(result.status, 'failed');
   assert.equal(result.exitCode, 2);
   assert.equal(result.output, 'compile failed');
 });

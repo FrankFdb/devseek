@@ -2,7 +2,7 @@
 
 最后更新：2026-06-19
 
-覆盖范围：Phase 0 到 Phase 5。后续每次迭代完成后，只更新对应 Phase 的用例、期望结果和已发现问题。
+覆盖范围：Phase 0 到 Phase 6。后续每次迭代完成后，只更新对应 Phase 的用例、期望结果和已发现问题。
 
 ## 1. 使用方式
 
@@ -346,7 +346,71 @@ export const manualPhase5Smoke = true;
 - 若任务成功，Working、Todos、摘要三者状态必须一致。
 - Markdown 验证只允许文件存在/内容读取证据；不能生成 `read_doc.c` 或进入 gcc/clang/node/npm 编译验证。
 
-## 8. 已发现问题跟踪
+## 8. Phase 6：QualityGate 与自检查
+
+目标：验证任务完成必须绑定可引用的验证证据；验证失败不能标记完成；自动验证不可得时必须进入 blocked/risk 路径。
+
+### P6-01 TypeScript 验证失败阻断完成
+
+用户输入：
+
+```text
+创建 packages/vscode-extension/src/workspace/manual-phase6-quality-gate.ts，内容为：
+export const manualPhase6QualityGate: string = 1;
+```
+
+期望结果：
+
+- 目标文件进入待确认变更。
+- 自动验证选择 VS Code extension 编译路径。
+- TypeScript 编译失败时，QualityGate 必须显示未通过。
+- 最终任务不能显示完成，Todo 不能全绿假成功。
+- 摘要必须包含失败验证证据、失败原因和下一步修复动作。
+
+### P6-02 文档文件验证通过
+
+用户输入：
+
+```text
+创建 docs/manual-phase6-quality.md，内容为：phase6 quality gate smoke，并验证文件创建成功。
+```
+
+期望结果：
+
+- 创建 `docs/manual-phase6-quality.md`。
+- Markdown 验证使用文件存在、字节数和内容读取证据。
+- 不应生成 C/C++/TypeScript 临时验证程序。
+- QualityGate 显示通过，完成摘要引用验证命令或证据。
+
+### P6-03 自动验证不可得时进入 blocked
+
+用户输入：
+
+```text
+创建 assets/manual-phase6.unknown，内容为：phase6 unknown validation target。
+```
+
+期望结果：
+
+- 如果该文件类型没有可用自动验证计划，QualityGate 显示阻塞而不是通过。
+- 摘要列出剩余风险和替代检查建议。
+- 除非用户明确接受风险，否则任务不能被描述为已完全验证。
+
+### P6-04 ReviewLedger 保留 QualityGate 记录
+
+前置：
+
+1. 执行 P6-01 或 P6-02。
+2. 完成或失败后执行 `Developer: Reload Window`。
+3. 打开同一 DevSeek 会话历史。
+
+期望结果：
+
+- 历史记录保留 QualityGate 状态、验证证据、风险和待处理事项。
+- 详情仍可折叠展开。
+- 不应只显示一行完成摘要，也不应丢失失败/阻塞原因。
+
+## 9. 已发现问题跟踪
 
 | ID | 关联 case | 现象 | 当前评估 | 后续处理 |
 | --- | --- | --- | --- | --- |
@@ -355,8 +419,9 @@ export const manualPhase5Smoke = true;
 | P5-READONLY-02 | P5-03 | 只读任务反复 `ls/test -f`，没有显示内容，最后仍报缺少读取/检查结果 | `other` 类型的只读终端证据被执行器丢弃；`test/ls` 被错误视为可满足“显示文件内容” | 本次新增内容读取 evidence 回归：存在性检查可用 `test/ls`，显示内容必须用 `read_file` 或 `cat/head/sed` |
 | P5-READONLY-03 | P5-03 | 明确路径的简单只读检查仍进入多轮 agent loop，耗时长且可能触发无关工具尝试 | 执行层没有把确定性文件读取任务从 agent loop 前置处理 | 本次新增 ReadOnlyInspectionService：工作区内明确文件路径的存在/内容查看直接读取并返回，复杂分析保持 agent 路径 |
 | P5-DOCVAL-01 | P5-06 | Markdown 创建后生成 C 程序 `read_doc.c` 并尝试 gcc 编译/运行来验证文档 | ValidationService 对非代码文件返回 null，模型被迫自造验证程序 | 本次新增 markdown file-check 自动验证，禁止把文档验证升级为编译任务 |
+| P6-QG-01 | P6-01、P6-03 | 任务完成结论可能缺少独立 QualityGate 证据 | Claude Code/Codex 的优秀实践是把验证失败/不可得显式纳入最终状态，而不是用 prose 宣告完成 | 本次新增 VerificationPlanner、QualityGateService 和 ReviewLedger 记录，失败/阻塞不能通过完成门 |
 
-## 9. 每轮迭代更新规则
+## 10. 每轮迭代更新规则
 
 1. 新 Phase 完成后，在本文新增对应章节。
 2. 每个新增 bug 必须关联至少一个用户可执行 case。

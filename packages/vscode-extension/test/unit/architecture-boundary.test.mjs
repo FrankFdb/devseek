@@ -63,6 +63,8 @@ test('Phase 0: domain roots expose explicit public boundaries', () => {
       './permission-service',
       './session-service',
       './task-ledger',
+      './quality-gate-service',
+      './verification-planner',
       './workflow-service',
     ],
     'src/agent/index.ts': [
