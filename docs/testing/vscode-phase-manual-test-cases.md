@@ -292,6 +292,13 @@ export const manualPhase5Smoke = true;
 - Todo 应是检查/读取类任务，不能出现 `创建/更新文件`。
 - 如果模型尝试写入检查文件，应被 inspect 权限阻断，并继续转向读取证据，而不是把任务判为缺少文件修改结果。
 
+最新观察：
+
+- 2026-06-19 截图中，任务反复执行 `ls/test -f`，生成多条重复的“检查 docs/manual-phase5-smoke.md 是否存在”完成卡片。
+- 任务只证明了文件存在，没有显示文件内容。
+- 最终仍失败为“缺少文件读取/检查结果”。
+- 评估：`run_terminal` 的只读命令被归类为 `other` 后没有进入 completion evidence；同时 evidence 判定没有区分“存在性检查”和“内容读取”。
+
 ### P5-04 写入不能通过终端绕过 Review
 
 用户输入：
@@ -343,6 +350,7 @@ export const manualPhase5Smoke = true;
 | --- | --- | --- | --- | --- |
 | P5-STATUS-01 | P5-01、P5-06 | Todos 和完成摘要显示成功，但 Working 行标红 `Failed: Exploring ...` | 状态一致性问题；可能是完成判定或前端 Working 收尾状态不一致 | 后续先用 P5-01/P5-06 复现，再定位根因并修复 |
 | P5-READONLY-01 | P5-03 | 只读检查请求被模型转成 `创建/更新文件`，并尝试写 `manual-phase5-smoke-check.txt` | intent 已是 inspect，但 evidence/agent loop 缺少读取证据类型，系统反馈会把任务拉向 create_file | 本次新增 completion evidence/workflow 回归，按读取证据闭环修复 |
+| P5-READONLY-02 | P5-03 | 只读任务反复 `ls/test -f`，没有显示内容，最后仍报缺少读取/检查结果 | `other` 类型的只读终端证据被执行器丢弃；`test/ls` 被错误视为可满足“显示文件内容” | 本次新增内容读取 evidence 回归：存在性检查可用 `test/ls`，显示内容必须用 `read_file` 或 `cat/head/sed` |
 | P5-DOCVAL-01 | P5-06 | Markdown 创建后生成 C 程序 `read_doc.c` 并尝试 gcc 编译/运行来验证文档 | ValidationService 对非代码文件返回 null，模型被迫自造验证程序 | 本次新增 markdown file-check 自动验证，禁止把文档验证升级为编译任务 |
 
 ## 9. 每轮迭代更新规则

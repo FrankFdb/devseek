@@ -53,6 +53,9 @@ const CODE_TARGET_RE = /(?:代码|源码|程序|脚本|算法|功能|组件|游�
 const FILE_PATH_TARGET_RE = /(?:^|[^\w/.-])(?:\.{0,2}\/)?[\w.-]+(?:\/[\w.-]+)*\.[A-Za-z0-9]{1,12}\b/;
 const READ_ONLY_RE = /(?:(?:不要|不用|无需|不需要|禁止|别).{0,8}(?:修改|改动|改|变更|写|写入|创建|新建|生成|更新|删除).{0,4}(?:代码|文件|内容)?|(?:只|仅).{0,6}(?:分析|评估|说明|解释|计划|审计|查看|确认|检查|读取|显示)|do not .{0,20}(?:modify|edit|change|write|create|update|delete))/i;
 const READ_EVIDENCE_RE = /(?:检查|查看|读取|显示|确认|是否存在|内容|read|show|display|check|inspect|exists?)/i;
+const FILE_CONTENT_EVIDENCE_RE = /(?:(?:显示|查看|读取|输出|打印).{0,8}(?:文件)?内容|(?:read|show|display|print).{0,16}(?:file\s*)?content)/i;
+const READ_ONLY_TERMINAL_EVIDENCE_RE = /\b(?:cat|ls|test|grep|head|tail|sed|wc|stat|file|find)\b/i;
+const FILE_CONTENT_TERMINAL_EVIDENCE_RE = /\b(?:cat|grep|head|tail|sed)\b/i;
 const GENERIC_EVIDENCE_TODO_TITLES = new Set([
   '创建/更新文件',
   '编译/运行并验证结果',
@@ -95,6 +98,18 @@ export function requiresReadEvidence(text: string): boolean {
   return isExplicitlyReadOnlyRequest(trimmed) && FILE_PATH_TARGET_RE.test(trimmed) && READ_EVIDENCE_RE.test(trimmed);
 }
 
+export function requiresFileContentReadEvidence(text: string): boolean {
+  return requiresReadEvidence(text) && FILE_CONTENT_EVIDENCE_RE.test(text);
+}
+
+export function isReadOnlyTerminalEvidenceCommand(command: string): boolean {
+  return READ_ONLY_TERMINAL_EVIDENCE_RE.test(command || '');
+}
+
+export function isFileContentTerminalEvidenceCommand(command: string): boolean {
+  return FILE_CONTENT_TERMINAL_EVIDENCE_RE.test(command || '');
+}
+
 export function requiresCommandEvidence(text: string): boolean {
   return /(?:编译|运行|执行|测试|验证|调试|compile|build|test|run|execute|verify)/i.test(text);
 }
@@ -129,6 +144,7 @@ export function getMissingCompletionEvidence(
   const needsFileChange = requiresFileChangeEvidence(text);
   const needsCodeArtifact = requiresCodeArtifactForEvidence(text);
   const needsReadEvidence = requiresReadEvidence(text);
+  const needsFileContentReadEvidence = requiresFileContentReadEvidence(text);
   if (needsCodeArtifact && existingCodeWrites.length === 0) {
     missing.push('代码修改结果');
   } else if (needsFileChange && existingWrittenFiles.length === 0) {
@@ -139,9 +155,11 @@ export function getMissingCompletionEvidence(
     const hasReadEvidence = readEvidencePaths.length > 0
       || successfulEvidence.some(e =>
         e.kind === 'other'
-        && /\b(?:cat|ls|test|grep|head|tail|wc|stat|file|find)\b/i.test(e.command || ''),
+        && (needsFileContentReadEvidence
+          ? isFileContentTerminalEvidenceCommand(e.command)
+          : isReadOnlyTerminalEvidenceCommand(e.command)),
       );
-    if (!hasReadEvidence) missing.push('文件读取/检查结果');
+    if (!hasReadEvidence) missing.push(needsFileContentReadEvidence ? '文件内容读取结果' : '文件读取/检查结果');
   }
 
   const commandEvidenceNeeded = !needsReadEvidence && requiresCommandEvidence(text);

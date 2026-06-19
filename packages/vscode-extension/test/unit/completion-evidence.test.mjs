@@ -34,7 +34,10 @@ execSync(
 const req = createRequire(import.meta.url);
 const {
   getMissingCompletionEvidence,
+  isFileContentTerminalEvidenceCommand,
+  isReadOnlyTerminalEvidenceCommand,
   requiresCodeArtifactForEvidence,
+  requiresFileContentReadEvidence,
   requiresFileChangeEvidence,
   requiresReadEvidence,
 } = req(bundlePath);
@@ -61,15 +64,38 @@ test('completion evidence: read-only file inspection needs read evidence, not wr
   const hallucinatedWriteTodo = [{ title: '创建/更新文件' }];
 
   assert.equal(requiresReadEvidence(inspectPrompt), true);
+  assert.equal(requiresFileContentReadEvidence(inspectPrompt), true);
   assert.equal(requiresFileChangeEvidence(`${inspectPrompt}\n创建/更新文件`), false);
   assert.deepEqual(
     getMissingCompletionEvidence(inspectPrompt, hallucinatedWriteTodo, [], [], []),
-    ['文件读取/检查结果'],
+    ['文件内容读取结果'],
   );
   assert.deepEqual(
     getMissingCompletionEvidence(inspectPrompt, hallucinatedWriteTodo, [], [], ['docs/manual-phase5-smoke.md']),
     [],
   );
+});
+
+test('completion evidence: content display is not satisfied by existence-only terminal checks', () => {
+  const inspectPrompt = '检查 docs/manual-phase5-smoke.md 是否存在，并显示文件内容。不要修改文件。';
+  const testEvidence = [{ command: 'test -f docs/manual-phase5-smoke.md', kind: 'other', ok: true, exitCode: 0 }];
+  const listEvidence = [{ command: 'ls -la docs/manual-phase5-smoke.md', kind: 'other', ok: true, exitCode: 0 }];
+  const catEvidence = [{ command: 'cat docs/manual-phase5-smoke.md', kind: 'other', ok: true, exitCode: 0 }];
+
+  assert.equal(isReadOnlyTerminalEvidenceCommand(testEvidence[0].command), true);
+  assert.equal(isFileContentTerminalEvidenceCommand(testEvidence[0].command), false);
+  assert.deepEqual(getMissingCompletionEvidence(inspectPrompt, [], [], testEvidence, []), ['文件内容读取结果']);
+  assert.deepEqual(getMissingCompletionEvidence(inspectPrompt, [], [], listEvidence, []), ['文件内容读取结果']);
+  assert.deepEqual(getMissingCompletionEvidence(inspectPrompt, [], [], catEvidence, []), []);
+});
+
+test('completion evidence: existence-only read-only checks can complete with test evidence', () => {
+  const inspectPrompt = '检查 docs/manual-phase5-smoke.md 是否存在。不要修改文件。';
+  const testEvidence = [{ command: 'test -f docs/manual-phase5-smoke.md', kind: 'other', ok: true, exitCode: 0 }];
+
+  assert.equal(requiresReadEvidence(inspectPrompt), true);
+  assert.equal(requiresFileContentReadEvidence(inspectPrompt), false);
+  assert.deepEqual(getMissingCompletionEvidence(inspectPrompt, [], [], testEvidence, []), []);
 });
 
 test('completion evidence: common Chinese implementation wording requires code evidence', () => {

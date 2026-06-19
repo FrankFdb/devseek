@@ -52,6 +52,9 @@ export function inferInitialAgenticTodos(userPrompt: string): TodoItem[] {
 }
 
 export function buildMissingEvidenceRecoveryInstruction(missing: string[]): string {
+  if (missing.some(item => item.includes('内容'))) {
+    return '请调用 read_file 读取目标文件，或使用只读 run_terminal 命令 cat/head/sed 显示目标文件内容；test/ls 只能证明存在，不能满足内容读取。不要创建、修改或覆盖文件。';
+  }
   if (missing.some(item => item.includes('读取') || item.includes('检查'))) {
     return '请调用 read_file/list_dir，或使用只读 run_terminal 命令（test/ls/cat/head/stat）检查目标文件和内容；不要创建、修改或覆盖文件。';
   }

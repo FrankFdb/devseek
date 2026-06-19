@@ -750,6 +750,20 @@ test('Agentic free-explore: follow-up turns keep same-session context', () => {
   );
 });
 
+test('Agentic evidence: read-only terminal checks are retained as completion evidence', () => {
+  const agentLoop = src('src/agent-loop.ts');
+  assertContains(
+    agentLoop,
+    'isReadOnlyTerminalEvidenceCommand(command)',
+    'agent loop must keep read-only terminal evidence instead of dropping kind=other commands',
+  );
+  assert.match(
+    agentLoop,
+    /evidenceResult\.evidence\.kind !== 'other' \|\| isReadOnlyTerminalEvidenceCommand\(command\)/,
+    'run_terminal evidence collection must retain read-only other-kind commands',
+  );
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §3 Tool call filtering
 // ─────────────────────────────────────────────────────────────────────────────

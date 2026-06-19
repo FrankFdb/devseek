@@ -85,6 +85,7 @@ import {
   classifyTerminalEvidenceCommand,
   getMissingCompletionEvidence,
   isExplicitlyReadOnlyRequest,
+  isReadOnlyTerminalEvidenceCommand,
   requiresCodeArtifactForEvidence,
   requiresCommandEvidence,
   requiresFileChangeEvidence,
@@ -792,7 +793,7 @@ async function executeFakeToolsForLoop(
           if (evidenceResult.ran) {
             terminalCommands.push(command);
           }
-          if (evidenceResult.evidence.kind !== 'other') {
+          if (evidenceResult.evidence.kind !== 'other' || isReadOnlyTerminalEvidenceCommand(command)) {
             terminalEvidence.push(evidenceResult.evidence);
           }
           // Silent: output goes to AI context only (shown in Working box via terminalRanNotice)
@@ -2944,7 +2945,7 @@ function buildAgenticSystemPrompt(
   }
 
   const workflowModeSection = workflowMode === 'inspect'
-    ? `\n【当前工作流模式】inspect / 只读检查\n- 用户要求只读、检查、显示或分析时，禁止创建、修改、覆盖或删除文件。\n- 不要调用 create_file；不要用 run_terminal 的 python/echo/tee/cat 重定向写文件。\n- 检查文件是否存在或显示内容时，优先使用 read_file/list_dir；需要终端时只能使用 test/ls/cat/head/stat/wc 等只读命令。\n- 只读任务的完成证据是读取/检查结果，不是文件修改结果。\n`
+    ? `\n【当前工作流模式】inspect / 只读检查\n- 用户要求只读、检查、显示或分析时，禁止创建、修改、覆盖或删除文件。\n- 不要调用 create_file；不要用 run_terminal 的 python/echo/tee/cat 重定向写文件。\n- 检查文件是否存在时，可以使用 list_dir 或 test/ls/stat/file；显示文件内容时必须使用 read_file，或只读 run_terminal 的 cat/head/sed。\n- test/ls 只能证明路径存在，不能满足“显示文件内容”。\n- 只读任务的完成证据是读取/检查结果，不是文件修改结果。\n`
     : workflowMode === 'plan'
       ? `\n【当前工作流模式】plan / 只读计划\n- 只生成计划和分析，不写文件，不执行会修改工作区的命令。\n- 需要查看文件时使用 read_file/list_dir/grep_search 等只读工具。\n`
       : `\n【当前工作流模式】${workflowMode}\n- 可以在权限允许时修改工作区；所有写入必须走 create_file 或受控文件工具，并提供真实验证证据。\n`;
