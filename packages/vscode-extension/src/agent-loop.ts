@@ -73,6 +73,7 @@ import {
 } from './agent/fake-tool-parser';
 import { AgentToolExecutor } from './agent/tool-executor';
 import {
+  detectNestedFilePayloadDrift,
   detectShellFileWriteCommand,
   getTerminalRecoveryProtocol,
   isInsideWorkspacePath,
@@ -655,6 +656,16 @@ async function applyMarkdownFileArtifactsForLoop(
       continue;
     }
     const resolvedAbs = resolvedWrite.absPath;
+    const payloadDrift = detectNestedFilePayloadDrift({
+      targetAbsPath: resolvedAbs,
+      content: artifact.content,
+      workspaceRoot,
+      defaultWorkdir: workspaceRoot,
+    });
+    if (payloadDrift.block) {
+      feedback.push(`[generated_file: ${artifact.path}] 跳过：${payloadDrift.reason}`);
+      continue;
+    }
     if (seen.has(resolvedAbs)) continue;
     seen.add(resolvedAbs);
     try {
@@ -987,6 +998,16 @@ async function executeFakeToolsForLoop(
           const absPath = normalized.absPath;
           if (!absPath) {
             parts.push(`[${tool.name}: ${rawPath}] 错误: 无法解析为工作区内文件路径，已阻止写入。`);
+            continue;
+          }
+          const payloadDrift = detectNestedFilePayloadDrift({
+            targetAbsPath: absPath,
+            content,
+            workspaceRoot,
+            defaultWorkdir,
+          });
+          if (payloadDrift.block) {
+            parts.push(`[${tool.name}: ${rawPath}] 错误: ${payloadDrift.reason}`);
             continue;
           }
           if (callbacks.onBeforeFileWrite) {

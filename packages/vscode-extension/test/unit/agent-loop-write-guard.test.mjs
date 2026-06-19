@@ -21,6 +21,7 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const {
+  detectNestedFilePayloadDrift,
   detectShellFileWriteCommand,
   shouldBlockUnverifiedSourceOverwrite,
 } = req(bundlePath);
@@ -65,6 +66,36 @@ test('AgentLoop write guard: still detects config/doc shell write targets', () =
     detectShellFileWriteCommand('echo "notes" >> docs/plan.md'),
     'docs/plan.md',
   );
+});
+
+test('AgentLoop write guard: blocks nested file payload drift into an unrelated target path', () => {
+  const decision = detectNestedFilePayloadDrift({
+    targetAbsPath: '/workspace/packages/vscode-extension/src/app/AGENTS.md',
+    workspaceRoot: '/workspace',
+    defaultWorkdir: '/workspace/packages/vscode-extension/src/app',
+    content: JSON.stringify({
+      path: '/workspace/packages/vscode-extension/src/app/workflow-service.ts',
+      content: 'export const fixed = true;\n',
+    }),
+  });
+
+  assert.equal(decision.block, true);
+  assert.match(decision.reason, /workflow-service\.ts/);
+  assert.match(decision.reason, /AGENTS\.md/);
+});
+
+test('AgentLoop write guard: allows JSON data files with path/content fields', () => {
+  const decision = detectNestedFilePayloadDrift({
+    targetAbsPath: '/workspace/test/fixtures/tool-payload.json',
+    workspaceRoot: '/workspace',
+    defaultWorkdir: '/workspace/test/fixtures',
+    content: JSON.stringify({
+      path: 'workflow-service.ts',
+      content: 'export const fixed = true;\n',
+    }),
+  });
+
+  assert.equal(decision.block, false);
 });
 
 console.log('\nAgent loop write guard tests passed.\n');

@@ -30,14 +30,28 @@ function isShellTranscriptName(name: string): boolean {
   return SHELL_TRANSCRIPT_NAMES.has(String(name || '').toLowerCase());
 }
 
+function looksLikeNonShellTranscriptLine(line: string): boolean {
+  const first = line.trim().replace(/^\$\s*/, '').replace(/^>\s*/, '');
+  if (!first) return true;
+  if (/^(?:\/\/|\/\*|\*\/|\*)/.test(first)) return true;
+  if (/^[{\[]/.test(first)) return true;
+  if (/^(?:const|let|var|return|if|for|while|switch|function|export|import|class|interface|type)\b/.test(first)) return true;
+  if (/^[\u3400-\u9fff]/.test(first)) return true;
+  return false;
+}
+
 function isShellCommandLine(line: string): boolean {
   const first = line.trim().replace(/^\$\s*/, '').replace(/^>\s*/, '');
   if (!first) return false;
-  return /^(?:cat|type|get-content|find|rg|grep|sed|head|tail|ls|dir|pwd|cd|npm|npx|pnpm|yarn|node|git|python|python3|bash|sh|zsh|cmd|powershell|pwsh|mkdir|cp|mv|rm|touch|code|g\+\+|gcc|clang|make|cmake|go|cargo|pytest|mvn|gradle|docker|curl|wget)\b/i.test(first)
-    || /[|;&<>]/.test(first);
+  if (looksLikeNonShellTranscriptLine(first)) return false;
+  return /^(?:\.\/|\.\.\/|cat|type|get-content|find|rg|grep|sed|head|tail|ls|dir|pwd|cd|npm|npx|pnpm|yarn|node|git|python|python3|bash|sh|zsh|cmd|powershell|pwsh|mkdir|cp|mv|rm|touch|code|g\+\+|gcc|clang|make|cmake|go|cargo|pytest|mvn|gradle|docker|curl|wget)\b/i.test(first)
+    || /(?:^|\s)(?:&&|\|\||[|;])(?:\s|$)/.test(first)
+    || /(?:^|\s)\d?>&?\S/.test(first);
 }
 
 function looksLikeShellCommandBlock(text: string): boolean {
+  const payload = shellJsonCommandPayload(text);
+  if (payload) return looksLikeShellCommandBlock(payload.command);
   return text.split(/\r?\n/).some(line => isShellCommandLine(line));
 }
 
@@ -160,6 +174,15 @@ function stripCallingShellTranscriptBlocks(text: string): string {
   return out + text.slice(last);
 }
 
+function hasShellTranscriptMarker(text: string): boolean {
+  const callRe = makeAnyCallingRegex();
+  let m: RegExpExecArray | null;
+  while ((m = callRe.exec(text)) !== null) {
+    if (m[1] && isShellTranscriptName(m[1])) return true;
+  }
+  return false;
+}
+
 export function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | null {
   const rawName = typeof obj.tool === 'string'
     ? obj.tool
@@ -225,7 +248,8 @@ export function findFirstToolCallStart(text: string): number {
   let cm: RegExpExecArray | null;
   while ((cm = callRe.exec(text)) !== null) {
     const name = cm[1];
-    if ((name && (isRegisteredFakeToolName(name) || isShellTranscriptName(name))) || extractShellTranscriptCommand(text, callRe.lastIndex)) {
+    const shellTranscript = extractShellTranscriptCommand(text, callRe.lastIndex);
+    if ((name && isRegisteredFakeToolName(name)) || (((!name || isShellTranscriptName(name))) && shellTranscript)) {
       indexes.push(cm.index);
     }
   }
@@ -376,11 +400,12 @@ function shellJsonCommandPayload(command: string): { command: string; workdir?: 
   }
 }
 
-function shellCommandToFakeTool(command: string): FakeTool {
+function shellCommandToFakeTool(command: string): FakeTool | null {
   let cleaned = cleanShellCommand(command);
   const payload = shellJsonCommandPayload(cleaned);
   const workdir = payload?.workdir;
   if (payload) cleaned = cleanShellCommand(payload.command);
+  if (!looksLikeShellCommandBlock(cleaned)) return null;
   const firstLine = cleaned.split(/\r?\n/).find(Boolean) ?? cleaned;
 
   const catMatch = firstLine.match(/^(?:cat|type|Get-Content)\s+(.+)$/i);
@@ -444,7 +469,8 @@ function parseShellTranscriptToolCalls(text: string): FakeTool[] {
     if (cm[1] && !isShellTranscriptName(cm[1])) continue;
     const extracted = extractShellTranscriptCommand(text, callRe.lastIndex);
     if (!extracted) continue;
-    tools.push(shellCommandToFakeTool(extracted.command));
+    const tool = shellCommandToFakeTool(extracted.command);
+    if (tool) tools.push(tool);
     callRe.lastIndex = extracted.end;
   }
   return tools;
@@ -518,7 +544,7 @@ export function parseFakeToolCalls(text: string): FakeTool[] {
             tools.push(toolObj);
           } else if (Array.isArray(obj.todoList)) {
             tools.push({ name: 'manage_todo_list', input: { todoList: obj.todoList } });
-          } else if (typeof obj.summary === 'string' && /(?:完成|结束|complete|done)/i.test(text)) {
+          } else if (typeof obj.summary === 'string' && /(?:完成|结束|complete|done)/i.test(text) && !hasShellTranscriptMarker(text)) {
             tools.push({ name: 'task_complete', input: { summary: obj.summary } });
           }
         } catch { /* ignore non-tool JSON */ }

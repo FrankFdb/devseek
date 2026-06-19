@@ -19,6 +19,13 @@ export interface SourceOverwriteGuardDecision {
   reason?: string;
 }
 
+export interface NestedFilePayloadDriftInput {
+  targetAbsPath?: string;
+  content: string;
+  workspaceRoot?: string;
+  defaultWorkdir?: string;
+}
+
 export function shouldBlockUnverifiedSourceOverwrite(input: SourceOverwriteGuardInput): SourceOverwriteGuardDecision {
   const absPath = normalizePath(input.absPath ?? '');
   if (!input.existed || !absPath || !isSourcePath(absPath)) {
@@ -34,6 +41,30 @@ export function shouldBlockUnverifiedSourceOverwrite(input: SourceOverwriteGuard
   return {
     block: true,
     reason: `覆盖已有源码文件前必须先成功 read_file 读取同一路径：${absPath}`,
+  };
+}
+
+export function detectNestedFilePayloadDrift(input: NestedFilePayloadDriftInput): SourceOverwriteGuardDecision {
+  const targetAbsPath = normalizePath(input.targetAbsPath ?? '');
+  if (!targetAbsPath) return { block: false };
+  if (nodePath.extname(targetAbsPath).toLowerCase() === '.json') return { block: false };
+
+  const nested = parseNestedFilePayload(input.content);
+  if (!nested) return { block: false };
+
+  const declaredAbsPath = resolveAgentToolEvidencePath(nested.path, input.workspaceRoot ?? '', input.defaultWorkdir);
+  const normalizedDeclared = normalizePath(declaredAbsPath);
+  const declaredLabel = normalizedDeclared || nested.path;
+  if (normalizedDeclared && normalizedDeclared !== targetAbsPath) {
+    return {
+      block: true,
+      reason: `写入目标 ${targetAbsPath} 与 content 内声明路径 ${declaredLabel} 不一致；请把 path 设为真实目标，并只把文件源码放入 content。`,
+    };
+  }
+
+  return {
+    block: true,
+    reason: `content 是嵌套文件 payload，不是 ${targetAbsPath} 的文件内容；请只把目标文件源码放入 content。`,
   };
 }
 
@@ -106,6 +137,52 @@ function cleanShellTarget(raw: string): string {
     .replace(/^['"]|['"]$/g, '')
     .replace(/^\$?{?workspaceRoot}?\//, '')
     .replace(/^\$?{?workspaceFolder}?\//, '');
+}
+
+function parseNestedFilePayload(content: string): { path: string } | undefined {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith('{')) return undefined;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return undefined;
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+  const obj = parsed as Record<string, unknown>;
+  const rawPath = typeof obj.path === 'string'
+    ? obj.path
+    : typeof obj.filePath === 'string'
+      ? obj.filePath
+      : typeof obj.targetPath === 'string'
+        ? obj.targetPath
+        : typeof obj.filename === 'string'
+          ? obj.filename
+          : '';
+  const nestedContent = typeof obj.content === 'string'
+    ? obj.content
+    : typeof obj.contents === 'string'
+      ? obj.contents
+      : typeof obj.text === 'string'
+        ? obj.text
+        : typeof obj.body === 'string'
+          ? obj.body
+          : '';
+
+  if (!rawPath.trim() || !nestedContent.trim()) return undefined;
+  if (!looksLikeFilePath(rawPath)) return undefined;
+  return { path: rawPath.trim() };
+}
+
+function looksLikeFilePath(filePath: string): boolean {
+  const normalized = filePath.trim().replace(/\\/g, '/');
+  if (!normalized || normalized.endsWith('/')) return false;
+  if (nodePath.isAbsolute(normalized)) return true;
+  const base = nodePath.posix.basename(normalized);
+  if (['Makefile', 'Dockerfile', 'CMakeLists.txt'].includes(base)) return true;
+  return normalized.includes('/') || SOURCE_FILE_EXTENSIONS.has(nodePath.posix.extname(normalized).toLowerCase());
 }
 
 function getLoopBreakFeedback(cmd: string): string {

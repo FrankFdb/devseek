@@ -63,6 +63,28 @@ test('FakeToolParser: parses bash Calling JSON command payload as shell command'
   });
 });
 
+test('FakeToolParser: does not execute task summary JSON as a bash command', () => {
+  const text = [
+    'Calling: bash',
+    '{"summary":"修复完成。修改文件 packages/vscode-extension/src/app/workflow-service.ts 第 175-176 行；const hasConcreteWorkspaceTarget = true;"}',
+  ].join('\n');
+
+  assert.equal(parseFakeToolCalls(text).length, 0);
+  assert.equal(findFirstToolCallStart(text), -1);
+  assert.equal(stripToolCallBlocks(text), text);
+});
+
+test('FakeToolParser: does not execute prose or source comments as shell transcript commands', () => {
+  const text = [
+    'Calling: bash',
+    "// cannot observe local workspace state, while inspect/edit/run workflows can. return ['inspect', 'plan'];",
+  ].join('\n');
+
+  assert.equal(parseFakeToolCalls(text).length, 0);
+  assert.equal(findFirstToolCallStart(text), -1);
+  assert.equal(stripToolCallBlocks(text), text);
+});
+
 test('FakeToolParser: strips raw tool transcripts from user-facing text', () => {
   const text = [
     '准备执行验证。',
