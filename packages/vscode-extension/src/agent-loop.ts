@@ -84,18 +84,27 @@ import {
 import {
   classifyTerminalEvidenceCommand,
   getMissingCompletionEvidence,
+  isExplicitlyReadOnlyRequest,
   requiresCodeArtifactForEvidence,
   requiresCommandEvidence,
   requiresFileChangeEvidence,
+  requiresReadEvidence,
   requiresRuntimeValidation,
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './agent/completion-evidence';
 import { buildAgenticHistoryText } from './agent/agentic-history';
 import { runAgentAutoValidationForWrites } from './agent/auto-validation';
+import {
+  buildMissingEvidenceRecoveryInstruction,
+  inferInitialAgenticTodos,
+  markMissingEvidenceTodosIncomplete,
+  type TodoItem,
+} from './agent/evidence-recovery';
 import { WorkspaceEditService } from './workspace/edit-service';
 import type { CppValidationPolicy } from './validation-planner';
 import type { MemoryWriteProposal } from './memory/types';
+import type { ExecutionMode } from './intent/intent-types';
 
 // ----------------------------------------------------------------
 // Reporter types (passed in from extension.ts)
@@ -105,13 +114,6 @@ import type { MemoryWriteProposal } from './memory/types';
 
 const workspaceEditService = new WorkspaceEditService();
 const agentToolExecutor = new AgentToolExecutor();
-
-export interface TodoItem {
-  id: number;
-  title: string;
-  /** Copilot-compatible status values */
-  status: 'not-started' | 'in-progress' | 'completed' | 'failed';
-}
 
 function normalizeAgentUserAnnouncement(text: string): string {
   const cleaned = stripToolCallBlocks(text || '').replace(/\n{3,}/g, '\n\n').trim();
@@ -461,39 +463,6 @@ function analyzeTerminalEvidence(command: string, formattedOutput: string, workd
       ...(detail ? { detail } : {}),
     },
   };
-}
-
-function markMissingEvidenceTodosIncomplete(todos: TodoItem[], missing: string[]): TodoItem[] {
-  if (!todos.length || !missing.length) return todos;
-  const needsCode = missing.some(m => m.includes('代码') || m.includes('程序'));
-  const needsCommand = missing.some(m => m.includes('编译') || m.includes('运行') || m.includes('测试') || m.includes('成功'));
-  let firstMissing = true;
-  return todos.map(item => {
-    const title = item.title.toLowerCase();
-    const matchesCode = needsCode && /(?:代码|源码|程序|脚本|实现|动画|开发)/i.test(title);
-    const matchesCommand = needsCommand && /(?:编译|运行|执行|测试|验证|调试|compile|build|test|run)/i.test(title);
-    if (!matchesCode && !matchesCommand) return item;
-    const status = firstMissing ? 'in-progress' as const : 'not-started' as const;
-    firstMissing = false;
-    return { ...item, status };
-  });
-}
-
-function inferInitialAgenticTodos(userPrompt: string): TodoItem[] {
-  const items: TodoItem[] = [];
-  const needsFile = requiresFileChangeEvidence(userPrompt);
-  const needsCode = requiresCodeArtifactForEvidence(userPrompt);
-  const needsCommand = requiresCommandEvidence(userPrompt) || /(?:程序|代码|动画|运行效果|效果)/i.test(userPrompt);
-  if (needsFile) {
-    items.push({ id: items.length + 1, title: needsCode ? '创建/更新代码文件' : '创建/更新文件', status: 'in-progress' });
-  }
-  if (needsCommand) {
-    items.push({ id: items.length + 1, title: '编译/运行并验证结果', status: needsCode ? 'not-started' : 'in-progress' });
-  }
-  if (!items.length && /(?:查找|定位|分析|确认|排查|检查)/i.test(userPrompt)) {
-    items.push({ id: 1, title: '分析并定位问题', status: 'in-progress' });
-  }
-  return items;
 }
 
 function normalizeGeneratedArtifactPathForAgent(rawPath: string, userPrompt: string): string {
@@ -2957,6 +2926,7 @@ function buildAgenticSystemPrompt(
   mcpTools?: McpToolRef[],
   projectRulesText?: string,
   projectMemoryText?: string,
+  workflowMode: ExecutionMode = 'edit',
 ): string {
   const rulesSection = projectRulesText ? `\n${wrapRulesAsContext(projectRulesText)}\n` : '';
   const memSection  = projectMemoryText ? `\n${wrapMemoryAsContext(projectMemoryText)}\n` : '';
@@ -2973,10 +2943,16 @@ function buildAgenticSystemPrompt(
     mcpSection = `\n【MCP 外部工具】\n${toolLines}\n`;
   }
 
+  const workflowModeSection = workflowMode === 'inspect'
+    ? `\n【当前工作流模式】inspect / 只读检查\n- 用户要求只读、检查、显示或分析时，禁止创建、修改、覆盖或删除文件。\n- 不要调用 create_file；不要用 run_terminal 的 python/echo/tee/cat 重定向写文件。\n- 检查文件是否存在或显示内容时，优先使用 read_file/list_dir；需要终端时只能使用 test/ls/cat/head/stat/wc 等只读命令。\n- 只读任务的完成证据是读取/检查结果，不是文件修改结果。\n`
+    : workflowMode === 'plan'
+      ? `\n【当前工作流模式】plan / 只读计划\n- 只生成计划和分析，不写文件，不执行会修改工作区的命令。\n- 需要查看文件时使用 read_file/list_dir/grep_search 等只读工具。\n`
+      : `\n【当前工作流模式】${workflowMode}\n- 可以在权限允许时修改工作区；所有写入必须走 create_file 或受控文件工具，并提供真实验证证据。\n`;
+
   return `你是一个拥有完整工具访问权限的编程智能体，运行在 VS Code 中。
 
 【工作区根目录】${workspaceRoot}
-${rulesSection}${memSection}${filesSection}
+${rulesSection}${memSection}${filesSection}${workflowModeSection}
 【可用工具】
 
 读取文件（代码文件、日志文件、配置文件，支持绝对路径）：
@@ -3046,6 +3022,7 @@ export async function runAgenticLoop(
   mode: 'fast' | 'r1' | undefined,
   callbacks: AgentLoopCallbacks,
   sessionContextText = '',
+  workflowMode: ExecutionMode = 'edit',
 ): Promise<AgentLoopResult> {
   const rules  = getProjectRulesSync();
   const memory = getProjectMemorySync();
@@ -3056,12 +3033,15 @@ export async function runAgenticLoop(
     callbacks.mcpToolRefs,
     rules ?? undefined,
     memory ?? undefined,
+    workflowMode,
   );
 
+  const promptIsReadOnly = isExplicitlyReadOnlyRequest(userPrompt);
   const promptRequiresTools =
-    requiresFileChangeEvidence(userPrompt)
+    requiresReadEvidence(userPrompt)
+    || requiresFileChangeEvidence(userPrompt)
     || requiresCommandEvidence(userPrompt)
-    || /(?:创建|新建|修改|生成|修复|添加|删除|更新|改造|重构|看(?:一下)?(?:运行|执行)?结果|看到(?:运行|执行)?结果|输出效果|效果|create|write|modify|fix|implement)/i.test(userPrompt);
+    || (!promptIsReadOnly && /(?:创建|新建|修改|生成|修复|添加|删除|更新|改造|重构|看(?:一下)?(?:运行|执行)?结果|看到(?:运行|执行)?结果|输出效果|效果|create|write|modify|fix|implement)/i.test(userPrompt));
   const cppValidationPolicy = vscode.workspace
     .getConfiguration('devseek')
     .get<CppValidationPolicy>('cppValidationPolicy', 'conservative');
@@ -3255,7 +3235,7 @@ export async function runAgenticLoop(
         autoValidatedWriteCount = allWrittenFiles.length;
         if (autoValidation.evidence) allTerminalEvidence.push(autoValidation.evidence);
         const validationFeedback = autoValidation.feedbackForAI ? `\n\n${autoValidation.feedbackForAI}` : '';
-        const missingAfterArtifact = getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence);
+        const missingAfterArtifact = getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths]);
         const continueMessage = missingAfterArtifact.length > 0
           ? `【系统反馈】已从你输出的文件代码块落地文件，但仍缺少${missingAfterArtifact.join('、')}。请继续调用实际工具修复或补充验证，完成后再 task_complete。\n${artifactApply.feedbackForAI}${validationFeedback}`
           : `【系统反馈】已从你输出的文件代码块落地文件。请根据工具结果更新 todo，并在必要时调用 task_complete。\n${artifactApply.feedbackForAI}${validationFeedback}`;
@@ -3298,11 +3278,11 @@ export async function runAgenticLoop(
         continue;
       }
       const missingWithoutTools = promptRequiresTools
-        ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+        ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
         : [];
       if (!callbacks.signal?.aborted && missingWithoutTools.length > 0 && noToolRounds < 4) {
         noToolRounds++;
-        const retryMessage = `【系统反馈】不能停在检查目录或说明阶段。当前缺少${missingWithoutTools.join('、')}。请立即调用 create_file/write_file 写入目标文件；只有代码/程序任务才需要随后调用 run_terminal 编译、运行或测试。不要把 memory_write/项目记忆列为用户 todo。`;
+        const retryMessage = `【系统反馈】不能停在检查目录或说明阶段。当前缺少${missingWithoutTools.join('、')}。${buildMissingEvidenceRecoveryInstruction(missingWithoutTools)}不要把 memory_write/项目记忆列为用户 todo。`;
         messages.push({ role: 'user', content: retryMessage });
         totalChars += retryMessage.length;
         continue;
@@ -3338,7 +3318,7 @@ export async function runAgenticLoop(
     }
 
     const missingBeforeTools = promptRequiresTools
-      ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+      ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
       : [];
 
     const hasExplicitFileWriteTool = tools.some(t => t.name === 'create_file' || t.name === 'write_file');
@@ -3435,7 +3415,7 @@ export async function runAgenticLoop(
     }
 
     const missingAfterTools = promptRequiresTools
-      ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+      ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
       : [];
     lastMissingEvidence = missingAfterTools;
 
@@ -3452,7 +3432,7 @@ export async function runAgenticLoop(
         currentTodos = markMissingEvidenceTodosIncomplete(currentTodos, missingAfterTools);
         await callbacks.onTodoUpdate(currentTodos);
       }
-      const retryMessage = `【系统反馈】不能结束任务。当前仍缺少可验证的${missingAfterTools.join('、')}。请继续调用实际工具完成缺失项：需要代码时用 create_file/write_file 写入源码；需要验证时用 run_terminal 编译/运行/测试；完成后再调用 task_complete，summary 必须只基于真实工具结果。${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`;
+      const retryMessage = `【系统反馈】不能结束任务。当前仍缺少可验证的${missingAfterTools.join('、')}。请继续调用实际工具完成缺失项：需要读取时用 read_file/list_dir/只读 run_terminal；需要代码时用 create_file/write_file 写入源码；需要验证时用合适的验证命令，文档/配置只需文件存在和内容证据，代码才需要编译/运行/测试。完成后再调用 task_complete，summary 必须只基于真实工具结果。${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`;
       messages.push({ role: 'user', content: retryMessage });
       totalChars += retryMessage.length;
       continue;
@@ -3492,7 +3472,7 @@ export async function runAgenticLoop(
 
     if (!loopRes.toolCallsMade && loopWarnings.length === 0) {
       const missingNow = promptRequiresTools
-        ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+        ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
         : [];
       const lastFailedTerminal = [...allTerminalEvidence]
         .reverse()
@@ -3515,7 +3495,7 @@ export async function runAgenticLoop(
   }
 
   const finalMissingEvidence = promptRequiresTools
-    ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+    ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
     : [];
   if (!failedReason && finalMissingEvidence.length > 0) {
     failedReason = `实际执行证据不足：缺少${finalMissingEvidence.join('、')}。`;

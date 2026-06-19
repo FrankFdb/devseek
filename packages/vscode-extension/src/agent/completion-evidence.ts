@@ -51,7 +51,8 @@ const CODE_FILE_EXTENSIONS = new Set([
 const FILE_CHANGE_RE = /(?:写|创建|新建|生成|编写|实现|开发|做(?:一个|一款)?|修复|修改|改进|改造|重构|更新|添加|删除|create|write|implement|develop|fix|repair|modify|edit|refactor|update|add|delete)/i;
 const CODE_TARGET_RE = /(?:代码|源码|程序|脚本|算法|功能|组件|游戏|网页|页面|应用|component|class|function|algorithm|app|web|c\+\+|cpp|c语言|python|javascript|typescript|java|golang|rust|\.c\b|\.cc\b|\.cpp\b|\.h\b|\.hpp\b|\.py\b|\.js\b|\.jsx\b|\.ts\b|\.tsx\b|\.mjs\b|\.java\b|\.go\b|\.rs\b|\.cs\b|\.php\b|\.rb\b|\.swift\b|\.kt\b|\.html\b|\.css\b|\.vue\b|\.svelte\b|\.sh\b)/i;
 const FILE_PATH_TARGET_RE = /(?:^|[^\w/.-])(?:\.{0,2}\/)?[\w.-]+(?:\/[\w.-]+)*\.[A-Za-z0-9]{1,12}\b/;
-const READ_ONLY_RE = /(?:(?:不要|不用|无需|不需要|禁止).{0,8}(?:修改代码|改代码|写代码|写入文件)|(?:只|仅).{0,6}(?:分析|评估|说明|解释|计划|审计|查看|确认)|do not .{0,20}(?:modify|edit|change|write))/i;
+const READ_ONLY_RE = /(?:(?:不要|不用|无需|不需要|禁止|别).{0,8}(?:修改|改动|改|变更|写|写入|创建|新建|生成|更新|删除).{0,4}(?:代码|文件|内容)?|(?:只|仅).{0,6}(?:分析|评估|说明|解释|计划|审计|查看|确认|检查|读取|显示)|do not .{0,20}(?:modify|edit|change|write|create|update|delete))/i;
+const READ_EVIDENCE_RE = /(?:检查|查看|读取|显示|确认|是否存在|内容|read|show|display|check|inspect|exists?)/i;
 const GENERIC_EVIDENCE_TODO_TITLES = new Set([
   '创建/更新文件',
   '编译/运行并验证结果',
@@ -70,7 +71,7 @@ function buildEvidenceText(userPrompt: string, todos: CompletionTodo[]): string 
   return `${promptIntentText}\n${todoText}`.toLowerCase();
 }
 
-function explicitlyReadOnly(text: string): boolean {
+export function isExplicitlyReadOnlyRequest(text: string): boolean {
   return READ_ONLY_RE.test(text);
 }
 
@@ -79,13 +80,19 @@ function stripInlineFileContent(text: string): string {
 }
 
 export function requiresFileChangeEvidence(text: string): boolean {
-  if (!text.trim() || explicitlyReadOnly(text)) return false;
+  if (!text.trim() || isExplicitlyReadOnlyRequest(text)) return false;
   return FILE_CHANGE_RE.test(text) && (CODE_TARGET_RE.test(text) || FILE_PATH_TARGET_RE.test(text));
 }
 
 export function requiresCodeArtifactForEvidence(text: string): boolean {
-  if (!text.trim() || explicitlyReadOnly(text)) return false;
+  if (!text.trim() || isExplicitlyReadOnlyRequest(text)) return false;
   return FILE_CHANGE_RE.test(text) && CODE_TARGET_RE.test(text);
+}
+
+export function requiresReadEvidence(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return isExplicitlyReadOnlyRequest(trimmed) && FILE_PATH_TARGET_RE.test(trimmed) && READ_EVIDENCE_RE.test(trimmed);
 }
 
 export function requiresCommandEvidence(text: string): boolean {
@@ -109,6 +116,7 @@ export function getMissingCompletionEvidence(
   todos: CompletionTodo[],
   writtenFiles: WrittenFileEvidence[],
   terminalEvidence: TerminalEvidence[],
+  readEvidencePaths: string[] = [],
 ): string[] {
   const text = buildEvidenceText(userPrompt, todos);
   const existingWrittenFiles = writtenFiles.filter(f => {
@@ -120,19 +128,30 @@ export function getMissingCompletionEvidence(
 
   const needsFileChange = requiresFileChangeEvidence(text);
   const needsCodeArtifact = requiresCodeArtifactForEvidence(text);
+  const needsReadEvidence = requiresReadEvidence(text);
   if (needsCodeArtifact && existingCodeWrites.length === 0) {
     missing.push('代码修改结果');
   } else if (needsFileChange && existingWrittenFiles.length === 0) {
     missing.push('文件修改结果');
   }
 
+  if (needsReadEvidence) {
+    const hasReadEvidence = readEvidencePaths.length > 0
+      || successfulEvidence.some(e =>
+        e.kind === 'other'
+        && /\b(?:cat|ls|test|grep|head|tail|wc|stat|file|find)\b/i.test(e.command || ''),
+      );
+    if (!hasReadEvidence) missing.push('文件读取/检查结果');
+  }
+
+  const commandEvidenceNeeded = !needsReadEvidence && requiresCommandEvidence(text);
   if (requiresRunEvidence(text)) {
     const hasRunEvidence = successfulEvidence.some(e => e.kind === 'run' || e.kind === 'test' || e.kind === 'compile-run');
     if (!hasRunEvidence) missing.push('成功的程序运行结果');
   } else if (requiresTestEvidence(text)) {
     const hasTestEvidence = successfulEvidence.some(e => e.kind === 'test' || e.kind === 'run' || e.kind === 'compile-run');
     if (!hasTestEvidence) missing.push('成功的测试/运行结果');
-  } else if (requiresCommandEvidence(text) && successfulEvidence.length === 0) {
+  } else if (commandEvidenceNeeded && successfulEvidence.length === 0) {
     missing.push('成功的编译/运行/测试命令结果');
   } else if (needsCodeArtifact && existingCodeWrites.length > 0 && successfulEvidence.length === 0) {
     missing.push('成功的编译/测试/语法验证命令结果');

@@ -45,6 +45,8 @@ export function validationResultToTerminalEvidence(result: AutoValidationResult)
   const classified = classifyTerminalEvidenceCommand(result.command);
   const kind: TerminalEvidenceKind = result.mode === 'compile-run'
     ? 'compile-run'
+    : result.mode === 'file-check'
+      ? 'other'
     : classified !== 'other'
       ? classified
       : result.mode

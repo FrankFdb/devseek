@@ -78,6 +78,25 @@ test('ValidationService: returns null for paths without automatic validation tar
   assert.deepEqual(invocations, []);
 });
 
+test('ValidationService: validates requested markdown writes with file checks, not compile programs', async () => {
+  const invocations = [];
+  const service = new ValidationService({ commandRunner: makeRunner(invocations) });
+
+  const result = await service.validateWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['docs/manual-phase5-summary.md'],
+    requestPrompt: '创建 docs/manual-phase5-summary.md，内容为 phase5 summary smoke，然后验证文件创建成功。',
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.mode, 'file-check');
+  assert.equal(result.reason, 'non-code-file-validation');
+  assert.match(result.command, /test -f/);
+  assert.match(result.command, /manual-phase5-summary\.md/);
+  assert.doesNotMatch(result.command, /\bgcc\b|\bg\+\+\b|\bclang\b|\bnode\b|\bnpm\b/);
+  assert.equal(invocations.length, 1);
+});
+
 test('ValidationService: plans requested C++ run with structured mode and reason', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-validation-service-'));
   const projectDir = path.join(root, 'code', 'demo');

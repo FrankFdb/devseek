@@ -372,7 +372,7 @@ test('workspace-applier: explicit missing code subdirectory still wins over same
   }
 });
 
-test('workspace-applier: apply result includes review ledger summary when validation is skipped', async () => {
+test('workspace-applier: markdown writes include review ledger file-check validation', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-review-'));
   try {
     fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
@@ -398,12 +398,15 @@ test('workspace-applier: apply result includes review ledger summary when valida
       patches: 0,
       changedPaths: ['notes/review.md'],
     });
-    assert.equal(result.review?.validation.ran, false);
-    assert.equal(result.review?.validation.reason, 'no-auto-validation-target');
+    assert.equal(result.review?.validation.ran, true);
+    assert.equal(result.review?.validation.ok, true);
+    assert.equal(result.review?.validation.mode, 'file-check');
+    assert.equal(result.review?.validation.reason, 'non-code-file-validation');
+    assert.match(result.review?.validation.command || '', /test -f/);
     assert.deepEqual(result.review?.unfinishedItems, []);
     assert.match(readFileSync(path.join(root, 'notes', 'review.md'), 'utf8'), /Done\./);
     assert.equal(
-      statuses.some((status) => status.phase === 'validate' && status.state === 'skipped'),
+      statuses.some((status) => status.phase === 'validate' && status.state === 'passed'),
       true,
     );
   } finally {

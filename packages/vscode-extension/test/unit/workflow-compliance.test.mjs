@@ -735,8 +735,8 @@ test('Agentic free-explore: follow-up turns keep same-session context', () => {
   assertContains(ext, '不要泛化为分析整个 code 目录', 'follow-up context must prevent broad code-directory reinterpretation');
   assert.match(
     ext,
-    /runAgenticLoop\([\s\S]*?, agSessionContext\)/,
-    'free-explore runAgenticLoop call must receive same-session context',
+    /runAgenticLoop\([\s\S]*?, agSessionContext, intent\.mode\)/,
+    'free-explore runAgenticLoop call must receive same-session context and workflow mode',
   );
   assert.match(
     ext,

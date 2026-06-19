@@ -86,3 +86,31 @@ test('Agent auto validation: failed validation blocks completion evidence', asyn
   assert.match(result.feedbackForAI, /自动验证命令未通过，不能把编译\/运行\/测试标记为完成/);
   assert.match(result.feedbackForAI, /TypeScript error/);
 });
+
+test('Agent auto validation: markdown file checks become read/check evidence, not compile evidence', async () => {
+  const validationService = {
+    validateWorkspaceChanges: async () => ({
+      ran: true,
+      ok: true,
+      command: "test -f 'docs/manual-phase5-summary.md' && wc -c 'docs/manual-phase5-summary.md'",
+      exitCode: 0,
+      output: '42 docs/manual-phase5-summary.md',
+      cwd: '/repo',
+      mode: 'file-check',
+      reason: 'non-code-file-validation',
+    }),
+  };
+
+  const result = await runAgentAutoValidationForWrites(
+    [{ path: '/repo/docs/manual-phase5-summary.md', basename: 'manual-phase5-summary.md', linesAdded: 1, linesRemoved: 0, action: 'create' }],
+    '/repo',
+    '创建 docs/manual-phase5-summary.md 并验证文件创建成功',
+    makeCallbacks([], []),
+    'conservative',
+    { validationService },
+  );
+
+  assert.equal(result.evidence.ok, true);
+  assert.equal(result.evidence.kind, 'other');
+  assert.match(result.feedbackForAI, /non-code-file-validation/);
+});

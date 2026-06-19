@@ -88,6 +88,18 @@ test('WorkflowService: explicit file inspection stays controlled when agent togg
   assert.equal(selected.toolPolicyMode, 'inspect');
 });
 
+test('WorkflowService: read-only file existence/content check stays inspect-only', () => {
+  const prompt = '检查 docs/manual-phase5-smoke.md 是否存在，并显示文件内容。不要修改文件。';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: true, prompt });
+
+  assert.equal(intent.mode, 'inspect');
+  assert.ok(intent.blockers.includes('explicit-no-change'));
+  assert.equal(selected.kind, 'inspect-agent');
+  assert.equal(selected.state, 'inspect');
+  assert.equal(selected.toolPolicyMode, 'inspect');
+});
+
 test('WorkflowService: explicit file edit stays controlled when agent toggle is off', () => {
   const prompt = '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题';
   const intent = decideChatIntent(prompt);

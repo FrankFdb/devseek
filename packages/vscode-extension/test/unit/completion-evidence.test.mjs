@@ -36,6 +36,7 @@ const {
   getMissingCompletionEvidence,
   requiresCodeArtifactForEvidence,
   requiresFileChangeEvidence,
+  requiresReadEvidence,
 } = req(bundlePath);
 
 const prompt = '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题';
@@ -52,6 +53,22 @@ test('completion evidence: read-only analysis does not require code edit evidenc
   assert.equal(
     requiresCodeArtifactForEvidence('只分析 packages/vscode-extension/src/app/workflow-service.ts 的问题，不要修改代码'),
     false,
+  );
+});
+
+test('completion evidence: read-only file inspection needs read evidence, not write evidence', () => {
+  const inspectPrompt = '检查 docs/manual-phase5-smoke.md 是否存在，并显示文件内容。不要修改文件。';
+  const hallucinatedWriteTodo = [{ title: '创建/更新文件' }];
+
+  assert.equal(requiresReadEvidence(inspectPrompt), true);
+  assert.equal(requiresFileChangeEvidence(`${inspectPrompt}\n创建/更新文件`), false);
+  assert.deepEqual(
+    getMissingCompletionEvidence(inspectPrompt, hallucinatedWriteTodo, [], [], []),
+    ['文件读取/检查结果'],
+  );
+  assert.deepEqual(
+    getMissingCompletionEvidence(inspectPrompt, hallucinatedWriteTodo, [], [], ['docs/manual-phase5-smoke.md']),
+    [],
   );
 });
 

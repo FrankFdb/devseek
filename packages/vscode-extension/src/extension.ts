@@ -2282,7 +2282,7 @@ async function runChat(
             if (completedUpToIndex === null) { saveAgentCheckpoint(null); webview.postMessage({ type: 'agentCheckpointCleared' }); }
           },
           autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
-        }, agSessionContext);
+        }, agSessionContext, intent.mode);
         if (agResult.changedPaths.length > 0) {
           lastAgentChangedPaths = agResult.changedPaths.map(p => {
             const fsPath = nodePath.isAbsolute(p) ? p : nodePath.join(agWsRoot, p);

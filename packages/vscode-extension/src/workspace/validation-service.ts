@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import { exec, type ExecException } from 'child_process';
 import { planCppValidation, type CppValidationPolicy } from '../validation-planner';
 
-export type ValidationMode = 'compile-only' | 'compile-link' | 'compile-run' | 'cmake';
+export type ValidationMode = 'compile-only' | 'compile-link' | 'compile-run' | 'cmake' | 'file-check';
 
 export interface AutoValidationResult {
   ran: boolean;
@@ -44,6 +44,12 @@ export const CPP_COMPILE_VALIDATION_TIMEOUT_MS = 15_000;
 export const CPP_RUN_VALIDATION_TIMEOUT_MS = 30_000;
 export const PROJECT_BUILD_VALIDATION_TIMEOUT_MS = 120_000;
 export const CMAKE_RUN_VALIDATION_TIMEOUT_MS = 30_000;
+export const FILE_CHECK_VALIDATION_TIMEOUT_MS = 10_000;
+
+const NON_CODE_FILE_EXTENSIONS = new Set([
+  '.md', '.txt', '.json', '.jsonc', '.yaml', '.yml', '.toml', '.ini',
+  '.csv', '.tsv', '.log', '.xml', '.html', '.css',
+]);
 
 export class ValidationService {
   private readonly commandRunner: ValidationCommandRunner;
@@ -66,6 +72,7 @@ export class ValidationService {
     const hasBridge = changedPaths.some((path) => path.startsWith('packages/bridge/'));
     const hasExtension = changedPaths.some((path) => path.startsWith('packages/vscode-extension/'));
     const cppRelated = changedPaths.filter((path) => /\.(cpp|cc|cxx|c|h|hpp)$/i.test(path));
+    const fileCheckPaths = changedPaths.filter((path) => isNonCodeValidationPath(path));
 
     if (hasBridge) {
       return this.runCommand({
@@ -89,8 +96,34 @@ export class ValidationService {
         shouldRunCppValidation(input.requestPrompt || ''),
       );
     }
+    if (fileCheckPaths.length > 0 && shouldValidateNonCodeFiles(input.requestPrompt || '')) {
+      return this.validateNonCodeFiles(rootFsPath, fileCheckPaths);
+    }
 
     return null;
+  }
+
+  private async validateNonCodeFiles(
+    rootFsPath: string,
+    changedPaths: string[],
+  ): Promise<AutoValidationResult> {
+    const command = changedPaths
+      .slice(0, 8)
+      .map((relPath) => {
+        const quoted = shellQuote(relPath);
+        return `test -f ${quoted} && wc -c ${quoted} && sed -n '1,80p' ${quoted}`;
+      })
+      .join(' && ');
+    const result = await this.runCommand({
+      command,
+      cwd: rootFsPath,
+      timeoutMs: FILE_CHECK_VALIDATION_TIMEOUT_MS,
+    });
+    return {
+      ...result,
+      mode: 'file-check',
+      reason: 'non-code-file-validation',
+    };
   }
 
   private async validateCppChanges(
@@ -125,6 +158,18 @@ export class ValidationService {
 
 export function shouldRunCppValidation(prompt: string): boolean {
   return /(?:运行|执行|启动|测试|test|run|execute|看结果|输出效果|运行效果)/i.test(prompt || '');
+}
+
+export function shouldValidateNonCodeFiles(prompt: string): boolean {
+  return /(?:创建|新建|生成|写|写入|更新|添加|修改|验证|确认|检查|显示|读取|是否存在|内容|create|write|update|add|verify|check|show|read|display|exist)/i.test(prompt || '');
+}
+
+function isNonCodeValidationPath(relPath: string): boolean {
+  return NON_CODE_FILE_EXTENSIONS.has(nodePath.extname(relPath).toLowerCase());
+}
+
+function shellQuote(value: string): string {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
 }
 
 async function runShell(invocation: ValidationCommandInvocation): Promise<AutoValidationResult> {
