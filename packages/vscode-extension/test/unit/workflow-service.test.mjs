@@ -111,6 +111,15 @@ test('WorkflowService: explicit planning request stays in planning state', () =>
   assert.equal(selected.toolPolicyMode, 'plan');
 });
 
+test('WorkflowService: missing intent signals degrades instead of throwing', () => {
+  const prompt = '分析 packages/vscode-extension/src/app/workflow-service.ts';
+  const intent = { ...decideChatIntent(prompt), signals: undefined };
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: true, prompt });
+
+  assert.equal(selected.kind, 'plain-chat');
+  assert.equal(selected.reason, 'mode-inspect-does-not-use-agent');
+});
+
 test('WorkflowService: no-change refactor plan stays planning with plan policy', () => {
   const prompt = '制定一个重构 src/agent/tool-executor.ts 的计划，但不要改代码';
   const intent = decideChatIntent(prompt);

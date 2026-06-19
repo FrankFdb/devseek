@@ -61,14 +61,15 @@ export function selectWorkflow(input: WorkflowSelectionInput): WorkflowSelection
 
 export class WorkflowStateMachine {
   select(input: WorkflowSelectionInput): WorkflowSelection {
-    const { intent, files, agentEnabled, forceNoAgent, intentConfirmed } = input;
-    const controlledWorkspaceWorkflow = shouldUseControlledWorkspaceWorkflow(input);
+    const normalizedInput = normalizeWorkflowSelectionInput(input);
+    const { intent, files, agentEnabled, forceNoAgent, intentConfirmed } = normalizedInput;
+    const controlledWorkspaceWorkflow = shouldUseControlledWorkspaceWorkflow(normalizedInput);
 
     if (intent.requiresConfirmation && !intentConfirmed) {
       return makeSelection('confirmation-required', 'confirmation_required', false, 'intent-requires-confirmation', intent.mode);
     }
 
-    if (!intentConfirmed && requiresPlanReview(input)) {
+    if (!intentConfirmed && requiresPlanReview(normalizedInput)) {
       return makeSelection('plan-agent', 'plan_review', false, 'plan-review-required', 'plan', true);
     }
 
@@ -129,6 +130,19 @@ export class WorkflowStateMachine {
       allowedTransitions: transitionsFor(transition.to),
     };
   }
+}
+
+function normalizeWorkflowSelectionInput(input: WorkflowSelectionInput): WorkflowSelectionInput {
+  return {
+    ...input,
+    files: Array.isArray(input.files) ? input.files : [],
+    intent: {
+      ...input.intent,
+      signals: Array.isArray(input.intent.signals) ? input.intent.signals : [],
+      blockers: Array.isArray(input.intent.blockers) ? input.intent.blockers : [],
+      allowedToolKinds: Array.isArray(input.intent.allowedToolKinds) ? input.intent.allowedToolKinds : [],
+    },
+  };
 }
 
 function makeSelection(
