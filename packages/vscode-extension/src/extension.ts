@@ -2297,7 +2297,8 @@ async function runChat(
         const agChangedDetails = lastAgentChangedPaths.length > 0
           ? '\n**涉及文件（workspace 相对路径）：**\n' + lastAgentChangedPaths.map(p => `  - ${p}`).join('\n')
           : '';
-        agentHistoryText = `[Agentic] ${prompt.slice(0, 80)} → done (${agResult.tasksTotal} rounds)${agChangedDetails}`;
+        agentHistoryText = agResult.historyText
+          || `**[Agentic] 已完成（${agResult.tasksTotal} 轮）**${agChangedDetails}`;
         saveAgentSessionState({
           lastUserPrompt: userDisplay,
           lastSummary: agentHistoryText,

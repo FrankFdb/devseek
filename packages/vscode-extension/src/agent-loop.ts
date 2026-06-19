@@ -91,6 +91,7 @@ import {
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './agent/completion-evidence';
+import { buildAgenticHistoryText } from './agent/agentic-history';
 import { runAgentAutoValidationForWrites } from './agent/auto-validation';
 import { WorkspaceEditService } from './workspace/edit-service';
 import type { CppValidationPolicy } from './validation-planner';
@@ -1325,6 +1326,8 @@ export interface AgentLoopResult {
   /** Full text of analysis output, populated when all tasks were analyze/explain.
    *  Callers can pass this to extractAnalysisFindings() and feed into next decomposeTask. */
   analysisText?: string;
+  /** Collapsible, user-visible summary persisted into restored chat history. */
+  historyText?: string;
 }
 
 // ----------------------------------------------------------------
@@ -3559,10 +3562,23 @@ export async function runAgenticLoop(
 
   callbacks.onTaskCheckpoint?.(null, []);
 
+  const historyText = buildAgenticHistoryText({
+    userPrompt,
+    roundCount,
+    completed: !(cleanAbort || failedReason),
+    failedReason: cleanAbort ? '用户中断。' : failedReason,
+    summary: visibleCompleteSummary,
+    todos: currentTodos,
+    writtenFiles: allWrittenFiles,
+    terminalEvidence: allTerminalEvidence,
+    workspaceRoot,
+  });
+
   return {
     tasksTotal: 1,
     tasksApplied: allWrittenFiles.length > 0 ? 1 : 0,
     tasksFailed: cleanAbort || failedReason ? 1 : 0,
     changedPaths: [...new Set(allWrittenFiles.map(f => f.path))],
+    historyText,
   };
 }
