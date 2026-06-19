@@ -80,6 +80,15 @@ import {
   resolveAgentToolEvidencePath,
   shouldBlockUnverifiedSourceOverwrite,
 } from './agent/write-guard';
+import {
+  getMissingCompletionEvidence,
+  requiresCodeArtifactForEvidence,
+  requiresCommandEvidence,
+  requiresRuntimeValidation,
+  type TerminalEvidence,
+  type TerminalEvidenceKind,
+  type WrittenFileEvidence,
+} from './agent/completion-evidence';
 import { WorkspaceEditService } from './workspace/edit-service';
 import type { MemoryWriteProposal } from './memory/types';
 
@@ -341,28 +350,6 @@ interface ToolLoopResult {
   readFiles?: string[];
 }
 
-type WrittenFileEvidence = {path: string; basename: string; linesAdded: number; linesRemoved: number; action: string};
-type TerminalEvidenceKind = 'compile' | 'run' | 'test' | 'compile-run' | 'other';
-type TerminalEvidence = {
-  command: string;
-  kind: TerminalEvidenceKind;
-  ok: boolean;
-  exitCode: number | null;
-  outputPath?: string;
-  detail?: string;
-};
-
-const CODE_FILE_EXTENSIONS = new Set([
-  '.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx',
-  '.py', '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs',
-  '.java', '.go', '.rs', '.cs', '.php', '.rb', '.swift', '.kt', '.kts', '.scala',
-  '.html', '.css', '.scss', '.sass', '.vue', '.svelte', '.sh', '.bash', '.zsh',
-]);
-
-function isCodeArtifactPath(filePath: string): boolean {
-  return CODE_FILE_EXTENSIONS.has(nodePath.extname(filePath).toLowerCase());
-}
-
 function isInternalMemoryTodo(item: TodoItem): boolean {
   return /(?:项目记忆|智能体记忆|记忆体|memory|memory_write|写入记忆|记录.*记忆)/i.test(item.title || '');
 }
@@ -372,57 +359,6 @@ function normalizeVisibleTodos(items: unknown): TodoItem[] {
   return (items as TodoItem[])
     .filter(item => item && typeof item.title === 'string' && item.title.trim() && !isInternalMemoryTodo(item))
     .map((item, index) => ({ ...item, id: index + 1, title: item.title.trim() }));
-}
-
-function buildEvidenceText(userPrompt: string, todos: TodoItem[]): string {
-  return `${userPrompt}\n${todos.map(t => t.title).join('\n')}`.toLowerCase();
-}
-
-function requiresCodeArtifactForEvidence(text: string): boolean {
-  return /(?:代码|源码|程序|脚本|实现|动画|功能实现|编写.*(?:程序|代码)|开发|component|class|function|algorithm|app|web|c\+\+|cpp|c语言|python|javascript|typescript|java|golang|rust)/i.test(text);
-}
-
-function requiresCommandEvidence(text: string): boolean {
-  return /(?:编译|运行|执行|测试|验证|调试|compile|build|test|run|execute|verify)/i.test(text);
-}
-
-function requiresRunEvidence(text: string): boolean {
-  return /(?:运行|执行|run|execute)/i.test(text);
-}
-
-function requiresTestEvidence(text: string): boolean {
-  return /(?:测试|test)/i.test(text);
-}
-
-function requiresRuntimeValidation(text: string): boolean {
-  return requiresRunEvidence(text) || requiresTestEvidence(text) || /(?:启动|看结果|输出效果|运行效果)/i.test(text);
-}
-
-function getMissingCompletionEvidence(
-  userPrompt: string,
-  todos: TodoItem[],
-  writtenFiles: WrittenFileEvidence[],
-  terminalEvidence: TerminalEvidence[],
-): string[] {
-  const text = buildEvidenceText(userPrompt, todos);
-  const existingWrittenFiles = writtenFiles.filter(f => {
-    try { return fs.existsSync(f.path); } catch { return false; }
-  });
-  const successfulEvidence = terminalEvidence.filter(e => e.ok);
-  const missing: string[] = [];
-  if (requiresCodeArtifactForEvidence(text) && !existingWrittenFiles.some(f => isCodeArtifactPath(f.path))) {
-    missing.push('程序/代码文件');
-  }
-  if (requiresRunEvidence(text)) {
-    const hasRunEvidence = successfulEvidence.some(e => e.kind === 'run' || e.kind === 'test' || e.kind === 'compile-run');
-    if (!hasRunEvidence) missing.push('成功的程序运行结果');
-  } else if (requiresTestEvidence(text)) {
-    const hasTestEvidence = successfulEvidence.some(e => e.kind === 'test' || e.kind === 'run' || e.kind === 'compile-run');
-    if (!hasTestEvidence) missing.push('成功的测试/运行结果');
-  } else if (requiresCommandEvidence(text) && successfulEvidence.length === 0) {
-    missing.push('成功的编译/运行/测试命令结果');
-  }
-  return missing;
 }
 
 function parseFormattedTerminalExitCode(output: string): number | null {

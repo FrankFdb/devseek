@@ -146,4 +146,42 @@ test('agent-task-decomposer: fallback tasks expose workspace-relative paths', ()
   }
 });
 
+test('agent-task-decomposer: explicit fix target is not downgraded to explore-only', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-explicit-fix-'));
+  try {
+    const targetDir = path.join(root, 'packages', 'vscode-extension', 'src', 'app');
+    mkdirSync(targetDir, { recursive: true });
+    const targetFile = path.join(targetDir, 'workflow-service.ts');
+    writeFileSync(targetFile, 'export class WorkflowService {}\n');
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+
+    const rawPlan = JSON.stringify({
+      tasks: [
+        {
+          id: 't1',
+          file: 'packages/vscode-extension/src/app/workflow-service.ts',
+          action: 'explore',
+          desc: '使用 read_file 确认文件当前完整内容，检查明显问题',
+        },
+      ],
+    });
+
+    const result = await decomposeTask(
+      '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题',
+      [],
+      undefined,
+      () => {},
+      undefined,
+      async () => rawPlan,
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.tasks.length, 1);
+    assert.equal(result.tasks[0].file, 'packages/vscode-extension/src/app/workflow-service.ts');
+    assert.equal(result.tasks[0].action, 'modify');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 console.log('\nAgent task decomposer path anchoring tests passed.\n');

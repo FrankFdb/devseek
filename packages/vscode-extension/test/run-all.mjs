@@ -20,6 +20,7 @@ const suites = [
   'test/unit/context-assembly-service.test.mjs',
   'test/unit/agent-display-regression.test.mjs',
   'test/unit/webview-logic.test.mjs',
+  'test/unit/completion-evidence.test.mjs',
   'test/unit/intent-router.test.mjs',
   'test/unit/chat-controller.test.mjs',
   'test/unit/interaction-service.test.mjs',

@@ -70,6 +70,13 @@ const SHELL_TRANSCRIPT_NAMES = {
   cmd: true, powershell: true, pwsh: true,
 };
 
+const TOOL_NAMES = {
+  read_file: true, grep_search: true, file_search: true, semantic_search: true, list_dir: true, get_errors: true,
+  run_terminal: true, memory_write: true, get_changed_files: true, create_directory: true, fetch_webpage: true,
+  vscode_listCodeUsages: true, run_vscode_command: true, create_file: true, write_file: true, replace_file: true,
+  manage_todo_list: true, task_complete: true,
+};
+
 function isShellTranscriptName(name) {
   return !!SHELL_TRANSCRIPT_NAMES[String(name || '').toLowerCase()];
 }
@@ -158,6 +165,52 @@ function stripCallingShellTranscriptBlocksFromText(text) {
   return out;
 }
 
+function findJsonObjectEnd(text, start) {
+  let depth = 0;
+  let inStr = false;
+  for (let j = start; j < text.length; j++) {
+    const ch = text[j];
+    if (inStr) {
+      if (ch === '\\') j++;
+      else if (ch === '"') inStr = false;
+    } else if (ch === '"') {
+      inStr = true;
+    } else if (ch === '{') {
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0) return j;
+    }
+  }
+  return -1;
+}
+
+function stripCallingToolBlocksFromText(text) {
+  let out = '';
+  let i = 0;
+  const callRe = /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
+  while (i < text.length) {
+    callRe.lastIndex = i;
+    const m = callRe.exec(text);
+    if (!m) { out += text.slice(i); break; }
+    const name = m[1];
+    if (!TOOL_NAMES[name] && !name.startsWith('mcp__')) {
+      out += text.slice(i, callRe.lastIndex);
+      i = callRe.lastIndex;
+      continue;
+    }
+    const jsonStart = text.indexOf('{', callRe.lastIndex);
+    if (jsonStart < 0) { out += text.slice(i); break; }
+    const jsonEnd = findJsonObjectEnd(text, jsonStart);
+    if (jsonEnd < 0) { out += text.slice(i); break; }
+    out += text.slice(i, m.index);
+    let next = jsonEnd + 1;
+    while (next < text.length && /[ \t\r\n`]/.test(text[next])) next++;
+    i = next;
+  }
+  return out;
+}
+
 function stripToolCallBlocks(text) {
   const raw = String(text || '');
   let result = '';
@@ -204,7 +257,7 @@ function stripToolCallBlocks(text) {
   result = stripCallingShellTranscriptBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeShellCleanup;
   const beforeCallingCleanup = result;
-  result = result.replace(/Calling[ \t]*:?(?:[ \t]+tool)?[ \t]*\[?`?\w+`?\]?[ \t]*\{[\s\S]*?\}/gi, '');
+  result = stripCallingToolBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeCallingCleanup;
   const cleaned = result.trim();
   return removedInternalBlock ? cleaned.replace(/[ \t]*\n[ \t]*\n[ \t]*/g, '\n') : cleaned;
@@ -520,6 +573,18 @@ test('non-agent delta: suppresses screenshot-like multi-tool transcript', () => 
     '[TOOL:run_terminal {"command":"cd /home/ff/work/devseek_netai/code && g++ hello.cpp -o hello"}]',
   ].join('\n');
   assert.equal(sanitizeVisibleDeltaForMode(leaked, false), '');
+});
+
+test('non-agent delta: suppresses Calling tool transcript with next-line JSON payload', () => {
+  const leaked = [
+    '分析完成。',
+    'Calling: manage_todo_list',
+    '{"todoList":[{"id":1,"title":"分析 workflow-service.ts 文件内容及问题","status":"completed"}]}',
+    '',
+    'Calling: task_complete',
+    '{"summary":"分析完成。"}',
+  ].join('\n');
+  assert.equal(sanitizeVisibleDeltaForMode(leaked, false), '分析完成。');
 });
 
 test('non-agent delta: strips inline bash calling transcript with fenced command', () => {

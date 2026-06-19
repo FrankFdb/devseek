@@ -16,6 +16,7 @@ import * as vscode from 'vscode';
 import { chat } from './bridge-client';
 import { getProjectRulesSync, wrapRulesAsContext, getProjectMemorySync, wrapMemoryAsContext } from './project-rules';
 import { detectWorkspacePathScope } from './workspace/path-resolver';
+import { isCodeArtifactPath, requiresCodeArtifactForEvidence } from './agent/completion-evidence';
 
 // ----------------------------------------------------------------
 // Public types
@@ -386,6 +387,30 @@ interface RawTaskPlan {
 
 const VALID_ACTIONS = new Set<string>(['modify', 'analyze', 'create', 'delete', 'explain', 'explore']);
 
+function taskTargetsCodeFile(task: AgentTask): boolean {
+  return isCodeArtifactPath(task.absPath ?? task.file);
+}
+
+function normalizeExplicitEditTasks(tasks: AgentTask[], userPrompt?: string): AgentTask[] {
+  if (!userPrompt || !requiresCodeArtifactForEvidence(userPrompt)) return tasks;
+  if (tasks.some(t => t.action === 'modify' || t.action === 'create' || t.action === 'delete')) return tasks;
+
+  let converted = false;
+  const normalized = tasks.map((task) => {
+    if (!taskTargetsCodeFile(task)) return task;
+    converted = true;
+    return {
+      ...task,
+      action: 'modify' as AgentTaskAction,
+      desc: task.desc && /修复|修改|改进|fix|modify|repair/i.test(task.desc)
+        ? task.desc
+        : `${task.desc || '读取当前内容'}，并修复明确问题`,
+    };
+  });
+
+  return converted ? normalized : tasks;
+}
+
 /**
  * Repair JSON that contains unescaped double-quotes inside string values.
  * LLMs sometimes emit  "desc": "...like "Hello!""  instead of  \"Hello!\" .
@@ -646,7 +671,8 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
     }
   }
 
-  const finalTasks = [...mergedMap.values()];
+  let finalTasks = [...mergedMap.values()];
+  finalTasks = normalizeExplicitEditTasks(finalTasks, userPrompt);
 
   // ── Confine tasks to promptDir ───────────────────────────────────────────
   // When promptDir is EXPLICIT (user-specified): redirect ALL tasks outside promptDir.

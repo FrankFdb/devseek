@@ -595,19 +595,21 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
 
 test('Agentic loop: terminal completion evidence requires successful validation output', () => {
   const code = src('src/agent-loop.ts');
+  const evidence = src('src/agent/completion-evidence.ts');
   assertContains(code, 'TerminalEvidence', 'terminal evidence model must exist');
   assertContains(code, 'parseFormattedTerminalExitCode', 'terminal evidence must parse formatted exit codes');
   assertContains(code, 'resolveCompilerOutputPath', 'compiler -o artifact path must be detected');
   assertContains(code, 'isExecutableFile', 'compiler output must be checked on disk');
   assertContains(code, '验证命令未通过，不能把编译/运行/测试标记为完成', 'failed validation must be fed back to the agent');
   assertContains(code, 'buildTerminalFailureRepairFeedback', 'terminal failure prose must be converted into a repair instruction');
+  assertContains(code, 'getMissingCompletionEvidence', 'agent loop must delegate completion checks to evidence boundary');
   assert.match(
     code,
     /terminalEvidence\.push\(evidenceResult\.evidence\)/,
     'terminal evidence must be recorded separately from raw terminal commands',
   );
   assert.match(
-    code,
+    evidence,
     /const successfulEvidence = terminalEvidence\.filter\(e => e\.ok\);[\s\S]*?requiresRunEvidence/,
     'completion evidence must require successful terminal evidence, not merely any command execution',
   );
