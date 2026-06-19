@@ -3,7 +3,7 @@ import * as nodePath from 'path';
 import * as fs from 'fs';
 import { ChangeAction, createChangeAction, ResolvedGeneratedArtifact } from './change-plan';
 import { GeneratedArtifact, GeneratedFile, looksLikeRawToolCallText, parseGeneratedArtifacts } from './generated-file-parser';
-import { CppValidationPolicy, planCppValidation } from './validation-planner';
+import type { CppValidationPolicy } from './validation-planner';
 import { getWorkspaceRootUri } from './workspace-roots';
 import { isFileProtected } from './protected-files';
 import {
@@ -17,24 +17,15 @@ import {
   isGeneratedArtifactAllowedForPrompt,
 } from './workspace/path-resolver';
 import { createChangeSet } from './workspace/change-set';
+import { WorkspaceEditService } from './workspace/edit-service';
 import { ReviewLedger, type ReviewLedgerSnapshot } from './workspace/review-ledger';
+import { ValidationService, type AutoValidationResult } from './workspace/validation-service';
 
 export interface ApplyWorkflowStatus {
   phase: 'apply' | 'validate' | 'repair';
   state: 'started' | 'completed' | 'skipped' | 'passed' | 'failed';
   title: string;
   detail?: string;
-}
-
-export interface AutoValidationResult {
-  ran: boolean;
-  ok: boolean;
-  command: string;
-  exitCode: number | null;
-  output: string;
-  cwd: string;
-  mode?: 'compile-only' | 'compile-link' | 'compile-run' | 'cmake';
-  reason?: string;
 }
 
 export interface ApplyWorkflowResult {
@@ -55,11 +46,6 @@ export interface AppliedChangeRecord {
 
 type ApplyWorkflowReporter = (status: ApplyWorkflowStatus) => void | Thenable<void>;
 type AppliedChangeReporter = (change: AppliedChangeRecord) => void | Thenable<void>;
-
-const CPP_COMPILE_VALIDATION_TIMEOUT_MS = 15_000;
-const CPP_RUN_VALIDATION_TIMEOUT_MS = 30_000;
-const PROJECT_BUILD_VALIDATION_TIMEOUT_MS = 120_000;
-const CMAKE_RUN_VALIDATION_TIMEOUT_MS = 30_000;
 
 export interface ApplyGeneratedArtifactsOptions {
   rollbackOnValidationFailure?: boolean;
@@ -151,6 +137,7 @@ async function applyPreparedChanges(
 
   const changeSet = createChangeSetFromPrepared(prepared);
   const ledger = new ReviewLedger();
+  const workspaceEditService = new WorkspaceEditService();
   ledger.recordChangeSet(changeSet);
   const summary = changeSet.summary();
   if (!autoApply) {
@@ -254,12 +241,16 @@ async function applyPreparedChanges(
     { location: vscode.ProgressLocation.Notification, title: 'DeepSeek: 正在应用文件变更...', cancellable: false },
     async () => {
       for (const change of prepared) {
-        const parent = vscode.Uri.file(nodePath.dirname(change.targetUri.fsPath));
-        for (const dir of collectMissingParentDirs(parent.fsPath, root?.fsPath)) {
+        const parentFsPath = nodePath.dirname(change.targetUri.fsPath);
+        for (const dir of collectMissingParentDirs(parentFsPath, root?.fsPath)) {
           createdDirs.add(dir);
         }
-        await vscode.workspace.fs.createDirectory(parent);
-        await vscode.workspace.fs.writeFile(change.targetUri, Buffer.from(change.newContent, 'utf8'));
+        const proposal = workspaceEditService.proposeTextFileWrite(change.targetUri.fsPath, change.newContent);
+        workspaceEditService.applyTextFileProposal(proposal, {
+          absPath: change.targetUri.fsPath,
+          existed: change.exists,
+          content: change.oldContent,
+        });
       }
     },
   );
@@ -308,7 +299,7 @@ async function applyPreparedChanges(
   });
 
   if (!validation.ok && autoApply && rollbackOnValidationFailure) {
-    await rollbackPreparedChanges(prepared, createdDirs);
+    await rollbackPreparedChanges(prepared, createdDirs, workspaceEditService);
     ledger.addUnfinishedItem('自动验证失败，文件变更已回滚');
     await reportWorkflow(reporter, {
       phase: 'apply',
@@ -486,10 +477,19 @@ function buildTruncatingOverwriteDetail(change: PreparedChange): string {
   ].join('\n');
 }
 
-async function rollbackPreparedChanges(prepared: PreparedChange[], createdDirs?: Set<string>): Promise<void> {
+async function rollbackPreparedChanges(
+  prepared: PreparedChange[],
+  createdDirs?: Set<string>,
+  workspaceEditService = new WorkspaceEditService(),
+): Promise<void> {
   for (const change of [...prepared].reverse()) {
     if (change.exists) {
-      await vscode.workspace.fs.writeFile(change.targetUri, Buffer.from(change.oldContent, 'utf8'));
+      const proposal = workspaceEditService.proposeTextFileWrite(change.targetUri.fsPath, change.oldContent);
+      workspaceEditService.applyTextFileProposal(proposal, {
+        absPath: change.targetUri.fsPath,
+        existed: true,
+        content: change.newContent,
+      });
       continue;
     }
 
@@ -908,71 +908,11 @@ function applyUnifiedDiff(original: string, diff: string, relPath: string): stri
 async function runAutoValidation(changedPaths: string[], root?: vscode.Uri, requestPrompt?: string): Promise<AutoValidationResult | null> {
   if (!root) return null;
   const config = vscode.workspace.getConfiguration('devseek');
-
-  const hasBridge = changedPaths.some((p) => p.startsWith('packages/bridge/'));
-  const hasExtension = changedPaths.some((p) => p.startsWith('packages/vscode-extension/'));
-  const cppRelated = changedPaths.filter((p) => /\.(cpp|cc|cxx|c|h|hpp)$/i.test(p));
-
-  if (hasBridge) {
-    return runShell('npm run build', nodePath.join(root.fsPath, 'packages', 'bridge'), PROJECT_BUILD_VALIDATION_TIMEOUT_MS);
-  }
-  if (hasExtension) {
-    return runShell('npm run compile', nodePath.join(root.fsPath, 'packages', 'vscode-extension'), PROJECT_BUILD_VALIDATION_TIMEOUT_MS);
-  }
-  if (cppRelated.length > 0) {
-    const cppPolicy = config.get<CppValidationPolicy>('cppValidationPolicy', 'conservative');
-    return runCppAutoValidation(root.fsPath, cppRelated, cppPolicy, shouldRunCppValidation(requestPrompt || ''));
-  }
-
-  return null;
-}
-
-async function runCppAutoValidation(
-  rootFsPath: string,
-  cppRelated: string[],
-  cppPolicy: CppValidationPolicy,
-  shouldRun: boolean,
-): Promise<AutoValidationResult | null> {
-  const fsNode = require('fs');
-  const plan = planCppValidation(cppRelated, rootFsPath, fsNode, cppPolicy, { run: shouldRun });
-  if (!plan) return null;
-
-  const timeoutMs = plan.mode === 'compile-run'
-    ? CPP_RUN_VALIDATION_TIMEOUT_MS
-    : plan.mode === 'cmake' && shouldRun
-      ? CMAKE_RUN_VALIDATION_TIMEOUT_MS
-      : plan.mode === 'cmake'
-        ? PROJECT_BUILD_VALIDATION_TIMEOUT_MS
-        : CPP_COMPILE_VALIDATION_TIMEOUT_MS;
-  const result = await runShell(plan.command, plan.cwd, timeoutMs);
-  return {
-    ...result,
-    mode: plan.mode,
-    reason: plan.reason,
-  };
-}
-
-function shouldRunCppValidation(prompt: string): boolean {
-  return /(?:运行|执行|启动|测试|test|run|execute|看结果|输出效果|运行效果)/i.test(prompt || '');
-}
-
-async function runShell(command: string, cwd: string, timeoutMs: number): Promise<AutoValidationResult> {
-  return new Promise((resolve) => {
-    const cp = require('child_process');
-    cp.exec(command, { cwd, timeout: timeoutMs }, (error: Error & { code?: number; killed?: boolean; signal?: string }, stdout: string, stderr: string) => {
-      const timedOut = !!error && (error.killed || /timed out|timeout/i.test(error.message || ''));
-      const exitCode = !error ? 0 : timedOut ? 124 : (typeof error.code === 'number' ? error.code : null);
-      const output = `${stdout || ''}\n${stderr || ''}`.trim();
-      resolve({
-        ran: true,
-        ok: !error,
-        command,
-        exitCode,
-        output: timedOut
-          ? [output, `[DevSeek] 命令超时，已终止（timeout ${timeoutMs}ms）。这通常表示程序仍在运行、等待输入或构建卡住；自动验证按失败处理。`].filter(Boolean).join('\n')
-          : output,
-        cwd,
-      });
-    });
+  const validationService = new ValidationService();
+  return validationService.validateWorkspaceChanges({
+    rootFsPath: root.fsPath,
+    changedPaths,
+    requestPrompt,
+    cppValidationPolicy: config.get<CppValidationPolicy>('cppValidationPolicy', 'conservative'),
   });
 }

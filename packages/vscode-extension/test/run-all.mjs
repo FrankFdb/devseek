@@ -39,6 +39,7 @@ const suites = [
   'test/unit/tool-registry.test.mjs',
   'test/unit/tool-call-normalizer.test.mjs',
   'test/unit/tool-executor.test.mjs',
+  'test/unit/validation-service.test.mjs',
   'test/unit/workspace-edit-service.test.mjs',
   'test/unit/workspace-review-ledger.test.mjs',
   'test/unit/agent-task-decomposer.test.mjs',

@@ -186,10 +186,10 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
 });
 
 test('§8.3 File edits: validation timeout is reported as failed evidence', () => {
-  const applier = src('src/workspace-applier.ts');
+  const validationService = src('src/workspace/validation-service.ts');
   const planner = src('src/execution-planner.ts');
   const localExecution = src('src/local-execution.ts');
-  for (const code of [applier, planner, localExecution]) {
+  for (const code of [validationService, planner, localExecution]) {
     assertContains(code, 'timedOut ? 124', 'timed-out local commands must not be reported as exitCode 0');
     assertContains(code, '自动验证按失败处理', 'timeout evidence must tell DeepSeek/local repair it is a failure');
   }
@@ -893,14 +893,22 @@ test('Architecture: AgentEvent union lives in agent layer', () => {
   assertContains(agentLoop, "from './agent/events'", 'agent loop must import agent status from agent layer');
 });
 
-test('Architecture: WorkspaceEditService owns Agent Loop file writes', () => {
+test('Architecture: WorkspaceEditService owns text file writes', () => {
   const service = src('src/workspace/edit-service.ts');
   const agentLoop = src('src/agent-loop.ts');
+  const applier = src('src/workspace-applier.ts');
   assertContains(service, 'class WorkspaceEditService', 'workspace edit service class must exist');
   assertContains(service, 'writeTextFileSync', 'workspace edit service must expose text-file write boundary');
+  assertContains(service, 'proposeTextFileWrite', 'workspace edit service must expose edit proposal boundary');
+  assertContains(service, 'snapshotTextFile', 'workspace edit service must expose snapshot boundary');
+  assertContains(service, 'applyTextFileProposal', 'workspace edit service must expose apply boundary');
+  assertContains(service, 'return this.applyTextFileProposal(this.proposeTextFileWrite', 'legacy text writes must delegate through proposal/apply flow');
   assertContains(agentLoop, 'new WorkspaceEditService()', 'agent loop must construct workspace edit service');
   assertContains(agentLoop, 'workspaceEditService.writeTextFileSync', 'agent loop writes must go through workspace edit service');
+  assertContains(applier, 'new WorkspaceEditService()', 'workspace applier must construct workspace edit service');
+  assertContains(applier, 'workspaceEditService.applyTextFileProposal', 'workspace applier must apply files through workspace edit service');
   assert.doesNotMatch(agentLoop, /fs\.writeFileSync/, 'agent loop must not write workspace files directly');
+  assert.doesNotMatch(applier, /workspace\.fs\.writeFile/, 'workspace applier must not write workspace files directly');
 });
 
 test('Architecture: Workspace review ledger owns apply result summary', () => {
@@ -913,6 +921,17 @@ test('Architecture: Workspace review ledger owns apply result summary', () => {
   assertContains(applier, 'new ReviewLedger()', 'workspace applier must construct review ledger');
   assertContains(applier, 'review?: ReviewLedgerSnapshot', 'apply workflow result must expose review snapshot');
   assertContains(applier, 'review: ledger.snapshot()', 'workspace applier must return ledger snapshots');
+});
+
+test('Architecture: ValidationService owns automatic validation execution', () => {
+  const service = src('src/workspace/validation-service.ts');
+  const applier = src('src/workspace-applier.ts');
+  assertContains(service, 'class ValidationService', 'validation service class must exist');
+  assertContains(service, 'validateWorkspaceChanges', 'validation service must expose workspace validation entry');
+  assertContains(service, 'planCppValidation', 'validation service must own C++ validation planning integration');
+  assertContains(service, 'runShell', 'validation service must own shell execution');
+  assertContains(applier, 'new ValidationService()', 'workspace applier must delegate validation to service');
+  assert.doesNotMatch(applier, /planCppValidation|child_process|runShell|runCppAutoValidation/, 'workspace applier must not own validation execution internals');
 });
 
 test('Architecture: Bridge DOM selectors live in a DeepSeek selector registry', () => {

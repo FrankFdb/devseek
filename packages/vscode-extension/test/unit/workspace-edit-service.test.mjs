@@ -51,4 +51,76 @@ test('WorkspaceEditService: returns old content when overwriting', () => {
   }
 });
 
+test('WorkspaceEditService: proposes text writes without touching disk', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
+  try {
+    const target = path.join(dir, 'draft.txt');
+    const service = new WorkspaceEditService();
+    const proposal = service.proposeTextFileWrite(target, 'draft');
+
+    assert.equal(proposal.kind, 'write-text-file');
+    assert.equal(proposal.absPath, target);
+    assert.equal(proposal.content, 'draft');
+    assert.equal(readFileSyncSafe(target), undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: snapshots file state before applying a proposal', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
+  try {
+    const target = path.join(dir, 'hello.txt');
+    const service = new WorkspaceEditService();
+
+    assert.deepEqual(service.snapshotTextFile(target), {
+      absPath: target,
+      existed: false,
+      content: '',
+    });
+
+    service.writeTextFileSync(target, 'old');
+    assert.deepEqual(service.snapshotTextFile(target), {
+      absPath: target,
+      existed: true,
+      content: 'old',
+    });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: applies proposals with attached snapshot evidence', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
+  try {
+    const target = path.join(dir, 'nested', 'hello.txt');
+    const service = new WorkspaceEditService();
+    const proposal = service.proposeTextFileWrite(target, 'new');
+    const applied = service.applyTextFileProposal(proposal);
+
+    assert.equal(applied.proposal, proposal);
+    assert.deepEqual(applied.snapshot, {
+      absPath: target,
+      existed: false,
+      content: '',
+    });
+    assert.deepEqual(applied.result, {
+      existed: false,
+      oldContent: '',
+      newContent: 'new',
+    });
+    assert.equal(readFileSync(target, 'utf8'), 'new');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function readFileSyncSafe(filePath) {
+  try {
+    return readFileSync(filePath, 'utf8');
+  } catch {
+    return undefined;
+  }
+}
+
 console.log('\nWorkspace edit service tests passed.\n');
