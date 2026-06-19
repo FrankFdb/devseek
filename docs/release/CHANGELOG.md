@@ -4,6 +4,19 @@
 
 ---
 
+## [Unreleased] — 2026-06-19
+
+### Phase 4 Workflow 状态机与 PlanReview
+
+- 对标 Claude Code / Codex / Copilot 的计划优先执行方式，把 DevSeek 的 workflow 从简单路由升级为应用层状态机。
+- `app/workflow-service.ts` 新增 `WorkflowStateMachine`、`WorkflowState`、`WorkflowTransition`，保留 `selectWorkflow` 兼容入口。
+- 复杂编辑型重构请求先进入 `plan_review`，workflow kind 为 `plan-agent`，并把权限模式降级为 `plan`，PlanReview 阶段不允许写盘或执行终端命令。
+- `ChatRouteController` 改为按 `workflow.toolPolicyMode` 构建 `ToolPolicy`，让权限跟随 workflow 状态，而不是只跟随原始 intent。
+- `InteractionService` 增加 `planReview` 交互请求；`extension.ts` 与 WebView 协议接入 `planReview` 消息，复用现有确认卡渲染。
+- 新增 `app/task-ledger.ts`，todo 状态只能由工具、验证或用户事实更新，模型普通 prose 不能把任务标记完成。
+- 新增 `task-ledger.test.mjs`，扩展 workflow、interaction、chat-controller、architecture boundary、workflow compliance 回归。
+- 验证：Phase 4 目标测试通过；`npm test --workspace=packages/vscode-extension` 通过，33 个 suite 全部通过；`git diff --check` 通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npm run extension:package` 通过；`npm run verify:packaged-bridge` 顺序验证通过；`code --install-extension packages/vscode-extension/devseek-netai-latest.vsix --force` 安装成功。
+
 ## [Unreleased] — 2026-06-18
 
 ### Phase 3 工具协议与权限内核

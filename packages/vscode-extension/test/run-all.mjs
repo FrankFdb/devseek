@@ -27,6 +27,7 @@ const suites = [
   'test/unit/file-discovery.test.mjs',
   'test/unit/intent-behavior-matrix.test.mjs',
   'test/unit/permission-service.test.mjs',
+  'test/unit/task-ledger.test.mjs',
   'test/unit/workflow-service.test.mjs',
   'test/unit/execution-planner.test.mjs',
   'test/unit/session-service.test.mjs',

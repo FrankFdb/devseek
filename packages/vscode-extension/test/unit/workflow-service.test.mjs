@@ -27,26 +27,55 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const { decideChatIntent } = req(intentBundlePath);
-const { selectWorkflow } = req(bundlePath);
+const { selectWorkflow, WorkflowStateMachine } = req(bundlePath);
 
 test('WorkflowService: smalltalk stays plain chat', () => {
   const intent = decideChatIntent('hello');
   const selected = selectWorkflow({ intent, files: [], agentEnabled: true });
   assert.equal(selected.kind, 'plain-chat');
+  assert.equal(selected.state, 'plain_chat');
   assert.equal(selected.useAgent, false);
 });
 
 test('WorkflowService: inspect requires context before agent', () => {
   const intent = decideChatIntent('分析这段代码');
   assert.equal(selectWorkflow({ intent, files: [], agentEnabled: true }).useAgent, false);
-  assert.equal(selectWorkflow({ intent, files: ['/tmp/main.ts'], agentEnabled: true }).kind, 'inspect-agent');
+  const selected = selectWorkflow({ intent, files: ['/tmp/main.ts'], agentEnabled: true });
+  assert.equal(selected.kind, 'inspect-agent');
+  assert.equal(selected.toolPolicyMode, 'inspect');
 });
 
 test('WorkflowService: edit routes to edit agent when enabled', () => {
   const intent = decideChatIntent('修复这个 bug');
   const selected = selectWorkflow({ intent, files: [], agentEnabled: true });
   assert.equal(selected.kind, 'edit-agent');
+  assert.equal(selected.state, 'editing');
   assert.equal(selected.useAgent, true);
+});
+
+test('WorkflowService: complex refactor enters plan review with plan policy', () => {
+  const prompt = '重构整个项目代码，拆分 workflow runtime 和 provider 权限模块';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: true, prompt });
+
+  assert.equal(selected.kind, 'plan-agent');
+  assert.equal(selected.state, 'plan_review');
+  assert.equal(selected.requiresPlanReview, true);
+  assert.equal(selected.toolPolicyMode, 'plan');
+  assert.ok(selected.allowedTransitions.some(t => t.event === 'approve-plan' && t.to === 'editing'));
+});
+
+test('WorkflowService: approved plan review can transition to editing', () => {
+  const prompt = '重构整个项目代码，拆分 workflow runtime 和 provider 权限模块';
+  const intent = decideChatIntent(prompt);
+  const machine = new WorkflowStateMachine();
+  const selected = machine.select({ intent, files: [], agentEnabled: true, prompt });
+  const next = machine.transition(selected, 'approve-plan');
+
+  assert.equal(next.kind, 'edit-agent');
+  assert.equal(next.state, 'editing');
+  assert.equal(next.toolPolicyMode, 'edit');
+  assert.equal(next.requiresPlanReview, false);
 });
 
 test('WorkflowService: forceNoAgent wins over edit intent', () => {
@@ -54,6 +83,7 @@ test('WorkflowService: forceNoAgent wins over edit intent', () => {
   const selected = selectWorkflow({ intent, files: [], agentEnabled: true, forceNoAgent: true });
   assert.equal(selected.kind, 'plain-chat');
   assert.equal(selected.reason, 'force-no-agent');
+  assert.equal(selected.toolPolicyMode, 'edit');
 });
 
 test('WorkflowService: destructive requests require confirmation outside agent', () => {

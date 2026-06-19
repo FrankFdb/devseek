@@ -35,14 +35,16 @@ export class ChatRouteController {
       intent = applyLearnedIntentSafely(intent, learnedKind);
     }
 
-    const toolPolicy = buildToolPolicy(intent.mode);
     const workflow = selectWorkflow({
       intent,
       files: input.files,
       agentEnabled: input.agentEnabled,
       forceNoAgent: input.forceNoAgent,
       intentConfirmed: input.intentConfirmed,
+      prompt: input.prompt,
+      userText: intentRoutingText,
     });
+    const toolPolicy = buildToolPolicy(workflow.toolPolicyMode);
 
     return {
       intentRoutingText,

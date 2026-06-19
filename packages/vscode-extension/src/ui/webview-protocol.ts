@@ -4,6 +4,14 @@ export type { AgentEditedFileEvent, AgentEvent, AgentStatusEvent } from '../agen
 
 export type ChatProviderMode = 'fast' | 'r1';
 
+export interface PlanReviewRequest {
+  id: string;
+  title: string;
+  body: string;
+  details: string[];
+  options: unknown[];
+}
+
 export type WebviewInboundType =
   | 'chat' | 'cancel' | 'clearHistory' | 'ready' | 'insertCode' | 'relogin'
   | 'runCommand' | 'getProblems' | 'resolveFile' | 'getStatus' | 'setMode'
@@ -62,5 +70,6 @@ export type WebviewOutboundMessage =
   | { type: 'todoUpdate'; items: unknown[] }
   | { type: 'contextFiles'; files: string[] }
   | { type: 'terminalConfirm'; command: string; workdir: string; confirmId: string }
+  | { type: 'planReview'; request: PlanReviewRequest }
   | { type: 'intentConfirmation'; request: unknown }
   | { type: string; [key: string]: unknown };

@@ -68,6 +68,24 @@
 
 ---
 
+**变更标题**：Phase 4 Workflow 状态机与 PlanReview（2026-06-19）
+- **需求归因**：能力缺口 + 架构债务 — DevSeek 需要像 Claude Code / Codex / Copilot 一样，在复杂重构前先进入计划/审查状态，并由宿主权限内核阻止计划阶段写盘或执行命令。
+- **影响能力层**：理解、规划、权限、用户确认、Agent 执行、UI 协议、任务事实记录。
+- **架构影响**：
+  - `packages/vscode-extension/src/app/workflow-service.ts` 增加 `WorkflowStateMachine`、状态和 transition。
+  - `packages/vscode-extension/src/app/chat-controller.ts` 改为按 `workflow.toolPolicyMode` 绑定 `ToolPolicy`。
+  - `packages/vscode-extension/src/app/interaction-service.ts` 增加 `planReview` 交互请求。
+  - `packages/vscode-extension/src/app/task-ledger.ts` 新增任务事实账本，隔离模型 prose 与工具/验证事实。
+  - `packages/vscode-extension/src/ui/webview-protocol.ts`、`extension.ts`、`media/webview.js` 接入 `planReview` 消息。
+- **方案选择理由**：PlanReview 是复杂重构的安全阀；把它做成 workflow 状态和权限模式，而不是提示词约定，可以保证模型不能在计划阶段绕过写盘/终端权限。
+- **主链路验证**：复杂编辑型重构请求进入 `plan_review`，展示 PlanReview 交互，`ToolPolicy` 为 plan，edit/terminal 不在允许工具集中。
+- **回退链路验证**：用户取消 PlanReview 不进入写盘 workflow；模型普通 prose 不能把 todo 标记完成；未确认的 destructive 请求仍走确认流程。
+- **结果判据变化**：后续复杂重构必须先经过 PlanReview 或用户确认；todo 完成状态必须绑定工具、验证或用户事实。
+- **文档更新**：`docs/architecture/05-代码重构实施计划.md` / `docs/release/CHANGELOG.md` / `docs/process/TOP_AGENT_CHANGE_GATE.md`。
+- **备份/发布动作**：本轮为 extension 行为变更，需执行全量测试、compile、package、verify packaged bridge、install VSIX。
+
+---
+
 **变更标题**：Phase 3 工具协议与权限内核（2026-06-18）
 - **需求归因**：能力缺口 + 架构债务 — DevSeek 后续要支持 DeepSeek Web 默认实现、API Provider、VS Code 插件/CLI/非 VS Code UI 多入口，不能继续让工具调用、权限和证据散落在入口层。
 - **影响能力层**：工具协议、权限、Agent 执行、Provider 适配、意图路由、审计证据。

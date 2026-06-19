@@ -5860,7 +5860,7 @@ window.addEventListener('message', function(event) {
     addWorkflowStatus(msg);
   } else if (msg.type === 'agentStatus') {
     addAgentStatus(msg);
-  } else if (msg.type === 'intentConfirmation') {
+  } else if (msg.type === 'intentConfirmation' || msg.type === 'planReview') {
     handleIntentConfirmation(msg);
   } else if (msg.type === 'agentAnnouncement') {
     // Phase B: transitional prose bubble between plan card and first Working box

@@ -1947,7 +1947,7 @@ async function runChat(
   });
   if (preExecutionInteraction) {
     webview.postMessage({
-      type: 'intentConfirmation',
+      type: preExecutionInteraction.kind === 'planReview' ? 'planReview' : 'intentConfirmation',
       request: {
         ...preExecutionInteraction,
         original: {

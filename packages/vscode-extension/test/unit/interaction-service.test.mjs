@@ -38,7 +38,7 @@ const { selectWorkflow } = req(workflowBundlePath);
 
 function route(prompt, files = [], intentConfirmed = false) {
   const intent = decideChatIntent(prompt);
-  const workflow = selectWorkflow({ intent, files, agentEnabled: true, intentConfirmed });
+  const workflow = selectWorkflow({ intent, files, agentEnabled: true, intentConfirmed, prompt, userText: prompt });
   return { intent, workflow };
 }
 
@@ -69,6 +69,18 @@ test('InteractionService: destructive request requires visible confirmation', ()
   assert.equal(request?.kind, 'confirm');
   assert.equal(request.options[0].id, 'continue');
   assert.equal(request.options[0].intentConfirmed, true);
+});
+
+test('InteractionService: complex refactor asks for plan review first', () => {
+  const prompt = '重构整个项目代码，拆分 workflow runtime 和 provider 权限模块';
+  const { intent, workflow } = route(prompt);
+  const request = buildPreExecutionInteraction({ userText: prompt, prompt, files: [], intent, workflow });
+
+  assert.equal(workflow.state, 'plan_review');
+  assert.equal(request?.kind, 'planReview');
+  assert.equal(request.options[0].id, 'plan');
+  assert.equal(request.options[1].id, 'continue');
+  assert.match(request.details.join('\n'), /权限模式：plan/);
 });
 
 test('InteractionService: confirmed request does not ask again', () => {

@@ -730,8 +730,11 @@ test('Architecture: webview protocol types exist and extension uses inbound prot
   assertContains(protocol, 'WebviewInboundMessage', 'typed inbound webview protocol must exist');
   assertContains(protocol, 'WebviewOutboundMessage', 'typed outbound webview protocol must exist');
   assertContains(protocol, 'AgentStatusEvent', 'typed agent status event must exist');
+  assertContains(protocol, "'planReview'", 'typed outbound webview protocol must include plan review');
   assertContains(ext, "import type { WebviewInboundMessage }", 'extension must use typed inbound webview message');
   assertContains(ext, 'type WebviewMessage = WebviewInboundMessage', 'extension WebviewMessage must be protocol alias');
+  assertContains(ext, "preExecutionInteraction.kind === 'planReview'", 'extension must emit plan review event explicitly');
+  assertContains(src('media/webview.js'), "msg.type === 'intentConfirmation' || msg.type === 'planReview'", 'webview must render plan review with confirmation card');
 });
 
 test('Architecture: PermissionService maps ExecutionMode to tool policy', () => {
@@ -742,7 +745,7 @@ test('Architecture: PermissionService maps ExecutionMode to tool policy', () => 
   assertContains(service, 'decideToolPermission', 'permission service must decide tool permissions');
   assertContains(service, "case 'inspect'", 'permission service must handle inspect mode');
   assertContains(service, "case 'destructive'", 'permission service must handle destructive mode');
-  assertContains(controller, 'const toolPolicy = buildToolPolicy(intent.mode)', 'chat controller must bind tool policy from intent mode');
+  assertContains(controller, 'const toolPolicy = buildToolPolicy(workflow.toolPolicyMode)', 'chat controller must bind tool policy from workflow mode');
   assertContains(ext, 'const { intentRoutingText, intent, toolPolicy, workflow } = routeDecision', 'runChat must use routed tool policy');
   assertContains(ext, "decideToolPermission(toolPolicy, 'edit')", 'file writes must check ToolPolicy');
   assertContains(ext, "decideToolPermission(toolPolicy, 'terminal')", 'terminal commands must check ToolPolicy');
@@ -753,6 +756,8 @@ test('Architecture: WorkflowService selects agent entry outside extension inline
   const ext = src('src/extension.ts');
   const controller = src('src/app/chat-controller.ts');
   assertContains(service, 'selectWorkflow', 'workflow service must expose selectWorkflow');
+  assertContains(service, 'class WorkflowStateMachine', 'workflow service must expose state machine');
+  assertContains(service, 'requiresPlanReview', 'workflow service must support plan review gate');
   assertContains(service, 'confirmation-required', 'workflow service must route destructive confirmation outside agent');
   assertContains(controller, 'const workflow = selectWorkflow', 'chat controller must delegate workflow selection');
   assertContains(ext, 'chatRouteController.decide', 'extension must delegate route selection to ChatRouteController');

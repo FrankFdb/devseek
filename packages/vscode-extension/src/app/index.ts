@@ -9,4 +9,5 @@ export * from './project-init-service';
 export * from './project-instruction-service';
 export * from './session-continuation';
 export * from './session-service';
+export * from './task-ledger';
 export * from './workflow-service';

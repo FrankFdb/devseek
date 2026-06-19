@@ -1,4 +1,5 @@
 import { ChatIntentDecision, shouldUseAgentMode } from '../intent-router';
+import type { ExecutionMode } from '../intent/intent-types';
 
 export type WorkflowKind =
   | 'plain-chat'
@@ -8,55 +9,181 @@ export type WorkflowKind =
   | 'run-agent'
   | 'confirmation-required';
 
+export type WorkflowState =
+  | 'plain_chat'
+  | 'inspect'
+  | 'planning'
+  | 'plan_review'
+  | 'editing'
+  | 'running'
+  | 'confirmation_required'
+  | 'completed'
+  | 'cancelled'
+  | 'failed';
+
+export type WorkflowTransitionEvent =
+  | 'plan-generated'
+  | 'approve-plan'
+  | 'cancel'
+  | 'start-execution'
+  | 'complete'
+  | 'fail';
+
+export interface WorkflowTransition {
+  event: WorkflowTransitionEvent;
+  from: WorkflowState;
+  to: WorkflowState;
+}
+
 export interface WorkflowSelectionInput {
   intent: ChatIntentDecision;
   files: string[];
   agentEnabled: boolean;
   forceNoAgent?: boolean;
   intentConfirmed?: boolean;
+  prompt?: string;
+  userText?: string;
 }
 
 export interface WorkflowSelection {
   kind: WorkflowKind;
+  state: WorkflowState;
   useAgent: boolean;
   reason: string;
+  toolPolicyMode: ExecutionMode;
+  requiresPlanReview: boolean;
+  allowedTransitions: WorkflowTransition[];
 }
 
 export function selectWorkflow(input: WorkflowSelectionInput): WorkflowSelection {
-  const { intent, files, agentEnabled, forceNoAgent, intentConfirmed } = input;
+  return new WorkflowStateMachine().select(input);
+}
 
-  if (intent.requiresConfirmation && !intentConfirmed) {
-    return { kind: 'confirmation-required', useAgent: false, reason: 'intent-requires-confirmation' };
+export class WorkflowStateMachine {
+  select(input: WorkflowSelectionInput): WorkflowSelection {
+    const { intent, files, agentEnabled, forceNoAgent, intentConfirmed } = input;
+
+    if (intent.requiresConfirmation && !intentConfirmed) {
+      return makeSelection('confirmation-required', 'confirmation_required', false, 'intent-requires-confirmation', intent.mode);
+    }
+
+    if (forceNoAgent) {
+      return makeSelection('plain-chat', 'plain_chat', false, 'force-no-agent', intent.mode);
+    }
+
+    if (!agentEnabled) {
+      return makeSelection('plain-chat', 'plain_chat', false, 'agent-disabled', intent.mode);
+    }
+
+    const agentModeIntent = intentConfirmed && intent.requiresConfirmation
+      ? { ...intent, requiresConfirmation: false }
+      : intent;
+
+    if (!shouldUseAgentMode(agentModeIntent, files)) {
+      return makeSelection('plain-chat', 'plain_chat', false, `mode-${intent.mode}-does-not-use-agent`, intent.mode);
+    }
+
+    switch (intent.mode) {
+      case 'inspect':
+        return makeSelection('inspect-agent', 'inspect', true, 'read-only-inspection-with-context', 'inspect');
+      case 'plan':
+        return makeSelection('plan-agent', 'planning', true, 'read-only-planning-with-context', 'plan');
+      case 'run':
+        return makeSelection('run-agent', 'running', true, 'run-workflow', 'run');
+      case 'edit':
+        if (requiresPlanReview(input)) {
+          return makeSelection('plan-agent', 'plan_review', true, 'plan-review-required', 'plan', true);
+        }
+        return makeSelection('edit-agent', 'editing', true, 'edit-workflow', 'edit');
+      case 'destructive':
+        return makeSelection('edit-agent', 'editing', true, 'confirmed-destructive-workflow', 'destructive');
+      default:
+        return makeSelection('plain-chat', 'plain_chat', false, `mode-${intent.mode}-not-agent-routable`, intent.mode);
+    }
   }
 
-  if (forceNoAgent) {
-    return { kind: 'plain-chat', useAgent: false, reason: 'force-no-agent' };
+  transition(selection: WorkflowSelection, event: WorkflowTransitionEvent): WorkflowSelection {
+    const transition = selection.allowedTransitions.find(t => t.event === event);
+    if (!transition) {
+      return selection;
+    }
+    const kind: WorkflowKind = transition.to === 'editing'
+      ? 'edit-agent'
+      : transition.to === 'running'
+        ? 'run-agent'
+        : transition.to === 'planning' || transition.to === 'plan_review'
+          ? 'plan-agent'
+          : transition.to === 'confirmation_required'
+            ? 'confirmation-required'
+            : selection.kind;
+    return {
+      ...selection,
+      kind,
+      state: transition.to,
+      useAgent: !['plain_chat', 'confirmation_required', 'completed', 'cancelled', 'failed'].includes(transition.to),
+      reason: `transition:${event}`,
+      toolPolicyMode: transition.to === 'editing' && selection.toolPolicyMode === 'plan' ? 'edit' : selection.toolPolicyMode,
+      requiresPlanReview: transition.to === 'plan_review',
+      allowedTransitions: transitionsFor(transition.to),
+    };
   }
+}
 
-  if (!agentEnabled) {
-    return { kind: 'plain-chat', useAgent: false, reason: 'agent-disabled' };
-  }
+function makeSelection(
+  kind: WorkflowKind,
+  state: WorkflowState,
+  useAgent: boolean,
+  reason: string,
+  toolPolicyMode: ExecutionMode,
+  requiresPlanReview = false,
+): WorkflowSelection {
+  return {
+    kind,
+    state,
+    useAgent,
+    reason,
+    toolPolicyMode,
+    requiresPlanReview,
+    allowedTransitions: transitionsFor(state),
+  };
+}
 
-  const agentModeIntent = intentConfirmed && intent.requiresConfirmation
-    ? { ...intent, requiresConfirmation: false }
-    : intent;
-
-  if (!shouldUseAgentMode(agentModeIntent, files)) {
-    return { kind: 'plain-chat', useAgent: false, reason: `mode-${intent.mode}-does-not-use-agent` };
-  }
-
-  switch (intent.mode) {
+function transitionsFor(state: WorkflowState): WorkflowTransition[] {
+  switch (state) {
+    case 'plan_review':
+      return [
+        { event: 'approve-plan', from: state, to: 'editing' },
+        { event: 'cancel', from: state, to: 'cancelled' },
+      ];
+    case 'planning':
+      return [
+        { event: 'plan-generated', from: state, to: 'plan_review' },
+        { event: 'cancel', from: state, to: 'cancelled' },
+      ];
     case 'inspect':
-      return { kind: 'inspect-agent', useAgent: true, reason: 'read-only-inspection-with-context' };
-    case 'plan':
-      return { kind: 'plan-agent', useAgent: true, reason: 'read-only-planning-with-context' };
-    case 'run':
-      return { kind: 'run-agent', useAgent: true, reason: 'run-workflow' };
-    case 'edit':
-      return { kind: 'edit-agent', useAgent: true, reason: 'edit-workflow' };
-    case 'destructive':
-      return { kind: 'edit-agent', useAgent: true, reason: 'confirmed-destructive-workflow' };
+    case 'editing':
+    case 'running':
+      return [
+        { event: 'complete', from: state, to: 'completed' },
+        { event: 'fail', from: state, to: 'failed' },
+        { event: 'cancel', from: state, to: 'cancelled' },
+      ];
+    case 'confirmation_required':
+      return [
+        { event: 'approve-plan', from: state, to: 'editing' },
+        { event: 'cancel', from: state, to: 'cancelled' },
+      ];
     default:
-      return { kind: 'plain-chat', useAgent: false, reason: `mode-${intent.mode}-not-agent-routable` };
+      return [];
   }
+}
+
+function requiresPlanReview(input: WorkflowSelectionInput): boolean {
+  if (input.intent.mode !== 'edit') return false;
+  if (input.intentConfirmed) return false;
+  const text = `${input.userText ?? ''}\n${input.prompt ?? ''}`.trim();
+  if (!text) return false;
+  const hasBroadScope = /(整个|全部|全局|项目|仓库|系统|架构|多入口|跨平台|跨模块|模块化|runtime|workflow|provider|权限|状态机)/i.test(text);
+  const hasComplexAction = /(重构|改造|拆分|迁移|重写|优化架构|革命性|架构设计|refactor|re-architect|architecture)/i.test(text);
+  return (hasBroadScope && hasComplexAction) || input.files.length > 3;
 }

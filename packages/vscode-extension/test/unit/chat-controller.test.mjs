@@ -50,6 +50,24 @@ test('ChatRouteController: preserves edit workflow for real edit requests', () =
   assert.equal(decision.workflow.kind, 'edit-agent');
 });
 
+test('ChatRouteController: complex refactor starts in plan review with plan permissions', () => {
+  const controller = new ChatRouteController();
+  const decision = controller.decide({
+    userDisplay: '重构整个项目代码，拆分 workflow runtime 和 provider 权限模块',
+    prompt: '重构整个项目代码，拆分 workflow runtime 和 provider 权限模块',
+    files: [],
+    agentEnabled: true,
+  });
+
+  assert.equal(decision.intent.mode, 'edit');
+  assert.equal(decision.workflow.kind, 'plan-agent');
+  assert.equal(decision.workflow.state, 'plan_review');
+  assert.equal(decision.workflow.requiresPlanReview, true);
+  assert.equal(decision.toolPolicy.mode, 'plan');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('terminal'), false);
+});
+
 test('ChatRouteController: destructive workflow waits for visible confirmation', () => {
   const controller = new ChatRouteController();
   const pending = controller.decide({

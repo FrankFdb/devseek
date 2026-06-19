@@ -1,7 +1,7 @@
 import type { ChatIntentDecision } from '../intent-router';
 import type { WorkflowSelection } from './workflow-service';
 
-export type UserInteractionKind = 'clarify' | 'confirm';
+export type UserInteractionKind = 'clarify' | 'confirm' | 'planReview';
 export type UserInteractionOptionId = 'continue' | 'plan' | 'clarify';
 
 export interface UserInteractionOption {
@@ -75,6 +75,41 @@ export function buildPreExecutionInteraction(input: PreExecutionInteractionInput
           id: 'clarify',
           label: '我来补充',
           description: '回到输入框补充范围、文件或安全边界。',
+        },
+      ],
+    };
+  }
+
+  if (input.workflow.requiresPlanReview) {
+    return {
+      id: makeInteractionId('plan-review', userText),
+      kind: 'planReview',
+      title: '需要先审查计划',
+      body: '这个请求涉及较大范围的重构。DevSeek 会先按计划模式处理，确认方向后再进入修改。',
+      details: [
+        `工作流状态：${input.workflow.state}`,
+        `权限模式：${input.workflow.toolPolicyMode}`,
+        `原因：${input.workflow.reason}`,
+      ],
+      options: [
+        {
+          id: 'plan',
+          label: '先给计划',
+          description: '只生成计划，不修改文件或执行命令。',
+          prompt: buildPlanPrompt(input.prompt),
+          forceNoAgent: true,
+          intentConfirmed: true,
+        },
+        {
+          id: 'continue',
+          label: '确认修改',
+          description: '确认计划审查要求，进入后续修改流程。',
+          intentConfirmed: true,
+        },
+        {
+          id: 'clarify',
+          label: '我来补充',
+          description: '补充范围、约束或验收标准后再执行。',
         },
       ],
     };
