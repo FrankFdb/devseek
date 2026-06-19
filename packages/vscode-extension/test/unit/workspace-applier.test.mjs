@@ -372,6 +372,45 @@ test('workspace-applier: explicit missing code subdirectory still wins over same
   }
 });
 
+test('workspace-applier: apply result includes review ledger summary when validation is skipped', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-review-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+    const raw = [
+      'notes/review.md',
+      '```md',
+      '# Review',
+      '',
+      'Done.',
+      '```',
+    ].join('\n');
+    const statuses = [];
+
+    const result = await applyGeneratedArtifactsWithPrompt(raw, '更新 notes/review.md', (status) => statuses.push(status), true);
+
+    assert.equal(result.applied, true);
+    assert.equal(result.changeCount, 1);
+    assert.deepEqual(result.changedPaths, ['notes/review.md']);
+    assert.deepEqual(result.review?.files, {
+      total: 1,
+      creates: 1,
+      overwrites: 0,
+      patches: 0,
+      changedPaths: ['notes/review.md'],
+    });
+    assert.equal(result.review?.validation.ran, false);
+    assert.equal(result.review?.validation.reason, 'no-auto-validation-target');
+    assert.deepEqual(result.review?.unfinishedItems, []);
+    assert.match(readFileSync(path.join(root, 'notes', 'review.md'), 'utf8'), /Done\./);
+    assert.equal(
+      statuses.some((status) => status.phase === 'validate' && status.state === 'skipped'),
+      true,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('workspace-applier: compile-only C++ validation does not run the produced program', { skip: !hasCommand('g++') && 'g++ is not installed' }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-'));
   const projectDir = path.join(root, 'code', 'compile_only_demo');

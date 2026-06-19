@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as nodePath from 'path';
 import * as fs from 'fs';
-import { ChangeAction, createChangeAction, ResolvedGeneratedArtifact, summarizeChangeActions } from './change-plan';
+import { ChangeAction, createChangeAction, ResolvedGeneratedArtifact } from './change-plan';
 import { GeneratedArtifact, GeneratedFile, looksLikeRawToolCallText, parseGeneratedArtifacts } from './generated-file-parser';
 import { CppValidationPolicy, planCppValidation } from './validation-planner';
 import { getWorkspaceRootUri } from './workspace-roots';
@@ -16,6 +16,8 @@ import {
   resolveGeneratedArtifactPathForPrompt as resolveGeneratedArtifactPathInWorkspaceForPrompt,
   isGeneratedArtifactAllowedForPrompt,
 } from './workspace/path-resolver';
+import { createChangeSet } from './workspace/change-set';
+import { ReviewLedger, type ReviewLedgerSnapshot } from './workspace/review-ledger';
 
 export interface ApplyWorkflowStatus {
   phase: 'apply' | 'validate' | 'repair';
@@ -41,6 +43,7 @@ export interface ApplyWorkflowResult {
   changedPaths: string[];
   validation?: AutoValidationResult;
   rolledBack?: boolean;
+  review?: ReviewLedgerSnapshot;
 }
 
 export interface AppliedChangeRecord {
@@ -146,7 +149,10 @@ async function applyPreparedChanges(
     };
   }
 
-  const summary = summarizeChangeActions(prepared.map((change) => change.action));
+  const changeSet = createChangeSetFromPrepared(prepared);
+  const ledger = new ReviewLedger();
+  ledger.recordChangeSet(changeSet);
+  const summary = changeSet.summary();
   if (!autoApply) {
     const choice = await vscode.window.showWarningMessage(
       `DeepSeek 将应用 ${prepared.length} 个文件变更（新建 ${summary.creates}，覆盖 ${summary.overwrites}，局部补丁 ${summary.patches}）。是否继续？`,
@@ -160,17 +166,21 @@ async function applyPreparedChanges(
       await openPreview(prepared[0]);
       const applyAfterPreview = await vscode.window.showInformationMessage('是否应用全部 DeepSeek 文件变更？', '应用全部', '取消');
       if (applyAfterPreview !== '应用全部') {
+        ledger.addUnfinishedItem('用户取消应用文件变更');
         return {
           applied: false,
           changeCount: 0,
           changedPaths: [],
+          review: ledger.snapshot(),
         };
       }
     } else if (choice !== '应用全部') {
+      ledger.addUnfinishedItem('用户取消应用文件变更');
       return {
         applied: false,
         changeCount: 0,
         changedPaths: [],
+        review: ledger.snapshot(),
       };
     }
   }
@@ -186,10 +196,12 @@ async function applyPreparedChanges(
       detail: drift,
     });
     vscode.window.showErrorMessage('DeepSeek: 检测到路径漂移，本轮变更已阻止，工作区未作任何修改。');
+    ledger.addUnfinishedItem('路径漂移阻止写入，需要重新确认目标文件路径');
     return {
       applied: false,
       changeCount: 0,
       changedPaths: [],
+      review: ledger.snapshot(),
     };
   }
 
@@ -203,10 +215,12 @@ async function applyPreparedChanges(
       detail: `${rel} 匹配 devseek.protectedFiles 规则`,
     });
     vscode.window.showErrorMessage(`DeepSeek: 已阻止写入受保护文件 ${rel}。`);
+    ledger.addUnfinishedItem(`受保护文件阻止写入: ${rel}`);
     return {
       applied: false,
       changeCount: 0,
       changedPaths: [],
+      review: ledger.snapshot(),
     };
   }
 
@@ -219,10 +233,12 @@ async function applyPreparedChanges(
       detail: buildTruncatingOverwriteDetail(truncatingOverwrite),
     });
     vscode.window.showErrorMessage(`DeepSeek: 已阻止 ${truncatingOverwrite.relPath} 的疑似截断覆盖，本轮未写入文件。`);
+    ledger.addUnfinishedItem(`疑似截断覆盖阻止写入: ${truncatingOverwrite.relPath}`);
     return {
       applied: false,
       changeCount: 0,
       changedPaths: [],
+      review: ledger.snapshot(),
     };
   }
 
@@ -267,6 +283,7 @@ async function applyPreparedChanges(
 
   const validation = await runAutoValidation(prepared.map((p) => p.relPath), root, requestPrompt);
   if (!validation) {
+    ledger.recordValidationSkipped('no-auto-validation-target');
     await reportWorkflow(reporter, {
       phase: 'validate',
       state: 'skipped',
@@ -276,11 +293,13 @@ async function applyPreparedChanges(
     await reportAppliedChanges(prepared, onAppliedChange);
     return {
       applied: true,
-      changeCount: prepared.length,
-      changedPaths: prepared.map((p) => p.relPath),
+      changeCount: summary.total,
+      changedPaths: changeSet.changedPaths,
+      review: ledger.snapshot(),
     };
   }
 
+  ledger.recordValidation(validation);
   await reportWorkflow(reporter, {
     phase: 'validate',
     state: validation.ok ? 'passed' : 'failed',
@@ -290,6 +309,7 @@ async function applyPreparedChanges(
 
   if (!validation.ok && autoApply && rollbackOnValidationFailure) {
     await rollbackPreparedChanges(prepared, createdDirs);
+    ledger.addUnfinishedItem('自动验证失败，文件变更已回滚');
     await reportWorkflow(reporter, {
       phase: 'apply',
       state: 'completed',
@@ -303,17 +323,32 @@ async function applyPreparedChanges(
       changedPaths: [],
       validation,
       rolledBack: true,
+      review: ledger.snapshot(),
     };
   }
 
+  if (!validation.ok) {
+    ledger.addUnfinishedItem('自动验证失败，需要根据验证输出继续修复');
+  }
   await reportAppliedChanges(prepared, onAppliedChange);
 
   return {
     applied: true,
-    changeCount: prepared.length,
-    changedPaths: prepared.map((p) => p.relPath),
+    changeCount: summary.total,
+    changedPaths: changeSet.changedPaths,
     validation,
+    review: ledger.snapshot(),
   };
+}
+
+function createChangeSetFromPrepared(prepared: PreparedChange[]) {
+  return createChangeSet(prepared.map(change => ({
+    path: change.relPath,
+    existed: change.exists,
+    oldContent: change.oldContent,
+    newContent: change.newContent,
+    actionType: change.action.type,
+  })));
 }
 
 async function reportAppliedChanges(

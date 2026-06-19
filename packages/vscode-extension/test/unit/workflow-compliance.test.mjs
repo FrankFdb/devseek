@@ -903,6 +903,18 @@ test('Architecture: WorkspaceEditService owns Agent Loop file writes', () => {
   assert.doesNotMatch(agentLoop, /fs\.writeFileSync/, 'agent loop must not write workspace files directly');
 });
 
+test('Architecture: Workspace review ledger owns apply result summary', () => {
+  const changeSet = src('src/workspace/change-set.ts');
+  const reviewLedger = src('src/workspace/review-ledger.ts');
+  const applier = src('src/workspace-applier.ts');
+  assertContains(changeSet, 'class ChangeSet', 'workspace ChangeSet must exist');
+  assertContains(reviewLedger, 'class ReviewLedger', 'workspace ReviewLedger must exist');
+  assertContains(reviewLedger, 'failureFiles', 'ReviewLedger must record validation failure files');
+  assertContains(applier, 'new ReviewLedger()', 'workspace applier must construct review ledger');
+  assertContains(applier, 'review?: ReviewLedgerSnapshot', 'apply workflow result must expose review snapshot');
+  assertContains(applier, 'review: ledger.snapshot()', 'workspace applier must return ledger snapshots');
+});
+
 test('Architecture: Bridge DOM selectors live in a DeepSeek selector registry', () => {
   const selectors = src('../bridge/src/deepseek-dom-selectors.ts');
   const agent = src('../bridge/src/deepseek-agent.ts');

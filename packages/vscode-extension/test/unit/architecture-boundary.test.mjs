@@ -73,8 +73,10 @@ test('Phase 0: domain roots expose explicit public boundaries', () => {
       './tool-registry',
     ],
     'src/workspace/index.ts': [
+      './change-set',
       './edit-service',
       './path-resolver',
+      './review-ledger',
     ],
     'src/llm/index.ts': [
       './provider-router',
