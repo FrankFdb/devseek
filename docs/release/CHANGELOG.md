@@ -6,6 +6,24 @@
 
 ## [Unreleased] — 2026-06-19
 
+### Phase 7 历史任务与 DeepSeek Web 异常恢复
+
+- 对标 Claude Code / Codex 的恢复语义，新增 checkpoint、task history、timeline、resume context、provider recovery、idempotency 六个任务事实边界。
+- `TaskCheckpointStore` 接管扩展断点续传存储；旧 `devseek.agentTaskCheckpoint` key 保持兼容，reload banner 只展示新鲜 checkpoint。
+- `ResumeContextBuilder` 只注入用户目标、todo、变更、验证、QualityGate、checkpoint 和不可重放 operation facts，不再把完整聊天历史当作任务恢复上下文。
+- `IdempotencyGuard` 固定副作用重放策略：已提交 edit 默认返回缓存，terminal 默认重新确认，read-only 操作可重放。
+- `ProviderRecoveryService` 将 LoginRequired、RateLimited、ResponseCorrupted、BridgeRestarted、StreamTimeout、DOMContractChanged、QualityGateFailed 分类为可解释历史任务状态。
+- Bridge Provider 增加 Web reliability 守卫，高置信截断/不完整工具块不会进入工具执行链路。
+- 新增 Phase 7 单元测试和架构守卫，覆盖任务恢复主链路与失败链路。
+
+验证：
+- `npm test --workspace=packages/vscode-extension` 通过，50 个 suite / 95 个测试全部通过。
+- `git diff --check` 通过。
+- Phase 7 modified source targeted `npx tsc --noEmit --pretty false ...` 通过。
+- `npm run compile --workspace=packages/vscode-extension` 通过。
+- `npx @vscode/vsce package --no-dependencies --out devseek-netai-1.0.0.vsix` 通过。
+- `code --install-extension devseek-netai-1.0.0.vsix --force` 安装成功。
+
 ### [BUG FIX] Phase 4 截图用例审计修复
 
 - 修复复杂重构请求在 Agent 关闭或普通聊天路径下绕过 PlanReview 的问题；实施型大范围重构现在会先进入 `plan_review`，纯“给出方案/计划”仍走只读 `planning`。

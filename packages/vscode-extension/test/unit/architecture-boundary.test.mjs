@@ -62,6 +62,10 @@ test('Phase 0: domain roots expose explicit public boundaries', () => {
       './chat-controller',
       './permission-service',
       './session-service',
+      './provider-recovery-service',
+      './resume-context-builder',
+      './task-checkpoint-store',
+      './task-history-store',
       './task-ledger',
       './quality-gate-service',
       './verification-planner',
@@ -70,6 +74,8 @@ test('Phase 0: domain roots expose explicit public boundaries', () => {
     'src/agent/index.ts': [
       './events',
       './fake-tool-parser',
+      './idempotency-guard',
+      './task-timeline-service',
       './tool-call-normalizer',
       './tool-executor',
       './tool-registry',
@@ -83,6 +89,7 @@ test('Phase 0: domain roots expose explicit public boundaries', () => {
     ],
     'src/llm/index.ts': [
       './provider-router',
+      './providers/web-reliability',
       './types',
     ],
     'src/memory/index.ts': [
@@ -150,4 +157,24 @@ test('Phase 2: agent tool loop memory_write uses structured proposals only', () 
   assert.doesNotMatch(toolLoop, /appendFileSync|writeFileSync|mkdirSync/, 'tool-loop must not persist memory directly');
   assert.match(loopTypes, /onMemoryWrite\?: \(proposal: MemoryWriteProposal\)/, 'agent callback protocol emits structured memory proposals');
   assert.match(toolLoop, /callbacks\.onMemoryWrite\(\{[\s\S]*?type: 'verified-experience'/, 'tool-loop sends structured memory proposals through callbacks');
+});
+
+test('Phase 7: task recovery services are split from composition roots', () => {
+  const requiredFiles = [
+    'src/app/task-checkpoint-store.ts',
+    'src/app/task-history-store.ts',
+    'src/app/resume-context-builder.ts',
+    'src/app/provider-recovery-service.ts',
+    'src/agent/idempotency-guard.ts',
+    'src/agent/task-timeline-service.ts',
+    'src/llm/providers/web-reliability.ts',
+  ];
+  for (const file of requiredFiles) {
+    assert.ok(existsSync(path.join(root, file)), `${file} must exist for Phase 7 recovery architecture`);
+  }
+
+  const extension = read('src/extension.ts');
+  assert.match(extension, /TaskCheckpointStore/, 'extension.ts must delegate checkpoint persistence to TaskCheckpointStore');
+  assert.doesNotMatch(extension, /workspaceState\.update\(CHECKPOINT_KEY/, 'extension.ts must not write checkpoint state directly');
+  assert.doesNotMatch(extension, /workspaceState\.get<AgentTaskCheckpoint>\(CHECKPOINT_KEY/, 'extension.ts must not read checkpoint state directly');
 });

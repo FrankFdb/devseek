@@ -68,6 +68,25 @@
 
 ---
 
+**变更标题**：Phase 7 历史任务与 DeepSeek Web 异常恢复基础设施（2026-06-20）
+- **需求归因**：能力缺口 + 架构债务 — DeepSeek Web 默认 Provider 会遇到登录失效、限流、截断、Bridge restart；任务恢复不能依赖聊天历史，也不能重复执行已提交副作用。
+- **影响能力层**：执行、验证、回退、Provider 恢复、历史任务、断点续传、幂等重放保护。
+- **架构影响**：
+  - 新增 `app/task-checkpoint-store.ts`、`app/task-history-store.ts`、`agent/task-timeline-service.ts`。
+  - 新增 `app/resume-context-builder.ts`，只用任务事实构建最小恢复上下文。
+  - 新增 `app/provider-recovery-service.ts`，把 Web/Bridge 异常转为可解释任务状态和暂停原因。
+  - 新增 `agent/idempotency-guard.ts`，统一 operationId、replayPolicy 和已提交副作用重放决策。
+  - 新增 `llm/providers/web-reliability.ts`，提供 ResponseIntegrityChecker、StreamWatchdog、BridgeHealthMonitor。
+  - `extension.ts` 的 checkpoint 读写委托 `TaskCheckpointStore`，不再直接读写旧断点 key。
+- **方案选择理由**：对标 Claude Code / Codex 的本地事实优先和副作用不可静默重放原则，先建立恢复事实、历史、幂等和 Provider 异常分类边界，再在后续 Phase9/Provider Runtime 中接入完整历史任务 UI 与 Provider fallback。
+- **主链路验证**：新增 checkpoint/history/timeline/resume/idempotency/provider recovery/web reliability 单元测试；reload checkpoint 逻辑走 `TaskCheckpointStore.loadFresh`。
+- **回退链路验证**：截断响应进入 `ResponseCorrupted`；登录/限流进入 paused；Bridge restart/stream timeout 进入 recoverable；已提交 edit 返回 cached，terminal 需要确认。
+- **结果判据变化**：任务恢复不得把聊天历史作为事实来源；已提交副作用不得静默重放；DeepSeek Web 不完整输出不得进入工具执行链。
+- **文档更新**：`CHANGELOG.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npm test --workspace=packages/vscode-extension` 通过（50 suite / 95 tests）；`git diff --check` 通过；Phase 7 modified source targeted `npx tsc --noEmit --pretty false ...` 通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npx @vscode/vsce package --no-dependencies --out devseek-netai-1.0.0.vsix` 通过；`code --install-extension devseek-netai-1.0.0.vsix --force` 安装成功。
+
+---
+
 **变更标题**：Phase 4 截图用例审计修复（2026-06-19）
 - **需求归因**：实现缺陷 + 体验退化 — 用户实测 4 个 Phase 4 case 暴露 PlanReview 被绕过、只读检查退化为假工具普通聊天、历史上下文污染候选文件的问题。
 - **影响能力层**：理解、规划、执行前确认、只读检查、输出清理、Workspace Apply 路径解析。

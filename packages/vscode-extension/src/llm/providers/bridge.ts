@@ -5,6 +5,7 @@
 import * as vscode from 'vscode';
 import { LLMProvider, LLMProviderType, LLMChatOptions, ChatMessage } from '../types';
 import * as bridgeClient from '../../bridge-client';
+import { ResponseIntegrityChecker } from './web-reliability';
 
 export class BridgeProvider implements LLMProvider {
   readonly type: LLMProviderType = 'bridge';
@@ -18,7 +19,7 @@ export class BridgeProvider implements LLMProvider {
     // Bridge 接受单一 prompt 字符串，将多轮消息扁平化
     const prompt = flattenMessages(opts.messages);
     const cfg = vscode.workspace.getConfiguration('devseek');
-    return bridgeClient.chat({
+    const response = await bridgeClient.chat({
       prompt,
       newSession: opts.newSession,
       stream: opts.stream !== false,
@@ -27,6 +28,8 @@ export class BridgeProvider implements LLMProvider {
       mode: opts.mode,
       files: opts.files,
     });
+    new ResponseIntegrityChecker().assertSafeForExecution(response);
+    return response;
   }
 }
 

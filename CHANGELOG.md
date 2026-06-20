@@ -12,6 +12,22 @@
 
 ## [Unreleased] — 2026-06-03
 
+### Phase 7 历史任务与 DeepSeek Web 异常恢复
+
+- 新增 `TaskCheckpointStore`、`TaskHistoryStore`、`TaskTimelineService`、`ResumeContextBuilder`、`ProviderRecoveryService` 和 `IdempotencyGuard`，把任务恢复事实从聊天历史与扩展入口中拆出。
+- `extension.ts` 的断点续传读写改为委托 `TaskCheckpointStore`，保留旧 workspaceState key，reload 后仍按新鲜 checkpoint 展示续作入口。
+- Bridge Provider 增加 `ResponseIntegrityChecker`，截断代码块、不完整工具块、登录/限流文本不会进入工具执行链路。
+- 新增 `StreamWatchdog`、`BridgeHealthMonitor` 可靠性边界，为 DeepSeek Web 超时、登录失效、Bridge 异常的可解释恢复打底。
+- 新增 Phase 7 单元测试与架构守卫，覆盖 checkpoint 过期清理、任务历史暂停/归档、最小恢复上下文、不可重放副作用、Provider 恢复分类和 Web 响应完整性。
+
+验证：
+- `npm test --workspace=packages/vscode-extension` 通过，50 个 suite / 95 个测试全部通过。
+- `git diff --check` 通过。
+- Phase 7 modified source targeted `npx tsc --noEmit --pretty false ...` 通过。
+- `npm run compile --workspace=packages/vscode-extension` 通过。
+- `npx @vscode/vsce package --no-dependencies --out devseek-netai-1.0.0.vsix` 通过。
+- `code --install-extension devseek-netai-1.0.0.vsix --force` 安装成功。
+
 ### [BUG FIX] Agent 显示流与 Todos 状态对齐 Copilot 风格
 
 - 修复 DeepSeek 网页反馈在 Agent 模式中已流式返回但主对话气泡不可见/位置不稳定的问题，最终 prose 会稳定显示在 Working/思考框下方。

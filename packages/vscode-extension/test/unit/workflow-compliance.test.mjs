@@ -1109,6 +1109,31 @@ test('Architecture: Bridge has session, driver, and health-check boundaries', ()
   assertContains(contract, 'BridgeHealthCheck: reports logged-in indicator', 'bridge health check must have contract test');
 });
 
+test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempotency guards', () => {
+  const checkpoint = src('src/app/task-checkpoint-store.ts');
+  const history = src('src/app/task-history-store.ts');
+  const resume = src('src/app/resume-context-builder.ts');
+  const recovery = src('src/app/provider-recovery-service.ts');
+  const idempotency = src('src/agent/idempotency-guard.ts');
+  const reliability = src('src/llm/providers/web-reliability.ts');
+  const bridgeProvider = src('src/llm/providers/bridge.ts');
+
+  assertContains(checkpoint, 'class TaskCheckpointStore', 'Phase 7 checkpoint store must exist');
+  assertContains(history, 'class TaskHistoryStore', 'Phase 7 task history store must exist');
+  assertContains(resume, 'class ResumeContextBuilder', 'Phase 7 resume context builder must exist');
+  assertContains(resume, '只使用下面的本地任务事实恢复', 'resume context must not inject raw chat history');
+  assertContains(idempotency, 'class IdempotencyGuard', 'Phase 7 idempotency guard must exist');
+  assertContains(idempotency, 'committed-operation-never-replay', 'committed side effects must not replay silently');
+  assertContains(recovery, 'class ProviderRecoveryService', 'Phase 7 provider recovery service must exist');
+  assertContains(recovery, 'LoginRequired', 'provider recovery must classify login failures');
+  assertContains(recovery, 'RateLimited', 'provider recovery must classify rate limits');
+  assertContains(recovery, 'ResponseCorrupted', 'provider recovery must classify corrupted responses');
+  assertContains(reliability, 'class ResponseIntegrityChecker', 'DeepSeek Web provider must have response integrity checks');
+  assertContains(reliability, 'class StreamWatchdog', 'DeepSeek Web provider must have stream watchdog semantics');
+  assertContains(reliability, 'class BridgeHealthMonitor', 'DeepSeek Web provider must have bridge health monitor semantics');
+  assertContains(bridgeProvider, 'ResponseIntegrityChecker', 'BridgeProvider must run integrity checks on completed responses');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §8.4: Checkpoint (断线续传)
 // ─────────────────────────────────────────────────────────────────────────────

@@ -42,7 +42,7 @@ import {
   initAgentLearner, clearLearnerSession, emitLearningEvent,
   getCommandHints, getErrorFixHint, fingerprintError,
 } from './agent-learner';
-import { decomposeTask, inferTasksFromFiles } from './agent-task-decomposer';
+import { decomposeTask, inferTasksFromFiles, type AgentTask } from './agent-task-decomposer';
 import { runAgentLoop, runAgenticLoop, AgentStatusMessage, extractAnalysisFindings } from './agent-loop';
 import { getWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
 import { McpManager } from './mcp/client';
@@ -63,6 +63,11 @@ import {
   shouldInjectSessionContinuationForIntent,
   shouldRestoreSessionFiles,
 } from './app/session-continuation';
+import {
+  DEFAULT_TASK_CHECKPOINT_KEY,
+  TaskCheckpointStore,
+  type TaskCheckpointRecord,
+} from './app/task-checkpoint-store';
 import {
   allHunksResolved,
   computePendingHunks,
@@ -214,19 +219,9 @@ async function migrateLegacyDeepseekConfiguration(): Promise<void> {
 
 // ── Agent task checkpoint (断点续传) ────────────────────────────────────────
 /** workspaceState key for persisting the interrupted-task checkpoint */
-const CHECKPOINT_KEY = 'devseek.agentTaskCheckpoint';
+const CHECKPOINT_KEY = DEFAULT_TASK_CHECKPOINT_KEY;
 /** Shape of the persisted checkpoint */
-interface AgentTaskCheckpoint {
-  userPrompt: string;
-  displayPrompt: string;
-  mode: 'fast' | 'r1' | undefined;
-  wsRootFsPath: string;
-  allTasks: import('./agent-task-decomposer').AgentTask[];
-  startFromIndex: number;       // the task that was interrupted (re-run from here)
-  completedCount: number;       // tasks already done before interruption
-  savedAt: number;
-  sessionId: string;
-}
+type AgentTaskCheckpoint = TaskCheckpointRecord<AgentTask>;
 
 interface AgentSessionState {
   lastUserPrompt: string;
@@ -239,13 +234,20 @@ interface AgentSessionState {
 /** Save or clear the agent task checkpoint. Pass null to clear (completed). */
 function saveAgentCheckpoint(data: AgentTaskCheckpoint | null): void {
   if (!extContext) return;
-  extContext.workspaceState.update(CHECKPOINT_KEY, data ?? undefined);
+  const store = new TaskCheckpointStore<AgentTask>(extContext.workspaceState, CHECKPOINT_KEY);
+  void (data ? store.save(data) : store.clear());
 }
 
 /** Load the checkpoint if one exists for the current session. */
 function loadAgentCheckpoint(): AgentTaskCheckpoint | undefined {
   if (!extContext) return undefined;
-  return extContext.workspaceState.get<AgentTaskCheckpoint>(CHECKPOINT_KEY);
+  return new TaskCheckpointStore<AgentTask>(extContext.workspaceState, CHECKPOINT_KEY).load();
+}
+
+async function loadFreshAgentCheckpoint(maxAgeMs: number): Promise<AgentTaskCheckpoint | undefined> {
+  if (!extContext) return undefined;
+  const result = await new TaskCheckpointStore<AgentTask>(extContext.workspaceState, CHECKPOINT_KEY).loadFresh(maxAgeMs);
+  return result?.checkpoint;
 }
 
 function normalizeConversationFiles(files?: string[]): string[] {
@@ -764,9 +766,8 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         }
         // 断点续传：notify webview if there is a fresh unfinished task checkpoint
         {
-          const _cp = loadAgentCheckpoint();
-          // Show banner only if checkpoint is < 2 hours old
-          if (_cp && _cp.savedAt > Date.now() - 7_200_000) {
+          const _cp = await loadFreshAgentCheckpoint(7_200_000);
+          if (_cp) {
             wv.postMessage({
               type: 'agentCheckpointAvailable',
               resumeTaskIndex: _cp.startFromIndex,
@@ -774,9 +775,6 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
               userPrompt: _cp.displayPrompt,
               savedAt: _cp.savedAt,
             });
-          } else if (_cp) {
-            // Stale checkpoint — discard silently
-            saveAgentCheckpoint(null);
           }
         }
         break;
