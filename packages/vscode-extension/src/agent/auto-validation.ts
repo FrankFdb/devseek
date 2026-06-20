@@ -20,6 +20,14 @@ export interface AgentAutoValidationResult {
   evidence?: TerminalEvidence;
   feedbackForAI?: string;
   repairBlockedReason?: string;
+  qualityGate?: {
+    status: 'pass' | 'fail' | 'blocked';
+    summary: string;
+    risks?: string[];
+    evidenceRefs?: string[];
+    alternativeChecks?: string[];
+    requiredActions?: string[];
+  };
 }
 
 export interface AgentAutoValidationOptions {
@@ -98,6 +106,47 @@ function buildExactContentRepairBlockedReason(result: AutoValidationResult): str
   ].filter(Boolean).join('\n');
 }
 
+function validationEvidenceRef(status: 'passed' | 'failed' | 'blocked', result: AutoValidationResult): string {
+  return `validation:${status}:${result.command || result.reason || 'unknown'}`;
+}
+
+function buildAutoValidationQualityGate(result: AutoValidationResult): NonNullable<AgentAutoValidationResult['qualityGate']> {
+  if (result.status === 'blocked' || result.ran === false) {
+    return {
+      status: 'blocked',
+      summary: `QualityGate 阻塞：${result.reason || 'validation-blocked'}。`,
+      evidenceRefs: [validationEvidenceRef('blocked', result)],
+      risks: result.risks?.length
+        ? result.risks
+        : ['没有自动验证证据，不能证明变更后的行为正确。'],
+      alternativeChecks: result.alternativeChecks?.length
+        ? result.alternativeChecks
+        : ['人工检查变更文件内容是否符合用户请求。'],
+      requiredActions: ['补充可运行验证，或由用户明确接受剩余风险。'],
+    };
+  }
+
+  if (result.ok) {
+    return {
+      status: 'pass',
+      summary: `QualityGate 通过：${result.command || '自动验证'} 已通过。`,
+      evidenceRefs: [validationEvidenceRef('passed', result)],
+    };
+  }
+
+  return {
+    status: 'fail',
+    summary: `QualityGate 未通过：自动验证失败（exitCode=${result.exitCode ?? 'null'}）。`,
+    evidenceRefs: [validationEvidenceRef('failed', result)],
+    risks: [
+      ...(result.risks || []),
+      '自动验证命令失败，不能把任务标记为完成。',
+    ],
+    alternativeChecks: result.alternativeChecks || [],
+    requiredActions: ['修复自动验证失败后重新运行 QualityGate。'],
+  };
+}
+
 export async function runAgentAutoValidationForWrites(
   writtenFiles: WrittenFileEvidence[],
   workspaceRootFsPath: string,
@@ -136,6 +185,7 @@ export async function runAgentAutoValidationForWrites(
     }
     if (result.status === 'blocked' || result.ran === false) {
       const feedbackForAI = formatBlockedAutoValidationFeedback(result);
+      const qualityGate = buildAutoValidationQualityGate(result);
       await callbacks.onAgentStatus({
         type: 'agentStatus',
         phase: 'validate',
@@ -143,7 +193,7 @@ export async function runAgentAutoValidationForWrites(
         title: '自动验证阻塞',
         detail: feedbackForAI.slice(0, 1200),
       });
-      return { feedbackForAI };
+      return { feedbackForAI, qualityGate };
     }
     callbacks.onToolActivity?.('terminal', `自动验证: ${result.command}`);
     const feedbackForAI = formatAutoValidationFeedback(result);
@@ -161,6 +211,7 @@ export async function runAgentAutoValidationForWrites(
       evidence: validationResultToTerminalEvidence(result),
       feedbackForAI: [feedbackForAI, repairBlockedReason].filter(Boolean).join('\n\n'),
       repairBlockedReason,
+      qualityGate: buildAutoValidationQualityGate(result),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

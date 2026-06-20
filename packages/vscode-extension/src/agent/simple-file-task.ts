@@ -7,6 +7,7 @@ import { runAgentAutoValidationForWrites, type AgentAutoValidationOptions } from
 import {
   buildAgenticHistoryText,
   buildAgenticQualityGateForHistory,
+  type AgenticHistoryQualityGate,
 } from './agentic-history';
 import {
   coalesceWrittenFileEvidence,
@@ -113,6 +114,11 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
     });
   }
 
+  const contentVerifiedTodos = afterWriteTodos.map((todo, index) => (
+    index === 1 ? { ...todo, status: 'completed' as const } : todo
+  ));
+  await input.callbacks.onTodoUpdate?.(contentVerifiedTodos);
+
   const validation = await runAgentAutoValidationForWrites(
     [writtenFile],
     input.workspaceRoot,
@@ -133,19 +139,21 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
   if (failedReason) {
     return finishSimpleFileTask({
       ...input,
-      todos: markTodoFailed(afterWriteTodos, 1),
+      todos: buildFinalSimpleFileTodos(contentVerifiedTodos, validation.evidence, 'failed'),
       writtenFiles: [writtenFile],
       terminalEvidence,
       failedReason,
+      qualityGate: validation.qualityGate,
     });
   }
 
   return finishSimpleFileTask({
     ...input,
-    todos: afterWriteTodos.map(todo => ({ ...todo, status: 'completed' as const })),
+    todos: buildFinalSimpleFileTodos(contentVerifiedTodos, validation.evidence, 'completed'),
     writtenFiles: [writtenFile],
     terminalEvidence,
     failedReason: '',
+    qualityGate: validation.qualityGate,
     summary: validation.evidence?.kind === 'other'
       ? `已创建 ${resolved.relPath}，并通过文件存在、内容读取和大小检查验证。`
       : `已创建 ${resolved.relPath}，并通过自动验证。`,
@@ -169,12 +177,34 @@ function markTodoFailed(todos: TodoItem[], index: number): TodoItem[] {
   ));
 }
 
+function buildFinalSimpleFileTodos(
+  contentVerifiedTodos: TodoItem[],
+  evidence: TerminalEvidence | undefined,
+  qualityGateStatus: 'completed' | 'failed',
+): TodoItem[] {
+  if (evidence?.kind === 'other') {
+    return qualityGateStatus === 'completed'
+      ? contentVerifiedTodos
+      : markTodoFailed(contentVerifiedTodos, 1);
+  }
+
+  return [
+    ...contentVerifiedTodos,
+    {
+      id: Math.max(0, ...contentVerifiedTodos.map(todo => Number(todo.id) || 0)) + 1,
+      title: '运行自动验证 / QualityGate',
+      status: qualityGateStatus,
+    },
+  ];
+}
+
 async function finishSimpleFileTask(input: SimpleFileTaskInput & {
   todos: TodoItem[];
   writtenFiles: WrittenFileEvidence[];
   terminalEvidence: TerminalEvidence[];
   failedReason: string;
   summary?: string;
+  qualityGate?: AgenticHistoryQualityGate;
 }): Promise<AgentLoopResult> {
   const finalWrittenFiles = coalesceWrittenFileEvidence(input.writtenFiles, input.workspaceRoot);
   await input.callbacks.onTodoUpdate?.(input.todos);
@@ -202,7 +232,7 @@ async function finishSimpleFileTask(input: SimpleFileTaskInput & {
     todos: input.todos,
     writtenFiles: finalWrittenFiles,
     terminalEvidence: input.terminalEvidence,
-    qualityGate: buildAgenticQualityGateForHistory({
+    qualityGate: input.qualityGate ?? buildAgenticQualityGateForHistory({
       failedReason: input.failedReason,
       writtenFiles: finalWrittenFiles,
       terminalEvidence: input.terminalEvidence,

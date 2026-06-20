@@ -51,6 +51,19 @@ test('Evidence recovery: generic validation todo is failed when stopping on Qual
   assert.equal(markValidationFailureTodos(todos)[1].status, 'failed');
 });
 
+test('Evidence recovery: file fact verification remains completed when QualityGate fails later', () => {
+  const todos = [
+    { id: 1, title: '创建 packages/vscode-extension/src/workspace/manual-phase6-quality-gate.ts 文件', status: 'completed' },
+    { id: 2, title: '验证文件创建成功（文件存在、内容正确、大小正常）', status: 'completed' },
+  ];
+
+  assert.deepEqual(markValidationFailureTodos(todos), [
+    { id: 1, title: '创建 packages/vscode-extension/src/workspace/manual-phase6-quality-gate.ts 文件', status: 'completed' },
+    { id: 2, title: '验证文件创建成功（文件存在、内容正确、大小正常）', status: 'completed' },
+    { id: 3, title: '运行自动验证 / QualityGate', status: 'failed' },
+  ]);
+});
+
 test('Evidence recovery: markdown verification uses file-check todo wording', () => {
   const todos = inferInitialAgenticTodos(
     '创建 docs/manual-phase6-quality.md，内容为：phase6 quality gate smoke，并验证文件创建成功。',

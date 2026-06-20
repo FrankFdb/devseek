@@ -388,7 +388,7 @@ export const manualPhase6QualityGate: string = 1;
 - 不应生成 C/C++/TypeScript 临时验证程序。
 - QualityGate 显示通过，完成摘要引用验证命令或证据。
 
-### P6-03 自动验证不可得时进入 blocked
+### P6-03A unknown 精确内容文件走文件事实验证
 
 用户输入：
 
@@ -398,7 +398,28 @@ export const manualPhase6QualityGate: string = 1;
 
 期望结果：
 
-- 如果该文件类型没有可用自动验证计划，QualityGate 显示阻塞而不是通过。
+- 创建 `assets/manual-phase6.unknown`。
+- 因用户只要求精确内容写入，验证使用文件存在、字节数和内容读取证据。
+- QualityGate 显示通过，完成摘要明确是文件事实验证通过，不宣称运行时或语义验证通过。
+- 不应生成 `assets/manual/test_phase6.sh` 等无关脚本。
+
+最新观察：
+
+- 2026-06-20 reload 截图中，`.unknown` 精确内容写入通过 `test -f && wc -c && sed` 文件事实验证，QualityGate pass 并保留证据引用。
+- 评估：这符合 Claude Code/Codex 的证据口径；验证用户实际请求的文件事实，不按扩展名机械 blocked。
+
+### P6-03B 自动验证不可得时进入 blocked
+
+用户输入：
+
+```text
+创建 assets/manual-phase6.unknown，内容为：phase6 unknown validation target，并验证它的运行时行为正确。
+```
+
+期望结果：
+
+- 创建 `assets/manual-phase6.unknown`。
+- 如果该文件类型没有可用运行时/语义验证计划，QualityGate 显示阻塞而不是通过。
 - 摘要列出剩余风险和替代检查建议。
 - 除非用户明确接受风险，否则任务不能被描述为已完全验证。
 - QualityGate blocked 不能进入自动修复循环，不能生成 `assets/manual/test_phase6.sh` 等无关脚本。
@@ -437,9 +458,9 @@ export const manualPhase6QualityGate: string = 1;
 | P5-READONLY-02 | P5-03 | 只读任务反复 `ls/test -f`，没有显示内容，最后仍报缺少读取/检查结果 | `other` 类型的只读终端证据被执行器丢弃；`test/ls` 被错误视为可满足“显示文件内容” | 本次新增内容读取 evidence 回归：存在性检查可用 `test/ls`，显示内容必须用 `read_file` 或 `cat/head/sed` |
 | P5-READONLY-03 | P5-03 | 明确路径的简单只读检查仍进入多轮 agent loop，耗时长且可能触发无关工具尝试 | 执行层没有把确定性文件读取任务从 agent loop 前置处理 | 本次新增 ReadOnlyInspectionService：工作区内明确文件路径的存在/内容查看直接读取并返回，复杂分析保持 agent 路径 |
 | P5-DOCVAL-01 | P5-06 | Markdown 创建后生成 C 程序 `read_doc.c` 并尝试 gcc 编译/运行来验证文档 | ValidationService 对非代码文件返回 null，模型被迫自造验证程序 | 本次新增 markdown file-check 自动验证，禁止把文档验证升级为编译任务 |
-| P6-QG-01 | P6-01、P6-03 | 任务完成结论可能缺少独立 QualityGate 证据 | Claude Code/Codex 的优秀实践是把验证失败/不可得显式纳入最终状态，而不是用 prose 宣告完成 | 已新增 VerificationPlanner、QualityGateService、ReviewLedger 和 Agentic 历史 QualityGate 记录，失败/阻塞不能通过完成门 |
+| P6-QG-01 | P6-01、P6-03B | 任务完成结论可能缺少独立 QualityGate 证据 | Claude Code/Codex 的优秀实践是把验证失败/不可得显式纳入最终状态，而不是用 prose 宣告完成 | 已新增 VerificationPlanner、QualityGateService、ReviewLedger 和 Agentic 历史 QualityGate 记录，失败/阻塞不能通过完成门 |
 | P6-TS-01 | P6-01 | standalone `.ts` 类型错误被 `npm run compile` 假通过 | esbuild 不做 TS 语义检查，未被入口引用的文件不会被 bundle 覆盖 | 已新增 targeted `tsc --noEmit` 语义检查，再执行 bundle compile |
-| P6-BLOCKED-01 | P6-03 | QualityGate blocked 后进入自动修复循环并写错路径 | blocked 是验证能力不足，不是可修复编译错误 | 已新增 `shouldRunClosedLoopRepair` 门控，blocked 不进入自动修复 |
+| P6-BLOCKED-01 | P6-03B | QualityGate blocked 后进入自动修复循环并写错路径 | blocked 是验证能力不足，不是可修复编译错误 | 已新增 `shouldRunClosedLoopRepair` 门控，blocked 不进入自动修复 |
 | P6-HISTORY-01 | P6-04 | reload 历史缺少 QualityGate 结论 | Agentic history 输入模型没有 QualityGate 字段 | 已在折叠详情中渲染 QualityGate 状态、风险和证据引用 |
 
 ## 10. 每轮迭代更新规则

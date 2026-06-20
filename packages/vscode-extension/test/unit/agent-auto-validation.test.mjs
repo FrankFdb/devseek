@@ -156,6 +156,9 @@ test('Agent auto validation: blocked validation is a QualityGate block, not fail
   );
 
   assert.equal(result.evidence, undefined);
+  assert.equal(result.qualityGate.status, 'blocked');
+  assert.match(result.qualityGate.requiredActions.join('\n'), /补充可运行验证/);
+  assert.match(result.qualityGate.alternativeChecks.join('\n'), /人工检查/);
   assert.match(result.feedbackForAI, /QualityGate 阻塞/);
   assert.doesNotMatch(result.feedbackForAI, /自动验证命令未通过/);
   assert.deepEqual(statuses.map((status) => `${status.state}:${status.title}`), [

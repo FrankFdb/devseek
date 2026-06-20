@@ -84,3 +84,44 @@ test('Agentic history: builds collapsible restored history with execution eviden
   assert.match(text, /test -f \/workspace\/devseek\/docs\/manual-phase5-smoke\.md/);
   assert.doesNotMatch(text, /→\s*done/);
 });
+
+test('Agentic history: QualityGate records risks, alternatives, and required actions after reload', () => {
+  const text = buildAgenticHistoryText({
+    userPrompt: '创建 packages/vscode-extension/src/workspace/manual-phase6-quality-gate.ts',
+    roundCount: 0,
+    completed: false,
+    failedReason: '自动验证未通过。',
+    todos: [
+      { id: 1, title: '创建目标文件', status: 'completed' },
+      { id: 2, title: '验证文件创建成功', status: 'completed' },
+      { id: 3, title: '运行自动验证 / QualityGate', status: 'failed' },
+    ],
+    writtenFiles: [
+      {
+        path: '/workspace/devseek/packages/vscode-extension/src/workspace/manual-phase6-quality-gate.ts',
+        basename: 'manual-phase6-quality-gate.ts',
+        linesAdded: 1,
+        linesRemoved: 0,
+        action: 'create',
+      },
+    ],
+    terminalEvidence: [],
+    qualityGate: {
+      status: 'fail',
+      summary: 'QualityGate 未通过：自动验证失败（exitCode=2）。',
+      risks: ['自动验证命令失败，不能把任务标记为完成。'],
+      evidenceRefs: ['validation:failed:npx tsc --noEmit'],
+      alternativeChecks: ['人工检查变更文件内容是否符合用户请求。'],
+      requiredActions: ['修复自动验证失败后重新运行 QualityGate。'],
+    },
+    workspaceRoot: '/workspace/devseek',
+  });
+
+  assert.match(text, /QualityGate/);
+  assert.match(text, /<code>fail<\/code>/);
+  assert.match(text, /风险/);
+  assert.match(text, /证据引用/);
+  assert.match(text, /替代检查/);
+  assert.match(text, /待处理事项/);
+  assert.match(text, /运行自动验证 \/ QualityGate/);
+});

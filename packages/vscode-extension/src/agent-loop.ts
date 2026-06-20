@@ -75,7 +75,11 @@ import {
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './agent/completion-evidence';
-import { buildAgenticHistoryText, buildAgenticQualityGateForHistory } from './agent/agentic-history';
+import {
+  buildAgenticHistoryText,
+  buildAgenticQualityGateForHistory,
+  type AgenticHistoryQualityGate,
+} from './agent/agentic-history';
 import { runAgentAutoValidationForWrites } from './agent/auto-validation';
 import {
   buildMissingEvidenceRecoveryInstruction,
@@ -2039,6 +2043,7 @@ export async function runAgenticLoop(
   let noToolRounds = 0;
   let sawWorkTool = false;
   const allTerminalEvidence: TerminalEvidence[] = [];
+  let latestAutoQualityGate: AgenticHistoryQualityGate | undefined;
   let currentTodos: TodoItem[] = [];
   let lastMissingEvidence: string[] = [];
   const announcedProseKeys = new Set<string>();
@@ -2216,6 +2221,7 @@ export async function runAgenticLoop(
           cppValidationPolicy,
         );
         autoValidatedWriteCount = allWrittenFiles.length;
+        if (autoValidation.qualityGate) latestAutoQualityGate = autoValidation.qualityGate;
         if (autoValidation.evidence) allTerminalEvidence.push(autoValidation.evidence);
         if (autoValidation.repairBlockedReason) {
           if (callbacks.onTodoUpdate && currentTodos.length > 0) {
@@ -2381,6 +2387,7 @@ export async function runAgenticLoop(
       cppValidationPolicy,
     );
     autoValidatedWriteCount = allWrittenFiles.length;
+    if (autoValidation.qualityGate) latestAutoQualityGate = autoValidation.qualityGate;
     if (autoValidation.evidence) {
       allTerminalEvidence.push(autoValidation.evidence);
     }
@@ -2542,6 +2549,15 @@ export async function runAgenticLoop(
 
   callbacks.onTaskCheckpoint?.(null, []);
 
+  const derivedQualityGate = buildAgenticQualityGateForHistory({
+    failedReason: cleanAbort ? '用户中断。' : failedReason,
+    writtenFiles: finalWrittenFiles,
+    terminalEvidence: allTerminalEvidence,
+  });
+  const historyQualityGate = derivedQualityGate?.status === 'fail'
+    ? derivedQualityGate
+    : latestAutoQualityGate ?? derivedQualityGate;
+
   const historyText = buildAgenticHistoryText({
     userPrompt,
     roundCount,
@@ -2551,11 +2567,7 @@ export async function runAgenticLoop(
     todos: currentTodos,
     writtenFiles: finalWrittenFiles,
     terminalEvidence: allTerminalEvidence,
-    qualityGate: buildAgenticQualityGateForHistory({
-      failedReason: cleanAbort ? '用户中断。' : failedReason,
-      writtenFiles: finalWrittenFiles,
-      terminalEvidence: allTerminalEvidence,
-    }),
+    qualityGate: historyQualityGate,
     workspaceRoot,
   });
 

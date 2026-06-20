@@ -14,6 +14,8 @@ export interface AgenticHistoryQualityGate {
   summary: string;
   risks?: string[];
   evidenceRefs?: string[];
+  alternativeChecks?: string[];
+  requiredActions?: string[];
 }
 
 export interface AgenticHistoryInput {
@@ -124,10 +126,20 @@ function renderQualityGate(qualityGate?: AgenticHistoryQualityGate): string {
     .slice(0, 4)
     .map(ref => `<li><code>${escapeHtml(truncate(ref, 220))}</code></li>`)
     .join('');
+  const alternatives = (qualityGate.alternativeChecks || [])
+    .slice(0, 4)
+    .map(check => `<li>${escapeHtml(truncate(check, 220))}</li>`)
+    .join('');
+  const actions = (qualityGate.requiredActions || [])
+    .slice(0, 4)
+    .map(action => `<li>${escapeHtml(truncate(action, 220))}</li>`)
+    .join('');
   return [
     `<p><strong>QualityGate：</strong> <code>${escapeHtml(statusLabel)}</code> ${escapeHtml(truncate(qualityGate.summary, 320))}</p>`,
     risks ? `<p><strong>风险：</strong></p><ul>${risks}</ul>` : '',
     evidence ? `<p><strong>证据引用：</strong></p><ul>${evidence}</ul>` : '',
+    alternatives ? `<p><strong>替代检查：</strong></p><ul>${alternatives}</ul>` : '',
+    actions ? `<p><strong>待处理事项：</strong></p><ul>${actions}</ul>` : '',
   ].filter(Boolean).join('\n');
 }
 
@@ -143,6 +155,7 @@ export function buildAgenticQualityGateForHistory(input: {
       summary: `QualityGate 未通过：${failedTerminal.kind || 'terminal'} 验证失败。`,
       risks: ['自动验证命令失败，不能把任务标记为完全完成。'],
       evidenceRefs: [terminalEvidenceRef(failedTerminal)],
+      requiredActions: ['修复自动验证失败后重新运行 QualityGate。'],
     };
   }
 
@@ -151,6 +164,8 @@ export function buildAgenticQualityGateForHistory(input: {
       status: 'blocked',
       summary: `QualityGate 阻塞：${input.failedReason}`,
       risks: ['任务缺少足够的完成证据，需要补充验证或人工确认。'],
+      alternativeChecks: ['人工检查变更内容是否符合用户请求。'],
+      requiredActions: ['补充可运行验证，或由用户明确接受剩余风险。'],
     };
   }
 
@@ -168,6 +183,8 @@ export function buildAgenticQualityGateForHistory(input: {
       status: 'blocked',
       summary: 'QualityGate 阻塞：文件已修改，但没有自动验证证据。',
       risks: ['缺少编译、测试或文件检查证据，不能证明变更后的行为正确。'],
+      alternativeChecks: ['人工检查变更内容是否符合用户请求。'],
+      requiredActions: ['补充可运行验证，或由用户明确接受剩余风险。'],
     };
   }
 

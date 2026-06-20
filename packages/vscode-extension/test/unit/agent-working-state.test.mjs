@@ -56,3 +56,18 @@ test('agent working state: tool activity keeps task-scoped header when available
     /setAgentContainerLabel\(container, agentCurrentTaskLabel \|\| nextLabel, true\);/,
   );
 });
+
+test('agent working state: failed final labels use explicit failed todo before finalize', () => {
+  assert.match(
+    webview,
+    /function findFailedTodoLabel\(\)[\s\S]*?agentToolTodos[\s\S]*?status === 'failed'[\s\S]*?failedTodo\.title/,
+  );
+  assert.match(
+    webview,
+    /function buildFinishedLabel\(isFailed, container\)[\s\S]*?if \(isFailed\) \{[\s\S]*?var failedTodoLabel = findFailedTodoLabel\(\);[\s\S]*?return 'Failed: ' \+ failedTodoLabel \+ stepSuffix;/,
+  );
+  assert.match(
+    webview,
+    /var finalFailureTodosSynced = false;[\s\S]*?handleTodoUpdate\(markFirstActiveTodoFailedForFinalState\(agentToolTodos\)\);[\s\S]*?finalizeActiveAgentWorkingContainers\(doneFailed\);/,
+  );
+});

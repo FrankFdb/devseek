@@ -3011,6 +3011,10 @@ function buildFinishedLabel(isFailed, container) {
   var containerLabel = container
     ? (container.getAttribute('data-finished-label') || container.getAttribute('data-running-label') || '')
     : '';
+  if (isFailed) {
+    var failedTodoLabel = findFailedTodoLabel();
+    if (failedTodoLabel) return 'Failed: ' + failedTodoLabel + stepSuffix;
+  }
   if (containerLabel) {
     return (isFailed ? 'Failed: ' : '') + containerLabel + stepSuffix;
   }
@@ -3042,6 +3046,26 @@ function buildFinishedLabel(isFailed, container) {
   return stepCount > 0
     ? 'Completed ' + stepCount + ' step' + (stepCount === 1 ? '' : 's')
     : 'Finished working';
+}
+
+function findFailedTodoLabel() {
+  var failedTodo = (agentToolTodos || []).find(function(t) { return t && t.status === 'failed' && t.title; });
+  if (!failedTodo) return '';
+  return failedTodo.title.length > 52 ? failedTodo.title.slice(0, 50) + '...' : failedTodo.title;
+}
+
+function markFirstActiveTodoFailedForFinalState(todos) {
+  var hasExplicitFailed = (todos || []).some(function(t) { return t && t.status === 'failed'; });
+  if (hasExplicitFailed) return todos.map(function(t) { return Object.assign({}, t); });
+
+  var failedMarked = false;
+  return (todos || []).map(function(t) {
+    if (!failedMarked && t.status === 'in-progress') {
+      failedMarked = true;
+      return Object.assign({}, t, { status: 'failed' });
+    }
+    return Object.assign({}, t);
+  });
 }
 
 /**
@@ -3747,6 +3771,11 @@ function addAgentStatus(msg) {
     agentTaskCards.clear();
     agentPlanCard = null;
     var doneFailed = msg.state === 'failed';
+    var finalFailureTodosSynced = false;
+    if (msg.phase === 'done' && doneFailed && agentToolTodos.length > 0) {
+      handleTodoUpdate(markFirstActiveTodoFailedForFinalState(agentToolTodos));
+      finalFailureTodosSynced = true;
+    }
     finalizeActiveAgentWorkingContainers(doneFailed);
     agentExecContainer = null;
     agentCurrentTaskIndex = -1;
@@ -3775,15 +3804,8 @@ function addAgentStatus(msg) {
         var finalStatus = t.status === 'not-started' ? 'not-started' : 'completed';
         return Object.assign({}, t, { status: finalStatus });
       }));
-    } else if (msg.phase === 'done' && msg.state === 'failed' && agentToolTodos.length > 0) {
-      var failedMarked = false;
-      handleTodoUpdate(agentToolTodos.map(function(t) {
-        if (!failedMarked && t.status === 'in-progress') {
-          failedMarked = true;
-          return Object.assign({}, t, { status: 'failed' });
-        }
-        return Object.assign({}, t);
-      }));
+    } else if (msg.phase === 'done' && msg.state === 'failed' && agentToolTodos.length > 0 && !finalFailureTodosSynced) {
+      handleTodoUpdate(markFirstActiveTodoFailedForFinalState(agentToolTodos));
     }
     refreshVisibleAgentProseFromCurrentRaw();
     // If endResponse already fired before phase:done, or if the model produced no

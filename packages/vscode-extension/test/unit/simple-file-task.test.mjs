@@ -209,11 +209,15 @@ test('Simple file task: writes exact TypeScript content and fails QualityGate wi
     assert.equal(events.statuses.at(-1).phase, 'done');
     assert.equal(events.statuses.at(-1).state, 'failed');
     assert.equal(events.todos.at(-1)[0].status, 'completed');
-    assert.equal(events.todos.at(-1)[1].status, 'failed');
+    assert.equal(events.todos.at(-1)[1].status, 'completed');
+    assert.equal(events.todos.at(-1)[2].title, '运行自动验证 / QualityGate');
+    assert.equal(events.todos.at(-1)[2].status, 'failed');
     assert.equal(events.activities.some((activity) => activity.kind === 'write'), true);
     assert.equal(events.activities.some((activity) => activity.kind === 'terminal'), true);
     assert.match(events.deltas.at(-1), /用户指定了精确文件内容/);
     assert.match(events.deltas.at(-1), /extension-ts-semantic-check/);
+    assert.match(result.historyText, /待处理事项/);
+    assert.match(result.historyText, /修复自动验证失败后重新运行 QualityGate/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
