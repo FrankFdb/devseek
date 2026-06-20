@@ -203,6 +203,15 @@ test('§8.3 File edits: blocked QualityGate does not enter closed-loop repair', 
   );
 });
 
+test('§8.3 File edits: webview renders QualityGate blocked separately from repair failure', () => {
+  const webview = src('media/webview.js');
+  assertContains(webview, 'function workflowPhaseLabel', 'workflow UI must use a phase-label adapter');
+  assertContains(webview, "if (phase === 'quality') return 'QualityGate';", 'quality phase must not fall through to apply or repair labels');
+  assertContains(webview, 'function isQualityGateBlockedText', 'workflow UI must classify blocked QualityGate text');
+  assertContains(webview, "phaseLabel + ' · 阻塞'", 'blocked QualityGate working entries must say blocked, not failed');
+  assertContains(webview, "'已完成 · ' + blockedSteps + ' 阻塞'", 'summary footnote must count blocked QualityGate separately from failures');
+});
+
 test('§8.3 File edits: validation timeout is reported as failed evidence', () => {
   const validationService = src('src/workspace/validation-service.ts');
   const planner = src('src/execution-planner.ts');

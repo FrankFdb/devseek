@@ -97,6 +97,7 @@ import {
   executeFakeToolsForLoop,
   normalizeVisibleTodos,
 } from './agent/tool-loop';
+import { tryRunSimpleFileTask } from './agent/simple-file-task';
 import { WorkspaceEditService } from './workspace/edit-service';
 import type { CppValidationPolicy } from './validation-planner';
 import type { ExecutionMode } from './intent/intent-types';
@@ -2077,6 +2078,14 @@ export async function runAgenticLoop(
       currentTodos = initialTodos;
     }
   }
+
+  const simpleFileResult = await tryRunSimpleFileTask({
+    userPrompt,
+    workspaceRoot,
+    callbacks,
+    cppValidationPolicy,
+  });
+  if (simpleFileResult) return simpleFileResult;
 
   const maxAgenticRounds = callbacks.autopilot ? AGENTIC_ROUNDS_AUTOPILOT : AGENTIC_ROUNDS_NORMAL;
   // Track terminal command signatures across rounds to detect and break stuck loops

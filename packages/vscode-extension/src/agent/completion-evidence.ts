@@ -119,7 +119,20 @@ export function isExplicitlyReadOnlyRequest(text: string): boolean {
 }
 
 function stripInlineFileContent(text: string): string {
-  return text.replace(/(?:内容为|内容是|内容如下|content\s*(?:is|:)|with\s+content)\s*[:：]?\s*[\s\S]*$/i, '');
+  return text.replace(
+    /(?:内容为|内容是|内容如下|content\s*(?:is|:)|with\s+content)\s*[:：]?\s*([\s\S]*)$/i,
+    (_full, tail) => {
+      const trailingIntent = extractTrailingContentIntent(String(tail || ''));
+      return trailingIntent ? ` ${trailingIntent}` : '';
+    },
+  );
+}
+
+function extractTrailingContentIntent(text: string): string {
+  const trimmed = text.trim();
+  const match = /(?:[，,;；。.]?\s*((?:并|然后|并且|同时|随后)?\s*(?:验证|确认|检查|校验)[\s\S]*))$/i.exec(trimmed)
+    || /(?:[，,;；.]?\s*((?:and\s+then\s+|then\s+|and\s+)?(?:verify|check|confirm)\b[\s\S]*))$/i.exec(trimmed);
+  return match?.[1]?.trim() ?? '';
 }
 
 export function requiresFileChangeEvidence(text: string): boolean {
@@ -166,6 +179,14 @@ export function requiresRuntimeValidation(text: string): boolean {
   return requiresRunEvidence(text) || requiresTestEvidence(text) || /(?:启动|看结果|输出效果|运行效果)/i.test(text);
 }
 
+export function requiresFileCheckEvidence(text: string): boolean {
+  if (!text.trim() || isExplicitlyReadOnlyRequest(text)) return false;
+  return requiresFileChangeEvidence(text)
+    && !requiresCodeArtifactForEvidence(text)
+    && requiresCommandEvidence(text)
+    && !requiresRuntimeValidation(text);
+}
+
 export function getMissingCompletionEvidence(
   userPrompt: string,
   todos: CompletionTodo[],
@@ -185,6 +206,7 @@ export function getMissingCompletionEvidence(
   const needsCodeArtifact = requiresCodeArtifactForEvidence(text);
   const needsReadEvidence = requiresReadEvidence(text);
   const needsFileContentReadEvidence = requiresFileContentReadEvidence(text);
+  const needsFileCheckEvidence = requiresFileCheckEvidence(text);
   if (needsCodeArtifact && existingCodeWrites.length === 0) {
     missing.push('代码修改结果');
   } else if (needsFileChange && existingWrittenFiles.length === 0) {
@@ -209,6 +231,11 @@ export function getMissingCompletionEvidence(
   } else if (requiresTestEvidence(text)) {
     const hasTestEvidence = successfulEvidence.some(e => e.kind === 'test' || e.kind === 'run' || e.kind === 'compile-run');
     if (!hasTestEvidence) missing.push('成功的测试/运行结果');
+  } else if (needsFileCheckEvidence) {
+    const hasFileCheckEvidence = successfulEvidence.some(e =>
+      e.kind === 'other' && isReadOnlyTerminalEvidenceCommand(e.command),
+    );
+    if (!hasFileCheckEvidence) missing.push('文件读取/检查结果');
   } else if (commandEvidenceNeeded && successfulEvidence.length === 0) {
     missing.push('成功的编译/运行/测试命令结果');
   } else if (needsCodeArtifact && existingCodeWrites.length > 0 && successfulEvidence.length === 0) {

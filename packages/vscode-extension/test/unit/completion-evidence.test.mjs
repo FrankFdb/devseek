@@ -38,6 +38,7 @@ const {
   isFileContentTerminalEvidenceCommand,
   isReadOnlyTerminalEvidenceCommand,
   requiresCodeArtifactForEvidence,
+  requiresFileCheckEvidence,
   requiresFileContentReadEvidence,
   requiresFileChangeEvidence,
   requiresReadEvidence,
@@ -124,6 +125,35 @@ test('completion evidence: markdown file creation requires file evidence but not
         [{ path: file, basename: 'manual-phase5-smoke.md', linesAdded: 1, linesRemoved: 0, action: 'create' }],
         [],
       ),
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('completion evidence: markdown creation verification is satisfied by file-check evidence', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-evidence-docs-verify-'));
+  try {
+    const file = path.join(root, 'docs', 'manual-phase6-quality.md');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, 'phase6 quality gate smoke');
+    const docsPrompt = '创建 docs/manual-phase6-quality.md，内容为：phase6 quality gate smoke，并验证文件创建成功。';
+    const writeEvidence = [{ path: file, basename: 'manual-phase6-quality.md', linesAdded: 1, linesRemoved: 0, action: 'create' }];
+    const fileCheckEvidence = [{
+      command: "test -f 'docs/manual-phase6-quality.md' && wc -c 'docs/manual-phase6-quality.md' && sed -n '1,80p' 'docs/manual-phase6-quality.md'",
+      kind: 'other',
+      ok: true,
+      exitCode: 0,
+    }];
+
+    assert.equal(requiresFileCheckEvidence(docsPrompt), true);
+    assert.deepEqual(
+      getMissingCompletionEvidence(docsPrompt, [], writeEvidence, []),
+      ['文件读取/检查结果'],
+    );
+    assert.deepEqual(
+      getMissingCompletionEvidence(docsPrompt, [], writeEvidence, fileCheckEvidence),
       [],
     );
   } finally {

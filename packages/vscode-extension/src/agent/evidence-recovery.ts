@@ -1,6 +1,7 @@
 import {
   requiresCodeArtifactForEvidence,
   requiresCommandEvidence,
+  requiresFileCheckEvidence,
   requiresFileChangeEvidence,
   requiresReadEvidence,
 } from './completion-evidence';
@@ -22,7 +23,7 @@ export function markMissingEvidenceTodosIncomplete(todos: TodoItem[], missing: s
     const title = item.title.toLowerCase();
     const matchesCode = needsCode && /(?:代码|源码|程序|脚本|实现|动画|开发)/i.test(title);
     const matchesCommand = needsCommand && /(?:编译|运行|执行|测试|验证|调试|compile|build|test|run)/i.test(title);
-    const matchesRead = needsRead && /(?:读取|检查|查看|显示|确认|read|inspect|check|show)/i.test(title);
+    const matchesRead = needsRead && /(?:读取|检查|查看|显示|确认|验证|校验|read|inspect|check|show|verify|validate)/i.test(title);
     if (!matchesCode && !matchesCommand && !matchesRead) return item;
     const status = firstMissing ? 'in-progress' as const : 'not-started' as const;
     firstMissing = false;
@@ -35,7 +36,7 @@ export function markValidationFailureTodos(todos: TodoItem[]): TodoItem[] {
   let matched = false;
   const updated = todos.map(item => {
     const title = item.title.toLowerCase();
-    if (!/(?:验证|校验|编译|运行|执行|测试|type(?:script)?|compile|build|test|run|validate|verify)/i.test(title)) {
+    if (!/(?:验证|校验|确认|检查|编译|运行|执行|测试|type(?:script)?|compile|build|test|run|validate|verify|check)/i.test(title)) {
       return item;
     }
     matched = true;
@@ -58,7 +59,8 @@ export function inferInitialAgenticTodos(userPrompt: string): TodoItem[] {
   const needsRead = requiresReadEvidence(userPrompt);
   const needsFile = requiresFileChangeEvidence(userPrompt);
   const needsCode = requiresCodeArtifactForEvidence(userPrompt);
-  const needsCommand = requiresCommandEvidence(userPrompt) || /(?:程序|代码|动画|运行效果|效果)/i.test(userPrompt);
+  const needsFileCheck = requiresFileCheckEvidence(userPrompt);
+  const needsCommand = !needsFileCheck && (requiresCommandEvidence(userPrompt) || /(?:程序|代码|动画|运行效果|效果)/i.test(userPrompt));
   if (needsRead) {
     items.push({ id: items.length + 1, title: '检查/读取目标文件', status: 'in-progress' });
   }
@@ -67,6 +69,9 @@ export function inferInitialAgenticTodos(userPrompt: string): TodoItem[] {
   }
   if (needsCommand) {
     items.push({ id: items.length + 1, title: '编译/运行并验证结果', status: needsCode ? 'not-started' : 'in-progress' });
+  }
+  if (needsFileCheck) {
+    items.push({ id: items.length + 1, title: '验证文件创建成功（文件存在、内容正确、大小正常）', status: needsFile ? 'not-started' : 'in-progress' });
   }
   if (!items.length && /(?:查找|定位|分析|确认|排查|检查)/i.test(userPrompt)) {
     items.push({ id: 1, title: '分析并定位问题', status: 'in-progress' });

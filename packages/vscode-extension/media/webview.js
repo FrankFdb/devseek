@@ -4784,16 +4784,19 @@ function addCompletionSummaryCard() {
 
   // ── Copilot 风格：小字脚注行 "已完成 · N 步  ›" ──
   // 仅在有失败步骤或有非平凡工作流步骤时显示，避免为普通 request+response 2步骤生成噪音
-  var failedSteps = stepsSnapshot.filter(function(s) { return s.state === 'failed'; }).length;
+  var blockedSteps = stepsSnapshot.filter(function(s) { return isQualityGateBlockedText((s.title || '') + '\n' + (s.detail || '')); }).length;
+  var failedSteps = Math.max(0, stepsSnapshot.filter(function(s) { return s.state === 'failed'; }).length - blockedSteps);
   var nonTrivialSteps = stepsSnapshot.filter(function(s) {
-    return s.state === 'failed' || s.title === '编译验证' || s.title === '写入文件' || s.title === '自动修复';
+    return s.state === 'failed' || s.title === '编译验证' || s.title === '写入文件' || s.title === '自动修复' || /^QualityGate\b/.test(s.title || '');
   }).length;
   if (stepsSnapshot.length > 0 && (failedSteps > 0 || nonTrivialSteps > 0)) {
     var footnote = document.createElement('div');
     footnote.className = 'fsr-row';
-    var fsrBtnClass = failedSteps > 0 ? 'fsr-btn fsr-btn-warn' : 'fsr-btn';    /* W2 */
+    var fsrBtnClass = (failedSteps > 0 || blockedSteps > 0) ? 'fsr-btn fsr-btn-warn' : 'fsr-btn';    /* W2 */
     var fsrLabelText = failedSteps > 0
       ? ('已完成 · ' + failedSteps + ' 失败')
+      : blockedSteps > 0
+        ? ('已完成 · ' + blockedSteps + ' 阻塞')
       : '已完成';    /* W2 */
     var fsrInner = '<button class="' + fsrBtnClass + '">'
       + '<span class="fsr-label">' + fsrLabelText + '</span>'
@@ -5140,11 +5143,7 @@ function updateWorkingEntry(key, title, detail, state, options) {
 function updateWorkingEntryFromWorkflow(msg, options) {
   var shouldRender = !options || options.render !== false;
   var key = workflowStatusKey(msg);
-  var phaseLabel = msg.phase === 'apply'
-    ? '写入文件'
-    : msg.phase === 'validate'
-      ? '编译验证'
-      : '自动修复';
+  var phaseLabel = workflowPhaseLabel(msg.phase, 'working');
   var state = msg.state || 'started';
   var title = buildWorkingTitle(phaseLabel, msg.title || '', state);
   var detail = buildWorkingDetail(msg.phase, state, msg.detail || '');
@@ -5156,6 +5155,7 @@ function updateWorkingEntryFromWorkflow(msg, options) {
 
 function buildWorkingTitle(phaseLabel, rawTitle, state) {
   if (state === 'started') return phaseLabel;
+  if (state === 'failed' && isQualityGateBlockedText(rawTitle)) return phaseLabel + ' · 阻塞';
   if (state === 'failed') return phaseLabel + ' · 失败';
   return phaseLabel;   // passed/completed: 标题简洁，颜色由 state class 区分
 }
@@ -5259,11 +5259,8 @@ function renderWorkflowCard(card, msg) {
   card.className = 'workflow-card state-' + (msg.state || 'completed');
   card.innerHTML = '';
 
-  var phaseLabel = msg.phase === 'validate'
-    ? '验证'
-    : msg.phase === 'repair'
-      ? '修正'
-      : '应用';
+  var phaseLabel = workflowPhaseLabel(msg.phase, 'card');
+  var isBlocked = msg.state === 'failed' && isQualityGateBlockedText((msg.title || '') + '\n' + (msg.detail || ''));
   var stateLabel = msg.state === 'started'
     ? '进行中'
     : msg.state === 'completed'
@@ -5271,7 +5268,7 @@ function renderWorkflowCard(card, msg) {
       : msg.state === 'passed'
         ? '成功'
         : msg.state === 'failed'
-          ? '失败'
+          ? (isBlocked ? '阻塞' : '失败')
           : '跳过';
 
   var head = document.createElement('div');
@@ -5289,6 +5286,18 @@ function renderWorkflowCard(card, msg) {
     }
     card.appendChild(detail);
   }
+}
+
+function workflowPhaseLabel(phase, surface) {
+  if (phase === 'apply') return surface === 'card' ? '应用' : '写入文件';
+  if (phase === 'validate') return surface === 'card' ? '验证' : '编译验证';
+  if (phase === 'quality') return 'QualityGate';
+  if (phase === 'repair') return surface === 'card' ? '修正' : '自动修复';
+  return surface === 'card' ? '处理' : '处理中';
+}
+
+function isQualityGateBlockedText(text) {
+  return /QualityGate\s*阻塞|自动验证阻塞|no-auto-validation-target|\bblocked\b/i.test(String(text || ''));
 }
 
 function addGeneratedFilesActions(container, rawText, requestPrompt) {

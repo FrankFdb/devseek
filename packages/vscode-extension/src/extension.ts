@@ -2040,13 +2040,6 @@ async function runChat(
             '4. 编译、运行或验证结果',
           ].join('\n'),
         });
-        postAgent({
-          type: 'agentStatus',
-          phase: 'execute',
-          state: 'started',
-          title: '开始执行：等待模型返回任务列表和工具调用',
-          detail: '后续读取、搜索、写入和终端命令会继续显示在这里。',
-        });
         const agResult = await runAgenticLoop(prompt, dataFiles, agWsRoot, mode, {
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {

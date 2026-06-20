@@ -97,6 +97,14 @@ test('decideChatIntent: "编写C++程序" → code-change intent', () => {
   assert.equal(result.mode, 'edit');
 });
 
+test('decideChatIntent: scoped unknown extension path is an explicit edit target', () => {
+  const result = decideChatIntent('创建 assets/manual-phase6.unknown，内容为：phase6 unknown validation target。');
+  assert.equal(result.kind, 'code-change');
+  assert.equal(result.mode, 'edit');
+  assert.ok(result.signals.includes('explicit-file-path'));
+  assert.equal(result.reason, 'edit-with-file-path');
+});
+
 test('decideChatIntent: execution result follow-up → run intent', () => {
   const result = decideChatIntent('能执行，看到执行结果吗');
   assert.equal(result.kind, 'code-change');

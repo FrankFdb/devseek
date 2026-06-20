@@ -63,6 +63,13 @@ const NON_CODE_FILE_EXTENSIONS = new Set([
   '.csv', '.tsv', '.log', '.xml', '.html', '.css',
 ]);
 
+const CODE_FILE_EXTENSIONS = new Set([
+  '.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx',
+  '.py', '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs',
+  '.java', '.go', '.rs', '.cs', '.php', '.rb', '.swift', '.kt', '.kts', '.scala',
+  '.vue', '.svelte', '.sh', '.bash', '.zsh',
+]);
+
 export class VerificationPlanner {
   private readonly defaultFsNode: VerificationPlannerFs = {
     existsSync: fs.existsSync,
@@ -143,8 +150,9 @@ export class VerificationPlanner {
       });
     }
 
-    const fileCheckPaths = changedPaths.filter((path) => isNonCodeValidationPath(path));
-    if (fileCheckPaths.length > 0 && shouldValidateNonCodeFiles(input.requestPrompt || '')) {
+    const requestPrompt = input.requestPrompt || '';
+    const fileCheckPaths = changedPaths.filter((path) => isFileFactValidationPath(path, requestPrompt));
+    if (fileCheckPaths.length > 0 && fileCheckPaths.length === changedPaths.length && shouldValidateNonCodeFiles(requestPrompt)) {
       return commandPlan({
         command: buildNonCodeFileCheckCommand(fileCheckPaths),
         cwd: rootFsPath,
@@ -166,6 +174,10 @@ export function shouldRunCppValidation(prompt: string): boolean {
 
 export function shouldValidateNonCodeFiles(prompt: string): boolean {
   return /(?:创建|新建|生成|写|写入|更新|添加|修改|验证|确认|检查|显示|读取|是否存在|内容|create|write|update|add|verify|check|show|read|display|exist)/i.test(prompt || '');
+}
+
+export function hasExplicitFileContentPrompt(prompt: string): boolean {
+  return /(?:内容为|内容是|内容如下|写入内容(?:为|是)?|content\s*(?:is|:|=)|with\s+content)/i.test(prompt || '');
 }
 
 export function buildNonCodeFileCheckCommand(changedPaths: string[]): string {
@@ -224,6 +236,17 @@ function timeoutForCppPlan(mode: Exclude<ValidationMode, 'file-check' | 'not-ava
 
 function isNonCodeValidationPath(relPath: string): boolean {
   return NON_CODE_FILE_EXTENSIONS.has(nodePath.extname(relPath).toLowerCase());
+}
+
+function isFileFactValidationPath(relPath: string, prompt: string): boolean {
+  if (isNonCodeValidationPath(relPath)) return true;
+  return hasExplicitFileContentPrompt(prompt)
+    && !shouldRunCppValidation(prompt)
+    && !isCodeValidationPath(relPath);
+}
+
+function isCodeValidationPath(relPath: string): boolean {
+  return CODE_FILE_EXTENSIONS.has(nodePath.extname(relPath).toLowerCase());
 }
 
 function shellQuote(value: string): string {

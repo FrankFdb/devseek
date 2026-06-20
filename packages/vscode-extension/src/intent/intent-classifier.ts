@@ -1,8 +1,7 @@
 import { IntentClassification, ToolKind } from './intent-types';
+import { hasExplicitWorkspaceFilePath } from '../workspace/path-patterns';
 
 const EXPLICIT_NO_CHANGE_RE = /(不要修改|无需修改|不要改|别改|只讨论|仅讨论|只分析|仅分析|不要落地|先不要改|不需要代码|不要apply|不做变更|just\s+(?:chat|talk|discuss|explain)|only\s+(?:explain|discuss|answer))/i;
-
-const EXPLICIT_PATH_RE = /([A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|json|md|css|scss|html|py|java|go|rs|c|cc|cpp|cxx|h|hpp|sh|sql))/i;
 
 const GREETING_ONLY_RE = /^(?:hi|hello|ello|hey|你好|您好|嗨|哈喽|早上好|上午好|下午好|晚上好|在吗|在不在|辛苦了)[\s!.。！？?]*$/i;
 
@@ -61,7 +60,7 @@ export function classifyIntent(prompt: string): IntentClassification {
   }
 
   const withoutGreeting = text.replace(GREETING_PREFIX_RE, '').trim();
-  const hasPath = EXPLICIT_PATH_RE.test(text);
+  const hasPath = hasExplicitWorkspaceFilePath(text);
   const hasCodeContext = CODE_CONTEXT_RE.test(text) || hasPath;
   const isFollowUpRunRequest = !hasPath && FOLLOW_UP_RUN_RE.test(text);
 

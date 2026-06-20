@@ -69,7 +69,33 @@ test('VerificationPlanner: requested markdown validation uses file checks, not c
   assert.doesNotMatch(plan.command, /\bgcc\b|\bg\+\+\b|\bclang\b|\bnode\b|\bnpm\b/);
 });
 
-test('VerificationPlanner: unknown targets produce blocked plan with alternatives', () => {
+test('VerificationPlanner: explicit unknown text file writes use file checks, not blocked QualityGate', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['assets/manual-phase6.unknown'],
+    requestPrompt: '创建 assets/manual-phase6.unknown，内容为：phase6 unknown validation target，并验证文件创建成功。',
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'file-check');
+  assert.equal(plan.reason, 'non-code-file-validation');
+  assert.match(plan.command, /test -f/);
+  assert.match(plan.command, /manual-phase6\.unknown/);
+  assert.doesNotMatch(plan.command, /\bgcc\b|\bg\+\+\b|\bclang\b|\bnode\b|\bnpm\b/);
+});
+
+test('VerificationPlanner: mixed file facts and unplanned code targets stay blocked', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['docs/readme.md', 'scripts/tool.py'],
+    requestPrompt: '更新 docs/readme.md 和 scripts/tool.py，并验证文件创建成功。',
+  });
+
+  assert.equal(plan.kind, 'blocked');
+  assert.equal(plan.reason, 'no-auto-validation-target');
+});
+
+test('VerificationPlanner: unknown targets without file-fact intent produce blocked plan with alternatives', () => {
   const plan = new VerificationPlanner().planWorkspaceChanges({
     rootFsPath: '/repo',
     changedPaths: ['docs/readme.md'],

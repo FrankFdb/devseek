@@ -86,6 +86,25 @@ test('ValidationService: returns blocked evidence for paths without automatic va
   assert.deepEqual(invocations, []);
 });
 
+test('ValidationService: validates explicit unknown text writes with file checks', async () => {
+  const invocations = [];
+  const service = new ValidationService({ commandRunner: makeRunner(invocations) });
+
+  const result = await service.validateWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['assets/manual-phase6.unknown'],
+    requestPrompt: '创建 assets/manual-phase6.unknown，内容为：phase6 unknown validation target，并验证文件创建成功。',
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, 'passed');
+  assert.equal(result.mode, 'file-check');
+  assert.equal(result.reason, 'non-code-file-validation');
+  assert.match(result.command, /test -f/);
+  assert.match(result.command, /manual-phase6\.unknown/);
+  assert.equal(invocations.length, 1);
+});
+
 test('ValidationService: validates requested markdown writes with file checks, not compile programs', async () => {
   const invocations = [];
   const service = new ValidationService({ commandRunner: makeRunner(invocations) });

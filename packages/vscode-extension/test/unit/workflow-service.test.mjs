@@ -111,6 +111,18 @@ test('WorkflowService: explicit file edit stays controlled when agent toggle is 
   assert.equal(selected.toolPolicyMode, 'edit');
 });
 
+test('WorkflowService: exact unknown-extension write stays controlled when agent toggle is off', () => {
+  const prompt = '创建 assets/manual-phase6.unknown，内容为：phase6 unknown validation target。';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: false, forceNoAgent: true, prompt });
+
+  assert.ok(intent.signals.includes('explicit-file-path'));
+  assert.equal(selected.kind, 'edit-agent');
+  assert.equal(selected.state, 'editing');
+  assert.equal(selected.useAgent, true);
+  assert.equal(selected.toolPolicyMode, 'edit');
+});
+
 test('WorkflowService: explicit planning request stays in planning state', () => {
   const prompt = '给出这个项目的重构方案';
   const intent = decideChatIntent(prompt);

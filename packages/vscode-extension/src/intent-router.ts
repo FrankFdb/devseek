@@ -1,6 +1,7 @@
 import { parseGeneratedArtifacts } from './generated-file-parser';
 import { classifyIntent } from './intent/intent-classifier';
 import { ExecutionMode, ToolKind } from './intent/intent-types';
+import { hasExplicitWorkspaceFilePath } from './workspace/path-patterns';
 
 export type ChatIntentKind = 'chat' | 'code-change';
 export type AutoApplyPolicy = 'conservative' | 'balanced' | 'aggressive';
@@ -28,9 +29,6 @@ export interface ChatIntentDecision {
  * This file keeps the historical public API used by extension.ts while the
  * application layer is being split into smaller services.
  */
-
-/** A concrete file path in the prompt is a structural fact about what the user is working with. */
-const EXPLICIT_PATH_RE = /([A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|json|md|css|scss|html|py|java|go|rs|c|cc|cpp|cxx|h|hpp|sh|sql))/i;
 
 /** LLM response quality gate — used to skip auto-apply for example/disclaimer responses. */
 const RESPONSE_DECLINE_RE = /(无法|不能|抱歉|仅供参考|示例|example|伪代码|不建议直接使用)/i;
@@ -77,7 +75,7 @@ export function shouldAutoApplyFromResponse(
   if (artifacts.length === 0) return false;
 
   // Structural artifact detection only — no vocabulary matching.
-  const hasPath = EXPLICIT_PATH_RE.test(raw);
+  const hasPath = hasExplicitWorkspaceFilePath(raw);
   const hasCodeFence = /```[\s\S]*?```/.test(raw);
   const hasFileSection = /(文件\s*\d+\s*[:：])|(^\s*\d+[.)]\s+[A-Za-z0-9_./-]+\.)/m.test(raw);
   const hasDiff = /(^|\n)(diff --git|@@\s+-\d+[,\d]*\s+\+\d+[,\d]*\s+@@)/m.test(raw);

@@ -154,6 +154,24 @@ test('ChatRouteController: explicit file fix is not downgraded by webview no-age
   assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
 });
 
+test('ChatRouteController: exact unknown-extension write is not downgraded by webview no-agent payload', () => {
+  const controller = new ChatRouteController();
+  const decision = controller.decide({
+    userDisplay: '创建 assets/manual-phase6.unknown，内容为：phase6 unknown validation target。',
+    prompt: '创建 assets/manual-phase6.unknown，内容为：phase6 unknown validation target。',
+    files: [],
+    agentEnabled: false,
+    forceNoAgent: true,
+  });
+
+  assert.equal(decision.intent.mode, 'edit');
+  assert.ok(decision.intent.signals.includes('explicit-file-path'));
+  assert.equal(decision.workflow.kind, 'edit-agent');
+  assert.equal(decision.workflow.useAgent, true);
+  assert.equal(decision.toolPolicy.mode, 'edit');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+});
+
 test('ChatRouteController: destructive workflow waits for visible confirmation', () => {
   const controller = new ChatRouteController();
   const pending = controller.decide({

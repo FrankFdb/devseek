@@ -24,7 +24,11 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { markValidationFailureTodos } = req(bundlePath);
+const {
+  inferInitialAgenticTodos,
+  markMissingEvidenceTodosIncomplete,
+  markValidationFailureTodos,
+} = req(bundlePath);
 
 test('Evidence recovery: failed local validation marks validation todos failed', () => {
   const todos = [
@@ -45,4 +49,28 @@ test('Evidence recovery: generic validation todo is failed when stopping on Qual
   ];
 
   assert.equal(markValidationFailureTodos(todos)[1].status, 'failed');
+});
+
+test('Evidence recovery: markdown verification uses file-check todo wording', () => {
+  const todos = inferInitialAgenticTodos(
+    '创建 docs/manual-phase6-quality.md，内容为：phase6 quality gate smoke，并验证文件创建成功。',
+  );
+
+  assert.deepEqual(todos.map(todo => todo.title), [
+    '创建/更新文件',
+    '验证文件创建成功（文件存在、内容正确、大小正常）',
+  ]);
+  assert.equal(todos[1].status, 'not-started');
+});
+
+test('Evidence recovery: missing file-check evidence reopens verification todo', () => {
+  const todos = [
+    { id: 1, title: '创建 docs/manual-phase6-quality.md 文件', status: 'completed' },
+    { id: 2, title: '验证文件创建成功（文件存在、内容正确、大小正常）', status: 'completed' },
+  ];
+
+  assert.deepEqual(markMissingEvidenceTodosIncomplete(todos, ['文件读取/检查结果']), [
+    { id: 1, title: '创建 docs/manual-phase6-quality.md 文件', status: 'completed' },
+    { id: 2, title: '验证文件创建成功（文件存在、内容正确、大小正常）', status: 'in-progress' },
+  ]);
 });

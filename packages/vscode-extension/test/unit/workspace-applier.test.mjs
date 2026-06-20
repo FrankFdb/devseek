@@ -414,7 +414,7 @@ test('workspace-applier: markdown writes include review ledger file-check valida
   }
 });
 
-test('workspace-applier: unknown validation targets block QualityGate without inventing build scripts', async () => {
+test('workspace-applier: explicit unknown text writes pass file-check validation without inventing build scripts', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-unknown-'));
   try {
     fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
@@ -438,13 +438,16 @@ test('workspace-applier: unknown validation targets block QualityGate without in
 
     assert.equal(result.applied, true);
     assert.deepEqual(result.changedPaths, ['assets/manual-phase6.unknown']);
-    assert.equal(result.validation?.status, 'blocked');
-    assert.equal(result.validation?.reason, 'no-auto-validation-target');
-    assert.equal(result.qualityGate?.status, 'blocked');
+    assert.equal(result.validation?.status, 'passed');
+    assert.equal(result.validation?.mode, 'file-check');
+    assert.equal(result.validation?.reason, 'non-code-file-validation');
+    assert.match(result.validation?.command || '', /test -f/);
+    assert.equal(result.qualityGate?.status, 'pass');
+    assert.deepEqual(result.review?.unfinishedItems, []);
     assert.match(readFileSync(path.join(root, 'assets', 'manual-phase6.unknown'), 'utf8'), /phase6 unknown/);
     assert.equal(existsSync(path.join(root, 'assets', 'manual', 'test_phase6.sh')), false);
     assert.equal(
-      statuses.some((status) => status.phase === 'quality' && status.state === 'failed' && /QualityGate 阻塞/.test(status.title)),
+      statuses.some((status) => status.phase === 'quality' && status.state === 'passed' && /QualityGate 通过/.test(status.title)),
       true,
     );
     assert.equal(
@@ -452,7 +455,7 @@ test('workspace-applier: unknown validation targets block QualityGate without in
       false,
     );
     assert.equal(
-      statuses.some((status) => status.phase === 'validate' && status.state === 'skipped' && /自动验证阻塞/.test(status.title)),
+      statuses.some((status) => status.phase === 'validate' && status.state === 'passed' && /自动验证通过/.test(status.title)),
       true,
     );
   } finally {
