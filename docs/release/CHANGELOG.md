@@ -19,11 +19,12 @@
 - 修复手测 P7-04 中 checkpoint 恢复任务事实丢失的问题：恢复服务会提取逐文件 `expectedContent` 与验证意图；Agent 对已知内容的 create 任务使用本地确定性写入、读回校验和统一变更记录。
 - 修复手测 P7-04 中 checkpoint banner 锚点错误和完成态残留：恢复入口显示在输入区上方的当前操作区；完成或无剩余任务的 checkpoint 在 loadFresh 时清理。
 - 修复手测 P7-02/P7-03 中响应损坏错误显示为粘连底层状态、Working 标题误报 `Failed: Exploring ...` 的问题：ResponseCorrupted 现在展示为“响应损坏，已阻止执行”，并分行列出状态、原因和恢复证据。
+- 修复手测 P7-02 中“原样输出不完整工具调用”在继续后被误恢复为写文件任务的问题：恢复事实提取会剥离工具协议样本、代码块和 JSON/tool payload；只读/否定动作不会被升格为 modify/create，真实 create 事实仍会保留。
 - 新增 Phase 7 单元测试和架构守卫，覆盖任务恢复主链路与失败链路。
 
 验证：
 - `npm test --workspace=packages/vscode-extension` 通过，50 个 suite 全部通过。
-- `node test/unit/provider-recovery-service.test.mjs` 通过，覆盖“建 ... 内容分别为 ... 并验证”的恢复事实提取。
+- `node test/unit/provider-recovery-service.test.mjs` 通过，覆盖“建 ... 内容分别为 ... 并验证”的恢复事实提取、响应损坏 literal tool 样本不生成写文件任务、只读恢复保持 analyze-only。
 - `node test/unit/workflow-compliance.test.mjs` 通过，覆盖 checkpoint create 事实的确定性执行接入。
 - `node test/unit/agent-working-state.test.mjs` 通过，覆盖 checkpoint banner 不再插入 transcript 顶部，以及 provider 错误标题优先于内部活动标签。
 - `node test/unit/task-checkpoint-store.test.mjs` 通过，覆盖完成态 checkpoint 清理。

@@ -185,7 +185,10 @@ export function buildProviderRecoveryCheckpointTasks(input: {
   prompt: string;
   files?: string[];
   workspaceRootFsPath?: string;
+  recoveryKind?: ProviderRecoveryKind;
 }): ProviderRecoveryCheckpointTask[] {
+  const trustedPrompt = stripUntrustedProtocolPayloads(input.prompt);
+  const literalOnly = hasLiteralOutputIntent(input.prompt) && !hasSideEffectIntent(trustedPrompt);
   const refs = new Set<string>();
   const workspaceRoot = input.workspaceRootFsPath || '';
   for (const file of input.files || []) {
@@ -194,14 +197,15 @@ export function buildProviderRecoveryCheckpointTasks(input: {
   }
   const pathRe = /(?:^|[\s"'`(（:：])((?:\.\/)?(?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+\.[A-Za-z0-9_+-]{1,12})(?=$|[\s"'`),，。；;])/g;
   let match: RegExpExecArray | null;
-  while ((match = pathRe.exec(input.prompt)) !== null) {
+  while (!literalOnly && (match = pathRe.exec(trustedPrompt)) !== null) {
     const rel = workspaceRelativePath(match[1], workspaceRoot);
     if (rel) refs.add(rel);
   }
   const refsList = [...refs].slice(0, 12);
-  const action: ProviderRecoveryCheckpointTask['action'] = hasCreateIntent(input.prompt) ? 'create' : 'modify';
-  const expectedContents = action === 'create' ? extractExpectedContents(input.prompt) : [];
-  const shouldVerify = hasValidationIntent(input.prompt);
+  const action = inferRecoveryAction(trustedPrompt, refs.size > 0 && (input.files || []).length > 0);
+  if (refsList.length === 0 || literalOnly || action === 'explore') return [buildFallbackRecoveryTask(input.recoveryKind)];
+  const expectedContents = action === 'create' ? extractExpectedContents(trustedPrompt) : [];
+  const shouldVerify = hasValidationIntent(trustedPrompt);
   const tasks = refsList.map((file, index) => {
     const expectedContent = expectedContents[index];
     return {
@@ -213,12 +217,7 @@ export function buildProviderRecoveryCheckpointTasks(input: {
       ...(expectedContent !== undefined ? { expectedContent } : {}),
     };
   });
-  return tasks.length > 0 ? tasks : [{
-    id: 'provider-recovery-task',
-    file: 'agent-task',
-    action: 'explore',
-    desc: '恢复并继续执行中断的 Agent 任务',
-  }];
+  return tasks.length > 0 ? tasks : [buildFallbackRecoveryTask(input.recoveryKind)];
 }
 
 function makePlan(input: {
@@ -252,12 +251,78 @@ function parseResponseCorruption(rawMessage: string): { status: string; reason: 
   return { status: match[1].trim(), reason: match[2].trim() };
 }
 
+function stripUntrustedProtocolPayloads(prompt: string): string {
+  return String(prompt || '')
+    .replace(/```[\s\S]*?```/g, '\n')
+    .replace(/<tool_call[\s\S]*?<\/tool_call>/gi, '\n')
+    .replace(/(?:^|\n)[^\n]*\[TOOL:[\s\S]*?(?=\n\s*\n|$)/gi, '\n')
+    .replace(/(?:^|\n)\s*(?:Calling|Call|调用)\s*:?[^\n]*(?:run_terminal|create_file|write_file|replace_file|mcp__)[\s\S]*?(?=\n\s*\n|$)/gi, '\n')
+    .replace(/(?:^|\n)\s*[{[]\s*"(?:tool|name|path|arguments)"[\s\S]*?(?=\n\s*\n|$)/gi, '\n');
+}
+
 function hasCreateIntent(prompt: string): boolean {
-  return /(创建|新建|写入|新增|建立|生成|建\s*(?:\.\/)?(?:[A-Za-z0-9_.-]+\/)+|create|add|write)/i.test(prompt);
+  return /(创建|新建|写入|新增|建立|生成|建\s*(?:\.\/)?(?:[A-Za-z0-9_.-]+\/)+|create|add|write)/i.test(stripNegatedActionPhrases(prompt));
+}
+
+function hasModifyIntent(prompt: string): boolean {
+  return /(修改|更新|修复|重构|替换|编辑|调整|改写|modify|update|fix|refactor|replace|edit)/i.test(stripNegatedActionPhrases(prompt));
+}
+
+function hasDeleteIntent(prompt: string): boolean {
+  return /(删除|移除|删掉|delete|remove)/i.test(stripNegatedActionPhrases(prompt));
+}
+
+function hasInspectIntent(prompt: string): boolean {
+  return /(检查|查看|确认|验证|分析|读取|列出|inspect|check|verify|validate|analy[sz]e|read|list)/i.test(stripNegatedActionPhrases(prompt));
+}
+
+function hasExplainIntent(prompt: string): boolean {
+  return /(解释|说明|总结|explain|summari[sz]e|describe)/i.test(stripNegatedActionPhrases(prompt));
+}
+
+function hasLiteralOutputIntent(prompt: string): boolean {
+  return /(原样输出|逐字输出|不要补全|不要解释|不要执行|不要运行|不要写文件|不要创建|作为文本|纯文本|literal|verbatim|as[- ]?is|do not execute|don't execute|do not run|do not write|do not create)/i.test(prompt);
+}
+
+function hasSideEffectIntent(prompt: string): boolean {
+  return hasCreateIntent(prompt) || hasModifyIntent(prompt) || hasDeleteIntent(prompt);
 }
 
 function hasValidationIntent(prompt: string): boolean {
-  return /(验证|检查|确认|校验|verify|validate|check)/i.test(prompt);
+  return /(验证|检查|确认|校验|verify|validate|check)/i.test(stripNegatedActionPhrases(prompt));
+}
+
+function stripNegatedActionPhrases(prompt: string): string {
+  return String(prompt || '').replace(
+    /(?:不要|不需要|无需|禁止|不能|不可|别|勿|do\s+not|don't|without|no)\s*(?:补全|解释|说明|总结|修改|更新|修复|重构|替换|编辑|调整|改写|创建|新建|写入|新增|建立|生成|删除|移除|删掉|执行|运行|explain|summari[sz]e|describe|modify|update|fix|refactor|replace|edit|create|add|write|delete|remove|execute|run)[^，。；;,.]*/gi,
+    ' ',
+  );
+}
+
+function inferRecoveryAction(prompt: string, hasExplicitFiles: boolean): ProviderRecoveryCheckpointTask['action'] {
+  if (hasDeleteIntent(prompt)) return 'delete';
+  if (hasCreateIntent(prompt)) return 'create';
+  if (hasModifyIntent(prompt)) return 'modify';
+  if (hasExplainIntent(prompt)) return 'explain';
+  if (hasInspectIntent(prompt)) return 'analyze';
+  return hasExplicitFiles ? 'modify' : 'explore';
+}
+
+function buildFallbackRecoveryTask(kind?: ProviderRecoveryKind): ProviderRecoveryCheckpointTask {
+  if (kind === 'ResponseCorrupted') {
+    return {
+      id: 'provider-recovery-task',
+      file: 'provider-response',
+      action: 'explore',
+      desc: '重新生成安全输出，不执行损坏或未验证的工具内容',
+    };
+  }
+  return {
+    id: 'provider-recovery-task',
+    file: 'agent-task',
+    action: 'explore',
+    desc: '恢复并继续执行中断的 Agent 任务',
+  };
 }
 
 function buildRecoveryTaskDesc(
@@ -266,7 +331,12 @@ function buildRecoveryTaskDesc(
   expectedContent: string | undefined,
   shouldVerify: boolean,
 ): string {
-  const parts = [action === 'create' ? `创建 ${file}` : `恢复并继续处理 ${file}`];
+  const verb = action === 'create' ? '创建'
+    : action === 'delete' ? '删除'
+    : action === 'analyze' ? '检查'
+    : action === 'explain' ? '解释'
+    : '恢复并继续处理';
+  const parts = [`${verb} ${file}`];
   if (expectedContent !== undefined) parts.push(`内容为: ${expectedContent}`);
   if (shouldVerify) parts.push('并验证文件内容');
   return parts.join('，');
@@ -292,6 +362,7 @@ function extractExpectedContents(prompt: string): string[] {
 function cleanContentClause(value: string): string {
   return String(value || '')
     .split(/[。；;]/)[0]
+    .split(/[,，]\s*(?:不要|不需要|无需|禁止|不能|不可|别|勿|do\s+not|don't|without|no)\s*(?:修改|更新|修复|重构|替换|编辑|创建|新建|写入|新增|建立|生成|删除|移除|删掉|执行|运行|modify|update|fix|refactor|replace|edit|create|add|write|delete|remove|execute|run)/i)[0]
     .split(/[,，]\s*(?:并|且)?\s*(?:验证|检查|确认|校验)/i)[0]
     .replace(/\s*(?:并|且)?\s*(?:验证|检查|确认|校验).*$/i, '')
     .trim();

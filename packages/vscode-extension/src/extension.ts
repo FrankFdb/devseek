@@ -2932,6 +2932,7 @@ async function runChat(
           prompt,
           files: effectiveFiles,
           workspaceRootFsPath: wsRootFsPath,
+          recoveryKind: recovery.kind,
         }) as AgentTask[];
         await saveAgentCheckpoint({
           userPrompt: prompt,

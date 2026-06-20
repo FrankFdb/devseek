@@ -548,6 +548,8 @@ export const manualPhase6QualityGate: string = 1;
 - 修正：checkpoint banner 改为插入输入区上方的当前操作区，完成态/无剩余任务 checkpoint 不再展示；`TaskCheckpointStore.loadFresh` 清理已完成 checkpoint，Agent checkpoint 回调改为 await，最终任务不再保存 2/2 续作点。
 - 2026-06-20 P7-02/P7-03 复测截图中，响应损坏错误显示为 `RESPONSE_CORRUPTEDinvalid-json-response...` 粘连文本，Working 最终标题仍可能落到 `Failed: Exploring ...`，用户难以判断这是 provider 输出被安全阻断。
 - 修正：`ProviderRecoveryService` 增加恢复展示模型，ResponseCorrupted 标题统一为“响应损坏，已阻止执行”，状态和原因分行展示；WebView 最终失败标题优先使用 provider/agent 错误标题，再回退到 failed todo 或活动标签。
+- 2026-06-20 最新 P7-02 复测中，首轮已正确阻断不完整工具块，但点击继续后从用户要求“原样输出”的 `[TOOL:write_file ...]` 样本文本中提取了 `docs/manual-phase7-corrupt.md`，错误生成 `创建 ...` 恢复任务。
+- 修正：恢复事实提取引入可信 prompt 边界，剥离工具协议样本、fenced code、JSON/tool payload；`不要修改/不要创建/do not write` 等否定动作不贡献副作用意图，只读路径保持 analyze-only，真实 create 请求仍保留路径、内容和验证事实。
 
 ## 10. 已发现问题跟踪
 
@@ -569,6 +571,7 @@ export const manualPhase6QualityGate: string = 1;
 | P7-RECOVERY-FACTS-01 | P7-04 | checkpoint resume 已触发，但任务只剩“恢复并继续处理文件”，丢失创建内容与验证事实，最终文件未创建 | 对标 Claude Code/Codex，恢复应依赖本地 checkpoint/task facts；已知文件内容的 create 任务应本地确定性执行并读回校验，不应再让模型猜或输出操作说明 | 已新增 `expectedContent` checkpoint fact 提取和 `tryExecuteDeterministicCreateTask`；覆盖“建 ... 内容分别为 ... 并验证”回归测试 |
 | P7-BANNER-01 | P7-04 | “继续执行”按钮显示在历史对话最开始位置，且完成后可能残留旧 checkpoint banner | 恢复入口是当前任务控制，不应作为历史首条消息；完成态 checkpoint 不能被 loadFresh 当作可恢复任务 | 已将 banner 锚定到输入区上方当前操作区；checkpoint 保存/清理改为 await，并清理完成态 checkpoint |
 | P7-ERROR-UI-01 | P7-02、P7-03 | 响应损坏时 UI 裸露粘连错误串，Working 标题显示 `Failed: Exploring ...` 而不是安全阻断原因 | 对标 Claude Code/Codex，失败表面必须呈现可操作诊断事实；内部阶段名不能覆盖 provider 安全拦截结论 | 已新增 `buildProviderRecoveryDisplay` 和 `agentLastErrorTitle`，覆盖损坏响应格式化与错误标题优先级回归测试 |
+| P7-TRUSTED-FACTS-01 | P7-02、P7-04 | ResponseCorrupted 继续后把用户消息中的工具调用样本路径误当作写文件任务 | 对标 Claude Code/Codex，用户/模型文本里的工具协议片段是 untrusted data，只有结构化工具通道和明确当前任务事实才能产生副作用 | 已新增 trusted prompt 清洗、否定动作过滤和恢复 action 推断；覆盖 literal tool sample、read-only analyze、explicit create 三类回归 |
 
 ## 11. 每轮迭代更新规则
 

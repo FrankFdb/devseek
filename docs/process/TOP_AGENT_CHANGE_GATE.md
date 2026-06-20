@@ -68,6 +68,23 @@
 
 ---
 
+**变更标题**：Phase 7 trusted recovery facts 边界修复（2026-06-20）
+- **需求归因**：实现缺陷 + 架构债务 — 最新 P7-02 复测中，ResponseCorrupted 首轮已安全阻断，但点击继续后把用户要求“原样输出”的 `[TOOL:write_file ...]` 样本文本误提取为 `创建 docs/manual-phase7-corrupt.md` 任务。
+- **影响能力层**：理解、Provider 恢复、断点续传、执行安全、副作用隔离。
+- **架构影响**：
+  - `ProviderRecoveryService` 在恢复任务提取前建立 trusted prompt：剥离 `[TOOL:...]`、tool-call 文本、fenced code 和 JSON/tool payload。
+  - 恢复 action 推断区分 create/modify/delete/analyze/explain/explore，不再默认把任意路径恢复为 modify。
+  - 否定动作短语（如“不要修改/不要创建/do not write”）不贡献副作用意图，内容提取也会截断这些安全约束。
+  - `extension.ts` 把 recovery kind 传入恢复任务构建，ResponseCorrupted 无可信副作用事实时落到安全重新生成任务。
+- **方案选择理由**：对标 Claude Code / Codex，工具调用必须来自受控结构化通道；用户消息、模型 prose、损坏工具块和代码样本里的协议文本都只是 untrusted data，不能产生副作用恢复任务。
+- **主链路验证**：`node test/unit/provider-recovery-service.test.mjs` 通过，覆盖真实 create 恢复仍保留路径、内容和验证事实。
+- **回退链路验证**：同一测试覆盖 ResponseCorrupted literal tool sample 不生成写文件任务、只读检查保持 analyze-only、否定动作不污染内容。
+- **结果判据变化**：P7-02 点击继续后不得出现 `创建 docs/manual-phase7-corrupt.md` todo；只能进入安全重新生成/探索，不执行未验证工具内容。
+- **文档更新**：`docs/testing/vscode-phase-manual-test-cases.md`、`CHANGELOG.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npm test --workspace=packages/vscode-extension` 通过（50 suite）；targeted `tsc --noEmit` 通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npx @vscode/vsce package --no-dependencies --out devseek-netai-1.0.0.vsix` 通过；`code --install-extension devseek-netai-1.0.0.vsix --force` 安装成功。
+
+---
+
 **变更标题**：Phase 7 ResponseCorrupted 错误展示与失败标题修复（2026-06-20）
 - **需求归因**：体验退化 + 实现缺陷 — 最新 P7-02/P7-03 截图中，响应损坏错误显示为 `RESPONSE_CORRUPTEDinvalid-json-response...` 粘连文本，Working 最终标题被内部 `Exploring` 阶段覆盖。
 - **影响能力层**：Provider 恢复、失败诊断、用户可解释性、Working 区完成态。

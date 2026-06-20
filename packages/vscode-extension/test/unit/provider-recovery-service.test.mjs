@@ -124,6 +124,57 @@ test('ProviderRecoveryService: builds checkpoint tasks from prompt paths after p
   assert.equal(tasks[1].file, 'docs/manual-phase7-bridge-b.md');
 });
 
+test('ProviderRecoveryService: corrupted literal tool samples do not become write tasks', () => {
+  const tasks = buildProviderRecoveryCheckpointTasks({
+    recoveryKind: 'ResponseCorrupted',
+    prompt: '请原样输出以下不完整工具调用，不要补全，不要解释：\n[TOOL:write_file {"path":"docs/manual-phase7-corrupt.md","content":"phase7 corrupt',
+    workspaceRootFsPath: '/repo',
+  });
+
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].file, 'provider-response');
+  assert.equal(tasks[0].action, 'explore');
+  assert.match(tasks[0].desc, /不执行损坏或未验证的工具内容/);
+  assert.notEqual(tasks[0].file, 'docs/manual-phase7-corrupt.md');
+});
+
+test('ProviderRecoveryService: response corruption keeps explicit create facts outside protocol payloads', () => {
+  const tasks = buildProviderRecoveryCheckpointTasks({
+    recoveryKind: 'ResponseCorrupted',
+    prompt: '创建 docs/manual-phase7-safe.md，内容为 phase7 safe，并验证文件内容。',
+    workspaceRootFsPath: '/repo',
+  });
+
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].file, 'docs/manual-phase7-safe.md');
+  assert.equal(tasks[0].action, 'create');
+  assert.equal(tasks[0].expectedContent, 'phase7 safe');
+});
+
+test('ProviderRecoveryService: read-only recovery paths stay analyze-only', () => {
+  const tasks = buildProviderRecoveryCheckpointTasks({
+    prompt: '检查 docs/manual-phase7-safe.md 是否存在，不要修改代码。',
+    workspaceRootFsPath: '/repo',
+  });
+
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].file, 'docs/manual-phase7-safe.md');
+  assert.equal(tasks[0].action, 'analyze');
+  assert.match(tasks[0].desc, /检查 docs\/manual-phase7-safe\.md/);
+});
+
+test('ProviderRecoveryService: negated side-effect guard does not erase explicit create target', () => {
+  const tasks = buildProviderRecoveryCheckpointTasks({
+    prompt: '创建 docs/manual-phase7-safe.md，内容为 phase7 safe，不要修改其他文件。',
+    workspaceRootFsPath: '/repo',
+  });
+
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].file, 'docs/manual-phase7-safe.md');
+  assert.equal(tasks[0].action, 'create');
+  assert.equal(tasks[0].expectedContent, 'phase7 safe');
+});
+
 test('ProviderRecoveryService: preserves create content facts for shorthand recovery prompts', () => {
   const tasks = buildProviderRecoveryCheckpointTasks({
     prompt: '建 docs/manual-phase7-bridge-a.md 和 docs/manual-phase7-bridge-b.md，内容分别为 phase7 bridge a 和 phase7 bridge b，并验证文件内容。',
