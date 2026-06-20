@@ -18,6 +18,7 @@ execSync(
 const req = createRequire(import.meta.url);
 const {
   appendSessionContinuationContext,
+  isExplicitCheckpointResumeRequest,
   isLikelySessionContinuation,
   isRunContinuationIntent,
   shouldInjectSessionContinuationForIntent,
@@ -33,6 +34,13 @@ test('Session continuation: detects correction about modifying original code', (
 test('Session continuation: detects explicit same-session follow-up wording', () => {
   assert.equal(isLikelySessionContinuation('在上一轮基础上继续加测试'), true);
   assert.equal(isLikelySessionContinuation('不要重新写，基于已有代码修改'), true);
+});
+
+test('Session continuation: detects explicit checkpoint resume wording', () => {
+  assert.equal(isExplicitCheckpointResumeRequest('继续'), true);
+  assert.equal(isExplicitCheckpointResumeRequest('继续执行'), true);
+  assert.equal(isExplicitCheckpointResumeRequest('continue'), true);
+  assert.equal(isExplicitCheckpointResumeRequest('继续优化一下'), false);
 });
 
 test('Session continuation: leaves execution/result wording to intent classification', () => {

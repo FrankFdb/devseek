@@ -19,6 +19,7 @@
 - Bridge Provider 增加 `ResponseIntegrityChecker`，截断代码块、不完整工具块、登录/限流文本不会进入工具执行链路。
 - 新增 `StreamWatchdog`、`BridgeHealthMonitor` 可靠性边界，为 DeepSeek Web 超时、登录失效、Bridge 异常的可解释恢复打底。
 - 修复手测 P7-04 中 `LOGIN_REQUIRED` 裸错误：Provider 异常 catch 现在会展示可解释暂停原因，并保存最小 checkpoint 供登录恢复后继续。
+- 修复手测 P7-04 中“继续”退化为普通聊天的问题：短句继续会优先加载新鲜 checkpoint，且 `resumeFromIndex=0` 会按真实恢复执行链路处理。
 - 新增 Phase 7 单元测试与架构守卫，覆盖 checkpoint 过期清理、任务历史暂停/归档、最小恢复上下文、不可重放副作用、Provider 恢复分类和 Web 响应完整性。
 
 验证：

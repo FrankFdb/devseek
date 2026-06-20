@@ -5,11 +5,39 @@ export interface SessionContinuationIntent {
   signals?: readonly string[];
 }
 
+export interface CheckpointResumePromptInput {
+  userDisplay: string;
+  prompt: string;
+  newSession?: boolean;
+  forceNoAgent?: boolean;
+  files?: readonly string[];
+  images?: readonly string[];
+  resumeFromIndex?: number;
+}
+
 export function isLikelySessionContinuation(prompt: string): boolean {
   const text = prompt.trim();
   if (!text) return false;
   if (SESSION_CONTINUATION_RE.test(text)) return true;
   return text.length <= 40 && /(?:吧|一下|一点|一个|几个|些|more|again)$/i.test(text);
+}
+
+export function isExplicitCheckpointResumeRequest(prompt: string): boolean {
+  const text = prompt
+    .trim()
+    .replace(/[。.!！\s]+$/g, '')
+    .toLowerCase();
+  if (!text || text.length > 30) return false;
+  return /^(继续|继续执行|继续任务|继续完成|从断点继续|恢复|恢复任务|恢复执行|resume|continue|continue task|resume task)$/.test(text);
+}
+
+export function shouldResumeCheckpointFromPrompt(input: CheckpointResumePromptInput): boolean {
+  return input.resumeFromIndex === undefined
+    && !input.newSession
+    && !input.forceNoAgent
+    && (!input.files || input.files.length === 0)
+    && (!input.images || input.images.length === 0)
+    && isExplicitCheckpointResumeRequest(input.userDisplay || input.prompt);
 }
 
 export function isRunContinuationIntent(intent?: SessionContinuationIntent): boolean {

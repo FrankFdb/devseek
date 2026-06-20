@@ -1135,6 +1135,9 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(bridgeProvider, 'ResponseIntegrityChecker', 'BridgeProvider must run integrity checks on completed responses');
   assertContains(extension, 'new ProviderRecoveryService().classify', 'agent provider errors must be classified before showing UI errors');
   assertContains(extension, 'buildProviderRecoveryCheckpointTasks', 'provider recovery must save a resumable checkpoint from task facts');
+  assertContains(extension, 'shouldResumeCheckpointFromPrompt', 'short resume prompts must route to checkpoint resume before normal chat');
+  assertContains(extension, 'checkpointResumeTasks', 'agent resume routing must use an explicit checkpoint state');
+  assert.doesNotMatch(extension, /!resumeFromIndex\b/, 'resume index 0 must not be treated as no checkpoint resume');
   assert.match(
     extension,
     /recovery\.kind !== 'Unknown'[\s\S]*?saveAgentCheckpoint\(/,

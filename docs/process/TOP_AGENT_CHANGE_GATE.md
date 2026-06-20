@@ -68,6 +68,22 @@
 
 ---
 
+**变更标题**：Phase 7 checkpoint 继续执行链路修复（2026-06-20）
+- **需求归因**：实现缺陷 — P7-04 关闭 DeepSeek 网页后，DevSeek 已能暂停并显示 checkpoint，但用户输入“继续”后退化为普通聊天建议，没有真正从 checkpoint 创建/验证目标文件。
+- **影响能力层**：断点续传、恢复执行、UI 输入路由、Agent 编排。
+- **架构影响**：
+  - `session-continuation.ts` 增加显式 checkpoint resume prompt 判断，Extension 只做组合根调度。
+  - `extension.ts` 在普通聊天路由前优先加载新鲜 checkpoint，并用原始任务事实重进 Agent。
+  - Agent resume 分支改为 `checkpointResumeTasks` 显式状态，避免 `resumeFromIndex=0` 被 falsy 判断绕过。
+- **方案选择理由**：对标 Claude Code / Codex，用户输入“继续”应恢复本地任务事实，而不是让模型根据聊天历史猜测下一步；第 0 个任务恢复是合法 checkpoint 状态。
+- **主链路验证**：P7-04 登录/Bridge 恢复后输入“继续”，应进入 checkpoint resume，继续创建并验证 `docs/manual-phase7-bridge-a.md` / `docs/manual-phase7-bridge-b.md`。
+- **回退链路验证**：没有新鲜 checkpoint、带附件或新会话时，“继续”仍走普通会话续作，不误恢复旧任务。
+- **结果判据变化**：短句继续不能绕过 checkpoint；`resumeFromIndex=0` 必须保留任务计划并跳过重新 decompose/free-explore。
+- **文档更新**：`docs/testing/vscode-phase-manual-test-cases.md`、`CHANGELOG.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npx tsc --noEmit --pretty false --target ES2020 --module commonjs --lib ES2020 --strict --esModuleInterop --skipLibCheck src/app/session-continuation.ts src/extension.ts` 通过；`npm test --workspace=packages/vscode-extension` 通过（50 suite / 95 tests）；`git diff --check` 通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npx @vscode/vsce package --no-dependencies --out devseek-netai-1.0.0.vsix` 通过；`code --install-extension devseek-netai-1.0.0.vsix --force` 安装成功。
+
+---
+
 **变更标题**：Phase 7 Provider 登录错误恢复链路修复（2026-06-20）
 - **需求归因**：实现缺陷 — P7-04 手测截图中，前置登录状态未恢复时 DevSeek 只显示 `[Agent 执行出错] LOGIN_REQUIRED`，没有进入 Phase7 设计的可解释暂停/恢复状态。
 - **影响能力层**：Provider 恢复、断点续传、UI 错误展示、历史任务可追溯。

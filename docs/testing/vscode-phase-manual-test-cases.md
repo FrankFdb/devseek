@@ -538,6 +538,8 @@ export const manualPhase6QualityGate: string = 1;
 - 评估：本轮恢复基础设施已对齐 Claude Code/Codex 的本地事实优先原则；历史任务 UI 与全工具幂等接入需要在后续 Provider Runtime / UI 协议阶段继续推进。
 - 2026-06-20 P7-04 截图中，最后请求直接显示 `[Agent 执行出错] LOGIN_REQUIRED`；评估为 DeepSeek Web 登录状态未恢复导致 case4 实际命中 P7-03 前置异常，同时 UI 裸露 provider 错误、没有展示暂停原因和 checkpoint。
 - 修正：Agent provider 错误 catch 接入 `ProviderRecoveryService`，识别 LoginRequired/RateLimited/ResponseCorrupted 等异常后保存最小 checkpoint，并向 UI 展示可恢复/需登录的中文说明。
+- 2026-06-20 P7-04 关闭 DeepSeek 网页复测中，暂停提示和 checkpoint 已出现，但用户输入“继续”后退化为普通聊天建议，没有真正创建 `docs/manual-phase7-bridge-a.md` / `docs/manual-phase7-bridge-b.md`，判定为 resume 执行链路失败。
+- 修正：短句“继续/恢复/continue”在存在新鲜 checkpoint 时直接进入 `resumeAgentCheckpoint` 等价路径；恢复索引 `0` 使用显式 checkpoint 状态判断，不再被 falsy 判断绕到 Agent 自主探索或普通聊天。
 
 ## 10. 已发现问题跟踪
 
@@ -555,6 +557,7 @@ export const manualPhase6QualityGate: string = 1;
 | P7-HISTORY-UI-01 | P7-01、P7-03、P7-04 | Phase7 已有任务历史/恢复服务，但 VS Code 侧尚无完整历史任务列表、详情、continueTask UI | 服务边界先落地，UI 协议仍在后续 Phase9；不能用聊天历史替代任务历史事实 | 后续接入 `TaskHistoryStore` 到 WebView 协议与任务历史 UI |
 | P7-IDEMP-01 | P7-04 | `IdempotencyGuard` 已单测覆盖，但工具执行链尚未全面携带 operationId/resultRef | 当前可保护已接入路径，完整副作用重放保护需要 ToolExecutor/AgentRuntime 全链路接入 | 后续 Provider Runtime / AgentRuntime 接入 operation ledger，覆盖 edit/terminal/mcp/memory/vscode |
 | P7-LOGIN-01 | P7-03、P7-04 | Provider 抛出 `LOGIN_REQUIRED` 时 UI 只显示裸错误，没有暂停原因或 checkpoint | 登录失效是可解释暂停状态，不能当普通 agent 崩溃处理 | 已在 agent catch 中接入 `ProviderRecoveryService`，并保存从 prompt/files 推导的最小 checkpoint |
+| P7-RESUME-01 | P7-04 | 用户输入“继续”后没有从 checkpoint 恢复执行，而是普通聊天建议复制文件内容 | 自然语言继续和 checkpoint banner 都应进入同一恢复执行链路；resumeFromIndex=0 不能被当成未恢复 | 已新增 `shouldResumeCheckpointFromPrompt` 并修复 `checkpointResumeTasks` 显式判断 |
 
 ## 11. 每轮迭代更新规则
 

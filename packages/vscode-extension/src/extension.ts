@@ -61,6 +61,7 @@ import { SessionService, type SessionMeta } from './app/session-service';
 import {
   appendSessionContinuationContext,
   shouldInjectSessionContinuationForIntent,
+  shouldResumeCheckpointFromPrompt,
   shouldRestoreSessionFiles,
 } from './app/session-continuation';
 import {
@@ -1692,15 +1693,22 @@ async function runChat(
   mode?: 'fast' | 'r1',
   files?: string[],
   forceNoAgent?: boolean,
-  /** When set, skip decomposeTask and resume from this task index using resumeTasks */
   resumeFromIndex?: number,
-  /** Task list to use when resuming (must be set when resumeFromIndex is set) */
-  resumeTasks?: import('./agent-task-decomposer').AgentTask[],
-  /** base64 image data URLs for vision input */
+  resumeTasks?: AgentTask[],
   images?: string[],
   intentConfirmed = false,
   suppressUserMessage = false,
 ): Promise<void> {
+  const promptResumeCp = shouldResumeCheckpointFromPrompt({ userDisplay, prompt, newSession, forceNoAgent, files, images, resumeFromIndex })
+    ? await loadFreshAgentCheckpoint(7_200_000)
+    : undefined;
+  if (promptResumeCp) {
+    if (!suppressUserMessage) webview.postMessage({ type: 'userMessage', text: userDisplay, prompt, images });
+    webview.postMessage({ type: 'agentCheckpointCleared' });
+    await runChat(webview, promptResumeCp.displayPrompt, promptResumeCp.userPrompt, false, promptResumeCp.mode, undefined, false, promptResumeCp.startFromIndex, promptResumeCp.allTasks, undefined, intentConfirmed, true);
+    return;
+  }
+
   // 为本次请求创建独立 AbortController，停止按钮可随时中断
   activeChatAbortController?.abort();
   activeAgentSteerQueue.length = 0;
@@ -2000,6 +2008,9 @@ async function runChat(
     let agentHistoryText = '';
 
     try {
+      const checkpointResumeTasks = resumeFromIndex !== undefined && resumeTasks && resumeTasks.length > 0
+        ? resumeTasks
+        : undefined;
       // ── Agentic routing: no code files → free-explore loop (Claude Code style) ──
       // This mirrors Copilot's principle: "no Working Set → no Architect phase".
       // The LLM drives tool exploration directly; we skip decomposeTask entirely.
@@ -2009,7 +2020,7 @@ async function runChat(
       // and mixed data-file tasks. The loop now has create_file + all read tools,
       // so the LLM can self-route — read, explore, plan, then write as needed.
       // Only skip to Architect+Editor when user explicitly attached code files to edit.
-      if (!hasCodeFiles && !resumeFromIndex) {
+      if (!hasCodeFiles && !checkpointResumeTasks) {
         // No code file attachments → agentic free-explore (investigate) mode
         const agWsRootPath = getWorkspaceRootFsPath(prompt, pathResolutionHints);
         const agWsRoot = agWsRootPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
@@ -2380,9 +2391,9 @@ async function runChat(
         ? appendSessionContinuationContext(prompt, sessionContextForAgent)
         : prompt;
 
-      if (resumeFromIndex !== undefined && resumeTasks && resumeTasks.length > 0) {
+      if (resumeFromIndex !== undefined && checkpointResumeTasks) {
         // ── Resume path: restore tasks from checkpoint, skip LLM decompose ──
-        tasks = resumeTasks;
+        tasks = checkpointResumeTasks;
         const remaining = tasks.length - resumeFromIndex;
         postAgent({
           type: 'agentStatus',
