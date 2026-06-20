@@ -551,7 +551,7 @@ export const manualPhase6QualityGate: string = 1;
 - 2026-06-20 最新 P7-02 复测中，首轮已正确阻断不完整工具块，但点击继续后从用户要求“原样输出”的 `[TOOL:write_file ...]` 样本文本中提取了 `docs/manual-phase7-corrupt.md`，错误生成 `创建 ...` 恢复任务。
 - 修正：恢复事实提取引入可信 prompt 边界，剥离工具协议样本、fenced code、JSON/tool payload；`不要修改/不要创建/do not write` 等否定动作不贡献副作用意图，只读路径保持 analyze-only，真实 create 请求仍保留路径、内容和验证事实。
 - 2026-06-20 最新 P7-02 复测中，安全阻断后 checkpoint banner 仍显示“继续执行”，容易让用户误解为继续执行损坏工具块。
-- 修正：checkpoint banner 根据恢复类型显示动作文案；ResponseCorrupted 显示“上次 Agent 输出被安全阻断 / 安全重试”，LoginRequired 显示“登录后继续”，RateLimited 显示“处理后继续”。
+- 修正：checkpoint banner 根据恢复类型显示动作文案；ResponseCorrupted 显示“上次 Agent 输出被安全阻断 / 安全重试”，并用安全摘要替代原始 `[TOOL:...]` 片段；LoginRequired 显示“登录后继续”，RateLimited 显示“处理后继续”。
 
 ## 10. 已发现问题跟踪
 

@@ -6413,7 +6413,7 @@ var checkpointBannerId = 'ds-checkpoint-banner';
 function getCheckpointBannerCopy(recoveryKind, pauseReason) {
   var evidence = String(recoveryKind || '') + '\n' + String(pauseReason || '');
   if (/ResponseCorrupted|回复不完整|格式损坏|响应损坏|未验证的内容/.test(evidence)) {
-    return { title: '上次 Agent 输出被安全阻断', action: '安全重试' };
+    return { title: '上次 Agent 输出被安全阻断', action: '安全重试', promptLabel: '原请求包含未完成或损坏的工具文本，已阻止执行。' };
   }
   if (/LoginRequired|登录已失效|登录/.test(evidence)) {
     return { title: '上次 Agent 任务已暂停', action: '登录后继续' };
@@ -6432,7 +6432,8 @@ function showCheckpointBanner(resumeTaskIndex, totalTasks, userPrompt, savedAt, 
   var elapsed = savedAt ? Math.round((Date.now() - savedAt) / 60000) : 0;
   var elapsedLabel = elapsed < 1 ? '刚才' : elapsed + ' 分钟前';
   var bannerCopy = getCheckpointBannerCopy(recoveryKind, pauseReason);
-  var promptLabel = (userPrompt || '').slice(0, 60) + ((userPrompt || '').length > 60 ? '…' : '');
+  var promptSource = bannerCopy.promptLabel || userPrompt || '';
+  var promptLabel = promptSource.slice(0, 60) + (promptSource.length > 60 ? '…' : '');
   var remaining = Math.max(0, totalTasks - resumeTaskIndex);
   banner.innerHTML =
     '<span style="flex:1;min-width:0">' +

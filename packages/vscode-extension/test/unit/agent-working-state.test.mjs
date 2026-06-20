@@ -96,8 +96,9 @@ test('agent checkpoint banner anchors near the current input area, not transcrip
 test('agent checkpoint banner labels response corruption as safe retry', () => {
   assert.match(
     webview,
-    /function getCheckpointBannerCopy\(recoveryKind, pauseReason\)[\s\S]*?ResponseCorrupted[\s\S]*?action: '安全重试'/,
+    /function getCheckpointBannerCopy\(recoveryKind, pauseReason\)[\s\S]*?ResponseCorrupted[\s\S]*?action: '安全重试'[\s\S]*?promptLabel: '原请求包含未完成或损坏的工具文本，已阻止执行。'/,
   );
+  assert.match(webview, /var promptSource = bannerCopy\.promptLabel \|\| userPrompt \|\| '';/);
   assert.match(
     webview,
     /showCheckpointBanner\(msg\.resumeTaskIndex, msg\.totalTasks, msg\.userPrompt, msg\.savedAt, msg\.recoveryKind, msg\.pauseReason\)/,
