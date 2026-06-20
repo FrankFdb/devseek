@@ -1699,7 +1699,7 @@ async function runChat(
   intentConfirmed = false,
   suppressUserMessage = false,
 ): Promise<void> {
-  const promptResumeCp = shouldResumeCheckpointFromPrompt({ userDisplay, prompt, newSession, forceNoAgent, files, images, resumeFromIndex })
+  const promptResumeCp = shouldResumeCheckpointFromPrompt({ userDisplay, prompt, newSession, resumeFromIndex })
     ? await loadFreshAgentCheckpoint(7_200_000)
     : undefined;
   if (promptResumeCp) {

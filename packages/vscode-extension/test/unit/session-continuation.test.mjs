@@ -23,6 +23,7 @@ const {
   isRunContinuationIntent,
   shouldInjectSessionContinuationForIntent,
   shouldInjectSessionContinuation,
+  shouldResumeCheckpointFromPrompt,
   shouldRestoreSessionFiles,
 } = req(bundlePath);
 
@@ -41,6 +42,21 @@ test('Session continuation: detects explicit checkpoint resume wording', () => {
   assert.equal(isExplicitCheckpointResumeRequest('继续执行'), true);
   assert.equal(isExplicitCheckpointResumeRequest('continue'), true);
   assert.equal(isExplicitCheckpointResumeRequest('继续优化一下'), false);
+});
+
+test('Session continuation: checkpoint resume ignores stale chat context controls', () => {
+  assert.equal(shouldResumeCheckpointFromPrompt({
+    userDisplay: '继续',
+    prompt: '继续',
+    forceNoAgent: true,
+    files: ['docs/old-context.md'],
+    images: ['data:image/png;base64,old'],
+  }), true);
+  assert.equal(shouldResumeCheckpointFromPrompt({
+    userDisplay: '继续',
+    prompt: '继续',
+    newSession: true,
+  }), false);
 });
 
 test('Session continuation: leaves execution/result wording to intent classification', () => {

@@ -9,9 +9,6 @@ export interface CheckpointResumePromptInput {
   userDisplay: string;
   prompt: string;
   newSession?: boolean;
-  forceNoAgent?: boolean;
-  files?: readonly string[];
-  images?: readonly string[];
   resumeFromIndex?: number;
 }
 
@@ -34,9 +31,6 @@ export function isExplicitCheckpointResumeRequest(prompt: string): boolean {
 export function shouldResumeCheckpointFromPrompt(input: CheckpointResumePromptInput): boolean {
   return input.resumeFromIndex === undefined
     && !input.newSession
-    && !input.forceNoAgent
-    && (!input.files || input.files.length === 0)
-    && (!input.images || input.images.length === 0)
     && isExplicitCheckpointResumeRequest(input.userDisplay || input.prompt);
 }
 

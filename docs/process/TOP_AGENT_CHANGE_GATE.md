@@ -68,6 +68,22 @@
 
 ---
 
+**变更标题**：Phase 7 checkpoint 继续入口阻断条件修复（2026-06-20）
+- **需求归因**：实现缺陷 — 最新 P7-04 复测中，checkpoint tasks/todos 已保留，但“继续”仍因当前聊天控件状态退化为普通对话，提示用户手动执行 shell。
+- **影响能力层**：断点续传、恢复执行、输入路由、Agent 可控性。
+- **架构影响**：
+  - `session-continuation.ts` 将 checkpoint resume 判定收敛为纯任务语义：短句继续、非新会话、非已恢复中。
+  - `extension.ts` 继续只作为组合根调用该 app 层判定，不读取旧 context chips 或 Agent toggle 来决定是否恢复 checkpoint。
+  - 回归测试覆盖 `forceNoAgent/files/images` 这类聊天控件状态不应阻断 checkpoint resume。
+- **方案选择理由**：对标 Claude Code / Codex，checkpoint 是本地任务事实；显式“继续”应恢复任务事实，而不是受当前聊天输入控件状态影响。
+- **主链路验证**：P7-04 暂停后，用户输入“继续”即使存在残留 context chips 或 Agent toggle 关闭，也应优先加载新鲜 checkpoint 并恢复 Agent 执行。
+- **回退链路验证**：新会话或已经处于 resume 执行中时，不触发额外 checkpoint resume。
+- **结果判据变化**：`forceNoAgent/files/images` 不再是 checkpoint resume 的阻断条件。
+- **文档更新**：`docs/testing/vscode-phase-manual-test-cases.md`、`CHANGELOG.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npx tsc --noEmit --pretty false --target ES2020 --module commonjs --lib ES2020 --strict --esModuleInterop --skipLibCheck src/app/session-continuation.ts src/extension.ts` 通过；`npm test --workspace=packages/vscode-extension` 通过（50 suite / 95 tests）；`git diff --check` 通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npx @vscode/vsce package --no-dependencies --out devseek-netai-1.0.0.vsix` 通过；`code --install-extension devseek-netai-1.0.0.vsix --force` 安装成功。
+
+---
+
 **变更标题**：Phase 7 checkpoint 继续执行链路修复（2026-06-20）
 - **需求归因**：实现缺陷 — P7-04 关闭 DeepSeek 网页后，DevSeek 已能暂停并显示 checkpoint，但用户输入“继续”后退化为普通聊天建议，没有真正从 checkpoint 创建/验证目标文件。
 - **影响能力层**：断点续传、恢复执行、UI 输入路由、Agent 编排。
@@ -77,7 +93,7 @@
   - Agent resume 分支改为 `checkpointResumeTasks` 显式状态，避免 `resumeFromIndex=0` 被 falsy 判断绕过。
 - **方案选择理由**：对标 Claude Code / Codex，用户输入“继续”应恢复本地任务事实，而不是让模型根据聊天历史猜测下一步；第 0 个任务恢复是合法 checkpoint 状态。
 - **主链路验证**：P7-04 登录/Bridge 恢复后输入“继续”，应进入 checkpoint resume，继续创建并验证 `docs/manual-phase7-bridge-a.md` / `docs/manual-phase7-bridge-b.md`。
-- **回退链路验证**：没有新鲜 checkpoint、带附件或新会话时，“继续”仍走普通会话续作，不误恢复旧任务。
+- **回退链路验证**：没有新鲜 checkpoint 或新会话时，“继续”仍走普通会话续作，不误恢复旧任务。
 - **结果判据变化**：短句继续不能绕过 checkpoint；`resumeFromIndex=0` 必须保留任务计划并跳过重新 decompose/free-explore。
 - **文档更新**：`docs/testing/vscode-phase-manual-test-cases.md`、`CHANGELOG.md`、`docs/release/CHANGELOG.md`、本文件。
 - **备份/发布动作**：`npx tsc --noEmit --pretty false --target ES2020 --module commonjs --lib ES2020 --strict --esModuleInterop --skipLibCheck src/app/session-continuation.ts src/extension.ts` 通过；`npm test --workspace=packages/vscode-extension` 通过（50 suite / 95 tests）；`git diff --check` 通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npx @vscode/vsce package --no-dependencies --out devseek-netai-1.0.0.vsix` 通过；`code --install-extension devseek-netai-1.0.0.vsix --force` 安装成功。
