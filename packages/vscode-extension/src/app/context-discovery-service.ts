@@ -1,7 +1,12 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as nodePath from 'path';
-import { DEFAULT_SOURCE_FILE_RE, shouldIncludeDiscoveredSourceFile, shouldSkipDiscoveryDir } from '../file-discovery';
+import {
+  DEFAULT_SOURCE_FILE_RE,
+  PROJECT_CONTEXT_SOURCE_FILE_RE,
+  shouldIncludeDiscoveredSourceFile,
+  shouldSkipDiscoveryDir,
+} from '../file-discovery';
 
 export async function getGitDiff(staged: boolean): Promise<string> {
   try {
@@ -66,6 +71,9 @@ const MAX_AUTO_FILES = 20;
 const MAX_AUTO_SCAN_DIRS = 300;
 const MAX_AUTO_SCAN_MS = 120;
 const MAX_PATH_TOKENS_TO_SCAN = 8;
+const MAX_BARE_DIR_TOKENS_TO_SCAN = 6;
+const MAX_BARE_DIR_SEARCH_DIRS = 500;
+const MAX_BARE_DIR_SEARCH_MS = 120;
 
 /**
  * Resolve a relative-or-absolute path candidate to an existing directory,
@@ -108,6 +116,68 @@ function tryResolveDirectory(
   return undefined;
 }
 
+function resolveBareDirectoryNames(
+  candidates: string[],
+  workspaceFolders: readonly vscode.WorkspaceFolder[],
+): Map<string, string> {
+  const resolved = new Map<string, string>();
+  const remaining = new Set(candidates.filter(candidate =>
+    candidate
+    && !candidate.includes('/')
+    && !candidate.includes('\\')
+    && !candidate.startsWith('.'),
+  ));
+  if (remaining.size === 0) return resolved;
+
+  for (const folder of workspaceFolders) {
+    const root = folder.uri.fsPath;
+
+    for (const candidate of [...remaining]) {
+      const direct = nodePath.join(root, candidate);
+      try {
+        if (fs.statSync(direct).isDirectory()) {
+          resolved.set(candidate, direct);
+          remaining.delete(candidate);
+        }
+      } catch { /* not found */ }
+    }
+    if (remaining.size === 0) break;
+
+    findDirectoriesByBasename(root, remaining, resolved);
+    if (remaining.size === 0) break;
+  }
+  return resolved;
+}
+
+function findDirectoriesByBasename(root: string, remaining: Set<string>, resolved: Map<string, string>): void {
+  const queue = [root];
+  const deadline = Date.now() + MAX_BARE_DIR_SEARCH_MS;
+  let visitedDirs = 0;
+
+  while (
+    queue.length > 0
+    && remaining.size > 0
+    && visitedDirs < MAX_BARE_DIR_SEARCH_DIRS
+    && Date.now() < deadline
+  ) {
+    const cur = queue.shift()!;
+    visitedDirs += 1;
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(cur, { withFileTypes: true }); } catch { continue; }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      if (!entry.isDirectory() || shouldSkipDiscoveryDir(entry.name)) continue;
+      const childPath = nodePath.join(cur, entry.name);
+      if (remaining.has(entry.name)) {
+        resolved.set(entry.name, childPath);
+        remaining.delete(entry.name);
+        if (remaining.size === 0) break;
+      }
+      queue.push(childPath);
+    }
+  }
+}
+
 /**
  * BFS-enumerate source files under dirPath, up to MAX_AUTO_FILES.
  * Skips build artifacts, documentation, and test directories.
@@ -129,6 +199,7 @@ function enumerateSourceFilesIn(dirPath: string, extFilter?: RegExp): string[] {
     visitedDirs += 1;
     let entries: fs.Dirent[];
     try { entries = fs.readdirSync(cur, { withFileTypes: true }); } catch { continue; }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
     for (const e of entries) {
       if (result.length >= MAX_AUTO_FILES) break;
       const childPath = nodePath.join(cur, e.name);
@@ -200,6 +271,31 @@ function detectExtensionFilter(prompt: string): RegExp | undefined {
   return new RegExp(`\.${ext}$`, 'i');
 }
 
+function extractBareDirectoryCandidates(prompt: string): string[] {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const text = String(prompt || '');
+  const tokenRe = /\b([A-Za-z][A-Za-z0-9_-]{2,})\b/g;
+  for (const match of text.matchAll(tokenRe)) {
+    if (candidates.length >= MAX_BARE_DIR_TOKENS_TO_SCAN) break;
+    const token = match[1];
+    if (seen.has(token)) continue;
+    if (!looksLikeWorkspaceDirectoryToken(token, text.slice(match.index ?? 0, (match.index ?? 0) + token.length + 8))) {
+      continue;
+    }
+    seen.add(token);
+    candidates.push(token);
+  }
+  return candidates;
+}
+
+function looksLikeWorkspaceDirectoryToken(token: string, localContext: string): boolean {
+  if (!token || token.length < 3) return false;
+  if (/^(src|dist|build|node_modules|tmp|test|tests|docs|readme|package|json|true|false|null)$/i.test(token)) return false;
+  if (/[_.-]/.test(token)) return true;
+  return /^(?:[A-Za-z0-9_-]+)\s*(?:目录|项目|程序|模块|工程|库)/.test(localContext);
+}
+
 /**
  * Scan the prompt for directory path references and return the abs paths of
  * source files found there.  Returns [] when nothing can be resolved.
@@ -234,6 +330,21 @@ export function discoverFilesFromDirectoryPrompt(
     const files = enumerateSourceFilesIn(resolvedDir, extFilter);
     if (files.length > 0) candidates.push({ dir: resolvedDir, files });
   }
+
+  const bareCandidates = extractBareDirectoryCandidates(prompt);
+  const resolvedBareDirs = resolveBareDirectoryNames(bareCandidates, workspaceFolders);
+  for (const candidate of bareCandidates) {
+    if (seen.size >= MAX_PATH_TOKENS_TO_SCAN + MAX_BARE_DIR_TOKENS_TO_SCAN) break;
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
+
+    const resolvedDir = resolvedBareDirs.get(candidate);
+    if (!resolvedDir) continue;
+
+    const files = enumerateSourceFilesIn(resolvedDir, extFilter ?? PROJECT_CONTEXT_SOURCE_FILE_RE);
+    if (files.length > 0) candidates.push({ dir: resolvedDir, files });
+  }
+
   if (candidates.length === 0) return [];
   // Prefer the most specific (deepest path) match; break ties by file count.
   candidates.sort((a, b) => {

@@ -23,6 +23,7 @@ const req = createRequire(import.meta.url);
 const {
   DEFAULT_SOURCE_FILE_RE,
   EXECUTION_SOURCE_FILE_RE,
+  PROJECT_CONTEXT_SOURCE_FILE_RE,
   isGeneratedBuildArtifactPath,
   shouldIncludeDiscoveredSourceFile,
   shouldSkipDiscoveryDir,
@@ -55,11 +56,31 @@ test('file discovery rejects CMake compiler probes and dependency timestamps', (
     assert.equal(isGeneratedBuildArtifactPath(filePath), true, filePath);
     assert.equal(shouldIncludeDiscoveredSourceFile(filePath, DEFAULT_SOURCE_FILE_RE), false, filePath);
     assert.equal(shouldIncludeDiscoveredSourceFile(filePath, EXECUTION_SOURCE_FILE_RE), false, filePath);
+    assert.equal(shouldIncludeDiscoveredSourceFile(filePath, PROJECT_CONTEXT_SOURCE_FILE_RE), false, filePath);
   }
 
   assert.equal(
     shouldIncludeDiscoveredSourceFile('/tmp/project/src/main.cpp', DEFAULT_SOURCE_FILE_RE),
     true,
+  );
+});
+
+test('project context discovery keeps code and build manifests but skips prose docs', () => {
+  assert.equal(
+    shouldIncludeDiscoveredSourceFile('/tmp/project/code/shape_manager/CMakeLists.txt', PROJECT_CONTEXT_SOURCE_FILE_RE),
+    true,
+  );
+  assert.equal(
+    shouldIncludeDiscoveredSourceFile('/tmp/project/code/shape_manager/Renderer.cpp', PROJECT_CONTEXT_SOURCE_FILE_RE),
+    true,
+  );
+  assert.equal(
+    shouldIncludeDiscoveredSourceFile('/tmp/project/code/shape_manager/package.json', PROJECT_CONTEXT_SOURCE_FILE_RE),
+    true,
+  );
+  assert.equal(
+    shouldIncludeDiscoveredSourceFile('/tmp/project/code/shape_manager/README.md', PROJECT_CONTEXT_SOURCE_FILE_RE),
+    false,
   );
 });
 

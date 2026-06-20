@@ -231,6 +231,16 @@ const routingCases = [
     toolActions: { read: 'allow', edit: 'allow', terminal: 'requireConfirm' },
   },
   {
+    id: 'EDIT-005',
+    title: 'auto-discovered project files keep optimization requests in controlled workflow',
+    prompt: '现在的 shape_manager 图形绘画需要继续优化',
+    files: ['/tmp/code/shape_manager/Renderer.cpp', '/tmp/code/shape_manager/Renderer.h'],
+    agentEnabled: false,
+    forceNoAgent: true,
+    expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: EDIT_TOOLS },
+    toolActions: { read: 'allow', edit: 'allow', terminal: 'requireConfirm' },
+  },
+  {
     id: 'RUN-001',
     title: 'run tests is terminal-confirmed run workflow',
     prompt: '运行测试',

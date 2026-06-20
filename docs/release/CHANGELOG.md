@@ -31,11 +31,15 @@
 - 新增 `docs/architecture/12-Agentic修复运行时专题设计.md`，把 Claude Code/Codex 对标结论落到证据、权限、验证、恢复、停止条件和服务边界。
 - 修复“重新编译，执行”复用旧 run-only 计划的问题：重复执行计划改由 `ExecutionPlanner` 重新评估；遇到重新编译/构建请求或旧可执行文件不存在时，强制重新生成 build/run 计划。
 - 修复终端证据误判：终端工具被禁止、未执行、超时或缺少真实 exitCode 时，不再作为编译/运行/测试通过证据。
+- 修复裸目录工程优化请求退化为普通聊天的问题：当用户只写 `shape_manager` 这类工作区目录名且没有 @file 时，`ContextDiscoveryService` 会有界解析项目目录，加载代码和构建入口，并让已发现文件驱动受控 Agent 工作流。
 - 按实施原则重构 `extension.ts` 职责边界：WebView HTML、生成 artifact UI、pending diff provider、legacy config 迁移、上下文/目录发现迁入 `ui/` 与 `app/` 服务，入口文件从 5555 行降至 4266 行。
 - 新增 Phase 7 单元测试和架构守卫，覆盖任务恢复主链路与失败链路。
 
 验证：
-- `npm test --workspace=packages/vscode-extension` 通过，52 个 suite 全部通过。
+- `node --test test/unit/context-discovery-service.test.mjs` 通过，覆盖裸目录项目名自动发现源码和构建入口，同时避免普通英文词误判。
+- `node --test test/unit/file-discovery.test.mjs` 通过，覆盖项目上下文文件策略保留源码/构建清单、跳过 README 等说明文档。
+- `node --test test/unit/intent-behavior-matrix.test.mjs` 通过，覆盖自动发现到文件后即使 Agent toggle/快速入口关闭，也进入受控 edit-agent 工作流。
+- `npm test --workspace=packages/vscode-extension` 通过，53 个 suite 全部通过。
 - `node test/unit/provider-recovery-service.test.mjs` 通过，覆盖“建 ... 内容分别为 ... 并验证”的恢复事实提取、响应损坏 literal tool 样本不生成写文件任务、不生成 `provider-response` 假文件、只读恢复保持 analyze-only。
 - `node test/unit/workflow-compliance.test.mjs` 通过，覆盖 checkpoint create 事实的确定性执行接入、ResponseCorrupted fallback 本地 `respond` 安全响应、apply failure recovery、config 迁移和目录发现服务边界。
 - `node test/unit/apply-failure-recovery-service.test.mjs` 通过，覆盖截断覆盖恢复的二次最小 diff 重试。

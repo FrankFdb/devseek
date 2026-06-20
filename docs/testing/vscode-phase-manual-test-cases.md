@@ -531,6 +531,22 @@ export const manualPhase6QualityGate: string = 1;
 - 已提交的文件写入不应被静默重复为新的 change set；终端/MCP 等副作用如需重放，应进入确认或缓存结果路径。
 - 最终摘要必须引用恢复原因、目标文件、验证证据和 QualityGate 结论。
 
+### P7-05 裸目录工程优化不能停在普通回复
+
+用户输入：
+
+```text
+现在的 shape_manager 图形绘画，不是使用图形库，点、线等描画像素方式实现，需要继续优化
+```
+
+期望结果：
+
+- 如果工作区中存在 `shape_manager` 目录，DevSeek 应自动识别该目录下的源码和构建入口，例如 `.cpp/.h/CMakeLists.txt`。
+- 任务必须进入受控 Agent 工作流，不能只输出“我会先检查这些文件”后结束。
+- Agent toggle 关闭或快速入口发送 no-agent payload 时，只要已发现具体工作区文件，也不能绕过工具/权限/验证闭环。
+- 自动发现上下文不应把 `README.md`、`AGENTS.md`、`CLAUDE.md` 等说明/指令文件当作普通源码实现注入执行任务。
+- 若目录不存在或没有可用源码，应明确说明无法定位目标，而不是进入普通聊天猜测。
+
 最新观察：
 
 - 2026-06-20 Phase7 已新增 `TaskCheckpointStore`、`TaskHistoryStore`、`ResumeContextBuilder`、`ProviderRecoveryService`、`IdempotencyGuard` 和 Web reliability 守卫，并完成单测/架构测试。
@@ -554,6 +570,8 @@ export const manualPhase6QualityGate: string = 1;
 - 修正：checkpoint banner 根据恢复类型显示动作文案；ResponseCorrupted 显示“上次 Agent 输出被安全阻断 / 安全重试”，并用安全摘要替代原始 `[TOOL:...]` 片段；LoginRequired 显示“登录后继续”，RateLimited 显示“处理后继续”。
 - 2026-06-20 最新 P7-02 复测中，安全重试后没有写入 `docs/manual-phase7-corrupt.md`，但恢复任务把内部 `provider-response` 当作文件目标，进而搜索/分析 `provider-recovery-service.ts` 和 `dist/extension.js`，偏离用户原始请求。
 - 修正：ResponseCorrupted 在无可信文件事实时生成内部 `targetKind=provider-response` 的 `respond` 任务；Agent Loop 本地输出安全响应，不调用模型工具循环、不搜索 `provider-response`、不分析 DevSeek 源码。
+- 2026-06-20 shape_manager 复测中，用户提出裸目录工程优化后，DevSeek 只回复“我先检查文件”并结束，没有真正进入 Agent 执行。评估为上下文发现只识别带 `/` 的路径，不识别工作区内裸目录名，导致后续路由缺少 concrete workspace target。
+- 修正：`ContextDiscoveryService` 增加有界裸目录解析，按项目上下文规则加载源码和构建入口；`ChatRouteController` 回归覆盖自动发现文件后即使 no-agent/快速入口也进入受控 edit-agent。
 - 2026-06-20 最新任务执行截图中，Agent 仍在运行时出现“上次 Agent 任务中断 / 继续执行”banner。评估为进度 checkpoint 被当成 paused checkpoint 展示；Claude Code/Codex 类工具会后台保存进度，但只在真实暂停、登录失效、响应损坏等可恢复中断时展示继续入口。
 - 修正：`onTaskCheckpoint` 增加 `progress/paused/completed` 原因；Extension 只对 `paused` 发送 `agentCheckpointAvailable`，WebView 也会在 `isGenerating` 且没有暂停证据时隐藏 checkpoint banner。
 - 2026-06-20 最新 shape_manager 截图中，`code/shape_manager/AGENTS.md` 内容实际是 `Renderer.cpp` 源码，DevSeek 后续诊断把它当作项目指令/源码事实，导致判断 `Triangle.cpp` 与 `AGENTS.md` 不一致，并尝试生成错误候选。
@@ -589,6 +607,7 @@ export const manualPhase6QualityGate: string = 1;
 | P7-APPLY-RECOVERY-01 | shape_manager 持续执行 | 疑似截断覆盖被正确拦截，但流程停在“应用失败”，没有自动生成安全补丁继续 | 截断覆盖是可恢复 apply failure，应自动转为最小 diff 修复，而不是要求用户手动复制 diff | 已结构化 `failureReason=truncating-overwrite` 并自动回传真实文件内容生成安全补丁 |
 | P7-EVIDENCE-01 | 编译验证 | 终端工具被禁止/未执行后仍宣称“编译通过” | 编译/运行/测试必须来自真实命令退出码；未执行只能标为未验证或阻塞 | 已将终端禁止/未执行/超时归为非成功证据，并更新 agent prompt 禁止伪造验证通过 |
 | P7-ARCH-01 | 多轮显示/持续执行修复 | `extension.ts` 同时承担 UI 模板、artifact 预览、diff provider、目录发现和恢复策略，导致相似显示问题反复以局部补丁出现 | 对标 Claude Code/Codex，入口应是薄装配层；恢复、显示、上下文发现和 apply 失败处理应由服务边界承载 | 已迁出 WebView HTML、generated artifact UI、pending diff provider、config 迁移、context discovery、apply failure recovery；`extension.ts` 从 5555 行降至 4266 行并由 workflow/architecture 测试守住 |
+| P7-CONTEXT-01 | P7-05、shape_manager 优化 | 用户只写工作区裸目录名时，没有 @file 和显式路径，任务退化为普通聊天并停止执行 | 对标 Claude Code/Codex，代码智能体应能把工程/模块名定位到本地上下文，再进入受控工具循环；不能把“我要先检查”当作完成 | 已新增裸目录解析和项目上下文文件策略，覆盖 `shape_manager` 自动发现 `.cpp/.h/CMakeLists.txt`、跳过 README、普通英文词不误判、发现文件后进入 edit-agent |
 
 ## 11. 每轮迭代更新规则
 
