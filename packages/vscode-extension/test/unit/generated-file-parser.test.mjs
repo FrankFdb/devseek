@@ -155,4 +155,36 @@ test('parseGeneratedArtifacts: loose create_file tool with unescaped C++ string 
   assert.ok(!artifacts[0].content.includes('[TOOL:create_file'));
 });
 
+test('parseGeneratedArtifacts: skips misplaced source implementation targeted at AGENTS.md', () => {
+  const text = `文件 1: code/shape_manager/AGENTS.md
+\`\`\`cpp
+#include "Renderer.h"
+
+void ConsoleRenderer::drawPixel(int x, int y, char c) {
+    std::cout << c;
+}
+\`\`\``;
+  const artifacts = parseGeneratedArtifacts(text);
+  assert.equal(artifacts.length, 0);
+});
+
+test('parseGeneratedArtifacts: skips file-tool source implementation targeted at AGENTS.md', () => {
+  const text = '[TOOL:create_file {"path":"code/shape_manager/AGENTS.md","content":"#include \\"Renderer.h\\"\\nvoid ConsoleRenderer::drawPixel(int x, int y, char c) { std::cout << c; }\\n"}]';
+  const artifacts = parseGeneratedArtifacts(text);
+  assert.equal(artifacts.length, 0);
+});
+
+test('parseGeneratedArtifacts: still allows normal instruction text for AGENTS.md', () => {
+  const text = `AGENTS.md
+\`\`\`markdown
+# Project Rules
+- Do not run broad searches.
+- Prefer rg with excludes.
+\`\`\``;
+  const artifacts = parseGeneratedArtifacts(text);
+  assert.equal(artifacts.length, 1);
+  assert.equal(artifacts[0].path, 'AGENTS.md');
+  assert.match(artifacts[0].content, /Project Rules/);
+});
+
 console.log('\n✅ All generated-file-parser tests passed!\n');

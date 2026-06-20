@@ -64,7 +64,7 @@ test('agent working state: failed final labels use explicit failed todo before f
   );
   assert.match(
     webview,
-    /function buildFinishedLabel\(isFailed, container\)[\s\S]*?if \(isFailed\) \{[\s\S]*?var failedTodoLabel = findFailedTodoLabel\(\);[\s\S]*?return 'Failed: ' \+ failedTodoLabel \+ stepSuffix;/,
+    /function buildFinishedLabel\(isFailed, container\)[\s\S]*?if \(isFailed\) \{[\s\S]*?var failedTodoLabel = findFailedTodoLabel\(\);[\s\S]*?return '失败：' \+ failedTodoLabel \+ stepSuffix;/,
   );
   assert.match(
     webview,
@@ -89,18 +89,26 @@ test('agent checkpoint banner anchors near the current input area, not transcrip
     webview,
     /function insertCheckpointBannerAtLatestPosition\(banner\)[\s\S]*?inputAreaEl\.parentNode\.insertBefore\(banner,\s*inputAreaEl\)/,
   );
-  assert.match(webview, /if \(!totalTasks \|\| resumeTaskIndex >= totalTasks\) return;/);
+  assert.match(webview, /function shouldDisplayCheckpointBanner\(msg\)[\s\S]*?!msg\.totalTasks \|\| msg\.resumeTaskIndex >= msg\.totalTasks[\s\S]*?if \(isGenerating && !hasPauseEvidence\) return false;/);
   assert.doesNotMatch(webview, /insertBefore\(banner,\s*container\.firstChild\)/);
 });
 
 test('agent checkpoint banner labels response corruption as safe retry', () => {
   assert.match(
     webview,
-    /function getCheckpointBannerCopy\(recoveryKind, pauseReason\)[\s\S]*?ResponseCorrupted[\s\S]*?action: '安全重试'[\s\S]*?promptLabel: '原请求包含未完成或损坏的工具文本，已阻止执行。'/,
+    /function getCheckpointBannerCopy\(recoveryKind, pauseReason\)[\s\S]*?ResponseCorrupted[\s\S]*?action: '安全重试'[\s\S]*?statusLabel: '等待重新生成安全响应。'[\s\S]*?promptLabel: '原请求包含未完成或损坏的工具文本，已阻止执行。'/,
   );
   assert.match(webview, /var promptSource = bannerCopy\.promptLabel \|\| userPrompt \|\| '';/);
+  assert.match(webview, /var progressLabel = bannerCopy\.statusLabel \|\| \('已完成 ' \+ resumeTaskIndex/);
   assert.match(
     webview,
     /showCheckpointBanner\(msg\.resumeTaskIndex, msg\.totalTasks, msg\.userPrompt, msg\.savedAt, msg\.recoveryKind, msg\.pauseReason\)/,
   );
+});
+
+test('agent working state: response tasks and fallbacks are localized and non-file-like', () => {
+  assert.match(webview, /taskAction === 'respond' \? ''/);
+  assert.doesNotMatch(webview, /taskAction === 'respond' \? 'Responding '/);
+  assert.match(webview, /label \|\| '处理中\.\.\.'/);
+  assert.doesNotMatch(webview, /label \|\| 'Working\.\.\.'/);
 });

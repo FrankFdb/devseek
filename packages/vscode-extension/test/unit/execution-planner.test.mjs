@@ -25,8 +25,10 @@ const req = createRequire(import.meta.url);
 const {
   parseLocalExecutionDiagnostics,
   planLocalExecution,
+  planRepeatLocalExecution,
   selectRepairFiles,
   shouldRepairLocalExecutionFailure,
+  shouldRebuildRepeatExecution,
   shouldPreferLocalExecution,
 } = req(bundlePath);
 
@@ -109,6 +111,46 @@ test('ExecutionPlanner: CMake test request runs executable instead of build-only
     assert.equal(plan.reason, 'cmake-local-build-and-test');
     assert.match(plan.command, /if test -x/);
     assert.match(plan.command, /shape_manager/);
+  } finally {
+    fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ExecutionPlanner: repeat recompile request replans build instead of stale run-only executable', () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-repeat-rebuild-'));
+  try {
+    const projectDir = path.join(workspaceRoot, 'code', 'shape_manager');
+    const buildDir = path.join(projectDir, '.devseek-build');
+    fs.mkdirSync(buildDir, { recursive: true });
+    const cmakeFile = path.join(projectDir, 'CMakeLists.txt');
+    const mainCpp = path.join(projectDir, 'main.cpp');
+    fs.writeFileSync(cmakeFile, [
+      'cmake_minimum_required(VERSION 3.10)',
+      'project(ShapeManager)',
+      'add_executable(shape_manager main.cpp)',
+      '',
+    ].join('\n'));
+    fs.writeFileSync(mainCpp, 'int main() { return 0; }\n');
+
+    const staleExecutable = path.join(buildDir, 'shape_manager');
+    const lastPlan = {
+      command: `'${staleExecutable}'`,
+      cwd: projectDir,
+      mode: 'run-only',
+      reason: 'cmake-existing-executable-run',
+      attachedFiles: [mainCpp, cmakeFile],
+      targetFiles: [mainCpp, cmakeFile],
+    };
+
+    assert.equal(shouldRebuildRepeatExecution('重新编译，执行'), true);
+    const plan = planRepeatLocalExecution('重新编译，执行', lastPlan, workspaceRoot);
+
+    assert.ok(plan);
+    assert.equal(plan.mode, 'cmake');
+    assert.match(plan.reason, /repeat-replanned-build/);
+    assert.match(plan.reason, /cmake-local-rebuild-and-test/);
+    assert.match(plan.command, /cmake -S/);
+    assert.doesNotMatch(plan.command, new RegExp(`^'${staleExecutable.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'$`));
   } finally {
     fs.rmSync(workspaceRoot, { recursive: true, force: true });
   }

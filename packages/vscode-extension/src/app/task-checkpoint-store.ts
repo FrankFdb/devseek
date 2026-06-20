@@ -13,6 +13,7 @@ export interface TaskCheckpointRecord<TTask = unknown> {
   completedCount: number;
   savedAt: number;
   sessionId: string;
+  recoveryKind?: string;
   pauseReason?: string;
 }
 

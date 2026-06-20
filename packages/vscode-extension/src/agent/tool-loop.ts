@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { looksLikeRawToolCallText, parseGeneratedArtifacts } from '../generated-file-parser';
 import { resolveGeneratedArtifactPathForPrompt, resolveWorkspaceWritePath } from '../workspace/path-resolver';
 import { WorkspaceEditService } from '../workspace/edit-service';
+import { shouldBlockProjectInstructionFileContent } from '../workspace/instruction-file-safety';
 import { AgentToolExecutor } from './tool-executor';
 import type { FakeTool } from './fake-tool-parser';
 import { cleanAgentFinalSummaryForUser } from './agentic-summary';
@@ -151,7 +152,7 @@ function isExecutableFile(filePath: string): boolean {
 export function analyzeTerminalEvidence(command: string, formattedOutput: string, workdir: string): { ran: boolean; evidence: TerminalEvidence } {
   const exitCode = parseFormattedTerminalExitCode(formattedOutput);
   const kind = classifyTerminalEvidenceCommand(command);
-  const notExecuted = /(?:命令未执行|用户拒绝|未确认|not executed|declined|denied|timeout)/i.test(formattedOutput || '');
+  const notExecuted = /(?:命令未执行|终端工具被禁止|工具被禁止|用户拒绝|未确认|not executed|declined|denied|timeout|terminal tool disabled)/i.test(formattedOutput || '');
   let ok = !notExecuted && exitCode === 0;
   let detail = notExecuted ? '命令没有实际执行' : exitCode === null ? '终端结果缺少退出码' : undefined;
   const outputPath = resolveCompilerOutputPath(command, workdir);
@@ -317,6 +318,10 @@ export async function applyMarkdownFileArtifactsForLoop(
     }
     if (!isLikelyWritableFilePathForAgent(resolvedWrite.relPath)) {
       feedback.push(`[generated_file: ${artifact.path}] 跳过（目标是目录或缺少文件名）`);
+      continue;
+    }
+    if (shouldBlockProjectInstructionFileContent(resolvedWrite.relPath, artifact.content)) {
+      feedback.push(`[generated_file: ${artifact.path}] 跳过（疑似把源码写入项目指令文件；请改为真实源码路径，或仅在用户明确要求时写入纯指令文本）`);
       continue;
     }
     const resolvedAbs = resolvedWrite.absPath;
@@ -663,6 +668,10 @@ export async function executeFakeToolsForLoop(
           const absPath = normalized.absPath;
           if (!absPath) {
             parts.push(`[${tool.name}: ${rawPath}] 错误: 无法解析为工作区内文件路径，已阻止写入。`);
+            continue;
+          }
+          if (shouldBlockProjectInstructionFileContent(normalized.path, content)) {
+            parts.push(`[${tool.name}: ${rawPath}] 错误: 目标是项目指令文件，但 content 看起来是源码实现，已阻止写入。请把源码写到真实源码文件，AGENTS/CLAUDE/规则文件只用于项目指令。`);
             continue;
           }
           const payloadDrift = detectNestedFilePayloadDrift({

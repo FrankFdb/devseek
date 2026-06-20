@@ -143,6 +143,7 @@ test('Config namespace: contributed settings use devseek.*', () => {
 test('Config namespace: legacy deepseek reads are limited to migration', () => {
   const files = [
     'src/extension.ts',
+    'src/app/config-migration-service.ts',
     'src/bridge-client.ts',
     'src/context-builder.ts',
     'src/workspace-applier.ts',
@@ -161,7 +162,7 @@ test('Config namespace: legacy deepseek reads are limited to migration', () => {
     }
   }
   assert.equal(hits.length, 1, 'only migration may read legacy deepseek settings');
-  assert.ok(src('src/extension.ts').includes("const legacy = vscode.workspace.getConfiguration('deepseek')"));
+  assert.ok(src('src/app/config-migration-service.ts').includes("const legacy = vscode.workspace.getConfiguration('deepseek')"));
 });
 
 test('§8.3 File edits: workspace applier enforces protectedFiles', () => {
@@ -178,6 +179,7 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
   assertContains(applier, 'cleanupCreatedEmptyDirs', 'rollback path removes empty directories created by this apply');
 
   const extension = src('src/extension.ts');
+  const discovery = src('src/app/context-discovery-service.ts');
   assert.match(
     extension,
     /applyGeneratedArtifactsWithPrompt\([\s\S]*?workflowReporter[\s\S]*?\{ rollbackOnValidationFailure: false \}/,
@@ -188,28 +190,64 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
     /const repairApply = await applyGeneratedArtifactsWithPrompt\([\s\S]*?\{ rollbackOnValidationFailure: false \}/,
     'repair rounds must keep failed repair files for the next validation loop',
   );
+  const repairService = src('src/app/agentic-repair-service.ts');
+  assertContains(extension, 'new AgenticRepairService(initialApply)', 'closed-loop repair must delegate repair state to AgenticRepairService');
+  assertContains(extension, 'repairService.buildRepairPrompt', 'extension must not own repair prompt construction');
+  assertContains(extension, 'repairService.evaluateAppliedRepair', 'extension must not own repair progress state machine');
   assertContains(extension, 'responseClaimsStatusOk', 'closed-loop repair must detect model self-claimed STATUS OK');
   assertContains(extension, '已拒绝模型 STATUS: OK，自验证仍失败', 'model STATUS OK must not override failed local validation');
-  assertContains(extension, '本地验证状态为 FAILED', 'repair prompt must make failed local validation authoritative');
-  assertContains(extension, '禁止只输出 STATUS: OK', 'repair prompt must forbid OK-only responses after failed validation');
+  assertContains(repairService, '本地验证状态为 FAILED', 'repair prompt must make failed local validation authoritative');
+  assertContains(repairService, '禁止只输出 STATUS: OK', 'repair prompt must forbid OK-only responses after failed validation');
+  assertContains(repairService, 'buildValidationFailureSignature', 'closed-loop repair must fingerprint validation failures');
+  assertContains(repairService, 'stagnantFailureRounds', 'closed-loop repair must detect repeated no-progress failures');
+  assertContains(repairService, '自动修正无进展，已停止重复修复', 'closed-loop repair must stop instead of looping forever on unchanged errors');
+  assertContains(repairService, '验证失败涉及文件', 'repair prompt must include failure files extracted from validation output');
+  assert.doesNotMatch(extension, /function buildRepairPrompt\(/, 'extension must not define repair prompt business logic');
+  assert.doesNotMatch(extension, /function buildValidationFailureSignature\(/, 'extension must not define repair failure fingerprinting');
 });
 
 test('§8.3 File edits: blocked QualityGate does not enter closed-loop repair', () => {
   const extension = src('src/extension.ts');
-  assertContains(extension, 'function shouldRunClosedLoopRepair', 'closed-loop repair must have an explicit gate');
-  assertContains(extension, "validation.status === 'failed'", 'only failed command evidence is repairable');
-  assertContains(extension, 'validation.ran === true', 'blocked or skipped validation must not be repairable');
-  assertContains(extension, "qualityGate?.status !== 'blocked'", 'QualityGate blocked must stop automatic repair');
+  const repairService = src('src/app/agentic-repair-service.ts');
+  assertContains(repairService, 'function shouldRunClosedLoopRepair', 'closed-loop repair must have an explicit app-service gate');
+  assertContains(repairService, "validation.status === 'failed'", 'only failed command evidence is repairable');
+  assertContains(repairService, 'validation.ran === true', 'blocked or skipped validation must not be repairable');
+  assertContains(repairService, "qualityGate?.status !== 'blocked'", 'QualityGate blocked must stop automatic repair');
+  assert.doesNotMatch(extension, /function shouldRunClosedLoopRepair\(/, 'extension must not own closed-loop repair gate logic');
   assert.match(
     extension,
-    /if \(shouldRunClosedLoopRepair\(result\)\)/,
-    'manual apply path must use the repairability gate',
+    /if \(shouldRunClosedLoopRepair\(finalResult\)\)/,
+    'manual apply path must use the repairability gate after apply-failure recovery',
   );
   assert.match(
     extension,
-    /if \(shouldRunClosedLoopRepair\(firstApply\)\)/,
-    'agentic auto-apply path must use the repairability gate',
+    /if \(shouldRunClosedLoopRepair\(finalApply\)\)/,
+    'agentic auto-apply path must use the repairability gate after apply-failure recovery',
   );
+});
+
+test('§8.3 File edits: truncating overwrite failures are recoverable, not terminal UI dead ends', () => {
+  const applier = src('src/workspace-applier.ts');
+  assertContains(applier, "failureReason?: 'no-artifacts' | 'user-cancelled' | 'path-drift' | 'protected-file' | 'truncating-overwrite'", 'apply failures must be typed');
+  assertContains(applier, "failureReason: 'truncating-overwrite'", 'suspicious truncation guard must expose a recoverable reason');
+  assertContains(applier, 'blockedChangePaths: changeSet.changedPaths', 'blocked apply must return candidate paths for repair context');
+
+  const extension = src('src/extension.ts');
+  assertContains(extension, 'recoverApplyFailureIfPossible({', 'extension must delegate apply-failure recovery to the app service');
+
+  const recovery = src('src/app/apply-failure-recovery-service.ts');
+  assertContains(recovery, 'MAX_TRUNCATING_OVERWRITE_REPAIR_ATTEMPTS', 'truncating overwrite recovery must allow a second strict retry');
+  assertContains(recovery, "result?.failureReason === 'truncating-overwrite'", 'only truncating overwrite gets safe patch regeneration');
+  assertContains(recovery, 'buildApplyFailureRepairPrompt', 'recovery must rebuild a targeted repair prompt');
+  assertContains(recovery, '当前真实文件内容', 'recovery prompt must include real file content instead of relying on stale model text');
+  assertContains(recovery, '上一轮修复仍被判定为疑似截断覆盖', 'retry prompt must feed back the safety rejection');
+  assertContains(recovery, '只允许输出 unified diff', 'retry prompt must force minimum patch output for existing files');
+  assertContains(recovery, '不要把源码实现写入 AGENTS.md', 'recovery prompt must protect project instruction files');
+
+  assertContains(extension, "repairApply.failureReason === 'truncating-overwrite'", 'closed-loop repair must not treat blocked writes as generic no-op output');
+  assertContains(extension, '已拒绝截断覆盖修复，重新要求最小补丁', 'closed-loop repair must feed blocked writes back into the next repair round');
+  assertContains(extension, '未运行后续验证或 QualityGate，因为修复内容未安全落地', 'blocked writes must stop validation and quality gate claims');
+  assert.doesNotMatch(extension, /已收到修正草案（全量覆盖）/, 'reset stream notices must not be mislabeled as full overwrite');
 });
 
 test('§8.3 File edits: webview renders QualityGate blocked separately from repair failure', () => {
@@ -251,11 +289,12 @@ test('§8.3 File edits: code directory prompts force generated code paths under 
   const agentLoop = src('src/agent-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
   const extension = src('src/extension.ts');
+  const discovery = src('src/app/context-discovery-service.ts');
   assertContains(toolLoop, 'promptLooksLikeCppProgram', 'tool loop detects C++ prompts separately from C');
   assertContains(toolLoop, 'contentLooksLikeCppProgram', 'tool loop detects C++ content separately from C');
   assertContains(toolLoop, 'resolveWorkspaceWritePath', 'tool loop delegates create_file/write_file path decisions to shared resolver');
   assert.match(
-    extension,
+    discovery,
     /const PATH_RE = \/\(\(\?:~\\\/\|\\\/\)\?/,
     'directory auto-discovery must recognize absolute paths from user prompts',
   );
@@ -632,7 +671,13 @@ test('Agent loop: file tools and validation use ground-truth outcomes', () => {
 
 test('Local execution failures escalate into Agent repair instead of browser upload repair', () => {
   const ext = src('src/extension.ts');
+  const planner = src('src/execution-planner.ts');
   const repair = src('src/local-execution-repair.ts');
+  assertContains(ext, 'planRepeatLocalExecution(prompt, lastLocalExecutionPlan', 'repeat execution must be delegated to the planner');
+  assert.doesNotMatch(ext, /\{\s*\.\.\.lastLocalExecutionPlan,\s*reason:\s*'repeat-last-local-plan'\s*\}/, 'extension must not blindly replay stale run-only plans');
+  assertContains(planner, 'shouldRebuildRepeatExecution', 'planner must distinguish recompile/rebuild repeat requests');
+  assertContains(planner, 'canReplayRunOnlyPlan', 'planner must verify run-only executables still exist');
+  assertContains(planner, 'repeat-replanned-build', 'planner must replan missing or rebuild repeat requests as build/run');
   assertContains(ext, 'buildLocalExecutionRepairTasks(localPlan, localResult, repairWsRoot)', 'local failures must build concrete repair tasks');
   assertContains(ext, 'runAgentLoop(', 'local failures must enter the tool-capable agent loop');
   assertContains(ext, '本地执行失败，进入 Agent 修复', 'UI must show the repair escalation');
@@ -709,9 +754,11 @@ test('Agent run boundaries reset stale todo and pending-edit review scope', () =
 test('Directory discovery skips generated build artifacts', () => {
   const ext = src('src/extension.ts');
   const planner = src('src/execution-planner.ts');
+  const contextDiscovery = src('src/app/context-discovery-service.ts');
   const discovery = src('src/file-discovery.ts');
-  assertContains(ext, 'shouldSkipDiscoveryDir', 'directory attachments must use shared discovery skip policy');
-  assertContains(ext, 'shouldIncludeDiscoveredSourceFile', 'auto directory discovery must filter generated source-like artifacts');
+  assertContains(ext, 'collectDirectoryFiles', 'directory attachments must delegate to shared context discovery');
+  assertContains(contextDiscovery, 'shouldSkipDiscoveryDir', 'directory attachments must use shared discovery skip policy');
+  assertContains(contextDiscovery, 'shouldIncludeDiscoveredSourceFile', 'auto directory discovery must filter generated source-like artifacts');
   assertContains(planner, 'shouldSkipDiscoveryDir', 'execution planner discovery must use shared skip policy');
   assertContains(planner, 'shouldIncludeDiscoveredSourceFile', 'execution planner discovery must filter generated source-like artifacts');
   assertContains(discovery, '.devseek-builds', 'shared discovery policy must skip DevSeek build directories');
@@ -1123,7 +1170,9 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   const history = src('src/app/task-history-store.ts');
   const resume = src('src/app/resume-context-builder.ts');
   const recovery = src('src/app/provider-recovery-service.ts');
+  const runDisplay = src('src/agent/agent-run-display.ts');
   const loop = src('src/agent-loop.ts');
+  const loopTypes = src('src/agent/loop-types.ts');
   const idempotency = src('src/agent/idempotency-guard.ts');
   const reliability = src('src/llm/providers/web-reliability.ts');
   const bridgeProvider = src('src/llm/providers/bridge.ts');
@@ -1141,13 +1190,18 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(recovery, 'ResponseCorrupted', 'provider recovery must classify corrupted responses');
   assertContains(recovery, "targetKind: 'provider-response'", 'response corruption fallback must stay an internal target, not a fake file');
   assertContains(recovery, "action: 'respond'", 'response corruption fallback must use a local safe response task');
+  assertContains(runDisplay, 'function isLiteralToolProtocolPrompt', 'literal protocol display detection must live in a display classifier');
+  assertContains(runDisplay, "initialTaskAction: 'respond'", 'literal protocol display must start as a safe response, not exploration');
+  assertContains(loopTypes, 'runDisplayAction?: AgentTask', 'agent loop must treat initial display action as display-only metadata');
   assertContains(loop, "task.action === 'respond'", 'agent loop must handle safe response tasks before model/tool execution');
+  assertContains(loop, '!literalToolProtocolPrompt', 'literal protocol prompts must not infer fallback file/tool todos');
   assertContains(reliability, 'class ResponseIntegrityChecker', 'DeepSeek Web provider must have response integrity checks');
   assertContains(reliability, 'class StreamWatchdog', 'DeepSeek Web provider must have stream watchdog semantics');
   assertContains(reliability, 'class BridgeHealthMonitor', 'DeepSeek Web provider must have bridge health monitor semantics');
   assertContains(bridgeProvider, 'ResponseIntegrityChecker', 'BridgeProvider must run integrity checks on completed responses');
   assertContains(extension, 'new ProviderRecoveryService().classify', 'agent provider errors must be classified before showing UI errors');
   assertContains(extension, 'buildProviderRecoveryCheckpointTasks', 'provider recovery must save a resumable checkpoint from task facts');
+  assertContains(extension, 'buildAgentRunDisplayProfile', 'free-explore UI copy must be selected by the display classifier');
   assertContains(extension, 'shouldResumeCheckpointFromPrompt', 'short resume prompts must route to checkpoint resume before normal chat');
   assertContains(extension, 'checkpointResumeTasks', 'agent resume routing must use an explicit checkpoint state');
   assert.doesNotMatch(extension, /!resumeFromIndex\b/, 'resume index 0 must not be treated as no checkpoint resume');

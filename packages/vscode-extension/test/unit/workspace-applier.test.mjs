@@ -234,6 +234,9 @@ test('workspace-applier: blocks suspicious truncating overwrite for small fix re
 
     assert.equal(result.applied, false);
     assert.deepEqual(result.changedPaths, []);
+    assert.equal(result.failureReason, 'truncating-overwrite');
+    assert.match(result.failureDetail, /原文件约 120 行/);
+    assert.ok(result.blockedChangePaths.includes('packages/vscode-extension/src/app/workflow-service.ts'));
     assert.equal(readFileSync(target, 'utf8'), original);
     assert.equal(
       statuses.some((status) => status.phase === 'apply' && status.state === 'failed' && status.title === '已阻止写入（疑似截断覆盖）'),

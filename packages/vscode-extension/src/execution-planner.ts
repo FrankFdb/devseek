@@ -16,6 +16,10 @@ export interface LocalExecutionPlan {
   targetFiles: string[];
 }
 
+export interface LocalExecutionPlanOptions {
+  forceBuild?: boolean;
+}
+
 export interface LocalExecutionResult {
   ok: boolean;
   command: string;
@@ -39,7 +43,8 @@ const RUN_REQUEST_RE = /(运行|执行|启动|测试|test|run|execute|看结果|
 const PROMPT_FILE_RE = /(^|[^A-Za-z0-9_./-])([A-Za-z0-9_./-]+\.(?:cpp|cc|cxx|c|h|hpp|py|js))(?=$|[^A-Za-z0-9_./-])/g;
 const PROMPT_DIR_RE = /(^|[^A-Za-z0-9_./-])([A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\/?)(?=$|[^A-Za-z0-9_./-])/g;
 const PROMPT_ABSOLUTE_PATH_RE = /\/[^\s'"`，。！？；：\n]+/g;
-const REPEAT_EXEC_RE = /((再次|重新|重试|再来).*(编译|构建|运行|执行))|((编译|构建|运行|执行).*(再次|重新|重试|再来))|\b(retry|re-run|rerun|run again|compile again)\b/i;
+const REPEAT_EXEC_RE = /((再次|重新|重试|再来).*(编译|构建|运行|执行))|((编译|构建|运行|执行).*(再次|重新|重试|再来))|\b(retry|re-run|rerun|run again|compile again|build again|recompile|rebuild)\b/i;
+const REBUILD_REPEAT_RE = /((再次|重新|重试|再来).*(编译|构建))|((编译|构建).*(再次|重新|重试|再来))|\b(?:recompile|rebuild|compile again|build again)\b/i;
 const CPP_SOURCE_RE = /\.(cpp|cc|cxx|c)$/i;
 const CPP_HEADER_RE = /\.(h|hpp)$/i;
 const PYTHON_RE = /\.py$/i;
@@ -65,7 +70,12 @@ export function shouldPreferLocalExecution(prompt: string, files?: string[], wor
   return discovered.length > 0;
 }
 
-export function planLocalExecution(prompt: string, files: string[], workspaceRoot?: string): LocalExecutionPlan | null {
+export function planLocalExecution(
+  prompt: string,
+  files: string[],
+  workspaceRoot?: string,
+  options: LocalExecutionPlanOptions = {},
+): LocalExecutionPlan | null {
   const promptCandidates = discoverPromptCandidates(prompt, workspaceRoot);
   const normalized = dedupe([...files, ...promptCandidates])
     .map((filePath) => nodePath.normalize(filePath))
@@ -79,10 +89,10 @@ export function planLocalExecution(prompt: string, files: string[], workspaceRoo
   const [targetDir, dirFiles] = selected;
   const runRequested = RUN_REQUEST_RE.test(prompt);
 
-  const cmakePlan = planCmakeExecution(targetDir, dirFiles, runRequested);
+  const cmakePlan = planCmakeExecution(targetDir, dirFiles, runRequested, options.forceBuild === true);
   if (cmakePlan) return cmakePlan;
 
-  const cppPlan = planCppExecution(targetDir, dirFiles, runRequested);
+  const cppPlan = planCppExecution(targetDir, dirFiles, runRequested, options.forceBuild === true);
   if (cppPlan) return cppPlan;
 
   const scriptPlan = planScriptExecution(targetDir, dirFiles, runRequested);
@@ -93,6 +103,40 @@ export function planLocalExecution(prompt: string, files: string[], workspaceRoo
 
 export function isRepeatExecutionRequest(prompt: string): boolean {
   return REPEAT_EXEC_RE.test(prompt || '');
+}
+
+export function planRepeatLocalExecution(
+  prompt: string,
+  lastPlan: LocalExecutionPlan | undefined,
+  workspaceRoot?: string,
+): LocalExecutionPlan | null {
+  if (!lastPlan || !isRepeatExecutionRequest(prompt)) return null;
+  const relatedFiles = dedupe([...lastPlan.targetFiles, ...lastPlan.attachedFiles])
+    .filter((filePath) => {
+      try {
+        return fs.statSync(filePath).isFile();
+      } catch {
+        return false;
+      }
+    });
+  const mustRebuild = shouldRebuildRepeatExecution(prompt) || !canReplayRunOnlyPlan(lastPlan);
+
+  if (mustRebuild && relatedFiles.length > 0) {
+    const rebuilt = planLocalExecution(prompt, relatedFiles, workspaceRoot, { forceBuild: true });
+    if (rebuilt) {
+      return {
+        ...rebuilt,
+        reason: `${rebuilt.reason}; repeat-replanned-build`,
+      };
+    }
+  }
+
+  if (!canReplayRunOnlyPlan(lastPlan)) return null;
+  return { ...lastPlan, reason: 'repeat-last-local-plan' };
+}
+
+export function shouldRebuildRepeatExecution(prompt: string): boolean {
+  return REBUILD_REPEAT_RE.test(prompt || '');
 }
 
 export function shouldRepairLocalExecutionFailure(plan: LocalExecutionPlan, result: LocalExecutionResult): boolean {
@@ -360,13 +404,13 @@ function uniqueExistingPaths(paths: string[]): string[] {
   return out;
 }
 
-function planCmakeExecution(targetDir: string, dirFiles: string[], runRequested: boolean): LocalExecutionPlan | null {
+function planCmakeExecution(targetDir: string, dirFiles: string[], runRequested: boolean, forceBuild = false): LocalExecutionPlan | null {
   const cmakeFile = nodePath.join(targetDir, 'CMakeLists.txt');
   if (!fs.existsSync(cmakeFile)) return null;
   const buildDir = nodePath.join(targetDir, '.devseek-build');
   const buildCommand = `cmake -S ${q(targetDir)} -B ${q(buildDir)} && cmake --build ${q(buildDir)}`;
   const executableTarget = detectCmakeExecutableTarget(cmakeFile);
-  if (runRequested) {
+  if (runRequested && !forceBuild) {
     const existingExecutable = findExistingCmakeExecutable(targetDir, buildDir, executableTarget);
     if (existingExecutable) {
       return {
@@ -387,13 +431,15 @@ function planCmakeExecution(targetDir: string, dirFiles: string[], runRequested:
     command,
     cwd: targetDir,
     mode: 'cmake',
-    reason: runRequested ? 'cmake-local-build-and-test' : 'cmake-local-build-only',
+    reason: runRequested
+      ? (forceBuild ? 'cmake-local-rebuild-and-test' : 'cmake-local-build-and-test')
+      : 'cmake-local-build-only',
     attachedFiles: dirFiles,
     targetFiles: dirFiles,
   };
 }
 
-function planCppExecution(targetDir: string, dirFiles: string[], runRequested: boolean): LocalExecutionPlan | null {
+function planCppExecution(targetDir: string, dirFiles: string[], runRequested: boolean, forceBuild = false): LocalExecutionPlan | null {
   const sourceFiles = dirFiles.filter((filePath) => CPP_SOURCE_RE.test(filePath));
   if (sourceFiles.length === 0) return null;
 
@@ -407,7 +453,7 @@ function planCppExecution(targetDir: string, dirFiles: string[], runRequested: b
   const libFlags = detectCppLibFlags(sourceFiles);
   const libFlagsSuffix = libFlags ? ` ${libFlags}` : '';
 
-  if (runRequested) {
+  if (runRequested && !forceBuild) {
     const existingExecutable = findExistingCppExecutable(targetDir, sourceFiles, mainSources);
     if (existingExecutable) {
       return {
@@ -430,7 +476,9 @@ function planCppExecution(targetDir: string, dirFiles: string[], runRequested: b
       command,
       cwd: targetDir,
       mode: runRequested ? 'compile-run' : 'compile-only',
-      reason: runRequested ? 'single-main-local-build-run' : 'single-main-local-build',
+      reason: runRequested
+        ? (forceBuild ? 'single-main-local-rebuild-run' : 'single-main-local-build-run')
+        : 'single-main-local-build',
       attachedFiles: dirFiles,
       targetFiles: sourceFiles,
     };
@@ -539,6 +587,28 @@ function firstExecutable(candidates: string[]): string | null {
     if (isExecutableCandidate(resolved)) return resolved;
   }
   return null;
+}
+
+function canReplayRunOnlyPlan(plan: LocalExecutionPlan): boolean {
+  if (plan.mode !== 'run-only') return true;
+  const executable = extractRunOnlyExecutablePath(plan);
+  return !!executable && isExecutableCandidate(executable);
+}
+
+function extractRunOnlyExecutablePath(plan: LocalExecutionPlan): string | null {
+  const command = (plan.command || '').trim();
+  if (!command || /[;&|`$<>]/.test(command)) return null;
+  const singleQuoted = command.match(/^'((?:[^']|'\\''|'"'"')+)'$/);
+  const doubleQuoted = command.match(/^"([^"]+)"$/);
+  const raw = singleQuoted
+    ? singleQuoted[1].replace(/'\\''|'"'"'/g, "'")
+    : doubleQuoted
+      ? doubleQuoted[1]
+      : /\s/.test(command)
+        ? ''
+        : command;
+  if (!raw) return null;
+  return nodePath.isAbsolute(raw) ? raw : nodePath.resolve(plan.cwd, raw);
 }
 
 function isExecutableCandidate(filePath: string): boolean {

@@ -554,6 +554,14 @@ export const manualPhase6QualityGate: string = 1;
 - 修正：checkpoint banner 根据恢复类型显示动作文案；ResponseCorrupted 显示“上次 Agent 输出被安全阻断 / 安全重试”，并用安全摘要替代原始 `[TOOL:...]` 片段；LoginRequired 显示“登录后继续”，RateLimited 显示“处理后继续”。
 - 2026-06-20 最新 P7-02 复测中，安全重试后没有写入 `docs/manual-phase7-corrupt.md`，但恢复任务把内部 `provider-response` 当作文件目标，进而搜索/分析 `provider-recovery-service.ts` 和 `dist/extension.js`，偏离用户原始请求。
 - 修正：ResponseCorrupted 在无可信文件事实时生成内部 `targetKind=provider-response` 的 `respond` 任务；Agent Loop 本地输出安全响应，不调用模型工具循环、不搜索 `provider-response`、不分析 DevSeek 源码。
+- 2026-06-20 最新任务执行截图中，Agent 仍在运行时出现“上次 Agent 任务中断 / 继续执行”banner。评估为进度 checkpoint 被当成 paused checkpoint 展示；Claude Code/Codex 类工具会后台保存进度，但只在真实暂停、登录失效、响应损坏等可恢复中断时展示继续入口。
+- 修正：`onTaskCheckpoint` 增加 `progress/paused/completed` 原因；Extension 只对 `paused` 发送 `agentCheckpointAvailable`，WebView 也会在 `isGenerating` 且没有暂停证据时隐藏 checkpoint banner。
+- 2026-06-20 最新 shape_manager 截图中，`code/shape_manager/AGENTS.md` 内容实际是 `Renderer.cpp` 源码，DevSeek 后续诊断把它当作项目指令/源码事实，导致判断 `Triangle.cpp` 与 `AGENTS.md` 不一致，并尝试生成错误候选。
+- 修正：项目指令服务、生成文件解析器和写入工具边界统一过滤“AGENTS/CLAUDE/rules/copilot 指令路径 + 疑似源码实现”，这类错位文件不再进入项目规则上下文，也不会被作为可应用源码候选或工具写入目标。
+- 2026-06-20 持续执行截图中，模型输出 4 个文件修复方案，但 DevSeek 只识别 2 个候选，并因 `CMakeLists.txt` 从约 70 行缩到约 15 行触发“疑似截断覆盖”拦截后停在失败提示。评估：截断保护正确，但停在 UI 死路不符合 Claude Code/Codex 的闭环修复方式。
+- 修正：apply 结果新增 `failureReason/failureDetail/blockedChangePaths`；对 `truncating-overwrite` 自动把拦截原因、上一轮输出和真实文件内容回传模型，要求重新生成最小 unified diff 或新增文件完整内容，再继续自动验证/闭环修复。
+- 2026-06-20 编译验证截图中，终端工具被禁止后模型仍输出“编译可行性通过”。评估：没有真实退出码时只能说“未完成验证/静态分析有限”，不能把编译、运行或测试标为通过。
+- 修正：终端证据分析把“终端工具被禁止/命令未执行/超时/denied”等输出归类为未执行；缺少真实 exitCode 时不计入成功验证证据，提示词也明确禁止伪造通过结论。
 
 ## 10. 已发现问题跟踪
 
@@ -574,8 +582,13 @@ export const manualPhase6QualityGate: string = 1;
 | P7-RESUME-01 | P7-04 | 用户输入“继续”后没有从 checkpoint 恢复执行，而是普通聊天建议复制文件内容或手动 shell 指令 | 自然语言继续和 checkpoint banner 都应进入同一恢复执行链路；resumeFromIndex=0、Agent toggle 状态和残留 context chips 不能阻断恢复 | 已新增 `shouldResumeCheckpointFromPrompt`，修复 `checkpointResumeTasks` 显式判断，并移除 `forceNoAgent/files/images` 阻断条件 |
 | P7-RECOVERY-FACTS-01 | P7-04 | checkpoint resume 已触发，但任务只剩“恢复并继续处理文件”，丢失创建内容与验证事实，最终文件未创建 | 对标 Claude Code/Codex，恢复应依赖本地 checkpoint/task facts；已知文件内容的 create 任务应本地确定性执行并读回校验，不应再让模型猜或输出操作说明 | 已新增 `expectedContent` checkpoint fact 提取和 `tryExecuteDeterministicCreateTask`；覆盖“建 ... 内容分别为 ... 并验证”回归测试 |
 | P7-BANNER-01 | P7-04 | “继续执行”按钮显示在历史对话最开始位置，且完成后可能残留旧 checkpoint banner | 恢复入口是当前任务控制，不应作为历史首条消息；完成态 checkpoint 不能被 loadFresh 当作可恢复任务 | 已将 banner 锚定到输入区上方当前操作区；checkpoint 保存/清理改为 await，并清理完成态 checkpoint |
+| P7-BANNER-02 | P7-04、持续执行 | Agent 仍在运行时出现“上次 Agent 任务中断 / 继续执行”提示 | 进度 checkpoint 和暂停 checkpoint 混用；运行中保存进度不应展示恢复入口 | 已给 checkpoint 回调增加原因，仅 paused 状态展示 banner；WebView 在生成中且无暂停证据时隐藏恢复入口 |
 | P7-ERROR-UI-01 | P7-02、P7-03 | 响应损坏时 UI 裸露粘连错误串，Working 标题显示 `Failed: Exploring ...` 而不是安全阻断原因 | 对标 Claude Code/Codex，失败表面必须呈现可操作诊断事实；内部阶段名不能覆盖 provider 安全拦截结论 | 已新增 `buildProviderRecoveryDisplay` 和 `agentLastErrorTitle`，覆盖损坏响应格式化与错误标题优先级回归测试 |
 | P7-TRUSTED-FACTS-01 | P7-02、P7-04 | ResponseCorrupted 继续后把用户消息中的工具调用样本路径误当作写文件任务，且安全阻断 banner 文案仍像普通继续执行 | 对标 Claude Code/Codex，用户/模型文本里的工具协议片段是 untrusted data，恢复入口也必须表达真实动作而非笼统“继续执行” | 已新增 trusted prompt 清洗、否定动作过滤和恢复 action 推断；ResponseCorrupted banner 显示“安全重试”；覆盖 literal tool sample、read-only analyze、explicit create、safe-retry banner 回归 |
+| P7-INSTRUCTION-01 | shape_manager 持续执行 | scoped `AGENTS.md` 内容是源码实现时被当作项目指令或源码事实，污染后续诊断 | AGENTS/CLAUDE/rules 是指令文件，不是普通源码；疑似源码内容应被视为错位文件并从可信上下文/候选中排除 | 已新增 `instruction-file-safety`，接入项目指令读取、生成候选解析和工具写入保护 |
+| P7-APPLY-RECOVERY-01 | shape_manager 持续执行 | 疑似截断覆盖被正确拦截，但流程停在“应用失败”，没有自动生成安全补丁继续 | 截断覆盖是可恢复 apply failure，应自动转为最小 diff 修复，而不是要求用户手动复制 diff | 已结构化 `failureReason=truncating-overwrite` 并自动回传真实文件内容生成安全补丁 |
+| P7-EVIDENCE-01 | 编译验证 | 终端工具被禁止/未执行后仍宣称“编译通过” | 编译/运行/测试必须来自真实命令退出码；未执行只能标为未验证或阻塞 | 已将终端禁止/未执行/超时归为非成功证据，并更新 agent prompt 禁止伪造验证通过 |
+| P7-ARCH-01 | 多轮显示/持续执行修复 | `extension.ts` 同时承担 UI 模板、artifact 预览、diff provider、目录发现和恢复策略，导致相似显示问题反复以局部补丁出现 | 对标 Claude Code/Codex，入口应是薄装配层；恢复、显示、上下文发现和 apply 失败处理应由服务边界承载 | 已迁出 WebView HTML、generated artifact UI、pending diff provider、config 迁移、context discovery、apply failure recovery；`extension.ts` 从 5555 行降至 4266 行并由 workflow/architecture 测试守住 |
 
 ## 11. 每轮迭代更新规则
 

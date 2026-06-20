@@ -68,6 +68,26 @@
 
 ---
 
+**变更标题**：Phase 7 显示与 apply 恢复信任边界修复（2026-06-20）
+- **需求归因**：实现缺陷 + 体验退化 + 架构债务 — 手测截图暴露运行中误显示继续入口、`AGENTS.md` 错位源码污染上下文、截断覆盖拦截后停在 UI 死路、终端未执行却宣称验证通过。
+- **影响能力层**：理解、上下文装配、文件候选解析、执行、验证、修复、WebView 状态表达。
+- **架构影响**：
+  - 新增 `workspace/instruction-file-safety.ts`，集中判断项目指令文件路径和疑似错位源码内容。
+  - `ProjectInstructionService` 在注入 AGENTS/CLAUDE/rules 前过滤疑似源码实现。
+  - `generated-file-parser`、`generated-file-resolver`、`agent/tool-loop` 在候选解析和工具写入边界阻断“指令文件路径 + 源码实现”。
+  - `ApplyWorkflowResult` 增加 `failureReason/failureDetail/blockedChangePaths`，Extension 对 `truncating-overwrite` 自动生成安全补丁恢复。
+  - `onTaskCheckpoint` 区分 `progress/paused/completed`，WebView 只展示真实暂停恢复入口。
+  - 终端证据分析将“终端工具被禁止/命令未执行/超时”等归为非执行证据。
+  - 按实施原则继续瘦身 `extension.ts`：WebView HTML、生成 artifact UI、pending diff provider、legacy config 迁移、上下文/目录发现分别迁入 `ui/` 与 `app/` 服务，入口文件从 5555 行降至 4266 行。
+- **方案选择理由**：对标 Claude Code / Codex，项目指令、工具输出、文件写入和验证证据必须是分层可信事实；安全拦截后应进入可恢复闭环，而不是让用户手动修补或让模型继续猜。
+- **主链路验证**：P7-04 checkpoint 正常完成后不残留运行中继续入口；shape_manager 修复遇到 CMakeLists 截断候选时自动重新生成最小补丁。
+- **回退链路验证**：`AGENTS.md` 中的 C++ 实现不会进入项目指令或生成候选；ResponseCorrupted/literal tool 样本继续走安全响应；终端未执行不会满足编译/运行/测试证据。
+- **结果判据变化**：运行中 progress checkpoint 不展示 banner；指令文件源码污染被阻断；截断覆盖失败可恢复；没有真实 exitCode 不得宣称验证通过；新增职责拆分后 `extension.ts` 不再承载 UI 模板、目录发现、config 迁移和 diff provider 实现。
+- **文档更新**：`docs/testing/vscode-phase-manual-test-cases.md`、`CHANGELOG.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`node test/unit/project-instruction-service.test.mjs`、`node test/unit/generated-file-parser.test.mjs`、`node test/unit/workspace-applier.test.mjs`、`node test/unit/agent-working-state.test.mjs`、`node test/unit/workflow-compliance.test.mjs`、`npm test --workspace=packages/vscode-extension`、`npx tsc --noEmit --pretty false`、`npm run compile --workspace=packages/vscode-extension` 通过；`npm run extension:package` 生成 `devseek-netai-latest.vsix`；`code --install-extension /home/ff/work/devseek_netai/devseek-netai-latest.vsix --force` 安装成功。
+
+---
+
 **变更标题**：Phase 7 ResponseCorrupted 内部恢复目标隔离（2026-06-20）
 - **需求归因**：实现缺陷 + 架构债务 — P7-02 安全重试后，内部 `provider-response` fallback 被当作真实文件目标，导致 Agent 搜索/分析 DevSeek 源码而不是处理用户原始请求。
 - **影响能力层**：Provider 恢复、断点续传、任务模型、执行安全、WebView 状态表达。

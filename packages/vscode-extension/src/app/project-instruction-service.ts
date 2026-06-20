@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import { shouldBlockProjectInstructionFileContent } from '../workspace/instruction-file-safety';
 
 export type ProjectInstructionKind = 'codex' | 'devseek' | 'copilot' | 'claude';
 
@@ -136,6 +137,7 @@ function readInstructionSource(
     if (!stat.isFile()) return null;
     const original = fs.readFileSync(absPath, 'utf8').trim();
     if (!original) return null;
+    if (shouldBlockProjectInstructionFileContent(absPath, original)) return null;
     const content = original.length > maxCharsPerSource
       ? `${original.slice(0, maxCharsPerSource)}\n\n[指令文件已截断，超出 ${maxCharsPerSource} 字符限制]`
       : original;

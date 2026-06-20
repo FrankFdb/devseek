@@ -221,7 +221,7 @@ async function finishSimpleFileTask(input: SimpleFileTaskInput & {
     ? `任务没有完成：${input.failedReason}`
     : input.summary || '任务已完成。';
   input.callbacks.onDelta('\x00ASUM\x00' + finalMsg);
-  await input.callbacks.onTaskCheckpoint?.(null, []);
+  await input.callbacks.onTaskCheckpoint?.(null, [], 'completed');
 
   const historyText = buildAgenticHistoryText({
     userPrompt: input.userPrompt,

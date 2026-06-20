@@ -32,6 +32,7 @@ import {
   isRepeatExecutionRequest,
   LocalExecutionPlan,
   planLocalExecution,
+  planRepeatLocalExecution,
   runLocalExecution,
   shouldRepairLocalExecutionFailure,
   shouldPreferLocalExecution,
@@ -51,7 +52,10 @@ import { DiffDecorationManager, type DiffRecordInfo } from './diff-decorator';
 import { isFileProtected } from './protected-files';
 import { decideToolPermission, type ToolPolicy } from './app/permission-service';
 import { decideTerminalCommandPermission, type TerminalCommandRiskClass } from './app/terminal-command-policy';
+import { recoverApplyFailureIfPossible } from './app/apply-failure-recovery-service';
+import { AgenticRepairService, responseClaimsStatusOk, shouldRunClosedLoopRepair } from './app/agentic-repair-service';
 import { ChatRouteController } from './app/chat-controller';
+import { migrateLegacyDeepseekConfiguration } from './app/config-migration-service';
 import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { MemoryService } from './app/memory-service';
@@ -77,8 +81,16 @@ import {
   renderPendingContentFromHunks,
   type PendingEditHunk,
 } from './app/pending-edit-service';
+import { emitResponseMeta, injectFileHintsIntoResponse, openWorkspacePathInEditor, pushUiSettings, revealEditorLine } from './ui/generated-artifact-ui';
+import {
+  closePendingEditDiffTabAsync,
+  DeepSeekOriginalContentProvider,
+  openPendingEditDiff as openPendingEditDiffView,
+} from './ui/pending-edit-diff';
+import { getChatHtml } from './ui/webview-html';
 import type { WebviewInboundMessage } from './ui/webview-protocol';
 import { stripToolCallBlocks } from './agent/fake-tool-parser';
+import { buildAgentRunDisplayProfile } from './agent/agent-run-display';
 import {
   buildLocalExecutionAgentCallbacks,
   buildLocalExecutionAgentRepairPrompt,
@@ -86,10 +98,14 @@ import {
   relPathFromRepairWorkspace,
 } from './local-execution-repair';
 import {
-  DEFAULT_SOURCE_FILE_RE,
-  shouldIncludeDiscoveredSourceFile,
-  shouldSkipDiscoveryDir,
-} from './file-discovery';
+  absPathFromWorkspaceRel,
+  buildWorkspaceFileTree,
+  collectDirectoryFiles,
+  discoverFilesFromDirectoryPrompt,
+  getGitDiff,
+  relPathFromWorkspace,
+  toContextDisplayLabels,
+} from './app/context-discovery-service';
 
 // ----------------------------------------------------------------
 // Types
@@ -169,54 +185,6 @@ const mcpManager = new McpManager();
 
 function getSessionService(): SessionService | undefined {
   return extContext ? new SessionService(extContext.workspaceState) : undefined;
-}
-
-const CONFIG_KEYS_TO_MIGRATE = [
-  'serverPort',
-  'newSessionPerRequest',
-  'language',
-  'maxContextLines',
-  'requestTimeoutMs',
-  'autoFixRounds',
-  'autoApplyPolicy',
-  'localExecutionFirst',
-  'executionApproval',
-  'cppValidationPolicy',
-  'completionEnabled',
-  'completionTriggerDelay',
-  'contextTokenBudget',
-  'generatedContentDisplayMode',
-  'workingCopyStyle',
-  'provider',
-  'apiKey',
-  'model',
-  'openaiCompatBaseUrl',
-  'openaiCompatApiKey',
-  'openaiCompatModel',
-  'autopilotMode',
-  'autoInjectActiveEditor',
-  'agentEnabled',
-  'maxAgentRounds',
-  'editAutoAcceptDelay',
-  'protectedFiles',
-] as const;
-
-async function migrateLegacyDeepseekConfiguration(): Promise<void> {
-  const legacy = vscode.workspace.getConfiguration('deepseek');
-  const current = vscode.workspace.getConfiguration('devseek');
-
-  for (const key of CONFIG_KEYS_TO_MIGRATE) {
-    const oldValue = legacy.inspect<unknown>(key);
-    if (!oldValue) continue;
-
-    const newValue = current.inspect<unknown>(key);
-    if (newValue?.globalValue === undefined && oldValue.globalValue !== undefined) {
-      await current.update(key, oldValue.globalValue, vscode.ConfigurationTarget.Global);
-    }
-    if (newValue?.workspaceValue === undefined && oldValue.workspaceValue !== undefined) {
-      await current.update(key, oldValue.workspaceValue, vscode.ConfigurationTarget.Workspace);
-    }
-  }
 }
 
 // ── Agent task checkpoint (断点续传) ────────────────────────────────────────
@@ -710,7 +678,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
       enableScripts: true,
       localResourceRoots: [extensionUriGlobal],
     };
-    webviewView.webview.html = getChatHtml(webviewView.webview);
+    webviewView.webview.html = getChatHtml(webviewView.webview, extensionUriGlobal);
 
     webviewView.webview.onDidReceiveMessage(async (msg: WebviewMessage) => {
       await this._onMessage(webviewView.webview, msg);
@@ -776,6 +744,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
               totalTasks: _cp.allTasks.length,
               userPrompt: _cp.displayPrompt,
               savedAt: _cp.savedAt,
+              recoveryKind: _cp.recoveryKind,
               pauseReason: _cp.pauseReason,
             });
           }
@@ -824,11 +793,26 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
             await registerPendingEditChange(wv, change);
           }, msg.files, { rollbackOnValidationFailure: msg.autoApply !== true });
 
-          if (shouldRunClosedLoopRepair(result)) {
+          const recovered = await recoverApplyFailureIfPossible({
+            reporter: async (status: ApplyWorkflowStatus) => { wv.postMessage({ type: 'workflowStatus', ...status }); },
+            originalPrompt: msg.prompt ?? msg.text,
+            failedResponse: msg.text,
+            failedApply: result,
+            preferredAbsolutePaths: msg.files,
+            chat: (repairPrompt) => routeChat({ prompt: repairPrompt, newSession: false, mode: msg.mode, stream: false, trackHistory: false }),
+            apply: (repairResponse, repairPrompt, onAppliedChange) => applyGeneratedArtifactsWithPrompt(
+              repairResponse, repairPrompt, async (status) => { wv.postMessage({ type: 'workflowStatus', ...status }); },
+              true, onAppliedChange, msg.files, { rollbackOnValidationFailure: false },
+            ),
+            onAppliedChange: async (change) => { await registerPendingEditChange(wv, change); },
+          });
+          const finalResult = recovered ?? result;
+
+          if (shouldRunClosedLoopRepair(finalResult)) {
             const originalPrompt = msg.prompt || '请根据自动验证失败结果继续修复，直到通过。';
             await runClosedLoopRepair(wv, async (status: ApplyWorkflowStatus) => {
               wv.postMessage({ type: 'workflowStatus', ...status });
-            }, originalPrompt, msg.mode, result, msg.files);
+            }, originalPrompt, msg.mode, finalResult, msg.files);
           }
         }
         break;
@@ -840,6 +824,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
             generatedText: msg.text,
             requestPrompt: msg.prompt,
             preferredAbsolutePaths: msg.files,
+            fallbackAbsolutePaths: lastConversationFiles,
           });
         }
         break;
@@ -864,11 +849,26 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
             msg.files,
           );
 
-          if (shouldRunClosedLoopRepair(result)) {
+          const recovered = await recoverApplyFailureIfPossible({
+            reporter: async (status: ApplyWorkflowStatus) => { wv.postMessage({ type: 'workflowStatus', ...status }); },
+            originalPrompt: msg.prompt ?? `请修复文件 ${msg.path}`,
+            failedResponse: msg.text,
+            failedApply: result,
+            preferredAbsolutePaths: msg.files,
+            chat: (repairPrompt) => routeChat({ prompt: repairPrompt, newSession: false, mode: msg.mode, stream: false, trackHistory: false }),
+            apply: (repairResponse, repairPrompt, onAppliedChange) => applyGeneratedArtifactsWithPrompt(
+              repairResponse, repairPrompt, async (status) => { wv.postMessage({ type: 'workflowStatus', ...status }); },
+              true, onAppliedChange, msg.files, { rollbackOnValidationFailure: false },
+            ),
+            onAppliedChange: async (change) => { await registerPendingEditChange(wv, change); },
+          });
+          const finalResult = recovered ?? result;
+
+          if (shouldRunClosedLoopRepair(finalResult)) {
             const originalPrompt = msg.prompt || `请继续修复文件 ${msg.path} 的验证失败问题，直到通过。`;
             await runClosedLoopRepair(wv, async (status: ApplyWorkflowStatus) => {
               wv.postMessage({ type: 'workflowStatus', ...status });
-            }, originalPrompt, msg.mode, result, msg.files);
+            }, originalPrompt, msg.mode, finalResult, msg.files);
           }
         }
         break;
@@ -882,7 +882,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
             const hunkLine = requestedLine || (hunk ? (hunk.newStart > 0 ? hunk.newStart : hunk.oldStart) : undefined);
             await openPendingEditInEditor(record, hunkLine);
           } else if (msg.path) {
-            await openWorkspacePathInEditor({ rawPath: msg.path });
+            await openWorkspacePathInEditor({ rawPath: msg.path, fallbackAbsolutePaths: lastConversationFiles });
           }
         }
         break;
@@ -1268,188 +1268,6 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
 // ─────────────────────────────────────────────────────────────────────────────
 // P3-5: @git — inject git diff via VS Code git extension
 // ─────────────────────────────────────────────────────────────────────────────
-async function getGitDiff(staged: boolean): Promise<string> {
-  try {
-    const gitExt = vscode.extensions.getExtension('vscode.git');
-    if (!gitExt) return '';
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const api = gitExt.isActive ? (gitExt.exports as any).getAPI(1) : ((await gitExt.activate()) as any).getAPI(1);
-    if (!api || !api.repositories || api.repositories.length === 0) return '';
-    const repo = api.repositories[0];
-    return (await repo.diff(staged)) as string;
-  } catch {
-    return '';
-  }
-}
-
-function buildWorkspaceFileTree(): string {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) return '';
-
-  const SKIP = /^(node_modules|build|dist|out|\.git|\.cache|__pycache__|target|bin|obj|\.vscode|\.idea|coverage|log|logs)$/i;
-  const lines: string[] = [];
-
-  function walk(dir: string, prefix: string, depth: number): void {
-    if (depth > 3) return;
-    let entries: fs.Dirent[];
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-    // Sort: dirs first, then files
-    entries.sort((a, b) => {
-      if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
-    for (const e of entries) {
-      if (e.name.startsWith('.') && depth > 1) continue; // skip hidden at depth>1
-      if (e.isDirectory()) {
-        if (SKIP.test(e.name)) continue;
-        lines.push(`${prefix}${e.name}/`);
-        walk(nodePath.join(dir, e.name), prefix + '  ', depth + 1);
-      } else {
-        lines.push(`${prefix}${e.name}`);
-      }
-    }
-  }
-
-  for (const folder of folders) {
-    lines.push(`${folder.name}/  (${folder.uri.fsPath})`);
-    walk(folder.uri.fsPath, '  ', 1);
-    if (lines.length > 200) { lines.push('  ... (已截断)'); break; }
-  }
-
-  return lines.join('\n');
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// P4: Directory-aware file discovery
-// When a user mentions a directory path in the prompt without attaching @files,
-// we auto-enumerate source files there and inject their content — eliminating
-// the need for manual @file upload and the associated browser-upload latency.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const SOURCE_FILE_RE = DEFAULT_SOURCE_FILE_RE;
-const MAX_AUTO_FILES = 20;
-const MAX_AUTO_SCAN_DIRS = 300;
-const MAX_AUTO_SCAN_MS = 120;
-const MAX_PATH_TOKENS_TO_SCAN = 8;
-
-/**
- * Resolve a relative-or-absolute path candidate to an existing directory,
- * trying each workspace folder as root.  Also handles the common pattern where
- * the user prefixes the path with the folder name, e.g. "tars/huida_uav/…"
- * when the workspace root is /home/ff/uav/tars.
- */
-function tryResolveDirectory(
-  candidate: string,
-  workspaceFolders: readonly vscode.WorkspaceFolder[],
-): string | undefined {
-  // 1. Absolute path
-  if (nodePath.isAbsolute(candidate)) {
-    try {
-      if (fs.statSync(candidate).isDirectory()) return candidate;
-    } catch { /* not found */ }
-  }
-
-  for (const folder of workspaceFolders) {
-    const root = folder.uri.fsPath;
-
-    // 2. Directly relative: <root>/<candidate>
-    const direct = nodePath.join(root, candidate);
-    try {
-      if (fs.statSync(direct).isDirectory()) return direct;
-    } catch { /* not found */ }
-
-    // 3. User prefixed with workspace folder name: "tars/X/Y" → strip "tars/"
-    const folderName = nodePath.basename(root);
-    if (candidate === folderName || candidate.startsWith(folderName + '/')) {
-      const stripped = candidate.slice(folderName.length).replace(/^\//, '');
-      if (stripped) {
-        const indirect = nodePath.join(root, stripped);
-        try {
-          if (fs.statSync(indirect).isDirectory()) return indirect;
-        } catch { /* not found */ }
-      }
-    }
-  }
-  return undefined;
-}
-
-/**
- * BFS-enumerate source files under dirPath, up to MAX_AUTO_FILES.
- * Skips build artifacts, documentation, and test directories.
- * If extFilter is provided, only files matching that regex are included.
- */
-function enumerateSourceFilesIn(dirPath: string, extFilter?: RegExp): string[] {
-  const result: string[] = [];
-  const filter = extFilter ?? SOURCE_FILE_RE;
-  const queue = [dirPath];
-  const deadline = Date.now() + MAX_AUTO_SCAN_MS;
-  let visitedDirs = 0;
-  while (
-    queue.length > 0
-    && result.length < MAX_AUTO_FILES
-    && visitedDirs < MAX_AUTO_SCAN_DIRS
-    && Date.now() < deadline
-  ) {
-    const cur = queue.shift()!;
-    visitedDirs += 1;
-    let entries: fs.Dirent[];
-    try { entries = fs.readdirSync(cur, { withFileTypes: true }); } catch { continue; }
-    for (const e of entries) {
-      if (result.length >= MAX_AUTO_FILES) break;
-      const childPath = nodePath.join(cur, e.name);
-      if (e.isFile() && shouldIncludeDiscoveredSourceFile(childPath, filter)) {
-        result.push(childPath);
-      } else if (e.isDirectory() && !shouldSkipDiscoveryDir(e.name)) {
-        queue.push(childPath);
-      }
-    }
-  }
-  return result;
-}
-
-/**
- * Convert a list of absolute file paths to display labels for the context row.
- * Files from the same directory are collapsed into "dirname/ (N)" when ≥3.
- */
-function toContextDisplayLabels(files: string[]): string[] {
-  if (files.length <= 2) return files.map(f => nodePath.basename(f));
-  const byDir = new Map<string, string[]>();
-  for (const f of files) {
-    const dir = nodePath.dirname(f);
-    if (!byDir.has(dir)) byDir.set(dir, []);
-    byDir.get(dir)!.push(f);
-  }
-  const labels: string[] = [];
-  for (const [dir, dirFiles] of byDir) {
-    if (dirFiles.length >= 2) {
-      labels.push(`${nodePath.basename(dir)}/ (${dirFiles.length})`);
-    } else {
-      dirFiles.forEach(f => labels.push(nodePath.basename(f)));
-    }
-  }
-  return labels;
-}
-
-function relPathFromWorkspace(workspaceRoot: string, absPath: string): string | null {
-  if (!workspaceRoot || !absPath) return null;
-  try {
-    const rel = nodePath.relative(workspaceRoot, absPath).replace(/\\/g, '/');
-    if (!rel || rel.startsWith('..') || nodePath.isAbsolute(rel)) return null;
-    return rel;
-  } catch {
-    return null;
-  }
-}
-
-function absPathFromWorkspaceRel(workspaceRoot: string, relPath: string): string | null {
-  if (!workspaceRoot || !relPath) return null;
-  const abs = nodePath.isAbsolute(relPath) ? relPath : nodePath.join(workspaceRoot, relPath);
-  const resolved = nodePath.resolve(abs);
-  const root = nodePath.resolve(workspaceRoot);
-  if (resolved !== root && !resolved.startsWith(root + nodePath.sep)) return null;
-  return fs.existsSync(resolved) ? resolved : null;
-}
-
 function loadAgentSessionState(sessionId = activeSessionId): AgentSessionState | undefined {
   if (!extContext || !sessionId) return undefined;
   return extContext.workspaceState.get<AgentSessionState>(`deepseek.session.${sessionId}.agentState`);
@@ -1551,63 +1369,6 @@ function buildAgenticSessionContext(workspaceRoot: string, currentPrompt: string
   }
   lines.push('执行要求：若用户反馈“没有看到/找不到/不对/继续/重新编译/运行”等，先核查上一轮目标文件和目录的真实状态，再修复或验证；不要泛化为分析整个 code 目录。');
   return lines.join('\n').slice(0, 6000);
-}
-
-/**
- * Detect an explicit file-extension filter in the user prompt, e.g. ".hpp" or "*.hpp".
- * Returns a strict regex like /\.hpp$/i when found, otherwise undefined.
- */
-function detectExtensionFilter(prompt: string): RegExp | undefined {
-  // Match patterns like ".hpp", "*.hpp", ".hpp文件", "hpp文件"
-  const m = prompt.match(/(?:\*|\.)(\w+)(?:\s*文件|\s+files?)?(?=[^\w]|$)/i);
-  if (!m) return undefined;
-  const ext = m[1].toLowerCase();
-  // Only treat as a filter when it looks like a known source extension
-  if (!/^(hpp|h|cpp|cc|cxx|c|ts|tsx|js|jsx|py|java|go|rs|md|sh|bash|json|yaml|yml)$/.test(ext)) return undefined;
-  return new RegExp(`\.${ext}$`, 'i');
-}
-
-/**
- * Scan the prompt for directory path references and return the abs paths of
- * source files found there.  Returns [] when nothing can be resolved.
- * When the prompt names a specific extension (e.g. ".hpp"), only those files
- * are returned.
- */
-function discoverFilesFromDirectoryPrompt(
-  prompt: string,
-  workspaceFolders: readonly vscode.WorkspaceFolder[],
-): string[] {
-  if (!workspaceFolders.length) return [];
-
-  const extFilter = detectExtensionFilter(prompt);
-
-  // Extract path-like tokens, including absolute paths such as
-  // "/home/me/project/code/foo中".  The trailing Chinese marker is deliberately
-  // not part of the token.
-  const PATH_RE = /((?:~\/|\/)?[A-Za-z0-9_.@%+\-]+(?:\/[A-Za-z0-9_.@%+\-]+){1,})\/?/g;
-  const seen = new Set<string>();
-  const candidates: Array<{ dir: string; files: string[] }> = [];
-  for (const m of prompt.matchAll(PATH_RE)) {
-    if (seen.size >= MAX_PATH_TOKENS_TO_SCAN) break;
-    const candidate = m[1].replace(/\/+$/, '');
-    // Skip very short paths (e.g. "a/b") and version-like tokens (e.g. "v1.0/x")
-    if (candidate.split('/').length < 2) continue;
-    if (seen.has(candidate)) continue;
-    seen.add(candidate);
-
-    const resolvedDir = tryResolveDirectory(candidate, workspaceFolders);
-    if (!resolvedDir) continue;
-
-    const files = enumerateSourceFilesIn(resolvedDir, extFilter);
-    if (files.length > 0) candidates.push({ dir: resolvedDir, files });
-  }
-  if (candidates.length === 0) return [];
-  // Prefer the most specific (deepest path) match; break ties by file count.
-  candidates.sort((a, b) => {
-    const depthDiff = b.dir.split(nodePath.sep).length - a.dir.split(nodePath.sep).length;
-    return depthDiff !== 0 ? depthDiff : b.files.length - a.files.length;
-  });
-  return candidates[0].files;
 }
 
 function buildSmalltalkReply(prompt: string): string {
@@ -1972,7 +1733,7 @@ async function runChat(
     if (shouldPreferLocalExecution(prompt, effectiveFiles, workspaceRootForLocal)) {
       return !!planLocalExecution(prompt, effectiveFiles || [], workspaceRootForLocal);
     }
-    return isRepeatExecutionRequest(prompt) && !!lastLocalExecutionPlan;
+    return !!planRepeatLocalExecution(prompt, lastLocalExecutionPlan, workspaceRootForLocal);
   })();
 
   // ── Agent Mode: two-phase Architect + Editor loop ────────────────────────
@@ -2026,6 +1787,7 @@ async function runChat(
         const agWsRootPath = getWorkspaceRootFsPath(prompt, pathResolutionHints);
         const agWsRoot = agWsRootPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
         const agSessionContext = buildAgenticSessionContext(agWsRoot, userDisplay);
+        const agDisplayProfile = buildAgentRunDisplayProfile(prompt);
         // Non-code files (logs, csvs, etc.) are passed directly
         const dataFiles = effectiveFiles.filter(f => !AGENT_CODE_FILE_RE.test(f));
         // Free-explore mode has no Architect decomposition phase, but the UI still
@@ -2034,24 +1796,21 @@ async function runChat(
           type: 'agentStatus',
           phase: 'plan',
           state: 'started',
-          title: '分析任务，准备探索工作区',
+          title: agDisplayProfile.planStartedTitle,
           taskTotal: 0,
-          detail: '正在理解请求，并准备读取相关文件、生成执行步骤。',
+          detail: agDisplayProfile.planStartedDetail,
         });
         postAgent({
           type: 'agentStatus',
           phase: 'plan',
           state: 'completed',
-          title: '已确定执行方式：Agent 自主探索',
+          title: agDisplayProfile.planCompletedTitle,
           taskTotal: 0,
-          detail: [
-            '1. 理解需求和工作区范围',
-            '2. 读取或搜索相关文件',
-            '3. 按需创建或修改文件',
-            '4. 编译、运行或验证结果',
-          ].join('\n'),
+          detail: agDisplayProfile.planCompletedDetail,
         });
         const agResult = await runAgenticLoop(prompt, dataFiles, agWsRoot, mode, {
+          runDisplayAction: agDisplayProfile.initialTaskAction,
+          runDisplayTarget: agDisplayProfile.initialTaskLabel,
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
               webview.postMessage({ type: 'resetResponse', text: delta.slice(7) });
@@ -2818,7 +2577,7 @@ async function runChat(
           signal: chatSignal,
           // 断点续传：save/clear checkpoint after each task and on network failure
           autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
-          onTaskCheckpoint: async (completedUpToIndex, _remainingTasks) => {
+          onTaskCheckpoint: async (completedUpToIndex, _remainingTasks, checkpointReason = 'progress') => {
             if (completedUpToIndex === null) {
               // Loop completed successfully — clear any stale checkpoint
               await saveAgentCheckpoint(null);
@@ -2838,14 +2597,17 @@ async function runChat(
               savedAt: Date.now(),
               sessionId: activeSessionId,
             });
-            // Notify webview so it can show the resume banner
-            webview.postMessage({
-              type: 'agentCheckpointAvailable',
-              resumeTaskIndex: completedUpToIndex,
-              totalTasks: tasks.length,
-              userPrompt: userDisplay,
-              savedAt: Date.now(),
-            });
+            if (checkpointReason === 'paused') {
+              // Only surface a resume entry once the active run is actually paused.
+              // Progress checkpoints are internal state for reload/reconnect recovery.
+              webview.postMessage({
+                type: 'agentCheckpointAvailable',
+                resumeTaskIndex: completedUpToIndex,
+                totalTasks: tasks.length,
+                userPrompt: userDisplay,
+                savedAt: Date.now(),
+              });
+            }
           },
         }, editorSessionContext, resumeFromIndex ?? 0);
         // P14: persist analysisText from this round for injection into next round's plan
@@ -2945,6 +2707,7 @@ async function runChat(
           completedCount: 0,
           savedAt,
           sessionId: activeSessionId || 'provider-recovery',
+          recoveryKind: recovery.kind,
           pauseReason: recovery.pauseReason,
         });
         webview.postMessage({
@@ -3144,7 +2907,7 @@ async function runChat(
       if (shouldPreferLocalExecution(prompt, effectiveFiles, workspaceRoot)) {
         localPlan = planLocalExecution(prompt, effectiveFiles || [], workspaceRoot) || undefined;
       } else if (isRepeatExecutionRequest(prompt) && lastLocalExecutionPlan) {
-        localPlan = { ...lastLocalExecutionPlan, reason: 'repeat-last-local-plan' };
+        localPlan = planRepeatLocalExecution(prompt, lastLocalExecutionPlan, workspaceRoot) || undefined;
       }
 
       if (localPlan) {
@@ -3418,8 +3181,21 @@ async function runChat(
       const firstApply = await applyGeneratedArtifactsWithPrompt(responseToApply, prompt, workflowReporter, true, async (change) => {
         await registerPendingEditChange(webview, change);
       }, pathResolutionHints, { rollbackOnValidationFailure: false });
-      if (shouldRunClosedLoopRepair(firstApply)) {
-        await runClosedLoopRepair(webview, workflowReporter, prompt, mode, firstApply, pathResolutionHints);
+      const recoveredApply = await recoverApplyFailureIfPossible({
+        reporter: workflowReporter,
+        originalPrompt: prompt,
+        failedResponse: responseToApply,
+        failedApply: firstApply,
+        preferredAbsolutePaths: pathResolutionHints,
+        chat: (repairPrompt) => routeChat({ prompt: repairPrompt, newSession: false, mode, stream: false, trackHistory: false }),
+        apply: (repairResponse, repairPrompt, onAppliedChange) => applyGeneratedArtifactsWithPrompt(
+          repairResponse, repairPrompt, workflowReporter, true, onAppliedChange, pathResolutionHints, { rollbackOnValidationFailure: false },
+        ),
+        onAppliedChange: async (change) => { await registerPendingEditChange(webview, change); },
+      });
+      const finalApply = recoveredApply ?? firstApply;
+      if (shouldRunClosedLoopRepair(finalApply)) {
+        await runClosedLoopRepair(webview, workflowReporter, prompt, mode, finalApply, pathResolutionHints);
       }
     }
   } catch (e) {
@@ -3471,6 +3247,7 @@ async function runClosedLoopRepair(
   let maxRounds = Math.max(0, Math.min(6, config.get<number>('autoFixRounds', 6)));
   let current = initialApply;
   let priorRepairRejection = '';
+  const repairService = new AgenticRepairService(initialApply);
 
   for (let round = 1; round <= maxRounds; round += 1) {
     const validation = current.validation;
@@ -3499,7 +3276,14 @@ async function runClosedLoopRepair(
       detail: `基于验证失败结果回传 DeepSeek：\n命令: ${validation.command}\nexitCode: ${validation.exitCode ?? 'null'}`,
     });
 
-    const repairPrompt = buildRepairPrompt(originalPrompt, current.changedPaths, validation, round, priorRepairRejection);
+    const repairPrompt = repairService.buildRepairPrompt({
+      originalPrompt,
+      changedPaths: current.changedPaths,
+      validation,
+      round,
+      priorRepairRejection,
+      failureFiles: current.review?.validation.failureFiles ?? [],
+    });
     priorRepairRejection = '';
     let repairResponse = '';
     let resetNoticeSent = false;
@@ -3512,7 +3296,7 @@ async function runClosedLoopRepair(
         onDelta: (delta) => {
           if (delta.startsWith('\x00RESET\x00') && !resetNoticeSent) {
             resetNoticeSent = true;
-            webview.postMessage({ type: 'delta', text: '\n\n[自动修正] 已收到修正草案（全量覆盖）。\n' });
+            webview.postMessage({ type: 'delta', text: '\n\n[自动修正] 已收到修正草案，正在安全解析并应用。\n' });
           }
         },
       });
@@ -3538,13 +3322,27 @@ async function runClosedLoopRepair(
       { rollbackOnValidationFailure: false },
     );
     if (!repairApply.applied) {
+      if (repairApply.failureReason === 'truncating-overwrite') {
+        priorRepairRejection = repairService.buildTruncatingOverwriteRepairRejection(repairApply, validation);
+        if (round < maxRounds) {
+          await reporter({
+            phase: 'repair',
+            state: 'started',
+            title: '已拒绝截断覆盖修复，重新要求最小补丁',
+            detail: priorRepairRejection,
+          });
+          continue;
+        }
+        await reporter({
+          phase: 'repair',
+          state: 'failed',
+          title: '自动修正被安全拦截（疑似截断覆盖）',
+          detail: `${priorRepairRejection}\n未运行后续验证或 QualityGate，因为修复内容未安全落地。`,
+        });
+        return;
+      }
       if (responseClaimsStatusOk(repairResponse) && !validation.ok && round < maxRounds) {
-        priorRepairRejection = [
-          '上一轮 DeepSeek 只返回 STATUS: OK 或“无需修改”，但 DevSeek 本地验证仍是失败状态。',
-          `失败命令: ${validation.command}`,
-          `exitCode: ${validation.exitCode ?? 'null'}`,
-          '请不要再自判 OK；必须输出至少一个可应用的文件变更，或输出 STATUS: NG。',
-        ].join('\n');
+        priorRepairRejection = repairService.buildStatusOkRejection(validation);
         await reporter({
           phase: 'repair',
           state: 'started',
@@ -3562,6 +3360,27 @@ async function runClosedLoopRepair(
       return;
     }
     current = repairApply;
+
+    const progressDecision = repairService.evaluateAppliedRepair(current, round < maxRounds);
+    if (progressDecision.kind === 'stop-no-progress') {
+      await reporter({
+        phase: 'repair',
+        state: 'failed',
+        title: progressDecision.title,
+        detail: progressDecision.detail,
+      });
+      return;
+    }
+    if (progressDecision.kind === 'retry-with-root-cause') {
+      priorRepairRejection = progressDecision.rejection;
+      await reporter({
+        phase: 'repair',
+        state: 'started',
+        title: progressDecision.title,
+        detail: priorRepairRejection,
+      });
+      continue;
+    }
 
     if (round >= maxRounds) {
       const validationNow = current.validation;
@@ -3595,18 +3414,6 @@ async function runClosedLoopRepair(
       detail: `达到最大修正轮次后仍未通过。\n命令: ${finalValidation.command}\nexitCode: ${finalValidation.exitCode ?? 'null'}\n${finalValidation.output.slice(0, 1000)}`,
     });
   }
-}
-
-function shouldRunClosedLoopRepair(result: ApplyWorkflowResult): boolean {
-  const validation = result.validation;
-  const qualityGate = result.qualityGate;
-  if (!validation) return false;
-  return result.applied === true
-    && validation.ran === true
-    && validation.status === 'failed'
-    && validation.ok === false
-    && Boolean(validation.command)
-    && qualityGate?.status !== 'blocked';
 }
 
 async function askRepairExhaustedAction(title: string, detail: string): Promise<'continue' | 'guide' | 'stop'> {
@@ -3648,50 +3455,6 @@ async function requestManualFixGuidance(originalPrompt: string, command: string,
   } catch {
     return '建议：先定位首个编译错误对应文件与符号，再最小化修改后重新编译。';
   }
-}
-
-function buildRepairPrompt(
-  originalPrompt: string,
-  changedPaths: string[],
-  validation: { command: string; exitCode: number | null; output: string; cwd: string; ok?: boolean; mode?: string; reason?: string },
-  round: number,
-  priorRepairRejection = '',
-): string {
-  const paths = changedPaths.length > 0 ? changedPaths.join('\n') : '（未知）';
-  const output = (validation.output || '').trim().slice(0, 6000);
-  return [
-    '你是一个严格执行修复闭环的高级编程助手。',
-    `这是第 ${round} 轮自动修复。上一次自动验证失败，请直接修复。`,
-    '注意：本地验证状态为 FAILED。即使 stdout 中出现成功文本，或旧日志里出现 exitCode=0，也不能把本轮判定为 OK；验证是否通过只由 DevSeek 下一轮本地命令决定。',
-    priorRepairRejection ? `\n上一轮无效修复反馈：\n${priorRepairRejection}` : '',
-    '',
-    '原始需求：',
-    originalPrompt,
-    '',
-    '已落地文件：',
-    paths,
-    '',
-    `自动验证命令（cwd=${validation.cwd}）：`,
-    validation.command,
-    '',
-    `验证状态：FAILED${validation.mode ? ` mode=${validation.mode}` : ''}${validation.reason ? ` reason=${validation.reason}` : ''}`,
-    `验证结果：exitCode=${validation.exitCode ?? 'null'}`,
-    '```text',
-    output || '（无输出）',
-    '```',
-    '',
-    '请只输出可直接应用的文件变更，不要解释。',
-    '输出格式要求：',
-    '1. 多文件时，按“文件 1：path/to/file.ext”+ 对应代码块 输出。',
-    '2. 不要输出目录树、流程图、编译命令说明。',
-    '3. 当前本地验证已失败，禁止只输出 STATUS: OK 或“无需修改”。',
-    '4. 若能修复，必须输出至少一个已落地文件的完整源码或可应用补丁。',
-    '5. 若无法修复，在末尾单独输出一行：STATUS: NG',
-  ].join('\n');
-}
-
-function responseClaimsStatusOk(text: string): boolean {
-  return /(?:^|\n)\s*STATUS\s*:\s*OK\s*(?:\n|$)/i.test(text || '');
 }
 
 function appendStructuredGenerationHint(prompt: string): string {
@@ -3766,579 +3529,6 @@ export class ChatPanel {
   }
 }
 
-function getChatHtml(webview: vscode.Webview): string {
-    const nonce = getNonce();
-    const markedJs = fs.readFileSync(
-        nodePath.join(extensionUriGlobal.fsPath, 'media', 'marked.umd.js'),
-        'utf8',
-    );
-    const webviewJs = fs.readFileSync(
-        nodePath.join(extensionUriGlobal.fsPath, 'media', 'webview.js'),
-        'utf8',
-    );
-    const mermaidUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUriGlobal, 'media', 'mermaid.min.js'),
-    );
-    const codiconUri = webview.asWebviewUri(
-        vscode.Uri.joinPath(extensionUriGlobal, 'media', 'codicon.css'),
-    );
-    const html = `<!DOCTYPE html>
-<html lang="zh">
-<head>
-<meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy"
-  content="default-src 'none';
-           script-src 'nonce-${nonce}';
-           style-src 'unsafe-inline' ${webview.cspSource};
-           font-src ${webview.cspSource};
-           img-src ${webview.cspSource} data: https:;">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>DevSeek</title>
-<link rel="stylesheet" href="${codiconUri}">
-<style>
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html { height: 100%; overflow: hidden; }
-body {
-  font-family: var(--vscode-font-family);
-  font-size: var(--vscode-font-size);
-  background: var(--vscode-sideBar-background);
-  color: var(--vscode-foreground);
-  height: 100%;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-#messages {
-  background: var(--vscode-sideBar-background);
-}
-.turn.enter { animation: turnIn .18s ease-out; }
-@keyframes turnIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-#toolbar {
-  display: flex; align-items: center; gap: 4px;
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--vscode-panel-border);
-  flex-shrink: 0;
-}
-#ready-progress {
-  height: 2px;
-  width: 100%;
-  background: transparent;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-#ready-progress .bar {
-  height: 100%;
-  width: 34%;
-  background: linear-gradient(90deg, rgba(99,179,255,0), rgba(99,179,255,.95), rgba(99,179,255,0));
-  animation: loadingSlide 1.1s ease-in-out infinite;
-}
-#ready-progress.done { opacity: 0; height: 0; transition: opacity .2s ease, height .2s ease; }
-@keyframes loadingSlide {
-  from { transform: translateX(-120%); }
-  to { transform: translateX(320%); }
-}
-#toolbar .title { flex: 1; font-size: 11px; font-weight: 600; opacity: .65; text-transform: uppercase; letter-spacing: .05em; }
-#toolbar button {
-  font-size: 11px; padding: 2px 8px;
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-  border: none; border-radius: 3px; cursor: pointer;
-}
-#toolbar button:hover { background: var(--vscode-button-secondaryHoverBackground); }
-#toolbar button.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-#toolbar #sessions-btn { padding: 2px 8px; display:inline-flex; align-items:center; gap:5px; }
-/* ── Sessions Panel (history drawer, scoped below toolbar) ── */
-#content-area {
-  position: relative;
-  flex: 1 1 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-#sessions-panel {
-  display: none; flex-direction: column;
-  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
-  background: var(--vscode-sideBar-background);
-  z-index: 100;
-}
-#sessions-panel-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 10px 6px;
-  border-bottom: 1px solid var(--vscode-panel-border);
-  flex-shrink: 0;
-}
-#sessions-panel-header span {
-  font-size: 11px; font-weight: 600; opacity: .65; text-transform: uppercase; letter-spacing: .05em;
-}
-#sessions-panel-header button {
-  background: none; border: none; cursor: pointer; padding: 2px 6px;
-  color: var(--vscode-foreground); font-size: 14px; opacity: .5; border-radius: 3px;
-}
-#sessions-panel-header button:hover { background: var(--vscode-button-secondaryHoverBackground); opacity: 1; }
-#sessions-list { flex: 1 1 0; overflow-y: auto; padding: 4px 0; }
-.session-item {
-  display: flex; align-items: center; gap: 6px;
-  padding: 7px 10px;
-  cursor: pointer; border-radius: 4px; margin: 1px 4px;
-  border: 1px solid transparent;
-}
-.session-item:hover { background: var(--vscode-list-hoverBackground); }
-.session-item.active {
-  background: var(--vscode-list-activeSelectionBackground);
-  color: var(--vscode-list-activeSelectionForeground);
-  border-color: var(--vscode-focusBorder, rgba(99,179,255,.4));
-}
-.session-item-body { flex: 1; min-width: 0; }
-.session-title { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.session-date { font-size: 10px; opacity: .5; margin-top: 1px; }
-.session-delete-btn {
-  flex-shrink: 0; border: none; background: none; cursor: pointer;
-  color: var(--vscode-foreground); opacity: 0; padding: 2px 5px;
-  border-radius: 3px; font-size: 13px; line-height: 1;
-}
-.session-item:hover .session-delete-btn { opacity: .4; }
-.session-delete-btn:hover { opacity: 1 !important; background: var(--vscode-inputValidation-errorBackground); }
-.sessions-empty { padding: 20px 12px; text-align: center; font-size: 12px; opacity: .45; }
-#sessions-panel-footer {
-  flex-shrink: 0; padding: 6px 8px; border-top: 1px solid var(--vscode-panel-border);
-}
-#sessions-panel-footer button {
-  width: 100%; font-size: 11px; padding: 4px 8px;
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-  border: none; border-radius: 3px; cursor: pointer;
-}
-#sessions-panel-footer button:hover { background: var(--vscode-button-secondaryHoverBackground); }
-/* restored session banner */
-.session-restore-banner {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 5px;
-  font-size: 11px; padding: 5px 8px;
-  background: rgba(127,127,127,.08);
-  border-radius: 6px; margin: 0 0 4px;
-  border-left: 2px solid var(--vscode-charts-blue, #4fc1ff);
-}
-.srb-label { font-weight: 600; opacity: .7; }
-.srb-date { opacity: .45; font-size: 10px; }
-.srb-hint { margin-left: auto; opacity: .4; font-size: 10px; font-style: italic; }
-.srb-summary-wrap { margin: 2px 0 4px; }
-.srb-summary-toggle {
-  background: none; border: none; cursor: pointer; font-size: 11px;
-  color: var(--vscode-foreground); opacity: .5; padding: 2px 0;
-}
-.srb-summary-toggle:hover { opacity: .85; }
-.srb-summary-body {
-  margin-top: 4px; padding: 6px 10px;
-  background: var(--vscode-textBlockQuote-background, rgba(127,127,127,.06));
-  border-radius: 4px; font-size: 11.5px; line-height: 1.55;
-}
-.srb-summary-body h2 { font-size: 12px; opacity: .8; margin: 6px 0 2px; }
-.srb-summary-body ul { margin: 2px 0 4px; padding-left: 16px; }
-.srb-summary-body li { margin: 1px 0; }
-.srb-files-row { display: flex; flex-wrap: wrap; gap: 4px; margin: 2px 0 4px; padding: 0 2px; }
-/* Session list item enhancements */
-.session-title-row { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.session-title { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; min-width: 0; }
-.session-badge {
-  flex-shrink: 0; font-size: 9px; background: rgba(127,127,127,.15);
-  border-radius: 3px; padding: 1px 4px; opacity: .7; white-space: nowrap;
-}
-.session-badge.file-badge { background: rgba(78,201,176,.12); color: var(--vscode-charts-green, #4ec9b0); opacity: 1; }
-.session-digest {
-  font-size: 10px; opacity: .5; margin-top: 2px;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  line-height: 1.3;
-}
-/* shared chip / badge */
-.soc-badge {
-  font-size: 9px; background: rgba(127,127,127,.15);
-  border-radius: 3px; padding: 1px 5px; opacity: .7;
-}
-.soc-badge.file-badge { background: rgba(78,201,176,.12); color: var(--vscode-charts-green, #4ec9b0); opacity: 1; }
-.soc-file-chip {
-  display: inline-block; font-size: 10px; font-family: var(--vscode-editor-font-family, monospace);
-  background: rgba(127,127,127,.12); border-radius: 3px;
-  padding: 1px 5px; margin: 1px 0;
-}
-.soc-history-wrap { margin-top: 4px; border-top: 1px solid var(--vscode-panel-border, rgba(127,127,127,.15)); padding-top: 4px; }
-#messages { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 10px 8px; display: flex; flex-direction: column; gap: 12px; }
-.turn { display: flex; flex-direction: column; gap: 4px; width: 100%; }
-.turn.user-turn  { align-items: flex-end; }
-.turn.assistant-turn { align-items: flex-start; width: 100%; }
-.user-bubble {
-  max-width: 90%;
-  width: fit-content;
-  background: var(--vscode-chat-requestBubbleBackground, var(--vscode-chat-requestBackground, var(--vscode-input-background)));
-  color: var(--vscode-foreground);
-  border-radius: var(--vscode-cornerRadius-xLarge, 12px);
-  padding: 8px 12px; font-size: .92em; line-height: 1.5;
-  word-break: break-word;
-}
-.user-bubble-wrap { display:flex; flex-direction:column; align-items:flex-end; gap:4px; max-width: 90%; }
-.user-msg-actions { display:flex; gap:6px; opacity:.78; }
-.user-msg-actions button {
-  border:none; border-radius:4px; padding:1px 7px; cursor:pointer;
-  font-size:10px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);
-}
-.user-msg-actions button:hover { background: var(--vscode-button-secondaryHoverBackground); opacity:1; }
-.user-edit-wrap {
-  width: 100%;
-  background: rgba(127,127,127,.12);
-  border: 1px solid rgba(127,127,127,.32);
-  border-radius: 8px;
-  padding: 6px;
-}
-.user-edit-wrap textarea {
-  width: 100%;
-  min-height: 80px;
-  resize: vertical;
-  border: 1px solid var(--vscode-input-border);
-  border-radius: 6px;
-  background: var(--vscode-input-background);
-  color: var(--vscode-input-foreground);
-  padding: 6px 8px;
-  font: inherit;
-}
-.user-edit-actions { display:flex; justify-content:flex-end; gap:6px; margin-top:6px; }
-.user-edit-actions button {
-  border:none; border-radius:4px; padding:3px 10px; cursor:pointer; font-size:11px;
-  background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground);
-}
-.user-edit-actions button.primary {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-.user-bubble pre { background: rgba(127,127,127,.14); border-radius: 4px; padding: 6px 8px; margin: 4px 0; overflow-x: auto; font-size: .88em; }
-.user-bubble code { font-family: var(--vscode-editor-font-family, monospace); }
-.user-bubble p { margin: 0 0 4px; }
-.user-bubble p:last-child { margin-bottom: 0; }
-.user-bubble-images { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:6px; max-width:100%; }
-.user-bubble-img { max-width:min(180px, 100%); max-height:120px; border-radius:4px; border:1px solid var(--vscode-widget-border,#ccc); object-fit:contain; cursor:zoom-in; background:var(--vscode-editor-background); }
-.user-bubble-img:hover { opacity:.85; }
-.assistant-bubble {
-  max-width: 100%;
-  width: 100%;
-  font-size: .92em;
-  line-height: 1.68;
-  word-break: break-word;
-  padding: 2px 0;
-}
-.assistant-bubble p { margin: 0 0 6px; }
-.assistant-bubble ul,.assistant-bubble ol { padding-left: 1.3em; margin: 0 0 6px; }
-.assistant-bubble h1,.assistant-bubble h2,.assistant-bubble h3 { margin: 8px 0 4px; font-size: 1em; font-weight: 600; }
-.assistant-bubble h1,.assistant-bubble h2,.assistant-bubble h3,.assistant-bubble h4 {
-  border-bottom: 1px solid rgba(127,127,127,.23);
-  padding-bottom: 4px;
-}
-.assistant-bubble blockquote {
-  margin: 8px 0;
-  padding: 6px 10px;
-  border-left: 3px solid rgba(110, 168, 255, .65);
-  background: rgba(127,127,127,.08);
-  border-radius: 0 8px 8px 0;
-  opacity: .95;
-}
-.assistant-bubble hr {
-  border: none;
-  border-top: 1px dashed rgba(127,127,127,.35);
-  margin: 10px 0;
-}
-.assistant-bubble pre {
-  position: relative;
-  background: linear-gradient(180deg, rgba(127,127,127,0.12), rgba(127,127,127,0.04));
-  border: 1px solid rgba(127,127,127,0.35);
-  border-radius: 10px;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 6px 18px rgba(0,0,0,0.14);
-  padding: 10px 12px; padding-top: 34px;
-  margin: 8px 0; overflow-x: auto; font-size: .9em;
-  line-height: 1.6;
-}
-.assistant-bubble code { font-family: var(--vscode-editor-font-family, monospace); }
-.assistant-bubble :not(pre) > code {
-  background: var(--vscode-textPreformat-background, rgba(127,127,127,.16));
-  border: 1px solid var(--vscode-textPreformat-border, rgba(127,127,127,.2));
-  color: var(--vscode-textPreformat-foreground);
-  padding: 1px 3px;
-  border-radius: 4px;
-  font-size: .9em;
-}
-.code-toolbar {
-  position: absolute; top: 0; left: 0; right: 0;
-  display: flex; justify-content: space-between; align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  background: var(--vscode-textCodeBlock-background, rgba(40,44,52,.95));
-  border-bottom: 1px solid rgba(127,127,127,.18);
-  border-radius: 10px 10px 0 0;
-}
-.code-lang {
-  font-size: 10px;
-  letter-spacing: .04em;
-  text-transform: uppercase;
-  font-weight: 600;
-  opacity: .52;
-  color: var(--vscode-descriptionForeground);
-}
-.code-actions { display: inline-flex; gap: 4px; }
-.code-toolbar button { font-size: 10px; padding: 1px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; border-radius: 4px; cursor: pointer; }
-.code-toolbar button:hover { background: var(--vscode-button-secondaryHoverBackground); }
-.insert-btn { background: var(--vscode-button-background) !important; color: var(--vscode-button-foreground) !important; }
-.assistant-bubble code .tok-keyword { color: #e28bff; font-weight: 600; }
-.assistant-bubble code .tok-type { color: #7cc9ff; }
-.assistant-bubble code .tok-string { color: #9ad97c; }
-.assistant-bubble code .tok-number { color: #f7c66f; }
-.assistant-bubble code .tok-comment { color: #7f8b99; font-style: italic; }
-.assistant-bubble code .tok-preproc { color: #f4a261; }
-.assistant-bubble code .tok-fn { color: #65d6c2; }
-.cursor::after { content: '\u25ae'; animation: blink .7s step-end infinite; }
-@keyframes blink { 50% { opacity: 0; } }
-.thinking-dots { display:inline-flex; gap:3px; align-items:center; opacity:.55; padding:2px 0; }
-.thinking-dots span { width:5px; height:5px; border-radius:50%; background:currentColor; display:inline-block; animation:tdot 1.2s ease-in-out infinite; }
-.thinking-dots span:nth-child(2) { animation-delay:.2s; }
-.thinking-dots span:nth-child(3) { animation-delay:.4s; }
-@keyframes tdot { 0%,80%,100%{ opacity:.2; transform:scale(.7); } 40%{ opacity:1; transform:scale(1); } }
-.error-msg { background: var(--vscode-inputValidation-errorBackground); border: 1px solid var(--vscode-inputValidation-errorBorder); border-radius: 6px; padding: 6px 10px; font-size: .85em; white-space: pre-wrap; }
-.generated-files-panel {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 8px;
-  margin-top: 10px;
-  padding: 8px 10px;
-  border: 1px solid rgba(127,127,127,.3);
-  border-radius: 8px;
-  background: linear-gradient(180deg, rgba(127,127,127,.12), rgba(127,127,127,.05));
-  font-size: .83em;
-}
-.generated-files-panel .gfp-label {
-  opacity: .88;
-  margin-right: 0;
-}
-.generated-files-panel .gfp-btn {
-  border: none;
-  border-radius: 4px;
-  padding: 2px 9px;
-  cursor: pointer;
-  font-size: .95em;
-  background: var(--vscode-button-secondaryBackground);
-  color: var(--vscode-button-secondaryForeground);
-}
-.generated-files-panel .gfp-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
-.generated-files-panel .gfp-btn.primary {
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-}
-.generated-files-panel .gfp-btn.path-ref {
-  background: linear-gradient(180deg, rgba(90, 170, 255, .30), rgba(60, 140, 240, .22));
-  color: var(--vscode-button-foreground);
-  border: 1px solid rgba(90, 170, 255, .55);
-  font-weight: 600;
-}
-.generated-files-panel .gfp-btn.path-ref:hover {
-  background: linear-gradient(180deg, rgba(90, 170, 255, .42), rgba(60, 140, 240, .32));
-}
-.generated-files-panel .gfp-map {
-  margin-top: 2px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.generated-files-panel .gfp-map-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px 8px;
-  border: 1px solid rgba(127,127,127,.22);
-  border-radius: 7px;
-  background: rgba(127,127,127,.06);
-}
-.generated-files-panel .gfp-item-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-}
-.generated-files-panel .gfp-main-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-}
-.assistant-generated-summary {
-  padding: 4px 8px;
-  border: 1px solid rgba(127,127,127,.18);
-  border-radius: 6px;
-  background: rgba(127,127,127,.05);
-  font-size: .82em;
-  opacity: .65;
-}
-.workflow-card {
-  max-width: 100%;
-  padding: 9px 11px;
-  border-radius: 9px;
-  font-size: .84em;
-  line-height: 1.58;
-  white-space: pre-wrap;
-  border: 1px solid rgba(127,127,127,.28);
-  background: linear-gradient(180deg, rgba(127,127,127,.12), rgba(127,127,127,.05));
-}
-.workflow-card.state-failed {
-  border-color: rgba(255, 120, 120, .45);
-  background: linear-gradient(180deg, rgba(255,120,120,.11), rgba(127,127,127,.05));
-}
-.workflow-card.state-passed {
-  border-color: rgba(120, 220, 150, .42);
-  background: linear-gradient(180deg, rgba(120,220,150,.11), rgba(127,127,127,.05));
-}
-.workflow-card .wf-head {
-  font-weight: 700;
-  margin-bottom: 5px;
-}
-#input-area { position: relative; display: flex; flex-direction: column; border-top: 1px solid var(--vscode-panel-border); padding: 6px; flex-shrink: 0; }
-#input-row { display: flex; gap: 4px; }
-#file-badges { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 0 2px; min-height: 0; }
-#file-badges:empty { display: none; }
-.file-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px 2px 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); border-radius: 10px; font-size: .78em; max-width: 220px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.file-badge .badge-remove { cursor: pointer; opacity: .7; margin-left: 2px; font-size: .9em; flex-shrink: 0; }
-.file-badge .badge-remove:hover { opacity: 1; }
-#context-files-row { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 0 1px; align-items: center; min-height: 0; }
-#context-files-row:empty { display: none; }
-.ctx-label { font-size: .72em; opacity: .45; margin-right: 2px; flex-shrink: 0; white-space: nowrap; }
-.ctx-file-badge { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px 1px 7px; background: var(--vscode-editor-inactiveSelectionBackground); color: var(--vscode-descriptionForeground); border-radius: 8px; font-size: .75em; opacity: .75; }
-.ctx-file-badge .ctx-remove { cursor: pointer; opacity: .55; margin-left: 1px; font-size: .9em; flex-shrink: 0; }
-.ctx-file-badge .ctx-remove:hover { opacity: 1; }
-#input { flex: 1; resize: none; font-family: inherit; font-size: inherit; background: var(--vscode-input-background); color: var(--vscode-input-foreground); border: 1px solid var(--vscode-input-border); border-radius: 6px; padding: 6px 8px; min-height: 38px; max-height: 160px; overflow-y: auto; line-height: 1.4; }
-#input:focus { outline: 1px solid var(--vscode-focusBorder); }
-#send-btn { padding: 0 14px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 6px; cursor: pointer; font-size: 16px; flex-shrink: 0; }
-#send-btn:hover { background: var(--vscode-button-hoverBackground); }
-#input-hint { font-size: 10px; opacity: .45; margin-top: 3px; text-align: right; }
-#jump-latest {
-  position: absolute;
-  right: 14px;
-  bottom: 104px;
-  z-index: 5;
-  border: none;
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 11px;
-  cursor: pointer;
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
-  box-shadow: 0 2px 8px rgba(0,0,0,.3);
-  display: none;
-}
-#jump-latest.show { display: inline-block; }
-#suggest-popup { display: none; position: absolute; bottom: 100%; left: 0; right: 0; background: var(--vscode-editorSuggestWidget-background, var(--vscode-input-background)); border: 1px solid var(--vscode-editorSuggestWidget-border, var(--vscode-panel-border)); border-radius: 6px; max-height: 180px; overflow-y: auto; z-index: 999; margin-bottom: 2px; }
-#suggest-popup .item { padding: 5px 10px; cursor: pointer; display: flex; gap: 8px; align-items: center; font-size: .88em; }
-#suggest-popup .item:hover, #suggest-popup .item.active { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
-#suggest-popup .item .lbl { font-weight: 600; min-width: 90px; }
-#suggest-popup .item .desc { opacity: .65; font-size: .9em; }
-/* ---- 状态栏 ---- */
-#status-bar { display: flex; align-items: center; gap: 5px; padding: 3px 8px 4px; border-top: 1px solid var(--vscode-panel-border); font-size: 10px; flex-shrink: 0; background: var(--vscode-sideBar-background); min-width: 0; overflow: hidden; }
-.s-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
-.s-online { background: #4caf50; }
-.s-offline { background: #f44336; }
-.s-pending { background: #ff9800; animation: blink .9s step-end infinite; }
-#status-text { opacity: .7; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-#login-btn { font-size: 10px; padding: 1px 8px; background: var(--vscode-button-background); color: var(--vscode-button-foreground); border: none; border-radius: 3px; cursor: pointer; }
-#login-btn:hover { background: var(--vscode-button-hoverBackground); }
-.s-spacer { flex: 1; }
-#mode-switcher { display: flex; gap: 2px; flex-shrink: 0; }
-.mode-btn { font-size: 10px; padding: 1px 9px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid transparent; border-radius: 3px; cursor: pointer; opacity: .65; }
-.mode-btn:hover { opacity: 1; }
-.mode-btn.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); opacity: 1; border-color: transparent; }
-#autopilot-btn { font-size: 10px; padding: 1px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid transparent; border-radius: 3px; cursor: pointer; opacity: .55; }
-#autopilot-btn:hover { opacity: 1; }
-#autopilot-btn.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); opacity: 1; border-color: rgba(90,170,255,.5); }
-#agent-toggle-btn { font-size: 10px; padding: 1px 9px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid transparent; border-radius: 3px; cursor: pointer; opacity: .65; }
-#agent-toggle-btn:hover { opacity: 1; }
-#agent-toggle-btn.active { background: var(--vscode-button-background); color: var(--vscode-button-foreground); opacity: 1; border-color: rgba(90,170,255,.5); }
-#status-bar button { white-space: nowrap; }
-@media (max-width: 360px) {
-  .mode-btn, #autopilot-btn, #agent-toggle-btn, #switch-provider-btn, #login-btn { padding-left: 5px; padding-right: 5px; }
-  #agent-toggle-btn, #autopilot-btn { max-width: 58px; overflow: hidden; text-overflow: ellipsis; }
-}
-.mermaid-block { margin: 8px 0; border: 1px solid var(--vscode-panel-border); border-radius: 6px; overflow: hidden; width: 100%; box-sizing: border-box; }
-.mermaid-tabs { display: flex; background: var(--vscode-textCodeBlock-background); border-bottom: 1px solid var(--vscode-panel-border); padding: 0 4px; }
-.mermaid-tab { padding: 5px 14px; font-size: .82em; background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; color: var(--vscode-foreground); opacity: .55; }
-.mermaid-tab.active { opacity: 1; border-bottom-color: var(--vscode-button-background); font-weight: 600; }
-.mermaid-tab:hover { opacity: .85; }
-.mermaid-render-panel { overflow: hidden; position: relative; cursor: grab; width: 100%; box-sizing: border-box; min-height: 60px; }
-.mermaid-render-panel svg { display:block; }
-.mermaid-zoom-bar { display: flex; align-items: center; gap: 4px; padding: 4px 8px; background: var(--vscode-textCodeBlock-background); border-top: 1px solid var(--vscode-panel-border); }
-.mermaid-zoom-btn { padding: 1px 8px; font-size: 13px; line-height: 1.4; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; border-radius: 3px; cursor: pointer; font-family: monospace; }
-.mermaid-zoom-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
-.mermaid-zoom-label { font-size: .78em; min-width: 38px; text-align: center; color: var(--vscode-descriptionForeground); }
-.mermaid-render-error { color: var(--vscode-errorForeground); font-size: .82em; padding: 8px; }
-.mermaid-code-panel { position: relative; }
-.mermaid-code-panel pre { margin: 0; background: var(--vscode-textCodeBlock-background); padding: 10px 12px; padding-top: 30px; overflow-x: auto; font-size: .87em; font-family: var(--vscode-editor-font-family, monospace); white-space: pre; }
-.mermaid-copy-btn { position: absolute; top: 4px; right: 6px; font-size: 10px; padding: 2px 8px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: none; border-radius: 3px; cursor: pointer; }
-.mermaid-copy-btn:hover { background: var(--vscode-button-secondaryHoverBackground); }
-/* ---- 表格样式 ---- */
-.assistant-bubble table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: .9em; }
-.assistant-bubble th, .assistant-bubble td { border: 1px solid var(--vscode-panel-border); padding: 5px 12px; text-align: left; vertical-align: top; }
-.assistant-bubble th { background: var(--vscode-textCodeBlock-background); font-weight: 600; }
-.assistant-bubble tr:nth-child(even) td { background: rgba(128,128,128,.04); }
-</style>
-</head>
-<body style="position:relative;">
-<div id="toolbar">
-  <button id="sessions-btn" title="历史对话"><i class="codicon codicon-history"></i> 历史对话</button>
-  <button id="new-session-btn" title="开启新 AI 对话">+ 新对话</button>
-  <button id="clear-btn" title="清空界面消息">清空</button>
-</div>
-<div id="content-area">
-<div id="sessions-panel">
-  <div id="sessions-panel-header">
-    <span>历史对话</span>
-    <button id="sessions-close-btn" title="关闭" style="margin-left:auto">×</button>
-  </div>
-  <div id="sessions-list"></div>
-  <div id="sessions-panel-footer">
-    <button id="sessions-new-btn">+ 新建对话</button>
-  </div>
-</div>
-<div id="ready-progress"><div class="bar"></div></div>
-<div id="messages"></div>
-<button id="jump-latest" title="跳到最新消息">⬇ 新内容</button>
-<div id="input-area">
-  <div id="suggest-popup"></div>
-  <div id="file-badges"></div>
-  <div id="context-files-row"></div>
-  <div id="agent-queue-indicator"></div>
-  <div id="input-row">
-    <textarea id="input" rows="1" placeholder="问 DevSeek...  / 命令  @文件  #problems"></textarea>
-    <button id="send-btn" title="发送 (Enter)">&#x27a4;</button>
-  </div>
-  <div id="input-hint">Shift+Enter 换行 &middot; ⏹ 停止生成 &middot; / 命令 &middot; @文件 &middot; #problems</div>
-</div>
-</div>
-<div id="status-bar">
-  <span class="s-dot s-pending" id="s-dot"></span>
-  <span id="status-text">连接中...</span>
-  <button id="login-btn" style="display:none">🔑 登录</button>
-  <button id="switch-provider-btn" title="切换 LLM Provider / 设置">&#9881;</button>
-  <span class="s-spacer"></span>
-  <div id="mode-switcher">
-    <button class="mode-btn active" data-mode="fast">⚡ 快速</button>
-    <button class="mode-btn" data-mode="r1">🧠 专家 R1</button>
-  </div>
-  <button id="agent-toggle-btn" title="Agent 模式：开启时自动解析意图和执行多轮编辑，关闭时强制走普通对话">🤖 Agent</button>
-  <button id="autopilot-btn" title="自动驾驶：开启后 Agent 完成时自动接受所有文件改动">🤖 自动</button>
-</div>
-<script nonce="${nonce}" src="${mermaidUri}"></script>
-<script nonce="${nonce}">/*MARKED_PLACEHOLDER*/</script>
-<script nonce="${nonce}">window.__wsFolderName = ${JSON.stringify(vscode.workspace.workspaceFolders?.[0]?.name ?? '')};</script>
-<script nonce="${nonce}">/*WEBVIEW_PLACEHOLDER*/</script>
-</body>
-</html>`;
-    return html
-        .replace('/*MARKED_PLACEHOLDER*/', () => markedJs)
-        .replace('/*WEBVIEW_PLACEHOLDER*/', () => webviewJs);
-}
 
 // ----------------------------------------------------------------
 // Helpers
@@ -4488,10 +3678,6 @@ async function routeChat(opts: RouteChatOpts): Promise<string> {
     }
     throw e;
   }
-}
-
-function getNonce(): string {
-  return require('crypto').randomBytes(16).toString('hex');
 }
 
 // ================================================================
@@ -4684,187 +3870,6 @@ async function addResourceToChat(resource?: vscode.Uri): Promise<void> {
   }
 }
 
-async function collectDirectoryFiles(root: vscode.Uri, maxFiles: number, extFilter?: RegExp): Promise<vscode.Uri[]> {
-  const collected: vscode.Uri[] = [];
-
-  async function walk(dir: vscode.Uri): Promise<void> {
-    if (collected.length >= maxFiles) return;
-    const entries = await vscode.workspace.fs.readDirectory(dir);
-    for (const [name, type] of entries) {
-      if (collected.length >= maxFiles) return;
-      if (shouldSkipDiscoveryDir(name)) continue;
-
-      const child = vscode.Uri.joinPath(dir, name);
-      if (type === vscode.FileType.Directory) {
-        await walk(child);
-        continue;
-      }
-      if (type !== vscode.FileType.File) continue;
-      // Apply extension filter: if caller provided one, use it; otherwise use SOURCE_FILE_RE
-      const filter = extFilter ?? SOURCE_FILE_RE;
-      if (!shouldIncludeDiscoveredSourceFile(child.fsPath, filter)) continue;
-
-      collected.push(child);
-    }
-  }
-
-  await walk(root);
-  return collected;
-}
-
-type GeneratedContentDisplayMode = 'hidden' | 'collapsed' | 'full';
-type WorkingCopyStyle = 'concise' | 'detailed';
-
-interface OpenGeneratedPathOptions {
-  rawPath: string;
-  line?: number;
-  generatedText?: string;
-  requestPrompt?: string;
-  preferredAbsolutePaths?: string[];
-}
-
-function getGeneratedContentDisplayMode(): GeneratedContentDisplayMode {
-  const config = vscode.workspace.getConfiguration('devseek');
-  const mode = config.get<string>('generatedContentDisplayMode', 'collapsed');
-  if (mode === 'hidden' || mode === 'full') return mode;
-  return 'collapsed';
-}
-
-function getWorkingCopyStyle(): WorkingCopyStyle {
-  const config = vscode.workspace.getConfiguration('devseek');
-  const style = config.get<string>('workingCopyStyle', 'detailed');
-  return style === 'concise' ? 'concise' : 'detailed';
-}
-
-function pushUiSettings(webview: vscode.Webview): void {
-  const cfg = vscode.workspace.getConfiguration('devseek');
-  webview.postMessage({
-    type: 'uiSettings',
-    generatedContentDisplayMode: getGeneratedContentDisplayMode(),
-    workingCopyStyle: getWorkingCopyStyle(),
-    autopilotMode: cfg.get<boolean>('autopilotMode', false),
-    agentEnabled: cfg.get<boolean>('agentEnabled', true),
-    maxAgentRounds: cfg.get<number>('maxAgentRounds', 25),
-  });
-}
-
-interface GeneratedPathMeta {
-  path: string;
-  kind: 'file' | 'patch';
-  operation: 'create' | 'update' | 'patch';
-  exists: boolean;
-}
-
-async function emitResponseMeta(
-  webview: vscode.Webview,
-  rawResponse: string,
-  requestPrompt?: string,
-  preferredAbsolutePaths?: string[],
-): Promise<void> {
-  const artifacts = parseGeneratedArtifacts(rawResponse || '');
-  const generatedPaths: GeneratedPathMeta[] = [];
-  const seen = new Set<string>();
-  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri;
-
-  for (const artifact of artifacts) {
-    const normalized = normalizePathForMeta(
-      resolveGeneratedArtifactPathForPrompt(artifact.path, requestPrompt, preferredAbsolutePaths),
-    );
-    if (!isGeneratedArtifactAllowedForPrompt(normalized, requestPrompt, preferredAbsolutePaths)) continue;
-    const key = `${artifact.type}:${normalized}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    const exists = workspaceRoot ? await workspacePathExists(workspaceRoot, normalized) : false;
-    const operation: 'create' | 'update' | 'patch' = artifact.type === 'patch'
-      ? 'patch'
-      : exists
-        ? 'update'
-        : 'create';
-
-    generatedPaths.push({
-      path: normalized,
-      kind: artifact.type,
-      operation,
-      exists,
-    });
-  }
-
-  webview.postMessage({
-    type: 'responseMeta',
-    hasGeneratedArtifacts: generatedPaths.length > 0,
-    generatedPaths,
-    pathHints: preferredAbsolutePaths ?? [],
-  });
-}
-
-function normalizePathForMeta(pathValue: string): string {
-  return (pathValue || '')
-    .trim()
-    .replace(/^a\//, '')
-    .replace(/^b\//, '')
-    .replace(/^\.\//, '')
-    .replace(/\\/g, '/');
-}
-
-async function workspacePathExists(workspaceRoot: vscode.Uri, relativePath: string): Promise<boolean> {
-  if (!relativePath) return false;
-  const safe = relativePath.replace(/^\/+/, '').replace(/\.\.(?:\/|$)/g, '');
-  if (!safe) return false;
-  const target = vscode.Uri.joinPath(workspaceRoot, ...safe.split('/'));
-  try {
-    await vscode.workspace.fs.stat(target);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function openWorkspacePathInEditor(options: OpenGeneratedPathOptions): Promise<void> {
-  const parsed = parsePathRef(options.rawPath, options.line);
-  const preferredAbsolutePaths = options.preferredAbsolutePaths && options.preferredAbsolutePaths.length > 0
-    ? options.preferredAbsolutePaths
-    : lastConversationFiles;
-  const normalized = normalizePathForMeta(
-    resolveGeneratedArtifactPathForPrompt(parsed.path, options.requestPrompt, preferredAbsolutePaths),
-  );
-  const targetLine = parsed.line;
-  const target = resolveWorkspaceFileUri(normalized, preferredAbsolutePaths);
-  if (!target) {
-    vscode.window.showWarningMessage('DeepSeek: 当前没有打开工作区，无法定位文件。');
-    return;
-  }
-
-  if (!normalized || normalized.startsWith('/') || normalized.includes('..')) {
-    vscode.window.showWarningMessage(`DeepSeek: 非法路径，无法打开：${options.rawPath}`);
-    return;
-  }
-
-  try {
-    await vscode.workspace.fs.stat(target);
-    const doc = await vscode.workspace.openTextDocument(target);
-    const editor = await vscode.window.showTextDocument(doc, { preview: false });
-    revealEditorLine(editor, targetLine);
-    return;
-  } catch {
-    // Fallback to virtual preview for generated but not yet applied content.
-  }
-
-  const preview = buildVirtualPreviewFromGenerated(normalized, options.generatedText || '', options.requestPrompt);
-  if (!preview) {
-    vscode.window.showInformationMessage(`DeepSeek: 文件尚未落地：${normalized}。可先点击“预览”或“应用”。`);
-    return;
-  }
-
-  const doc = await vscode.workspace.openTextDocument({
-    content: preview.content,
-    language: preview.language,
-  });
-  const editor = await vscode.window.showTextDocument(doc, { preview: false });
-  revealEditorLine(editor, targetLine);
-  vscode.window.showInformationMessage(`DeepSeek: 打开了 ${normalized} 的虚拟预览（尚未写入工作区）。`);
-}
-
 async function openPendingEditInEditor(record: PendingEditRecord, hunkLine?: number): Promise<void> {
   const workspaceUri = resolveWorkspaceFileUri(record.path, lastConversationFiles);
   if (!workspaceUri) {
@@ -4880,273 +3885,16 @@ async function openPendingEditInEditor(record: PendingEditRecord, hunkLine?: num
   revealEditorLine(editor, revealLine);
 }
 
-function parsePathRef(rawPath: string, lineHint?: number): { path: string; line?: number } {
-  let path = (rawPath || '').replace(/\\/g, '/').trim().replace(/^\.\//, '').replace(/^a\//, '').replace(/^b\//, '');
-  let line = normalizeLine(lineHint);
-
-  const hashRef = path.match(/#L(\d+)$/i);
-  if (hashRef) {
-    path = path.slice(0, hashRef.index).trim();
-    line = normalizeLine(Number(hashRef[1])) || line;
-  }
-
-  const colonRef = path.match(/:(\d+)(?::\d+)?$/);
-  if (colonRef) {
-    path = path.slice(0, colonRef.index).trim();
-    line = normalizeLine(Number(colonRef[1])) || line;
-  }
-
-  return { path, line };
-}
-
-function normalizeLine(value: number | undefined): number | undefined {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
-  const rounded = Math.floor(value);
-  return rounded >= 1 ? rounded : undefined;
-}
-
-function revealEditorLine(editor: vscode.TextEditor, line?: number): void {
-  if (!line) return;
-  const target = new vscode.Position(Math.max(0, line - 1), 0);
-  editor.selection = new vscode.Selection(target, target);
-  editor.revealRange(new vscode.Range(target, target), vscode.TextEditorRevealType.InCenter);
-}
-
-function buildVirtualPreviewFromGenerated(path: string, rawText: string, requestPrompt?: string): { content: string; language?: string } | undefined {
-  if (!rawText.trim()) return undefined;
-  const targetKey = normalizePathKey(path);
-  const artifacts = parseGeneratedArtifacts(rawText);
-
-  const direct = findArtifactByPath(artifacts, targetKey, requestPrompt);
-  if (direct) return artifactToPreview(direct);
-
-  const targetBase = nodePath.posix.basename(targetKey);
-  const byBase = artifacts.filter((artifact) => nodePath.posix.basename(normalizePathKey(artifact.path)) === targetBase);
-  if (byBase.length === 1) return artifactToPreview(byBase[0]);
-
-  // Fallback for prompts that mention the path without strict artifact structure.
-  const promptPath = extractPreviewPathFromPrompt(requestPrompt || '', targetBase);
-  if (promptPath) {
-    const promptHit = findArtifactByPath(artifacts, normalizePathKey(promptPath), requestPrompt);
-    if (promptHit) return artifactToPreview(promptHit);
-  }
-
-  return undefined;
-}
-
-function findArtifactByPath(artifacts: GeneratedArtifact[], targetKey: string, requestPrompt?: string): GeneratedArtifact | undefined {
-  for (const artifact of artifacts) {
-    if (normalizePathKey(artifact.path) === targetKey) return artifact;
-    const resolved = resolveGeneratedArtifactPathForPrompt(artifact.path, requestPrompt, lastConversationFiles);
-    if (normalizePathKey(resolved) === targetKey) return artifact;
-  }
-  return undefined;
-}
-
-function artifactToPreview(artifact: GeneratedArtifact): { content: string; language?: string } {
-  if (artifact.type === 'file') {
-    return {
-      content: artifact.content,
-      language: artifact.language || guessLanguageFromPath(artifact.path),
-    };
-  }
-  return {
-    content: artifact.diff,
-    language: 'diff',
-  };
-}
-
-function normalizePathKey(path: string): string {
-  return (path || '')
-    .replace(/\\/g, '/')
-    .trim()
-    .replace(/^\.\//, '')
-    .replace(/^a\//, '')
-    .replace(/^b\//, '');
-}
-
-function extractPreviewPathFromPrompt(prompt: string, baseName: string): string | undefined {
-  if (!prompt || !baseName) return undefined;
-  const escaped = baseName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const m = prompt.match(new RegExp(`([A-Za-z0-9_./-]+/${escaped})`, 'i'));
-  return m ? m[1] : undefined;
-}
-
-function guessLanguageFromPath(path: string): string | undefined {
-  const ext = nodePath.posix.extname(path).toLowerCase().replace(/^\./, '');
-  const map: Record<string, string> = {
-    ts: 'typescript',
-    tsx: 'typescriptreact',
-    js: 'javascript',
-    jsx: 'javascriptreact',
-    py: 'python',
-    cpp: 'cpp',
-    cc: 'cpp',
-    cxx: 'cpp',
-    c: 'c',
-    h: 'c',
-    hpp: 'cpp',
-    json: 'json',
-    md: 'markdown',
-    css: 'css',
-    scss: 'scss',
-    html: 'html',
-    sh: 'shellscript',
-    sql: 'sql',
-    go: 'go',
-    rs: 'rust',
-    java: 'java',
-  };
-  return map[ext];
-}
-
-/**
- * 当 parser 无法从回复中识别文件路径时，尝试把附加文件路径注入到无标识代码块前，
- * 以便 parser 能关联代码块和文件。仅对语言扩展匹配的代码块注入，且只处理单文件匹配。
- */
-function injectFileHintsIntoResponse(response: string, absoluteFilePaths: string[]): string {
-  if (!response || absoluteFilePaths.length === 0) return response;
-
-  // 获取相对路径和扩展名映射
-  const fileInfos = absoluteFilePaths.map((abs) => {
-    const rel = vscode.workspace.asRelativePath(abs, false).replace(/\\/g, '/');
-    const ext = rel.split('.').pop()?.toLowerCase() ?? '';
-    return { abs, rel, ext };
-  });
-
-  // 逐个代码块检测：如果该代码块前面的文本没有路径标签，且语言扩展匹配唯一文件，则注入
-  const codeBlockRe = /```([^\n`]*)\n([\s\S]*?)```/g;
-  type Injection = { index: number; label: string };
-  const injections: Injection[] = [];
-  let m: RegExpExecArray | null;
-
-  while ((m = codeBlockRe.exec(response)) !== null) {
-    const fenceLang = m[1].trim().toLowerCase();
-    // 检查此代码块前 200 字符内是否已有文件路径标签
-    const preText = response.slice(Math.max(0, m.index - 200), m.index);
-    const alreadyLabeled = fileInfos.some(({ rel }) =>
-      preText.includes(rel) || preText.includes(rel.split('/').pop() ?? ''),
-    );
-    if (alreadyLabeled) continue;
-
-    // 按语言扩展找匹配文件（支持同义别名：cpp/cc/cxx/h → cpp, js/ts → js/ts）
-    const EXT_ALIASES: Record<string, string[]> = {
-      cpp: ['cpp', 'cc', 'cxx', 'c++'],
-      c: ['c'],
-      h: ['h', 'hpp'],
-      hpp: ['h', 'hpp'],
-      ts: ['ts', 'tsx'],
-      js: ['js', 'jsx', 'mjs', 'cjs'],
-    };
-    const aliases = EXT_ALIASES[fenceLang] ?? [fenceLang];
-    const matched = fileInfos.filter(({ ext }) => aliases.includes(ext));
-
-    // 只在唯一匹配时注入，避免歧义；注入文件名（basename），applier 负责映射到完整路径
-    if (matched.length === 1) {
-      const basename = matched[0].rel.split('/').pop() ?? matched[0].rel;
-      injections.push({ index: m.index, label: `${basename}\n` });
-    }
-  }
-
-  // 顺序注入兜底：唯一性匹配全部失败，但代码块数 == 文件数时，按顺序对应注入
-  // 这是处理多个同扩展名文件（如 6 个 .hpp）的关键路径
-  if (injections.length === 0) {
-    const seqBlocks: number[] = [];
-    const seqRe = /```[^\n`]*\n[\s\S]*?```/g;
-    let seqM: RegExpExecArray | null;
-    while ((seqM = seqRe.exec(response)) !== null) {
-      seqBlocks.push(seqM.index);
-    }
-    if (seqBlocks.length === fileInfos.length && seqBlocks.length > 0) {
-      for (let i = 0; i < seqBlocks.length; i++) {
-        const basename = fileInfos[i].rel.split('/').pop() ?? fileInfos[i].rel;
-        injections.push({ index: seqBlocks[i], label: `${basename}\n` });
-      }
-    }
-  }
-
-  if (injections.length === 0) return response;
-
-  // 从后向前注入，保持偏移正确
-  let result = response;
-  for (const inj of injections.reverse()) {
-    result = result.slice(0, inj.index) + inj.label + result.slice(inj.index);
-  }
-  return result;
-}
-
-// ----------------------------------------------------------------
-// DeepSeek original-content provider (for diff views)
-// ----------------------------------------------------------------
-class DeepSeekOriginalContentProvider implements vscode.TextDocumentContentProvider {
-  private _emitter = new vscode.EventEmitter<vscode.Uri>();
-  readonly onDidChange = this._emitter.event;
-
-  provideTextDocumentContent(uri: vscode.Uri): string {
-    // URI: deepseek-original://edit/<editId>/<relpath>
-    const parts = uri.path.replace(/^\//, '').split('/');
-    const editId = parts[0];
-    const record = pendingEdits.get(editId);
-    return record ? record.oldContent : '';
-  }
-
-  notify(uri: vscode.Uri): void {
-    this._emitter.fire(uri);
-  }
-}
-
-const originalContentProvider = new DeepSeekOriginalContentProvider();
-
-function makeOriginalUri(record: PendingEditRecord): vscode.Uri {
-  const safePath = record.path.replace(/\\/g, '/');
-  return vscode.Uri.from({
-    scheme: 'deepseek-original',
-    path: `/${record.id}/${safePath}`,
-  });
-}
-
-function closePendingEditDiffTabAsync(record: PendingEditRecord): void {
-  const originalUri = makeOriginalUri(record);
-  const uriStr = originalUri.toString();
-  void (async () => {
-    for (const group of vscode.window.tabGroups.all) {
-      for (const tab of group.tabs) {
-        const input = tab.input;
-        if (input instanceof vscode.TabInputTextDiff) {
-          if ((input.original as vscode.Uri).toString() === uriStr) {
-            await vscode.window.tabGroups.close(tab, true).then(undefined, () => { /* silence */ });
-          }
-        }
-      }
-    }
-  })();
-}
+const originalContentProvider = new DeepSeekOriginalContentProvider((editId) => pendingEdits.get(editId));
 
 async function openPendingEditDiff(record: PendingEditRecord, hunkLine?: number): Promise<void> {
-  const workspaceUri = resolveWorkspaceFileUri(record.path, lastConversationFiles);
-  if (!workspaceUri) {
-    vscode.window.showWarningMessage('DeepSeek: 无法定位文件，无法打开 Diff 视图。');
-    return;
-  }
-
-  const originalUri = makeOriginalUri(record);
-  originalContentProvider.notify(originalUri);
-
-  const fileName = nodePath.basename(record.path);
-  const title = `${fileName}: Original ↔ DevSeek (${record.existed ? '修改' : '新建'})`;  
-
-  await vscode.commands.executeCommand('vscode.diff', originalUri, workspaceUri, title, {
-    preview: true,
-    viewColumn: vscode.ViewColumn.Active,
+  await openPendingEditDiffView({
+    record,
+    hunkLine,
+    provider: originalContentProvider,
+    resolveWorkspaceUri: (path) => resolveWorkspaceFileUri(path, lastConversationFiles),
+    revealEditorLine,
   });
-
-  const revealLine = hunkLine || record.hunks.find((hunk) => hunk.resolution === 'pending')?.newStart || record.hunks[0]?.newStart;
-  if (revealLine) {
-    // Give VS Code a moment to open the diff before revealing the line
-    await new Promise<void>((resolve) => setTimeout(resolve, 200));
-    const editor = vscode.window.activeTextEditor;
-    if (editor) revealEditorLine(editor, revealLine);
-  }
 }
 
 // ----------------------------------------------------------------

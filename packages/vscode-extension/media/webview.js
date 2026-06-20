@@ -2586,9 +2586,9 @@ var agentDeferredBubbleTurn = null;
  * tXo (terminal): terminal tool invocations
  * iXo (tool):     all other tool calls (read/search/list/etc.)
  */
-var SPINNER_THINKING = ['Thinking', 'Reasoning', 'Considering', 'Analyzing', 'Evaluating'];
-var SPINNER_TERMINAL = ['Executing', 'Running', 'Processing'];
-var SPINNER_TOOL     = ['Processing', 'Preparing', 'Loading', 'Analyzing', 'Evaluating'];
+var SPINNER_THINKING = ['思考中', '推理中', '整理上下文', '分析请求', '评估方案'];
+var SPINNER_TERMINAL = ['执行命令', '运行中', '处理输出'];
+var SPINNER_TOOL     = ['处理中', '准备工具', '读取结果', '分析证据', '评估状态'];
 var _spinnerPools = null; // reset per startWorkingShimmer call
 
 function _initSpinnerPools() {
@@ -3010,46 +3010,54 @@ function buildFinishedLabel(isFailed, container) {
   if (!stepCount) {
     stepCount = Object.keys(agentActivityCounts).reduce(function(s, k) { return s + agentActivityCounts[k]; }, 0);
   }
-  var stepSuffix = stepCount > 0 ? ' · ' + stepCount + ' step' + (stepCount === 1 ? '' : 's') : '';
+  var stepSuffix = stepCount > 0 ? ' · ' + stepCount + ' 步' : '';
   var containerLabel = container
     ? (container.getAttribute('data-finished-label') || container.getAttribute('data-running-label') || '')
     : '';
   if (isFailed) {
     if (agentLastErrorTitle) return agentLastErrorTitle + stepSuffix;
     var failedTodoLabel = findFailedTodoLabel();
-    if (failedTodoLabel) return 'Failed: ' + failedTodoLabel + stepSuffix;
+    if (failedTodoLabel) return '失败：' + failedTodoLabel + stepSuffix;
   }
   if (containerLabel) {
-    return (isFailed ? 'Failed: ' : '') + containerLabel + stepSuffix;
+    return (isFailed ? '失败：' : '') + containerLabel + stepSuffix;
   }
   // Priority 1: Use action-based label from current task (most specific — Copilot style).
   // Must check this BEFORE todoCount so execute-phase containers get their own label
   // ("Created foo.cpp") rather than the plan-level todo count fallback.
   if (agentCurrentTaskLabel) {
     if (isFailed) {
-      var failFile = agentCurrentTaskLabel.replace(/^\w+ /, '');
-      return 'Failed: ' + failFile;
+      var failFile = agentCurrentTaskLabel.replace(/^(创建|修改|编辑|删除|分析|探索|运行|处理)\s+/, '');
+      return '失败：' + failFile;
     }
     var doneLabel = agentCurrentTaskLabel
-      .replace(/^Creating /, 'Created ')
-      .replace(/^Modifying /, 'Modified ')
-      .replace(/^Editing /, 'Edited ')
-      .replace(/^Deleting /, 'Deleted ')
-      .replace(/^Analyzing /, 'Analyzed ')
-      .replace(/^Exploring /, 'Explored ')
-      .replace(/^Running /, 'Ran ')
-      .replace(/^Working on /, 'Worked on ');
+      .replace(/^Creating /, '已创建 ')
+      .replace(/^Modifying /, '已修改 ')
+      .replace(/^Editing /, '已编辑 ')
+      .replace(/^Deleting /, '已删除 ')
+      .replace(/^Analyzing /, '已分析 ')
+      .replace(/^Exploring /, '已探索 ')
+      .replace(/^Running /, '已运行 ')
+      .replace(/^Working on /, '已处理 ')
+      .replace(/^创建 /, '已创建 ')
+      .replace(/^修改 /, '已修改 ')
+      .replace(/^编辑 /, '已编辑 ')
+      .replace(/^删除 /, '已删除 ')
+      .replace(/^分析 /, '已分析 ')
+      .replace(/^探索 /, '已探索 ')
+      .replace(/^运行 /, '已运行 ')
+      .replace(/^处理 /, '已处理 ');
     return doneLabel + stepSuffix;
   }
   // Priority 2: Plan-only containers — show todo count as meaningful label
   var todoCount = agentToolTodos && agentToolTodos.length ? agentToolTodos.length : agentTodos.length;
   if (!isFailed && todoCount > 0) {
-    return 'Planned ' + todoCount + (todoCount === 1 ? ' task' : ' tasks') + stepSuffix;
+    return '已规划 ' + todoCount + ' 个任务' + stepSuffix;
   }
-  if (isFailed) return stepCount > 0 ? ('\u5931\u8d25 \u2014 ' + stepCount + ' \u6b65') : 'Failed';
+  if (isFailed) return stepCount > 0 ? ('失败 — ' + stepCount + ' 步') : '失败';
   return stepCount > 0
-    ? 'Completed ' + stepCount + ' step' + (stepCount === 1 ? '' : 's')
-    : 'Finished working';
+    ? '已完成 ' + stepCount + ' 步'
+    : '已完成';
 }
 
 function findFailedTodoLabel() {
@@ -3238,13 +3246,13 @@ function ensureAgentProgressContainer(label) {
   agentExecContainer.innerHTML = '<details class="aut-details" open>'
     + '<summary class="aut-summary">'
     + '<span class="aut-status-icon"><i class="codicon codicon-loading aut-spin"></i></span>'
-    + '<span class="aut-label">' + escapeHtml(label || 'Working...') + '</span>'
+    + '<span class="aut-label">' + escapeHtml(label || '处理中...') + '</span>'
     + '<span class="aut-count"></span>'
     + '</summary>'
     + '<div class="aut-rows"></div>'
     + '</details>';
   startWorkingShimmer(agentExecContainer);
-  setAgentContainerLabel(agentExecContainer, label || 'Working...', true);
+  setAgentContainerLabel(agentExecContainer, label || '处理中...', true);
   createExecStepsList(agentExecContainer);
   wrap.appendChild(agentExecContainer);
   messagesEl.appendChild(wrap);
@@ -3253,24 +3261,24 @@ function ensureAgentProgressContainer(label) {
 }
 
 var AGENT_ACTIVITY_DISPLAY = {
-  read: { target: 'file', labelTarget: 'file', labelVerb: 'Reading', spinnerVerb: 'Reading', stepVerb: 'Read', icon: 'codicon-file-text', basename: true },
-  search: { target: 'code', labelTarget: 'code', labelVerb: 'Searching', spinnerVerb: 'Searching', stepVerb: 'Searched for', icon: 'codicon-search', max: 60 },
-  list: { target: 'directory', labelTarget: 'directory', labelVerb: 'Listing', spinnerVerb: 'Listing', stepVerb: 'Listed', icon: 'codicon-list-flat' },
-  write: { target: 'file', labelTarget: 'file', labelVerb: 'Writing', spinnerVerb: 'Writing', stepVerb: 'Wrote', icon: 'codicon-edit', basename: true },
-  web: { target: 'webpage', labelTarget: 'webpage', labelVerb: 'Fetching', spinnerVerb: 'Fetching', stepVerb: 'Fetched', icon: 'codicon-globe', max: 60 },
-  diagnostics: { target: 'workspace diagnostics', labelTarget: 'diagnostics', labelVerb: 'Checking', spinnerVerb: 'Checking', stepVerb: 'Checked', icon: 'codicon-warning' },
-  'vscode-command': { target: 'VS Code command', labelTarget: 'VS Code command', labelVerb: 'Running', spinnerVerb: 'Running', stepVerb: 'Ran', icon: 'codicon-extensions', max: 50 },
-  mcp: { target: 'tool', labelTarget: 'tool', labelVerb: 'Calling', spinnerVerb: 'Calling', stepVerb: 'Called', icon: 'codicon-plug', max: 50 },
-  terminal: { target: 'command', labelTarget: 'command', labelVerb: 'Running', spinnerVerb: 'Running', stepVerb: 'Ran', icon: 'codicon-terminal', max: 50, shellPrefix: true },
+  read: { target: '文件', labelTarget: '文件', labelVerb: '读取', spinnerVerb: '读取', stepVerb: '已读取', icon: 'codicon-file-text', basename: true },
+  search: { target: '代码', labelTarget: '代码', labelVerb: '搜索', spinnerVerb: '搜索', stepVerb: '已搜索', icon: 'codicon-search', max: 60 },
+  list: { target: '目录', labelTarget: '目录', labelVerb: '列出', spinnerVerb: '列出', stepVerb: '已列出', icon: 'codicon-list-flat' },
+  write: { target: '文件', labelTarget: '文件', labelVerb: '写入', spinnerVerb: '写入', stepVerb: '已写入', icon: 'codicon-edit', basename: true },
+  web: { target: '网页', labelTarget: '网页', labelVerb: '抓取', spinnerVerb: '抓取', stepVerb: '已抓取', icon: 'codicon-globe', max: 60 },
+  diagnostics: { target: '工作区诊断', labelTarget: '诊断', labelVerb: '检查', spinnerVerb: '检查', stepVerb: '已检查', icon: 'codicon-warning' },
+  'vscode-command': { target: 'VS Code 命令', labelTarget: 'VS Code 命令', labelVerb: '运行', spinnerVerb: '运行', stepVerb: '已运行', icon: 'codicon-extensions', max: 50 },
+  mcp: { target: '工具', labelTarget: '工具', labelVerb: '调用', spinnerVerb: '调用', stepVerb: '已调用', icon: 'codicon-plug', max: 50 },
+  terminal: { target: '命令', labelTarget: '命令', labelVerb: '运行', spinnerVerb: '运行', stepVerb: '已运行', icon: 'codicon-terminal', max: 50, shellPrefix: true },
 };
 
 function getAgentActivityDisplay(kind) {
   return AGENT_ACTIVITY_DISPLAY[kind] || {
-    target: 'tool',
+    target: '工具',
     labelTarget: '',
-    labelVerb: 'Working',
-    spinnerVerb: 'Running',
-    stepVerb: 'Ran',
+    labelVerb: '处理',
+    spinnerVerb: '运行',
+    stepVerb: '已运行',
     icon: 'codicon-terminal',
     max: 50,
     shellPrefix: true,
@@ -3361,7 +3369,7 @@ function prepareAgentToolActivityContainer(kind, label) {
 }
 
 function appendAgentProgressStep(kind, label, detail, state) {
-  var container = ensureAgentProgressContainer(label || 'Working...');
+  var container = ensureAgentProgressContainer(label || '处理中...');
   var steps = agentActivityRowId ? document.getElementById(agentActivityRowId) : null;
   if (!steps) {
     createExecStepsList(container);
@@ -3464,7 +3472,7 @@ function addAgentStatus(msg) {
         agentExecContainer.innerHTML = '<details class="aut-details" open>'
           + '<summary class="aut-summary">'
           + '<span class="aut-status-icon"><i class="codicon codicon-loading aut-spin"></i></span>'
-          + '<span class="aut-label">Working...</span>'
+          + '<span class="aut-label">处理中...</span>'
           + '<span class="aut-count"></span>'
           + '</summary>'
           + '<div class="aut-rows"></div>'
@@ -3551,14 +3559,14 @@ function addAgentStatus(msg) {
       // These show "Running X" instead of "Analyzing X" for clearer intent (Claude Code pattern).
       var isRunTask = (taskAction === 'analyze' || taskAction === 'explain')
         && /run_terminal|run\s+\w|compile|execute|\$\s/i.test(rawDesc);
-      var actionPrefix = taskAction === 'create' ? 'Creating '
-        : taskAction === 'delete' ? 'Deleting '
-        : taskAction === 'modify' ? 'Modifying '
-        : taskAction === 'explore' ? 'Exploring '
-        : taskAction === 'respond' ? 'Responding '
-        : isRunTask ? 'Running '
-        : (taskAction === 'analyze' || taskAction === 'explain') ? 'Analyzing '
-        : taskAction ? 'Working on ' : '';
+      var actionPrefix = taskAction === 'create' ? '创建 '
+        : taskAction === 'delete' ? '删除 '
+        : taskAction === 'modify' ? '修改 '
+        : taskAction === 'explore' ? '探索 '
+        : taskAction === 'respond' ? ''
+        : isRunTask ? '运行 '
+        : (taskAction === 'analyze' || taskAction === 'explain') ? '分析 '
+        : taskAction ? '处理 ' : '';
       var prevTaskLabel = agentCurrentTaskLabel;  // save OLD label for finalization
       agentCurrentTaskLabel = actionPrefix + taskDesc;
 
@@ -3587,8 +3595,8 @@ function addAgentStatus(msg) {
       markTurnEnter(ecWrap);
       agentExecContainer = document.createElement('div');
       agentExecContainer.className = 'aut-container';
-      // Copilot-style label: show action-verb + file while working, e.g. "Creating sorting_algorithm.cpp"
-      var initLabel = agentCurrentTaskLabel || (fname ? ('Working: ' + fname) : 'Working\u2026');
+      // Copilot-style label: show action-verb + file while working.
+      var initLabel = agentCurrentTaskLabel || (fname ? ('处理 ' + fname) : '处理中\u2026');
       agentExecContainer.innerHTML = '<details class="aut-details" open>'
         + '<summary class="aut-summary">'
         + '<span class="aut-status-icon"><i class="codicon codicon-loading aut-spin"></i></span>'
@@ -3674,11 +3682,11 @@ function addAgentStatus(msg) {
       // Only show N/M counter once at least one task is done (avoids confusing "0/N" at start)
       var showCount = agentTodos.length > 1 && doneCount > 0;
       if (msg.state === 'started' || (!msg.state && fname)) {
-        // Use action-based label while working: "Creating X", "Editing Y", etc.
-        if (autLbl) autLbl.textContent = agentCurrentTaskLabel || (fname ? ('Working: ' + fname) : 'Working\u2026');
+        // Use action-based label while working: "创建 X", "修改 Y", etc.
+        if (autLbl) autLbl.textContent = agentCurrentTaskLabel || (fname ? ('处理 ' + fname) : '处理中\u2026');
         if (autCount) autCount.textContent = showCount ? (doneCount + '/' + agentTodos.length) : '';
       } else {
-        if (autLbl) autLbl.textContent = agentCurrentTaskLabel || 'Working\u2026';
+        if (autLbl) autLbl.textContent = agentCurrentTaskLabel || '处理中\u2026';
         if (autCount) autCount.textContent = showCount ? (doneCount + '/' + agentTodos.length) : '';
       }
     }
@@ -6366,7 +6374,7 @@ window.addEventListener('message', function(event) {
         if (actDets && !actDets.hasAttribute('data-done')) {
           var actSpinLbl = actDets.querySelector('.aut-spinner-label');
           if (actSpinLbl) {
-            var spinActWord = getAgentActivityDisplay(actKind).spinnerVerb || 'Running';
+            var spinActWord = getAgentActivityDisplay(actKind).spinnerVerb || '运行';
             var spinActTarget = actDisplayLabel.replace(/\\/g, '/').split('/').pop() || actDisplayLabel;
             if (spinActTarget.length > 35) spinActTarget = spinActTarget.slice(0, 33) + '\u2026';
             actSpinLbl.textContent = spinActWord + (spinActTarget ? ' ' + spinActTarget : '\u2026');
@@ -6398,7 +6406,9 @@ window.addEventListener('message', function(event) {
   } else if (msg.type === 'sessionLoaded') {
     loadSessionMessages(msg.history, msg.summary, msg.changedFiles, msg.messageCount, msg.createdAt);
   } else if (msg.type === 'agentCheckpointAvailable') {
-    showCheckpointBanner(msg.resumeTaskIndex, msg.totalTasks, msg.userPrompt, msg.savedAt, msg.recoveryKind, msg.pauseReason);
+    if (shouldDisplayCheckpointBanner(msg)) {
+      showCheckpointBanner(msg.resumeTaskIndex, msg.totalTasks, msg.userPrompt, msg.savedAt, msg.recoveryKind, msg.pauseReason);
+    }
   } else if (msg.type === 'agentCheckpointCleared') {
     dismissCheckpointBanner();
   }
@@ -6413,10 +6423,24 @@ function stopGenerating() {
 // ── 断点续传 checkpoint banner ────────────────────────────────────────────────
 var checkpointBannerId = 'ds-checkpoint-banner';
 
+function shouldDisplayCheckpointBanner(msg) {
+  if (!msg || !msg.totalTasks || msg.resumeTaskIndex >= msg.totalTasks) return false;
+  var hasPauseEvidence = !!(msg.recoveryKind || msg.pauseReason);
+  // During an active Agent run, progress checkpoints are internal recovery facts.
+  // Only provider pauses/recoverable failures should surface a resume banner.
+  if (isGenerating && !hasPauseEvidence) return false;
+  return true;
+}
+
 function getCheckpointBannerCopy(recoveryKind, pauseReason) {
   var evidence = String(recoveryKind || '') + '\n' + String(pauseReason || '');
   if (/ResponseCorrupted|回复不完整|格式损坏|响应损坏|未验证的内容/.test(evidence)) {
-    return { title: '上次 Agent 输出被安全阻断', action: '安全重试', promptLabel: '原请求包含未完成或损坏的工具文本，已阻止执行。' };
+    return {
+      title: '上次 Agent 输出被安全阻断',
+      action: '安全重试',
+      statusLabel: '等待重新生成安全响应。',
+      promptLabel: '原请求包含未完成或损坏的工具文本，已阻止执行。',
+    };
   }
   if (/LoginRequired|登录已失效|登录/.test(evidence)) {
     return { title: '上次 Agent 任务已暂停', action: '登录后继续' };
@@ -6438,10 +6462,10 @@ function showCheckpointBanner(resumeTaskIndex, totalTasks, userPrompt, savedAt, 
   var promptSource = bannerCopy.promptLabel || userPrompt || '';
   var promptLabel = promptSource.slice(0, 60) + (promptSource.length > 60 ? '…' : '');
   var remaining = Math.max(0, totalTasks - resumeTaskIndex);
+  var progressLabel = bannerCopy.statusLabel || ('已完成 ' + resumeTaskIndex + '/' + totalTasks + ' 个任务，剩余 ' + remaining + ' 个。');
   banner.innerHTML =
     '<span style="flex:1;min-width:0">' +
-      '<b>' + escapeHtml(bannerCopy.title) + '</b>（' + elapsedLabel + '）：已完成 ' + resumeTaskIndex + '/' + totalTasks +
-      ' 个任务，剩余 ' + remaining + ' 个。' +
+      '<b>' + escapeHtml(bannerCopy.title) + '</b>（' + elapsedLabel + '）：' + escapeHtml(progressLabel) +
       (promptLabel ? '<br><span style="opacity:.7;font-size:.9em">' + escapeHtml(promptLabel) + '</span>' : '') +
     '</span>' +
     '<button id="ds-cp-resume" style="margin-left:8px;padding:3px 10px;cursor:pointer;border-radius:4px;border:none;background:var(--vscode-button-background,#0e639c);color:var(--vscode-button-foreground,#fff)">' + escapeHtml(bannerCopy.action) + '</button>' +

@@ -31,14 +31,14 @@ test('Phase 0: composition-root files cannot grow past the baseline', () => {
   const budgets = [
     {
       file: 'src/extension.ts',
-      maxPhysicalLines: 5511,
-      maxNonBlankLines: 5185,
+      maxPhysicalLines: 4300,
+      maxNonBlankLines: 4060,
       target: 'move VS Code business into app, ui, workspace, llm, memory, or agent services',
     },
     {
       file: 'src/agent-loop.ts',
-      maxPhysicalLines: 3609,
-      maxNonBlankLines: 3350,
+      maxPhysicalLines: 2650,
+      maxNonBlankLines: 2450,
       target: 'move agent business into runtime, tools, workflow, quality, or memory services',
     },
   ];
@@ -59,6 +59,7 @@ test('Phase 0: composition-root files cannot grow past the baseline', () => {
 test('Phase 0: domain roots expose explicit public boundaries', () => {
   const boundaries = {
     'src/app/index.ts': [
+      './agentic-repair-service',
       './chat-controller',
       './permission-service',
       './session-service',

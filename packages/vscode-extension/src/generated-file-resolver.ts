@@ -1,5 +1,6 @@
 import * as nodePath from 'path';
 import { GeneratedArtifact, GeneratedFile, parseGeneratedArtifacts } from './generated-file-parser';
+import { shouldBlockProjectInstructionFileContent } from './workspace/instruction-file-safety';
 
 export interface ResolvedGeneratedFile extends GeneratedFile {
   resolvedPath: string;
@@ -14,7 +15,8 @@ export async function resolveGeneratedArtifacts(options: ResolveGeneratedArtifac
   if (looksLikeReadOnlyPrompt(options.requestPrompt || '')) return [];
 
   let artifacts = parseGeneratedArtifacts(options.responseText)
-    .filter((artifact): artifact is GeneratedFile => artifact.type === 'file');
+    .filter((artifact): artifact is GeneratedFile => artifact.type === 'file')
+    .filter((artifact) => !shouldBlockProjectInstructionFileContent(artifact.path, artifact.content));
   if (artifacts.length === 0) {
     artifacts = inferFallbackFiles(options.responseText, options.requestPrompt || '');
   }
@@ -41,6 +43,7 @@ function inferFallbackFiles(responseText: string, requestPrompt: string): Genera
     const isCpp = language === 'cpp' || /#include\s*<iostream>|std::|int\s+main\s*\(/.test(content);
     if (!pathFromContext && !(requestMentionsCodeDir(requestPrompt) && isCpp)) continue;
     const path = pathFromContext || `code/${inferProgramBaseName(requestPrompt)}.cpp`;
+    if (shouldBlockProjectInstructionFileContent(path, content)) continue;
     results.push({
       type: 'file',
       path,

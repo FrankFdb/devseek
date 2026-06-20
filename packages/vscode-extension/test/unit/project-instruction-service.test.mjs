@@ -85,6 +85,29 @@ test('ProjectInstructionService: scoped instructions closer to target path are i
   });
 });
 
+test('ProjectInstructionService: skips scoped AGENTS.md that contains misplaced source implementation', () => {
+  withTempWorkspace((workspace) => {
+    const target = write(workspace, 'code/shape_manager/main.cpp', 'int main() { return 0; }\n');
+    write(workspace, 'AGENTS.md', 'Use repo-wide rules. Do not run broad searches.');
+    write(workspace, 'code/shape_manager/AGENTS.md', [
+      '#include "Renderer.h"',
+      '',
+      'void ConsoleRenderer::drawPixel(int x, int y, char c) {',
+      '    std::cout << c;',
+      '}',
+    ].join('\n'));
+
+    const result = new ProjectInstructionService().discover({
+      workspaceRoots: [workspace],
+      targetPaths: [target],
+    });
+
+    assert.deepEqual(result.sources.map(source => source.relPath), ['AGENTS.md']);
+    assert.match(result.content, /Use repo-wide rules/);
+    assert.doesNotMatch(result.content, /ConsoleRenderer::drawPixel/);
+  });
+});
+
 test('ProjectInstructionService: reports per-source truncation and total budget omission', () => {
   withTempWorkspace((workspace) => {
     write(workspace, 'AGENTS.md', 'a'.repeat(40));

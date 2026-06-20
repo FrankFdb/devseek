@@ -22,19 +22,34 @@
 - 修复手测 P7-02 中“原样输出不完整工具调用”在继续后被误恢复为写文件任务的问题：恢复事实提取会剥离工具协议样本、代码块和 JSON/tool payload；只读/否定动作不会被升格为 modify/create，真实 create 事实仍会保留。
 - 优化 P7-02 安全阻断 checkpoint 文案：ResponseCorrupted 的恢复入口显示为“上次 Agent 输出被安全阻断 / 安全重试”，并用安全摘要替代原始 `[TOOL:...]` 片段，避免误导用户以为会执行损坏工具块。
 - 修复 P7-02 继续后把内部 `provider-response` 当作文件目标搜索/分析的问题：恢复任务模型新增 `respond` 与内部 `targetKind`，无可信文件事实时由本地执行器生成安全响应，不再进入 DeepSeek 工具循环。
+- 修复运行中误显示“继续执行”的问题：进度 checkpoint 只用于内部恢复保存，不再在 Agent 仍在运行时展示恢复 banner；只有真实 paused 状态才显示继续入口。
+- 修复 `AGENTS.md` 被当成源码事实/候选文件的问题：项目指令服务、生成文件解析器和工具写入边界统一过滤“指令文件路径 + 疑似源码实现”，对齐 Claude Code/Codex 的指令文件信任边界。
+- 修复普通 apply/持续执行遇到疑似截断覆盖后停死的问题：apply 结果新增 `failureReason`、`failureDetail`、`blockedChangePaths`，Extension 会自动重新生成最小安全补丁并继续验证闭环。
+- 修复闭环修复阶段的截断覆盖二次失败：安全补丁仍被拦截时反馈拦截原因并强制下一轮使用 unified diff；未安全落地时不再继续验证或 QualityGate。
+- 修复自动闭环修复无进展循环：连续修复后若验证错误指纹不变，或重复修复同一批文件但仍失败，DevSeek 会停止重复修复并提示重新定位根因。
+- 重构 Agentic 修复运行时：新增 `AgenticRepairService` 承接修复提示词、失败指纹、重复补丁识别、STATUS: OK 假阳性拒绝、QualityGate 修复入口 gate；`extension.ts` 只保留 VS Code 编排调用。
+- 新增 `docs/architecture/12-Agentic修复运行时专题设计.md`，把 Claude Code/Codex 对标结论落到证据、权限、验证、恢复、停止条件和服务边界。
+- 修复“重新编译，执行”复用旧 run-only 计划的问题：重复执行计划改由 `ExecutionPlanner` 重新评估；遇到重新编译/构建请求或旧可执行文件不存在时，强制重新生成 build/run 计划。
+- 修复终端证据误判：终端工具被禁止、未执行、超时或缺少真实 exitCode 时，不再作为编译/运行/测试通过证据。
+- 按实施原则重构 `extension.ts` 职责边界：WebView HTML、生成 artifact UI、pending diff provider、legacy config 迁移、上下文/目录发现迁入 `ui/` 与 `app/` 服务，入口文件从 5555 行降至 4266 行。
 - 新增 Phase 7 单元测试和架构守卫，覆盖任务恢复主链路与失败链路。
 
 验证：
-- `npm test --workspace=packages/vscode-extension` 通过，50 个 suite 全部通过。
+- `npm test --workspace=packages/vscode-extension` 通过，52 个 suite 全部通过。
 - `node test/unit/provider-recovery-service.test.mjs` 通过，覆盖“建 ... 内容分别为 ... 并验证”的恢复事实提取、响应损坏 literal tool 样本不生成写文件任务、不生成 `provider-response` 假文件、只读恢复保持 analyze-only。
-- `node test/unit/workflow-compliance.test.mjs` 通过，覆盖 checkpoint create 事实的确定性执行接入，以及 ResponseCorrupted fallback 必须走本地 `respond` 安全响应。
+- `node test/unit/workflow-compliance.test.mjs` 通过，覆盖 checkpoint create 事实的确定性执行接入、ResponseCorrupted fallback 本地 `respond` 安全响应、apply failure recovery、config 迁移和目录发现服务边界。
+- `node test/unit/apply-failure-recovery-service.test.mjs` 通过，覆盖截断覆盖恢复的二次最小 diff 重试。
+- `node test/unit/execution-planner.test.mjs` 通过，覆盖重复“重新编译/执行”从旧 run-only 计划重新规划为 build/run。
+- `node test/unit/agentic-repair-service.test.mjs` 通过，覆盖修复提示词证据优先、重复失败停止、截断覆盖 diff-only、STATUS: OK 假阳性和修复 gate。
 - `node test/unit/agent-working-state.test.mjs` 通过，覆盖 checkpoint banner 不再插入 transcript 顶部、provider 错误标题优先于内部活动标签，以及 ResponseCorrupted banner 显示“安全重试”。
+- `node test/unit/project-instruction-service.test.mjs`、`node test/unit/generated-file-parser.test.mjs`、`node test/unit/workspace-applier.test.mjs` 通过，覆盖 AGENTS 源码污染防护与截断覆盖恢复元数据。
+- `npx tsc --noEmit --pretty false` 通过；扩展 tsconfig 排除 `src/workspace/manual-*` 手工测试产物。
 - `node test/unit/task-checkpoint-store.test.mjs` 通过，覆盖完成态 checkpoint 清理。
 - `git diff --check` 通过。
 - Phase 7 modified source targeted `npx tsc --noEmit --pretty false ...` 通过。
 - `npm run compile --workspace=packages/vscode-extension` 通过。
-- `npx @vscode/vsce package --no-dependencies --out devseek-netai-1.0.0.vsix` 通过。
-- `code --install-extension devseek-netai-1.0.0.vsix --force` 安装成功。
+- `npm run extension:package` 通过，生成 `devseek-netai-latest.vsix`。
+- `code --install-extension /home/ff/work/devseek_netai/devseek-netai-latest.vsix --force` 安装成功。
 
 ### [BUG FIX] Phase 4 截图用例审计修复
 

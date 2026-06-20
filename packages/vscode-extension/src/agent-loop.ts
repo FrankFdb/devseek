@@ -90,6 +90,7 @@ import {
 } from './agent/evidence-recovery';
 import { tryExecuteDeterministicCreateTask } from './agent/deterministic-task-executor';
 import type { AgentLoopCallbacks, AgentLoopResult } from './agent/loop-types';
+import { isLiteralToolProtocolPrompt } from './agent/agent-run-display';
 import {
   agentAnnouncementKey,
   cleanAgentFinalSummaryForUser,
@@ -1690,7 +1691,7 @@ export async function runAgentLoop(
     // remaining tasks — they will all fail for the same reason.
     // Save a checkpoint so the user can resume from this task after reconnecting.
     if (result.networkError) {
-      await callbacks.onTaskCheckpoint?.(i, tasks.slice(i));
+      await callbacks.onTaskCheckpoint?.(i, tasks.slice(i), 'paused');
       await callbacks.onAgentStatus({
         type: 'agentStatus', phase: 'done', state: 'failed',
         title: `网络中断，已在第 ${i + 1}/${tasks.length} 个任务暂停`,
@@ -1762,7 +1763,7 @@ export async function runAgentLoop(
     // Update checkpoint after each successful task so a future network error
     // only re-runs from the NEXT task, not from the beginning.
     if (i + 1 < tasks.length) {
-      await callbacks.onTaskCheckpoint?.(i + 1, tasks.slice(i + 1));
+      await callbacks.onTaskCheckpoint?.(i + 1, tasks.slice(i + 1), 'progress');
     }
 
     // task_complete from the AI means "I finished this task".
@@ -1778,7 +1779,7 @@ export async function runAgentLoop(
   }
 
   // All tasks completed — clear the checkpoint (null signals "done, nothing to resume").
-  await callbacks.onTaskCheckpoint?.(null, []);
+  await callbacks.onTaskCheckpoint?.(null, [], 'completed');
 
   // Compile validation — C/C++ modify tasks only
   const modifiedPaths = tasks
@@ -1848,7 +1849,7 @@ export async function runAgentLoop(
       );
 
       if (repairResult.networkError) {
-        await callbacks.onTaskCheckpoint?.(tasks.length, []);
+        await callbacks.onTaskCheckpoint?.(tasks.length, [], 'paused');
         await callbacks.onAgentStatus({
           type: 'agentStatus',
           phase: 'done',
@@ -2020,8 +2021,10 @@ ${mcpSection}
 - 每个子任务开始时标为 in-progress，完成时标为 completed
 - memory_write / 项目记忆属于智能体内部能力，不要放进 manage_todo_list，也不要作为用户可见任务展示
 - 创建/修改文件必须调用 create_file 工具并提供完整 content；“我正在创建/将创建/现在创建”这类自然语言不算执行；不要用 run_terminal 里的 python/echo/tee/cat 重定向写文件
+- AGENTS.md、CLAUDE.md、.devseek/rules.md、.github/copilot-instructions.md 是项目指令文件，不是普通源码文件；除非用户明确要求修改指令，否则不要把源码实现写入或引用为源码事实
 - 用户指定“code 目录/code目录”时，必须把源码写到 ${workspaceRoot}/code/ 下；不要只描述创建，也不要把文件写到扩展目录或临时目录
 - 你已经拥有 run_terminal/read_file/create_file 等工具；禁止声称“无法执行命令/无法访问文件/只是对话模式”。需要执行时必须调用 run_terminal，并以真实退出码和输出作为证据
+- 如果 run_terminal 被禁止、未执行、超时或没有真实 exitCode，必须报告“未完成验证/需要用户允许终端后重试”，不能声称编译、运行或测试通过
 - 只有实际写入目标文件后，才能把“创建/修改文件”类子任务标为 completed；只有代码/程序任务需要编译/运行/测试结果；文档/配置写入任务用文件存在和内容证据即可
 - 先思考"需要哪些信息"，再决定调用哪些工具
 - 一轮内可输出多个 [TOOL:...] 块（并行调用）
@@ -2066,11 +2069,13 @@ export async function runAgenticLoop(
   );
 
   const promptIsReadOnly = isExplicitlyReadOnlyRequest(userPrompt);
-  const promptRequiresTools =
+  const literalToolProtocolPrompt = isLiteralToolProtocolPrompt(userPrompt);
+  const promptRequiresTools = !literalToolProtocolPrompt && (
     requiresReadEvidence(userPrompt)
     || requiresFileChangeEvidence(userPrompt)
     || requiresCommandEvidence(userPrompt)
-    || (!promptIsReadOnly && /(?:创建|新建|修改|生成|修复|添加|删除|更新|改造|重构|看(?:一下)?(?:运行|执行)?结果|看到(?:运行|执行)?结果|输出效果|效果|create|write|modify|fix|implement)/i.test(userPrompt));
+    || (!promptIsReadOnly && /(?:创建|新建|修改|生成|修复|添加|删除|更新|改造|重构|看(?:一下)?(?:运行|执行)?结果|看到(?:运行|执行)?结果|输出效果|效果|create|write|modify|fix|implement)/i.test(userPrompt))
+  );
   const cppValidationPolicy = vscode.workspace
     .getConfiguration('devseek')
     .get<CppValidationPolicy>('cppValidationPolicy', 'conservative');
@@ -2110,16 +2115,18 @@ export async function runAgenticLoop(
   // whether the agent ends up analyzing or creating files.
   const _shortPrompt = userPrompt.trim().replace(/\n+/g, ' ');
   const _agentLabel = _shortPrompt.length > 38 ? _shortPrompt.slice(0, 36) + '…' : _shortPrompt;
+  const initialDisplayAction = callbacks.runDisplayAction || 'explore';
+  const initialDisplayTarget = callbacks.runDisplayTarget || '';
   await callbacks.onAgentStatus({
     type: 'agentStatus',
     phase: 'execute',
     taskId: 'agentic',
-    taskFile: '',
-    taskAction: 'explore',  // triggers "Exploring " prefix in webview for clear intent
+    taskFile: initialDisplayTarget,
+    taskAction: initialDisplayAction,
     taskIndex: 1,
     taskTotal: 1,
     state: 'started',
-    title: _agentLabel,
+    title: initialDisplayTarget || _agentLabel,
     detail: '',
   });
 
@@ -2597,7 +2604,7 @@ export async function runAgenticLoop(
     callbacks.onDelta('\x00ASUM\x00' + finalMsg);
   }
 
-  await callbacks.onTaskCheckpoint?.(null, []);
+  await callbacks.onTaskCheckpoint?.(null, [], 'completed');
 
   const derivedQualityGate = buildAgenticQualityGateForHistory({
     failedReason: cleanAbort ? '用户中断。' : failedReason,

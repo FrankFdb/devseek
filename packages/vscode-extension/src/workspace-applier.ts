@@ -33,6 +33,9 @@ export interface ApplyWorkflowResult {
   applied: boolean;
   changeCount: number;
   changedPaths: string[];
+  failureReason?: 'no-artifacts' | 'user-cancelled' | 'path-drift' | 'protected-file' | 'truncating-overwrite';
+  failureDetail?: string;
+  blockedChangePaths?: string[];
   validation?: AutoValidationResult;
   qualityGate?: QualityGateDecision;
   rolledBack?: boolean;
@@ -134,6 +137,10 @@ async function applyPreparedChanges(
       applied: false,
       changeCount: 0,
       changedPaths: [],
+      failureReason: 'no-artifacts',
+      failureDetail: targetPathForMsg
+        ? `未检测到可应用的目标文件变更：${targetPathForMsg}`
+        : '未检测到可应用的文件或 diff。',
     };
   }
 
@@ -161,6 +168,9 @@ async function applyPreparedChanges(
           applied: false,
           changeCount: 0,
           changedPaths: [],
+          failureReason: 'user-cancelled',
+          failureDetail: '用户预览后取消应用文件变更。',
+          blockedChangePaths: changeSet.changedPaths,
           review: ledger.snapshot(),
         };
       }
@@ -170,6 +180,9 @@ async function applyPreparedChanges(
         applied: false,
         changeCount: 0,
         changedPaths: [],
+        failureReason: 'user-cancelled',
+        failureDetail: '用户取消应用文件变更。',
+        blockedChangePaths: changeSet.changedPaths,
         review: ledger.snapshot(),
       };
     }
@@ -191,6 +204,9 @@ async function applyPreparedChanges(
       applied: false,
       changeCount: 0,
       changedPaths: [],
+      failureReason: 'path-drift',
+      failureDetail: drift,
+      blockedChangePaths: changeSet.changedPaths,
       review: ledger.snapshot(),
     };
   }
@@ -210,17 +226,21 @@ async function applyPreparedChanges(
       applied: false,
       changeCount: 0,
       changedPaths: [],
+      failureReason: 'protected-file',
+      failureDetail: `${rel} 匹配 devseek.protectedFiles 规则`,
+      blockedChangePaths: changeSet.changedPaths,
       review: ledger.snapshot(),
     };
   }
 
   const truncatingOverwrite = prepared.find((change) => isSuspiciousTruncatingOverwrite(change, requestPrompt));
   if (truncatingOverwrite) {
+    const detail = buildTruncatingOverwriteDetail(truncatingOverwrite);
     await reportWorkflow(reporter, {
       phase: 'apply',
       state: 'failed',
       title: '已阻止写入（疑似截断覆盖）',
-      detail: buildTruncatingOverwriteDetail(truncatingOverwrite),
+      detail,
     });
     vscode.window.showErrorMessage(`DeepSeek: 已阻止 ${truncatingOverwrite.relPath} 的疑似截断覆盖，本轮未写入文件。`);
     ledger.addUnfinishedItem(`疑似截断覆盖阻止写入: ${truncatingOverwrite.relPath}`);
@@ -228,6 +248,9 @@ async function applyPreparedChanges(
       applied: false,
       changeCount: 0,
       changedPaths: [],
+      failureReason: 'truncating-overwrite',
+      failureDetail: detail,
+      blockedChangePaths: changeSet.changedPaths,
       review: ledger.snapshot(),
     };
   }

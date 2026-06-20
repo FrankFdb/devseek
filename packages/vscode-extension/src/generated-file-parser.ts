@@ -1,3 +1,5 @@
+import { shouldBlockProjectInstructionFileContent } from './workspace/instruction-file-safety';
+
 export interface GeneratedFile {
   type: 'file';
   path: string;
@@ -193,6 +195,7 @@ function parseFileToolArtifacts(markdown: string): GeneratedFile[] {
       const clean = normalizeCandidatePath(rawPath);
       const content = typeof input.content === 'string' ? trimCodeBlock(input.content) : '';
       if (!clean || !content || looksLikeRawToolCallText(content)) continue;
+      if (shouldSkipFileCandidate(clean, content, inferLanguageFromPath(clean), 'tool', markdown.slice(0, m.index))) continue;
       results.push({
         type: 'file',
         path: clean,
@@ -231,6 +234,7 @@ function parseLooseFileToolArtifact(raw: string): GeneratedFile | undefined {
   if (contentEnd < 0) return undefined;
   const content = decodeLooseJsonString(raw.slice(contentStart, contentEnd));
   if (!content.trim() || looksLikeRawToolCallText(content)) return undefined;
+  if (shouldBlockProjectInstructionFileContent(clean, content)) return undefined;
   return {
     type: 'file',
     path: clean,
@@ -298,6 +302,7 @@ function parseJsonPlanArtifacts(markdown: string): GeneratedFile[] {
       if (action.type === 'patch' && typeof action.patch === 'string') continue;
       if (typeof action.content !== 'string' || !action.content.trim()) continue;
       if (looksLikeRawToolCallText(action.content)) continue;
+      if (shouldSkipFileCandidate(clean, action.content, inferLanguageFromPath(clean), 'json-plan', raw.slice(0, Math.max(0, raw.indexOf(action.path ?? ''))))) continue;
       results.push({
         type: 'file',
         path: clean,
@@ -540,9 +545,10 @@ function shouldSkipFileCandidate(
   path: string,
   content: string,
   language: string | undefined,
-  source: CandidatePathSource,
+  source: CandidatePathSource | 'json-plan',
   prefixText: string,
 ): boolean {
+  if (shouldBlockProjectInstructionFileContent(path, content)) return true;
   if (isShellLikePath(path)) return false;
   if (isShellLanguage(language) || looksLikeShellCommands(content)) return true;
   if (source === 'context' && looksLikeInstructionSection(prefixText)) return true;
