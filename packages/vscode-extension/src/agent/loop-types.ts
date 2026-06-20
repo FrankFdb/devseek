@@ -30,7 +30,7 @@ export interface AgentLoopCallbacks {
    * Extension saves the next-pending-task index to workspaceState for resume-on-reconnect.
    * Called with null for completedUpToIndex when the full loop finishes (clears checkpoint).
    */
-  onTaskCheckpoint?: (completedUpToIndex: number | null, remainingTasks: AgentTask[]) => void;
+  onTaskCheckpoint?: (completedUpToIndex: number | null, remainingTasks: AgentTask[]) => void | Promise<void>;
   /**
    * L-3: AI called task_complete — terminate the agent loop.
    * Returns true to signal the loop should stop.

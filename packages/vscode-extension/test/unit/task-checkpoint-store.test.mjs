@@ -76,4 +76,15 @@ test('TaskCheckpointStore: loadFresh returns current checkpoint', async () => {
   assert.equal(fresh.stale, false);
 });
 
+test('TaskCheckpointStore: loadFresh clears completed checkpoint', async () => {
+  const storage = new MemoryStorage();
+  const store = new TaskCheckpointStore(storage);
+  await store.save(checkpoint({ savedAt: 900, startFromIndex: 2, completedCount: 2 }));
+
+  const fresh = await store.loadFresh(200, 1_000);
+
+  assert.equal(fresh, undefined);
+  assert.equal(store.load(), undefined);
+});
+
 console.log('\nTask checkpoint store tests passed.\n');

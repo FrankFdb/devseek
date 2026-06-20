@@ -68,6 +68,23 @@
 
 ---
 
+**变更标题**：Phase 7 checkpoint banner 锚点与完成态清理修复（2026-06-20）
+- **需求归因**：体验退化 + 实现缺陷 — 最新 P7-04 截图中，“继续执行”按钮显示在历史对话最开始位置，且任务完成后 reload 仍可能看到旧 checkpoint banner。
+- **影响能力层**：恢复入口、历史可追溯、用户可控性、任务完成状态一致性。
+- **架构影响**：
+  - WebView 只负责 Surface Adapter 渲染：checkpoint banner 改为插入输入区上方的当前操作区，不再写入 `messages.firstChild`。
+  - `TaskCheckpointStore.loadFresh` 过滤并清理已完成/无剩余任务的 checkpoint。
+  - `AgentLoopCallbacks.onTaskCheckpoint` 支持 Promise，Agent loop await 保存/清理，避免 workspaceState 写入乱序。
+  - runAgentLoop 最后一个成功任务不再保存 2/2 续作点，只在仍有剩余任务时保存 checkpoint，完成后统一 clear。
+- **方案选择理由**：对标 Claude Code / Codex，恢复入口是当前任务控制，不是历史消息；任务完成后本地 checkpoint 必须成为单一可信事实，不能让 UI 展示陈旧续作动作。
+- **主链路验证**：`node test/unit/agent-working-state.test.mjs` 通过，守卫 banner 锚定到当前输入区上方且不再插入 transcript 顶部。
+- **回退链路验证**：`node test/unit/task-checkpoint-store.test.mjs` 通过，守卫完成态 checkpoint 在 loadFresh 时清理。
+- **结果判据变化**：P7-04 不仅要求可恢复执行成功，还要求恢复入口位于当前操作区，并且完成后 reload 不再显示旧“继续执行”。
+- **文档更新**：`docs/testing/vscode-phase-manual-test-cases.md`、`CHANGELOG.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npm test --workspace=packages/vscode-extension` 通过（50 suite）；`node test/unit/architecture-boundary.test.mjs` 通过；targeted `npx tsc --noEmit --pretty false ...` 通过；`node --check media/webview.js` 通过；`git diff --check` 通过；`npx @vscode/vsce package --no-dependencies --out devseek-netai-1.0.0.vsix` 通过；`code --install-extension devseek-netai-1.0.0.vsix --force` 安装成功。
+
+---
+
 **变更标题**：Phase 7 checkpoint 恢复任务事实与确定性 create 执行修复（2026-06-20）
 - **需求归因**：实现缺陷 + 架构债务 — 最新 P7-04 复测中，“继续”已进入 checkpoint resume，但恢复任务丢失逐文件内容和验证意图，并把已知 create 操作交回模型处理，导致文件未创建。
 - **影响能力层**：断点续传、任务事实恢复、执行、副作用记录、验证。

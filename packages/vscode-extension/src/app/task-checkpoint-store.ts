@@ -49,6 +49,10 @@ export class TaskCheckpointStore<TTask = unknown> {
       await this.clear();
       return undefined;
     }
+    if (checkpoint.allTasks.length <= 0 || checkpoint.startFromIndex >= checkpoint.allTasks.length) {
+      await this.clear();
+      return undefined;
+    }
     return { checkpoint, stale: false };
   }
 }

@@ -6407,12 +6407,13 @@ var checkpointBannerId = 'ds-checkpoint-banner';
 
 function showCheckpointBanner(resumeTaskIndex, totalTasks, userPrompt, savedAt) {
   dismissCheckpointBanner(); // remove any existing
+  if (!totalTasks || resumeTaskIndex >= totalTasks) return;
   var banner = document.createElement('div');
   banner.id = checkpointBannerId;
   var elapsed = savedAt ? Math.round((Date.now() - savedAt) / 60000) : 0;
   var elapsedLabel = elapsed < 1 ? '刚才' : elapsed + ' 分钟前';
   var promptLabel = (userPrompt || '').slice(0, 60) + ((userPrompt || '').length > 60 ? '…' : '');
-  var remaining = totalTasks - resumeTaskIndex;
+  var remaining = Math.max(0, totalTasks - resumeTaskIndex);
   banner.innerHTML =
     '<span style="flex:1;min-width:0">' +
       '<b>上次 Agent 任务中断</b>（' + elapsedLabel + '）：已完成 ' + resumeTaskIndex + '/' + totalTasks +
@@ -6422,9 +6423,9 @@ function showCheckpointBanner(resumeTaskIndex, totalTasks, userPrompt, savedAt) 
     '<button id="ds-cp-resume" style="margin-left:8px;padding:3px 10px;cursor:pointer;border-radius:4px;border:none;background:var(--vscode-button-background,#0e639c);color:var(--vscode-button-foreground,#fff)">继续执行</button>' +
     '<button id="ds-cp-dismiss" style="margin-left:6px;padding:3px 8px;cursor:pointer;border-radius:4px;border:none;background:transparent;opacity:.7">✕</button>';
   banner.style.cssText =
-    'display:flex;align-items:center;gap:6px;padding:8px 12px;' +
+    'display:flex;align-items:center;gap:6px;padding:8px 12px;margin:8px 8px 6px;' +
     'background:var(--vscode-editorInfo-background,rgba(0,120,212,.15));' +
-    'border-bottom:1px solid var(--vscode-editorInfo-border,rgba(0,120,212,.3));' +
+    'border:1px solid var(--vscode-editorInfo-border,rgba(0,120,212,.3));border-radius:6px;' +
     'font-size:.875em;line-height:1.4;';
   banner.querySelector('#ds-cp-resume').addEventListener('click', function() {
     vscode.postMessage({ type: 'resumeAgentCheckpoint' });
@@ -6434,12 +6435,22 @@ function showCheckpointBanner(resumeTaskIndex, totalTasks, userPrompt, savedAt) 
     vscode.postMessage({ type: 'dismissAgentCheckpoint' });
     dismissCheckpointBanner();
   });
-  // Insert at top of the messages container, or body as fallback
-  var container = document.getElementById('messages') || document.body;
-  container.insertBefore(banner, container.firstChild);
+  insertCheckpointBannerAtLatestPosition(banner);
 }
 
 function dismissCheckpointBanner() {
   var existing = document.getElementById(checkpointBannerId);
   if (existing) existing.remove();
+}
+
+function insertCheckpointBannerAtLatestPosition(banner) {
+  if (inputAreaEl && inputAreaEl.parentNode) {
+    inputAreaEl.parentNode.insertBefore(banner, inputAreaEl);
+    scrollToBottom(true);
+    return;
+  }
+  var container = document.getElementById('messages') || document.body;
+  ensureWorkingAreaAttached();
+  container.appendChild(banner);
+  scrollToBottom(true);
 }

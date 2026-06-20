@@ -1653,7 +1653,7 @@ export async function runAgentLoop(
     // remaining tasks — they will all fail for the same reason.
     // Save a checkpoint so the user can resume from this task after reconnecting.
     if (result.networkError) {
-      callbacks.onTaskCheckpoint?.(i, tasks.slice(i));
+      await callbacks.onTaskCheckpoint?.(i, tasks.slice(i));
       await callbacks.onAgentStatus({
         type: 'agentStatus', phase: 'done', state: 'failed',
         title: `网络中断，已在第 ${i + 1}/${tasks.length} 个任务暂停`,
@@ -1724,7 +1724,9 @@ export async function runAgentLoop(
 
     // Update checkpoint after each successful task so a future network error
     // only re-runs from the NEXT task, not from the beginning.
-    callbacks.onTaskCheckpoint?.(i + 1, tasks.slice(i + 1));
+    if (i + 1 < tasks.length) {
+      await callbacks.onTaskCheckpoint?.(i + 1, tasks.slice(i + 1));
+    }
 
     // task_complete from the AI means "I finished this task".
     // Record the task result first, then stop only when it was the final task.
@@ -1739,7 +1741,7 @@ export async function runAgentLoop(
   }
 
   // All tasks completed — clear the checkpoint (null signals "done, nothing to resume").
-  callbacks.onTaskCheckpoint?.(null, []);
+  await callbacks.onTaskCheckpoint?.(null, []);
 
   // Compile validation — C/C++ modify tasks only
   const modifiedPaths = tasks
@@ -1809,7 +1811,7 @@ export async function runAgentLoop(
       );
 
       if (repairResult.networkError) {
-        callbacks.onTaskCheckpoint?.(tasks.length, []);
+        await callbacks.onTaskCheckpoint?.(tasks.length, []);
         await callbacks.onAgentStatus({
           type: 'agentStatus',
           phase: 'done',
@@ -2558,7 +2560,7 @@ export async function runAgenticLoop(
     callbacks.onDelta('\x00ASUM\x00' + finalMsg);
   }
 
-  callbacks.onTaskCheckpoint?.(null, []);
+  await callbacks.onTaskCheckpoint?.(null, []);
 
   const derivedQualityGate = buildAgenticQualityGateForHistory({
     failedReason: cleanAbort ? '用户中断。' : failedReason,

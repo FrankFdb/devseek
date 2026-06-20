@@ -71,3 +71,12 @@ test('agent working state: failed final labels use explicit failed todo before f
     /var finalFailureTodosSynced = false;[\s\S]*?handleTodoUpdate\(markFirstActiveTodoFailedForFinalState\(agentToolTodos\)\);[\s\S]*?finalizeActiveAgentWorkingContainers\(doneFailed\);/,
   );
 });
+
+test('agent checkpoint banner anchors near the current input area, not transcript start', () => {
+  assert.match(
+    webview,
+    /function insertCheckpointBannerAtLatestPosition\(banner\)[\s\S]*?inputAreaEl\.parentNode\.insertBefore\(banner,\s*inputAreaEl\)/,
+  );
+  assert.match(webview, /if \(!totalTasks \|\| resumeTaskIndex >= totalTasks\) return;/);
+  assert.doesNotMatch(webview, /insertBefore\(banner,\s*container\.firstChild\)/);
+});

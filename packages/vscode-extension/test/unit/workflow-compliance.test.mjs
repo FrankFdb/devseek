@@ -564,8 +564,8 @@ test('Agent loop: task_complete does not bypass final editedFiles accounting', (
   );
   assert.match(
     code,
-    /if \(result\.applied && result\.path\)[\s\S]*?callbacks\.onTaskCheckpoint\?\.\(i \+ 1[\s\S]*?if \(result\.taskComplete\)/,
-    'runAgentLoop must record applied result before honoring task_complete break',
+    /if \(result\.applied && result\.path\)[\s\S]*?if \(i \+ 1 < tasks\.length\) \{[\s\S]*?await callbacks\.onTaskCheckpoint\?\.\(i \+ 1[\s\S]*?if \(result\.taskComplete\)/,
+    'runAgentLoop must record applied result before honoring task_complete break and only checkpoint unfinished work',
   );
 });
 

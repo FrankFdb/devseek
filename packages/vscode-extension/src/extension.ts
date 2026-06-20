@@ -234,10 +234,10 @@ interface AgentSessionState {
 }
 
 /** Save or clear the agent task checkpoint. Pass null to clear (completed). */
-function saveAgentCheckpoint(data: AgentTaskCheckpoint | null): void {
+async function saveAgentCheckpoint(data: AgentTaskCheckpoint | null): Promise<void> {
   if (!extContext) return;
   const store = new TaskCheckpointStore<AgentTask>(extContext.workspaceState, CHECKPOINT_KEY);
-  void (data ? store.save(data) : store.clear());
+  await (data ? store.save(data) : store.clear());
 }
 
 /** Load the checkpoint if one exists for the current session. */
@@ -1238,7 +1238,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         break;
       }
       case 'dismissAgentCheckpoint': {
-        saveAgentCheckpoint(null);
+        await saveAgentCheckpoint(null);
         break;
       }
     }
@@ -2330,8 +2330,8 @@ async function runChat(
             }
           },
           signal: chatSignal,
-          onTaskCheckpoint: (completedUpToIndex, _remainingTasks) => {
-            if (completedUpToIndex === null) { saveAgentCheckpoint(null); webview.postMessage({ type: 'agentCheckpointCleared' }); }
+          onTaskCheckpoint: async (completedUpToIndex, _remainingTasks) => {
+            if (completedUpToIndex === null) { await saveAgentCheckpoint(null); webview.postMessage({ type: 'agentCheckpointCleared' }); }
           },
           autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
         }, agSessionContext, intent.mode);
@@ -2817,16 +2817,16 @@ async function runChat(
           signal: chatSignal,
           // 断点续传：save/clear checkpoint after each task and on network failure
           autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
-          onTaskCheckpoint: (completedUpToIndex, _remainingTasks) => {
+          onTaskCheckpoint: async (completedUpToIndex, _remainingTasks) => {
             if (completedUpToIndex === null) {
               // Loop completed successfully — clear any stale checkpoint
-              saveAgentCheckpoint(null);
+              await saveAgentCheckpoint(null);
               // Tell webview to hide the checkpoint banner (if shown)
               webview.postMessage({ type: 'agentCheckpointCleared' });
               return;
             }
             // Save current progress so the user can resume later
-            saveAgentCheckpoint({
+            await saveAgentCheckpoint({
               userPrompt: promptForAgent,
               displayPrompt: userDisplay,
               mode,
@@ -2933,7 +2933,7 @@ async function runChat(
           files: effectiveFiles,
           workspaceRootFsPath: wsRootFsPath,
         }) as AgentTask[];
-        saveAgentCheckpoint({
+        await saveAgentCheckpoint({
           userPrompt: prompt,
           displayPrompt: userDisplay,
           mode,

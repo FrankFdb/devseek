@@ -21,12 +21,15 @@
 - 修复手测 P7-04 中 `LOGIN_REQUIRED` 裸错误：Provider 异常 catch 现在会展示可解释暂停原因，并保存最小 checkpoint 供登录恢复后继续。
 - 修复手测 P7-04 中“继续”退化为普通聊天的问题：短句继续会优先加载新鲜 checkpoint，且 `resumeFromIndex=0`、Agent toggle 状态和残留上下文不会阻断恢复执行链路。
 - 修复手测 P7-04 中 checkpoint 恢复任务事实丢失的问题：`ProviderRecoveryService` 会从原始请求提取逐文件 `expectedContent` 和验证意图；Agent 对带内容事实的 create 任务走本地确定性写入和读回校验，不再让模型输出手动 shell 建议。
+- 修复手测 P7-04 中“继续执行”按钮显示在历史对话最开始位置的问题：checkpoint banner 改为显示在输入区上方的当前操作区；完成态 checkpoint 会被清理，不再 reload 后残留旧续作入口。
 - 新增 Phase 7 单元测试与架构守卫，覆盖 checkpoint 过期清理、任务历史暂停/归档、最小恢复上下文、不可重放副作用、Provider 恢复分类和 Web 响应完整性。
 
 验证：
 - `npm test --workspace=packages/vscode-extension` 通过，50 个 suite 全部通过。
 - `node test/unit/provider-recovery-service.test.mjs` 通过，覆盖“建 ... 内容分别为 ... 并验证”的恢复事实提取。
 - `node test/unit/workflow-compliance.test.mjs` 通过，覆盖 checkpoint create 事实的确定性执行接入。
+- `node test/unit/agent-working-state.test.mjs` 通过，覆盖 checkpoint banner 不再插入 transcript 顶部。
+- `node test/unit/task-checkpoint-store.test.mjs` 通过，覆盖完成态 checkpoint 清理。
 - `git diff --check` 通过。
 - Phase 7 modified source targeted `npx tsc --noEmit --pretty false ...` 通过。
 - `npm run compile --workspace=packages/vscode-extension` 通过。
