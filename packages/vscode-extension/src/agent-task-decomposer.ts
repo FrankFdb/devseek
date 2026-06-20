@@ -96,6 +96,8 @@ export interface AgentTask {
   desc: string;
   /** Original absolute path as provided by the user attachment */
   absPath?: string;
+  /** Deterministic content captured from a checkpoint/recovery fact. */
+  expectedContent?: string;
 }
 
 export interface DecomposeResult {

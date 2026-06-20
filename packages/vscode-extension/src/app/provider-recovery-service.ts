@@ -39,6 +39,7 @@ export interface ProviderRecoveryCheckpointTask {
   action: 'modify' | 'analyze' | 'create' | 'delete' | 'explain' | 'explore';
   desc: string;
   absPath?: string;
+  expectedContent?: string;
 }
 
 export class ProviderRecoveryService {
@@ -172,14 +173,21 @@ export function buildProviderRecoveryCheckpointTasks(input: {
     const rel = workspaceRelativePath(match[1], workspaceRoot);
     if (rel) refs.add(rel);
   }
-  const action: ProviderRecoveryCheckpointTask['action'] = /(创建|新建|写入|create|add|write)/i.test(input.prompt) ? 'create' : 'modify';
-  const tasks = [...refs].slice(0, 12).map((file, index) => ({
-    id: `provider-recovery-${index + 1}`,
-    file,
-    action,
-    desc: `恢复并继续处理 ${file}`,
-    absPath: workspaceRoot ? `${workspaceRoot.replace(/\/$/, '')}/${file}` : undefined,
-  }));
+  const refsList = [...refs].slice(0, 12);
+  const action: ProviderRecoveryCheckpointTask['action'] = hasCreateIntent(input.prompt) ? 'create' : 'modify';
+  const expectedContents = action === 'create' ? extractExpectedContents(input.prompt) : [];
+  const shouldVerify = hasValidationIntent(input.prompt);
+  const tasks = refsList.map((file, index) => {
+    const expectedContent = expectedContents[index];
+    return {
+      id: `provider-recovery-${index + 1}`,
+      file,
+      action,
+      desc: buildRecoveryTaskDesc(file, action, expectedContent, shouldVerify),
+      absPath: workspaceRoot ? `${workspaceRoot.replace(/\/$/, '')}/${file}` : undefined,
+      ...(expectedContent !== undefined ? { expectedContent } : {}),
+    };
+  });
   return tasks.length > 0 ? tasks : [{
     id: 'provider-recovery-task',
     file: 'agent-task',
@@ -211,6 +219,57 @@ function normalizeText(value: string): string {
 
 function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
+}
+
+function hasCreateIntent(prompt: string): boolean {
+  return /(创建|新建|写入|新增|建立|生成|建\s*(?:\.\/)?(?:[A-Za-z0-9_.-]+\/)+|create|add|write)/i.test(prompt);
+}
+
+function hasValidationIntent(prompt: string): boolean {
+  return /(验证|检查|确认|校验|verify|validate|check)/i.test(prompt);
+}
+
+function buildRecoveryTaskDesc(
+  file: string,
+  action: ProviderRecoveryCheckpointTask['action'],
+  expectedContent: string | undefined,
+  shouldVerify: boolean,
+): string {
+  const parts = [action === 'create' ? `创建 ${file}` : `恢复并继续处理 ${file}`];
+  if (expectedContent !== undefined) parts.push(`内容为: ${expectedContent}`);
+  if (shouldVerify) parts.push('并验证文件内容');
+  return parts.join('，');
+}
+
+function extractExpectedContents(prompt: string): string[] {
+  const separate = /内容\s*分别(?:为|是|:|：)\s*([\s\S]+)/i.exec(prompt);
+  if (separate) {
+    const body = cleanContentClause(separate[1]);
+    const values = body.split(/\s+(?:和|与|及|and)\s+|、/i).map(cleanExpectedContent).filter(Boolean);
+    if (values.length > 0) return values;
+  }
+
+  const single = /内容\s*(?:为|是|:|：)\s*([\s\S]+)/i.exec(prompt);
+  if (single) {
+    const value = cleanExpectedContent(cleanContentClause(single[1]));
+    if (value) return [value];
+  }
+
+  return [];
+}
+
+function cleanContentClause(value: string): string {
+  return String(value || '')
+    .split(/[。；;]/)[0]
+    .split(/[,，]\s*(?:并|且)?\s*(?:验证|检查|确认|校验)/i)[0]
+    .replace(/\s*(?:并|且)?\s*(?:验证|检查|确认|校验).*$/i, '')
+    .trim();
+}
+
+function cleanExpectedContent(value: string): string {
+  return value
+    .replace(/^[`"'“”‘’]+|[`"'“”‘’]+$/g, '')
+    .trim();
 }
 
 function workspaceRelativePath(file: string, workspaceRoot: string): string {

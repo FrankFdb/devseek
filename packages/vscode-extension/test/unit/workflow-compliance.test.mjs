@@ -80,6 +80,15 @@ test('§3 Tools: mcp__ routing present', () => {
   assertContains(code, 'mcp__', '§3 MCP tool routing');
 });
 
+test('§7 Recovery: checkpoint create facts are executed deterministically', () => {
+  const loop = src('src/agent-loop.ts');
+  const executor = src('src/agent/deterministic-task-executor.ts');
+  assertContains(loop, 'tryExecuteDeterministicCreateTask', 'checkpoint create executor is wired into agent loop');
+  assertContains(executor, 'task.expectedContent', 'checkpoint content fact is required before deterministic create');
+  assertContains(executor, 'writeTextFileSync', 'deterministic create writes through WorkspaceEditService');
+  assertContains(executor, 'readFileContentFull', 'deterministic create verifies content by reading from disk');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §八: File editing model + Keep/Undo
 // ─────────────────────────────────────────────────────────────────────────────

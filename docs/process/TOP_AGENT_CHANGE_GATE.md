@@ -68,6 +68,23 @@
 
 ---
 
+**变更标题**：Phase 7 checkpoint 恢复任务事实与确定性 create 执行修复（2026-06-20）
+- **需求归因**：实现缺陷 + 架构债务 — 最新 P7-04 复测中，“继续”已进入 checkpoint resume，但恢复任务丢失逐文件内容和验证意图，并把已知 create 操作交回模型处理，导致文件未创建。
+- **影响能力层**：断点续传、任务事实恢复、执行、副作用记录、验证。
+- **架构影响**：
+  - `ProviderRecoveryService` 负责从原始请求提取路径、创建意图、逐文件 `expectedContent` 和验证意图。
+  - `AgentTask` 增加可选 `expectedContent`，只承载 checkpoint/recovery 已知事实。
+  - 新增 `agent/deterministic-task-executor.ts`，对带内容事实的 create 任务通过 `WorkspaceEditService` 写入、读回校验并上报变更记录。
+  - `agent-loop.ts` 只保留一个短路接入点，避免在组合执行器里继续堆恢复细节。
+- **方案选择理由**：对标 Claude Code / Codex，恢复应依赖本地 checkpoint/task facts；当文件路径与内容已是确定事实时，应由宿主确定性执行和校验，不应再让模型猜测或输出手动 shell 指令。
+- **主链路验证**：`node test/unit/provider-recovery-service.test.mjs` 通过，覆盖“建 ... 内容分别为 ... 并验证”提取为两个 create 任务及对应 `expectedContent`。
+- **回退链路验证**：`node test/unit/workflow-compliance.test.mjs` 通过，守卫 checkpoint create 事实必须走确定性执行器、统一写入服务和磁盘读回校验。
+- **结果判据变化**：P7-04 resume 成功不再只看是否进入 Agent；还必须保留逐文件内容事实，并以本地写入/读回证据完成 create 任务。
+- **文档更新**：`docs/testing/vscode-phase-manual-test-cases.md`、`CHANGELOG.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npm test --workspace=packages/vscode-extension` 通过（50 suite）；`git diff --check` 通过；相关 TS 入口 targeted `npx tsc --noEmit --pretty false ...` 通过；`npm run compile` 通过；`npx @vscode/vsce package --no-dependencies --out devseek-netai-1.0.0.vsix` 通过；`code --install-extension devseek-netai-1.0.0.vsix --force` 安装成功。
+
+---
+
 **变更标题**：Phase 7 checkpoint 继续入口阻断条件修复（2026-06-20）
 - **需求归因**：实现缺陷 — 最新 P7-04 复测中，checkpoint tasks/todos 已保留，但“继续”仍因当前聊天控件状态退化为普通对话，提示用户手动执行 shell。
 - **影响能力层**：断点续传、恢复执行、输入路由、Agent 可控性。

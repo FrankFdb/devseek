@@ -542,6 +542,8 @@ export const manualPhase6QualityGate: string = 1;
 - 修正：短句“继续/恢复/continue”在存在新鲜 checkpoint 时直接进入 `resumeAgentCheckpoint` 等价路径；恢复索引 `0` 使用显式 checkpoint 状态判断，不再被 falsy 判断绕到 Agent 自主探索或普通聊天。
 - 2026-06-20 最新复测中，checkpoint tasks/todos 已正确保留，但继续后仍进入“对话模式”，提示用户手动执行 shell。评估为当前聊天控件状态（旧上下文/Agent toggle）仍在阻断 checkpoint resume。
 - 修正：checkpoint resume prompt 只由“短句继续 + 新鲜 checkpoint + 非新会话/非已恢复中”决定，不再被 `forceNoAgent`、残留 context files 或图片状态阻断。
+- 2026-06-20 最新程序复测中，“继续”已进入 checkpoint 恢复链路，但恢复任务退化为 `恢复并继续处理 docs/manual-phase7-bridge-a.md/b.md`，丢失“内容分别为 phase7 bridge a / phase7 bridge b”和验证意图；执行层又把已知创建任务交回模型处理，导致 UI 显示恢复处理失败且文件未创建。
+- 修正：`ProviderRecoveryService` 从原始 prompt 提取路径、创建意图、逐文件 `expectedContent` 和验证意图；Agent 执行层对带 `expectedContent` 的 checkpoint create 任务走本地确定性写入、读回校验和 `WorkspaceEditService` 记录，不再生成手动 shell 建议。
 
 ## 10. 已发现问题跟踪
 
@@ -560,6 +562,7 @@ export const manualPhase6QualityGate: string = 1;
 | P7-IDEMP-01 | P7-04 | `IdempotencyGuard` 已单测覆盖，但工具执行链尚未全面携带 operationId/resultRef | 当前可保护已接入路径，完整副作用重放保护需要 ToolExecutor/AgentRuntime 全链路接入 | 后续 Provider Runtime / AgentRuntime 接入 operation ledger，覆盖 edit/terminal/mcp/memory/vscode |
 | P7-LOGIN-01 | P7-03、P7-04 | Provider 抛出 `LOGIN_REQUIRED` 时 UI 只显示裸错误，没有暂停原因或 checkpoint | 登录失效是可解释暂停状态，不能当普通 agent 崩溃处理 | 已在 agent catch 中接入 `ProviderRecoveryService`，并保存从 prompt/files 推导的最小 checkpoint |
 | P7-RESUME-01 | P7-04 | 用户输入“继续”后没有从 checkpoint 恢复执行，而是普通聊天建议复制文件内容或手动 shell 指令 | 自然语言继续和 checkpoint banner 都应进入同一恢复执行链路；resumeFromIndex=0、Agent toggle 状态和残留 context chips 不能阻断恢复 | 已新增 `shouldResumeCheckpointFromPrompt`，修复 `checkpointResumeTasks` 显式判断，并移除 `forceNoAgent/files/images` 阻断条件 |
+| P7-RECOVERY-FACTS-01 | P7-04 | checkpoint resume 已触发，但任务只剩“恢复并继续处理文件”，丢失创建内容与验证事实，最终文件未创建 | 对标 Claude Code/Codex，恢复应依赖本地 checkpoint/task facts；已知文件内容的 create 任务应本地确定性执行并读回校验，不应再让模型猜或输出操作说明 | 已新增 `expectedContent` checkpoint fact 提取和 `tryExecuteDeterministicCreateTask`；覆盖“建 ... 内容分别为 ... 并验证”回归测试 |
 
 ## 11. 每轮迭代更新规则
 

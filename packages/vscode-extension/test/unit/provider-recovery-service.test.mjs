@@ -109,4 +109,22 @@ test('ProviderRecoveryService: builds checkpoint tasks from prompt paths after p
   assert.equal(tasks[1].file, 'docs/manual-phase7-bridge-b.md');
 });
 
+test('ProviderRecoveryService: preserves create content facts for shorthand recovery prompts', () => {
+  const tasks = buildProviderRecoveryCheckpointTasks({
+    prompt: '建 docs/manual-phase7-bridge-a.md 和 docs/manual-phase7-bridge-b.md，内容分别为 phase7 bridge a 和 phase7 bridge b，并验证文件内容。',
+    workspaceRootFsPath: '/repo',
+  });
+
+  assert.equal(tasks.length, 2);
+  assert.equal(tasks[0].file, 'docs/manual-phase7-bridge-a.md');
+  assert.equal(tasks[0].action, 'create');
+  assert.equal(tasks[0].expectedContent, 'phase7 bridge a');
+  assert.match(tasks[0].desc, /内容为: phase7 bridge a/);
+  assert.match(tasks[0].desc, /验证文件内容/);
+  assert.equal(tasks[1].file, 'docs/manual-phase7-bridge-b.md');
+  assert.equal(tasks[1].action, 'create');
+  assert.equal(tasks[1].expectedContent, 'phase7 bridge b');
+  assert.match(tasks[1].desc, /内容为: phase7 bridge b/);
+});
+
 console.log('\nProvider recovery service tests passed.\n');

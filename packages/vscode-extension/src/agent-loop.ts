@@ -88,6 +88,7 @@ import {
   markValidationFailureTodos,
   type TodoItem,
 } from './agent/evidence-recovery';
+import { tryExecuteDeterministicCreateTask } from './agent/deterministic-task-executor';
 import type { AgentLoopCallbacks, AgentLoopResult } from './agent/loop-types';
 import {
   agentAnnouncementKey,
@@ -1039,6 +1040,16 @@ async function executeTask(
     });
     return { applied: false };
   }
+
+  const deterministicCreate = await tryExecuteDeterministicCreateTask({
+    task,
+    taskIndex,
+    taskTotal: allTasks.length,
+    workspaceRoot,
+    effectiveAbsPath: earlyEffectiveAbsPath,
+    callbacks,
+  });
+  if (deterministicCreate) return deterministicCreate;
 
   // Build editor prompt with current file content injected.
   const editorWorkdir = earlyEffectiveAbsPath ? nodePath.dirname(earlyEffectiveAbsPath) : undefined;
