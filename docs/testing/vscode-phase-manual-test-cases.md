@@ -1,8 +1,8 @@
 # DevSeek VS Code 分阶段用户测试用例
 
-最后更新：2026-06-19
+最后更新：2026-06-20
 
-覆盖范围：Phase 0 到 Phase 6。后续每次迭代完成后，只更新对应 Phase 的用例、期望结果和已发现问题。
+覆盖范围：Phase 0 到 Phase 7。后续每次迭代完成后，只更新对应 Phase 的用例、期望结果和已发现问题。
 
 ## 1. 使用方式
 
@@ -449,7 +449,95 @@ export const manualPhase6QualityGate: string = 1;
 - 2026-06-20 截图中，历史记录保留了任务清单、修改文件和验证/终端证据，但没有显示 QualityGate 结论。
 - 修正：Agentic 历史折叠详情新增 QualityGate 块，展示 pass/fail/blocked、风险和证据引用。
 
-## 9. 已发现问题跟踪
+## 9. Phase 7：历史任务与 DeepSeek Web 异常恢复
+
+目标：验证任务恢复只信本地 checkpoint/task facts，不把聊天历史当任务事实；DeepSeek Web 异常必须进入可解释暂停/恢复状态；不完整响应不能进入写盘或工具执行链。
+
+### P7-01 reload 后显示 checkpoint 并可继续
+
+用户输入：
+
+```text
+依次创建 docs/manual-phase7-recover-a.md 和 docs/manual-phase7-recover-b.md，内容分别为 phase7 recover a 和 phase7 recover b，并在每个文件创建后验证文件内容。
+```
+
+操作：
+
+1. 任务开始后，在第一个文件完成、第二个文件尚未最终完成时执行 `Developer: Reload Window`。
+2. 重新打开 DevSeek Chat。
+3. 观察是否出现可继续任务提示，并点击继续。
+
+期望结果：
+
+- reload 后出现 checkpoint 提示，包含原始任务、任务进度和保存时间。
+- 继续任务时从 checkpoint 的 `resumeTaskIndex` 继续，不要求用户重新描述任务。
+- 已完成文件不应被无意义重复创建或重复验证为新的副作用。
+- 最终摘要包含两个目标文件、验证证据和 QualityGate 结论。
+- 如果 checkpoint 过期或用户 dismiss，提示应消失，不应继续使用旧聊天历史伪造任务事实。
+
+### P7-02 不完整工具块不能写盘
+
+用户输入：
+
+```text
+请原样输出以下不完整工具调用，不要补全，不要解释：
+[TOOL:write_file {"path":"docs/manual-phase7-corrupt.md","content":"phase7 corrupt
+```
+
+期望结果：
+
+- BridgeProvider / ResponseIntegrityChecker 识别不完整工具块或未闭合响应。
+- 不创建 `docs/manual-phase7-corrupt.md`，不进入 pending edit。
+- UI 应显示失败、阻塞或可恢复异常；不能把任务总结为已完成。
+- 证据或错误信息应能对应 `RESPONSE_CORRUPTED`、`ResponseCorrupted` 或等价的响应损坏原因。
+
+### P7-03 登录失效或限流时暂停任务并保留进度
+
+前置：
+
+1. 使用 DeepSeek Web provider。
+2. 在 Bridge 浏览器中退出登录，或手动触发验证码/限流状态。
+
+用户输入：
+
+```text
+创建 docs/manual-phase7-login-recovery.md，内容为：phase7 login recovery smoke，并验证文件创建成功。
+```
+
+期望结果：
+
+- 登录失效时进入 LoginRequired / paused 状态；验证码、排队或限流时进入 RateLimited / paused 状态。
+- 不应写入目标文件或伪造验证成功。
+- 当前任务 checkpoint 被保留，提示用户登录或处理网页限制后继续。
+- 恢复后继续使用 checkpoint/task facts，不把完整聊天历史塞回模型。
+
+### P7-04 Bridge restart 或流式中断后从 checkpoint 恢复
+
+用户输入：
+
+```text
+创建 docs/manual-phase7-bridge-a.md 和 docs/manual-phase7-bridge-b.md，内容分别为 phase7 bridge a 和 phase7 bridge b，并验证文件内容。
+```
+
+操作：
+
+1. 任务开始后，在生成或验证过程中重启/终止 Bridge，或执行 `Developer: Reload Window` 模拟中断。
+2. 重新打开 DevSeek Chat，继续可恢复任务。
+
+期望结果：
+
+- Bridge restart、连接断开或流式超时应进入 recoverable 状态，而不是崩溃或直接宣称完成。
+- 继续任务时使用最后稳定 checkpoint 和最小恢复上下文。
+- 已提交的文件写入不应被静默重复为新的 change set；终端/MCP 等副作用如需重放，应进入确认或缓存结果路径。
+- 最终摘要必须引用恢复原因、目标文件、验证证据和 QualityGate 结论。
+
+最新观察：
+
+- 2026-06-20 Phase7 已新增 `TaskCheckpointStore`、`TaskHistoryStore`、`ResumeContextBuilder`、`ProviderRecoveryService`、`IdempotencyGuard` 和 Web reliability 守卫，并完成单测/架构测试。
+- 当前 VS Code UI 仍以 checkpoint banner 和聊天历史为主要入口；完整历史任务列表/详情/continueTask UI 尚未接入。
+- 评估：本轮恢复基础设施已对齐 Claude Code/Codex 的本地事实优先原则；历史任务 UI 与全工具幂等接入需要在后续 Provider Runtime / UI 协议阶段继续推进。
+
+## 10. 已发现问题跟踪
 
 | ID | 关联 case | 现象 | 当前评估 | 后续处理 |
 | --- | --- | --- | --- | --- |
@@ -462,8 +550,10 @@ export const manualPhase6QualityGate: string = 1;
 | P6-TS-01 | P6-01 | standalone `.ts` 类型错误被 `npm run compile` 假通过 | esbuild 不做 TS 语义检查，未被入口引用的文件不会被 bundle 覆盖 | 已新增 targeted `tsc --noEmit` 语义检查，再执行 bundle compile |
 | P6-BLOCKED-01 | P6-03B | QualityGate blocked 后进入自动修复循环并写错路径 | blocked 是验证能力不足，不是可修复编译错误 | 已新增 `shouldRunClosedLoopRepair` 门控，blocked 不进入自动修复 |
 | P6-HISTORY-01 | P6-04 | reload 历史缺少 QualityGate 结论 | Agentic history 输入模型没有 QualityGate 字段 | 已在折叠详情中渲染 QualityGate 状态、风险和证据引用 |
+| P7-HISTORY-UI-01 | P7-01、P7-03、P7-04 | Phase7 已有任务历史/恢复服务，但 VS Code 侧尚无完整历史任务列表、详情、continueTask UI | 服务边界先落地，UI 协议仍在后续 Phase9；不能用聊天历史替代任务历史事实 | 后续接入 `TaskHistoryStore` 到 WebView 协议与任务历史 UI |
+| P7-IDEMP-01 | P7-04 | `IdempotencyGuard` 已单测覆盖，但工具执行链尚未全面携带 operationId/resultRef | 当前可保护已接入路径，完整副作用重放保护需要 ToolExecutor/AgentRuntime 全链路接入 | 后续 Provider Runtime / AgentRuntime 接入 operation ledger，覆盖 edit/terminal/mcp/memory/vscode |
 
-## 10. 每轮迭代更新规则
+## 11. 每轮迭代更新规则
 
 1. 新 Phase 完成后，在本文新增对应章节。
 2. 每个新增 bug 必须关联至少一个用户可执行 case。
