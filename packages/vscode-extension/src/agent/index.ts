@@ -4,6 +4,7 @@ export * from './evidence-recovery';
 export * from './fake-tool-parser';
 export * from './idempotency-guard';
 export * from './task-timeline-service';
+export * from './task-todo-ledger';
 export * from './tool-call-normalizer';
 export * from './tool-executor';
 export * from './tool-registry';

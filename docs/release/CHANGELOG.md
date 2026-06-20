@@ -34,6 +34,8 @@
 - 修复裸目录工程优化请求退化为普通聊天的问题：当用户只写 `shape_manager` 这类工作区目录名且没有 @file 时，`ContextDiscoveryService` 会有界解析项目目录，加载代码和构建入口，并让已发现文件驱动受控 Agent 工作流。
 - 修复 `shape_manager` 编译/运行任务中失败证据被最终状态覆盖的问题：`CompletionEvidence` 新增未清除终端失败阻断，Agent loop 不能因 `allTodosCompleted` 或模型 prose 结束失败验证。
 - 修复 Working/Todos 显示污染：WebView done 阶段不再把 failed todo 强行改成 completed；终端或模型 activity label 中的 C/C++ 源码片段不再作为任务标题展示，避免重复 `Failed void initX11...` 这类代码串。
+- 修复两阶段 Agent 执行链路中的 todo 状态漂移：新增 `agent/task-todo-ledger.ts`，写文件任务只有真实 apply/path 证据才能完成，模型 `task_complete` 不能把未写盘任务涂绿；后续任务、验证失败和自动修复都保留已有 failed 证据。
+- 修复 PlanReview/两阶段 Agent 工作标题污染：WebView 新增任务标签清洗边界，`Ran ...`、`Failed ...`、`命令` 等终端活动包装不再升级为任务完成标题，优先保留结构化任务 action/file 标签。
 - 按实施原则重构 `extension.ts` 职责边界：WebView HTML、生成 artifact UI、pending diff provider、legacy config 迁移、上下文/目录发现迁入 `ui/` 与 `app/` 服务，入口文件从 5555 行降至 4266 行。
 - 新增 Phase 7 单元测试和架构守卫，覆盖任务恢复主链路与失败链路。
 
@@ -49,6 +51,7 @@
 - `node test/unit/agentic-repair-service.test.mjs` 通过，覆盖修复提示词证据优先、重复失败停止、截断覆盖 diff-only、STATUS: OK 假阳性和修复 gate。
 - `node test/unit/completion-evidence.test.mjs` 通过，覆盖未清除的失败 `compile-run` 会阻断完成，直到后续真实运行成功。
 - `node test/unit/agent-working-state.test.mjs` 通过，覆盖 checkpoint banner 定位、provider 错误标题优先级、ResponseCorrupted 安全重试、done 阶段保留 failed todo 证据，以及源码片段不再成为 Working activity label。
+- `node --test test/unit/agent-loop-task-state.test.mjs` 通过，覆盖两阶段 Agent 的写入证据账本、failed 状态不被后续任务覆盖、验证失败保留既有失败证据。
 - `node test/unit/project-instruction-service.test.mjs`、`node test/unit/generated-file-parser.test.mjs`、`node test/unit/workspace-applier.test.mjs` 通过，覆盖 AGENTS 源码污染防护与截断覆盖恢复元数据。
 - `npx tsc --noEmit --pretty false` 通过；扩展 tsconfig 排除 `src/workspace/manual-*` 手工测试产物。
 - `node test/unit/task-checkpoint-store.test.mjs` 通过，覆盖完成态 checkpoint 清理。

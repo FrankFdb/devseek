@@ -86,6 +86,19 @@ test('agent working state: source snippets are sanitized before becoming activit
   assert.match(webview, /var actDisplayLabel = sanitizeAgentActivityLabelValue\(actKind, actLabel\) \|\| defaultAgentToolActivityTarget\(actKind\);/);
 });
 
+test('agent working state: task labels ignore terminal activity wrappers', () => {
+  assert.match(
+    webview,
+    /function sanitizeAgentTaskLabelValue\(value\)[\s\S]*?\^\(\?:Failed\|Ran\)\\b[\s\S]*?return '';/,
+  );
+  assert.match(
+    webview,
+    /function buildFinishedLabel\(isFailed, container\)[\s\S]*?var containerLabel = sanitizeAgentTaskLabelValue/,
+  );
+  assert.match(webview, /var truncated = compactAgentTaskLabel\(labelItem\.title, '', 40\);/);
+  assert.match(webview, /agentCurrentTaskLabel = compactAgentTaskLabel\(actionPrefix \+ taskDesc, taskDesc, 40\);/);
+});
+
 test('agent working state: provider error title overrides generic failed activity label', () => {
   assert.match(webview, /let agentLastErrorTitle = '';/);
   assert.match(

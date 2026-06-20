@@ -106,6 +106,10 @@ import {
   executeFakeToolsForLoop,
   normalizeVisibleTodos,
 } from './agent/tool-loop';
+import {
+  createAgentTaskTodoLedger,
+  isReadOnlyAgentTaskAction,
+} from './agent/task-todo-ledger';
 import { tryRunSimpleFileTask } from './agent/simple-file-task';
 import { WorkspaceEditService } from './workspace/edit-service';
 import type { CppValidationPolicy } from './validation-planner';
@@ -1603,6 +1607,7 @@ export async function runAgentLoop(
   const editedFileRecords: Array<{ path: string; basename: string; linesAdded?: number; linesRemoved?: number; action: string }> = [];
   let tasksApplied = 0;
   let tasksFailed = 0;
+  const taskTodoLedger = createAgentTaskTodoLedger(tasks, startFromIndex);
 
   // Announce execution start
   await callbacks.onAgentStatus({
@@ -1617,11 +1622,7 @@ export async function runAgentLoop(
   // Copilot 规划阶段对齐：执行开始前先展示全部任务（全部 not-started）
   // Copilot 的 AI 在第一轮就调用 manage_todo_list 这样做；这里用框架自动初始化以确保可见性。
   if (callbacks.onTodoUpdate && tasks.length > 0 && startFromIndex === 0) {
-    await callbacks.onTodoUpdate(tasks.map((t, j) => ({
-      id: j + 1,
-      title: t.desc,
-      status: 'not-started' as const,
-    })));
+    await callbacks.onTodoUpdate(taskTodoLedger.snapshot());
   }
 
   // ── Consolidated analysis shortcut ───────────────────────────────────────
@@ -1629,7 +1630,7 @@ export async function runAgentLoop(
   // All tasks — including pure analyze/explain batches — now go through executeTask
   // which runs a multi-round tool loop (G3+G4). This allows AI to actively grep,
   // read related files, and run commands instead of being limited to a single LLM call.
-  const isReadOnlyAction = (a: AgentTaskAction) => a === 'analyze' || a === 'explain' || a === 'explore' || a === 'respond';
+  const isReadOnlyAction = isReadOnlyAgentTaskAction;
 
   // ── Execute every task individually ───────────────────────────────────────
   // contentCache: tracks the latest written content per absPath so that each
@@ -1652,11 +1653,7 @@ export async function runAgentLoop(
     // Reset todo states to ground-truth at the start of each task so any premature
     // "all completed" marking by earlier AI calls doesn't mislead the UI.
     if (callbacks.onTodoUpdate && tasks.length > 1) {
-      await callbacks.onTodoUpdate(tasks.map((t, j) => ({
-        id: j + 1,
-        title: t.desc,
-        status: (j < i ? 'completed' : j === i ? 'in-progress' : 'not-started') as 'completed' | 'in-progress' | 'not-started',
-      })));
+      await callbacks.onTodoUpdate(taskTodoLedger.startTask(i));
     }
 
     sessionHistory.push(...consumeUserSteerMessages(callbacks));
@@ -1731,19 +1728,13 @@ export async function runAgentLoop(
     }
 
     if (callbacks.onTodoUpdate && tasks.length > 0) {
-      const currentCompleted = result.applied
-        || result.taskComplete
-        || (isReadOnlyAction(task.action) && !!result.raw);
-      const currentFailed = !currentCompleted && !isReadOnlyAction(task.action);
-      await callbacks.onTodoUpdate(tasks.map((t, j) => ({
-        id: j + 1,
-        title: t.desc,
-        status: (j < i
-          ? 'completed'
-          : j === i
-          ? (currentFailed ? 'failed' : currentCompleted ? 'completed' : 'in-progress')
-          : 'not-started') as 'completed' | 'in-progress' | 'not-started' | 'failed',
-      })));
+      await callbacks.onTodoUpdate(taskTodoLedger.settleTask(i, {
+        action: task.action,
+        applied: result.applied,
+        path: result.path,
+        raw: result.raw,
+        taskComplete: result.taskComplete,
+      }).todos);
     }
 
     // Only emit responseMeta for generation tasks (modify/create/delete).
@@ -1803,18 +1794,10 @@ export async function runAgentLoop(
       });
 
       if (callbacks.onTodoUpdate && tasks.length > 0) {
-        await callbacks.onTodoUpdate([
-          ...tasks.map((t, j) => ({
-            id: j + 1,
-            title: t.desc,
-            status: 'completed' as const,
-          })),
-          {
-            id: tasks.length + repairRound,
-            title: `修复验证失败：${nodePath.basename(repairTarget)}`,
-            status: 'in-progress' as const,
-          },
-        ]);
+        await callbacks.onTodoUpdate(taskTodoLedger.repairSnapshot(
+          `修复验证失败：${nodePath.basename(repairTarget)}`,
+          tasks.length + repairRound,
+        ));
       }
 
       const repairTask = makeValidationRepairTask(repairTarget, workspaceRoot, validationOutcome, repairRound);
@@ -1892,15 +1875,7 @@ export async function runAgentLoop(
   }
   const validationFailed = validationOutcome ? !validationOutcome.ok : false;
   if (validationFailed && callbacks.onTodoUpdate && tasks.length > 0) {
-    const validationIndex = tasks.findIndex(
-      t => /编译|构建|运行|测试|compile|build|run|test/i.test(t.desc || t.file),
-    );
-    const failedIndex = validationIndex >= 0 ? validationIndex : tasks.length - 1;
-    await callbacks.onTodoUpdate(tasks.map((t, j) => ({
-      id: j + 1,
-      title: t.desc,
-      status: (j === failedIndex ? 'failed' : j < tasks.length ? 'completed' : 'not-started') as 'completed' | 'in-progress' | 'not-started' | 'failed',
-    })));
+    await callbacks.onTodoUpdate(taskTodoLedger.markValidationFailure());
   }
 
   void hadTaskComplete;

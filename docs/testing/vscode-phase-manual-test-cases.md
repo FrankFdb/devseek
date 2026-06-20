@@ -559,7 +559,9 @@ export const manualPhase6QualityGate: string = 1;
 
 - 对需要“编译、执行看效果”的任务，最终完成状态必须绑定真实终端 evidence；最后一次相关 `compile/run/test/compile-run` 失败且没有后续成功验证时，任务不能显示为完成。
 - Todos 不能出现“摘要有失败但列表全绿”的状态；失败的验证或执行任务必须保持 failed，直到后续真实成功证据清除。
+- 两阶段 Agent 的子任务状态必须由工具/apply/validation 证据驱动；写盘类任务没有真实 apply/path 证据时，模型 `task_complete` 不能把该任务标为 completed，后续任务开始也不能覆盖前序 failed。
 - Working 标题和步骤不能把源码/诊断片段当作活动名称展示，例如不应重复显示 `Failed void initX11...` 这类 C/C++ 代码串。
+- Working 标题不能把 `Ran ...`、`Failed ...`、`命令` 这类终端活动包装当作任务名；任务名应来自结构化 action/file 或明确的用户任务。
 - 如果运行环境缺少图形显示或可执行文件路径错误，应展示可操作的失败原因、失败命令和 exitCode，并继续修复或明确未完成，不得宣称“执行完成”。
 
 最新观察：
@@ -597,6 +599,8 @@ export const manualPhase6QualityGate: string = 1;
 - 修正：终端证据分析把“终端工具被禁止/命令未执行/超时/denied”等输出归类为未执行；缺少真实 exitCode 时不计入成功验证证据，提示词也明确禁止伪造通过结论。
 - 2026-06-20 shape_manager 图形库优化截图中，执行中反复显示 `Failed void initX11...` 源码片段作为 Working 步骤；最终表格有 `Circle.cpp/main.cpp` 失败和终端失败，但 Todos 仍显示 7/7 全绿，且出现“执行完成”与验证失败并存。评估：后端完成判定没有把未清除的终端失败作为阻断事实，前端 done 阶段又把失败 Todo 覆盖成 completed。
 - 修正：`CompletionEvidence` 新增未清除终端失败阻断，Agent loop 在 `task_complete/allTodosCompleted/noToolRound/final` 四个收口点统一检查阻断失败；WebView done 阶段只接受运行时权威成功清除失败，不再本地强行涂绿，并对源码片段 activity label 做降噪。
+- 2026-06-20 后续复测截图中，两阶段 Agent 路径仍出现 `Circle.cpp/main.cpp` 修改未真正写盘、终端失败存在，但 Todos 显示全部完成；Working 历史还出现 `Failed 命令`、`Ran cmake ...` 这类工具活动包装作为任务标题。评估：`runAgentLoop` 内部仍用循环索引重算 todo 状态，并把模型 `task_complete` 当作写盘完成证据；WebView 缺少任务标题与工具活动标题的隔离。
+- 修正：新增 `agent/task-todo-ledger.ts` 作为两阶段 Agent 的任务状态账本，写盘任务只由真实 apply/path 证据完成，后续任务、验证失败和自动修复均保留已有 failed；WebView 新增 task label 清洗边界，`Ran/Failed/命令` 不再升级为完成标题。回归：`agent-loop-task-state.test.mjs` 和 `agent-working-state.test.mjs`。
 
 ## 10. 已发现问题跟踪
 
@@ -626,6 +630,7 @@ export const manualPhase6QualityGate: string = 1;
 | P7-ARCH-01 | 多轮显示/持续执行修复 | `extension.ts` 同时承担 UI 模板、artifact 预览、diff provider、目录发现和恢复策略，导致相似显示问题反复以局部补丁出现 | 对标 Claude Code/Codex，入口应是薄装配层；恢复、显示、上下文发现和 apply 失败处理应由服务边界承载 | 已迁出 WebView HTML、generated artifact UI、pending diff provider、config 迁移、context discovery、apply failure recovery；`extension.ts` 从 5555 行降至 4266 行并由 workflow/architecture 测试守住 |
 | P7-CONTEXT-01 | P7-05、shape_manager 优化 | 用户只写工作区裸目录名时，没有 @file 和显式路径，任务退化为普通聊天并停止执行 | 对标 Claude Code/Codex，代码智能体应能把工程/模块名定位到本地上下文，再进入受控工具循环；不能把“我要先检查”当作完成 | 已新增裸目录解析和项目上下文文件策略，覆盖 `shape_manager` 自动发现 `.cpp/.h/CMakeLists.txt`、跳过 README、普通英文词不误判、发现文件后进入 edit-agent |
 | P7-EVIDENCE-02 | P7-06、shape_manager 编译/运行 | 终端失败和文件失败存在时，完成摘要/Working/Todos 状态互相矛盾，且源码片段被当作活动标题反复显示 | Claude Code/Codex 类闭环要求最终状态由工具证据决定；UI 不能覆盖失败事实，activity 标题不能泄露源码/诊断片段 | 已新增 `getBlockingTerminalFailure`，在 Agent loop 收口点阻断未清除终端失败；WebView done 阶段保留 failed todo，运行时权威成功才可清除，并清洗源码片段 label |
+| P7-EVIDENCE-03 | P7-06、两阶段 Agent 执行 | 子任务未写盘却被 `task_complete` 标绿，后续任务开始把前序 failed 重刷成 completed，验证/修复时旧失败丢失 | Claude Code/Codex 类任务状态来自本地工具证据账本；模型声明只能结束只读/响应任务，不能替代写盘、验证或终端 evidence | 已新增 `agent/task-todo-ledger.ts` 和 `agent-loop-task-state.test.mjs`；写盘任务要求 apply/path，验证失败和修复快照保留既有 failed，WebView 清洗 `Ran/Failed/命令` 标题污染 |
 
 ## 11. 每轮迭代更新规则
 

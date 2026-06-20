@@ -2883,24 +2883,25 @@ function handleTodoUpdate(items) {
   var inProgItem = items.find(function(it) { return it.status === 'in-progress'; });
   var labelItem = inProgItem;
   if (labelItem && labelItem.title) {
-    var nextLabel = labelItem.title;
-    var truncated = nextLabel.length > 40 ? nextLabel.slice(0, 38) + '…' : nextLabel;
-    // 1) Update agentCurrentTaskLabel for future container creations. Do not update
-    // the separate global Working area in Agent mode; the aut-container is the single
-    // source of visible progress, matching Copilot/Claude Code.
-    agentCurrentTaskLabel = truncated;
-    // 2) Update aut-label in ALL active (non-done) aut-containers via direct DOM query.
-    //    This is more reliable than the agentExecContainer reference, which may be
-    //    null or stale if todoUpdate arrives before agentStatus creates the container.
-    var activeContainers = document.querySelectorAll('.aut-container:not([data-done])');
-    for (var ci = 0; ci < activeContainers.length; ci++) {
-      var autLblEl = activeContainers[ci].querySelector('.aut-label');
-      if (autLblEl) autLblEl.textContent = truncated;
-    }
-    // Also update agentExecContainer directly as a second safety path
-    if (agentExecContainer && agentExecContainer.isConnected) {
-      var autLblEl2 = agentExecContainer.querySelector('.aut-label');
-      if (autLblEl2) autLblEl2.textContent = truncated;
+    var truncated = compactAgentTaskLabel(labelItem.title, '', 40);
+    if (truncated) {
+      // 1) Update agentCurrentTaskLabel for future container creations. Do not update
+      // the separate global Working area in Agent mode; the aut-container is the single
+      // source of visible progress, matching Copilot/Claude Code.
+      agentCurrentTaskLabel = truncated;
+      // 2) Update aut-label in ALL active (non-done) aut-containers via direct DOM query.
+      //    This is more reliable than the agentExecContainer reference, which may be
+      //    null or stale if todoUpdate arrives before agentStatus creates the container.
+      var activeContainers = document.querySelectorAll('.aut-container:not([data-done])');
+      for (var ci = 0; ci < activeContainers.length; ci++) {
+        var autLblEl = activeContainers[ci].querySelector('.aut-label');
+        if (autLblEl) autLblEl.textContent = truncated;
+      }
+      // Also update agentExecContainer directly as a second safety path
+      if (agentExecContainer && agentExecContainer.isConnected) {
+        var autLblEl2 = agentExecContainer.querySelector('.aut-label');
+        if (autLblEl2) autLblEl2.textContent = truncated;
+      }
     }
   }
 
@@ -3011,9 +3012,9 @@ function buildFinishedLabel(isFailed, container) {
     stepCount = Object.keys(agentActivityCounts).reduce(function(s, k) { return s + agentActivityCounts[k]; }, 0);
   }
   var stepSuffix = stepCount > 0 ? ' · ' + stepCount + ' 步' : '';
-  var containerLabel = container
+  var containerLabel = sanitizeAgentTaskLabelValue(container
     ? (container.getAttribute('data-finished-label') || container.getAttribute('data-running-label') || '')
-    : '';
+    : '');
   if (isFailed) {
     if (agentLastErrorTitle) return agentLastErrorTitle + stepSuffix;
     var failedTodoLabel = findFailedTodoLabel();
@@ -3025,12 +3026,13 @@ function buildFinishedLabel(isFailed, container) {
   // Priority 1: Use action-based label from current task (most specific — Copilot style).
   // Must check this BEFORE todoCount so execute-phase containers get their own label
   // ("Created foo.cpp") rather than the plan-level todo count fallback.
-  if (agentCurrentTaskLabel) {
+  var currentTaskLabel = sanitizeAgentTaskLabelValue(agentCurrentTaskLabel);
+  if (currentTaskLabel) {
     if (isFailed) {
-      var failFile = agentCurrentTaskLabel.replace(/^(创建|修改|编辑|删除|分析|探索|运行|处理)\s+/, '');
+      var failFile = currentTaskLabel.replace(/^(创建|修改|编辑|删除|分析|探索|运行|处理)\s+/, '');
       return '失败：' + failFile;
     }
-    var doneLabel = agentCurrentTaskLabel
+    var doneLabel = currentTaskLabel
       .replace(/^Creating /, '已创建 ')
       .replace(/^Modifying /, '已修改 ')
       .replace(/^Editing /, '已编辑 ')
@@ -3318,6 +3320,22 @@ function sanitizeAgentActivityLabelValue(kind, value) {
   return raw;
 }
 
+function sanitizeAgentTaskLabelValue(value) {
+  var raw = sanitizeAgentActivityLabelValue('task', value);
+  if (!raw) return '';
+  if (/^(?:Failed|Ran)\b/i.test(raw)) return '';
+  if (/^(?:失败|成功|执行完成|运行完成)[:：]?\s*(?:命令|command)$/i.test(raw)) return '';
+  if (/^(?:命令|command)$/i.test(raw)) return '';
+  return raw.replace(/^失败[:：]\s*/, '').trim();
+}
+
+function compactAgentTaskLabel(value, fallback, maxLen) {
+  var raw = sanitizeAgentTaskLabelValue(value) || sanitizeAgentTaskLabelValue(fallback);
+  if (!raw) return '';
+  var max = maxLen || 40;
+  return raw.length > max ? raw.slice(0, Math.max(0, max - 2)) + '…' : raw;
+}
+
 function formatTerminalCommandDisplay(command, maxLen) {
   var raw = sanitizeAgentActivityLabelValue('terminal', command);
   if (!raw) return 'command';
@@ -3582,11 +3600,13 @@ function addAgentStatus(msg) {
       var todoForLabel = msg.taskIndex != null ? agentTodos[msg.taskIndex - 1] : null;
       // Copilot style: Working box header = action + filename (short, identifiable).
       // Full task description lives in the Todos widget — not repeated in the Working header.
-      var rawDesc = todoForLabel ? (todoForLabel.desc || '') : '';
-      var taskDesc = fname
-        || (todoForLabel && todoForLabel.file ? basename(todoForLabel.file) : '')
-        || (rawDesc.length <= 40 ? rawDesc : rawDesc.slice(0, 38) + '…');
-      if (!taskDesc && msg.title) taskDesc = msg.title.length > 40 ? msg.title.slice(0, 38) + '…' : msg.title;
+      var rawDesc = sanitizeAgentTaskLabelValue(todoForLabel ? (todoForLabel.desc || '') : '');
+      var taskDesc = compactAgentTaskLabel(
+        fname || (todoForLabel && todoForLabel.file ? basename(todoForLabel.file) : '') || rawDesc,
+        msg.title,
+        40,
+      );
+      if (!taskDesc) taskDesc = fname ? basename(fname) : '任务';
       var taskAction = todoForLabel ? todoForLabel.action : (msg.taskAction || '');
       // Detect compile/run tasks: analyze action whose desc mentions run_terminal or compile.
       // These show "Running X" instead of "Analyzing X" for clearer intent (Claude Code pattern).
@@ -3601,7 +3621,7 @@ function addAgentStatus(msg) {
         : (taskAction === 'analyze' || taskAction === 'explain') ? '分析 '
         : taskAction ? '处理 ' : '';
       var prevTaskLabel = agentCurrentTaskLabel;  // save OLD label for finalization
-      agentCurrentTaskLabel = actionPrefix + taskDesc;
+      agentCurrentTaskLabel = compactAgentTaskLabel(actionPrefix + taskDesc, taskDesc, 40);
 
       {
         if (agentExecContainer && agentExecContainer.isConnected) {
