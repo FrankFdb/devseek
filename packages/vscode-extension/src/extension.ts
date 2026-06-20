@@ -68,6 +68,7 @@ import {
   TaskCheckpointStore,
   type TaskCheckpointRecord,
 } from './app/task-checkpoint-store';
+import { buildProviderRecoveryCheckpointTasks, ProviderRecoveryService } from './app/provider-recovery-service';
 import {
   allHunksResolved,
   computePendingHunks,
@@ -2905,9 +2906,58 @@ async function runChat(
       }
     } catch (e) {
       const msg = (e as Error).message;
-      postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: `Agent 执行出错：${msg}` });
-      webview.postMessage({ type: 'error', text: msg, loginRequired: msg === 'LOGIN_REQUIRED' });
-      agentHistoryText = agentHistoryText || `[Agent 执行出错] ${msg.slice(0, 200)}`;
+      const recovery = new ProviderRecoveryService().classify({
+        providerType: getActiveProviderType(),
+        message: msg,
+        code: msg,
+        signals: [msg],
+      });
+      if (recovery.kind !== 'Unknown') {
+        const savedAt = Date.now();
+        const wsRootFsPath = getWorkspaceRootFsPath(prompt, pathResolutionHints)
+          ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+          ?? '';
+        const recoveryTasks = buildProviderRecoveryCheckpointTasks({
+          prompt,
+          files: effectiveFiles,
+          workspaceRootFsPath: wsRootFsPath,
+        }) as AgentTask[];
+        saveAgentCheckpoint({
+          userPrompt: prompt,
+          displayPrompt: userDisplay,
+          mode,
+          wsRootFsPath,
+          allTasks: recoveryTasks,
+          startFromIndex: 0,
+          completedCount: 0,
+          savedAt,
+          sessionId: activeSessionId || 'provider-recovery',
+          pauseReason: recovery.pauseReason,
+        });
+        webview.postMessage({
+          type: 'agentCheckpointAvailable',
+          resumeTaskIndex: 0,
+          totalTasks: recoveryTasks.length,
+          userPrompt: userDisplay,
+          savedAt,
+        });
+        const detail = [
+          recovery.pauseReason,
+          ...recovery.nextActions,
+          recovery.evidenceRefs.length ? `证据: ${recovery.evidenceRefs.join(', ')}` : '',
+        ].filter(Boolean).join('\n');
+        postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: recovery.userMessage, detail });
+        webview.postMessage({
+          type: 'error',
+          text: `${recovery.userMessage}${detail ? `\n${detail}` : ''}`,
+          loginRequired: recovery.kind === 'LoginRequired',
+        });
+        agentHistoryText = agentHistoryText || `[Agent 暂停] ${recovery.pauseReason}`;
+      } else {
+        postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: `Agent 执行出错：${msg}` });
+        webview.postMessage({ type: 'error', text: msg, loginRequired: msg === 'LOGIN_REQUIRED' });
+        agentHistoryText = agentHistoryText || `[Agent 执行出错] ${msg.slice(0, 200)}`;
+      }
       saveAgentSessionState({
         lastUserPrompt: userDisplay,
         lastSummary: agentHistoryText,

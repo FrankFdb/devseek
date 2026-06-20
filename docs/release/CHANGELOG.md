@@ -14,6 +14,7 @@
 - `IdempotencyGuard` 固定副作用重放策略：已提交 edit 默认返回缓存，terminal 默认重新确认，read-only 操作可重放。
 - `ProviderRecoveryService` 将 LoginRequired、RateLimited、ResponseCorrupted、BridgeRestarted、StreamTimeout、DOMContractChanged、QualityGateFailed 分类为可解释历史任务状态。
 - Bridge Provider 增加 Web reliability 守卫，高置信截断/不完整工具块不会进入工具执行链路。
+- 修复手测 P7-04 中 `LOGIN_REQUIRED` 裸错误：Provider 异常 catch 现在进入 `ProviderRecoveryService`，展示登录/限流/响应损坏等可解释暂停原因，并保存从 prompt/files 推导的最小 checkpoint。
 - 新增 Phase 7 单元测试和架构守卫，覆盖任务恢复主链路与失败链路。
 
 验证：

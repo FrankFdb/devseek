@@ -1117,6 +1117,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   const idempotency = src('src/agent/idempotency-guard.ts');
   const reliability = src('src/llm/providers/web-reliability.ts');
   const bridgeProvider = src('src/llm/providers/bridge.ts');
+  const extension = src('src/extension.ts');
 
   assertContains(checkpoint, 'class TaskCheckpointStore', 'Phase 7 checkpoint store must exist');
   assertContains(history, 'class TaskHistoryStore', 'Phase 7 task history store must exist');
@@ -1132,6 +1133,13 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(reliability, 'class StreamWatchdog', 'DeepSeek Web provider must have stream watchdog semantics');
   assertContains(reliability, 'class BridgeHealthMonitor', 'DeepSeek Web provider must have bridge health monitor semantics');
   assertContains(bridgeProvider, 'ResponseIntegrityChecker', 'BridgeProvider must run integrity checks on completed responses');
+  assertContains(extension, 'new ProviderRecoveryService().classify', 'agent provider errors must be classified before showing UI errors');
+  assertContains(extension, 'buildProviderRecoveryCheckpointTasks', 'provider recovery must save a resumable checkpoint from task facts');
+  assert.match(
+    extension,
+    /recovery\.kind !== 'Unknown'[\s\S]*?saveAgentCheckpoint\(/,
+    'classified provider failures must save checkpoint instead of surfacing only a raw error',
+  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

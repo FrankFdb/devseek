@@ -61,7 +61,7 @@ export type WebviewOutboundMessage =
   | { type: 'delta'; text: string }
   | { type: 'resetResponse'; text: string }
   | { type: 'endResponse' }
-  | { type: 'error'; text: string }
+  | { type: 'error'; text: string; loginRequired?: boolean }
   | { type: 'workflowStatus' } & ApplyWorkflowStatus
   | AgentStatusEvent
   | { type: 'agentToolActivity'; activityKind: string; activityLabel: string; activityTotal?: number }

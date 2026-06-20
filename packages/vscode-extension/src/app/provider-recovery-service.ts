@@ -33,6 +33,14 @@ export interface ProviderRecoveryPlan {
   nextActions: string[];
 }
 
+export interface ProviderRecoveryCheckpointTask {
+  id: string;
+  file: string;
+  action: 'modify' | 'analyze' | 'create' | 'delete' | 'explain' | 'explore';
+  desc: string;
+  absPath?: string;
+}
+
 export class ProviderRecoveryService {
   constructor(private readonly historyStore?: TaskHistoryStore) {}
 
@@ -147,6 +155,39 @@ export class ProviderRecoveryService {
   }
 }
 
+export function buildProviderRecoveryCheckpointTasks(input: {
+  prompt: string;
+  files?: string[];
+  workspaceRootFsPath?: string;
+}): ProviderRecoveryCheckpointTask[] {
+  const refs = new Set<string>();
+  const workspaceRoot = input.workspaceRootFsPath || '';
+  for (const file of input.files || []) {
+    const rel = workspaceRelativePath(file, workspaceRoot);
+    if (rel) refs.add(rel);
+  }
+  const pathRe = /(?:^|[\s"'`(（:：])((?:\.\/)?(?:[A-Za-z0-9_.-]+\/)+[A-Za-z0-9_.-]+\.[A-Za-z0-9_+-]{1,12})(?=$|[\s"'`),，。；;])/g;
+  let match: RegExpExecArray | null;
+  while ((match = pathRe.exec(input.prompt)) !== null) {
+    const rel = workspaceRelativePath(match[1], workspaceRoot);
+    if (rel) refs.add(rel);
+  }
+  const action: ProviderRecoveryCheckpointTask['action'] = /(创建|新建|写入|create|add|write)/i.test(input.prompt) ? 'create' : 'modify';
+  const tasks = [...refs].slice(0, 12).map((file, index) => ({
+    id: `provider-recovery-${index + 1}`,
+    file,
+    action,
+    desc: `恢复并继续处理 ${file}`,
+    absPath: workspaceRoot ? `${workspaceRoot.replace(/\/$/, '')}/${file}` : undefined,
+  }));
+  return tasks.length > 0 ? tasks : [{
+    id: 'provider-recovery-task',
+    file: 'agent-task',
+    action: 'explore',
+    desc: '恢复并继续执行中断的 Agent 任务',
+  }];
+}
+
 function makePlan(input: {
   kind: ProviderRecoveryKind;
   taskStatus: ProviderRecoveryPlan['taskStatus'];
@@ -170,4 +211,15 @@ function normalizeText(value: string): string {
 
 function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
+}
+
+function workspaceRelativePath(file: string, workspaceRoot: string): string {
+  const clean = String(file || '').trim().replace(/\\/g, '/').replace(/^\.\//, '');
+  if (!clean) return '';
+  const root = workspaceRoot.replace(/\\/g, '/').replace(/\/$/, '');
+  if (root && clean.startsWith(root + '/')) {
+    return clean.slice(root.length + 1);
+  }
+  if (clean.startsWith('/') || clean.startsWith('..') || clean.includes('/../')) return '';
+  return clean;
 }

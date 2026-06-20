@@ -22,7 +22,7 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { ProviderRecoveryService } = req(bundlePath);
+const { ProviderRecoveryService, buildProviderRecoveryCheckpointTasks } = req(bundlePath);
 const { TaskHistoryStore } = req(historyBundlePath);
 
 class MemoryStorage {
@@ -95,6 +95,18 @@ test('ProviderRecoveryService: bridge restart records recoverable task history',
   assert.equal(saved.status, 'recoverable');
   assert.equal(saved.checkpointRef, 'checkpoint-1');
   assert.ok(saved.evidenceRefs.includes('provider:BridgeRestarted'));
+});
+
+test('ProviderRecoveryService: builds checkpoint tasks from prompt paths after provider failure', () => {
+  const tasks = buildProviderRecoveryCheckpointTasks({
+    prompt: '创建 docs/manual-phase7-bridge-a.md 和 docs/manual-phase7-bridge-b.md，并验证文件内容。',
+    workspaceRootFsPath: '/repo',
+  });
+
+  assert.equal(tasks.length, 2);
+  assert.equal(tasks[0].file, 'docs/manual-phase7-bridge-a.md');
+  assert.equal(tasks[0].action, 'create');
+  assert.equal(tasks[1].file, 'docs/manual-phase7-bridge-b.md');
 });
 
 console.log('\nProvider recovery service tests passed.\n');

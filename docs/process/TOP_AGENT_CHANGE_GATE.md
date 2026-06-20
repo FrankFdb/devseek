@@ -68,6 +68,22 @@
 
 ---
 
+**变更标题**：Phase 7 Provider 登录错误恢复链路修复（2026-06-20）
+- **需求归因**：实现缺陷 — P7-04 手测截图中，前置登录状态未恢复时 DevSeek 只显示 `[Agent 执行出错] LOGIN_REQUIRED`，没有进入 Phase7 设计的可解释暂停/恢复状态。
+- **影响能力层**：Provider 恢复、断点续传、UI 错误展示、历史任务可追溯。
+- **架构影响**：
+  - `extension.ts` 的 Agent catch 分支接入 `ProviderRecoveryService`，对 LoginRequired/RateLimited/ResponseCorrupted 等异常分类。
+  - `ProviderRecoveryService` 增加从 prompt/files 构建最小恢复 checkpoint tasks 的纯函数。
+  - `ui/webview-protocol.ts` 同步声明 `error.loginRequired`。
+- **方案选择理由**：对标 Claude Code / Codex，本地任务事实和恢复状态优先；登录失效不是普通 agent 崩溃，应保留 checkpoint 并提示用户恢复前置条件。
+- **主链路验证**：P7-03 登录失效时应显示中文暂停原因、loginRequired UI，并保存 checkpoint banner。
+- **回退链路验证**：P7-04 若 Bridge 中断后仍处于登录失效，任务进入 LoginRequired paused，不创建目标文件、不伪造验证成功。
+- **结果判据变化**：Provider 可恢复异常不能只裸露原始错误字符串；必须转换为可解释状态并保留最小恢复事实。
+- **文档更新**：`docs/testing/vscode-phase-manual-test-cases.md`、`CHANGELOG.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npm test --workspace=packages/vscode-extension` 通过（50 suite / 95 tests）；`npm run compile --workspace=packages/vscode-extension` 通过；`npx @vscode/vsce package --no-dependencies --out devseek-netai-1.0.0.vsix` 通过；`code --install-extension devseek-netai-1.0.0.vsix --force` 安装成功。
+
+---
+
 **变更标题**：Phase 7 历史任务与 DeepSeek Web 异常恢复基础设施（2026-06-20）
 - **需求归因**：能力缺口 + 架构债务 — DeepSeek Web 默认 Provider 会遇到登录失效、限流、截断、Bridge restart；任务恢复不能依赖聊天历史，也不能重复执行已提交副作用。
 - **影响能力层**：执行、验证、回退、Provider 恢复、历史任务、断点续传、幂等重放保护。
