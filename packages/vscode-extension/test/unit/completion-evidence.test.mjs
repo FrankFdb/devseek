@@ -34,6 +34,8 @@ execSync(
 const req = createRequire(import.meta.url);
 const {
   coalesceWrittenFileEvidence,
+  describeBlockingTerminalFailure,
+  getBlockingTerminalFailure,
   getMissingCompletionEvidence,
   isFileContentTerminalEvidenceCommand,
   isReadOnlyTerminalEvidenceCommand,
@@ -243,6 +245,43 @@ test('completion evidence: code edit requires successful validation evidence', (
         [{ command: 'npm run compile', kind: 'compile', ok: true, exitCode: 0 }],
       ),
       [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('completion evidence: failed runtime validation blocks completion until a later runtime success', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-evidence-runtime-'));
+  try {
+    const file = path.join(root, 'code', 'shape_manager', 'main.cpp');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, 'int main(){return 0;}\n');
+    const runtimePrompt = `${path.dirname(file)} 优化图形描画，完成后，编译，执行看效果`;
+    const writtenFiles = [{ path: file, basename: 'main.cpp', linesAdded: 1, linesRemoved: 1, action: 'modify' }];
+    const failedRun = {
+      command: 'cmake --build . && ./shape_manager',
+      kind: 'compile-run',
+      ok: false,
+      exitCode: 127,
+      detail: '/bin/sh: ./shape_manager: not found',
+    };
+
+    assert.equal(
+      getBlockingTerminalFailure(runtimePrompt, [], writtenFiles, [
+        { command: 'cmake --build .', kind: 'compile', ok: true, exitCode: 0 },
+        failedRun,
+      ]),
+      failedRun,
+    );
+    assert.match(describeBlockingTerminalFailure(failedRun), /exitCode=127/);
+
+    assert.equal(
+      getBlockingTerminalFailure(runtimePrompt, [], writtenFiles, [
+        failedRun,
+        { command: './shape_manager', kind: 'run', ok: true, exitCode: 0 },
+      ]),
+      undefined,
     );
   } finally {
     rmSync(root, { recursive: true, force: true });

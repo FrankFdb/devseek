@@ -187,6 +187,82 @@ export function requiresFileCheckEvidence(text: string): boolean {
     && !requiresRuntimeValidation(text);
 }
 
+function lastUnclearedTerminalFailure(
+  terminalEvidence: TerminalEvidence[],
+  failureKinds: Set<TerminalEvidenceKind>,
+  successKinds: Set<TerminalEvidenceKind>,
+): TerminalEvidence | undefined {
+  let blockingFailure: TerminalEvidence | undefined;
+  for (const evidence of terminalEvidence) {
+    if (evidence.ok && successKinds.has(evidence.kind)) {
+      blockingFailure = undefined;
+      continue;
+    }
+    if (!evidence.ok && failureKinds.has(evidence.kind)) {
+      blockingFailure = evidence;
+    }
+  }
+  return blockingFailure;
+}
+
+export function getBlockingTerminalFailure(
+  userPrompt: string,
+  todos: CompletionTodo[],
+  writtenFiles: WrittenFileEvidence[],
+  terminalEvidence: TerminalEvidence[],
+): TerminalEvidence | undefined {
+  if (terminalEvidence.length === 0) return undefined;
+  const text = buildEvidenceText(userPrompt, todos);
+  const existingWrittenFiles = coalesceWrittenFileEvidence(writtenFiles).filter(f => {
+    try { return fs.existsSync(f.path); } catch { return false; }
+  });
+  const existingCodeWrites = existingWrittenFiles.filter(f => isCodeArtifactPath(f.path));
+  const needsReadEvidence = requiresReadEvidence(text);
+  const needsCodeArtifact = requiresCodeArtifactForEvidence(text);
+  const needsCommand = !needsReadEvidence
+    && (requiresCommandEvidence(text) || (needsCodeArtifact && existingCodeWrites.length > 0));
+
+  const runtimeKinds = new Set<TerminalEvidenceKind>(['run', 'test', 'compile-run']);
+  const testKinds = new Set<TerminalEvidenceKind>(['test', 'run', 'compile-run']);
+  const commandKinds = new Set<TerminalEvidenceKind>(['compile', 'run', 'test', 'compile-run']);
+
+  if (requiresRunEvidence(text) || (requiresRuntimeValidation(text) && !requiresTestEvidence(text))) {
+    const failure = lastUnclearedTerminalFailure(terminalEvidence, runtimeKinds, runtimeKinds);
+    if (failure) return failure;
+  }
+  if (requiresTestEvidence(text)) {
+    const failure = lastUnclearedTerminalFailure(terminalEvidence, testKinds, testKinds);
+    if (failure) return failure;
+  }
+  if (needsCommand) {
+    const failure = lastUnclearedTerminalFailure(terminalEvidence, commandKinds, commandKinds);
+    if (failure) return failure;
+  }
+  return undefined;
+}
+
+export function describeBlockingTerminalFailure(failure: TerminalEvidence): string {
+  const exitCode = failure.exitCode == null ? 'unknown' : String(failure.exitCode);
+  const detail = String(failure.detail || '').trim().split(/\r?\n/)[0]?.trim();
+  return [
+    `验证命令未通过（${failure.kind}, exitCode=${exitCode}）`,
+    failure.command ? `命令：${failure.command}` : '',
+    detail ? `诊断：${detail}` : '',
+  ].filter(Boolean).join('。');
+}
+
+export function buildTerminalFailureRepairFeedback(failure: TerminalEvidence, missing: string[]): string {
+  return [
+    '【系统反馈】刚才的终端验证没有通过，不能结束任务。',
+    missing.length > 0 ? `缺少: ${missing.join('、')}` : '',
+    `失败命令: ${failure.command}`,
+    `exitCode: ${failure.exitCode ?? 'unknown'}`,
+    failure.detail ? `诊断: ${failure.detail}` : '',
+    '',
+    '请继续执行真实修复流程：read_file / grep_search / get_errors 定位根因，使用 create_file / write_file 或 SEARCH/REPLACE 修改文件，然后重新 run_terminal 编译/运行/测试。',
+  ].filter(Boolean).join('\n');
+}
+
 export function getMissingCompletionEvidence(
   userPrompt: string,
   todos: CompletionTodo[],

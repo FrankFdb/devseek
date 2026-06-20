@@ -65,7 +65,10 @@ import {
   makeTerminalCmdSignature,
 } from './agent/write-guard';
 import {
+  buildTerminalFailureRepairFeedback,
   coalesceWrittenFileEvidence,
+  describeBlockingTerminalFailure,
+  getBlockingTerminalFailure,
   getMissingCompletionEvidence,
   isExplicitlyReadOnlyRequest,
   requiresCommandEvidence,
@@ -1442,18 +1445,6 @@ function makeValidationRepairTask(
   };
 }
 
-function buildTerminalFailureRepairFeedback(failure: TerminalEvidence, missing: string[]): string {
-  return [
-    '【系统反馈】刚才的终端验证没有通过，不能结束任务。',
-    `缺少: ${missing.join('、')}`,
-    `失败命令: ${failure.command}`,
-    `exitCode: ${failure.exitCode ?? 'unknown'}`,
-    failure.detail ? `诊断: ${failure.detail}` : '',
-    '',
-    '请继续执行真实修复流程：read_file / grep_search / get_errors 定位根因，使用 create_file / write_file 或 SEARCH/REPLACE 修改文件，然后重新 run_terminal 编译/运行/测试。',
-  ].filter(Boolean).join('\n');
-}
-
 async function runValidation(
   changedPaths: string[],
   workspaceRoot: vscode.Uri,
@@ -2480,22 +2471,31 @@ export async function runAgenticLoop(
     const missingAfterTools = promptRequiresTools
       ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
       : [];
+    const blockingFailureAfterTools = promptRequiresTools
+      ? getBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+      : undefined;
     lastMissingEvidence = missingAfterTools;
 
-    if (!callbacks.signal?.aborted && promptRequiresTools && sawWorkTool && missingAfterTools.length === 0) {
+    if (!callbacks.signal?.aborted && promptRequiresTools && sawWorkTool && missingAfterTools.length === 0 && !blockingFailureAfterTools) {
       if (loopRes.completeSummary !== undefined) {
         completeSummary = loopRes.completeSummary ?? '';
       }
       break;
     }
 
-    if ((loopRes.taskComplete || loopRes.allTodosCompleted) && missingAfterTools.length > 0 && !callbacks.signal?.aborted) {
+    if ((loopRes.taskComplete || loopRes.allTodosCompleted)
+      && (missingAfterTools.length > 0 || blockingFailureAfterTools)
+      && !callbacks.signal?.aborted) {
       noToolRounds++;
       if (callbacks.onTodoUpdate && currentTodos.length > 0) {
-        currentTodos = markMissingEvidenceTodosIncomplete(currentTodos, missingAfterTools);
+        currentTodos = blockingFailureAfterTools
+          ? markValidationFailureTodos(currentTodos)
+          : markMissingEvidenceTodosIncomplete(currentTodos, missingAfterTools);
         await callbacks.onTodoUpdate(currentTodos);
       }
-      const retryMessage = `【系统反馈】不能结束任务。当前仍缺少可验证的${missingAfterTools.join('、')}。请继续调用实际工具完成缺失项：需要读取时用 read_file/list_dir/只读 run_terminal；需要代码时用 create_file/write_file 写入源码；需要验证时用合适的验证命令，文档/配置只需文件存在和内容证据，代码才需要编译/运行/测试。完成后再调用 task_complete，summary 必须只基于真实工具结果。${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`;
+      const retryMessage = blockingFailureAfterTools
+        ? `${buildTerminalFailureRepairFeedback(blockingFailureAfterTools, missingAfterTools)}${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`
+        : `【系统反馈】不能结束任务。当前仍缺少可验证的${missingAfterTools.join('、')}。请继续调用实际工具完成缺失项：需要读取时用 read_file/list_dir/只读 run_terminal；需要代码时用 create_file/write_file 写入源码；需要验证时用合适的验证命令，文档/配置只需文件存在和内容证据，代码才需要编译/运行/测试。完成后再调用 task_complete，summary 必须只基于真实工具结果。${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`;
       messages.push({ role: 'user', content: retryMessage });
       totalChars += retryMessage.length;
       continue;
@@ -2522,7 +2522,7 @@ export async function runAgenticLoop(
     // (plan + execute + verify) in a single response without calling task_complete.
     // Treat all-todos-completed as an equivalent signal to avoid a redundant
     // round-2 request that often causes DeepSeek to repeat all tools again.
-    if (loopRes.allTodosCompleted && (!promptRequiresTools || sawWorkTool)) {
+    if (loopRes.allTodosCompleted && (!promptRequiresTools || (sawWorkTool && !blockingFailureAfterTools))) {
       break;
     }
     if (loopRes.allTodosCompleted && promptRequiresTools && !sawWorkTool && noToolRounds < 2 && !callbacks.signal?.aborted) {
@@ -2537,12 +2537,12 @@ export async function runAgenticLoop(
       const missingNow = promptRequiresTools
         ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
         : [];
-      const lastFailedTerminal = [...allTerminalEvidence]
-        .reverse()
-        .find(e => !e.ok && e.kind !== 'other');
-      if (lastFailedTerminal && missingNow.length > 0 && noToolRounds < 2 && !callbacks.signal?.aborted) {
+      const blockingFailureNow = promptRequiresTools
+        ? getBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+        : undefined;
+      if (blockingFailureNow && noToolRounds < 2 && !callbacks.signal?.aborted) {
         noToolRounds++;
-        const retryMessage = buildTerminalFailureRepairFeedback(lastFailedTerminal, missingNow);
+        const retryMessage = buildTerminalFailureRepairFeedback(blockingFailureNow, missingNow);
         messages.push({ role: 'user', content: retryMessage });
         totalChars += retryMessage.length;
         continue;
@@ -2560,7 +2560,16 @@ export async function runAgenticLoop(
   const finalMissingEvidence = promptRequiresTools
     ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
     : [];
-  if (!failedReason && finalMissingEvidence.length > 0) {
+  const finalBlockingFailure = promptRequiresTools
+    ? getBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+    : undefined;
+  if (!failedReason && finalBlockingFailure) {
+    failedReason = describeBlockingTerminalFailure(finalBlockingFailure);
+    if (callbacks.onTodoUpdate && currentTodos.length > 0) {
+      currentTodos = markValidationFailureTodos(currentTodos);
+      await callbacks.onTodoUpdate(currentTodos);
+    }
+  } else if (!failedReason && finalMissingEvidence.length > 0) {
     failedReason = `实际执行证据不足：缺少${finalMissingEvidence.join('、')}。`;
     if (callbacks.onTodoUpdate && currentTodos.length > 0) {
       currentTodos = markMissingEvidenceTodosIncomplete(currentTodos, finalMissingEvidence);
@@ -2570,7 +2579,7 @@ export async function runAgenticLoop(
     failedReason = `实际执行证据不足：缺少${lastMissingEvidence.join('、')}。`;
   }
   if (!failedReason && !callbacks.signal?.aborted && callbacks.onTodoUpdate && currentTodos.length > 0) {
-    currentTodos = currentTodos.map(item => ({ ...item, status: 'completed' as const }));
+    currentTodos = currentTodos.map(item => ({ ...item, status: 'completed' as const, __agentState: true }));
     await callbacks.onTodoUpdate(currentTodos);
   }
 

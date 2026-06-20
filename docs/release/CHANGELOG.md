@@ -32,6 +32,8 @@
 - 修复“重新编译，执行”复用旧 run-only 计划的问题：重复执行计划改由 `ExecutionPlanner` 重新评估；遇到重新编译/构建请求或旧可执行文件不存在时，强制重新生成 build/run 计划。
 - 修复终端证据误判：终端工具被禁止、未执行、超时或缺少真实 exitCode 时，不再作为编译/运行/测试通过证据。
 - 修复裸目录工程优化请求退化为普通聊天的问题：当用户只写 `shape_manager` 这类工作区目录名且没有 @file 时，`ContextDiscoveryService` 会有界解析项目目录，加载代码和构建入口，并让已发现文件驱动受控 Agent 工作流。
+- 修复 `shape_manager` 编译/运行任务中失败证据被最终状态覆盖的问题：`CompletionEvidence` 新增未清除终端失败阻断，Agent loop 不能因 `allTodosCompleted` 或模型 prose 结束失败验证。
+- 修复 Working/Todos 显示污染：WebView done 阶段不再把 failed todo 强行改成 completed；终端或模型 activity label 中的 C/C++ 源码片段不再作为任务标题展示，避免重复 `Failed void initX11...` 这类代码串。
 - 按实施原则重构 `extension.ts` 职责边界：WebView HTML、生成 artifact UI、pending diff provider、legacy config 迁移、上下文/目录发现迁入 `ui/` 与 `app/` 服务，入口文件从 5555 行降至 4266 行。
 - 新增 Phase 7 单元测试和架构守卫，覆盖任务恢复主链路与失败链路。
 
@@ -45,7 +47,8 @@
 - `node test/unit/apply-failure-recovery-service.test.mjs` 通过，覆盖截断覆盖恢复的二次最小 diff 重试。
 - `node test/unit/execution-planner.test.mjs` 通过，覆盖重复“重新编译/执行”从旧 run-only 计划重新规划为 build/run。
 - `node test/unit/agentic-repair-service.test.mjs` 通过，覆盖修复提示词证据优先、重复失败停止、截断覆盖 diff-only、STATUS: OK 假阳性和修复 gate。
-- `node test/unit/agent-working-state.test.mjs` 通过，覆盖 checkpoint banner 不再插入 transcript 顶部、provider 错误标题优先于内部活动标签，以及 ResponseCorrupted banner 显示“安全重试”。
+- `node test/unit/completion-evidence.test.mjs` 通过，覆盖未清除的失败 `compile-run` 会阻断完成，直到后续真实运行成功。
+- `node test/unit/agent-working-state.test.mjs` 通过，覆盖 checkpoint banner 定位、provider 错误标题优先级、ResponseCorrupted 安全重试、done 阶段保留 failed todo 证据，以及源码片段不再成为 Working activity label。
 - `node test/unit/project-instruction-service.test.mjs`、`node test/unit/generated-file-parser.test.mjs`、`node test/unit/workspace-applier.test.mjs` 通过，覆盖 AGENTS 源码污染防护与截断覆盖恢复元数据。
 - `npx tsc --noEmit --pretty false` 通过；扩展 tsconfig 排除 `src/workspace/manual-*` 手工测试产物。
 - `node test/unit/task-checkpoint-store.test.mjs` 通过，覆盖完成态 checkpoint 清理。

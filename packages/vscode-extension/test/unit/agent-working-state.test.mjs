@@ -72,6 +72,20 @@ test('agent working state: failed final labels use explicit failed todo before f
   );
 });
 
+test('agent working state: done phase preserves failed todo evidence unless runtime sends authoritative success', () => {
+  assert.match(webview, /function hasFailedAgentTodoState\(\)[\s\S]*?agentTodos[\s\S]*?agentToolTodos/);
+  assert.match(webview, /var doneFailed = msg\.state === 'failed' \|\| hasFailedAgentTodoState\(\);/);
+  assert.match(webview, /__agentState: true[\s\S]*?status: finalStatus/);
+  assert.doesNotMatch(webview, /failed\s*→\s*completed/);
+});
+
+test('agent working state: source snippets are sanitized before becoming activity labels', () => {
+  assert.match(webview, /function looksLikeSourceActivitySnippet\(value\)[\s\S]*?#include[\s\S]*?std::[\s\S]*?nullptr/);
+  assert.match(webview, /function sanitizeAgentActivityLabelValue\(kind, value\)[\s\S]*?looksLikeSourceActivitySnippet\(raw\)[\s\S]*?defaultAgentToolActivityTarget/);
+  assert.match(webview, /var cmdDisplay = formatTerminalCommandDisplay\(cmd, 120\);/);
+  assert.match(webview, /var actDisplayLabel = sanitizeAgentActivityLabelValue\(actKind, actLabel\) \|\| defaultAgentToolActivityTarget\(actKind\);/);
+});
+
 test('agent working state: provider error title overrides generic failed activity label', () => {
   assert.match(webview, /let agentLastErrorTitle = '';/);
   assert.match(

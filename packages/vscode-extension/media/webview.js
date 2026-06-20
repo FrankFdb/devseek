@@ -3173,6 +3173,11 @@ function hasAgentFailureState() {
   });
 }
 
+function hasFailedAgentTodoState() {
+  return agentTodos.some(function(t) { return t && t.state === 'failed'; })
+    || agentToolTodos.some(function(t) { return t && t.status === 'failed'; });
+}
+
 /**
  * P-Q: Route \x00AFILE:filename\x00content delta into the current aut-container's
  * analysis body, streaming AI prose/code directly inside the Working box (Copilot style).
@@ -3285,17 +3290,44 @@ function getAgentActivityDisplay(kind) {
   };
 }
 
-function formatAgentActivityTarget(value, spec) {
-  var target = String(value || '').replace(/\\/g, '/');
+function formatAgentActivityTarget(value, spec, kind) {
+  var target = sanitizeAgentActivityLabelValue(kind, value);
+  if (!target) return '';
+  target = target.replace(/\\/g, '/');
   if (spec && spec.basename) target = target.split('/').pop() || target;
   var max = (spec && spec.max) || 0;
   if (max > 0 && target.length > max) target = target.slice(0, max) + '\u2026';
   return target;
 }
 
+function looksLikeSourceActivitySnippet(value) {
+  var raw = String(value || '').trim();
+  if (!raw) return false;
+  var text = raw.replace(/\s+/g, ' ');
+  if (/^(?:Failed|Ran|Error|失败|成功)?\s*(?:void|int|bool|char|class|struct|template|#include)\b/i.test(text)) return true;
+  if (/(?:#include\s*<|\bstd::|\bnullptr\b|\b[A-Za-z_]\w*::[A-Za-z_]\w*\b)/.test(text)) return true;
+  return /[{};]/.test(text) && /\b(?:void|int|bool|char|class|struct|return|nullptr|std::)\b/.test(text);
+}
+
+function sanitizeAgentActivityLabelValue(kind, value) {
+  var raw = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!raw || raw === 'undefined' || raw === 'null' || raw === '[object Object]') return '';
+  if (looksLikeSourceActivitySnippet(raw)) {
+    return defaultAgentToolActivityTarget(kind || 'terminal');
+  }
+  return raw;
+}
+
+function formatTerminalCommandDisplay(command, maxLen) {
+  var raw = sanitizeAgentActivityLabelValue('terminal', command);
+  if (!raw) return 'command';
+  var max = maxLen || 120;
+  return raw.length > max ? raw.slice(0, Math.max(0, max - 1)) + '\u2026' : raw;
+}
+
 function buildAgentToolActivityLabel(kind, label) {
   var spec = getAgentActivityDisplay(kind);
-  var raw = String(label || '').replace(/\s+/g, ' ').trim();
+  var raw = sanitizeAgentActivityLabelValue(kind, label);
   var target = raw.replace(/\\/g, '/').split('/').pop() || raw;
   if (target.length > 52) target = target.slice(0, 50) + '…';
   return spec.labelVerb + ' ' + (target || spec.labelTarget || spec.target || '');
@@ -3320,7 +3352,7 @@ function defaultAgentToolActivityTarget(kind) {
 
 function formatAgentToolActivityStep(kind, label) {
   var spec = getAgentActivityDisplay(kind);
-  var target = formatAgentActivityTarget(label, spec) || spec.target || 'tool';
+  var target = formatAgentActivityTarget(label, spec, kind) || spec.target || 'tool';
   return {
     icon: spec.icon || 'codicon-terminal',
     html: spec.stepVerb + ' <code>' + (spec.shellPrefix ? '$ ' : '') + escapeHtml(target) + '</code>',
@@ -3334,7 +3366,7 @@ function activeAgentContainerHasProcessRows(container) {
 
 function prepareAgentToolActivityContainer(kind, label) {
   var nextLabel = buildAgentToolActivityLabel(kind, label);
-  var nextToolKey = String(label || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+  var nextToolKey = sanitizeAgentActivityLabelValue(kind, label).slice(0, 160);
   var current = agentExecContainer;
   if (current && current.isConnected && !current.hasAttribute('data-done')) {
     var currentKind = current.getAttribute('data-active-tool-kind') || '';
@@ -3369,7 +3401,8 @@ function prepareAgentToolActivityContainer(kind, label) {
 }
 
 function appendAgentProgressStep(kind, label, detail, state) {
-  var container = ensureAgentProgressContainer(label || '处理中...');
+  var safeLabel = sanitizeAgentActivityLabelValue(kind, label) || '处理中...';
+  var container = ensureAgentProgressContainer(safeLabel);
   var steps = agentActivityRowId ? document.getElementById(agentActivityRowId) : null;
   if (!steps) {
     createExecStepsList(container);
@@ -3387,7 +3420,7 @@ function appendAgentProgressStep(kind, label, detail, state) {
     ? '<details class="aut-step-details"><summary>详情</summary><pre>' + escapeHtml(detail) + '</pre></details>'
     : '';
   step.innerHTML = '<i class="codicon ' + icon + ' aut-step-icon"></i>'
-    + '<span class="aut-step-text">' + escapeHtml(label || '处理中') + detailHtml + '</span>';
+    + '<span class="aut-step-text">' + escapeHtml(safeLabel || '处理中') + detailHtml + '</span>';
   steps.appendChild(step);
   steps.scrollTop = steps.scrollHeight;
 }
@@ -3783,7 +3816,7 @@ function addAgentStatus(msg) {
   if (msg.phase === 'done' || msg.phase === 'error') {
     agentTaskCards.clear();
     agentPlanCard = null;
-    var doneFailed = msg.state === 'failed';
+    var doneFailed = msg.state === 'failed' || hasFailedAgentTodoState();
     if (msg.phase === 'error') agentLastErrorTitle = msg.title || '本轮失败';
     else agentLastErrorTitle = '';
     var finalFailureTodosSynced = false;
@@ -3800,9 +3833,9 @@ function addAgentStatus(msg) {
       agentLastEditedFiles = msg.editedFiles;
       renderFileChangesWidget(msg.editedFiles);
     }
-    // Force all todos to completed state and sync Todos widget so it shows full (N/N) immediately.
-    // This is robust regardless of whether the AI called manage_todo_list explicitly.
-    if (msg.phase === 'done' && msg.state !== 'failed' && agentTodos.length > 0) {
+    // Final todo sync is display-only. Runtime-owned todo updates may settle
+    // in-progress rows, but the webview must not erase a failed evidence state.
+    if (msg.phase === 'done' && !doneFailed && agentTodos.length > 0) {
       agentTodos.forEach(function(t) {
         if (t.state !== 'failed') t.state = 'completed';
       });
@@ -3810,16 +3843,12 @@ function addAgentStatus(msg) {
         return { __agentState: true, title: t.desc || basename(t.file || ''), action: t.action || 'modify', desc: basename(t.file || ''), status: t.state === 'failed' ? 'failed' : 'completed' };
       });
       handleTodoUpdate(finalWidgetItems);
-    } else if (msg.phase === 'done' && msg.state !== 'failed' && agentToolTodos.length > 0) {
-      // When the overall task succeeds, advance ALL active/retried todos to completed:
-      // failed → completed (AI tried and retried via terminal, task did succeed overall)
-      // in-progress → completed (still in flight at completion)
-      // not-started stays as-is (genuinely skipped work)
+    } else if (msg.phase === 'done' && !doneFailed && agentToolTodos.length > 0) {
       handleTodoUpdate(agentToolTodos.map(function(t) {
         var finalStatus = t.status === 'not-started' ? 'not-started' : 'completed';
-        return Object.assign({}, t, { status: finalStatus });
+        return Object.assign({}, t, { __agentState: true, status: finalStatus });
       }));
-    } else if (msg.phase === 'done' && msg.state === 'failed' && agentToolTodos.length > 0 && !finalFailureTodosSynced) {
+    } else if (msg.phase === 'done' && doneFailed && agentToolTodos.length > 0 && !finalFailureTodosSynced) {
       handleTodoUpdate(markFirstActiveTodoFailedForFinalState(agentToolTodos));
     }
     refreshVisibleAgentProseFromCurrentRaw();
@@ -6272,7 +6301,7 @@ window.addEventListener('message', function(event) {
       var ranRow = document.createElement('div');
       ranRow.className = 'ran-command-row';
       var cmd = msg.command || '';
-      var cmdDisplay = cmd.length > 120 ? cmd.slice(0, 117) + '\u2026' : cmd;
+      var cmdDisplay = formatTerminalCommandDisplay(cmd, 120);
       var exitOk = typeof msg.exitCode === 'number' ? msg.exitCode === 0 : true;
       var exitHtml = (typeof msg.exitCode === 'number' && msg.exitCode !== 0)
         ? '<span class="rc-exit">[exit ' + msg.exitCode + ']</span>'
@@ -6316,7 +6345,7 @@ window.addEventListener('message', function(event) {
     // Append one readable step row per tool call (Copilot-style: "Searched for X", "Read Y")
     var actKind = normalizeAgentToolActivityKind(msg.activityKind);
     var actLabel = normalizeAgentToolActivityLabel(msg.activityLabel);
-    var actDisplayLabel = actLabel || defaultAgentToolActivityTarget(actKind);
+    var actDisplayLabel = sanitizeAgentActivityLabelValue(actKind, actLabel) || defaultAgentToolActivityTarget(actKind);
     // 'label' kind: AI pre-tool intent → update Working box label only (no step row, no bubble).
     // Copilot never shows pre-tool prose as chat messages; it only updates the Working header.
     if (actKind === 'label') {
@@ -6375,7 +6404,7 @@ window.addEventListener('message', function(event) {
           var actSpinLbl = actDets.querySelector('.aut-spinner-label');
           if (actSpinLbl) {
             var spinActWord = getAgentActivityDisplay(actKind).spinnerVerb || '运行';
-            var spinActTarget = actDisplayLabel.replace(/\\/g, '/').split('/').pop() || actDisplayLabel;
+            var spinActTarget = sanitizeAgentActivityLabelValue(actKind, actDisplayLabel).replace(/\\/g, '/').split('/').pop() || actDisplayLabel;
             if (spinActTarget.length > 35) spinActTarget = spinActTarget.slice(0, 33) + '\u2026';
             actSpinLbl.textContent = spinActWord + (spinActTarget ? ' ' + spinActTarget : '\u2026');
           }

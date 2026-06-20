@@ -11,6 +11,8 @@ export interface TodoItem {
   title: string;
   /** Copilot-compatible status values */
   status: 'not-started' | 'in-progress' | 'completed' | 'failed';
+  /** Runtime-owned state may override earlier model todo snapshots in the UI. */
+  __agentState?: boolean;
 }
 
 export function markMissingEvidenceTodosIncomplete(todos: TodoItem[], missing: string[]): TodoItem[] {

@@ -547,6 +547,21 @@ export const manualPhase6QualityGate: string = 1;
 - 自动发现上下文不应把 `README.md`、`AGENTS.md`、`CLAUDE.md` 等说明/指令文件当作普通源码实现注入执行任务。
 - 若目录不存在或没有可用源码，应明确说明无法定位目标，而不是进入普通聊天猜测。
 
+### P7-06 编译/运行失败不能被完成态覆盖
+
+用户输入：
+
+```text
+/home/ff/work/devseek_netai/code/shape_manager 优化图形描画，需要通过图形库描画方式，做图，完成后，编译，执行看效果
+```
+
+期望结果：
+
+- 对需要“编译、执行看效果”的任务，最终完成状态必须绑定真实终端 evidence；最后一次相关 `compile/run/test/compile-run` 失败且没有后续成功验证时，任务不能显示为完成。
+- Todos 不能出现“摘要有失败但列表全绿”的状态；失败的验证或执行任务必须保持 failed，直到后续真实成功证据清除。
+- Working 标题和步骤不能把源码/诊断片段当作活动名称展示，例如不应重复显示 `Failed void initX11...` 这类 C/C++ 代码串。
+- 如果运行环境缺少图形显示或可执行文件路径错误，应展示可操作的失败原因、失败命令和 exitCode，并继续修复或明确未完成，不得宣称“执行完成”。
+
 最新观察：
 
 - 2026-06-20 Phase7 已新增 `TaskCheckpointStore`、`TaskHistoryStore`、`ResumeContextBuilder`、`ProviderRecoveryService`、`IdempotencyGuard` 和 Web reliability 守卫，并完成单测/架构测试。
@@ -580,6 +595,8 @@ export const manualPhase6QualityGate: string = 1;
 - 修正：apply 结果新增 `failureReason/failureDetail/blockedChangePaths`；对 `truncating-overwrite` 自动把拦截原因、上一轮输出和真实文件内容回传模型，要求重新生成最小 unified diff 或新增文件完整内容，再继续自动验证/闭环修复。
 - 2026-06-20 编译验证截图中，终端工具被禁止后模型仍输出“编译可行性通过”。评估：没有真实退出码时只能说“未完成验证/静态分析有限”，不能把编译、运行或测试标为通过。
 - 修正：终端证据分析把“终端工具被禁止/命令未执行/超时/denied”等输出归类为未执行；缺少真实 exitCode 时不计入成功验证证据，提示词也明确禁止伪造通过结论。
+- 2026-06-20 shape_manager 图形库优化截图中，执行中反复显示 `Failed void initX11...` 源码片段作为 Working 步骤；最终表格有 `Circle.cpp/main.cpp` 失败和终端失败，但 Todos 仍显示 7/7 全绿，且出现“执行完成”与验证失败并存。评估：后端完成判定没有把未清除的终端失败作为阻断事实，前端 done 阶段又把失败 Todo 覆盖成 completed。
+- 修正：`CompletionEvidence` 新增未清除终端失败阻断，Agent loop 在 `task_complete/allTodosCompleted/noToolRound/final` 四个收口点统一检查阻断失败；WebView done 阶段只接受运行时权威成功清除失败，不再本地强行涂绿，并对源码片段 activity label 做降噪。
 
 ## 10. 已发现问题跟踪
 
@@ -608,6 +625,7 @@ export const manualPhase6QualityGate: string = 1;
 | P7-EVIDENCE-01 | 编译验证 | 终端工具被禁止/未执行后仍宣称“编译通过” | 编译/运行/测试必须来自真实命令退出码；未执行只能标为未验证或阻塞 | 已将终端禁止/未执行/超时归为非成功证据，并更新 agent prompt 禁止伪造验证通过 |
 | P7-ARCH-01 | 多轮显示/持续执行修复 | `extension.ts` 同时承担 UI 模板、artifact 预览、diff provider、目录发现和恢复策略，导致相似显示问题反复以局部补丁出现 | 对标 Claude Code/Codex，入口应是薄装配层；恢复、显示、上下文发现和 apply 失败处理应由服务边界承载 | 已迁出 WebView HTML、generated artifact UI、pending diff provider、config 迁移、context discovery、apply failure recovery；`extension.ts` 从 5555 行降至 4266 行并由 workflow/architecture 测试守住 |
 | P7-CONTEXT-01 | P7-05、shape_manager 优化 | 用户只写工作区裸目录名时，没有 @file 和显式路径，任务退化为普通聊天并停止执行 | 对标 Claude Code/Codex，代码智能体应能把工程/模块名定位到本地上下文，再进入受控工具循环；不能把“我要先检查”当作完成 | 已新增裸目录解析和项目上下文文件策略，覆盖 `shape_manager` 自动发现 `.cpp/.h/CMakeLists.txt`、跳过 README、普通英文词不误判、发现文件后进入 edit-agent |
+| P7-EVIDENCE-02 | P7-06、shape_manager 编译/运行 | 终端失败和文件失败存在时，完成摘要/Working/Todos 状态互相矛盾，且源码片段被当作活动标题反复显示 | Claude Code/Codex 类闭环要求最终状态由工具证据决定；UI 不能覆盖失败事实，activity 标题不能泄露源码/诊断片段 | 已新增 `getBlockingTerminalFailure`，在 Agent loop 收口点阻断未清除终端失败；WebView done 阶段保留 failed todo，运行时权威成功才可清除，并清洗源码片段 label |
 
 ## 11. 每轮迭代更新规则
 
