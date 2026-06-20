@@ -546,6 +546,8 @@ export const manualPhase6QualityGate: string = 1;
 - 修正：`ProviderRecoveryService` 从原始 prompt 提取路径、创建意图、逐文件 `expectedContent` 和验证意图；Agent 执行层对带 `expectedContent` 的 checkpoint create 任务走本地确定性写入、读回校验和 `WorkspaceEditService` 记录，不再生成手动 shell 建议。
 - 2026-06-20 最新截图中，checkpoint 的“继续执行”按钮在 reload 后显示在对话最开始位置，且任务完成后仍可能看到旧 checkpoint banner。评估为 WebView 把 banner 插入 `messages.firstChild`，同时 checkpoint 保存/清理为异步 fire-and-forget，存在完成态 checkpoint 落盘乱序残留。
 - 修正：checkpoint banner 改为插入输入区上方的当前操作区，完成态/无剩余任务 checkpoint 不再展示；`TaskCheckpointStore.loadFresh` 清理已完成 checkpoint，Agent checkpoint 回调改为 await，最终任务不再保存 2/2 续作点。
+- 2026-06-20 P7-02/P7-03 复测截图中，响应损坏错误显示为 `RESPONSE_CORRUPTEDinvalid-json-response...` 粘连文本，Working 最终标题仍可能落到 `Failed: Exploring ...`，用户难以判断这是 provider 输出被安全阻断。
+- 修正：`ProviderRecoveryService` 增加恢复展示模型，ResponseCorrupted 标题统一为“响应损坏，已阻止执行”，状态和原因分行展示；WebView 最终失败标题优先使用 provider/agent 错误标题，再回退到 failed todo 或活动标签。
 
 ## 10. 已发现问题跟踪
 
@@ -566,6 +568,7 @@ export const manualPhase6QualityGate: string = 1;
 | P7-RESUME-01 | P7-04 | 用户输入“继续”后没有从 checkpoint 恢复执行，而是普通聊天建议复制文件内容或手动 shell 指令 | 自然语言继续和 checkpoint banner 都应进入同一恢复执行链路；resumeFromIndex=0、Agent toggle 状态和残留 context chips 不能阻断恢复 | 已新增 `shouldResumeCheckpointFromPrompt`，修复 `checkpointResumeTasks` 显式判断，并移除 `forceNoAgent/files/images` 阻断条件 |
 | P7-RECOVERY-FACTS-01 | P7-04 | checkpoint resume 已触发，但任务只剩“恢复并继续处理文件”，丢失创建内容与验证事实，最终文件未创建 | 对标 Claude Code/Codex，恢复应依赖本地 checkpoint/task facts；已知文件内容的 create 任务应本地确定性执行并读回校验，不应再让模型猜或输出操作说明 | 已新增 `expectedContent` checkpoint fact 提取和 `tryExecuteDeterministicCreateTask`；覆盖“建 ... 内容分别为 ... 并验证”回归测试 |
 | P7-BANNER-01 | P7-04 | “继续执行”按钮显示在历史对话最开始位置，且完成后可能残留旧 checkpoint banner | 恢复入口是当前任务控制，不应作为历史首条消息；完成态 checkpoint 不能被 loadFresh 当作可恢复任务 | 已将 banner 锚定到输入区上方当前操作区；checkpoint 保存/清理改为 await，并清理完成态 checkpoint |
+| P7-ERROR-UI-01 | P7-02、P7-03 | 响应损坏时 UI 裸露粘连错误串，Working 标题显示 `Failed: Exploring ...` 而不是安全阻断原因 | 对标 Claude Code/Codex，失败表面必须呈现可操作诊断事实；内部阶段名不能覆盖 provider 安全拦截结论 | 已新增 `buildProviderRecoveryDisplay` 和 `agentLastErrorTitle`，覆盖损坏响应格式化与错误标题优先级回归测试 |
 
 ## 11. 每轮迭代更新规则
 

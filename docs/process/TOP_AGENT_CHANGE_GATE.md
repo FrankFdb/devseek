@@ -68,6 +68,22 @@
 
 ---
 
+**变更标题**：Phase 7 ResponseCorrupted 错误展示与失败标题修复（2026-06-20）
+- **需求归因**：体验退化 + 实现缺陷 — 最新 P7-02/P7-03 截图中，响应损坏错误显示为 `RESPONSE_CORRUPTEDinvalid-json-response...` 粘连文本，Working 最终标题被内部 `Exploring` 阶段覆盖。
+- **影响能力层**：Provider 恢复、失败诊断、用户可解释性、Working 区完成态。
+- **架构影响**：
+  - `ProviderRecoveryService` 增加 `ProviderRecoveryDisplay`，统一把恢复计划转为 UI 标题、详情、错误文本和历史摘要。
+  - `extension.ts` 只编排 recovery display，不再内联拼接 provider 诊断文案。
+  - WebView 在错误阶段记录 provider/agent 错误标题，最终失败标题优先展示诊断结论，再回退到 failed todo 或活动标签。
+- **方案选择理由**：对标 Claude Code / Codex，失败表面应优先呈现可操作的事实结论；底层 provider token 和内部阶段名不能覆盖安全阻断原因。
+- **主链路验证**：`node test/unit/provider-recovery-service.test.mjs` 通过，覆盖 `RESPONSE_CORRUPTED:invalid-json-response:...` 的分行展示和去粘连。
+- **回退链路验证**：`node test/unit/agent-working-state.test.mjs` 通过，覆盖 provider 错误标题优先于 `Failed: Exploring ...`。
+- **结果判据变化**：P7 响应损坏必须显示“响应损坏，已阻止执行”，并列出状态、原因和证据；Working 完成态不得把内部探索标签当作最终失败结论。
+- **文档更新**：`docs/testing/vscode-phase-manual-test-cases.md`、`CHANGELOG.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npm test --workspace=packages/vscode-extension` 通过（50 suite）；`git diff --check` 通过；targeted `tsc --noEmit` 通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npx @vscode/vsce package --no-dependencies --out devseek-netai-1.0.0.vsix` 通过；`code --install-extension devseek-netai-1.0.0.vsix --force` 安装成功。
+
+---
+
 **变更标题**：Phase 7 checkpoint banner 锚点与完成态清理修复（2026-06-20）
 - **需求归因**：体验退化 + 实现缺陷 — 最新 P7-04 截图中，“继续执行”按钮显示在历史对话最开始位置，且任务完成后 reload 仍可能看到旧 checkpoint banner。
 - **影响能力层**：恢复入口、历史可追溯、用户可控性、任务完成状态一致性。

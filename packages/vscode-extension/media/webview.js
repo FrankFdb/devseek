@@ -75,6 +75,7 @@ let completionSummaryHasQueue = false;
 let hadFirstDelta   = false;    // Working step: '分析请求' → passed on first delta
 let agentLastEditedFiles = null;  // editedFiles from done phase — used for auto-summary
 let agentDoneSummaryInserted = false; // guard against duplicate final prose summaries
+let agentLastErrorTitle = ''; // provider/agent error title for final failed Working header
 let agentAnalysisFeedbackSeq = 0; // stable ids for analysis feedback bubbles
 let collapsedCodeUidSeq = 0; // stable unique ids for collapsed code blocks across turns
 let autopilotMode   = false;    // L-5: 自动驾驶模式
@@ -3012,6 +3013,7 @@ function buildFinishedLabel(isFailed, container) {
     ? (container.getAttribute('data-finished-label') || container.getAttribute('data-running-label') || '')
     : '';
   if (isFailed) {
+    if (agentLastErrorTitle) return agentLastErrorTitle + stepSuffix;
     var failedTodoLabel = findFailedTodoLabel();
     if (failedTodoLabel) return 'Failed: ' + failedTodoLabel + stepSuffix;
   }
@@ -3771,6 +3773,8 @@ function addAgentStatus(msg) {
     agentTaskCards.clear();
     agentPlanCard = null;
     var doneFailed = msg.state === 'failed';
+    if (msg.phase === 'error') agentLastErrorTitle = msg.title || '本轮失败';
+    else agentLastErrorTitle = '';
     var finalFailureTodosSynced = false;
     if (msg.phase === 'done' && doneFailed && agentToolTodos.length > 0) {
       handleTodoUpdate(markFirstActiveTodoFailedForFinalState(agentToolTodos));
@@ -5114,6 +5118,7 @@ function resetWorkingArea() {
     agentTodoParseBuffer = '';
     agentLastParsedTodoSignature = '';
     agentLastEditedFiles = null;
+    agentLastErrorTitle = '';
     agentValidationSummary = null;
     agentDoneSummaryInserted = false;
     agentAnalysisFeedbackSeq = 0;

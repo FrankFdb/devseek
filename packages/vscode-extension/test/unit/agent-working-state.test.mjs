@@ -72,6 +72,18 @@ test('agent working state: failed final labels use explicit failed todo before f
   );
 });
 
+test('agent working state: provider error title overrides generic failed activity label', () => {
+  assert.match(webview, /let agentLastErrorTitle = '';/);
+  assert.match(
+    webview,
+    /function buildFinishedLabel\(isFailed, container\)[\s\S]*?if \(isFailed\) \{[\s\S]*?if \(agentLastErrorTitle\) return agentLastErrorTitle \+ stepSuffix;/,
+  );
+  assert.match(
+    webview,
+    /if \(msg\.phase === 'error'\) agentLastErrorTitle = msg\.title \|\| '本轮失败';[\s\S]*?finalizeActiveAgentWorkingContainers\(doneFailed\);/,
+  );
+});
+
 test('agent checkpoint banner anchors near the current input area, not transcript start', () => {
   assert.match(
     webview,

@@ -18,13 +18,14 @@
 - 修复手测 P7-04 中自然语言“继续”没有恢复执行的问题：短句继续优先转入 checkpoint resume，且不受 Agent toggle 或残留上下文 chips 阻断，避免把本地任务事实降级为聊天建议。
 - 修复手测 P7-04 中 checkpoint 恢复任务事实丢失的问题：恢复服务会提取逐文件 `expectedContent` 与验证意图；Agent 对已知内容的 create 任务使用本地确定性写入、读回校验和统一变更记录。
 - 修复手测 P7-04 中 checkpoint banner 锚点错误和完成态残留：恢复入口显示在输入区上方的当前操作区；完成或无剩余任务的 checkpoint 在 loadFresh 时清理。
+- 修复手测 P7-02/P7-03 中响应损坏错误显示为粘连底层状态、Working 标题误报 `Failed: Exploring ...` 的问题：ResponseCorrupted 现在展示为“响应损坏，已阻止执行”，并分行列出状态、原因和恢复证据。
 - 新增 Phase 7 单元测试和架构守卫，覆盖任务恢复主链路与失败链路。
 
 验证：
 - `npm test --workspace=packages/vscode-extension` 通过，50 个 suite 全部通过。
 - `node test/unit/provider-recovery-service.test.mjs` 通过，覆盖“建 ... 内容分别为 ... 并验证”的恢复事实提取。
 - `node test/unit/workflow-compliance.test.mjs` 通过，覆盖 checkpoint create 事实的确定性执行接入。
-- `node test/unit/agent-working-state.test.mjs` 通过，覆盖 checkpoint banner 不再插入 transcript 顶部。
+- `node test/unit/agent-working-state.test.mjs` 通过，覆盖 checkpoint banner 不再插入 transcript 顶部，以及 provider 错误标题优先于内部活动标签。
 - `node test/unit/task-checkpoint-store.test.mjs` 通过，覆盖完成态 checkpoint 清理。
 - `git diff --check` 通过。
 - Phase 7 modified source targeted `npx tsc --noEmit --pretty false ...` 通过。

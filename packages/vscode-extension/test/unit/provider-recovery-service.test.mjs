@@ -22,7 +22,7 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { ProviderRecoveryService, buildProviderRecoveryCheckpointTasks } = req(bundlePath);
+const { ProviderRecoveryService, buildProviderRecoveryCheckpointTasks, buildProviderRecoveryDisplay } = req(bundlePath);
 const { TaskHistoryStore } = req(historyBundlePath);
 
 class MemoryStorage {
@@ -79,6 +79,21 @@ test('ProviderRecoveryService: corrupted response is recoverable from checkpoint
   assert.equal(plan.taskStatus, 'recoverable');
   assert.equal(plan.canRetry, true);
   assert.equal(plan.safeToContinueFromCheckpoint, true);
+});
+
+test('ProviderRecoveryService: response corruption display keeps status and reason readable', () => {
+  const message = 'RESPONSE_CORRUPTED:invalid-json-response:Whole response looks like JSON but cannot be parsed.';
+  const plan = new ProviderRecoveryService().classify({
+    providerType: 'bridge',
+    message,
+  });
+  const display = buildProviderRecoveryDisplay(plan, message);
+
+  assert.equal(plan.kind, 'ResponseCorrupted');
+  assert.equal(display.title, '响应损坏，已阻止执行');
+  assert.match(display.detail, /RESPONSE_CORRUPTED: invalid-json-response/);
+  assert.match(display.detail, /原因: Whole response looks like JSON but cannot be parsed\./);
+  assert.doesNotMatch(display.text, /RESPONSE_CORRUPTEDinvalid-json-response/);
 });
 
 test('ProviderRecoveryService: bridge restart records recoverable task history', async () => {

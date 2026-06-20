@@ -33,6 +33,13 @@ export interface ProviderRecoveryPlan {
   nextActions: string[];
 }
 
+export interface ProviderRecoveryDisplay {
+  title: string;
+  detail: string;
+  text: string;
+  historyText: string;
+}
+
 export interface ProviderRecoveryCheckpointTask {
   id: string;
   file: string;
@@ -110,11 +117,11 @@ export class ProviderRecoveryService {
       });
     }
 
-    if (/(truncated|partial|unclosed|unterminated|json parse|tool parse|diff parse|代码块未闭合|截断|不完整)/i.test(text)) {
+    if (/(response_corrupted|response corrupted|invalid-json-response|truncated|partial|unclosed|unterminated|json parse|tool parse|diff parse|代码块未闭合|截断|不完整)/i.test(text)) {
       return makePlan({
         kind: 'ResponseCorrupted',
         taskStatus: 'recoverable',
-        pauseReason: '模型回复不完整或格式损坏，未执行任何新操作。',
+        pauseReason: '模型回复不完整或格式损坏，DevSeek 已阻止执行未验证的内容。',
         requiresUserAction: false,
         canRetry: true,
         nextActions: ['要求模型续写或重新生成，恢复时只注入最小任务事实。'],
@@ -154,6 +161,24 @@ export class ProviderRecoveryService {
       updatedAt: Date.now(),
     });
   }
+}
+
+export function buildProviderRecoveryDisplay(plan: ProviderRecoveryPlan, rawMessage = ''): ProviderRecoveryDisplay {
+  const corruption = plan.kind === 'ResponseCorrupted' ? parseResponseCorruption(rawMessage) : undefined;
+  const title = plan.kind === 'ResponseCorrupted' ? '响应损坏，已阻止执行' : plan.userMessage;
+  const detail = [
+    plan.pauseReason,
+    corruption?.status ? `RESPONSE_CORRUPTED: ${corruption.status}` : '',
+    corruption?.reason ? `原因: ${corruption.reason}` : '',
+    ...plan.nextActions,
+    plan.evidenceRefs.length ? `证据: ${plan.evidenceRefs.join(', ')}` : '',
+  ].filter(Boolean).join('\n');
+  return {
+    title,
+    detail,
+    text: `${title}${detail ? `\n${detail}` : ''}`,
+    historyText: `[Agent 暂停] ${plan.pauseReason}`,
+  };
 }
 
 export function buildProviderRecoveryCheckpointTasks(input: {
@@ -219,6 +244,12 @@ function normalizeText(value: string): string {
 
 function unique(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
+}
+
+function parseResponseCorruption(rawMessage: string): { status: string; reason: string } | undefined {
+  const match = /^RESPONSE_CORRUPTED:([^:\n]+):([\s\S]*)$/i.exec(String(rawMessage || '').trim());
+  if (!match) return undefined;
+  return { status: match[1].trim(), reason: match[2].trim() };
 }
 
 function hasCreateIntent(prompt: string): boolean {

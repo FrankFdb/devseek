@@ -69,7 +69,7 @@ import {
   TaskCheckpointStore,
   type TaskCheckpointRecord,
 } from './app/task-checkpoint-store';
-import { buildProviderRecoveryCheckpointTasks, ProviderRecoveryService } from './app/provider-recovery-service';
+import { buildProviderRecoveryCheckpointTasks, buildProviderRecoveryDisplay, ProviderRecoveryService } from './app/provider-recovery-service';
 import {
   allHunksResolved,
   computePendingHunks,
@@ -2952,18 +2952,14 @@ async function runChat(
           userPrompt: userDisplay,
           savedAt,
         });
-        const detail = [
-          recovery.pauseReason,
-          ...recovery.nextActions,
-          recovery.evidenceRefs.length ? `证据: ${recovery.evidenceRefs.join(', ')}` : '',
-        ].filter(Boolean).join('\n');
-        postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: recovery.userMessage, detail });
+        const recoveryDisplay = buildProviderRecoveryDisplay(recovery, msg);
+        postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: recoveryDisplay.title, detail: recoveryDisplay.detail });
         webview.postMessage({
           type: 'error',
-          text: `${recovery.userMessage}${detail ? `\n${detail}` : ''}`,
+          text: recoveryDisplay.text,
           loginRequired: recovery.kind === 'LoginRequired',
         });
-        agentHistoryText = agentHistoryText || `[Agent 暂停] ${recovery.pauseReason}`;
+        agentHistoryText = agentHistoryText || recoveryDisplay.historyText;
       } else {
         postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: `Agent 执行出错：${msg}` });
         webview.postMessage({ type: 'error', text: msg, loginRequired: msg === 'LOGIN_REQUIRED' });
