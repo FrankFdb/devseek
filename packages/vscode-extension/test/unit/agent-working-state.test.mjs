@@ -92,3 +92,14 @@ test('agent checkpoint banner anchors near the current input area, not transcrip
   assert.match(webview, /if \(!totalTasks \|\| resumeTaskIndex >= totalTasks\) return;/);
   assert.doesNotMatch(webview, /insertBefore\(banner,\s*container\.firstChild\)/);
 });
+
+test('agent checkpoint banner labels response corruption as safe retry', () => {
+  assert.match(
+    webview,
+    /function getCheckpointBannerCopy\(recoveryKind, pauseReason\)[\s\S]*?ResponseCorrupted[\s\S]*?action: '安全重试'/,
+  );
+  assert.match(
+    webview,
+    /showCheckpointBanner\(msg\.resumeTaskIndex, msg\.totalTasks, msg\.userPrompt, msg\.savedAt, msg\.recoveryKind, msg\.pauseReason\)/,
+  );
+});

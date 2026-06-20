@@ -776,6 +776,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
               totalTasks: _cp.allTasks.length,
               userPrompt: _cp.displayPrompt,
               savedAt: _cp.savedAt,
+              pauseReason: _cp.pauseReason,
             });
           }
         }
@@ -2952,6 +2953,8 @@ async function runChat(
           totalTasks: recoveryTasks.length,
           userPrompt: userDisplay,
           savedAt,
+          recoveryKind: recovery.kind,
+          pauseReason: recovery.pauseReason,
         });
         const recoveryDisplay = buildProviderRecoveryDisplay(recovery, msg);
         postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: recoveryDisplay.title, detail: recoveryDisplay.detail });

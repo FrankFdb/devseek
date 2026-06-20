@@ -68,6 +68,22 @@
 
 ---
 
+**变更标题**：Phase 7 checkpoint 恢复动作文案修复（2026-06-20）
+- **需求归因**：体验退化 — P7-02 安全阻断后，checkpoint banner 仍显示“继续执行”，容易让用户误解为继续执行损坏工具块。
+- **影响能力层**：恢复入口、用户可控性、失败诊断、WebView 状态表达。
+- **架构影响**：
+  - Extension Host 在 provider recovery checkpoint 通知中传递 `recoveryKind` 和 `pauseReason`。
+  - WebView 增加 checkpoint banner copy 映射，仅负责按恢复类型渲染标题与按钮文案，不改变恢复执行链路。
+  - 旧 checkpoint 仍可通过 `pauseReason` 降级识别 ResponseCorrupted/LoginRequired/RateLimited。
+- **方案选择理由**：对标 Claude Code / Codex，恢复入口是用户当前控制，不应使用会误导副作用语义的通用按钮；安全阻断应显示“安全重试”，而不是“继续执行”。
+- **主链路验证**：`node test/unit/agent-working-state.test.mjs` 通过，覆盖 ResponseCorrupted banner 显示“安全重试”。
+- **回退链路验证**：`node --check media/webview.js`、targeted `tsc --noEmit`、`node test/unit/workflow-compliance.test.mjs` 通过，普通 checkpoint 仍保留默认“继续执行”回退。
+- **结果判据变化**：P7-02 安全阻断 checkpoint banner 标题为“上次 Agent 输出被安全阻断”，动作按钮为“安全重试”。
+- **文档更新**：`docs/testing/vscode-phase-manual-test-cases.md`、`CHANGELOG.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npm test --workspace=packages/vscode-extension` 通过（50 suite）；targeted `tsc --noEmit` 通过；`node --check media/webview.js` 通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npx @vscode/vsce package --no-dependencies --out devseek-netai-1.0.0.vsix` 通过；`code --install-extension devseek-netai-1.0.0.vsix --force` 安装成功。
+
+---
+
 **变更标题**：Phase 7 trusted recovery facts 边界修复（2026-06-20）
 - **需求归因**：实现缺陷 + 架构债务 — 最新 P7-02 复测中，ResponseCorrupted 首轮已安全阻断，但点击继续后把用户要求“原样输出”的 `[TOOL:write_file ...]` 样本文本误提取为 `创建 docs/manual-phase7-corrupt.md` 任务。
 - **影响能力层**：理解、Provider 恢复、断点续传、执行安全、副作用隔离。
