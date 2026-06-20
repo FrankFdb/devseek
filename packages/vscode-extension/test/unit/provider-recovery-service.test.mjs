@@ -132,10 +132,13 @@ test('ProviderRecoveryService: corrupted literal tool samples do not become writ
   });
 
   assert.equal(tasks.length, 1);
-  assert.equal(tasks[0].file, 'provider-response');
-  assert.equal(tasks[0].action, 'explore');
+  assert.equal(tasks[0].file, '');
+  assert.equal(tasks[0].targetKind, 'provider-response');
+  assert.equal(tasks[0].visibleTarget, '安全响应');
+  assert.equal(tasks[0].action, 'respond');
   assert.match(tasks[0].desc, /不执行损坏或未验证的工具内容/);
   assert.notEqual(tasks[0].file, 'docs/manual-phase7-corrupt.md');
+  assert.notEqual(tasks[0].file, 'provider-response');
 });
 
 test('ProviderRecoveryService: response corruption keeps explicit create facts outside protocol payloads', () => {

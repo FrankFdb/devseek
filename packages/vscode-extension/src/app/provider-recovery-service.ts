@@ -43,8 +43,10 @@ export interface ProviderRecoveryDisplay {
 export interface ProviderRecoveryCheckpointTask {
   id: string;
   file: string;
-  action: 'modify' | 'analyze' | 'create' | 'delete' | 'explain' | 'explore';
+  action: 'modify' | 'analyze' | 'create' | 'delete' | 'explain' | 'explore' | 'respond';
   desc: string;
+  targetKind?: 'workspace-file' | 'provider-response' | 'agent-session';
+  visibleTarget?: string;
   absPath?: string;
   expectedContent?: string;
 }
@@ -211,6 +213,7 @@ export function buildProviderRecoveryCheckpointTasks(input: {
     return {
       id: `provider-recovery-${index + 1}`,
       file,
+      targetKind: 'workspace-file' as const,
       action,
       desc: buildRecoveryTaskDesc(file, action, expectedContent, shouldVerify),
       absPath: workspaceRoot ? `${workspaceRoot.replace(/\/$/, '')}/${file}` : undefined,
@@ -312,16 +315,20 @@ function buildFallbackRecoveryTask(kind?: ProviderRecoveryKind): ProviderRecover
   if (kind === 'ResponseCorrupted') {
     return {
       id: 'provider-recovery-task',
-      file: 'provider-response',
-      action: 'explore',
+      file: '',
+      targetKind: 'provider-response',
+      visibleTarget: '安全响应',
+      action: 'respond',
       desc: '重新生成安全输出，不执行损坏或未验证的工具内容',
     };
   }
   return {
     id: 'provider-recovery-task',
-    file: 'agent-task',
-    action: 'explore',
-    desc: '恢复并继续执行中断的 Agent 任务',
+    file: '',
+    targetKind: 'agent-session',
+    visibleTarget: 'Agent 任务',
+    action: 'respond',
+    desc: '无法从可信任务事实恢复，已停止执行并等待用户重新确认',
   };
 }
 

@@ -2661,6 +2661,7 @@ function agentActionBadgeClass(action) {
   if (action === 'create') return 'agent-badge-create';
   if (action === 'analyze') return 'agent-badge-analyze';
   if (action === 'explain') return 'agent-badge-analyze';
+  if (action === 'respond') return 'agent-badge-analyze';
   if (action === 'delete') return 'agent-badge-delete';
   return 'agent-badge-modify';
 }
@@ -2668,6 +2669,7 @@ function agentActionBadgeClass(action) {
 function agentActionBadgeLabel(action) {
   if (action === 'analyze') return '分析';
   if (action === 'explain') return '解释';
+  if (action === 'respond') return '响应';
   if (action === 'create') return '新建';
   if (action === 'delete') return '删除';
   return '修改';
@@ -3553,6 +3555,7 @@ function addAgentStatus(msg) {
         : taskAction === 'delete' ? 'Deleting '
         : taskAction === 'modify' ? 'Modifying '
         : taskAction === 'explore' ? 'Exploring '
+        : taskAction === 'respond' ? 'Responding '
         : isRunTask ? 'Running '
         : (taskAction === 'analyze' || taskAction === 'explain') ? 'Analyzing '
         : taskAction ? 'Working on ' : '';
@@ -3636,7 +3639,7 @@ function addAgentStatus(msg) {
       var todoEntry = msg.taskIndex != null ? agentTodos[msg.taskIndex - 1] : null;
       var effectiveAction = todoEntry ? todoEntry.action : (msg.taskAction || '');
       // Analysis/explain tasks show progress via tool-activity steps, not file rows
-      if ((effectiveAction !== 'analyze' && effectiveAction !== 'explain') && agentExecContainer && agentExecContainer.isConnected) {
+      if ((effectiveAction !== 'analyze' && effectiveAction !== 'explain' && effectiveAction !== 'respond') && agentExecContainer && agentExecContainer.isConnected) {
         var newRow = document.createElement('div');
         newRow.className = 'aut-row state-' + (msg.state || 'started');
         // Look up desc from agentTodos (keyed by 1-based taskIndex)

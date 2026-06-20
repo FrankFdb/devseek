@@ -552,6 +552,8 @@ export const manualPhase6QualityGate: string = 1;
 - 修正：恢复事实提取引入可信 prompt 边界，剥离工具协议样本、fenced code、JSON/tool payload；`不要修改/不要创建/do not write` 等否定动作不贡献副作用意图，只读路径保持 analyze-only，真实 create 请求仍保留路径、内容和验证事实。
 - 2026-06-20 最新 P7-02 复测中，安全阻断后 checkpoint banner 仍显示“继续执行”，容易让用户误解为继续执行损坏工具块。
 - 修正：checkpoint banner 根据恢复类型显示动作文案；ResponseCorrupted 显示“上次 Agent 输出被安全阻断 / 安全重试”，并用安全摘要替代原始 `[TOOL:...]` 片段；LoginRequired 显示“登录后继续”，RateLimited 显示“处理后继续”。
+- 2026-06-20 最新 P7-02 复测中，安全重试后没有写入 `docs/manual-phase7-corrupt.md`，但恢复任务把内部 `provider-response` 当作文件目标，进而搜索/分析 `provider-recovery-service.ts` 和 `dist/extension.js`，偏离用户原始请求。
+- 修正：ResponseCorrupted 在无可信文件事实时生成内部 `targetKind=provider-response` 的 `respond` 任务；Agent Loop 本地输出安全响应，不调用模型工具循环、不搜索 `provider-response`、不分析 DevSeek 源码。
 
 ## 10. 已发现问题跟踪
 

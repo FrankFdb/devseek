@@ -25,12 +25,13 @@
 - 修复手测 P7-02/P7-03 中响应损坏错误显示为粘连底层状态、Working 标题误报 `Failed: Exploring ...` 的问题：ResponseCorrupted 现在展示为“响应损坏，已阻止执行”，并分行列出状态、原因和恢复证据。
 - 修复手测 P7-02 中“原样输出不完整工具调用”在继续后被误恢复为写文件任务的问题：恢复事实提取会剥离工具协议样本、代码块和 JSON/tool payload；只读/否定动作不会被升格为 modify/create，真实 create 事实仍会保留。
 - 优化 P7-02 安全阻断 checkpoint 文案：ResponseCorrupted 的恢复入口显示为“上次 Agent 输出被安全阻断 / 安全重试”，并用安全摘要替代原始 `[TOOL:...]` 片段，避免误导用户以为会执行损坏工具块。
+- 修复 P7-02 继续后把内部 `provider-response` 当作文件目标搜索/分析的问题：恢复任务模型新增 `respond` 与内部 `targetKind`，无可信文件事实时由本地执行器生成安全响应，不再进入 DeepSeek 工具循环。
 - 新增 Phase 7 单元测试与架构守卫，覆盖 checkpoint 过期清理、任务历史暂停/归档、最小恢复上下文、不可重放副作用、Provider 恢复分类和 Web 响应完整性。
 
 验证：
 - `npm test --workspace=packages/vscode-extension` 通过，50 个 suite 全部通过。
-- `node test/unit/provider-recovery-service.test.mjs` 通过，覆盖“建 ... 内容分别为 ... 并验证”的恢复事实提取、响应损坏 literal tool 样本不生成写文件任务、只读恢复保持 analyze-only。
-- `node test/unit/workflow-compliance.test.mjs` 通过，覆盖 checkpoint create 事实的确定性执行接入。
+- `node test/unit/provider-recovery-service.test.mjs` 通过，覆盖“建 ... 内容分别为 ... 并验证”的恢复事实提取、响应损坏 literal tool 样本不生成写文件任务、不生成 `provider-response` 假文件、只读恢复保持 analyze-only。
+- `node test/unit/workflow-compliance.test.mjs` 通过，覆盖 checkpoint create 事实的确定性执行接入，以及 ResponseCorrupted fallback 必须走本地 `respond` 安全响应。
 - `node test/unit/agent-working-state.test.mjs` 通过，覆盖 checkpoint banner 不再插入 transcript 顶部、provider 错误标题优先于内部活动标签，以及 ResponseCorrupted banner 显示“安全重试”。
 - `node test/unit/task-checkpoint-store.test.mjs` 通过，覆盖完成态 checkpoint 清理。
 - `git diff --check` 通过。

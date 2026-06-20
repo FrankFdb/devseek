@@ -1123,6 +1123,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   const history = src('src/app/task-history-store.ts');
   const resume = src('src/app/resume-context-builder.ts');
   const recovery = src('src/app/provider-recovery-service.ts');
+  const loop = src('src/agent-loop.ts');
   const idempotency = src('src/agent/idempotency-guard.ts');
   const reliability = src('src/llm/providers/web-reliability.ts');
   const bridgeProvider = src('src/llm/providers/bridge.ts');
@@ -1138,6 +1139,9 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(recovery, 'LoginRequired', 'provider recovery must classify login failures');
   assertContains(recovery, 'RateLimited', 'provider recovery must classify rate limits');
   assertContains(recovery, 'ResponseCorrupted', 'provider recovery must classify corrupted responses');
+  assertContains(recovery, "targetKind: 'provider-response'", 'response corruption fallback must stay an internal target, not a fake file');
+  assertContains(recovery, "action: 'respond'", 'response corruption fallback must use a local safe response task');
+  assertContains(loop, "task.action === 'respond'", 'agent loop must handle safe response tasks before model/tool execution');
   assertContains(reliability, 'class ResponseIntegrityChecker', 'DeepSeek Web provider must have response integrity checks');
   assertContains(reliability, 'class StreamWatchdog', 'DeepSeek Web provider must have stream watchdog semantics');
   assertContains(reliability, 'class BridgeHealthMonitor', 'DeepSeek Web provider must have bridge health monitor semantics');

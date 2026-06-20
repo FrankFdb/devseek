@@ -46,7 +46,7 @@ import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { getActiveProvider } from './llm/provider-router';
 import { ChatMessage } from './llm/types';
-import { AgentTask, AgentTaskAction, readFileContentSafe, readFileContentFull } from './agent-task-decomposer';
+import { AgentTask, AgentTaskAction, getAgentTaskDisplayTarget, readFileContentSafe, readFileContentFull } from './agent-task-decomposer';
 import { fenceLangForFile, roughLineDiff } from './utils';
 import { findWorkspaceFolderForRelativePath } from './workspace-roots';
 import { applyGeneratedArtifactsWithPrompt } from './workspace-applier';
@@ -114,6 +114,24 @@ import type { ExecutionMode } from './intent/intent-types';
 // ── L-2/L-3: AI 可调用工具类型 ──────────────────────────────────────────────────
 
 const workspaceEditService = new WorkspaceEditService();
+
+function buildLocalRespondTaskMessage(task: AgentTask, userPrompt: string): string {
+  if (task.targetKind === 'provider-response') {
+    return [
+      '已安全阻断上一次损坏响应。',
+      '',
+      '该内容包含未完成或未验证的工具调用文本，DevSeek 不会补全、规范化或执行它，也不会把内部恢复标识当作文件继续分析。',
+      '请重新发送纯文本内容，或将需要展示的工具样本文本放入完整代码块后重试。',
+    ].join('\n');
+  }
+  const promptHint = userPrompt.trim().slice(0, 160);
+  return [
+    '已停止执行当前恢复任务。',
+    '',
+    'DevSeek 没有找到足够的可信任务事实来安全续传，因此未读取、搜索或写入工作区文件。',
+    promptHint ? `原始请求摘要：${promptHint}${userPrompt.trim().length > 160 ? '…' : ''}` : '',
+  ].filter(Boolean).join('\n');
+}
 
 function extractPlanningTodoItems(text: string): TodoItem[] {
   const lines = text
@@ -884,7 +902,7 @@ async function executeTask(
   analysisContext?: string,
   newSession = false,
 ): Promise<{ applied: boolean; path?: string; raw?: string; taskComplete?: boolean; linesAdded?: number; linesRemoved?: number; networkError?: boolean }> {
-  const basename = nodePath.basename(task.file);
+  const basename = getAgentTaskDisplayTarget(task);
   // Only the very first LLM call for this task uses newSession; subsequent
   // rounds (retries, tool-feedback loops) continue in the same session.
   let firstCall = true;
@@ -903,6 +921,25 @@ async function executeTask(
     title: task.desc || `执行 ${basename}`,
     detail: basename,
   });
+
+  if (task.action === 'respond') {
+    const response = buildLocalRespondTaskMessage(task, userPrompt);
+    callbacks.onDelta(response);
+    await callbacks.onAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      taskId: task.id,
+      taskFile: basename,
+      taskAction: task.action,
+      taskDesc: task.desc,
+      taskIndex,
+      taskTotal: allTasks.length,
+      state: 'completed',
+      title: task.desc || basename,
+      detail: basename,
+    });
+    return { applied: false, raw: response, taskComplete: true };
+  }
 
   // Read current file content — prefer contentCache (updated by prior tasks in this
   // same loop) over disk read, so multi-task edits on the same file properly chain.
@@ -1581,7 +1618,7 @@ export async function runAgentLoop(
     phase: 'execute',
     state: 'started',
     title: `开始执行 ${tasks.length} 个任务`,
-    detail: tasks.map((t, i) => `${i + 1}. [${t.action}] ${nodePath.basename(t.file)} — ${t.desc}`).join('\n'),
+    detail: tasks.map((t, i) => `${i + 1}. [${t.action}] ${getAgentTaskDisplayTarget(t)} — ${t.desc}`).join('\n'),
     taskTotal: tasks.length,
   });
 
@@ -1600,7 +1637,7 @@ export async function runAgentLoop(
   // All tasks — including pure analyze/explain batches — now go through executeTask
   // which runs a multi-round tool loop (G3+G4). This allows AI to actively grep,
   // read related files, and run commands instead of being limited to a single LLM call.
-  const isReadOnlyAction = (a: AgentTaskAction) => a === 'analyze' || a === 'explain' || a === 'explore';
+  const isReadOnlyAction = (a: AgentTaskAction) => a === 'analyze' || a === 'explain' || a === 'explore' || a === 'respond';
 
   // ── Execute every task individually ───────────────────────────────────────
   // contentCache: tracks the latest written content per absPath so that each
@@ -1687,17 +1724,17 @@ export async function runAgentLoop(
       });
     } else if (isReadOnlyAction(task.action) && result.raw) {
       // Collect analysis text for findings injection into next round
-      analysisTexts.push(`## ${nodePath.basename(task.file)}\n${result.raw}`);
+      analysisTexts.push(`## ${getAgentTaskDisplayTarget(task)}\n${result.raw}`);
       // Keep analysis context but limit its size to avoid token overflow
       sessionHistory.push({
         role: 'assistant',
-        content: `已分析 ${nodePath.basename(task.file)}：${result.raw.slice(0, 1200)}${result.raw.length > 1200 ? '…' : ''}`,
+        content: `已分析 ${getAgentTaskDisplayTarget(task)}：${result.raw.slice(0, 1200)}${result.raw.length > 1200 ? '…' : ''}`,
       });
     } else if (!isReadOnlyAction(task.action)) {
       tasksFailed += 1;
       sessionHistory.push({
         role: 'assistant',
-        content: `任务 ${i + 1}/${tasks.length} 失败：${nodePath.basename(task.file)}（${task.desc}）`,
+        content: `任务 ${i + 1}/${tasks.length} 失败：${getAgentTaskDisplayTarget(task)}（${task.desc}）`,
       });
     }
 
@@ -1881,7 +1918,7 @@ export async function runAgentLoop(
     phase: 'done',
     state: finalFailed === 0 ? 'completed' : 'failed',
     title: finalFailed === 0
-      ? `全部 ${tasksApplied} 个修改任务已完成`
+      ? `全部 ${tasks.length} 个任务已完成`
       : validationFailed
         ? `完成 ${tasksApplied}，验证失败`
         : `完成 ${tasksApplied}，失败 ${tasksFailed}`,

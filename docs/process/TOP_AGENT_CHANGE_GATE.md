@@ -68,6 +68,24 @@
 
 ---
 
+**变更标题**：Phase 7 ResponseCorrupted 内部恢复目标隔离（2026-06-20）
+- **需求归因**：实现缺陷 + 架构债务 — P7-02 安全重试后，内部 `provider-response` fallback 被当作真实文件目标，导致 Agent 搜索/分析 DevSeek 源码而不是处理用户原始请求。
+- **影响能力层**：Provider 恢复、断点续传、任务模型、执行安全、WebView 状态表达。
+- **架构影响**：
+  - `AgentTaskAction` 增加 `respond`，用于本地、非工具、非文件的安全响应任务。
+  - `AgentTask` 增加 `targetKind` 与 `visibleTarget`，区分 workspace file 与 provider/session 内部目标。
+  - `ProviderRecoveryService` 在 ResponseCorrupted 且无可信文件事实时生成 `targetKind=provider-response` 的 `respond` 任务，不再伪造 `file=provider-response`。
+  - `runAgentLoop` 在模型/工具循环前本地处理 `respond`，不读取、不搜索、不写入工作区文件。
+  - WebView 将 `respond` 显示为“响应”，不生成文件行。
+- **方案选择理由**：对标 Claude Code / Codex，工具执行必须留在受控通道内；损坏 provider 输出和内部恢复标识只能作为不可信/内部状态处理，不能注入为模型可解释的文件路径或探索目标。
+- **主链路验证**：`node test/unit/provider-recovery-service.test.mjs` 通过，覆盖 literal tool 样本不会生成写文件任务，也不会生成 `provider-response` 假文件。
+- **回退链路验证**：`node test/unit/workflow-compliance.test.mjs`、`node --check media/webview.js`、touched source targeted `tsc --noEmit` 通过；普通带可信文件事实的 create/checkpoint 恢复仍保持 deterministic create。
+- **结果判据变化**：P7-02 安全重试后不得搜索 `provider-response`、不得分析 DevSeek provider recovery 源码、不得执行损坏工具块；应本地生成安全响应并结束恢复任务。
+- **文档更新**：`docs/testing/vscode-phase-manual-test-cases.md`、`CHANGELOG.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npm test --workspace=packages/vscode-extension` 通过（50 suite）；`node test/unit/provider-recovery-service.test.mjs` 通过；`node test/unit/workflow-compliance.test.mjs` 通过；`node test/unit/agent-working-state.test.mjs` 通过；touched source targeted `tsc --noEmit` 通过；`node --check media/webview.js` 通过；`npm run compile --workspace=packages/vscode-extension` 通过；`npx @vscode/vsce package --no-dependencies --out devseek-netai-1.0.0.vsix` 通过；`code --install-extension devseek-netai-1.0.0.vsix --force` 安装成功。
+
+---
+
 **变更标题**：Phase 7 checkpoint 恢复动作与安全摘要修复（2026-06-20）
 - **需求归因**：体验退化 — P7-02 安全阻断后，checkpoint banner 仍显示“继续执行”，且摘要可露出原始 `[TOOL:...]` 片段，容易让用户误解为继续执行损坏工具块。
 - **影响能力层**：恢复入口、用户可控性、失败诊断、WebView 状态表达。

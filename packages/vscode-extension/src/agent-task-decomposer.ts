@@ -31,8 +31,10 @@ import { isCodeArtifactPath, requiresCodeArtifactForEvidence } from './agent/com
  * - delete   : remove a file from workspace
  * - explore  : open-ended exploration; Editor uses list_dir/grep/read tools first,
  *              then decides next steps autonomously (G1: no pre-known file required)
+ * - respond  : local, non-tool response for provider/session recovery; no files
+ *              are read, searched, or written.
  */
-export type AgentTaskAction = 'modify' | 'analyze' | 'create' | 'delete' | 'explain' | 'explore';
+export type AgentTaskAction = 'modify' | 'analyze' | 'create' | 'delete' | 'explain' | 'explore' | 'respond';
 
 // ----------------------------------------------------------------
 // File reading utility — exported for use in agent-loop.ts
@@ -88,16 +90,24 @@ export interface AnalysisFindings {
 export interface AgentTask {
   /** Stable identifier used as workingEntry key */
   id: string;
-  /** Workspace-relative path of the target file */
+  /** Workspace-relative path of the target file. Empty for non-file recovery tasks. */
   file: string;
   /** What to do with this file */
   action: AgentTaskAction;
   /** Human-readable short description (shown in Working area) */
   desc: string;
+  /** Whether the task targets a real workspace file or an internal recovery boundary. */
+  targetKind?: 'workspace-file' | 'provider-response' | 'agent-session';
+  /** Safe display label for non-file targets. */
+  visibleTarget?: string;
   /** Original absolute path as provided by the user attachment */
   absPath?: string;
   /** Deterministic content captured from a checkpoint/recovery fact. */
   expectedContent?: string;
+}
+
+export function getAgentTaskDisplayTarget(task: Pick<AgentTask, 'file' | 'visibleTarget'>): string {
+  return task.visibleTarget || (task.file ? nodePath.basename(task.file) : 'Agent 任务');
 }
 
 export interface DecomposeResult {

@@ -42,7 +42,7 @@ import {
   initAgentLearner, clearLearnerSession, emitLearningEvent,
   getCommandHints, getErrorFixHint, fingerprintError,
 } from './agent-learner';
-import { decomposeTask, inferTasksFromFiles, type AgentTask } from './agent-task-decomposer';
+import { decomposeTask, getAgentTaskDisplayTarget, inferTasksFromFiles, type AgentTask } from './agent-task-decomposer';
 import { runAgentLoop, runAgenticLoop, AgentStatusMessage, extractAnalysisFindings } from './agent-loop';
 import { getWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
 import { McpManager } from './mcp/client';
@@ -2404,7 +2404,7 @@ async function runChat(
           taskTotal: tasks.length,
           detail: `已完成 ${resumeFromIndex} 个，剩余 ${remaining} 个：\n` +
             tasks.slice(resumeFromIndex).map((t, i) =>
-              `${resumeFromIndex + i + 1}. [${t.action}] ${nodePath.basename(t.file)} — ${t.desc}`).join('\n'),
+              `${resumeFromIndex + i + 1}. [${t.action}] ${getAgentTaskDisplayTarget(t)} — ${t.desc}`).join('\n'),
         });
       } else {
         // ── Normal path: call LLM to decompose the task ──
@@ -2475,7 +2475,7 @@ async function runChat(
           state: 'completed',
           title: `任务计划已生成：${tasks.length} 个子任务`,
           taskTotal: tasks.length,
-          detail: tasks.map((t, i) => `${i + 1}. [${t.action}] ${nodePath.basename(t.file)} — ${t.desc}`).join('\n'),
+          detail: tasks.map((t, i) => `${i + 1}. [${t.action}] ${getAgentTaskDisplayTarget(t)} — ${t.desc}`).join('\n'),
           // G-1: planning reasoning — use AI prose from decompose only (no fallback to user prompt)
           planningText: _decomposeProse ? _decomposeProse.split('\n')[0].slice(0, 120) : '',
           planningDetail: _decomposeProse,
@@ -2892,7 +2892,7 @@ async function runChat(
           `  ${i + 1}. [${t.action}] ${
             (t.absPath && _wsRootFs2 && t.absPath.startsWith(_wsRootFs2))
               ? t.absPath.slice(_wsRootFs2.length + 1).replace(/\\/g, '/')
-              : nodePath.basename(t.file)
+              : getAgentTaskDisplayTarget(t)
           } — ${t.desc}`,
         ).join('\n');
         const _changedDetails = lastAgentChangedPaths.length > 0
@@ -3267,7 +3267,7 @@ async function runChat(
             phase: 'plan',
             state: 'completed',
             title: `已生成 ${repairTasks.length} 个修复子任务`,
-            detail: repairTasks.map((t, i) => `${i + 1}. [${t.action}] ${nodePath.basename(t.file)} — ${t.desc}`).join('\n'),
+            detail: repairTasks.map((t, i) => `${i + 1}. [${t.action}] ${getAgentTaskDisplayTarget(t)} — ${t.desc}`).join('\n'),
             taskTotal: repairTasks.length,
           });
 
