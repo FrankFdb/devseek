@@ -33,6 +33,7 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const {
+  coalesceWrittenFileEvidence,
   getMissingCompletionEvidence,
   isFileContentTerminalEvidenceCommand,
   isReadOnlyTerminalEvidenceCommand,
@@ -128,6 +129,33 @@ test('completion evidence: markdown file creation requires file evidence but not
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('completion evidence: coalesces repeated writes to the same file for UI and history accounting', () => {
+  const merged = coalesceWrittenFileEvidence([
+    {
+      path: '/repo/packages/vscode-extension/src/workspace/manual-phase6-quality-gate.ts',
+      basename: 'manual-phase6-quality-gate.ts',
+      linesAdded: 1,
+      linesRemoved: 0,
+      action: 'create',
+    },
+    {
+      path: '/repo/packages/vscode-extension/src/workspace/manual-phase6-quality-gate.ts',
+      basename: 'manual-phase6-quality-gate.ts',
+      linesAdded: 1,
+      linesRemoved: 1,
+      action: 'modify',
+    },
+  ], '/repo');
+
+  assert.deepEqual(merged, [{
+    path: '/repo/packages/vscode-extension/src/workspace/manual-phase6-quality-gate.ts',
+    basename: 'manual-phase6-quality-gate.ts',
+    linesAdded: 1,
+    linesRemoved: 0,
+    action: 'create',
+  }]);
 });
 
 test('completion evidence: generic file todos do not turn markdown creation into code evidence', () => {

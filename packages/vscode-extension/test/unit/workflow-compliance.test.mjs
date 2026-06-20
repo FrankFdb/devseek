@@ -185,6 +185,24 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
   assertContains(extension, '禁止只输出 STATUS: OK', 'repair prompt must forbid OK-only responses after failed validation');
 });
 
+test('§8.3 File edits: blocked QualityGate does not enter closed-loop repair', () => {
+  const extension = src('src/extension.ts');
+  assertContains(extension, 'function shouldRunClosedLoopRepair', 'closed-loop repair must have an explicit gate');
+  assertContains(extension, "validation.status === 'failed'", 'only failed command evidence is repairable');
+  assertContains(extension, 'validation.ran === true', 'blocked or skipped validation must not be repairable');
+  assertContains(extension, "qualityGate?.status !== 'blocked'", 'QualityGate blocked must stop automatic repair');
+  assert.match(
+    extension,
+    /if \(shouldRunClosedLoopRepair\(result\)\)/,
+    'manual apply path must use the repairability gate',
+  );
+  assert.match(
+    extension,
+    /if \(shouldRunClosedLoopRepair\(firstApply\)\)/,
+    'agentic auto-apply path must use the repairability gate',
+  );
+});
+
 test('§8.3 File edits: validation timeout is reported as failed evidence', () => {
   const validationService = src('src/workspace/validation-service.ts');
   const planner = src('src/execution-planner.ts');
@@ -213,10 +231,11 @@ test('§8.3 File edits: code directory prompts force generated code paths under 
   );
 
   const agentLoop = src('src/agent-loop.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
   const extension = src('src/extension.ts');
-  assertContains(agentLoop, 'promptLooksLikeCppProgram', 'agent loop detects C++ prompts separately from C');
-  assertContains(agentLoop, 'contentLooksLikeCppProgram', 'agent loop detects C++ content separately from C');
-  assertContains(agentLoop, 'resolveWorkspaceWritePath', 'agent loop delegates create_file/write_file path decisions to shared resolver');
+  assertContains(toolLoop, 'promptLooksLikeCppProgram', 'tool loop detects C++ prompts separately from C');
+  assertContains(toolLoop, 'contentLooksLikeCppProgram', 'tool loop detects C++ content separately from C');
+  assertContains(toolLoop, 'resolveWorkspaceWritePath', 'tool loop delegates create_file/write_file path decisions to shared resolver');
   assert.match(
     extension,
     /const PATH_RE = \/\(\(\?:~\\\/\|\\\/\)\?/,
@@ -224,12 +243,12 @@ test('§8.3 File edits: code directory prompts force generated code paths under 
   );
   assertContains(extension, 'pathResolutionHints', 'response meta and apply must keep prompt directory scope');
   assert.match(
-    agentLoop,
+    toolLoop,
     /resolveWorkspaceWritePath\(rawPath,\s*\{[\s\S]*?requestPrompt: userPrompt[\s\S]*?content[\s\S]*?workspaceRootFsPath[\s\S]*?defaultWorkdir[\s\S]*?\}\)/,
     'create_file/write_file must resolve against user prompt, workspace root, and task workdir',
   );
   assert.doesNotMatch(
-    agentLoop,
+    toolLoop,
     /编写\.\*程序[\s\S]{0,120}weekend_feeling\.c/,
     'generic "编写程序" must not route C++ tasks to the old .c fallback',
   );
@@ -532,17 +551,49 @@ test('Agent loop: task_complete does not bypass final editedFiles accounting', (
   );
 });
 
+test('Agent loop: final written file evidence is coalesced before user-facing accounting', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'coalesceWrittenFileEvidence', 'agent loop must use shared written-file evidence coalescing');
+  assert.match(
+    code,
+    /const finalWrittenFiles = coalesceWrittenFileEvidence\(allWrittenFiles,\s*workspaceRoot\)/,
+    'agentic final state must coalesce repeated writes by path',
+  );
+  assert.match(
+    code,
+    /editedFiles: finalWrittenFiles/,
+    'done status must send coalesced editedFiles to the webview',
+  );
+  assert.match(
+    code,
+    /修改 \$\{finalWrittenFiles\.length\} 个文件/,
+    'visible final summary must count unique changed files',
+  );
+});
+
+test('Agent loop: explicit-content validation conflicts stop autonomous rewrite loops', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'repairBlockedReason', 'agent loop must consume validation repair block decisions');
+  assert.match(
+    code,
+    /if \(autoValidation\.repairBlockedReason\)[\s\S]{0,220}failedReason = autoValidation\.repairBlockedReason/,
+    'agent loop must stop instead of feeding exact-content conflicts back as repair work',
+  );
+});
+
 test('Agent loop: file tools and validation use ground-truth outcomes', () => {
   const code = src('src/agent-loop.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
   const registry = src('src/agent/tool-registry.ts');
   const executor = src('src/agent/tool-executor.ts');
   assertContains(registry, 'replace_file', 'replace_file tool calls must be registered as file writes, not prose');
   assertContains(executor, 'isFileWriteTool', 'tool executor must use ToolRegistry file-write classification');
-  assertContains(code, 'agentToolExecutor.isFileWrite(tool)', 'agent loop must use ToolExecutor file-write classification');
-  assertContains(code, 'looksLikeRawToolCallText(content)', 'file write tools must block raw tool transcript content');
-  assertContains(code, "['path', 'filePath', 'filepath', 'filename', 'targetPath']", 'file write tools must accept common path aliases from DeepSeek/Copilot-style schemas');
-  assertContains(code, "['content', 'contents', 'text', 'body']", 'file write tools must accept common content aliases');
-  assertContains(code, '缺少 path/filePath', 'malformed file write calls must return explicit feedback instead of silently doing nothing');
+  assertContains(code, 'executeFakeToolsForLoop', 'agent loop must call the tool-loop service boundary');
+  assertContains(toolLoop, 'agentToolExecutor.isFileWrite(tool)', 'tool loop must use ToolExecutor file-write classification');
+  assertContains(toolLoop, 'looksLikeRawToolCallText(content)', 'file write tools must block raw tool transcript content');
+  assertContains(toolLoop, "['path', 'filePath', 'filepath', 'filename', 'targetPath']", 'file write tools must accept common path aliases from DeepSeek/Copilot-style schemas');
+  assertContains(toolLoop, "['content', 'contents', 'text', 'body']", 'file write tools must accept common content aliases');
+  assertContains(toolLoop, '缺少 path/filePath', 'malformed file write calls must return explicit feedback instead of silently doing nothing');
   assertContains(code, 'interface ValidationOutcome', 'compile validation must return structured outcome');
   assert.match(
     code,
@@ -595,16 +646,17 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
 
 test('Agentic loop: terminal completion evidence requires successful validation output', () => {
   const code = src('src/agent-loop.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
   const evidence = src('src/agent/completion-evidence.ts');
-  assertContains(code, 'TerminalEvidence', 'terminal evidence model must exist');
-  assertContains(code, 'parseFormattedTerminalExitCode', 'terminal evidence must parse formatted exit codes');
-  assertContains(code, 'resolveCompilerOutputPath', 'compiler -o artifact path must be detected');
-  assertContains(code, 'isExecutableFile', 'compiler output must be checked on disk');
-  assertContains(code, '验证命令未通过，不能把编译/运行/测试标记为完成', 'failed validation must be fed back to the agent');
+  assertContains(toolLoop, 'TerminalEvidence', 'terminal evidence model must exist');
+  assertContains(toolLoop, 'parseFormattedTerminalExitCode', 'terminal evidence must parse formatted exit codes');
+  assertContains(toolLoop, 'resolveCompilerOutputPath', 'compiler -o artifact path must be detected');
+  assertContains(toolLoop, 'isExecutableFile', 'compiler output must be checked on disk');
+  assertContains(toolLoop, '验证命令未通过，不能把编译/运行/测试标记为完成', 'failed validation must be fed back to the agent');
   assertContains(code, 'buildTerminalFailureRepairFeedback', 'terminal failure prose must be converted into a repair instruction');
   assertContains(code, 'getMissingCompletionEvidence', 'agent loop must delegate completion checks to evidence boundary');
   assert.match(
-    code,
+    toolLoop,
     /terminalEvidence\.push\(evidenceResult\.evidence\)/,
     'terminal evidence must be recorded separately from raw terminal commands',
   );
@@ -676,8 +728,8 @@ test('Agent validation completion settles spinner instead of leaving validation 
 });
 
 test('Agentic loop: terminal must not be used as a fallback file writer', () => {
-  const code = src('src/agent-loop.ts');
-  assertContains(code, 'detectShellFileWriteCommand', 'agent loop must detect shell redirection/tee file writes');
+  const code = src('src/agent/tool-loop.ts');
+  assertContains(code, 'detectShellFileWriteCommand', 'tool loop must detect shell redirection/tee file writes');
   assertContains(code, '已阻止', 'shell file writes must be blocked with explicit feedback');
   assertContains(code, 'run_terminal 仅用于编译、运行、测试、查询', 'terminal feedback must route model back to file tools');
   assert.doesNotMatch(
@@ -688,7 +740,8 @@ test('Agentic loop: terminal must not be used as a fallback file writer', () => 
 });
 
 test('Agentic loop: markdown fallback writes C++ code blocks as real artifacts', () => {
-  const code = src('src/agent-loop.ts');
+  const code = src('src/agent/tool-loop.ts');
+  const agentLoop = src('src/agent-loop.ts');
   assertContains(code, 'promptLooksLikeCppProgram(userPrompt)', 'markdown fallback must detect C++ prompts');
   assert.match(
     code,
@@ -696,7 +749,7 @@ test('Agentic loop: markdown fallback writes C++ code blocks as real artifacts',
     'markdown fallback must scan cpp/cxx/cc code fences, not only c fences',
   );
   assertContains(code, "defaultCodeArtifactBasename(userPrompt)}${ext}", 'fallback path must use prompt-aware default basename and extension');
-  assertContains(code, '创建/修改文件必须调用 create_file 工具并提供完整 content', 'agent prompt must forbid natural-language-only file creation');
+  assertContains(agentLoop, '创建/修改文件必须调用 create_file 工具并提供完整 content', 'agent prompt must forbid natural-language-only file creation');
 });
 
 test('Agentic loop: final summary never exposes backend tool transcripts', () => {
@@ -751,11 +804,11 @@ test('Agentic free-explore: follow-up turns keep same-session context', () => {
 });
 
 test('Agentic evidence: read-only terminal checks are retained as completion evidence', () => {
-  const agentLoop = src('src/agent-loop.ts');
+  const agentLoop = src('src/agent/tool-loop.ts');
   assertContains(
     agentLoop,
     'isReadOnlyTerminalEvidenceCommand(command)',
-    'agent loop must keep read-only terminal evidence instead of dropping kind=other commands',
+    'tool loop must keep read-only terminal evidence instead of dropping kind=other commands',
   );
   assert.match(
     agentLoop,
@@ -903,34 +956,54 @@ test('Architecture: fake tool parser is split from Agent Loop executor', () => {
   assertContains(agentLoop, "from './agent/fake-tool-parser'", 'agent loop must import fake tool parser module');
 });
 
+test('Architecture: agent loop stays orchestration-only for tool execution details', () => {
+  const agentLoop = src('src/agent-loop.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
+  const summary = src('src/agent/agentic-summary.ts');
+  const lineCount = agentLoop.split(/\r?\n/).length;
+  assert.ok(lineCount <= 2800, `agent-loop.ts should stay below 2800 lines after tool-loop extraction, got ${lineCount}`);
+  assertContains(agentLoop, 'executeFakeToolsForLoop', 'agent loop must call the tool-loop service');
+  assertContains(toolLoop, 'export async function executeFakeToolsForLoop', 'tool loop must own fake-tool dispatch');
+  assertContains(toolLoop, 'export async function applyMarkdownFileArtifactsForLoop', 'tool loop must own markdown artifact application');
+  assertContains(toolLoop, 'export function analyzeTerminalEvidence', 'tool loop must own terminal evidence parsing');
+  assertContains(summary, 'export function cleanAgentFinalSummaryForUser', 'summary sanitizer must live in agentic summary module');
+  assert.doesNotMatch(agentLoop, /function\s+(executeFakeToolsForLoop|applyMarkdownFileArtifactsForLoop|analyzeTerminalEvidence|cleanAgentFinalSummaryForUser)\b/, 'agent loop must not define extracted domain services');
+});
+
 test('Architecture: ToolRegistry owns agent tool metadata', () => {
   const registry = src('src/agent/tool-registry.ts');
   const executor = src('src/agent/tool-executor.ts');
   const agentLoop = src('src/agent-loop.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
   assertContains(registry, 'AGENT_TOOL_DEFINITIONS', 'tool registry must expose tool definitions');
   assertContains(registry, 'isFileWriteTool', 'tool registry must identify file write tools');
   assertContains(registry, 'getToolActivity', 'tool registry must own activity metadata');
   assertContains(executor, 'class AgentToolExecutor', 'tool executor must expose execution boundary');
   assertContains(executor, 'classifyToolKind', 'tool executor must classify tool kind for permission policy');
-  assertContains(agentLoop, "from './agent/tool-executor'", 'agent loop must import tool executor module');
-  assertContains(agentLoop, 'agentToolExecutor.isFileWrite(tool)', 'file write branch must use tool executor helper');
-  assertContains(agentLoop, 'agentToolExecutor.plan(t).activity', 'early activity display must use tool executor helper');
+  assertContains(toolLoop, "from './tool-executor'", 'tool loop must import tool executor module');
+  assertContains(toolLoop, 'agentToolExecutor.isFileWrite(tool)', 'file write branch must use tool executor helper');
+  assertContains(toolLoop, 'agentToolExecutor.plan(tool).activity', 'early activity display must use tool executor helper');
+  assertContains(agentLoop, 'describeAgentToolActivity(t)', 'agent loop must call the tool-loop activity service');
+  assert.doesNotMatch(agentLoop, /agentToolExecutor/, 'agent loop must not own tool executor internals');
   assert.doesNotMatch(agentLoop, /function toolCallToEarlyActivity/, 'agent loop must not keep local tool activity registry');
 });
 
 test('Architecture: AgentEvent union lives in agent layer', () => {
   const events = src('src/agent/events.ts');
+  const loopTypes = src('src/agent/loop-types.ts');
   const protocol = src('src/ui/webview-protocol.ts');
   const agentLoop = src('src/agent-loop.ts');
   assertContains(events, 'export type AgentEvent', 'agent event union must exist');
   assertContains(events, 'interface AgentStatusEvent', 'agent status event must live in agent layer');
   assertContains(protocol, "from '../agent/events'", 'webview protocol must import agent events');
-  assertContains(agentLoop, "from './agent/events'", 'agent loop must import agent status from agent layer');
+  assertContains(loopTypes, "from './events'", 'agent loop callback protocol must import agent status from agent layer');
+  assertContains(agentLoop, "from './agent/loop-types'", 'agent loop must consume agent callback protocol, not event internals');
 });
 
 test('Architecture: WorkspaceEditService owns text file writes', () => {
   const service = src('src/workspace/edit-service.ts');
   const agentLoop = src('src/agent-loop.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
   const applier = src('src/workspace-applier.ts');
   assertContains(service, 'class WorkspaceEditService', 'workspace edit service class must exist');
   assertContains(service, 'writeTextFileSync', 'workspace edit service must expose text-file write boundary');
@@ -940,6 +1013,8 @@ test('Architecture: WorkspaceEditService owns text file writes', () => {
   assertContains(service, 'return this.applyTextFileProposal(this.proposeTextFileWrite', 'legacy text writes must delegate through proposal/apply flow');
   assertContains(agentLoop, 'new WorkspaceEditService()', 'agent loop must construct workspace edit service');
   assertContains(agentLoop, 'workspaceEditService.writeTextFileSync', 'agent loop writes must go through workspace edit service');
+  assertContains(toolLoop, 'new WorkspaceEditService()', 'tool loop must construct workspace edit service for tool writes');
+  assertContains(toolLoop, 'workspaceEditService.writeTextFileSync', 'tool loop writes must go through workspace edit service');
   assertContains(applier, 'new WorkspaceEditService()', 'workspace applier must construct workspace edit service');
   assertContains(applier, 'workspaceEditService.applyTextFileProposal', 'workspace applier must apply files through workspace edit service');
   assert.doesNotMatch(agentLoop, /fs\.writeFileSync/, 'agent loop must not write workspace files directly');

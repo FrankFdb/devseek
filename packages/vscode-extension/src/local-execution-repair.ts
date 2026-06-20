@@ -9,7 +9,7 @@ import {
   selectRepairFiles,
 } from './execution-planner';
 import type { AgentTask } from './agent-task-decomposer';
-import type { AgentLoopCallbacks } from './agent-loop';
+import type { AgentLoopCallbacks } from './agent/loop-types';
 import type { AppliedChangeRecord, ApplyWorkflowStatus } from './workspace-applier';
 import { MemoryService } from './app/memory-service';
 import { decideToolPermission, type ToolPolicy } from './app/permission-service';

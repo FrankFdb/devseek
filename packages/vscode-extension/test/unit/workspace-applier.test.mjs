@@ -414,6 +414,52 @@ test('workspace-applier: markdown writes include review ledger file-check valida
   }
 });
 
+test('workspace-applier: unknown validation targets block QualityGate without inventing build scripts', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-unknown-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+    const raw = [
+      'assets/manual-phase6.unknown',
+      '```text',
+      'phase6 unknown validation target',
+      '```',
+    ].join('\n');
+    const statuses = [];
+
+    const result = await applyGeneratedArtifactsWithPrompt(
+      raw,
+      '创建 assets/manual-phase6.unknown，内容为：phase6 unknown validation target。',
+      (status) => statuses.push(status),
+      true,
+      undefined,
+      undefined,
+      { rollbackOnValidationFailure: false },
+    );
+
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.changedPaths, ['assets/manual-phase6.unknown']);
+    assert.equal(result.validation?.status, 'blocked');
+    assert.equal(result.validation?.reason, 'no-auto-validation-target');
+    assert.equal(result.qualityGate?.status, 'blocked');
+    assert.match(readFileSync(path.join(root, 'assets', 'manual-phase6.unknown'), 'utf8'), /phase6 unknown/);
+    assert.equal(existsSync(path.join(root, 'assets', 'manual', 'test_phase6.sh')), false);
+    assert.equal(
+      statuses.some((status) => status.phase === 'quality' && status.state === 'failed' && /QualityGate 阻塞/.test(status.title)),
+      true,
+    );
+    assert.equal(
+      statuses.some((status) => status.phase === 'validate' && status.state === 'failed' && /自动验证失败/.test(status.title)),
+      false,
+    );
+    assert.equal(
+      statuses.some((status) => status.phase === 'validate' && status.state === 'skipped' && /自动验证阻塞/.test(status.title)),
+      true,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('workspace-applier: compile-only C++ validation does not run the produced program', { skip: !hasCommand('g++') && 'g++ is not installed' }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-'));
   const projectDir = path.join(root, 'code', 'compile_only_demo');

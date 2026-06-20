@@ -67,6 +67,11 @@ test('Agentic history: builds collapsible restored history with execution eviden
         exitCode: 0,
       },
     ],
+    qualityGate: {
+      status: 'pass',
+      summary: 'QualityGate 通过：文件检查已通过。',
+      evidenceRefs: ['terminal:ok:test -f docs/manual-phase5-smoke.md'],
+    },
   });
 
   assert.match(text, /\*\*\[Agentic\] 已完成（1 轮）\*\*/);
@@ -74,6 +79,8 @@ test('Agentic history: builds collapsible restored history with execution eviden
   assert.match(text, /<summary>任务清单与执行证据<\/summary>/);
   assert.match(text, /创建\/更新文件/);
   assert.match(text, /docs\/manual-phase5-smoke\.md/);
+  assert.match(text, /QualityGate/);
+  assert.match(text, /QualityGate 通过/);
   assert.match(text, /test -f \/workspace\/devseek\/docs\/manual-phase5-smoke\.md/);
   assert.doesNotMatch(text, /→\s*done/);
 });

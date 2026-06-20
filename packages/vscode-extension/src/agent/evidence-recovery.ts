@@ -30,6 +30,29 @@ export function markMissingEvidenceTodosIncomplete(todos: TodoItem[], missing: s
   });
 }
 
+export function markValidationFailureTodos(todos: TodoItem[]): TodoItem[] {
+  if (!todos.length) return todos;
+  let matched = false;
+  const updated = todos.map(item => {
+    const title = item.title.toLowerCase();
+    if (!/(?:验证|校验|编译|运行|执行|测试|type(?:script)?|compile|build|test|run|validate|verify)/i.test(title)) {
+      return item;
+    }
+    matched = true;
+    return { ...item, status: 'failed' as const };
+  });
+  if (matched) return updated;
+
+  const lastCompletedIndex = updated
+    .map((item, index) => ({ item, index }))
+    .reverse()
+    .find(({ item }) => item.status === 'completed')?.index;
+  if (lastCompletedIndex === undefined) return updated;
+  return updated.map((item, index) => (
+    index === lastCompletedIndex ? { ...item, status: 'failed' as const } : item
+  ));
+}
+
 export function inferInitialAgenticTodos(userPrompt: string): TodoItem[] {
   const items: TodoItem[] = [];
   const needsRead = requiresReadEvidence(userPrompt);

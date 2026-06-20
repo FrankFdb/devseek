@@ -140,9 +140,14 @@ test('Phase 2: memory boundary exposes schema, store, and guard only', () => {
   }
 });
 
-test('Phase 2: agent loop memory_write does not know persistence file paths', () => {
+test('Phase 2: agent tool loop memory_write uses structured proposals only', () => {
   const agentLoop = read('src/agent-loop.ts');
+  const toolLoop = read('src/agent/tool-loop.ts');
+  const loopTypes = read('src/agent/loop-types.ts');
   assert.doesNotMatch(agentLoop, /\.devseek\/memory\.md|memory\.md/, 'agent-loop must not mention legacy memory file paths');
   assert.doesNotMatch(agentLoop, /appendFileSync|writeFileSync|mkdirSync/, 'agent-loop must not persist memory directly');
-  assert.match(agentLoop, /onMemoryWrite\?: \(proposal: MemoryWriteProposal\)/, 'agent-loop emits structured memory proposals');
+  assert.doesNotMatch(toolLoop, /\.devseek\/memory\.md|memory\.md/, 'tool-loop must not mention legacy memory file paths');
+  assert.doesNotMatch(toolLoop, /appendFileSync|writeFileSync|mkdirSync/, 'tool-loop must not persist memory directly');
+  assert.match(loopTypes, /onMemoryWrite\?: \(proposal: MemoryWriteProposal\)/, 'agent callback protocol emits structured memory proposals');
+  assert.match(toolLoop, /callbacks\.onMemoryWrite\(\{[\s\S]*?type: 'verified-experience'/, 'tool-loop sends structured memory proposals through callbacks');
 });

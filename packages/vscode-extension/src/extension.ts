@@ -111,6 +111,18 @@ interface PendingEditRecord {
   createdAt: number;
 }
 
+function chatContentText(content: ChatMessage['content'] | undefined): string {
+  return typeof content === 'string' ? content : '';
+}
+
+function chatContentStartsWith(content: ChatMessage['content'] | undefined, prefix: string): boolean {
+  return chatContentText(content).startsWith(prefix);
+}
+
+function chatContentEquals(content: ChatMessage['content'] | undefined, expected: string): boolean {
+  return chatContentText(content) === expected;
+}
+
 // ----------------------------------------------------------------
 // Sidebar chat view state (single-level entry, no launcher page)
 // ----------------------------------------------------------------
@@ -731,14 +743,15 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
           let _restoreSummary = _storedSumForUI;
           // Strip any injected prefix so UI shows clean conversation
           if (_restoreHistory.length >= 2 && _restoreHistory[0].role === 'user'
-              && _restoreHistory[0].content.startsWith('[上次会话背景')
+              && chatContentStartsWith(_restoreHistory[0].content, '[上次会话背景')
               && _restoreHistory[1].role === 'assistant'
-              && _restoreHistory[1].content === '好的，我已了解上次的工作进展，可以继续。') {
+              && chatContentEquals(_restoreHistory[1].content, '好的，我已了解上次的工作进展，可以继续。')) {
             _restoreHistory = _restoreHistory.slice(2);
           } else if (_restoreHistory.length > 0 && _restoreHistory[0].role === 'assistant'
-              && (_restoreHistory[0].content.startsWith('【上次 session 摘要】\n') || _restoreHistory[0].content.startsWith('【历史摘要】\n'))) {
-            const _legacyPrefix = _restoreHistory[0].content.startsWith('【上次 session 摘要】\n') ? '【上次 session 摘要】\n' : '【历史摘要】\n';
-            _restoreSummary = _restoreHistory[0].content.slice(_legacyPrefix.length);
+              && (chatContentStartsWith(_restoreHistory[0].content, '【上次 session 摘要】\n') || chatContentStartsWith(_restoreHistory[0].content, '【历史摘要】\n'))) {
+            const _firstContent = chatContentText(_restoreHistory[0].content);
+            const _legacyPrefix = _firstContent.startsWith('【上次 session 摘要】\n') ? '【上次 session 摘要】\n' : '【历史摘要】\n';
+            _restoreSummary = _firstContent.slice(_legacyPrefix.length);
             _restoreHistory = _restoreHistory.slice(1);
           }
           if (_restoreHistory.length > 0 || _restoreSummary) {
@@ -810,7 +823,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
             await registerPendingEditChange(wv, change);
           }, msg.files, { rollbackOnValidationFailure: msg.autoApply !== true });
 
-          if (result.applied && result.validation && !result.validation.ok) {
+          if (shouldRunClosedLoopRepair(result)) {
             const originalPrompt = msg.prompt || '请根据自动验证失败结果继续修复，直到通过。';
             await runClosedLoopRepair(wv, async (status: ApplyWorkflowStatus) => {
               wv.postMessage({ type: 'workflowStatus', ...status });
@@ -850,7 +863,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
             msg.files,
           );
 
-          if (result.applied && result.validation && !result.validation.ok) {
+          if (shouldRunClosedLoopRepair(result)) {
             const originalPrompt = msg.prompt || `请继续修复文件 ${msg.path} 的验证失败问题，直到通过。`;
             await runClosedLoopRepair(wv, async (status: ApplyWorkflowStatus) => {
               wv.postMessage({ type: 'workflowStatus', ...status });
@@ -1169,14 +1182,14 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         for (const [k, v] of Object.entries(files)) sessionRecentFiles.set(k, v);
         const loadedSummary = extContext.workspaceState.get<string>(`deepseek.session.${id}.summary`, '') ?? '';
         const loadedHistory = extContext.workspaceState.get<ChatMessage[]>(`deepseek.session.${id}.history`, []) ?? [];
-        // Keep full history (with summary prefix) for LLM context; send clean history + summary for display
-        // Strip any stale prefix from stored history before re-injecting the fresh one
-        const _cleanHistory = (h: ChatMessage[]) => {
-          if (h[0]?.role === 'user' && h[0]?.content?.startsWith('[上次会话背景') &&
-              h[1]?.role === 'assistant' && h[1]?.content === '好的，我已了解上次的工作进展，可以继续。') return h.slice(2);
-          if (h[0]?.role === 'assistant' && (h[0]?.content?.startsWith('【上次 session 摘要】\n') || h[0]?.content?.startsWith('【历史摘要】\n'))) return h.slice(1);
-          return h;
-        };
+	        // Keep full history (with summary prefix) for LLM context; send clean history + summary for display
+	        // Strip any stale prefix from stored history before re-injecting the fresh one
+	        const _cleanHistory = (h: ChatMessage[]) => {
+	          if (h[0]?.role === 'user' && chatContentStartsWith(h[0]?.content, '[上次会话背景') &&
+	              h[1]?.role === 'assistant' && chatContentEquals(h[1]?.content, '好的，我已了解上次的工作进展，可以继续。')) return h.slice(2);
+	          if (h[0]?.role === 'assistant' && (chatContentStartsWith(h[0]?.content, '【上次 session 摘要】\n') || chatContentStartsWith(h[0]?.content, '【历史摘要】\n'))) return h.slice(1);
+	          return h;
+	        };
         const _baseHistory = _cleanHistory(loadedHistory).slice(-20);
         nonBridgeChatHistory = loadedSummary
           ? [
@@ -1781,13 +1794,13 @@ async function runChat(
   if (!newSession && nonBridgeChatHistory.length === 0 && activeSessionId && extContext) {
     const _storedSummary = extContext.workspaceState.get<string>(`deepseek.session.${activeSessionId}.summary`, '') ?? '';
     if (_storedSummary) {
-      const _storedHistory = extContext.workspaceState.get<ChatMessage[]>(`deepseek.session.${activeSessionId}.history`, []) ?? [];
-      const _stripPrefix = (h: ChatMessage[]) => {
-        if (h[0]?.role === 'user' && h[0]?.content?.startsWith('[上次会话背景') &&
-            h[1]?.role === 'assistant' && h[1]?.content === '好的，我已了解上次的工作进展，可以继续。') return h.slice(2);
-        if (h[0]?.role === 'assistant' && (h[0]?.content?.startsWith('【上次 session 摘要】\n') || h[0]?.content?.startsWith('【历史摘要】\n'))) return h.slice(1);
-        return h;
-      };
+	      const _storedHistory = extContext.workspaceState.get<ChatMessage[]>(`deepseek.session.${activeSessionId}.history`, []) ?? [];
+	      const _stripPrefix = (h: ChatMessage[]) => {
+	        if (h[0]?.role === 'user' && chatContentStartsWith(h[0]?.content, '[上次会话背景') &&
+	            h[1]?.role === 'assistant' && chatContentEquals(h[1]?.content, '好的，我已了解上次的工作进展，可以继续。')) return h.slice(2);
+	        if (h[0]?.role === 'assistant' && (chatContentStartsWith(h[0]?.content, '【上次 session 摘要】\n') || chatContentStartsWith(h[0]?.content, '【历史摘要】\n'))) return h.slice(1);
+	        return h;
+	      };
       nonBridgeChatHistory = [
         { role: 'user' as const, content: `[上次会话背景，请基于此继续工作]\n${_storedSummary}` },
         { role: 'assistant' as const, content: '好的，我已了解上次的工作进展，可以继续。' },
@@ -3353,7 +3366,7 @@ async function runChat(
       const firstApply = await applyGeneratedArtifactsWithPrompt(responseToApply, prompt, workflowReporter, true, async (change) => {
         await registerPendingEditChange(webview, change);
       }, pathResolutionHints, { rollbackOnValidationFailure: false });
-      if (firstApply.applied && firstApply.validation && !firstApply.validation.ok) {
+      if (shouldRunClosedLoopRepair(firstApply)) {
         await runClosedLoopRepair(webview, workflowReporter, prompt, mode, firstApply, pathResolutionHints);
       }
     }
@@ -3530,6 +3543,18 @@ async function runClosedLoopRepair(
       detail: `达到最大修正轮次后仍未通过。\n命令: ${finalValidation.command}\nexitCode: ${finalValidation.exitCode ?? 'null'}\n${finalValidation.output.slice(0, 1000)}`,
     });
   }
+}
+
+function shouldRunClosedLoopRepair(result: ApplyWorkflowResult): boolean {
+  const validation = result.validation;
+  const qualityGate = result.qualityGate;
+  if (!validation) return false;
+  return result.applied === true
+    && validation.ran === true
+    && validation.status === 'failed'
+    && validation.ok === false
+    && Boolean(validation.command)
+    && qualityGate?.status !== 'blocked';
 }
 
 async function askRepairExhaustedAction(title: string, detail: string): Promise<'continue' | 'guide' | 'stop'> {
@@ -4313,8 +4338,9 @@ function recordTrackedChatHistory(opts: RouteChatOpts, response: string): void {
       await compactAndSaveHistory(_toCompact, _compactId);
       const freshSummary = extContext?.workspaceState.get<string>(`deepseek.session.${_compactId}.summary`);
       if (freshSummary && _compactId === activeSessionId) {
-        const _hasPair = nonBridgeChatHistory[0]?.role === 'user' && nonBridgeChatHistory[0]?.content?.startsWith('[上次会话背景');
-        const _hasLegacy = nonBridgeChatHistory[0]?.role === 'assistant' && (nonBridgeChatHistory[0]?.content?.startsWith('【历史摘要】\n') || nonBridgeChatHistory[0]?.content?.startsWith('【上次 session 摘要】\n'));
+        const _hasPair = nonBridgeChatHistory[0]?.role === 'user' && chatContentStartsWith(nonBridgeChatHistory[0]?.content, '[上次会话背景');
+        const _hasLegacy = nonBridgeChatHistory[0]?.role === 'assistant'
+          && (chatContentStartsWith(nonBridgeChatHistory[0]?.content, '【历史摘要】\n') || chatContentStartsWith(nonBridgeChatHistory[0]?.content, '【上次 session 摘要】\n'));
         if (_hasPair) {
           nonBridgeChatHistory[0] = { role: 'user' as const, content: `[上次会话背景，请基于此继续工作]\n${freshSummary}` };
         } else if (_hasLegacy) {
@@ -4362,7 +4388,7 @@ async function routeChat(opts: RouteChatOpts): Promise<string> {
   // 构造消息列表：trackHistory=true 时携带多轮历史（对齐 Copilot runOne 每轮携带完整历史）
   const historyMessages: ChatMessage[] = opts.trackHistory ? [...nonBridgeChatHistory] : [];
   const userContent: ChatMessage['content'] =
-    (opts.images && opts.images.length > 0 && pType !== 'bridge')
+    (opts.images && opts.images.length > 0)
       ? [
           { type: 'text' as const, text: opts.prompt },
           ...opts.images.map(url => ({ type: 'image_url' as const, image_url: { url } })),
@@ -4437,10 +4463,10 @@ function saveCurrentSession(): void {
   if (nonBridgeChatHistory.length === 0) return;
   // Strip summary primer pair/legacy prefix before persisting so reloads don't double-inject
   let _histToSave = nonBridgeChatHistory;
-  if (_histToSave[0]?.role === 'user' && _histToSave[0]?.content?.startsWith('[上次会话背景') &&
-      _histToSave[1]?.role === 'assistant' && _histToSave[1]?.content === '好的，我已了解上次的工作进展，可以继续。') {
+  if (_histToSave[0]?.role === 'user' && chatContentStartsWith(_histToSave[0]?.content, '[上次会话背景') &&
+      _histToSave[1]?.role === 'assistant' && chatContentEquals(_histToSave[1]?.content, '好的，我已了解上次的工作进展，可以继续。')) {
     _histToSave = _histToSave.slice(2);
-  } else if (_histToSave[0]?.role === 'assistant' && (_histToSave[0]?.content?.startsWith('【上次 session 摘要】\n') || _histToSave[0]?.content?.startsWith('【历史摘要】\n'))) {
+  } else if (_histToSave[0]?.role === 'assistant' && (chatContentStartsWith(_histToSave[0]?.content, '【上次 session 摘要】\n') || chatContentStartsWith(_histToSave[0]?.content, '【历史摘要】\n'))) {
     _histToSave = _histToSave.slice(1);
   }
   extContext.workspaceState.update(

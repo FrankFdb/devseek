@@ -1,5 +1,5 @@
 import * as nodePath from 'path';
-import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
+import { coalesceWrittenFileEvidence, type TerminalEvidence, type WrittenFileEvidence } from './completion-evidence';
 
 export type AgenticHistoryTodoStatus = 'not-started' | 'in-progress' | 'completed' | 'failed';
 
@@ -7,6 +7,13 @@ export interface AgenticHistoryTodo {
   id?: number;
   title: string;
   status: AgenticHistoryTodoStatus;
+}
+
+export interface AgenticHistoryQualityGate {
+  status: 'pass' | 'fail' | 'blocked';
+  summary: string;
+  risks?: string[];
+  evidenceRefs?: string[];
 }
 
 export interface AgenticHistoryInput {
@@ -18,6 +25,7 @@ export interface AgenticHistoryInput {
   todos?: AgenticHistoryTodo[];
   writtenFiles?: WrittenFileEvidence[];
   terminalEvidence?: TerminalEvidence[];
+  qualityGate?: AgenticHistoryQualityGate;
   workspaceRoot?: string;
 }
 
@@ -75,14 +83,10 @@ function renderTodoList(todos: AgenticHistoryTodo[]): string {
 }
 
 function renderWrittenFiles(files: WrittenFileEvidence[], workspaceRoot?: string): string {
-  const unique = new Map<string, WrittenFileEvidence>();
-  for (const file of files) {
-    if (!file.path) continue;
-    unique.set(workspaceRelativePath(file.path, workspaceRoot), file);
-  }
-  const items = [...unique.entries()]
+  const items = coalesceWrittenFileEvidence(files, workspaceRoot)
     .slice(0, 20)
-    .map(([relPath, file]) => {
+    .map((file) => {
+      const relPath = workspaceRelativePath(file.path, workspaceRoot);
       const stat = `+${file.linesAdded || 0} -${file.linesRemoved || 0}`;
       const action = file.action ? `${file.action} ` : '';
       return `<li><code>${escapeHtml(relPath)}</code> <span>(${escapeHtml(action + stat)})</span></li>`;
@@ -105,6 +109,76 @@ function renderTerminalEvidence(evidence: TerminalEvidence[]): string {
   return items ? `<p><strong>验证/终端证据：</strong></p><ul>${items}</ul>` : '';
 }
 
+function renderQualityGate(qualityGate?: AgenticHistoryQualityGate): string {
+  if (!qualityGate) return '';
+  const statusLabel = qualityGate.status === 'pass'
+    ? 'pass'
+    : qualityGate.status === 'fail'
+      ? 'fail'
+      : 'blocked';
+  const risks = (qualityGate.risks || [])
+    .slice(0, 4)
+    .map(risk => `<li>${escapeHtml(truncate(risk, 220))}</li>`)
+    .join('');
+  const evidence = (qualityGate.evidenceRefs || [])
+    .slice(0, 4)
+    .map(ref => `<li><code>${escapeHtml(truncate(ref, 220))}</code></li>`)
+    .join('');
+  return [
+    `<p><strong>QualityGate：</strong> <code>${escapeHtml(statusLabel)}</code> ${escapeHtml(truncate(qualityGate.summary, 320))}</p>`,
+    risks ? `<p><strong>风险：</strong></p><ul>${risks}</ul>` : '',
+    evidence ? `<p><strong>证据引用：</strong></p><ul>${evidence}</ul>` : '',
+  ].filter(Boolean).join('\n');
+}
+
+export function buildAgenticQualityGateForHistory(input: {
+  failedReason?: string;
+  writtenFiles: WrittenFileEvidence[];
+  terminalEvidence: TerminalEvidence[];
+}): AgenticHistoryQualityGate | undefined {
+  const failedTerminal = [...input.terminalEvidence].reverse().find(e => !e.ok);
+  if (failedTerminal) {
+    return {
+      status: 'fail',
+      summary: `QualityGate 未通过：${failedTerminal.kind || 'terminal'} 验证失败。`,
+      risks: ['自动验证命令失败，不能把任务标记为完全完成。'],
+      evidenceRefs: [terminalEvidenceRef(failedTerminal)],
+    };
+  }
+
+  if (input.failedReason) {
+    return {
+      status: 'blocked',
+      summary: `QualityGate 阻塞：${input.failedReason}`,
+      risks: ['任务缺少足够的完成证据，需要补充验证或人工确认。'],
+    };
+  }
+
+  const successfulTerminal = [...input.terminalEvidence].reverse().find(e => e.ok);
+  if (successfulTerminal) {
+    return {
+      status: 'pass',
+      summary: `QualityGate 通过：${successfulTerminal.kind || 'terminal'} 证据已通过。`,
+      evidenceRefs: [terminalEvidenceRef(successfulTerminal)],
+    };
+  }
+
+  if (input.writtenFiles.length > 0) {
+    return {
+      status: 'blocked',
+      summary: 'QualityGate 阻塞：文件已修改，但没有自动验证证据。',
+      risks: ['缺少编译、测试或文件检查证据，不能证明变更后的行为正确。'],
+    };
+  }
+
+  return undefined;
+}
+
+function terminalEvidenceRef(evidence: TerminalEvidence): string {
+  const code = evidence.exitCode === null || evidence.exitCode === undefined ? 'null' : String(evidence.exitCode);
+  return `terminal:${evidence.ok ? 'ok' : 'failed'}:${evidence.kind}:exitCode=${code}:${evidence.command}`;
+}
+
 export function buildAgenticHistoryText(input: AgenticHistoryInput): string {
   const rounds = Math.max(0, Number(input.roundCount) || 0);
   const status = input.completed ? '已完成' : '未完成';
@@ -113,6 +187,7 @@ export function buildAgenticHistoryText(input: AgenticHistoryInput): string {
   const todos = renderTodoList(input.todos || []);
   const files = renderWrittenFiles(input.writtenFiles || [], input.workspaceRoot);
   const terminal = renderTerminalEvidence(input.terminalEvidence || []);
+  const qualityGate = renderQualityGate(input.qualityGate);
 
   const visibleLines = [
     `**[Agentic] ${status}（${rounds} 轮）**`,
@@ -124,6 +199,7 @@ export function buildAgenticHistoryText(input: AgenticHistoryInput): string {
     todos,
     files,
     terminal,
+    qualityGate,
   ].filter(Boolean).join('\n');
 
   if (!detailsBody) return visibleLines.join('\n');

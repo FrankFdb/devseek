@@ -25,17 +25,33 @@ const {
   VerificationPlanner,
 } = req(bundlePath);
 
-test('VerificationPlanner: extension changes plan extension compile', () => {
+test('VerificationPlanner: extension TypeScript entry changes plan semantic check plus compile', () => {
   const plan = new VerificationPlanner().planWorkspaceChanges({
     rootFsPath: '/repo',
     changedPaths: ['packages/vscode-extension/src/extension.ts'],
   });
 
   assert.equal(plan.kind, 'command');
-  assert.equal(plan.command, 'npm run compile');
+  assert.match(plan.command, /npx tsc --noEmit/);
+  assert.match(plan.command, /src\/extension\.ts/);
+  assert.match(plan.command, /&& npm run compile/);
   assert.equal(plan.cwd, path.join('/repo', 'packages', 'vscode-extension'));
   assert.equal(plan.timeoutMs, PROJECT_BUILD_VALIDATION_TIMEOUT_MS);
-  assert.equal(plan.reason, 'extension-change');
+  assert.equal(plan.reason, 'extension-ts-semantic-check');
+});
+
+test('VerificationPlanner: extension TypeScript files get targeted semantic check before bundle compile', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['packages/vscode-extension/src/workspace/manual-phase6-quality-gate.ts'],
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.cwd, path.join('/repo', 'packages', 'vscode-extension'));
+  assert.equal(plan.reason, 'extension-ts-semantic-check');
+  assert.match(plan.command, /npx tsc --noEmit/);
+  assert.match(plan.command, /src\/workspace\/manual-phase6-quality-gate\.ts/);
+  assert.match(plan.command, /&& npm run compile/);
 });
 
 test('VerificationPlanner: requested markdown validation uses file checks, not compilers', () => {

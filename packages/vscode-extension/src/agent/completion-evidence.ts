@@ -65,6 +65,46 @@ export function isCodeArtifactPath(filePath: string): boolean {
   return CODE_FILE_EXTENSIONS.has(nodePath.extname(filePath).toLowerCase());
 }
 
+function normalizeWrittenFileEvidenceKey(filePath: string, workspaceRoot?: string): string {
+  const normalizedPath = String(filePath || '').replace(/\\/g, '/');
+  if (!normalizedPath) return '';
+  const normalizedRoot = String(workspaceRoot || '').replace(/\\/g, '/');
+  if (normalizedRoot) {
+    try {
+      const rel = nodePath.relative(normalizedRoot, normalizedPath).replace(/\\/g, '/');
+      if (rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel)) return rel;
+    } catch {
+      // Fall back to the normalized path below.
+    }
+  }
+  return normalizedPath;
+}
+
+export function coalesceWrittenFileEvidence(
+  files: WrittenFileEvidence[],
+  workspaceRoot?: string,
+): WrittenFileEvidence[] {
+  const byPath = new Map<string, WrittenFileEvidence>();
+  for (const file of files) {
+    const key = normalizeWrittenFileEvidenceKey(file.path, workspaceRoot);
+    if (!key) continue;
+    const previous = byPath.get(key);
+    if (!previous) {
+      byPath.set(key, { ...file });
+      continue;
+    }
+
+    const wasCreatedInThisRun = previous.action === 'create';
+    byPath.set(key, {
+      ...file,
+      action: wasCreatedInThisRun ? 'create' : file.action,
+      linesAdded: file.linesAdded,
+      linesRemoved: wasCreatedInThisRun ? 0 : file.linesRemoved,
+    });
+  }
+  return [...byPath.values()];
+}
+
 function buildEvidenceText(userPrompt: string, todos: CompletionTodo[]): string {
   const promptIntentText = stripInlineFileContent(userPrompt);
   const todoText = todos
@@ -134,7 +174,7 @@ export function getMissingCompletionEvidence(
   readEvidencePaths: string[] = [],
 ): string[] {
   const text = buildEvidenceText(userPrompt, todos);
-  const existingWrittenFiles = writtenFiles.filter(f => {
+  const existingWrittenFiles = coalesceWrittenFileEvidence(writtenFiles).filter(f => {
     try { return fs.existsSync(f.path); } catch { return false; }
   });
   const existingCodeWrites = existingWrittenFiles.filter(f => isCodeArtifactPath(f.path));

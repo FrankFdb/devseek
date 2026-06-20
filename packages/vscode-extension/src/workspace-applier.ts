@@ -276,19 +276,25 @@ async function applyPreparedChanges(
   });
 
   const validation = await runAutoValidation(prepared.map((p) => p.relPath), root, requestPrompt);
-  if (!validation) {
-    ledger.recordValidationSkipped('no-auto-validation-target');
+  if (!validation || validation.status === 'blocked' || validation.ran === false) {
+    if (validation) {
+      ledger.recordValidation(validation);
+    } else {
+      ledger.recordValidationSkipped('no-auto-validation-target');
+    }
     const qualityGate = qualityGateService.evaluate({
       changedPaths: changeSet.changedPaths,
-      validation: null,
+      validation: validation ?? null,
     });
     ledger.recordQualityGate(qualityGate);
     ledger.addUnfinishedItem('QualityGate 阻塞：缺少自动验证证据');
     await reportWorkflow(reporter, {
       phase: 'validate',
       state: 'skipped',
-      title: '未执行自动验证',
-      detail: '未识别到可自动验证的目标（bridge / extension / C++ 目录项目）。',
+      title: '自动验证阻塞',
+      detail: validation
+        ? `原因: ${validation.reason || 'no-auto-validation-target'}\n${validation.output.trim().slice(0, 1200)}`
+        : '未识别到可自动验证的目标（bridge / extension / C++ 目录项目）。',
     });
     await reportWorkflow(reporter, {
       phase: 'quality',
@@ -301,6 +307,7 @@ async function applyPreparedChanges(
       applied: true,
       changeCount: summary.total,
       changedPaths: changeSet.changedPaths,
+      ...(validation ? { validation } : {}),
       qualityGate,
       review: ledger.snapshot(),
     };

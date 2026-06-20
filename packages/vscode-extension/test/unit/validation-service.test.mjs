@@ -37,7 +37,7 @@ function makeRunner(invocations, result = {}) {
   };
 }
 
-test('ValidationService: selects extension compile command', async () => {
+test('ValidationService: selects extension TypeScript semantic check before compile', async () => {
   const invocations = [];
   const service = new ValidationService({ commandRunner: makeRunner(invocations) });
 
@@ -47,7 +47,10 @@ test('ValidationService: selects extension compile command', async () => {
   });
 
   assert.equal(result.ok, true);
-  assert.equal(result.command, 'npm run compile');
+  assert.match(result.command, /npx tsc --noEmit/);
+  assert.match(result.command, /src\/extension\.ts/);
+  assert.match(result.command, /&& npm run compile/);
+  assert.equal(result.reason, 'extension-ts-semantic-check');
   assert.equal(result.cwd, path.join('/repo', 'packages', 'vscode-extension'));
   assert.equal(invocations[0].timeoutMs, PROJECT_BUILD_VALIDATION_TIMEOUT_MS);
 });
@@ -143,6 +146,30 @@ test('ValidationService: preserves failed command evidence', async () => {
   assert.equal(result.status, 'failed');
   assert.equal(result.exitCode, 2);
   assert.equal(result.output, 'compile failed');
+});
+
+test('ValidationService: TypeScript semantic failure fails QualityGate evidence before bundle compile can pass', async () => {
+  const invocations = [];
+  const service = new ValidationService({
+    commandRunner: makeRunner(invocations, {
+      ok: false,
+      exitCode: 2,
+      output: "src/workspace/manual-phase6-quality-gate.ts(1,14): error TS2322: Type 'number' is not assignable to type 'string'.",
+    }),
+  });
+
+  const result = await service.validateWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['packages/vscode-extension/src/workspace/manual-phase6-quality-gate.ts'],
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, 'failed');
+  assert.equal(result.reason, 'extension-ts-semantic-check');
+  assert.match(result.command, /npx tsc --noEmit/);
+  assert.match(result.command, /manual-phase6-quality-gate\.ts/);
+  assert.match(result.output, /TS2322/);
+  assert.equal(invocations.length, 1);
 });
 
 console.log('\nValidation service tests passed.\n');

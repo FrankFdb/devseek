@@ -19,6 +19,7 @@ export interface AgentAutoValidationCallbacks {
 export interface AgentAutoValidationResult {
   evidence?: TerminalEvidence;
   feedbackForAI?: string;
+  repairBlockedReason?: string;
 }
 
 export interface AgentAutoValidationOptions {
@@ -73,6 +74,30 @@ function formatAutoValidationFeedback(result: AutoValidationResult): string {
   ].filter(Boolean).join('\n');
 }
 
+function formatBlockedAutoValidationFeedback(result: AutoValidationResult): string {
+  return [
+    '[auto_validation: blocked]',
+    `reason=${result.reason ?? 'no-auto-validation-target'}`,
+    result.output ? result.output.slice(0, 1600) : '',
+    result.risks?.length ? `risks:\n${result.risks.map((risk) => `- ${risk}`).join('\n')}` : '',
+    result.alternativeChecks?.length ? `alternativeChecks:\n${result.alternativeChecks.map((check) => `- ${check}`).join('\n')}` : '',
+    'QualityGate 阻塞：没有可自动运行的验证目标，不能把结果标记为已验证通过；不要发明 build/test 脚本或用失败命令反复修复。',
+  ].filter(Boolean).join('\n');
+}
+
+function isExplicitContentWriteRequest(prompt: string): boolean {
+  return /(?:内容为|内容是|写入内容|文件内容|content\s*(?:is|:|=)|with\s+content)/i.test(prompt || '');
+}
+
+function buildExactContentRepairBlockedReason(result: AutoValidationResult): string {
+  return [
+    '用户指定了精确文件内容，自动验证未通过；DevSeek 已保留用户指定内容，不能擅自改写为通过验证的其他内容。',
+    `验证原因: ${result.reason ?? 'validation-failed'}`,
+    result.command ? `验证命令: ${result.command}` : '',
+    result.exitCode !== undefined ? `exitCode: ${result.exitCode ?? 'null'}` : '',
+  ].filter(Boolean).join('\n');
+}
+
 export async function runAgentAutoValidationForWrites(
   writtenFiles: WrittenFileEvidence[],
   workspaceRootFsPath: string,
@@ -109,18 +134,33 @@ export async function runAgentAutoValidationForWrites(
       });
       return {};
     }
+    if (result.status === 'blocked' || result.ran === false) {
+      const feedbackForAI = formatBlockedAutoValidationFeedback(result);
+      await callbacks.onAgentStatus({
+        type: 'agentStatus',
+        phase: 'validate',
+        state: 'skipped',
+        title: '自动验证阻塞',
+        detail: feedbackForAI.slice(0, 1200),
+      });
+      return { feedbackForAI };
+    }
     callbacks.onToolActivity?.('terminal', `自动验证: ${result.command}`);
     const feedbackForAI = formatAutoValidationFeedback(result);
+    const repairBlockedReason = !result.ok && isExplicitContentWriteRequest(userPrompt)
+      ? buildExactContentRepairBlockedReason(result)
+      : undefined;
     await callbacks.onAgentStatus({
       type: 'agentStatus',
       phase: 'validate',
       state: result.ok ? 'completed' : 'failed',
       title: result.ok ? '自动验证通过' : '自动验证失败',
-      detail: feedbackForAI.slice(0, 1200),
+      detail: [feedbackForAI, repairBlockedReason].filter(Boolean).join('\n\n').slice(0, 1200),
     });
     return {
       evidence: validationResultToTerminalEvidence(result),
-      feedbackForAI,
+      feedbackForAI: [feedbackForAI, repairBlockedReason].filter(Boolean).join('\n\n'),
+      repairBlockedReason,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

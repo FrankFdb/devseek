@@ -47,6 +47,16 @@ export const CPP_RUN_VALIDATION_TIMEOUT_MS = 30_000;
 export const PROJECT_BUILD_VALIDATION_TIMEOUT_MS = 120_000;
 export const CMAKE_RUN_VALIDATION_TIMEOUT_MS = 30_000;
 export const FILE_CHECK_VALIDATION_TIMEOUT_MS = 10_000;
+const EXTENSION_TS_TYPECHECK_FLAGS = [
+  '--noEmit',
+  '--pretty false',
+  '--target ES2020',
+  '--module commonjs',
+  '--lib ES2020',
+  '--strict',
+  '--esModuleInterop',
+  '--skipLibCheck',
+].join(' ');
 
 const NON_CODE_FILE_EXTENSIONS = new Set([
   '.md', '.txt', '.json', '.jsonc', '.yaml', '.yml', '.toml', '.ini',
@@ -86,8 +96,20 @@ export class VerificationPlanner {
       });
     }
 
-    const hasExtension = changedPaths.some((path) => path.startsWith('packages/vscode-extension/'));
-    if (hasExtension) {
+    const extensionPaths = changedPaths.filter((path) => path.startsWith('packages/vscode-extension/'));
+    if (extensionPaths.length > 0) {
+      const extensionTsPaths = extensionPaths
+        .map((path) => path.slice('packages/vscode-extension/'.length))
+        .filter((path) => /\.(ts|tsx)$/i.test(path));
+      if (extensionTsPaths.length > 0) {
+        return commandPlan({
+          command: `${buildExtensionTypeCheckCommand(extensionTsPaths)} && npm run compile`,
+          cwd: nodePath.join(rootFsPath, 'packages', 'vscode-extension'),
+          timeoutMs: PROJECT_BUILD_VALIDATION_TIMEOUT_MS,
+          mode: 'compile-only',
+          reason: 'extension-ts-semantic-check',
+        });
+      }
       return commandPlan({
         command: 'npm run compile',
         cwd: nodePath.join(rootFsPath, 'packages', 'vscode-extension'),
@@ -154,6 +176,15 @@ export function buildNonCodeFileCheckCommand(changedPaths: string[]): string {
       return `test -f ${quoted} && wc -c ${quoted} && sed -n '1,80p' ${quoted}`;
     })
     .join(' && ');
+}
+
+export function buildExtensionTypeCheckCommand(packageRelativePaths: string[]): string {
+  const targets = [...new Set(packageRelativePaths)]
+    .filter(Boolean)
+    .slice(0, 12)
+    .map((relPath) => shellQuote(relPath))
+    .join(' ');
+  return `npx tsc ${EXTENSION_TS_TYPECHECK_FLAGS} ${targets}`.trim();
 }
 
 function commandPlan(input: Omit<VerificationCommandPlan, 'kind' | 'risks' | 'alternativeChecks'>): VerificationCommandPlan {
