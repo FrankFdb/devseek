@@ -48,7 +48,7 @@ import { ChatMessage } from './llm/types';
 import { AgentTask, getAgentTaskDisplayTarget, readFileContentSafe, readFileContentFull } from './agent-task-decomposer';
 import { fenceLangForFile, roughLineDiff } from './utils';
 import { findWorkspaceFolderForRelativePath } from './workspace-roots';
-import { applyGeneratedArtifactsWithPrompt } from './workspace-applier';
+import { applyGeneratedArtifactPathWithPrompt } from './workspace-applier';
 import { runLocalExecution, LocalExecutionPlan, planLocalExecution } from './execution-planner';
 import { McpToolRef } from './mcp/client';
 import { getProjectRulesSync, wrapRulesAsContext, getProjectMemorySync, wrapMemoryAsContext } from './project-rules';
@@ -1218,8 +1218,12 @@ ${loopRes.feedbackForAI}
     }
   }
   const absFiles = effectiveAbsPath ? [effectiveAbsPath] : [];
-  let applyResult = await applyGeneratedArtifactsWithPrompt(
+  const applyTargetPath = effectiveAbsPath
+    ? nodePath.relative(workspaceRoot.fsPath, effectiveAbsPath).replace(/\\/g, '/')
+    : task.file;
+  let applyResult = await applyGeneratedArtifactPathWithPrompt(
     raw,
+    applyTargetPath,
     editorPrompt,
     async (status) => { await callbacks.onWorkflowStatus(status); },
     true,
@@ -1260,8 +1264,9 @@ ${loopRes.feedbackForAI}
     } catch { /* retry failed, fall through */ }
 
     if (retryRaw) {
-      applyResult = await applyGeneratedArtifactsWithPrompt(
+      applyResult = await applyGeneratedArtifactPathWithPrompt(
         retryRaw,
+        applyTargetPath,
         retryPrompt,
         async (status) => { await callbacks.onWorkflowStatus(status); },
         true,

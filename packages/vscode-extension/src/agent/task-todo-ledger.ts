@@ -2,6 +2,7 @@ import type { AgentTask, AgentTaskAction } from '../agent-task-decomposer';
 import type { AgentStatusEvent } from './events';
 import {
   findBlockingTerminalFailureEvidence,
+  getMissingCompletionEvidence,
   type TerminalEvidence,
 } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
@@ -78,8 +79,13 @@ export function createAgentTaskTodoLedger(
     },
     settleTask(index: number, evidence: TaskEvidence): TaskSettleResult {
       const terminalFailure = findBlockingTerminalFailureEvidence(evidence.terminalEvidence);
-      const completed = !terminalFailure && hasTaskCompletionEvidence(evidence);
-      const failed = Boolean(terminalFailure) || (!completed && !isReadOnlyAgentTaskAction(evidence.action));
+      const missingEvidence = isTaskIndex(index, tasks)
+        ? getTaskMissingCompletionEvidence(tasks[index], evidence)
+        : [];
+      const completed = !terminalFailure && missingEvidence.length === 0 && hasTaskCompletionEvidence(evidence);
+      const failed = Boolean(terminalFailure)
+        || missingEvidence.length > 0
+        || (!completed && !isReadOnlyAgentTaskAction(evidence.action));
       if (isTaskIndex(index, tasks)) {
         statuses[index] = failed ? 'failed' : completed ? 'completed' : 'in-progress';
       }
@@ -114,6 +120,16 @@ export function createAgentTaskTodoLedger(
   };
 }
 
+function getTaskMissingCompletionEvidence(task: AgentTask, evidence: TaskEvidence): string[] {
+  if (!isReadOnlyAgentTaskAction(evidence.action)) return [];
+  return getMissingCompletionEvidence(
+    task.desc || task.file || '',
+    [{ title: task.desc || task.file || '' }],
+    [],
+    evidence.terminalEvidence ?? [],
+  );
+}
+
 export function isReadOnlyAgentTaskAction(action: AgentTaskAction): boolean {
   return action === 'analyze' || action === 'explain' || action === 'explore' || action === 'respond';
 }
@@ -131,6 +147,14 @@ function buildTaskSettlementFailureDetail(
 ): string {
   const terminalFailure = findBlockingTerminalFailureEvidence(result.terminalEvidence);
   if (terminalFailure) return buildTaskTerminalFailureDetail(terminalFailure);
+  const missingEvidence = getTaskMissingCompletionEvidence(task, {
+    action: task.action,
+    applied: result.applied,
+    terminalEvidence: result.terminalEvidence,
+  });
+  if (missingEvidence.length > 0) {
+    return `任务缺少必要完成证据：${missingEvidence.join('、')}。不能仅凭文字说明或构建命令标记完成。`;
+  }
   if (!isReadOnlyAgentTaskAction(task.action) && !result.applied) {
     return '任务缺少本地写盘证据，不能标记为完成。请继续生成可应用补丁或完整文件内容。';
   }

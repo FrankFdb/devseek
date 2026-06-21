@@ -111,6 +111,7 @@ Module._load = function loadWithVscodeMock(request, parent, isMain) {
 const req = createRequire(import.meta.url);
 const {
   applyGeneratedArtifactsWithPrompt,
+  applyGeneratedArtifactPathWithPrompt,
   resolveGeneratedArtifactPathForPrompt,
 } = req(bundlePath);
 
@@ -343,6 +344,79 @@ test('workspace-applier: generated basename files use project path hints instead
     assert.equal(existsSync(path.join(root, 'code', 'Circle.cpp')), false);
     assert.equal(existsSync(path.join(root, 'code', 'Rectangle.cpp')), false);
     assert.equal(existsSync(path.join(root, 'code', 'Triangle.cpp')), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('workspace-applier: target-path apply ignores unrelated generated artifacts', async () => {
+  const { root, projectDir } = createShapeManagerWorkspace();
+  try {
+    const originalCmake = readFileSync(path.join(projectDir, 'CMakeLists.txt'), 'utf8');
+    const raw = [
+      'CMakeLists.txt',
+      '```cmake',
+      'project(should_not_apply)',
+      '```',
+    ].join('\n');
+    const target = 'code/shape_manager/Circle.cpp';
+    const prompt = `执行子任务：修改 ${target}，不要修改其它文件`;
+
+    const result = await applyGeneratedArtifactPathWithPrompt(
+      raw,
+      target,
+      prompt,
+      undefined,
+      true,
+      undefined,
+      [path.join(projectDir, 'Circle.cpp')],
+      { rollbackOnValidationFailure: false },
+    );
+
+    assert.equal(result.applied, false);
+    assert.equal(result.failureReason, 'no-artifacts');
+    assert.deepEqual(result.changedPaths, []);
+    assert.equal(readFileSync(path.join(projectDir, 'CMakeLists.txt'), 'utf8'), originalCmake);
+    assert.equal(readFileSync(path.join(projectDir, 'Circle.cpp'), 'utf8'), '// old Circle.cpp\n');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('workspace-applier: target-path apply selects only the current agent task file', async () => {
+  const { root, projectDir } = createShapeManagerWorkspace();
+  try {
+    const originalCmake = readFileSync(path.join(projectDir, 'CMakeLists.txt'), 'utf8');
+    const raw = [
+      'CMakeLists.txt',
+      '```cmake',
+      'project(should_not_apply)',
+      '```',
+      '',
+      'Circle.cpp',
+      '```cpp',
+      '#include "Circle.h"',
+      'void Circle::draw() const { /* XDrawArc */ }',
+      '```',
+    ].join('\n');
+    const target = 'code/shape_manager/Circle.cpp';
+    const prompt = `执行子任务：修改 ${target}，不要修改其它文件`;
+
+    const result = await applyGeneratedArtifactPathWithPrompt(
+      raw,
+      target,
+      prompt,
+      undefined,
+      true,
+      undefined,
+      [path.join(projectDir, 'Circle.cpp')],
+      { rollbackOnValidationFailure: false },
+    );
+
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.changedPaths, ['code/shape_manager/Circle.cpp']);
+    assert.match(readFileSync(path.join(projectDir, 'Circle.cpp'), 'utf8'), /XDrawArc/);
+    assert.equal(readFileSync(path.join(projectDir, 'CMakeLists.txt'), 'utf8'), originalCmake);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

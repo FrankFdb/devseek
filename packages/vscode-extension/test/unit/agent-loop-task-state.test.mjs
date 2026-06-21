@@ -37,6 +37,8 @@ test('two-phase agent todos are delegated to an evidence ledger', () => {
   assert.match(agentLoop, /onTodoUpdate:\s*undefined/, 'nested editor tool loops must not publish model todos directly');
   assert.match(agentLoop, /executeFakeToolsForLoop\(tools,\s*taskToolCallbacks,/, 'editor tool loops must use the todo-suppressed callback boundary');
   assert.match(agentLoop, /buildTaskSettlementFailureStatus/, 'ledger settlement failures must override optimistic task status');
+  assert.match(agentLoop, /applyGeneratedArtifactPathWithPrompt/, 'editor fallback must apply only the current task target file');
+  assert.doesNotMatch(agentLoop, /import\s*\{\s*applyGeneratedArtifactsWithPrompt\s*\}/, 'agent-loop must not use the multi-file free-form applier for per-task edits');
   assert.doesNotMatch(
     agentLoop,
     /executeFakeToolsForLoop\(tools,\s*callbacks,\s*editorWorkdir/,
@@ -123,6 +125,50 @@ test('task todo ledger: failed validation terminal evidence blocks read-only com
   assert.equal(settled.completed, false);
   assert.equal(settled.failed, true);
   assert.equal(settled.todos[0].status, 'failed');
+});
+
+test('task todo ledger: build-only terminal evidence cannot complete a run task', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'shape_manager', 'analyze', '使用 run_terminal 执行 cmake 编译并运行程序验证 X11 图形显示'),
+  ]);
+
+  ledger.startTask(0);
+  const settled = ledger.settleTask(0, {
+    action: 'analyze',
+    raw: 'cmake build completed',
+    terminalEvidence: [{
+      command: 'cmake -S /workspace/code/shape_manager -B /workspace/code/shape_manager/.devseek-build && cmake --build /workspace/code/shape_manager/.devseek-build',
+      kind: 'compile',
+      ok: true,
+      exitCode: 0,
+    }],
+  });
+
+  assert.equal(settled.completed, false);
+  assert.equal(settled.failed, true);
+  assert.equal(settled.todos[0].status, 'failed');
+});
+
+test('task todo ledger: compile-run terminal evidence completes a run task', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'shape_manager', 'analyze', '使用 run_terminal 执行 cmake 编译并运行程序验证 X11 图形显示'),
+  ]);
+
+  ledger.startTask(0);
+  const settled = ledger.settleTask(0, {
+    action: 'analyze',
+    raw: 'program displayed successfully',
+    terminalEvidence: [{
+      command: 'cmake -S /workspace/code/shape_manager -B /workspace/code/shape_manager/.devseek-build && cmake --build /workspace/code/shape_manager/.devseek-build && /workspace/code/shape_manager/.devseek-build/shape_manager',
+      kind: 'compile-run',
+      ok: true,
+      exitCode: 0,
+    }],
+  });
+
+  assert.equal(settled.completed, true);
+  assert.equal(settled.failed, false);
+  assert.equal(settled.todos[0].status, 'completed');
 });
 
 function task(id, file, action, desc) {
