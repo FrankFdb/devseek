@@ -1,8 +1,8 @@
 # DevSeek VS Code 分阶段用户测试用例
 
-最后更新：2026-06-20
+最后更新：2026-06-21
 
-覆盖范围：Phase 0 到 Phase 7。后续每次迭代完成后，只更新对应 Phase 的用例、期望结果和已发现问题。
+覆盖范围：Phase 0 到 Phase 9。后续每次迭代完成后，只更新对应 Phase 的用例、期望结果和已发现问题。
 
 ## 1. 使用方式
 
@@ -602,7 +602,235 @@ export const manualPhase6QualityGate: string = 1;
 - 2026-06-20 后续复测截图中，两阶段 Agent 路径仍出现 `Circle.cpp/main.cpp` 修改未真正写盘、终端失败存在，但 Todos 显示全部完成；Working 历史还出现 `Failed 命令`、`Ran cmake ...` 这类工具活动包装作为任务标题。评估：`runAgentLoop` 内部仍用循环索引重算 todo 状态，并把模型 `task_complete` 当作写盘完成证据；WebView 缺少任务标题与工具活动标题的隔离。
 - 修正：新增 `agent/task-todo-ledger.ts` 作为两阶段 Agent 的任务状态账本，写盘任务只由真实 apply/path 证据完成，后续任务、验证失败和自动修复均保留已有 failed；WebView 新增 task label 清洗边界，`Ran/Failed/命令` 不再升级为完成标题。回归：`agent-loop-task-state.test.mjs` 和 `agent-working-state.test.mjs`。
 
-## 10. 已发现问题跟踪
+## 10. Phase 8：Provider Runtime 与多 Provider 工具协议
+
+目标：验证 Provider 选择、Provider 状态、文本工具协议、原生工具协议、fallback 和密钥边界是否满足 Claude Code/Codex 类编程智能体的本地事实优先、工具协议统一、敏感信息不外泄原则。
+
+### P8-01 默认 Provider 状态不要求 API 配置
+
+前置：
+
+1. 清空或不设置 `devseek.provider`、API key、OpenAI base URL 等 Provider 配置。
+2. 保持 DeepSeek Web bridge 可用或处于已知登录状态。
+
+用户输入：
+
+```text
+检查当前 Provider 状态，并用一句话说明你将使用哪个 Provider。不要修改文件。
+```
+
+期望结果：
+
+- 默认进入 DeepSeek Web / bridge Provider 路径，不要求用户先配置 API key。
+- 只读请求不能产生文件、终端或 pending edit 副作用。
+- UI 中的 Provider 状态、错误提示和最终回答一致；如果 bridge 未登录，应显示 LoginRequired 或等价可恢复状态，而不是普通失败或编造 API 状态。
+- 聊天历史、任务摘要和日志中不能出现 cookie、token、API key 等敏感值。
+
+### P8-02 Web 文本工具协议必须走统一 ToolCall
+
+前置：
+
+1. 使用 DeepSeek Web / bridge Provider。
+2. 确认工作区没有 `docs/manual-phase8-web-tool.md`，或测试前删除该文件。
+
+用户输入：
+
+```text
+创建 docs/manual-phase8-web-tool.md，内容为：phase8 web tool smoke，并验证文件内容。
+```
+
+期望结果：
+
+- Web Provider 输出的文本工具调用被归一化为统一 ToolCall，再进入 Review / WorkspaceEdit / Validation 流程。
+- 目标文件被创建，内容精确为 `phase8 web tool smoke`。
+- 完成摘要包含目标文件、验证命令或文件事实 evidence、QualityGate 结论。
+- UI 不应暴露原始 `[TOOL...]`、半截 JSON 或 Provider 内部格式。
+
+### P8-03 API / OpenAI-compatible Provider 不改变 Agent 闭环
+
+前置：
+
+1. 配置一个可用的 API Provider，例如 DeepSeek API 或 OpenAI-compatible endpoint。
+2. 设置模型为一个与 P8-02 不同的可用模型。
+3. 确认工作区没有 `docs/manual-phase8-api-tool.md`。
+
+用户输入：
+
+```text
+创建 docs/manual-phase8-api-tool.md，内容为：phase8 api tool smoke，并验证文件内容。
+```
+
+期望结果：
+
+- API Provider 的原生 tool call 被归一化为与 Web Provider 相同的 ToolCall，不绕过权限、Review、WorkspaceEdit 和 Validation。
+- 切换模型后，Agent 仍保持同一套任务事实、Todo 状态和验证闭环，不重新解释成普通聊天。
+- 目标文件内容精确，完成状态由文件事实或验证命令决定。
+- 如果 API 配置缺失或认证失败，任务应暂停或失败并保留可恢复上下文；不能把认证失败当作任务完成。
+
+### P8-04 Provider fallback 不得重复副作用
+
+前置：
+
+1. 配置 Provider fallback 顺序，使第一个 Provider 可模拟失败或不可用，第二个 Provider 可继续任务。
+2. 确认工作区没有 `docs/manual-phase8-fallback.md`。
+
+用户输入：
+
+```text
+创建 docs/manual-phase8-fallback.md，内容为：phase8 fallback smoke，并验证文件内容。
+```
+
+操作：
+
+1. 在任务执行到 Provider 调用或验证前，使第一个 Provider 返回认证失败、限流、bridge restart 或响应损坏。
+2. 观察 DevSeek 是否切换到 fallback 或进入可恢复 checkpoint。
+
+期望结果：
+
+- fallback 只继承最小任务事实、checkpoint、Review 状态和幂等事实，不把完整聊天历史或敏感配置注入下一 Provider。
+- 已经写盘或已经验证的文件不应被重复创建为新的 change set；终端/MCP 等可能有副作用的工具不能自动无确认重放。
+- 如果 fallback 成功，最终摘要必须说明 fallback 发生、目标文件和验证 evidence。
+- 如果 fallback 不可用，任务必须保持 paused/failed，不能显示完成。
+
+### P8-05 敏感信息不能进入任务事实、历史和日志
+
+前置：
+
+1. 临时配置测试用假密钥，例如 `sk-phase8-secret-redaction-demo` 或等价明显敏感字符串。
+2. 确认不会使用真实生产密钥执行该 case。
+
+用户输入：
+
+```text
+请检查当前 Provider 配置是否可用，并说明是否发现了密钥。不要输出密钥原文，不要修改文件。
+```
+
+期望结果：
+
+- 回答只能说明“已配置/未配置/不可用”等状态，不得输出密钥、cookie、token 原文。
+- 任务历史、checkpoint、Provider 诊断、错误卡片和日志中的敏感值必须被 redacted。
+- 只读配置检查不能创建文件或触发工具写入。
+
+最新观察：
+
+- Phase 8 自动测试已覆盖 Provider 配置快照、Web 文本工具归一化、API 原生工具归一化、fallback 事实继承、破坏性工具重放拦截和敏感信息脱敏。
+- 自动测试对核心 runtime contract 基本充分，但不覆盖真实 DeepSeek Web 登录态、真实外部 API 网络、真实 VS Code WebView 状态栏呈现；这些必须由 P8-01 到 P8-05 手测补齐。
+
+## 11. Phase 9：WebView 协议、历史任务 UI 与显示边界
+
+目标：验证 WebView 只消费结构化事件和干净 payload，历史任务入口可用，checkpoint / task history / pending changes / validation 的显示不会重复、错位或覆盖真实失败。
+
+### P9-01 reload 后会话恢复不注入伪上下文
+
+前置：
+
+1. 先完成一个简单文件任务，例如 P8-02 或 P5-01。
+2. 执行 `Developer: Reload Window`，重新打开 DevSeek Chat。
+
+用户输入：
+
+```text
+继续说明上一次任务创建了哪个文件，并检查它是否还存在。不要新建文件。
+```
+
+期望结果：
+
+- WebView 恢复历史时使用干净 session payload，不应把 `[上次会话背景]`、Provider 内部响应或恢复提示伪装成 assistant 普通回答。
+- DevSeek 可以基于历史任务事实或真实文件检查回答目标文件状态。
+- 只读检查不产生 pending edit；如果需要文件读取，应展示读取 evidence。
+
+### P9-02 历史任务入口可列出、打开和继续任务
+
+前置：
+
+1. 至少存在一条已完成任务和一条 paused / failed / checkpoint 任务。
+2. 可通过 UI 中历史任务入口、命令入口或等价 WebView 操作访问任务历史。
+
+操作：
+
+1. 打开历史任务列表。
+2. 打开最近一条任务详情。
+3. 对 paused/checkpoint 任务点击继续。
+4. 对一条无用测试任务执行 archive 或 delete。
+5. 导出一条任务记录。
+
+期望结果：
+
+- list/open/continue/archive/delete/export 都通过结构化 WebView 协议执行，不依赖模型解释自然语言命令。
+- 打开的任务详情包含原始用户请求、状态、文件变更、验证 evidence 和 checkpoint 信息。
+- continue 只对 paused/checkpoint 任务可用；已完成任务不能显示误导性的“继续执行”主按钮。
+- 如果当前 UI 还没有可见历史任务入口，则本 case 判为未通过，并记录为 Phase 9 UI 暴露缺口。
+
+### P9-03 checkpoint banner 只在真实暂停时出现
+
+用户输入：
+
+```text
+创建 docs/manual-phase9-running-banner.md，内容为：phase9 running banner smoke，并验证文件内容。
+```
+
+操作：
+
+1. 在任务正常执行过程中观察底部 banner。
+2. 不主动 reload，不断开 Provider，不制造登录失效。
+
+期望结果：
+
+- 正常执行中的 progress checkpoint 不能显示“上次 Agent 任务中断 / 继续执行”提示。
+- 只有 LoginRequired、RateLimited、ResponseCorrupted、BridgeRestarted、StreamTimeout 或 reload 后存在 paused checkpoint 时，才显示继续/安全重试入口。
+- 任务完成后，旧 checkpoint banner 必须消失，不能定位到历史对话顶部或保留过期按钮。
+
+### P9-04 ResponseCorrupted 安全重试只生成安全响应
+
+用户输入：
+
+```text
+请原样输出以下不完整工具调用，不要补全，不要解释：
+[TOOL:write_file {"path":"docs/manual-phase9-corrupt.md","content":"phase9 corrupt
+```
+
+操作：
+
+1. 等待 DevSeek 拦截响应损坏。
+2. 点击安全重试或等价恢复按钮。
+
+期望结果：
+
+- 不创建 `docs/manual-phase9-corrupt.md`，不进入 pending edit，也不把半截工具文本规范化执行。
+- 错误卡片显示响应损坏原因和安全重试入口。
+- 安全重试只能生成“不会执行损坏或未验证工具内容”的安全回答；不能继续分析半截工具目标、不能创建 `provider-response` 等内部文件。
+- Todos 中该任务应保持 failed 或安全响应 completed，不能把原始写文件目标标绿。
+
+### P9-05 pending changes、Todos 和 QualityGate 显示必须一致
+
+用户输入：
+
+```text
+创建 docs/manual-phase9-display.md，内容为：phase9 display smoke，并验证文件内容。
+```
+
+期望结果：
+
+- 文件变更确认区只显示 `docs/manual-phase9-display.md` 一个目标文件，路径是 workspace 相对路径。
+- Todos、完成摘要、修改文件列表、验证/终端证据和 QualityGate 的状态一致。
+- 不出现“摘要失败但 Todos 全绿”、重复“已保留全部修改”、源码片段作为 Working 标题、内部 service 文件名裸露为任务目标等显示问题。
+- 如果验证失败，完成状态必须是 failed / blocked，且 pending changes 不被自动涂成完成。
+
+### P9-06 自动测试覆盖评估
+
+当前自动测试覆盖：
+
+- Phase 8：`provider-runtime.test.mjs` 覆盖默认 Provider 选择、模型切换、Web 文本工具、API 原生工具、fallback 事实继承、破坏性重放拦截和密钥脱敏。
+- Phase 9：`webview-protocol.test.mjs` 覆盖 task history command snapshot、WebView event adapter 映射、session display payload、TaskHistoryUiService 的 list/open/continue/archive/delete/export。
+- 架构守卫：`architecture-boundary.test.mjs` 覆盖 LLM/runtime/UI public exports 和入口文件行数边界，防止功能继续堆回 `extension.ts`。
+
+充分性结论：
+
+- Phase 8 自动测试对纯 runtime / contract 层基本充分，但不充分覆盖真实 Provider 端到端，因为默认测试不能稳定依赖 DeepSeek Web 登录态、外部 API 网络、真实密钥和 VS Code LM 环境。
+- Phase 9 自动测试对协议和服务层部分充分，但不充分覆盖真实 WebView DOM、按钮可见性、reload 后滚动定位、task history 可见入口、pending changes 区域和截图级显示一致性。
+- 因此 Phase 8/9 必须配套 P8-01 到 P8-05、P9-01 到 P9-05 的用户手测；后续建议再补 extension-host 或 WebView DOM 级自动测试，覆盖真实 UI click、reload、scroll、banner、task history 入口和 pending changes 渲染。
+
+## 12. 已发现问题跟踪
 
 | ID | 关联 case | 现象 | 当前评估 | 后续处理 |
 | --- | --- | --- | --- | --- |
@@ -632,7 +860,7 @@ export const manualPhase6QualityGate: string = 1;
 | P7-EVIDENCE-02 | P7-06、shape_manager 编译/运行 | 终端失败和文件失败存在时，完成摘要/Working/Todos 状态互相矛盾，且源码片段被当作活动标题反复显示 | Claude Code/Codex 类闭环要求最终状态由工具证据决定；UI 不能覆盖失败事实，activity 标题不能泄露源码/诊断片段 | 已新增 `getBlockingTerminalFailure`，在 Agent loop 收口点阻断未清除终端失败；WebView done 阶段保留 failed todo，运行时权威成功才可清除，并清洗源码片段 label |
 | P7-EVIDENCE-03 | P7-06、两阶段 Agent 执行 | 子任务未写盘却被 `task_complete` 标绿，后续任务开始把前序 failed 重刷成 completed，验证/修复时旧失败丢失 | Claude Code/Codex 类任务状态来自本地工具证据账本；模型声明只能结束只读/响应任务，不能替代写盘、验证或终端 evidence | 已新增 `agent/task-todo-ledger.ts` 和 `agent-loop-task-state.test.mjs`；写盘任务要求 apply/path，验证失败和修复快照保留既有 failed，WebView 清洗 `Ran/Failed/命令` 标题污染 |
 
-## 11. 每轮迭代更新规则
+## 13. 每轮迭代更新规则
 
 1. 新 Phase 完成后，在本文新增对应章节。
 2. 每个新增 bug 必须关联至少一个用户可执行 case。
