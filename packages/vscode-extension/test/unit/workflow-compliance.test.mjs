@@ -104,12 +104,12 @@ test('§8.3 File edits: renderPendingContentFromHunks function present', () => {
 });
 
 test('§8.3 File edits: keepPendingHunk function present', () => {
-  const code = src('src/extension.ts');
+  const code = src('src/ui/deepseek-view-provider.ts');
   assertContains(code, 'keepPendingHunk', '§8.3 keep hunk');
 });
 
 test('§8.3 File edits: undoPendingHunk function present', () => {
-  const code = src('src/extension.ts');
+  const code = src('src/ui/deepseek-view-provider.ts');
   assertContains(code, 'undoPendingHunk', '§8.3 undo hunk');
 });
 
@@ -209,19 +209,22 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
 
 test('§8.3 File edits: blocked QualityGate does not enter closed-loop repair', () => {
   const extension = src('src/extension.ts');
+  const viewProvider = src('src/ui/deepseek-view-provider.ts');
+  const repairCallSites = `${extension}\n${viewProvider}`;
   const repairService = src('src/app/agentic-repair-service.ts');
   assertContains(repairService, 'function shouldRunClosedLoopRepair', 'closed-loop repair must have an explicit app-service gate');
   assertContains(repairService, "validation.status === 'failed'", 'only failed command evidence is repairable');
   assertContains(repairService, 'validation.ran === true', 'blocked or skipped validation must not be repairable');
   assertContains(repairService, "qualityGate?.status !== 'blocked'", 'QualityGate blocked must stop automatic repair');
   assert.doesNotMatch(extension, /function shouldRunClosedLoopRepair\(/, 'extension must not own closed-loop repair gate logic');
+  assert.doesNotMatch(viewProvider, /function shouldRunClosedLoopRepair\(/, 'view provider must not own closed-loop repair gate logic');
   assert.match(
-    extension,
+    repairCallSites,
     /if \(shouldRunClosedLoopRepair\(finalResult\)\)/,
     'manual apply path must use the repairability gate after apply-failure recovery',
   );
   assert.match(
-    extension,
+    repairCallSites,
     /if \(shouldRunClosedLoopRepair\(finalApply\)\)/,
     'agentic auto-apply path must use the repairability gate after apply-failure recovery',
   );
@@ -417,7 +420,7 @@ test('§8.5 Steer: agent-queue-indicator present in webview.js', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 test('§8.6 Memory: showMemoryFiles command registered', () => {
-  const code = src('src/extension.ts');
+  const code = src('src/ui/extension-command-registration.ts');
   assertContains(code, 'devseek.showMemoryFiles', '§8.6 show memory files command');
 });
 
@@ -440,8 +443,8 @@ test('§9 Vision: images sent in chat message from webview.js', () => {
   assertContains(code, 'images: pendingImages', '§9 images in postMessage');
 });
 
-test('§9 Vision: msg.images handled in extension.ts', () => {
-  const code = src('src/extension.ts');
+test('§9 Vision: msg.images handled by VS Code surface adapter', () => {
+  const code = src('src/ui/deepseek-view-provider.ts');
   assertContains(code, 'msg.images', '§9 images received and passed to runChat');
 });
 

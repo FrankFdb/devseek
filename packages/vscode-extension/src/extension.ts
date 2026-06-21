@@ -1,25 +1,16 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as nodePath from 'path';
-import { chat, ping, cancel, relogin, status, readWorkspaceFile, ensureBridgeRunning, preattachFiles, setBridgeExtensionRoot } from './bridge-client';
+import { chat, relogin, status, readWorkspaceFile, ensureBridgeRunning, setBridgeExtensionRoot } from './bridge-client';
 import { createProviderStatusBar, getActiveProvider, getActiveProviderType, getProviderConfigService, promptUpdateApiKey } from './llm/provider-router';
 import { type ChatMessage, type TokenUsage } from './llm/types';
 import { getProjectRules, invalidateProjectRulesCache, getProjectMemorySync, assembleProjectRulesAndMemoryContext } from './project-rules';
 import {
-  explainCode, fixBug, refactorCode, genTest, genDoc, askQuestion,
-  generateCommitMessage, applyDiff, runTests,
-} from './commands';
-import {
-  buildContext, buildCompletionPrompt, buildInlineChatPrompt,
-  getProblemsContext, getDiagnosticsContext,
+  getDiagnosticsContext,
 } from './context-builder';
 import {
   applyGeneratedArtifactsWithPrompt,
-  applyGeneratedArtifactPathWithPrompt,
-  previewGeneratedArtifactsWithPrompt,
-  previewGeneratedArtifactPathWithPrompt,
   resolveGeneratedArtifactPathForPrompt,
-  type AppliedChangeRecord,
   type ApplyWorkflowStatus,
 } from './workspace-applier';
 import { detectWorkspacePathScope, isGeneratedArtifactAllowedForPrompt } from './workspace/path-resolver';
@@ -72,7 +63,6 @@ import {
 import { buildProviderRecoveryCheckpointTasks, buildProviderRecoveryDisplay, ProviderRecoveryService } from './app/provider-recovery-service';
 import { resolveProviderStatusResponse } from './app/provider-status-service';
 import { PendingEditCoordinator } from './pending-edit-coordinator';
-import { addResourceToChat, insertCodeToEditor } from './app/chat-resource-actions';
 import { recordTrackedChatHistory as recordTrackedChatHistoryState } from './app/chat-history-tracker';
 import {
   AGENT_CODE_FILE_RE,
@@ -80,20 +70,19 @@ import {
   resolveSessionContinuationFilesFromState,
   type AgentSessionState,
 } from './app/agent-session-context';
-import { emitResponseMeta, injectFileHintsIntoResponse, openWorkspacePathInEditor, pushUiSettings } from './ui/generated-artifact-ui';
+import { emitResponseMeta, injectFileHintsIntoResponse } from './ui/generated-artifact-ui';
 import { postWebviewEvent, postWebviewMessage } from './ui/webview-event-adapter';
-import { getChatHtml } from './ui/webview-html';
+import { DeepSeekViewProvider } from './ui/deepseek-view-provider';
 import type { WebviewInboundMessage } from './ui/webview-protocol';
 import { stripToolCallBlocks } from './agent/fake-tool-parser';
 import { buildAgentRunDisplayProfile } from './agent/agent-run-display';
 import {
-  buildWorkspaceFileTree,
   discoverFilesFromDirectoryPrompt,
-  getGitDiff,
   relPathFromWorkspace,
   toContextDisplayLabels,
 } from './app/context-discovery-service';
 import { TaskHistoryUiService } from './app/task-history-ui-service';
+import { registerExtensionCommands } from './ui/extension-command-registration';
 import {
   appendFileAwareFormatHint,
   appendStructuredGenerationHint,
@@ -110,22 +99,9 @@ import {
 // ----------------------------------------------------------------
 type WebviewMessage = WebviewInboundMessage;
 
-interface PendingItem {
-  userDisplay: string;
-  prompt: string;
-  newSession: boolean;
-}
-
-interface PendingAttachment {
-  label: string;
-  content: string;
-  filePath?: string;
-}
-
 // ----------------------------------------------------------------
 // Sidebar chat view state (single-level entry, no launcher page)
 // ----------------------------------------------------------------
-let extensionUriGlobal: vscode.Uri;
 let viewProvider: DeepSeekViewProvider;
 let lastLocalExecutionPlan: LocalExecutionPlan | undefined;
 let pendingEditCoordinator: PendingEditCoordinator;
@@ -178,576 +154,6 @@ async function loadFreshAgentCheckpoint(maxAgeMs: number): Promise<AgentTaskChec
   if (!extContext) return undefined;
   const result = await new TaskCheckpointStore<AgentTask>(extContext.workspaceState, CHECKPOINT_KEY).loadFresh(maxAgeMs);
   return result?.checkpoint;
-}
-
-/** Provider keeps push() API but drives a Sidebar WebviewView directly. */
-class DeepSeekViewProvider implements vscode.WebviewViewProvider {
-  private _view?: vscode.WebviewView;
-  private _ready = false;
-  private _pendingQueue: PendingItem[] = [];
-  private _pendingAttachments: PendingAttachment[] = [];
-
-  focus(): void {
-    void vscode.commands.executeCommand('workbench.view.extension.devseek-sidebar');
-    void vscode.commands.executeCommand('devseek.chatViewLauncher.focus');
-  }
-
-  push(userDisplay: string, prompt: string, newSession: boolean): void {
-    this.focus();
-    if (this._ready && this._view) {
-      void runChat(this._view.webview, userDisplay, prompt, newSession);
-    } else {
-      this._pendingQueue.push({ userDisplay, prompt, newSession });
-    }
-  }
-
-  addToChat(label: string, content: string, filePath?: string): void {
-    this.focus();
-    if (this._ready && this._view) {
-      this._view.webview.postMessage({ type: 'addToChat', label, content, filePath });
-    } else {
-      this._pendingAttachments.push({ label, content, filePath });
-    }
-    if (filePath) {
-      void ping().then(online => { if (online) return preattachFiles([filePath]); });
-    }
-  }
-
-  /** Add a directory as a single badge; all file paths are sent when user submits. */
-  addDirectoryToChat(label: string, filePaths: string[]): void {
-    this.focus();
-    if (this._ready && this._view) {
-      this._view.webview.postMessage({ type: 'addToChat', label, content: '', filePath: null, directoryPaths: filePaths });
-    } else {
-      // Queue as multiple individual files so they're sent when ready
-      for (const fp of filePaths) {
-        this._pendingAttachments.push({ label: nodePath.basename(fp), content: '', filePath: fp });
-      }
-    }
-    // Pre-attach all files in background
-    if (filePaths.length > 0) {
-      void ping().then(online => { if (online) return preattachFiles(filePaths); });
-    }
-  }
-
-  /**
-   * P3-3: 将行内聊天产生的改动注册为 Pending Edit。
-   * 触发侧边栏显示并自动打开 Diff 视图，让用户可以对比/撤销。
-   */
-  async registerInlineChatEdit(change: AppliedChangeRecord): Promise<void> {
-    if (this._view?.webview) {
-      await pendingEditCoordinator.registerChange(this._view.webview, change);
-    }
-  }
-
-  /** G-5: Post an arbitrary message to the webview if it's active. */
-  postMessage(msg: unknown): void {
-    this._view?.webview.postMessage(msg);
-  }
-
-  /** G-5: Get the webview instance (may be undefined before first resolve). */
-  get webview(): vscode.Webview | undefined {
-    return this._view?.webview;
-  }
-
-  resolveWebviewView(webviewView: vscode.WebviewView): void {
-    this._view = webviewView;
-    this._ready = false;
-
-    webviewView.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [extensionUriGlobal],
-    };
-    webviewView.webview.html = getChatHtml(webviewView.webview, extensionUriGlobal);
-
-    webviewView.webview.onDidReceiveMessage(async (msg: WebviewMessage) => {
-      await this._onMessage(webviewView.webview, msg);
-    });
-
-    // 当用户在 VS Code 状态栏切换 provider 时，立即通知 webview 重新检查状态
-    const cfgSub = vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration('devseek.provider') && this._view) {
-        this._view.webview.postMessage({ type: 'triggerStatusPoll' });
-      }
-    });
-
-    webviewView.onDidDispose(() => {
-      this._view = undefined;
-      this._ready = false;
-      cfgSub.dispose();
-    });
-  }
-
-  private async _onMessage(wv: vscode.Webview, msg: WebviewMessage): Promise<void> {
-    switch (msg.type) {
-      case 'ready':
-        this._ready = true;
-        pushUiSettings(wv);
-        pendingEditCoordinator.post(wv);
-        this._flushQueue();
-        // Restore active session to webview UI on reload.
-        // NOTE: nonBridgeChatHistory is intentionally empty on startup (clean LLM context).
-        // We read the stored history directly for UI display only.
-        if (activeSessionId) {
-          const _storedHistForUI = extContext?.workspaceState.get<ChatMessage[]>(`deepseek.session.${activeSessionId}.history`, []) ?? [];
-          const _storedSumForUI = extContext?.workspaceState.get<string>(`deepseek.session.${activeSessionId}.summary`, '') ?? '';
-          const _payload = buildSessionLoadedPayload({
-            id: activeSessionId,
-            history: _storedHistForUI,
-            summary: _storedSumForUI,
-            meta: getSessions().find(s => s.id === activeSessionId),
-          });
-          if (_payload.history.length > 0 || _payload.summary) postWebviewMessage(wv, _payload);
-        }
-        // 断点续传：notify webview if there is a fresh unfinished task checkpoint
-        {
-          const _cp = await loadFreshAgentCheckpoint(7_200_000);
-          if (_cp) {
-            postWebviewMessage(wv, {
-              type: 'agentCheckpointAvailable',
-              resumeTaskIndex: _cp.startFromIndex,
-              totalTasks: _cp.allTasks.length,
-              userPrompt: _cp.displayPrompt,
-              savedAt: _cp.savedAt,
-              recoveryKind: _cp.recoveryKind,
-              pauseReason: _cp.pauseReason,
-            });
-          }
-        }
-        break;
-      case 'chat':
-        if (msg.text) {
-          await runChat(
-            wv,
-            msg.text,
-            msg.prompt ?? msg.text,
-            msg.newSession ?? false,
-            msg.mode,
-            msg.files,
-            msg.forceNoAgent === true,
-            undefined,
-            undefined,
-            msg.images,
-            msg.intentConfirmed === true,
-            msg.suppressUserMessage === true,
-          );
-        }
-        break;
-      case 'agentSteer': {
-        const steerText = (msg.prompt ?? msg.text ?? '').trim();
-        if (!steerText) break;
-        if (!activeChatAbortController || activeChatAbortController.signal.aborted) {
-          wv.postMessage({ type: 'agentSteerRejected', text: '当前没有正在运行的 Agent 任务。' });
-          break;
-        }
-        const fileNote = (msg.files && msg.files.length > 0)
-          ? `\n\n【用户补充附件路径】\n${msg.files.map(f => `- ${f}`).join('\n')}`
-          : '';
-        activeAgentSteerQueue.push(`${steerText}${fileNote}`);
-        wv.postMessage({ type: 'agentSteerAccepted', text: msg.text ?? steerText });
-        break;
-      }
-      case 'previewGeneratedFiles':
-        if (msg.text) { await previewGeneratedArtifactsWithPrompt(msg.text, msg.prompt); }
-        break;
-      case 'applyGeneratedFiles':
-        if (msg.text) {
-          const result = await applyGeneratedArtifactsWithPrompt(msg.text, msg.prompt, async (status: ApplyWorkflowStatus) => {
-            postWebviewEvent(wv, { kind: 'workflow', status });
-          }, msg.autoApply === true, async (change) => {
-            await pendingEditCoordinator.registerChange(wv, change);
-          }, msg.files, { rollbackOnValidationFailure: msg.autoApply !== true });
-
-          const recovered = await recoverApplyFailureIfPossible({
-            reporter: async (status: ApplyWorkflowStatus) => { postWebviewEvent(wv, { kind: 'workflow', status }); },
-            originalPrompt: msg.prompt ?? msg.text,
-            failedResponse: msg.text,
-            failedApply: result,
-            preferredAbsolutePaths: msg.files,
-            chat: (repairPrompt) => routeChat({ prompt: repairPrompt, newSession: false, mode: msg.mode, stream: false, trackHistory: false }),
-            apply: (repairResponse, repairPrompt, onAppliedChange) => applyGeneratedArtifactsWithPrompt(
-              repairResponse, repairPrompt, async (status) => { postWebviewEvent(wv, { kind: 'workflow', status }); },
-              true, onAppliedChange, msg.files, { rollbackOnValidationFailure: false },
-            ),
-            onAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(wv, change); },
-          });
-          const finalResult = recovered ?? result;
-
-          if (shouldRunClosedLoopRepair(finalResult)) {
-            const originalPrompt = msg.prompt || '请根据自动验证失败结果继续修复，直到通过。';
-            await runClosedLoopRepair({
-              webview: wv,
-              reporter: async (status: ApplyWorkflowStatus) => {
-                postWebviewEvent(wv, { kind: 'workflow', status });
-              },
-              originalPrompt,
-              mode: msg.mode,
-              initialApply: finalResult,
-              preferredAbsolutePaths: msg.files ?? lastConversationFiles,
-              routeChat,
-              registerAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(wv, change); },
-              getSessionId: () => activeSessionId,
-            });
-          }
-        }
-        break;
-      case 'openGeneratedPath':
-        if (msg.path) {
-          await openWorkspacePathInEditor({
-            rawPath: msg.path,
-            line: msg.line,
-            generatedText: msg.text,
-            requestPrompt: msg.prompt,
-            preferredAbsolutePaths: msg.files,
-            fallbackAbsolutePaths: lastConversationFiles,
-          });
-        }
-        break;
-      case 'previewGeneratedPath':
-        if (msg.text && msg.path) {
-          await previewGeneratedArtifactPathWithPrompt(msg.text, msg.path, msg.prompt);
-        }
-        break;
-      case 'applyGeneratedPath':
-        if (msg.text && msg.path) {
-          const result = await applyGeneratedArtifactPathWithPrompt(
-            msg.text,
-            msg.path,
-            msg.prompt,
-            async (status: ApplyWorkflowStatus) => {
-              postWebviewEvent(wv, { kind: 'workflow', status });
-            },
-            msg.autoApply === true,
-            async (change) => {
-              await pendingEditCoordinator.registerChange(wv, change);
-            },
-            msg.files,
-          );
-
-          const recovered = await recoverApplyFailureIfPossible({
-            reporter: async (status: ApplyWorkflowStatus) => { postWebviewEvent(wv, { kind: 'workflow', status }); },
-            originalPrompt: msg.prompt ?? `请修复文件 ${msg.path}`,
-            failedResponse: msg.text,
-            failedApply: result,
-            preferredAbsolutePaths: msg.files,
-            chat: (repairPrompt) => routeChat({ prompt: repairPrompt, newSession: false, mode: msg.mode, stream: false, trackHistory: false }),
-            apply: (repairResponse, repairPrompt, onAppliedChange) => applyGeneratedArtifactsWithPrompt(
-              repairResponse, repairPrompt, async (status) => { postWebviewEvent(wv, { kind: 'workflow', status }); },
-              true, onAppliedChange, msg.files, { rollbackOnValidationFailure: false },
-            ),
-            onAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(wv, change); },
-          });
-          const finalResult = recovered ?? result;
-
-          if (shouldRunClosedLoopRepair(finalResult)) {
-            const originalPrompt = msg.prompt || `请继续修复文件 ${msg.path} 的验证失败问题，直到通过。`;
-            await runClosedLoopRepair({
-              webview: wv,
-              reporter: async (status: ApplyWorkflowStatus) => {
-                postWebviewEvent(wv, { kind: 'workflow', status });
-              },
-              originalPrompt,
-              mode: msg.mode,
-              initialApply: finalResult,
-              preferredAbsolutePaths: msg.files ?? lastConversationFiles,
-              routeChat,
-              registerAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(wv, change); },
-              getSessionId: () => activeSessionId,
-            });
-          }
-        }
-        break;
-      case 'openPendingEdit':
-        if (msg.editId || msg.path) {
-          await pendingEditCoordinator.open(
-            msg.editId,
-            msg.path,
-            msg.hunkId,
-            typeof msg.hunkLine === 'number' ? msg.hunkLine : undefined,
-          );
-        }
-        break;
-      case 'keepPendingHunk':
-        if (msg.editId || msg.path) {
-          pendingEditCoordinator.keepHunkWithNotice(wv, msg.editId, msg.path, msg.hunkId);
-        }
-        break;
-      case 'undoPendingHunk':
-        if (msg.editId || msg.path) {
-          await pendingEditCoordinator.undoHunkWithNotice(wv, msg.editId, msg.path, msg.hunkId);
-        }
-        break;
-      case 'keepPendingEdit':
-        if (msg.editId || msg.path) {
-          pendingEditCoordinator.keepEditWithNotice(wv, msg.editId, msg.path);
-        }
-        break;
-      case 'undoPendingEdit':
-        if (msg.editId || msg.path) {
-          await pendingEditCoordinator.undoEditWithNotice(wv, msg.editId, msg.path);
-        }
-        break;
-      case 'keepAllPendingEdits':
-        pendingEditCoordinator.keepAllWithNotice(wv);
-        break;
-      case 'undoAllPendingEdits':
-        await pendingEditCoordinator.undoAllWithNotice(wv);
-        break;
-      case 'cancel':
-        activeChatAbortController?.abort();
-        activeChatAbortController = null;
-        lastConversationFiles = [];
-        wv.postMessage({ type: 'contextFiles', files: [] });
-        await cancel();
-        break;
-      case 'clearContext':
-        lastConversationFiles = [];
-        wv.postMessage({ type: 'contextFiles', files: [] });
-        break;
-      case 'agentToggle': {
-        const newVal = msg.enabled === true;
-        await vscode.workspace.getConfiguration('devseek').update('agentEnabled', newVal, vscode.ConfigurationTarget.Global);
-        break;
-      }
-      case 'clearHistory':
-        wv.postMessage({ type: 'clearHistory' });
-        break;
-      case 'insertCode':
-        if (msg.code) { insertCodeToEditor(msg.code); }
-        break;
-      case 'relogin': {
-        await vscode.window.withProgress(
-          { location: vscode.ProgressLocation.Notification, title: 'DevSeek：正在启动 Bridge…', cancellable: false },
-          async (progress) => {
-            const ready = await ensureBridgeRunning(true); // 强制重启，确保新版本
-            if (!ready) {
-              const action = await vscode.window.showErrorMessage(
-                'Bridge 启动失败：未找到或无法启动内置 Bridge。请重新安装最新 VSIX，或改用 AI API 模式。',
-                '切换到 API 模式', '查看说明',
-              );
-              if (action === '切换到 API 模式') {
-                await vscode.commands.executeCommand('devseek.switchProvider');
-              } else if (action === '查看说明') {
-                vscode.window.showInformationMessage('网页免费方式会随扩展内置 Bridge 启动；若刚安装过，请重载 VS Code 窗口后再点击登录。');
-              }
-              return;
-            }
-            progress.report({ message: '正在打开登录页…' });
-            const ok = await relogin();
-            if (ok) {
-              vscode.window.showInformationMessage('浏览器已打开，请完成登录后即可继续使用 DevSeek。');
-              setTimeout(() => wv.postMessage({ type: 'triggerStatusPoll' }), 3000);
-            } else {
-              vscode.window.showErrorMessage('无法打开登录页，请检查 Bridge 状态。');
-            }
-          },
-        );
-        break;
-      }
-      case 'getStatus': {
-        try {
-        const pType = getActiveProviderType();
-        if (pType !== 'bridge') {
-          // 非-bridge provider：检查 provider 可用性，不检查 bridge 状态
-          const prov = getActiveProvider();
-          const avail = await prov.available();
-          const cfg2 = vscode.workspace.getConfiguration('devseek');
-          let providerLabel = '已就绪';
-          if (pType === 'deepseek-api') {
-            providerLabel = `API: ${cfg2.get<string>('model', 'deepseek-chat')}`;
-          } else if (pType === 'openai-compat') {
-            providerLabel = `OAI: ${cfg2.get<string>('openaiCompatModel', 'llama3')}`;
-          }
-          wv.postMessage({
-            type: 'statusUpdate',
-            online: avail,
-            loggedIn: avail,
-            providerMode: pType,
-            providerLabel: avail ? providerLabel : '未配置（点击 ⚙ 设置）',
-          });
-        } else {
-          const s = await status();
-          wv.postMessage({
-            type: 'statusUpdate',
-            online: s !== null,
-            loggedIn: s?.browserReady ?? false,
-            providerMode: 'bridge',
-          });
-        }
-        } catch {
-          // 异常时兜底：显示离线状态
-          wv.postMessage({ type: 'statusUpdate', online: false, loggedIn: false, providerMode: 'bridge' });
-        }
-        break;
-      }
-      case 'setMode':
-        break;
-      case 'terminalConfirmReply': {
-        // G-2: user clicked Allow / Always Allow / Skip on the inline terminal confirm card
-        terminalPermissionCoordinator.handleConfirmReply(
-          msg.confirmId as string,
-          msg.allow === true,
-          msg.alwaysAllow === true,
-        );
-        break;
-      }
-      case 'runInVsTerminal': {
-        // Launch the VS Code integrated terminal and run the command
-        const termCmd = msg.text || '';
-        const termCwd = msg.path || '';
-        if (termCmd) {
-          const terminalInstance = vscode.window.createTerminal({
-            name: 'DevSeek Run',
-            cwd: termCwd || undefined,
-          });
-          terminalInstance.show(true);
-          terminalInstance.sendText(termCmd);
-        }
-        break;
-      }
-      case 'setAutopilot': {
-        const config = vscode.workspace.getConfiguration('devseek');
-        await config.update('autopilotMode', msg.autopilot === true, vscode.ConfigurationTarget.Global);
-        break;
-      }
-      case 'runCommand':
-        if (msg.command) { await vscode.commands.executeCommand(msg.command as string); }
-        break;
-      case 'getProblems': {
-        const problems = getProblemsContext();
-        const injected = problems
-          ? `\n\n**诊断错误：**\n\`\`\`\n${problems}\n\`\`\``
-          : '（无诊断错误）';
-        const finalText = (msg.text as string).replace('#problems', injected);
-        await runChat(wv, finalText, finalText, msg.newSession ?? false);
-        break;
-      }
-      case 'resolveFile': {
-        const filePath = msg.path as string;
-        if (filePath === 'workspace' || filePath === 'ws') {
-          const tree = buildWorkspaceFileTree();
-          const injection = tree
-            ? `\n\n**工作区文件结构：**\n\`\`\`\n${tree}\n\`\`\``
-            : '（工作区为空或未打开）';
-          const resolvedText = (msg.text as string).replace(`@${filePath}`, injection);
-          await runChat(wv, resolvedText, resolvedText, msg.newSession ?? false);
-          break;
-        }
-        // @git → 注入 git diff（未暂存 + 暂存变更）
-        if (filePath === 'git') {
-          const diff = await getGitDiff(false);
-          const stagedDiff = await getGitDiff(true);
-          const combined = [
-            stagedDiff ? `# 已暂存（staged）\n${stagedDiff}` : '',
-            diff ? `# 未暂存（unstaged）\n${diff}` : '',
-          ].filter(Boolean).join('\n\n');
-          const injection = combined
-            ? `\n\n**Git 变更：**\n\`\`\`diff\n${combined.slice(0, 6000)}\n\`\`\``
-            : '（没有检测到 git 变更）';
-          const resolvedText = (msg.text as string).replace('@git', injection);
-          await runChat(wv, resolvedText, resolvedText, msg.newSession ?? false);
-          break;
-        }
-        // @problems → 注入 VS Code 诊断错误
-        if (filePath === 'problems') {
-          const problems = getProblemsContext();
-          const injection = problems
-            ? `\n\n**诊断错误：**\n\`\`\`\n${problems}\n\`\`\``
-            : '（无诊断错误）';
-          const resolvedText = (msg.text as string).replace('@problems', injection);
-          await runChat(wv, resolvedText, resolvedText, msg.newSession ?? false);
-          break;
-        }
-        const content = await readWorkspaceFile(filePath, lastConversationFiles);
-        const injection = content
-          ? `\n\n**文件内容 \`${filePath}\`：**\n\`\`\`\n${content.slice(0, 4000)}\n\`\`\``
-          : `（找不到文件：${filePath}）`;
-        const resolvedText = (msg.text as string).replace(`@${filePath}`, injection);
-        await runChat(wv, resolvedText, resolvedText, msg.newSession ?? false);
-        break;
-      }
-      // ── Session memory handlers ──────────────────────────────────────
-      case 'listSessions': {
-        const sessions = getSessions();
-        wv.postMessage({ type: 'sessionList', sessions, activeId: activeSessionId });
-        break;
-      }
-      case 'loadSession': {
-        const id = msg.id as string;
-        if (!id || !extContext) break;
-        saveCurrentSession();
-        activeSessionId = id;
-        getSessionService()?.setActiveSessionId(id);
-        const files = extContext.workspaceState.get<Record<string, string>>(
-          `deepseek.session.${id}.files`, {},
-        ) ?? {};
-        sessionRecentFiles.clear();
-        for (const [k, v] of Object.entries(files)) sessionRecentFiles.set(k, v);
-        const loadedSummary = extContext.workspaceState.get<string>(`deepseek.session.${id}.summary`, '') ?? '';
-        const loadedHistory = extContext.workspaceState.get<ChatMessage[]>(`deepseek.session.${id}.history`, []) ?? [];
-        nonBridgeChatHistory = buildRestoredSessionLlmHistory(loadedHistory, loadedSummary);
-        lastConversationFiles = [];
-        lastAnalysisText = extContext.workspaceState.get<string>(`deepseek.session.${id}.analysisText`, '') ?? '';
-        restoreLastAgentPathsFromSession(id);
-        const loadedMeta = getSessions().find(s => s.id === id);
-        postWebviewMessage(wv, buildSessionLoadedPayload({ id, history: loadedHistory, summary: loadedSummary, meta: loadedMeta }));
-        break;
-      }
-      case 'listTasks':
-      case 'openTask':
-      case 'continueTask':
-      case 'archiveTask':
-      case 'deleteTask':
-      case 'exportTask':
-        await handleTaskHistoryUiMessage(wv, msg);
-        break;
-      case 'deleteSession': {
-        const id = msg.id as string;
-        if (id) deleteSession(id);
-        wv.postMessage({ type: 'sessionList', sessions: getSessions(), activeId: activeSessionId });
-        break;
-      }
-      case 'saveSession':
-        saveCurrentSession();
-        break;
-      // ── 断点续传 message handlers ─────────────────────────────────────────
-      case 'resumeAgentCheckpoint': {
-        const cp = loadAgentCheckpoint();
-        if (!cp) break;
-        // Clear the banner from webview before re-running
-        wv.postMessage({ type: 'agentCheckpointCleared' });
-        await runChat(
-          wv,
-          cp.displayPrompt,
-          cp.userPrompt,
-          false,
-          cp.mode,
-          /* files */ undefined,
-          /* forceNoAgent */ false,
-          cp.startFromIndex,
-          cp.allTasks,
-        );
-        break;
-      }
-      case 'dismissAgentCheckpoint': {
-        await saveAgentCheckpoint(null);
-        break;
-      }
-    }
-  }
-
-  private _flushQueue(): void {
-    if (!this._view) return;
-    const wv = this._view.webview;
-    const files = this._pendingAttachments.splice(0);
-    for (const file of files) {
-      wv.postMessage({ type: 'addToChat', ...file });
-    }
-    const items = this._pendingQueue.splice(0);
-    for (const item of items) {
-      void runChat(wv, item.userDisplay, item.prompt, item.newSession);
-    }
-  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2399,6 +1805,26 @@ function deleteSession(id: string): void {
   getSessionService()?.deleteSession(id);
 }
 
+async function loadSessionIntoWebview(wv: vscode.Webview, id: string): Promise<void> {
+  if (!id || !extContext) return;
+  saveCurrentSession();
+  activeSessionId = id;
+  getSessionService()?.setActiveSessionId(id);
+  const files = extContext.workspaceState.get<Record<string, string>>(
+    `deepseek.session.${id}.files`, {},
+  ) ?? {};
+  sessionRecentFiles.clear();
+  for (const [key, value] of Object.entries(files)) sessionRecentFiles.set(key, value);
+  const loadedSummary = extContext.workspaceState.get<string>(`deepseek.session.${id}.summary`, '') ?? '';
+  const loadedHistory = extContext.workspaceState.get<ChatMessage[]>(`deepseek.session.${id}.history`, []) ?? [];
+  nonBridgeChatHistory = buildRestoredSessionLlmHistory(loadedHistory, loadedSummary);
+  lastConversationFiles = [];
+  lastAnalysisText = extContext.workspaceState.get<string>(`deepseek.session.${id}.analysisText`, '') ?? '';
+  restoreLastAgentPathsFromSession(id);
+  const loadedMeta = getSessions().find(session => session.id === id);
+  postWebviewMessage(wv, buildSessionLoadedPayload({ id, history: loadedHistory, summary: loadedSummary, meta: loadedMeta }));
+}
+
 async function handleTaskHistoryUiMessage(wv: vscode.Webview, msg: WebviewMessage): Promise<void> {
   if (!extContext) return;
   const service = new TaskHistoryUiService(extContext.workspaceState);
@@ -2428,13 +1854,44 @@ function initOrRestoreSession(): void {
 // ----------------------------------------------------------------
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   extContext = context;
-  extensionUriGlobal = context.extensionUri;
   setBridgeExtensionRoot(context.extensionUri.fsPath);
   await migrateLegacyDeepseekConfiguration();
-  viewProvider = new DeepSeekViewProvider();
   pendingEditCoordinator = new PendingEditCoordinator({
     getContextFiles: () => lastConversationFiles,
     getActiveWebview: () => viewProvider.webview,
+  });
+  viewProvider = new DeepSeekViewProvider({
+    extensionUri: context.extensionUri,
+    pendingEditCoordinator,
+    terminalPermissionCoordinator,
+    runChat,
+    routeChat,
+    getActiveSessionId: () => activeSessionId,
+    getLastConversationFiles: () => lastConversationFiles,
+    setLastConversationFiles: (files) => { lastConversationFiles = files; },
+    getActiveChatAbortController: () => activeChatAbortController,
+    setActiveChatAbortController: (controller) => { activeChatAbortController = controller; },
+    pushAgentSteer: (text) => { activeAgentSteerQueue.push(text); },
+    getActiveSessionPayload: () => {
+      if (!activeSessionId) return undefined;
+      const history = extContext?.workspaceState.get<ChatMessage[]>(`deepseek.session.${activeSessionId}.history`, []) ?? [];
+      const summary = extContext?.workspaceState.get<string>(`deepseek.session.${activeSessionId}.summary`, '') ?? '';
+      const payload = buildSessionLoadedPayload({
+        id: activeSessionId,
+        history,
+        summary,
+        meta: getSessions().find(session => session.id === activeSessionId),
+      });
+      return payload.history.length > 0 || payload.summary ? payload : undefined;
+    },
+    loadFreshAgentCheckpoint,
+    loadAgentCheckpoint,
+    saveAgentCheckpoint,
+    getSessions,
+    loadSession: loadSessionIntoWebview,
+    deleteSession,
+    saveCurrentSession,
+    handleTaskHistoryUiMessage,
   });
   pendingEditCoordinator.activate(context);
   initAgentLearner(context);
@@ -2476,235 +1933,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
 
-  // 内部命令：从代码命令分发到聊天面板
-  context.subscriptions.push(
-    vscode.commands.registerCommand(
-      '_deepseek.askChat',
-      (userDisplay: string, prompt: string, newSession: boolean) => {
-        pushChatPanel(userDisplay, prompt, newSession);
-      },
-    ),
-  );
-
-  // 用户可见命令
-  const cmds: [string, () => Promise<void>][] = [
-    ['devseek.explain',          explainCode],
-    ['devseek.fix',              fixBug],
-    ['devseek.refactor',         refactorCode],
-    ['devseek.genTest',          genTest],
-    ['devseek.runTests',         runTests],
-    ['devseek.genDoc',           genDoc],
-    ['devseek.ask',              askQuestion],
-    ['devseek.generateCommit',   generateCommitMessage],
-    ['devseek.applyDiff',        applyDiff],
-    ['devseek.openChat',         async () => { viewProvider.focus(); }],
-    ['devseek.triggerCompletion', async () => {
-      await vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
-    }],
-    // P2-3: run_in_terminal — 在集成终端执行命令并将输出发到聊天
-    ['devseek.runTerminalCommand', async () => {
-      const cmd = await vscode.window.showInputBox({
-        prompt: '输入要执行的 Shell 命令',
-        placeHolder: 'e.g. npm run build',
-      });
-      if (!cmd) return;
-      const { runCommand, formatTerminalOutputForPrompt } = await import('./tools/terminal');
-      const result = await runCommand({ command: cmd, visible: false });
-      const formatted = formatTerminalOutputForPrompt(cmd, result);
-      await pushChatPanel(
-        `> ${cmd}`,
-        `请分析以下命令输出并给出建议：\n\n${formatted}`,
-        false,
-      );
-      viewProvider.focus();
-    }],
-    // §8.6: Show Memory Files — matches Copilot "Chat: Show Memory Files" command
-    ['devseek.showMemoryFiles', async () => {
-      const wsPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      if (!wsPath) {
-        vscode.window.showWarningMessage('DevSeek: 请先打开一个工作区');
-        return;
-      }
-      const memPath = new MemoryService({ workspaceRoot: wsPath }).ensureLegacyMemoryFile();
-      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(memPath));
-      await vscode.window.showTextDocument(doc);
-    }],
-  ];
-  for (const [id, fn] of cmds) {
-    context.subscriptions.push(vscode.commands.registerCommand(id, fn));
-  }
-
-  context.subscriptions.push(
-    vscode.commands.registerCommand('devseek.addFileToChat', async (resource?: vscode.Uri) => {
-      await addResourceToChat(viewProvider, resource);
-    }),
-  );
-
-  // ── EX-40: 行内聊天 Ctrl+I ──────────────────────────────────────
-  context.subscriptions.push(
-    vscode.commands.registerCommand('devseek.inlineChat', async () => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) {
-        vscode.window.showWarningMessage('DeepSeek: 请先打开一个文件');
-        return;
-      }
-
-      const slashItems: vscode.QuickPickItem[] = [
-        { label: '/fix',      description: '修复 Bug' },
-        { label: '/refactor', description: '重构代码' },
-        { label: '/tests',    description: '生成单元测试' },
-        { label: '/doc',      description: '生成文档注释' },
-        { label: '/explain',  description: '解释代码' },
-      ];
-
-      const qp = vscode.window.createQuickPick();
-      qp.placeholder = '输入指令，或 / 选择预设命令...';
-      qp.items = slashItems;
-      qp.matchOnDescription = true;
-      qp.show();
-
-      let instruction = await new Promise<string | undefined>((resolve) => {
-        qp.onDidChangeValue(v => {
-          // 如果不以 / 开头，隐藏预设列表
-          qp.items = v.startsWith('/') ? slashItems.filter(i => i.label.startsWith(v.split(' ')[0])) : [];
-        });
-        qp.onDidAccept(() => {
-          const val = qp.value.trim() || qp.selectedItems[0]?.label;
-          qp.hide();
-          resolve(val);
-        });
-        qp.onDidHide(() => resolve(undefined));
-      });
-      if (!instruction) return;
-
-      // 将斜杠命令映射为自然语言指令
-      const slashMap: Record<string, string> = {
-        '/fix':      '修复代码中的 Bug，返回完整修复后代码',
-        '/refactor': '重构代码，提升可读性和性能，返回完整重构后代码',
-        '/tests':    '为代码编写完整单元测试',
-        '/doc':      '为代码生成规范的文档注释，不改变代码逻辑',
-        '/explain':  '详细解释代码的功能和逻辑',
-      };
-      for (const [slash, mapped] of Object.entries(slashMap)) {
-        if (instruction === slash || instruction.startsWith(slash + ' ')) {
-          instruction = mapped + (instruction.slice(slash.length));
-          break;
-        }
-      }
-
-      // P3-3: 使用当前 provider 检查可用性（不再依赖 bridge-specific ping）
-      const inlineProv = getActiveProvider();
-      const inlineAvail = await inlineProv.available();
-      if (!inlineAvail) {
-        vscode.window.showErrorMessage('DeepSeek NetAI: LLM Provider 不可用，请检查设置（⚙ 状态栏）');
-        return;
-      }
-
-      const ctx = buildContext(editor);
-      const prompt = buildInlineChatPrompt(instruction, ctx.code, ctx.language, ctx.relPath);
-
-      await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.Notification, title: `DevSeek: ${instruction.slice(0, 30)}...`, cancellable: false },
-        async () => {
-          try {
-            const result = await routeChat({ prompt, stream: false });
-            // 提取代码块
-            const codeMatch = result.match(/```[^\n]*\n([\s\S]*?)```/);
-            const newCode = codeMatch ? codeMatch[1].trimEnd() : result.trim();
-
-            if (!newCode) { vscode.window.showWarningMessage('DeepSeek: 未收到有效代码'); return; }
-
-            // P3-3 增强：选区有内容时注册 Pending Edit（侧边栏对比 + Diff 视图）
-            if (!editor.selection.isEmpty) {
-              const originalContent = editor.document.getText();
-              const relPath = vscode.workspace.asRelativePath(editor.document.uri, false);
-              await editor.edit(eb => eb.replace(editor.selection, newCode));
-              const newContent = editor.document.getText();
-              // 注册为 pending edit → 自动打开 Diff 视图，可在侧边栏撤销
-              await viewProvider.registerInlineChatEdit({
-                path: relPath,
-                oldContent: originalContent,
-                newContent,
-                existed: true,
-              });
-              vscode.window.showInformationMessage('✅ DeepSeek 行内修改已应用（侧边栏可对比 / 撤销）');
-            } else {
-              // 无选区：直接发到 Chat 面板显示
-              pushChatPanel(`⚡ **${instruction}** · \`${ctx.filename}\``, prompt, false);
-            }
-          } catch (e) {
-            vscode.window.showErrorMessage(`DeepSeek Inline Chat: ${(e as Error).message}`);
-          }
-        },
-      );
-    }),
-  );
-
-  // ── EX-30: Ghost Text 行内补全 Provider ──────────────────────────
-  // P3-1: 迁移到 getActiveProvider()，支持所有 LLM Provider（不再依赖 bridge ping）
-  let completionDebounceTimer: ReturnType<typeof setTimeout> | undefined;
-  const completionCache = new Map<string, vscode.InlineCompletionItem[]>();
-
-  const completionProvider = vscode.languages.registerInlineCompletionItemProvider(
-    { pattern: '**' },
-    {
-      provideInlineCompletionItems: async (document, position, _context, token) => {
-        const config = vscode.workspace.getConfiguration('devseek');
-        const enabled = config.get<boolean>('completionEnabled', false);
-        if (!enabled) return [];
-        if (token.isCancellationRequested) return [];
-
-        // 检查当前 provider 是否可用（不再依赖 bridge-specific ping）
-        const provider = getActiveProvider();
-        const available = await provider.available();
-        if (!available || token.isCancellationRequested) return [];
-
-        const PREFIXLINES = 50;
-        const SUFFIXLINES = 20;
-        const startLine = Math.max(0, position.line - PREFIXLINES);
-        const endLine = Math.min(document.lineCount - 1, position.line + SUFFIXLINES);
-        const prefix = document.getText(new vscode.Range(startLine, 0, position.line, position.character));
-        const suffix = document.getText(new vscode.Range(position.line, position.character, endLine, document.lineAt(endLine).text.length));
-        const relPath = vscode.workspace.asRelativePath(document.uri);
-        // 缓存 key：用光标前最后 200 字符（后缀不参与缓存避免误命中）
-        const cacheKey = `${relPath}::${prefix.slice(-200)}`;
-
-        if (completionCache.has(cacheKey)) {
-          return completionCache.get(cacheKey)!;
-        }
-
-        const prompt = buildCompletionPrompt(prefix, suffix, document.languageId, relPath);
-        // 默认 debounce 800ms，用户可通过 completionTriggerDelay 覆盖
-        const delay = config.get<number>('completionTriggerDelay', 800);
-
-        return new Promise((resolve) => {
-          if (completionDebounceTimer) clearTimeout(completionDebounceTimer);
-          completionDebounceTimer = setTimeout(async () => {
-            if (token.isCancellationRequested) { resolve([]); return; }
-            try {
-              const abortCtrl = new AbortController();
-              token.onCancellationRequested(() => abortCtrl.abort());
-              const result = await provider.chat({
-                messages: [{ role: 'user', content: prompt }],
-                stream: false,
-                timeoutMs: 15000,
-                signal: abortCtrl.signal,
-              });
-              if (token.isCancellationRequested) { resolve([]); return; }
-              const items = [new vscode.InlineCompletionItem(result.trim())];
-              completionCache.set(cacheKey, items);
-              // 缓存 30s
-              setTimeout(() => completionCache.delete(cacheKey), 30000);
-              resolve(items);
-            } catch {
-              resolve([]);
-            }
-          }, delay);
-        });
-      },
-    },
-  );
-  context.subscriptions.push(completionProvider);
+  registerExtensionCommands(context, { viewProvider, pushChatPanel, routeChat });
 
   // ── Session memory: restore previous session on startup ────────────
   initOrRestoreSession();
