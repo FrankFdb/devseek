@@ -1227,6 +1227,7 @@ test('Architecture: Phase 10 application service owns Provider chat routing prot
   const runtime = src('../shared/src/platform-runtime.ts');
   const profiles = src('../shared/src/build-profile.ts');
   const vscodeSurface = src('src/ui/vscode-surface-adapter.ts');
+  const sessionTurn = src('src/app/chat-session-turn-service.ts');
   const extension = src('src/extension.ts');
   const appIndex = src('src/app/index.ts');
 
@@ -1246,6 +1247,8 @@ test('Architecture: Phase 10 application service owns Provider chat routing prot
   assertContains(profiles, 'cli-jsonl', 'Build profile must cover CLI JSONL');
   assertContains(vscodeSurface, 'class VSCodeSurfaceAdapter', 'VS Code surface adapter must exist');
   assertContains(vscodeSurface, 'toChatCommand', 'VS Code surface must translate UI input to AgentCommand');
+  assertContains(sessionTurn, 'class ChatSessionTurnService', 'session turn lifecycle must be an app service');
+  assertContains(extension, 'getChatSessionTurnService(webview).beginTurn', 'runChat must delegate session turn state to app service');
   assertContains(appIndex, "export * from './agent-application-service';", 'application service must be exported through app boundary');
   assertContains(appIndex, "export * from './agent-protocol';", 'application protocol must be exported through app boundary');
   assertContains(extension, 'new AgentApplicationService', 'VS Code entry must compose the application service');

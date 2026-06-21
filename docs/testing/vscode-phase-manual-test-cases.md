@@ -920,6 +920,7 @@ node --test test/unit/platform-runtime.test.mjs
 
 - `agent-application-service.test.mjs`：覆盖 bridge/API 路由、history/vision payload、API key 恢复和 `chat.request` 事件序列。
 - `platform-runtime.test.mjs`：覆盖 PlatformRuntimeAdapter、Shell/Path adapter 和 Surface capability 降级。
+- `chat-session-turn-service.test.mjs`：覆盖新会话、无附件 turn 清理上下文、显式附件保持上下文，防止 session lifecycle 回流到 `extension.ts`。
 - `cli-jsonl.test.mjs`：覆盖 CLI JSONL parseability、文本模式输出和 mock provider 稳定闭环。
 - 架构守卫：`architecture-boundary.test.mjs`、`workflow-compliance.test.mjs` 检查 shared core、VS Code re-export facade、VSCodeSurfaceAdapter、BuildProfile 和 extension composition root。
 
@@ -928,6 +929,29 @@ node --test test/unit/platform-runtime.test.mjs
 - Phase 10 对 headless core、CLI JSONL、平台适配和 VS Code facade 的自动测试已具备基础充分性。
 - 真实 DeepSeek Web bridge、VS Code WebView 截图级显示、Windows native/PowerShell/CMD、macOS 和 WSL 端到端仍需要手动或环境矩阵验证。
 - `runChat` 的完整 workflow use case 尚未完全迁出 VS Code 入口；后续 Phase 10.x/Phase 11 继续把 session/checkpoint/task facts、ReviewLedger、QualityGate 和 pending edit 事件化。
+
+### P10-07 新会话和无附件 turn 不继承旧上下文
+
+操作：
+
+1. 先在一个任务中附加文件并完成任意只读询问。
+2. 发送一条不带附件的新请求，例如：
+
+```text
+请只回答：phase10 no stale context
+```
+
+3. 再点击新会话，发送：
+
+```text
+创建 docs/manual-phase10-new-session.md，内容为：phase10 new session smoke，并验证文件内容。
+```
+
+期望结果：
+
+- 第二步不应继承上一轮附件，也不应把旧文件显示在 contextFiles 中。
+- 第三步新会话应清空旧 history、recent files、last analysis 和 last changed paths。
+- 完成摘要、Todos、验证证据只指向当前请求；不能把上一轮文件或任务事实带入。
 
 ## 13. 已发现问题跟踪
 

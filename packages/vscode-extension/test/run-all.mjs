@@ -28,6 +28,7 @@ const suites = [
   'test/unit/completion-evidence.test.mjs',
   'test/unit/intent-router.test.mjs',
   'test/unit/chat-controller.test.mjs',
+  'test/unit/chat-session-turn-service.test.mjs',
   'test/unit/interaction-service.test.mjs',
   'test/unit/local-attachment-context.test.mjs',
   'test/unit/file-discovery.test.mjs',

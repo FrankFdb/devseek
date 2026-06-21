@@ -61,6 +61,7 @@ test('Phase 0: domain roots expose explicit public boundaries', () => {
     'src/app/index.ts': [
       './agent-application-service',
       './agent-protocol',
+      './chat-session-turn-service',
       './agentic-repair-service',
       './chat-controller',
       './permission-service',

@@ -1,6 +1,7 @@
 export * from './agent-application-service';
 export * from './agent-protocol';
 export * from './chat-controller';
+export * from './chat-session-turn-service';
 export * from './config-migration-service';
 export * from './context-assembly-service';
 export * from './context-discovery-service';

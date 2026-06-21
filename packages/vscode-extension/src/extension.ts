@@ -41,6 +41,7 @@ import { runClosedLoopRepair } from './app/closed-loop-repair-runner';
 import { runLocalExecutionChatIfPossible } from './local-execution-chat-runner';
 import { TerminalPermissionCoordinator } from './app/terminal-permission-coordinator';
 import { ChatRouteController } from './app/chat-controller';
+import { ChatSessionTurnService } from './app/chat-session-turn-service';
 import { migrateLegacyDeepseekConfiguration } from './app/config-migration-service';
 import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
@@ -254,33 +255,11 @@ async function runChat(
 
   let effectiveFiles = normalizeConversationFiles(files);
   const userExplicitlyAttachedFiles = effectiveFiles.length > 0;
-  if (newSession) {
-    const histSnap = [...nonBridgeChatHistory];
-    const prevSessionId = activeSessionId;
-    saveCurrentSession();
-    void (async () => {
-      if (histSnap.length >= 4 && prevSessionId) {
-        await compactAndSaveHistory(histSnap, prevSessionId);
-      }
-    })();
-    activeSessionId = generateSessionId();
-    getSessionService()?.setActiveSessionId(activeSessionId);
-    saveSessionMeta({ id: activeSessionId, title: userDisplay.slice(0, 50), createdAt: Date.now(), updatedAt: Date.now() });
-    sessionRecentFiles.clear();
-    saveCurrentSessionFiles();
-    lastConversationFiles = [];
-    lastAnalysisText = '';
-    lastAgentChangedPaths = [];
-    nonBridgeChatHistory = [];
-    clearSessionHabits();
-    clearLearnerSession();
-    webview.postMessage({ type: 'contextFiles', files: [] });
-  } else if (!userExplicitlyAttachedFiles) {
-    // No files attached to THIS message — clear persisted context so it
-    // does not silently bleed into this request.
-    lastConversationFiles = [];
-    webview.postMessage({ type: 'contextFiles', files: [] });
-  }
+  await getChatSessionTurnService(webview).beginTurn({
+    newSession,
+    userDisplay,
+    userExplicitlyAttachedFiles,
+  });
 
   if (isProjectInitRequest(userDisplay) || isProjectInitRequest(prompt)) {
     if (newSession) webview.postMessage({ type: 'newSessionStarted' });
@@ -1588,6 +1567,28 @@ async function runChat(
 }
 
 function pushChatPanel(userDisplay: string, prompt: string, newSession: boolean): void { viewProvider.push(userDisplay, prompt, newSession); }
+
+function getChatSessionTurnService(webview: vscode.Webview): ChatSessionTurnService {
+  return new ChatSessionTurnService({
+    getHistory: () => nonBridgeChatHistory,
+    setHistory: (history) => { nonBridgeChatHistory = history; },
+    getActiveSessionId: () => activeSessionId,
+    setActiveSessionId: (sessionId) => { activeSessionId = sessionId; },
+    generateSessionId,
+    saveCurrentSession,
+    compactAndSaveHistory,
+    setSessionServiceActiveId: (sessionId) => getSessionService()?.setActiveSessionId(sessionId),
+    saveSessionMeta,
+    clearSessionRecentFiles: () => sessionRecentFiles.clear(),
+    saveCurrentSessionFiles,
+    setLastConversationFiles: (files) => { lastConversationFiles = files; },
+    setLastAnalysisText: (text) => { lastAnalysisText = text; },
+    setLastAgentChangedPaths: (paths) => { lastAgentChangedPaths = paths; },
+    clearSessionHabits,
+    clearLearnerSession,
+    emitContextFiles: (files) => webview.postMessage({ type: 'contextFiles', files }),
+  });
+}
 
 /**
  * Phase 10 application entry: route chat through the headless application
