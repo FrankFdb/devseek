@@ -21,40 +21,32 @@ import {
   resolveGeneratedArtifactPathForPrompt,
   type AppliedChangeRecord,
   type ApplyWorkflowStatus,
-  type ApplyWorkflowResult,
 } from './workspace-applier';
 import { detectWorkspacePathScope, isGeneratedArtifactAllowedForPrompt } from './workspace/path-resolver';
 import { parseGeneratedArtifacts, type GeneratedArtifact } from './generated-file-parser';
 import {
-  buildExecutionRepairPrompt,
-  buildLocalExecutionFailureMessage,
-  buildLocalExecutionSuccessMessage,
-  isRepeatExecutionRequest,
-  LocalExecutionPlan,
+  type LocalExecutionPlan,
   planLocalExecution,
   planRepeatLocalExecution,
-  runLocalExecution,
-  shouldRepairLocalExecutionFailure,
   shouldPreferLocalExecution,
 } from './execution-planner';
 import { AutoApplyPolicy, shouldAutoApplyFromResponse } from './intent-router';
 import { clearSessionHabits, lookupLearnedIntent, recordIntentOutcome } from './intent-learner';
 import {
   initAgentLearner, clearLearnerSession, emitLearningEvent,
-  getCommandHints, getErrorFixHint, fingerprintError,
+  getCommandHints,
 } from './agent-learner';
 import { decomposeTask, getAgentTaskDisplayTarget, inferTasksFromFiles, type AgentTask } from './agent-task-decomposer';
 import { runAgentLoop, runAgenticLoop, AgentStatusMessage, extractAnalysisFindings, type AgentLoopResult } from './agent-loop';
 import { getWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
 import { McpManager } from './mcp/client';
-import { fenceLangForFile } from './utils';
-import { DiffDecorationManager, type DiffRecordInfo } from './diff-decorator';
 import { isFileProtected } from './protected-files';
 import { decideToolPermission, type ToolPolicy } from './app/permission-service';
-import { decideTerminalCommandPermission, type TerminalCommandRiskClass } from './app/terminal-command-policy';
 import { recoverApplyFailureIfPossible } from './app/apply-failure-recovery-service';
-import { AgenticRepairService, responseClaimsStatusOk, shouldRunClosedLoopRepair } from './app/agentic-repair-service';
-import { decideAgentAutopilotAccept } from './app/agent-autopilot-policy';
+import { responseClaimsStatusOk, shouldRunClosedLoopRepair } from './app/agentic-repair-service';
+import { runClosedLoopRepair } from './app/closed-loop-repair-runner';
+import { runLocalExecutionChatIfPossible } from './local-execution-chat-runner';
+import { TerminalPermissionCoordinator } from './app/terminal-permission-coordinator';
 import { ChatRouteController } from './app/chat-controller';
 import { migrateLegacyDeepseekConfiguration } from './app/config-migration-service';
 import { buildPreExecutionInteraction } from './app/interaction-service';
@@ -63,12 +55,12 @@ import { MemoryService } from './app/memory-service';
 import { isProjectInitRequest, ProjectInitService, renderProjectInitDraftMarkdown } from './app/project-init-service';
 import { tryBuildReadOnlyInspectionResult } from './app/read-only-inspection-service';
 import { buildRestoredSessionLlmHistory, buildSessionLoadedPayload } from './app/session-display-service';
+import { buildSessionBootstrapState } from './app/session-bootstrap-service';
 import { SessionService, type SessionMeta } from './app/session-service';
 import {
   appendSessionContinuationContext,
   shouldInjectSessionContinuationForIntent,
   shouldResumeCheckpointFromPrompt,
-  shouldRestoreSessionFiles,
 } from './app/session-continuation';
 import {
   DEFAULT_TASK_CHECKPOINT_KEY,
@@ -77,40 +69,39 @@ import {
 } from './app/task-checkpoint-store';
 import { buildProviderRecoveryCheckpointTasks, buildProviderRecoveryDisplay, ProviderRecoveryService } from './app/provider-recovery-service';
 import { resolveProviderStatusResponse } from './app/provider-status-service';
+import { PendingEditCoordinator } from './pending-edit-coordinator';
+import { addResourceToChat, insertCodeToEditor } from './app/chat-resource-actions';
+import { recordTrackedChatHistory as recordTrackedChatHistoryState } from './app/chat-history-tracker';
 import {
-  allHunksResolved,
-  computePendingHunks,
-  PendingEditService,
-  renderPendingContentFromHunks,
-  type PendingEditHunk,
-} from './app/pending-edit-service';
-import { emitResponseMeta, injectFileHintsIntoResponse, openWorkspacePathInEditor, pushUiSettings, revealEditorLine } from './ui/generated-artifact-ui';
-import {
-  closePendingEditDiffTabAsync,
-  DeepSeekOriginalContentProvider,
-  openPendingEditDiff as openPendingEditDiffView,
-} from './ui/pending-edit-diff';
+  AGENT_CODE_FILE_RE,
+  buildAgenticSessionContextFromState,
+  resolveSessionContinuationFilesFromState,
+  type AgentSessionState,
+} from './app/agent-session-context';
+import { emitResponseMeta, injectFileHintsIntoResponse, openWorkspacePathInEditor, pushUiSettings } from './ui/generated-artifact-ui';
 import { postWebviewEvent, postWebviewMessage } from './ui/webview-event-adapter';
 import { getChatHtml } from './ui/webview-html';
 import type { WebviewInboundMessage } from './ui/webview-protocol';
 import { stripToolCallBlocks } from './agent/fake-tool-parser';
 import { buildAgentRunDisplayProfile } from './agent/agent-run-display';
 import {
-  buildLocalExecutionAgentCallbacks,
-  buildLocalExecutionAgentRepairPrompt,
-  buildLocalExecutionRepairTasks,
-  relPathFromRepairWorkspace,
-} from './local-execution-repair';
-import {
-  absPathFromWorkspaceRel,
   buildWorkspaceFileTree,
-  collectDirectoryFiles,
   discoverFilesFromDirectoryPrompt,
   getGitDiff,
   relPathFromWorkspace,
   toContextDisplayLabels,
 } from './app/context-discovery-service';
 import { TaskHistoryUiService } from './app/task-history-ui-service';
+import {
+  appendFileAwareFormatHint,
+  appendStructuredGenerationHint,
+  buildReformatPrompt,
+  buildSmalltalkReply,
+  chatContentEquals,
+  chatContentStartsWith,
+  chatContentText,
+  normalizeConversationFiles,
+} from './app/chat-prompt-formatting';
 
 // ----------------------------------------------------------------
 // Types
@@ -129,44 +120,15 @@ interface PendingAttachment {
   filePath?: string;
 }
 
-interface PendingEditRecord {
-  id: string;
-  path: string;
-  existed: boolean;
-  oldContent: string;
-  newContent: string;
-  hunks: PendingEditHunk[];
-  createdAt: number;
-}
-
-function chatContentText(content: ChatMessage['content'] | undefined): string {
-  return typeof content === 'string' ? content : '';
-}
-
-function chatContentStartsWith(content: ChatMessage['content'] | undefined, prefix: string): boolean {
-  return chatContentText(content).startsWith(prefix);
-}
-
-function chatContentEquals(content: ChatMessage['content'] | undefined, expected: string): boolean {
-  return chatContentText(content) === expected;
-}
-
 // ----------------------------------------------------------------
 // Sidebar chat view state (single-level entry, no launcher page)
 // ----------------------------------------------------------------
 let extensionUriGlobal: vscode.Uri;
 let viewProvider: DeepSeekViewProvider;
 let lastLocalExecutionPlan: LocalExecutionPlan | undefined;
-const pendingEdits = new PendingEditService<PendingEditRecord>();
+let pendingEditCoordinator: PendingEditCoordinator;
 const chatRouteController = new ChatRouteController();
-/** G-2: pending terminal confirm Promises keyed by confirmId */
-const pendingTerminalConfirms = new Map<string, (allow: boolean, alwaysAllow?: boolean) => void>();
-/** Session-scoped terminal classes explicitly trusted by the user. */
-const trustedTerminalRiskClasses = new Set<TerminalCommandRiskClass>();
-/** G-5: Keep/Undo status bar item (shown when active file has pending AI edits) */
-let keepUndoStatusBar: vscode.StatusBarItem | undefined;
-/** Inline editor decorations + CodeLens for pending AI edits (Copilot-parity) */
-let diffDecoManager: DiffDecorationManager;
+const terminalPermissionCoordinator = new TerminalPermissionCoordinator();
 let lastConversationFiles: string[] = [];
 let lastAnalysisText = '';
 /** Workspace-relative paths of files created/modified by the last agent run */
@@ -184,7 +146,6 @@ let extContext: vscode.ExtensionContext;
 const sessionRecentFiles = new Map<string, string>();
 /** 当前活跃的 session ID */
 let activeSessionId = '';
-const AGENT_CODE_FILE_RE = /(?:^|\/)(?:Makefile|CMakeLists\.txt)$|\.(cpp|c|h|hpp|cc|cxx|ts|tsx|js|jsx|mjs|py|rs|go|java|cs|rb|php|swift|kt|scala|dart|lua|r)$/i;
 // P3-5: MCP manager (singleton; initialized lazily in activate)
 const mcpManager = new McpManager();
 
@@ -197,14 +158,6 @@ function getSessionService(): SessionService | undefined {
 const CHECKPOINT_KEY = DEFAULT_TASK_CHECKPOINT_KEY;
 /** Shape of the persisted checkpoint */
 type AgentTaskCheckpoint = TaskCheckpointRecord<AgentTask>;
-
-interface AgentSessionState {
-  lastUserPrompt: string;
-  lastSummary: string;
-  changedPaths: string[];
-  completed: boolean;
-  savedAt: number;
-}
 
 /** Save or clear the agent task checkpoint. Pass null to clear (completed). */
 async function saveAgentCheckpoint(data: AgentTaskCheckpoint | null): Promise<void> {
@@ -223,418 +176,6 @@ async function loadFreshAgentCheckpoint(maxAgeMs: number): Promise<AgentTaskChec
   if (!extContext) return undefined;
   const result = await new TaskCheckpointStore<AgentTask>(extContext.workspaceState, CHECKPOINT_KEY).loadFresh(maxAgeMs);
   return result?.checkpoint;
-}
-
-function normalizeConversationFiles(files?: string[]): string[] {
-  if (!Array.isArray(files)) return [];
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const item of files) {
-    const value = (item || '').trim();
-    if (!value || seen.has(value)) continue;
-    seen.add(value);
-    out.push(value);
-  }
-  return out;
-}
-
-function normalizePendingEditPath(pathValue: string): string {
-  const raw = (pathValue || '').trim();
-  if (!raw) return '';
-  let normalized = raw.replace(/\\/g, '/').replace(/^\.\//, '');
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  for (const folder of folders) {
-    const root = folder.uri.fsPath.replace(/\\/g, '/').replace(/\/$/, '');
-    if (normalized === root) return '';
-    if (normalized.startsWith(root + '/')) {
-      normalized = normalized.slice(root.length + 1);
-      break;
-    }
-  }
-  return normalized.replace(/^\.\//, '');
-}
-
-function estimateLineDelta(oldContent: string, newContent: string): { added: number; removed: number } {
-  const oldLines = (oldContent || '').split('\n').length;
-  const newLines = (newContent || '').split('\n').length;
-  return {
-    added: Math.max(0, newLines - oldLines),
-    removed: Math.max(0, oldLines - newLines),
-  };
-}
-
-function hasMeaningfulEdit(oldContent: string, newContent: string): boolean {
-  const oldNorm = (oldContent || '').replace(/\r\n/g, '\n');
-  const newNorm = (newContent || '').replace(/\r\n/g, '\n');
-  if (oldNorm === newNorm) return false;
-
-  const oldTrimmed = oldNorm.endsWith('\n') ? oldNorm.slice(0, -1) : oldNorm;
-  const newTrimmed = newNorm.endsWith('\n') ? newNorm.slice(0, -1) : newNorm;
-  return oldTrimmed !== newTrimmed;
-}
-
-async function applyPendingRecordSnapshot(record: PendingEditRecord): Promise<void> {
-  const target = resolveWorkspaceFileUri(record.path, lastConversationFiles);
-  if (!target) return;
-  const content = renderPendingContentFromHunks(record);
-  const shouldDelete = !record.existed && content.length === 0;
-
-  if (shouldDelete) {
-    try {
-      await vscode.workspace.fs.delete(target, { useTrash: false });
-    } catch {
-      // Ignore delete failures when the file does not exist.
-    }
-    return;
-  }
-
-  await vscode.workspace.fs.createDirectory(vscode.Uri.file(nodePath.dirname(target.fsPath)));
-  await vscode.workspace.fs.writeFile(target, Buffer.from(content, 'utf8'));
-}
-
-function resolvePendingEditId(editId?: string, path?: string): string | undefined {
-  if (editId && pendingEdits.has(editId)) return editId;
-  if (!path) return undefined;
-  const wanted = normalizePendingEditPath(path);
-  let candidates = Array.from(pendingEdits.values())
-    .filter((record) => normalizePendingEditPath(record.path) === wanted)
-    .sort((a, b) => b.createdAt - a.createdAt);
-  if (candidates.length === 0) {
-    const wantedBase = nodePath.basename(wanted);
-    const baseMatches = Array.from(pendingEdits.values())
-      .filter((record) => nodePath.basename(normalizePendingEditPath(record.path)) === wantedBase)
-      .sort((a, b) => b.createdAt - a.createdAt);
-    if (baseMatches.length === 1) candidates = baseMatches;
-  }
-  return candidates[0]?.id;
-}
-
-/** G-5: Refresh the Keep/Undo status bar based on the currently active editor. */
-function updateKeepUndoBar(editor?: vscode.TextEditor): void {
-  if (!keepUndoStatusBar) return;
-  if (!editor) { keepUndoStatusBar.hide(); return; }
-  const fsPath = editor.document.uri.fsPath;
-  const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-  const relPath = fsPath.startsWith(wsRoot + '/') ? fsPath.slice(wsRoot.length + 1) : nodePath.basename(fsPath);
-  const hasPending = relPath ? Array.from(pendingEdits.values()).some(r => r.path === relPath) : false;
-  if (hasPending) {
-    keepUndoStatusBar.text = '$(check) Keep  $(discard) Undo';
-    keepUndoStatusBar.tooltip = `保留或撤销对 ${nodePath.basename(relPath)} 的 AI 修改`;
-    keepUndoStatusBar.show();
-  } else {
-    keepUndoStatusBar.hide();
-  }
-}
-
-function postPendingEdits(webview: vscode.Webview): void {
-  const items = Array.from(pendingEdits.values())
-    .sort((a, b) => b.createdAt - a.createdAt)
-    .map((record) => {
-      const delta = estimateLineDelta(record.oldContent, record.newContent);
-      const pendingCount = record.hunks.filter((h) => h.resolution === 'pending').length;
-      return {
-        id: record.id,
-        path: record.path,
-        existed: record.existed,
-        added: delta.added,
-        removed: delta.removed,
-        pendingHunks: pendingCount,
-        hunks: record.hunks.map((hunk) => ({
-          id: hunk.id,
-          title: hunk.title,
-          line: hunk.newStart > 0 ? hunk.newStart : hunk.oldStart,
-          added: hunk.newLines.length,
-          removed: hunk.oldLines.length,
-          resolution: hunk.resolution,
-        })),
-        createdAt: record.createdAt,
-      };
-    })
-    .filter((item) => {
-      const hasDelta = (item.added || 0) > 0 || (item.removed || 0) > 0;
-      const hasPending = (item.pendingHunks || 0) > 0;
-      return hasDelta || hasPending;
-    });
-  webview.postMessage({ type: 'pendingEdits', items, total: items.length });
-  updateKeepUndoBar(vscode.window.activeTextEditor);
-  // Refresh Explorer file decorations (⬝ badge on pending-edit files)
-  pendingEditDecorationProvider?.refresh();
-}
-
-function beginAgentRunReviewScope(webview: vscode.Webview): void {
-  const staleRecords = pendingEdits.resetForNewScope();
-  for (const record of staleRecords) closePendingEditDiffTabAsync(record);
-  diffDecoManager?.deactivateAll();
-  postPendingEdits(webview);
-  webview.postMessage({ type: 'todoUpdate', items: [] });
-}
-
-function postPendingActionNotice(
-  webview: vscode.Webview,
-  notice: {
-    action: 'keep' | 'undo';
-    scope: 'file' | 'hunk' | 'all';
-    path?: string;
-    detail: string;
-    queueTotal?: number;
-  },
-): void {
-  webview.postMessage({ type: 'pendingActionNotice', ...notice });
-}
-
-async function registerPendingEditChange(webview: vscode.Webview, change: AppliedChangeRecord): Promise<void> {
-  if (!hasMeaningfulEdit(change.oldContent, change.newContent)) {
-    postPendingEdits(webview);
-    return;
-  }
-
-  const normalizedPath = normalizePendingEditPath(change.path);
-  const existing = Array.from(pendingEdits.values())
-    .filter((record) => normalizePendingEditPath(record.path) === normalizedPath)
-    .sort((a, b) => b.createdAt - a.createdAt)[0];
-
-  let recordToShow: PendingEditRecord;
-  if (existing) {
-    const mergedOld = existing.oldContent;
-    const mergedNew = change.newContent;
-    existing.existed = existing.existed || change.existed;
-    existing.newContent = mergedNew;
-    existing.hunks = computePendingHunks(existing.id, mergedOld, mergedNew);
-    existing.createdAt = Date.now();
-    pendingEdits.set(existing.id, existing);
-    recordToShow = existing;
-  } else {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const newRecord: PendingEditRecord = {
-      id,
-      path: normalizedPath,
-      existed: change.existed,
-      oldContent: change.oldContent,
-      newContent: change.newContent,
-      hunks: computePendingHunks(id, change.oldContent, change.newContent),
-      createdAt: Date.now(),
-    };
-    pendingEdits.set(id, newRecord);
-    recordToShow = newRecord;
-  }
-  postPendingEdits(webview);
-  // Inline editor decorations + CodeLens (Copilot-parity)
-  diffDecoManager?.activate(recordToShow as DiffRecordInfo);
-  // Auto-open the changed file in the regular editor so per-hunk Keep/Undo
-  // appears beside the affected lines, matching Copilot's editor-first review.
-  openPendingEditInEditor(recordToShow).catch(() => {/* silent */});
-}
-
-function keepPendingEditByPath(path: string): void {
-  const id = resolvePendingEditId(undefined, path);
-  if (!id) return;
-  const record = pendingEdits.get(id);
-  if (record) {
-    closePendingEditDiffTabAsync(record);
-    diffDecoManager?.deactivate(id);
-    const fileUri = resolveWorkspaceFileUri(record.path, lastConversationFiles);
-    if (fileUri) {
-      void vscode.workspace.openTextDocument(fileUri)
-        .then(doc => vscode.window.showTextDocument(doc, { preview: false }))
-        .then(undefined, () => { /* silence */ });
-    }
-  }
-  pendingEdits.delete(id);
-}
-
-function keepPendingEdit(editId?: string, path?: string): void {
-  const id = resolvePendingEditId(editId, path);
-  if (!id) return;
-  const record = pendingEdits.get(id);
-  if (record) {
-    closePendingEditDiffTabAsync(record);
-    diffDecoManager?.deactivate(id);
-    const fileUri = resolveWorkspaceFileUri(record.path, lastConversationFiles);
-    if (fileUri) {
-      void vscode.workspace.openTextDocument(fileUri)
-        .then(doc => vscode.window.showTextDocument(doc, { preview: false }))
-        .then(undefined, () => { /* silence */ });
-    }
-  }
-  pendingEdits.delete(id);
-}
-
-async function restorePendingEdit(record: PendingEditRecord): Promise<void> {
-  const target = resolveWorkspaceFileUri(record.path, lastConversationFiles);
-  if (!target) return;
-  if (record.existed) {
-    await vscode.workspace.fs.createDirectory(vscode.Uri.file(nodePath.dirname(target.fsPath)));
-    await vscode.workspace.fs.writeFile(target, Buffer.from(record.oldContent, 'utf8'));
-  } else {
-    try {
-      await vscode.workspace.fs.delete(target, { useTrash: false });
-    } catch {
-      // Ignore when file already does not exist.
-    }
-  }
-}
-
-async function undoPendingEditByPath(path: string): Promise<void> {
-  const id = resolvePendingEditId(undefined, path);
-  if (!id) return;
-  const record = pendingEdits.get(id);
-  if (!record) return;
-  closePendingEditDiffTabAsync(record);
-  diffDecoManager?.deactivate(id);
-  await restorePendingEdit(record);
-  pendingEdits.delete(id);
-}
-
-async function undoPendingEdit(editId?: string, path?: string): Promise<void> {
-  const id = resolvePendingEditId(editId, path);
-  if (!id) return;
-  const record = pendingEdits.get(id);
-  if (!record) return;
-  closePendingEditDiffTabAsync(record);
-  diffDecoManager?.deactivate(id);
-  await restorePendingEdit(record);
-  pendingEdits.delete(id);
-}
-
-async function undoAllPendingEdits(): Promise<void> {
-  const records = Array.from(pendingEdits.values()).sort((a, b) => b.createdAt - a.createdAt);
-  for (const record of records) {
-    closePendingEditDiffTabAsync(record);
-    await restorePendingEdit(record);
-  }
-  pendingEdits.clear();
-  diffDecoManager?.deactivateAll();
-}
-
-function resolvePendingHunk(editId: string | undefined, path: string | undefined, hunkId: string | undefined): { record?: PendingEditRecord; hunk?: PendingEditHunk } {
-  const id = resolvePendingEditId(editId, path);
-  if (!id) return {};
-  const record = pendingEdits.get(id);
-  if (!record) return {};
-  if (!hunkId) return { record };
-  const hunk = record.hunks.find((item) => item.id === hunkId);
-  return { record, hunk };
-}
-
-function keepPendingHunk(editId?: string, path?: string, hunkId?: string): void {
-  const { record, hunk } = resolvePendingHunk(editId, path, hunkId);
-  if (!record || !hunk) return;
-  hunk.resolution = 'kept';
-  if (allHunksResolved(record)) {
-    pendingEdits.delete(record.id);
-    diffDecoManager?.deactivate(record.id);
-  } else {
-    diffDecoManager?.refresh(record as DiffRecordInfo);
-    diffDecoManager?.revealNextPendingHunk(record as DiffRecordInfo);
-  }
-}
-
-// ---------------------------------------------------------------
-// P-DEC: FileDecorationProvider — show ⬝ badge on pending-edit
-// files in Explorer + Source Control (Copilot § indicator pattern)
-// ---------------------------------------------------------------
-let pendingEditDecorationProvider: PendingEditDecorationProvider | undefined;
-
-class PendingEditDecorationProvider implements vscode.FileDecorationProvider {
-  private readonly _emitter = new vscode.EventEmitter<vscode.Uri | vscode.Uri[] | undefined>();
-  readonly onDidChangeFileDecorations = this._emitter.event;
-
-  refresh(uris?: vscode.Uri[]): void {
-    this._emitter.fire(uris);
-  }
-
-  provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
-    const fsPath = uri.fsPath;
-    const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-    const hasPending = Array.from(pendingEdits.values()).some((r) => {
-      const absPath = nodePath.isAbsolute(r.path)
-        ? r.path
-        : wsRoot ? nodePath.join(wsRoot, r.path) : r.path;
-      return absPath === fsPath || r.path === fsPath;
-    });
-    if (!hasPending) return undefined;
-    return {
-      badge: '●',
-      color: new vscode.ThemeColor('gitDecoration.modifiedResourceForeground'),
-      tooltip: 'Pending AI edit — Keep or Undo in DevSeek panel',
-      propagate: false,
-    };
-  }
-}
-
-// Auto-accept timer — fires after `devseek.editAutoAcceptDelay` seconds
-// (0 = disabled). Cancelled if user interacts with pending edits first.
-let _autoAcceptTimer: ReturnType<typeof setTimeout> | undefined;
-function acceptAllPendingEdits(webview: vscode.Webview, detail: string): void {
-  const count = pendingEdits.size;
-  if (count === 0) return;
-  for (const record of pendingEdits.values()) closePendingEditDiffTabAsync(record);
-  pendingEdits.clear();
-  postPendingEdits(webview);
-  pendingEditDecorationProvider?.refresh();
-  webview.postMessage({
-    type: 'pendingActionNotice',
-    action: 'keep',
-    scope: 'all',
-    detail,
-    queueTotal: 0,
-  });
-}
-
-function postAutoAcceptBlockedNotice(webview: vscode.Webview, notice: string): void {
-  webview.postMessage({
-    type: 'pendingActionNotice',
-    action: 'keep',
-    scope: 'all',
-    detail: notice,
-    queueTotal: pendingEdits.size,
-  });
-}
-
-function handleAgentAutopilotPendingEdits(webview: vscode.Webview, result: AgentLoopResult): boolean {
-  const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-  if (!isAutopilot || pendingEdits.size === 0) return false;
-  const decision = decideAgentAutopilotAccept(result, pendingEdits.size);
-  if (decision.accept) {
-    acceptAllPendingEdits(webview, `[自动驾驶] 已自动接受全部文件改动。`);
-  } else if (decision.notice) {
-    postAutoAcceptBlockedNotice(webview, decision.notice);
-  }
-  return true;
-}
-
-function scheduleAutoAccept(webview: vscode.Webview, result?: AgentLoopResult, alreadyHandled = false): void {
-  const delaySec = vscode.workspace.getConfiguration('devseek').get<number>('editAutoAcceptDelay', 0);
-  if (!delaySec || delaySec <= 0 || pendingEdits.size === 0) return;
-  const decision = decideAgentAutopilotAccept(result, pendingEdits.size);
-  if (!decision.accept) {
-    if (!alreadyHandled && decision.notice) postAutoAcceptBlockedNotice(webview, decision.notice);
-    return;
-  }
-  if (_autoAcceptTimer) clearTimeout(_autoAcceptTimer);
-  _autoAcceptTimer = setTimeout(() => {
-    _autoAcceptTimer = undefined;
-    if (pendingEdits.size === 0) return;
-    acceptAllPendingEdits(webview, `已自动接受全部 AI 修改 (${pendingEdits.size} 个文件)。`);
-  }, delaySec * 1000);
-}
-function cancelAutoAccept(): void {
-  if (_autoAcceptTimer) { clearTimeout(_autoAcceptTimer); _autoAcceptTimer = undefined; }
-}
-
-
-async function undoPendingHunk(editId?: string, path?: string, hunkId?: string): Promise<void> {
-  const { record, hunk } = resolvePendingHunk(editId, path, hunkId);
-  if (!record || !hunk) return;
-  hunk.resolution = 'undone';
-  await applyPendingRecordSnapshot(record);
-  if (allHunksResolved(record)) {
-    pendingEdits.delete(record.id);
-    diffDecoManager?.deactivate(record.id);
-  } else {
-    diffDecoManager?.refresh(record as DiffRecordInfo);
-    diffDecoManager?.revealNextPendingHunk(record as DiffRecordInfo);
-  }
 }
 
 /** Provider keeps push() API but drives a Sidebar WebviewView directly. */
@@ -693,7 +234,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
    */
   async registerInlineChatEdit(change: AppliedChangeRecord): Promise<void> {
     if (this._view?.webview) {
-      await registerPendingEditChange(this._view.webview, change);
+      await pendingEditCoordinator.registerChange(this._view.webview, change);
     }
   }
 
@@ -740,7 +281,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
       case 'ready':
         this._ready = true;
         pushUiSettings(wv);
-        postPendingEdits(wv);
+        pendingEditCoordinator.post(wv);
         this._flushQueue();
         // Restore active session to webview UI on reload.
         // NOTE: nonBridgeChatHistory is intentionally empty on startup (clean LLM context).
@@ -812,7 +353,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
           const result = await applyGeneratedArtifactsWithPrompt(msg.text, msg.prompt, async (status: ApplyWorkflowStatus) => {
             postWebviewEvent(wv, { kind: 'workflow', status });
           }, msg.autoApply === true, async (change) => {
-            await registerPendingEditChange(wv, change);
+            await pendingEditCoordinator.registerChange(wv, change);
           }, msg.files, { rollbackOnValidationFailure: msg.autoApply !== true });
 
           const recovered = await recoverApplyFailureIfPossible({
@@ -826,15 +367,25 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
               repairResponse, repairPrompt, async (status) => { postWebviewEvent(wv, { kind: 'workflow', status }); },
               true, onAppliedChange, msg.files, { rollbackOnValidationFailure: false },
             ),
-            onAppliedChange: async (change) => { await registerPendingEditChange(wv, change); },
+            onAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(wv, change); },
           });
           const finalResult = recovered ?? result;
 
           if (shouldRunClosedLoopRepair(finalResult)) {
             const originalPrompt = msg.prompt || '请根据自动验证失败结果继续修复，直到通过。';
-            await runClosedLoopRepair(wv, async (status: ApplyWorkflowStatus) => {
-              postWebviewEvent(wv, { kind: 'workflow', status });
-            }, originalPrompt, msg.mode, finalResult, msg.files);
+            await runClosedLoopRepair({
+              webview: wv,
+              reporter: async (status: ApplyWorkflowStatus) => {
+                postWebviewEvent(wv, { kind: 'workflow', status });
+              },
+              originalPrompt,
+              mode: msg.mode,
+              initialApply: finalResult,
+              preferredAbsolutePaths: msg.files ?? lastConversationFiles,
+              routeChat,
+              registerAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(wv, change); },
+              getSessionId: () => activeSessionId,
+            });
           }
         }
         break;
@@ -866,7 +417,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
             },
             msg.autoApply === true,
             async (change) => {
-              await registerPendingEditChange(wv, change);
+              await pendingEditCoordinator.registerChange(wv, change);
             },
             msg.files,
           );
@@ -882,136 +433,63 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
               repairResponse, repairPrompt, async (status) => { postWebviewEvent(wv, { kind: 'workflow', status }); },
               true, onAppliedChange, msg.files, { rollbackOnValidationFailure: false },
             ),
-            onAppliedChange: async (change) => { await registerPendingEditChange(wv, change); },
+            onAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(wv, change); },
           });
           const finalResult = recovered ?? result;
 
           if (shouldRunClosedLoopRepair(finalResult)) {
             const originalPrompt = msg.prompt || `请继续修复文件 ${msg.path} 的验证失败问题，直到通过。`;
-            await runClosedLoopRepair(wv, async (status: ApplyWorkflowStatus) => {
-              postWebviewEvent(wv, { kind: 'workflow', status });
-            }, originalPrompt, msg.mode, finalResult, msg.files);
+            await runClosedLoopRepair({
+              webview: wv,
+              reporter: async (status: ApplyWorkflowStatus) => {
+                postWebviewEvent(wv, { kind: 'workflow', status });
+              },
+              originalPrompt,
+              mode: msg.mode,
+              initialApply: finalResult,
+              preferredAbsolutePaths: msg.files ?? lastConversationFiles,
+              routeChat,
+              registerAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(wv, change); },
+              getSessionId: () => activeSessionId,
+            });
           }
         }
         break;
       case 'openPendingEdit':
         if (msg.editId || msg.path) {
-          const id = resolvePendingEditId(msg.editId, msg.path);
-          const record = id ? pendingEdits.get(id) : undefined;
-          const hunk = record && msg.hunkId ? record.hunks.find((item) => item.id === msg.hunkId) : undefined;
-          if (record) {
-            const requestedLine = typeof msg.hunkLine === 'number' ? msg.hunkLine : undefined;
-            const hunkLine = requestedLine || (hunk ? (hunk.newStart > 0 ? hunk.newStart : hunk.oldStart) : undefined);
-            await openPendingEditInEditor(record, hunkLine);
-          } else if (msg.path) {
-            await openWorkspacePathInEditor({ rawPath: msg.path, fallbackAbsolutePaths: lastConversationFiles });
-          }
+          await pendingEditCoordinator.open(
+            msg.editId,
+            msg.path,
+            msg.hunkId,
+            typeof msg.hunkLine === 'number' ? msg.hunkLine : undefined,
+          );
         }
         break;
       case 'keepPendingHunk':
         if (msg.editId || msg.path) {
-          const { record, hunk } = resolvePendingHunk(msg.editId, msg.path, msg.hunkId);
-          keepPendingHunk(msg.editId, msg.path, msg.hunkId);
-          postPendingEdits(wv);
-          if (record && hunk) {
-            postPendingActionNotice(wv, {
-              action: 'keep',
-              scope: 'hunk',
-              path: record.path,
-              detail: `已保留 ${record.path} 的${hunk.title}。`,
-              queueTotal: pendingEdits.size,
-            });
-          }
+          pendingEditCoordinator.keepHunkWithNotice(wv, msg.editId, msg.path, msg.hunkId);
         }
         break;
       case 'undoPendingHunk':
         if (msg.editId || msg.path) {
-          const { record, hunk } = resolvePendingHunk(msg.editId, msg.path, msg.hunkId);
-          await undoPendingHunk(msg.editId, msg.path, msg.hunkId);
-          postPendingEdits(wv);
-          if (record && hunk) {
-            postPendingActionNotice(wv, {
-              action: 'undo',
-              scope: 'hunk',
-              path: record.path,
-              detail: `已撤销 ${record.path} 的${hunk.title}。`,
-              queueTotal: pendingEdits.size,
-            });
-          }
+          await pendingEditCoordinator.undoHunkWithNotice(wv, msg.editId, msg.path, msg.hunkId);
         }
         break;
       case 'keepPendingEdit':
         if (msg.editId || msg.path) {
-          const id = resolvePendingEditId(msg.editId, msg.path);
-          const record = id ? pendingEdits.get(id) : undefined;
-          keepPendingEdit(msg.editId, msg.path);
-          postPendingEdits(wv);
-          if (record) {
-            postPendingActionNotice(wv, {
-              action: 'keep',
-              scope: 'file',
-              path: record.path,
-              detail: `已保留 ${record.path} 的修改。`,
-              queueTotal: pendingEdits.size,
-            });
-          }
+          pendingEditCoordinator.keepEditWithNotice(wv, msg.editId, msg.path);
         }
         break;
       case 'undoPendingEdit':
         if (msg.editId || msg.path) {
-          const id = resolvePendingEditId(msg.editId, msg.path);
-          const record = id ? pendingEdits.get(id) : undefined;
-          await undoPendingEdit(msg.editId, msg.path);
-          postPendingEdits(wv);
-          if (record) {
-            const detail = record.existed
-              ? `已撤销 ${record.path}，文件已恢复到修改前状态。`
-              : `已撤销 ${record.path}，新建文件已删除。`;
-            postPendingActionNotice(wv, {
-              action: 'undo',
-              scope: 'file',
-              path: record.path,
-              detail,
-              queueTotal: pendingEdits.size,
-            });
-          }
+          await pendingEditCoordinator.undoEditWithNotice(wv, msg.editId, msg.path);
         }
         break;
       case 'keepAllPendingEdits':
-        {
-          cancelAutoAccept();
-          const count = pendingEdits.size;
-          for (const record of pendingEdits.values()) {
-            closePendingEditDiffTabAsync(record);
-          }
-          pendingEdits.clear();
-          diffDecoManager?.deactivateAll();
-          postPendingEdits(wv);
-          if (count > 0) {
-            postPendingActionNotice(wv, {
-              action: 'keep',
-              scope: 'all',
-              detail: `已保留全部修改（${count} 个文件）。`,
-              queueTotal: pendingEdits.size,
-            });
-          }
-        }
+        pendingEditCoordinator.keepAllWithNotice(wv);
         break;
       case 'undoAllPendingEdits':
-        {
-          cancelAutoAccept();
-          const count = pendingEdits.size;
-          await undoAllPendingEdits();
-          postPendingEdits(wv);
-          if (count > 0) {
-            postPendingActionNotice(wv, {
-              action: 'undo',
-              scope: 'all',
-              detail: `已撤销全部修改（${count} 个文件）。`,
-              queueTotal: pendingEdits.size,
-            });
-          }
-        }
+        await pendingEditCoordinator.undoAllWithNotice(wv);
         break;
       case 'cancel':
         activeChatAbortController?.abort();
@@ -1104,11 +582,11 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         break;
       case 'terminalConfirmReply': {
         // G-2: user clicked Allow / Always Allow / Skip on the inline terminal confirm card
-        const tcResolve = pendingTerminalConfirms.get(msg.confirmId as string);
-        if (tcResolve) {
-          pendingTerminalConfirms.delete(msg.confirmId as string);
-          tcResolve(msg.allow === true, msg.alwaysAllow === true);
-        }
+        terminalPermissionCoordinator.handleConfirmReply(
+          msg.confirmId as string,
+          msg.allow === true,
+          msg.alwaysAllow === true,
+        );
         break;
       }
       case 'runInVsTerminal': {
@@ -1310,152 +788,25 @@ function resolveSessionContinuationFiles(
   prompt: string,
   intent?: { mode?: string; signals?: readonly string[] },
 ): string[] {
-  if (!workspaceRoot || !shouldRestoreSessionFiles(prompt, intent)) return [];
-
-  const candidates: string[] = [];
-  const state = loadAgentSessionState();
-  for (const rel of state?.changedPaths ?? []) candidates.push(rel);
-  for (const rel of lastAgentChangedPaths) candidates.push(rel);
-  for (const abs of sessionRecentFiles.values()) {
-    const rel = relPathFromWorkspace(workspaceRoot, abs);
-    if (rel) candidates.push(rel);
-  }
-
-  const resolved = [...new Set(candidates)]
-    .map(rel => absPathFromWorkspaceRel(workspaceRoot, rel))
-    .filter((abs): abs is string => Boolean(abs));
-  const codeFirst = resolved.filter(p => AGENT_CODE_FILE_RE.test(p));
-  if (codeFirst.length === 0) return [];
-  const supporting = resolved.filter(p => !AGENT_CODE_FILE_RE.test(p)).slice(0, 3);
-  return [...codeFirst.slice(0, 6), ...supporting];
+  return resolveSessionContinuationFilesFromState({
+    workspaceRoot,
+    prompt,
+    intent,
+    state: loadAgentSessionState(),
+    lastAgentChangedPaths,
+    recentFilePaths: sessionRecentFiles.values(),
+  });
 }
 
 function buildAgenticSessionContext(workspaceRoot: string, currentPrompt: string): string {
-  if (!workspaceRoot) return '';
-  const state = loadAgentSessionState();
-
-  const recentHistory = nonBridgeChatHistory
-    .slice(-6)
-    .map((entry) => {
-      const role = entry.role === 'user' ? '用户' : '助手';
-      const content = typeof entry.content === 'string'
-        ? entry.content
-        : JSON.stringify(entry.content);
-      return `- ${role}: ${content.replace(/\s+/g, ' ').slice(0, 700)}`;
-    });
-
-  const recentFiles = [...new Set(sessionRecentFiles.values())]
-    .filter(Boolean)
-    .map(abs => relPathFromWorkspace(workspaceRoot, abs) ?? abs)
-    .filter(p => p && !p.startsWith('..'))
-    .slice(0, 12);
-
-  if (recentHistory.length === 0 && recentFiles.length === 0 && !state?.lastSummary) return '';
-
-  const lines: string[] = [
-    '这是同一个聊天 session 的后续消息。当前用户消息如果是短句、追问、纠错或反馈，必须优先基于下面的上一轮上下文继续处理；不要把它当作全新任务，也不要默认扫描整个工作区目录。',
-    `当前用户消息：${currentPrompt}`,
-  ];
-  if (state?.lastSummary) {
-    lines.push('上一轮 Agent 状态：');
-    lines.push(`- 用户目标：${state.lastUserPrompt}`);
-    lines.push(`- 执行结果：${state.completed ? '已完成' : '未完成或需要复核'}`);
-    lines.push(`- 摘要：${state.lastSummary.slice(0, 800)}`);
-    if (state.changedPaths.length > 0) {
-      lines.push('- 涉及文件：');
-      lines.push(...state.changedPaths.slice(0, 12).map(p => `  - ${p}`));
-    }
-  }
-  if (lastAgentChangedPaths.length > 0) {
-    lines.push('上一轮 Agent 涉及/修改的文件：');
-    lines.push(...lastAgentChangedPaths.slice(0, 10).map(p => `- ${p}`));
-  }
-  if (recentFiles.length > 0) {
-    lines.push('本 session 最近文件记忆：');
-    lines.push(...recentFiles.map(p => `- ${p}`));
-  }
-  if (recentHistory.length > 0) {
-    lines.push('最近对话摘要：');
-    lines.push(...recentHistory);
-  }
-  lines.push('执行要求：若用户反馈“没有看到/找不到/不对/继续/重新编译/运行”等，先核查上一轮目标文件和目录的真实状态，再修复或验证；不要泛化为分析整个 code 目录。');
-  return lines.join('\n').slice(0, 6000);
-}
-
-function buildSmalltalkReply(prompt: string): string {
-  const text = (prompt || '').trim().toLowerCase();
-  if (/^(?:hi|hello|ello|hey)[\s!.?]*$/.test(text)) return 'Hello! 我在。';
-  return '你好，我在。';
-}
-
-async function requestInlineTerminalConfirmation(
-  webview: vscode.Webview,
-  command: string,
-  workdir = '',
-  timeoutMs = 60000,
-): Promise<{ allow: boolean; alwaysAllow?: boolean; reason?: string }> {
-  const confirmId = `tc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-  return new Promise((resolve) => {
-    pendingTerminalConfirms.set(confirmId, (allow, alwaysAllow) => resolve({ allow, alwaysAllow }));
-    webview.postMessage({ type: 'terminalConfirm', command, workdir, confirmId });
-    setTimeout(() => {
-      if (pendingTerminalConfirms.delete(confirmId)) {
-        resolve({ allow: false, reason: '您未在 60 秒内确认，命令未执行。' });
-      }
-    }, timeoutMs);
-  });
-}
-
-async function runAgentTerminalCommandWithPermission(input: {
-  webview: vscode.Webview;
-  command: string;
-  workdir?: string;
-  workspaceRoot?: string;
-  mode: string;
-  toolPolicy: ToolPolicy;
-}): Promise<string> {
-  const { webview, command, workdir, workspaceRoot, mode, toolPolicy } = input;
-  const terminalPermission = decideToolPermission(toolPolicy, 'terminal');
-  if (terminalPermission.action === 'deny') {
-    return `（命令未执行：当前 ${mode} 模式不允许终端工具：${terminalPermission.reason}）`;
-  }
-
-  const terminalDecision = decideTerminalCommandPermission({
-    command,
-    workdir,
+  return buildAgenticSessionContextFromState({
     workspaceRoot,
+    currentPrompt,
+    state: loadAgentSessionState(),
+    lastAgentChangedPaths,
+    recentFilePaths: sessionRecentFiles.values(),
+    history: nonBridgeChatHistory,
   });
-  const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-  const remembered = terminalDecision.canRememberDecision && trustedTerminalRiskClasses.has(terminalDecision.risk);
-  let confirmedByUser = false;
-
-  if (!isAutopilot && terminalPermission.action === 'requireConfirm' && terminalDecision.requiresConfirmation && !remembered) {
-    const confirmResult = await requestInlineTerminalConfirmation(webview, command, workdir ?? '');
-    if (confirmResult.alwaysAllow && terminalDecision.canRememberDecision) {
-      trustedTerminalRiskClasses.add(terminalDecision.risk);
-    }
-    if (!confirmResult.allow) {
-      return `（命令未执行：${confirmResult.reason ?? '用户拒绝'}）`;
-    }
-    confirmedByUser = true;
-  }
-
-  const { runCommand, formatTerminalOutputForPrompt } = await import('./tools/terminal');
-  const result = await runCommand({
-    command,
-    cwd: workdir,
-    visible: false,
-    allowRisky: !isAutopilot && (confirmedByUser || remembered),
-  });
-  const outputPreview = result.output.slice(0, 4000);
-  webview.postMessage({
-    type: 'terminalRanNotice',
-    command,
-    workdir: workdir ?? '',
-    exitCode: result.exitCode,
-    output: outputPreview,
-  });
-  return formatTerminalOutputForPrompt(command, result);
 }
 
 async function runChat(
@@ -1786,7 +1137,7 @@ async function runChat(
       }
     }
 
-    beginAgentRunReviewScope(webview);
+    pendingEditCoordinator.beginReviewScope(webview);
     // P5: carry agentMode so webview can set isAgentMode synchronously on receipt
     webview.postMessage({ type: 'startResponse', prompt, expectGeneratedArtifacts: true, agentMode: true });
     // Emit the auto-discovery note as the first delta so the user knows files were found
@@ -1860,7 +1211,7 @@ async function runChat(
           },
           onWorkflowStatus: async (s) => { postWebviewEvent(webview, { kind: 'workflow', status: s }); },
           onAgentStatus: async (s) => { postAgent(s); },
-          onAppliedChange: async (c) => { await registerPendingEditChange(webview, c); },
+          onAppliedChange: async (c) => { await pendingEditCoordinator.registerChange(webview, c); },
           onResponseMeta: async (_raw) => { /* suppressed in agent mode */ },
           onAgentAnnouncement: (text) => {
             webview.postMessage({ type: 'agentAnnouncement', text });
@@ -1892,14 +1243,10 @@ async function runChat(
             const SENSITIVE = /^(\.env(\.|$))|.*\.(pem|key|p12|pfx|crt|cer|jks|keystore|secret|credentials|token|passwd|password)$/i;
             if (!SENSITIVE.test(fname)) return true;
             const relPath = wsRoot2 ? nodePath.relative(wsRoot2, absPath).replace(/\\/g, '/') : fname;
-            const confirmId = `sf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-            const confirmResult = await new Promise<{ allow: boolean }>((resolve) => {
-              pendingTerminalConfirms.set(confirmId, (allow) => resolve({ allow }));
-              webview.postMessage({ type: 'terminalConfirm', command: `⚠️ 写入敏感文件：${relPath}`, workdir: '', confirmId });
-              setTimeout(() => {
-                if (pendingTerminalConfirms.delete(confirmId)) resolve({ allow: false });
-              }, 60000);
-            });
+            const confirmResult = await terminalPermissionCoordinator.requestInlineConfirmation(
+              webview,
+              `⚠️ 写入敏感文件：${relPath}`,
+            );
             return confirmResult.allow;
           },
           mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
@@ -1907,7 +1254,7 @@ async function runChat(
             ? (fakeName, args) => mcpManager.callTool(fakeName, args)
             : undefined,
           onTerminalCommand: async (command, workdir) => {
-            return runAgentTerminalCommandWithPermission({
+            return terminalPermissionCoordinator.runCommandWithPermission({
               webview,
               command,
               workdir,
@@ -2108,13 +1455,11 @@ async function runChat(
             ]);
             const isAuto0 = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
             if (!isAuto0 && !SAFE.has(command)) {
-              const cid0 = `vc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-              const ok0 = await new Promise<boolean>((resolve) => {
-                pendingTerminalConfirms.set(cid0, (allow) => resolve(allow));
-                webview.postMessage({ type: 'terminalConfirm', command: `⚡ VS Code: ${command}`, workdir: '', confirmId: cid0 });
-                setTimeout(() => { if (pendingTerminalConfirms.delete(cid0)) resolve(false); }, 60000);
-              });
-              if (!ok0) return '（命令未执行：用户拒绝）';
+              const commandConfirm = await terminalPermissionCoordinator.requestInlineConfirmation(
+                webview,
+                `⚡ VS Code: ${command}`,
+              );
+              if (!commandConfirm.allow) return '（命令未执行：用户拒绝）';
             }
             try {
               const res0 = await vscode.commands.executeCommand(command, ...(args ?? []));
@@ -2167,8 +1512,8 @@ async function runChat(
           saveCurrentSession();
           recordIntentOutcome(intentRoutingText, 'code-change', activeSessionId, extContext);
         }
-        const agAutopilotHandled = handleAgentAutopilotPendingEdits(webview, agResult);
-        scheduleAutoAccept(webview, agResult, agAutopilotHandled);
+        const agAutopilotHandled = pendingEditCoordinator.handleAgentAutopilot(webview, agResult);
+        pendingEditCoordinator.scheduleAutoAccept(webview, agResult, agAutopilotHandled);
         webview.postMessage({ type: 'endResponse' });
         return;
       }
@@ -2312,7 +1657,7 @@ async function runChat(
           },
           onWorkflowStatus: async (s) => { postWebviewEvent(webview, { kind: 'workflow', status: s }); },
           onAgentStatus: async (s) => { postAgent(s); },
-          onAppliedChange: async (c) => { await registerPendingEditChange(webview, c); },
+          onAppliedChange: async (c) => { await pendingEditCoordinator.registerChange(webview, c); },
           onResponseMeta: async (_raw) => { /* suppressed in agent mode */ },
           // G-tool: AI performed read/search/list — show activity chip in working area
           onToolActivity: (kind, label) => {
@@ -2350,14 +1695,10 @@ async function runChat(
             const SENSITIVE = /^(\.env(\.|$))|.*\.(pem|key|p12|pfx|crt|cer|jks|keystore|secret|credentials|token|passwd|password)$/i;
             if (!SENSITIVE.test(fname)) return true;
             const relPath = wsRoot2 ? nodePath.relative(wsRoot2, absPath).replace(/\\/g, '/') : fname;
-            const confirmId = `sf-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-            const confirmResult = await new Promise<{ allow: boolean }>((resolve) => {
-              pendingTerminalConfirms.set(confirmId, (allow) => resolve({ allow }));
-              webview.postMessage({ type: 'terminalConfirm', command: `⚠️ 写入敏感文件：${relPath}`, workdir: '', confirmId });
-              setTimeout(() => {
-                if (pendingTerminalConfirms.delete(confirmId)) resolve({ allow: false });
-              }, 60000);
-            });
+            const confirmResult = await terminalPermissionCoordinator.requestInlineConfirmation(
+              webview,
+              `⚠️ 写入敏感文件：${relPath}`,
+            );
             return confirmResult.allow;
           },
           // P3-5: MCP tools available in this session
@@ -2368,7 +1709,7 @@ async function runChat(
           // P4-1: run_terminal tool — AI can execute shell commands from agent loop
           // G-2: replaced showWarningMessage modal with an inline confirm card in the webview
           onTerminalCommand: async (command, workdir) => {
-            return runAgentTerminalCommandWithPermission({
+            return terminalPermissionCoordinator.runCommandWithPermission({
               webview,
               command,
               workdir,
@@ -2594,13 +1935,11 @@ async function runChat(
             ]);
             const isAuto1 = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
             if (!isAuto1 && !SAFE.has(command)) {
-              const cid1 = `vc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-              const ok1 = await new Promise<boolean>((resolve) => {
-                pendingTerminalConfirms.set(cid1, (allow) => resolve(allow));
-                webview.postMessage({ type: 'terminalConfirm', command: `⚡ VS Code: ${command}`, workdir: '', confirmId: cid1 });
-                setTimeout(() => { if (pendingTerminalConfirms.delete(cid1)) resolve(false); }, 60000);
-              });
-              if (!ok1) return '（命令未执行：用户拒绝）';
+              const commandConfirm = await terminalPermissionCoordinator.requestInlineConfirmation(
+                webview,
+                `⚡ VS Code: ${command}`,
+              );
+              if (!commandConfirm.allow) return '（命令未执行：用户拒绝）';
             }
             try {
               const res1 = await vscode.commands.executeCommand(command, ...(args ?? []));
@@ -2677,7 +2016,7 @@ async function runChat(
             registerToMemory(absPath);
           });
         }
-        loopAutopilotHandled = handleAgentAutopilotPendingEdits(webview, loopResult);
+        loopAutopilotHandled = pendingEditCoordinator.handleAgentAutopilot(webview, loopResult);
         // L1a: build rich summary text for session history
         // Include: task plan, each file with workspace-relative path, analysis summary.
         // This is the key data the user needs to continue work after loading a session.
@@ -2794,7 +2133,7 @@ async function runChat(
 
     const autoAcceptResult = loopResult
       ?? (loopFailedForAutoAccept ? { tasksTotal: decomposedTaskCount, tasksApplied: 0, tasksFailed: 1, changedPaths: [] } : undefined);
-    scheduleAutoAccept(webview, autoAcceptResult, loopAutopilotHandled);
+    pendingEditCoordinator.scheduleAutoAccept(webview, autoAcceptResult, loopAutopilotHandled);
     webview.postMessage({ type: 'endResponse' });
     return;
   }
@@ -2938,186 +2277,31 @@ async function runChat(
     }
 
     if (localExecutionFirst) {
-      let localPlan: LocalExecutionPlan | undefined;
-      if (shouldPreferLocalExecution(prompt, effectiveFiles, workspaceRoot)) {
-        localPlan = planLocalExecution(prompt, effectiveFiles || [], workspaceRoot) || undefined;
-      } else if (isRepeatExecutionRequest(prompt) && lastLocalExecutionPlan) {
-        localPlan = planRepeatLocalExecution(prompt, lastLocalExecutionPlan, workspaceRoot) || undefined;
-      }
-
-      if (localPlan) {
-        lastLocalExecutionPlan = localPlan;
-
-        if (executionApproval === 'confirm') {
-          const confirmResult = await requestInlineTerminalConfirmation(webview, localPlan.command, localPlan.cwd);
-          if (confirmResult.alwaysAllow) {
-            await vscode.workspace.getConfiguration('devseek').update('autopilotMode', true, vscode.ConfigurationTarget.Global);
-          }
-          if (!confirmResult.allow) {
-            await workflowReporter({
-              phase: 'validate',
-              state: 'skipped',
-              title: '本地执行已取消',
-              detail: confirmResult.reason ?? '用户取消了本地编译/运行命令。',
-            });
-            webview.postMessage({ type: 'endResponse' });
-            return;
-          }
-        }
-
-        await workflowReporter({
-          phase: 'validate',
-          state: 'started',
-          title: localPlan.mode === 'run-only' ? '插件正在本地执行已有程序' : '插件正在本地编译/执行',
-          detail: `模式: ${localPlan.mode}\n原因: ${localPlan.reason}\n命令: ${localPlan.command}`,
-        });
-
-        let maxRounds = Math.max(0, Math.min(6, config.get<number>('autoFixRounds', 6)));
-        for (let round = 0; round <= maxRounds; round += 1) {
-          const localResult = await runLocalExecution(localPlan);
-          await workflowReporter({
-            phase: 'validate',
-            state: localResult.ok ? 'passed' : 'failed',
-            title: localResult.ok ? '本地执行通过' : '本地执行失败',
-            detail: `命令: ${localResult.command}\nexitCode: ${localResult.exitCode ?? 'null'}\n${localResult.output.slice(0, 1200)}`,
-          });
-
-          if (localResult.ok) {
-            emitLearningEvent({ type: 'command_succeeded', command: localPlan.command, context: prompt.slice(0, 80), sessionId: activeSessionId });
-            webview.postMessage({ type: 'delta', text: buildLocalExecutionSuccessMessage(localPlan, localResult) });
-            webview.postMessage({ type: 'endResponse' });
-            return;
-          }
-
-          if (!shouldRepairLocalExecutionFailure(localPlan, localResult)) {
-            webview.postMessage({ type: 'delta', text: buildLocalExecutionFailureMessage(localPlan, localResult) });
-            webview.postMessage({ type: 'endResponse' });
-            return;
-          }
-
-          if (round >= maxRounds) {
-            const action = await askRepairExhaustedAction('本地执行闭环达到上限', `已执行 ${maxRounds} 轮，仍未通过本地命令。`);
-            if (action === 'continue') {
-              maxRounds += 3;
-              await workflowReporter({
-                phase: 'repair',
-                state: 'started',
-                title: '用户选择继续修复',
-                detail: `修复上限已扩展到 ${maxRounds} 轮。`,
-              });
-              continue;
-            }
-
-            if (action === 'guide') {
-              const guidance = await requestManualFixGuidance(prompt, localResult.command, localResult.output);
-              webview.postMessage({ type: 'delta', text: `\n\n[手动修复建议]\n${guidance}\n` });
-            }
-
-            await workflowReporter({
-              phase: 'repair',
-              state: 'failed',
-              title: '本地执行闭环结束（NG）',
-              detail: `已达到最大修复轮次 ${maxRounds}，仍未通过本地命令。`,
-            });
-            webview.postMessage({ type: 'endResponse' });
-            return;
-          }
-
-          await workflowReporter({
-            phase: 'repair',
-            state: 'started',
-            title: `第 ${round + 1} 轮本地失败修复`,
-            detail: '将本地失败输出升级为 Agent 闭环：读取文件、定位根因、修改并重新验证。',
-          });
-
-          const repairPrompt = buildLocalExecutionAgentRepairPrompt(prompt, localPlan, localResult, round + 1);
-          const _errHint = getErrorFixHint(localResult.output);
-          const repairPromptWithHint = _errHint
-            ? `${repairPrompt}\n\n【历史同类错误修复参考】\n${_errHint}`
-            : repairPrompt;
-          const repairWsRoot = workspaceRoot
-            || vscode.workspace.getWorkspaceFolder(vscode.Uri.file(localPlan.cwd))?.uri.fsPath
-            || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-            || localPlan.cwd;
-          const repairTasks = buildLocalExecutionRepairTasks(localPlan, localResult, repairWsRoot);
-
-          if (repairTasks.length === 0) {
-            await workflowReporter({
-              phase: 'repair',
-              state: 'failed',
-              title: '未找到可交给 Agent 修复的源码文件',
-              detail: '本地执行失败后，未能从执行计划中解析出可修改文件。',
-            });
-            webview.postMessage({ type: 'endResponse' });
-            return;
-          }
-
-          webview.postMessage({
-            type: 'agentStatus',
-            phase: 'plan',
-            state: 'started',
-            title: '本地执行失败，进入 Agent 修复',
-            detail: '参考 Claude Code / Codex 的闭环策略：失败输出 → 读/搜源码 → 修改 → 重跑验证。',
-            taskTotal: repairTasks.length,
-          });
-          webview.postMessage({
-            type: 'agentStatus',
-            phase: 'plan',
-            state: 'completed',
-            title: `已生成 ${repairTasks.length} 个修复子任务`,
-            detail: repairTasks.map((t, i) => `${i + 1}. [${t.action}] ${getAgentTaskDisplayTarget(t)} — ${t.desc}`).join('\n'),
-            taskTotal: repairTasks.length,
-          });
-
-          const repairLoop = await runAgentLoop(
-            repairTasks,
-            repairPromptWithHint,
-            mode,
-            vscode.Uri.file(repairWsRoot),
-            buildLocalExecutionAgentCallbacks({
-              webview,
-              workflowReporter,
-              workspaceRoot: repairWsRoot,
-              defaultWorkdir: localPlan.cwd,
-              toolPolicy,
-              consumeAgentSteer,
-              confirmTerminal: (command, workdir) => requestInlineTerminalConfirmation(webview, command, workdir ?? ''),
-              registerAppliedChange: (change) => registerPendingEditChange(webview, change),
-              registerToMemory,
-              sessionRecentFiles,
-              repairFiles: repairTasks.map((task) => task.absPath).filter((absPath): absPath is string => Boolean(absPath)),
-              mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
-              onMcpToolCall: mcpManager.hasMcpTools
-                ? (fakeName, args) => mcpManager.callTool(fakeName, args)
-                : undefined,
-              signal: chatSignal,
-            }),
-            undefined,
-            0,
-          );
-
-          if (repairLoop.changedPaths.length > 0) {
-            repairLoop.changedPaths.forEach((p) => {
-              const absPath = nodePath.isAbsolute(p) ? p : nodePath.join(repairWsRoot, p);
-              registerToMemory(absPath);
-            });
-            lastAgentChangedPaths = repairLoop.changedPaths
-              .map(p => relPathFromRepairWorkspace(repairWsRoot, nodePath.isAbsolute(p) ? p : nodePath.join(repairWsRoot, p)))
-              .filter((rel): rel is string => Boolean(rel));
-          }
-
-          if (repairLoop.tasksApplied === 0 && repairLoop.tasksFailed > 0) {
-            await workflowReporter({
-              phase: 'repair',
-              state: 'failed',
-              title: 'Agent 未能落地修复',
-              detail: '本轮没有产生可应用的文件修改，停止本地执行闭环。',
-            });
-            webview.postMessage({ type: 'endResponse' });
-            return;
-          }
-        }
-      }
+      const localExecutionResult = await runLocalExecutionChatIfPossible({
+        webview,
+        prompt,
+        effectiveFiles,
+        workspaceRoot,
+        mode,
+        config,
+        executionApproval,
+        workflowReporter,
+        lastLocalExecutionPlan,
+        setLastLocalExecutionPlan: (plan) => { lastLocalExecutionPlan = plan; },
+        requestTerminalConfirmation: (command, workdir) => terminalPermissionCoordinator.requestInlineConfirmation(webview, command, workdir ?? ''),
+        routeChat,
+        toolPolicy,
+        consumeAgentSteer,
+        registerAppliedChange: (change) => pendingEditCoordinator.registerChange(webview, change),
+        registerToMemory,
+        sessionRecentFiles,
+        mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
+        onMcpToolCall: mcpManager.hasMcpTools ? (fakeName, args) => mcpManager.callTool(fakeName, args) : undefined,
+        signal: chatSignal,
+        sessionId: activeSessionId,
+        onChangedPaths: (relativePaths) => { lastAgentChangedPaths = relativePaths; },
+      });
+      if (localExecutionResult.handled) return;
     }
 
     const postChatDelta = (delta: string): void => {
@@ -3214,7 +2398,7 @@ async function runChat(
 
     if (shouldApplyToReviewQueue) {
       const firstApply = await applyGeneratedArtifactsWithPrompt(responseToApply, prompt, workflowReporter, true, async (change) => {
-        await registerPendingEditChange(webview, change);
+        await pendingEditCoordinator.registerChange(webview, change);
       }, pathResolutionHints, { rollbackOnValidationFailure: false });
       const recoveredApply = await recoverApplyFailureIfPossible({
         reporter: workflowReporter,
@@ -3226,11 +2410,21 @@ async function runChat(
         apply: (repairResponse, repairPrompt, onAppliedChange) => applyGeneratedArtifactsWithPrompt(
           repairResponse, repairPrompt, workflowReporter, true, onAppliedChange, pathResolutionHints, { rollbackOnValidationFailure: false },
         ),
-        onAppliedChange: async (change) => { await registerPendingEditChange(webview, change); },
+        onAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(webview, change); },
       });
       const finalApply = recoveredApply ?? firstApply;
       if (shouldRunClosedLoopRepair(finalApply)) {
-        await runClosedLoopRepair(webview, workflowReporter, prompt, mode, finalApply, pathResolutionHints);
+        await runClosedLoopRepair({
+          webview,
+          reporter: workflowReporter,
+          originalPrompt: prompt,
+          mode,
+          initialApply: finalApply,
+          preferredAbsolutePaths: pathResolutionHints,
+          routeChat,
+          registerAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(webview, change); },
+          getSessionId: () => activeSessionId,
+        });
       }
     }
   } catch (e) {
@@ -3270,304 +2464,7 @@ async function runChat(
   webview.postMessage({ type: 'endResponse' });
 }
 
-async function runClosedLoopRepair(
-  webview: vscode.Webview,
-  reporter: (status: ApplyWorkflowStatus) => Promise<void>,
-  originalPrompt: string,
-  mode: 'fast' | 'r1' | undefined,
-  initialApply: ApplyWorkflowResult,
-  preferredAbsolutePaths: string[] = lastConversationFiles,
-): Promise<void> {
-  const config = vscode.workspace.getConfiguration('devseek');
-  let maxRounds = Math.max(0, Math.min(6, config.get<number>('autoFixRounds', 6)));
-  let current = initialApply;
-  let priorRepairRejection = '';
-  const repairService = new AgenticRepairService(initialApply);
-
-  for (let round = 1; round <= maxRounds; round += 1) {
-    const validation = current.validation;
-    if (!validation || validation.ok) {
-      if (validation?.ok) {
-        await reporter({
-          phase: 'repair',
-          state: 'completed',
-          title: '闭环修正完成（OK）',
-          detail: `第 ${round - 1} 轮修正后通过自动验证。`,
-        });
-        emitLearningEvent({
-          type: 'error_fixed',
-          errorFingerprint: fingerprintError(validation.output ?? ''),
-          fixSummary: `round=${round - 1} cmd=${validation.command}`,
-          sessionId: activeSessionId,
-        });
-      }
-      return;
-    }
-
-    await reporter({
-      phase: 'repair',
-      state: 'started',
-      title: `第 ${round} 轮自动修正`,
-      detail: `基于验证失败结果回传 DeepSeek：\n命令: ${validation.command}\nexitCode: ${validation.exitCode ?? 'null'}`,
-    });
-
-    const repairPrompt = repairService.buildRepairPrompt({
-      originalPrompt,
-      changedPaths: current.changedPaths,
-      validation,
-      round,
-      priorRepairRejection,
-      failureFiles: current.review?.validation.failureFiles ?? [],
-    });
-    priorRepairRejection = '';
-    let repairResponse = '';
-    let resetNoticeSent = false;
-
-    try {
-      repairResponse = await routeChat({
-        prompt: repairPrompt,
-        newSession: false,
-        mode,
-        onDelta: (delta) => {
-          if (delta.startsWith('\x00RESET\x00') && !resetNoticeSent) {
-            resetNoticeSent = true;
-            webview.postMessage({ type: 'delta', text: '\n\n[自动修正] 已收到修正草案，正在安全解析并应用。\n' });
-          }
-        },
-      });
-    } catch (error) {
-      await reporter({
-        phase: 'repair',
-        state: 'failed',
-        title: '自动修正请求失败',
-        detail: (error as Error).message,
-      });
-      return;
-    }
-
-    const repairApply = await applyGeneratedArtifactsWithPrompt(
-      repairResponse,
-      repairPrompt,
-      reporter,
-      true,
-      async (change) => {
-        await registerPendingEditChange(webview, change);
-      },
-      preferredAbsolutePaths,
-      { rollbackOnValidationFailure: false },
-    );
-    if (!repairApply.applied) {
-      if (repairApply.failureReason === 'truncating-overwrite') {
-        priorRepairRejection = repairService.buildTruncatingOverwriteRepairRejection(repairApply, validation);
-        if (round < maxRounds) {
-          await reporter({
-            phase: 'repair',
-            state: 'started',
-            title: '已拒绝截断覆盖修复，重新要求最小补丁',
-            detail: priorRepairRejection,
-          });
-          continue;
-        }
-        await reporter({
-          phase: 'repair',
-          state: 'failed',
-          title: '自动修正被安全拦截（疑似截断覆盖）',
-          detail: `${priorRepairRejection}\n未运行后续验证或 QualityGate，因为修复内容未安全落地。`,
-        });
-        return;
-      }
-      if (responseClaimsStatusOk(repairResponse) && !validation.ok && round < maxRounds) {
-        priorRepairRejection = repairService.buildStatusOkRejection(validation);
-        await reporter({
-          phase: 'repair',
-          state: 'started',
-          title: '已拒绝模型 STATUS: OK，自验证仍失败',
-          detail: priorRepairRejection,
-        });
-        continue;
-      }
-      await reporter({
-        phase: 'repair',
-        state: 'failed',
-        title: '自动修正未产出可应用文件',
-        detail: 'DeepSeek 返回内容无法解析为文件变更，请手动调整提示词。',
-      });
-      return;
-    }
-    current = repairApply;
-
-    const progressDecision = repairService.evaluateAppliedRepair(current, round < maxRounds);
-    if (progressDecision.kind === 'stop-no-progress') {
-      await reporter({
-        phase: 'repair',
-        state: 'failed',
-        title: progressDecision.title,
-        detail: progressDecision.detail,
-      });
-      return;
-    }
-    if (progressDecision.kind === 'retry-with-root-cause') {
-      priorRepairRejection = progressDecision.rejection;
-      await reporter({
-        phase: 'repair',
-        state: 'started',
-        title: progressDecision.title,
-        detail: priorRepairRejection,
-      });
-      continue;
-    }
-
-    if (round >= maxRounds) {
-      const validationNow = current.validation;
-      if (validationNow && !validationNow.ok) {
-        const action = await askRepairExhaustedAction('自动修复达到上限', `已执行 ${maxRounds} 轮自动修复，仍未通过验证。`);
-        if (action === 'continue') {
-          maxRounds += 3;
-          await reporter({
-            phase: 'repair',
-            state: 'started',
-            title: '用户选择继续修复',
-            detail: `修复上限已扩展到 ${maxRounds} 轮。`,
-          });
-          continue;
-        }
-
-        if (action === 'guide') {
-          const guidance = await requestManualFixGuidance(originalPrompt, validationNow.command, validationNow.output);
-          webview.postMessage({ type: 'delta', text: `\n\n[手动修复建议]\n${guidance}\n` });
-        }
-      }
-    }
-  }
-
-  const finalValidation = current.validation;
-  if (finalValidation && !finalValidation.ok) {
-    await reporter({
-      phase: 'repair',
-      state: 'failed',
-      title: '闭环修正结束（NG）',
-      detail: `达到最大修正轮次后仍未通过。\n命令: ${finalValidation.command}\nexitCode: ${finalValidation.exitCode ?? 'null'}\n${finalValidation.output.slice(0, 1000)}`,
-    });
-  }
-}
-
-async function askRepairExhaustedAction(title: string, detail: string): Promise<'continue' | 'guide' | 'stop'> {
-  const choice = await vscode.window.showWarningMessage(
-    `${title}：${detail}`,
-    '继续 3 轮',
-    '给出手动修改建议',
-    '停止',
-  );
-  if (choice === '继续 3 轮') return 'continue';
-  if (choice === '给出手动修改建议') return 'guide';
-  return 'stop';
-}
-
-async function requestManualFixGuidance(originalPrompt: string, command: string, output: string): Promise<string> {
-  try {
-    const guidancePrompt = [
-      '请给出简洁的人工修复建议（分步骤），用于开发者手动修改代码。',
-      '要求：只给操作步骤和可能修改的文件，不输出大段代码。',
-      '',
-      '原始需求：',
-      originalPrompt,
-      '',
-      '失败命令：',
-      command,
-      '',
-      '错误输出：',
-      '```text',
-      (output || '（无输出）').slice(0, 5000),
-      '```',
-    ].join('\n');
-
-    const reply = await routeChat({
-      prompt: guidancePrompt,
-      newSession: false,
-      stream: false,
-    });
-    return (reply || '未能生成建议。').trim();
-  } catch {
-    return '建议：先定位首个编译错误对应文件与符号，再最小化修改后重新编译。';
-  }
-}
-
-function appendStructuredGenerationHint(prompt: string): string {
-  return [
-    prompt,
-    '',
-    '【输出格式要求（用于自动落地）】',
-    '1. 如果是多文件，请按“文件 1：相对路径”+ 代码块逐个输出。',
-    '2. 禁止把目录树、层次图、编译命令放进代码块。',
-    '3. 每个代码块只包含该文件源码，不要附加说明文字。',
-    '4. 路径请使用相对路径，且与文件名一一对应。',
-  ].join('\n');
-}
-
-/**
- * 当附件文件已知时，生成包含实际路径示例的具体格式提示（参考 Aider strict-format 思路）。
- * 比泛化提示更能引导 DeepSeek 输出可解析格式。
- */
-function appendFileAwareFormatHint(prompt: string, absoluteFilePaths: string[]): string {
-  // 只向 DeepSeek 提供文件名（不含路径），由插件自己负责路径映射
-  const basenames = absoluteFilePaths.map(f => nodePath.basename(f));
-  const exampleLang = (i: number) => fenceLangForFile(basenames[i] ?? '');
-  const examples = basenames.slice(0, 3).map((name, i) =>
-    `文件 ${i + 1}: ${name}\n\`\`\`${exampleLang(i)}\n// 文件完整内容\n\`\`\``
-  );
-  if (basenames.length > 3) {
-    examples.push(`……（其余 ${basenames.length - 3} 个文件依此格式）`);
-  }
-  return [
-    prompt,
-    '',
-    '【必须遵守的输出格式（用于自动落地文件）】',
-    `涉及以下 ${basenames.length} 个文件的修改，每个代码块前必须有单独文件名标注行，示例：`,
-    '',
-    examples.join('\n\n'),
-    '',
-    `文件名列表（共 ${basenames.length} 个）：`,
-    basenames.map(n => `  ${n}`).join('\n'),
-    '',
-    '禁止省略文件名标注，禁止合并多文件输出到一个代码块。',
-  ].join('\n');
-}
-
-/** 解析失败后发追问，要求 DeepSeek 按标准格式重新整理输出 */
-function buildReformatPrompt(absoluteFilePaths: string[]): string {
-  const basenames = absoluteFilePaths.map(f => nodePath.basename(f));
-  const examples = basenames.slice(0, 3).map((name, i) => {
-    const lang = fenceLangForFile(name);
-    return `文件 ${i + 1}: ${name}\n\`\`\`${lang}\n// 文件完整内容\n\`\`\``;
-  });
-  const extraNote = basenames.length > 3
-    ? `\n……（其余 ${basenames.length - 3} 个文件同样格式）`
-    : '';
-  return [
-    '请将上面的修改按以下格式重新整理输出，每个代码块前必须有文件名行，只输出代码，不要解释：',
-    '',
-    examples.join('\n\n') + extraNote,
-    '',
-    `文件名从以下列表中选取（共 ${basenames.length} 个）：`,
-    basenames.map(n => `  ${n}`).join('\n'),
-  ].join('\n');
-}
-
-
-// ----------------------------------------------------------------
-// ChatPanel — 保持与 commands/index.ts 的兼容接口
-// ----------------------------------------------------------------
-export class ChatPanel {
-  /** 从代码命令分发消息到面板 */
-  static push(userDisplay: string, prompt: string, newSession: boolean): void {
-    viewProvider.push(userDisplay, prompt, newSession);
-  }
-}
-
-
-// ----------------------------------------------------------------
-// Helpers
-// ----------------------------------------------------------------
+function pushChatPanel(userDisplay: string, prompt: string, newSession: boolean): void { viewProvider.push(userDisplay, prompt, newSession); }
 
 /**
  * 统一 chat 路由：自动选择当前活跃 Provider。
@@ -3599,58 +2496,18 @@ interface RouteChatOpts {
 }
 
 function recordTrackedChatHistory(opts: RouteChatOpts, response: string): void {
-  if (!opts.trackHistory) return;
-
-  const displayText = opts.displayPrompt ?? opts.prompt;
-  nonBridgeChatHistory.push({ role: 'user', content: displayText });
-  nonBridgeChatHistory.push({ role: 'assistant', content: response });
-
-  // T3: Auto-compact checkpoint when history reaches 20 turns (40 messages)
-  // Fires LLM summary in background, keeps newest 20 in-memory, summary persists for session restore.
-  if (nonBridgeChatHistory.length >= 40 && activeSessionId) {
-    const _toCompact = nonBridgeChatHistory.slice(0, 20);
-    nonBridgeChatHistory = nonBridgeChatHistory.slice(20);
-    const _compactId = activeSessionId;
-    void (async () => {
-      await compactAndSaveHistory(_toCompact, _compactId);
-      const freshSummary = extContext?.workspaceState.get<string>(`deepseek.session.${_compactId}.summary`);
-      if (freshSummary && _compactId === activeSessionId) {
-        const _hasPair = nonBridgeChatHistory[0]?.role === 'user' && chatContentStartsWith(nonBridgeChatHistory[0]?.content, '[上次会话背景');
-        const _hasLegacy = nonBridgeChatHistory[0]?.role === 'assistant'
-          && (chatContentStartsWith(nonBridgeChatHistory[0]?.content, '【历史摘要】\n') || chatContentStartsWith(nonBridgeChatHistory[0]?.content, '【上次 session 摘要】\n'));
-        if (_hasPair) {
-          nonBridgeChatHistory[0] = { role: 'user' as const, content: `[上次会话背景，请基于此继续工作]\n${freshSummary}` };
-        } else if (_hasLegacy) {
-          nonBridgeChatHistory[0] = { role: 'user' as const, content: `[上次会话背景，请基于此继续工作]\n${freshSummary}` };
-          nonBridgeChatHistory.splice(1, 0, { role: 'assistant' as const, content: '好的，我已了解上次的工作进展，可以继续。' });
-        } else {
-          nonBridgeChatHistory.unshift(
-            { role: 'user' as const, content: `[上次会话背景，请基于此继续工作]\n${freshSummary}` },
-            { role: 'assistant' as const, content: '好的，我已了解上次的工作进展，可以继续。' },
-          );
-        }
-      }
-    })();
-  } else if (nonBridgeChatHistory.length > 40) {
-    nonBridgeChatHistory = nonBridgeChatHistory.slice(-40);
-  }
-
-  // L1a: auto-save session history + update updatedAt.
-  if (activeSessionId) {
-    const existing = getSessions().find(s => s.id === activeSessionId);
-    if (existing) {
-      saveSessionMeta({ ...existing, updatedAt: Date.now() });
-    }
-  }
-  saveCurrentSession();
-
-  // L2: ensure session metadata title is set from first user message.
-  if (nonBridgeChatHistory.length === 2 && activeSessionId) {
-    const sessions = getSessions();
-    if (!sessions.some(s => s.id === activeSessionId)) {
-      saveSessionMeta({ id: activeSessionId, title: displayText.slice(0, 50), createdAt: Date.now(), updatedAt: Date.now() });
-    }
-  }
+  recordTrackedChatHistoryState({
+    opts,
+    response,
+    activeSessionId,
+    getHistory: () => nonBridgeChatHistory,
+    setHistory: (history) => { nonBridgeChatHistory = history; },
+    compactAndSaveHistory,
+    getFreshSummary: (sessionId) => extContext?.workspaceState.get<string>(`deepseek.session.${sessionId}.summary`),
+    getSessions,
+    saveSessionMeta,
+    saveCurrentSession,
+  });
 }
 
 async function routeChat(opts: RouteChatOpts): Promise<string> {
@@ -3838,106 +2695,18 @@ async function handleTaskHistoryUiMessage(wv: vscode.Webview, msg: WebviewMessag
 
 function initOrRestoreSession(): void {
   if (!extContext) return;
-  const sessionService = getSessionService();
-  const savedId = sessionService?.getActiveSessionId() ?? '';
-  const sessions = getSessions();
-  if (savedId && sessions.some(s => s.id === savedId)) {
-    activeSessionId = savedId;
-    const files = extContext.workspaceState.get<Record<string, string>>(
-      `deepseek.session.${savedId}.files`, {},
-    ) ?? {};
-    sessionRecentFiles.clear();
-    for (const [k, v] of Object.entries(files)) sessionRecentFiles.set(k, v);
-    // On startup, do NOT inject the previous session's summary into the LLM context.
-    // nonBridgeChatHistory starts empty — the user sees the last session's history in the
-    // UI (via the 'ready' → 'sessionLoaded' flow) but the LLM context is fresh.
-    // The summary is only injected when the user explicitly continues a session via
-    // loadSession handler or sends a first message with newSession=false in that session.
-    nonBridgeChatHistory = [];
-    // L2: restore analysis context from workspaceState (persists analyze findings across reload)
-    const savedAnalysis = extContext.workspaceState.get<string>(`deepseek.session.${savedId}.analysisText`, '') ?? '';
-    if (savedAnalysis) lastAnalysisText = savedAnalysis;
-    restoreLastAgentPathsFromSession(savedId);
-  } else {
-    activeSessionId = generateSessionId();
-    sessionService?.setActiveSessionId(activeSessionId);
-  }
-}
-
-function insertCodeToEditor(code: string): void {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    vscode.window.showWarningMessage('DeepSeek: 请先在编辑器中打开一个文件并定位光标');
-    return;
-  }
-  editor.edit(eb => {
-    if (editor.selection.isEmpty) {
-      eb.insert(editor.selection.active, code);
-    } else {
-      eb.replace(editor.selection, code);
-    }
+  const bootstrap = buildSessionBootstrapState({
+    sessionService: getSessionService(),
+    workspaceState: extContext.workspaceState,
   });
-}
-
-async function addResourceToChat(resource?: vscode.Uri): Promise<void> {
-  let uri = resource;
-  if (!uri) {
-    const picked = await vscode.window.showOpenDialog({
-      canSelectFiles: true,
-      canSelectFolders: true,
-      canSelectMany: false,
-      openLabel: 'Add to DevSeek',
-    });
-    if (!picked || picked.length === 0) return;
-    uri = picked[0];
+  activeSessionId = bootstrap.activeSessionId;
+  sessionRecentFiles.clear();
+  for (const [key, value] of Object.entries(bootstrap.files)) sessionRecentFiles.set(key, value);
+  nonBridgeChatHistory = bootstrap.history;
+  lastAnalysisText = bootstrap.analysisText || lastAnalysisText;
+  if (bootstrap.restoreAgentPathsForSessionId) {
+    restoreLastAgentPathsFromSession(bootstrap.restoreAgentPathsForSessionId);
   }
-
-  const stat = await vscode.workspace.fs.stat(uri);
-  const rel = vscode.workspace.asRelativePath(uri, false);
-
-  if (stat.type === vscode.FileType.File) {
-    viewProvider.addToChat(nodePath.basename(rel), '', uri.fsPath);
-    return;
-  }
-
-  if (stat.type === vscode.FileType.Directory) {
-    const files = await collectDirectoryFiles(uri, 30);
-    if (files.length === 0) {
-      vscode.window.showWarningMessage(`DeepSeek: 目录 ${rel} 下没有可发送的文件`);
-      return;
-    }
-    // Show single directory badge; send all file paths in background when message is submitted
-    const label = `${nodePath.basename(rel)}/ (${files.length})`;
-    const filePaths = files.map(f => f.fsPath);
-    viewProvider.addDirectoryToChat(label, filePaths);
-  }
-}
-
-async function openPendingEditInEditor(record: PendingEditRecord, hunkLine?: number): Promise<void> {
-  const workspaceUri = resolveWorkspaceFileUri(record.path, lastConversationFiles);
-  if (!workspaceUri) {
-    vscode.window.showWarningMessage('DeepSeek: 无法定位文件，无法打开编辑器。');
-    return;
-  }
-
-  diffDecoManager?.activate(record as DiffRecordInfo);
-  const doc = await vscode.workspace.openTextDocument(workspaceUri);
-  const editor = await vscode.window.showTextDocument(doc, { preview: false, viewColumn: vscode.ViewColumn.Active });
-  diffDecoManager?.activate(record as DiffRecordInfo);
-  const revealLine = hunkLine || record.hunks.find((hunk) => hunk.resolution === 'pending')?.newStart || record.hunks[0]?.newStart;
-  revealEditorLine(editor, revealLine);
-}
-
-const originalContentProvider = new DeepSeekOriginalContentProvider((editId) => pendingEdits.get(editId));
-
-async function openPendingEditDiff(record: PendingEditRecord, hunkLine?: number): Promise<void> {
-  await openPendingEditDiffView({
-    record,
-    hunkLine,
-    provider: originalContentProvider,
-    resolveWorkspaceUri: (path) => resolveWorkspaceFileUri(path, lastConversationFiles),
-    revealEditorLine,
-  });
 }
 
 // ----------------------------------------------------------------
@@ -3949,30 +2718,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   setBridgeExtensionRoot(context.extensionUri.fsPath);
   await migrateLegacyDeepseekConfiguration();
   viewProvider = new DeepSeekViewProvider();
-  initAgentLearner(context);
-
-  // ── Inline diff decorations + CodeLens (Copilot-parity) ───────────
-  diffDecoManager = new DiffDecorationManager(
-    (relPath) => resolveWorkspaceFileUri(relPath, lastConversationFiles)?.fsPath,
-    context.subscriptions,
-  );
-  diffDecoManager.setResolveCallback(async (editId, hunkId, action) => {
-    const wv = viewProvider.webview;
-    if (action === 'keep') {
-      keepPendingHunk(editId, undefined, hunkId);
-    } else {
-      await undoPendingHunk(editId, undefined, hunkId);
-    }
-    if (wv) postPendingEdits(wv);
+  pendingEditCoordinator = new PendingEditCoordinator({
+    getContextFiles: () => lastConversationFiles,
+    getActiveWebview: () => viewProvider.webview,
   });
-  context.subscriptions.push(
-    vscode.commands.registerCommand('_devseek.diffKeepHunk', (editId: string, hunkId: string) => {
-      void diffDecoManager.handleKeepHunk(editId, hunkId);
-    }),
-    vscode.commands.registerCommand('_devseek.diffUndoHunk', (editId: string, hunkId: string) => {
-      void diffDecoManager.handleUndoHunk(editId, hunkId);
-    }),
-  );
+  pendingEditCoordinator.activate(context);
+  initAgentLearner(context);
 
   // Auto-show sidebar on first install so VS Code pins it to the activity bar
   const INSTALLED_KEY = 'devseek.activatedBefore';
@@ -3985,47 +2736,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   for (const d of createProviderStatusBar(context)) {
     context.subscriptions.push(d);
   }
-
-  // ── G-5: Keep/Undo 状态栏（当前文件有 AI 待决修改时显示）─────────
-  keepUndoStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 999);
-  keepUndoStatusBar.command = 'devseek.keepOrUndoActive';
-  context.subscriptions.push(keepUndoStatusBar);
-  context.subscriptions.push(
-    vscode.window.onDidChangeActiveTextEditor((editor) => updateKeepUndoBar(editor)),
-  );
-  context.subscriptions.push(
-    vscode.commands.registerCommand('devseek.keepOrUndoActive', async () => {
-      const editor = vscode.window.activeTextEditor;
-      if (!editor) return;
-      const fsPath = editor.document.uri.fsPath;
-      const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-      const relPath = fsPath.startsWith(wsRoot + '/') ? fsPath.slice(wsRoot.length + 1) : nodePath.basename(fsPath);
-      const record = Array.from(pendingEdits.values()).find(r => r.path === relPath);
-      if (!record) { keepUndoStatusBar?.hide(); return; }
-      const choice = await vscode.window.showQuickPick(
-        [
-          { label: '$(check) Keep', description: '保留此文件的 AI 修改', value: 'keep' },
-          { label: '$(discard) Undo', description: '撤销此文件的 AI 修改', value: 'undo' },
-        ],
-        { title: `AI 修改：${nodePath.basename(relPath)}`, placeHolder: '选择操作' },
-      );
-      if (!choice) return;
-      const activeWebview = viewProvider.webview;
-      if (choice.value === 'keep') {
-        keepPendingEdit(record.id);
-        if (activeWebview) {
-          postPendingEdits(activeWebview);
-          activeWebview.postMessage({ type: 'pendingAction', action: 'keep', path: relPath });
-        }
-      } else {
-        await undoPendingEdit(record.id);
-        if (activeWebview) {
-          postPendingEdits(activeWebview);
-          activeWebview.postMessage({ type: 'pendingAction', action: 'undo', path: relPath });
-        }
-      }
-    }),
-  );
 
   // ── P1-4: 监听 .devseek/rules.md 变更，使缓存失效 ────────────────
   const rulesWatcher = vscode.workspace.createFileSystemWatcher('**/.devseek/rules.md');
@@ -4046,15 +2756,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   })();
   context.subscriptions.push({ dispose: () => mcpManager.dispose() });
 
-  // Register the virtual document provider for diff views (old content)
-  context.subscriptions.push(
-    vscode.workspace.registerTextDocumentContentProvider('deepseek-original', originalContentProvider),
-  );
-
-  // P-DEC: Register file decoration provider (⬝ badge on pending-edit files in Explorer)
-  pendingEditDecorationProvider = new PendingEditDecorationProvider();
-  context.subscriptions.push(vscode.window.registerFileDecorationProvider(pendingEditDecorationProvider));
-
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider('devseek.chatViewLauncher', viewProvider, {
       webviewOptions: { retainContextWhenHidden: true },
@@ -4066,7 +2767,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand(
       '_deepseek.askChat',
       (userDisplay: string, prompt: string, newSession: boolean) => {
-        ChatPanel.push(userDisplay, prompt, newSession);
+        pushChatPanel(userDisplay, prompt, newSession);
       },
     ),
   );
@@ -4096,7 +2797,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       const { runCommand, formatTerminalOutputForPrompt } = await import('./tools/terminal');
       const result = await runCommand({ command: cmd, visible: false });
       const formatted = formatTerminalOutputForPrompt(cmd, result);
-      await ChatPanel.push(
+      await pushChatPanel(
         `> ${cmd}`,
         `请分析以下命令输出并给出建议：\n\n${formatted}`,
         false,
@@ -4121,7 +2822,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.commands.registerCommand('devseek.addFileToChat', async (resource?: vscode.Uri) => {
-      await addResourceToChat(resource);
+      await addResourceToChat(viewProvider, resource);
     }),
   );
 
@@ -4215,7 +2916,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
               vscode.window.showInformationMessage('✅ DeepSeek 行内修改已应用（侧边栏可对比 / 撤销）');
             } else {
               // 无选区：直接发到 Chat 面板显示
-              ChatPanel.push(`⚡ **${instruction}** · \`${ctx.filename}\``, prompt, false);
+              pushChatPanel(`⚡ **${instruction}** · \`${ctx.filename}\``, prompt, false);
             }
           } catch (e) {
             vscode.window.showErrorMessage(`DeepSeek Inline Chat: ${(e as Error).message}`);
