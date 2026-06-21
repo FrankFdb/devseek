@@ -14,6 +14,7 @@ const DEFAULT_MODEL = 'deepseek-chat';
 export class DeepSeekApiProvider implements LLMProvider {
   readonly type: LLMProviderType = 'deepseek-api';
   readonly displayName = '$(key) API';
+  readonly capabilities = ['text', 'streaming', 'native-tools'] as const;
 
   private apiKey(): string {
     return vscode.workspace.getConfiguration('devseek').get<string>('apiKey', '').trim();

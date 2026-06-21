@@ -6,6 +6,14 @@
 
 ## [Unreleased] — 2026-06-19
 
+### Phase 8 Provider Runtime
+
+- 新增 `ProviderConfigService`，统一 DeepSeek Web、DeepSeek API、OpenAI-compatible、本地 API、VS Code LM 的配置快照、capabilities、secretRef 和 fallback 顺序；快照不保存 API key/cookie/token 明文。
+- 新增 `LLMProviderRuntime`，按 workflow context、capability 和 health 做 provider selection；fallback 继承 workflow/checkpoint/review/idempotency facts，破坏性工具调用不会被自动重放。
+- 新增 `LLMEvent`/`provider-events`，DeepSeek Web 文本工具块与 API/native tool calling 都先归一化为 `ToolCall`，继续由 ToolRegistry、PermissionKernel、QualityGate 和历史任务边界治理。
+- 扩展 Provider 适配器：新增本地 API Provider 和 VS Code LM Provider，OpenAI-compatible Provider 参数化复用；`provider-router.ts` 退为 VS Code 状态栏和配置适配层。
+- 新增 `provider-runtime.test.mjs` 并纳入全量测试，覆盖 Phase 8 Provider contract、fallback 幂等安全和密钥脱敏。
+
 ### Phase 7 历史任务与 DeepSeek Web 异常恢复
 
 - 对标 Claude Code / Codex 的恢复语义，新增 checkpoint、task history、timeline、resume context、provider recovery、idempotency 六个任务事实边界。

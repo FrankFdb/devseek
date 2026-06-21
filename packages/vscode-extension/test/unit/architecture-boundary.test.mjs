@@ -89,7 +89,10 @@ test('Phase 0: domain roots expose explicit public boundaries', () => {
       './validation-service',
     ],
     'src/llm/index.ts': [
+      './provider-config-service',
+      './provider-events',
       './provider-router',
+      './provider-runtime',
       './providers/web-reliability',
       './types',
     ],

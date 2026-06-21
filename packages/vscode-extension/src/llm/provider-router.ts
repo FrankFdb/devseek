@@ -7,6 +7,10 @@ import { LLMProvider, LLMProviderType } from './types';
 import { BridgeProvider } from './providers/bridge';
 import { DeepSeekApiProvider } from './providers/deepseek-api';
 import { OpenAICompatProvider } from './providers/openai-compat';
+import { LocalApiProvider } from './providers/local-api';
+import { VSCodeLmProvider } from './providers/vscode-lm';
+import { ProviderConfigService } from './provider-config-service';
+import { LLMProviderRuntime, type ProviderWorkflowContext } from './provider-runtime';
 
 // ── 活跃 Provider 单例 ─────────────────────────────────────────────────────
 
@@ -22,14 +26,23 @@ export function getActiveProvider(): LLMProvider {
 export function resetProvider(): void { _active = null; }
 
 export function getActiveProviderType(): LLMProviderType {
-  return vscode.workspace.getConfiguration('devseek')
-    .get<LLMProviderType>('provider', 'bridge');
+  return getProviderConfigService().getSnapshot().activeProvider;
+}
+
+export function getProviderConfigService(): ProviderConfigService {
+  return new ProviderConfigService(vscode.workspace.getConfiguration('devseek'));
+}
+
+export function selectProviderRoute(context: ProviderWorkflowContext = {}) {
+  return new LLMProviderRuntime(getProviderConfigService().getSnapshot()).selectProvider(context);
 }
 
 function _createProvider(): LLMProvider {
-  switch (getActiveProviderType()) {
+  switch (selectProviderRoute().primary.type) {
     case 'deepseek-api':   return new DeepSeekApiProvider();
     case 'openai-compat':  return new OpenAICompatProvider();
+    case 'local-api':      return new LocalApiProvider();
+    case 'vscode-lm':      return new VSCodeLmProvider();
     case 'bridge':
     default:               return new BridgeProvider();
   }
@@ -48,7 +61,7 @@ export function createProviderStatusBar(context: vscode.ExtensionContext): vscod
   const cmdSub = vscode.commands.registerCommand('devseek.switchProvider', () => _switchProvider(bar));
 
   const cfgSub = vscode.workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration('devseek.provider') || e.affectsConfiguration('devseek.model')) {
+    if (ProviderConfigService.configurationKeys().some(key => e.affectsConfiguration(`devseek.${key}`))) {
       resetProvider();
       _refreshBar(bar);
     }
@@ -58,17 +71,12 @@ export function createProviderStatusBar(context: vscode.ExtensionContext): vscod
 }
 
 function _refreshBar(bar: vscode.StatusBarItem): void {
-  const type = getActiveProviderType();
-  const cfg = vscode.workspace.getConfiguration('devseek');
-  if (type === 'deepseek-api') {
-    const model = cfg.get<string>('model', 'deepseek-chat');
-    bar.text = `$(key) DS:${model}`;
-  } else if (type === 'openai-compat') {
-    const model = cfg.get<string>('openaiCompatModel', 'llama3');
-    bar.text = `$(extensions) OAI:${model}`;
-  } else {
-    bar.text = `$(globe) DS:网页`;
-  }
+  const active = getProviderConfigService().getActiveProviderConfig();
+  if (active.type === 'deepseek-api') bar.text = `$(key) DS:${active.model ?? 'deepseek-chat'}`;
+  else if (active.type === 'openai-compat') bar.text = `$(extensions) OAI:${active.model ?? 'llama3'}`;
+  else if (active.type === 'local-api') bar.text = `$(server) Local:${active.model ?? 'llama3'}`;
+  else if (active.type === 'vscode-lm') bar.text = `$(sparkle) VS Code LM`;
+  else bar.text = `$(globe) DS:网页`;
 }
 
 async function _switchProvider(bar: vscode.StatusBarItem): Promise<void> {
@@ -91,6 +99,18 @@ async function _switchProvider(bar: vscode.StatusBarItem): Promise<void> {
       detail: '配置 devseek.openaiCompatBaseUrl 和 devseek.openaiCompatModel',
       value: 'openai-compat',
     },
+    {
+      label: '$(server) 本地 API',
+      description: '本地 OpenAI-compatible API，默认 http://localhost:11434/v1',
+      detail: '配置 devseek.localApiBaseUrl 和 devseek.localApiModel',
+      value: 'local-api',
+    },
+    {
+      label: '$(sparkle) VS Code LM',
+      description: '使用 VS Code Language Model API 提供的模型',
+      detail: '可选配置 devseek.vscodeLmModel',
+      value: 'vscode-lm',
+    },
   ];
 
   const current = getActiveProviderType();
@@ -110,11 +130,34 @@ async function _switchProvider(bar: vscode.StatusBarItem): Promise<void> {
     await _ensureApiKey(cfg);
   } else if (chosen.value === 'openai-compat') {
     await _ensureOpenAICompatUrl(cfg);
+  } else if (chosen.value === 'local-api') {
+    await _ensureLocalApiUrl(cfg);
   }
 
   resetProvider();
   _refreshBar(bar);
   vscode.window.showInformationMessage(`DeepSeek Provider 已切换到：${chosen.label}`);
+}
+
+async function _ensureLocalApiUrl(cfg: vscode.WorkspaceConfiguration): Promise<void> {
+  const existing = cfg.get<string>('localApiBaseUrl', '').trim();
+  const entered = await vscode.window.showInputBox({
+    title: '本地 API 服务地址',
+    prompt: '请输入 OpenAI-compatible Base URL（例如 Ollama: http://localhost:11434/v1）',
+    value: existing || 'http://localhost:11434/v1',
+    validateInput: (v) => v.trim().startsWith('http') ? undefined : '必须以 http:// 或 https:// 开头',
+  });
+  if (entered?.trim()) {
+    await cfg.update('localApiBaseUrl', entered.trim(), vscode.ConfigurationTarget.Global);
+  }
+  const model = await vscode.window.showInputBox({
+    title: '本地 API 模型名',
+    prompt: '请输入模型名称（如 llama3、qwen2.5-coder、mistral 等）',
+    value: cfg.get<string>('localApiModel', 'llama3'),
+  });
+  if (model?.trim()) {
+    await cfg.update('localApiModel', model.trim(), vscode.ConfigurationTarget.Global);
+  }
 }
 
 async function _ensureApiKey(cfg: vscode.WorkspaceConfiguration): Promise<void> {

@@ -3,7 +3,24 @@
  * P1-1: 多模型接入基础
  */
 
-export type LLMProviderType = 'bridge' | 'deepseek-api' | 'openai-compat';
+export type LLMProviderType = 'bridge' | 'deepseek-api' | 'openai-compat' | 'local-api' | 'vscode-lm';
+export type LLMProviderCapability =
+  | 'text'
+  | 'vision'
+  | 'streaming'
+  | 'text-tools'
+  | 'native-tools'
+  | 'web'
+  | 'local'
+  | 'vscode-lm';
+
+export type LLMProviderHealthStatus = 'unknown' | 'available' | 'degraded' | 'unavailable';
+
+export interface LLMProviderHealth {
+  status: LLMProviderHealthStatus;
+  checkedAt?: number;
+  reason?: string;
+}
 
 /** 多模态消息内容片段（文字 or 图片 URL）— Vision 输入 */
 export interface ContentPart {
@@ -53,6 +70,7 @@ export interface LLMProvider {
   readonly type: LLMProviderType;
   /** 状态栏显示名，可含 codicon 前缀如 "$(globe) 网页" */
   readonly displayName: string;
+  readonly capabilities?: readonly LLMProviderCapability[];
   chat(opts: LLMChatOptions): Promise<string>;
   /** 检查可用性（网络/API Key 等） */
   available(): Promise<boolean>;

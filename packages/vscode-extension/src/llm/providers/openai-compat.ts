@@ -12,24 +12,51 @@ import * as http from 'http';
 import * as vscode from 'vscode';
 import { LLMProvider, LLMProviderType, LLMChatOptions, TokenUsage } from '../types';
 
+export interface OpenAICompatProviderOptions {
+  type?: LLMProviderType;
+  displayName?: string;
+  baseUrlKey?: string;
+  apiKeyKey?: string;
+  modelKey?: string;
+  defaultBaseUrl?: string;
+  defaultModel?: string;
+}
+
 export class OpenAICompatProvider implements LLMProvider {
-  readonly type: LLMProviderType = 'openai-compat';
-  readonly displayName = '$(extensions) OpenAI兼容';
+  readonly type: LLMProviderType;
+  readonly displayName: string;
+  readonly capabilities = ['text', 'streaming', 'native-tools'] as const;
+
+  private readonly options: Required<OpenAICompatProviderOptions>;
+
+  constructor(options: OpenAICompatProviderOptions = {}) {
+    this.options = {
+      type: options.type ?? 'openai-compat',
+      displayName: options.displayName ?? '$(extensions) OpenAI兼容',
+      baseUrlKey: options.baseUrlKey ?? 'openaiCompatBaseUrl',
+      apiKeyKey: options.apiKeyKey ?? 'openaiCompatApiKey',
+      modelKey: options.modelKey ?? 'openaiCompatModel',
+      defaultBaseUrl: options.defaultBaseUrl ?? 'http://localhost:11434/v1',
+      defaultModel: options.defaultModel ?? 'llama3',
+    };
+    this.type = this.options.type;
+    this.displayName = this.options.displayName;
+  }
 
   private cfg() {
     return vscode.workspace.getConfiguration('devseek');
   }
 
   private baseUrl(): string {
-    return this.cfg().get<string>('openaiCompatBaseUrl', 'http://localhost:11434/v1').replace(/\/$/, '');
+    return this.cfg().get<string>(this.options.baseUrlKey, this.options.defaultBaseUrl).replace(/\/$/, '');
   }
 
   private apiKey(): string {
-    return this.cfg().get<string>('openaiCompatApiKey', '').trim();
+    return this.cfg().get<string>(this.options.apiKeyKey, '').trim();
   }
 
   private model(): string {
-    return this.cfg().get<string>('openaiCompatModel', 'llama3').trim();
+    return this.cfg().get<string>(this.options.modelKey, this.options.defaultModel).trim();
   }
 
   async available(): Promise<boolean> {

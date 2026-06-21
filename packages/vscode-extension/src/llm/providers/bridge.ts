@@ -10,6 +10,7 @@ import { ResponseIntegrityChecker } from './web-reliability';
 export class BridgeProvider implements LLMProvider {
   readonly type: LLMProviderType = 'bridge';
   readonly displayName = '$(globe) 网页';
+  readonly capabilities = ['text', 'vision', 'streaming', 'text-tools', 'web'] as const;
 
   async available(): Promise<boolean> {
     try { return (await bridgeClient.status()) !== null; } catch { return false; }

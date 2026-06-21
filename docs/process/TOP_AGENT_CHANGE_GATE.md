@@ -68,6 +68,24 @@
 
 ---
 
+**变更标题**：Phase 8 Provider Runtime（2026-06-21）
+- **需求归因**：能力缺口 + 架构债务 — Provider 选择、能力、健康、fallback、工具协议和密钥处理不能继续散落在 VS Code 配置读取和具体 provider 内部。
+- **影响能力层**：Provider、工具归一化、权限边界、验证/质量门禁前置契约、任务恢复和幂等 fallback。
+- **架构影响**：
+  - 新增 `llm/provider-config-service.ts`，统一 active provider、capabilities、model/baseUrl、secretRef、fallbackOrder 的可测试快照。
+  - 新增 `llm/provider-runtime.ts`，按 workflow context/capability/health 选择 provider，并生成继承 checkpoint/review/idempotency facts 的 fallback plan。
+  - 新增 `llm/provider-events.ts`，把 DeepSeek Web 文本工具块和 API/native tool calling 都归一化为 `ToolCall`。
+  - 新增 `llm/providers/local-api.ts`、`llm/providers/vscode-lm.ts`，并参数化 `OpenAICompatProvider` 供本地 API 复用。
+  - `provider-router.ts` 缩回 VS Code 状态栏与配置适配职责，Provider 不获得工具执行权。
+- **方案选择理由**：对标 Claude Code / Codex 的优秀编程智能体边界：模型/Provider 只产生内容和工具意图，工具注册、权限、质量门禁、历史任务、记忆和幂等重放由宿主 runtime 治理。
+- **主链路验证**：`provider-runtime.test.mjs` 覆盖默认 DeepSeek Web、API 模型切换、Web 文本工具解析、API native tool calling contract。
+- **回退链路验证**：fallback plan 继承 workflow/checkpoint/review/idempotency facts，且遇到 write/terminal/MCP 等破坏性工具时禁止自动重放；密钥脱敏测试通过。
+- **结果判据变化**：新增 Provider 必须声明 capabilities/secretRef，并通过 `ProviderConfigService`、`LLMProviderRuntime`、`LLMEvent` 接入，不得直接执行工具或绕过权限/质量门禁。
+- **文档更新**：`docs/architecture/05-代码重构实施计划.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：本阶段需执行 Phase 8 contract test、全量 extension 测试、compile、package、install VSIX 后提交。
+
+---
+
 **变更标题**：Phase 7 任务完成证据闭环修复（2026-06-21）
 - **需求归因**：实现缺陷 + 架构债务 — 手测暴露编译/运行失败仍被任务 ledger 标绿、普通生成任务误写 `AGENTS.md`、失败结果仍可能触发自动接受待应用改动。
 - **影响能力层**：执行、验证、任务 ledger、Workspace Apply、项目指令安全边界、自动驾驶接受策略。
