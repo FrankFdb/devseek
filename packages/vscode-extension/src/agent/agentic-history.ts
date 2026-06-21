@@ -103,7 +103,7 @@ function renderTerminalEvidence(evidence: TerminalEvidence[]): string {
   const items = evidence
     .slice(-12)
     .map(item => {
-      const state = item.ok ? 'ok' : 'failed';
+      const state = item.reviewRequired ? 'review' : item.ok ? 'ok' : 'failed';
       const kind = item.kind || 'other';
       const code = item.exitCode === null || item.exitCode === undefined ? '' : `, code ${item.exitCode}`;
       const command = truncate(item.command || '', MAX_COMMAND_CHARS);
@@ -168,6 +168,18 @@ export function buildAgenticQualityGateForHistory(input: {
       risks: ['任务缺少足够的完成证据，需要补充验证或人工确认。'],
       alternativeChecks: ['人工检查变更内容是否符合用户请求。'],
       requiredActions: ['补充可运行验证，或由用户明确接受剩余风险。'],
+    };
+  }
+
+  const reviewTerminal = [...input.terminalEvidence].reverse().find(e => e.reviewRequired);
+  if (reviewTerminal) {
+    return {
+      status: 'blocked',
+      summary: reviewTerminal.detail || 'QualityGate 阻塞：运行结果需要人工确认。',
+      risks: ['图形、界面或交互式输出无法仅凭退出码自动证明正确。'],
+      evidenceRefs: [terminalEvidenceRef(reviewTerminal)],
+      alternativeChecks: ['人工确认窗口、画面或交互输出是否符合用户请求。'],
+      requiredActions: ['确认效果后手动保留文件改动；如效果不符，继续发起修正。'],
     };
   }
 

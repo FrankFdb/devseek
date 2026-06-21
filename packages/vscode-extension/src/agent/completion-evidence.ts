@@ -22,6 +22,7 @@ export type TerminalEvidence = {
   exitCode: number | null;
   outputPath?: string;
   detail?: string;
+  reviewRequired?: boolean;
 };
 
 export function classifyTerminalEvidenceCommand(command: string): TerminalEvidenceKind {

@@ -2,7 +2,7 @@ import type { AgentLoopResult } from '../agent/loop-types';
 
 export interface AgentAutopilotDecision {
   accept: boolean;
-  reason: 'no-pending' | 'failed-result' | 'no-successful-work' | 'passed';
+  reason: 'no-pending' | 'failed-result' | 'manual-review-required' | 'no-successful-work' | 'passed';
   notice?: string;
 }
 
@@ -17,6 +17,14 @@ export function decideAgentAutopilotAccept(
       accept: false,
       reason: 'failed-result',
       notice: `[自动驾驶] 未自动接受文件改动：任务或验证失败，已保留 ${pendingEditCount} 个待确认文件供人工审查。`,
+    };
+  }
+
+  if (result?.manualReviewRequired) {
+    return {
+      accept: false,
+      reason: 'manual-review-required',
+      notice: `[自动驾驶] 未自动接受文件改动：${result.manualReviewReason ?? '运行效果需要人工确认'}，已保留 ${pendingEditCount} 个待确认文件供人工审查。`,
     };
   }
 

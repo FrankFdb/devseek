@@ -50,3 +50,18 @@ test('agent autopilot policy: successful result with pending edits can auto-acce
   assert.equal(decision.accept, true);
   assert.equal(decision.reason, 'passed');
 });
+
+test('agent autopilot policy: manual visual review blocks auto-accept', () => {
+  const decision = decideAgentAutopilotAccept({
+    tasksTotal: 4,
+    tasksApplied: 3,
+    tasksFailed: 0,
+    changedPaths: ['/workspace/code/shape_manager/Triangle.cpp'],
+    manualReviewRequired: true,
+    manualReviewReason: '图形窗口效果需要人工确认',
+  }, 2);
+
+  assert.equal(decision.accept, false);
+  assert.equal(decision.reason, 'manual-review-required');
+  assert.match(decision.notice, /人工确认|待确认/);
+});

@@ -155,6 +155,9 @@ export interface AgentLoopResult {
   tasksApplied: number;
   tasksFailed: number;
   changedPaths: string[];
+  /** True when work is applied and executable, but final judgment needs human observation (GUI/interactive output). */
+  manualReviewRequired?: boolean;
+  manualReviewReason?: string;
   /** Full text of analysis output, populated when all tasks were analyze/explain.
    *  Callers can pass this to extractAnalysisFindings() and feed into next decomposeTask. */
   analysisText?: string;

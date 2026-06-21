@@ -60,6 +60,7 @@ import { chatViaProvider, chatWithMessages, consumeUserSteerMessages } from './a
 import {
   buildAgenticHistoryText,
   buildAgenticQualityGateForHistory,
+  type AgenticHistoryQualityGate,
   type AgenticHistoryTodoStatus,
 } from './agent/agentic-history';
 import {
@@ -88,6 +89,7 @@ import {
   isReadOnlyAgentTaskAction,
 } from './agent/task-todo-ledger';
 import { tryRunSimpleFileTask } from './agent/simple-file-task';
+import { shouldRequestManualReviewForRun } from './agent/manual-review-validation';
 import { WorkspaceEditService } from './workspace/edit-service';
 import type { CppValidationPolicy } from './validation-planner';
 import type { ExecutionMode } from './intent/intent-types';
@@ -1336,6 +1338,9 @@ interface ValidationOutcome {
   command?: string;
   detail?: string;
   reason?: string;
+  exitCode?: number | null;
+  reviewRequired?: boolean;
+  reviewReason?: string;
 }
 
 function getAgentAutoFixRounds(): number {
@@ -1401,6 +1406,7 @@ async function runValidation(
    * NOT from keyword-matching the raw user prompt.
    */
   wantRun = false,
+  userPrompt = '',
   sessionHistory?: ChatMessage[],
 ): Promise<ValidationOutcome> {
   // Only C/C++ files need compile validation; Python, MD, etc. are skipped
@@ -1449,6 +1455,28 @@ async function runValidation(
     };
   }
 
+  let runCommandForEvidence: string | undefined;
+  if (wantRun && !callbacks.onTerminalCommand) {
+    const detail = '当前入口没有可用终端执行能力，已完成编译，但运行效果需要人工确认。';
+    await callbacks.onAgentStatus({
+      type: 'agentStatus',
+      phase: 'validate',
+      state: 'completed',
+      title: '运行验证等待人工确认',
+      detail,
+    });
+    return {
+      ran: true,
+      ok: true,
+      command: compilePlan.command,
+      detail,
+      reason: 'runtime-validation-unavailable',
+      exitCode: 0,
+      reviewRequired: true,
+      reviewReason: detail,
+    };
+  }
+
   // If compilation succeeded and user wants to run — execute in terminal
   if (wantRun && callbacks.onTerminalCommand) {
     // Build a run-only command from the compile plan's output binary.
@@ -1457,6 +1485,7 @@ async function runValidation(
     const runCmd = runPlan?.mode === 'compile-run'
       ? runPlan.command       // planner already includes run step
       : compilePlan.command;  // fallback: reuse compile command
+    runCommandForEvidence = runCmd;
     try {
       await callbacks.onAgentStatus({
         type: 'agentStatus',
@@ -1483,6 +1512,36 @@ async function runValidation(
           `exitCode=${evidence.evidence.exitCode ?? 'unknown'}`,
           truncated,
         ].filter(Boolean).join('\n');
+        const manualReview = shouldRequestManualReviewForRun({
+          userPrompt,
+          command: runCmd,
+          output,
+          changedPaths,
+          terminalEvidence: evidence.evidence,
+        });
+        if (manualReview) {
+          await callbacks.onAgentStatus({
+            type: 'agentStatus',
+            phase: 'validate',
+            state: 'completed',
+            title: '程序已启动，等待人工确认',
+            detail: manualReview.detail,
+          });
+          sessionHistory?.push({
+            role: 'assistant',
+            content: `运行验证需要人工确认：${manualReview.detail}`,
+          });
+          return {
+            ran: true,
+            ok: true,
+            command: runCmd,
+            detail: manualReview.detail,
+            reason: manualReview.reason,
+            exitCode: evidence.evidence.exitCode,
+            reviewRequired: true,
+            reviewReason: manualReview.detail,
+          };
+        }
         await callbacks.onAgentStatus({
           type: 'agentStatus',
           phase: 'validate',
@@ -1495,6 +1554,7 @@ async function runValidation(
           ok: false,
           command: runCmd,
           detail,
+          exitCode: evidence.evidence.exitCode,
           reason: evidence.evidence.kind === 'compile-run' ? 'compile-run-failed' : 'run-failed',
         };
       }
@@ -1519,6 +1579,7 @@ async function runValidation(
         ok: false,
         command: runCmd,
         detail,
+        exitCode: null,
         reason: 'run-failed',
       };
     }
@@ -1527,7 +1588,8 @@ async function runValidation(
   return {
     ran: true,
     ok: true,
-    command: compilePlan.command,
+    command: runCommandForEvidence ?? compilePlan.command,
+    exitCode: 0,
     reason: wantRun ? 'compile-and-run-passed' : 'compile-passed',
   };
 }
@@ -1747,7 +1809,7 @@ export async function runAgentLoop(
     const wantRun = tasks.some(
       t => t.action === 'analyze' && /run_terminal|运行程序|执行程序|compile.*run|build.*run/i.test(t.desc)
     ) || requiresRuntimeValidation(userPrompt);
-    validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, sessionHistory);
+    validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, userPrompt, sessionHistory);
     appendValidationEvidence(allTerminalEvidence, validationOutcome);
 
     const maxRepairRounds = getAgentAutoFixRounds();
@@ -1856,11 +1918,14 @@ export async function runAgentLoop(
         break;
       }
 
-      validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, sessionHistory);
+      validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, userPrompt, sessionHistory);
       appendValidationEvidence(allTerminalEvidence, validationOutcome);
     }
   }
   const validationFailed = validationOutcome ? !validationOutcome.ok : false;
+  const manualReviewReason = validationOutcome?.reviewRequired
+    ? (validationOutcome.reviewReason || validationOutcome.detail || '需要人工确认运行效果。')
+    : undefined;
   if (validationFailed && callbacks.onTodoUpdate && tasks.length > 0) {
     await callbacks.onTodoUpdate(taskTodoLedger.markValidationFailure());
   }
@@ -1872,12 +1937,14 @@ export async function runAgentLoop(
     phase: 'done',
     state: finalFailed === 0 ? 'completed' : 'failed',
     title: finalFailed === 0
-      ? `全部 ${tasks.length} 个任务已完成`
+      ? manualReviewReason
+        ? `全部 ${tasks.length} 个任务已执行，等待人工确认`
+        : `全部 ${tasks.length} 个任务已完成`
       : validationFailed
         ? `完成 ${tasksApplied}，验证失败`
         : `完成 ${tasksApplied}，失败 ${tasksFailed}`,
     detail: changedPaths.length > 0
-      ? `已写入：${changedPaths.join('、')}${validationFailed ? `\n验证失败：${validationOutcome?.reason || 'validation-failed'}${validationOutcome?.detail ? `\n${validationOutcome.detail.slice(0, 400)}` : ''}` : ''}`
+      ? `已写入：${changedPaths.join('、')}${validationFailed ? `\n验证失败：${validationOutcome?.reason || 'validation-failed'}${validationOutcome?.detail ? `\n${validationOutcome.detail.slice(0, 400)}` : ''}` : ''}${manualReviewReason ? `\n待人工确认：${manualReviewReason.slice(0, 400)}` : ''}`
       : undefined,
     taskTotal: tasks.length,
     ...(editedFileRecords.length > 0 ? { editedFiles: editedFileRecords } : {}),
@@ -1899,7 +1966,12 @@ export async function runAgentLoop(
     terminalEvidence: allTerminalEvidence,
     workspaceRoot: workspaceRoot.fsPath,
     failedReason: historyFailedReason,
-    summary: finalFailed === 0 ? `全部 ${tasks.length} 个任务已完成。` : undefined,
+    summary: finalFailed === 0
+      ? manualReviewReason
+        ? `全部 ${tasks.length} 个任务已执行，运行效果等待人工确认。`
+        : `全部 ${tasks.length} 个任务已完成。`
+      : undefined,
+    manualReviewReason,
     analysisTexts,
   });
 }
@@ -1910,8 +1982,9 @@ function appendValidationEvidence(target: TerminalEvidence[], validation: Valida
     command: validation.command,
     kind: classifyTerminalEvidenceCommand(validation.command),
     ok: validation.ok,
-    exitCode: validation.ok ? 0 : null,
+    exitCode: validation.exitCode ?? (validation.ok ? 0 : null),
     detail: validation.detail,
+    ...(validation.reviewRequired ? { reviewRequired: true } : {}),
   });
 }
 
@@ -1941,14 +2014,17 @@ function buildAgentLoopResult(input: {
   workspaceRoot: string;
   failedReason?: string;
   summary?: string;
+  manualReviewReason?: string;
   analysisTexts?: string[];
 }): AgentLoopResult {
   const historyWrittenFiles = coalesceEditedFileRecordsForHistory(input.editedFileRecords, input.workspaceRoot);
-  const historyQualityGate = buildAgenticQualityGateForHistory({
-    failedReason: input.failedReason,
-    writtenFiles: historyWrittenFiles,
-    terminalEvidence: input.terminalEvidence,
-  });
+  const historyQualityGate: AgenticHistoryQualityGate | undefined = input.manualReviewReason
+    ? buildManualReviewQualityGate(input.manualReviewReason, input.terminalEvidence)
+    : buildAgenticQualityGateForHistory({
+      failedReason: input.failedReason,
+      writtenFiles: historyWrittenFiles,
+      terminalEvidence: input.terminalEvidence,
+    });
   const historyText = buildAgenticHistoryText({
     label: 'Agent',
     countLabel: `${input.tasksApplied}/${input.tasks.length} 个任务`,
@@ -1973,10 +2049,33 @@ function buildAgentLoopResult(input: {
     tasksApplied: input.tasksApplied,
     tasksFailed: input.tasksFailed,
     changedPaths: input.changedPaths,
+    ...(input.manualReviewReason ? {
+      manualReviewRequired: true,
+      manualReviewReason: input.manualReviewReason,
+    } : {}),
     // G6: return collected analysis text so extension.ts can use it for findings injection
     ...(input.analysisTexts?.length ? { analysisText: input.analysisTexts.join('\n\n') } : {}),
     historyText,
   };
+}
+
+function buildManualReviewQualityGate(
+  reason: string,
+  terminalEvidence: TerminalEvidence[],
+): AgenticHistoryQualityGate {
+  const latest = terminalEvidence[terminalEvidence.length - 1];
+  const qualityGate: AgenticHistoryQualityGate = {
+    status: 'blocked',
+    summary: `QualityGate 阻塞：${reason}`,
+    risks: ['图形或交互式运行结果无法由退出码自动证明，不能自动接受文件改动。'],
+    alternativeChecks: ['人工确认图形窗口、界面或交互输出是否符合用户请求。'],
+    requiredActions: ['确认效果后手动保留文件改动；如效果不符，继续发起修正。'],
+  };
+  if (latest) {
+    const code = latest.exitCode === null || latest.exitCode === undefined ? 'null' : String(latest.exitCode);
+    qualityGate.evidenceRefs = [`terminal:review:${latest.kind}:exitCode=${code}:${latest.command}`];
+  }
+  return qualityGate;
 }
 
 function coalesceEditedFileRecordsForHistory(

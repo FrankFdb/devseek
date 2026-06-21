@@ -120,6 +120,30 @@ test('task todo ledger: validation failure preserves existing failures', () => {
   assert.equal(todos[1].status, 'failed');
 });
 
+test('task todo ledger: visual runtime review evidence does not mark run task failed', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'shape_manager', 'analyze', '使用 run_terminal 执行 cmake 编译并运行查看 X11 图形显示'),
+  ]);
+
+  ledger.startTask(0);
+  const settled = ledger.settleTask(0, {
+    action: 'analyze',
+    raw: '图形程序已启动，等待人工确认窗口效果。',
+    terminalEvidence: [{
+      command: '/tmp/shape_manager/.devseek-build/shape_manager',
+      kind: 'run',
+      ok: true,
+      exitCode: -1,
+      detail: '图形窗口效果需要人工确认。',
+      reviewRequired: true,
+    }],
+  });
+
+  assert.equal(settled.completed, true);
+  assert.equal(settled.failed, false);
+  assert.equal(settled.todos[0].status, 'completed');
+});
+
 test('task todo ledger: failed validation terminal evidence blocks read-only completion', () => {
   const ledger = createAgentTaskTodoLedger([
     task('1', 'shape_manager', 'analyze', '使用 run_terminal 执行 cmake 编译并运行查看效果'),

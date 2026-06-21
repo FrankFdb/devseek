@@ -3,7 +3,9 @@ import * as vscode from 'vscode';
 import { emitLearningEvent, getErrorFixHint } from './agent-learner';
 import { runAgentLoop } from './agent-loop';
 import { getAgentTaskDisplayTarget } from './agent-task-decomposer';
+import { classifyTerminalEvidenceCommand } from './agent/completion-evidence';
 import type { AgentLoopCallbacks } from './agent/loop-types';
+import { shouldRequestManualReviewForRun } from './agent/manual-review-validation';
 import {
   buildLocalExecutionFailureMessage,
   buildLocalExecutionSuccessMessage,
@@ -97,6 +99,30 @@ export async function runLocalExecutionChatIfPossible(
   let maxRounds = Math.max(0, Math.min(6, input.config.get<number>('autoFixRounds', 6)));
   for (let round = 0; round <= maxRounds; round += 1) {
     const localResult = await runLocalExecution(localPlan);
+    const manualReview = shouldRequestManualReviewForRun({
+      userPrompt: input.prompt,
+      command: localResult.command,
+      output: localResult.output,
+      changedPaths: localPlan.targetFiles,
+      terminalEvidence: {
+        command: localResult.command,
+        kind: classifyTerminalEvidenceCommand(localResult.command),
+        ok: false,
+        exitCode: localResult.exitCode,
+        detail: localResult.output.slice(0, 400),
+      },
+    });
+    if (manualReview) {
+      await input.workflowReporter({
+        phase: 'validate',
+        state: 'passed',
+        title: '本地程序已启动，等待人工确认',
+        detail: `命令: ${localResult.command}\n${manualReview.detail}`,
+      });
+      input.webview.postMessage({ type: 'delta', text: manualReview.detail });
+      input.webview.postMessage({ type: 'endResponse' });
+      return { handled: true };
+    }
     await input.workflowReporter({
       phase: 'validate',
       state: localResult.ok ? 'passed' : 'failed',

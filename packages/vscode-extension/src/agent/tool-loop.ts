@@ -154,9 +154,17 @@ function isExecutableFile(filePath: string): boolean {
 export function analyzeTerminalEvidence(command: string, formattedOutput: string, workdir: string): { ran: boolean; evidence: TerminalEvidence } {
   const exitCode = parseFormattedTerminalExitCode(formattedOutput);
   const kind = classifyTerminalEvidenceCommand(command);
-  const notExecuted = /(?:命令未执行|终端工具被禁止|工具被禁止|用户拒绝|未确认|not executed|declined|denied|timeout|terminal tool disabled)/i.test(formattedOutput || '');
+  const notExecuted = /(?:命令未执行|终端工具被禁止|工具被禁止|用户拒绝|未确认|not executed|declined|denied|terminal tool disabled)/i.test(formattedOutput || '');
   let ok = !notExecuted && exitCode === 0;
-  let detail = notExecuted ? '命令没有实际执行' : exitCode === null ? '终端结果缺少退出码' : undefined;
+  let detail = notExecuted
+    ? '命令没有实际执行'
+    : exitCode === null
+      ? '终端结果缺少退出码'
+      : exitCode === -1
+        ? '终端命令非正常结束或超时'
+      : /(?:\[超时\s+\d+ms\]|timeout|timed out|命令超时)/i.test(formattedOutput || '')
+        ? '终端命令超时或被终止'
+        : undefined;
   const outputPath = resolveCompilerOutputPath(command, workdir);
   if (ok && outputPath && !isExecutableFile(outputPath)) {
     ok = false;
