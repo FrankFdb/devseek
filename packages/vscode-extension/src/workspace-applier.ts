@@ -111,8 +111,22 @@ export async function applyGeneratedArtifactPathWithPrompt(
   options?: ApplyGeneratedArtifactsOptions,
 ): Promise<ApplyWorkflowResult> {
   const prepared = await prepareChanges(raw, requestPrompt, preferredAbsolutePaths);
-  const selected = selectPreparedChangesByPath(prepared, targetPath);
-  return applyPreparedChanges(selected, reporter, autoApply, targetPath, requestPrompt, onAppliedChange, preferredAbsolutePaths, options);
+  let selected = selectPreparedChangesByPath(prepared, targetPath);
+  if (selected.length === 0) {
+    selected = await prepareTargetScopedFallbackChanges(raw, targetPath, requestPrompt, preferredAbsolutePaths);
+  }
+  const candidatePaths = selected.length === 0 ? prepared.map((change) => change.relPath) : [];
+  return applyPreparedChanges(
+    selected,
+    reporter,
+    autoApply,
+    targetPath,
+    requestPrompt,
+    onAppliedChange,
+    preferredAbsolutePaths,
+    options,
+    candidatePaths,
+  );
 }
 
 async function applyPreparedChanges(
@@ -124,13 +138,17 @@ async function applyPreparedChanges(
   onAppliedChange?: AppliedChangeReporter,
   preferredAbsolutePaths?: string[],
   options?: ApplyGeneratedArtifactsOptions,
+  nonTargetCandidatePaths: string[] = [],
 ): Promise<ApplyWorkflowResult> {
   const root = getWorkspaceRoot(requestPrompt, preferredAbsolutePaths);
   const pathContext = root ? buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths) : undefined;
   const rollbackOnValidationFailure = options?.rollbackOnValidationFailure !== false;
   if (prepared.length === 0) {
+    const candidateDetail = nonTargetCandidatePaths.length > 0
+      ? `；检测到非目标候选：${nonTargetCandidatePaths.slice(0, 6).join('、')}`
+      : '';
     if (targetPathForMsg) {
-      vscode.window.showInformationMessage(`DeepSeek: 未检测到可应用的目标文件变更：${targetPathForMsg}`);
+      vscode.window.showInformationMessage(`DeepSeek: 未检测到可应用的目标文件变更：${targetPathForMsg}${candidateDetail}`);
     } else {
       vscode.window.showInformationMessage('DeepSeek: 未检测到可应用的文件或 diff。');
     }
@@ -140,8 +158,9 @@ async function applyPreparedChanges(
       changedPaths: [],
       failureReason: 'no-artifacts',
       failureDetail: targetPathForMsg
-        ? `未检测到可应用的目标文件变更：${targetPathForMsg}`
+        ? `未检测到可应用的目标文件变更：${targetPathForMsg}${candidateDetail}`
         : '未检测到可应用的文件或 diff。',
+      ...(nonTargetCandidatePaths.length > 0 ? { blockedChangePaths: nonTargetCandidatePaths } : {}),
     };
   }
 
@@ -489,6 +508,44 @@ async function prepareChanges(raw: string, requestPrompt?: string, preferredAbso
   return dedupeChanges(changes);
 }
 
+async function prepareTargetScopedFallbackChanges(
+  raw: string,
+  targetPath: string,
+  requestPrompt?: string,
+  preferredAbsolutePaths?: string[],
+): Promise<PreparedChange[]> {
+  const root = getWorkspaceRoot(requestPrompt, preferredAbsolutePaths);
+  if (!root) return [];
+  const pathContext = buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths);
+  const resolvedPath = resolveArtifactPathInWorkspace(targetPath, root, pathContext);
+  if (!resolvedPath) return [];
+  const relPath = alignRelPathToScope(resolvedPath, root, pathContext);
+  if (!isGeneratedArtifactAllowedForPrompt(relPath, requestPrompt, preferredAbsolutePaths)) return [];
+
+  const targetUri = vscode.Uri.joinPath(root, ...relPath.split('/'));
+  const exists = await fileExists(targetUri);
+  const oldContent = exists ? await readText(targetUri) : '';
+  const content = selectTargetScopedFallbackContent(raw, relPath, oldContent);
+  if (!content) return [];
+  if (looksLikeRawToolCallText(content)) return [];
+  if (shouldBlockProjectInstructionFileWrite({ filePath: relPath, content, requestPrompt })) return [];
+
+  const resolved: ResolvedGeneratedArtifact = {
+    type: 'file',
+    path: relPath,
+    language: guessLanguage(relPath),
+    content,
+    resolvedPath: relPath,
+    confidence: 'medium',
+    reason: 'target-scoped-fallback',
+  };
+  const action = createChangeAction(resolved, exists);
+  const newContent = action.type === 'patch-file'
+    ? applyUnifiedDiff(oldContent, action.diff, relPath)
+    : ensureFinalNewline(action.content);
+  return [{ action, targetUri, relPath, exists, oldContent, newContent }];
+}
+
 export function resolveGeneratedArtifactPathForPrompt(
   rawPath: string,
   requestPrompt?: string,
@@ -775,6 +832,39 @@ function looksLikeBrokenSingleFileParse(artifacts: GeneratedArtifact[]): boolean
   const first = artifacts[0];
   if (first.type !== 'file') return false;
   return looksLikeFileTreeBlock(first.content) || looksLikeClassDiagramBlock(first.content);
+}
+
+function selectTargetScopedFallbackContent(raw: string, relPath: string, oldContent: string): string | undefined {
+  const blocks = extractCodeBlocks(raw).filter((block) => {
+    if (/^diff|patch$/i.test(block.language || '')) return false;
+    if (looksLikeFileTreeBlock(block.content) || looksLikeClassDiagramBlock(block.content)) return false;
+    return true;
+  });
+  for (const block of blocks) {
+    const content = block.content.trim();
+    if (isSafeTargetScopedFullFile(content, relPath, oldContent)) return content;
+  }
+  return undefined;
+}
+
+function isSafeTargetScopedFullFile(content: string, relPath: string, oldContent: string): boolean {
+  if (!isLikelySourceForPath(content, relPath)) return false;
+  if (!oldContent.trim()) return true;
+
+  const oldLines = countMeaningfulLines(oldContent);
+  const newLines = countMeaningfulLines(content);
+  if (oldLines >= 12 && newLines < Math.max(8, Math.floor(oldLines * 0.6))) return false;
+
+  const anchor = firstMeaningfulSourceLine(oldContent);
+  if (anchor && oldLines >= 8 && !content.includes(anchor)) return false;
+  return true;
+}
+
+function firstMeaningfulSourceLine(content: string): string | undefined {
+  return content
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line && !line.startsWith('//') && !line.startsWith('/*') && line !== '{' && line !== '}');
 }
 
 function inferPathFromText(text: string): string | undefined {

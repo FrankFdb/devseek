@@ -422,6 +422,127 @@ test('workspace-applier: target-path apply selects only the current agent task f
   }
 });
 
+test('workspace-applier: target-path fallback maps unlabeled full-file block to current task target', async () => {
+  const { root, projectDir } = createShapeManagerWorkspace();
+  try {
+    const oldCircle = [
+      '#include "Circle.h"',
+      '#include <iostream>',
+      '',
+      'Circle::Circle(double radius) : radius_(radius) {}',
+      '',
+      'double Circle::area() const {',
+      '    return 3.14 * radius_ * radius_;',
+      '}',
+      '',
+      'double Circle::perimeter() const {',
+      '    return 2 * 3.14 * radius_;',
+      '}',
+      '',
+      'void Circle::draw() const {',
+      '    std::cout << "circle" << std::endl;',
+      '}',
+      '',
+    ].join('\n');
+    const newCircle = oldCircle.replace(
+      '    std::cout << "circle" << std::endl;',
+      '    XDrawArc(display, window, gc, 10, 10, 80, 80, 0, 360 * 64);',
+    );
+    writeFileSync(path.join(projectDir, 'Circle.cpp'), oldCircle);
+    const originalCmake = readFileSync(path.join(projectDir, 'CMakeLists.txt'), 'utf8');
+    const raw = [
+      'CMakeLists.txt',
+      '```cmake',
+      'project(should_not_apply)',
+      '```',
+      '',
+      '修改后的代码如下：',
+      '```cpp',
+      newCircle,
+      '```',
+    ].join('\n');
+    const target = 'code/shape_manager/Circle.cpp';
+    const prompt = `执行子任务：修改 ${target}，不要修改其它文件`;
+
+    const result = await applyGeneratedArtifactPathWithPrompt(
+      raw,
+      target,
+      prompt,
+      undefined,
+      true,
+      undefined,
+      [path.join(projectDir, 'Circle.cpp')],
+      { rollbackOnValidationFailure: false },
+    );
+
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.changedPaths, ['code/shape_manager/Circle.cpp']);
+    assert.match(readFileSync(path.join(projectDir, 'Circle.cpp'), 'utf8'), /XDrawArc/);
+    assert.equal(readFileSync(path.join(projectDir, 'CMakeLists.txt'), 'utf8'), originalCmake);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('workspace-applier: target-path fallback rejects unlabeled partial snippets', async () => {
+  const { root, projectDir } = createShapeManagerWorkspace();
+  try {
+    const oldCircle = [
+      '#include "Circle.h"',
+      '#include <iostream>',
+      '',
+      'Circle::Circle(double radius) : radius_(radius) {}',
+      '',
+      'double Circle::area() const {',
+      '    return 3.14 * radius_ * radius_;',
+      '}',
+      '',
+      'double Circle::perimeter() const {',
+      '    return 2 * 3.14 * radius_;',
+      '}',
+      '',
+      'void Circle::draw() const {',
+      '    std::cout << "circle" << std::endl;',
+      '}',
+      '',
+    ].join('\n');
+    writeFileSync(path.join(projectDir, 'Circle.cpp'), oldCircle);
+    const raw = [
+      'CMakeLists.txt',
+      '```cmake',
+      'project(should_not_apply)',
+      '```',
+      '',
+      '修改后的 draw 函数：',
+      '```cpp',
+      'void Circle::draw() const {',
+      '    XDrawArc(display, window, gc, 10, 10, 80, 80, 0, 360 * 64);',
+      '}',
+      '```',
+    ].join('\n');
+    const target = 'code/shape_manager/Circle.cpp';
+    const prompt = `执行子任务：修改 ${target}，不要修改其它文件`;
+
+    const result = await applyGeneratedArtifactPathWithPrompt(
+      raw,
+      target,
+      prompt,
+      undefined,
+      true,
+      undefined,
+      [path.join(projectDir, 'Circle.cpp')],
+      { rollbackOnValidationFailure: false },
+    );
+
+    assert.equal(result.applied, false);
+    assert.equal(result.failureReason, 'no-artifacts');
+    assert.deepEqual(result.changedPaths, []);
+    assert.equal(readFileSync(path.join(projectDir, 'Circle.cpp'), 'utf8'), oldCircle);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('workspace-applier: explicit code subdirectory wins over same-name root directory', async () => {
   const { root, projectDir } = createShapeManagerWorkspace();
   const wrongDir = path.join(root, 'shape_manager');

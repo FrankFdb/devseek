@@ -1240,21 +1240,29 @@ ${loopRes.feedbackForAI}
   // ── Retry once if nothing was applied ─────────────────────────
   if (!applyResult.applied || applyResult.changedPaths.length === 0) {
     const lang = fenceLangForFile(basename);
+    const retryDisplayPath = applyTargetPath || task.file || basename;
     const retryPrompt = [
       `你是编程智能体。任务：${task.desc}`,
       ``,
-      `文件 ${basename} 当前内容：`,
+      applyResult.failureDetail ? `上次应用失败：${applyResult.failureDetail}` : '',
+      applyResult.blockedChangePaths?.length
+        ? `上次检测到的非目标候选文件：${applyResult.blockedChangePaths.join('、')}`
+        : '',
+      ``,
+      `目标文件（必须只输出这个路径）：${retryDisplayPath}`,
+      ``,
+      `文件 ${retryDisplayPath} 当前内容：`,
       '```' + lang,
       currentContent || '（空文件）',
       '```',
       ``,
       `请输出修改后的完整文件内容，格式如下（不要省略任何行）：`,
       ``,
-      `${basename}`,
+      `${retryDisplayPath}`,
       '```' + lang,
       `// 完整内容`,
       '```',
-    ].join('\n');
+    ].filter(Boolean).join('\n');
 
     let retryRaw = '';
     try {
