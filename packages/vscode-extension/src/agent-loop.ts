@@ -62,6 +62,7 @@ import {
   findBlockingTerminalFailureEvidence,
   requiresRuntimeValidation,
   type TerminalEvidence,
+  type WrittenFileEvidence,
 } from './agent/completion-evidence';
 import { tryExecuteDeterministicCreateTask } from './agent/deterministic-task-executor';
 import {
@@ -74,6 +75,7 @@ import {
   analyzeTerminalEvidence,
   executeFakeToolsForLoop,
 } from './agent/tool-loop';
+import { selectTaskWriteEvidence } from './agent/task-write-evidence';
 import {
   buildTaskSettlementFailureStatus,
   createAgentTaskTodoLedger,
@@ -1012,6 +1014,47 @@ async function executeTask(
   // The break path falls through to write the file but must still propagate taskComplete.
   let taskCompleteByAI = false;
   const taskTerminalEvidence: TerminalEvidence[] = [];
+  const taskWrittenFiles: WrittenFileEvidence[] = [];
+
+  const recordTaskToolWrites = (writtenFiles?: WrittenFileEvidence[]) => {
+    if (writtenFiles?.length) taskWrittenFiles.push(...writtenFiles);
+  };
+
+  const completeFromTaskToolWrite = async (taskComplete = false): Promise<TaskExecutionResult | undefined> => {
+    const evidence = selectTaskWriteEvidence(task, taskWrittenFiles, workspaceRoot.fsPath);
+    if (!evidence) return undefined;
+
+    const freshContent = readFileContentFull(evidence.path);
+    if (freshContent) {
+      contentCache.set(evidence.path, freshContent);
+      if (task.absPath) contentCache.set(task.absPath, freshContent);
+    }
+
+    await callbacks.onAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      taskId: task.id,
+      taskFile: basename,
+      taskAction: task.action,
+      taskDesc: task.desc,
+      taskIndex,
+      taskTotal: allTasks.length,
+      state: 'completed',
+      title: task.desc || basename,
+      detail: `${nodePath.basename(evidence.path)} · 已通过工具写入`,
+      linesAdded: evidence.linesAdded,
+      linesRemoved: evidence.linesRemoved,
+    });
+
+    return withTaskTerminalEvidence({
+      applied: true,
+      path: evidence.path,
+      raw,
+      linesAdded: evidence.linesAdded,
+      linesRemoved: evidence.linesRemoved,
+      ...(taskComplete ? { taskComplete: true } : {}),
+    }, taskTerminalEvidence);
+  };
 
   for (let taskRound = 0; taskRound < MAX_TASK_ROUNDS; taskRound++) {
     if (callbacks.signal?.aborted) {
@@ -1033,6 +1076,9 @@ async function executeTask(
       if (loopRes.terminalEvidence?.length) {
         taskTerminalEvidence.push(...loopRes.terminalEvidence);
       }
+      recordTaskToolWrites(loopRes.writtenFiles);
+      const writeToolCompletion = await completeFromTaskToolWrite(loopRes.taskComplete);
+      if (writeToolCompletion) return writeToolCompletion;
       if (loopRes.taskComplete) {
         // For create/modify tasks: if the AI emitted file content + task_complete
         // in the same response, fall through to the file-writing path instead of

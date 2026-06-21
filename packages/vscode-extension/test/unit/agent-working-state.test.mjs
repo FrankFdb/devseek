@@ -72,6 +72,32 @@ test('agent working state: failed final labels use explicit failed todo before f
   );
 });
 
+test('agent working state: next task start does not mark previous task completed optimistically', () => {
+  assert.match(
+    webview,
+    /function finalizePreviousAgentContainer\(container, previousTaskIndex\)[\s\S]*?isAgentContainerFailed\(container\) \|\| isTaskIndexFailed\(previousTaskIndex\)/,
+  );
+  assert.match(
+    webview,
+    /Do not infer previous-task completion merely because the next task started/,
+  );
+  assert.doesNotMatch(
+    webview,
+    /for \(var pti = 0; pti < Math\.max\(0, msg\.taskIndex - 1\); pti\+\+\)[\s\S]*?agentTodos\[pti\]\.state = 'completed'/,
+  );
+});
+
+test('agent working state: authoritative todo snapshots are not overwritten by process-only status', () => {
+  assert.match(
+    webview,
+    /function hasAuthoritativeAgentTodoSnapshot\(\)[\s\S]*?__agentState === true/,
+  );
+  assert.match(
+    webview,
+    /function syncAgentTodosWidget\(\)[\s\S]*?if \(hasAuthoritativeAgentTodoSnapshot\(\)\) return;/,
+  );
+});
+
 test('agent working state: done phase preserves failed todo evidence unless runtime sends authoritative success', () => {
   assert.match(webview, /function hasFailedAgentTodoState\(\)[\s\S]*?agentTodos[\s\S]*?agentToolTodos/);
   assert.match(webview, /var doneFailed = msg\.state === 'failed' \|\| hasFailedAgentTodoState\(\);/);

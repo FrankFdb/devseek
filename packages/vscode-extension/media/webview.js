@@ -2261,7 +2261,12 @@ function makeAgentWidgetItemsFromTodos() {
   });
 }
 
+function hasAuthoritativeAgentTodoSnapshot() {
+  return (agentToolTodos || []).some(function(t) { return t && t.__agentState === true; });
+}
+
 function syncAgentTodosWidget() {
+  if (hasAuthoritativeAgentTodoSnapshot()) return;
   if (agentTodos && agentTodos.length > 0) {
     handleTodoUpdate(makeAgentWidgetItemsFromTodos());
   }
@@ -3204,6 +3209,28 @@ function finalizeActiveAgentWorkingContainers(isFailed) {
   }
 }
 
+function isTaskIndexFailed(taskIndex) {
+  var idx = Number(taskIndex) - 1;
+  if (idx >= 0 && idx < agentTodos.length && agentTodos[idx].state === 'failed') return true;
+  return (agentToolTodos || []).some(function(t) {
+    return t && Number(t.id) === Number(taskIndex) && t.status === 'failed';
+  });
+}
+
+function isAgentContainerFailed(container) {
+  if (!container) return false;
+  if (container.hasAttribute('data-failed')) return true;
+  if (container.querySelector('.state-failed,[data-failed="1"]')) return true;
+  return false;
+}
+
+function finalizePreviousAgentContainer(container, previousTaskIndex) {
+  finalizeExecContainer(
+    container,
+    isAgentContainerFailed(container) || isTaskIndexFailed(previousTaskIndex),
+  );
+}
+
 function hasAgentFailureState() {
   if (agentValidationSummary && agentValidationSummary.state === 'failed') return true;
   if (agentTodos.some(function(t) { return t.state === 'failed'; })) return true;
@@ -3629,12 +3656,9 @@ function addAgentStatus(msg) {
       // Build label FIRST so finalizeExecContainer sees the correct task label
       var prevTaskIdx = agentCurrentTaskIndex;  // save BEFORE update
       agentCurrentTaskIndex = msg.taskIndex;
-      if (msg.taskIndex != null && agentTodos.length > 0) {
-        for (var pti = 0; pti < Math.max(0, msg.taskIndex - 1); pti++) {
-          if (agentTodos[pti].state !== 'failed') agentTodos[pti].state = 'completed';
-        }
-        syncAgentTodosWidget();
-      }
+      // Do not infer previous-task completion merely because the next task started.
+      // The backend task ledger owns completed/failed settlement from actual write,
+      // terminal, and validation evidence.
       var todoForLabel = msg.taskIndex != null ? agentTodos[msg.taskIndex - 1] : null;
       // Copilot style: Working box header = action + filename (short, identifiable).
       // Full task description lives in the Todos widget — not repeated in the Working header.
@@ -3668,7 +3692,7 @@ function addAgentStatus(msg) {
           // one-line thinking rows instead of replacing it with the newest task.
           var _newLabel = agentCurrentTaskLabel;
           agentCurrentTaskLabel = prevTaskLabel;
-          finalizeExecContainer(agentExecContainer, false);
+          finalizePreviousAgentContainer(agentExecContainer, prevTaskIdx);
           agentCurrentTaskLabel = _newLabel;
         }
         agentExecContainer = null;

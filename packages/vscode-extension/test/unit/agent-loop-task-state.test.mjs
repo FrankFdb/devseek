@@ -31,6 +31,9 @@ const { createAgentTaskTodoLedger } = req(bundlePath);
 
 test('two-phase agent todos are delegated to an evidence ledger', () => {
   assert.match(agentLoop, /createAgentTaskTodoLedger/, 'agent-loop must use the task todo ledger boundary');
+  assert.match(agentLoop, /selectTaskWriteEvidence/, 'agent-loop must treat create_file/write_file results as task write evidence');
+  assert.match(agentLoop, /recordTaskToolWrites\(loopRes\.writtenFiles\)/, 'tool-loop written files must be recorded before task settlement');
+  assert.match(agentLoop, /completeFromTaskToolWrite\(loopRes\.taskComplete\)/, 'matching tool writes must complete the current mutating task');
   assert.match(agentLoop, /onTodoUpdate:\s*undefined/, 'nested editor tool loops must not publish model todos directly');
   assert.match(agentLoop, /executeFakeToolsForLoop\(tools,\s*taskToolCallbacks,/, 'editor tool loops must use the todo-suppressed callback boundary');
   assert.match(agentLoop, /buildTaskSettlementFailureStatus/, 'ledger settlement failures must override optimistic task status');
