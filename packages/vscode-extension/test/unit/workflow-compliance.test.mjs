@@ -41,17 +41,17 @@ function assertContains(content, pattern, msg) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 test('§1 Agent loop: AGENTIC_ROUNDS_NORMAL constant exists', () => {
-  const code = src('src/agent-loop.ts');
+  const code = src('src/agent/agentic-loop.ts');
   assertContains(code, 'AGENTIC_ROUNDS_NORMAL', '§1 normal round limit');
 });
 
 test('§1 Agent loop: AGENTIC_ROUNDS_AUTOPILOT constant exists', () => {
-  const code = src('src/agent-loop.ts');
+  const code = src('src/agent/agentic-loop.ts');
   assertContains(code, 'AGENTIC_ROUNDS_AUTOPILOT', '§1 autopilot round limit');
 });
 
 test('§2/§3 Tool system: parseFakeToolCalls exists', () => {
-  const code = src('src/agent-loop.ts');
+  const code = src('src/agent/fake-tool-parser.ts');
   assertContains(code, 'parseFakeToolCalls', '§3 fake tool call parser');
 });
 
@@ -94,12 +94,12 @@ test('§7 Recovery: checkpoint create facts are executed deterministically', () 
 // ─────────────────────────────────────────────────────────────────────────────
 
 test('§8.3 File edits: computePendingHunks function present', () => {
-  const code = src('src/extension.ts');
+  const code = src('src/app/pending-edit-service.ts');
   assertContains(code, 'computePendingHunks', '§8.3 hunk computation');
 });
 
 test('§8.3 File edits: renderPendingContentFromHunks function present', () => {
-  const code = src('src/extension.ts');
+  const code = src('src/app/pending-edit-service.ts');
   assertContains(code, 'renderPendingContentFromHunks', '§8.3 hunk rendering');
 });
 
@@ -114,7 +114,7 @@ test('§8.3 File edits: undoPendingHunk function present', () => {
 });
 
 test('§8.3 File edits: PendingEditDecorationProvider class present (⬝ badge)', () => {
-  const code = src('src/extension.ts');
+  const code = src('src/pending-edit-coordinator.ts');
   assertContains(code, 'PendingEditDecorationProvider', '§8.3 explorer badge');
 });
 
@@ -179,6 +179,7 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
   assertContains(applier, 'cleanupCreatedEmptyDirs', 'rollback path removes empty directories created by this apply');
 
   const extension = src('src/extension.ts');
+  const closedLoopRunner = src('src/app/closed-loop-repair-runner.ts');
   const discovery = src('src/app/context-discovery-service.ts');
   assert.match(
     extension,
@@ -186,16 +187,16 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
     'automatic code-generation apply must keep failed files so runClosedLoopRepair can iterate',
   );
   assert.match(
-    extension,
+    closedLoopRunner,
     /const repairApply = await applyGeneratedArtifactsWithPrompt\([\s\S]*?\{ rollbackOnValidationFailure: false \}/,
     'repair rounds must keep failed repair files for the next validation loop',
   );
   const repairService = src('src/app/agentic-repair-service.ts');
-  assertContains(extension, 'new AgenticRepairService(initialApply)', 'closed-loop repair must delegate repair state to AgenticRepairService');
-  assertContains(extension, 'repairService.buildRepairPrompt', 'extension must not own repair prompt construction');
-  assertContains(extension, 'repairService.evaluateAppliedRepair', 'extension must not own repair progress state machine');
-  assertContains(extension, 'responseClaimsStatusOk', 'closed-loop repair must detect model self-claimed STATUS OK');
-  assertContains(extension, '已拒绝模型 STATUS: OK，自验证仍失败', 'model STATUS OK must not override failed local validation');
+  assertContains(closedLoopRunner, 'new AgenticRepairService(input.initialApply)', 'closed-loop repair must delegate repair state to AgenticRepairService');
+  assertContains(closedLoopRunner, 'repairService.buildRepairPrompt', 'extension must not own repair prompt construction');
+  assertContains(closedLoopRunner, 'repairService.evaluateAppliedRepair', 'extension must not own repair progress state machine');
+  assertContains(repairService, 'responseClaimsStatusOk', 'closed-loop repair must detect model self-claimed STATUS OK');
+  assertContains(repairService, '禁止只输出 STATUS: OK', 'model STATUS OK must not override failed local validation');
   assertContains(repairService, '本地验证状态为 FAILED', 'repair prompt must make failed local validation authoritative');
   assertContains(repairService, '禁止只输出 STATUS: OK', 'repair prompt must forbid OK-only responses after failed validation');
   assertContains(repairService, 'buildValidationFailureSignature', 'closed-loop repair must fingerprint validation failures');
@@ -244,9 +245,10 @@ test('§8.3 File edits: truncating overwrite failures are recoverable, not termi
   assertContains(recovery, '只允许输出 unified diff', 'retry prompt must force minimum patch output for existing files');
   assertContains(recovery, '不要把源码实现写入 AGENTS.md', 'recovery prompt must protect project instruction files');
 
-  assertContains(extension, "repairApply.failureReason === 'truncating-overwrite'", 'closed-loop repair must not treat blocked writes as generic no-op output');
-  assertContains(extension, '已拒绝截断覆盖修复，重新要求最小补丁', 'closed-loop repair must feed blocked writes back into the next repair round');
-  assertContains(extension, '未运行后续验证或 QualityGate，因为修复内容未安全落地', 'blocked writes must stop validation and quality gate claims');
+  const closedLoopRunner = src('src/app/closed-loop-repair-runner.ts');
+  assertContains(closedLoopRunner, "repairApply.failureReason === 'truncating-overwrite'", 'closed-loop repair must not treat blocked writes as generic no-op output');
+  assertContains(closedLoopRunner, '已拒绝截断覆盖修复，重新要求最小补丁', 'closed-loop repair must feed blocked writes back into the next repair round');
+  assertContains(closedLoopRunner, "title: '自动修正被安全拦截'", 'blocked writes must stop validation and quality gate claims');
   assert.doesNotMatch(extension, /已收到修正草案（全量覆盖）/, 'reset stream notices must not be mislabeled as full overwrite');
 });
 
@@ -372,12 +374,12 @@ test('§8 Inline diff: CodeLensProvider implemented', () => {
 });
 
 test('§8 Inline diff: Keep hunk command registered', () => {
-  const code = src('src/extension.ts');
+  const code = src('src/pending-edit-coordinator.ts');
   assertContains(code, '_devseek.diffKeepHunk', 'keep hunk command');
 });
 
 test('§8 Inline diff: Undo hunk command registered', () => {
-  const code = src('src/extension.ts');
+  const code = src('src/pending-edit-coordinator.ts');
   assertContains(code, '_devseek.diffUndoHunk', 'undo hunk command');
 });
 
@@ -387,12 +389,12 @@ test('§8 Inline diff: revealNextPendingHunk method present', () => {
 });
 
 test('§8 Inline diff: diffDecoManager wired in registerPendingEditChange', () => {
-  const code = src('src/extension.ts');
+  const code = src('src/pending-edit-coordinator.ts');
   assertContains(code, 'diffDecoManager?.activate', 'deco manager activated on file edit');
 });
 
 test('§8 Inline diff: diffDecoManager.deactivateAll wired in keepAllPendingEdits', () => {
-  const code = src('src/extension.ts');
+  const code = src('src/pending-edit-coordinator.ts');
   assertContains(code, 'diffDecoManager?.deactivateAll', 'deactivate all on keep-all/undo-all');
 });
 
@@ -563,7 +565,7 @@ test('§7 Todos: full model snapshots preserve distinct code/program tasks', () 
 });
 
 test('Agentic loop: fallback todos are shown only after real tool work starts', () => {
-  const code = src('src/agent-loop.ts');
+  const code = src('src/agent/agentic-loop.ts');
   assertContains(code, 'fallbackTodosVisible', 'fallback todo visibility guard');
   assertContains(code, 'roundHasVisibleTodoUpdate', 'fallback guard must distinguish valid todo payloads from empty tool calls');
   assert.match(
@@ -598,7 +600,7 @@ test('Agent loop: task_complete does not bypass final editedFiles accounting', (
   const code = src('src/agent-loop.ts');
   assert.match(
     code,
-    /executeFakeToolsForLoop\(tools,\s*callbacks,\s*editorWorkdir,\s*\{[\s\S]*?currentTaskIndex: taskIndex[\s\S]*?taskTotal: allTasks\.length[\s\S]*?deferDoneStatus: true[\s\S]*?userPrompt[\s\S]*?workspaceRoot: workspaceRoot\.fsPath[\s\S]*?\}\)/,
+    /executeFakeToolsForLoop\(tools,\s*taskToolCallbacks,\s*editorWorkdir,\s*\{[\s\S]*?currentTaskIndex: taskIndex[\s\S]*?taskTotal: allTasks\.length[\s\S]*?deferDoneStatus: true[\s\S]*?userPrompt[\s\S]*?workspaceRoot: workspaceRoot\.fsPath[\s\S]*?\}\)/,
     'editor task_complete must defer final done to runAgentLoop',
   );
   assert.match(
@@ -609,7 +611,7 @@ test('Agent loop: task_complete does not bypass final editedFiles accounting', (
 });
 
 test('Agent loop: final written file evidence is coalesced before user-facing accounting', () => {
-  const code = src('src/agent-loop.ts');
+  const code = src('src/agent/agentic-loop.ts');
   assertContains(code, 'coalesceWrittenFileEvidence', 'agent loop must use shared written-file evidence coalescing');
   assert.match(
     code,
@@ -629,7 +631,7 @@ test('Agent loop: final written file evidence is coalesced before user-facing ac
 });
 
 test('Agent loop: explicit-content validation conflicts stop autonomous rewrite loops', () => {
-  const code = src('src/agent-loop.ts');
+  const code = src('src/agent/agentic-loop.ts');
   assertContains(code, 'repairBlockedReason', 'agent loop must consume validation repair block decisions');
   assert.match(
     code,
@@ -671,6 +673,7 @@ test('Agent loop: file tools and validation use ground-truth outcomes', () => {
 
 test('Local execution failures escalate into Agent repair instead of browser upload repair', () => {
   const ext = src('src/extension.ts');
+  const localRunner = src('src/local-execution-chat-runner.ts');
   const planner = src('src/execution-planner.ts');
   const repair = src('src/local-execution-repair.ts');
   assertContains(ext, 'planRepeatLocalExecution(prompt, lastLocalExecutionPlan', 'repeat execution must be delegated to the planner');
@@ -678,9 +681,9 @@ test('Local execution failures escalate into Agent repair instead of browser upl
   assertContains(planner, 'shouldRebuildRepeatExecution', 'planner must distinguish recompile/rebuild repeat requests');
   assertContains(planner, 'canReplayRunOnlyPlan', 'planner must verify run-only executables still exist');
   assertContains(planner, 'repeat-replanned-build', 'planner must replan missing or rebuild repeat requests as build/run');
-  assertContains(ext, 'buildLocalExecutionRepairTasks(localPlan, localResult, repairWsRoot)', 'local failures must build concrete repair tasks');
-  assertContains(ext, 'runAgentLoop(', 'local failures must enter the tool-capable agent loop');
-  assertContains(ext, '本地执行失败，进入 Agent 修复', 'UI must show the repair escalation');
+  assertContains(localRunner, 'buildLocalExecutionRepairTasks(localPlan, localResult, repairWsRoot)', 'local failures must build concrete repair tasks');
+  assertContains(localRunner, 'runAgentLoop(', 'local failures must enter the tool-capable agent loop');
+  assertContains(localRunner, '本地执行失败，进入 Agent 修复', 'UI must show the repair escalation');
   assertContains(repair, '按 Claude Code / Codex 风格处理', 'repair prompt must follow coding-agent closed-loop behavior');
   assertContains(repair, '不要依赖网页附件上传', 'repair must use local tools rather than DeepSeek browser uploads');
   assertContains(repair, 'read_file / grep_search / list_dir / run_terminal', 'repair prompt must require local evidence tools');
@@ -692,7 +695,7 @@ test('Local execution failures escalate into Agent repair instead of browser upl
 });
 
 test('Agentic loop: repeated terminal failures enter root-cause recovery before retry', () => {
-  const code = src('src/agent-loop.ts');
+  const code = src('src/agent/agentic-loop.ts');
   const recovery = src('src/agent/write-guard.ts');
   assertContains(code, 'getTerminalRecoveryProtocol', 'terminal recovery protocol helper');
   assertContains(recovery, '根因分析', 'recovery prompt must require root-cause analysis');
@@ -708,7 +711,7 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
 });
 
 test('Agentic loop: terminal completion evidence requires successful validation output', () => {
-  const code = src('src/agent-loop.ts');
+  const code = src('src/agent/agentic-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
   const evidence = src('src/agent/completion-evidence.ts');
   assertContains(toolLoop, 'TerminalEvidence', 'terminal evidence model must exist');
@@ -731,7 +734,7 @@ test('Agentic loop: terminal completion evidence requires successful validation 
 });
 
 test('Agentic loop: workspace writes use ValidationService for automatic validation evidence', () => {
-  const code = src('src/agent-loop.ts');
+  const code = src('src/agent/agentic-loop.ts');
   const autoValidation = src('src/agent/auto-validation.ts');
   assertContains(code, 'runAgentAutoValidationForWrites', 'agent loop must run automatic validation after file writes');
   assertContains(autoValidation, 'ValidationService', 'automatic validation boundary must depend on the unified validation service');
@@ -743,20 +746,21 @@ test('Agentic loop: workspace writes use ValidationService for automatic validat
 test('Agent run boundaries reset stale todo and pending-edit review scope', () => {
   const ext = src('src/extension.ts');
   const pending = src('src/app/pending-edit-service.ts');
+  const coordinator = src('src/pending-edit-coordinator.ts');
   const webview = src('media/webview.js');
   assertContains(pending, 'resetForNewScope', 'pending edit service must expose a new review-scope reset');
-  assertContains(ext, 'beginAgentRunReviewScope(webview)', 'agent runs must start with a fresh file-review scope');
-  assertContains(ext, "webview.postMessage({ type: 'todoUpdate', items: [] })", 'agent runs must clear stale visible todos at start');
+  assertContains(ext, 'pendingEditCoordinator.beginReviewScope(webview)', 'agent runs must start with a fresh file-review scope');
+  assertContains(coordinator, "webview.postMessage({ type: 'todoUpdate', items: [] })", 'agent runs must clear stale visible todos at start');
   assertContains(webview, 'if (!items || !items.length)', 'webview todo handler must accept empty todo reset messages');
   assertContains(webview, "todosWidgetEl.style.display = 'none'", 'empty todo reset must hide the stale todo widget');
 });
 
 test('Directory discovery skips generated build artifacts', () => {
-  const ext = src('src/extension.ts');
+  const chatResources = src('src/app/chat-resource-actions.ts');
   const planner = src('src/execution-planner.ts');
   const contextDiscovery = src('src/app/context-discovery-service.ts');
   const discovery = src('src/file-discovery.ts');
-  assertContains(ext, 'collectDirectoryFiles', 'directory attachments must delegate to shared context discovery');
+  assertContains(chatResources, 'collectDirectoryFiles', 'directory attachments must delegate to shared context discovery');
   assertContains(contextDiscovery, 'shouldSkipDiscoveryDir', 'directory attachments must use shared discovery skip policy');
   assertContains(contextDiscovery, 'shouldIncludeDiscoveredSourceFile', 'auto directory discovery must filter generated source-like artifacts');
   assertContains(planner, 'shouldSkipDiscoveryDir', 'execution planner discovery must use shared skip policy');
@@ -806,7 +810,7 @@ test('Agentic loop: terminal must not be used as a fallback file writer', () => 
 
 test('Agentic loop: markdown fallback writes C++ code blocks as real artifacts', () => {
   const code = src('src/agent/tool-loop.ts');
-  const agentLoop = src('src/agent-loop.ts');
+  const agenticLoop = src('src/agent/agentic-loop.ts');
   assertContains(code, 'promptLooksLikeCppProgram(userPrompt)', 'markdown fallback must detect C++ prompts');
   assert.match(
     code,
@@ -814,19 +818,19 @@ test('Agentic loop: markdown fallback writes C++ code blocks as real artifacts',
     'markdown fallback must scan cpp/cxx/cc code fences, not only c fences',
   );
   assertContains(code, "defaultCodeArtifactBasename(userPrompt)}${ext}", 'fallback path must use prompt-aware default basename and extension');
-  assertContains(agentLoop, '创建/修改文件必须调用 create_file 工具并提供完整 content', 'agent prompt must forbid natural-language-only file creation');
+  assertContains(agenticLoop, '创建/修改文件必须调用 create_file 工具并提供完整 content', 'agent prompt must forbid natural-language-only file creation');
 });
 
 test('Agentic loop: final summary never exposes backend tool transcripts', () => {
-  const agentLoop = src('src/agent-loop.ts');
-  assertContains(agentLoop, 'cleanAgentFinalSummaryForUser', 'agent loop must sanitize final summaries');
+  const agenticLoop = src('src/agent/agentic-loop.ts');
+  assertContains(agenticLoop, 'cleanAgentFinalSummaryForUser', 'agent loop must sanitize final summaries');
   assert.match(
-    agentLoop,
+    agenticLoop,
     /const visibleCompleteSummary = cleanAgentFinalSummaryForUser\(completeSummary\);[\s\S]*?title: cleanAbort \? `已中断/,
     'phase:done title must use sanitized completion summary',
   );
   assert.match(
-    agentLoop,
+    agenticLoop,
     /visibleCompleteSummary \|\| fileSummary \|\| '任务已完成。'/,
     'ASUM final prose must use sanitized completion summary',
   );
@@ -847,10 +851,11 @@ test('Agentic loop: final summary never exposes backend tool transcripts', () =>
 
 test('Agentic free-explore: follow-up turns keep same-session context', () => {
   const ext = src('src/extension.ts');
-  const agentLoop = src('src/agent-loop.ts');
+  const agenticLoop = src('src/agent/agentic-loop.ts');
+  const sessionContext = src('src/app/agent-session-context.ts');
   assertContains(ext, 'buildAgenticSessionContext', 'extension must build same-session context for free-explore agent');
-  assertContains(ext, '这是同一个聊天 session 的后续消息', 'session context must explicitly mark follow-up messages');
-  assertContains(ext, '不要泛化为分析整个 code 目录', 'follow-up context must prevent broad code-directory reinterpretation');
+  assertContains(sessionContext, '这是同一个聊天 session 的后续消息', 'session context must explicitly mark follow-up messages');
+  assertContains(sessionContext, '不要泛化为分析整个 code 目录', 'follow-up context must prevent broad code-directory reinterpretation');
   assert.match(
     ext,
     /runAgenticLoop\([\s\S]*?, agSessionContext, intent\.mode\)/,
@@ -862,7 +867,7 @@ test('Agentic free-explore: follow-up turns keep same-session context', () => {
     'free-explore branch must persist session history before returning',
   );
   assert.match(
-    agentLoop,
+    agenticLoop,
     /sessionContextText = ''[\s\S]*?【同一会话上下文】[\s\S]*?【当前用户消息】/,
     'agentic loop must inject same-session context before the current prompt',
   );
@@ -887,11 +892,8 @@ test('Agentic evidence: read-only terminal checks are retained as completion evi
 // ─────────────────────────────────────────────────────────────────────────────
 
 test('§3 Tool filtering: stripToolCallBlocks function present', () => {
-  // May be in agent-loop.ts or extension.ts
-  const agentLoop = src('src/agent-loop.ts');
-  const ext = src('src/extension.ts');
-  const found = agentLoop.includes('stripToolCallBlocks') || ext.includes('stripToolCallBlocks');
-  assert.ok(found, '§3 stripToolCallBlocks must exist in agent-loop.ts or extension.ts');
+  const parser = src('src/agent/fake-tool-parser.ts');
+  assertContains(parser, 'stripToolCallBlocks', '§3 stripToolCallBlocks must exist in fake-tool-parser.ts');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -915,6 +917,7 @@ test('Architecture: PermissionService maps ExecutionMode to tool policy', () => 
   const service = src('src/app/permission-service.ts');
   const ext = src('src/extension.ts');
   const controller = src('src/app/chat-controller.ts');
+  const terminalCoordinator = src('src/app/terminal-permission-coordinator.ts');
   assertContains(service, 'buildToolPolicy', 'permission service must build mode tool policies');
   assertContains(service, 'decideToolPermission', 'permission service must decide tool permissions');
   assertContains(service, "case 'inspect'", 'permission service must handle inspect mode');
@@ -922,7 +925,7 @@ test('Architecture: PermissionService maps ExecutionMode to tool policy', () => 
   assertContains(controller, 'const toolPolicy = buildToolPolicy(workflow.toolPolicyMode)', 'chat controller must bind tool policy from workflow mode');
   assertContains(ext, 'const { intentRoutingText, intent, toolPolicy, workflow } = routeDecision', 'runChat must use routed tool policy');
   assertContains(ext, "decideToolPermission(toolPolicy, 'edit')", 'file writes must check ToolPolicy');
-  assertContains(ext, "decideToolPermission(toolPolicy, 'terminal')", 'terminal commands must check ToolPolicy');
+  assertContains(terminalCoordinator, "decideToolPermission(toolPolicy, 'terminal')", 'terminal commands must check ToolPolicy');
 });
 
 test('Architecture: WorkflowService selects agent entry outside extension inline gate', () => {
@@ -1001,15 +1004,15 @@ test('Architecture: SessionService owns session metadata operations', () => {
 
 test('Architecture: PendingEditService owns pending edit record map', () => {
   const service = src('src/app/pending-edit-service.ts');
-  const ext = src('src/extension.ts');
+  const coordinator = src('src/pending-edit-coordinator.ts');
   assertContains(service, 'class PendingEditService', 'pending edit service class must exist');
   assertContains(service, 'findLatestByPath', 'pending edit service must expose path lookup');
   assertContains(service, 'computePendingHunks', 'pending edit service must own hunk computation');
   assertContains(service, 'renderPendingContentFromHunks', 'pending edit service must own hunk rendering');
   assertContains(service, 'allHunksResolved', 'pending edit service must own hunk resolution checks');
-  assertContains(ext, 'new PendingEditService<PendingEditRecord>()', 'extension pending edit state must use PendingEditService');
-  assert.doesNotMatch(ext, /function\s+(computePendingHunks|renderPendingContentFromHunks|allHunksResolved|lcsDiffOps)\b/, 'extension.ts must not define pending edit hunk algorithms');
-  assert.doesNotMatch(ext, /interface\s+DiffOp\b/, 'extension.ts must not own pending edit diff internals');
+  assertContains(coordinator, 'new PendingEditService<PendingEditRecord>()', 'pending edit coordinator must use PendingEditService');
+  assert.doesNotMatch(coordinator, /function\s+(computePendingHunks|renderPendingContentFromHunks|allHunksResolved|lcsDiffOps)\b/, 'pending edit coordinator must not define pending edit hunk algorithms');
+  assert.doesNotMatch(coordinator, /interface\s+DiffOp\b/, 'pending edit coordinator must not own pending edit diff internals');
 });
 
 test('Architecture: fake tool parser is split from Agent Loop executor', () => {
@@ -1039,6 +1042,7 @@ test('Architecture: ToolRegistry owns agent tool metadata', () => {
   const registry = src('src/agent/tool-registry.ts');
   const executor = src('src/agent/tool-executor.ts');
   const agentLoop = src('src/agent-loop.ts');
+  const agenticLoop = src('src/agent/agentic-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
   assertContains(registry, 'AGENT_TOOL_DEFINITIONS', 'tool registry must expose tool definitions');
   assertContains(registry, 'isFileWriteTool', 'tool registry must identify file write tools');
@@ -1048,7 +1052,7 @@ test('Architecture: ToolRegistry owns agent tool metadata', () => {
   assertContains(toolLoop, "from './tool-executor'", 'tool loop must import tool executor module');
   assertContains(toolLoop, 'agentToolExecutor.isFileWrite(tool)', 'file write branch must use tool executor helper');
   assertContains(toolLoop, 'agentToolExecutor.plan(tool).activity', 'early activity display must use tool executor helper');
-  assertContains(agentLoop, 'describeAgentToolActivity(t)', 'agent loop must call the tool-loop activity service');
+  assertContains(agenticLoop, 'describeAgentToolActivity(t)', 'agentic loop must call the tool-loop activity service');
   assert.doesNotMatch(agentLoop, /agentToolExecutor/, 'agent loop must not own tool executor internals');
   assert.doesNotMatch(agentLoop, /function toolCallToEarlyActivity/, 'agent loop must not keep local tool activity registry');
 });
@@ -1172,6 +1176,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   const recovery = src('src/app/provider-recovery-service.ts');
   const runDisplay = src('src/agent/agent-run-display.ts');
   const loop = src('src/agent-loop.ts');
+  const agenticLoop = src('src/agent/agentic-loop.ts');
   const loopTypes = src('src/agent/loop-types.ts');
   const idempotency = src('src/agent/idempotency-guard.ts');
   const reliability = src('src/llm/providers/web-reliability.ts');
@@ -1194,7 +1199,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(runDisplay, "initialTaskAction: 'respond'", 'literal protocol display must start as a safe response, not exploration');
   assertContains(loopTypes, 'runDisplayAction?: AgentTask', 'agent loop must treat initial display action as display-only metadata');
   assertContains(loop, "task.action === 'respond'", 'agent loop must handle safe response tasks before model/tool execution');
-  assertContains(loop, '!literalToolProtocolPrompt', 'literal protocol prompts must not infer fallback file/tool todos');
+  assertContains(agenticLoop, '!literalToolProtocolPrompt', 'literal protocol prompts must not infer fallback file/tool todos');
   assertContains(reliability, 'class ResponseIntegrityChecker', 'DeepSeek Web provider must have response integrity checks');
   assertContains(reliability, 'class StreamWatchdog', 'DeepSeek Web provider must have stream watchdog semantics');
   assertContains(reliability, 'class BridgeHealthMonitor', 'DeepSeek Web provider must have bridge health monitor semantics');

@@ -37,7 +37,9 @@ import {
   getCommandHints,
 } from './agent-learner';
 import { decomposeTask, getAgentTaskDisplayTarget, inferTasksFromFiles, type AgentTask } from './agent-task-decomposer';
-import { runAgentLoop, runAgenticLoop, AgentStatusMessage, extractAnalysisFindings, type AgentLoopResult } from './agent-loop';
+import { runAgentLoop, AgentStatusMessage, extractAnalysisFindings, type AgentLoopResult } from './agent-loop';
+import { createAgentHostToolCallbacks } from './agent/agent-host-tools';
+import { runAgenticLoop } from './agent/agentic-loop';
 import { getWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
 import { McpManager } from './mcp/client';
 import { isFileProtected } from './protected-files';
@@ -1319,157 +1321,11 @@ async function runChat(
               }).join('\n') || '（空目录）';
             } catch (e) { throw new Error(`list_dir 失败: ${(e as Error).message}`); }
           },
-          onGetErrors: async () => {
-            const allDiags = vscode.languages.getDiagnostics();
-            const errors: string[] = [];
-            for (const [uri, diags] of allDiags) {
-              for (const d of diags) {
-                if (d.severity === vscode.DiagnosticSeverity.Error) {
-                  errors.push(`${vscode.workspace.asRelativePath(uri)}:${d.range.start.line + 1}: ${d.message}`);
-                }
-              }
-            }
-            return errors.length > 0 ? errors.join('\n') : '（当前无诊断错误）';
-          },
-          onFileSearch: async (glob: string) => {
-            const uris = await vscode.workspace.findFiles(glob, '**/node_modules/**', 50);
-            if (uris.length === 0) return '（无匹配文件）';
-            const wsRoot0 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-            return uris.map(u => wsRoot0 ? nodePath.relative(wsRoot0, u.fsPath) : u.fsPath).join('\n');
-          },
-          // get_changed_files — Copilot #search/changes: git status + diff summary
-          onGetChangedFiles: async () => {
-            const { runCommand } = await import('./tools/terminal');
-            const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-            if (!cwd) return '（无工作区）';
-            try {
-              const status = await runCommand({ command: 'git status --short', cwd, timeoutMs: 5000 });
-              const diff = await runCommand({ command: 'git diff --stat HEAD', cwd, timeoutMs: 5000 });
-              const statusText = status.stdout.trim() || '（无变更）';
-              const diffText = diff.stdout.trim();
-              return diffText ? `${statusText}\n\n${diffText}` : statusText;
-            } catch { return '（非 git 工作区或无变更）'; }
-          },
-          // create_directory — Copilot #edit/createDirectory: mkdir recursively
-          onCreateDirectory: async (dirPath: string) => {
-            const wsRoot0 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-            const absPath = nodePath.isAbsolute(dirPath) ? dirPath : nodePath.join(wsRoot0, dirPath);
-            if (wsRoot0 && !absPath.startsWith(wsRoot0)) throw new Error('禁止在工作区外创建目录');
-            fs.mkdirSync(absPath, { recursive: true });
-            return `目录已创建: ${dirPath}`;
-          },
-          // fetch_webpage — Copilot #web/fetch: HTTP GET webpage content
-          onFetchWebpage: async (url: string) => {
-            let parsedUrl: URL;
-            try { parsedUrl = new URL(url); } catch { throw new Error(`无效 URL: ${url}`); }
-            if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('仅支持 http/https 协议');
-            const host = parsedUrl.hostname.toLowerCase();
-            if (/^(localhost|127\.|0\.0\.0\.0|::1|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(host)) throw new Error('拒绝访问内部网络地址');
-            const mod = parsedUrl.protocol === 'https:' ? require('https') : require('http');
-            return new Promise<string>((resolve, reject) => {
-              const req = mod.request(url, { headers: { 'User-Agent': 'DevSeek-Agent/1.0' }, timeout: 8000 }, (res: NodeJS.ReadableStream & { setEncoding: (e: string) => void }) => {
-                let data = '';
-                res.setEncoding('utf8');
-                res.on('data', (chunk: string) => { if (data.length < 50000) data += chunk; });
-                res.on('end', () => {
-                  const text = data
-                    .replace(/<script[\s\S]*?<\/script>/gi, '')
-                    .replace(/<style[\s\S]*?<\/style>/gi, '')
-                    .replace(/<[^>]+>/g, ' ')
-                    .replace(/\s+/g, ' ')
-                    .trim()
-                    .slice(0, 20000);
-                  resolve(text || '（页面内容为空）');
-                });
-              });
-              req.on('error', (e: Error) => reject(e));
-              req.on('timeout', () => { req.destroy(); reject(new Error('请求超时')); });
-              req.end();
-            });
-          },
-          // vscode_listCodeUsages — Copilot #search/usages: LSP semantic references + grep fallback
-          onListCodeUsages: async (symbol: string, filePath?: string) => {
-            const wsRoot0 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-            let targetUri: vscode.Uri | undefined;
-            let targetPos: vscode.Position | undefined;
-            const lookupPath = filePath
-              ? (nodePath.isAbsolute(filePath) ? filePath : nodePath.join(wsRoot0, filePath))
-              : null;
-            if (lookupPath && fs.existsSync(lookupPath)) {
-              targetUri = vscode.Uri.file(lookupPath);
-            } else if (wsRoot0) {
-              const { runCommand: rc } = await import('./tools/terminal');
-              const esc0 = symbol.replace(/'/g, "'\\''" ).slice(0, 80);
-              const exts0 = ['ts','tsx','js','jsx','py','java','go','rs','cs','cpp','c','h'];
-              const incs0 = exts0.map(e => `--include='*.${e}'`).join(' ');
-              const r0 = await rc({ command: `grep -r -l -w '${esc0}' ${incs0} '${wsRoot0.replace(/'/g, "'\\''")}' 2>/dev/null | head -3`, timeoutMs: 8000 });
-              const first = r0.stdout.trim().split('\n')[0];
-              if (first && fs.existsSync(first)) targetUri = vscode.Uri.file(first);
-            }
-            if (targetUri) {
-              try {
-                const doc = await vscode.workspace.openTextDocument(targetUri);
-                const re = new RegExp(`\\b${symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
-                for (let i = 0; i < Math.min(doc.lineCount, 3000); i++) {
-                  const m = re.exec(doc.lineAt(i).text);
-                  if (m) { targetPos = new vscode.Position(i, m.index); break; }
-                }
-                if (targetPos) {
-                  const locs = await vscode.commands.executeCommand<vscode.Location[]>(
-                    'vscode.executeReferenceProvider', targetUri, targetPos
-                  );
-                  if (locs && locs.length > 0) {
-                    const lines = locs.slice(0, 30).map(l =>
-                      `${vscode.workspace.asRelativePath(l.uri)}:${l.range.start.line + 1}`
-                    );
-                    return `"${symbol}" 共 ${locs.length} 处引用：\n${lines.join('\n')}${
-                      locs.length > 30 ? '\n（仅显示前 30 条）' : ''
-                    }`;
-                  }
-                }
-              } catch { /* fall through to grep */ }
-            }
-            // Fallback: word-boundary grep
-            const { runCommand: rc2 } = await import('./tools/terminal');
-            const esc2 = symbol.replace(/'/g, "'\\''" ).slice(0, 80);
-            const exts2 = ['ts','tsx','js','jsx','py','java','go','rs','cs','cpp','c','h','hpp'];
-            const incs2 = exts2.map(e => `--include='*.${e}'`).join(' ');
-            const r2 = await rc2({ command: `grep -r -n -w '${esc2}' ${incs2} '${wsRoot0.replace(/'/g, "'\\''")}' 2>/dev/null | head -40`, timeoutMs: 10000 });
-            return r2.stdout
-              ? `"${symbol}" 引用（grep fallback）:\n${r2.stdout}`
-              : '（未找到引用）';
-          },
-          // run_vscode_command — Copilot #vscode/runCommand: trigger VS Code commands safely
-          onRunVscodeCommand: async (command: string, args?: unknown[]) => {
-            if (!/^[\w.-]+$/.test(command)) throw new Error(`无效命令 ID: ${command}`);
-            const SAFE = new Set([
-              'editor.action.formatDocument','editor.action.formatSelection',
-              'editor.action.organizeImports','editor.action.fixAll',
-              'workbench.action.files.saveAll','workbench.action.files.save',
-              'workbench.files.action.refreshFilesExplorer',
-              'typescript.restartTsServer','eslint.executeAutofix',
-              'workbench.action.tasks.runTask','workbench.action.tasks.build',
-              'testing.runAll','testing.refreshTests',
-              'editor.action.triggerSuggest','rust-analyzer.reloadWorkspace',
-              'python.execInTerminal','C_Cpp.BuildAndDebugActiveFile',
-            ]);
-            const isAuto0 = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-            if (!isAuto0 && !SAFE.has(command)) {
-              const commandConfirm = await terminalPermissionCoordinator.requestInlineConfirmation(
-                webview,
-                `⚡ VS Code: ${command}`,
-              );
-              if (!commandConfirm.allow) return '（命令未执行：用户拒绝）';
-            }
-            try {
-              const res0 = await vscode.commands.executeCommand(command, ...(args ?? []));
-              return res0 !== undefined
-                ? `命令已执行: ${command}\n返回: ${JSON.stringify(res0).slice(0, 500)}`
-                : `命令已执行: ${command}`;
-            } catch (err) {
-              throw new Error(`命令执行失败: ${(err as Error).message}`);
-            }
-          },
+          ...createAgentHostToolCallbacks({
+            workspaceRoot: agWsRoot,
+            webview,
+            terminalPermissionCoordinator,
+          }),
           signal: chatSignal,
           onTaskCheckpoint: async (completedUpToIndex, _remainingTasks) => {
             if (completedUpToIndex === null) { await saveAgentCheckpoint(null); webview.postMessage({ type: 'agentCheckpointCleared' }); }
@@ -1802,154 +1658,12 @@ async function runChat(
               throw new Error(`list_dir 失败: ${(e as Error).message}`);
             }
           },
-          // get_errors tool — AI can check current VS Code diagnostics
-          onGetErrors: async () => {
-            const allDiags = vscode.languages.getDiagnostics();
-            const errors: string[] = [];
-            for (const [uri, diags] of allDiags) {
-              for (const d of diags) {
-                if (d.severity === vscode.DiagnosticSeverity.Error) {
-                  errors.push(`${vscode.workspace.asRelativePath(uri)}:${d.range.start.line + 1}: ${d.message}`);
-                }
-              }
-            }
-            return errors.length > 0 ? errors.join('\n') : '（当前无诊断错误）';
-          },
-          // file_search tool — find files matching a glob pattern (Copilot #search/fileSearch)
-          onFileSearch: async (glob: string) => {
-            const uris = await vscode.workspace.findFiles(glob, '**/node_modules/**', 50);
-            if (uris.length === 0) return '（无匹配文件）';
-            return uris.map(u => vscode.workspace.asRelativePath(u)).join('\n');
-          },
-          // get_changed_files — Copilot #search/changes: git status + diff summary
-          onGetChangedFiles: async () => {
-            const { runCommand } = await import('./tools/terminal');
-            try {
-              const status = await runCommand({ command: 'git status --short', cwd: wsRoot.fsPath, timeoutMs: 5000 });
-              const diff = await runCommand({ command: 'git diff --stat HEAD', cwd: wsRoot.fsPath, timeoutMs: 5000 });
-              const statusText = status.stdout.trim() || '（无变更）';
-              const diffText = diff.stdout.trim();
-              return diffText ? `${statusText}\n\n${diffText}` : statusText;
-            } catch { return '（非 git 工作区或无变更）'; }
-          },
-          // create_directory — Copilot #edit/createDirectory: mkdir recursively
-          onCreateDirectory: async (dirPath: string) => {
-            const absPath = nodePath.isAbsolute(dirPath) ? dirPath : nodePath.join(wsRoot.fsPath, dirPath);
-            if (!absPath.startsWith(wsRoot.fsPath)) throw new Error('禁止在工作区外创建目录');
-            fs.mkdirSync(absPath, { recursive: true });
-            return `目录已创建: ${dirPath}`;
-          },
-          // fetch_webpage — Copilot #web/fetch: HTTP GET webpage content (SSRF-safe)
-          onFetchWebpage: async (url: string) => {
-            let parsedUrl: URL;
-            try { parsedUrl = new URL(url); } catch { throw new Error(`无效 URL: ${url}`); }
-            if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('仅支持 http/https 协议');
-            const host = parsedUrl.hostname.toLowerCase();
-            if (/^(localhost|127\.|0\.0\.0\.0|::1|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(host)) throw new Error('拒绝访问内部网络地址');
-            const mod = parsedUrl.protocol === 'https:' ? require('https') : require('http');
-            return new Promise<string>((resolve, reject) => {
-              const req = mod.request(url, { headers: { 'User-Agent': 'DevSeek-Agent/1.0' }, timeout: 8000 }, (res: NodeJS.ReadableStream & { setEncoding: (e: string) => void }) => {
-                let data = '';
-                res.setEncoding('utf8');
-                res.on('data', (chunk: string) => { if (data.length < 50000) data += chunk; });
-                res.on('end', () => {
-                  const text = data
-                    .replace(/<script[\s\S]*?<\/script>/gi, '')
-                    .replace(/<style[\s\S]*?<\/style>/gi, '')
-                    .replace(/<[^>]+>/g, ' ')
-                    .replace(/\s+/g, ' ')
-                    .trim()
-                    .slice(0, 20000);
-                  resolve(text || '（页面内容为空）');
-                });
-              });
-              req.on('error', (e: Error) => reject(e));
-              req.on('timeout', () => { req.destroy(); reject(new Error('请求超时')); });
-              req.end();
-            });
-          },
-          // vscode_listCodeUsages — Copilot #search/usages: LSP semantic references + grep fallback
-          onListCodeUsages: async (symbol: string, filePath?: string) => {
-            let targetUri: vscode.Uri | undefined;
-            let targetPos: vscode.Position | undefined;
-            const lookupPath = filePath
-              ? (nodePath.isAbsolute(filePath) ? filePath : nodePath.join(wsRoot.fsPath, filePath))
-              : null;
-            if (lookupPath && fs.existsSync(lookupPath)) {
-              targetUri = vscode.Uri.file(lookupPath);
-            } else {
-              const { runCommand: rc } = await import('./tools/terminal');
-              const esc0 = symbol.replace(/'/g, "'\\''" ).slice(0, 80);
-              const exts0 = ['ts','tsx','js','jsx','py','java','go','rs','cs','cpp','c','h'];
-              const incs0 = exts0.map(e => `--include='*.${e}'`).join(' ');
-              const r0 = await rc({ command: `grep -r -l -w '${esc0}' ${incs0} '${wsRoot.fsPath.replace(/'/g, "'\\''")}' 2>/dev/null | head -3`, timeoutMs: 8000 });
-              const first = r0.stdout.trim().split('\n')[0];
-              if (first && fs.existsSync(first)) targetUri = vscode.Uri.file(first);
-            }
-            if (targetUri) {
-              try {
-                const doc = await vscode.workspace.openTextDocument(targetUri);
-                const re = new RegExp(`\\b${symbol.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
-                for (let i = 0; i < Math.min(doc.lineCount, 3000); i++) {
-                  const m = re.exec(doc.lineAt(i).text);
-                  if (m) { targetPos = new vscode.Position(i, m.index); break; }
-                }
-                if (targetPos) {
-                  const locs = await vscode.commands.executeCommand<vscode.Location[]>(
-                    'vscode.executeReferenceProvider', targetUri, targetPos
-                  );
-                  if (locs && locs.length > 0) {
-                    const lines = locs.slice(0, 30).map(l =>
-                      `${vscode.workspace.asRelativePath(l.uri)}:${l.range.start.line + 1}`
-                    );
-                    return `"${symbol}" 共 ${locs.length} 处引用：\n${lines.join('\n')}${
-                      locs.length > 30 ? '\n（仅显示前 30 条）' : ''
-                    }`;
-                  }
-                }
-              } catch { /* fall through to grep */ }
-            }
-            // Fallback: word-boundary grep
-            const { runCommand: rc2 } = await import('./tools/terminal');
-            const esc2 = symbol.replace(/'/g, "'\\''" ).slice(0, 80);
-            const exts2 = ['ts','tsx','js','jsx','py','java','go','rs','cs','cpp','c','h','hpp'];
-            const incs2 = exts2.map(e => `--include='*.${e}'`).join(' ');
-            const r2 = await rc2({ command: `grep -r -n -w '${esc2}' ${incs2} '${wsRoot.fsPath.replace(/'/g, "'\\''")}' 2>/dev/null | head -40`, timeoutMs: 10000 });
-            return r2.stdout
-              ? `"${symbol}" 引用（grep fallback）:\n${r2.stdout}`
-              : '（未找到引用）';
-          },
-          // run_vscode_command — Copilot #vscode/runCommand: trigger VS Code commands safely
-          onRunVscodeCommand: async (command: string, args?: unknown[]) => {
-            if (!/^[\w.-]+$/.test(command)) throw new Error(`无效命令 ID: ${command}`);
-            const SAFE = new Set([
-              'editor.action.formatDocument','editor.action.formatSelection',
-              'editor.action.organizeImports','editor.action.fixAll',
-              'workbench.action.files.saveAll','workbench.action.files.save',
-              'workbench.files.action.refreshFilesExplorer',
-              'typescript.restartTsServer','eslint.executeAutofix',
-              'workbench.action.tasks.runTask','workbench.action.tasks.build',
-              'testing.runAll','testing.refreshTests',
-              'editor.action.triggerSuggest','rust-analyzer.reloadWorkspace',
-              'python.execInTerminal','C_Cpp.BuildAndDebugActiveFile',
-            ]);
-            const isAuto1 = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-            if (!isAuto1 && !SAFE.has(command)) {
-              const commandConfirm = await terminalPermissionCoordinator.requestInlineConfirmation(
-                webview,
-                `⚡ VS Code: ${command}`,
-              );
-              if (!commandConfirm.allow) return '（命令未执行：用户拒绝）';
-            }
-            try {
-              const res1 = await vscode.commands.executeCommand(command, ...(args ?? []));
-              return res1 !== undefined
-                ? `命令已执行: ${command}\n返回: ${JSON.stringify(res1).slice(0, 500)}`
-                : `命令已执行: ${command}`;
-            } catch (err) {
-              throw new Error(`命令执行失败: ${(err as Error).message}`);
-            }
-          },
+          ...createAgentHostToolCallbacks({
+            workspaceRoot: wsRoot.fsPath,
+            webview,
+            terminalPermissionCoordinator,
+          }),
+          // Stop button support: abort in-progress LLM calls
           // Stop button support: abort in-progress LLM calls
           signal: chatSignal,
           // 断点续传：save/clear checkpoint after each task and on network failure
