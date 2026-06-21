@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as nodePath from 'path';
 import { chat, relogin, status, readWorkspaceFile, ensureBridgeRunning, setBridgeExtensionRoot } from './bridge-client';
 import { createProviderStatusBar, getActiveProvider, getActiveProviderType, getProviderConfigService, promptUpdateApiKey } from './llm/provider-router';
-import { type ChatMessage, type TokenUsage } from './llm/types';
+import { type ChatMessage } from './llm/types';
 import { getProjectRules, invalidateProjectRulesCache, getProjectMemorySync, assembleProjectRulesAndMemoryContext } from './project-rules';
 import {
   getDiagnosticsContext,
@@ -45,6 +45,8 @@ import { migrateLegacyDeepseekConfiguration } from './app/config-migration-servi
 import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { MemoryService } from './app/memory-service';
+import { AgentApplicationService } from './app/agent-application-service';
+import type { AgentChatRequest } from './app/agent-protocol';
 import { isProjectInitRequest, ProjectInitService, renderProjectInitDraftMarkdown } from './app/project-init-service';
 import { tryBuildReadOnlyInspectionResult } from './app/read-only-inspection-service';
 import { buildRestoredSessionLlmHistory, buildSessionLoadedPayload } from './app/session-display-service';
@@ -107,6 +109,7 @@ let lastLocalExecutionPlan: LocalExecutionPlan | undefined;
 let pendingEditCoordinator: PendingEditCoordinator;
 const chatRouteController = new ChatRouteController();
 const terminalPermissionCoordinator = new TerminalPermissionCoordinator();
+let agentApplicationService: AgentApplicationService | undefined;
 let lastConversationFiles: string[] = [];
 let lastAnalysisText = '';
 /** Workspace-relative paths of files created/modified by the last agent run */
@@ -1587,35 +1590,32 @@ async function runChat(
 function pushChatPanel(userDisplay: string, prompt: string, newSession: boolean): void { viewProvider.push(userDisplay, prompt, newSession); }
 
 /**
- * 统一 chat 路由：自动选择当前活跃 Provider。
- * - bridge provider：走原 bridge-client.chat()（支持 files、newSession 等参数）
- * - 其他 provider：走 getActiveProvider().chat()（messages 格式）
+ * Phase 10 application entry: route chat through the headless application
+ * service so VS Code remains a surface/composition root.
  */
-interface RouteChatOpts {
-  prompt: string;
-  newSession?: boolean;
-  mode?: 'fast' | 'r1';
-  files?: string[];
-  stream?: boolean;
-  onDelta?: (delta: string) => void;
-  timeoutMs?: number;
-  /**
-   * true → 将此次请求纳入非 bridge provider 的会话历史（多轮记忆）。
-   * 仅主聊天调用传 true；修复/格式化等内部子调用不传，以免污染历史。
-   */
-  trackHistory?: boolean;
-  /**
-   * 用户可读的原始消息文本（不含系统注入内容），用于历史记录和会话标题。
-   * 若未传则回退到 prompt（可能含系统上下文）。
-   */
-  displayPrompt?: string;
-  onUsage?: (usage: TokenUsage) => void;
-  signal?: AbortSignal;
-  /** base64 image data URLs to include as vision content (only for non-bridge providers) */
-  images?: string[];
+function getAgentApplicationService(): AgentApplicationService {
+  if (!agentApplicationService) {
+    agentApplicationService = new AgentApplicationService({
+      getProviderType: getActiveProviderType,
+      getProvider: getActiveProvider,
+      bridgeChat: (request) => chat({
+        prompt: request.prompt,
+        newSession: request.newSession,
+        timeoutMs: request.timeoutMs,
+        stream: request.stream,
+        mode: request.mode,
+        onDelta: request.onDelta,
+        files: request.files,
+      }),
+      getChatHistory: () => [...nonBridgeChatHistory],
+      recordChatHistory: recordTrackedChatHistory,
+      promptForApiKeyUpdate: promptUpdateApiKey,
+    });
+  }
+  return agentApplicationService;
 }
 
-function recordTrackedChatHistory(opts: RouteChatOpts, response: string): void {
+function recordTrackedChatHistory(opts: AgentChatRequest, response: string): void {
   recordTrackedChatHistoryState({
     opts,
     response,
@@ -1630,66 +1630,8 @@ function recordTrackedChatHistory(opts: RouteChatOpts, response: string): void {
   });
 }
 
-async function routeChat(opts: RouteChatOpts): Promise<string> {
-  const pType = getActiveProviderType();
-  if (pType === 'bridge') {
-    const response = await chat({ ...opts });
-    recordTrackedChatHistory(opts, response);
-    return response;
-  }
-  const provider = getActiveProvider();
-
-  // 构造消息列表：trackHistory=true 时携带多轮历史（对齐 Copilot runOne 每轮携带完整历史）
-  const historyMessages: ChatMessage[] = opts.trackHistory ? [...nonBridgeChatHistory] : [];
-  const userContent: ChatMessage['content'] =
-    (opts.images && opts.images.length > 0)
-      ? [
-          { type: 'text' as const, text: opts.prompt },
-          ...opts.images.map(url => ({ type: 'image_url' as const, image_url: { url } })),
-        ]
-      : opts.prompt;
-  const messages: ChatMessage[] = [
-    ...historyMessages,
-    { role: 'user', content: userContent },
-  ];
-
-  try {
-    const response = await provider.chat({
-      messages,
-      mode: opts.mode,
-      stream: opts.stream,
-      onDelta: opts.onDelta,
-      timeoutMs: opts.timeoutMs,
-      onUsage: opts.onUsage,
-      signal: opts.signal,
-      files: opts.files,
-    });
-
-    recordTrackedChatHistory(opts, response);
-
-    return response;
-  } catch (e) {
-    // 401 认证失败：引导用户更新 API Key 并重试一次
-    if ((e as Error).message === 'DEEPSEEK_INVALID_API_KEY') {
-      const updated = await promptUpdateApiKey();
-      if (updated) {
-        const retryResponse = await getActiveProvider().chat({
-          messages,
-          mode: opts.mode,
-          stream: opts.stream,
-          onDelta: opts.onDelta,
-          timeoutMs: opts.timeoutMs,
-          onUsage: opts.onUsage,
-          signal: opts.signal,
-          files: opts.files,
-        });
-        recordTrackedChatHistory(opts, retryResponse);
-        return retryResponse;
-      }
-      throw new Error('请先更新有效的 DeepSeek API Key 再重试。');
-    }
-    throw e;
-  }
+async function routeChat(opts: AgentChatRequest): Promise<string> {
+  return getAgentApplicationService().routeChat(opts);
 }
 
 // ================================================================

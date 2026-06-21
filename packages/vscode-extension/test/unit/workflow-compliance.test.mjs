@@ -1220,6 +1220,27 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   );
 });
 
+test('Architecture: Phase 10 application service owns Provider chat routing protocol', () => {
+  const service = src('src/app/agent-application-service.ts');
+  const protocol = src('src/app/agent-protocol.ts');
+  const extension = src('src/extension.ts');
+  const appIndex = src('src/app/index.ts');
+
+  assertContains(service, 'class AgentApplicationService', 'Phase 10 application service must exist');
+  assertContains(service, 'routeChat(request: AgentChatRequest)', 'Provider chat routing must move into application service');
+  assertContains(service, 'getProviderType', 'application service must depend on provider port, not VS Code UI');
+  assertContains(protocol, 'export type AgentCommand', 'Phase 10 AgentCommand protocol must exist');
+  assertContains(protocol, 'export type AgentEvent', 'Phase 10 AgentEvent protocol must exist');
+  assertContains(protocol, 'interface SurfaceCapabilities', 'Surface capabilities must be explicit');
+  assertContains(protocol, 'interface PlatformProfile', 'Platform profile must be explicit');
+  assertContains(appIndex, "export * from './agent-application-service';", 'application service must be exported through app boundary');
+  assertContains(appIndex, "export * from './agent-protocol';", 'application protocol must be exported through app boundary');
+  assertContains(extension, 'new AgentApplicationService', 'VS Code entry must compose the application service');
+  assertContains(extension, 'getAgentApplicationService().routeChat(opts)', 'VS Code routeChat wrapper must delegate to app service');
+  assert.doesNotMatch(extension, /const messages: ChatMessage\[\] = \[/, 'extension.ts must not assemble provider chat messages');
+  assert.doesNotMatch(extension, /getActiveProvider\(\)\.chat\(/, 'extension.ts must not call provider.chat directly');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §8.4: Checkpoint (断线续传)
 // ─────────────────────────────────────────────────────────────────────────────

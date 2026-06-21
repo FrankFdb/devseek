@@ -59,6 +59,8 @@ test('Phase 0: composition-root files cannot grow past the baseline', () => {
 test('Phase 0: domain roots expose explicit public boundaries', () => {
   const boundaries = {
     'src/app/index.ts': [
+      './agent-application-service',
+      './agent-protocol',
       './agentic-repair-service',
       './chat-controller',
       './permission-service',
@@ -190,4 +192,19 @@ test('Phase 7: task recovery services are split from composition roots', () => {
   assert.match(extension, /TaskCheckpointStore/, 'extension.ts must delegate checkpoint persistence to TaskCheckpointStore');
   assert.doesNotMatch(extension, /workspaceState\.update\(CHECKPOINT_KEY/, 'extension.ts must not write checkpoint state directly');
   assert.doesNotMatch(extension, /workspaceState\.get<AgentTaskCheckpoint>\(CHECKPOINT_KEY/, 'extension.ts must not read checkpoint state directly');
+});
+
+test('Phase 10: provider chat routing lives in AgentApplicationService', () => {
+  const extension = read('src/extension.ts');
+  const service = read('src/app/agent-application-service.ts');
+  const protocol = read('src/app/agent-protocol.ts');
+
+  assert.match(service, /class AgentApplicationService/, 'AgentApplicationService must own the application chat entry');
+  assert.match(protocol, /export type AgentCommand/, 'AgentCommand must live in the application protocol');
+  assert.match(protocol, /export type AgentEvent/, 'AgentEvent must live in the application protocol');
+  assert.match(protocol, /interface SurfaceCapabilities/, 'SurfaceCapabilities must be explicit');
+  assert.match(protocol, /interface PlatformProfile/, 'PlatformProfile must be explicit');
+  assert.match(extension, /getAgentApplicationService\(\)\.routeChat\(opts\)/, 'extension routeChat must delegate to the application service');
+  assert.doesNotMatch(extension, /const messages: ChatMessage\[\]/, 'extension.ts must not assemble provider chat messages');
+  assert.doesNotMatch(extension, /\.chat\(\{\s*messages,/, 'extension.ts must not call provider.chat directly');
 });
