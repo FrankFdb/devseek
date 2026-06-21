@@ -90,6 +90,30 @@ test('task todo ledger: validation failure preserves existing failures', () => {
   assert.equal(todos[1].status, 'failed');
 });
 
+test('task todo ledger: failed validation terminal evidence blocks read-only completion', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'shape_manager', 'analyze', '使用 run_terminal 执行 cmake 编译并运行查看效果'),
+  ]);
+
+  ledger.startTask(0);
+  const settled = ledger.settleTask(0, {
+    action: 'analyze',
+    raw: 'cmake failed but model claimed done',
+    taskComplete: true,
+    terminalEvidence: [{
+      command: 'cmake --build . && ./shape_manager',
+      kind: 'compile-run',
+      ok: false,
+      exitCode: 2,
+      detail: 'X11 identifiers were not declared',
+    }],
+  });
+
+  assert.equal(settled.completed, false);
+  assert.equal(settled.failed, true);
+  assert.equal(settled.todos[0].status, 'failed');
+});
+
 function task(id, file, action, desc) {
   return { id, file, action, desc, absPath: `/tmp/${file}` };
 }

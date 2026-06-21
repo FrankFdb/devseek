@@ -44,7 +44,7 @@ import {
   getCommandHints, getErrorFixHint, fingerprintError,
 } from './agent-learner';
 import { decomposeTask, getAgentTaskDisplayTarget, inferTasksFromFiles, type AgentTask } from './agent-task-decomposer';
-import { runAgentLoop, runAgenticLoop, AgentStatusMessage, extractAnalysisFindings } from './agent-loop';
+import { runAgentLoop, runAgenticLoop, AgentStatusMessage, extractAnalysisFindings, type AgentLoopResult } from './agent-loop';
 import { getWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
 import { McpManager } from './mcp/client';
 import { fenceLangForFile } from './utils';
@@ -54,6 +54,7 @@ import { decideToolPermission, type ToolPolicy } from './app/permission-service'
 import { decideTerminalCommandPermission, type TerminalCommandRiskClass } from './app/terminal-command-policy';
 import { recoverApplyFailureIfPossible } from './app/apply-failure-recovery-service';
 import { AgenticRepairService, responseClaimsStatusOk, shouldRunClosedLoopRepair } from './app/agentic-repair-service';
+import { decideAgentAutopilotAccept } from './app/agent-autopilot-policy';
 import { ChatRouteController } from './app/chat-controller';
 import { migrateLegacyDeepseekConfiguration } from './app/config-migration-service';
 import { buildPreExecutionInteraction } from './app/interaction-service';
@@ -560,25 +561,57 @@ class PendingEditDecorationProvider implements vscode.FileDecorationProvider {
 // Auto-accept timer — fires after `devseek.editAutoAcceptDelay` seconds
 // (0 = disabled). Cancelled if user interacts with pending edits first.
 let _autoAcceptTimer: ReturnType<typeof setTimeout> | undefined;
-function scheduleAutoAccept(webview: vscode.Webview): void {
+function acceptAllPendingEdits(webview: vscode.Webview, detail: string): void {
+  const count = pendingEdits.size;
+  if (count === 0) return;
+  for (const record of pendingEdits.values()) closePendingEditDiffTabAsync(record);
+  pendingEdits.clear();
+  postPendingEdits(webview);
+  pendingEditDecorationProvider?.refresh();
+  webview.postMessage({
+    type: 'pendingActionNotice',
+    action: 'keep',
+    scope: 'all',
+    detail,
+    queueTotal: 0,
+  });
+}
+
+function postAutoAcceptBlockedNotice(webview: vscode.Webview, notice: string): void {
+  webview.postMessage({
+    type: 'pendingActionNotice',
+    action: 'keep',
+    scope: 'all',
+    detail: notice,
+    queueTotal: pendingEdits.size,
+  });
+}
+
+function handleAgentAutopilotPendingEdits(webview: vscode.Webview, result: AgentLoopResult): boolean {
+  const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
+  if (!isAutopilot || pendingEdits.size === 0) return false;
+  const decision = decideAgentAutopilotAccept(result, pendingEdits.size);
+  if (decision.accept) {
+    acceptAllPendingEdits(webview, `[自动驾驶] 已自动接受全部文件改动。`);
+  } else if (decision.notice) {
+    postAutoAcceptBlockedNotice(webview, decision.notice);
+  }
+  return true;
+}
+
+function scheduleAutoAccept(webview: vscode.Webview, result?: AgentLoopResult, alreadyHandled = false): void {
   const delaySec = vscode.workspace.getConfiguration('devseek').get<number>('editAutoAcceptDelay', 0);
   if (!delaySec || delaySec <= 0 || pendingEdits.size === 0) return;
+  const decision = decideAgentAutopilotAccept(result, pendingEdits.size);
+  if (!decision.accept) {
+    if (!alreadyHandled && decision.notice) postAutoAcceptBlockedNotice(webview, decision.notice);
+    return;
+  }
   if (_autoAcceptTimer) clearTimeout(_autoAcceptTimer);
   _autoAcceptTimer = setTimeout(() => {
     _autoAcceptTimer = undefined;
     if (pendingEdits.size === 0) return;
-    const count = pendingEdits.size;
-    for (const record of pendingEdits.values()) closePendingEditDiffTabAsync(record);
-    pendingEdits.clear();
-    postPendingEdits(webview);
-    pendingEditDecorationProvider?.refresh();
-    webview.postMessage({
-      type: 'pendingActionNotice',
-      action: 'keep',
-      scope: 'all',
-      detail: `已自动接受全部 AI 修改 (${count} 个文件)。`,
-      queueTotal: 0,
-    });
+    acceptAllPendingEdits(webview, `已自动接受全部 AI 修改 (${pendingEdits.size} 个文件)。`);
   }, delaySec * 1000);
 }
 function cancelAutoAccept(): void {
@@ -1768,6 +1801,10 @@ async function runChat(
     const postAgent = (msg: AgentStatusMessage) => webview.postMessage(msg);
     // L1a: filled inside try/catch, used after to persist agent turn in session history
     let agentHistoryText = '';
+    let loopResult: AgentLoopResult | undefined;
+    let loopAutopilotHandled = false;
+    let loopFailedForAutoAccept = false;
+    let decomposedTaskCount = 0;
 
     try {
       const checkpointResumeTasks = resumeFromIndex !== undefined && resumeTasks && resumeTasks.length > 0
@@ -2131,7 +2168,8 @@ async function runChat(
           saveCurrentSession();
           recordIntentOutcome(intentRoutingText, 'code-change', activeSessionId, extContext);
         }
-        scheduleAutoAccept(webview);
+        const agAutopilotHandled = handleAgentAutopilotPendingEdits(webview, agResult);
+        scheduleAutoAccept(webview, agResult, agAutopilotHandled);
         webview.postMessage({ type: 'endResponse' });
         return;
       }
@@ -2260,11 +2298,12 @@ async function runChat(
       // rather than blindly using workspaceFolders[0] which would be wrong in multi-root setups.
       const wsRootPath = getWorkspaceRootFsPath(prompt, pathResolutionHints);
       const wsRoot = wsRootPath ? vscode.Uri.file(wsRootPath) : vscode.workspace.workspaceFolders?.[0]?.uri;
+      decomposedTaskCount = tasks.length;
       if (wsRoot) {
         const editorSessionContext = shouldInjectSessionContext
           ? [lastAnalysisText, sessionContextForAgent].filter(Boolean).join('\n\n')
           : (lastAnalysisText || undefined);
-        const loopResult = await runAgentLoop(tasks, promptForAgent, mode, wsRoot, {
+        loopResult = await runAgentLoop(tasks, promptForAgent, mode, wsRoot, {
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
               webview.postMessage({ type: 'resetResponse', text: delta.slice(7) });
@@ -2639,13 +2678,7 @@ async function runChat(
             registerToMemory(absPath);
           });
         }
-        // L-5: Autopilot mode — auto-accept all pending edits when loop completes
-        const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-        if (isAutopilot && pendingEdits.size > 0) {
-          pendingEdits.clear();
-          webview.postMessage({ type: 'pendingEdits', items: [] });
-          webview.postMessage({ type: 'pendingActionNotice', action: 'keep', scope: 'all', detail: `[自动驾驶] 已自动接受全部文件改动。`, queueTotal: 0 });
-        }
+        loopAutopilotHandled = handleAgentAutopilotPendingEdits(webview, loopResult);
         // L1a: build rich summary text for session history
         // Include: task plan, each file with workspace-relative path, analysis summary.
         // This is the key data the user needs to continue work after loading a session.
@@ -2679,6 +2712,7 @@ async function runChat(
         });
       }
     } catch (e) {
+      loopFailedForAutoAccept = true;
       const msg = (e as Error).message;
       const recovery = new ProviderRecoveryService().classify({
         providerType: getActiveProviderType(),
@@ -2759,7 +2793,9 @@ async function runChat(
       }
     }
 
-    scheduleAutoAccept(webview);
+    const autoAcceptResult = loopResult
+      ?? (loopFailedForAutoAccept ? { tasksTotal: decomposedTaskCount, tasksApplied: 0, tasksFailed: 1, changedPaths: [] } : undefined);
+    scheduleAutoAccept(webview, autoAcceptResult, loopAutopilotHandled);
     webview.postMessage({ type: 'endResponse' });
     return;
   }

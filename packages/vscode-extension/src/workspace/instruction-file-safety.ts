@@ -17,6 +17,65 @@ export function shouldBlockProjectInstructionFileContent(filePath: string, conte
   return isProjectInstructionFilePath(filePath) && looksLikeMisplacedSourceInInstructionFile(content);
 }
 
+export interface ProjectInstructionFileWriteDecision {
+  allowed: boolean;
+  reason?: string;
+}
+
+export function decideProjectInstructionFileWrite(input: {
+  filePath: string;
+  content: string;
+  requestPrompt?: string;
+}): ProjectInstructionFileWriteDecision {
+  const { filePath, content, requestPrompt } = input;
+  if (!isProjectInstructionFilePath(filePath)) return { allowed: true };
+
+  if (looksLikeMisplacedSourceInInstructionFile(content)) {
+    return {
+      allowed: false,
+      reason: '项目指令文件不能承载源码实现；请把源码写入真实源文件。',
+    };
+  }
+
+  if (isExplicitProjectInstructionWriteRequest(requestPrompt, filePath)) {
+    return { allowed: true };
+  }
+
+  return {
+    allowed: false,
+    reason: '目标是项目指令文件；只有用户明确要求创建或更新项目指令时才允许写入。',
+  };
+}
+
+export function shouldBlockProjectInstructionFileWrite(input: {
+  filePath: string;
+  content: string;
+  requestPrompt?: string;
+}): boolean {
+  return !decideProjectInstructionFileWrite(input).allowed;
+}
+
+export function isExplicitProjectInstructionWriteRequest(requestPrompt: string | undefined, filePath: string): boolean {
+  const prompt = String(requestPrompt || '').trim();
+  if (!prompt) return false;
+  const normalizedPrompt = normalizeSlashPath(prompt).toLowerCase();
+  const normalizedFile = normalizeSlashPath(filePath).toLowerCase();
+  const base = nodePath.posix.basename(normalizedFile);
+
+  const hasWriteIntent = /(?:创建|新建|修改|更新|编辑|补充|写入|维护|生成|重写|调整|完善|初始化|create|write|update|edit|add|maintain|init|scaffold|revise)/i.test(prompt);
+  if (!hasWriteIntent) return false;
+
+  const mentionsInstructionPath = normalizedPrompt.includes(normalizedFile)
+    || normalizedPrompt.includes(base)
+    || /\bagents\.md\b/i.test(prompt)
+    || /\bclaude\.md\b/i.test(prompt)
+    || /copilot-instructions\.md/i.test(prompt)
+    || /(?:\.devseek\/rules\.md|rules\.md)/i.test(prompt);
+  const mentionsInstructionConcept = /(?:项目指令|项目规则|智能体指令|代理指令|agent\s+rules?|agent\s+instructions?|codex\s+instructions?|claude\s+instructions?|instructions?|rules?|guidelines?)/i.test(prompt);
+
+  return mentionsInstructionPath || mentionsInstructionConcept;
+}
+
 export function looksLikeMisplacedSourceInInstructionFile(content: string): boolean {
   const text = String(content || '').trim();
   if (!text) return false;

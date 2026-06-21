@@ -161,6 +161,56 @@ test('workspace-applier: short project path anchors to explicit code subdirector
   }
 });
 
+test('workspace-applier: blocks project instruction file writes unless explicitly requested', async () => {
+  const { root, projectDir } = createShapeManagerWorkspace();
+  try {
+    const agentsPath = path.join(projectDir, 'AGENTS.md');
+    writeFileSync(agentsPath, '# Existing Rules\n- Keep project guidance stable.\n');
+    const raw = [
+      'code/shape_manager/AGENTS.md',
+      '```markdown',
+      '# Build Notes',
+      '- Use X11 drawing APIs for the shape renderer.',
+      '- Re-run cmake after changing C++ sources.',
+      '```',
+    ].join('\n');
+    const prompt = `${projectDir} 优化图形描画，需要通过图形库描画方式，做图，完成后编译运行`;
+
+    const result = await applyGeneratedArtifactsWithPrompt(raw, prompt, undefined, true);
+
+    assert.equal(result.applied, false);
+    assert.deepEqual(result.changedPaths, []);
+    assert.match(readFileSync(agentsPath, 'utf8'), /Existing Rules/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('workspace-applier: allows project instruction file writes when prompt explicitly targets instructions', async () => {
+  const { root, projectDir } = createShapeManagerWorkspace();
+  try {
+    const agentsPath = path.join(projectDir, 'AGENTS.md');
+    writeFileSync(agentsPath, '# Existing Rules\n- Keep project guidance stable.\n');
+    const raw = [
+      'code/shape_manager/AGENTS.md',
+      '```markdown',
+      '# Shape Manager Agent Rules',
+      '- Prefer targeted CMake validation.',
+      '- Keep generated graphics code in source files.',
+      '```',
+    ].join('\n');
+    const prompt = `请更新 ${agentsPath} 项目指令，补充 shape_manager 的构建验证规则`;
+
+    const result = await applyGeneratedArtifactsWithPrompt(raw, prompt, undefined, true);
+
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.changedPaths, ['code/shape_manager/AGENTS.md']);
+    assert.match(readFileSync(agentsPath, 'utf8'), /Shape Manager Agent Rules/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('workspace-applier: bare CMakeLists.txt prefers the explicit project directory over code root', async () => {
   const { root, projectDir } = createShapeManagerWorkspace();
   try {

@@ -205,6 +205,24 @@ function lastUnclearedTerminalFailure(
   return blockingFailure;
 }
 
+export function isBlockingTerminalFailureEvidence(evidence: TerminalEvidence): boolean {
+  if (evidence.ok) return false;
+  return evidence.kind !== 'other' || looksLikeValidationShellCommand(evidence.command);
+}
+
+export function findBlockingTerminalFailureEvidence(evidence: readonly TerminalEvidence[] | undefined): TerminalEvidence | undefined {
+  if (!evidence?.length) return undefined;
+  for (let i = evidence.length - 1; i >= 0; i--) {
+    if (isBlockingTerminalFailureEvidence(evidence[i])) return evidence[i];
+  }
+  return undefined;
+}
+
+function looksLikeValidationShellCommand(command: string): boolean {
+  const c = String(command || '').trim().toLowerCase();
+  return /\b(?:test\s+-[efsdx]|wc\s+-c|stat|file|cmake|make|ninja|g\+\+|gcc|clang|ctest|npm\s+(?:test|run\s+(?:test|build|compile))|pnpm\s+(?:test|run\s+(?:test|build|compile))|yarn\s+(?:test|run\s+(?:test|build|compile))|bun\s+(?:test|run\s+(?:test|build|compile))|pytest|go\s+test|cargo\s+test|cargo\s+build|dotnet\s+(?:test|build))\b/.test(c);
+}
+
 export function getBlockingTerminalFailure(
   userPrompt: string,
   todos: CompletionTodo[],

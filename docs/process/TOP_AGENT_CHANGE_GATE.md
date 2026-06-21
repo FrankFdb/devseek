@@ -68,6 +68,24 @@
 
 ---
 
+**变更标题**：Phase 7 任务完成证据闭环修复（2026-06-21）
+- **需求归因**：实现缺陷 + 架构债务 — 手测暴露编译/运行失败仍被任务 ledger 标绿、普通生成任务误写 `AGENTS.md`、失败结果仍可能触发自动接受待应用改动。
+- **影响能力层**：执行、验证、任务 ledger、Workspace Apply、项目指令安全边界、自动驾驶接受策略。
+- **架构影响**：
+  - `completion-evidence` 增加阻断型终端失败识别，`task-todo-ledger` 将 compile/run/test/read-check 失败作为完成阻断证据。
+  - `agent-loop` 在 analyze/edit 任务中传播 terminal evidence，失败证据未被修复前不得返回成功态。
+  - `workspace/instruction-file-safety` 区分显式项目指令写入与普通源码任务，`workspace-applier` 和工具写入链路统一复用该边界。
+  - 新增 `app/agent-autopilot-policy`，失败或无成功证据时禁止自动接受 pending edits。
+  - `agent-loop` 继续拆分分析摘要和任务结果辅助模块，避免把修复堆回 legacy 编排入口。
+- **方案选择理由**：对标 Claude Code / Codex 的证据驱动完成语义：模型可以提出计划和工具调用，但完成态必须由宿主证据账本、验证结果和用户可审查差异共同决定；项目指令文件属于信任边界，不应被普通源码任务污染。
+- **主链路验证**：新增/扩展 `agent-loop-task-state`、`workspace-applier`、`agent-autopilot-policy` 测试，覆盖失败终端证据阻断完成、普通 `AGENTS.md` 写入被拒绝、失败结果不自动接受。
+- **回退链路验证**：保留显式项目指令编辑请求的允许路径；成功任务仍可进入自动接受；`generated-file-parser`、`workflow-compliance` 回归通过。
+- **结果判据变化**：终端验证失败不得显示完成态；普通任务不得创建/覆盖项目指令文件；失败 Agent run 不得自动接受 pending edits。
+- **文档更新**：`docs/architecture/05-代码重构实施计划.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：需执行 `npm test --workspace=packages/vscode-extension`、`npm run compile --workspace=packages/vscode-extension`、`npm run extension:package`、本地安装最新 VSIX 后提交。
+
+---
+
 **变更标题**：Phase 7 显示与 apply 恢复信任边界修复（2026-06-20）
 - **需求归因**：实现缺陷 + 体验退化 + 架构债务 — 手测截图暴露运行中误显示继续入口、`AGENTS.md` 错位源码污染上下文、截断覆盖拦截后停在 UI 死路、终端未执行却宣称验证通过。
 - **影响能力层**：理解、上下文装配、文件候选解析、执行、验证、修复、WebView 状态表达。

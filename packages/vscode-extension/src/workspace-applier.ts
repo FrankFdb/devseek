@@ -21,6 +21,7 @@ import { WorkspaceEditService } from './workspace/edit-service';
 import { ReviewLedger, type ReviewLedgerSnapshot } from './workspace/review-ledger';
 import { ValidationService, type AutoValidationResult } from './workspace/validation-service';
 import { QualityGateService, type QualityGateDecision } from './app/quality-gate-service';
+import { shouldBlockProjectInstructionFileWrite } from './workspace/instruction-file-safety';
 
 export interface ApplyWorkflowStatus {
   phase: 'apply' | 'validate' | 'quality' | 'repair';
@@ -480,6 +481,7 @@ async function prepareChanges(raw: string, requestPrompt?: string, preferredAbso
       ? applyUnifiedDiff(oldContent, action.diff, relPath)
       : ensureFinalNewline(action.content);
     if (looksLikeRawToolCallText(newContent)) continue;
+    if (shouldBlockProjectInstructionFileWrite({ filePath: relPath, content: newContent, requestPrompt })) continue;
 
     changes.push({ action, targetUri, relPath, exists, oldContent, newContent });
   }

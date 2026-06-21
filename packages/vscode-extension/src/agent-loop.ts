@@ -68,6 +68,7 @@ import {
   buildTerminalFailureRepairFeedback,
   coalesceWrittenFileEvidence,
   describeBlockingTerminalFailure,
+  findBlockingTerminalFailureEvidence,
   getBlockingTerminalFailure,
   getMissingCompletionEvidence,
   isExplicitlyReadOnlyRequest,
@@ -92,6 +93,11 @@ import {
   type TodoItem,
 } from './agent/evidence-recovery';
 import { tryExecuteDeterministicCreateTask } from './agent/deterministic-task-executor';
+import {
+  buildTaskTerminalFailureDetail,
+  withTaskTerminalEvidence,
+  type TaskExecutionResult,
+} from './agent/task-execution-result';
 import type { AgentLoopCallbacks, AgentLoopResult } from './agent/loop-types';
 import { isLiteralToolProtocolPrompt } from './agent/agent-run-display';
 import {
@@ -289,7 +295,7 @@ ${isSingle || isLast ? `\n状态枚举："not-started" | "in-progress" | "comple
 ${workflowHint}${mcpSection}`;
 }
 export type { AgentLoopCallbacks, AgentLoopResult, AgentStatusMessage } from './agent/loop-types';
-
+export { extractAnalysisFindings } from './agent/analysis-findings';
 function consumeUserSteerMessages(callbacks: AgentLoopCallbacks): ChatMessage[] {
   const items = callbacks.onUserSteer?.() ?? [];
   return items
@@ -909,7 +915,7 @@ async function executeTask(
   history?: ChatMessage[],
   analysisContext?: string,
   newSession = false,
-): Promise<{ applied: boolean; path?: string; raw?: string; taskComplete?: boolean; linesAdded?: number; linesRemoved?: number; networkError?: boolean }> {
+): Promise<TaskExecutionResult> {
   const basename = getAgentTaskDisplayTarget(task);
   // Only the very first LLM call for this task uses newSession; subsequent
   // rounds (retries, tool-feedback loops) continue in the same session.
@@ -1010,6 +1016,7 @@ async function executeTask(
       ...(history ?? []),
       { role: 'user', content: analyzePrompt },
     ];
+    const taskTerminalEvidence: TerminalEvidence[] = [];
     // G-analy-display: Route streaming text into the Working box analysis body (Copilot
     // inline style). Using \x00AFILE:basename\x00 prefix ensures content appears per-task
     // directly inside each Working box, regardless of whether the AI produces streaming
@@ -1042,7 +1049,20 @@ async function executeTask(
           userPrompt,
           workspaceRoot: workspaceRoot.fsPath,
         });
-        if (loopRes.taskComplete) { return { applied: false, raw: analyzeRaw, taskComplete: true }; }
+        if (loopRes.terminalEvidence?.length) {
+          taskTerminalEvidence.push(...loopRes.terminalEvidence);
+        }
+        const terminalFailure = findBlockingTerminalFailureEvidence(taskTerminalEvidence);
+        if (loopRes.taskComplete) {
+          if (terminalFailure) {
+            execMessages.push({
+              role: 'user',
+              content: `[验证失败]\n${buildTerminalFailureRepairFeedback(terminalFailure, [])}\n\n请先修复并重新运行验证；不能把当前任务标记为完成。`,
+            });
+            continue;
+          }
+          return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw, taskComplete: true }, taskTerminalEvidence);
+        }
         if (!loopRes.toolCallsMade) break;
         execMessages.push({
           role: 'user',
@@ -1058,7 +1078,19 @@ async function executeTask(
         state: 'failed', title: task.desc || basename,
         detail: (e as Error).message,
       });
-      return { applied: false, raw: analyzeRaw, networkError: netErr };
+      return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw, networkError: netErr }, taskTerminalEvidence);
+    }
+
+    const terminalFailure = findBlockingTerminalFailureEvidence(taskTerminalEvidence);
+    if (terminalFailure) {
+      await callbacks.onAgentStatus({
+        type: 'agentStatus', phase: 'execute',
+        taskId: task.id, taskFile: basename, taskAction: task.action,
+        taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
+        state: 'failed', title: task.desc || basename,
+        detail: buildTaskTerminalFailureDetail(terminalFailure),
+      });
+      return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw }, taskTerminalEvidence);
     }
 
     await callbacks.onAgentStatus({
@@ -1067,7 +1099,7 @@ async function executeTask(
       taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
       state: 'completed', title: task.desc || basename,
     });
-    return { applied: false, raw: analyzeRaw };
+    return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw }, taskTerminalEvidence);
   }
 
   // ──── modify / create / delete ────────────────────────────────
@@ -1118,9 +1150,12 @@ async function executeTask(
   // True when the AI called task_complete alongside file content in a create/modify task.
   // The break path falls through to write the file but must still propagate taskComplete.
   let taskCompleteByAI = false;
+  const taskTerminalEvidence: TerminalEvidence[] = [];
 
   for (let taskRound = 0; taskRound < MAX_TASK_ROUNDS; taskRound++) {
-    if (callbacks.signal?.aborted) { return { applied: false, raw }; }
+    if (callbacks.signal?.aborted) {
+      return withTaskTerminalEvidence({ applied: false, raw }, taskTerminalEvidence);
+    }
     try {
       taskMessages.push(...consumeUserSteerMessages(callbacks));
       const { text, tools } = await chatWithMessages(taskMessages, mode, undefined, callbacks.signal, consumeNewSession());
@@ -1134,12 +1169,15 @@ async function executeTask(
         userPrompt,
         workspaceRoot: workspaceRoot.fsPath,
       });
+      if (loopRes.terminalEvidence?.length) {
+        taskTerminalEvidence.push(...loopRes.terminalEvidence);
+      }
       if (loopRes.taskComplete) {
         // For create/modify tasks: if the AI emitted file content + task_complete
         // in the same response, fall through to the file-writing path instead of
         // returning early (otherwise the file never gets written to disk).
         if ((task.action === 'create' || task.action === 'modify') && raw) { taskCompleteByAI = true; break; }
-        return { applied: false, raw, taskComplete: true };
+        return withTaskTerminalEvidence({ applied: false, raw, taskComplete: true }, taskTerminalEvidence);
       }
 
       // AI output SEARCH/REPLACE blocks → exit mini-loop and apply
@@ -1166,7 +1204,7 @@ ${loopRes.feedbackForAI}
         state: 'failed', title: task.desc || basename,
         detail: (e as Error).message,
       });
-      return { applied: false, raw, networkError: netErr };
+      return withTaskTerminalEvidence({ applied: false, raw, networkError: netErr }, taskTerminalEvidence);
     }
   }
 
@@ -1187,7 +1225,11 @@ ${loopRes.feedbackForAI}
             state: 'failed',
             title: `跳过 ${basename}（用户拒绝写入敏感文件）`,
           });
-          return { applied: false, raw, ...(taskCompleteByAI ? { taskComplete: true } : {}) };
+          return withTaskTerminalEvidence({
+            applied: false,
+            raw,
+            ...(taskCompleteByAI ? { taskComplete: true } : {}),
+          }, taskTerminalEvidence);
         }
       }
       // Write through the workspace edit service so Agent write paths stay centralized.
@@ -1217,7 +1259,12 @@ ${loopRes.feedbackForAI}
           linesAdded: srDiff.added,
           linesRemoved: srDiff.removed,
         });
-        return { applied: true, path: task.absPath, raw, ...(taskCompleteByAI ? { taskComplete: true } : {}) };
+        return withTaskTerminalEvidence({
+          applied: true,
+          path: task.absPath,
+          raw,
+          ...(taskCompleteByAI ? { taskComplete: true } : {}),
+        }, taskTerminalEvidence);
       } catch (writeErr) {
         // Fall through to full-file parser
       }
@@ -1343,45 +1390,14 @@ ${loopRes.feedbackForAI}
     ...(fullFileDiff ? { linesAdded: fullFileDiff.added, linesRemoved: fullFileDiff.removed } : {}),
   });
 
-  return {
+  return withTaskTerminalEvidence({
     applied,
     path: applied ? applyResult.changedPaths[0] : undefined,
     raw,
     linesAdded: fullFileDiff?.added,
     linesRemoved: fullFileDiff?.removed,
     ...(taskCompleteByAI ? { taskComplete: true } : {}),
-  };
-}
-
-// ----------------------------------------------------------------
-// Analysis findings extractor (P14 fix: Analyze → Plan fusion)
-// ----------------------------------------------------------------
-
-/**
- * Extract actionable bug/issue descriptions from a prior analysis response.
- * Looks for bullet-point lines that contain keywords indicating problems.
- * Returns an AnalysisFindings object suitable for injecting into decomposeTask().
- */
-export function extractAnalysisFindings(analysisText: string): import('./agent-task-decomposer').AnalysisFindings {
-  const ISSUE_KEYWORDS = /\b(笔误|错误|bug|问题|缺陷|越界|typo|wrong|issue|改进|建议|修复|不一致|漏掉|遗漏|溢出|补全|增加|考虑|优化|重构|改为|改用|避免|确认|验证)\b/i;
-  const issues: string[] = [];
-
-  for (const line of analysisText.split('\n')) {
-    const trimmed = line.replace(/^[-*•\d.)\s]+/, '').trim();
-    if (trimmed.length > 10 && trimmed.length < 200 && ISSUE_KEYWORDS.test(trimmed)) {
-      issues.push(trimmed);
-    }
-  }
-
-  // Deduplicate and limit
-  const seen = new Set<string>();
-  const unique = issues.filter(i => {
-    if (seen.has(i)) return false;
-    seen.add(i);
-    return true;
-  }).slice(0, 20);
-
-  return { issues: unique };
+  }, taskTerminalEvidence);
 }
 
 // ----------------------------------------------------------------
@@ -1697,6 +1713,14 @@ export async function runAgentLoop(
       // Preserve index 0-1 (initial-request anchor); drop oldest non-anchor pair.
       sessionHistory.splice(2, 2);
     }
+    const taskSettlementInput = {
+      action: task.action,
+      applied: result.applied,
+      path: result.path,
+      raw: result.raw,
+      taskComplete: result.taskComplete,
+      terminalEvidence: result.terminalEvidence,
+    };
     if (result.applied && result.path) {
       changedPaths.push(result.path);
       tasksApplied += 1;
@@ -1720,21 +1744,25 @@ export async function runAgentLoop(
         content: `已分析 ${getAgentTaskDisplayTarget(task)}：${result.raw.slice(0, 1200)}${result.raw.length > 1200 ? '…' : ''}`,
       });
     } else if (!isReadOnlyAction(task.action)) {
-      tasksFailed += 1;
       sessionHistory.push({
         role: 'assistant',
         content: `任务 ${i + 1}/${tasks.length} 失败：${getAgentTaskDisplayTarget(task)}（${task.desc}）`,
       });
     }
 
+    const taskSettlement = taskTodoLedger.settleTask(i, taskSettlementInput);
+    if (taskSettlement.failed) {
+      tasksFailed += 1;
+      if (isReadOnlyAction(task.action)) {
+        sessionHistory.push({
+          role: 'assistant',
+          content: `任务 ${i + 1}/${tasks.length} 验证失败：${getAgentTaskDisplayTarget(task)}（${task.desc}）`,
+        });
+      }
+    }
+
     if (callbacks.onTodoUpdate && tasks.length > 0) {
-      await callbacks.onTodoUpdate(taskTodoLedger.settleTask(i, {
-        action: task.action,
-        applied: result.applied,
-        path: result.path,
-        raw: result.raw,
-        taskComplete: result.taskComplete,
-      }).todos);
+      await callbacks.onTodoUpdate(taskSettlement.todos);
     }
 
     // Only emit responseMeta for generation tasks (modify/create/delete).

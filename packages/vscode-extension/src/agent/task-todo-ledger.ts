@@ -1,4 +1,8 @@
 import type { AgentTask, AgentTaskAction } from '../agent-task-decomposer';
+import {
+  findBlockingTerminalFailureEvidence,
+  type TerminalEvidence,
+} from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
 
 type TodoStatus = TodoItem['status'];
@@ -9,6 +13,7 @@ interface TaskEvidence {
   path?: string;
   raw?: string;
   taskComplete?: boolean;
+  terminalEvidence?: TerminalEvidence[];
 }
 
 export interface TaskSettleResult {
@@ -48,8 +53,9 @@ export function createAgentTaskTodoLedger(
       return snapshot();
     },
     settleTask(index: number, evidence: TaskEvidence): TaskSettleResult {
-      const completed = hasTaskCompletionEvidence(evidence);
-      const failed = !completed && !isReadOnlyAgentTaskAction(evidence.action);
+      const terminalFailure = findBlockingTerminalFailureEvidence(evidence.terminalEvidence);
+      const completed = !terminalFailure && hasTaskCompletionEvidence(evidence);
+      const failed = Boolean(terminalFailure) || (!completed && !isReadOnlyAgentTaskAction(evidence.action));
       if (isTaskIndex(index, tasks)) {
         statuses[index] = failed ? 'failed' : completed ? 'completed' : 'in-progress';
       }

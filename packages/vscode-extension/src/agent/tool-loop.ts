@@ -4,7 +4,9 @@ import * as vscode from 'vscode';
 import { looksLikeRawToolCallText, parseGeneratedArtifacts } from '../generated-file-parser';
 import { resolveGeneratedArtifactPathForPrompt, resolveWorkspaceWritePath } from '../workspace/path-resolver';
 import { WorkspaceEditService } from '../workspace/edit-service';
-import { shouldBlockProjectInstructionFileContent } from '../workspace/instruction-file-safety';
+import {
+  decideProjectInstructionFileWrite,
+} from '../workspace/instruction-file-safety';
 import { AgentToolExecutor } from './tool-executor';
 import type { FakeTool } from './fake-tool-parser';
 import { cleanAgentFinalSummaryForUser } from './agentic-summary';
@@ -57,7 +59,7 @@ export interface ToolLoopResult {
   summaryEmitted?: boolean;
   /** Terminal commands that actually ran during this tool loop iteration. */
   terminalCommands?: string[];
-  /** Successful compile/run/test evidence from terminal commands. */
+  /** Structured terminal evidence from compile/run/test/read-check commands. */
   terminalEvidence?: TerminalEvidence[];
   /** Files written (created or overwritten) during this tool loop iteration. */
   writtenFiles?: Array<{path: string; basename: string; linesAdded: number; linesRemoved: number; action: string}>;
@@ -320,8 +322,13 @@ export async function applyMarkdownFileArtifactsForLoop(
       feedback.push(`[generated_file: ${artifact.path}] 跳过（目标是目录或缺少文件名）`);
       continue;
     }
-    if (shouldBlockProjectInstructionFileContent(resolvedWrite.relPath, artifact.content)) {
-      feedback.push(`[generated_file: ${artifact.path}] 跳过（疑似把源码写入项目指令文件；请改为真实源码路径，或仅在用户明确要求时写入纯指令文本）`);
+    const instructionDecision = decideProjectInstructionFileWrite({
+      filePath: resolvedWrite.relPath,
+      content: artifact.content,
+      requestPrompt: userPrompt,
+    });
+    if (!instructionDecision.allowed) {
+      feedback.push(`[generated_file: ${artifact.path}] 跳过（${instructionDecision.reason ?? '项目指令文件写入未被允许'}）`);
       continue;
     }
     const resolvedAbs = resolvedWrite.absPath;
@@ -670,8 +677,13 @@ export async function executeFakeToolsForLoop(
             parts.push(`[${tool.name}: ${rawPath}] 错误: 无法解析为工作区内文件路径，已阻止写入。`);
             continue;
           }
-          if (shouldBlockProjectInstructionFileContent(normalized.path, content)) {
-            parts.push(`[${tool.name}: ${rawPath}] 错误: 目标是项目指令文件，但 content 看起来是源码实现，已阻止写入。请把源码写到真实源码文件，AGENTS/CLAUDE/规则文件只用于项目指令。`);
+          const instructionDecision = decideProjectInstructionFileWrite({
+            filePath: normalized.path,
+            content,
+            requestPrompt: taskPrompt,
+          });
+          if (!instructionDecision.allowed) {
+            parts.push(`[${tool.name}: ${rawPath}] 错误: ${instructionDecision.reason ?? '项目指令文件写入未被允许'}`);
             continue;
           }
           const payloadDrift = detectNestedFilePayloadDrift({

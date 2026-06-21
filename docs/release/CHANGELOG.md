@@ -24,6 +24,7 @@
 - 修复 P7-02 继续后把内部 `provider-response` 当作文件目标搜索/分析的问题：恢复任务模型新增 `respond` 与内部 `targetKind`，无可信文件事实时由本地执行器生成安全响应，不再进入 DeepSeek 工具循环。
 - 修复运行中误显示“继续执行”的问题：进度 checkpoint 只用于内部恢复保存，不再在 Agent 仍在运行时展示恢复 banner；只有真实 paused 状态才显示继续入口。
 - 修复 `AGENTS.md` 被当成源码事实/候选文件的问题：项目指令服务、生成文件解析器和工具写入边界统一过滤“指令文件路径 + 疑似源码实现”，对齐 Claude Code/Codex 的指令文件信任边界。
+- 修复任务完成证据闭环：终端 compile/run/test/read-check 失败会进入 todo ledger 和 Agent 结果，阻断完成态与自动接受；普通写入 `AGENTS.md`/`CLAUDE.md`/rules 等项目指令文件必须由当前请求显式要求。
 - 修复普通 apply/持续执行遇到疑似截断覆盖后停死的问题：apply 结果新增 `failureReason`、`failureDetail`、`blockedChangePaths`，Extension 会自动重新生成最小安全补丁并继续验证闭环。
 - 修复闭环修复阶段的截断覆盖二次失败：安全补丁仍被拦截时反馈拦截原因并强制下一轮使用 unified diff；未安全落地时不再继续验证或 QualityGate。
 - 修复自动闭环修复无进展循环：连续修复后若验证错误指纹不变，或重复修复同一批文件但仍失败，DevSeek 会停止重复修复并提示重新定位根因。
