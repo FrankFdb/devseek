@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "shared:build": "npm run build --workspace=packages/shared",
+    "shared:test": "npm run test --workspace=packages/shared",
     "bridge:dev": "npm run dev --workspace=packages/bridge",
     "bridge:build": "npm run build --workspace=packages/bridge",
     "bridge:start": "npm run start --workspace=packages/bridge",
@@ -18,7 +19,9 @@
     "cli:test": "npm run test --workspace=packages/cli",
     "extension:package": "node scripts/package-vsix.mjs",
     "verify": "bash scripts/verify-bridge.sh",
-    "verify:phase10": "npm run shared:build && npm run bridge:build && npm run test --workspace=packages/bridge && npm run cli:typecheck && npm run cli:build && npm run cli:test && npm run compile --workspace=packages/vscode-extension",
+    "verify:phase10": "npm run shared:build && npm run shared:test && npm run bridge:build && npm run test --workspace=packages/bridge && npm run cli:typecheck && npm run cli:build && npm run cli:test && npm run compile --workspace=packages/vscode-extension",
+    "verify:phase11": "npm run shared:build && npm run shared:test",
+    "verify:phase12": "npm run shared:build && npm run shared:test && npm run cli:typecheck && npm run cli:build && npm run cli:test",
     "verify:packaged-bridge": "node scripts/verify-packaged-bridge.mjs",
     "verify:artifacts": "node scripts/verify-generated-files.mjs",
     "verify:agent-self-loop": "node scripts/devseek-agent-self-loop.mjs",

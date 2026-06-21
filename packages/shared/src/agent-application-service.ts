@@ -45,9 +45,21 @@ export class AgentApplicationService {
     this.emit({ type: 'provider.selected', providerType });
 
     if (providerType === 'bridge') {
-      const response = await this.deps.bridgeChat(request);
-      this.deps.recordChatHistory(request, response);
-      return response;
+      this.emit({
+        type: 'provider.status',
+        providerType,
+        status: 'waiting',
+        message: 'Waiting for Bridge provider response',
+      });
+      try {
+        const response = await this.deps.bridgeChat(request);
+        this.emit({ type: 'provider.status', providerType, status: 'completed' });
+        this.deps.recordChatHistory(request, response);
+        return response;
+      } catch (error) {
+        this.emit({ type: 'provider.status', providerType, status: 'completed' });
+        throw error;
+      }
     }
 
     return this.routeProviderChat(request);

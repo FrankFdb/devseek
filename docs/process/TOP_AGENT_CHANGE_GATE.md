@@ -68,6 +68,22 @@
 
 ---
 
+**变更标题**：Phase 11/12 工程完整性与顶级增强共享内核（2026-06-21）
+- **需求归因**：能力缺口 + 架构债务 — Phase 10 完成多入口基础后，工程事实、忽略规则、运行时识别、hooks、skills、subagents、MCP 和 Git/PR 辅助必须进入共享内核，不能继续由 VS Code/CLI 入口各自实现。
+- **影响能力层**：理解、执行、验证、权限、证据、自动化入口、Provider 可观察性。
+- **架构影响**：
+  - 新增 `EngineeringContextService` 及配套工程完整性服务，统一 workspace facts、ignore/sensitive policy、runtime profile、dependency policy、grounding、budget、conflict 和 replay。
+  - 新增 `HookPlanner`、`SkillDiscoveryService`、`SubagentRegistry`、`McpPermissionService`、`GitPrAssistantService`，把 Phase 12 增强定义为可审计契约。
+  - `AgentEvent` 增加 `provider.status`；CLI Bridge 恢复 SSE，不再强制非流式等待，并清洗 Bridge `RESET` 快照控制标记。
+- **方案选择理由**：对标 Claude Code/Codex，优秀编程智能体的工程上下文、权限、工具增强和状态反馈是 headless core 能力；Surface 只能渲染和交互。
+- **主链路验证**：`npm run shared:test`、`npm run cli:test` 覆盖工程上下文、增强契约、CLI JSONL/text 和 Bridge 延迟 SSE。
+- **回退链路验证**：敏感文件 hook 阻断、依赖安装审批、冲突检测、MCP 非 read 工具审批、CLI Bridge 慢响应 stderr 提示。
+- **结果判据变化**：真实 DeepSeek Web 慢响应时 CLI 不再静默，且不得暴露 `RESET` 等内部流式控制标记；Phase 11/12 能力必须从 shared core 输出结构化事实和策略。
+- **文档更新**：`docs/requirements/10-工程完整性与顶级增强需求.md`、`docs/architecture/13-工程完整性与顶级增强核心设计.md`、`docs/architecture/05-代码重构实施计划.md`、`docs/testing/vscode-phase-manual-test-cases.md`、`docs/usage/devseek-running-modes.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：本轮需执行 `verify:phase10`、`verify:phase11`、`verify:phase12`、extension package 和本地 VSIX install。
+
+---
+
 **变更标题**：Phase 9 UI 协议与入口瘦身（2026-06-21）
 - **需求归因**：架构债务 + 体验治理 — WebView 消息、session 展示、历史任务操作和 workflow 状态发送仍散落在 `extension.ts`，后续多入口/历史任务 UI 容易继续膨胀入口层。
 - **影响能力层**：UI 协议、历史任务、session 继续、workflow 状态展示、组合根瘦身。

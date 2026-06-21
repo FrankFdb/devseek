@@ -990,3 +990,77 @@ node --test test/unit/platform-runtime.test.mjs
 3. 修复 bug 前，先把能复现问题的 case 写入本文或自动化测试。
 4. 修复后，更新“最新观察”和“已发现问题跟踪”的状态。
 5. 如果 case 行为与 Claude Code/Codex 最佳实践不一致，需要在修复计划中说明对标结论。
+
+## 15. Phase 11/12：工程完整性与顶级增强
+
+### P11-01 Shared 工程上下文自动测试
+
+执行命令：
+
+```bash
+npm run shared:build
+npm run shared:test
+```
+
+期望结果：
+
+- `engineering-context.test.mjs` 通过。
+- `.devseekignore`、`.gitignore`、默认 `node_modules/dist/backups`、大文件、敏感路径和用户排除不会进入 visible files。
+- TypeScript/JavaScript、Python、Go、Rust、C/C++、unknown runtime 均有明确能力或降级说明。
+- 依赖安装、网络、lockfile、文档 grounding、预览计划、冲突检测和 replay case 均有结构化结果。
+
+### P12-01 Shared 顶级增强自动测试
+
+执行命令：
+
+```bash
+npm run shared:build
+npm run shared:test
+```
+
+期望结果：
+
+- `agent-enhancements.test.mjs` 通过。
+- Hooks 能按 stage 选择，并阻断敏感文件写入。
+- Skills 只从 `SKILL.md` 发现，并按 trigger 选择。
+- Subagents 输出 reviewer/test-writer/diagnostics/migration-planner 契约。
+- MCP read/write/network/destructive 风险映射到权限域。
+- Git/PR 摘要引用 changed files、validation 和 evidence。
+
+### P12-02 CLI Bridge 慢响应等待提示
+
+自动复现命令：
+
+```bash
+npm run cli:build
+npm run cli:test
+```
+
+真实 DeepSeek Web 冒烟命令：
+
+```bash
+npm run bridge:build
+node packages/cli/dist/index.js exec "请简短回复 phase10 bridge smoke"
+```
+
+期望结果：
+
+- 自动测试中的本地假 Bridge 延迟响应时，CLI text mode 在 stderr 显示 `waiting for Bridge provider response`，最终 stdout 输出模型内容。
+- 真实 DeepSeek Web 响应超过约 1.5 秒时，CLI 不应静默等待，应显示等待提示。
+- CLI stdout 不应出现 `RESET`、NUL 控制符或其他 Bridge 内部流式控制标记。
+- JSONL 模式仍保持每行都是可解析 `AgentEvent`，并可包含 `provider.status`。
+
+### P12-03 VS Code Surface 回归冒烟
+
+用户输入：
+
+```text
+创建 docs/manual-phase12-surface.md，内容为：phase12 surface smoke，并验证文件内容。
+```
+
+期望结果：
+
+- VS Code Surface 仍能正常完成文件创建和验证。
+- Todos、完成摘要、修改文件、验证证据和 QualityGate 状态一致。
+- 不把 shared core 的内部服务名作为用户任务目标泄露到 UI。
+- 如果 Provider 等待或恢复，显示状态必须定位到当前任务，不出现旧任务继续横幅干扰运行中的任务。

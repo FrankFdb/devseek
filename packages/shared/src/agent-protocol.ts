@@ -107,6 +107,13 @@ export interface ProviderSelectedEvent extends AgentEventBase {
   providerType: string;
 }
 
+export interface ProviderStatusEvent extends AgentEventBase {
+  type: 'provider.status';
+  providerType: string;
+  status: 'waiting' | 'streaming' | 'completed';
+  message?: string;
+}
+
 export interface ProviderRecoveryEvent extends AgentEventBase {
   type: 'provider.recovery';
   reason: string;
@@ -158,6 +165,7 @@ export type AgentEvent =
   | ChatDeltaEvent
   | ChatCompletedEvent
   | ProviderSelectedEvent
+  | ProviderStatusEvent
   | ProviderRecoveryEvent
   | PermissionRequestEvent
   | FileChangesEvent

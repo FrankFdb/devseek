@@ -15,6 +15,7 @@ export interface CliSurfaceAdapterOptions {
   jsonl?: boolean;
   stdout?: NodeJS.WritableStream;
   stderr?: NodeJS.WritableStream;
+  progressDelayMs?: number;
 }
 
 export class CliSurfaceAdapter implements SurfaceAdapter {
@@ -27,14 +28,17 @@ export class CliSurfaceAdapter implements SurfaceAdapter {
   });
 
   private sawDelta = false;
+  private waitTimer: NodeJS.Timeout | undefined;
   private readonly stdout: NodeJS.WritableStream;
   private readonly stderr: NodeJS.WritableStream;
+  private readonly progressDelayMs: number;
 
   constructor(private readonly options: CliSurfaceAdapterOptions = {}) {
     this.kind = options.jsonl ? 'jsonl' : 'cli';
     this.capabilities = options.jsonl ? JSONL_SURFACE_CAPABILITIES : CLI_SURFACE_CAPABILITIES;
     this.stdout = options.stdout ?? process.stdout;
     this.stderr = options.stderr ?? process.stderr;
+    this.progressDelayMs = options.progressDelayMs ?? Number(process.env.DEVSEEK_CLI_PROGRESS_DELAY_MS ?? 1500);
   }
 
   toChatCommand(input: SurfaceChatInput): ChatRequestCommand {
@@ -54,10 +58,16 @@ export class CliSurfaceAdapter implements SurfaceAdapter {
       return;
     }
 
-    if (event.type === 'chat.delta') {
+    if (event.type === 'provider.status' && event.status === 'waiting') {
+      this.scheduleProviderWaitNotice();
+    } else if (event.type === 'provider.status' && event.status === 'completed') {
+      this.clearProviderWaitNotice();
+    } else if (event.type === 'chat.delta') {
+      this.clearProviderWaitNotice();
       this.sawDelta = true;
       this.stdout.write(event.delta);
     } else if (event.type === 'chat.completed') {
+      this.clearProviderWaitNotice();
       if (!this.sawDelta) {
         this.stdout.write(`${event.response}\n`);
       } else {
@@ -65,7 +75,22 @@ export class CliSurfaceAdapter implements SurfaceAdapter {
       }
       this.sawDelta = false;
     } else if (event.type === 'error') {
+      this.clearProviderWaitNotice();
       this.stderr.write(`DevSeek error: ${event.message}\n`);
+    }
+  }
+
+  private scheduleProviderWaitNotice(): void {
+    this.clearProviderWaitNotice();
+    this.waitTimer = setTimeout(() => {
+      this.stderr.write('DevSeek: waiting for Bridge provider response...\n');
+    }, Math.max(0, this.progressDelayMs));
+  }
+
+  private clearProviderWaitNotice(): void {
+    if (this.waitTimer) {
+      clearTimeout(this.waitTimer);
+      this.waitTimer = undefined;
     }
   }
 }

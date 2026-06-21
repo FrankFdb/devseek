@@ -3,8 +3,10 @@
 // ============================================================
 
 export * from './agent-application-service';
+export * from './agent-enhancements';
 export * from './agent-protocol';
 export * from './build-profile';
+export * from './engineering-context';
 export * from './llm-types';
 export * from './platform-runtime';
 export * from './surface-adapter';

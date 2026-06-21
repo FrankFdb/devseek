@@ -6,6 +6,14 @@
 
 ## [Unreleased] — 2026-06-19
 
+### Phase 11/12 工程完整性与顶级增强共享内核
+
+- 新增 `packages/shared/src/engineering-context.ts`，提供工程上下文、忽略/敏感路径、轻量 repo index、环境识别、语言运行时矩阵、依赖审批、文档 grounding、预算估算、冲突检测、预览计划、多 root 选择和 replay case 服务。
+- 新增 `packages/shared/src/agent-enhancements.ts`，提供 hooks、skills、subagents、MCP 权限继承和 Git/PR 摘要契约，避免顶级增强继续堆进 VS Code 或 CLI 入口。
+- CLI Bridge 调用不再强制 `stream:false`，恢复 Bridge SSE delta；新增 `provider.status` 事件，CLI text 模式在真实 Provider 慢响应时通过 stderr 显示等待提示，并清洗 Bridge `RESET` 快照控制标记；JSONL 保持机器可读。
+- 新增 shared core 自动测试和 CLI Bridge 延迟 SSE 回归测试；根脚本新增 `shared:test`、`verify:phase11`、`verify:phase12`，并把 shared tests 纳入 `verify:phase10`。
+- 新增 Phase 11/12 需求、架构、手动测试和运行方式文档，明确确定性自动回归与真实 DeepSeek Web 冒烟的分工。
+
 ### Phase 9 UI 协议与入口瘦身
 
 - 扩展 `ui/webview-protocol.ts`，新增历史任务 UI 协议：`listTasks`、`openTask`、`continueTask`、`archiveTask`、`deleteTask`、`exportTask`，并补齐 task history outbound 消息类型。
