@@ -2,6 +2,13 @@
 // 共享类型定义 — bridge 与 vscode-extension 共同使用
 // ============================================================
 
+export * from './agent-application-service';
+export * from './agent-protocol';
+export * from './build-profile';
+export * from './llm-types';
+export * from './platform-runtime';
+export * from './surface-adapter';
+
 /** POST /chat 请求体 */
 export interface ChatRequest {
   /** 完整提示词 */

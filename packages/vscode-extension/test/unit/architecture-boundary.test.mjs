@@ -196,14 +196,18 @@ test('Phase 7: task recovery services are split from composition roots', () => {
 
 test('Phase 10: provider chat routing lives in AgentApplicationService', () => {
   const extension = read('src/extension.ts');
-  const service = read('src/app/agent-application-service.ts');
-  const protocol = read('src/app/agent-protocol.ts');
+  const service = read('../shared/src/agent-application-service.ts');
+  const protocol = read('../shared/src/agent-protocol.ts');
+  const vscodeServiceFacade = read('src/app/agent-application-service.ts');
+  const vscodeProtocolFacade = read('src/app/agent-protocol.ts');
 
   assert.match(service, /class AgentApplicationService/, 'AgentApplicationService must own the application chat entry');
   assert.match(protocol, /export type AgentCommand/, 'AgentCommand must live in the application protocol');
   assert.match(protocol, /export type AgentEvent/, 'AgentEvent must live in the application protocol');
   assert.match(protocol, /interface SurfaceCapabilities/, 'SurfaceCapabilities must be explicit');
   assert.match(protocol, /interface PlatformProfile/, 'PlatformProfile must be explicit');
+  assert.match(vscodeServiceFacade, /from '@devseek-netai\/shared'/, 'VS Code app service facade must re-export shared core');
+  assert.match(vscodeProtocolFacade, /from '@devseek-netai\/shared'/, 'VS Code app protocol facade must re-export shared protocol');
   assert.match(extension, /getAgentApplicationService\(\)\.routeChat\(opts\)/, 'extension routeChat must delegate to the application service');
   assert.doesNotMatch(extension, /const messages: ChatMessage\[\]/, 'extension.ts must not assemble provider chat messages');
   assert.doesNotMatch(extension, /\.chat\(\{\s*messages,/, 'extension.ts must not call provider.chat directly');

@@ -461,6 +461,9 @@
     "test:bridge-smoke": "node test/devseek-bridge-smoke.mjs",
     "test:watch": "node --test --watch test/unit/*.test.mjs"
   },
+  "dependencies": {
+    "@devseek-netai/shared": "*"
+  },
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.85.0",

@@ -23,10 +23,10 @@ function bundle(entry, name) {
 
 const {
   AgentApplicationService,
-} = bundle('src/app/agent-application-service.ts', 'agent-application-service');
+} = bundle('../shared/src/agent-application-service.ts', 'agent-application-service');
 const {
   buildTextUserMessage,
-} = bundle('src/app/agent-protocol.ts', 'agent-protocol');
+} = bundle('../shared/src/agent-protocol.ts', 'agent-protocol');
 
 function createProvider(response, calls, options = {}) {
   return {

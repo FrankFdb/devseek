@@ -41,6 +41,7 @@ import {
   getGitDiff,
 } from '../app/context-discovery-service';
 import { getProblemsContext } from '../context-builder';
+import { VSCodeSurfaceAdapter } from './vscode-surface-adapter';
 
 type WebviewMessage = WebviewInboundMessage;
 type AgentTaskCheckpoint = TaskCheckpointRecord<AgentTask>;
@@ -110,6 +111,7 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
   private _ready = false;
   private _pendingQueue: PendingItem[] = [];
   private _pendingAttachments: PendingAttachment[] = [];
+  private readonly surfaceAdapter = new VSCodeSurfaceAdapter(() => this._view?.webview);
 
   constructor(private readonly deps: DeepSeekViewProviderDeps) {}
 
@@ -201,17 +203,26 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         break;
       case 'chat':
         if (msg.text) {
+          const command = this.surfaceAdapter.toChatCommand({
+            prompt: msg.prompt ?? msg.text,
+            request: {
+              newSession: msg.newSession ?? false,
+              mode: msg.mode,
+              files: msg.files,
+              images: msg.images,
+            },
+          });
           await this.deps.runChat(
             wv,
             msg.text,
-            msg.prompt ?? msg.text,
-            msg.newSession ?? false,
-            msg.mode,
-            msg.files,
+            command.request.prompt,
+            command.request.newSession ?? false,
+            command.request.mode,
+            command.request.files,
             msg.forceNoAgent === true,
             undefined,
             undefined,
-            msg.images,
+            command.request.images,
             msg.intentConfirmed === true,
             msg.suppressUserMessage === true,
           );

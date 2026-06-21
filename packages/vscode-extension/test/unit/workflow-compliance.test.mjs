@@ -1221,18 +1221,31 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
 });
 
 test('Architecture: Phase 10 application service owns Provider chat routing protocol', () => {
-  const service = src('src/app/agent-application-service.ts');
-  const protocol = src('src/app/agent-protocol.ts');
+  const service = src('../shared/src/agent-application-service.ts');
+  const protocol = src('../shared/src/agent-protocol.ts');
+  const surface = src('../shared/src/surface-adapter.ts');
+  const runtime = src('../shared/src/platform-runtime.ts');
+  const profiles = src('../shared/src/build-profile.ts');
+  const vscodeSurface = src('src/ui/vscode-surface-adapter.ts');
   const extension = src('src/extension.ts');
   const appIndex = src('src/app/index.ts');
 
   assertContains(service, 'class AgentApplicationService', 'Phase 10 application service must exist');
   assertContains(service, 'routeChat(request: AgentChatRequest)', 'Provider chat routing must move into application service');
   assertContains(service, 'getProviderType', 'application service must depend on provider port, not VS Code UI');
+  assert.doesNotMatch(service, /from ['"]vscode['"]/, 'shared application service must be VS Code independent');
   assertContains(protocol, 'export type AgentCommand', 'Phase 10 AgentCommand protocol must exist');
   assertContains(protocol, 'export type AgentEvent', 'Phase 10 AgentEvent protocol must exist');
   assertContains(protocol, 'interface SurfaceCapabilities', 'Surface capabilities must be explicit');
   assertContains(protocol, 'interface PlatformProfile', 'Platform profile must be explicit');
+  assertContains(surface, 'interface SurfaceAdapter', 'Surface adapter boundary must be shared');
+  assertContains(surface, 'JSONL_SURFACE_CAPABILITIES', 'JSONL surface capabilities must be explicit');
+  assertContains(runtime, 'interface PlatformRuntimeAdapter', 'Platform runtime adapter must exist');
+  assertContains(runtime, 'class PosixShellAdapter', 'POSIX shell adapter must exist');
+  assertContains(runtime, 'class PowerShellAdapter', 'PowerShell adapter must exist');
+  assertContains(profiles, 'cli-jsonl', 'Build profile must cover CLI JSONL');
+  assertContains(vscodeSurface, 'class VSCodeSurfaceAdapter', 'VS Code surface adapter must exist');
+  assertContains(vscodeSurface, 'toChatCommand', 'VS Code surface must translate UI input to AgentCommand');
   assertContains(appIndex, "export * from './agent-application-service';", 'application service must be exported through app boundary');
   assertContains(appIndex, "export * from './agent-protocol';", 'application protocol must be exported through app boundary');
   assertContains(extension, 'new AgentApplicationService', 'VS Code entry must compose the application service');

@@ -2,7 +2,7 @@
 
 最后更新：2026-06-21
 
-覆盖范围：Phase 0 到 Phase 9。后续每次迭代完成后，只更新对应 Phase 的用例、期望结果和已发现问题。
+覆盖范围：Phase 0 到 Phase 10。后续每次迭代完成后，只更新对应 Phase 的用例、期望结果和已发现问题。
 
 ## 1. 使用方式
 
@@ -830,7 +830,106 @@ export const manualPhase6QualityGate: string = 1;
 - Phase 9 自动测试对协议和服务层部分充分，但不充分覆盖真实 WebView DOM、按钮可见性、reload 后滚动定位、task history 可见入口、pending changes 区域和截图级显示一致性。
 - 因此 Phase 8/9 必须配套 P8-01 到 P8-05、P9-01 到 P9-05 的用户手测；后续建议再补 extension-host 或 WebView DOM 级自动测试，覆盖真实 UI click、reload、scroll、banner、task history 入口和 pending changes 渲染。
 
-## 12. 已发现问题跟踪
+## 12. Phase 10：运行形态与界面解耦
+
+### P10-01 VS Code Surface 仍能完成文件创建与验证
+
+用户输入：
+
+```text
+创建 docs/manual-phase10-surface.md，内容为：phase10 surface smoke，并验证文件内容。
+```
+
+期望结果：
+
+- WebView 入口把请求转换为 `AgentCommand`/Surface request 后再执行，不复制 Provider 路由或业务判断。
+- 任务完成摘要、Todos、修改文件列表、验证证据和 QualityGate 状态一致。
+- 修改文件只包含 `docs/manual-phase10-surface.md`，内容为 `phase10 surface smoke`。
+- 不出现内部协议字段、`AgentCommand` JSON、`SurfaceCapabilities` 或 shared 源文件名泄露到用户任务目标。
+
+### P10-02 CLI JSONL 非交互模式
+
+执行命令：
+
+```bash
+npm run shared:build
+npm run cli:build
+node packages/cli/dist/index.js exec --jsonl --mock "phase10 cli jsonl smoke"
+```
+
+期望结果：
+
+- 每一行都是可 `JSON.parse` 的 `AgentEvent`。
+- 事件序列至少包含 `chat.started`、`provider.selected`、`chat.completed`。
+- `chat.completed.response` 为 `mock: phase10 cli jsonl smoke`。
+- 命令退出码为 0；失败时输出稳定 `error` 事件并返回非 0。
+
+### P10-03 CLI 文本交互最小闭环
+
+执行命令：
+
+```bash
+node packages/cli/dist/index.js exec --mock "phase10 cli text smoke"
+```
+
+期望结果：
+
+- 标准输出包含 `mock: phase10 cli text smoke`。
+- 不需要 VS Code WebView，也不读取 WebView 私有协议字段。
+- `.devseek/cli-history.jsonl` 记录 prompt；在交互模式中输入 `:history` 能查看历史，`:resume` 能复用最后一次 prompt。
+
+### P10-04 CLI Bridge Provider smoke
+
+前置条件：
+
+- 本地 bridge 已启动并登录 DeepSeek Web。
+- `DEVSEEK_BRIDGE_PORT` 未设置时默认使用 3721。
+
+执行命令：
+
+```bash
+npm run bridge:build
+node packages/cli/dist/index.js exec "请简短回复 phase10 bridge smoke"
+```
+
+期望结果：
+
+- CLI 通过 bridge `/chat` 调用完成，不依赖 VS Code extension host。
+- `.devseek/bridge-token` 自动创建或复用，HTTP 请求带 `X-DevSeek-Token`。
+- bridge 未启动、未登录或 HTTP 非 2xx 时，CLI 返回非 0，并输出稳定错误事件或错误文本。
+
+### P10-05 PlatformRuntime 跨平台契约
+
+验证方式：
+
+```bash
+cd packages/vscode-extension
+node --test test/unit/platform-runtime.test.mjs
+```
+
+期望结果：
+
+- Linux/macOS 使用 POSIX path/shell 默认行为。
+- Windows native 使用 Windows path、CRLF、CMD/PowerShell shell adapter。
+- WSL workspace 在 Windows host 上仍使用 POSIX path。
+- Surface 能力缺口通过 `summarizeSurfaceCapabilityGaps` 显式返回，不能静默跳过 hunk review、diagnostics 或 terminal embedding。
+
+### P10-06 自动测试覆盖评估
+
+当前自动测试覆盖：
+
+- `agent-application-service.test.mjs`：覆盖 bridge/API 路由、history/vision payload、API key 恢复和 `chat.request` 事件序列。
+- `platform-runtime.test.mjs`：覆盖 PlatformRuntimeAdapter、Shell/Path adapter 和 Surface capability 降级。
+- `cli-jsonl.test.mjs`：覆盖 CLI JSONL parseability、文本模式输出和 mock provider 稳定闭环。
+- 架构守卫：`architecture-boundary.test.mjs`、`workflow-compliance.test.mjs` 检查 shared core、VS Code re-export facade、VSCodeSurfaceAdapter、BuildProfile 和 extension composition root。
+
+充分性结论：
+
+- Phase 10 对 headless core、CLI JSONL、平台适配和 VS Code facade 的自动测试已具备基础充分性。
+- 真实 DeepSeek Web bridge、VS Code WebView 截图级显示、Windows native/PowerShell/CMD、macOS 和 WSL 端到端仍需要手动或环境矩阵验证。
+- `runChat` 的完整 workflow use case 尚未完全迁出 VS Code 入口；后续 Phase 10.x/Phase 11 继续把 session/checkpoint/task facts、ReviewLedger、QualityGate 和 pending edit 事件化。
+
+## 13. 已发现问题跟踪
 
 | ID | 关联 case | 现象 | 当前评估 | 后续处理 |
 | --- | --- | --- | --- | --- |
@@ -860,7 +959,7 @@ export const manualPhase6QualityGate: string = 1;
 | P7-EVIDENCE-02 | P7-06、shape_manager 编译/运行 | 终端失败和文件失败存在时，完成摘要/Working/Todos 状态互相矛盾，且源码片段被当作活动标题反复显示 | Claude Code/Codex 类闭环要求最终状态由工具证据决定；UI 不能覆盖失败事实，activity 标题不能泄露源码/诊断片段 | 已新增 `getBlockingTerminalFailure`，在 Agent loop 收口点阻断未清除终端失败；WebView done 阶段保留 failed todo，运行时权威成功才可清除，并清洗源码片段 label |
 | P7-EVIDENCE-03 | P7-06、两阶段 Agent 执行 | 子任务未写盘却被 `task_complete` 标绿，后续任务开始把前序 failed 重刷成 completed，验证/修复时旧失败丢失 | Claude Code/Codex 类任务状态来自本地工具证据账本；模型声明只能结束只读/响应任务，不能替代写盘、验证或终端 evidence | 已新增 `agent/task-todo-ledger.ts` 和 `agent-loop-task-state.test.mjs`；写盘任务要求 apply/path，验证失败和修复快照保留既有 failed，WebView 清洗 `Ran/Failed/命令` 标题污染 |
 
-## 13. 每轮迭代更新规则
+## 14. 每轮迭代更新规则
 
 1. 新 Phase 完成后，在本文新增对应章节。
 2. 每个新增 bug 必须关联至少一个用户可执行 case。
