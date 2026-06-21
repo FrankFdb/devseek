@@ -39,6 +39,7 @@ test('two-phase agent todos are delegated to an evidence ledger', () => {
   assert.match(agentLoop, /buildTaskSettlementFailureStatus/, 'ledger settlement failures must override optimistic task status');
   assert.match(agentLoop, /applyGeneratedArtifactPathWithPrompt/, 'editor fallback must apply only the current task target file');
   assert.match(agentLoop, /buildAgenticHistoryText/, 'agent loop must own restored history evidence text');
+  assert.match(agentLoop, /classifyTaskTerminalManualReview/, 'analyze run_terminal failures must support manual visual review before hard-failing');
   assert.doesNotMatch(
     agentLoop,
     /return\s*\{\s*tasksTotal:\s*tasks\.length,\s*tasksApplied,\s*tasksFailed:\s*tasksFailed\s*\+\s*1,\s*changedPaths\s*\}/,

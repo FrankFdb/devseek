@@ -926,6 +926,19 @@ async function executeTask(
         const terminalFailure = findBlockingTerminalFailureEvidence(taskTerminalEvidence);
         if (loopRes.taskComplete) {
           if (terminalFailure) {
+            const reviewEvidence = classifyTaskTerminalManualReview(
+              terminalFailure,
+              taskTerminalEvidence,
+              userPrompt,
+              changedPaths,
+            );
+            if (reviewEvidence) {
+              return withTaskTerminalEvidence({
+                applied: false,
+                raw: analyzeRaw || reviewEvidence.detail,
+                taskComplete: true,
+              }, reviewEvidence.evidence);
+            }
             execMessages.push({
               role: 'user',
               content: `[验证失败]\n${buildTerminalFailureRepairFeedback(terminalFailure, [])}\n\n请先修复并重新运行验证；不能把当前任务标记为完成。`,
@@ -954,6 +967,26 @@ async function executeTask(
 
     const terminalFailure = findBlockingTerminalFailureEvidence(taskTerminalEvidence);
     if (terminalFailure) {
+      const reviewEvidence = classifyTaskTerminalManualReview(
+        terminalFailure,
+        taskTerminalEvidence,
+        userPrompt,
+        changedPaths,
+      );
+      if (reviewEvidence) {
+        await callbacks.onAgentStatus({
+          type: 'agentStatus', phase: 'execute',
+          taskId: task.id, taskFile: basename, taskAction: task.action,
+          taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
+          state: 'completed', title: '程序已启动，等待人工确认',
+          detail: reviewEvidence.detail,
+        });
+        return withTaskTerminalEvidence({
+          applied: false,
+          raw: analyzeRaw || reviewEvidence.detail,
+          taskComplete: true,
+        }, reviewEvidence.evidence);
+      }
       await callbacks.onAgentStatus({
         type: 'agentStatus', phase: 'execute',
         taskId: task.id, taskFile: basename, taskAction: task.action,
@@ -1986,6 +2019,33 @@ function appendValidationEvidence(target: TerminalEvidence[], validation: Valida
     detail: validation.detail,
     ...(validation.reviewRequired ? { reviewRequired: true } : {}),
   });
+}
+
+function classifyTaskTerminalManualReview(
+  failure: TerminalEvidence,
+  evidence: TerminalEvidence[],
+  userPrompt: string,
+  changedPaths: string[],
+): { detail: string; evidence: TerminalEvidence[] } | undefined {
+  const review = shouldRequestManualReviewForRun({
+    userPrompt,
+    command: failure.command,
+    output: failure.detail || '',
+    changedPaths,
+    terminalEvidence: failure,
+  });
+  if (!review) return undefined;
+  return {
+    detail: review.detail,
+    evidence: evidence.map(item => item === failure
+      ? {
+        ...item,
+        ok: true,
+        reviewRequired: true,
+        detail: review.detail,
+      }
+      : item),
+  };
 }
 
 function buildAgentLoopHistoryFailedReason(input: {
