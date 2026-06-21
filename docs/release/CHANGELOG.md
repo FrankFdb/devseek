@@ -6,6 +6,14 @@
 
 ## [Unreleased] — 2026-06-19
 
+### Phase 9 UI 协议与入口瘦身
+
+- 扩展 `ui/webview-protocol.ts`，新增历史任务 UI 协议：`listTasks`、`openTask`、`continueTask`、`archiveTask`、`deleteTask`、`exportTask`，并补齐 task history outbound 消息类型。
+- 新增 `ui/webview-event-adapter.ts`，把 workflow、agent、session、checkpoint、task history 等 domain events 统一映射为 WebView message；workflow status 发送已从 `extension.ts` 迁入 adapter。
+- 新增 `SessionDisplayService`，集中处理 `sessionLoaded` payload、legacy summary 清理和继续会话 LLM context 组装，`extension.ts` 从 4291 行降到 4258 行。
+- 新增 `TaskHistoryUiService`，历史任务 list/open/continue/archive/delete/export 改由 app 服务处理，WebView/Extension 只走协议命令与响应。
+- 新增 `webview-protocol.test.mjs`，覆盖 UI 协议快照、事件适配、继续会话 payload 和历史任务 UI 操作；架构守卫新增 `ui/index.ts` 公共出口。
+
 ### Phase 8 Provider Runtime
 
 - 新增 `ProviderConfigService`，统一 DeepSeek Web、DeepSeek API、OpenAI-compatible、本地 API、VS Code LM 的配置快照、capabilities、secretRef 和 fallback 顺序；快照不保存 API key/cookie/token 明文。

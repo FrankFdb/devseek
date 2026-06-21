@@ -11,7 +11,7 @@ export type TaskRunStatus =
   | 'archived';
 
 export interface TaskRunProviderInfo {
-  type: 'bridge' | 'deepseek-api' | 'openai-compat' | 'vscode-lm';
+  type: 'bridge' | 'deepseek-api' | 'openai-compat' | 'local-api' | 'vscode-lm';
   model?: string;
 }
 
@@ -93,6 +93,18 @@ export class TaskHistoryStore {
     const existing = this.get(id);
     if (!existing) return undefined;
     return this.upsert({ ...existing, status: 'archived', updatedAt: Date.now() });
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const before = this.list();
+    const next = before.filter(record => record.id !== id);
+    await this.storage.update(this.key, next);
+    return next.length !== before.length;
+  }
+
+  exportRecord(id: string): string | undefined {
+    const record = this.get(id);
+    return record ? JSON.stringify(record, null, 2) : undefined;
   }
 }
 

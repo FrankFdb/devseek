@@ -68,6 +68,24 @@
 
 ---
 
+**变更标题**：Phase 9 UI 协议与入口瘦身（2026-06-21）
+- **需求归因**：架构债务 + 体验治理 — WebView 消息、session 展示、历史任务操作和 workflow 状态发送仍散落在 `extension.ts`，后续多入口/历史任务 UI 容易继续膨胀入口层。
+- **影响能力层**：UI 协议、历史任务、session 继续、workflow 状态展示、组合根瘦身。
+- **架构影响**：
+  - 扩展 `ui/webview-protocol.ts`，新增历史任务命令和 outbound 协议类型。
+  - 新增 `ui/webview-event-adapter.ts` 和 `ui/index.ts`，建立 UI 公共出口和 domain event 到 WebView message 的适配边界。
+  - 新增 `app/session-display-service.ts`，统一 sessionLoaded payload、legacy summary 清理和继续会话 context 组装。
+  - 新增 `app/task-history-ui-service.ts`，历史任务 list/open/continue/archive/delete/export 由 app 服务执行。
+  - `extension.ts` 的 session payload、task history 协议入口和 workflow status 发送迁出，入口从 4291 行降到 4258 行。
+- **方案选择理由**：对标 Claude Code / Codex 的 surface adapter 思路，UI 只渲染宿主提供的 domain events；历史任务和 session 事实由应用服务治理，入口层只负责接线。
+- **主链路验证**：`webview-protocol.test.mjs` 覆盖协议命令快照、event adapter 映射、继续会话 payload、历史任务 list/open/continue/archive/delete/export。
+- **回退链路验证**：架构守卫通过，`extension.ts` 仍低于 Phase 0 行数预算；原有 WebView logic、agent working state、workflow 回归纳入全量测试。
+- **结果判据变化**：后续新增 WebView 协议必须先进入 `webview-protocol` 和 `webview-event-adapter`；历史任务 UI 操作不得直接散落在 `extension.ts`。
+- **文档更新**：`docs/architecture/05-代码重构实施计划.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：本阶段需执行 Phase 9 protocol test、全量 extension 测试、compile、package、install VSIX 后提交。
+
+---
+
 **变更标题**：Phase 8 Provider Runtime（2026-06-21）
 - **需求归因**：能力缺口 + 架构债务 — Provider 选择、能力、健康、fallback、工具协议和密钥处理不能继续散落在 VS Code 配置读取和具体 provider 内部。
 - **影响能力层**：Provider、工具归一化、权限边界、验证/质量门禁前置契约、任务恢复和幂等 fallback。

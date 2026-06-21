@@ -67,7 +67,9 @@ test('Phase 0: domain roots expose explicit public boundaries', () => {
       './resume-context-builder',
       './task-checkpoint-store',
       './task-history-store',
+      './task-history-ui-service',
       './task-ledger',
+      './session-display-service',
       './quality-gate-service',
       './verification-planner',
       './workflow-service',
@@ -95,6 +97,13 @@ test('Phase 0: domain roots expose explicit public boundaries', () => {
       './provider-runtime',
       './providers/web-reliability',
       './types',
+    ],
+    'src/ui/index.ts': [
+      './generated-artifact-ui',
+      './pending-edit-diff',
+      './webview-event-adapter',
+      './webview-html',
+      './webview-protocol',
     ],
     'src/memory/index.ts': [
       './memory-store',

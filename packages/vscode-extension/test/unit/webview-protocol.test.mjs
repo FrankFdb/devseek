@@ -1,0 +1,136 @@
+/**
+ * Contract tests for ARCH-05 Phase 9 WebView protocol and event adapter.
+ */
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, '../../');
+
+function bundle(entry, name) {
+  const out = path.join(rootDir, `test/unit/${name}.bundle.cjs`);
+  execSync(
+    `npx esbuild ${entry} --bundle --outfile=${out} --format=cjs --platform=node --external:vscode`,
+    { cwd: rootDir, stdio: 'pipe' },
+  );
+  return createRequire(import.meta.url)(out);
+}
+
+const protocol = bundle('src/ui/webview-protocol.ts', 'webview-protocol');
+const adapter = bundle('src/ui/webview-event-adapter.ts', 'webview-event-adapter');
+const sessionDisplay = bundle('src/app/session-display-service.ts', 'session-display-service');
+const taskHistory = bundle('src/app/task-history-ui-service.ts', 'task-history-ui-service');
+
+function memoryStore(initial = {}) {
+  const data = new Map(Object.entries(initial));
+  return {
+    data,
+    get(key, defaultValue) {
+      return data.has(key) ? data.get(key) : defaultValue;
+    },
+    update(key, value) {
+      if (value === undefined) data.delete(key);
+      else data.set(key, value);
+    },
+  };
+}
+
+function taskRecord(id, patch = {}) {
+  const now = 1000;
+  return {
+    id,
+    workspaceId: 'ws',
+    title: `Task ${id}`,
+    userGoal: `Goal ${id}`,
+    provider: { type: 'bridge' },
+    status: 'paused',
+    workflowMode: 'edit',
+    todos: [{ title: 'todo', status: 'completed' }],
+    changedFiles: ['src/a.ts'],
+    operationRefs: [],
+    changeSetRefs: [],
+    validationRefs: [],
+    checkpointRef: `cp-${id}`,
+    evidenceRefs: [],
+    createdAt: now,
+    updatedAt: now,
+    ...patch,
+  };
+}
+
+test('WebView protocol: task history commands are explicit and snapshot-stable', () => {
+  assert.deepEqual(protocol.WEBVIEW_TASK_HISTORY_COMMANDS, [
+    'listTasks',
+    'openTask',
+    'continueTask',
+    'archiveTask',
+    'deleteTask',
+    'exportTask',
+  ]);
+});
+
+test('WebViewEventAdapter: maps domain events to WebView messages', () => {
+  assert.deepEqual(adapter.toWebviewMessage({
+    kind: 'workflow',
+    status: { phase: 'validate', state: 'failed', title: '验证失败' },
+  }), { type: 'workflowStatus', phase: 'validate', state: 'failed', title: '验证失败' });
+
+  assert.deepEqual(adapter.toWebviewMessage({
+    kind: 'agent',
+    event: { type: 'agentNotice', kind: 'warn', text: 'blocked' },
+  }), { type: 'agentNotice', kind: 'warn', text: 'blocked' });
+
+  assert.deepEqual(adapter.toWebviewMessage({
+    kind: 'checkpointAvailable',
+    message: { type: 'agentCheckpointAvailable', resumeTaskIndex: 1, totalTasks: 2, userPrompt: '继续', savedAt: 123 },
+  }), { type: 'agentCheckpointAvailable', resumeTaskIndex: 1, totalTasks: 2, userPrompt: '继续', savedAt: 123 });
+});
+
+test('SessionDisplayService: builds clean UI payload and restored LLM context', () => {
+  const history = [
+    { role: 'user', content: '[上次会话背景，请基于此继续工作]\nold summary' },
+    { role: 'assistant', content: '好的，我已了解上次的工作进展，可以继续。' },
+    { role: 'user', content: '继续任务' },
+  ];
+  const payload = sessionDisplay.buildSessionLoadedPayload({
+    id: 's1',
+    history,
+    summary: 'old summary',
+    meta: { id: 's1', title: 'S1', createdAt: 10, changedFiles: ['a.ts'], messageCount: 3 },
+  });
+
+  assert.equal(payload.type, 'sessionLoaded');
+  assert.deepEqual(payload.history, [{ role: 'user', content: '继续任务' }]);
+  assert.equal(payload.summary, 'old summary');
+  assert.deepEqual(payload.changedFiles, ['a.ts']);
+
+  const restored = sessionDisplay.buildRestoredSessionLlmHistory(payload.history, payload.summary);
+  assert.equal(restored[0].role, 'user');
+  assert.match(restored[0].content, /上次会话背景/);
+  assert.equal(restored[2].content, '继续任务');
+});
+
+test('TaskHistoryUiService: list, open, continue, archive, delete and export are store-backed', async () => {
+  const store = memoryStore({ 'devseek.taskHistory': [taskRecord('a'), taskRecord('b', { status: 'completed' })] });
+  const service = new taskHistory.TaskHistoryUiService(store);
+
+  assert.equal(service.canHandle({ type: 'listTasks' }), true);
+  assert.deepEqual((await service.handle({ type: 'listTasks' }))[0].tasks.map(task => task.id), ['a', 'b']);
+  assert.equal((await service.handle({ type: 'openTask', id: 'a' }))[0].task.id, 'a');
+  assert.equal((await service.handle({ type: 'continueTask', id: 'a' }))[0].checkpointRef, 'cp-a');
+  assert.equal((await service.handle({ type: 'exportTask', id: 'a' }))[0].data.includes('"id": "a"'), true);
+
+  const archiveResponses = await service.handle({ type: 'archiveTask', id: 'a' });
+  assert.equal(archiveResponses[0].task.status, 'archived');
+
+  const deleteResponses = await service.handle({ type: 'deleteTask', id: 'a' });
+  assert.equal(deleteResponses[0].type, 'taskHistoryDeleted');
+  assert.deepEqual(deleteResponses[1].tasks.map(task => task.id), ['b']);
+});
+
+console.log('\nWebView protocol tests passed.\n');

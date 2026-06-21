@@ -1,5 +1,7 @@
 import type { ApplyWorkflowStatus } from '../workspace-applier';
 import type { AgentStatusEvent } from '../agent/events';
+import type { ChatMessage } from '../llm/types';
+import type { TaskRunRecord } from '../app/task-history-store';
 export type { AgentEditedFileEvent, AgentEvent, AgentStatusEvent } from '../agent/events';
 
 export type ChatProviderMode = 'fast' | 'r1';
@@ -12,6 +14,45 @@ export interface PlanReviewRequest {
   options: unknown[];
 }
 
+export const WEBVIEW_TASK_HISTORY_COMMANDS = [
+  'listTasks',
+  'openTask',
+  'continueTask',
+  'archiveTask',
+  'deleteTask',
+  'exportTask',
+] as const;
+
+export type WebviewTaskHistoryCommand = typeof WEBVIEW_TASK_HISTORY_COMMANDS[number];
+
+export interface SessionLoadedMessage {
+  type: 'sessionLoaded';
+  id: string;
+  history: ChatMessage[];
+  summary: string;
+  changedFiles: string[];
+  messageCount: number;
+  createdAt: number;
+}
+
+export interface AgentCheckpointAvailableMessage {
+  type: 'agentCheckpointAvailable';
+  resumeTaskIndex: number;
+  totalTasks: number;
+  userPrompt: string;
+  savedAt: number;
+  recoveryKind?: string;
+  pauseReason?: string;
+}
+
+export type TaskHistoryOutboundMessage =
+  | { type: 'taskHistoryList'; tasks: TaskRunRecord[] }
+  | { type: 'taskHistoryDetail'; task?: TaskRunRecord; id?: string }
+  | { type: 'taskHistoryContinueRequested'; task?: TaskRunRecord; id: string; checkpointRef?: string }
+  | { type: 'taskHistoryArchived'; task?: TaskRunRecord; id: string }
+  | { type: 'taskHistoryDeleted'; id: string }
+  | { type: 'taskHistoryExported'; id: string; data?: string };
+
 export type WebviewInboundType =
   | 'chat' | 'cancel' | 'clearHistory' | 'ready' | 'insertCode' | 'relogin'
   | 'runCommand' | 'getProblems' | 'resolveFile' | 'getStatus' | 'setMode'
@@ -23,6 +64,7 @@ export type WebviewInboundType =
   | 'setAutopilot' | 'clearContext' | 'agentToggle'
   | 'terminalConfirmReply' | 'runInVsTerminal' | 'agentSteer'
   | 'listSessions' | 'loadSession' | 'deleteSession' | 'saveSession'
+  | WebviewTaskHistoryCommand
   | 'resumeAgentCheckpoint' | 'dismissAgentCheckpoint';
 
 export interface WebviewInboundMessage {
@@ -72,4 +114,7 @@ export type WebviewOutboundMessage =
   | { type: 'terminalConfirm'; command: string; workdir: string; confirmId: string }
   | { type: 'planReview'; request: PlanReviewRequest }
   | { type: 'intentConfirmation'; request: unknown }
+  | SessionLoadedMessage
+  | AgentCheckpointAvailableMessage
+  | TaskHistoryOutboundMessage
   | { type: string; [key: string]: unknown };

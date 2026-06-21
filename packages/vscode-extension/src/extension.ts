@@ -62,6 +62,7 @@ import { buildLocalAttachmentContextPrompt } from './app/local-attachment-contex
 import { MemoryService } from './app/memory-service';
 import { isProjectInitRequest, ProjectInitService, renderProjectInitDraftMarkdown } from './app/project-init-service';
 import { tryBuildReadOnlyInspectionResult } from './app/read-only-inspection-service';
+import { buildRestoredSessionLlmHistory, buildSessionLoadedPayload } from './app/session-display-service';
 import { SessionService, type SessionMeta } from './app/session-service';
 import {
   appendSessionContinuationContext,
@@ -88,6 +89,7 @@ import {
   DeepSeekOriginalContentProvider,
   openPendingEditDiff as openPendingEditDiffView,
 } from './ui/pending-edit-diff';
+import { postWebviewEvent, postWebviewMessage } from './ui/webview-event-adapter';
 import { getChatHtml } from './ui/webview-html';
 import type { WebviewInboundMessage } from './ui/webview-protocol';
 import { stripToolCallBlocks } from './agent/fake-tool-parser';
@@ -107,6 +109,7 @@ import {
   relPathFromWorkspace,
   toContextDisplayLabels,
 } from './app/context-discovery-service';
+import { TaskHistoryUiService } from './app/task-history-ui-service';
 
 // ----------------------------------------------------------------
 // Types
@@ -744,34 +747,19 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         if (activeSessionId) {
           const _storedHistForUI = extContext?.workspaceState.get<ChatMessage[]>(`deepseek.session.${activeSessionId}.history`, []) ?? [];
           const _storedSumForUI = extContext?.workspaceState.get<string>(`deepseek.session.${activeSessionId}.summary`, '') ?? '';
-          let _restoreHistory: ChatMessage[] = _storedHistForUI;
-          let _restoreSummary = _storedSumForUI;
-          // Strip any injected prefix so UI shows clean conversation
-          if (_restoreHistory.length >= 2 && _restoreHistory[0].role === 'user'
-              && chatContentStartsWith(_restoreHistory[0].content, '[上次会话背景')
-              && _restoreHistory[1].role === 'assistant'
-              && chatContentEquals(_restoreHistory[1].content, '好的，我已了解上次的工作进展，可以继续。')) {
-            _restoreHistory = _restoreHistory.slice(2);
-          } else if (_restoreHistory.length > 0 && _restoreHistory[0].role === 'assistant'
-              && (chatContentStartsWith(_restoreHistory[0].content, '【上次 session 摘要】\n') || chatContentStartsWith(_restoreHistory[0].content, '【历史摘要】\n'))) {
-            const _firstContent = chatContentText(_restoreHistory[0].content);
-            const _legacyPrefix = _firstContent.startsWith('【上次 session 摘要】\n') ? '【上次 session 摘要】\n' : '【历史摘要】\n';
-            _restoreSummary = _firstContent.slice(_legacyPrefix.length);
-            _restoreHistory = _restoreHistory.slice(1);
-          }
-          if (_restoreHistory.length > 0 || _restoreSummary) {
-            const _activeMeta = getSessions().find(s => s.id === activeSessionId);
-            wv.postMessage({ type: 'sessionLoaded', id: activeSessionId, history: _restoreHistory, summary: _restoreSummary,
-              changedFiles: _activeMeta?.changedFiles ?? [],
-              messageCount: _activeMeta?.messageCount ?? _restoreHistory.filter(m => m.role === 'user').length,
-              createdAt: _activeMeta?.createdAt ?? 0 });
-          }
+          const _payload = buildSessionLoadedPayload({
+            id: activeSessionId,
+            history: _storedHistForUI,
+            summary: _storedSumForUI,
+            meta: getSessions().find(s => s.id === activeSessionId),
+          });
+          if (_payload.history.length > 0 || _payload.summary) postWebviewMessage(wv, _payload);
         }
         // 断点续传：notify webview if there is a fresh unfinished task checkpoint
         {
           const _cp = await loadFreshAgentCheckpoint(7_200_000);
           if (_cp) {
-            wv.postMessage({
+            postWebviewMessage(wv, {
               type: 'agentCheckpointAvailable',
               resumeTaskIndex: _cp.startFromIndex,
               totalTasks: _cp.allTasks.length,
@@ -821,20 +809,20 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
       case 'applyGeneratedFiles':
         if (msg.text) {
           const result = await applyGeneratedArtifactsWithPrompt(msg.text, msg.prompt, async (status: ApplyWorkflowStatus) => {
-            wv.postMessage({ type: 'workflowStatus', ...status });
+            postWebviewEvent(wv, { kind: 'workflow', status });
           }, msg.autoApply === true, async (change) => {
             await registerPendingEditChange(wv, change);
           }, msg.files, { rollbackOnValidationFailure: msg.autoApply !== true });
 
           const recovered = await recoverApplyFailureIfPossible({
-            reporter: async (status: ApplyWorkflowStatus) => { wv.postMessage({ type: 'workflowStatus', ...status }); },
+            reporter: async (status: ApplyWorkflowStatus) => { postWebviewEvent(wv, { kind: 'workflow', status }); },
             originalPrompt: msg.prompt ?? msg.text,
             failedResponse: msg.text,
             failedApply: result,
             preferredAbsolutePaths: msg.files,
             chat: (repairPrompt) => routeChat({ prompt: repairPrompt, newSession: false, mode: msg.mode, stream: false, trackHistory: false }),
             apply: (repairResponse, repairPrompt, onAppliedChange) => applyGeneratedArtifactsWithPrompt(
-              repairResponse, repairPrompt, async (status) => { wv.postMessage({ type: 'workflowStatus', ...status }); },
+              repairResponse, repairPrompt, async (status) => { postWebviewEvent(wv, { kind: 'workflow', status }); },
               true, onAppliedChange, msg.files, { rollbackOnValidationFailure: false },
             ),
             onAppliedChange: async (change) => { await registerPendingEditChange(wv, change); },
@@ -844,7 +832,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
           if (shouldRunClosedLoopRepair(finalResult)) {
             const originalPrompt = msg.prompt || '请根据自动验证失败结果继续修复，直到通过。';
             await runClosedLoopRepair(wv, async (status: ApplyWorkflowStatus) => {
-              wv.postMessage({ type: 'workflowStatus', ...status });
+              postWebviewEvent(wv, { kind: 'workflow', status });
             }, originalPrompt, msg.mode, finalResult, msg.files);
           }
         }
@@ -873,7 +861,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
             msg.path,
             msg.prompt,
             async (status: ApplyWorkflowStatus) => {
-              wv.postMessage({ type: 'workflowStatus', ...status });
+              postWebviewEvent(wv, { kind: 'workflow', status });
             },
             msg.autoApply === true,
             async (change) => {
@@ -883,14 +871,14 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
           );
 
           const recovered = await recoverApplyFailureIfPossible({
-            reporter: async (status: ApplyWorkflowStatus) => { wv.postMessage({ type: 'workflowStatus', ...status }); },
+            reporter: async (status: ApplyWorkflowStatus) => { postWebviewEvent(wv, { kind: 'workflow', status }); },
             originalPrompt: msg.prompt ?? `请修复文件 ${msg.path}`,
             failedResponse: msg.text,
             failedApply: result,
             preferredAbsolutePaths: msg.files,
             chat: (repairPrompt) => routeChat({ prompt: repairPrompt, newSession: false, mode: msg.mode, stream: false, trackHistory: false }),
             apply: (repairResponse, repairPrompt, onAppliedChange) => applyGeneratedArtifactsWithPrompt(
-              repairResponse, repairPrompt, async (status) => { wv.postMessage({ type: 'workflowStatus', ...status }); },
+              repairResponse, repairPrompt, async (status) => { postWebviewEvent(wv, { kind: 'workflow', status }); },
               true, onAppliedChange, msg.files, { rollbackOnValidationFailure: false },
             ),
             onAppliedChange: async (change) => { await registerPendingEditChange(wv, change); },
@@ -900,7 +888,7 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
           if (shouldRunClosedLoopRepair(finalResult)) {
             const originalPrompt = msg.prompt || `请继续修复文件 ${msg.path} 的验证失败问题，直到通过。`;
             await runClosedLoopRepair(wv, async (status: ApplyWorkflowStatus) => {
-              wv.postMessage({ type: 'workflowStatus', ...status });
+              postWebviewEvent(wv, { kind: 'workflow', status });
             }, originalPrompt, msg.mode, finalResult, msg.files);
           }
         }
@@ -1216,33 +1204,22 @@ class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         for (const [k, v] of Object.entries(files)) sessionRecentFiles.set(k, v);
         const loadedSummary = extContext.workspaceState.get<string>(`deepseek.session.${id}.summary`, '') ?? '';
         const loadedHistory = extContext.workspaceState.get<ChatMessage[]>(`deepseek.session.${id}.history`, []) ?? [];
-	        // Keep full history (with summary prefix) for LLM context; send clean history + summary for display
-	        // Strip any stale prefix from stored history before re-injecting the fresh one
-	        const _cleanHistory = (h: ChatMessage[]) => {
-	          if (h[0]?.role === 'user' && chatContentStartsWith(h[0]?.content, '[上次会话背景') &&
-	              h[1]?.role === 'assistant' && chatContentEquals(h[1]?.content, '好的，我已了解上次的工作进展，可以继续。')) return h.slice(2);
-	          if (h[0]?.role === 'assistant' && (chatContentStartsWith(h[0]?.content, '【上次 session 摘要】\n') || chatContentStartsWith(h[0]?.content, '【历史摘要】\n'))) return h.slice(1);
-	          return h;
-	        };
-        const _baseHistory = _cleanHistory(loadedHistory).slice(-20);
-        nonBridgeChatHistory = loadedSummary
-          ? [
-              { role: 'user' as const, content: `[上次会话背景，请基于此继续工作]\n${loadedSummary}` },
-              { role: 'assistant' as const, content: '好的，我已了解上次的工作进展，可以继续。' },
-              ..._baseHistory,
-            ]
-          : _baseHistory;
+        nonBridgeChatHistory = buildRestoredSessionLlmHistory(loadedHistory, loadedSummary);
         lastConversationFiles = [];
         lastAnalysisText = extContext.workspaceState.get<string>(`deepseek.session.${id}.analysisText`, '') ?? '';
         restoreLastAgentPathsFromSession(id);
-        // Send full history for rich session display, include changedFiles from meta
         const loadedMeta = getSessions().find(s => s.id === id);
-        wv.postMessage({ type: 'sessionLoaded', id, history: loadedHistory, summary: loadedSummary,
-          changedFiles: loadedMeta?.changedFiles ?? [],
-          messageCount: loadedMeta?.messageCount ?? loadedHistory.filter(m => m.role === 'user').length,
-          createdAt: loadedMeta?.createdAt ?? 0 });
+        postWebviewMessage(wv, buildSessionLoadedPayload({ id, history: loadedHistory, summary: loadedSummary, meta: loadedMeta }));
         break;
       }
+      case 'listTasks':
+      case 'openTask':
+      case 'continueTask':
+      case 'archiveTask':
+      case 'deleteTask':
+      case 'exportTask':
+        await handleTaskHistoryUiMessage(wv, msg);
+        break;
       case 'deleteSession': {
         const id = msg.id as string;
         if (id) deleteSession(id);
@@ -1595,26 +1572,8 @@ async function runChat(
   // non-empty and this branch is skipped going forward.
   if (!newSession && nonBridgeChatHistory.length === 0 && activeSessionId && extContext) {
     const _storedSummary = extContext.workspaceState.get<string>(`deepseek.session.${activeSessionId}.summary`, '') ?? '';
-    if (_storedSummary) {
-	      const _storedHistory = extContext.workspaceState.get<ChatMessage[]>(`deepseek.session.${activeSessionId}.history`, []) ?? [];
-	      const _stripPrefix = (h: ChatMessage[]) => {
-	        if (h[0]?.role === 'user' && chatContentStartsWith(h[0]?.content, '[上次会话背景') &&
-	            h[1]?.role === 'assistant' && chatContentEquals(h[1]?.content, '好的，我已了解上次的工作进展，可以继续。')) return h.slice(2);
-	        if (h[0]?.role === 'assistant' && (chatContentStartsWith(h[0]?.content, '【上次 session 摘要】\n') || chatContentStartsWith(h[0]?.content, '【历史摘要】\n'))) return h.slice(1);
-	        return h;
-	      };
-      nonBridgeChatHistory = [
-        { role: 'user' as const, content: `[上次会话背景，请基于此继续工作]\n${_storedSummary}` },
-        { role: 'assistant' as const, content: '好的，我已了解上次的工作进展，可以继续。' },
-        ..._stripPrefix(_storedHistory).slice(-20),
-      ];
-    } else {
-      // No compact summary yet (short session < 4 messages): inject raw history directly.
-      const _rawHistory = extContext.workspaceState.get<ChatMessage[]>(`deepseek.session.${activeSessionId}.history`, []) ?? [];
-      if (_rawHistory.length > 0) {
-        nonBridgeChatHistory = _rawHistory.slice(-20);
-      }
-    }
+    const _storedHistory = extContext.workspaceState.get<ChatMessage[]>(`deepseek.session.${activeSessionId}.history`, []) ?? [];
+    nonBridgeChatHistory = buildRestoredSessionLlmHistory(_storedHistory, _storedSummary);
   }
 
   let sessionContinuationNote = '';
@@ -1756,7 +1715,7 @@ async function runChat(
   }
 
   const workflowReporter = async (status: ApplyWorkflowStatus): Promise<void> => {
-    webview.postMessage({ type: 'workflowStatus', ...status });
+    postWebviewEvent(webview, { kind: 'workflow', status });
   };
   const localPreflightConfig = vscode.workspace.getConfiguration('devseek');
   const shouldBypassAgentForLocalExecution = (() => {
@@ -1859,7 +1818,7 @@ async function runChat(
               webview.postMessage({ type: 'delta', text: delta });
             }
           },
-          onWorkflowStatus: async (s) => { webview.postMessage({ type: 'workflowStatus', ...s }); },
+          onWorkflowStatus: async (s) => { postWebviewEvent(webview, { kind: 'workflow', status: s }); },
           onAgentStatus: async (s) => { postAgent(s); },
           onAppliedChange: async (c) => { await registerPendingEditChange(webview, c); },
           onResponseMeta: async (_raw) => { /* suppressed in agent mode */ },
@@ -2311,7 +2270,7 @@ async function runChat(
               webview.postMessage({ type: 'delta', text: delta });
             }
           },
-          onWorkflowStatus: async (s) => { webview.postMessage({ type: 'workflowStatus', ...s }); },
+          onWorkflowStatus: async (s) => { postWebviewEvent(webview, { kind: 'workflow', status: s }); },
           onAgentStatus: async (s) => { postAgent(s); },
           onAppliedChange: async (c) => { await registerPendingEditChange(webview, c); },
           onResponseMeta: async (_raw) => { /* suppressed in agent mode */ },
@@ -3827,6 +3786,14 @@ function registerToMemory(absPath: string): void {
 
 function deleteSession(id: string): void {
   getSessionService()?.deleteSession(id);
+}
+
+async function handleTaskHistoryUiMessage(wv: vscode.Webview, msg: WebviewMessage): Promise<void> {
+  if (!extContext) return;
+  const service = new TaskHistoryUiService(extContext.workspaceState);
+  for (const response of await service.handle(msg)) {
+    postWebviewMessage(wv, response);
+  }
 }
 
 function initOrRestoreSession(): void {
