@@ -38,6 +38,12 @@ test('two-phase agent todos are delegated to an evidence ledger', () => {
   assert.match(agentLoop, /executeFakeToolsForLoop\(tools,\s*taskToolCallbacks,/, 'editor tool loops must use the todo-suppressed callback boundary');
   assert.match(agentLoop, /buildTaskSettlementFailureStatus/, 'ledger settlement failures must override optimistic task status');
   assert.match(agentLoop, /applyGeneratedArtifactPathWithPrompt/, 'editor fallback must apply only the current task target file');
+  assert.match(agentLoop, /buildAgenticHistoryText/, 'agent loop must own restored history evidence text');
+  assert.doesNotMatch(
+    agentLoop,
+    /return\s*\{\s*tasksTotal:\s*tasks\.length,\s*tasksApplied,\s*tasksFailed:\s*tasksFailed\s*\+\s*1,\s*changedPaths\s*\}/,
+    'agent loop interruption returns must include evidence-based historyText',
+  );
   assert.doesNotMatch(agentLoop, /import\s*\{\s*applyGeneratedArtifactsWithPrompt\s*\}/, 'agent-loop must not use the multi-file free-form applier for per-task edits');
   assert.doesNotMatch(
     agentLoop,
@@ -58,6 +64,17 @@ test('two-phase agent todos are delegated to an evidence ledger', () => {
     agentLoop,
     /\.\.\.tasks\.map\([\s\S]{0,180}status:\s*'completed'\s+as\s+const/,
     'validation repair todos must preserve previous task outcomes',
+  );
+});
+
+test('two-phase agent history is evidence based, not extension-level thin summary', () => {
+  const extensionSource = readFileSync(path.join(rootDir, 'src/extension.ts'), 'utf8');
+
+  assert.match(extensionSource, /agentHistoryText\s*=\s*loopResult\.historyText/, 'extension must persist agent-loop evidence history');
+  assert.doesNotMatch(
+    extensionSource,
+    /\*\*\[Agent\]\s*已完成\s*\$\{loopResult\.tasksApplied\}\/\$\{tasks\.length\}\s*个任务/,
+    'extension must not synthesize a misleading completed-count summary after reload',
   );
 });
 

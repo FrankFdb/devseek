@@ -125,3 +125,51 @@ test('Agentic history: QualityGate records risks, alternatives, and required act
   assert.match(text, /待处理事项/);
   assert.match(text, /运行自动验证 \/ QualityGate/);
 });
+
+test('Agent history: restored summary can preserve failed task progress and evidence', () => {
+  const text = buildAgenticHistoryText({
+    label: 'Agent',
+    countLabel: '1/6 个任务',
+    userPrompt: '/workspace/code/shape_manager 优化图形描画，完成后编译执行看效果',
+    roundCount: 6,
+    completed: false,
+    failedReason: '4 个子任务缺少完成证据或执行失败。',
+    todos: [
+      { id: 1, title: '将 draw() 从字符串画改为使用 XDrawArc 绘制圆形边框', status: 'failed' },
+      { id: 2, title: '将 draw() 从字符串画改为使用 XDrawRectangle 绘制矩形边框', status: 'failed' },
+      { id: 3, title: '确保链接 X11 库（-lX11）并添加必要的编译选项', status: 'completed' },
+      { id: 4, title: '使用 run_terminal 执行 cmake 编译并运行程序验证 X11 图形显示', status: 'failed' },
+    ],
+    writtenFiles: [
+      {
+        path: '/workspace/code/shape_manager/CMakeLists.txt',
+        basename: 'CMakeLists.txt',
+        linesAdded: 1,
+        linesRemoved: 0,
+        action: 'modify',
+      },
+    ],
+    terminalEvidence: [
+      {
+        command: 'cmake -S /workspace/code/shape_manager -B /workspace/code/shape_manager/.devseek-build && cmake --build /workspace/code/shape_manager/.devseek-build',
+        kind: 'compile',
+        ok: true,
+        exitCode: 0,
+      },
+    ],
+    qualityGate: {
+      status: 'blocked',
+      summary: 'QualityGate 阻塞：缺少运行验证证据。',
+      risks: ['不能仅凭构建成功证明图形程序运行效果。'],
+      requiredActions: ['重新生成缺失源码修改，并实际运行程序。'],
+    },
+    workspaceRoot: '/workspace',
+  });
+
+  assert.match(text, /\*\*\[Agent\] 未完成（1\/6 个任务）\*\*/);
+  assert.match(text, /<code>failed<\/code> 将 draw\(\) 从字符串画改为使用 XDrawArc/);
+  assert.match(text, /code\/shape_manager\/CMakeLists\.txt/);
+  assert.match(text, /compile/);
+  assert.match(text, /QualityGate 阻塞/);
+  assert.doesNotMatch(text, /\[Agent\] 已完成 1\/6 个任务/);
+});

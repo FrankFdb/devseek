@@ -1119,30 +1119,8 @@ async function runChat(
           });
         }
         loopAutopilotHandled = pendingEditCoordinator.handleAgentAutopilot(webview, loopResult);
-        // L1a: build rich summary text for session history
-        // Include: task plan, each file with workspace-relative path, analysis summary.
-        // This is the key data the user needs to continue work after loading a session.
-        const _wsRootFs2 = wsRoot ? wsRoot.fsPath : '';
-        const _taskPlanLines = tasks.map((t, i) =>
-          `  ${i + 1}. [${t.action}] ${
-            (t.absPath && _wsRootFs2 && t.absPath.startsWith(_wsRootFs2))
-              ? t.absPath.slice(_wsRootFs2.length + 1).replace(/\\/g, '/')
-              : getAgentTaskDisplayTarget(t)
-          } — ${t.desc}`,
-        ).join('\n');
-        const _changedDetails = lastAgentChangedPaths.length > 0
-          ? '\n**已修改文件（workspace 相对路径）：**\n' +
-            lastAgentChangedPaths.map(p => `  - ${p}`).join('\n')
-          : '';
-        const _analysisSnippet = loopResult.analysisText
-          ? '\n**分析摘要：**\n' + loopResult.analysisText.slice(0, 800)
-          : '';
-        agentHistoryText = [
-          `**[Agent] 已完成 ${loopResult.tasksApplied}/${tasks.length} 个任务**`,
-          _taskPlanLines ? `\n**任务计划：**\n${_taskPlanLines}` : '',
-          _changedDetails,
-          _analysisSnippet,
-        ].filter(Boolean).join('\n') || `[Agent] 已完成 ${tasks.length} 个子任务`;
+        agentHistoryText = loopResult.historyText
+          || `**[Agent] ${loopResult.tasksFailed === 0 ? '已完成' : '未完成'}（${loopResult.tasksApplied}/${tasks.length} 个任务）**\n\n未生成可恢复的执行证据摘要。`;
         saveAgentSessionState({
           lastUserPrompt: userDisplay,
           lastSummary: agentHistoryText,

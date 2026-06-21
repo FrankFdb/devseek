@@ -19,6 +19,8 @@ export interface AgenticHistoryQualityGate {
 }
 
 export interface AgenticHistoryInput {
+  label?: string;
+  countLabel?: string;
   userPrompt: string;
   roundCount: number;
   completed: boolean;
@@ -198,6 +200,8 @@ function terminalEvidenceRef(evidence: TerminalEvidence): string {
 
 export function buildAgenticHistoryText(input: AgenticHistoryInput): string {
   const rounds = Math.max(0, Number(input.roundCount) || 0);
+  const label = truncate(input.label || 'Agentic', 32);
+  const countLabel = truncate(input.countLabel || `${rounds} 轮`, 80);
   const status = input.completed ? '已完成' : '未完成';
   const summary = truncate(input.failedReason || input.summary || '', MAX_SUMMARY_CHARS);
   const prompt = truncate(input.userPrompt || '', MAX_PROMPT_CHARS);
@@ -207,7 +211,7 @@ export function buildAgenticHistoryText(input: AgenticHistoryInput): string {
   const qualityGate = renderQualityGate(input.qualityGate);
 
   const visibleLines = [
-    `**[Agentic] ${status}（${rounds} 轮）**`,
+    `**[${label}] ${status}（${countLabel}）**`,
     summary ? `\n**结果摘要：**\n${summary}` : '',
   ].filter(Boolean);
 

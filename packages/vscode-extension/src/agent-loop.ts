@@ -58,6 +58,12 @@ import {
 } from './agent/fake-tool-parser';
 import { chatViaProvider, chatWithMessages, consumeUserSteerMessages } from './agent/loop-chat';
 import {
+  buildAgenticHistoryText,
+  buildAgenticQualityGateForHistory,
+  type AgenticHistoryTodoStatus,
+} from './agent/agentic-history';
+import {
+  classifyTerminalEvidenceCommand,
   buildTerminalFailureRepairFeedback,
   findBlockingTerminalFailureEvidence,
   requiresRuntimeValidation,
@@ -1569,6 +1575,7 @@ export async function runAgentLoop(
   const sessionHistory: ChatMessage[] = [];
   // Accumulate analysis text from read-only tasks to return as analysisText (for findings injection)
   const analysisTexts: string[] = [];
+  const allTerminalEvidence: TerminalEvidence[] = [];
   // Internal execute tasks should NOT create new DeepSeek web conversations.
   // The user controls session switching via the '新对话' button.
   let needsNewSession = false;
@@ -1608,13 +1615,26 @@ export async function runAgentLoop(
     // Save a checkpoint so the user can resume from this task after reconnecting.
     if (result.networkError) {
       await callbacks.onTaskCheckpoint?.(i, tasks.slice(i), 'paused');
+      const failedReason = `网络中断，已在第 ${i + 1}/${tasks.length} 个任务暂停。`;
       await callbacks.onAgentStatus({
         type: 'agentStatus', phase: 'done', state: 'failed',
         title: `网络中断，已在第 ${i + 1}/${tasks.length} 个任务暂停`,
         detail: `已完成 ${tasksApplied} 个任务，剩余 ${tasks.length - i} 个等待续传。重连后可继续。`,
         taskTotal: tasks.length,
       });
-      return { tasksTotal: tasks.length, tasksApplied, tasksFailed: tasksFailed + 1, changedPaths };
+      return buildAgentLoopResult({
+        tasks,
+        tasksApplied,
+        tasksFailed: tasksFailed + 1,
+        changedPaths,
+        userPrompt,
+        todos: taskTodoLedger.snapshot(),
+        editedFileRecords,
+        terminalEvidence: allTerminalEvidence,
+        workspaceRoot: workspaceRoot.fsPath,
+        failedReason,
+        analysisTexts,
+      });
     }
 
     // L-4 / I-3: Append brief task result to session history.
@@ -1633,6 +1653,9 @@ export async function runAgentLoop(
       taskComplete: result.taskComplete,
       terminalEvidence: result.terminalEvidence,
     };
+    if (result.terminalEvidence?.length) {
+      allTerminalEvidence.push(...result.terminalEvidence);
+    }
     if (result.applied && result.path) {
       changedPaths.push(result.path);
       tasksApplied += 1;
@@ -1717,6 +1740,7 @@ export async function runAgentLoop(
       t => t.action === 'analyze' && /run_terminal|运行程序|执行程序|compile.*run|build.*run/i.test(t.desc)
     ) || requiresRuntimeValidation(userPrompt);
     validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, sessionHistory);
+    appendValidationEvidence(allTerminalEvidence, validationOutcome);
 
     const maxRepairRounds = getAgentAutoFixRounds();
     for (let repairRound = 1;
@@ -1765,6 +1789,7 @@ export async function runAgentLoop(
 
       if (repairResult.networkError) {
         await callbacks.onTaskCheckpoint?.(tasks.length, [], 'paused');
+        const failedReason = `网络中断，验证修复第 ${repairRound} 轮暂停。`;
         await callbacks.onAgentStatus({
           type: 'agentStatus',
           phase: 'done',
@@ -1773,7 +1798,19 @@ export async function runAgentLoop(
           detail: '修复任务已暂停，重连后可重新发起验证。',
           taskTotal: tasks.length,
         });
-        return { tasksTotal: tasks.length, tasksApplied, tasksFailed: tasksFailed + 1, changedPaths };
+        return buildAgentLoopResult({
+          tasks,
+          tasksApplied,
+          tasksFailed: tasksFailed + 1,
+          changedPaths,
+          userPrompt,
+          todos: taskTodoLedger.snapshot(),
+          editedFileRecords,
+          terminalEvidence: allTerminalEvidence,
+          workspaceRoot: workspaceRoot.fsPath,
+          failedReason,
+          analysisTexts,
+        });
       }
 
       if (repairResult.raw) {
@@ -1812,6 +1849,7 @@ export async function runAgentLoop(
       }
 
       validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, sessionHistory);
+      appendValidationEvidence(allTerminalEvidence, validationOutcome);
     }
   }
   const validationFailed = validationOutcome ? !validationOutcome.ok : false;
@@ -1837,12 +1875,122 @@ export async function runAgentLoop(
     ...(editedFileRecords.length > 0 ? { editedFiles: editedFileRecords } : {}),
   });
 
-  return {
-    tasksTotal: tasks.length,
+  const historyFailedReason = buildAgentLoopHistoryFailedReason({
+    tasksFailed,
+    validationFailed,
+    validationOutcome,
+  });
+  return buildAgentLoopResult({
+    tasks,
     tasksApplied,
     tasksFailed: finalFailed,
     changedPaths,
+    userPrompt,
+    todos: taskTodoLedger.snapshot(),
+    editedFileRecords,
+    terminalEvidence: allTerminalEvidence,
+    workspaceRoot: workspaceRoot.fsPath,
+    failedReason: historyFailedReason,
+    summary: finalFailed === 0 ? `全部 ${tasks.length} 个任务已完成。` : undefined,
+    analysisTexts,
+  });
+}
+
+function appendValidationEvidence(target: TerminalEvidence[], validation: ValidationOutcome | undefined): void {
+  if (!validation?.ran || !validation.command) return;
+  target.push({
+    command: validation.command,
+    kind: classifyTerminalEvidenceCommand(validation.command),
+    ok: validation.ok,
+    exitCode: validation.ok ? 0 : null,
+    detail: validation.detail,
+  });
+}
+
+function buildAgentLoopHistoryFailedReason(input: {
+  tasksFailed: number;
+  validationFailed: boolean;
+  validationOutcome?: ValidationOutcome;
+}): string | undefined {
+  if (input.validationFailed) {
+    const reason = input.validationOutcome?.reason || 'validation-failed';
+    const detail = input.validationOutcome?.detail?.trim().split(/\r?\n/)[0]?.trim();
+    return [`自动验证未通过：${reason}`, detail].filter(Boolean).join('。');
+  }
+  if (input.tasksFailed > 0) return `${input.tasksFailed} 个子任务缺少完成证据或执行失败。`;
+  return undefined;
+}
+
+function buildAgentLoopResult(input: {
+  tasks: AgentTask[];
+  tasksApplied: number;
+  tasksFailed: number;
+  changedPaths: string[];
+  userPrompt: string;
+  todos: Array<{ id: number | string; title: string; status: string }>;
+  editedFileRecords: Array<{ path: string; basename: string; linesAdded?: number; linesRemoved?: number; action: string }>;
+  terminalEvidence: TerminalEvidence[];
+  workspaceRoot: string;
+  failedReason?: string;
+  summary?: string;
+  analysisTexts?: string[];
+}): AgentLoopResult {
+  const historyWrittenFiles = coalesceEditedFileRecordsForHistory(input.editedFileRecords, input.workspaceRoot);
+  const historyQualityGate = buildAgenticQualityGateForHistory({
+    failedReason: input.failedReason,
+    writtenFiles: historyWrittenFiles,
+    terminalEvidence: input.terminalEvidence,
+  });
+  const historyText = buildAgenticHistoryText({
+    label: 'Agent',
+    countLabel: `${input.tasksApplied}/${input.tasks.length} 个任务`,
+    userPrompt: input.userPrompt,
+    roundCount: input.tasks.length,
+    completed: input.tasksFailed === 0,
+    failedReason: input.failedReason,
+    summary: input.summary,
+    todos: input.todos.map(todo => ({
+      id: todo.id,
+      title: todo.title,
+      status: normalizeHistoryTodoStatus(todo.status),
+    })),
+    writtenFiles: historyWrittenFiles,
+    terminalEvidence: input.terminalEvidence,
+    qualityGate: historyQualityGate,
+    workspaceRoot: input.workspaceRoot,
+  });
+
+  return {
+    tasksTotal: input.tasks.length,
+    tasksApplied: input.tasksApplied,
+    tasksFailed: input.tasksFailed,
+    changedPaths: input.changedPaths,
     // G6: return collected analysis text so extension.ts can use it for findings injection
-    ...(analysisTexts.length > 0 ? { analysisText: analysisTexts.join('\n\n') } : {}),
+    ...(input.analysisTexts?.length ? { analysisText: input.analysisTexts.join('\n\n') } : {}),
+    historyText,
   };
+}
+
+function coalesceEditedFileRecordsForHistory(
+  records: Array<{ path: string; basename: string; linesAdded?: number; linesRemoved?: number; action: string }>,
+  workspaceRoot: string,
+): WrittenFileEvidence[] {
+  return records.map(record => ({
+    path: record.path,
+    basename: record.basename,
+    linesAdded: record.linesAdded ?? 0,
+    linesRemoved: record.linesRemoved ?? 0,
+    action: record.action,
+  })).map(record => ({
+    ...record,
+    path: nodePath.isAbsolute(record.path)
+      ? record.path
+      : nodePath.join(workspaceRoot, record.path),
+  }));
+}
+
+function normalizeHistoryTodoStatus(status: string): AgenticHistoryTodoStatus {
+  return status === 'completed' || status === 'failed' || status === 'in-progress'
+    ? status
+    : 'not-started';
 }
