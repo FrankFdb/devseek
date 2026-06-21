@@ -1,9 +1,11 @@
 import type { AgentTask, AgentTaskAction } from '../agent-task-decomposer';
+import type { AgentStatusEvent } from './events';
 import {
   findBlockingTerminalFailureEvidence,
   type TerminalEvidence,
 } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
+import { buildTaskTerminalFailureDetail } from './task-execution-result';
 
 type TodoStatus = TodoItem['status'];
 
@@ -28,6 +30,28 @@ export interface AgentTaskTodoLedger {
   settleTask(index: number, evidence: TaskEvidence): TaskSettleResult;
   repairSnapshot(title: string, id: number): TodoItem[];
   markValidationFailure(): TodoItem[];
+}
+
+export function buildTaskSettlementFailureStatus(
+  task: AgentTask,
+  taskIndex: number,
+  taskTotal: number,
+  result: { applied?: boolean; terminalEvidence?: TerminalEvidence[] },
+): AgentStatusEvent {
+  const target = getTaskDisplayTarget(task);
+  return {
+    type: 'agentStatus',
+    phase: 'execute',
+    taskId: task.id,
+    taskFile: target,
+    taskAction: task.action,
+    taskDesc: task.desc,
+    taskIndex,
+    taskTotal,
+    state: 'failed',
+    title: task.desc || target,
+    detail: buildTaskSettlementFailureDetail(task, result),
+  };
 }
 
 export function createAgentTaskTodoLedger(
@@ -99,6 +123,25 @@ function hasTaskCompletionEvidence(evidence: TaskEvidence): boolean {
     return Boolean(evidence.applied && evidence.path);
   }
   return Boolean(evidence.raw?.trim() || evidence.taskComplete);
+}
+
+function buildTaskSettlementFailureDetail(
+  task: AgentTask,
+  result: { applied?: boolean; terminalEvidence?: TerminalEvidence[] },
+): string {
+  const terminalFailure = findBlockingTerminalFailureEvidence(result.terminalEvidence);
+  if (terminalFailure) return buildTaskTerminalFailureDetail(terminalFailure);
+  if (!isReadOnlyAgentTaskAction(task.action) && !result.applied) {
+    return '任务缺少本地写盘证据，不能标记为完成。请继续生成可应用补丁或完整文件内容。';
+  }
+  return '任务缺少本地验证证据，不能标记为完成。';
+}
+
+function getTaskDisplayTarget(task: Pick<AgentTask, 'file' | 'visibleTarget'>): string {
+  if (task.visibleTarget) return task.visibleTarget;
+  if (!task.file) return 'Agent 任务';
+  const normalized = task.file.replace(/\\/g, '/');
+  return normalized.slice(normalized.lastIndexOf('/') + 1) || 'Agent 任务';
 }
 
 function taskTodoItem(task: AgentTask, index: number, status: TodoStatus): TodoItem {

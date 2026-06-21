@@ -17,6 +17,7 @@ export * from './session-continuation';
 export * from './session-display-service';
 export * from './session-service';
 export * from './provider-recovery-service';
+export * from './provider-status-service';
 export * from './resume-context-builder';
 export * from './task-checkpoint-store';
 export * from './task-history-store';

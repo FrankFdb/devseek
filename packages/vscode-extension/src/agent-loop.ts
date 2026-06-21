@@ -113,6 +113,7 @@ import {
   normalizeVisibleTodos,
 } from './agent/tool-loop';
 import {
+  buildTaskSettlementFailureStatus,
   createAgentTaskTodoLedger,
   isReadOnlyAgentTaskAction,
 } from './agent/task-todo-ledger';
@@ -899,10 +900,6 @@ async function executeAnalysisConsolidated(
   return fullAnalysisText;
 }
 
-// ----------------------------------------------------------------
-// Execute a single task
-// ----------------------------------------------------------------
-
 async function executeTask(
   task: AgentTask,
   taskIndex: number,
@@ -917,8 +914,7 @@ async function executeTask(
   newSession = false,
 ): Promise<TaskExecutionResult> {
   const basename = getAgentTaskDisplayTarget(task);
-  // Only the very first LLM call for this task uses newSession; subsequent
-  // rounds (retries, tool-feedback loops) continue in the same session.
+  const taskToolCallbacks: AgentLoopCallbacks = { ...callbacks, onTodoUpdate: undefined };
   let firstCall = true;
   const consumeNewSession = () => { const ns = firstCall && newSession; firstCall = false; return ns; };
 
@@ -1042,7 +1038,7 @@ async function executeTask(
         );
         execMessages.push({ role: 'assistant', content: text });
         // Pass analyzeWorkdir so run_terminal defaults to task directory when AI omits workdir.
-        const loopRes = await executeFakeToolsForLoop(tools, callbacks, analyzeWorkdir, {
+        const loopRes = await executeFakeToolsForLoop(tools, taskToolCallbacks, analyzeWorkdir, {
           currentTaskIndex: taskIndex,
           taskTotal: allTasks.length,
           deferDoneStatus: true,
@@ -1162,7 +1158,7 @@ async function executeTask(
       taskMessages.push({ role: 'assistant', content: text });
       raw = text;
 
-      const loopRes = await executeFakeToolsForLoop(tools, callbacks, editorWorkdir, {
+      const loopRes = await executeFakeToolsForLoop(tools, taskToolCallbacks, editorWorkdir, {
         currentTaskIndex: taskIndex,
         taskTotal: allTasks.length,
         deferDoneStatus: true,
@@ -1343,7 +1339,7 @@ ${loopRes.feedbackForAI}
     try {
       const { text: rText, tools: rTools } = await chatViaProvider(retryPrompt, mode, undefined, history, callbacks.signal, false);
       retryRaw = rText;
-      await executeFakeToolsForLoop(rTools, callbacks, editorWorkdir, {
+      await executeFakeToolsForLoop(rTools, taskToolCallbacks, editorWorkdir, {
         currentTaskIndex: taskIndex,
         taskTotal: allTasks.length,
         deferDoneStatus: true,
@@ -1753,6 +1749,7 @@ export async function runAgentLoop(
     const taskSettlement = taskTodoLedger.settleTask(i, taskSettlementInput);
     if (taskSettlement.failed) {
       tasksFailed += 1;
+      await callbacks.onAgentStatus(buildTaskSettlementFailureStatus(task, i + 1, tasks.length, result));
       if (isReadOnlyAction(task.action)) {
         sessionHistory.push({
           role: 'assistant',

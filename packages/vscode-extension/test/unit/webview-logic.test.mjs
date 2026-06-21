@@ -211,6 +211,38 @@ function stripCallingToolBlocksFromText(text) {
   return out;
 }
 
+function stripToolArgumentBlocksFromText(text) {
+  let out = '';
+  let i = 0;
+  const callRe = /(?:^|[ \t]*\n|[ \t]+)(?:Tool|工具)[ \t]*[:：][ \t]*`?([A-Za-z_]\w*)`?[^\n{]*(?:Arguments?|参数)[ \t]*[:：][ \t]*/gi;
+  while (i < text.length) {
+    callRe.lastIndex = i;
+    const m = callRe.exec(text);
+    if (!m) { out += text.slice(i); break; }
+    const name = m[1] || '';
+    if (!TOOL_NAMES[name] && !name.startsWith('mcp__')) {
+      out += text.slice(i, callRe.lastIndex);
+      i = callRe.lastIndex;
+      continue;
+    }
+    const jsonStart = text.indexOf('{', callRe.lastIndex);
+    if (jsonStart < 0) {
+      out += text.slice(i, m.index).replace(/[ \t]+$/, '');
+      break;
+    }
+    const jsonEnd = findJsonObjectEnd(text, jsonStart);
+    if (jsonEnd < 0) {
+      out += text.slice(i, m.index).replace(/[ \t]+$/, '');
+      break;
+    }
+    out += text.slice(i, m.index).replace(/[ \t]+$/, '');
+    let next = jsonEnd + 1;
+    while (next < text.length && /[ \t\r\n`]/.test(text[next])) next++;
+    i = next;
+  }
+  return out;
+}
+
 function stripToolCallBlocks(text) {
   const raw = String(text || '');
   let result = '';
@@ -259,6 +291,9 @@ function stripToolCallBlocks(text) {
   const beforeCallingCleanup = result;
   result = stripCallingToolBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeCallingCleanup;
+  const beforeToolArgumentCleanup = result;
+  result = stripToolArgumentBlocksFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeToolArgumentCleanup;
   const cleaned = result.trim();
   return removedInternalBlock ? cleaned.replace(/[ \t]*\n[ \t]*\n[ \t]*/g, '\n') : cleaned;
 }
@@ -267,6 +302,7 @@ function containsAgentInternalTranscript(text) {
   return /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
     || /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
     || /(?:^|\n)\s*(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
+    || /(?:^|\n|[ \t])(?:Tool|工具)[ \t]*[:：][ \t]*`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
     || /(?:^|\n)\s*\[(?:工具结果|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(text)
     || /\b(?:run_terminal|manage_todo_list|task_complete|stdout|stderr|exitCode|exit code)\b/i.test(text)
     || /(?:^|\n)\s*\$\s+\S+/.test(text)
@@ -283,6 +319,8 @@ function cleanAgentFinalProseForUser(text) {
     if (/^\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(s)) return false;
     if (/^(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(s)) return false;
     if (/^(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
+    if (/^(?:Tool|工具)[ \t]*[:：][ \t]*`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
+    if (/^(?:Arguments?|参数)[ \t]*[:：]\s*\{/i.test(s)) return false;
     if (/^\[(?:工具结果|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(s)) return false;
     if (/^\$\s+\S+/.test(s)) return false;
     if (/^(?:stdout|stderr|exitCode|exit code|命令输出|执行命令|终端输出)\s*[:：]/i.test(s)) return false;
@@ -488,6 +526,14 @@ test('agent final prose: strips replace_file transcript from final user text', (
     'Calling `replace_file`',
     '{"path":"code/app.js","content":"console.log(1)"}',
     '[replace_file]',
+  ].join('\n');
+  assert.equal(cleanAgentFinalProseForUser(leaked), '');
+});
+
+test('agent final prose: strips Tool/Arguments terminal transcript from final user text', () => {
+  const leaked = [
+    '好的，现在执行编译和运行。 Tool: run_terminal Arguments:{"command":"cd /tmp/project && cmake -S . -B build && cmake --build build","is_background":false}',
+    '后续总结应该由结构化 evidence 生成。',
   ].join('\n');
   assert.equal(cleanAgentFinalProseForUser(leaked), '');
 });

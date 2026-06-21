@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import { chat, ping, cancel, relogin, status, readWorkspaceFile, ensureBridgeRunning, preattachFiles, setBridgeExtensionRoot } from './bridge-client';
-import { createProviderStatusBar, getActiveProvider, getActiveProviderType, promptUpdateApiKey } from './llm/provider-router';
+import { createProviderStatusBar, getActiveProvider, getActiveProviderType, getProviderConfigService, promptUpdateApiKey } from './llm/provider-router';
 import { type ChatMessage, type TokenUsage } from './llm/types';
 import { getProjectRules, invalidateProjectRulesCache, getProjectMemorySync, assembleProjectRulesAndMemoryContext } from './project-rules';
 import {
@@ -76,6 +76,7 @@ import {
   type TaskCheckpointRecord,
 } from './app/task-checkpoint-store';
 import { buildProviderRecoveryCheckpointTasks, buildProviderRecoveryDisplay, ProviderRecoveryService } from './app/provider-recovery-service';
+import { resolveProviderStatusResponse } from './app/provider-status-service';
 import {
   allHunksResolved,
   computePendingHunks,
@@ -1541,6 +1542,45 @@ async function runChat(
     intentConfirmed,
     lookupLearnedIntent: extContext ? (text) => lookupLearnedIntent(text, extContext!) : undefined,
   });
+
+  const providerStatusResponse = await resolveProviderStatusResponse({
+    prompt: initialRouteDecision.intentRoutingText,
+    snapshot: getProviderConfigService().getSnapshot(),
+    checkAvailability: () => getActiveProvider().available(),
+  });
+  if (providerStatusResponse) {
+    if (newSession) {
+      webview.postMessage({ type: 'newSessionStarted' });
+    }
+    if (!suppressUserMessage) {
+      webview.postMessage({ type: 'userMessage', text: userDisplay, prompt, images });
+    }
+    webview.postMessage({
+      type: 'startResponse',
+      prompt: initialRouteDecision.intentRoutingText,
+      expectGeneratedArtifacts: false,
+      agentMode: false,
+    });
+    webview.postMessage({ type: 'delta', text: providerStatusResponse });
+    webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
+    webview.postMessage({ type: 'endResponse' });
+    recordTrackedChatHistory({
+      prompt: initialRouteDecision.intentRoutingText,
+      displayPrompt: userDisplay,
+      newSession,
+      mode,
+      files: effectiveFiles,
+      images,
+      trackHistory: true,
+      signal: chatSignal,
+    }, providerStatusResponse);
+    if (extContext) recordIntentOutcome(initialRouteDecision.intentRoutingText, 'chat', activeSessionId, extContext);
+    if (activeChatAbortController === abortCtrl) {
+      activeChatAbortController = null;
+      activeAgentSteerQueue.length = 0;
+    }
+    return;
+  }
 
   if (initialRouteDecision.intent.mode === 'smalltalk') {
     if (newSession) {

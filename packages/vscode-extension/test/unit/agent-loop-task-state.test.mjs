@@ -31,6 +31,14 @@ const { createAgentTaskTodoLedger } = req(bundlePath);
 
 test('two-phase agent todos are delegated to an evidence ledger', () => {
   assert.match(agentLoop, /createAgentTaskTodoLedger/, 'agent-loop must use the task todo ledger boundary');
+  assert.match(agentLoop, /onTodoUpdate:\s*undefined/, 'nested editor tool loops must not publish model todos directly');
+  assert.match(agentLoop, /executeFakeToolsForLoop\(tools,\s*taskToolCallbacks,/, 'editor tool loops must use the todo-suppressed callback boundary');
+  assert.match(agentLoop, /buildTaskSettlementFailureStatus/, 'ledger settlement failures must override optimistic task status');
+  assert.doesNotMatch(
+    agentLoop,
+    /executeFakeToolsForLoop\(tools,\s*callbacks,\s*editorWorkdir/,
+    'nested editor tool loops must not let model manage_todo_list overwrite the evidence ledger UI state',
+  );
   assert.doesNotMatch(
     agentLoop,
     /const\s+currentCompleted\s*=\s*result\.applied\s*\|\|\s*result\.taskComplete/,

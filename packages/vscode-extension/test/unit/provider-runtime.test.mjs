@@ -27,6 +27,10 @@ const {
 } = bundle('src/llm/provider-config-service.ts', 'provider-config-service');
 const { LLMProviderRuntime } = bundle('src/llm/provider-runtime.ts', 'provider-runtime');
 const { llmEventsToToolCalls, redactProviderSecrets } = bundle('src/llm/provider-events.ts', 'provider-events');
+const {
+  buildProviderStatusResponse,
+  isProviderStatusRequest,
+} = bundle('src/app/provider-status-service.ts', 'provider-status-service');
 
 function config(values = {}) {
   return {
@@ -41,6 +45,31 @@ test('ProviderConfigService: no configured provider defaults to DeepSeek Web bri
   assert.equal(snapshot.activeProvider, 'bridge');
   assert.equal(snapshot.providers.bridge.displayName, 'DeepSeek 网页');
   assert.ok(snapshot.providers.bridge.capabilities.includes('text-tools'));
+});
+
+test('Provider status request is answered from local redacted configuration', () => {
+  const prompt = '请检查当前 Provider 配置是否可用，并说明是否发现了密钥。不要输出密钥原文，不要修改文件。';
+  const snapshot = new ProviderConfigService(config({
+    provider: 'deepseek-api',
+    model: 'deepseek-reasoner',
+    apiKey: 'sk-secret-phase8-redaction',
+    providerFallbackOrder: ['bridge'],
+  })).getSnapshot();
+
+  assert.equal(isProviderStatusRequest(prompt), true);
+  const report = buildProviderStatusResponse({
+    prompt,
+    snapshot,
+    availability: { available: true },
+  }) ?? '';
+
+  assert.match(report, /本地读取 VS Code `devseek` 配置/);
+  assert.match(report, /DeepSeek API/);
+  assert.match(report, /deepseek-reasoner/);
+  assert.match(report, /devseek\.apiKey 已配置（已脱敏）/);
+  assert.match(report, /当前 Provider 自检可用/);
+  assert.doesNotMatch(report, /sk-secret-phase8-redaction/);
+  assert.doesNotMatch(report, /无法直接访问 VS Code 插件/);
 });
 
 test('Provider runtime: API provider can switch model without changing workflow facts', () => {
