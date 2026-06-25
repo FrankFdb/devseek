@@ -1,0 +1,94 @@
+{
+  "version": 1,
+  "name": "DevSeek programming-agent target benchmark",
+  "goal": "Expose whether DevSeek behaves like a coding agent comparable to Claude Code/Codex, not merely whether the provider pipe returns text.",
+  "targetAgents": [
+    "Claude Code",
+    "Codex"
+  ],
+  "cases": [
+    {
+      "id": "PA0-cli-jsonl-sanity",
+      "level": "sanity",
+      "description": "CLI can run one prompt and emit machine-readable AgentEvent JSONL.",
+      "expectedCapability": "The agent has a reliable noninteractive protocol for automation."
+    },
+    {
+      "id": "PA1-create-file-apply-compile",
+      "level": "baseline-coding-agent",
+      "description": "Given a model create_file tool call, DevSeek must create the requested file in the workspace and the generated program must compile and run.",
+      "expectedCapability": "A coding agent applies structured file edits instead of only printing them."
+    },
+    {
+      "id": "PA2-modify-existing-preserve-behavior",
+      "level": "baseline-coding-agent",
+      "description": "Given an existing program and a replace_file tool call, DevSeek must update the file, preserve old behavior, add new behavior, and pass the verifier.",
+      "expectedCapability": "A coding agent modifies existing projects safely rather than only generating new text."
+    },
+    {
+      "id": "PA3-test-repair-loop",
+      "level": "codex-claude-parity",
+      "description": "When the first generated edit fails verification, DevSeek must feed the failure back to the model, apply the repair, and rerun the verifier.",
+      "expectedCapability": "A coding agent closes the loop around failing tests."
+    },
+    {
+      "id": "PA4-agent-evidence-events",
+      "level": "codex-claude-parity",
+      "description": "A coding run that changes files must emit file change, validation, and quality-gate events in JSONL.",
+      "expectedCapability": "A coding agent leaves auditable evidence for automation and review."
+    },
+    {
+      "id": "PA5-unified-diff-apply",
+      "level": "codex-claude-parity",
+      "description": "Given a unified diff for an existing file, DevSeek must apply the patch, preserve old behavior, add new behavior, and pass the verifier.",
+      "expectedCapability": "A coding agent can apply reviewable patches, not only full-file replacement tool calls."
+    },
+    {
+      "id": "PA6-project-test-command",
+      "level": "codex-claude-parity",
+      "description": "Given a small Node project with an npm test script, DevSeek must apply the edit and run the project verifier rather than only relying on file syntax.",
+      "expectedCapability": "A coding agent discovers and runs project-specific validation commands."
+    },
+    {
+      "id": "PA7-staged-incremental-requirement",
+      "level": "codex-claude-parity",
+      "description": "Across two CLI turns in one workspace, DevSeek must create code, then handle a new user requirement by passing the existing source file as context, preserving old behavior, and verifying the new behavior.",
+      "expectedCapability": "A coding agent carries workspace context into follow-up requirements instead of asking the model to guess existing code."
+    },
+    {
+      "id": "PA8-interactive-stdin-verifier",
+      "level": "codex-claude-parity",
+      "description": "Given an interactive C++ CLI and a devseek verifier config, DevSeek must compile it, execute it with stdin, assert expected stdout, and include that evidence in validation events.",
+      "expectedCapability": "A coding agent can validate programs that require user input, not only noninteractive binaries."
+    },
+    {
+      "id": "PA9-multifile-devseek-verifier",
+      "level": "codex-claude-parity",
+      "description": "Given a multi-file C++ project and a devseek verifier config, DevSeek must create all files, compile linked translation units, run the binary, and preserve command evidence.",
+      "expectedCapability": "A coding agent can validate realistic multi-file programs instead of compiling only one file at a time."
+    },
+    {
+      "id": "PA10-python-verifier-command",
+      "level": "codex-claude-parity",
+      "description": "Given a Python implementation and devseek verifier config, DevSeek must run Python-based verification with stdout assertions.",
+      "expectedCapability": "A coding agent supports common language runtimes beyond C++ and Node when tests are explicitly configured."
+    },
+    {
+      "id": "PA11-implicit-project-context",
+      "level": "codex-claude-parity",
+      "description": "Given a follow-up coding request that does not name exact files, DevSeek must still attach small relevant project files as model context and validate the change.",
+      "expectedCapability": "A coding agent can orient itself in a small workspace without requiring the user to list every file path."
+    },
+    {
+      "id": "PA12-path-safety-guard",
+      "level": "safety-critical-coding-agent",
+      "description": "Given a model file tool call that attempts to write outside the workspace, DevSeek must refuse the edit and leave parent paths untouched.",
+      "expectedCapability": "A coding agent enforces workspace boundaries while applying autonomous edits."
+    }
+  ],
+  "failurePolicy": [
+    "A passing provider pipe is not enough; missing file edits, missing verification, or missing repair loops are product gaps.",
+    "If all cases pass without exercising a real file mutation and verifier, the benchmark is invalid.",
+    "Every failure must be classified as DevSeek capability gap, test design gap, or environment gap, then recorded under docs/testing/programming-agent-benchmark-reports."
+  ]
+}

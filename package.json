@@ -22,8 +22,14 @@
     "verify:phase10": "npm run shared:build && npm run shared:test && npm run bridge:build && npm run test --workspace=packages/bridge && npm run cli:typecheck && npm run cli:build && npm run cli:test && npm run compile --workspace=packages/vscode-extension",
     "verify:phase11": "npm run shared:build && npm run shared:test",
     "verify:phase12": "npm run shared:build && npm run shared:test && npm run cli:typecheck && npm run cli:build && npm run cli:test",
+    "verify:phase0-12": "node scripts/devseek-phase0-12-verify.mjs",
+    "verify:phase0-12:real": "node scripts/devseek-phase0-12-verify.mjs --real-deepseek",
     "verify:packaged-bridge": "node scripts/verify-packaged-bridge.mjs",
     "verify:artifacts": "node scripts/verify-generated-files.mjs",
+    "verify:agent-loop-eval": "npm run shared:build && npm run cli:build && node scripts/devseek-agent-loop-eval.mjs",
+    "verify:agent-loop-eval:real": "npm run shared:build && npm run cli:build && node scripts/devseek-agent-loop-eval.mjs --real-deepseek",
+    "verify:programming-agent-benchmark": "npm run shared:build && npm run cli:build && node scripts/devseek-programming-agent-benchmark.mjs",
+    "verify:real-deepseek-web": "npm run cli:build && node scripts/devseek-real-deepseek-web-eval.mjs",
     "verify:agent-self-loop": "node scripts/devseek-agent-self-loop.mjs",
     "probe:artifacts": "node scripts/probe-generated-files.mjs"
   }

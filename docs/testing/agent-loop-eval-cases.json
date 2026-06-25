@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "name": "DevSeek distributed agent loop eval",
+  "goal": "Build programming-agent capability through independently runnable subloops before relying on real DeepSeek Web.",
+  "layers": [
+    {
+      "id": "L0-agent-core-protocol",
+      "kind": "deterministic",
+      "description": "Exercise AgentApplicationService with a local fake provider and assert AgentEvent ordering.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L1-cli-jsonl-mock",
+      "kind": "deterministic",
+      "description": "Exercise CLI JSONL output with the built-in mock provider.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L2-cli-fake-bridge-sse",
+      "kind": "deterministic",
+      "description": "Exercise CLI -> Bridge SSE streaming with a local fake Bridge.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L3-cli-fake-bridge-programming",
+      "kind": "deterministic",
+      "description": "Ask through CLI, receive a tool-style code artifact from fake Bridge, compile and run it locally.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L3b-cli-loose-tool-json-recovery",
+      "kind": "deterministic-regression",
+      "description": "Replay a captured loose tool JSON shape, recover the code artifact, compile it, and keep the protocol gap visible.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L4-cli-real-deepseek-programming",
+      "kind": "real-provider-smoke",
+      "description": "Optional CLI JSONL -> real Bridge -> DeepSeek Web coding smoke; the final chat.completed response is compiled and run locally.",
+      "requiredForSubmit": false,
+      "enableWith": "node scripts/devseek-agent-loop-eval.mjs --real-deepseek"
+    }
+  ],
+  "promotionPolicy": [
+    "A failing manual or real-provider case must first become a deterministic L0-L3 replay before the fix is accepted.",
+    "L4 proves the live Provider path is usable; it must not be the only regression guard for a logic branch.",
+    "A new feature can move up one layer only when the lower layer already exposes the same Agent facts and evidence.",
+    "Every run must write a testing report under docs/testing/agent-loop-eval-reports/<run-id>/ with findings, case-design review, and the next iteration decision.",
+    "If a run finds no DevSeek issue, the report must say what the current cases failed to stress and which harder case should be added next."
+  ]
+}
