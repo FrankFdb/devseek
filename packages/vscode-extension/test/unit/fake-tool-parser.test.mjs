@@ -177,6 +177,43 @@ test('FakeToolParser: keeps ordinary nameless Calling prose', () => {
   assert.equal(stripToolCallBlocks(text), text);
 });
 
+test('FakeToolParser: parses DeepSeek raw JSON array with type fields', () => {
+  const text = [
+    '让我先查看当前的代码结构：',
+    '[',
+    '  {"path":"/home/ff/work/devseek_netai/code/shape_manager","type":"list_dir"},',
+    '  {"path":"/home/ff/work/devseek_netai/code/shape_manager/Shape.h","type":"read_file"},',
+    '  {"path":"/home/ff/work/devseek_netai/code/shape_manager/Renderer.h","type":"read_file"},',
+    '  {"path":"/home/ff/work/devseek_netai/code/shape_manager/main.cpp","type":"read_file"}',
+    ']',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.deepEqual(tools.map(tool => tool.name), ['list_dir', 'read_file', 'read_file', 'read_file']);
+  assert.deepEqual(tools[0].input, { path: '/home/ff/work/devseek_netai/code/shape_manager' });
+  assert.deepEqual(tools[3].input, { path: '/home/ff/work/devseek_netai/code/shape_manager/main.cpp' });
+  assert.equal(findFirstToolCallStart(text), text.indexOf('['));
+  assert.equal(stripToolCallBlocks(text), '让我先查看当前的代码结构：');
+});
+
+test('FakeToolParser: strips fenced DeepSeek JSON tool arrays from visible text', () => {
+  const text = [
+    '让我先查看当前的代码结构：',
+    '```json',
+    '[',
+    '  {"type":"list_dir","path":"/tmp/project"},',
+    '  {"type":"read_file","path":"/tmp/project/main.cpp"}',
+    ']',
+    '```',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.deepEqual(tools.map(tool => tool.name), ['list_dir', 'read_file']);
+  assert.equal(stripToolCallBlocks(text), '让我先查看当前的代码结构：');
+});
+
 test('FakeToolParser: detects the first tool call start for streaming UI', () => {
   const text = '先说明一下\n{"tool":"write_file","path":"code/hello.cpp","content":"int main(){}"}';
   assert.equal(findFirstToolCallStart(text), text.indexOf('{'));

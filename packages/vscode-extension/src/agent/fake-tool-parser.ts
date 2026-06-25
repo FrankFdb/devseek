@@ -75,6 +75,34 @@ export function findJsonObjectEnd(text: string, start: number): number {
   return -1;
 }
 
+export function findJsonArrayEnd(text: string, start: number): number {
+  let depth = 0;
+  let inStr = false;
+  for (let j = start; j < text.length; j++) {
+    const ch = text[j];
+    if (inStr) {
+      if (ch === '\\') j++;
+      else if (ch === '"') inStr = false;
+    } else {
+      if (ch === '"') inStr = true;
+      else if (ch === '[') depth++;
+      else if (ch === ']') {
+        depth--;
+        if (depth === 0) return j;
+      }
+    }
+  }
+  return -1;
+}
+
+function findNextJsonStart(text: string, startAt: number): number {
+  const objectStart = text.indexOf('{', startAt);
+  const arrayStart = text.indexOf('[', startAt);
+  if (objectStart < 0) return arrayStart;
+  if (arrayStart < 0) return objectStart;
+  return Math.min(objectStart, arrayStart);
+}
+
 function stripCallingToolBlocks(text: string): string {
   let out = '';
   let i = 0;
@@ -188,7 +216,9 @@ export function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | n
     ? obj.tool
     : typeof obj.name === 'string'
       ? obj.name
-      : '';
+      : typeof obj.type === 'string'
+        ? obj.type
+        : '';
   const name = rawName.trim();
   if (!name || !isRegisteredFakeToolName(name)) return null;
   const maybeArgs = obj.arguments ?? obj.parameters ?? obj.args;
@@ -198,10 +228,62 @@ export function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | n
   } else {
     input = {};
     for (const [k, v] of Object.entries(obj)) {
-      if (!['tool', 'name', 'arguments', 'parameters', 'args'].includes(k)) input[k] = v;
+      if (!['tool', 'name', 'type', 'arguments', 'parameters', 'args'].includes(k)) input[k] = v;
     }
   }
   return { name, input };
+}
+
+function jsonArrayToFakeTools(value: unknown): FakeTool[] {
+  if (!Array.isArray(value) || value.length === 0) return [];
+  const tools: FakeTool[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
+    const tool = jsonObjectToFakeTool(item as Record<string, unknown>);
+    if (!tool) return [];
+    tools.push(tool);
+  }
+  return tools;
+}
+
+function jsonValueContainsToolPayload(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some(item => item && typeof item === 'object' && !Array.isArray(item)
+      && jsonObjectToFakeTool(item as Record<string, unknown>));
+  }
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value)
+    && jsonObjectToFakeTool(value as Record<string, unknown>));
+}
+
+function parseJsonArrayToolCalls(text: string): FakeTool[] {
+  const tools: FakeTool[] = [];
+  const fencedRe = /```(?:json|JSON)?\s*\n([\s\S]*?)```/g;
+  let fm: RegExpExecArray | null;
+  while ((fm = fencedRe.exec(text)) !== null) {
+    const trimmed = String(fm[1] || '').trim();
+    if (!trimmed.startsWith('[')) continue;
+    try {
+      tools.push(...jsonArrayToFakeTools(JSON.parse(trimmed) as unknown));
+    } catch { /* ignore non-tool JSON */ }
+  }
+  if (tools.length > 0) return tools;
+
+  let searchAt = 0;
+  while (searchAt < text.length) {
+    const start = text.indexOf('[', searchAt);
+    if (start < 0) break;
+    const end = findJsonArrayEnd(text, start);
+    if (end < 0) {
+      searchAt = start + 1;
+      continue;
+    }
+    try {
+      const converted = jsonArrayToFakeTools(JSON.parse(text.slice(start, end + 1)) as unknown);
+      if (converted.length > 0) tools.push(...converted);
+    } catch { /* ignore non-tool JSON */ }
+    searchAt = end + 1;
+  }
+  return tools;
 }
 
 function stripJsonToolPayloads(text: string): string {
@@ -210,10 +292,7 @@ function stripJsonToolPayloads(text: string): string {
     if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return full;
     try {
       const parsed = JSON.parse(trimmed) as unknown;
-      if (Array.isArray(parsed)) {
-        return parsed.some(item => item && typeof item === 'object' && jsonObjectToFakeTool(item as Record<string, unknown>)) ? '' : full;
-      }
-      if (parsed && typeof parsed === 'object' && jsonObjectToFakeTool(parsed as Record<string, unknown>)) return '';
+      if (jsonValueContainsToolPayload(parsed)) return '';
     } catch { /* keep non-tool JSON */ }
     return full;
   });
@@ -221,16 +300,24 @@ function stripJsonToolPayloads(text: string): string {
   let i = 0;
   let out = '';
   while (i < result.length) {
-    const start = result.indexOf('{', i);
+    const start = findNextJsonStart(result, i);
     if (start < 0) { out += result.slice(i); break; }
     out += result.slice(i, start);
-    const end = findJsonObjectEnd(result, start);
-    if (end < 0) { out += result.slice(start); break; }
+    const end = result[start] === '[' ? findJsonArrayEnd(result, start) : findJsonObjectEnd(result, start);
+    if (end < 0) {
+      if (result[start] === '[') {
+        out += result[start];
+        i = start + 1;
+        continue;
+      }
+      out += result.slice(start);
+      break;
+    }
     const candidate = result.slice(start, end + 1);
     let stripped = false;
     try {
       const parsed = JSON.parse(candidate) as unknown;
-      if (parsed && typeof parsed === 'object' && jsonObjectToFakeTool(parsed as Record<string, unknown>)) {
+      if (jsonValueContainsToolPayload(parsed)) {
         stripped = true;
       }
     } catch { /* keep non-tool JSON */ }
@@ -255,17 +342,21 @@ export function findFirstToolCallStart(text: string): number {
   }
   let searchAt = 0;
   while (searchAt < text.length) {
-    const start = text.indexOf('{', searchAt);
+    const start = findNextJsonStart(text, searchAt);
     if (start < 0) break;
-    const end = findJsonObjectEnd(text, start);
+    const end = text[start] === '[' ? findJsonArrayEnd(text, start) : findJsonObjectEnd(text, start);
     if (end < 0) {
       const tail = text.slice(start);
-      if (/"tool"\s*:\s*"[A-Za-z_]\w*"/.test(tail)) indexes.push(start);
+      if (/"(?:tool|name|type)"\s*:\s*"[A-Za-z_]\w*"/.test(tail)) indexes.push(start);
+      else if (text[start] === '[') {
+        searchAt = start + 1;
+        continue;
+      }
       break;
     }
     try {
       const parsed = JSON.parse(text.slice(start, end + 1)) as unknown;
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && jsonObjectToFakeTool(parsed as Record<string, unknown>)) {
+      if (jsonValueContainsToolPayload(parsed)) {
         indexes.push(start);
       }
     } catch { /* ignore non-tool JSON */ }
@@ -530,6 +621,10 @@ export function parseFakeToolCalls(text: string): FakeTool[] {
 
   if (tools.length === 0) {
     tools.push(...parseShellTranscriptToolCalls(text));
+  }
+
+  if (tools.length === 0) {
+    tools.push(...parseJsonArrayToolCalls(text));
   }
 
   if (tools.length === 0) {
