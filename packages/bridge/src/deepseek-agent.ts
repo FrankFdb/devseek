@@ -1,4 +1,6 @@
 import { chromium, Browser, BrowserContext, Page, ElementHandle } from 'playwright';
+import * as fs from 'fs';
+import * as nodePath from 'path';
 import { DEEPSEEK_URL } from './config';
 import { DEEPSEEK_DOM_SELECTORS as SELECTORS } from './deepseek-dom-selectors';
 import { extractDeepSeekResponse, isLoginUrl } from './response-extractor';
@@ -286,6 +288,8 @@ export class DeepSeekAgent {
     const page = this.requirePage();
     this.cancelRequested = false;
     this._diagnosticDone = false;  // 每次新消息重置，确保诊断能捕获目标响应
+    let effectivePrompt = prompt;
+    let filesAttached = false;
 
     const timeoutMs = opts.timeoutMs ?? this.options.timeoutMs;
 
@@ -309,19 +313,26 @@ export class DeepSeekAgent {
         const chipsVisible = await page.evaluate(`(function(sel){ try { return document.querySelectorAll(sel).length > 0; } catch(e){ return false; } })(${JSON.stringify(chipSelectors.join(', '))})`).catch(() => false) as boolean;
         if (chipsVisible) {
           console.log('[agent] All files already pre-attached, skipping file upload step.');
+          filesAttached = true;
         } else {
           console.log('[agent] Pre-attach chips not found in UI — re-attaching files.');
           await this._attachFiles(page, opts.files);
+          filesAttached = true;
         }
       } else {
         try {
           await this._attachFiles(page, opts.files);
+          filesAttached = true;
         } catch (attachErr) {
-          // Stream a visible warning delta so the user sees why the task failed,
-          // then re-throw so executeTask marks the task as failed (not silently completed).
           const errMsg = (attachErr as Error).message;
-          opts.onDelta?.(`\n⚠️ **${errMsg}**\n\n`);
-          throw attachErr;
+          const inlineContext = buildInlineFileContext(opts.files);
+          if (!inlineContext) {
+            opts.onDelta?.(`\n⚠️ **${errMsg}**\n\n`);
+            throw attachErr;
+          }
+          console.warn(`[agent] File upload failed, falling back to inline file context: ${errMsg}`);
+          opts.onDelta?.(`\n⚠️ **File upload failed; inlining selected file context instead.**\n\n`);
+          effectivePrompt = `${prompt}\n\n${inlineContext}`;
         }
       }
       this._preAttachedFiles = [];
@@ -331,24 +342,24 @@ export class DeepSeekAgent {
     const input = await waitForAny(page, SELECTORS.chatInput, 10_000);
     await input.click();
 
-    if (opts.files && opts.files.length > 0) {
+    if (filesAttached) {
       // 有附件时避免 Ctrl+A 清空把附件 chip 一并删除。
       await page.keyboard.press('Control+End');
       await page.waitForTimeout(150);
-      await page.keyboard.insertText(prompt);
+      await page.keyboard.insertText(effectivePrompt);
       let inputText = await this.getComposerText(page);
-      if (!inputText.includes(prompt.slice(0, Math.min(10, prompt.length)))) {
+      if (!inputText.includes(effectivePrompt.slice(0, Math.min(10, effectivePrompt.length)))) {
         await input.click();
         await page.keyboard.press('Control+End');
         await page.waitForTimeout(150);
-        await page.keyboard.insertText(prompt);
+        await page.keyboard.insertText(effectivePrompt);
         inputText = await this.getComposerText(page);
       }
-      if (!inputText.includes(prompt.slice(0, Math.min(10, prompt.length)))) {
-        await this.forceSetComposerText(page, prompt);
+      if (!inputText.includes(effectivePrompt.slice(0, Math.min(10, effectivePrompt.length)))) {
+        await this.forceSetComposerText(page, effectivePrompt);
         inputText = await this.getComposerText(page);
       }
-      if (!inputText.includes(prompt.slice(0, Math.min(10, prompt.length)))) {
+      if (!inputText.includes(effectivePrompt.slice(0, Math.min(10, effectivePrompt.length)))) {
         console.warn('[agent] Prompt was not typed correctly after attaching files; continuing with best effort.');
       }
     } else {
@@ -356,7 +367,7 @@ export class DeepSeekAgent {
       await page.keyboard.press('Control+a');
       await page.keyboard.press('Backspace');
       // 模拟人类打字（避免防抖失效）
-      await input.fill(prompt);
+      await input.fill(effectivePrompt);
     }
     await page.waitForTimeout(200);
 
@@ -379,7 +390,7 @@ export class DeepSeekAgent {
       await page.keyboard.press('Enter');
     }
 
-    console.log(`[agent] Message sent (${prompt.length} chars), baselineAiMsgs=${baselineAiMsgCount}, baselineTextLen=${baselineText.length}`);
+    console.log(`[agent] Message sent (${effectivePrompt.length} chars), baselineAiMsgs=${baselineAiMsgCount}, baselineTextLen=${baselineText.length}`);
     return this.waitForResponse(page, timeoutMs, opts.onDelta, baselineAiMsgCount, baselineText);
   }
 
@@ -1208,4 +1219,80 @@ export class DeepSeekAgent {
     if (!this.page) throw new Error('Agent not initialized. Call init() first.');
     return this.page;
   }
+}
+
+function buildInlineFileContext(files: readonly string[]): string | undefined {
+  const maxFileBytes = 64 * 1024;
+  const maxTotalChars = 120_000;
+  const sections: string[] = [];
+  let totalChars = 0;
+
+  for (const file of files) {
+    let content: string;
+    try {
+      const stat = fs.statSync(file);
+      if (!stat.isFile()) continue;
+      const bytesToRead = Math.min(stat.size, maxFileBytes);
+      const fd = fs.openSync(file, 'r');
+      try {
+        const buffer = Buffer.alloc(bytesToRead);
+        fs.readSync(fd, buffer, 0, bytesToRead, 0);
+        content = buffer.toString('utf8');
+        if (stat.size > maxFileBytes) {
+          content += `\n...[truncated by DevSeek Bridge: ${stat.size} bytes total]`;
+        }
+      } finally {
+        fs.closeSync(fd);
+      }
+    } catch {
+      continue;
+    }
+
+    const language = languageForFile(file);
+    const section = [
+      `<devseek-file path="${file}">`,
+      `\`\`\`${language}`,
+      content.replace(/\s+$/g, ''),
+      '```',
+      '</devseek-file>',
+    ].join('\n');
+
+    if (totalChars + section.length > maxTotalChars) {
+      sections.push('[DevSeek Bridge omitted additional files because the inline context budget was reached.]');
+      break;
+    }
+    sections.push(section);
+    totalChars += section.length;
+  }
+
+  if (sections.length === 0) return undefined;
+  return [
+    'DevSeek Bridge could not use the DeepSeek Web file-upload control in this session.',
+    'It is inlining the selected workspace files below as read-only context.',
+    'Use these files only as context; return the requested DevSeek file tool call for edits.',
+    '',
+    ...sections,
+  ].join('\n');
+}
+
+function languageForFile(file: string): string {
+  const ext = nodePath.extname(file).toLowerCase();
+  const languages: Record<string, string> = {
+    '.c': 'c',
+    '.cc': 'cpp',
+    '.cpp': 'cpp',
+    '.cxx': 'cpp',
+    '.h': 'cpp',
+    '.hpp': 'cpp',
+    '.js': 'javascript',
+    '.jsx': 'jsx',
+    '.json': 'json',
+    '.mjs': 'javascript',
+    '.py': 'python',
+    '.ts': 'typescript',
+    '.tsx': 'tsx',
+    '.yml': 'yaml',
+    '.yaml': 'yaml',
+  };
+  return languages[ext] ?? '';
 }

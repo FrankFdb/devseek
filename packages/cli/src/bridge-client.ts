@@ -1,6 +1,6 @@
 import { randomBytes } from 'crypto';
 import { mkdir, readFile, writeFile } from 'fs/promises';
-import { join } from 'path';
+import { dirname, join, parse, resolve } from 'path';
 import type { AgentChatRequest, ChatResponse, StreamDelta } from '@devseek-netai/shared';
 
 const DEFAULT_BRIDGE_PORT = 3721;
@@ -21,7 +21,7 @@ export async function bridgeChat(cwd: string, request: AgentChatRequest): Promis
       stream: request.stream !== false,
       timeoutMs: request.timeoutMs,
       mode: request.mode,
-      files: request.files,
+      files: resolveBridgeFiles(cwd, request.files),
     }),
     signal: request.signal,
   });
@@ -134,18 +134,39 @@ function parseBridgeStreamEvent(rawEvent: string): StreamDelta | undefined {
   return JSON.parse(data) as StreamDelta;
 }
 
+function resolveBridgeFiles(cwd: string, files: readonly string[] | undefined): string[] | undefined {
+  if (!files || files.length === 0) return undefined;
+  return files.map(file => resolve(cwd, file));
+}
+
 async function readOrCreateBridgeToken(cwd: string): Promise<string> {
+  const fromEnv = process.env.DEVSEEK_BRIDGE_TOKEN?.trim();
+  if (fromEnv) return fromEnv;
+
+  const existing = await findExistingBridgeToken(cwd);
+  if (existing) return existing;
+
   const dir = join(cwd, '.devseek');
   const tokenPath = join(dir, 'bridge-token');
-  try {
-    const existing = (await readFile(tokenPath, 'utf8')).trim();
-    if (existing) return existing;
-  } catch {
-    // Missing token is normal for first CLI run.
-  }
-
   await mkdir(dir, { recursive: true });
   const token = randomBytes(32).toString('hex');
   await writeFile(tokenPath, `${token}\n`, { mode: 0o600 });
   return token;
+}
+
+async function findExistingBridgeToken(cwd: string): Promise<string | undefined> {
+  let current = resolve(cwd);
+  const root = parse(current).root;
+  while (true) {
+    try {
+      const existing = (await readFile(join(current, '.devseek', 'bridge-token'), 'utf8')).trim();
+      if (existing) return existing;
+    } catch {
+      // Keep walking upward until the filesystem root.
+    }
+    if (current === root) return undefined;
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
 }
