@@ -197,6 +197,42 @@ test('FakeToolParser: parses DeepSeek raw JSON array with type fields', () => {
   assert.equal(stripToolCallBlocks(text), '让我先查看当前的代码结构：');
 });
 
+test('FakeToolParser: recovers malformed DeepSeek file tools with unescaped code quotes', () => {
+  const text = [
+    '现在创建 C++ 文件：',
+    '[TOOL:create_file {"path":"/tmp/shape_manager/Sphere.h","content":"#ifndef SPHERE_H\\n#define SPHERE_H\\n#include "Shape.h"\\n#endif\\n"}]',
+    '[TOOL:create_file {"path":"/tmp/shape_manager/Sphere.cpp","content":"#include "Sphere.h"\\n#include <iostream>\\nstd::string name() { return "Sphere"; }\\n"}]',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 2);
+  assert.equal(tools[0].name, 'create_file');
+  assert.equal(tools[0].input.path, '/tmp/shape_manager/Sphere.h');
+  assert.equal(tools[0].input.content, '#ifndef SPHERE_H\n#define SPHERE_H\n#include "Shape.h"\n#endif\n');
+  assert.equal(tools[1].input.path, '/tmp/shape_manager/Sphere.cpp');
+  assert.match(tools[1].input.content, /#include "Sphere\.h"/);
+  assert.match(tools[1].input.content, /return "Sphere";/);
+  assert.equal(stripToolCallBlocks(text), '现在创建 C++ 文件：');
+});
+
+test('FakeToolParser: parses raw JSON file tool arrays with content aliases', () => {
+  const text = [
+    '```json',
+    '[',
+    '  {"type":"create_file","path":"/tmp/shape_manager/Sphere.h","fileContent":"class Sphere {};"}',
+    ']',
+    '```',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'create_file');
+  assert.equal(tools[0].input.path, '/tmp/shape_manager/Sphere.h');
+  assert.equal(tools[0].input.fileContent, 'class Sphere {};');
+});
+
 test('FakeToolParser: strips fenced DeepSeek JSON tool arrays from visible text', () => {
   const text = [
     '让我先查看当前的代码结构：',

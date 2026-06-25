@@ -655,6 +655,9 @@ test('Agent loop: file tools and validation use ground-truth outcomes', () => {
   assertContains(toolLoop, 'looksLikeRawToolCallText(content)', 'file write tools must block raw tool transcript content');
   assertContains(toolLoop, "['path', 'filePath', 'filepath', 'filename', 'targetPath']", 'file write tools must accept common path aliases from DeepSeek/Copilot-style schemas');
   assertContains(toolLoop, "['content', 'contents', 'text', 'body']", 'file write tools must accept common content aliases');
+  assertContains(toolLoop, 'FILE_WRITE_CONTENT_ALIAS_KEYS', 'file write tools must centralize content aliases');
+  assertContains(toolLoop, 'normalizeFileWriteInputs', 'file write tools must normalize single-file and batch payloads before execution');
+  assertContains(toolLoop, 'files:[{path,content}]', 'malformed batch file writes must return actionable feedback');
   assertContains(toolLoop, '缺少 path/filePath', 'malformed file write calls must return explicit feedback instead of silently doing nothing');
   assertContains(code, 'interface ValidationOutcome', 'compile validation must return structured outcome');
   assert.match(
@@ -672,6 +675,13 @@ test('Agent loop: file tools and validation use ground-truth outcomes', () => {
   assertContains(code, '第 ${repairRound} 轮自动修复验证失败', 'agent validation failures must enter an automatic repair loop');
   assertContains(code, 'analyzeTerminalEvidence(runCmd, output, compilePlan.cwd)', 'runtime validation must parse terminal exit status');
   assertContains(code, 'run-failed', 'non-zero runtime exits must be reported as failed validation');
+});
+
+test('Agent parser: malformed file tool JSON is recovered for code payloads', () => {
+  const parser = src('src/agent/fake-tool-parser.ts');
+  assertContains(parser, 'parseLooseFileWriteToolInput', 'file-write parser must recover tool JSON with unescaped source-code quotes');
+  assertContains(parser, 'LOOSE_FILE_WRITE_TOOL_NAMES', 'loose parsing must stay scoped to file-write tools');
+  assertContains(parser, 'fileContent', 'loose file-write parsing must accept DeepSeek/Copilot content aliases');
 });
 
 test('Local execution failures escalate into Agent repair instead of browser upload repair', () => {

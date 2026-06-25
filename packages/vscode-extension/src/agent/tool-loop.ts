@@ -290,7 +290,15 @@ function inferCArtifactFromMarkdown(text: string, userPrompt: string): Array<{pa
   return results;
 }
 
-function getStringInput(input: Record<string, unknown>, keys: string[]): string {
+const FILE_WRITE_PATH_KEYS = ['path', 'filePath', 'filepath', 'filename', 'targetPath'];
+const FILE_WRITE_CONTENT_KEYS = ['content', 'contents', 'text', 'body'];
+const FILE_WRITE_CONTENT_ALIAS_KEYS = [
+  ...FILE_WRITE_CONTENT_KEYS,
+  'fileContent', 'file_content', 'source', 'code', 'newContent', 'new_content',
+];
+const FILE_WRITE_BATCH_KEYS = ['files', 'artifacts', 'changes', 'edits'];
+
+function getStringInput(input: Record<string, unknown>, keys: readonly string[]): string {
   for (const key of keys) {
     const value = input[key];
     if (typeof value === 'string') return value.trim();
@@ -299,11 +307,39 @@ function getStringInput(input: Record<string, unknown>, keys: string[]): string 
 }
 
 function getFileContentInput(input: Record<string, unknown>): string {
-  for (const key of ['content', 'contents', 'text', 'body']) {
+  for (const key of FILE_WRITE_CONTENT_ALIAS_KEYS) {
     const value = input[key];
     if (typeof value === 'string') return value;
   }
   return '';
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function normalizeFileWriteInputs(input: Record<string, unknown>): Array<{rawPath: string; content: string}> {
+  const directRawPath = getStringInput(input, FILE_WRITE_PATH_KEYS);
+  const directContent = getFileContentInput(input);
+  const batch: Array<{rawPath: string; content: string}> = [];
+
+  for (const key of FILE_WRITE_BATCH_KEYS) {
+    const value = input[key];
+    const items = Array.isArray(value) ? value : asRecord(value) ? [value] : [];
+    for (const item of items) {
+      const record = asRecord(item);
+      if (!record) continue;
+      const rawPath = getStringInput(record, [...FILE_WRITE_PATH_KEYS, 'file', 'name', 'relativePath']);
+      const content = getFileContentInput(record);
+      if (rawPath || content) batch.push({ rawPath, content });
+    }
+  }
+
+  if (batch.length > 0) return batch;
+  if (directRawPath || directContent) return [{ rawPath: directRawPath, content: directContent }];
+  return [];
 }
 
 export async function applyMarkdownFileArtifactsForLoop(
@@ -670,14 +706,18 @@ export async function executeFakeToolsForLoop(
     } else if (agentToolExecutor.isFileWrite(tool) && callbacks.onAppliedChange) {
       // Unified file create/overwrite — works for new files AND full rewrites.
       // Matching Copilot's #edit/editFiles for the agentic free-explore loop.
-      const rawPath = getStringInput(tool.input, ['path', 'filePath', 'filepath', 'filename', 'targetPath']);
-      const content = getFileContentInput(tool.input);
+      const fileWrites = normalizeFileWriteInputs(tool.input);
       toolCallsMade = true;
-      if (!rawPath) {
-        parts.push(`[${tool.name}] 错误: 缺少 path/filePath，未写入任何文件。请提供目标文件路径和完整 content。`);
+      if (fileWrites.length === 0) {
+        parts.push(`[${tool.name}] 错误: 缺少 path/filePath 和 content，未写入任何文件。批量写入请使用 files:[{path,content}]。`);
         continue;
       }
-      if (rawPath) {
+      for (const fileWrite of fileWrites) {
+        const { rawPath, content } = fileWrite;
+        if (!rawPath) {
+          parts.push(`[${tool.name}] 错误: 缺少 path/filePath，未写入任何文件。请提供目标文件路径和完整 content。`);
+          continue;
+        }
         callbacks.onToolActivity?.('write', rawPath);
         try {
           const taskPrompt = taskContext?.userPrompt ?? '';
