@@ -216,6 +216,20 @@ test('FakeToolParser: recovers malformed DeepSeek file tools with unescaped code
   assert.equal(stripToolCallBlocks(text), '现在创建 C++ 文件：');
 });
 
+test('FakeToolParser: recovers bracket-closed malformed CMake file tools with braces', () => {
+  const text = String.raw`好的，我需要修改CMakeLists.txt来同时编译二维和三维程序。
+[TOOL:create_file] {"path":"/tmp/shape_manager/CMakeLists.txt","content":"cmake_minimum_required(VERSION 3.10)\nproject(ShapeManager)\nset(CMAKE_CXX_FLAGS "{CMAKE_CXX_FLAGS} -Wall -Wextra\")\nadd_executable(shape_manager_2d {SOURCES_2D} {HEADERS_2D})\nset_target_properties(shape_manager_2d shape_manager_3d PROPERTIES\n RUNTIME_OUTPUT_DIRECTORY \"{CMAKE_BINARY_DIR}/bin"\n)\nmessage(STATUS "构建二维图形程序: shape_manager_2d (使用 X11)")\n"}`;
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'create_file');
+  assert.equal(tools[0].input.path, '/tmp/shape_manager/CMakeLists.txt');
+  assert.match(tools[0].input.content, /set\(CMAKE_CXX_FLAGS "\{CMAKE_CXX_FLAGS\} -Wall -Wextra"\)/);
+  assert.match(tools[0].input.content, /RUNTIME_OUTPUT_DIRECTORY "\{CMAKE_BINARY_DIR\}\/bin"/);
+  assert.match(tools[0].input.content, /message\(STATUS "构建二维图形程序/);
+});
+
 test('FakeToolParser: parses raw JSON file tool arrays with content aliases', () => {
   const text = [
     '```json',

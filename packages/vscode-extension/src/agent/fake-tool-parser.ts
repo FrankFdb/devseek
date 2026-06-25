@@ -291,6 +291,59 @@ function extractLooseJsonStringField(jsonText: string, key: string): string | un
   return decodeLooseJsonString(jsonText.slice(valueStart, valueEnd));
 }
 
+function findLooseJsonStringFieldValueStart(text: string, objectStart: number, keys: readonly string[]): number {
+  const header = text.slice(objectStart, Math.min(text.length, objectStart + 4000));
+  for (const key of keys) {
+    const keyRe = new RegExp(`"${escapeRegExp(key)}"\\s*:\\s*"`, 'i');
+    const match = keyRe.exec(header);
+    if (match) return objectStart + match.index + match[0].length;
+  }
+  return -1;
+}
+
+function findLooseObjectCloseAfterString(text: string, afterStringQuote: number): number {
+  let i = afterStringQuote;
+  while (i < text.length && /[ \t\r\n]/.test(text[i])) i++;
+  if (text[i] !== '}') return -1;
+  const closeBrace = i;
+  i++;
+  let sawLineBreak = false;
+  while (i < text.length && /[ \t\r\n]/.test(text[i])) {
+    if (text[i] === '\n' || text[i] === '\r') sawLineBreak = true;
+    i++;
+  }
+  if (i >= text.length || text[i] === ']' || sawLineBreak) return closeBrace;
+  if (text.startsWith('[TOOL:', i) || text.startsWith('```', i)) return closeBrace;
+  if (/^(?:Calling|Call|调用)\b/i.test(text.slice(i, i + 20))) return closeBrace;
+  return -1;
+}
+
+function findLooseFileWriteObjectEnd(text: string, name: string, jsonStart: number): number {
+  if (!LOOSE_FILE_WRITE_TOOL_NAMES.has(name) || text[jsonStart] !== '{') return -1;
+  if (findLooseJsonStringFieldValueStart(text, jsonStart, LOOSE_FILE_WRITE_PATH_KEYS) < 0) return -1;
+  const contentValueStart = findLooseJsonStringFieldValueStart(text, jsonStart, LOOSE_FILE_WRITE_CONTENT_KEYS);
+  if (contentValueStart < 0) return -1;
+
+  for (let i = contentValueStart; i < text.length; i++) {
+    if (text[i] !== '"' || isEscapedQuote(text, i, contentValueStart)) continue;
+    const close = findLooseObjectCloseAfterString(text, i + 1);
+    if (close >= 0) return close;
+  }
+  return -1;
+}
+
+function findToolInputObjectEnd(text: string, name: string, jsonStart: number): number {
+  const strictEnd = findJsonObjectEnd(text, jsonStart);
+  if (strictEnd < 0) return findLooseFileWriteObjectEnd(text, name, jsonStart);
+  try {
+    JSON.parse(text.slice(jsonStart, strictEnd + 1));
+    return strictEnd;
+  } catch {
+    const looseEnd = findLooseFileWriteObjectEnd(text, name, jsonStart);
+    return looseEnd > strictEnd ? looseEnd : strictEnd;
+  }
+}
+
 function parseLooseFileWriteToolInput(name: string, jsonText: string): Record<string, unknown> | null {
   if (!LOOSE_FILE_WRITE_TOOL_NAMES.has(name)) return null;
   const input: Record<string, unknown> = {};
@@ -308,7 +361,7 @@ function parseLooseFileWriteToolInput(name: string, jsonText: string): Record<st
       break;
     }
   }
-  return typeof input.path === 'string' || typeof input.content === 'string' ? input : null;
+  return typeof input.path === 'string' && typeof input.content === 'string' ? input : null;
 }
 
 function jsonArrayToFakeTools(value: unknown): FakeTool[] {
@@ -654,26 +707,16 @@ export function parseFakeToolCalls(text: string): FakeTool[] {
     if (text[jsonStart] === ']') jsonStart++;
     while (jsonStart < text.length && (text[jsonStart] === ' ' || text[jsonStart] === '\t' || text[jsonStart] === '\n' || text[jsonStart] === '\r')) jsonStart++;
     if (text[jsonStart] !== '{') continue;
-    let depth = 0; let inStr = false; let j = jsonStart;
-    for (; j < text.length; j++) {
-      const ch = text[j];
-      if (inStr) {
-        if (ch === '\\') { j++; }
-        else if (ch === '"') { inStr = false; }
-      } else {
-        if (ch === '"') { inStr = true; }
-        else if (ch === '{') { depth++; }
-        else if (ch === '}') { depth--; if (depth === 0) break; }
-      }
-    }
-    if (depth !== 0) continue;
-    const jsonStr = text.slice(jsonStart, j + 1);
+    const jsonEnd = findToolInputObjectEnd(text, name, jsonStart);
+    if (jsonEnd < 0) continue;
+    const jsonStr = text.slice(jsonStart, jsonEnd + 1);
     try {
       tools.push({ name, input: JSON.parse(jsonStr) });
     } catch {
       const looseInput = parseLooseFileWriteToolInput(name, jsonStr);
       if (looseInput) tools.push({ name, input: looseInput });
     }
+    re.lastIndex = jsonEnd + 1;
   }
 
   if (tools.length === 0) {
@@ -690,7 +733,7 @@ export function parseFakeToolCalls(text: string): FakeTool[] {
         const fencedJsonStart = afterFenceNewline >= 0 ? text.indexOf('{', afterFenceNewline) : -1;
         if (fencedJsonStart >= 0) jsonStart = fencedJsonStart;
       }
-      const jsonEnd = findJsonObjectEnd(text, jsonStart);
+      const jsonEnd = findToolInputObjectEnd(text, name, jsonStart);
       if (jsonEnd < 0) continue;
       const jsonText = text.slice(jsonStart, jsonEnd + 1);
       try {

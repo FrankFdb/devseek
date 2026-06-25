@@ -49,6 +49,17 @@ test('ResponseIntegrityChecker: does not treat complete DevSeek tool protocol as
   );
 });
 
+test('ResponseIntegrityChecker: allows recoverable malformed file tool blocks', () => {
+  const checker = new ResponseIntegrityChecker();
+  const response = String.raw`好的，我需要修改CMakeLists.txt来同时编译二维和三维程序。
+[TOOL:create_file] {"path":"/tmp/shape_manager/CMakeLists.txt","content":"set(CMAKE_CXX_FLAGS "{CMAKE_CXX_FLAGS} -Wall -Wextra\")\nadd_executable(shape_manager_2d {SOURCES_2D} {HEADERS_2D})\nset_target_properties(shape_manager_2d shape_manager_3d PROPERTIES\n RUNTIME_OUTPUT_DIRECTORY \"{CMAKE_BINARY_DIR}/bin"\n)\nmessage(STATUS "构建二维图形程序: shape_manager_2d (使用 X11)")\n"}`;
+
+  const result = checker.check(response);
+
+  assert.equal(result.safeToExecute, true);
+  assert.equal(result.status, 'ok');
+});
+
 test('StreamWatchdog: reports stalled stream after idle threshold', () => {
   const watchdog = new StreamWatchdog(100);
   watchdog.start(1_000);
