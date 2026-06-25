@@ -3805,6 +3805,13 @@ function addAgentStatus(msg) {
         if (autCount) autCount.textContent = showCount ? (doneCount + '/' + agentTodos.length) : '';
       }
     }
+    var executeNeedsManualReview = msg.state === 'completed'
+      && /人工确认|等待确认/.test(String((msg.title || '') + '\n' + (msg.detail || '')));
+    if (executeNeedsManualReview && agentExecContainer && agentExecContainer.isConnected && !agentExecContainer.hasAttribute('data-done')) {
+      setAgentContainerLabel(agentExecContainer, msg.title || '程序已启动，等待人工确认', true);
+      appendAgentProgressStep('execute', msg.title || '程序已启动，等待人工确认', msg.detail || '', 'completed');
+      finalizeExecContainer(agentExecContainer, false);
+    }
     maybeScrollToBottom();
     return;
   }

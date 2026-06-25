@@ -55,6 +55,7 @@ import {
   buildTaskTerminalFailureDetail,
   withTaskTerminalEvidence,
 } from './task-execution-result';
+import { shouldRequestManualReviewForRun } from './manual-review-validation';
 import type { AgentLoopCallbacks, AgentLoopResult } from './loop-types';
 import { chatWithMessages, consumeUserSteerMessages } from './loop-chat';
 import {
@@ -106,6 +107,35 @@ function extractPlanningTodoItems(text: string): TodoItem[] {
     title,
     status: index === 0 ? 'in-progress' : 'not-started',
   }));
+}
+
+function classifyAgenticManualReviewEvidence(input: {
+  evidence: TerminalEvidence[] | undefined;
+  feedbackForAI: string;
+  userPrompt: string;
+  writtenFiles: WrittenFileEvidence[];
+}): TerminalEvidence[] {
+  if (!input.evidence?.length) return [];
+  const changedPaths = input.writtenFiles.map(file => file.path).filter(Boolean);
+  return input.evidence.map((evidence) => {
+    if (evidence.reviewRequired) return evidence;
+    if (evidence.ok) return evidence;
+    const review = shouldRequestManualReviewForRun({
+      userPrompt: input.userPrompt,
+      command: evidence.command,
+      output: input.feedbackForAI || evidence.detail || '',
+      changedPaths,
+      terminalEvidence: evidence,
+    });
+    return review
+      ? {
+        ...evidence,
+        ok: true,
+        reviewRequired: true,
+        detail: review.detail,
+      }
+      : evidence;
+  });
 }
 
 // ----------------------------------------------------------------
@@ -602,7 +632,12 @@ export async function runAgenticLoop(
       for (const readPath of loopRes.readFiles) allReadEvidencePaths.add(readPath);
     }
     if (loopRes.terminalEvidence?.length) {
-      allTerminalEvidence.push(...loopRes.terminalEvidence);
+      allTerminalEvidence.push(...classifyAgenticManualReviewEvidence({
+        evidence: loopRes.terminalEvidence,
+        feedbackForAI: loopRes.feedbackForAI,
+        userPrompt,
+        writtenFiles: allWrittenFiles,
+      }));
     }
     const autoValidation = await runAgentAutoValidationForWrites(
       allWrittenFiles.slice(autoValidatedWriteCount),
@@ -767,11 +802,19 @@ export async function runAgenticLoop(
   const cleanAbort = callbacks.signal?.aborted ?? false;
   const visibleCompleteSummary = cleanAgentFinalSummaryForUser(completeSummary);
   const finalWrittenFiles = coalesceWrittenFileEvidence(allWrittenFiles, workspaceRoot);
+  const manualReviewTerminal = [...allTerminalEvidence].reverse().find(e => e.reviewRequired);
+  const manualReviewReason = manualReviewTerminal?.detail || (manualReviewTerminal ? '运行效果需要人工确认。' : undefined);
   await callbacks.onAgentStatus({
     type: 'agentStatus',
     phase: 'done',
     state: cleanAbort || failedReason ? 'failed' : 'completed',
-    title: cleanAbort ? `已中断（${roundCount} 轮）` : (failedReason || visibleCompleteSummary || `完成（${roundCount} 轮）`),
+    title: cleanAbort ? `已中断（${roundCount} 轮）`
+      : failedReason
+        ? failedReason
+        : manualReviewReason
+          ? `已执行，等待人工确认（${roundCount} 轮）`
+          : (visibleCompleteSummary || `完成（${roundCount} 轮）`),
+    ...(manualReviewReason ? { detail: manualReviewReason } : {}),
     taskTotal: 1,
     ...(finalWrittenFiles.length > 0 ? { editedFiles: finalWrittenFiles } : {}),
   });
@@ -786,6 +829,8 @@ export async function runAgenticLoop(
       : '';
     const finalMsg = failedReason
       ? `任务没有完成：${failedReason}`
+      : manualReviewReason
+        ? `任务已执行，运行效果需要人工确认：${manualReviewReason}`
       : (visibleCompleteSummary || fileSummary || '任务已完成。');
     callbacks.onDelta('\x00ASUM\x00' + finalMsg);
   }
@@ -819,6 +864,10 @@ export async function runAgenticLoop(
     tasksApplied: finalWrittenFiles.length > 0 ? 1 : 0,
     tasksFailed: cleanAbort || failedReason ? 1 : 0,
     changedPaths: [...new Set(finalWrittenFiles.map(f => f.path))],
+    ...(manualReviewReason ? {
+      manualReviewRequired: true,
+      manualReviewReason,
+    } : {}),
     historyText,
   };
 }

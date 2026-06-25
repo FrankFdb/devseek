@@ -83,6 +83,13 @@ function parseFormattedTerminalExitCode(output: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
+function parseManualReviewTerminalDetail(output: string): string | undefined {
+  const match = /\[MANUAL_REVIEW_REQUIRED\]\s*([\s\S]*)$/i.exec(output || '');
+  if (!match) return undefined;
+  const detail = String(match[1] || '').trim();
+  return detail || '图形或交互式程序已启动，但运行效果需要人工确认。';
+}
+
 function shellTokenizeSimple(command: string): string[] {
   const tokens: string[] = [];
   let current = '';
@@ -154,10 +161,13 @@ function isExecutableFile(filePath: string): boolean {
 export function analyzeTerminalEvidence(command: string, formattedOutput: string, workdir: string): { ran: boolean; evidence: TerminalEvidence } {
   const exitCode = parseFormattedTerminalExitCode(formattedOutput);
   const kind = classifyTerminalEvidenceCommand(command);
+  const manualReviewDetail = parseManualReviewTerminalDetail(formattedOutput);
   const notExecuted = /(?:命令未执行|终端工具被禁止|工具被禁止|用户拒绝|未确认|not executed|declined|denied|terminal tool disabled)/i.test(formattedOutput || '');
-  let ok = !notExecuted && exitCode === 0;
+  let ok = Boolean(manualReviewDetail) || (!notExecuted && exitCode === 0);
   let detail = notExecuted
     ? '命令没有实际执行'
+    : manualReviewDetail
+      ? manualReviewDetail
     : exitCode === null
       ? '终端结果缺少退出码'
       : exitCode === -1
@@ -179,6 +189,7 @@ export function analyzeTerminalEvidence(command: string, formattedOutput: string
       exitCode,
       ...(outputPath ? { outputPath } : {}),
       ...(detail ? { detail } : {}),
+      ...(manualReviewDetail ? { reviewRequired: true } : {}),
     },
   };
 }

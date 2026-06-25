@@ -38,6 +38,7 @@ const suites = [
   'test/unit/intent-behavior-matrix.test.mjs',
   'test/unit/permission-service.test.mjs',
   'test/unit/terminal-command-policy.test.mjs',
+  'test/unit/terminal-launch-classifier.test.mjs',
   'test/unit/task-checkpoint-store.test.mjs',
   'test/unit/task-history-store.test.mjs',
   'test/unit/task-ledger.test.mjs',

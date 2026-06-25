@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { decideTerminalCommandPermission, type TerminalCommandRiskClass } from './terminal-command-policy';
 import { decideToolPermission, type ToolPolicy } from './permission-service';
+import { shouldUseManualReviewLaunchMode } from './terminal-launch-classifier';
 
 type TerminalConfirmResolver = (allow: boolean, alwaysAllow?: boolean) => void;
 
@@ -77,11 +78,13 @@ export class TerminalPermissionCoordinator {
     }
 
     const { runCommand, formatTerminalOutputForPrompt } = await import('../tools/terminal');
+    const manualReviewOnLongRunning = shouldUseManualReviewLaunchMode({ command, workdir, workspaceRoot });
     const result = await runCommand({
       command,
       cwd: workdir,
       visible: false,
       allowRisky: !isAutopilot && (confirmedByUser || remembered),
+      manualReviewOnLongRunning,
     });
     const outputPreview = result.output.slice(0, 4000);
     webview.postMessage({

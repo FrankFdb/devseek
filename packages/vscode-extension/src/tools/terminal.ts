@@ -10,7 +10,6 @@
  */
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
-import * as nodePath from 'path';
 import { getWorkspaceRootFsPath } from '../workspace-roots';
 
 export interface TerminalRunOptions {
@@ -24,6 +23,10 @@ export interface TerminalRunOptions {
   visible?: boolean;
   /** User explicitly confirmed a command with package-manager/sudo/network side effects. */
   allowRisky?: boolean;
+  /** Return after a short launch observation when a GUI/interactive program keeps running. */
+  manualReviewOnLongRunning?: boolean;
+  /** Observation window before returning manual-review evidence. */
+  launchObservationMs?: number;
 }
 
 export interface TerminalRunResult {
@@ -35,6 +38,9 @@ export interface TerminalRunResult {
   output: string;
   /** 截断后的输出摘要（前 1500 字符），适合直接注入 prompt */
   summary: string;
+  /** Program was launched and remains running; final behavior needs human observation. */
+  reviewRequired?: boolean;
+  reviewReason?: string;
 }
 
 /** 危险命令黑名单（正则） */
@@ -75,6 +81,11 @@ const SERVER_COMMAND_RE = /\b(http\.server|SimpleHTTPServer|livereload|webpack.*
 
 /** sudo needs password — user must authenticate in an interactive terminal first. */
 const SUDO_PASSWORD_RE = /terminal is required to read the password|a password is required|sudo.*password/i;
+const MANUAL_REVIEW_REQUIRED = '[MANUAL_REVIEW_REQUIRED]';
+const LONG_RUNNING_MANUAL_REVIEW_DETAIL =
+  '图形或交互式程序已启动并仍在运行；自动验证无法仅凭退出码判断窗口内容是否符合要求。请人工确认当前窗口效果。';
+const EARLY_HARD_FAILURE_RE =
+  /(?:fatal\s+error|error:|undefined reference|collect2:\s+error|cmake\s+error|make(?:\[\d+\])?:\s+\*\*\*|ninja:\s+build stopped|No such file or directory|not found|cannot open display|can't open display|Cannot open X display|segmentation fault|core dumped|permission denied|安全检查|命令未执行|用户拒绝|工具被禁止|BINARY_NOT_FOUND|SUDO_PASSWORD_REQUIRED)/i;
 
 function patchCommand(cmd: string): string {
   return cmd;
@@ -116,6 +127,19 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    let settled = false;
+    let timeoutTimer: ReturnType<typeof setTimeout> | undefined;
+    let launchObservationTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const resolveOnce = (result: TerminalRunResult) => {
+      if (settled) return;
+      settled = true;
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (launchObservationTimer) clearTimeout(launchObservationTimer);
+      resolve(result);
+    };
+
+    const combinedOutput = () => (stdout + (stderr ? '\n[stderr]\n' + stderr : '')).trim();
 
     const child = cp.spawn(shellBin, shellArgs, {
       cwd,
@@ -128,30 +152,50 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
       timeout: timeoutMs,
     });
 
-    const timer = setTimeout(() => {
+    timeoutTimer = setTimeout(() => {
       timedOut = true;
       child.kill('SIGTERM');
     }, timeoutMs);
 
-    child.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
-    child.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+    child.stdout.on('data', (d: Buffer) => { stdout = appendCapped(stdout, d.toString(), 40_000); });
+    child.stderr.on('data', (d: Buffer) => { stderr = appendCapped(stderr, d.toString(), 20_000); });
+
+    if (opts.manualReviewOnLongRunning && timeoutMs > 0) {
+      const observationMs = Math.min(
+        Math.max(opts.launchObservationMs ?? 5000, 1000),
+        Math.max(1000, timeoutMs - 1000),
+      );
+      launchObservationTimer = setTimeout(() => {
+        if (settled || timedOut) return;
+        const output = combinedOutput();
+        if (EARLY_HARD_FAILURE_RE.test(output)) return;
+        resolveOnce({
+          ok: true,
+          exitCode: -1,
+          stdout: stdout.trim(),
+          stderr: stderr.trim(),
+          output: [output, LONG_RUNNING_MANUAL_REVIEW_DETAIL].filter(Boolean).join('\n'),
+          summary: `${MANUAL_REVIEW_REQUIRED} ${LONG_RUNNING_MANUAL_REVIEW_DETAIL}`,
+          reviewRequired: true,
+          reviewReason: LONG_RUNNING_MANUAL_REVIEW_DETAIL,
+        });
+      }, observationMs);
+    }
 
     child.on('close', (code) => {
-      clearTimeout(timer);
-      const output = (stdout + (stderr ? '\n[stderr]\n' + stderr : '')).trim();
+      const output = combinedOutput();
       const exitCode = timedOut ? -1 : (code ?? -1);
       const ok = !timedOut && exitCode === 0;
       const summary = timedOut
         ? `[超时 ${timeoutMs}ms] 命令: ${command}\n${output.slice(0, 800)}`
         : `[exitCode=${exitCode}] ${output.slice(0, 1500)}`;
 
-      resolve({ ok, exitCode, stdout: stdout.trim(), stderr: stderr.trim(), output, summary });
+      resolveOnce({ ok, exitCode, stdout: stdout.trim(), stderr: stderr.trim(), output, summary });
     });
 
     child.on('error', (e) => {
-      clearTimeout(timer);
       const msg = `启动命令失败: ${e.message}`;
-      resolve({ ok: false, exitCode: -1, stdout: '', stderr: msg, output: msg, summary: msg });
+      resolveOnce({ ok: false, exitCode: -1, stdout: '', stderr: msg, output: msg, summary: msg });
     });
   });
 }
@@ -176,6 +220,9 @@ export function formatTerminalOutputForPrompt(cmd: string, result: TerminalRunRe
   const lines = [`[终端命令] ${cmd}`, `[退出码] ${result.exitCode}`];
   if (result.stdout) lines.push(`[stdout]\n${result.stdout.slice(0, 1200)}`);
   if (result.stderr) lines.push(`[stderr]\n${result.stderr.slice(0, 800)}`);
+  if (result.reviewRequired) {
+    lines.push(`${MANUAL_REVIEW_REQUIRED}\n${result.reviewReason || LONG_RUNNING_MANUAL_REVIEW_DETAIL}`);
+  }
 
   // ── Diagnostic hints: let the AI identify root cause immediately ──────────
   const combined = result.output;
@@ -250,4 +297,10 @@ function getWorkspaceRootSafe(): string | undefined {
   } catch {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   }
+}
+
+function appendCapped(current: string, chunk: string, maxChars: number): string {
+  if (current.length >= maxChars) return current;
+  const next = current + chunk;
+  return next.length > maxChars ? next.slice(0, maxChars) : next;
 }

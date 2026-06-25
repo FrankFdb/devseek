@@ -68,6 +68,24 @@
 
 ---
 
+**变更标题**：Agentic GUI 运行验证与工具协议误判修复（2026-06-25）
+- **需求归因**：实现缺陷 + 体验退化 — `shape_manager` X11 程序已弹窗运行后，DevSeek 仍停留在 `运行 shape_manager` 或把验证标为失败；同时完整 `[TOOL:list_dir {...}]` 工具协议被误判为 Provider JSON 损坏。
+- **影响能力层**：执行、验证、Provider 恢复、历史 QualityGate、自动接受策略。
+- **架构影响**：
+  - `tools/terminal.ts` 增加图形/交互式长运行命令的 manual-review 返回标记。
+  - 新增共享 shell 命令分析边界，统一识别 `&& /path/app`、`then '/path/app'`、`env/timeout` 等 runtime executable 段；`TerminalPermissionCoordinator` 仅对真实 runtime 可执行段 + GUI/交互式上下文启用长运行人工确认。
+  - `CompletionEvidence` 复用同一分类逻辑，CMake planner 的 `if test -x '...'; then '.../shape_manager'; ...` 成功运行结果会归为 `compile-run`，不会被 todo ledger 当成 build-only 缺证据失败。
+  - `agentic-loop.ts` 复用 `manual-review-validation`，把自由 ReAct 路径的运行证据统一升级为 `TerminalEvidence.reviewRequired`。
+  - `agentic-history.ts` 优先把 `reviewRequired` 渲染为 blocked/manual review；`web-reliability.ts` 不再把完整 DevSeek 工具协议当作 invalid JSON provider 损坏。
+- **方案选择理由**：对标 Claude Code / Codex，长运行 GUI/交互程序不能被当作普通失败或普通成功；工具协议文本应进入工具解析/反馈环，只有不完整工具块才安全阻断。
+- **主链路验证**：`node --test test/unit/completion-evidence.test.mjs`、`node --test test/unit/terminal-launch-classifier.test.mjs`、`node --test test/unit/web-reliability.test.mjs`、`node --test test/unit/agentic-history.test.mjs`、`node --test test/unit/manual-review-validation.test.mjs`、`node --test test/unit/workflow-compliance.test.mjs`、`npm test --workspace=packages/vscode-extension` 均通过。
+- **回退链路验证**：`manual-review-validation` 仍覆盖编译错误、缺失二进制、cannot-open-display 等硬失败不被误归为人工确认；`ResponseIntegrityChecker` 仍阻断不完整工具块和真实 invalid provider JSON。
+- **结果判据变化**：GUI 程序启动且仍运行时，Working/History/QualityGate 显示“等待人工确认”，自动驾驶不自动接受文件；关闭 GUI 后 exit 0 的真实运行证据完成运行 todo，不再显示失败；完整 `[TOOL:list_dir {...}]` 不触发 `RESPONSE_CORRUPTED:invalid-json-response`。
+- **文档更新**：`CHANGELOG.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：`npm test --workspace=packages/vscode-extension` 通过（67 suite）；后续执行扩展 compile/package/install 本地发布循环。
+
+---
+
 **变更标题**：Phase 11/12 工程完整性与顶级增强共享内核（2026-06-21）
 - **需求归因**：能力缺口 + 架构债务 — Phase 10 完成多入口基础后，工程事实、忽略规则、运行时识别、hooks、skills、subagents、MCP 和 Git/PR 辅助必须进入共享内核，不能继续由 VS Code/CLI 入口各自实现。
 - **影响能力层**：理解、执行、验证、权限、证据、自动化入口、Provider 可观察性。

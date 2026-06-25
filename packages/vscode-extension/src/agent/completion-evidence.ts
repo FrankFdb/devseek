@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import { classifyShellCommandEvidence } from '../tools/shell-command-analysis';
 
 export interface CompletionTodo {
   title: string;
@@ -26,20 +27,7 @@ export type TerminalEvidence = {
 };
 
 export function classifyTerminalEvidenceCommand(command: string): TerminalEvidenceKind {
-  const c = command.trim();
-  const lower = c.toLowerCase();
-  const compileLike = /\b(?:g\+\+|gcc|clang\+\+|clang|cmake|make|ninja)\b/.test(lower)
-    || /\b(?:npm|pnpm|yarn|bun)\s+run\s+(?:build|compile)\b/.test(lower)
-    || /\bcargo\s+build\b|\bgo\s+build\b|\bdotnet\s+build\b/.test(lower);
-  const testLike = /\b(?:npm|pnpm|yarn|bun)\s+(?:test|run\s+test)\b/.test(lower)
-    || /\b(?:pytest|go\s+test|cargo\s+test|dotnet\s+test|ctest)\b/.test(lower);
-  const runLike = /(?:^|[;&|]\s*)(?:\.\/|\/)[^\s;&|]+/.test(c)
-    || /\b(?:python3?|node|java|cargo\s+run|go\s+run|dotnet\s+run)\b/.test(lower);
-  if (compileLike && runLike) return 'compile-run';
-  if (testLike) return 'test';
-  if (runLike) return 'run';
-  if (compileLike) return 'compile';
-  return 'other';
+  return classifyShellCommandEvidence(command) as TerminalEvidenceKind;
 }
 
 const CODE_FILE_EXTENSIONS = new Set([

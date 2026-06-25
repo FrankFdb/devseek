@@ -6,6 +6,26 @@
 
 ## [Unreleased] — 2026-06-19
 
+### [BUG FIX] Agentic GUI 运行验证与工具协议误判修复
+
+- 修复 `shape_manager` 这类 X11/GUI 程序已弹窗运行后，DevSeek 仍卡在 `运行 shape_manager` 或把验证标为失败的问题：终端执行对图形/交互式长运行命令返回 `reviewRequired` 证据，自由 ReAct 路径会收口为“已执行，等待人工确认”。
+- 修复自由 Agentic 路径未复用两阶段 Agent 的人工视觉确认语义：超时/长运行的 X11、OpenGL、GLFW、SDL、Qt 等运行证据会进入 `manualReviewRequired`，自动驾驶不再自动接受待确认文件。
+- 修复历史 QualityGate 对 `reviewRequired` 证据的优先级：窗口效果待人工确认显示为 blocked/manual review，不再被 `exitCode=-1` 或旧失败证据渲染成 fail。
+- 修复 DeepSeek Web 响应完整性检查误把完整 `[TOOL:list_dir {...}]` 工具协议当作 invalid JSON provider 损坏的问题；不完整工具块仍会被安全阻断。
+- 修复 CMake planner 真实运行命令中 `if test -x '...'; then '.../shape_manager'; ...` 的带引号可执行段未被识别为 `compile-run` 的问题；关闭 GUI 窗口后 exit 0 不再被任务 ledger 判为运行验证失败。
+- 新增共享 shell 命令分析边界，GUI 长运行人工确认分类和 completion evidence 归类复用同一套 runtime executable 解析，避免权限路径、Agent 路径和历史证据互相漂移。
+
+验证：
+- `node --test test/unit/completion-evidence.test.mjs` 通过。
+- `node --test test/unit/terminal-launch-classifier.test.mjs` 通过。
+- `node --test test/unit/web-reliability.test.mjs` 通过。
+- `node --test test/unit/agentic-history.test.mjs` 通过。
+- `node --test test/unit/manual-review-validation.test.mjs` 通过。
+- `node --test test/unit/agent-loop-task-state.test.mjs` 通过。
+- `node --test test/unit/agent-autopilot-policy.test.mjs` 通过。
+- `node --test test/unit/workflow-compliance.test.mjs` 通过。
+- `npm test --workspace=packages/vscode-extension` 通过，67 个 suite 全部通过。
+
 ### Phase 11/12 工程完整性与顶级增强共享内核
 
 - 新增 `packages/shared/src/engineering-context.ts`，提供工程上下文、忽略/敏感路径、轻量 repo index、环境识别、语言运行时矩阵、依赖审批、文档 grounding、预算估算、冲突检测、预览计划、多 root 选择和 replay case 服务。

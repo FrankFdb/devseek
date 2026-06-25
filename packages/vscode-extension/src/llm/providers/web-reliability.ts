@@ -34,7 +34,7 @@ export class ResponseIntegrityChecker {
     if (hasIncompleteToolBlock(trimmed)) {
       return result('incomplete-tool-block', 'Tool block is incomplete; response must not enter tool normalization.', false);
     }
-    if (looksLikeWholeJson(trimmed) && !canParseJson(trimmed)) {
+    if (looksLikeWholeJson(trimmed) && !canParseJson(trimmed) && !looksLikeToolProtocolPayload(trimmed)) {
       return result('invalid-json-response', 'Whole response looks like JSON but cannot be parsed.', false);
     }
     return result('ok', 'Response integrity checks passed.', true);
@@ -166,6 +166,13 @@ function hasIncompleteToolBlock(text: string): boolean {
 
 function looksLikeWholeJson(text: string): boolean {
   return (text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'));
+}
+
+function looksLikeToolProtocolPayload(text: string): boolean {
+  if (/\[TOOL:[A-Za-z_]\w*\s+\{/i.test(text)) return true;
+  if (/(?:^|\n)\s*(?:Calling|Call|调用)[ \t]*:?(?:[ \t]+tool)?[ \t]*\[?`?[A-Za-z_]\w*`?\]?/i.test(text)) return true;
+  return /"(?:tool|name|function)"\s*:\s*"(?:read_file|grep_search|file_search|semantic_search|list_dir|get_errors|run_terminal|memory_write|get_changed_files|create_directory|fetch_webpage|vscode_listCodeUsages|run_vscode_command|create_file|write_file|replace_file|manage_todo_list|task_complete|mcp__[^"]+)"/i.test(text)
+    && /"(?:arguments|input|parameters|path|filePath|command|todoList|summary|content)"\s*:/i.test(text);
 }
 
 function canParseJson(text: string): boolean {

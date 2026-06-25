@@ -33,6 +33,7 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const {
+  classifyTerminalEvidenceCommand,
   coalesceWrittenFileEvidence,
   describeBlockingTerminalFailure,
   getBlockingTerminalFailure,
@@ -100,6 +101,26 @@ test('completion evidence: existence-only read-only checks can complete with tes
   assert.equal(requiresReadEvidence(inspectPrompt), true);
   assert.equal(requiresFileContentReadEvidence(inspectPrompt), false);
   assert.deepEqual(getMissingCompletionEvidence(inspectPrompt, [], [], testEvidence, []), []);
+});
+
+test('completion evidence: quoted CMake planner run command is compile-run evidence', () => {
+  const command = [
+    "cmake -S '/home/ff/work/devseek_netai/code/shape_manager' -B '/home/ff/work/devseek_netai/code/shape_manager/.devseek-build'",
+    "cmake --build '/home/ff/work/devseek_netai/code/shape_manager/.devseek-build'",
+    "if test -x '/home/ff/work/devseek_netai/code/shape_manager/.devseek-build/shape_manager'; then '/home/ff/work/devseek_netai/code/shape_manager/.devseek-build/shape_manager'; else ctest --test-dir '/home/ff/work/devseek_netai/code/shape_manager/.devseek-build' --output-on-failure; fi",
+  ].join(' && ');
+  const kind = classifyTerminalEvidenceCommand(command);
+
+  assert.equal(kind, 'compile-run');
+  assert.deepEqual(
+    getMissingCompletionEvidence(
+      '编译并运行 shape_manager 验证 X11 图形显示效果',
+      [],
+      [],
+      [{ command, kind, ok: true, exitCode: 0 }],
+    ),
+    [],
+  );
 });
 
 test('completion evidence: common Chinese implementation wording requires code evidence', () => {

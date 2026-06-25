@@ -26,7 +26,7 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { buildAgenticHistoryText } = req(bundlePath);
+const { buildAgenticHistoryText, buildAgenticQualityGateForHistory } = req(bundlePath);
 
 test('Agentic history: free loop path must not persist thin one-line summaries', () => {
   const extensionSource = readFileSync(path.join(rootDir, 'src/extension.ts'), 'utf8');
@@ -124,6 +124,50 @@ test('Agentic history: QualityGate records risks, alternatives, and required act
   assert.match(text, /替代检查/);
   assert.match(text, /待处理事项/);
   assert.match(text, /运行自动验证 \/ QualityGate/);
+});
+
+test('Agentic history: visual manual review evidence is a blocked QualityGate, not a failed one', () => {
+  const terminalEvidence = [
+    {
+      command: 'cmake --build /workspace/code/shape_manager/.devseek-build && /workspace/code/shape_manager/.devseek-build/shape_manager',
+      kind: 'compile-run',
+      ok: true,
+      exitCode: -1,
+      detail: '图形窗口效果需要人工确认。',
+      reviewRequired: true,
+    },
+  ];
+  const qualityGate = buildAgenticQualityGateForHistory({
+    writtenFiles: [],
+    terminalEvidence,
+  });
+  const text = buildAgenticHistoryText({
+    userPrompt: '/workspace/code/shape_manager 优化图形描画，完成后编译执行看效果',
+    roundCount: 2,
+    completed: true,
+    summary: '程序已启动，等待人工确认窗口效果。',
+    todos: [
+      { id: 1, title: '编译并运行 shape_manager 验证 X11 图形显示', status: 'completed' },
+    ],
+    writtenFiles: [
+      {
+        path: '/workspace/code/shape_manager/CMakeLists.txt',
+        basename: 'CMakeLists.txt',
+        linesAdded: 1,
+        linesRemoved: 0,
+        action: 'modify',
+      },
+    ],
+    terminalEvidence,
+    qualityGate,
+    workspaceRoot: '/workspace',
+  });
+
+  assert.equal(qualityGate.status, 'blocked');
+  assert.match(text, /QualityGate/);
+  assert.match(text, /<code>blocked<\/code>/);
+  assert.match(text, /图形窗口效果需要人工确认/);
+  assert.doesNotMatch(text, /<code>fail<\/code>/);
 });
 
 test('Agent history: restored summary can preserve failed task progress and evidence', () => {

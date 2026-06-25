@@ -213,6 +213,27 @@ test('task todo ledger: compile-run terminal evidence completes a run task', () 
   assert.equal(settled.todos[0].status, 'completed');
 });
 
+test('task todo ledger: successful runtime evidence is completion evidence without model prose', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'shape_manager', 'analyze', '使用 run_terminal 执行 cmake 编译并运行程序验证 X11 图形显示'),
+  ]);
+
+  ledger.startTask(0);
+  const settled = ledger.settleTask(0, {
+    action: 'analyze',
+    terminalEvidence: [{
+      command: "cmake -S '/workspace/code/shape_manager' -B '/workspace/code/shape_manager/.devseek-build' && cmake --build '/workspace/code/shape_manager/.devseek-build' && if test -x '/workspace/code/shape_manager/.devseek-build/shape_manager'; then '/workspace/code/shape_manager/.devseek-build/shape_manager'; else ctest --test-dir '/workspace/code/shape_manager/.devseek-build' --output-on-failure; fi",
+      kind: 'compile-run',
+      ok: true,
+      exitCode: 0,
+    }],
+  });
+
+  assert.equal(settled.completed, true);
+  assert.equal(settled.failed, false);
+  assert.equal(settled.todos[0].status, 'completed');
+});
+
 function task(id, file, action, desc) {
   return { id, file, action, desc, absPath: `/tmp/${file}` };
 }

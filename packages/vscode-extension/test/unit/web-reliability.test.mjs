@@ -32,6 +32,23 @@ test('ResponseIntegrityChecker: blocks truncated markdown and tool blocks', () =
   assert.equal(checker.check('[TOOL:write_file {"path":"a.ts","content":"x"').status, 'incomplete-tool-block');
 });
 
+test('ResponseIntegrityChecker: does not treat complete DevSeek tool protocol as invalid provider JSON', () => {
+  const checker = new ResponseIntegrityChecker();
+
+  assert.equal(
+    checker.check('[TOOL:list_dir {"path":"/workspace/code/shape_manager"}]').safeToExecute,
+    true,
+  );
+  assert.equal(
+    checker.check('[{"tool":"list_dir","arguments":{"path":"/workspace/code/shape_manager",}}]').safeToExecute,
+    true,
+  );
+  assert.equal(
+    checker.check('{"choices":[{"message":}],"id":"x"}').status,
+    'invalid-json-response',
+  );
+});
+
 test('StreamWatchdog: reports stalled stream after idle threshold', () => {
   const watchdog = new StreamWatchdog(100);
   watchdog.start(1_000);

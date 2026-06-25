@@ -923,6 +923,22 @@ async function executeTask(
         if (loopRes.terminalEvidence?.length) {
           taskTerminalEvidence.push(...loopRes.terminalEvidence);
         }
+        const terminalReview = findLatestManualReviewTerminalEvidence(taskTerminalEvidence);
+        if (terminalReview) {
+          const detail = terminalReview.detail || '图形或交互式程序已启动，运行效果需要人工确认。';
+          await callbacks.onAgentStatus({
+            type: 'agentStatus', phase: 'execute',
+            taskId: task.id, taskFile: basename, taskAction: task.action,
+            taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
+            state: 'completed', title: '程序已启动，等待人工确认',
+            detail,
+          });
+          return withTaskTerminalEvidence({
+            applied: false,
+            raw: analyzeRaw || detail,
+            taskComplete: true,
+          }, taskTerminalEvidence);
+        }
         const terminalFailure = findBlockingTerminalFailureEvidence(taskTerminalEvidence);
         if (loopRes.taskComplete) {
           if (terminalFailure) {
@@ -1956,9 +1972,12 @@ export async function runAgentLoop(
     }
   }
   const validationFailed = validationOutcome ? !validationOutcome.ok : false;
+  const manualReviewTerminal = findLatestManualReviewTerminalEvidence(allTerminalEvidence);
   const manualReviewReason = validationOutcome?.reviewRequired
     ? (validationOutcome.reviewReason || validationOutcome.detail || '需要人工确认运行效果。')
-    : undefined;
+    : manualReviewTerminal
+      ? (manualReviewTerminal.detail || '需要人工确认运行效果。')
+      : undefined;
   if (validationFailed && callbacks.onTodoUpdate && tasks.length > 0) {
     await callbacks.onTodoUpdate(taskTodoLedger.markValidationFailure());
   }
@@ -2046,6 +2065,11 @@ function classifyTaskTerminalManualReview(
       }
       : item),
   };
+}
+
+function findLatestManualReviewTerminalEvidence(evidence: TerminalEvidence[] | undefined): TerminalEvidence | undefined {
+  const latest = evidence?.[evidence.length - 1];
+  return latest?.reviewRequired ? latest : undefined;
 }
 
 function buildAgentLoopHistoryFailedReason(input: {

@@ -138,7 +138,13 @@ function hasTaskCompletionEvidence(evidence: TaskEvidence): boolean {
   if (!isReadOnlyAgentTaskAction(evidence.action)) {
     return Boolean(evidence.applied && evidence.path);
   }
-  return Boolean(evidence.raw?.trim() || evidence.taskComplete);
+  return Boolean(evidence.raw?.trim() || evidence.taskComplete || hasSuccessfulTerminalCompletionEvidence(evidence.terminalEvidence));
+}
+
+function hasSuccessfulTerminalCompletionEvidence(evidence: TerminalEvidence[] | undefined): boolean {
+  return Boolean(evidence?.some(item =>
+    item.ok && (item.kind === 'run' || item.kind === 'test' || item.kind === 'compile-run'),
+  ));
 }
 
 function buildTaskSettlementFailureDetail(

@@ -12,6 +12,18 @@
 
 ## [Unreleased] — 2026-06-03
 
+### [BUG FIX] Agentic GUI 运行验证与工具协议误判修复
+
+- 修复 `shape_manager` X11 图形程序已弹窗运行后，DevSeek 仍停留在 `运行 shape_manager` 或把运行验证标为失败的问题；GUI/交互式长运行命令现在会生成 `reviewRequired` 证据并等待人工确认。
+- 修复自由 ReAct Agentic 路径未返回 `manualReviewRequired` 的问题，自动驾驶会保留待确认文件，不会把窗口效果伪装成全自动通过。
+- 修复历史 QualityGate 把人工确认状态渲染成 fail 的问题。
+- 修复完整 `[TOOL:list_dir {...}]` 工具协议被误判为 `invalid-json-response` Provider 损坏的问题。
+- 修复 CMake planner 真实命令 `if test -x '...'; then '.../shape_manager'; ...` 中带引号可执行段未被识别为运行证据的问题；关闭图形窗口后 exit 0 不再被 todo ledger 判成失败。
+- 抽出共享 shell 命令分析边界，让 GUI 长运行判断和 completion evidence 使用同一套 runtime executable 识别逻辑。
+
+验证：
+- `npm test --workspace=packages/vscode-extension` 通过，67 个 suite 全部通过。
+
 ### Phase 7 历史任务与 DeepSeek Web 异常恢复
 
 - 新增 `TaskCheckpointStore`、`TaskHistoryStore`、`TaskTimelineService`、`ResumeContextBuilder`、`ProviderRecoveryService` 和 `IdempotencyGuard`，把任务恢复事实从聊天历史与扩展入口中拆出。
