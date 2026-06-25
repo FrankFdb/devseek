@@ -116,7 +116,9 @@ export function shouldUseAgentMode(
   if (intent.mode === 'smalltalk' || intent.mode === 'qa') return false;
 
   if (intent.mode === 'inspect' || intent.mode === 'plan') {
-    return files.length > 0 || intent.signals.includes('explicit-file-path');
+    return files.length > 0
+      || intent.signals.includes('explicit-file-path')
+      || intent.signals.includes('artifact-path-query');
   }
 
   if (intent.kind === 'chat') return false;

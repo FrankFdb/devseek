@@ -15,6 +15,8 @@ const RUN_RE = /(运行|执行|编译|构建|测试|跑一下|验证|启动|调�
 
 const FOLLOW_UP_RUN_RE = /(?:能(?:否)?(?:执行|运行|编译|构建|测试|验证)|看(?:一下|下|看)?(?:执行|运行|编译|构建|测试|验证)?结果|看到(?:执行|运行|编译|构建|测试|验证)?结果|(?:给(?:我)?|输出|展示|显示|提供|返回).{0,12}(?:执行|运行|编译|构建|测试|验证)?结果|(?:执行|运行|编译|构建|测试|验证|跑)(?:一下|下|一遍|一次)?(?:看看|看结果)|(?:执行|运行|编译|构建|测试|验证|跑).{0,8}结果|(?:show|see|view).{0,20}(?:result|output)|(?:can|could).{0,20}(?:run|execute|compile|build|test|verify))/i;
 
+const ARTIFACT_PATH_QUERY_RE = /(?:(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物).{0,18}(?:在哪|哪里|路径|位置|path|where)|(?:在哪|哪里|路径|位置|path|where).{0,18}(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物))/i;
+
 const PLAN_RE = /(方案|计划|设计|架构|怎么改|如何改|重构计划|实施步骤|roadmap|plan|design|architecture|approach)/i;
 
 const EXPLICIT_PLAN_RE = /(方案|计划|架构|怎么改|如何改|重构计划|实施步骤|roadmap|plan|architecture|approach)/i;
@@ -115,6 +117,19 @@ export function classifyIntent(prompt: string): IntentClassification {
       hasPath ? ['planning-request', 'explicit-file-path'] : ['planning-request'],
       hasPath ? 'plan-with-file-path' : 'planning-request',
       PLAN_TOOLS,
+    );
+  }
+
+  if (ARTIFACT_PATH_QUERY_RE.test(text)) {
+    const signals = ['artifact-path-query'];
+    if (hasPath) signals.push('explicit-file-path');
+    return baseDecision(
+      'inspect',
+      hasPath ? 0.88 : 0.82,
+      hasPath ? 3 : 2,
+      signals,
+      hasPath ? 'artifact-path-query-with-file-path' : 'artifact-path-query',
+      READ_ONLY_TOOLS,
     );
   }
 

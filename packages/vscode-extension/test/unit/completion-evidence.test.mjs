@@ -36,6 +36,7 @@ const {
   classifyTerminalEvidenceCommand,
   coalesceWrittenFileEvidence,
   describeBlockingTerminalFailure,
+  getUnsupportedSummaryFileClaims,
   getBlockingTerminalFailure,
   getMissingCompletionEvidence,
   isFileContentTerminalEvidenceCommand,
@@ -235,6 +236,41 @@ test('completion evidence: generic file todos do not turn markdown creation into
         [{ command: 'test -f docs/manual-phase5-smoke.md', kind: 'other', ok: true, exitCode: 0 }],
       ),
       [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('completion evidence: task summary file claims must match written files', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-summary-facts-'));
+  try {
+    const shapeDir = path.join(root, 'code', 'shape_manager');
+    mkdirSync(shapeDir, { recursive: true });
+    const main = path.join(shapeDir, 'main.cpp');
+    const cmake = path.join(shapeDir, 'CMakeLists.txt');
+    writeFileSync(main, 'int main(){return 0;}\n');
+    writeFileSync(cmake, 'add_executable(shape_manager main.cpp)\n');
+
+    const summary = [
+      '已完成 6 个任务：',
+      '✓ 创建 Sphere.h 和 Sphere.cpp（球体3D图形）',
+      '✓ 创建 Cube.h 和 Cube.cpp（立方体3D图形）',
+      '✓ 创建 Pyramid.h 和 Pyramid.cpp（棱锥3D图形）',
+      '✓ 更新 main.cpp 使用三维图形类',
+      '✓ 更新 CMakeLists.txt 添加新源文件',
+    ].join('\n');
+
+    assert.deepEqual(
+      getUnsupportedSummaryFileClaims(
+        summary,
+        [
+          { path: main, basename: 'main.cpp', linesAdded: 1, linesRemoved: 1, action: 'modify' },
+          { path: cmake, basename: 'CMakeLists.txt', linesAdded: 1, linesRemoved: 1, action: 'modify' },
+        ],
+        root,
+      ),
+      ['Sphere.h', 'Sphere.cpp', 'Cube.h', 'Cube.cpp', 'Pyramid.h', 'Pyramid.cpp'],
     );
   } finally {
     rmSync(root, { recursive: true, force: true });

@@ -100,6 +100,18 @@ test('WorkflowService: read-only file existence/content check stays inspect-only
   assert.equal(selected.toolPolicyMode, 'inspect');
 });
 
+test('WorkflowService: executable path question stays inspect-only', () => {
+  const prompt = '可执行文件在哪儿呢？';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: true, prompt });
+
+  assert.equal(intent.mode, 'inspect');
+  assert.ok(intent.signals.includes('artifact-path-query'));
+  assert.equal(selected.kind, 'inspect-agent');
+  assert.equal(selected.state, 'inspect');
+  assert.equal(selected.toolPolicyMode, 'inspect');
+});
+
 test('WorkflowService: explicit file edit stays controlled when agent toggle is off', () => {
   const prompt = '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题';
   const intent = decideChatIntent(prompt);

@@ -20,6 +20,7 @@ import {
   findBlockingTerminalFailureEvidence,
   getBlockingTerminalFailure,
   getMissingCompletionEvidence,
+  getUnsupportedSummaryFileClaims,
   isExplicitlyReadOnlyRequest,
   requiresCommandEvidence,
   requiresFileChangeEvidence,
@@ -299,6 +300,7 @@ export async function runAgenticLoop(
   let latestAutoQualityGate: AgenticHistoryQualityGate | undefined;
   let currentTodos: TodoItem[] = [];
   let lastMissingEvidence: string[] = [];
+  let lastSummaryFactFailures: string[] = [];
   const announcedProseKeys = new Set<string>();
   const allReadEvidencePaths = new Set<string>();
   // Whether the AI has called manage_todo_list yet.
@@ -686,9 +688,24 @@ export async function runAgenticLoop(
     const blockingFailureAfterTools = promptRequiresTools
       ? getBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
       : undefined;
+    const roundSummaryForFactCheck = loopRes.completeSummary !== undefined
+      ? loopRes.completeSummary ?? ''
+      : cleanAgentFinalSummaryForUser(stripToolCallBlocks(text));
+    const summaryFactFailuresAfterTools = roundSummaryForFactCheck
+      ? getUnsupportedSummaryFileClaims(roundSummaryForFactCheck, allWrittenFiles, workspaceRoot)
+      : [];
     lastMissingEvidence = missingAfterTools;
+    lastSummaryFactFailures = summaryFactFailuresAfterTools;
+    if (summaryFactFailuresAfterTools.length > 0) {
+      loopWarnings.push(`【系统反馈】完成文字缺少文件事实证据：${summaryFactFailuresAfterTools.join('、')}。请核对磁盘并补齐真实文件，或修正完成摘要。`);
+    }
 
-    if (!callbacks.signal?.aborted && promptRequiresTools && sawWorkTool && missingAfterTools.length === 0 && !blockingFailureAfterTools) {
+    if (!callbacks.signal?.aborted
+      && promptRequiresTools
+      && sawWorkTool
+      && missingAfterTools.length === 0
+      && !blockingFailureAfterTools
+      && summaryFactFailuresAfterTools.length === 0) {
       if (loopRes.completeSummary !== undefined) {
         completeSummary = loopRes.completeSummary ?? '';
       }
@@ -696,7 +713,7 @@ export async function runAgenticLoop(
     }
 
     if ((loopRes.taskComplete || loopRes.allTodosCompleted)
-      && (missingAfterTools.length > 0 || blockingFailureAfterTools)
+      && (missingAfterTools.length > 0 || blockingFailureAfterTools || summaryFactFailuresAfterTools.length > 0)
       && !callbacks.signal?.aborted) {
       noToolRounds++;
       if (callbacks.onTodoUpdate && currentTodos.length > 0) {
@@ -707,6 +724,8 @@ export async function runAgenticLoop(
       }
       const retryMessage = blockingFailureAfterTools
         ? `${buildTerminalFailureRepairFeedback(blockingFailureAfterTools, missingAfterTools)}${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`
+        : summaryFactFailuresAfterTools.length > 0
+          ? `【系统反馈】不能结束任务。完成摘要声称创建或修改了这些文件，但工作区没有对应写入/存在证据：${summaryFactFailuresAfterTools.join('、')}。请先用 list_dir/read_file 核对，再用 create_file/write_file 补齐或修正摘要；summary 必须只基于真实工具结果。${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`
         : `【系统反馈】不能结束任务。当前仍缺少可验证的${missingAfterTools.join('、')}。请继续调用实际工具完成缺失项：需要读取时用 read_file/list_dir/只读 run_terminal；需要代码时用 create_file/write_file 写入源码；需要验证时用合适的验证命令，文档/配置只需文件存在和内容证据，代码才需要编译/运行/测试。完成后再调用 task_complete，summary 必须只基于真实工具结果。${autoValidationFeedback ? `\n\n${autoValidationFeedback}` : ''}`;
       messages.push({ role: 'user', content: retryMessage });
       totalChars += retryMessage.length;
@@ -775,6 +794,9 @@ export async function runAgenticLoop(
   const finalBlockingFailure = promptRequiresTools
     ? getBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
     : undefined;
+  const finalSummaryFactFailures = completeSummary
+    ? getUnsupportedSummaryFileClaims(completeSummary, allWrittenFiles, workspaceRoot)
+    : lastSummaryFactFailures;
   if (!failedReason && finalBlockingFailure) {
     failedReason = describeBlockingTerminalFailure(finalBlockingFailure);
     if (callbacks.onTodoUpdate && currentTodos.length > 0) {
@@ -789,6 +811,8 @@ export async function runAgenticLoop(
     }
   } else if (!failedReason && lastMissingEvidence.length > 0) {
     failedReason = `实际执行证据不足：缺少${lastMissingEvidence.join('、')}。`;
+  } else if (!failedReason && finalSummaryFactFailures.length > 0) {
+    failedReason = `完成摘要缺少文件事实证据：${finalSummaryFactFailures.join('、')}。`;
   }
   if (!failedReason && !callbacks.signal?.aborted && callbacks.onTodoUpdate && currentTodos.length > 0) {
     currentTodos = currentTodos.map(item => ({ ...item, status: 'completed' as const, __agentState: true }));

@@ -45,6 +45,9 @@ const READ_EVIDENCE_RE = /(?:检查|查看|读取|显示|确认|是否存在|内
 const FILE_CONTENT_EVIDENCE_RE = /(?:(?:显示|查看|读取|输出|打印).{0,8}(?:文件)?内容|(?:read|show|display|print).{0,16}(?:file\s*)?content)/i;
 const READ_ONLY_TERMINAL_EVIDENCE_RE = /\b(?:cat|ls|test|grep|head|tail|sed|wc|stat|file|find)\b/i;
 const FILE_CONTENT_TERMINAL_EVIDENCE_RE = /\b(?:cat|grep|head|tail|sed)\b/i;
+const SUMMARY_FILE_CLAIM_RE = /(?:^|[^\w/.-])((?:[\w.-]+\/)*[\w.-]+(?:\.(?:cpp|cxx|cc|c|hpp|hxx|hh|h|tsx|jsx|mjs|cjs|ts|js|py|java|go|rs|cs|php|rb|swift|kts|kt|scala|html|scss|sass|css|svelte|vue|bash|zsh|sh|json|ya?ml|md|txt|cmake)|\/CMakeLists\.txt|CMakeLists\.txt))/gi;
+const SUMMARY_FILE_CLAIM_POSITIVE_RE = /(?:创建|新建|生成|添加|新增|编写|实现|更新|修改|改造|重构|写入|落地|create|created|add|added|generate|generated|write|wrote|implement|implemented|update|updated|modify|modified|refactor|refactored)/i;
+const SUMMARY_FILE_CLAIM_NEGATIVE_RE = /(?:未|没有|尚未|无法|不能|失败|缺少|不存在|not\s+|no\s+|did\s+not|failed|missing|absent)/i;
 const GENERIC_EVIDENCE_TODO_TITLES = new Set([
   '创建/更新文件',
   '编译/运行并验证结果',
@@ -92,6 +95,86 @@ export function coalesceWrittenFileEvidence(
     });
   }
   return [...byPath.values()];
+}
+
+function normalizeFactPath(value: string): string {
+  return value.replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/\/+/g, '/').replace(/\/$/, '');
+}
+
+function sentenceAround(text: string, start: number, end: number): string {
+  const leftCandidates = ['\n', '。', '；', ';', '!', '！', '?', '？'].map(ch => text.lastIndexOf(ch, start));
+  const left = Math.max(-1, ...leftCandidates) + 1;
+  const rightCandidates = ['\n', '。', '；', ';', '!', '！', '?', '？']
+    .map(ch => text.indexOf(ch, end))
+    .filter(index => index >= 0);
+  const right = rightCandidates.length > 0 ? Math.min(...rightCandidates) : text.length;
+  return text.slice(left, right);
+}
+
+function summaryClaimIsPositive(sentence: string, tokenStartInSentence: number): boolean {
+  if (!SUMMARY_FILE_CLAIM_POSITIVE_RE.test(sentence)) return false;
+  const beforeToken = sentence.slice(Math.max(0, tokenStartInSentence - 16), tokenStartInSentence);
+  return !SUMMARY_FILE_CLAIM_NEGATIVE_RE.test(beforeToken);
+}
+
+export function extractClaimedSummaryFiles(summary: string): string[] {
+  const text = String(summary || '');
+  if (!text.trim()) return [];
+
+  const claimed = new Set<string>();
+  let match: RegExpExecArray | null;
+  SUMMARY_FILE_CLAIM_RE.lastIndex = 0;
+  while ((match = SUMMARY_FILE_CLAIM_RE.exec(text)) !== null) {
+    const rawPath = normalizeFactPath(match[1] || '');
+    if (!rawPath) continue;
+    const tokenStart = match.index + match[0].lastIndexOf(match[1]);
+    const tokenEnd = tokenStart + match[1].length;
+    const sentence = sentenceAround(text, tokenStart, tokenEnd);
+    const sentenceStart = text.lastIndexOf(sentence, tokenStart);
+    const tokenStartInSentence = sentenceStart >= 0 ? tokenStart - sentenceStart : 0;
+    if (!summaryClaimIsPositive(sentence, tokenStartInSentence)) continue;
+    claimed.add(rawPath);
+  }
+  return [...claimed];
+}
+
+function fileClaimHasEvidence(
+  claim: string,
+  writtenFiles: WrittenFileEvidence[],
+  workspaceRoot?: string,
+): boolean {
+  const normalizedClaim = normalizeFactPath(claim);
+  const claimBase = nodePath.posix.basename(normalizedClaim);
+  const written = coalesceWrittenFileEvidence(writtenFiles, workspaceRoot);
+
+  for (const file of written) {
+    const filePath = normalizeFactPath(file.path);
+    const fileBase = nodePath.posix.basename(filePath);
+    if (filePath === normalizedClaim || filePath.endsWith(`/${normalizedClaim}`) || fileBase === claimBase) {
+      try {
+        if (fs.existsSync(file.path)) return true;
+      } catch {
+        return true;
+      }
+    }
+  }
+
+  if (nodePath.isAbsolute(normalizedClaim)) {
+    try { return fs.existsSync(normalizedClaim); } catch { return false; }
+  }
+  if (normalizedClaim.includes('/') && workspaceRoot) {
+    try { return fs.existsSync(nodePath.resolve(workspaceRoot, normalizedClaim)); } catch { return false; }
+  }
+  return false;
+}
+
+export function getUnsupportedSummaryFileClaims(
+  summary: string,
+  writtenFiles: WrittenFileEvidence[],
+  workspaceRoot?: string,
+): string[] {
+  return extractClaimedSummaryFiles(summary)
+    .filter(claim => !fileClaimHasEvidence(claim, writtenFiles, workspaceRoot));
 }
 
 function buildEvidenceText(userPrompt: string, todos: CompletionTodo[]): string {
