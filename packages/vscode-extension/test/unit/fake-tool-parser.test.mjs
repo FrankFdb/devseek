@@ -48,6 +48,30 @@ test('FakeToolParser: parses DeepSeek Calling transcript format', () => {
   assert.equal(tools[0].input.command, 'npm test');
 });
 
+test('FakeToolParser: parses DeepSeek Tool/Arguments transcript format', () => {
+  const text = [
+    '让我先查看当前代码结构和已有实现。',
+    'Tool: list_dirArguments: {"path":"/home/ff/work/devseek_netai/code/shape_manager"}',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'list_dir');
+  assert.deepEqual(tools[0].input, { path: '/home/ff/work/devseek_netai/code/shape_manager' });
+  assert.equal(findFirstToolCallStart(text), text.indexOf('Tool:'));
+  assert.equal(stripToolCallBlocks(text), '让我先查看当前代码结构和已有实现。');
+});
+
+test('FakeToolParser: strips spaced Tool/Arguments terminal transcript', () => {
+  const text = '好的，现在执行编译和运行。 Tool: run_terminal Arguments:{"command":"cmake -S . -B build && cmake --build build","is_background":false}';
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'run_terminal');
+  assert.equal(tools[0].input.command, 'cmake -S . -B build && cmake --build build');
+  assert.equal(stripToolCallBlocks(text), '好的，现在执行编译和运行。');
+});
+
 test('FakeToolParser: parses bash Calling JSON command payload as shell command', () => {
   const text = [
     '我先查找这个文件。',

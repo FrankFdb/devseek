@@ -29,6 +29,14 @@ function makeAnyCallingRegex(): RegExp {
   return /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?([A-Za-z_]\w*)`?\]?)?/gi;
 }
 
+function makeToolArgumentsRegex(): RegExp {
+  const names = [...KNOWN_FAKE_TOOL_NAMES]
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join('|');
+  return new RegExp(`Tool\\s*:\\s*\`?(${names}|mcp__[A-Za-z0-9_]+)\`?\\s*(?:Arguments?|Args|参数)\\s*:\\s*`, 'gi');
+}
+
 function isRegisteredFakeToolName(name: string): boolean {
   return KNOWN_FAKE_TOOL_NAMES.has(name) || name.startsWith('mcp__');
 }
@@ -143,6 +151,67 @@ function stripCallingToolBlocks(text: string): string {
     i = next;
   }
   return out;
+}
+
+function extractToolArgumentsPayload(
+  text: string,
+  name: string,
+  argsStart: number,
+): { tool: FakeTool; end: number } | null {
+  const jsonStart = text.indexOf('{', argsStart);
+  if (jsonStart < 0) return null;
+  const jsonEnd = findToolInputObjectEnd(text, name, jsonStart);
+  if (jsonEnd < 0) return null;
+  const jsonText = text.slice(jsonStart, jsonEnd + 1);
+  try {
+    const parsed = JSON.parse(jsonText) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return { tool: { name, input: parsed as Record<string, unknown> }, end: jsonEnd + 1 };
+    }
+  } catch {
+    const looseInput = parseLooseFileWriteToolInput(name, jsonText);
+    if (looseInput) return { tool: { name, input: looseInput }, end: jsonEnd + 1 };
+  }
+  return null;
+}
+
+function parseToolArgumentsToolCalls(text: string): FakeTool[] {
+  const tools: FakeTool[] = [];
+  const toolRe = makeToolArgumentsRegex();
+  let m: RegExpExecArray | null;
+  while ((m = toolRe.exec(text)) !== null) {
+    const name = m[1];
+    if (!isRegisteredFakeToolName(name)) continue;
+    const extracted = extractToolArgumentsPayload(text, name, toolRe.lastIndex);
+    if (!extracted) continue;
+    tools.push(extracted.tool);
+    toolRe.lastIndex = extracted.end;
+  }
+  return tools;
+}
+
+function stripToolArgumentsBlocks(text: string): string {
+  let out = '';
+  let last = 0;
+  const toolRe = makeToolArgumentsRegex();
+  let m: RegExpExecArray | null;
+  while ((m = toolRe.exec(text)) !== null) {
+    const name = m[1];
+    if (!isRegisteredFakeToolName(name)) continue;
+    const extracted = extractToolArgumentsPayload(text, name, toolRe.lastIndex);
+    if (!extracted) {
+      const tail = text.slice(toolRe.lastIndex).trim();
+      if (!tail || tail.startsWith('{')) {
+        out += text.slice(last, m.index).replace(/[ \t]+$/, '');
+        last = text.length;
+      }
+      break;
+    }
+    out += text.slice(last, m.index).replace(/[ \t]+$/, '');
+    last = extracted.end;
+    toolRe.lastIndex = extracted.end;
+  }
+  return out + text.slice(last);
 }
 
 function lineEndAfter(text: string, index: number): number {
@@ -470,6 +539,11 @@ export function findFirstToolCallStart(text: string): number {
       indexes.push(cm.index);
     }
   }
+  const toolArgsRe = makeToolArgumentsRegex();
+  let tm: RegExpExecArray | null;
+  while ((tm = toolArgsRe.exec(text)) !== null) {
+    if (isRegisteredFakeToolName(tm[1])) indexes.push(tm.index);
+  }
   let searchAt = 0;
   while (searchAt < text.length) {
     const start = findNextJsonStart(text, searchAt);
@@ -545,6 +619,7 @@ export function stripToolCallBlocks(text: string): string {
   const beforeCallingCleanup = result;
   result = stripCallingShellTranscriptBlocks(result);
   result = stripCallingToolBlocks(result);
+  result = stripToolArgumentsBlocks(result);
   removedInternalBlock = removedInternalBlock || result !== beforeCallingCleanup;
 
   const beforeJsonCleanup = result;
@@ -747,6 +822,10 @@ export function parseFakeToolCalls(text: string): FakeTool[] {
         }
       }
     }
+  }
+
+  if (tools.length === 0) {
+    tools.push(...parseToolArgumentsToolCalls(text));
   }
 
   if (tools.length === 0) {
