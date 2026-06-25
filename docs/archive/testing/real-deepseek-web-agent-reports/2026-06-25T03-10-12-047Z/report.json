@@ -1,0 +1,47 @@
+{
+  "ok": true,
+  "runId": "2026-06-25T03-10-12-047Z",
+  "command": "node scripts/devseek-real-deepseek-web-eval.mjs --case RDW6-live-interactive-cli",
+  "caseId": "RDW6-live-interactive-cli",
+  "target": "Real DeepSeek Web coding-agent action test",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "workspaceRoot": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-25T03-10-12-047Z/RDW6-live-interactive-cli",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-10-12-047Z",
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-10-12-047Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-10-12-047Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-10-12-047Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/latest.md",
+  "casesPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-cases.json",
+  "cases": [
+    {
+      "id": "RDW6-live-interactive-cli",
+      "status": "passed",
+      "durationMs": 30575,
+      "output": "HELLO:Ada",
+      "changedFiles": [
+        "src/greeter.py",
+        "devseek.verify.json"
+      ],
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ],
+      "promptPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-10-12-047Z/rdw6-prompt.txt",
+      "rawJsonlPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-10-12-047Z/rdw6-raw-jsonl.txt",
+      "stderrPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-10-12-047Z/rdw6-stderr.txt",
+      "responsePath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-10-12-047Z/rdw6-response.txt",
+      "sourcePath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-10-12-047Z/rdw6-final-greeter.py",
+      "verifyConfigPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-10-12-047Z/rdw6-final-devseek.verify.json"
+    }
+  ],
+  "findings": [],
+  "iterationDecision": [
+    "RDW6-live-interactive-cli passed on the real DeepSeek Web path. Record this run before advancing to the next RDW case."
+  ]
+}

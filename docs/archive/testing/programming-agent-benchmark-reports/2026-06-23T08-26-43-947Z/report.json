@@ -1,0 +1,82 @@
+{
+  "ok": false,
+  "runId": "2026-06-23T08-26-43-947Z",
+  "command": "node scripts/devseek-programming-agent-benchmark.mjs",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "benchmarkWorkspaceRoot": "/home/ff/work/devseek_netai/code/devseek-programming-agent-benchmark/2026-06-23T08-26-43-947Z",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/programming-agent-benchmark/2026-06-23T08-26-43-947Z",
+  "reportPath": "/home/ff/work/devseek_netai/artifacts/programming-agent-benchmark/2026-06-23T08-26-43-947Z/report.json",
+  "testingReportDir": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-23T08-26-43-947Z",
+  "testingJsonReportPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-23T08-26-43-947Z/report.json",
+  "testingMarkdownReportPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-23T08-26-43-947Z/report.md",
+  "caseCatalogPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-cases.json",
+  "target": "Claude Code/Codex baseline coding-agent behavior",
+  "cases": [
+    {
+      "id": "PA0-cli-jsonl-sanity",
+      "status": "passed",
+      "durationMs": 46,
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "chat.completed"
+      ]
+    },
+    {
+      "id": "PA1-create-file-apply-compile",
+      "status": "passed",
+      "durationMs": 555,
+      "file": "src/main.cpp",
+      "output": "PA1_CREATE_FILE_OK"
+    },
+    {
+      "id": "PA2-modify-existing-preserve-behavior",
+      "status": "passed",
+      "durationMs": 924,
+      "file": "src/calc.cpp",
+      "output": "ADD:5\nMUL:6"
+    },
+    {
+      "id": "PA3-test-repair-loop",
+      "status": "passed",
+      "durationMs": 851,
+      "turns": 2,
+      "output": "PA3_REPAIR_OK"
+    },
+    {
+      "id": "PA4-agent-evidence-events",
+      "status": "passed",
+      "durationMs": 337,
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ]
+    },
+    {
+      "id": "PA5-unified-diff-apply",
+      "status": "failed",
+      "durationMs": 355,
+      "error": "AssertionError [ERR_ASSERTION]: DevSeek did not apply the unified diff to the existing source file\n    at unifiedDiffApplyCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:252:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:54:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:540:3)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:545:3"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "caseId": "PA5-unified-diff-apply",
+      "severity": "high",
+      "category": "missing-patch-application",
+      "diagnosis": "DevSeek did not apply a unified diff patch to the existing workspace file.",
+      "evidence": "AssertionError [ERR_ASSERTION]: DevSeek did not apply the unified diff to the existing source file at unifiedDiffApplyCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:252:10) at process.processTicksAndRejections (node:internal/process/task_queues:103:5) at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:54:21) at async main (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:",
+      "nextAction": "Add safe unified diff parsing/application for workspace files, then rerun PA5."
+    }
+  ],
+  "iterationDecision": [
+    "Add unified diff patch application for existing files so DevSeek can handle reviewable incremental edits."
+  ]
+}

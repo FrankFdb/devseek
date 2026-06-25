@@ -1,0 +1,61 @@
+{
+  "ok": true,
+  "runId": "2026-06-25T03-27-18-989Z",
+  "command": "node scripts/devseek-real-deepseek-web-eval.mjs --case RDW9-live-long-task-progress",
+  "caseId": "RDW9-live-long-task-progress",
+  "target": "Real DeepSeek Web coding-agent action test",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "workspaceRoot": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-25T03-27-18-989Z/RDW9-live-long-task-progress",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-27-18-989Z",
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-27-18-989Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-27-18-989Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-27-18-989Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/latest.md",
+  "casesPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-cases.json",
+  "cases": [
+    {
+      "id": "RDW9-live-long-task-progress",
+      "status": "passed",
+      "durationMs": 64362,
+      "output": "RDW9_MEAN:4.0\nRDW9_MEDIAN:4",
+      "changedFiles": [
+        "src/stats.py",
+        "tests/check_stats.py"
+      ],
+      "firstEventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ],
+      "secondEventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ],
+      "firstPromptPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-27-18-989Z/rdw9-turn1-prompt.txt",
+      "secondPromptPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-27-18-989Z/rdw9-turn2-prompt.txt",
+      "firstRawJsonlPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-27-18-989Z/rdw9-turn1-raw-jsonl.txt",
+      "secondRawJsonlPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-27-18-989Z/rdw9-turn2-raw-jsonl.txt",
+      "firstStderrPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-27-18-989Z/rdw9-turn1-stderr.txt",
+      "secondStderrPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-27-18-989Z/rdw9-turn2-stderr.txt",
+      "finalSourcePath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-27-18-989Z/rdw9-final-stats.py",
+      "finalTestPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-27-18-989Z/rdw9-final-check_stats.py",
+      "finalVerifyPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-27-18-989Z/rdw9-final-devseek.verify.json",
+      "snapshotPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-27-18-989Z/rdw9-workspace-snapshot.json"
+    }
+  ],
+  "findings": [],
+  "iterationDecision": [
+    "RDW9-live-long-task-progress passed on the real DeepSeek Web path. Record this run before advancing to the next RDW case."
+  ]
+}

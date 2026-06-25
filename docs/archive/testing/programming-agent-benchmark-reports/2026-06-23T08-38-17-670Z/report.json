@@ -1,0 +1,89 @@
+{
+  "ok": true,
+  "runId": "2026-06-23T08-38-17-670Z",
+  "command": "node scripts/devseek-programming-agent-benchmark.mjs",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "benchmarkWorkspaceRoot": "/home/ff/work/devseek_netai/code/devseek-programming-agent-benchmark/2026-06-23T08-38-17-670Z",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/programming-agent-benchmark/2026-06-23T08-38-17-670Z",
+  "reportPath": "/home/ff/work/devseek_netai/artifacts/programming-agent-benchmark/2026-06-23T08-38-17-670Z/report.json",
+  "testingReportDir": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-23T08-38-17-670Z",
+  "testingJsonReportPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-23T08-38-17-670Z/report.json",
+  "testingMarkdownReportPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-23T08-38-17-670Z/report.md",
+  "caseCatalogPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-cases.json",
+  "target": "Claude Code/Codex baseline coding-agent behavior",
+  "cases": [
+    {
+      "id": "PA0-cli-jsonl-sanity",
+      "status": "passed",
+      "durationMs": 38,
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "chat.completed"
+      ]
+    },
+    {
+      "id": "PA1-create-file-apply-compile",
+      "status": "passed",
+      "durationMs": 632,
+      "file": "src/main.cpp",
+      "output": "PA1_CREATE_FILE_OK"
+    },
+    {
+      "id": "PA2-modify-existing-preserve-behavior",
+      "status": "passed",
+      "durationMs": 922,
+      "file": "src/calc.cpp",
+      "output": "ADD:5\nMUL:6"
+    },
+    {
+      "id": "PA3-test-repair-loop",
+      "status": "passed",
+      "durationMs": 916,
+      "turns": 2,
+      "output": "PA3_REPAIR_OK"
+    },
+    {
+      "id": "PA4-agent-evidence-events",
+      "status": "passed",
+      "durationMs": 349,
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ]
+    },
+    {
+      "id": "PA5-unified-diff-apply",
+      "status": "passed",
+      "durationMs": 996,
+      "file": "src/patch_calc.cpp",
+      "output": "ADD:5\nMUL:6\nDIV:2"
+    },
+    {
+      "id": "PA6-project-test-command",
+      "status": "passed",
+      "durationMs": 444,
+      "output": "PA6_PROJECT_TEST_OK",
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ]
+    }
+  ],
+  "findings": [],
+  "iterationDecision": [
+    "Benchmark did not expose a coding-agent gap. Add harder project-edit, verifier, and repair cases before claiming parity."
+  ]
+}

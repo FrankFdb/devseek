@@ -1,0 +1,48 @@
+{
+  "ok": true,
+  "runId": "2026-06-24T08-48-03-729Z",
+  "command": "node scripts/devseek-real-deepseek-web-eval.mjs --case RDW2-live-multifile-project",
+  "caseId": "RDW2-live-multifile-project",
+  "target": "Real DeepSeek Web coding-agent action test",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "workspaceRoot": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-24T08-48-03-729Z/RDW2-live-multifile-project",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-48-03-729Z",
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-48-03-729Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-48-03-729Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-48-03-729Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/latest.md",
+  "casesPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-cases.json",
+  "cases": [
+    {
+      "id": "RDW2-live-multifile-project",
+      "status": "passed",
+      "durationMs": 34151,
+      "output": "MULTI:42",
+      "changedFiles": [
+        "include/math.hpp",
+        "src/math.cpp",
+        "src/main.cpp",
+        "devseek.verify.json"
+      ],
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ],
+      "promptPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-48-03-729Z/rdw2-prompt.txt",
+      "rawJsonlPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-48-03-729Z/rdw2-raw-jsonl.txt",
+      "stderrPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-48-03-729Z/rdw2-stderr.txt",
+      "responsePath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-48-03-729Z/rdw2-response.txt",
+      "sourceArchive": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-48-03-729Z/rdw2-files"
+    }
+  ],
+  "findings": [],
+  "iterationDecision": [
+    "RDW1 passed on the real DeepSeek Web path. Advance to RDW2 only after recording this run."
+  ]
+}

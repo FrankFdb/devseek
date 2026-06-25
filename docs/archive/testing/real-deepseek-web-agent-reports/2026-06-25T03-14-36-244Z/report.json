@@ -1,0 +1,37 @@
+{
+  "ok": false,
+  "runId": "2026-06-25T03-14-36-244Z",
+  "command": "node scripts/devseek-real-deepseek-web-eval.mjs --case RDW8-live-large-context-routing",
+  "caseId": "RDW8-live-large-context-routing",
+  "target": "Real DeepSeek Web coding-agent action test",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "workspaceRoot": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-25T03-14-36-244Z/RDW8-live-large-context-routing",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-14-36-244Z",
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-14-36-244Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-14-36-244Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-14-36-244Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/latest.md",
+  "casesPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-cases.json",
+  "cases": [
+    {
+      "id": "RDW8-live-large-context-routing",
+      "status": "failed",
+      "durationMs": 40854,
+      "error": "AssertionError [ERR_ASSERTION]: unexpected RDW8 changed files: [\"src/__pycache__/calculator.cpython-310.pyc\",\"src/calculator.py\"]\n+ actual - expected\n\n  [\n+   'src/__pycache__/calculator.cpython-310.pyc',\n    'src/calculator.py'\n  ]\n\n    at rdw8LargeContextRouting (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:944:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:56:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:1274:5)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:1281:1"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "caseId": "RDW8-live-large-context-routing",
+      "severity": "medium",
+      "category": "test-case-design-gap",
+      "evidence": "AssertionError [ERR_ASSERTION]: unexpected RDW8 changed files: [\"src/__pycache__/calculator.cpython-310.pyc\",\"src/calculator.py\"] + actual - expected [ + 'src/__pycache__/calculator.cpython-310.pyc', 'src/calculator.py' ] at rdw8LargeContextRouting (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:944:10) at process.processTicksAndRejections (node:internal/process/task_queues:103:5) at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:56:21) at async main (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:1274:5) at async file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eva",
+      "diagnosis": "The case failed in a way that does not cleanly isolate a DevSeek or live-model capability.",
+      "nextAction": "Rewrite the case so the failure can be classified without ambiguity."
+    }
+  ],
+  "iterationDecision": [
+    "Stop at RDW8-live-large-context-routing. Fix or reclassify the exposed live-path failure, then rerun RDW8-live-large-context-routing before advancing."
+  ]
+}

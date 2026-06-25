@@ -1,0 +1,37 @@
+{
+  "ok": false,
+  "runId": "2026-06-24T08-42-40-435Z",
+  "command": "node scripts/devseek-real-deepseek-web-eval.mjs",
+  "caseId": "RDW1-live-modify-existing-single-file",
+  "target": "Real DeepSeek Web coding-agent action test",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "workspaceRoot": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-24T08-42-40-435Z/RDW1-live-modify-existing-single-file",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-42-40-435Z",
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-42-40-435Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-42-40-435Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-42-40-435Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/latest.md",
+  "casesPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-cases.json",
+  "cases": [
+    {
+      "id": "RDW1-live-modify-existing-single-file",
+      "status": "failed",
+      "durationMs": 2328,
+      "error": "Error: RDW1 CLI exited 1. stderr=DevSeek CLI error: Bridge HTTP 500: {\"error\":\"文件附加失败：未找到上传控件（calc.cpp, package.json）\"} stdout={\"type\":\"chat.started\",\"eventId\":\"mqrts7i7-ewinyl\",\"commandId\":\"cmd-mqrts7i6\",\"surface\":\"jsonl\",\"timestamp\":1782290562559,\"prompt\":\"You are running DevSeek real DeepSeek Web test RDW1.\\nThis is a coding-agent action test, similar to Claude Code/Codex behavior.\\nExisting file to modify: code/real-deepseek-web-agent/2026-06-24T08-42-40-435Z/RDW1-live-modify-existing-single-file/src/calc.cpp\\n\\nTask:\\n- Preserve the existing behavior: the program must still print ADD:5.\\n- Add a multiply(int a, int b) function.\\n- Update main so the final program prints exactly two lines:\\nADD:5\\nMUL:6\\n\\nReturn exactly one DevSeek tool call and nothing else.\\nThe tool call must be valid JSON and must use this \n    at rdw1ModifyExistingSingleFile (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:130:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:56:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:391:3)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:395:1"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "caseId": "RDW1-live-modify-existing-single-file",
+      "severity": "high",
+      "category": "real-provider-environment",
+      "evidence": "Error: RDW1 CLI exited 1. stderr=DevSeek CLI error: Bridge HTTP 500: {\"error\":\"文件附加失败：未找到上传控件（calc.cpp, package.json）\"} stdout={\"type\":\"chat.started\",\"eventId\":\"mqrts7i7-ewinyl\",\"commandId\":\"cmd-mqrts7i6\",\"surface\":\"jsonl\",\"timestamp\":1782290562559,\"prompt\":\"You are running DevSeek real DeepSeek Web test RDW1.\\nThis is a coding-agent action test, similar to Claude Code/Codex behavior.\\nExisting file to modify: code/real-deepseek-web-agent/2026-06-24T08-42-40-435Z/RDW1-live-modify-existing-single-file/src/calc.cpp\\n\\nTask:\\n- Preserve the existing behavior: the program must still print ADD:5.\\n- Add a multiply(int a, int b) function.\\n- Update main so the final program prints exactly two line",
+      "diagnosis": "The real Bridge/DeepSeek Web path was unavailable, unauthorized, timed out, or otherwise unstable.",
+      "nextAction": "Verify Bridge login/token/network state, rerun RDW1, and do not change product logic until the environment is confirmed."
+    }
+  ],
+  "iterationDecision": [
+    "Stop at RDW1. Fix or reclassify the exposed live-path failure, then rerun RDW1 before starting RDW2."
+  ]
+}

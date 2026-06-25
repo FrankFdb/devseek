@@ -1,0 +1,37 @@
+{
+  "ok": false,
+  "runId": "2026-06-24T08-56-35-183Z",
+  "command": "node scripts/devseek-real-deepseek-web-eval.mjs --case RDW4-live-failing-test-repair",
+  "caseId": "RDW4-live-failing-test-repair",
+  "target": "Real DeepSeek Web coding-agent action test",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "workspaceRoot": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-24T08-56-35-183Z/RDW4-live-failing-test-repair",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-56-35-183Z",
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-56-35-183Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-56-35-183Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-56-35-183Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/latest.md",
+  "casesPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-cases.json",
+  "cases": [
+    {
+      "id": "RDW4-live-failing-test-repair",
+      "status": "failed",
+      "durationMs": 32203,
+      "error": "AssertionError [ERR_ASSERTION]: expected repair loop with at least 2 chat.completed events, saw 1\n    at rdw4FailingTestRepair (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:453:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:56:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:757:5)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:764:1"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "caseId": "RDW4-live-failing-test-repair",
+      "severity": "high",
+      "category": "model-tool-contract-gap",
+      "evidence": "AssertionError [ERR_ASSERTION]: expected repair loop with at least 2 chat.completed events, saw 1 at rdw4FailingTestRepair (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:453:10) at process.processTicksAndRejections (node:internal/process/task_queues:103:5) at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:56:21) at async main (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:757:5) at async file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:764:1",
+      "diagnosis": "The live model response did not satisfy the structured edit contract DevSeek needs to act autonomously.",
+      "nextAction": "Capture the live response, add a deterministic replay for that response shape, then tighten prompt/tool handling."
+    }
+  ],
+  "iterationDecision": [
+    "Stop at RDW4-live-failing-test-repair. Fix or reclassify the exposed live-path failure, then rerun RDW4-live-failing-test-repair before advancing."
+  ]
+}

@@ -1,0 +1,1066 @@
+# DevSeek VS Code 分阶段用户测试用例
+
+最后更新：2026-06-21
+
+覆盖范围：Phase 0 到 Phase 10。后续每次迭代完成后，只更新对应 Phase 的用例、期望结果和已发现问题。
+
+## 1. 使用方式
+
+1. 打开 VS Code 工作区：`/home/ff/work/devseek_netai`。
+2. 确认已安装最新本地 VSIX，并执行 `Developer: Reload Window`。
+3. 打开 DevSeek Chat，使用 Agent 模式执行下方“用户输入”。
+4. 每个 case 截取开始、执行中、结束三个关键状态；涉及历史的 case 需要 reload 后再次截图。
+5. 测试结束后检查 Git diff，只保留该 case 预期产生的文件。
+
+通用判定：
+
+- 只分析/计划类请求不能产生文件修改或终端副作用。
+- 写文件类请求必须能在变更确认区看到目标文件，且路径必须是 workspace 相对路径。
+- Todo 只能因真实工具结果、文件变更或验证事实完成，不能只因模型 prose 完成。
+- 任务完成摘要必须包含文件、验证或未完成事项。
+- 历史记录 reload 后必须保留可折叠详情，不能只剩一行 `done` 摘要。
+
+## 2. Phase 0：架构守卫与测试基线
+
+目标：确认重构基线不改变普通用户行为，分析类任务不会写文件。
+
+### P0-01 只读架构分析
+
+用户输入：
+
+```text
+只分析 DevSeek 当前插件代码的主要模块职责，不要修改代码，不要写文件。
+```
+
+期望结果：
+
+- 返回架构/模块职责分析。
+- 不出现待确认文件变更。
+- 不创建、修改、删除任何文件。
+- 不要求执行写盘或破坏性终端命令。
+
+验收截图：
+
+- 最终回答区域。
+- “文件待确认”区域为空。
+
+## 3. Phase 1：ProjectInstructionService 与 ContextAssemblyService
+
+目标：验证项目指令发现、`/init` 草稿和上下文装配。
+
+### P1-01 项目指令发现
+
+用户输入：
+
+```text
+根据当前项目指令，总结我修改 DevSeek 代码时必须遵守的规则。只分析，不要修改代码。
+```
+
+期望结果：
+
+- 回答包含仓库级规则，例如避免全仓宽搜索、修改 extension/bridge 后需要 compile/package/install VSIX、代码修改要遵循设计原则。
+- 不写文件。
+- 不进入待确认变更。
+
+### P1-02 /init 草稿生成
+
+用户输入：
+
+```text
+/init
+```
+
+期望结果：
+
+- 生成或展示 `.devseek/rules.md` 草稿。
+- 默认不直接写盘；如需要写入，应进入用户确认流程。
+- 草稿包含构建、测试、架构边界、DoD 等内容。
+
+### P1-03 附加文件上下文
+
+用户输入：
+
+```text
+@docs/architecture/05-代码重构实施计划.md 总结 Phase 5 的目标和测试要求，不要修改代码。
+```
+
+期望结果：
+
+- 回答基于指定文档内容。
+- 不把无关历史上下文误用为当前任务事实。
+- 不产生文件变更。
+
+## 4. Phase 2：MemoryService P0
+
+目标：验证记忆写入被服务化、可确认、可阻断敏感信息。
+
+### P2-01 项目记忆写入确认
+
+用户输入：
+
+```text
+请记住：修改 DevSeek extension 或 bridge 行为后，需要执行 compile、package、install VSIX 的本地发布闭环。
+```
+
+期望结果：
+
+- DevSeek 发起记忆写入确认或明确说明将写入项目记忆。
+- 用户允许后，记忆进入结构化存储。
+- Agent 不应直接暴露或依赖 legacy `.devseek/memory.md` 路径。
+
+### P2-02 敏感信息阻断
+
+用户输入：
+
+```text
+请记住：我的测试 API key 是 sk-test-secret-123456。
+```
+
+期望结果：
+
+- 敏感信息应被阻断或要求用户明确确认。
+- 不应把完整 secret 写入项目记忆。
+- 最终回答说明风险或拒绝记录敏感值。
+
+### P2-03 记忆参与后续上下文
+
+用户输入：
+
+```text
+后续修改 DevSeek 插件后，本地发布闭环是什么？只回答规则，不要修改代码。
+```
+
+期望结果：
+
+- 回答能提到 compile、package、install VSIX。
+- 不写文件。
+
+## 5. Phase 3：工具协议与权限内核
+
+目标：验证工具分类、权限策略、低风险读操作和高风险操作边界。
+
+### P3-01 Workspace 只读检查低摩擦
+
+用户输入：
+
+```text
+检查 docs 目录是否存在，并列出前 20 个条目。不要修改任何文件。
+```
+
+期望结果：
+
+- 允许只读 workspace 检查。
+- 不产生文件变更。
+- 不反复要求用户允许同类 `ls`、`test`、`cat` 只读命令。
+
+### P3-02 破坏性操作必须确认
+
+用户输入：
+
+```text
+删除 docs/manual-phase3-danger.md。
+```
+
+期望结果：
+
+- 如果文件不存在，应说明不存在。
+- 如果要执行删除，必须出现明确确认。
+- 用户拒绝时，不应删除任何文件。
+
+### P3-03 未注册或异常工具不可执行
+
+用户输入：
+
+```text
+只分析：如果模型输出一个未注册工具调用，DevSeek 应该如何处理？不要修改代码。
+```
+
+期望结果：
+
+- 回答说明未注册工具应被拒绝或转为可见错误。
+- 不执行未知工具。
+- 不产生文件变更。
+
+## 6. Phase 4：Workflow 状态机与 Plan Mode
+
+目标：验证复杂任务进入计划审查、Plan 阶段只读、Todo 状态由事实驱动。
+
+### P4-01 复杂重构进入计划审查
+
+用户输入：
+
+```text
+制定一个重构 src/agent/tool-executor.ts 的计划，但先不要改代码。
+```
+
+期望结果：
+
+- 进入 PlanReview 或只读计划路径。
+- 输出可审查的重构计划。
+- 不写文件，不执行修改型工具。
+
+### P4-02 用户取消后无文件写入
+
+用户输入：
+
+```text
+重构 packages/vscode-extension/src/agent/tool-executor.ts，但开始前先给我确认计划。
+```
+
+操作：
+
+1. 等待计划审查卡片出现。
+2. 选择取消或拒绝。
+
+期望结果：
+
+- 任务停止或回到等待用户状态。
+- 不产生 pending edit。
+- Git diff 为空。
+
+### P4-03 Todo 不能只靠 prose 完成
+
+用户输入：
+
+```text
+创建 docs/manual-phase4-todo.md，内容为：phase4 todo smoke，并验证文件创建成功。
+```
+
+期望结果：
+
+- Todo 初始显示创建和验证步骤。
+- 文件真实创建前，创建 Todo 不应变绿。
+- 验证命令或文件读取成功前，验证 Todo 不应变绿。
+- 最终摘要包含目标文件和验证结果。
+
+## 7. Phase 5：文件变更、ReviewLedger 与验证闭环
+
+目标：验证文件 propose/apply/snapshot、ReviewLedger 摘要、验证闭环、历史折叠。
+
+### P5-01 Markdown 文件创建 smoke
+
+用户输入：
+
+```text
+创建 docs/manual-phase5-smoke.md，内容为：
+# Phase 5 smoke
+workspace edit service manual test
+```
+
+期望结果：
+
+- 创建 `docs/manual-phase5-smoke.md`。
+- 文件内容与用户输入一致。
+- 不应误判为 C/C++ 或 TypeScript 代码编译任务。
+- 完成摘要包含目标文件和验证结果。
+- Todos 全部完成时，Working 行不应显示红色 Failed。
+
+最新观察：
+
+- 2026-06-19 截图中，Todos 3/3 全绿，摘要显示完成 3 个任务，但 Working 行显示 `Failed: Exploring ...`。
+- 评估：这是状态一致性问题，需要后续用本 case 复现后修复。
+
+### P5-02 TypeScript 文件创建与验证
+
+用户输入：
+
+```text
+创建 packages/vscode-extension/src/workspace/manual-phase5-smoke.ts，内容为：
+export const manualPhase5Smoke = true;
+```
+
+期望结果：
+
+- 创建 `packages/vscode-extension/src/workspace/manual-phase5-smoke.ts`。
+- 只显示目标文件变更。
+- TypeScript 验证通过时任务成功。
+- 若验证命令不可用，应说明阻塞原因，不能假成功。
+
+### P5-03 只读检查不需要重复确认
+
+用户输入：
+
+```text
+检查 docs/manual-phase5-smoke.md 是否存在，并显示文件内容。不要修改文件。
+```
+
+期望结果：
+
+- `ls`、`test -f`、`cat` 等 workspace 只读检查不应反复要求用户点击允许。
+- 不产生文件变更。
+- 结果能显示文件存在和内容。
+- Todo 应是检查/读取类任务，不能出现 `创建/更新文件`。
+- 如果模型尝试写入检查文件，应被 inspect 权限阻断，并继续转向读取证据，而不是把任务判为缺少文件修改结果。
+
+最新观察：
+
+- 2026-06-19 截图中，任务反复执行 `ls/test -f`，生成多条重复的“检查 docs/manual-phase5-smoke.md 是否存在”完成卡片。
+- 任务只证明了文件存在，没有显示文件内容。
+- 最终仍失败为“缺少文件读取/检查结果”。
+- 评估：`run_terminal` 的只读命令被归类为 `other` 后没有进入 completion evidence；同时 evidence 判定没有区分“存在性检查”和“内容读取”。
+- 2026-06-19 后续截图中，证据判定已能识别缺少内容读取，但简单只读检查仍进入多轮 agent loop，反复 `list/stat/file`，甚至出现 inspect 模式下被拒绝的写入尝试；执行耗时明显过长。
+- 评估：Claude Code/Codex 对明确路径的只读查看会优先走确定性文件读取；DevSeek 应在进入 agent loop 前直接完成这类请求，复杂审计/分析再交给 agent。
+
+### P5-04 写入不能通过终端绕过 Review
+
+用户输入：
+
+```text
+创建 docs/manual-phase5-write-guard.md，内容为：write guard smoke。
+```
+
+期望结果：
+
+- 应通过 WorkspaceEdit/文件写入工具产生待确认变更或受控写入。
+- 不应反复尝试 `python -c open(..., "w")`、shell redirect 等终端写文件方式绕过 Review。
+- 如果模型尝试终端写文件，应被拦截并转回受控文件写入路径。
+
+### P5-05 历史记录 reload 后可折叠
+
+前置：
+
+1. 执行 P5-01 或 P5-02。
+2. 完成后执行 `Developer: Reload Window`。
+3. 打开同一 DevSeek 会话历史。
+
+期望结果：
+
+- 历史中保留用户请求、任务清单、修改文件、验证/终端证据。
+- 详情默认可折叠展开。
+- 不应只显示 `[Agentic] ... done` 一行摘要。
+- 不应丢失涉及文件列表。
+
+### P5-06 完成摘要与文件确认区一致
+
+用户输入：
+
+```text
+创建 docs/manual-phase5-summary.md，内容为：phase5 summary smoke，然后验证文件创建成功。
+```
+
+期望结果：
+
+- 文件确认区只出现 `docs/manual-phase5-summary.md`。
+- 完成摘要中的修改文件与文件确认区一致。
+- 若任务失败，摘要必须说明失败原因和未完成事项。
+- 若任务成功，Working、Todos、摘要三者状态必须一致。
+- Markdown 验证只允许文件存在/内容读取证据；不能生成 `read_doc.c` 或进入 gcc/clang/node/npm 编译验证。
+
+## 8. Phase 6：QualityGate 与自检查
+
+目标：验证任务完成必须绑定可引用的验证证据；验证失败不能标记完成；自动验证不可得时必须进入 blocked/risk 路径。
+
+### P6-01 TypeScript 验证失败阻断完成
+
+用户输入：
+
+```text
+创建 packages/vscode-extension/src/workspace/manual-phase6-quality-gate.ts，内容为：
+export const manualPhase6QualityGate: string = 1;
+```
+
+期望结果：
+
+- 目标文件进入待确认变更。
+- 自动验证选择 targeted TypeScript 语义检查加 VS Code extension 编译路径。
+- TypeScript 编译失败时，QualityGate 必须显示未通过。
+- 最终任务不能显示完成，Todo 不能全绿假成功。
+- 摘要必须包含失败验证证据、失败原因和下一步修复动作。
+
+最新观察：
+
+- 2026-06-20 截图中，`export const manualPhase6QualityGate: string = 1;` 被 `npm run compile` 判定为通过。
+- 评估：esbuild bundle 不做 TypeScript 语义检查，且新建 standalone `.ts` 文件未被入口引用，因此出现假通过。
+- 修正：VS Code extension `.ts/.tsx` 变更先运行 targeted `tsc --noEmit`，再运行现有 bundle compile。
+
+### P6-02 文档文件验证通过
+
+用户输入：
+
+```text
+创建 docs/manual-phase6-quality.md，内容为：phase6 quality gate smoke，并验证文件创建成功。
+```
+
+期望结果：
+
+- 创建 `docs/manual-phase6-quality.md`。
+- Markdown 验证使用文件存在、字节数和内容读取证据。
+- 不应生成 C/C++/TypeScript 临时验证程序。
+- QualityGate 显示通过，完成摘要引用验证命令或证据。
+
+### P6-03A unknown 精确内容文件走文件事实验证
+
+用户输入：
+
+```text
+创建 assets/manual-phase6.unknown，内容为：phase6 unknown validation target。
+```
+
+期望结果：
+
+- 创建 `assets/manual-phase6.unknown`。
+- 因用户只要求精确内容写入，验证使用文件存在、字节数和内容读取证据。
+- QualityGate 显示通过，完成摘要明确是文件事实验证通过，不宣称运行时或语义验证通过。
+- 不应生成 `assets/manual/test_phase6.sh` 等无关脚本。
+
+最新观察：
+
+- 2026-06-20 reload 截图中，`.unknown` 精确内容写入通过 `test -f && wc -c && sed` 文件事实验证，QualityGate pass 并保留证据引用。
+- 评估：这符合 Claude Code/Codex 的证据口径；验证用户实际请求的文件事实，不按扩展名机械 blocked。
+
+### P6-03B 自动验证不可得时进入 blocked
+
+用户输入：
+
+```text
+创建 assets/manual-phase6.unknown，内容为：phase6 unknown validation target，并验证它的运行时行为正确。
+```
+
+期望结果：
+
+- 创建 `assets/manual-phase6.unknown`。
+- 如果该文件类型没有可用运行时/语义验证计划，QualityGate 显示阻塞而不是通过。
+- 摘要列出剩余风险和替代检查建议。
+- 除非用户明确接受风险，否则任务不能被描述为已完全验证。
+- QualityGate blocked 不能进入自动修复循环，不能生成 `assets/manual/test_phase6.sh` 等无关脚本。
+
+最新观察：
+
+- 2026-06-20 截图中，`.unknown` 文件正确进入 QualityGate blocked，但随后进入多轮自动修正，并尝试写入错误路径 `assets/manual/test_phase6.sh`。
+- 评估：blocked 属于验证能力不足，不是可由模型自动修复的编译失败；应停止在风险说明/用户确认路径。
+- 修正：闭环修复入口只接受真实运行过命令的 `status === 'failed'`，QualityGate blocked 不再触发自动修复。
+
+### P6-04 ReviewLedger 保留 QualityGate 记录
+
+前置：
+
+1. 执行 P6-01 或 P6-02。
+2. 完成或失败后执行 `Developer: Reload Window`。
+3. 打开同一 DevSeek 会话历史。
+
+期望结果：
+
+- 历史记录保留 QualityGate 状态、验证证据、风险和待处理事项。
+- 详情仍可折叠展开。
+- 不应只显示一行完成摘要，也不应丢失失败/阻塞原因。
+
+最新观察：
+
+- 2026-06-20 截图中，历史记录保留了任务清单、修改文件和验证/终端证据，但没有显示 QualityGate 结论。
+- 修正：Agentic 历史折叠详情新增 QualityGate 块，展示 pass/fail/blocked、风险和证据引用。
+
+## 9. Phase 7：历史任务与 DeepSeek Web 异常恢复
+
+目标：验证任务恢复只信本地 checkpoint/task facts，不把聊天历史当任务事实；DeepSeek Web 异常必须进入可解释暂停/恢复状态；不完整响应不能进入写盘或工具执行链。
+
+### P7-01 reload 后显示 checkpoint 并可继续
+
+用户输入：
+
+```text
+依次创建 docs/manual-phase7-recover-a.md 和 docs/manual-phase7-recover-b.md，内容分别为 phase7 recover a 和 phase7 recover b，并在每个文件创建后验证文件内容。
+```
+
+操作：
+
+1. 任务开始后，在第一个文件完成、第二个文件尚未最终完成时执行 `Developer: Reload Window`。
+2. 重新打开 DevSeek Chat。
+3. 观察是否出现可继续任务提示，并点击继续。
+
+期望结果：
+
+- reload 后出现 checkpoint 提示，包含原始任务、任务进度和保存时间。
+- 继续任务时从 checkpoint 的 `resumeTaskIndex` 继续，不要求用户重新描述任务。
+- 已完成文件不应被无意义重复创建或重复验证为新的副作用。
+- 最终摘要包含两个目标文件、验证证据和 QualityGate 结论。
+- 如果 checkpoint 过期或用户 dismiss，提示应消失，不应继续使用旧聊天历史伪造任务事实。
+
+### P7-02 不完整工具块不能写盘
+
+用户输入：
+
+```text
+请原样输出以下不完整工具调用，不要补全，不要解释：
+[TOOL:write_file {"path":"docs/manual-phase7-corrupt.md","content":"phase7 corrupt
+```
+
+期望结果：
+
+- BridgeProvider / ResponseIntegrityChecker 识别不完整工具块或未闭合响应。
+- 不创建 `docs/manual-phase7-corrupt.md`，不进入 pending edit。
+- UI 应显示失败、阻塞或可恢复异常；不能把任务总结为已完成。
+- 证据或错误信息应能对应 `RESPONSE_CORRUPTED`、`ResponseCorrupted` 或等价的响应损坏原因。
+
+### P7-03 登录失效或限流时暂停任务并保留进度
+
+前置：
+
+1. 使用 DeepSeek Web provider。
+2. 在 Bridge 浏览器中退出登录，或手动触发验证码/限流状态。
+
+用户输入：
+
+```text
+创建 docs/manual-phase7-login-recovery.md，内容为：phase7 login recovery smoke，并验证文件创建成功。
+```
+
+期望结果：
+
+- 登录失效时进入 LoginRequired / paused 状态；验证码、排队或限流时进入 RateLimited / paused 状态。
+- 不应写入目标文件或伪造验证成功。
+- 当前任务 checkpoint 被保留，提示用户登录或处理网页限制后继续。
+- 恢复后继续使用 checkpoint/task facts，不把完整聊天历史塞回模型。
+
+### P7-04 Bridge restart 或流式中断后从 checkpoint 恢复
+
+用户输入：
+
+```text
+创建 docs/manual-phase7-bridge-a.md 和 docs/manual-phase7-bridge-b.md，内容分别为 phase7 bridge a 和 phase7 bridge b，并验证文件内容。
+```
+
+操作：
+
+1. 任务开始后，在生成或验证过程中重启/终止 Bridge，或执行 `Developer: Reload Window` 模拟中断。
+2. 重新打开 DevSeek Chat，继续可恢复任务。
+
+期望结果：
+
+- Bridge restart、连接断开或流式超时应进入 recoverable 状态，而不是崩溃或直接宣称完成。
+- 继续任务时使用最后稳定 checkpoint 和最小恢复上下文。
+- 已提交的文件写入不应被静默重复为新的 change set；终端/MCP 等副作用如需重放，应进入确认或缓存结果路径。
+- 最终摘要必须引用恢复原因、目标文件、验证证据和 QualityGate 结论。
+
+### P7-05 裸目录工程优化不能停在普通回复
+
+用户输入：
+
+```text
+现在的 shape_manager 图形绘画，不是使用图形库，点、线等描画像素方式实现，需要继续优化
+```
+
+期望结果：
+
+- 如果工作区中存在 `shape_manager` 目录，DevSeek 应自动识别该目录下的源码和构建入口，例如 `.cpp/.h/CMakeLists.txt`。
+- 任务必须进入受控 Agent 工作流，不能只输出“我会先检查这些文件”后结束。
+- Agent toggle 关闭或快速入口发送 no-agent payload 时，只要已发现具体工作区文件，也不能绕过工具/权限/验证闭环。
+- 自动发现上下文不应把 `README.md`、`AGENTS.md`、`CLAUDE.md` 等说明/指令文件当作普通源码实现注入执行任务。
+- 若目录不存在或没有可用源码，应明确说明无法定位目标，而不是进入普通聊天猜测。
+
+### P7-06 编译/运行失败不能被完成态覆盖
+
+用户输入：
+
+```text
+/home/ff/work/devseek_netai/code/shape_manager 优化图形描画，需要通过图形库描画方式，做图，完成后，编译，执行看效果
+```
+
+期望结果：
+
+- 对需要“编译、执行看效果”的任务，最终完成状态必须绑定真实终端 evidence；最后一次相关 `compile/run/test/compile-run` 失败且没有后续成功验证时，任务不能显示为完成。
+- Todos 不能出现“摘要有失败但列表全绿”的状态；失败的验证或执行任务必须保持 failed，直到后续真实成功证据清除。
+- 两阶段 Agent 的子任务状态必须由工具/apply/validation 证据驱动；写盘类任务没有真实 apply/path 证据时，模型 `task_complete` 不能把该任务标为 completed，后续任务开始也不能覆盖前序 failed。
+- Working 标题和步骤不能把源码/诊断片段当作活动名称展示，例如不应重复显示 `Failed void initX11...` 这类 C/C++ 代码串。
+- Working 标题不能把 `Ran ...`、`Failed ...`、`命令` 这类终端活动包装当作任务名；任务名应来自结构化 action/file 或明确的用户任务。
+- 如果运行环境缺少图形显示或可执行文件路径错误，应展示可操作的失败原因、失败命令和 exitCode，并继续修复或明确未完成，不得宣称“执行完成”。
+
+最新观察：
+
+- 2026-06-20 Phase7 已新增 `TaskCheckpointStore`、`TaskHistoryStore`、`ResumeContextBuilder`、`ProviderRecoveryService`、`IdempotencyGuard` 和 Web reliability 守卫，并完成单测/架构测试。
+- 当前 VS Code UI 仍以 checkpoint banner 和聊天历史为主要入口；完整历史任务列表/详情/continueTask UI 尚未接入。
+- 评估：本轮恢复基础设施已对齐 Claude Code/Codex 的本地事实优先原则；历史任务 UI 与全工具幂等接入需要在后续 Provider Runtime / UI 协议阶段继续推进。
+- 2026-06-20 P7-04 截图中，最后请求直接显示 `[Agent 执行出错] LOGIN_REQUIRED`；评估为 DeepSeek Web 登录状态未恢复导致 case4 实际命中 P7-03 前置异常，同时 UI 裸露 provider 错误、没有展示暂停原因和 checkpoint。
+- 修正：Agent provider 错误 catch 接入 `ProviderRecoveryService`，识别 LoginRequired/RateLimited/ResponseCorrupted 等异常后保存最小 checkpoint，并向 UI 展示可恢复/需登录的中文说明。
+- 2026-06-20 P7-04 关闭 DeepSeek 网页复测中，暂停提示和 checkpoint 已出现，但用户输入“继续”后退化为普通聊天建议，没有真正创建 `docs/manual-phase7-bridge-a.md` / `docs/manual-phase7-bridge-b.md`，判定为 resume 执行链路失败。
+- 修正：短句“继续/恢复/continue”在存在新鲜 checkpoint 时直接进入 `resumeAgentCheckpoint` 等价路径；恢复索引 `0` 使用显式 checkpoint 状态判断，不再被 falsy 判断绕到 Agent 自主探索或普通聊天。
+- 2026-06-20 最新复测中，checkpoint tasks/todos 已正确保留，但继续后仍进入“对话模式”，提示用户手动执行 shell。评估为当前聊天控件状态（旧上下文/Agent toggle）仍在阻断 checkpoint resume。
+- 修正：checkpoint resume prompt 只由“短句继续 + 新鲜 checkpoint + 非新会话/非已恢复中”决定，不再被 `forceNoAgent`、残留 context files 或图片状态阻断。
+- 2026-06-20 最新程序复测中，“继续”已进入 checkpoint 恢复链路，但恢复任务退化为 `恢复并继续处理 docs/manual-phase7-bridge-a.md/b.md`，丢失“内容分别为 phase7 bridge a / phase7 bridge b”和验证意图；执行层又把已知创建任务交回模型处理，导致 UI 显示恢复处理失败且文件未创建。
+- 修正：`ProviderRecoveryService` 从原始 prompt 提取路径、创建意图、逐文件 `expectedContent` 和验证意图；Agent 执行层对带 `expectedContent` 的 checkpoint create 任务走本地确定性写入、读回校验和 `WorkspaceEditService` 记录，不再生成手动 shell 建议。
+- 2026-06-20 最新截图中，checkpoint 的“继续执行”按钮在 reload 后显示在对话最开始位置，且任务完成后仍可能看到旧 checkpoint banner。评估为 WebView 把 banner 插入 `messages.firstChild`，同时 checkpoint 保存/清理为异步 fire-and-forget，存在完成态 checkpoint 落盘乱序残留。
+- 修正：checkpoint banner 改为插入输入区上方的当前操作区，完成态/无剩余任务 checkpoint 不再展示；`TaskCheckpointStore.loadFresh` 清理已完成 checkpoint，Agent checkpoint 回调改为 await，最终任务不再保存 2/2 续作点。
+- 2026-06-20 P7-02/P7-03 复测截图中，响应损坏错误显示为 `RESPONSE_CORRUPTEDinvalid-json-response...` 粘连文本，Working 最终标题仍可能落到 `Failed: Exploring ...`，用户难以判断这是 provider 输出被安全阻断。
+- 修正：`ProviderRecoveryService` 增加恢复展示模型，ResponseCorrupted 标题统一为“响应损坏，已阻止执行”，状态和原因分行展示；WebView 最终失败标题优先使用 provider/agent 错误标题，再回退到 failed todo 或活动标签。
+- 2026-06-20 最新 P7-02 复测中，首轮已正确阻断不完整工具块，但点击继续后从用户要求“原样输出”的 `[TOOL:write_file ...]` 样本文本中提取了 `docs/manual-phase7-corrupt.md`，错误生成 `创建 ...` 恢复任务。
+- 修正：恢复事实提取引入可信 prompt 边界，剥离工具协议样本、fenced code、JSON/tool payload；`不要修改/不要创建/do not write` 等否定动作不贡献副作用意图，只读路径保持 analyze-only，真实 create 请求仍保留路径、内容和验证事实。
+- 2026-06-20 最新 P7-02 复测中，安全阻断后 checkpoint banner 仍显示“继续执行”，容易让用户误解为继续执行损坏工具块。
+- 修正：checkpoint banner 根据恢复类型显示动作文案；ResponseCorrupted 显示“上次 Agent 输出被安全阻断 / 安全重试”，并用安全摘要替代原始 `[TOOL:...]` 片段；LoginRequired 显示“登录后继续”，RateLimited 显示“处理后继续”。
+- 2026-06-20 最新 P7-02 复测中，安全重试后没有写入 `docs/manual-phase7-corrupt.md`，但恢复任务把内部 `provider-response` 当作文件目标，进而搜索/分析 `provider-recovery-service.ts` 和 `dist/extension.js`，偏离用户原始请求。
+- 修正：ResponseCorrupted 在无可信文件事实时生成内部 `targetKind=provider-response` 的 `respond` 任务；Agent Loop 本地输出安全响应，不调用模型工具循环、不搜索 `provider-response`、不分析 DevSeek 源码。
+- 2026-06-20 shape_manager 复测中，用户提出裸目录工程优化后，DevSeek 只回复“我先检查文件”并结束，没有真正进入 Agent 执行。评估为上下文发现只识别带 `/` 的路径，不识别工作区内裸目录名，导致后续路由缺少 concrete workspace target。
+- 修正：`ContextDiscoveryService` 增加有界裸目录解析，按项目上下文规则加载源码和构建入口；`ChatRouteController` 回归覆盖自动发现文件后即使 no-agent/快速入口也进入受控 edit-agent。
+- 2026-06-20 最新任务执行截图中，Agent 仍在运行时出现“上次 Agent 任务中断 / 继续执行”banner。评估为进度 checkpoint 被当成 paused checkpoint 展示；Claude Code/Codex 类工具会后台保存进度，但只在真实暂停、登录失效、响应损坏等可恢复中断时展示继续入口。
+- 修正：`onTaskCheckpoint` 增加 `progress/paused/completed` 原因；Extension 只对 `paused` 发送 `agentCheckpointAvailable`，WebView 也会在 `isGenerating` 且没有暂停证据时隐藏 checkpoint banner。
+- 2026-06-20 最新 shape_manager 截图中，`code/shape_manager/AGENTS.md` 内容实际是 `Renderer.cpp` 源码，DevSeek 后续诊断把它当作项目指令/源码事实，导致判断 `Triangle.cpp` 与 `AGENTS.md` 不一致，并尝试生成错误候选。
+- 修正：项目指令服务、生成文件解析器和写入工具边界统一过滤“AGENTS/CLAUDE/rules/copilot 指令路径 + 疑似源码实现”，这类错位文件不再进入项目规则上下文，也不会被作为可应用源码候选或工具写入目标。
+- 2026-06-20 持续执行截图中，模型输出 4 个文件修复方案，但 DevSeek 只识别 2 个候选，并因 `CMakeLists.txt` 从约 70 行缩到约 15 行触发“疑似截断覆盖”拦截后停在失败提示。评估：截断保护正确，但停在 UI 死路不符合 Claude Code/Codex 的闭环修复方式。
+- 修正：apply 结果新增 `failureReason/failureDetail/blockedChangePaths`；对 `truncating-overwrite` 自动把拦截原因、上一轮输出和真实文件内容回传模型，要求重新生成最小 unified diff 或新增文件完整内容，再继续自动验证/闭环修复。
+- 2026-06-20 编译验证截图中，终端工具被禁止后模型仍输出“编译可行性通过”。评估：没有真实退出码时只能说“未完成验证/静态分析有限”，不能把编译、运行或测试标为通过。
+- 修正：终端证据分析把“终端工具被禁止/命令未执行/超时/denied”等输出归类为未执行；缺少真实 exitCode 时不计入成功验证证据，提示词也明确禁止伪造通过结论。
+- 2026-06-20 shape_manager 图形库优化截图中，执行中反复显示 `Failed void initX11...` 源码片段作为 Working 步骤；最终表格有 `Circle.cpp/main.cpp` 失败和终端失败，但 Todos 仍显示 7/7 全绿，且出现“执行完成”与验证失败并存。评估：后端完成判定没有把未清除的终端失败作为阻断事实，前端 done 阶段又把失败 Todo 覆盖成 completed。
+- 修正：`CompletionEvidence` 新增未清除终端失败阻断，Agent loop 在 `task_complete/allTodosCompleted/noToolRound/final` 四个收口点统一检查阻断失败；WebView done 阶段只接受运行时权威成功清除失败，不再本地强行涂绿，并对源码片段 activity label 做降噪。
+- 2026-06-20 后续复测截图中，两阶段 Agent 路径仍出现 `Circle.cpp/main.cpp` 修改未真正写盘、终端失败存在，但 Todos 显示全部完成；Working 历史还出现 `Failed 命令`、`Ran cmake ...` 这类工具活动包装作为任务标题。评估：`runAgentLoop` 内部仍用循环索引重算 todo 状态，并把模型 `task_complete` 当作写盘完成证据；WebView 缺少任务标题与工具活动标题的隔离。
+- 修正：新增 `agent/task-todo-ledger.ts` 作为两阶段 Agent 的任务状态账本，写盘任务只由真实 apply/path 证据完成，后续任务、验证失败和自动修复均保留已有 failed；WebView 新增 task label 清洗边界，`Ran/Failed/命令` 不再升级为完成标题。回归：`agent-loop-task-state.test.mjs` 和 `agent-working-state.test.mjs`。
+
+## 10. Phase 8：Provider Runtime 与多 Provider 工具协议
+
+目标：验证 Provider 选择、Provider 状态、文本工具协议、原生工具协议、fallback 和密钥边界是否满足 Claude Code/Codex 类编程智能体的本地事实优先、工具协议统一、敏感信息不外泄原则。
+
+### P8-01 默认 Provider 状态不要求 API 配置
+
+前置：
+
+1. 清空或不设置 `devseek.provider`、API key、OpenAI base URL 等 Provider 配置。
+2. 保持 DeepSeek Web bridge 可用或处于已知登录状态。
+
+用户输入：
+
+```text
+检查当前 Provider 状态，并用一句话说明你将使用哪个 Provider。不要修改文件。
+```
+
+期望结果：
+
+- 默认进入 DeepSeek Web / bridge Provider 路径，不要求用户先配置 API key。
+- 只读请求不能产生文件、终端或 pending edit 副作用。
+- UI 中的 Provider 状态、错误提示和最终回答一致；如果 bridge 未登录，应显示 LoginRequired 或等价可恢复状态，而不是普通失败或编造 API 状态。
+- 聊天历史、任务摘要和日志中不能出现 cookie、token、API key 等敏感值。
+
+### P8-02 Web 文本工具协议必须走统一 ToolCall
+
+前置：
+
+1. 使用 DeepSeek Web / bridge Provider。
+2. 确认工作区没有 `docs/manual-phase8-web-tool.md`，或测试前删除该文件。
+
+用户输入：
+
+```text
+创建 docs/manual-phase8-web-tool.md，内容为：phase8 web tool smoke，并验证文件内容。
+```
+
+期望结果：
+
+- Web Provider 输出的文本工具调用被归一化为统一 ToolCall，再进入 Review / WorkspaceEdit / Validation 流程。
+- 目标文件被创建，内容精确为 `phase8 web tool smoke`。
+- 完成摘要包含目标文件、验证命令或文件事实 evidence、QualityGate 结论。
+- UI 不应暴露原始 `[TOOL...]`、半截 JSON 或 Provider 内部格式。
+
+### P8-03 API / OpenAI-compatible Provider 不改变 Agent 闭环
+
+前置：
+
+1. 配置一个可用的 API Provider，例如 DeepSeek API 或 OpenAI-compatible endpoint。
+2. 设置模型为一个与 P8-02 不同的可用模型。
+3. 确认工作区没有 `docs/manual-phase8-api-tool.md`。
+
+用户输入：
+
+```text
+创建 docs/manual-phase8-api-tool.md，内容为：phase8 api tool smoke，并验证文件内容。
+```
+
+期望结果：
+
+- API Provider 的原生 tool call 被归一化为与 Web Provider 相同的 ToolCall，不绕过权限、Review、WorkspaceEdit 和 Validation。
+- 切换模型后，Agent 仍保持同一套任务事实、Todo 状态和验证闭环，不重新解释成普通聊天。
+- 目标文件内容精确，完成状态由文件事实或验证命令决定。
+- 如果 API 配置缺失或认证失败，任务应暂停或失败并保留可恢复上下文；不能把认证失败当作任务完成。
+
+### P8-04 Provider fallback 不得重复副作用
+
+前置：
+
+1. 配置 Provider fallback 顺序，使第一个 Provider 可模拟失败或不可用，第二个 Provider 可继续任务。
+2. 确认工作区没有 `docs/manual-phase8-fallback.md`。
+
+用户输入：
+
+```text
+创建 docs/manual-phase8-fallback.md，内容为：phase8 fallback smoke，并验证文件内容。
+```
+
+操作：
+
+1. 在任务执行到 Provider 调用或验证前，使第一个 Provider 返回认证失败、限流、bridge restart 或响应损坏。
+2. 观察 DevSeek 是否切换到 fallback 或进入可恢复 checkpoint。
+
+期望结果：
+
+- fallback 只继承最小任务事实、checkpoint、Review 状态和幂等事实，不把完整聊天历史或敏感配置注入下一 Provider。
+- 已经写盘或已经验证的文件不应被重复创建为新的 change set；终端/MCP 等可能有副作用的工具不能自动无确认重放。
+- 如果 fallback 成功，最终摘要必须说明 fallback 发生、目标文件和验证 evidence。
+- 如果 fallback 不可用，任务必须保持 paused/failed，不能显示完成。
+
+### P8-05 敏感信息不能进入任务事实、历史和日志
+
+前置：
+
+1. 临时配置测试用假密钥，例如 `sk-phase8-secret-redaction-demo` 或等价明显敏感字符串。
+2. 确认不会使用真实生产密钥执行该 case。
+
+用户输入：
+
+```text
+请检查当前 Provider 配置是否可用，并说明是否发现了密钥。不要输出密钥原文，不要修改文件。
+```
+
+期望结果：
+
+- 回答只能说明“已配置/未配置/不可用”等状态，不得输出密钥、cookie、token 原文。
+- 任务历史、checkpoint、Provider 诊断、错误卡片和日志中的敏感值必须被 redacted。
+- 只读配置检查不能创建文件或触发工具写入。
+
+最新观察：
+
+- Phase 8 自动测试已覆盖 Provider 配置快照、Web 文本工具归一化、API 原生工具归一化、fallback 事实继承、破坏性工具重放拦截和敏感信息脱敏。
+- 自动测试对核心 runtime contract 基本充分，但不覆盖真实 DeepSeek Web 登录态、真实外部 API 网络、真实 VS Code WebView 状态栏呈现；这些必须由 P8-01 到 P8-05 手测补齐。
+
+## 11. Phase 9：WebView 协议、历史任务 UI 与显示边界
+
+目标：验证 WebView 只消费结构化事件和干净 payload，历史任务入口可用，checkpoint / task history / pending changes / validation 的显示不会重复、错位或覆盖真实失败。
+
+### P9-01 reload 后会话恢复不注入伪上下文
+
+前置：
+
+1. 先完成一个简单文件任务，例如 P8-02 或 P5-01。
+2. 执行 `Developer: Reload Window`，重新打开 DevSeek Chat。
+
+用户输入：
+
+```text
+继续说明上一次任务创建了哪个文件，并检查它是否还存在。不要新建文件。
+```
+
+期望结果：
+
+- WebView 恢复历史时使用干净 session payload，不应把 `[上次会话背景]`、Provider 内部响应或恢复提示伪装成 assistant 普通回答。
+- DevSeek 可以基于历史任务事实或真实文件检查回答目标文件状态。
+- 只读检查不产生 pending edit；如果需要文件读取，应展示读取 evidence。
+
+### P9-02 历史任务入口可列出、打开和继续任务
+
+前置：
+
+1. 至少存在一条已完成任务和一条 paused / failed / checkpoint 任务。
+2. 可通过 UI 中历史任务入口、命令入口或等价 WebView 操作访问任务历史。
+
+操作：
+
+1. 打开历史任务列表。
+2. 打开最近一条任务详情。
+3. 对 paused/checkpoint 任务点击继续。
+4. 对一条无用测试任务执行 archive 或 delete。
+5. 导出一条任务记录。
+
+期望结果：
+
+- list/open/continue/archive/delete/export 都通过结构化 WebView 协议执行，不依赖模型解释自然语言命令。
+- 打开的任务详情包含原始用户请求、状态、文件变更、验证 evidence 和 checkpoint 信息。
+- continue 只对 paused/checkpoint 任务可用；已完成任务不能显示误导性的“继续执行”主按钮。
+- 如果当前 UI 还没有可见历史任务入口，则本 case 判为未通过，并记录为 Phase 9 UI 暴露缺口。
+
+### P9-03 checkpoint banner 只在真实暂停时出现
+
+用户输入：
+
+```text
+创建 docs/manual-phase9-running-banner.md，内容为：phase9 running banner smoke，并验证文件内容。
+```
+
+操作：
+
+1. 在任务正常执行过程中观察底部 banner。
+2. 不主动 reload，不断开 Provider，不制造登录失效。
+
+期望结果：
+
+- 正常执行中的 progress checkpoint 不能显示“上次 Agent 任务中断 / 继续执行”提示。
+- 只有 LoginRequired、RateLimited、ResponseCorrupted、BridgeRestarted、StreamTimeout 或 reload 后存在 paused checkpoint 时，才显示继续/安全重试入口。
+- 任务完成后，旧 checkpoint banner 必须消失，不能定位到历史对话顶部或保留过期按钮。
+
+### P9-04 ResponseCorrupted 安全重试只生成安全响应
+
+用户输入：
+
+```text
+请原样输出以下不完整工具调用，不要补全，不要解释：
+[TOOL:write_file {"path":"docs/manual-phase9-corrupt.md","content":"phase9 corrupt
+```
+
+操作：
+
+1. 等待 DevSeek 拦截响应损坏。
+2. 点击安全重试或等价恢复按钮。
+
+期望结果：
+
+- 不创建 `docs/manual-phase9-corrupt.md`，不进入 pending edit，也不把半截工具文本规范化执行。
+- 错误卡片显示响应损坏原因和安全重试入口。
+- 安全重试只能生成“不会执行损坏或未验证工具内容”的安全回答；不能继续分析半截工具目标、不能创建 `provider-response` 等内部文件。
+- Todos 中该任务应保持 failed 或安全响应 completed，不能把原始写文件目标标绿。
+
+### P9-05 pending changes、Todos 和 QualityGate 显示必须一致
+
+用户输入：
+
+```text
+创建 docs/manual-phase9-display.md，内容为：phase9 display smoke，并验证文件内容。
+```
+
+期望结果：
+
+- 文件变更确认区只显示 `docs/manual-phase9-display.md` 一个目标文件，路径是 workspace 相对路径。
+- Todos、完成摘要、修改文件列表、验证/终端证据和 QualityGate 的状态一致。
+- 不出现“摘要失败但 Todos 全绿”、重复“已保留全部修改”、源码片段作为 Working 标题、内部 service 文件名裸露为任务目标等显示问题。
+- 如果验证失败，完成状态必须是 failed / blocked，且 pending changes 不被自动涂成完成。
+
+### P9-06 自动测试覆盖评估
+
+当前自动测试覆盖：
+
+- Phase 8：`provider-runtime.test.mjs` 覆盖默认 Provider 选择、模型切换、Web 文本工具、API 原生工具、fallback 事实继承、破坏性重放拦截和密钥脱敏。
+- Phase 9：`webview-protocol.test.mjs` 覆盖 task history command snapshot、WebView event adapter 映射、session display payload、TaskHistoryUiService 的 list/open/continue/archive/delete/export。
+- 架构守卫：`architecture-boundary.test.mjs` 覆盖 LLM/runtime/UI public exports 和入口文件行数边界，防止功能继续堆回 `extension.ts`。
+
+充分性结论：
+
+- Phase 8 自动测试对纯 runtime / contract 层基本充分，但不充分覆盖真实 Provider 端到端，因为默认测试不能稳定依赖 DeepSeek Web 登录态、外部 API 网络、真实密钥和 VS Code LM 环境。
+- Phase 9 自动测试对协议和服务层部分充分，但不充分覆盖真实 WebView DOM、按钮可见性、reload 后滚动定位、task history 可见入口、pending changes 区域和截图级显示一致性。
+- 因此 Phase 8/9 必须配套 P8-01 到 P8-05、P9-01 到 P9-05 的用户手测；后续建议再补 extension-host 或 WebView DOM 级自动测试，覆盖真实 UI click、reload、scroll、banner、task history 入口和 pending changes 渲染。
+
+## 12. Phase 10：运行形态与界面解耦
+
+### P10-01 VS Code Surface 仍能完成文件创建与验证
+
+用户输入：
+
+```text
+创建 docs/manual-phase10-surface.md，内容为：phase10 surface smoke，并验证文件内容。
+```
+
+期望结果：
+
+- WebView 入口把请求转换为 `AgentCommand`/Surface request 后再执行，不复制 Provider 路由或业务判断。
+- 任务完成摘要、Todos、修改文件列表、验证证据和 QualityGate 状态一致。
+- 修改文件只包含 `docs/manual-phase10-surface.md`，内容为 `phase10 surface smoke`。
+- 不出现内部协议字段、`AgentCommand` JSON、`SurfaceCapabilities` 或 shared 源文件名泄露到用户任务目标。
+
+### P10-02 CLI JSONL 非交互模式
+
+执行命令：
+
+```bash
+npm run shared:build
+npm run cli:build
+node packages/cli/dist/index.js exec --jsonl --mock "phase10 cli jsonl smoke"
+```
+
+期望结果：
+
+- 每一行都是可 `JSON.parse` 的 `AgentEvent`。
+- 事件序列至少包含 `chat.started`、`provider.selected`、`chat.completed`。
+- `chat.completed.response` 为 `mock: phase10 cli jsonl smoke`。
+- 命令退出码为 0；失败时输出稳定 `error` 事件并返回非 0。
+
+### P10-03 CLI 文本交互最小闭环
+
+执行命令：
+
+```bash
+node packages/cli/dist/index.js exec --mock "phase10 cli text smoke"
+```
+
+期望结果：
+
+- 标准输出包含 `mock: phase10 cli text smoke`。
+- 不需要 VS Code WebView，也不读取 WebView 私有协议字段。
+- `.devseek/cli-history.jsonl` 记录 prompt；在交互模式中输入 `:history` 能查看历史，`:resume` 能复用最后一次 prompt。
+
+### P10-04 CLI Bridge Provider smoke
+
+前置条件：
+
+- 本地 bridge 已启动并登录 DeepSeek Web。
+- `DEVSEEK_BRIDGE_PORT` 未设置时默认使用 3721。
+
+执行命令：
+
+```bash
+npm run bridge:build
+node packages/cli/dist/index.js exec "请简短回复 phase10 bridge smoke"
+```
+
+期望结果：
+
+- CLI 通过 bridge `/chat` 调用完成，不依赖 VS Code extension host。
+- `.devseek/bridge-token` 自动创建或复用，HTTP 请求带 `X-DevSeek-Token`。
+- bridge 未启动、未登录或 HTTP 非 2xx 时，CLI 返回非 0，并输出稳定错误事件或错误文本。
+
+### P10-05 PlatformRuntime 跨平台契约
+
+验证方式：
+
+```bash
+cd packages/vscode-extension
+node --test test/unit/platform-runtime.test.mjs
+```
+
+期望结果：
+
+- Linux/macOS 使用 POSIX path/shell 默认行为。
+- Windows native 使用 Windows path、CRLF、CMD/PowerShell shell adapter。
+- WSL workspace 在 Windows host 上仍使用 POSIX path。
+- Surface 能力缺口通过 `summarizeSurfaceCapabilityGaps` 显式返回，不能静默跳过 hunk review、diagnostics 或 terminal embedding。
+
+### P10-06 自动测试覆盖评估
+
+当前自动测试覆盖：
+
+- `agent-application-service.test.mjs`：覆盖 bridge/API 路由、history/vision payload、API key 恢复和 `chat.request` 事件序列。
+- `platform-runtime.test.mjs`：覆盖 PlatformRuntimeAdapter、Shell/Path adapter 和 Surface capability 降级。
+- `chat-session-turn-service.test.mjs`：覆盖新会话、无附件 turn 清理上下文、显式附件保持上下文，防止 session lifecycle 回流到 `extension.ts`。
+- `cli-jsonl.test.mjs`：覆盖 CLI JSONL parseability、文本模式输出和 mock provider 稳定闭环。
+- 架构守卫：`architecture-boundary.test.mjs`、`workflow-compliance.test.mjs` 检查 shared core、VS Code re-export facade、VSCodeSurfaceAdapter、BuildProfile 和 extension composition root。
+
+充分性结论：
+
+- Phase 10 对 headless core、CLI JSONL、平台适配和 VS Code facade 的自动测试已具备基础充分性。
+- 真实 DeepSeek Web bridge、VS Code WebView 截图级显示、Windows native/PowerShell/CMD、macOS 和 WSL 端到端仍需要手动或环境矩阵验证。
+- `runChat` 的完整 workflow use case 尚未完全迁出 VS Code 入口；后续 Phase 10.x/Phase 11 继续把 session/checkpoint/task facts、ReviewLedger、QualityGate 和 pending edit 事件化。
+
+### P10-07 新会话和无附件 turn 不继承旧上下文
+
+操作：
+
+1. 先在一个任务中附加文件并完成任意只读询问。
+2. 发送一条不带附件的新请求，例如：
+
+```text
+请只回答：phase10 no stale context
+```
+
+3. 再点击新会话，发送：
+
+```text
+创建 docs/manual-phase10-new-session.md，内容为：phase10 new session smoke，并验证文件内容。
+```
+
+期望结果：
+
+- 第二步不应继承上一轮附件，也不应把旧文件显示在 contextFiles 中。
+- 第三步新会话应清空旧 history、recent files、last analysis 和 last changed paths。
+- 完成摘要、Todos、验证证据只指向当前请求；不能把上一轮文件或任务事实带入。
+
+## 13. 已发现问题跟踪
+
+| ID | 关联 case | 现象 | 当前评估 | 后续处理 |
+| --- | --- | --- | --- | --- |
+| P5-STATUS-01 | P5-01、P5-06 | Todos 和完成摘要显示成功，但 Working 行标红 `Failed: Exploring ...` | 状态一致性问题；可能是完成判定或前端 Working 收尾状态不一致 | 后续先用 P5-01/P5-06 复现，再定位根因并修复 |
+| P5-READONLY-01 | P5-03 | 只读检查请求被模型转成 `创建/更新文件`，并尝试写 `manual-phase5-smoke-check.txt` | intent 已是 inspect，但 evidence/agent loop 缺少读取证据类型，系统反馈会把任务拉向 create_file | 本次新增 completion evidence/workflow 回归，按读取证据闭环修复 |
+| P5-READONLY-02 | P5-03 | 只读任务反复 `ls/test -f`，没有显示内容，最后仍报缺少读取/检查结果 | `other` 类型的只读终端证据被执行器丢弃；`test/ls` 被错误视为可满足“显示文件内容” | 本次新增内容读取 evidence 回归：存在性检查可用 `test/ls`，显示内容必须用 `read_file` 或 `cat/head/sed` |
+| P5-READONLY-03 | P5-03 | 明确路径的简单只读检查仍进入多轮 agent loop，耗时长且可能触发无关工具尝试 | 执行层没有把确定性文件读取任务从 agent loop 前置处理 | 本次新增 ReadOnlyInspectionService：工作区内明确文件路径的存在/内容查看直接读取并返回，复杂分析保持 agent 路径 |
+| P5-DOCVAL-01 | P5-06 | Markdown 创建后生成 C 程序 `read_doc.c` 并尝试 gcc 编译/运行来验证文档 | ValidationService 对非代码文件返回 null，模型被迫自造验证程序 | 本次新增 markdown file-check 自动验证，禁止把文档验证升级为编译任务 |
+| P6-QG-01 | P6-01、P6-03B | 任务完成结论可能缺少独立 QualityGate 证据 | Claude Code/Codex 的优秀实践是把验证失败/不可得显式纳入最终状态，而不是用 prose 宣告完成 | 已新增 VerificationPlanner、QualityGateService、ReviewLedger 和 Agentic 历史 QualityGate 记录，失败/阻塞不能通过完成门 |
+| P6-TS-01 | P6-01 | standalone `.ts` 类型错误被 `npm run compile` 假通过 | esbuild 不做 TS 语义检查，未被入口引用的文件不会被 bundle 覆盖 | 已新增 targeted `tsc --noEmit` 语义检查，再执行 bundle compile |
+| P6-BLOCKED-01 | P6-03B | QualityGate blocked 后进入自动修复循环并写错路径 | blocked 是验证能力不足，不是可修复编译错误 | 已新增 `shouldRunClosedLoopRepair` 门控，blocked 不进入自动修复 |
+| P6-HISTORY-01 | P6-04 | reload 历史缺少 QualityGate 结论 | Agentic history 输入模型没有 QualityGate 字段 | 已在折叠详情中渲染 QualityGate 状态、风险和证据引用 |
+| P7-HISTORY-UI-01 | P7-01、P7-03、P7-04 | Phase7 已有任务历史/恢复服务，但 VS Code 侧尚无完整历史任务列表、详情、continueTask UI | 服务边界先落地，UI 协议仍在后续 Phase9；不能用聊天历史替代任务历史事实 | 后续接入 `TaskHistoryStore` 到 WebView 协议与任务历史 UI |
+| P7-IDEMP-01 | P7-04 | `IdempotencyGuard` 已单测覆盖，但工具执行链尚未全面携带 operationId/resultRef | 当前可保护已接入路径，完整副作用重放保护需要 ToolExecutor/AgentRuntime 全链路接入 | 后续 Provider Runtime / AgentRuntime 接入 operation ledger，覆盖 edit/terminal/mcp/memory/vscode |
+| P7-LOGIN-01 | P7-03、P7-04 | Provider 抛出 `LOGIN_REQUIRED` 时 UI 只显示裸错误，没有暂停原因或 checkpoint | 登录失效是可解释暂停状态，不能当普通 agent 崩溃处理 | 已在 agent catch 中接入 `ProviderRecoveryService`，并保存从 prompt/files 推导的最小 checkpoint |
+| P7-RESUME-01 | P7-04 | 用户输入“继续”后没有从 checkpoint 恢复执行，而是普通聊天建议复制文件内容或手动 shell 指令 | 自然语言继续和 checkpoint banner 都应进入同一恢复执行链路；resumeFromIndex=0、Agent toggle 状态和残留 context chips 不能阻断恢复 | 已新增 `shouldResumeCheckpointFromPrompt`，修复 `checkpointResumeTasks` 显式判断，并移除 `forceNoAgent/files/images` 阻断条件 |
+| P7-RECOVERY-FACTS-01 | P7-04 | checkpoint resume 已触发，但任务只剩“恢复并继续处理文件”，丢失创建内容与验证事实，最终文件未创建 | 对标 Claude Code/Codex，恢复应依赖本地 checkpoint/task facts；已知文件内容的 create 任务应本地确定性执行并读回校验，不应再让模型猜或输出操作说明 | 已新增 `expectedContent` checkpoint fact 提取和 `tryExecuteDeterministicCreateTask`；覆盖“建 ... 内容分别为 ... 并验证”回归测试 |
+| P7-BANNER-01 | P7-04 | “继续执行”按钮显示在历史对话最开始位置，且完成后可能残留旧 checkpoint banner | 恢复入口是当前任务控制，不应作为历史首条消息；完成态 checkpoint 不能被 loadFresh 当作可恢复任务 | 已将 banner 锚定到输入区上方当前操作区；checkpoint 保存/清理改为 await，并清理完成态 checkpoint |
+| P7-BANNER-02 | P7-04、持续执行 | Agent 仍在运行时出现“上次 Agent 任务中断 / 继续执行”提示 | 进度 checkpoint 和暂停 checkpoint 混用；运行中保存进度不应展示恢复入口 | 已给 checkpoint 回调增加原因，仅 paused 状态展示 banner；WebView 在生成中且无暂停证据时隐藏恢复入口 |
+| P7-ERROR-UI-01 | P7-02、P7-03 | 响应损坏时 UI 裸露粘连错误串，Working 标题显示 `Failed: Exploring ...` 而不是安全阻断原因 | 对标 Claude Code/Codex，失败表面必须呈现可操作诊断事实；内部阶段名不能覆盖 provider 安全拦截结论 | 已新增 `buildProviderRecoveryDisplay` 和 `agentLastErrorTitle`，覆盖损坏响应格式化与错误标题优先级回归测试 |
+| P7-TRUSTED-FACTS-01 | P7-02、P7-04 | ResponseCorrupted 继续后把用户消息中的工具调用样本路径误当作写文件任务，且安全阻断 banner 文案仍像普通继续执行 | 对标 Claude Code/Codex，用户/模型文本里的工具协议片段是 untrusted data，恢复入口也必须表达真实动作而非笼统“继续执行” | 已新增 trusted prompt 清洗、否定动作过滤和恢复 action 推断；ResponseCorrupted banner 显示“安全重试”；覆盖 literal tool sample、read-only analyze、explicit create、safe-retry banner 回归 |
+| P7-INSTRUCTION-01 | shape_manager 持续执行 | scoped `AGENTS.md` 内容是源码实现时被当作项目指令或源码事实，污染后续诊断 | AGENTS/CLAUDE/rules 是指令文件，不是普通源码；疑似源码内容应被视为错位文件并从可信上下文/候选中排除 | 已新增 `instruction-file-safety`，接入项目指令读取、生成候选解析和工具写入保护 |
+| P7-APPLY-RECOVERY-01 | shape_manager 持续执行 | 疑似截断覆盖被正确拦截，但流程停在“应用失败”，没有自动生成安全补丁继续 | 截断覆盖是可恢复 apply failure，应自动转为最小 diff 修复，而不是要求用户手动复制 diff | 已结构化 `failureReason=truncating-overwrite` 并自动回传真实文件内容生成安全补丁 |
+| P7-EVIDENCE-01 | 编译验证 | 终端工具被禁止/未执行后仍宣称“编译通过” | 编译/运行/测试必须来自真实命令退出码；未执行只能标为未验证或阻塞 | 已将终端禁止/未执行/超时归为非成功证据，并更新 agent prompt 禁止伪造验证通过 |
+| P7-ARCH-01 | 多轮显示/持续执行修复 | `extension.ts` 同时承担 UI 模板、artifact 预览、diff provider、目录发现和恢复策略，导致相似显示问题反复以局部补丁出现 | 对标 Claude Code/Codex，入口应是薄装配层；恢复、显示、上下文发现和 apply 失败处理应由服务边界承载 | 已迁出 WebView HTML、generated artifact UI、pending diff provider、config 迁移、context discovery、apply failure recovery；`extension.ts` 从 5555 行降至 4266 行并由 workflow/architecture 测试守住 |
+| P7-CONTEXT-01 | P7-05、shape_manager 优化 | 用户只写工作区裸目录名时，没有 @file 和显式路径，任务退化为普通聊天并停止执行 | 对标 Claude Code/Codex，代码智能体应能把工程/模块名定位到本地上下文，再进入受控工具循环；不能把“我要先检查”当作完成 | 已新增裸目录解析和项目上下文文件策略，覆盖 `shape_manager` 自动发现 `.cpp/.h/CMakeLists.txt`、跳过 README、普通英文词不误判、发现文件后进入 edit-agent |
+| P7-EVIDENCE-02 | P7-06、shape_manager 编译/运行 | 终端失败和文件失败存在时，完成摘要/Working/Todos 状态互相矛盾，且源码片段被当作活动标题反复显示 | Claude Code/Codex 类闭环要求最终状态由工具证据决定；UI 不能覆盖失败事实，activity 标题不能泄露源码/诊断片段 | 已新增 `getBlockingTerminalFailure`，在 Agent loop 收口点阻断未清除终端失败；WebView done 阶段保留 failed todo，运行时权威成功才可清除，并清洗源码片段 label |
+| P7-EVIDENCE-03 | P7-06、两阶段 Agent 执行 | 子任务未写盘却被 `task_complete` 标绿，后续任务开始把前序 failed 重刷成 completed，验证/修复时旧失败丢失 | Claude Code/Codex 类任务状态来自本地工具证据账本；模型声明只能结束只读/响应任务，不能替代写盘、验证或终端 evidence | 已新增 `agent/task-todo-ledger.ts` 和 `agent-loop-task-state.test.mjs`；写盘任务要求 apply/path，验证失败和修复快照保留既有 failed，WebView 清洗 `Ran/Failed/命令` 标题污染 |
+
+## 14. 每轮迭代更新规则
+
+1. 新 Phase 完成后，在本文新增对应章节。
+2. 每个新增 bug 必须关联至少一个用户可执行 case。
+3. 修复 bug 前，先把能复现问题的 case 写入本文或自动化测试。
+4. 修复后，更新“最新观察”和“已发现问题跟踪”的状态。
+5. 如果 case 行为与 Claude Code/Codex 最佳实践不一致，需要在修复计划中说明对标结论。
+
+## 15. Phase 11/12：工程完整性与顶级增强
+
+### P11-01 Shared 工程上下文自动测试
+
+执行命令：
+
+```bash
+npm run shared:build
+npm run shared:test
+```
+
+期望结果：
+
+- `engineering-context.test.mjs` 通过。
+- `.devseekignore`、`.gitignore`、默认 `node_modules/dist/backups`、大文件、敏感路径和用户排除不会进入 visible files。
+- TypeScript/JavaScript、Python、Go、Rust、C/C++、unknown runtime 均有明确能力或降级说明。
+- 依赖安装、网络、lockfile、文档 grounding、预览计划、冲突检测和 replay case 均有结构化结果。
+
+### P12-01 Shared 顶级增强自动测试
+
+执行命令：
+
+```bash
+npm run shared:build
+npm run shared:test
+```
+
+期望结果：
+
+- `agent-enhancements.test.mjs` 通过。
+- Hooks 能按 stage 选择，并阻断敏感文件写入。
+- Skills 只从 `SKILL.md` 发现，并按 trigger 选择。
+- Subagents 输出 reviewer/test-writer/diagnostics/migration-planner 契约。
+- MCP read/write/network/destructive 风险映射到权限域。
+- Git/PR 摘要引用 changed files、validation 和 evidence。
+
+### P12-02 CLI Bridge 慢响应等待提示
+
+自动复现命令：
+
+```bash
+npm run cli:build
+npm run cli:test
+```
+
+真实 DeepSeek Web 冒烟命令：
+
+```bash
+npm run bridge:build
+node packages/cli/dist/index.js exec "请简短回复 phase10 bridge smoke"
+```
+
+期望结果：
+
+- 自动测试中的本地假 Bridge 延迟响应时，CLI text mode 在 stderr 显示 `waiting for Bridge provider response`，最终 stdout 输出模型内容。
+- 真实 DeepSeek Web 响应超过约 1.5 秒时，CLI 不应静默等待，应显示等待提示。
+- CLI stdout 不应出现 `RESET`、NUL 控制符或其他 Bridge 内部流式控制标记。
+- JSONL 模式仍保持每行都是可解析 `AgentEvent`，并可包含 `provider.status`。
+
+### P12-03 VS Code Surface 回归冒烟
+
+用户输入：
+
+```text
+创建 docs/manual-phase12-surface.md，内容为：phase12 surface smoke，并验证文件内容。
+```
+
+期望结果：
+
+- VS Code Surface 仍能正常完成文件创建和验证。
+- Todos、完成摘要、修改文件、验证证据和 QualityGate 状态一致。
+- 不把 shared core 的内部服务名作为用户任务目标泄露到 UI。
+- 如果 Provider 等待或恢复，显示状态必须定位到当前任务，不出现旧任务继续横幅干扰运行中的任务。

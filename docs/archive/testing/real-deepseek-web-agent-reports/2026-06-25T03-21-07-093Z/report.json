@@ -1,0 +1,37 @@
+{
+  "ok": false,
+  "runId": "2026-06-25T03-21-07-093Z",
+  "command": "node scripts/devseek-real-deepseek-web-eval.mjs --case RDW9-live-long-task-progress",
+  "caseId": "RDW9-live-long-task-progress",
+  "target": "Real DeepSeek Web coding-agent action test",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "workspaceRoot": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-25T03-21-07-093Z/RDW9-live-long-task-progress",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-21-07-093Z",
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-21-07-093Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-21-07-093Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-21-07-093Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/latest.md",
+  "casesPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-cases.json",
+  "cases": [
+    {
+      "id": "RDW9-live-long-task-progress",
+      "status": "failed",
+      "durationMs": 64235,
+      "error": "Error: RDW9 turn 1 CLI exited 1. stderr=DevSeek CLI error: DevSeek coding validation failed after repair: devseek.verify.json is not valid JSON: Expected ',' or '}' after property value in JSON at position 79 (line 5 column 31) stdout={\"type\":\"chat.started\",\"eventId\":\"mqsxqhqe-x0tra4\",\"commandId\":\"cmd-mqsxqhqe\",\"surface\":\"jsonl\",\"timestamp\":1782357667142,\"prompt\":\"You are running DevSeek real DeepSeek Web test RDW9, turn 1.\\nThis is a longer auditable coding-agent task, similar to Claude Code/Codex behavior.\\n\\nTask:\\n- Create src/stats.py.\\n- Implement mean(values), returning the arithmetic mean.\\n- Create devseek.verify.json so DevSeek validates the implementation automatically.\\n- The verifier must run python3 with a command that imports src/stats.py, prints exactly RDW9_MEAN:4.0 for values [2, 4, 6], and asserts stdout includes RDW9_MEAN:4.0.\\n- Return only DevSeek file tool calls.\\n\\nDo not use Markdown. Do not wrap \n    at rdw9LongTaskProgress (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:1010:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:56:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:1424:5)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:1431:1"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "caseId": "RDW9-live-long-task-progress",
+      "severity": "high",
+      "category": "model-tool-contract-gap",
+      "evidence": "Error: RDW9 turn 1 CLI exited 1. stderr=DevSeek CLI error: DevSeek coding validation failed after repair: devseek.verify.json is not valid JSON: Expected ',' or '}' after property value in JSON at position 79 (line 5 column 31) stdout={\"type\":\"chat.started\",\"eventId\":\"mqsxqhqe-x0tra4\",\"commandId\":\"cmd-mqsxqhqe\",\"surface\":\"jsonl\",\"timestamp\":1782357667142,\"prompt\":\"You are running DevSeek real DeepSeek Web test RDW9, turn 1.\\nThis is a longer auditable coding-agent task, similar to Claude Code/Codex behavior.\\n\\nTask:\\n- Create src/stats.py.\\n- Implement mean(values), returning the arithmetic mean.\\n- Create devseek.verify.json so DevSeek validates the implementation automatically.\\n- The ver",
+      "diagnosis": "The live model response did not satisfy the structured edit contract DevSeek needs to act autonomously.",
+      "nextAction": "Capture the live response, add a deterministic replay for that response shape, then tighten prompt/tool handling."
+    }
+  ],
+  "iterationDecision": [
+    "Stop at RDW9-live-long-task-progress. Fix or reclassify the exposed live-path failure, then rerun RDW9-live-long-task-progress before advancing."
+  ]
+}

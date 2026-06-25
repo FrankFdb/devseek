@@ -1,0 +1,166 @@
+{
+  "ok": true,
+  "runId": "2026-06-23T07-15-08-399Z",
+  "command": "node scripts/devseek-agent-loop-eval.mjs --real-deepseek",
+  "tempRoot": "/tmp/devseek-agent-loop-eval-kJf8Qa",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/agent-loop-eval/2026-06-23T07-15-08-399Z",
+  "reportPath": "/home/ff/work/devseek_netai/artifacts/agent-loop-eval/2026-06-23T07-15-08-399Z/report.json",
+  "testingReportDir": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/2026-06-23T07-15-08-399Z",
+  "testingJsonReportPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/2026-06-23T07-15-08-399Z/report.json",
+  "testingMarkdownReportPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/2026-06-23T07-15-08-399Z/report.md",
+  "caseCatalogPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-cases.json",
+  "includeRealDeepSeek": true,
+  "layers": [
+    {
+      "id": "L0-agent-core-protocol",
+      "kind": "deterministic",
+      "description": "Exercise AgentApplicationService with a local fake provider and assert AgentEvent ordering.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L1-cli-jsonl-mock",
+      "kind": "deterministic",
+      "description": "Exercise CLI JSONL output with the built-in mock provider.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L2-cli-fake-bridge-sse",
+      "kind": "deterministic",
+      "description": "Exercise CLI -> Bridge SSE streaming with a local fake Bridge.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L3-cli-fake-bridge-programming",
+      "kind": "deterministic",
+      "description": "Ask through CLI, receive a tool-style code artifact from fake Bridge, compile and run it locally.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L4-cli-real-deepseek-programming",
+      "kind": "real-provider-smoke",
+      "description": "Optional CLI -> real Bridge -> DeepSeek Web coding smoke; captured output is compiled and run locally.",
+      "requiredForSubmit": false,
+      "enableWith": "node scripts/devseek-agent-loop-eval.mjs --real-deepseek"
+    }
+  ],
+  "cases": [
+    {
+      "durationMs": 8,
+      "id": "L0-agent-core-protocol",
+      "status": "passed",
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "chat.delta",
+        "chat.delta",
+        "chat.completed"
+      ]
+    },
+    {
+      "durationMs": 44,
+      "id": "L1-cli-jsonl-mock",
+      "status": "passed",
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "chat.completed"
+      ]
+    },
+    {
+      "durationMs": 133,
+      "id": "L2-cli-fake-bridge-sse",
+      "status": "passed",
+      "bridge": "fake-sse"
+    },
+    {
+      "durationMs": 383,
+      "id": "L3-cli-fake-bridge-programming",
+      "status": "passed",
+      "output": "DEVSEEK_CLI_FAKE_BRIDGE_CODE_OK",
+      "file": "code/cli_eval/main.cpp",
+      "artifactFormat": "tool-json"
+    },
+    {
+      "durationMs": 3589,
+      "id": "L4-cli-real-deepseek-programming",
+      "status": "passed",
+      "output": "DEVSEEK_CLI_REAL_DEEPSEEK_CODE_OK",
+      "file": "code/cli_real_deepseek/main.cpp",
+      "artifactFormat": "tool-json-recovered",
+      "promptPath": "/home/ff/work/devseek_netai/artifacts/agent-loop-eval/2026-06-23T07-15-08-399Z/real-deepseek-cli-prompt.txt",
+      "responsePath": "/home/ff/work/devseek_netai/artifacts/agent-loop-eval/2026-06-23T07-15-08-399Z/real-deepseek-cli-response.txt"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "caseId": "L4-cli-real-deepseek-programming",
+      "severity": "medium",
+      "status": "mitigated-by-evaluator",
+      "category": "model-protocol-gap",
+      "evidence": "The evaluator recovered a non-strict tool JSON payload and still compiled the produced program.",
+      "diagnosis": "The live model path can produce useful code while violating the strict tool-call contract.",
+      "nextAction": "Tighten the prompt and agent contract, then add a deterministic L3 replay for this loose JSON shape."
+    }
+  ],
+  "caseDesignReview": [
+    {
+      "caseId": "L0-agent-core-protocol",
+      "layerKind": "deterministic",
+      "requiredForSubmit": true,
+      "status": "passed",
+      "verdict": "reasonable",
+      "limitation": "Covers event protocol only; it does not prove tool execution, repair, or UI state.",
+      "nextCaseImprovement": "Add replay fixtures for tool events, evidence, history, and QualityGate transitions."
+    },
+    {
+      "caseId": "L1-cli-jsonl-mock",
+      "layerKind": "deterministic",
+      "requiredForSubmit": true,
+      "status": "passed",
+      "verdict": "reasonable",
+      "limitation": "Covers machine-readable CLI output; it does not validate Bridge or generated code quality.",
+      "nextCaseImprovement": "Add negative JSONL cases for stderr pollution and malformed event ordering."
+    },
+    {
+      "caseId": "L2-cli-fake-bridge-sse",
+      "layerKind": "deterministic",
+      "requiredForSubmit": true,
+      "status": "passed",
+      "verdict": "reasonable",
+      "limitation": "Covers SSE transport with a fake Bridge; it does not validate live Provider behavior.",
+      "nextCaseImprovement": "Add timeout, reset, and partial-delta replay cases."
+    },
+    {
+      "caseId": "L3-cli-fake-bridge-programming",
+      "layerKind": "deterministic",
+      "requiredForSubmit": true,
+      "status": "passed",
+      "verdict": "reasonable",
+      "limitation": "Covers a single-file compile/run path; it does not test modifying existing projects or multi-file builds.",
+      "nextCaseImprovement": "Add modify-existing, failing-build repair, and multi-file project fixtures."
+    },
+    {
+      "caseId": "L4-cli-real-deepseek-programming",
+      "layerKind": "real-provider-smoke",
+      "requiredForSubmit": false,
+      "status": "passed",
+      "verdict": "valuable-finding",
+      "limitation": "The case found a live protocol looseness but currently relies on evaluator recovery.",
+      "nextCaseImprovement": "Freeze the loose response as an L3 replay and iterate until strict tool JSON passes without recovery."
+    }
+  ],
+  "iterationDecision": [
+    "Convert the live model protocol gap into a deterministic L3 replay, then iterate prompt/contract until strict tool JSON is stable."
+  ],
+  "summary": {
+    "passed": 5,
+    "failed": 0,
+    "skipped": 0,
+    "findings": 1,
+    "requiredFailures": 0,
+    "requiredSkips": 0,
+    "testingReportPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/2026-06-23T07-15-08-399Z/report.md",
+    "latestTestingReportPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/latest.md"
+  }
+}

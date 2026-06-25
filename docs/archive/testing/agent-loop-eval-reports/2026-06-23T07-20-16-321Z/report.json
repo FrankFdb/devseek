@@ -1,0 +1,186 @@
+{
+  "ok": false,
+  "runId": "2026-06-23T07-20-16-321Z",
+  "command": "node scripts/devseek-agent-loop-eval.mjs --real-deepseek",
+  "tempRoot": "/tmp/devseek-agent-loop-eval-iVtfv4",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/agent-loop-eval/2026-06-23T07-20-16-321Z",
+  "reportPath": "/home/ff/work/devseek_netai/artifacts/agent-loop-eval/2026-06-23T07-20-16-321Z/report.json",
+  "testingReportDir": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/2026-06-23T07-20-16-321Z",
+  "testingJsonReportPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/2026-06-23T07-20-16-321Z/report.json",
+  "testingMarkdownReportPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/2026-06-23T07-20-16-321Z/report.md",
+  "caseCatalogPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-cases.json",
+  "includeRealDeepSeek": true,
+  "layers": [
+    {
+      "id": "L0-agent-core-protocol",
+      "kind": "deterministic",
+      "description": "Exercise AgentApplicationService with a local fake provider and assert AgentEvent ordering.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L1-cli-jsonl-mock",
+      "kind": "deterministic",
+      "description": "Exercise CLI JSONL output with the built-in mock provider.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L2-cli-fake-bridge-sse",
+      "kind": "deterministic",
+      "description": "Exercise CLI -> Bridge SSE streaming with a local fake Bridge.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L3-cli-fake-bridge-programming",
+      "kind": "deterministic",
+      "description": "Ask through CLI, receive a tool-style code artifact from fake Bridge, compile and run it locally.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L3b-cli-loose-tool-json-recovery",
+      "kind": "deterministic-regression",
+      "description": "Replay a captured loose tool JSON shape, recover the code artifact, compile it, and keep the protocol gap visible.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L4-cli-real-deepseek-programming",
+      "kind": "real-provider-smoke",
+      "description": "Optional CLI -> real Bridge -> DeepSeek Web coding smoke; captured output is compiled and run locally.",
+      "requiredForSubmit": false,
+      "enableWith": "node scripts/devseek-agent-loop-eval.mjs --real-deepseek"
+    }
+  ],
+  "cases": [
+    {
+      "durationMs": 10,
+      "id": "L0-agent-core-protocol",
+      "status": "passed",
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "chat.delta",
+        "chat.delta",
+        "chat.completed"
+      ]
+    },
+    {
+      "durationMs": 41,
+      "id": "L1-cli-jsonl-mock",
+      "status": "passed",
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "chat.completed"
+      ]
+    },
+    {
+      "durationMs": 124,
+      "id": "L2-cli-fake-bridge-sse",
+      "status": "passed",
+      "bridge": "fake-sse"
+    },
+    {
+      "durationMs": 318,
+      "id": "L3-cli-fake-bridge-programming",
+      "status": "passed",
+      "output": "DEVSEEK_CLI_FAKE_BRIDGE_CODE_OK",
+      "file": "code/cli_eval/main.cpp",
+      "artifactFormat": "tool-json"
+    },
+    {
+      "durationMs": 355,
+      "id": "L3b-cli-loose-tool-json-recovery",
+      "status": "passed",
+      "output": "DEVSEEK_CLI_LOOSE_JSON_RECOVERY_OK",
+      "file": "code/cli_loose_json/main.cpp",
+      "artifactFormat": "tool-json-recovered",
+      "expectedRecovery": true
+    },
+    {
+      "durationMs": 4556,
+      "id": "L4-cli-real-deepseek-programming",
+      "status": "failed",
+      "error": "AssertionError [ERR_ASSERTION]: code/cli_real_deepseek/main.cpp:3:62: warning: missing terminating ' character\n    3 |   const char marker[] = { 'D', 'E', 'V', 'S', 'E', 'E', 'K', '_\n      |                                                              ^\ncode/cli_real_deepseek/main.cpp:3:62: error: missing terminating ' character\n    3 |   const char marker[] = { 'D', 'E', 'V', 'S', 'E', 'E', 'K', '_\n      |                                                              ^~\ncode/cli_real_deepseek/main.cpp:4:75: warning: missing terminating \" character\n    4 | [TOOL:create_file {\"filePath\":\"code/cli_real_deepseek/main.cpp\",\"content\":\"#include <iostream>\n      |                                                                           ^\ncode/cli_real_deepseek/main.cpp:4:75: error: missing terminating \" character\n    4 | [TOOL:create_file {\"filePath\":\"code/cli_real_deepseek/main.cpp\",\"content\":\"#include <iostream>\n      |                                                                           ^~~~~~~~~~~~~~~~~~~~\ncode/cli_real_deepseek/main.cpp:6:62: error: empty character constant\n    6 |   const char marker[] = { 'D', 'E', 'V', 'S', 'E', 'E', 'K', '', 'C', 'L', 'I', '', 'R', 'E', 'A', 'L', '_', 'D', 'E', 'E', 'P', 'S', 'E',\n      |                                                              ^~\ncode/cli_real_deepseek/main.cpp:6:81: error: empty character constant\n    6 |   const char marker[] = { 'D', 'E', 'V', 'S', 'E', 'E', 'K', '', 'C', 'L', 'I', '', 'R', 'E', 'A', 'L', '_', 'D', 'E', 'E', 'P', 'S', 'E',\n      |                                                                                 ^~\ncode/cli_real_deepseek/main.cpp:7:75: warning: missing terminating \" character\n    7 | [TOOL:create_file {\"filePath\":\"code/cli_real_deepseek/main.cpp\",\"content\":\"#include <iostream>\n      |                                                                           ^\ncode/cli_real_deepseek/main.cpp:7:75: error: missing terminating \" character\n    7 | [TOOL:create_file {\"filePath\":\"code/cli_real_deepseek/main.cpp\",\"content\":\"#include <iostream>\n      |                                                                           ^~~~~~~~~~~~~~~~~~~~\ncode/cli_real_deepseek/main.cpp:9:62: error: empty character constant\n    9 |   const char marker[] = { 'D', 'E', 'V', 'S', 'E', 'E', 'K', '', 'C', 'L', 'I', '', 'R', 'E', 'A', 'L', '', 'D', 'E', 'E', 'P', 'S', 'E', 'E', 'K', '', 'C', 'O', 'D', 'E', '_', 'O', 'K', 0 };\n      |                                                              ^~\ncode/cli_real_deepseek/main.cpp:9:81: error: empty character constant\n    9 |   const char marker[] = { 'D', 'E', 'V', 'S', 'E', 'E', 'K', '', 'C', 'L', 'I', '', 'R', 'E', 'A', 'L', '', 'D', 'E', 'E', 'P', 'S', 'E', 'E', 'K', '', 'C', 'O', 'D', 'E', '_', 'O', 'K', 0 };\n      |                                                                                 ^~\ncode/cli_real_deepseek/main.cpp:9:105: error: empty character constant\n    9 |   const char marker[] = { 'D', 'E', 'V', 'S', 'E', 'E', 'K', '', 'C', 'L', 'I', '', 'R', 'E', 'A', 'L', '', 'D', 'E', 'E', 'P', 'S', 'E', 'E', 'K', '', 'C', 'O', 'D', 'E', '_', 'O', 'K', 0 };\n      |                                                                                                         ^~\ncode/cli_real_deepseek/main.cpp:9:149: error: empty character constant\n    9 |   const char marker[] = { 'D', 'E', 'V', 'S', 'E', 'E', 'K', '', 'C', 'L', 'I', '', 'R', 'E', 'A', 'L', '', 'D', 'E', 'E', 'P', 'S', 'E', 'E', 'K', '', 'C', 'O', 'D', 'E', '_', 'O', 'K', 0 };\n      |                                                                                                                                                     ^~\ncode/cli_real_deepseek/main.cpp:12:2: error: stray ‘\\’ in program\n   12 | }\\n\"}]\n      |  ^\ncode/cli_real_deepseek/main.cpp:12:4: warning: missing terminating \" character\n   12 | }\\n\"}]\n      |    ^\ncode/cli_real_deepseek/main.cpp:12:4: error: missing terminating \" character\n   12 | }\\n\"}]\n      |    ^~~\ncode/cli_real_deepseek/main.cpp:13:75: warning: missing terminating \" character\n   13 | [TOOL:create_file {\"filePath\":\"code/cli_real_deepseek/main.cpp\",\"content\":\"#include <iostream>\n      |                                                                           ^\ncode/cli_real_deepseek/main.cpp:13:75: error: missing terminating \" character\n   13 | [TOOL:create_file {\"filePath\":\"code/cli_real_deepseek/main.cpp\",\"content\":\"#include <iostream>\n      |                                                                           ^~~~~~~~~~~~~~~~~~~~\ncode/cli_real_deepseek/main.cpp: In function ‘int main()’:\ncode/cli_real_deepseek/main.cpp:4:2: error: ‘TOOL’ was not declared in this scope\n    4 | [TOOL:create_file {\"filePath\":\"code/cli_real_deepseek/main.cpp\",\"content\":\"#include <iostream>\n      |  ^~~~\ncode/cli_real_deepseek/main.cpp:4:6: error: expected ‘,’ before ‘:’ token\n    4 | [TOOL:create_file {\"filePath\":\"code/cli_real_deepseek/main.cpp\",\"content\":\"#include <iostream>\n      |      ^\n      |      ,\ncode/cli_real_deepseek/main.cpp:4:6: error: expected identifier before ‘:’ token\ncode/cli_real_deepseek/main.cpp:18:2: error: expected ‘]’ at end of input\n   18 | }\n      |  ^\n      |  ]\ncode/cli_real_deepseek/main.cpp: In lambda function:\ncode/cli_real_deepseek/main.cpp:18:2: error: expected ‘{’ at end of input\ncode/cli_real_deepseek/main.cpp: In function ‘int main()’:\ncode/cli_real_deepseek/main.cpp:18:2: error: expected ‘}’ at end of input\ncode/cli_real_deepseek/main.cpp:3:25: note: to match this ‘{’\n    3 |   const char marker[] = { 'D', 'E', 'V', 'S', 'E', 'E', 'K', '_\n      |                         ^\ncode/cli_real_deepseek/main.cpp:18:2: error: invalid user-defined conversion from ‘main()::<lambda()>’ to ‘char’ [-fpermissive]\n   18 | }\n      |  ^\ncode/cli_real_deepseek/main.cpp:4:1: note: candidate is: ‘constexpr main()::<lambda()>::operator void (*)()() const’ (near match)\n    4 | [TOOL:create_file {\"filePath\":\"code/cli_real_deepseek/main.cpp\",\"content\":\"#include <iostream>\n      | ^\ncode/cli_real_deepseek/main.cpp:4:1: note:   no known conversion from ‘void (*)()’ to ‘char’\ncode/cli_real_deepseek/main.cpp:18:2: error: expected ‘,’ or ‘;’ at end of input\n   18 | }\n      |  ^\ncode/cli_real_deepseek/main.cpp:18:2: error: expected ‘}’ at end of input\ncode/cli_real_deepseek/main.cpp:2:12: note: to match this ‘{’\n    2 | int main() {\n      |            ^\n\n\n1 !== 0\n\n    at compileCliResponse (file:///home/ff/work/devseek_netai/scripts/devseek-agent-loop-eval.mjs:428:10)\n    at cliRealDeepSeekProgrammingCase (file:///home/ff/work/devseek_netai/scripts/devseek-agent-loop-eval.mjs:286:20)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-agent-loop-eval.mjs:61:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-agent-loop-eval.mjs:851:3)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-agent-loop-eval.mjs:858:3"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "caseId": "L4-cli-real-deepseek-programming",
+      "severity": "medium",
+      "status": "open",
+      "category": "generated-code-defect",
+      "evidence": "AssertionError [ERR_ASSERTION]: code/cli_real_deepseek/main.cpp:3:62: warning: missing terminating ' character 3 | const char marker[] = { 'D', 'E', 'V', 'S', 'E', 'E', 'K', '_ | ^ code/cli_real_deepseek/main.cpp:3:62: error: missing terminating ' character 3 | const char marker[] = { 'D', 'E', 'V', 'S', 'E', 'E', 'K', '_ | ^~ code/cli_real_deepseek/main.cpp:4:75: warning: missing terminating \" character 4 | [TOOL:create_file {\"filePath\":\"code/cli_real_deepseek/main.cpp\",\"content\":\"#include <ios",
+      "diagnosis": "The coding output was captured but did not compile or run to the required marker.",
+      "nextAction": "Turn the compile/run failure into a repair fixture and make the agent rerun the verifier after fixing."
+    }
+  ],
+  "caseDesignReview": [
+    {
+      "caseId": "L0-agent-core-protocol",
+      "layerKind": "deterministic",
+      "requiredForSubmit": true,
+      "status": "passed",
+      "verdict": "reasonable",
+      "limitation": "Covers event protocol only; it does not prove tool execution, repair, or UI state.",
+      "nextCaseImprovement": "Add replay fixtures for tool events, evidence, history, and QualityGate transitions."
+    },
+    {
+      "caseId": "L1-cli-jsonl-mock",
+      "layerKind": "deterministic",
+      "requiredForSubmit": true,
+      "status": "passed",
+      "verdict": "reasonable",
+      "limitation": "Covers machine-readable CLI output; it does not validate Bridge or generated code quality.",
+      "nextCaseImprovement": "Add negative JSONL cases for stderr pollution and malformed event ordering."
+    },
+    {
+      "caseId": "L2-cli-fake-bridge-sse",
+      "layerKind": "deterministic",
+      "requiredForSubmit": true,
+      "status": "passed",
+      "verdict": "reasonable",
+      "limitation": "Covers SSE transport with a fake Bridge; it does not validate live Provider behavior.",
+      "nextCaseImprovement": "Add timeout, reset, and partial-delta replay cases."
+    },
+    {
+      "caseId": "L3-cli-fake-bridge-programming",
+      "layerKind": "deterministic",
+      "requiredForSubmit": true,
+      "status": "passed",
+      "verdict": "reasonable",
+      "limitation": "Covers a single-file compile/run path; it does not test modifying existing projects or multi-file builds.",
+      "nextCaseImprovement": "Add modify-existing, failing-build repair, and multi-file project fixtures."
+    },
+    {
+      "caseId": "L3b-cli-loose-tool-json-recovery",
+      "layerKind": "deterministic-regression",
+      "requiredForSubmit": true,
+      "status": "passed",
+      "verdict": "regression-replay",
+      "limitation": "Covers one known loose JSON shape; it does not prove all malformed tool outputs are recoverable.",
+      "nextCaseImprovement": "Add more captured live responses as replay fixtures only after each one has a clear oracle."
+    },
+    {
+      "caseId": "L4-cli-real-deepseek-programming",
+      "layerKind": "real-provider-smoke",
+      "requiredForSubmit": false,
+      "status": "failed",
+      "verdict": "reasonable",
+      "limitation": "Live Provider output is useful for smoke testing but is not stable enough as the only regression guard.",
+      "nextCaseImprovement": "Any live failure should be downgraded into deterministic L0-L3 replay before product fixes are accepted."
+    }
+  ],
+  "iterationDecision": [
+    "All required subloops passed; continue by adding the next capability step rather than widening real-provider dependence."
+  ],
+  "summary": {
+    "passed": 5,
+    "failed": 1,
+    "skipped": 0,
+    "findings": 1,
+    "requiredFailures": 0,
+    "requiredSkips": 0,
+    "testingReportPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/2026-06-23T07-20-16-321Z/report.md",
+    "latestTestingReportPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/latest.md"
+  }
+}

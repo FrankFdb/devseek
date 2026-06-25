@@ -1,0 +1,45 @@
+{
+  "ok": true,
+  "runId": "2026-06-24T08-50-27-061Z",
+  "command": "node scripts/devseek-real-deepseek-web-eval.mjs --case RDW3-live-project-test-command",
+  "caseId": "RDW3-live-project-test-command",
+  "target": "Real DeepSeek Web coding-agent action test",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "workspaceRoot": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-24T08-50-27-061Z/RDW3-live-project-test-command",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-50-27-061Z",
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-50-27-061Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-50-27-061Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-50-27-061Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/latest.md",
+  "casesPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-cases.json",
+  "cases": [
+    {
+      "id": "RDW3-live-project-test-command",
+      "status": "passed",
+      "durationMs": 35940,
+      "output": "RDW3_PROJECT_TEST_OK",
+      "changedFiles": [
+        "src/math.js"
+      ],
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ],
+      "promptPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-50-27-061Z/rdw3-prompt.txt",
+      "rawJsonlPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-50-27-061Z/rdw3-raw-jsonl.txt",
+      "stderrPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-50-27-061Z/rdw3-stderr.txt",
+      "responsePath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-50-27-061Z/rdw3-response.txt",
+      "sourcePath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-50-27-061Z/rdw3-final-math.js"
+    }
+  ],
+  "findings": [],
+  "iterationDecision": [
+    "RDW3-live-project-test-command passed on the real DeepSeek Web path. Record this run before advancing to the next RDW case."
+  ]
+}

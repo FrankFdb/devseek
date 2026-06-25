@@ -1,0 +1,56 @@
+{
+  "ok": true,
+  "runId": "2026-06-24T08-59-24-794Z",
+  "command": "node scripts/devseek-real-deepseek-web-eval.mjs --case RDW4-live-failing-test-repair",
+  "caseId": "RDW4-live-failing-test-repair",
+  "target": "Real DeepSeek Web coding-agent action test",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "workspaceRoot": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-24T08-59-24-794Z/RDW4-live-failing-test-repair",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-59-24-794Z",
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-59-24-794Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-59-24-794Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-59-24-794Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/latest.md",
+  "casesPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-cases.json",
+  "cases": [
+    {
+      "id": "RDW4-live-failing-test-repair",
+      "status": "passed",
+      "durationMs": 70224,
+      "output": "RDW4_REPAIR_OK",
+      "turns": 2,
+      "validationStatuses": [
+        false,
+        true
+      ],
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed",
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ],
+      "promptPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-59-24-794Z/rdw4-prompt.txt",
+      "rawJsonlPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-59-24-794Z/rdw4-raw-jsonl.txt",
+      "stderrPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-59-24-794Z/rdw4-stderr.txt",
+      "sourcePath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-59-24-794Z/rdw4-final-repair.cpp",
+      "verifierPath": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-24T08-59-24-794Z/RDW4-live-failing-test-repair/.devseek/rdw4-verifier.cjs",
+      "verifyConfigPath": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-24T08-59-24-794Z/RDW4-live-failing-test-repair/devseek.verify.json"
+    }
+  ],
+  "findings": [],
+  "iterationDecision": [
+    "RDW4-live-failing-test-repair passed on the real DeepSeek Web path. Record this run before advancing to the next RDW case."
+  ]
+}

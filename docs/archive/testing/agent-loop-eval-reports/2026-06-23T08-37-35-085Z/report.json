@@ -1,0 +1,188 @@
+{
+  "ok": false,
+  "runId": "2026-06-23T08-37-35-085Z",
+  "command": "node scripts/devseek-agent-loop-eval.mjs --real-deepseek",
+  "tempRoot": "/tmp/devseek-agent-loop-eval-xfnvmi",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "safeCodeWorkspace": "/home/ff/work/devseek_netai/code/agent-loop-eval/2026-06-23T08-37-35-085Z",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/agent-loop-eval/2026-06-23T08-37-35-085Z",
+  "reportPath": "/home/ff/work/devseek_netai/artifacts/agent-loop-eval/2026-06-23T08-37-35-085Z/report.json",
+  "testingReportDir": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/2026-06-23T08-37-35-085Z",
+  "testingJsonReportPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/2026-06-23T08-37-35-085Z/report.json",
+  "testingMarkdownReportPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/2026-06-23T08-37-35-085Z/report.md",
+  "caseCatalogPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-cases.json",
+  "includeRealDeepSeek": true,
+  "layers": [
+    {
+      "id": "L0-agent-core-protocol",
+      "kind": "deterministic",
+      "description": "Exercise AgentApplicationService with a local fake provider and assert AgentEvent ordering.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L1-cli-jsonl-mock",
+      "kind": "deterministic",
+      "description": "Exercise CLI JSONL output with the built-in mock provider.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L2-cli-fake-bridge-sse",
+      "kind": "deterministic",
+      "description": "Exercise CLI -> Bridge SSE streaming with a local fake Bridge.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L3-cli-fake-bridge-programming",
+      "kind": "deterministic",
+      "description": "Ask through CLI, receive a tool-style code artifact from fake Bridge, compile and run it locally.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L3b-cli-loose-tool-json-recovery",
+      "kind": "deterministic-regression",
+      "description": "Replay a captured loose tool JSON shape, recover the code artifact, compile it, and keep the protocol gap visible.",
+      "requiredForSubmit": true
+    },
+    {
+      "id": "L4-cli-real-deepseek-programming",
+      "kind": "real-provider-smoke",
+      "description": "Optional CLI JSONL -> real Bridge -> DeepSeek Web coding smoke; the final chat.completed response is compiled and run locally.",
+      "requiredForSubmit": false,
+      "enableWith": "node scripts/devseek-agent-loop-eval.mjs --real-deepseek"
+    }
+  ],
+  "cases": [
+    {
+      "durationMs": 5,
+      "id": "L0-agent-core-protocol",
+      "status": "passed",
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "chat.delta",
+        "chat.delta",
+        "chat.completed"
+      ]
+    },
+    {
+      "durationMs": 44,
+      "id": "L1-cli-jsonl-mock",
+      "status": "passed",
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "chat.completed"
+      ]
+    },
+    {
+      "durationMs": 146,
+      "id": "L2-cli-fake-bridge-sse",
+      "status": "passed",
+      "bridge": "fake-sse"
+    },
+    {
+      "durationMs": 660,
+      "id": "L3-cli-fake-bridge-programming",
+      "status": "passed",
+      "output": "DEVSEEK_CLI_FAKE_BRIDGE_CODE_OK",
+      "file": "code/cli_eval/main.cpp",
+      "artifactFormat": "tool-json"
+    },
+    {
+      "durationMs": 818,
+      "id": "L3b-cli-loose-tool-json-recovery",
+      "status": "passed",
+      "output": "DEVSEEK_CLI_LOOSE_JSON_RECOVERY_OK",
+      "file": "code/cli_loose_json/main.cpp",
+      "artifactFormat": "tool-json-recovered",
+      "expectedRecovery": true
+    },
+    {
+      "durationMs": 78,
+      "id": "L4-cli-real-deepseek-programming",
+      "status": "failed",
+      "error": "Error: Real DeepSeek CLI exited 1. stderr=DevSeek CLI error: Bridge HTTP 401: {\"error\":\"Unauthorized bridge request\"} stdout={\"type\":\"chat.started\",\"eventId\":\"mqqe5swv-0wk5bz\",\"commandId\":\"cmd-mqqe5swv\",\"surface\":\"jsonl\",\"timestamp\":1782203856799,\"prompt\":\"你正在参加 DevSeek CLI 到真实 DeepSeek Web 的编程智能体冒烟测试。\\n请只输出一个 DevSeek 工具调用，不要解释，不要放入代码块，不要输出 Markdown。\\n工具名必须是 create_file，字段必须使用 filePath 和 content。\\nfilePath 必须是 code/cli_real_deepseek/main.cpp。\\ncontent 必须是一个完整 C++17 程序，运行时只输出一行：DEVSEEK_CLI_REAL_DEEPSEEK_CODE_OK\\n整个工具调用必须是合法 JSON；不要让 content 字符串里出现未转义的双引号。\\nC++ 源码不要使用双引号字符串字面量；请像示例一样使用 const char marker[] 和十进制 ASCII 数字逐\n    at cliRealDeepSeekProgrammingCase (file:///home/ff/work/devseek_netai/scripts/devseek-agent-loop-eval.mjs:293:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-agent-loop-eval.mjs:66:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-agent-loop-eval.mjs:876:3)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-agent-loop-eval.mjs:883:3"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "caseId": "L4-cli-real-deepseek-programming",
+      "severity": "low",
+      "status": "open",
+      "category": "real-provider-environment",
+      "evidence": "Error: Real DeepSeek CLI exited 1. stderr=DevSeek CLI error: Bridge HTTP 401: {\"error\":\"Unauthorized bridge request\"} stdout={\"type\":\"chat.started\",\"eventId\":\"mqqe5swv-0wk5bz\",\"commandId\":\"cmd-mqqe5swv\",\"surface\":\"jsonl\",\"timestamp\":1782203856799,\"prompt\":\"你正在参加 DevSeek CLI 到真实 DeepSeek Web 的编程智能体冒烟测试。\\n请只输出一个 DevSeek 工具调用，不要解释，不要放入代码块，不要输出 Markdown。\\n工具名必须是 create_file，字段必须使用 filePath 和 content。\\nfilePath 必须是 code/cli_real_deepseek/main.cpp。\\ncontent 必须是一个完整 C++17 程序，运行时只输出一行：DEVSEEK_CLI_REAL_D",
+      "diagnosis": "The live Provider path is unavailable or unstable; this is not enough evidence for a DevSeek logic bug.",
+      "nextAction": "Capture prompt/response logs, verify Bridge/login/network state, and rerun without changing product logic first."
+    }
+  ],
+  "caseDesignReview": [
+    {
+      "caseId": "L0-agent-core-protocol",
+      "layerKind": "deterministic",
+      "requiredForSubmit": true,
+      "status": "passed",
+      "verdict": "reasonable",
+      "limitation": "Covers event protocol only; it does not prove tool execution, repair, or UI state.",
+      "nextCaseImprovement": "Add replay fixtures for tool events, evidence, history, and QualityGate transitions."
+    },
+    {
+      "caseId": "L1-cli-jsonl-mock",
+      "layerKind": "deterministic",
+      "requiredForSubmit": true,
+      "status": "passed",
+      "verdict": "reasonable",
+      "limitation": "Covers machine-readable CLI output; it does not validate Bridge or generated code quality.",
+      "nextCaseImprovement": "Add negative JSONL cases for stderr pollution and malformed event ordering."
+    },
+    {
+      "caseId": "L2-cli-fake-bridge-sse",
+      "layerKind": "deterministic",
+      "requiredForSubmit": true,
+      "status": "passed",
+      "verdict": "reasonable",
+      "limitation": "Covers SSE transport with a fake Bridge; it does not validate live Provider behavior.",
+      "nextCaseImprovement": "Add timeout, reset, and partial-delta replay cases."
+    },
+    {
+      "caseId": "L3-cli-fake-bridge-programming",
+      "layerKind": "deterministic",
+      "requiredForSubmit": true,
+      "status": "passed",
+      "verdict": "reasonable",
+      "limitation": "Covers a single-file compile/run path; it does not test modifying existing projects or multi-file builds.",
+      "nextCaseImprovement": "Add modify-existing, failing-build repair, and multi-file project fixtures."
+    },
+    {
+      "caseId": "L3b-cli-loose-tool-json-recovery",
+      "layerKind": "deterministic-regression",
+      "requiredForSubmit": true,
+      "status": "passed",
+      "verdict": "regression-replay",
+      "limitation": "Covers one known loose JSON shape; it does not prove all malformed tool outputs are recoverable.",
+      "nextCaseImprovement": "Add more captured live responses as replay fixtures only after each one has a clear oracle."
+    },
+    {
+      "caseId": "L4-cli-real-deepseek-programming",
+      "layerKind": "real-provider-smoke",
+      "requiredForSubmit": false,
+      "status": "failed",
+      "verdict": "reasonable",
+      "limitation": "Uses JSONL final response for the compile oracle; live streaming display still needs a separate surface-oriented smoke.",
+      "nextCaseImprovement": "Any live failure should be downgraded into deterministic L0-L3 replay before product fixes are accepted."
+    }
+  ],
+  "iterationDecision": [
+    "Do not promote the affected live layer yet; classify the finding, add a deterministic replay when possible, and rerun."
+  ],
+  "summary": {
+    "passed": 5,
+    "failed": 1,
+    "skipped": 0,
+    "findings": 1,
+    "requiredFailures": 0,
+    "requiredSkips": 0,
+    "testingReportPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/2026-06-23T08-37-35-085Z/report.md",
+    "latestTestingReportPath": "/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/latest.md"
+  }
+}

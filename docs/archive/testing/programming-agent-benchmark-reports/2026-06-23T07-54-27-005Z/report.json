@@ -1,0 +1,93 @@
+{
+  "ok": false,
+  "runId": "2026-06-23T07-54-27-005Z",
+  "command": "node scripts/devseek-programming-agent-benchmark.mjs",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "benchmarkWorkspaceRoot": "/home/ff/work/devseek_netai/code/devseek-programming-agent-benchmark/2026-06-23T07-54-27-005Z",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/programming-agent-benchmark/2026-06-23T07-54-27-005Z",
+  "reportPath": "/home/ff/work/devseek_netai/artifacts/programming-agent-benchmark/2026-06-23T07-54-27-005Z/report.json",
+  "testingReportDir": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-23T07-54-27-005Z",
+  "testingJsonReportPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-23T07-54-27-005Z/report.json",
+  "testingMarkdownReportPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-23T07-54-27-005Z/report.md",
+  "caseCatalogPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-cases.json",
+  "target": "Claude Code/Codex baseline coding-agent behavior",
+  "cases": [
+    {
+      "id": "PA0-cli-jsonl-sanity",
+      "status": "passed",
+      "durationMs": 42,
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "chat.completed"
+      ]
+    },
+    {
+      "id": "PA1-create-file-apply-compile",
+      "status": "failed",
+      "durationMs": 82,
+      "error": "AssertionError [ERR_ASSERTION]: DevSeek did not create src/main.cpp in the workspace\n    at createFileApplyCompileCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:97:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:54:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:479:3)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:487:3"
+    },
+    {
+      "id": "PA2-modify-existing-preserve-behavior",
+      "status": "failed",
+      "durationMs": 368,
+      "error": "AssertionError [ERR_ASSERTION]: DevSeek did not apply the replace_file edit to the existing source file\n    at modifyExistingPreserveBehaviorCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:138:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:54:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:480:3)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:487:3"
+    },
+    {
+      "id": "PA3-test-repair-loop",
+      "status": "failed",
+      "durationMs": 83,
+      "error": "AssertionError [ERR_ASSERTION]: expected a repair loop with at least 2 model turns, saw 1\n    at file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:177:12\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async withFakeBridge (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:241:5)\n    at async testRepairLoopCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:164:3)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:54:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:481:3)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:487:3"
+    },
+    {
+      "id": "PA4-agent-evidence-events",
+      "status": "failed",
+      "durationMs": 78,
+      "error": "AssertionError [ERR_ASSERTION]: missing fileChanges.proposed event; saw chat.started, provider.selected, provider.status, provider.status, chat.completed\n    at agentEvidenceEventsCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:203:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:54:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:482:3)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:487:3"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "caseId": "PA1-create-file-apply-compile",
+      "severity": "high",
+      "category": "missing-tool-execution",
+      "diagnosis": "DevSeek returned or received a structured coding artifact but did not apply it to the workspace and verify the result.",
+      "evidence": "AssertionError [ERR_ASSERTION]: DevSeek did not create src/main.cpp in the workspace at createFileApplyCompileCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:97:10) at process.processTicksAndRejections (node:internal/process/task_queues:103:5) at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:54:21) at async main (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:479:3) at",
+      "nextAction": "Add an agent tool execution layer with safe file write semantics, then rerun PA1 and PA2."
+    },
+    {
+      "id": "F2",
+      "caseId": "PA2-modify-existing-preserve-behavior",
+      "severity": "high",
+      "category": "missing-tool-execution",
+      "diagnosis": "DevSeek returned or received a structured coding artifact but did not apply it to the workspace and verify the result.",
+      "evidence": "AssertionError [ERR_ASSERTION]: DevSeek did not apply the replace_file edit to the existing source file at modifyExistingPreserveBehaviorCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:138:10) at process.processTicksAndRejections (node:internal/process/task_queues:103:5) at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:54:21) at async main (file:///home/ff/work/devseek_netai/scripts/devseek-programming-a",
+      "nextAction": "Add an agent tool execution layer with safe file write semantics, then rerun PA1 and PA2."
+    },
+    {
+      "id": "F3",
+      "caseId": "PA3-test-repair-loop",
+      "severity": "high",
+      "category": "missing-repair-loop",
+      "diagnosis": "DevSeek did not run the verifier, feed failure evidence back to the model, and apply a repaired edit.",
+      "evidence": "AssertionError [ERR_ASSERTION]: expected a repair loop with at least 2 model turns, saw 1 at file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:177:12 at process.processTicksAndRejections (node:internal/process/task_queues:103:5) at async withFakeBridge (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:241:5) at async testRepairLoopCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:164:3) at a",
+      "nextAction": "Add verifier command execution and a bounded repair loop, then rerun PA3."
+    },
+    {
+      "id": "F4",
+      "caseId": "PA4-agent-evidence-events",
+      "severity": "high",
+      "category": "missing-evidence-events",
+      "diagnosis": "DevSeek did not expose auditable file-change, validation, and quality-gate events for automation/review.",
+      "evidence": "AssertionError [ERR_ASSERTION]: missing fileChanges.proposed event; saw chat.started, provider.selected, provider.status, provider.status, chat.completed at agentEvidenceEventsCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:203:10) at process.processTicksAndRejections (node:internal/process/task_queues:103:5) at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:54:21) at async main (file:///home/ff/work/devs",
+      "nextAction": "Emit structured AgentEvent evidence after tool execution and verification, then rerun PA4."
+    }
+  ],
+  "iterationDecision": [
+    "Implement a real workspace tool executor for create_file/replace_file before treating DevSeek as a coding agent.",
+    "Add verifier execution and model feedback loops so DevSeek can repair failed builds/tests.",
+    "Emit fileChanges, validation, and qualityGate events for every applied coding run."
+  ]
+}

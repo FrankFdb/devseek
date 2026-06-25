@@ -1,0 +1,46 @@
+{
+  "ok": true,
+  "runId": "2026-06-25T03-15-39-193Z",
+  "command": "node scripts/devseek-real-deepseek-web-eval.mjs --case RDW8-live-large-context-routing",
+  "caseId": "RDW8-live-large-context-routing",
+  "target": "Real DeepSeek Web coding-agent action test",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "workspaceRoot": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-25T03-15-39-193Z/RDW8-live-large-context-routing",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-15-39-193Z",
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-15-39-193Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-15-39-193Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-15-39-193Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/latest.md",
+  "casesPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-cases.json",
+  "cases": [
+    {
+      "id": "RDW8-live-large-context-routing",
+      "status": "passed",
+      "durationMs": 40926,
+      "output": "RDW8_CONTEXT_OK",
+      "changedFiles": [
+        "src/calculator.py"
+      ],
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ],
+      "promptPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-15-39-193Z/rdw8-prompt.txt",
+      "rawJsonlPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-15-39-193Z/rdw8-raw-jsonl.txt",
+      "stderrPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-15-39-193Z/rdw8-stderr.txt",
+      "responsePath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-15-39-193Z/rdw8-response.txt",
+      "sourcePath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-15-39-193Z/rdw8-final-calculator.py",
+      "snapshotPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-15-39-193Z/rdw8-workspace-snapshot.json"
+    }
+  ],
+  "findings": [],
+  "iterationDecision": [
+    "RDW8-live-large-context-routing passed on the real DeepSeek Web path. Record this run before advancing to the next RDW case."
+  ]
+}

@@ -1,0 +1,175 @@
+{
+  "ok": false,
+  "runId": "2026-06-25T08-46-50-852Z",
+  "command": "node scripts/devseek-programming-agent-benchmark.mjs",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "benchmarkWorkspaceRoot": "/home/ff/work/devseek_netai/code/devseek-programming-agent-benchmark/2026-06-25T08-46-50-852Z",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/programming-agent-benchmark/2026-06-25T08-46-50-852Z",
+  "reportPath": "/home/ff/work/devseek_netai/artifacts/programming-agent-benchmark/2026-06-25T08-46-50-852Z/report.json",
+  "testingReportDir": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-25T08-46-50-852Z",
+  "testingJsonReportPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-25T08-46-50-852Z/report.json",
+  "testingMarkdownReportPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-25T08-46-50-852Z/report.md",
+  "caseCatalogPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-cases.json",
+  "target": "Claude Code/Codex baseline coding-agent behavior",
+  "cases": [
+    {
+      "id": "PA0-cli-jsonl-sanity",
+      "status": "passed",
+      "durationMs": 44,
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "chat.completed"
+      ]
+    },
+    {
+      "id": "PA1-create-file-apply-compile",
+      "status": "passed",
+      "durationMs": 794,
+      "file": "src/main.cpp",
+      "output": "PA1_CREATE_FILE_OK"
+    },
+    {
+      "id": "PA2-modify-existing-preserve-behavior",
+      "status": "passed",
+      "durationMs": 1024,
+      "file": "src/calc.cpp",
+      "output": "ADD:5\nMUL:6"
+    },
+    {
+      "id": "PA3-test-repair-loop",
+      "status": "passed",
+      "durationMs": 951,
+      "turns": 2,
+      "output": "PA3_REPAIR_OK"
+    },
+    {
+      "id": "PA4-agent-evidence-events",
+      "status": "passed",
+      "durationMs": 373,
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ]
+    },
+    {
+      "id": "PA5-unified-diff-apply",
+      "status": "passed",
+      "durationMs": 1012,
+      "file": "src/patch_calc.cpp",
+      "output": "ADD:5\nMUL:6\nDIV:2"
+    },
+    {
+      "id": "PA6-project-test-command",
+      "status": "passed",
+      "durationMs": 507,
+      "output": "PA6_PROJECT_TEST_OK",
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ]
+    },
+    {
+      "id": "PA7-staged-incremental-requirement",
+      "status": "failed",
+      "durationMs": 1106,
+      "error": "AssertionError [ERR_ASSERTION]: DevSeek did not pass the existing source file as model context for the incremental requirement\n\nfalse !== true\n\n    at stagedIncrementalRequirementCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:375:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:54:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:986:3)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:996:3"
+    },
+    {
+      "id": "PA8-interactive-stdin-verifier",
+      "status": "passed",
+      "durationMs": 678,
+      "output": "Hello Alice\nSUM:7",
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ]
+    },
+    {
+      "id": "PA9-multifile-devseek-verifier",
+      "status": "passed",
+      "durationMs": 407,
+      "output": "MULTI:42",
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ]
+    },
+    {
+      "id": "PA10-python-verifier-command",
+      "status": "passed",
+      "durationMs": 151,
+      "output": "PYWORDS:3",
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ]
+    },
+    {
+      "id": "PA11-implicit-project-context",
+      "status": "failed",
+      "durationMs": 252,
+      "error": "AssertionError [ERR_ASSERTION]: DevSeek did not attach implicit project files when the user omitted exact paths\n\nfalse !== true\n\n    at implicitProjectContextCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:612:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:54:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:990:3)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:996:3"
+    },
+    {
+      "id": "PA12-path-safety-guard",
+      "status": "passed",
+      "durationMs": 140,
+      "output": "unsafe write refused"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "caseId": "PA7-staged-incremental-requirement",
+      "severity": "high",
+      "category": "missing-workspace-context",
+      "diagnosis": "DevSeek did not pass relevant existing workspace files to the model when the user added an incremental requirement.",
+      "evidence": "AssertionError [ERR_ASSERTION]: DevSeek did not pass the existing source file as model context for the incremental requirement false !== true at stagedIncrementalRequirementCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:375:10) at process.processTicksAndRejections (node:internal/process/task_queues:103:5) at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:54:21) at async main (file:///home/ff/work/devseek",
+      "nextAction": "Attach relevant existing workspace files to follow-up CLI requests, then rerun PA7."
+    },
+    {
+      "id": "F2",
+      "caseId": "PA11-implicit-project-context",
+      "severity": "high",
+      "category": "missing-implicit-project-context",
+      "diagnosis": "DevSeek did not attach relevant project files when the user made a coding request without naming exact paths.",
+      "evidence": "AssertionError [ERR_ASSERTION]: DevSeek did not attach implicit project files when the user omitted exact paths false !== true at implicitProjectContextCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:612:10) at process.processTicksAndRejections (node:internal/process/task_queues:103:5) at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:54:21) at async main (file:///home/ff/work/devseek_netai/scripts/devsee",
+      "nextAction": "Add bounded project context discovery for coding prompts that omit file paths, then rerun PA11."
+    }
+  ],
+  "iterationDecision": [
+    "Attach relevant existing workspace files to follow-up requests so incremental requirements have real code context.",
+    "Discover and attach small relevant project files when coding prompts omit exact file names, then rerun PA11."
+  ]
+}

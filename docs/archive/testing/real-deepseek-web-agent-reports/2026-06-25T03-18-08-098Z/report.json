@@ -1,0 +1,37 @@
+{
+  "ok": false,
+  "runId": "2026-06-25T03-18-08-098Z",
+  "command": "node scripts/devseek-real-deepseek-web-eval.mjs --case RDW9-live-long-task-progress",
+  "caseId": "RDW9-live-long-task-progress",
+  "target": "Real DeepSeek Web coding-agent action test",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "workspaceRoot": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-25T03-18-08-098Z/RDW9-live-long-task-progress",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-18-08-098Z",
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-18-08-098Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-18-08-098Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-18-08-098Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/latest.md",
+  "casesPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-cases.json",
+  "cases": [
+    {
+      "id": "RDW9-live-long-task-progress",
+      "status": "failed",
+      "durationMs": 64365,
+      "error": "AssertionError [ERR_ASSERTION]: RDW9 did not update src/stats.py: []\n    at rdw9LongTaskProgress (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:1076:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:56:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:1424:5)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:1431:1"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "caseId": "RDW9-live-long-task-progress",
+      "severity": "medium",
+      "category": "test-case-design-gap",
+      "evidence": "AssertionError [ERR_ASSERTION]: RDW9 did not update src/stats.py: [] at rdw9LongTaskProgress (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:1076:10) at process.processTicksAndRejections (node:internal/process/task_queues:103:5) at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:56:21) at async main (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:1424:5) at async file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:1431:1",
+      "diagnosis": "The case failed in a way that does not cleanly isolate a DevSeek or live-model capability.",
+      "nextAction": "Rewrite the case so the failure can be classified without ambiguity."
+    }
+  ],
+  "iterationDecision": [
+    "Stop at RDW9-live-long-task-progress. Fix or reclassify the exposed live-path failure, then rerun RDW9-live-long-task-progress before advancing."
+  ]
+}

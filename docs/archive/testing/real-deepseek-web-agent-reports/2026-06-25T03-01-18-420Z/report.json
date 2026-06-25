@@ -1,0 +1,57 @@
+{
+  "ok": true,
+  "runId": "2026-06-25T03-01-18-420Z",
+  "command": "node scripts/devseek-real-deepseek-web-eval.mjs --case RDW5-live-incremental-follow-up",
+  "caseId": "RDW5-live-incremental-follow-up",
+  "target": "Real DeepSeek Web coding-agent action test",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "workspaceRoot": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-25T03-01-18-420Z/RDW5-live-incremental-follow-up",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-01-18-420Z",
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-01-18-420Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-01-18-420Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T03-01-18-420Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/latest.md",
+  "casesPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-cases.json",
+  "cases": [
+    {
+      "id": "RDW5-live-incremental-follow-up",
+      "status": "passed",
+      "durationMs": 64634,
+      "beforeOutput": "TODO:alpha",
+      "afterOutput": "TODO:alpha\nTODO:beta",
+      "turns": 2,
+      "firstEventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ],
+      "secondEventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ],
+      "firstPromptPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-01-18-420Z/rdw5-turn1-prompt.txt",
+      "secondPromptPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-01-18-420Z/rdw5-turn2-prompt.txt",
+      "firstRawJsonlPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-01-18-420Z/rdw5-turn1-raw-jsonl.txt",
+      "secondRawJsonlPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-01-18-420Z/rdw5-turn2-raw-jsonl.txt",
+      "firstStderrPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-01-18-420Z/rdw5-turn1-stderr.txt",
+      "secondStderrPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-01-18-420Z/rdw5-turn2-stderr.txt",
+      "firstSourcePath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-01-18-420Z/rdw5-turn1-final-todo.cpp",
+      "finalSourcePath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T03-01-18-420Z/rdw5-final-todo.cpp"
+    }
+  ],
+  "findings": [],
+  "iterationDecision": [
+    "RDW5-live-incremental-follow-up passed on the real DeepSeek Web path. Record this run before advancing to the next RDW case."
+  ]
+}

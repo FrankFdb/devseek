@@ -1,0 +1,236 @@
+{
+  "ok": true,
+  "runId": "2026-06-23T12-59-30-988Z",
+  "command": "node scripts/devseek-phase0-12-verify.mjs --real-deepseek",
+  "target": "Phase 0-12 executable completion gate",
+  "includeRealDeepSeek": true,
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/phase0-12-verification-reports/2026-06-23T12-59-30-988Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/phase0-12-verification-reports/2026-06-23T12-59-30-988Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/phase0-12-verification-reports/2026-06-23T12-59-30-988Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/phase0-12-verification-reports/latest.md",
+  "gates": [
+    {
+      "id": "P0-P9-vscode-extension-unit",
+      "phases": "0-9",
+      "command": "npm run test --workspace=packages/vscode-extension",
+      "purpose": "Project instructions, memory, workflow, permissions, ReviewLedger, QualityGate, history, provider runtime, UI protocol, and architecture boundary unit suites.",
+      "status": "passed",
+      "durationMs": 106889,
+      "exitCode": 0,
+      "signal": null,
+      "stdoutTail": "er: explicit code subdirectory wins over same-name root directory\n  ---\n  duration_ms: 36.821379\n  type: 'test'\n  ...\n# Subtest: workspace-applier: explicit missing code subdirectory still wins over same-name root directory\nok 13 - workspace-applier: explicit missing code subdirectory still wins over same-name root directory\n  ---\n  duration_ms: 1360.804939\n  type: 'test'\n  ...\n# Subtest: workspace-applier: markdown writes include review ledger file-check validation\nok 14 - workspace-applier: markdown writes include review ledger file-check validation\n  ---\n  duration_ms: 40.204265\n  type: 'test'\n  ...\n# Subtest: workspace-applier: explicit unknown text writes pass file-check validation without inventing build scripts\nok 15 - workspace-applier: explicit unknown text writes pass file-check validation without inventing build scripts\n  ---\n  duration_ms: 34.412918\n  type: 'test'\n  ...\n# Subtest: workspace-applier: compile-only C++ validation does not run the produced program\nok 16 - workspace-applier: compile-only C++ validation does not run the produced program\n  ---\n  duration_ms: 106.125069\n  type: 'test'\n  ...\n# Subtest: workspace-applier: requested CMake runtime validation catches segfault\nok 17 - workspace-applier: requested CMake runtime validation catches segfault\n  ---\n  duration_ms: 2638.257628\n  type: 'test'\n  ...\n1..17\n# tests 17\n# suites 0\n# pass 17\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 10073.915013\n\n▶  test/unit/workspace-edit-service.test.mjs\nTAP version 13\n# Workspace edit service tests passed.\n# Subtest: WorkspaceEditService: creates parent directories and writes text files\nok 1 - WorkspaceEditService: creates parent directories and writes text files\n  ---\n  duration_ms: 6.45168\n  type: 'test'\n  ...\n# Subtest: WorkspaceEditService: returns old content when overwriting\nok 2 - WorkspaceEditService: returns old content when overwriting\n  ---\n  duration_ms: 2.48393\n  type: 'test'\n  ...\n# Subtest: WorkspaceEditService: proposes text writes without touching disk\nok 3 - WorkspaceEditService: proposes text writes without touching disk\n  ---\n  duration_ms: 0.964688\n  type: 'test'\n  ...\n# Subtest: WorkspaceEditService: snapshots file state before applying a proposal\nok 4 - WorkspaceEditService: snapshots file state before applying a proposal\n  ---\n  duration_ms: 1.396897\n  type: 'test'\n  ...\n# Subtest: WorkspaceEditService: applies proposals with attached snapshot evidence\nok 5 - WorkspaceEditService: applies proposals with attached snapshot evidence\n  ---\n  duration_ms: 1.939881\n  type: 'test'\n  ...\n1..5\n# tests 5\n# suites 0\n# pass 5\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1162.510757\n\n▶  test/unit/workspace-review-ledger.test.mjs\nTAP version 13\n# Workspace review ledger tests passed.\n# Subtest: ChangeSet: classifies creates, overwrites, and patches\nok 1 - ChangeSet: classifies creates, overwrites, and patches\n  ---\n  duration_ms: 6.193291\n  type: 'test'\n  ...\n# Subtest: ReviewLedger: records files, validation evidence, and unfinished items\nok 2 - ReviewLedger: records files, validation evidence, and unfinished items\n  ---\n  duration_ms: 3.111423\n  type: 'test'\n  ...\n# Subtest: ReviewLedger: skipped validation keeps explicit reason and blocked quality gate\nok 3 - ReviewLedger: skipped validation keeps explicit reason and blocked quality gate\n  ---\n  duration_ms: 2.592401\n  type: 'test'\n  ...\n# Subtest: ReviewLedger: records accepted QualityGate risk source\nok 4 - ReviewLedger: records accepted QualityGate risk source\n  ---\n  duration_ms: 0.542096\n  type: 'test'\n  ...\n# Subtest: ReviewLedger: failure file extraction prefers changed paths\nok 5 - ReviewLedger: failure file extraction prefers changed paths\n  ---\n  duration_ms: 0.731908\n  type: 'test'\n  ...\n1..5\n# tests 5\n# suites 0\n# pass 5\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1122.534408\n\n────────────────────────────────────────\nSuites: 66  ✔ 66 passed  ✖ 0 failed\n✅ ALL PASS\n────────────────────────────────────────\n\n",
+      "stderrTail": ""
+    },
+    {
+      "id": "P10-runtime-surface",
+      "phases": "10",
+      "command": "npm run verify:phase10",
+      "purpose": "Shared core, Bridge, CLI, and VS Code extension compile/build/test profile.",
+      "status": "passed",
+      "durationMs": 27884,
+      "exitCode": 0,
+      "signal": null,
+      "stdoutTail": "s logged-in indicator\nok 3 - BridgeHealthCheck: reports logged-in indicator\n  ---\n  duration_ms: 0.872625\n  type: 'test'\n  ...\n# DeepSeek agent latency guard tests passed.\n# Subtest: DeepSeekAgent: streaming completion uses short stable windows\nok 4 - DeepSeekAgent: streaming completion uses short stable windows\n  ---\n  duration_ms: 6.676035\n  type: 'test'\n  ...\n# Subtest: DeepSeekAgent: final extraction avoids unconditional post-response waits\nok 5 - DeepSeekAgent: final extraction avoids unconditional post-response waits\n  ---\n  duration_ms: 1.132569\n  type: 'test'\n  ...\n# Bridge response extractor tests passed.\n# Subtest: ResponseExtractor: extracts the last non-empty assistant answer\nok 6 - ResponseExtractor: extracts the last non-empty assistant answer\n  ---\n  duration_ms: 2.934356\n  type: 'test'\n  ...\n# Subtest: ResponseExtractor: reports first non-empty error text\nok 7 - ResponseExtractor: reports first non-empty error text\n  ---\n  duration_ms: 0.425666\n  type: 'test'\n  ...\n# Subtest: ResponseExtractor: derives login state from indicator count and url\nok 8 - ResponseExtractor: derives login state from indicator count and url\n  ---\n  duration_ms: 0.715253\n  type: 'test'\n  ...\n# Subtest: ResponseExtractor: normalizes answer whitespace\nok 9 - ResponseExtractor: normalizes answer whitespace\n  ---\n  duration_ms: 0.283882\n  type: 'test'\n  ...\n1..9\n# tests 9\n# suites 0\n# pass 9\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 1155.982855\n\n> devseek-netai@1.0.0 cli:typecheck\n> npm run typecheck --workspace=packages/cli\n\n\n> @devseek-netai/cli@1.0.0 typecheck\n> tsc --noEmit --pretty false\n\n\n> devseek-netai@1.0.0 cli:build\n> npm run build --workspace=packages/cli\n\n\n> @devseek-netai/cli@1.0.0 build\n> npx esbuild src/index.ts --bundle --platform=node --format=cjs --external:readline/promises --banner:js='#!/usr/bin/env node' --outfile=dist/index.js\n\n\n> devseek-netai@1.0.0 cli:test\n> npm run test --workspace=packages/cli\n\n\n> @devseek-netai/cli@1.0.0 test\n> node --test test/*.test.mjs\n\nTAP version 13\n# Subtest: CLI JSONL mode emits parseable AgentEvent lines\nok 1 - CLI JSONL mode emits parseable AgentEvent lines\n  ---\n  duration_ms: 137.948523\n  type: 'test'\n  ...\n# Subtest: CLI text mode prints provider response\nok 2 - CLI text mode prints provider response\n  ---\n  duration_ms: 124.109907\n  type: 'test'\n  ...\n# Subtest: CLI bridge text mode streams SSE and reports delayed provider wait on stderr\nok 3 - CLI bridge text mode streams SSE and reports delayed provider wait on stderr\n  ---\n  duration_ms: 363.35157\n  type: 'test'\n  ...\n# Subtest: CLI applies loose file tool JSON and emits coding evidence events\nok 4 - CLI applies loose file tool JSON and emits coding evidence events\n  ---\n  duration_ms: 1189.319691\n  type: 'test'\n  ...\n# Subtest: CLI bridge failures report diagnostics on stderr\nok 5 - CLI bridge failures report diagnostics on stderr\n  ---\n  duration_ms: 231.661057\n  type: 'test'\n  ...\n# Subtest: CLI reuses ancestor Bridge token when running in a child workspace\nok 6 - CLI reuses ancestor Bridge token when running in a child workspace\n  ---\n  duration_ms: 263.797661\n  type: 'test'\n  ...\n# Subtest: CLI attaches mentioned workspace files to Bridge requests\nok 7 - CLI attaches mentioned workspace files to Bridge requests\n  ---\n  duration_ms: 263.510388\n  type: 'test'\n  ...\n# Subtest: CLI attaches bounded implicit project context for coding prompts\nok 8 - CLI attaches bounded implicit project context for coding prompts\n  ---\n  duration_ms: 278.451993\n  type: 'test'\n  ...\n# Subtest: CLI allows python verifier commands from devseek.verify.json\nok 9 - CLI allows python verifier commands from devseek.verify.json\n  ---\n  duration_ms: 312.851758\n  type: 'test'\n  ...\n1..9\n# tests 9\n# suites 0\n# pass 9\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 3412.253562\n\n> devseek-netai@1.0.0 compile\n> npx esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap\n\n",
+      "stderrTail": "\n  dist/index.js  76.2kb\n\n⚡ Done in 28ms\n\n  dist/extension.js      907.7kb\n  dist/extension.js.map    1.7mb\n\n⚡ Done in 326ms\n"
+    },
+    {
+      "id": "P11-engineering-integrity",
+      "phases": "11",
+      "command": "npm run verify:phase11",
+      "purpose": "Engineering context, ignore policy, runtime detection, dependency/docs/preview/conflict/root/replay contracts.",
+      "status": "passed",
+      "durationMs": 10322,
+      "exitCode": 0,
+      "signal": null,
+      "stdoutTail": "\n> devseek-netai@1.0.0 verify:phase11\n> npm run shared:build && npm run shared:test\n\n\n> devseek-netai@1.0.0 shared:build\n> npm run build --workspace=packages/shared\n\n\n> @devseek-netai/shared@1.0.0 build\n> tsc\n\n\n> devseek-netai@1.0.0 shared:test\n> npm run test --workspace=packages/shared\n\n\n> @devseek-netai/shared@1.0.0 test\n> node --test test/*.test.mjs\n\nTAP version 13\n# Subtest: HookPlanner selects deterministic hooks and blocks sensitive writes\nok 1 - HookPlanner selects deterministic hooks and blocks sensitive writes\n  ---\n  duration_ms: 5.321512\n  type: 'test'\n  ...\n# Subtest: SkillDiscoveryService parses and selects skills by trigger\nok 2 - SkillDiscoveryService parses and selects skills by trigger\n  ---\n  duration_ms: 1.881786\n  type: 'test'\n  ...\n# Subtest: SubagentRegistry selects review, diagnostics, tests, and migration contracts\nok 3 - SubagentRegistry selects review, diagnostics, tests, and migration contracts\n  ---\n  duration_ms: 0.838293\n  type: 'test'\n  ...\n# Subtest: McpPermissionService inherits permission domains and GitPrAssistantService summarizes evidence\nok 4 - McpPermissionService inherits permission domains and GitPrAssistantService summarizes evidence\n  ---\n  duration_ms: 1.302669\n  type: 'test'\n  ...\n# Subtest: EngineeringContextService excludes ignored and sensitive files while detecting project facts\nok 5 - EngineeringContextService excludes ignored and sensitive files while detecting project facts\n  ---\n  duration_ms: 11.286631\n  type: 'test'\n  ...\n# Subtest: Engineering policies expose dependency, docs, preview, conflict, root, and replay decisions\nok 6 - Engineering policies expose dependency, docs, preview, conflict, root, and replay decisions\n  ---\n  duration_ms: 3.284919\n  type: 'test'\n  ...\n1..6\n# tests 6\n# suites 0\n# pass 6\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 238.615507\n",
+      "stderrTail": ""
+    },
+    {
+      "id": "P12-top-agent-enhancements",
+      "phases": "12",
+      "command": "npm run verify:phase12",
+      "purpose": "Hooks, skills, subagents, MCP/Git contracts plus CLI type/build/test gate.",
+      "status": "passed",
+      "durationMs": 20967,
+      "exitCode": 0,
+      "signal": null,
+      "stdoutTail": ".0.0 shared:test\n> npm run test --workspace=packages/shared\n\n\n> @devseek-netai/shared@1.0.0 test\n> node --test test/*.test.mjs\n\nTAP version 13\n# Subtest: HookPlanner selects deterministic hooks and blocks sensitive writes\nok 1 - HookPlanner selects deterministic hooks and blocks sensitive writes\n  ---\n  duration_ms: 6.332434\n  type: 'test'\n  ...\n# Subtest: SkillDiscoveryService parses and selects skills by trigger\nok 2 - SkillDiscoveryService parses and selects skills by trigger\n  ---\n  duration_ms: 1.635637\n  type: 'test'\n  ...\n# Subtest: SubagentRegistry selects review, diagnostics, tests, and migration contracts\nok 3 - SubagentRegistry selects review, diagnostics, tests, and migration contracts\n  ---\n  duration_ms: 1.168845\n  type: 'test'\n  ...\n# Subtest: McpPermissionService inherits permission domains and GitPrAssistantService summarizes evidence\nok 4 - McpPermissionService inherits permission domains and GitPrAssistantService summarizes evidence\n  ---\n  duration_ms: 0.916877\n  type: 'test'\n  ...\n# Subtest: EngineeringContextService excludes ignored and sensitive files while detecting project facts\nok 5 - EngineeringContextService excludes ignored and sensitive files while detecting project facts\n  ---\n  duration_ms: 20.810987\n  type: 'test'\n  ...\n# Subtest: Engineering policies expose dependency, docs, preview, conflict, root, and replay decisions\nok 6 - Engineering policies expose dependency, docs, preview, conflict, root, and replay decisions\n  ---\n  duration_ms: 4.010185\n  type: 'test'\n  ...\n1..6\n# tests 6\n# suites 0\n# pass 6\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 243.909839\n\n> devseek-netai@1.0.0 cli:typecheck\n> npm run typecheck --workspace=packages/cli\n\n\n> @devseek-netai/cli@1.0.0 typecheck\n> tsc --noEmit --pretty false\n\n\n> devseek-netai@1.0.0 cli:build\n> npm run build --workspace=packages/cli\n\n\n> @devseek-netai/cli@1.0.0 build\n> npx esbuild src/index.ts --bundle --platform=node --format=cjs --external:readline/promises --banner:js='#!/usr/bin/env node' --outfile=dist/index.js\n\n\n> devseek-netai@1.0.0 cli:test\n> npm run test --workspace=packages/cli\n\n\n> @devseek-netai/cli@1.0.0 test\n> node --test test/*.test.mjs\n\nTAP version 13\n# Subtest: CLI JSONL mode emits parseable AgentEvent lines\nok 1 - CLI JSONL mode emits parseable AgentEvent lines\n  ---\n  duration_ms: 131.800391\n  type: 'test'\n  ...\n# Subtest: CLI text mode prints provider response\nok 2 - CLI text mode prints provider response\n  ---\n  duration_ms: 134.688311\n  type: 'test'\n  ...\n# Subtest: CLI bridge text mode streams SSE and reports delayed provider wait on stderr\nok 3 - CLI bridge text mode streams SSE and reports delayed provider wait on stderr\n  ---\n  duration_ms: 378.540364\n  type: 'test'\n  ...\n# Subtest: CLI applies loose file tool JSON and emits coding evidence events\nok 4 - CLI applies loose file tool JSON and emits coding evidence events\n  ---\n  duration_ms: 1440.225687\n  type: 'test'\n  ...\n# Subtest: CLI bridge failures report diagnostics on stderr\nok 5 - CLI bridge failures report diagnostics on stderr\n  ---\n  duration_ms: 270.516418\n  type: 'test'\n  ...\n# Subtest: CLI reuses ancestor Bridge token when running in a child workspace\nok 6 - CLI reuses ancestor Bridge token when running in a child workspace\n  ---\n  duration_ms: 266.70423\n  type: 'test'\n  ...\n# Subtest: CLI attaches mentioned workspace files to Bridge requests\nok 7 - CLI attaches mentioned workspace files to Bridge requests\n  ---\n  duration_ms: 306.522666\n  type: 'test'\n  ...\n# Subtest: CLI attaches bounded implicit project context for coding prompts\nok 8 - CLI attaches bounded implicit project context for coding prompts\n  ---\n  duration_ms: 345.361414\n  type: 'test'\n  ...\n# Subtest: CLI allows python verifier commands from devseek.verify.json\nok 9 - CLI allows python verifier commands from devseek.verify.json\n  ---\n  duration_ms: 379.909814\n  type: 'test'\n  ...\n1..9\n# tests 9\n# suites 0\n# pass 9\n# fail 0\n# cancelled 0\n# skipped 0\n# todo 0\n# duration_ms 3913.553547\n",
+      "stderrTail": "\n  dist/index.js  76.2kb\n\n⚡ Done in 44ms\n"
+    },
+    {
+      "id": "agent-loop-subloops-plus-live-deepseek",
+      "phases": "10-12",
+      "command": "npm run verify:agent-loop-eval:real",
+      "purpose": "Agent core, CLI JSONL, fake Bridge SSE, deterministic programming artifacts, and live DeepSeek Web L4 smoke.",
+      "status": "passed",
+      "durationMs": 49139,
+      "exitCode": 0,
+      "signal": null,
+      "stdoutTail": "nMs\": 33091,\n      \"id\": \"L4-cli-real-deepseek-programming\",\n      \"status\": \"passed\",\n      \"output\": \"DEVSEEK_CLI_REAL_DEEPSEEK_CODE_OK\",\n      \"file\": \"code/cli_real_deepseek/main.cpp\",\n      \"artifactFormat\": \"tool-json\",\n      \"eventTypes\": [\n        \"chat.started\",\n        \"provider.selected\",\n        \"provider.status\",\n        \"provider.status\",\n        \"chat.completed\",\n        \"fileChanges.proposed\",\n        \"validation.completed\",\n        \"qualityGate.completed\"\n      ],\n      \"promptPath\": \"/home/ff/work/devseek_netai/artifacts/agent-loop-eval/2026-06-23T13-02-28-007Z/real-deepseek-cli-prompt.txt\",\n      \"rawJsonlPath\": \"/home/ff/work/devseek_netai/artifacts/agent-loop-eval/2026-06-23T13-02-28-007Z/real-deepseek-cli-jsonl.txt\",\n      \"responsePath\": \"/home/ff/work/devseek_netai/artifacts/agent-loop-eval/2026-06-23T13-02-28-007Z/real-deepseek-cli-response.txt\"\n    }\n  ],\n  \"findings\": [],\n  \"caseDesignReview\": [\n    {\n      \"caseId\": \"L0-agent-core-protocol\",\n      \"layerKind\": \"deterministic\",\n      \"requiredForSubmit\": true,\n      \"status\": \"passed\",\n      \"verdict\": \"reasonable\",\n      \"limitation\": \"Covers event protocol only; it does not prove tool execution, repair, or UI state.\",\n      \"nextCaseImprovement\": \"Add replay fixtures for tool events, evidence, history, and QualityGate transitions.\"\n    },\n    {\n      \"caseId\": \"L1-cli-jsonl-mock\",\n      \"layerKind\": \"deterministic\",\n      \"requiredForSubmit\": true,\n      \"status\": \"passed\",\n      \"verdict\": \"reasonable\",\n      \"limitation\": \"Covers machine-readable CLI output; it does not validate Bridge or generated code quality.\",\n      \"nextCaseImprovement\": \"Add negative JSONL cases for stderr pollution and malformed event ordering.\"\n    },\n    {\n      \"caseId\": \"L2-cli-fake-bridge-sse\",\n      \"layerKind\": \"deterministic\",\n      \"requiredForSubmit\": true,\n      \"status\": \"passed\",\n      \"verdict\": \"reasonable\",\n      \"limitation\": \"Covers SSE transport with a fake Bridge; it does not validate live Provider behavior.\",\n      \"nextCaseImprovement\": \"Add timeout, reset, and partial-delta replay cases.\"\n    },\n    {\n      \"caseId\": \"L3-cli-fake-bridge-programming\",\n      \"layerKind\": \"deterministic\",\n      \"requiredForSubmit\": true,\n      \"status\": \"passed\",\n      \"verdict\": \"reasonable\",\n      \"limitation\": \"Covers a single-file compile/run path; it does not test modifying existing projects or multi-file builds.\",\n      \"nextCaseImprovement\": \"Add modify-existing, failing-build repair, and multi-file project fixtures.\"\n    },\n    {\n      \"caseId\": \"L3b-cli-loose-tool-json-recovery\",\n      \"layerKind\": \"deterministic-regression\",\n      \"requiredForSubmit\": true,\n      \"status\": \"passed\",\n      \"verdict\": \"regression-replay\",\n      \"limitation\": \"Covers one known loose JSON shape; it does not prove all malformed tool outputs are recoverable.\",\n      \"nextCaseImprovement\": \"Add more captured live responses as replay fixtures only after each one has a clear oracle.\"\n    },\n    {\n      \"caseId\": \"L4-cli-real-deepseek-programming\",\n      \"layerKind\": \"real-provider-smoke\",\n      \"requiredForSubmit\": false,\n      \"status\": \"passed\",\n      \"verdict\": \"reasonable\",\n      \"limitation\": \"Uses JSONL final response for the compile oracle; live streaming display still needs a separate surface-oriented smoke.\",\n      \"nextCaseImprovement\": \"Any live failure should be downgraded into deterministic L0-L3 replay before product fixes are accepted.\"\n    }\n  ],\n  \"iterationDecision\": [\n    \"No DevSeek defect was exposed by this run; treat it as a baseline signal and add harder failure-injection cases next.\"\n  ],\n  \"summary\": {\n    \"passed\": 6,\n    \"failed\": 0,\n    \"skipped\": 0,\n    \"findings\": 0,\n    \"requiredFailures\": 0,\n    \"requiredSkips\": 0,\n    \"testingReportPath\": \"/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/2026-06-23T13-02-28-007Z/report.md\",\n    \"latestTestingReportPath\": \"/home/ff/work/devseek_netai/docs/testing/agent-loop-eval-reports/latest.md\"\n  }\n}\n",
+      "stderrTail": "\n  dist/index.js  76.2kb\n\n⚡ Done in 24ms\n"
+    },
+    {
+      "id": "programming-agent-pa0-pa12",
+      "phases": "0-12",
+      "command": "npm run verify:programming-agent-benchmark",
+      "purpose": "Claude Code/Codex baseline: file edits, verification, repair, diff, project tests, staged requirements, stdin, multi-file, Python, implicit context, and workspace safety.",
+      "status": "passed",
+      "durationMs": 34959,
+      "exitCode": 0,
+      "signal": null,
+      "stdoutTail": "tai/docs/testing/programming-agent-benchmark-reports/2026-06-23T13-03-17-204Z/report.json\",\n  \"testingMarkdownReportPath\": \"/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-23T13-03-17-204Z/report.md\",\n  \"caseCatalogPath\": \"/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-cases.json\",\n  \"target\": \"Claude Code/Codex baseline coding-agent behavior\",\n  \"cases\": [\n    {\n      \"id\": \"PA0-cli-jsonl-sanity\",\n      \"status\": \"passed\",\n      \"durationMs\": 155,\n      \"eventTypes\": [\n        \"chat.started\",\n        \"provider.selected\",\n        \"chat.completed\"\n      ]\n    },\n    {\n      \"id\": \"PA1-create-file-apply-compile\",\n      \"status\": \"passed\",\n      \"durationMs\": 2294,\n      \"file\": \"src/main.cpp\",\n      \"output\": \"PA1_CREATE_FILE_OK\"\n    },\n    {\n      \"id\": \"PA2-modify-existing-preserve-behavior\",\n      \"status\": \"passed\",\n      \"durationMs\": 3202,\n      \"file\": \"src/calc.cpp\",\n      \"output\": \"ADD:5\\nMUL:6\"\n    },\n    {\n      \"id\": \"PA3-test-repair-loop\",\n      \"status\": \"passed\",\n      \"durationMs\": 2936,\n      \"turns\": 2,\n      \"output\": \"PA3_REPAIR_OK\"\n    },\n    {\n      \"id\": \"PA4-agent-evidence-events\",\n      \"status\": \"passed\",\n      \"durationMs\": 1260,\n      \"eventTypes\": [\n        \"chat.started\",\n        \"provider.selected\",\n        \"provider.status\",\n        \"provider.status\",\n        \"chat.completed\",\n        \"fileChanges.proposed\",\n        \"validation.completed\",\n        \"qualityGate.completed\"\n      ]\n    },\n    {\n      \"id\": \"PA5-unified-diff-apply\",\n      \"status\": \"passed\",\n      \"durationMs\": 3215,\n      \"file\": \"src/patch_calc.cpp\",\n      \"output\": \"ADD:5\\nMUL:6\\nDIV:2\"\n    },\n    {\n      \"id\": \"PA6-project-test-command\",\n      \"status\": \"passed\",\n      \"durationMs\": 1356,\n      \"output\": \"PA6_PROJECT_TEST_OK\",\n      \"eventTypes\": [\n        \"chat.started\",\n        \"provider.selected\",\n        \"provider.status\",\n        \"provider.status\",\n        \"chat.completed\",\n        \"fileChanges.proposed\",\n        \"validation.completed\",\n        \"qualityGate.completed\"\n      ]\n    },\n    {\n      \"id\": \"PA7-staged-incremental-requirement\",\n      \"status\": \"passed\",\n      \"durationMs\": 4279,\n      \"turns\": 2,\n      \"file\": \"src/score.cpp\",\n      \"output\": \"SCORE:10\\nBONUS:15\"\n    },\n    {\n      \"id\": \"PA8-interactive-stdin-verifier\",\n      \"status\": \"passed\",\n      \"durationMs\": 2092,\n      \"output\": \"Hello Alice\\nSUM:7\",\n      \"eventTypes\": [\n        \"chat.started\",\n        \"provider.selected\",\n        \"provider.status\",\n        \"provider.status\",\n        \"chat.completed\",\n        \"fileChanges.proposed\",\n        \"validation.completed\",\n        \"qualityGate.completed\"\n      ]\n    },\n    {\n      \"id\": \"PA9-multifile-devseek-verifier\",\n      \"status\": \"passed\",\n      \"durationMs\": 1242,\n      \"output\": \"MULTI:42\",\n      \"eventTypes\": [\n        \"chat.started\",\n        \"provider.selected\",\n        \"provider.status\",\n        \"provider.status\",\n        \"chat.completed\",\n        \"fileChanges.proposed\",\n        \"validation.completed\",\n        \"qualityGate.completed\"\n      ]\n    },\n    {\n      \"id\": \"PA10-python-verifier-command\",\n      \"status\": \"passed\",\n      \"durationMs\": 328,\n      \"output\": \"PYWORDS:3\",\n      \"eventTypes\": [\n        \"chat.started\",\n        \"provider.selected\",\n        \"provider.status\",\n        \"provider.status\",\n        \"chat.completed\",\n        \"fileChanges.proposed\",\n        \"validation.completed\",\n        \"qualityGate.completed\"\n      ]\n    },\n    {\n      \"id\": \"PA11-implicit-project-context\",\n      \"status\": \"passed\",\n      \"durationMs\": 1302,\n      \"output\": \"PA11_CONTEXT_OK\",\n      \"context\": \"package.json,src/app.js,test.mjs\"\n    },\n    {\n      \"id\": \"PA12-path-safety-guard\",\n      \"status\": \"passed\",\n      \"durationMs\": 242,\n      \"output\": \"unsafe write refused\"\n    }\n  ],\n  \"findings\": [],\n  \"iterationDecision\": [\n    \"Benchmark did not expose a coding-agent gap. Add harder project-edit, verifier, and repair cases before claiming parity.\"\n  ]\n}\n",
+      "stderrTail": "\n  dist/index.js  76.2kb\n\n⚡ Done in 23ms\n"
+    },
+    {
+      "id": "diff-whitespace-check",
+      "phases": "0-12",
+      "command": "git diff --check",
+      "purpose": "Repository diff whitespace and conflict marker guard.",
+      "status": "passed",
+      "durationMs": 49,
+      "exitCode": 0,
+      "signal": null,
+      "stdoutTail": "",
+      "stderrTail": ""
+    }
+  ],
+  "phaseSummary": [
+    {
+      "phase": 0,
+      "status": "passed",
+      "gates": [
+        "P0-P9-vscode-extension-unit",
+        "programming-agent-pa0-pa12",
+        "diff-whitespace-check"
+      ],
+      "failedGates": []
+    },
+    {
+      "phase": 1,
+      "status": "passed",
+      "gates": [
+        "P0-P9-vscode-extension-unit",
+        "programming-agent-pa0-pa12",
+        "diff-whitespace-check"
+      ],
+      "failedGates": []
+    },
+    {
+      "phase": 2,
+      "status": "passed",
+      "gates": [
+        "P0-P9-vscode-extension-unit",
+        "programming-agent-pa0-pa12",
+        "diff-whitespace-check"
+      ],
+      "failedGates": []
+    },
+    {
+      "phase": 3,
+      "status": "passed",
+      "gates": [
+        "P0-P9-vscode-extension-unit",
+        "programming-agent-pa0-pa12",
+        "diff-whitespace-check"
+      ],
+      "failedGates": []
+    },
+    {
+      "phase": 4,
+      "status": "passed",
+      "gates": [
+        "P0-P9-vscode-extension-unit",
+        "programming-agent-pa0-pa12",
+        "diff-whitespace-check"
+      ],
+      "failedGates": []
+    },
+    {
+      "phase": 5,
+      "status": "passed",
+      "gates": [
+        "P0-P9-vscode-extension-unit",
+        "programming-agent-pa0-pa12",
+        "diff-whitespace-check"
+      ],
+      "failedGates": []
+    },
+    {
+      "phase": 6,
+      "status": "passed",
+      "gates": [
+        "P0-P9-vscode-extension-unit",
+        "programming-agent-pa0-pa12",
+        "diff-whitespace-check"
+      ],
+      "failedGates": []
+    },
+    {
+      "phase": 7,
+      "status": "passed",
+      "gates": [
+        "P0-P9-vscode-extension-unit",
+        "programming-agent-pa0-pa12",
+        "diff-whitespace-check"
+      ],
+      "failedGates": []
+    },
+    {
+      "phase": 8,
+      "status": "passed",
+      "gates": [
+        "P0-P9-vscode-extension-unit",
+        "programming-agent-pa0-pa12",
+        "diff-whitespace-check"
+      ],
+      "failedGates": []
+    },
+    {
+      "phase": 9,
+      "status": "passed",
+      "gates": [
+        "P0-P9-vscode-extension-unit",
+        "programming-agent-pa0-pa12",
+        "diff-whitespace-check"
+      ],
+      "failedGates": []
+    },
+    {
+      "phase": 10,
+      "status": "passed",
+      "gates": [
+        "P10-runtime-surface",
+        "agent-loop-subloops-plus-live-deepseek",
+        "programming-agent-pa0-pa12",
+        "diff-whitespace-check"
+      ],
+      "failedGates": []
+    },
+    {
+      "phase": 11,
+      "status": "passed",
+      "gates": [
+        "P11-engineering-integrity",
+        "agent-loop-subloops-plus-live-deepseek",
+        "programming-agent-pa0-pa12",
+        "diff-whitespace-check"
+      ],
+      "failedGates": []
+    },
+    {
+      "phase": 12,
+      "status": "passed",
+      "gates": [
+        "P12-top-agent-enhancements",
+        "agent-loop-subloops-plus-live-deepseek",
+        "programming-agent-pa0-pa12",
+        "diff-whitespace-check"
+      ],
+      "failedGates": []
+    }
+  ],
+  "findings": [],
+  "iterationDecision": [
+    "Phase 0-12 executable gates passed. Keep adding harder replay and live-provider cases before claiming Claude Code/Codex parity."
+  ]
+}

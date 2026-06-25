@@ -1,0 +1,37 @@
+{
+  "ok": false,
+  "runId": "2026-06-25T02-59-14-660Z",
+  "command": "node scripts/devseek-real-deepseek-web-eval.mjs --case RDW5-live-incremental-follow-up",
+  "caseId": "RDW5-live-incremental-follow-up",
+  "target": "Real DeepSeek Web coding-agent action test",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "workspaceRoot": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-25T02-59-14-660Z/RDW5-live-incremental-follow-up",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-25T02-59-14-660Z",
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T02-59-14-660Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T02-59-14-660Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-25T02-59-14-660Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/latest.md",
+  "casesPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-cases.json",
+  "cases": [
+    {
+      "id": "RDW5-live-incremental-follow-up",
+      "status": "failed",
+      "durationMs": 41589,
+      "error": "AssertionError [ERR_ASSERTION]: RDW5 turn 1 validation did not pass\n+ actual - expected\n\n+ undefined\n- true\n\n    at rdw5IncrementalFollowUp (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:583:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:56:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:930:5)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:937:1"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "caseId": "RDW5-live-incremental-follow-up",
+      "severity": "medium",
+      "category": "test-case-design-gap",
+      "evidence": "AssertionError [ERR_ASSERTION]: RDW5 turn 1 validation did not pass + actual - expected + undefined - true at rdw5IncrementalFollowUp (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:583:10) at process.processTicksAndRejections (node:internal/process/task_queues:103:5) at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:56:21) at async main (file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:930:5) at async file:///home/ff/work/devseek_netai/scripts/devseek-real-deepseek-web-eval.mjs:937:1",
+      "diagnosis": "The case failed in a way that does not cleanly isolate a DevSeek or live-model capability.",
+      "nextAction": "Rewrite the case so the failure can be classified without ambiguity."
+    }
+  ],
+  "iterationDecision": [
+    "Stop at RDW5-live-incremental-follow-up. Fix or reclassify the exposed live-path failure, then rerun RDW5-live-incremental-follow-up before advancing."
+  ]
+}

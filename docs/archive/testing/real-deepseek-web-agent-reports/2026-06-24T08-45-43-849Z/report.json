@@ -1,0 +1,47 @@
+{
+  "ok": true,
+  "runId": "2026-06-24T08-45-43-849Z",
+  "command": "node scripts/devseek-real-deepseek-web-eval.mjs",
+  "caseId": "RDW1-live-modify-existing-single-file",
+  "target": "Real DeepSeek Web coding-agent action test",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "workspaceRoot": "/home/ff/work/devseek_netai/code/real-deepseek-web-agent/2026-06-24T08-45-43-849Z/RDW1-live-modify-existing-single-file",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-45-43-849Z",
+  "reportDir": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-45-43-849Z",
+  "jsonReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-45-43-849Z/report.json",
+  "markdownReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/2026-06-24T08-45-43-849Z/report.md",
+  "latestReportPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-reports/latest.md",
+  "casesPath": "/home/ff/work/devseek_netai/docs/testing/real-deepseek-web-agent-cases.json",
+  "cases": [
+    {
+      "id": "RDW1-live-modify-existing-single-file",
+      "status": "passed",
+      "durationMs": 54180,
+      "file": "code/real-deepseek-web-agent/2026-06-24T08-45-43-849Z/RDW1-live-modify-existing-single-file/src/calc.cpp",
+      "beforeOutput": "ADD:5",
+      "afterOutput": "ADD:5\nMUL:6",
+      "changedFiles": [
+        "code/real-deepseek-web-agent/2026-06-24T08-45-43-849Z/RDW1-live-modify-existing-single-file/src/calc.cpp"
+      ],
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ],
+      "promptPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-45-43-849Z/rdw1-prompt.txt",
+      "rawJsonlPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-45-43-849Z/rdw1-raw-jsonl.txt",
+      "stderrPath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-45-43-849Z/rdw1-stderr.txt",
+      "responsePath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-45-43-849Z/rdw1-response.txt",
+      "sourcePath": "/home/ff/work/devseek_netai/artifacts/real-deepseek-web-agent/2026-06-24T08-45-43-849Z/rdw1-final-calc.cpp"
+    }
+  ],
+  "findings": [],
+  "iterationDecision": [
+    "RDW1 passed on the real DeepSeek Web path. Advance to RDW2 only after recording this run."
+  ]
+}

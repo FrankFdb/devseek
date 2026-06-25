@@ -1,0 +1,89 @@
+{
+  "ok": false,
+  "runId": "2026-06-23T08-29-24-313Z",
+  "command": "node scripts/devseek-programming-agent-benchmark.mjs",
+  "codeRoot": "/home/ff/work/devseek_netai/code",
+  "benchmarkWorkspaceRoot": "/home/ff/work/devseek_netai/code/devseek-programming-agent-benchmark/2026-06-23T08-29-24-313Z",
+  "artifactDir": "/home/ff/work/devseek_netai/artifacts/programming-agent-benchmark/2026-06-23T08-29-24-313Z",
+  "reportPath": "/home/ff/work/devseek_netai/artifacts/programming-agent-benchmark/2026-06-23T08-29-24-313Z/report.json",
+  "testingReportDir": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-23T08-29-24-313Z",
+  "testingJsonReportPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-23T08-29-24-313Z/report.json",
+  "testingMarkdownReportPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-reports/2026-06-23T08-29-24-313Z/report.md",
+  "caseCatalogPath": "/home/ff/work/devseek_netai/docs/testing/programming-agent-benchmark-cases.json",
+  "target": "Claude Code/Codex baseline coding-agent behavior",
+  "cases": [
+    {
+      "id": "PA0-cli-jsonl-sanity",
+      "status": "passed",
+      "durationMs": 41,
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "chat.completed"
+      ]
+    },
+    {
+      "id": "PA1-create-file-apply-compile",
+      "status": "passed",
+      "durationMs": 587,
+      "file": "src/main.cpp",
+      "output": "PA1_CREATE_FILE_OK"
+    },
+    {
+      "id": "PA2-modify-existing-preserve-behavior",
+      "status": "passed",
+      "durationMs": 849,
+      "file": "src/calc.cpp",
+      "output": "ADD:5\nMUL:6"
+    },
+    {
+      "id": "PA3-test-repair-loop",
+      "status": "passed",
+      "durationMs": 715,
+      "turns": 2,
+      "output": "PA3_REPAIR_OK"
+    },
+    {
+      "id": "PA4-agent-evidence-events",
+      "status": "passed",
+      "durationMs": 296,
+      "eventTypes": [
+        "chat.started",
+        "provider.selected",
+        "provider.status",
+        "provider.status",
+        "chat.completed",
+        "fileChanges.proposed",
+        "validation.completed",
+        "qualityGate.completed"
+      ]
+    },
+    {
+      "id": "PA5-unified-diff-apply",
+      "status": "passed",
+      "durationMs": 864,
+      "file": "src/patch_calc.cpp",
+      "output": "ADD:5\nMUL:6\nDIV:2"
+    },
+    {
+      "id": "PA6-project-test-command",
+      "status": "failed",
+      "durationMs": 246,
+      "error": "AssertionError [ERR_ASSERTION]: validation evidence did not prove npm test ran: {\"type\":\"validation.completed\",\"passed\":true,\"evidenceRefs\":[\"no verifier configured for changed file types\"],\"eventId\":\"cli-mqqdvbjn-xfsbq2\",\"timestamp\":1782203367731,\"surface\":\"cli\"}\n    at projectTestCommandCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:312:10)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async runCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:54:21)\n    at async main (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:610:3)\n    at async file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:615:3"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F1",
+      "caseId": "PA6-project-test-command",
+      "severity": "high",
+      "category": "missing-project-verifier",
+      "diagnosis": "DevSeek did not discover/run the project test command or include that evidence in validation events.",
+      "evidence": "AssertionError [ERR_ASSERTION]: validation evidence did not prove npm test ran: {\"type\":\"validation.completed\",\"passed\":true,\"evidenceRefs\":[\"no verifier configured for changed file types\"],\"eventId\":\"cli-mqqdvbjn-xfsbq2\",\"timestamp\":1782203367731,\"surface\":\"cli\"} at projectTestCommandCase (file:///home/ff/work/devseek_netai/scripts/devseek-programming-agent-benchmark.mjs:312:10) at process.processTicksAndRejections (node:internal/process/task_queues:103:5) at async runCase (file:///home/ff/work",
+      "nextAction": "Run npm test when a package.json test script exists and project files changed, then rerun PA6."
+    }
+  ],
+  "iterationDecision": [
+    "Discover and run project-specific test commands, then include the command evidence in validation events."
+  ]
+}
