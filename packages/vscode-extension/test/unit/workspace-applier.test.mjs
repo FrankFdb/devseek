@@ -121,7 +121,8 @@ function createShapeManagerWorkspace() {
   mkdirSync(projectDir, { recursive: true });
   writeFileSync(path.join(projectDir, 'CMakeLists.txt'), 'project(old_shape_manager)\n');
   for (const name of ['Circle.cpp', 'Rectangle.cpp', 'Triangle.cpp', 'Circle.h', 'Rectangle.h', 'Triangle.h', 'Shape.h', 'main.cpp']) {
-    writeFileSync(path.join(projectDir, name), `// old ${name}\n`);
+    const content = name === 'main.cpp' ? 'int main() { return 0; }\n' : `// old ${name}\n`;
+    writeFileSync(path.join(projectDir, name), content);
   }
   fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
   return { root, projectDir };

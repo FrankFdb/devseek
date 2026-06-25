@@ -15,6 +15,7 @@ export interface CppValidationOptions {
 
 const CPP_SOURCE_RE = /\.(cpp|cc|cxx|c)$/i;
 const CPP_HEADER_RE = /\.(h|hpp)$/i;
+const CMAKE_LISTS_RE = /(?:^|\/)CMakeLists\.txt$/;
 
 export function planCppValidation(
   changedPaths: string[],
@@ -23,7 +24,7 @@ export function planCppValidation(
   policy: CppValidationPolicy = 'conservative',
   options: CppValidationOptions = {},
 ): PlannedValidation | null {
-  const cppRelated = changedPaths.filter((p) => /\.(cpp|cc|cxx|c|h|hpp)$/i.test(p));
+  const cppRelated = changedPaths.filter((p) => /\.(cpp|cc|cxx|c|h|hpp)$/i.test(p) || CMAKE_LISTS_RE.test(p.replace(/\\/g, '/')));
   if (cppRelated.length === 0) return null;
 
   const dirCount = new Map<string, number>();

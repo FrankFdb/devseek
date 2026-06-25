@@ -95,6 +95,29 @@ test('VerificationPlanner: mixed file facts and unplanned code targets stay bloc
   assert.equal(plan.reason, 'no-auto-validation-target');
 });
 
+test('VerificationPlanner: CMakeLists-only C++ project changes still plan CMake validation', () => {
+  const files = new Set([
+    path.join('/repo', 'code', 'shape_manager'),
+    path.join('/repo', 'code', 'shape_manager', 'CMakeLists.txt'),
+  ]);
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['code/shape_manager/CMakeLists.txt'],
+    requestPrompt: '更新 CMakeLists.txt，编译运行验证三维图形展示效果。',
+    fsNode: {
+      existsSync: (p) => files.has(p),
+      readdirSync: () => ['CMakeLists.txt', 'main.cpp'],
+      readFileSync: () => 'add_executable(shape_manager main.cpp)\n',
+    },
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'cmake');
+  assert.equal(plan.reason, 'cmake-build-and-run-requested');
+  assert.match(plan.command, /cmake -S/);
+  assert.match(plan.command, /shape_manager/);
+});
+
 test('VerificationPlanner: unknown targets without file-fact intent produce blocked plan with alternatives', () => {
   const plan = new VerificationPlanner().planWorkspaceChanges({
     rootFsPath: '/repo',

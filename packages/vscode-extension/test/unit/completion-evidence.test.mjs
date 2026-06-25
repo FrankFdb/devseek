@@ -36,9 +36,11 @@ const {
   classifyTerminalEvidenceCommand,
   coalesceWrittenFileEvidence,
   describeBlockingTerminalFailure,
+  extractClaimedSummaryFiles,
   getUnsupportedSummaryFileClaims,
   getBlockingTerminalFailure,
   getMissingCompletionEvidence,
+  isBlockingTerminalFailureEvidence,
   isFileContentTerminalEvidenceCommand,
   isReadOnlyTerminalEvidenceCommand,
   requiresCodeArtifactForEvidence,
@@ -343,6 +345,42 @@ test('completion evidence: failed runtime validation blocks completion until a l
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('completion evidence: transfer-source filenames are not treated as modified-file claims', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-transfer-source-'));
+  try {
+    const file = path.join(root, 'code', 'shape_manager', 'main.cpp');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, 'int main(){return 0;}\n');
+    const summary = '已完成：将 main_3d.cpp 复制为 main.cpp（替换主程序）。';
+    const writtenFiles = [{ path: file, basename: 'main.cpp', linesAdded: 12, linesRemoved: 4, action: 'modify' }];
+
+    assert.deepEqual(extractClaimedSummaryFiles(summary), ['main.cpp']);
+    assert.deepEqual(getUnsupportedSummaryFileClaims(summary, writtenFiles, root), []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('completion evidence: manual visual review evidence does not become a blocking terminal failure', () => {
+  const runtimePrompt = '/workspace/code/shape_manager 升级三维图形，完成后编译运行看效果';
+  const reviewEvidence = {
+    command: 'cmake --build . && ./shape_manager',
+    kind: 'compile-run',
+    ok: false,
+    exitCode: -1,
+    detail: '图形窗口效果需要人工确认。',
+    reviewRequired: true,
+  };
+
+  assert.equal(isBlockingTerminalFailureEvidence(reviewEvidence), false);
+  assert.equal(
+    getBlockingTerminalFailure(runtimePrompt, [], [
+      { path: '/workspace/code/shape_manager/main.cpp', basename: 'main.cpp', linesAdded: 1, linesRemoved: 1, action: 'modify' },
+    ], [reviewEvidence]),
+    undefined,
+  );
 });
 
 console.log('\nCompletion evidence tests passed.\n');

@@ -33,7 +33,7 @@ import {
   buildAgenticQualityGateForHistory,
   type AgenticHistoryQualityGate,
 } from './agentic-history';
-import { runAgentAutoValidationForWrites } from './auto-validation';
+import { runAgentAutoValidationForWrites, type AgentAutoValidationResult } from './auto-validation';
 import {
   buildMissingEvidenceRecoveryInstruction,
   inferInitialAgenticTodos,
@@ -137,6 +137,37 @@ function classifyAgenticManualReviewEvidence(input: {
       }
       : evidence;
   });
+}
+
+function normalizeAgenticAutoValidation(input: {
+  autoValidation: AgentAutoValidationResult;
+  userPrompt: string;
+  writtenFiles: WrittenFileEvidence[];
+}): {
+  evidence: TerminalEvidence[];
+  feedbackForAI: string;
+  qualityGate?: AgenticHistoryQualityGate;
+  manualReviewEvidence?: TerminalEvidence;
+} {
+  const evidence = classifyAgenticManualReviewEvidence({
+    evidence: input.autoValidation.evidence ? [input.autoValidation.evidence] : [],
+    feedbackForAI: input.autoValidation.feedbackForAI || '',
+    userPrompt: input.userPrompt,
+    writtenFiles: input.writtenFiles,
+  });
+  const manualReviewEvidence = evidence.find(item => item.reviewRequired);
+  if (manualReviewEvidence) {
+    return {
+      evidence,
+      feedbackForAI: `【系统反馈】运行验证需要人工确认：${manualReviewEvidence.detail || '图形或交互式程序已启动，需人工确认窗口和交互效果。'}`,
+      manualReviewEvidence,
+    };
+  }
+  return {
+    evidence,
+    feedbackForAI: input.autoValidation.feedbackForAI ?? '',
+    qualityGate: input.autoValidation.qualityGate,
+  };
 }
 
 // ----------------------------------------------------------------
@@ -478,8 +509,13 @@ export async function runAgenticLoop(
           cppValidationPolicy,
         );
         autoValidatedWriteCount = allWrittenFiles.length;
-        if (autoValidation.qualityGate) latestAutoQualityGate = autoValidation.qualityGate;
-        if (autoValidation.evidence) allTerminalEvidence.push(autoValidation.evidence);
+        const normalizedAutoValidation = normalizeAgenticAutoValidation({
+          autoValidation,
+          userPrompt,
+          writtenFiles: allWrittenFiles,
+        });
+        if (normalizedAutoValidation.qualityGate) latestAutoQualityGate = normalizedAutoValidation.qualityGate;
+        if (normalizedAutoValidation.evidence.length) allTerminalEvidence.push(...normalizedAutoValidation.evidence);
         if (autoValidation.repairBlockedReason) {
           if (callbacks.onTodoUpdate && currentTodos.length > 0) {
             currentTodos = markValidationFailureTodos(currentTodos);
@@ -488,7 +524,7 @@ export async function runAgenticLoop(
           failedReason = autoValidation.repairBlockedReason;
           break;
         }
-        const validationFeedback = autoValidation.feedbackForAI ? `\n\n${autoValidation.feedbackForAI}` : '';
+        const validationFeedback = normalizedAutoValidation.feedbackForAI ? `\n\n${normalizedAutoValidation.feedbackForAI}` : '';
         const missingAfterArtifact = getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths]);
         const continueMessage = missingAfterArtifact.length > 0
           ? `【系统反馈】已从你输出的文件代码块落地文件，但仍缺少${missingAfterArtifact.join('、')}。请继续调用实际工具修复或补充验证，完成后再 task_complete。\n${artifactApply.feedbackForAI}${validationFeedback}`
@@ -649,9 +685,14 @@ export async function runAgenticLoop(
       cppValidationPolicy,
     );
     autoValidatedWriteCount = allWrittenFiles.length;
-    if (autoValidation.qualityGate) latestAutoQualityGate = autoValidation.qualityGate;
-    if (autoValidation.evidence) {
-      allTerminalEvidence.push(autoValidation.evidence);
+    const normalizedAutoValidation = normalizeAgenticAutoValidation({
+      autoValidation,
+      userPrompt,
+      writtenFiles: allWrittenFiles,
+    });
+    if (normalizedAutoValidation.qualityGate) latestAutoQualityGate = normalizedAutoValidation.qualityGate;
+    if (normalizedAutoValidation.evidence.length) {
+      allTerminalEvidence.push(...normalizedAutoValidation.evidence);
     }
     if (autoValidation.repairBlockedReason) {
       if (callbacks.onTodoUpdate && currentTodos.length > 0) {
@@ -661,7 +702,7 @@ export async function runAgenticLoop(
       failedReason = autoValidation.repairBlockedReason;
       break;
     }
-    const autoValidationFeedback = autoValidation.feedbackForAI ?? '';
+    const autoValidationFeedback = normalizedAutoValidation.feedbackForAI ?? '';
 
     // Loop detection: track terminal command signatures across rounds.
     // If the same command is executed 2+ times without making progress, inject
@@ -868,7 +909,9 @@ export async function runAgenticLoop(
   });
   const historyQualityGate = derivedQualityGate?.status === 'fail'
     ? derivedQualityGate
-    : latestAutoQualityGate ?? derivedQualityGate;
+    : manualReviewReason
+      ? derivedQualityGate ?? latestAutoQualityGate
+      : latestAutoQualityGate ?? derivedQualityGate;
 
   const historyText = buildAgenticHistoryText({
     userPrompt,

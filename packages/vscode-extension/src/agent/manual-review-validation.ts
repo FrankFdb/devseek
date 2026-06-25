@@ -40,7 +40,7 @@ export function shouldRequestManualReviewForRun(input: ManualReviewRunInput): Ma
 
   return {
     reason: 'manual-visual-confirmation-required',
-    detail: '图形或交互式程序已尝试启动，但自动验证无法仅凭退出码判断窗口内容是否符合要求。请人工确认当前窗口效果；DevSeek 会保留待确认文件，不会把该结果伪装成全自动通过。',
+    detail: '图形或交互式程序已尝试启动，但自动验证无法仅凭退出码判断窗口内容是否符合要求。请按窗口或控制台提示确认画面和关键交互（例如键盘、鼠标或按钮切换）是否符合需求；DevSeek 会保留待确认文件，不会把该结果伪装成全自动通过。',
   };
 }
 

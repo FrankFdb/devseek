@@ -126,7 +126,7 @@ export class VerificationPlanner {
       });
     }
 
-    const cppRelated = changedPaths.filter((path) => /\.(cpp|cc|cxx|c|h|hpp)$/i.test(path));
+    const cppRelated = changedPaths.filter(isCppRelatedValidationPath);
     if (cppRelated.length > 0) {
       const cppPlan = planCppValidation(
         cppRelated,
@@ -246,7 +246,14 @@ function isFileFactValidationPath(relPath: string, prompt: string): boolean {
 }
 
 function isCodeValidationPath(relPath: string): boolean {
-  return CODE_FILE_EXTENSIONS.has(nodePath.extname(relPath).toLowerCase());
+  return CODE_FILE_EXTENSIONS.has(nodePath.extname(relPath).toLowerCase())
+    || nodePath.posix.basename(relPath.replace(/\\/g, '/')) === 'CMakeLists.txt';
+}
+
+function isCppRelatedValidationPath(relPath: string): boolean {
+  const normalized = relPath.replace(/\\/g, '/');
+  return /\.(cpp|cc|cxx|c|h|hpp)$/i.test(normalized)
+    || nodePath.posix.basename(normalized) === 'CMakeLists.txt';
 }
 
 function shellQuote(value: string): string {

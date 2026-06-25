@@ -46,8 +46,11 @@ const FILE_CONTENT_EVIDENCE_RE = /(?:(?:显示|查看|读取|输出|打印).{0,8
 const READ_ONLY_TERMINAL_EVIDENCE_RE = /\b(?:cat|ls|test|grep|head|tail|sed|wc|stat|file|find)\b/i;
 const FILE_CONTENT_TERMINAL_EVIDENCE_RE = /\b(?:cat|grep|head|tail|sed)\b/i;
 const SUMMARY_FILE_CLAIM_RE = /(?:^|[^\w/.-])((?:[\w.-]+\/)*[\w.-]+(?:\.(?:cpp|cxx|cc|c|hpp|hxx|hh|h|tsx|jsx|mjs|cjs|ts|js|py|java|go|rs|cs|php|rb|swift|kts|kt|scala|html|scss|sass|css|svelte|vue|bash|zsh|sh|json|ya?ml|md|txt|cmake)|\/CMakeLists\.txt|CMakeLists\.txt))/gi;
-const SUMMARY_FILE_CLAIM_POSITIVE_RE = /(?:创建|新建|生成|添加|新增|编写|实现|更新|修改|改造|重构|写入|落地|create|created|add|added|generate|generated|write|wrote|implement|implemented|update|updated|modify|modified|refactor|refactored)/i;
+const SUMMARY_FILE_CLAIM_POSITIVE_RE = /(?:创建|新建|生成|添加|新增|编写|实现|更新|修改|改造|重构|写入|落地|复制|拷贝|重命名|改名|移动|迁移|替换|create|created|add|added|generate|generated|write|wrote|implement|implemented|update|updated|modify|modified|refactor|refactored|copy|copied|duplicate|duplicated|rename|renamed|move|moved|replace|replaced)/i;
 const SUMMARY_FILE_CLAIM_NEGATIVE_RE = /(?:未|没有|尚未|无法|不能|失败|缺少|不存在|not\s+|no\s+|did\s+not|failed|missing|absent)/i;
+const SUMMARY_FILE_TRANSFER_RE = /(?:复制|拷贝|重命名|改名|移动|迁移|替换|copy|copied|duplicate|duplicated|rename|renamed|move|moved|replace|replaced)/i;
+const SUMMARY_FILE_TRANSFER_SOURCE_MARKER_RE = /(?:将|把|从|复制|拷贝|重命名|改名|移动|迁移|\bfrom\b|\bcopy(?:ing|ied)?\b|\bcopied\b|\bduplicate(?:d)?\b|\brename(?:d)?\b|\bmove(?:d)?\b|\breplace(?:d)?\b)\s*$/i;
+const SUMMARY_FILE_TRANSFER_DEST_CONNECTOR_RE = /^\s*(?:复制为|拷贝为|复制到|拷贝到|重命名为|改名为|移动到|迁移到|替换为|作为|为|到|\bto\b|\bas\b|\binto\b|\bwith\b)/i;
 const GENERIC_EVIDENCE_TODO_TITLES = new Set([
   '创建/更新文件',
   '编译/运行并验证结果',
@@ -117,6 +120,19 @@ function summaryClaimIsPositive(sentence: string, tokenStartInSentence: number):
   return !SUMMARY_FILE_CLAIM_NEGATIVE_RE.test(beforeToken);
 }
 
+function summaryFileClaimIsTransferSource(
+  sentence: string,
+  tokenStartInSentence: number,
+  tokenEndInSentence: number,
+): boolean {
+  if (!SUMMARY_FILE_TRANSFER_RE.test(sentence)) return false;
+  const beforeToken = sentence.slice(Math.max(0, tokenStartInSentence - 32), tokenStartInSentence);
+  const afterToken = sentence.slice(tokenEndInSentence, Math.min(sentence.length, tokenEndInSentence + 40));
+  if (/(?:从|\bfrom\b)\s*$/i.test(beforeToken)) return true;
+  return SUMMARY_FILE_TRANSFER_SOURCE_MARKER_RE.test(beforeToken)
+    && SUMMARY_FILE_TRANSFER_DEST_CONNECTOR_RE.test(afterToken);
+}
+
 export function extractClaimedSummaryFiles(summary: string): string[] {
   const text = String(summary || '');
   if (!text.trim()) return [];
@@ -132,7 +148,9 @@ export function extractClaimedSummaryFiles(summary: string): string[] {
     const sentence = sentenceAround(text, tokenStart, tokenEnd);
     const sentenceStart = text.lastIndexOf(sentence, tokenStart);
     const tokenStartInSentence = sentenceStart >= 0 ? tokenStart - sentenceStart : 0;
+    const tokenEndInSentence = tokenStartInSentence + match[1].length;
     if (!summaryClaimIsPositive(sentence, tokenStartInSentence)) continue;
+    if (summaryFileClaimIsTransferSource(sentence, tokenStartInSentence, tokenEndInSentence)) continue;
     claimed.add(rawPath);
   }
   return [...claimed];
@@ -266,6 +284,10 @@ function lastUnclearedTerminalFailure(
 ): TerminalEvidence | undefined {
   let blockingFailure: TerminalEvidence | undefined;
   for (const evidence of terminalEvidence) {
+    if (evidence.reviewRequired) {
+      blockingFailure = undefined;
+      continue;
+    }
     if (evidence.ok && successKinds.has(evidence.kind)) {
       blockingFailure = undefined;
       continue;
@@ -278,6 +300,7 @@ function lastUnclearedTerminalFailure(
 }
 
 export function isBlockingTerminalFailureEvidence(evidence: TerminalEvidence): boolean {
+  if (evidence.reviewRequired) return false;
   if (evidence.ok) return false;
   return evidence.kind !== 'other' || looksLikeValidationShellCommand(evidence.command);
 }
