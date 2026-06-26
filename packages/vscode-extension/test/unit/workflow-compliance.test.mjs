@@ -1281,6 +1281,16 @@ test('§8.4 Checkpoint: loadAgentCheckpoint present', () => {
   assertContains(code, 'loadAgentCheckpoint', '§8.4 checkpoint load');
 });
 
+test('Extension apply gate: unfenced target-scoped source can enter applier', () => {
+  const code = src('src/extension.ts');
+  assertContains(code, 'looksLikeTargetScopedSourceResponse', 'plain source fallback helper must be imported');
+  assertContains(
+    code,
+    'looksLikeTargetScopedSourceResponse(finalResponseForArtifacts, prompt, effectiveFiles)',
+    'plain source fallback must not require markdown code fences before applying',
+  );
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MCP integration
 // ─────────────────────────────────────────────────────────────────────────────

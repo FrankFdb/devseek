@@ -605,6 +605,70 @@ test('workspace-applier: preferred session target maps unlabeled complete main b
   }
 });
 
+test('workspace-applier: preferred session target maps unfenced complete main source', async () => {
+  const { root, projectDir } = createShapeManagerWorkspace();
+  try {
+    const oldMain = [
+      '#include <iostream>',
+      '',
+      'int main() {',
+      '    std::cout << "old shape manager" << std::endl;',
+      '    std::cout << "line 2" << std::endl;',
+      '    std::cout << "line 3" << std::endl;',
+      '    std::cout << "line 4" << std::endl;',
+      '    std::cout << "line 5" << std::endl;',
+      '    std::cout << "line 6" << std::endl;',
+      '    std::cout << "line 7" << std::endl;',
+      '    std::cout << "line 8" << std::endl;',
+      '    return 0;',
+      '}',
+      '',
+    ].join('\n');
+    writeFileSync(path.join(projectDir, 'main.cpp'), oldMain);
+    const raw = [
+      '可以。我来添加每个图形独立控制旋转的功能。',
+      '这是修改后的完整版 main.cpp，请直接替换现有文件：',
+      '#include <iostream>',
+      '#include <vector>',
+      '',
+      'int main() {',
+      '    std::vector<int> shapes = {1, 2, 3, 4, 5, 6};',
+      '    for (int shape : shapes) {',
+      '        std::cout << "selected shape " << shape << std::endl;',
+      '    }',
+      '    std::cout << "keyboard 1-6 independent rotation enabled" << std::endl;',
+      '    return 0;',
+      '}',
+      '',
+      '新增控制方式',
+      '| 按键 | 功能 |',
+      '| 1-6 | 选择对应图形 |',
+    ].join('\n');
+    const prompt = '6个图形，不能单独通过鼠标或者键盘操作，能提供单独控制每个图形旋转吗';
+    const preferredFiles = ['Circle.cpp', 'Rectangle.cpp', 'Triangle.cpp', 'main.cpp']
+      .map(name => path.join(projectDir, name));
+
+    const result = await applyGeneratedArtifactsWithPrompt(
+      raw,
+      prompt,
+      undefined,
+      true,
+      undefined,
+      preferredFiles,
+      { rollbackOnValidationFailure: false },
+    );
+
+    const written = readFileSync(path.join(projectDir, 'main.cpp'), 'utf8');
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.changedPaths, ['code/shape_manager/main.cpp']);
+    assert.match(written, /keyboard 1-6 independent rotation enabled/);
+    assert.doesNotMatch(written, /新增控制方式|选择对应图形/);
+    assert.equal(existsSync(path.join(root, 'code', 'main.cpp')), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('workspace-applier: explicit code subdirectory wins over same-name root directory', async () => {
   const { root, projectDir } = createShapeManagerWorkspace();
   const wrongDir = path.join(root, 'shape_manager');

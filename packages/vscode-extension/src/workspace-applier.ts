@@ -129,6 +129,18 @@ export async function applyGeneratedArtifactPathWithPrompt(
   );
 }
 
+export function looksLikeTargetScopedSourceResponse(
+  raw: string,
+  requestPrompt?: string,
+  preferredAbsolutePaths?: string[],
+): boolean {
+  const root = getWorkspaceRoot(requestPrompt, preferredAbsolutePaths);
+  if (!root || !preferredAbsolutePaths || preferredAbsolutePaths.length === 0) return false;
+
+  const pathContext = buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths);
+  return selectPreferredTargetScopedFallbackPaths(raw, pathContext).length === 1;
+}
+
 async function applyPreparedChanges(
   prepared: PreparedChange[],
   reporter?: ApplyWorkflowReporter,
@@ -879,11 +891,13 @@ function selectPreferredTargetScopedFallbackPaths(raw: string, ctx: WorkspacePat
 }
 
 function extractTargetScopedCodeBlocks(raw: string): Array<{ language?: string; content: string }> {
-  return extractCodeBlocks(raw).filter((block) => {
+  const fencedBlocks = extractCodeBlocks(raw).filter((block) => {
     if (/^diff|patch$/i.test(block.language || '')) return false;
     if (looksLikeFileTreeBlock(block.content) || looksLikeClassDiagramBlock(block.content)) return false;
     return true;
   });
+  if (fencedBlocks.length > 0) return fencedBlocks;
+  return extractPlainSourceBlocks(raw);
 }
 
 function selectTargetScopedFallbackContent(raw: string, relPath: string, oldContent: string, requestPrompt?: string): string | undefined {
@@ -893,6 +907,92 @@ function selectTargetScopedFallbackContent(raw: string, relPath: string, oldCont
     if (isSafeTargetScopedFullFile(content, relPath, oldContent, `${requestPrompt || ''}\n${raw}`)) return content;
   }
   return undefined;
+}
+
+function extractPlainSourceBlocks(raw: string): Array<{ language?: string; content: string }> {
+  const normalized = (raw || '').replace(/\r\n/g, '\n');
+  if (!normalized.trim()) return [];
+
+  const lines = normalized.split('\n');
+  const start = findPlainSourceStartLine(lines);
+  if (start < 0) return [];
+
+  const content = trimPlainSourceCandidate(lines.slice(start).join('\n'));
+  if (!content) return [];
+
+  return [{ language: inferPlainSourceLanguage(content), content }];
+}
+
+function findPlainSourceStartLine(lines: string[]): number {
+  for (let i = 0; i < lines.length; i++) {
+    if (isStrongPlainSourceStartLine(lines[i])) return i;
+  }
+  return -1;
+}
+
+function trimPlainSourceCandidate(text: string): string {
+  const lines = text.split('\n');
+  const kept: string[] = [];
+  let braceBalance = 0;
+  let strongLines = 0;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (kept.length > 0 && strongLines >= 4 && braceBalance <= 0 && isPlainSourceStopLine(trimmed)) {
+      break;
+    }
+
+    kept.push(line);
+    if (isPlainSourceLine(trimmed)) strongLines++;
+    braceBalance += countChar(line, '{') - countChar(line, '}');
+  }
+
+  while (kept.length > 0) {
+    const last = kept[kept.length - 1].trim();
+    if (!last || isPlainSourceLine(last)) break;
+    kept.pop();
+  }
+
+  const content = kept.join('\n').trim();
+  return strongLines >= 3 ? content : '';
+}
+
+function isStrongPlainSourceStartLine(line: string): boolean {
+  const trimmed = line.trim();
+  return /^(?:#\s*(?:include|pragma|ifndef|define)|using\s+namespace\s+|namespace\s+\w+\s*\{|template\s*<|class\s+\w+|struct\s+\w+|enum\s+\w+|\b(?:int|auto)\s+main\s*\()/i.test(trimmed);
+}
+
+function isPlainSourceLine(trimmed: string): boolean {
+  if (!trimmed) return true;
+  if (/^(?:\/\/|\/\*|\*\/|\*)/.test(trimmed)) return true;
+  if (/^(?:#\s*(?:include|pragma|ifndef|define|endif)|using\s+namespace\s+|namespace\s+\w+|template\s*<|class\s+\w+|struct\s+\w+|enum\s+\w+)/i.test(trimmed)) return true;
+  if (/^(?:public|private|protected)\s*:/.test(trimmed)) return true;
+  if (/^[{});]+$/.test(trimmed)) return true;
+  return /[;{}]/.test(trimmed)
+    || /\b(?:if|for|while|switch|return|case|break|continue)\b/.test(trimmed)
+    || /\b(?:int|void|float|double|bool|char|auto|const|static|std::|gl[A-Z]\w*|glut[A-Z]\w*)\b/.test(trimmed);
+}
+
+function isPlainSourceStopLine(trimmed: string): boolean {
+  if (!trimmed) return false;
+  if (isPlainSourceLine(trimmed)) return false;
+  if (/^\|.*\|$/.test(trimmed)) return true;
+  return /^(?:新增|控制|操作|按键|功能|说明|验证|编译|运行|完成|总结|使用方式|操作提示|每个|以上|这样|注意|下一步|New|Controls?|Usage|Notes?|Summary)\b/i.test(trimmed);
+}
+
+function inferPlainSourceLanguage(content: string): string | undefined {
+  if (/#\s*include|std::|glut[A-Z]\w*|\bint\s+main\s*\(/.test(content)) return 'cpp';
+  if (/\bdef\s+\w+\(|if\s+__name__\s*==/.test(content)) return 'python';
+  if (/\b(?:export|import)\s+|function\s+\w+\(|const\s+\w+\s*=/.test(content)) return 'typescript';
+  return undefined;
+}
+
+function countChar(value: string, char: string): number {
+  let count = 0;
+  for (const current of value) {
+    if (current === char) count++;
+  }
+  return count;
 }
 
 function isSafeTargetScopedFullFile(content: string, relPath: string, oldContent: string, sourceText = ''): boolean {
@@ -909,7 +1009,7 @@ function isSafeTargetScopedFullFile(content: string, relPath: string, oldContent
 }
 
 function looksLikeFullFileRewrite(text: string): boolean {
-  return /(完整文件|完整代码|完整内容|修改后的完整|替换后的完整|最终文件|complete\s+file|full\s+file|entire\s+file)/i.test(text);
+  return /(完整文件|完整代码|完整内容|完整源码|完整源代码|完整版|修改后的完整|替换后的完整|最终文件|直接替换|直接复制|complete\s+file|full\s+file|entire\s+file)/i.test(text);
 }
 
 function isCodeLikeRelPath(relPath: string): boolean {
