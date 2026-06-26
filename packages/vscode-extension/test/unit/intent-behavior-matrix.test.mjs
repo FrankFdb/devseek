@@ -354,6 +354,15 @@ test('TOOL-002: tool transcript removal preserves surrounding prose', () => {
   assert.equal(stripToolCallBlocks(leaked), '准备验证。\n验证完成。');
 });
 
+test('TOOL-003: DSML tool transcripts are stripped before user-facing display', () => {
+  const leaked = [
+    '准备查看文件。',
+    '< | DSML | tool_calls< | DSML | invoke name="read_file"< | DSML | parameter name="filePath" string="true">/home/kaka/code/shape_manager/main.cpp</ | DSML | parameter></ | DSML | invoke></ | DSML | tool_calls>',
+    '继续处理。',
+  ].join('\n');
+  assert.equal(stripToolCallBlocks(leaked), '准备查看文件。\n继续处理。');
+});
+
 test('CTRL-001 regression: no-agent raw file tools are not parsed as pending edits after display sanitization', () => {
   const leaked = '[TOOL:create_file {"path":"code/hello.cpp","content":"#include <iostream>\\nint main(){return 0;}\\n"}]';
   const cleaned = stripToolCallBlocks(leaked);
@@ -361,4 +370,4 @@ test('CTRL-001 regression: no-agent raw file tools are not parsed as pending edi
   assert.deepEqual(parseGeneratedArtifacts(cleaned), []);
 });
 
-console.log(`\nIntent behavior matrix passed: ${routingCases.length + 6} cases.\n`);
+console.log(`\nIntent behavior matrix passed: ${routingCases.length + 7} cases.\n`);

@@ -1699,6 +1699,46 @@ function collapseTerminalOutputBlocks(container) {
   });
 }
 
+function findNextDsmlToolCallStartInText(text, startAt) {
+  var raw = String(text || '');
+  var re = /<\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b/gi;
+  re.lastIndex = startAt || 0;
+  var match = re.exec(raw);
+  return match ? match.index : -1;
+}
+
+function dsmlToolCallBlockEndInText(text, start) {
+  var raw = String(text || '');
+  var tail = raw.slice(start);
+  var toolCallsClose = /<\/\s*\|\s*DSML\s*\|\s*tool_calls\s*>/i.exec(tail);
+  if (toolCallsClose) return start + toolCallsClose.index + toolCallsClose[0].length;
+  var invokeClose = /<\/\s*\|\s*DSML\s*\|\s*invoke\s*>/i.exec(tail);
+  if (invokeClose) return start + invokeClose.index + invokeClose[0].length;
+  var parameterClose = /<\/\s*\|\s*DSML\s*\|\s*parameter\s*>/i.exec(tail);
+  if (parameterClose) return start + parameterClose.index + parameterClose[0].length;
+  return raw.length;
+}
+
+function stripDsmlToolCallBlocksFromText(text) {
+  var raw = String(text || '');
+  var out = '';
+  var cursor = 0;
+  while (cursor < raw.length) {
+    var start = findNextDsmlToolCallStartInText(raw, cursor);
+    if (start < 0) {
+      out += raw.slice(cursor);
+      break;
+    }
+    out += raw.slice(cursor, start).replace(/[ \t]+$/, '');
+    cursor = dsmlToolCallBlockEndInText(raw, start);
+  }
+  return out;
+}
+
+function containsDsmlToolTranscript(text) {
+  return findNextDsmlToolCallStartInText(String(text || ''), 0) >= 0;
+}
+
 function stripToolCallBlocks(text) {
   var result = '';
   var i = 0;
@@ -1763,9 +1803,14 @@ function stripToolCallBlocks(text) {
   var beforeJsonCleanup = result;
   result = stripJsonToolPayloadsFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeJsonCleanup;
+  var beforeDsmlCleanup = result;
+  result = stripDsmlToolCallBlocksFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeDsmlCleanup;
   // Also strip <tool_call>...</tool_call> blocks (DeepSeek native format)
   var beforeXmlCleanup = result;
-  var noXml = result.replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '');
+  var noXml = result
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
+    .replace(/<tool_calls>[\s\S]*?<\/tool_calls>/gi, '');
   removedInternalBlock = removedInternalBlock || noXml !== beforeXmlCleanup;
   var cleaned = noXml.replace(/\n{3,}/g, '\n\n').trim();
   return removedInternalBlock ? cleaned.replace(/[ \t]*\n[ \t]*\n[ \t]*/g, '\n') : cleaned;
@@ -1806,7 +1851,8 @@ function renderVisibleAssistantText(text) {
 }
 
 function containsAgentInternalTranscript(text) {
-  return /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
+  return containsDsmlToolTranscript(text)
+    || /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
     || /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
     || /(?:^|\n)\s*(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
     || /(?:^|\n|[ \t])(?:Tool|工具)[ \t]*[:：][ \t]*`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
@@ -1819,6 +1865,7 @@ function containsAgentInternalTranscript(text) {
 function cleanAgentFinalProseForUser(text) {
   if (containsAgentInternalTranscript(text || '')) return '';
   var cleaned = stripAgentGeneratedCodeBlocks(stripToolCallBlocks(text || '').trim())
+    .replace(/<\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b[\s\S]*$/gi, '')
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
     .replace(/<tool_calls>[\s\S]*?<\/tool_calls>/gi, '')
     .replace(/\n{3,}/g, '\n\n')

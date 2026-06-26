@@ -243,6 +243,45 @@ function stripToolArgumentBlocksFromText(text) {
   return out;
 }
 
+function findNextDsmlToolCallStartInText(text, startAt = 0) {
+  const re = /<\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b/gi;
+  re.lastIndex = startAt;
+  const match = re.exec(String(text || ''));
+  return match ? match.index : -1;
+}
+
+function dsmlToolCallBlockEndInText(text, start) {
+  const raw = String(text || '');
+  const tail = raw.slice(start);
+  const toolCallsClose = /<\/\s*\|\s*DSML\s*\|\s*tool_calls\s*>/i.exec(tail);
+  if (toolCallsClose) return start + toolCallsClose.index + toolCallsClose[0].length;
+  const invokeClose = /<\/\s*\|\s*DSML\s*\|\s*invoke\s*>/i.exec(tail);
+  if (invokeClose) return start + invokeClose.index + invokeClose[0].length;
+  const parameterClose = /<\/\s*\|\s*DSML\s*\|\s*parameter\s*>/i.exec(tail);
+  if (parameterClose) return start + parameterClose.index + parameterClose[0].length;
+  return raw.length;
+}
+
+function stripDsmlToolCallBlocksFromText(text) {
+  const raw = String(text || '');
+  let out = '';
+  let cursor = 0;
+  while (cursor < raw.length) {
+    const start = findNextDsmlToolCallStartInText(raw, cursor);
+    if (start < 0) {
+      out += raw.slice(cursor);
+      break;
+    }
+    out += raw.slice(cursor, start).replace(/[ \t]+$/, '');
+    cursor = dsmlToolCallBlockEndInText(raw, start);
+  }
+  return out;
+}
+
+function containsDsmlToolTranscript(text) {
+  return findNextDsmlToolCallStartInText(String(text || ''), 0) >= 0;
+}
+
 function stripToolCallBlocks(text) {
   const raw = String(text || '');
   let result = '';
@@ -294,12 +333,16 @@ function stripToolCallBlocks(text) {
   const beforeToolArgumentCleanup = result;
   result = stripToolArgumentBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeToolArgumentCleanup;
+  const beforeDsmlCleanup = result;
+  result = stripDsmlToolCallBlocksFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeDsmlCleanup;
   const cleaned = result.trim();
   return removedInternalBlock ? cleaned.replace(/[ \t]*\n[ \t]*\n[ \t]*/g, '\n') : cleaned;
 }
 
 function containsAgentInternalTranscript(text) {
-  return /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
+  return containsDsmlToolTranscript(text)
+    || /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
     || /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
     || /(?:^|\n)\s*(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
     || /(?:^|\n|[ \t])(?:Tool|工具)[ \t]*[:：][ \t]*`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
@@ -311,7 +354,10 @@ function containsAgentInternalTranscript(text) {
 
 function cleanAgentFinalProseForUser(text) {
   if (containsAgentInternalTranscript(text || '')) return '';
-  let cleaned = stripToolCallBlocks(text || '').replace(/\n{3,}/g, '\n\n').trim();
+  let cleaned = stripToolCallBlocks(text || '')
+    .replace(/<\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b[\s\S]*$/gi, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
   if (!cleaned) return '';
   const lines = cleaned.split('\n').filter((line) => {
     const s = line.trim();
@@ -538,6 +584,14 @@ test('agent final prose: strips Tool/Arguments terminal transcript from final us
   assert.equal(cleanAgentFinalProseForUser(leaked), '');
 });
 
+test('agent final prose: strips DSML tool transcript from final user text', () => {
+  const leaked = [
+    '我先查看文件。',
+    '< | DSML | tool_calls< | DSML | invoke name="read_file"< | DSML | parameter name="filePath" string="true">/home/kaka/code/shape_manager/main.cpp</ | DSML | parameter></ | DSML | invoke></ | DSML | tool_calls>',
+  ].join('\n');
+  assert.equal(cleanAgentFinalProseForUser(leaked), '');
+});
+
 test('agent final prose: keeps normal user-facing summary', () => {
   const summary = '已完成：创建 `code/weekend.c`，并验证程序可以正常运行。';
   assert.equal(cleanAgentFinalProseForUser(summary), summary);
@@ -592,6 +646,16 @@ test('agent accumulated render: hides nameless Calling shell fence', () => {
   ].join('\n');
   const cleaned = sanitizeVisibleDeltaForMode(leaked, true);
   assert.equal(cleaned, '好的，我先定位 `src/agent/tool-executor.ts` 文件并查看其当前实现。');
+});
+
+test('agent accumulated render: hides split DSML tool transcript before and after close arrives', () => {
+  let accumulated = '好的，我先查看文件。< | DSML | tool_calls< | DSML | invoke name="read_file"';
+  assert.equal(sanitizeVisibleDeltaForMode(accumulated, true), '好的，我先查看文件。');
+
+  accumulated += '< | DSML | parameter name="filePath" string="true">/home/kaka/code/shape_manager/main.cpp</ | DSML | parameter></ | DSML | invoke></ | DSML | tool_calls>';
+  const cleaned = sanitizeVisibleDeltaForMode(accumulated, true);
+  assert.equal(cleaned, '好的，我先查看文件。');
+  assert.doesNotMatch(cleaned, /DSML|tool_calls|read_file|filePath/);
 });
 
 test('agent accumulated render: keeps ordinary nameless Calling prose', () => {

@@ -526,10 +526,94 @@ function stripJsonToolPayloads(text: string): string {
   return out;
 }
 
+function findNextDsmlToolCallStart(text: string, startAt = 0): number {
+  const re = /<\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b/gi;
+  re.lastIndex = startAt;
+  const match = re.exec(text);
+  return match ? match.index : -1;
+}
+
+function dsmlToolCallBlockEnd(text: string, start: number): number {
+  const tail = text.slice(start);
+  const toolCallsClose = /<\/\s*\|\s*DSML\s*\|\s*tool_calls\s*>/i.exec(tail);
+  if (toolCallsClose) return start + toolCallsClose.index + toolCallsClose[0].length;
+  const invokeClose = /<\/\s*\|\s*DSML\s*\|\s*invoke\s*>/i.exec(tail);
+  if (invokeClose) return start + invokeClose.index + invokeClose[0].length;
+  const parameterClose = /<\/\s*\|\s*DSML\s*\|\s*parameter\s*>/i.exec(tail);
+  if (parameterClose) return start + parameterClose.index + parameterClose[0].length;
+  return text.length;
+}
+
+function stripDsmlToolCallBlocks(text: string): string {
+  let out = '';
+  let cursor = 0;
+  while (cursor < text.length) {
+    const start = findNextDsmlToolCallStart(text, cursor);
+    if (start < 0) {
+      out += text.slice(cursor);
+      break;
+    }
+    out += text.slice(cursor, start).replace(/[ \t]+$/, '');
+    cursor = dsmlToolCallBlockEnd(text, start);
+  }
+  return out;
+}
+
+function normalizeDsmlToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...input };
+  if (typeof normalized.path !== 'string') {
+    const path = normalized.filePath ?? normalized.filepath ?? normalized.filename ?? normalized.targetPath ?? normalized.directory;
+    if (typeof path === 'string' && path.trim()) normalized.path = path.trim();
+  }
+  if (toolName === 'run_terminal' && typeof normalized.command !== 'string' && typeof normalized.cmd === 'string') {
+    normalized.command = normalized.cmd;
+  }
+  return normalized;
+}
+
+function parseDsmlParameterValue(raw: string): unknown {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (/^(?:true|false|null|-?\d+(?:\.\d+)?|\{|\[|")/.test(trimmed)) {
+    try { return JSON.parse(trimmed); } catch { /* keep raw string */ }
+  }
+  return trimmed;
+}
+
+function parseDsmlToolCalls(text: string): FakeTool[] {
+  if (findNextDsmlToolCallStart(text) < 0) return [];
+  const tools: FakeTool[] = [];
+  const invokeRe = /<\s*\|\s*DSML\s*\|\s*invoke\b([^<>]*\bname\s*=\s*["']([^"']+)["'][^<>]*)(?:>|(?=<\s*\|\s*DSML\s*\|))([\s\S]*?)<\/\s*\|\s*DSML\s*\|\s*invoke\s*>/gi;
+  let im: RegExpExecArray | null;
+  while ((im = invokeRe.exec(text)) !== null) {
+    const name = im[2].trim();
+    if (!isRegisteredFakeToolName(name)) continue;
+    const input: Record<string, unknown> = {};
+    const body = im[3] || '';
+
+    const blockParamRe = /<\s*\|\s*DSML\s*\|\s*parameter\b([^<>]*\bname\s*=\s*["']([^"']+)["'][^<>]*)(?:>|(?=<\s*\|\s*DSML\s*\|))([\s\S]*?)<\/\s*\|\s*DSML\s*\|\s*parameter\s*>/gi;
+    let pm: RegExpExecArray | null;
+    while ((pm = blockParamRe.exec(body)) !== null) {
+      input[pm[2].trim()] = parseDsmlParameterValue(pm[3] || '');
+    }
+
+    const valueParamRe = /<\s*\|\s*DSML\s*\|\s*parameter\b([^<>]*\bname\s*=\s*["']([^"']+)["'][^<>]*\bvalue\s*=\s*["']([^"']*)["'][^<>]*)(?:\/?>|(?=<\s*\|\s*DSML\s*\|))/gi;
+    while ((pm = valueParamRe.exec(body)) !== null) {
+      const key = pm[2].trim();
+      if (!(key in input)) input[key] = parseDsmlParameterValue(pm[3] || '');
+    }
+
+    tools.push({ name, input: normalizeDsmlToolInput(name, input) });
+  }
+  return tools;
+}
+
 export function findFirstToolCallStart(text: string): number {
   const indexes: number[] = [];
   const bracket = text.indexOf('[TOOL:');
   if (bracket >= 0) indexes.push(bracket);
+  const dsml = findNextDsmlToolCallStart(text);
+  if (dsml >= 0) indexes.push(dsml);
   const callRe = makeAnyCallingRegex();
   let cm: RegExpExecArray | null;
   while ((cm = callRe.exec(text)) !== null) {
@@ -625,6 +709,10 @@ export function stripToolCallBlocks(text: string): string {
   const beforeJsonCleanup = result;
   result = stripJsonToolPayloads(result);
   removedInternalBlock = removedInternalBlock || result !== beforeJsonCleanup;
+
+  const beforeDsmlCleanup = result;
+  result = stripDsmlToolCallBlocks(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeDsmlCleanup;
 
   const beforeXmlCleanup = result;
   const noXml = result
@@ -826,6 +914,10 @@ export function parseFakeToolCalls(text: string): FakeTool[] {
 
   if (tools.length === 0) {
     tools.push(...parseToolArgumentsToolCalls(text));
+  }
+
+  if (tools.length === 0) {
+    tools.push(...parseDsmlToolCalls(text));
   }
 
   if (tools.length === 0) {

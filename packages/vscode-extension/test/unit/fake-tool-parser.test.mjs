@@ -62,6 +62,27 @@ test('FakeToolParser: parses DeepSeek Tool/Arguments transcript format', () => {
   assert.equal(stripToolCallBlocks(text), '让我先查看当前代码结构和已有实现。');
 });
 
+test('FakeToolParser: parses and strips DeepSeek DSML tool transcript format', () => {
+  const text = [
+    '好的，我先查看当前代码。',
+    '< | DSML | tool_calls< | DSML | invoke name="read_file"< | DSML | parameter name="filePath" string="true">/home/kaka/code/shape_manager/main.cpp</ | DSML | parameter></ | DSML | invoke></ | DSML | tool_calls>',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'read_file');
+  assert.deepEqual(tools[0].input, { filePath: '/home/kaka/code/shape_manager/main.cpp', path: '/home/kaka/code/shape_manager/main.cpp' });
+  assert.equal(findFirstToolCallStart(text), text.indexOf('< | DSML | tool_calls'));
+  assert.equal(stripToolCallBlocks(text), '好的，我先查看当前代码。');
+});
+
+test('FakeToolParser: strips incomplete DSML streaming tail', () => {
+  const text = '我先读文件。< | DSML | tool_calls< | DSML | invoke name="read_file"';
+  assert.equal(parseFakeToolCalls(text).length, 0);
+  assert.equal(findFirstToolCallStart(text), text.indexOf('< | DSML | tool_calls'));
+  assert.equal(stripToolCallBlocks(text), '我先读文件。');
+});
+
 test('FakeToolParser: strips spaced Tool/Arguments terminal transcript', () => {
   const text = '好的，现在执行编译和运行。 Tool: run_terminal Arguments:{"command":"cmake -S . -B build && cmake --build build","is_background":false}';
   const tools = parseFakeToolCalls(text);
