@@ -22,7 +22,7 @@ export interface ResolveSessionContinuationFilesInput {
 }
 
 export function resolveSessionContinuationFilesFromState(input: ResolveSessionContinuationFilesInput): string[] {
-  if (!input.workspaceRoot || !shouldRestoreSessionFiles(input.prompt, input.intent)) return [];
+  if (!input.workspaceRoot) return [];
 
   const candidates: string[] = [];
   for (const rel of input.state?.changedPaths ?? []) candidates.push(rel);
@@ -32,13 +32,33 @@ export function resolveSessionContinuationFilesFromState(input: ResolveSessionCo
     if (rel) candidates.push(rel);
   }
 
-  const resolved = [...new Set(candidates)]
+  const resolved = prioritizeContinuationFiles([...new Set(candidates)]
     .map(rel => absPathFromWorkspaceRel(input.workspaceRoot, rel))
-    .filter((abs): abs is string => Boolean(abs));
+    .filter((abs): abs is string => Boolean(abs)), input.workspaceRoot);
   const codeFirst = resolved.filter(pathValue => AGENT_CODE_FILE_RE.test(pathValue));
+  if (!shouldRestoreSessionFiles(input.prompt, input.intent, codeFirst.length > 0)) return [];
   if (codeFirst.length === 0) return [];
   const supporting = resolved.filter(pathValue => !AGENT_CODE_FILE_RE.test(pathValue)).slice(0, 3);
   return [...codeFirst.slice(0, 6), ...supporting];
+}
+
+function prioritizeContinuationFiles(absPaths: string[], workspaceRoot: string): string[] {
+  const scored = absPaths.map(absPath => ({
+    absPath,
+    score: continuationPathScore(absPath, workspaceRoot),
+  }));
+  scored.sort((a, b) => b.score - a.score || a.absPath.localeCompare(b.absPath));
+  return scored.map(item => item.absPath);
+}
+
+function continuationPathScore(absPath: string, workspaceRoot: string): number {
+  const rel = relPathFromWorkspace(workspaceRoot, absPath) ?? absPath.replace(/\\/g, '/');
+  const depth = rel.split('/').filter(Boolean).length;
+  const sourceRootBonus = /^(?:code|src|source|sources|include|lib|app|apps|packages|pkg|modules|cmd|core)\//i.test(rel)
+    ? 100
+    : 0;
+  const rootFilePenalty = rel.includes('/') ? 0 : -50;
+  return sourceRootBonus + depth + rootFilePenalty;
 }
 
 export interface BuildAgenticSessionContextInput {

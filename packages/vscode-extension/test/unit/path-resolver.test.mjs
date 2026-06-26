@@ -76,6 +76,7 @@ function createWorkspaceWithDuplicateShapeManager() {
   const wrongDir = path.join(root, 'shape_manager');
   mkdirSync(projectDir, { recursive: true });
   mkdirSync(wrongDir, { recursive: true });
+  writeFileSync(path.join(projectDir, 'main.cpp'), 'int main() { return 0; }\n');
   writeFileSync(path.join(wrongDir, 'main.cpp'), 'int main() { return 99; }\n');
   fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
   return { root, projectDir, wrongDir };
@@ -116,6 +117,26 @@ test('path-resolver: explicit code subdirectory beats same-name root directory f
     const scope = detectWorkspacePathScope(prompt);
     assert.equal(scope.promptDir, projectDir);
     assert.equal(scope.promptDirIsExplicit, true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('path-resolver: continuation path hints anchor bare source filenames to prior project files', () => {
+  const { root, projectDir } = createWorkspaceWithDuplicateShapeManager();
+  try {
+    const prompt = '可以通过鼠标动作，天空背景也添加了，天空背景能用夜晚色吗，同时所有图形能同时显示吗';
+
+    const bareWrite = resolveWorkspaceWritePath('main.cpp', {
+      requestPrompt: prompt,
+      content: '#include <iostream>\nint main() { return 0; }\n',
+      workspaceRootFsPath: root,
+      defaultWorkdir: root,
+      preferredAbsolutePaths: [path.join(projectDir, 'main.cpp')],
+    });
+
+    assert.equal(bareWrite.relPath, 'code/shape_manager/main.cpp');
+    assert.equal(bareWrite.absPath, path.join(projectDir, 'main.cpp'));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

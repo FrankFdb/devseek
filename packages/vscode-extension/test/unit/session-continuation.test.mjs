@@ -80,6 +80,27 @@ test('Session continuation: restores files for direct execute-result follow-up',
   );
 });
 
+test('Session continuation: code follow-up restores previous files without exact wording', () => {
+  const editIntent = { mode: 'edit', signals: [] };
+  const prompt = '可以通过鼠标动作，天空背景也添加了，天空背景能用夜晚色吗，同时所有图形能同时显示吗';
+
+  assert.equal(isLikelySessionContinuation(prompt), false);
+  assert.equal(shouldRestoreSessionFiles(prompt, editIntent, true), true);
+  assert.equal(
+    shouldInjectSessionContinuationForIntent(prompt, '上一轮文件：code/shape_manager/main.cpp', editIntent),
+    true,
+  );
+});
+
+test('Session continuation: independent new code tasks do not inherit stale files', () => {
+  const editIntent = { mode: 'edit', signals: [] };
+
+  assert.equal(
+    shouldRestoreSessionFiles('创建一个新的 Python 程序，打印 hello', editIntent, true),
+    false,
+  );
+});
+
 test('Session continuation: explicit run targets do not inherit previous files', () => {
   const runIntent = {
     mode: 'run',

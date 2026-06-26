@@ -426,6 +426,10 @@ export async function applyMarkdownFileArtifactsForLoop(
     }
     callbacks.onToolActivity?.('write', resolvedWrite.relPath);
     const writeResult = workspaceEditService.writeTextFileSync(resolvedAbs, artifact.content);
+    if (writeResult.existed && writeResult.oldContent === artifact.content) {
+      feedback.push(`[generated_file: ${artifact.path}] 未发生内容变化，未计入本轮修改证据：${resolvedWrite.relPath}`);
+      continue;
+    }
     await callbacks.onAppliedChange({ path: resolvedAbs, ...writeResult });
     const newLines = artifact.content.split('\n').length;
     const oldLines = writeResult.oldContent ? writeResult.oldContent.split('\n').length : 0;
@@ -786,6 +790,10 @@ export async function executeFakeToolsForLoop(
             let errMsg = `[${tool.name}: ${rawPath}] 错误: 写入后校验失败（不是有效文件或文件为空）：${absPath}`;
             if (failN >= 2) errMsg += `\n请不要改用 run_terminal 写文件；继续使用 create_file/write_file，并检查 path 与 content 是否正确。`;
             parts.push(errMsg);
+            continue;
+          }
+          if (writeResult.existed && writeResult.oldContent === content) {
+            parts.push(`[${tool.name}: ${rawPath}] 未发生内容变化，未计入本轮修改证据：${normalized.path}`);
             continue;
           }
           await callbacks.onAppliedChange({ path: absPath, ...writeResult });

@@ -41,8 +41,27 @@ export function isRunContinuationIntent(intent?: SessionContinuationIntent): boo
     && !signals.includes('explicit-file-path');
 }
 
-export function shouldRestoreSessionFiles(prompt: string, intent?: SessionContinuationIntent): boolean {
-  return isLikelySessionContinuation(prompt) || isRunContinuationIntent(intent);
+function isIndependentNewTaskPrompt(prompt: string): boolean {
+  const text = prompt.trim();
+  if (!text) return false;
+  return /(?:从零|全新|新的|新建|创建|生成|写一个|写个|另写|单独写|独立).{0,18}(?:项目|程序|脚本|文件|应用|页面|demo|示例|project|program|script|file|app)/i.test(text);
+}
+
+function isCodeWorkContinuationIntent(intent?: SessionContinuationIntent, hasSessionCodeFiles = false): boolean {
+  if (!hasSessionCodeFiles) return false;
+  const signals = intent?.signals ?? [];
+  if (signals.includes('explicit-file-path') || signals.includes('artifact-path-query')) return false;
+  return intent?.mode === 'edit' || intent?.mode === 'run';
+}
+
+export function shouldRestoreSessionFiles(
+  prompt: string,
+  intent?: SessionContinuationIntent,
+  hasSessionCodeFiles = false,
+): boolean {
+  if (isLikelySessionContinuation(prompt) || isRunContinuationIntent(intent)) return true;
+  if (isIndependentNewTaskPrompt(prompt)) return false;
+  return isCodeWorkContinuationIntent(intent, hasSessionCodeFiles);
 }
 
 export function shouldInjectSessionContinuation(prompt: string, context: string): boolean {
@@ -53,8 +72,9 @@ export function shouldInjectSessionContinuationForIntent(
   prompt: string,
   context: string,
   intent?: SessionContinuationIntent,
+  hasSessionCodeFiles = Boolean(context.trim()),
 ): boolean {
-  return Boolean(context.trim()) && shouldRestoreSessionFiles(prompt, intent);
+  return Boolean(context.trim()) && shouldRestoreSessionFiles(prompt, intent, hasSessionCodeFiles);
 }
 
 export function appendSessionContinuationContext(prompt: string, context: string): string {
