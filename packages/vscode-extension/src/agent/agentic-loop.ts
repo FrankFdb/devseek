@@ -41,6 +41,10 @@ import {
   markValidationFailureTodos,
   type TodoItem,
 } from './evidence-recovery';
+import {
+  buildDanglingAgentActionFeedback,
+  hasDanglingAgentActionIntent,
+} from './no-tool-intent';
 import { findFirstToolCallStart, parseFakeToolCalls, stripToolCallBlocks } from './fake-tool-parser';
 import { isLiteralToolProtocolPrompt } from './agent-run-display';
 import {
@@ -573,6 +577,13 @@ export async function runAgenticLoop(
       if (!callbacks.signal?.aborted && missingWithoutTools.length > 0 && noToolRounds < 4) {
         noToolRounds++;
         const retryMessage = `【系统反馈】不能停在检查目录或说明阶段。当前缺少${missingWithoutTools.join('、')}。${buildMissingEvidenceRecoveryInstruction(missingWithoutTools)}不要把 memory_write/项目记忆列为用户 todo。`;
+        messages.push({ role: 'user', content: retryMessage });
+        totalChars += retryMessage.length;
+        continue;
+      }
+      if (!callbacks.signal?.aborted && promptRequiresTools && sawWorkTool && hasDanglingAgentActionIntent(stripped) && noToolRounds < 4) {
+        noToolRounds++;
+        const retryMessage = buildDanglingAgentActionFeedback();
         messages.push({ role: 'user', content: retryMessage });
         totalChars += retryMessage.length;
         continue;
