@@ -486,7 +486,7 @@ function planCppExecution(targetDir: string, dirFiles: string[], runRequested: b
 
   const compileTargets = sourceFiles;
   return {
-    command: buildCompileOnlyCommand(compileTargets),
+    command: buildCompileOnlyCommand(compileTargets, targetDir),
     cwd: targetDir,
     mode: 'compile-only',
     reason: mainSources.length > 1 ? 'multi-main-local-compile-only' : 'library-local-compile-only',
@@ -741,8 +741,8 @@ function cleanPathToken(value: string): string {
     .trim();
 }
 
-function buildCompileOnlyCommand(targets: string[]): string {
-  const objDir = `/tmp/deepseek_exec_${Date.now()}`;
+function buildCompileOnlyCommand(targets: string[], targetDir: string): string {
+  const objDir = nodePath.join(targetDir, '.devseek-build', 'compile-only');
   return `mkdir -p ${q(objDir)} && ${targets.map((filePath, index) => `g++ -std=c++17 -fsyntax-only ${q(filePath)} && g++ -std=c++17 -c ${q(filePath)} -o ${q(nodePath.join(objDir, `obj_${index}.o`))}`).join(' && ')}`;
 }
 

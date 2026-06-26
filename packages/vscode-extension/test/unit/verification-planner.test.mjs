@@ -118,6 +118,37 @@ test('VerificationPlanner: CMakeLists-only C++ project changes still plan CMake 
   assert.match(plan.command, /shape_manager/);
 });
 
+test('VerificationPlanner: C++ compile-only artifacts use stable project build directory', () => {
+  const projectDir = path.join('/repo', 'code', 'library');
+  const files = new Set([
+    projectDir,
+    path.join(projectDir, 'util.cpp'),
+    path.join(projectDir, 'helper.cpp'),
+  ]);
+  const fsNode = {
+    existsSync: (p) => files.has(p),
+    readdirSync: () => ['util.cpp', 'helper.cpp'],
+    readFileSync: () => 'int util() { return 1; }\n',
+  };
+
+  const first = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['code/library/util.cpp'],
+    fsNode,
+  });
+  const second = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['code/library/util.cpp'],
+    fsNode,
+  });
+
+  assert.equal(first.kind, 'command');
+  assert.equal(first.mode, 'compile-only');
+  assert.match(first.command, /code\/library\/\.devseek-build\/compile-only/);
+  assert.doesNotMatch(first.command, /\/tmp\/deepseek_obj_/);
+  assert.equal(first.command, second.command);
+});
+
 test('VerificationPlanner: unknown targets without file-fact intent produce blocked plan with alternatives', () => {
   const plan = new VerificationPlanner().planWorkspaceChanges({
     rootFsPath: '/repo',

@@ -100,7 +100,7 @@ export function planCppValidation(
     }
 
     return {
-      command: buildCompileOnlyCommand(compileTargets),
+      command: buildCompileOnlyCommand(compileTargets, targetDir),
       cwd: targetDir,
       mode: 'compile-only',
       reason: 'multi-main-minimal-compile-only',
@@ -133,7 +133,7 @@ export function planCppValidation(
     const compileTargets = fallbackCompileTargets.length > 0 ? fallbackCompileTargets : compileSet;
     if (compileTargets.length > 0) {
       return {
-        command: buildCompileOnlyCommand(compileTargets),
+        command: buildCompileOnlyCommand(compileTargets, targetDir),
         cwd: targetDir,
         mode: 'compile-only',
         reason: changedHeaders.length > 0 ? 'header-change-minimal-compile-only' : 'single-main-safe-compile-only',
@@ -144,7 +144,7 @@ export function planCppValidation(
   // Case 3: library-like (no main) or unresolved shape.
   const fallbackTargets = fallbackCompileTargets.length > 0 ? fallbackCompileTargets : sourceFiles.slice(0, 4);
   return {
-    command: buildCompileOnlyCommand(fallbackTargets),
+    command: buildCompileOnlyCommand(fallbackTargets, targetDir),
     cwd: targetDir,
     mode: 'compile-only',
     reason: 'fallback-minimal-compile-only',
@@ -222,8 +222,8 @@ function hasMainFunction(absPath: string, fsNode: { readFileSync: (p: string, en
   }
 }
 
-function buildCompileOnlyCommand(targets: string[]): string {
-  const objDir = `/tmp/deepseek_obj_${Date.now()}`;
+function buildCompileOnlyCommand(targets: string[], targetDir: string): string {
+  const objDir = nodePath.join(targetDir, '.devseek-build', 'compile-only');
   return `mkdir -p ${q(objDir)} && ${targets.map((abs, idx) => `g++ -fsyntax-only ${q(abs)} && g++ -c ${q(abs)} -o ${q(nodePath.join(objDir, `obj_${idx}.o`))}`).join(' && ')}`;
 }
 

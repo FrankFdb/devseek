@@ -1476,6 +1476,13 @@ async function runChat(
       } catch { /* reformat 失败，继续正常流程 */ }
     }
 
+    // 兜底3：仍然没有标准路径标注时，把原始回复交给 applier 的目标作用域兜底。
+    // applier 会根据会话文件、语言和完整文件特征判定唯一目标；不唯一则不写入。
+    if (canApplyArtifacts && !shouldApplyToReviewQueue && effectiveFiles.length > 0 && /```[\s\S]*?```/.test(finalResponseForArtifacts)) {
+      responseToApply = finalResponseForArtifacts;
+      shouldApplyToReviewQueue = true;
+    }
+
     if (shouldApplyToReviewQueue) {
       const firstApply = await applyGeneratedArtifactsWithPrompt(responseToApply, prompt, workflowReporter, true, async (change) => {
         await pendingEditCoordinator.registerChange(webview, change);

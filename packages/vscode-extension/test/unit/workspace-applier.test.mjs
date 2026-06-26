@@ -544,6 +544,67 @@ test('workspace-applier: target-path fallback rejects unlabeled partial snippets
   }
 });
 
+test('workspace-applier: preferred session target maps unlabeled complete main block', async () => {
+  const { root, projectDir } = createShapeManagerWorkspace();
+  try {
+    const oldMain = [
+      '#include <iostream>',
+      '',
+      'int main() {',
+      '    std::cout << "old shape manager" << std::endl;',
+      '    std::cout << "line 2" << std::endl;',
+      '    std::cout << "line 3" << std::endl;',
+      '    std::cout << "line 4" << std::endl;',
+      '    std::cout << "line 5" << std::endl;',
+      '    std::cout << "line 6" << std::endl;',
+      '    std::cout << "line 7" << std::endl;',
+      '    std::cout << "line 8" << std::endl;',
+      '    return 0;',
+      '}',
+      '',
+    ].join('\n');
+    writeFileSync(path.join(projectDir, 'main.cpp'), oldMain);
+    const originalCircle = readFileSync(path.join(projectDir, 'Circle.cpp'), 'utf8');
+    const raw = [
+      '这是修改后的完整文件：',
+      '```cpp',
+      '#include <iostream>',
+      '#include <vector>',
+      '',
+      'int main() {',
+      '    std::vector<int> shapes = {1, 2, 3};',
+      '    for (int shape : shapes) {',
+      '        std::cout << "rotating shape " << shape << std::endl;',
+      '    }',
+      '    std::cout << "independent rotation enabled" << std::endl;',
+      '    return 0;',
+      '}',
+      '```',
+    ].join('\n');
+    const prompt = '现在可以同时显示，但是 6 个图形需要单独控制旋转';
+    const preferredFiles = ['Circle.cpp', 'Rectangle.cpp', 'Triangle.cpp', 'main.cpp']
+      .map(name => path.join(projectDir, name));
+
+    const result = await applyGeneratedArtifactsWithPrompt(
+      raw,
+      prompt,
+      undefined,
+      true,
+      undefined,
+      preferredFiles,
+      { rollbackOnValidationFailure: false },
+    );
+
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.changedPaths, ['code/shape_manager/main.cpp']);
+    assert.match(readFileSync(path.join(projectDir, 'main.cpp'), 'utf8'), /independent rotation enabled/);
+    assert.equal(readFileSync(path.join(projectDir, 'Circle.cpp'), 'utf8'), originalCircle);
+    assert.equal(existsSync(path.join(root, 'code', 'main.cpp')), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('workspace-applier: explicit code subdirectory wins over same-name root directory', async () => {
   const { root, projectDir } = createShapeManagerWorkspace();
   const wrongDir = path.join(root, 'shape_manager');

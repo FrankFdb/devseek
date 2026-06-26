@@ -465,6 +465,11 @@ async function prepareChanges(raw: string, requestPrompt?: string, preferredAbso
   const pathContext = buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths);
 
   let artifacts = parseGeneratedArtifacts(raw);
+  if (artifacts.length === 0) {
+    const targetScoped = await preparePreferredTargetScopedFallbackChanges(raw, requestPrompt, preferredAbsolutePaths);
+    if (targetScoped.length > 0) return targetScoped;
+  }
+
   const fallbackArtifacts = inferFallbackArtifacts(raw, requestPrompt, root);
   if (artifacts.length === 0) {
     artifacts = fallbackArtifacts;
@@ -505,7 +510,25 @@ async function prepareChanges(raw: string, requestPrompt?: string, preferredAbso
     changes.push({ action, targetUri, relPath, exists, oldContent, newContent });
   }
 
-  return dedupeChanges(changes);
+  const deduped = dedupeChanges(changes);
+  if (deduped.length > 0) return deduped;
+
+  return preparePreferredTargetScopedFallbackChanges(raw, requestPrompt, preferredAbsolutePaths);
+}
+
+async function preparePreferredTargetScopedFallbackChanges(
+  raw: string,
+  requestPrompt?: string,
+  preferredAbsolutePaths?: string[],
+): Promise<PreparedChange[]> {
+  const root = getWorkspaceRoot(requestPrompt, preferredAbsolutePaths);
+  if (!root || !preferredAbsolutePaths || preferredAbsolutePaths.length === 0) return [];
+
+  const pathContext = buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths);
+  const candidates = selectPreferredTargetScopedFallbackPaths(raw, pathContext);
+  if (candidates.length !== 1) return [];
+
+  return prepareTargetScopedFallbackChanges(raw, candidates[0], requestPrompt, preferredAbsolutePaths);
 }
 
 async function prepareTargetScopedFallbackChanges(
@@ -525,7 +548,7 @@ async function prepareTargetScopedFallbackChanges(
   const targetUri = vscode.Uri.joinPath(root, ...relPath.split('/'));
   const exists = await fileExists(targetUri);
   const oldContent = exists ? await readText(targetUri) : '';
-  const content = selectTargetScopedFallbackContent(raw, relPath, oldContent);
+  const content = selectTargetScopedFallbackContent(raw, relPath, oldContent, requestPrompt);
   if (!content) return [];
   if (looksLikeRawToolCallText(content)) return [];
   if (shouldBlockProjectInstructionFileWrite({ filePath: relPath, content, requestPrompt })) return [];
@@ -834,20 +857,45 @@ function looksLikeBrokenSingleFileParse(artifacts: GeneratedArtifact[]): boolean
   return looksLikeFileTreeBlock(first.content) || looksLikeClassDiagramBlock(first.content);
 }
 
-function selectTargetScopedFallbackContent(raw: string, relPath: string, oldContent: string): string | undefined {
-  const blocks = extractCodeBlocks(raw).filter((block) => {
+function selectPreferredTargetScopedFallbackPaths(raw: string, ctx: WorkspacePathContext): string[] {
+  const blocks = extractTargetScopedCodeBlocks(raw);
+  if (blocks.length !== 1) return [];
+
+  const block = blocks[0];
+  const hintedFiles = [...new Set(ctx.hintedFiles)]
+    .filter((relPath) => isCodeLikeRelPath(relPath));
+  if (hintedFiles.length === 0) return [];
+
+  const semanticMatches = hintedFiles
+    .filter((relPath) => languageMatchesRelPath(block.language, relPath, block.content))
+    .filter((relPath) => contentTargetsRelPath(block.content, relPath));
+  if (semanticMatches.length > 0) return semanticMatches;
+
+  const languageMatches = hintedFiles
+    .filter((relPath) => languageMatchesRelPath(block.language, relPath, block.content));
+  if (languageMatches.length === 1) return languageMatches;
+
+  return hintedFiles.length === 1 ? hintedFiles : [];
+}
+
+function extractTargetScopedCodeBlocks(raw: string): Array<{ language?: string; content: string }> {
+  return extractCodeBlocks(raw).filter((block) => {
     if (/^diff|patch$/i.test(block.language || '')) return false;
     if (looksLikeFileTreeBlock(block.content) || looksLikeClassDiagramBlock(block.content)) return false;
     return true;
   });
+}
+
+function selectTargetScopedFallbackContent(raw: string, relPath: string, oldContent: string, requestPrompt?: string): string | undefined {
+  const blocks = extractTargetScopedCodeBlocks(raw);
   for (const block of blocks) {
     const content = block.content.trim();
-    if (isSafeTargetScopedFullFile(content, relPath, oldContent)) return content;
+    if (isSafeTargetScopedFullFile(content, relPath, oldContent, `${requestPrompt || ''}\n${raw}`)) return content;
   }
   return undefined;
 }
 
-function isSafeTargetScopedFullFile(content: string, relPath: string, oldContent: string): boolean {
+function isSafeTargetScopedFullFile(content: string, relPath: string, oldContent: string, sourceText = ''): boolean {
   if (!isLikelySourceForPath(content, relPath)) return false;
   if (!oldContent.trim()) return true;
 
@@ -856,8 +904,51 @@ function isSafeTargetScopedFullFile(content: string, relPath: string, oldContent
   if (oldLines >= 12 && newLines < Math.max(8, Math.floor(oldLines * 0.6))) return false;
 
   const anchor = firstMeaningfulSourceLine(oldContent);
-  if (anchor && oldLines >= 8 && !content.includes(anchor)) return false;
+  if (anchor && oldLines >= 8 && !content.includes(anchor) && !looksLikeFullFileRewrite(sourceText)) return false;
   return true;
+}
+
+function looksLikeFullFileRewrite(text: string): boolean {
+  return /(完整文件|完整代码|完整内容|修改后的完整|替换后的完整|最终文件|complete\s+file|full\s+file|entire\s+file)/i.test(text);
+}
+
+function isCodeLikeRelPath(relPath: string): boolean {
+  return /\.(?:ts|tsx|js|jsx|mjs|cjs|py|java|go|rs|c|cc|cpp|cxx|h|hpp|sh|sql)$/i.test(relPath)
+    || /(?:^|\/)(?:CMakeLists\.txt|Makefile|Dockerfile)$/i.test(relPath);
+}
+
+function languageMatchesRelPath(language: string | undefined, relPath: string, content: string): boolean {
+  const ext = nodePath.posix.extname(relPath).replace(/^\./, '').toLowerCase();
+  const lang = (language || '').toLowerCase();
+  if (!lang) return true;
+  if (['cpp', 'c++', 'cc', 'cxx'].includes(lang)) return ['cpp', 'cc', 'cxx', 'h', 'hpp'].includes(ext);
+  if (lang === 'c') return ['c', 'h'].includes(ext);
+  if (lang === 'hpp' || lang === 'h') return ['h', 'hpp'].includes(ext);
+  if (lang === 'typescript' || lang === 'ts') return ['ts', 'tsx'].includes(ext);
+  if (lang === 'javascript' || lang === 'js') return ['js', 'jsx', 'mjs', 'cjs'].includes(ext);
+  if (lang === 'python') return ext === 'py';
+  if (lang === 'shell' || lang === 'bash' || lang === 'sh') return ext === 'sh';
+  if (lang === 'cmake') return nodePath.posix.basename(relPath) === 'CMakeLists.txt';
+  if (ext === lang) return true;
+  return isLikelySourceForPath(content, relPath);
+}
+
+function contentTargetsRelPath(content: string, relPath: string): boolean {
+  const base = nodePath.posix.basename(relPath);
+  const stem = base.replace(/\.(?:cpp|cc|cxx|c|h|hpp|ts|tsx|js|jsx|mjs|cjs|py|java|go|rs|sh|sql)$/i, '');
+  const escapedStem = escapeRegExp(stem);
+  const escapedBase = escapeRegExp(base);
+
+  if (/^main\.(?:cpp|cc|cxx|c)$/i.test(base) && /\b(?:int|auto)?\s*main\s*\(/.test(content)) return true;
+  if (new RegExp(`#include\\s+[<"]${escapedBase}[>"]`).test(content)) return true;
+  if (new RegExp(`#include\\s+[<"]${escapedStem}\\.(?:h|hpp)[>"]`).test(content) && /\.(?:cpp|cc|cxx)$/i.test(base)) return true;
+  if (new RegExp(`\\b(?:class|struct|enum)\\s+${escapedStem}\\b`).test(content)) return true;
+  if (new RegExp(`\\b${escapedStem}::`).test(content)) return true;
+  return false;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function firstMeaningfulSourceLine(content: string): string | undefined {

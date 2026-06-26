@@ -198,6 +198,30 @@ test('ExecutionPlanner: C++ run request compiles and runs only when no executabl
   }
 });
 
+test('ExecutionPlanner: C++ compile-only artifacts use stable project build directory', () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-exec-'));
+  try {
+    const projectDir = path.join(workspaceRoot, 'code', 'library');
+    fs.mkdirSync(projectDir, { recursive: true });
+    const utilCpp = path.join(projectDir, 'util.cpp');
+    const helperCpp = path.join(projectDir, 'helper.cpp');
+    fs.writeFileSync(utilCpp, 'int util() { return 1; }\n');
+    fs.writeFileSync(helperCpp, 'int helper() { return 2; }\n');
+
+    const first = planLocalExecution('请编译这个项目', [utilCpp, helperCpp], workspaceRoot);
+    const second = planLocalExecution('请编译这个项目', [utilCpp, helperCpp], workspaceRoot);
+
+    assert.ok(first);
+    assert.ok(second);
+    assert.equal(first.mode, 'compile-only');
+    assert.match(first.command, /code\/library\/\.devseek-build\/compile-only/);
+    assert.doesNotMatch(first.command, /\/tmp\/deepseek_exec_/);
+    assert.equal(first.command, second.command);
+  } finally {
+    fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('ExecutionPlanner: local execution repair is reserved for build failures', () => {
   const basePlan = {
     command: './app',
