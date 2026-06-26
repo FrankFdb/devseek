@@ -130,6 +130,17 @@ test('completion evidence: common Chinese implementation wording requires code e
   assert.equal(requiresCodeArtifactForEvidence('写一个排序算法并放到 code 目录'), true);
 });
 
+test('completion evidence: visual interaction enhancement requests require code evidence', () => {
+  const visualPrompt = '现在三维图形都能显示了，自动旋转，然后这些立方体能同时显示，然后可以通过不同的控制吗，比如鼠标，背景添加天空？给让感觉更好的方式';
+
+  assert.equal(requiresFileChangeEvidence(visualPrompt), true);
+  assert.equal(requiresCodeArtifactForEvidence(visualPrompt), true);
+  assert.deepEqual(
+    getMissingCompletionEvidence(visualPrompt, [], [], []),
+    ['代码修改结果'],
+  );
+});
+
 test('completion evidence: markdown file creation requires file evidence but not code validation', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-evidence-docs-'));
   try {
