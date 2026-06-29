@@ -980,8 +980,8 @@ test('Architecture: smalltalk cannot inherit restored session context or apply a
   );
   assert.match(
     ext,
-    /const finalResponseForUser = noAgentCodeChat \? stripToolCallBlocks\(finalResponse\) : finalResponse;[\s\S]*?const finalResponseForArtifacts = noAgentCodeChat \? finalResponseForUser : finalResponse;/,
-    'no-agent code chat must strip fake tool protocol before display and artifact parsing',
+    /const finalResponseForUser = stripToolCallBlocks\(finalResponse\);[\s\S]*?const finalResponseForArtifacts = noAgentCodeChat \? finalResponseForUser : finalResponse;/,
+    'visible chat output must strip fake tool protocol while artifact parsing can keep raw non-agent responses',
   );
 });
 
@@ -995,13 +995,13 @@ test('Architecture: no-agent code chat streams sanitized visible deltas', () => 
   );
   assertContains(
     ext,
-    'noAgentCodeChat ? stripToolCallBlocks(fullText) : fullText',
-    'reset/full-text deltas must hide fake tool protocol in no-agent code chat',
+    'text: stripToolCallBlocks(fullText)',
+    'reset/full-text deltas must hide fake tool protocol before display',
   );
   assertContains(
     ext,
-    'const visibleDelta = noAgentCodeChat ? stripToolCallBlocks(delta) : delta',
-    'incremental deltas must hide fake tool protocol in no-agent code chat',
+    'const visibleDelta = stripToolCallBlocks(delta);',
+    'incremental deltas must hide fake tool protocol before display',
   );
 });
 
@@ -1043,6 +1043,27 @@ test('Architecture: agentic loop does not hard-code fake tool protocol formats',
   assertContains(agenticLoop, 'containsFakeToolCallProtocol(sAccum)', 'streaming early tool detection must use the parser boundary');
   assert.doesNotMatch(agenticLoop, /sAccum\.includes\(['"]\[TOOL:/, 'agentic loop must not hard-code bracket tool protocol checks');
   assert.doesNotMatch(agenticLoop, /sAccum\.includes\(['"]<\s*\|\s*DSML/, 'agentic loop must not hard-code DSML protocol checks');
+});
+
+test('Architecture: assistant webview rendering strips fake tool transcripts at the boundary', () => {
+  const webview = src('media/webview.js');
+  assertContains(webview, 'function renderAssistantMarkdown', 'assistant rendering must expose a single markdown boundary');
+  assertContains(webview, 'return md(renderVisibleAssistantText(text || \'\'));', 'assistant markdown boundary must sanitize visible text before rendering');
+  assertContains(webview, 'container.innerHTML = renderAssistantMarkdown(rawText)', 'generic assistant body must use the sanitized markdown boundary');
+  assertContains(webview, 'text = renderVisibleAssistantText(text || \'\')', 'collapsed generated code rendering must sanitize before scanning markdown fences');
+  assert.doesNotMatch(webview, /md\(rawText\)/, 'assistant renderers must not markdown-render raw assistant text');
+  assert.doesNotMatch(webview, /md\(obj\.raw\)/, 'analysis file cards must not markdown-render raw model text');
+  assert.doesNotMatch(webview, /md\(analyzeSummaryCardObj\.raw\)/, 'analysis summary cards must not markdown-render raw model text');
+  assert.doesNotMatch(webview, /md\(visibleText\)/, 'history restore must use the assistant markdown boundary');
+  assert.doesNotMatch(webview, /md\(renderVisibleAssistantText\(currentRaw\)\)/, 'stream/end/error paths must use the assistant markdown boundary');
+  assert.doesNotMatch(webview, /md\(augmentAgentFinalSummary\(/, 'agent final summary rendering must use the agent markdown boundary');
+});
+
+test('Architecture: non-agent visible chat output strips fake tool transcripts before webview delivery', () => {
+  const ext = src('src/extension.ts');
+  assertContains(ext, 'text: stripToolCallBlocks(fullText)', 'resetResponse visible text must be stripped before delivery');
+  assertContains(ext, 'const visibleDelta = stripToolCallBlocks(delta);', 'streaming delta visible text must be stripped before delivery');
+  assertContains(ext, 'const finalResponseForUser = stripToolCallBlocks(finalResponse);', 'final visible response must be stripped before user-facing handling');
 });
 
 test('Architecture: agent loop stays orchestration-only for tool execution details', () => {

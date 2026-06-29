@@ -668,6 +668,23 @@ test('agent accumulated render: hides escaped split DSML tool transcript before 
   assert.doesNotMatch(cleaned, /DSML|tool_calls|read_file|filePath/);
 });
 
+test('assistant visible render: hides DSML transcript outside agent mode', () => {
+  const leaked = [
+    '好的，我先查看当前代码，然后实现。',
+    '< | DSML | tool_calls< | DSML | invoke name="read_file">< | DSML | parameter name="filePath" string="true">/home/kaka/code/shape_manager/main.cpp</ | DSML | parameter></ | DSML | invoke></ | DSML | tool_calls>',
+  ].join('\n');
+  const cleaned = sanitizeVisibleDeltaForMode(leaked, false);
+  assert.equal(cleaned, '好的，我先查看当前代码，然后实现。');
+  assert.doesNotMatch(cleaned, /DSML|tool_calls|read_file|filePath/);
+});
+
+test('assistant visible render: hides escaped DSML transcript outside agent mode', () => {
+  const leaked = '好的，我先看当前代码。&lt; | DSML | tool_calls&lt; | DSML | invoke name="read_file">&lt; | DSML | parameter name="filePath" string="true">/home/kaka/code/shape_manager/main.cpp&lt;/ | DSML | parameter>&lt;/ | DSML | invoke>&lt;/ | DSML | tool_calls>';
+  const cleaned = sanitizeVisibleDeltaForMode(leaked, false);
+  assert.equal(cleaned, '好的，我先看当前代码。');
+  assert.doesNotMatch(cleaned, /DSML|tool_calls|read_file|filePath/);
+});
+
 test('agent accumulated render: keeps ordinary nameless Calling prose', () => {
   const text = [
     'Calling:',

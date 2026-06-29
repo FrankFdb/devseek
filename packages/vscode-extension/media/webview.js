@@ -304,8 +304,7 @@ function clearAnalysisRenderTimer() {
 
 function renderStreamingBubbleNow() {
   if (!currentBubble) return;
-  var streamDisplay = renderVisibleAssistantText(currentRaw);
-  currentBubble.innerHTML = md(streamDisplay) + '<span class="cursor"></span>';
+  currentBubble.innerHTML = renderAssistantMarkdown(currentRaw) + '<span class="cursor"></span>';
   pruneEmptyRenderedBlocks(currentBubble);
   streamRenderPending = false;
 }
@@ -351,7 +350,7 @@ function scheduleAnalysisBodyRender(body) {
       analysisRenderBody = null;
       if (!b || !b.isConnected) return;
       analysisLastRenderTs = Date.now();
-      b.innerHTML = md(sanitizeAgentVisibleText(b._raw)) + '<span class="cursor"></span>';
+      b.innerHTML = renderAgentMarkdown(b._raw) + '<span class="cursor"></span>';
       pruneEmptyRenderedBlocks(b);
       scrollAgentProgressToBottom();
     });
@@ -621,7 +620,7 @@ function loadSessionMessages(history, summary, changedFiles, messageCount, creat
     sumToggle.innerHTML = '▸ 上次摘要';
     var sumBody = document.createElement('div');
     sumBody.className = 'srb-summary-body';
-    sumBody.innerHTML = md(summary);
+    sumBody.innerHTML = renderAssistantMarkdown(summary);
     addCodeToolbars(sumBody);
     sumBody.style.display = 'none';
     var sumOpen = false;
@@ -1850,6 +1849,14 @@ function renderVisibleAssistantText(text) {
   return isAgentMode ? sanitizeAgentVisibleText(text || '') : sanitizeAssistantVisibleText(text || '');
 }
 
+function renderAssistantMarkdown(text) {
+  return md(renderVisibleAssistantText(text || ''));
+}
+
+function renderAgentMarkdown(text) {
+  return md(sanitizeAgentVisibleText(text || ''));
+}
+
 function containsAgentInternalTranscript(text) {
   return containsDsmlToolTranscript(text)
     || /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
@@ -2100,7 +2107,7 @@ function addAgentAnnouncementBubble(text) {
   summary.innerHTML = '<i class="codicon codicon-info"></i><span>' + escapeHtml(summarizeAgentAnnouncement(text)) + '</span>';
   var body = document.createElement('div');
   body.className = 'agent-announcement-body';
-  body.innerHTML = md(text);
+  body.innerHTML = renderAgentMarkdown(text);
   if (!pruneEmptyRenderedBlocks(body)) return;
   details.appendChild(summary);
   details.appendChild(body);
@@ -2162,7 +2169,7 @@ function refreshVisibleAgentProseFromCurrentRaw() {
   ensureAgentProseBubbleVisible();
   var prose = cleanAgentFinalProseForUser(currentRaw);
   if (!prose) return;
-  currentBubble.innerHTML = md(augmentAgentFinalSummary(prose)) + '<span class="cursor"></span>';
+  currentBubble.innerHTML = renderAgentMarkdown(augmentAgentFinalSummary(prose)) + '<span class="cursor"></span>';
   pruneEmptyRenderedBlocks(currentBubble);
   enhanceCodeVisuals(currentBubble);
   maybeScrollToBottom();
@@ -2177,7 +2184,7 @@ function addAgentFinalSummaryBubble(text) {
   markTurnEnter(turn);
   var bubble = document.createElement('div');
   bubble.className = 'assistant-bubble';
-  bubble.innerHTML = md(augmentAgentFinalSummary(cleanedText));
+  bubble.innerHTML = renderAgentMarkdown(augmentAgentFinalSummary(cleanedText));
   if (!pruneEmptyRenderedBlocks(bubble)) { return; }
   enhanceCodeVisuals(bubble);
   turn.appendChild(bubble);
@@ -2199,7 +2206,7 @@ function addAgentAnalysisFeedbackBubble(text, sourceContainer) {
 
   var bubble = document.createElement('div');
   bubble.className = 'assistant-bubble agent-analysis-feedback-bubble';
-  bubble.innerHTML = md(cleaned);
+  bubble.innerHTML = renderAgentMarkdown(cleaned);
   if (!pruneEmptyRenderedBlocks(bubble)) return false;
 
   enhanceCodeVisuals(bubble);
@@ -3190,7 +3197,7 @@ function finalizeExecContainer(container, isFailed) {
     var _analysisBodyFin = autDets.querySelector('.aut-analysis-body');
     if (_analysisBodyFin && _analysisBodyFin._raw) {
       var _analysisRawFin = sanitizeAgentVisibleText(_analysisBodyFin._raw);
-      _analysisBodyFin.innerHTML = md(_analysisRawFin);
+      _analysisBodyFin.innerHTML = renderAgentMarkdown(_analysisRawFin);
       enhanceCodeVisuals(_analysisBodyFin);
       renderMermaidBlocks(_analysisBodyFin).then(function() { addCodeToolbars(_analysisBodyFin); maybeScrollToBottom(); });
       if (isAnalyzeContainer) {
@@ -5209,7 +5216,7 @@ function updateAnalyzeFileDelta(filename, text) {
   } else {
     obj.raw += text;
   }
-  obj.body.innerHTML = md(obj.raw) + '<span class="cursor"></span>';
+  obj.body.innerHTML = renderAssistantMarkdown(obj.raw) + '<span class="cursor"></span>';
   addCodeToolbars(obj.body);
   maybeScrollToBottom();
 }
@@ -5221,7 +5228,7 @@ function finalizeAnalyzeFileCard(filename, success) {
   if (iconEl) {
     iconEl.className = success !== false ? 'codicon codicon-check' : 'codicon codicon-error';
   }
-  obj.body.innerHTML = md(obj.raw);
+  obj.body.innerHTML = renderAssistantMarkdown(obj.raw);
   enhanceCodeVisuals(obj.body);
   renderMermaidBlocks(obj.body).then(function() { addCodeToolbars(obj.body); });
   // Auto-collapse after short delay so the next card is more visible
@@ -5253,7 +5260,7 @@ function updateAnalyzeSummaryDelta(text) {
   } else {
     analyzeSummaryCardObj.raw += text;
   }
-  analyzeSummaryCardObj.body.innerHTML = md(analyzeSummaryCardObj.raw) + '<span class="cursor"></span>';
+  analyzeSummaryCardObj.body.innerHTML = renderAssistantMarkdown(analyzeSummaryCardObj.raw) + '<span class="cursor"></span>';
   addCodeToolbars(analyzeSummaryCardObj.body);
   maybeScrollToBottom();
 }
@@ -5261,7 +5268,7 @@ function updateAnalyzeSummaryDelta(text) {
 function finalizeAnalyzeSummaryCard() {
   if (!analyzeSummaryCardObj) return;
   var body = analyzeSummaryCardObj.body;
-  body.innerHTML = md(analyzeSummaryCardObj.raw);
+  body.innerHTML = renderAssistantMarkdown(analyzeSummaryCardObj.raw);
   enhanceCodeVisuals(body);
   renderMermaidBlocks(body).then(function() { addCodeToolbars(body); maybeScrollToBottom(); });
   analyzeSummaryCardObj = null;
@@ -5585,7 +5592,7 @@ function shouldCollapseRestoredGeneratedContent(promptText, rawText) {
 }
 
 function renderGeneratedStreamingPlaceholder(container, rawText) {
-  var text = rawText || '';
+  var text = renderVisibleAssistantText(rawText || '');
 
   // Show text before the first code fence so the user can read the analysis.
   var firstFenceIdx = text.indexOf('```');
@@ -5617,7 +5624,7 @@ function renderGeneratedStreamingPlaceholder(container, rawText) {
   if (!isAgentMode && mode === 'collapsed') {
     html += buildResponseWithCollapsedCode(text);
   } else if (preCodeText.length > 0) {
-    html += md(preCodeText);
+    html += renderAssistantMarkdown(preCodeText);
   }
   // In agent mode the summary ("已识别N个文件候选") is irrelevant — skip it.
   if (!isAgentMode) {
@@ -5627,13 +5634,14 @@ function renderGeneratedStreamingPlaceholder(container, rawText) {
 }
 
 function buildResponseWithCollapsedCode(text) {
+  text = renderVisibleAssistantText(text || '');
   var result = '';
   var re = /```([\w+-]*)\n?([\s\S]*?)(```|$)/g;
   var lastIdx = 0;
   var match;
   while ((match = re.exec(text)) !== null) {
     var textBefore = text.slice(lastIdx, match.index).trim();
-    if (textBefore) result += md(textBefore);
+    if (textBefore) result += renderAssistantMarkdown(textBefore);
     var lang = match[1] || 'code';
     var code = match[2] || '';
     var complete = match[3] === '```';
@@ -5654,13 +5662,14 @@ function buildResponseWithCollapsedCode(text) {
     if (!complete) break;
   }
   var trailing = text.slice(lastIdx).trim();
-  if (trailing) result += md(trailing);
+  if (trailing) result += renderAssistantMarkdown(trailing);
   return result;
 }
 
 function renderGeneratedFinalPlaceholder(container, rawText) {
+  var text = renderVisibleAssistantText(rawText || '');
   var metaCount = getResponseMetaPathRefs().length;
-  var candidateCount = metaCount > 0 ? metaCount : countGeneratedFileCandidates(rawText || '');
+  var candidateCount = metaCount > 0 ? metaCount : countGeneratedFileCandidates(text);
   var expectedCount = extractRequestedFileCount(currentRequestPrompt);
   var suffix = '';
   if (expectedCount > 0 && candidateCount > 0 && candidateCount < expectedCount) {
@@ -5668,7 +5677,7 @@ function renderGeneratedFinalPlaceholder(container, rawText) {
   } else {
     suffix = candidateCount > 0 ? ('检测到 ' + candidateCount + ' 个文件候选。') : '可在下方尝试预览/应用。';
   }
-  var bodyHtml = buildResponseWithCollapsedCode(rawText || '');
+  var bodyHtml = buildResponseWithCollapsedCode(text);
   if (!isAgentMode) {
     container.innerHTML = bodyHtml + '<div class="assistant-generated-summary">' + escapeHtml(suffix) + '</div>';
   } else {
@@ -5697,7 +5706,7 @@ function renderRestoredAssistantContent(container, text, promptText) {
   if (shouldCollapseRestoredGeneratedContent(promptText, visibleText)) {
     container.innerHTML = buildResponseWithCollapsedCode(visibleText);
   } else {
-    container.innerHTML = md(visibleText);
+    container.innerHTML = renderAssistantMarkdown(visibleText);
   }
   finishAssistantContentRender(container);
 }
@@ -5735,7 +5744,7 @@ function getResponseMetaPathRefs() {
 }
 
 function renderAssistantBody(container, rawText) {
-  container.innerHTML = md(rawText);
+  container.innerHTML = renderAssistantMarkdown(rawText);
   finishAssistantContentRender(container);
 }
 
@@ -5833,7 +5842,7 @@ window.addEventListener('message', function(event) {
         if (staleParent) staleParent.remove();
       } else {
         // Has partial content — strip the cursor but keep the text
-        currentBubble.innerHTML = md(renderVisibleAssistantText(currentRaw));
+        currentBubble.innerHTML = renderAssistantMarkdown(currentRaw);
       }
       currentBubble = null;
       currentRaw = '';
@@ -6017,8 +6026,7 @@ window.addEventListener('message', function(event) {
 
       // 生成已结束，立即渲染（不带光标），这样 mermaid 图表尽早显示
       var resetBubble = currentBubble;
-      var displayRaw = renderVisibleAssistantText(currentRaw);
-      resetBubble.innerHTML = md(displayRaw);
+      resetBubble.innerHTML = renderAssistantMarkdown(currentRaw);
       if (isAgentMode && !pruneEmptyRenderedBlocks(resetBubble)) {
         if (resetBubble.parentElement) resetBubble.parentElement.remove();
         hadResetRender = true;
@@ -6077,7 +6085,7 @@ window.addEventListener('message', function(event) {
           // Never inject into the working box and remove the bubble: that makes the
           // summary invisible (buried in an overflow scroll no user finds).
           strippedForEnd = stripAgentGeneratedCodeBlocks(strippedForEnd);
-          endBubble.innerHTML = md(augmentAgentFinalSummary(strippedForEnd));
+          endBubble.innerHTML = renderAgentMarkdown(augmentAgentFinalSummary(strippedForEnd));
           if (!pruneEmptyRenderedBlocks(endBubble)) {
             if (endBubble.parentElement) endBubble.parentElement.remove();
             return;
@@ -6094,7 +6102,7 @@ window.addEventListener('message', function(event) {
           // No LLM prose — auto-generate summary from task/edit completion data
           var autoSummary = buildAgentAutoSummary();
           if (autoSummary) {
-            endBubble.innerHTML = md(augmentAgentFinalSummary(autoSummary));
+            endBubble.innerHTML = renderAgentMarkdown(augmentAgentFinalSummary(autoSummary));
             if (!pruneEmptyRenderedBlocks(endBubble)) {
               if (endBubble.parentElement) endBubble.parentElement.remove();
               return;
@@ -6113,7 +6121,7 @@ window.addEventListener('message', function(event) {
         if (endBubble && endBubble.isConnected && ((endBubble.textContent || '').indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(endBubble.textContent || ''))) {
           var _safeRaw = cleanAgentFinalProseForUser(currentRaw);
           if (_safeRaw) {
-            endBubble.innerHTML = md(augmentAgentFinalSummary(_safeRaw));
+            endBubble.innerHTML = renderAgentMarkdown(augmentAgentFinalSummary(_safeRaw));
             enhanceCodeVisuals(endBubble);
             pruneEmptyRenderedBlocks(endBubble);
           } else if (endBubble.parentElement) {
@@ -6139,7 +6147,7 @@ window.addEventListener('message', function(event) {
           } else {
             var nonAgentEndDisplay = sanitizeAssistantVisibleText(currentRaw);
             if (nonAgentEndDisplay) {
-              endBubble.innerHTML = md(nonAgentEndDisplay);
+              endBubble.innerHTML = renderAssistantMarkdown(nonAgentEndDisplay);
               pruneEmptyRenderedBlocks(endBubble);
               enhanceCodeVisuals(endBubble);
               pruneEmptyRenderedBlocks(endBubble);
@@ -6239,7 +6247,7 @@ window.addEventListener('message', function(event) {
       if (turn) turn.remove();
     } else if (currentBubble) {
       // 有部分内容：保留已显示内容，去掉光标
-      currentBubble.innerHTML = md(renderVisibleAssistantText(currentRaw));
+      currentBubble.innerHTML = renderAssistantMarkdown(currentRaw);
     }
     stopGenerating();
     if (msg.loginRequired) {

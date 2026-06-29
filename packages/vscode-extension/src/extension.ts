@@ -1390,12 +1390,12 @@ async function runChat(
         const fullText = delta.slice(7);
         webview.postMessage({
           type: 'resetResponse',
-          text: noAgentCodeChat ? stripToolCallBlocks(fullText) : fullText,
+          text: stripToolCallBlocks(fullText),
         });
         return;
       }
 
-      const visibleDelta = noAgentCodeChat ? stripToolCallBlocks(delta) : delta;
+      const visibleDelta = stripToolCallBlocks(delta);
       if (visibleDelta) {
         webview.postMessage({ type: 'delta', text: visibleDelta });
       }
@@ -1416,7 +1416,7 @@ async function runChat(
       },
     });
 
-    const finalResponseForUser = noAgentCodeChat ? stripToolCallBlocks(finalResponse) : finalResponse;
+    const finalResponseForUser = stripToolCallBlocks(finalResponse);
     const finalResponseForArtifacts = noAgentCodeChat ? finalResponseForUser : finalResponse;
     if (noAgentCodeChat) {
       webview.postMessage({
