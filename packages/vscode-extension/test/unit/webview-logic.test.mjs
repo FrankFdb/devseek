@@ -244,7 +244,7 @@ function stripToolArgumentBlocksFromText(text) {
 }
 
 function findNextDsmlToolCallStartInText(text, startAt = 0) {
-  const re = /<\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b/gi;
+  const re = /(?:<|&lt;)\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b/gi;
   re.lastIndex = startAt;
   const match = re.exec(String(text || ''));
   return match ? match.index : -1;
@@ -253,11 +253,11 @@ function findNextDsmlToolCallStartInText(text, startAt = 0) {
 function dsmlToolCallBlockEndInText(text, start) {
   const raw = String(text || '');
   const tail = raw.slice(start);
-  const toolCallsClose = /<\/\s*\|\s*DSML\s*\|\s*tool_calls\s*>/i.exec(tail);
+  const toolCallsClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*tool_calls\s*(?:>|&gt;)/i.exec(tail);
   if (toolCallsClose) return start + toolCallsClose.index + toolCallsClose[0].length;
-  const invokeClose = /<\/\s*\|\s*DSML\s*\|\s*invoke\s*>/i.exec(tail);
+  const invokeClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*invoke\s*(?:>|&gt;)/i.exec(tail);
   if (invokeClose) return start + invokeClose.index + invokeClose[0].length;
-  const parameterClose = /<\/\s*\|\s*DSML\s*\|\s*parameter\s*>/i.exec(tail);
+  const parameterClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*parameter\s*(?:>|&gt;)/i.exec(tail);
   if (parameterClose) return start + parameterClose.index + parameterClose[0].length;
   return raw.length;
 }
@@ -275,7 +275,7 @@ function stripDsmlToolCallBlocksFromText(text) {
     out += raw.slice(cursor, start).replace(/[ \t]+$/, '');
     cursor = dsmlToolCallBlockEndInText(raw, start);
   }
-  return out;
+  return out.replace(/(?:<|&lt;)\s*(?:\|\s*(?:D(?:S(?:M(?:L)?)?)?)?)?$/i, '').trimEnd();
 }
 
 function containsDsmlToolTranscript(text) {
@@ -355,7 +355,7 @@ function containsAgentInternalTranscript(text) {
 function cleanAgentFinalProseForUser(text) {
   if (containsAgentInternalTranscript(text || '')) return '';
   let cleaned = stripToolCallBlocks(text || '')
-    .replace(/<\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b[\s\S]*$/gi, '')
+    .replace(/(?:<|&lt;)\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b[\s\S]*$/gi, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   if (!cleaned) return '';
@@ -655,6 +655,16 @@ test('agent accumulated render: hides split DSML tool transcript before and afte
   accumulated += '< | DSML | parameter name="filePath" string="true">/home/kaka/code/shape_manager/main.cpp</ | DSML | parameter></ | DSML | invoke></ | DSML | tool_calls>';
   const cleaned = sanitizeVisibleDeltaForMode(accumulated, true);
   assert.equal(cleaned, '好的，我先查看文件。');
+  assert.doesNotMatch(cleaned, /DSML|tool_calls|read_file|filePath/);
+});
+
+test('agent accumulated render: hides escaped split DSML tool transcript before and after close arrives', () => {
+  let accumulated = '我先看看当前代码结构，然后给你实现。&lt; | DSML | tool_calls&lt; | DSML | invoke name="read_file"';
+  assert.equal(sanitizeVisibleDeltaForMode(accumulated, true), '我先看看当前代码结构，然后给你实现。');
+
+  accumulated += '&lt; | DSML | parameter name="filePath" string="true">/home/kaka/code/shape_manager/main.cpp&lt;/ | DSML | parameter>&lt;/ | DSML | invoke>&lt;/ | DSML | tool_calls>';
+  const cleaned = sanitizeVisibleDeltaForMode(accumulated, true);
+  assert.equal(cleaned, '我先看看当前代码结构，然后给你实现。');
   assert.doesNotMatch(cleaned, /DSML|tool_calls|read_file|filePath/);
 });
 

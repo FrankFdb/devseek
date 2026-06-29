@@ -24,6 +24,7 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const {
+  containsFakeToolCallProtocol,
   findFirstToolCallStart,
   parseFakeToolCalls,
   stripToolCallBlocks,
@@ -76,10 +77,31 @@ test('FakeToolParser: parses and strips DeepSeek DSML tool transcript format', (
   assert.equal(stripToolCallBlocks(text), '好的，我先查看当前代码。');
 });
 
+test('FakeToolParser: parses escaped DeepSeek DSML tool transcript format', () => {
+  const text = [
+    '我先看看当前代码结构，然后给你实现。',
+    '&lt; | DSML | tool_calls&lt; | DSML | invoke name="read_file"&lt; | DSML | parameter name="filePath" string="true">/home/kaka/code/shape_manager/main.cpp&lt;/ | DSML | parameter>&lt;/ | DSML | invoke>&lt;/ | DSML | tool_calls>',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'read_file');
+  assert.equal(tools[0].input.path, '/home/kaka/code/shape_manager/main.cpp');
+  assert.equal(stripToolCallBlocks(text), '我先看看当前代码结构，然后给你实现。');
+});
+
 test('FakeToolParser: strips incomplete DSML streaming tail', () => {
   const text = '我先读文件。< | DSML | tool_calls< | DSML | invoke name="read_file"';
   assert.equal(parseFakeToolCalls(text).length, 0);
   assert.equal(findFirstToolCallStart(text), text.indexOf('< | DSML | tool_calls'));
+  assert.equal(stripToolCallBlocks(text), '我先读文件。');
+});
+
+test('FakeToolParser: strips escaped incomplete DSML streaming tail', () => {
+  const text = '我先读文件。&lt; | DSML | tool_calls&lt; | DSML | invoke name="read_file"';
+  assert.equal(parseFakeToolCalls(text).length, 0);
+  assert.equal(containsFakeToolCallProtocol(text), true);
   assert.equal(stripToolCallBlocks(text), '我先读文件。');
 });
 

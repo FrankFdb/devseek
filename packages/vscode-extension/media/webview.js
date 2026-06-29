@@ -1701,7 +1701,7 @@ function collapseTerminalOutputBlocks(container) {
 
 function findNextDsmlToolCallStartInText(text, startAt) {
   var raw = String(text || '');
-  var re = /<\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b/gi;
+  var re = /(?:<|&lt;)\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b/gi;
   re.lastIndex = startAt || 0;
   var match = re.exec(raw);
   return match ? match.index : -1;
@@ -1710,11 +1710,11 @@ function findNextDsmlToolCallStartInText(text, startAt) {
 function dsmlToolCallBlockEndInText(text, start) {
   var raw = String(text || '');
   var tail = raw.slice(start);
-  var toolCallsClose = /<\/\s*\|\s*DSML\s*\|\s*tool_calls\s*>/i.exec(tail);
+  var toolCallsClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*tool_calls\s*(?:>|&gt;)/i.exec(tail);
   if (toolCallsClose) return start + toolCallsClose.index + toolCallsClose[0].length;
-  var invokeClose = /<\/\s*\|\s*DSML\s*\|\s*invoke\s*>/i.exec(tail);
+  var invokeClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*invoke\s*(?:>|&gt;)/i.exec(tail);
   if (invokeClose) return start + invokeClose.index + invokeClose[0].length;
-  var parameterClose = /<\/\s*\|\s*DSML\s*\|\s*parameter\s*>/i.exec(tail);
+  var parameterClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*parameter\s*(?:>|&gt;)/i.exec(tail);
   if (parameterClose) return start + parameterClose.index + parameterClose[0].length;
   return raw.length;
 }
@@ -1732,7 +1732,7 @@ function stripDsmlToolCallBlocksFromText(text) {
     out += raw.slice(cursor, start).replace(/[ \t]+$/, '');
     cursor = dsmlToolCallBlockEndInText(raw, start);
   }
-  return out;
+  return out.replace(/(?:<|&lt;)\s*(?:\|\s*(?:D(?:S(?:M(?:L)?)?)?)?)?$/i, '').trimEnd();
 }
 
 function containsDsmlToolTranscript(text) {
@@ -1865,7 +1865,7 @@ function containsAgentInternalTranscript(text) {
 function cleanAgentFinalProseForUser(text) {
   if (containsAgentInternalTranscript(text || '')) return '';
   var cleaned = stripAgentGeneratedCodeBlocks(stripToolCallBlocks(text || '').trim())
-    .replace(/<\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b[\s\S]*$/gi, '')
+    .replace(/(?:<|&lt;)\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b[\s\S]*$/gi, '')
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
     .replace(/<tool_calls>[\s\S]*?<\/tool_calls>/gi, '')
     .replace(/\n{3,}/g, '\n\n')

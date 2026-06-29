@@ -29,7 +29,8 @@ export function normalizeAgentUserAnnouncement(text: string): string {
 }
 
 function containsAgentInternalTranscript(text: string): boolean {
-  return /(?:^|\n)\s*(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
+  return /(?:<|&lt;)\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b/i.test(text)
+    || /(?:^|\n)\s*(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
     || /(?:^|\n)\s*\[(?:工具结果|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(text)
     || /\b(?:run_terminal|manage_todo_list|task_complete|stdout|stderr|exitCode|exit code)\b/i.test(text)
     || /(?:^|\n)\s*\$\s+\S+/.test(text)
@@ -39,6 +40,7 @@ function containsAgentInternalTranscript(text: string): boolean {
 export function cleanAgentFinalSummaryForUser(text: string): string {
   if (containsAgentInternalTranscript(text || '')) return '';
   let cleaned = stripToolCallBlocks(text || '')
+    .replace(/(?:<|&lt;)\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b[\s\S]*$/gi, '')
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
     .replace(/<tool_calls>[\s\S]*?<\/tool_calls>/gi, '')
     .replace(/\n{3,}/g, '\n\n')

@@ -1034,7 +1034,15 @@ test('Architecture: fake tool parser is split from Agent Loop executor', () => {
   assertContains(parser, 'parseFakeToolCalls', 'fake tool parser must expose parseFakeToolCalls');
   assertContains(parser, 'stripToolCallBlocks', 'fake tool parser must expose transcript stripping');
   assertContains(parser, 'findFirstToolCallStart', 'fake tool parser must expose streaming boundary detection');
+  assertContains(parser, 'containsFakeToolCallProtocol', 'fake tool parser must expose the single protocol-detection boundary');
   assertContains(agentLoop, "from './agent/fake-tool-parser'", 'agent loop must import fake tool parser module');
+});
+
+test('Architecture: agentic loop does not hard-code fake tool protocol formats', () => {
+  const agenticLoop = src('src/agent/agentic-loop.ts');
+  assertContains(agenticLoop, 'containsFakeToolCallProtocol(sAccum)', 'streaming early tool detection must use the parser boundary');
+  assert.doesNotMatch(agenticLoop, /sAccum\.includes\(['"]\[TOOL:/, 'agentic loop must not hard-code bracket tool protocol checks');
+  assert.doesNotMatch(agenticLoop, /sAccum\.includes\(['"]<\s*\|\s*DSML/, 'agentic loop must not hard-code DSML protocol checks');
 });
 
 test('Architecture: agent loop stays orchestration-only for tool execution details', () => {

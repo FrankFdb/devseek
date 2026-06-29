@@ -45,7 +45,12 @@ import {
   buildDanglingAgentActionFeedback,
   hasDanglingAgentActionIntent,
 } from './no-tool-intent';
-import { findFirstToolCallStart, parseFakeToolCalls, stripToolCallBlocks } from './fake-tool-parser';
+import {
+  containsFakeToolCallProtocol,
+  findFirstToolCallStart,
+  parseFakeToolCalls,
+  stripToolCallBlocks,
+} from './fake-tool-parser';
 import { isLiteralToolProtocolPrompt } from './agent-run-display';
 import {
   agentAnnouncementKey,
@@ -443,7 +448,7 @@ export async function runAgenticLoop(
       // Early tool activity: emit activity rows as soon as complete tool blocks are detected
       // in the streaming accumulation — before tools are actually executed.
       // The webview deduplicates by actKind:label, so re-emitting at execution time is safe.
-      if (callbacks.onToolActivity && sAccum.length > sLastEarlyToolCheck + 100 && sAccum.includes('[TOOL:')) {
+      if (callbacks.onToolActivity && sAccum.length > sLastEarlyToolCheck + 100 && containsFakeToolCallProtocol(sAccum)) {
         sLastEarlyToolCheck = sAccum.length;
         const earlyTools = parseFakeToolCalls(sAccum);
         for (const t of earlyTools) {

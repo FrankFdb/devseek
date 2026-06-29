@@ -527,7 +527,7 @@ function stripJsonToolPayloads(text: string): string {
 }
 
 function findNextDsmlToolCallStart(text: string, startAt = 0): number {
-  const re = /<\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b/gi;
+  const re = /(?:<|&lt;)\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b/gi;
   re.lastIndex = startAt;
   const match = re.exec(text);
   return match ? match.index : -1;
@@ -535,11 +535,11 @@ function findNextDsmlToolCallStart(text: string, startAt = 0): number {
 
 function dsmlToolCallBlockEnd(text: string, start: number): number {
   const tail = text.slice(start);
-  const toolCallsClose = /<\/\s*\|\s*DSML\s*\|\s*tool_calls\s*>/i.exec(tail);
+  const toolCallsClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*tool_calls\s*(?:>|&gt;)/i.exec(tail);
   if (toolCallsClose) return start + toolCallsClose.index + toolCallsClose[0].length;
-  const invokeClose = /<\/\s*\|\s*DSML\s*\|\s*invoke\s*>/i.exec(tail);
+  const invokeClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*invoke\s*(?:>|&gt;)/i.exec(tail);
   if (invokeClose) return start + invokeClose.index + invokeClose[0].length;
-  const parameterClose = /<\/\s*\|\s*DSML\s*\|\s*parameter\s*>/i.exec(tail);
+  const parameterClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*parameter\s*(?:>|&gt;)/i.exec(tail);
   if (parameterClose) return start + parameterClose.index + parameterClose[0].length;
   return text.length;
 }
@@ -556,7 +556,7 @@ function stripDsmlToolCallBlocks(text: string): string {
     out += text.slice(cursor, start).replace(/[ \t]+$/, '');
     cursor = dsmlToolCallBlockEnd(text, start);
   }
-  return out;
+  return out.replace(/(?:<|&lt;)\s*(?:\|\s*(?:D(?:S(?:M(?:L)?)?)?)?)?$/i, '').trimEnd();
 }
 
 function normalizeDsmlToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
@@ -582,10 +582,15 @@ function parseDsmlParameterValue(raw: string): unknown {
 
 function parseDsmlToolCalls(text: string): FakeTool[] {
   if (findNextDsmlToolCallStart(text) < 0) return [];
+  const normalizedText = text
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'");
   const tools: FakeTool[] = [];
   const invokeRe = /<\s*\|\s*DSML\s*\|\s*invoke\b([^<>]*\bname\s*=\s*["']([^"']+)["'][^<>]*)(?:>|(?=<\s*\|\s*DSML\s*\|))([\s\S]*?)<\/\s*\|\s*DSML\s*\|\s*invoke\s*>/gi;
   let im: RegExpExecArray | null;
-  while ((im = invokeRe.exec(text)) !== null) {
+  while ((im = invokeRe.exec(normalizedText)) !== null) {
     const name = im[2].trim();
     if (!isRegisteredFakeToolName(name)) continue;
     const input: Record<string, unknown> = {};
@@ -651,6 +656,10 @@ export function findFirstToolCallStart(text: string): number {
     searchAt = end + 1;
   }
   return indexes.length ? Math.min(...indexes) : -1;
+}
+
+export function containsFakeToolCallProtocol(text: string): boolean {
+  return findFirstToolCallStart(text) >= 0;
 }
 
 export function stripToolCallBlocks(text: string): string {
