@@ -30,6 +30,7 @@ function src(relPath) {
 function webviewRuntime() {
   return [
     src('media/webview-agent-sanitizer.js'),
+    src('media/webview-agent-todos.js'),
     src('media/webview.js'),
   ].join('\n');
 }
@@ -885,8 +886,11 @@ test('Architecture: webview sanitizer is a packaged runtime dependency', () => {
   const packager = src('../../scripts/package-vsix.mjs');
   const harness = src('test/devseek-dsml-webview-harness.mjs');
   assertContains(html, 'webview-agent-sanitizer.js', 'production webview HTML must load the sanitizer before webview.js');
+  assertContains(html, 'webview-agent-todos.js', 'production webview HTML must load todo parsing before webview.js');
   assertContains(packager, 'webview-agent-sanitizer.js', 'VSIX packaging must include the sanitizer runtime file');
+  assertContains(packager, 'webview-agent-todos.js', 'VSIX packaging must include the todo parser runtime file');
   assertContains(harness, 'webview-agent-sanitizer.js', 'webview harnesses must execute the same sanitizer runtime file');
+  assertContains(harness, 'webview-agent-todos.js', 'webview harnesses must execute the same todo parser runtime file');
 });
 
 test('Agentic free-explore: follow-up turns keep same-session context', () => {

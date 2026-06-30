@@ -31,6 +31,7 @@ if (!runRequested) {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../..');
 const sanitizerPath = path.join(repoRoot, 'packages/vscode-extension/media/webview-agent-sanitizer.js');
+const todosPath = path.join(repoRoot, 'packages/vscode-extension/media/webview-agent-todos.js');
 const webviewPath = path.join(repoRoot, 'packages/vscode-extension/media/webview.js');
 const markedPath = path.join(repoRoot, 'packages/vscode-extension/media/marked.umd.js');
 
@@ -67,6 +68,7 @@ const fs = require('fs');
 
 const reportPath = __REPORT_PATH__;
 const sanitizerPath = __SANITIZER_PATH__;
+const todosPath = __TODOS_PATH__;
 const webviewPath = __WEBVIEW_PATH__;
 const markedPath = __MARKED_PATH__;
 const prompt = __PROMPT__;
@@ -243,6 +245,7 @@ function getHtml() {
   const nonce = String(Date.now());
   const markedJs = fs.readFileSync(markedPath, 'utf8');
   const sanitizerJs = fs.readFileSync(sanitizerPath, 'utf8');
+  const todosJs = fs.readFileSync(todosPath, 'utf8');
   const webviewJs = fs.readFileSync(webviewPath, 'utf8');
   const apiCaptureJs = \`
     (function() {
@@ -408,6 +411,7 @@ function getHtml() {
 <script nonce="\${nonce}">\${markedJs}</script>
 <script nonce="\${nonce}">window.__wsFolderName = 'devseek_netai'; window.mermaid = { initialize(){}, render: async () => ({ svg: '<svg></svg>' }) };</script>
 <script nonce="\${nonce}">\${sanitizerJs}</script>
+<script nonce="\${nonce}">\${todosJs}</script>
 <script nonce="\${nonce}">\${webviewJs}</script>
 <script nonce="\${nonce}">\${testJs}</script>
 </body>
@@ -483,6 +487,7 @@ fs.writeFileSync(
     .replace(/\\\$\{/g, '${')
     .replace('__REPORT_PATH__', JSON.stringify(reportPath))
     .replace('__SANITIZER_PATH__', JSON.stringify(sanitizerPath))
+    .replace('__TODOS_PATH__', JSON.stringify(todosPath))
     .replace('__WEBVIEW_PATH__', JSON.stringify(webviewPath))
     .replace('__MARKED_PATH__', JSON.stringify(markedPath))
     .replace('__PROMPT__', JSON.stringify(prompt))

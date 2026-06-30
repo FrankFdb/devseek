@@ -16,12 +16,14 @@ import { chromium } from 'playwright';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../..');
 const sanitizerPath = path.join(repoRoot, 'packages/vscode-extension/media/webview-agent-sanitizer.js');
+const todosPath = path.join(repoRoot, 'packages/vscode-extension/media/webview-agent-todos.js');
 const webviewPath = path.join(repoRoot, 'packages/vscode-extension/media/webview.js');
 const markedPath = path.join(repoRoot, 'packages/vscode-extension/media/marked.umd.js');
 const tmpRoot = mkdtempSync(path.join(tmpdir(), 'devseek-dsml-webview-'));
 const htmlPath = path.join(tmpRoot, 'harness.html');
 
 const sanitizerJs = readFileSync(sanitizerPath, 'utf8');
+const todosJs = readFileSync(todosPath, 'utf8');
 const webviewJs = readFileSync(webviewPath, 'utf8');
 const markedJs = readFileSync(markedPath, 'utf8');
 
@@ -119,6 +121,7 @@ window.mermaid = { initialize: function(){}, render: async function(){ return { 
 </script>
 <script>${markedJs}</script>
 <script>${sanitizerJs}</script>
+<script>${todosJs}</script>
 <script>${webviewJs}</script>
 </body>
 </html>`;

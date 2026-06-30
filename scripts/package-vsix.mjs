@@ -66,6 +66,7 @@ try {
     'marked.umd.js',
     'mermaid.min.js',
     'webview-agent-sanitizer.js',
+    'webview-agent-todos.js',
     'webview.js',
   ]) {
     copy(path.join('media', mediaFile));
