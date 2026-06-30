@@ -249,6 +249,37 @@ test('FakeToolParser: parses escaped XML self-closing tool tags and hides stream
   assert.equal(stripToolCallBlocks(partial), '我先读取文件。');
 });
 
+test('FakeToolParser: parses paired XML tool tags with JSON bodies', () => {
+  const text = [
+    '现在开始实现：',
+    '<manage_todo_list>{"todoList":[{"id":1,"title":"实现鼠标点击选择","status":"in-progress"}]}</manage_todo_list>',
+    '<create_file>{"path":"/tmp/shape_manager/main.cpp","content":"int main(){return 0;}\\n"}</create_file>',
+    '<run_terminal>',
+    '{"command":"cd /tmp/shape_manager && cmake -S . -B build && cmake --build build"}',
+    '</run_terminal>',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.deepEqual(tools.map(tool => tool.name), ['manage_todo_list', 'create_file', 'run_terminal']);
+  assert.equal(tools[0].input.todoList[0].status, 'in-progress');
+  assert.equal(tools[1].input.path, '/tmp/shape_manager/main.cpp');
+  assert.equal(tools[1].input.content, 'int main(){return 0;}\n');
+  assert.equal(tools[2].input.command, 'cd /tmp/shape_manager && cmake -S . -B build && cmake --build build');
+  assert.equal(findFirstToolCallStart(text), text.indexOf('<manage_todo_list>'));
+  assert.equal(stripToolCallBlocks(text), '现在开始实现：');
+});
+
+test('FakeToolParser: hides incomplete paired XML tool tag while streaming', () => {
+  const partial = [
+    '现在编译测试：',
+    '<run_terminal>',
+    '{"command":"cd /home/ff/work/devseek_netai/code/shape_manager && cmake -S . -B build',
+  ].join('\n');
+
+  assert.equal(findFirstToolCallStart(partial), partial.indexOf('<run_terminal>'));
+  assert.equal(stripToolCallBlocks(partial), '现在编译测试：');
+});
+
 test('FakeToolParser: does not execute task summary JSON as a bash command', () => {
   const text = [
     'Calling: bash',

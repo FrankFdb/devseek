@@ -80,12 +80,20 @@ function makeXmlToolTagRegex(): RegExp {
   return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b([^<>]*?)\\/\\s*(?:>|&gt;)`, 'gi');
 }
 
+function makeXmlToolPairRegex(): RegExp {
+  const names = listAgentToolNames(true)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join('|');
+  return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b[^<>]*?(?:>|&gt;)([\\s\\S]*?)(?:<\\/|&lt;\\/)\\s*\\1\\s*(?:>|&gt;)`, 'gi');
+}
+
 function makeXmlToolTagTailRegex(flags = 'i'): RegExp {
   const names = listAgentToolNames(true)
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join('|');
-  return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b[^<>]*$`, flags);
+  return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b[\\s\\S]*$`, flags);
 }
 
 function isRegisteredFakeToolName(name: string): boolean {
@@ -274,17 +282,45 @@ function parseXmlishToolAttributes(rawAttrs: string): Record<string, unknown> {
   return input;
 }
 
+function stripJsonFence(text: string): string {
+  const trimmed = text.trim();
+  const match = /^```(?:json|JSON|javascript|js)?\s*\n?([\s\S]*?)\n?```\s*$/.exec(trimmed);
+  return match ? String(match[1] || '').trim() : trimmed;
+}
+
+function parseXmlToolBodyInput(name: string, rawBody: string): Record<string, unknown> {
+  const body = stripJsonFence(decodeXmlishText(rawBody));
+  if (!body) return {};
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    const looseInput = parseLooseFileWriteToolInput(name, body);
+    if (looseInput) return looseInput;
+  }
+  return {};
+}
+
 function parseXmlToolTagCalls(text: string): FakeTool[] {
-  const tools: FakeTool[] = [];
+  const tools: Array<{ index: number; tool: FakeTool }> = [];
   const tagRe = makeXmlToolTagRegex();
   let match: RegExpExecArray | null;
   while ((match = tagRe.exec(text)) !== null) {
     const name = match[1].trim();
     if (!isRegisteredFakeToolName(name)) continue;
     const input = parseXmlishToolAttributes(match[2] || '');
-    tools.push({ name, input: normalizeToolInput(name, input) });
+    tools.push({ index: match.index, tool: { name, input: normalizeToolInput(name, input) } });
   }
-  return tools.map(normalizeFakeTool);
+  const pairRe = makeXmlToolPairRegex();
+  while ((match = pairRe.exec(text)) !== null) {
+    const name = match[1].trim();
+    if (!isRegisteredFakeToolName(name)) continue;
+    const input = parseXmlToolBodyInput(name, match[2] || '');
+    tools.push({ index: match.index, tool: { name, input: normalizeToolInput(name, input) } });
+  }
+  return tools.sort((a, b) => a.index - b.index).map(item => normalizeFakeTool(item.tool));
 }
 
 function findNextXmlToolTagStart(text: string, startAt = 0): number {
@@ -297,6 +333,13 @@ function findNextXmlToolTagStart(text: string, startAt = 0): number {
       completeStart = match.index;
       break;
     }
+  }
+  const pairRe = makeXmlToolPairRegex();
+  pairRe.lastIndex = startAt;
+  while ((match = pairRe.exec(text)) !== null) {
+    if (!isRegisteredFakeToolName(match[1])) continue;
+    completeStart = completeStart < 0 ? match.index : Math.min(completeStart, match.index);
+    break;
   }
   const tailRe = makeXmlToolTagTailRegex('gi');
   tailRe.lastIndex = startAt;
@@ -317,7 +360,16 @@ function stripXmlToolTagBlocks(text: string): string {
     out += text.slice(cursor, match.index).replace(/[ \t]+$/, '');
     cursor = tagRe.lastIndex;
   }
-  const cleaned = out + text.slice(cursor);
+  let cleaned = out + text.slice(cursor);
+  out = '';
+  cursor = 0;
+  const pairRe = makeXmlToolPairRegex();
+  while ((match = pairRe.exec(cleaned)) !== null) {
+    if (!isRegisteredFakeToolName(match[1])) continue;
+    out += cleaned.slice(cursor, match.index).replace(/[ \t]+$/, '');
+    cursor = pairRe.lastIndex;
+  }
+  cleaned = out + cleaned.slice(cursor);
   return cleaned.replace(makeXmlToolTagTailRegex(), '').trimEnd();
 }
 

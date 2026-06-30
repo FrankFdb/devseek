@@ -119,12 +119,20 @@ function makeXmlToolTagRegex() {
   return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b([^<>]*?)\\/\\s*(?:>|&gt;)`, 'gi');
 }
 
+function makeXmlToolPairRegex() {
+  const names = Object.keys(TOOL_NAMES)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join('|');
+  return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b[^<>]*?(?:>|&gt;)([\\s\\S]*?)(?:<\\/|&lt;\\/)\\s*\\1\\s*(?:>|&gt;)`, 'gi');
+}
+
 function makeXmlToolTagTailRegex() {
   const names = Object.keys(TOOL_NAMES)
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join('|');
-  return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b[^<>]*$`, 'i');
+  return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b[\\s\\S]*$`, 'i');
 }
 
 function stripXmlToolTagBlocksFromText(text) {
@@ -138,7 +146,17 @@ function stripXmlToolTagBlocksFromText(text) {
     out += raw.slice(cursor, match.index).replace(/[ \t]+$/, '');
     cursor = tagRe.lastIndex;
   }
-  return (out + raw.slice(cursor)).replace(makeXmlToolTagTailRegex(), '').trimEnd();
+  let cleaned = out + raw.slice(cursor);
+  out = '';
+  cursor = 0;
+  const pairRe = makeXmlToolPairRegex();
+  while ((match = pairRe.exec(cleaned)) !== null) {
+    if (!isToolName(match[1])) continue;
+    out += cleaned.slice(cursor, match.index).replace(/[ \t]+$/, '');
+    cursor = pairRe.lastIndex;
+  }
+  cleaned = out + cleaned.slice(cursor);
+  return cleaned.replace(makeXmlToolTagTailRegex(), '').trimEnd();
 }
 
 function containsXmlToolTag(text) {
@@ -146,6 +164,10 @@ function containsXmlToolTag(text) {
   const tagRe = makeXmlToolTagRegex();
   let match;
   while ((match = tagRe.exec(raw)) !== null) {
+    if (isToolName(match[1])) return true;
+  }
+  const pairRe = makeXmlToolPairRegex();
+  while ((match = pairRe.exec(raw)) !== null) {
     if (isToolName(match[1])) return true;
   }
   const tail = makeXmlToolTagTailRegex().exec(raw);
@@ -1058,6 +1080,30 @@ test('agent accumulated render: hides escaped XML pseudo-tool tag while streamin
   const cleaned = sanitizeVisibleDeltaForMode(complete, true);
   assert.equal(cleaned, '我先读取文件。');
   assert.doesNotMatch(cleaned, /read_file|filePath|startLine|shape_manager/);
+});
+
+test('non-agent delta: suppresses paired XML pseudo-tool tags with JSON bodies', () => {
+  const leaked = [
+    '现在开始实现：',
+    '<manage_todo_list>{"todoList":[{"id":1,"title":"实现鼠标点击选择","status":"in-progress"}]}</manage_todo_list>',
+    '<create_file>{"path":"/tmp/shape_manager/main.cpp","content":"int main(){return 0;}\\n"}</create_file>',
+    '<run_terminal>',
+    '{"command":"cd /tmp/shape_manager && cmake -S . -B build && cmake --build build"}',
+    '</run_terminal>',
+  ].join('\n');
+  const cleaned = sanitizeVisibleDeltaForMode(leaked, false);
+  assert.equal(cleaned, '现在开始实现：');
+  assert.doesNotMatch(cleaned, /manage_todo_list|create_file|run_terminal|todoList|cmake|shape_manager\/main\.cpp/);
+});
+
+test('agent accumulated render: hides incomplete paired XML pseudo-tool tag while streaming', () => {
+  const partial = [
+    '现在编译测试：',
+    '<run_terminal>',
+    '{"command":"cd /home/ff/work/devseek_netai/code/shape_manager && cmake -S . -B build',
+  ].join('\n');
+
+  assert.equal(sanitizeVisibleDeltaForMode(partial, true), '现在编译测试：');
 });
 
 test('non-agent delta: strips inline bash calling transcript with fenced command', () => {

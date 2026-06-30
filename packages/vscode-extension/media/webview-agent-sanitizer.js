@@ -116,12 +116,20 @@ function makeWebviewXmlToolTagRegex() {
   return new RegExp('(?:<|&lt;)\\s*(' + names + '|mcp__[A-Za-z0-9_]+)\\b([^<>]*?)\\/\\s*(?:>|&gt;)', 'gi');
 }
 
+function makeWebviewXmlToolPairRegex() {
+  var names = Object.keys(WEBVIEW_TOOL_NAMES)
+    .sort(function(a, b) { return b.length - a.length; })
+    .map(escapeWebviewRegExp)
+    .join('|');
+  return new RegExp('(?:<|&lt;)\\s*(' + names + '|mcp__[A-Za-z0-9_]+)\\b[^<>]*?(?:>|&gt;)([\\s\\S]*?)(?:<\\/|&lt;\\/)\\s*\\1\\s*(?:>|&gt;)', 'gi');
+}
+
 function makeWebviewXmlToolTagTailRegex() {
   var names = Object.keys(WEBVIEW_TOOL_NAMES)
     .sort(function(a, b) { return b.length - a.length; })
     .map(escapeWebviewRegExp)
     .join('|');
-  return new RegExp('(?:<|&lt;)\\s*(' + names + '|mcp__[A-Za-z0-9_]+)\\b[^<>]*$', 'i');
+  return new RegExp('(?:<|&lt;)\\s*(' + names + '|mcp__[A-Za-z0-9_]+)\\b[\\s\\S]*$', 'i');
 }
 
 function stripXmlToolTagBlocksFromText(text) {
@@ -135,7 +143,17 @@ function stripXmlToolTagBlocksFromText(text) {
     out += raw.slice(cursor, match.index).replace(/[ \t]+$/, '');
     cursor = tagRe.lastIndex;
   }
-  return (out + raw.slice(cursor)).replace(makeWebviewXmlToolTagTailRegex(), '').trimEnd();
+  var cleaned = out + raw.slice(cursor);
+  out = '';
+  cursor = 0;
+  var pairRe = makeWebviewXmlToolPairRegex();
+  while ((match = pairRe.exec(cleaned)) !== null) {
+    if (!isWebviewToolName(match[1])) continue;
+    out += cleaned.slice(cursor, match.index).replace(/[ \t]+$/, '');
+    cursor = pairRe.lastIndex;
+  }
+  cleaned = out + cleaned.slice(cursor);
+  return cleaned.replace(makeWebviewXmlToolTagTailRegex(), '').trimEnd();
 }
 
 function containsWebviewXmlToolTag(text) {
@@ -143,6 +161,10 @@ function containsWebviewXmlToolTag(text) {
   var tagRe = makeWebviewXmlToolTagRegex();
   var match;
   while ((match = tagRe.exec(raw)) !== null) {
+    if (isWebviewToolName(match[1])) return true;
+  }
+  var pairRe = makeWebviewXmlToolPairRegex();
+  while ((match = pairRe.exec(raw)) !== null) {
     if (isWebviewToolName(match[1])) return true;
   }
   var tail = makeWebviewXmlToolTagTailRegex().exec(raw);
