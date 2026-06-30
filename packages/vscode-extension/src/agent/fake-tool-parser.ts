@@ -63,12 +63,40 @@ function makeToolArgumentsRegex(): RegExp {
   return new RegExp(`Tool\\s*:\\s*\`?(${names}|mcp__[A-Za-z0-9_]+)\`?\\s*(?:Arguments?|Args|参数)\\s*:\\s*`, 'gi');
 }
 
+function makeFunctionStyleToolCallRegex(): RegExp {
+  const names = [...KNOWN_FAKE_TOOL_NAMES]
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join('|');
+  return new RegExp(`(${names}|mcp__[A-Za-z0-9_]+)\\s*\\(\\s*\\{`, 'g');
+}
+
 function isRegisteredFakeToolName(name: string): boolean {
   return KNOWN_FAKE_TOOL_NAMES.has(name) || name.startsWith('mcp__');
 }
 
 function isShellTranscriptName(name: string): boolean {
   return SHELL_TRANSCRIPT_NAMES.has(String(name || '').toLowerCase());
+}
+
+function normalizeToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
+  const normalized = { ...input };
+  if (typeof normalized.path !== 'string') {
+    const path = normalized.filePath ?? normalized.filepath ?? normalized.filename ?? normalized.targetPath ?? normalized.directory;
+    if (typeof path === 'string' && path.trim()) normalized.path = path.trim();
+  }
+  if (toolName === 'search_file' && typeof normalized.path !== 'string') {
+    const path = normalized.target_directory ?? normalized.targetDirectory ?? normalized.directory;
+    if (typeof path === 'string' && path.trim()) normalized.path = path.trim();
+  }
+  if (toolName === 'search_file' && typeof normalized.glob !== 'string') {
+    const pattern = normalized.pattern ?? normalized.include;
+    if (typeof pattern === 'string' && pattern.trim()) normalized.glob = pattern.trim();
+  }
+  if (toolName === 'run_terminal' && typeof normalized.command !== 'string' && typeof normalized.cmd === 'string') {
+    normalized.command = normalized.cmd;
+  }
+  return normalized;
 }
 
 function looksLikeNonShellTranscriptLine(line: string): boolean {
@@ -175,6 +203,86 @@ function stripCallingToolBlocks(text: string): string {
     let next = jsonEnd + 1;
     while (next < text.length && /[ \t\r\n`]/.test(text[next])) next++;
     i = next;
+  }
+  return out;
+}
+
+function extractFunctionStyleToolCall(
+  text: string,
+  match: RegExpExecArray,
+): { tool: FakeTool; start: number; end: number } | null {
+  const name = match[1];
+  if (!isRegisteredFakeToolName(name)) return null;
+  const start = match.index;
+  if (start > 0 && /[A-Za-z0-9_]/.test(text[start - 1])) return null;
+  const jsonStart = match.index + match[0].lastIndexOf('{');
+  const jsonEnd = findToolInputObjectEnd(text, name, jsonStart);
+  if (jsonEnd < 0) return null;
+  let next = jsonEnd + 1;
+  while (next < text.length && /[ \t\r\n]/.test(text[next])) next++;
+  if (text[next] === ')') next++;
+  const jsonText = text.slice(jsonStart, jsonEnd + 1);
+  try {
+    const parsed = JSON.parse(jsonText) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+    return { tool: { name, input: normalizeToolInput(name, parsed as Record<string, unknown>) }, start, end: next };
+  } catch {
+    const looseInput = parseLooseFileWriteToolInput(name, jsonText);
+    return looseInput ? { tool: { name, input: normalizeToolInput(name, looseInput) }, start, end: next } : null;
+  }
+}
+
+function parseFunctionStyleToolCalls(text: string): FakeTool[] {
+  const tools: FakeTool[] = [];
+  const callRe = makeFunctionStyleToolCallRegex();
+  let m: RegExpExecArray | null;
+  while ((m = callRe.exec(text)) !== null) {
+    const extracted = extractFunctionStyleToolCall(text, m);
+    if (!extracted) continue;
+    tools.push(extracted.tool);
+    callRe.lastIndex = extracted.end;
+  }
+  return tools;
+}
+
+function findNextFunctionStyleToolCallStart(text: string, startAt = 0): number {
+  const callRe = makeFunctionStyleToolCallRegex();
+  callRe.lastIndex = startAt;
+  let m: RegExpExecArray | null;
+  while ((m = callRe.exec(text)) !== null) {
+    const extracted = extractFunctionStyleToolCall(text, m);
+    if (extracted) return extracted.start;
+    const name = m[1];
+    if (isRegisteredFakeToolName(name) && (m.index === 0 || !/[A-Za-z0-9_]/.test(text[m.index - 1]))) return m.index;
+  }
+  return -1;
+}
+
+function stripFunctionStyleToolCallBlocks(text: string): string {
+  let out = '';
+  let i = 0;
+  const callRe = makeFunctionStyleToolCallRegex();
+  while (i < text.length) {
+    callRe.lastIndex = i;
+    const m = callRe.exec(text);
+    if (!m) {
+      out += text.slice(i);
+      break;
+    }
+    const start = m.index;
+    const name = m[1];
+    const extracted = extractFunctionStyleToolCall(text, m);
+    if (!extracted) {
+      if (isRegisteredFakeToolName(name)) {
+        out += text.slice(i, start).replace(/[ \t]+$/, '');
+        break;
+      }
+      out += text.slice(i, callRe.lastIndex);
+      i = callRe.lastIndex;
+      continue;
+    }
+    out += text.slice(i, extracted.start).replace(/[ \t]+$/, '');
+    i = extracted.end;
   }
   return out;
 }
@@ -585,18 +693,6 @@ function stripDsmlToolCallBlocks(text: string): string {
   return out.replace(DSML_INCOMPLETE_TAIL_PATTERN, '').trimEnd();
 }
 
-function normalizeDsmlToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
-  const normalized = { ...input };
-  if (typeof normalized.path !== 'string') {
-    const path = normalized.filePath ?? normalized.filepath ?? normalized.filename ?? normalized.targetPath ?? normalized.directory;
-    if (typeof path === 'string' && path.trim()) normalized.path = path.trim();
-  }
-  if (toolName === 'run_terminal' && typeof normalized.command !== 'string' && typeof normalized.cmd === 'string') {
-    normalized.command = normalized.cmd;
-  }
-  return normalized;
-}
-
 function parseDsmlParameterValue(raw: string): unknown {
   const trimmed = raw.trim();
   if (!trimmed) return '';
@@ -646,7 +742,7 @@ function parseDsmlToolCalls(text: string): FakeTool[] {
       if (!(key in input)) input[key] = parseDsmlParameterValue(pm[3] || '');
     }
 
-    tools.push({ name, input: normalizeDsmlToolInput(name, input) });
+    tools.push({ name, input: normalizeToolInput(name, input) });
   }
   return tools;
 }
@@ -657,6 +753,8 @@ export function findFirstToolCallStart(text: string): number {
   if (bracket >= 0) indexes.push(bracket);
   const dsml = findNextDsmlToolCallStart(text);
   if (dsml >= 0) indexes.push(dsml);
+  const functionStyle = findNextFunctionStyleToolCallStart(text);
+  if (functionStyle >= 0) indexes.push(functionStyle);
   const callRe = makeAnyCallingRegex();
   let cm: RegExpExecArray | null;
   while ((cm = callRe.exec(text)) !== null) {
@@ -752,6 +850,10 @@ export function stripToolCallBlocks(text: string): string {
   result = stripCallingToolBlocks(result);
   result = stripToolArgumentsBlocks(result);
   removedInternalBlock = removedInternalBlock || result !== beforeCallingCleanup;
+
+  const beforeFunctionStyleCleanup = result;
+  result = stripFunctionStyleToolCallBlocks(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeFunctionStyleCleanup;
 
   const beforeJsonCleanup = result;
   result = stripJsonToolPayloads(result);
@@ -961,6 +1063,10 @@ export function parseFakeToolCalls(text: string): FakeTool[] {
 
   if (tools.length === 0) {
     tools.push(...parseToolArgumentsToolCalls(text));
+  }
+
+  if (tools.length === 0) {
+    tools.push(...parseFunctionStyleToolCalls(text));
   }
 
   if (tools.length === 0) {

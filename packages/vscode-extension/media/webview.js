@@ -1515,6 +1515,18 @@ function makeWebviewAnyCallingRegex() {
   return /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?([A-Za-z_]\w*)`?\]?)?/gi;
 }
 
+function escapeWebviewRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function makeWebviewFunctionStyleToolCallRegex() {
+  var names = Object.keys(WEBVIEW_TOOL_NAMES)
+    .sort(function(a, b) { return b.length - a.length; })
+    .map(escapeWebviewRegExp)
+    .join('|');
+  return new RegExp('(' + names + '|mcp__[A-Za-z0-9_]+)\\s*\\(\\s*\\{', 'g');
+}
+
 function webviewLineEndAfter(text, index) {
   var next = text.indexOf('\n', Math.max(0, index));
   return next < 0 ? text.length : next + 1;
@@ -1624,6 +1636,49 @@ function stripCallingToolBlocksFromText(text) {
     var next = jsonEnd + 1;
     while (next < text.length && /[ \t\r\n`]/.test(text[next])) next++;
     i = next;
+  }
+  return out;
+}
+
+function findWebviewFunctionStyleToolCallEnd(text, match) {
+  var name = match[1] || '';
+  if (!isWebviewToolName(name)) return -1;
+  if (match.index > 0 && /[A-Za-z0-9_]/.test(text[match.index - 1])) return -1;
+  var jsonStart = match.index + match[0].lastIndexOf('{');
+  var jsonEnd = findJsonObjectEndInText(text, jsonStart);
+  if (jsonEnd < 0) return -1;
+  var next = jsonEnd + 1;
+  while (next < text.length && /[ \t\r\n]/.test(text[next])) next++;
+  if (text[next] === ')') next++;
+  return next;
+}
+
+function containsWebviewFunctionStyleToolCall(text) {
+  var raw = String(text || '');
+  var callRe = makeWebviewFunctionStyleToolCallRegex();
+  var m;
+  while ((m = callRe.exec(raw)) !== null) {
+    if (findWebviewFunctionStyleToolCallEnd(raw, m) >= 0) return true;
+  }
+  return false;
+}
+
+function stripFunctionStyleToolCallBlocksFromText(text) {
+  var out = '';
+  var i = 0;
+  var callRe = makeWebviewFunctionStyleToolCallRegex();
+  while (i < text.length) {
+    callRe.lastIndex = i;
+    var m = callRe.exec(text);
+    if (!m) { out += text.slice(i); break; }
+    var start = m.index;
+    var end = findWebviewFunctionStyleToolCallEnd(text, m);
+    if (end < 0) {
+      out += text.slice(i, start).replace(/[ \t]+$/, '');
+      break;
+    }
+    out += text.slice(i, start).replace(/[ \t]+$/, '');
+    i = end;
   }
   return out;
 }
@@ -1862,6 +1917,9 @@ function stripToolCallBlocks(text) {
   var beforeToolArgumentCleanup = result;
   result = stripToolArgumentBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeToolArgumentCleanup;
+  var beforeFunctionStyleCleanup = result;
+  result = stripFunctionStyleToolCallBlocksFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeFunctionStyleCleanup;
   var beforeJsonCleanup = result;
   result = stripJsonToolPayloadsFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeJsonCleanup;
@@ -1905,6 +1963,7 @@ function sanitizeAgentVisibleText(text) {
 function sanitizeAssistantVisibleText(text) {
   var raw = String(text || '');
   if (!raw) return '';
+  raw = stripAgentRoutingSummaryMarkerLeak(raw);
   var cleaned = stripIncompleteCallingTail(stripToolCallBlocks(raw)).trim();
   if (!cleaned && (raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw) || containsPotentialInternalCallingTail(raw))) return '';
   return cleaned;
@@ -1925,6 +1984,7 @@ function renderAgentMarkdown(text) {
 function containsAgentInternalTranscript(text) {
   return containsDsmlToolTranscript(text)
     || containsAgentRoutingMarkerLeak(text)
+    || containsWebviewFunctionStyleToolCall(text)
     || /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
     || /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
     || /(?:^|\n)\s*(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
@@ -1955,8 +2015,9 @@ function restoreAgentRoutingMarkerText(text) {
   var raw = String(text || '');
   if (!raw) return '';
   if (raw.indexOf('\x00AFILE:') === 0 || raw.indexOf('\x00ASUM\x00') === 0) return raw;
-  if (raw.indexOf('ASUMRESET') === 0) return '\x00ASUM\x00\x00RESET\x00' + raw.slice('ASUMRESET'.length);
-  if (raw.indexOf('ASUM') === 0) return '\x00ASUM\x00' + raw.slice('ASUM'.length);
+  var markerBody = raw.replace(/^\s+/, '');
+  if (markerBody.indexOf('ASUMRESET') === 0) return '\x00ASUM\x00\x00RESET\x00' + markerBody.slice('ASUMRESET'.length);
+  if (markerBody.indexOf('ASUM') === 0) return '\x00ASUM\x00' + markerBody.slice('ASUM'.length);
   var fileReset = /^AFILE:([^\s\x00]{1,120}?)RESET([\s\S]*)$/.exec(raw);
   if (fileReset) return '\x00AFILE:' + fileReset[1] + '\x00\x00RESET\x00' + fileReset[2];
   if (/^AFILE:[^\s\x00]{1,180}/.test(raw)) return '\x00AFILE:unknown\x00';

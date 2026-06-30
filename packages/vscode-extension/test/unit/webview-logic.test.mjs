@@ -90,6 +90,18 @@ function makeAnyCallingRegex() {
   return /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?([A-Za-z_]\w*)`?\]?)?/gi;
 }
 
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function makeFunctionStyleToolCallRegex() {
+  const names = Object.keys(TOOL_NAMES)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join('|');
+  return new RegExp(`(${names}|mcp__[A-Za-z0-9_]+)\\s*\\(\\s*\\{`, 'g');
+}
+
 function containsCallingToolIntent(text) {
   const callRe = makeAnyCallingRegex();
   const raw = String(text || '');
@@ -249,6 +261,49 @@ function stripCallingToolBlocksFromText(text) {
   return out;
 }
 
+function findFunctionStyleToolCallEnd(text, match) {
+  const name = match[1] || '';
+  if (!isToolName(name)) return -1;
+  if (match.index > 0 && /[A-Za-z0-9_]/.test(text[match.index - 1])) return -1;
+  const jsonStart = match.index + match[0].lastIndexOf('{');
+  const jsonEnd = findJsonObjectEnd(text, jsonStart);
+  if (jsonEnd < 0) return -1;
+  let next = jsonEnd + 1;
+  while (next < text.length && /[ \t\r\n]/.test(text[next])) next++;
+  if (text[next] === ')') next++;
+  return next;
+}
+
+function containsFunctionStyleToolCall(text) {
+  const raw = String(text || '');
+  const callRe = makeFunctionStyleToolCallRegex();
+  let m;
+  while ((m = callRe.exec(raw)) !== null) {
+    if (findFunctionStyleToolCallEnd(raw, m) >= 0) return true;
+  }
+  return false;
+}
+
+function stripFunctionStyleToolCallBlocksFromText(text) {
+  let out = '';
+  let i = 0;
+  const callRe = makeFunctionStyleToolCallRegex();
+  while (i < text.length) {
+    callRe.lastIndex = i;
+    const m = callRe.exec(text);
+    if (!m) { out += text.slice(i); break; }
+    const start = m.index;
+    const end = findFunctionStyleToolCallEnd(text, m);
+    if (end < 0) {
+      out += text.slice(i, start).replace(/[ \t]+$/, '');
+      break;
+    }
+    out += text.slice(i, start).replace(/[ \t]+$/, '');
+    i = end;
+  }
+  return out;
+}
+
 function stripToolArgumentBlocksFromText(text) {
   let out = '';
   let i = 0;
@@ -393,6 +448,9 @@ function stripToolCallBlocks(text) {
   const beforeToolArgumentCleanup = result;
   result = stripToolArgumentBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeToolArgumentCleanup;
+  const beforeFunctionStyleCleanup = result;
+  result = stripFunctionStyleToolCallBlocksFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeFunctionStyleCleanup;
   const beforeDsmlCleanup = result;
   result = stripDsmlToolCallBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeDsmlCleanup;
@@ -403,6 +461,7 @@ function stripToolCallBlocks(text) {
 function containsAgentInternalTranscript(text) {
   return containsDsmlToolTranscript(text)
     || containsAgentRoutingMarkerLeak(text)
+    || containsFunctionStyleToolCall(text)
     || /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
     || /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
     || /(?:^|\n)\s*(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
@@ -479,8 +538,9 @@ function containsPotentialInternalCallingTail(text) {
 }
 
 function sanitizeAssistantVisibleText(text) {
-  const raw = String(text || '');
+  let raw = String(text || '');
   if (!raw) return '';
+  raw = stripAgentRoutingSummaryMarkerLeak(raw);
   const cleaned = stripIncompleteCallingTail(stripToolCallBlocks(raw)).trim();
   if (!cleaned && (raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw) || containsPotentialInternalCallingTail(raw))) return '';
   return cleaned;
@@ -706,6 +766,10 @@ test('agent visible prose: keeps ASUM content when NUL separators are lost', () 
   assert.equal(sanitizeVisibleDeltaForMode('\x00ASUM\x00\x00RESET\x00已完成验证。', true), '已完成验证。');
 });
 
+test('assistant visible prose: strips ASUM prefix when routing marker leaks outside agent mode', () => {
+  assert.equal(sanitizeVisibleDeltaForMode('ASUM我理解您的需求。', false), '我理解您的需求。');
+});
+
 test('agent final prose: keeps normal user-facing summary', () => {
   const summary = '已完成：创建 `code/weekend.c`，并验证程序可以正常运行。';
   assert.equal(cleanAgentFinalProseForUser(summary), summary);
@@ -878,6 +942,29 @@ test('non-agent streaming: suppresses split read and search pseudo-tool calls', 
   assert.match(cleaned, /我需要先查看当前 shape_manager/);
   assert.match(cleaned, /我会基于当前代码完成修改。/);
   assert.doesNotMatch(cleaned, /Calling|read_file|search_file|filePath|target_directory|coder\/project/);
+});
+
+test('non-agent delta: suppresses inline function-style pseudo-tool calls', () => {
+  const leaked = [
+    '让我先定位项目文件并查看当前实现：',
+    'read_file({"path":"/home/ff/work/devseek_netai/code/shape_manager/src/main.cpp"})',
+    'list_dir({"path":"/home/ff/work/devseek_netai/code/shape_manager"})',
+    'search_file({"glob":"**/*.{cpp,hpp,h,c}","path":"/home/ff/work/devseek_netai/code/shape_manager"})',
+  ].join('');
+  const cleaned = sanitizeVisibleDeltaForMode(leaked, false);
+  assert.equal(cleaned, '让我先定位项目文件并查看当前实现：');
+  assert.doesNotMatch(cleaned, /read_file|list_dir|search_file|shape_manager\/src|glob/);
+});
+
+test('agent accumulated render: suppresses inline function-style pseudo-tool calls', () => {
+  const leaked = [
+    '我先查看当前代码结构。',
+    'read_file({"filePath":"code/shape_manager/main.cpp"})',
+    'list_dir({"path":"code/shape_manager"})',
+  ].join('');
+  const cleaned = sanitizeVisibleDeltaForMode(leaked, true);
+  assert.equal(cleaned, '我先查看当前代码结构。');
+  assert.doesNotMatch(cleaned, /read_file|list_dir|filePath/);
 });
 
 test('non-agent delta: strips inline bash calling transcript with fenced command', () => {

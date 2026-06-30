@@ -205,7 +205,11 @@ export function buildProviderRecoveryCheckpointTasks(input: {
   }
   const refsList = [...refs].slice(0, 12);
   const action = inferRecoveryAction(trustedPrompt, refs.size > 0 && (input.files || []).length > 0);
-  if (refsList.length === 0 || literalOnly || action === 'explore') return [buildFallbackRecoveryTask(input.recoveryKind)];
+  if (literalOnly) return [buildFallbackRecoveryTask(input.recoveryKind)];
+  if (refsList.length === 0 || action === 'explore') {
+    if (input.recoveryKind === 'ResponseCorrupted') return [buildExplorationRecoveryTask()];
+    return [buildFallbackRecoveryTask(input.recoveryKind)];
+  }
   const expectedContents = action === 'create' ? extractExpectedContents(trustedPrompt) : [];
   const shouldVerify = hasValidationIntent(trustedPrompt);
   const tasks = refsList.map((file, index) => {
@@ -329,6 +333,17 @@ function buildFallbackRecoveryTask(kind?: ProviderRecoveryKind): ProviderRecover
     visibleTarget: 'Agent 任务',
     action: 'respond',
     desc: '无法从可信任务事实恢复，已停止执行并等待用户重新确认',
+  };
+}
+
+function buildExplorationRecoveryTask(): ProviderRecoveryCheckpointTask {
+  return {
+    id: 'provider-recovery-explore',
+    file: '',
+    targetKind: 'agent-session',
+    visibleTarget: 'Agent 任务',
+    action: 'explore',
+    desc: '重新探索工作区并恢复执行原始请求',
   };
 }
 

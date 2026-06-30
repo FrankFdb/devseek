@@ -141,6 +141,20 @@ test('ProviderRecoveryService: corrupted literal tool samples do not become writ
   assert.notEqual(tasks[0].file, 'provider-response');
 });
 
+test('ProviderRecoveryService: corrupted code-work prompt without file facts retries exploration', () => {
+  const tasks = buildProviderRecoveryCheckpointTasks({
+    recoveryKind: 'ResponseCorrupted',
+    prompt: '改为鼠标点击选择图形',
+    workspaceRootFsPath: '/repo',
+  });
+
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].file, '');
+  assert.equal(tasks[0].targetKind, 'agent-session');
+  assert.equal(tasks[0].action, 'explore');
+  assert.match(tasks[0].desc, /重新探索工作区/);
+});
+
 test('ProviderRecoveryService: response corruption keeps explicit create facts outside protocol payloads', () => {
   const tasks = buildProviderRecoveryCheckpointTasks({
     recoveryKind: 'ResponseCorrupted',

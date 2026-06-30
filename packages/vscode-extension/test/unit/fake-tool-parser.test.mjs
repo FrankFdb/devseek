@@ -375,6 +375,23 @@ test('FakeToolParser: strips fenced DeepSeek JSON tool arrays from visible text'
   assert.equal(stripToolCallBlocks(text), '让我先查看当前的代码结构：');
 });
 
+test('FakeToolParser: parses and strips function-style pseudo tool calls', () => {
+  const text = [
+    '让我先定位项目文件并查看当前实现：',
+    'read_file({"filePath":"/home/ff/work/devseek_netai/code/shape_manager/src/main.cpp"})',
+    'list_dir({"path":"/home/ff/work/devseek_netai/code/shape_manager"})',
+    'search_file({"glob":"**/*.{cpp,hpp,h,c}","path":"/home/ff/work/devseek_netai/code/shape_manager"})',
+  ].join('');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.deepEqual(tools.map(tool => tool.name), ['read_file', 'list_dir', 'search_file']);
+  assert.equal(tools[0].input.path, '/home/ff/work/devseek_netai/code/shape_manager/src/main.cpp');
+  assert.equal(findFirstToolCallStart(text), text.indexOf('read_file'));
+  assert.equal(stripToolCallBlocks(text), '让我先定位项目文件并查看当前实现：');
+  assert.equal(containsFakeToolCallProtocol(text), true);
+});
+
 test('FakeToolParser: detects the first tool call start for streaming UI', () => {
   const text = '先说明一下\n{"tool":"write_file","path":"code/hello.cpp","content":"int main(){}"}';
   assert.equal(findFirstToolCallStart(text), text.indexOf('{'));
