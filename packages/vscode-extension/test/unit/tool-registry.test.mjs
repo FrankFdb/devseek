@@ -99,6 +99,7 @@ test('ToolRegistry: webview tool mirror includes every canonical tool and alias'
   const webview = [
     readFileSync(path.join(rootDir, 'media/webview-agent-sanitizer.js'), 'utf8'),
     readFileSync(path.join(rootDir, 'media/webview-agent-todos.js'), 'utf8'),
+    readFileSync(path.join(rootDir, 'media/webview-working-copy.js'), 'utf8'),
     readFileSync(path.join(rootDir, 'media/webview.js'), 'utf8'),
   ].join('\n');
   const match = /var WEBVIEW_TOOL_NAMES = \{([\s\S]*?)\};/.exec(webview);

@@ -20,6 +20,10 @@ export function getChatHtml(webview: vscode.Webview, extensionUri: vscode.Uri): 
         nodePath.join(extensionUri.fsPath, 'media', 'webview-agent-todos.js'),
         'utf8',
     );
+    const webviewWorkingCopyJs = fs.readFileSync(
+        nodePath.join(extensionUri.fsPath, 'media', 'webview-working-copy.js'),
+        'utf8',
+    );
     const webviewJs = fs.readFileSync(
         nodePath.join(extensionUri.fsPath, 'media', 'webview.js'),
         'utf8',
@@ -585,5 +589,5 @@ body {
 </html>`;
     return html
         .replace('/*MARKED_PLACEHOLDER*/', () => markedJs)
-        .replace('/*WEBVIEW_PLACEHOLDER*/', () => `${webviewAgentSanitizerJs}\n${webviewAgentTodosJs}\n${webviewJs}`);
+        .replace('/*WEBVIEW_PLACEHOLDER*/', () => `${webviewAgentSanitizerJs}\n${webviewAgentTodosJs}\n${webviewWorkingCopyJs}\n${webviewJs}`);
 }

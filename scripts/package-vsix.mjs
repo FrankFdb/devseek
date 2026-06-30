@@ -67,6 +67,7 @@ try {
     'mermaid.min.js',
     'webview-agent-sanitizer.js',
     'webview-agent-todos.js',
+    'webview-working-copy.js',
     'webview.js',
   ]) {
     copy(path.join('media', mediaFile));
