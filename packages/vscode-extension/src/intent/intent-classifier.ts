@@ -27,6 +27,12 @@ const QA_RE = /(什么是|为什么|怎么理解|区别|原理|概念|介绍一�
 
 const CODE_CONTEXT_RE = /(代码|文件|项目|函数|类|模块|报错|错误|日志|异常|栈|依赖|配置|接口|组件|脚本|code|file|project|function|class|module|error|log|exception|stack|config|component|script)/i;
 
+const INTERACTIVE_FEATURE_CONTEXT_RE = /(程序|应用|功能|界面|页面|窗口|按钮|控件|图形|形状|渲染|动画|鼠标|键盘|旋转|缩放|平移|选择|切换|显示|opengl|glut|webgl|three\.?js|canvas|viewer|renderer|ui|gui|feature|interaction|interactive|mouse|keyboard|rotate|rotation|zoom|pan|select|toggle|display|render|shape|geometry|control)/i;
+
+const CAPABILITY_FEATURE_REQUEST_RE = /(?:(?:能|可以|可否|能否|能不能|是否可以|请|帮我|麻烦).{0,40}(?:提供|支持|加上|添加|新增|增加|实现|做成|改成|做到|具备|拥有).{0,40}(?:功能|能力|控制|操作|交互|显示|旋转|缩放|平移|选择|切换|独立|单独|feature|support|control|interaction|display|rotate|rotation|zoom|pan|select|toggle)|(?:不能|无法|没有|缺少|不支持).{0,40}(?:单独|独立|控制|操作|交互|显示|旋转|缩放|平移|选择|切换|support|control|rotate|rotation|select))/i;
+
+const READ_ONLY_CAPABILITY_QUESTION_RE = /(什么是|为什么|什么原因|怎么理解|区别|介绍|解释|说明|原理|概念|文档|教程|示例|怎么用|如何使用|用法|what\s+is|why|how\s+to|explain|describe|introduction)/i;
+
 const READ_ONLY_TOOLS: ToolKind[] = ['read', 'search', 'diagnostics', 'network'];
 const PLAN_TOOLS: ToolKind[] = [...READ_ONLY_TOOLS, 'plan', 'memory'];
 const EDIT_TOOLS: ToolKind[] = [...PLAN_TOOLS, 'edit', 'terminal'];
@@ -63,8 +69,12 @@ export function classifyIntent(prompt: string): IntentClassification {
 
   const withoutGreeting = text.replace(GREETING_PREFIX_RE, '').trim();
   const hasPath = hasExplicitWorkspaceFilePath(text);
-  const hasCodeContext = CODE_CONTEXT_RE.test(text) || hasPath;
+  const hasInteractiveFeatureContext = INTERACTIVE_FEATURE_CONTEXT_RE.test(text);
+  const hasCodeContext = CODE_CONTEXT_RE.test(text) || hasInteractiveFeatureContext || hasPath;
   const isFollowUpRunRequest = !hasPath && FOLLOW_UP_RUN_RE.test(text);
+  const isCapabilityFeatureRequest = hasCodeContext
+    && CAPABILITY_FEATURE_REQUEST_RE.test(text)
+    && !READ_ONLY_CAPABILITY_QUESTION_RE.test(withoutGreeting);
 
   if (GREETING_ONLY_RE.test(text)) {
     return baseDecision('smalltalk', 0.95, -4, ['greeting-only'], 'greeting-only', []);
@@ -133,13 +143,22 @@ export function classifyIntent(prompt: string): IntentClassification {
     );
   }
 
-  if (EDIT_RE.test(text)) {
+  const isDirectEditRequest = EDIT_RE.test(text);
+  if (isDirectEditRequest || isCapabilityFeatureRequest) {
+    const signals = isDirectEditRequest ? ['edit-request'] : ['capability-feature-request'];
+    if (isDirectEditRequest && isCapabilityFeatureRequest) signals.push('capability-feature-request');
+    if (hasInteractiveFeatureContext) signals.push('interactive-feature-context');
+    if (hasPath) signals.push('explicit-file-path');
     return baseDecision(
       'edit',
       hasPath ? 0.9 : 0.82,
       hasPath ? 5 : 4,
-      hasPath ? ['edit-request', 'explicit-file-path'] : ['edit-request'],
-      hasPath ? 'edit-with-file-path' : 'edit-request',
+      signals,
+      hasPath
+        ? 'edit-with-file-path'
+        : isCapabilityFeatureRequest && !isDirectEditRequest
+          ? 'capability-feature-request'
+          : 'edit-request',
       EDIT_TOOLS,
     );
   }

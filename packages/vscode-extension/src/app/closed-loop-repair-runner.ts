@@ -18,7 +18,6 @@ export interface ClosedLoopRepairRouteChatOptions {
 }
 
 export interface RunClosedLoopRepairInput {
-  webview: vscode.Webview;
   reporter: (status: ApplyWorkflowStatus) => Promise<void>;
   originalPrompt: string;
   mode: 'fast' | 'r1' | undefined;
@@ -27,6 +26,7 @@ export interface RunClosedLoopRepairInput {
   routeChat: (opts: ClosedLoopRepairRouteChatOptions) => Promise<string>;
   registerAppliedChange: (change: AppliedChangeRecord) => Promise<void>;
   getSessionId: () => string;
+  postVisibleDelta: (text: string) => void;
 }
 
 export async function runClosedLoopRepair(input: RunClosedLoopRepairInput): Promise<void> {
@@ -83,7 +83,7 @@ export async function runClosedLoopRepair(input: RunClosedLoopRepairInput): Prom
         onDelta: (delta) => {
           if (delta.startsWith('\x00RESET\x00') && !resetNoticeSent) {
             resetNoticeSent = true;
-            input.webview.postMessage({ type: 'delta', text: '\n\n[自动修正] 已收到修正草案，正在安全解析并应用。\n' });
+            input.postVisibleDelta('\n\n[自动修正] 已收到修正草案，正在安全解析并应用。\n');
           }
         },
       });
@@ -174,7 +174,7 @@ export async function runClosedLoopRepair(input: RunClosedLoopRepairInput): Prom
 
         if (action === 'guide') {
           const guidance = await requestManualFixGuidance(input.routeChat, input.originalPrompt, validationNow.command, validationNow.output);
-          input.webview.postMessage({ type: 'delta', text: `\n\n[手动修复建议]\n${guidance}\n` });
+          input.postVisibleDelta(`\n\n[手动修复建议]\n${guidance}\n`);
         }
       }
     }

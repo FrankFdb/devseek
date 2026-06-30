@@ -172,6 +172,26 @@ test('ChatRouteController: exact unknown-extension write is not downgraded by we
   assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
 });
 
+test('ChatRouteController: capability feature follow-up with context stays in edit workflow', () => {
+  const controller = new ChatRouteController();
+  const prompt = '现在可以同时显示，但是，6个图形，不能单独通过鼠标或者键盘操作，能提供单独控制每个图形旋转';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: ['/tmp/code/shape_manager/main.cpp', '/tmp/code/shape_manager/CMakeLists.txt'],
+    agentEnabled: false,
+    forceNoAgent: true,
+  });
+
+  assert.equal(decision.intent.mode, 'edit');
+  assert.equal(decision.intent.reason, 'capability-feature-request');
+  assert.ok(decision.intent.signals.includes('capability-feature-request'));
+  assert.equal(decision.workflow.kind, 'edit-agent');
+  assert.equal(decision.workflow.useAgent, true);
+  assert.equal(decision.toolPolicy.mode, 'edit');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+});
+
 test('ChatRouteController: destructive workflow waits for visible confirmation', () => {
   const controller = new ChatRouteController();
   const pending = controller.decide({

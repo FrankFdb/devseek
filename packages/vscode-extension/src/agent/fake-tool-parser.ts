@@ -21,6 +21,32 @@ const LOOSE_FILE_WRITE_CONTENT_KEYS = [
   'fileContent', 'file_content', 'source', 'code', 'newContent', 'new_content',
 ];
 
+const DSML_BAR_PATTERN = '[|｜]{1,2}';
+const DSML_MARKER_PATTERN = `${DSML_BAR_PATTERN}\\s*DSML\\s*${DSML_BAR_PATTERN}`;
+const DSML_OPEN_PREFIX_PATTERN = '(?:<|&lt;)\\s*';
+const DSML_CLOSE_PREFIX_PATTERN = '(?:<\\/|&lt;\\/)\\s*';
+const DSML_START_NAMES_PATTERN = '(?:tool_calls|invoke|parameter)';
+const DSML_INCOMPLETE_TAIL_PATTERN = new RegExp(
+  `${DSML_OPEN_PREFIX_PATTERN}(?:${DSML_BAR_PATTERN}\\s*(?:D(?:S(?:M(?:L)?)?)?(?:\\s*${DSML_BAR_PATTERN})?)?)?$`,
+  'i',
+);
+
+function makeDsmlStartRegex(flags = 'gi'): RegExp {
+  return new RegExp(`${DSML_OPEN_PREFIX_PATTERN}${DSML_MARKER_PATTERN}\\s*${DSML_START_NAMES_PATTERN}\\b`, flags);
+}
+
+function makeDsmlCloseRegex(name: string): RegExp {
+  return new RegExp(`${DSML_CLOSE_PREFIX_PATTERN}${DSML_MARKER_PATTERN}\\s*${escapeRegExp(name)}\\s*(?:>|&gt;)`, 'i');
+}
+
+function dsmlOpenTagPattern(name: string): string {
+  return `<\\s*${DSML_MARKER_PATTERN}\\s*${name}\\b`;
+}
+
+function dsmlCloseTagPattern(name: string): string {
+  return `<\\/\\s*${DSML_MARKER_PATTERN}\\s*${name}\\s*>`;
+}
+
 function makeCallingRegex(): RegExp {
   return /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?([A-Za-z_]\w*)`?\]?/gi;
 }
@@ -527,7 +553,7 @@ function stripJsonToolPayloads(text: string): string {
 }
 
 function findNextDsmlToolCallStart(text: string, startAt = 0): number {
-  const re = /(?:<|&lt;)\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b/gi;
+  const re = makeDsmlStartRegex();
   re.lastIndex = startAt;
   const match = re.exec(text);
   return match ? match.index : -1;
@@ -535,11 +561,11 @@ function findNextDsmlToolCallStart(text: string, startAt = 0): number {
 
 function dsmlToolCallBlockEnd(text: string, start: number): number {
   const tail = text.slice(start);
-  const toolCallsClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*tool_calls\s*(?:>|&gt;)/i.exec(tail);
+  const toolCallsClose = makeDsmlCloseRegex('tool_calls').exec(tail);
   if (toolCallsClose) return start + toolCallsClose.index + toolCallsClose[0].length;
-  const invokeClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*invoke\s*(?:>|&gt;)/i.exec(tail);
+  const invokeClose = makeDsmlCloseRegex('invoke').exec(tail);
   if (invokeClose) return start + invokeClose.index + invokeClose[0].length;
-  const parameterClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*parameter\s*(?:>|&gt;)/i.exec(tail);
+  const parameterClose = makeDsmlCloseRegex('parameter').exec(tail);
   if (parameterClose) return start + parameterClose.index + parameterClose[0].length;
   return text.length;
 }
@@ -556,7 +582,7 @@ function stripDsmlToolCallBlocks(text: string): string {
     out += text.slice(cursor, start).replace(/[ \t]+$/, '');
     cursor = dsmlToolCallBlockEnd(text, start);
   }
-  return out.replace(/(?:<|&lt;)\s*(?:\|\s*(?:D(?:S(?:M(?:L)?)?)?)?)?$/i, '').trimEnd();
+  return out.replace(DSML_INCOMPLETE_TAIL_PATTERN, '').trimEnd();
 }
 
 function normalizeDsmlToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
@@ -588,7 +614,13 @@ function parseDsmlToolCalls(text: string): FakeTool[] {
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'");
   const tools: FakeTool[] = [];
-  const invokeRe = /<\s*\|\s*DSML\s*\|\s*invoke\b([^<>]*\bname\s*=\s*["']([^"']+)["'][^<>]*)(?:>|(?=<\s*\|\s*DSML\s*\|))([\s\S]*?)<\/\s*\|\s*DSML\s*\|\s*invoke\s*>/gi;
+  const dsmlAnyOpen = `<\\s*${DSML_MARKER_PATTERN}`;
+  const invokeOpen = dsmlOpenTagPattern('invoke');
+  const parameterOpen = dsmlOpenTagPattern('parameter');
+  const invokeRe = new RegExp(
+    `${invokeOpen}([^<>]*\\bname\\s*=\\s*["']([^"']+)["'][^<>]*)(?:>|(?=${dsmlAnyOpen}))([\\s\\S]*?)${dsmlCloseTagPattern('invoke')}`,
+    'gi',
+  );
   let im: RegExpExecArray | null;
   while ((im = invokeRe.exec(normalizedText)) !== null) {
     const name = im[2].trim();
@@ -596,13 +628,19 @@ function parseDsmlToolCalls(text: string): FakeTool[] {
     const input: Record<string, unknown> = {};
     const body = im[3] || '';
 
-    const blockParamRe = /<\s*\|\s*DSML\s*\|\s*parameter\b([^<>]*\bname\s*=\s*["']([^"']+)["'][^<>]*)(?:>|(?=<\s*\|\s*DSML\s*\|))([\s\S]*?)<\/\s*\|\s*DSML\s*\|\s*parameter\s*>/gi;
+    const blockParamRe = new RegExp(
+      `${parameterOpen}([^<>]*\\bname\\s*=\\s*["']([^"']+)["'][^<>]*)(?:>|(?=${dsmlAnyOpen}))([\\s\\S]*?)${dsmlCloseTagPattern('parameter')}`,
+      'gi',
+    );
     let pm: RegExpExecArray | null;
     while ((pm = blockParamRe.exec(body)) !== null) {
       input[pm[2].trim()] = parseDsmlParameterValue(pm[3] || '');
     }
 
-    const valueParamRe = /<\s*\|\s*DSML\s*\|\s*parameter\b([^<>]*\bname\s*=\s*["']([^"']+)["'][^<>]*\bvalue\s*=\s*["']([^"']*)["'][^<>]*)(?:\/?>|(?=<\s*\|\s*DSML\s*\|))/gi;
+    const valueParamRe = new RegExp(
+      `${parameterOpen}([^<>]*\\bname\\s*=\\s*["']([^"']+)["'][^<>]*\\bvalue\\s*=\\s*["']([^"']*)["'][^<>]*)(?:\\/?>|(?=${dsmlAnyOpen}))`,
+      'gi',
+    );
     while ((pm = valueParamRe.exec(body)) !== null) {
       const key = pm[2].trim();
       if (!(key in input)) input[key] = parseDsmlParameterValue(pm[3] || '');

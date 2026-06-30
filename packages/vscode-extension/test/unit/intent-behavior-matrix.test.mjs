@@ -158,6 +158,20 @@ const routingCases = [
     toolActions: { read: 'deny', edit: 'deny', terminal: 'deny' },
   },
   {
+    id: 'QA-003',
+    title: 'technical capability introduction stays plain QA',
+    prompt: '你好，能介绍一下 OpenGL 的旋转矩阵吗',
+    expect: { kind: 'chat', mode: 'qa', workflow: 'plain-chat', useAgent: false, tools: [] },
+    toolActions: { read: 'deny', edit: 'deny', terminal: 'deny' },
+  },
+  {
+    id: 'QA-004',
+    title: 'why-style graphics question stays plain QA',
+    prompt: '为什么图形不能显示？',
+    expect: { kind: 'chat', mode: 'qa', workflow: 'plain-chat', useAgent: false, tools: [] },
+    toolActions: { read: 'deny', edit: 'deny', terminal: 'deny' },
+  },
+  {
     id: 'READ-001',
     title: 'explicit no-change inspection uses read-only agent',
     prompt: '不要修改，只分析这个文件',
@@ -238,6 +252,17 @@ const routingCases = [
     agentEnabled: false,
     forceNoAgent: true,
     expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: EDIT_TOOLS },
+    toolActions: { read: 'allow', edit: 'allow', terminal: 'requireConfirm' },
+  },
+  {
+    id: 'EDIT-006',
+    title: 'capability phrased graphics follow-up stays in controlled edit workflow',
+    prompt: '现在可以同时显示，但是，6个图形，不能单独通过鼠标或者键盘操作，能提供单独控制每个图形旋转',
+    files: ['/tmp/code/shape_manager/main.cpp', '/tmp/code/shape_manager/CMakeLists.txt'],
+    agentEnabled: false,
+    forceNoAgent: true,
+    expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: EDIT_TOOLS },
+    signal: 'capability-feature-request',
     toolActions: { read: 'allow', edit: 'allow', terminal: 'requireConfirm' },
   },
   {
@@ -363,6 +388,15 @@ test('TOOL-003: DSML tool transcripts are stripped before user-facing display', 
   assert.equal(stripToolCallBlocks(leaked), '准备查看文件。\n继续处理。');
 });
 
+test('TOOL-004: fullwidth double-bar DSML tool transcripts are stripped before user-facing display', () => {
+  const leaked = [
+    '准备查看文件。',
+    '<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="read_file"><｜｜DSML｜｜parameter name="filePath" string="true">code/shape_manager/main.cpp</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke><｜｜DSML｜｜invoke name="list_dir"><｜｜DSML｜｜parameter name="path" string="true">code/shape_manager</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke></｜｜DSML｜｜tool_calls>',
+    '继续处理。',
+  ].join('\n');
+  assert.equal(stripToolCallBlocks(leaked), '准备查看文件。\n继续处理。');
+});
+
 test('CTRL-001 regression: no-agent raw file tools are not parsed as pending edits after display sanitization', () => {
   const leaked = '[TOOL:create_file {"path":"code/hello.cpp","content":"#include <iostream>\\nint main(){return 0;}\\n"}]';
   const cleaned = stripToolCallBlocks(leaked);
@@ -370,4 +404,4 @@ test('CTRL-001 regression: no-agent raw file tools are not parsed as pending edi
   assert.deepEqual(parseGeneratedArtifacts(cleaned), []);
 });
 
-console.log(`\nIntent behavior matrix passed: ${routingCases.length + 7} cases.\n`);
+console.log(`\nIntent behavior matrix passed: ${routingCases.length + 8} cases.\n`);

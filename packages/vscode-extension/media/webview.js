@@ -1698,9 +1698,31 @@ function collapseTerminalOutputBlocks(container) {
   });
 }
 
+var DSML_BAR_PATTERN = '[|｜]{1,2}';
+var DSML_MARKER_PATTERN = DSML_BAR_PATTERN + '\\s*DSML\\s*' + DSML_BAR_PATTERN;
+var DSML_OPEN_PREFIX_PATTERN = '(?:<|&lt;)\\s*';
+var DSML_CLOSE_PREFIX_PATTERN = '(?:<\\/|&lt;\\/)\\s*';
+var DSML_START_NAMES_PATTERN = '(?:tool_calls|invoke|parameter)';
+var DSML_INCOMPLETE_TAIL_REGEX = new RegExp(
+  DSML_OPEN_PREFIX_PATTERN + '(?:' + DSML_BAR_PATTERN + '\\s*(?:D(?:S(?:M(?:L)?)?)?(?:\\s*' + DSML_BAR_PATTERN + ')?)?)?$',
+  'i'
+);
+
+function makeDsmlStartRegexInText() {
+  return new RegExp(DSML_OPEN_PREFIX_PATTERN + DSML_MARKER_PATTERN + '\\s*' + DSML_START_NAMES_PATTERN + '\\b', 'gi');
+}
+
+function makeDsmlCloseRegexInText(name) {
+  return new RegExp(DSML_CLOSE_PREFIX_PATTERN + DSML_MARKER_PATTERN + '\\s*' + name + '\\s*(?:>|&gt;)', 'i');
+}
+
+function makeDsmlTailRegexInText() {
+  return new RegExp(DSML_OPEN_PREFIX_PATTERN + DSML_MARKER_PATTERN + '\\s*' + DSML_START_NAMES_PATTERN + '\\b[\\s\\S]*$', 'gi');
+}
+
 function findNextDsmlToolCallStartInText(text, startAt) {
   var raw = String(text || '');
-  var re = /(?:<|&lt;)\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b/gi;
+  var re = makeDsmlStartRegexInText();
   re.lastIndex = startAt || 0;
   var match = re.exec(raw);
   return match ? match.index : -1;
@@ -1709,11 +1731,11 @@ function findNextDsmlToolCallStartInText(text, startAt) {
 function dsmlToolCallBlockEndInText(text, start) {
   var raw = String(text || '');
   var tail = raw.slice(start);
-  var toolCallsClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*tool_calls\s*(?:>|&gt;)/i.exec(tail);
+  var toolCallsClose = makeDsmlCloseRegexInText('tool_calls').exec(tail);
   if (toolCallsClose) return start + toolCallsClose.index + toolCallsClose[0].length;
-  var invokeClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*invoke\s*(?:>|&gt;)/i.exec(tail);
+  var invokeClose = makeDsmlCloseRegexInText('invoke').exec(tail);
   if (invokeClose) return start + invokeClose.index + invokeClose[0].length;
-  var parameterClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*parameter\s*(?:>|&gt;)/i.exec(tail);
+  var parameterClose = makeDsmlCloseRegexInText('parameter').exec(tail);
   if (parameterClose) return start + parameterClose.index + parameterClose[0].length;
   return raw.length;
 }
@@ -1731,7 +1753,7 @@ function stripDsmlToolCallBlocksFromText(text) {
     out += raw.slice(cursor, start).replace(/[ \t]+$/, '');
     cursor = dsmlToolCallBlockEndInText(raw, start);
   }
-  return out.replace(/(?:<|&lt;)\s*(?:\|\s*(?:D(?:S(?:M(?:L)?)?)?)?)?$/i, '').trimEnd();
+  return out.replace(DSML_INCOMPLETE_TAIL_REGEX, '').trimEnd();
 }
 
 function containsDsmlToolTranscript(text) {
@@ -1872,7 +1894,7 @@ function containsAgentInternalTranscript(text) {
 function cleanAgentFinalProseForUser(text) {
   if (containsAgentInternalTranscript(text || '')) return '';
   var cleaned = stripAgentGeneratedCodeBlocks(stripToolCallBlocks(text || '').trim())
-    .replace(/(?:<|&lt;)\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b[\s\S]*$/gi, '')
+    .replace(makeDsmlTailRegexInText(), '')
     .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
     .replace(/<tool_calls>[\s\S]*?<\/tool_calls>/gi, '')
     .replace(/\n{3,}/g, '\n\n')

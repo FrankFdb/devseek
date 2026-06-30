@@ -23,6 +23,7 @@ import {
   buildLocalExecutionRepairTasks,
   relPathFromRepairWorkspace,
 } from './local-execution-repair';
+import { postWebviewMessage } from './ui/webview-event-adapter';
 import type { ToolPolicy } from './app/permission-service';
 import type { AppliedChangeRecord, ApplyWorkflowStatus } from './workspace-applier';
 import { askRepairExhaustedAction, requestManualFixGuidance } from './app/repair-exhaustion-interaction';
@@ -119,7 +120,7 @@ export async function runLocalExecutionChatIfPossible(
         title: '本地程序已启动，等待人工确认',
         detail: `命令: ${localResult.command}\n${manualReview.detail}`,
       });
-      input.webview.postMessage({ type: 'delta', text: manualReview.detail });
+      postWebviewMessage(input.webview, { type: 'delta', text: manualReview.detail });
       input.webview.postMessage({ type: 'endResponse' });
       return { handled: true };
     }
@@ -137,13 +138,13 @@ export async function runLocalExecutionChatIfPossible(
         context: input.prompt.slice(0, 80),
         sessionId: input.sessionId,
       });
-      input.webview.postMessage({ type: 'delta', text: buildLocalExecutionSuccessMessage(localPlan, localResult) });
+      postWebviewMessage(input.webview, { type: 'delta', text: buildLocalExecutionSuccessMessage(localPlan, localResult) });
       input.webview.postMessage({ type: 'endResponse' });
       return { handled: true };
     }
 
     if (!shouldRepairLocalExecutionFailure(localPlan, localResult)) {
-      input.webview.postMessage({ type: 'delta', text: buildLocalExecutionFailureMessage(localPlan, localResult) });
+      postWebviewMessage(input.webview, { type: 'delta', text: buildLocalExecutionFailureMessage(localPlan, localResult) });
       input.webview.postMessage({ type: 'endResponse' });
       return { handled: true };
     }
@@ -203,7 +204,7 @@ async function handleRepairExhausted(
       command,
       output,
     );
-    input.webview.postMessage({ type: 'delta', text: `\n\n[手动修复建议]\n${guidance}\n` });
+    postWebviewMessage(input.webview, { type: 'delta', text: `\n\n[手动修复建议]\n${guidance}\n` });
   }
 
   await input.workflowReporter({

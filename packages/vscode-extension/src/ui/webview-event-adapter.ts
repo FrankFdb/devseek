@@ -6,6 +6,7 @@ import type {
   TaskHistoryOutboundMessage,
   WebviewOutboundMessage,
 } from './webview-protocol';
+import { getWebviewOutboundSanitizer } from './webview-message-sanitizer';
 
 export interface WebviewPostTarget {
   postMessage(message: WebviewOutboundMessage): unknown;
@@ -22,7 +23,8 @@ export class WebviewEventAdapter {
   constructor(private readonly target: WebviewPostTarget) {}
 
   post(message: WebviewOutboundMessage): void {
-    void this.target.postMessage(message);
+    const sanitized = getWebviewOutboundSanitizer(this.target).sanitize(message);
+    if (sanitized) void this.target.postMessage(sanitized);
   }
 
   postEvent(event: WebviewDomainEvent): void {

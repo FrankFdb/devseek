@@ -19,6 +19,12 @@ small enough that automatic context compaction is unlikely to trigger.
   If the necessary change exposes code that violates those principles, consider
   refactoring as part of the fix instead of piling more logic onto the wrong
   boundary.
+- For any bugfix or refactor, fix the defect class, not just the current
+  screenshot or reproduction path. Audit sibling entry points, state flows,
+  tool/protocol boundaries, validation, recovery, and UI delivery paths for the
+  same pattern. If equivalent logic appears in multiple places, consolidate it
+  into one abstraction/service/boundary and add tests or static guards so future
+  changes cannot bypass it.
 - If a task needs repository discovery, start with:
 
 ```bash

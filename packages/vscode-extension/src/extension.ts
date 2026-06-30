@@ -47,6 +47,7 @@ import { migrateLegacyDeepseekConfiguration } from './app/config-migration-servi
 import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { MemoryService } from './app/memory-service';
+import { guardNonAgentResponse } from './app/non-agent-response-guard';
 import { AgentApplicationService } from './app/agent-application-service';
 import type { AgentChatRequest } from './app/agent-protocol';
 import { isProjectInitRequest, ProjectInitService, renderProjectInitDraftMarkdown } from './app/project-init-service';
@@ -78,7 +79,6 @@ import { emitResponseMeta, injectFileHintsIntoResponse } from './ui/generated-ar
 import { postWebviewEvent, postWebviewMessage } from './ui/webview-event-adapter';
 import { DeepSeekViewProvider } from './ui/deepseek-view-provider';
 import type { WebviewInboundMessage } from './ui/webview-protocol';
-import { stripToolCallBlocks } from './agent/fake-tool-parser';
 import { buildAgentRunDisplayProfile } from './agent/agent-run-display';
 import {
   discoverFilesFromDirectoryPrompt,
@@ -268,7 +268,7 @@ async function runChat(
     webview.postMessage({ type: 'startResponse', prompt, expectGeneratedArtifacts: false, agentMode: false });
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const text = root ? renderProjectInitDraftMarkdown(new ProjectInitService().generateDraft({ workspaceRoot: root })) : '请先打开一个工作区，再使用 `/init` 生成 DevSeek 项目指令草稿。';
-    webview.postMessage({ type: 'delta', text });
+    postWebviewMessage(webview, { type: 'delta', text });
     webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
     webview.postMessage({ type: 'endResponse' });
     if (activeChatAbortController === abortCtrl) activeChatAbortController = null;
@@ -303,7 +303,7 @@ async function runChat(
       expectGeneratedArtifacts: false,
       agentMode: false,
     });
-    webview.postMessage({ type: 'delta', text: providerStatusResponse });
+    postWebviewMessage(webview, { type: 'delta', text: providerStatusResponse });
     webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
     webview.postMessage({ type: 'endResponse' });
     recordTrackedChatHistory({
@@ -337,7 +337,7 @@ async function runChat(
       expectGeneratedArtifacts: false,
       agentMode: false,
     });
-    webview.postMessage({ type: 'delta', text: buildSmalltalkReply(initialRouteDecision.intentRoutingText) });
+    postWebviewMessage(webview, { type: 'delta', text: buildSmalltalkReply(initialRouteDecision.intentRoutingText) });
     webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
     webview.postMessage({ type: 'endResponse' });
     if (extContext) recordIntentOutcome(initialRouteDecision.intentRoutingText, 'chat', activeSessionId, extContext);
@@ -475,7 +475,7 @@ async function runChat(
       expectGeneratedArtifacts: false,
       agentMode: false,
     });
-    webview.postMessage({ type: 'delta', text: directInspection.text });
+    postWebviewMessage(webview, { type: 'delta', text: directInspection.text });
     webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
     webview.postMessage({ type: 'endResponse' });
     recordTrackedChatHistory({
@@ -518,11 +518,11 @@ async function runChat(
       const online2 = await status();
       if (!online2) {
         webview.postMessage({ type: 'startResponse' });
-        webview.postMessage({ type: 'delta', text: '_正在启动 Bridge 服务，请稍候…_' });
+        postWebviewMessage(webview, { type: 'delta', text: '_正在启动 Bridge 服务，请稍候…_' });
         webview.postMessage({ type: 'endResponse' });
         const started = await ensureBridgeRunning();
         if (!started) {
-          webview.postMessage({ type: 'error', text: 'Bridge 服务启动失败。\n请重载 VS Code 窗口或重新安装最新 VSIX；网页免费方式应由扩展内置 Bridge 自动启动。' });
+          postWebviewMessage(webview, { type: 'error', text: 'Bridge 服务启动失败。\n请重载 VS Code 窗口或重新安装最新 VSIX；网页免费方式应由扩展内置 Bridge 自动启动。' });
           return;
         }
       }
@@ -533,10 +533,10 @@ async function runChat(
     webview.postMessage({ type: 'startResponse', prompt, expectGeneratedArtifacts: true, agentMode: true });
     // Emit the auto-discovery note as the first delta so the user knows files were found
     if (sessionContinuationNote) {
-      webview.postMessage({ type: 'delta', text: sessionContinuationNote });
+      postWebviewMessage(webview, { type: 'delta', text: sessionContinuationNote });
     }
     if (autoDiscoveredNote) {
-      webview.postMessage({ type: 'delta', text: autoDiscoveredNote });
+      postWebviewMessage(webview, { type: 'delta', text: autoDiscoveredNote });
     }
 
     const postAgent = (msg: AgentStatusMessage) => webview.postMessage(msg);
@@ -591,13 +591,13 @@ async function runChat(
           runDisplayTarget: agDisplayProfile.initialTaskLabel,
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
-              webview.postMessage({ type: 'resetResponse', text: delta.slice(7) });
+              postWebviewMessage(webview, { type: 'resetResponse', text: delta.slice(7) });
             } else if (delta === '\x00PROSE_CLEAR\x00') {
               // Silently wipe intermediate round prose from the webview buffer.
               // Keeps currentRaw clean so the final bubble only shows the ASUM summary.
               webview.postMessage({ type: 'clearAgentProse' });
             } else {
-              webview.postMessage({ type: 'delta', text: delta });
+              postWebviewMessage(webview, { type: 'delta', text: delta });
             }
           },
           onWorkflowStatus: async (s) => { postWebviewEvent(webview, { kind: 'workflow', status: s }); },
@@ -605,7 +605,7 @@ async function runChat(
           onAppliedChange: async (c) => { await pendingEditCoordinator.registerChange(webview, c); },
           onResponseMeta: async (_raw) => { /* suppressed in agent mode */ },
           onAgentAnnouncement: (text) => {
-            webview.postMessage({ type: 'agentAnnouncement', text });
+            postWebviewMessage(webview, { type: 'agentAnnouncement', text });
           },
           onToolActivity: (kind, label) => {
             webview.postMessage({ type: 'agentToolActivity', activityKind: kind, activityLabel: label });
@@ -619,13 +619,13 @@ async function runChat(
           onBeforeFileWrite: async (absPath: string): Promise<boolean> => {
             const writePermission = decideToolPermission(toolPolicy, 'edit');
             if (writePermission.action === 'deny') {
-              webview.postMessage({ type: 'agentNotice', kind: 'warn', text: `当前 ${intent.mode} 模式不允许写入文件（${writePermission.reason}）。` });
+              postWebviewMessage(webview, { type: 'agentNotice', kind: 'warn', text: `当前 ${intent.mode} 模式不允许写入文件（${writePermission.reason}）。` });
               return false;
             }
             const wsRoot2 = agWsRoot;
             if (isFileProtected(absPath, wsRoot2)) {
               const relPath = wsRoot2 ? nodePath.relative(wsRoot2, absPath).replace(/\\/g, '/') : nodePath.basename(absPath);
-              webview.postMessage({ type: 'agentNotice', kind: 'warn', text: `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）` });
+              postWebviewMessage(webview, { type: 'agentNotice', kind: 'warn', text: `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）` });
               return false;
             }
             const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
@@ -848,7 +848,7 @@ async function runChat(
           } else {
             errDelta += '（无详细信息）';
           }
-          webview.postMessage({ type: 'delta', text: errDelta });
+          postWebviewMessage(webview, { type: 'delta', text: errDelta });
           // Keep the Working area visible; don't call endResponse yet so the error stays in context
           postAgent({ type: 'agentStatus', phase: 'done', state: 'completed', title: '执行结束（无可执行计划）', detail: 'Agent 模式已终止；可尝试普通对话模式' });
           webview.postMessage({ type: 'endResponse' });
@@ -877,7 +877,7 @@ async function runChat(
           });
           if (_bLines.length > 0) {
             const _announcement = _bLines.slice(0, 3).join(' ').slice(0, 300);
-            webview.postMessage({ type: 'agentAnnouncement', text: _announcement });
+            postWebviewMessage(webview, { type: 'agentAnnouncement', text: _announcement });
           }
         }
       }
@@ -895,9 +895,9 @@ async function runChat(
         loopResult = await runAgentLoop(tasks, promptForAgent, mode, wsRoot, {
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
-              webview.postMessage({ type: 'resetResponse', text: delta.slice(7) });
+              postWebviewMessage(webview, { type: 'resetResponse', text: delta.slice(7) });
             } else {
-              webview.postMessage({ type: 'delta', text: delta });
+              postWebviewMessage(webview, { type: 'delta', text: delta });
             }
           },
           onWorkflowStatus: async (s) => { postWebviewEvent(webview, { kind: 'workflow', status: s }); },
@@ -924,14 +924,14 @@ async function runChat(
           onBeforeFileWrite: async (absPath: string): Promise<boolean> => {
             const writePermission = decideToolPermission(toolPolicy, 'edit');
             if (writePermission.action === 'deny') {
-              webview.postMessage({ type: 'agentNotice', kind: 'warn', text: `当前 ${intent.mode} 模式不允许写入文件（${writePermission.reason}）。` });
+              postWebviewMessage(webview, { type: 'agentNotice', kind: 'warn', text: `当前 ${intent.mode} 模式不允许写入文件（${writePermission.reason}）。` });
               return false;
             }
             const wsRoot2 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
             // §8.3: hard-block user-configured protected files (Copilot chat.tools.edits.autoApprove equivalent)
             if (isFileProtected(absPath, wsRoot2)) {
               const relPath = wsRoot2 ? nodePath.relative(wsRoot2, absPath).replace(/\\/g, '/') : nodePath.basename(absPath);
-              webview.postMessage({ type: 'agentNotice', kind: 'warn', text: `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）` });
+              postWebviewMessage(webview, { type: 'agentNotice', kind: 'warn', text: `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）` });
               return false;
             }
             const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
@@ -1174,7 +1174,7 @@ async function runChat(
         });
         const recoveryDisplay = buildProviderRecoveryDisplay(recovery, msg);
         postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: recoveryDisplay.title, detail: recoveryDisplay.detail });
-        webview.postMessage({
+        postWebviewMessage(webview, {
           type: 'error',
           text: recoveryDisplay.text,
           loginRequired: recovery.kind === 'LoginRequired',
@@ -1182,7 +1182,7 @@ async function runChat(
         agentHistoryText = agentHistoryText || recoveryDisplay.historyText;
       } else {
         postAgent({ type: 'agentStatus', phase: 'error', state: 'failed', title: `Agent 执行出错：${msg}` });
-        webview.postMessage({ type: 'error', text: msg, loginRequired: msg === 'LOGIN_REQUIRED' });
+        postWebviewMessage(webview, { type: 'error', text: msg, loginRequired: msg === 'LOGIN_REQUIRED' });
         agentHistoryText = agentHistoryText || `[Agent 执行出错] ${msg.slice(0, 200)}`;
       }
       saveAgentSessionState({
@@ -1226,11 +1226,11 @@ async function runChat(
     const online = await status();
     if (!online) {
       webview.postMessage({ type: 'startResponse' });
-      webview.postMessage({ type: 'delta', text: '_正在启动 Bridge 服务，请稍候…_' });
+      postWebviewMessage(webview, { type: 'delta', text: '_正在启动 Bridge 服务，请稍候…_' });
       webview.postMessage({ type: 'endResponse' });
       const started = await ensureBridgeRunning();
       if (!started) {
-        webview.postMessage({
+        postWebviewMessage(webview, {
           type: 'error',
           text: 'Bridge 服务启动失败。\n请重载 VS Code 窗口或重新安装最新 VSIX；网页免费方式应由扩展内置 Bridge 自动启动。',
         });
@@ -1248,7 +1248,7 @@ async function runChat(
   });
   // Emit auto-discovery note in single-turn path too
   if (autoDiscoveredNote) {
-    webview.postMessage({ type: 'delta', text: autoDiscoveredNote });
+    postWebviewMessage(webview, { type: 'delta', text: autoDiscoveredNote });
   }
 
   try {
@@ -1388,17 +1388,14 @@ async function runChat(
     const postChatDelta = (delta: string): void => {
       if (delta.startsWith('\x00RESET\x00')) {
         const fullText = delta.slice(7);
-        webview.postMessage({
+        postWebviewMessage(webview, {
           type: 'resetResponse',
-          text: stripToolCallBlocks(fullText),
+          text: fullText,
         });
         return;
       }
 
-      const visibleDelta = stripToolCallBlocks(delta);
-      if (visibleDelta) {
-        webview.postMessage({ type: 'delta', text: visibleDelta });
-      }
+      postWebviewMessage(webview, { type: 'delta', text: delta });
     };
 
     const finalResponse = await routeChat({
@@ -1416,12 +1413,15 @@ async function runChat(
       },
     });
 
-    const finalResponseForUser = stripToolCallBlocks(finalResponse);
-    const finalResponseForArtifacts = noAgentCodeChat ? finalResponseForUser : finalResponse;
-    if (noAgentCodeChat) {
-      webview.postMessage({
+    const guardedNonAgentResponse = guardNonAgentResponse(finalResponse);
+    const finalResponseForUser = guardedNonAgentResponse.visibleText;
+    const finalResponseForArtifacts = noAgentCodeChat || guardedNonAgentResponse.containsInternalToolProtocol
+      ? guardedNonAgentResponse.artifactText
+      : finalResponse;
+    if (noAgentCodeChat || guardedNonAgentResponse.usedProtocolNotice) {
+      postWebviewMessage(webview, {
         type: 'resetResponse',
-        text: finalResponseForUser || '（no-agent 模式已忽略模型返回的内部工具调用；请重试，或开启 Agent 模式执行工具调用。）',
+        text: finalResponseForUser || guardedNonAgentResponse.artifactText,
       });
     }
 
@@ -1453,7 +1453,7 @@ async function runChat(
     // 兜底2：注入仍然失败 → 追问 DeepSeek 按标准格式重新整理输出（参考 Aider 的 retry 思路）
     if (canApplyArtifacts && !shouldApplyToReviewQueue && effectiveFiles.length > 0 && /```[\s\S]*?```/.test(finalResponseForArtifacts)) {
       const reformatReq = buildReformatPrompt(effectiveFiles);
-      webview.postMessage({ type: 'delta', text: '\n\n---\n_[系统] 未识别到文件路径标注，正在请求按标准格式重新整理输出…_\n' });
+      postWebviewMessage(webview, { type: 'delta', text: '\n\n---\n_[系统] 未识别到文件路径标注，正在请求按标准格式重新整理输出…_\n' });
       try {
         const reformatResp = await routeChat({
           prompt: reformatReq,
@@ -1461,9 +1461,9 @@ async function runChat(
           mode,
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
-              webview.postMessage({ type: 'delta', text: delta.slice(7) });
+              postWebviewMessage(webview, { type: 'delta', text: delta.slice(7) });
             } else {
-              webview.postMessage({ type: 'delta', text: delta });
+              postWebviewMessage(webview, { type: 'delta', text: delta });
             }
           },
         });
@@ -1507,7 +1507,6 @@ async function runChat(
       const finalApply = recoveredApply ?? firstApply;
       if (shouldRunClosedLoopRepair(finalApply)) {
         await runClosedLoopRepair({
-          webview,
           reporter: workflowReporter,
           originalPrompt: prompt,
           mode,
@@ -1516,13 +1515,14 @@ async function runChat(
           routeChat,
           registerAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(webview, change); },
           getSessionId: () => activeSessionId,
+          postVisibleDelta: (text) => { postWebviewMessage(webview, { type: 'delta', text }); },
         });
       }
     }
   } catch (e) {
     const msg = (e as Error).message;
     if (msg === 'LOGIN_REQUIRED') {
-      webview.postMessage({
+      postWebviewMessage(webview, {
         type: 'error',
         text: 'DeepSeek 登录已过期，请重新登录。',
         loginRequired: true,
@@ -1541,7 +1541,7 @@ async function runChat(
         }
       }
     } else {
-      webview.postMessage({ type: 'error', text: msg });
+      postWebviewMessage(webview, { type: 'error', text: msg });
     }
   } finally {
     // Record chat-mode outcome for learning

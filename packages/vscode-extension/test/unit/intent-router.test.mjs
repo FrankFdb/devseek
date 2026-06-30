@@ -79,6 +79,20 @@ test('decideChatIntent: greeting plus product question → qa chat intent', () =
   assert.equal(shouldUseAgentMode(result, []), false);
 });
 
+test('decideChatIntent: technical introduction with capability wording stays QA', () => {
+  const result = decideChatIntent('你好，能介绍一下 OpenGL 的旋转矩阵吗');
+  assert.equal(result.kind, 'chat');
+  assert.equal(result.mode, 'qa');
+  assert.equal(shouldUseAgentMode(result, []), false);
+});
+
+test('decideChatIntent: why-style graphics question stays QA', () => {
+  const result = decideChatIntent('为什么图形不能显示？');
+  assert.equal(result.kind, 'chat');
+  assert.equal(result.mode, 'qa');
+  assert.equal(shouldUseAgentMode(result, []), false);
+});
+
 test('decideChatIntent: "修复代码中的函数" → code-change intent', () => {
   const result = decideChatIntent('修复这个函数中的bug');
   assert.equal(result.kind, 'code-change');
@@ -95,6 +109,17 @@ test('decideChatIntent: "编写C++程序" → code-change intent', () => {
   const result = decideChatIntent('编写一个C++ 程序，打印hello deepseek');
   assert.equal(result.kind, 'code-change');
   assert.equal(result.mode, 'edit');
+});
+
+test('decideChatIntent: capability phrased feature request → edit intent', () => {
+  const result = decideChatIntent('现在可以同时显示，但是，6个图形，不能单独通过鼠标或者键盘操作，能提供单独控制每个图形旋转');
+  assert.equal(result.kind, 'code-change');
+  assert.equal(result.mode, 'edit');
+  assert.equal(result.reason, 'capability-feature-request');
+  assert.ok(result.signals.includes('capability-feature-request'));
+  assert.ok(result.signals.includes('interactive-feature-context'));
+  assert.deepEqual(result.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'plan', 'memory', 'edit', 'terminal']);
+  assert.equal(shouldUseAgentMode(result, []), true);
 });
 
 test('decideChatIntent: scoped unknown extension path is an explicit edit target', () => {

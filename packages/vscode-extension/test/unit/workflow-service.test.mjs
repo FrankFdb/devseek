@@ -123,6 +123,20 @@ test('WorkflowService: explicit file edit stays controlled when agent toggle is 
   assert.equal(selected.toolPolicyMode, 'edit');
 });
 
+test('WorkflowService: capability feature follow-up with context stays controlled when agent toggle is off', () => {
+  const prompt = '现在可以同时显示，但是，6个图形，不能单独通过鼠标或者键盘操作，能提供单独控制每个图形旋转';
+  const files = ['/tmp/code/shape_manager/main.cpp', '/tmp/code/shape_manager/CMakeLists.txt'];
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files, agentEnabled: false, forceNoAgent: true, prompt });
+
+  assert.equal(intent.mode, 'edit');
+  assert.ok(intent.signals.includes('capability-feature-request'));
+  assert.equal(selected.kind, 'edit-agent');
+  assert.equal(selected.state, 'editing');
+  assert.equal(selected.useAgent, true);
+  assert.equal(selected.toolPolicyMode, 'edit');
+});
+
 test('WorkflowService: exact unknown-extension write stays controlled when agent toggle is off', () => {
   const prompt = '创建 assets/manual-phase6.unknown，内容为：phase6 unknown validation target。';
   const intent = decideChatIntent(prompt);

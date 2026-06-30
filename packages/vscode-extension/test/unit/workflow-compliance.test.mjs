@@ -967,6 +967,7 @@ test('Architecture: ChatRouteController owns intent/workflow routing', () => {
 
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
+  const nonAgentGuard = src('src/app/non-agent-response-guard.ts');
   assert.match(
     ext,
     /const initialRouteDecision = chatRouteController\.decide[\s\S]*?if \(initialRouteDecision\.intent\.mode === 'smalltalk'\)[\s\S]*?webview\.postMessage\(\{ type: 'endResponse' \}\);[\s\S]*?return;[\s\S]*?const _storedSummary/,
@@ -980,29 +981,27 @@ test('Architecture: smalltalk cannot inherit restored session context or apply a
   );
   assert.match(
     ext,
-    /const finalResponseForUser = stripToolCallBlocks\(finalResponse\);[\s\S]*?const finalResponseForArtifacts = noAgentCodeChat \? finalResponseForUser : finalResponse;/,
-    'visible chat output must strip fake tool protocol while artifact parsing can keep raw non-agent responses',
+    /const guardedNonAgentResponse = guardNonAgentResponse\(finalResponse\);[\s\S]*?const finalResponseForUser = guardedNonAgentResponse\.visibleText;[\s\S]*?const finalResponseForArtifacts = noAgentCodeChat \|\| guardedNonAgentResponse\.containsInternalToolProtocol[\s\S]*?\? guardedNonAgentResponse\.artifactText[\s\S]*?: finalResponse;/,
+    'visible chat output must pass through the non-agent response guard before artifact parsing',
   );
+  assertContains(nonAgentGuard, 'stripToolCallBlocks(raw)', 'non-agent guard must strip fake tool protocol from visible text');
+  assertContains(nonAgentGuard, 'containsFakeToolCallProtocol(raw)', 'non-agent guard must detect fake tool protocol before artifact parsing');
 });
 
 test('Architecture: no-agent code chat streams sanitized visible deltas', () => {
   const ext = src('src/extension.ts');
+  const adapter = src('src/ui/webview-event-adapter.ts');
+  const sanitizer = src('src/ui/webview-message-sanitizer.ts');
   assertContains(ext, 'const postChatDelta', 'main chat response must centralize visible delta posting');
   assertContains(ext, 'onDelta: postChatDelta', 'no-agent code chat must keep streaming enabled');
   assert.ok(
     !/stream:\s*noAgentCodeChat\s*\?\s*false/.test(ext),
     'no-agent code chat must not disable provider streaming',
   );
-  assertContains(
-    ext,
-    'text: stripToolCallBlocks(fullText)',
-    'reset/full-text deltas must hide fake tool protocol before display',
-  );
-  assertContains(
-    ext,
-    'const visibleDelta = stripToolCallBlocks(delta);',
-    'incremental deltas must hide fake tool protocol before display',
-  );
+  assertContains(ext, "postWebviewMessage(webview, { type: 'delta', text: delta })", 'streaming delta must go through the webview outbound boundary');
+  assertContains(adapter, 'getWebviewOutboundSanitizer(this.target).sanitize(message)', 'webview adapter must sanitize outbound messages centrally');
+  assertContains(sanitizer, 'state.raw += text', 'stream sanitizer must accumulate raw deltas before stripping tool protocol');
+  assertContains(sanitizer, "return { type: 'resetResponse', text: visible };", 'stream sanitizer must recover with reset when visible text is rewritten');
 });
 
 test('Architecture: SessionService owns session metadata operations', () => {
@@ -1061,9 +1060,28 @@ test('Architecture: assistant webview rendering strips fake tool transcripts at 
 
 test('Architecture: non-agent visible chat output strips fake tool transcripts before webview delivery', () => {
   const ext = src('src/extension.ts');
-  assertContains(ext, 'text: stripToolCallBlocks(fullText)', 'resetResponse visible text must be stripped before delivery');
-  assertContains(ext, 'const visibleDelta = stripToolCallBlocks(delta);', 'streaming delta visible text must be stripped before delivery');
-  assertContains(ext, 'const finalResponseForUser = stripToolCallBlocks(finalResponse);', 'final visible response must be stripped before user-facing handling');
+  const adapter = src('src/ui/webview-event-adapter.ts');
+  const sanitizer = src('src/ui/webview-message-sanitizer.ts');
+  const nonAgentGuard = src('src/app/non-agent-response-guard.ts');
+  assertContains(adapter, 'getWebviewOutboundSanitizer(this.target).sanitize(message)', 'visible webview delivery must go through the sanitizer boundary');
+  assertContains(sanitizer, 'sanitizeVisibleModelText', 'visible delivery sanitizer must have a shared text boundary');
+  assertContains(sanitizer, 'stripToolCallBlocks(raw)', 'visible delivery sanitizer must strip fake tool protocol');
+  assertContains(ext, 'const guardedNonAgentResponse = guardNonAgentResponse(finalResponse);', 'final visible response must enter the non-agent response guard');
+  assertContains(nonAgentGuard, 'stripToolCallBlocks(raw)', 'final visible response guard must strip fake tool protocol');
+  assertContains(nonAgentGuard, 'NON_AGENT_INTERNAL_TOOL_PROTOCOL_NOTICE', 'final visible response guard must avoid blank responses when protocol-only text is hidden');
+});
+
+test('Architecture: model-visible webview messages cannot bypass outbound sanitizer', () => {
+  const files = [
+    'src/extension.ts',
+    'src/local-execution-chat-runner.ts',
+    'src/local-execution-repair.ts',
+    'src/app/closed-loop-repair-runner.ts',
+  ];
+  const directVisiblePostRe = /(?:webview|input\.webview)\.postMessage\(\{\s*type:\s*['"](delta|resetResponse|agentAnnouncement|error|agentNotice)['"]/;
+  for (const rel of files) {
+    assert.doesNotMatch(src(rel), directVisiblePostRe, `${rel} must use postWebviewMessage for visible model text`);
+  }
 });
 
 test('Architecture: agent loop stays orchestration-only for tool execution details', () => {

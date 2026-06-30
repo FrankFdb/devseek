@@ -14,6 +14,7 @@ import type { AppliedChangeRecord, ApplyWorkflowStatus } from './workspace-appli
 import { MemoryService } from './app/memory-service';
 import { decideToolPermission, type ToolPolicy } from './app/permission-service';
 import { isFileProtected } from './protected-files';
+import { postWebviewMessage } from './ui/webview-event-adapter';
 
 const LOCAL_REPAIR_SOURCE_FILE_RE = /(?:^|\/)(?:Makefile|CMakeLists\.txt)$|\.(cpp|c|h|hpp|cc|cxx|ts|tsx|js|jsx|mjs|py|rs|go|java|cs|rb|php|swift|kt|scala|dart|lua|r)$/i;
 
@@ -157,9 +158,9 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
   return {
     onDelta: (delta) => {
       if (delta.startsWith('\x00RESET\x00')) {
-        webview.postMessage({ type: 'resetResponse', text: delta.slice(7) });
+        postWebviewMessage(webview, { type: 'resetResponse', text: delta.slice(7) });
       } else {
-        webview.postMessage({ type: 'delta', text: delta });
+        postWebviewMessage(webview, { type: 'delta', text: delta });
       }
     },
     onWorkflowStatus: workflowReporter,
@@ -251,7 +252,7 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
     onBeforeFileWrite: async (absPath) => {
       if (isFileProtected(absPath, workspaceRoot)) {
         const relPath = relPathFromRepairWorkspace(workspaceRoot, absPath) ?? nodePath.basename(absPath);
-        webview.postMessage({ type: 'agentNotice', kind: 'warn', text: `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）` });
+        postWebviewMessage(webview, { type: 'agentNotice', kind: 'warn', text: `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）` });
         return false;
       }
       const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);

@@ -455,6 +455,7 @@
     "vscode:prepublish": "npm run compile",
     "test": "node test/run-all.mjs",
     "test:human-input": "node test/devseek-human-input-harness.mjs",
+    "test:dsml-webview": "node test/devseek-dsml-webview-harness.mjs",
     "test:deepseek-web-e2e": "node test/devseek-human-input-harness.mjs --real-bridge",
     "test:deepseek-agent-steer-e2e": "node test/devseek-human-input-harness.mjs --real-agent-steer",
     "test:extension-host": "node test/devseek-extension-host-harness.mjs",

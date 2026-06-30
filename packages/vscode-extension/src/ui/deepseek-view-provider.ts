@@ -446,7 +446,6 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
     const finalResult = recovered ?? result;
     if (shouldRunClosedLoopRepair(finalResult)) {
       await runClosedLoopRepair({
-        webview: wv,
         reporter,
         originalPrompt: msg.prompt || '请根据自动验证失败结果继续修复，直到通过。',
         mode: msg.mode,
@@ -455,6 +454,7 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         routeChat: this.deps.routeChat,
         registerAppliedChange: async (change) => { await this.deps.pendingEditCoordinator.registerChange(wv, change); },
         getSessionId: this.deps.getActiveSessionId,
+        postVisibleDelta: (text) => { postWebviewMessage(wv, { type: 'delta', text }); },
       });
     }
   }
@@ -494,7 +494,6 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
     const finalResult = recovered ?? result;
     if (shouldRunClosedLoopRepair(finalResult)) {
       await runClosedLoopRepair({
-        webview: wv,
         reporter,
         originalPrompt: msg.prompt || `请继续修复文件 ${msg.path} 的验证失败问题，直到通过。`,
         mode: msg.mode,
@@ -503,6 +502,7 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         routeChat: this.deps.routeChat,
         registerAppliedChange: async (change) => { await this.deps.pendingEditCoordinator.registerChange(wv, change); },
         getSessionId: this.deps.getActiveSessionId,
+        postVisibleDelta: (text) => { postWebviewMessage(wv, { type: 'delta', text }); },
       });
     }
   }

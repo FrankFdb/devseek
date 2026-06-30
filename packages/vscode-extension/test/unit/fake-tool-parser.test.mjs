@@ -91,6 +91,28 @@ test('FakeToolParser: parses escaped DeepSeek DSML tool transcript format', () =
   assert.equal(stripToolCallBlocks(text), '我先看看当前代码结构，然后给你实现。');
 });
 
+test('FakeToolParser: parses and strips fullwidth double-bar DSML transcript format', () => {
+  const text = [
+    '我来先查看当前 shape_manager 的完整代码，了解现有的渲染和交互逻辑。',
+    '<｜｜DSML｜｜tool_calls>',
+    '<｜｜DSML｜｜invoke name="read_file">',
+    '<｜｜DSML｜｜parameter name="filePath" string="true">code/shape_manager/main.cpp</｜｜DSML｜｜parameter>',
+    '</｜｜DSML｜｜invoke>',
+    '<｜｜DSML｜｜invoke name="list_dir">',
+    '<｜｜DSML｜｜parameter name="path" string="true">code/shape_manager</｜｜DSML｜｜parameter>',
+    '</｜｜DSML｜｜invoke>',
+    '</｜｜DSML｜｜tool_calls>',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.deepEqual(tools.map((tool) => tool.name), ['read_file', 'list_dir']);
+  assert.deepEqual(tools[0].input, { filePath: 'code/shape_manager/main.cpp', path: 'code/shape_manager/main.cpp' });
+  assert.deepEqual(tools[1].input, { path: 'code/shape_manager' });
+  assert.equal(findFirstToolCallStart(text), text.indexOf('<｜｜DSML｜｜tool_calls>'));
+  assert.equal(stripToolCallBlocks(text), '我来先查看当前 shape_manager 的完整代码，了解现有的渲染和交互逻辑。');
+});
+
 test('FakeToolParser: strips incomplete DSML streaming tail', () => {
   const text = '我先读文件。< | DSML | tool_calls< | DSML | invoke name="read_file"';
   assert.equal(parseFakeToolCalls(text).length, 0);
@@ -100,6 +122,13 @@ test('FakeToolParser: strips incomplete DSML streaming tail', () => {
 
 test('FakeToolParser: strips escaped incomplete DSML streaming tail', () => {
   const text = '我先读文件。&lt; | DSML | tool_calls&lt; | DSML | invoke name="read_file"';
+  assert.equal(parseFakeToolCalls(text).length, 0);
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(stripToolCallBlocks(text), '我先读文件。');
+});
+
+test('FakeToolParser: strips incomplete fullwidth DSML streaming tail', () => {
+  const text = '我先读文件。<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="read_file"';
   assert.equal(parseFakeToolCalls(text).length, 0);
   assert.equal(containsFakeToolCallProtocol(text), true);
   assert.equal(stripToolCallBlocks(text), '我先读文件。');

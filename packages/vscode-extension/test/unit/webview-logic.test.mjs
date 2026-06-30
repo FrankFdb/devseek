@@ -243,8 +243,30 @@ function stripToolArgumentBlocksFromText(text) {
   return out;
 }
 
+const DSML_BAR_PATTERN = '[|｜]{1,2}';
+const DSML_MARKER_PATTERN = `${DSML_BAR_PATTERN}\\s*DSML\\s*${DSML_BAR_PATTERN}`;
+const DSML_OPEN_PREFIX_PATTERN = '(?:<|&lt;)\\s*';
+const DSML_CLOSE_PREFIX_PATTERN = '(?:<\\/|&lt;\\/)\\s*';
+const DSML_START_NAMES_PATTERN = '(?:tool_calls|invoke|parameter)';
+const DSML_INCOMPLETE_TAIL_REGEX = new RegExp(
+  `${DSML_OPEN_PREFIX_PATTERN}(?:${DSML_BAR_PATTERN}\\s*(?:D(?:S(?:M(?:L)?)?)?(?:\\s*${DSML_BAR_PATTERN})?)?)?$`,
+  'i',
+);
+
+function makeDsmlStartRegexInText() {
+  return new RegExp(`${DSML_OPEN_PREFIX_PATTERN}${DSML_MARKER_PATTERN}\\s*${DSML_START_NAMES_PATTERN}\\b`, 'gi');
+}
+
+function makeDsmlCloseRegexInText(name) {
+  return new RegExp(`${DSML_CLOSE_PREFIX_PATTERN}${DSML_MARKER_PATTERN}\\s*${name}\\s*(?:>|&gt;)`, 'i');
+}
+
+function makeDsmlTailRegexInText() {
+  return new RegExp(`${DSML_OPEN_PREFIX_PATTERN}${DSML_MARKER_PATTERN}\\s*${DSML_START_NAMES_PATTERN}\\b[\\s\\S]*$`, 'gi');
+}
+
 function findNextDsmlToolCallStartInText(text, startAt = 0) {
-  const re = /(?:<|&lt;)\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b/gi;
+  const re = makeDsmlStartRegexInText();
   re.lastIndex = startAt;
   const match = re.exec(String(text || ''));
   return match ? match.index : -1;
@@ -253,11 +275,11 @@ function findNextDsmlToolCallStartInText(text, startAt = 0) {
 function dsmlToolCallBlockEndInText(text, start) {
   const raw = String(text || '');
   const tail = raw.slice(start);
-  const toolCallsClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*tool_calls\s*(?:>|&gt;)/i.exec(tail);
+  const toolCallsClose = makeDsmlCloseRegexInText('tool_calls').exec(tail);
   if (toolCallsClose) return start + toolCallsClose.index + toolCallsClose[0].length;
-  const invokeClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*invoke\s*(?:>|&gt;)/i.exec(tail);
+  const invokeClose = makeDsmlCloseRegexInText('invoke').exec(tail);
   if (invokeClose) return start + invokeClose.index + invokeClose[0].length;
-  const parameterClose = /(?:<\/|&lt;\/)\s*\|\s*DSML\s*\|\s*parameter\s*(?:>|&gt;)/i.exec(tail);
+  const parameterClose = makeDsmlCloseRegexInText('parameter').exec(tail);
   if (parameterClose) return start + parameterClose.index + parameterClose[0].length;
   return raw.length;
 }
@@ -275,7 +297,7 @@ function stripDsmlToolCallBlocksFromText(text) {
     out += raw.slice(cursor, start).replace(/[ \t]+$/, '');
     cursor = dsmlToolCallBlockEndInText(raw, start);
   }
-  return out.replace(/(?:<|&lt;)\s*(?:\|\s*(?:D(?:S(?:M(?:L)?)?)?)?)?$/i, '').trimEnd();
+  return out.replace(DSML_INCOMPLETE_TAIL_REGEX, '').trimEnd();
 }
 
 function containsDsmlToolTranscript(text) {
@@ -355,7 +377,7 @@ function containsAgentInternalTranscript(text) {
 function cleanAgentFinalProseForUser(text) {
   if (containsAgentInternalTranscript(text || '')) return '';
   let cleaned = stripToolCallBlocks(text || '')
-    .replace(/(?:<|&lt;)\s*\|\s*DSML\s*\|\s*(?:tool_calls|invoke|parameter)\b[\s\S]*$/gi, '')
+    .replace(makeDsmlTailRegexInText(), '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
   if (!cleaned) return '';
@@ -668,6 +690,16 @@ test('agent accumulated render: hides escaped split DSML tool transcript before 
   assert.doesNotMatch(cleaned, /DSML|tool_calls|read_file|filePath/);
 });
 
+test('agent accumulated render: hides fullwidth double-bar DSML tool transcript', () => {
+  let accumulated = '我先看看当前代码结构。<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="read_file"';
+  assert.equal(sanitizeVisibleDeltaForMode(accumulated, true), '我先看看当前代码结构。');
+
+  accumulated += '<｜｜DSML｜｜parameter name="filePath" string="true">code/shape_manager/main.cpp</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke><｜｜DSML｜｜invoke name="list_dir"><｜｜DSML｜｜parameter name="path" string="true">code/shape_manager</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke></｜｜DSML｜｜tool_calls>';
+  const cleaned = sanitizeVisibleDeltaForMode(accumulated, true);
+  assert.equal(cleaned, '我先看看当前代码结构。');
+  assert.doesNotMatch(cleaned, /DSML|tool_calls|read_file|list_dir|filePath/);
+});
+
 test('assistant visible render: hides DSML transcript outside agent mode', () => {
   const leaked = [
     '好的，我先查看当前代码，然后实现。',
@@ -683,6 +715,16 @@ test('assistant visible render: hides escaped DSML transcript outside agent mode
   const cleaned = sanitizeVisibleDeltaForMode(leaked, false);
   assert.equal(cleaned, '好的，我先看当前代码。');
   assert.doesNotMatch(cleaned, /DSML|tool_calls|read_file|filePath/);
+});
+
+test('assistant visible render: hides fullwidth double-bar DSML transcript outside agent mode', () => {
+  const leaked = [
+    '我来先查看当前 shape_manager 的完整代码，了解现有的渲染和交互逻辑。',
+    '<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="read_file"><｜｜DSML｜｜parameter name="filePath" string="true">code/shape_manager/main.cpp</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke><｜｜DSML｜｜invoke name="list_dir"><｜｜DSML｜｜parameter name="path" string="true">code/shape_manager</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke></｜｜DSML｜｜tool_calls>',
+  ].join('\n');
+  const cleaned = sanitizeVisibleDeltaForMode(leaked, false);
+  assert.equal(cleaned, '我来先查看当前 shape_manager 的完整代码，了解现有的渲染和交互逻辑。');
+  assert.doesNotMatch(cleaned, /DSML|tool_calls|read_file|list_dir|filePath/);
 });
 
 test('agent accumulated render: keeps ordinary nameless Calling prose', () => {
