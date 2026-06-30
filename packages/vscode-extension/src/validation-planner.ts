@@ -1,4 +1,11 @@
 import * as nodePath from 'path';
+import {
+  getCmakeBuildDir,
+  getCmakeExecutableCandidatePaths,
+  getCppAutoExecutablePath,
+  getCppCompileOnlyDir,
+  getDevSeekBuildDir,
+} from './cpp-build-layout';
 
 export interface PlannedValidation {
   command: string;
@@ -38,7 +45,7 @@ export function planCppValidation(
 
   const cmakeFile = nodePath.join(targetDir, 'CMakeLists.txt');
   if (fsNode.existsSync(cmakeFile)) {
-    const buildDir = nodePath.join(targetDir, '.devseek-build');
+    const buildDir = getCmakeBuildDir(targetDir);
     const buildOnly = `cmake -S ${q(targetDir)} -B ${q(buildDir)} && cmake --build ${q(buildDir)}`;
     const shouldRun = !!options.run || policy === 'aggressive';
     if (shouldRun) {
@@ -90,9 +97,10 @@ export function planCppValidation(
       const chosenMain = changedMainSources[0];
       const nonMain = sourceFiles.filter((abs) => abs !== chosenMain && !hasMainFunction(abs, fsNode));
       const linkSet = uniqueAbsPaths([...nonMain, chosenMain]);
-      const exeOut = nodePath.join(targetDir, 'deepseek_auto_exec');
+      const exeOut = getCppAutoExecutablePath(targetDir);
+      const exeDir = getDevSeekBuildDir(targetDir);
       return {
-        command: `g++ ${linkSet.map(q).join(' ')} -o ${q(exeOut)} && ${q(exeOut)}`,
+        command: `mkdir -p ${q(exeDir)} && g++ ${linkSet.map(q).join(' ')} -o ${q(exeOut)} && ${q(exeOut)}`,
         cwd: targetDir,
         mode: 'compile-run',
         reason: options.run ? 'multi-main-single-entry-run-requested' : 'multi-main-aggressive-single-entry-run',
@@ -110,11 +118,12 @@ export function planCppValidation(
   // Case 2: single-main project; avoid run by default, escalate only with aggressive policy.
   if (mainSources.length === 1) {
     const compileSet = uniqueAbsPaths(sourceFiles);
-    const exeOut = nodePath.join(targetDir, 'deepseek_auto_exec');
+    const exeOut = getCppAutoExecutablePath(targetDir);
+    const exeDir = getDevSeekBuildDir(targetDir);
 
     if (options.run || (policy === 'aggressive' && changedSources.length > 0)) {
       return {
-        command: `g++ ${compileSet.map(q).join(' ')} -o ${q(exeOut)} && ${q(exeOut)}`,
+        command: `mkdir -p ${q(exeDir)} && g++ ${compileSet.map(q).join(' ')} -o ${q(exeOut)} && ${q(exeOut)}`,
         cwd: targetDir,
         mode: 'compile-run',
         reason: options.run ? 'single-main-run-requested' : 'single-main-aggressive-run',
@@ -123,7 +132,7 @@ export function planCppValidation(
 
     if (policy === 'balanced' && changedSources.length > 0) {
       return {
-        command: `g++ ${compileSet.map(q).join(' ')} -o ${q(exeOut)}`,
+        command: `mkdir -p ${q(exeDir)} && g++ ${compileSet.map(q).join(' ')} -o ${q(exeOut)}`,
         cwd: targetDir,
         mode: 'compile-link',
         reason: 'single-main-link-check-no-run',
@@ -160,8 +169,10 @@ function buildCmakeRunCommand(
   if (!executableTarget) {
     return `ctest --test-dir ${q(buildDir)} --output-on-failure`;
   }
-  const executablePath = nodePath.join(buildDir, executableTarget);
-  return `if test -x ${q(executablePath)}; then ${q(executablePath)}; else ctest --test-dir ${q(buildDir)} --output-on-failure; fi`;
+  return buildRunFirstExistingExecutableCommand(
+    getCmakeExecutableCandidatePaths(buildDir, executableTarget),
+    `ctest --test-dir ${q(buildDir)} --output-on-failure`,
+  );
 }
 
 function detectCmakeExecutableTarget(
@@ -223,8 +234,18 @@ function hasMainFunction(absPath: string, fsNode: { readFileSync: (p: string, en
 }
 
 function buildCompileOnlyCommand(targets: string[], targetDir: string): string {
-  const objDir = nodePath.join(targetDir, '.devseek-build', 'compile-only');
+  const objDir = getCppCompileOnlyDir(targetDir);
   return `mkdir -p ${q(objDir)} && ${targets.map((abs, idx) => `g++ -fsyntax-only ${q(abs)} && g++ -c ${q(abs)} -o ${q(nodePath.join(objDir, `obj_${idx}.o`))}`).join(' && ')}`;
+}
+
+function buildRunFirstExistingExecutableCommand(candidates: string[], fallbackCommand: string): string {
+  const uniqueCandidates = [...new Set(candidates.filter(Boolean))];
+  if (uniqueCandidates.length === 0) return fallbackCommand;
+  const clauses = uniqueCandidates.map((candidate, index) => {
+    const prefix = index === 0 ? 'if' : 'elif';
+    return `${prefix} test -x ${q(candidate)}; then ${q(candidate)}`;
+  });
+  return `${clauses.join('; ')}; else ${fallbackCommand}; fi`;
 }
 
 function q(value: string): string {

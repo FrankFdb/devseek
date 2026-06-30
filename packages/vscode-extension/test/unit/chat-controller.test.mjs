@@ -178,7 +178,13 @@ test('ChatRouteController: capability feature follow-up with context stays in ed
   const decision = controller.decide({
     userDisplay: prompt,
     prompt,
-    files: ['/tmp/code/shape_manager/main.cpp', '/tmp/code/shape_manager/CMakeLists.txt'],
+    files: [
+      '/tmp/code/shape_manager/main.cpp',
+      '/tmp/code/shape_manager/CMakeLists.txt',
+      '/tmp/code/shape_manager/Shape3D.h',
+      '/tmp/code/shape_manager/Sphere.cpp',
+      '/tmp/code/shape_manager/Box.cpp',
+    ],
     agentEnabled: false,
     forceNoAgent: true,
   });
@@ -188,6 +194,7 @@ test('ChatRouteController: capability feature follow-up with context stays in ed
   assert.ok(decision.intent.signals.includes('capability-feature-request'));
   assert.equal(decision.workflow.kind, 'edit-agent');
   assert.equal(decision.workflow.useAgent, true);
+  assert.equal(decision.workflow.requiresPlanReview, false);
   assert.equal(decision.toolPolicy.mode, 'edit');
   assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
 });

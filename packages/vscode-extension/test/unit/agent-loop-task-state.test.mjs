@@ -145,6 +145,23 @@ test('task todo ledger: visual runtime review evidence does not mark run task fa
   assert.equal(settled.todos[0].status, 'completed');
 });
 
+test('task todo ledger: local safe response task completes without file or terminal evidence', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', '', 'respond', '重新生成安全输出，不执行损坏或未验证的工具内容'),
+  ]);
+
+  ledger.startTask(0);
+  const settled = ledger.settleTask(0, {
+    action: 'respond',
+    raw: '已安全阻断上一次损坏响应。',
+    taskComplete: true,
+  });
+
+  assert.equal(settled.completed, true);
+  assert.equal(settled.failed, false);
+  assert.equal(settled.todos[0].status, 'completed');
+});
+
 test('task todo ledger: failed validation terminal evidence blocks read-only completion', () => {
   const ledger = createAgentTaskTodoLedger([
     task('1', 'shape_manager', 'analyze', '使用 run_terminal 执行 cmake 编译并运行查看效果'),

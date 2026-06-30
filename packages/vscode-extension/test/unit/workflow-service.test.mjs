@@ -125,7 +125,13 @@ test('WorkflowService: explicit file edit stays controlled when agent toggle is 
 
 test('WorkflowService: capability feature follow-up with context stays controlled when agent toggle is off', () => {
   const prompt = '现在可以同时显示，但是，6个图形，不能单独通过鼠标或者键盘操作，能提供单独控制每个图形旋转';
-  const files = ['/tmp/code/shape_manager/main.cpp', '/tmp/code/shape_manager/CMakeLists.txt'];
+  const files = [
+    '/tmp/code/shape_manager/main.cpp',
+    '/tmp/code/shape_manager/CMakeLists.txt',
+    '/tmp/code/shape_manager/Shape3D.h',
+    '/tmp/code/shape_manager/Sphere.cpp',
+    '/tmp/code/shape_manager/Box.cpp',
+  ];
   const intent = decideChatIntent(prompt);
   const selected = selectWorkflow({ intent, files, agentEnabled: false, forceNoAgent: true, prompt });
 
@@ -134,6 +140,7 @@ test('WorkflowService: capability feature follow-up with context stays controlle
   assert.equal(selected.kind, 'edit-agent');
   assert.equal(selected.state, 'editing');
   assert.equal(selected.useAgent, true);
+  assert.equal(selected.requiresPlanReview, false);
   assert.equal(selected.toolPolicyMode, 'edit');
 });
 

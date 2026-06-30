@@ -115,7 +115,10 @@ test('VerificationPlanner: CMakeLists-only C++ project changes still plan CMake 
   assert.equal(plan.mode, 'cmake');
   assert.equal(plan.reason, 'cmake-build-and-run-requested');
   assert.match(plan.command, /cmake -S/);
+  assert.match(plan.command, /code\/shape_manager\/build/);
+  assert.match(plan.command, /build\/bin\/shape_manager/);
   assert.match(plan.command, /shape_manager/);
+  assert.doesNotMatch(plan.command, /\.devseek-build/);
 });
 
 test('VerificationPlanner: C++ compile-only artifacts use stable project build directory', () => {
@@ -144,7 +147,7 @@ test('VerificationPlanner: C++ compile-only artifacts use stable project build d
 
   assert.equal(first.kind, 'command');
   assert.equal(first.mode, 'compile-only');
-  assert.match(first.command, /code\/library\/\.devseek-build\/compile-only/);
+  assert.match(first.command, /code\/library\/build\/devseek\/compile-only/);
   assert.doesNotMatch(first.command, /\/tmp\/deepseek_obj_/);
   assert.equal(first.command, second.command);
 });

@@ -6,6 +6,13 @@ import {
   shouldIncludeDiscoveredSourceFile,
   shouldSkipDiscoveryDir,
 } from './file-discovery';
+import {
+  getCmakeBuildDir,
+  getCmakeExecutableCandidatePaths,
+  getCppAutoExecutablePath,
+  getCppCompileOnlyDir,
+  getDevSeekBuildDir,
+} from './cpp-build-layout';
 
 export interface LocalExecutionPlan {
   command: string;
@@ -261,31 +268,117 @@ export function buildExecutionRepairPrompt(
 }
 
 export function buildLocalExecutionSuccessMessage(plan: LocalExecutionPlan, result: LocalExecutionResult): string {
-  const body = truncate(result.output || '（无输出）', 1200);
+  const reviewHint = requiresInteractiveUserReview(plan)
+    ? '如果这是图形或交互式程序，窗口关闭表示本次运行已经结束；请确认画面和关键交互是否符合预期。'
+    : '';
   return [
     plan.mode === 'run-only'
-      ? '插件已先在本地找到可执行文件并直接执行。'
-      : '插件已先在本地完成编译/执行验证。',
-    `模式: ${plan.mode}`,
-    `原因: ${plan.reason}`,
-    `命令: ${plan.command}`,
-    `exitCode: ${result.exitCode ?? 'null'}`,
-    body ? `输出:\n${body}` : '',
+      ? '已在本地执行现有程序。'
+      : '已在本地完成编译/执行验证。',
+    `执行阶段: ${describeExecutionMode(plan)}`,
+    `退出码: ${result.exitCode ?? 'null'}`,
+    reviewHint,
+    '完整终端命令和日志已保留在内部验证详情中，正文只展示结论。',
   ].filter(Boolean).join('\n');
 }
 
 export function buildLocalExecutionFailureMessage(plan: LocalExecutionPlan, result: LocalExecutionResult): string {
-  const body = truncate(result.output || '（无输出）', 1200);
+  const summary = summarizeLocalExecutionOutputForUser(plan, result, 8);
   return [
     plan.mode === 'run-only'
-      ? '插件已先在本地找到可执行文件并直接执行，但程序返回非 0 退出码。'
-      : '插件已按本地执行计划运行命令，但失败类型不是编译/构建错误，未进入自动修复。',
-    `模式: ${plan.mode}`,
-    `原因: ${plan.reason}`,
-    `命令: ${plan.command}`,
-    `exitCode: ${result.exitCode ?? 'null'}`,
-    body ? `输出:\n${body}` : '',
+      ? '本地程序已启动并退出，但返回了非 0 退出码。'
+      : '本地编译/执行未通过；失败类型不适合继续自动修复，已停止执行未验证结果。',
+    `执行阶段: ${describeExecutionMode(plan)}`,
+    `退出码: ${result.exitCode ?? 'null'}`,
+    summary ? `关键输出摘录:\n${summary}` : '',
+    '完整终端命令和日志已保留在内部验证详情中。',
   ].filter(Boolean).join('\n');
+}
+
+export function buildLocalExecutionWorkflowDetail(
+  plan: LocalExecutionPlan,
+  result?: Pick<LocalExecutionResult, 'exitCode' | 'output'>,
+): string {
+  return [
+    `执行阶段: ${describeExecutionMode(plan)}`,
+    `策略: ${plan.reason}`,
+    `目录: ${nodePath.basename(plan.cwd) || plan.cwd}`,
+    result ? `退出码: ${result.exitCode ?? 'null'}` : '',
+    result ? summarizeLocalExecutionOutputForUser(plan, { ...result, command: plan.command, cwd: plan.cwd, ok: false }, 6) : '',
+  ].filter(Boolean).join('\n');
+}
+
+function describeExecutionMode(plan: LocalExecutionPlan): string {
+  switch (plan.mode) {
+    case 'cmake':
+      return 'CMake 构建/验证';
+    case 'compile-run':
+      return '编译并运行';
+    case 'compile-only':
+      return '仅编译';
+    case 'run-only':
+      return '直接运行';
+    case 'script-run':
+      return '脚本运行';
+    default:
+      return plan.mode;
+  }
+}
+
+function requiresInteractiveUserReview(plan: LocalExecutionPlan): boolean {
+  if (!['cmake', 'compile-run', 'run-only', 'script-run'].includes(plan.mode)) return false;
+  const context = [
+    plan.reason,
+    plan.targetFiles.join('\n'),
+    plan.attachedFiles.join('\n'),
+  ].join('\n');
+  return /(图形|绘图|窗口|界面|可视化|GUI|graphics?|window|visual|render|draw|X11|OpenGL|GLUT|GLFW|SDL2?|SFML|Qt|GTK)/i.test(context);
+}
+
+function summarizeLocalExecutionOutputForUser(
+  plan: LocalExecutionPlan,
+  result: Pick<LocalExecutionResult, 'output' | 'exitCode'> & Partial<Pick<LocalExecutionResult, 'command' | 'cwd' | 'ok'>>,
+  maxLines: number,
+): string {
+  const diagnostics = parseLocalExecutionDiagnostics(plan, {
+    ok: false,
+    command: result.command ?? plan.command,
+    cwd: result.cwd ?? plan.cwd,
+    exitCode: result.exitCode,
+    output: result.output || '',
+  });
+  const errorDiagnostics = diagnostics
+    .filter((d) => d.severity === 'error')
+    .slice(0, maxLines)
+    .map((d) => {
+      const loc = [toDisplayPath(plan.cwd, d.filePath), d.line, d.column]
+        .filter((value) => value !== undefined && value !== '')
+        .join(':');
+      return loc ? `${loc}: ${d.message}` : d.message;
+    });
+  if (errorDiagnostics.length > 0) return errorDiagnostics.join('\n');
+
+  const lines = (result.output || '')
+    .split(/\r?\n/)
+    .map((line) => sanitizeLocalExecutionOutputLine(plan, line.trim()))
+    .filter((line) => line && !isNoisyLocalExecutionLine(line))
+    .slice(0, maxLines);
+  return lines.join('\n');
+}
+
+function sanitizeLocalExecutionOutputLine(plan: LocalExecutionPlan, line: string): string {
+  if (!line) return '';
+  let out = line;
+  const cwd = nodePath.resolve(plan.cwd).replace(/\\/g, '/');
+  const parent = nodePath.dirname(cwd).replace(/\\/g, '/');
+  out = out.replaceAll(cwd, '<项目目录>');
+  if (parent && parent !== cwd) out = out.replaceAll(parent, '<工作区>');
+  out = out.replace(/\/(?:home|tmp|usr|opt|var|run|mnt|media)\/[^\s'"`，。；；,]+/g, '<路径>');
+  return truncate(out, 240);
+}
+
+function isNoisyLocalExecutionLine(line: string): boolean {
+  return /^(-- )?(?:The C compiler identification|The CXX compiler identification|Detecting |Check for working|Looking for |Configuring done|Generating done|Build files have been written|Consolidate compiler generated dependencies|\[\s*\d+%\]|Built target|No package '[^']+' found|CMake Warning \(dev\))/i.test(line);
 }
 
 function parseDiagnosticLine(line: string, plan: LocalExecutionPlan): LocalExecutionDiagnostic | null {
@@ -407,7 +500,7 @@ function uniqueExistingPaths(paths: string[]): string[] {
 function planCmakeExecution(targetDir: string, dirFiles: string[], runRequested: boolean, forceBuild = false): LocalExecutionPlan | null {
   const cmakeFile = nodePath.join(targetDir, 'CMakeLists.txt');
   if (!fs.existsSync(cmakeFile)) return null;
-  const buildDir = nodePath.join(targetDir, '.devseek-build');
+  const buildDir = getCmakeBuildDir(targetDir);
   const buildCommand = `cmake -S ${q(targetDir)} -B ${q(buildDir)} && cmake --build ${q(buildDir)}`;
   const executableTarget = detectCmakeExecutableTarget(cmakeFile);
   if (runRequested && !forceBuild) {
@@ -424,7 +517,10 @@ function planCmakeExecution(targetDir: string, dirFiles: string[], runRequested:
     }
   }
   const runCommand = executableTarget
-    ? `if test -x ${q(nodePath.join(buildDir, executableTarget))}; then ${q(nodePath.join(buildDir, executableTarget))}; else ctest --test-dir ${q(buildDir)} --output-on-failure; fi`
+    ? buildRunFirstExistingExecutableCommand(
+        getCmakeExecutableCandidatePaths(buildDir, executableTarget),
+        `ctest --test-dir ${q(buildDir)} --output-on-failure`,
+      )
     : `ctest --test-dir ${q(buildDir)} --output-on-failure`;
   const command = runRequested ? `${buildCommand} && ${runCommand}` : buildCommand;
   return {
@@ -444,7 +540,8 @@ function planCppExecution(targetDir: string, dirFiles: string[], runRequested: b
   if (sourceFiles.length === 0) return null;
 
   const mainSources = sourceFiles.filter((filePath) => hasMainFunction(filePath));
-  const exeOut = nodePath.join(targetDir, 'deepseek_auto_exec');
+  const exeOut = getCppAutoExecutablePath(targetDir);
+  const exeDir = getDevSeekBuildDir(targetDir);
 
   // Use gcc for pure-C projects, g++ for C++
   const hasCpp = sourceFiles.some((f) => /\.(cpp|cc|cxx)$/i.test(f));
@@ -468,7 +565,7 @@ function planCppExecution(targetDir: string, dirFiles: string[], runRequested: b
   }
 
   if (mainSources.length === 1) {
-    const compileBase = `${compiler} ${sourceFiles.map(q).join(' ')} -o ${q(exeOut)}${libFlagsSuffix}`;
+    const compileBase = `mkdir -p ${q(exeDir)} && ${compiler} ${sourceFiles.map(q).join(' ')} -o ${q(exeOut)}${libFlagsSuffix}`;
     const command = runRequested
       ? `${compileBase} && ${q(exeOut)}`
       : compileBase;
@@ -526,13 +623,9 @@ function planScriptExecution(targetDir: string, dirFiles: string[], runRequested
 function findExistingCmakeExecutable(targetDir: string, buildDir: string, executableTarget: string | null): string | null {
   const candidates: string[] = [];
   if (executableTarget) {
+    candidates.push(...getCmakeExecutableCandidatePaths(buildDir, executableTarget));
     for (const name of platformExecutableNames(executableTarget)) {
-      candidates.push(
-        nodePath.join(buildDir, name),
-        nodePath.join(buildDir, 'Debug', name),
-        nodePath.join(buildDir, 'Release', name),
-        nodePath.join(targetDir, name),
-      );
+      candidates.push(nodePath.join(targetDir, name));
     }
   }
   candidates.push(...scanExecutableFiles(buildDir), ...scanExecutableFiles(targetDir));
@@ -546,9 +639,12 @@ function findExistingCppExecutable(targetDir: string, sourceFiles: string[], mai
     nodePath.basename(targetDir),
     'a.out',
   ];
-  const priorityCandidates = priorityNames.flatMap((name) =>
-    platformExecutableNames(name).map((candidate) => nodePath.join(targetDir, candidate)),
-  );
+  const priorityCandidates = [
+    getCppAutoExecutablePath(targetDir),
+    ...priorityNames.flatMap((name) =>
+      platformExecutableNames(name).map((candidate) => nodePath.join(targetDir, candidate)),
+    ),
+  ];
   const sourceSet = new Set(sourceFiles.map((filePath) => nodePath.resolve(filePath)));
   const scanned = scanExecutableFiles(targetDir).filter((filePath) => !sourceSet.has(nodePath.resolve(filePath)));
   return firstExecutable([...priorityCandidates, ...scanned]);
@@ -742,8 +838,18 @@ function cleanPathToken(value: string): string {
 }
 
 function buildCompileOnlyCommand(targets: string[], targetDir: string): string {
-  const objDir = nodePath.join(targetDir, '.devseek-build', 'compile-only');
+  const objDir = getCppCompileOnlyDir(targetDir);
   return `mkdir -p ${q(objDir)} && ${targets.map((filePath, index) => `g++ -std=c++17 -fsyntax-only ${q(filePath)} && g++ -std=c++17 -c ${q(filePath)} -o ${q(nodePath.join(objDir, `obj_${index}.o`))}`).join(' && ')}`;
+}
+
+function buildRunFirstExistingExecutableCommand(candidates: string[], fallbackCommand: string): string {
+  const uniqueCandidates = [...new Set(candidates.filter(Boolean))];
+  if (uniqueCandidates.length === 0) return fallbackCommand;
+  const clauses = uniqueCandidates.map((candidate, index) => {
+    const prefix = index === 0 ? 'if' : 'elif';
+    return `${prefix} test -x ${q(candidate)}; then ${q(candidate)}`;
+  });
+  return `${clauses.join('; ')}; else ${fallbackCommand}; fi`;
 }
 
 function hasMainFunction(filePath: string): boolean {

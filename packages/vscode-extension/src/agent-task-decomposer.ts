@@ -780,7 +780,7 @@ export async function decomposeTask(
       ? await chatFn(systemPrompt, mode)
       : await chat({
           prompt: systemPrompt,
-          newSession: false, // P8: preserve conversation history so the planner sees prior context
+          newSession: true,
           mode,
           stream: false,
         });

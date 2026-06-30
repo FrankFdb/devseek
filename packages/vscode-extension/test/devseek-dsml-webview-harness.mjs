@@ -154,6 +154,8 @@ async function textReport(page) {
 function assertNoInternalProtocol(report, label) {
   assert.doesNotMatch(report.text, /DSML|tool_calls|read_file|list_dir|filePath|^ML\s*[|｜]/, `${label}: text leaked internal DSML transcript`);
   assert.doesNotMatch(report.html, /DSML|tool_calls|read_file|list_dir|filePath|&lt;\s*[|｜]{1,2}\s*DSML/i, `${label}: html leaked internal DSML transcript`);
+  assert.doesNotMatch(report.text, /AFILE:|ASUMRESET|\\x00AFILE|\\x00ASUM/, `${label}: text leaked agent routing marker`);
+  assert.doesNotMatch(report.html, /AFILE:|ASUMRESET|\\x00AFILE|\\x00ASUM/, `${label}: html leaked agent routing marker`);
 }
 
 async function runNonAgentCompleteFlow(page, fixture) {
@@ -210,6 +212,43 @@ async function runSessionHistoryFlow(page, fixture) {
   assertNoInternalProtocol(report, `session history flow (${fixture.label})`);
 }
 
+async function runAgentRoutingMarkerLeakFlow(page) {
+  await dispatch(page, { type: 'clearHistory' });
+  await dispatch(page, { type: 'userMessage', text: '测试 Agent 路由标记泄露', prompt: '测试 Agent 路由标记泄露' });
+  await dispatch(page, { type: 'startResponse', agentMode: true, prompt: '测试 Agent 路由标记泄露' });
+  await dispatch(page, {
+    type: 'agentStatus',
+    phase: 'plan',
+    state: 'completed',
+    title: '任务计划已生成',
+    taskTotal: 1,
+    detail: '1. [analyze] shape_manager - 检查当前代码',
+  });
+  await dispatch(page, { type: 'agentAnnouncement', text: 'ASUMRESET公告阶段说明。' });
+  await dispatch(page, {
+    type: 'agentStatus',
+    phase: 'execute',
+    state: 'started',
+    taskAction: 'analyze',
+    taskFile: 'shape_manager',
+    taskDesc: '检查当前代码',
+  });
+  await dispatch(page, { type: 'delta', text: 'AFILE:shape_managerRESET我先检查当前 main.cpp 的实际内容以及相关头文件。' });
+  await dispatch(page, { type: 'delta', text: 'ASUMRESET已完成验证。' });
+  await dispatch(page, {
+    type: 'agentStatus',
+    phase: 'done',
+    state: 'completed',
+    editedFiles: [],
+  });
+  await dispatch(page, { type: 'endResponse' });
+  await page.waitForTimeout(250);
+  const report = await textReport(page);
+  assert.match(report.text, /已完成验证/);
+  assert.match(report.text, /公告阶段说明/);
+  assertNoInternalProtocol(report, 'agent routing marker leak flow');
+}
+
 async function main() {
   let browser;
   try {
@@ -230,6 +269,7 @@ async function main() {
       await runAgentSplitFlow(page, fixture);
       await runSessionHistoryFlow(page, fixture);
     }
+    await runAgentRoutingMarkerLeakFlow(page);
     console.log(JSON.stringify({ ok: true, fixture: htmlPath }, null, 2));
   } finally {
     await browser.close();

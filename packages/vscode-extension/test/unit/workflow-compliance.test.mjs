@@ -790,6 +790,7 @@ test('Directory discovery uses local context instead of DeepSeek web upload', ()
   assertContains(ext, 'autoDiscoveredFiles', 'auto-discovered files must be tracked separately');
   assertContains(ext, 'autoDiscoveredFileSet', 'auto-discovered files must have an upload exclusion set');
   assertContains(ext, 'browser upload panel can time out before the prompt is sent', 'source must document why auto-discovered files skip web upload');
+  assertContains(ext, '完整清单仅用于本地上下文', 'auto-discovery note must summarize instead of dumping the whole discovered file list');
   assert.match(
     ext,
     /shouldInlineLocalFiles[\s\S]*autoDiscoveredFiles\.length > 0/,
@@ -1179,6 +1180,25 @@ test('Architecture: ValidationService owns automatic validation execution', () =
   assert.doesNotMatch(applier, /planCppValidation|child_process|runShell|runCppAutoValidation/, 'workspace applier must not own validation execution internals');
 });
 
+test('Architecture: C/C++ validation and execution share one stable project build layout', () => {
+  const layout = src('src/cpp-build-layout.ts');
+  const execution = src('src/execution-planner.ts');
+  const localExecution = src('src/local-execution.ts');
+  const validation = src('src/validation-planner.ts');
+
+  assertContains(layout, "export const CPP_BUILD_DIR_NAME = 'build'", 'C/C++ build root must be the project build directory');
+  assertContains(layout, "export const DEVSEEK_BUILD_SUBDIR = 'devseek'", 'DevSeek auxiliary C++ artifacts must live below build/devseek');
+  assertContains(layout, 'getCmakeBuildDir', 'CMake build directory helper must be centralized');
+  assertContains(layout, 'getCppCompileOnlyDir', 'compile-only helper must be centralized');
+  assertContains(layout, 'getCmakeExecutableCandidatePaths', 'CMake executable candidates must be centralized');
+  assertContains(execution, "from './cpp-build-layout'", 'local execution planner must use shared C++ build layout');
+  assertContains(localExecution, "from './cpp-build-layout'", 'legacy local execution path must use shared C++ build layout');
+  assertContains(validation, "from './cpp-build-layout'", 'validation planner must use shared C++ build layout');
+  assert.doesNotMatch(execution, /\.devseek-build/, 'execution planner must not create legacy .devseek-build outputs');
+  assert.doesNotMatch(localExecution, /\.devseek-build/, 'legacy local execution path must not create legacy .devseek-build outputs');
+  assert.doesNotMatch(validation, /\.devseek-build/, 'validation planner must not create legacy .devseek-build outputs');
+});
+
 test('Architecture: simple read-only file inspection bypasses agent loop', () => {
   const extension = src('src/extension.ts');
   const service = src('src/app/read-only-inspection-service.ts');
@@ -1312,6 +1332,19 @@ test('Architecture: Phase 10 application service owns Provider chat routing prot
   assertContains(extension, 'getAgentApplicationService().routeChat(opts)', 'VS Code routeChat wrapper must delegate to app service');
   assert.doesNotMatch(extension, /const messages: ChatMessage\[\] = \[/, 'extension.ts must not assemble provider chat messages');
   assert.doesNotMatch(extension, /getActiveProvider\(\)\.chat\(/, 'extension.ts must not call provider.chat directly');
+});
+
+test('Architecture: Bridge chat uses explicit DevSeek session context, not browser history', () => {
+  const service = src('../shared/src/agent-application-service.ts');
+  const bridgeProvider = src('src/llm/providers/bridge.ts');
+  const extension = src('src/extension.ts');
+
+  assertContains(service, 'buildBridgeTransportRequest', 'application service must prepare bridge transport requests centrally');
+  assertContains(service, 'buildBridgePromptWithExplicitHistory', 'bridge requests must inject explicit current-session history when requested');
+  assertContains(service, '不要使用 DeepSeek 网页中可能残留的旧对话作为上下文', 'bridge prompt must instruct against stale web history');
+  assert.match(service, /buildBridgeTransportRequest[\s\S]*?newSession: true/, 'bridge transport requests must reset browser-side history');
+  assert.match(bridgeProvider, /flattenMessages\(opts\.messages\)[\s\S]*?newSession: opts\.newSession \?\? false/, 'BridgeProvider must honor caller-owned browser reset boundaries');
+  assertContains(extension, 'Bridge 网页侧历史不作为上下文来源', 'extension session history comment must document explicit context ownership');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -233,7 +233,7 @@ export class EnvironmentProfileService {
     const buildCommands = commandList([
       scripts.build && `${nodePackageRunner(packageManager)} run build`,
       !scripts.build && hasAny(paths, ['tsconfig.json']) && `${nodePackageRunner(packageManager)} run build`,
-      hasAny(paths, ['CMakeLists.txt']) && 'cmake -S . -B .devseek-build && cmake --build .devseek-build',
+      hasAny(paths, ['CMakeLists.txt']) && 'cmake -S . -B build && cmake --build build',
       hasAny(paths, ['Cargo.toml']) && 'cargo build',
       hasAny(paths, ['go.mod']) && 'go build ./...',
     ]);
@@ -242,7 +242,7 @@ export class EnvironmentProfileService {
       hasAny(paths, ['pyproject.toml', 'requirements.txt']) && 'python -m pytest',
       hasAny(paths, ['Cargo.toml']) && 'cargo test',
       hasAny(paths, ['go.mod']) && 'go test ./...',
-      hasAny(paths, ['CMakeLists.txt']) && 'ctest --test-dir .devseek-build --output-on-failure',
+      hasAny(paths, ['CMakeLists.txt']) && 'ctest --test-dir build --output-on-failure',
     ]);
     const lintCommands = commandList([
       scripts.lint && `${nodePackageRunner(packageManager)} run lint`,
@@ -330,8 +330,8 @@ export class LanguageRuntimeRegistry {
         canIndex: true,
         canDiagnose: true,
         canFormat: false,
-        buildCommands: ['cmake -S . -B .devseek-build && cmake --build .devseek-build'],
-        testCommands: ['ctest --test-dir .devseek-build --output-on-failure'],
+        buildCommands: ['cmake -S . -B build && cmake --build build'],
+        testCommands: ['ctest --test-dir build --output-on-failure'],
         runCommands: [],
       },
       unknown: {

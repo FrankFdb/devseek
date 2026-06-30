@@ -9,6 +9,7 @@ import { shouldRequestManualReviewForRun } from './agent/manual-review-validatio
 import {
   buildLocalExecutionFailureMessage,
   buildLocalExecutionSuccessMessage,
+  buildLocalExecutionWorkflowDetail,
   isRepeatExecutionRequest,
   type LocalExecutionPlan,
   planLocalExecution,
@@ -94,7 +95,7 @@ export async function runLocalExecutionChatIfPossible(
     phase: 'validate',
     state: 'started',
     title: localPlan.mode === 'run-only' ? '插件正在本地执行已有程序' : '插件正在本地编译/执行',
-    detail: `模式: ${localPlan.mode}\n原因: ${localPlan.reason}\n命令: ${localPlan.command}`,
+    detail: buildLocalExecutionWorkflowDetail(localPlan),
   });
 
   let maxRounds = Math.max(0, Math.min(6, input.config.get<number>('autoFixRounds', 6)));
@@ -118,7 +119,7 @@ export async function runLocalExecutionChatIfPossible(
         phase: 'validate',
         state: 'passed',
         title: '本地程序已启动，等待人工确认',
-        detail: `命令: ${localResult.command}\n${manualReview.detail}`,
+        detail: `${buildLocalExecutionWorkflowDetail(localPlan, localResult)}\n${manualReview.detail}`,
       });
       postWebviewMessage(input.webview, { type: 'delta', text: manualReview.detail });
       input.webview.postMessage({ type: 'endResponse' });
@@ -128,7 +129,7 @@ export async function runLocalExecutionChatIfPossible(
       phase: 'validate',
       state: localResult.ok ? 'passed' : 'failed',
       title: localResult.ok ? '本地执行通过' : '本地执行失败',
-      detail: `命令: ${localResult.command}\nexitCode: ${localResult.exitCode ?? 'null'}\n${localResult.output.slice(0, 1200)}`,
+      detail: buildLocalExecutionWorkflowDetail(localPlan, localResult),
     });
 
     if (localResult.ok) {

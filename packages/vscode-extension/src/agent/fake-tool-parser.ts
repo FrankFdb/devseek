@@ -4,7 +4,7 @@ export interface FakeTool {
 }
 
 export const KNOWN_FAKE_TOOL_NAMES = new Set([
-  'read_file', 'grep_search', 'file_search', 'semantic_search', 'list_dir', 'get_errors',
+  'read_file', 'grep_search', 'search_file', 'file_search', 'semantic_search', 'list_dir', 'get_errors',
   'run_terminal', 'memory_write', 'get_changed_files', 'create_directory', 'fetch_webpage',
   'vscode_listCodeUsages', 'run_vscode_command', 'create_file', 'write_file', 'replace_file',
   'manage_todo_list', 'task_complete',
@@ -163,12 +163,12 @@ function stripCallingToolBlocks(text: string): string {
     }
     const jsonStart = text.indexOf('{', callRe.lastIndex);
     if (jsonStart < 0) {
-      out += text.slice(i);
+      out += text.slice(i, m.index);
       break;
     }
     const jsonEnd = findJsonObjectEnd(text, jsonStart);
     if (jsonEnd < 0) {
-      out += text.slice(i);
+      out += text.slice(i, m.index);
       break;
     }
     out += text.slice(i, m.index);

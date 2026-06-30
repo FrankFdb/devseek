@@ -1,6 +1,10 @@
 import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import {
+  getCppAutoExecutablePath,
+  getDevSeekBuildDir,
+} from './cpp-build-layout';
 
 export interface LocalExecutionDecision {
   handled: boolean;
@@ -48,8 +52,9 @@ export function decideLocalExecution(prompt: string, files: string[] | undefined
   if (!targetDir) return null;
 
   const dirCppFiles = cppFiles.filter((f) => nodePath.dirname(f) === targetDir);
-  const outPath = nodePath.join(targetDir, 'deepseek_auto_exec');
-  const compileCmd = `g++ -std=c++17 ${dirCppFiles.map(q).join(' ')} -o ${q(outPath)}`;
+  const outPath = getCppAutoExecutablePath(targetDir);
+  const outDir = getDevSeekBuildDir(targetDir);
+  const compileCmd = `mkdir -p ${q(outDir)} && g++ -std=c++17 ${dirCppFiles.map(q).join(' ')} -o ${q(outPath)}`;
   const compileOnly = !wantsRun;
 
   return {

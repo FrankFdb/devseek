@@ -159,6 +159,21 @@ test('FakeToolParser: parses bash Calling JSON command payload as shell command'
   });
 });
 
+test('FakeToolParser: parses DeepSeek search_file alias and strips it from visible prose', () => {
+  const text = [
+    '让我先搜索相关源文件。',
+    'Calling: search_file',
+    '{"target_directory":"/home/coder/project/shape_manager","pattern":"*.cpp","recursive":true}',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'search_file');
+  assert.equal(tools[0].input.target_directory, '/home/coder/project/shape_manager');
+  assert.equal(tools[0].input.pattern, '*.cpp');
+  assert.equal(stripToolCallBlocks(text), '让我先搜索相关源文件。');
+});
+
 test('FakeToolParser: does not execute task summary JSON as a bash command', () => {
   const text = [
     'Calling: bash',

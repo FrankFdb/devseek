@@ -23,6 +23,9 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const {
+  buildLocalExecutionFailureMessage,
+  buildLocalExecutionSuccessMessage,
+  buildLocalExecutionWorkflowDetail,
   parseLocalExecutionDiagnostics,
   planLocalExecution,
   planRepeatLocalExecution,
@@ -110,17 +113,86 @@ test('ExecutionPlanner: CMake test request runs executable instead of build-only
     assert.equal(plan.mode, 'cmake');
     assert.equal(plan.reason, 'cmake-local-build-and-test');
     assert.match(plan.command, /if test -x/);
+    assert.match(plan.command, /build\/bin\/shape_manager/);
     assert.match(plan.command, /shape_manager/);
   } finally {
     fs.rmSync(workspaceRoot, { recursive: true, force: true });
   }
 });
 
+test('ExecutionPlanner: CMake run plan uses the stable project build directory', () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-exec-'));
+  try {
+    const projectDir = path.join(workspaceRoot, 'code', 'shape_manager');
+    fs.mkdirSync(projectDir, { recursive: true });
+    fs.writeFileSync(path.join(projectDir, 'CMakeLists.txt'), [
+      'cmake_minimum_required(VERSION 3.10)',
+      'project(ShapeManager)',
+      'add_executable(shape_manager main.cpp)',
+      'set_target_properties(shape_manager PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")',
+      '',
+    ].join('\n'));
+    fs.writeFileSync(path.join(projectDir, 'main.cpp'), 'int main() { return 0; }\n');
+
+    const plan = planLocalExecution(`${projectDir} 请编译并运行`, [], workspaceRoot);
+    assert.ok(plan);
+    assert.equal(plan.mode, 'cmake');
+    assert.match(plan.command, /cmake -S/);
+    assert.match(plan.command, /-B '.*\/code\/shape_manager\/build'/);
+    assert.match(plan.command, /build\/bin\/shape_manager/);
+    assert.doesNotMatch(plan.command, /\.devseek-build/);
+  } finally {
+    fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ExecutionPlanner: local execution UI messages do not dump full shell commands or logs', () => {
+  const projectDir = '/home/ff/work/devseek_netai/code/shape_manager';
+  const plan = {
+    command: `cmake -S '${projectDir}' -B '${projectDir}/build' && cmake --build '${projectDir}/build' && '${projectDir}/build/bin/shape_manager'`,
+    cwd: projectDir,
+    mode: 'cmake',
+    reason: 'cmake-local-build-and-test',
+    attachedFiles: [`${projectDir}/main.cpp`, `${projectDir}/CMakeLists.txt`],
+    targetFiles: [`${projectDir}/main.cpp`, `${projectDir}/CMakeLists.txt`],
+  };
+  const success = {
+    ok: true,
+    command: plan.command,
+    cwd: projectDir,
+    exitCode: 0,
+    output: [
+      "-- Checking for module 'glut'",
+      `-- Build files have been written to: ${projectDir}/build`,
+      '[100%] Built target shape_manager',
+      `running ${projectDir}/build/bin/shape_manager`,
+    ].join('\n'),
+  };
+  const successMessage = buildLocalExecutionSuccessMessage(plan, success);
+  const workflowDetail = buildLocalExecutionWorkflowDetail(plan, success);
+
+  assert.match(successMessage, /已在本地完成编译\/执行验证/);
+  assert.match(successMessage, /完整终端命令和日志已保留在内部验证详情/);
+  assert.doesNotMatch(successMessage, /cmake -S|Checking for module|Build files have been written|\/home\/ff/);
+  assert.doesNotMatch(workflowDetail, /cmake -S|Build files have been written|\/home\/ff/);
+
+  const failure = {
+    ok: false,
+    command: plan.command,
+    cwd: projectDir,
+    exitCode: 1,
+    output: `${projectDir}/main.cpp:3:5: error: expected ';' before '}' token`,
+  };
+  const failureMessage = buildLocalExecutionFailureMessage(plan, failure);
+  assert.match(failureMessage, /main\.cpp:3:5: expected ';'/);
+  assert.doesNotMatch(failureMessage, /cmake -S|\/home\/ff/);
+});
+
 test('ExecutionPlanner: repeat recompile request replans build instead of stale run-only executable', () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-repeat-rebuild-'));
   try {
     const projectDir = path.join(workspaceRoot, 'code', 'shape_manager');
-    const buildDir = path.join(projectDir, '.devseek-build');
+    const buildDir = path.join(projectDir, 'build');
     fs.mkdirSync(buildDir, { recursive: true });
     const cmakeFile = path.join(projectDir, 'CMakeLists.txt');
     const mainCpp = path.join(projectDir, 'main.cpp');
@@ -180,6 +252,29 @@ test('ExecutionPlanner: Chinese execute-result request runs an existing C++ exec
   }
 });
 
+test('ExecutionPlanner: C++ run request reuses DevSeek build executable before compiling', () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-exec-'));
+  try {
+    const projectDir = path.join(workspaceRoot, 'code', 'shape_manager');
+    const devseekBuildDir = path.join(projectDir, 'build', 'devseek');
+    fs.mkdirSync(devseekBuildDir, { recursive: true });
+    const mainCpp = path.join(projectDir, 'main.cpp');
+    const existingExe = path.join(devseekBuildDir, 'deepseek_auto_exec');
+    fs.writeFileSync(mainCpp, 'int main() { return 0; }\n');
+    fs.writeFileSync(existingExe, '#!/bin/sh\necho EXISTING_BUILD_OK\n');
+    fs.chmodSync(existingExe, 0o755);
+
+    const plan = planLocalExecution('请执行，给出执行结果', [mainCpp], workspaceRoot);
+    assert.ok(plan);
+    assert.equal(plan.mode, 'run-only');
+    assert.equal(plan.reason, 'cpp-existing-executable-run');
+    assert.equal(plan.command, `'${existingExe}'`);
+    assert.equal(plan.command.includes('g++'), false);
+  } finally {
+    fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('ExecutionPlanner: C++ run request compiles and runs only when no executable exists', () => {
   const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-exec-'));
   try {
@@ -214,7 +309,7 @@ test('ExecutionPlanner: C++ compile-only artifacts use stable project build dire
     assert.ok(first);
     assert.ok(second);
     assert.equal(first.mode, 'compile-only');
-    assert.match(first.command, /code\/library\/\.devseek-build\/compile-only/);
+    assert.match(first.command, /code\/library\/build\/devseek\/compile-only/);
     assert.doesNotMatch(first.command, /\/tmp\/deepseek_exec_/);
     assert.equal(first.command, second.command);
   } finally {
@@ -296,7 +391,7 @@ test('ExecutionPlanner: CMake diagnostics can target CMakeLists without broad so
     fs.writeFileSync(cmakeFile, 'cmake_minimum_required(VERSION 3.10)\nnot_a_cmake_command()\n');
 
     const plan = {
-      command: `cmake -S '${projectDir}' -B '${path.join(projectDir, '.devseek-build')}'`,
+      command: `cmake -S '${projectDir}' -B '${path.join(projectDir, 'build')}'`,
       cwd: projectDir,
       mode: 'cmake',
       reason: 'test',

@@ -65,7 +65,43 @@ test('AgentApplicationService routes bridge chat through bridge port and records
   assert.equal(response, 'bridge response');
   assert.equal(bridgeRequests.length, 1);
   assert.equal(bridgeRequests[0].prompt, 'hello');
-  assert.deepEqual(records, [{ request: bridgeRequests[0], response: 'bridge response' }]);
+  assert.equal(bridgeRequests[0].newSession, true);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].request.prompt, 'hello');
+  assert.equal(records[0].request.newSession, undefined);
+  assert.equal(records[0].response, 'bridge response');
+});
+
+test('AgentApplicationService isolates bridge browser history and injects only current session history', async () => {
+  const records = [];
+  const bridgeRequests = [];
+  const service = new AgentApplicationService({
+    getProviderType: () => 'bridge',
+    getProvider: () => {
+      throw new Error('bridge must not request API provider');
+    },
+    bridgeChat: async (request) => {
+      bridgeRequests.push(request);
+      return 'bridge response';
+    },
+    getChatHistory: () => [
+      { role: 'user', content: 'current session requirement' },
+      { role: 'assistant', content: 'current session result' },
+    ],
+    recordChatHistory: (request, response) => records.push({ request, response }),
+  });
+
+  const response = await service.routeChat({ prompt: 'continue now', trackHistory: true });
+
+  assert.equal(response, 'bridge response');
+  assert.equal(bridgeRequests.length, 1);
+  assert.equal(bridgeRequests[0].newSession, true);
+  assert.match(bridgeRequests[0].prompt, /DevSeek 当前 session 显式上下文/);
+  assert.match(bridgeRequests[0].prompt, /current session requirement/);
+  assert.match(bridgeRequests[0].prompt, /current session result/);
+  assert.match(bridgeRequests[0].prompt, /【当前用户请求】\ncontinue now/);
+  assert.equal(records.length, 1);
+  assert.equal(records[0].request.prompt, 'continue now');
 });
 
 test('AgentApplicationService builds provider messages from tracked history and vision input', async () => {

@@ -122,6 +122,7 @@ export function createAgentTaskTodoLedger(
 
 function getTaskMissingCompletionEvidence(task: AgentTask, evidence: TaskEvidence): string[] {
   if (!isReadOnlyAgentTaskAction(evidence.action)) return [];
+  if (evidence.action === 'respond') return [];
   return getMissingCompletionEvidence(
     task.desc || task.file || '',
     [{ title: task.desc || task.file || '' }],

@@ -212,12 +212,13 @@ function shouldUseControlledWorkspaceWorkflow(input: WorkflowSelectionInput): bo
 function requiresPlanReview(input: WorkflowSelectionInput): boolean {
   if (!['edit', 'plan'].includes(input.intent.mode)) return false;
   if (input.intentConfirmed) return false;
+  if (input.intent.signals.includes('capability-feature-request')) return false;
   const text = `${input.userText ?? ''}\n${input.prompt ?? ''}`.trim();
   if (!text) return false;
   if (input.intent.mode === 'plan' && isPlanningOnlyRequest(text)) return false;
   const hasBroadScope = /(整个|全部|全局|项目|仓库|系统|架构|多入口|跨平台|跨模块|模块化|runtime|workflow|provider|权限|状态机)/i.test(text);
   const hasComplexAction = /(重构|改造|拆分|迁移|重写|优化架构|革命性|架构设计|refactor|re-architect|architecture)/i.test(text);
-  return (hasBroadScope && hasComplexAction) || input.files.length > 3;
+  return (hasBroadScope && hasComplexAction) || (input.files.length > 3 && hasComplexAction);
 }
 
 function isPlanningOnlyRequest(text: string): boolean {

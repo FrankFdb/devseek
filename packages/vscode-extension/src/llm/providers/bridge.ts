@@ -22,7 +22,10 @@ export class BridgeProvider implements LLMProvider {
     const cfg = vscode.workspace.getConfiguration('devseek');
     const response = await bridgeClient.chat({
       prompt,
-      newSession: opts.newSession,
+      // Resetting DeepSeek's browser-side conversation is a top-level task
+      // boundary decision. Agent loops call the provider several times inside
+      // one task, and those rounds must stay in the same web conversation.
+      newSession: opts.newSession ?? false,
       stream: opts.stream !== false,
       onDelta: opts.onDelta,
       timeoutMs: opts.timeoutMs ?? cfg.get<number>('requestTimeoutMs', 120000),

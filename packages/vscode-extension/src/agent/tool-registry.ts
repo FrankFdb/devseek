@@ -42,6 +42,7 @@ function schema(required: string[], properties: Record<string, AgentToolSchemaPr
 export const AGENT_TOOL_DEFINITIONS: Record<string, AgentToolDefinition> = {
   read_file: { name: 'read_file', kind: 'read', risk: 'low', allowedModes: READ_MODES, activityKind: 'read', schema: schema(['path'], { path: { type: 'string' } }) },
   grep_search: { name: 'grep_search', kind: 'search', risk: 'low', allowedModes: READ_MODES, activityKind: 'search', schema: schema(['pattern'], { pattern: { type: 'string' }, path: { type: 'string' }, isRegexp: { type: 'boolean' } }) },
+  search_file: { name: 'search_file', kind: 'search', risk: 'low', allowedModes: READ_MODES, activityKind: 'search', schema: schema([], { target_directory: { type: 'string' }, targetDirectory: { type: 'string' }, path: { type: 'string' }, glob: { type: 'string' }, pattern: { type: 'string' }, recursive: { type: 'boolean' } }) },
   file_search: { name: 'file_search', kind: 'search', risk: 'low', allowedModes: READ_MODES, activityKind: 'search', schema: schema(['glob'], { glob: { type: 'string' }, pattern: { type: 'string' } }) },
   semantic_search: { name: 'semantic_search', kind: 'search', risk: 'low', allowedModes: READ_MODES, activityKind: 'search', schema: schema(['query'], { query: { type: 'string' } }) },
   list_dir: { name: 'list_dir', kind: 'search', risk: 'low', allowedModes: READ_MODES, activityKind: 'list', schema: schema(['path'], { path: { type: 'string' } }) },
@@ -111,6 +112,7 @@ export function getToolActivity(tool: FakeTool): AgentToolActivity | null {
       const q = String(inp.query ?? inp.pattern ?? inp.includePattern ?? '').trim().slice(0, 50);
       return { kind: 'search', label: q };
     }
+    case 'search_file':
     case 'file_search':
     case 'semantic_search':
     case 'vscode_listCodeUsages': {

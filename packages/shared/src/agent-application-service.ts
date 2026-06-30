@@ -52,7 +52,8 @@ export class AgentApplicationService {
         message: 'Waiting for Bridge provider response',
       });
       try {
-        const response = await this.deps.bridgeChat(request);
+        const bridgeRequest = this.buildBridgeTransportRequest(request);
+        const response = await this.deps.bridgeChat(bridgeRequest);
         this.emit({ type: 'provider.status', providerType, status: 'completed' });
         this.deps.recordChatHistory(request, response);
         return response;
@@ -63,6 +64,17 @@ export class AgentApplicationService {
     }
 
     return this.routeProviderChat(request);
+  }
+
+  private buildBridgeTransportRequest(request: AgentChatRequest): AgentChatRequest {
+    const prompt = request.trackHistory
+      ? buildBridgePromptWithExplicitHistory(request.prompt, this.deps.getChatHistory())
+      : request.prompt;
+    return {
+      ...request,
+      prompt,
+      newSession: true,
+    };
   }
 
   private async handleChatCommand(command: Extract<AgentCommand, { type: 'chat.request' }>): Promise<AgentEvent[]> {
@@ -189,4 +201,44 @@ export class AgentApplicationService {
       message,
     };
   }
+}
+
+function buildBridgePromptWithExplicitHistory(prompt: string, history: ChatMessage[]): string {
+  const historyText = formatBridgeHistory(history);
+  if (!historyText) return prompt;
+
+  return [
+    '【DevSeek 当前 session 显式上下文】',
+    '以下内容只来自当前 DevSeek session 的本地历史。不要使用 DeepSeek 网页中可能残留的旧对话作为上下文。',
+    '',
+    historyText,
+    '',
+    '【当前用户请求】',
+    prompt,
+  ].join('\n');
+}
+
+function formatBridgeHistory(history: ChatMessage[]): string {
+  const items = history
+    .slice(-12)
+    .map((message) => {
+      const content = stringifyMessageContent(message.content).trim();
+      if (!content) return '';
+      return `[${message.role}]\n${truncateForBridgeHistory(content, 1200)}`;
+    })
+    .filter(Boolean);
+  return truncateForBridgeHistory(items.join('\n\n'), 10_000);
+}
+
+function stringifyMessageContent(content: ChatMessage['content']): string {
+  if (typeof content === 'string') return content;
+  return content
+    .filter((part) => part.type === 'text' && part.text)
+    .map((part) => part.text)
+    .join('\n');
+}
+
+function truncateForBridgeHistory(value: string, maxChars: number): string {
+  if (value.length <= maxChars) return value;
+  return `${value.slice(0, maxChars)}\n...[已截断，仅保留当前 session 最近上下文]`;
 }

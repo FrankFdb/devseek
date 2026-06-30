@@ -649,12 +649,18 @@ export async function executeFakeToolsForLoop(
         const msg = err instanceof Error ? err.message : String(err);
         parts.push(`[get_errors] 错误: ${msg}`);
       }
-    } else if (tool.name === 'file_search' && callbacks.onFileSearch) {
-      const glob = typeof (tool.input as Record<string, unknown>)?.glob === 'string'
-        ? (tool.input as Record<string, string>).glob.trim()
-        : typeof (tool.input as Record<string, unknown>)?.pattern === 'string'
-          ? (tool.input as Record<string, string>).pattern.trim()
-          : '';
+    } else if ((tool.name === 'file_search' || tool.name === 'search_file') && callbacks.onFileSearch) {
+      const input = tool.input as Record<string, unknown>;
+      const directGlob = typeof input.glob === 'string' ? input.glob.trim() : '';
+      const pattern = typeof input.pattern === 'string' ? input.pattern.trim() : '';
+      const targetDir = typeof input.target_directory === 'string'
+        ? input.target_directory.trim()
+        : typeof input.targetDirectory === 'string'
+          ? input.targetDirectory.trim()
+          : typeof input.path === 'string'
+            ? input.path.trim()
+            : '';
+      const glob = directGlob || (targetDir && pattern ? nodePath.join(targetDir, pattern) : pattern);
       if (glob) {
         toolCallsMade = true;
         try {

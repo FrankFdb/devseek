@@ -93,3 +93,17 @@ test('Engineering policies expose dependency, docs, preview, conflict, root, and
   assert.equal(replay.prompt.includes('abc123'), false);
   assert.deepEqual(replay.expectedEvents, ['chat.started', 'qualityGate.completed']);
 });
+
+test('EngineeringContextService uses stable build/ directory for CMake command hints', () => {
+  const context = new EngineeringContextService().build({
+    workspaceRoot: '/repo',
+    files: [
+      { path: 'CMakeLists.txt', sizeBytes: 80 },
+      { path: 'main.cpp', sizeBytes: 120 },
+    ],
+  });
+
+  assert.deepEqual(context.environment.buildCommands, ['cmake -S . -B build && cmake --build build']);
+  assert.deepEqual(context.environment.testCommands, ['ctest --test-dir build --output-on-failure']);
+  assert.equal(context.environment.buildCommands.join('\n').includes('.devseek-build'), false);
+});

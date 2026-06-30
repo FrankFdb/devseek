@@ -48,6 +48,7 @@ test('ToolRegistry: exposes mutating metadata for write tools', () => {
 
 test('ToolRegistry: resolves registered and MCP tools', () => {
   assert.equal(isRegisteredToolName('read_file'), true);
+  assert.equal(isRegisteredToolName('search_file'), true);
   assert.equal(isRegisteredToolName('not_a_tool'), false);
   assert.equal(getToolDefinition('mcp__repo__search').kind, 'mcp');
   assert.equal(getToolDefinition('mcp__repo__search').risk, 'medium');
@@ -61,6 +62,10 @@ test('ToolRegistry: maps tools to activity display labels', () => {
   assert.deepEqual(
     getToolActivity({ name: 'run_terminal', input: { command: 'npm test -- --watch=false' } }),
     { kind: 'terminal', label: 'npm test -- --watch=false' },
+  );
+  assert.deepEqual(
+    getToolActivity({ name: 'search_file', input: { target_directory: 'src', pattern: '*.ts' } }),
+    { kind: 'search', label: '*.ts' },
   );
   assert.equal(getToolActivity({ name: 'manage_todo_list', input: {} }), null);
 });

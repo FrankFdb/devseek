@@ -57,6 +57,7 @@ let workingCopyStyle = 'detailed';
 let suppressGeneratedStreaming = false;
 let expectGeneratedArtifacts = false;
 let currentResponseMeta = { hasGeneratedArtifacts: false, generatedPaths: [], pathHints: [] };
+let nonAgentPendingToolArgumentDelta = false;
 let readySettled = false;
 let editingUserTurn = null;
 let userPinnedToBottom = true;
@@ -1455,7 +1456,7 @@ function findJsonObjectEndInText(text, start) {
 }
 
 var WEBVIEW_TOOL_NAMES = {
-  read_file: true, grep_search: true, file_search: true, semantic_search: true, list_dir: true, get_errors: true,
+  read_file: true, grep_search: true, search_file: true, file_search: true, semantic_search: true, list_dir: true, get_errors: true,
   run_terminal: true, memory_write: true, get_changed_files: true, create_directory: true, fetch_webpage: true,
   vscode_listCodeUsages: true, run_vscode_command: true, create_file: true, write_file: true, replace_file: true,
   manage_todo_list: true, task_complete: true,
@@ -1466,8 +1467,48 @@ var WEBVIEW_SHELL_TRANSCRIPT_NAMES = {
   cmd: true, powershell: true, pwsh: true,
 };
 
+function isWebviewToolName(name) {
+  var n = String(name || '').trim();
+  return !!WEBVIEW_TOOL_NAMES[n] || n.indexOf('mcp__') === 0;
+}
+
 function isWebviewShellTranscriptName(name) {
   return !!WEBVIEW_SHELL_TRANSCRIPT_NAMES[String(name || '').toLowerCase()];
+}
+
+function containsWebviewCallingToolIntent(text) {
+  var callRe = makeWebviewAnyCallingRegex();
+  var raw = String(text || '');
+  var m;
+  while ((m = callRe.exec(raw)) !== null) {
+    var name = m[1] || '';
+    if (name && (isWebviewToolName(name) || isWebviewShellTranscriptName(name))) return true;
+  }
+  return false;
+}
+
+function stripWebviewJsonFence(text) {
+  var s = String(text || '').trim();
+  var m = /^```(?:json|JSON|javascript|js)?\s*\n?([\s\S]*?)\n?```\s*$/.exec(s);
+  return m ? String(m[1] || '').trim() : s;
+}
+
+function looksLikeWebviewToolArgumentPayload(text) {
+  var s = stripWebviewJsonFence(text);
+  if (!s || (s[0] !== '{' && s[0] !== '[')) return false;
+  var parsed;
+  try {
+    parsed = JSON.parse(s);
+  } catch (_) {
+    return /"(?:filePath|path|target_directory|targetDirectory|pattern|recursive|command|content|oldText|newText|todoList|summary|query|include|type)"\s*:/i.test(s);
+  }
+  var items = Array.isArray(parsed) ? parsed : [parsed];
+  return items.some(function(item) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return false;
+    return Object.keys(item).some(function(key) {
+      return /^(?:filePath|path|target_directory|targetDirectory|pattern|recursive|command|content|oldText|newText|todoList|summary|query|include|type)$/i.test(key);
+    });
+  });
 }
 
 function makeWebviewAnyCallingRegex() {
@@ -1570,15 +1611,15 @@ function stripCallingToolBlocksFromText(text) {
     var m = callRe.exec(text);
     if (!m) { out += text.slice(i); break; }
     var name = m[1];
-    if (!WEBVIEW_TOOL_NAMES[name] && name.indexOf('mcp__') !== 0) {
+    if (!isWebviewToolName(name)) {
       out += text.slice(i, callRe.lastIndex);
       i = callRe.lastIndex;
       continue;
     }
     var jsonStart = text.indexOf('{', callRe.lastIndex);
-    if (jsonStart < 0) { out += text.slice(i); break; }
+    if (jsonStart < 0) { out += text.slice(i, m.index); break; }
     var jsonEnd = findJsonObjectEndInText(text, jsonStart);
-    if (jsonEnd < 0) { out += text.slice(i); break; }
+    if (jsonEnd < 0) { out += text.slice(i, m.index); break; }
     out += text.slice(i, m.index);
     var next = jsonEnd + 1;
     while (next < text.length && /[ \t\r\n`]/.test(text[next])) next++;
@@ -1854,6 +1895,8 @@ function sanitizeAgentVisibleDelta(text) {
 function sanitizeAgentVisibleText(text) {
   var raw = String(text || '');
   if (!raw) return '';
+  if (isAgentRoutingFileMarkerLeak(raw)) return '';
+  raw = stripAgentRoutingSummaryMarkerLeak(raw);
   var cleaned = stripIncompleteCallingTail(stripToolCallBlocks(raw)).trim();
   if (!cleaned && (raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw) || containsPotentialInternalCallingTail(raw))) return '';
   return cleaned;
@@ -1881,14 +1924,43 @@ function renderAgentMarkdown(text) {
 
 function containsAgentInternalTranscript(text) {
   return containsDsmlToolTranscript(text)
-    || /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
+    || containsAgentRoutingMarkerLeak(text)
+    || /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
     || /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
-    || /(?:^|\n)\s*(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
-    || /(?:^|\n|[ \t])(?:Tool|工具)[ \t]*[:：][ \t]*`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
-    || /(?:^|\n)\s*\[(?:工具结果|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(text)
+    || /(?:^|\n)\s*(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
+    || /(?:^|\n|[ \t])(?:Tool|工具)[ \t]*[:：][ \t]*`?(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
+    || /(?:^|\n)\s*\[(?:工具结果|run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(text)
     || /\b(?:run_terminal|manage_todo_list|task_complete|stdout|stderr|exitCode|exit code)\b/i.test(text)
     || /(?:^|\n)\s*\$\s+\S+/.test(text)
     || /(?:^|\n)\s*(?:命令输出|执行命令|终端输出)\s*[:：]/.test(text);
+}
+
+function containsAgentRoutingMarkerLeak(text) {
+  return /(?:^|\n)\s*(?:\x00?AFILE:[^\x00\n]{0,220}(?:\x00|RESET)|AFILE:[^\n]{0,220}RESET|\x00?ASUM(?:\x00|RESET)?)/.test(String(text || ''));
+}
+
+function isAgentRoutingFileMarkerLeak(text) {
+  return /^\s*(?:\x00?AFILE:|AFILE:)/.test(String(text || ''));
+}
+
+function stripAgentRoutingSummaryMarkerLeak(text) {
+  return String(text || '')
+    .replace(/^\s*\x00ASUM\x00\x00RESET\x00/, '')
+    .replace(/^\s*\x00ASUM\x00/, '')
+    .replace(/^\s*ASUMRESET/, '')
+    .replace(/^\s*ASUM/, '');
+}
+
+function restoreAgentRoutingMarkerText(text) {
+  var raw = String(text || '');
+  if (!raw) return '';
+  if (raw.indexOf('\x00AFILE:') === 0 || raw.indexOf('\x00ASUM\x00') === 0) return raw;
+  if (raw.indexOf('ASUMRESET') === 0) return '\x00ASUM\x00\x00RESET\x00' + raw.slice('ASUMRESET'.length);
+  if (raw.indexOf('ASUM') === 0) return '\x00ASUM\x00' + raw.slice('ASUM'.length);
+  var fileReset = /^AFILE:([^\s\x00]{1,120}?)RESET([\s\S]*)$/.exec(raw);
+  if (fileReset) return '\x00AFILE:' + fileReset[1] + '\x00\x00RESET\x00' + fileReset[2];
+  if (/^AFILE:[^\s\x00]{1,180}/.test(raw)) return '\x00AFILE:unknown\x00';
+  return raw;
 }
 
 function cleanAgentFinalProseForUser(text) {
@@ -1903,12 +1975,12 @@ function cleanAgentFinalProseForUser(text) {
   var lines = cleaned.split('\n').filter(function(line) {
     var s = line.trim();
     if (!s) return true;
-    if (/^\[TOOL:(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(s)) return false;
+    if (/^\[TOOL:(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(s)) return false;
     if (/^(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(s)) return false;
-    if (/^(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
-    if (/^(?:Tool|工具)[ \t]*[:：][ \t]*`?(?:run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
+    if (/^(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
+    if (/^(?:Tool|工具)[ \t]*[:：][ \t]*`?(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
     if (/^(?:Arguments?|参数)[ \t]*[:：]\s*\{/i.test(s)) return false;
-    if (/^\[(?:工具结果|run_terminal|read_file|grep_search|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(s)) return false;
+    if (/^\[(?:工具结果|run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(s)) return false;
     if (/^\$\s+\S+/.test(s)) return false;
     if (/^(?:stdout|stderr|exitCode|exit code|命令输出|执行命令|终端输出)\s*[:：]/i.test(s)) return false;
     return true;
@@ -2115,7 +2187,8 @@ function summarizeAgentAnnouncement(text) {
 }
 
 function addAgentAnnouncementBubble(text) {
-  if (!text || !messagesEl) { return; }
+  var visibleText = sanitizeAgentVisibleText(text || '');
+  if (!visibleText || !messagesEl) { return; }
   // Remove the "analyzing" placeholder when first real announcement arrives
   var _oldAnalyzing = document.getElementById('agent-analyzing-indicator');
   if (_oldAnalyzing) _oldAnalyzing.remove();
@@ -2126,10 +2199,10 @@ function addAgentAnnouncementBubble(text) {
   details.className = 'agent-announcement-details';
   var summary = document.createElement('summary');
   summary.className = 'agent-announcement-summary';
-  summary.innerHTML = '<i class="codicon codicon-info"></i><span>' + escapeHtml(summarizeAgentAnnouncement(text)) + '</span>';
+  summary.innerHTML = '<i class="codicon codicon-info"></i><span>' + escapeHtml(summarizeAgentAnnouncement(visibleText)) + '</span>';
   var body = document.createElement('div');
   body.className = 'agent-announcement-body';
-  body.innerHTML = renderAgentMarkdown(text);
+  body.innerHTML = renderAgentMarkdown(visibleText);
   if (!pruneEmptyRenderedBlocks(body)) return;
   details.appendChild(summary);
   details.appendChild(body);
@@ -5876,6 +5949,7 @@ window.addEventListener('message', function(event) {
   } else if (msg.type === 'startResponse') {
     settleReadyProgress();
     isGenerating = true; currentRaw = ''; hadResetRender = false;
+    nonAgentPendingToolArgumentDelta = false;
     suppressGeneratedStreaming = false;
     expectGeneratedArtifacts = !!msg.expectGeneratedArtifacts;
     currentResponseMeta = { hasGeneratedArtifacts: false, generatedPaths: [], pathHints: [] };
@@ -5926,10 +6000,24 @@ window.addEventListener('message', function(event) {
       // handleTodoUpdate() will show it with actual content when that arrives.
     }
   } else if (msg.type === 'delta') {
-    if (!isAgentMode && msg.text && (String(msg.text).indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(String(msg.text)))) {
-      var _cleanNonAgentToolDelta = sanitizeAgentVisibleDelta(String(msg.text));
-      if (!_cleanNonAgentToolDelta) return;
-      msg.text = _cleanNonAgentToolDelta;
+    if (isAgentMode && msg.text) {
+      msg.text = restoreAgentRoutingMarkerText(String(msg.text));
+    }
+    if (!isAgentMode && msg.text) {
+      var _rawNonAgentDelta = String(msg.text);
+      if (nonAgentPendingToolArgumentDelta && looksLikeWebviewToolArgumentPayload(_rawNonAgentDelta)) {
+        nonAgentPendingToolArgumentDelta = false;
+        return;
+      }
+      var _hasCallingToolIntent = containsWebviewCallingToolIntent(_rawNonAgentDelta);
+      if (_rawNonAgentDelta.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(_rawNonAgentDelta) || _hasCallingToolIntent) {
+        var _cleanNonAgentToolDelta = sanitizeAssistantVisibleText(_rawNonAgentDelta);
+        nonAgentPendingToolArgumentDelta = _hasCallingToolIntent;
+        if (!_cleanNonAgentToolDelta) return;
+        msg.text = _cleanNonAgentToolDelta;
+      } else {
+        nonAgentPendingToolArgumentDelta = false;
+      }
     }
     if (isAgentMode && msg.text) {
       agentTodoParseBuffer += msg.text;
@@ -6009,6 +6097,10 @@ window.addEventListener('message', function(event) {
       if (suppressGeneratedStreaming) maybeScrollToBottom();
     }
   } else if (msg.type === 'resetResponse') {
+    nonAgentPendingToolArgumentDelta = false;
+    if (isAgentMode && msg.text) {
+      msg.text = restoreAgentRoutingMarkerText(String(msg.text));
+    }
     if (isAgentMode) {
       agentTodoParseBuffer = msg.text || '';
       maybeHandleTodoUpdateFromModelText(agentTodoParseBuffer);
@@ -6293,6 +6385,7 @@ window.addEventListener('message', function(event) {
     pendingNewSession = false;
     isGenerating = false;
     currentRaw = '';
+    nonAgentPendingToolArgumentDelta = false;
     currentBubble = null;
     agentPlanDone = false;
     agentTodos = [];
@@ -6610,7 +6703,7 @@ window.addEventListener('message', function(event) {
 });
 
 function stopGenerating() {
-  isGenerating = false; currentBubble = null; currentRaw = '';
+  isGenerating = false; currentBubble = null; currentRaw = ''; nonAgentPendingToolArgumentDelta = false;
   workflowStateCards = new Map();
   sendBtn.textContent = '\u27a4'; sendBtn.title = '\u53d1\u9001 (Enter)';
 }

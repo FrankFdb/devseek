@@ -1695,9 +1695,10 @@ export async function runAgentLoop(
   // Accumulate analysis text from read-only tasks to return as analysisText (for findings injection)
   const analysisTexts: string[] = [];
   const allTerminalEvidence: TerminalEvidence[] = [];
-  // Internal execute tasks should NOT create new DeepSeek web conversations.
-  // The user controls session switching via the '新对话' button.
-  let needsNewSession = false;
+  // Each task starts from a clean DeepSeek web conversation. The current task
+  // context is carried explicitly through `sessionHistory`, avoiding stale
+  // browser-side conversations from previous sessions.
+  let needsNewSession = true;
   // Track whether the AI called task_complete (to suppress duplicate phase:done).
   let hadTaskComplete = false;
 
@@ -1725,7 +1726,7 @@ export async function runAgentLoop(
       analysisContext,
       needsNewSession,
     );
-    needsNewSession = false; // Only first task starts a new session
+    needsNewSession = true;
 
     // ── Network-error detection: save checkpoint and abort loop ──────────
     // If the task failed due to a network error (fetch failed, ECONNREFUSED,
@@ -1903,7 +1904,7 @@ export async function runAgentLoop(
         contentCache,
         sessionHistory.length > 0 ? [...sessionHistory] : undefined,
         repairContext,
-        false,
+        true,
       );
 
       if (repairResult.networkError) {

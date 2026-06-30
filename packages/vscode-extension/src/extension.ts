@@ -116,7 +116,7 @@ let lastConversationFiles: string[] = [];
 let lastAnalysisText = '';
 /** Workspace-relative paths of files created/modified by the last agent run */
 let lastAgentChangedPaths: string[] = [];
-/** 非 bridge provider 的对话历史（多轮记忆），新会话时清空 */
+/** DevSeek 当前 session 的显式对话历史；Bridge 网页侧历史不作为上下文来源。 */
 let nonBridgeChatHistory: ChatMessage[] = [];
 /** 当前正在执行的 chat 请求的 AbortController（停止按钮使用） */
 let activeChatAbortController: AbortController | null = null;
@@ -400,8 +400,10 @@ async function runChat(
       // ephemeral context for this request only and must not bleed into the next message.
       // They are also local-context files, not DeepSeek web attachments. Passing
       // them to the browser upload panel can time out before the prompt is sent.
-      const names = discovered.map(p => nodePath.basename(p)).join('、');
-      autoDiscoveredNote = `_[自动识别目录] 已加载 ${discovered.length} 个文件：${names}_\n\n`;
+      const names = discovered.map(p => nodePath.basename(p));
+      const preview = names.slice(0, 8).join('、');
+      const suffix = names.length > 8 ? ' 等' : '';
+      autoDiscoveredNote = `_[自动识别目录] 已加载 ${discovered.length} 个源文件${preview ? `（${preview}${suffix}）` : ''}，完整清单仅用于本地上下文。_\n\n`;
     }
   }
   const autoDiscoveredFileSet = new Set(autoDiscoveredFiles);
@@ -822,10 +824,10 @@ async function runChat(
             postAgent({ type: 'agentStatus', phase: 'plan', state: 'started', title: progress });
           },
           priorFindings,
-          // newSession is NOT passed here — internal decompose calls should not
-          // create a new DeepSeek web conversation. The user explicitly controls
-          // session switching via the '新对话' button.
-          async (p, m) => routeChat({ prompt: p, mode: m, newSession: false }),
+          // Agent internals must not inherit the DeepSeek web page's implicit
+          // browser-side history. DevSeek injects only explicit current-session
+          // context into the prompt it builds.
+          async (p, m) => routeChat({ prompt: p, mode: m, newSession: true, trackHistory: false }),
           // Active editor file: used as path anchor when no files are attached and no
           // explicit path is in the prompt. Mirrors Copilot's per-file context behaviour.
           vscode.window.activeTextEditor?.document.uri.scheme === 'file'
