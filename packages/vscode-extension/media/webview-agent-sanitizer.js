@@ -108,6 +108,47 @@ function makeWebviewFunctionStyleToolCallRegex() {
   return new RegExp('(' + names + '|mcp__[A-Za-z0-9_]+)\\s*\\(\\s*\\{', 'g');
 }
 
+function makeWebviewXmlToolTagRegex() {
+  var names = Object.keys(WEBVIEW_TOOL_NAMES)
+    .sort(function(a, b) { return b.length - a.length; })
+    .map(escapeWebviewRegExp)
+    .join('|');
+  return new RegExp('(?:<|&lt;)\\s*(' + names + '|mcp__[A-Za-z0-9_]+)\\b([^<>]*?)\\/\\s*(?:>|&gt;)', 'gi');
+}
+
+function makeWebviewXmlToolTagTailRegex() {
+  var names = Object.keys(WEBVIEW_TOOL_NAMES)
+    .sort(function(a, b) { return b.length - a.length; })
+    .map(escapeWebviewRegExp)
+    .join('|');
+  return new RegExp('(?:<|&lt;)\\s*(' + names + '|mcp__[A-Za-z0-9_]+)\\b[^<>]*$', 'i');
+}
+
+function stripXmlToolTagBlocksFromText(text) {
+  var raw = String(text || '');
+  var out = '';
+  var cursor = 0;
+  var tagRe = makeWebviewXmlToolTagRegex();
+  var match;
+  while ((match = tagRe.exec(raw)) !== null) {
+    if (!isWebviewToolName(match[1])) continue;
+    out += raw.slice(cursor, match.index).replace(/[ \t]+$/, '');
+    cursor = tagRe.lastIndex;
+  }
+  return (out + raw.slice(cursor)).replace(makeWebviewXmlToolTagTailRegex(), '').trimEnd();
+}
+
+function containsWebviewXmlToolTag(text) {
+  var raw = String(text || '');
+  var tagRe = makeWebviewXmlToolTagRegex();
+  var match;
+  while ((match = tagRe.exec(raw)) !== null) {
+    if (isWebviewToolName(match[1])) return true;
+  }
+  var tail = makeWebviewXmlToolTagTailRegex().exec(raw);
+  return !!tail && isWebviewToolName(tail[1]);
+}
+
 function webviewLineEndAfter(text, index) {
   var next = text.indexOf('\n', Math.max(0, index));
   return next < 0 ? text.length : next + 1;
@@ -501,6 +542,9 @@ function stripToolCallBlocks(text) {
   var beforeFunctionStyleCleanup = result;
   result = stripFunctionStyleToolCallBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeFunctionStyleCleanup;
+  var beforeXmlTagCleanup = result;
+  result = stripXmlToolTagBlocksFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeXmlTagCleanup;
   var beforeJsonCleanup = result;
   result = stripJsonToolPayloadsFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeJsonCleanup;
@@ -566,6 +610,7 @@ function containsAgentInternalTranscript(text) {
   return containsDsmlToolTranscript(text)
     || containsAgentRoutingMarkerLeak(text)
     || containsWebviewFunctionStyleToolCall(text)
+    || containsWebviewXmlToolTag(text)
     || /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
     || /(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
     || /(?:^|\n)\s*(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)

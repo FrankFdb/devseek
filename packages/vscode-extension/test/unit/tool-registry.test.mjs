@@ -93,6 +93,18 @@ test('ToolRegistry: normalizes model-specific tool aliases and argument aliases'
       endLine: 150,
     },
   );
+  assert.deepEqual(
+    normalizeAgentToolInput('read_file', {
+      path: '/tmp/project/main.cpp',
+      startLine: 0,
+      endLine: 200,
+    }),
+    {
+      path: '/tmp/project/main.cpp',
+      startLine: 1,
+      endLine: 200,
+    },
+  );
 });
 
 test('ToolRegistry: webview tool mirror includes every canonical tool and alias', () => {

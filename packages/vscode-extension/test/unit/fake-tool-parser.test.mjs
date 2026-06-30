@@ -209,6 +209,46 @@ test('FakeToolParser: parses bracketed Chinese tool calls and normalizes every r
   assert.equal(stripToolCallBlocks(text), '让我先查看当前`shape_manager`项目的实现，了解图形选择机制和鼠标交互逻辑，然后进行修改。');
 });
 
+test('FakeToolParser: parses XML self-closing tool tags and normalizes aliases', () => {
+  const text = [
+    '让我先查看一下当前 `shape_manager` 项目的实现情况。',
+    '<read_file path="/home/ff/work/devseek_netai/code/shape_manager/main.cpp" startLine="0" endLine="200"/>',
+    '<grep_search pattern="glutMouseFunc|mouse|选择|select|keyboard|数字" directory="/home/ff/work/devseek_netai/code/shape_manager" fileTypes=".cpp,.h"/>',
+    '<list_dir path="/home/ff/work/devseek_netai/code/shape_manager"/>',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.deepEqual(tools.map(tool => tool.name), ['read_file', 'grep_search', 'list_dir']);
+  assert.deepEqual(tools[0].input, {
+    path: '/home/ff/work/devseek_netai/code/shape_manager/main.cpp',
+    startLine: 1,
+    endLine: 200,
+  });
+  assert.equal(tools[1].input.path, '/home/ff/work/devseek_netai/code/shape_manager');
+  assert.equal(tools[1].input.includePattern, '.cpp,.h');
+  assert.equal(findFirstToolCallStart(text), text.indexOf('<read_file'));
+  assert.equal(stripToolCallBlocks(text), '让我先查看一下当前 `shape_manager` 项目的实现情况。');
+  assert.equal(containsFakeToolCallProtocol(text), true);
+});
+
+test('FakeToolParser: parses escaped XML self-closing tool tags and hides streaming tail', () => {
+  const complete = '我先读取文件。&lt;read_file path=&quot;code/shape_manager/main.cpp&quot; startLine=&quot;0&quot; endLine=&quot;20&quot;/&gt;';
+  const tools = parseFakeToolCalls(complete);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'read_file');
+  assert.deepEqual(tools[0].input, {
+    path: 'code/shape_manager/main.cpp',
+    startLine: 1,
+    endLine: 20,
+  });
+  assert.equal(stripToolCallBlocks(complete), '我先读取文件。');
+
+  const partial = '我先读取文件。&lt;read_file path=&quot;code/shape_manager/main.cpp&quot;';
+  assert.equal(findFirstToolCallStart(partial), partial.indexOf('&lt;read_file'));
+  assert.equal(stripToolCallBlocks(partial), '我先读取文件。');
+});
+
 test('FakeToolParser: does not execute task summary JSON as a bash command', () => {
   const text = [
     'Calling: bash',

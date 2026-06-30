@@ -72,6 +72,22 @@ function makeFunctionStyleToolCallRegex(): RegExp {
   return new RegExp(`(${names}|mcp__[A-Za-z0-9_]+)\\s*\\(\\s*\\{`, 'g');
 }
 
+function makeXmlToolTagRegex(): RegExp {
+  const names = listAgentToolNames(true)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join('|');
+  return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b([^<>]*?)\\/\\s*(?:>|&gt;)`, 'gi');
+}
+
+function makeXmlToolTagTailRegex(flags = 'i'): RegExp {
+  const names = listAgentToolNames(true)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join('|');
+  return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b[^<>]*$`, flags);
+}
+
 function isRegisteredFakeToolName(name: string): boolean {
   return KNOWN_FAKE_TOOL_NAMES.has(normalizeAgentToolName(name)) || name.startsWith('mcp__');
 }
@@ -233,6 +249,76 @@ function parseFunctionStyleToolCalls(text: string): FakeTool[] {
     callRe.lastIndex = extracted.end;
   }
   return tools.map(normalizeFakeTool);
+}
+
+function decodeXmlishText(text: string): string {
+  return text
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&amp;/gi, '&');
+}
+
+function parseXmlishToolAttributes(rawAttrs: string): Record<string, unknown> {
+  const input: Record<string, unknown> = {};
+  const attrs = decodeXmlishText(rawAttrs);
+  const attrRe = /([A-Za-z_][\w:-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'/>]+))/g;
+  let match: RegExpExecArray | null;
+  while ((match = attrRe.exec(attrs)) !== null) {
+    const key = match[1].trim();
+    if (!key) continue;
+    const rawValue = match[2] ?? match[3] ?? match[4] ?? '';
+    input[key] = parseDsmlParameterValue(rawValue);
+  }
+  return input;
+}
+
+function parseXmlToolTagCalls(text: string): FakeTool[] {
+  const tools: FakeTool[] = [];
+  const tagRe = makeXmlToolTagRegex();
+  let match: RegExpExecArray | null;
+  while ((match = tagRe.exec(text)) !== null) {
+    const name = match[1].trim();
+    if (!isRegisteredFakeToolName(name)) continue;
+    const input = parseXmlishToolAttributes(match[2] || '');
+    tools.push({ name, input: normalizeToolInput(name, input) });
+  }
+  return tools.map(normalizeFakeTool);
+}
+
+function findNextXmlToolTagStart(text: string, startAt = 0): number {
+  const tagRe = makeXmlToolTagRegex();
+  tagRe.lastIndex = startAt;
+  let completeStart = -1;
+  let match: RegExpExecArray | null;
+  while ((match = tagRe.exec(text)) !== null) {
+    if (isRegisteredFakeToolName(match[1])) {
+      completeStart = match.index;
+      break;
+    }
+  }
+  const tailRe = makeXmlToolTagTailRegex('gi');
+  tailRe.lastIndex = startAt;
+  while ((match = tailRe.exec(text)) !== null) {
+    if (!isRegisteredFakeToolName(match[1])) continue;
+    return completeStart < 0 ? match.index : Math.min(completeStart, match.index);
+  }
+  return completeStart;
+}
+
+function stripXmlToolTagBlocks(text: string): string {
+  let out = '';
+  let cursor = 0;
+  const tagRe = makeXmlToolTagRegex();
+  let match: RegExpExecArray | null;
+  while ((match = tagRe.exec(text)) !== null) {
+    if (!isRegisteredFakeToolName(match[1])) continue;
+    out += text.slice(cursor, match.index).replace(/[ \t]+$/, '');
+    cursor = tagRe.lastIndex;
+  }
+  const cleaned = out + text.slice(cursor);
+  return cleaned.replace(makeXmlToolTagTailRegex(), '').trimEnd();
 }
 
 function findNextFunctionStyleToolCallStart(text: string, startAt = 0): number {
@@ -744,6 +830,8 @@ export function findFirstToolCallStart(text: string): number {
   if (bracket >= 0) indexes.push(bracket);
   const dsml = findNextDsmlToolCallStart(text);
   if (dsml >= 0) indexes.push(dsml);
+  const xmlToolTag = findNextXmlToolTagStart(text);
+  if (xmlToolTag >= 0) indexes.push(xmlToolTag);
   const functionStyle = findNextFunctionStyleToolCallStart(text);
   if (functionStyle >= 0) indexes.push(functionStyle);
   const callRe = makeAnyCallingRegex();
@@ -845,6 +933,10 @@ export function stripToolCallBlocks(text: string): string {
   const beforeFunctionStyleCleanup = result;
   result = stripFunctionStyleToolCallBlocks(result);
   removedInternalBlock = removedInternalBlock || result !== beforeFunctionStyleCleanup;
+
+  const beforeXmlTagCleanup = result;
+  result = stripXmlToolTagBlocks(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeXmlTagCleanup;
 
   const beforeJsonCleanup = result;
   result = stripJsonToolPayloads(result);
@@ -1058,6 +1150,10 @@ export function parseFakeToolCalls(text: string): FakeTool[] {
 
   if (tools.length === 0) {
     tools.push(...parseFunctionStyleToolCalls(text));
+  }
+
+  if (tools.length === 0) {
+    tools.push(...parseXmlToolTagCalls(text));
   }
 
   if (tools.length === 0) {

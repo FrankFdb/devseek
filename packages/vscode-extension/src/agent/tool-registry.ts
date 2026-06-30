@@ -112,9 +112,9 @@ export function normalizeAgentToolInput(toolName: string, input: Record<string, 
 }
 
 function normalizeLineRangeAliases(input: Record<string, unknown>): void {
-  const startLine = firstPositiveInteger(input.startLine, input.start_line, input.lineStart, input.fromLine);
+  const startLine = firstInteger(input.startLine, input.start_line, input.lineStart, input.fromLine);
   if (startLine !== undefined) {
-    input.startLine = startLine;
+    input.startLine = Math.max(1, startLine);
   } else {
     const offset = firstInteger(input.offset);
     if (offset !== undefined && offset >= 0) input.startLine = offset + 1;

@@ -111,6 +111,47 @@ function makeFunctionStyleToolCallRegex() {
   return new RegExp(`(${names}|mcp__[A-Za-z0-9_]+)\\s*\\(\\s*\\{`, 'g');
 }
 
+function makeXmlToolTagRegex() {
+  const names = Object.keys(TOOL_NAMES)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join('|');
+  return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b([^<>]*?)\\/\\s*(?:>|&gt;)`, 'gi');
+}
+
+function makeXmlToolTagTailRegex() {
+  const names = Object.keys(TOOL_NAMES)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join('|');
+  return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b[^<>]*$`, 'i');
+}
+
+function stripXmlToolTagBlocksFromText(text) {
+  const raw = String(text || '');
+  let out = '';
+  let cursor = 0;
+  const tagRe = makeXmlToolTagRegex();
+  let match;
+  while ((match = tagRe.exec(raw)) !== null) {
+    if (!isToolName(match[1])) continue;
+    out += raw.slice(cursor, match.index).replace(/[ \t]+$/, '');
+    cursor = tagRe.lastIndex;
+  }
+  return (out + raw.slice(cursor)).replace(makeXmlToolTagTailRegex(), '').trimEnd();
+}
+
+function containsXmlToolTag(text) {
+  const raw = String(text || '');
+  const tagRe = makeXmlToolTagRegex();
+  let match;
+  while ((match = tagRe.exec(raw)) !== null) {
+    if (isToolName(match[1])) return true;
+  }
+  const tail = makeXmlToolTagTailRegex().exec(raw);
+  return !!tail && isToolName(tail[1]);
+}
+
 function containsCallingToolIntent(text) {
   const callRe = makeAnyCallingRegex();
   const raw = String(text || '');
@@ -460,6 +501,9 @@ function stripToolCallBlocks(text) {
   const beforeFunctionStyleCleanup = result;
   result = stripFunctionStyleToolCallBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeFunctionStyleCleanup;
+  const beforeXmlTagCleanup = result;
+  result = stripXmlToolTagBlocksFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeXmlTagCleanup;
   const beforeDsmlCleanup = result;
   result = stripDsmlToolCallBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeDsmlCleanup;
@@ -471,6 +515,7 @@ function containsAgentInternalTranscript(text) {
   return containsDsmlToolTranscript(text)
     || containsAgentRoutingMarkerLeak(text)
     || containsFunctionStyleToolCall(text)
+    || containsXmlToolTag(text)
     || /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
     || /(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
     || /(?:^|\n)\s*(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
@@ -991,6 +1036,28 @@ test('agent accumulated render: suppresses inline function-style pseudo-tool cal
   const cleaned = sanitizeVisibleDeltaForMode(leaked, true);
   assert.equal(cleaned, '我先查看当前代码结构。');
   assert.doesNotMatch(cleaned, /read_file|list_dir|filePath/);
+});
+
+test('non-agent delta: suppresses XML self-closing pseudo-tool tags', () => {
+  const leaked = [
+    '让我先查看一下当前 `shape_manager` 项目的实现情况。',
+    '<read_file path="/home/ff/work/devseek_netai/code/shape_manager/main.cpp" startLine="0" endLine="200"/>',
+    '<grep_search pattern="glutMouseFunc|mouse|选择|select|keyboard|数字" directory="/home/ff/work/devseek_netai/code/shape_manager" fileTypes=".cpp,.h"/>',
+    '<list_dir path="/home/ff/work/devseek_netai/code/shape_manager"/>',
+  ].join('\n');
+  const cleaned = sanitizeVisibleDeltaForMode(leaked, false);
+  assert.equal(cleaned, '让我先查看一下当前 `shape_manager` 项目的实现情况。');
+  assert.doesNotMatch(cleaned, /read_file|grep_search|list_dir|shape_manager\/main\.cpp|fileTypes/);
+});
+
+test('agent accumulated render: hides escaped XML pseudo-tool tag while streaming', () => {
+  const partial = '我先读取文件。&lt;read_file path=&quot;code/shape_manager/main.cpp&quot;';
+  assert.equal(sanitizeVisibleDeltaForMode(partial, true), '我先读取文件。');
+
+  const complete = partial + ' startLine=&quot;0&quot; endLine=&quot;20&quot;/&gt;';
+  const cleaned = sanitizeVisibleDeltaForMode(complete, true);
+  assert.equal(cleaned, '我先读取文件。');
+  assert.doesNotMatch(cleaned, /read_file|filePath|startLine|shape_manager/);
 });
 
 test('non-agent delta: strips inline bash calling transcript with fenced command', () => {
