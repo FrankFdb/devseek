@@ -85,3 +85,7 @@ const WORKING_COPY_STRATEGY_TABLE = {
 function normalizeWorkingCopyStyle(style) {
   return style === 'concise' ? 'concise' : 'detailed';
 }
+
+function getWorkingCopyStrategy() {
+  return WORKING_COPY_STRATEGY_TABLE[normalizeWorkingCopyStyle(workingCopyStyle)] || WORKING_COPY_STRATEGY_TABLE.detailed;
+}

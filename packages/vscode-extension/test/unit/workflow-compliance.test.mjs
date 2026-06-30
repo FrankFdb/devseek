@@ -28,12 +28,11 @@ function src(relPath) {
 }
 
 function webviewRuntime() {
-  return [
-    src('media/webview-agent-sanitizer.js'),
-    src('media/webview-agent-todos.js'),
-    src('media/webview-working-copy.js'),
-    src('media/webview.js'),
-  ].join('\n');
+  const manifest = JSON.parse(src('media/webview-runtime.json'));
+  const scripts = Array.isArray(manifest.scripts) && manifest.scripts.length > 0
+    ? manifest.scripts
+    : ['webview.js'];
+  return scripts.map((fileName) => src(`media/${fileName}`)).join('\n');
 }
 
 /** Assert that `content` includes `pattern` (string or regex). */
@@ -882,19 +881,32 @@ test('Agentic loop: final summary never exposes backend tool transcripts', () =>
   );
 });
 
-test('Architecture: webview sanitizer is a packaged runtime dependency', () => {
+test('Architecture: webview runtime manifest owns script loading order', () => {
+  const manifest = JSON.parse(src('media/webview-runtime.json'));
   const html = src('src/ui/webview-html.ts');
   const packager = src('../../scripts/package-vsix.mjs');
   const harness = src('test/devseek-dsml-webview-harness.mjs');
-  assertContains(html, 'webview-agent-sanitizer.js', 'production webview HTML must load the sanitizer before webview.js');
-  assertContains(html, 'webview-agent-todos.js', 'production webview HTML must load todo parsing before webview.js');
-  assertContains(html, 'webview-working-copy.js', 'production webview HTML must load working copy strategy before webview.js');
-  assertContains(packager, 'webview-agent-sanitizer.js', 'VSIX packaging must include the sanitizer runtime file');
-  assertContains(packager, 'webview-agent-todos.js', 'VSIX packaging must include the todo parser runtime file');
-  assertContains(packager, 'webview-working-copy.js', 'VSIX packaging must include the working copy runtime file');
-  assertContains(harness, 'webview-agent-sanitizer.js', 'webview harnesses must execute the same sanitizer runtime file');
-  assertContains(harness, 'webview-agent-todos.js', 'webview harnesses must execute the same todo parser runtime file');
-  assertContains(harness, 'webview-working-copy.js', 'webview harnesses must execute the same working copy runtime file');
+  assert.deepEqual(
+    manifest.scripts,
+    [
+      'webview-agent-sanitizer.js',
+      'webview-agent-todos.js',
+      'webview-working-copy.js',
+      'webview-agent-activity.js',
+      'webview-generated-rules.js',
+      'webview-input-suggestions.js',
+      'webview-stream-status.js',
+      'webview-sessions.js',
+      'webview-checkpoint.js',
+      'webview.js',
+    ],
+    'runtime manifest must define the complete ordered script chain',
+  );
+  assertContains(html, 'webview-runtime.json', 'production webview HTML must read the shared runtime manifest');
+  assertContains(packager, 'webview-runtime.json', 'VSIX packaging must include the shared runtime manifest');
+  assertContains(packager, 'webviewRuntimeFiles', 'VSIX packaging must copy every manifest runtime script');
+  assertContains(harness, 'webview-runtime.json', 'webview harnesses must execute the same manifest runtime chain');
+  assert.doesNotMatch(html, /webview-agent-sanitizer\.js|webview-agent-todos\.js|webview-working-copy\.js/, 'production HTML must not hardcode runtime module names');
 });
 
 test('Agentic free-explore: follow-up turns keep same-session context', () => {

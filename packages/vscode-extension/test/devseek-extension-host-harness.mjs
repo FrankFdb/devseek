@@ -5,7 +5,7 @@
  * Non-invasive by design:
  * - does not modify production extension source files;
  * - creates a temporary VS Code test extension under /tmp;
- * - loads the real packages/vscode-extension/media/webview.js in a real VS Code webview;
+ * - loads the real webview runtime manifest in a real VS Code webview;
  * - simulates human typing inside that webview and replays mock extension/provider events.
  *
  * Run from repository root:
@@ -30,11 +30,8 @@ if (!runRequested) {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../..');
-const sanitizerPath = path.join(repoRoot, 'packages/vscode-extension/media/webview-agent-sanitizer.js');
-const todosPath = path.join(repoRoot, 'packages/vscode-extension/media/webview-agent-todos.js');
-const workingCopyPath = path.join(repoRoot, 'packages/vscode-extension/media/webview-working-copy.js');
-const webviewPath = path.join(repoRoot, 'packages/vscode-extension/media/webview.js');
-const markedPath = path.join(repoRoot, 'packages/vscode-extension/media/marked.umd.js');
+const mediaDir = path.join(repoRoot, 'packages/vscode-extension/media');
+const markedPath = path.join(mediaDir, 'marked.umd.js');
 
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-extension-host-harness-'));
 const extensionDir = path.join(tmpRoot, 'extension');
@@ -66,12 +63,10 @@ fs.writeFileSync(
 const extensionSource = String.raw`
 const vscode = require('vscode');
 const fs = require('fs');
+const path = require('path');
 
 const reportPath = __REPORT_PATH__;
-const sanitizerPath = __SANITIZER_PATH__;
-const todosPath = __TODOS_PATH__;
-const workingCopyPath = __WORKING_COPY_PATH__;
-const webviewPath = __WEBVIEW_PATH__;
+const mediaDir = __MEDIA_DIR__;
 const markedPath = __MARKED_PATH__;
 const prompt = __PROMPT__;
 const fixture = __FIXTURE__;
@@ -246,10 +241,11 @@ async function replayMockRun(panel, chatMessage) {
 function getHtml() {
   const nonce = String(Date.now());
   const markedJs = fs.readFileSync(markedPath, 'utf8');
-  const sanitizerJs = fs.readFileSync(sanitizerPath, 'utf8');
-  const todosJs = fs.readFileSync(todosPath, 'utf8');
-  const workingCopyJs = fs.readFileSync(workingCopyPath, 'utf8');
-  const webviewJs = fs.readFileSync(webviewPath, 'utf8');
+  const runtimeManifest = JSON.parse(fs.readFileSync(path.join(mediaDir, 'webview-runtime.json'), 'utf8'));
+  const runtimeScripts = Array.isArray(runtimeManifest.scripts) && runtimeManifest.scripts.length > 0
+    ? runtimeManifest.scripts
+    : ['webview.js'];
+  const webviewRuntimeJs = runtimeScripts.map((fileName) => fs.readFileSync(path.join(mediaDir, fileName), 'utf8')).join('\\n');
   const apiCaptureJs = \`
     (function() {
       const nativeAcquireVsCodeApi = acquireVsCodeApi;
@@ -413,10 +409,7 @@ function getHtml() {
 <script nonce="\${nonce}">\${apiCaptureJs}</script>
 <script nonce="\${nonce}">\${markedJs}</script>
 <script nonce="\${nonce}">window.__wsFolderName = 'devseek_netai'; window.mermaid = { initialize(){}, render: async () => ({ svg: '<svg></svg>' }) };</script>
-<script nonce="\${nonce}">\${sanitizerJs}</script>
-<script nonce="\${nonce}">\${todosJs}</script>
-<script nonce="\${nonce}">\${workingCopyJs}</script>
-<script nonce="\${nonce}">\${webviewJs}</script>
+<script nonce="\${nonce}">\${webviewRuntimeJs}</script>
 <script nonce="\${nonce}">\${testJs}</script>
 </body>
 </html>\`;
@@ -490,10 +483,7 @@ fs.writeFileSync(
     .replace(/\\`/g, '`')
     .replace(/\\\$\{/g, '${')
     .replace('__REPORT_PATH__', JSON.stringify(reportPath))
-    .replace('__SANITIZER_PATH__', JSON.stringify(sanitizerPath))
-    .replace('__TODOS_PATH__', JSON.stringify(todosPath))
-    .replace('__WORKING_COPY_PATH__', JSON.stringify(workingCopyPath))
-    .replace('__WEBVIEW_PATH__', JSON.stringify(webviewPath))
+    .replace('__MEDIA_DIR__', JSON.stringify(mediaDir))
     .replace('__MARKED_PATH__', JSON.stringify(markedPath))
     .replace('__PROMPT__', JSON.stringify(prompt))
     .replace('__FIXTURE__', JSON.stringify(tmpRoot)),

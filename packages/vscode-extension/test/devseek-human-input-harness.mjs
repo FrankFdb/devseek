@@ -34,22 +34,24 @@ const prompt = promptArgIndex >= 0 && process.argv[promptArgIndex + 1]
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../..');
-const sanitizerPath = path.join(repoRoot, 'packages/vscode-extension/media/webview-agent-sanitizer.js');
-const todosPath = path.join(repoRoot, 'packages/vscode-extension/media/webview-agent-todos.js');
-const workingCopyPath = path.join(repoRoot, 'packages/vscode-extension/media/webview-working-copy.js');
-const webviewPath = path.join(repoRoot, 'packages/vscode-extension/media/webview.js');
-const markedPath = path.join(repoRoot, 'packages/vscode-extension/media/marked.umd.js');
+const mediaDir = path.join(repoRoot, 'packages/vscode-extension/media');
+const markedPath = path.join(mediaDir, 'marked.umd.js');
 const serverPath = path.join(repoRoot, 'packages/bridge/dist/server.js');
 const cookiesPath = path.join(os.homedir(), '.devseek-netai/cookies.json');
 const tmpRoot = mkdtempSync(path.join(tmpdir(), 'devseek-human-input-harness-'));
 const htmlPath = path.join(tmpRoot, 'harness.html');
 const bridgeLogPath = path.join(tmpRoot, 'bridge.log');
 
-const sanitizerJs = readFileSync(sanitizerPath, 'utf8');
-const todosJs = readFileSync(todosPath, 'utf8');
-const workingCopyJs = readFileSync(workingCopyPath, 'utf8');
-const webviewJs = readFileSync(webviewPath, 'utf8');
+function readWebviewRuntimeJs() {
+  const manifest = JSON.parse(readFileSync(path.join(mediaDir, 'webview-runtime.json'), 'utf8'));
+  const scripts = Array.isArray(manifest.scripts) && manifest.scripts.length > 0
+    ? manifest.scripts
+    : ['webview.js'];
+  return scripts.map((fileName) => readFileSync(path.join(mediaDir, fileName), 'utf8')).join('\n');
+}
+
 const markedJs = readFileSync(markedPath, 'utf8');
+const webviewRuntimeJs = readWebviewRuntimeJs();
 
 const html = `<!doctype html>
 <html>
@@ -157,10 +159,7 @@ window.acquireVsCodeApi = function() {
 window.mermaid = { initialize: function(){}, render: async function(){ return { svg: '<svg></svg>' }; } };
 </script>
 <script>${markedJs}</script>
-<script>${sanitizerJs}</script>
-<script>${todosJs}</script>
-<script>${workingCopyJs}</script>
-<script>${webviewJs}</script>
+<script>${webviewRuntimeJs}</script>
 </body>
 </html>`;
 

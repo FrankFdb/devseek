@@ -14,8 +14,15 @@ packages/vscode-extension/media/*
 !packages/vscode-extension/media/icon.svg
 !packages/vscode-extension/media/marked.umd.js
 !packages/vscode-extension/media/mermaid.min.js
+!packages/vscode-extension/media/webview-agent-activity.js
 !packages/vscode-extension/media/webview-agent-sanitizer.js
 !packages/vscode-extension/media/webview-agent-todos.js
+!packages/vscode-extension/media/webview-checkpoint.js
+!packages/vscode-extension/media/webview-generated-rules.js
+!packages/vscode-extension/media/webview-input-suggestions.js
+!packages/vscode-extension/media/webview-runtime.json
+!packages/vscode-extension/media/webview-sessions.js
+!packages/vscode-extension/media/webview-stream-status.js
 !packages/vscode-extension/media/webview-working-copy.js
 !packages/vscode-extension/media/webview.js
 *.vsix

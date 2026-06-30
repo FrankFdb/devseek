@@ -59,17 +59,19 @@ try {
   copy('LICENSE', 'LICENSE.txt');
   copy('dist');
   copy('test');
-  for (const mediaFile of [
+  const runtimeManifest = JSON.parse(readFileSync(path.join(extensionRoot, 'media', 'webview-runtime.json'), 'utf8'));
+  const webviewRuntimeFiles = Array.isArray(runtimeManifest.scripts) && runtimeManifest.scripts.length > 0
+    ? runtimeManifest.scripts
+    : ['webview.js'];
+  for (const mediaFile of new Set([
     'codicon.css',
     'codicon.ttf',
     'icon.svg',
     'marked.umd.js',
     'mermaid.min.js',
-    'webview-agent-sanitizer.js',
-    'webview-agent-todos.js',
-    'webview-working-copy.js',
-    'webview.js',
-  ]) {
+    'webview-runtime.json',
+    ...webviewRuntimeFiles,
+  ])) {
     copy(path.join('media', mediaFile));
   }
   bundleBridgeServer();

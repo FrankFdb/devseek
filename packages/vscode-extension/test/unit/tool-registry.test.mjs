@@ -96,12 +96,11 @@ test('ToolRegistry: normalizes model-specific tool aliases and argument aliases'
 });
 
 test('ToolRegistry: webview tool mirror includes every canonical tool and alias', () => {
-  const webview = [
-    readFileSync(path.join(rootDir, 'media/webview-agent-sanitizer.js'), 'utf8'),
-    readFileSync(path.join(rootDir, 'media/webview-agent-todos.js'), 'utf8'),
-    readFileSync(path.join(rootDir, 'media/webview-working-copy.js'), 'utf8'),
-    readFileSync(path.join(rootDir, 'media/webview.js'), 'utf8'),
-  ].join('\n');
+  const manifest = JSON.parse(readFileSync(path.join(rootDir, 'media/webview-runtime.json'), 'utf8'));
+  const scripts = Array.isArray(manifest.scripts) && manifest.scripts.length > 0
+    ? manifest.scripts
+    : ['webview.js'];
+  const webview = scripts.map((fileName) => readFileSync(path.join(rootDir, 'media', fileName), 'utf8')).join('\n');
   const match = /var WEBVIEW_TOOL_NAMES = \{([\s\S]*?)\};/.exec(webview);
   assert.ok(match, 'webview must define WEBVIEW_TOOL_NAMES');
   const mirroredNames = new Set([...match[1].matchAll(/\b([A-Za-z_]\w*)\s*:/g)].map(item => item[1]));

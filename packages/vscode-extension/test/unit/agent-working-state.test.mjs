@@ -15,7 +15,17 @@ import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
-const webview = readFileSync(path.join(rootDir, 'media/webview.js'), 'utf8');
+
+function readWebviewRuntime() {
+  const mediaDir = path.join(rootDir, 'media');
+  const manifest = JSON.parse(readFileSync(path.join(mediaDir, 'webview-runtime.json'), 'utf8'));
+  const scripts = Array.isArray(manifest.scripts) && manifest.scripts.length > 0
+    ? manifest.scripts
+    : ['webview.js'];
+  return scripts.map((fileName) => readFileSync(path.join(mediaDir, fileName), 'utf8')).join('\n');
+}
+
+const webview = readWebviewRuntime();
 
 test('agent working state: workflow status is snapshot-only during agent mode', () => {
   assert.match(

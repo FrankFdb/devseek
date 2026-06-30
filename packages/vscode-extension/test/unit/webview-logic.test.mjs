@@ -14,6 +14,15 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 
+function readWebviewRuntime() {
+  const mediaDir = path.join(rootDir, 'media');
+  const manifest = JSON.parse(readFileSync(path.join(mediaDir, 'webview-runtime.json'), 'utf8'));
+  const scripts = Array.isArray(manifest.scripts) && manifest.scripts.length > 0
+    ? manifest.scripts
+    : ['webview.js'];
+  return scripts.map((fileName) => readFileSync(path.join(mediaDir, fileName), 'utf8')).join('\n');
+}
+
 // Extract and evaluate pure logic from webview.js without DOM/vscode
 // We only test the pure utility functions by defining a minimal context
 
@@ -1064,7 +1073,7 @@ test('context files: cleared on clearHistory', () => {
 });
 
 test('agent announcement: process prose is collapsed into Working details', () => {
-  const webview = readFileSync(path.join(rootDir, 'media/webview.js'), 'utf8');
+  const webview = readWebviewRuntime();
   assert.match(webview, /function summarizeAgentAnnouncement/);
   assert.match(webview, /ensureAgentProgressContainer\('Preparing context'\)/);
   assert.match(webview, /agent-announcement-details/);
@@ -1072,7 +1081,7 @@ test('agent announcement: process prose is collapsed into Working details', () =
 });
 
 test('session history: restored assistant messages keep collapsible rendering', () => {
-  const webview = readFileSync(path.join(rootDir, 'media/webview.js'), 'utf8');
+  const webview = readWebviewRuntime();
   assert.ok(/function renderRestoredAssistantContent/.test(webview), 'history restore must use a dedicated assistant renderer');
   assert.ok(/createRestoredAssistantTurn\(m\.content,\s*lastUserPrompt\)/.test(webview), 'history restore must pass the previous user prompt');
   assert.ok(/renderRestoredAssistantContent\(bubble,\s*text,\s*promptText\)/.test(webview), 'assistant history turns must not render raw md directly');

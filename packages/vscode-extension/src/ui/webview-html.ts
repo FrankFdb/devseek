@@ -6,28 +6,26 @@ function getNonce(): string {
   return require('crypto').randomBytes(16).toString('hex');
 }
 
+type WebviewRuntimeManifest = {
+    scripts?: string[];
+};
+
+function readMediaFile(extensionUri: vscode.Uri, fileName: string): string {
+    return fs.readFileSync(nodePath.join(extensionUri.fsPath, 'media', fileName), 'utf8');
+}
+
+function readWebviewRuntimeJs(extensionUri: vscode.Uri): string {
+    const manifest = JSON.parse(readMediaFile(extensionUri, 'webview-runtime.json')) as WebviewRuntimeManifest;
+    const scripts = Array.isArray(manifest.scripts) && manifest.scripts.length > 0
+        ? manifest.scripts
+        : ['webview.js'];
+    return scripts.map((fileName) => readMediaFile(extensionUri, fileName)).join('\n');
+}
+
 export function getChatHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
     const nonce = getNonce();
-    const markedJs = fs.readFileSync(
-        nodePath.join(extensionUri.fsPath, 'media', 'marked.umd.js'),
-        'utf8',
-    );
-    const webviewAgentSanitizerJs = fs.readFileSync(
-        nodePath.join(extensionUri.fsPath, 'media', 'webview-agent-sanitizer.js'),
-        'utf8',
-    );
-    const webviewAgentTodosJs = fs.readFileSync(
-        nodePath.join(extensionUri.fsPath, 'media', 'webview-agent-todos.js'),
-        'utf8',
-    );
-    const webviewWorkingCopyJs = fs.readFileSync(
-        nodePath.join(extensionUri.fsPath, 'media', 'webview-working-copy.js'),
-        'utf8',
-    );
-    const webviewJs = fs.readFileSync(
-        nodePath.join(extensionUri.fsPath, 'media', 'webview.js'),
-        'utf8',
-    );
+    const markedJs = readMediaFile(extensionUri, 'marked.umd.js');
+    const webviewRuntimeJs = readWebviewRuntimeJs(extensionUri);
     const mermaidUri = webview.asWebviewUri(
         vscode.Uri.joinPath(extensionUri, 'media', 'mermaid.min.js'),
     );
@@ -589,5 +587,5 @@ body {
 </html>`;
     return html
         .replace('/*MARKED_PLACEHOLDER*/', () => markedJs)
-        .replace('/*WEBVIEW_PLACEHOLDER*/', () => `${webviewAgentSanitizerJs}\n${webviewAgentTodosJs}\n${webviewWorkingCopyJs}\n${webviewJs}`);
+        .replace('/*WEBVIEW_PLACEHOLDER*/', () => webviewRuntimeJs);
 }

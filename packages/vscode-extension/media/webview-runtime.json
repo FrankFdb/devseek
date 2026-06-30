@@ -1,0 +1,14 @@
+{
+  "scripts": [
+    "webview-agent-sanitizer.js",
+    "webview-agent-todos.js",
+    "webview-working-copy.js",
+    "webview-agent-activity.js",
+    "webview-generated-rules.js",
+    "webview-input-suggestions.js",
+    "webview-stream-status.js",
+    "webview-sessions.js",
+    "webview-checkpoint.js",
+    "webview.js"
+  ]
+}
