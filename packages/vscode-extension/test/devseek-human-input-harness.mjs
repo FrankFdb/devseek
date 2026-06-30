@@ -34,6 +34,7 @@ const prompt = promptArgIndex >= 0 && process.argv[promptArgIndex + 1]
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../..');
+const sanitizerPath = path.join(repoRoot, 'packages/vscode-extension/media/webview-agent-sanitizer.js');
 const webviewPath = path.join(repoRoot, 'packages/vscode-extension/media/webview.js');
 const markedPath = path.join(repoRoot, 'packages/vscode-extension/media/marked.umd.js');
 const serverPath = path.join(repoRoot, 'packages/bridge/dist/server.js');
@@ -42,6 +43,7 @@ const tmpRoot = mkdtempSync(path.join(tmpdir(), 'devseek-human-input-harness-'))
 const htmlPath = path.join(tmpRoot, 'harness.html');
 const bridgeLogPath = path.join(tmpRoot, 'bridge.log');
 
+const sanitizerJs = readFileSync(sanitizerPath, 'utf8');
 const webviewJs = readFileSync(webviewPath, 'utf8');
 const markedJs = readFileSync(markedPath, 'utf8');
 
@@ -151,6 +153,7 @@ window.acquireVsCodeApi = function() {
 window.mermaid = { initialize: function(){}, render: async function(){ return { svg: '<svg></svg>' }; } };
 </script>
 <script>${markedJs}</script>
+<script>${sanitizerJs}</script>
 <script>${webviewJs}</script>
 </body>
 </html>`;

@@ -12,6 +12,10 @@ export function getChatHtml(webview: vscode.Webview, extensionUri: vscode.Uri): 
         nodePath.join(extensionUri.fsPath, 'media', 'marked.umd.js'),
         'utf8',
     );
+    const webviewAgentSanitizerJs = fs.readFileSync(
+        nodePath.join(extensionUri.fsPath, 'media', 'webview-agent-sanitizer.js'),
+        'utf8',
+    );
     const webviewJs = fs.readFileSync(
         nodePath.join(extensionUri.fsPath, 'media', 'webview.js'),
         'utf8',
@@ -577,5 +581,5 @@ body {
 </html>`;
     return html
         .replace('/*MARKED_PLACEHOLDER*/', () => markedJs)
-        .replace('/*WEBVIEW_PLACEHOLDER*/', () => webviewJs);
+        .replace('/*WEBVIEW_PLACEHOLDER*/', () => `${webviewAgentSanitizerJs}\n${webviewJs}`);
 }

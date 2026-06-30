@@ -14,6 +14,7 @@ packages/vscode-extension/media/*
 !packages/vscode-extension/media/icon.svg
 !packages/vscode-extension/media/marked.umd.js
 !packages/vscode-extension/media/mermaid.min.js
+!packages/vscode-extension/media/webview-agent-sanitizer.js
 !packages/vscode-extension/media/webview.js
 *.vsix
 *.tgz

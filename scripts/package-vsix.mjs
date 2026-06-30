@@ -65,6 +65,7 @@ try {
     'icon.svg',
     'marked.umd.js',
     'mermaid.min.js',
+    'webview-agent-sanitizer.js',
     'webview.js',
   ]) {
     copy(path.join('media', mediaFile));

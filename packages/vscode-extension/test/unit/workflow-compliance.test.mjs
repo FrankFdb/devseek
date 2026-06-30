@@ -27,6 +27,13 @@ function src(relPath) {
   return readFileSync(absPath, 'utf8');
 }
 
+function webviewRuntime() {
+  return [
+    src('media/webview-agent-sanitizer.js'),
+    src('media/webview.js'),
+  ].join('\n');
+}
+
 /** Assert that `content` includes `pattern` (string or regex). */
 function assertContains(content, pattern, msg) {
   if (typeof pattern === 'string') {
@@ -260,7 +267,7 @@ test('§8.3 File edits: truncating overwrite failures are recoverable, not termi
 });
 
 test('§8.3 File edits: webview renders QualityGate blocked separately from repair failure', () => {
-  const webview = src('media/webview.js');
+  const webview = webviewRuntime();
   assertContains(webview, 'function workflowPhaseLabel', 'workflow UI must use a phase-label adapter');
   assertContains(webview, "if (phase === 'quality') return 'QualityGate';", 'quality phase must not fall through to apply or repair labels');
   assertContains(webview, 'function isQualityGateBlockedText', 'workflow UI must classify blocked QualityGate text');
@@ -416,12 +423,12 @@ test('§8 Inline diff: diffDecoManager.deactivateAll wired in keepAllPendingEdit
 // ─────────────────────────────────────────────────────────────────────────────
 
 test('§8.5 Queue: queuedAgentMsg present in webview.js', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, 'queuedAgentMsg', '§8.5 queue message');
 });
 
 test('§8.5 Steer: agent-queue-indicator present in webview.js', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, 'agent-queue-indicator', '§8.5 queue UI indicator');
 });
 
@@ -444,12 +451,12 @@ test('§8.6 Memory: showMemoryFiles command in package.json', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 test('§9 Vision: pendingImages array in webview.js', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, 'pendingImages', '§9 pending images array');
 });
 
 test('§9 Vision: images sent in chat message from webview.js', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, 'images: pendingImages', '§9 images in postMessage');
 });
 
@@ -459,12 +466,12 @@ test('§9 Vision: msg.images handled by VS Code surface adapter', () => {
 });
 
 test('§9 Vision: injectVisionStyles function in webview.js', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, 'injectVisionStyles', '§9 vision CSS styles injected');
 });
 
 test('§9 Vision: paste handler for image capture in webview.js', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, "addEventListener('paste'", '§9 paste handler for image capture');
 });
 
@@ -473,22 +480,22 @@ test('§9 Vision: paste handler for image capture in webview.js', () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 test('§7 Working box: buildFinishedLabel function present', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, 'buildFinishedLabel', '§7 finished label builder');
 });
 
 test('§7 Working box: aut-steps-list element used', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, 'aut-steps-list', '§7 steps list container');
 });
 
 test('§7 Todos widget: agent-todos-widget element present', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, 'agent-todos-widget', '§7 todos widget');
 });
 
 test('§7 Todos widget: model text manage_todo_list is parsed immediately', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, 'agentTodoParseBuffer', 'DeepSeek stream todo parse buffer');
   assertContains(code, 'extractTodoItemsFromModelText', 'DeepSeek raw todo parser');
   assertContains(code, 'maybeHandleTodoUpdateFromModelText', 'DeepSeek raw todo display hook');
@@ -505,12 +512,12 @@ test('§7 Todos widget: model text manage_todo_list is parsed immediately', () =
 });
 
 test('§7 File changes widget: agent-file-changes-widget element present', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, 'agent-file-changes-widget', '§7 file changes widget');
 });
 
 test('§7 Agent feedback: ASUM waits for working completion before visible prose', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, 'ensureAgentProseBubbleVisible', 'agent prose bubble placement helper');
   assertContains(code, 'hasActiveAgentWorkingContainer', 'ASUM visibility must check active Working state');
   assert.match(
@@ -521,7 +528,7 @@ test('§7 Agent feedback: ASUM waits for working completion before visible prose
 });
 
 test('§7 Agent feedback: final prose is placed after working box', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, 'placeTurnAfterLatestAgentWorking', 'final prose placement helper');
   assert.ok(
     !code.includes('moveLatestAgentWorkingAfterTurn'),
@@ -530,7 +537,7 @@ test('§7 Agent feedback: final prose is placed after working box', () => {
 });
 
 test('§7 Agent feedback: pre-plan resetResponse is suppressed', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assert.match(
     code,
     /msg\.type === 'resetResponse'[\s\S]*?isAgentMode && !agentPlanDone[\s\S]*?return;/,
@@ -539,7 +546,7 @@ test('§7 Agent feedback: pre-plan resetResponse is suppressed', () => {
 });
 
 test('§7 Working box: resetResponse updates visible progress', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assert.match(
     code,
     /msg\.type === 'resetResponse'[\s\S]*?updateWorkingEntry\('request', '分析请求', '模型已开始响应', 'passed'\)[\s\S]*?已接收[\s\S]*?updateWorkingEntry\('response',/,
@@ -548,7 +555,7 @@ test('§7 Working box: resetResponse updates visible progress', () => {
 });
 
 test('§7 Todos: agent snapshots override model todo state', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, '__agentState', 'agent-owned todo snapshots are marked');
   assert.match(
     code,
@@ -563,7 +570,7 @@ test('§7 Todos: agent snapshots override model todo state', () => {
 });
 
 test('§7 Todos: full model snapshots preserve distinct code/program tasks', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, 'incomingLooksFullSnapshot', 'todo merge must detect full snapshots');
   assert.match(
     code,
@@ -599,7 +606,7 @@ test('Agentic loop: fallback todos are shown only after real tool work starts', 
 });
 
 test('§7 Final summary: done refreshes visible prose with files and validation', () => {
-  const code = src('media/webview.js');
+  const code = webviewRuntime();
   assertContains(code, 'agentValidationSummary', 'validation result is tracked for final prose');
   assertContains(code, 'refreshVisibleAgentProseFromCurrentRaw', 'done phase refreshes existing prose bubble');
   assert.match(
@@ -770,7 +777,7 @@ test('Agent run boundaries reset stale todo and pending-edit review scope', () =
   const ext = src('src/extension.ts');
   const pending = src('src/app/pending-edit-service.ts');
   const coordinator = src('src/pending-edit-coordinator.ts');
-  const webview = src('media/webview.js');
+  const webview = webviewRuntime();
   assertContains(pending, 'resetForNewScope', 'pending edit service must expose a new review-scope reset');
   assertContains(ext, 'pendingEditCoordinator.beginReviewScope(webview)', 'agent runs must start with a fresh file-review scope');
   assertContains(coordinator, "webview.postMessage({ type: 'todoUpdate', items: [] })", 'agent runs must clear stale visible todos at start');
@@ -814,7 +821,7 @@ test('Directory discovery uses local context instead of DeepSeek web upload', ()
 });
 
 test('Agent validation completion settles spinner instead of leaving validation animation running', () => {
-  const webview = src('media/webview.js');
+  const webview = webviewRuntime();
   assertContains(webview, 'settleAgentValidationSpinner', 'agent validate completion must settle the live spinner');
   assertContains(webview, 'aut-spinner-label is-settled', 'settled validate spinner must disable shimmer styling');
   assertContains(webview, "msg.state === 'skipped'", 'skipped validation must also settle the spinner');
@@ -859,7 +866,7 @@ test('Agentic loop: final summary never exposes backend tool transcripts', () =>
     'ASUM final prose must use sanitized completion summary',
   );
 
-  const webview = src('media/webview.js');
+  const webview = webviewRuntime();
   assertContains(webview, 'cleanAgentFinalProseForUser', 'webview must sanitize agent final prose');
   assert.match(
     webview,
@@ -871,6 +878,15 @@ test('Agentic loop: final summary never exposes backend tool transcripts', () =>
     /containsAgentInternalTranscript\(endBubble\.textContent \|\| ''\)/,
     'webview must remove final bubbles containing internal terminal transcripts',
   );
+});
+
+test('Architecture: webview sanitizer is a packaged runtime dependency', () => {
+  const html = src('src/ui/webview-html.ts');
+  const packager = src('../../scripts/package-vsix.mjs');
+  const harness = src('test/devseek-dsml-webview-harness.mjs');
+  assertContains(html, 'webview-agent-sanitizer.js', 'production webview HTML must load the sanitizer before webview.js');
+  assertContains(packager, 'webview-agent-sanitizer.js', 'VSIX packaging must include the sanitizer runtime file');
+  assertContains(harness, 'webview-agent-sanitizer.js', 'webview harnesses must execute the same sanitizer runtime file');
 });
 
 test('Agentic free-explore: follow-up turns keep same-session context', () => {
@@ -934,7 +950,7 @@ test('Architecture: webview protocol types exist and extension uses inbound prot
   assertContains(ext, "import type { WebviewInboundMessage }", 'extension must use typed inbound webview message');
   assertContains(ext, 'type WebviewMessage = WebviewInboundMessage', 'extension WebviewMessage must be protocol alias');
   assertContains(ext, "preExecutionInteraction.kind === 'planReview'", 'extension must emit plan review event explicitly');
-  assertContains(src('media/webview.js'), "msg.type === 'intentConfirmation' || msg.type === 'planReview'", 'webview must render plan review with confirmation card');
+  assertContains(webviewRuntime(), "msg.type === 'intentConfirmation' || msg.type === 'planReview'", 'webview must render plan review with confirmation card');
 });
 
 test('Architecture: PermissionService maps ExecutionMode to tool policy', () => {
@@ -1056,7 +1072,7 @@ test('Architecture: agentic loop does not hard-code fake tool protocol formats',
 });
 
 test('Architecture: assistant webview rendering strips fake tool transcripts at the boundary', () => {
-  const webview = src('media/webview.js');
+  const webview = webviewRuntime();
   assertContains(webview, 'function renderAssistantMarkdown', 'assistant rendering must expose a single markdown boundary');
   assertContains(webview, 'return md(renderVisibleAssistantText(text || \'\'));', 'assistant markdown boundary must sanitize visible text before rendering');
   assertContains(webview, 'container.innerHTML = renderAssistantMarkdown(rawText)', 'generic assistant body must use the sanitized markdown boundary');
