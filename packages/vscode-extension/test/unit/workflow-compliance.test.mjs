@@ -66,8 +66,10 @@ test('§3 Tools: task_complete handler present', () => {
 });
 
 test('§3 Tools: memory_write handler present', () => {
-  const code = src('src/agent-loop.ts');
-  assertContains(code, 'memory_write', '§3 memory write tool');
+  const registry = src('src/agent/tool-registry.ts');
+  const prompt = src('src/agent/agent-prompt-builder.ts');
+  assertContains(registry, 'memory_write', '§3 memory write tool registry');
+  assertContains(prompt, 'memory_write', '§3 memory write tool prompt');
 });
 
 test('§3 Tools: run_terminal handler present', () => {
@@ -76,8 +78,10 @@ test('§3 Tools: run_terminal handler present', () => {
 });
 
 test('§3 Tools: mcp__ routing present', () => {
-  const code = src('src/agent-loop.ts');
-  assertContains(code, 'mcp__', '§3 MCP tool routing');
+  const registry = src('src/agent/tool-registry.ts');
+  const prompt = src('src/agent/agent-prompt-builder.ts');
+  assertContains(registry, 'mcp__', '§3 MCP tool routing registry');
+  assertContains(prompt, 'mcp__', '§3 MCP tool routing prompt');
 });
 
 test('§7 Recovery: checkpoint create facts are executed deterministically', () => {
