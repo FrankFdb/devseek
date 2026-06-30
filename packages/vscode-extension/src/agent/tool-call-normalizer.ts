@@ -1,7 +1,7 @@
 import type { ToolKind, ToolRisk } from '../intent/intent-types';
 import type { FakeTool } from './fake-tool-parser';
 import type { AgentToolDefinition } from './tool-registry';
-import { getToolDefinition } from './tool-registry';
+import { getToolDefinition, normalizeAgentToolInput, normalizeAgentToolName } from './tool-registry';
 
 export type ToolCallSource = 'fake-tool' | 'native';
 
@@ -31,8 +31,8 @@ export function normalizeToolCall(raw: FakeTool | NativeToolCall, source?: ToolC
   const candidate = raw as NativeToolCall;
   const callSource = source ?? inferSource(raw);
   const fn = isRecord(candidate.function) ? candidate.function : undefined;
-  const name = String(fn?.name ?? candidate.name ?? '').trim();
-  const input = normalizeInput(candidate.input ?? candidate.arguments ?? fn?.arguments);
+  const name = normalizeAgentToolName(String(fn?.name ?? candidate.name ?? '').trim());
+  const input = normalizeAgentToolInput(name, normalizeInput(candidate.input ?? candidate.arguments ?? fn?.arguments));
   const definition = getToolDefinition(name);
 
   return {

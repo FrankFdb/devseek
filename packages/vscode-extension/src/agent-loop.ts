@@ -90,6 +90,7 @@ import {
 } from './agent/task-todo-ledger';
 import { tryRunSimpleFileTask } from './agent/simple-file-task';
 import { shouldRequestManualReviewForRun } from './agent/manual-review-validation';
+import { buildEngineeringGuidelinesPrompt } from './agent/engineering-guidelines';
 import { WorkspaceEditService } from './workspace/edit-service';
 import type { CppValidationPolicy } from './validation-planner';
 import type { ExecutionMode } from './intent/intent-types';
@@ -173,6 +174,8 @@ ${toolLines}
   }
 
   return `
+${buildEngineeringGuidelinesPrompt('agent')}
+
 ## 可用工具（通过文本格式调用）
 
 格式严格如下（JSON 必须完整，不省略花括号）：
@@ -186,8 +189,9 @@ ${isSingle || isLast ? `
 执行终端命令（输出将在下轮可见，可用于编译验证、运行测试等）：
 [TOOL:run_terminal {"command":"npm run build","workdir":"${taskWorkdir ?? '/可选/绝对/路径'}"}]
 
-读取工作区文件内容（路径相对于工作区根，或绝对路径）：
+读取工作区文件内容（路径相对于工作区根，或绝对路径；大文件可用 startLine/endLine 继续读取）：
 [TOOL:read_file {"path":"src/foo.ts"}]
+[TOOL:read_file {"path":"src/foo.ts","startLine":300,"endLine":520}]
 
 搜索工作区文件内容（支持正则，可指定目录路径）：
 [TOOL:grep_search {"pattern":"className|funcName","path":"src/","isRegexp":true}]

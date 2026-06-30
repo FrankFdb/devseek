@@ -59,4 +59,19 @@ test('ToolCallNormalizer: unknown native tools stay visible but unregistered', (
   assert.equal(call.risk, 'high');
 });
 
+test('ToolCallNormalizer: native aliases normalize to canonical tools', () => {
+  const call = normalizeToolCall({
+    function: {
+      name: 'search_content',
+      arguments: JSON.stringify({ query: 'glutMouseFunc', directory: 'code/shape_manager' }),
+    },
+  });
+
+  assert.equal(call.name, 'grep_search');
+  assert.equal(call.registered, true);
+  assert.equal(call.kind, 'search');
+  assert.equal(call.input.pattern, 'glutMouseFunc');
+  assert.equal(call.input.path, 'code/shape_manager');
+});
+
 console.log('\nTool call normalizer tests passed.\n');

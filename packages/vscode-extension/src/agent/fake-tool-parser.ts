@@ -1,14 +1,15 @@
+import {
+  listAgentToolNames,
+  normalizeAgentToolInput,
+  normalizeAgentToolName,
+} from './tool-registry';
+
 export interface FakeTool {
   name: string;
   input: Record<string, unknown>;
 }
 
-export const KNOWN_FAKE_TOOL_NAMES = new Set([
-  'read_file', 'grep_search', 'search_file', 'file_search', 'semantic_search', 'list_dir', 'get_errors',
-  'run_terminal', 'memory_write', 'get_changed_files', 'create_directory', 'fetch_webpage',
-  'vscode_listCodeUsages', 'run_vscode_command', 'create_file', 'write_file', 'replace_file',
-  'manage_todo_list', 'task_complete',
-]);
+export const KNOWN_FAKE_TOOL_NAMES = new Set(listAgentToolNames());
 
 const SHELL_TRANSCRIPT_NAMES = new Set([
   'bash', 'shell', 'sh', 'zsh', 'console', 'terminal', 'cmd', 'powershell', 'pwsh',
@@ -48,15 +49,15 @@ function dsmlCloseTagPattern(name: string): string {
 }
 
 function makeCallingRegex(): RegExp {
-  return /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?([A-Za-z_]\w*)`?\]?/gi;
+  return /(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?([A-Za-z_]\w*)`?\]?/gi;
 }
 
 function makeAnyCallingRegex(): RegExp {
-  return /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?([A-Za-z_]\w*)`?\]?)?/gi;
+  return /(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?([A-Za-z_]\w*)`?\]?)?/gi;
 }
 
 function makeToolArgumentsRegex(): RegExp {
-  const names = [...KNOWN_FAKE_TOOL_NAMES]
+  const names = listAgentToolNames(true)
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join('|');
@@ -64,7 +65,7 @@ function makeToolArgumentsRegex(): RegExp {
 }
 
 function makeFunctionStyleToolCallRegex(): RegExp {
-  const names = [...KNOWN_FAKE_TOOL_NAMES]
+  const names = listAgentToolNames(true)
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join('|');
@@ -72,7 +73,7 @@ function makeFunctionStyleToolCallRegex(): RegExp {
 }
 
 function isRegisteredFakeToolName(name: string): boolean {
-  return KNOWN_FAKE_TOOL_NAMES.has(name) || name.startsWith('mcp__');
+  return KNOWN_FAKE_TOOL_NAMES.has(normalizeAgentToolName(name)) || name.startsWith('mcp__');
 }
 
 function isShellTranscriptName(name: string): boolean {
@@ -80,23 +81,12 @@ function isShellTranscriptName(name: string): boolean {
 }
 
 function normalizeToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
-  const normalized = { ...input };
-  if (typeof normalized.path !== 'string') {
-    const path = normalized.filePath ?? normalized.filepath ?? normalized.filename ?? normalized.targetPath ?? normalized.directory;
-    if (typeof path === 'string' && path.trim()) normalized.path = path.trim();
-  }
-  if (toolName === 'search_file' && typeof normalized.path !== 'string') {
-    const path = normalized.target_directory ?? normalized.targetDirectory ?? normalized.directory;
-    if (typeof path === 'string' && path.trim()) normalized.path = path.trim();
-  }
-  if (toolName === 'search_file' && typeof normalized.glob !== 'string') {
-    const pattern = normalized.pattern ?? normalized.include;
-    if (typeof pattern === 'string' && pattern.trim()) normalized.glob = pattern.trim();
-  }
-  if (toolName === 'run_terminal' && typeof normalized.command !== 'string' && typeof normalized.cmd === 'string') {
-    normalized.command = normalized.cmd;
-  }
-  return normalized;
+  return normalizeAgentToolInput(toolName, input);
+}
+
+function normalizeFakeTool(tool: FakeTool): FakeTool {
+  const name = normalizeAgentToolName(tool.name);
+  return { name, input: normalizeToolInput(name, tool.input) };
 }
 
 function looksLikeNonShellTranscriptLine(line: string): boolean {
@@ -242,7 +232,7 @@ function parseFunctionStyleToolCalls(text: string): FakeTool[] {
     tools.push(extracted.tool);
     callRe.lastIndex = extracted.end;
   }
-  return tools;
+  return tools.map(normalizeFakeTool);
 }
 
 function findNextFunctionStyleToolCallStart(text: string, startAt = 0): number {
@@ -321,7 +311,7 @@ function parseToolArgumentsToolCalls(text: string): FakeTool[] {
     tools.push(extracted.tool);
     toolRe.lastIndex = extracted.end;
   }
-  return tools;
+  return tools.map(normalizeFakeTool);
 }
 
 function stripToolArgumentsBlocks(text: string): string {
@@ -381,7 +371,7 @@ function findShellTranscriptEnd(text: string, callEnd: number): number {
   }
 
   let end = pos;
-  const callLineRe = /^(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?[A-Za-z_]\w*`?\]?/i;
+  const callLineRe = /^(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?[A-Za-z_]\w*`?\]?/i;
   while (end < text.length) {
     const next = lineEndAfter(text, end);
     const line = text.slice(end, next);
@@ -431,6 +421,7 @@ export function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | n
         : '';
   const name = rawName.trim();
   if (!name || !isRegisteredFakeToolName(name)) return null;
+  const canonicalName = normalizeAgentToolName(name);
   const maybeArgs = obj.arguments ?? obj.parameters ?? obj.args;
   let input: Record<string, unknown>;
   if (maybeArgs && typeof maybeArgs === 'object' && !Array.isArray(maybeArgs)) {
@@ -441,7 +432,7 @@ export function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | n
       if (!['tool', 'name', 'type', 'arguments', 'parameters', 'args'].includes(k)) input[k] = v;
     }
   }
-  return { name, input };
+  return { name: canonicalName, input: normalizeToolInput(canonicalName, input) };
 }
 
 function escapeRegExp(value: string): string {
@@ -576,7 +567,7 @@ function jsonArrayToFakeTools(value: unknown): FakeTool[] {
     if (!tool) return [];
     tools.push(tool);
   }
-  return tools;
+  return tools.map(normalizeFakeTool);
 }
 
 function jsonValueContainsToolPayload(value: unknown): boolean {
@@ -980,7 +971,7 @@ function extractShellTranscriptCommand(text: string, callEnd: number): { command
   }
 
   const lines: string[] = [];
-  const callLineRe = /^(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?[A-Za-z_]\w*`?\]?/i;
+  const callLineRe = /^(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?[A-Za-z_]\w*`?\]?/i;
   let end = pos;
   while (end < text.length) {
     const next = lineEndAfter(text, end);
@@ -1180,5 +1171,5 @@ export function parseFakeToolCalls(text: string): FakeTool[] {
     }
   }
 
-  return tools;
+  return tools.map(normalizeFakeTool);
 }

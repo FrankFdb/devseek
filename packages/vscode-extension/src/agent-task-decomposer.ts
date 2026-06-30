@@ -17,6 +17,7 @@ import { chat } from './bridge-client';
 import { getProjectRulesSync, wrapRulesAsContext, getProjectMemorySync, wrapMemoryAsContext } from './project-rules';
 import { detectWorkspacePathScope } from './workspace/path-resolver';
 import { isCodeArtifactPath, requiresCodeArtifactForEvidence } from './agent/completion-evidence';
+import { buildEngineeringGuidelinesPrompt } from './agent/engineering-guidelines';
 
 // ----------------------------------------------------------------
 // Public types
@@ -336,6 +337,7 @@ function buildDecomposeSystemPrompt(
     '先用 1-2 句话（中文）简述你的分析思路和计划方向，然后输出 JSON 任务计划。不要输出代码。',
     projectRulesSection,
     projectMemorySection,
+    buildEngineeringGuidelinesPrompt('planner'),
     '',
     '【用户需求】',
     userPrompt,

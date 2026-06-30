@@ -318,38 +318,44 @@ test('§8.3 File edits: code directory prompts force generated code paths under 
 
 test('Path memory: tool callbacks use inferred workspace root instead of workspaceFolders[0]', () => {
   const code = src('src/extension.ts');
-  const freeExploreReadStart = code.indexOf('onReadFile: async (filePath: string, workDir?: string)');
-  const freeExploreReadEnd = code.indexOf('onGrepSearch: async (pattern: string, path?: string, _isRegexp?: boolean, workDir?: string)', freeExploreReadStart);
-  const freeExploreReadBlock = code.slice(freeExploreReadStart, freeExploreReadEnd);
-  const editorReadStart = code.indexOf('onReadFile: async (filePath, workDir?: string)');
-  const editorReadEnd = code.indexOf('// grep_search tool', editorReadStart);
-  const editorReadBlock = code.slice(editorReadStart, editorReadEnd);
-  assert.match(
+  const fileContext = src('src/workspace/file-context-service.ts');
+  assertContains(
     code,
-    /onReadFile: async \(filePath: string, workDir\?: string\)[\s\S]*?const agWsRootFs = agWsRoot;/,
-    'free-explore read_file must anchor to inferred agWsRoot',
+    'createFileContextService(agWsRoot).readFileForAi',
+    'free-explore read_file must delegate to FileContextService anchored to inferred agWsRoot',
+  );
+  assertContains(
+    code,
+    'createFileContextService(wsRoot.fsPath).readFileForAi',
+    'editor read_file must delegate to FileContextService anchored to selected task workspace root',
   );
   assert.ok(
-    freeExploreReadBlock.indexOf('nodePath.resolve(workDir, filePath)') < freeExploreReadBlock.indexOf('nodePath.join(agWsRootFs, filePath)'),
-    'free-explore read_file must prefer task workDir before workspace-root fallback',
+    fileContext.indexOf('nodePath.resolve(workDir, filePath)') < fileContext.indexOf('recentByBase'),
+    'FileContextService must prefer task workDir before session basename memory',
   );
   assert.ok(
-    freeExploreReadBlock.indexOf('nodePath.resolve(workDir, filePath)') < freeExploreReadBlock.indexOf('sessionRecentFiles.get'),
-    'free-explore read_file must prefer task workDir before session basename memory',
+    fileContext.indexOf('recentByBase') < fileContext.indexOf('nodePath.resolve(this.options.workspaceRoot, filePath)'),
+    'FileContextService must prefer session memory before workspace-root fallback',
   );
-  assert.match(
+  assertContains(
     code,
-    /onGrepSearch: async \(pattern: string, path\?: string, _isRegexp\?: boolean, workDir\?: string\)[\s\S]*?const agWsRootFs = agWsRoot;/,
-    'free-explore grep_search must anchor to inferred agWsRoot',
+    'grepWorkspace(agWsRoot, pattern, path, workDir, options)',
+    'free-explore grep_search must delegate to WorkspaceGrepSearchService anchored to inferred agWsRoot',
   );
-  assert.match(
+  assertContains(
     code,
-    /const wsRootPath = wsRoot\.fsPath;[\s\S]*?candidate\.startsWith\(wsRootPath\)/,
-    'editor read_file workDir validation must use the selected task workspace root',
+    'grepWorkspace(wsRoot.fsPath, pattern, path, workDir, options)',
+    'editor grep_search must delegate to WorkspaceGrepSearchService anchored to selected task workspace root',
   );
-  assert.ok(
-    editorReadBlock.indexOf('nodePath.resolve(workDir, filePath)') < editorReadBlock.indexOf('sessionRecentFiles.get'),
-    'editor read_file must prefer task workDir before session basename memory',
+  assertContains(
+    fileContext,
+    'isAllowedWorkspaceCandidate',
+    'FileContextService must validate workDir candidates against the selected workspace root',
+  );
+  assertContains(
+    src('src/workspace/grep-search-service.ts'),
+    'isInsideOrSame(searchDir, workspaceRoot)',
+    'WorkspaceGrepSearchService must validate grep paths against the selected workspace root',
   );
   assert.doesNotMatch(
     code,

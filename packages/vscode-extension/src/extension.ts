@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import * as nodePath from 'path';
 import { chat, relogin, status, readWorkspaceFile, ensureBridgeRunning, setBridgeExtensionRoot } from './bridge-client';
 import { createProviderStatusBar, getActiveProvider, getActiveProviderType, getProviderConfigService, promptUpdateApiKey } from './llm/provider-router';
@@ -87,6 +86,8 @@ import {
 } from './app/context-discovery-service';
 import { TaskHistoryUiService } from './app/task-history-ui-service';
 import { registerExtensionCommands } from './ui/extension-command-registration';
+import { FileContextService } from './workspace/file-context-service';
+import { WorkspaceGrepSearchService } from './workspace/grep-search-service';
 import {
   appendFileAwareFormatHint,
   appendStructuredGenerationHint,
@@ -131,6 +132,31 @@ const sessionRecentFiles = new Map<string, string>();
 let activeSessionId = '';
 // P3-5: MCP manager (singleton; initialized lazily in activate)
 const mcpManager = new McpManager();
+
+function createFileContextService(workspaceRoot?: string): FileContextService {
+  return new FileContextService({
+    workspaceRoot,
+    recentFiles: sessionRecentFiles,
+    fallbackRead: readWorkspaceFile,
+  });
+}
+
+async function grepWorkspace(
+  workspaceRoot: string,
+  pattern: string,
+  path?: string,
+  workDir?: string,
+  options?: { includePattern?: string; fileTypes?: string },
+): Promise<string> {
+  const { runCommand } = await import('./tools/terminal');
+  return new WorkspaceGrepSearchService(workspaceRoot, runCommand).search({
+    pattern,
+    path,
+    workDir,
+    includePattern: options?.includePattern,
+    fileTypes: options?.fileTypes,
+  });
+}
 
 function getSessionService(): SessionService | undefined {
   return extContext ? new SessionService(extContext.workspaceState) : undefined;
@@ -656,43 +682,12 @@ async function runChat(
               toolPolicy,
             });
           },
-          onReadFile: async (filePath: string, workDir?: string) => {
-            const agWsRootFs = agWsRoot;
-            const tryRead = (p: string) => {
-              try {
-                const stat = fs.statSync(p);
-                if (stat.isFile()) return fs.readFileSync(p, 'utf8').slice(0, 8000);
-              } catch { return null; }
-              return null;
-            };
-            if (nodePath.isAbsolute(filePath)) { const r = tryRead(filePath); if (r !== null) return r; }
-            if (workDir) { const r = tryRead(nodePath.resolve(workDir, filePath)); if (r !== null) return r; }
-            const byBasename = sessionRecentFiles.get(nodePath.basename(filePath).toLowerCase());
-            if (byBasename) { const r = tryRead(byBasename); if (r !== null) return r; }
-            if (agWsRootFs) { const r = tryRead(nodePath.join(agWsRootFs, filePath)); if (r !== null) return r; }
-            const content = await readWorkspaceFile(filePath, []);
-            if (!content) throw new Error(`找不到文件：${filePath}`);
-            return content.slice(0, 8000);
-          },
-          onGrepSearch: async (pattern: string, path?: string, _isRegexp?: boolean, workDir?: string) => {
-            const { runCommand } = await import('./tools/terminal');
-            const agWsRootFs = agWsRoot;
-            let rawDir: string;
-            if (path) { rawDir = nodePath.isAbsolute(path) ? path : nodePath.join(agWsRootFs, path); }
-            else if (workDir) { rawDir = workDir; }
-            else { rawDir = agWsRootFs; }
-            const searchDir = nodePath.resolve(rawDir);
-            if (agWsRootFs && !searchDir.startsWith(nodePath.resolve(agWsRootFs))) {
-              throw new Error('grep_search: path outside workspace');
-            }
-            const esc = pattern.replace(/'/g, "'\\''").slice(0, 200);
-            const escDir = searchDir.replace(/'/g, "'\\''");
-            const exts = ['ts','tsx','js','jsx','cpp','c','h','hpp','py','java','go','rs','cs','log','txt','csv','json','md'];
-            const includes = exts.map(e => `--include='*.${e}'`).join(' ');
-            const cmd = `grep -r -n -E '${esc}' ${includes} '${escDir}' 2>/dev/null | head -60`;
-            const result = await runCommand({ command: cmd, timeoutMs: 15000 });
-            return result.stdout || '（无匹配结果）';
-          },
+          onReadFile: async (filePath: string, workDir?: string, range?: { startLine?: number; endLine?: number }) => (
+            createFileContextService(agWsRoot).readFileForAi(filePath, { workDir, ...range })
+          ),
+          onGrepSearch: async (pattern: string, path?: string, _isRegexp?: boolean, workDir?: string, options?: { includePattern?: string; fileTypes?: string }) => (
+            grepWorkspace(agWsRoot, pattern, path, workDir, options)
+          ),
           onListDir: async (path: string) => {
             let target: string;
             const agWsRootFs = agWsRoot;
@@ -969,58 +964,13 @@ async function runChat(
           // workDir = absolute path of the current task's directory (passed by executeFakeToolsForLoop).
           // Copilot/Claude Code pattern: tool calls inherit parent task's working directory so
           // bare filenames like "main.cpp" resolve to code/3D/main.cpp, not workspace root.
-          onReadFile: async (filePath, workDir?: string) => {
-            const { statSync, readFileSync } = require('fs') as typeof import('fs');
-            function tryRead(p: string): string | null {
-              try { if (statSync(p).isFile()) return readFileSync(p, 'utf8').slice(0, 8000); } catch {}
-              return null;
-            }
-	            // P1: workDir-relative (path.resolve handles ../ correctly)
-	            if (workDir && !nodePath.isAbsolute(filePath)) {
-	              const candidate = nodePath.resolve(workDir, filePath);
-	              const wsRootPath = wsRoot.fsPath;
-	              if (wsRootPath && candidate.startsWith(wsRootPath)) {
-	                const r = tryRead(candidate);
-	                if (r !== null) return r;
-	              }
-	            }
-	            // P2: sessionRecentFiles dict — basename or rel-path lookup after task scope
-	            const byBasename = sessionRecentFiles.get(nodePath.basename(filePath).toLowerCase());
-	            if (byBasename) { const r = tryRead(byBasename); if (r !== null) return r; }
-	            const byRel = sessionRecentFiles.get(filePath);
-	            if (byRel && byRel !== byBasename) { const r = tryRead(byRel); if (r !== null) return r; }
-	            // P3: normal workspace-relative / absolute resolution via bridge + VS Code API.
-            const content = await readWorkspaceFile(filePath, []);
-            if (!content) throw new Error(`找不到文件：${filePath}`);
-            return content.slice(0, 8000);
-          },
+          onReadFile: async (filePath, workDir?: string, range?: { startLine?: number; endLine?: number }) => (
+            createFileContextService(wsRoot.fsPath).readFileForAi(filePath, { workDir, ...range })
+          ),
           // grep_search tool — AI can search workspace files for patterns
-          onGrepSearch: async (pattern: string, path?: string, _isRegexp?: boolean, workDir?: string) => {
-            const { runCommand } = await import('./tools/terminal');
-            // Resolve and validate path stays within workspace root (prevent path traversal).
-            // Priority: explicit path > task workDir (project subdir) > workspace root.
-            // Using workDir as the default prevents grep flooding results from unrelated projects.
-            let rawDir: string;
-            if (path) {
-              rawDir = nodePath.isAbsolute(path) ? path : nodePath.join(wsRoot.fsPath, path);
-            } else if (workDir) {
-              rawDir = workDir;
-            } else {
-              rawDir = wsRoot.fsPath;
-            }
-            const searchDir = nodePath.resolve(rawDir);
-            if (!searchDir.startsWith(nodePath.resolve(wsRoot.fsPath))) {
-              throw new Error('grep_search: path outside workspace');
-            }
-            const esc = pattern.replace(/'/g, "'\\''").slice(0, 200);
-            // Escape searchDir for safe single-quote shell interpolation
-            const escDir = searchDir.replace(/'/g, "'\\''");
-            const exts = ['ts','tsx','js','jsx','cpp','c','h','hpp','py','java','go','rs','cs'];
-            const includes = exts.map(e => `--include='*.${e}'`).join(' ');
-            const cmd = `grep -r -n -E '${esc}' ${includes} '${escDir}' 2>/dev/null | head -60`;
-            const result = await runCommand({ command: cmd, timeoutMs: 15000 });
-            return result.stdout || '（无匹配结果）';
-          },
+          onGrepSearch: async (pattern: string, path?: string, _isRegexp?: boolean, workDir?: string, options?: { includePattern?: string; fileTypes?: string }) => (
+            grepWorkspace(wsRoot.fsPath, pattern, path, workDir, options)
+          ),
           // list_dir tool — AI can explore directory structure (G9: supports absolute paths)
           onListDir: async (path: string) => {
             let target: string;

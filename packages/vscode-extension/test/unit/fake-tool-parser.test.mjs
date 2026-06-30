@@ -174,6 +174,41 @@ test('FakeToolParser: parses DeepSeek search_file alias and strips it from visib
   assert.equal(stripToolCallBlocks(text), '让我先搜索相关源文件。');
 });
 
+test('FakeToolParser: normalizes DeepSeek search_content alias to grep_search', () => {
+  const text = [
+    '我先查找鼠标回调。',
+    'search_content({"pattern":"glutMouseFunc|mouse|keyboard","directory":"/home/ff/work/devseek_netai/code/shape_manager","fileTypes":"*.cpp,h"})',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'grep_search');
+  assert.equal(tools[0].input.pattern, 'glutMouseFunc|mouse|keyboard');
+  assert.equal(tools[0].input.path, '/home/ff/work/devseek_netai/code/shape_manager');
+  assert.equal(stripToolCallBlocks(text), '我先查找鼠标回调。');
+});
+
+test('FakeToolParser: parses bracketed Chinese tool calls and normalizes every result', () => {
+  const text = [
+    '让我先查看当前`shape_manager`项目的实现，了解图形选择机制和鼠标交互逻辑，然后进行修改。',
+    '[调用 read_file] {"filePath":"/home/ff/work/devseek_netai/code/shape_manager/main.cpp", "offset": 0, "limit": 150}',
+    '[调用 search_content] {"pattern": "glutKeyboardFunc|keyboard|数字", "directory": "/home/ff/work/devseek_netai/code/shape_manager", "fileTypes": ".cpp,.h"}',
+    '[调用 search_content] {"pattern": "glutMouseFunc|mouse|click", "directory": "/home/ff/work/devseek_netai/code/shape_manager", "fileTypes": ".cpp,.h"}',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 3);
+  assert.equal(tools[0].name, 'read_file');
+  assert.equal(tools[0].input.path, '/home/ff/work/devseek_netai/code/shape_manager/main.cpp');
+  assert.equal(tools[0].input.startLine, 1);
+  assert.equal(tools[0].input.endLine, 150);
+  assert.equal(tools[1].name, 'grep_search');
+  assert.equal(tools[1].input.path, '/home/ff/work/devseek_netai/code/shape_manager');
+  assert.equal(tools[1].input.includePattern, '.cpp,.h');
+  assert.equal(tools[2].name, 'grep_search');
+  assert.equal(stripToolCallBlocks(text), '让我先查看当前`shape_manager`项目的实现，了解图形选择机制和鼠标交互逻辑，然后进行修改。');
+});
+
 test('FakeToolParser: does not execute task summary JSON as a bash command', () => {
   const text = [
     'Calling: bash',

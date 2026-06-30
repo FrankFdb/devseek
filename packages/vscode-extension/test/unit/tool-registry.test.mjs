@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -22,10 +23,13 @@ execSync(
 const req = createRequire(import.meta.url);
 const {
   AGENT_TOOL_DEFINITIONS,
+  listAgentToolNames,
   getToolDefinition,
   getToolActivity,
   isRegisteredToolName,
   isFileWriteTool,
+  normalizeAgentToolInput,
+  normalizeAgentToolName,
 } = req(bundlePath);
 
 test('ToolRegistry: identifies workspace file write tools', () => {
@@ -52,6 +56,54 @@ test('ToolRegistry: resolves registered and MCP tools', () => {
   assert.equal(isRegisteredToolName('not_a_tool'), false);
   assert.equal(getToolDefinition('mcp__repo__search').kind, 'mcp');
   assert.equal(getToolDefinition('mcp__repo__search').risk, 'medium');
+});
+
+test('ToolRegistry: normalizes model-specific tool aliases and argument aliases', () => {
+  assert.equal(normalizeAgentToolName('search_content'), 'grep_search');
+  assert.equal(isRegisteredToolName('search_content'), true);
+  assert.equal(getToolDefinition('search_content').name, 'grep_search');
+  assert.equal(listAgentToolNames(true).includes('search_content'), true);
+  assert.deepEqual(
+    normalizeAgentToolInput('search_content', {
+      query: 'glutMouseFunc|mouse',
+      directory: '/tmp/project',
+      fileTypes: '.cpp,.h',
+    }),
+    {
+      query: 'glutMouseFunc|mouse',
+      directory: '/tmp/project',
+      fileTypes: '.cpp,.h',
+      pattern: 'glutMouseFunc|mouse',
+      path: '/tmp/project',
+      includePattern: '.cpp,.h',
+    },
+  );
+  assert.deepEqual(
+    normalizeAgentToolInput('read_file', {
+      filePath: '/tmp/project/main.cpp',
+      offset: 0,
+      limit: 150,
+    }),
+    {
+      filePath: '/tmp/project/main.cpp',
+      offset: 0,
+      limit: 150,
+      path: '/tmp/project/main.cpp',
+      startLine: 1,
+      endLine: 150,
+    },
+  );
+});
+
+test('ToolRegistry: webview tool mirror includes every canonical tool and alias', () => {
+  const webview = readFileSync(path.join(rootDir, 'media/webview.js'), 'utf8');
+  const match = /var WEBVIEW_TOOL_NAMES = \{([\s\S]*?)\};/.exec(webview);
+  assert.ok(match, 'webview must define WEBVIEW_TOOL_NAMES');
+  const mirroredNames = new Set([...match[1].matchAll(/\b([A-Za-z_]\w*)\s*:/g)].map(item => item[1]));
+
+  for (const name of listAgentToolNames(true)) {
+    assert.equal(mirroredNames.has(name), true, `WEBVIEW_TOOL_NAMES must include ${name}`);
+  }
 });
 
 test('ToolRegistry: maps tools to activity display labels', () => {

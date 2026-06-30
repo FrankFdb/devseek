@@ -63,13 +63,11 @@ export interface AgentLoopCallbacks {
    */
   onBeforeFileWrite?: (absPath: string) => Promise<boolean>;
   /**
-   * P5-3: AI called read_file — return file contents (up to 8KB).
-   * Path may be relative to workspace root or absolute.
-   * workDir (optional): absolute path of the current task's directory — used to
-   * resolve bare filenames (e.g. "main.cpp") to the correct subdirectory rather
-   * than workspace root (Copilot/Claude Code: tool calls inherit task working dir).
+   * AI called read_file — return an AI-readable file context with metadata.
+   * workDir resolves bare filenames against the current task directory first.
+   * startLine/endLine let the model continue through large files by range.
    */
-  onReadFile?: (path: string, workDir?: string) => Promise<string>;
+  onReadFile?: (path: string, workDir?: string, range?: { startLine?: number; endLine?: number }) => Promise<string>;
   /**
    * AI called grep_search — search workspace files for a regex/text pattern.
    * Returns matching lines in file:line: content format.
@@ -77,7 +75,13 @@ export interface AgentLoopCallbacks {
    * does not pass an explicit path, search is scoped to this directory rather than
    * the entire workspace root (prevents grep_search returning noise from unrelated projects).
    */
-  onGrepSearch?: (pattern: string, path?: string, isRegexp?: boolean, workDir?: string) => Promise<string>;
+  onGrepSearch?: (
+    pattern: string,
+    path?: string,
+    isRegexp?: boolean,
+    workDir?: string,
+    options?: { includePattern?: string; fileTypes?: string },
+  ) => Promise<string>;
   /**
    * AI called list_dir — list directory contents.
    * Returns entries prefixed with [dir] or [file].

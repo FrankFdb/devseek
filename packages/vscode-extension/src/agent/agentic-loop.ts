@@ -77,6 +77,7 @@ import {
 } from './tool-loop';
 import { buildTaskSettlementFailureStatus, createAgentTaskTodoLedger } from './task-todo-ledger';
 import { tryRunSimpleFileTask } from './simple-file-task';
+import { buildEngineeringGuidelinesPrompt } from './engineering-guidelines';
 
 function extractPlanningTodoItems(text: string): TodoItem[] {
   const lines = text
@@ -222,10 +223,13 @@ function buildAgenticSystemPrompt(
 
 【工作区根目录】${workspaceRoot}
 ${rulesSection}${memSection}${filesSection}${workflowModeSection}
+${buildEngineeringGuidelinesPrompt('agent')}
+
 【可用工具】
 
-读取文件（代码文件、日志文件、配置文件，支持绝对路径）：
+读取文件（代码文件、日志文件、配置文件，支持绝对路径；大文件可用 startLine/endLine 继续读取）：
 [TOOL:read_file {"path":"/absolute/path/to/file"}]
+[TOOL:read_file {"path":"/absolute/path/to/file","startLine":300,"endLine":520}]
 
 搜索文件内容（支持正则表达式，支持绝对路径）：
 [TOOL:grep_search {"pattern":"关键词","path":"src/","isRegexp":true}]

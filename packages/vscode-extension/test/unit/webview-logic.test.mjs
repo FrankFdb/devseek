@@ -71,7 +71,7 @@ const SHELL_TRANSCRIPT_NAMES = {
 };
 
 const TOOL_NAMES = {
-  read_file: true, grep_search: true, search_file: true, file_search: true, semantic_search: true, list_dir: true, get_errors: true,
+  read_file: true, grep_search: true, search_content: true, search_file: true, file_search: true, semantic_search: true, list_dir: true, get_errors: true,
   run_terminal: true, memory_write: true, get_changed_files: true, create_directory: true, fetch_webpage: true,
   vscode_listCodeUsages: true, run_vscode_command: true, create_file: true, write_file: true, replace_file: true,
   manage_todo_list: true, task_complete: true,
@@ -87,7 +87,7 @@ function isShellTranscriptName(name) {
 }
 
 function makeAnyCallingRegex() {
-  return /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?([A-Za-z_]\w*)`?\]?)?/gi;
+  return /(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?([A-Za-z_]\w*)`?\]?)?/gi;
 }
 
 function escapeRegExp(value) {
@@ -238,7 +238,7 @@ function findJsonObjectEnd(text, start) {
 function stripCallingToolBlocksFromText(text) {
   let out = '';
   let i = 0;
-  const callRe = /(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
+  const callRe = /(?:\[\s*)?(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
   while (i < text.length) {
     callRe.lastIndex = i;
     const m = callRe.exec(text);
@@ -462,11 +462,11 @@ function containsAgentInternalTranscript(text) {
   return containsDsmlToolTranscript(text)
     || containsAgentRoutingMarkerLeak(text)
     || containsFunctionStyleToolCall(text)
-    || /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
-    || /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
-    || /(?:^|\n)\s*(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
-    || /(?:^|\n|[ \t])(?:Tool|工具)[ \t]*[:：][ \t]*`?(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
-    || /(?:^|\n)\s*\[(?:工具结果|run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(text)
+    || /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
+    || /(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
+    || /(?:^|\n)\s*(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
+    || /(?:^|\n|[ \t])(?:Tool|工具)[ \t]*[:：][ \t]*`?(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
+    || /(?:^|\n)\s*\[(?:工具结果|run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(text)
     || /\b(?:run_terminal|manage_todo_list|task_complete|stdout|stderr|exitCode|exit code)\b/i.test(text)
     || /(?:^|\n)\s*\$\s+\S+/.test(text)
     || /(?:^|\n)\s*(?:命令输出|执行命令|终端输出)\s*[:：]/.test(text);
@@ -498,12 +498,12 @@ function cleanAgentFinalProseForUser(text) {
   const lines = cleaned.split('\n').filter((line) => {
     const s = line.trim();
     if (!s) return true;
-    if (/^\[TOOL:(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(s)) return false;
-    if (/^(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(s)) return false;
-    if (/^(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
-    if (/^(?:Tool|工具)[ \t]*[:：][ \t]*`?(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
+    if (/^\[TOOL:(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(s)) return false;
+    if (/^(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(s)) return false;
+    if (/^(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
+    if (/^(?:Tool|工具)[ \t]*[:：][ \t]*`?(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(s)) return false;
     if (/^(?:Arguments?|参数)[ \t]*[:：]\s*\{/i.test(s)) return false;
-    if (/^\[(?:工具结果|run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(s)) return false;
+    if (/^\[(?:工具结果|run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(s)) return false;
     if (/^\$\s+\S+/.test(s)) return false;
     if (/^(?:stdout|stderr|exitCode|exit code|命令输出|执行命令|终端输出)\s*[:：]/i.test(s)) return false;
     return true;
@@ -529,12 +529,12 @@ function sanitizeAgentVisibleText(text) {
 
 function stripIncompleteCallingTail(text) {
   const raw = String(text || '');
-  const m = /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.exec(raw);
+  const m = /(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.exec(raw);
   return m ? raw.slice(0, m.index).trimEnd() : raw;
 }
 
 function containsPotentialInternalCallingTail(text) {
-  return /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.test(String(text || ''));
+  return /(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.test(String(text || ''));
 }
 
 function sanitizeAssistantVisibleText(text) {
@@ -743,6 +743,23 @@ test('agent final prose: strips Tool/Arguments terminal transcript from final us
   const leaked = [
     '好的，现在执行编译和运行。 Tool: run_terminal Arguments:{"command":"cd /tmp/project && cmake -S . -B build && cmake --build build","is_background":false}',
     '后续总结应该由结构化 evidence 生成。',
+  ].join('\n');
+  assert.equal(cleanAgentFinalProseForUser(leaked), '');
+});
+
+test('agent final prose: strips function-style search_content transcript from final user text', () => {
+  const leaked = [
+    '我先搜索鼠标回调。',
+    'search_content({"pattern":"glutMouseFunc|mouse","directory":"code/shape_manager"})',
+  ].join('\n');
+  assert.equal(cleanAgentFinalProseForUser(leaked), '');
+});
+
+test('agent final prose: strips bracketed Chinese calling transcript from final user text', () => {
+  const leaked = [
+    '我先查看当前项目。',
+    '[调用 read_file] {"filePath":"/tmp/project/main.cpp", "offset": 0, "limit": 150}',
+    '[调用 search_content] {"pattern":"glutMouseFunc|mouse","directory":"/tmp/project","fileTypes":".cpp,.h"}',
   ].join('\n');
   assert.equal(cleanAgentFinalProseForUser(leaked), '');
 });

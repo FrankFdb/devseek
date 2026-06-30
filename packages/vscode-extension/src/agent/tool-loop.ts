@@ -78,6 +78,15 @@ export function normalizeVisibleTodos(items: unknown): TodoItem[] {
     .map((item, index) => ({ ...item, id: index + 1, title: item.title.trim() }));
 }
 
+function optionalLineNumber(input: Record<string, unknown>, ...keys: string[]): number | undefined {
+  for (const key of keys) {
+    const value = input[key];
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) return Math.floor(value);
+    if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number.parseInt(value.trim(), 10);
+  }
+  return undefined;
+}
+
 function parseFormattedTerminalExitCode(output: string): number | null {
   const match = /(?:\[退出码\]|\[exitCode=)\s*(-?\d+)/i.exec(output || '');
   return match ? Number(match[1]) : null;
@@ -597,7 +606,10 @@ export async function executeFakeToolsForLoop(
           // Pass defaultWorkdir so bare filenames like "main.cpp" resolve relative to
           // the current task's directory first (Copilot/Claude Code: tool calls inherit
           // task working directory context, not just workspace root).
-          const content = await callbacks.onReadFile(filePath, defaultWorkdir);
+          const content = await callbacks.onReadFile(filePath, defaultWorkdir, {
+            startLine: optionalLineNumber(tool.input, 'startLine', 'start_line', 'lineStart', 'fromLine'),
+            endLine: optionalLineNumber(tool.input, 'endLine', 'end_line', 'lineEnd', 'toLine'),
+          });
           callbacks.onToolActivity?.('read', filePath);
           const readEvidencePath = resolveAgentToolEvidencePath(filePath, workspaceRoot, defaultWorkdir);
           if (readEvidencePath) {
@@ -618,7 +630,10 @@ export async function executeFakeToolsForLoop(
       if (pattern) {
         toolCallsMade = true;
         try {
-          const results = await callbacks.onGrepSearch(pattern, searchPath, isRegexp, defaultWorkdir);
+          const results = await callbacks.onGrepSearch(pattern, searchPath, isRegexp, defaultWorkdir, {
+            includePattern: typeof tool.input.includePattern === 'string' ? tool.input.includePattern : undefined,
+            fileTypes: typeof tool.input.fileTypes === 'string' ? tool.input.fileTypes : undefined,
+          });
           callbacks.onToolActivity?.('search', searchPath ? `"${pattern}" in ${searchPath}` : `"${pattern}"`);
           // Silent: search results go to AI context only
           parts.push(`[grep_search: "${pattern}"${searchPath ? ` in ${searchPath}` : ''}]\n${results}`);
