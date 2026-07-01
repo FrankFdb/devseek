@@ -86,9 +86,13 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
       'isIndeterminateExecutionEvidence',
       'shouldRequestManualReviewForRun',
       'isManualReviewTerminalEvidence',
+      'MANUAL_REVIEW_REQUIRED_MARKER',
+      'parseManualReviewTerminalDetail',
+      'makeExecutionTimeoutError',
     ],
     supportingModules: [
       'src/agent/manual-review-validation.ts',
+      'src/agent/tool-loop.ts',
       'src/execution-planner.ts',
       'src/local-execution.ts',
       'src/app/terminal-launch-classifier.ts',

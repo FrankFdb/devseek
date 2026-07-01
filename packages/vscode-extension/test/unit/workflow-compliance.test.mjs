@@ -44,6 +44,14 @@ function assertContains(content, pattern, msg) {
   }
 }
 
+function assertDoesNotContain(content, pattern, msg) {
+  if (typeof pattern === 'string') {
+    assert.ok(!content.includes(pattern), `${msg} — unexpected content: "${pattern}"`);
+  } else {
+    assert.doesNotMatch(content, pattern, msg);
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §一 / §五: Agent loop — core execution
 // ─────────────────────────────────────────────────────────────────────────────
@@ -283,19 +291,31 @@ test('§8.3 File edits: timeout evidence follows validation vs interactive-run s
   const localExecution = src('src/local-execution.ts');
   const manualReview = src('src/agent/manual-review-validation.ts');
   const launchClassifier = src('src/app/terminal-launch-classifier.ts');
+  const terminalTool = src('src/tools/terminal.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
   assertContains(classifier, 'timedOut ? 124', 'timed-out local commands must not be reported as exitCode 0');
   assertContains(classifier, 'buildValidationTimeoutFailureDetail', 'workspace validation timeout detail must be centralized');
   assertContains(classifier, 'buildInteractiveTimeoutFailureDetail', 'interactive timeout detail must be centralized');
   assertContains(classifier, 'ExecutionOutcomeClassifier', 'execution outcome classifier must own timeout/manual-review semantics');
+  assertContains(classifier, 'MANUAL_REVIEW_REQUIRED_MARKER', 'terminal manual-review marker must be centralized');
   assertContains(classifier, 'reviewRequired: true', 'interactive local execution timeout can require human review instead of repair');
   assertContains(classifier, '自动验证按失败处理', 'workspace validation timeout must remain failed evidence');
   assertContains(classifier, '自动验证不能标记通过', 'interactive local execution timeout must not become a false pass');
   for (const code of [planner, localExecution]) {
     assertContains(code, 'executionOutcomeClassifier.classifyExecResult', 'local execution paths must delegate timeout and manual-review classification');
   }
+  assertContains(terminalTool, 'executionOutcomeClassifier.classifyExecResult', 'terminal tool must delegate timeout and manual-review classification');
+  assertContains(terminalTool, 'makeExecutionTimeoutError', 'terminal tool must construct timeout evidence through the classifier owner');
+  assertContains(terminalTool, 'formatManualReviewTerminalDetail', 'terminal tool must use shared manual-review terminal marker');
+  assertDoesNotContain(terminalTool, 'const LONG_RUNNING_MANUAL_REVIEW_DETAIL', 'terminal tool must not own a separate manual-review message');
+  assertDoesNotContain(terminalTool, 'timedOut ? -1', 'terminal tool must not classify timeout exit codes locally');
   assertContains(validationService, 'executionOutcomeClassifier.classifyExecResult', 'workspace validation must delegate timeout classification');
   assertContains(manualReview, 'hasHardExecutionFailureEvidence', 'manual review validation must share hard-failure classification');
   assertContains(launchClassifier, 'sourceTextLooksVisualOrInteractive', 'terminal launch mode must share visual-source classification');
+  assertContains(toolLoop, 'parseManualReviewTerminalDetail', 'tool loop must parse terminal manual-review markers through classifier owner');
+  assertContains(toolLoop, 'isIndeterminateExecutionEvidence', 'tool loop must share indeterminate execution detection');
+  assertDoesNotContain(toolLoop, '[MANUAL_REVIEW_REQUIRED]', 'tool loop must not own a separate manual-review marker');
+  assertDoesNotContain(toolLoop, '[超时\\\\s+\\\\d+ms]', 'tool loop must not own a separate timeout regex');
 });
 
 test('§8.3 File edits: code directory prompts force generated code paths under code/', () => {

@@ -5,6 +5,7 @@ import { containsRuntimeExecutableSegment } from './tools/shell-command-analysis
 
 export const INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL =
   '图形或交互式程序已启动并持续运行；自动验证无法仅凭退出码判断窗口内容和交互是否符合需求。请人工确认当前窗口效果。';
+export const MANUAL_REVIEW_REQUIRED_MARKER = '[MANUAL_REVIEW_REQUIRED]';
 
 export function buildInteractiveTimeoutFailureDetail(timeoutMs: number): string {
   return `命令超时，已终止（timeout ${timeoutMs}ms）。未观察到图形/交互程序的明确启动证据，自动验证不能标记通过。`;
@@ -94,6 +95,22 @@ export class ExecutionOutcomeClassifier {
 
 export const executionOutcomeClassifier = new ExecutionOutcomeClassifier();
 
+export function makeExecutionTimeoutError(timeoutMs: number, command?: string): ExecException {
+  const suffix = command ? `: ${command}` : '';
+  const error = new Error(`Command timed out after ${timeoutMs}ms${suffix}`) as ExecException;
+  error.killed = true;
+  error.code = 124;
+  return error;
+}
+
+export function makeExecutionExitError(exitCode: number | null | undefined, command?: string): ExecException {
+  const normalizedExitCode = typeof exitCode === 'number' ? exitCode : -1;
+  const suffix = command ? `: ${command}` : '';
+  const error = new Error(`Command failed with exit code ${normalizedExitCode}${suffix}`) as ExecException;
+  error.code = normalizedExitCode;
+  return error;
+}
+
 export function isExecTimeout(error: ExecException | null | undefined): boolean {
   return !!error && (error.killed || /timed out|timeout/i.test(error.message || ''));
 }
@@ -126,6 +143,22 @@ export function isIndeterminateExecutionEvidence(exitCode: number | null | undef
   return exitCode === null || exitCode === -1 || INDETERMINATE_RUN_RE.test(output || '');
 }
 
+export function formatManualReviewTerminalDetail(detail: string): string {
+  return `${MANUAL_REVIEW_REQUIRED_MARKER}\n${detail || INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL}`;
+}
+
+export function parseManualReviewTerminalDetail(output: string): string | undefined {
+  const marker = escapeRegExp(MANUAL_REVIEW_REQUIRED_MARKER);
+  const match = new RegExp(`${marker}\\s*([\\s\\S]*)$`, 'i').exec(output || '');
+  if (!match) return undefined;
+  const detail = String(match[1] || '').trim();
+  return detail || INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL;
+}
+
 function appendDevSeekDetail(output: string, detail: string): string {
   return [output, `[DevSeek] ${detail}`].filter(Boolean).join('\n');
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

@@ -25,6 +25,10 @@ import {
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './completion-evidence';
+import {
+  isIndeterminateExecutionEvidence,
+  parseManualReviewTerminalDetail,
+} from '../execution-outcome-classifier';
 import type { TodoItem } from './evidence-recovery';
 import type { AgentLoopCallbacks } from './loop-types';
 
@@ -90,13 +94,6 @@ function optionalLineNumber(input: Record<string, unknown>, ...keys: string[]): 
 function parseFormattedTerminalExitCode(output: string): number | null {
   const match = /(?:\[退出码\]|\[exitCode=)\s*(-?\d+)/i.exec(output || '');
   return match ? Number(match[1]) : null;
-}
-
-function parseManualReviewTerminalDetail(output: string): string | undefined {
-  const match = /\[MANUAL_REVIEW_REQUIRED\]\s*([\s\S]*)$/i.exec(output || '');
-  if (!match) return undefined;
-  const detail = String(match[1] || '').trim();
-  return detail || '图形或交互式程序已启动，但运行效果需要人工确认。';
 }
 
 function shellTokenizeSimple(command: string): string[] {
@@ -181,7 +178,7 @@ export function analyzeTerminalEvidence(command: string, formattedOutput: string
       ? '终端结果缺少退出码'
       : exitCode === -1
         ? '终端命令非正常结束或超时'
-      : /(?:\[超时\s+\d+ms\]|timeout|timed out|命令超时)/i.test(formattedOutput || '')
+      : isIndeterminateExecutionEvidence(exitCode, formattedOutput || '')
         ? '终端命令超时或被终止'
         : undefined;
   const outputPath = resolveCompilerOutputPath(command, workdir);

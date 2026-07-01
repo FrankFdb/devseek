@@ -10,6 +10,15 @@
  */
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
+import {
+  buildInteractiveTimeoutFailureDetail,
+  executionOutcomeClassifier,
+  formatManualReviewTerminalDetail,
+  hasHardExecutionFailureEvidence,
+  INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL,
+  makeExecutionExitError,
+  makeExecutionTimeoutError,
+} from '../execution-outcome-classifier';
 import { getWorkspaceRootFsPath } from '../workspace-roots';
 
 export interface TerminalRunOptions {
@@ -81,11 +90,6 @@ const SERVER_COMMAND_RE = /\b(http\.server|SimpleHTTPServer|livereload|webpack.*
 
 /** sudo needs password — user must authenticate in an interactive terminal first. */
 const SUDO_PASSWORD_RE = /terminal is required to read the password|a password is required|sudo.*password/i;
-const MANUAL_REVIEW_REQUIRED = '[MANUAL_REVIEW_REQUIRED]';
-const LONG_RUNNING_MANUAL_REVIEW_DETAIL =
-  '图形或交互式程序已启动并仍在运行；自动验证无法仅凭退出码判断窗口内容是否符合要求。请人工确认当前窗口效果。';
-const EARLY_HARD_FAILURE_RE =
-  /(?:fatal\s+error|error:|undefined reference|collect2:\s+error|cmake\s+error|make(?:\[\d+\])?:\s+\*\*\*|ninja:\s+build stopped|No such file or directory|not found|cannot open display|can't open display|Cannot open X display|segmentation fault|core dumped|permission denied|安全检查|命令未执行|用户拒绝|工具被禁止|BINARY_NOT_FOUND|SUDO_PASSWORD_REQUIRED)/i;
 
 function patchCommand(cmd: string): string {
   return cmd;
@@ -168,29 +172,61 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
       launchObservationTimer = setTimeout(() => {
         if (settled || timedOut) return;
         const output = combinedOutput();
-        if (EARLY_HARD_FAILURE_RE.test(output)) return;
+        if (hasHardExecutionFailureEvidence(output)) return;
+        const outcome = executionOutcomeClassifier.classifyExecResult({
+          error: makeExecutionTimeoutError(observationMs, command),
+          stdout,
+          stderr,
+          command,
+          timeoutMs: observationMs,
+          allowManualReview: true,
+          manualReviewContext: command,
+          manualReviewDetail: INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL,
+          timeoutFailureDetail: buildInteractiveTimeoutFailureDetail(observationMs),
+        });
+        if (!outcome.reviewRequired) return;
         resolveOnce({
-          ok: true,
-          exitCode: -1,
+          ok: outcome.ok,
+          exitCode: outcome.exitCode,
           stdout: stdout.trim(),
           stderr: stderr.trim(),
-          output: [output, LONG_RUNNING_MANUAL_REVIEW_DETAIL].filter(Boolean).join('\n'),
-          summary: `${MANUAL_REVIEW_REQUIRED} ${LONG_RUNNING_MANUAL_REVIEW_DETAIL}`,
-          reviewRequired: true,
-          reviewReason: LONG_RUNNING_MANUAL_REVIEW_DETAIL,
+          output: outcome.output,
+          summary: formatManualReviewTerminalDetail(outcome.reviewReason || INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL),
+          ...(outcome.reviewRequired ? {
+            reviewRequired: true,
+            reviewReason: outcome.reviewReason,
+          } : {}),
         });
       }, observationMs);
     }
 
     child.on('close', (code) => {
-      const output = combinedOutput();
-      const exitCode = timedOut ? -1 : (code ?? -1);
-      const ok = !timedOut && exitCode === 0;
-      const summary = timedOut
-        ? `[超时 ${timeoutMs}ms] 命令: ${command}\n${output.slice(0, 800)}`
-        : `[exitCode=${exitCode}] ${output.slice(0, 1500)}`;
+      const error = timedOut
+        ? makeExecutionTimeoutError(timeoutMs, command)
+        : code === 0
+          ? null
+          : makeExecutionExitError(code, command);
+      const outcome = executionOutcomeClassifier.classifyExecResult({
+        error,
+        stdout,
+        stderr,
+        command,
+        timeoutMs,
+        allowManualReview: false,
+        timeoutFailureDetail: buildInteractiveTimeoutFailureDetail(timeoutMs),
+      });
+      const summary = outcome.timedOut
+        ? `[超时 ${timeoutMs}ms] 命令: ${command}\n${outcome.output.slice(0, 800)}`
+        : `[exitCode=${outcome.exitCode}] ${outcome.output.slice(0, 1500)}`;
 
-      resolveOnce({ ok, exitCode, stdout: stdout.trim(), stderr: stderr.trim(), output, summary });
+      resolveOnce({
+        ok: outcome.ok,
+        exitCode: outcome.exitCode,
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        output: outcome.output,
+        summary,
+      });
     });
 
     child.on('error', (e) => {
@@ -221,7 +257,7 @@ export function formatTerminalOutputForPrompt(cmd: string, result: TerminalRunRe
   if (result.stdout) lines.push(`[stdout]\n${result.stdout.slice(0, 1200)}`);
   if (result.stderr) lines.push(`[stderr]\n${result.stderr.slice(0, 800)}`);
   if (result.reviewRequired) {
-    lines.push(`${MANUAL_REVIEW_REQUIRED}\n${result.reviewReason || LONG_RUNNING_MANUAL_REVIEW_DETAIL}`);
+    lines.push(formatManualReviewTerminalDetail(result.reviewReason || INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL));
   }
 
   // ── Diagnostic hints: let the AI identify root cause immediately ──────────

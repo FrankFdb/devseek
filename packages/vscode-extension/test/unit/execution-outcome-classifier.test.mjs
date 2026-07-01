@@ -29,8 +29,11 @@ const req = createRequire(import.meta.url);
 const {
   buildValidationTimeoutFailureDetail,
   executionOutcomeClassifier,
+  formatManualReviewTerminalDetail,
   hasHardExecutionFailureEvidence,
   isIndeterminateExecutionEvidence,
+  makeExecutionTimeoutError,
+  parseManualReviewTerminalDetail,
   isVisualOrInteractiveContext,
 } = req(bundlePath);
 
@@ -97,4 +100,14 @@ test('ExecutionOutcomeClassifier: shared evidence helpers cover manual review in
   assert.equal(isVisualOrInteractiveContext('OpenGL 图形窗口'), true);
   assert.equal(isIndeterminateExecutionEvidence(-1, '[退出码] -1'), true);
   assert.equal(hasHardExecutionFailureEvidence('CMake Error: cannot open display'), true);
+});
+
+test('ExecutionOutcomeClassifier: terminal manual-review marker and timeout errors are centralized', () => {
+  const error = makeExecutionTimeoutError(1234, './shape_manager');
+  assert.equal(error.killed, true);
+  assert.equal(error.code, 124);
+
+  const formatted = formatManualReviewTerminalDetail('请确认窗口效果');
+  assert.match(formatted, /\[MANUAL_REVIEW_REQUIRED\]/);
+  assert.equal(parseManualReviewTerminalDetail(formatted), '请确认窗口效果');
 });
