@@ -45,6 +45,7 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
     contractTests: [
       'test/unit/fake-tool-parser.test.mjs',
       'test/unit/tool-call-normalizer.test.mjs',
+      'test/unit/tool-protocol-contract.test.mjs',
       'test/unit/webview-logic.test.mjs',
       'test/unit/duplicate-judgment-governance.test.mjs',
     ],
@@ -75,19 +76,27 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
   {
     id: 'execution-outcome',
     phase: 2,
-    ownerModule: 'src/agent/manual-review-validation.ts',
-    status: 'migration-planned',
+    ownerModule: 'src/execution-outcome-classifier.ts',
+    status: 'migration-in-progress',
     canonicalSymbols: [
+      'ExecutionOutcomeClassifier',
+      'executionOutcomeClassifier',
+      'hasHardExecutionFailureEvidence',
+      'isVisualOrInteractiveContext',
+      'isIndeterminateExecutionEvidence',
       'shouldRequestManualReviewForRun',
       'isManualReviewTerminalEvidence',
     ],
     supportingModules: [
+      'src/agent/manual-review-validation.ts',
       'src/execution-planner.ts',
       'src/local-execution.ts',
+      'src/app/terminal-launch-classifier.ts',
       'src/tools/terminal.ts',
       'src/workspace/validation-service.ts',
     ],
     contractTests: [
+      'test/unit/execution-outcome-classifier.test.mjs',
       'test/unit/manual-review-validation.test.mjs',
       'test/unit/execution-planner.test.mjs',
       'test/unit/terminal-launch-classifier.test.mjs',

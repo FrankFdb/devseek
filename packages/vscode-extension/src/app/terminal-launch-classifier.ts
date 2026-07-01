@@ -1,15 +1,13 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import { isCppBuildOutputDirName } from '../cpp-build-layout';
+import {
+  isVisualOrInteractiveContext,
+  sourceTextLooksVisualOrInteractive,
+} from '../execution-outcome-classifier';
 import { containsRuntimeExecutableSegment } from '../tools/shell-command-analysis';
 
 export { containsRuntimeExecutableSegment } from '../tools/shell-command-analysis';
-
-const VISUAL_OR_INTERACTIVE_COMMAND_RE =
-  /(?:图形|窗口|界面|GUI|graphics?|window|visual|render|draw|X11|OpenGL|GLFW|GLUT|SDL2?|SFML|Qt|GTK|Cocoa|Win32)/i;
-
-const VISUAL_SOURCE_RE =
-  /(?:#include\s+[<"][^>"]*(?:X11\/|GL\/|GLFW\/|SDL2\/|SFML\/|QApplication|QWidget|gtk\/)|\b(?:XOpenDisplay|XCreateSimpleWindow|XMapWindow|XDrawArc|XDrawRectangle|XDrawLines|XNextEvent|XFlush|glut|glfw|SDL_|sf::RenderWindow|QApplication|gtk_init|CreateWindow|WinMain)\b|target_link_libraries\s*\([^)]*(?:X11|GL|glut|glfw|SDL2|sfml|Qt|GTK))/i;
 
 export interface TerminalLaunchClassificationInput {
   command: string;
@@ -19,8 +17,8 @@ export interface TerminalLaunchClassificationInput {
 
 export function shouldUseManualReviewLaunchMode(input: TerminalLaunchClassificationInput): boolean {
   if (!containsRuntimeExecutableSegment(input.command)) return false;
-  if (VISUAL_OR_INTERACTIVE_COMMAND_RE.test(input.command)) return true;
-  return VISUAL_SOURCE_RE.test(readVisualSourceHints(input.command, input.workdir, input.workspaceRoot));
+  if (isVisualOrInteractiveContext(input.command)) return true;
+  return sourceTextLooksVisualOrInteractive(readVisualSourceHints(input.command, input.workdir, input.workspaceRoot));
 }
 
 function readVisualSourceHints(command: string, workdir?: string, workspaceRoot?: string): string {

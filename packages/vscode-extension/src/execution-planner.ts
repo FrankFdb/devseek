@@ -13,7 +13,14 @@ import {
   getCppCompileOnlyDir,
   getDevSeekBuildDir,
 } from './cpp-build-layout';
-import { containsRuntimeExecutableSegment } from './tools/shell-command-analysis';
+import {
+  buildInteractiveTimeoutFailureDetail,
+  executionOutcomeClassifier,
+  hasHardExecutionFailureEvidence,
+  INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL,
+  isVisualOrInteractiveContext,
+  visualSourcePathsLookInteractive,
+} from './execution-outcome-classifier';
 
 export interface LocalExecutionPlan {
   command: string;
@@ -68,9 +75,6 @@ const LOCAL_EXECUTION_TIMEOUT_MS: Record<LocalExecutionPlan['mode'], number> = {
   'script-run': 30_000,
   'run-only': 30_000,
 };
-const BUILD_FAILURE_RE = /(?:^|\n)[^:\n]+\.(?:c|cc|cpp|cxx|h|hpp):\d+(?::\d+)?:\s+(?:fatal\s+)?error:|undefined reference|ld(?:\.exe)?:|collect2: error|cmake error|make(?:\[\d+\])?: \*\*\*|ninja: build stopped|clang(?:\+\+)?: (?:fatal )?error|g\+\+: (?:fatal )?error|gcc: (?:fatal )?error/i;
-const LOCAL_EXECUTION_MANUAL_REVIEW_DETAIL =
-  '图形或交互式程序已启动并持续运行；自动验证无法仅凭退出码判断窗口内容和交互是否符合需求。请人工确认当前窗口效果。';
 const DIAGNOSTIC_SOURCE_EXT_RE = /\.(?:c|cc|cpp|cxx|h|hpp|py|js|ts|tsx|mjs|jsx)$/i;
 const MAX_REPAIR_FILES = 4;
 
@@ -156,40 +160,39 @@ export function shouldRepairLocalExecutionFailure(plan: LocalExecutionPlan, resu
   if (result.reviewRequired) return false;
   if (plan.mode === 'compile-only') return true;
   if (plan.mode === 'run-only' || plan.mode === 'script-run') return false;
-  return BUILD_FAILURE_RE.test(`${result.output || ''}\n${result.command || ''}`);
+  return hasHardExecutionFailureEvidence(`${result.output || ''}\n${result.command || ''}`);
 }
 
 export async function runLocalExecution(plan: LocalExecutionPlan): Promise<LocalExecutionResult> {
   return new Promise((resolve) => {
     const timeoutMs = LOCAL_EXECUTION_TIMEOUT_MS[plan.mode] ?? 30_000;
     cp.exec(plan.command, { cwd: plan.cwd, timeout: timeoutMs, encoding: 'utf8' }, (error: cp.ExecException | null, stdout: string, stderr: string) => {
-      const output = `${stdout || ''}\n${stderr || ''}`.trim();
-      const timedOut = !!error && (error.killed || /timed out|timeout/i.test(error.message || ''));
-      const exitCode = !error ? 0 : timedOut ? 124 : (typeof error.code === 'number' ? error.code : null);
-      const manualReview = timedOut && shouldTreatTimeoutAsManualReview(plan, output);
+      const outcome = executionOutcomeClassifier.classifyExecResult({
+        error,
+        stdout,
+        stderr,
+        command: plan.command,
+        timeoutMs,
+        allowManualReview: canRequireInteractiveUserReview(plan),
+        manualReviewContext: buildInteractiveReviewContext(plan),
+        visualSourcePaths: [...plan.targetFiles, ...plan.attachedFiles],
+        manualReviewDetail: INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL,
+        timeoutFailureDetail: buildInteractiveTimeoutFailureDetail(timeoutMs),
+        fallbackToErrorMessage: true,
+      });
       resolve({
-        ok: !error || manualReview,
+        ok: outcome.ok,
         command: plan.command,
         cwd: plan.cwd,
-        exitCode: manualReview ? -1 : exitCode,
-        output: manualReview
-          ? [output, `[DevSeek] ${LOCAL_EXECUTION_MANUAL_REVIEW_DETAIL}`].filter(Boolean).join('\n')
-          : timedOut
-            ? [output, `[DevSeek] 命令超时，已终止（timeout ${timeoutMs}ms）。未观察到图形/交互程序的明确启动证据，自动验证不能标记通过。`].filter(Boolean).join('\n')
-          : (output || (error ? error.message : '')),
-        ...(manualReview ? {
+        exitCode: outcome.exitCode,
+        output: outcome.output,
+        ...(outcome.reviewRequired ? {
           reviewRequired: true,
-          reviewReason: LOCAL_EXECUTION_MANUAL_REVIEW_DETAIL,
+          reviewReason: outcome.reviewReason,
         } : {}),
       });
     });
   });
-}
-
-function shouldTreatTimeoutAsManualReview(plan: LocalExecutionPlan, output: string): boolean {
-  if (!containsRuntimeExecutableSegment(plan.command)) return false;
-  if (!requiresInteractiveUserReview(plan)) return false;
-  return !BUILD_FAILURE_RE.test(`${output || ''}\n${plan.command || ''}`);
 }
 
 export function selectRepairFiles(plan: LocalExecutionPlan, result: LocalExecutionResult): string[] {
@@ -345,13 +348,21 @@ function describeExecutionMode(plan: LocalExecutionPlan): string {
 }
 
 function requiresInteractiveUserReview(plan: LocalExecutionPlan): boolean {
-  if (!['cmake', 'compile-run', 'run-only', 'script-run'].includes(plan.mode)) return false;
-  const context = [
+  if (!canRequireInteractiveUserReview(plan)) return false;
+  return isVisualOrInteractiveContext(buildInteractiveReviewContext(plan))
+    || visualSourcePathsLookInteractive([...plan.targetFiles, ...plan.attachedFiles]);
+}
+
+function canRequireInteractiveUserReview(plan: LocalExecutionPlan): boolean {
+  return ['cmake', 'compile-run', 'run-only', 'script-run'].includes(plan.mode);
+}
+
+function buildInteractiveReviewContext(plan: LocalExecutionPlan): string {
+  return [
     plan.reason,
     plan.targetFiles.join('\n'),
     plan.attachedFiles.join('\n'),
   ].join('\n');
-  return /(图形|绘图|窗口|界面|可视化|GUI|graphics?|window|visual|render|draw|X11|OpenGL|GLUT|GLFW|SDL2?|SFML|Qt|GTK)/i.test(context);
 }
 
 function summarizeLocalExecutionOutputForUser(

@@ -11,6 +11,10 @@ import {
   type ValidationMode,
   type VerificationPlan,
 } from '../app/verification-planner';
+import {
+  buildValidationTimeoutFailureDetail,
+  executionOutcomeClassifier,
+} from '../execution-outcome-classifier';
 
 export {
   CPP_COMPILE_VALIDATION_TIMEOUT_MS,
@@ -139,17 +143,21 @@ async function runShell(invocation: ValidationCommandInvocation): Promise<Valida
       stdout: string,
       stderr: string,
     ) => {
-      const timedOut = !!error && (error.killed || /timed out|timeout/i.test(error.message || ''));
-      const exitCode = !error ? 0 : timedOut ? 124 : (typeof error.code === 'number' ? error.code : null);
-      const output = `${stdout || ''}\n${stderr || ''}`.trim();
+      const outcome = executionOutcomeClassifier.classifyExecResult({
+        error,
+        stdout,
+        stderr,
+        command: invocation.command,
+        timeoutMs: invocation.timeoutMs,
+        allowManualReview: false,
+        timeoutFailureDetail: buildValidationTimeoutFailureDetail(invocation.timeoutMs),
+      });
       resolve({
         ran: true,
-        ok: !error,
+        ok: outcome.ok,
         command: invocation.command,
-        exitCode,
-        output: timedOut
-          ? [output, `[DevSeek] 命令超时，已终止（timeout ${invocation.timeoutMs}ms）。这通常表示程序仍在运行、等待输入或构建卡住；自动验证按失败处理。`].filter(Boolean).join('\n')
-          : output,
+        exitCode: outcome.exitCode,
+        output: outcome.output,
         cwd: invocation.cwd,
       });
     });

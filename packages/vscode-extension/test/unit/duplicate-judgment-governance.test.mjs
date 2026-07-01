@@ -64,7 +64,7 @@ test('ARCH-16 owner registry covers every duplicate-judgment domain', () => {
   const required = [
     ['tool-protocol', 'src/agent/tool-registry.ts'],
     ['response-integrity', 'src/llm/providers/web-reliability.ts'],
-    ['execution-outcome', 'src/agent/manual-review-validation.ts'],
+    ['execution-outcome', 'src/execution-outcome-classifier.ts'],
     ['validation-orchestration', 'src/app/verification-planner.ts'],
     ['task-state', 'src/app/task-ledger.ts'],
     ['context-scope', 'src/app/context-relevance.ts'],

@@ -277,17 +277,25 @@ test('§8.3 File edits: webview renders QualityGate blocked separately from repa
 });
 
 test('§8.3 File edits: timeout evidence follows validation vs interactive-run semantics', () => {
+  const classifier = src('src/execution-outcome-classifier.ts');
   const validationService = src('src/workspace/validation-service.ts');
   const planner = src('src/execution-planner.ts');
   const localExecution = src('src/local-execution.ts');
-  for (const code of [validationService, planner, localExecution]) {
-    assertContains(code, 'timedOut ? 124', 'timed-out local commands must not be reported as exitCode 0');
-  }
-  assertContains(validationService, '自动验证按失败处理', 'workspace validation timeout must remain failed evidence');
+  const manualReview = src('src/agent/manual-review-validation.ts');
+  const launchClassifier = src('src/app/terminal-launch-classifier.ts');
+  assertContains(classifier, 'timedOut ? 124', 'timed-out local commands must not be reported as exitCode 0');
+  assertContains(classifier, 'buildValidationTimeoutFailureDetail', 'workspace validation timeout detail must be centralized');
+  assertContains(classifier, 'buildInteractiveTimeoutFailureDetail', 'interactive timeout detail must be centralized');
+  assertContains(classifier, 'ExecutionOutcomeClassifier', 'execution outcome classifier must own timeout/manual-review semantics');
+  assertContains(classifier, 'reviewRequired: true', 'interactive local execution timeout can require human review instead of repair');
+  assertContains(classifier, '自动验证按失败处理', 'workspace validation timeout must remain failed evidence');
+  assertContains(classifier, '自动验证不能标记通过', 'interactive local execution timeout must not become a false pass');
   for (const code of [planner, localExecution]) {
-    assertContains(code, '自动验证不能标记通过', 'interactive local execution timeout must not become a false pass');
-    assertContains(code, 'reviewRequired: true', 'interactive local execution timeout can require human review instead of repair');
+    assertContains(code, 'executionOutcomeClassifier.classifyExecResult', 'local execution paths must delegate timeout and manual-review classification');
   }
+  assertContains(validationService, 'executionOutcomeClassifier.classifyExecResult', 'workspace validation must delegate timeout classification');
+  assertContains(manualReview, 'hasHardExecutionFailureEvidence', 'manual review validation must share hard-failure classification');
+  assertContains(launchClassifier, 'sourceTextLooksVisualOrInteractive', 'terminal launch mode must share visual-source classification');
 });
 
 test('§8.3 File edits: code directory prompts force generated code paths under code/', () => {
