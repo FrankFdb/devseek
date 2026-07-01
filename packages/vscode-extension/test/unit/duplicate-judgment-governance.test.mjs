@@ -92,9 +92,26 @@ test('ARCH-16 tool alias search_content is owned by ToolRegistry and sanitizer m
   const hits = decisionFilesContaining('search_content');
   assert.deepEqual(hits, [
     'media/webview-agent-sanitizer.js',
+    'media/webview-agent-tool-manifest.js',
     'src/agent/tool-registry.ts',
   ]);
   assert.ok(readExtensionFile('src/agent/tool-registry.ts').includes("search_content: 'grep_search'"));
+});
+
+test('ARCH-16 webview tool manifest is generated from ToolRegistry', () => {
+  const packageJson = readExtensionFile('package.json');
+  const packageVsix = readFileSync(path.resolve(extensionRoot, '../../scripts/package-vsix.mjs'), 'utf8');
+  const manifest = readExtensionFile('media/webview-agent-tool-manifest.js');
+  const sanitizer = readExtensionFile('media/webview-agent-sanitizer.js');
+  const runtime = readExtensionFile('media/webview-runtime.json');
+
+  assert.ok(packageJson.includes('generate-webview-tool-manifest.mjs'), 'compile must refresh generated webview tool manifest');
+  assert.ok(packageVsix.includes('generateWebviewToolManifest'), 'VSIX packaging must refresh generated webview tool manifest');
+  assert.ok(runtime.indexOf('webview-agent-tool-manifest.js') < runtime.indexOf('webview-agent-sanitizer.js'));
+  assert.ok(manifest.includes('Source of truth: packages/vscode-extension/src/agent/tool-registry.ts'));
+  assert.ok(manifest.includes('"search_content"'));
+  assert.ok(sanitizer.includes('DevSeekAgentToolManifest'), 'sanitizer must read generated tool manifest');
+  assert.ok(!sanitizer.includes('read_file: true'), 'sanitizer must not keep a hand-written tool-name map');
 });
 
 test('ARCH-16 backend cannot reintroduce generic execution-complete UI titles', () => {

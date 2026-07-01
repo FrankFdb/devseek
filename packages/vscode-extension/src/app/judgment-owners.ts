@@ -38,6 +38,8 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
     supportingModules: [
       'src/agent/fake-tool-parser.ts',
       'src/agent/tool-call-normalizer.ts',
+      'scripts/generate-webview-tool-manifest.mjs',
+      'media/webview-agent-tool-manifest.js',
       'media/webview-agent-sanitizer.js',
     ],
     contractTests: [

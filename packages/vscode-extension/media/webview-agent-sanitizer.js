@@ -36,12 +36,16 @@ function findJsonObjectEndInText(text, start) {
   return -1;
 }
 
-var WEBVIEW_TOOL_NAMES = {
-  read_file: true, grep_search: true, search_content: true, search_file: true, file_search: true, semantic_search: true, list_dir: true, get_errors: true,
-  run_terminal: true, memory_write: true, get_changed_files: true, create_directory: true, fetch_webpage: true,
-  vscode_listCodeUsages: true, run_vscode_command: true, create_file: true, write_file: true, replace_file: true,
-  manage_todo_list: true, task_complete: true,
-};
+var WEBVIEW_TOOL_NAMES = Object.create(null);
+(function initWebviewToolNames() {
+  var manifest = (typeof globalThis !== 'undefined' && globalThis.DevSeekAgentToolManifest)
+    ? globalThis.DevSeekAgentToolManifest
+    : null;
+  var names = manifest && Array.isArray(manifest.toolNames) ? manifest.toolNames : [];
+  for (var i = 0; i < names.length; i++) {
+    WEBVIEW_TOOL_NAMES[String(names[i])] = true;
+  }
+})();
 
 var WEBVIEW_SHELL_TRANSCRIPT_NAMES = {
   bash: true, shell: true, sh: true, zsh: true, console: true, terminal: true,

@@ -894,6 +894,7 @@ test('Architecture: webview runtime manifest owns script loading order', () => {
   assert.deepEqual(
     manifest.scripts,
     [
+      'webview-agent-tool-manifest.js',
       'webview-agent-sanitizer.js',
       'webview-agent-todos.js',
       'webview-working-copy.js',
@@ -1156,15 +1157,22 @@ test('Architecture: ToolRegistry owns agent tool metadata', () => {
   const agentLoop = src('src/agent-loop.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
+  const sanitizer = webviewRuntime();
+  const extensionPackage = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
   assertContains(registry, 'AGENT_TOOL_DEFINITIONS', 'tool registry must expose tool definitions');
   assertContains(registry, 'isFileWriteTool', 'tool registry must identify file write tools');
   assertContains(registry, 'getToolActivity', 'tool registry must own activity metadata');
+  assertContains(registry, 'AGENT_TOOL_ALIASES', 'tool registry must expose tool aliases');
+  assertContains(registry, 'search_content', 'ToolRegistry must own search_content alias');
   assertContains(executor, 'class AgentToolExecutor', 'tool executor must expose execution boundary');
   assertContains(executor, 'classifyToolKind', 'tool executor must classify tool kind for permission policy');
   assertContains(toolLoop, "from './tool-executor'", 'tool loop must import tool executor module');
   assertContains(toolLoop, 'agentToolExecutor.isFileWrite(tool)', 'file write branch must use tool executor helper');
   assertContains(toolLoop, 'agentToolExecutor.plan(tool).activity', 'early activity display must use tool executor helper');
   assertContains(agenticLoop, 'describeAgentToolActivity(t)', 'agentic loop must call the tool-loop activity service');
+  assertContains(sanitizer, 'DevSeekAgentToolManifest', 'webview sanitizer must consume generated tool manifest');
+  assertContains(extensionPackage.scripts.compile, 'generate-webview-tool-manifest.mjs', 'extension compile must refresh webview tool manifest');
+  assertContains(extensionPackage.scripts.watch, 'generate-webview-tool-manifest.mjs', 'extension watch must refresh webview tool manifest');
   assert.doesNotMatch(agentLoop, /agentToolExecutor/, 'agent loop must not own tool executor internals');
   assert.doesNotMatch(agentLoop, /function toolCallToEarlyActivity/, 'agent loop must not keep local tool activity registry');
 });

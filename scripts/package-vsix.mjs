@@ -52,7 +52,18 @@ function bundleBridgeServer() {
   }
 }
 
+function generateWebviewToolManifest() {
+  const result = spawnSync('node', ['scripts/generate-webview-tool-manifest.mjs'], {
+    cwd: root,
+    stdio: 'inherit',
+  });
+  if (result.status !== 0) {
+    throw new Error(`webview tool manifest generation failed with status ${result.status}`);
+  }
+}
+
 try {
+  generateWebviewToolManifest();
   mkdirSync(path.join(staging, 'extension'), { recursive: true });
 
   copy('package.json');

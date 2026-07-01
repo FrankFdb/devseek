@@ -1,5 +1,6 @@
 {
   "scripts": [
+    "webview-agent-tool-manifest.js",
     "webview-agent-sanitizer.js",
     "webview-agent-todos.js",
     "webview-working-copy.js",

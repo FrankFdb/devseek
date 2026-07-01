@@ -79,12 +79,14 @@ const SHELL_TRANSCRIPT_NAMES = {
   cmd: true, powershell: true, pwsh: true,
 };
 
-const TOOL_NAMES = {
-  read_file: true, grep_search: true, search_content: true, search_file: true, file_search: true, semantic_search: true, list_dir: true, get_errors: true,
-  run_terminal: true, memory_write: true, get_changed_files: true, create_directory: true, fetch_webpage: true,
-  vscode_listCodeUsages: true, run_vscode_command: true, create_file: true, write_file: true, replace_file: true,
-  manage_todo_list: true, task_complete: true,
-};
+function readWebviewToolNames() {
+  const manifest = readFileSync(path.join(rootDir, 'media', 'webview-agent-tool-manifest.js'), 'utf8');
+  const m = manifest.match(/var toolNames = (\[[\s\S]*?\]);/);
+  assert.ok(m, 'webview tool manifest must expose a generated toolNames array');
+  return JSON.parse(m[1]);
+}
+
+const TOOL_NAMES = Object.fromEntries(readWebviewToolNames().map(name => [name, true]));
 
 function isToolName(name) {
   const n = String(name || '').trim();
