@@ -349,6 +349,12 @@ test('§8.3 File edits: code directory prompts force generated code paths under 
     'directory auto-discovery must recognize absolute paths from user prompts',
   );
   assertContains(extension, 'pathResolutionHints', 'response meta and apply must keep prompt directory scope');
+  assertContains(agentLoop, 'resolveWorkspaceWritePath', 'agent loop must resolve bare task filenames through the shared path resolver before editing or validating');
+  assert.match(
+    agentLoop,
+    /resolveWorkspaceWritePath\(relNorm,\s*\{[\s\S]*?requestPrompt: userPrompt[\s\S]*?workspaceRootFsPath: workspaceRoot\.fsPath[\s\S]*?defaultWorkdir: fallbackDir[\s\S]*?\}\)/,
+    'agent loop must resolve bare task filenames against prompt/project scope, not only workspace root',
+  );
   assert.match(
     toolLoop,
     /resolveWorkspaceWritePath\(rawPath,\s*\{[\s\S]*?requestPrompt: userPrompt[\s\S]*?content[\s\S]*?workspaceRootFsPath[\s\S]*?defaultWorkdir[\s\S]*?\}\)/,

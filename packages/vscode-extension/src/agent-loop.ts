@@ -50,6 +50,7 @@ import { fenceLangForFile, roughLineDiff } from './utils';
 import { findWorkspaceFolderForRelativePath } from './workspace-roots';
 import { applyGeneratedArtifactPathWithPrompt } from './workspace-applier';
 import { runLocalExecution, LocalExecutionPlan, planLocalExecution } from './execution-planner';
+import { resolveWorkspaceWritePath } from './workspace/path-resolver';
 import { McpToolRef } from './mcp/client';
 import { getProjectRulesSync, wrapRulesAsContext, getProjectMemorySync, wrapMemoryAsContext } from './project-rules';
 import { getCommandHints } from './agent-learner';
@@ -701,6 +702,22 @@ async function executeTask(
       for (const wf of (vscode.workspace.workspaceFolders ?? [])) {
         const candidate = nodePath.join(wf.uri.fsPath, ...relNorm.split('/'));
         if (fs.existsSync(candidate)) { earlyEffectiveAbsPath = candidate; break; }
+      }
+    }
+    if (!earlyEffectiveAbsPath && task.action !== 'create') {
+      const fallbackDirs = allTasks
+        .filter(t => t !== task && t.absPath)
+        .map(t => nodePath.dirname(t.absPath!));
+      const fallbackDir = fallbackDirs.length > 0
+        ? [...countByValue(fallbackDirs).entries()].sort((a, b) => b[1] - a[1])[0][0]
+        : undefined;
+      const resolved = resolveWorkspaceWritePath(relNorm, {
+        requestPrompt: userPrompt,
+        workspaceRootFsPath: workspaceRoot.fsPath,
+        defaultWorkdir: fallbackDir,
+      });
+      if (resolved && fs.existsSync(resolved.absPath)) {
+        earlyEffectiveAbsPath = resolved.absPath;
       }
     }
     if (!earlyEffectiveAbsPath && task.action === 'create') {
@@ -2130,6 +2147,14 @@ function summarizeWrittenFileBasenames(writtenFiles: WrittenFileEvidence[]): str
 
 function uniquePaths(paths: string[]): string[] {
   return [...new Set(paths.filter(Boolean).map(pathValue => nodePath.normalize(pathValue)))];
+}
+
+function countByValue(values: string[]): Map<string, number> {
+  const result = new Map<string, number>();
+  for (const value of values) {
+    result.set(value, (result.get(value) ?? 0) + 1);
+  }
+  return result;
 }
 
 function normalizePathForSet(filePath: string, workspaceRoot: string): string {
