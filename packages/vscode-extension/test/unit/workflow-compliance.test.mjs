@@ -1157,7 +1157,9 @@ test('Architecture: ToolRegistry owns agent tool metadata', () => {
   const agentLoop = src('src/agent-loop.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
-  const sanitizer = webviewRuntime();
+  const webview = webviewRuntime();
+  const sanitizer = src('media/webview-agent-sanitizer.js');
+  const manifest = src('media/webview-agent-tool-manifest.js');
   const extensionPackage = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
   assertContains(registry, 'AGENT_TOOL_DEFINITIONS', 'tool registry must expose tool definitions');
   assertContains(registry, 'isFileWriteTool', 'tool registry must identify file write tools');
@@ -1170,11 +1172,17 @@ test('Architecture: ToolRegistry owns agent tool metadata', () => {
   assertContains(toolLoop, 'agentToolExecutor.isFileWrite(tool)', 'file write branch must use tool executor helper');
   assertContains(toolLoop, 'agentToolExecutor.plan(tool).activity', 'early activity display must use tool executor helper');
   assertContains(agenticLoop, 'describeAgentToolActivity(t)', 'agentic loop must call the tool-loop activity service');
+  assertContains(webview, 'DevSeekAgentToolManifest', 'webview runtime must load generated tool manifest');
+  assertContains(manifest, 'search_content', 'generated webview manifest must include ToolRegistry aliases');
   assertContains(sanitizer, 'DevSeekAgentToolManifest', 'webview sanitizer must consume generated tool manifest');
+  assertContains(sanitizer, 'makeWebviewToolNamePattern', 'webview sanitizer regexes must derive tool names from generated manifest');
   assertContains(extensionPackage.scripts.compile, 'generate-webview-tool-manifest.mjs', 'extension compile must refresh webview tool manifest');
   assertContains(extensionPackage.scripts.watch, 'generate-webview-tool-manifest.mjs', 'extension watch must refresh webview tool manifest');
+  assert.ok(existsSync(path.join(root, 'test/fixtures/deepseek-tool-transcripts.mjs')), 'DeepSeek transcript fixtures must exist');
+  assert.ok(existsSync(path.join(root, 'test/unit/tool-protocol-contract.test.mjs')), 'tool protocol replay contract must exist');
   assert.doesNotMatch(agentLoop, /agentToolExecutor/, 'agent loop must not own tool executor internals');
   assert.doesNotMatch(agentLoop, /function toolCallToEarlyActivity/, 'agent loop must not keep local tool activity registry');
+  assert.doesNotMatch(sanitizer, /search_content/, 'webview sanitizer must not keep hand-written tool aliases');
 });
 
 test('Architecture: AgentEvent union lives in agent layer', () => {

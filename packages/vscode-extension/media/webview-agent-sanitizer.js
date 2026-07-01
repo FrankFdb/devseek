@@ -115,36 +115,28 @@ function escapeWebviewRegExp(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function makeWebviewFunctionStyleToolCallRegex() {
+function makeWebviewToolNamePattern() {
   var names = Object.keys(WEBVIEW_TOOL_NAMES)
     .sort(function(a, b) { return b.length - a.length; })
     .map(escapeWebviewRegExp)
     .join('|');
-  return new RegExp('(' + names + '|mcp__[A-Za-z0-9_]+)\\s*\\(\\s*\\{', 'g');
+  return names ? '(?:' + names + '|mcp__[A-Za-z0-9_]+)' : '(?:mcp__[A-Za-z0-9_]+)';
+}
+
+function makeWebviewFunctionStyleToolCallRegex() {
+  return new RegExp('(' + makeWebviewToolNamePattern() + ')\\s*\\(\\s*\\{', 'g');
 }
 
 function makeWebviewXmlToolTagRegex() {
-  var names = Object.keys(WEBVIEW_TOOL_NAMES)
-    .sort(function(a, b) { return b.length - a.length; })
-    .map(escapeWebviewRegExp)
-    .join('|');
-  return new RegExp('(?:<|&lt;)\\s*(' + names + '|mcp__[A-Za-z0-9_]+)\\b([^<>]*?)\\/\\s*(?:>|&gt;)', 'gi');
+  return new RegExp('(?:<|&lt;)\\s*(' + makeWebviewToolNamePattern() + ')\\b([^<>]*?)\\/\\s*(?:>|&gt;)', 'gi');
 }
 
 function makeWebviewXmlToolPairRegex() {
-  var names = Object.keys(WEBVIEW_TOOL_NAMES)
-    .sort(function(a, b) { return b.length - a.length; })
-    .map(escapeWebviewRegExp)
-    .join('|');
-  return new RegExp('(?:<|&lt;)\\s*(' + names + '|mcp__[A-Za-z0-9_]+)\\b[^<>]*?(?:>|&gt;)([\\s\\S]*?)(?:<\\/|&lt;\\/)\\s*\\1\\s*(?:>|&gt;)', 'gi');
+  return new RegExp('(?:<|&lt;)\\s*(' + makeWebviewToolNamePattern() + ')\\b[^<>]*?(?:>|&gt;)([\\s\\S]*?)(?:<\\/|&lt;\\/)\\s*\\1\\s*(?:>|&gt;)', 'gi');
 }
 
 function makeWebviewXmlToolTagTailRegex() {
-  var names = Object.keys(WEBVIEW_TOOL_NAMES)
-    .sort(function(a, b) { return b.length - a.length; })
-    .map(escapeWebviewRegExp)
-    .join('|');
-  return new RegExp('(?:<|&lt;)\\s*(' + names + '|mcp__[A-Za-z0-9_]+)\\b[\\s\\S]*$', 'i');
+  return new RegExp('(?:<|&lt;)\\s*(' + makeWebviewToolNamePattern() + ')\\b[\\s\\S]*$', 'i');
 }
 
 function stripXmlToolTagBlocksFromText(text) {
@@ -318,6 +310,28 @@ function containsWebviewFunctionStyleToolCall(text) {
   var m;
   while ((m = callRe.exec(raw)) !== null) {
     if (findWebviewFunctionStyleToolCallEnd(raw, m) >= 0) return true;
+  }
+  return false;
+}
+
+function containsWebviewToolLabel(text) {
+  var raw = String(text || '');
+  var re = /(?:^|\n|[ \t])(?:Tool|工具)[ \t]*[:：][ \t]*`?([A-Za-z_]\w*)/gi;
+  var m;
+  while ((m = re.exec(raw)) !== null) {
+    if (isWebviewToolName(m[1])) return true;
+  }
+  return false;
+}
+
+function containsWebviewBracketedInternalResult(text) {
+  var raw = String(text || '');
+  var re = /(?:^|\n)\s*\[([A-Za-z_]\w*|工具结果)(?=\s|[\]:：}]|$)/gi;
+  var m;
+  while ((m = re.exec(raw)) !== null) {
+    var name = m[1] || '';
+    if (name === '工具结果' || name === 'generated_file' || name === 'permission_repair') return true;
+    if (isWebviewToolName(name)) return true;
   }
   return false;
 }
@@ -648,11 +662,10 @@ function containsAgentInternalTranscript(text) {
     || containsAgentRoutingMarkerLeak(text)
     || containsWebviewFunctionStyleToolCall(text)
     || containsWebviewXmlToolTag(text)
-    || /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
-    || /(?:\[\s*)?[*_]{0,3}(?:Calling|Call|调用)(?:[ \t]*[:：]?[ \t]*tool\b|[ \t]+tool\b)?[ \t]*[:：]?[ \t]*[*_]{0,3}[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
-    || /(?:^|\n)\s*(?:\[\s*)?[*_]{0,3}(?:Calling|Call|调用)(?:[ \t]*[:：]?[ \t]*tool\b|[ \t]+tool\b)?[ \t]*[:：]?[ \t]*[*_]{0,3}[ \t]*\[?`?(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
-    || /(?:^|\n|[ \t])(?:Tool|工具)[ \t]*[:：][ \t]*`?(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
-    || /(?:^|\n)\s*\[(?:工具结果|run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(text)
+    || /(?:^|\n)\s*\[TOOL:(?:mcp__|\w+)\b/i.test(text)
+    || containsWebviewCallingToolIntent(text)
+    || containsWebviewToolLabel(text)
+    || containsWebviewBracketedInternalResult(text)
     || /\b(?:run_terminal|manage_todo_list|task_complete|stdout|stderr|exitCode|exit code)\b/i.test(text)
     || /(?:^|\n)\s*\$\s+\S+/.test(text)
     || /(?:^|\n)\s*(?:命令输出|执行命令|终端输出)\s*[:：]/.test(text);

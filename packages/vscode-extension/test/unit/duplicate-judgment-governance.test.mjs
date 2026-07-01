@@ -88,10 +88,9 @@ test('ARCH-16 app boundary exports the duplicate-judgment owner registry', () =>
   assert.ok(appIndex.includes("export * from './judgment-owners';"));
 });
 
-test('ARCH-16 tool alias search_content is owned by ToolRegistry and sanitizer mirror only', () => {
+test('ARCH-16 tool alias search_content is owned by ToolRegistry and generated manifest only', () => {
   const hits = decisionFilesContaining('search_content');
   assert.deepEqual(hits, [
-    'media/webview-agent-sanitizer.js',
     'media/webview-agent-tool-manifest.js',
     'src/agent/tool-registry.ts',
   ]);
@@ -111,7 +110,11 @@ test('ARCH-16 webview tool manifest is generated from ToolRegistry', () => {
   assert.ok(manifest.includes('Source of truth: packages/vscode-extension/src/agent/tool-registry.ts'));
   assert.ok(manifest.includes('"search_content"'));
   assert.ok(sanitizer.includes('DevSeekAgentToolManifest'), 'sanitizer must read generated tool manifest');
+  assert.ok(sanitizer.includes('makeWebviewToolNamePattern'), 'sanitizer regexes must derive tool names from generated manifest');
   assert.ok(!sanitizer.includes('read_file: true'), 'sanitizer must not keep a hand-written tool-name map');
+  assert.ok(!sanitizer.includes('search_content'), 'sanitizer must not keep hand-written tool aliases');
+  assert.ok(extensionFileExists('test/fixtures/deepseek-tool-transcripts.mjs'), 'DeepSeek transcript replay fixtures must exist');
+  assert.ok(extensionFileExists('test/unit/tool-protocol-contract.test.mjs'), 'tool protocol replay contract test must exist');
 });
 
 test('ARCH-16 backend cannot reintroduce generic execution-complete UI titles', () => {
