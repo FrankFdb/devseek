@@ -13,10 +13,18 @@ import type { AgentLoopCallbacks } from './agent/loop-types';
 import type { AppliedChangeRecord, ApplyWorkflowStatus } from './workspace-applier';
 import { MemoryService } from './app/memory-service';
 import { decideToolPermission, type ToolPolicy } from './app/permission-service';
+import { listCppBuildOutputDirNames } from './cpp-build-layout';
 import { isFileProtected } from './protected-files';
 import { postWebviewMessage } from './ui/webview-event-adapter';
 
 const LOCAL_REPAIR_SOURCE_FILE_RE = /(?:^|\/)(?:Makefile|CMakeLists\.txt)$|\.(cpp|c|h|hpp|cc|cxx|ts|tsx|js|jsx|mjs|py|rs|go|java|cs|rb|php|swift|kt|scala|dart|lua|r)$/i;
+const LOCAL_REPAIR_SEARCH_EXCLUDE_GLOB = `**/{${[
+  'node_modules',
+  'backups',
+  'dist',
+  '.git',
+  ...listCppBuildOutputDirNames(),
+].join(',')}}/**`;
 
 export interface LocalExecutionRepairCallbacksDeps {
   webview: vscode.Webview;
@@ -238,7 +246,7 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
       }).filter(Boolean).join('\n');
     },
     onFileSearch: async (glob) => {
-      const files = await vscode.workspace.findFiles(glob, '**/{node_modules,backups,dist,.git,.devseek-build,.devseek-builds}/**', 80);
+      const files = await vscode.workspace.findFiles(glob, LOCAL_REPAIR_SEARCH_EXCLUDE_GLOB, 80);
       return files
         .filter(uri => isPathInsideRoot(uri.fsPath, workspaceRoot))
         .map(uri => relPathFromRepairWorkspace(workspaceRoot, uri.fsPath) ?? uri.fsPath)

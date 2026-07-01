@@ -6,6 +6,7 @@ export * from './config-migration-service';
 export * from './context-assembly-service';
 export * from './context-discovery-service';
 export * from './interaction-service';
+export * from './judgment-owners';
 export * from './agentic-repair-service';
 export * from './apply-failure-recovery-service';
 export * from './local-attachment-context';

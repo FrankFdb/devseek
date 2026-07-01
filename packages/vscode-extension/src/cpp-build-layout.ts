@@ -2,6 +2,27 @@ import * as nodePath from 'path';
 
 export const CPP_BUILD_DIR_NAME = 'build';
 export const DEVSEEK_BUILD_SUBDIR = 'devseek';
+export const LEGACY_CPP_BUILD_DIR_NAMES = ['devseek-build', '.devseek-build', '.devseek-builds'] as const;
+export const CMAKE_GENERATED_DIR_NAME = 'CMakeFiles';
+
+const CPP_BUILD_OUTPUT_DIR_NAME_SET = new Set<string>(
+  [CPP_BUILD_DIR_NAME, ...LEGACY_CPP_BUILD_DIR_NAMES].map(name => name.toLowerCase()),
+);
+const CPP_BUILD_ARTIFACT_DIR_NAME_SET = new Set<string>(
+  [CPP_BUILD_DIR_NAME, ...LEGACY_CPP_BUILD_DIR_NAMES, CMAKE_GENERATED_DIR_NAME].map(name => name.toLowerCase()),
+);
+
+export function listCppBuildOutputDirNames(): readonly string[] {
+  return [CPP_BUILD_DIR_NAME, ...LEGACY_CPP_BUILD_DIR_NAMES];
+}
+
+export function isCppBuildOutputDirName(name: string): boolean {
+  return CPP_BUILD_OUTPUT_DIR_NAME_SET.has((name || '').toLowerCase());
+}
+
+export function isCppBuildArtifactDirName(name: string): boolean {
+  return CPP_BUILD_ARTIFACT_DIR_NAME_SET.has((name || '').toLowerCase());
+}
 
 export function getCmakeBuildDir(projectDir: string): string {
   return nodePath.join(projectDir, CPP_BUILD_DIR_NAME);

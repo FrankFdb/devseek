@@ -58,6 +58,7 @@
 | [architecture/09-程序员工程完整性架构设计.md](architecture/09-程序员工程完整性架构设计.md) | EngineeringContextService、ContentExclusionService、CodebaseIndexService、EnvironmentProfileService、LanguageRuntimeRegistry、ConflictGuard、UsageBudgetService 设计 |
 | [architecture/10-运行形态与界面解耦架构设计.md](architecture/10-运行形态与界面解耦架构设计.md) | AgentApplicationService、SurfaceAdapter、AgentCommand/AgentEvent、PlatformRuntimeAdapter、BuildProfile 设计 |
 | [architecture/11-需求设计覆盖最终审计.md](architecture/11-需求设计覆盖最终审计.md) | REQ-A~N、MEM-01~14 和 ARCH-01~10 的最终覆盖审计 |
+| [architecture/16-重复判定逻辑治理专题设计.md](architecture/16-重复判定逻辑治理专题设计.md) | 重复判定逻辑、单一事实源、统一状态机和防回归重构计划 |
 
 ### 过程与发布
 

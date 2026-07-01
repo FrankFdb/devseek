@@ -795,14 +795,15 @@ test('Directory discovery skips generated build artifacts', () => {
   const planner = src('src/execution-planner.ts');
   const contextDiscovery = src('src/app/context-discovery-service.ts');
   const discovery = src('src/file-discovery.ts');
+  const layout = src('src/cpp-build-layout.ts');
   assertContains(chatResources, 'collectDirectoryFiles', 'directory attachments must delegate to shared context discovery');
   assertContains(contextDiscovery, 'shouldSkipDiscoveryDir', 'directory attachments must use shared discovery skip policy');
   assertContains(contextDiscovery, 'shouldIncludeDiscoveredSourceFile', 'auto directory discovery must filter generated source-like artifacts');
   assertContains(planner, 'shouldSkipDiscoveryDir', 'execution planner discovery must use shared skip policy');
   assertContains(planner, 'shouldIncludeDiscoveredSourceFile', 'execution planner discovery must filter generated source-like artifacts');
-  assertContains(discovery, '.devseek-builds', 'shared discovery policy must skip DevSeek build directories');
-  assertContains(discovery, 'devseek-build', 'shared discovery policy must skip legacy DevSeek build directories');
-  assertContains(discovery, 'CMakeFiles', 'shared discovery policy must skip CMake generated trees');
+  assertContains(discovery, 'isCppBuildArtifactDirName', 'shared discovery policy must delegate C++ build artifacts to C++ build layout');
+  assertContains(layout, 'LEGACY_CPP_BUILD_DIR_NAMES', 'C++ build layout must own legacy build directory aliases');
+  assertContains(layout, 'CMAKE_GENERATED_DIR_NAME', 'C++ build layout must own CMake generated directory aliases');
   assertContains(discovery, 'compiler_depend', 'shared discovery policy must skip CMake dependency timestamp files');
   assertContains(discovery, 'CompilerId', 'shared discovery policy must skip CMake compiler probe sources');
 });
@@ -1238,6 +1239,9 @@ test('Architecture: C/C++ validation and execution share one stable project buil
 
   assertContains(layout, "export const CPP_BUILD_DIR_NAME = 'build'", 'C/C++ build root must be the project build directory');
   assertContains(layout, "export const DEVSEEK_BUILD_SUBDIR = 'devseek'", 'DevSeek auxiliary C++ artifacts must live below build/devseek');
+  assertContains(layout, 'LEGACY_CPP_BUILD_DIR_NAMES', 'legacy C++ build directory aliases must be centralized');
+  assertContains(layout, 'isCppBuildOutputDirName', 'legacy C++ build output aliases must be centralized');
+  assertContains(layout, 'isCppBuildArtifactDirName', 'C++ build artifact aliases must be centralized');
   assertContains(layout, 'getCmakeBuildDir', 'CMake build directory helper must be centralized');
   assertContains(layout, 'getCppCompileOnlyDir', 'compile-only helper must be centralized');
   assertContains(layout, 'getCmakeExecutableCandidatePaths', 'CMake executable candidates must be centralized');
@@ -1395,6 +1399,28 @@ test('Architecture: Bridge chat uses explicit DevSeek session context, not brows
   assert.match(service, /buildBridgeTransportRequest[\s\S]*?newSession: true/, 'bridge transport requests must reset browser-side history');
   assert.match(bridgeProvider, /flattenMessages\(opts\.messages\)[\s\S]*?newSession: opts\.newSession \?\? false/, 'BridgeProvider must honor caller-owned browser reset boundaries');
   assertContains(extension, 'Bridge 网页侧历史不作为上下文来源', 'extension session history comment must document explicit context ownership');
+});
+
+test('Architecture: ARCH-16 duplicate judgment domains have explicit owners', () => {
+  const owners = src('src/app/judgment-owners.ts');
+  const appIndex = src('src/app/index.ts');
+  for (const id of [
+    'tool-protocol',
+    'response-integrity',
+    'execution-outcome',
+    'validation-orchestration',
+    'task-state',
+    'context-scope',
+    'agent-display',
+    'file-workspace',
+    'build-layout',
+  ]) {
+    assertContains(owners, `id: '${id}'`, `${id} must have a duplicate-judgment owner`);
+  }
+  assertContains(owners, 'ownerModule', 'judgment owner records must name owner modules');
+  assertContains(owners, 'contractTests', 'judgment owner records must name contract tests');
+  assertContains(owners, 'guardedTerms', 'judgment owner records must name guarded terms');
+  assertContains(appIndex, "export * from './judgment-owners';", 'judgment owner registry must be exported through app boundary');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

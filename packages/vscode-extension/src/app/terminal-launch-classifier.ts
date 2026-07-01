@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import { isCppBuildOutputDirName } from '../cpp-build-layout';
 import { containsRuntimeExecutableSegment } from '../tools/shell-command-analysis';
 
 export { containsRuntimeExecutableSegment } from '../tools/shell-command-analysis';
@@ -63,7 +64,7 @@ function candidateSourceDirs(command: string, workdir?: string, workspaceRoot?: 
     const rawPath = cleanToken(match[2] || '');
     if (!rawPath || rawPath === '/dev/null') continue;
     const segments = rawPath.split('/').filter(Boolean);
-    const buildIndex = segments.findIndex(s => s === '.devseek-build' || s === '.devseek-builds' || s === 'build');
+    const buildIndex = segments.findIndex(s => isCppBuildOutputDirName(s));
     if (buildIndex > 0) {
       addDir('/' + segments.slice(0, buildIndex).join('/'));
     } else {
