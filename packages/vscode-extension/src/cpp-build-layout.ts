@@ -33,6 +33,10 @@ export function getCmakeBuildDir(projectDir: string): string {
   return nodePath.join(projectDir, CPP_BUILD_DIR_NAME);
 }
 
+export function getLegacyCppBuildDirs(projectDir: string): string[] {
+  return LEGACY_CPP_BUILD_DIR_NAMES.map(name => nodePath.join(projectDir, name));
+}
+
 export function getDevSeekBuildDir(projectDir: string): string {
   return nodePath.join(getCmakeBuildDir(projectDir), DEVSEEK_BUILD_SUBDIR);
 }

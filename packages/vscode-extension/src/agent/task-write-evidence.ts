@@ -1,18 +1,37 @@
 import * as nodePath from 'path';
 import type { AgentTask, AgentTaskAction } from '../agent-task-decomposer';
-import type { WrittenFileEvidence } from './completion-evidence';
+import { coalesceWrittenFileEvidence, type WrittenFileEvidence } from './completion-evidence';
+import {
+  extractTaskFileTokens,
+  normalizeEvidencePath,
+  taskFileTokensMatchWrittenEvidence,
+} from './task-file-tokens';
 
 export function selectTaskWriteEvidence(
-  task: Pick<AgentTask, 'action' | 'file' | 'absPath' | 'visibleTarget'>,
+  task: Pick<AgentTask, 'action' | 'file' | 'absPath' | 'visibleTarget' | 'desc'>,
   writtenFiles: WrittenFileEvidence[],
   workspaceRoot?: string,
 ): WrittenFileEvidence | undefined {
-  if (!isMutatingTaskAction(task.action) || writtenFiles.length === 0) return undefined;
+  return selectTaskWrittenFileEvidence(task, writtenFiles, workspaceRoot)[0];
+}
 
+export function selectTaskWrittenFileEvidence(
+  task: Pick<AgentTask, 'action' | 'file' | 'absPath' | 'visibleTarget' | 'desc'>,
+  writtenFiles: WrittenFileEvidence[],
+  workspaceRoot?: string,
+): WrittenFileEvidence[] {
+  if (!isMutatingTaskAction(task.action) || writtenFiles.length === 0) return [];
+
+  const coalesced = coalesceWrittenFileEvidence(writtenFiles, workspaceRoot);
   const target = buildTaskWriteTarget(task, workspaceRoot);
-  if (!target.hasSpecificTarget) return undefined;
+  const matched = coalesced.filter((evidence) => matchesWriteTarget(evidence, target, workspaceRoot));
+  if (matched.length > 0) return matched;
 
-  return writtenFiles.find((evidence) => matchesWriteTarget(evidence, target, workspaceRoot));
+  const fileTokens = extractTaskFileTokens(task.file, task.visibleTarget, task.desc);
+  const tokenMatched = coalesced.filter((evidence) => taskFileTokensMatchWrittenEvidence(fileTokens, evidence, workspaceRoot));
+  if (tokenMatched.length > 0) return tokenMatched;
+
+  return target.hasSpecificTarget ? [] : coalesced;
 }
 
 function isMutatingTaskAction(action: AgentTaskAction): boolean {
@@ -61,10 +80,10 @@ function matchesWriteTarget(
 }
 
 function makeWorkspaceRelative(filePath: string, workspaceRoot?: string): string | undefined {
-  const normalized = normalizePath(filePath);
+  const normalized = normalizeEvidencePath(filePath);
   if (!normalized) return undefined;
   if (!workspaceRoot) return nodePath.isAbsolute(normalized) ? undefined : normalized;
-  const root = normalizePath(workspaceRoot);
+  const root = normalizeEvidencePath(workspaceRoot);
   try {
     const rel = nodePath.relative(root, normalized).replace(/\\/g, '/');
     if (rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel)) return rel;
@@ -75,5 +94,5 @@ function makeWorkspaceRelative(filePath: string, workspaceRoot?: string): string
 }
 
 function normalizePath(filePath: string): string {
-  return String(filePath || '').replace(/\\/g, '/').replace(/^\.\//, '').trim();
+  return normalizeEvidencePath(filePath);
 }

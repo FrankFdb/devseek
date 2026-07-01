@@ -1,6 +1,7 @@
 import type { AgentTask, AgentTaskAction } from '../agent-task-decomposer';
 import type { AgentStatusEvent } from './events';
 import {
+  coalesceWrittenFileEvidence,
   findBlockingTerminalFailureEvidence,
   getMissingCompletionEvidence,
   requiresCodeArtifactForEvidence,
@@ -9,20 +10,31 @@ import {
   requiresFileChangeEvidence,
   requiresReadEvidence,
   type TerminalEvidence,
+  type WrittenFileEvidence,
 } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
+import { extractTaskFileTokens, normalizeEvidencePath, taskFileTokensMatchWrittenEvidence } from './task-file-tokens';
 import { buildTaskTerminalFailureDetail } from './task-execution-result';
 
 type TodoStatus = TodoItem['status'];
 type LinearTodoInput = Pick<TodoItem, 'title'> & Partial<Pick<TodoItem, 'status' | '__agentState'>>;
+type TaskFailureKind = 'terminal' | 'missing-evidence' | 'missing-write' | 'validation';
 
 interface TaskEvidence {
   action: AgentTaskAction;
   applied?: boolean;
   path?: string;
+  writtenFiles?: WrittenFileEvidence[];
   raw?: string;
   taskComplete?: boolean;
   terminalEvidence?: TerminalEvidence[];
+}
+
+interface FinalTaskEvidence {
+  validationFailed?: boolean;
+  writtenFiles?: WrittenFileEvidence[];
+  terminalEvidence?: TerminalEvidence[];
+  workspaceRoot?: string;
 }
 
 export interface TaskSettleResult {
@@ -31,10 +43,16 @@ export interface TaskSettleResult {
   todos: TodoItem[];
 }
 
+export interface TaskReconcileResult {
+  clearedFailures: number;
+  todos: TodoItem[];
+}
+
 export interface AgentTaskTodoLedger {
   snapshot(): TodoItem[];
   startTask(index: number): TodoItem[];
   settleTask(index: number, evidence: TaskEvidence): TaskSettleResult;
+  reconcileFinalEvidence(evidence: FinalTaskEvidence): TaskReconcileResult;
   repairSnapshot(title: string, id: number): TodoItem[];
   markValidationFailure(): TodoItem[];
 }
@@ -68,6 +86,7 @@ export function createAgentTaskTodoLedger(
   const statuses: TodoStatus[] = tasks.map((_, index) => (
     index < startFromIndex ? 'completed' : 'not-started'
   ));
+  const failureKinds: Array<TaskFailureKind | undefined> = tasks.map(() => undefined);
   let validationFailureTodo: TodoItem | undefined;
 
   const snapshot = (): TodoItem[] => {
@@ -89,13 +108,36 @@ export function createAgentTaskTodoLedger(
         ? getTaskMissingCompletionEvidence(tasks[index], evidence)
         : [];
       const completed = !terminalFailure && missingEvidence.length === 0 && hasTaskCompletionEvidence(evidence);
-      const failed = Boolean(terminalFailure)
-        || missingEvidence.length > 0
-        || (!completed && !isReadOnlyAgentTaskAction(evidence.action));
+      const failureKind: TaskFailureKind | undefined = terminalFailure
+        ? 'terminal'
+        : missingEvidence.length > 0
+          ? 'missing-evidence'
+          : (!completed && !isReadOnlyAgentTaskAction(evidence.action))
+            ? 'missing-write'
+            : undefined;
+      const failed = Boolean(failureKind);
       if (isTaskIndex(index, tasks)) {
         statuses[index] = failed ? 'failed' : completed ? 'completed' : 'in-progress';
+        failureKinds[index] = failed ? failureKind : undefined;
       }
       return { completed, failed, todos: snapshot() };
+    },
+    reconcileFinalEvidence(evidence: FinalTaskEvidence): TaskReconcileResult {
+      if (evidence.validationFailed) {
+        return { clearedFailures: 0, todos: snapshot() };
+      }
+
+      const writtenFiles = coalesceWrittenFileEvidence(evidence.writtenFiles ?? [], evidence.workspaceRoot);
+      let clearedFailures = 0;
+      for (let index = 0; index < tasks.length; index += 1) {
+        if (statuses[index] !== 'failed' || !isRecoverableFailureKind(failureKinds[index])) continue;
+        if (!hasFinalTaskCompletionEvidence(tasks[index], evidence, writtenFiles)) continue;
+
+        statuses[index] = 'completed';
+        failureKinds[index] = undefined;
+        clearedFailures += 1;
+      }
+      return { clearedFailures, todos: snapshot() };
     },
     repairSnapshot(title: string, id: number): TodoItem[] {
       return [
@@ -112,6 +154,7 @@ export function createAgentTaskTodoLedger(
       const validationIndex = findValidationTaskIndex(tasks);
       if (validationIndex >= 0) {
         statuses[validationIndex] = 'failed';
+        failureKinds[validationIndex] = 'validation';
         validationFailureTodo = undefined;
       } else {
         validationFailureTodo = {
@@ -268,7 +311,7 @@ export function isReadOnlyAgentTaskAction(action: AgentTaskAction): boolean {
 
 function hasTaskCompletionEvidence(evidence: TaskEvidence): boolean {
   if (!isReadOnlyAgentTaskAction(evidence.action)) {
-    return Boolean(evidence.applied && evidence.path);
+    return Boolean(evidence.applied && (evidence.path || evidence.writtenFiles?.length));
   }
   return Boolean(evidence.raw?.trim() || evidence.taskComplete || hasSuccessfulTerminalCompletionEvidence(evidence.terminalEvidence));
 }
@@ -277,6 +320,60 @@ function hasSuccessfulTerminalCompletionEvidence(evidence: TerminalEvidence[] | 
   return Boolean(evidence?.some(item =>
     item.ok && (item.kind === 'run' || item.kind === 'test' || item.kind === 'compile-run'),
   ));
+}
+
+function isRecoverableFailureKind(kind: TaskFailureKind | undefined): boolean {
+  return kind === 'missing-evidence' || kind === 'missing-write';
+}
+
+function hasFinalTaskCompletionEvidence(
+  task: AgentTask,
+  evidence: FinalTaskEvidence,
+  writtenFiles: WrittenFileEvidence[],
+): boolean {
+  if (isReadOnlyAgentTaskAction(task.action)) {
+    const taskEvidence: TaskEvidence = {
+      action: task.action,
+      raw: hasSuccessfulFinalTerminalEvidence(evidence.terminalEvidence) ? 'final terminal evidence' : undefined,
+      taskComplete: hasSuccessfulFinalTerminalEvidence(evidence.terminalEvidence),
+      terminalEvidence: evidence.terminalEvidence,
+    };
+    return getTaskMissingCompletionEvidence(task, taskEvidence).length === 0
+      && hasTaskCompletionEvidence(taskEvidence);
+  }
+
+  return hasWrittenEvidenceForTask(task, writtenFiles, evidence.workspaceRoot);
+}
+
+function hasSuccessfulFinalTerminalEvidence(evidence: TerminalEvidence[] | undefined): boolean {
+  return Boolean(evidence?.some(item =>
+    item.ok && (item.kind === 'compile' || item.kind === 'run' || item.kind === 'test' || item.kind === 'compile-run'),
+  ));
+}
+
+function hasWrittenEvidenceForTask(
+  task: AgentTask,
+  writtenFiles: WrittenFileEvidence[],
+  workspaceRoot?: string,
+): boolean {
+  if (writtenFiles.length === 0) return false;
+  const taskPath = normalizeEvidencePath(task.absPath || task.file || task.visibleTarget || '');
+  const taskBase = taskPath ? taskPath.slice(taskPath.lastIndexOf('/') + 1) : '';
+  if (taskPath) {
+    const directMatch = writtenFiles.some(file => {
+      const writtenPath = normalizeEvidencePath(file.path);
+      const writtenBase = writtenPath.slice(writtenPath.lastIndexOf('/') + 1);
+      return writtenPath === taskPath || writtenPath.endsWith(`/${taskPath}`) || Boolean(taskBase && writtenBase === taskBase);
+    });
+    if (directMatch) return true;
+  }
+
+  const tokens = extractTaskFileTokens(task.file, task.visibleTarget, task.desc);
+  if (tokens.size > 0) {
+    return writtenFiles.some(file => taskFileTokensMatchWrittenEvidence(tokens, file, workspaceRoot));
+  }
+
+  return true;
 }
 
 function buildTaskSettlementFailureDetail(

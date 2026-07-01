@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { decideTerminalCommandPermission, type TerminalCommandRiskClass } from './terminal-command-policy';
 import { decideToolPermission, type ToolPolicy } from './permission-service';
 import { shouldUseManualReviewLaunchMode } from './terminal-launch-classifier';
+import { cleanupLegacyCppBuildDirsForCommand } from '../workspace/cpp-build-cleanup-service';
 
 type TerminalConfirmResolver = (allow: boolean, alwaysAllow?: boolean) => void;
 
@@ -79,6 +80,7 @@ export class TerminalPermissionCoordinator {
 
     const { runCommand, formatTerminalOutputForPrompt } = await import('../tools/terminal');
     const manualReviewOnLongRunning = shouldUseManualReviewLaunchMode({ command, workdir, workspaceRoot });
+    cleanupLegacyCppBuildDirsForCommand({ command, workdir, workspaceRoot });
     const result = await runCommand({
       command,
       cwd: workdir,

@@ -1,4 +1,4 @@
-import type { TerminalEvidence } from './completion-evidence';
+import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
 
 export interface TaskExecutionResult {
   applied: boolean;
@@ -7,6 +7,7 @@ export interface TaskExecutionResult {
   taskComplete?: boolean;
   linesAdded?: number;
   linesRemoved?: number;
+  writtenFiles?: WrittenFileEvidence[];
   networkError?: boolean;
   terminalEvidence?: TerminalEvidence[];
 }

@@ -48,7 +48,7 @@ test('two-phase agent todos are delegated to an evidence ledger', () => {
   assert.match(simpleFileTask, /createLinearAgentTodos/, 'simple file todo creation must use the task todo ledger boundary');
   assert.match(simpleFileTask, /advanceLinearAgentTodo/, 'simple file todo progress must use the task todo ledger boundary');
   assert.match(simpleFileTask, /failLinearAgentTodo/, 'simple file todo failures must use the task todo ledger boundary');
-  assert.match(agentLoop, /selectTaskWriteEvidence/, 'agent-loop must treat create_file/write_file results as task write evidence');
+  assert.match(agentLoop, /selectTaskWrittenFileEvidence/, 'agent-loop must treat create_file/write_file results as task write evidence');
   assert.match(agentLoop, /recordTaskToolWrites\(loopRes\.writtenFiles\)/, 'tool-loop written files must be recorded before task settlement');
   assert.match(agentLoop, /completeFromTaskToolWrite\(loopRes\.taskComplete\)/, 'matching tool writes must complete the current mutating task');
   assert.match(agentLoop, /onTodoUpdate:\s*undefined/, 'nested editor tool loops must not publish model todos directly');
@@ -151,6 +151,70 @@ test('task todo ledger: validation failure preserves existing failures', () => {
 
   assert.equal(todos[0].status, 'failed');
   assert.equal(todos[1].status, 'failed');
+});
+
+test('task todo ledger: final verified write evidence clears transient missing-evidence failures', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'shape_manager', 'create', '添加 Cone.h、Cylinder.h、Torus.h 并更新 CMakeLists.txt'),
+    task('2', 'shape_manager', 'analyze', '使用 run_terminal 执行 cmake 编译并运行验证效果'),
+  ]);
+
+  ledger.startTask(0);
+  const failedEarly = ledger.settleTask(0, { action: 'create', taskComplete: true });
+  assert.equal(failedEarly.failed, true);
+  assert.equal(failedEarly.todos[0].status, 'failed');
+
+  const reconciled = ledger.reconcileFinalEvidence({
+    workspaceRoot: '/workspace',
+    writtenFiles: [
+      writeEvidence('/workspace/code/shape_manager/Cone.h', 'create'),
+      writeEvidence('/workspace/code/shape_manager/Cylinder.h', 'create'),
+      writeEvidence('/workspace/code/shape_manager/Torus.h', 'create'),
+      writeEvidence('/workspace/code/shape_manager/CMakeLists.txt', 'modify'),
+    ],
+    terminalEvidence: [{
+      command: 'cmake -S /workspace/code/shape_manager -B /workspace/code/shape_manager/build && cmake --build /workspace/code/shape_manager/build',
+      kind: 'compile',
+      ok: true,
+      exitCode: 0,
+    }],
+  });
+
+  assert.equal(reconciled.clearedFailures, 1);
+  assert.equal(reconciled.todos[0].status, 'completed');
+});
+
+test('task todo ledger: final reconciliation does not clear hard terminal failures', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'shape_manager', 'analyze', '使用 run_terminal 执行 cmake 编译并运行验证效果'),
+  ]);
+
+  ledger.startTask(0);
+  const failed = ledger.settleTask(0, {
+    action: 'analyze',
+    terminalEvidence: [{
+      command: 'cmake --build /workspace/code/shape_manager/build',
+      kind: 'compile',
+      ok: false,
+      exitCode: 2,
+      detail: 'compile failed',
+    }],
+  });
+  assert.equal(failed.failed, true);
+
+  const reconciled = ledger.reconcileFinalEvidence({
+    workspaceRoot: '/workspace',
+    writtenFiles: [writeEvidence('/workspace/code/shape_manager/main.cpp', 'modify')],
+    terminalEvidence: [{
+      command: 'cmake --build /workspace/code/shape_manager/build',
+      kind: 'compile',
+      ok: true,
+      exitCode: 0,
+    }],
+  });
+
+  assert.equal(reconciled.clearedFailures, 0);
+  assert.equal(reconciled.todos[0].status, 'failed');
 });
 
 test('task todo ledger: linear helpers own simple task progress', () => {
@@ -332,4 +396,14 @@ test('task todo ledger: successful runtime evidence is completion evidence witho
 
 function task(id, file, action, desc) {
   return { id, file, action, desc, absPath: `/tmp/${file}` };
+}
+
+function writeEvidence(pathValue, action) {
+  return {
+    path: pathValue,
+    basename: path.basename(pathValue),
+    linesAdded: 1,
+    linesRemoved: action === 'create' ? 0 : 1,
+    action,
+  };
 }

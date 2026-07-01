@@ -659,7 +659,7 @@ test('Agent loop: task_complete does not bypass final editedFiles accounting', (
   );
   assert.match(
     code,
-    /if \(result\.applied && result\.path\)[\s\S]*?if \(i \+ 1 < tasks\.length\) \{[\s\S]*?await callbacks\.onTaskCheckpoint\?\.\(i \+ 1[\s\S]*?if \(result\.taskComplete\)/,
+    /const resultWrittenFiles = taskSettlementInput\.writtenFiles[\s\S]*?if \(result\.applied && resultWrittenFiles\.length > 0\)[\s\S]*?appendAgentLoopWrittenFiles\(changedPaths,\s*editedFileRecords,\s*resultWrittenFiles[\s\S]*?if \(i \+ 1 < tasks\.length\) \{[\s\S]*?await callbacks\.onTaskCheckpoint\?\.\(i \+ 1[\s\S]*?if \(result\.taskComplete\)/,
     'runAgentLoop must record applied result before honoring task_complete break and only checkpoint unfinished work',
   );
 });
@@ -1285,10 +1285,13 @@ test('Architecture: C/C++ validation and execution share one stable project buil
   const validation = src('src/validation-planner.ts');
   const extension = src('src/extension.ts');
   const listDirService = src('src/workspace/list-dir-service.ts');
+  const cleanupService = src('src/workspace/cpp-build-cleanup-service.ts');
+  const terminalPermission = src('src/app/terminal-permission-coordinator.ts');
 
   assertContains(layout, "export const CPP_BUILD_DIR_NAME = 'build'", 'C/C++ build root must be the project build directory');
   assertContains(layout, "export const DEVSEEK_BUILD_SUBDIR = 'devseek'", 'DevSeek auxiliary C++ artifacts must live below build/devseek');
   assertContains(layout, 'LEGACY_CPP_BUILD_DIR_NAMES', 'legacy C++ build directory aliases must be centralized');
+  assertContains(layout, 'getLegacyCppBuildDirs', 'legacy C++ build cleanup paths must be centralized');
   assertContains(layout, 'isCppBuildOutputDirName', 'legacy C++ build output aliases must be centralized');
   assertContains(layout, 'isLegacyCppBuildOutputDirName', 'legacy C++ build output detection must be centralized');
   assertContains(layout, 'isCppBuildArtifactDirName', 'C++ build artifact aliases must be centralized');
@@ -1300,6 +1303,8 @@ test('Architecture: C/C++ validation and execution share one stable project buil
   assertContains(validation, "from './cpp-build-layout'", 'validation planner must use shared C++ build layout');
   assertContains(extension, "from './workspace/list-dir-service'", 'extension list_dir callbacks must use shared directory listing service');
   assertContains(listDirService, "from '../cpp-build-layout'", 'list_dir service must use shared C++ build layout aliases');
+  assertContains(cleanupService, "from '../cpp-build-layout'", 'legacy build cleanup must use shared C++ build layout aliases');
+  assertContains(terminalPermission, 'cleanupLegacyCppBuildDirsForCommand', 'run_terminal must clean stale legacy C++ build dirs before build commands');
   assert.doesNotMatch(extension, /onListDir:[\s\S]{0,500}readdirSync/, 'extension must not hand-roll list_dir filesystem traversal');
   assert.doesNotMatch(execution, /\.devseek-build/, 'execution planner must not create legacy .devseek-build outputs');
   assert.doesNotMatch(localExecution, /\.devseek-build/, 'legacy local execution path must not create legacy .devseek-build outputs');

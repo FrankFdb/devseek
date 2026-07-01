@@ -67,6 +67,7 @@ import {
 } from './agent/agentic-history';
 import {
   classifyTerminalEvidenceCommand,
+  coalesceWrittenFileEvidence,
   buildTerminalFailureRepairFeedback,
   findBlockingTerminalFailureEvidence,
   requiresRuntimeValidation,
@@ -84,7 +85,7 @@ import {
   analyzeTerminalEvidence,
   executeFakeToolsForLoop,
 } from './agent/tool-loop';
-import { selectTaskWriteEvidence } from './agent/task-write-evidence';
+import { selectTaskWrittenFileEvidence } from './agent/task-write-evidence';
 import {
   buildTaskSettlementFailureStatus,
   createAgentTaskTodoLedger,
@@ -934,7 +935,8 @@ async function executeTask(
   };
 
   const completeFromTaskToolWrite = async (taskComplete = false): Promise<TaskExecutionResult | undefined> => {
-    const evidence = selectTaskWriteEvidence(task, taskWrittenFiles, workspaceRoot.fsPath);
+    const writtenFiles = selectTaskWrittenFileEvidence(task, taskWrittenFiles, workspaceRoot.fsPath);
+    const evidence = writtenFiles[0];
     if (!evidence) return undefined;
 
     const freshContent = readFileContentFull(evidence.path);
@@ -965,6 +967,7 @@ async function executeTask(
       raw,
       linesAdded: evidence.linesAdded,
       linesRemoved: evidence.linesRemoved,
+      writtenFiles,
       ...(taskComplete ? { taskComplete: true } : {}),
     }, taskTerminalEvidence);
   };
@@ -1068,6 +1071,7 @@ ${loopRes.feedbackForAI}
           newContent: srResult.result,
         });
         const srDiff = roughLineDiff(currentContent, srResult.result);
+        const writtenFiles = [buildWrittenFileEvidence(task.absPath, task.action, srDiff.added, srDiff.removed)];
         await callbacks.onAgentStatus({
           type: 'agentStatus',
           phase: 'execute',
@@ -1083,6 +1087,9 @@ ${loopRes.feedbackForAI}
           applied: true,
           path: task.absPath,
           raw,
+          linesAdded: srDiff.added,
+          linesRemoved: srDiff.removed,
+          writtenFiles,
           ...(taskCompleteByAI ? { taskComplete: true } : {}),
         }, taskTerminalEvidence);
       } catch (writeErr) {
@@ -1210,6 +1217,15 @@ ${loopRes.feedbackForAI}
     }
   }
 
+  const writtenFiles = applied
+    ? buildWrittenFileEvidenceForPaths(
+      applyResult.changedPaths,
+      task.action,
+      workspaceRoot.fsPath,
+      fullFileDiff,
+    )
+    : [];
+
   // P18: full-file fallback path never sent a terminal task status.
   // SEARCH/REPLACE path returns early after sending its own 'completed'/'failed';
   // only this code path reaches here, so we emit terminal status unconditionally.
@@ -1225,10 +1241,11 @@ ${loopRes.feedbackForAI}
 
   return withTaskTerminalEvidence({
     applied,
-    path: applied ? applyResult.changedPaths[0] : undefined,
+    path: applied ? writtenFiles[0]?.path ?? applyResult.changedPaths[0] : undefined,
     raw,
     linesAdded: fullFileDiff?.added,
     linesRemoved: fullFileDiff?.removed,
+    writtenFiles,
     ...(taskCompleteByAI ? { taskComplete: true } : {}),
   }, taskTerminalEvidence);
 }
@@ -1513,7 +1530,7 @@ export async function runAgentLoop(
   startFromIndex = 0,
 ): Promise<AgentLoopResult> {
   const changedPaths: string[] = [];
-  const editedFileRecords: Array<{ path: string; basename: string; linesAdded?: number; linesRemoved?: number; action: string }> = [];
+  const editedFileRecords: WrittenFileEvidence[] = [];
   let tasksApplied = 0;
   let tasksFailed = 0;
   const taskTodoLedger = createAgentTaskTodoLedger(tasks, startFromIndex);
@@ -1625,6 +1642,7 @@ export async function runAgentLoop(
       action: task.action,
       applied: result.applied,
       path: result.path,
+      writtenFiles: collectTaskResultWrittenFiles(result, task.action, workspaceRoot.fsPath),
       raw: result.raw,
       taskComplete: result.taskComplete,
       terminalEvidence: result.terminalEvidence,
@@ -1632,19 +1650,14 @@ export async function runAgentLoop(
     if (result.terminalEvidence?.length) {
       allTerminalEvidence.push(...result.terminalEvidence);
     }
-    if (result.applied && result.path) {
-      changedPaths.push(result.path);
+    const resultWrittenFiles = taskSettlementInput.writtenFiles;
+    if (result.applied && resultWrittenFiles.length > 0) {
+      appendAgentLoopWrittenFiles(changedPaths, editedFileRecords, resultWrittenFiles, workspaceRoot.fsPath);
       tasksApplied += 1;
-      editedFileRecords.push({
-        path: result.path,
-        basename: nodePath.basename(result.path),
-        linesAdded: result.linesAdded,
-        linesRemoved: result.linesRemoved,
-        action: task.action,
-      });
+      const changedBasenames = summarizeWrittenFileBasenames(resultWrittenFiles);
       sessionHistory.push({
         role: 'assistant',
-        content: `已完成任务 ${i + 1}/${tasks.length}：修改 ${nodePath.basename(result.path)}（${task.desc}）`,
+        content: `已完成任务 ${i + 1}/${tasks.length}：修改 ${changedBasenames}（${task.desc}）`,
       });
     } else if (isReadOnlyAction(task.action) && result.raw) {
       // Collect analysis text for findings injection into next round
@@ -1704,9 +1717,14 @@ export async function runAgentLoop(
   await callbacks.onTaskCheckpoint?.(null, [], 'completed');
 
   // Compile validation — C/C++ modify tasks only
-  const modifiedPaths = tasks
-    .filter(t => !isReadOnlyAction(t.action) && t.absPath && isCompilableFile(t.file))
-    .map(t => t.absPath!);
+  const modifiedPaths = uniquePaths([
+    ...tasks
+      .filter(t => !isReadOnlyAction(t.action) && t.absPath && isCompilableFile(t.file))
+      .map(t => t.absPath!),
+    ...editedFileRecords
+      .filter(file => isCompilableFile(file.path))
+      .map(file => nodePath.isAbsolute(file.path) ? file.path : nodePath.join(workspaceRoot.fsPath, file.path)),
+  ]);
   let validationOutcome: ValidationOutcome | undefined;
   if (modifiedPaths.length > 0) {
     // Derive wantRun from both the user's explicit request and task plan.
@@ -1793,19 +1811,13 @@ export async function runAgentLoop(
         await callbacks.onResponseMeta(repairResult.raw);
       }
 
-      if (repairResult.applied && repairResult.path) {
-        if (!changedPaths.includes(repairResult.path)) changedPaths.push(repairResult.path);
+      const repairWrittenFiles = collectTaskResultWrittenFiles(repairResult, repairTask.action, workspaceRoot.fsPath);
+      if (repairResult.applied && repairWrittenFiles.length > 0) {
+        appendAgentLoopWrittenFiles(changedPaths, editedFileRecords, repairWrittenFiles, workspaceRoot.fsPath);
         tasksApplied += 1;
-        editedFileRecords.push({
-          path: repairResult.path,
-          basename: nodePath.basename(repairResult.path),
-          linesAdded: repairResult.linesAdded,
-          linesRemoved: repairResult.linesRemoved,
-          action: 'modify',
-        });
         sessionHistory.push({
           role: 'assistant',
-          content: `第 ${repairRound} 轮自动修复已修改 ${nodePath.basename(repairResult.path)}，准备重新验证。`,
+          content: `第 ${repairRound} 轮自动修复已修改 ${summarizeWrittenFileBasenames(repairWrittenFiles)}，准备重新验证。`,
         });
       } else {
         tasksFailed += 1;
@@ -1835,6 +1847,20 @@ export async function runAgentLoop(
     : manualReviewTerminal
       ? (manualReviewTerminal.detail || '需要人工确认运行效果。')
       : undefined;
+  if (!validationFailed && tasksFailed > 0) {
+    const reconciled = taskTodoLedger.reconcileFinalEvidence({
+      validationFailed,
+      writtenFiles: editedFileRecords,
+      terminalEvidence: allTerminalEvidence,
+      workspaceRoot: workspaceRoot.fsPath,
+    });
+    if (reconciled.clearedFailures > 0) {
+      tasksFailed = Math.max(0, tasksFailed - reconciled.clearedFailures);
+      if (callbacks.onTodoUpdate && tasks.length > 0) {
+        await callbacks.onTodoUpdate(reconciled.todos);
+      }
+    }
+  }
   if (validationFailed && callbacks.onTodoUpdate && tasks.length > 0) {
     await callbacks.onTodoUpdate(taskTodoLedger.markValidationFailure());
   }
@@ -1950,7 +1976,7 @@ function buildAgentLoopResult(input: {
   changedPaths: string[];
   userPrompt: string;
   todos: Array<{ id: number | string; title: string; status: string }>;
-  editedFileRecords: Array<{ path: string; basename: string; linesAdded?: number; linesRemoved?: number; action: string }>;
+  editedFileRecords: WrittenFileEvidence[];
   terminalEvidence: TerminalEvidence[];
   workspaceRoot: string;
   failedReason?: string;
@@ -2019,22 +2045,105 @@ function buildManualReviewQualityGate(
   return qualityGate;
 }
 
-function coalesceEditedFileRecordsForHistory(
-  records: Array<{ path: string; basename: string; linesAdded?: number; linesRemoved?: number; action: string }>,
+function buildWrittenFileEvidence(
+  filePath: string,
+  action: string,
+  linesAdded = 0,
+  linesRemoved = 0,
+): WrittenFileEvidence {
+  return {
+    path: filePath,
+    basename: nodePath.basename(filePath),
+    linesAdded,
+    linesRemoved,
+    action,
+  };
+}
+
+function buildWrittenFileEvidenceForPaths(
+  filePaths: string[],
+  action: string,
+  workspaceRoot: string,
+  diff?: { added: number; removed: number },
+): WrittenFileEvidence[] {
+  return coalesceWrittenFileEvidence(
+    filePaths.map((filePath, index) => buildWrittenFileEvidence(
+      nodePath.isAbsolute(filePath) ? filePath : nodePath.join(workspaceRoot, filePath),
+      action,
+      index === 0 ? diff?.added ?? 0 : 0,
+      index === 0 ? diff?.removed ?? 0 : 0,
+    )),
+    workspaceRoot,
+  );
+}
+
+function collectTaskResultWrittenFiles(
+  result: TaskExecutionResult,
+  fallbackAction: string,
   workspaceRoot: string,
 ): WrittenFileEvidence[] {
-  return records.map(record => ({
-    path: record.path,
-    basename: record.basename,
-    linesAdded: record.linesAdded ?? 0,
-    linesRemoved: record.linesRemoved ?? 0,
-    action: record.action,
-  })).map(record => ({
+  const files = result.writtenFiles?.length
+    ? result.writtenFiles
+    : result.path
+      ? [buildWrittenFileEvidence(result.path, fallbackAction, result.linesAdded ?? 0, result.linesRemoved ?? 0)]
+      : [];
+  return coalesceWrittenFileEvidence(
+    files.map(file => ({
+      ...file,
+      path: nodePath.isAbsolute(file.path) ? file.path : nodePath.join(workspaceRoot, file.path),
+      basename: file.basename || nodePath.basename(file.path),
+      linesAdded: file.linesAdded ?? 0,
+      linesRemoved: file.linesRemoved ?? 0,
+      action: file.action || fallbackAction,
+    })),
+    workspaceRoot,
+  );
+}
+
+function appendAgentLoopWrittenFiles(
+  changedPaths: string[],
+  editedFileRecords: WrittenFileEvidence[],
+  writtenFiles: WrittenFileEvidence[],
+  workspaceRoot: string,
+): void {
+  const existingPaths = new Set(changedPaths.map(pathValue => normalizePathForSet(pathValue, workspaceRoot)));
+  for (const file of writtenFiles) {
+    const key = normalizePathForSet(file.path, workspaceRoot);
+    if (!existingPaths.has(key)) {
+      changedPaths.push(file.path);
+      existingPaths.add(key);
+    }
+  }
+
+  const coalesced = coalesceWrittenFileEvidence([...editedFileRecords, ...writtenFiles], workspaceRoot);
+  editedFileRecords.splice(0, editedFileRecords.length, ...coalesced);
+}
+
+function summarizeWrittenFileBasenames(writtenFiles: WrittenFileEvidence[]): string {
+  const basenames = [...new Set(writtenFiles.map(file => file.basename || nodePath.basename(file.path)))];
+  if (basenames.length <= 3) return basenames.join('、');
+  return `${basenames.slice(0, 3).join('、')} 等 ${basenames.length} 个文件`;
+}
+
+function uniquePaths(paths: string[]): string[] {
+  return [...new Set(paths.filter(Boolean).map(pathValue => nodePath.normalize(pathValue)))];
+}
+
+function normalizePathForSet(filePath: string, workspaceRoot: string): string {
+  return nodePath.normalize(nodePath.isAbsolute(filePath) ? filePath : nodePath.join(workspaceRoot, filePath));
+}
+
+function coalesceEditedFileRecordsForHistory(
+  records: WrittenFileEvidence[],
+  workspaceRoot: string,
+): WrittenFileEvidence[] {
+  const absoluteRecords = records.map(record => ({
     ...record,
     path: nodePath.isAbsolute(record.path)
       ? record.path
       : nodePath.join(workspaceRoot, record.path),
   }));
+  return coalesceWrittenFileEvidence(absoluteRecords, workspaceRoot);
 }
 
 function normalizeHistoryTodoStatus(status: string): AgenticHistoryTodoStatus {
