@@ -49,6 +49,23 @@ test('FakeToolParser: parses DeepSeek Calling transcript format', () => {
   assert.equal(tools[0].input.command, 'npm test');
 });
 
+test('FakeToolParser: parses Markdown-bold Calling transcript with fenced JSON payload', () => {
+  const text = [
+    '我先核查一下当前代码状态。',
+    '**Calling:** `read_file`',
+    '```json',
+    '{"path": "/home/ff/work/devseek_netai/code/shape_manager/main.cpp"}',
+    '```',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'read_file');
+  assert.equal(tools[0].input.path, '/home/ff/work/devseek_netai/code/shape_manager/main.cpp');
+  assert.equal(findFirstToolCallStart(text), text.indexOf('**Calling'));
+  assert.equal(stripToolCallBlocks(text), '我先核查一下当前代码状态。');
+});
+
 test('FakeToolParser: parses DeepSeek Tool/Arguments transcript format', () => {
   const text = [
     '让我先查看当前代码结构和已有实现。',

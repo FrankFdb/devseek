@@ -276,13 +276,17 @@ test('§8.3 File edits: webview renders QualityGate blocked separately from repa
   assertContains(webview, "'已完成 · ' + blockedSteps + ' 阻塞'", 'summary footnote must count blocked QualityGate separately from failures');
 });
 
-test('§8.3 File edits: validation timeout is reported as failed evidence', () => {
+test('§8.3 File edits: timeout evidence follows validation vs interactive-run semantics', () => {
   const validationService = src('src/workspace/validation-service.ts');
   const planner = src('src/execution-planner.ts');
   const localExecution = src('src/local-execution.ts');
   for (const code of [validationService, planner, localExecution]) {
     assertContains(code, 'timedOut ? 124', 'timed-out local commands must not be reported as exitCode 0');
-    assertContains(code, '自动验证按失败处理', 'timeout evidence must tell DeepSeek/local repair it is a failure');
+  }
+  assertContains(validationService, '自动验证按失败处理', 'workspace validation timeout must remain failed evidence');
+  for (const code of [planner, localExecution]) {
+    assertContains(code, '自动验证不能标记通过', 'interactive local execution timeout must not become a false pass');
+    assertContains(code, 'reviewRequired: true', 'interactive local execution timeout can require human review instead of repair');
   }
 });
 
@@ -918,8 +922,8 @@ test('Agentic free-explore: follow-up turns keep same-session context', () => {
   assertContains(sessionContext, '不要泛化为分析整个 code 目录', 'follow-up context must prevent broad code-directory reinterpretation');
   assert.match(
     ext,
-    /runAgenticLoop\([\s\S]*?, agSessionContext, intent\.mode\)/,
-    'free-explore runAgenticLoop call must receive same-session context and workflow mode',
+    /runAgenticLoop\([\s\S]*?\}, agSessionContext, intent\.mode, agMemoryRelatedPaths\)/,
+    'free-explore runAgenticLoop call must receive same-session context, workflow mode, and memory path anchors',
   );
   assert.match(
     ext,

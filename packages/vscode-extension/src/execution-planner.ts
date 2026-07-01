@@ -13,6 +13,7 @@ import {
   getCppCompileOnlyDir,
   getDevSeekBuildDir,
 } from './cpp-build-layout';
+import { containsRuntimeExecutableSegment } from './tools/shell-command-analysis';
 
 export interface LocalExecutionPlan {
   command: string;
@@ -33,6 +34,8 @@ export interface LocalExecutionResult {
   cwd: string;
   exitCode: number | null;
   output: string;
+  reviewRequired?: boolean;
+  reviewReason?: string;
 }
 
 export interface LocalExecutionDiagnostic {
@@ -66,6 +69,8 @@ const LOCAL_EXECUTION_TIMEOUT_MS: Record<LocalExecutionPlan['mode'], number> = {
   'run-only': 30_000,
 };
 const BUILD_FAILURE_RE = /(?:^|\n)[^:\n]+\.(?:c|cc|cpp|cxx|h|hpp):\d+(?::\d+)?:\s+(?:fatal\s+)?error:|undefined reference|ld(?:\.exe)?:|collect2: error|cmake error|make(?:\[\d+\])?: \*\*\*|ninja: build stopped|clang(?:\+\+)?: (?:fatal )?error|g\+\+: (?:fatal )?error|gcc: (?:fatal )?error/i;
+const LOCAL_EXECUTION_MANUAL_REVIEW_DETAIL =
+  '图形或交互式程序已启动并持续运行；自动验证无法仅凭退出码判断窗口内容和交互是否符合需求。请人工确认当前窗口效果。';
 const DIAGNOSTIC_SOURCE_EXT_RE = /\.(?:c|cc|cpp|cxx|h|hpp|py|js|ts|tsx|mjs|jsx)$/i;
 const MAX_REPAIR_FILES = 4;
 
@@ -148,6 +153,7 @@ export function shouldRebuildRepeatExecution(prompt: string): boolean {
 
 export function shouldRepairLocalExecutionFailure(plan: LocalExecutionPlan, result: LocalExecutionResult): boolean {
   if (result.ok) return false;
+  if (result.reviewRequired) return false;
   if (plan.mode === 'compile-only') return true;
   if (plan.mode === 'run-only' || plan.mode === 'script-run') return false;
   return BUILD_FAILURE_RE.test(`${result.output || ''}\n${result.command || ''}`);
@@ -160,17 +166,30 @@ export async function runLocalExecution(plan: LocalExecutionPlan): Promise<Local
       const output = `${stdout || ''}\n${stderr || ''}`.trim();
       const timedOut = !!error && (error.killed || /timed out|timeout/i.test(error.message || ''));
       const exitCode = !error ? 0 : timedOut ? 124 : (typeof error.code === 'number' ? error.code : null);
+      const manualReview = timedOut && shouldTreatTimeoutAsManualReview(plan, output);
       resolve({
-        ok: !error,
+        ok: !error || manualReview,
         command: plan.command,
         cwd: plan.cwd,
-        exitCode,
-        output: timedOut
-          ? [output, `[DevSeek] 命令超时，已终止（timeout ${timeoutMs}ms）。这通常表示程序仍在运行、等待输入或构建卡住；自动验证按失败处理。`].filter(Boolean).join('\n')
+        exitCode: manualReview ? -1 : exitCode,
+        output: manualReview
+          ? [output, `[DevSeek] ${LOCAL_EXECUTION_MANUAL_REVIEW_DETAIL}`].filter(Boolean).join('\n')
+          : timedOut
+            ? [output, `[DevSeek] 命令超时，已终止（timeout ${timeoutMs}ms）。未观察到图形/交互程序的明确启动证据，自动验证不能标记通过。`].filter(Boolean).join('\n')
           : (output || (error ? error.message : '')),
+        ...(manualReview ? {
+          reviewRequired: true,
+          reviewReason: LOCAL_EXECUTION_MANUAL_REVIEW_DETAIL,
+        } : {}),
       });
     });
   });
+}
+
+function shouldTreatTimeoutAsManualReview(plan: LocalExecutionPlan, output: string): boolean {
+  if (!containsRuntimeExecutableSegment(plan.command)) return false;
+  if (!requiresInteractiveUserReview(plan)) return false;
+  return !BUILD_FAILURE_RE.test(`${output || ''}\n${plan.command || ''}`);
 }
 
 export function selectRepairFiles(plan: LocalExecutionPlan, result: LocalExecutionResult): string[] {

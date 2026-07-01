@@ -92,6 +92,82 @@ test('MemoryService: imports legacy markdown memory into prompt context', () => 
   });
 });
 
+test('MemoryService: filters prompt context to the current project anchors', () => {
+  withTempWorkspace((workspace) => {
+    write(workspace, '.devseek/memory.md', [
+      '# Legacy',
+      '',
+      '2026-05-27 在 code/file_counter/ 目录下创建了 C++ 文件计数程序。',
+      '',
+      '2026-05-29 在 code/joke_program/ 目录下创建了挣钱笑话生成器。',
+      '',
+      '2026-06-26 在 code/shape_manager/ 目录下完成了三维图形展示程序增强。',
+    ].join('\n'));
+    const service = new MemoryService({ workspaceRoot: workspace });
+    service.appendAgentMemory('在 code/shape_manager/ 目录下，使用 build/bin/shape_manager 运行验证。');
+    service.appendAgentMemory('在 code/file_counter/ 目录下，使用 g++ 编译 file_counter。');
+
+    const context = service.retrievePromptContext({
+      query: '通过鼠标点击选择三维图形',
+      relatedPaths: [path.join(workspace, 'code/shape_manager/main.cpp')],
+    });
+
+    assert.match(context, /shape_manager/);
+    assert.doesNotMatch(context, /file_counter/);
+    assert.doesNotMatch(context, /joke_program/);
+  });
+});
+
+test('MemoryService: omits prompt memory when strict context has no project anchor', () => {
+  withTempWorkspace((workspace) => {
+    write(workspace, '.devseek/memory.md', [
+      '# Legacy',
+      '',
+      '2026-05-27 在 code/file_counter/ 目录下创建了 C++ 文件计数程序。',
+      '',
+      '2026-05-29 在 code/joke_program/ 目录下创建了挣钱笑话生成器。',
+    ].join('\n'));
+    const service = new MemoryService({ workspaceRoot: workspace });
+    service.appendAgentMemory('在 code/file_counter/ 目录下，使用 g++ 编译 file_counter。');
+
+    const context = service.retrievePromptContext({
+      query: '改成鼠标点击选择图形',
+      requireContextMatch: true,
+    });
+
+    assert.equal(context, null);
+  });
+});
+
+test('MemoryService: ignores injected session history while choosing memory anchors', () => {
+  withTempWorkspace((workspace) => {
+    write(workspace, '.devseek/memory.md', [
+      '# Legacy',
+      '',
+      '2026-05-29 在 code/weekend_feeling.c 程序成功编译并运行测试。',
+      '',
+      '2026-06-26 在 code/shape_manager/ 目录下完成了三维图形展示程序增强。',
+    ].join('\n'));
+    const service = new MemoryService({ workspaceRoot: workspace });
+    service.appendAgentMemory('在 code/shape_manager/ 目录下，使用 build/bin/shape_manager 运行验证。');
+    service.appendAgentMemory('在 code/weekend_feeling.c 文件中使用 gcc 编译。');
+
+    const context = service.retrievePromptContext({
+      query: [
+        '通过数字能选择描画的三维图形，能够改为通过鼠标点击选择对应图形吗',
+        '',
+        '【同一会话续作上下文】',
+        '最近对话摘要：已修改 code/weekend_feeling.c。',
+      ].join('\n'),
+      relatedPaths: [path.join(workspace, 'code/shape_manager/main.cpp')],
+      requireContextMatch: true,
+    });
+
+    assert.match(context, /shape_manager/);
+    assert.doesNotMatch(context, /weekend_feeling/);
+  });
+});
+
 test('MemoryService: supports disable and delete lifecycle operations', () => {
   withTempWorkspace((workspace) => {
     const service = new MemoryService({ workspaceRoot: workspace });

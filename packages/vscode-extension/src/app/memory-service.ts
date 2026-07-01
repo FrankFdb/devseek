@@ -1,9 +1,16 @@
 import { MemoryStore } from '../memory/memory-store';
 import { SensitiveMemoryGuard } from '../memory/sensitive-memory-guard';
 import type { MemoryQuery, MemoryRecord, MemoryWriteProposal } from '../memory/types';
+import {
+  buildContextAnchors,
+  filterByContextAnchors,
+  filterLegacyMemoryMarkdownByContext,
+  hasContextAnchors,
+} from './context-relevance';
 
 const DEFAULT_MEMORY_LIMIT = 20;
 const DEFAULT_CONTEXT_CHARS = 3000;
+const FILTERED_LEGACY_SCAN_CHARS = 12000;
 
 export interface MemoryServiceDeps {
   workspaceRoot: string;
@@ -11,11 +18,20 @@ export interface MemoryServiceDeps {
   guard?: SensitiveMemoryGuard;
 }
 
+export interface MemoryPromptContextOptions {
+  query?: string;
+  relatedPaths?: readonly string[];
+  maxChars?: number;
+  requireContextMatch?: boolean;
+}
+
 export class MemoryService {
   private readonly store: MemoryStore;
   private readonly guard: SensitiveMemoryGuard;
+  private readonly workspaceRoot: string;
 
   constructor(deps: MemoryServiceDeps) {
+    this.workspaceRoot = deps.workspaceRoot;
     this.store = deps.store ?? new MemoryStore(deps.workspaceRoot);
     this.guard = deps.guard ?? new SensitiveMemoryGuard();
   }
@@ -83,12 +99,30 @@ export class MemoryService {
     return this.store.delete(id);
   }
 
-  retrievePromptContext(maxChars = DEFAULT_CONTEXT_CHARS): string | null {
-    const activeRecords = this.retrieve({ limit: DEFAULT_MEMORY_LIMIT });
+  retrievePromptContext(options: MemoryPromptContextOptions | number = {}): string | null {
+    const normalizedOptions = typeof options === 'number' ? { maxChars: options } : options;
+    const maxChars = normalizedOptions.maxChars ?? DEFAULT_CONTEXT_CHARS;
+    const anchorQuery = stripInjectedSessionContextForMemoryAnchors(normalizedOptions.query ?? '');
+    const anchors = buildContextAnchors({
+      workspaceRoot: this.workspaceRoot,
+      prompt: anchorQuery,
+      relatedPaths: normalizedOptions.relatedPaths ?? [],
+    });
+    const hasAnchors = hasContextAnchors(anchors);
+    if (normalizedOptions.requireContextMatch && !hasAnchors) {
+      return null;
+    }
+
+    const activeRecords = filterByContextAnchors(
+      this.retrieve({ limit: DEFAULT_MEMORY_LIMIT }),
+      anchors,
+      (record) => `${record.content}\n${record.tags.join(' ')}`,
+    );
     const structured = activeRecords.length > 0
       ? activeRecords.map((record) => `- [${record.type}/${record.scope}] ${record.content}`).join('\n')
       : '';
-    const legacy = this.store.readLegacyMarkdown(maxChars);
+    const legacyRaw = this.store.readLegacyMarkdown(hasAnchors ? Math.max(maxChars, FILTERED_LEGACY_SCAN_CHARS) : maxChars);
+    const legacy = legacyRaw ? filterLegacyMemoryMarkdownByContext(legacyRaw, anchors) : null;
     const combined = [
       structured ? `[DevSeek structured memory]\n${structured}` : '',
       legacy ? `[DevSeek legacy memory]\n${legacy}` : '',
@@ -108,4 +142,22 @@ export class MemoryService {
   private createId(now: number): string {
     return `mem_${now}_${Math.random().toString(36).slice(2, 10)}`;
   }
+}
+
+function stripInjectedSessionContextForMemoryAnchors(query: string): string {
+  const text = String(query || '');
+  if (!text.trim()) return '';
+  const markers = [
+    '【同一会话续作上下文】',
+    '【同一会话上下文】',
+    '【当前用户消息】',
+    '【上轮已创建/修改的文件',
+    '【上轮分析已发现以下问题',
+  ];
+  let end = text.length;
+  for (const marker of markers) {
+    const index = text.indexOf(marker);
+    if (index >= 0) end = Math.min(end, index);
+  }
+  return text.slice(0, end).trim();
 }

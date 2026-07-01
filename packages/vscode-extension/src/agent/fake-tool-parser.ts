@@ -31,6 +31,16 @@ const DSML_INCOMPLETE_TAIL_PATTERN = new RegExp(
   `${DSML_OPEN_PREFIX_PATTERN}(?:${DSML_BAR_PATTERN}\\s*(?:D(?:S(?:M(?:L)?)?)?(?:\\s*${DSML_BAR_PATTERN})?)?)?$`,
   'i',
 );
+const CALLING_MARKDOWN_MARKER_PATTERN = '[*_]{0,3}';
+const CALLING_LABEL_PATTERN = [
+  '(?:\\[\\s*)?',
+  CALLING_MARKDOWN_MARKER_PATTERN,
+  '(?:Calling|Call|调用)',
+  '(?:[ \\t]*[:：]?[ \\t]*tool\\b|[ \\t]+tool\\b)?',
+  '[ \\t]*[:：]?',
+  `[ \\t]*${CALLING_MARKDOWN_MARKER_PATTERN}[ \\t]*`,
+].join('');
+const CALLING_TOOL_NAME_PATTERN = '\\[?`?([A-Za-z_]\\w*)`?\\]?';
 
 function makeDsmlStartRegex(flags = 'gi'): RegExp {
   return new RegExp(`${DSML_OPEN_PREFIX_PATTERN}${DSML_MARKER_PATTERN}\\s*${DSML_START_NAMES_PATTERN}\\b`, flags);
@@ -49,11 +59,19 @@ function dsmlCloseTagPattern(name: string): string {
 }
 
 function makeCallingRegex(): RegExp {
-  return /(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?([A-Za-z_]\w*)`?\]?/gi;
+  return new RegExp(`${CALLING_LABEL_PATTERN}${CALLING_TOOL_NAME_PATTERN}`, 'gi');
 }
 
 function makeAnyCallingRegex(): RegExp {
-  return /(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?([A-Za-z_]\w*)`?\]?)?/gi;
+  return new RegExp(`${CALLING_LABEL_PATTERN}(?:${CALLING_TOOL_NAME_PATTERN})?`, 'gi');
+}
+
+function makeCallingLineRegex(): RegExp {
+  return new RegExp(`^${CALLING_LABEL_PATTERN}(?:${CALLING_TOOL_NAME_PATTERN})?`, 'i');
+}
+
+export function makeIncompleteCallingTailRegex(): RegExp {
+  return new RegExp(`${CALLING_LABEL_PATTERN}(?:${CALLING_TOOL_NAME_PATTERN})?\\s*$`, 'i');
 }
 
 function makeToolArgumentsRegex(): RegExp {
@@ -509,7 +527,7 @@ function findShellTranscriptEnd(text: string, callEnd: number): number {
   }
 
   let end = pos;
-  const callLineRe = /^(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?[A-Za-z_]\w*`?\]?/i;
+  const callLineRe = makeCallingLineRegex();
   while (end < text.length) {
     const next = lineEndAfter(text, end);
     const line = text.slice(end, next);
@@ -1115,7 +1133,7 @@ function extractShellTranscriptCommand(text: string, callEnd: number): { command
   }
 
   const lines: string[] = [];
-  const callLineRe = /^(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?[A-Za-z_]\w*`?\]?/i;
+  const callLineRe = makeCallingLineRegex();
   let end = pos;
   while (end < text.length) {
     const next = lineEndAfter(text, end);

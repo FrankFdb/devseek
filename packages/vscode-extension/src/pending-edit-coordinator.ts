@@ -214,7 +214,7 @@ export class PendingEditCoordinator {
         action: 'keep',
         scope: 'file',
         path: record.path,
-        detail: `已保留 ${record.path} 的修改。`,
+        detail: `修改已保留：${record.path}。`,
         queueTotal: this.pendingEdits.size,
       });
     }
@@ -246,7 +246,7 @@ export class PendingEditCoordinator {
       this.postNotice(webview, {
         action: 'keep',
         scope: 'all',
-        detail: `已保留全部修改（${count} 个文件）。`,
+        detail: `修改已保留：${count} 个文件。`,
         queueTotal: this.pendingEdits.size,
       });
     }

@@ -8,12 +8,56 @@ import { getStorageStatePath, loadCookies, saveCookies } from './session';
 import { BrowserSession } from './browser-session';
 import { ConversationDriver } from './conversation-driver';
 import { checkBridgeHealth } from './bridge-health-check';
+import {
+  clickContinueGenerationButton,
+  CONTINUE_GENERATION_APPEAR_WAIT_MS,
+  waitAndClickContinueGenerationButton,
+} from './continue-generation';
 
 const STREAM_POLL_INTERVAL_MS = 80;
 const STOP_DISAPPEARED_STABLE_TICKS = 5;
-const READY_INPUT_STABLE_TICKS = 10;
+const READY_INPUT_STABLE_TICKS = 30;
+const RESPONSE_CONTENT_QUIET_MS = 2_400;
+const RESPONSE_LATE_GROWTH_PROBE_MS = 900;
 const CONTINUE_GENERATION_RESUME_WAIT_MS = 250;
 const CODE_TAB_RENDER_WAIT_MS = 180;
+const INCOMPLETE_INTENT_WAIT_MS = 1_500;
+
+function looksLikeIncompleteAssistantIntent(text: string): boolean {
+  const tail = String(text || '')
+    .trim()
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .slice(-3)
+    .join('\n');
+  if (!tail) return false;
+  return /(?:让我|我来|接下来|下面|现在|首先|然后|继续|需要|将|准备)[\s\S]{0,120}(?:修复|修改|更新|创建|写入|执行|读取|查看|检查|编译|运行|调用|处理)[\s\S]{0,80}[：:]\s*$/i.test(tail);
+}
+
+function contentMutationClockScript(reset: boolean): string {
+  return `(function(reset){
+    var w = window;
+    var now = Date.now();
+    if (reset || !w.__devseekContentMutationAt) w.__devseekContentMutationAt = now;
+    if (!w.__devseekContentObserver && document.body && typeof MutationObserver !== 'undefined') {
+      w.__devseekContentObserver = new MutationObserver(function(mutations){
+        for (var i = 0; i < mutations.length; i++) {
+          if (mutations[i].type === 'childList' || mutations[i].type === 'characterData') {
+            w.__devseekContentMutationAt = Date.now();
+            return;
+          }
+        }
+      });
+      w.__devseekContentObserver.observe(document.body, {
+        childList: true,
+        characterData: true,
+        subtree: true
+      });
+    }
+    return Math.max(0, now - (w.__devseekContentMutationAt || now));
+  })(${reset ? 'true' : 'false'})`;
+}
 
 export interface SendOptions {
   newSession?: boolean;
@@ -382,6 +426,8 @@ export class DeepSeekAgent {
     })()`).catch(() => 0) as number;
     const baselineText = await this.getStreamingAssistantText(page).catch(() => '');
 
+    await this.resetContentMutationClock(page);
+
     // 提交：优先找发送按钮，找不到就按 Enter
     const sendBtn = await findElement(page, SELECTORS.sendButton);
     if (sendBtn) {
@@ -439,35 +485,6 @@ export class DeepSeekAgent {
   // ----------------------------------------------------------------
   // 文件预附加（在 sendMessage 前提前上传，减少等待时间）
   // ----------------------------------------------------------------
-
-  /**
-   * 检测并点击"继续生成"按钮。
-   * 优先用 JS 评估（对 CJK 文字匹配更可靠），再用 Playwright 选择器兜底。
-   * 返回 true 表示找到并点击了按钮。
-   */
-  private async _checkAndClickContinueButton(page: Page): Promise<boolean> {
-    // 主路径：JS 直接查找可见按钮文字，绕过 CSS 选择器的 CJK 问题
-    const clicked = await page.evaluate(`(function() {
-      var texts = ['继续生成', 'Continue'];
-      var els = document.querySelectorAll('button, [role="button"], div[class*="btn"], a[class*="btn"]');
-      for (var i = 0; i < els.length; i++) {
-        var t = (els[i].innerText || els[i].textContent || '').trim();
-        if (texts.indexOf(t) >= 0) {
-          var r = els[i].getBoundingClientRect();
-          if (r.width > 0 && r.height > 0) { els[i].click(); return true; }
-        }
-      }
-      return false;
-    })()`).catch(() => false) as boolean;
-    if (clicked) return true;
-
-    // 兜底：Playwright 选择器
-    const el = await findElement(page, [...SELECTORS.continueButton]);
-    if (el) {
-      try { await el.click(); return true; } catch { /* ignore */ }
-    }
-    return false;
-  }
 
   async preAttachFiles(files: string[]): Promise<void> {
     if (!files || files.length === 0) return;
@@ -606,6 +623,24 @@ export class DeepSeekAgent {
   // 等待 & 采集响应
   // ----------------------------------------------------------------
 
+  private async resetContentMutationClock(page: Page): Promise<void> {
+    await page.evaluate(contentMutationClockScript(true)).catch(() => undefined);
+  }
+
+  private async getContentQuietMs(page: Page): Promise<number> {
+    const quietMs = await page.evaluate(contentMutationClockScript(false)).catch(() => RESPONSE_CONTENT_QUIET_MS) as number;
+    return Number.isFinite(quietMs) ? quietMs : RESPONSE_CONTENT_QUIET_MS;
+  }
+
+  private async isGenerationBusy(page: Page): Promise<boolean> {
+    const stopBtn = await findElement(page, SELECTORS.stopButton);
+    if (stopBtn) return true;
+    return await page.evaluate(`(function(){
+      var ta = document.querySelector('textarea');
+      return ta ? (ta.disabled || ta.readOnly) : false;
+    })()`).catch(() => false) as boolean;
+  }
+
   private async waitForResponse(
     page: Page,
     timeoutMs: number,
@@ -635,9 +670,38 @@ export class DeepSeekAgent {
     let deadline = Date.now() + timeoutMs; // let 以便续代时重置
     let sawStopButton = false;
     let stableFor = 0;
+    let lastTextChangedAt = Date.now();
     // 双重门控：AI消息计数增加 OR 最后一条AI文本与baseline不同，任一触发则认为新回复已开始。
     // 原因：DeepSeek 多轮对话可能复用已有 ds-message 容器（计数不变），此时依赖文本变化检测。
     let newMsgSeen = false;
+    const resumeAfterContinueClick = async (source: string): Promise<void> => {
+      console.log(`[agent] Clicked "继续生成" (${source}), resuming generation...`);
+      try {
+        const currentRoundText = await this.getStreamingAssistantText(page);
+        if (currentRoundText) {
+          accumulatedPrefix = accumulatedPrefix
+            ? accumulatedPrefix + '\n\n' + currentRoundText
+            : currentRoundText;
+        }
+        sawStopButton = false;
+        stableFor = 0;
+        lastTextChangedAt = Date.now();
+        lastText = accumulatedPrefix;
+        newMsgSeen = false;
+        deadline = Date.now() + timeoutMs;
+        baselineAiMsgCount = await page.evaluate(`(function(){
+          var msgs = document.querySelectorAll('[class*="ds-message"]');
+          var c = 0;
+          for (var i = 0; i < msgs.length; i++) {
+            if (msgs[i].querySelectorAll('[class*="ds-markdown"]').length > 0) c++;
+          }
+          return c;
+        })()`).catch(() => 0) as number;
+        await page.waitForTimeout(CONTINUE_GENERATION_RESUME_WAIT_MS);
+      } catch (e) {
+        console.warn('[agent] Error after clicking continue button:', (e as Error).message);
+      }
+    };
 
     while (Date.now() < deadline) {
       if (this.cancelRequested) throw new Error('Cancelled');
@@ -666,6 +730,7 @@ export class DeepSeekAgent {
             lastText = t;
             onDelta('\x00RESET\x00' + t);
             stableFor = 0;
+            lastTextChangedAt = Date.now();
             await page.waitForTimeout(STREAM_POLL_INTERVAL_MS);
             continue;
           }
@@ -683,65 +748,104 @@ export class DeepSeekAgent {
         onDelta('\x00RESET\x00' + combinedText);
         lastText = combinedText;
         stableFor = 0;
+        lastTextChangedAt = Date.now();
         // Text is still growing; reset the deadline so we never time out mid-generation.
         deadline = Date.now() + timeoutMs;
       } else if (combinedText.length < lastText.length) {
         stableFor = 0;
+        lastTextChangedAt = Date.now();
       } else {
         stableFor++;
       }
 
       // 检测并自动点击"继续生成"按钮（DeepSeek 截断长回复时出现）
-      // 先用 JS 评估（对 CJK 文字更可靠），再用 Playwright 选择器兜底
-      const continueClicked = await this._checkAndClickContinueButton(page);
+      // 先快速检查，再在结束判定前给按钮一个短暂渲染窗口。
+      const continueClicked = await clickContinueGenerationButton(page, SELECTORS.continueButton);
       if (continueClicked) {
-        console.log('[agent] Clicked "继续生成", resuming generation...');
-        try {
-          // 保存当前已收内容为前缀，下一轮生成流会在新消息块上添加
-          const currentRoundText = await this.getStreamingAssistantText(page);
-          if (currentRoundText) {
-            accumulatedPrefix = accumulatedPrefix
-              ? accumulatedPrefix + '\n\n' + currentRoundText
-              : currentRoundText;
-          }
-          sawStopButton = false; // 重置：继续生成后 stop 按钮会重新出现
-          stableFor = 0;
-          lastText = accumulatedPrefix; // 基线设为已积累内容，避免新内容被误判为缩短
-          newMsgSeen = false; // 重新等待新消息块就绪
-          deadline = Date.now() + timeoutMs; // 每次续代后重置超时，允许每轮独立计时
-          baselineAiMsgCount = await page.evaluate(`(function(){
-            var msgs = document.querySelectorAll('[class*="ds-message"]');
-            var c = 0;
-            for (var i = 0; i < msgs.length; i++) {
-              if (msgs[i].querySelectorAll('[class*="ds-markdown"]').length > 0) c++;
-            }
-            return c;
-          })()`).catch(() => 0) as number;
-          await page.waitForTimeout(CONTINUE_GENERATION_RESUME_WAIT_MS);
-        } catch (e) {
-          console.warn('[agent] Error after clicking continue button:', (e as Error).message);
-        }
+        await resumeAfterContinueClick('visible');
         await page.waitForTimeout(STREAM_POLL_INTERVAL_MS);
         continue;
       }
 
-      // 判断生成是否结束：优先 stop 按钮，备用 textarea.disabled
-      const stopBtn = await findElement(page, SELECTORS.stopButton);
-      const inputDisabled = stopBtn === null
-        ? await page.evaluate(`(function(){
-            var ta = document.querySelector('textarea');
-            return ta ? (ta.disabled || ta.readOnly) : false;
-          })()`).catch(() => false) as boolean
-        : false;
+      const generationBusy = await this.isGenerationBusy(page);
 
-      if (stopBtn || inputDisabled) {
+      if (generationBusy) {
         sawStopButton = true;
         stableFor = 0;
       } else if (lastText.length > 0) {
-        if (sawStopButton && stableFor >= STOP_DISAPPEARED_STABLE_TICKS) {
+        const now = Date.now();
+        const textQuietMs = now - lastTextChangedAt;
+        const domQuietMs = await this.getContentQuietMs(page);
+        const contentQuiet = textQuietMs >= RESPONSE_CONTENT_QUIET_MS
+          && domQuietMs >= RESPONSE_CONTENT_QUIET_MS;
+        const looksDone = contentQuiet && (
+          (sawStopButton && stableFor >= STOP_DISAPPEARED_STABLE_TICKS)
+          || stableFor >= READY_INPUT_STABLE_TICKS
+        );
+        if (looksDone) {
+          const continuedAfterSettled = await waitAndClickContinueGenerationButton(
+            page,
+            SELECTORS.continueButton,
+            CONTINUE_GENERATION_APPEAR_WAIT_MS,
+          );
+          if (continuedAfterSettled) {
+            await resumeAfterContinueClick('settled');
+            await page.waitForTimeout(STREAM_POLL_INTERVAL_MS);
+            continue;
+          }
+          await page.waitForTimeout(RESPONSE_LATE_GROWTH_PROBE_MS);
+          if (await this.isGenerationBusy(page)) {
+            stableFor = 0;
+            continue;
+          }
+          const probedText = await this.getStreamingAssistantText(page);
+          const probedCombinedText = accumulatedPrefix
+            ? accumulatedPrefix + '\n\n' + probedText
+            : probedText;
+          if (probedCombinedText !== lastText) {
+            if (probedCombinedText.length > 0) {
+              onDelta('\x00RESET\x00' + probedCombinedText);
+              lastText = probedCombinedText;
+            }
+            stableFor = 0;
+            lastTextChangedAt = Date.now();
+            deadline = Date.now() + timeoutMs;
+            continue;
+          }
+          const probedQuietMs = await this.getContentQuietMs(page);
+          if (probedQuietMs < RESPONSE_CONTENT_QUIET_MS) {
+            stableFor = 0;
+            continue;
+          }
+          if (looksLikeIncompleteAssistantIntent(probedCombinedText)) {
+            stableFor = 0;
+            await page.waitForTimeout(INCOMPLETE_INTENT_WAIT_MS);
+            if (await this.isGenerationBusy(page)) continue;
+            const continuedAfterIntent = await waitAndClickContinueGenerationButton(
+              page,
+              SELECTORS.continueButton,
+              CONTINUE_GENERATION_APPEAR_WAIT_MS,
+            );
+            if (continuedAfterIntent) {
+              await resumeAfterContinueClick('incomplete-intent');
+              continue;
+            }
+            const intentProbeText = await this.getStreamingAssistantText(page);
+            const intentCombinedText = accumulatedPrefix
+              ? accumulatedPrefix + '\n\n' + intentProbeText
+              : intentProbeText;
+            if (intentCombinedText !== probedCombinedText) {
+              if (intentCombinedText.length > 0) {
+                onDelta('\x00RESET\x00' + intentCombinedText);
+                lastText = intentCombinedText;
+              }
+              lastTextChangedAt = Date.now();
+              deadline = Date.now() + timeoutMs;
+              continue;
+            }
+          }
           break;
         }
-        if (stableFor >= READY_INPUT_STABLE_TICKS) break;
       }
 
       await page.waitForTimeout(STREAM_POLL_INTERVAL_MS);
@@ -768,6 +872,8 @@ export class DeepSeekAgent {
   /** 等待生成完成后读取最终文本（非流式模式）*/
   private async waitForGenerationDone(page: Page, timeoutMs: number): Promise<string> {
     const deadline = Date.now() + timeoutMs;
+    let lastObservedText = '';
+    let lastTextChangedAt = Date.now();
 
     // 先等 textarea 进入禁用状态（DeepSeek 开始生成时禁用输入框）
     const waitStart = Date.now();
@@ -783,19 +889,47 @@ export class DeepSeekAgent {
     // 等待 textarea 恢复可用（生成结束），同时检测"继续生成"按钮
     while (Date.now() < deadline) {
       if (this.cancelRequested) throw new Error('Cancelled');
-      const disabled = await page.evaluate(`(function(){
-        var ta = document.querySelector('textarea');
-        return ta ? (ta.disabled || ta.readOnly) : false;
-      })()`).catch(() => false) as boolean;
-      if (!disabled) {
+      const busy = await this.isGenerationBusy(page);
+      const currentText = await this.getStreamingAssistantText(page).catch(() => '');
+      if (currentText !== lastObservedText) {
+        lastObservedText = currentText;
+        lastTextChangedAt = Date.now();
+      }
+      if (!busy) {
         // textarea 变为可用：可能是生成完成，也可能是"继续生成"等待用户操作
-        const continued = await this._checkAndClickContinueButton(page);
+        const continued = await waitAndClickContinueGenerationButton(
+          page,
+          SELECTORS.continueButton,
+          CONTINUE_GENERATION_APPEAR_WAIT_MS,
+        );
         if (continued) {
           console.log('[agent] waitForGenerationDone: clicked "继续生成", waiting again...');
+          await this.resetContentMutationClock(page);
+          lastTextChangedAt = Date.now();
           await page.waitForTimeout(800);
           continue; // 继续等待新一轮生成
         }
-        break; // 真正完成
+        const textQuietMs = Date.now() - lastTextChangedAt;
+        const domQuietMs = await this.getContentQuietMs(page);
+        if (textQuietMs >= RESPONSE_CONTENT_QUIET_MS && domQuietMs >= RESPONSE_CONTENT_QUIET_MS) {
+          await page.waitForTimeout(RESPONSE_LATE_GROWTH_PROBE_MS);
+          const afterProbeText = await this.getStreamingAssistantText(page).catch(() => '');
+          if (afterProbeText === lastObservedText && !(await this.isGenerationBusy(page))) {
+            const probeQuietMs = await this.getContentQuietMs(page);
+            if (probeQuietMs >= RESPONSE_CONTENT_QUIET_MS && !looksLikeIncompleteAssistantIntent(afterProbeText)) break; // 真正完成
+            if (looksLikeIncompleteAssistantIntent(afterProbeText)) {
+              await page.waitForTimeout(INCOMPLETE_INTENT_WAIT_MS);
+              const afterIntentText = await this.getStreamingAssistantText(page).catch(() => '');
+              if (afterIntentText !== afterProbeText || await this.isGenerationBusy(page)) {
+                lastObservedText = afterIntentText;
+                lastTextChangedAt = Date.now();
+                continue;
+              }
+            }
+          }
+          lastObservedText = afterProbeText;
+          lastTextChangedAt = Date.now();
+        }
       }
       await page.waitForTimeout(200);
     }

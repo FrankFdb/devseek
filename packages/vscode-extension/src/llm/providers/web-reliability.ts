@@ -3,6 +3,7 @@ export type ResponseIntegrityStatus =
   | 'empty'
   | 'unclosed-markdown-fence'
   | 'incomplete-tool-block'
+  | 'incomplete-assistant-intent'
   | 'invalid-json-response'
   | 'login-required'
   | 'rate-limited';
@@ -14,6 +15,9 @@ export interface ResponseIntegrityResult {
   safeToExecute: boolean;
   evidenceRefs: string[];
 }
+
+const CALLING_LABEL_RE = /(?:^|\n)\s*(?:\[\s*)?[*_]{0,3}(?:Calling|Call|调用)(?:[ \t]*[:：]?[ \t]*tool\b|[ \t]+tool\b)?[ \t]*[:：]?[ \t]*[*_]{0,3}[ \t]*(?:\[?`?[A-Za-z_]\w*`?\]?)?/i;
+const CALLING_LINE_RE = /^\s*(?:\[\s*)?[*_]{0,3}\s*(?:Calling|Call|调用)\b/i;
 
 export class ResponseIntegrityChecker {
   check(content: string): ResponseIntegrityResult {
@@ -33,6 +37,9 @@ export class ResponseIntegrityChecker {
     }
     if (hasIncompleteToolBlock(trimmed)) {
       return result('incomplete-tool-block', 'Tool block is incomplete; response must not enter tool normalization.', false);
+    }
+    if (hasIncompleteAssistantIntent(trimmed)) {
+      return result('incomplete-assistant-intent', 'Assistant response ends with an unfinished action cue; response may still be streaming.', false);
     }
     if (looksLikeWholeJson(trimmed) && !canParseJson(trimmed) && !looksLikeToolProtocolPayload(trimmed)) {
       return result('invalid-json-response', 'Whole response looks like JSON but cannot be parsed.', false);
@@ -177,13 +184,25 @@ function hasIncompleteToolBlock(text: string): boolean {
   return false;
 }
 
+function hasIncompleteAssistantIntent(text: string): boolean {
+  if (looksLikeToolProtocolPayload(text)) return false;
+  const tail = text
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .slice(-3)
+    .join('\n');
+  if (!tail) return false;
+  return /(?:让我|我来|接下来|下面|现在|首先|然后|继续|需要|将|准备)[\s\S]{0,120}(?:修复|修改|更新|创建|写入|执行|读取|查看|检查|编译|运行|调用|处理)[\s\S]{0,80}[：:]\s*$/i.test(tail);
+}
+
 function looksLikeWholeJson(text: string): boolean {
   return (text.startsWith('{') && text.endsWith('}')) || (text.startsWith('[') && text.endsWith(']'));
 }
 
 function looksLikeToolProtocolPayload(text: string): boolean {
   if (/\[TOOL:[A-Za-z_]\w*(?:\s*\]|\s+)\s*\{/i.test(text)) return true;
-  if (/(?:^|\n)\s*(?:Calling|Call|调用)[ \t]*:?(?:[ \t]+tool)?[ \t]*\[?`?[A-Za-z_]\w*`?\]?/i.test(text)) return true;
+  if (CALLING_LABEL_RE.test(text)) return true;
   return /"(?:tool|name|function)"\s*:\s*"(?:read_file|grep_search|file_search|semantic_search|list_dir|get_errors|run_terminal|memory_write|get_changed_files|create_directory|fetch_webpage|vscode_listCodeUsages|run_vscode_command|create_file|write_file|replace_file|manage_todo_list|task_complete|mcp__[^"]+)"/i.test(text)
     && /"(?:arguments|input|parameters|path|filePath|command|todoList|summary|content)"\s*:/i.test(text);
 }
@@ -266,7 +285,7 @@ function findLooseObjectCloseAfterString(text: string, afterStringQuote: number)
   }
   if (i >= text.length || text[i] === ']' || sawLineBreak) return closeBrace;
   if (text.startsWith('[TOOL:', i) || text.startsWith('```', i)) return closeBrace;
-  if (/^(?:Calling|Call|调用)\b/i.test(text.slice(i, i + 20))) return closeBrace;
+  if (CALLING_LINE_RE.test(text.slice(i, i + 30))) return closeBrace;
   return -1;
 }
 

@@ -339,6 +339,33 @@ test('ExecutionPlanner: local execution repair is reserved for build failures', 
     ),
     true,
   );
+  assert.equal(
+    shouldRepairLocalExecutionFailure(
+      { ...basePlan, mode: 'compile-run' },
+      {
+        ok: true,
+        command: 'g++ main.cpp -o app && ./app',
+        cwd: '/tmp',
+        exitCode: -1,
+        output: '[DevSeek] 图形或交互式程序已启动并持续运行',
+        reviewRequired: true,
+      },
+    ),
+    false,
+  );
+  assert.equal(
+    shouldRepairLocalExecutionFailure(
+      { ...basePlan, mode: 'cmake' },
+      {
+        ok: false,
+        command: 'cmake -S . -B build && cmake --build build',
+        cwd: '/tmp',
+        exitCode: 2,
+        output: 'CMake Warning (dev): FindOpenGL prefers GLVND\nmain.cpp:80:18: error: missing terminating " character',
+      },
+    ),
+    true,
+  );
 });
 
 test('ExecutionPlanner: repair file selection follows concrete compiler diagnostics', () => {

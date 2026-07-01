@@ -1,4 +1,4 @@
-import { stripToolCallBlocks } from '../agent/fake-tool-parser';
+import { makeIncompleteCallingTailRegex, stripToolCallBlocks } from '../agent/fake-tool-parser';
 import type { ChatMessage } from '../llm/types';
 import type { SessionLoadedMessage, WebviewOutboundMessage } from './webview-protocol';
 
@@ -110,7 +110,7 @@ export function sanitizeVisibleModelText(text: string): string {
 
 function stripIncompleteCallingTail(text: string): string {
   const raw = String(text || '');
-  const match = /(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.exec(raw);
+  const match = makeIncompleteCallingTailRegex().exec(raw);
   return match ? raw.slice(0, match.index).trimEnd() : raw;
 }
 

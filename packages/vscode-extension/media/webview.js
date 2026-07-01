@@ -2128,26 +2128,10 @@ function buildFinishedLabel(isFailed, container) {
   var currentTaskLabel = sanitizeAgentTaskLabelValue(agentCurrentTaskLabel);
   if (currentTaskLabel) {
     if (isFailed) {
-      var failFile = currentTaskLabel.replace(/^(创建|修改|编辑|删除|分析|探索|运行|处理)\s+/, '');
+      var failFile = currentTaskLabel.replace(/^(创建|修改|编辑|删除|分析|探索|运行|验证|处理)\s+/, '');
       return '失败：' + failFile;
     }
-    var doneLabel = currentTaskLabel
-      .replace(/^Creating /, '已创建 ')
-      .replace(/^Modifying /, '已修改 ')
-      .replace(/^Editing /, '已编辑 ')
-      .replace(/^Deleting /, '已删除 ')
-      .replace(/^Analyzing /, '已分析 ')
-      .replace(/^Exploring /, '已探索 ')
-      .replace(/^Running /, '已运行 ')
-      .replace(/^Working on /, '已处理 ')
-      .replace(/^创建 /, '已创建 ')
-      .replace(/^修改 /, '已修改 ')
-      .replace(/^编辑 /, '已编辑 ')
-      .replace(/^删除 /, '已删除 ')
-      .replace(/^分析 /, '已分析 ')
-      .replace(/^探索 /, '已探索 ')
-      .replace(/^运行 /, '已运行 ')
-      .replace(/^处理 /, '已处理 ');
+    var doneLabel = formatFinishedAgentTaskLabel(currentTaskLabel);
     return doneLabel + stepSuffix;
   }
   // Priority 2: Plan-only containers — show todo count as meaningful label
@@ -2616,18 +2600,7 @@ function addAgentStatus(msg) {
       );
       if (!taskDesc) taskDesc = fname ? basename(fname) : '任务';
       var taskAction = todoForLabel ? todoForLabel.action : (msg.taskAction || '');
-      // Detect compile/run tasks: analyze action whose desc mentions run_terminal or compile.
-      // These show "Running X" instead of "Analyzing X" for clearer intent (Claude Code pattern).
-      var isRunTask = (taskAction === 'analyze' || taskAction === 'explain')
-        && /run_terminal|run\s+\w|compile|execute|\$\s/i.test(rawDesc);
-      var actionPrefix = taskAction === 'create' ? '创建 '
-        : taskAction === 'delete' ? '删除 '
-        : taskAction === 'modify' ? '修改 '
-        : taskAction === 'explore' ? '探索 '
-        : taskAction === 'respond' ? ''
-        : isRunTask ? '运行 '
-        : (taskAction === 'analyze' || taskAction === 'explain') ? '分析 '
-        : taskAction ? '处理 ' : '';
+      var actionPrefix = getAgentTaskActionPrefix(taskAction, rawDesc);
       var prevTaskLabel = agentCurrentTaskLabel;  // save OLD label for finalization
       agentCurrentTaskLabel = compactAgentTaskLabel(actionPrefix + taskDesc, taskDesc, 40);
 
@@ -2767,7 +2740,7 @@ function addAgentStatus(msg) {
     if (msg.state === 'started') {
       if (agentExecContainer && agentExecContainer.isConnected && !agentExecContainer.hasAttribute('data-done')) {
         var validateSpin = agentExecContainer.querySelector('.aut-spinner-label');
-        if (validateSpin) validateSpin.textContent = msg.title || '正在执行验证';
+        if (validateSpin) validateSpin.textContent = formatAgentValidationTitle(msg.title, msg.state) || '正在执行验证';
       }
       return;
     }
@@ -2775,7 +2748,7 @@ function addAgentStatus(msg) {
       settleAgentValidationSpinner(msg);
       agentValidationSummary = {
         state: msg.state === 'failed' ? 'failed' : 'completed',
-        title: msg.title || '验证完成',
+        title: formatAgentValidationTitle(msg.title, msg.state),
         detail: msg.detail || '',
       };
     }
@@ -2801,7 +2774,7 @@ function addAgentStatus(msg) {
           if (!passed && msg.detail) {
             var failCard = document.createElement('div');
             failCard.className = 'agent-validate-card state-failed';
-            failCard.innerHTML = '<div class="agent-validate-title">' + escapeHtml(msg.title || '\u7f16\u8bd1\u9a8c\u8bc1') + '</div>'
+            failCard.innerHTML = '<div class="agent-validate-title">' + escapeHtml(formatAgentValidationTitle(msg.title, msg.state) || '\u7f16\u8bd1\u9a8c\u8bc1') + '</div>'
               + '<details class="agent-validate-details"><summary class="agent-validate-detail-toggle">\u8be6\u60c5</summary>'
               + '<div class="agent-validate-detail">' + escapeHtml(msg.detail) + '</div></details>';
             var vFailWrap = document.createElement('div');
@@ -2822,7 +2795,7 @@ function addAgentStatus(msg) {
     if (existingV && existingV.isConnected) {
       existingV.className = 'agent-validate-card state-' + (msg.state || 'started');
       var vtEl = existingV.querySelector('.agent-validate-title');
-      if (vtEl) vtEl.textContent = msg.title || '验证';
+      if (vtEl) vtEl.textContent = formatAgentValidationTitle(msg.title, msg.state) || '验证';
       if (msg.detail) {
         var vdEl = existingV.querySelector('.agent-validate-detail');
         if (vdEl) { vdEl.textContent = msg.detail; }
@@ -2835,7 +2808,7 @@ function addAgentStatus(msg) {
     markTurnEnter(vWrap);
     var vCard = document.createElement('div');
     vCard.className = 'agent-validate-card state-' + (msg.state || 'started');
-    vCard.innerHTML = '<div class="agent-validate-title">' + escapeHtml(msg.title || '验证') + '</div>'
+    vCard.innerHTML = '<div class="agent-validate-title">' + escapeHtml(formatAgentValidationTitle(msg.title, msg.state) || '验证') + '</div>'
       + (msg.detail
         ? '<details class="agent-validate-details"><summary class="agent-validate-detail-toggle">详情</summary>'
           + '<div class="agent-validate-detail">' + escapeHtml(msg.detail) + '</div></details>'
@@ -2911,7 +2884,7 @@ function settleAgentValidationSpinner(msg) {
   row.classList.add('is-settled');
   row.innerHTML = '<i class="codicon ' + icon + ' aut-spinner-settled-icon"></i>'
     + '<span class="aut-spinner-label is-settled' + (failed ? ' is-failed' : '') + '">'
-    + escapeHtml(msg.title || (failed ? '验证失败' : skipped ? '已跳过验证' : '验证完成')) + '</span>';
+    + escapeHtml(formatAgentValidationTitle(msg.title, msg.state) || (failed ? '验证失败' : skipped ? '已跳过验证' : '验证完成')) + '</span>';
 }
 
 /**
@@ -4561,7 +4534,7 @@ function renderGeneratedFinalPlaceholder(container, rawText) {
   if (expectedCount > 0 && candidateCount > 0 && candidateCount < expectedCount) {
     suffix = '已检测到 ' + candidateCount + '/' + expectedCount + ' 个文件候选。';
   } else {
-    suffix = candidateCount > 0 ? ('检测到 ' + candidateCount + ' 个文件候选。') : '可在下方尝试预览/应用。';
+    suffix = candidateCount > 0 ? ('检测到 ' + candidateCount + ' 个文件候选。') : '已收到回复，可继续输入下一步需求。';
   }
   var bodyHtml = buildResponseWithCollapsedCode(text);
   if (!isAgentMode) {

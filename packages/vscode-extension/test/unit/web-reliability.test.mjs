@@ -49,6 +49,29 @@ test('ResponseIntegrityChecker: does not treat complete DevSeek tool protocol as
   );
 });
 
+test('ResponseIntegrityChecker: recognizes Markdown-bold Calling tool protocol', () => {
+  const checker = new ResponseIntegrityChecker();
+  const response = [
+    '我先核查一下当前代码状态。',
+    '**Calling:** `read_file`',
+    '```json',
+    '{"path": "/workspace/code/shape_manager/main.cpp"}',
+    '```',
+  ].join('\n');
+
+  assert.equal(checker.check(response).safeToExecute, true);
+});
+
+test('ResponseIntegrityChecker: blocks unfinished assistant action cues', () => {
+  const checker = new ResponseIntegrityChecker();
+  const response = '编译失败了，因为字符串字面量中有换行符。我需要在字符串中使用 \\\\n 而不是直接换行。让我修复这个问题：';
+
+  const result = checker.check(response);
+
+  assert.equal(result.status, 'incomplete-assistant-intent');
+  assert.equal(result.safeToExecute, false);
+});
+
 test('ResponseIntegrityChecker: allows recoverable malformed file tool blocks', () => {
   const checker = new ResponseIntegrityChecker();
   const response = String.raw`好的，我需要修改CMakeLists.txt来同时编译二维和三维程序。

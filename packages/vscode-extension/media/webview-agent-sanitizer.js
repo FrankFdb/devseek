@@ -92,8 +92,19 @@ function looksLikeWebviewToolArgumentPayload(text) {
   });
 }
 
+var WEBVIEW_CALLING_LABEL_PATTERN = '(?:\\[\\s*)?[*_]{0,3}(?:Calling|Call|调用)(?:[ \\t]*[:：]?[ \\t]*tool\\b|[ \\t]+tool\\b)?[ \\t]*[:：]?[ \\t]*[*_]{0,3}[ \\t]*';
+var WEBVIEW_CALLING_TOOL_NAME_PATTERN = '\\[?`?([A-Za-z_]\\w*)`?\\]?';
+
+function makeWebviewCallingRegex() {
+  return new RegExp(WEBVIEW_CALLING_LABEL_PATTERN + WEBVIEW_CALLING_TOOL_NAME_PATTERN, 'gi');
+}
+
 function makeWebviewAnyCallingRegex() {
-  return /(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?([A-Za-z_]\w*)`?\]?)?/gi;
+  return new RegExp(WEBVIEW_CALLING_LABEL_PATTERN + '(?:' + WEBVIEW_CALLING_TOOL_NAME_PATTERN + ')?', 'gi');
+}
+
+function makeWebviewIncompleteCallingTailRegex() {
+  return new RegExp(WEBVIEW_CALLING_LABEL_PATTERN + '(?:' + WEBVIEW_CALLING_TOOL_NAME_PATTERN + ')?\\s*$', 'i');
 }
 
 function escapeWebviewRegExp(value) {
@@ -261,7 +272,7 @@ function stripCallingShellTranscriptBlocksFromText(text) {
 function stripCallingToolBlocksFromText(text) {
   var out = '';
   var i = 0;
-  var callRe = /(?:\[\s*)?(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?([A-Za-z_]\w*)`?\]?/gi;
+  var callRe = makeWebviewCallingRegex();
   while (i < text.length) {
     callRe.lastIndex = i;
     var m = callRe.exec(text);
@@ -585,12 +596,12 @@ function stripToolCallBlocks(text) {
 
 function stripIncompleteCallingTail(text) {
   var raw = String(text || '');
-  var m = /(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.exec(raw);
+  var m = makeWebviewIncompleteCallingTailRegex().exec(raw);
   return m ? raw.slice(0, m.index).trimEnd() : raw;
 }
 
 function containsPotentialInternalCallingTail(text) {
-  return /(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*(?:\[?`?[A-Za-z_]\w*`?\]?)?\s*$/i.test(String(text || ''));
+  return makeWebviewIncompleteCallingTailRegex().test(String(text || ''));
 }
 
 function sanitizeAgentVisibleDelta(text) {
@@ -634,8 +645,8 @@ function containsAgentInternalTranscript(text) {
     || containsWebviewFunctionStyleToolCall(text)
     || containsWebviewXmlToolTag(text)
     || /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
-    || /(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
-    || /(?:^|\n)\s*(?:\[\s*)?(?:Calling[ \t]*:?(?:[ \t]+tool)?|Call[ \t]*:|调用)[ \t]*\[?`?(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
+    || /(?:\[\s*)?[*_]{0,3}(?:Calling|Call|调用)(?:[ \t]*[:：]?[ \t]*tool\b|[ \t]+tool\b)?[ \t]*[:：]?[ \t]*[*_]{0,3}[ \t]*\[?`?(?:bash|shell|sh|zsh|console|terminal|cmd|powershell|pwsh)\b/i.test(text)
+    || /(?:^|\n)\s*(?:\[\s*)?[*_]{0,3}(?:Calling|Call|调用)(?:[ \t]*[:：]?[ \t]*tool\b|[ \t]+tool\b)?[ \t]*[:：]?[ \t]*[*_]{0,3}[ \t]*\[?`?(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
     || /(?:^|\n|[ \t])(?:Tool|工具)[ \t]*[:：][ \t]*`?(?:run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
     || /(?:^|\n)\s*\[(?:工具结果|run_terminal|read_file|grep_search|search_content|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|generated_file|permission_repair)\b/i.test(text)
     || /\b(?:run_terminal|manage_todo_list|task_complete|stdout|stderr|exitCode|exit code)\b/i.test(text)

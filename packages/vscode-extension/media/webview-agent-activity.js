@@ -69,6 +69,62 @@ function compactAgentTaskLabel(value, fallback, maxLen) {
   return raw.length > max ? raw.slice(0, Math.max(0, max - 2)) + '…' : raw;
 }
 
+function isAgentValidationTask(taskAction, rawDesc) {
+  var action = String(taskAction || '').trim();
+  if (action !== 'analyze' && action !== 'explain') return false;
+  var text = String(rawDesc || '').replace(/\s+/g, ' ');
+  return /run_terminal|compile|build|execute|\$\s|cmake|make|ninja|pytest|npm\s+(?:test|run|exec)|cargo\s+test|go\s+test|编译|验证|运行/.test(text);
+}
+
+function getAgentTaskActionPrefix(taskAction, rawDesc) {
+  if (taskAction === 'create') return '创建 ';
+  if (taskAction === 'delete') return '删除 ';
+  if (taskAction === 'modify') return '修改 ';
+  if (taskAction === 'explore') return '探索 ';
+  if (taskAction === 'respond') return '';
+  if (isAgentValidationTask(taskAction, rawDesc)) return '验证 ';
+  if (taskAction === 'analyze' || taskAction === 'explain') return '分析 ';
+  return taskAction ? '处理 ' : '';
+}
+
+function formatFinishedAgentTaskLabel(label) {
+  var raw = sanitizeAgentTaskLabelValue(label);
+  if (!raw) return '';
+  return raw
+    .replace(/^Creating /, '已创建 ')
+    .replace(/^Modifying /, '已修改 ')
+    .replace(/^Editing /, '已编辑 ')
+    .replace(/^Deleting /, '已删除 ')
+    .replace(/^Analyzing /, '已分析 ')
+    .replace(/^Exploring /, '已探索 ')
+    .replace(/^Running /, '已运行 ')
+    .replace(/^Validating /, '已验证 ')
+    .replace(/^Working on /, '已处理 ')
+    .replace(/^创建 /, '已创建 ')
+    .replace(/^修改 /, '已修改 ')
+    .replace(/^编辑 /, '已编辑 ')
+    .replace(/^删除 /, '已删除 ')
+    .replace(/^分析 /, '已分析 ')
+    .replace(/^探索 /, '已探索 ')
+    .replace(/^运行 /, '已运行 ')
+    .replace(/^验证 /, '已验证 ')
+    .replace(/^处理 /, '已处理 ');
+}
+
+function formatAgentValidationTitle(title, state) {
+  var raw = sanitizeAgentTaskLabelValue(title);
+  if (!raw) {
+    if (state === 'failed') return '验证未通过';
+    if (state === 'skipped') return '已跳过验证';
+    return '验证完成';
+  }
+  return raw
+    .replace(/^执行完成\s*✓?$/, '运行验证完成 ✓')
+    .replace(/^执行完成/, '运行验证完成')
+    .replace(/^Command completed$/i, '命令执行完成')
+    .replace(/^Command failed$/i, '命令执行失败');
+}
+
 function formatTerminalCommandDisplay(command, maxLen) {
   var raw = sanitizeAgentActivityLabelValue('terminal', command);
   if (!raw) return 'command';

@@ -596,6 +596,14 @@ async function runChat(
         const agDisplayProfile = buildAgentRunDisplayProfile(prompt);
         // Non-code files (logs, csvs, etc.) are passed directly
         const dataFiles = effectiveFiles.filter(f => !AGENT_CODE_FILE_RE.test(f));
+        const activeEditorPath = vscode.window.activeTextEditor?.document.uri.scheme === 'file'
+          ? vscode.window.activeTextEditor.document.uri.fsPath
+          : '';
+        const agMemoryRelatedPaths = [
+          ...dataFiles,
+          ...pathResolutionHints,
+          activeEditorPath,
+        ].filter((pathValue): pathValue is string => Boolean(pathValue));
         // Free-explore mode has no Architect decomposition phase, but the UI still
         // needs a visible beginning before the model's first tool call arrives.
         postAgent({
@@ -717,7 +725,7 @@ async function runChat(
             if (completedUpToIndex === null) { await saveAgentCheckpoint(null); webview.postMessage({ type: 'agentCheckpointCleared' }); }
           },
           autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
-        }, agSessionContext, intent.mode);
+        }, agSessionContext, intent.mode, agMemoryRelatedPaths);
         if (agResult.changedPaths.length > 0) {
           lastAgentChangedPaths = agResult.changedPaths.map(p => {
             const fsPath = nodePath.isAbsolute(p) ? p : nodePath.join(agWsRoot, p);
@@ -1209,7 +1217,17 @@ async function runChat(
 
     // P1: inject project instructions and legacy memory through ContextAssemblyService.
     const projectRules = await getProjectRules();
-    const projectMemory = getProjectMemorySync();
+    const activeEditorPathForMemory = vscode.window.activeTextEditor?.document.uri.scheme === 'file'
+      ? vscode.window.activeTextEditor.document.uri.fsPath
+      : '';
+    const projectMemory = getProjectMemorySync({
+      prompt: finalPrompt,
+      relatedPaths: [
+        ...effectiveFiles,
+        ...pathResolutionHints,
+        activeEditorPathForMemory,
+      ].filter((pathValue): pathValue is string => Boolean(pathValue)),
+    });
     finalPrompt = assembleProjectRulesAndMemoryContext(finalPrompt, projectRules, projectMemory);
 
     // Non-agent chat: inject a brief system context so the LLM knows it lives inside a

@@ -72,11 +72,21 @@ export function assembleProjectRulesAndMemoryContext(
 
 // ── Project Memory — AI-writable persistent knowledge managed by MemoryService ──
 
+export interface ProjectMemoryContextOptions {
+  prompt?: string;
+  relatedPaths?: readonly string[];
+}
+
 /** 同步读取 DevSeek 项目记忆。返回 null 表示没有可用记忆。 */
-export function getProjectMemorySync(): string | null {
+export function getProjectMemorySync(options: ProjectMemoryContextOptions = {}): string | null {
   const root = getWorkspaceRoots()[0];
   if (!root) return null;
-  return new MemoryService({ workspaceRoot: root }).retrievePromptContext(MAX_MEMORY_CHARS);
+  return new MemoryService({ workspaceRoot: root }).retrievePromptContext({
+    query: options.prompt,
+    relatedPaths: options.relatedPaths,
+    maxChars: MAX_MEMORY_CHARS,
+    requireContextMatch: true,
+  });
 }
 
 /** 将 AI 记忆内容包装为适合插入 prompt 的格式 */

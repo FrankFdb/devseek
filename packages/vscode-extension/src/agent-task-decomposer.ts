@@ -274,7 +274,10 @@ function buildDecomposeSystemPrompt(
 
   const projectRules = getProjectRulesSync();
   const projectRulesSection = projectRules ? ['', wrapRulesAsContext(projectRules)].join('\n') : '';
-  const projectMemory = getProjectMemorySync();
+  const projectMemory = getProjectMemorySync({
+    prompt: userPrompt,
+    relatedPaths: [...attachedFiles, activeEditorFile].filter((pathValue): pathValue is string => Boolean(pathValue)),
+  });
   const projectMemorySection = projectMemory ? ['', wrapMemoryAsContext(projectMemory)].join('\n') : '';
 
   // Active editor context: tell the LLM which project the user is working in

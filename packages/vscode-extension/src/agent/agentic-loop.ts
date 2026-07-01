@@ -298,9 +298,13 @@ export async function runAgenticLoop(
   callbacks: AgentLoopCallbacks,
   sessionContextText = '',
   workflowMode: ExecutionMode = 'edit',
+  memoryRelatedPaths: readonly string[] = [],
 ): Promise<AgentLoopResult> {
   const rules  = getProjectRulesSync();
-  const memory = getProjectMemorySync();
+  const memory = getProjectMemorySync({
+    prompt: userPrompt,
+    relatedPaths: [...new Set([...dataFiles, ...memoryRelatedPaths].filter(Boolean))],
+  });
 
   const systemPrompt = buildAgenticSystemPrompt(
     workspaceRoot,

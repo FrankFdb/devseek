@@ -263,7 +263,7 @@ function stripUntrustedProtocolPayloads(prompt: string): string {
     .replace(/```[\s\S]*?```/g, '\n')
     .replace(/<tool_call[\s\S]*?<\/tool_call>/gi, '\n')
     .replace(/(?:^|\n)[^\n]*\[TOOL:[\s\S]*?(?=\n\s*\n|$)/gi, '\n')
-    .replace(/(?:^|\n)\s*(?:Calling|Call|调用)\s*:?[^\n]*(?:run_terminal|create_file|write_file|replace_file|mcp__)[\s\S]*?(?=\n\s*\n|$)/gi, '\n')
+    .replace(/(?:^|\n)\s*(?:Calling|Call|调用)[ \t]*:?[^\n]*(?:run_terminal|create_file|write_file|replace_file|mcp__)[\s\S]*?(?=\n\s*\n|$)/gi, '\n')
     .replace(/(?:^|\n)\s*[{[]\s*"(?:tool|name|path|arguments)"[\s\S]*?(?=\n\s*\n|$)/gi, '\n');
 }
 

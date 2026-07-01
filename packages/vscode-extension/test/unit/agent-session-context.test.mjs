@@ -39,7 +39,10 @@ Module._load = function loadWithVscodeMock(request, parent, isMain) {
 };
 
 const req = createRequire(import.meta.url);
-const { resolveSessionContinuationFilesFromState } = req(bundlePath);
+const {
+  buildAgenticSessionContextFromState,
+  resolveSessionContinuationFilesFromState,
+} = req(bundlePath);
 
 test('Agent session context: edit follow-up restores deeper project file ahead of root basename drift', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-agent-session-context-'));
@@ -97,6 +100,45 @@ test('Agent session context: independent new edit request does not restore stale
     });
 
     assert.deepEqual(files, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Agent session context: filters restored history to the active project', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-agent-session-context-filter-'));
+  try {
+    const shapeDir = path.join(root, 'code', 'shape_manager');
+    const jokeDir = path.join(root, 'code', 'joke_program');
+    mkdirSync(shapeDir, { recursive: true });
+    mkdirSync(jokeDir, { recursive: true });
+    const shapeMain = path.join(shapeDir, 'main.cpp');
+    const jokeMain = path.join(jokeDir, 'main.cpp');
+    writeFileSync(shapeMain, 'int main() { return 0; }\n');
+    writeFileSync(jokeMain, 'int main() { return 1; }\n');
+
+    const context = buildAgenticSessionContextFromState({
+      workspaceRoot: root,
+      currentPrompt: '通过鼠标点击选择三维图形',
+      state: {
+        lastUserPrompt: '通过数字选择 shape_manager 三维图形',
+        lastSummary: '已修改 code/shape_manager/main.cpp。',
+        changedPaths: ['code/shape_manager/main.cpp'],
+        completed: false,
+        savedAt: Date.now(),
+      },
+      lastAgentChangedPaths: ['code/shape_manager/main.cpp'],
+      recentFilePaths: [shapeMain, jokeMain],
+      history: [
+        { role: 'user', content: '给 joke_program 添加一个笑话' },
+        { role: 'assistant', content: '已修改 code/joke_program/main.cpp。' },
+        { role: 'user', content: '通过数字选择 shape_manager 三维图形' },
+        { role: 'assistant', content: '已修改 code/shape_manager/main.cpp。' },
+      ],
+    });
+
+    assert.match(context, /shape_manager/);
+    assert.doesNotMatch(context, /joke_program/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -233,7 +233,10 @@ function buildAnalyzePrompt(
 
   // Inject project rules + AI memory if present
   const _analyzeRules = getProjectRulesSync();
-  const _analyzeMemory = getProjectMemorySync();
+  const _analyzeMemory = getProjectMemorySync({
+    prompt: userPrompt,
+    relatedPaths: [task.absPath ?? task.file, workdirOverride].filter((pathValue): pathValue is string => Boolean(pathValue)),
+  });
   const _analyzeContext = [
     _analyzeRules ? wrapRulesAsContext(_analyzeRules) : '',
     _analyzeMemory ? wrapMemoryAsContext(_analyzeMemory) : '',
@@ -338,7 +341,10 @@ function buildEditorPrompt(
   // Project rules from .devseek/rules.md — injected if present
   const projectRules = getProjectRulesSync();
   const projectRulesSection = projectRules ? [wrapRulesAsContext(projectRules), ``].join('\n') : '';
-  const projectMemory = getProjectMemorySync();
+  const projectMemory = getProjectMemorySync({
+    prompt: userPrompt,
+    relatedPaths: [task.absPath ?? task.file, workdirOverride].filter((pathValue): pathValue is string => Boolean(pathValue)),
+  });
   const projectMemorySection = projectMemory ? [wrapMemoryAsContext(projectMemory), ``].join('\n') : '';
 
   return [
@@ -1461,7 +1467,7 @@ async function runValidation(
         type: 'agentStatus',
         phase: 'validate',
         state: 'completed',
-        title: '执行完成 ✓',
+        title: '运行验证完成 ✓',
         detail: truncated.slice(0, 400),
       });
     } catch (e) {

@@ -37,7 +37,7 @@ test('agent working state: workflow status is snapshot-only during agent mode', 
 test('agent working state: validate started does not create standalone card', () => {
   assert.match(
     webview,
-    /if \(msg\.phase === 'validate'\) \{[\s\S]*?if \(msg\.state === 'started'\) \{[\s\S]*?validateSpin\.textContent = msg\.title \|\| '正在执行验证';[\s\S]*?return;[\s\S]*?agentValidationSummary/,
+    /if \(msg\.phase === 'validate'\) \{[\s\S]*?if \(msg\.state === 'started'\) \{[\s\S]*?validateSpin\.textContent = formatAgentValidationTitle\(msg\.title, msg\.state\) \|\| '正在执行验证';[\s\S]*?return;[\s\S]*?agentValidationSummary/,
   );
 });
 
@@ -127,6 +127,9 @@ test('agent working state: task labels ignore terminal activity wrappers', () =>
     webview,
     /function sanitizeAgentTaskLabelValue\(value\)[\s\S]*?\^\(\?:Failed\|Ran\)\\b[\s\S]*?return '';/,
   );
+  assert.match(webview, /function getAgentTaskActionPrefix\(taskAction, rawDesc\)[\s\S]*?isAgentValidationTask\(taskAction, rawDesc\)[\s\S]*?return '验证 ';/);
+  assert.ok(webview.includes(".replace(/^验证 /, '已验证 ')"));
+  assert.ok(webview.includes(".replace(/^执行完成\\s*✓?$/, '运行验证完成 ✓')"));
   assert.match(
     webview,
     /function buildFinishedLabel\(isFailed, container\)[\s\S]*?var containerLabel = sanitizeAgentTaskLabelValue/,
@@ -170,7 +173,7 @@ test('agent checkpoint banner labels response corruption as safe retry', () => {
 });
 
 test('agent working state: response tasks and fallbacks are localized and non-file-like', () => {
-  assert.match(webview, /taskAction === 'respond' \? ''/);
+  assert.match(webview, /function getAgentTaskActionPrefix\(taskAction, rawDesc\)[\s\S]*?if \(taskAction === 'respond'\) return '';/);
   assert.doesNotMatch(webview, /taskAction === 'respond' \? 'Responding '/);
   assert.match(webview, /label \|\| '处理中\.\.\.'/);
   assert.doesNotMatch(webview, /label \|\| 'Working\.\.\.'/);

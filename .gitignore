@@ -36,6 +36,7 @@ code/
 aircraft/
 probe_mermaid*.js
 packages/vscode-extension/test/unit/*.bundle.cjs
+packages/bridge/test/*.bundle.cjs
 
 # Local tool/editor state
 .agents/
