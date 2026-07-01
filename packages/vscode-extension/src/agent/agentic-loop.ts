@@ -38,7 +38,6 @@ import {
   buildMissingEvidenceRecoveryInstruction,
   inferInitialAgenticTodos,
   markMissingEvidenceTodosIncomplete,
-  markValidationFailureTodos,
   type TodoItem,
 } from './evidence-recovery';
 import {
@@ -75,7 +74,11 @@ import {
   executeFakeToolsForLoop,
   normalizeVisibleTodos,
 } from './tool-loop';
-import { buildTaskSettlementFailureStatus, createAgentTaskTodoLedger } from './task-todo-ledger';
+import {
+  buildTaskSettlementFailureStatus,
+  createAgentTaskTodoLedger,
+  settleValidationFailureTodos,
+} from './task-todo-ledger';
 import { tryRunSimpleFileTask } from './simple-file-task';
 import { buildEngineeringGuidelinesPrompt } from './engineering-guidelines';
 
@@ -535,7 +538,7 @@ export async function runAgenticLoop(
         if (normalizedAutoValidation.evidence.length) allTerminalEvidence.push(...normalizedAutoValidation.evidence);
         if (autoValidation.repairBlockedReason) {
           if (callbacks.onTodoUpdate && currentTodos.length > 0) {
-            currentTodos = markValidationFailureTodos(currentTodos);
+            currentTodos = settleValidationFailureTodos(currentTodos);
             await callbacks.onTodoUpdate(currentTodos);
           }
           failedReason = autoValidation.repairBlockedReason;
@@ -720,7 +723,7 @@ export async function runAgenticLoop(
     }
     if (autoValidation.repairBlockedReason) {
       if (callbacks.onTodoUpdate && currentTodos.length > 0) {
-        currentTodos = markValidationFailureTodos(currentTodos);
+        currentTodos = settleValidationFailureTodos(currentTodos);
         await callbacks.onTodoUpdate(currentTodos);
       }
       failedReason = autoValidation.repairBlockedReason;
@@ -783,7 +786,7 @@ export async function runAgenticLoop(
       noToolRounds++;
       if (callbacks.onTodoUpdate && currentTodos.length > 0) {
         currentTodos = blockingFailureAfterTools
-          ? markValidationFailureTodos(currentTodos)
+          ? settleValidationFailureTodos(currentTodos)
           : markMissingEvidenceTodosIncomplete(currentTodos, missingAfterTools);
         await callbacks.onTodoUpdate(currentTodos);
       }
@@ -865,7 +868,7 @@ export async function runAgenticLoop(
   if (!failedReason && finalBlockingFailure) {
     failedReason = describeBlockingTerminalFailure(finalBlockingFailure);
     if (callbacks.onTodoUpdate && currentTodos.length > 0) {
-      currentTodos = markValidationFailureTodos(currentTodos);
+      currentTodos = settleValidationFailureTodos(currentTodos);
       await callbacks.onTodoUpdate(currentTodos);
     }
   } else if (!failedReason && finalMissingEvidence.length > 0) {

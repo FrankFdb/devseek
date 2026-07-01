@@ -18,6 +18,7 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const agentLoop = readFileSync(path.join(rootDir, 'src/agent-loop.ts'), 'utf8');
+const agenticLoop = readFileSync(path.join(rootDir, 'src/agent/agentic-loop.ts'), 'utf8');
 const bundlePath = path.join(rootDir, 'test/unit/task-todo-ledger.bundle.cjs');
 
 execSync(
@@ -31,6 +32,7 @@ const { createAgentTaskTodoLedger } = req(bundlePath);
 
 test('two-phase agent todos are delegated to an evidence ledger', () => {
   assert.match(agentLoop, /createAgentTaskTodoLedger/, 'agent-loop must use the task todo ledger boundary');
+  assert.match(agenticLoop, /settleValidationFailureTodos/, 'agentic loop must route validation-failure todo updates through task todo ledger');
   assert.match(agentLoop, /selectTaskWriteEvidence/, 'agent-loop must treat create_file/write_file results as task write evidence');
   assert.match(agentLoop, /recordTaskToolWrites\(loopRes\.writtenFiles\)/, 'tool-loop written files must be recorded before task settlement');
   assert.match(agentLoop, /completeFromTaskToolWrite\(loopRes\.taskComplete\)/, 'matching tool writes must complete the current mutating task');

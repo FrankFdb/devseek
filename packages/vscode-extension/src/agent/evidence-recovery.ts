@@ -5,6 +5,7 @@ import {
   requiresFileChangeEvidence,
   requiresReadEvidence,
 } from './completion-evidence';
+import { settleValidationFailureTodos } from './task-todo-ledger';
 
 export interface TodoItem {
   id: number;
@@ -34,50 +35,7 @@ export function markMissingEvidenceTodosIncomplete(todos: TodoItem[], missing: s
 }
 
 export function markValidationFailureTodos(todos: TodoItem[]): TodoItem[] {
-  if (!todos.length) return todos;
-  let matched = false;
-  const updated = todos.map(item => {
-    const title = item.title.toLowerCase();
-    if (!isAutomaticValidationTodoTitle(title)) {
-      return item;
-    }
-    matched = true;
-    return { ...item, status: 'failed' as const };
-  });
-  if (matched) return updated;
-
-  if (updated.some(item => isFileFactVerificationTodoTitle(item.title))) {
-    return [
-      ...updated,
-      {
-        id: nextTodoId(updated),
-        title: '运行自动验证 / QualityGate',
-        status: 'failed' as const,
-      },
-    ];
-  }
-
-  const lastCompletedIndex = updated
-    .map((item, index) => ({ item, index }))
-    .reverse()
-    .find(({ item }) => item.status === 'completed')?.index;
-  if (lastCompletedIndex === undefined) return updated;
-  return updated.map((item, index) => (
-    index === lastCompletedIndex ? { ...item, status: 'failed' as const } : item
-  ));
-}
-
-function isAutomaticValidationTodoTitle(title: string): boolean {
-  return /(?:编译|运行|执行|测试|type(?:script)?|tsc|compile|build|test|run|execute|validate|qualitygate)/i.test(title);
-}
-
-function isFileFactVerificationTodoTitle(title: string): boolean {
-  return /(?:文件|内容|大小|存在|创建成功|读取|检查|确认|校验|验证)/i.test(title)
-    && !isAutomaticValidationTodoTitle(title);
-}
-
-function nextTodoId(todos: TodoItem[]): number {
-  return Math.max(0, ...todos.map(todo => Number(todo.id) || 0)) + 1;
+  return settleValidationFailureTodos(todos);
 }
 
 export function inferInitialAgenticTodos(userPrompt: string): TodoItem[] {

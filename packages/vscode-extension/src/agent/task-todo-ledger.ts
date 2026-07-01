@@ -120,6 +120,40 @@ export function createAgentTaskTodoLedger(
   };
 }
 
+export function settleValidationFailureTodos(todos: TodoItem[]): TodoItem[] {
+  if (!todos.length) return todos;
+  let matched = false;
+  const updated = todos.map(item => {
+    const title = item.title.toLowerCase();
+    if (!isAutomaticValidationTodoTitle(title)) {
+      return item;
+    }
+    matched = true;
+    return { ...item, status: 'failed' as const };
+  });
+  if (matched) return updated;
+
+  if (updated.some(item => isFileFactVerificationTodoTitle(item.title))) {
+    return [
+      ...updated,
+      {
+        id: nextTodoId(updated),
+        title: '运行自动验证 / QualityGate',
+        status: 'failed' as const,
+      },
+    ];
+  }
+
+  const lastCompletedIndex = updated
+    .map((item, index) => ({ item, index }))
+    .reverse()
+    .find(({ item }) => item.status === 'completed')?.index;
+  if (lastCompletedIndex === undefined) return updated;
+  return updated.map((item, index) => (
+    index === lastCompletedIndex ? { ...item, status: 'failed' as const } : item
+  ));
+}
+
 function getTaskMissingCompletionEvidence(task: AgentTask, evidence: TaskEvidence): string[] {
   if (!isReadOnlyAgentTaskAction(evidence.action)) return [];
   if (evidence.action === 'respond') return [];
@@ -193,7 +227,20 @@ function isTerminalStatus(status: TodoStatus): boolean {
 }
 
 function findValidationTaskIndex(tasks: AgentTask[]): number {
-  return tasks.findIndex(task => /编译|构建|运行|测试|验证|compile|build|run|test|validate|qualitygate/i.test(
+  return tasks.findIndex(task => isAutomaticValidationTodoTitle(
     `${task.desc || ''} ${task.file || ''}`,
   ));
+}
+
+function isAutomaticValidationTodoTitle(title: string): boolean {
+  return /(?:编译|运行|执行|测试|type(?:script)?|tsc|compile|build|test|run|execute|validate|qualitygate)/i.test(title);
+}
+
+function isFileFactVerificationTodoTitle(title: string): boolean {
+  return /(?:文件|内容|大小|存在|创建成功|读取|检查|确认|校验|验证)/i.test(title)
+    && !isAutomaticValidationTodoTitle(title);
+}
+
+function nextTodoId(todos: TodoItem[]): number {
+  return Math.max(0, ...todos.map(todo => Number(todo.id) || 0)) + 1;
 }

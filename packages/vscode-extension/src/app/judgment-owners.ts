@@ -132,19 +132,23 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
   {
     id: 'task-state',
     phase: 3,
-    ownerModule: 'src/app/task-ledger.ts',
-    status: 'migration-planned',
+    ownerModule: 'src/agent/task-todo-ledger.ts',
+    status: 'migration-in-progress',
     canonicalSymbols: [
-      'TaskLedger',
-      'TaskLedgerItem',
+      'createAgentTaskTodoLedger',
+      'settleValidationFailureTodos',
+      'AgentTaskTodoLedger',
     ],
     supportingModules: [
+      'src/app/task-ledger.ts',
       'src/app/task-history-store.ts',
       'src/app/task-checkpoint-store.ts',
+      'src/agent/evidence-recovery.ts',
       'src/agent/completion-evidence.ts',
     ],
     contractTests: [
       'test/unit/workflow-compliance.test.mjs',
+      'test/unit/agent-loop-task-state.test.mjs',
       'test/unit/agent-working-state.test.mjs',
     ],
     guardedTerms: ['completed', 'failed', 'manual_review_required'],
