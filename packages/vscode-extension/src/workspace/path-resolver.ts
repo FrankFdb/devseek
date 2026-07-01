@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import * as vscode from 'vscode';
+import { isCppBuildArtifactDirName } from '../cpp-build-layout';
 import { getWorkspaceRootUri } from '../workspace-roots';
 
 export interface WorkspacePathContext {
@@ -182,7 +183,7 @@ export function buildWorkspacePathContext(
 
   if (preferredClean.length === 0 && options.fallbackAbsoluteDirs && options.fallbackAbsoluteDirs.length > 0) {
     const fallbackDirs = options.fallbackAbsoluteDirs
-      .map((dir) => sanitizeWorkspacePath(dir, root))
+      .map((dir) => sourceScopeFromFallbackDir(dir, root))
       .filter((dir): dir is string => !!dir && dir !== '.');
     preferredClean = dedupeStringList([...preferredClean, ...fallbackDirs]).filter(d => !isInternalDir(d));
     scopedClean = dedupeStringList([...scopedClean, ...fallbackDirs]).filter(d => !isInternalDir(d));
@@ -394,6 +395,9 @@ export function detectWriteDriftForRelPaths(relPaths: string[], ctx: WorkspacePa
 
   for (const relPath of relPaths) {
     const rel = relPath.replace(/\\/g, '/');
+    if (isCodeLikeFileName(nodePath.posix.basename(rel)) && isGeneratedArtifactPath(rel)) {
+      return `源码文件 ${rel} 指向构建产物目录，疑似路径漂移（源码文件应写入项目源码目录，而不是构建、缓存或生成目录）`;
+    }
 
     if (ctx.strictScope && scopedDirs.length > 0) {
       if (!isExplicitSourceRoot.test(rel)) {
@@ -554,6 +558,34 @@ function inferScopedDirsFromCommandText(text: string, root: vscode.Uri): string[
   }
 
   return dedupeStringList(dirs);
+}
+
+function sourceScopeFromFallbackDir(absDir: string, root: vscode.Uri): string | undefined {
+  const rel = sanitizeWorkspacePath(absDir, root);
+  if (!rel || rel === '.') return rel;
+  return stripGeneratedArtifactSuffix(rel);
+}
+
+function stripGeneratedArtifactSuffix(relPath: string): string | undefined {
+  const segments = relPath.replace(/\\/g, '/').split('/').filter(Boolean);
+  const generatedIndex = segments.findIndex(isGeneratedArtifactDirSegment);
+  if (generatedIndex < 0) return relPath;
+  if (generatedIndex === 0) return undefined;
+  return segments.slice(0, generatedIndex).join('/');
+}
+
+function isGeneratedArtifactPath(relPath: string): boolean {
+  return relPath
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(Boolean)
+    .some(isGeneratedArtifactDirSegment);
+}
+
+function isGeneratedArtifactDirSegment(segment: string): boolean {
+  const normalized = segment.toLowerCase();
+  return isCppBuildArtifactDirName(segment)
+    || ['dist', 'out', 'target', 'coverage', 'node_modules'].includes(normalized);
 }
 
 function getWorkspaceRootForWrite(options: ResolveWorkspaceWritePathOptions): vscode.Uri | undefined {

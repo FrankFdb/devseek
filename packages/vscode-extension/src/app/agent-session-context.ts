@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../llm/types';
+import { isCppBuildArtifactDirName } from '../cpp-build-layout';
 import { absPathFromWorkspaceRel, relPathFromWorkspace } from './context-discovery-service';
 import {
   buildContextAnchors,
@@ -33,7 +34,7 @@ export function resolveSessionContinuationFilesFromState(input: ResolveSessionCo
   const primaryRelPaths = [
     ...(input.state?.changedPaths ?? []),
     ...input.lastAgentChangedPaths,
-  ];
+  ].filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot));
   const primaryAnchors = buildContextAnchors({
     workspaceRoot: input.workspaceRoot,
     prompt: input.prompt,
@@ -41,11 +42,15 @@ export function resolveSessionContinuationFilesFromState(input: ResolveSessionCo
   });
 
   const candidates: string[] = [];
-  for (const rel of input.state?.changedPaths ?? []) candidates.push(rel);
-  for (const rel of input.lastAgentChangedPaths) candidates.push(rel);
+  for (const rel of input.state?.changedPaths ?? []) {
+    if (isRestorableSessionPath(rel, input.workspaceRoot)) candidates.push(rel);
+  }
+  for (const rel of input.lastAgentChangedPaths) {
+    if (isRestorableSessionPath(rel, input.workspaceRoot)) candidates.push(rel);
+  }
   for (const abs of input.recentFilePaths) {
     const rel = relPathFromWorkspace(input.workspaceRoot, abs);
-    if (rel) candidates.push(rel);
+    if (rel && isRestorableSessionPath(rel, input.workspaceRoot)) candidates.push(rel);
   }
 
   const scopedCandidates = hasContextAnchors(primaryAnchors)
@@ -96,8 +101,10 @@ export function buildAgenticSessionContextFromState(input: BuildAgenticSessionCo
   const primaryRelatedPaths = [
     ...(input.state?.changedPaths ?? []),
     ...input.lastAgentChangedPaths,
-  ];
-  const recentFileList = [...new Set(input.recentFilePaths)].filter(Boolean);
+  ].filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot));
+  const recentFileList = [...new Set(input.recentFilePaths)]
+    .filter(Boolean)
+    .filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot));
   const anchors = buildContextAnchors({
     workspaceRoot: input.workspaceRoot,
     prompt: input.currentPrompt,
@@ -129,7 +136,9 @@ export function buildAgenticSessionContextFromState(input: BuildAgenticSessionCo
   const stateRelevant = input.state
     && (!shouldFilter
       || textMatchesContextAnchors(input.state.lastSummary, anchors)
-      || input.state.changedPaths.some(pathValue => textMatchesContextAnchors(pathValue, anchors)));
+      || input.state.changedPaths
+        .filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot))
+        .some(pathValue => textMatchesContextAnchors(pathValue, anchors)));
   if (recentHistory.length === 0 && recentFiles.length === 0 && !stateRelevant) return '';
 
   const lines: string[] = [
@@ -142,12 +151,19 @@ export function buildAgenticSessionContextFromState(input: BuildAgenticSessionCo
     lines.push(`- 执行结果：${input.state.completed ? '已完成' : '未完成或需要复核'}`);
     lines.push(`- 摘要：${input.state.lastSummary.slice(0, 800)}`);
     if (input.state.changedPaths.length > 0) {
-      lines.push('- 涉及文件：');
-      lines.push(...filterByContextAnchors(input.state.changedPaths, anchors, pathValue => pathValue).slice(0, 12).map(pathValue => `  - ${pathValue}`));
+      const changedPaths = input.state.changedPaths.filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot));
+      if (changedPaths.length > 0) {
+        lines.push('- 涉及文件：');
+        lines.push(...filterByContextAnchors(changedPaths, anchors, pathValue => pathValue).slice(0, 12).map(pathValue => `  - ${pathValue}`));
+      }
     }
   }
   if (input.lastAgentChangedPaths.length > 0) {
-    const changedPaths = filterByContextAnchors(input.lastAgentChangedPaths, anchors, pathValue => pathValue).slice(0, 10);
+    const changedPaths = filterByContextAnchors(
+      input.lastAgentChangedPaths.filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot)),
+      anchors,
+      pathValue => pathValue,
+    ).slice(0, 10);
     if (changedPaths.length > 0) {
       lines.push('上一轮 Agent 涉及/修改的文件：');
       lines.push(...changedPaths.map(pathValue => `- ${pathValue}`));
@@ -167,4 +183,18 @@ export function buildAgenticSessionContextFromState(input: BuildAgenticSessionCo
 
 function chatMessageText(message: ChatMessage): string {
   return typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
+}
+
+function isRestorableSessionPath(pathValue: string, workspaceRoot: string): boolean {
+  const rel = relPathFromWorkspace(workspaceRoot, pathValue) ?? String(pathValue || '').replace(/\\/g, '/');
+  return !rel
+    .split('/')
+    .filter(Boolean)
+    .some(isGeneratedArtifactSegment);
+}
+
+function isGeneratedArtifactSegment(segment: string): boolean {
+  const normalized = segment.toLowerCase();
+  return isCppBuildArtifactDirName(segment)
+    || ['dist', 'out', 'target', 'coverage', 'node_modules'].includes(normalized);
 }

@@ -142,6 +142,41 @@ test('path-resolver: continuation path hints anchor bare source filenames to pri
   }
 });
 
+test('path-resolver: build output cwd falls back to source project directory for source writes', () => {
+  const { root, projectDir } = createWorkspaceWithDuplicateShapeManager();
+  try {
+    const buildBinDir = path.join(projectDir, 'build', 'bin');
+    mkdirSync(buildBinDir, { recursive: true });
+
+    const bareHeader = resolveWorkspaceWritePath('Cylinder.h', {
+      requestPrompt: '请编译，执行，如果有编译错误，请修正',
+      content: '#pragma once\nclass Cylinder {};\n',
+      workspaceRootFsPath: root,
+      defaultWorkdir: buildBinDir,
+    });
+
+    assert.equal(bareHeader.relPath, 'code/shape_manager/Cylinder.h');
+    assert.equal(bareHeader.absPath, path.join(projectDir, 'Cylinder.h'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('path-resolver: source files cannot be explicitly written into build artifact directories', () => {
+  const { root } = createWorkspaceWithDuplicateShapeManager();
+  try {
+    const drift = resolveWorkspaceWritePath('code/shape_manager/build/bin/Cylinder.h', {
+      requestPrompt: '创建 Cylinder 头文件',
+      content: '#pragma once\nclass Cylinder {};\n',
+      workspaceRootFsPath: root,
+    });
+
+    assert.equal(drift, undefined);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('path-resolver: session scoped writes do not drift to code parent directory', () => {
   const { root, projectDir } = createWorkspaceWithDuplicateShapeManager();
   try {

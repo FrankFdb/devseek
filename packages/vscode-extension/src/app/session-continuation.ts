@@ -74,6 +74,7 @@ export function shouldInjectSessionContinuationForIntent(
   intent?: SessionContinuationIntent,
   hasSessionCodeFiles = Boolean(context.trim()),
 ): boolean {
+  if (intent?.mode === 'run' && !isLikelySessionContinuation(prompt)) return false;
   return Boolean(context.trim()) && shouldRestoreSessionFiles(prompt, intent, hasSessionCodeFiles);
 }
 

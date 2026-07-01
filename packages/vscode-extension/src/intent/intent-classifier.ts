@@ -15,6 +15,8 @@ const RUN_RE = /(运行|执行|编译|构建|测试|跑一下|验证|启动|调�
 
 const FOLLOW_UP_RUN_RE = /(?:能(?:否)?(?:执行|运行|编译|构建|测试|验证)|看(?:一下|下|看)?(?:执行|运行|编译|构建|测试|验证)?结果|看到(?:执行|运行|编译|构建|测试|验证)?结果|(?:给(?:我)?|输出|展示|显示|提供|返回).{0,12}(?:执行|运行|编译|构建|测试|验证)?结果|(?:执行|运行|编译|构建|测试|验证|跑)(?:一下|下|一遍|一次)?(?:看看|看结果)|(?:执行|运行|编译|构建|测试|验证|跑).{0,8}结果|(?:show|see|view).{0,20}(?:result|output)|(?:can|could).{0,20}(?:run|execute|compile|build|test|verify))/i;
 
+const RUN_WITH_CONDITIONAL_REPAIR_RE = /(?:(?:编译|构建|运行|执行|测试|验证|compile|build|run|execute|test|verify).{0,40}(?:如果|若|如有|有|when|if).{0,30}(?:错误|报错|失败|error|fail).{0,30}(?:修复|修正|fix|repair)|(?:如果|若|如有|when|if).{0,30}(?:编译|构建|运行|执行|测试|验证|compile|build|run|execute|test|verify).{0,30}(?:错误|报错|失败|error|fail).{0,30}(?:修复|修正|fix|repair))/i;
+
 const ARTIFACT_PATH_QUERY_RE = /(?:(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物).{0,18}(?:在哪|哪里|路径|位置|path|where)|(?:在哪|哪里|路径|位置|path|where).{0,18}(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物))/i;
 
 const PLAN_RE = /(方案|计划|设计|架构|怎么改|如何改|重构计划|实施步骤|roadmap|plan|design|architecture|approach)/i;
@@ -143,6 +145,22 @@ export function classifyIntent(prompt: string): IntentClassification {
     );
   }
 
+  const isRunRequest = RUN_RE.test(text);
+  const isConditionalRunRepairRequest = isRunRequest && RUN_WITH_CONDITIONAL_REPAIR_RE.test(text);
+  if (isConditionalRunRepairRequest) {
+    const signals = ['run-request', 'conditional-repair-on-failure'];
+    if (isFollowUpRunRequest) signals.push('follow-up-run-request');
+    if (hasPath) signals.push('explicit-file-path');
+    return baseDecision(
+      'run',
+      hasPath ? 0.88 : 0.84,
+      hasPath ? 4 : 3,
+      signals,
+      hasPath ? 'run-conditional-repair-with-file-path' : 'run-conditional-repair',
+      RUN_TOOLS,
+    );
+  }
+
   const isDirectEditRequest = EDIT_RE.test(text);
   if (isDirectEditRequest || isCapabilityFeatureRequest) {
     const signals = isDirectEditRequest ? ['edit-request'] : ['capability-feature-request'];
@@ -163,7 +181,7 @@ export function classifyIntent(prompt: string): IntentClassification {
     );
   }
 
-  if (RUN_RE.test(text)) {
+  if (isRunRequest) {
     const signals = ['run-request'];
     if (isFollowUpRunRequest) signals.push('follow-up-run-request');
     if (hasPath) signals.push('explicit-file-path');

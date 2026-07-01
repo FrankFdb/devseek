@@ -67,7 +67,7 @@ test('Session continuation: leaves execution/result wording to intent classifica
   assert.equal(shouldRestoreSessionFiles('能执行，看到执行结果吗', runIntent), true);
   assert.equal(
     shouldInjectSessionContinuationForIntent('能执行，看到执行结果吗', '上一轮文件：src/main.cpp', runIntent),
-    true,
+    false,
   );
 });
 
@@ -76,7 +76,18 @@ test('Session continuation: restores files for direct execute-result follow-up',
   assert.equal(shouldRestoreSessionFiles('请执行，给出执行结果', runIntent), true);
   assert.equal(
     shouldInjectSessionContinuationForIntent('请执行，给出执行结果', '上一轮文件：code/shape_manager/main.cpp', runIntent),
-    true,
+    false,
+  );
+});
+
+test('Session continuation: run verification restores files without injecting stale task prose', () => {
+  const runIntent = { mode: 'run', signals: ['run-request', 'conditional-repair-on-failure'] };
+  const prompt = '请编译，执行，如果有编译错误，请修正';
+
+  assert.equal(shouldRestoreSessionFiles(prompt, runIntent, true), true);
+  assert.equal(
+    shouldInjectSessionContinuationForIntent(prompt, '上一轮任务：创建 Cone.cpp；涉及文件：code/shape_manager/main.cpp', runIntent, true),
+    false,
   );
 });
 

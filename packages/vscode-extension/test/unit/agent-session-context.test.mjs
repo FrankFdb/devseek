@@ -105,6 +105,39 @@ test('Agent session context: independent new edit request does not restore stale
   }
 });
 
+test('Agent session context: build artifact paths are not restored as source working files', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-agent-session-context-build-'));
+  try {
+    const projectDir = path.join(root, 'code', 'shape_manager');
+    const buildBinDir = path.join(projectDir, 'build', 'bin');
+    mkdirSync(buildBinDir, { recursive: true });
+    const projectMain = path.join(projectDir, 'main.cpp');
+    const artifactHeader = path.join(buildBinDir, 'Cylinder.h');
+    writeFileSync(projectMain, 'int main() { return 0; }\n');
+    writeFileSync(artifactHeader, '#pragma once\n');
+
+    const files = resolveSessionContinuationFilesFromState({
+      workspaceRoot: root,
+      prompt: '请编译，执行，如果有编译错误，请修正',
+      intent: { mode: 'run', signals: ['run-request', 'conditional-repair-on-failure'] },
+      state: {
+        lastUserPrompt: '上一轮错误地把 Cylinder.h 写到了 build/bin',
+        lastSummary: '已修改 code/shape_manager/build/bin/Cylinder.h 和 code/shape_manager/main.cpp。',
+        changedPaths: ['code/shape_manager/build/bin/Cylinder.h', 'code/shape_manager/main.cpp'],
+        completed: false,
+        savedAt: Date.now(),
+      },
+      lastAgentChangedPaths: ['code/shape_manager/build/bin/Cylinder.h'],
+      recentFilePaths: [artifactHeader, projectMain],
+    });
+
+    assert.equal(files.includes(artifactHeader), false);
+    assert.equal(files[0], projectMain);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Agent session context: filters restored history to the active project', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-agent-session-context-filter-'));
   try {

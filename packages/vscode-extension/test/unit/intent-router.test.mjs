@@ -142,6 +142,16 @@ test('decideChatIntent: execution result follow-up → run intent', () => {
   assert.equal(shouldUseAgentMode(result, []), true);
 });
 
+test('decideChatIntent: compile/run with conditional repair remains run intent', () => {
+  const result = decideChatIntent('请编译，执行，如果有编译错误，请修正');
+  assert.equal(result.kind, 'code-change');
+  assert.equal(result.mode, 'run');
+  assert.equal(result.autoApplyEligible, false);
+  assert.ok(result.signals.includes('run-request'));
+  assert.ok(result.signals.includes('conditional-repair-on-failure'));
+  assert.deepEqual(result.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'plan', 'memory', 'terminal']);
+});
+
 test('decideChatIntent: "重构代码" → code-change intent', () => {
   const result = decideChatIntent('重构这段代码');
   assert.equal(result.kind, 'code-change');
