@@ -2,7 +2,10 @@ import * as vscode from 'vscode';
 import { decideTerminalCommandPermission, type TerminalCommandRiskClass } from './terminal-command-policy';
 import { decideToolPermission, type ToolPolicy } from './permission-service';
 import { shouldUseManualReviewLaunchMode } from './terminal-launch-classifier';
-import { cleanupLegacyCppBuildDirsForCommand } from '../workspace/cpp-build-cleanup-service';
+import {
+  cleanupLegacyCppBuildDirsForCommand,
+  normalizeLegacyCppBuildCommandForRun,
+} from '../workspace/cpp-build-cleanup-service';
 
 type TerminalConfirmResolver = (allow: boolean, alwaysAllow?: boolean) => void;
 
@@ -53,13 +56,14 @@ export class TerminalPermissionCoordinator {
 
   async runCommandWithPermission(input: RunTerminalWithPermissionInput): Promise<string> {
     const { webview, command, workdir, workspaceRoot, mode, toolPolicy } = input;
+    const normalizedCommand = normalizeLegacyCppBuildCommandForRun({ command, workdir, workspaceRoot }).command;
     const terminalPermission = decideToolPermission(toolPolicy, 'terminal');
     if (terminalPermission.action === 'deny') {
       return `（命令未执行：当前 ${mode} 模式不允许终端工具：${terminalPermission.reason}）`;
     }
 
     const terminalDecision = decideTerminalCommandPermission({
-      command,
+      command: normalizedCommand,
       workdir,
       workspaceRoot,
     });
@@ -68,7 +72,7 @@ export class TerminalPermissionCoordinator {
     let confirmedByUser = false;
 
     if (!isAutopilot && terminalPermission.action === 'requireConfirm' && terminalDecision.requiresConfirmation && !remembered) {
-      const confirmResult = await this.requestInlineConfirmation(webview, command, workdir ?? '');
+      const confirmResult = await this.requestInlineConfirmation(webview, normalizedCommand, workdir ?? '');
       if (confirmResult.alwaysAllow && terminalDecision.canRememberDecision) {
         this.trustedRiskClasses.add(terminalDecision.risk);
       }
@@ -79,10 +83,10 @@ export class TerminalPermissionCoordinator {
     }
 
     const { runCommand, formatTerminalOutputForPrompt } = await import('../tools/terminal');
-    const manualReviewOnLongRunning = shouldUseManualReviewLaunchMode({ command, workdir, workspaceRoot });
+    const manualReviewOnLongRunning = shouldUseManualReviewLaunchMode({ command: normalizedCommand, workdir, workspaceRoot });
     cleanupLegacyCppBuildDirsForCommand({ command, workdir, workspaceRoot });
     const result = await runCommand({
-      command,
+      command: normalizedCommand,
       cwd: workdir,
       visible: false,
       allowRisky: !isAutopilot && (confirmedByUser || remembered),
@@ -91,11 +95,11 @@ export class TerminalPermissionCoordinator {
     const outputPreview = result.output.slice(0, 4000);
     webview.postMessage({
       type: 'terminalRanNotice',
-      command,
+      command: normalizedCommand,
       workdir: workdir ?? '',
       exitCode: result.exitCode,
       output: outputPreview,
     });
-    return formatTerminalOutputForPrompt(command, result);
+    return formatTerminalOutputForPrompt(normalizedCommand, result);
   }
 }

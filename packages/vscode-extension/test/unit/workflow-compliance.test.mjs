@@ -1304,7 +1304,9 @@ test('Architecture: C/C++ validation and execution share one stable project buil
   assertContains(extension, "from './workspace/list-dir-service'", 'extension list_dir callbacks must use shared directory listing service');
   assertContains(listDirService, "from '../cpp-build-layout'", 'list_dir service must use shared C++ build layout aliases');
   assertContains(cleanupService, "from '../cpp-build-layout'", 'legacy build cleanup must use shared C++ build layout aliases');
+  assertContains(cleanupService, 'normalizeLegacyCppBuildCommandForRun', 'legacy C++ build commands must be normalized before terminal execution');
   assertContains(terminalPermission, 'cleanupLegacyCppBuildDirsForCommand', 'run_terminal must clean stale legacy C++ build dirs before build commands');
+  assertContains(terminalPermission, 'normalizeLegacyCppBuildCommandForRun', 'run_terminal must rewrite stale legacy C++ build dirs before execution');
   assert.doesNotMatch(extension, /onListDir:[\s\S]{0,500}readdirSync/, 'extension must not hand-roll list_dir filesystem traversal');
   assert.doesNotMatch(execution, /\.devseek-build/, 'execution planner must not create legacy .devseek-build outputs');
   assert.doesNotMatch(localExecution, /\.devseek-build/, 'legacy local execution path must not create legacy .devseek-build outputs');

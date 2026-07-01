@@ -31,7 +31,10 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { cleanupLegacyCppBuildDirsForCommand } = req(bundlePath);
+const {
+  cleanupLegacyCppBuildDirsForCommand,
+  normalizeLegacyCppBuildCommandForRun,
+} = req(bundlePath);
 
 test('C++ build cleanup removes legacy dirs before model-driven CMake commands', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cpp-cleanup-'));
@@ -76,5 +79,52 @@ test('C++ build cleanup ignores non-build commands', () => {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }
 });
+
+test('C++ build normalization rewrites absolute legacy build paths to project build', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cpp-cleanup-'));
+  try {
+    const projectDir = path.join(workspaceRoot, 'code', 'shape_manager');
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, 'CMakeLists.txt'), 'project(shape_manager)\n');
+
+    const result = normalizeLegacyCppBuildCommandForRun({
+      workspaceRoot,
+      workdir: workspaceRoot,
+      command: `cmake -S '${projectDir}' -B '${projectDir}/.devseek-build' && cmake --build '${projectDir}/.devseek-build'`,
+    });
+
+    assert.equal(result.changed, true);
+    assert.doesNotMatch(result.command, /\.devseek-build/);
+    assert.match(result.command, new RegExp(`${escapeRegExp(projectDir)}/build`));
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('C++ build normalization rewrites relative legacy build args after cd project', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cpp-cleanup-'));
+  try {
+    const projectDir = path.join(workspaceRoot, 'code', 'shape_manager');
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, 'CMakeLists.txt'), 'project(shape_manager)\n');
+
+    const result = normalizeLegacyCppBuildCommandForRun({
+      workspaceRoot,
+      workdir: workspaceRoot,
+      command: 'cd code/shape_manager && cmake -S . -B .devseek-build && cmake --build .devseek-build',
+    });
+
+    assert.equal(result.changed, true);
+    assert.doesNotMatch(result.command, /\.devseek-build/);
+    assert.match(result.command, /-B build/);
+    assert.match(result.command, /--build build/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 console.log('\nC++ build cleanup service tests passed.\n');

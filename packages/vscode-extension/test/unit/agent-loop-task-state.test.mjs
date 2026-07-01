@@ -55,6 +55,8 @@ test('two-phase agent todos are delegated to an evidence ledger', () => {
   assert.match(agentLoop, /executeFakeToolsForLoop\(tools,\s*taskToolCallbacks,/, 'editor tool loops must use the todo-suppressed callback boundary');
   assert.match(agentLoop, /buildTaskSettlementFailureStatus/, 'ledger settlement failures must override optimistic task status');
   assert.match(agentLoop, /applyGeneratedArtifactPathWithPrompt/, 'editor fallback must apply only the current task target file');
+  assert.match(agentLoop, /async function executeTask\([\s\S]*?changedPaths: string\[\]/, 'executeTask must receive changedPaths explicitly instead of closing over an undefined outer variable');
+  assert.match(agentLoop, /executeTask\([\s\S]*?tasks,\s*changedPaths,\s*userPrompt/, 'runAgentLoop must pass changedPaths into task execution');
   assert.match(agentLoop, /buildAgenticHistoryText/, 'agent loop must own restored history evidence text');
   assert.match(agentLoop, /classifyTaskTerminalManualReview/, 'analyze run_terminal failures must support manual visual review before hard-failing');
   assert.doesNotMatch(

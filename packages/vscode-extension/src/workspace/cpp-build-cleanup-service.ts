@@ -1,6 +1,11 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
-import { getLegacyCppBuildDirs } from '../cpp-build-layout';
+import {
+  CPP_BUILD_DIR_NAME,
+  LEGACY_CPP_BUILD_DIR_NAMES,
+  getCmakeBuildDir,
+  getLegacyCppBuildDirs,
+} from '../cpp-build-layout';
 
 export interface CppBuildCleanupInput {
   command: string;
@@ -12,7 +17,24 @@ export interface CppBuildCleanupResult {
   cleaned: string[];
 }
 
+export interface CppBuildCommandNormalizationResult {
+  command: string;
+  changed: boolean;
+}
+
 const CPP_BUILD_COMMAND_RE = /\b(?:cmake|ctest|make|ninja|g\+\+|clang\+\+|gcc|cc|c\+\+)\b/i;
+
+export function normalizeLegacyCppBuildCommandForRun(input: CppBuildCleanupInput): CppBuildCommandNormalizationResult {
+  const originalCommand = input.command || '';
+  if (!CPP_BUILD_COMMAND_RE.test(originalCommand)) {
+    return { command: originalCommand, changed: false };
+  }
+
+  const workspaceRoot = resolveWorkspaceRoot(input.workspaceRoot);
+  const projectDirs = collectCandidateProjectDirs(input, workspaceRoot);
+  const command = normalizeLegacyBuildPathReferences(originalCommand, projectDirs);
+  return { command, changed: command !== originalCommand };
+}
 
 export function cleanupLegacyCppBuildDirsForCommand(input: CppBuildCleanupInput): CppBuildCleanupResult {
   if (!CPP_BUILD_COMMAND_RE.test(input.command || '')) return { cleaned: [] };
@@ -34,6 +56,22 @@ export function cleanupLegacyCppBuildDirsForCommand(input: CppBuildCleanupInput)
     }
   }
   return { cleaned };
+}
+
+function normalizeLegacyBuildPathReferences(command: string, projectDirs: string[]): string {
+  let normalized = command;
+  for (const projectDir of projectDirs) {
+    const canonicalBuildDir = getCmakeBuildDir(projectDir);
+    for (const legacyDir of getLegacyCppBuildDirs(projectDir)) {
+      normalized = replaceAll(normalized, legacyDir, canonicalBuildDir);
+      normalized = replaceAll(normalized, legacyDir.replace(/\\/g, '/'), canonicalBuildDir.replace(/\\/g, '/'));
+    }
+  }
+
+  const legacyNamesPattern = LEGACY_CPP_BUILD_DIR_NAMES.map(escapeRegExp).join('|');
+  const buildArgPattern = new RegExp(`((?:^|\\s)(?:-B|--build)\\s+)(['"]?)(${legacyNamesPattern})(\\2)(?=\\s|$|[;&|])`, 'g');
+  normalized = normalized.replace(buildArgPattern, `$1$2${CPP_BUILD_DIR_NAME}$4`);
+  return normalized;
 }
 
 function collectCandidateProjectDirs(input: CppBuildCleanupInput, workspaceRoot: string): string[] {
@@ -96,6 +134,14 @@ function stripShellQuotes(value: string): string {
     return trimmed.slice(1, -1);
   }
   return trimmed;
+}
+
+function replaceAll(value: string, search: string, replacement: string): string {
+  return search ? value.split(search).join(replacement) : value;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function isLikelyCppProjectDir(dir: string): boolean {
