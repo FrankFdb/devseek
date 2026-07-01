@@ -128,10 +128,17 @@ export function createAgentTaskTodoLedger(
       }
 
       const writtenFiles = coalesceWrittenFileEvidence(evidence.writtenFiles ?? [], evidence.workspaceRoot);
+      const hasFinalSuccess = hasSuccessfulFinalTerminalEvidence(evidence.terminalEvidence);
       let clearedFailures = 0;
       for (let index = 0; index < tasks.length; index += 1) {
         if (statuses[index] !== 'failed' || !isRecoverableFailureKind(failureKinds[index])) continue;
-        if (!hasFinalTaskCompletionEvidence(tasks[index], evidence, writtenFiles)) continue;
+        if (
+          isConditionalFailureRecoveryTask(tasks[index])
+            ? !hasFinalSuccess
+            : !hasFinalTaskCompletionEvidence(tasks[index], evidence, writtenFiles)
+        ) {
+          continue;
+        }
 
         statuses[index] = 'completed';
         failureKinds[index] = undefined;
@@ -349,6 +356,14 @@ function hasSuccessfulFinalTerminalEvidence(evidence: TerminalEvidence[] | undef
   return Boolean(evidence?.some(item =>
     item.ok && (item.kind === 'compile' || item.kind === 'run' || item.kind === 'test' || item.kind === 'compile-run'),
   ));
+}
+
+function isConditionalFailureRecoveryTask(task: AgentTask): boolean {
+  const text = `${task.desc || ''} ${task.file || ''} ${task.visibleTarget || ''}`.toLowerCase();
+  const hasCondition = /(?:若|如果|如若|假如|倘若|当|一旦|if|when|whenever|unless)/i.test(text);
+  const hasFailureSignal = /(?:失败|报错|错误|异常|未通过|不通过|出错|故障|fail(?:ed|ure|s)?|error|broken|invalid|not\s+pass)/i.test(text);
+  const hasRecoveryAction = /(?:修复|修正|更正|补全|处理|解决|恢复|fix|repair|recover|correct|resolve|patch)/i.test(text);
+  return hasCondition && hasFailureSignal && hasRecoveryAction;
 }
 
 function hasWrittenEvidenceForTask(

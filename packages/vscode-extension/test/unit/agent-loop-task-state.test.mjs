@@ -186,6 +186,59 @@ test('task todo ledger: final verified write evidence clears transient missing-e
   assert.equal(reconciled.todos[0].status, 'completed');
 });
 
+test('task todo ledger: final successful validation clears inactive conditional repair tasks', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'main.cpp', 'modify', '若编译失败则修复 main.cpp 中的语法错误或不完整代码'),
+    task('2', 'CMakeLists.txt', 'modify', 'If the build fails, fix missing source entries in CMakeLists.txt'),
+  ]);
+
+  ledger.startTask(0);
+  const first = ledger.settleTask(0, { action: 'modify', taskComplete: true });
+  ledger.startTask(1);
+  const second = ledger.settleTask(1, { action: 'modify', taskComplete: true });
+
+  assert.equal(first.failed, true);
+  assert.equal(second.failed, true);
+
+  const reconciled = ledger.reconcileFinalEvidence({
+    validationFailed: false,
+    terminalEvidence: [{
+      command: 'cmake -S /workspace/code/shape_manager -B /workspace/code/shape_manager/build && cmake --build /workspace/code/shape_manager/build && /workspace/code/shape_manager/build/bin/shape_manager',
+      kind: 'compile-run',
+      ok: true,
+      exitCode: 0,
+    }],
+  });
+
+  assert.equal(reconciled.clearedFailures, 2);
+  assert.equal(reconciled.todos[0].status, 'completed');
+  assert.equal(reconciled.todos[1].status, 'completed');
+});
+
+test('task todo ledger: conditional repair tasks stay failed when final validation fails', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'main.cpp', 'modify', '若编译失败则修复 main.cpp 中的语法错误或不完整代码'),
+  ]);
+
+  ledger.startTask(0);
+  const failed = ledger.settleTask(0, { action: 'modify', taskComplete: true });
+  assert.equal(failed.failed, true);
+
+  const reconciled = ledger.reconcileFinalEvidence({
+    validationFailed: true,
+    terminalEvidence: [{
+      command: 'cmake --build /workspace/code/shape_manager/build',
+      kind: 'compile',
+      ok: false,
+      exitCode: 2,
+      detail: 'compile failed',
+    }],
+  });
+
+  assert.equal(reconciled.clearedFailures, 0);
+  assert.equal(reconciled.todos[0].status, 'failed');
+});
+
 test('task todo ledger: final reconciliation does not clear hard terminal failures', () => {
   const ledger = createAgentTaskTodoLedger([
     task('1', 'shape_manager', 'analyze', '使用 run_terminal 执行 cmake 编译并运行验证效果'),
