@@ -3,12 +3,18 @@ import type { AgentStatusEvent } from './events';
 import {
   findBlockingTerminalFailureEvidence,
   getMissingCompletionEvidence,
+  requiresCodeArtifactForEvidence,
+  requiresCommandEvidence,
+  requiresFileCheckEvidence,
+  requiresFileChangeEvidence,
+  requiresReadEvidence,
   type TerminalEvidence,
 } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
 import { buildTaskTerminalFailureDetail } from './task-execution-result';
 
 type TodoStatus = TodoItem['status'];
+type LinearTodoInput = Pick<TodoItem, 'title'> & Partial<Pick<TodoItem, 'status' | '__agentState'>>;
 
 interface TaskEvidence {
   action: AgentTaskAction;
@@ -152,6 +158,97 @@ export function settleValidationFailureTodos(todos: TodoItem[]): TodoItem[] {
   return updated.map((item, index) => (
     index === lastCompletedIndex ? { ...item, status: 'failed' as const } : item
   ));
+}
+
+export function createLinearAgentTodos(items: LinearTodoInput[]): TodoItem[] {
+  return items.map((item, index) => ({
+    id: index + 1,
+    title: item.title,
+    status: item.status ?? (index === 0 ? 'in-progress' : 'not-started'),
+    ...(item.__agentState ? { __agentState: true } : {}),
+  }));
+}
+
+export function completeAgentTodos(todos: TodoItem[]): TodoItem[] {
+  return todos.map(item => ({ ...item, status: 'completed' as const, __agentState: true }));
+}
+
+export function advanceLinearAgentTodo(
+  todos: TodoItem[],
+  completedIndex: number,
+  nextIndex?: number,
+): TodoItem[] {
+  return todos.map((item, index) => {
+    if (index === completedIndex) return { ...item, status: 'completed' as const };
+    if (nextIndex !== undefined && index === nextIndex && item.status !== 'completed' && item.status !== 'failed') {
+      return { ...item, status: 'in-progress' as const };
+    }
+    return item;
+  });
+}
+
+export function failLinearAgentTodo(todos: TodoItem[], failedIndex: number): TodoItem[] {
+  return todos.map((todo, todoIndex) => (
+    todoIndex === failedIndex
+      ? { ...todo, status: 'failed' as const }
+      : todo.status === 'in-progress'
+        ? { ...todo, status: 'not-started' as const }
+        : todo
+  ));
+}
+
+export function settleMissingEvidenceTodos(todos: TodoItem[], missing: string[]): TodoItem[] {
+  if (!todos.length || !missing.length) return todos;
+  const needsCode = missing.some(m => m.includes('代码') || m.includes('程序'));
+  const needsCommand = missing.some(m => m.includes('编译') || m.includes('运行') || m.includes('测试') || m.includes('成功'));
+  const needsRead = missing.some(m => m.includes('读取') || m.includes('检查'));
+  let firstMissing = true;
+  return todos.map(item => {
+    const title = item.title.toLowerCase();
+    const matchesCode = needsCode && /(?:代码|源码|程序|脚本|实现|动画|开发)/i.test(title);
+    const matchesCommand = needsCommand && /(?:编译|运行|执行|测试|验证|调试|compile|build|test|run)/i.test(title);
+    const matchesRead = needsRead && /(?:读取|检查|查看|显示|确认|验证|校验|read|inspect|check|show|verify|validate)/i.test(title);
+    if (!matchesCode && !matchesCommand && !matchesRead) return item;
+    const status = firstMissing ? 'in-progress' as const : 'not-started' as const;
+    firstMissing = false;
+    return { ...item, status };
+  });
+}
+
+export function appendQualityGateTodo(todos: TodoItem[], status: Extract<TodoStatus, 'completed' | 'failed'>): TodoItem[] {
+  return [
+    ...todos,
+    {
+      id: nextTodoId(todos),
+      title: '运行自动验证 / QualityGate',
+      status,
+    },
+  ];
+}
+
+export function inferInitialAgenticTodos(userPrompt: string): TodoItem[] {
+  const items: LinearTodoInput[] = [];
+  const needsRead = requiresReadEvidence(userPrompt);
+  const needsFile = requiresFileChangeEvidence(userPrompt);
+  const needsCode = requiresCodeArtifactForEvidence(userPrompt);
+  const needsFileCheck = requiresFileCheckEvidence(userPrompt);
+  const needsCommand = !needsFileCheck && (requiresCommandEvidence(userPrompt) || /(?:程序|代码|动画|运行效果|效果)/i.test(userPrompt));
+  if (needsRead) {
+    items.push({ title: '检查/读取目标文件', status: 'in-progress' });
+  }
+  if (needsFile) {
+    items.push({ title: needsCode ? '创建/更新代码文件' : '创建/更新文件', status: 'in-progress' });
+  }
+  if (needsCommand) {
+    items.push({ title: '编译/运行并验证结果', status: needsCode ? 'not-started' : 'in-progress' });
+  }
+  if (needsFileCheck) {
+    items.push({ title: '验证文件创建成功（文件存在、内容正确、大小正常）', status: needsFile ? 'not-started' : 'in-progress' });
+  }
+  if (!items.length && /(?:查找|定位|分析|确认|排查|检查)/i.test(userPrompt)) {
+    items.push({ title: '分析并定位问题', status: 'in-progress' });
+  }
+  return createLinearAgentTodos(items);
 }
 
 function getTaskMissingCompletionEvidence(task: AgentTask, evidence: TaskEvidence): string[] {

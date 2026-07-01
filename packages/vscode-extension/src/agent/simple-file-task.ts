@@ -17,6 +17,12 @@ import {
 import type { TodoItem } from './evidence-recovery';
 import type { AgentLoopCallbacks, AgentLoopResult } from './loop-types';
 import type { CppValidationPolicy } from '../validation-planner';
+import {
+  advanceLinearAgentTodo,
+  appendQualityGateTodo,
+  createLinearAgentTodos,
+  failLinearAgentTodo,
+} from './task-todo-ledger';
 
 export interface SimpleFileWriteRequest {
   path: string;
@@ -75,7 +81,7 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
     if (!allowed) {
       return finishSimpleFileTask({
         ...input,
-        todos: markTodoFailed(todos, 0),
+        todos: failLinearAgentTodo(todos, 0),
         writtenFiles: [],
         terminalEvidence: [],
         failedReason: `写入被权限或保护规则阻止：${resolved.relPath}`,
@@ -97,26 +103,21 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
     action: writeResult.existed ? 'modify' : 'create',
   };
 
-  const afterWriteTodos = [
-    { ...todos[0], status: 'completed' as const },
-    { ...todos[1], status: 'in-progress' as const },
-  ];
+  const afterWriteTodos = advanceLinearAgentTodo(todos, 0, 1);
   await input.callbacks.onTodoUpdate?.(afterWriteTodos);
 
   const contentCheck = verifyWrittenContent(resolved.absPath, request.content);
   if (!contentCheck.ok) {
     return finishSimpleFileTask({
       ...input,
-      todos: markTodoFailed(afterWriteTodos, 1),
+      todos: failLinearAgentTodo(afterWriteTodos, 1),
       writtenFiles: [writtenFile],
       terminalEvidence: [],
       failedReason: contentCheck.reason,
     });
   }
 
-  const contentVerifiedTodos = afterWriteTodos.map((todo, index) => (
-    index === 1 ? { ...todo, status: 'completed' as const } : todo
-  ));
+  const contentVerifiedTodos = advanceLinearAgentTodo(afterWriteTodos, 1);
   await input.callbacks.onTodoUpdate?.(contentVerifiedTodos);
 
   const validation = await runAgentAutoValidationForWrites(
@@ -161,20 +162,10 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
 }
 
 function buildSimpleFileTodos(relPath: string): TodoItem[] {
-  return [
-    { id: 1, title: `创建 ${relPath} 文件`, status: 'in-progress' },
-    { id: 2, title: '验证文件创建成功（文件存在、内容正确、大小正常）', status: 'not-started' },
-  ];
-}
-
-function markTodoFailed(todos: TodoItem[], index: number): TodoItem[] {
-  return todos.map((todo, todoIndex) => (
-    todoIndex === index
-      ? { ...todo, status: 'failed' as const }
-      : todo.status === 'in-progress'
-        ? { ...todo, status: 'not-started' as const }
-        : todo
-  ));
+  return createLinearAgentTodos([
+    { title: `创建 ${relPath} 文件`, status: 'in-progress' },
+    { title: '验证文件创建成功（文件存在、内容正确、大小正常）', status: 'not-started' },
+  ]);
 }
 
 function buildFinalSimpleFileTodos(
@@ -185,17 +176,10 @@ function buildFinalSimpleFileTodos(
   if (evidence?.kind === 'other') {
     return qualityGateStatus === 'completed'
       ? contentVerifiedTodos
-      : markTodoFailed(contentVerifiedTodos, 1);
+      : failLinearAgentTodo(contentVerifiedTodos, 1);
   }
 
-  return [
-    ...contentVerifiedTodos,
-    {
-      id: Math.max(0, ...contentVerifiedTodos.map(todo => Number(todo.id) || 0)) + 1,
-      title: '运行自动验证 / QualityGate',
-      status: qualityGateStatus,
-    },
-  ];
+  return appendQualityGateTodo(contentVerifiedTodos, qualityGateStatus);
 }
 
 async function finishSimpleFileTask(input: SimpleFileTaskInput & {

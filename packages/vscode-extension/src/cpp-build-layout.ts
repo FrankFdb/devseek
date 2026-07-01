@@ -20,6 +20,11 @@ export function isCppBuildOutputDirName(name: string): boolean {
   return CPP_BUILD_OUTPUT_DIR_NAME_SET.has((name || '').toLowerCase());
 }
 
+export function isLegacyCppBuildOutputDirName(name: string): boolean {
+  const normalized = (name || '').toLowerCase();
+  return LEGACY_CPP_BUILD_DIR_NAMES.some(legacyName => legacyName.toLowerCase() === normalized);
+}
+
 export function isCppBuildArtifactDirName(name: string): boolean {
   return CPP_BUILD_ARTIFACT_DIR_NAME_SET.has((name || '').toLowerCase());
 }

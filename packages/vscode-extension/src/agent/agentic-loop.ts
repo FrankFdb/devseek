@@ -36,8 +36,6 @@ import {
 import { runAgentAutoValidationForWrites, type AgentAutoValidationResult } from './auto-validation';
 import {
   buildMissingEvidenceRecoveryInstruction,
-  inferInitialAgenticTodos,
-  markMissingEvidenceTodosIncomplete,
   type TodoItem,
 } from './evidence-recovery';
 import {
@@ -76,7 +74,10 @@ import {
 } from './tool-loop';
 import {
   buildTaskSettlementFailureStatus,
+  completeAgentTodos,
   createAgentTaskTodoLedger,
+  inferInitialAgenticTodos,
+  settleMissingEvidenceTodos,
   settleValidationFailureTodos,
 } from './task-todo-ledger';
 import { tryRunSimpleFileTask } from './simple-file-task';
@@ -787,7 +788,7 @@ export async function runAgenticLoop(
       if (callbacks.onTodoUpdate && currentTodos.length > 0) {
         currentTodos = blockingFailureAfterTools
           ? settleValidationFailureTodos(currentTodos)
-          : markMissingEvidenceTodosIncomplete(currentTodos, missingAfterTools);
+          : settleMissingEvidenceTodos(currentTodos, missingAfterTools);
         await callbacks.onTodoUpdate(currentTodos);
       }
       const retryMessage = blockingFailureAfterTools
@@ -874,7 +875,7 @@ export async function runAgenticLoop(
   } else if (!failedReason && finalMissingEvidence.length > 0) {
     failedReason = `实际执行证据不足：缺少${finalMissingEvidence.join('、')}。`;
     if (callbacks.onTodoUpdate && currentTodos.length > 0) {
-      currentTodos = markMissingEvidenceTodosIncomplete(currentTodos, finalMissingEvidence);
+      currentTodos = settleMissingEvidenceTodos(currentTodos, finalMissingEvidence);
       await callbacks.onTodoUpdate(currentTodos);
     }
   } else if (!failedReason && lastMissingEvidence.length > 0) {
@@ -883,7 +884,7 @@ export async function runAgenticLoop(
     failedReason = `完成摘要缺少文件事实证据：${finalSummaryFactFailures.join('、')}。`;
   }
   if (!failedReason && !callbacks.signal?.aborted && callbacks.onTodoUpdate && currentTodos.length > 0) {
-    currentTodos = currentTodos.map(item => ({ ...item, status: 'completed' as const, __agentState: true }));
+    currentTodos = completeAgentTodos(currentTodos);
     await callbacks.onTodoUpdate(currentTodos);
   }
 

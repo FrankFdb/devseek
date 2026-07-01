@@ -136,7 +136,10 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
     status: 'migration-in-progress',
     canonicalSymbols: [
       'createAgentTaskTodoLedger',
+      'inferInitialAgenticTodos',
+      'settleMissingEvidenceTodos',
       'settleValidationFailureTodos',
+      'completeAgentTodos',
       'AgentTaskTodoLedger',
     ],
     supportingModules: [
@@ -220,11 +223,12 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
     id: 'build-layout',
     phase: 6,
     ownerModule: 'src/cpp-build-layout.ts',
-    status: 'migration-planned',
+    status: 'migration-in-progress',
     canonicalSymbols: [
       'CPP_BUILD_DIR_NAME',
       'getCmakeBuildDir',
       'isCppBuildOutputDirName',
+      'isLegacyCppBuildOutputDirName',
       'isCppBuildArtifactDirName',
     ],
     supportingModules: [
@@ -233,6 +237,7 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
       'src/app/terminal-launch-classifier.ts',
       'src/tools/terminal.ts',
       'src/file-discovery.ts',
+      'src/workspace/list-dir-service.ts',
       'src/local-execution-repair.ts',
     ],
     contractTests: [

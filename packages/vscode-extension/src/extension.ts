@@ -88,6 +88,7 @@ import { TaskHistoryUiService } from './app/task-history-ui-service';
 import { registerExtensionCommands } from './ui/extension-command-registration';
 import { FileContextService } from './workspace/file-context-service';
 import { WorkspaceGrepSearchService } from './workspace/grep-search-service';
+import { listWorkspaceDirectoryForAi } from './workspace/list-dir-service';
 import {
   appendFileAwareFormatHint,
   appendStructuredGenerationHint,
@@ -696,25 +697,7 @@ async function runChat(
           onGrepSearch: async (pattern: string, path?: string, _isRegexp?: boolean, workDir?: string, options?: { includePattern?: string; fileTypes?: string }) => (
             grepWorkspace(agWsRoot, pattern, path, workDir, options)
           ),
-          onListDir: async (path: string) => {
-            let target: string;
-            const agWsRootFs = agWsRoot;
-            if (nodePath.isAbsolute(path)) {
-              target = path;
-              const FORBIDDEN = ['/etc/', '/proc/', '/sys/', '/dev/', '/boot/'];
-              if (FORBIDDEN.some(f => target.startsWith(f))) throw new Error(`禁止列出系统目录: ${target}`);
-            } else {
-              target = nodePath.join(agWsRootFs, path);
-            }
-            try {
-              const { readdirSync, statSync } = require('fs') as typeof import('fs');
-              const names = readdirSync(target) as string[];
-              return names.map((name: string) => {
-                try { return statSync(nodePath.join(target, name)).isDirectory() ? `[dir]  ${name}` : `[file] ${name}`; }
-                catch { return `[?]    ${name}`; }
-              }).join('\n') || '（空目录）';
-            } catch (e) { throw new Error(`list_dir 失败: ${(e as Error).message}`); }
-          },
+          onListDir: async (path: string) => listWorkspaceDirectoryForAi(agWsRoot, path),
           ...createAgentHostToolCallbacks({
             workspaceRoot: agWsRoot,
             webview,
@@ -980,33 +963,7 @@ async function runChat(
             grepWorkspace(wsRoot.fsPath, pattern, path, workDir, options)
           ),
           // list_dir tool — AI can explore directory structure (G9: supports absolute paths)
-          onListDir: async (path: string) => {
-            let target: string;
-            if (nodePath.isAbsolute(path)) {
-              // G9: Support absolute paths for log/data file exploration
-              target = path;
-              // Safety: block system directories
-              const FORBIDDEN = ['/etc/', '/proc/', '/sys/', '/dev/', '/boot/'];
-              if (FORBIDDEN.some(f => target.startsWith(f))) {
-                throw new Error(`禁止列出系统目录: ${target}`);
-              }
-            } else {
-              target = nodePath.join(wsRoot.fsPath, path);
-            }
-            try {
-              const { readdirSync, statSync } = require('fs') as typeof import('fs');
-              const names = readdirSync(target) as string[];
-              return names.map((name: string) => {
-                try {
-                  return statSync(nodePath.join(target, name)).isDirectory()
-                    ? `[dir]  ${name}`
-                    : `[file] ${name}`;
-                } catch { return `[?]    ${name}`; }
-              }).join('\n') || '（空目录）';
-            } catch (e) {
-              throw new Error(`list_dir 失败: ${(e as Error).message}`);
-            }
-          },
+          onListDir: async (path: string) => listWorkspaceDirectoryForAi(wsRoot.fsPath, path),
           ...createAgentHostToolCallbacks({
             workspaceRoot: wsRoot.fsPath,
             webview,

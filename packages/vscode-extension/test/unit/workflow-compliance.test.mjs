@@ -1283,11 +1283,14 @@ test('Architecture: C/C++ validation and execution share one stable project buil
   const execution = src('src/execution-planner.ts');
   const localExecution = src('src/local-execution.ts');
   const validation = src('src/validation-planner.ts');
+  const extension = src('src/extension.ts');
+  const listDirService = src('src/workspace/list-dir-service.ts');
 
   assertContains(layout, "export const CPP_BUILD_DIR_NAME = 'build'", 'C/C++ build root must be the project build directory');
   assertContains(layout, "export const DEVSEEK_BUILD_SUBDIR = 'devseek'", 'DevSeek auxiliary C++ artifacts must live below build/devseek');
   assertContains(layout, 'LEGACY_CPP_BUILD_DIR_NAMES', 'legacy C++ build directory aliases must be centralized');
   assertContains(layout, 'isCppBuildOutputDirName', 'legacy C++ build output aliases must be centralized');
+  assertContains(layout, 'isLegacyCppBuildOutputDirName', 'legacy C++ build output detection must be centralized');
   assertContains(layout, 'isCppBuildArtifactDirName', 'C++ build artifact aliases must be centralized');
   assertContains(layout, 'getCmakeBuildDir', 'CMake build directory helper must be centralized');
   assertContains(layout, 'getCppCompileOnlyDir', 'compile-only helper must be centralized');
@@ -1295,6 +1298,9 @@ test('Architecture: C/C++ validation and execution share one stable project buil
   assertContains(execution, "from './cpp-build-layout'", 'local execution planner must use shared C++ build layout');
   assertContains(localExecution, "from './cpp-build-layout'", 'legacy local execution path must use shared C++ build layout');
   assertContains(validation, "from './cpp-build-layout'", 'validation planner must use shared C++ build layout');
+  assertContains(extension, "from './workspace/list-dir-service'", 'extension list_dir callbacks must use shared directory listing service');
+  assertContains(listDirService, "from '../cpp-build-layout'", 'list_dir service must use shared C++ build layout aliases');
+  assert.doesNotMatch(extension, /onListDir:[\s\S]{0,500}readdirSync/, 'extension must not hand-roll list_dir filesystem traversal');
   assert.doesNotMatch(execution, /\.devseek-build/, 'execution planner must not create legacy .devseek-build outputs');
   assert.doesNotMatch(localExecution, /\.devseek-build/, 'legacy local execution path must not create legacy .devseek-build outputs');
   assert.doesNotMatch(validation, /\.devseek-build/, 'validation planner must not create legacy .devseek-build outputs');
