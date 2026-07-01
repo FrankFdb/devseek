@@ -58,6 +58,16 @@ export interface ClassifiedExecutionOutcome {
   reviewReason?: string;
 }
 
+export interface FormattedTerminalExecutionEvidence {
+  ok: boolean;
+  ran: boolean;
+  exitCode: number | null;
+  detail?: string;
+  reviewRequired?: boolean;
+  reviewReason?: string;
+  notExecuted: boolean;
+}
+
 export class ExecutionOutcomeClassifier {
   classifyExecResult(input: ClassifyExecResultInput): ClassifiedExecutionOutcome {
     const output = `${input.stdout || ''}\n${input.stderr || ''}`.trim();
@@ -143,6 +153,37 @@ export function isIndeterminateExecutionEvidence(exitCode: number | null | undef
   return exitCode === null || exitCode === -1 || INDETERMINATE_RUN_RE.test(output || '');
 }
 
+export function parseFormattedTerminalExitCode(output: string): number | null {
+  const match = /(?:\[退出码\]|\[exitCode=)\s*(-?\d+)/i.exec(output || '');
+  return match ? Number(match[1]) : null;
+}
+
+export function classifyFormattedTerminalExecutionEvidence(output: string): FormattedTerminalExecutionEvidence {
+  const formattedOutput = output || '';
+  const exitCode = parseFormattedTerminalExitCode(formattedOutput);
+  const reviewReason = parseManualReviewTerminalDetail(formattedOutput);
+  const notExecuted = isTerminalCommandNotExecuted(formattedOutput);
+  const ok = Boolean(reviewReason) || (!notExecuted && exitCode === 0);
+  const detail = classifyFormattedTerminalDetail({
+    exitCode,
+    formattedOutput,
+    notExecuted,
+    reviewReason,
+  });
+
+  return {
+    ok,
+    ran: !notExecuted && exitCode !== null,
+    exitCode,
+    notExecuted,
+    ...(detail ? { detail } : {}),
+    ...(reviewReason ? {
+      reviewRequired: true,
+      reviewReason,
+    } : {}),
+  };
+}
+
 export function formatManualReviewTerminalDetail(detail: string): string {
   return `${MANUAL_REVIEW_REQUIRED_MARKER}\n${detail || INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL}`;
 }
@@ -155,8 +196,25 @@ export function parseManualReviewTerminalDetail(output: string): string | undefi
   return detail || INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL;
 }
 
+function classifyFormattedTerminalDetail(input: {
+  exitCode: number | null;
+  formattedOutput: string;
+  notExecuted: boolean;
+  reviewReason?: string;
+}): string | undefined {
+  if (input.notExecuted) return '命令没有实际执行';
+  if (input.reviewReason) return input.reviewReason;
+  if (input.exitCode === null) return '终端结果缺少退出码';
+  if (isIndeterminateExecutionEvidence(input.exitCode, input.formattedOutput)) return '终端命令非正常结束或超时';
+  return undefined;
+}
+
 function appendDevSeekDetail(output: string, detail: string): string {
   return [output, `[DevSeek] ${detail}`].filter(Boolean).join('\n');
+}
+
+function isTerminalCommandNotExecuted(output: string): boolean {
+  return /(?:命令未执行|终端工具被禁止|工具被禁止|用户拒绝|未确认|not executed|declined|denied|terminal tool disabled)/i.test(output || '');
 }
 
 function escapeRegExp(value: string): string {

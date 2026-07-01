@@ -88,6 +88,7 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
       'isManualReviewTerminalEvidence',
       'MANUAL_REVIEW_REQUIRED_MARKER',
       'parseManualReviewTerminalDetail',
+      'classifyFormattedTerminalExecutionEvidence',
       'makeExecutionTimeoutError',
     ],
     supportingModules: [

@@ -26,8 +26,7 @@ import {
   type WrittenFileEvidence,
 } from './completion-evidence';
 import {
-  isIndeterminateExecutionEvidence,
-  parseManualReviewTerminalDetail,
+  classifyFormattedTerminalExecutionEvidence,
 } from '../execution-outcome-classifier';
 import type { TodoItem } from './evidence-recovery';
 import type { AgentLoopCallbacks } from './loop-types';
@@ -89,11 +88,6 @@ function optionalLineNumber(input: Record<string, unknown>, ...keys: string[]): 
     if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number.parseInt(value.trim(), 10);
   }
   return undefined;
-}
-
-function parseFormattedTerminalExitCode(output: string): number | null {
-  const match = /(?:\[退出码\]|\[exitCode=)\s*(-?\d+)/i.exec(output || '');
-  return match ? Number(match[1]) : null;
 }
 
 function shellTokenizeSimple(command: string): string[] {
@@ -165,37 +159,25 @@ function isExecutableFile(filePath: string): boolean {
 }
 
 export function analyzeTerminalEvidence(command: string, formattedOutput: string, workdir: string): { ran: boolean; evidence: TerminalEvidence } {
-  const exitCode = parseFormattedTerminalExitCode(formattedOutput);
+  const executionEvidence = classifyFormattedTerminalExecutionEvidence(formattedOutput);
   const kind = classifyTerminalEvidenceCommand(command);
-  const manualReviewDetail = parseManualReviewTerminalDetail(formattedOutput);
-  const notExecuted = /(?:命令未执行|终端工具被禁止|工具被禁止|用户拒绝|未确认|not executed|declined|denied|terminal tool disabled)/i.test(formattedOutput || '');
-  let ok = Boolean(manualReviewDetail) || (!notExecuted && exitCode === 0);
-  let detail = notExecuted
-    ? '命令没有实际执行'
-    : manualReviewDetail
-      ? manualReviewDetail
-    : exitCode === null
-      ? '终端结果缺少退出码'
-      : exitCode === -1
-        ? '终端命令非正常结束或超时'
-      : isIndeterminateExecutionEvidence(exitCode, formattedOutput || '')
-        ? '终端命令超时或被终止'
-        : undefined;
+  let ok = executionEvidence.ok;
+  let detail = executionEvidence.detail;
   const outputPath = resolveCompilerOutputPath(command, workdir);
   if (ok && outputPath && !isExecutableFile(outputPath)) {
     ok = false;
     detail = `编译命令退出码为 0，但未找到可执行产物：${outputPath}`;
   }
   return {
-    ran: !notExecuted && exitCode !== null,
+    ran: executionEvidence.ran,
     evidence: {
       command,
       kind,
       ok,
-      exitCode,
+      exitCode: executionEvidence.exitCode,
       ...(outputPath ? { outputPath } : {}),
       ...(detail ? { detail } : {}),
-      ...(manualReviewDetail ? { reviewRequired: true } : {}),
+      ...(executionEvidence.reviewRequired ? { reviewRequired: true } : {}),
     },
   };
 }

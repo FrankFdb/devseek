@@ -298,6 +298,7 @@ test('§8.3 File edits: timeout evidence follows validation vs interactive-run s
   assertContains(classifier, 'buildInteractiveTimeoutFailureDetail', 'interactive timeout detail must be centralized');
   assertContains(classifier, 'ExecutionOutcomeClassifier', 'execution outcome classifier must own timeout/manual-review semantics');
   assertContains(classifier, 'MANUAL_REVIEW_REQUIRED_MARKER', 'terminal manual-review marker must be centralized');
+  assertContains(classifier, 'classifyFormattedTerminalExecutionEvidence', 'formatted terminal evidence parsing must be centralized');
   assertContains(classifier, 'reviewRequired: true', 'interactive local execution timeout can require human review instead of repair');
   assertContains(classifier, '自动验证按失败处理', 'workspace validation timeout must remain failed evidence');
   assertContains(classifier, '自动验证不能标记通过', 'interactive local execution timeout must not become a false pass');
@@ -312,8 +313,8 @@ test('§8.3 File edits: timeout evidence follows validation vs interactive-run s
   assertContains(validationService, 'executionOutcomeClassifier.classifyExecResult', 'workspace validation must delegate timeout classification');
   assertContains(manualReview, 'hasHardExecutionFailureEvidence', 'manual review validation must share hard-failure classification');
   assertContains(launchClassifier, 'sourceTextLooksVisualOrInteractive', 'terminal launch mode must share visual-source classification');
-  assertContains(toolLoop, 'parseManualReviewTerminalDetail', 'tool loop must parse terminal manual-review markers through classifier owner');
-  assertContains(toolLoop, 'isIndeterminateExecutionEvidence', 'tool loop must share indeterminate execution detection');
+  assertContains(toolLoop, 'classifyFormattedTerminalExecutionEvidence', 'tool loop must use shared formatted terminal execution evidence parser');
+  assertDoesNotContain(toolLoop, 'isIndeterminateExecutionEvidence', 'tool loop must not own indeterminate execution branching');
   assertDoesNotContain(toolLoop, '[MANUAL_REVIEW_REQUIRED]', 'tool loop must not own a separate manual-review marker');
   assertDoesNotContain(toolLoop, '[超时\\\\s+\\\\d+ms]', 'tool loop must not own a separate timeout regex');
 });
@@ -778,7 +779,8 @@ test('Agentic loop: terminal completion evidence requires successful validation 
   const toolLoop = src('src/agent/tool-loop.ts');
   const evidence = src('src/agent/completion-evidence.ts');
   assertContains(toolLoop, 'TerminalEvidence', 'terminal evidence model must exist');
-  assertContains(toolLoop, 'parseFormattedTerminalExitCode', 'terminal evidence must parse formatted exit codes');
+  assertContains(toolLoop, 'classifyFormattedTerminalExecutionEvidence', 'terminal evidence must use shared formatted execution evidence parser');
+  assertDoesNotContain(toolLoop, 'function parseFormattedTerminalExitCode', 'tool loop must not own formatted terminal exit-code parsing');
   assertContains(toolLoop, 'resolveCompilerOutputPath', 'compiler -o artifact path must be detected');
   assertContains(toolLoop, 'isExecutableFile', 'compiler output must be checked on disk');
   assertContains(toolLoop, '验证命令未通过，不能把编译/运行/测试标记为完成', 'failed validation must be fed back to the agent');
@@ -1174,7 +1176,8 @@ test('Architecture: agent loop stays orchestration-only for tool execution detai
   assertContains(agentLoop, 'executeFakeToolsForLoop', 'agent loop must call the tool-loop service');
   assertContains(toolLoop, 'export async function executeFakeToolsForLoop', 'tool loop must own fake-tool dispatch');
   assertContains(toolLoop, 'export async function applyMarkdownFileArtifactsForLoop', 'tool loop must own markdown artifact application');
-  assertContains(toolLoop, 'export function analyzeTerminalEvidence', 'tool loop must own terminal evidence parsing');
+  assertContains(toolLoop, 'export function analyzeTerminalEvidence', 'tool loop must expose terminal evidence adapter');
+  assertContains(src('src/execution-outcome-classifier.ts'), 'classifyFormattedTerminalExecutionEvidence', 'execution outcome owner must parse formatted terminal execution evidence');
   assertContains(summary, 'export function cleanAgentFinalSummaryForUser', 'summary sanitizer must live in agentic summary module');
   assert.doesNotMatch(agentLoop, /function\s+(executeFakeToolsForLoop|applyMarkdownFileArtifactsForLoop|analyzeTerminalEvidence|cleanAgentFinalSummaryForUser)\b/, 'agent loop must not define extracted domain services');
 });

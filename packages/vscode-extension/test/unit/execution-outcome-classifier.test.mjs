@@ -28,11 +28,13 @@ execSync(
 const req = createRequire(import.meta.url);
 const {
   buildValidationTimeoutFailureDetail,
+  classifyFormattedTerminalExecutionEvidence,
   executionOutcomeClassifier,
   formatManualReviewTerminalDetail,
   hasHardExecutionFailureEvidence,
   isIndeterminateExecutionEvidence,
   makeExecutionTimeoutError,
+  parseFormattedTerminalExitCode,
   parseManualReviewTerminalDetail,
   isVisualOrInteractiveContext,
 } = req(bundlePath);
@@ -110,4 +112,21 @@ test('ExecutionOutcomeClassifier: terminal manual-review marker and timeout erro
   const formatted = formatManualReviewTerminalDetail('请确认窗口效果');
   assert.match(formatted, /\[MANUAL_REVIEW_REQUIRED\]/);
   assert.equal(parseManualReviewTerminalDetail(formatted), '请确认窗口效果');
+});
+
+test('ExecutionOutcomeClassifier: formatted terminal evidence is centralized', () => {
+  assert.equal(parseFormattedTerminalExitCode('[退出码] -1'), -1);
+
+  const review = classifyFormattedTerminalExecutionEvidence(
+    `[终端命令] ./shape_manager\n[退出码] -1\n${formatManualReviewTerminalDetail('请确认窗口效果')}`,
+  );
+  assert.equal(review.ok, true);
+  assert.equal(review.ran, true);
+  assert.equal(review.reviewRequired, true);
+  assert.equal(review.reviewReason, '请确认窗口效果');
+
+  const notExecuted = classifyFormattedTerminalExecutionEvidence('（命令未执行：用户拒绝）');
+  assert.equal(notExecuted.ok, false);
+  assert.equal(notExecuted.ran, false);
+  assert.equal(notExecuted.detail, '命令没有实际执行');
 });
