@@ -26,13 +26,21 @@ const CPP_BUILD_COMMAND_RE = /\b(?:cmake|ctest|make|ninja|g\+\+|clang\+\+|gcc|cc
 
 export function normalizeLegacyCppBuildCommandForRun(input: CppBuildCleanupInput): CppBuildCommandNormalizationResult {
   const originalCommand = input.command || '';
-  if (!CPP_BUILD_COMMAND_RE.test(originalCommand)) {
-    return { command: originalCommand, changed: false };
+  const workspaceRoot = resolveWorkspaceRoot(input.workspaceRoot);
+  const commandWithCanonicalCwd = normalizeRedundantLeadingCd(originalCommand, input, workspaceRoot);
+
+  if (!CPP_BUILD_COMMAND_RE.test(commandWithCanonicalCwd)) {
+    return {
+      command: commandWithCanonicalCwd,
+      changed: commandWithCanonicalCwd !== originalCommand,
+    };
   }
 
-  const workspaceRoot = resolveWorkspaceRoot(input.workspaceRoot);
-  const projectDirs = collectCandidateProjectDirs(input, workspaceRoot);
-  const command = normalizeLegacyBuildPathReferences(originalCommand, projectDirs);
+  const projectDirs = collectCandidateProjectDirs(
+    { ...input, command: commandWithCanonicalCwd },
+    workspaceRoot,
+  );
+  const command = normalizeLegacyBuildPathReferences(commandWithCanonicalCwd, projectDirs);
   return { command, changed: command !== originalCommand };
 }
 
@@ -72,6 +80,25 @@ function normalizeLegacyBuildPathReferences(command: string, projectDirs: string
   const buildArgPattern = new RegExp(`((?:^|\\s)(?:-B|--build)\\s+)(['"]?)(${legacyNamesPattern})(\\2)(?=\\s|$|[;&|])`, 'g');
   normalized = normalized.replace(buildArgPattern, `$1$2${CPP_BUILD_DIR_NAME}$4`);
   return normalized;
+}
+
+function normalizeRedundantLeadingCd(
+  command: string,
+  input: CppBuildCleanupInput,
+  workspaceRoot: string,
+): string {
+  const baseWorkdir = resolvePath(input.workdir || workspaceRoot, workspaceRoot);
+  return command.replace(
+    /^(\s*)cd\s+((?:"[^"]+"|'[^']+'|[^;&|]+))\s*(?:&&|;)\s*/,
+    (match, leadingWhitespace: string, rawCdDir: string) => {
+      const cdFromWorkdir = resolvePath(rawCdDir, baseWorkdir);
+      const cdFromWorkspace = resolvePath(rawCdDir, workspaceRoot);
+      if (!pathsEqual(baseWorkdir, cdFromWorkdir) && !pathsEqual(baseWorkdir, cdFromWorkspace)) {
+        return match;
+      }
+      return leadingWhitespace;
+    },
+  );
 }
 
 function collectCandidateProjectDirs(input: CppBuildCleanupInput, workspaceRoot: string): string[] {
@@ -161,4 +188,8 @@ function isPathInside(parent: string, child: string): boolean {
 function isPathInsideOrEqual(parent: string, child: string): boolean {
   const relative = nodePath.relative(nodePath.resolve(parent), nodePath.resolve(child));
   return !relative || (!relative.startsWith('..') && !nodePath.isAbsolute(relative));
+}
+
+function pathsEqual(left: string, right: string): boolean {
+  return nodePath.resolve(left) === nodePath.resolve(right);
 }

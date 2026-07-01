@@ -123,6 +123,66 @@ test('C++ build normalization rewrites relative legacy build args after cd proje
   }
 });
 
+test('Terminal normalization removes redundant project cd when cwd is already the project dir', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cpp-cleanup-'));
+  try {
+    const projectDir = path.join(workspaceRoot, 'code', 'shape_manager');
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, 'CMakeLists.txt'), 'project(shape_manager)\n');
+
+    const result = normalizeLegacyCppBuildCommandForRun({
+      workspaceRoot,
+      workdir: projectDir,
+      command: 'cd code/shape_manager && cmake -S . -B build && cmake --build build',
+    });
+
+    assert.equal(result.changed, true);
+    assert.equal(result.command, 'cmake -S . -B build && cmake --build build');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('Terminal normalization keeps project cd when cwd is the workspace root', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cpp-cleanup-'));
+  try {
+    const projectDir = path.join(workspaceRoot, 'code', 'shape_manager');
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, 'CMakeLists.txt'), 'project(shape_manager)\n');
+
+    const result = normalizeLegacyCppBuildCommandForRun({
+      workspaceRoot,
+      workdir: workspaceRoot,
+      command: 'cd code/shape_manager && cmake -S . -B build && cmake --build build',
+    });
+
+    assert.equal(result.changed, false);
+    assert.equal(result.command, 'cd code/shape_manager && cmake -S . -B build && cmake --build build');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('Terminal normalization removes redundant project cd for file probes too', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cpp-cleanup-'));
+  try {
+    const projectDir = path.join(workspaceRoot, 'code', 'shape_manager');
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, 'CMakeLists.txt'), 'project(shape_manager)\n');
+
+    const result = normalizeLegacyCppBuildCommandForRun({
+      workspaceRoot,
+      workdir: projectDir,
+      command: 'cd code/shape_manager && test -f CMakeLists.txt && echo ok',
+    });
+
+    assert.equal(result.changed, true);
+    assert.equal(result.command, 'test -f CMakeLists.txt && echo ok');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
