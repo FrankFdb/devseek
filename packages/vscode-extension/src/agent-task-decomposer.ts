@@ -16,6 +16,7 @@ import * as vscode from 'vscode';
 import { chat } from './bridge-client';
 import { getProjectRulesSync, wrapRulesAsContext, getProjectMemorySync, wrapMemoryAsContext } from './project-rules';
 import { detectWorkspacePathScope } from './workspace/path-resolver';
+import { resolveLocalExecutionProjectDirFromCandidate } from './workspace/local-execution-target';
 import { isCodeArtifactPath, requiresCodeArtifactForEvidence } from './agent/completion-evidence';
 import { buildEngineeringGuidelinesPrompt } from './agent/engineering-guidelines';
 
@@ -383,8 +384,9 @@ function buildDecomposeSystemPrompt(
     '   每个附件有 modify/create 任务需求时，直接规划修改任务；需要整体理解时，合并为 1 个 explore 任务。',
     '2. 需要理解代码后再修改：生成 1 个整体性 explore 任务 + 若干针对性 modify/create 任务（只列真正需要改的文件）。',
     '3. 纯信息需求（Q2 答案为"满意"，无代码变更期望）：生成 1 个总体 analyze/explain 任务，不逐文件拆分。',
-    '4. 需要执行命令（编译/运行/测试）：action=analyze，desc 中明确写"使用 run_terminal 工具执行 <具体命令>"。',
-    '   有代码创建 + 执行两个意图时：先生成 create 任务，再生成执行用的 analyze 任务。',
+    '4. 需要执行命令（编译/运行/测试）：action=analyze，file 必须指向项目目录或源文件，不要指向 build/bin 等构建产物。',
+    '   desc 只描述验证意图（如"编译并运行项目确认效果"），不要拼 run_terminal 命令、清理命令或构建目录；执行器会选择标准命令。',
+    '   有代码创建 + 执行两个意图时：先生成 create 任务，再生成执行验证用的 analyze 任务。',
     '5. 需要先探索再修改（真正修改的文件未知）：先 action=explore 任务，再依赖其结果的 modify/create 任务。',
     rule4,
     '7. desc 要具体：写出哪个函数/类/逻辑需要改，而非泛称"修改文件"。',
@@ -415,6 +417,21 @@ function isWriteTask(task: AgentTask): boolean {
 function isValidationTask(task: AgentTask): boolean {
   const text = `${task.file} ${task.desc}`.toLowerCase();
   return /(?:\b(?:cmake|make|npm|pnpm|yarn|pytest|ctest|cargo|go test|mvn|gradle)\b|编译|构建|测试|验证|运行)/.test(text);
+}
+
+function normalizeValidationExecutionTargets(tasks: AgentTask[]): AgentTask[] {
+  const workspaceRoots = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+  if (workspaceRoots.length === 0) return tasks;
+  return tasks.map((task) => {
+    if (!isValidationTask(task)) return task;
+    const projectDir = resolveLocalExecutionProjectDirFromCandidate(task.absPath ?? task.file, workspaceRoots);
+    if (!projectDir) return task;
+    return {
+      ...task,
+      file: workspaceRelativePathForAbs(projectDir),
+      absPath: projectDir,
+    };
+  });
 }
 
 function normalizeExplicitEditTasks(tasks: AgentTask[], userPrompt?: string): AgentTask[] {
@@ -705,6 +722,7 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
 
   let finalTasks = [...mergedMap.values()];
   finalTasks = normalizeExplicitEditTasks(finalTasks, userPrompt);
+  finalTasks = normalizeValidationExecutionTargets(finalTasks);
 
   // ── Confine tasks to promptDir ───────────────────────────────────────────
   // When promptDir is EXPLICIT (user-specified): redirect ALL tasks outside promptDir.

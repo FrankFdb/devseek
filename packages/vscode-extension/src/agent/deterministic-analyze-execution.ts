@@ -4,10 +4,13 @@ import type * as vscode from 'vscode';
 import { getAgentTaskDisplayTarget, type AgentTask } from '../agent-task-decomposer';
 import { classifyTerminalEvidenceCommand, type TerminalEvidence } from './completion-evidence';
 import { isCppBuildArtifactDirName } from '../cpp-build-layout';
+import { isExistingDirectory, resolveLocalExecutionWorkdir } from '../workspace/local-execution-target';
 import { planLocalExecution, runLocalExecution, type LocalExecutionPlan } from '../execution-planner';
 import type { AgentLoopCallbacks } from './loop-types';
 import { withTaskTerminalEvidence, type TaskExecutionResult } from './task-execution-result';
 import { analyzeTerminalEvidence } from './tool-loop';
+
+export { isExistingDirectory } from '../workspace/local-execution-target';
 
 const LOCAL_ANALYZE_EXECUTION_RE = /(编译|构建|运行|执行|启动|验证|测试|compile|build|run|execute|verify|test)/i;
 const FORCE_LOCAL_BUILD_RE = /(重新|再次|重编译|重构建|rebuild|recompile|build|compile|编译|构建)/i;
@@ -16,18 +19,8 @@ const LOCAL_EXECUTION_DISCOVERY_DIRS = new Set(['src', 'include']);
 const LOCAL_EXECUTION_DISCOVERY_SKIP_DIRS = new Set(['node_modules', 'dist']);
 const MAX_LOCAL_EXECUTION_DISCOVERY_FILES = 80;
 
-export function isExistingDirectory(absPath: string | undefined): boolean {
-  if (!absPath) return false;
-  try {
-    return fs.statSync(absPath).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
 export function taskWorkdirFromResolvedPath(absPath: string | undefined): string | undefined {
-  if (!absPath) return undefined;
-  return isExistingDirectory(absPath) ? absPath : nodePath.dirname(absPath);
+  return resolveLocalExecutionWorkdir(absPath);
 }
 
 export async function tryExecuteDeterministicAnalyzeExecution(input: {
@@ -67,6 +60,7 @@ export async function tryExecuteDeterministicAnalyzeExecution(input: {
   const terminalEvidence = await runPlannedCommand(input.callbacks, plan);
   const latestEvidence = terminalEvidence[terminalEvidence.length - 1];
   if (!latestEvidence?.ok && !latestEvidence?.reviewRequired) {
+    const detail = latestEvidence?.detail?.slice(0, 1200) || '本地验证快路径未取得成功证据。';
     await input.callbacks.onAgentStatus({
       type: 'agentStatus',
       phase: 'execute',
@@ -76,11 +70,15 @@ export async function tryExecuteDeterministicAnalyzeExecution(input: {
       taskDesc: input.task.desc,
       taskIndex: input.taskIndex,
       taskTotal: input.taskTotal,
-      state: 'skipped',
-      title: '本地验证未通过，转入 Agent 分析',
-      detail: latestEvidence?.detail?.slice(0, 400) || '本地验证快路径未取得成功证据。',
+      state: 'failed',
+      title: '本地验证未通过',
+      detail,
     });
-    return undefined;
+    return withTaskTerminalEvidence({
+      applied: false,
+      raw: detail,
+      taskComplete: false,
+    }, terminalEvidence);
   }
 
   const detail = latestEvidence.reviewRequired

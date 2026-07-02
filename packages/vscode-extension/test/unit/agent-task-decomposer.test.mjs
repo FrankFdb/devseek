@@ -74,6 +74,7 @@ function createShapeManagerWorkspace() {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-decompose-'));
   const projectDir = path.join(root, 'code', 'shape_manager');
   mkdirSync(projectDir, { recursive: true });
+  writeFileSync(path.join(projectDir, 'CMakeLists.txt'), 'project(shape_manager)\n');
   const files = ['Circle.cpp', 'Rectangle.cpp', 'Triangle.cpp'].map((name) => {
     const abs = path.join(projectDir, name);
     writeFileSync(abs, `// ${name}\n`);
@@ -124,6 +125,38 @@ test('agent-task-decomposer: bare planner filenames stay anchored to discovered 
       ],
     );
     assert.equal(result.tasks.some(t => t.absPath === path.join(root, 'code', path.basename(t.file))), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('agent-task-decomposer: validation tasks targeting build artifacts are anchored to project dir', async () => {
+  const { root, projectDir, files } = createShapeManagerWorkspace();
+  try {
+    const rawPlan = JSON.stringify({
+      tasks: [
+        {
+          id: 't1',
+          file: 'code/shape_manager/build/bin/shape_manager',
+          action: 'analyze',
+          desc: '编译并运行项目确认窗口标题',
+        },
+      ],
+    });
+
+    const result = await decomposeTask(
+      '请重新编译执行确认 title 是否正常',
+      files,
+      undefined,
+      () => {},
+      undefined,
+      async () => rawPlan,
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.tasks.length, 1);
+    assert.equal(result.tasks[0].file, 'code/shape_manager');
+    assert.equal(result.tasks[0].absPath, projectDir);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -282,8 +315,9 @@ test('agent-task-decomposer: explicit edit drops redundant exploration but keeps
     assert.deepEqual(result.tasks.map(t => t.action), ['modify', 'analyze']);
     assert.deepEqual(
       result.tasks.map(t => t.file),
-      ['code/shape_manager/main.cpp', 'code/shape_manager/CMakeLists.txt'],
+      ['code/shape_manager/main.cpp', 'code/shape_manager'],
     );
+    assert.equal(result.tasks[1].absPath, projectDir);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
