@@ -188,6 +188,40 @@ test('task todo ledger: final verified write evidence clears transient missing-e
   assert.equal(reconciled.todos[0].status, 'completed');
 });
 
+test('task todo ledger: final successful validation clears earlier terminal failures', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'main.cpp', 'analyze', '使用 run_terminal 编译并运行 shape_manager 验证窗口标题'),
+  ]);
+
+  ledger.startTask(0);
+  const failedEarly = ledger.settleTask(0, {
+    action: 'analyze',
+    terminalEvidence: [{
+      command: 'cmake --build /workspace/code/shape_manager/build',
+      kind: 'compile',
+      ok: false,
+      exitCode: 2,
+      detail: 'main.cpp:92: error: expected primary-expression before token',
+    }],
+  });
+
+  assert.equal(failedEarly.failed, true);
+  assert.equal(failedEarly.todos[0].status, 'failed');
+
+  const reconciled = ledger.reconcileFinalEvidence({
+    validationFailed: false,
+    terminalEvidence: [{
+      command: 'cmake -S /workspace/code/shape_manager -B /workspace/code/shape_manager/build && cmake --build /workspace/code/shape_manager/build && /workspace/code/shape_manager/build/bin/shape_manager',
+      kind: 'compile-run',
+      ok: true,
+      exitCode: 0,
+    }],
+  });
+
+  assert.equal(reconciled.clearedFailures, 1);
+  assert.equal(reconciled.todos[0].status, 'completed');
+});
+
 test('task todo ledger: final successful validation clears inactive conditional repair tasks', () => {
   const ledger = createAgentTaskTodoLedger([
     task('1', 'main.cpp', 'modify', '若编译失败则修复 main.cpp 中的语法错误或不完整代码'),

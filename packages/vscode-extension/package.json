@@ -224,6 +224,18 @@
           "default": 120000,
           "description": "单次请求超时时间（毫秒）"
         },
+        "devseek.traceLevel": {
+          "type": "string",
+          "default": "debug",
+          "enum": [
+            "off",
+            "error",
+            "info",
+            "debug",
+            "trace"
+          ],
+          "description": "DevSeek 诊断日志等级。debug 会在当前项目 .devseek/runs 中保存请求、响应和关键执行事件。"
+        },
         "devseek.autoFixRounds": {
           "type": "number",
           "default": 6,

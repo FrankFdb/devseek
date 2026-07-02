@@ -25,9 +25,10 @@ export async function chatWithMessages(
   onDelta?: (delta: string) => void,
   signal?: AbortSignal,
   newSession = false,
+  traceRunId?: string,
 ): Promise<{ text: string; tools: FakeTool[] }> {
   const provider = getActiveProvider();
-  const text = await provider.chat({ messages, stream: true, onDelta, mode, signal, newSession });
+  const text = await provider.chat({ messages, stream: true, onDelta, mode, signal, newSession, traceRunId });
   return { text, tools: parseFakeToolCalls(text) };
 }
 
@@ -38,12 +39,13 @@ export async function chatViaProvider(
   history?: ChatMessage[],
   signal?: AbortSignal,
   newSession = false,
+  traceRunId?: string,
 ): Promise<{ text: string; tools: FakeTool[] }> {
   const provider = getActiveProvider();
   const messages: ChatMessage[] = [
     ...(history ?? []),
     { role: 'user', content: prompt },
   ];
-  const text = await provider.chat({ messages, stream: true, onDelta, mode, signal, newSession });
+  const text = await provider.chat({ messages, stream: true, onDelta, mode, signal, newSession, traceRunId });
   return { text, tools: parseFakeToolCalls(text) };
 }

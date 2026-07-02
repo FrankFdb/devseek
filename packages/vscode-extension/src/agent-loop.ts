@@ -506,6 +506,7 @@ async function executeAnalysisConsolidated(
         history,
         callbacks.signal,
         i === 0 ? newSession : false, // only the first file uses newSession
+        callbacks.traceRunId,
       );
       const analyzeWorkdir = t.absPath ? nodePath.dirname(t.absPath) : undefined;
       await executeFakeToolsForLoop(fTools, callbacks, analyzeWorkdir, {
@@ -615,6 +616,7 @@ async function executeAnalysisConsolidated(
       undefined, // no history for summary — avoid polluting context
       callbacks.signal,
       false,
+      callbacks.traceRunId,
     );
   } catch (_e) { /* summary failure is non-fatal */ }
 
@@ -787,6 +789,7 @@ async function executeTask(
           },
           callbacks.signal,
           consumeNewSession(),
+          callbacks.traceRunId,
         );
         execMessages.push({ role: 'assistant', content: text });
         // Pass analyzeWorkdir so run_terminal defaults to task directory when AI omits workdir.
@@ -1018,7 +1021,7 @@ async function executeTask(
     }
     try {
       taskMessages.push(...consumeUserSteerMessages(callbacks));
-      const { text, tools } = await chatWithMessages(taskMessages, mode, undefined, callbacks.signal, consumeNewSession());
+      const { text, tools } = await chatWithMessages(taskMessages, mode, undefined, callbacks.signal, consumeNewSession(), callbacks.traceRunId);
       taskMessages.push({ role: 'assistant', content: text });
       raw = text;
 
@@ -1244,7 +1247,7 @@ ${loopRes.feedbackForAI}${convergence.feedbackSuffix ? `\n\n${convergence.feedba
 
     let retryRaw = '';
     try {
-      const { text: rText, tools: rTools } = await chatViaProvider(retryPrompt, mode, undefined, history, callbacks.signal, false);
+      const { text: rText, tools: rTools } = await chatViaProvider(retryPrompt, mode, undefined, history, callbacks.signal, false, callbacks.traceRunId);
       retryRaw = rText;
       await executeFakeToolsForLoop(rTools, taskToolCallbacks, editorWorkdir, {
         currentTaskIndex: taskIndex,

@@ -4,11 +4,24 @@ import * as nodePath from 'path';
 import * as fs from 'fs';
 import * as crypto from 'crypto';
 import * as os from 'os';
+import {
+  createDevSeekTraceLogger,
+  summarizeTraceText,
+  type DevSeekTraceLogger,
+} from '@devseek-netai/shared';
 import { getWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
 
 const DEFAULT_PORT = 3721;
 const TOKEN_REL_PATH = nodePath.join('.devseek', 'bridge-token');
+const TRACE_RUN_ID_HEADER = 'X-DevSeek-Run-Id';
 let extensionRootFsPath: string | undefined;
+
+interface DevSeekRuntimeBuildInfo {
+  appVersion?: string;
+  buildChannel?: string;
+  buildId?: string;
+  gitCommit?: string;
+}
 
 export function setBridgeExtensionRoot(fsPath: string): void {
   extensionRootFsPath = fsPath;
@@ -54,6 +67,55 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
   return { ...(extra ?? {}), 'X-DevSeek-Token': getBridgeToken() };
 }
 
+function getTraceLevel(): string {
+  return vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', process.env.DEVSEEK_TRACE_LEVEL ?? 'debug');
+}
+
+function createBridgeClientTraceLogger(runId?: string): DevSeekTraceLogger {
+  return createDevSeekTraceLogger({
+    workspaceRoot: getBridgeWorkspaceRoot(),
+    source: 'vscode-extension',
+    level: getTraceLevel(),
+    runId,
+    ...getDevSeekRuntimeBuildInfo(),
+  });
+}
+
+function traceHeaders(trace: DevSeekTraceLogger, extra?: Record<string, string>): Record<string, string> {
+  return authHeaders({ ...(extra ?? {}), [TRACE_RUN_ID_HEADER]: trace.runId });
+}
+
+function getDevSeekRuntimeBuildInfo(): DevSeekRuntimeBuildInfo {
+  const packagePaths = [
+    extensionRootFsPath ? nodePath.join(extensionRootFsPath, 'package.json') : undefined,
+    nodePath.resolve(__dirname, '..', 'package.json'),
+  ].filter(Boolean) as string[];
+
+  for (const packagePath of packagePaths) {
+    try {
+      const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8')) as {
+        version?: string;
+        devseekBuild?: {
+          channel?: string;
+          buildId?: string;
+          gitCommit?: string;
+        };
+      };
+      const version = pkg.version || undefined;
+      return {
+        appVersion: version,
+        buildChannel: pkg.devseekBuild?.channel || (version?.includes('-') ? 'debug' : 'release'),
+        buildId: pkg.devseekBuild?.buildId,
+        gitCommit: pkg.devseekBuild?.gitCommit,
+      };
+    } catch {
+      // Try the next known package location.
+    }
+  }
+
+  return {};
+}
+
 export interface ChatOptions {
   prompt: string;
   newSession?: boolean;
@@ -64,6 +126,8 @@ export interface ChatOptions {
   onDelta?: (delta: string) => void;
   /** 附件文件绝对路径，通过 DeepSeek 网页原生上传机制发送 */
   files?: string[];
+  /** 一次顶层 Agent 执行的诊断 trace id。 */
+  traceRunId?: string;
 }
 
 /** 检查 bridge server 是否在线 */
@@ -177,7 +241,10 @@ export async function ensureBridgeRunning(forceRestart = false): Promise<boolean
 
   // 以 headless=true 启动（不弹出可见浏览器；重新登录流程会单独打开）
   const token = getBridgeToken();
-  const logFile = require('fs').openSync('/tmp/bridge_out.log', 'a');
+  const buildInfo = getDevSeekRuntimeBuildInfo();
+  const bridgeLogPath = nodePath.join(wsRoot, '.devseek', 'bridge-process.log');
+  fs.mkdirSync(nodePath.dirname(bridgeLogPath), { recursive: true });
+  const logFile = fs.openSync(bridgeLogPath, 'a');
   _bridgeProc = cp.spawn('node', [runtime.serverJs], {
     cwd: runtime.bridgeDir,
     env: {
@@ -186,6 +253,11 @@ export async function ensureBridgeRunning(forceRestart = false): Promise<boolean
       WORKSPACE_ROOT: wsRoot,
       BRIDGE_PORT: String(getPort()),
       DEVSEEK_BRIDGE_TOKEN: token,
+      DEVSEEK_TRACE_LEVEL: getTraceLevel(),
+      DEVSEEK_VERSION: buildInfo.appVersion || '',
+      DEVSEEK_BUILD_CHANNEL: buildInfo.buildChannel || '',
+      DEVSEEK_BUILD_ID: buildInfo.buildId || '',
+      DEVSEEK_GIT_COMMIT: buildInfo.gitCommit || '',
     },
     stdio: ['ignore', logFile, logFile],
     detached: false,
@@ -241,6 +313,7 @@ export async function readWorkspaceFile(relPath: string, preferredAbsolutePaths?
 export async function chat(opts: ChatOptions): Promise<string> {
   const config = vscode.workspace.getConfiguration('devseek');
   const useStream = opts.stream !== false;
+  const trace = createBridgeClientTraceLogger(opts.traceRunId);
 
   const body = JSON.stringify({
     prompt: opts.prompt,
@@ -251,6 +324,17 @@ export async function chat(opts: ChatOptions): Promise<string> {
     files: opts.files,
   });
 
+  trace.info('bridge-client', 'chat-request-start', {
+    stream: useStream,
+    newSession: opts.newSession ?? config.get<boolean>('newSessionPerRequest', false),
+    timeoutMs: opts.timeoutMs ?? config.get<number>('requestTimeoutMs', 120000),
+    mode: opts.mode,
+    files: opts.files?.map(file => nodePath.basename(file)),
+    prompt: summarizeTraceText(opts.prompt),
+  });
+  const requestPayloadId = trace.payload('provider', 'extension.request.prompt', opts.prompt);
+  trace.debug('bridge-client', 'request-payload-recorded', { payloadId: requestPayloadId });
+
   // Always use the streaming path when stream=true, even when no onDelta is
   // provided.  Falling through to the non-stream fetch was wrong in two ways:
   //  1. The request body already has stream:true → server sends SSE text-event-stream
@@ -258,25 +342,34 @@ export async function chat(opts: ChatOptions): Promise<string> {
   //  2. The non-stream path uses AbortSignal.timeout(62s) which is far too short
   //     for large files; the stream path uses timeoutMs×10 (up to 20 min).
   if (useStream) {
-    return chatStream(body, opts.onDelta ?? (() => {}));
+    return chatStream(body, opts.onDelta ?? (() => {}), trace);
   }
 
-  const res = await fetch(`${baseUrl()}/chat`, {
-    method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json' }),
-    body,
-    signal: AbortSignal.timeout(opts.timeoutMs ?? config.get<number>('requestTimeoutMs', 120000)),
-  });
+  try {
+    const res = await fetch(`${baseUrl()}/chat`, {
+      method: 'POST',
+      headers: traceHeaders(trace, { 'Content-Type': 'application/json' }),
+      body,
+      signal: AbortSignal.timeout(opts.timeoutMs ?? config.get<number>('requestTimeoutMs', 120000)),
+    });
 
-  const json = await res.json() as { content?: string; error?: string };
-  if (!res.ok || json.error) {
-    if (res.status === 401 || json.error === 'LOGIN_REQUIRED') throw new Error('LOGIN_REQUIRED');
-    throw new Error(json.error || `HTTP ${res.status}`);
+    const json = await res.json() as { content?: string; error?: string };
+    if (!res.ok || json.error) {
+      if (res.status === 401 || json.error === 'LOGIN_REQUIRED') throw new Error('LOGIN_REQUIRED');
+      throw new Error(json.error || `HTTP ${res.status}`);
+    }
+    const content = json.content || '';
+    const responsePayloadId = trace.payload('provider', 'extension.response.raw', content);
+    trace.debug('bridge-client', 'response-payload-recorded', { payloadId: responsePayloadId });
+    trace.info('bridge-client', 'chat-request-complete', { response: summarizeTraceText(content) });
+    return content;
+  } catch (error) {
+    trace.error('bridge-client', 'chat-request-failed', { message: (error as Error).message });
+    throw error;
   }
-  return json.content || '';
 }
 
-async function chatStream(body: string, onDelta: (delta: string) => void): Promise<string> {
+async function chatStream(body: string, onDelta: (delta: string) => void, trace: DevSeekTraceLogger): Promise<string> {
   const config = vscode.workspace.getConfiguration('devseek');
   const timeoutMs = JSON.parse(body).timeoutMs ?? config.get<number>('requestTimeoutMs', 120000);
 
@@ -285,7 +378,7 @@ async function chatStream(body: string, onDelta: (delta: string) => void): Promi
   const httpTimeout = Math.max(timeoutMs * 10, 600_000);
   const res = await fetch(`${baseUrl()}/chat`, {
     method: 'POST',
-    headers: authHeaders({ 'Content-Type': 'application/json', 'Accept': 'text/event-stream' }),
+    headers: traceHeaders(trace, { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' }),
     body,
     signal: AbortSignal.timeout(httpTimeout),
   });
@@ -338,5 +431,8 @@ async function chatStream(body: string, onDelta: (delta: string) => void): Promi
     }
   }
 
+  const responsePayloadId = trace.payload('provider', 'extension.response.raw', fullText);
+  trace.debug('bridge-client', 'response-payload-recorded', { payloadId: responsePayloadId });
+  trace.info('bridge-client', 'chat-request-complete', { response: summarizeTraceText(fullText) });
   return fullText;
 }

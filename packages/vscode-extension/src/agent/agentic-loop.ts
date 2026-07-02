@@ -489,6 +489,7 @@ export async function runAgenticLoop(
       roundStreamDelta,  // stream delta for early todo detection
       callbacks.signal,
       roundCount === 1,
+      callbacks.traceRunId,
     );
 
     messages.push({ role: 'assistant', content: text });

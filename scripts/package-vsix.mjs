@@ -9,6 +9,9 @@ const pkg = JSON.parse(readFileSync(path.join(extensionRoot, 'package.json'), 'u
 const outFile = path.join(root, 'devseek-netai-latest.vsix');
 const packageOutFile = path.join(extensionRoot, 'devseek-netai-latest.vsix');
 const staging = mkdtempSync(path.join(tmpdir(), 'devseek-vsix-'));
+const buildInfo = resolveBuildInfo();
+const versionedOutFile = path.join(root, `devseek-netai-${buildInfo.packageVersion}.vsix`);
+const versionedPackageOutFile = path.join(extensionRoot, `devseek-netai-${buildInfo.packageVersion}.vsix`);
 
 function escapeXml(value) {
   return String(value)
@@ -30,6 +33,68 @@ function copyFromRoot(relPath, targetRelPath = relPath) {
     recursive: true,
     force: true,
   });
+}
+
+function localBuildStamp(now = new Date()) {
+  const pad = (value, size = 2) => String(value).padStart(size, '0');
+  return {
+    date: `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}`,
+    time: `t${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`,
+    iso: now.toISOString(),
+  };
+}
+
+function getGitCommit() {
+  const result = spawnSync('git', ['rev-parse', '--short', 'HEAD'], {
+    cwd: root,
+    encoding: 'utf8',
+  });
+  return result.status === 0 ? result.stdout.trim() : 'local';
+}
+
+function resolveBuildInfo() {
+  const channel = String(process.env.DEVSEEK_BUILD_CHANNEL || 'debug').trim().toLowerCase() === 'release'
+    ? 'release'
+    : 'debug';
+  const baseVersion = String(pkg.version || '0.0.0').replace(/-.+$/, '');
+  const stamp = localBuildStamp();
+  const gitCommit = getGitCommit().replace(/[^0-9A-Za-z-]/g, '').slice(0, 12) || 'local';
+  const packageVersion = channel === 'release'
+    ? baseVersion
+    : `${baseVersion}-debug.${stamp.date}.${stamp.time}.g${gitCommit}`;
+  return {
+    baseVersion,
+    packageVersion,
+    channel,
+    buildId: `${stamp.date}-${stamp.time}`,
+    packagedAt: stamp.iso,
+    gitCommit,
+  };
+}
+
+function buildPackagedPackageJson() {
+  const packaged = JSON.parse(JSON.stringify(pkg));
+  packaged.version = buildInfo.packageVersion;
+  packaged.devseekBuild = {
+    baseVersion: buildInfo.baseVersion,
+    channel: buildInfo.channel,
+    buildId: buildInfo.buildId,
+    gitCommit: buildInfo.gitCommit,
+    packagedAt: buildInfo.packagedAt,
+  };
+  const traceConfig = packaged.contributes?.configuration?.properties?.['devseek.traceLevel'];
+  if (traceConfig) {
+    traceConfig.default = buildInfo.channel === 'release' ? 'info' : 'debug';
+  }
+  return packaged;
+}
+
+function writePackagedPackageJson() {
+  writeFileSync(
+    path.join(staging, 'extension', 'package.json'),
+    `${JSON.stringify(buildPackagedPackageJson(), null, 2)}\n`,
+    'utf8',
+  );
 }
 
 function bundleBridgeServer() {
@@ -66,7 +131,7 @@ try {
   generateWebviewToolManifest();
   mkdirSync(path.join(staging, 'extension'), { recursive: true });
 
-  copy('package.json');
+  writePackagedPackageJson();
   copy('LICENSE', 'LICENSE.txt');
   copy('dist');
   copy('test');
@@ -92,7 +157,7 @@ try {
   const manifest = `<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Language="en-US" Id="${escapeXml(pkg.name)}" Version="${escapeXml(pkg.version)}" Publisher="${escapeXml(pkg.publisher)}" />
+    <Identity Language="en-US" Id="${escapeXml(pkg.name)}" Version="${escapeXml(buildInfo.packageVersion)}" Publisher="${escapeXml(pkg.publisher)}" />
     <DisplayName>${escapeXml(pkg.displayName ?? pkg.name)}</DisplayName>
     <Description xml:space="preserve">${escapeXml(pkg.description ?? '')}</Description>
     <Tags>keybindings</Tags>
@@ -156,6 +221,8 @@ try {
 
   rmSync(outFile, { force: true });
   rmSync(packageOutFile, { force: true });
+  rmSync(versionedOutFile, { force: true });
+  rmSync(versionedPackageOutFile, { force: true });
 
   const zipResult = spawnSync('zip', ['-qr', outFile, 'extension.vsixmanifest', '[Content_Types].xml', 'extension'], {
     cwd: staging,
@@ -166,8 +233,13 @@ try {
   }
 
   cpSync(outFile, packageOutFile, { force: true });
+  cpSync(outFile, versionedOutFile, { force: true });
+  cpSync(outFile, versionedPackageOutFile, { force: true });
   console.log(`Packaged ${outFile}`);
+  console.log(`Packaged ${versionedOutFile}`);
   console.log(`Copied ${packageOutFile}`);
+  console.log(`Copied ${versionedPackageOutFile}`);
+  console.log(`DevSeek build: ${buildInfo.packageVersion} (${buildInfo.channel}, ${buildInfo.gitCommit})`);
 } finally {
   rmSync(staging, { recursive: true, force: true });
 }

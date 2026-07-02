@@ -1,6 +1,10 @@
 import { chromium, Browser, BrowserContext, Page, ElementHandle } from 'playwright';
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import {
+  summarizeTraceText,
+  type DevSeekTraceLogger,
+} from '@devseek-netai/shared';
 import { DEEPSEEK_URL } from './config';
 import { DEEPSEEK_DOM_SELECTORS as SELECTORS } from './deepseek-dom-selectors';
 import { extractDeepSeekResponse, isLoginUrl } from './response-extractor';
@@ -68,6 +72,8 @@ export interface SendOptions {
   onDelta?: (delta: string) => void;
   /** 附件文件绝对路径列表，通过 DeepSeek 网页原生上传机制发送 */
   files?: string[];
+  /** 项目级诊断日志 */
+  trace?: DevSeekTraceLogger;
 }
 
 export interface AgentOptions {
@@ -336,6 +342,13 @@ export class DeepSeekAgent {
     let filesAttached = false;
 
     const timeoutMs = opts.timeoutMs ?? this.options.timeoutMs;
+    opts.trace?.info('deepseek-web', 'send-message-start', {
+      newSession: opts.newSession,
+      timeoutMs,
+      mode: opts.mode,
+      files: opts.files?.map(file => nodePath.basename(file)),
+      prompt: summarizeTraceText(prompt),
+    });
 
     if (opts.newSession) {
       await this.startNewSession();
@@ -427,6 +440,8 @@ export class DeepSeekAgent {
     const baselineText = await this.getStreamingAssistantText(page).catch(() => '');
 
     await this.resetContentMutationClock(page);
+    const requestPayloadId = opts.trace?.payload('provider', 'bridge.effective-prompt', effectivePrompt);
+    opts.trace?.debug('deepseek-web', 'effective-prompt-recorded', { payloadId: requestPayloadId });
 
     // 提交：优先找发送按钮，找不到就按 Enter
     const sendBtn = await findElement(page, SELECTORS.sendButton);
@@ -437,7 +452,18 @@ export class DeepSeekAgent {
     }
 
     console.log(`[agent] Message sent (${effectivePrompt.length} chars), baselineAiMsgs=${baselineAiMsgCount}, baselineTextLen=${baselineText.length}`);
-    return this.waitForResponse(page, timeoutMs, opts.onDelta, baselineAiMsgCount, baselineText);
+    opts.trace?.info('deepseek-web', 'message-sent', {
+      promptLength: effectivePrompt.length,
+      baselineAiMsgCount,
+      baselineTextLength: baselineText.length,
+    });
+    const response = await this.waitForResponse(page, timeoutMs, opts.onDelta, baselineAiMsgCount, baselineText);
+    const responsePayloadId = opts.trace?.payload('provider', 'bridge.response.raw', response);
+    opts.trace?.info('deepseek-web', 'response-received', {
+      payloadId: responsePayloadId,
+      response: summarizeTraceText(response),
+    });
+    return response;
   }
 
   private async getComposerText(page: Page): Promise<string> {

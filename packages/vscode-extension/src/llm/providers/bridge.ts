@@ -31,6 +31,7 @@ export class BridgeProvider implements LLMProvider {
       timeoutMs: opts.timeoutMs ?? cfg.get<number>('requestTimeoutMs', 120000),
       mode: opts.mode,
       files: opts.files,
+      traceRunId: opts.traceRunId,
     });
     new ResponseIntegrityChecker().assertSafeForExecution(response);
     return response;

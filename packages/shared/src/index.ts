@@ -6,6 +6,7 @@ export * from './agent-application-service';
 export * from './agent-enhancements';
 export * from './agent-protocol';
 export * from './build-profile';
+export * from './diagnostic-logger';
 export * from './engineering-context';
 export * from './llm-types';
 export * from './platform-runtime';

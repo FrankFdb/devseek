@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as nodePath from 'path';
+import { createDevSeekRunId } from '@devseek-netai/shared';
 import { chat, relogin, status, readWorkspaceFile, ensureBridgeRunning, setBridgeExtensionRoot } from './bridge-client';
 import { createProviderStatusBar, getActiveProvider, getActiveProviderType, getProviderConfigService, promptUpdateApiKey } from './llm/provider-router';
 import { type ChatMessage } from './llm/types';
@@ -569,6 +570,7 @@ async function runChat(
     }
 
     const postAgent = (msg: AgentStatusMessage) => webview.postMessage(msg);
+    const agentTraceRunId = createDevSeekRunId();
     // L1a: filled inside try/catch, used after to persist agent turn in session history
     let agentHistoryText = '';
     let loopResult: AgentLoopResult | undefined;
@@ -624,6 +626,7 @@ async function runChat(
           detail: agDisplayProfile.planCompletedDetail,
         });
         const agResult = await runAgenticLoop(prompt, dataFiles, agWsRoot, mode, {
+          traceRunId: agentTraceRunId,
           runDisplayAction: agDisplayProfile.initialTaskAction,
           runDisplayTarget: agDisplayProfile.initialTaskLabel,
           onDelta: (delta) => {
@@ -881,6 +884,7 @@ async function runChat(
           ? [lastAnalysisText, sessionContextForAgent].filter(Boolean).join('\n\n')
           : (lastAnalysisText || undefined);
         loopResult = await runAgentLoop(tasks, promptForAgent, mode, wsRoot, {
+          traceRunId: agentTraceRunId,
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
               postWebviewMessage(webview, { type: 'resetResponse', text: delta.slice(7) });

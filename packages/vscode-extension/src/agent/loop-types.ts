@@ -25,6 +25,8 @@ export interface AgentLoopCallbacks {
   onTodoUpdate?: (items: TodoItem[]) => void | Promise<void>;
   /** Show real model-generated bridge/progress prose in the webview. */
   onAgentAnnouncement?: (text: string) => void | Promise<void>;
+  /** One diagnostic trace id shared by all provider/tool rounds in this top-level run. */
+  traceRunId?: string;
   /**
    * Session checkpoint callback — called after each task completes (success or fail).
    * Extension saves the next-pending-task index to workspaceState for resume-on-reconnect.

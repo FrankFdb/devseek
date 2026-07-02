@@ -330,7 +330,7 @@ function hasSuccessfulTerminalCompletionEvidence(evidence: TerminalEvidence[] | 
 }
 
 function isRecoverableFailureKind(kind: TaskFailureKind | undefined): boolean {
-  return kind === 'missing-evidence' || kind === 'missing-write';
+  return kind === 'missing-evidence' || kind === 'missing-write' || kind === 'terminal';
 }
 
 function hasFinalTaskCompletionEvidence(

@@ -64,6 +64,8 @@ export interface LLMChatOptions {
    * 用于 Agent 各子任务调用，防止 decompose JSON 计划污染后续分析输出。
    */
   newSession?: boolean;
+  /** 一次顶层 Agent 执行的诊断 trace id，贯穿多轮模型调用与工具验证。 */
+  traceRunId?: string;
 }
 
 export interface LLMProvider {

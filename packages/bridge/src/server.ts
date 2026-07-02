@@ -1,6 +1,11 @@
 import express, { Request, Response, NextFunction } from 'express';
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import {
+  createDevSeekTraceLogger,
+  summarizeTraceText,
+  type DevSeekTraceLogger,
+} from '@devseek-netai/shared';
 import { DeepSeekAgent, LoginRequiredError } from './deepseek-agent';
 import { RequestQueue } from './queue';
 import type {
@@ -14,6 +19,7 @@ import type {
 const PORT = Number(process.env.BRIDGE_PORT) || 3721;
 const VERSION = '0.1.0';
 const TOKEN_FILE = '.devseek/bridge-token';
+const TRACE_RUN_ID_HEADER = 'x-devseek-run-id';
 
 // ----------------------------------------------------------------
 // 全局单例
@@ -57,6 +63,16 @@ app.use(express.json({ limit: '50mb' }));
 
 const WORKSPACE_ROOT = fs.realpathSync(process.env.WORKSPACE_ROOT ?? process.cwd());
 const BRIDGE_TOKEN = loadBridgeToken();
+
+function createRequestTrace(req: Request): DevSeekTraceLogger {
+  const runId = String(req.header(TRACE_RUN_ID_HEADER) || '').trim();
+  return createDevSeekTraceLogger({
+    workspaceRoot: WORKSPACE_ROOT,
+    source: 'bridge-server',
+    runId: runId || undefined,
+    level: process.env.DEVSEEK_TRACE_LEVEL || 'debug',
+  });
+}
 
 // 简单安全：只允许本地连接（localhost / 127.0.0.1）
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -182,21 +198,33 @@ app.post('/preattach', async (req: Request, res: Response) => {
 // ----------------------------------------------------------------
 app.post('/chat', async (req: Request, res: Response) => {
   const body = req.body as ChatRequest;
+  const trace = createRequestTrace(req);
 
   if (!body?.prompt || typeof body.prompt !== 'string' || body.prompt.trim() === '') {
+    trace.error('bridge-server', 'chat-request-invalid', { reason: 'missing-prompt' });
     res.status(400).json({ error: 'prompt is required and must be a non-empty string' });
     return;
   }
 
   const useStream = body.stream !== false; // 默认 true
+  trace.info('bridge-server', 'chat-request-start', {
+    stream: useStream,
+    newSession: body.newSession,
+    timeoutMs: body.timeoutMs,
+    mode: body.mode,
+    files: body.files?.map(file => nodePath.basename(file)),
+    prompt: summarizeTraceText(body.prompt),
+  });
 
   // 初始化 agent（异步，第一次请求会等待浏览器启动）
   try {
     await ensureAgent();
   } catch (e) {
     if (e instanceof LoginRequiredError) {
+      trace.error('bridge-server', 'chat-request-login-required');
       res.status(401).json({ error: 'LOGIN_REQUIRED' });
     } else {
+      trace.error('bridge-server', 'chat-request-agent-init-failed', { message: (e as Error).message });
       res.status(503).json({ error: `Agent init failed: ${(e as Error).message}` });
     }
     return;
@@ -215,17 +243,20 @@ app.post('/chat', async (req: Request, res: Response) => {
 
     try {
       await queue.enqueue(async () => {
-        await agent.sendMessage(body.prompt.trim(), {
+        const content = await agent.sendMessage(body.prompt.trim(), {
           newSession: body.newSession,
           timeoutMs: body.timeoutMs,
           mode: body.mode,
           files: body.files,
+          trace: trace.child('deepseek-web'),
           onDelta: (delta) => sendEvent({ delta, done: false }),
         });
+        trace.info('bridge-server', 'chat-request-complete', { response: summarizeTraceText(content) });
       });
       sendEvent({ delta: '', done: true });
     } catch (e) {
       const msg = (e as Error).message;
+      trace.error('bridge-server', 'chat-request-failed', { message: msg });
       // 浏览器被关闭 → 清理状态，下次请求会重新 headless init（cookies 仍有效则自动恢复，否则提示重新登录）
       if (msg?.includes('closed') || msg?.includes('Target page') || msg?.includes('browser')) {
         agentInitialized = false;
@@ -248,12 +279,15 @@ app.post('/chat', async (req: Request, res: Response) => {
           timeoutMs: body.timeoutMs,
           mode: body.mode,
           files: body.files,
+          trace: trace.child('deepseek-web'),
         });
       });
+      trace.info('bridge-server', 'chat-request-complete', { response: summarizeTraceText(String(content || '')) });
       const response: ChatResponse = { content: content as string };
       res.json(response);
     } catch (e) {
       const msg = (e as Error).message;
+      trace.error('bridge-server', 'chat-request-failed', { message: msg });
       // 浏览器被关闭 → 清理状态
       if (msg?.includes('closed') || msg?.includes('Target page') || msg?.includes('browser')) {
         agentInitialized = false;
