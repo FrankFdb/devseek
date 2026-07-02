@@ -115,6 +115,27 @@ test('WorkspaceEditService: applies proposals with attached snapshot evidence', 
   }
 });
 
+test('WorkspaceEditService: validates generated C++ source before writing when requested', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
+  try {
+    const target = path.join(dir, 'main.cpp');
+    const service = new WorkspaceEditService();
+    assert.throws(
+      () => service.writeTextFileSync(target, [
+        '#include <iostream>',
+        'int main() {',
+        '  std::cout << "',
+        'broken";',
+        '}',
+      ].join('\n'), { validateSourceSanity: true }),
+      /字符串字面量/,
+    );
+    assert.equal(readFileSyncSafe(target), undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 function readFileSyncSafe(filePath) {
   try {
     return readFileSync(filePath, 'utf8');

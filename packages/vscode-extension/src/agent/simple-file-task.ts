@@ -90,7 +90,18 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
   }
 
   input.callbacks.onToolActivity?.('write', resolved.relPath);
-  const writeResult = workspaceEditService.writeTextFileSync(resolved.absPath, request.content);
+  let writeResult;
+  try {
+    writeResult = workspaceEditService.writeTextFileSync(resolved.absPath, request.content, { validateSourceSanity: true });
+  } catch (error) {
+    return finishSimpleFileTask({
+      ...input,
+      todos: failLinearAgentTodo(todos, 0),
+      writtenFiles: [],
+      terminalEvidence: [],
+      failedReason: `源码语法护栏阻止写入：${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
   await input.callbacks.onAppliedChange({ path: resolved.absPath, ...writeResult });
 
   const newLines = request.content.split('\n').length;

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import { createDevSeekTraceLogger, summarizeTraceText } from '@devseek-netai/shared';
 import { decideTerminalCommandPermission, type TerminalCommandRiskClass } from './terminal-command-policy';
 import { decideToolPermission, type ToolPolicy } from './permission-service';
 import { shouldUseManualReviewLaunchMode } from './terminal-launch-classifier';
@@ -22,6 +23,7 @@ export interface RunTerminalWithPermissionInput {
   workspaceRoot?: string;
   mode: string;
   toolPolicy: ToolPolicy;
+  traceRunId?: string;
 }
 
 export class TerminalPermissionCoordinator {
@@ -55,10 +57,28 @@ export class TerminalPermissionCoordinator {
   }
 
   async runCommandWithPermission(input: RunTerminalWithPermissionInput): Promise<string> {
-    const { webview, command, workdir, workspaceRoot, mode, toolPolicy } = input;
+    const { webview, command, workdir, workspaceRoot, mode, toolPolicy, traceRunId } = input;
     const normalizedCommand = normalizeLegacyCppBuildCommandForRun({ command, workdir, workspaceRoot }).command;
+    const trace = traceRunId && workspaceRoot
+      ? createDevSeekTraceLogger({
+          workspaceRoot,
+          source: 'vscode-extension.terminal',
+          level: vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', 'debug'),
+          runId: traceRunId,
+        })
+      : undefined;
+    trace?.info('terminal', 'command-requested', {
+      command: summarizeTraceText(normalizedCommand),
+      workdir,
+      mode,
+    });
     const terminalPermission = decideToolPermission(toolPolicy, 'terminal');
     if (terminalPermission.action === 'deny') {
+      trace?.info('terminal', 'command-skipped', {
+        reason: terminalPermission.reason,
+        command: summarizeTraceText(normalizedCommand),
+        workdir,
+      });
       return `（命令未执行：当前 ${mode} 模式不允许终端工具：${terminalPermission.reason}）`;
     }
 
@@ -77,6 +97,11 @@ export class TerminalPermissionCoordinator {
         this.trustedRiskClasses.add(terminalDecision.risk);
       }
       if (!confirmResult.allow) {
+        trace?.info('terminal', 'command-skipped', {
+          reason: confirmResult.reason ?? '用户拒绝',
+          command: summarizeTraceText(normalizedCommand),
+          workdir,
+        });
         return `（命令未执行：${confirmResult.reason ?? '用户拒绝'}）`;
       }
       confirmedByUser = true;
@@ -93,6 +118,13 @@ export class TerminalPermissionCoordinator {
       manualReviewOnLongRunning,
     });
     const outputPreview = result.output.slice(0, 4000);
+    trace?.info('terminal', 'command-complete', {
+      command: summarizeTraceText(normalizedCommand),
+      workdir,
+      exitCode: result.exitCode,
+      output: summarizeTraceText(outputPreview),
+    });
+    trace?.payload('terminal', 'terminal.output', outputPreview);
     webview.postMessage({
       type: 'terminalRanNotice',
       command: normalizedCommand,

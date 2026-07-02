@@ -1,10 +1,14 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
-import type * as vscode from 'vscode';
+import * as vscode from 'vscode';
 import { getAgentTaskDisplayTarget, type AgentTask } from '../agent-task-decomposer';
 import { classifyTerminalEvidenceCommand, type TerminalEvidence } from './completion-evidence';
 import { isCppBuildArtifactDirName } from '../cpp-build-layout';
-import { isExistingDirectory, resolveLocalExecutionWorkdir } from '../workspace/local-execution-target';
+import {
+  isExistingDirectory,
+  resolveLocalExecutionProjectDirFromCandidate,
+  resolveLocalExecutionWorkdir,
+} from '../workspace/local-execution-target';
 import { planLocalExecution, runLocalExecution, type LocalExecutionPlan } from '../execution-planner';
 import type { AgentLoopCallbacks } from './loop-types';
 import { withTaskTerminalEvidence, type TaskExecutionResult } from './task-execution-result';
@@ -34,7 +38,8 @@ export async function tryExecuteDeterministicAnalyzeExecution(input: {
 }): Promise<TaskExecutionResult | undefined> {
   if (!shouldAttemptDeterministicAnalyzeExecution(input.userPrompt, input.task)) return undefined;
 
-  const candidateFiles = collectLocalExecutionCandidateFiles(input.workdir);
+  const localWorkdir = resolveAnalyzeExecutionWorkdir(input);
+  const candidateFiles = collectLocalExecutionCandidateFiles(localWorkdir);
   if (candidateFiles.length === 0) return undefined;
 
   const planningText = [input.userPrompt, input.task.desc].filter(Boolean).join('\n');
@@ -103,6 +108,20 @@ export async function tryExecuteDeterministicAnalyzeExecution(input: {
     raw: detail,
     taskComplete: true,
   }, terminalEvidence);
+}
+
+function resolveAnalyzeExecutionWorkdir(input: {
+  task: AgentTask;
+  workspaceRoot: vscode.Uri;
+  workdir: string | undefined;
+}): string | undefined {
+  const workspaceRoots = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+  if (!workspaceRoots.includes(input.workspaceRoot.fsPath)) {
+    workspaceRoots.unshift(input.workspaceRoot.fsPath);
+  }
+  return resolveLocalExecutionProjectDirFromCandidate(input.task.absPath ?? input.task.file, workspaceRoots)
+    ?? resolveLocalExecutionWorkdir(input.workdir)
+    ?? input.workdir;
 }
 
 function shouldAttemptDeterministicAnalyzeExecution(userPrompt: string, task: AgentTask): boolean {

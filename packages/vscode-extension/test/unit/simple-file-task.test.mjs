@@ -257,4 +257,38 @@ test('Simple file task: writes explicit unknown text target and completes file-c
   }
 });
 
+test('Simple file task: blocks broken C++ content before writing', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-simple-file-task-cpp-'));
+  fakeVscode.workspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+  const events = makeEvents();
+
+  try {
+    const result = await tryRunSimpleFileTask({
+      userPrompt: [
+        '创建 code/main.cpp，内容为：',
+        '#include <iostream>',
+        'int main() {',
+        '  std::cout << "',
+        'broken";',
+        '}',
+      ].join('\n'),
+      workspaceRoot: root,
+      callbacks: makeCallbacks(events),
+      cppValidationPolicy: 'conservative',
+    });
+
+    const target = path.join(root, 'code', 'main.cpp');
+    assert.equal(existsSync(target), false);
+    assert.equal(result.tasksApplied, 0);
+    assert.equal(result.tasksFailed, 1);
+    assert.equal(events.applied.length, 0);
+    assert.equal(events.statuses.at(-1).phase, 'done');
+    assert.equal(events.statuses.at(-1).state, 'failed');
+    assert.match(events.statuses.at(-1).title, /源码语法护栏阻止写入/);
+    assert.equal(events.todos.at(-1)[0].status, 'failed');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 console.log('\nSimple file task tests passed.\n');

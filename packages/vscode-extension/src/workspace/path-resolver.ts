@@ -3,6 +3,7 @@ import * as nodePath from 'path';
 import * as vscode from 'vscode';
 import { isCppBuildArtifactDirName } from '../cpp-build-layout';
 import { getWorkspaceRootUri } from '../workspace-roots';
+import { sanitizeWorkspaceContextAnchorPath } from './context-anchor';
 
 export interface WorkspacePathContext {
   root: vscode.Uri;
@@ -293,7 +294,11 @@ export function detectWorkspacePathScope(
   const wsRoot0 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!wsRoot0) return { promptDir: undefined, promptDirIsExplicit: false };
 
-  const anchorFile = attachedFiles.length > 0 ? attachedFiles[0] : activeEditorFile;
+  const workspaceRoots = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+  const anchorFile = [
+    ...attachedFiles,
+    activeEditorFile,
+  ].find((candidate): candidate is string => Boolean(sanitizeWorkspaceContextAnchorPath(candidate, workspaceRoots)));
   if (!anchorFile) return { promptDir: undefined, promptDirIsExplicit: false };
 
   let dir = nodePath.dirname(anchorFile);

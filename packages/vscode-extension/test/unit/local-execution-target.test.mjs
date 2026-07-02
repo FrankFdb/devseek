@@ -68,3 +68,20 @@ test('local execution target maps nested source files back to project root', () 
     rmSync(workspaceRoot, { recursive: true, force: true });
   }
 });
+
+test('local execution target resolves project directory candidates directly', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-local-target-'));
+  try {
+    const projectDir = path.join(workspaceRoot, 'code', 'shape_manager');
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, 'CMakeLists.txt'), 'project(shape_manager)\n');
+    writeFileSync(path.join(projectDir, 'main.cpp'), 'int main(){return 0;}\n');
+
+    assert.equal(
+      resolveLocalExecutionProjectDirFromCandidate('code/shape_manager', [workspaceRoot]),
+      projectDir,
+    );
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});

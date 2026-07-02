@@ -52,6 +52,18 @@ function assertDoesNotContain(content, pattern, msg) {
   }
 }
 
+function assertWorkspaceWritesValidateSourceSanity(relPath, content) {
+  const unsafe = content
+    .split(/\r?\n/)
+    .map((line, index) => ({ line: index + 1, text: line.trim() }))
+    .filter(({ text }) => text.includes('writeTextFileSync(') && !text.includes('validateSourceSanity: true'));
+  assert.deepEqual(
+    unsafe,
+    [],
+    `${relPath} has workspace write calls without validateSourceSanity: true`,
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §一 / §五: Agent loop — core execution
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1239,11 +1251,14 @@ test('Architecture: WorkspaceEditService owns text file writes', () => {
   const agentLoop = src('src/agent-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
   const applier = src('src/workspace-applier.ts');
+  const simpleFileTask = src('src/agent/simple-file-task.ts');
+  const deterministicTaskExecutor = src('src/agent/deterministic-task-executor.ts');
   assertContains(service, 'class WorkspaceEditService', 'workspace edit service class must exist');
   assertContains(service, 'writeTextFileSync', 'workspace edit service must expose text-file write boundary');
   assertContains(service, 'proposeTextFileWrite', 'workspace edit service must expose edit proposal boundary');
   assertContains(service, 'snapshotTextFile', 'workspace edit service must expose snapshot boundary');
   assertContains(service, 'applyTextFileProposal', 'workspace edit service must expose apply boundary');
+  assertContains(service, 'validateTextFileProposal', 'workspace edit service must own generated source sanity validation');
   assertContains(service, 'return this.applyTextFileProposal(this.proposeTextFileWrite', 'legacy text writes must delegate through proposal/apply flow');
   assertContains(agentLoop, 'new WorkspaceEditService()', 'agent loop must construct workspace edit service');
   assertContains(agentLoop, 'workspaceEditService.writeTextFileSync', 'agent loop writes must go through workspace edit service');
@@ -1251,6 +1266,15 @@ test('Architecture: WorkspaceEditService owns text file writes', () => {
   assertContains(toolLoop, 'workspaceEditService.writeTextFileSync', 'tool loop writes must go through workspace edit service');
   assertContains(applier, 'new WorkspaceEditService()', 'workspace applier must construct workspace edit service');
   assertContains(applier, 'workspaceEditService.applyTextFileProposal', 'workspace applier must apply files through workspace edit service');
+  assertContains(agentLoop, 'validateSourceSanity: true', 'agent loop model-driven writes must enable source sanity validation');
+  assertContains(toolLoop, 'validateSourceSanity: true', 'tool loop file writes must enable source sanity validation');
+  assertContains(applier, 'validateSourceSanity: true', 'workspace applier writes must enable source sanity validation');
+  assertContains(simpleFileTask, 'validateSourceSanity: true', 'simple file task writes must enable source sanity validation');
+  assertContains(deterministicTaskExecutor, 'validateSourceSanity: true', 'deterministic task writes must enable source sanity validation');
+  assertWorkspaceWritesValidateSourceSanity('src/agent-loop.ts', agentLoop);
+  assertWorkspaceWritesValidateSourceSanity('src/agent/tool-loop.ts', toolLoop);
+  assertWorkspaceWritesValidateSourceSanity('src/agent/simple-file-task.ts', simpleFileTask);
+  assertWorkspaceWritesValidateSourceSanity('src/agent/deterministic-task-executor.ts', deterministicTaskExecutor);
   assert.doesNotMatch(agentLoop, /fs\.writeFileSync/, 'agent loop must not write workspace files directly');
   assert.doesNotMatch(applier, /workspace\.fs\.writeFile/, 'workspace applier must not write workspace files directly');
 });

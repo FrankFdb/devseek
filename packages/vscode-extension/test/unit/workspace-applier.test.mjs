@@ -188,6 +188,36 @@ test('workspace-applier: blocks project instruction file writes unless explicitl
   }
 });
 
+test('workspace-applier: blocks C++ writes with raw newlines inside string literals', async () => {
+  const { root, projectDir } = createShapeManagerWorkspace();
+  try {
+    const mainPath = path.join(projectDir, 'main.cpp');
+    const before = readFileSync(mainPath, 'utf8');
+    const raw = [
+      'code/shape_manager/main.cpp',
+      '```cpp',
+      '#include <iostream>',
+      'int main() {',
+      '  std::cout << "',
+      'broken" << std::endl;',
+      '  return 0;',
+      '}',
+      '```',
+    ].join('\n');
+    const statuses = [];
+
+    const result = await applyGeneratedArtifactsWithPrompt(raw, `${projectDir} 修改窗口标题`, (status) => statuses.push(status), true);
+
+    assert.equal(result.applied, false);
+    assert.equal(result.failureReason, 'source-sanity');
+    assert.deepEqual(result.changedPaths, []);
+    assert.equal(readFileSync(mainPath, 'utf8'), before);
+    assert.equal(statuses.some((status) => status.title === '已阻止写入（源码语法护栏）'), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('workspace-applier: allows project instruction file writes when prompt explicitly targets instructions', async () => {
   const { root, projectDir } = createShapeManagerWorkspace();
   try {

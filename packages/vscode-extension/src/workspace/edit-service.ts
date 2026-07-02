@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import { findGeneratedSourceSanityIssue } from './source-sanity';
 
 export interface WorkspaceWriteResult {
   existed: boolean;
@@ -25,6 +26,17 @@ export interface WorkspaceAppliedEdit {
   result: WorkspaceWriteResult;
 }
 
+export interface WorkspaceEditApplyOptions {
+  validateSourceSanity?: boolean;
+}
+
+export class WorkspaceEditValidationError extends Error {
+  constructor(readonly absPath: string, readonly detail: string) {
+    super(detail);
+    this.name = 'WorkspaceEditValidationError';
+  }
+}
+
 export class WorkspaceEditService {
   proposeTextFileWrite(absPath: string, content: string): WorkspaceEditProposal {
     return {
@@ -43,7 +55,20 @@ export class WorkspaceEditService {
     };
   }
 
-  applyTextFileProposal(proposal: WorkspaceEditProposal, snapshot = this.snapshotTextFile(proposal.absPath)): WorkspaceAppliedEdit {
+  validateTextFileProposal(proposal: WorkspaceEditProposal): void {
+    const issue = findGeneratedSourceSanityIssue(proposal.absPath, proposal.content);
+    if (!issue) return;
+    throw new WorkspaceEditValidationError(proposal.absPath, issue.detail);
+  }
+
+  applyTextFileProposal(
+    proposal: WorkspaceEditProposal,
+    snapshot = this.snapshotTextFile(proposal.absPath),
+    options: WorkspaceEditApplyOptions = {},
+  ): WorkspaceAppliedEdit {
+    if (options.validateSourceSanity) {
+      this.validateTextFileProposal(proposal);
+    }
     const dir = nodePath.dirname(proposal.absPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(proposal.absPath, proposal.content, 'utf8');
@@ -58,7 +83,7 @@ export class WorkspaceEditService {
     };
   }
 
-  writeTextFileSync(absPath: string, content: string): WorkspaceWriteResult {
-    return this.applyTextFileProposal(this.proposeTextFileWrite(absPath, content)).result;
+  writeTextFileSync(absPath: string, content: string, options: WorkspaceEditApplyOptions = {}): WorkspaceWriteResult {
+    return this.applyTextFileProposal(this.proposeTextFileWrite(absPath, content), undefined, options).result;
   }
 }

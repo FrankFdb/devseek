@@ -16,6 +16,7 @@ import * as vscode from 'vscode';
 import { chat } from './bridge-client';
 import { getProjectRulesSync, wrapRulesAsContext, getProjectMemorySync, wrapMemoryAsContext } from './project-rules';
 import { detectWorkspacePathScope } from './workspace/path-resolver';
+import { sanitizeWorkspaceContextAnchorPath } from './workspace/context-anchor';
 import { resolveLocalExecutionProjectDirFromCandidate } from './workspace/local-execution-target';
 import { isCodeArtifactPath, requiresCodeArtifactForEvidence } from './agent/completion-evidence';
 import { buildEngineeringGuidelinesPrompt } from './agent/engineering-guidelines';
@@ -145,7 +146,12 @@ function detectPromptDir(
   attachedFiles: string[],
   activeEditorFile?: string,
 ): { promptDir: string | undefined; promptDirIsExplicit: boolean } {
-  return detectWorkspacePathScope(userPrompt, attachedFiles, activeEditorFile);
+  return detectWorkspacePathScope(userPrompt, attachedFiles, sanitizeActiveEditorContextPath(activeEditorFile));
+}
+
+function sanitizeActiveEditorContextPath(activeEditorFile?: string): string | undefined {
+  const workspaceRoots = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+  return sanitizeWorkspaceContextAnchorPath(activeEditorFile, workspaceRoots);
 }
 
 function workspaceRelativePathForAbs(absPath: string): string {
@@ -232,6 +238,7 @@ function buildDecomposeSystemPrompt(
   priorFindings?: AnalysisFindings,
   activeEditorFile?: string,
 ): string {
+  const contextActiveEditorFile = sanitizeActiveEditorContextPath(activeEditorFile);
   // Build per-file sections with content inline.
   // Architect only needs 150 lines to plan — full content goes to Editor.
   const fileSections = attachedFiles.map((absPath, i) => {
@@ -277,14 +284,14 @@ function buildDecomposeSystemPrompt(
   const projectRulesSection = projectRules ? ['', wrapRulesAsContext(projectRules)].join('\n') : '';
   const projectMemory = getProjectMemorySync({
     prompt: userPrompt,
-    relatedPaths: [...attachedFiles, activeEditorFile].filter((pathValue): pathValue is string => Boolean(pathValue)),
+    relatedPaths: [...attachedFiles, contextActiveEditorFile].filter((pathValue): pathValue is string => Boolean(pathValue)),
   });
   const projectMemorySection = projectMemory ? ['', wrapMemoryAsContext(projectMemory)].join('\n') : '';
 
   // Active editor context: tell the LLM which project the user is working in
   // so it outputs paths relative to that project, not the monorepo root.
-  const activeEditorSection = activeEditorFile
-    ? `\n【当前活跃编辑器文件（项目上下文）】\n${activeEditorFile}\n（请确保所有新建/修改文件的路径相对于该文件所在的项目目录，而非 workspace 根目录。）`
+  const activeEditorSection = contextActiveEditorFile
+    ? `\n【当前活跃编辑器文件（项目上下文）】\n${contextActiveEditorFile}\n（请确保所有新建/修改文件的路径相对于该文件所在的项目目录，而非 workspace 根目录。）`
     : '';
 
   const noFilesMode = attachedFiles.length === 0;
@@ -298,7 +305,7 @@ function buildDecomposeSystemPrompt(
 
   // Compute promptDir once here so it can be injected into the system prompt.
   // This is the same logic used later in parseTaskPlan — extracted to detectPromptDir() to stay in sync.
-  const { promptDir: detectedPromptDir } = detectPromptDir(userPrompt, attachedFiles, activeEditorFile);
+  const { promptDir: detectedPromptDir } = detectPromptDir(userPrompt, attachedFiles, contextActiveEditorFile);
   // Convert to workspace-relative form for display in the prompt
   const wsRoot0 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const promptDirRel = (() => {
@@ -808,9 +815,10 @@ export async function decomposeTask(
   activeEditorFile?: string,
 ): Promise<DecomposeResult> {
   onProgress(attachedFiles.length > 0 ? `正在分析任务（共 ${attachedFiles.length} 个文件）…` : '正在分析任务…');
+  const contextActiveEditorFile = sanitizeActiveEditorContextPath(activeEditorFile);
 
   // Pass full abs paths so buildDecomposeSystemPrompt can read file contents
-  const systemPrompt = buildDecomposeSystemPrompt(userPrompt, attachedFiles, priorFindings, activeEditorFile);
+  const systemPrompt = buildDecomposeSystemPrompt(userPrompt, attachedFiles, priorFindings, contextActiveEditorFile);
 
   let raw = '';
   try {
@@ -827,7 +835,7 @@ export async function decomposeTask(
     return { tasks: [], raw: '', ok: false, error };
   }
 
-  const tasks = parseTaskPlan(raw, attachedFiles, priorFindings, userPrompt, activeEditorFile);
+  const tasks = parseTaskPlan(raw, attachedFiles, priorFindings, userPrompt, contextActiveEditorFile);
   if (tasks.length === 0) {
     // Fallback: derive tasks directly from file list
     const fallback = inferTasksFromFiles(attachedFiles, userPrompt);

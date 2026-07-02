@@ -323,4 +323,52 @@ test('agent-task-decomposer: explicit edit drops redundant exploration but keeps
   }
 });
 
+test('agent-task-decomposer: DevSeek run logs do not pollute active editor project context', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-active-log-anchor-'));
+  try {
+    const projectDir = path.join(root, 'code', 'shape_manager');
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, 'CMakeLists.txt'), 'project(shape_manager)\n');
+    writeFileSync(path.join(projectDir, 'main.cpp'), 'int main() { return 0; }\n');
+    const runLog = path.join(root, '.devseek', 'runs', '20260702-111529.log');
+    mkdirSync(path.dirname(runLog), { recursive: true });
+    writeFileSync(runLog, '{}\n');
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+
+    let capturedPrompt = '';
+    const rawPlan = JSON.stringify({
+      tasks: [
+        {
+          id: 't1',
+          file: 'code/shape_manager',
+          action: 'analyze',
+          desc: '编译并运行 shape_manager 项目，确认 title 显示正常无乱码',
+        },
+      ],
+    });
+
+    const result = await decomposeTask(
+      '请重新编译执行 code/shape_manager 项目，确认 title 乱码问题是否修复',
+      [],
+      undefined,
+      () => {},
+      undefined,
+      async (prompt) => {
+        capturedPrompt = prompt;
+        return rawPlan;
+      },
+      runLog,
+    );
+
+    assert.equal(capturedPrompt.includes('.devseek/runs/20260702-111529.log'), false);
+    assert.equal(result.ok, true);
+    assert.equal(result.tasks.length, 1);
+    assert.equal(result.tasks[0].file, 'code/shape_manager');
+    assert.equal(result.tasks[0].absPath, projectDir);
+    assert.equal(result.tasks[0].action, 'analyze');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 console.log('\nAgent task decomposer path anchoring tests passed.\n');

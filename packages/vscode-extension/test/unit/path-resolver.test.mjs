@@ -177,6 +177,22 @@ test('path-resolver: source files cannot be explicitly written into build artifa
   }
 });
 
+test('path-resolver: internal DevSeek logs are not used as active editor project anchors', () => {
+  const { root } = createWorkspaceWithDuplicateShapeManager();
+  try {
+    const runLog = path.join(root, '.devseek', 'runs', '20260702-134456.log');
+    mkdirSync(path.dirname(runLog), { recursive: true });
+    writeFileSync(runLog, '{}\n');
+
+    const scope = detectWorkspacePathScope('title乱码问题好像修正了，请重新编译执行确认', [], runLog);
+
+    assert.equal(scope.promptDir, undefined);
+    assert.equal(scope.promptDirIsExplicit, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('path-resolver: session scoped writes do not drift to code parent directory', () => {
   const { root, projectDir } = createWorkspaceWithDuplicateShapeManager();
   try {

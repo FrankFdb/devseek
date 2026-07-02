@@ -41,7 +41,7 @@ export async function tryExecuteDeterministicCreateTask(input: {
 
   try {
     callbacks.onToolActivity?.('write', task.file);
-    const writeResult = workspaceEditService.writeTextFileSync(absPath, task.expectedContent);
+    const writeResult = workspaceEditService.writeTextFileSync(absPath, task.expectedContent, { validateSourceSanity: true });
     const freshContent = readFileContentFull(absPath);
     const diff = roughLineDiff(writeResult.oldContent, task.expectedContent);
     const relPath = displayPath(input.workspaceRoot, absPath, task.file);

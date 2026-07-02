@@ -451,7 +451,13 @@ export async function applyMarkdownFileArtifactsForLoop(
       }
     }
     callbacks.onToolActivity?.('write', resolvedWrite.relPath);
-    const writeResult = workspaceEditService.writeTextFileSync(resolvedAbs, artifact.content);
+    let writeResult;
+    try {
+      writeResult = workspaceEditService.writeTextFileSync(resolvedAbs, artifact.content, { validateSourceSanity: true });
+    } catch (error) {
+      feedback.push(`[generated_file: ${artifact.path}] 跳过（源码语法护栏）：${error instanceof Error ? error.message : String(error)}`);
+      continue;
+    }
     if (writeResult.existed && writeResult.oldContent === artifact.content) {
       feedback.push(`[generated_file: ${artifact.path}] 未发生内容变化，未计入本轮修改证据：${resolvedWrite.relPath}`);
       continue;
@@ -842,7 +848,13 @@ export async function executeFakeToolsForLoop(
               continue;
             }
           }
-          const writeResult = workspaceEditService.writeTextFileSync(absPath, content);
+          let writeResult;
+          try {
+            writeResult = workspaceEditService.writeTextFileSync(absPath, content, { validateSourceSanity: true });
+          } catch (error) {
+            parts.push(`[${tool.name}: ${rawPath}] 错误: 源码语法护栏阻止写入：${error instanceof Error ? error.message : String(error)}`);
+            continue;
+          }
           const stat = fs.statSync(absPath);
           if (!stat.isFile() || stat.size === 0) {
             const failN = (createFileFailCounts.get(rawPath) || 0) + 1;

@@ -22,6 +22,7 @@ import { ReviewLedger, type ReviewLedgerSnapshot } from './workspace/review-ledg
 import { ValidationService, type AutoValidationResult } from './workspace/validation-service';
 import { QualityGateService, type QualityGateDecision } from './app/quality-gate-service';
 import { shouldBlockProjectInstructionFileWrite } from './workspace/instruction-file-safety';
+import { findGeneratedSourceSanityIssue } from './workspace/source-sanity';
 
 export interface ApplyWorkflowStatus {
   phase: 'apply' | 'validate' | 'quality' | 'repair';
@@ -34,7 +35,7 @@ export interface ApplyWorkflowResult {
   applied: boolean;
   changeCount: number;
   changedPaths: string[];
-  failureReason?: 'no-artifacts' | 'user-cancelled' | 'path-drift' | 'protected-file' | 'truncating-overwrite';
+  failureReason?: 'no-artifacts' | 'user-cancelled' | 'path-drift' | 'protected-file' | 'truncating-overwrite' | 'source-sanity';
   failureDetail?: string;
   blockedChangePaths?: string[];
   validation?: AutoValidationResult;
@@ -287,6 +288,27 @@ async function applyPreparedChanges(
     };
   }
 
+  const sourceSanityFailure = findSourceSanityFailure(prepared);
+  if (sourceSanityFailure) {
+    await reportWorkflow(reporter, {
+      phase: 'apply',
+      state: 'failed',
+      title: '已阻止写入（源码语法护栏）',
+      detail: sourceSanityFailure.detail,
+    });
+    vscode.window.showErrorMessage(`DeepSeek: 已阻止 ${sourceSanityFailure.relPath} 的高风险源码写入。`);
+    ledger.addUnfinishedItem(`源码语法护栏阻止写入: ${sourceSanityFailure.relPath}`);
+    return {
+      applied: false,
+      changeCount: 0,
+      changedPaths: [],
+      failureReason: 'source-sanity',
+      failureDetail: sourceSanityFailure.detail,
+      blockedChangePaths: [sourceSanityFailure.relPath],
+      review: ledger.snapshot(),
+    };
+  }
+
   await reportWorkflow(reporter, {
     phase: 'apply',
     state: 'started',
@@ -308,7 +330,7 @@ async function applyPreparedChanges(
           absPath: change.targetUri.fsPath,
           existed: change.exists,
           content: change.oldContent,
-        });
+        }, { validateSourceSanity: true });
       }
     },
   );
@@ -612,6 +634,18 @@ function isSuspiciousTruncatingOverwrite(change: PreparedChange, requestPrompt?:
   const shortByBytes = newContent.length < Math.max(120, oldContent.length * 0.25);
   const shortByLines = oldLines >= 40 && newLines < Math.max(8, oldLines * 0.35);
   return shortByBytes || shortByLines;
+}
+
+function findSourceSanityFailure(prepared: PreparedChange[]): { relPath: string; detail: string } | undefined {
+  for (const change of prepared) {
+    const issue = findGeneratedSourceSanityIssue(change.relPath, change.newContent);
+    if (!issue) continue;
+    return {
+      relPath: change.relPath,
+      detail: `${change.relPath}: ${issue.detail}`,
+    };
+  }
+  return undefined;
 }
 
 function allowsLargeRewrite(requestPrompt?: string): boolean {

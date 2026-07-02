@@ -1149,7 +1149,7 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
       }
       // Write through the workspace edit service so Agent write paths stay centralized.
       try {
-        workspaceEditService.writeTextFileSync(task.absPath, srResult.result);
+        workspaceEditService.writeTextFileSync(task.absPath, srResult.result, { validateSourceSanity: true });
         // Update cache so subsequent tasks on the same file see this result
         contentCache.set(task.absPath, srResult.result);
         await callbacks.onAppliedChange({

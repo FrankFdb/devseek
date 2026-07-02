@@ -13,7 +13,11 @@ export type RunLogReplayIssueKind =
   | 'malformed-tool-block'
   | 'destructive-model-command'
   | 'long-running-run'
-  | 'missing-final-convergence';
+  | 'missing-final-convergence'
+  | 'internal-context-anchor'
+  | 'planned-execution-without-tool-evidence'
+  | 'terminal-command-skipped'
+  | 'terminal-command-failed';
 
 export interface RunLogReplayIssue {
   kind: RunLogReplayIssueKind;
@@ -43,6 +47,7 @@ export interface RunLogReplayReport {
   providerResponses: number;
   toolExecutions: number;
   terminalCommands: number;
+  plannedExecutionTasks: number;
   issues: RunLogReplayIssue[];
 }
 
@@ -51,6 +56,8 @@ const BUILD_ARTIFACT_WORKDIR_RE = buildArtifactWorkdirPattern(listCppBuildOutput
 const PROVIDER_AUTHORED_TOOL_RESULT_RE = /\[(?:工具返回|工具执行结果|run_terminal:|read_file:|list_dir:|grep_search:)/;
 const TOOL_MARKER_RE = /\[TOOL:\s*[A-Za-z_]\w*/g;
 const DESTRUCTIVE_CLEAN_BUILD_RE = destructiveCleanBuildPattern(listCppBuildOutputDirNames());
+const INTERNAL_CONTEXT_ANCHOR_RE = /【当前活跃编辑器文件（项目上下文）】\s*\n[^\n]*(?:^|\/)\.devseek\/(?:runs|bridge-process\.log|memory\.json|memory\.md|bridge-token)/m;
+const EXECUTION_TASK_TEXT_RE = /(编译|构建|运行|执行|启动|验证|测试|compile|build|run|execute|verify|test)/i;
 const LONG_RUNNING_RUN_MS = 60_000;
 
 export function loadRunLogEvents(logPath: string): RunLogReplayEvent[] {
@@ -81,6 +88,8 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
   let providerResponses = 0;
   let toolExecutions = 0;
   let terminalCommands = 0;
+  let terminalSkipped = 0;
+  let plannedExecutionTasks = 0;
   let lastToolComplete: { line: number; taskComplete?: boolean } | undefined;
 
   for (const event of events) {
@@ -118,11 +127,47 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       const payload = objectValue(data);
       const name = stringValue(payload?.name);
       const content = stringValue(payload?.content) ?? '';
-      if (name === 'extension.request.prompt') providerRequests += 1;
+      if (name === 'extension.request.prompt') {
+        providerRequests += 1;
+        collectProviderRequestIssues(content, event.line, issues);
+      }
       if (name === 'extension.response.raw') {
         providerResponses += 1;
         collectProviderResponseIssues(content, event.line, issues);
+        plannedExecutionTasks += countPlannedExecutionTasks(content);
         terminalCommands += countRunTerminalTools(content);
+      }
+    }
+
+    if (entry.source === 'vscode-extension.terminal' && entry.event === 'command-requested') {
+      terminalCommands += 1;
+    }
+    if (entry.source === 'vscode-extension.terminal' && entry.event === 'command-skipped') {
+      terminalSkipped += 1;
+      issues.push({
+        kind: 'terminal-command-skipped',
+        severity: 'error',
+        line: event.line,
+        message: '终端命令被跳过，执行型任务没有获得真实验证证据。',
+        evidence: truncateOneLine([
+          stringValue(data?.reason),
+          stringValue(objectValue(data?.command)?.text),
+        ].filter(Boolean).join(' '), 220),
+      });
+    }
+    if (entry.source === 'vscode-extension.terminal' && entry.event === 'command-complete') {
+      const exitCode = numberValue(data?.exitCode);
+      if (typeof exitCode === 'number' && exitCode > 0) {
+        issues.push({
+          kind: 'terminal-command-failed',
+          severity: 'error',
+          line: event.line,
+          message: `终端命令退出码为 ${exitCode}，本轮执行没有通过验证。`,
+          evidence: truncateOneLine([
+            `exitCode=${exitCode}`,
+            stringValue(objectValue(data?.command)?.text),
+          ].filter(Boolean).join(' '), 220),
+        });
       }
     }
 
@@ -169,6 +214,14 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     });
   }
 
+  if (plannedExecutionTasks > 0 && toolExecutions === 0 && terminalCommands === 0 && terminalSkipped === 0) {
+    issues.push({
+      kind: 'planned-execution-without-tool-evidence',
+      severity: 'error',
+      message: `规划器产出 ${plannedExecutionTasks} 个执行/验证任务，但日志中没有工具循环或终端执行证据。`,
+    });
+  }
+
   return {
     logPath: absLogPath,
     runId,
@@ -183,6 +236,7 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     providerResponses,
     toolExecutions,
     terminalCommands,
+    plannedExecutionTasks,
     issues,
   };
 }
@@ -191,7 +245,7 @@ export function formatRunLogReplayReport(report: RunLogReplayReport): string {
   const lines = [
     `Run log: ${report.logPath}`,
     `Run: ${report.runId ?? 'unknown'}  Version: ${report.appVersion ?? 'unknown'}  Commit: ${report.gitCommit ?? 'unknown'}`,
-    `Events: ${report.parsedEvents}/${report.totalLines}  Provider: ${report.providerRequests} request(s), ${report.providerResponses} response(s)  Tool loops: ${report.toolExecutions}  Terminal commands: ${report.terminalCommands}`,
+    `Events: ${report.parsedEvents}/${report.totalLines}  Provider: ${report.providerRequests} request(s), ${report.providerResponses} response(s)  Tool loops: ${report.toolExecutions}  Terminal commands: ${report.terminalCommands}  Planned execution tasks: ${report.plannedExecutionTasks}`,
   ];
   if (typeof report.durationMs === 'number' && Number.isFinite(report.durationMs)) {
     lines.push(`Duration: ${(report.durationMs / 1000).toFixed(1)}s`);
@@ -207,6 +261,18 @@ export function formatRunLogReplayReport(report: RunLogReplayReport): string {
     lines.push(`- [${issue.severity}] ${issue.kind}${line}: ${issue.message}${evidence}`);
   }
   return lines.join('\n');
+}
+
+function collectProviderRequestIssues(content: string, line: number, issues: RunLogReplayIssue[]): void {
+  if (INTERNAL_CONTEXT_ANCHOR_RE.test(content)) {
+    issues.push({
+      kind: 'internal-context-anchor',
+      severity: 'error',
+      line,
+      message: '请求 prompt 把 DevSeek 内部日志/状态文件当成当前项目上下文。',
+      evidence: firstMatch(content, INTERNAL_CONTEXT_ANCHOR_RE),
+    });
+  }
 }
 
 function collectProviderResponseIssues(content: string, line: number, issues: RunLogReplayIssue[]): void {
@@ -269,6 +335,61 @@ function collectProviderResponseIssues(content: string, line: number, issues: Ru
 
 function countRunTerminalTools(content: string): number {
   return parseFakeToolCalls(content).filter(tool => tool.name === 'run_terminal').length;
+}
+
+function countPlannedExecutionTasks(content: string): number {
+  const plan = extractJsonTaskPlan(content);
+  if (!plan || !Array.isArray(plan.tasks)) return 0;
+  return plan.tasks.filter((task) => {
+    const value = objectValue(task);
+    if (!value) return false;
+    const text = [
+      stringValue(value.action),
+      stringValue(value.file),
+      stringValue(value.desc),
+    ].filter(Boolean).join('\n');
+    return EXECUTION_TASK_TEXT_RE.test(text);
+  }).length;
+}
+
+function extractJsonTaskPlan(content: string): { tasks?: unknown[] } | undefined {
+  const json = extractJsonObject(content);
+  if (!json) return undefined;
+  try {
+    const parsed = JSON.parse(json);
+    return objectValue(parsed) as { tasks?: unknown[] } | undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function extractJsonObject(text: string): string | undefined {
+  let start = -1;
+  let depth = 0;
+  let quote = '';
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote) {
+      if (ch === '\\') {
+        i += 1;
+      } else if (ch === quote) {
+        quote = '';
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth += 1;
+    } else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0 && start >= 0) return text.slice(start, i + 1);
+    }
+  }
+  return undefined;
 }
 
 function objectValue(value: unknown): Record<string, unknown> | undefined {

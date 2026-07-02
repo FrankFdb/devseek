@@ -15,6 +15,7 @@ import {
   type ApplyWorkflowStatus,
 } from './workspace-applier';
 import { detectWorkspacePathScope, isGeneratedArtifactAllowedForPrompt } from './workspace/path-resolver';
+import { sanitizeWorkspaceContextAnchorPath } from './workspace/context-anchor';
 import { parseGeneratedArtifacts, type GeneratedArtifact } from './generated-file-parser';
 import {
   type LocalExecutionPlan,
@@ -162,6 +163,14 @@ async function grepWorkspace(
 
 function getSessionService(): SessionService | undefined {
   return extContext ? new SessionService(extContext.workspaceState) : undefined;
+}
+
+function getActiveEditorContextPath(): string | undefined {
+  const rawPath = vscode.window.activeTextEditor?.document.uri.scheme === 'file'
+    ? vscode.window.activeTextEditor.document.uri.fsPath
+    : undefined;
+  const workspaceRoots = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+  return sanitizeWorkspaceContextAnchorPath(rawPath, workspaceRoots);
 }
 
 // ── Agent task checkpoint (断点续传) ────────────────────────────────────────
@@ -599,9 +608,7 @@ async function runChat(
         const agDisplayProfile = buildAgentRunDisplayProfile(prompt);
         // Non-code files (logs, csvs, etc.) are passed directly
         const dataFiles = effectiveFiles.filter(f => !AGENT_CODE_FILE_RE.test(f));
-        const activeEditorPath = vscode.window.activeTextEditor?.document.uri.scheme === 'file'
-          ? vscode.window.activeTextEditor.document.uri.fsPath
-          : '';
+        const activeEditorPath = getActiveEditorContextPath() ?? '';
         const agMemoryRelatedPaths = [
           ...dataFiles,
           ...pathResolutionHints,
@@ -692,6 +699,7 @@ async function runChat(
               workspaceRoot: agWsRoot,
               mode: intent.mode,
               toolPolicy,
+              traceRunId: agentTraceRunId,
             });
           },
           onReadFile: async (filePath: string, workDir?: string, range?: { startLine?: number; endLine?: number }) => (
@@ -819,9 +827,7 @@ async function runChat(
           async (p, m) => routeChat({ prompt: p, mode: m, newSession: true, trackHistory: false }),
           // Active editor file: used as path anchor when no files are attached and no
           // explicit path is in the prompt. Mirrors Copilot's per-file context behaviour.
-          vscode.window.activeTextEditor?.document.uri.scheme === 'file'
-            ? vscode.window.activeTextEditor.document.uri.fsPath
-            : undefined,
+          getActiveEditorContextPath(),
         );
 
         tasks = decomposeResult.ok ? decomposeResult.tasks : inferTasksFromFiles(effectiveFiles, promptForAgent);
@@ -953,6 +959,7 @@ async function runChat(
               workspaceRoot: wsRoot.fsPath,
               mode: intent.mode,
               toolPolicy,
+              traceRunId: agentTraceRunId,
             });
           },
           // P5-3: read_file tool — AI can read workspace files during agent loop
@@ -1178,9 +1185,7 @@ async function runChat(
 
     // P1: inject project instructions and legacy memory through ContextAssemblyService.
     const projectRules = await getProjectRules();
-    const activeEditorPathForMemory = vscode.window.activeTextEditor?.document.uri.scheme === 'file'
-      ? vscode.window.activeTextEditor.document.uri.fsPath
-      : '';
+    const activeEditorPathForMemory = getActiveEditorContextPath() ?? '';
     const projectMemory = getProjectMemorySync({
       prompt: finalPrompt,
       relatedPaths: [
@@ -1213,10 +1218,11 @@ async function runChat(
     const shouldInjectEditorContext = autoInjectEnabled && userDisplay === prompt && effectiveFiles.length === 0;
     if (shouldInjectEditorContext) {
       const editor = vscode.window.activeTextEditor;
-      if (editor) {
+      const editorContextPath = getActiveEditorContextPath();
+      if (editor && editorContextPath) {
         const replyLang = config.get<string>('language', 'zh') === 'zh' ? '中文' : 'English';
         const lang = editor.document.languageId;
-        const file = vscode.workspace.asRelativePath(editor.document.uri);
+        const file = vscode.workspace.asRelativePath(vscode.Uri.file(editorContextPath));
         finalPrompt = `你是一个专业的编程助手。\n当前文件：${file}\n编程语言：${lang}\n\n---\n${prompt}\n\n请用${replyLang}回复。`;
       }
     }
@@ -1237,7 +1243,7 @@ async function runChat(
     // 结构性判断：有诊断错误才注入，而非猜测用户是否在问错误话题。
     // 这与 Copilot/Claude Code 的方式一致：让 LLM 决定是否相关，而不是预过滤。
     {
-      const activeFile = vscode.window.activeTextEditor?.document.uri.fsPath ?? '';
+      const activeFile = getActiveEditorContextPath() ?? '';
       const isExtensionSrc = /packages[\\/]vscode-extension[\\/]src/.test(activeFile)
         || /node_modules/.test(activeFile);
       if (!isExtensionSrc) {
