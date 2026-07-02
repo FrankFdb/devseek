@@ -1,5 +1,5 @@
 /**
- * Regression coverage for the two-phase Agent task status ledger.
+ * Regression coverage for the two-phase Agent task state machine.
  *
  * Claude Code/Codex-style contract:
  * - a mutating task is completed only by write/apply evidence
@@ -20,10 +20,10 @@ const rootDir = path.resolve(__dirname, '../../');
 const agentLoop = readFileSync(path.join(rootDir, 'src/agent-loop.ts'), 'utf8');
 const agenticLoop = readFileSync(path.join(rootDir, 'src/agent/agentic-loop.ts'), 'utf8');
 const simpleFileTask = readFileSync(path.join(rootDir, 'src/agent/simple-file-task.ts'), 'utf8');
-const bundlePath = path.join(rootDir, 'test/unit/task-todo-ledger.bundle.cjs');
+const bundlePath = path.join(rootDir, 'test/unit/task-state-machine.bundle.cjs');
 
 execSync(
-  `npx esbuild src/agent/task-todo-ledger.ts --bundle ` +
+  `npx esbuild src/agent/task-state-machine.ts --bundle ` +
   `--outfile=${bundlePath} --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );
@@ -39,15 +39,18 @@ const {
   settleMissingEvidenceTodos,
 } = req(bundlePath);
 
-test('two-phase agent todos are delegated to an evidence ledger', () => {
-  assert.match(agentLoop, /createAgentTaskTodoLedger/, 'agent-loop must use the task todo ledger boundary');
-  assert.match(agenticLoop, /settleValidationFailureTodos/, 'agentic loop must route validation-failure todo updates through task todo ledger');
-  assert.match(agenticLoop, /completeAgentTodos/, 'agentic loop success settlement must use the task todo ledger boundary');
-  assert.match(agenticLoop, /settleMissingEvidenceTodos/, 'agentic loop missing-evidence settlement must use the task todo ledger boundary');
-  assert.match(agenticLoop, /inferInitialAgenticTodos/, 'agentic loop initial todo creation must use the task todo ledger boundary');
-  assert.match(simpleFileTask, /createLinearAgentTodos/, 'simple file todo creation must use the task todo ledger boundary');
-  assert.match(simpleFileTask, /advanceLinearAgentTodo/, 'simple file todo progress must use the task todo ledger boundary');
-  assert.match(simpleFileTask, /failLinearAgentTodo/, 'simple file todo failures must use the task todo ledger boundary');
+test('two-phase agent todos are delegated to the task state machine boundary', () => {
+  assert.match(agentLoop, /from '\.\/agent\/task-state-machine'/, 'agent-loop must use the task state machine boundary');
+  assert.match(agenticLoop, /from '\.\/task-state-machine'/, 'agentic-loop must use the task state machine boundary');
+  assert.match(simpleFileTask, /from '\.\/task-state-machine'/, 'simple-file-task must use the task state machine boundary');
+  assert.match(agentLoop, /createAgentTaskTodoLedger/, 'agent-loop must use the task state machine boundary');
+  assert.match(agenticLoop, /settleValidationFailureTodos/, 'agentic loop must route validation-failure todo updates through task state machine');
+  assert.match(agenticLoop, /completeAgentTodos/, 'agentic loop success settlement must use the task state machine boundary');
+  assert.match(agenticLoop, /settleMissingEvidenceTodos/, 'agentic loop missing-evidence settlement must use the task state machine boundary');
+  assert.match(agenticLoop, /inferInitialAgenticTodos/, 'agentic loop initial todo creation must use the task state machine boundary');
+  assert.match(simpleFileTask, /createLinearAgentTodos/, 'simple file todo creation must use the task state machine boundary');
+  assert.match(simpleFileTask, /advanceLinearAgentTodo/, 'simple file todo progress must use the task state machine boundary');
+  assert.match(simpleFileTask, /failLinearAgentTodo/, 'simple file todo failures must use the task state machine boundary');
   assert.match(agentLoop, /selectTaskWrittenFileEvidence/, 'agent-loop must treat create_file/write_file results as task write evidence');
   assert.match(agentLoop, /recordTaskToolWrites\(loopRes\.writtenFiles\)/, 'tool-loop written files must be recorded before task settlement');
   assert.match(agentLoop, /completeFromTaskToolWrite\(loopRes\.taskComplete\)/, 'matching tool writes must complete the current mutating task');

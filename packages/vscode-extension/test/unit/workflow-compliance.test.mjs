@@ -1494,6 +1494,11 @@ test('Architecture: Bridge chat uses explicit DevSeek session context, not brows
 test('Architecture: ARCH-16 duplicate judgment domains have explicit owners', () => {
   const owners = src('src/app/judgment-owners.ts');
   const appIndex = src('src/app/index.ts');
+  const extension = src('src/extension.ts');
+  const projectRules = src('src/project-rules.ts');
+  const agentLoop = src('src/agent-loop.ts');
+  const agenticLoop = src('src/agent/agentic-loop.ts');
+  const simpleFileTask = src('src/agent/simple-file-task.ts');
   for (const id of [
     'tool-protocol',
     'response-integrity',
@@ -1511,6 +1516,17 @@ test('Architecture: ARCH-16 duplicate judgment domains have explicit owners', ()
   assertContains(owners, 'contractTests', 'judgment owner records must name contract tests');
   assertContains(owners, 'guardedTerms', 'judgment owner records must name guarded terms');
   assertContains(appIndex, "export * from './judgment-owners';", 'judgment owner registry must be exported through app boundary');
+  assertContains(appIndex, "export * from './agent-display-presenter';", 'agent display presenter must be exported through app boundary');
+  assertContains(appIndex, "export * from './context-scope-resolver';", 'context scope resolver must be exported through app boundary');
+  assertContains(owners, "ownerModule: 'src/agent/task-state-machine.ts'", 'task state owner must be the public state machine boundary');
+  assertContains(owners, "ownerModule: 'src/app/context-scope-resolver.ts'", 'context scope owner must be the resolver boundary');
+  assertContains(owners, "ownerModule: 'src/app/agent-display-presenter.ts'", 'agent display owner must be the presenter boundary');
+  assertContains(extension, 'new AgentDisplayPresenter()', 'extension must present agent statuses through AgentDisplayPresenter');
+  assertContains(extension, 'agentDisplayPresenter.presentStatus(msg)', 'extension must not post raw agent status messages to the webview');
+  assertContains(projectRules, 'new ContextScopeResolver().resolve', 'project context assembly must be scoped before prompt assembly');
+  assertContains(agentLoop, "from './agent/task-state-machine'", 'agent-loop must use the task state machine boundary');
+  assertContains(agenticLoop, "from './task-state-machine'", 'agentic loop must use the task state machine boundary');
+  assertContains(simpleFileTask, "from './task-state-machine'", 'simple file task runner must use the task state machine boundary');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

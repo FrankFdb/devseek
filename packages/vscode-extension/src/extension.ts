@@ -48,6 +48,7 @@ import { migrateLegacyDeepseekConfiguration } from './app/config-migration-servi
 import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { MemoryService } from './app/memory-service';
+import { AgentDisplayPresenter } from './app/agent-display-presenter';
 import { guardNonAgentResponse } from './app/non-agent-response-guard';
 import { AgentApplicationService } from './app/agent-application-service';
 import type { AgentChatRequest } from './app/agent-protocol';
@@ -578,7 +579,8 @@ async function runChat(
       postWebviewMessage(webview, { type: 'delta', text: autoDiscoveredNote });
     }
 
-    const postAgent = (msg: AgentStatusMessage) => webview.postMessage(msg);
+    const agentDisplayPresenter = new AgentDisplayPresenter();
+    const postAgent = (msg: AgentStatusMessage) => webview.postMessage(agentDisplayPresenter.presentStatus(msg));
     const agentTraceRunId = createDevSeekRunId();
     // L1a: filled inside try/catch, used after to persist agent turn in session history
     let agentHistoryText = '';

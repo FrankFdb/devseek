@@ -390,7 +390,9 @@ function stripToolArgumentBlocksFromText(text) {
 
 function jsonObjectToWebviewTool(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
-  var rawName = typeof obj.tool === 'string' ? obj.tool : (typeof obj.name === 'string' ? obj.name : '');
+  var rawName = typeof obj.tool === 'string'
+    ? obj.tool
+    : (typeof obj.name === 'string' ? obj.name : (typeof obj.type === 'string' ? obj.type : ''));
   var name = rawName.trim();
   if (!name || (!WEBVIEW_TOOL_NAMES[name] && name.indexOf('mcp__') !== 0)) return null;
   return name;

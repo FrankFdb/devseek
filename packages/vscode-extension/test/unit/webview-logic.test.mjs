@@ -10,6 +10,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import vm from 'node:vm';
+import {
+  TOOL_PROTOCOL_SAMPLES,
+  TOOL_PROTOCOL_STREAMING_TAIL_SAMPLES,
+} from '../fixtures/tool-protocol-samples.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -21,6 +26,29 @@ function readWebviewRuntime() {
     ? manifest.scripts
     : ['webview.js'];
   return scripts.map((fileName) => readFileSync(path.join(mediaDir, fileName), 'utf8')).join('\n');
+}
+
+let webviewSanitizerRuntime;
+
+function getWebviewSanitizerRuntime() {
+  if (webviewSanitizerRuntime) return webviewSanitizerRuntime;
+  const mediaDir = path.join(rootDir, 'media');
+  const context = { console };
+  context.globalThis = context;
+  context.window = context;
+  vm.createContext(context);
+  for (const fileName of ['webview-agent-tool-manifest.js', 'webview-agent-sanitizer.js']) {
+    vm.runInContext(readFileSync(path.join(mediaDir, fileName), 'utf8'), context, { filename: fileName });
+  }
+  webviewSanitizerRuntime = context;
+  return webviewSanitizerRuntime;
+}
+
+function sanitizeRuntimeVisibleDeltaForMode(text, isAgentMode) {
+  const runtime = getWebviewSanitizerRuntime();
+  return isAgentMode
+    ? runtime.sanitizeAgentVisibleDelta(text)
+    : runtime.sanitizeAssistantVisibleText(text);
 }
 
 // Extract and evaluate pure logic from webview.js without DOM/vscode
@@ -1399,6 +1427,36 @@ test('non-agent delta: suppresses nameless Calling shell fence', () => {
 
 test('non-agent delta: keeps ordinary chat text', () => {
   assert.equal(sanitizeVisibleDeltaForMode('Hello! 我在。', false), 'Hello! 我在。');
+});
+
+test('webview sanitizer: shared protocol fixture hides every complete dialect', () => {
+  for (const sample of TOOL_PROTOCOL_SAMPLES) {
+    assert.equal(
+      sanitizeRuntimeVisibleDeltaForMode(sample.text, true),
+      sample.expectedVisible,
+      `${sample.id} should hide protocol text in agent mode`,
+    );
+    assert.equal(
+      sanitizeRuntimeVisibleDeltaForMode(sample.text, false),
+      sample.expectedVisible,
+      `${sample.id} should hide protocol text outside agent mode`,
+    );
+  }
+});
+
+test('webview sanitizer: shared protocol fixture hides incomplete streaming tails', () => {
+  for (const sample of TOOL_PROTOCOL_STREAMING_TAIL_SAMPLES) {
+    assert.equal(
+      sanitizeRuntimeVisibleDeltaForMode(sample.text, true),
+      sample.expectedVisible,
+      `${sample.id} should hide incomplete protocol text in agent mode`,
+    );
+    assert.equal(
+      sanitizeRuntimeVisibleDeltaForMode(sample.text, false),
+      sample.expectedVisible,
+      `${sample.id} should hide incomplete protocol text outside agent mode`,
+    );
+  }
 });
 
 // ── Context files row logic tests ─────────────────────────────────────────────

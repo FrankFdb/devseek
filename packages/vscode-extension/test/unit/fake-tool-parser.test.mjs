@@ -11,6 +11,10 @@ import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import {
+  TOOL_PROTOCOL_SAMPLES,
+  TOOL_PROTOCOL_STREAMING_TAIL_SAMPLES,
+} from '../fixtures/tool-protocol-samples.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -631,6 +635,52 @@ test('FakeToolParser: strips fenced ReAct Action/Input JSON blocks', () => {
     path: '/home/ff/work/devseek_netai/code/shape_manager/main.cpp',
   });
   assert.equal(stripToolCallBlocks(text), '我需要先读取完整文件内容。\n然后继续修改。');
+});
+
+test('FakeToolParser: shared protocol fixture parses and strips every complete dialect', () => {
+  for (const sample of TOOL_PROTOCOL_SAMPLES) {
+    const tools = parseFakeToolCalls(sample.text);
+    assert.deepEqual(
+      tools.map(tool => tool.name),
+      sample.expectedToolNames,
+      `${sample.id} should normalize tool names through the backend parser`,
+    );
+    assert.equal(
+      stripToolCallBlocks(sample.text),
+      sample.expectedVisible,
+      `${sample.id} should strip protocol text through the backend parser`,
+    );
+    assert.equal(
+      findFirstToolCallStart(sample.text) >= 0,
+      true,
+      `${sample.id} should expose a streaming start index`,
+    );
+    assert.equal(
+      containsFakeToolCallProtocol(sample.text),
+      true,
+      `${sample.id} should be recognized as internal tool protocol`,
+    );
+  }
+});
+
+test('FakeToolParser: shared protocol fixture hides incomplete streaming tails', () => {
+  for (const sample of TOOL_PROTOCOL_STREAMING_TAIL_SAMPLES) {
+    assert.deepEqual(
+      parseFakeToolCalls(sample.text).map(tool => tool.name),
+      sample.expectedToolNames,
+      `${sample.id} should not execute incomplete tool calls`,
+    );
+    assert.equal(
+      stripToolCallBlocks(sample.text),
+      sample.expectedVisible,
+      `${sample.id} should hide incomplete protocol text`,
+    );
+    assert.equal(
+      findFirstToolCallStart(sample.text) >= 0,
+      true,
+      `${sample.id} should still expose a streaming start index`,
+    );
+  }
 });
 
 console.log('\nFake tool parser tests passed.\n');

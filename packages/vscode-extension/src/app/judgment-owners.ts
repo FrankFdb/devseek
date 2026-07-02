@@ -133,8 +133,8 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
   {
     id: 'task-state',
     phase: 3,
-    ownerModule: 'src/agent/task-todo-ledger.ts',
-    status: 'migration-in-progress',
+    ownerModule: 'src/agent/task-state-machine.ts',
+    status: 'guarded',
     canonicalSymbols: [
       'createAgentTaskTodoLedger',
       'inferInitialAgenticTodos',
@@ -144,9 +144,12 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
       'AgentTaskTodoLedger',
     ],
     supportingModules: [
+      'src/agent/task-todo-ledger.ts',
       'src/app/task-ledger.ts',
       'src/app/task-history-store.ts',
       'src/app/task-checkpoint-store.ts',
+      'src/agent/agentic-loop.ts',
+      'src/agent/simple-file-task.ts',
       'src/agent/evidence-recovery.ts',
       'src/agent/completion-evidence.ts',
     ],
@@ -160,19 +163,25 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
   {
     id: 'context-scope',
     phase: 4,
-    ownerModule: 'src/app/context-relevance.ts',
+    ownerModule: 'src/app/context-scope-resolver.ts',
     status: 'guarded',
     canonicalSymbols: [
+      'ContextScopeResolver',
+      'ContextScope',
+      'ContextScopeSourceReport',
       'buildContextAnchors',
       'filterByContextAnchors',
       'filterLegacyMemoryMarkdownByContext',
     ],
     supportingModules: [
+      'src/app/context-relevance.ts',
+      'src/app/context-assembly-service.ts',
       'src/app/memory-service.ts',
       'src/app/agent-session-context.ts',
       'src/project-rules.ts',
     ],
     contractTests: [
+      'test/unit/context-scope-resolver.test.mjs',
       'test/unit/memory-service.test.mjs',
       'test/unit/agent-session-context.test.mjs',
       'test/unit/duplicate-judgment-governance.test.mjs',
@@ -182,19 +191,24 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
   {
     id: 'agent-display',
     phase: 5,
-    ownerModule: 'media/webview-agent-activity.js',
+    ownerModule: 'src/app/agent-display-presenter.ts',
     status: 'migration-in-progress',
     canonicalSymbols: [
+      'AgentDisplayPresenter',
+      'PresentedAgentStatus',
       'formatAgentValidationTitle',
       'formatFinishedAgentTaskLabel',
       'getAgentTaskActionPrefix',
     ],
     supportingModules: [
+      'src/extension.ts',
+      'media/webview-agent-activity.js',
       'media/webview.js',
       'src/agent-loop.ts',
       'src/pending-edit-coordinator.ts',
     ],
     contractTests: [
+      'test/unit/agent-display-presenter.test.mjs',
       'test/unit/agent-working-state.test.mjs',
       'test/unit/webview-logic.test.mjs',
       'test/unit/duplicate-judgment-governance.test.mjs',

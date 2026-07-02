@@ -66,9 +66,9 @@ test('ARCH-16 owner registry covers every duplicate-judgment domain', () => {
     ['response-integrity', 'src/llm/providers/web-reliability.ts'],
     ['execution-outcome', 'src/execution-outcome-classifier.ts'],
     ['validation-orchestration', 'src/app/verification-planner.ts'],
-    ['task-state', 'src/agent/task-todo-ledger.ts'],
-    ['context-scope', 'src/app/context-relevance.ts'],
-    ['agent-display', 'media/webview-agent-activity.js'],
+    ['task-state', 'src/agent/task-state-machine.ts'],
+    ['context-scope', 'src/app/context-scope-resolver.ts'],
+    ['agent-display', 'src/app/agent-display-presenter.ts'],
     ['file-workspace', 'src/workspace/file-context-service.ts'],
     ['build-layout', 'src/cpp-build-layout.ts'],
   ];
@@ -120,9 +120,14 @@ test('ARCH-16 webview tool manifest is generated from ToolRegistry', () => {
 test('ARCH-16 backend cannot reintroduce generic execution-complete UI titles', () => {
   const hits = productionFiles
     .filter(relPath => !governanceInventoryFiles.has(relPath))
+    .filter(relPath => relPath !== 'src/app/agent-display-presenter.ts')
     .filter(relPath => relPath.startsWith('src/'))
     .filter(relPath => readExtensionFile(relPath).includes('执行完成'));
   assert.deepEqual(hits, [], 'backend status events must use semantic validation titles, not generic UI text');
+  assert.ok(
+    readExtensionFile('src/app/agent-display-presenter.ts').includes('运行验证完成'),
+    'the display presenter may translate generic completion text into semantic validation language',
+  );
 });
 
 test('ARCH-16 legacy .devseek-build paths stay limited to compatibility and exclusion code', () => {

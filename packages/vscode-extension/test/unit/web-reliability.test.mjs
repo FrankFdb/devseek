@@ -4,6 +4,10 @@ import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import {
+  TOOL_PROTOCOL_SAMPLES,
+  TOOL_PROTOCOL_STREAMING_TAIL_SAMPLES,
+} from '../fixtures/tool-protocol-samples.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -60,6 +64,25 @@ test('ResponseIntegrityChecker: recognizes Markdown-bold Calling tool protocol',
   ].join('\n');
 
   assert.equal(checker.check(response).safeToExecute, true);
+});
+
+test('ResponseIntegrityChecker: shared tool protocol samples are safe only when complete', () => {
+  const checker = new ResponseIntegrityChecker();
+
+  for (const sample of TOOL_PROTOCOL_SAMPLES) {
+    const result = checker.check(sample.text);
+    assert.equal(
+      result.safeToExecute,
+      true,
+      `${sample.id} should pass response integrity checks`,
+    );
+  }
+
+  for (const sample of TOOL_PROTOCOL_STREAMING_TAIL_SAMPLES) {
+    const result = checker.check(sample.text);
+    assert.equal(result.status, 'incomplete-tool-block', `${sample.id} should be blocked before execution`);
+    assert.equal(result.safeToExecute, false, `${sample.id} should not be safe to execute`);
+  }
 });
 
 test('ResponseIntegrityChecker: blocks unfinished assistant action cues', () => {

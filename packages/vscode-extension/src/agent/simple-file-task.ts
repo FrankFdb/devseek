@@ -22,7 +22,7 @@ import {
   appendQualityGateTodo,
   createLinearAgentTodos,
   failLinearAgentTodo,
-} from './task-todo-ledger';
+} from './task-state-machine';
 
 export interface SimpleFileWriteRequest {
   path: string;

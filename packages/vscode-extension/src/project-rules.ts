@@ -4,6 +4,7 @@ import {
   wrapProjectInstructionsAsContext,
 } from './app/project-instruction-service';
 import { ContextAssemblyService, type ContextSource } from './app/context-assembly-service';
+import { ContextScopeResolver } from './app/context-scope-resolver';
 import { MemoryService } from './app/memory-service';
 
 const MAX_MEMORY_CHARS = 3000;
@@ -67,7 +68,12 @@ export function assembleProjectRulesAndMemoryContext(
       priority: 20,
     });
   }
-  return new ContextAssemblyService().assemble(prompt, sources).prompt;
+  const scoped = new ContextScopeResolver().resolve({
+    workspaceRoot: getWorkspaceRoots()[0],
+    prompt,
+    sources,
+  });
+  return new ContextAssemblyService().assemble(prompt, scoped.sources).prompt;
 }
 
 // ── Project Memory — AI-writable persistent knowledge managed by MemoryService ──

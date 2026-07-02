@@ -1,3 +1,5 @@
+import { listAgentToolNames } from '../../agent/tool-registry';
+
 export type ResponseIntegrityStatus =
   | 'ok'
   | 'empty'
@@ -18,6 +20,21 @@ export interface ResponseIntegrityResult {
 
 const CALLING_LABEL_RE = /(?:^|\n)\s*(?:\[\s*)?[*_]{0,3}(?:Calling|Call|调用)(?:[ \t]*[:：]?[ \t]*tool\b|[ \t]+tool\b)?[ \t]*[:：]?[ \t]*[*_]{0,3}[ \t]*(?:\[?`?[A-Za-z_]\w*`?\]?)?/i;
 const CALLING_LINE_RE = /^\s*(?:\[\s*)?[*_]{0,3}\s*(?:Calling|Call|调用)\b/i;
+const REGISTERED_TOOL_NAMES_PATTERN = listAgentToolNames(true)
+  .map(escapeRegExp)
+  .sort((a, b) => b.length - a.length)
+  .join('|');
+const MODEL_TOOL_NAME_PATTERN = `(?:${REGISTERED_TOOL_NAMES_PATTERN}|mcp__[A-Za-z0-9_]+)`;
+const BRACKET_TOOL_PAYLOAD_RE = new RegExp(`\\[TOOL:${MODEL_TOOL_NAME_PATTERN}(?:\\s*\\]|\\s+)\\s*\\{`, 'i');
+const JSON_TOOL_NAME_RE = new RegExp(`"(?:tool|name|function|type)"\\s*:\\s*"${MODEL_TOOL_NAME_PATTERN}"`, 'i');
+const TOOL_INPUT_FIELD_RE = /"(?:arguments|input|parameters|path|filePath|command|todoList|summary|content)"\s*:/i;
+const REACT_ACTION_ONLY_TAIL_RE = new RegExp(`(?:^|\\n|\\s)Action\\s*:\\s*${MODEL_TOOL_NAME_PATTERN}\\s*$`, 'i');
+const REACT_ACTION_INPUT_EMPTY_TAIL_RE = new RegExp(`(?:^|\\n|\\s)Action\\s*:\\s*${MODEL_TOOL_NAME_PATTERN}[\\s\\S]*Action\\s*Input\\s*:\\s*$`, 'i');
+const CALLING_TOOL_ONLY_TAIL_RE = new RegExp(`(?:^|\\n)\\s*(?:\\[\\s*)?[*_]{0,3}\\s*(?:Calling|Call|调用)(?:[ \\t]*[:：]?[ \\t]*tool\\b|[ \\t]+tool\\b)?[ \\t]*[:：][ \\t]*[*_]{0,3}[ \\t]*\\[?\`?${MODEL_TOOL_NAME_PATTERN}\`?\\]?\\s*[*_]{0,3}\\s*$`, 'i');
+const TOOL_CALL_ENVELOPE_TAIL_RE = /(?:<|&lt;)\s*(?:T|TO|TOO|TOOL|TOOL_|TOOL_C|TOOL_CA|TOOL_CAL|TOOL_CALLS?)?$/i;
+const TOOL_CALL_ENVELOPE_OPEN_RE = /(?:<|&lt;)\s*TOOL_CALLS?\b/gi;
+const TOOL_CALL_ENVELOPE_CLOSE_RE = /(?:<\/|&lt;\/)\s*TOOL_CALLS?\s*(?:>|&gt;)/gi;
+const XML_REGISTERED_TOOL_OPEN_RE = new RegExp(`(?:<|&lt;)\\s*(${MODEL_TOOL_NAME_PATTERN})\\b[^<>]*(?:>|&gt;)?`, 'gi');
 
 export class ResponseIntegrityChecker {
   check(content: string): ResponseIntegrityResult {
@@ -162,6 +179,7 @@ function hasUnclosedMarkdownFence(text: string): boolean {
 }
 
 function hasIncompleteToolBlock(text: string): boolean {
+  if (hasIncompleteModelToolProtocol(text)) return true;
   if (/<tool_calls?>/i.test(text) && !/<\/tool_calls?>/i.test(text)) return true;
   const toolRe = /\[TOOL:([A-Za-z_]\w*)/g;
   let match: RegExpExecArray | null;
@@ -184,6 +202,51 @@ function hasIncompleteToolBlock(text: string): boolean {
   return false;
 }
 
+function hasIncompleteModelToolProtocol(text: string): boolean {
+  if (REACT_ACTION_ONLY_TAIL_RE.test(text)) return true;
+  if (REACT_ACTION_INPUT_EMPTY_TAIL_RE.test(text)) return true;
+  if (CALLING_TOOL_ONLY_TAIL_RE.test(text)) return true;
+  if (hasIncompleteToolCallEnvelope(text)) return true;
+  if (hasIncompleteRegisteredXmlTool(text)) return true;
+  return false;
+}
+
+function hasIncompleteToolCallEnvelope(text: string): boolean {
+  if (TOOL_CALL_ENVELOPE_TAIL_RE.test(text)) return true;
+  const openCount = countMatches(text, TOOL_CALL_ENVELOPE_OPEN_RE);
+  if (openCount === 0) return false;
+  return openCount > countMatches(text, TOOL_CALL_ENVELOPE_CLOSE_RE);
+}
+
+function hasIncompleteRegisteredXmlTool(text: string): boolean {
+  XML_REGISTERED_TOOL_OPEN_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = XML_REGISTERED_TOOL_OPEN_RE.exec(text)) !== null) {
+    const openTag = match[0];
+    if (!hasXmlTagTerminator(openTag)) return true;
+    if (isSelfClosingXmlTag(openTag)) continue;
+    const toolName = match[1];
+    const closeRe = new RegExp(`(?:<\\/|&lt;\\/)\\s*${escapeRegExp(toolName)}\\s*(?:>|&gt;)`, 'i');
+    if (!closeRe.test(text.slice(XML_REGISTERED_TOOL_OPEN_RE.lastIndex))) return true;
+  }
+  return false;
+}
+
+function hasXmlTagTerminator(tag: string): boolean {
+  return /(?:>|&gt;)\s*$/.test(tag);
+}
+
+function isSelfClosingXmlTag(tag: string): boolean {
+  return /\/\s*(?:>|&gt;)\s*$/.test(tag);
+}
+
+function countMatches(text: string, re: RegExp): number {
+  re.lastIndex = 0;
+  let count = 0;
+  while (re.exec(text) !== null) count++;
+  return count;
+}
+
 function hasIncompleteAssistantIntent(text: string): boolean {
   if (looksLikeToolProtocolPayload(text)) return false;
   const tail = text
@@ -201,10 +264,9 @@ function looksLikeWholeJson(text: string): boolean {
 }
 
 function looksLikeToolProtocolPayload(text: string): boolean {
-  if (/\[TOOL:[A-Za-z_]\w*(?:\s*\]|\s+)\s*\{/i.test(text)) return true;
+  if (BRACKET_TOOL_PAYLOAD_RE.test(text)) return true;
   if (CALLING_LABEL_RE.test(text)) return true;
-  return /"(?:tool|name|function)"\s*:\s*"(?:read_file|grep_search|file_search|semantic_search|list_dir|get_errors|run_terminal|memory_write|get_changed_files|create_directory|fetch_webpage|vscode_listCodeUsages|run_vscode_command|create_file|write_file|replace_file|manage_todo_list|task_complete|mcp__[^"]+)"/i.test(text)
-    && /"(?:arguments|input|parameters|path|filePath|command|todoList|summary|content)"\s*:/i.test(text);
+  return JSON_TOOL_NAME_RE.test(text) && TOOL_INPUT_FIELD_RE.test(text);
 }
 
 function canParseJson(text: string): boolean {
