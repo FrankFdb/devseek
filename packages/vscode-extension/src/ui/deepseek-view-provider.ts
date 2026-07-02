@@ -423,7 +423,7 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
       msg.autoApply === true,
       async (change) => { await this.deps.pendingEditCoordinator.registerChange(wv, change); },
       msg.files,
-      { rollbackOnValidationFailure: msg.autoApply !== true },
+      { rollbackOnValidationFailure: false },
     );
     const recovered = await recoverApplyFailureIfPossible({
       reporter,

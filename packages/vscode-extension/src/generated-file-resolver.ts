@@ -1,6 +1,7 @@
 import * as nodePath from 'path';
 import { GeneratedArtifact, GeneratedFile, parseGeneratedArtifacts } from './generated-file-parser';
 import { shouldBlockProjectInstructionFileContent } from './workspace/instruction-file-safety';
+import { createWorkspaceFilePathTokenRegExp } from './workspace/path-patterns';
 
 export interface ResolvedGeneratedFile extends GeneratedFile {
   resolvedPath: string;
@@ -62,7 +63,9 @@ function looksLikeShellCommands(content: string): boolean {
 }
 
 function extractNearbyPath(text: string): string | undefined {
-  const matches = text.match(/[A-Za-z0-9_./\\-]+\.(?:c|cc|cpp|cxx|h|hpp|py|js|ts|java|go|rs|md|txt)\b/g);
+  const matches = [...text.matchAll(createWorkspaceFilePathTokenRegExp())]
+    .map((match) => match[1])
+    .filter((value): value is string => Boolean(value));
   return matches?.[matches.length - 1]?.replace(/\\/g, '/');
 }
 

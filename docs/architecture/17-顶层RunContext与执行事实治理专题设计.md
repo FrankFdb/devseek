@@ -59,6 +59,8 @@ User Turn
 2. Todo settle、QualityGate、historyText、ReviewLedger 只读 Ledger 结论。
 3. 最终成功验证可清理早期 missing-evidence、missing-write、terminal 失败。
 4. 对硬失败、人工确认、已启动交互式程序做明确状态区分。
+5. 自动编译/运行验证只能基于本轮真实写入文件或终端执行证据，不能把计划目标文件或旧构建成功当成本轮完成证据。
+6. 验证失败默认保留本轮文件变更并挂入待确认/修复事实；自动回滚只能作为显式策略或用户选择，不能由底层验证失败隐式触发。
 
 ### Phase 3：Session Context 治理
 

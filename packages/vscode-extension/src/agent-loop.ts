@@ -1809,15 +1809,14 @@ export async function runAgentLoop(
   // All tasks completed — clear the checkpoint (null signals "done, nothing to resume").
   await callbacks.onTaskCheckpoint?.(null, [], 'completed');
 
-  // Compile validation — C/C++ modify tasks only
-  const modifiedPaths = uniquePaths([
-    ...tasks
-      .filter(t => !isReadOnlyAction(t.action) && t.absPath && isCompilableFile(t.file))
-      .map(t => t.absPath!),
-    ...editedFileRecords
+  // Compile validation must be evidence-backed. Planned task targets may point at
+  // old files even when the model artifact was not applied, which would turn a
+  // stale build into false completion evidence.
+  const modifiedPaths = uniquePaths(
+    editedFileRecords
       .filter(file => isCompilableFile(file.path))
       .map(file => nodePath.isAbsolute(file.path) ? file.path : nodePath.join(workspaceRoot.fsPath, file.path)),
-  ]);
+  );
   let validationOutcome: ValidationOutcome | undefined;
   if (modifiedPaths.length > 0) {
     // Derive wantRun from both the user's explicit request and task plan.

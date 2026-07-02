@@ -146,6 +146,32 @@ export const ok = true;
   assert.ok(artifacts[0].content.includes('find(items);'));
 });
 
+test('parseGeneratedArtifacts: generic cpp source with pipe characters in strings remains a file', () => {
+  const text = `code/shape_manager/main.cpp
+\`\`\`
+#include <iostream>
+
+int main() {
+    const char* title = "Shape Manager | Left drag: rotate | Scroll: zoom";
+    std::cout << title << std::endl;
+    return 0;
+}
+\`\`\``;
+  const artifacts = parseGeneratedArtifacts(text);
+  assert.equal(artifacts.length, 1);
+  assert.equal(artifacts[0].path, 'code/shape_manager/main.cpp');
+  assert.ok(artifacts[0].content.includes('Shape Manager | Left drag'));
+});
+
+test('parseGeneratedArtifacts: generic shell command fence with source path is not a file', () => {
+  const text = `main.cpp
+\`\`\`
+cmake -S . -B build && cmake --build build
+\`\`\``;
+  const artifacts = parseGeneratedArtifacts(text);
+  assert.equal(artifacts.length, 0);
+});
+
 test('parseGeneratedArtifacts: loose create_file tool with unescaped C++ string content', () => {
   const text = '[TOOL:create_file {"filePath":"code/deepseek_self_loop/main.cpp","content":"#include <iostream>\\nint main() { std::cout << "DEEPSEEK_AGENT_SELF_LOOP_OK" << std::endl; return 0; }"}]';
   const artifacts = parseGeneratedArtifacts(text);

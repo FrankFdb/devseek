@@ -1,5 +1,6 @@
 import type { ChatIntentDecision } from '../intent-router';
 import type { WorkflowSelection } from './workflow-service';
+import { createWorkspaceFilePathTokenRegExp } from '../workspace/path-patterns';
 
 export type UserInteractionKind = 'clarify' | 'confirm' | 'planReview';
 export type UserInteractionOptionId = 'continue' | 'plan' | 'clarify';
@@ -31,7 +32,7 @@ export interface PreExecutionInteractionInput {
   intentConfirmed?: boolean;
 }
 
-const EXPLICIT_PATH_RE = /([A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|json|md|css|scss|html|py|java|go|rs|c|cc|cpp|cxx|h|hpp|sh|sql))/i;
+const EXPLICIT_PATH_RE = createWorkspaceFilePathTokenRegExp('i');
 const DIRECTORY_RE = /(?:^|[\s，,。；;：:])(?:[A-Za-z0-9_.-]+\/){1,}[A-Za-z0-9_.-]*(?:目录|文件夹|folder|dir)?/i;
 const TECH_OR_DOMAIN_RE = /(three\.?js|react|vue|svelte|angular|node|express|next\.?js|nuxt|python|java|go|rust|c\+\+|cpp|c语言|html|css|javascript|typescript|ts|js|openGL|glut|webgl|three|3d|三维|二维|游戏|登录|注册|todo|博客|商城|后台|管理|爬虫|接口|api|数据库|可视化|图表|动画|鼠标|键盘|上传|下载|支付|聊天|地图|表格|表单|测试|命令行|cli)/i;
 

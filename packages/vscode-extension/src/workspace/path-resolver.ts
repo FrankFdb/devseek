@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { isCppBuildArtifactDirName } from '../cpp-build-layout';
 import { getWorkspaceRootUri } from '../workspace-roots';
 import { sanitizeWorkspaceContextAnchorPath } from './context-anchor';
+import { createWorkspaceFilePathTokenRegExp } from './path-patterns';
 
 export interface WorkspacePathContext {
   root: vscode.Uri;
@@ -113,7 +114,7 @@ export function buildWorkspacePathContext(
   const isInternalDir = (dir: string) =>
     dir === '.devseek' || dir.startsWith('.devseek/');
 
-  const pathRe = /([A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|json|md|css|scss|html|py|java|go|rs|c|cc|cpp|cxx|h|hpp|sh|sql))/gi;
+  const pathRe = createWorkspaceFilePathTokenRegExp();
   let m: RegExpExecArray | null;
   while ((m = pathRe.exec(text)) !== null) {
     const candidate = (m[1] || '').trim();
@@ -553,7 +554,7 @@ function inferScopedDirsFromCommandText(text: string, root: vscode.Uri): string[
   const merged = [...commandLines, ...compileLines].join('\n');
   if (!merged.trim()) return dirs;
 
-  const pathRe = /([A-Za-z0-9_./-]+\.(?:cpp|cc|cxx|c|h|hpp|ts|tsx|js|jsx|py|java|go|rs))/gi;
+  const pathRe = createWorkspaceFilePathTokenRegExp();
   let m: RegExpExecArray | null;
   while ((m = pathRe.exec(merged)) !== null) {
     const rel = sanitizeWorkspacePath((m[1] || '').trim(), root);

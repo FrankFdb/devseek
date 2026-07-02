@@ -82,13 +82,47 @@ function looksLikeShellCommandFenceForNonShellFile(content: string, fenceInfo: s
 }
 
 function looksLikeShellCommandBlock(content: string): boolean {
-  return content
+  const lines = content
     .split(/\r?\n/)
     .map(line => line.trim().replace(/^\$\s*/, '').replace(/^>\s*/, ''))
-    .filter(Boolean)
-    .some(line => /^(?:cat|type|get-content|find|rg|grep|sed|head|tail|ls|dir|pwd|cd|npm|npx|pnpm|yarn|node|git|python|python3|bash|sh|zsh|cmd|powershell|pwsh|mkdir|cp|mv|rm|touch|code|g\+\+|gcc|clang|make|cmake|go|cargo|pytest|mvn|gradle|docker|curl|wget)\b/i.test(line)
-      || /(?:^|\s)(?:&&|\|\||[|;])(?:\s|$)/.test(line)
-      || /(?:^|\s)\d?>&?\S/.test(line));
+    .filter(Boolean);
+  if (lines.length === 0) return false;
+
+  const commandLikeCount = lines.filter(looksLikeShellCommandLine).length;
+  if (commandLikeCount === 0) return false;
+
+  if (looksLikeSourceCodeBlock(content)) {
+    return commandLikeCount >= Math.max(2, Math.ceil(lines.length * 0.5));
+  }
+
+  if (lines.length <= 3) return commandLikeCount === lines.length;
+  return commandLikeCount >= 2 && commandLikeCount / lines.length >= 0.5;
+}
+
+function looksLikeShellCommandLine(line: string): boolean {
+  return /^(?:cat|type|get-content|find|rg|grep|sed|head|tail|ls|dir|pwd|cd|npm|npx|pnpm|yarn|node|git|python|python3|bash|sh|zsh|cmd|powershell|pwsh|mkdir|cp|mv|rm|touch|code|g\+\+|gcc|clang|make|cmake|go|cargo|pytest|mvn|gradle|docker|curl|wget)\b/i.test(line)
+    || /(?:^|\s)(?:&&|\|\||[|;])(?:\s|$)/.test(line)
+    || /(?:^|\s)\d?>&?\S/.test(line);
+}
+
+function looksLikeSourceCodeBlock(content: string): boolean {
+  const lines = content
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return false;
+
+  if (/(^|\n)\s*#include\b/.test(content)) return true;
+  if (/(^|\n)\s*(?:import|export|from|package|using|namespace|template|class|struct|interface|enum|type)\b/.test(content)) return true;
+  if (/(^|\n)\s*(?:const|let|var|function|def|public|private|protected|static)\b/.test(content)) return true;
+  if (/(^|\n)\s*(?:int|void|float|double|bool|char|auto|std::[A-Za-z_]\w*)\s+[\w:*&<>,\s]+\([^;]*\)\s*\{?/.test(content)) return true;
+
+  const sourceLikeCount = lines.filter(line =>
+    /[{}]/.test(line)
+    || /^\s*(?:if|for|while|switch|return|case|break|continue)\b/.test(line)
+    || /;\s*(?:(?:\/\/|#).*)?$/.test(line)
+  ).length;
+  return sourceLikeCount >= Math.max(3, Math.ceil(lines.length * 0.25));
 }
 
 export function parseGeneratedArtifacts(markdown: string): GeneratedArtifact[] {

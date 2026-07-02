@@ -207,16 +207,23 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
   const applier = src('src/workspace-applier.ts');
   assertContains(applier, 'rollbackOnValidationFailure', 'workspace applier exposes validation rollback policy');
   assertContains(applier, 'rolledBack?: boolean', 'apply result records rollback state');
+  assertContains(applier, 'options?.rollbackOnValidationFailure === true', 'workspace applier must preserve validation-failed edits by default');
   assertContains(applier, 'collectMissingParentDirs', 'rollback path tracks directories created by this apply');
   assertContains(applier, 'cleanupCreatedEmptyDirs', 'rollback path removes empty directories created by this apply');
 
   const extension = src('src/extension.ts');
   const closedLoopRunner = src('src/app/closed-loop-repair-runner.ts');
+  const viewProvider = src('src/ui/deepseek-view-provider.ts');
   const discovery = src('src/app/context-discovery-service.ts');
   assert.match(
     extension,
     /applyGeneratedArtifactsWithPrompt\([\s\S]*?workflowReporter[\s\S]*?\{ rollbackOnValidationFailure: false \}/,
     'automatic code-generation apply must keep failed files so runClosedLoopRepair can iterate',
+  );
+  assert.match(
+    viewProvider,
+    /applyGeneratedArtifactsWithPrompt\([\s\S]*?\{ rollbackOnValidationFailure: false \}/,
+    'webview apply must keep validation-failed files for pending edit review',
   );
   assert.match(
     closedLoopRunner,
@@ -1306,6 +1313,20 @@ test('Architecture: ValidationService owns automatic validation execution', () =
   assertContains(service, 'runShell', 'validation service must own shell execution');
   assertContains(applier, 'new ValidationService()', 'workspace applier must delegate validation to service');
   assert.doesNotMatch(applier, /planCppValidation|child_process|runShell|runCppAutoValidation/, 'workspace applier must not own validation execution internals');
+});
+
+test('Architecture: agent final validation uses written-file evidence, not planned targets', () => {
+  const agentLoop = src('src/agent-loop.ts');
+  const modifiedPathsBlock = agentLoop.match(/const modifiedPaths = uniquePaths\([\s\S]*?\n\s*\);\n\s*let validationOutcome/);
+
+  assert.ok(modifiedPathsBlock, 'agent-loop must compute modifiedPaths for validation in one visible block');
+  assertContains(agentLoop, 'Compile validation must be evidence-backed', 'agent-loop must document evidence-backed validation');
+  assertContains(modifiedPathsBlock[0], 'editedFileRecords', 'final validation must be anchored to files actually written this run');
+  assert.doesNotMatch(
+    modifiedPathsBlock[0],
+    /\btasks\b/,
+    'final validation must not compile planned task targets when no file was written',
+  );
 });
 
 test('Architecture: C/C++ validation and execution share one stable project build layout', () => {

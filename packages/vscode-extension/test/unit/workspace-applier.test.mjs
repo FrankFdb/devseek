@@ -909,6 +909,36 @@ test('workspace-applier: compile-only C++ validation does not run the produced p
   }
 });
 
+test('workspace-applier: validation failure preserves auto-applied changes by default', { skip: !hasCommand('g++') && 'g++ is not installed' }, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-keep-failed-'));
+  const projectDir = path.join(root, 'code', 'compile_failure_demo');
+  try {
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(path.join(projectDir, 'main.cpp'), 'int main() { return 0; }\n');
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+
+    const raw = [
+      'code/compile_failure_demo/main.cpp',
+      '```cpp',
+      'int main() {',
+      '  return missing_symbol;',
+      '}',
+      '```',
+    ].join('\n');
+    const prompt = `请修改 ${projectDir}，只做本地编译确认`;
+
+    const result = await applyGeneratedArtifactsWithPrompt(raw, prompt, undefined, true);
+
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.changedPaths, ['code/compile_failure_demo/main.cpp']);
+    assert.equal(result.rolledBack, undefined);
+    assert.equal(result.validation?.ok, false);
+    assert.match(readFileSync(path.join(projectDir, 'main.cpp'), 'utf8'), /missing_symbol/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('workspace-applier: requested CMake runtime validation catches segfault', { skip: !hasCommand('cmake') && 'cmake is not installed' }, async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-'));
   const projectDir = path.join(root, 'code', 'shape_manager');

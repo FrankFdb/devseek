@@ -23,6 +23,7 @@ import { ValidationService, type AutoValidationResult } from './workspace/valida
 import { QualityGateService, type QualityGateDecision } from './app/quality-gate-service';
 import { shouldBlockProjectInstructionFileWrite } from './workspace/instruction-file-safety';
 import { findGeneratedSourceSanityIssue } from './workspace/source-sanity';
+import { createWorkspaceFilePathTokenRegExp } from './workspace/path-patterns';
 
 export interface ApplyWorkflowStatus {
   phase: 'apply' | 'validate' | 'quality' | 'repair';
@@ -55,6 +56,10 @@ type ApplyWorkflowReporter = (status: ApplyWorkflowStatus) => void | Thenable<vo
 type AppliedChangeReporter = (change: AppliedChangeRecord) => void | Thenable<void>;
 
 export interface ApplyGeneratedArtifactsOptions {
+  /**
+   * Defaults to false. Validation failures should preserve edits for user
+   * review/repair; callers must opt in when rollback is truly desired.
+   */
   rollbackOnValidationFailure?: boolean;
 }
 
@@ -155,7 +160,7 @@ async function applyPreparedChanges(
 ): Promise<ApplyWorkflowResult> {
   const root = getWorkspaceRoot(requestPrompt, preferredAbsolutePaths);
   const pathContext = root ? buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths) : undefined;
-  const rollbackOnValidationFailure = options?.rollbackOnValidationFailure !== false;
+  const rollbackOnValidationFailure = options?.rollbackOnValidationFailure === true;
   if (prepared.length === 0) {
     const candidateDetail = nonTargetCandidatePaths.length > 0
       ? `；检测到非目标候选：${nonTargetCandidatePaths.slice(0, 6).join('、')}`
@@ -758,7 +763,7 @@ function inferFallbackArtifacts(raw: string, requestPrompt: string | undefined, 
 function inferNumberedSectionArtifacts(raw: string, requestPrompt: string | undefined, root: vscode.Uri): GeneratedArtifact[] {
   const normalized = raw.replace(/\r\n/g, '\n');
   const lines = normalized.split('\n');
-  const sectionRe = /^\s*\d+[.)]\s+([A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|json|md|css|scss|html|py|java|go|rs|c|cc|cpp|cxx|h|hpp|sh|sql))(?:\s*[-—–:：].*)?\s*$/i;
+  const sectionRe = new RegExp(`^\\s*\\d+[.)]\\s+${createWorkspaceFilePathTokenRegExp('').source}(?:\\s*[-—–:：].*)?\\s*$`, 'i');
   const headingIndexes: Array<{ idx: number; path: string }> = [];
 
   for (let i = 0; i < lines.length; i++) {
@@ -1093,7 +1098,7 @@ function firstMeaningfulSourceLine(content: string): string | undefined {
 }
 
 function inferPathFromText(text: string): string | undefined {
-  const re = /([A-Za-z0-9_./-]+\.(?:ts|tsx|js|jsx|json|md|css|scss|html|py|java|go|rs|c|cc|cpp|cxx|h|hpp|sh|sql))/gi;
+  const re = createWorkspaceFilePathTokenRegExp();
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     const candidate = m[1].replace(/^\.\//, '').replace(/^\//, '');
