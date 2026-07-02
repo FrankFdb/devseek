@@ -8,7 +8,7 @@ import {
   decideProjectInstructionFileWrite,
 } from '../workspace/instruction-file-safety';
 import { AgentToolExecutor } from './tool-executor';
-import type { FakeTool } from './fake-tool-parser';
+import { containsFakeToolCallProtocol, type FakeTool } from './fake-tool-parser';
 import { cleanAgentFinalSummaryForUser } from './agentic-summary';
 import {
   detectNestedFilePayloadDrift,
@@ -541,6 +541,16 @@ export async function executeFakeToolsForLoop(
       const workdir = typeof tool.input.workdir === 'string' ? tool.input.workdir : defaultWorkdir;
       if (command) {
         toolCallsMade = true;
+        if (containsFakeToolCallProtocol(command)) {
+          const msg = [
+            `[run_terminal] 已阻止`,
+            `检测到工具协议文本被放入 command 字段，不能作为 shell 命令执行。`,
+            `请重新发起标准工具调用，只把真实命令放入 run_terminal.command。`,
+          ].join('\n');
+          callbacks.onToolActivity?.('terminal', '阻止工具协议文本进入终端');
+          parts.push(msg);
+          continue;
+        }
         const shellWriteTarget = detectShellFileWriteCommand(command);
         if (shellWriteTarget) {
           const msg = [

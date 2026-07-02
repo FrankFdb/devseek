@@ -81,6 +81,7 @@ import {
   withTaskTerminalEvidence,
   type TaskExecutionResult,
 } from './agent/task-execution-result';
+import { createTaskConvergenceGuard } from './agent/task-convergence-guard';
 import type { AgentLoopCallbacks, AgentLoopResult } from './agent/loop-types';
 import {
   analyzeTerminalEvidence,
@@ -763,6 +764,7 @@ async function executeTask(
       { role: 'user', content: analyzePrompt },
     ];
     const taskTerminalEvidence: TerminalEvidence[] = [];
+    const analyzeConvergenceGuard = createTaskConvergenceGuard();
     // G-analy-display: Route streaming text into the Working box analysis body (Copilot
     // inline style). Using \x00AFILE:basename\x00 prefix ensures content appears per-task
     // directly inside each Working box, regardless of whether the AI produces streaming
@@ -839,9 +841,28 @@ async function executeTask(
           return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw, taskComplete: true }, taskTerminalEvidence);
         }
         if (!loopRes.toolCallsMade) break;
+
+        const convergence = analyzeConvergenceGuard.observe({
+          tools,
+          feedbackForAI: loopRes.feedbackForAI,
+          rawText: text,
+          terminalEvidence: loopRes.terminalEvidence,
+        });
+        if (convergence.kind === 'blocked') {
+          await callbacks.onAgentStatus({
+            type: 'agentStatus', phase: 'execute',
+            taskId: task.id, taskFile: basename, taskAction: task.action,
+            taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
+            state: 'failed',
+            title: '停止重复执行：' + (task.desc || basename),
+            detail: convergence.detail,
+          });
+          return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw }, taskTerminalEvidence);
+        }
+
         execMessages.push({
           role: 'user',
-          content: `[工具执行结果]\n${loopRes.feedbackForAI}\n\n请继续。`,
+          content: `[工具执行结果]\n${loopRes.feedbackForAI}${convergence.feedbackSuffix ? `\n\n${convergence.feedbackSuffix}` : ''}\n\n请继续。`,
         });
       }
     } catch (e) {
@@ -947,6 +968,7 @@ async function executeTask(
   let taskCompleteByAI = false;
   const taskTerminalEvidence: TerminalEvidence[] = [];
   const taskWrittenFiles: WrittenFileEvidence[] = [];
+  const taskConvergenceGuard = createTaskConvergenceGuard();
 
   const recordTaskToolWrites = (writtenFiles?: WrittenFileEvidence[]) => {
     if (writtenFiles?.length) taskWrittenFiles.push(...writtenFiles);
@@ -1027,11 +1049,35 @@ async function executeTask(
       // No data-fetching tool called → AI gave final answer (full-file or plain text)
       if (!loopRes.toolCallsMade) { break; }
 
+      const convergence = taskConvergenceGuard.observe({
+        tools,
+        feedbackForAI: loopRes.feedbackForAI,
+        rawText: text,
+        writtenFiles: loopRes.writtenFiles,
+        terminalEvidence: loopRes.terminalEvidence,
+      });
+      if (convergence.kind === 'blocked') {
+        await callbacks.onAgentStatus({
+          type: 'agentStatus',
+          phase: 'execute',
+          taskId: task.id,
+          taskFile: basename,
+          taskAction: task.action,
+          taskDesc: task.desc,
+          taskIndex,
+          taskTotal: allTasks.length,
+          state: 'failed',
+          title: '停止重复执行：' + (task.desc || basename),
+          detail: convergence.detail,
+        });
+        return withTaskTerminalEvidence({ applied: false, raw }, taskTerminalEvidence);
+      }
+
       // Feed tool results back for the next AI round
       taskMessages.push({
         role: 'user',
         content: `[工具执行结果]
-${loopRes.feedbackForAI}
+${loopRes.feedbackForAI}${convergence.feedbackSuffix ? `\n\n${convergence.feedbackSuffix}` : ''}
 
 请根据以上结果继续完成修改。`,
       });

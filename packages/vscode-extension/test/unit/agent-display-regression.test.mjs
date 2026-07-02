@@ -16,6 +16,7 @@ import assert from 'node:assert/strict';
 
 function containsAgentInternalTranscript(text) {
   return /<\s*[|｜]{1,2}\s*DSML\s*[|｜]{1,2}\s*(?:tool_calls|invoke|parameter)\b/i.test(text)
+    || /(?:<|&lt;)\s*TOOL_CALL\s*(?:>|&gt;)/i.test(text)
     || /(?:^|[^A-Za-z0-9_])(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__[A-Za-z0-9_]+)\s*\(\s*\{/i.test(text)
     || /(?:^|\n)\s*\[TOOL:(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__|\w+)\b/i.test(text)
     || /(?:^|\n)\s*(?:Calling\s*:?(?:\s+tool)?|Call\s*:|调用)\s*\[?`?(?:run_terminal|read_file|grep_search|search_file|file_search|semantic_search|list_dir|get_errors|get_changed_files|create_file|write_file|replace_file|manage_todo_list|task_complete|memory_write|fetch_webpage|vscode_listCodeUsages|run_vscode_command|mcp__)/i.test(text)
@@ -160,6 +161,27 @@ test('agent display: fullwidth double-bar DSML tool transcript is treated as int
     {
       type: 'delta',
       text: '我先读取文件。<｜｜DSML｜｜tool_calls><｜｜DSML｜｜invoke name="read_file"><｜｜DSML｜｜parameter name="filePath" string="true">/tmp/project/main.cpp</｜｜DSML｜｜parameter></｜｜DSML｜｜invoke></｜｜DSML｜｜tool_calls>',
+    },
+    {
+      type: 'agentStatus',
+      phase: 'done',
+      state: 'completed',
+      editedFiles: [{ path: 'code/shape_manager/main.cpp', basename: 'main.cpp' }],
+    },
+    { type: 'endResponse' },
+  ].forEach((msg) => reduce(state, msg));
+
+  assert.equal(state.finalBubble, '已完成，修改 1 个文件：main.cpp。');
+  assert.equal(containsAgentInternalTranscript(state.finalBubble), false);
+});
+
+test('agent display: TOOL_CALL envelope transcript is treated as internal output', () => {
+  const state = createState();
+  [
+    { type: 'startResponse', agentMode: true },
+    {
+      type: 'delta',
+      text: '我检查标题。<TOOL_CALL>run_terminal</TOOL_CALL><TOOL_CALL>{"command":"cat /tmp/project/main.cpp"}</TOOL_CALL>',
     },
     {
       type: 'agentStatus',

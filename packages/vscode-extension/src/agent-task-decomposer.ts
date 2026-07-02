@@ -408,9 +408,22 @@ function taskTargetsCodeFile(task: AgentTask): boolean {
   return isCodeArtifactPath(task.absPath ?? task.file);
 }
 
+function isWriteTask(task: AgentTask): boolean {
+  return task.action === 'modify' || task.action === 'create' || task.action === 'delete';
+}
+
+function isValidationTask(task: AgentTask): boolean {
+  const text = `${task.file} ${task.desc}`.toLowerCase();
+  return /(?:\b(?:cmake|make|npm|pnpm|yarn|pytest|ctest|cargo|go test|mvn|gradle)\b|编译|构建|测试|验证|运行)/.test(text);
+}
+
 function normalizeExplicitEditTasks(tasks: AgentTask[], userPrompt?: string): AgentTask[] {
   if (!userPrompt || !requiresCodeArtifactForEvidence(userPrompt)) return tasks;
-  if (tasks.some(t => t.action === 'modify' || t.action === 'create' || t.action === 'delete')) return tasks;
+
+  const writeTasks = tasks.filter(isWriteTask);
+  if (writeTasks.length > 0) {
+    return tasks.filter(t => isWriteTask(t) || isValidationTask(t));
+  }
 
   let converted = false;
   const normalized = tasks.map((task) => {
@@ -425,7 +438,9 @@ function normalizeExplicitEditTasks(tasks: AgentTask[], userPrompt?: string): Ag
     };
   });
 
-  return converted ? normalized : tasks;
+  return converted
+    ? normalized.filter(t => isWriteTask(t) || isValidationTask(t))
+    : tasks;
 }
 
 /**

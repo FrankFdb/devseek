@@ -468,6 +468,9 @@ const DSML_INCOMPLETE_TAIL_REGEX = new RegExp(
   `${DSML_OPEN_PREFIX_PATTERN}(?:${DSML_BAR_PATTERN}\\s*(?:D(?:S(?:M(?:L)?)?)?(?:\\s*${DSML_BAR_PATTERN})?)?)?$`,
   'i',
 );
+const TOOL_CALL_OPEN_PATTERN = '(?:<|&lt;)\\s*TOOL_CALL\\s*(?:>|&gt;)';
+const TOOL_CALL_CLOSE_PATTERN = '(?:<\\/|&lt;\\/)\\s*TOOL_CALL\\s*(?:>|&gt;)';
+const TOOL_CALL_INCOMPLETE_TAIL_REGEX = /(?:<|&lt;)\s*(?:T|TO|TOO|TOOL|TOOL_|TOOL_C|TOOL_CA|TOOL_CAL|TOOL_CALL)?$/i;
 
 function makeDsmlStartRegexInText() {
   return new RegExp(`${DSML_OPEN_PREFIX_PATTERN}${DSML_MARKER_PATTERN}\\s*${DSML_START_NAMES_PATTERN}\\b`, 'gi');
@@ -520,6 +523,131 @@ function containsDsmlToolTranscript(text) {
   return findNextDsmlToolCallStartInText(String(text || ''), 0) >= 0;
 }
 
+function makeToolCallEnvelopeOpenRegexInText() {
+  return new RegExp(TOOL_CALL_OPEN_PATTERN, 'gi');
+}
+
+function makeToolCallEnvelopeBlockRegexInText() {
+  return new RegExp(TOOL_CALL_OPEN_PATTERN + '[\\s\\S]*?' + TOOL_CALL_CLOSE_PATTERN, 'gi');
+}
+
+function findNextToolCallEnvelopeStartInText(text, startAt = 0) {
+  const re = makeToolCallEnvelopeOpenRegexInText();
+  re.lastIndex = startAt;
+  const match = re.exec(String(text || ''));
+  return match ? match.index : -1;
+}
+
+function toolCallEnvelopeBlockEndInText(text, start) {
+  const raw = String(text || '');
+  const blockRe = makeToolCallEnvelopeBlockRegexInText();
+  blockRe.lastIndex = start;
+  let end = start;
+  let found = false;
+  let match;
+  while ((match = blockRe.exec(raw)) !== null) {
+    if (match.index > end && raw.slice(end, match.index).trim()) break;
+    if (match.index < end) continue;
+    end = blockRe.lastIndex;
+    found = true;
+  }
+  return found ? end : raw.length;
+}
+
+function stripToolCallEnvelopeBlocksFromText(text) {
+  const raw = String(text || '');
+  let out = '';
+  let cursor = 0;
+  while (cursor < raw.length) {
+    const start = findNextToolCallEnvelopeStartInText(raw, cursor);
+    if (start < 0) {
+      out += raw.slice(cursor);
+      break;
+    }
+    out += raw.slice(cursor, start).replace(/[ \t]+$/, '');
+    cursor = toolCallEnvelopeBlockEndInText(raw, start);
+  }
+  return out.replace(TOOL_CALL_INCOMPLETE_TAIL_REGEX, '').trimEnd();
+}
+
+function containsToolCallEnvelopeTranscript(text) {
+  const raw = String(text || '');
+  return findNextToolCallEnvelopeStartInText(raw, 0) >= 0 || TOOL_CALL_INCOMPLETE_TAIL_REGEX.test(raw);
+}
+
+function makeReactActionRegex() {
+  return /\bAction\s*[:：]\s*`?([A-Za-z_]\w*?)`?(?=\s*(?:Action\s*Input\s*[:：]|$|[\r\n]))/gi;
+}
+
+function makeReactActionInputRegex() {
+  return /Action\s*Input\s*[:：]\s*/gi;
+}
+
+function findReactActionInput(text, startAt) {
+  const inputRe = makeReactActionInputRegex();
+  inputRe.lastIndex = startAt || 0;
+  return inputRe.exec(String(text || ''));
+}
+
+function findNextReactActionStartInText(text, startAt = 0) {
+  const raw = String(text || '');
+  const actionRe = makeReactActionRegex();
+  actionRe.lastIndex = startAt;
+  let match;
+  while ((match = actionRe.exec(raw)) !== null) {
+    const name = match[1] || '';
+    if (!isToolName(name)) continue;
+    if (findReactActionInput(raw, match.index + match[0].length)) return match.index;
+    if (!raw.slice(match.index + match[0].length).trim()) return match.index;
+  }
+  return -1;
+}
+
+function reactActionBlockEndInText(text, start) {
+  const raw = String(text || '');
+  const actionRe = makeReactActionRegex();
+  actionRe.lastIndex = start;
+  const match = actionRe.exec(raw);
+  if (!match || match.index !== start) return start;
+  const inputMatch = findReactActionInput(raw, match.index + match[0].length);
+  if (!inputMatch) return raw.length;
+  let payloadStart = inputMatch.index + inputMatch[0].length;
+  while (payloadStart < raw.length && /[ \t\r\n`]/.test(raw[payloadStart])) payloadStart++;
+  if (raw.slice(payloadStart, payloadStart + 4).toLowerCase() === 'json') payloadStart += 4;
+  while (payloadStart < raw.length && /[ \t\r\n]/.test(raw[payloadStart])) payloadStart++;
+  if (raw[payloadStart] === '{') {
+    const jsonEnd = findJsonObjectEnd(raw, payloadStart);
+    if (jsonEnd < 0) return raw.length;
+    let end = jsonEnd + 1;
+    const closeFence = /^[ \t\r\n]*```/.exec(raw.slice(end));
+    if (closeFence) return webviewLineEndAfter(raw, end + closeFence[0].length);
+    while (end < raw.length && /[ \t`]/.test(raw[end])) end++;
+    return end;
+  }
+  return webviewLineEndAfter(raw, payloadStart);
+}
+
+function stripReactActionBlocksFromText(text) {
+  const raw = String(text || '');
+  let out = '';
+  let cursor = 0;
+  while (cursor < raw.length) {
+    const start = findNextReactActionStartInText(raw, cursor);
+    if (start < 0) {
+      out += raw.slice(cursor);
+      break;
+    }
+    out += raw.slice(cursor, start).replace(/[ \t]+$/, '');
+    const end = reactActionBlockEndInText(raw, start);
+    cursor = end > start ? end : raw.length;
+  }
+  return out.trimEnd();
+}
+
+function containsReactActionTranscript(text) {
+  return findNextReactActionStartInText(String(text || ''), 0) >= 0;
+}
+
 function stripToolCallBlocks(text) {
   const raw = String(text || '');
   let result = '';
@@ -562,6 +690,12 @@ function stripToolCallBlocks(text) {
     result += raw[i];
     i++;
   }
+  const beforeToolCallEnvelopeCleanup = result;
+  result = stripToolCallEnvelopeBlocksFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeToolCallEnvelopeCleanup;
+  const beforeReactCleanup = result;
+  result = stripReactActionBlocksFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeReactCleanup;
   const beforeShellCleanup = result;
   result = stripCallingShellTranscriptBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeShellCleanup;
@@ -586,6 +720,8 @@ function stripToolCallBlocks(text) {
 
 function containsAgentInternalTranscript(text) {
   return containsDsmlToolTranscript(text)
+    || containsToolCallEnvelopeTranscript(text)
+    || containsReactActionTranscript(text)
     || containsAgentRoutingMarkerLeak(text)
     || containsFunctionStyleToolCall(text)
     || containsXmlToolTag(text)
@@ -1023,6 +1159,52 @@ test('assistant visible render: hides fullwidth double-bar DSML transcript outsi
   const cleaned = sanitizeVisibleDeltaForMode(leaked, false);
   assert.equal(cleaned, '我来先查看当前 shape_manager 的完整代码，了解现有的渲染和交互逻辑。');
   assert.doesNotMatch(cleaned, /DSML|tool_calls|read_file|list_dir|filePath/);
+});
+
+test('assistant visible render: hides TOOL_CALL envelope transcript outside agent mode', () => {
+  const leaked = [
+    '我检查 main.cpp 中窗口标题设置。',
+    '<TOOL_CALL>run_terminal</TOOL_CALL>',
+    '<TOOL_CALL>{"command":"cat /home/ff/work/devseek_netai/code/shape_manager/main.cpp | head -200"}</TOOL_CALL>',
+  ].join('');
+  const cleaned = sanitizeVisibleDeltaForMode(leaked, false);
+  assert.equal(cleaned, '我检查 main.cpp 中窗口标题设置。');
+  assert.doesNotMatch(cleaned, /TOOL_CALL|run_terminal|command/);
+});
+
+test('assistant visible render: hides incomplete TOOL_CALL envelope tail outside agent mode', () => {
+  const leaked = '我检查 main.cpp 中窗口标题设置。<TOOL';
+  const cleaned = sanitizeVisibleDeltaForMode(leaked, false);
+  assert.equal(cleaned, '我检查 main.cpp 中窗口标题设置。');
+});
+
+test('assistant visible render: hides ReAct Action/Input transcript outside agent mode', () => {
+  const leaked = [
+    '我需要先读取完整文件内容，然后修改标题并重新写入。',
+    'Action: read_file Action Input: {"path":"/home/ff/work/devseek_netai/code/shape_manager/main.cpp"}',
+  ].join(' ');
+  const cleaned = sanitizeVisibleDeltaForMode(leaked, false);
+
+  assert.equal(cleaned, '我需要先读取完整文件内容，然后修改标题并重新写入。');
+  assert.doesNotMatch(cleaned, /Action|Action Input|read_file|main\.cpp|path/);
+});
+
+test('assistant visible render: hides glued ReAct Action/Input transcript outside agent mode', () => {
+  const leaked = [
+    '结果摘要：我需要先读取完整的文件内容。',
+    'Action: read_fileAction Input: {"path":"/home/ff/work/devseek_netai/code/shape_manager/main.cpp"}',
+    '然后继续。',
+  ].join(' ');
+  const cleaned = sanitizeVisibleDeltaForMode(leaked, false);
+
+  assert.equal(cleaned, '结果摘要：我需要先读取完整的文件内容。然后继续。');
+  assert.doesNotMatch(cleaned, /Action|Action Input|read_file|main\.cpp|path/);
+});
+
+test('agent accumulated render: hides incomplete ReAct Action tail while streaming', () => {
+  const cleaned = sanitizeVisibleDeltaForMode('我需要先读取完整文件内容。 Action: read_file', true);
+
+  assert.equal(cleaned, '我需要先读取完整文件内容。');
 });
 
 test('agent accumulated render: keeps ordinary nameless Calling prose', () => {

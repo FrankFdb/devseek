@@ -58,6 +58,8 @@ test('two-phase agent todos are delegated to an evidence ledger', () => {
   assert.match(agentLoop, /async function executeTask\([\s\S]*?changedPaths: string\[\]/, 'executeTask must receive changedPaths explicitly instead of closing over an undefined outer variable');
   assert.match(agentLoop, /executeTask\([\s\S]*?tasks,\s*changedPaths,\s*userPrompt/, 'runAgentLoop must pass changedPaths into task execution');
   assert.match(agentLoop, /buildAgenticHistoryText/, 'agent loop must own restored history evidence text');
+  assert.match(agentLoop, /createTaskConvergenceGuard/, 'agent-loop must use the shared convergence guard for no-progress tool loops');
+  assert.match(agentLoop, /convergence\.feedbackSuffix/, 'editor/analyze loops must feed convergence warnings back to the model');
   assert.match(agentLoop, /classifyTaskTerminalManualReview/, 'analyze run_terminal failures must support manual visual review before hard-failing');
   assert.doesNotMatch(
     agentLoop,

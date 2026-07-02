@@ -132,6 +132,59 @@ test('WebViewEventAdapter: strips fullwidth double-bar DSML transcripts at the o
   assert.doesNotMatch(visibleText, /DSML|tool_calls|read_file|list_dir|filePath|^ML/);
 });
 
+test('WebViewEventAdapter: strips TOOL_CALL envelope transcripts at the outbound UI boundary', () => {
+  const sent = [];
+  const target = { postMessage: (message) => { sent.push(message); } };
+  adapter.postWebviewMessage(target, { type: 'startResponse', agentMode: false });
+  adapter.postWebviewMessage(target, {
+    type: 'delta',
+    text: '我先检查标题。<TOOL_CALL>run_terminal</TOOL_CALL>',
+  });
+  adapter.postWebviewMessage(target, {
+    type: 'delta',
+    text: '<TOOL_CALL>{"command":"cat /tmp/main.cpp | head -200"}</TOOL_CALL>',
+  });
+  adapter.postWebviewMessage(target, { type: 'delta', text: '\n继续修改。' });
+
+  const visibleText = sent.map((message) => message.text || '').join('');
+  assert.equal(visibleText, '我先检查标题。\n继续修改。');
+  assert.doesNotMatch(visibleText, /TOOL_CALL|run_terminal|command|main\.cpp/);
+});
+
+test('WebViewEventAdapter: strips split ReAct Action/Input transcripts at the outbound UI boundary', () => {
+  const sent = [];
+  const target = { postMessage: (message) => { sent.push(message); } };
+  adapter.postWebviewMessage(target, { type: 'startResponse', agentMode: false });
+  adapter.postWebviewMessage(target, {
+    type: 'delta',
+    text: '我需要先读取完整文件内容。 Action: read_file',
+  });
+  adapter.postWebviewMessage(target, {
+    type: 'delta',
+    text: ' Action Input: {"path":"/tmp/main.cpp"}',
+  });
+  adapter.postWebviewMessage(target, { type: 'delta', text: '\n继续修改。' });
+
+  const visibleText = sent.map((message) => message.text || '').join('');
+  assert.equal(visibleText, '我需要先读取完整文件内容。\n继续修改。');
+  assert.doesNotMatch(visibleText, /Action|Action Input|read_file|main\.cpp|path/);
+});
+
+test('WebViewEventAdapter: strips glued ReAct Action/Input transcripts at the outbound UI boundary', () => {
+  const sent = [];
+  const target = { postMessage: (message) => { sent.push(message); } };
+  adapter.postWebviewMessage(target, { type: 'startResponse', agentMode: false });
+  adapter.postWebviewMessage(target, {
+    type: 'delta',
+    text: '我需要先读取完整文件内容。 Action: read_fileAction Input: {"path":"/tmp/main.cpp"}',
+  });
+  adapter.postWebviewMessage(target, { type: 'delta', text: '\n继续修改。' });
+
+  const visibleText = sent.map((message) => message.text || '').join('');
+  assert.equal(visibleText, '我需要先读取完整文件内容。\n继续修改。');
+  assert.doesNotMatch(visibleText, /Action|Action Input|read_file|main\.cpp|path/);
+});
+
 test('WebViewEventAdapter: keeps agent raw deltas for tool parsing but sanitizes announcements', () => {
   const sent = [];
   const target = { postMessage: (message) => { sent.push(message); } };

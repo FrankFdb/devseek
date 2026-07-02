@@ -476,6 +476,9 @@ var DSML_INCOMPLETE_TAIL_REGEX = new RegExp(
   DSML_OPEN_PREFIX_PATTERN + '(?:' + DSML_BAR_PATTERN + '\\s*(?:D(?:S(?:M(?:L)?)?)?(?:\\s*' + DSML_BAR_PATTERN + ')?)?)?$',
   'i'
 );
+var TOOL_CALL_OPEN_PATTERN = '(?:<|&lt;)\\s*TOOL_CALL\\s*(?:>|&gt;)';
+var TOOL_CALL_CLOSE_PATTERN = '(?:<\\/|&lt;\\/)\\s*TOOL_CALL\\s*(?:>|&gt;)';
+var TOOL_CALL_INCOMPLETE_TAIL_REGEX = /(?:<|&lt;)\s*(?:T|TO|TOO|TOOL|TOOL_|TOOL_C|TOOL_CA|TOOL_CAL|TOOL_CALL)?$/i;
 
 function makeDsmlStartRegexInText() {
   return new RegExp(DSML_OPEN_PREFIX_PATTERN + DSML_MARKER_PATTERN + '\\s*' + DSML_START_NAMES_PATTERN + '\\b', 'gi');
@@ -529,6 +532,132 @@ function containsDsmlToolTranscript(text) {
   return findNextDsmlToolCallStartInText(String(text || ''), 0) >= 0;
 }
 
+function makeToolCallEnvelopeOpenRegexInText() {
+  return new RegExp(TOOL_CALL_OPEN_PATTERN, 'gi');
+}
+
+function makeToolCallEnvelopeBlockRegexInText() {
+  return new RegExp(TOOL_CALL_OPEN_PATTERN + '[\\s\\S]*?' + TOOL_CALL_CLOSE_PATTERN, 'gi');
+}
+
+function findNextToolCallEnvelopeStartInText(text, startAt) {
+  var raw = String(text || '');
+  var re = makeToolCallEnvelopeOpenRegexInText();
+  re.lastIndex = startAt || 0;
+  var match = re.exec(raw);
+  return match ? match.index : -1;
+}
+
+function toolCallEnvelopeBlockEndInText(text, start) {
+  var raw = String(text || '');
+  var blockRe = makeToolCallEnvelopeBlockRegexInText();
+  blockRe.lastIndex = start;
+  var end = start;
+  var found = false;
+  var match;
+  while ((match = blockRe.exec(raw)) !== null) {
+    if (match.index > end && raw.slice(end, match.index).trim()) break;
+    if (match.index < end) continue;
+    end = blockRe.lastIndex;
+    found = true;
+  }
+  return found ? end : raw.length;
+}
+
+function stripToolCallEnvelopeBlocksFromText(text) {
+  var raw = String(text || '');
+  var out = '';
+  var cursor = 0;
+  while (cursor < raw.length) {
+    var start = findNextToolCallEnvelopeStartInText(raw, cursor);
+    if (start < 0) {
+      out += raw.slice(cursor);
+      break;
+    }
+    out += raw.slice(cursor, start).replace(/[ \t]+$/, '');
+    cursor = toolCallEnvelopeBlockEndInText(raw, start);
+  }
+  return out.replace(TOOL_CALL_INCOMPLETE_TAIL_REGEX, '').trimEnd();
+}
+
+function containsToolCallEnvelopeTranscript(text) {
+  var raw = String(text || '');
+  return findNextToolCallEnvelopeStartInText(raw, 0) >= 0 || TOOL_CALL_INCOMPLETE_TAIL_REGEX.test(raw);
+}
+
+function makeReactActionRegex() {
+  return /\bAction\s*[:：]\s*`?([A-Za-z_]\w*?)`?(?=\s*(?:Action\s*Input\s*[:：]|$|[\r\n]))/gi;
+}
+
+function makeReactActionInputRegex() {
+  return /Action\s*Input\s*[:：]\s*/gi;
+}
+
+function findReactActionInput(text, startAt) {
+  var inputRe = makeReactActionInputRegex();
+  inputRe.lastIndex = startAt || 0;
+  return inputRe.exec(String(text || ''));
+}
+
+function findNextReactActionStartInText(text, startAt) {
+  var raw = String(text || '');
+  var actionRe = makeReactActionRegex();
+  actionRe.lastIndex = startAt || 0;
+  var match;
+  while ((match = actionRe.exec(raw)) !== null) {
+    var name = match[1] || '';
+    if (!isWebviewToolName(name)) continue;
+    if (findReactActionInput(raw, match.index + match[0].length)) return match.index;
+    if (!raw.slice(match.index + match[0].length).trim()) return match.index;
+  }
+  return -1;
+}
+
+function reactActionBlockEndInText(text, start) {
+  var raw = String(text || '');
+  var actionRe = makeReactActionRegex();
+  actionRe.lastIndex = start;
+  var match = actionRe.exec(raw);
+  if (!match || match.index !== start) return start;
+  var inputMatch = findReactActionInput(raw, match.index + match[0].length);
+  if (!inputMatch) return raw.length;
+  var payloadStart = inputMatch.index + inputMatch[0].length;
+  while (payloadStart < raw.length && /[ \t\r\n`]/.test(raw[payloadStart])) payloadStart++;
+  if (raw.slice(payloadStart, payloadStart + 4).toLowerCase() === 'json') payloadStart += 4;
+  while (payloadStart < raw.length && /[ \t\r\n]/.test(raw[payloadStart])) payloadStart++;
+  if (raw[payloadStart] === '{') {
+    var jsonEnd = findJsonObjectEndInText(raw, payloadStart);
+    if (jsonEnd < 0) return raw.length;
+    var end = jsonEnd + 1;
+    var closeFence = /^[ \t\r\n]*```/.exec(raw.slice(end));
+    if (closeFence) return webviewLineEndAfter(raw, end + closeFence[0].length);
+    while (end < raw.length && /[ \t`]/.test(raw[end])) end++;
+    return end;
+  }
+  return webviewLineEndAfter(raw, payloadStart);
+}
+
+function stripReactActionBlocksFromText(text) {
+  var raw = String(text || '');
+  var out = '';
+  var cursor = 0;
+  while (cursor < raw.length) {
+    var start = findNextReactActionStartInText(raw, cursor);
+    if (start < 0) {
+      out += raw.slice(cursor);
+      break;
+    }
+    out += raw.slice(cursor, start).replace(/[ \t]+$/, '');
+    var end = reactActionBlockEndInText(raw, start);
+    cursor = end > start ? end : raw.length;
+  }
+  return out.trimEnd();
+}
+
+function containsReactActionTranscript(text) {
+  return findNextReactActionStartInText(String(text || ''), 0) >= 0;
+}
+
 function stripToolCallBlocks(text) {
   var result = '';
   var i = 0;
@@ -577,6 +706,12 @@ function stripToolCallBlocks(text) {
     result += text[i];
     i++;
   }
+  var beforeToolCallEnvelopeCleanup = result;
+  result = stripToolCallEnvelopeBlocksFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeToolCallEnvelopeCleanup;
+  var beforeReactCleanup = result;
+  result = stripReactActionBlocksFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeReactCleanup;
   // Also strip DeepSeek web pseudo tool calls:
   //   Calling `manage_todo_list`
   //   {"todoList":[...]}
@@ -659,6 +794,8 @@ function renderAgentMarkdown(text) {
 
 function containsAgentInternalTranscript(text) {
   return containsDsmlToolTranscript(text)
+    || containsToolCallEnvelopeTranscript(text)
+    || containsReactActionTranscript(text)
     || containsAgentRoutingMarkerLeak(text)
     || containsWebviewFunctionStyleToolCall(text)
     || containsWebviewXmlToolTag(text)

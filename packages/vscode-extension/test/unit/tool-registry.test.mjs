@@ -113,9 +113,9 @@ test('ToolRegistry: webview tool mirror includes every canonical tool and alias'
     ? manifest.scripts
     : ['webview.js'];
   const webview = scripts.map((fileName) => readFileSync(path.join(rootDir, 'media', fileName), 'utf8')).join('\n');
-  const match = /var WEBVIEW_TOOL_NAMES = \{([\s\S]*?)\};/.exec(webview);
-  assert.ok(match, 'webview must define WEBVIEW_TOOL_NAMES');
-  const mirroredNames = new Set([...match[1].matchAll(/\b([A-Za-z_]\w*)\s*:/g)].map(item => item[1]));
+  const match = /var toolNames = \[([\s\S]*?)\];/.exec(webview);
+  assert.ok(match, 'webview must define generated toolNames manifest');
+  const mirroredNames = new Set([...match[1].matchAll(/"([^"]+)"/g)].map(item => item[1]));
 
   for (const name of listAgentToolNames(true)) {
     assert.equal(mirroredNames.has(name), true, `WEBVIEW_TOOL_NAMES must include ${name}`);

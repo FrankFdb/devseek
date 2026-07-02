@@ -184,4 +184,109 @@ test('agent-task-decomposer: explicit fix target is not downgraded to explore-on
   }
 });
 
+test('agent-task-decomposer: UI title mojibake edit is not completed as explore-only', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-title-mojibake-'));
+  try {
+    const projectDir = path.join(root, 'code', 'shape_manager');
+    mkdirSync(projectDir, { recursive: true });
+    const targetFile = path.join(projectDir, 'main.cpp');
+    writeFileSync(targetFile, 'int main() { glutCreateWindow("三维图形展示"); return 0; }\n');
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+
+    const rawPlan = JSON.stringify({
+      tasks: [
+        {
+          id: 't1',
+          file: 'main.cpp',
+          action: 'explore',
+          desc: '探索 title乱码原因，检查 glutCreateWindow 标题',
+        },
+        {
+          id: 't2',
+          file: 'code/shape_manager',
+          action: 'explore',
+          desc: '搜索 title 标题 窗口 glutCreateWindow',
+        },
+        {
+          id: 't3',
+          file: 'code/shape_manager/build/bin',
+          action: 'explore',
+          desc: '列出 build/bin 确认当前程序',
+        },
+      ],
+    });
+
+    const result = await decomposeTask(
+      'title乱码，是不是存在中文的原因，请修改为英文吧',
+      [targetFile],
+      undefined,
+      () => {},
+      undefined,
+      async () => rawPlan,
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.tasks.length, 1);
+    assert.equal(result.tasks[0].file, 'code/shape_manager/main.cpp');
+    assert.equal(result.tasks[0].absPath, targetFile);
+    assert.equal(result.tasks[0].action, 'modify');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('agent-task-decomposer: explicit edit drops redundant exploration but keeps validation task', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-edit-validation-'));
+  try {
+    const projectDir = path.join(root, 'code', 'shape_manager');
+    mkdirSync(projectDir, { recursive: true });
+    const mainFile = path.join(projectDir, 'main.cpp');
+    const cmakeFile = path.join(projectDir, 'CMakeLists.txt');
+    writeFileSync(mainFile, 'int main() { glutCreateWindow("三维图形展示"); return 0; }\n');
+    writeFileSync(cmakeFile, 'add_executable(shape_manager main.cpp)\n');
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+
+    const rawPlan = JSON.stringify({
+      tasks: [
+        {
+          id: 't1',
+          file: 'main.cpp',
+          action: 'modify',
+          desc: '修改窗口标题为英文',
+        },
+        {
+          id: 't2',
+          file: 'main.cpp',
+          action: 'explore',
+          desc: '再次读取 main.cpp 确认标题位置',
+        },
+        {
+          id: 't3',
+          file: 'CMakeLists.txt',
+          action: 'analyze',
+          desc: '使用 cmake 编译验证',
+        },
+      ],
+    });
+
+    const result = await decomposeTask(
+      'title乱码，是不是存在中文的原因，请修改为英文吧',
+      [mainFile, cmakeFile],
+      undefined,
+      () => {},
+      undefined,
+      async () => rawPlan,
+    );
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.tasks.map(t => t.action), ['modify', 'analyze']);
+    assert.deepEqual(
+      result.tasks.map(t => t.file),
+      ['code/shape_manager/main.cpp', 'code/shape_manager/CMakeLists.txt'],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 console.log('\nAgent task decomposer path anchoring tests passed.\n');

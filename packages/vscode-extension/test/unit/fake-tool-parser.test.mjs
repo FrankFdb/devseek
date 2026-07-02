@@ -248,6 +248,48 @@ test('FakeToolParser: parses XML self-closing tool tags and normalizes aliases',
   assert.equal(containsFakeToolCallProtocol(text), true);
 });
 
+test('FakeToolParser: parses DeepSeek TOOL_CALL envelope tool transcript format', () => {
+  const text = [
+    '我检查 main.cpp 中窗口标题设置。',
+    '<TOOL_CALL>run_terminal</TOOL_CALL>',
+    '<TOOL_CALL>{"command":"cat /home/ff/work/devseek_netai/code/shape_manager/main.cpp | head -200"}</TOOL_CALL>',
+  ].join('');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'run_terminal');
+  assert.equal(
+    tools[0].input.command,
+    'cat /home/ff/work/devseek_netai/code/shape_manager/main.cpp | head -200',
+  );
+  assert.equal(findFirstToolCallStart(text), text.indexOf('<TOOL_CALL>'));
+  assert.equal(stripToolCallBlocks(text), '我检查 main.cpp 中窗口标题设置。');
+  assert.equal(containsFakeToolCallProtocol(text), true);
+});
+
+test('FakeToolParser: parses escaped TOOL_CALL envelope tool transcript format', () => {
+  const text = [
+    '我执行验证。',
+    '&lt;TOOL_CALL&gt;run_terminal&lt;/TOOL_CALL&gt;',
+    '&lt;TOOL_CALL&gt;{"command":"cmake --build /tmp/project/build"}&lt;/TOOL_CALL&gt;',
+  ].join('');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'run_terminal');
+  assert.equal(tools[0].input.command, 'cmake --build /tmp/project/build');
+  assert.equal(findFirstToolCallStart(text), text.indexOf('&lt;TOOL_CALL&gt;'));
+  assert.equal(stripToolCallBlocks(text), '我执行验证。');
+});
+
+test('FakeToolParser: hides incomplete TOOL_CALL envelope streaming tail', () => {
+  const text = '我检查 main.cpp 中窗口标题设置。<TOOL';
+
+  assert.equal(findFirstToolCallStart(text), text.indexOf('<TOOL'));
+  assert.equal(stripToolCallBlocks(text), '我检查 main.cpp 中窗口标题设置。');
+  assert.equal(containsFakeToolCallProtocol(text), true);
+});
+
 test('FakeToolParser: parses escaped XML self-closing tool tags and hides streaming tail', () => {
   const complete = '我先读取文件。&lt;read_file path=&quot;code/shape_manager/main.cpp&quot; startLine=&quot;0&quot; endLine=&quot;20&quot;/&gt;';
   const tools = parseFakeToolCalls(complete);
@@ -523,6 +565,72 @@ test('FakeToolParser: detects the first tool call start for streaming UI', () =>
 test('FakeToolParser: detects shell transcript start for streaming UI', () => {
   const text = '我先查看文件： Calling: bash\n```CODE\ncat package.json\n```';
   assert.equal(findFirstToolCallStart(text), text.indexOf('Calling'));
+});
+
+test('FakeToolParser: parses and strips ReAct Action/Input tool transcript format', () => {
+  const text = [
+    '我需要先读取完整文件内容，然后修改标题并重新写入。',
+    'Action: read_file Action Input: {"path":"/home/ff/work/devseek_netai/code/shape_manager/main.cpp"}',
+  ].join(' ');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'read_file');
+  assert.deepEqual(tools[0].input, {
+    path: '/home/ff/work/devseek_netai/code/shape_manager/main.cpp',
+  });
+  assert.equal(findFirstToolCallStart(text), text.indexOf('Action: read_file'));
+  assert.equal(stripToolCallBlocks(text), '我需要先读取完整文件内容，然后修改标题并重新写入。');
+  assert.equal(containsFakeToolCallProtocol(text), true);
+});
+
+test('FakeToolParser: parses glued ReAct Action/Input tool transcript format', () => {
+  const text = [
+    '结果摘要：我需要先读取完整的文件内容。',
+    'Action: read_fileAction Input: {"path":"/home/ff/work/devseek_netai/code/shape_manager/main.cpp"}',
+  ].join(' ');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'read_file');
+  assert.deepEqual(tools[0].input, {
+    path: '/home/ff/work/devseek_netai/code/shape_manager/main.cpp',
+  });
+  assert.equal(findFirstToolCallStart(text), text.indexOf('Action: read_file'));
+  assert.equal(stripToolCallBlocks(text), '结果摘要：我需要先读取完整的文件内容。');
+  assert.equal(containsFakeToolCallProtocol(text), true);
+});
+
+test('FakeToolParser: hides incomplete ReAct Action tail while streaming', () => {
+  const text = '我需要先读取完整文件内容。 Action: read_file';
+
+  assert.equal(parseFakeToolCalls(text).length, 0);
+  assert.equal(findFirstToolCallStart(text), text.indexOf('Action: read_file'));
+  assert.equal(stripToolCallBlocks(text), '我需要先读取完整文件内容。');
+  assert.equal(containsFakeToolCallProtocol(text), true);
+});
+
+test('FakeToolParser: strips fenced ReAct Action/Input JSON blocks', () => {
+  const text = [
+    '我需要先读取完整文件内容。',
+    'Action: read_file',
+    'Action Input:',
+    '```json',
+    '{"path":"/home/ff/work/devseek_netai/code/shape_manager/main.cpp"}',
+    '```',
+    '然后继续修改。',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'read_file');
+  assert.deepEqual(tools[0].input, {
+    path: '/home/ff/work/devseek_netai/code/shape_manager/main.cpp',
+  });
+  assert.equal(stripToolCallBlocks(text), '我需要先读取完整文件内容。\n然后继续修改。');
 });
 
 console.log('\nFake tool parser tests passed.\n');

@@ -3,6 +3,12 @@ import {
   normalizeAgentToolInput,
   normalizeAgentToolName,
 } from './tool-registry';
+import {
+  findFirstModelToolProtocolStart,
+  parseModelToolProtocol,
+  stripModelToolProtocolBlocks,
+  type ModelToolProtocolDialect,
+} from './model-tool-protocol-adapter';
 
 export interface FakeTool {
   name: string;
@@ -27,6 +33,9 @@ const DSML_MARKER_PATTERN = `${DSML_BAR_PATTERN}\\s*DSML\\s*${DSML_BAR_PATTERN}`
 const DSML_OPEN_PREFIX_PATTERN = '(?:<|&lt;)\\s*';
 const DSML_CLOSE_PREFIX_PATTERN = '(?:<\\/|&lt;\\/)\\s*';
 const DSML_START_NAMES_PATTERN = '(?:tool_calls|invoke|parameter)';
+const TOOL_CALL_OPEN_PATTERN = '(?:<|&lt;)\\s*TOOL_CALL\\s*(?:>|&gt;)';
+const TOOL_CALL_CLOSE_PATTERN = '(?:<\\/|&lt;\\/)\\s*TOOL_CALL\\s*(?:>|&gt;)';
+const TOOL_CALL_INCOMPLETE_TAIL_PATTERN = /(?:<|&lt;)\s*(?:T|TO|TOO|TOOL|TOOL_|TOOL_C|TOOL_CA|TOOL_CAL|TOOL_CALL)?$/i;
 const DSML_INCOMPLETE_TAIL_PATTERN = new RegExp(
   `${DSML_OPEN_PREFIX_PATTERN}(?:${DSML_BAR_PATTERN}\\s*(?:D(?:S(?:M(?:L)?)?)?(?:\\s*${DSML_BAR_PATTERN})?)?)?$`,
   'i',
@@ -88,6 +97,22 @@ function makeFunctionStyleToolCallRegex(): RegExp {
     .map(escapeRegExp)
     .join('|');
   return new RegExp(`(${names}|mcp__[A-Za-z0-9_]+)\\s*\\(\\s*\\{`, 'g');
+}
+
+function makeToolCallEnvelopeOpenRegex(flags = 'gi'): RegExp {
+  return new RegExp(TOOL_CALL_OPEN_PATTERN, flags);
+}
+
+function makeToolCallEnvelopeBlockRegex(flags = 'gi'): RegExp {
+  return new RegExp(`${TOOL_CALL_OPEN_PATTERN}([\\s\\S]*?)${TOOL_CALL_CLOSE_PATTERN}`, flags);
+}
+
+function makeToolCallEnvelopePairRegex(flags = 'gi'): RegExp {
+  return new RegExp(
+    `${TOOL_CALL_OPEN_PATTERN}([\\s\\S]*?)${TOOL_CALL_CLOSE_PATTERN}\\s*` +
+    `${TOOL_CALL_OPEN_PATTERN}([\\s\\S]*?)${TOOL_CALL_CLOSE_PATTERN}`,
+    flags,
+  );
 }
 
 function makeXmlToolTagRegex(): RegExp {
@@ -339,6 +364,89 @@ function parseXmlToolTagCalls(text: string): FakeTool[] {
     tools.push({ index: match.index, tool: { name, input: normalizeToolInput(name, input) } });
   }
   return tools.sort((a, b) => a.index - b.index).map(item => normalizeFakeTool(item.tool));
+}
+
+function parseToolCallEnvelopeInput(name: string, rawBody: string): Record<string, unknown> | null {
+  const body = stripJsonFence(decodeXmlishText(rawBody));
+  if (!body.startsWith('{')) return {};
+  const jsonEnd = findToolInputObjectEnd(body, name, 0);
+  if (jsonEnd < 0) return null;
+  const jsonText = body.slice(0, jsonEnd + 1);
+  try {
+    const parsed = JSON.parse(jsonText) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return parseLooseFileWriteToolInput(name, jsonText);
+  }
+}
+
+function parseToolCallEnvelopeCalls(text: string): FakeTool[] {
+  const tools: Array<{ index: number; tool: FakeTool }> = [];
+  let match: RegExpExecArray | null;
+
+  const pairRe = makeToolCallEnvelopePairRegex();
+  while ((match = pairRe.exec(text)) !== null) {
+    const name = decodeXmlishText(match[1] || '').trim();
+    if (!isRegisteredFakeToolName(name)) continue;
+    const input = parseToolCallEnvelopeInput(name, match[2] || '');
+    if (!input) continue;
+    tools.push({ index: match.index, tool: { name, input: normalizeToolInput(name, input) } });
+  }
+
+  if (tools.length === 0) {
+    const blockRe = makeToolCallEnvelopeBlockRegex();
+    while ((match = blockRe.exec(text)) !== null) {
+      const body = stripJsonFence(decodeXmlishText(match[1] || ''));
+      if (!body.startsWith('{')) continue;
+      try {
+        const parsed = JSON.parse(body) as unknown;
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
+        const converted = jsonObjectToFakeTool(parsed as Record<string, unknown>);
+        if (converted) tools.push({ index: match.index, tool: converted });
+      } catch { /* ignore non-tool JSON */ }
+    }
+  }
+
+  return tools.sort((a, b) => a.index - b.index).map(item => normalizeFakeTool(item.tool));
+}
+
+function findNextToolCallEnvelopeStart(text: string, startAt = 0): number {
+  const re = makeToolCallEnvelopeOpenRegex();
+  re.lastIndex = startAt;
+  const match = re.exec(text);
+  return match ? match.index : -1;
+}
+
+function toolCallEnvelopeBlockEnd(text: string, start: number): number {
+  const blockRe = makeToolCallEnvelopeBlockRegex();
+  blockRe.lastIndex = start;
+  let end = start;
+  let found = false;
+  let match: RegExpExecArray | null;
+  while ((match = blockRe.exec(text)) !== null) {
+    if (match.index > end && text.slice(end, match.index).trim()) break;
+    if (match.index < end) continue;
+    end = blockRe.lastIndex;
+    found = true;
+  }
+  return found ? end : text.length;
+}
+
+function stripToolCallEnvelopeBlocks(text: string): string {
+  let out = '';
+  let cursor = 0;
+  while (cursor < text.length) {
+    const start = findNextToolCallEnvelopeStart(text, cursor);
+    if (start < 0) {
+      out += text.slice(cursor);
+      break;
+    }
+    out += text.slice(cursor, start).replace(/[ \t]+$/, '');
+    cursor = toolCallEnvelopeBlockEnd(text, start);
+  }
+  return out.replace(TOOL_CALL_INCOMPLETE_TAIL_PATTERN, '').trimEnd();
 }
 
 function findNextXmlToolTagStart(text: string, startAt = 0): number {
@@ -894,30 +1002,120 @@ function parseDsmlToolCalls(text: string): FakeTool[] {
   return tools;
 }
 
-export function findFirstToolCallStart(text: string): number {
-  const indexes: number[] = [];
-  const bracket = text.indexOf('[TOOL:');
-  if (bracket >= 0) indexes.push(bracket);
-  const dsml = findNextDsmlToolCallStart(text);
-  if (dsml >= 0) indexes.push(dsml);
-  const xmlToolTag = findNextXmlToolTagStart(text);
-  if (xmlToolTag >= 0) indexes.push(xmlToolTag);
-  const functionStyle = findNextFunctionStyleToolCallStart(text);
-  if (functionStyle >= 0) indexes.push(functionStyle);
+function findBracketToolStart(text: string): number {
+  return text.indexOf('[TOOL:');
+}
+
+function parseBracketToolCalls(text: string): FakeTool[] {
+  const tools: FakeTool[] = [];
+  const re = /\[TOOL:(\w+)\s*/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const name = m[1];
+    let jsonStart = m.index + m[0].length;
+    if (text[jsonStart] === ']') jsonStart++;
+    while (jsonStart < text.length && /[ \t\n\r]/.test(text[jsonStart])) jsonStart++;
+    if (text[jsonStart] !== '{') continue;
+    const jsonEnd = findToolInputObjectEnd(text, name, jsonStart);
+    if (jsonEnd < 0) continue;
+    const jsonStr = text.slice(jsonStart, jsonEnd + 1);
+    try {
+      tools.push({ name, input: JSON.parse(jsonStr) });
+    } catch {
+      const looseInput = parseLooseFileWriteToolInput(name, jsonStr);
+      if (looseInput) tools.push({ name, input: looseInput });
+    }
+    re.lastIndex = jsonEnd + 1;
+  }
+  return tools;
+}
+
+function stripBracketToolBlocks(text: string): string {
+  let result = '';
+  let i = 0;
+  const len = text.length;
+  while (i < len) {
+    if (text[i] === '[') {
+      const lookahead = text.slice(i, Math.min(i + 60, len));
+      const m = lookahead.match(/^\[TOOL:(\w+)\s*(?:\]?\s*)\{/);
+      if (m) {
+        const bracePos = text.indexOf('{', i);
+        if (bracePos < 0) {
+          result += text[i];
+          i++;
+          continue;
+        }
+        const jsonEnd = findToolInputObjectEnd(text, m[1], bracePos);
+        if (jsonEnd < 0) break;
+        let next = jsonEnd + 1;
+        while (next < len && /[ \t]/.test(text[next])) next++;
+        if (text[next] === ']') next++;
+        i = next;
+        continue;
+      }
+      if (/^\[TOOL:(\w+)\b/.test(lookahead)) break;
+    }
+    result += text[i];
+    i++;
+  }
+  return result.replace(/\[TOOL:\w+\]\s*\{[^]*?\}(?:\n|$)/gm, '');
+}
+
+function parseCallingToolCalls(text: string): FakeTool[] {
+  const tools: FakeTool[] = [];
+  const callRe = makeCallingRegex();
+  let cm: RegExpExecArray | null;
+  while ((cm = callRe.exec(text)) !== null) {
+    const name = cm[1];
+    if (!isRegisteredFakeToolName(name)) continue;
+    let jsonStart = text.indexOf('{', callRe.lastIndex);
+    if (jsonStart < 0) continue;
+    const fenceEnd = text.indexOf('```', callRe.lastIndex);
+    if (fenceEnd >= 0 && fenceEnd < jsonStart) {
+      const afterFenceNewline = text.indexOf('\n', fenceEnd);
+      const fencedJsonStart = afterFenceNewline >= 0 ? text.indexOf('{', afterFenceNewline) : -1;
+      if (fencedJsonStart >= 0) jsonStart = fencedJsonStart;
+    }
+    const jsonEnd = findToolInputObjectEnd(text, name, jsonStart);
+    if (jsonEnd < 0) continue;
+    const jsonText = text.slice(jsonStart, jsonEnd + 1);
+    try {
+      tools.push({ name, input: JSON.parse(jsonText) });
+      callRe.lastIndex = jsonEnd + 1;
+    } catch {
+      const looseInput = parseLooseFileWriteToolInput(name, jsonText);
+      if (looseInput) {
+        tools.push({ name, input: looseInput });
+        callRe.lastIndex = jsonEnd + 1;
+      }
+    }
+  }
+  return tools;
+}
+
+function findCallingProtocolStart(text: string): number {
   const callRe = makeAnyCallingRegex();
   let cm: RegExpExecArray | null;
   while ((cm = callRe.exec(text)) !== null) {
     const name = cm[1];
     const shellTranscript = extractShellTranscriptCommand(text, callRe.lastIndex);
     if ((name && isRegisteredFakeToolName(name)) || (((!name || isShellTranscriptName(name))) && shellTranscript)) {
-      indexes.push(cm.index);
+      return cm.index;
     }
   }
+  return -1;
+}
+
+function findToolArgumentsProtocolStart(text: string): number {
   const toolArgsRe = makeToolArgumentsRegex();
   let tm: RegExpExecArray | null;
   while ((tm = toolArgsRe.exec(text)) !== null) {
-    if (isRegisteredFakeToolName(tm[1])) indexes.push(tm.index);
+    if (isRegisteredFakeToolName(tm[1])) return tm.index;
   }
+  return -1;
+}
+
+function findJsonToolPayloadStart(text: string): number {
   let searchAt = 0;
   while (searchAt < text.length) {
     const start = findNextJsonStart(text, searchAt);
@@ -925,22 +1123,271 @@ export function findFirstToolCallStart(text: string): number {
     const end = text[start] === '[' ? findJsonArrayEnd(text, start) : findJsonObjectEnd(text, start);
     if (end < 0) {
       const tail = text.slice(start);
-      if (/"(?:tool|name|type)"\s*:\s*"[A-Za-z_]\w*"/.test(tail)) indexes.push(start);
-      else if (text[start] === '[') {
-        searchAt = start + 1;
-        continue;
-      }
-      break;
+      if (/"(?:tool|name|type)"\s*:\s*"[A-Za-z_]\w*"/.test(tail)) return start;
+      searchAt = start + 1;
+      continue;
     }
     try {
       const parsed = JSON.parse(text.slice(start, end + 1)) as unknown;
-      if (jsonValueContainsToolPayload(parsed)) {
-        indexes.push(start);
-      }
+      if (jsonValueContainsToolPayload(parsed)) return start;
     } catch { /* ignore non-tool JSON */ }
     searchAt = end + 1;
   }
-  return indexes.length ? Math.min(...indexes) : -1;
+  return -1;
+}
+
+function parseJsonObjectToolCalls(text: string): FakeTool[] {
+  const start = text.indexOf('{');
+  if (start < 0) return [];
+  const end = findJsonObjectEnd(text, start);
+  if (end < 0) return [];
+  try {
+    const obj = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
+    const toolObj = jsonObjectToFakeTool(obj);
+    if (toolObj) return [toolObj];
+    if (Array.isArray(obj.todoList)) return [{ name: 'manage_todo_list', input: { todoList: obj.todoList } }];
+    if (typeof obj.summary === 'string' && /(?:完成|结束|complete|done)/i.test(text) && !hasShellTranscriptMarker(text)) {
+      return [{ name: 'task_complete', input: { summary: obj.summary } }];
+    }
+  } catch { /* ignore non-tool JSON */ }
+  return [];
+}
+
+function parseJsonToolPayloadToolCalls(text: string): FakeTool[] {
+  const arrayTools = parseJsonArrayToolCalls(text);
+  return arrayTools.length > 0 ? arrayTools : parseJsonObjectToolCalls(text);
+}
+
+function parseLegacyJsonArrayBlockToolCalls(text: string): FakeTool[] {
+  const tools: FakeTool[] = [];
+  const jsonBlockRe = /(?:```json\s*)(\[[\s\S]*?\])(?:\s*```)|(?<![A-Za-z\[])(\[[\s\S]{2,3000}?\])/g;
+  let bm: RegExpExecArray | null;
+  while ((bm = jsonBlockRe.exec(text)) !== null) {
+    const jsonCandidate = (bm[1] || bm[2] || '').trim();
+    if (!jsonCandidate.startsWith('[')) continue;
+    let parsed: unknown;
+    try { parsed = JSON.parse(jsonCandidate); } catch { continue; }
+    if (!Array.isArray(parsed)) continue;
+    for (const item of parsed as unknown[]) {
+      if (typeof item !== 'object' || item === null) continue;
+      const obj = item as Record<string, unknown>;
+      const converted = jsonObjectToFakeTool(obj);
+      if (converted) {
+        tools.push(converted);
+        continue;
+      }
+      const toolName = typeof obj.tool === 'string' ? obj.tool : null;
+      if (!toolName) continue;
+      const input: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(obj)) {
+        if (k !== 'tool') input[k] = v;
+      }
+      tools.push({ name: toolName, input });
+    }
+  }
+  return tools;
+}
+
+function parseLegacyToolCallXmlCalls(text: string): FakeTool[] {
+  const tools: FakeTool[] = [];
+  const xmlRe = /<tool_call>([\s\S]*?)<\/tool_call>/gi;
+  let xm: RegExpExecArray | null;
+  while ((xm = xmlRe.exec(text)) !== null) {
+    const inner = xm[1].trim();
+    if (inner.startsWith('{')) {
+      try {
+        const obj = JSON.parse(inner) as Record<string, unknown>;
+        const tName = typeof obj.name === 'string' ? obj.name : null;
+        if (tName) {
+          const inp = (obj.arguments ?? obj.parameters ?? obj.args ?? {}) as Record<string, unknown>;
+          tools.push({ name: tName, input: inp });
+          continue;
+        }
+      } catch { /* fall through to legacy newline format */ }
+    }
+    const nl = inner.indexOf('\n');
+    if (nl < 0) continue;
+    const tName = inner.slice(0, nl).trim();
+    const jsonPart = inner.slice(nl + 1).trim();
+    if (!tName || !jsonPart.startsWith('{')) continue;
+    try {
+      tools.push({ name: tName, input: JSON.parse(jsonPart) });
+    } catch { /* ignore malformed */ }
+  }
+  return tools;
+}
+
+function findLegacyToolCallXmlStart(text: string): number {
+  const starts = [text.search(/<tool_call>/i), text.search(/<tool_calls>/i)].filter(index => index >= 0);
+  return starts.length ? Math.min(...starts) : -1;
+}
+
+function stripLegacyToolCallXmlBlocks(text: string): string {
+  return text
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
+    .replace(/<tool_calls>[\s\S]*?<\/tool_calls>/gi, '');
+}
+
+function parseLegacyInvokeXmlCalls(text: string): FakeTool[] {
+  const tools: FakeTool[] = [];
+  const invokeRe = /<invoke\s+name="([^"]+)">([\s\S]*?)<\/invoke>/gi;
+  let im: RegExpExecArray | null;
+  while ((im = invokeRe.exec(text)) !== null) {
+    const tName = im[1].trim();
+    const body = im[2];
+    const input: Record<string, unknown> = {};
+    const selfRe = /<parameter\s+name="([^"]+)"\s+value="([\s\S]*?)"\s*\/>/gi;
+    let pm: RegExpExecArray | null;
+    while ((pm = selfRe.exec(body)) !== null) {
+      const pName = pm[1];
+      const pVal = pm[2];
+      try { input[pName] = JSON.parse(pVal); } catch { input[pName] = pVal; }
+    }
+    const blockRe = /<parameter\s+name="([^"]+)">([\s\S]*?)<\/parameter>/gi;
+    while ((pm = blockRe.exec(body)) !== null) {
+      const pName = pm[1];
+      const pVal = pm[2].trim();
+      try { input[pName] = JSON.parse(pVal); } catch { input[pName] = pVal; }
+    }
+    tools.push({ name: tName, input });
+  }
+  return tools;
+}
+
+function findLegacyInvokeXmlStart(text: string): number {
+  return text.search(/<invoke\s+name="/i);
+}
+
+function makeReactActionRegex(): RegExp {
+  return /\bAction\s*[:：]\s*`?([A-Za-z_]\w*?)`?(?=\s*(?:Action\s*Input\s*[:：]|$|[\r\n]))/gi;
+}
+
+function makeReactActionInputRegex(): RegExp {
+  return /Action\s*Input\s*[:：]\s*/gi;
+}
+
+function findReactActionInput(text: string, startAt: number): RegExpExecArray | null {
+  const inputRe = makeReactActionInputRegex();
+  inputRe.lastIndex = startAt;
+  return inputRe.exec(text);
+}
+
+function reactSingleValueInput(name: string, raw: string): Record<string, unknown> | null {
+  const value = raw.trim().replace(/^```[A-Za-z]*\s*/, '').replace(/```$/, '').replace(/^["'`]|["'`]$/g, '').trim();
+  if (!value) return null;
+  const canonicalName = normalizeAgentToolName(name);
+  if (['read_file', 'list_dir'].includes(canonicalName)) return { path: value };
+  if (canonicalName === 'file_search') return { glob: value };
+  if (canonicalName === 'grep_search') return { pattern: value };
+  if (canonicalName === 'semantic_search') return { query: value };
+  if (canonicalName === 'run_terminal') return { command: value };
+  return { input: value };
+}
+
+function extractReactActionToolCall(
+  text: string,
+  match: RegExpExecArray,
+): { tool: FakeTool; start: number; end: number } | null {
+  const name = match[1];
+  if (!isRegisteredFakeToolName(name)) return null;
+  const afterAction = match.index + match[0].length;
+  const realInputMatch = findReactActionInput(text, afterAction);
+  if (!realInputMatch) return null;
+  const nextActionRe = makeReactActionRegex();
+  nextActionRe.lastIndex = afterAction;
+  const nextAction = nextActionRe.exec(text);
+  if (nextAction && nextAction.index < realInputMatch.index) return null;
+
+  let payloadStart = realInputMatch.index + realInputMatch[0].length;
+  while (payloadStart < text.length && /[ \t\r\n`]/.test(text[payloadStart])) payloadStart++;
+  if (text.slice(payloadStart, payloadStart + 4).toLowerCase() === 'json') payloadStart += 4;
+  while (payloadStart < text.length && /[ \t\r\n]/.test(text[payloadStart])) payloadStart++;
+  if (text[payloadStart] === '{') {
+    const jsonEnd = findToolInputObjectEnd(text, name, payloadStart);
+    if (jsonEnd < 0) return null;
+    const jsonText = text.slice(payloadStart, jsonEnd + 1);
+    try {
+      return { tool: { name, input: JSON.parse(jsonText) }, start: match.index, end: jsonEnd + 1 };
+    } catch {
+      const looseInput = parseLooseFileWriteToolInput(name, jsonText);
+      return looseInput ? { tool: { name, input: looseInput }, start: match.index, end: jsonEnd + 1 } : null;
+    }
+  }
+
+  const rawEnd = lineEndAfter(text, payloadStart);
+  const rawInput = text.slice(payloadStart, rawEnd);
+  const input = reactSingleValueInput(name, rawInput);
+  return input ? { tool: { name, input }, start: match.index, end: rawEnd } : null;
+}
+
+function parseReactActionToolCalls(text: string): FakeTool[] {
+  const tools: FakeTool[] = [];
+  const actionRe = makeReactActionRegex();
+  let match: RegExpExecArray | null;
+  while ((match = actionRe.exec(text)) !== null) {
+    const extracted = extractReactActionToolCall(text, match);
+    if (!extracted) continue;
+    tools.push(extracted.tool);
+    actionRe.lastIndex = extracted.end;
+  }
+  return tools;
+}
+
+function findNextReactActionStart(text: string, startAt = 0): number {
+  const actionRe = makeReactActionRegex();
+  actionRe.lastIndex = startAt;
+  let match: RegExpExecArray | null;
+  while ((match = actionRe.exec(text)) !== null) {
+    const name = match[1];
+    if (!isRegisteredFakeToolName(name)) continue;
+    const inputMatch = findReactActionInput(text, match.index + match[0].length);
+    if (inputMatch) return match.index;
+    if (!text.slice(match.index + match[0].length).trim()) return match.index;
+  }
+  return -1;
+}
+
+function reactActionBlockEnd(text: string, start: number): number {
+  const actionRe = makeReactActionRegex();
+  actionRe.lastIndex = start;
+  const match = actionRe.exec(text);
+  if (!match || match.index !== start) return start;
+  const inputMatch = findReactActionInput(text, match.index + match[0].length);
+  if (!inputMatch) return text.length;
+  let payloadStart = inputMatch.index + inputMatch[0].length;
+  while (payloadStart < text.length && /[ \t\r\n`]/.test(text[payloadStart])) payloadStart++;
+  if (text.slice(payloadStart, payloadStart + 4).toLowerCase() === 'json') payloadStart += 4;
+  while (payloadStart < text.length && /[ \t\r\n]/.test(text[payloadStart])) payloadStart++;
+  if (text[payloadStart] === '{') {
+    const jsonEnd = findToolInputObjectEnd(text, match[1], payloadStart);
+    if (jsonEnd < 0) return text.length;
+    let end = jsonEnd + 1;
+    const closeFence = /^[ \t\r\n]*```/.exec(text.slice(end));
+    if (closeFence) return lineEndAfter(text, end + closeFence[0].length);
+    while (end < text.length && /[ \t`]/.test(text[end])) end++;
+    return end;
+  }
+  return lineEndAfter(text, payloadStart);
+}
+
+function stripReactActionBlocks(text: string): string {
+  let out = '';
+  let cursor = 0;
+  while (cursor < text.length) {
+    const start = findNextReactActionStart(text, cursor);
+    if (start < 0) {
+      out += text.slice(cursor);
+      break;
+    }
+    out += text.slice(cursor, start).replace(/[ \t]+$/, '');
+    const end = reactActionBlockEnd(text, start);
+    cursor = end > start ? end : text.length;
+  }
+  return out.trimEnd();
+}
+
+export function findFirstToolCallStart(text: string): number {
+  return findFirstModelToolProtocolStart(text, MODEL_TOOL_PROTOCOL_DIALECTS);
 }
 
 export function containsFakeToolCallProtocol(text: string): boolean {
@@ -948,82 +1395,9 @@ export function containsFakeToolCallProtocol(text: string): boolean {
 }
 
 export function stripToolCallBlocks(text: string): string {
-  let result = '';
-  let i = 0;
-  const len = text.length;
-  let removedInternalBlock = false;
-  while (i < len) {
-    if (text[i] === '[') {
-      const lookahead = text.slice(i, Math.min(i + 60, len));
-      const m = lookahead.match(/^\[TOOL:(\w+)\s*(?:\]?\s*)\{/);
-      if (m) {
-        removedInternalBlock = true;
-        const bracePos = text.indexOf('{', i);
-        if (bracePos < 0) { result += text[i]; i++; continue; }
-        let depth = 1;
-        let inStr = false;
-        let j = bracePos + 1;
-        while (j < len && depth > 0) {
-          const ch = text[j];
-          if (inStr) {
-            if (ch === '\\') j++;
-            else if (ch === '"') inStr = false;
-          } else if (ch === '"') {
-            inStr = true;
-          } else if (ch === '{') {
-            depth++;
-          } else if (ch === '}') {
-            depth--;
-          }
-          j++;
-        }
-        while (j < len && (text[j] === ' ' || text[j] === '\t')) j++;
-        if (j < len && text[j] === ']') j++;
-        i = j;
-        continue;
-      }
-      if (/^\[TOOL:(\w+)\b/.test(lookahead)) {
-        removedInternalBlock = true;
-        break;
-      }
-    }
-    result += text[i];
-    i++;
-  }
-  const beforeBracketCleanup = result;
-  result = result.replace(/\[TOOL:\w+\]\s*\{[^]*?\}(?:\n|$)/gm, '');
-  removedInternalBlock = removedInternalBlock || result !== beforeBracketCleanup;
-
-  const beforeCallingCleanup = result;
-  result = stripCallingShellTranscriptBlocks(result);
-  result = stripCallingToolBlocks(result);
-  result = stripToolArgumentsBlocks(result);
-  removedInternalBlock = removedInternalBlock || result !== beforeCallingCleanup;
-
-  const beforeFunctionStyleCleanup = result;
-  result = stripFunctionStyleToolCallBlocks(result);
-  removedInternalBlock = removedInternalBlock || result !== beforeFunctionStyleCleanup;
-
-  const beforeXmlTagCleanup = result;
-  result = stripXmlToolTagBlocks(result);
-  removedInternalBlock = removedInternalBlock || result !== beforeXmlTagCleanup;
-
-  const beforeJsonCleanup = result;
-  result = stripJsonToolPayloads(result);
-  removedInternalBlock = removedInternalBlock || result !== beforeJsonCleanup;
-
-  const beforeDsmlCleanup = result;
-  result = stripDsmlToolCallBlocks(result);
-  removedInternalBlock = removedInternalBlock || result !== beforeDsmlCleanup;
-
-  const beforeXmlCleanup = result;
-  const noXml = result
-    .replace(/<tool_call>[\s\S]*?<\/tool_call>/gi, '')
-    .replace(/<tool_calls>[\s\S]*?<\/tool_calls>/gi, '');
-  removedInternalBlock = removedInternalBlock || noXml !== beforeXmlCleanup;
-
-  const cleaned = noXml.replace(/\n{3,}/g, '\n\n').trim();
-  return removedInternalBlock ? cleaned.replace(/[ \t]*\n[ \t]*\n[ \t]*/g, '\n') : cleaned;
+  const { text: stripped, removed } = stripModelToolProtocolBlocks(text, MODEL_TOOL_PROTOCOL_DIALECTS);
+  const cleaned = stripped.replace(/\n{3,}/g, '\n\n').trim();
+  return removed ? cleaned.replace(/[ \t]*\n[ \t]*\n[ \t]*/g, '\n') : cleaned;
 }
 
 function shellToken(raw: string): string {
@@ -1162,180 +1536,92 @@ function parseShellTranscriptToolCalls(text: string): FakeTool[] {
   return tools;
 }
 
+const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[] = [
+  {
+    name: 'bracket-tool',
+    parse: parseBracketToolCalls,
+    findStart: findBracketToolStart,
+    strip: stripBracketToolBlocks,
+  },
+  {
+    name: 'tool-call-envelope',
+    parse: parseToolCallEnvelopeCalls,
+    findStart: (text: string) => {
+      const complete = findNextToolCallEnvelopeStart(text);
+      const incomplete = TOOL_CALL_INCOMPLETE_TAIL_PATTERN.exec(text);
+      if (complete < 0) return incomplete?.index ?? -1;
+      return incomplete ? Math.min(complete, incomplete.index) : complete;
+    },
+    strip: stripToolCallEnvelopeBlocks,
+  },
+  {
+    name: 'react-action',
+    parse: parseReactActionToolCalls,
+    findStart: findNextReactActionStart,
+    strip: stripReactActionBlocks,
+  },
+  {
+    name: 'calling',
+    parse: parseCallingToolCalls,
+    findStart: findCallingProtocolStart,
+    strip: stripCallingToolBlocks,
+  },
+  {
+    name: 'calling-shell-transcript',
+    parse: parseShellTranscriptToolCalls,
+    findStart: findCallingProtocolStart,
+    strip: stripCallingShellTranscriptBlocks,
+  },
+  {
+    name: 'tool-arguments',
+    parse: parseToolArgumentsToolCalls,
+    findStart: findToolArgumentsProtocolStart,
+    strip: stripToolArgumentsBlocks,
+  },
+  {
+    name: 'function-style',
+    parse: parseFunctionStyleToolCalls,
+    findStart: findNextFunctionStyleToolCallStart,
+    strip: stripFunctionStyleToolCallBlocks,
+  },
+  {
+    name: 'xml-tool-tag',
+    parse: parseXmlToolTagCalls,
+    findStart: findNextXmlToolTagStart,
+    strip: stripXmlToolTagBlocks,
+  },
+  {
+    name: 'json-tool-payload',
+    parse: parseJsonToolPayloadToolCalls,
+    findStart: findJsonToolPayloadStart,
+    strip: stripJsonToolPayloads,
+  },
+  {
+    name: 'dsml',
+    parse: parseDsmlToolCalls,
+    findStart: findNextDsmlToolCallStart,
+    strip: stripDsmlToolCallBlocks,
+  },
+  {
+    name: 'legacy-json-array-block',
+    parse: parseLegacyJsonArrayBlockToolCalls,
+    findStart: findJsonToolPayloadStart,
+    strip: (text: string) => text,
+  },
+  {
+    name: 'legacy-tool-call-xml',
+    parse: parseLegacyToolCallXmlCalls,
+    findStart: findLegacyToolCallXmlStart,
+    strip: stripLegacyToolCallXmlBlocks,
+  },
+  {
+    name: 'legacy-invoke-xml',
+    parse: parseLegacyInvokeXmlCalls,
+    findStart: findLegacyInvokeXmlStart,
+    strip: (text: string) => text,
+  },
+];
+
 export function parseFakeToolCalls(text: string): FakeTool[] {
-  const tools: FakeTool[] = [];
-  const re = /\[TOOL:(\w+)\s*/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    const name = m[1];
-    let jsonStart = m.index + m[0].length;
-    if (text[jsonStart] === ']') jsonStart++;
-    while (jsonStart < text.length && (text[jsonStart] === ' ' || text[jsonStart] === '\t' || text[jsonStart] === '\n' || text[jsonStart] === '\r')) jsonStart++;
-    if (text[jsonStart] !== '{') continue;
-    const jsonEnd = findToolInputObjectEnd(text, name, jsonStart);
-    if (jsonEnd < 0) continue;
-    const jsonStr = text.slice(jsonStart, jsonEnd + 1);
-    try {
-      tools.push({ name, input: JSON.parse(jsonStr) });
-    } catch {
-      const looseInput = parseLooseFileWriteToolInput(name, jsonStr);
-      if (looseInput) tools.push({ name, input: looseInput });
-    }
-    re.lastIndex = jsonEnd + 1;
-  }
-
-  if (tools.length === 0) {
-    const callRe = makeCallingRegex();
-    let cm: RegExpExecArray | null;
-    while ((cm = callRe.exec(text)) !== null) {
-      const name = cm[1];
-      if (!isRegisteredFakeToolName(name)) continue;
-      let jsonStart = text.indexOf('{', callRe.lastIndex);
-      if (jsonStart < 0) continue;
-      const fenceEnd = text.indexOf('```', callRe.lastIndex);
-      if (fenceEnd >= 0 && fenceEnd < jsonStart) {
-        const afterFenceNewline = text.indexOf('\n', fenceEnd);
-        const fencedJsonStart = afterFenceNewline >= 0 ? text.indexOf('{', afterFenceNewline) : -1;
-        if (fencedJsonStart >= 0) jsonStart = fencedJsonStart;
-      }
-      const jsonEnd = findToolInputObjectEnd(text, name, jsonStart);
-      if (jsonEnd < 0) continue;
-      const jsonText = text.slice(jsonStart, jsonEnd + 1);
-      try {
-        tools.push({ name, input: JSON.parse(jsonText) });
-        callRe.lastIndex = jsonEnd + 1;
-      } catch {
-        const looseInput = parseLooseFileWriteToolInput(name, jsonText);
-        if (looseInput) {
-          tools.push({ name, input: looseInput });
-          callRe.lastIndex = jsonEnd + 1;
-        }
-      }
-    }
-  }
-
-  if (tools.length === 0) {
-    tools.push(...parseToolArgumentsToolCalls(text));
-  }
-
-  if (tools.length === 0) {
-    tools.push(...parseFunctionStyleToolCalls(text));
-  }
-
-  if (tools.length === 0) {
-    tools.push(...parseXmlToolTagCalls(text));
-  }
-
-  if (tools.length === 0) {
-    tools.push(...parseDsmlToolCalls(text));
-  }
-
-  if (tools.length === 0) {
-    tools.push(...parseShellTranscriptToolCalls(text));
-  }
-
-  if (tools.length === 0) {
-    tools.push(...parseJsonArrayToolCalls(text));
-  }
-
-  if (tools.length === 0) {
-    const start = text.indexOf('{');
-    if (start >= 0) {
-      const end = findJsonObjectEnd(text, start);
-      if (end >= 0) {
-        try {
-          const obj = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
-          const toolObj = jsonObjectToFakeTool(obj);
-          if (toolObj) {
-            tools.push(toolObj);
-          } else if (Array.isArray(obj.todoList)) {
-            tools.push({ name: 'manage_todo_list', input: { todoList: obj.todoList } });
-          } else if (typeof obj.summary === 'string' && /(?:完成|结束|complete|done)/i.test(text) && !hasShellTranscriptMarker(text)) {
-            tools.push({ name: 'task_complete', input: { summary: obj.summary } });
-          }
-        } catch { /* ignore non-tool JSON */ }
-      }
-    }
-  }
-
-  if (tools.length === 0) {
-    const jsonBlockRe = /(?:```json\s*)(\[[\s\S]*?\])(?:\s*```)|(?<![A-Za-z\[])(\[[\s\S]{2,3000}?\])/g;
-    let bm: RegExpExecArray | null;
-    while ((bm = jsonBlockRe.exec(text)) !== null) {
-      const jsonCandidate = (bm[1] || bm[2] || '').trim();
-      if (!jsonCandidate.startsWith('[')) continue;
-      let parsed: unknown;
-      try { parsed = JSON.parse(jsonCandidate); } catch { continue; }
-      if (!Array.isArray(parsed)) continue;
-      for (const item of parsed as unknown[]) {
-        if (typeof item !== 'object' || item === null) continue;
-        const obj = item as Record<string, unknown>;
-        const converted = jsonObjectToFakeTool(obj);
-        if (converted) {
-          tools.push(converted);
-          continue;
-        }
-        const toolName = typeof obj['tool'] === 'string' ? (obj['tool'] as string) : null;
-        if (!toolName) continue;
-        const input: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(obj)) {
-          if (k !== 'tool') input[k] = v;
-        }
-        tools.push({ name: toolName, input });
-      }
-    }
-  }
-
-  if (tools.length === 0) {
-    const xmlRe = /<tool_call>([\s\S]*?)<\/tool_call>/gi;
-    let xm: RegExpExecArray | null;
-    while ((xm = xmlRe.exec(text)) !== null) {
-      const inner = xm[1].trim();
-      if (inner.startsWith('{')) {
-        try {
-          const obj = JSON.parse(inner) as Record<string, unknown>;
-          const tName = typeof obj['name'] === 'string' ? obj['name'] as string : null;
-          if (tName) {
-            const inp = (obj['arguments'] ?? obj['parameters'] ?? obj['args'] ?? {}) as Record<string, unknown>;
-            tools.push({ name: tName, input: inp });
-            continue;
-          }
-        } catch { /* fall through to Format A */ }
-      }
-      const nl = inner.indexOf('\n');
-      if (nl < 0) continue;
-      const tName = inner.slice(0, nl).trim();
-      const jsonPart = inner.slice(nl + 1).trim();
-      if (!tName || !jsonPart.startsWith('{')) continue;
-      try {
-        tools.push({ name: tName, input: JSON.parse(jsonPart) });
-      } catch { /* ignore malformed */ }
-    }
-  }
-
-  if (tools.length === 0) {
-    const invokeRe = /<invoke\s+name="([^"]+)">([\s\S]*?)<\/invoke>/gi;
-    let im: RegExpExecArray | null;
-    while ((im = invokeRe.exec(text)) !== null) {
-      const tName = im[1].trim();
-      const body = im[2];
-      const input: Record<string, unknown> = {};
-      const selfRe = /<parameter\s+name="([^"]+)"\s+value="([\s\S]*?)"\s*\/>/gi;
-      let pm: RegExpExecArray | null;
-      while ((pm = selfRe.exec(body)) !== null) {
-        const pName = pm[1];
-        const pVal = pm[2];
-        try { input[pName] = JSON.parse(pVal); } catch { input[pName] = pVal; }
-      }
-      const blockRe = /<parameter\s+name="([^"]+)">([\s\S]*?)<\/parameter>/gi;
-      while ((pm = blockRe.exec(body)) !== null) {
-        const pName = pm[1];
-        const pVal = pm[2].trim();
-        try { input[pName] = JSON.parse(pVal); } catch { input[pName] = pVal; }
-      }
-      tools.push({ name: tName, input });
-    }
-  }
-
-  return tools.map(normalizeFakeTool);
+  return parseModelToolProtocol(text, MODEL_TOOL_PROTOCOL_DIALECTS).map(normalizeFakeTool);
 }

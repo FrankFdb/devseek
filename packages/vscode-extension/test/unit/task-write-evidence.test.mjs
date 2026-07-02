@@ -33,7 +33,7 @@ test('task write evidence: exact task file write completes the matching task', (
   const circleWrite = write('/workspace/code/shape_manager/Circle.cpp');
   const agentsWrite = write('/workspace/code/shape_manager/AGENTS.md');
 
-  assert.equal(
+  assert.deepEqual(
     selectTaskWriteEvidence(task, [agentsWrite, circleWrite], workspaceRoot),
     circleWrite,
   );
@@ -61,7 +61,7 @@ test('task write evidence: basename fallback supports planner tasks without abs 
   };
   const triangleWrite = write('/workspace/code/shape_manager/Triangle.cpp');
 
-  assert.equal(
+  assert.deepEqual(
     selectTaskWriteEvidence(task, [triangleWrite], '/workspace'),
     triangleWrite,
   );

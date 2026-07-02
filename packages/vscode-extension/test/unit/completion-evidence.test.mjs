@@ -141,6 +141,17 @@ test('completion evidence: visual interaction enhancement requests require code 
   );
 });
 
+test('completion evidence: UI title mojibake fix requires edit evidence', () => {
+  const titlePrompt = 'title乱码，是不是存在中文的原因，请修改为英文吧';
+
+  assert.equal(requiresFileChangeEvidence(titlePrompt), true);
+  assert.equal(requiresCodeArtifactForEvidence(titlePrompt), true);
+  assert.deepEqual(
+    getMissingCompletionEvidence(titlePrompt, [], [], []),
+    ['代码修改结果'],
+  );
+});
+
 test('completion evidence: markdown file creation requires file evidence but not code validation', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-evidence-docs-'));
   try {
