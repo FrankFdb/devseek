@@ -70,6 +70,7 @@ import {
   applyMarkdownFileArtifactsForLoop,
   describeAgentToolActivity,
   executeFakeToolsForLoop,
+  isAgentWorkToolName,
   normalizeVisibleTodos,
 } from './tool-loop';
 import {
@@ -330,8 +331,6 @@ export async function runAgenticLoop(
   const cppValidationPolicy = vscode.workspace
     .getConfiguration('devseek')
     .get<CppValidationPolicy>('cppValidationPolicy', 'conservative');
-  const isWorkTool = (name: string) => !['manage_todo_list', 'task_complete', 'memory_write'].includes(name);
-
   const sessionContextSection = sessionContextText.trim()
     ? `\n\n【同一会话上下文】\n${sessionContextText.trim()}\n\n【当前用户消息】\n${userPrompt}`
     : `\n\n${userPrompt}`;
@@ -617,11 +616,7 @@ export async function runAgenticLoop(
       break;
     }
 
-    const roundHasWorkTools = tools.some(t => isWorkTool(t.name));
-    if (roundHasWorkTools) {
-      sawWorkTool = true;
-      noToolRounds = 0;
-    }
+    const roundHasWorkTools = tools.some(t => isAgentWorkToolName(t.name));
 
     // Track whether the AI proactively supplied a usable todo list. Merely
     // mentioning manage_todo_list is not enough; malformed/empty payloads should
@@ -687,6 +682,11 @@ export async function runAgenticLoop(
         readEvidencePaths: [...allReadEvidencePaths],
       },
     );
+
+    if (loopRes.workToolCallsMade || artifactApply.writtenFiles.length > 0) {
+      sawWorkTool = true;
+      noToolRounds = 0;
+    }
 
     if (loopRes.todoItems?.length) {
       currentTodos = loopRes.todoItems;

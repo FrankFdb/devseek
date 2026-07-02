@@ -85,6 +85,7 @@ import { createTaskConvergenceGuard } from './agent/task-convergence-guard';
 import type { AgentLoopCallbacks, AgentLoopResult } from './agent/loop-types';
 import {
   analyzeTerminalEvidence,
+  buildAgentMetaOnlyToolFeedback,
   executeFakeToolsForLoop,
 } from './agent/tool-loop';
 import { selectTaskWrittenFileEvidence } from './agent/task-write-evidence';
@@ -844,10 +845,14 @@ async function executeTask(
           return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw, taskComplete: true }, taskTerminalEvidence);
         }
         if (!loopRes.toolCallsMade) break;
+        const metaOnlyToolFeedback = !loopRes.workToolCallsMade
+          ? buildAgentMetaOnlyToolFeedback(task.desc || basename)
+          : '';
+        const feedbackForNextRound = [loopRes.feedbackForAI, metaOnlyToolFeedback].filter(Boolean).join('\n\n');
 
         const convergence = analyzeConvergenceGuard.observe({
           tools,
-          feedbackForAI: loopRes.feedbackForAI,
+          feedbackForAI: feedbackForNextRound,
           rawText: text,
           terminalEvidence: loopRes.terminalEvidence,
         });
@@ -865,7 +870,7 @@ async function executeTask(
 
         execMessages.push({
           role: 'user',
-          content: `[工具执行结果]\n${loopRes.feedbackForAI}${convergence.feedbackSuffix ? `\n\n${convergence.feedbackSuffix}` : ''}\n\n请继续。`,
+          content: `[工具执行结果]\n${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbackSuffix}` : ''}\n\n请继续。`,
         });
       }
     } catch (e) {
@@ -1051,10 +1056,14 @@ async function executeTask(
 
       // No data-fetching tool called → AI gave final answer (full-file or plain text)
       if (!loopRes.toolCallsMade) { break; }
+      const metaOnlyToolFeedback = !loopRes.workToolCallsMade
+        ? buildAgentMetaOnlyToolFeedback(task.desc || basename)
+        : '';
+      const feedbackForNextRound = [loopRes.feedbackForAI, metaOnlyToolFeedback].filter(Boolean).join('\n\n');
 
       const convergence = taskConvergenceGuard.observe({
         tools,
-        feedbackForAI: loopRes.feedbackForAI,
+        feedbackForAI: feedbackForNextRound,
         rawText: text,
         writtenFiles: loopRes.writtenFiles,
         terminalEvidence: loopRes.terminalEvidence,
@@ -1080,7 +1089,7 @@ async function executeTask(
       taskMessages.push({
         role: 'user',
         content: `[工具执行结果]
-${loopRes.feedbackForAI}${convergence.feedbackSuffix ? `\n\n${convergence.feedbackSuffix}` : ''}
+${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbackSuffix}` : ''}
 
 请根据以上结果继续完成修改。`,
       });

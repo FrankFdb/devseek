@@ -60,6 +60,9 @@ test('two-phase agent todos are delegated to an evidence ledger', () => {
   assert.match(agentLoop, /buildAgenticHistoryText/, 'agent loop must own restored history evidence text');
   assert.match(agentLoop, /createTaskConvergenceGuard/, 'agent-loop must use the shared convergence guard for no-progress tool loops');
   assert.match(agentLoop, /convergence\.feedbackSuffix/, 'editor/analyze loops must feed convergence warnings back to the model');
+  assert.match(agentLoop, /buildAgentMetaOnlyToolFeedback/, 'two-phase agent loops must feed back meta-only tool rounds as non-work');
+  assert.match(agentLoop, /loopRes\.workToolCallsMade/, 'two-phase agent loops must use shared real-work evidence from tool-loop');
+  assert.match(agenticLoop, /isAgentWorkToolName/, 'agentic-loop must use the shared tool classifier instead of duplicating work-tool rules');
   assert.match(agentLoop, /classifyTaskTerminalManualReview/, 'analyze run_terminal failures must support manual visual review before hard-failing');
   assert.doesNotMatch(
     agentLoop,

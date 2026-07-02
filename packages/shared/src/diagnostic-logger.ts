@@ -88,6 +88,11 @@ export function getDevSeekTraceRoot(workspaceRoot: string): string {
   return nodePath.join(workspaceRoot, '.devseek', 'runs');
 }
 
+function traceLogFileName(runId: string): string {
+  const safeRunId = runId.replace(/[^a-zA-Z0-9._-]/g, '_') || createDevSeekRunId();
+  return `${safeRunId}.log`;
+}
+
 export class DevSeekTraceLogger {
   readonly workspaceRoot: string;
   readonly source: string;
@@ -102,8 +107,8 @@ export class DevSeekTraceLogger {
     this.source = options.source;
     this.level = resolveDevSeekTraceLevel(String(options.level ?? process.env.DEVSEEK_TRACE_LEVEL ?? 'debug'));
     this.runId = options.runId || createDevSeekRunId(options.now);
-    this.runDir = nodePath.join(getDevSeekTraceRoot(this.workspaceRoot), this.runId);
-    this.logPath = nodePath.join(this.runDir, 'devseek.log');
+    this.runDir = getDevSeekTraceRoot(this.workspaceRoot);
+    this.logPath = nodePath.join(this.runDir, traceLogFileName(this.runId));
     this.buildInfo = resolveBuildInfo(options);
     this.init(options.now ?? new Date());
   }
@@ -223,12 +228,13 @@ export class DevSeekTraceLogger {
         event: 'run-started',
         tag: 'trace',
         data: {
-        schemaVersion: 1,
-        runId: this.runId,
-        createdAt: now.toISOString(),
-        workspaceRoot: this.workspaceRoot,
-        traceLevel: this.level,
-        ...this.buildInfo,
+          schemaVersion: 1,
+          runId: this.runId,
+          createdAt: now.toISOString(),
+          workspaceRoot: this.workspaceRoot,
+          traceLevel: this.level,
+          logPath: this.logPath,
+          ...this.buildInfo,
         },
       });
     }
@@ -257,7 +263,7 @@ export class DevSeekTraceLogger {
   }
 
   private nextSeq(): number {
-    const key = this.runDir;
+    const key = this.logPath;
     const previous = TRACE_SEQ_BY_RUN.get(key) ?? 0;
     const candidate = Math.max(previous + 1, Date.now() * 1000);
     TRACE_SEQ_BY_RUN.set(key, candidate);

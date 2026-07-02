@@ -1,6 +1,10 @@
 import * as nodePath from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
+import {
+  createDevSeekTraceLogger,
+  type DevSeekTraceLogger,
+} from '@devseek-netai/shared';
 import { looksLikeRawToolCallText, parseGeneratedArtifacts } from '../generated-file-parser';
 import { resolveGeneratedArtifactPathForPrompt, resolveWorkspaceWritePath } from '../workspace/path-resolver';
 import { WorkspaceEditService } from '../workspace/edit-service';
@@ -33,6 +37,38 @@ import type { AgentLoopCallbacks } from './loop-types';
 
 const workspaceEditService = new WorkspaceEditService();
 const agentToolExecutor = new AgentToolExecutor();
+const NON_WORK_TOOL_NAMES = new Set(['manage_todo_list', 'task_complete', 'memory_write']);
+const TOOL_TRACE_LOGGERS = new Map<string, DevSeekTraceLogger>();
+
+export function isAgentWorkToolName(name: string): boolean {
+  return !NON_WORK_TOOL_NAMES.has(name);
+}
+
+export function buildAgentMetaOnlyToolFeedback(taskDescription?: string): string {
+  const scope = taskDescription?.trim()
+    ? `当前任务：${taskDescription.trim()}`
+    : '当前任务仍缺少真实执行证据。';
+  return [
+    '【系统反馈】本轮只更新了 todo/记忆/完成状态，没有执行真实工作工具。',
+    scope,
+    '请继续调用 read_file/list_dir/grep_search/create_file/write_file/run_terminal 等真实工具。',
+    '需要编译、运行或验证时，必须使用 run_terminal 并提供可验证的退出码和输出；不要只更新任务清单。',
+  ].join('\n');
+}
+
+function getToolTraceLogger(workspaceRoot: string | undefined, runId: string | undefined): DevSeekTraceLogger | undefined {
+  if (!workspaceRoot || !runId) return undefined;
+  const key = `${nodePath.resolve(workspaceRoot)}::${runId}`;
+  const existing = TOOL_TRACE_LOGGERS.get(key);
+  if (existing) return existing;
+  const created = createDevSeekTraceLogger({
+    workspaceRoot,
+    runId,
+    source: 'vscode-extension.tool-loop',
+  });
+  TOOL_TRACE_LOGGERS.set(key, created);
+  return created;
+}
 
 export function describeAgentToolActivity(tool: FakeTool): { kind: string; label: string } | undefined {
   return agentToolExecutor.plan(tool).activity ?? undefined;
@@ -48,6 +84,8 @@ export interface ToolLoopResult {
   taskComplete: boolean;
   /** Whether any data-fetching tool was called (triggers next AI round). */
   toolCallsMade: boolean;
+  /** Whether any real work tool ran; todo/memory/task_complete are meta tools. */
+  workToolCallsMade: boolean;
   /** Combined tool outputs to inject as context for the next AI round. */
   feedbackForAI: string;
   /** task_complete.summary value, if the AI called task_complete (may be empty). */
@@ -451,6 +489,11 @@ export async function executeFakeToolsForLoop(
 ): Promise<ToolLoopResult> {
   let taskComplete = false;
   let toolCallsMade = false;
+  let workToolCallsMade = false;
+  const markToolCall = (isWorkTool = true): void => {
+    toolCallsMade = true;
+    if (isWorkTool) workToolCallsMade = true;
+  };
   let completeSummary: string | undefined;
   let allTodosCompleted = false;
   const parts: string[] = [];
@@ -473,16 +516,23 @@ export async function executeFakeToolsForLoop(
   const isLastTask = !taskContext || taskContext.currentTaskIndex >= taskContext.taskTotal;
   const workspaceRoot = taskContext?.workspaceRoot ?? inferWorkspaceRootForAgentTool(defaultWorkdir);
   const readEvidencePaths = new Set(taskContext?.readEvidencePaths ?? []);
+  const trace = getToolTraceLogger(workspaceRoot, callbacks.traceRunId);
+  trace?.debug('tool-loop', 'execute-start', {
+    toolCount: tools.length,
+    tools: tools.map(t => t.name),
+    workTools: tools.filter(t => isAgentWorkToolName(t.name)).map(t => t.name),
+    defaultWorkdir,
+  });
 
   for (let toolIndex = 0; toolIndex < tools.length; toolIndex++) {
     const tool = tools[toolIndex];
-    if (tool.name === 'manage_todo_list' && callbacks.onTodoUpdate) {
+    if (tool.name === 'manage_todo_list') {
       let items = normalizeVisibleTodos((tool.input.todoList ?? []) as TodoItem[]);
       if (Array.isArray(items)) {
         // Treat todo updates as a real tool action so the loop continues.
         // Some models emit planning-only manage_todo_list in round-1, then
         // emit create/edit tools in round-2 after receiving tool feedback.
-        toolCallsMade = true;
+        markToolCall(false);
         // ARCHITECTURAL GUARD (mirrors Copilot/Claude Code API-level enforcement):
         // The orchestrator owns task-sequence state. AI may never pre-emptively mark
         // future tasks as completed — clamp any such items back to 'not-started'.
@@ -495,11 +545,11 @@ export async function executeFakeToolsForLoop(
         }
         // Detect implicit completion: all items are 'completed' → AI is done.
         const todoUpdateIsAllCompleted = items.length > 0 && items.every(it => it.status === 'completed');
-        const hasLaterWorkTools = tools.slice(toolIndex + 1).some(t => !['manage_todo_list', 'task_complete', 'memory_write'].includes(t.name));
+        const hasLaterWorkTools = tools.slice(toolIndex + 1).some(t => isAgentWorkToolName(t.name));
         callbacks.onToolActivity?.('todo', items.map(i => i.title).filter(Boolean).slice(0, 3).join('、') || '更新任务清单');
         if (todoUpdateIsAllCompleted && (hasLaterWorkTools || taskContext?.requireWorkBeforeComplete)) {
           deferredCompletedTodoItems = items;
-        } else {
+        } else if (callbacks.onTodoUpdate) {
           await callbacks.onTodoUpdate(items);
         }
         if (todoUpdateIsAllCompleted) {
@@ -540,7 +590,7 @@ export async function executeFakeToolsForLoop(
       // in the correct subdirectory (code/) rather than the workspace root.
       const workdir = typeof tool.input.workdir === 'string' ? tool.input.workdir : defaultWorkdir;
       if (command) {
-        toolCallsMade = true;
+        markToolCall();
         if (containsFakeToolCallProtocol(command)) {
           const msg = [
             `[run_terminal] 已阻止`,
@@ -590,7 +640,7 @@ export async function executeFakeToolsForLoop(
     } else if (tool.name === 'read_file' && callbacks.onReadFile) {
       const filePath = typeof tool.input.path === 'string' ? tool.input.path.trim() : '';
       if (filePath) {
-        toolCallsMade = true;
+        markToolCall();
         try {
           // Pass defaultWorkdir so bare filenames like "main.cpp" resolve relative to
           // the current task's directory first (Copilot/Claude Code: tool calls inherit
@@ -617,7 +667,7 @@ export async function executeFakeToolsForLoop(
       const searchPath = typeof tool.input.path === 'string' ? tool.input.path : undefined;
       const isRegexp = tool.input.isRegexp !== false;
       if (pattern) {
-        toolCallsMade = true;
+        markToolCall();
         try {
           const results = await callbacks.onGrepSearch(pattern, searchPath, isRegexp, defaultWorkdir, {
             includePattern: typeof tool.input.includePattern === 'string' ? tool.input.includePattern : undefined,
@@ -633,7 +683,7 @@ export async function executeFakeToolsForLoop(
       }
     } else if (tool.name === 'list_dir' && callbacks.onListDir) {
       const p = typeof tool.input.path === 'string' ? tool.input.path : '.';
-      toolCallsMade = true;
+      markToolCall();
       try {
         const listing = await callbacks.onListDir(p);
         callbacks.onToolActivity?.('list', p);
@@ -644,7 +694,7 @@ export async function executeFakeToolsForLoop(
         parts.push(`[list_dir: ${p}] 错误: ${msg}`);
       }
     } else if (tool.name === 'get_errors' && callbacks.onGetErrors) {
-      toolCallsMade = true;
+      markToolCall();
       try {
         const errors = await callbacks.onGetErrors();
         // Silent: errors go to AI context only
@@ -666,7 +716,7 @@ export async function executeFakeToolsForLoop(
             : '';
       const glob = directGlob || (targetDir && pattern ? nodePath.join(targetDir, pattern) : pattern);
       if (glob) {
-        toolCallsMade = true;
+        markToolCall();
         try {
           const results = await callbacks.onFileSearch(glob);
           callbacks.onToolActivity?.('search', `glob:${glob}`);
@@ -684,7 +734,7 @@ export async function executeFakeToolsForLoop(
         ? (tool.input as Record<string, string>).query.trim()
         : '';
       if (query) {
-        toolCallsMade = true;
+        markToolCall();
         try {
           // Build an OR-pattern from significant words (>3 chars) to cast a wide net.
           const words = query
@@ -721,7 +771,7 @@ export async function executeFakeToolsForLoop(
       // Unified file create/overwrite — works for new files AND full rewrites.
       // Matching Copilot's #edit/editFiles for the agentic free-explore loop.
       const fileWrites = normalizeFileWriteInputs(tool.input);
-      toolCallsMade = true;
+      markToolCall();
       if (fileWrites.length === 0) {
         parts.push(`[${tool.name}] 错误: 缺少 path/filePath 和 content，未写入任何文件。批量写入请使用 files:[{path,content}]。`);
         continue;
@@ -836,7 +886,7 @@ export async function executeFakeToolsForLoop(
         }
       }
     } else if (tool.name === 'get_changed_files' && callbacks.onGetChangedFiles) {
-      toolCallsMade = true;
+      markToolCall();
       try {
         const result = await callbacks.onGetChangedFiles();
         callbacks.onToolActivity?.('search', 'git changes');
@@ -850,7 +900,7 @@ export async function executeFakeToolsForLoop(
         ? (tool.input as Record<string, string>).path.trim()
         : '';
       if (dirPath) {
-        toolCallsMade = true;
+        markToolCall();
         callbacks.onToolActivity?.('write', `mkdir ${dirPath}`);
         try {
           const result = await callbacks.onCreateDirectory(dirPath);
@@ -865,7 +915,7 @@ export async function executeFakeToolsForLoop(
         ? (tool.input as Record<string, string>).url.trim()
         : '';
       if (url) {
-        toolCallsMade = true;
+        markToolCall();
         callbacks.onToolActivity?.('web', url.replace(/^https?:\/\//, '').slice(0, 60));
         try {
           const result = await callbacks.onFetchWebpage(url);
@@ -883,7 +933,7 @@ export async function executeFakeToolsForLoop(
         ? (tool.input as Record<string, string>).filePath.trim()
         : undefined;
       if (symbol) {
-        toolCallsMade = true;
+        markToolCall();
         callbacks.onToolActivity?.('search', `refs:${symbol}`);
         try {
           const result = await callbacks.onListCodeUsages(symbol, filePath);
@@ -901,7 +951,7 @@ export async function executeFakeToolsForLoop(
         ? (tool.input as Record<string, unknown[]>).args
         : undefined;
       if (command) {
-        toolCallsMade = true;
+        markToolCall();
         callbacks.onToolActivity?.('terminal', `⚡ ${command}`);
         try {
           const result = await callbacks.onRunVscodeCommand(command, args);
@@ -912,7 +962,7 @@ export async function executeFakeToolsForLoop(
         }
       }
     } else if (tool.name.startsWith('mcp__') && callbacks.onMcpToolCall) {
-      toolCallsMade = true;
+      markToolCall();
       try {
         const result = await callbacks.onMcpToolCall(tool.name, tool.input as Record<string, unknown>);
         // Silent: MCP result goes to AI context only
@@ -928,9 +978,20 @@ export async function executeFakeToolsForLoop(
   if (deferredCompletedTodoItems && callbacks.onTodoUpdate && !taskContext?.requireWorkBeforeComplete) {
     await callbacks.onTodoUpdate(deferredCompletedTodoItems);
   }
+  trace?.debug('tool-loop', 'execute-complete', {
+    taskComplete,
+    toolCallsMade,
+    workToolCallsMade,
+    feedbackLength: parts.join('\n\n').length,
+    terminalCommandCount: terminalCommands.length,
+    terminalEvidenceCount: terminalEvidence.length,
+    writtenFileCount: writtenFiles.length,
+    readFileCount: readFiles.length,
+  });
   return {
     taskComplete,
     toolCallsMade,
+    workToolCallsMade,
     feedbackForAI: parts.join('\n\n'),
     completeSummary,
     allTodosCompleted,

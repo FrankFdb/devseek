@@ -27,11 +27,12 @@ test('Diagnostic logger writes one chronological log file with events and payloa
     logger.info('provider', 'request-start', { token: 'secret-token', promptLength: 42 });
     const payloadId = logger.payload('provider', 'request', 'hello world');
 
-    const runDir = path.join(getDevSeekTraceRoot(workspaceRoot), 'run-1');
-    const entries = readFileSync(path.join(runDir, 'devseek.log'), 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    const logPath = path.join(getDevSeekTraceRoot(workspaceRoot), 'run-1.log');
+    const entries = readFileSync(logPath, 'utf8').trim().split('\n').map(line => JSON.parse(line));
     assert.equal(entries[0].event, 'run-started');
     assert.equal(entries[0].data.appVersion, '1.0.0-debug.20260702.t184501.gabc1234');
     assert.equal(entries[0].data.buildChannel, 'debug');
+    assert.equal(entries[0].data.logPath, logPath);
     assert.equal(entries[1].event, 'participant-started');
     assert.equal(entries.some(event => event.event === 'request-start'), true);
     assert.equal(entries.find(event => event.event === 'request-start').data.token, '[REDACTED]');

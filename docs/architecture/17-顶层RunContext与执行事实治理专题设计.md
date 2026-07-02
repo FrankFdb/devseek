@@ -50,7 +50,7 @@ User Turn
 
 1. Extension 顶层 Agent 执行生成 `runId`。
 2. `LLMChatOptions`、Bridge Provider、Bridge Client、Bridge Server、DeepSeek Agent 全链路传递 `traceRunId`。
-3. `.devseek/runs/<YYYYMMDD-HHMMSS>/devseek.log` 记录同一次执行的所有模型请求和响应。
+3. `.devseek/runs/<YYYYMMDD-HHMMSS>.log` 记录同一次执行的所有模型请求和响应。
 4. 禁止同一次 Agent 执行产生多个日志目录。
 
 ### Phase 2：Evidence Ledger 收敛
@@ -68,14 +68,14 @@ User Turn
 
 ### Phase 4：Replay 与回归门禁
 
-1. 从 `devseek.log` 生成 replay fixture。
+1. 从 `.devseek/runs/<runId>.log` 生成 replay fixture。
 2. L0-L5 测试覆盖模型响应、工具调用、文件落盘、编译运行、UI 状态、reload 历史。
 3. 每个截图问题必须沉淀为一个可复放 case，避免人工反复撞同一类问题。
 
 ## 5. 验收标准
 
 1. 一次 Agent 执行只创建一个 run 目录。
-2. `devseek.log` 第一条是 `run-started`，后续事件按毫秒时间和 seq 可还原完整时序。
+2. `<runId>.log` 第一条是 `run-started`，后续事件按毫秒时间和 seq 可还原完整时序。
 3. 同一请求的多轮模型调用、工具调用、验证结果都使用同一个 `runId`。
 4. 先失败后修复成功的任务，最终 UI/Todos/History 不保留旧失败。
 5. 真实 DeepSeek Web 输出异常时，日志能定位是模型方言、协议适配、工具执行、文件落盘、验证还是 UI 判定问题。

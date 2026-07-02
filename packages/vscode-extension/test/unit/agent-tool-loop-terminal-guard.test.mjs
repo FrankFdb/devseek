@@ -47,7 +47,41 @@ Module._load = function loadWithVscodeMock(request, parent, isMain) {
 };
 
 const req = createRequire(import.meta.url);
-const { executeFakeToolsForLoop } = req(bundlePath);
+const {
+  executeFakeToolsForLoop,
+  isAgentWorkToolName,
+} = req(bundlePath);
+
+test('ToolLoop work-tool classifier keeps meta tools separate from real work', () => {
+  assert.equal(isAgentWorkToolName('manage_todo_list'), false);
+  assert.equal(isAgentWorkToolName('task_complete'), false);
+  assert.equal(isAgentWorkToolName('memory_write'), false);
+  assert.equal(isAgentWorkToolName('read_file'), true);
+  assert.equal(isAgentWorkToolName('run_terminal'), true);
+});
+
+test('ToolLoop returns feedback for manage_todo_list even when UI todo callback is suppressed', async () => {
+  const result = await executeFakeToolsForLoop(
+    [
+      {
+        name: 'manage_todo_list',
+        input: {
+          todoList: [{ id: 1, title: '编译验证', status: 'in-progress' }],
+        },
+      },
+    ],
+    {
+      onToolActivity: () => {},
+      onAgentStatus: async () => {},
+    },
+    '/tmp/project',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
+  );
+
+  assert.equal(result.toolCallsMade, true);
+  assert.equal(result.workToolCallsMade, false);
+  assert.match(result.feedbackForAI, /任务清单已更新/);
+});
 
 test('ToolLoop terminal guard: raw TOOL_CALL protocol text never reaches shell', async () => {
   let terminalCalled = false;
@@ -75,6 +109,7 @@ test('ToolLoop terminal guard: raw TOOL_CALL protocol text never reaches shell',
 
   assert.equal(terminalCalled, false);
   assert.equal(result.toolCallsMade, true);
+  assert.equal(result.workToolCallsMade, true);
   assert.deepEqual(result.terminalCommands ?? [], []);
   assert.match(result.feedbackForAI, /工具协议文本/);
   assert.deepEqual(activities, [{ kind: 'terminal', label: '阻止工具协议文本进入终端' }]);
@@ -105,6 +140,7 @@ test('ToolLoop terminal guard: raw ReAct Action protocol text never reaches shel
 
   assert.equal(terminalCalled, false);
   assert.equal(result.toolCallsMade, true);
+  assert.equal(result.workToolCallsMade, true);
   assert.deepEqual(result.terminalCommands ?? [], []);
   assert.match(result.feedbackForAI, /工具协议文本/);
 });
