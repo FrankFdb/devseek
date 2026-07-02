@@ -1529,6 +1529,20 @@ test('Architecture: ARCH-16 duplicate judgment domains have explicit owners', ()
   assertContains(simpleFileTask, "from './task-state-machine'", 'simple file task runner must use the task state machine boundary');
 });
 
+test('Architecture: ARCH-17 agent runs are created through RunContext', () => {
+  const extension = src('src/extension.ts');
+  const appIndex = src('src/app/index.ts');
+  const runContext = src('src/app/run-context.ts');
+
+  assertContains(appIndex, "export * from './run-context';", 'RunContext owner must be exported through app boundary');
+  assertContains(runContext, 'createDevSeekRunContext', 'RunContext owner must expose context creation');
+  assertContains(runContext, 'agent-run-started', 'RunContext must record top-level run start facts');
+  assertContains(runContext, 'agent-run-completed', 'RunContext must record top-level convergence facts');
+  assertContains(extension, 'createDevSeekRunContext({', 'agent entry must create a top-level RunContext');
+  assertContains(extension, 'agentRunContext.complete(', 'agent entry must settle the top-level RunContext');
+  assertDoesNotContain(extension, 'createDevSeekRunId', 'agent entry must not create bare run ids outside RunContext');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §8.4: Checkpoint (断线续传)
 // ─────────────────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 
 本目录按软件工程生命周期分类，只保留后续迭代需要持续维护的活文档。阶段性报告、专项审计、实测记录、竞品长参考和迭代纪要统一放入 `docs/archive/`。
 
-最后更新：2026-06-18
+最后更新：2026-07-02
 
 ## 快速入口
 
@@ -22,6 +22,9 @@
 | [architecture/10-运行形态与界面解耦架构设计.md](architecture/10-运行形态与界面解耦架构设计.md) | 架构设计 | Headless Agent Core、Surface Adapter、CLI、JSONL、跨平台 Platform Runtime、构建矩阵 |
 | [architecture/11-需求设计覆盖最终审计.md](architecture/11-需求设计覆盖最终审计.md) | 架构审计 | 需求完备性、设计覆盖性、可直接执行范围和条件通过项 |
 | [architecture/05-代码重构实施计划.md](architecture/05-代码重构实施计划.md) | 实施计划 | 按需求和设计推进代码重构与测试 |
+| [architecture/14-自动闭环迭代与测试方法论检讨.md](architecture/14-自动闭环迭代与测试方法论检讨.md) | 测试治理 | 真实日志、replay、闭环验证和自动化测试方法 |
+| [architecture/16-重复判定逻辑治理专题设计.md](architecture/16-重复判定逻辑治理专题设计.md) | 架构治理 | 重复判定逻辑、单一事实源、统一状态机和防回归守卫 |
+| [architecture/17-顶层RunContext与执行事实治理专题设计.md](architecture/17-顶层RunContext与执行事实治理专题设计.md) | 架构治理 | 顶层 RunContext、单文件 run 日志和执行事实归属 |
 | [requirements/04-Agent优化路线图.md](requirements/04-Agent优化路线图.md) | 需求/路线图 | Agent 能力路线图和待办入口 |
 | [process/TOP_AGENT_CHANGE_GATE.md](process/TOP_AGENT_CHANGE_GATE.md) | 工程过程 | 每次变更前后的检查清单、DoD、最近变更记录 |
 | [release/CHANGELOG.md](release/CHANGELOG.md) | 发布 | 版本和未发布变更记录 |
@@ -58,7 +61,12 @@
 | [architecture/09-程序员工程完整性架构设计.md](architecture/09-程序员工程完整性架构设计.md) | EngineeringContextService、ContentExclusionService、CodebaseIndexService、EnvironmentProfileService、LanguageRuntimeRegistry、ConflictGuard、UsageBudgetService 设计 |
 | [architecture/10-运行形态与界面解耦架构设计.md](architecture/10-运行形态与界面解耦架构设计.md) | AgentApplicationService、SurfaceAdapter、AgentCommand/AgentEvent、PlatformRuntimeAdapter、BuildProfile 设计 |
 | [architecture/11-需求设计覆盖最终审计.md](architecture/11-需求设计覆盖最终审计.md) | REQ-A~N、MEM-01~14 和 ARCH-01~10 的最终覆盖审计 |
+| [architecture/12-Agentic修复运行时专题设计.md](architecture/12-Agentic修复运行时专题设计.md) | Agentic 修复运行时、任务恢复、失败收敛和人工确认边界 |
+| [architecture/13-工程完整性与顶级增强核心设计.md](architecture/13-工程完整性与顶级增强核心设计.md) | 工程完整性增强、上下文、验证、回归防护和顶级智能体能力补强 |
+| [architecture/14-自动闭环迭代与测试方法论检讨.md](architecture/14-自动闭环迭代与测试方法论检讨.md) | 测试版本日志、真实执行追踪、run-log replay 和闭环验证方法 |
+| [architecture/15-文件上下文与大文件治理专题设计.md](architecture/15-文件上下文与大文件治理专题设计.md) | 大文件读取、文件上下文切片、摘要、精确定位和 AI 友好代码拆分 |
 | [architecture/16-重复判定逻辑治理专题设计.md](architecture/16-重复判定逻辑治理专题设计.md) | 重复判定逻辑、单一事实源、统一状态机和防回归重构计划 |
+| [architecture/17-顶层RunContext与执行事实治理专题设计.md](architecture/17-顶层RunContext与执行事实治理专题设计.md) | 顶层 RunContext、单文件日志、执行事实归属、证据归并和 replay 诊断 |
 
 ### 过程与发布
 
@@ -87,5 +95,5 @@
 1. 新建文档前先判断是否能补充到现有活跃文档。
 2. 长期维护文档按 `requirements/`、`architecture/`、`process/`、`release/` 分类；一次性材料直接放入 `docs/archive/<category>/`。
 3. 完成功能或修复后，至少更新 [release/CHANGELOG.md](release/CHANGELOG.md) 和 [process/TOP_AGENT_CHANGE_GATE.md](process/TOP_AGENT_CHANGE_GATE.md)。
-4. 改到架构边界时，同步更新 [architecture/01-顶级编程智能体总体架构设计.md](architecture/01-顶级编程智能体总体架构设计.md)、[architecture/02-模型供应商与工具协议架构设计.md](architecture/02-模型供应商与工具协议架构设计.md)、[architecture/03-Agent运行时与工作流重构设计.md](architecture/03-Agent运行时与工作流重构设计.md)、[architecture/04-记忆体架构设计.md](architecture/04-记忆体架构设计.md)、[architecture/07-DeepSeek网页异常与恢复设计.md](architecture/07-DeepSeek网页异常与恢复设计.md)、[architecture/08-历史任务与续作架构设计.md](architecture/08-历史任务与续作架构设计.md)、[architecture/09-程序员工程完整性架构设计.md](architecture/09-程序员工程完整性架构设计.md)、[architecture/10-运行形态与界面解耦架构设计.md](architecture/10-运行形态与界面解耦架构设计.md)、[architecture/11-需求设计覆盖最终审计.md](architecture/11-需求设计覆盖最终审计.md) 或对应编号设计文档。
+4. 改到架构边界时，同步更新对应编号设计文档；涉及 Agent 执行、工具协议、上下文、日志、验证、replay、重复判定和执行事实治理时，优先检查 [architecture/03-Agent运行时与工作流重构设计.md](architecture/03-Agent运行时与工作流重构设计.md)、[architecture/07-DeepSeek网页异常与恢复设计.md](architecture/07-DeepSeek网页异常与恢复设计.md)、[architecture/12-Agentic修复运行时专题设计.md](architecture/12-Agentic修复运行时专题设计.md)、[architecture/14-自动闭环迭代与测试方法论检讨.md](architecture/14-自动闭环迭代与测试方法论检讨.md)、[architecture/15-文件上下文与大文件治理专题设计.md](architecture/15-文件上下文与大文件治理专题设计.md)、[architecture/16-重复判定逻辑治理专题设计.md](architecture/16-重复判定逻辑治理专题设计.md)、[architecture/17-顶层RunContext与执行事实治理专题设计.md](architecture/17-顶层RunContext与执行事实治理专题设计.md)。
 5. 改到产品行为时，同步更新 [requirements/02-顶级编程智能体需求基线.md](requirements/02-顶级编程智能体需求基线.md)、[requirements/03-产品需求分析.md](requirements/03-产品需求分析.md) 或对应 Agent/Intent 文档。

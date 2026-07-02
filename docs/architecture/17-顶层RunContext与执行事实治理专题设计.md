@@ -99,9 +99,22 @@ npm run run-log-replay -- --json .devseek/runs/<runId>.log
 2. 每个新截图问题至少沉淀一个最小 JSONL fixture 单测，避免只能靠人工复现。
 3. Replay 只读日志并生成事实报告，不修改工作区文件；真实网页 E2E 仍保留用于登录、DOM、流式输出等浏览器相关问题。
 
+### Phase 1.1：RunContext Owner（已落地第一版）
+
+2026-07-02 已完成第一轮顶层 RunContext owner 收敛：
+
+1. 新增 `packages/vscode-extension/src/app/run-context.ts`，作为 VS Code 扩展侧一次 Agent 执行的顶层 `RunContext` owner。
+2. `extension.ts` 的 Agent 入口不再直接调用 `createDevSeekRunId()`，而是通过 `createDevSeekRunContext()` 生成唯一 `runId`，并把该 `runId` 继续传给 Agent loop、terminal、provider/bridge。
+3. `RunContext` 创建时写入 `agent-run-started`，结束时通过 `agentRunContext.complete()` 写入 `agent-run-completed`；free-explore 路径、分解任务路径和异常路径都纳入同一 completion 入口，completion 具备幂等保护。
+4. 底层 `DevSeekTraceLogger` 继续负责 `.devseek/runs/<runId>.log` 的 JSONL 写入、payload、脱敏和 seq；`RunContext` 不重复实现日志文件格式，只作为顶层事实归属者。
+5. 新增 `run-context.test.mjs` 验证同一 `RunContext`、child trace、completion 均写入同一个 `<runId>.log`，且 completion 不会重复写入。
+6. `workflow-compliance.test.mjs` 新增 ARCH-17 守卫：Agent 入口必须通过 `RunContext` 创建 run，不允许回退到裸 `createDevSeekRunId()`。
+
+该基线对标 Claude Code/Codex 的顶层 turn/run context：Provider、HTTP、工具和 UI 仍可以记录事件，但不得各自创建会话事实。后续 Phase 1 继续推进时，应把更多 participant logger 获取方式改为从 `RunContext.childTrace()` 派生，而不是在各入口用 `runId` 重新创建 logger。
+
 ## 5. 验收标准
 
-1. 一次 Agent 执行只创建一个 run 目录。
+1. 一次 Agent 执行只创建一个 `.devseek/runs/<runId>.log` 单文件日志，不再为单个 run 额外创建日志目录。
 2. `<runId>.log` 第一条是 `run-started`，后续事件按毫秒时间和 seq 可还原完整时序。
 3. 同一请求的多轮模型调用、工具调用、验证结果都使用同一个 `runId`。
 4. 先失败后修复成功的任务，最终 UI/Todos/History 不保留旧失败。

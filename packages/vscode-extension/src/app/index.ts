@@ -25,6 +25,7 @@ export * from './session-service';
 export * from './provider-recovery-service';
 export * from './provider-status-service';
 export * from './resume-context-builder';
+export * from './run-context';
 export * from './task-checkpoint-store';
 export * from './task-history-store';
 export * from './task-history-ui-service';

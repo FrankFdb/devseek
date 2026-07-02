@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import * as nodePath from 'path';
-import { createDevSeekRunId } from '@devseek-netai/shared';
 import { chat, relogin, status, readWorkspaceFile, ensureBridgeRunning, setBridgeExtensionRoot } from './bridge-client';
 import { createProviderStatusBar, getActiveProvider, getActiveProviderType, getProviderConfigService, promptUpdateApiKey } from './llm/provider-router';
 import { type ChatMessage } from './llm/types';
@@ -49,6 +48,7 @@ import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { MemoryService } from './app/memory-service';
 import { AgentDisplayPresenter } from './app/agent-display-presenter';
+import { createDevSeekRunContext } from './app/run-context';
 import { guardNonAgentResponse } from './app/non-agent-response-guard';
 import { AgentApplicationService } from './app/agent-application-service';
 import type { AgentChatRequest } from './app/agent-protocol';
@@ -581,7 +581,18 @@ async function runChat(
 
     const agentDisplayPresenter = new AgentDisplayPresenter();
     const postAgent = (msg: AgentStatusMessage) => webview.postMessage(agentDisplayPresenter.presentStatus(msg));
-    const agentTraceRunId = createDevSeekRunId();
+    const agentWorkspaceRoot = getWorkspaceRootFsPath(prompt, pathResolutionHints)
+      ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      ?? process.cwd();
+    const agentRunContext = createDevSeekRunContext({
+      workspaceRoot: agentWorkspaceRoot,
+      source: 'vscode-extension.agent',
+      userPrompt: prompt,
+      sessionId: activeSessionId,
+      mode,
+      traceLevel: vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', 'debug'),
+    });
+    const agentTraceRunId = agentRunContext.runId;
     // L1a: filled inside try/catch, used after to persist agent turn in session history
     let agentHistoryText = '';
     let loopResult: AgentLoopResult | undefined;
@@ -760,6 +771,12 @@ async function runChat(
         }
         const agAutopilotHandled = pendingEditCoordinator.handleAgentAutopilot(webview, agResult);
         pendingEditCoordinator.scheduleAutoAccept(webview, agResult, agAutopilotHandled);
+        agentRunContext.complete(agResult.tasksFailed > 0 ? 'failed' : 'completed', {
+          tasksTotal: agResult.tasksTotal,
+          tasksApplied: agResult.tasksApplied,
+          tasksFailed: agResult.tasksFailed,
+          changedPaths: lastAgentChangedPaths.slice(0, 12),
+        });
         webview.postMessage({ type: 'endResponse' });
         return;
       }
@@ -1122,6 +1139,10 @@ async function runChat(
         completed: false,
         savedAt: Date.now(),
       });
+      agentRunContext.complete('failed', {
+        reason: 'agent-error',
+        changedPaths: lastAgentChangedPaths.slice(0, 12),
+      });
     }
 
     // L1a: persist agent turn to session history so sessions can be saved and restored
@@ -1144,6 +1165,14 @@ async function runChat(
 
     const autoAcceptResult = loopResult
       ?? (loopFailedForAutoAccept ? { tasksTotal: decomposedTaskCount, tasksApplied: 0, tasksFailed: 1, changedPaths: [] } : undefined);
+    if (!loopFailedForAutoAccept) {
+      agentRunContext.complete(loopResult && loopResult.tasksFailed > 0 ? 'failed' : 'completed', {
+        tasksTotal: loopResult?.tasksTotal ?? decomposedTaskCount,
+        tasksApplied: loopResult?.tasksApplied ?? 0,
+        tasksFailed: loopResult?.tasksFailed ?? 0,
+        changedPaths: lastAgentChangedPaths.slice(0, 12),
+      });
+    }
     pendingEditCoordinator.scheduleAutoAccept(webview, autoAcceptResult, loopAutopilotHandled);
     webview.postMessage({ type: 'endResponse' });
     return;
