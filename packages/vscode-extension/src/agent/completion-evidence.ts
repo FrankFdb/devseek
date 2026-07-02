@@ -325,10 +325,38 @@ export function isBlockingTerminalFailureEvidence(evidence: TerminalEvidence): b
 
 export function findBlockingTerminalFailureEvidence(evidence: readonly TerminalEvidence[] | undefined): TerminalEvidence | undefined {
   if (!evidence?.length) return undefined;
-  for (let i = evidence.length - 1; i >= 0; i--) {
-    if (isBlockingTerminalFailureEvidence(evidence[i])) return evidence[i];
+  let blockingFailure: TerminalEvidence | undefined;
+  for (const item of evidence) {
+    if (item.reviewRequired) {
+      blockingFailure = undefined;
+      continue;
+    }
+    if (blockingFailure && terminalSuccessClearsFailure(item, blockingFailure)) {
+      blockingFailure = undefined;
+    }
+    if (isBlockingTerminalFailureEvidence(item)) {
+      blockingFailure = item;
+    }
   }
-  return undefined;
+  return blockingFailure;
+}
+
+function terminalSuccessClearsFailure(success: TerminalEvidence, failure: TerminalEvidence): boolean {
+  if (!success.ok) return false;
+  if (success.kind === 'compile-run') return isCommandTerminalEvidenceKind(failure.kind);
+  if (success.kind === 'run' || success.kind === 'test') {
+    return failure.kind === 'compile' || failure.kind === 'run' || failure.kind === 'test' || failure.kind === 'compile-run';
+  }
+  if (success.kind === 'compile') {
+    return failure.kind === 'compile';
+  }
+  return success.kind === 'other'
+    && failure.kind === 'other'
+    && looksLikeValidationShellCommand(success.command);
+}
+
+function isCommandTerminalEvidenceKind(kind: TerminalEvidenceKind): boolean {
+  return kind === 'compile' || kind === 'run' || kind === 'test' || kind === 'compile-run';
 }
 
 function looksLikeValidationShellCommand(command: string): boolean {

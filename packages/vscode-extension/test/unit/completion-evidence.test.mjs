@@ -37,6 +37,7 @@ const {
   coalesceWrittenFileEvidence,
   describeBlockingTerminalFailure,
   extractClaimedSummaryFiles,
+  findBlockingTerminalFailureEvidence,
   getUnsupportedSummaryFileClaims,
   getBlockingTerminalFailure,
   getMissingCompletionEvidence,
@@ -367,6 +368,26 @@ test('completion evidence: failed runtime validation blocks completion until a l
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('completion evidence: generic blocking terminal evidence is cleared by later runtime success', () => {
+  const failedRun = {
+    command: '/workspace/code/shape_manager/build/shape_manager',
+    kind: 'run',
+    ok: false,
+    exitCode: 127,
+    detail: '/bin/sh: shape_manager: not found',
+  };
+  const successfulRun = {
+    command: '/workspace/code/shape_manager/build/bin/shape_manager',
+    kind: 'run',
+    ok: true,
+    exitCode: 0,
+    detail: '3D Shape Viewer - Click to select',
+  };
+
+  assert.equal(findBlockingTerminalFailureEvidence([failedRun]), failedRun);
+  assert.equal(findBlockingTerminalFailureEvidence([failedRun, successfulRun]), undefined);
 });
 
 test('completion evidence: transfer-source filenames are not treated as modified-file claims', () => {

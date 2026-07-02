@@ -88,6 +88,11 @@ import {
   buildAgentMetaOnlyToolFeedback,
   executeFakeToolsForLoop,
 } from './agent/tool-loop';
+import {
+  isExistingDirectory,
+  taskWorkdirFromResolvedPath,
+  tryExecuteDeterministicAnalyzeExecution,
+} from './agent/deterministic-analyze-execution';
 import { selectTaskWrittenFileEvidence } from './agent/task-write-evidence';
 import {
   buildTaskSettlementFailureStatus,
@@ -694,7 +699,7 @@ async function executeTask(
   // Use readFileContentFull: Editor needs the COMPLETE file for exact SEARCH matching.
   const currentContent = (task.absPath && contentCache.has(task.absPath))
     ? (contentCache.get(task.absPath) ?? '')
-    : (task.absPath ? readFileContentFull(task.absPath) : '');
+    : (task.absPath && !isExistingDirectory(task.absPath) ? readFileContentFull(task.absPath) : '');
 
   // Pre-compute effectiveAbsPath early — needed by both analyze and editor paths.
   let earlyEffectiveAbsPath = task.absPath;
@@ -753,7 +758,18 @@ async function executeTask(
   // (All-analyze batches previously had a consolidated shortcut — G6 removed it
   //  so all analyze tasks now get the full multi-round tool loop.)
   if (task.action === 'analyze' || task.action === 'explain' || task.action === 'explore') {
-    const analyzeWorkdir = earlyEffectiveAbsPath ? nodePath.dirname(earlyEffectiveAbsPath) : undefined;
+    const analyzeWorkdir = taskWorkdirFromResolvedPath(earlyEffectiveAbsPath);
+    const deterministicResult = await tryExecuteDeterministicAnalyzeExecution({
+      task,
+      taskIndex,
+      taskTotal: allTasks.length,
+      userPrompt,
+      workspaceRoot,
+      callbacks,
+      workdir: analyzeWorkdir,
+    });
+    if (deterministicResult) return deterministicResult;
+
     // G3: pass taskIndex/taskTotal/mcpTools so the prompt includes full tool definitions
     const analyzePrompt = buildAnalyzePrompt(userPrompt, task, currentContent, analyzeWorkdir, taskIndex, allTasks.length, callbacks.mcpToolRefs);
     let analyzeRaw = '';
