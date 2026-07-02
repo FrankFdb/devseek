@@ -72,6 +72,33 @@ User Turn
 2. L0-L5 测试覆盖模型响应、工具调用、文件落盘、编译运行、UI 状态、reload 历史。
 3. 每个截图问题必须沉淀为一个可复放 case，避免人工反复撞同一类问题。
 
+### Phase 4.1：Run Log Replay Harness（已落地第一版）
+
+新增 `diagnostics/run-log-replay` 作为日志回放诊断边界，直接读取 `.devseek/runs/*.log` 的 JSONL 时间线，不依赖 VS Code UI 或真实 DeepSeek 网页，即可还原并断言一次执行中的关键事实。
+
+命令：
+
+```bash
+npm run run-log-replay -- .devseek/runs/<runId>.log
+npm run run-log-replay -- --json .devseek/runs/<runId>.log
+```
+
+第一版覆盖的缺陷类型：
+
+1. `legacy-build-path`：模型响应或终端命令重新出现 `.devseek-build` / `devseek-build`。
+2. `build-artifact-workdir`：工具循环默认工作目录漂移到 `build/bin` 等构建产物目录。
+3. `provider-authored-tool-result`：模型响应夹带 `[工具返回]`、`[工具执行结果]` 等伪造工具结果文本。
+4. `malformed-tool-block`：模型输出了 `[TOOL:*]` 标记，但协议适配器无法解析完整工具调用。
+5. `destructive-model-command`：模型生成 `rm -rf build` 等应由本地执行规划器接管的清理命令。
+6. `long-running-run`：一次执行超过 60 秒目标。
+7. `missing-final-convergence`：日志最后停在未完成工具执行后，没有最终收敛事件。
+
+使用原则：
+
+1. 真实用户测试失败后，优先运行 replay harness 获取机器诊断，再决定修改协议适配、路径解析、执行规划、证据结算还是 UI。
+2. 每个新截图问题至少沉淀一个最小 JSONL fixture 单测，避免只能靠人工复现。
+3. Replay 只读日志并生成事实报告，不修改工作区文件；真实网页 E2E 仍保留用于登录、DOM、流式输出等浏览器相关问题。
+
 ## 5. 验收标准
 
 1. 一次 Agent 执行只创建一个 run 目录。

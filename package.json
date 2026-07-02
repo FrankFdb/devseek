@@ -33,6 +33,7 @@
     "verify:programming-agent-benchmark": "npm run shared:build && npm run cli:build && node scripts/devseek-programming-agent-benchmark.mjs",
     "verify:real-deepseek-web": "npm run cli:build && node scripts/devseek-real-deepseek-web-eval.mjs",
     "verify:agent-self-loop": "node scripts/devseek-agent-self-loop.mjs",
+    "run-log-replay": "node packages/vscode-extension/test/devseek-run-log-replay-harness.mjs",
     "probe:artifacts": "node scripts/probe-generated-files.mjs"
   }
 }
