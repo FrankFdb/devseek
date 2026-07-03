@@ -3,6 +3,7 @@ import * as nodePath from 'path';
 import { parseFakeToolCalls } from '../agent/fake-tool-parser';
 import { isolateModelToolRequestText } from '../agent/model-tool-protocol-adapter';
 import { LEGACY_CPP_BUILD_DIR_NAMES, listCppBuildOutputDirNames } from '../cpp-build-layout';
+import { hasInteractiveLaunchEvidence } from '../execution-outcome-classifier';
 
 export type RunLogReplayIssueSeverity = 'info' | 'warn' | 'error';
 
@@ -101,11 +102,14 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
   let lastToolComplete: { line: number; taskComplete?: boolean } | undefined;
   let agentRunStarted = false;
   let agentRunCompleted = false;
+  let agentRunCompletedSuccessfully = false;
   let chatRequestStarts = 0;
   let chatRequestCompletions = 0;
   let chatRequestFailures = 0;
   let workspaceMutationRequested = false;
   const sourceCodeResponses: { line: number; evidence?: string }[] = [];
+  const terminalFailures: Array<{ line: number; exitCode: number; evidence: string; outputSha?: string; output?: string }> = [];
+  const terminalOutputBySha = new Map<string, string>();
 
   for (const event of events) {
     if (event.parseError) {
@@ -138,6 +142,7 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     }
     if (entry.event === 'agent-run-completed') {
       agentRunCompleted = true;
+      agentRunCompletedSuccessfully = stringValue(data?.status) === 'completed';
     }
     if (entry.event === 'participant-started') {
       appVersion ??= stringValue(data?.appVersion);
@@ -176,6 +181,15 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
         plannedExecutionTasks += countPlannedExecutionTasks(content);
         terminalCommands += countRunTerminalTools(content);
       }
+      if (name === 'terminal.output') {
+        const sha = stringValue(payload?.sha256);
+        if (sha) terminalOutputBySha.set(sha, content);
+        const lastUnresolved = terminalFailures
+          .slice()
+          .reverse()
+          .find(item => !item.output && (!item.outputSha || item.outputSha === sha));
+        if (lastUnresolved) lastUnresolved.output = content;
+      }
     }
 
     if (entry.source === 'vscode-extension.terminal' && entry.event === 'command-requested') {
@@ -197,11 +211,11 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     if (entry.source === 'vscode-extension.terminal' && entry.event === 'command-complete') {
       const exitCode = numberValue(data?.exitCode);
       if (typeof exitCode === 'number' && exitCode > 0) {
-        issues.push({
-          kind: 'terminal-command-failed',
-          severity: 'error',
+        const outputMeta = objectValue(data?.output);
+        terminalFailures.push({
           line: event.line,
-          message: `终端命令退出码为 ${exitCode}，本轮执行没有通过验证。`,
+          exitCode,
+          outputSha: stringValue(outputMeta?.sha256),
           evidence: truncateOneLine([
             `exitCode=${exitCode}`,
             stringValue(objectValue(data?.command)?.text),
@@ -244,7 +258,20 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     }
   }
 
-  if (lastToolComplete && lastToolComplete.taskComplete === false) {
+  for (const failure of terminalFailures) {
+    const output = failure.output || (failure.outputSha ? terminalOutputBySha.get(failure.outputSha) : undefined) || '';
+    if (hasInteractiveLaunchEvidence(output)) continue;
+    if (agentRunCompletedSuccessfully) continue;
+    issues.push({
+      kind: 'terminal-command-failed',
+      severity: 'error',
+      line: failure.line,
+      message: `终端命令退出码为 ${failure.exitCode}，本轮执行没有通过验证。`,
+      evidence: failure.evidence,
+    });
+  }
+
+  if (lastToolComplete && lastToolComplete.taskComplete === false && !agentRunCompleted) {
     issues.push({
       kind: 'missing-final-convergence',
       severity: 'error',

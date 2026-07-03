@@ -68,6 +68,23 @@
 
 ---
 
+**变更标题**：RunContext GUI 证据归并与 Agent 展示收敛（2026-07-03）
+- **需求归因**：实现缺陷 + 体验退化 + 架构债务 — `shape_manager` 已编译运行并弹出 GUI 后，早期终端失败仍残留为最终失败；同时 Todo/Working 区出现长任务文本和重复进度行。
+- **影响能力层**：执行、验证、RunContext 事实归并、Todo 状态、WebView 展示。
+- **架构影响**：
+  - `ExecutionOutcomeClassifier` 统一解释 GUI/交互式启动证据和 CMake/pkg-config 非致命噪声。
+  - `tools/terminal` observation timer 与 child close 分支共用 manual-review 分类，不再各自结算。
+  - `run-log-replay` 延迟结算 terminal failure，结合 payload 和最终 `agent-run-completed` 再判断整轮是否失败。
+  - `TaskTodoLedger` 统一生成简短 Todo 标题；WebView 对长列表、重复进度和裸源码输出做展示侧兜底收敛。
+- **方案选择理由**：对标 Claude Code/Codex，底层工具事件不能单独创造最终失败事实；用户界面显示摘要，细节折叠或进入日志。
+- **主链路验证**：真实旧日志 `.devseek/runs/20260703-130114.log` replay 不再报告 terminal-command-failed / missing-final-convergence。
+- **回退链路验证**：CMake/pkg-config 探测噪声不会触发硬失败；真实编译失败仍由 classifier 的硬失败规则保留。
+- **结果判据变化**：交互式程序已启动且最终 run 完成时，早期 timeout/exit failure 作为历史事件保留在日志，不再覆盖最终 UI/Todos 状态。
+- **文档更新**：`docs/architecture/16-重复判定逻辑治理专题设计.md`、`docs/architecture/17-顶层RunContext与执行事实治理专题设计.md`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：需执行 targeted unit tests、run-log replay、extension compile/package/install。
+
+---
+
 **变更标题**：Agentic GUI 运行验证与工具协议误判修复（2026-06-25）
 - **需求归因**：实现缺陷 + 体验退化 — `shape_manager` X11 程序已弹窗运行后，DevSeek 仍停留在 `运行 shape_manager` 或把验证标为失败；同时完整 `[TOOL:list_dir {...}]` 工具协议被误判为 Provider JSON 损坏。
 - **影响能力层**：执行、验证、Provider 恢复、历史 QualityGate、自动接受策略。

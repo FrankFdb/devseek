@@ -1303,11 +1303,14 @@ function makeAgentWidgetItemsFromTodos() {
       : t.state === 'failed' ? 'failed'
       : t.state === 'started' ? 'in-progress'
       : 'not-started';
+    var rawTitle = t.desc || basename(t.file || '');
+    var shortTitle = compactAgentTaskLabel(rawTitle, basename(t.file || '') || '任务', 54) || rawTitle || '任务';
     return {
       __agentState: true,
-      title: t.desc || basename(t.file || ''),
+      title: shortTitle,
       action: t.action || 'modify',
       desc: basename(t.file || ''),
+      fullDesc: rawTitle,
       status: status,
     };
   });
@@ -1848,8 +1851,31 @@ function stripAgentGeneratedCodeBlocks(text) {
     }
     return block;
   });
-  if (!removed) return text;
+  if (!removed) {
+    if (looksLikeRawAgentSourceDump(text)) {
+      return '（模型输出了大段代码，DevSeek 已隐藏正文；请以文件变更和验证结果为准。）';
+    }
+    return text;
+  }
   return cleaned.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function looksLikeRawAgentSourceDump(text) {
+  var raw = String(text || '').trim();
+  if (raw.length < 1200) return false;
+  var lines = raw.split(/\r?\n/);
+  if (lines.length < 24) return false;
+  var sourceSignals = 0;
+  for (var i = 0; i < lines.length; i++) {
+    var s = lines[i].trim();
+    if (!s) continue;
+    if (/#include\s*[<"]|\bstd::|\bglut[A-Z]\w*\b|\bgl[A-Z]\w*\b/.test(s)) sourceSignals++;
+    else if (/^(?:void|int|float|double|bool|char|class|struct|template|static|const|auto)\b/.test(s)) sourceSignals++;
+    else if (/^(?:\/\/|\/\*|\*)/.test(s)) sourceSignals++;
+    else if (/[{};]\s*$/.test(s) && /\b(?:return|if|for|while|switch|case|break|continue|new|delete)\b/.test(s)) sourceSignals++;
+    if (sourceSignals >= 12) return true;
+  }
+  return false;
 }
 
 /**
@@ -1943,6 +1969,7 @@ function handleTodoUpdate(items) {
       : 'codicon-edit';
     // Primary display: filename (from title), secondary: short desc
     var primaryText = it.title || '';
+    var fullPrimaryText = primaryText;
     var secondaryText = it.desc || '';
     // If desc is not provided but title has action prefix like "[create] foo.cpp", extract file
     if (!it.action && !it.desc) {
@@ -1950,8 +1977,9 @@ function handleTodoUpdate(items) {
       if (bracketM) { action = bracketM[1]; primaryText = bracketM[2]; }
     }
     // Truncate secondary desc for display
+    primaryText = compactAgentTaskLabel(primaryText, secondaryText || '任务', 54) || primaryText;
     var shortDesc = secondaryText && secondaryText.length > 48 ? secondaryText.slice(0, 46) + '…' : secondaryText;
-    var tooltip = escapeHtml(it.fullDesc || secondaryText || primaryText);
+    var tooltip = escapeHtml(it.fullDesc || fullPrimaryText || secondaryText || primaryText);
     return '<div class="agent-todo-item ' + stateClass + '" title="' + tooltip + '">'
       + '<span class="agent-todo-icon">' + stateIcon + '</span>'
       + (action ? '<i class="codicon ' + actionIcon + ' agent-todo-action-icon"></i>' : '')
@@ -1961,7 +1989,8 @@ function handleTodoUpdate(items) {
       + '</span>'
       + '</div>';
   }).join('');
-  todosWidgetEl.innerHTML = '<details class="agent-todos-details" open>'
+  var detailsOpen = items.length <= 8 ? ' open' : '';
+  todosWidgetEl.innerHTML = '<details class="agent-todos-details"' + detailsOpen + '>'
     + '<summary class="agent-todos-summary">'
     + '<span class="agent-todos-title">' + header + '</span>'
     + '<button class="agent-todos-close" title="关闭">\u00d7</button>'
@@ -2411,6 +2440,11 @@ function prepareAgentToolActivityContainer(kind, label) {
 
 function appendAgentProgressStep(kind, label, detail, state) {
   var safeLabel = sanitizeAgentActivityLabelValue(kind, label) || '处理中...';
+  var normalizedDetail = String(detail || '').replace(/\s+/g, ' ').trim();
+  var stepKey = 'progress:' + String(kind || '') + ':' + String(state || 'started') + ':'
+    + safeLabel.toLowerCase() + ':' + normalizedDetail.slice(0, 120).toLowerCase();
+  if (agentActivitySeen.has(stepKey)) return;
+  agentActivitySeen.add(stepKey);
   var container = ensureAgentProgressContainer(safeLabel);
   var steps = agentActivityRowId ? document.getElementById(agentActivityRowId) : null;
   if (!steps) {
@@ -2500,7 +2534,9 @@ function addAgentStatus(msg) {
         // Users need to know WHAT will be done, not just WHICH file
         var fname2 = t.file ? basename(t.file) : '';
         var desc2 = t.desc || '';
-        return { __agentState: true, title: desc2 || fname2, action: t.action || 'modify', desc: fname2, status: 'not-started' };
+        var fullTitle2 = desc2 || fname2 || '任务';
+        var shortTitle2 = compactAgentTaskLabel(fullTitle2, fname2 || '任务', 54) || fullTitle2;
+        return { __agentState: true, title: shortTitle2, action: t.action || 'modify', desc: fname2, fullDesc: fullTitle2, status: 'not-started' };
       });
       handleTodoUpdate(planTodoItems);
     }

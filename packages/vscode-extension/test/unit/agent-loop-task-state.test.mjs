@@ -37,6 +37,7 @@ const {
   createLinearAgentTodos,
   inferInitialAgenticTodos,
   settleMissingEvidenceTodos,
+  summarizeAgentTodoTitle,
 } = req(bundlePath);
 
 test('two-phase agent todos are delegated to the task state machine boundary', () => {
@@ -331,6 +332,17 @@ test('task todo ledger: linear helpers own simple task progress', () => {
   assert.equal(completed[0].status, 'completed');
   assert.equal(completed[1].status, 'completed');
   assert.equal(completed[0].__agentState, true);
+});
+
+test('task todo ledger: todo titles stay concise at the state-machine boundary', () => {
+  const longTitle = '添加鼠标双击回调函数，实现选中图形放大、其他图形缩小；修改鼠标拖拽逻辑，禁止将小图形拖拽到大图形内部';
+  assert.equal(
+    summarizeAgentTodoTitle(longTitle),
+    '添加鼠标双击回调函数',
+  );
+
+  const todos = createLinearAgentTodos([{ title: longTitle }]);
+  assert.equal(todos[0].title, '添加鼠标双击回调函数');
 });
 
 test('task todo ledger: missing evidence and quality gate settlement are centralized', () => {

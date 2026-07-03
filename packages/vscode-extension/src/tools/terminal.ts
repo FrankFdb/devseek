@@ -212,11 +212,15 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
         stderr,
         command,
         timeoutMs,
-        allowManualReview: false,
+        allowManualReview: Boolean(opts.manualReviewOnLongRunning),
+        manualReviewContext: command,
+        manualReviewDetail: INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL,
         timeoutFailureDetail: buildInteractiveTimeoutFailureDetail(timeoutMs),
       });
       const summary = outcome.timedOut
-        ? `[超时 ${timeoutMs}ms] 命令: ${command}\n${outcome.output.slice(0, 800)}`
+        ? outcome.reviewRequired
+          ? formatManualReviewTerminalDetail(outcome.reviewReason || INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL)
+          : `[超时 ${timeoutMs}ms] 命令: ${command}\n${outcome.output.slice(0, 800)}`
         : `[exitCode=${outcome.exitCode}] ${outcome.output.slice(0, 1500)}`;
 
       resolveOnce({
@@ -226,6 +230,10 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
         stderr: stderr.trim(),
         output: outcome.output,
         summary,
+        ...(outcome.reviewRequired ? {
+          reviewRequired: true,
+          reviewReason: outcome.reviewReason,
+        } : {}),
       });
     });
 

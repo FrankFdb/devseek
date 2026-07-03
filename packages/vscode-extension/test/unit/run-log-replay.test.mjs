@@ -417,3 +417,78 @@ test('run log replay detects terminal command failures even when execution evide
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('run log replay does not let stale GUI timeout evidence override final completion', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-03T05:03:47.000Z',
+      level: 'info',
+      source: 'vscode-extension.terminal',
+      phase: 'terminal',
+      event: 'command-requested',
+      runId: 'gui-timeout-cleared',
+      data: { command: { length: 27, sha256: 'cmd1' }, workdir: '/tmp/ws/code/shape_manager' },
+    },
+    {
+      ts: '2026-07-03T05:25:48.000Z',
+      level: 'info',
+      source: 'vscode-extension.terminal',
+      phase: 'terminal',
+      event: 'command-complete',
+      runId: 'gui-timeout-cleared',
+      data: {
+        command: { length: 27, sha256: 'cmd1' },
+        workdir: '/tmp/ws/code/shape_manager',
+        exitCode: 124,
+        output: { length: 300, sha256: 'out-gui' },
+      },
+    },
+    {
+      ts: '2026-07-03T05:25:48.001Z',
+      level: 'debug',
+      source: 'vscode-extension.terminal',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'gui-timeout-cleared',
+      data: {
+        name: 'terminal.output',
+        sha256: 'out-gui',
+        content: [
+          '3D Shape Viewer - Mouse Selection Mode',
+          'All shapes displayed simultaneously:',
+          'Controls:',
+          '  Left click      - Start dragging shape',
+          '  ESC / Q         - Exit',
+        ].join('\n'),
+      },
+    },
+    {
+      ts: '2026-07-03T05:25:49.000Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-complete',
+      runId: 'gui-timeout-cleared',
+      data: { taskComplete: false, terminalCommandCount: 1 },
+    },
+    {
+      ts: '2026-07-03T05:25:50.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-completed',
+      runId: 'gui-timeout-cleared',
+      data: { status: 'completed', tasksTotal: 1, tasksApplied: 1, tasksFailed: 0 },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(kinds.has('terminal-command-failed'), false);
+    assert.equal(kinds.has('missing-final-convergence'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

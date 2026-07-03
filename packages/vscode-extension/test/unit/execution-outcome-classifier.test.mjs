@@ -32,6 +32,7 @@ const {
   executionOutcomeClassifier,
   formatManualReviewTerminalDetail,
   hasHardExecutionFailureEvidence,
+  hasInteractiveLaunchEvidence,
   isIndeterminateExecutionEvidence,
   makeExecutionTimeoutError,
   parseFormattedTerminalExitCode,
@@ -96,6 +97,47 @@ test('ExecutionOutcomeClassifier: hard build failure suppresses manual review', 
   assert.equal(result.ok, false);
   assert.equal(result.exitCode, 124);
   assert.equal(result.reviewRequired, undefined);
+});
+
+test('ExecutionOutcomeClassifier: GUI launch output can require manual review after timeout', () => {
+  const result = executionOutcomeClassifier.classifyExecResult({
+    error: timeoutError(),
+    stdout: [
+      "-- Checking for module 'glut'",
+      "--   No package 'glut' found",
+      '============================================================',
+      '      3D Shape Viewer - Mouse Selection Mode',
+      '============================================================',
+      'All shapes displayed simultaneously:',
+      'Controls:',
+      '  Left click      - Start dragging shape',
+      '  ESC / Q         - Exit',
+    ].join('\n'),
+    stderr: '',
+    command: './build/bin/shape_manager',
+    timeoutMs: 30000,
+    allowManualReview: true,
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.exitCode, -1);
+  assert.equal(result.reviewRequired, true);
+  assert.match(result.output, /图形或交互式程序已启动/);
+  assert.equal(hasInteractiveLaunchEvidence(result.output), true);
+});
+
+test('ExecutionOutcomeClassifier: compile-only OpenGL output is not GUI launch evidence', () => {
+  const output = [
+    "-- Checking for module 'glut'",
+    "--   No package 'glut' found",
+    '-- Configuring done',
+    '-- Generating done',
+    '-- Build files have been written to: /tmp/build',
+    '[100%] Built target shape_manager',
+  ].join('\n');
+
+  assert.equal(hasInteractiveLaunchEvidence(output), false);
+  assert.equal(hasHardExecutionFailureEvidence(output), false);
 });
 
 test('ExecutionOutcomeClassifier: shared evidence helpers cover manual review inputs', () => {

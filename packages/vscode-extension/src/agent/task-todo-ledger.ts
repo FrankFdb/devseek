@@ -20,6 +20,8 @@ type TodoStatus = TodoItem['status'];
 type LinearTodoInput = Pick<TodoItem, 'title'> & Partial<Pick<TodoItem, 'status' | '__agentState'>>;
 type TaskFailureKind = 'terminal' | 'missing-evidence' | 'missing-write' | 'validation';
 
+const TODO_TITLE_MAX = 36;
+
 interface TaskEvidence {
   action: AgentTaskAction;
   applied?: boolean;
@@ -74,7 +76,7 @@ export function buildTaskSettlementFailureStatus(
     taskIndex,
     taskTotal,
     state: 'failed',
-    title: task.desc || target,
+    title: summarizeAgentTodoTitle(task.desc || target, target),
     detail: buildTaskSettlementFailureDetail(task, result),
   };
 }
@@ -151,7 +153,7 @@ export function createAgentTaskTodoLedger(
         ...snapshot(),
         {
           id,
-          title,
+          title: summarizeAgentTodoTitle(title),
           status: 'in-progress',
           __agentState: true,
         },
@@ -213,7 +215,7 @@ export function settleValidationFailureTodos(todos: TodoItem[]): TodoItem[] {
 export function createLinearAgentTodos(items: LinearTodoInput[]): TodoItem[] {
   return items.map((item, index) => ({
     id: index + 1,
-    title: item.title,
+    title: summarizeAgentTodoTitle(item.title),
     status: item.status ?? (index === 0 ? 'in-progress' : 'not-started'),
     ...(item.__agentState ? { __agentState: true } : {}),
   }));
@@ -421,10 +423,34 @@ function getTaskDisplayTarget(task: Pick<AgentTask, 'file' | 'visibleTarget'>): 
 function taskTodoItem(task: AgentTask, index: number, status: TodoStatus): TodoItem {
   return {
     id: index + 1,
-    title: task.desc,
+    title: summarizeAgentTodoTitle(task.desc, getTaskDisplayTarget(task)),
     status,
     __agentState: true,
   };
+}
+
+export function summarizeAgentTodoTitle(title: string | undefined, fallback = 'Agent 任务'): string {
+  const normalized = String(title || fallback || 'Agent 任务')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return fallback;
+
+  const firstClause = normalized
+    .split(/[。；;，,\n]/)
+    .map(part => part.trim())
+    .find(part => part.length >= 4);
+  if (firstClause && firstClause.length <= TODO_TITLE_MAX) return firstClause;
+  if (normalized.length <= TODO_TITLE_MAX) return normalized;
+
+  const filenameMatch = normalized.match(/(?:^|[\s"'`])([A-Za-z0-9_.-]+\.(?:ts|tsx|js|jsx|mjs|cjs|cpp|cc|cxx|h|hpp|py|md|json|txt|cmake|css|html))(?:$|[\s"'`])/i);
+  const actionMatch = normalized.match(/^(创建|修改|更新|删除|分析|检查|验证|编译|运行|修复|重构|实现|添加|新增|create|modify|update|delete|analyze|check|verify|compile|run|fix|refactor|implement|add)\b/i);
+  if (filenameMatch) {
+    const prefix = actionMatch ? actionMatch[0] : '处理';
+    const candidate = `${prefix} ${filenameMatch[1]}`;
+    if (candidate.length <= TODO_TITLE_MAX) return candidate;
+  }
+
+  return `${normalized.slice(0, TODO_TITLE_MAX - 1).trimEnd()}…`;
 }
 
 function isTaskIndex(index: number, tasks: AgentTask[]): boolean {

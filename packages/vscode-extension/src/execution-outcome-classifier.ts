@@ -21,6 +21,9 @@ const VISUAL_OR_INTERACTIVE_RE =
 const VISUAL_SOURCE_RE =
   /(?:#include\s+[<"][^>"]*(?:X11\/|GL\/|GLFW\/|SDL2\/|SFML\/|QApplication|QWidget|gtk\/)|\b(?:XOpenDisplay|XCreateSimpleWindow|XMapWindow|XDrawArc|XDrawRectangle|XDrawLines|XNextEvent|XFlush|glut|glfw|SDL_|sf::RenderWindow|QApplication|gtk_init|CreateWindow|WinMain)\b|target_link_libraries\s*\([^)]*(?:X11|GL|glut|glfw|SDL2|sfml|Qt|GTK))/i;
 
+const INTERACTIVE_LAUNCH_OUTPUT_RE =
+  /(?:^|\n)\s*(?:={3,}\s*)?(?:3D\s+Shape\s+Viewer|Shape\s+Manager|Shape\s+Viewer|Controls\s*:|All\s+shapes\s+displayed|Started\s+dragging|Double-click|Left\s+click|Right\s+drag|Scroll\s+wheel|Middle\s+drag|ESC\s*\/\s*Q|程序已启动|窗口已打开|图形窗口已启动|等待人工确认)/i;
+
 const HARD_EXECUTION_FAILURE_PATTERNS = [
   /(?:^|\n)[^:\n]+\.(?:c|cc|cpp|cxx|h|hpp):\d+(?::\d+)?:\s+(?:fatal\s+)?error:/i,
   /\b(?:fatal\s+error|error:|undefined reference|collect2:\s*error)\b/i,
@@ -98,7 +101,8 @@ export class ExecutionOutcomeClassifier {
     if (!input.allowManualReview) return false;
     if (!containsRuntimeExecutableSegment(input.command)) return false;
     if (hasHardExecutionFailureEvidence(`${output || ''}\n${input.command || ''}`)) return false;
-    return isVisualOrInteractiveContext(input.manualReviewContext || input.command)
+    return hasInteractiveLaunchEvidence(output)
+      || isVisualOrInteractiveContext(input.manualReviewContext || input.command)
       || visualSourcePathsLookInteractive(input.visualSourcePaths || []);
   }
 }
@@ -144,8 +148,12 @@ export function visualSourcePathsLookInteractive(paths: string[]): boolean {
   return false;
 }
 
+export function hasInteractiveLaunchEvidence(text: string): boolean {
+  return INTERACTIVE_LAUNCH_OUTPUT_RE.test(text || '');
+}
+
 export function hasHardExecutionFailureEvidence(text: string): boolean {
-  const raw = text || '';
+  const raw = normalizeHardFailureEvidenceText(text || '');
   return HARD_EXECUTION_FAILURE_PATTERNS.some((pattern) => pattern.test(raw));
 }
 
@@ -215,6 +223,14 @@ function appendDevSeekDetail(output: string, detail: string): string {
 
 function isTerminalCommandNotExecuted(output: string): boolean {
   return /(?:命令未执行|终端工具被禁止|工具被禁止|用户拒绝|未确认|not executed|declined|denied|terminal tool disabled)/i.test(output || '');
+}
+
+function normalizeHardFailureEvidenceText(text: string): string {
+  return String(text || '')
+    // pkg-config often emits this while CMake successfully falls back to the
+    // real library variables. Treating it as a hard shell "not found" hid
+    // successful OpenGL/GLUT launches behind false validation failures.
+    .replace(/^\s*--\s+No package ['"][^'"]+['"] found\s*$/gim, '');
 }
 
 function escapeRegExp(value: string): string {

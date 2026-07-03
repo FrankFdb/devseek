@@ -10,6 +10,7 @@ export {
   isReadOnlyAgentTaskAction,
   settleMissingEvidenceTodos,
   settleValidationFailureTodos,
+  summarizeAgentTodoTitle,
   type AgentTaskTodoLedger,
   type TaskReconcileResult,
   type TaskSettleResult,

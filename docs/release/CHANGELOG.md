@@ -6,6 +6,18 @@
 
 ## [Unreleased] — 2026-06-19
 
+### [BUG FIX] RunContext GUI 证据归并与 Agent 展示收敛
+
+- 修复 GUI/交互式程序已启动并最终完成后，旧 terminal timeout/exit failure 仍覆盖最终成功的问题；`run-log-replay` 现在会结合 terminal payload 与 `agent-run-completed` 后再结算失败。
+- `ExecutionOutcomeClassifier` 统一识别交互式程序启动输出，CMake/pkg-config 的非致命 `No package 'glut' found` 探测噪声不再触发通用硬失败。
+- `tools/terminal` 的 observation timer 与 child close 分支统一走 manual-review 分类，避免同一命令前后两套判定。
+- Agent Todo 标题改为统一摘要，WebView 侧兜底压缩长标题、超过 8 条默认折叠，并去重重复进度行。
+- Agent 最终回复新增大段裸源码隐藏兜底，代码以文件变更和验证摘要为主，避免刷屏。
+
+验证：
+- `node --test packages/vscode-extension/test/unit/execution-outcome-classifier.test.mjs packages/vscode-extension/test/unit/run-log-replay.test.mjs packages/vscode-extension/test/unit/agent-loop-task-state.test.mjs` 通过。
+- `node packages/vscode-extension/test/devseek-run-log-replay-harness.mjs .devseek/runs/20260703-130114.log` 确认旧日志不再报告 terminal-command-failed / missing-final-convergence；剩余为历史 destructive command、provider-authored tool result、long-running-run 警告。
+
 ### [BUG FIX] Agentic GUI 运行验证与工具协议误判修复
 
 - 修复 `shape_manager` 这类 X11/GUI 程序已弹窗运行后，DevSeek 仍卡在 `运行 shape_manager` 或把验证标为失败的问题：终端执行对图形/交互式长运行命令返回 `reviewRequired` 证据，自由 ReAct 路径会收口为“已执行，等待人工确认”。

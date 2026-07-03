@@ -140,6 +140,18 @@ npm run run-log-replay -- --json .devseek/runs/<runId>.log
 4. 该诊断用于防止“代码直接显示在 DeepSeek 网页/DevSeek 对话中，但没有替换原文件，也没有重新编译执行”的问题再次被误认为正常完成。
 5. route decision trace 必须包含 intent、workflow、forceNoAgent、agentEnabled 和文件计数；后续截图问题应先从同一 run log 判断是路由、协议、应用、验证还是展示层错误。
 
+### Phase 2.2：GUI 运行证据与旧失败清理（已落地第一版）
+
+2026-07-03 根据真实日志 `.devseek/runs/20260703-130114.log` 完成一轮执行事实归并修复：
+
+1. `ExecutionOutcomeClassifier` 新增交互式/图形程序启动证据识别，`3D Shape Viewer`、`Controls`、鼠标/键盘操作提示等输出进入 manual-review 语义，不再被普通 timeout 或退出码直接判为硬失败。
+2. CMake/pkg-config 中 `-- No package 'glut' found` 等非致命探测噪声不再触发通用 `not found` 硬失败规则；真实编译错误仍保留为硬失败。
+3. `tools/terminal` 的 observation timer 与 child close 分支统一使用同一分类器和 manual-review context，避免“运行中已弹窗，但 close/timeout 分支又按失败结算”。
+4. `run-log-replay` 延迟结算 terminal 非零退出证据：如果后续 payload 显示交互式程序已启动，或最终 `agent-run-completed` 成功，则旧 terminal failure 不再覆盖最终成功事实。
+5. 新增 replay fixture 覆盖“GUI timeout + 最终完成”路径，确保先失败后成功的 run 不再残留 `terminal-command-failed` 或 `missing-final-convergence`。
+
+该基线继续强化 `RunContext` 的原则：早期事件只是候选证据，最终 UI/Todos/History 必须读取同一条 run 时间线归并后的结论，不能由某个底层工具分支单独决定整轮失败。
+
 ## 5. 验收标准
 
 1. 一次 Agent 执行只创建一个 `.devseek/runs/<runId>.log` 单文件日志，不再为单个 run 额外创建日志目录。
