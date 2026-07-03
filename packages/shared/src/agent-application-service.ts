@@ -146,6 +146,7 @@ export class AgentApplicationService {
         onUsage: request.onUsage,
         signal: request.signal,
         files: request.files,
+        traceRunId: request.traceRunId,
       });
       this.deps.recordChatHistory(request, response);
       return response;
@@ -177,6 +178,7 @@ export class AgentApplicationService {
       onUsage: request.onUsage,
       signal: request.signal,
       files: request.files,
+      traceRunId: request.traceRunId,
     });
     this.deps.recordChatHistory(request, response);
     return response;

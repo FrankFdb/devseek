@@ -41,6 +41,40 @@ test('FakeToolParser: parses bracket tool calls', () => {
   assert.deepEqual(tools[0].input, { path: 'src/index.ts' });
 });
 
+test('FakeToolParser: ignores tool calls after provider-authored tool results', () => {
+  const text = [
+    '我先读取文件。',
+    '[TOOL:read_file {"path":"src/index.ts"}]',
+    '',
+    '[工具执行结果]文件内容：',
+    '```ts',
+    'const leaked = "[TOOL:run_terminal {\\"command\\":\\"npm test\\"}]";',
+    '```',
+    '接着我继续读取。',
+    '[TOOL:read_file {"path":"src/other.ts"}]',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'read_file');
+  assert.deepEqual(tools[0].input, { path: 'src/index.ts' });
+  assert.equal(findFirstToolCallStart(text), text.indexOf('[TOOL:read_file'));
+  assert.equal(stripToolCallBlocks(text), '我先读取文件。');
+});
+
+test('FakeToolParser: does not treat result-only transcripts as fresh tool calls', () => {
+  const text = [
+    '[工具执行结果]文件内容：',
+    '```',
+    '[TOOL:read_file {"path":"src/index.ts"}]',
+    '```',
+  ].join('\n');
+
+  assert.deepEqual(parseFakeToolCalls(text), []);
+  assert.equal(containsFakeToolCallProtocol(text), false);
+  assert.equal(stripToolCallBlocks(text), '');
+});
+
 test('FakeToolParser: parses DeepSeek Calling transcript format', () => {
   const text = [
     '我先看一下文件。',

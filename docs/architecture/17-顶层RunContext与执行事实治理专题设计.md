@@ -1,7 +1,7 @@
 # 顶层 RunContext 与执行事实治理专题设计
 
 文档编号：ARCH-17
-最后更新：2026-07-02
+最后更新：2026-07-03
 状态：活跃专题设计
 关联文档：[03-Agent运行时与工作流重构设计.md](03-Agent运行时与工作流重构设计.md)、[05-代码重构实施计划.md](05-代码重构实施计划.md)、[14-自动闭环迭代与测试方法论检讨.md](14-自动闭环迭代与测试方法论检讨.md)、[16-重复判定逻辑治理专题设计.md](16-重复判定逻辑治理专题设计.md)
 
@@ -17,6 +17,7 @@ DevSeek 当前反复出现“实际任务已完成，但 UI/Todos/QualityGate �
 2. 工具执行失败、自动修复成功、最终运行成功之间缺少统一 Evidence Ledger，早期失败会残留到最终 UI。
 3. Provider continuation、session history、checkpoint 恢复各自拼接上下文，导致过期任务被带入当前请求。
 4. Todo、QualityGate、ReviewLedger、historyText 在不同阶段各自推断成功/失败，容易出现 A 处修复、B 处仍按旧规则走。
+5. 非 Agent 普通聊天路径没有 route decision trace；当执行型请求被误路由时，日志只能看到 Provider 返回源码，无法解释为什么没有写盘或编译。
 
 ## 3. 目标架构
 
@@ -89,17 +90,21 @@ npm run run-log-replay -- --json .devseek/runs/<runId>.log
 
 1. `legacy-build-path`：模型响应或终端命令重新出现 `.devseek-build` / `devseek-build`。
 2. `build-artifact-workdir`：工具循环默认工作目录漂移到 `build/bin` 等构建产物目录。
-3. `provider-authored-tool-result`：模型响应夹带 `[工具返回]`、`[工具执行结果]` 等伪造工具结果文本。
+3. `provider-authored-tool-result`：模型响应夹带 `[工具返回]`、`[工具执行结果]` 等伪造工具结果文本；该项作为污染响应 warning，真正可执行工具只允许来自协议适配层隔离出的工具请求区。
 4. `malformed-tool-block`：模型输出了 `[TOOL:*]` 标记，但协议适配器无法解析完整工具调用。
 5. `destructive-model-command`：模型生成 `rm -rf build` 等应由本地执行规划器接管的清理命令。
 6. `long-running-run`：一次执行超过 60 秒目标。
 7. `missing-final-convergence`：日志最后停在未完成工具执行后，没有最终收敛事件。
+8. `empty-provider-response`：DeepSeek Web 返回空正文，执行器不得继续把它当成正常计划或任务回复。
+9. `incomplete-provider-request`：有 provider 请求开始但没有完成/失败事件，说明执行中断在模型调用边界。
+10. `missing-agent-run-completion`：存在 `agent-run-started` 但没有 `agent-run-completed`，说明顶层 run 缺少最终收敛事实。
 
 使用原则：
 
 1. 真实用户测试失败后，优先运行 replay harness 获取机器诊断，再决定修改协议适配、路径解析、执行规划、证据结算还是 UI。
 2. 每个新截图问题至少沉淀一个最小 JSONL fixture 单测，避免只能靠人工复现。
-3. Replay 只读日志并生成事实报告，不修改工作区文件；真实网页 E2E 仍保留用于登录、DOM、流式输出等浏览器相关问题。
+3. Replay 只读日志并生成事实报告，不修改工作区文件；日志本身用于根因分析，replay 用于复现旧分叉和验证修复后同类日志不会再走旧解析/判定路径。
+4. 真实网页 E2E 仍保留用于登录、DOM、流式输出等浏览器相关问题；日志 replay 不替代真实 DeepSeek Web 交互测试。
 
 ### Phase 1.1：RunContext Owner（已落地第一版）
 
@@ -113,6 +118,27 @@ npm run run-log-replay -- --json .devseek/runs/<runId>.log
 6. `workflow-compliance.test.mjs` 新增 ARCH-17 守卫：Agent 入口必须通过 `RunContext` 创建 run，不允许回退到裸 `createDevSeekRunId()`。
 
 该基线对标 Claude Code/Codex 的顶层 turn/run context：Provider、HTTP、工具和 UI 仍可以记录事件，但不得各自创建会话事实。后续 Phase 1 继续推进时，应把更多 participant logger 获取方式改为从 `RunContext.childTrace()` 派生，而不是在各入口用 `runId` 重新创建 logger。
+
+### Phase 4.2：Provider 空响应与未完成 Run 诊断（已落地第一版）
+
+2026-07-02 已完成一轮真实日志驱动修复：
+
+1. `bridge-client` 在记录 provider payload 后立即检查响应正文；空响应升级为 `EMPTY_PROVIDER_RESPONSE`，不再继续进入 planner fallback、tool parser 或任务执行。
+2. `agent/network-error` 将空 provider 响应归类为可恢复的 provider/网络边界问题，Agent 应停止当前执行并给出明确可重试说明。
+3. `run-log-replay` 新增空响应、未完成 provider 请求、缺少 `agent-run-completed` 三类诊断；真实日志 `.devseek/runs/20260702-171258.log` 可稳定回放出多次空响应和未收敛事实。
+4. 新增 `run-log-replay.test.mjs` fixture，确保截图中的“红色失败但无原因”不会再次只被诊断成泛化耗时过长。
+
+该基线的规则是：底层 HTTP/Bridge 不自建“会话事实”，但必须把 provider 传输异常明确挂到同一个 `RunContext`。Planner 和 Todo 不能吞掉这类异常，也不能用本地 fallback 掩盖网页空响应。
+
+### Phase 1.2：聊天路由与源码展示漏执行诊断（已落地第一版）
+
+2026-07-03 根据真实日志 `.devseek/runs/20260703-094912.log` 完成一轮修复：
+
+1. 非 Agent/普通 chat 路径也创建顶层 `RunContext`，并记录 `routing/route-decision`，便于解释一次请求为什么进入 Agent、local execution、plan review 或普通聊天。
+2. `AgentChatRequest`、共享 `LLMChatOptions`、`AgentApplicationService` 和 VS Code bridge adapter 已传递 `traceRunId`，避免 shared service 与 extension provider 调用各自生成事实线。
+3. 对执行型工作区请求，replay 新增 `source-output-without-application` 诊断：如果 Provider 返回大段源码，但日志里没有工具执行、写盘、终端或验证证据，该 run 必须被标为错误。
+4. 该诊断用于防止“代码直接显示在 DeepSeek 网页/DevSeek 对话中，但没有替换原文件，也没有重新编译执行”的问题再次被误认为正常完成。
+5. route decision trace 必须包含 intent、workflow、forceNoAgent、agentEnabled 和文件计数；后续截图问题应先从同一 run log 判断是路由、协议、应用、验证还是展示层错误。
 
 ## 5. 验收标准
 

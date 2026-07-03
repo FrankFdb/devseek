@@ -849,7 +849,11 @@ async function runChat(
           getActiveEditorContextPath(),
         );
 
-        tasks = decomposeResult.ok ? decomposeResult.tasks : inferTasksFromFiles(effectiveFiles, promptForAgent);
+        tasks = decomposeResult.ok
+          ? decomposeResult.tasks
+          : decomposeResult.fallbackAllowed === false
+            ? []
+            : inferTasksFromFiles(effectiveFiles, promptForAgent);
         _decomposeProse = decomposeResult.prose ?? '';
 
         // If tasks is empty (decompose failed or produced no tasks), show an error
@@ -1210,6 +1214,7 @@ async function runChat(
     postWebviewMessage(webview, { type: 'delta', text: autoDiscoveredNote });
   }
 
+  let chatRunContext: ReturnType<typeof createDevSeekRunContext> | undefined;
   try {
     let finalPrompt = prompt;
     const config = vscode.workspace.getConfiguration('devseek');
@@ -1287,6 +1292,42 @@ async function runChat(
     const localExecutionFirst = config.get<boolean>('localExecutionFirst', true);
     const executionApproval = config.get<'auto' | 'confirm'>('executionApproval', 'auto');
     const workspaceRoot = getWorkspaceRootFsPath(prompt, pathResolutionHints);
+    const chatWorkspaceRoot = workspaceRoot
+      ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      ?? process.cwd();
+    chatRunContext = createDevSeekRunContext({
+      workspaceRoot: chatWorkspaceRoot,
+      source: 'vscode-extension.chat',
+      userPrompt: prompt,
+      sessionId: activeSessionId,
+      mode,
+      traceLevel: config.get<string>('traceLevel', 'debug'),
+    });
+    chatRunContext.trace.info('routing', 'route-decision', {
+      agentEnabled: config.get<boolean>('agentEnabled', true),
+      forceNoAgent,
+      intentConfirmed,
+      intent: {
+        kind: intent.kind,
+        mode: intent.mode,
+        reason: intent.reason,
+        signals: intent.signals,
+        blockers: intent.blockers,
+      },
+      workflow: {
+        kind: workflow.kind,
+        state: workflow.state,
+        useAgent: workflow.useAgent,
+        reason: workflow.reason,
+        requiresPlanReview: workflow.requiresPlanReview,
+        toolPolicyMode: workflow.toolPolicyMode,
+      },
+      files: {
+        effectiveCount: effectiveFiles.length,
+        pathHintCount: pathResolutionHints.length,
+        autoDiscoveredCount: autoDiscoveredFiles.length,
+      },
+    });
     let routeFiles = effectiveFiles;
     const noAgentCodeChat = !workflow.useAgent && intent.kind === 'code-change';
 
@@ -1350,7 +1391,10 @@ async function runChat(
         sessionId: activeSessionId,
         onChangedPaths: (relativePaths) => { lastAgentChangedPaths = relativePaths; },
       });
-      if (localExecutionResult.handled) return;
+      if (localExecutionResult.handled) {
+        chatRunContext.complete('completed', { reason: 'local-execution-handled' });
+        return;
+      }
     }
 
     const postChatDelta = (delta: string): void => {
@@ -1376,6 +1420,7 @@ async function runChat(
       trackHistory: true, // 主聊天调用维护对话历史（多轮记忆）
       signal: chatSignal,
       onDelta: postChatDelta,
+      traceRunId: chatRunContext.runId,
       onUsage: (usage) => {
         webview.postMessage({ type: 'tokenUsage', promptTokens: usage.promptTokens, completionTokens: usage.completionTokens });
       },
@@ -1427,6 +1472,7 @@ async function runChat(
           prompt: reformatReq,
           newSession: false,
           mode,
+          traceRunId: chatRunContext.runId,
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
               postWebviewMessage(webview, { type: 'delta', text: delta.slice(7) });
@@ -1466,7 +1512,7 @@ async function runChat(
         failedResponse: responseToApply,
         failedApply: firstApply,
         preferredAbsolutePaths: pathResolutionHints,
-        chat: (repairPrompt) => routeChat({ prompt: repairPrompt, newSession: false, mode, stream: false, trackHistory: false }),
+        chat: (repairPrompt) => routeChat({ prompt: repairPrompt, newSession: false, mode, stream: false, trackHistory: false, traceRunId: chatRunContext?.runId }),
         apply: (repairResponse, repairPrompt, onAppliedChange) => applyGeneratedArtifactsWithPrompt(
           repairResponse, repairPrompt, workflowReporter, true, onAppliedChange, pathResolutionHints, { rollbackOnValidationFailure: false },
         ),
@@ -1480,15 +1526,24 @@ async function runChat(
           mode,
           initialApply: finalApply,
           preferredAbsolutePaths: pathResolutionHints,
-          routeChat,
+          routeChat: (request) => routeChat({ ...request, traceRunId: request.traceRunId ?? chatRunContext?.runId }),
           registerAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(webview, change); },
           getSessionId: () => activeSessionId,
           postVisibleDelta: (text) => { postWebviewMessage(webview, { type: 'delta', text }); },
         });
       }
     }
+    chatRunContext.complete('completed', {
+      intent: intent.kind,
+      workflow: workflow.kind,
+      changedPaths: lastAgentChangedPaths.slice(0, 12),
+    });
   } catch (e) {
     const msg = (e as Error).message;
+    chatRunContext?.complete('failed', {
+      reason: 'chat-error',
+      message: msg,
+    });
     if (msg === 'LOGIN_REQUIRED') {
       postWebviewMessage(webview, {
         type: 'error',
@@ -1565,6 +1620,7 @@ function getAgentApplicationService(): AgentApplicationService {
         mode: request.mode,
         onDelta: request.onDelta,
         files: request.files,
+        traceRunId: request.traceRunId,
       }),
       getChatHistory: () => [...nonBridgeChatHistory],
       recordChatHistory: recordTrackedChatHistory,

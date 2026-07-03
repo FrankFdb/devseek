@@ -1,3 +1,5 @@
+import { listAgentToolNames } from './tool-registry';
+
 export interface ModelToolProtocolDialect<TTool> {
   name: string;
   parse(text: string): TTool[];
@@ -8,6 +10,51 @@ export interface ModelToolProtocolDialect<TTool> {
 export interface ProtocolStripResult {
   text: string;
   removed: boolean;
+}
+
+export interface ModelToolRequestIsolation {
+  text: string;
+  resultStart: number;
+  truncated: boolean;
+}
+
+const MODEL_AUTHORED_TOOL_RESULT_MARKERS: readonly RegExp[] = [
+  /\[(?:工具返回|工具执行结果)\]/i,
+  /【(?:工具返回|工具执行结果)】/i,
+  new RegExp(`\\[(?:${toolNamePattern()})\\s*[:：]`, 'i'),
+  /^工具执行结果\s*[:：]/mi,
+];
+
+function toolNamePattern(): string {
+  return listAgentToolNames(true)
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join('|');
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function findFirstModelAuthoredToolResultStart(text: string): number {
+  const indexes: number[] = [];
+  for (const marker of MODEL_AUTHORED_TOOL_RESULT_MARKERS) {
+    const match = marker.exec(text);
+    if (match) indexes.push(match.index);
+  }
+  return indexes.length ? Math.min(...indexes) : -1;
+}
+
+export function isolateModelToolRequestText(text: string): ModelToolRequestIsolation {
+  const resultStart = findFirstModelAuthoredToolResultStart(text);
+  if (resultStart < 0) {
+    return { text, resultStart: -1, truncated: false };
+  }
+  return {
+    text: text.slice(0, resultStart),
+    resultStart,
+    truncated: true,
+  };
 }
 
 export function parseModelToolProtocol<TTool>(

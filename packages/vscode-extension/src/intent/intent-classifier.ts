@@ -1,5 +1,5 @@
 import { IntentClassification, ToolKind } from './intent-types';
-import { hasExplicitWorkspaceFilePath } from '../workspace/path-patterns';
+import { hasExplicitWorkspacePath } from '../workspace/path-patterns';
 
 const EXPLICIT_NO_CHANGE_RE = /(不要修改|无需修改|不要改|别改|只讨论|仅讨论|只分析|仅分析|不要落地|先不要改|不需要代码|不要apply|不做变更|just\s+(?:chat|talk|discuss|explain)|only\s+(?:explain|discuss|answer))/i;
 
@@ -22,6 +22,7 @@ const ARTIFACT_PATH_QUERY_RE = /(?:(?:可执行文件|执行文件|二进制|bin
 const PLAN_RE = /(方案|计划|设计|架构|怎么改|如何改|重构计划|实施步骤|roadmap|plan|design|architecture|approach)/i;
 
 const EXPLICIT_PLAN_RE = /(方案|计划|架构|怎么改|如何改|重构计划|实施步骤|roadmap|plan|architecture|approach)/i;
+const PLAN_WITH_IMPLEMENTATION_RE = /(?:并|然后|同时|再|最后|通过|落地|完成).{0,24}(?:代码实现|实现|修改|编写|创建|新增|添加|编译|构建|运行|执行|验证|测试|implement|modify|write|create|add|compile|build|run|execute|verify|test)/i;
 
 const INSPECT_RE = /(分析|解释|说明|查看|检查|排查|定位|阅读|梳理|总结|review|inspect|analy[sz]e|explain|check|diagnose|read|summari[sz]e)/i;
 
@@ -70,7 +71,7 @@ export function classifyIntent(prompt: string): IntentClassification {
   }
 
   const withoutGreeting = text.replace(GREETING_PREFIX_RE, '').trim();
-  const hasPath = hasExplicitWorkspaceFilePath(text);
+  const hasPath = hasExplicitWorkspacePath(text);
   const hasInteractiveFeatureContext = INTERACTIVE_FEATURE_CONTEXT_RE.test(text);
   const hasCodeContext = CODE_CONTEXT_RE.test(text) || hasInteractiveFeatureContext || hasPath;
   const isFollowUpRunRequest = !hasPath && FOLLOW_UP_RUN_RE.test(text);
@@ -121,7 +122,7 @@ export function classifyIntent(prompt: string): IntentClassification {
     );
   }
 
-  if (EXPLICIT_PLAN_RE.test(text) && hasCodeContext) {
+  if (EXPLICIT_PLAN_RE.test(text) && hasCodeContext && !PLAN_WITH_IMPLEMENTATION_RE.test(text)) {
     return baseDecision(
       'plan',
       hasPath ? 0.86 : 0.75,
@@ -195,7 +196,7 @@ export function classifyIntent(prompt: string): IntentClassification {
     );
   }
 
-  if (PLAN_RE.test(text) && hasCodeContext) {
+  if (PLAN_RE.test(text) && hasCodeContext && !PLAN_WITH_IMPLEMENTATION_RE.test(text)) {
     return baseDecision(
       'plan',
       hasPath ? 0.86 : 0.75,

@@ -156,6 +156,18 @@ test('WorkflowService: exact unknown-extension write stays controlled when agent
   assert.equal(selected.toolPolicyMode, 'edit');
 });
 
+test('WorkflowService: explicit directory edit stays controlled when agent toggle is off', () => {
+  const prompt = '/home/ff/work/devseek_netai/code/shape_manager 请规划一个整体更好的解决方案，并通过代码实现，编译验证';
+  const intent = decideChatIntent(prompt);
+  const selected = selectWorkflow({ intent, files: [], agentEnabled: false, forceNoAgent: true, prompt });
+
+  assert.ok(intent.signals.includes('explicit-file-path'));
+  assert.equal(selected.kind, 'edit-agent');
+  assert.equal(selected.state, 'editing');
+  assert.equal(selected.useAgent, true);
+  assert.equal(selected.toolPolicyMode, 'edit');
+});
+
 test('WorkflowService: explicit planning request stays in planning state', () => {
   const prompt = '给出这个项目的重构方案';
   const intent = decideChatIntent(prompt);

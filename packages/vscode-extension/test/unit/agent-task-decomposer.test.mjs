@@ -166,14 +166,103 @@ test('agent-task-decomposer: fallback tasks expose workspace-relative paths', ()
   const { root, files } = createShapeManagerWorkspace();
   try {
     const tasks = inferTasksFromFiles(files, '分析这些文件');
-    assert.deepEqual(
-      tasks.map(t => t.file),
-      [
-        'code/shape_manager/Circle.cpp',
-        'code/shape_manager/Rectangle.cpp',
-        'code/shape_manager/Triangle.cpp',
-      ],
+    assert.equal(tasks.length, 1);
+    assert.equal(tasks[0].file, 'code/shape_manager');
+    assert.equal(tasks[0].action, 'analyze');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('agent-task-decomposer: provider empty response does not fall back to per-file todos', async () => {
+  const { root, files } = createShapeManagerWorkspace();
+  try {
+    const result = await decomposeTask(
+      '为 shape_manager 添加鼠标双击放大功能',
+      files,
+      undefined,
+      () => {},
+      undefined,
+      async () => {
+        throw new Error('EMPTY_PROVIDER_RESPONSE: DeepSeek 网页本轮没有返回内容');
+      },
     );
+
+    assert.equal(result.ok, false);
+    assert.equal(result.fallbackAllowed, false);
+    assert.equal(result.tasks.length, 0);
+    assert.match(result.error ?? '', /EMPTY_PROVIDER_RESPONSE/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('agent-task-decomposer: edit fallback collapses many attached files to the main implementation target', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-many-file-fallback-'));
+  try {
+    const projectDir = path.join(root, 'code', 'shape_manager');
+    mkdirSync(projectDir, { recursive: true });
+    const names = [
+      'Box.cpp', 'Box.h', 'Circle.cpp', 'Circle.h', 'Cone.cpp', 'Cone.h',
+      'Cylinder.cpp', 'Cylinder.h', 'main.cpp', 'Pyramid.cpp', 'Pyramid.h',
+      'Rectangle.cpp', 'Rectangle.h', 'Sphere.cpp', 'Sphere.h', 'Torus.cpp',
+      'Torus.h', 'Triangle.cpp', 'Triangle.h', 'CMakeLists.txt',
+    ];
+    const files = names.map((name) => {
+      const abs = path.join(projectDir, name);
+      writeFileSync(abs, `// ${name}\n`);
+      return abs;
+    });
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+
+    const tasks = inferTasksFromFiles(
+      files,
+      '/home/ff/work/devseek_netai/code/shape_manager 添加鼠标双击放大选中图形功能',
+    );
+
+    assert.equal(tasks.length, 1);
+    assert.equal(tasks[0].file, 'code/shape_manager/main.cpp');
+    assert.equal(tasks[0].action, 'modify');
+    assert.equal(tasks[0].absPath, path.join(projectDir, 'main.cpp'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('agent-task-decomposer: planner per-file analyze plan is collapsed for edit requests', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-collapse-analyze-plan-'));
+  try {
+    const projectDir = path.join(root, 'code', 'shape_manager');
+    mkdirSync(projectDir, { recursive: true });
+    const names = ['Box.cpp', 'Box.h', 'Circle.cpp', 'Circle.h', 'main.cpp', 'Pyramid.cpp', 'Rectangle.cpp', 'Sphere.cpp'];
+    const files = names.map((name) => {
+      const abs = path.join(projectDir, name);
+      writeFileSync(abs, `// ${name}\n`);
+      return abs;
+    });
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+    const rawPlan = JSON.stringify({
+      tasks: names.map((name, index) => ({
+        id: `t${index + 1}`,
+        file: name,
+        action: 'analyze',
+        desc: `分析 ${name}`,
+      })),
+    });
+
+    const result = await decomposeTask(
+      '添加鼠标双击放大选中图形功能',
+      files,
+      undefined,
+      () => {},
+      undefined,
+      async () => rawPlan,
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.tasks.length, 1);
+    assert.equal(result.tasks[0].file, 'code/shape_manager/main.cpp');
+    assert.equal(result.tasks[0].action, 'modify');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

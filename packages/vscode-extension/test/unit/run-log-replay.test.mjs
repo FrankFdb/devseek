@@ -154,6 +154,98 @@ test('run log replay detects malformed bracket tool blocks', () => {
   }
 });
 
+test('run log replay isolates tool requests before provider-authored tool results', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-02T05:06:00.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'provider-result-isolation',
+      data: {
+        name: 'extension.response.raw',
+        content: [
+          '我先读取目标文件。',
+          '[TOOL:read_file {"path":"/tmp/app/main.cpp"}]',
+          '',
+          '[工具执行结果]文件内容：',
+          '```',
+          '[TOOL:run_terminal {"command":"cmake -S /tmp/app -B /tmp/app/.devseek-build"}]',
+          '```',
+        ].join('\n'),
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(report.terminalCommands, 0);
+    assert.equal(kinds.has('provider-authored-tool-result'), true);
+    assert.equal(kinds.has('malformed-tool-block'), false);
+    assert.equal(kinds.has('legacy-build-path'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay detects empty provider responses and missing run completion', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-02T09:12:58.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-started',
+      runId: '20260702-171258',
+      data: { appVersion: '1.0.0-debug.test', gitCommit: 'abc123' },
+    },
+    {
+      ts: '2026-07-02T09:12:59.000Z',
+      level: 'info',
+      source: 'vscode-extension',
+      phase: 'bridge-client',
+      event: 'chat-request-start',
+      runId: '20260702-171258',
+      data: { stream: true },
+    },
+    {
+      ts: '2026-07-02T09:15:07.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: '20260702-171258',
+      data: {
+        name: 'extension.response.raw',
+        content: '',
+      },
+    },
+    {
+      ts: '2026-07-02T09:15:07.001Z',
+      level: 'info',
+      source: 'vscode-extension',
+      phase: 'bridge-client',
+      event: 'chat-request-complete',
+      runId: '20260702-171258',
+      data: { response: { length: 0 } },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(report.providerResponses, 1);
+    assert.equal(kinds.has('empty-provider-response'), true);
+    assert.equal(kinds.has('missing-agent-run-completion'), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay detects planner execution task with internal context but no execution evidence', () => {
   const { dir, logPath } = writeLog([
     {
@@ -203,6 +295,69 @@ test('run log replay detects planner execution task with internal context but no
     assert.equal(report.plannedExecutionTasks, 1);
     assert.equal(kinds.has('internal-context-anchor'), true);
     assert.equal(kinds.has('planned-execution-without-tool-evidence'), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay detects source code response without application evidence', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-03T01:49:12.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'source-no-apply',
+      data: {
+        name: 'extension.request.prompt',
+        content: '/home/ff/work/devseek_netai/code/shape_manager 请通过代码实现，编译验证',
+      },
+    },
+    {
+      ts: '2026-07-03T01:50:37.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'source-no-apply',
+      data: {
+        name: 'extension.response.raw',
+        content: [
+          '这是修改后的完整文件：',
+          '```cpp',
+          '#include <GL/glut.h>',
+          '#include <vector>',
+          'struct Shape { float x; float y; float z; };',
+          'void drawShape(int index) {',
+          '  for (int i = 0; i < 80; ++i) {',
+          '    glPushMatrix();',
+          '    glTranslatef(index * 1.0f, 0.0f, 0.0f);',
+          '    glutSolidSphere(1.0, 24, 24);',
+          '    glPopMatrix();',
+          '  }',
+          '}',
+          'int main(int argc, char** argv) {',
+          '  glutInit(&argc, argv);',
+          '  glutCreateWindow("Shape Manager");',
+          '  return 0;',
+          '}',
+          '```',
+          '然后运行 cmake 编译验证。',
+        ].join('\n'),
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(report.providerRequests, 1);
+    assert.equal(report.providerResponses, 1);
+    assert.equal(report.toolExecutions, 0);
+    assert.equal(report.terminalCommands, 0);
+    assert.equal(kinds.has('source-output-without-application'), true);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

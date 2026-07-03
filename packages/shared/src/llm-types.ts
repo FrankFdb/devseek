@@ -37,6 +37,8 @@ export interface LLMChatOptions {
   mode?: 'fast' | 'r1';
   files?: string[];
   newSession?: boolean;
+  /** Top-level run trace id shared by routing, provider calls, tools and validation. */
+  traceRunId?: string;
 }
 
 export interface LLMProvider {

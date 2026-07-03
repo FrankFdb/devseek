@@ -172,6 +172,25 @@ test('ChatRouteController: exact unknown-extension write is not downgraded by we
   assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
 });
 
+test('ChatRouteController: explicit directory edit is not downgraded by webview no-agent payload', () => {
+  const controller = new ChatRouteController();
+  const prompt = '/home/ff/work/devseek_netai/code/shape_manager 请基于这些要求规划方案，并通过代码实现，编译验证';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: [],
+    agentEnabled: false,
+    forceNoAgent: true,
+  });
+
+  assert.equal(decision.intent.mode, 'edit');
+  assert.ok(decision.intent.signals.includes('explicit-file-path'));
+  assert.equal(decision.workflow.kind, 'edit-agent');
+  assert.equal(decision.workflow.useAgent, true);
+  assert.equal(decision.toolPolicy.mode, 'edit');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+});
+
 test('ChatRouteController: capability feature follow-up with context stays in edit workflow', () => {
   const controller = new ChatRouteController();
   const prompt = '现在可以同时显示，但是，6个图形，不能单独通过鼠标或者键盘操作，能提供单独控制每个图形旋转';

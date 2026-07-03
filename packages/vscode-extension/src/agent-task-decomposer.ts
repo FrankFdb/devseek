@@ -18,8 +18,10 @@ import { getProjectRulesSync, wrapRulesAsContext, getProjectMemorySync, wrapMemo
 import { detectWorkspacePathScope } from './workspace/path-resolver';
 import { sanitizeWorkspaceContextAnchorPath } from './workspace/context-anchor';
 import { resolveLocalExecutionProjectDirFromCandidate } from './workspace/local-execution-target';
-import { isCodeArtifactPath, requiresCodeArtifactForEvidence } from './agent/completion-evidence';
+import { isCodeArtifactPath, requiresCodeArtifactForEvidence, requiresCommandEvidence } from './agent/completion-evidence';
 import { buildEngineeringGuidelinesPrompt } from './agent/engineering-guidelines';
+import { classifyIntent } from './intent/intent-classifier';
+import { isCppBuildArtifactDirName } from './cpp-build-layout';
 
 // ----------------------------------------------------------------
 // Public types
@@ -119,6 +121,8 @@ export interface DecomposeResult {
   raw: string;
   /** Whether the JSON plan was successfully parsed */
   ok: boolean;
+  /** Whether callers may synthesize a local fallback plan when planner output was unusable. */
+  fallbackAllowed?: boolean;
   /** Error message if parsing failed */
   error?: string;
   /** AI reasoning prose extracted from before the JSON block — used in the working area reasoning card */
@@ -441,6 +445,84 @@ function normalizeValidationExecutionTargets(tasks: AgentTask[]): AgentTask[] {
   });
 }
 
+function isGeneratedOrBuildArtifactPath(filePath: string): boolean {
+  const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+  const segments = normalized.split('/').filter(Boolean);
+  return segments.some(segment => isCppBuildArtifactDirName(segment))
+    || /(?:^|\/)(?:dist|node_modules|media)(?:\/|$)/.test(normalized)
+    || /(?:^|\/)(?:cmakecache\.txt|cmake_install\.cmake|makefile)$/.test(normalized);
+}
+
+function primaryCodeFileScore(filePath: string): number {
+  const base = nodePath.basename(filePath).toLowerCase();
+  if (/^main\.(?:c|cc|cpp|cxx|ts|tsx|js|jsx|py|go|rs|java)$/.test(base)) return 100;
+  if (/^app\.(?:ts|tsx|js|jsx|py)$/.test(base)) return 90;
+  if (/^index\.(?:ts|tsx|js|jsx|html)$/.test(base)) return 85;
+  if (/^(?:renderer|view|viewer|controller)\.(?:c|cc|cpp|cxx|ts|tsx|js|jsx|py)$/.test(base)) return 75;
+  if (isCodeArtifactPath(filePath)) return 50;
+  return 0;
+}
+
+function selectPrimaryCodePath(paths: string[], projectDir?: string): string | undefined {
+  const candidates = paths
+    .filter(pathValue => isCodeArtifactPath(pathValue))
+    .filter(pathValue => !isGeneratedOrBuildArtifactPath(pathValue))
+    .filter(pathValue => !projectDir || isInsideDir(pathValue, projectDir));
+  return candidates
+    .map(pathValue => ({ pathValue, score: primaryCodeFileScore(pathValue) }))
+    .sort((a, b) => b.score - a.score || a.pathValue.length - b.pathValue.length)
+    [0]?.pathValue;
+}
+
+function inferProjectDirFromAttachedFiles(attachedFiles: string[], userPrompt: string): string | undefined {
+  const { promptDir } = detectPromptDir(userPrompt, attachedFiles);
+  if (promptDir) return promptDir;
+
+  const workspaceRoots = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+  for (const absPath of attachedFiles) {
+    const projectDir = resolveLocalExecutionProjectDirFromCandidate(absPath, workspaceRoots);
+    if (projectDir) return projectDir;
+  }
+
+  const dirs = attachedFiles
+    .filter(absPath => !isGeneratedOrBuildArtifactPath(absPath))
+    .map(absPath => {
+      try {
+        return fs.existsSync(absPath) && fs.statSync(absPath).isDirectory()
+          ? absPath
+          : nodePath.dirname(absPath);
+      } catch {
+        return nodePath.dirname(absPath);
+      }
+    });
+  if (dirs.length === 0) return undefined;
+  const counts = new Map<string, number>();
+  dirs.forEach(dir => counts.set(dir, (counts.get(dir) ?? 0) + 1));
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].length - b[0].length)[0]?.[0];
+}
+
+function collapseReadOnlyPlanningNoiseForEdit(tasks: AgentTask[], userPrompt?: string): AgentTask[] {
+  if (!userPrompt || !requiresCodeArtifactForEvidence(userPrompt)) return tasks;
+  if (tasks.some(isWriteTask)) return tasks;
+
+  const validationTasks = tasks.filter(isValidationTask);
+  const readOnlyCodeTasks = tasks.filter(task =>
+    (task.action === 'analyze' || task.action === 'explain' || task.action === 'explore') &&
+    taskTargetsCodeFile(task),
+  );
+  if (readOnlyCodeTasks.length < 6) return tasks;
+
+  const primaryPath = selectPrimaryCodePath(readOnlyCodeTasks.map(task => task.absPath ?? task.file));
+  const primaryTask = readOnlyCodeTasks.find(task => (task.absPath ?? task.file) === primaryPath) ?? readOnlyCodeTasks[0];
+  const normalizedPrimary: AgentTask = {
+    ...primaryTask,
+    action: 'modify',
+    desc: `根据用户需求修改 ${nodePath.basename(primaryTask.file)}`,
+  };
+
+  return [normalizedPrimary, ...validationTasks];
+}
+
 function normalizeExplicitEditTasks(tasks: AgentTask[], userPrompt?: string): AgentTask[] {
   if (!userPrompt || !requiresCodeArtifactForEvidence(userPrompt)) return tasks;
 
@@ -728,6 +810,7 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
   }
 
   let finalTasks = [...mergedMap.values()];
+  finalTasks = collapseReadOnlyPlanningNoiseForEdit(finalTasks, userPrompt);
   finalTasks = normalizeExplicitEditTasks(finalTasks, userPrompt);
   finalTasks = normalizeValidationExecutionTargets(finalTasks);
 
@@ -783,22 +866,45 @@ export function inferTasksFromFiles(
   attachedFiles: string[],
   userPrompt: string,
 ): AgentTask[] {
-  // G11: Always use 'analyze' as fallback action — it is safest and allows the
-  // Editor's multi-round tool loop to infer the real intent from context,
-  // rather than guessing 'modify' vs 'analyze' via keyword regex.
-  void userPrompt; // kept in signature for API compatibility
+  if (attachedFiles.length === 0) return [];
 
-  return attachedFiles.map((absPath, i) => {
-    const relPath = workspaceRelativePathForAbs(absPath);
-    const basename = nodePath.basename(relPath);
-    return {
-      id: `t${i + 1}`,
-      file: relPath,
-      action: 'analyze' as AgentTaskAction,
-      desc: `分析 ${basename}`,
-      absPath,
-    };
-  });
+  const intent = classifyIntent(userPrompt);
+  const projectDir = inferProjectDirFromAttachedFiles(attachedFiles, userPrompt);
+  const primaryCodePath = selectPrimaryCodePath(attachedFiles, projectDir);
+  const wantsCodeChange = intent.mode === 'edit' || requiresCodeArtifactForEvidence(userPrompt);
+  const wantsCommandEvidence = intent.mode === 'run' || requiresCommandEvidence(userPrompt);
+  const targetPath = wantsCodeChange && primaryCodePath
+    ? primaryCodePath
+    : projectDir ?? primaryCodePath ?? attachedFiles.find(pathValue => !isGeneratedOrBuildArtifactPath(pathValue)) ?? attachedFiles[0];
+  const targetRel = workspaceRelativePathForAbs(targetPath);
+  const targetIsFile = (() => {
+    try {
+      return fs.existsSync(targetPath) && fs.statSync(targetPath).isFile();
+    } catch {
+      return isCodeArtifactPath(targetPath);
+    }
+  })();
+
+  let action: AgentTaskAction = 'analyze';
+  if (wantsCodeChange && targetIsFile) action = 'modify';
+  else if (wantsCodeChange) action = 'explore';
+
+  const targetName = nodePath.basename(targetRel);
+  const desc = wantsCodeChange
+    ? targetIsFile
+      ? `根据用户需求修改 ${targetName}`
+      : '探索项目并根据用户需求修改相关代码'
+    : wantsCommandEvidence
+      ? '执行项目验证并给出结果'
+      : '分析项目上下文并回答用户问题';
+
+  return [{
+    id: 't1',
+    file: targetRel,
+    action,
+    desc,
+    absPath: targetPath,
+  }];
 }
 
 // ----------------------------------------------------------------
@@ -832,14 +938,14 @@ export async function decomposeTask(
         });
   } catch (e) {
     const error = (e as Error).message;
-    return { tasks: [], raw: '', ok: false, error };
+    return { tasks: [], raw: '', ok: false, error, fallbackAllowed: false };
   }
 
   const tasks = parseTaskPlan(raw, attachedFiles, priorFindings, userPrompt, contextActiveEditorFile);
   if (tasks.length === 0) {
     // Fallback: derive tasks directly from file list
     const fallback = inferTasksFromFiles(attachedFiles, userPrompt);
-    return { tasks: fallback, raw, ok: false, error: 'JSON plan parse failed, using fallback' };
+    return { tasks: fallback, raw, ok: false, fallbackAllowed: true, error: 'JSON plan parse failed, using fallback' };
   }
 
   // Extract pre-JSON reasoning prose so the working area can show what the AI was thinking

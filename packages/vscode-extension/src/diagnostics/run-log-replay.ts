@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import { parseFakeToolCalls } from '../agent/fake-tool-parser';
+import { isolateModelToolRequestText } from '../agent/model-tool-protocol-adapter';
 import { LEGACY_CPP_BUILD_DIR_NAMES, listCppBuildOutputDirNames } from '../cpp-build-layout';
 
 export type RunLogReplayIssueSeverity = 'info' | 'warn' | 'error';
@@ -11,11 +12,15 @@ export type RunLogReplayIssueKind =
   | 'build-artifact-workdir'
   | 'provider-authored-tool-result'
   | 'malformed-tool-block'
+  | 'empty-provider-response'
+  | 'incomplete-provider-request'
   | 'destructive-model-command'
   | 'long-running-run'
+  | 'missing-agent-run-completion'
   | 'missing-final-convergence'
   | 'internal-context-anchor'
   | 'planned-execution-without-tool-evidence'
+  | 'source-output-without-application'
   | 'terminal-command-skipped'
   | 'terminal-command-failed';
 
@@ -58,6 +63,9 @@ const TOOL_MARKER_RE = /\[TOOL:\s*[A-Za-z_]\w*/g;
 const DESTRUCTIVE_CLEAN_BUILD_RE = destructiveCleanBuildPattern(listCppBuildOutputDirNames());
 const INTERNAL_CONTEXT_ANCHOR_RE = /【当前活跃编辑器文件（项目上下文）】\s*\n[^\n]*(?:^|\/)\.devseek\/(?:runs|bridge-process\.log|memory\.json|memory\.md|bridge-token)/m;
 const EXECUTION_TASK_TEXT_RE = /(编译|构建|运行|执行|启动|验证|测试|compile|build|run|execute|verify|test)/i;
+const WORKSPACE_MUTATION_REQUEST_RE = /(修复|修正|修改|改成|改为|实现|添加|新增|完善|重构|写入|替换|编译|构建|运行|执行|验证|测试|fix|modify|change|implement|add|update|refactor|compile|build|run|execute|verify|test)/i;
+const WORKSPACE_TARGET_TEXT_RE = /(\/|\\|\.cpp\b|\.h\b|\.ts\b|\.js\b|\.py\b|代码|文件|项目|目录|workspace|project|file|shape_manager)/i;
+const SOURCE_CODE_RESPONSE_RE = /```(?:[A-Za-z0-9_+#.-]+)?\s*[\s\S]{200,}?```|#include\s+[<"]|(?:^|\n)\s*(?:int|void|class|struct|const|let|function)\s+[A-Za-z_]\w*[\s({=]/;
 const LONG_RUNNING_RUN_MS = 60_000;
 
 export function loadRunLogEvents(logPath: string): RunLogReplayEvent[] {
@@ -91,6 +99,13 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
   let terminalSkipped = 0;
   let plannedExecutionTasks = 0;
   let lastToolComplete: { line: number; taskComplete?: boolean } | undefined;
+  let agentRunStarted = false;
+  let agentRunCompleted = false;
+  let chatRequestStarts = 0;
+  let chatRequestCompletions = 0;
+  let chatRequestFailures = 0;
+  let workspaceMutationRequested = false;
+  const sourceCodeResponses: { line: number; evidence?: string }[] = [];
 
   for (const event of events) {
     if (event.parseError) {
@@ -118,9 +133,24 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       appVersion ??= stringValue(data?.appVersion);
       gitCommit ??= stringValue(data?.gitCommit);
     }
+    if (entry.event === 'agent-run-started') {
+      agentRunStarted = true;
+    }
+    if (entry.event === 'agent-run-completed') {
+      agentRunCompleted = true;
+    }
     if (entry.event === 'participant-started') {
       appVersion ??= stringValue(data?.appVersion);
       gitCommit ??= stringValue(data?.gitCommit);
+    }
+    if (entry.event === 'chat-request-start') {
+      chatRequestStarts += 1;
+    }
+    if (entry.event === 'chat-request-complete') {
+      chatRequestCompletions += 1;
+    }
+    if (entry.event === 'chat-request-failed') {
+      chatRequestFailures += 1;
     }
 
     if (entry.event === 'payload-recorded') {
@@ -130,10 +160,19 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       if (name === 'extension.request.prompt') {
         providerRequests += 1;
         collectProviderRequestIssues(content, event.line, issues);
+        if (looksLikeWorkspaceMutationRequest(content)) {
+          workspaceMutationRequested = true;
+        }
       }
       if (name === 'extension.response.raw') {
         providerResponses += 1;
         collectProviderResponseIssues(content, event.line, issues);
+        if (SOURCE_CODE_RESPONSE_RE.test(content)) {
+          sourceCodeResponses.push({
+            line: event.line,
+            evidence: firstMatch(content, SOURCE_CODE_RESPONSE_RE),
+          });
+        }
         plannedExecutionTasks += countPlannedExecutionTasks(content);
         terminalCommands += countRunTerminalTools(content);
       }
@@ -214,11 +253,38 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     });
   }
 
+  if (chatRequestStarts > chatRequestCompletions + chatRequestFailures) {
+    issues.push({
+      kind: 'incomplete-provider-request',
+      severity: 'error',
+      message: `有 ${chatRequestStarts - chatRequestCompletions - chatRequestFailures} 次 provider 请求没有完成或失败事件，说明 run 在模型调用中断开。`,
+    });
+  }
+
+  if (agentRunStarted && !agentRunCompleted) {
+    issues.push({
+      kind: 'missing-agent-run-completion',
+      severity: 'error',
+      message: '日志中存在 agent-run-started，但没有 agent-run-completed，UI 最终判定可能缺少统一收敛事实。',
+    });
+  }
+
   if (plannedExecutionTasks > 0 && toolExecutions === 0 && terminalCommands === 0 && terminalSkipped === 0) {
     issues.push({
       kind: 'planned-execution-without-tool-evidence',
       severity: 'error',
       message: `规划器产出 ${plannedExecutionTasks} 个执行/验证任务，但日志中没有工具循环或终端执行证据。`,
+    });
+  }
+
+  if (workspaceMutationRequested && sourceCodeResponses.length > 0 && toolExecutions === 0 && terminalCommands === 0 && terminalSkipped === 0) {
+    const firstSourceResponse = sourceCodeResponses[0];
+    issues.push({
+      kind: 'source-output-without-application',
+      severity: 'error',
+      line: firstSourceResponse.line,
+      message: '本轮请求要求修改/验证工作区，但 provider 只返回了源码文本，日志中没有工具执行、写盘或终端验证证据。',
+      evidence: truncateOneLine(firstSourceResponse.evidence ?? '', 220),
     });
   }
 
@@ -276,27 +342,39 @@ function collectProviderRequestIssues(content: string, line: number, issues: Run
 }
 
 function collectProviderResponseIssues(content: string, line: number, issues: RunLogReplayIssue[]): void {
-  if (LEGACY_BUILD_PATH_RE.test(content)) {
+  if (!content.trim()) {
+    issues.push({
+      kind: 'empty-provider-response',
+      severity: 'error',
+      line,
+      message: 'DeepSeek 网页返回了空正文；执行器不应继续把它当成正常计划或正常任务回复。',
+    });
+    return;
+  }
+
+  const toolRequestText = isolateModelToolRequestText(content).text;
+
+  if (LEGACY_BUILD_PATH_RE.test(toolRequestText)) {
     issues.push({
       kind: 'legacy-build-path',
       severity: 'error',
       line,
       message: '模型响应中仍包含 legacy C/C++ 构建目录。',
-      evidence: firstMatch(content, LEGACY_BUILD_PATH_RE),
+      evidence: firstMatch(toolRequestText, LEGACY_BUILD_PATH_RE),
     });
   }
 
   if (PROVIDER_AUTHORED_TOOL_RESULT_RE.test(content)) {
     issues.push({
       kind: 'provider-authored-tool-result',
-      severity: 'error',
+      severity: 'warn',
       line,
-      message: '模型响应里夹带了工具返回文本，协议适配层应把工具调用和工具结果分离。',
+      message: '模型响应里夹带了工具返回文本；协议适配层应只解析工具结果边界前的工具请求。',
       evidence: firstMatch(content, PROVIDER_AUTHORED_TOOL_RESULT_RE),
     });
   }
 
-  const markerCount = [...content.matchAll(TOOL_MARKER_RE)].length;
+  const markerCount = [...toolRequestText.matchAll(TOOL_MARKER_RE)].length;
   if (markerCount > 0) {
     const parsedTools = parseFakeToolCalls(content);
     if (parsedTools.length < markerCount) {
@@ -335,6 +413,10 @@ function collectProviderResponseIssues(content: string, line: number, issues: Ru
 
 function countRunTerminalTools(content: string): number {
   return parseFakeToolCalls(content).filter(tool => tool.name === 'run_terminal').length;
+}
+
+function looksLikeWorkspaceMutationRequest(content: string): boolean {
+  return WORKSPACE_MUTATION_REQUEST_RE.test(content) && WORKSPACE_TARGET_TEXT_RE.test(content);
 }
 
 function countPlannedExecutionTasks(content: string): number {

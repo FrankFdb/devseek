@@ -5,6 +5,7 @@ import {
 } from './tool-registry';
 import {
   findFirstModelToolProtocolStart,
+  isolateModelToolRequestText,
   parseModelToolProtocol,
   stripModelToolProtocolBlocks,
   type ModelToolProtocolDialect,
@@ -1387,7 +1388,10 @@ function stripReactActionBlocks(text: string): string {
 }
 
 export function findFirstToolCallStart(text: string): number {
-  return findFirstModelToolProtocolStart(text, MODEL_TOOL_PROTOCOL_DIALECTS);
+  return findFirstModelToolProtocolStart(
+    isolateModelToolRequestText(text).text,
+    MODEL_TOOL_PROTOCOL_DIALECTS,
+  );
 }
 
 export function containsFakeToolCallProtocol(text: string): boolean {
@@ -1395,7 +1399,8 @@ export function containsFakeToolCallProtocol(text: string): boolean {
 }
 
 export function stripToolCallBlocks(text: string): string {
-  const { text: stripped, removed } = stripModelToolProtocolBlocks(text, MODEL_TOOL_PROTOCOL_DIALECTS);
+  const { text: requestText } = isolateModelToolRequestText(text);
+  const { text: stripped, removed } = stripModelToolProtocolBlocks(requestText, MODEL_TOOL_PROTOCOL_DIALECTS);
   const cleaned = stripped.replace(/\n{3,}/g, '\n\n').trim();
   return removed ? cleaned.replace(/[ \t]*\n[ \t]*\n[ \t]*/g, '\n') : cleaned;
 }
@@ -1623,5 +1628,8 @@ const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[
 ];
 
 export function parseFakeToolCalls(text: string): FakeTool[] {
-  return parseModelToolProtocol(text, MODEL_TOOL_PROTOCOL_DIALECTS).map(normalizeFakeTool);
+  return parseModelToolProtocol(
+    isolateModelToolRequestText(text).text,
+    MODEL_TOOL_PROTOCOL_DIALECTS,
+  ).map(normalizeFakeTool);
 }

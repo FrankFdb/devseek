@@ -85,6 +85,13 @@ function traceHeaders(trace: DevSeekTraceLogger, extra?: Record<string, string>)
   return authHeaders({ ...(extra ?? {}), [TRACE_RUN_ID_HEADER]: trace.runId });
 }
 
+function assertProviderReturnedContent(content: string): void {
+  if (content.trim()) return;
+  throw new Error(
+    'EMPTY_PROVIDER_RESPONSE: DeepSeek 网页本轮没有返回内容，可能是网页超时、继续生成未完成或会话被打断。请重试；如果连续出现，请重新登录 DeepSeek 网页后继续。',
+  );
+}
+
 function getDevSeekRuntimeBuildInfo(): DevSeekRuntimeBuildInfo {
   const packagePaths = [
     extensionRootFsPath ? nodePath.join(extensionRootFsPath, 'package.json') : undefined,
@@ -361,6 +368,7 @@ export async function chat(opts: ChatOptions): Promise<string> {
     const content = json.content || '';
     const responsePayloadId = trace.payload('provider', 'extension.response.raw', content);
     trace.debug('bridge-client', 'response-payload-recorded', { payloadId: responsePayloadId });
+    assertProviderReturnedContent(content);
     trace.info('bridge-client', 'chat-request-complete', { response: summarizeTraceText(content) });
     return content;
   } catch (error) {
@@ -433,6 +441,7 @@ async function chatStream(body: string, onDelta: (delta: string) => void, trace:
 
   const responsePayloadId = trace.payload('provider', 'extension.response.raw', fullText);
   trace.debug('bridge-client', 'response-payload-recorded', { payloadId: responsePayloadId });
+  assertProviderReturnedContent(fullText);
   trace.info('bridge-client', 'chat-request-complete', { response: summarizeTraceText(fullText) });
   return fullText;
 }

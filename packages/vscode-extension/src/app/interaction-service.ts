@@ -1,6 +1,6 @@
 import type { ChatIntentDecision } from '../intent-router';
 import type { WorkflowSelection } from './workflow-service';
-import { createWorkspaceFilePathTokenRegExp } from '../workspace/path-patterns';
+import { createWorkspaceFilePathTokenRegExp, hasExplicitWorkspacePath } from '../workspace/path-patterns';
 
 export type UserInteractionKind = 'clarify' | 'confirm' | 'planReview';
 export type UserInteractionOptionId = 'continue' | 'plan' | 'clarify';
@@ -33,7 +33,6 @@ export interface PreExecutionInteractionInput {
 }
 
 const EXPLICIT_PATH_RE = createWorkspaceFilePathTokenRegExp('i');
-const DIRECTORY_RE = /(?:^|[\s，,。；;：:])(?:[A-Za-z0-9_.-]+\/){1,}[A-Za-z0-9_.-]*(?:目录|文件夹|folder|dir)?/i;
 const TECH_OR_DOMAIN_RE = /(three\.?js|react|vue|svelte|angular|node|express|next\.?js|nuxt|python|java|go|rust|c\+\+|cpp|c语言|html|css|javascript|typescript|ts|js|openGL|glut|webgl|three|3d|三维|二维|游戏|登录|注册|todo|博客|商城|后台|管理|爬虫|接口|api|数据库|可视化|图表|动画|鼠标|键盘|上传|下载|支付|聊天|地图|表格|表单|测试|命令行|cli)/i;
 
 const VAGUE_CREATE_RE = /^(?:请|帮我|给我|麻烦)?\s*(?:写|写一个|写个|编写|创建|新建|生成|做|做个|开发|实现)\s*(?:一个|个|一下|下)?\s*(?:程序|项目|应用|app|代码|功能|脚本|页面|网站|demo|示例)?\s*[。.!！?？]*$/i;
@@ -153,7 +152,7 @@ export function buildPreExecutionInteraction(input: PreExecutionInteractionInput
 function isAmbiguousExecutionRequest(text: string, files: string[], intent: ChatIntentDecision): boolean {
   if (!['edit', 'run'].includes(intent.mode)) return false;
   if (files.length > 0) return false;
-  if (EXPLICIT_PATH_RE.test(text) || DIRECTORY_RE.test(text)) return false;
+  if (EXPLICIT_PATH_RE.test(text) || hasExplicitWorkspacePath(text)) return false;
   if (TECH_OR_DOMAIN_RE.test(text)) return false;
   if (intent.signals.includes('explicit-file-path')) return false;
 
@@ -173,7 +172,7 @@ function buildAmbiguityDetails(text: string, intent: ChatIntentDecision): string
     `识别到的意图：${intent.mode}`,
     `置信度：${Math.round(intent.confidence * 100)}%`,
   ];
-  if (!EXPLICIT_PATH_RE.test(text) && !DIRECTORY_RE.test(text)) {
+  if (!EXPLICIT_PATH_RE.test(text) && !hasExplicitWorkspacePath(text)) {
     details.push('没有明确文件、目录或工作范围。');
   }
   if (!TECH_OR_DOMAIN_RE.test(text)) {

@@ -41,6 +41,8 @@ export interface AgentChatRequest {
   onUsage?: (usage: TokenUsage) => void;
   signal?: AbortSignal;
   images?: string[];
+  /** Top-level run trace id shared by routing, provider calls, tools and validation. */
+  traceRunId?: string;
 }
 
 export interface ChatRequestCommand extends AgentCommandBase {

@@ -197,6 +197,15 @@ test('decideChatIntent: returns required fields', () => {
   assert.ok(result.confidence >= 0 && result.confidence <= 1);
 });
 
+test('decideChatIntent: explicit directory path is treated as workspace target', () => {
+  const result = decideChatIntent('/home/ff/work/devseek_netai/code/shape_manager 请添加功能并编译验证');
+
+  assert.equal(result.kind, 'code-change');
+  assert.equal(result.mode, 'edit');
+  assert.ok(result.signals.includes('explicit-file-path'));
+  assert.equal(shouldUseAgentMode(result, []), true);
+});
+
 test('decideChatIntent: confidence score is in [0,1]', () => {
   const prompts = [
     '修复这个bug',

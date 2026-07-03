@@ -8,12 +8,17 @@ export const KNOWN_WORKSPACE_FILE_EXTENSIONS_PATTERN = [
 
 export const WORKSPACE_FILE_PATH_TOKEN_PATTERN = `[A-Za-z0-9_./\\\\-]+\\.(?:${KNOWN_WORKSPACE_FILE_EXTENSIONS_PATTERN})`;
 const WORKSPACE_FILE_PATH_BOUNDARY_PATTERN = '(?=$|[^A-Za-z0-9_./\\\\-])';
+const WORKSPACE_PATH_BOUNDARY_PATTERN = '(?=$|[\\s，,。；;：:!！?？)）\\]】}"\'`])';
 
 const KNOWN_WORKSPACE_FILE_PATH_RE = new RegExp(
   `(?:~/|/|\\./|[A-Za-z0-9_.-])[\\w./@%+-]*\\.(?:${KNOWN_WORKSPACE_FILE_EXTENSIONS_PATTERN})${WORKSPACE_FILE_PATH_BOUNDARY_PATTERN}`,
   'i',
 );
 const SCOPED_UNKNOWN_WORKSPACE_FILE_PATH_RE = /(?:~\/|\/|\.\/|[A-Za-z0-9_.-]+\/)[\w./@%+-]*\.[A-Za-z0-9]{1,12}/i;
+const SCOPED_WORKSPACE_DIRECTORY_PATH_RE = new RegExp(
+  `(?:~/|/|\\./)?(?:[A-Za-z0-9_.@%+-]+/)+[A-Za-z0-9_.@%+-]+/?${WORKSPACE_PATH_BOUNDARY_PATTERN}`,
+  'i',
+);
 
 export const WORKSPACE_FILE_PATH_PATTERN = /(?:~\/|\/|\.\/|[A-Za-z0-9_.-])[\w./@%+-]*\.[A-Za-z0-9]{1,12}/i;
 
@@ -24,4 +29,9 @@ export function createWorkspaceFilePathTokenRegExp(flags = 'gi'): RegExp {
 export function hasExplicitWorkspaceFilePath(text: string): boolean {
   const value = String(text || '');
   return KNOWN_WORKSPACE_FILE_PATH_RE.test(value) || SCOPED_UNKNOWN_WORKSPACE_FILE_PATH_RE.test(value);
+}
+
+export function hasExplicitWorkspacePath(text: string): boolean {
+  const value = String(text || '');
+  return hasExplicitWorkspaceFilePath(value) || SCOPED_WORKSPACE_DIRECTORY_PATH_RE.test(value);
 }
