@@ -244,6 +244,25 @@ function bridgeStatusMatchesRuntime(statusValue: BridgeStatusResponse | null, ex
   return true;
 }
 
+function bridgeStatusTraceData(statusValue: BridgeStatusResponse | null | undefined): Record<string, string | undefined> | undefined {
+  if (!statusValue) return undefined;
+  return {
+    appVersion: statusValue.appVersion,
+    buildChannel: statusValue.buildChannel,
+    buildId: statusValue.buildId,
+    gitCommit: statusValue.gitCommit,
+  };
+}
+
+function logBridgeRuntimeReady(reason: string, expected: DevSeekRuntimeBuildInfo, actual: BridgeStatusResponse | null | undefined): void {
+  createBridgeClientTraceLogger().info('bridge-client', 'bridge-status-ready', {
+    reason,
+    buildMatches: true,
+    expected,
+    actual: bridgeStatusTraceData(actual),
+  });
+}
+
 async function terminateOnlineBridge(): Promise<void> {
   if (!await ping()) return;
   await shutdownBridge();
@@ -269,16 +288,12 @@ export async function ensureBridgeRunning(forceRestart = false): Promise<boolean
     bridgeOnline,
     buildMatches,
     expected: buildInfo,
-    actual: onlineStatus
-      ? {
-        appVersion: onlineStatus.appVersion,
-        buildChannel: onlineStatus.buildChannel,
-        buildId: onlineStatus.buildId,
-        gitCommit: onlineStatus.gitCommit,
-      }
-      : undefined,
+    actual: bridgeStatusTraceData(onlineStatus),
   });
-  if (!forceRestart && buildMatches) return true;
+  if (!forceRestart && buildMatches) {
+    logBridgeRuntimeReady('existing-runtime', buildInfo, onlineStatus);
+    return true;
+  }
 
   if (forceRestart || bridgeOnline) {
     await terminateOnlineBridge();
@@ -327,7 +342,10 @@ export async function ensureBridgeRunning(forceRestart = false): Promise<boolean
   while (Date.now() < deadline) {
     await new Promise<void>(r => setTimeout(r, 600));
     const startedStatus = await status();
-    if (bridgeStatusMatchesRuntime(startedStatus, buildInfo)) return true;
+    if (bridgeStatusMatchesRuntime(startedStatus, buildInfo)) {
+      logBridgeRuntimeReady('started-runtime', buildInfo, startedStatus);
+      return true;
+    }
   }
   return false;
 }

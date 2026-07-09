@@ -111,7 +111,8 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
   }
   await input.callbacks.onAppliedChange({ path: resolved.absPath, ...writeResult });
 
-  const newLines = request.content.split('\n').length;
+  const persistedContent = writeResult.newContent;
+  const newLines = persistedContent.split('\n').length;
   const oldLines = writeResult.oldContent ? writeResult.oldContent.split('\n').length : 0;
   const writtenFile: WrittenFileEvidence = {
     path: resolved.absPath,
@@ -124,7 +125,7 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
   const afterWriteTodos = advanceLinearAgentTodo(todos, 0, 1);
   await input.callbacks.onTodoUpdate?.(afterWriteTodos);
 
-  const contentCheck = verifyWrittenContent(resolved.absPath, request.content);
+  const contentCheck = verifyWrittenContent(resolved.absPath, persistedContent);
   if (!contentCheck.ok) {
     return finishSimpleFileTask({
       ...input,

@@ -588,6 +588,18 @@ test('FakeToolParser: keeps ordinary nameless Calling prose', () => {
   assert.equal(stripToolCallBlocks(text), text);
 });
 
+test('FakeToolParser: does not execute markdown tables after ordinary Chinese call prose', () => {
+  const text = [
+    '平台接口调用说明如下：',
+    '| 风险 | 等级 | 说明 | 对策 |',
+    '| **新旧逻辑共存** | 中 | 旧 `MaintenanceManager` 可能干扰 | 通过编译宏或运行时配置开关隔离 |',
+  ].join('\n');
+
+  assert.equal(parseFakeToolCalls(text).length, 0);
+  assert.equal(findFirstToolCallStart(text), -1);
+  assert.equal(stripToolCallBlocks(text), text);
+});
+
 test('FakeToolParser: parses DeepSeek raw JSON array with type fields', () => {
   const text = [
     '让我先查看当前的代码结构：',

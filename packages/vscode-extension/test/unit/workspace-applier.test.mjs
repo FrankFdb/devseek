@@ -188,7 +188,35 @@ test('workspace-applier: blocks project instruction file writes unless explicitl
   }
 });
 
-test('workspace-applier: blocks C++ writes with raw newlines inside string literals', async () => {
+test('workspace-applier: repairs transport-polluted C++ string newlines before writing', async () => {
+  const { root, projectDir } = createShapeManagerWorkspace();
+  try {
+    const mainPath = path.join(projectDir, 'main.cpp');
+    const raw = [
+      'code/shape_manager/main.cpp',
+      '```cpp',
+      '#include <iostream>',
+      'int main() {',
+      '  std::cout << "',
+      'broken" << std::endl;',
+      '  return 0;',
+      '}',
+      '```',
+    ].join('\n');
+    const statuses = [];
+
+    const result = await applyGeneratedArtifactsWithPrompt(raw, `${projectDir} 修改窗口标题`, (status) => statuses.push(status), true);
+
+    assert.equal(result.applied, true);
+    assert.deepEqual(result.changedPaths, ['code/shape_manager/main.cpp']);
+    assert.match(readFileSync(mainPath, 'utf8'), /std::cout << "\\nbroken" << std::endl;/);
+    assert.equal(statuses.some((status) => status.title === '已阻止写入（源码语法护栏）'), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('workspace-applier: blocks unrecoverable C++ string literals before writing', async () => {
   const { root, projectDir } = createShapeManagerWorkspace();
   try {
     const mainPath = path.join(projectDir, 'main.cpp');
@@ -198,8 +226,7 @@ test('workspace-applier: blocks C++ writes with raw newlines inside string liter
       '```cpp',
       '#include <iostream>',
       'int main() {',
-      '  std::cout << "',
-      'broken" << std::endl;',
+      '  std::cout << "unterminated;',
       '  return 0;',
       '}',
       '```',

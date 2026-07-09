@@ -1214,6 +1214,59 @@ test('run log replay classifies provider integrity failures and old bridge runti
   }
 });
 
+test('run log replay treats offline bridge startup and successful restart as current runtime', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-06T06:00:00.000Z',
+      level: 'info',
+      source: 'vscode-extension',
+      phase: 'bridge-client',
+      event: 'bridge-status-check',
+      runId: 'bridge-restarted',
+      data: {
+        bridgeOnline: false,
+        buildMatches: false,
+        expected: { appVersion: '1.0.0-debug.new', buildId: 'new-build' },
+      },
+    },
+    {
+      ts: '2026-07-06T06:00:01.000Z',
+      level: 'info',
+      source: 'vscode-extension',
+      phase: 'bridge-client',
+      event: 'bridge-status-ready',
+      runId: 'bridge-restarted',
+      data: {
+        reason: 'started-runtime',
+        buildMatches: true,
+        expected: { appVersion: '1.0.0-debug.new', buildId: 'new-build' },
+        actual: { appVersion: '1.0.0-debug.new', buildId: 'new-build' },
+      },
+    },
+    {
+      ts: '2026-07-06T06:00:02.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'bridge-restarted',
+      data: {
+        name: 'extension.response.raw',
+        content: '# 完整分析\n\n结论：bridge 已绑定当前运行时，后续请求由当前版本处理。',
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(kinds.has('old-bridge-runtime'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay does not classify business verification-code analysis as provider login', () => {
   const { dir, logPath } = writeLog([
     {

@@ -142,6 +142,7 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
   const completedRunChangedPaths: string[] = [];
   let completedRunTasksApplied = 0;
   let completedStatusEditedFiles = 0;
+  let pendingBridgeRuntimeMismatch: RunLogReplayIssue | undefined;
 
   for (const event of events) {
     if (event.parseError) {
@@ -239,19 +240,25 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       appVersion ??= stringValue(data?.appVersion);
       gitCommit ??= stringValue(data?.gitCommit);
     }
+    if ((entry.event === 'bridge-status-check' || entry.event === 'bridge-status-ready')
+      && booleanValue(data?.buildMatches) === true) {
+      pendingBridgeRuntimeMismatch = undefined;
+    }
     if (entry.event === 'bridge-status-check' && booleanValue(data?.buildMatches) === false) {
       const expected = objectValue(data?.expected);
       const actual = objectValue(data?.actual);
-      issues.push({
-        kind: 'old-bridge-runtime',
-        severity: 'error',
-        line: event.line,
-        message: 'Bridge 运行时 build 与当前扩展不一致；必须重启 bridge，不能让旧服务接管新版本逻辑。',
-        evidence: truncateOneLine([
-          `expected=${stringValue(expected?.buildId) || stringValue(expected?.appVersion) || 'unknown'}`,
-          `actual=${stringValue(actual?.buildId) || stringValue(actual?.appVersion) || 'unknown'}`,
-        ].join(' '), 220),
-      });
+      if (booleanValue(data?.bridgeOnline) === true && actual) {
+        pendingBridgeRuntimeMismatch = {
+          kind: 'old-bridge-runtime',
+          severity: 'error',
+          line: event.line,
+          message: 'Bridge 运行时 build 与当前扩展不一致；必须重启 bridge，不能让旧服务接管新版本逻辑。',
+          evidence: truncateOneLine([
+            `expected=${stringValue(expected?.buildId) || stringValue(expected?.appVersion) || 'unknown'}`,
+            `actual=${stringValue(actual?.buildId) || stringValue(actual?.appVersion) || 'unknown'}`,
+          ].join(' '), 220),
+        };
+      }
     }
     if (entry.event === 'chat-request-start') {
       chatRequestStarts += 1;
@@ -392,6 +399,10 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
         message: `本轮执行耗时 ${Math.round(durationMs / 1000)} 秒，超过 60 秒目标。`,
       });
     }
+  }
+
+  if (pendingBridgeRuntimeMismatch) {
+    issues.push(pendingBridgeRuntimeMismatch);
   }
 
   for (const failure of terminalFailures) {

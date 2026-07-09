@@ -80,7 +80,9 @@ const EXCLUDED_DIR_NAMES = new Set([
 ]);
 const BAD_PROVIDER_REPORT_RE = /(?:\[TOOL:|\[工具执行结果\]|Calling\s*:\s*(?:read_file|list_dir|file_search)|调用\s*(?:read_file|list_dir|file_search))/i;
 const PROVIDER_COPY_CONTROL_RE = /(?:plain\s*text|text|json|cpp|c\+\+|c|bash|shell|sh|python|typescript|javascript|yaml|yml|xml|html|sql|ini|toml|go|rust|markdown|md)\s*复制\s*下载/gi;
-const MARKDOWN_METADATA_LABEL_RE = /(文档编号|版本|状态|关联需求|目标路径)\s*[:：]/g;
+const MARKDOWN_METADATA_LABELS = '文档编号|文档版本|对应需求版本|对应需求|关联需求|文档路径|目标路径|创建日期|生成时间|文档类型|状态|版本';
+const MARKDOWN_METADATA_LABEL_RE = new RegExp(`(?:\\*\\*)?(${MARKDOWN_METADATA_LABELS})(?:\\*\\*)?\\s*[:：]`, 'g');
+const MARKDOWN_METADATA_LABEL_FINDER_RE = new RegExp(`(?:\\*\\*)?(?:${MARKDOWN_METADATA_LABELS})(?:\\*\\*)?\\s*[:：]`);
 const MARKDOWN_NUMBERED_HEADING_WORD_RE = /(?:文档|目标|依据|范围|需求|差异|旧实现|职责|观察|实现|对策|总体|架构|接口|方向|消息|数据结构|字段|说明|异常|时序|任务|拆分|风险|验证|结论|模块|线程|持久|测试|设计|决策|输入|输出|发布|存储|复位|兼容)/;
 
 export async function tryExecuteMarkdownDeliverableTask(
@@ -472,12 +474,13 @@ function normalizeProviderMarkdownDocumentText(text: string): string {
   normalized = insertMarkdownDocumentBreaks(normalized);
   normalized = normalizeMarkdownMetadataLines(normalized);
   normalized = normalizeNumberedHeadingLines(normalized);
+  normalized = wrapOverlongMarkdownLines(normalized);
   return squeezeMarkdownBlankLines(normalized).trim();
 }
 
 function promoteInlineMetadataTitle(text: string): string {
   if (/^#{1,6}\s+\S/.test(text)) return text;
-  const match = /(文档编号|版本|状态|关联需求|目标路径)\s*[:：]/.exec(text);
+  const match = MARKDOWN_METADATA_LABEL_FINDER_RE.exec(text);
   if (!match || match.index <= 3 || match.index > 160) return text;
   const title = text.slice(0, match.index).trim();
   const rest = text.slice(match.index).trim();
@@ -486,11 +489,7 @@ function promoteInlineMetadataTitle(text: string): string {
 }
 
 function insertMarkdownDocumentBreaks(text: string): string {
-  let normalized = text;
-  normalized = normalized.replace(MARKDOWN_METADATA_LABEL_RE, (_match, label: string, offset: number, source: string) => {
-    const prefix = offset > 0 && source[offset - 1] !== '\n' ? '\n' : '';
-    return `${prefix}${label}：`;
-  });
+  let normalized = insertMarkdownMetadataBreaks(text);
 
   normalized = normalized.replace(
     /(\.(?:md|markdown))(\d{1,2}(?:\.\d{1,2}){0,4}\.?)\s*(?=\S)/gi,
@@ -504,6 +503,9 @@ function insertMarkdownDocumentBreaks(text: string): string {
   normalized = normalized.replace(
     /([^\nA-Za-z0-9_])(\d{1,2}(?:\.\d{1,2}){0,4}\.?)(?!\d)\s*(?=\S)/g,
     (match, before: string, number: string, offset: number, source: string) => {
+      if (isMarkdownHeadingPrefixBeforeNumber(source, offset, before)) return match;
+      if (before === '-' && /\d/.test(source[offset - 1] || '')) return match;
+      if (before === '.' && /\d/.test(source[offset - 1] || '')) return match;
       const after = source.slice(offset + match.length, offset + match.length + 16);
       if (!MARKDOWN_NUMBERED_HEADING_WORD_RE.test(after)) return match;
       return `${before}\n\n${number} `;
@@ -513,9 +515,44 @@ function insertMarkdownDocumentBreaks(text: string): string {
   return normalized;
 }
 
+function insertMarkdownMetadataBreaks(text: string): string {
+  const titleMatch = text.match(/^#{1,6}\s+\S[^\n]*(?:\n{1,2}|$)/);
+  const searchStart = titleMatch ? titleMatch[0].length : 0;
+  const searchText = text.slice(searchStart);
+  const firstLabel = MARKDOWN_METADATA_LABEL_FINDER_RE.exec(searchText);
+  if (!firstLabel || firstLabel.index > 240) return text;
+  const blockStart = searchStart;
+  const blockEnd = findMarkdownMetadataBlockEnd(text, searchStart + firstLabel.index);
+  const block = text.slice(blockStart, blockEnd).replace(MARKDOWN_METADATA_LABEL_RE, (_match, label: string, offset: number, source: string) => {
+    const prefix = offset > 0 && source[offset - 1] !== '\n' ? '\n' : '';
+    return `${prefix}${label}：`;
+  });
+  return `${text.slice(0, blockStart)}${block}${text.slice(blockEnd)}`;
+}
+
+function findMarkdownMetadataBlockEnd(text: string, from: number): number {
+  const tail = text.slice(from);
+  const candidates = [
+    tail.search(/\n\s*---\s*(?:\n|$)/),
+    tail.search(/\n#{2,6}\s+\S/),
+    tail.search(/#{2,6}\s+\d{1,2}(?:\.\d{1,2}){0,4}\.?\s+\S/),
+    tail.search(/\d{1,2}(?:\.\d{1,2}){0,4}\.?\s*(?=(?:文档|目标|需求|差异|旧实现|职责|观察|实现|对策|接口|风险|验证|后续|任务))/),
+    tail.search(/(?:^|\n)##\s*[一二三四五六七八九十]+[、.．]/),
+  ].filter(index => index >= 0);
+  if (candidates.length === 0) return Math.min(text.length, from + 1_200);
+  return from + Math.min(...candidates);
+}
+
+function isMarkdownHeadingPrefixBeforeNumber(source: string, offset: number, before: string): boolean {
+  if (!/\s/.test(before)) return false;
+  const lineStart = source.lastIndexOf('\n', offset) + 1;
+  const prefix = source.slice(lineStart, offset + before.length);
+  return /^#{1,6}\s*$/.test(prefix);
+}
+
 function normalizeMarkdownMetadataLines(text: string): string {
   return text.split('\n').map(line => {
-    const match = line.trim().match(/^(文档编号|版本|状态|关联需求|目标路径)\s*[:：]\s*(.+)$/);
+    const match = line.trim().match(new RegExp(`^(?:[-*]\\s*)?(?:\\*\\*)?(${MARKDOWN_METADATA_LABELS})(?:\\*\\*)?\\s*[:：]\\s*(.+)$`));
     if (!match) return line;
     return `- **${match[1]}**：${match[2].trim()}`;
   }).join('\n');
@@ -530,6 +567,46 @@ function normalizeNumberedHeadingLines(text: string): string {
     const level = Math.min(6, Math.max(2, depth + 1));
     return `${'#'.repeat(level)} ${match[1]} ${match[2].trim()}`;
   }).join('\n');
+}
+
+function wrapOverlongMarkdownLines(text: string): string {
+  const output: string[] = [];
+  let inFence = false;
+  for (const line of text.split('\n')) {
+    if (/^\s*```/.test(line)) {
+      inFence = !inFence;
+      output.push(line);
+      continue;
+    }
+    if (inFence || line.length <= 900) {
+      output.push(line);
+      continue;
+    }
+    output.push(...wrapLongMarkdownLine(line, 860));
+  }
+  return output.join('\n');
+}
+
+function wrapLongMarkdownLine(line: string, maxLength: number): string[] {
+  const chunks: string[] = [];
+  let rest = line.trim();
+  while (rest.length > maxLength) {
+    const head = rest.slice(0, maxLength);
+    const splitAt = bestMarkdownLineSplitIndex(head, maxLength);
+    chunks.push(rest.slice(0, splitAt).trim());
+    rest = rest.slice(splitAt).trim();
+  }
+  if (rest) chunks.push(rest);
+  return chunks.length > 0 ? chunks : [line];
+}
+
+function bestMarkdownLineSplitIndex(text: string, maxLength: number): number {
+  const minUsefulSplit = Math.floor(maxLength * 0.55);
+  for (const marker of ['。', '；', ';', '，', ',', '、', ' ']) {
+    const index = text.lastIndexOf(marker);
+    if (index >= minUsefulSplit) return index + marker.length;
+  }
+  return maxLength;
 }
 
 function squeezeMarkdownBlankLines(text: string): string {

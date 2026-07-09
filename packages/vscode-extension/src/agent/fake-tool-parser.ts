@@ -174,6 +174,8 @@ function normalizeFakeTool(tool: FakeTool): FakeTool {
 function looksLikeNonShellTranscriptLine(line: string): boolean {
   const first = line.trim().replace(/^\$\s*/, '').replace(/^>\s*/, '');
   if (!first) return true;
+  if (/^\|.*\|\s*$/.test(first)) return true;
+  if (/^\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(first)) return true;
   if (/^(?:\/\/|\/\*|\*\/|\*)/.test(first)) return true;
   if (/^[{\[]/.test(first)) return true;
   if (/^(?:const|let|var|return|if|for|while|switch|function|export|import|class|interface|type)\b/.test(first)) return true;

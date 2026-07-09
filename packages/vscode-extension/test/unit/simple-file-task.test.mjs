@@ -257,10 +257,29 @@ test('Simple file task: writes explicit unknown text target and completes file-c
   }
 });
 
-test('Simple file task: blocks broken C++ content before writing', async () => {
+test('Simple file task: repairs transport-polluted C++ string newlines before writing', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-simple-file-task-cpp-'));
   fakeVscode.workspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
   const events = makeEvents();
+  let validationInput;
+  const validationService = {
+    validateWorkspaceChanges: async (input) => {
+      validationInput = input;
+      return {
+        ran: true,
+        ok: true,
+        status: 'passed',
+        command: 'g++ -fsyntax-only code/main.cpp',
+        exitCode: 0,
+        output: '',
+        cwd: root,
+        mode: 'compile-only',
+        reason: 'cpp-syntax-check',
+        risks: [],
+        alternativeChecks: [],
+      };
+    },
+  };
 
   try {
     const result = await tryRunSimpleFileTask({
@@ -270,6 +289,42 @@ test('Simple file task: blocks broken C++ content before writing', async () => {
         'int main() {',
         '  std::cout << "',
         'broken";',
+        '}',
+      ].join('\n'),
+      workspaceRoot: root,
+      callbacks: makeCallbacks(events),
+      cppValidationPolicy: 'conservative',
+      options: { validationService },
+    });
+
+    const target = path.join(root, 'code', 'main.cpp');
+    assert.equal(existsSync(target), true);
+    assert.match(readFileSync(target, 'utf8'), /std::cout << "\\nbroken";/);
+    assert.equal(result.tasksApplied, 1);
+    assert.equal(result.tasksFailed, 0);
+    assert.equal(events.applied.length, 1);
+    assert.equal(events.applied[0].normalization.kind, 'source-transport-escape-repair');
+    assert.deepEqual(validationInput.changedPaths, ['code/main.cpp']);
+    assert.equal(events.statuses.at(-1).phase, 'done');
+    assert.equal(events.statuses.at(-1).state, 'completed');
+    assert.equal(events.todos.at(-1)[0].status, 'completed');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Simple file task: blocks unrecoverable C++ content before writing', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-simple-file-task-cpp-block-'));
+  fakeVscode.workspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+  const events = makeEvents();
+
+  try {
+    const result = await tryRunSimpleFileTask({
+      userPrompt: [
+        '创建 code/main.cpp，内容为：',
+        '#include <iostream>',
+        'int main() {',
+        '  std::cout << "unterminated;',
         '}',
       ].join('\n'),
       workspaceRoot: root,
