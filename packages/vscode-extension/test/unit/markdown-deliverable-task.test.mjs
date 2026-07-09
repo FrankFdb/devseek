@@ -122,6 +122,8 @@ test('markdown deliverable: corrupted provider output still writes verified loca
     assert.match(content, /Provider 未返回可用的完整报告/);
     assert.match(content, /maintenance_types\.hpp/);
     assert.match(content, /UAV_EVENT 1022/);
+    assert.match(providerPrompt, /本文档交付目标/);
+    assert.match(providerPrompt, /创建 Markdown 建议文档/);
     assert.match(providerPrompt, /maintenance_state_machine\.hpp/);
     assert.deepEqual(io.changes.map(change => change.path), [
       'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md',
@@ -260,6 +262,38 @@ test('markdown deliverable: user-visible states explain provider wait and file v
     ]);
     assert.match(io.statuses.find(status => status.title === 'DeepSeek 报告已返回').detail, /DeepSeek 返回 \d+ 字符/);
     assert.match(io.statuses.at(-1).detail, /已写入并读回验证/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: fallback body follows the requested document objective', async () => {
+  const { root, maintenanceDir, docsDir, requirementDoc } = createMaintenanceWorkspace();
+  const target = path.join(docsDir, '01-warranty-remote-controller-interface-design.md');
+  const io = makeCallbacks();
+  try {
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: {
+        id: 't1',
+        file: 'src/oam/src/lifting/zc_maintenance/docs/01-warranty-remote-controller-interface-design.md',
+        absPath: target,
+        action: 'create',
+        desc: '编写遥控器与主控交互接口设计 Markdown 文档，覆盖平台 JSON 转发、主控统计结果回传、字段协议、时序和异常处理，并给出文档编号',
+      },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: `请分析 ${requirementDoc} 和 ${maintenanceDir}，分别做成md文档`,
+      workspaceRoot: { fsPath: root },
+      callbacks: io.callbacks,
+      chat: async () => '[TOOL:read_file {"path":"/tmp/missing"}]',
+    });
+
+    assert.equal(result?.applied, true);
+    const content = readFileSync(target, 'utf8');
+    assert.match(content, /# 01 遥控器与主控交互接口设计/);
+    assert.match(content, /遥控器职责/);
+    assert.match(content, /主控输出/);
+    assert.match(content, /本文档目标/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

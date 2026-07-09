@@ -81,6 +81,11 @@ const fixture = usesExistingWorkspace
 const expectedArtifact = getArgValue('--expected-artifact')
   || process.env.DEVSEEK_REAL_PLUGIN_EXPECTED_ARTIFACT
   || fixture.expectedArtifactRel;
+const expectedArtifacts = parseExpectedArtifacts(
+  getArgValue('--expected-artifacts')
+    || process.env.DEVSEEK_REAL_PLUGIN_EXPECTED_ARTIFACTS
+    || expectedArtifact,
+);
 const prompt = promptFromArg || defaultPrompt(workspaceDir, fixture);
 
 const loginReport = relogin ? await prepareDeepSeekLogin() : null;
@@ -105,6 +110,7 @@ report.harness = {
   scenario,
   harnessMode,
   expectedArtifact,
+  expectedArtifacts,
   usesExistingWorkspace,
   loginReport,
 };
@@ -145,6 +151,13 @@ function getArgValue(flag) {
 
 function normalizeHarnessMode(value) {
   return String(value || '').toLowerCase() === 'r1' ? 'r1' : 'fast';
+}
+
+function parseExpectedArtifacts(value) {
+  return String(value || '')
+    .split(/[,\n]/)
+    .map(item => item.trim().replace(/\\/g, '/').replace(/^\.\//, ''))
+    .filter(Boolean);
 }
 
 function resolveVsixPath() {
@@ -462,6 +475,7 @@ const autopilot = __AUTOPILOT__;
 const scenario = __SCENARIO__;
 const harnessMode = __HARNESS_MODE__;
 const expectedArtifact = __EXPECTED_ARTIFACT__;
+const expectedArtifacts = __EXPECTED_ARTIFACTS__;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -606,17 +620,22 @@ function evaluate(before, startedAtMs) {
   const normalizedChangedPaths = changedPaths.map(normalizeChangedPathForWorkspace);
   const changedMarkdownByLog = normalizedChangedPaths.some((item) => /\.(?:md|markdown)$/i.test(item));
   const hasUsefulMarkdown = artifacts.some((artifact) => artifact.size >= 500 && artifact.containsMaintenanceAnalysis);
+  const expectedArtifactRecords = expectedArtifacts.map((artifactPath) => ({
+    path: artifactPath,
+    artifact: artifacts.find((artifact) => artifact.path === artifactPath) || null,
+    inRunLog: normalizedChangedPaths.includes(artifactPath),
+  }));
   const expectedArtifactRecord = expectedArtifact
     ? artifacts.find((artifact) => artifact.path === expectedArtifact)
     : null;
-  const expectedArtifactWritten = expectedArtifact
-    ? Boolean(expectedArtifactRecord
-      && expectedArtifactRecord.created
-      && expectedArtifactRecord.size >= 500
-      && expectedArtifactRecord.containsMaintenanceAnalysis)
+  const expectedArtifactWritten = expectedArtifacts.length > 0
+    ? expectedArtifactRecords.every((record) => Boolean(record.artifact
+      && record.artifact.created
+      && record.artifact.size >= 500
+      && record.artifact.containsMaintenanceAnalysis))
     : hasUsefulMarkdown;
-  const expectedArtifactInRunLog = expectedArtifact
-    ? normalizedChangedPaths.includes(expectedArtifact)
+  const expectedArtifactInRunLog = expectedArtifacts.length > 0
+    ? expectedArtifactRecords.every((record) => record.inRunLog)
     : changedMarkdownByLog;
   const staleAnalysisChanged = artifacts.some((artifact) => artifact.path === 'docs/analysis/uav_warranty_reminder_analysis_v1.7.md');
   const successTerminal = runLogs.terminal
@@ -640,6 +659,8 @@ function evaluate(before, startedAtMs) {
       changedMarkdownByLog,
       hasUsefulMarkdown,
       expectedArtifact,
+      expectedArtifacts,
+      expectedArtifactRecords,
       expectedArtifactWritten,
       expectedArtifactInRunLog,
       staleAnalysisChanged,
@@ -664,6 +685,7 @@ async function activate() {
     scenario,
     harnessMode,
     expectedArtifact,
+    expectedArtifacts,
     startedAt: new Date(startedAtMs).toISOString(),
     workspaceDir,
     promptPreview: prompt.slice(0, 600),
@@ -744,7 +766,7 @@ async function activate() {
     const finalEvaluation = evaluate(before, startedAtMs);
     Object.assign(baseReport, finalEvaluation);
     if (!baseReport.ok) {
-      baseReport.errors.push(expectedArtifact
+      baseReport.errors.push(expectedArtifacts.length > 0
         ? '真实插件链路未形成成功 agent-run-completed + 预期 Markdown 仿真产物写盘证据。'
         : '真实插件链路未形成成功 agent-run-completed + Markdown 写盘证据。');
     }
@@ -772,7 +794,8 @@ module.exports = { activate };
     .replace('__AUTOPILOT__', JSON.stringify(autopilot))
     .replace('__SCENARIO__', JSON.stringify(scenario))
     .replace('__HARNESS_MODE__', JSON.stringify(harnessMode))
-    .replace('__EXPECTED_ARTIFACT__', JSON.stringify(expectedArtifact));
+    .replace('__EXPECTED_ARTIFACT__', JSON.stringify(expectedArtifact))
+    .replace('__EXPECTED_ARTIFACTS__', JSON.stringify(expectedArtifacts));
 
   fs.writeFileSync(path.join(driverDir, 'extension.js'), source, 'utf8');
 }

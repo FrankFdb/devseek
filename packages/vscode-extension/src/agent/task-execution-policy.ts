@@ -78,26 +78,27 @@ function collapseToMarkdownDocumentCreateTask(
   tasks: AgentTask[],
   userPrompt: string | undefined,
 ): AgentTaskExecutionPolicyResult {
-  const existing = tasks.find(isMarkdownDocumentCreateTask);
-  if (existing) {
-    const normalized: AgentTask = {
-      ...existing,
-      id: 't1',
+  const existingMarkdownTasks = tasks.filter(isMarkdownDocumentCreateTask);
+  if (existingMarkdownTasks.length > 0) {
+    const normalized = existingMarkdownTasks.map((task, index): AgentTask => ({
+      ...task,
+      id: `t${index + 1}`,
       action: 'create' as AgentTaskAction,
-      desc: existing.desc || MARKDOWN_DOCUMENT_DELIVERABLE_TASK_DESC,
-      visibleTarget: existing.visibleTarget || existing.file || existing.absPath,
-    };
-    const changed =
-      tasks.length !== 1 ||
-      existing.id !== normalized.id ||
-      existing.action !== normalized.action ||
-      !existing.desc ||
-      !existing.visibleTarget;
+      desc: task.desc || MARKDOWN_DOCUMENT_DELIVERABLE_TASK_DESC,
+      visibleTarget: task.visibleTarget || task.file || task.absPath,
+    }));
+    const changed = tasks.length !== normalized.length || existingMarkdownTasks.some((task, index) => {
+      const item = normalized[index];
+      return task.id !== item.id ||
+        task.action !== item.action ||
+        !task.desc ||
+        !task.visibleTarget;
+    });
     return {
-      tasks: [normalized],
+      tasks: normalized,
       changed,
       reason: changed
-        ? '当前请求需要 Markdown 文档交付，已将支持性分析/探索收口为单一 .md 创建任务。'
+        ? `当前请求需要 Markdown 文档交付，已保留 ${normalized.length} 个 .md 创建任务，并移除支持性分析/探索任务。`
         : undefined,
     };
   }
@@ -120,7 +121,7 @@ function collapseToMarkdownDocumentCreateTask(
       ...(absPath ? { absPath } : {}),
     }],
     changed: true,
-    reason: '当前请求需要 Markdown 文档交付，已补充单一 .md 创建任务，并把读取/分析作为该任务内部证据采集。',
+    reason: '当前请求需要 Markdown 文档交付，已补充 .md 创建任务，并把读取/分析作为该任务内部证据采集。',
   };
 }
 

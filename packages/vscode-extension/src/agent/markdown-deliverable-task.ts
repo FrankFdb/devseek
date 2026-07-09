@@ -143,6 +143,7 @@ export async function tryExecuteMarkdownDeliverableTask(
   const markdown = provider.markdown || buildFallbackMarkdown({
     userPrompt: input.userPrompt,
     targetRelPath: relPath,
+    deliveryObjective: input.task.desc,
     evidence,
     reason: provider.reason || 'Provider 未返回可用的完整 Markdown 报告。',
   });
@@ -409,6 +410,9 @@ function buildProviderPrompt(input: MarkdownDeliverableTaskInput, evidence: Evid
     '文档必须包含：需求差异、旧实现职责观察、实现对策、主控任务拆分、风险与验证建议、后续任务清单。',
     `目标写入路径：${relTarget}`,
     '',
+    '## 本文档交付目标',
+    input.task.desc || '生成用户要求的 Markdown 建议文档。',
+    '',
     '## 用户原始要求',
     input.userPrompt,
     '',
@@ -463,6 +467,7 @@ function describeEvidenceSummary(evidence: EvidenceBundle): string {
 function buildFallbackMarkdown(input: {
   userPrompt: string;
   targetRelPath: string;
+  deliveryObjective: string;
   evidence: EvidenceBundle;
   reason: string;
 }): string {
@@ -479,9 +484,13 @@ function buildFallbackMarkdown(input: {
     : '- 无';
 
   return ensureFinalNewline([
-    '# 维保提醒需求分析与实现建议',
+    fallbackTitleForObjective(input.deliveryObjective),
     '',
     `> 生成说明：Provider 未返回可用的完整报告（${input.reason}）。DevSeek 已基于本地读取的证据生成本 Markdown 交付物，避免任务在无产物状态下结算。`,
+    '',
+    '## 本文档目标',
+    '',
+    input.deliveryObjective || '生成用户要求的 Markdown 建议文档。',
     '',
     '## 用户要求',
     '',
@@ -503,6 +512,8 @@ function buildFallbackMarkdown(input: {
     sourceDigest,
     '',
     '## 实现对策',
+    '',
+    fallbackFocusedDesignAdvice(input.deliveryObjective),
     '',
     '1. 先把新需求拆成状态、阈值、持久化、事件发布、复位/主控协同五类能力，避免把所有逻辑堆入单个管理类。',
     '2. 以现有旧实现文件为边界梳理职责：数据采集只产出事实，阈值引擎只判断触发条件，状态机只管理状态迁移，持久化只负责版本化读写。',
@@ -526,6 +537,50 @@ function buildFallbackMarkdown(input: {
     '- 验证：使用需求文档中的典型阈值构造单元测试，检查状态迁移和事件发布是否一一对应。',
     '- 验证：用旧版本持久化数据启动，确认默认值、版本迁移和复位逻辑可恢复。',
   ].join('\n'));
+}
+
+function fallbackTitleForObjective(objective: string): string {
+  if (isRemoteControllerInterfaceObjective(objective)) {
+    return '# 01 遥控器与主控交互接口设计';
+  }
+  if (isMainControlLogicObjective(objective)) {
+    return '# 02 主控维保提醒逻辑实现设计';
+  }
+  return '# 维保提醒需求分析与实现建议';
+}
+
+function fallbackFocusedDesignAdvice(objective: string): string {
+  if (isRemoteControllerInterfaceObjective(objective)) {
+    return [
+      '### 遥控器与主控交互接口',
+      '',
+      '- 遥控器职责：对接平台接口，接收平台 JSON 数据，完成基础校验、时间戳补齐和字段归一化。',
+      '- 转发边界：遥控器只转发平台维保相关输入和主控输出结果，不在遥控器侧重复计算维保阈值。',
+      '- 主控输入：主控接收平台维保参数、设备身份、累计统计基线和复位/确认命令。',
+      '- 主控输出：主控返回是否需要维保提醒、提醒等级、触发维度、建议动作、更新时间和错误码。',
+      '- 协议建议：接口文档应固定 request/response JSON schema、字段单位、枚举值、超时重试、幂等键和版本号。',
+    ].join('\n');
+  }
+  if (isMainControlLogicObjective(objective)) {
+    return [
+      '### 主控逻辑实现',
+      '',
+      '- 线程模型：新增独立维保提醒线程，按固定 tick 周期读取遥控器转发数据和本地累计统计。',
+      '- 统计职责：主控统一计算作业次数、飞行时长、日历周期、维保确认和复位后的累计状态。',
+      '- 状态机：将 NORMAL/NOTICE/WARNING/OVERDUE/RESETTING 等状态集中结算，输出单一可信结果。',
+      '- 持久化：统计基线、上次提醒、确认状态和版本号需要原子写入，并支持旧数据迁移。',
+      '- 验证任务：覆盖首次启动、重启恢复、平台数据缺失、重复复位、阈值边界和遥控器通信异常。',
+    ].join('\n');
+  }
+  return '';
+}
+
+function isRemoteControllerInterfaceObjective(objective: string): boolean {
+  return /(?:遥控器|遥控).{0,80}(?:接口|交互|平台|json)|(?:接口|交互).{0,80}(?:遥控器|遥控)/i.test(objective);
+}
+
+function isMainControlLogicObjective(objective: string): boolean {
+  return /(?:主控维保提醒逻辑实现设计|主控).{0,80}(?:逻辑实现|实现设计|独立线程|统计计算|状态机|持久化)|(?:逻辑实现|实现设计|独立线程|统计计算|状态机).{0,80}(?:主控)/i.test(objective);
 }
 
 function extractImportantLines(content: string, maxLines: number): string {

@@ -80,7 +80,29 @@ test('task-execution-policy: plan mode adds missing Markdown deliverable task', 
   assert.equal(result.tasks[0].id, 't1');
   assert.equal(result.tasks[0].file, 'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md');
   assert.equal(result.tasks[0].absPath, '/project/src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md');
-  assert.match(result.reason, /单一 \.md 创建任务/);
+  assert.match(result.reason, /\.md 创建任务/);
+});
+
+test('task-execution-policy: plan mode preserves multiple requested Markdown deliverables', () => {
+  const result = enforceAgentTaskExecutionPolicy(
+    [
+      { id: 'ctx1', file: 'src/oam/src/license', action: 'analyze', desc: '分析通信参考', absPath: '/project/src/oam/src/license' },
+      { id: 't1', file: 'docs/01-warranty-remote-controller-interface-design.md', action: 'create', desc: '编写遥控器与主控交互接口设计 Markdown 文档', absPath: '/project/docs/01-warranty-remote-controller-interface-design.md' },
+      { id: 't2', file: 'docs/02-warranty-main-control-logic-design.md', action: 'create', desc: '编写主控维保提醒逻辑实现设计 Markdown 文档', absPath: '/project/docs/02-warranty-main-control-logic-design.md' },
+      { id: 't3', file: 'src/oam/main.cpp', action: 'modify', desc: '误生成的代码修改任务', absPath: '/project/src/oam/main.cpp' },
+    ],
+    { mode: 'plan', userPrompt: '请进行遥控器接口设计、主控逻辑实现设计，并分别做成 md 文档，给文档编号' },
+  );
+
+  assert.equal(result.changed, true);
+  assert.deepEqual(result.tasks.map(task => task.file), [
+    'docs/01-warranty-remote-controller-interface-design.md',
+    'docs/02-warranty-main-control-logic-design.md',
+  ]);
+  assert.deepEqual(result.tasks.map(task => task.id), ['t1', 't2']);
+  assert.deepEqual(result.tasks.map(task => task.action), ['create', 'create']);
+  assert.equal(result.tasks.some(task => task.action === 'modify'), false);
+  assert.match(result.reason, /保留 2 个 \.md 创建任务/);
 });
 
 test('task-execution-policy: plan mode preserves model-provided project-prefixed Markdown create', () => {

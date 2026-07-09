@@ -481,6 +481,66 @@ test('agent-task-decomposer: explicit Markdown output path wins and keeps simula
   }
 });
 
+test('agent-task-decomposer: separate numbered Markdown deliverables stay separate', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    mkdirSync(path.join(externalRoot, '.devseek'), { recursive: true });
+    const licenseDir = path.join(externalRoot, 'src/oam/src/license');
+    const oldImplDir = path.join(externalRoot, 'src/oam/src/lifting/maintenance');
+    const docsDir = path.join(externalRoot, 'src/oam/src/lifting/zc_maintenance/docs');
+    const requirementDoc = path.join(docsDir, 'uav-warranty-reminder-plan_v1.7.md');
+    const interfaceDoc = path.join(docsDir, '维保预警接口文档.md');
+    mkdirSync(licenseDir, { recursive: true });
+    mkdirSync(oldImplDir, { recursive: true });
+    mkdirSync(docsDir, { recursive: true });
+    writeFileSync(path.join(licenseDir, 'license_core_worker.cpp'), '// license worker\n');
+    writeFileSync(path.join(oldImplDir, 'maintenance_manager.hpp'), '#pragma once\n');
+    writeFileSync(requirementDoc, '# warranty plan\n');
+    writeFileSync(interfaceDoc, '# platform api\n');
+
+    const prompt = [
+      `1）关于和遥控器的通讯参考：${licenseDir}模块的方式`,
+      `2）原来的吊运维保代码不懂，全新实现，可以参考原来维保保持代码的自动方式，做一个独立线程`,
+      '3）遥控器负责和平台进行数据交互，然后把平台的json数据转发给主控',
+      '4）主控负责统计计算，把最终是否维保提醒信息给遥控器',
+      `5）基于 ${requirementDoc} 需求 和 平台的接口文档： ${interfaceDoc}`,
+      `进行 遥控器和主控的交互接口设计，主控则逻辑实现设计，并分别做成md文档，放置到 ${docsDir}目录下面，并且给文档编号`,
+    ].join('\n');
+
+    const progress = [];
+    let plannerCalled = false;
+    const result = await decomposeTask(prompt, [], undefined, text => progress.push(text), undefined, async () => {
+      plannerCalled = true;
+      return '{}';
+    }, requirementDoc);
+
+    assert.equal(result.ok, true);
+    assert.equal(plannerCalled, false);
+    assert.equal(result.tasks.length, 2);
+    assert.deepEqual(result.tasks.map(task => task.action), ['create', 'create']);
+    assert.deepEqual(result.tasks.map(task => task.file), [
+      'src/oam/src/lifting/zc_maintenance/docs/01-warranty-remote-controller-interface-design.md',
+      'src/oam/src/lifting/zc_maintenance/docs/02-warranty-main-control-logic-design.md',
+    ]);
+    assert.match(result.tasks[0].desc, /遥控器.*主控.*交互接口设计/);
+    assert.match(result.tasks[1].desc, /主控.*逻辑实现设计/);
+    assert.equal(
+      result.tasks[0].absPath,
+      path.join(docsDir, '01-warranty-remote-controller-interface-design.md'),
+    );
+    assert.equal(
+      result.tasks[1].absPath,
+      path.join(docsDir, '02-warranty-main-control-logic-design.md'),
+    );
+    assert.equal(progress.some(text => /生成 2 个文档创建任务/.test(text)), true);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
 test('agent-task-decomposer: planner prompt keeps bounded file previews for large attachments', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-large-plan-'));
   try {

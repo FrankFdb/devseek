@@ -579,6 +579,26 @@ function normalizeMarkdownDocumentDeliverableTasks(
 ): AgentTask[] {
   if (!userPrompt || !isMarkdownDocumentDeliverableRequest(userPrompt)) return tasks;
 
+  const explicitSingleOutput = selectExplicitMarkdownDocumentOutputPath(userPrompt);
+  const structuredSpecs = explicitSingleOutput ? [] : detectStructuredMarkdownDocumentSpecs(userPrompt);
+  if (structuredSpecs.length > 1) {
+    const outputDir = selectMarkdownDocumentOutputDir(tasks, userPrompt, promptDir, activeEditorFile);
+    if (outputDir) {
+      return structuredSpecs.map((spec, index) => {
+        const outputAbs = uniqueMarkdownDocumentPath(outputDir, spec.filename);
+        const outputFile = taskDisplayPathForAbs(outputAbs, promptDir);
+        return {
+          id: `t${index + 1}`,
+          file: outputFile,
+          action: 'create' as AgentTaskAction,
+          desc: spec.desc,
+          visibleTarget: outputFile,
+          absPath: outputAbs,
+        };
+      });
+    }
+  }
+
   const documentTask = tasks.find(isMarkdownDocumentCreateTask)
     ?? buildMarkdownDocumentCreateTask(tasks, userPrompt, promptDir, activeEditorFile);
 
@@ -610,6 +630,119 @@ function buildMarkdownDocumentCreateTask(
   };
 }
 
+interface MarkdownDocumentSpec {
+  filename: string;
+  desc: string;
+}
+
+function detectStructuredMarkdownDocumentSpecs(userPrompt: string | undefined): MarkdownDocumentSpec[] {
+  const text = String(userPrompt || '').replace(/\s+/g, ' ').trim();
+  if (!text) return [];
+  const wantsSeparateDocuments = /(?:分别|分开|各自|多个|每个|逐个|文档编号|编号).{0,24}(?:md|markdown|文档|报告|文件)|(?:md|markdown|文档|报告|文件).{0,24}(?:分别|分开|各自|多个|每个|逐个|编号)/i.test(text);
+  if (!wantsSeparateDocuments) return [];
+
+  const topics = extractStructuredMarkdownTopics(text);
+  if (topics.length < 2) return [];
+
+  const used = new Set<string>();
+  return topics.map((topic, index) => {
+    const filename = uniqueStructuredMarkdownFilename(topic, index + 1, text, used);
+    return {
+      filename,
+      desc: `编写${topic} Markdown 文档，结合用户提供的需求、接口和代码证据进行分析，输出设计建议、任务拆分、风险验证和文档编号`,
+    };
+  });
+}
+
+function extractStructuredMarkdownTopics(text: string): string[] {
+  const markerMatch = text.match(/(?:并)?(?:分别|分开|各自|逐个|每个).{0,24}(?:做成|生成|输出|写成|保存为|产出|提供)?.{0,16}(?:md|markdown|文档|报告|文件)/i);
+  if (!markerMatch || markerMatch.index === undefined) return [];
+
+  const beforeMarker = text.slice(0, markerMatch.index).trim();
+  const start = Math.max(
+    beforeMarker.lastIndexOf('进行'),
+    beforeMarker.lastIndexOf('输出'),
+    beforeMarker.lastIndexOf('生成'),
+    beforeMarker.lastIndexOf('编写'),
+    beforeMarker.lastIndexOf('提供'),
+  );
+  const topicText = (start >= 0 ? beforeMarker.slice(start + 2) : beforeMarker)
+    .replace(/\/[^\s"'`<>，。；;：:]+/g, ' ')
+    .replace(/(?:基于|参考|和|与)?\s*(?:需求|接口文档|平台接口文档|代码|模块|方式)[:：]?/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  let topics = topicText
+    .split(/[，,；;、]+/)
+    .map(cleanStructuredMarkdownTopic)
+    .filter(isUsefulStructuredMarkdownTopic);
+
+  if (topics.length < 2 && /(?:分别|各自|每个|逐个)/.test(text)) {
+    topics = topicText
+      .split(/(?:\s+和\s+|\s+与\s+|以及|及)/)
+      .map(cleanStructuredMarkdownTopic)
+      .filter(isUsefulStructuredMarkdownTopic);
+  }
+
+  return uniqueTextItems(topics).slice(0, 6);
+}
+
+function cleanStructuredMarkdownTopic(value: string): string {
+  return value
+    .replace(/^(?:并|和|与|及|以及|然后|同时|则|对|将|把|给|做|为|成)+/g, '')
+    .replace(/(?:并|和|与|及|以及|然后|同时|则)+/g, match => (match === '则' ? '' : match))
+    .replace(/(?:放置|放到|放在|保存|输出|写入|生成).{0,40}$/g, '')
+    .replace(/\s+/g, '')
+    .trim();
+}
+
+function isUsefulStructuredMarkdownTopic(value: string): boolean {
+  if (value.length < 4 || value.length > 60) return false;
+  return /(?:设计|方案|接口|交互|协议|逻辑|实现|任务|清单|对策|报告|分析|规划|验证|测试|架构|流程)/.test(value);
+}
+
+function uniqueStructuredMarkdownFilename(topic: string, index: number, userPrompt: string, used: Set<string>): string {
+  const domain = /(?:维保|过保|保修|maintenance|warranty)/i.test(userPrompt)
+    ? 'warranty'
+    : /(?:重构|refactor)/i.test(userPrompt)
+      ? 'refactor'
+      : 'devseek';
+  const baseSlug = structuredMarkdownTopicSlug(topic);
+  let filename = `${String(index).padStart(2, '0')}-${domain}-${baseSlug}.md`;
+  let suffix = 1;
+  while (used.has(filename)) {
+    suffix += 1;
+    filename = `${String(index).padStart(2, '0')}-${domain}-${baseSlug}-${suffix}.md`;
+  }
+  used.add(filename);
+  return filename;
+}
+
+function structuredMarkdownTopicSlug(topic: string): string {
+  const hasRemote = /(?:遥控器|遥控|remote|controller)/i.test(topic);
+  const hasMainControl = /(?:主控|飞控|main\s*control|controller)/i.test(topic);
+  if (hasRemote && /(?:接口|交互|协议|平台|json|通信|通讯|api)/i.test(topic)) return 'remote-controller-interface-design';
+  if (hasMainControl && /(?:逻辑|实现|线程|统计|状态机|持久化|计算)/i.test(topic)) return 'main-control-logic-design';
+  if (/(?:接口|交互|协议|api|json|通信|通讯)/i.test(topic)) return 'interface-design';
+  if (/(?:逻辑|实现|线程|状态机|持久化|计算)/i.test(topic)) return 'logic-design';
+  if (/(?:任务|task|清单|拆分)/i.test(topic)) return 'task-breakdown';
+  if (/(?:验证|测试|验收)/i.test(topic)) return 'verification-plan';
+  if (/(?:架构|architecture)/i.test(topic)) return 'architecture-design';
+  return 'analysis-design';
+}
+
+function uniqueTextItems(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
+}
+
 function selectMarkdownDocumentOutputPath(
   tasks: AgentTask[],
   userPrompt: string,
@@ -620,6 +753,20 @@ function selectMarkdownDocumentOutputPath(
   if (explicitOutput) return explicitOutput;
 
   const filename = markdownDocumentFilenameForPrompt(userPrompt);
+  const outputDir = selectMarkdownDocumentOutputDir(tasks, userPrompt, promptDir, activeEditorFile);
+  if (!outputDir) return undefined;
+  return uniqueMarkdownDocumentPath(outputDir, filename);
+}
+
+function selectMarkdownDocumentOutputDir(
+  tasks: AgentTask[],
+  userPrompt: string,
+  promptDir: string | undefined,
+  activeEditorFile?: string,
+): string | undefined {
+  const explicitDir = selectExplicitMarkdownDocumentOutputDir(userPrompt);
+  if (explicitDir) return explicitDir;
+
   const candidateDirs = [
     ...extractPromptMarkdownDocumentDirs(userPrompt),
     activeEditorFile && isMarkdownDocumentPathLike(activeEditorFile) ? nodePath.dirname(activeEditorFile) : undefined,
@@ -636,8 +783,7 @@ function selectMarkdownDocumentOutputPath(
   ].filter((value): value is string => Boolean(value));
 
   const outputDir = candidateDirs.find(dir => !promptDir || isInsideDir(dir, promptDir)) ?? candidateDirs[0];
-  if (!outputDir) return undefined;
-  return uniqueMarkdownDocumentPath(outputDir, filename);
+  return outputDir;
 }
 
 function selectExplicitMarkdownDocumentOutputPath(userPrompt: string | undefined): string | undefined {
@@ -664,6 +810,54 @@ function selectExplicitMarkdownDocumentOutputPath(userPrompt: string | undefined
     }
   }
   return undefined;
+}
+
+function selectExplicitMarkdownDocumentOutputDir(userPrompt: string | undefined): string | undefined {
+  const text = String(userPrompt || '');
+  if (!text) return undefined;
+
+  const pathPattern = '(/(?:[A-Za-z0-9._@%+=-]+/)*[A-Za-z0-9._@%+=-]+)';
+  const outputBeforePath = new RegExp(
+    `(?:输出|保存|生成|写入|写出|创建|新建|落盘|产出|放置|放到|放在)(?:[^\\r\\n]{0,64}?)(?:到|至|为|成|在)?\\s*${pathPattern}(?:\\s*(?:目录|文件夹)?(?:下|下面|中|里)?)?`,
+    'gi',
+  );
+  const pathBeforeDirectory = new RegExp(
+    `${pathPattern}(?:\\s*(?:目录|文件夹)(?:下|下面|中|里)?|(?:[^\\r\\n]{0,32}?)(?:保存|输出|放置|放到|放在|写入|生成))`,
+    'gi',
+  );
+
+  for (const re of [outputBeforePath, pathBeforeDirectory]) {
+    re.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text)) !== null) {
+      const dir = coerceMarkdownOutputDir(normalizePromptDirectoryPath(match[1]));
+      if (dir) return uniqueExistingOrRequestedDir(dir);
+    }
+  }
+  return undefined;
+}
+
+function normalizePromptDirectoryPath(value: string | undefined): string {
+  return String(value || '')
+    .replace(/[)\]}>，。；;：:,.]+$/g, '')
+    .replace(/\/+$/g, '')
+    .trim();
+}
+
+function coerceMarkdownOutputDir(absPath: string): string | undefined {
+  if (!absPath || !nodePath.isAbsolute(absPath)) return undefined;
+  if (isMarkdownDocumentPathLike(absPath)) return nodePath.dirname(absPath);
+  try {
+    if (fs.existsSync(absPath) && fs.statSync(absPath).isDirectory()) return absPath;
+  } catch {
+    // Fall through to docs-directory heuristic.
+  }
+  if (/\/docs?$/i.test(absPath)) return absPath;
+  return undefined;
+}
+
+function uniqueExistingOrRequestedDir(dir: string): string {
+  return nodePath.normalize(dir);
 }
 
 function normalizePromptMarkdownPath(value: string | undefined): string {
@@ -1260,7 +1454,10 @@ export async function decomposeTask(
 
   if (isMarkdownDocumentDeliverableRequest(userPrompt)) {
     const tasks = buildLocalMarkdownDocumentDeliverableTasks(userPrompt, attachedFiles, contextActiveEditorFile);
-    onProgress('已识别 Markdown 文档交付物，生成单一文档创建任务…');
+    const documentTaskCount = tasks.filter(isMarkdownDocumentCreateTask).length;
+    onProgress(documentTaskCount > 1
+      ? `已识别 Markdown 文档交付物，生成 ${documentTaskCount} 个文档创建任务…`
+      : '已识别 Markdown 文档交付物，生成单一文档创建任务…');
     return {
       tasks,
       raw: JSON.stringify({ tasks }),
