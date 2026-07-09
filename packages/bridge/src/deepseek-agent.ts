@@ -208,8 +208,12 @@ export class DeepSeekAgent {
     if (this.context) await saveCookies(this.context);
     console.log('[agent] Login successful, cookies saved. Keeping browser open for chat use.');
     // 不关闭浏览器！保持 session 存活用于后续聊天
-    // 尝试最小化窗口（让用户不太分心）
-    await this._minimizeWindow();
+    if (process.env.DEVSEEK_BRIDGE_KEEP_VISIBLE === '1') {
+      console.log('[agent] Keeping visible browser window open for live harness observation.');
+    } else {
+      // 尝试最小化窗口（让用户不太分心）
+      await this._minimizeWindow();
+    }
   }
 
   private async _minimizeWindow(): Promise<void> {
@@ -403,13 +407,13 @@ export class DeepSeekAgent {
       // 有附件时避免 Ctrl+A 清空把附件 chip 一并删除。
       await page.keyboard.press('Control+End');
       await page.waitForTimeout(150);
-      await page.keyboard.insertText(effectivePrompt);
+      await this.insertComposerText(page, effectivePrompt);
       let inputText = await this.getComposerText(page);
       if (!inputText.includes(effectivePrompt.slice(0, Math.min(10, effectivePrompt.length)))) {
         await input.click();
         await page.keyboard.press('Control+End');
         await page.waitForTimeout(150);
-        await page.keyboard.insertText(effectivePrompt);
+        await this.insertComposerText(page, effectivePrompt);
         inputText = await this.getComposerText(page);
       }
       if (!inputText.includes(effectivePrompt.slice(0, Math.min(10, effectivePrompt.length)))) {
@@ -417,14 +421,22 @@ export class DeepSeekAgent {
         inputText = await this.getComposerText(page);
       }
       if (!inputText.includes(effectivePrompt.slice(0, Math.min(10, effectivePrompt.length)))) {
-        console.warn('[agent] Prompt was not typed correctly after attaching files; continuing with best effort.');
+        throw new Error(`PROMPT_INPUT_FAILED: 无法写入 ${effectivePrompt.length} 字符的请求，请缩小上下文或改用文件/工具读取。`);
       }
     } else {
       // 清空已有内容后输入
       await page.keyboard.press('Control+a');
       await page.keyboard.press('Backspace');
-      // 模拟人类打字（避免防抖失效）
-      await input.fill(effectivePrompt);
+      if (effectivePrompt.length > 30_000) {
+        await this.insertComposerText(page, effectivePrompt);
+      } else {
+        // 模拟人类打字（避免防抖失效）
+        await input.fill(effectivePrompt);
+      }
+      const inputText = await this.getComposerText(page);
+      if (!inputText.includes(effectivePrompt.slice(0, Math.min(10, effectivePrompt.length)))) {
+        throw new Error(`PROMPT_INPUT_FAILED: 无法写入 ${effectivePrompt.length} 字符的请求，请缩小上下文或改用文件/工具读取。`);
+      }
     }
     await page.waitForTimeout(200);
 
@@ -438,6 +450,7 @@ export class DeepSeekAgent {
       return c;
     })()`).catch(() => 0) as number;
     const baselineText = await this.getStreamingAssistantText(page).catch(() => '');
+    const submitBaseline = await this.getSubmitState(page);
 
     await this.resetContentMutationClock(page);
     const requestPayloadId = opts.trace?.payload('provider', 'bridge.effective-prompt', effectivePrompt);
@@ -445,17 +458,30 @@ export class DeepSeekAgent {
 
     // 提交：优先找发送按钮，找不到就按 Enter
     const sendBtn = await findElement(page, SELECTORS.sendButton);
+    const submitMethod = sendBtn ? 'button' : 'enter';
     if (sendBtn) {
       await sendBtn.click();
     } else {
       await page.keyboard.press('Enter');
     }
 
-    console.log(`[agent] Message sent (${effectivePrompt.length} chars), baselineAiMsgs=${baselineAiMsgCount}, baselineTextLen=${baselineText.length}`);
+    opts.trace?.info('deepseek-web', 'message-submit-clicked', {
+      promptLength: effectivePrompt.length,
+      method: submitMethod,
+      baselineMessageCount: submitBaseline.messageCount,
+      baselineComposerLength: submitBaseline.composerText.length,
+    });
+    const submitResult = await this.waitForSubmitConfirmation(page, submitBaseline, effectivePrompt);
+    if (!submitResult.confirmed) {
+      throw new Error(`PROMPT_SUBMIT_FAILED: DeepSeek 网页未确认收到本轮请求（${submitResult.reason}）。请缩小上下文或重试；如果页面输入框仍有内容，说明网页未接收发送动作。`);
+    }
+
+    console.log(`[agent] Message sent (${effectivePrompt.length} chars), baselineAiMsgs=${baselineAiMsgCount}, baselineTextLen=${baselineText.length}, submit=${submitResult.reason}`);
     opts.trace?.info('deepseek-web', 'message-sent', {
       promptLength: effectivePrompt.length,
       baselineAiMsgCount,
       baselineTextLength: baselineText.length,
+      submitEvidence: submitResult.reason,
     });
     const response = await this.waitForResponse(page, timeoutMs, opts.onDelta, baselineAiMsgCount, baselineText);
     const responsePayloadId = opts.trace?.payload('provider', 'bridge.response.raw', response);
@@ -506,6 +532,68 @@ export class DeepSeekAgent {
     } catch {
       // best effort fallback only
     }
+  }
+
+  private async insertComposerText(page: Page, text: string): Promise<void> {
+    const chunkSize = 8_000;
+    for (let i = 0; i < text.length; i += chunkSize) {
+      await page.keyboard.insertText(text.slice(i, i + chunkSize));
+      if (i + chunkSize < text.length) {
+        await page.waitForTimeout(40);
+      }
+    }
+  }
+
+  private async getSubmitState(page: Page): Promise<{ composerText: string; messageCount: number }> {
+    const composerText = await this.getComposerText(page).catch(() => '');
+    const messageCount = await page.evaluate(`(function(){
+      var selectors = [
+        '[class*="ds-message"]',
+        '[data-role="user"]',
+        '[data-role="assistant"]',
+        'div[class*="message"]'
+      ];
+      var seen = [];
+      var count = 0;
+      for (var i = 0; i < selectors.length; i++) {
+        var nodes = document.querySelectorAll(selectors[i]);
+        for (var j = 0; j < nodes.length; j++) {
+          if (seen.indexOf(nodes[j]) >= 0) continue;
+          seen.push(nodes[j]);
+          count++;
+        }
+      }
+      return count;
+    })()`).catch(() => 0) as number;
+    return { composerText, messageCount };
+  }
+
+  private async waitForSubmitConfirmation(
+    page: Page,
+    baseline: { composerText: string; messageCount: number },
+    prompt: string,
+    timeoutMs = 8_000,
+  ): Promise<{ confirmed: boolean; reason: string }> {
+    const prefix = prompt.slice(0, Math.min(10, prompt.length));
+    const deadline = Date.now() + timeoutMs;
+    let lastState = baseline;
+    while (Date.now() < deadline) {
+      await page.waitForTimeout(250);
+      lastState = await this.getSubmitState(page);
+      if (lastState.messageCount > baseline.messageCount) {
+        return { confirmed: true, reason: `message-count:${baseline.messageCount}->${lastState.messageCount}` };
+      }
+      if (prefix && baseline.composerText.includes(prefix) && !lastState.composerText.includes(prefix)) {
+        return { confirmed: true, reason: 'composer-cleared' };
+      }
+      if (!prefix && lastState.composerText.length === 0) {
+        return { confirmed: true, reason: 'empty-prompt-cleared' };
+      }
+    }
+    return {
+      confirmed: false,
+      reason: `message-count:${baseline.messageCount}->${lastState.messageCount}, composer:${baseline.composerText.length}->${lastState.composerText.length}`,
+    };
   }
 
   // ----------------------------------------------------------------

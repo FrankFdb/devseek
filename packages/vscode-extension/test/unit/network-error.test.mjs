@@ -25,5 +25,14 @@ const { isNetworkError } = req(bundlePath);
 test('NetworkError: classifies transient connection errors but not login failures', () => {
   assert.equal(isNetworkError(new Error('fetch failed')), true);
   assert.equal(isNetworkError(new Error('HTTP 503 service unavailable')), true);
+  assert.equal(
+    isNetworkError(new Error('RESPONSE_CORRUPTED:rate-limited:Provider is rate limited or waiting for verification.')),
+    true,
+  );
+  assert.equal(
+    isNetworkError(new Error('RESPONSE_CORRUPTED:incomplete-tool-block:Tool block is incomplete.')),
+    true,
+  );
   assert.equal(isNetworkError(new Error('LOGIN_REQUIRED')), false);
+  assert.equal(isNetworkError(new Error('RESPONSE_CORRUPTED:login-required:Provider requires login.')), false);
 });

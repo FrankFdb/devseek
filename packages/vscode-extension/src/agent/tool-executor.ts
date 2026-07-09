@@ -5,6 +5,7 @@ import type { FakeTool } from './fake-tool-parser';
 import type { ToolCall } from './tool-call-normalizer';
 import { normalizeToolCall, toolCallToFakeTool } from './tool-call-normalizer';
 import {
+  type AgentToolDefinition,
   type AgentToolActivity,
   getToolDefinition,
   getToolActivity,
@@ -40,8 +41,14 @@ export interface AgentToolExecutionPlan {
   registered: boolean;
   activity: AgentToolActivity | null;
   call: ToolCall;
+  definition?: AgentToolDefinition;
   evidence: EvidenceRef[];
   permission?: ToolPermissionDecision;
+}
+
+export interface ToolInputValidationResult {
+  ok: boolean;
+  error?: string;
 }
 
 export class AgentToolExecutor {
@@ -68,6 +75,7 @@ export class AgentToolExecutor {
       registered: Boolean(definition),
       activity: getToolActivity(normalizedTool),
       call,
+      definition,
       evidence: buildEvidenceRefs(call),
       permission,
     };
@@ -75,6 +83,17 @@ export class AgentToolExecutor {
 
   isFileWrite(tool: FakeTool): boolean {
     return isFileWriteTool(tool.name);
+  }
+
+  validateInput(plan: AgentToolExecutionPlan): ToolInputValidationResult {
+    if (!plan.registered || !plan.definition) {
+      return { ok: false, error: `未注册工具: ${plan.call.name || 'unknown'}` };
+    }
+    const missing = missingRequiredFields(plan.definition, plan.call.input);
+    if (missing.length > 0) {
+      return { ok: false, error: `缺少必填参数: ${missing.join(', ')}` };
+    }
+    return { ok: true };
   }
 
   toResult(plan: AgentToolExecutionPlan, result: ToolResultInput = {}): ToolResult {
@@ -87,6 +106,22 @@ export class AgentToolExecutor {
       permission: plan.permission,
     };
   }
+}
+
+function missingRequiredFields(definition: AgentToolDefinition, input: Record<string, unknown>): string[] {
+  const required = definition.schema.required ?? [];
+  return required.filter((key) => !hasSchemaValue(input[key], definition.schema.properties[key]?.type));
+}
+
+function hasSchemaValue(value: unknown, expectedType?: AgentToolDefinition['schema']['properties'][string]['type']): boolean {
+  if (value === undefined || value === null) return false;
+  if (!expectedType) return true;
+  if (expectedType === 'string') return typeof value === 'string' && value.trim().length > 0;
+  if (expectedType === 'array') return Array.isArray(value);
+  if (expectedType === 'object') return typeof value === 'object' && !Array.isArray(value);
+  if (expectedType === 'number') return typeof value === 'number' && Number.isFinite(value);
+  if (expectedType === 'boolean') return typeof value === 'boolean';
+  return true;
 }
 
 export function classifyToolKind(name: string): ToolKind {

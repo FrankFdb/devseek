@@ -11,7 +11,7 @@ import { WorkspaceEditService } from '../workspace/edit-service';
 import {
   decideProjectInstructionFileWrite,
 } from '../workspace/instruction-file-safety';
-import { AgentToolExecutor } from './tool-executor';
+import { AgentToolExecutor, type EvidenceRef } from './tool-executor';
 import { containsFakeToolCallProtocol, type FakeTool } from './fake-tool-parser';
 import { cleanAgentFinalSummaryForUser } from './agentic-summary';
 import {
@@ -106,6 +106,8 @@ export interface ToolLoopResult {
   writtenFiles?: Array<{path: string; basename: string; linesAdded: number; linesRemoved: number; action: string}>;
   /** Files successfully read through read_file during this tool loop iteration. */
   readFiles?: string[];
+  /** Unified evidence refs produced from normalized ToolCall plans. */
+  evidenceRefs?: EvidenceRef[];
 }
 
 function isInternalMemoryTodo(item: TodoItem): boolean {
@@ -444,9 +446,13 @@ export async function applyMarkdownFileArtifactsForLoop(
       }
     }
     if (callbacks.onBeforeFileWrite) {
-      const allowed = await callbacks.onBeforeFileWrite(resolvedAbs);
+      const allowed = await callbacks.onBeforeFileWrite(resolvedAbs, {
+        purpose: 'tool-write',
+        userRequested: false,
+        displayName: resolvedWrite.relPath,
+      });
       if (!allowed) {
-        feedback.push(`[generated_file: ${artifact.path}] 跳过（敏感文件保护）`);
+        feedback.push(`[generated_file: ${artifact.path}] 跳过（写入权限策略阻止）`);
         continue;
       }
     }
@@ -507,6 +513,7 @@ export async function executeFakeToolsForLoop(
   const readFiles: string[] = [];
   const terminalCommands: string[] = [];
   const terminalEvidence: TerminalEvidence[] = [];
+  const evidenceRefs: EvidenceRef[] = [];
   let deferredCompletedTodoItems: TodoItem[] | undefined;
   let lastTodoItems: TodoItem[] | undefined;
   let summaryEmitted = false;
@@ -522,7 +529,7 @@ export async function executeFakeToolsForLoop(
   const isLastTask = !taskContext || taskContext.currentTaskIndex >= taskContext.taskTotal;
   const workspaceRoot = taskContext?.workspaceRoot ?? inferWorkspaceRootForAgentTool(defaultWorkdir);
   const readEvidencePaths = new Set(taskContext?.readEvidencePaths ?? []);
-  const trace = getToolTraceLogger(workspaceRoot, callbacks.traceRunId);
+  const trace = getToolTraceLogger(callbacks.traceWorkspaceRoot ?? workspaceRoot, callbacks.traceRunId);
   trace?.debug('tool-loop', 'execute-start', {
     toolCount: tools.length,
     tools: tools.map(t => t.name),
@@ -531,7 +538,18 @@ export async function executeFakeToolsForLoop(
   });
 
   for (let toolIndex = 0; toolIndex < tools.length; toolIndex++) {
-    const tool = tools[toolIndex];
+    const toolPlan = agentToolExecutor.plan(tools[toolIndex]);
+    evidenceRefs.push(...toolPlan.evidence);
+    const tool = toolPlan.tool;
+    const inputValidation = agentToolExecutor.validateInput(toolPlan);
+    if (!inputValidation.ok) {
+      markToolCall(isAgentWorkToolName(tool.name));
+      parts.push([
+        `[${tool.name || 'unknown'}] 工具调用无效：${inputValidation.error}`,
+        `请按工具说明重新调用，并提供完整 JSON 参数；不要省略必填字段。`,
+      ].join('\n'));
+      continue;
+    }
     if (tool.name === 'manage_todo_list') {
       let items = normalizeVisibleTodos((tool.input.todoList ?? []) as TodoItem[]);
       if (Array.isArray(items)) {
@@ -826,9 +844,13 @@ export async function executeFakeToolsForLoop(
             continue;
           }
           if (callbacks.onBeforeFileWrite) {
-            const allowed = await callbacks.onBeforeFileWrite(absPath);
+            const allowed = await callbacks.onBeforeFileWrite(absPath, {
+              purpose: 'tool-write',
+              userRequested: false,
+              displayName: rawPath,
+            });
             if (!allowed) {
-              parts.push(`[${tool.name}: ${rawPath}] 跳过（敏感文件保护）`);
+              parts.push(`[${tool.name}: ${rawPath}] 跳过（写入权限策略阻止）`);
               continue;
             }
           }
@@ -999,6 +1021,7 @@ export async function executeFakeToolsForLoop(
     terminalEvidenceCount: terminalEvidence.length,
     writtenFileCount: writtenFiles.length,
     readFileCount: readFiles.length,
+    evidenceRefCount: evidenceRefs.length,
   });
   return {
     taskComplete,
@@ -1013,5 +1036,6 @@ export async function executeFakeToolsForLoop(
     terminalEvidence: terminalEvidence.length > 0 ? terminalEvidence : undefined,
     writtenFiles: writtenFiles.length > 0 ? writtenFiles : undefined,
     readFiles: readFiles.length > 0 ? readFiles : undefined,
+    evidenceRefs: evidenceRefs.length > 0 ? evidenceRefs : undefined,
   };
 }

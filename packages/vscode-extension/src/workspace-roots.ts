@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import * as vscode from 'vscode';
+import { resolveProjectRootFromAnchors } from './workspace/project-root';
 
 function normalizeRelPath(relPath: string): string {
   return (relPath || '')
@@ -110,10 +111,30 @@ export function inferWorkspaceFolderFromPrompt(promptText?: string, preferredAbs
   return folders.length === 1 ? folders[0] : undefined;
 }
 
+export function getTaskWorkspaceRootFsPath(
+  promptText?: string,
+  preferredAbsolutePaths?: string[],
+  activeEditorFile?: string,
+): string | undefined {
+  const workspaceRoots = getWorkspaceFolders().map(folder => folder.uri.fsPath);
+  const anchorRoot = resolveProjectRootFromAnchors([
+    ...(preferredAbsolutePaths ?? []),
+    activeEditorFile,
+    ...extractAbsolutePathHints(promptText || ''),
+  ], workspaceRoots);
+  if (anchorRoot) return anchorRoot;
+
+  return getWorkspaceRootFsPath(promptText, preferredAbsolutePaths);
+}
+
 export function getWorkspaceRootUri(promptText?: string, preferredAbsolutePaths?: string[]): vscode.Uri | undefined {
   return inferWorkspaceFolderFromPrompt(promptText, preferredAbsolutePaths)?.uri;
 }
 
 export function getWorkspaceRootFsPath(promptText?: string, preferredAbsolutePaths?: string[]): string | undefined {
   return getWorkspaceRootUri(promptText, preferredAbsolutePaths)?.fsPath;
+}
+
+function extractAbsolutePathHints(text: string): string[] {
+  return text.match(/\/[^\s'"`，。！？；：\n]+/g) || [];
 }

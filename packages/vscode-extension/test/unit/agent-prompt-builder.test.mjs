@@ -36,6 +36,21 @@ test('AgentPromptBuilder: tool suffix advertises range reads and withholds prema
   assert.match(last, /SOLID、DRY、KISS/);
 });
 
+test('AgentPromptBuilder: read-only tool suffix hides terminal and mutating tool examples', () => {
+  const readOnly = buildToolsSuffix(1, 1, undefined, '/tmp/project', {
+    includeTerminal: false,
+    includeWorkspaceMutationTools: false,
+  });
+
+  assert.doesNotMatch(readOnly, /run_terminal/);
+  assert.doesNotMatch(readOnly, /create_directory/);
+  assert.doesNotMatch(readOnly, /run_vscode_command/);
+  assert.match(readOnly, /read_file/);
+  assert.match(readOnly, /grep_search/);
+  assert.match(readOnly, /list_dir/);
+  assert.match(readOnly, /task_complete/);
+});
+
 test('AgentPromptBuilder: local recovery message stays read-only without task facts', () => {
   const message = buildLocalRespondTaskMessage(
     { targetKind: 'unknown', action: 'analyze', description: 'recover' },

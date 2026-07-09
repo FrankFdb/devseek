@@ -29,7 +29,7 @@ export function isProviderStatusRequest(prompt: string): boolean {
   if (!text) return false;
 
   const mentionsProvider = /(?:\bprovider\b|模型供应商|供应商|llm|deepseek|api\s*key|apikey|密钥|token|cookie|凭据|配置)/i.test(text);
-  const asksStatus = /(?:状态|可用|当前|使用哪个|检查|查询|配置|是否发现|是否配置|密钥|key|credential|secret|token|cookie)/i.test(text);
+  const asksStatus = /(?:状态|可用|使用哪个|检查|查询|配置|是否发现|是否配置|密钥|key|credential|secret|token|cookie|当前\s*(?:provider|模型|供应商|配置|api\s*key|apikey|密钥|token|cookie|凭据))/i.test(text);
   const requestsWorkspaceMutation = /(?:创建|新建|写入|覆盖|删除|重命名|生成文件|修改代码|create\s+file|write\s+file|delete\s+file|\[tool:write_file|\[tool:create_file)/i.test(text);
 
   return mentionsProvider && asksStatus && !requestsWorkspaceMutation;

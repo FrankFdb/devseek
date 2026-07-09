@@ -27,7 +27,15 @@ const { createTaskConvergenceGuard } = req(bundlePath);
 
 function repeatedReadObservation() {
   return {
-    tools: [{ name: 'read_file', input: { path: '/workspace/code/shape_manager/main.cpp' } }],
+    tools: [{
+      id: 'fake-tool:read_file',
+      name: 'read_file',
+      input: { path: '/workspace/code/shape_manager/main.cpp' },
+      source: 'fake-tool',
+      registered: true,
+      kind: 'read',
+      risk: 'low',
+    }],
     feedbackForAI: '[read_file] /workspace/code/shape_manager/main.cpp\n#include <GL/glut.h>',
     rawText: 'Action: read_fileAction Input: {"path":"/workspace/code/shape_manager/main.cpp"}',
   };

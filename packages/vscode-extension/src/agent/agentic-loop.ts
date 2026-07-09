@@ -64,6 +64,7 @@ import {
 } from './task-execution-result';
 import { shouldRequestManualReviewForRun } from './manual-review-validation';
 import type { AgentLoopCallbacks, AgentLoopResult } from './loop-types';
+import type { EvidenceRef } from './tool-executor';
 import { chatWithMessages, consumeUserSteerMessages } from './loop-chat';
 import {
   analyzeTerminalEvidence,
@@ -83,6 +84,11 @@ import {
 } from './task-state-machine';
 import { tryRunSimpleFileTask } from './simple-file-task';
 import { buildEngineeringGuidelinesPrompt } from './engineering-guidelines';
+import {
+  runtimeStateCanDeliver,
+  settleAgentRuntimeState,
+} from './agent-runtime-state-machine';
+import { describeProviderOutputIntegrity } from './provider-output-integrity';
 
 function extractPlanningTodoItems(text: string): TodoItem[] {
   const lines = text
@@ -348,10 +354,14 @@ export async function runAgenticLoop(
   let noToolRounds = 0;
   let sawWorkTool = false;
   const allTerminalEvidence: TerminalEvidence[] = [];
+  const allEvidenceRefs: EvidenceRef[] = [];
   let latestAutoQualityGate: AgenticHistoryQualityGate | undefined;
   let currentTodos: TodoItem[] = [];
   let lastMissingEvidence: string[] = [];
   let lastSummaryFactFailures: string[] = [];
+  let lastProviderText = '';
+  let lastRoundToolRequestCount = 0;
+  let executedToolRoundCount = 0;
   const announcedProseKeys = new Set<string>();
   const allReadEvidencePaths = new Set<string>();
   // Whether the AI has called manage_todo_list yet.
@@ -489,15 +499,18 @@ export async function runAgenticLoop(
       callbacks.signal,
       roundCount === 1,
       callbacks.traceRunId,
+      callbacks.traceWorkspaceRoot,
     );
 
     messages.push({ role: 'assistant', content: text });
+    lastProviderText = text;
     totalChars += text.length;
 
     const firstToolIndex = findFirstToolCallStart(text);
     const preToolProse = firstToolIndex >= 0 ? stripToolCallBlocks(text.slice(0, firstToolIndex)).trim() : '';
     const userAnnouncement = normalizeAgentUserAnnouncement(preToolProse);
     const userAnnouncementKey = agentAnnouncementKey(userAnnouncement);
+    lastRoundToolRequestCount = tools.length;
 
     if (userAnnouncement && userAnnouncementKey && !announcedProseKeys.has(userAnnouncementKey)) {
       announcedProseKeys.add(userAnnouncementKey);
@@ -687,6 +700,9 @@ export async function runAgenticLoop(
       sawWorkTool = true;
       noToolRounds = 0;
     }
+    if (loopRes.toolCallsMade) {
+      executedToolRoundCount++;
+    }
 
     if (loopRes.todoItems?.length) {
       currentTodos = loopRes.todoItems;
@@ -705,6 +721,9 @@ export async function runAgenticLoop(
         userPrompt,
         writtenFiles: allWrittenFiles,
       }));
+    }
+    if (loopRes.evidenceRefs?.length) {
+      allEvidenceRefs.push(...loopRes.evidenceRefs);
     }
     const autoValidation = await runAgentAutoValidationForWrites(
       allWrittenFiles.slice(autoValidatedWriteCount),
@@ -867,6 +886,33 @@ export async function runAgenticLoop(
   const finalSummaryFactFailures = completeSummary
     ? getUnsupportedSummaryFileClaims(completeSummary, allWrittenFiles, workspaceRoot)
     : lastSummaryFactFailures;
+  const runtimeTaskAction = workflowMode === 'inspect' || workflowMode === 'plan' ? 'analyze' : 'edit';
+  const finalRuntimeSettlement = settleAgentRuntimeState({
+    taskAction: runtimeTaskAction,
+    taskTitle: userPrompt,
+    providerText: completeSummary || lastProviderText,
+    roundText: lastProviderText,
+    toolRequests: lastRoundToolRequestCount,
+    toolExecutions: executedToolRoundCount,
+    evidenceRefs: allEvidenceRefs,
+    readEvidenceCount: allReadEvidencePaths.size,
+    writtenEvidenceCount: allWrittenFiles.length,
+    terminalEvidenceCount: allTerminalEvidence.length,
+    taskComplete: hadTaskComplete,
+    allTodosCompleted: currentTodos.length > 0 && currentTodos.every(todo => todo.status === 'completed'),
+    failedReason: failedReason || undefined,
+  });
+  if (!failedReason && finalRuntimeSettlement.state === 'failed') {
+    failedReason = finalRuntimeSettlement.failedReason || describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind);
+  } else if (!failedReason
+    && finalRuntimeSettlement.state === 'tool_requested'
+    && finalRuntimeSettlement.providerOutput.toolCallCount > 0) {
+    failedReason = 'Provider 返回了工具调用，但本轮没有执行到任何工具；任务未完成。';
+  } else if (!failedReason
+    && runtimeTaskAction === 'analyze'
+    && !runtimeStateCanDeliver(finalRuntimeSettlement)) {
+    failedReason = describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind);
+  }
   if (!failedReason && finalBlockingFailure) {
     failedReason = describeBlockingTerminalFailure(finalBlockingFailure);
     if (callbacks.onTodoUpdate && currentTodos.length > 0) {

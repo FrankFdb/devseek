@@ -34,7 +34,12 @@ export async function tryExecuteDeterministicCreateTask(input: {
     return { applied: false, raw: 'deterministic create skipped: missing target path' };
   }
 
-  if (callbacks.onBeforeFileWrite && !(await callbacks.onBeforeFileWrite(absPath))) {
+  if (callbacks.onBeforeFileWrite && !(await callbacks.onBeforeFileWrite(absPath, {
+    purpose: 'deterministic-task',
+    userRequested: true,
+    taskAction: task.action,
+    displayName: task.file,
+  }))) {
     await postDeterministicStatus(input, 'failed', basename, '写入被权限或保护规则阻止。');
     return { applied: false, raw: 'deterministic create blocked by write guard' };
   }

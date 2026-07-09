@@ -1,6 +1,11 @@
 export * from './auto-validation';
 export * from './events';
-export * from './evidence-recovery';
+export {
+  buildMissingEvidenceRecoveryInstruction,
+  markMissingEvidenceTodosIncomplete,
+  markValidationFailureTodos,
+  type TodoItem,
+} from './evidence-recovery';
 export * from './fake-tool-parser';
 export * from './idempotency-guard';
 export * from './task-timeline-service';

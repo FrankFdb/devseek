@@ -43,6 +43,8 @@ export interface AgentChatRequest {
   images?: string[];
   /** Top-level run trace id shared by routing, provider calls, tools and validation. */
   traceRunId?: string;
+  /** Filesystem root where all logs for this top-level run should be written. */
+  traceWorkspaceRoot?: string;
 }
 
 export interface ChatRequestCommand extends AgentCommandBase {

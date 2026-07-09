@@ -1,5 +1,10 @@
 import { IntentClassification, ToolKind } from './intent-types';
 import { hasExplicitWorkspacePath } from '../workspace/path-patterns';
+import {
+  isAdvisoryPlanningRequest,
+  isDeferredImplementationRequest,
+  isDirectImplementationRequest,
+} from './advisory-patterns';
 
 const EXPLICIT_NO_CHANGE_RE = /(不要修改|无需修改|不要改|别改|只讨论|仅讨论|只分析|仅分析|不要落地|先不要改|不需要代码|不要apply|不做变更|just\s+(?:chat|talk|discuss|explain)|only\s+(?:explain|discuss|answer))/i;
 
@@ -119,6 +124,20 @@ export function classifyIntent(prompt: string): IntentClassification {
       ALL_AGENT_TOOLS,
       [],
       true,
+    );
+  }
+
+  if (isAdvisoryPlanningRequest(text) && hasCodeContext && (!isDirectImplementationRequest(text) || isDeferredImplementationRequest(text))) {
+    const signals = ['advisory-planning-request'];
+    if (hasPath) signals.push('explicit-file-path');
+    if (isDeferredImplementationRequest(text)) signals.push('deferred-implementation');
+    return baseDecision(
+      'plan',
+      hasPath ? 0.9 : 0.8,
+      hasPath ? 3 : 2,
+      signals,
+      hasPath ? 'advisory-plan-with-file-path' : 'advisory-planning-request',
+      PLAN_TOOLS,
     );
   }
 

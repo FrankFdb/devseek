@@ -45,12 +45,22 @@ const CALLING_MARKDOWN_MARKER_PATTERN = '[*_]{0,3}';
 const CALLING_LABEL_PATTERN = [
   '(?:\\[\\s*)?',
   CALLING_MARKDOWN_MARKER_PATTERN,
-  '(?:Calling|Call|调用)',
+  '(?:(?:Calling|Call)(?![A-Za-z_])|调用)',
   '(?:[ \\t]*[:：]?[ \\t]*tool\\b|[ \\t]+tool\\b)?',
   '[ \\t]*[:：]?',
   `[ \\t]*${CALLING_MARKDOWN_MARKER_PATTERN}[ \\t]*`,
 ].join('');
-const CALLING_TOOL_NAME_PATTERN = '\\[?`?([A-Za-z_]\\w*)`?\\]?';
+
+function makeCallingToolNamePattern(includeShellNames = false): string {
+  const names = listAgentToolNames(true);
+  if (includeShellNames) names.push(...Array.from(SHELL_TRANSCRIPT_NAMES));
+  const escapedNames = names
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+    .join('|');
+  const mcpPattern = 'mcp__[A-Za-z0-9_]+';
+  return `\\[?\`?(${escapedNames ? `(?:${escapedNames}|${mcpPattern})` : `(?:${mcpPattern})`})\`?\\]?`;
+}
 
 function makeDsmlStartRegex(flags = 'gi'): RegExp {
   return new RegExp(`${DSML_OPEN_PREFIX_PATTERN}${DSML_MARKER_PATTERN}\\s*${DSML_START_NAMES_PATTERN}\\b`, flags);
@@ -69,19 +79,19 @@ function dsmlCloseTagPattern(name: string): string {
 }
 
 function makeCallingRegex(): RegExp {
-  return new RegExp(`${CALLING_LABEL_PATTERN}${CALLING_TOOL_NAME_PATTERN}`, 'gi');
+  return new RegExp(`${CALLING_LABEL_PATTERN}${makeCallingToolNamePattern(false)}`, 'gi');
 }
 
 function makeAnyCallingRegex(): RegExp {
-  return new RegExp(`${CALLING_LABEL_PATTERN}(?:${CALLING_TOOL_NAME_PATTERN})?`, 'gi');
+  return new RegExp(`${CALLING_LABEL_PATTERN}(?:${makeCallingToolNamePattern(true)})?`, 'gi');
 }
 
 function makeCallingLineRegex(): RegExp {
-  return new RegExp(`^${CALLING_LABEL_PATTERN}(?:${CALLING_TOOL_NAME_PATTERN})?`, 'i');
+  return new RegExp(`^${CALLING_LABEL_PATTERN}(?:${makeCallingToolNamePattern(true)})?`, 'i');
 }
 
 export function makeIncompleteCallingTailRegex(): RegExp {
-  return new RegExp(`${CALLING_LABEL_PATTERN}(?:${CALLING_TOOL_NAME_PATTERN})?\\s*$`, 'i');
+  return new RegExp(`${CALLING_LABEL_PATTERN}(?:${makeCallingToolNamePattern(true)})?\\s*$`, 'i');
 }
 
 function makeToolArgumentsRegex(): RegExp {
@@ -89,7 +99,11 @@ function makeToolArgumentsRegex(): RegExp {
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join('|');
-  return new RegExp(`Tool\\s*:\\s*\`?(${names}|mcp__[A-Za-z0-9_]+)\`?\\s*(?:Arguments?|Args|参数)\\s*:\\s*`, 'gi');
+  return new RegExp(
+    `[*_]{0,3}\\s*Tool\\s*:\\s*\`?(${names}|mcp__[A-Za-z0-9_]+)\`?\\s*[*_]{0,3}\\s*` +
+    `(?:(?:Arguments?|Args|参数)\\s*[:：]\\s*)?`,
+    'gi',
+  );
 }
 
 function makeFunctionStyleToolCallRegex(): RegExp {
@@ -332,6 +346,51 @@ function stripJsonFence(text: string): string {
   return match ? String(match[1] || '').trim() : trimmed;
 }
 
+function primaryScalarInputKeyForTool(name: string): string | undefined {
+  switch (normalizeAgentToolName(name)) {
+    case 'read_file':
+    case 'list_dir':
+      return 'path';
+    case 'file_search':
+    case 'search_file':
+      return 'glob';
+    case 'grep_search':
+      return 'pattern';
+    case 'semantic_search':
+      return 'query';
+    case 'run_terminal':
+      return 'command';
+    case 'fetch_webpage':
+      return 'url';
+    case 'memory_write':
+      return 'content';
+    case 'task_complete':
+      return 'summary';
+    default:
+      return undefined;
+  }
+}
+
+function parseXmlToolParameterBody(rawBody: string): Record<string, unknown> {
+  const input: Record<string, unknown> = {};
+  const body = decodeXmlishText(rawBody);
+  const paramRe = /<\s*([A-Za-z_][\w:-]*)\b([^<>]*?)>([\s\S]*?)<\/\s*\1\s*>/g;
+  let match: RegExpExecArray | null;
+  while ((match = paramRe.exec(body)) !== null) {
+    const rawTagName = match[1].trim();
+    const attrs = parseXmlishToolAttributes(match[2] || '');
+    const attrName = typeof attrs.name === 'string' ? attrs.name.trim() : '';
+    const key = /^(?:param|parameter)$/i.test(rawTagName) && attrName
+      ? attrName
+      : rawTagName.replace(/^[^:]+:/, '');
+    if (!key) continue;
+    const attrValue = attrs.value ?? attrs.string ?? attrs.text;
+    const rawValue = attrValue !== undefined ? String(attrValue) : match[3] || '';
+    input[key] = parseDsmlParameterValue(decodeXmlishText(rawValue));
+  }
+  return input;
+}
+
 function parseXmlToolBodyInput(name: string, rawBody: string): Record<string, unknown> {
   const body = stripJsonFence(decodeXmlishText(rawBody));
   if (!body) return {};
@@ -344,6 +403,10 @@ function parseXmlToolBodyInput(name: string, rawBody: string): Record<string, un
     const looseInput = parseLooseFileWriteToolInput(name, body);
     if (looseInput) return looseInput;
   }
+  const nestedParams = parseXmlToolParameterBody(body);
+  if (Object.keys(nestedParams).length > 0) return nestedParams;
+  const scalarKey = primaryScalarInputKeyForTool(name);
+  if (scalarKey && !/[<>]/.test(body)) return { [scalarKey]: parseDsmlParameterValue(body) };
   return {};
 }
 
@@ -552,16 +615,24 @@ function extractToolArgumentsPayload(
   const jsonEnd = findToolInputObjectEnd(text, name, jsonStart);
   if (jsonEnd < 0) return null;
   const jsonText = text.slice(jsonStart, jsonEnd + 1);
+  const end = toolPayloadEnd(text, argsStart, jsonStart, jsonEnd);
   try {
     const parsed = JSON.parse(jsonText) as unknown;
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return { tool: { name, input: parsed as Record<string, unknown> }, end: jsonEnd + 1 };
+      return { tool: { name, input: parsed as Record<string, unknown> }, end };
     }
   } catch {
     const looseInput = parseLooseFileWriteToolInput(name, jsonText);
-    if (looseInput) return { tool: { name, input: looseInput }, end: jsonEnd + 1 };
+    if (looseInput) return { tool: { name, input: looseInput }, end };
   }
   return null;
+}
+
+function toolPayloadEnd(text: string, argsStart: number, jsonStart: number, jsonEnd: number): number {
+  const beforeJson = text.slice(argsStart, jsonStart);
+  if (!beforeJson.includes('```')) return jsonEnd + 1;
+  const closeFence = text.indexOf('```', jsonEnd + 1);
+  return closeFence >= 0 ? lineEndAfter(text, closeFence + 3) : jsonEnd + 1;
 }
 
 function parseToolArgumentsToolCalls(text: string): FakeTool[] {
@@ -1111,7 +1182,10 @@ function findToolArgumentsProtocolStart(text: string): number {
   const toolArgsRe = makeToolArgumentsRegex();
   let tm: RegExpExecArray | null;
   while ((tm = toolArgsRe.exec(text)) !== null) {
-    if (isRegisteredFakeToolName(tm[1])) return tm.index;
+    if (isRegisteredFakeToolName(tm[1])) {
+      const labelOffset = tm[0].search(/Tool/i);
+      return tm.index + Math.max(0, labelOffset);
+    }
   }
   return -1;
 }

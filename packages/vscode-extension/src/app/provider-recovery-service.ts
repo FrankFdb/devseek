@@ -1,4 +1,9 @@
 import type { TaskHistoryStore, TaskRunRecord, TaskRunStatus } from './task-history-store';
+import {
+  looksLikeProviderLoginGate,
+  looksLikeProviderRateLimitGate,
+  looksLikeProviderVerificationGate,
+} from '../llm/provider-surface-classifier';
 
 export type ProviderRecoveryKind =
   | 'LoginRequired'
@@ -64,7 +69,7 @@ export class ProviderRecoveryService {
       String(anomaly.statusCode || ''),
     ].join('\n'));
 
-    if (anomaly.statusCode === 401 || /\b(login|sign[_ -]?in|auth|cookie|session expired|LOGIN_REQUIRED)\b/i.test(text)) {
+    if (anomaly.statusCode === 401 || looksLikeProviderLoginGate(text)) {
       return makePlan({
         kind: 'LoginRequired',
         taskStatus: 'paused',
@@ -75,7 +80,7 @@ export class ProviderRecoveryService {
       });
     }
 
-    if (anomaly.statusCode === 429 || /(captcha|验证码|rate limit|too many requests|排队|限流|繁忙|service busy)/i.test(text)) {
+    if (anomaly.statusCode === 429 || looksLikeProviderVerificationGate(text) || looksLikeProviderRateLimitGate(text)) {
       return makePlan({
         kind: 'RateLimited',
         taskStatus: 'paused',

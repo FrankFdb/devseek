@@ -13,6 +13,7 @@ import type { AgentLoopCallbacks } from './agent/loop-types';
 import type { AppliedChangeRecord, ApplyWorkflowStatus } from './workspace-applier';
 import { MemoryService } from './app/memory-service';
 import { decideToolPermission, type ToolPolicy } from './app/permission-service';
+import { decideAgentFileWrite, type AgentFileWriteContext } from './app/agent-file-write-policy';
 import { listCppBuildOutputDirNames } from './cpp-build-layout';
 import { isFileProtected } from './protected-files';
 import { postWebviewMessage } from './ui/webview-event-adapter';
@@ -257,19 +258,25 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
       const result = await runCommand({ command: 'git status --short && git diff --stat', cwd: workspaceRoot, timeoutMs: 15000 });
       return result.output || '（无变更或非 git 工作区）';
     },
-    onBeforeFileWrite: async (absPath) => {
-      if (isFileProtected(absPath, workspaceRoot)) {
-        const relPath = relPathFromRepairWorkspace(workspaceRoot, absPath) ?? nodePath.basename(absPath);
-        postWebviewMessage(webview, { type: 'agentNotice', kind: 'warn', text: `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）` });
+    onBeforeFileWrite: async (absPath, context?: AgentFileWriteContext) => {
+      const decision = decideAgentFileWrite({
+        absPath,
+        workspaceRoot,
+        toolPolicy,
+        autopilotMode: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
+        protectedPath: isFileProtected(absPath, workspaceRoot),
+        context: context || { purpose: 'local-repair', displayName: relPathFromRepairWorkspace(workspaceRoot, absPath) ?? nodePath.basename(absPath) },
+      });
+      if (decision.action === 'allow') return true;
+      if (decision.action === 'deny') {
+        postWebviewMessage(webview, {
+          type: 'agentNotice',
+          kind: 'warn',
+          text: decision.notice || `写入被权限策略阻止：${decision.reason}`,
+        });
         return false;
       }
-      const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-      if (isAutopilot) return true;
-      const fname = nodePath.basename(absPath);
-      const sensitive = /^(\.env(\.|$))|.*\.(pem|key|p12|pfx|crt|cer|jks|keystore|secret|credentials|token|passwd|password)$/i;
-      if (!sensitive.test(fname)) return true;
-      const relPath = relPathFromRepairWorkspace(workspaceRoot, absPath) ?? fname;
-      const confirmResult = await confirmTerminal(`⚠️ 写入敏感文件：${relPath}`, '');
+      const confirmResult = await confirmTerminal(decision.confirmationTitle || `确认写入文件：${nodePath.basename(absPath)}`, '');
       return confirmResult.allow;
     },
     onMemoryWrite: async (proposal) => {

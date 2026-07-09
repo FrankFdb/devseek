@@ -22,6 +22,12 @@ import { isCodeArtifactPath, requiresCodeArtifactForEvidence, requiresCommandEvi
 import { buildEngineeringGuidelinesPrompt } from './agent/engineering-guidelines';
 import { classifyIntent } from './intent/intent-classifier';
 import { isCppBuildArtifactDirName } from './cpp-build-layout';
+import {
+  isMarkdownDocumentCreateTask,
+  isMarkdownDocumentDeliverableRequest,
+  MARKDOWN_DOCUMENT_DELIVERABLE_TASK_DESC,
+  markdownDocumentFilenameForPrompt,
+} from './agent/deliverable-document';
 
 // ----------------------------------------------------------------
 // Public types
@@ -46,6 +52,9 @@ export type AgentTaskAction = 'modify' | 'analyze' | 'create' | 'delete' | 'expl
 // ----------------------------------------------------------------
 
 const READ_MAX_LINES = 400;
+const PLANNER_FILE_CONTEXT_TOTAL_CHARS = 14_000;
+const PLANNER_FILE_CONTEXT_MAX_CHARS = 4_000;
+const PLANNER_ACTIVE_FILE_CONTEXT_MAX_CHARS = 8_000;
 
 /**
  * Read a file safely with a line-count guard.
@@ -158,14 +167,23 @@ function sanitizeActiveEditorContextPath(activeEditorFile?: string): string | un
   return sanitizeWorkspaceContextAnchorPath(activeEditorFile, workspaceRoots);
 }
 
-function workspaceRelativePathForAbs(absPath: string): string {
+function workspaceRelativePathForAbs(absPath: string, fallbackRoot?: string): string {
   const normalized = absPath.replace(/\\/g, '/');
   for (const wf of vscode.workspace.workspaceFolders ?? []) {
     const root = wf.uri.fsPath.replace(/\\/g, '/').replace(/\/$/, '');
     if (normalized === root) return nodePath.basename(normalized);
     if (normalized.startsWith(root + '/')) return normalized.slice(root.length + 1);
   }
+  if (fallbackRoot) {
+    const root = fallbackRoot.replace(/\\/g, '/').replace(/\/$/, '');
+    if (normalized === root) return '';
+    if (normalized.startsWith(root + '/')) return normalized.slice(root.length + 1);
+  }
   return nodePath.basename(absPath);
+}
+
+function taskDisplayPathForAbs(absPath: string, fallbackRoot?: string): string {
+  return workspaceRelativePathForAbs(absPath, fallbackRoot) || nodePath.basename(absPath);
 }
 
 function isInsideDir(absPath: string, dir: string): boolean {
@@ -186,7 +204,7 @@ function normalizePlanPathKey(pathValue: string): string {
 
 function stripPromptDirAlias(fileRel: string, promptDir: string): string {
   let clean = fileRel.replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
-  const promptDirRel = workspaceRelativePathForAbs(promptDir).replace(/\/$/, '');
+  const promptDirRel = workspaceRelativePathForAbs(promptDir, promptDir).replace(/\/$/, '');
   const aliases = new Set<string>();
   if (promptDirRel && promptDirRel !== nodePath.basename(promptDir)) {
     const parts = promptDirRel.split('/').filter(Boolean);
@@ -209,7 +227,7 @@ function stripPromptDirAlias(fileRel: string, promptDir: string): string {
 
 function resolveTaskInsidePromptDir(taskFile: string, promptDir: string): { absPath: string; relPath: string } {
   const relSource = nodePath.isAbsolute(taskFile)
-    ? workspaceRelativePathForAbs(taskFile)
+    ? workspaceRelativePathForAbs(taskFile, promptDir)
     : taskFile;
   const stripped = stripPromptDirAlias(relSource, promptDir);
   const safeParts = stripped
@@ -220,7 +238,7 @@ function resolveTaskInsidePromptDir(taskFile: string, promptDir: string): { absP
     : nodePath.join(promptDir, nodePath.basename(taskFile));
   return {
     absPath: resolved,
-    relPath: workspaceRelativePathForAbs(resolved),
+    relPath: workspaceRelativePathForAbs(resolved, promptDir),
   };
 }
 
@@ -243,11 +261,19 @@ function buildDecomposeSystemPrompt(
   activeEditorFile?: string,
 ): string {
   const contextActiveEditorFile = sanitizeActiveEditorContextPath(activeEditorFile);
-  // Build per-file sections with content inline.
-  // Architect only needs 150 lines to plan — full content goes to Editor.
+  const requestIntent = classifyIntent(userPrompt);
+  const needsMarkdownDocumentDeliverable = isMarkdownDocumentDeliverableRequest(userPrompt);
+  const readOnlyPlanMode = (requestIntent.mode === 'plan' || requestIntent.mode === 'inspect') && !needsMarkdownDocumentDeliverable;
+  // Compute promptDir once here so it can be injected into the system prompt.
+  // This is the same logic used later in parseTaskPlan — extracted to detectPromptDir() to stay in sync.
+  const { promptDir: detectedPromptDir } = detectPromptDir(userPrompt, attachedFiles, contextActiveEditorFile);
+  // Build per-file sections with a strict planning budget. Full file content is
+  // available later through read_file; the Architect only needs enough context
+  // to choose the shape of the task plan.
+  let remainingFileContextChars = PLANNER_FILE_CONTEXT_TOTAL_CHARS;
   const fileSections = attachedFiles.map((absPath, i) => {
     const basename = nodePath.basename(absPath);
-    const relPath = workspaceRelativePathForAbs(absPath);
+    const relPath = workspaceRelativePathForAbs(absPath, detectedPromptDir);
     const ext = (basename.split('.').pop() ?? '').toLowerCase();
     const langMap: Record<string, string> = {
       cpp: 'cpp', cc: 'cpp', cxx: 'cpp', c: 'c', h: 'c', hpp: 'cpp',
@@ -255,8 +281,23 @@ function buildDecomposeSystemPrompt(
       json: 'json', md: 'markdown', sh: 'bash',
     };
     const lang = langMap[ext] ?? ext;
-    const content = readFileContentSafe(absPath, READ_MAX_LINES);
+    let content = readFileContentSafe(absPath, READ_MAX_LINES);
     if (!content) return `  ${i + 1}. ${relPath}  （无法读取内容）`;
+    if (remainingFileContextChars <= 0) {
+      return `  ${i + 1}. **${relPath}**\n（规划阶段文件内容预算已用尽；执行阶段必须通过 read_file/grep_search 按需读取。）`;
+    }
+    const perFileBudget = absPath === contextActiveEditorFile
+      ? PLANNER_ACTIVE_FILE_CONTEXT_MAX_CHARS
+      : PLANNER_FILE_CONTEXT_MAX_CHARS;
+    const budget = Math.max(0, Math.min(perFileBudget, remainingFileContextChars));
+    if (content.length > budget) {
+      content = [
+        content.slice(0, budget),
+        '',
+        `...[规划阶段已截断 ${content.length - budget} 字符；执行阶段必须通过 read_file/grep_search 按需读取完整内容]`,
+      ].join('\n');
+    }
+    remainingFileContextChars = Math.max(0, remainingFileContextChars - content.length);
     return [
       `  ${i + 1}. **${relPath}**`,
       '```' + lang,
@@ -307,32 +348,45 @@ function buildDecomposeSystemPrompt(
     ? '4. 无预附着文件时，自行推断合理的文件名和相对路径（含目录层级），确保每个任务覆盖一个独立文件。'
     : '4. 每个任务对应一个文件，文件名从上面列表选取。';
 
-  // Compute promptDir once here so it can be injected into the system prompt.
-  // This is the same logic used later in parseTaskPlan — extracted to detectPromptDir() to stay in sync.
-  const { promptDir: detectedPromptDir } = detectPromptDir(userPrompt, attachedFiles, contextActiveEditorFile);
   // Convert to workspace-relative form for display in the prompt
   const wsRoot0 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const promptDirRel = (() => {
-    if (!detectedPromptDir || !wsRoot0) return undefined;
+    if (!detectedPromptDir) return undefined;
+    if (!wsRoot0) return workspaceRelativePathForAbs(detectedPromptDir, detectedPromptDir);
     const pd = detectedPromptDir.replace(/\\/g, '/').replace(/\/$/, '');
     const wr = wsRoot0.replace(/\\/g, '/').replace(/\/$/, '');
-    return pd.startsWith(wr + '/') ? pd.slice(wr.length + 1) : undefined;
+    if (pd.startsWith(wr + '/')) return pd.slice(wr.length + 1);
+    return workspaceRelativePathForAbs(detectedPromptDir, detectedPromptDir);
   })();
   // Inject target directory constraint so AI outputs full relative paths, not bare filenames.
   // Without this, the AI outputs "main.cpp" instead of "code/3d_demo/main.cpp", forcing
   // the confine block to fix paths after the fact (error-prone when AI uses subdirs).
-  const promptDirRule = promptDirRel
+  const promptDirRule = detectedPromptDir
     ? `\n【工作目录约束（最高优先级）】\n` +
-      `本次任务的目标目录：${promptDirRel}/\n` +
-      `file 字段必须写相对于 workspace 根的完整路径。\n` +
-      `正确示例：${promptDirRel}/docs/design.md\n` +
+      `本次任务的 Agent 工作区根：${detectedPromptDir}\n` +
+      (promptDirRel
+        ? `本次任务的目标目录：${promptDirRel}/\n`
+        : '') +
+      `file 字段必须写相对于 Agent 工作区根的完整路径，不要带绝对路径前缀。\n` +
+      (promptDirRel
+        ? `正确示例：${promptDirRel}/docs/design.md\n`
+        : `正确示例：src/main.cpp\n`) +
       `错误示例：design.md  （只写文件名，禁止）`
     : '';
 
   // Always inject tool hint — the LLM decides from semantic Q1/Q2/Q3 rules whether to explore first.
   // Keyword-gating this hint was fragile (language-dependent); now the classification rules are
   // semantic and language-agnostic, so we always tell the LLM what tools are available.
-  const noFilesToolHint = `
+  const noFilesToolHint = readOnlyPlanMode
+    ? `
+【执行阶段可用工具（Editor 角色通过文本格式调用）】
+  [TOOL:list_dir {"path":"src/"}]                 — 列出目录内容
+  [TOOL:read_file {"path":"docs/requirements.md"}] — 读取文件内容
+  [TOOL:grep_search {"pattern":"class","path":"src/"}] — 搜索代码
+
+只读规划/分析任务只能用工具理解代码和文档，最终输出建议、对策和任务清单；不要规划写文件动作。
+`
+    : `
 【执行阶段可用工具（Editor 角色通过文本格式调用）】
   [TOOL:list_dir {"path":"code/3d_demo/"}]       — 列出目录内容
   [TOOL:read_file {"path":"src/main.cpp"}]        — 读取文件内容
@@ -342,12 +396,35 @@ function buildDecomposeSystemPrompt(
   desc 写明要用哪个工具在哪个目录查找什么内容；然后再生成依赖其结果的 modify/create 任务。
 `;
 
+  const readOnlyModeRule = readOnlyPlanMode
+    ? [
+        '',
+        '【只读规划/分析约束（最高优先级）】',
+        '本次用户要求的是分析、建议、对策检讨或任务建议，不是立即修改代码。',
+        '禁止生成 action=modify/create/delete；如果用户要求“给出 task”，这些 task 是回复里的建议清单，不是 Agent 要立即执行的代码修改任务。',
+        '输出 1 个总体 action=analyze 或 action=explain 任务，目标指向项目目录、需求文档或最相关的上下文目录。',
+      ].join('\n')
+    : '';
+
+  const markdownDocumentDeliverableRule = needsMarkdownDocumentDeliverable
+    ? [
+        '',
+        '【Markdown 文档交付物约束（最高优先级）】',
+        '用户明确要求通过 Markdown 文档/报告提供结果。必须规划一个 action=create 的 .md 文件任务；聊天里的 Markdown 摘要不能替代文件交付物。',
+        '不要把读取需求、旧实现、主控职责或对比分析拆成独立 analyze/explore Todo；这些都是创建 Markdown 文档任务内部必须完成的证据采集步骤。',
+        '该 create 任务的 desc 必须写清楚：先分析需求文档、旧实现和主控职责，再把新旧需求对比、实现对策和主控任务清单写入 .md，并在最终结果中返回文档路径。',
+        '本次只允许创建 Markdown 文档交付物；不要规划 modify/delete，也不要创建或修改代码文件，除非用户同时明确要求落地代码修改。',
+      ].join('\n')
+    : '';
+
   return [
     '你是一个顶级编程智能体的任务规划器（Architect 角色）。',
     '【重要提示】本次任务计划仅针对下方【用户需求】，请严格只为本次请求制定计划，不得纳入任何之前对话中已完成或提及的其他任务。',
     activeEditorSection,
     noFilesMode
-      ? '用户提出了一个代码创建/修改需求，无预附着文件。请根据需求自行规划文件列表并给出 JSON 任务计划。'
+      ? readOnlyPlanMode
+        ? '用户提出了一个只读分析/规划需求，无预附着文件。请根据需求中的路径和当前项目上下文给出 JSON 任务计划。'
+        : '用户提出了一个代码创建/修改需求，无预附着文件。请根据需求自行规划文件列表并给出 JSON 任务计划。'
       : '用户提供了以下文件（含当前内容）和需求，请基于文件实际内容给出 JSON 任务计划。',
     '先用 1-2 句话（中文）简述你的分析思路和计划方向，然后输出 JSON 任务计划。不要输出代码。',
     projectRulesSection,
@@ -362,6 +439,8 @@ function buildDecomposeSystemPrompt(
     filesSectionHeader,
     '',
     promptDirRule,
+    readOnlyModeRule,
+    markdownDocumentDeliverableRule,
     noFilesToolHint,
     '【输出格式（严格 JSON，无 markdown 包裹）】',
     '{',
@@ -380,11 +459,11 @@ function buildDecomposeSystemPrompt(
     '',
     'Q1: 所有任务完成后，用户期望存在什么？',
     '  → 代码或文件发生了变化（新增/改进/修复/重构/删除）→ 需要 modify / create / delete 任务',
-    '  → 用户获得了一份分析报告或解答 → analyze / explain 任务',
+    '  → 用户获得了一份分析报告、对策检讨、建议清单、任务拆解或解答 → analyze / explain 任务',
     '',
     'Q2: 如果你只阅读文件并输出分析结论，不修改任何文件，用户会满意吗？',
     '  → 不满意（用户期望代码变得更好、功能增加、问题消失）→ 必须生成 modify / create 任务',
-    '  → 满意（用户只是想理解代码）→ analyze / explain 任务合适',
+    '  → 满意（用户只是想理解代码、获得建议/对策/任务清单）→ analyze / explain 任务合适',
     '',
     'Q3: 附件文件是"待修改的目标"，还是"为后续修改提供上下文的参考"？',
     '  → 是待修改目标 → 直接生成针对这些文件的 modify 任务',
@@ -405,6 +484,22 @@ function buildDecomposeSystemPrompt(
     '   示例差：\"修改 pump_adjust.cpp\"',
     '8. 在 JSON 之前只输出 1-2 句简短的思路说明，JSON 之后不要补充任何内容。',
   ].join('\n');
+}
+
+function buildLocalMarkdownDocumentDeliverableTasks(
+  userPrompt: string,
+  attachedFiles: string[],
+  activeEditorFile?: string,
+): AgentTask[] {
+  const { promptDir } = detectPromptDir(userPrompt, attachedFiles, activeEditorFile);
+  const contextTasks: AgentTask[] = attachedFiles.map((absPath, index) => ({
+    id: `ctx${index + 1}`,
+    file: taskDisplayPathForAbs(absPath, promptDir),
+    action: 'analyze',
+    desc: 'Markdown 文档交付物的上下文证据文件',
+    absPath,
+  }));
+  return normalizeMarkdownDocumentDeliverableTasks(contextTasks, userPrompt, promptDir, activeEditorFile);
 }
 
 // ----------------------------------------------------------------
@@ -428,6 +523,251 @@ function isWriteTask(task: AgentTask): boolean {
 function isValidationTask(task: AgentTask): boolean {
   const text = `${task.file} ${task.desc}`.toLowerCase();
   return /(?:\b(?:cmake|make|npm|pnpm|yarn|pytest|ctest|cargo|go test|mvn|gradle)\b|编译|构建|测试|验证|运行)/.test(text);
+}
+
+function isImplementationContextTask(task: AgentTask): boolean {
+  if (task.action !== 'analyze' && task.action !== 'explain' && task.action !== 'explore') return false;
+  const file = task.file || '';
+  const text = `${file} ${task.desc}`.toLowerCase();
+  if (/\.(?:md|markdown|txt|rst|adoc|json|ya?ml|toml|csv)$/i.test(file)) return true;
+  return /需求|规格|方案|设计|文档|计划|上下文|提取|requirements?|spec(?:ification)?|design|plan|context/.test(text);
+}
+
+function normalizeReadOnlyPlanTasks(
+  tasks: AgentTask[],
+  userPrompt: string | undefined,
+  promptDir: string | undefined,
+  activeEditorFile?: string,
+): AgentTask[] {
+  if (!userPrompt) return tasks;
+  if (isMarkdownDocumentDeliverableRequest(userPrompt)) return tasks;
+  const intent = classifyIntent(userPrompt);
+  if (intent.mode !== 'plan' && intent.mode !== 'inspect') return tasks;
+
+  if (intent.mode === 'inspect') {
+    return tasks.map((task) => {
+      if (!isWriteTask(task)) return task;
+      return {
+        ...task,
+        action: 'analyze' as AgentTaskAction,
+        desc: task.desc ? `只读分析：${task.desc}` : '只读分析相关文件',
+      };
+    });
+  }
+
+  const targetAbs = selectReadOnlyPlanningTargetAbs(tasks, promptDir, activeEditorFile);
+  const displayRoot = selectReadOnlyPlanningDisplayRoot(promptDir, activeEditorFile);
+  const targetFile = targetAbs
+    ? taskDisplayPathForAbs(targetAbs, displayRoot ?? promptDir)
+    : tasks.find(task => task.file)?.file || 'project';
+
+  return [{
+    id: 't1',
+    file: targetFile,
+    action: 'analyze',
+    desc: '分析需求、现有实现和主控职责，输出对策检讨与任务建议',
+    visibleTarget: targetFile,
+    ...(targetAbs ? { absPath: targetAbs } : {}),
+  }];
+}
+
+function normalizeMarkdownDocumentDeliverableTasks(
+  tasks: AgentTask[],
+  userPrompt: string | undefined,
+  promptDir: string | undefined,
+  activeEditorFile?: string,
+): AgentTask[] {
+  if (!userPrompt || !isMarkdownDocumentDeliverableRequest(userPrompt)) return tasks;
+
+  const documentTask = tasks.find(isMarkdownDocumentCreateTask)
+    ?? buildMarkdownDocumentCreateTask(tasks, userPrompt, promptDir, activeEditorFile);
+
+  return [{
+    ...documentTask,
+    id: 't1',
+    action: 'create' as AgentTaskAction,
+    desc: documentTask.desc || MARKDOWN_DOCUMENT_DELIVERABLE_TASK_DESC,
+  }];
+}
+
+function buildMarkdownDocumentCreateTask(
+  tasks: AgentTask[],
+  userPrompt: string,
+  promptDir: string | undefined,
+  activeEditorFile?: string,
+): AgentTask {
+  const outputAbs = selectMarkdownDocumentOutputPath(tasks, userPrompt, promptDir, activeEditorFile);
+  const outputFile = outputAbs
+    ? taskDisplayPathForAbs(outputAbs, promptDir)
+    : markdownDocumentFilenameForPrompt(userPrompt);
+  return {
+    id: 't1',
+    file: outputFile,
+    action: 'create',
+    desc: MARKDOWN_DOCUMENT_DELIVERABLE_TASK_DESC,
+    visibleTarget: outputFile,
+    ...(outputAbs ? { absPath: outputAbs } : {}),
+  };
+}
+
+function selectMarkdownDocumentOutputPath(
+  tasks: AgentTask[],
+  userPrompt: string,
+  promptDir: string | undefined,
+  activeEditorFile?: string,
+): string | undefined {
+  const explicitOutput = selectExplicitMarkdownDocumentOutputPath(userPrompt);
+  if (explicitOutput) return explicitOutput;
+
+  const filename = markdownDocumentFilenameForPrompt(userPrompt);
+  const candidateDirs = [
+    ...extractPromptMarkdownDocumentDirs(userPrompt),
+    activeEditorFile && isMarkdownDocumentPathLike(activeEditorFile) ? nodePath.dirname(activeEditorFile) : undefined,
+    ...tasks.map(task => task.absPath).filter((value): value is string => Boolean(value)).map(absPath => {
+      if (isMarkdownDocumentPathLike(absPath)) return nodePath.dirname(absPath);
+      try {
+        if (fs.existsSync(absPath) && fs.statSync(absPath).isDirectory()) return absPath;
+      } catch {
+        // Fall through to dirname.
+      }
+      return nodePath.dirname(absPath);
+    }),
+    promptDir,
+  ].filter((value): value is string => Boolean(value));
+
+  const outputDir = candidateDirs.find(dir => !promptDir || isInsideDir(dir, promptDir)) ?? candidateDirs[0];
+  if (!outputDir) return undefined;
+  return uniqueMarkdownDocumentPath(outputDir, filename);
+}
+
+function selectExplicitMarkdownDocumentOutputPath(userPrompt: string | undefined): string | undefined {
+  const text = String(userPrompt || '');
+  if (!text) return undefined;
+
+  const pathPattern = '(/[^\\s"\\\'`<>，。；;：:]+?\\.(?:md|markdown)\\b)';
+  const outputBeforePath = new RegExp(
+    `(?:输出|保存|生成|写入|写出|创建|新建|落盘|产出)(?:[^\\r\\n]{0,48}?)(?:到|至|为|成|在)?\\s*${pathPattern}`,
+    'gi',
+  );
+  const pathBeforeOutput = new RegExp(
+    `${pathPattern}(?:[^\\r\\n]{0,48}?)(?:作为|用作|用于)(?:[^\\r\\n]{0,24}?)(?:输出|交付|结果|报告|建议文档)`,
+    'gi',
+  );
+
+  for (const re of [outputBeforePath, pathBeforeOutput]) {
+    re.lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text)) !== null) {
+      const absPath = normalizePromptMarkdownPath(match[1]);
+      if (!absPath || !nodePath.isAbsolute(absPath)) continue;
+      return uniqueMarkdownDocumentPath(nodePath.dirname(absPath), nodePath.basename(absPath));
+    }
+  }
+  return undefined;
+}
+
+function normalizePromptMarkdownPath(value: string | undefined): string {
+  return String(value || '')
+    .replace(/[)\]}>，。；;：:,.]+$/g, '')
+    .trim();
+}
+
+function extractPromptMarkdownDocumentDirs(userPrompt: string | undefined): string[] {
+  const text = String(userPrompt || '');
+  const dirs: string[] = [];
+  const seen = new Set<string>();
+  const pathRe = /\/[^\s"'`<>，。；;：:]+?\.(?:md|markdown)\b/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pathRe.exec(text)) !== null) {
+    const absPath = match[0].replace(/[)\]}>，。；;：:,.]+$/g, '');
+    if (!nodePath.isAbsolute(absPath)) continue;
+    const dir = nodePath.dirname(absPath);
+    const key = nodePath.normalize(dir);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    dirs.push(dir);
+  }
+  return dirs;
+}
+
+function uniqueMarkdownDocumentPath(dir: string, filename: string): string {
+  const parsed = nodePath.parse(filename);
+  let candidate = nodePath.join(dir, filename);
+  for (let suffix = 1; suffix <= 50; suffix += 1) {
+    if (!fs.existsSync(candidate)) return candidate;
+    candidate = nodePath.join(dir, `${parsed.name}-${suffix}${parsed.ext || '.md'}`);
+  }
+  return candidate;
+}
+
+function isMarkdownDocumentPathLike(value: string | undefined): boolean {
+  return /\.(?:md|markdown)$/i.test(nodePath.basename(value || ''));
+}
+
+function selectReadOnlyPlanningTargetAbs(
+  tasks: AgentTask[],
+  promptDir: string | undefined,
+  activeEditorFile?: string,
+): string | undefined {
+  if (!promptDir) return tasks.find(task => task.absPath)?.absPath;
+
+  const rels = tasks
+    .map(task => {
+      const rel = task.absPath && isInsideDir(task.absPath, promptDir)
+        ? workspaceRelativePathForAbs(task.absPath, promptDir)
+        : task.file || '';
+      return stripPromptDirAlias(rel, promptDir);
+    })
+    .map(rel => rel.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/$/, ''))
+    .filter(Boolean);
+
+  const commonDir = longestCommonDirectory(rels);
+  if (commonDir && commonDir.split('/').length >= 2) {
+    return nodePath.join(promptDir, ...commonDir.split('/'));
+  }
+
+  if (activeEditorFile && isInsideDir(activeEditorFile, promptDir)) {
+    return activeEditorFile;
+  }
+
+  return promptDir;
+}
+
+function selectReadOnlyPlanningDisplayRoot(
+  promptDir: string | undefined,
+  activeEditorFile?: string,
+): string | undefined {
+  if (!promptDir || !activeEditorFile || !isInsideDir(activeEditorFile, promptDir)) return promptDir;
+  const activeRel = workspaceRelativePathForAbs(activeEditorFile, promptDir);
+  const firstSegment = activeRel.split('/').filter(Boolean)[0];
+  if (!firstSegment || isCommonProjectContentDir(firstSegment)) return promptDir;
+  const candidateRoot = nodePath.join(promptDir, firstSegment);
+  try {
+    if (fs.existsSync(candidateRoot) && fs.statSync(candidateRoot).isDirectory()) return candidateRoot;
+  } catch {
+    // Fall through to promptDir.
+  }
+  return promptDir;
+}
+
+function isCommonProjectContentDir(segment: string): boolean {
+  return /^(?:src|source|include|inc|lib|app|apps|packages|docs?|test|tests|tools?|scripts?)$/i.test(segment);
+}
+
+function longestCommonDirectory(relPaths: string[]): string | undefined {
+  const dirs = relPaths
+    .map(rel => rel.split('/').filter(Boolean))
+    .filter(parts => parts.length > 0)
+    .map(parts => (parts.length > 1 && /\.[A-Za-z0-9]+$/.test(parts[parts.length - 1]) ? parts.slice(0, -1) : parts));
+  if (dirs.length === 0) return undefined;
+
+  const common: string[] = [];
+  for (let index = 0; ; index += 1) {
+    const value = dirs[0][index];
+    if (!value || !dirs.every(parts => parts[index] === value)) break;
+    common.push(value);
+  }
+  return common.join('/') || undefined;
 }
 
 function normalizeValidationExecutionTargets(tasks: AgentTask[]): AgentTask[] {
@@ -528,7 +868,7 @@ function normalizeExplicitEditTasks(tasks: AgentTask[], userPrompt?: string): Ag
 
   const writeTasks = tasks.filter(isWriteTask);
   if (writeTasks.length > 0) {
-    return tasks.filter(t => isWriteTask(t) || isValidationTask(t));
+    return tasks.filter(t => isWriteTask(t) || isValidationTask(t) || isImplementationContextTask(t));
   }
 
   let converted = false;
@@ -690,7 +1030,7 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
   const basenameBuckets = new Map<string, string[]>();
   const addPathLookup = (absPath: string) => {
     if (promptDir && promptDirIsExplicit && !isInsideDir(absPath, promptDir)) return;
-    const rel = workspaceRelativePathForAbs(absPath);
+    const rel = workspaceRelativePathForAbs(absPath, promptDir);
     exactPathMap.set(normalizePlanPathKey(rel), absPath);
     const baseKey = nodePath.basename(absPath).toLowerCase();
     const bucket = basenameBuckets.get(baseKey) ?? [];
@@ -757,14 +1097,7 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
       if (fs.existsSync(file)) {
         absPath = file;
         // Derive workspace-relative path for task.file display
-        for (const wf of vscode.workspace.workspaceFolders ?? []) {
-          const fp = wf.uri.fsPath.replace(/\\/g, '/').replace(/\/$/, '') + '/';
-          const fileSlash = file.replace(/\\/g, '/');
-          if (fileSlash.startsWith(fp)) {
-            file = fileSlash.slice(fp.length);
-            break;
-          }
-        }
+        file = workspaceRelativePathForAbs(file, promptDir);
       }
     }
     // Fallback: search all open workspace folders so tasks still resolve even when
@@ -785,7 +1118,7 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
     }
 
     if (absPath) {
-      file = workspaceRelativePathForAbs(absPath);
+      file = workspaceRelativePathForAbs(absPath, promptDir);
     }
 
     tasks.push({ id, file, action, desc, absPath });
@@ -810,6 +1143,8 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
   }
 
   let finalTasks = [...mergedMap.values()];
+  finalTasks = normalizeReadOnlyPlanTasks(finalTasks, userPrompt, promptDir, activeEditorFile);
+  finalTasks = normalizeMarkdownDocumentDeliverableTasks(finalTasks, userPrompt, promptDir, activeEditorFile);
   finalTasks = collapseReadOnlyPlanningNoiseForEdit(finalTasks, userPrompt);
   finalTasks = normalizeExplicitEditTasks(finalTasks, userPrompt);
   finalTasks = normalizeValidationExecutionTargets(finalTasks);
@@ -824,7 +1159,7 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
   if (promptDir) {
     for (const task of finalTasks) {
       if (task.absPath && isInsideDir(task.absPath, promptDir)) {
-        task.file = workspaceRelativePathForAbs(task.absPath);
+        task.file = task.visibleTarget || taskDisplayPathForAbs(task.absPath, promptDir);
         continue;
       }
 
@@ -849,7 +1184,7 @@ function parseTaskPlan(raw: string, attachedFiles: string[], priorFindings?: Ana
       for (const task of finalTasks) {
         if (task.action === 'create' && !task.absPath && !task.file.includes('/')) {
           task.absPath = nodePath.join(sessionDir, task.file);
-          task.file = workspaceRelativePathForAbs(task.absPath);
+          task.file = taskDisplayPathForAbs(task.absPath, sessionDir);
         }
       }
     }
@@ -923,7 +1258,18 @@ export async function decomposeTask(
   onProgress(attachedFiles.length > 0 ? `正在分析任务（共 ${attachedFiles.length} 个文件）…` : '正在分析任务…');
   const contextActiveEditorFile = sanitizeActiveEditorContextPath(activeEditorFile);
 
-  // Pass full abs paths so buildDecomposeSystemPrompt can read file contents
+  if (isMarkdownDocumentDeliverableRequest(userPrompt)) {
+    const tasks = buildLocalMarkdownDocumentDeliverableTasks(userPrompt, attachedFiles, contextActiveEditorFile);
+    onProgress('已识别 Markdown 文档交付物，生成单一文档创建任务…');
+    return {
+      tasks,
+      raw: JSON.stringify({ tasks }),
+      ok: true,
+      prose: '已识别用户要求通过 Markdown 文档交付结果，规划阶段跳过大上下文模型调用；读取需求和旧实现将作为文档创建任务内部证据采集完成。',
+    };
+  }
+
+  // Pass abs paths so the planner can include bounded context previews.
   const systemPrompt = buildDecomposeSystemPrompt(userPrompt, attachedFiles, priorFindings, contextActiveEditorFile);
 
   let raw = '';

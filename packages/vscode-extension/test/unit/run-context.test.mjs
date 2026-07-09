@@ -85,4 +85,38 @@ test('RunContext: completion is idempotent', () => {
   }
 });
 
+test('RunContext: records agent status events for failure diagnosis', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-status',
+      userPrompt: '基于需求文档修改正式项目',
+      traceLevel: 'debug',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      state: 'failed',
+      taskId: 't2',
+      taskFile: 'maintenance_types.hpp',
+      taskAction: 'modify',
+      taskIndex: 2,
+      taskTotal: 9,
+      title: 'maintenance_types.hpp — 读取文件失败，跳过修改',
+      detail: '路径 /project/src/maintenance_types.hpp 不存在或无法读取。',
+    });
+    context.complete('failed', { tasksTotal: 9, tasksFailed: 1 });
+
+    const entries = readJsonl(path.join(workspaceRoot, '.devseek', 'runs', 'run-context-status.log'));
+    const status = entries.find(entry => entry.event === 'agent-status');
+    assert.equal(status.data.phase, 'execute');
+    assert.equal(status.data.state, 'failed');
+    assert.equal(status.data.taskFile, 'maintenance_types.hpp');
+    assert.match(status.data.detail, /不存在或无法读取/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 console.log('\nRun context tests passed.\n');

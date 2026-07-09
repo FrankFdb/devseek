@@ -2333,12 +2333,25 @@ function routeAnalysisToWorkingBox(filename, text) {
     else autDets.appendChild(body);
     body._raw = '';
   }
-  if (text.startsWith('\x00RESET\x00')) {
-    body._raw = text.slice(7);
+  var normalized = normalizeAgentAnalysisDeltaText(text);
+  if (normalized.reset) {
+    body._raw = normalized.text;
   } else {
-    body._raw = (body._raw || '') + text;
+    body._raw = (body._raw || '') + normalized.text;
   }
   scheduleAnalysisBodyRender(body);
+}
+
+function normalizeAgentAnalysisDeltaText(text) {
+  var raw = String(text || '');
+  if (raw.startsWith('\x00RESET\x00')) {
+    return { reset: true, text: raw.slice(7) };
+  }
+  var lostReset = /^RESET(?=(?:好的|我(?:将|先|来|会|已经|已)|现在|首先|接下来|下一步|下面|已读取|已完成|分析|读取|查看))/.exec(raw);
+  if (lostReset) {
+    return { reset: true, text: raw.slice(lostReset[0].length) };
+  }
+  return { reset: false, text: raw };
 }
 
 /**

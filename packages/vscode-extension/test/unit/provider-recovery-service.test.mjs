@@ -68,6 +68,20 @@ test('ProviderRecoveryService: login required pauses task for user action', () =
   assert.equal(plan.safeToContinueFromCheckpoint, false);
 });
 
+test('ProviderRecoveryService: business verification-code analysis is not treated as rate limit', () => {
+  const plan = new ProviderRecoveryService().classify({
+    providerType: 'bridge',
+    message: [
+      '结论：当前实现需要重构维保码流程。',
+      '依据：新需求包含伙伴后台生成验证码、管理后台校验验证码。',
+      '建议：补充状态机和验证用例。',
+    ].join('\n'),
+  });
+
+  assert.equal(plan.kind, 'Unknown');
+  assert.equal(plan.requiresUserAction, false);
+});
+
 test('ProviderRecoveryService: corrupted response is recoverable from checkpoint', () => {
   const plan = new ProviderRecoveryService().classify({
     providerType: 'bridge',

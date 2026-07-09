@@ -13,6 +13,7 @@ import { planLocalExecution, runLocalExecution, type LocalExecutionPlan } from '
 import type { AgentLoopCallbacks } from './loop-types';
 import { withTaskTerminalEvidence, type TaskExecutionResult } from './task-execution-result';
 import { analyzeTerminalEvidence } from './tool-loop';
+import { classifyIntent } from '../intent/intent-classifier';
 
 export { isExistingDirectory } from '../workspace/local-execution-target';
 
@@ -125,6 +126,10 @@ function resolveAnalyzeExecutionWorkdir(input: {
 }
 
 function shouldAttemptDeterministicAnalyzeExecution(userPrompt: string, task: AgentTask): boolean {
+  const intent = classifyIntent(userPrompt);
+  if (intent.mode === 'plan' || intent.mode === 'inspect' || intent.mode === 'qa' || intent.mode === 'smalltalk') {
+    return false;
+  }
   const text = [userPrompt, task.desc, task.file].filter(Boolean).join('\n');
   return LOCAL_ANALYZE_EXECUTION_RE.test(text);
 }

@@ -162,6 +162,414 @@ test('agent-task-decomposer: validation tasks targeting build artifacts are anch
   }
 });
 
+test('agent-task-decomposer: external active editor anchors formal project task paths', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    mkdirSync(path.join(externalRoot, '.devseek'), { recursive: true });
+    const activeDoc = path.join(
+      externalRoot,
+      'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md',
+    );
+    mkdirSync(path.dirname(activeDoc), { recursive: true });
+    writeFileSync(activeDoc, '# warranty plan\n');
+
+    const rawPlan = JSON.stringify({
+      tasks: [
+        {
+          id: 't1',
+          file: 'src/oam/src/lifting/maintenance/maintenance_types.hpp',
+          action: 'modify',
+          desc: '扩展维保统计结构体',
+        },
+      ],
+    });
+
+    const result = await decomposeTask(
+      '基于当前需求文档为正式项目添加维保提醒功能',
+      [],
+      undefined,
+      () => {},
+      undefined,
+      async () => rawPlan,
+      activeDoc,
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.tasks.length, 1);
+    assert.equal(result.tasks[0].file, 'src/oam/src/lifting/maintenance/maintenance_types.hpp');
+    assert.equal(result.tasks[0].absPath, path.join(externalRoot, 'src/oam/src/lifting/maintenance/maintenance_types.hpp'));
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('agent-task-decomposer: requirements analysis is preserved as edit context', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    mkdirSync(path.join(externalRoot, '.devseek'), { recursive: true });
+    const activeDoc = path.join(
+      externalRoot,
+      'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md',
+    );
+    const targetHeader = path.join(
+      externalRoot,
+      'src/oam/src/lifting/maintenance/maintenance_types.hpp',
+    );
+    mkdirSync(path.dirname(activeDoc), { recursive: true });
+    mkdirSync(path.dirname(targetHeader), { recursive: true });
+    writeFileSync(activeDoc, '# warranty plan\n');
+    writeFileSync(targetHeader, '#pragma once\nstruct SMaintenanceStat {};\n');
+
+    const rawPlan = JSON.stringify({
+      tasks: [
+        {
+          id: 't1',
+          file: 'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md',
+          action: 'analyze',
+          desc: '分析v1.7需求文档，提取5维阈值、3态状态机、协议字段变更清单',
+        },
+        {
+          id: 't2',
+          file: 'src/oam/src/lifting/maintenance/maintenance_types.hpp',
+          action: 'modify',
+          desc: '扩展SMaintenanceStat结构体',
+        },
+      ],
+    });
+
+    const result = await decomposeTask(
+      '基于当前需求文档为正式项目添加维保提醒功能，请按照v1.7完全重新实现',
+      [],
+      undefined,
+      () => {},
+      undefined,
+      async () => rawPlan,
+      activeDoc,
+    );
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(
+      result.tasks.map(t => [t.id, t.action, t.file]),
+      [
+        ['t1', 'analyze', 'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md'],
+        ['t2', 'modify', 'src/oam/src/lifting/maintenance/maintenance_types.hpp'],
+      ],
+    );
+    assert.equal(result.tasks[0].absPath, activeDoc);
+    assert.equal(result.tasks[1].absPath, targetHeader);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('agent-task-decomposer: advisory countermeasure request does not become modify todos', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    mkdirSync(path.join(externalRoot, '.devseek'), { recursive: true });
+    const oldImplDir = path.join(externalRoot, 'src/oam/src/lifting/maintenance');
+    const activeDoc = path.join(
+      externalRoot,
+      'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md',
+    );
+    mkdirSync(oldImplDir, { recursive: true });
+    mkdirSync(path.dirname(activeDoc), { recursive: true });
+    writeFileSync(activeDoc, '# warranty plan\n');
+
+    const rawPlan = JSON.stringify({
+      tasks: [
+        {
+          id: 't1',
+          file: 'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md',
+          action: 'analyze',
+          desc: '分析新需求文档',
+        },
+        {
+          id: 't2',
+          file: 'src/oam/src/lifting/maintenance/maintenance_types.hpp',
+          action: 'modify',
+          desc: '扩展SMaintenanceStat结构体',
+        },
+        {
+          id: 't3',
+          file: 'src/oam/src/lifting/maintenance/maintenance_threshold_engine.hpp',
+          action: 'modify',
+          desc: '重构阈值计算引擎',
+        },
+        {
+          id: 't4',
+          file: 'src/oam/src/lifting/maintenance/maintenance_state_machine.cpp',
+          action: 'modify',
+          desc: '细化状态机',
+        },
+      ],
+    });
+    const prompt = `原来实现的吊运维保功能：设计文档+代码等${oldImplDir} 下面是最新的维保提醒的需求： ${activeDoc} 请分析，给出新需求的实现对策建议，并从主控需要实现功能角度给出task 当前不准备使用原来的逻辑，准备按照新的需求重新做，请帮我结合这些信息分析，给出你的建议`;
+
+    const result = await decomposeTask(
+      prompt,
+      [],
+      undefined,
+      () => {},
+      undefined,
+      async () => rawPlan,
+      activeDoc,
+    );
+
+    assert.equal(result.ok, true);
+    assert.equal(result.tasks.length, 1);
+    assert.equal(result.tasks[0].action, 'analyze');
+    assert.equal(result.tasks[0].file, 'src/oam/src/lifting');
+    assert.equal(result.tasks[0].visibleTarget, 'src/oam/src/lifting');
+    assert.equal(result.tasks[0].absPath, path.join(externalRoot, 'src/oam/src/lifting'));
+    assert.match(result.tasks[0].desc, /对策检讨/);
+    assert.equal(result.tasks.some(t => t.action === 'modify'), false);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('agent-task-decomposer: advisory Markdown deliverable creates a real md output task', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    mkdirSync(path.join(externalRoot, '.devseek'), { recursive: true });
+    const oldImplDir = path.join(externalRoot, 'src/oam/src/lifting/maintenance');
+    const activeDoc = path.join(
+      externalRoot,
+      'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md',
+    );
+    mkdirSync(oldImplDir, { recursive: true });
+    mkdirSync(path.dirname(activeDoc), { recursive: true });
+    writeFileSync(activeDoc, '# warranty plan\n');
+
+    const rawPlan = JSON.stringify({
+      tasks: [
+        {
+          id: 't1',
+          file: 'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md',
+          action: 'analyze',
+          desc: '分析新需求文档',
+        },
+        {
+          id: 't2',
+          file: 'src/oam/src/lifting/maintenance/maintenance_types.hpp',
+          action: 'modify',
+          desc: '扩展SMaintenanceStat结构体',
+        },
+      ],
+    });
+    const prompt = `原来实现的吊运维保功能：设计文档+代码等${oldImplDir} 下面是最新的维保提醒的需求： ${activeDoc} 请分析，给出新需求的实现对策建议，并从主控需要实现功能角度给出task 当前不准备使用原来的逻辑，准备按照新的需求重新做，请帮我结合这些信息分析，给出你的建议，通过md文档提供`;
+
+    let plannerCalled = false;
+    const result = await decomposeTask(prompt, [], undefined, () => {}, undefined, async () => {
+      plannerCalled = true;
+      return rawPlan;
+    }, activeDoc);
+
+    assert.equal(result.ok, true);
+    assert.equal(plannerCalled, false);
+    assert.equal(result.tasks.length, 1);
+    assert.equal(result.tasks[0].id, 't1');
+    assert.equal(result.tasks[0].action, 'create');
+    assert.equal(result.tasks[0].file, 'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md');
+    assert.match(result.tasks[0].desc, /先分析需求文档、旧实现和主控职责/);
+    assert.equal(
+      result.tasks[0].absPath,
+      path.join(externalRoot, 'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md'),
+    );
+    assert.equal(result.tasks.some(t => t.action === 'modify'), false);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('agent-task-decomposer: Markdown deliverable path prefers explicit requirement document directory', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    mkdirSync(path.join(externalRoot, '.devseek'), { recursive: true });
+    const oldImplDir = path.join(externalRoot, 'src/oam/src/lifting/maintenance');
+    const oldHeader = path.join(oldImplDir, 'maintenance_types.hpp');
+    const requirementDoc = path.join(
+      externalRoot,
+      'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md',
+    );
+    mkdirSync(oldImplDir, { recursive: true });
+    mkdirSync(path.dirname(requirementDoc), { recursive: true });
+    writeFileSync(oldHeader, '#pragma once\n');
+    writeFileSync(requirementDoc, '# warranty plan\n');
+
+    const prompt = `原来实现的吊运维保功能：设计文档+代码等${oldImplDir} 下面是最新的维保提醒的需求： ${requirementDoc} 请分析，给出新需求的实现对策建议，并从主控需要实现功能角度给出task 当前不准备使用原来的逻辑，准备按照新的需求重新做，请帮我结合这些信息分析，给出你的建议，通过md文档提供`;
+
+    const result = await decomposeTask(prompt, [oldHeader], undefined, () => {});
+
+    assert.equal(result.ok, true);
+    assert.equal(result.tasks.length, 1);
+    assert.equal(result.tasks[0].action, 'create');
+    assert.equal(result.tasks[0].file, 'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md');
+    assert.equal(
+      result.tasks[0].absPath,
+      path.join(externalRoot, 'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md'),
+    );
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('agent-task-decomposer: explicit Markdown output path wins and keeps simulation suffix unique', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    mkdirSync(path.join(externalRoot, '.devseek'), { recursive: true });
+    const oldImplDir = path.join(externalRoot, 'src/oam/src/lifting/maintenance');
+    const requirementDoc = path.join(
+      externalRoot,
+      'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md',
+    );
+    const requestedOutput = path.join(
+      externalRoot,
+      'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice-simulation.md',
+    );
+    mkdirSync(oldImplDir, { recursive: true });
+    mkdirSync(path.dirname(requirementDoc), { recursive: true });
+    writeFileSync(path.join(oldImplDir, 'maintenance_types.hpp'), '#pragma once\n');
+    writeFileSync(requirementDoc, '# warranty plan\n');
+    writeFileSync(requestedOutput, '# existing simulation report\n');
+
+    const prompt = [
+      `原来实现的吊运维保功能：设计文档+代码等${oldImplDir}`,
+      `下面是最新的维保提醒需求：${requirementDoc}`,
+      '请分析，给出新需求的实现对策建议，并从主控需要实现功能角度给出 task，通过 md 文档提供。',
+      `请将仿真测试结果输出到 ${requestedOutput}，文件名需要保留 simulation 标识。`,
+    ].join('\n');
+
+    let plannerCalled = false;
+    const result = await decomposeTask(prompt, [], undefined, () => {}, undefined, async () => {
+      plannerCalled = true;
+      return '{}';
+    }, requirementDoc);
+
+    assert.equal(result.ok, true);
+    assert.equal(plannerCalled, false);
+    assert.equal(result.tasks.length, 1);
+    assert.equal(result.tasks[0].action, 'create');
+    assert.equal(
+      result.tasks[0].file,
+      'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice-simulation-1.md',
+    );
+    assert.equal(
+      result.tasks[0].absPath,
+      path.join(externalRoot, 'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice-simulation-1.md'),
+    );
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('agent-task-decomposer: planner prompt keeps bounded file previews for large attachments', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-large-plan-'));
+  try {
+    const projectDir = path.join(root, 'code', 'large_project');
+    mkdirSync(projectDir, { recursive: true });
+    const files = Array.from({ length: 8 }, (_, index) => {
+      const abs = path.join(projectDir, `file_${index + 1}.cpp`);
+      writeFileSync(abs, `// file ${index + 1}\n${'int value = 1;\n'.repeat(1800)}`);
+      return abs;
+    });
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+
+    let capturedPrompt = '';
+    const rawPlan = JSON.stringify({
+      tasks: [
+        {
+          id: 't1',
+          file: 'code/large_project',
+          action: 'analyze',
+          desc: '分析 large_project 并给出建议',
+        },
+      ],
+    });
+
+    const result = await decomposeTask(
+      '请分析 code/large_project 的结构并给出重构建议',
+      files,
+      undefined,
+      () => {},
+      undefined,
+      async (prompt) => {
+        capturedPrompt = prompt;
+        return rawPlan;
+      },
+    );
+
+    assert.equal(result.ok, true);
+    assert.ok(capturedPrompt.length < 45_000, `planner prompt too large: ${capturedPrompt.length}`);
+    assert.match(capturedPrompt, /规划阶段已截断|规划阶段文件内容预算已用尽/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('agent-task-decomposer: advisory plan strips project-name prefix from formal project paths', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida_uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    const projectName = path.basename(externalRoot);
+    const liftingDir = path.join(externalRoot, 'src/oam/src/lifting');
+    const activeDoc = path.join(liftingDir, 'zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md');
+    mkdirSync(path.join(liftingDir, 'maintenance'), { recursive: true });
+    mkdirSync(path.dirname(activeDoc), { recursive: true });
+    writeFileSync(activeDoc, '# warranty plan\n');
+
+    const rawPlan = JSON.stringify({
+      tasks: [
+        {
+          id: 't1',
+          file: `${projectName}/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md`,
+          action: 'analyze',
+          desc: '分析新需求文档',
+        },
+        {
+          id: 't2',
+          file: `${projectName}/src/oam/src/lifting/maintenance/maintenance_types.hpp`,
+          action: 'modify',
+          desc: '扩展SMaintenanceStat结构体',
+        },
+      ],
+    });
+    const prompt = `原来实现的吊运维保功能：设计文档+代码等${path.join(liftingDir, 'maintenance')} 下面是最新的维保提醒的需求： ${activeDoc} 请分析，给出新需求的实现对策建议，并从主控需要实现功能角度给出task 当前不准备使用原来的逻辑，准备按照新的需求重新做，请帮我结合这些信息分析，给出你的建议`;
+
+    const result = await decomposeTask(prompt, [], undefined, () => {}, undefined, async () => rawPlan, activeDoc);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.tasks.length, 1);
+    assert.equal(result.tasks[0].action, 'analyze');
+    assert.equal(result.tasks[0].file, 'src/oam/src/lifting');
+    assert.equal(result.tasks[0].visibleTarget, 'src/oam/src/lifting');
+    assert.equal(result.tasks[0].absPath, liftingDir);
+    assert.equal(result.tasks.some(t => t.action === 'modify'), false);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
 test('agent-task-decomposer: fallback tasks expose workspace-relative paths', () => {
   const { root, files } = createShapeManagerWorkspace();
   try {

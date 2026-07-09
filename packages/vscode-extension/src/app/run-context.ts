@@ -5,6 +5,7 @@ import {
   type DevSeekTraceLogger,
   type DevSeekTraceLevel,
 } from '@devseek-netai/shared';
+import type { AgentStatusEvent } from '../agent/events';
 
 export type RunContextStatus = 'completed' | 'failed' | 'cancelled';
 
@@ -30,6 +31,7 @@ export interface DevSeekRunContext {
   readonly mode?: string;
   readonly trace: DevSeekTraceLogger;
   childTrace(source: string): DevSeekTraceLogger;
+  recordAgentStatus(status: AgentStatusEvent): void;
   complete(status: RunContextStatus, data?: Record<string, unknown>): void;
 }
 
@@ -72,6 +74,10 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     return this.trace.child(source);
   }
 
+  recordAgentStatus(status: AgentStatusEvent): void {
+    this.trace.info('agent-status', 'agent-status', summarizeAgentStatusForTrace(status));
+  }
+
   complete(status: RunContextStatus, data: Record<string, unknown> = {}): void {
     if (this.completed) return;
     this.completed = true;
@@ -80,4 +86,24 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       ...data,
     });
   }
+}
+
+function summarizeAgentStatusForTrace(status: AgentStatusEvent): Record<string, unknown> {
+  return {
+    phase: status.phase,
+    state: status.state,
+    taskId: status.taskId,
+    taskFile: status.taskFile,
+    taskAction: status.taskAction,
+    taskDesc: status.taskDesc,
+    taskIndex: status.taskIndex,
+    taskTotal: status.taskTotal,
+    title: status.title,
+    detail: status.detail,
+    linesAdded: status.linesAdded,
+    linesRemoved: status.linesRemoved,
+    planningText: status.planningText,
+    planningDetail: status.planningDetail ? summarizeTraceText(status.planningDetail) : undefined,
+    editedFiles: status.editedFiles,
+  };
 }

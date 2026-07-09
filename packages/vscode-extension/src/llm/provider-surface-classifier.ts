@@ -1,0 +1,70 @@
+export function looksLikeProviderLoginGate(text: string): boolean {
+  const normalized = normalizeSurfaceText(text);
+  if (!normalized) return false;
+  if (/\bLOGIN_REQUIRED\b/i.test(normalized)) return true;
+  if (looksLikeHtmlSurface(normalized)) {
+    return /(?:请先?登录|重新登录|登录(?:已)?失效|会话(?:已)?过期|登录后继续|sign\s*in|log\s*in|login required|session expired|authentication required|not authenticated)/i.test(stripHtml(normalized));
+  }
+  if (!looksLikeProviderControlText(normalized)) return false;
+  return /(?:请先?登录|重新登录|登录(?:已)?失效|会话(?:已)?过期|登录后继续|sign\s*in|log\s*in|login required|session expired|authentication required|not authenticated)/i.test(normalized);
+}
+
+export function looksLikeProviderVerificationGate(text: string): boolean {
+  const normalized = normalizeSurfaceText(text);
+  if (!normalized) return false;
+  if (looksLikeHtmlSurface(normalized)) {
+    return /(?:captcha|人机验证|安全验证|身份验证|真人验证|滑块验证|验证码|verify you are human|verify.*captcha)/i.test(stripHtml(normalized));
+  }
+  if (!looksLikeProviderControlText(normalized)) return false;
+  return /(?:captcha|人机验证|安全验证|身份验证|真人验证|滑块验证|验证你不是机器人|请输入.{0,24}验证码|请.{0,24}(?:输入|完成|通过|进行).{0,24}验证码|验证码(?:错误|过期|校验失败|验证失败)|complete.{0,32}captcha|verify.{0,32}(?:human|captcha))/i.test(normalized);
+}
+
+export function looksLikeProviderRateLimitGate(text: string): boolean {
+  const normalized = normalizeSurfaceText(text);
+  if (!normalized) return false;
+  if (looksLikeHtmlSurface(normalized)) {
+    return /(?:rate[-_ ]?limit(?:ed)?|too many requests|429|请求(?:过于|太)频繁|访问频率(?:过高|太高)|当前访问人数较多|请求达到上限|使用量达到上限|排队(?:中|等待)|限流(?:中|保护)?|(?:服务|系统)繁忙(?:[，,。.!！]|$)|稍后再试|service busy)/i.test(stripHtml(normalized));
+  }
+  if (!looksLikeProviderControlText(normalized)) return false;
+  return /(?:rate[-_ ]?limit(?:ed)?|too many requests|HTTP\s*429|429\s+too many requests|请求(?:过于|太)频繁|访问频率(?:过高|太高)|当前访问人数较多|请求达到上限|使用量达到上限|排队(?:中|等待)|限流(?:中|保护)?|(?:服务|系统)繁忙(?:[，,。.!！]|$)|请稍后再试|稍后再试|service busy|waiting for verification)/i.test(normalized);
+}
+
+export function looksLikeProviderErrorSurface(text: string): boolean {
+  const normalized = normalizeSurfaceText(text);
+  if (!normalized) return false;
+  if (looksLikeHtmlSurface(normalized)) {
+    return /(?:bad gateway|service unavailable|gateway timeout|application error|something went wrong|页面加载失败|(?:服务|系统)繁忙(?:[，,。.!！]|$)|网络错误|请求失败|ERR_[A-Z_]+|HTTP\s*(?:4\d\d|5\d\d)|error|unavailable|gateway|cloudflare|错误|不可用)/i.test(stripHtml(normalized));
+  }
+  if (!looksLikeProviderControlText(normalized)) return false;
+  return /(?:bad gateway|service unavailable|gateway timeout|application error|something went wrong|页面加载失败|(?:服务|系统)繁忙(?:[，,。.!！]|$)|网络错误|请求失败|ERR_[A-Z_]+|HTTP\s*(?:4\d\d|5\d\d))/i.test(normalized);
+}
+
+function normalizeSurfaceText(text: string): string {
+  return String(text || '').replace(/\u00a0/g, ' ').trim();
+}
+
+function looksLikeProviderControlText(text: string): boolean {
+  const head = text.slice(0, 240);
+  if (/^(?:\s|[#>*-])*(?:error|错误|异常|failed|failure|登录|请先?登录|重新登录|sign\s*in|log\s*in|login|required|验证码|请输入|captcha|rate[-_ ]?limit|too many requests|HTTP\s*(?:4\d\d|5\d\d)|服务繁忙|系统繁忙)/i.test(head)) {
+    return true;
+  }
+  if (looksLikeModelAnswerText(text)) return false;
+  return text.length <= 1200;
+}
+
+function looksLikeHtmlSurface(text: string): boolean {
+  return /<html[\s>]/i.test(text) || /<!doctype html/i.test(text) || /<title[\s>]/i.test(text);
+}
+
+function stripHtml(text: string): string {
+  return text.replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function looksLikeModelAnswerText(text: string): boolean {
+  return /(?:^|\n)\s*#{1,6}\s+\S/.test(text)
+    || /(?:结论|依据|原因|问题|风险|建议|对策|方案|任务拆解|验证结果|summary|conclusion|evidence|recommendation)/i.test(text);
+}

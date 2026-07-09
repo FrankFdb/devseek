@@ -96,19 +96,31 @@ function looksLikeWebviewToolArgumentPayload(text) {
   });
 }
 
-var WEBVIEW_CALLING_LABEL_PATTERN = '(?:\\[\\s*)?[*_]{0,3}(?:Calling|Call|调用)(?:[ \\t]*[:：]?[ \\t]*tool\\b|[ \\t]+tool\\b)?[ \\t]*[:：]?[ \\t]*[*_]{0,3}[ \\t]*';
-var WEBVIEW_CALLING_TOOL_NAME_PATTERN = '\\[?`?([A-Za-z_]\\w*)`?\\]?';
+var WEBVIEW_CALLING_LABEL_PATTERN = '(?:\\[\\s*)?[*_]{0,3}(?:(?:Calling|Call)(?![A-Za-z_])|调用)(?:[ \\t]*[:：]?[ \\t]*tool\\b|[ \\t]+tool\\b)?[ \\t]*[:：]?[ \\t]*[*_]{0,3}[ \\t]*';
+
+function makeWebviewCallingToolNamePattern(includeShellNames) {
+  var names = Object.keys(WEBVIEW_TOOL_NAMES);
+  if (includeShellNames) {
+    names = names.concat(Object.keys(WEBVIEW_SHELL_TRANSCRIPT_NAMES));
+  }
+  var escapedNames = names
+    .sort(function(a, b) { return b.length - a.length; })
+    .map(escapeWebviewRegExp)
+    .join('|');
+  var mcpPattern = 'mcp__[A-Za-z0-9_]+';
+  return '\\[?`?(' + (escapedNames ? '(?:' + escapedNames + '|' + mcpPattern + ')' : '(?:' + mcpPattern + ')') + ')`?\\]?';
+}
 
 function makeWebviewCallingRegex() {
-  return new RegExp(WEBVIEW_CALLING_LABEL_PATTERN + WEBVIEW_CALLING_TOOL_NAME_PATTERN, 'gi');
+  return new RegExp(WEBVIEW_CALLING_LABEL_PATTERN + makeWebviewCallingToolNamePattern(false), 'gi');
 }
 
 function makeWebviewAnyCallingRegex() {
-  return new RegExp(WEBVIEW_CALLING_LABEL_PATTERN + '(?:' + WEBVIEW_CALLING_TOOL_NAME_PATTERN + ')?', 'gi');
+  return new RegExp(WEBVIEW_CALLING_LABEL_PATTERN + '(?:' + makeWebviewCallingToolNamePattern(true) + ')?', 'gi');
 }
 
 function makeWebviewIncompleteCallingTailRegex() {
-  return new RegExp(WEBVIEW_CALLING_LABEL_PATTERN + '(?:' + WEBVIEW_CALLING_TOOL_NAME_PATTERN + ')?\\s*$', 'i');
+  return new RegExp(WEBVIEW_CALLING_LABEL_PATTERN + '(?:' + makeWebviewCallingToolNamePattern(true) + ')?\\s*$', 'i');
 }
 
 function escapeWebviewRegExp(value) {
@@ -766,9 +778,14 @@ function sanitizeAgentVisibleDelta(text) {
 function sanitizeAgentVisibleText(text) {
   var raw = String(text || '');
   if (!raw) return '';
+  raw = stripAgentLocalContextNoticeLeaks(raw);
+  raw = stripAgentRoutingFileMarkerLeaks(raw);
+  if (!raw.trim()) return '';
   if (isAgentRoutingFileMarkerLeak(raw)) return '';
   raw = stripAgentRoutingSummaryMarkerLeak(raw);
-  var cleaned = stripIncompleteCallingTail(stripToolCallBlocks(raw)).trim();
+  var cleaned = collapseDuplicateAgentTransitionSentences(
+    stripAgentRoutingResetLeaks(stripIncompleteCallingTail(stripToolCallBlocks(raw))),
+  ).trim();
   if (!cleaned && (raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw) || containsPotentialInternalCallingTail(raw))) return '';
   return cleaned;
 }
@@ -776,6 +793,8 @@ function sanitizeAgentVisibleText(text) {
 function sanitizeAssistantVisibleText(text) {
   var raw = String(text || '');
   if (!raw) return '';
+  raw = stripAgentRoutingFileMarkerLeaks(raw);
+  if (!raw.trim()) return '';
   raw = stripAgentRoutingSummaryMarkerLeak(raw);
   var cleaned = stripIncompleteCallingTail(stripToolCallBlocks(raw)).trim();
   if (!cleaned && (raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw) || containsPotentialInternalCallingTail(raw))) return '';
@@ -816,6 +835,32 @@ function containsAgentRoutingMarkerLeak(text) {
 
 function isAgentRoutingFileMarkerLeak(text) {
   return /^\s*(?:\x00?AFILE:|AFILE:)/.test(String(text || ''));
+}
+
+function stripAgentRoutingFileMarkerLeaks(text) {
+  return String(text || '')
+    .replace(/\x00?AFILE:[^\x00\n]{0,260}(?:\x00|\x00?RESET\x00?|RESET)/g, '')
+    .replace(/\x00?AFILE:[^\x00\n]{0,260}$/g, '');
+}
+
+function stripAgentLocalContextNoticeLeaks(text) {
+  return String(text || '')
+    .replace(/_?\[自动识别目录\]\s*已加载\s*\d+\s*个源文件(?:（[^）]{0,240}）)?，完整清单仅用于本地上下文。_?/g, '')
+    .replace(/_?\[自动识别目录\]\s*已加载\s*\d+\s*个源文件(?:（[^）]{0,240}）)?。_?/g, '')
+    .replace(/_?\[同一 session 续作\]\s*已自动恢复上一轮工作文件：[^_\n]{0,360}_?/g, '');
+}
+
+function stripAgentRoutingResetLeaks(text) {
+  return String(text || '')
+    .replace(/\x00RESET\x00/g, '')
+    .replace(/(^|[\s。！？；;])RESET(?=(?:好的|我(?:将|先|来|会|已经|已)|现在|首先|接下来|下一步|下面|已读取|已完成|分析|读取|查看))/g, '$1');
+}
+
+function collapseDuplicateAgentTransitionSentences(text) {
+  return String(text || '').replace(
+    /((?:好的，)?(?:我(?:将|先|来|会|已经|已)|现在|首先|接下来|下一步)[^。！？\n]{8,220}[。！？])(?:\s*\1)+/g,
+    '$1',
+  );
 }
 
 function stripAgentRoutingSummaryMarkerLeak(text) {

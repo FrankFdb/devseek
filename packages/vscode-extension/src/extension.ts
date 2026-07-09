@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as nodePath from 'path';
-import { chat, relogin, status, readWorkspaceFile, ensureBridgeRunning, setBridgeExtensionRoot } from './bridge-client';
+import * as fs from 'fs';
+import type { DevSeekTraceLogger } from '@devseek-netai/shared';
+import { chat, relogin, readWorkspaceFile, ensureBridgeRunning, setBridgeExtensionRoot } from './bridge-client';
 import { createProviderStatusBar, getActiveProvider, getActiveProviderType, getProviderConfigService, promptUpdateApiKey } from './llm/provider-router';
 import { type ChatMessage } from './llm/types';
 import { getProjectRules, invalidateProjectRulesCache, getProjectMemorySync, assembleProjectRulesAndMemoryContext } from './project-rules';
@@ -32,10 +34,11 @@ import { decomposeTask, getAgentTaskDisplayTarget, inferTasksFromFiles, type Age
 import { runAgentLoop, AgentStatusMessage, extractAnalysisFindings, type AgentLoopResult } from './agent-loop';
 import { createAgentHostToolCallbacks } from './agent/agent-host-tools';
 import { runAgenticLoop } from './agent/agentic-loop';
-import { getWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
+import { getTaskWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
 import { McpManager } from './mcp/client';
 import { isFileProtected } from './protected-files';
-import { decideToolPermission, type ToolPolicy } from './app/permission-service';
+import type { ToolPolicy } from './app/permission-service';
+import { decideAgentFileWrite, type AgentFileWriteContext } from './app/agent-file-write-policy';
 import { recoverApplyFailureIfPossible } from './app/apply-failure-recovery-service';
 import { responseClaimsStatusOk, shouldRunClosedLoopRepair } from './app/agentic-repair-service';
 import { runClosedLoopRepair } from './app/closed-loop-repair-runner';
@@ -82,6 +85,7 @@ import { postWebviewEvent, postWebviewMessage } from './ui/webview-event-adapter
 import { DeepSeekViewProvider } from './ui/deepseek-view-provider';
 import type { WebviewInboundMessage } from './ui/webview-protocol';
 import { buildAgentRunDisplayProfile } from './agent/agent-run-display';
+import { enforceAgentTaskExecutionPolicy } from './agent/task-execution-policy';
 import {
   discoverFilesFromDirectoryPrompt,
   relPathFromWorkspace,
@@ -322,6 +326,12 @@ async function runChat(
     intentConfirmed,
     lookupLearnedIntent: extContext ? (text) => lookupLearnedIntent(text, extContext!) : undefined,
   });
+  recordRealPluginHarnessProgress('run-chat-initial-route', {
+    intentKind: initialRouteDecision.intent.kind,
+    intentMode: initialRouteDecision.intent.mode,
+    forceNoAgent: !!forceNoAgent,
+    intentConfirmed: !!intentConfirmed,
+  });
 
   const providerStatusResponse = await resolveProviderStatusResponse({
     prompt: initialRouteDecision.intentRoutingText,
@@ -329,6 +339,7 @@ async function runChat(
     checkAvailability: () => getActiveProvider().available(),
   });
   if (providerStatusResponse) {
+    recordRealPluginHarnessProgress('run-chat-return-provider-status');
     if (newSession) {
       webview.postMessage({ type: 'newSessionStarted' });
     }
@@ -363,6 +374,7 @@ async function runChat(
   }
 
   if (initialRouteDecision.intent.mode === 'smalltalk') {
+    recordRealPluginHarnessProgress('run-chat-return-smalltalk');
     if (newSession) {
       webview.postMessage({ type: 'newSessionStarted' });
     }
@@ -446,11 +458,13 @@ async function runChat(
   }
   const autoDiscoveredFileSet = new Set(autoDiscoveredFiles);
 
-  const promptScope = detectWorkspacePathScope(prompt, effectiveFiles);
+  const activeEditorContextPath = getActiveEditorContextPath();
+  const promptScope = detectWorkspacePathScope(prompt, effectiveFiles, activeEditorContextPath);
   const pathResolutionHints = [
     ...new Set([
       ...effectiveFiles,
       ...(promptScope.promptDir ? [promptScope.promptDir] : []),
+      ...(activeEditorContextPath ? [activeEditorContextPath] : []),
     ]),
   ];
 
@@ -471,6 +485,15 @@ async function runChat(
     lookupLearnedIntent: extContext ? (text) => lookupLearnedIntent(text, extContext!) : undefined,
   });
   const { intentRoutingText, intent, toolPolicy, workflow } = routeDecision;
+  recordRealPluginHarnessProgress('run-chat-workflow-selected', {
+    intentKind: intent.kind,
+    intentMode: intent.mode,
+    workflowKind: workflow.kind,
+    workflowState: workflow.state,
+    useAgent: workflow.useAgent,
+    requiresPlanReview: workflow.requiresPlanReview,
+    effectiveFiles: effectiveFiles.length,
+  });
   const preExecutionInteraction = buildPreExecutionInteraction({
     userText: intentRoutingText,
     prompt,
@@ -480,6 +503,10 @@ async function runChat(
     intentConfirmed,
   });
   if (preExecutionInteraction) {
+    recordRealPluginHarnessProgress('run-chat-return-pre-execution-interaction', {
+      interactionKind: preExecutionInteraction.kind,
+      title: preExecutionInteraction.title,
+    });
     webview.postMessage({
       type: preExecutionInteraction.kind === 'planReview' ? 'planReview' : 'intentConfirmation',
       request: {
@@ -502,13 +529,17 @@ async function runChat(
     return;
   }
 
-  const directInspectionRoot = getWorkspaceRootFsPath(prompt, pathResolutionHints)
+  const directInspectionRoot = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath)
     ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
     ?? '';
   const directInspection = workflow.kind === 'inspect-agent' && intent.mode === 'inspect' && resumeFromIndex === undefined
     ? tryBuildReadOnlyInspectionResult({ prompt: intentRoutingText, workspaceRoot: directInspectionRoot })
     : null;
   if (directInspection) {
+    recordRealPluginHarnessProgress('run-chat-return-direct-inspection', {
+      workspaceRoot: directInspectionRoot,
+      textLength: directInspection.text.length,
+    });
     webview.postMessage({
       type: 'startResponse',
       prompt: intentRoutingText,
@@ -543,7 +574,7 @@ async function runChat(
   const shouldBypassAgentForLocalExecution = (() => {
     if (!localPreflightConfig.get<boolean>('localExecutionFirst', true)) return false;
     if (intent.mode !== 'run') return false;
-    const workspaceRootForLocal = getWorkspaceRootFsPath(prompt, pathResolutionHints);
+    const workspaceRootForLocal = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath);
     if (shouldPreferLocalExecution(prompt, effectiveFiles, workspaceRootForLocal)) {
       return !!planLocalExecution(prompt, effectiveFiles || [], workspaceRootForLocal);
     }
@@ -552,19 +583,21 @@ async function runChat(
 
   // ── Agent Mode: two-phase Architect + Editor loop ────────────────────────
   if (workflow.useAgent) {
+  recordRealPluginHarnessProgress('run-chat-enter-agent-workflow', {
+    workflowKind: workflow.kind,
+    intentMode: intent.mode,
+    effectiveFiles: effectiveFiles.length,
+  });
   if (!shouldBypassAgentForLocalExecution) {
     // 只有 bridge provider 才需要检查 bridge 连接
     if (getActiveProviderType() === 'bridge') {
-      const online2 = await status();
-      if (!online2) {
+      const ready = await ensureBridgeRunning();
+      if (!ready) {
         webview.postMessage({ type: 'startResponse' });
         postWebviewMessage(webview, { type: 'delta', text: '_正在启动 Bridge 服务，请稍候…_' });
         webview.postMessage({ type: 'endResponse' });
-        const started = await ensureBridgeRunning();
-        if (!started) {
-          postWebviewMessage(webview, { type: 'error', text: 'Bridge 服务启动失败。\n请重载 VS Code 窗口或重新安装最新 VSIX；网页免费方式应由扩展内置 Bridge 自动启动。' });
-          return;
-        }
+        postWebviewMessage(webview, { type: 'error', text: 'Bridge 服务启动失败。\n请重载 VS Code 窗口或重新安装最新 VSIX；网页免费方式应由扩展内置 Bridge 自动启动。' });
+        return;
       }
     }
 
@@ -580,11 +613,15 @@ async function runChat(
     }
 
     const agentDisplayPresenter = new AgentDisplayPresenter();
-    const postAgent = (msg: AgentStatusMessage) => webview.postMessage(agentDisplayPresenter.presentStatus(msg));
-    const agentWorkspaceRoot = getWorkspaceRootFsPath(prompt, pathResolutionHints)
+    let agentRunContext: ReturnType<typeof createDevSeekRunContext> | undefined;
+    const postAgent = (msg: AgentStatusMessage) => {
+      agentRunContext?.recordAgentStatus(msg);
+      webview.postMessage(agentDisplayPresenter.presentStatus(msg));
+    };
+    const agentWorkspaceRoot = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath)
       ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
       ?? process.cwd();
-    const agentRunContext = createDevSeekRunContext({
+    agentRunContext = createDevSeekRunContext({
       workspaceRoot: agentWorkspaceRoot,
       source: 'vscode-extension.agent',
       userPrompt: prompt,
@@ -593,6 +630,7 @@ async function runChat(
       traceLevel: vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', 'debug'),
     });
     const agentTraceRunId = agentRunContext.runId;
+    const agentTraceWorkspaceRoot = agentRunContext.workspaceRoot;
     // L1a: filled inside try/catch, used after to persist agent turn in session history
     let agentHistoryText = '';
     let loopResult: AgentLoopResult | undefined;
@@ -615,13 +653,13 @@ async function runChat(
       // Only skip to Architect+Editor when user explicitly attached code files to edit.
       if (!hasCodeFiles && !checkpointResumeTasks) {
         // No code file attachments → agentic free-explore (investigate) mode
-        const agWsRootPath = getWorkspaceRootFsPath(prompt, pathResolutionHints);
+        const agWsRootPath = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath);
         const agWsRoot = agWsRootPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
         const agSessionContext = buildAgenticSessionContext(agWsRoot, userDisplay);
         const agDisplayProfile = buildAgentRunDisplayProfile(prompt);
         // Non-code files (logs, csvs, etc.) are passed directly
         const dataFiles = effectiveFiles.filter(f => !AGENT_CODE_FILE_RE.test(f));
-        const activeEditorPath = getActiveEditorContextPath() ?? '';
+        const activeEditorPath = activeEditorContextPath ?? '';
         const agMemoryRelatedPaths = [
           ...dataFiles,
           ...pathResolutionHints,
@@ -647,6 +685,7 @@ async function runChat(
         });
         const agResult = await runAgenticLoop(prompt, dataFiles, agWsRoot, mode, {
           traceRunId: agentTraceRunId,
+          traceWorkspaceRoot: agentTraceWorkspaceRoot,
           runDisplayAction: agDisplayProfile.initialTaskAction,
           runDisplayTarget: agDisplayProfile.initialTaskLabel,
           onDelta: (delta) => {
@@ -676,30 +715,14 @@ async function runChat(
           onMemoryWrite: async (proposal) => {
             if (agWsRoot) new MemoryService({ workspaceRoot: agWsRoot }).acceptWriteProposal(proposal);
           },
-          onBeforeFileWrite: async (absPath: string): Promise<boolean> => {
-            const writePermission = decideToolPermission(toolPolicy, 'edit');
-            if (writePermission.action === 'deny') {
-              postWebviewMessage(webview, { type: 'agentNotice', kind: 'warn', text: `当前 ${intent.mode} 模式不允许写入文件（${writePermission.reason}）。` });
-              return false;
-            }
-            const wsRoot2 = agWsRoot;
-            if (isFileProtected(absPath, wsRoot2)) {
-              const relPath = wsRoot2 ? nodePath.relative(wsRoot2, absPath).replace(/\\/g, '/') : nodePath.basename(absPath);
-              postWebviewMessage(webview, { type: 'agentNotice', kind: 'warn', text: `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）` });
-              return false;
-            }
-            const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-            if (isAutopilot) return true;
-            const fname = nodePath.basename(absPath);
-            const SENSITIVE = /^(\.env(\.|$))|.*\.(pem|key|p12|pfx|crt|cer|jks|keystore|secret|credentials|token|passwd|password)$/i;
-            if (!SENSITIVE.test(fname)) return true;
-            const relPath = wsRoot2 ? nodePath.relative(wsRoot2, absPath).replace(/\\/g, '/') : fname;
-            const confirmResult = await terminalPermissionCoordinator.requestInlineConfirmation(
-              webview,
-              `⚠️ 写入敏感文件：${relPath}`,
-            );
-            return confirmResult.allow;
-          },
+          onBeforeFileWrite: (absPath: string, context?: AgentFileWriteContext): Promise<boolean> => confirmAgentFileWrite({
+            webview,
+            absPath,
+            context,
+            workspaceRoot: agWsRoot,
+            toolPolicy,
+            trace: agentRunContext.childTrace('vscode-extension.file-write-policy'),
+          }),
           mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
           onMcpToolCall: mcpManager.hasMcpTools
             ? (fakeName, args) => mcpManager.callTool(fakeName, args)
@@ -785,7 +808,7 @@ async function runChat(
       // (Skipped when resuming from a checkpoint — tasks are already known.)
       let tasks: import('./agent-task-decomposer').AgentTask[];
       let _decomposeProse = '';
-      const _wsFolderForContext = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      const _wsFolderForContext = agentWorkspaceRoot;
       const sessionContextForAgent = buildAgenticSessionContext(_wsFolderForContext, userDisplay);
       const shouldInjectSessionContext = shouldInjectSessionContinuationForIntent(
         userDisplay,
@@ -818,7 +841,7 @@ async function runChat(
         // follow-up requests (e.g. "compile and run") target the right files.
         // Augment with session-memory files (workspaceState-restored) so follow-up requests
         // after restart resolve file paths without explicit re-attachment (Claude Code pattern).
-        const _wsFolder0 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+        const _wsFolder0 = agentWorkspaceRoot;
         const _sessionRelPaths = _wsFolder0
           ? [...new Set(sessionRecentFiles.values())]
               .filter(abs => abs.startsWith(_wsFolder0 + nodePath.sep) || abs.startsWith(_wsFolder0 + '/'))
@@ -843,10 +866,17 @@ async function runChat(
           // Agent internals must not inherit the DeepSeek web page's implicit
           // browser-side history. DevSeek injects only explicit current-session
           // context into the prompt it builds.
-          async (p, m) => routeChat({ prompt: p, mode: m, newSession: true, trackHistory: false }),
+          async (p, m) => routeChat({
+            prompt: p,
+            mode: m,
+            newSession: true,
+            trackHistory: false,
+            traceRunId: agentTraceRunId,
+            traceWorkspaceRoot: agentTraceWorkspaceRoot,
+          }),
           // Active editor file: used as path anchor when no files are attached and no
           // explicit path is in the prompt. Mirrors Copilot's per-file context behaviour.
-          getActiveEditorContextPath(),
+          activeEditorContextPath,
         );
 
         tasks = decomposeResult.ok
@@ -855,22 +885,40 @@ async function runChat(
             ? []
             : inferTasksFromFiles(effectiveFiles, promptForAgent);
         _decomposeProse = decomposeResult.prose ?? '';
+        const taskPolicyResult = enforceAgentTaskExecutionPolicy(tasks, {
+          mode: workflow.toolPolicyMode,
+          userPrompt: promptForAgent,
+        });
+        if (taskPolicyResult.changed) {
+          tasks = taskPolicyResult.tasks;
+          postAgent({
+            type: 'agentStatus',
+            phase: 'plan',
+            state: 'started',
+            title: '已按权限模式调整任务计划',
+            taskTotal: tasks.length,
+            detail: taskPolicyResult.reason,
+          });
+        }
 
         // If tasks is empty (decompose failed or produced no tasks), show an error
         // but keep the Working area visible so user sees what was attempted.
         // Copilot pattern: fallback gracefully rather than disappearing silently.
         if (tasks.length === 0) {
           const errMsg = decomposeResult.error ?? '未识别到子任务';
-          postAgent({ type: 'agentStatus', phase: 'plan', state: 'completed', title: '任务计划生成失败', taskTotal: 0, detail: errMsg });
+          postAgent({ type: 'agentStatus', phase: 'plan', state: 'failed', title: '任务计划生成失败', taskTotal: 0, detail: errMsg });
           let errDelta = `_[Agent] 未能生成执行计划（${errMsg}）。建议尝试：_\n\n- 重新表述或简化需求  \n- 确保选中相关代码或文件\n- 检查工作区文件是否可访问\n\n**DeepSeek 反馈：**`;
           if (decomposeResult.raw?.trim()) {
             errDelta += `\n\n\`\`\`\n${decomposeResult.raw.slice(0, 1500).trim()}\n\`\`\``;
           } else {
             errDelta += '（无详细信息）';
           }
-          postWebviewMessage(webview, { type: 'delta', text: errDelta });
-          // Keep the Working area visible; don't call endResponse yet so the error stays in context
-          postAgent({ type: 'agentStatus', phase: 'done', state: 'completed', title: '执行结束（无可执行计划）', detail: 'Agent 模式已终止；可尝试普通对话模式' });
+          postWebviewMessage(webview, { type: 'error', text: errDelta, loginRequired: false });
+          postAgent({ type: 'agentStatus', phase: 'done', state: 'failed', title: '执行结束（无可执行计划）', detail: 'Agent 模式已终止；请先解决计划生成失败原因后重试' });
+          agentRunContext.complete('failed', {
+            reason: 'plan-generation-failed',
+            detail: errMsg,
+          });
           webview.postMessage({ type: 'endResponse' });
           return;
         }
@@ -905,7 +953,7 @@ async function runChat(
       // Phase-1: Editor — execute each task sequentially
       // P2: derive workspace root from attached files (Copilot: getWorkspaceFolder per-uri)
       // rather than blindly using workspaceFolders[0] which would be wrong in multi-root setups.
-      const wsRootPath = getWorkspaceRootFsPath(prompt, pathResolutionHints);
+      const wsRootPath = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath);
       const wsRoot = wsRootPath ? vscode.Uri.file(wsRootPath) : vscode.workspace.workspaceFolders?.[0]?.uri;
       decomposedTaskCount = tasks.length;
       if (wsRoot) {
@@ -913,7 +961,9 @@ async function runChat(
           ? [lastAnalysisText, sessionContextForAgent].filter(Boolean).join('\n\n')
           : (lastAnalysisText || undefined);
         loopResult = await runAgentLoop(tasks, promptForAgent, mode, wsRoot, {
+          executionMode: workflow.toolPolicyMode,
           traceRunId: agentTraceRunId,
+          traceWorkspaceRoot: agentTraceWorkspaceRoot,
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
               postWebviewMessage(webview, { type: 'resetResponse', text: delta.slice(7) });
@@ -937,36 +987,19 @@ async function runChat(
           onTaskComplete: (_summary) => { /* side-effect hook; phase:done handled in agent-loop */ },
           // P3: AI called memory_write — host service validates and persists it.
           onMemoryWrite: async (proposal) => {
-            const wsPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            const wsPath = wsRoot.fsPath;
             if (wsPath) new MemoryService({ workspaceRoot: wsPath }).acceptWriteProposal(proposal);
           },
           // P-SEC: sensitive file protection — confirm before writing .env / *.pem / *.key etc.
           // §8.3: also enforce user-configured devseek.protectedFiles glob list (hard block, no confirm)
-          onBeforeFileWrite: async (absPath: string): Promise<boolean> => {
-            const writePermission = decideToolPermission(toolPolicy, 'edit');
-            if (writePermission.action === 'deny') {
-              postWebviewMessage(webview, { type: 'agentNotice', kind: 'warn', text: `当前 ${intent.mode} 模式不允许写入文件（${writePermission.reason}）。` });
-              return false;
-            }
-            const wsRoot2 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-            // §8.3: hard-block user-configured protected files (Copilot chat.tools.edits.autoApprove equivalent)
-            if (isFileProtected(absPath, wsRoot2)) {
-              const relPath = wsRoot2 ? nodePath.relative(wsRoot2, absPath).replace(/\\/g, '/') : nodePath.basename(absPath);
-              postWebviewMessage(webview, { type: 'agentNotice', kind: 'warn', text: `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）` });
-              return false;
-            }
-            const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-            if (isAutopilot) return true;
-            const fname = nodePath.basename(absPath);
-            const SENSITIVE = /^(\.env(\.|$))|.*\.(pem|key|p12|pfx|crt|cer|jks|keystore|secret|credentials|token|passwd|password)$/i;
-            if (!SENSITIVE.test(fname)) return true;
-            const relPath = wsRoot2 ? nodePath.relative(wsRoot2, absPath).replace(/\\/g, '/') : fname;
-            const confirmResult = await terminalPermissionCoordinator.requestInlineConfirmation(
-              webview,
-              `⚠️ 写入敏感文件：${relPath}`,
-            );
-            return confirmResult.allow;
-          },
+          onBeforeFileWrite: (absPath: string, context?: AgentFileWriteContext): Promise<boolean> => confirmAgentFileWrite({
+            webview,
+            absPath,
+            context,
+            workspaceRoot: wsRoot.fsPath,
+            toolPolicy,
+            trace: agentRunContext.childTrace('vscode-extension.file-write-policy'),
+          }),
           // P3-5: MCP tools available in this session
           mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
           onMcpToolCall: mcpManager.hasMcpTools
@@ -1092,7 +1125,7 @@ async function runChat(
       });
       if (recovery.kind !== 'Unknown') {
         const savedAt = Date.now();
-        const wsRootFsPath = getWorkspaceRootFsPath(prompt, pathResolutionHints)
+        const wsRootFsPath = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath)
           ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
           ?? '';
         const recoveryTasks = buildProviderRecoveryCheckpointTasks({
@@ -1139,13 +1172,13 @@ async function runChat(
       saveAgentSessionState({
         lastUserPrompt: userDisplay,
         lastSummary: agentHistoryText,
-        changedPaths: lastAgentChangedPaths.slice(0, 12),
+        changedPaths: [],
         completed: false,
         savedAt: Date.now(),
       });
       agentRunContext.complete('failed', {
         reason: 'agent-error',
-        changedPaths: lastAgentChangedPaths.slice(0, 12),
+        changedPaths: [],
       });
     }
 
@@ -1174,7 +1207,7 @@ async function runChat(
         tasksTotal: loopResult?.tasksTotal ?? decomposedTaskCount,
         tasksApplied: loopResult?.tasksApplied ?? 0,
         tasksFailed: loopResult?.tasksFailed ?? 0,
-        changedPaths: lastAgentChangedPaths.slice(0, 12),
+        changedPaths: loopResult?.changedPaths?.slice(0, 12) ?? [],
       });
     }
     pendingEditCoordinator.scheduleAutoAccept(webview, autoAcceptResult, loopAutopilotHandled);
@@ -1186,19 +1219,16 @@ async function runChat(
 
   // 只有 bridge provider 才需要检查 bridge 连接
   if (getActiveProviderType() === 'bridge') {
-    const online = await status();
-    if (!online) {
+    const ready = await ensureBridgeRunning();
+    if (!ready) {
       webview.postMessage({ type: 'startResponse' });
       postWebviewMessage(webview, { type: 'delta', text: '_正在启动 Bridge 服务，请稍候…_' });
       webview.postMessage({ type: 'endResponse' });
-      const started = await ensureBridgeRunning();
-      if (!started) {
-        postWebviewMessage(webview, {
-          type: 'error',
-          text: 'Bridge 服务启动失败。\n请重载 VS Code 窗口或重新安装最新 VSIX；网页免费方式应由扩展内置 Bridge 自动启动。',
-        });
-        return;
-      }
+      postWebviewMessage(webview, {
+        type: 'error',
+        text: 'Bridge 服务启动失败。\n请重载 VS Code 窗口或重新安装最新 VSIX；网页免费方式应由扩展内置 Bridge 自动启动。',
+      });
+      return;
     }
   }
 
@@ -1221,7 +1251,7 @@ async function runChat(
 
     // P1: inject project instructions and legacy memory through ContextAssemblyService.
     const projectRules = await getProjectRules();
-    const activeEditorPathForMemory = getActiveEditorContextPath() ?? '';
+    const activeEditorPathForMemory = activeEditorContextPath ?? '';
     const projectMemory = getProjectMemorySync({
       prompt: finalPrompt,
       relatedPaths: [
@@ -1254,7 +1284,7 @@ async function runChat(
     const shouldInjectEditorContext = autoInjectEnabled && userDisplay === prompt && effectiveFiles.length === 0;
     if (shouldInjectEditorContext) {
       const editor = vscode.window.activeTextEditor;
-      const editorContextPath = getActiveEditorContextPath();
+      const editorContextPath = activeEditorContextPath;
       if (editor && editorContextPath) {
         const replyLang = config.get<string>('language', 'zh') === 'zh' ? '中文' : 'English';
         const lang = editor.document.languageId;
@@ -1279,7 +1309,7 @@ async function runChat(
     // 结构性判断：有诊断错误才注入，而非猜测用户是否在问错误话题。
     // 这与 Copilot/Claude Code 的方式一致：让 LLM 决定是否相关，而不是预过滤。
     {
-      const activeFile = getActiveEditorContextPath() ?? '';
+      const activeFile = activeEditorContextPath ?? '';
       const isExtensionSrc = /packages[\\/]vscode-extension[\\/]src/.test(activeFile)
         || /node_modules/.test(activeFile);
       if (!isExtensionSrc) {
@@ -1291,7 +1321,7 @@ async function runChat(
     const autoApplyPolicy = config.get<AutoApplyPolicy>('autoApplyPolicy', 'conservative');
     const localExecutionFirst = config.get<boolean>('localExecutionFirst', true);
     const executionApproval = config.get<'auto' | 'confirm'>('executionApproval', 'auto');
-    const workspaceRoot = getWorkspaceRootFsPath(prompt, pathResolutionHints);
+    const workspaceRoot = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath);
     const chatWorkspaceRoot = workspaceRoot
       ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
       ?? process.cwd();
@@ -1421,6 +1451,7 @@ async function runChat(
       signal: chatSignal,
       onDelta: postChatDelta,
       traceRunId: chatRunContext.runId,
+      traceWorkspaceRoot: chatRunContext.workspaceRoot,
       onUsage: (usage) => {
         webview.postMessage({ type: 'tokenUsage', promptTokens: usage.promptTokens, completionTokens: usage.completionTokens });
       },
@@ -1473,6 +1504,7 @@ async function runChat(
           newSession: false,
           mode,
           traceRunId: chatRunContext.runId,
+          traceWorkspaceRoot: chatRunContext.workspaceRoot,
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
               postWebviewMessage(webview, { type: 'delta', text: delta.slice(7) });
@@ -1512,7 +1544,15 @@ async function runChat(
         failedResponse: responseToApply,
         failedApply: firstApply,
         preferredAbsolutePaths: pathResolutionHints,
-        chat: (repairPrompt) => routeChat({ prompt: repairPrompt, newSession: false, mode, stream: false, trackHistory: false, traceRunId: chatRunContext?.runId }),
+        chat: (repairPrompt) => routeChat({
+          prompt: repairPrompt,
+          newSession: false,
+          mode,
+          stream: false,
+          trackHistory: false,
+          traceRunId: chatRunContext?.runId,
+          traceWorkspaceRoot: chatRunContext?.workspaceRoot,
+        }),
         apply: (repairResponse, repairPrompt, onAppliedChange) => applyGeneratedArtifactsWithPrompt(
           repairResponse, repairPrompt, workflowReporter, true, onAppliedChange, pathResolutionHints, { rollbackOnValidationFailure: false },
         ),
@@ -1581,6 +1621,76 @@ async function runChat(
 
 function pushChatPanel(userDisplay: string, prompt: string, newSession: boolean): void { viewProvider.push(userDisplay, prompt, newSession); }
 
+function registerRealPluginDeepSeekHarnessCommand(context: vscode.ExtensionContext): void {
+  if (process.env.DEVSEEK_REAL_PLUGIN_DEEPSEEK !== '1') return;
+
+  context.subscriptions.push(vscode.commands.registerCommand(
+    '_devseek.harnessRunChat',
+    async (userDisplay: string, prompt: string, newSession: boolean, mode?: 'fast' | 'r1') => {
+      recordRealPluginHarnessProgress('extension-command-started');
+      viewProvider.focus();
+      const webview = await waitForHarnessWebview(30_000);
+      recordRealPluginHarnessProgress('extension-command-webview-resolved', { hasWebview: !!webview });
+      if (!webview) {
+        throw new Error('DevSeek harness could not resolve the chat webview within 30s');
+      }
+      const harnessMode = mode === 'r1' ? 'r1' : 'fast';
+      recordRealPluginHarnessProgress('extension-command-run-chat-started', { mode: harnessMode });
+      await runChat(webview, userDisplay, prompt, newSession, harnessMode, undefined, undefined, undefined, undefined, undefined, true);
+      recordRealPluginHarnessProgress('extension-command-run-chat-completed');
+    },
+  ));
+
+  context.subscriptions.push(vscode.commands.registerCommand(
+    '_devseek.harnessSubmitChatMessage',
+    async (userDisplay: string, prompt: string, newSession: boolean, mode?: 'fast' | 'r1') => {
+      recordRealPluginHarnessProgress('extension-command-started', { route: 'webview-message' });
+      viewProvider.focus();
+      const webview = await waitForHarnessWebview(30_000);
+      recordRealPluginHarnessProgress('extension-command-webview-resolved', { hasWebview: !!webview, route: 'webview-message' });
+      if (!webview) {
+        throw new Error('DevSeek harness could not resolve the chat webview within 30s');
+      }
+      const harnessMode = mode === 'r1' ? 'r1' : 'fast';
+      recordRealPluginHarnessProgress('extension-command-submit-chat-started', { mode: harnessMode, route: 'webview-message' });
+      await viewProvider.submitHarnessChatMessage({
+        type: 'chat',
+        text: userDisplay,
+        prompt,
+        newSession,
+        mode: harnessMode,
+        intentConfirmed: true,
+      });
+      recordRealPluginHarnessProgress('extension-command-submit-chat-completed', { route: 'webview-message' });
+    },
+  ));
+}
+
+async function waitForHarnessWebview(timeoutMs: number): Promise<vscode.Webview | undefined> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const webview = viewProvider?.webview;
+    if (webview) return webview;
+    await new Promise<void>(resolve => setTimeout(resolve, 250));
+  }
+  return viewProvider?.webview;
+}
+
+function recordRealPluginHarnessProgress(stage: string, extra?: Record<string, unknown>): void {
+  const progressPath = process.env.DEVSEEK_REAL_PLUGIN_PROGRESS_PATH;
+  if (!progressPath) return;
+  try {
+    fs.mkdirSync(nodePath.dirname(progressPath), { recursive: true });
+    fs.appendFileSync(progressPath, `${JSON.stringify({
+      ts: new Date().toISOString(),
+      stage,
+      ...(extra ?? {}),
+    })}\n`, 'utf8');
+  } catch {
+    // Harness diagnostics must never affect production or test execution.
+  }
+}
+
 function getChatSessionTurnService(webview: vscode.Webview): ChatSessionTurnService {
   return new ChatSessionTurnService({
     getHistory: () => nonBridgeChatHistory,
@@ -1621,6 +1731,7 @@ function getAgentApplicationService(): AgentApplicationService {
         onDelta: request.onDelta,
         files: request.files,
         traceRunId: request.traceRunId,
+        traceWorkspaceRoot: request.traceWorkspaceRoot,
       }),
       getChatHistory: () => [...nonBridgeChatHistory],
       recordChatHistory: recordTrackedChatHistory,
@@ -1806,6 +1917,53 @@ function initOrRestoreSession(): void {
   }
 }
 
+async function confirmAgentFileWrite(input: {
+  webview: vscode.Webview;
+  absPath: string;
+  context?: AgentFileWriteContext;
+  workspaceRoot?: string;
+  toolPolicy: ToolPolicy;
+  trace?: DevSeekTraceLogger;
+}): Promise<boolean> {
+  const autopilotMode = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
+  const protectedPath = isFileProtected(input.absPath, input.workspaceRoot || '');
+  const decision = decideAgentFileWrite({
+    absPath: input.absPath,
+    workspaceRoot: input.workspaceRoot,
+    toolPolicy: input.toolPolicy,
+    autopilotMode,
+    protectedPath,
+    context: input.context,
+  });
+  input.trace?.info('file-write-policy', 'file-write-decision', {
+    action: decision.action,
+    reason: decision.reason,
+    absPath: input.absPath,
+    workspaceRoot: input.workspaceRoot,
+    toolPolicyMode: input.toolPolicy.mode,
+    context: input.context,
+    autopilotMode,
+    protectedPath,
+    audit: decision.audit,
+  });
+
+  if (decision.action === 'allow') return true;
+  if (decision.action === 'deny') {
+    postWebviewMessage(input.webview, {
+      type: 'agentNotice',
+      kind: 'warn',
+      text: decision.notice || `写入被权限策略阻止：${decision.reason}`,
+    });
+    return false;
+  }
+
+  const confirmResult = await terminalPermissionCoordinator.requestInlineConfirmation(
+    input.webview,
+    decision.confirmationTitle || `确认写入文件：${nodePath.basename(input.absPath)}`,
+  );
+  return confirmResult.allow;
+}
+
 // ----------------------------------------------------------------
 // Extension entry point
 // ----------------------------------------------------------------
@@ -1891,6 +2049,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   registerExtensionCommands(context, { viewProvider, pushChatPanel, routeChat });
+  registerRealPluginDeepSeekHarnessCommand(context);
 
   // ── Session memory: restore previous session on startup ────────────
   initOrRestoreSession();

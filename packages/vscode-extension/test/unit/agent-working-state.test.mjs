@@ -155,7 +155,7 @@ test('agent checkpoint banner anchors near the current input area, not transcrip
     webview,
     /function insertCheckpointBannerAtLatestPosition\(banner\)[\s\S]*?inputAreaEl\.parentNode\.insertBefore\(banner,\s*inputAreaEl\)/,
   );
-  assert.match(webview, /function shouldDisplayCheckpointBanner\(msg\)[\s\S]*?!msg\.totalTasks \|\| msg\.resumeTaskIndex >= msg\.totalTasks[\s\S]*?if \(isGenerating && !hasPauseEvidence\) return false;/);
+  assert.match(webview, /function shouldDisplayCheckpointBanner\(msg\)[\s\S]*?!msg\.totalTasks \|\| msg\.resumeTaskIndex >= msg\.totalTasks[\s\S]*?return hasPauseEvidence;/);
   assert.doesNotMatch(webview, /insertBefore\(banner,\s*container\.firstChild\)/);
 });
 

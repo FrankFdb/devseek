@@ -169,6 +169,13 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
     return this._view?.webview;
   }
 
+  async submitHarnessChatMessage(msg: WebviewMessage): Promise<void> {
+    this.focus();
+    const webview = this._view?.webview;
+    if (!webview) throw new Error('DevSeek chat webview is not available for harness submission');
+    await this._onMessage(webview, msg);
+  }
+
   resolveWebviewView(webviewView: vscode.WebviewView): void {
     this._view = webviewView;
     this._ready = false;

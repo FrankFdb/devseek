@@ -5,6 +5,11 @@
 import * as vscode from 'vscode';
 import { LLMProvider, LLMProviderType, LLMChatOptions, ChatMessage } from '../types';
 import * as bridgeClient from '../../bridge-client';
+import {
+  classifyProviderOutputIntegrity,
+  describeProviderOutputIntegrity,
+  isProviderOutputFatal,
+} from '../../agent/provider-output-integrity';
 import { ResponseIntegrityChecker } from './web-reliability';
 
 export class BridgeProvider implements LLMProvider {
@@ -32,8 +37,13 @@ export class BridgeProvider implements LLMProvider {
       mode: opts.mode,
       files: opts.files,
       traceRunId: opts.traceRunId,
+      traceWorkspaceRoot: opts.traceWorkspaceRoot,
     });
     new ResponseIntegrityChecker().assertSafeForExecution(response);
+    const providerOutput = classifyProviderOutputIntegrity(response);
+    if (isProviderOutputFatal(providerOutput.kind)) {
+      throw new Error(`RESPONSE_CORRUPTED:${providerOutput.kind}:${describeProviderOutputIntegrity(providerOutput.kind)}`);
+    }
     return response;
   }
 }

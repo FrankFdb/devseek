@@ -2,6 +2,13 @@ import { makeIncompleteCallingTailRegex, stripToolCallBlocks } from '../agent/fa
 import type { ChatMessage } from '../llm/types';
 import type { SessionLoadedMessage, WebviewOutboundMessage } from './webview-protocol';
 
+type DeltaMessage = { type: 'delta'; text: string };
+type ResetResponseMessage = { type: 'resetResponse'; text: string };
+type TextOutboundMessage =
+  | { type: 'agentAnnouncement'; text: string }
+  | { type: 'agentNotice'; kind: 'info' | 'warn' | 'error'; text: string }
+  | { type: 'error'; text: string; loginRequired?: boolean };
+
 interface VisibleStreamState {
   raw: string;
   visible: string;
@@ -26,23 +33,23 @@ export class WebviewOutboundSanitizer {
       return message;
     }
 
-    if (message.type === 'delta') {
+    if (isDeltaMessage(message)) {
       return this.sanitizeDelta(message);
     }
 
-    if (message.type === 'resetResponse') {
+    if (isResetResponseMessage(message)) {
       return this.sanitizeReset(message);
     }
 
-    if (message.type === 'agentAnnouncement') {
+    if (isTextOutboundMessage(message) && message.type === 'agentAnnouncement') {
       return sanitizeTextMessage(message);
     }
 
-    if (message.type === 'agentNotice' || message.type === 'error') {
+    if (isTextOutboundMessage(message) && (message.type === 'agentNotice' || message.type === 'error')) {
       return sanitizeTextMessage(message);
     }
 
-    if (message.type === 'sessionLoaded') {
+    if (isSessionLoadedMessage(message)) {
       return sanitizeSessionLoadedMessage(message);
     }
 
@@ -131,6 +138,32 @@ function sanitizeSessionLoadedMessage(message: SessionLoadedMessage): SessionLoa
 function sanitizeChatHistory(history: ChatMessage[]): ChatMessage[] {
   return (history || []).map((item) => {
     if (item.role !== 'assistant') return item;
-    return { ...item, content: sanitizeVisibleModelText(item.content || '') };
+    return { ...item, content: sanitizeChatMessageContent(item.content) };
   });
+}
+
+function sanitizeChatMessageContent(content: ChatMessage['content']): ChatMessage['content'] {
+  if (typeof content === 'string') return sanitizeVisibleModelText(content);
+  return content.map((part) => part.type === 'text'
+    ? { ...part, text: sanitizeVisibleModelText(part.text || '') }
+    : part);
+}
+
+function isDeltaMessage(message: WebviewOutboundMessage): message is DeltaMessage {
+  return message.type === 'delta' && typeof (message as { text?: unknown }).text === 'string';
+}
+
+function isResetResponseMessage(message: WebviewOutboundMessage): message is ResetResponseMessage {
+  return message.type === 'resetResponse' && typeof (message as { text?: unknown }).text === 'string';
+}
+
+function isTextOutboundMessage(message: WebviewOutboundMessage): message is TextOutboundMessage {
+  return ['agentAnnouncement', 'agentNotice', 'error'].includes(message.type)
+    && typeof (message as { text?: unknown }).text === 'string';
+}
+
+function isSessionLoadedMessage(message: WebviewOutboundMessage): message is SessionLoadedMessage {
+  return message.type === 'sessionLoaded'
+    && Array.isArray((message as { history?: unknown }).history)
+    && typeof (message as { summary?: unknown }).summary === 'string';
 }

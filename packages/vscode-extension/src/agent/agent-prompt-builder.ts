@@ -20,15 +20,28 @@ export function buildLocalRespondTaskMessage(task: AgentTask, userPrompt: string
   ].filter(Boolean).join('\n');
 }
 
-export function buildToolsSuffix(taskIndex: number, taskTotal: number, mcpTools?: McpToolRef[], taskWorkdir?: string): string {
+export interface BuildToolsSuffixOptions {
+  includeTerminal?: boolean;
+  includeWorkspaceMutationTools?: boolean;
+}
+
+export function buildToolsSuffix(
+  taskIndex: number,
+  taskTotal: number,
+  mcpTools?: McpToolRef[],
+  taskWorkdir?: string,
+  options: BuildToolsSuffixOptions = {},
+): string {
   const isFirst = taskIndex === 1;
   const isLast  = taskIndex === taskTotal;
   const isSingle = taskTotal === 1;
+  const includeTerminal = options.includeTerminal ?? true;
+  const includeWorkspaceMutationTools = options.includeWorkspaceMutationTools ?? true;
 
   const workflowHint = isSingle || isLast
     ? `
 【完成信号】
-完成本文件修改后，调用 task_complete 工具，附上完成报告（包含：1)修改了哪些文件及关键改动；2)为什么这样改；3)需注意的副作用或潜在问题）。
+完成本次任务后，调用 task_complete 工具，附上完成报告（包含：1)完成了哪些分析/修改及关键结论；2)为什么这样处理；3)需注意的副作用或潜在问题）。
 过程中可用 manage_todo_list 跟踪进度（只将当前任务标为 in-progress，未完成任务保持 not-started）。
 `
     : isFirst
@@ -56,8 +69,9 @@ ${isSingle || isLast ? `
 标记全部完成（仅最后一个任务才可调用）：
 [TOOL:task_complete {"summary":"完成报告：1)修改内容（文件名+关键改动）；2)修改原因；3)注意事项或潜在影响（如有）"}]
 ` : ''}
-执行终端命令（输出将在下轮可见，可用于编译验证、运行测试等）：
+${includeTerminal ? `执行终端命令（输出将在下轮可见，可用于编译验证、运行测试等）：
 [TOOL:run_terminal {"command":"npm run build","workdir":"${taskWorkdir ?? '/可选/绝对/路径'}"}]
+` : ''}
 
 读取工作区文件内容（路径相对于工作区根，或绝对路径；大文件可用 startLine/endLine 继续读取）：
 [TOOL:read_file {"path":"src/foo.ts"}]
@@ -85,8 +99,9 @@ ${isSingle || isLast ? `
 查看当前工作区 git 变更摘要（已修改/新增/已删除文件列表及 diff）：
 [TOOL:get_changed_files {}]
 
-创建目录（含父级目录，相对于工作区根或绝对路径）：
+${includeWorkspaceMutationTools ? `创建目录（含父级目录，相对于工作区根或绝对路径）：
 [TOOL:create_directory {"path":"src/utils/helpers"}]
+` : ''}
 
 获取网页内容（用于查阅文档、API 参考、错误信息等；仅支持 http/https）：
 [TOOL:fetch_webpage {"url":"https://example.com/docs"}]
@@ -94,9 +109,10 @@ ${isSingle || isLast ? `
 查找某个符号（函数/类/变量/接口）在整个代码库中的所有引用位置（使用语言服务器语义分析，比 grep 更精确；可跳过注释和字符串误匹配）：
 [TOOL:vscode_listCodeUsages {"symbol":"FunctionName","filePath":"src/foo.ts"}]
 
-执行 VS Code 编辑器命令（格式化文档、整理 import、运行任务、重启类型检查等；非白名单命令需用户确认）：
+${includeWorkspaceMutationTools ? `执行 VS Code 编辑器命令（格式化文档、整理 import、运行任务、重启类型检查等；非白名单命令需用户确认）：
 [TOOL:run_vscode_command {"command":"editor.action.formatDocument"}]
 [TOOL:run_vscode_command {"command":"workbench.action.tasks.runTask","args":["Build"]}]
+` : ''}
 ${isSingle || isLast ? `\n状态枚举："not-started" | "in-progress" | "completed"` : ''}
 ${workflowHint}${mcpSection}`;
 }

@@ -41,6 +41,7 @@ const {
   getUnsupportedSummaryFileClaims,
   getBlockingTerminalFailure,
   getMissingCompletionEvidence,
+  hasReadOnlyAnswerEvidence,
   isBlockingTerminalFailureEvidence,
   isFileContentTerminalEvidenceCommand,
   isReadOnlyTerminalEvidenceCommand,
@@ -66,6 +67,36 @@ test('completion evidence: read-only analysis does not require code edit evidenc
     requiresCodeArtifactForEvidence('只分析 packages/vscode-extension/src/app/workflow-service.ts 的问题，不要修改代码'),
     false,
   );
+});
+
+test('completion evidence: advisory implementation countermeasure request is read-only', () => {
+  const advisoryPrompt = '原来实现的吊运维保功能：设计文档+代码等/home/ff/uav/tars/huida_uav/src/oam/src/lifting/maintenance 下面是最新的维保提醒的需求： /home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md 请分析，给出新需求的实现对策建议，并从主控需要实现功能角度给出task 当前不准备使用原来的逻辑，准备按照新的需求重新做，请帮我结合这些信息分析，给出你的建议';
+
+  assert.equal(requiresFileChangeEvidence(advisoryPrompt), false);
+  assert.equal(requiresCodeArtifactForEvidence(advisoryPrompt), false);
+});
+
+test('completion evidence: tool-intent prose is not a delivered read-only answer', () => {
+  const interrupted = [
+    '我来分析新旧需求差异，并给出实现对策建议。首先让我查看相关文件。',
+    '',
+    '**Tool: read_file**',
+    '',
+    '```',
+    '{"path": "/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md"}',
+    '```',
+  ].join('\n');
+
+  assert.equal(hasReadOnlyAnswerEvidence(interrupted), false);
+  assert.equal(
+    hasReadOnlyAnswerEvidence('现在我已经完整查看了新需求文档、旧实现代码和旧设计文档。接下来将生成分析报告。'),
+    false,
+  );
+  assert.equal(
+    hasReadOnlyAnswerEvidence('现在我已经收集了足够的信息，让我分析新需求与现有实现的差异，并给出实现对策建议。'),
+    false,
+  );
+  assert.equal(hasReadOnlyAnswerEvidence('结论：新需求需要以状态机重构维保提醒，并把主控任务拆成阈值、状态、事件上报三类。'), true);
 });
 
 test('completion evidence: read-only file inspection needs read evidence, not write evidence', () => {
@@ -300,6 +331,30 @@ test('completion evidence: task summary file claims must match written files', (
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('completion evidence: Chinese quoted Markdown document claims require written evidence', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-md-claim-'));
+  try {
+    const summary = '已完成：输出了《吊运维保功能重构——新旧需求对比分析与实现对策建议.md》文档。';
+
+    assert.deepEqual(
+      extractClaimedSummaryFiles(summary),
+      ['吊运维保功能重构——新旧需求对比分析与实现对策建议.md'],
+    );
+    assert.deepEqual(
+      getUnsupportedSummaryFileClaims(summary, [], root),
+      ['吊运维保功能重构——新旧需求对比分析与实现对策建议.md'],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('completion evidence: advisory future document suggestions are not completed-file claims', () => {
+  const summary = '建议创建 warranty-maintenance-advice.md，用于沉淀新旧需求对比和主控任务清单。';
+
+  assert.deepEqual(extractClaimedSummaryFiles(summary), []);
 });
 
 test('completion evidence: code edit requires successful validation evidence', () => {

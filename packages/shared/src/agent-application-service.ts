@@ -147,6 +147,7 @@ export class AgentApplicationService {
         signal: request.signal,
         files: request.files,
         traceRunId: request.traceRunId,
+        traceWorkspaceRoot: request.traceWorkspaceRoot,
       });
       this.deps.recordChatHistory(request, response);
       return response;
@@ -179,6 +180,7 @@ export class AgentApplicationService {
       signal: request.signal,
       files: request.files,
       traceRunId: request.traceRunId,
+      traceWorkspaceRoot: request.traceWorkspaceRoot,
     });
     this.deps.recordChatHistory(request, response);
     return response;

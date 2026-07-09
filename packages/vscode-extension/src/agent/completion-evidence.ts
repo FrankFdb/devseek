@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import { classifyShellCommandEvidence } from '../tools/shell-command-analysis';
+import { stripToolCallBlocks } from './fake-tool-parser';
 
 export interface CompletionTodo {
   title: string;
@@ -59,13 +60,22 @@ const CODE_TARGET_PATTERNS = [
 const CODE_TARGET_RE = new RegExp(`(?:${CODE_TARGET_PATTERNS})`, 'i');
 const FILE_PATH_TARGET_RE = /(?:^|[^\w/.-])(?:\.{0,2}\/)?[\w.-]+(?:\/[\w.-]+)*\.[A-Za-z0-9]{1,12}\b/;
 const READ_ONLY_RE = /(?:(?:不要|不用|无需|不需要|禁止|别).{0,8}(?:修改|改动|改|变更|写|写入|创建|新建|生成|更新|删除).{0,4}(?:代码|文件|内容)?|(?:只|仅).{0,6}(?:分析|评估|说明|解释|计划|审计|查看|确认|检查|读取|显示)|do not .{0,20}(?:modify|edit|change|write|create|update|delete))/i;
+const ADVISORY_PLAN_RE = /(?:(?:给出|提供|输出|列出|制定|梳理).{0,40}(?:建议|对策|检讨|方案|计划|任务|task|步骤|清单)|(?:建议|对策|检讨).{0,30}(?:分析|方案|计划|任务|task)|(?:从|站在).{0,24}(?:角度|视角).{0,24}(?:给出|输出|列出).{0,20}(?:task|任务|建议|对策))/i;
+const DIRECT_IMPLEMENTATION_RE = /(?:(?:直接|现在|马上|开始).{0,12}(?:修改|改造|实现|新增|添加|重构|落地|执行)|(?:并|然后|同时|再|最后).{0,8}(?:实现|修改|新增|添加|重构|落地|执行)|(?:修改|新增|添加|重构|改造|实现).{0,8}(?:代码|文件))/i;
+const DEFERRED_IMPLEMENTATION_RE = /(?:(?:当前|现在|暂时|先).{0,10}(?:不准备|不打算|不需要|不要|暂不|先不).{0,24}(?:修改|实现|落地|改代码|使用原来|采用原来|写代码)|(?:准备|打算).{0,18}(?:重新做|重做|按.{0,8}需求).{0,24}(?:分析|建议|对策|方案|计划|任务|task))/i;
 const READ_EVIDENCE_RE = /(?:检查|查看|读取|显示|确认|是否存在|内容|read|show|display|check|inspect|exists?)/i;
 const FILE_CONTENT_EVIDENCE_RE = /(?:(?:显示|查看|读取|输出|打印).{0,8}(?:文件)?内容|(?:read|show|display|print).{0,16}(?:file\s*)?content)/i;
 const READ_ONLY_TERMINAL_EVIDENCE_RE = /\b(?:cat|ls|test|grep|head|tail|sed|wc|stat|file|find)\b/i;
 const FILE_CONTENT_TERMINAL_EVIDENCE_RE = /\b(?:cat|grep|head|tail|sed)\b/i;
+const READ_ONLY_TOOL_INTENT_RE = /(?:我(?:来|会|将|先|需要|已经)|让我|首先|先|接下来|下一步|现在我|需要).{0,140}(?:查看|读取|检查|搜索|列出|调用|使用|打开|浏览|生成|输出|整理|形成|收集|了解|分析|给出).{0,100}(?:文件|目录|代码|文档|结构|相关|信息|工具|报告|结论|分析|建议|差异|对策|tool|read_file|list_dir|grep_search)/i;
+const READ_ONLY_DELIVERY_STRUCTURE_RE = /(?:^|\n)\s*(?:#{1,6}\s+|[-*]\s+|\d+[.、]\s+|(?:结论|建议|对策|任务|差异|风险|主控|实现方案|分析结果)\s*[:：])/i;
+const READ_ONLY_ANSWER_MARKER_RE = /(?:结论|依据|原因|问题|风险|建议|对策|方案|任务|任务拆解|差异|主控|实现方案|分析结果|不存在|未找到|无法读取|summary|conclusion|evidence|recommendation|risk|not\s+found|does\s+not\s+exist)/i;
+const READ_ONLY_TRANSITION_RE = /(?:我(?:已经|已)|现在我(?:已经|已)?|目前(?:已经|已)?|现在).{0,80}(?:收集|读取|查看|了解|掌握).{0,100}(?:让我|接下来|下一步|将|继续|准备).{0,60}(?:分析|给出|生成|输出|整理|形成|撰写)/i;
 const SUMMARY_FILE_CLAIM_RE = /(?:^|[^\w/.-])((?:[\w.-]+\/)*[\w.-]+(?:\.(?:cpp|cxx|cc|c|hpp|hxx|hh|h|tsx|jsx|mjs|cjs|ts|js|py|java|go|rs|cs|php|rb|swift|kts|kt|scala|html|scss|sass|css|svelte|vue|bash|zsh|sh|json|ya?ml|md|txt|cmake)|\/CMakeLists\.txt|CMakeLists\.txt))/gi;
+const SUMMARY_QUOTED_FILE_CLAIM_RE = /[《「“"'`]([^《》「」“”"'`\n\r]{1,180}\.(?:cpp|cxx|cc|c|hpp|hxx|hh|h|tsx|jsx|mjs|cjs|ts|js|py|java|go|rs|cs|php|rb|swift|kts|kt|scala|html|scss|sass|css|svelte|vue|bash|zsh|sh|json|ya?ml|md|txt|cmake))[》」”"'`]/gi;
 const SUMMARY_FILE_CLAIM_POSITIVE_RE = /(?:创建|新建|生成|添加|新增|编写|实现|更新|修改|改造|重构|写入|落地|复制|拷贝|重命名|改名|移动|迁移|替换|create|created|add|added|generate|generated|write|wrote|implement|implemented|update|updated|modify|modified|refactor|refactored|copy|copied|duplicate|duplicated|rename|renamed|move|moved|replace|replaced)/i;
 const SUMMARY_FILE_CLAIM_NEGATIVE_RE = /(?:未|没有|尚未|无法|不能|失败|缺少|不存在|not\s+|no\s+|did\s+not|failed|missing|absent)/i;
+const SUMMARY_FILE_CLAIM_ADVISORY_RE = /(?:建议|应当|需要|可以|计划|准备|待|后续|下一步|should|could|would|plan(?:ned)?|todo).{0,20}$/i;
 const SUMMARY_FILE_TRANSFER_RE = /(?:复制|拷贝|重命名|改名|移动|迁移|替换|copy|copied|duplicate|duplicated|rename|renamed|move|moved|replace|replaced)/i;
 const SUMMARY_FILE_TRANSFER_SOURCE_MARKER_RE = /(?:将|把|从|复制|拷贝|重命名|改名|移动|迁移|\bfrom\b|\bcopy(?:ing|ied)?\b|\bcopied\b|\bduplicate(?:d)?\b|\brename(?:d)?\b|\bmove(?:d)?\b|\breplace(?:d)?\b)\s*$/i;
 const SUMMARY_FILE_TRANSFER_DEST_CONNECTOR_RE = /^\s*(?:复制为|拷贝为|复制到|拷贝到|重命名为|改名为|移动到|迁移到|替换为|作为|为|到|\bto\b|\bas\b|\binto\b|\bwith\b)/i;
@@ -119,7 +129,12 @@ export function coalesceWrittenFileEvidence(
 }
 
 function normalizeFactPath(value: string): string {
-  return value.replace(/\\/g, '/').replace(/^\.\/+/, '').replace(/\/+/g, '/').replace(/\/$/, '');
+  return value
+    .replace(/^[《「“"'`\s]+|[》」”"'`\s]+$/g, '')
+    .replace(/\\/g, '/')
+    .replace(/^\.\/+/, '')
+    .replace(/\/+/g, '/')
+    .replace(/\/$/, '');
 }
 
 function sentenceAround(text: string, start: number, end: number): string {
@@ -135,7 +150,9 @@ function sentenceAround(text: string, start: number, end: number): string {
 function summaryClaimIsPositive(sentence: string, tokenStartInSentence: number): boolean {
   if (!SUMMARY_FILE_CLAIM_POSITIVE_RE.test(sentence)) return false;
   const beforeToken = sentence.slice(Math.max(0, tokenStartInSentence - 16), tokenStartInSentence);
-  return !SUMMARY_FILE_CLAIM_NEGATIVE_RE.test(beforeToken);
+  if (SUMMARY_FILE_CLAIM_NEGATIVE_RE.test(beforeToken)) return false;
+  const beforeSentence = sentence.slice(0, tokenStartInSentence);
+  return !SUMMARY_FILE_CLAIM_ADVISORY_RE.test(beforeSentence);
 }
 
 function summaryFileClaimIsTransferSource(
@@ -156,22 +173,28 @@ export function extractClaimedSummaryFiles(summary: string): string[] {
   if (!text.trim()) return [];
 
   const claimed = new Set<string>();
+  collectClaimedSummaryFiles(text, SUMMARY_FILE_CLAIM_RE, claimed);
+  collectClaimedSummaryFiles(text, SUMMARY_QUOTED_FILE_CLAIM_RE, claimed);
+  return [...claimed];
+}
+
+function collectClaimedSummaryFiles(text: string, pattern: RegExp, claimed: Set<string>): void {
   let match: RegExpExecArray | null;
-  SUMMARY_FILE_CLAIM_RE.lastIndex = 0;
-  while ((match = SUMMARY_FILE_CLAIM_RE.exec(text)) !== null) {
-    const rawPath = normalizeFactPath(match[1] || '');
+  pattern.lastIndex = 0;
+  while ((match = pattern.exec(text)) !== null) {
+    const token = match[1] || '';
+    const rawPath = normalizeFactPath(token);
     if (!rawPath) continue;
-    const tokenStart = match.index + match[0].lastIndexOf(match[1]);
-    const tokenEnd = tokenStart + match[1].length;
+    const tokenStart = match.index + match[0].lastIndexOf(token);
+    const tokenEnd = tokenStart + token.length;
     const sentence = sentenceAround(text, tokenStart, tokenEnd);
     const sentenceStart = text.lastIndexOf(sentence, tokenStart);
     const tokenStartInSentence = sentenceStart >= 0 ? tokenStart - sentenceStart : 0;
-    const tokenEndInSentence = tokenStartInSentence + match[1].length;
+    const tokenEndInSentence = tokenStartInSentence + token.length;
     if (!summaryClaimIsPositive(sentence, tokenStartInSentence)) continue;
     if (summaryFileClaimIsTransferSource(sentence, tokenStartInSentence, tokenEndInSentence)) continue;
     claimed.add(rawPath);
   }
-  return [...claimed];
 }
 
 function fileClaimHasEvidence(
@@ -223,7 +246,8 @@ function buildEvidenceText(userPrompt: string, todos: CompletionTodo[]): string 
 }
 
 export function isExplicitlyReadOnlyRequest(text: string): boolean {
-  return READ_ONLY_RE.test(text);
+  return READ_ONLY_RE.test(text)
+    || (ADVISORY_PLAN_RE.test(text) && (!DIRECT_IMPLEMENTATION_RE.test(text) || DEFERRED_IMPLEMENTATION_RE.test(text)));
 }
 
 function stripInlineFileContent(text: string): string {
@@ -261,6 +285,27 @@ export function requiresReadEvidence(text: string): boolean {
 
 export function requiresFileContentReadEvidence(text: string): boolean {
   return requiresReadEvidence(text) && FILE_CONTENT_EVIDENCE_RE.test(text);
+}
+
+export function hasReadOnlyAnswerEvidence(raw: string | undefined): boolean {
+  const original = String(raw || '').trim();
+  if (!original) return false;
+  const visibleText = stripToolCallBlocks(original).trim();
+  if (!visibleText) return false;
+  const compact = visibleText.replace(/\s+/g, ' ').trim();
+  if (READ_ONLY_TRANSITION_RE.test(compact)) return false;
+  if (isToolIntentOnlyReadOnlyText(compact)) return false;
+  if (READ_ONLY_DELIVERY_STRUCTURE_RE.test(visibleText)) return true;
+  if (compact.length < 120) {
+    return /[:：]/.test(compact) && READ_ONLY_ANSWER_MARKER_RE.test(compact);
+  }
+  return READ_ONLY_ANSWER_MARKER_RE.test(compact);
+}
+
+function isToolIntentOnlyReadOnlyText(text: string): boolean {
+  if (!text || text.length > 220) return false;
+  if (READ_ONLY_DELIVERY_STRUCTURE_RE.test(text)) return false;
+  return READ_ONLY_TOOL_INTENT_RE.test(text);
 }
 
 export function isReadOnlyTerminalEvidenceCommand(command: string): boolean {

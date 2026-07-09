@@ -1,0 +1,322 @@
+/**
+ * Scenario-level closed-loop simulation for Markdown deliverables.
+ *
+ * Contract: the same kind of formal-project request that reaches the DevSeek
+ * VS Code surface must become a single Markdown artifact task, send bounded
+ * local evidence to the simulated DeepSeek Web provider, and finish only with
+ * real file evidence.
+ */
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import Module from 'node:module';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, '../../');
+const decomposerBundlePath = path.join(tmpdir(), `devseek-md-flow-decomposer-${process.pid}.cjs`);
+const markdownBundlePath = path.join(tmpdir(), `devseek-md-flow-executor-${process.pid}.cjs`);
+
+execSync(
+  `npx esbuild src/agent-task-decomposer.ts --bundle ` +
+  `--outfile=${decomposerBundlePath} --format=cjs --platform=node --external:vscode`,
+  { cwd: rootDir, stdio: 'pipe' },
+);
+execSync(
+  `npx esbuild src/agent/markdown-deliverable-task.ts --bundle ` +
+  `--outfile=${markdownBundlePath} --format=cjs --platform=node --external:vscode`,
+  { cwd: rootDir, stdio: 'pipe' },
+);
+
+class Uri {
+  constructor(fsPath) {
+    this.fsPath = path.resolve(fsPath);
+  }
+  static file(fsPath) {
+    return new Uri(fsPath);
+  }
+  static joinPath(base, ...segments) {
+    return new Uri(path.join(base.fsPath, ...segments));
+  }
+}
+
+const fakeWorkspace = {
+  workspaceFolders: [],
+  getConfiguration() {
+    return {
+      get(_key, defaultValue) { return defaultValue; },
+    };
+  },
+  getWorkspaceFolder(uri) {
+    return this.workspaceFolders.find((folder) => {
+      const rel = path.relative(folder.uri.fsPath, uri.fsPath);
+      return rel === '' || (!!rel && !rel.startsWith('..') && !path.isAbsolute(rel));
+    });
+  },
+};
+
+const fakeVscode = {
+  Uri,
+  workspace: fakeWorkspace,
+};
+
+const originalLoad = Module._load;
+Module._load = function loadWithVscodeMock(request, parent, isMain) {
+  if (request === 'vscode') return fakeVscode;
+  return originalLoad.call(this, request, parent, isMain);
+};
+
+const req = createRequire(import.meta.url);
+const { decomposeTask } = req(decomposerBundlePath);
+const { tryExecuteMarkdownDeliverableTask } = req(markdownBundlePath);
+
+function createFormalMaintenanceWorkspace() {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-md-flow-huida-uav-'));
+  const maintenanceDir = path.join(root, 'src/oam/src/lifting/maintenance');
+  const docsDir = path.join(root, 'src/oam/src/lifting/zc_maintenance/docs');
+  mkdirSync(maintenanceDir, { recursive: true });
+  mkdirSync(docsDir, { recursive: true });
+
+  const requirementDoc = path.join(docsDir, 'uav-warranty-reminder-plan_v1.7.md');
+  writeFileSync(requirementDoc, [
+    '# UAV 维保提醒需求 v1.7',
+    '',
+    '- 新增作业次数、飞行时长、日历天数、吊运次数和告警状态五类阈值。',
+    '- 扩展 JSON 持久化字段并兼容旧版本数据。',
+    '- 主控通过 UAV_EVENT 1022 接收维保提醒事件。',
+    '- 增加人工复位和自动复位流程，复位后不得重复提醒。',
+  ].join('\n'), 'utf8');
+
+  const sourceFiles = {
+    'maintenance_types.hpp': [
+      '#pragma once',
+      'struct MaintenanceStat {',
+      '  int operation_count = 0;',
+      '  double flight_hours = 0.0;',
+      '};',
+    ],
+    'maintenance_data_collector.hpp': [
+      '#pragma once',
+      'class MaintenanceDataCollector {',
+      ' public:',
+      '  MaintenanceStat snapshot() const;',
+      '};',
+    ],
+    'maintenance_threshold_engine.hpp': [
+      '#pragma once',
+      'class MaintenanceThresholdEngine {',
+      ' public:',
+      '  bool exceeded(const MaintenanceStat& stat) const;',
+      '};',
+    ],
+    'maintenance_state_machine.hpp': [
+      '#pragma once',
+      'enum class MaintenanceState { Normal, Warning, Expired };',
+      'class MaintenanceStateMachine {',
+      ' public:',
+      '  MaintenanceState update(const MaintenanceStat& stat);',
+      '};',
+    ],
+    'maintenance_persistence.hpp': [
+      '#pragma once',
+      'class MaintenancePersistence {',
+      ' public:',
+      '  void saveJson();',
+      '  void loadJson();',
+      '};',
+    ],
+    'maintenance_publisher.hpp': [
+      '#pragma once',
+      'class MaintenancePublisher {',
+      ' public:',
+      '  void publishEvent1022();',
+      '};',
+    ],
+    'maintenance_reset_handler.hpp': [
+      '#pragma once',
+      'class MaintenanceResetHandler {',
+      ' public:',
+      '  void reset();',
+      '};',
+    ],
+    'maintenance_manager.hpp': [
+      '#pragma once',
+      'class MaintenanceManager {',
+      ' public:',
+      '  void tick();',
+      '};',
+    ],
+  };
+
+  for (const [name, lines] of Object.entries(sourceFiles)) {
+    writeFileSync(path.join(maintenanceDir, name), `${lines.join('\n')}\n`, 'utf8');
+  }
+
+  fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'huida_uav', index: 0 }];
+  return { root, maintenanceDir, docsDir, requirementDoc };
+}
+
+function buildFormalProjectPrompt(workspace) {
+  return [
+    `原来实现的吊运维保功能：设计文档+代码等${workspace.maintenanceDir} 下面是最新的维保提醒的需求：`,
+    workspace.requirementDoc,
+    '请分析，给出新需求的实现对策建议，并从主控需要实现功能角度给出task',
+    '当前不准备使用原来的逻辑，准备按照新的需求重新做，请帮我结合这些信息分析，给出你的建议，通过md文档提供',
+  ].join('\n');
+}
+
+function makeCallbacks() {
+  const statuses = [];
+  const changes = [];
+  const activities = [];
+  const progress = [];
+  return {
+    statuses,
+    changes,
+    activities,
+    progress,
+    callbacks: {
+      onDelta() {},
+      onWorkflowStatus() {},
+      onAgentStatus(status) { statuses.push(status); },
+      onAppliedChange(change) { changes.push(change); },
+      onResponseMeta() {},
+      onToolActivity(kind, label) { activities.push({ kind, label }); },
+      onBeforeFileWrite: async () => true,
+    },
+  };
+}
+
+function createSimulatedDeepSeekWeb(responseFactory) {
+  const requests = [];
+  return {
+    requests,
+    async chat(messages) {
+      requests.push(messages);
+      return responseFactory(messages);
+    },
+  };
+}
+
+async function runMarkdownClosedLoop(responseFactory) {
+  const workspace = createFormalMaintenanceWorkspace();
+  const io = makeCallbacks();
+  const web = createSimulatedDeepSeekWeb(responseFactory);
+  const prompt = buildFormalProjectPrompt(workspace);
+
+  try {
+    const plan = await decomposeTask(
+      prompt,
+      [],
+      undefined,
+      text => io.progress.push(text),
+      undefined,
+      async () => {
+        throw new Error('planner should not be called for Markdown deliverable requests');
+      },
+      workspace.requirementDoc,
+    );
+
+    assert.equal(plan.ok, true);
+    assert.equal(plan.tasks.length, 1);
+    assert.equal(plan.tasks[0].action, 'create');
+    assert.match(plan.tasks[0].file, /src\/oam\/src\/lifting\/zc_maintenance\/docs\/warranty-maintenance-advice\.md$/);
+
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: plan.tasks[0],
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: prompt,
+      workspaceRoot: Uri.file(workspace.root),
+      callbacks: io.callbacks,
+      chat: web.chat,
+    });
+
+    const target = plan.tasks[0].absPath;
+    assert.equal(result?.applied, true);
+    assert.equal(existsSync(target), true);
+    assert.equal(io.statuses.at(-1).state, 'completed');
+    assert.equal(io.changes.length, 1);
+    assert.match(io.changes[0].path, /src\/oam\/src\/lifting\/zc_maintenance\/docs\/warranty-maintenance-advice\.md$/);
+    assert.equal(web.requests.length, 1);
+
+    const providerPrompt = web.requests[0][0].content;
+    assert.match(providerPrompt, /所有文件证据已经由本地运行时读取完毕/);
+    assert.match(providerPrompt, /需求文档/);
+    assert.match(providerPrompt, /maintenance_types\.hpp/);
+    assert.doesNotMatch(providerPrompt, /(?:^|\n)\s*(?:Calling\s*:\s*(?:read_file|list_dir)|\[TOOL:\s*(?:read_file|list_dir))/i);
+    assert.equal(io.activities.some(item => item.kind === 'list'), true);
+    assert.equal(io.activities.some(item => item.kind === 'read'), true);
+
+    return {
+      workspace,
+      plan,
+      result,
+      content: readFileSync(target, 'utf8'),
+      providerPrompt,
+    };
+  } catch (error) {
+    rmSync(workspace.root, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+test('markdown deliverable flow: same formal-project request reaches simulated DeepSeek Web and writes md', async () => {
+  const providerMarkdown = [
+    '# 维保提醒实现建议',
+    '',
+    '## 需求差异',
+    'v1.7 将旧实现的单一统计提醒升级为作业次数、飞行时长、日历天数、吊运次数和状态机联合判断。',
+    '',
+    '## 旧实现职责观察',
+    '旧代码已经有数据采集、阈值引擎、状态机、持久化、发布器和复位处理的职责雏形，适合按边界重构。',
+    '',
+    '## 实现对策',
+    '- 数据采集只生成事实快照。',
+    '- 阈值引擎只输出状态候选。',
+    '- 状态机统一合并多维阈值和复位事件。',
+    '- 持久化层负责 JSON 版本迁移和默认值补齐。',
+    '',
+    '## 主控任务拆分',
+    '- 接入 UAV_EVENT 1022 事件消费。',
+    '- 增加复位命令入口和重复提醒抑制。',
+    '- 为旧版本 JSON、断电重启和手动复位补测试。',
+    '',
+    '## 风险与验证建议',
+    '主控不得绕过状态机直接计算阈值；验证应覆盖旧数据恢复、状态迁移、事件发布和复位幂等。',
+  ].join('\n');
+
+  const output = await runMarkdownClosedLoop(() => providerMarkdown);
+  try {
+    assert.match(output.content, /# 维保提醒实现建议/);
+    assert.match(output.content, /UAV_EVENT 1022/);
+    assert.doesNotMatch(output.content, /Provider 未返回可用的完整报告/);
+  } finally {
+    rmSync(output.workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable flow: corrupted simulated DeepSeek response still produces a verified md artifact', async () => {
+  const output = await runMarkdownClosedLoop(() => {
+    throw new Error('RESPONSE_CORRUPTED:truncated:Provider 响应疑似被截断。');
+  });
+  try {
+    assert.match(output.content, /# 维保提醒需求分析与实现建议/);
+    assert.match(output.content, /Provider 未返回可用的完整报告/);
+    assert.match(output.content, /maintenance_threshold_engine\.hpp/);
+  } finally {
+    rmSync(output.workspace.root, { recursive: true, force: true });
+  }
+});

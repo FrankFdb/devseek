@@ -20,6 +20,7 @@ const PORT = Number(process.env.BRIDGE_PORT) || 3721;
 const VERSION = '0.1.0';
 const TOKEN_FILE = '.devseek/bridge-token';
 const TRACE_RUN_ID_HEADER = 'x-devseek-run-id';
+const TRACE_WORKSPACE_ROOT_HEADER = 'x-devseek-trace-workspace-root';
 
 // ----------------------------------------------------------------
 // 全局单例
@@ -67,11 +68,27 @@ const BRIDGE_TOKEN = loadBridgeToken();
 function createRequestTrace(req: Request): DevSeekTraceLogger {
   const runId = String(req.header(TRACE_RUN_ID_HEADER) || '').trim();
   return createDevSeekTraceLogger({
-    workspaceRoot: WORKSPACE_ROOT,
+    workspaceRoot: resolveTraceWorkspaceRoot(req),
     source: 'bridge-server',
     runId: runId || undefined,
     level: process.env.DEVSEEK_TRACE_LEVEL || 'debug',
+    appVersion: process.env.DEVSEEK_VERSION || undefined,
+    buildChannel: process.env.DEVSEEK_BUILD_CHANNEL || undefined,
+    buildId: process.env.DEVSEEK_BUILD_ID || undefined,
+    gitCommit: process.env.DEVSEEK_GIT_COMMIT || undefined,
   });
+}
+
+function resolveTraceWorkspaceRoot(req: Request): string {
+  const requested = String(req.header(TRACE_WORKSPACE_ROOT_HEADER) || '').trim();
+  if (!requested) return WORKSPACE_ROOT;
+  try {
+    const resolved = fs.realpathSync(requested);
+    if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) return resolved;
+  } catch {
+    // Fall back to the bridge workspace root below.
+  }
+  return WORKSPACE_ROOT;
 }
 
 // 简单安全：只允许本地连接（localhost / 127.0.0.1）
@@ -122,6 +139,10 @@ app.get('/status', (_req: Request, res: Response) => {
     idle: queue.isIdle,
     queueLength: queue.length,
     browserReady: agentInitialized,
+    appVersion: process.env.DEVSEEK_VERSION || undefined,
+    buildChannel: process.env.DEVSEEK_BUILD_CHANNEL || undefined,
+    buildId: process.env.DEVSEEK_BUILD_ID || undefined,
+    gitCommit: process.env.DEVSEEK_GIT_COMMIT || undefined,
   };
   res.json(body);
 });

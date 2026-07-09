@@ -76,12 +76,14 @@ import {
   type WrittenFileEvidence,
 } from './agent/completion-evidence';
 import { tryExecuteDeterministicCreateTask } from './agent/deterministic-task-executor';
+import { tryExecuteMarkdownDeliverableTask } from './agent/markdown-deliverable-task';
 import {
   buildTaskTerminalFailureDetail,
   withTaskTerminalEvidence,
   type TaskExecutionResult,
 } from './agent/task-execution-result';
 import { createTaskConvergenceGuard } from './agent/task-convergence-guard';
+import { normalizeToolCall } from './agent/tool-call-normalizer';
 import type { AgentLoopCallbacks, AgentLoopResult } from './agent/loop-types';
 import {
   analyzeTerminalEvidence,
@@ -99,8 +101,10 @@ import {
   createAgentTaskTodoLedger,
   isReadOnlyAgentTaskAction,
 } from './agent/task-state-machine';
+import { enforceAgentTaskExecutionPolicy } from './agent/task-execution-policy';
 import { tryRunSimpleFileTask } from './agent/simple-file-task';
 import { shouldRequestManualReviewForRun } from './agent/manual-review-validation';
+import { decideAgentRuntimeTurn } from './agent/agent-runtime-turn-policy';
 import { WorkspaceEditService } from './workspace/edit-service';
 import type { CppValidationPolicy } from './validation-planner';
 import type { ExecutionMode } from './intent/intent-types';
@@ -118,6 +122,105 @@ function isCompilableFile(filename: string): boolean {
   return ['.cpp', '.c', '.h', '.hpp', '.cc', '.cxx'].includes(
     nodePath.extname(filename).toLowerCase(),
   );
+}
+
+const AGENT_LOOP_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
+const AGENT_LOOP_TASK_PROMPT_CHAR_BUDGET = 32_000;
+const AGENT_LOOP_TOOL_FEEDBACK_CHAR_BUDGET = 7_000;
+const AGENT_LOOP_ASSISTANT_HISTORY_CHAR_BUDGET = 6_000;
+const AGENT_LOOP_USER_HISTORY_CHAR_BUDGET = 8_000;
+const AGENT_LOOP_RECENT_MESSAGE_KEEP_COUNT = 3;
+
+function messageContentLength(content: ChatMessage['content']): number {
+  if (typeof content === 'string') return content.length;
+  return JSON.stringify(content).length;
+}
+
+function truncateAgentLoopHistoryText(text: string, maxChars: number, label: string): string {
+  if (text.length <= maxChars) return text;
+  const omitted = text.length - maxChars;
+  return [
+    text.slice(0, maxChars),
+    '',
+    `[DevSeek 上下文压缩] ${label} 已截断 ${omitted} 字符，避免 Provider prompt 过大；如需更多细节，请继续用 read_file/grep_search 精确读取。`,
+  ].join('\n');
+}
+
+function isAgentLoopTaskPrompt(content: string): boolean {
+  return /【本次子任务】|【本次任务】/.test(content);
+}
+
+function isAgentLoopToolFeedback(content: string): boolean {
+  return /^\s*\[(?:工具执行结果|验证失败)\]/.test(content);
+}
+
+function messageHistoryBudgetFor(message: ChatMessage): number {
+  if (typeof message.content !== 'string') return Number.POSITIVE_INFINITY;
+  if (isAgentLoopTaskPrompt(message.content)) return AGENT_LOOP_TASK_PROMPT_CHAR_BUDGET;
+  if (isAgentLoopToolFeedback(message.content)) return AGENT_LOOP_TOOL_FEEDBACK_CHAR_BUDGET;
+  if (message.role === 'assistant') return AGENT_LOOP_ASSISTANT_HISTORY_CHAR_BUDGET;
+  return AGENT_LOOP_USER_HISTORY_CHAR_BUDGET;
+}
+
+function totalAgentLoopMessageChars(messages: ChatMessage[]): number {
+  return messages.reduce((sum, message) => sum + messageContentLength(message.content), 0);
+}
+
+function compactAgentLoopMessageHistory(messages: ChatMessage[]): void {
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (typeof message.content !== 'string') continue;
+    const maxChars = messageHistoryBudgetFor(message);
+    const nextContent = truncateAgentLoopHistoryText(
+      message.content,
+      maxChars,
+      message.role === 'assistant' ? '上一轮模型输出' : '上一轮工具反馈',
+    );
+    if (nextContent !== message.content) {
+      messages[index] = { ...message, content: nextContent };
+    }
+  }
+
+  if (totalAgentLoopMessageChars(messages) <= AGENT_LOOP_MESSAGE_TOTAL_CHAR_BUDGET || messages.length <= AGENT_LOOP_RECENT_MESSAGE_KEEP_COUNT + 2) {
+    return;
+  }
+
+  const protectedMessages = messages.filter(message =>
+    typeof message.content === 'string' && isAgentLoopTaskPrompt(message.content),
+  ).slice(-1);
+  const recentMessages = messages.slice(-AGENT_LOOP_RECENT_MESSAGE_KEEP_COUNT);
+  const compacted: ChatMessage[] = [];
+  const seen = new Set<ChatMessage>();
+  const push = (message: ChatMessage | undefined) => {
+    if (!message || seen.has(message)) return;
+    seen.add(message);
+    compacted.push(message);
+  };
+
+  if (protectedMessages.length === 0 || messages[0].role === 'system') {
+    push(messages[0]);
+  }
+  for (const message of protectedMessages) push(message);
+  for (const message of recentMessages) push(message);
+
+  const droppedCount = messages.length - compacted.length;
+  const summary: ChatMessage = {
+    role: 'user',
+    content: `[DevSeek 上下文压缩]\n已省略 ${Math.max(0, droppedCount)} 条较早轮次消息，保留当前任务提示和最近证据，避免 Provider prompt 过大导致桥接卡死或填充超时。`,
+  };
+  compacted.splice(Math.min(1, compacted.length), 0, summary);
+  messages.splice(0, messages.length, ...compacted);
+
+  for (let index = 0; index < messages.length; index += 1) {
+    if (totalAgentLoopMessageChars(messages) <= AGENT_LOOP_MESSAGE_TOTAL_CHAR_BUDGET) break;
+    const message = messages[index];
+    if (typeof message.content !== 'string') continue;
+    if (isAgentLoopTaskPrompt(message.content) || message.content.startsWith('[DevSeek 上下文压缩]')) continue;
+    messages[index] = {
+      ...message,
+      content: truncateAgentLoopHistoryText(message.content, 4_000, '较早轮次上下文'),
+    };
+  }
 }
 
 // ----------------------------------------------------------------
@@ -227,9 +330,12 @@ function buildAnalyzePrompt(
   taskIndex: number = 1,
   taskTotal: number = 1,
   mcpTools?: McpToolRef[],
+  executionMode?: ExecutionMode,
 ): string {
   const basename = nodePath.basename(task.file);
   const ext = (basename.split('.').pop() ?? '').toLowerCase();
+  const allowTerminalTools = !executionMode || executionMode === 'edit' || executionMode === 'run' || executionMode === 'destructive';
+  const allowWorkspaceMutationTools = !executionMode || executionMode === 'edit' || executionMode === 'destructive';
   const langMap: Record<string, string> = {
     cpp: 'cpp', cc: 'cpp', h: 'c', c: 'c', hpp: 'cpp',
     ts: 'typescript', js: 'javascript', py: 'python', md: 'markdown',
@@ -251,8 +357,11 @@ function buildAnalyzePrompt(
     _analyzeMemory ? wrapMemoryAsContext(_analyzeMemory) : '',
   ].filter(Boolean).join('\n\n');
 
-  // Provide a focused hint for compile/run tasks (AI still has run_terminal via buildToolsSuffix)
-  const isExecTask = /编译|运行|执行|compile|build|run\b|execute/i.test(task.desc + userPrompt);
+  // Provide a focused hint only for runnable source-file tasks. Plan/inspect
+  // prompts often mention "执行/实现" as business context; they must not receive
+  // a bogus compile command for a directory or requirements document.
+  const hasRunnableFileExt = /^(?:c|cc|cpp|cxx|py|js)$/.test(ext);
+  const isExecTask = allowTerminalTools && hasRunnableFileExt && /编译|运行|执行|compile|build|run\b|execute/i.test(task.desc + userPrompt);
   const taskDir = workdirOverride ?? (task.absPath ? nodePath.dirname(task.absPath) : '');
   const workdirHint = taskDir ? `, "workdir":"${taskDir}"` : '';
   const noExt = basename.replace(/\.[^.]+$/, '');
@@ -275,7 +384,9 @@ function buildAnalyzePrompt(
     : '';
 
   return [
-    `你是代码分析智能体，请分析文件 ${basename}。你有完整工具访问权限，可以主动读取相关文件、搜索代码、执行命令。`,
+    allowTerminalTools
+      ? `你是代码分析智能体，请分析文件 ${basename}。你有完整工具访问权限，可以主动读取相关文件、搜索代码、执行命令。`
+      : `你是代码分析智能体，请分析 ${basename}。当前为只读模式，只能读取文件、搜索代码和列目录，不能执行终端命令或修改工作区。`,
     ``,
     _analyzeContext,
     `【用户需求背景】`,
@@ -292,7 +403,10 @@ function buildAnalyzePrompt(
     `- 给出有具体证据的分析（文件路径/行号/函数名）`,
     `- 如有具体问题，明确指出问题位置和改进建议`,
     `- 使用简体中文回复`,
-    buildToolsSuffix(taskIndex, taskTotal, mcpTools, taskDir),
+    buildToolsSuffix(taskIndex, taskTotal, mcpTools, taskDir, {
+      includeTerminal: allowTerminalTools,
+      includeWorkspaceMutationTools: allowWorkspaceMutationTools,
+    }),
   ].join('\n');
 }
 
@@ -513,6 +627,7 @@ async function executeAnalysisConsolidated(
         callbacks.signal,
         i === 0 ? newSession : false, // only the first file uses newSession
         callbacks.traceRunId,
+        callbacks.traceWorkspaceRoot,
       );
       const analyzeWorkdir = t.absPath ? nodePath.dirname(t.absPath) : undefined;
       await executeFakeToolsForLoop(fTools, callbacks, analyzeWorkdir, {
@@ -623,6 +738,7 @@ async function executeAnalysisConsolidated(
       callbacks.signal,
       false,
       callbacks.traceRunId,
+      callbacks.traceWorkspaceRoot,
     );
   } catch (_e) { /* summary failure is non-fatal */ }
 
@@ -771,19 +887,23 @@ async function executeTask(
     if (deterministicResult) return deterministicResult;
 
     // G3: pass taskIndex/taskTotal/mcpTools so the prompt includes full tool definitions
-    const analyzePrompt = buildAnalyzePrompt(userPrompt, task, currentContent, analyzeWorkdir, taskIndex, allTasks.length, callbacks.mcpToolRefs);
+    const analyzePrompt = buildAnalyzePrompt(userPrompt, task, currentContent, analyzeWorkdir, taskIndex, allTasks.length, callbacks.mcpToolRefs, callbacks.executionMode);
     let analyzeRaw = '';
 
     // G4+G5: unified multi-round tool loop for ALL analyze/explain/explore tasks.
     // Removed keyword-gated isExecTask branch — AI now autonomously decides when to use tools.
     // MAX_ANALYZE_ROUNDS=8 gives enough depth for investigative tasks without runaway loops.
     const MAX_ANALYZE_ROUNDS = 8;
+    const MAX_ANALYZE_NO_TOOL_RECOVERY_ATTEMPTS = 2;
     const execMessages: ChatMessage[] = [
       ...(history ?? []),
       { role: 'user', content: analyzePrompt },
     ];
     const taskTerminalEvidence: TerminalEvidence[] = [];
     const analyzeConvergenceGuard = createTaskConvergenceGuard();
+    let exhaustedWithPendingTools = false;
+    let noToolRecoveryAttempts = 0;
+    let lastAnalyzeRoundText = '';
     // G-analy-display: Route streaming text into the Working box analysis body (Copilot
     // inline style). Using \x00AFILE:basename\x00 prefix ensures content appears per-task
     // directly inside each Working box, regardless of whether the AI produces streaming
@@ -793,11 +913,13 @@ async function executeTask(
       for (let r = 0; r < MAX_ANALYZE_ROUNDS; r++) {
         if (callbacks.signal?.aborted) break;
         execMessages.push(...consumeUserSteerMessages(callbacks));
+        compactAgentLoopMessageHistory(execMessages);
         const { text, tools } = await chatWithMessages(
           execMessages, mode,
           (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
               // Preserve RESET semantic inside AFILE prefix so analysis body resets cleanly
+              analyzeRaw = delta.slice(7);
               callbacks.onDelta(AFX + '\x00RESET\x00' + delta.slice(7));
             } else {
               analyzeRaw += delta;
@@ -807,7 +929,9 @@ async function executeTask(
           callbacks.signal,
           consumeNewSession(),
           callbacks.traceRunId,
+          callbacks.traceWorkspaceRoot,
         );
+        lastAnalyzeRoundText = text;
         execMessages.push({ role: 'assistant', content: text });
         // Pass analyzeWorkdir so run_terminal defaults to task directory when AI omits workdir.
         const loopRes = await executeFakeToolsForLoop(tools, taskToolCallbacks, analyzeWorkdir, {
@@ -858,30 +982,63 @@ async function executeTask(
             });
             continue;
           }
-          return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw, taskComplete: true }, taskTerminalEvidence);
+          return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw || text, taskComplete: true }, taskTerminalEvidence);
         }
-        if (!loopRes.toolCallsMade) break;
+        if (!loopRes.toolCallsMade) {
+          exhaustedWithPendingTools = false;
+          const recovery = decideAgentRuntimeTurn({
+            taskAction: task.action,
+            toolCallsMade: false,
+            aggregateRaw: analyzeRaw || text,
+            roundRaw: text,
+            taskTitle: task.desc || basename,
+            recoveryAttempts: noToolRecoveryAttempts,
+            maxRecoveryAttempts: MAX_ANALYZE_NO_TOOL_RECOVERY_ATTEMPTS,
+          });
+          if (recovery.kind === 'tool-results') continue;
+          if (recovery.kind === 'final-answer') break;
+          if (recovery.kind === 'recover') {
+            noToolRecoveryAttempts += 1;
+            await callbacks.onAgentStatus({
+              type: 'agentStatus', phase: 'execute',
+              taskId: task.id, taskFile: basename, taskAction: task.action,
+              taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
+              state: 'started',
+              title: '模型未输出分析结论，继续要求工具调用或最终答复',
+              detail: task.desc || basename,
+            });
+            execMessages.push({ role: 'user', content: recovery.feedback });
+            continue;
+          }
+          return withTaskTerminalEvidence({
+            applied: false,
+            raw: analyzeRaw || text,
+            failedReason: recovery.failedReason,
+          }, taskTerminalEvidence);
+        }
+        exhaustedWithPendingTools = r >= MAX_ANALYZE_ROUNDS - 1;
         const metaOnlyToolFeedback = !loopRes.workToolCallsMade
           ? buildAgentMetaOnlyToolFeedback(task.desc || basename)
           : '';
         const feedbackForNextRound = [loopRes.feedbackForAI, metaOnlyToolFeedback].filter(Boolean).join('\n\n');
 
         const convergence = analyzeConvergenceGuard.observe({
-          tools,
+          tools: tools.map(tool => normalizeToolCall(tool, 'fake-tool')),
           feedbackForAI: feedbackForNextRound,
           rawText: text,
           terminalEvidence: loopRes.terminalEvidence,
         });
         if (convergence.kind === 'blocked') {
+          const failedReason = convergence.detail;
           await callbacks.onAgentStatus({
             type: 'agentStatus', phase: 'execute',
             taskId: task.id, taskFile: basename, taskAction: task.action,
             taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
             state: 'failed',
             title: '停止重复执行：' + (task.desc || basename),
-            detail: convergence.detail,
+            detail: failedReason,
           });
-          return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw }, taskTerminalEvidence);
+          return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw || lastAnalyzeRoundText, failedReason }, taskTerminalEvidence);
         }
 
         execMessages.push({
@@ -891,17 +1048,29 @@ async function executeTask(
       }
     } catch (e) {
       const netErr = isNetworkError(e);
+      const failedReason = (e as Error).message;
       await callbacks.onAgentStatus({
         type: 'agentStatus', phase: 'execute',
         taskId: task.id, taskFile: basename, taskAction: task.action,
         taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
         state: 'failed', title: task.desc || basename,
-        detail: (e as Error).message,
+        detail: failedReason,
       });
-      return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw, networkError: netErr }, taskTerminalEvidence);
+      return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw || lastAnalyzeRoundText, networkError: netErr, failedReason }, taskTerminalEvidence);
     }
 
     const terminalFailure = findBlockingTerminalFailureEvidence(taskTerminalEvidence);
+    if (exhaustedWithPendingTools) {
+      const failedReason = `已达到 ${MAX_ANALYZE_ROUNDS} 轮分析上限，但模型仍在请求工具，尚未输出最终结论。`;
+      await callbacks.onAgentStatus({
+        type: 'agentStatus', phase: 'execute',
+        taskId: task.id, taskFile: basename, taskAction: task.action,
+        taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
+        state: 'failed', title: '分析工具调用未收敛：' + (task.desc || basename),
+        detail: failedReason,
+      });
+      return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw || lastAnalyzeRoundText, failedReason }, taskTerminalEvidence);
+    }
     if (terminalFailure) {
       const reviewEvidence = classifyTaskTerminalManualReview(
         terminalFailure,
@@ -919,7 +1088,7 @@ async function executeTask(
         });
         return withTaskTerminalEvidence({
           applied: false,
-          raw: analyzeRaw || reviewEvidence.detail,
+          raw: analyzeRaw || lastAnalyzeRoundText || reviewEvidence.detail,
           taskComplete: true,
         }, reviewEvidence.evidence);
       }
@@ -930,16 +1099,29 @@ async function executeTask(
         state: 'failed', title: task.desc || basename,
         detail: buildTaskTerminalFailureDetail(terminalFailure),
       });
-      return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw }, taskTerminalEvidence);
+      return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw || lastAnalyzeRoundText }, taskTerminalEvidence);
     }
 
-    await callbacks.onAgentStatus({
-      type: 'agentStatus', phase: 'execute',
-      taskId: task.id, taskFile: basename, taskAction: task.action,
-      taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
-      state: 'completed', title: task.desc || basename,
+    const finalNoToolRecovery = decideAgentRuntimeTurn({
+      taskAction: task.action,
+      toolCallsMade: false,
+      aggregateRaw: analyzeRaw || lastAnalyzeRoundText,
+      roundRaw: lastAnalyzeRoundText,
+      taskTitle: task.desc || basename,
+      recoveryAttempts: MAX_ANALYZE_NO_TOOL_RECOVERY_ATTEMPTS,
+      maxRecoveryAttempts: MAX_ANALYZE_NO_TOOL_RECOVERY_ATTEMPTS,
     });
-    return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw }, taskTerminalEvidence);
+    if (finalNoToolRecovery.kind !== 'final-answer' && finalNoToolRecovery.kind !== 'tool-results') {
+      return withTaskTerminalEvidence({
+        applied: false,
+        raw: analyzeRaw || lastAnalyzeRoundText,
+        failedReason: finalNoToolRecovery.kind === 'recover'
+          ? '模型仍未输出分析结论。'
+          : finalNoToolRecovery.failedReason,
+      }, taskTerminalEvidence);
+    }
+
+    return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw || lastAnalyzeRoundText }, taskTerminalEvidence);
   }
 
   // ──── modify / create / delete ────────────────────────────────
@@ -967,6 +1149,38 @@ async function executeTask(
     callbacks,
   });
   if (deterministicCreate) return deterministicCreate;
+
+  const markdownDeliverable = await tryExecuteMarkdownDeliverableTask({
+    task,
+    taskIndex,
+    taskTotal: allTasks.length,
+    userPrompt,
+    workspaceRoot,
+    effectiveAbsPath: earlyEffectiveAbsPath,
+    callbacks,
+    chat: async (messages) => {
+      const { text } = await chatWithMessages(
+        messages,
+        mode,
+        undefined,
+        callbacks.signal,
+        consumeNewSession(),
+        callbacks.traceRunId,
+        callbacks.traceWorkspaceRoot,
+      );
+      return text;
+    },
+  });
+  if (markdownDeliverable) {
+    if (markdownDeliverable.applied && markdownDeliverable.path) {
+      try {
+        contentCache.set(markdownDeliverable.path, fs.readFileSync(markdownDeliverable.path, 'utf8'));
+      } catch {
+        // Best-effort cache refresh; write verification already happened in the executor.
+      }
+    }
+    return markdownDeliverable;
+  }
 
   // Build editor prompt with current file content injected.
   const editorWorkdir = earlyEffectiveAbsPath ? nodePath.dirname(earlyEffectiveAbsPath) : undefined;
@@ -1042,7 +1256,8 @@ async function executeTask(
     }
     try {
       taskMessages.push(...consumeUserSteerMessages(callbacks));
-      const { text, tools } = await chatWithMessages(taskMessages, mode, undefined, callbacks.signal, consumeNewSession(), callbacks.traceRunId);
+      compactAgentLoopMessageHistory(taskMessages);
+      const { text, tools } = await chatWithMessages(taskMessages, mode, undefined, callbacks.signal, consumeNewSession(), callbacks.traceRunId, callbacks.traceWorkspaceRoot);
       taskMessages.push({ role: 'assistant', content: text });
       raw = text;
 
@@ -1078,13 +1293,14 @@ async function executeTask(
       const feedbackForNextRound = [loopRes.feedbackForAI, metaOnlyToolFeedback].filter(Boolean).join('\n\n');
 
       const convergence = taskConvergenceGuard.observe({
-        tools,
+        tools: tools.map(tool => normalizeToolCall(tool, 'fake-tool')),
         feedbackForAI: feedbackForNextRound,
         rawText: text,
         writtenFiles: loopRes.writtenFiles,
         terminalEvidence: loopRes.terminalEvidence,
       });
       if (convergence.kind === 'blocked') {
+        const failedReason = convergence.detail;
         await callbacks.onAgentStatus({
           type: 'agentStatus',
           phase: 'execute',
@@ -1096,9 +1312,9 @@ async function executeTask(
           taskTotal: allTasks.length,
           state: 'failed',
           title: '停止重复执行：' + (task.desc || basename),
-          detail: convergence.detail,
+          detail: failedReason,
         });
-        return withTaskTerminalEvidence({ applied: false, raw }, taskTerminalEvidence);
+        return withTaskTerminalEvidence({ applied: false, raw, failedReason }, taskTerminalEvidence);
       }
 
       // Feed tool results back for the next AI round
@@ -1111,15 +1327,16 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
       });
     } catch (e) {
       const netErr = isNetworkError(e);
+      const failedReason = (e as Error).message;
       await callbacks.onAgentStatus({
         type: 'agentStatus',
         phase: 'execute',
         taskId: task.id, taskFile: basename, taskAction: task.action,
         taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
         state: 'failed', title: task.desc || basename,
-        detail: (e as Error).message,
+        detail: failedReason,
       });
-      return withTaskTerminalEvidence({ applied: false, raw, networkError: netErr }, taskTerminalEvidence);
+      return withTaskTerminalEvidence({ applied: false, raw, networkError: netErr, failedReason }, taskTerminalEvidence);
     }
   }
 
@@ -1130,7 +1347,12 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
     if (srResult.applied > 0 && srResult.failed === 0) {
       // P-SEC: check with extension before writing (sensitive file protection)
       if (callbacks.onBeforeFileWrite) {
-        const allowed = await callbacks.onBeforeFileWrite(task.absPath);
+        const allowed = await callbacks.onBeforeFileWrite(task.absPath, {
+          purpose: 'workspace-edit',
+          userRequested: true,
+          taskAction: task.action,
+          displayName: task.file,
+        });
         if (!allowed) {
           await callbacks.onAgentStatus({
             type: 'agentStatus',
@@ -1272,7 +1494,7 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
 
     let retryRaw = '';
     try {
-      const { text: rText, tools: rTools } = await chatViaProvider(retryPrompt, mode, undefined, history, callbacks.signal, false, callbacks.traceRunId);
+      const { text: rText, tools: rTools } = await chatViaProvider(retryPrompt, mode, undefined, history, callbacks.signal, false, callbacks.traceRunId, callbacks.traceWorkspaceRoot);
       retryRaw = rText;
       await executeFakeToolsForLoop(rTools, taskToolCallbacks, editorWorkdir, {
         currentTaskIndex: taskIndex,
@@ -1621,6 +1843,23 @@ export async function runAgentLoop(
   analysisContext?: string,
   startFromIndex = 0,
 ): Promise<AgentLoopResult> {
+  const policyResult = enforceAgentTaskExecutionPolicy(tasks, {
+    mode: callbacks.executionMode,
+    userPrompt,
+  });
+  if (policyResult.changed) {
+    tasks = policyResult.tasks;
+    startFromIndex = 0;
+    await callbacks.onAgentStatus({
+      type: 'agentStatus',
+      phase: 'plan',
+      state: 'completed',
+      title: '已按权限模式调整任务计划',
+      detail: policyResult.reason,
+      taskTotal: tasks.length,
+    });
+  }
+
   const changedPaths: string[] = [];
   const editedFileRecords: WrittenFileEvidence[] = [];
   let tasksApplied = 0;
@@ -1701,11 +1940,12 @@ export async function runAgentLoop(
     // Save a checkpoint so the user can resume from this task after reconnecting.
     if (result.networkError) {
       await callbacks.onTaskCheckpoint?.(i, tasks.slice(i), 'paused');
-      const failedReason = `网络中断，已在第 ${i + 1}/${tasks.length} 个任务暂停。`;
+      const providerInterrupted = Boolean(result.failedReason && /^RESPONSE_CORRUPTED:/i.test(result.failedReason));
+      const failedReason = `${providerInterrupted ? 'Provider 响应中断' : '网络中断'}，已在第 ${i + 1}/${tasks.length} 个任务暂停。`;
       await callbacks.onAgentStatus({
         type: 'agentStatus', phase: 'done', state: 'failed',
-        title: `网络中断，已在第 ${i + 1}/${tasks.length} 个任务暂停`,
-        detail: `已完成 ${tasksApplied} 个任务，剩余 ${tasks.length - i} 个等待续传。重连后可继续。`,
+        title: `${providerInterrupted ? 'Provider 响应中断' : '网络中断'}，已在第 ${i + 1}/${tasks.length} 个任务暂停`,
+        detail: `已完成 ${tasksApplied} 个任务，剩余 ${tasks.length - i} 个等待续传。${result.failedReason ? `原因：${result.failedReason}` : '重连后可继续。'}`,
         taskTotal: tasks.length,
       });
       return buildAgentLoopResult({
@@ -1738,7 +1978,9 @@ export async function runAgentLoop(
       writtenFiles: collectTaskResultWrittenFiles(result, task.action, workspaceRoot.fsPath),
       raw: result.raw,
       taskComplete: result.taskComplete,
+      failedReason: result.failedReason,
       terminalEvidence: result.terminalEvidence,
+      workspaceRoot: workspaceRoot.fsPath,
     };
     if (result.terminalEvidence?.length) {
       allTerminalEvidence.push(...result.terminalEvidence);
@@ -1770,13 +2012,27 @@ export async function runAgentLoop(
     const taskSettlement = taskTodoLedger.settleTask(i, taskSettlementInput);
     if (taskSettlement.failed) {
       tasksFailed += 1;
-      await callbacks.onAgentStatus(buildTaskSettlementFailureStatus(task, i + 1, tasks.length, result));
+      await callbacks.onAgentStatus(buildTaskSettlementFailureStatus(task, i + 1, tasks.length, taskSettlementInput));
       if (isReadOnlyAction(task.action)) {
         sessionHistory.push({
           role: 'assistant',
           content: `任务 ${i + 1}/${tasks.length} 验证失败：${getAgentTaskDisplayTarget(task)}（${task.desc}）`,
         });
       }
+    } else if (taskSettlement.completed && isReadOnlyAction(task.action)) {
+      const target = getAgentTaskDisplayTarget(task);
+      await callbacks.onAgentStatus({
+        type: 'agentStatus',
+        phase: 'execute',
+        taskId: task.id,
+        taskFile: target,
+        taskAction: task.action,
+        taskDesc: task.desc,
+        taskIndex: i + 1,
+        taskTotal: tasks.length,
+        state: 'completed',
+        title: task.desc || target,
+      });
     }
 
     if (callbacks.onTodoUpdate && tasks.length > 0) {
@@ -1876,13 +2132,14 @@ export async function runAgentLoop(
 
       if (repairResult.networkError) {
         await callbacks.onTaskCheckpoint?.(tasks.length, [], 'paused');
-        const failedReason = `网络中断，验证修复第 ${repairRound} 轮暂停。`;
+        const providerInterrupted = Boolean(repairResult.failedReason && /^RESPONSE_CORRUPTED:/i.test(repairResult.failedReason));
+        const failedReason = `${providerInterrupted ? 'Provider 响应中断' : '网络中断'}，验证修复第 ${repairRound} 轮暂停。`;
         await callbacks.onAgentStatus({
           type: 'agentStatus',
           phase: 'done',
           state: 'failed',
-          title: `网络中断，验证修复第 ${repairRound} 轮暂停`,
-          detail: '修复任务已暂停，重连后可重新发起验证。',
+          title: `${providerInterrupted ? 'Provider 响应中断' : '网络中断'}，验证修复第 ${repairRound} 轮暂停`,
+          detail: repairResult.failedReason || '修复任务已暂停，重连后可重新发起验证。',
           taskTotal: tasks.length,
         });
         return buildAgentLoopResult({
@@ -2094,7 +2351,7 @@ function buildAgentLoopResult(input: {
     failedReason: input.failedReason,
     summary: input.summary,
     todos: input.todos.map(todo => ({
-      id: todo.id,
+      id: typeof todo.id === 'number' ? todo.id : undefined,
       title: todo.title,
       status: normalizeHistoryTodoStatus(todo.status),
     })),

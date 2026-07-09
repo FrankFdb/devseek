@@ -93,6 +93,10 @@ export function normalizeAgentToolInput(toolName: string, input: Record<string, 
     const pattern = normalized.pattern ?? normalized.include;
     if (typeof pattern === 'string' && pattern.trim()) normalized.glob = pattern.trim();
   }
+  if (canonicalToolName === 'file_search' && typeof normalized.glob !== 'string') {
+    const pattern = normalized.pattern ?? normalized.include ?? normalized.includePattern;
+    if (typeof pattern === 'string' && pattern.trim()) normalized.glob = pattern.trim();
+  }
   if (canonicalToolName === 'grep_search' && typeof normalized.pattern !== 'string') {
     const pattern = normalized.query ?? normalized.search ?? normalized.text ?? normalized.include;
     if (typeof pattern === 'string' && pattern.trim()) normalized.pattern = pattern.trim();

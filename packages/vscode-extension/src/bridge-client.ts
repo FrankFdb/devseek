@@ -14,6 +14,7 @@ import { getWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roo
 const DEFAULT_PORT = 3721;
 const TOKEN_REL_PATH = nodePath.join('.devseek', 'bridge-token');
 const TRACE_RUN_ID_HEADER = 'X-DevSeek-Run-Id';
+const TRACE_WORKSPACE_ROOT_HEADER = 'X-DevSeek-Trace-Workspace-Root';
 let extensionRootFsPath: string | undefined;
 
 interface DevSeekRuntimeBuildInfo {
@@ -21,6 +22,12 @@ interface DevSeekRuntimeBuildInfo {
   buildChannel?: string;
   buildId?: string;
   gitCommit?: string;
+}
+
+interface BridgeStatusResponse extends DevSeekRuntimeBuildInfo {
+  idle: boolean;
+  queueLength: number;
+  browserReady: boolean;
 }
 
 export function setBridgeExtensionRoot(fsPath: string): void {
@@ -71,9 +78,9 @@ function getTraceLevel(): string {
   return vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', process.env.DEVSEEK_TRACE_LEVEL ?? 'debug');
 }
 
-function createBridgeClientTraceLogger(runId?: string): DevSeekTraceLogger {
+function createBridgeClientTraceLogger(runId?: string, workspaceRoot?: string): DevSeekTraceLogger {
   return createDevSeekTraceLogger({
-    workspaceRoot: getBridgeWorkspaceRoot(),
+    workspaceRoot: workspaceRoot || getBridgeWorkspaceRoot(),
     source: 'vscode-extension',
     level: getTraceLevel(),
     runId,
@@ -81,8 +88,12 @@ function createBridgeClientTraceLogger(runId?: string): DevSeekTraceLogger {
   });
 }
 
-function traceHeaders(trace: DevSeekTraceLogger, extra?: Record<string, string>): Record<string, string> {
-  return authHeaders({ ...(extra ?? {}), [TRACE_RUN_ID_HEADER]: trace.runId });
+function traceHeaders(trace: DevSeekTraceLogger, extra?: Record<string, string>, traceWorkspaceRoot?: string): Record<string, string> {
+  return authHeaders({
+    ...(extra ?? {}),
+    [TRACE_RUN_ID_HEADER]: trace.runId,
+    ...(traceWorkspaceRoot ? { [TRACE_WORKSPACE_ROOT_HEADER]: traceWorkspaceRoot } : {}),
+  });
 }
 
 function assertProviderReturnedContent(content: string): void {
@@ -135,6 +146,8 @@ export interface ChatOptions {
   files?: string[];
   /** 一次顶层 Agent 执行的诊断 trace id。 */
   traceRunId?: string;
+  /** 本次 trace 统一落盘根目录。 */
+  traceWorkspaceRoot?: string;
 }
 
 /** 检查 bridge server 是否在线 */
@@ -148,11 +161,11 @@ export async function ping(): Promise<boolean> {
 }
 
 /** 获取 bridge 状态 */
-export async function status(): Promise<{ idle: boolean; queueLength: number; browserReady: boolean } | null> {
+export async function status(): Promise<BridgeStatusResponse | null> {
   try {
     const res = await fetch(`${baseUrl()}/status`, { headers: authHeaders(), signal: AbortSignal.timeout(800) });
     if (!res.ok) return null;
-    return res.json() as Promise<{ idle: boolean; queueLength: number; browserReady: boolean }>;
+    return res.json() as Promise<BridgeStatusResponse>;
   } catch {
     return null;
   }
@@ -215,24 +228,52 @@ function findBridgeRuntime(workspaceRoot: string): { bridgeDir: string; serverJs
   return null;
 }
 
+function bridgeStatusMatchesRuntime(statusValue: BridgeStatusResponse | null, expected: DevSeekRuntimeBuildInfo): boolean {
+  if (!statusValue) return false;
+  if (!expected.buildId && !expected.appVersion) return true;
+  if (expected.buildId) return statusValue.buildId === expected.buildId;
+  if (expected.appVersion) return statusValue.appVersion === expected.appVersion;
+  return true;
+}
+
+async function terminateOnlineBridge(): Promise<void> {
+  if (!await ping()) return;
+  await shutdownBridge();
+  if (await ping()) {
+    const port = getPort();
+    cp.spawnSync('fuser', ['-k', `${port}/tcp`], { stdio: 'ignore' });
+    await new Promise<void>(r => setTimeout(r, 600));
+  }
+}
+
 /**
  * 确保 Bridge 已运行。若未运行则自动在工作区中启动。
  * forceRestart=true：先关闭旧实例再重启（确保运行最新版本）。
  * 返回 true 表示 Bridge 已就绪，false 表示无法启动。
  */
 export async function ensureBridgeRunning(forceRestart = false): Promise<boolean> {
-  // 已经在线且不强制重启
-  if (!forceRestart && await ping() && await status()) return true;
+  const buildInfo = getDevSeekRuntimeBuildInfo();
+  const onlineStatus = await status();
+  const bridgeOnline = onlineStatus ? true : await ping();
+  const buildMatches = bridgeStatusMatchesRuntime(onlineStatus, buildInfo);
+  createBridgeClientTraceLogger().info('bridge-client', 'bridge-status-check', {
+    forceRestart,
+    bridgeOnline,
+    buildMatches,
+    expected: buildInfo,
+    actual: onlineStatus
+      ? {
+        appVersion: onlineStatus.appVersion,
+        buildChannel: onlineStatus.buildChannel,
+        buildId: onlineStatus.buildId,
+        gitCommit: onlineStatus.gitCommit,
+      }
+      : undefined,
+  });
+  if (!forceRestart && buildMatches) return true;
 
-  // 强制重启：先优雅关闭旧实例
-  if (forceRestart && await ping()) {
-    await shutdownBridge();
-    // 若旧进程不支持 /shutdown（旧版无此接口），用 fuser 强杀端口
-    if (await ping()) {
-      const port = getPort();
-      cp.spawnSync('fuser', ['-k', `${port}/tcp`], { stdio: 'ignore' });
-      await new Promise<void>(r => setTimeout(r, 600));
-    }
+  if (forceRestart || bridgeOnline) {
+    await terminateOnlineBridge();
   }
 
   // 找工作区根目录
@@ -246,9 +287,9 @@ export async function ensureBridgeRunning(forceRestart = false): Promise<boolean
     try { _bridgeProc.kill(); } catch { /* ignore */ }
   }
 
-  // 以 headless=true 启动（不弹出可见浏览器；重新登录流程会单独打开）
+  // 默认 headless=true；真实 live harness 可通过环境变量打开可见浏览器，便于人工确认网页收发。
   const token = getBridgeToken();
-  const buildInfo = getDevSeekRuntimeBuildInfo();
+  const bridgeHeadless = process.env.DEVSEEK_BRIDGE_HEADLESS === 'false' ? 'false' : 'true';
   const bridgeLogPath = nodePath.join(wsRoot, '.devseek', 'bridge-process.log');
   fs.mkdirSync(nodePath.dirname(bridgeLogPath), { recursive: true });
   const logFile = fs.openSync(bridgeLogPath, 'a');
@@ -256,7 +297,7 @@ export async function ensureBridgeRunning(forceRestart = false): Promise<boolean
     cwd: runtime.bridgeDir,
     env: {
       ...process.env,
-      HEADLESS: 'true',
+      HEADLESS: bridgeHeadless,
       WORKSPACE_ROOT: wsRoot,
       BRIDGE_PORT: String(getPort()),
       DEVSEEK_BRIDGE_TOKEN: token,
@@ -277,7 +318,8 @@ export async function ensureBridgeRunning(forceRestart = false): Promise<boolean
   const deadline = Date.now() + 15000;
   while (Date.now() < deadline) {
     await new Promise<void>(r => setTimeout(r, 600));
-    if (await ping()) return true;
+    const startedStatus = await status();
+    if (bridgeStatusMatchesRuntime(startedStatus, buildInfo)) return true;
   }
   return false;
 }
@@ -320,7 +362,7 @@ export async function readWorkspaceFile(relPath: string, preferredAbsolutePaths?
 export async function chat(opts: ChatOptions): Promise<string> {
   const config = vscode.workspace.getConfiguration('devseek');
   const useStream = opts.stream !== false;
-  const trace = createBridgeClientTraceLogger(opts.traceRunId);
+  const trace = createBridgeClientTraceLogger(opts.traceRunId, opts.traceWorkspaceRoot);
 
   const body = JSON.stringify({
     prompt: opts.prompt,
@@ -349,13 +391,13 @@ export async function chat(opts: ChatOptions): Promise<string> {
   //  2. The non-stream path uses AbortSignal.timeout(62s) which is far too short
   //     for large files; the stream path uses timeoutMs×10 (up to 20 min).
   if (useStream) {
-    return chatStream(body, opts.onDelta ?? (() => {}), trace);
+    return chatStream(body, opts.onDelta ?? (() => {}), trace, opts.traceWorkspaceRoot);
   }
 
   try {
     const res = await fetch(`${baseUrl()}/chat`, {
       method: 'POST',
-      headers: traceHeaders(trace, { 'Content-Type': 'application/json' }),
+      headers: traceHeaders(trace, { 'Content-Type': 'application/json' }, opts.traceWorkspaceRoot),
       body,
       signal: AbortSignal.timeout(opts.timeoutMs ?? config.get<number>('requestTimeoutMs', 120000)),
     });
@@ -377,7 +419,7 @@ export async function chat(opts: ChatOptions): Promise<string> {
   }
 }
 
-async function chatStream(body: string, onDelta: (delta: string) => void, trace: DevSeekTraceLogger): Promise<string> {
+async function chatStream(body: string, onDelta: (delta: string) => void, trace: DevSeekTraceLogger, traceWorkspaceRoot?: string): Promise<string> {
   const config = vscode.workspace.getConfiguration('devseek');
   const timeoutMs = JSON.parse(body).timeoutMs ?? config.get<number>('requestTimeoutMs', 120000);
 
@@ -386,7 +428,7 @@ async function chatStream(body: string, onDelta: (delta: string) => void, trace:
   const httpTimeout = Math.max(timeoutMs * 10, 600_000);
   const res = await fetch(`${baseUrl()}/chat`, {
     method: 'POST',
-    headers: traceHeaders(trace, { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' }),
+    headers: traceHeaders(trace, { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' }, traceWorkspaceRoot),
     body,
     signal: AbortSignal.timeout(httpTimeout),
   });

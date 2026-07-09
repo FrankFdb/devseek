@@ -66,6 +66,8 @@ export interface LLMChatOptions {
   newSession?: boolean;
   /** 一次顶层 Agent 执行的诊断 trace id，贯穿多轮模型调用与工具验证。 */
   traceRunId?: string;
+  /** 本次 trace 的统一落盘根目录，避免 provider/tool 日志被不同 workspace 拆开。 */
+  traceWorkspaceRoot?: string;
 }
 
 export interface LLMProvider {

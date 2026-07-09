@@ -83,6 +83,38 @@ test('ToolLoop returns feedback for manage_todo_list even when UI todo callback 
   assert.match(result.feedbackForAI, /任务清单已更新/);
 });
 
+test('ToolLoop validates required tool parameters before dispatch', async () => {
+  let listDirCalled = false;
+  let readFileCalled = false;
+  const result = await executeFakeToolsForLoop(
+    [
+      { name: 'list_dir', input: {} },
+      { name: 'read_file', input: {} },
+    ],
+    {
+      onListDir: async () => {
+        listDirCalled = true;
+        return 'should-not-list';
+      },
+      onReadFile: async () => {
+        readFileCalled = true;
+        return 'should-not-read';
+      },
+      onToolActivity: () => {},
+      onAgentStatus: async () => {},
+    },
+    '/tmp/project',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
+  );
+
+  assert.equal(listDirCalled, false);
+  assert.equal(readFileCalled, false);
+  assert.equal(result.toolCallsMade, true);
+  assert.equal(result.workToolCallsMade, true);
+  assert.match(result.feedbackForAI, /list_dir.*缺少必填参数: path/s);
+  assert.match(result.feedbackForAI, /read_file.*缺少必填参数: path/s);
+});
+
 test('ToolLoop terminal guard: raw TOOL_CALL protocol text never reaches shell', async () => {
   let terminalCalled = false;
   const activities = [];

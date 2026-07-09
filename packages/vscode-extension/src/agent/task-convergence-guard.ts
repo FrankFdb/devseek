@@ -1,8 +1,8 @@
-import type { FakeTool } from './fake-tool-parser';
 import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
+import type { ToolCall } from './tool-call-normalizer';
 
 export interface TaskConvergenceObservation {
-  tools: FakeTool[];
+  tools: ToolCall[];
   feedbackForAI: string;
   rawText?: string;
   writtenFiles?: WrittenFileEvidence[];
@@ -48,7 +48,7 @@ function hasWorkspaceMutation(files?: WrittenFileEvidence[]): boolean {
   return Boolean(files?.some(file => file.path));
 }
 
-function buildToolSignature(tools: FakeTool[]): string {
+function buildToolSignature(tools: ToolCall[]): string {
   return tools
     .map(tool => `${tool.name}:${stableStringify(tool.input)}`)
     .join('|');

@@ -9,6 +9,7 @@ export interface TaskExecutionResult {
   linesRemoved?: number;
   writtenFiles?: WrittenFileEvidence[];
   networkError?: boolean;
+  failedReason?: string;
   terminalEvidence?: TerminalEvidence[];
 }
 

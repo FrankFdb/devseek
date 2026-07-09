@@ -48,6 +48,10 @@ export interface StatusResponse {
   idle: boolean;
   queueLength: number;
   browserReady: boolean;
+  appVersion?: string;
+  buildChannel?: string;
+  buildId?: string;
+  gitCommit?: string;
 }
 
 /** POST /cancel 响应 */

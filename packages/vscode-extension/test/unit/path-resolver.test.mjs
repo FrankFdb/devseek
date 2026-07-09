@@ -193,6 +193,113 @@ test('path-resolver: internal DevSeek logs are not used as active editor project
   }
 });
 
+test('path-resolver: external active editor with project marker becomes task project root', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    mkdirSync(path.join(externalRoot, '.devseek'), { recursive: true });
+    const activeDoc = path.join(
+      externalRoot,
+      'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md',
+    );
+    mkdirSync(path.dirname(activeDoc), { recursive: true });
+    writeFileSync(activeDoc, '# warranty plan\n');
+
+    const scope = detectWorkspacePathScope('基于当前需求文档为正式项目添加维保提醒功能', [], activeDoc);
+    assert.equal(scope.promptDir, externalRoot);
+    assert.equal(scope.promptDirIsExplicit, false);
+
+    const write = resolveWorkspaceWritePath('src/oam/src/lifting/maintenance/maintenance_types.hpp', {
+      requestPrompt: '基于当前需求文档为正式项目添加维保提醒功能',
+      content: '#pragma once\nstruct SMaintenanceStat {};\n',
+      preferredAbsolutePaths: [activeDoc],
+    });
+    assert.equal(write.relPath, 'src/oam/src/lifting/maintenance/maintenance_types.hpp');
+    assert.equal(write.absPath, path.join(externalRoot, 'src/oam/src/lifting/maintenance/maintenance_types.hpp'));
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('path-resolver: formal project advisory prompt uses project root instead of requirement doc directory', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    mkdirSync(path.join(externalRoot, '.devseek'), { recursive: true });
+    const oldImplDir = path.join(externalRoot, 'src/oam/src/lifting/maintenance');
+    const activeDoc = path.join(
+      externalRoot,
+      'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md',
+    );
+    mkdirSync(oldImplDir, { recursive: true });
+    mkdirSync(path.dirname(activeDoc), { recursive: true });
+    writeFileSync(activeDoc, '# warranty plan\n');
+
+    const prompt = `原来实现的吊运维保功能：设计文档+代码等${oldImplDir} 下面是最新的维保提醒的需求： ${activeDoc} 请分析，给出新需求的实现对策建议，并从主控需要实现功能角度给出task 当前不准备使用原来的逻辑，准备按照新的需求重新做，请帮我结合这些信息分析，给出你的建议`;
+    const scope = detectWorkspacePathScope(prompt, [], activeDoc);
+
+    assert.equal(scope.promptDir, externalRoot);
+    assert.equal(scope.promptDirIsExplicit, false);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('path-resolver: formal advisory prompt stays at project root without active editor context', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    mkdirSync(path.join(externalRoot, '.devseek'), { recursive: true });
+    const oldImplDir = path.join(externalRoot, 'src/oam/src/lifting/maintenance');
+    const newRequirementDoc = path.join(
+      externalRoot,
+      'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md',
+    );
+    mkdirSync(oldImplDir, { recursive: true });
+    mkdirSync(path.dirname(newRequirementDoc), { recursive: true });
+    writeFileSync(newRequirementDoc, '# warranty plan\n');
+
+    const prompt = `原来实现的吊运维保功能：设计文档+代码等${oldImplDir} 下面是最新的维保提醒的需求： ${newRequirementDoc} 请分析，给出新需求的实现对策建议，并从主控需要实现功能角度给出task 当前不准备使用原来的逻辑，准备按照新的需求重新做，请帮我结合这些信息分析，给出你的建议`;
+    const scope = detectWorkspacePathScope(prompt, [], undefined);
+
+    assert.equal(scope.promptDir, externalRoot);
+    assert.equal(scope.promptDirIsExplicit, false);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
+test('path-resolver: advisory prompt infers external formal project root without markers', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    const oldImplDir = path.join(externalRoot, 'src/oam/src/lifting/maintenance');
+    const activeDoc = path.join(
+      externalRoot,
+      'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md',
+    );
+    mkdirSync(oldImplDir, { recursive: true });
+    mkdirSync(path.dirname(activeDoc), { recursive: true });
+    writeFileSync(activeDoc, '# warranty plan\n');
+
+    const prompt = `原来实现的吊运维保功能：设计文档+代码等${oldImplDir} 下面是最新的维保提醒的需求： ${activeDoc} 请分析，给出新需求的实现对策建议，并从主控需要实现功能角度给出task 当前不准备使用原来的逻辑，准备按照新的需求重新做，请帮我结合这些信息分析，给出你的建议`;
+    const scope = detectWorkspacePathScope(prompt, [], activeDoc);
+
+    assert.equal(scope.promptDir, externalRoot);
+    assert.equal(scope.promptDirIsExplicit, false);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
 test('path-resolver: session scoped writes do not drift to code parent directory', () => {
   const { root, projectDir } = createWorkspaceWithDuplicateShapeManager();
   try {

@@ -689,6 +689,20 @@ test('Agent loop: task_complete does not bypass final editedFiles accounting', (
   );
 });
 
+test('Agent loop: read-only planning prompts do not advertise terminal execution', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'allowTerminalTools', 'agent analyze prompt must derive terminal visibility from execution mode');
+  assertContains(code, 'hasRunnableFileExt', 'analyze compile hint must be limited to runnable source files');
+  assertContains(code, 'includeTerminal: allowTerminalTools', 'read-only execution modes must hide run_terminal examples');
+  assertContains(code, 'includeWorkspaceMutationTools: allowWorkspaceMutationTools', 'read-only execution modes must hide mutating examples');
+});
+
+test('Agent loop: exhausted analyze tool calls are not reported as completed', () => {
+  const code = src('src/agent-loop.ts');
+  assertContains(code, 'exhaustedWithPendingTools', 'analyze loop must track max-round exhaustion while tools are still pending');
+  assertContains(code, '分析工具调用未收敛', 'analyze loop must fail pending-tool exhaustion instead of reporting completion');
+});
+
 test('Agent loop: final written file evidence is coalesced before user-facing accounting', () => {
   const code = src('src/agent/agentic-loop.ts');
   assertContains(code, 'coalesceWrittenFileEvidence', 'agent loop must use shared written-file evidence coalescing');
@@ -1414,6 +1428,19 @@ test('Architecture: Bridge has session, driver, and health-check boundaries', ()
   assertContains(contract, 'BridgeHealthCheck: reports logged-in indicator', 'bridge health check must have contract test');
 });
 
+test('Architecture: Bridge does not use Playwright fill for oversized prompts', () => {
+  const agent = src('../bridge/src/deepseek-agent.ts');
+  assertContains(agent, 'effectivePrompt.length > 30_000', 'bridge must classify oversized prompt input');
+  assertContains(agent, 'insertComposerText(page, effectivePrompt)', 'oversized prompts must use real browser text insertion, not DOM-only state mutation');
+  assertContains(agent, 'waitForSubmitConfirmation', 'bridge must verify the web page accepted a submitted request');
+  assertContains(agent, 'PROMPT_SUBMIT_FAILED', 'bridge must fail explicitly when submit is not accepted by the web page');
+  assert.match(
+    agent,
+    /message-submit-clicked[\s\S]*?waitForSubmitConfirmation\(page, submitBaseline, effectivePrompt\)[\s\S]*?message-sent/s,
+    'message-sent must be recorded only after submit confirmation, not immediately after clicking the send button',
+  );
+});
+
 test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempotency guards', () => {
   const checkpoint = src('src/app/task-checkpoint-store.ts');
   const history = src('src/app/task-history-store.ts');
@@ -1512,6 +1539,22 @@ test('Architecture: Bridge chat uses explicit DevSeek session context, not brows
   assertContains(extension, 'Bridge 网页侧历史不作为上下文来源', 'extension session history comment must document explicit context ownership');
 });
 
+test('Architecture: Markdown deliverables bypass the generic editor tool loop', () => {
+  const loop = src('src/agent-loop.ts');
+  const deliverable = src('src/agent/markdown-deliverable-task.ts');
+  const routeIndex = loop.indexOf('tryExecuteMarkdownDeliverableTask({');
+  const editorPromptIndex = loop.indexOf('const editorPrompt = buildEditorPrompt');
+
+  assert.ok(routeIndex >= 0, 'agent-loop must route Markdown deliverables through the dedicated executor');
+  assert.ok(editorPromptIndex >= 0, 'agent-loop must still have the generic editor prompt path');
+  assert.ok(routeIndex < editorPromptIndex, 'Markdown deliverables must be settled before the generic Editor/tool loop');
+  assertContains(deliverable, 'collectMarkdownEvidence', 'Markdown deliverables must collect local evidence deterministically');
+  assertContains(deliverable, 'classifyProviderOutputIntegrity', 'Markdown deliverables must gate provider output completeness');
+  assertContains(deliverable, 'Provider 未返回可用的完整报告', 'Markdown deliverables must preserve provider failure facts in fallback artifacts');
+  assertContains(deliverable, 'writeTextFileSync(absPath', 'Markdown deliverables must write the artifact locally');
+  assertWorkspaceWritesValidateSourceSanity('src/agent/markdown-deliverable-task.ts', deliverable);
+});
+
 test('Architecture: ARCH-16 duplicate judgment domains have explicit owners', () => {
   const owners = src('src/app/judgment-owners.ts');
   const appIndex = src('src/app/index.ts');
@@ -1562,6 +1605,26 @@ test('Architecture: ARCH-17 agent runs are created through RunContext', () => {
   assertContains(extension, 'createDevSeekRunContext({', 'agent entry must create a top-level RunContext');
   assertContains(extension, 'agentRunContext.complete(', 'agent entry must settle the top-level RunContext');
   assertDoesNotContain(extension, 'createDevSeekRunId', 'agent entry must not create bare run ids outside RunContext');
+});
+
+test('Architecture: run traces and bridge lifecycle are build-aware', () => {
+  const bridgeClient = src('src/bridge-client.ts');
+  const bridgeServer = src('../bridge/src/server.ts');
+  const loopTypes = src('src/agent/loop-types.ts');
+  const loopChat = src('src/agent/loop-chat.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
+  const extension = src('src/extension.ts');
+
+  assertContains(bridgeClient, 'bridgeStatusMatchesRuntime', 'bridge client must compare running bridge build with extension build');
+  assertContains(bridgeClient, 'terminateOnlineBridge', 'bridge client must restart stale bridge processes');
+  assertContains(bridgeClient, 'DEVSEEK_BUILD_ID', 'bridge client must pass build id into spawned bridge');
+  assertContains(bridgeServer, 'buildId: process.env.DEVSEEK_BUILD_ID', 'bridge status must expose build id');
+  assertContains(bridgeClient, 'TRACE_WORKSPACE_ROOT_HEADER', 'bridge client must forward unified trace workspace root');
+  assertContains(bridgeServer, 'TRACE_WORKSPACE_ROOT_HEADER', 'bridge server must honor unified trace workspace root');
+  assertContains(loopTypes, 'traceWorkspaceRoot?: string', 'agent callbacks must carry unified trace root');
+  assertContains(loopChat, 'traceWorkspaceRoot', 'provider chat calls must receive unified trace root');
+  assertContains(toolLoop, 'callbacks.traceWorkspaceRoot ?? workspaceRoot', 'tool-loop logs must prefer unified trace root');
+  assertContains(extension, 'const agentTraceWorkspaceRoot = agentRunContext.workspaceRoot', 'extension must bind trace root from RunContext');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

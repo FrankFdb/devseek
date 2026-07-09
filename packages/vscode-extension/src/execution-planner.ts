@@ -401,8 +401,8 @@ function sanitizeLocalExecutionOutputLine(plan: LocalExecutionPlan, line: string
   let out = line;
   const cwd = nodePath.resolve(plan.cwd).replace(/\\/g, '/');
   const parent = nodePath.dirname(cwd).replace(/\\/g, '/');
-  out = out.replaceAll(cwd, '<项目目录>');
-  if (parent && parent !== cwd) out = out.replaceAll(parent, '<工作区>');
+  out = out.split(cwd).join('<项目目录>');
+  if (parent && parent !== cwd) out = out.split(parent).join('<工作区>');
   out = out.replace(/\/(?:home|tmp|usr|opt|var|run|mnt|media)\/[^\s'"`，。；；,]+/g, '<路径>');
   return truncate(out, 240);
 }

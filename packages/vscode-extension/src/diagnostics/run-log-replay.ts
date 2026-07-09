@@ -1,7 +1,12 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import { hasReadOnlyAnswerEvidence } from '../agent/completion-evidence';
 import { parseFakeToolCalls } from '../agent/fake-tool-parser';
 import { isolateModelToolRequestText } from '../agent/model-tool-protocol-adapter';
+import {
+  classifyProviderOutputIntegrity,
+  describeProviderOutputIntegrity,
+} from '../agent/provider-output-integrity';
 import { LEGACY_CPP_BUILD_DIR_NAMES, listCppBuildOutputDirNames } from '../cpp-build-layout';
 import { hasInteractiveLaunchEvidence } from '../execution-outcome-classifier';
 
@@ -23,7 +28,21 @@ export type RunLogReplayIssueKind =
   | 'planned-execution-without-tool-evidence'
   | 'source-output-without-application'
   | 'terminal-command-skipped'
-  | 'terminal-command-failed';
+  | 'terminal-command-failed'
+  | 'failure-status-reported-completed'
+  | 'provider-tool-request-not-executed'
+  | 'read-only-completed-without-answer-evidence'
+  | 'read-only-no-tool-intent-after-tools'
+  | 'optimistic-completion-before-failure'
+  | 'provider-short-intent'
+  | 'provider-truncated-response'
+  | 'provider-error-page'
+  | 'provider-login-required'
+  | 'provider-incomplete-answer'
+  | 'old-bridge-runtime'
+  | 'provider-prompt-too-large'
+  | 'agent-run-failed'
+  | 'markdown-deliverable-completed-without-file-evidence';
 
 export interface RunLogReplayIssue {
   kind: RunLogReplayIssueKind;
@@ -54,6 +73,7 @@ export interface RunLogReplayReport {
   toolExecutions: number;
   terminalCommands: number;
   plannedExecutionTasks: number;
+  workspaceApplications: number;
   issues: RunLogReplayIssue[];
 }
 
@@ -68,20 +88,23 @@ const WORKSPACE_MUTATION_REQUEST_RE = /(修复|修正|修改|改成|改为|实�
 const WORKSPACE_TARGET_TEXT_RE = /(\/|\\|\.cpp\b|\.h\b|\.ts\b|\.js\b|\.py\b|代码|文件|项目|目录|workspace|project|file|shape_manager)/i;
 const SOURCE_CODE_RESPONSE_RE = /```(?:[A-Za-z0-9_+#.-]+)?\s*[\s\S]{200,}?```|#include\s+[<"]|(?:^|\n)\s*(?:int|void|class|struct|const|let|function)\s+[A-Za-z_]\w*[\s({=]/;
 const LONG_RUNNING_RUN_MS = 60_000;
+const PROVIDER_PROMPT_TOO_LARGE_CHARS = 45_000;
 
 export function loadRunLogEvents(logPath: string): RunLogReplayEvent[] {
   const content = fs.readFileSync(logPath, 'utf8');
-  return content.split(/\r?\n/).flatMap((line, index) => {
-    if (!line.trim()) return [];
+  const events: RunLogReplayEvent[] = [];
+  content.split(/\r?\n/).forEach((line, index) => {
+    if (!line.trim()) return;
     try {
-      return [{ line: index + 1, entry: JSON.parse(line) as Record<string, unknown> }];
+      events.push({ line: index + 1, entry: JSON.parse(line) as Record<string, unknown> });
     } catch (error) {
-      return [{
+      events.push({
         line: index + 1,
         parseError: error instanceof Error ? error.message : String(error),
-      }];
+      });
     }
   });
+  return events;
 }
 
 export function replayRunLog(logPath: string): RunLogReplayReport {
@@ -107,9 +130,18 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
   let chatRequestCompletions = 0;
   let chatRequestFailures = 0;
   let workspaceMutationRequested = false;
+  let latestExtensionResponse: { line: number; content: string; parsedToolCount: number } | undefined;
+  let activeReadOnlyTask: { key: string; title: string; action: string } | undefined;
+  let sawReadOnlyTask = false;
+  let sawSuccessfulToolRound = false;
   const sourceCodeResponses: { line: number; evidence?: string }[] = [];
   const terminalFailures: Array<{ line: number; exitCode: number; evidence: string; outputSha?: string; output?: string }> = [];
   const terminalOutputBySha = new Map<string, string>();
+  const completedTaskStatusByKey = new Map<string, { line: number; title: string }>();
+  const completedMarkdownDeliverables: Array<{ line: number; title: string; evidence: string }> = [];
+  const completedRunChangedPaths: string[] = [];
+  let completedRunTasksApplied = 0;
+  let completedStatusEditedFiles = 0;
 
   for (const event of events) {
     if (event.parseError) {
@@ -143,10 +175,83 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     if (entry.event === 'agent-run-completed') {
       agentRunCompleted = true;
       agentRunCompletedSuccessfully = stringValue(data?.status) === 'completed';
+      if (agentRunCompletedSuccessfully) {
+        completedRunChangedPaths.push(...stringArrayValue(data?.changedPaths));
+        completedRunTasksApplied = Math.max(completedRunTasksApplied, numberValue(data?.tasksApplied) ?? 0);
+      } else {
+        issues.push({
+          kind: 'agent-run-failed',
+          severity: 'error',
+          line: event.line,
+          message: 'agent-run-completed 明确报告失败，不能被 UI 或历史 changedPaths 覆盖成成功。',
+          evidence: truncateOneLine(JSON.stringify(data ?? {}), 220),
+        });
+      }
+    }
+    if (entry.event === 'agent-status') {
+      const phase = stringValue(data?.phase);
+      const state = stringValue(data?.state);
+      const taskAction = stringValue(data?.taskAction);
+      const taskFile = stringValue(data?.taskFile) ?? '';
+      const taskDesc = stringValue(data?.taskDesc) ?? '';
+      const title = stringValue(data?.title) ?? '';
+      const detail = stringValue(data?.detail) ?? '';
+      if (state === 'completed' && /(失败|failed|error|fetch failed|HTTP 5\d\d)/i.test(`${title}\n${detail}`)) {
+        issues.push({
+          kind: 'failure-status-reported-completed',
+          severity: 'error',
+          line: event.line,
+          message: '失败事实被 agent-status 标记为 completed，UI 可能把失败显示成正常结束。',
+          evidence: truncateOneLine(`${title} ${detail}`, 220),
+        });
+      }
+      if (phase === 'execute' && taskAction && isReadOnlyTaskAction(taskAction)) {
+        sawReadOnlyTask = true;
+        const key = taskStatusKey(data);
+        activeReadOnlyTask = { key, title: title || key, action: taskAction };
+        if (state === 'completed') {
+          completedTaskStatusByKey.set(key, { line: event.line, title: title || key });
+        } else if (state === 'failed') {
+          const completed = completedTaskStatusByKey.get(key);
+          if (completed) {
+            issues.push({
+              kind: 'optimistic-completion-before-failure',
+              severity: 'error',
+              line: event.line,
+              message: '同一个只读任务先被标记 completed，随后又被标记 failed；完成状态必须等证据结算后再发出。',
+              evidence: truncateOneLine(`${completed.title} completed@${completed.line} -> failed@${event.line}`, 220),
+            });
+          }
+        }
+      }
+      if (phase === 'execute' && state === 'completed' && isMarkdownDeliverableStatus(taskAction, taskFile, taskDesc, title, detail)) {
+        completedMarkdownDeliverables.push({
+          line: event.line,
+          title: title || taskDesc || taskFile || 'Markdown deliverable',
+          evidence: truncateOneLine([taskFile, taskDesc, detail].filter(Boolean).join(' '), 220),
+        });
+      }
+      if (phase === 'done' && state === 'completed') {
+        completedStatusEditedFiles += arrayValue(data?.editedFiles).length;
+      }
     }
     if (entry.event === 'participant-started') {
       appVersion ??= stringValue(data?.appVersion);
       gitCommit ??= stringValue(data?.gitCommit);
+    }
+    if (entry.event === 'bridge-status-check' && booleanValue(data?.buildMatches) === false) {
+      const expected = objectValue(data?.expected);
+      const actual = objectValue(data?.actual);
+      issues.push({
+        kind: 'old-bridge-runtime',
+        severity: 'error',
+        line: event.line,
+        message: 'Bridge 运行时 build 与当前扩展不一致；必须重启 bridge，不能让旧服务接管新版本逻辑。',
+        evidence: truncateOneLine([
+          `expected=${stringValue(expected?.buildId) || stringValue(expected?.appVersion) || 'unknown'}`,
+          `actual=${stringValue(actual?.buildId) || stringValue(actual?.appVersion) || 'unknown'}`,
+        ].join(' '), 220),
+      });
     }
     if (entry.event === 'chat-request-start') {
       chatRequestStarts += 1;
@@ -171,6 +276,8 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       }
       if (name === 'extension.response.raw') {
         providerResponses += 1;
+        const parsedToolCount = parseFakeToolCalls(content).length;
+        latestExtensionResponse = { line: event.line, content, parsedToolCount };
         collectProviderResponseIssues(content, event.line, issues);
         if (SOURCE_CODE_RESPONSE_RE.test(content)) {
           sourceCodeResponses.push({
@@ -240,6 +347,35 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
 
     if (entry.source === 'vscode-extension.tool-loop' && entry.event === 'execute-complete') {
       terminalCommands += numberValue(data?.terminalCommandCount) ?? 0;
+      const toolCallsMade = booleanValue(data?.toolCallsMade);
+      const readFileCount = numberValue(data?.readFileCount) ?? 0;
+      const feedbackLength = numberValue(data?.feedbackLength) ?? 0;
+      if (toolCallsMade || readFileCount > 0 || feedbackLength > 0) {
+        sawSuccessfulToolRound = true;
+      }
+      if (toolCallsMade === false && latestExtensionResponse?.parsedToolCount) {
+        issues.push({
+          kind: 'provider-tool-request-not-executed',
+          severity: 'error',
+          line: event.line,
+          message: `Provider 响应中包含 ${latestExtensionResponse.parsedToolCount} 个可解析工具调用，但本轮工具循环没有执行任何工具。`,
+          evidence: truncateOneLine(latestExtensionResponse.content, 220),
+        });
+      }
+      if (toolCallsMade === false
+        && sawSuccessfulToolRound
+        && activeReadOnlyTask
+        && latestExtensionResponse
+        && latestExtensionResponse.parsedToolCount === 0
+        && !hasReadOnlyAnswerEvidence(latestExtensionResponse.content)) {
+        issues.push({
+          kind: 'read-only-no-tool-intent-after-tools',
+          severity: 'error',
+          line: event.line,
+          message: '只读分析任务已有工具结果后，模型又输出无工具、无结论的短意图；运行时必须恢复追问，不能直接结算。',
+          evidence: truncateOneLine(latestExtensionResponse.content, 220),
+        });
+      }
       lastToolComplete = {
         line: event.line,
         taskComplete: booleanValue(data?.taskComplete),
@@ -296,7 +432,13 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     });
   }
 
-  if (plannedExecutionTasks > 0 && toolExecutions === 0 && terminalCommands === 0 && terminalSkipped === 0) {
+  const workspaceApplications = completedRunTasksApplied + completedRunChangedPaths.length + completedStatusEditedFiles;
+  const hasExecutionOrApplicationEvidence = toolExecutions > 0
+    || terminalCommands > 0
+    || terminalSkipped > 0
+    || workspaceApplications > 0;
+
+  if (plannedExecutionTasks > 0 && !hasExecutionOrApplicationEvidence) {
     issues.push({
       kind: 'planned-execution-without-tool-evidence',
       severity: 'error',
@@ -304,7 +446,7 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     });
   }
 
-  if (workspaceMutationRequested && sourceCodeResponses.length > 0 && toolExecutions === 0 && terminalCommands === 0 && terminalSkipped === 0) {
+  if (workspaceMutationRequested && sourceCodeResponses.length > 0 && !hasExecutionOrApplicationEvidence) {
     const firstSourceResponse = sourceCodeResponses[0];
     issues.push({
       kind: 'source-output-without-application',
@@ -312,6 +454,32 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       line: firstSourceResponse.line,
       message: '本轮请求要求修改/验证工作区，但 provider 只返回了源码文本，日志中没有工具执行、写盘或终端验证证据。',
       evidence: truncateOneLine(firstSourceResponse.evidence ?? '', 220),
+    });
+  }
+
+  for (const deliverable of completedMarkdownDeliverables) {
+    const hasMarkdownChangeEvidence = completedRunTasksApplied > 0
+      && completedRunChangedPaths.some(pathValue => /\.(?:md|markdown)$/i.test(pathValue));
+    if (hasMarkdownChangeEvidence) continue;
+    issues.push({
+      kind: 'markdown-deliverable-completed-without-file-evidence',
+      severity: 'error',
+      line: deliverable.line,
+      message: 'Markdown 文档交付任务被标记 completed，但 agent-run-completed 没有对应的 Markdown 写盘/changedPaths 证据。',
+      evidence: deliverable.evidence,
+    });
+  }
+
+  if (agentRunCompletedSuccessfully
+    && sawReadOnlyTask
+    && latestExtensionResponse
+    && !hasReadOnlyAnswerEvidence(latestExtensionResponse.content)) {
+    issues.push({
+      kind: 'read-only-completed-without-answer-evidence',
+      severity: 'error',
+      line: latestExtensionResponse.line,
+      message: '只读分析任务最终成功完成，但最后一次模型输出没有真实分析结论。',
+      evidence: truncateOneLine(latestExtensionResponse.content, 220),
     });
   }
 
@@ -330,15 +498,29 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     toolExecutions,
     terminalCommands,
     plannedExecutionTasks,
+    workspaceApplications,
     issues,
   };
+}
+
+function isReadOnlyTaskAction(action: string): boolean {
+  return action === 'analyze' || action === 'explain' || action === 'explore' || action === 'respond';
+}
+
+function taskStatusKey(data: Record<string, unknown> | undefined): string {
+  return [
+    stringValue(data?.taskId),
+    stringValue(data?.taskAction),
+    stringValue(data?.taskFile),
+    stringValue(data?.taskDesc),
+  ].filter(Boolean).join('|') || 'task';
 }
 
 export function formatRunLogReplayReport(report: RunLogReplayReport): string {
   const lines = [
     `Run log: ${report.logPath}`,
     `Run: ${report.runId ?? 'unknown'}  Version: ${report.appVersion ?? 'unknown'}  Commit: ${report.gitCommit ?? 'unknown'}`,
-    `Events: ${report.parsedEvents}/${report.totalLines}  Provider: ${report.providerRequests} request(s), ${report.providerResponses} response(s)  Tool loops: ${report.toolExecutions}  Terminal commands: ${report.terminalCommands}  Planned execution tasks: ${report.plannedExecutionTasks}`,
+    `Events: ${report.parsedEvents}/${report.totalLines}  Provider: ${report.providerRequests} request(s), ${report.providerResponses} response(s)  Tool loops: ${report.toolExecutions}  Terminal commands: ${report.terminalCommands}  Planned execution tasks: ${report.plannedExecutionTasks}  Workspace applications: ${report.workspaceApplications}`,
   ];
   if (typeof report.durationMs === 'number' && Number.isFinite(report.durationMs)) {
     lines.push(`Duration: ${(report.durationMs / 1000).toFixed(1)}s`);
@@ -357,6 +539,15 @@ export function formatRunLogReplayReport(report: RunLogReplayReport): string {
 }
 
 function collectProviderRequestIssues(content: string, line: number, issues: RunLogReplayIssue[]): void {
+  if (content.length > PROVIDER_PROMPT_TOO_LARGE_CHARS) {
+    issues.push({
+      kind: 'provider-prompt-too-large',
+      severity: 'warn',
+      line,
+      message: `Provider 请求 prompt 长度 ${content.length} 字符，可能由工具反馈/模型输出反复追加造成桥接填充超时或 VS Code 卡顿。`,
+      evidence: truncateOneLine(content, 220),
+    });
+  }
   if (INTERNAL_CONTEXT_ANCHOR_RE.test(content)) {
     issues.push({
       kind: 'internal-context-anchor',
@@ -369,7 +560,8 @@ function collectProviderRequestIssues(content: string, line: number, issues: Run
 }
 
 function collectProviderResponseIssues(content: string, line: number, issues: RunLogReplayIssue[]): void {
-  if (!content.trim()) {
+  const integrity = classifyProviderOutputIntegrity(content);
+  if (integrity.kind === 'empty') {
     issues.push({
       kind: 'empty-provider-response',
       severity: 'error',
@@ -377,6 +569,47 @@ function collectProviderResponseIssues(content: string, line: number, issues: Ru
       message: 'DeepSeek 网页返回了空正文；执行器不应继续把它当成正常计划或正常任务回复。',
     });
     return;
+  }
+  if (integrity.kind === 'truncated') {
+    issues.push({
+      kind: 'provider-truncated-response',
+      severity: 'error',
+      line,
+      message: `${describeProviderOutputIntegrity(integrity.kind)}运行时必须保留失败事实或恢复重试。`,
+      evidence: truncateOneLine(content, 220),
+    });
+  } else if (integrity.kind === 'error_page') {
+    issues.push({
+      kind: 'provider-error-page',
+      severity: 'error',
+      line,
+      message: `${describeProviderOutputIntegrity(integrity.kind)}不能作为模型回答进入任务结算。`,
+      evidence: truncateOneLine(content, 220),
+    });
+  } else if (integrity.kind === 'login_required') {
+    issues.push({
+      kind: 'provider-login-required',
+      severity: 'error',
+      line,
+      message: `${describeProviderOutputIntegrity(integrity.kind)}Bridge 必须恢复登录上下文或失败。`,
+      evidence: truncateOneLine(content, 220),
+    });
+  } else if (integrity.kind === 'short_intent') {
+    issues.push({
+      kind: 'provider-short-intent',
+      severity: 'error',
+      line,
+      message: 'Provider 只输出短意图，没有工具调用或结论；运行时必须恢复追问，不能结算。',
+      evidence: truncateOneLine(content, 220),
+    });
+  } else if (integrity.kind === 'incomplete_answer') {
+    issues.push({
+      kind: 'provider-incomplete-answer',
+      severity: 'warn',
+      line,
+      message: 'Provider 输出缺少可结算回答证据；只读任务不能仅凭该文本完成。',
+      evidence: truncateOneLine(content, 220),
+    });
   }
 
   const toolRequestText = isolateModelToolRequestText(content).text;
@@ -517,6 +750,27 @@ function numberValue(value: unknown): number | undefined {
 
 function booleanValue(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined;
+}
+
+function stringArrayValue(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function arrayValue(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function isMarkdownDeliverableStatus(
+  taskAction: string | undefined,
+  taskFile: string,
+  taskDesc: string,
+  title: string,
+  detail: string,
+): boolean {
+  if (taskAction !== 'create') return false;
+  const text = [taskFile, taskDesc, title, detail].join('\n');
+  return /\.(?:md|markdown)\b/i.test(text)
+    || /(?:Markdown|md\s*文档|Markdown\s*建议文档|文档交付|建议文档)/i.test(text);
 }
 
 function firstMatch(value: string, pattern: RegExp): string | undefined {

@@ -215,6 +215,14 @@ const routingCases = [
     toolActions: { read: 'allow', plan: 'allow', edit: 'deny', terminal: 'deny' },
   },
   {
+    id: 'PLAN-003',
+    title: 'advisory implementation countermeasure request stays read-only',
+    prompt: '原来实现的吊运维保功能：设计文档+代码等/home/ff/uav/tars/huida_uav/src/oam/src/lifting/maintenance 下面是最新的维保提醒的需求： /home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md 请分析，给出新需求的实现对策建议，并从主控需要实现功能角度给出task 当前不准备使用原来的逻辑，准备按照新的需求重新做，请帮我结合这些信息分析，给出你的建议',
+    expect: { kind: 'chat', mode: 'plan', workflow: 'plan-agent', useAgent: true, tools: PLAN_TOOLS },
+    signal: 'advisory-planning-request',
+    toolActions: { read: 'allow', plan: 'allow', edit: 'deny', terminal: 'deny' },
+  },
+  {
     id: 'EDIT-001',
     title: 'create and run C++ hello world is edit workflow',
     prompt: '创建一个 hello world C++ 程序并运行',

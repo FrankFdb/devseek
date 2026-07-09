@@ -8,8 +8,7 @@ function shouldDisplayCheckpointBanner(msg) {
   var hasPauseEvidence = !!(msg.recoveryKind || msg.pauseReason);
   // During an active Agent run, progress checkpoints are internal recovery facts.
   // Only provider pauses/recoverable failures should surface a resume banner.
-  if (isGenerating && !hasPauseEvidence) return false;
-  return true;
+  return hasPauseEvidence;
 }
 
 function getCheckpointBannerCopy(recoveryKind, pauseReason) {

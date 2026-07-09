@@ -77,7 +77,11 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
   await input.callbacks.onTodoUpdate?.(todos);
 
   if (input.callbacks.onBeforeFileWrite) {
-    const allowed = await input.callbacks.onBeforeFileWrite(resolved.absPath);
+    const allowed = await input.callbacks.onBeforeFileWrite(resolved.absPath, {
+      purpose: 'workspace-edit',
+      userRequested: true,
+      displayName: resolved.relPath,
+    });
     if (!allowed) {
       return finishSimpleFileTask({
         ...input,

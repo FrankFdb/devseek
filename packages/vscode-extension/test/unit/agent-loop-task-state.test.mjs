@@ -20,6 +20,9 @@ const rootDir = path.resolve(__dirname, '../../');
 const agentLoop = readFileSync(path.join(rootDir, 'src/agent-loop.ts'), 'utf8');
 const agenticLoop = readFileSync(path.join(rootDir, 'src/agent/agentic-loop.ts'), 'utf8');
 const simpleFileTask = readFileSync(path.join(rootDir, 'src/agent/simple-file-task.ts'), 'utf8');
+const bridgeProvider = readFileSync(path.join(rootDir, 'src/llm/providers/bridge.ts'), 'utf8');
+const replayDiagnostics = readFileSync(path.join(rootDir, 'src/diagnostics/run-log-replay.ts'), 'utf8');
+const taskTodoLedger = readFileSync(path.join(rootDir, 'src/agent/task-todo-ledger.ts'), 'utf8');
 const bundlePath = path.join(rootDir, 'test/unit/task-state-machine.bundle.cjs');
 
 execSync(
@@ -65,7 +68,28 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
   assert.match(agentLoop, /createTaskConvergenceGuard/, 'agent-loop must use the shared convergence guard for no-progress tool loops');
   assert.match(agentLoop, /convergence\.feedbackSuffix/, 'editor/analyze loops must feed convergence warnings back to the model');
   assert.match(agentLoop, /buildAgentMetaOnlyToolFeedback/, 'two-phase agent loops must feed back meta-only tool rounds as non-work');
+  assert.match(agentLoop, /AGENT_LOOP_MESSAGE_TOTAL_CHAR_BUDGET/, 'two-phase agent loops must cap provider prompt history size');
+  assert.match(agentLoop, /function compactAgentLoopMessageHistory/, 'two-phase agent loops must own context compaction at the runtime boundary');
+  assert.match(
+    agentLoop,
+    /execMessages\.push\(\.\.\.consumeUserSteerMessages\(callbacks\)\);\s*compactAgentLoopMessageHistory\(execMessages\);/,
+    'analyze loops must compact message history before provider calls',
+  );
+  assert.match(
+    agentLoop,
+    /taskMessages\.push\(\.\.\.consumeUserSteerMessages\(callbacks\)\);\s*compactAgentLoopMessageHistory\(taskMessages\);/,
+    'editor loops must compact message history before provider calls',
+  );
   assert.match(agentLoop, /loopRes\.workToolCallsMade/, 'two-phase agent loops must use shared real-work evidence from tool-loop');
+  assert.match(agentLoop, /decideAgentRuntimeTurn/, 'analyze loops must route round settlement through the runtime turn policy');
+  assert.match(agentLoop, /analyzeRaw\s*=\s*delta\.slice\(7\)/, 'analyze RESET deltas must update evidence, not only UI text');
+  assert.match(agentLoop, /raw:\s*analyzeRaw\s*\|\|\s*lastAnalyzeRoundText/, 'analyze settlement must fall back to the last complete provider response');
+  assert.match(agenticLoop, /settleAgentRuntimeState/, 'agentic loop final settlement must route through the runtime state machine');
+  assert.match(taskTodoLedger, /settleAgentRuntimeState/, 'task todo ledger must consume the runtime state machine instead of owning completion judgment');
+  assert.doesNotMatch(taskTodoLedger, /\|\|\s*evidence\.taskComplete/, 'task_complete alone must not be read-only completion evidence');
+  assert.match(bridgeProvider, /classifyProviderOutputIntegrity/, 'BridgeProvider must classify every DeepSeek Web response before returning it');
+  assert.match(replayDiagnostics, /classifyProviderOutputIntegrity/, 'run-log replay must reuse the provider output integrity gate');
+  assert.match(agentLoop, /模型未输出分析结论，继续要求工具调用或最终答复/, 'read-only recovery status must be visible in run logs');
   assert.match(agenticLoop, /isAgentWorkToolName/, 'agentic-loop must use the shared tool classifier instead of duplicating work-tool rules');
   assert.match(agentLoop, /classifyTaskTerminalManualReview/, 'analyze run_terminal failures must support manual visual review before hard-failing');
   assert.doesNotMatch(
@@ -88,6 +112,11 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
     agentLoop,
     /status:\s*\(j\s*<\s*i\s*\?\s*'completed'/,
     'starting a later task must not rewrite previous failed tasks as completed',
+  );
+  assert.doesNotMatch(
+    agentLoop,
+    /finalNoToolRecovery[\s\S]{0,900}state:\s*'completed'/,
+    'read-only analyze tasks must publish completed status only after ledger settlement',
   );
   assert.doesNotMatch(
     agentLoop,
@@ -115,6 +144,26 @@ test('two-phase agent history is evidence based, not extension-level thin summar
   const extensionSource = readFileSync(path.join(rootDir, 'src/extension.ts'), 'utf8');
 
   assert.match(extensionSource, /agentHistoryText\s*=\s*loopResult\.historyText/, 'extension must persist agent-loop evidence history');
+  assert.match(
+    extensionSource,
+    /state:\s*'failed',\s*title:\s*'任务计划生成失败'/,
+    'plan generation failure must be recorded as failed, never completed',
+  );
+  assert.match(
+    extensionSource,
+    /agentRunContext\.complete\('failed',\s*\{[\s\S]{0,160}reason:\s*'plan-generation-failed'/,
+    'plan generation failure must close the run context as failed',
+  );
+  assert.doesNotMatch(
+    extensionSource,
+    /state:\s*'completed',\s*title:\s*'任务计划生成失败'/,
+    'plan failure status must not be reported as completed',
+  );
+  assert.doesNotMatch(
+    extensionSource,
+    /phase:\s*'done',\s*state:\s*'completed',\s*title:\s*'执行结束（无可执行计划）'/,
+    'no-plan terminal status must not be reported as completed',
+  );
   assert.doesNotMatch(
     extensionSource,
     /\*\*\[Agent\]\s*已完成\s*\$\{loopResult\.tasksApplied\}\/\$\{tasks\.length\}\s*个任务/,
@@ -405,13 +454,49 @@ test('task todo ledger: local safe response task completes without file or termi
   ledger.startTask(0);
   const settled = ledger.settleTask(0, {
     action: 'respond',
-    raw: '已安全阻断上一次损坏响应。',
+    raw: '结论：已安全阻断上一次损坏响应，未执行未验证工具内容。',
     taskComplete: true,
   });
 
   assert.equal(settled.completed, true);
   assert.equal(settled.failed, false);
   assert.equal(settled.todos[0].status, 'completed');
+});
+
+test('task todo ledger: task_complete alone cannot complete read-only analysis', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'src/oam/src/lifting', 'analyze', '分析需求、现有实现和主控职责，输出对策检讨与任务建议'),
+  ]);
+
+  ledger.startTask(0);
+  const settled = ledger.settleTask(0, {
+    action: 'analyze',
+    raw: '我来继续分析。需要查看需求文档和现有代码结构。',
+    taskComplete: true,
+  });
+
+  assert.equal(settled.completed, false);
+  assert.equal(settled.failed, true);
+  assert.equal(settled.todos[0].status, 'failed');
+});
+
+test('task todo ledger: read-only completion cannot claim an md document without write evidence', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'src/oam/src/lifting', 'analyze', '分析需求、现有实现和主控职责，输出对策检讨与任务建议'),
+  ]);
+
+  ledger.startTask(0);
+  const settled = ledger.settleTask(0, {
+    action: 'analyze',
+    raw: '已完成分析，并输出了《吊运维保功能重构——新旧需求对比分析与实现对策建议.md》文档。',
+    taskComplete: true,
+    writtenFiles: [],
+    workspaceRoot: '/workspace',
+  });
+
+  assert.equal(settled.completed, false);
+  assert.equal(settled.failed, true);
+  assert.equal(settled.todos[0].status, 'failed');
 });
 
 test('task todo ledger: failed validation terminal evidence blocks read-only completion', () => {
@@ -436,6 +521,95 @@ test('task todo ledger: failed validation terminal evidence blocks read-only com
   assert.equal(settled.completed, false);
   assert.equal(settled.failed, true);
   assert.equal(settled.todos[0].status, 'failed');
+});
+
+test('task todo ledger: provider execution errors beat partial read-only prose', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'src/oam/src/lifting', 'analyze', '分析需求、现有实现和主控职责，输出对策检讨与任务建议'),
+  ]);
+
+  ledger.startTask(0);
+  const settled = ledger.settleTask(0, {
+    action: 'analyze',
+    raw: '我来继续分析。需要查看需求文档和现有代码结构。',
+    failedReason: 'RESPONSE_CORRUPTED:rate-limited:Provider is rate limited or waiting for verification.',
+  });
+
+  assert.equal(settled.completed, false);
+  assert.equal(settled.failed, true);
+  assert.equal(settled.todos[0].status, 'failed');
+
+  const reconciled = ledger.reconcileFinalEvidence({
+    validationFailed: false,
+    terminalEvidence: [{
+      command: 'echo ok',
+      kind: 'run',
+      ok: true,
+      exitCode: 0,
+    }],
+  });
+
+  assert.equal(reconciled.clearedFailures, 0);
+  assert.equal(reconciled.todos[0].status, 'failed');
+});
+
+test('task todo ledger: tool-intent prose does not complete read-only advisory tasks', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'src/oam/src/lifting', 'analyze', '分析需求、现有实现和主控职责，输出对策检讨与任务建议'),
+  ]);
+
+  ledger.startTask(0);
+  const settled = ledger.settleTask(0, {
+    action: 'analyze',
+    raw: [
+      '我来分析新旧需求差异，并给出实现对策建议。首先让我查看相关文件。',
+      '',
+      '**Tool: read_file**',
+      '',
+      '```',
+      '{"path": "/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md"}',
+      '```',
+    ].join('\n'),
+  });
+
+  assert.equal(settled.completed, false);
+  assert.equal(settled.failed, true);
+  assert.equal(settled.todos[0].status, 'failed');
+});
+
+test('task todo ledger: full markdown advisory report completes read-only tasks', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'src/oam/src/lifting', 'analyze', '分析需求、现有实现和主控职责，输出对策检讨与任务建议'),
+  ]);
+
+  ledger.startTask(0);
+  const settled = ledger.settleTask(0, {
+    action: 'analyze',
+    raw: [
+      '好的，我理解了。您需要的是完整的MD文档输出。',
+      '',
+      '# 无人机过保提醒功能 - 新需求实现对策建议与主控任务清单',
+      '',
+      '## 结论',
+      '新需求不是简单扩展字段，而是把维保提醒从单一阈值判断升级为多维状态机和协议协同能力。',
+      '',
+      '## 依据',
+      '- 已对比新需求文档、旧实现和主控职责。',
+      '- 已识别数据采集、阈值计算、状态持久化、MAVLink事件和复位流程差异。',
+      '',
+      '## 对策建议',
+      '建议优先完成P0数据模型、阈值引擎和状态同步，再扩展P1协议与复位流程。',
+      '',
+      '## 任务拆解',
+      '1. 扩展维保数据结构。',
+      '2. 重构阈值计算引擎。',
+      '3. 增加状态持久化和同步。',
+    ].join('\n'),
+  });
+
+  assert.equal(settled.completed, true);
+  assert.equal(settled.failed, false);
+  assert.equal(settled.todos[0].status, 'completed');
 });
 
 test('task todo ledger: build-only terminal evidence cannot complete a run task', () => {

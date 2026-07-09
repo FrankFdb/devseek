@@ -246,6 +246,43 @@ test('run log replay detects empty provider responses and missing run completion
   }
 });
 
+test('run log replay detects oversized provider prompts that can freeze the bridge', () => {
+  const latestFailureSizedPrompt = [
+    '你是一个顶级编程智能体的任务规划器（Architect 角色）。',
+    '【当前活跃编辑器文件（项目上下文）】',
+    '/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md',
+    '【项目指令：AGENTS.md】',
+    'Do not run broad searches over the whole workspace without excludes.',
+    '【文件预览】',
+    'x'.repeat(51_200),
+  ].join('\n');
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-07T04:58:10.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'oversized-provider-prompt',
+      data: {
+        name: 'extension.request.prompt',
+        content: latestFailureSizedPrompt,
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const issue = report.issues.find(item => item.kind === 'provider-prompt-too-large');
+
+    assert.equal(Boolean(issue), true);
+    assert.match(issue.message, /Provider 请求 prompt 长度/);
+    assert.ok(latestFailureSizedPrompt.length > 51_000 && latestFailureSizedPrompt.length < 52_000);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay detects planner execution task with internal context but no execution evidence', () => {
   const { dir, logPath } = writeLog([
     {
@@ -358,6 +395,97 @@ test('run log replay detects source code response without application evidence',
     assert.equal(report.toolExecutions, 0);
     assert.equal(report.terminalCommands, 0);
     assert.equal(kinds.has('source-output-without-application'), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay accepts source-like Markdown response when runtime applied artifact evidence exists', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-09T03:53:19.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'md-source-with-apply',
+      data: {
+        name: 'extension.request.prompt',
+        content: '/workspace/src/oam/src/lifting/maintenance 请分析并通过 md 文档提供实现建议',
+      },
+    },
+    {
+      ts: '2026-07-09T03:54:19.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'md-source-with-apply',
+      data: {
+        name: 'extension.response.raw',
+        content: [
+          '# 维保提醒实现建议',
+          '',
+          '```text',
+          '┌────────────────────────────────────────────────────────┐',
+          '│ 新维保提醒系统架构                                    │',
+          '├────────────────────────────────────────────────────────┤',
+          '│ DataCollector -> ThresholdEngine -> Publisher          │',
+          '│ Persistence -> ResetHandler -> StateMachine            │',
+          '│ MainController consumes UAV_EVENT_1022                 │',
+          '│ MainController owns tick orchestration                 │',
+          '│ Each module keeps isolated responsibility              │',
+          '│ Verification covers reboot persistence and reset flow   │',
+          '│ This block intentionally exceeds replay source length   │',
+          '│ so source-like Markdown reports do not become false     │',
+          '│ positives after runtime write evidence is present.      │',
+          '└────────────────────────────────────────────────────────┘',
+          '```',
+        ].join('\n'),
+      },
+    },
+    {
+      ts: '2026-07-09T03:54:19.100Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'md-source-with-apply',
+      data: {
+        phase: 'execute',
+        state: 'completed',
+        taskAction: 'create',
+        taskFile: 'warranty-maintenance-advice.md',
+        title: '创建 Markdown 建议文档',
+        detail: 'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md · 已写入并读回验证。',
+        linesAdded: 145,
+        linesRemoved: 0,
+      },
+    },
+    {
+      ts: '2026-07-09T03:54:19.200Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-completed',
+      runId: 'md-source-with-apply',
+      data: {
+        status: 'completed',
+        tasksTotal: 1,
+        tasksApplied: 1,
+        tasksFailed: 0,
+        changedPaths: ['src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md'],
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(report.workspaceApplications > 0, true);
+    assert.equal(kinds.has('source-output-without-application'), false);
+    assert.equal(kinds.has('markdown-deliverable-completed-without-file-evidence'), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -488,6 +616,633 @@ test('run log replay does not let stale GUI timeout evidence override final comp
 
     assert.equal(kinds.has('terminal-command-failed'), false);
     assert.equal(kinds.has('missing-final-convergence'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay detects read-only false completion when provider tools were not executed', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-06T03:03:23.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-started',
+      runId: 'readonly-false-complete',
+      data: {},
+    },
+    {
+      ts: '2026-07-06T03:03:24.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'readonly-false-complete',
+      data: {
+        phase: 'execute',
+        state: 'started',
+        taskId: 't1',
+        taskAction: 'analyze',
+        taskFile: 'huida_uav',
+        taskDesc: '分析需求、现有实现和主控职责，输出对策检讨与任务建议',
+        title: '分析需求、现有实现和主控职责，输出对策检讨与任务建议',
+      },
+    },
+    {
+      ts: '2026-07-06T03:03:25.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'readonly-false-complete',
+      data: {
+        name: 'extension.response.raw',
+        content: [
+          '我来分析新旧需求差异，并给出实现对策建议。首先让我查看相关文件。',
+          '',
+          '**Tool: read_file**',
+          '```',
+          '{"path": "/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md"}',
+          '```',
+        ].join('\n'),
+      },
+    },
+    {
+      ts: '2026-07-06T03:03:25.100Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-complete',
+      runId: 'readonly-false-complete',
+      data: {
+        taskComplete: false,
+        toolCallsMade: false,
+        feedbackLength: 0,
+        readFileCount: 0,
+        terminalCommandCount: 0,
+      },
+    },
+    {
+      ts: '2026-07-06T03:03:26.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'readonly-false-complete',
+      data: {
+        phase: 'execute',
+        state: 'completed',
+        taskId: 't1',
+        taskAction: 'analyze',
+        taskFile: 'huida_uav',
+        taskDesc: '分析需求、现有实现和主控职责，输出对策检讨与任务建议',
+        title: '分析需求、现有实现和主控职责，输出对策检讨与任务建议',
+      },
+    },
+    {
+      ts: '2026-07-06T03:03:27.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-completed',
+      runId: 'readonly-false-complete',
+      data: { status: 'completed', tasksTotal: 1, tasksApplied: 0, tasksFailed: 0 },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(kinds.has('provider-tool-request-not-executed'), true);
+    assert.equal(kinds.has('read-only-completed-without-answer-evidence'), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay detects no-tool read-only intent after tool results and optimistic completion', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-06T05:14:35.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'readonly-short-intent',
+      data: {
+        phase: 'execute',
+        state: 'started',
+        taskId: 't1',
+        taskAction: 'analyze',
+        taskFile: 'docs',
+        taskDesc: '分析需求、现有实现和主控职责，输出对策检讨与任务建议',
+        title: '分析需求、现有实现和主控职责，输出对策检讨与任务建议',
+      },
+    },
+    {
+      ts: '2026-07-06T05:14:36.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'readonly-short-intent',
+      data: {
+        name: 'extension.response.raw',
+        content: '[调用 read_file] {"path": "/home/ff/uav/tars/huida_uav/src/oam/src/lifting/maintenance/maintenance_types.hpp"}',
+      },
+    },
+    {
+      ts: '2026-07-06T05:14:37.000Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-complete',
+      runId: 'readonly-short-intent',
+      data: {
+        taskComplete: false,
+        toolCallsMade: true,
+        feedbackLength: 1200,
+        readFileCount: 1,
+        terminalCommandCount: 0,
+      },
+    },
+    {
+      ts: '2026-07-06T05:15:36.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'readonly-short-intent',
+      data: {
+        name: 'extension.response.raw',
+        content: '现在让我再查看几个关键文件来完整了解原实现的设计。',
+      },
+    },
+    {
+      ts: '2026-07-06T05:15:36.100Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-complete',
+      runId: 'readonly-short-intent',
+      data: {
+        taskComplete: false,
+        toolCallsMade: false,
+        feedbackLength: 0,
+        readFileCount: 0,
+        terminalCommandCount: 0,
+      },
+    },
+    {
+      ts: '2026-07-06T05:15:36.200Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'readonly-short-intent',
+      data: {
+        phase: 'execute',
+        state: 'completed',
+        taskId: 't1',
+        taskAction: 'analyze',
+        taskFile: 'docs',
+        taskDesc: '分析需求、现有实现和主控职责，输出对策检讨与任务建议',
+        title: '分析需求、现有实现和主控职责，输出对策检讨与任务建议',
+      },
+    },
+    {
+      ts: '2026-07-06T05:15:36.300Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'readonly-short-intent',
+      data: {
+        phase: 'execute',
+        state: 'failed',
+        taskId: 't1',
+        taskAction: 'analyze',
+        taskFile: 'docs',
+        taskDesc: '分析需求、现有实现和主控职责，输出对策检讨与任务建议',
+        title: '分析需求、现有实现和主控职责',
+        detail: '任务缺少必要完成证据：分析结论。',
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(kinds.has('provider-short-intent'), true);
+    assert.equal(kinds.has('read-only-no-tool-intent-after-tools'), true);
+    assert.equal(kinds.has('optimistic-completion-before-failure'), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay accepts full markdown read-only answer after tool evidence', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-06T05:20:00.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-started',
+      runId: 'readonly-md-delivered',
+      data: { mode: 'agent' },
+    },
+    {
+      ts: '2026-07-06T05:20:01.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'readonly-md-delivered',
+      data: {
+        phase: 'execute',
+        state: 'started',
+        taskId: 't1',
+        taskAction: 'analyze',
+        taskFile: 'docs',
+        taskDesc: '分析需求、现有实现和主控职责，输出对策检讨与任务建议',
+        title: '分析需求、现有实现和主控职责，输出对策检讨与任务建议',
+      },
+    },
+    {
+      ts: '2026-07-06T05:20:02.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'readonly-md-delivered',
+      data: {
+        name: 'extension.response.raw',
+        content: [
+          '我先读取需求文档和旧实现。',
+          '[TOOL:read_file] {"path":"/workspace/docs/uav-warranty-reminder-plan_v1.7.md"}',
+        ].join('\n'),
+      },
+    },
+    {
+      ts: '2026-07-06T05:20:02.500Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-complete',
+      runId: 'readonly-md-delivered',
+      data: {
+        taskComplete: false,
+        toolCallsMade: true,
+        feedbackLength: 4000,
+        readFileCount: 1,
+        terminalCommandCount: 0,
+      },
+    },
+    {
+      ts: '2026-07-06T05:20:05.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'readonly-md-delivered',
+      data: {
+        name: 'extension.response.raw',
+        content: [
+          '# 无人机过保提醒功能 - 新需求实现对策建议与主控任务清单',
+          '',
+          '## 结论',
+          '本次需求需要把旧实现从单一阈值提醒升级为多维状态机、协议同步和复位流程。',
+          '',
+          '## 依据',
+          '已读取需求文档和旧实现代码，差异集中在数据采集、阈值计算、持久化和MAVLink事件。',
+          '',
+          '## 对策建议',
+          '优先重构数据模型和阈值引擎，再接入状态持久化、复位流程和协议字段。',
+          '',
+          '## 任务拆解',
+          '1. 扩展 MaintenanceStat 结构。\\n2. 重构阈值计算引擎。\\n3. 增加状态同步和测试。',
+        ].join('\n'),
+      },
+    },
+    {
+      ts: '2026-07-06T05:20:05.100Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-complete',
+      runId: 'readonly-md-delivered',
+      data: {
+        taskComplete: false,
+        toolCallsMade: false,
+        feedbackLength: 0,
+        readFileCount: 0,
+        terminalCommandCount: 0,
+      },
+    },
+    {
+      ts: '2026-07-06T05:20:05.200Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'readonly-md-delivered',
+      data: {
+        phase: 'execute',
+        state: 'completed',
+        taskId: 't1',
+        taskAction: 'analyze',
+        taskFile: 'docs',
+        taskDesc: '分析需求、现有实现和主控职责，输出对策检讨与任务建议',
+        title: '分析需求、现有实现和主控职责，输出对策检讨与任务建议',
+      },
+    },
+    {
+      ts: '2026-07-06T05:20:05.300Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-completed',
+      runId: 'readonly-md-delivered',
+      data: { status: 'completed', tasksTotal: 1, tasksApplied: 0, tasksFailed: 0 },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(kinds.has('read-only-no-tool-intent-after-tools'), false);
+    assert.equal(kinds.has('read-only-completed-without-answer-evidence'), false);
+    assert.equal(kinds.has('optimistic-completion-before-failure'), false);
+    assert.equal(kinds.has('provider-tool-request-not-executed'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay requires file evidence for completed Markdown deliverables', () => {
+  const failed = writeLog([
+    {
+      ts: '2026-07-09T02:30:00.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-started',
+      runId: 'md-deliverable-no-file',
+      data: { mode: 'agent' },
+    },
+    {
+      ts: '2026-07-09T02:30:01.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'md-deliverable-no-file',
+      data: {
+        phase: 'execute',
+        state: 'completed',
+        taskId: 't1',
+        taskAction: 'create',
+        taskFile: 'warranty-maintenance-advice.md',
+        taskDesc: '创建 Markdown 建议文档，先分析需求文档、旧实现和主控职责，再写入完整的新旧需求对比、实现对策和主控任务清单，并返回文档路径',
+        title: '创建 Markdown 建议文档',
+        detail: '模型已完成分析。',
+      },
+    },
+    {
+      ts: '2026-07-09T02:30:02.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-completed',
+      runId: 'md-deliverable-no-file',
+      data: { status: 'completed', tasksTotal: 1, tasksApplied: 0, tasksFailed: 0, changedPaths: [] },
+    },
+  ]);
+  const passed = writeLog([
+    {
+      ts: '2026-07-09T02:31:00.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-started',
+      runId: 'md-deliverable-with-file',
+      data: { mode: 'agent' },
+    },
+    {
+      ts: '2026-07-09T02:31:01.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'md-deliverable-with-file',
+      data: {
+        phase: 'execute',
+        state: 'completed',
+        taskId: 't1',
+        taskAction: 'create',
+        taskFile: 'warranty-maintenance-advice.md',
+        taskDesc: '创建 Markdown 建议文档，先分析需求文档、旧实现和主控职责，再写入完整的新旧需求对比、实现对策和主控任务清单，并返回文档路径',
+        title: '创建 Markdown 建议文档',
+        detail: 'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md · 已写入并读回验证。',
+      },
+    },
+    {
+      ts: '2026-07-09T02:31:02.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-completed',
+      runId: 'md-deliverable-with-file',
+      data: {
+        status: 'completed',
+        tasksTotal: 1,
+        tasksApplied: 1,
+        tasksFailed: 0,
+        changedPaths: ['src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md'],
+      },
+    },
+  ]);
+
+  try {
+    const failedKinds = new Set(replayRunLog(failed.logPath).issues.map(issue => issue.kind));
+    const passedKinds = new Set(replayRunLog(passed.logPath).issues.map(issue => issue.kind));
+
+    assert.equal(failedKinds.has('markdown-deliverable-completed-without-file-evidence'), true);
+    assert.equal(passedKinds.has('markdown-deliverable-completed-without-file-evidence'), false);
+  } finally {
+    rmSync(failed.dir, { recursive: true, force: true });
+    rmSync(passed.dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay treats failed completion as failure even if stale changedPaths are present', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-09T05:08:39.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-started',
+      runId: 'failed-with-stale-paths',
+      data: { mode: 'fast' },
+    },
+    {
+      ts: '2026-07-09T05:10:13.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-completed',
+      runId: 'failed-with-stale-paths',
+      data: {
+        status: 'failed',
+        tasksTotal: 1,
+        tasksApplied: 0,
+        tasksFailed: 1,
+        changedPaths: ['docs/analysis/uav_warranty_reminder_analysis_v1.7.md'],
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(report.workspaceApplications, 0);
+    assert.equal(kinds.has('agent-run-failed'), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay detects plan failure statuses reported as completed', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-06T03:02:24.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'plan-failure-completed',
+      data: {
+        phase: 'plan',
+        state: 'completed',
+        title: '任务计划生成失败',
+        detail: 'HTTP 503: {"error":"Agent init failed"}',
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(kinds.has('failure-status-reported-completed'), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay classifies provider integrity failures and old bridge runtime', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-06T06:00:00.000Z',
+      level: 'info',
+      source: 'vscode-extension',
+      phase: 'bridge-client',
+      event: 'bridge-status-check',
+      runId: 'provider-integrity',
+      data: {
+        bridgeOnline: true,
+        buildMatches: false,
+        expected: { appVersion: '1.0.0-debug.new', buildId: 'new-build' },
+        actual: { appVersion: '1.0.0-debug.old', buildId: 'old-build' },
+      },
+    },
+    {
+      ts: '2026-07-06T06:00:01.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'provider-integrity',
+      data: {
+        name: 'extension.response.raw',
+        content: 'RESPONSE_CORRUPTED: stream closed before completion',
+      },
+    },
+    {
+      ts: '2026-07-06T06:00:02.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'provider-integrity',
+      data: {
+        name: 'extension.response.raw',
+        content: '<html><body>502 Bad Gateway</body></html>',
+      },
+    },
+    {
+      ts: '2026-07-06T06:00:03.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'provider-integrity',
+      data: {
+        name: 'extension.response.raw',
+        content: '<html><title>Login</title>请先登录后继续</html>',
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(kinds.has('old-bridge-runtime'), true);
+    assert.equal(kinds.has('provider-truncated-response'), true);
+    assert.equal(kinds.has('provider-error-page'), true);
+    assert.equal(kinds.has('provider-login-required'), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay does not classify business verification-code analysis as provider login', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-06T06:10:00.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'business-verification-code',
+      data: {
+        name: 'extension.response.raw',
+        content: [
+          '我已完整分析了相关文件。现在整理分析报告。',
+          '# 吊运维保功能重做分析报告',
+          '结论：当前实现需要重构维保码流程，新增伙伴后台生成验证码、管理后台校验验证码的闭环。',
+          '依据：旧实现只保留阈值统计，没有覆盖新增的作业状态和维保码校验职责。',
+          '建议：先统一状态机，再拆分数据结构，最后补充验证用例。',
+        ].join('\n\n'),
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(kinds.has('provider-login-required'), false);
+    assert.equal(kinds.has('provider-error-page'), false);
+    assert.equal(kinds.has('provider-incomplete-answer'), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

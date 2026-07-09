@@ -4,6 +4,8 @@ import {
   coalesceWrittenFileEvidence,
   findBlockingTerminalFailureEvidence,
   getMissingCompletionEvidence,
+  getUnsupportedSummaryFileClaims,
+  hasReadOnlyAnswerEvidence,
   requiresCodeArtifactForEvidence,
   requiresCommandEvidence,
   requiresFileCheckEvidence,
@@ -13,12 +15,17 @@ import {
   type WrittenFileEvidence,
 } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
+import {
+  runtimeStateCanDeliver,
+  settleAgentRuntimeState,
+} from './agent-runtime-state-machine';
+import { stripToolCallBlocks } from './fake-tool-parser';
 import { extractTaskFileTokens, normalizeEvidencePath, taskFileTokensMatchWrittenEvidence } from './task-file-tokens';
 import { buildTaskTerminalFailureDetail } from './task-execution-result';
 
 type TodoStatus = TodoItem['status'];
 type LinearTodoInput = Pick<TodoItem, 'title'> & Partial<Pick<TodoItem, 'status' | '__agentState'>>;
-type TaskFailureKind = 'terminal' | 'missing-evidence' | 'missing-write' | 'validation';
+type TaskFailureKind = 'terminal' | 'missing-evidence' | 'missing-write' | 'validation' | 'execution-error';
 
 const TODO_TITLE_MAX = 36;
 
@@ -29,7 +36,9 @@ interface TaskEvidence {
   writtenFiles?: WrittenFileEvidence[];
   raw?: string;
   taskComplete?: boolean;
+  failedReason?: string;
   terminalEvidence?: TerminalEvidence[];
+  workspaceRoot?: string;
 }
 
 interface FinalTaskEvidence {
@@ -63,7 +72,7 @@ export function buildTaskSettlementFailureStatus(
   task: AgentTask,
   taskIndex: number,
   taskTotal: number,
-  result: { applied?: boolean; terminalEvidence?: TerminalEvidence[] },
+  result: { applied?: boolean; raw?: string; failedReason?: string; terminalEvidence?: TerminalEvidence[]; writtenFiles?: WrittenFileEvidence[]; workspaceRoot?: string; taskComplete?: boolean },
 ): AgentStatusEvent {
   const target = getTaskDisplayTarget(task);
   return {
@@ -109,14 +118,19 @@ export function createAgentTaskTodoLedger(
       const missingEvidence = isTaskIndex(index, tasks)
         ? getTaskMissingCompletionEvidence(tasks[index], evidence)
         : [];
-      const completed = !terminalFailure && missingEvidence.length === 0 && hasTaskCompletionEvidence(evidence);
-      const failureKind: TaskFailureKind | undefined = terminalFailure
-        ? 'terminal'
-        : missingEvidence.length > 0
-          ? 'missing-evidence'
-          : (!completed && !isReadOnlyAgentTaskAction(evidence.action))
-            ? 'missing-write'
-            : undefined;
+      const completed = !evidence.failedReason
+        && !terminalFailure
+        && missingEvidence.length === 0
+        && taskRuntimeCanDeliver(evidence);
+      const failureKind: TaskFailureKind | undefined = evidence.failedReason
+        ? 'execution-error'
+        : terminalFailure
+          ? 'terminal'
+          : missingEvidence.length > 0
+            ? 'missing-evidence'
+            : !completed
+              ? isReadOnlyAgentTaskAction(evidence.action) ? 'missing-evidence' : 'missing-write'
+              : undefined;
       const failed = Boolean(failureKind);
       if (isTaskIndex(index, tasks)) {
         statuses[index] = failed ? 'failed' : completed ? 'completed' : 'in-progress';
@@ -306,23 +320,41 @@ export function inferInitialAgenticTodos(userPrompt: string): TodoItem[] {
 function getTaskMissingCompletionEvidence(task: AgentTask, evidence: TaskEvidence): string[] {
   if (!isReadOnlyAgentTaskAction(evidence.action)) return [];
   if (evidence.action === 'respond') return [];
-  return getMissingCompletionEvidence(
+  const missing = getMissingCompletionEvidence(
     task.desc || task.file || '',
     [{ title: task.desc || task.file || '' }],
-    [],
+    evidence.writtenFiles ?? [],
     evidence.terminalEvidence ?? [],
   );
+  if (!hasReadOnlyAnswerOrTerminalEvidence(evidence)) {
+    missing.push('分析结论');
+  }
+  if (evidence.taskComplete || isCompletionLikeProviderText(evidence.raw)) {
+    const unsupportedFileClaims = getUnsupportedSummaryFileClaims(
+      evidence.raw ?? '',
+      evidence.writtenFiles ?? [],
+      evidence.workspaceRoot,
+    );
+    if (unsupportedFileClaims.length > 0) {
+      missing.push(`文件写盘证据（${unsupportedFileClaims.join('、')}）`);
+    }
+  }
+  return [...new Set(missing)];
+}
+
+function isCompletionLikeProviderText(text: string | undefined): boolean {
+  return /(?:已完成|完成了|已生成|已创建|已输出|已写入|saved|created|generated|wrote|completed)/i.test(String(text || ''));
 }
 
 export function isReadOnlyAgentTaskAction(action: AgentTaskAction): boolean {
   return action === 'analyze' || action === 'explain' || action === 'explore' || action === 'respond';
 }
 
-function hasTaskCompletionEvidence(evidence: TaskEvidence): boolean {
-  if (!isReadOnlyAgentTaskAction(evidence.action)) {
-    return Boolean(evidence.applied && (evidence.path || evidence.writtenFiles?.length));
-  }
-  return Boolean(evidence.raw?.trim() || evidence.taskComplete || hasSuccessfulTerminalCompletionEvidence(evidence.terminalEvidence));
+function hasReadOnlyAnswerOrTerminalEvidence(evidence: TaskEvidence): boolean {
+  return Boolean(
+    hasReadOnlyAnswerEvidence(evidence.raw)
+    || hasSuccessfulTerminalCompletionEvidence(evidence.terminalEvidence),
+  );
 }
 
 function hasSuccessfulTerminalCompletionEvidence(evidence: TerminalEvidence[] | undefined): boolean {
@@ -346,12 +378,49 @@ function hasFinalTaskCompletionEvidence(
       raw: hasSuccessfulFinalTerminalEvidence(evidence.terminalEvidence) ? 'final terminal evidence' : undefined,
       taskComplete: hasSuccessfulFinalTerminalEvidence(evidence.terminalEvidence),
       terminalEvidence: evidence.terminalEvidence,
+      writtenFiles,
+      workspaceRoot: evidence.workspaceRoot,
     };
     return getTaskMissingCompletionEvidence(task, taskEvidence).length === 0
-      && hasTaskCompletionEvidence(taskEvidence);
+      && taskRuntimeCanDeliver(taskEvidence);
   }
 
   return hasWrittenEvidenceForTask(task, writtenFiles, evidence.workspaceRoot);
+}
+
+function taskRuntimeCanDeliver(evidence: TaskEvidence): boolean {
+  const validationPassed = hasValidatedTaskCompletionEvidence(evidence);
+  const settlement = settleAgentRuntimeState({
+    taskAction: evidence.action,
+    providerText: runtimeProviderTextForTask(evidence, validationPassed),
+    writtenEvidenceCount: countWrittenTaskEvidence(evidence),
+    terminalEvidenceCount: evidence.terminalEvidence?.length ?? 0,
+    validationPassed,
+    failedReason: evidence.failedReason,
+  });
+  return runtimeStateCanDeliver(settlement);
+}
+
+function hasValidatedTaskCompletionEvidence(evidence: TaskEvidence): boolean {
+  if (!isReadOnlyAgentTaskAction(evidence.action)) {
+    return Boolean(evidence.applied && (evidence.path || evidence.writtenFiles?.length));
+  }
+  return hasSuccessfulTerminalCompletionEvidence(evidence.terminalEvidence);
+}
+
+function runtimeProviderTextForTask(evidence: TaskEvidence, validationPassed: boolean): string {
+  const raw = stripToolCallBlocks(evidence.raw ?? '').trim();
+  if (raw) return raw;
+  if (!validationPassed) return evidence.raw ?? '';
+  if (!isReadOnlyAgentTaskAction(evidence.action)) {
+    return '已完成：文件写入证据已记录。';
+  }
+  return '结论：本地运行或验证已完成。依据：终端命令返回成功证据。';
+}
+
+function countWrittenTaskEvidence(evidence: TaskEvidence): number {
+  if (evidence.writtenFiles?.length) return evidence.writtenFiles.length;
+  return evidence.applied && evidence.path ? 1 : 0;
 }
 
 function hasSuccessfulFinalTerminalEvidence(evidence: TerminalEvidence[] | undefined): boolean {
@@ -395,14 +464,19 @@ function hasWrittenEvidenceForTask(
 
 function buildTaskSettlementFailureDetail(
   task: AgentTask,
-  result: { applied?: boolean; terminalEvidence?: TerminalEvidence[] },
+  result: { applied?: boolean; raw?: string; failedReason?: string; terminalEvidence?: TerminalEvidence[]; writtenFiles?: WrittenFileEvidence[]; workspaceRoot?: string; taskComplete?: boolean },
 ): string {
+  if (result.failedReason) return result.failedReason;
   const terminalFailure = findBlockingTerminalFailureEvidence(result.terminalEvidence);
   if (terminalFailure) return buildTaskTerminalFailureDetail(terminalFailure);
   const missingEvidence = getTaskMissingCompletionEvidence(task, {
     action: task.action,
     applied: result.applied,
+    raw: result.raw,
     terminalEvidence: result.terminalEvidence,
+    writtenFiles: result.writtenFiles,
+    workspaceRoot: result.workspaceRoot,
+    taskComplete: result.taskComplete,
   });
   if (missingEvidence.length > 0) {
     return `任务缺少必要完成证据：${missingEvidence.join('、')}。不能仅凭文字说明或构建命令标记完成。`;

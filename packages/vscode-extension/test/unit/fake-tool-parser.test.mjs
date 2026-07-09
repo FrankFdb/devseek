@@ -87,6 +87,19 @@ test('FakeToolParser: parses DeepSeek Calling transcript format', () => {
   assert.equal(tools[0].input.command, 'npm test');
 });
 
+test('FakeToolParser: parses DOM-polluted Calling tool names by registered prefix', () => {
+  const text = [
+    '我将分析旧实现和新需求，给出对策建议。首先需要查看相关文件。',
+    ' Calling: list_dirtex复制下载 {"path":"/home/ff/uav/tars/huida_uav/src/oam/src/lifting/maintenance"}',
+    'Calling: read_filetex复制下载 {"path":"/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md"}',
+  ].join('');
+  const tools = parseFakeToolCalls(text);
+
+  assert.deepEqual(tools.map(tool => tool.name), ['list_dir', 'read_file']);
+  assert.equal(stripToolCallBlocks(text), '我将分析旧实现和新需求，给出对策建议。首先需要查看相关文件。');
+  assert.equal(containsFakeToolCallProtocol(text), true);
+});
+
 test('FakeToolParser: parses Markdown-bold Calling transcript with fenced JSON payload', () => {
   const text = [
     '我先核查一下当前代码状态。',
@@ -197,6 +210,31 @@ test('FakeToolParser: strips spaced Tool/Arguments terminal transcript', () => {
   assert.equal(tools[0].name, 'run_terminal');
   assert.equal(tools[0].input.command, 'cmake -S . -B build && cmake --build build');
   assert.equal(stripToolCallBlocks(text), '好的，现在执行编译和运行。');
+});
+
+test('FakeToolParser: parses DeepSeek markdown Tool blocks with fenced JSON', () => {
+  const text = [
+    '我来分析新旧需求差异，并给出实现对策建议。首先让我查看相关文件。',
+    '',
+    '**Tool: read_file**',
+    '',
+    '```',
+    '{"path": "/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md"}',
+    '```',
+    '',
+    '**Tool: list_dir**',
+    '',
+    '```',
+    '{"path": "/home/ff/uav/tars/huida_uav/src/oam/src/lifting/maintenance"}',
+    '```',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.deepEqual(tools.map(tool => tool.name), ['read_file', 'list_dir']);
+  assert.equal(tools[0].input.path, '/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md');
+  assert.equal(tools[1].input.path, '/home/ff/uav/tars/huida_uav/src/oam/src/lifting/maintenance');
+  assert.equal(stripToolCallBlocks(text), '我来分析新旧需求差异，并给出实现对策建议。首先让我查看相关文件。');
 });
 
 test('FakeToolParser: parses bash Calling JSON command payload as shell command', () => {
@@ -364,6 +402,22 @@ test('FakeToolParser: parses paired XML tool tags with JSON bodies', () => {
   assert.equal(tools[2].input.command, 'cd /tmp/shape_manager && cmake -S . -B build && cmake --build build');
   assert.equal(findFirstToolCallStart(text), text.indexOf('<manage_todo_list>'));
   assert.equal(stripToolCallBlocks(text), '现在开始实现：');
+});
+
+test('FakeToolParser: parses paired XML tool tags with nested parameter tags', () => {
+  const text = [
+    '我先读取需求文档和代码目录。',
+    '<read_file><path>/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md</path></read_file>',
+    '<list_dir><path>/home/ff/uav/tars/huida_uav/src/oam/src/lifting/maintenance</path></list_dir>',
+    '<file_search><glob>src/oam/src/lifting/zc_maintenance/docs/*.md</glob></file_search>',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.deepEqual(tools.map(tool => tool.name), ['read_file', 'list_dir', 'file_search']);
+  assert.equal(tools[0].input.path, '/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md');
+  assert.equal(tools[1].input.path, '/home/ff/uav/tars/huida_uav/src/oam/src/lifting/maintenance');
+  assert.equal(tools[2].input.glob, 'src/oam/src/lifting/zc_maintenance/docs/*.md');
+  assert.equal(stripToolCallBlocks(text), '我先读取需求文档和代码目录。');
 });
 
 test('FakeToolParser: hides incomplete paired XML tool tag while streaming', () => {

@@ -15,6 +15,8 @@ export interface ClosedLoopRepairRouteChatOptions {
   mode?: 'fast' | 'r1';
   stream?: boolean;
   onDelta?: (delta: string) => void;
+  traceRunId?: string;
+  traceWorkspaceRoot?: string;
 }
 
 export interface RunClosedLoopRepairInput {

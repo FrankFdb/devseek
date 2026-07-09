@@ -125,19 +125,26 @@ function isShellTranscriptName(name) {
   return !!SHELL_TRANSCRIPT_NAMES[String(name || '').toLowerCase()];
 }
 
-const CALLING_LABEL_PATTERN = '(?:\\[\\s*)?[*_]{0,3}(?:Calling|Call|调用)(?:[ \\t]*[:：]?[ \\t]*tool\\b|[ \\t]+tool\\b)?[ \\t]*[:：]?[ \\t]*[*_]{0,3}[ \\t]*';
-const CALLING_TOOL_NAME_PATTERN = '\\[?`?([A-Za-z_]\\w*)`?\\]?';
+const CALLING_LABEL_PATTERN = '(?:\\[\\s*)?[*_]{0,3}(?:(?:Calling|Call)(?![A-Za-z_])|调用)(?:[ \\t]*[:：]?[ \\t]*tool\\b|[ \\t]+tool\\b)?[ \\t]*[:：]?[ \\t]*[*_]{0,3}[ \\t]*';
+
+function makeCallingToolNamePattern(includeShellNames = false) {
+  let names = Object.keys(TOOL_NAMES);
+  if (includeShellNames) names = names.concat(Object.keys(SHELL_TRANSCRIPT_NAMES));
+  const escapedNames = names.sort((a, b) => b.length - a.length).map(escapeRegExp).join('|');
+  const mcpPattern = 'mcp__[A-Za-z0-9_]+';
+  return `\\[?\`?(${escapedNames ? `(?:${escapedNames}|${mcpPattern})` : `(?:${mcpPattern})`})\`?\\]?`;
+}
 
 function makeCallingRegex() {
-  return new RegExp(CALLING_LABEL_PATTERN + CALLING_TOOL_NAME_PATTERN, 'gi');
+  return new RegExp(CALLING_LABEL_PATTERN + makeCallingToolNamePattern(false), 'gi');
 }
 
 function makeAnyCallingRegex() {
-  return new RegExp(CALLING_LABEL_PATTERN + '(?:' + CALLING_TOOL_NAME_PATTERN + ')?', 'gi');
+  return new RegExp(CALLING_LABEL_PATTERN + '(?:' + makeCallingToolNamePattern(true) + ')?', 'gi');
 }
 
 function makeIncompleteCallingTailRegex() {
-  return new RegExp(CALLING_LABEL_PATTERN + '(?:' + CALLING_TOOL_NAME_PATTERN + ')?\\s*$', 'i');
+  return new RegExp(CALLING_LABEL_PATTERN + '(?:' + makeCallingToolNamePattern(true) + ')?\\s*$', 'i');
 }
 
 function escapeRegExp(value) {
@@ -227,7 +234,7 @@ function containsCallingToolIntent(text) {
 }
 
 function lineStartsWithCallingToolIntent(text) {
-  const re = new RegExp('^' + CALLING_LABEL_PATTERN + '(?:' + CALLING_TOOL_NAME_PATTERN + ')?', 'i');
+  const re = new RegExp('^' + CALLING_LABEL_PATTERN + '(?:' + makeCallingToolNamePattern(true) + ')?', 'i');
   const m = re.exec(String(text || ''));
   const name = m?.[1] || '';
   return !!name && (isToolName(name) || isShellTranscriptName(name));
@@ -770,6 +777,25 @@ function isAgentRoutingFileMarkerLeak(text) {
   return /^\s*(?:\x00?AFILE:|AFILE:)/.test(String(text || ''));
 }
 
+function stripAgentRoutingFileMarkerLeaks(text) {
+  return String(text || '')
+    .replace(/\x00?AFILE:[^\x00\n]{0,260}(?:\x00|\x00?RESET\x00?|RESET)/g, '')
+    .replace(/\x00?AFILE:[^\x00\n]{0,260}$/g, '');
+}
+
+function stripAgentLocalContextNoticeLeaks(text) {
+  return String(text || '')
+    .replace(/_?\[自动识别目录\]\s*已加载\s*\d+\s*个源文件(?:（[^）]{0,240}）)?，完整清单仅用于本地上下文。_?/g, '')
+    .replace(/_?\[自动识别目录\]\s*已加载\s*\d+\s*个源文件(?:（[^）]{0,240}）)?。_?/g, '')
+    .replace(/_?\[同一 session 续作\]\s*已自动恢复上一轮工作文件：[^_\n]{0,360}_?/g, '');
+}
+
+function stripAgentRoutingResetLeaks(text) {
+  return String(text || '')
+    .replace(/\x00RESET\x00/g, '')
+    .replace(/(^|[\s。！？；;])RESET(?=(?:好的|我(?:将|先|来|会|已经|已)|现在|首先|接下来|下一步|下面|已读取|已完成|分析|读取|查看))/g, '$1');
+}
+
 function stripAgentRoutingSummaryMarkerLeak(text) {
   return String(text || '')
     .replace(/^\s*\x00ASUM\x00\x00RESET\x00/, '')
@@ -809,11 +835,23 @@ function sanitizeAgentVisibleDelta(text) {
 function sanitizeAgentVisibleText(text) {
   let raw = String(text || '');
   if (!raw) return '';
+  raw = stripAgentLocalContextNoticeLeaks(raw);
+  raw = stripAgentRoutingFileMarkerLeaks(raw);
+  if (!raw.trim()) return '';
   if (isAgentRoutingFileMarkerLeak(raw)) return '';
   raw = stripAgentRoutingSummaryMarkerLeak(raw);
-  const cleaned = stripIncompleteCallingTail(stripToolCallBlocks(raw)).trim();
+  const cleaned = collapseDuplicateAgentTransitionSentences(
+    stripAgentRoutingResetLeaks(stripIncompleteCallingTail(stripToolCallBlocks(raw))),
+  ).trim();
   if (!cleaned && (raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw) || containsPotentialInternalCallingTail(raw))) return '';
   return cleaned;
+}
+
+function collapseDuplicateAgentTransitionSentences(text) {
+  return String(text || '').replace(
+    /((?:好的，)?(?:我(?:将|先|来|会|已经|已)|现在|首先|接下来|下一步)[^。！？\n]{8,220}[。！？])(?:\s*\1)+/g,
+    '$1',
+  );
 }
 
 function stripIncompleteCallingTail(text) {
@@ -829,6 +867,8 @@ function containsPotentialInternalCallingTail(text) {
 function sanitizeAssistantVisibleText(text) {
   let raw = String(text || '');
   if (!raw) return '';
+  raw = stripAgentRoutingFileMarkerLeaks(raw);
+  if (!raw.trim()) return '';
   raw = stripAgentRoutingSummaryMarkerLeak(raw);
   const cleaned = stripIncompleteCallingTail(stripToolCallBlocks(raw)).trim();
   if (!cleaned && (raw.indexOf('[TOOL:') !== -1 || containsAgentInternalTranscript(raw) || containsPotentialInternalCallingTail(raw))) return '';
@@ -1064,7 +1104,7 @@ test('agent final prose: strips DSML tool transcript from final user text', () =
 test('agent final prose: strips leaked AFILE routing marker when NUL separators are lost', () => {
   const leaked = 'AFILE:shape_managerRESET我先检查当前 main.cpp 的实际内容以及相关头文件。';
   assert.equal(cleanAgentFinalProseForUser(leaked), '');
-  assert.equal(sanitizeVisibleDeltaForMode(leaked, true), '');
+  assert.equal(sanitizeVisibleDeltaForMode(leaked, true), '我先检查当前 main.cpp 的实际内容以及相关头文件。');
 });
 
 test('agent visible prose: keeps ASUM content when NUL separators are lost', () => {
@@ -1119,6 +1159,40 @@ test('agent accumulated render: hides screenshot-style bash find pipeline', () =
   const cleaned = sanitizeVisibleDeltaForMode(leaked, true);
   assert.match(cleaned, /我先定位并分析/);
   assert.doesNotMatch(cleaned, /Calling|bash|find packages|head -20|CODE/);
+});
+
+test('agent accumulated render: hides DOM-polluted Calling tool transcript rows', () => {
+  const leaked = [
+    '我将分析旧实现和新需求，给出对策建议。首先需要查看相关文件。',
+    ' Calling: list_dirtex复制下载 {"path":"/home/ff/uav/tars/huida_uav/src/oam/src/lifting/maintenance"}',
+    'Calling: read_filetex复制下载 {"path":"/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md"}',
+  ].join('');
+  const expected = '我将分析旧实现和新需求，给出对策建议。首先需要查看相关文件。';
+  assert.equal(sanitizeVisibleDeltaForMode(leaked, true), expected);
+  assert.equal(sanitizeRuntimeVisibleDeltaForMode(leaked, true), expected);
+});
+
+test('agent accumulated render: strips leaked AFILE marker before polluted Calling rows', () => {
+  const leaked = [
+    '[自动识别目录] 已加载 8 个源文件。',
+    ' AFILE:src/oam/src/lifting/zc_maintenance/docsRESET我将分析旧实现和新需求，给出对策建议。',
+    ' Calling: list_dirtex复制下载 {"path":"/home/ff/uav/tars/huida_uav/src/oam/src/lifting/maintenance"}',
+  ].join('');
+  const cleaned = sanitizeRuntimeVisibleDeltaForMode(leaked, true);
+  assert.match(cleaned, /我将分析旧实现和新需求/);
+  assert.doesNotMatch(cleaned, /自动识别目录|已加载 8 个源文件|AFILE|RESET|Calling|复制下载|list_dir|path|huida_uav/);
+});
+
+test('agent accumulated render: hides repeated local context notices and reset leaks', () => {
+  const leaked = [
+    '[自动识别目录] 已加载 8 个源文件（maintenance_data_collector.hpp、maintenance_manager.hpp），完整清单仅用于本地上下文。',
+    '[自动识别目录] 已加载 8 个源文件（maintenance_data_collector.hpp、maintenance_manager.hpp），完整清单仅用于本地上下文。',
+    ' RESET好的，我将作为代码分析智能体，先读取您指定的新需求文档，并查看现有实现的目录结构，以进行全面分析。',
+    ' RESET好的，我将作为代码分析智能体，先读取您指定的新需求文档，并查看现有实现的目录结构，以进行全面分析。',
+  ].join('');
+  const expected = '好的，我将作为代码分析智能体，先读取您指定的新需求文档，并查看现有实现的目录结构，以进行全面分析。';
+  assert.equal(sanitizeVisibleDeltaForMode(leaked, true), expected);
+  assert.equal(sanitizeRuntimeVisibleDeltaForMode(leaked, true), expected);
 });
 
 test('agent accumulated render: hides nameless Calling shell fence', () => {

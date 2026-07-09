@@ -1,4 +1,9 @@
 import { listAgentToolNames } from '../../agent/tool-registry';
+import {
+  looksLikeProviderLoginGate,
+  looksLikeProviderRateLimitGate,
+  looksLikeProviderVerificationGate,
+} from '../provider-surface-classifier';
 
 export type ResponseIntegrityStatus =
   | 'ok'
@@ -43,10 +48,10 @@ export class ResponseIntegrityChecker {
     if (!trimmed) {
       return result('empty', 'Provider returned an empty response.', false);
     }
-    if (/\bLOGIN_REQUIRED\b|登录已失效|sign in|login required/i.test(trimmed)) {
+    if (looksLikeProviderLoginGate(trimmed)) {
       return result('login-required', 'Provider requires login before continuing.', false);
     }
-    if (/captcha|验证码|rate limit|too many requests|排队|限流/i.test(trimmed)) {
+    if (looksLikeProviderVerificationGate(trimmed) || looksLikeProviderRateLimitGate(trimmed)) {
       return result('rate-limited', 'Provider is rate limited or waiting for verification.', false);
     }
     if (hasUnclosedMarkdownFence(trimmed)) {

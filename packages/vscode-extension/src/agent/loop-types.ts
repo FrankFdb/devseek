@@ -4,10 +4,14 @@ import type { McpToolRef } from '../mcp/client';
 import type { MemoryWriteProposal } from '../memory/types';
 import type { AgentStatusEvent } from './events';
 import type { TodoItem } from './evidence-recovery';
+import type { ExecutionMode } from '../intent/intent-types';
+import type { AgentFileWriteContext } from '../app/agent-file-write-policy';
 
 export type AgentStatusMessage = AgentStatusEvent;
 
 export interface AgentLoopCallbacks {
+  /** Current intent/tool-policy mode. Used by the runtime task policy guard. */
+  executionMode?: ExecutionMode;
   /** Stream delta text to chat bubble */
   onDelta: (delta: string) => void;
   /** Post a workflowStatus message to the webview */
@@ -27,6 +31,8 @@ export interface AgentLoopCallbacks {
   onAgentAnnouncement?: (text: string) => void | Promise<void>;
   /** One diagnostic trace id shared by all provider/tool rounds in this top-level run. */
   traceRunId?: string;
+  /** Unified filesystem root for this run's provider/tool trace files. */
+  traceWorkspaceRoot?: string;
   /**
    * Session checkpoint callback — called after each task completes (success or fail).
    * Extension saves the next-pending-task index to workspaceState for resume-on-reconnect.
@@ -63,7 +69,7 @@ export interface AgentLoopCallbacks {
    * P-SEC: About to write a file — return false to block the write (e.g., sensitive files).
    * Only called for SEARCH/REPLACE-path writes; full-file writes go via onAppliedChange.
    */
-  onBeforeFileWrite?: (absPath: string) => Promise<boolean>;
+  onBeforeFileWrite?: (absPath: string, context?: AgentFileWriteContext) => Promise<boolean>;
   /**
    * AI called read_file — return an AI-readable file context with metadata.
    * workDir resolves bare filenames against the current task directory first.

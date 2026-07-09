@@ -71,6 +71,16 @@ test('AgentToolExecutor: rejects unregistered tools before execution', () => {
   assert.equal(plan.permission.reason, 'tool-not-registered:unknown_magic');
 });
 
+test('AgentToolExecutor: validates required schema fields', () => {
+  const executor = new AgentToolExecutor();
+  const invalid = executor.plan({ name: 'read_file', input: {} });
+  const valid = executor.plan({ name: 'read_file', input: { path: 'src/index.ts' } });
+
+  assert.equal(executor.validateInput(invalid).ok, false);
+  assert.match(executor.validateInput(invalid).error, /缺少必填参数: path/);
+  assert.equal(executor.validateInput(valid).ok, true);
+});
+
 test('AgentToolExecutor: emits unified tool results with evidence refs', () => {
   const executor = new AgentToolExecutor();
   const plan = executor.plan(

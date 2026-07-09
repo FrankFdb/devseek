@@ -470,8 +470,10 @@
     "test:dsml-webview": "node test/devseek-dsml-webview-harness.mjs",
     "test:deepseek-web-e2e": "node test/devseek-human-input-harness.mjs --real-bridge",
     "test:deepseek-agent-steer-e2e": "node test/devseek-human-input-harness.mjs --real-agent-steer",
+    "test:closed-loop-sim": "node --test test/unit/markdown-deliverable-flow.test.mjs",
     "test:run-log-replay": "node test/devseek-run-log-replay-harness.mjs",
     "test:extension-host": "node test/devseek-extension-host-harness.mjs",
+    "test:real-plugin-deepseek": "node test/devseek-real-plugin-deepseek-harness.mjs",
     "test:bridge-smoke": "node test/devseek-bridge-smoke.mjs",
     "test:watch": "node --test --watch test/unit/*.test.mjs"
   },

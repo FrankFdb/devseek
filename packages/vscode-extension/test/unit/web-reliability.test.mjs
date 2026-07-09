@@ -22,11 +22,35 @@ execSync(
 const req = createRequire(import.meta.url);
 const { ResponseIntegrityChecker, StreamWatchdog, BridgeHealthMonitor } = req(bundlePath);
 
+const maintenanceAnalysisWithBusinessVerificationCode = [
+  '我已完整分析了相关文件。现在整理分析报告。',
+  '# 吊运维保功能重做分析报告',
+  '结论：当前实现需要重构维保码流程，新增伙伴后台生成验证码、管理后台校验验证码的闭环。',
+  '依据：旧实现只保留阈值统计，没有覆盖新增的作业状态和维保码校验职责。',
+  '建议：先统一状态机，再拆分数据结构，最后补充验证用例。',
+  '[TOOL:task_complete {"summary":"完成吊运维保功能重做分析，包含生成验证码、管理后台校验和任务拆解建议。"}]',
+].join('\n\n');
+
 test('ResponseIntegrityChecker: passes complete responses', () => {
   const result = new ResponseIntegrityChecker().check('```ts\nexport const ok = 1;\n```');
 
   assert.equal(result.ok, true);
   assert.equal(result.safeToExecute, true);
+});
+
+test('ResponseIntegrityChecker: does not treat business verification-code analysis as provider captcha', () => {
+  const result = new ResponseIntegrityChecker().check(maintenanceAnalysisWithBusinessVerificationCode);
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.safeToExecute, true);
+});
+
+test('ResponseIntegrityChecker: still blocks provider login and captcha control surfaces', () => {
+  const checker = new ResponseIntegrityChecker();
+
+  assert.equal(checker.check('<html><title>Login</title>请先登录后继续</html>').status, 'login-required');
+  assert.equal(checker.check('请输入验证码完成安全验证').status, 'rate-limited');
+  assert.equal(checker.check('HTTP 429 Too Many Requests，请稍后再试').status, 'rate-limited');
 });
 
 test('ResponseIntegrityChecker: blocks truncated markdown and tool blocks', () => {

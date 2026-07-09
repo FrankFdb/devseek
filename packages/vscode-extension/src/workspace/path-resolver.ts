@@ -2,9 +2,15 @@ import * as fs from 'fs';
 import * as nodePath from 'path';
 import * as vscode from 'vscode';
 import { isCppBuildArtifactDirName } from '../cpp-build-layout';
+import { isReadOnlyAdvisoryPlanningRequest } from '../intent/advisory-patterns';
 import { getWorkspaceRootUri } from '../workspace-roots';
 import { sanitizeWorkspaceContextAnchorPath } from './context-anchor';
 import { createWorkspaceFilePathTokenRegExp } from './path-patterns';
+import {
+  isInsideOrSamePath,
+  resolveProjectRootFromAnchorPath,
+  resolveProjectRootFromAnchors,
+} from './project-root';
 
 export interface WorkspacePathContext {
   root: vscode.Uri;
@@ -208,7 +214,7 @@ export function resolveGeneratedArtifactPathForPrompt(
   requestPrompt?: string,
   preferredAbsolutePaths?: string[],
 ): string {
-  const root = getWorkspaceRootUri(requestPrompt, preferredAbsolutePaths);
+  const root = getPathResolutionRootUri(requestPrompt, preferredAbsolutePaths);
   if (!root) return normalizeWorkspaceTargetPath(rawPath);
 
   const pathContext = buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths);
@@ -222,7 +228,7 @@ export function isGeneratedArtifactAllowedForPrompt(
   requestPrompt?: string,
   preferredAbsolutePaths?: string[],
 ): boolean {
-  const root = getWorkspaceRootUri(requestPrompt, preferredAbsolutePaths);
+  const root = getPathResolutionRootUri(requestPrompt, preferredAbsolutePaths);
   if (!root) return true;
 
   const ctx = buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths);
@@ -281,8 +287,29 @@ export function detectWorkspacePathScope(
   attachedFiles: string[] = [],
   activeEditorFile?: string,
 ): WorkspacePathScope {
-  const root = getWorkspaceRootUri(userPrompt, attachedFiles);
+  const workspaceRoots = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+  const activeAnchor = sanitizeWorkspaceContextAnchorPath(activeEditorFile, workspaceRoots);
+  const advisoryExternalRoot = isReadOnlyAdvisoryPlanningRequest(userPrompt)
+    ? inferExternalAdvisoryProjectRoot(userPrompt, attachedFiles, activeAnchor, workspaceRoots)
+    : undefined;
+  if (advisoryExternalRoot) {
+    return { promptDir: advisoryExternalRoot, promptDirIsExplicit: false };
+  }
+
+  const root = getPathResolutionRootUri(userPrompt, attachedFiles);
   if (root) {
+    const rootIsOpenWorkspace = workspaceRoots.some(rootPath => isInsideOrSamePath(root.fsPath, rootPath));
+    if (activeAnchor && !rootIsOpenWorkspace && isInsideOrSamePath(activeAnchor, root.fsPath)) {
+      const activeProjectRoot = resolveProjectRootFromAnchorPath(activeAnchor, workspaceRoots);
+      if (activeProjectRoot && isInsideOrSamePath(root.fsPath, activeProjectRoot) && isInsideOrSamePath(activeProjectRoot, root.fsPath)) {
+        return { promptDir: root.fsPath, promptDirIsExplicit: false };
+      }
+    }
+
+    if (isReadOnlyAdvisoryPlanningRequest(userPrompt)) {
+      return { promptDir: root.fsPath, promptDirIsExplicit: false };
+    }
+
     const ctx = buildWorkspacePathContext(root, { requestPrompt: userPrompt });
     if (ctx.scopedDirs.length > 0) {
       return {
@@ -293,14 +320,19 @@ export function detectWorkspacePathScope(
   }
 
   const wsRoot0 = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-  if (!wsRoot0) return { promptDir: undefined, promptDirIsExplicit: false };
-
-  const workspaceRoots = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
   const anchorFile = [
     ...attachedFiles,
-    activeEditorFile,
+    activeAnchor,
   ].find((candidate): candidate is string => Boolean(sanitizeWorkspaceContextAnchorPath(candidate, workspaceRoots)));
   if (!anchorFile) return { promptDir: undefined, promptDirIsExplicit: false };
+
+  const anchorProjectRoot = resolveProjectRootFromAnchorPath(anchorFile, workspaceRoots);
+  const anchorInsideOpenWorkspace = workspaceRoots.some(rootPath => isInsideOrSamePath(anchorFile, rootPath));
+  if (anchorProjectRoot && !anchorInsideOpenWorkspace) {
+    return { promptDir: anchorProjectRoot, promptDirIsExplicit: false };
+  }
+
+  if (!wsRoot0) return { promptDir: undefined, promptDirIsExplicit: false };
 
   let dir = nodePath.dirname(anchorFile);
   const rootNorm = wsRoot0.replace(/\\/g, '/').replace(/\/$/, '');
@@ -324,6 +356,59 @@ export function detectWorkspacePathScope(
     return { promptDir: dir, promptDirIsExplicit: false };
   }
   return { promptDir: undefined, promptDirIsExplicit: false };
+}
+
+const PROJECT_CONTENT_ROOT_SEGMENTS = new Set([
+  'src', 'source', 'sources', 'include', 'inc', 'lib', 'libs',
+  'app', 'apps', 'packages', 'docs', 'doc', 'test', 'tests',
+  'tools', 'tooling', 'scripts',
+]);
+
+function inferExternalAdvisoryProjectRoot(
+  userPrompt: string | undefined,
+  attachedFiles: string[],
+  activeAnchor: string | undefined,
+  workspaceRoots: readonly string[],
+): string | undefined {
+  const candidates = dedupeStringList([
+    ...attachedFiles,
+    ...extractAbsolutePathHints(userPrompt || ''),
+    activeAnchor,
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map(normalizeAbsolutePathHint)
+    .filter((value) => nodePath.isAbsolute(value))
+    .map((value) => nodePath.resolve(value)))
+    .filter((candidate) => !workspaceRoots.some(root => isInsideOrSamePath(candidate, root)));
+
+  if (candidates.length === 0) return undefined;
+
+  const markedRoot = resolveProjectRootFromAnchors(candidates, workspaceRoots);
+  if (markedRoot && candidates.some(candidate => isInsideOrSamePath(candidate, markedRoot))) {
+    return markedRoot;
+  }
+
+  const contentRoots = dedupeStringList(
+    candidates
+      .map(inferProjectRootBeforeContentSegment)
+      .filter((value): value is string => Boolean(value)),
+  );
+  if (contentRoots.length === 1) return contentRoots[0];
+
+  return contentRoots.find(root => candidates.every(candidate => isInsideOrSamePath(candidate, root)));
+}
+
+function normalizeAbsolutePathHint(value: string): string {
+  return value.trim().replace(/[),;，。！？；：]+$/g, '');
+}
+
+function inferProjectRootBeforeContentSegment(absPath: string): string | undefined {
+  const resolved = nodePath.resolve(absPath);
+  const parsed = nodePath.parse(resolved);
+  const relativeParts = resolved.slice(parsed.root.length).split(nodePath.sep).filter(Boolean);
+  const contentIndex = relativeParts.findIndex(part => PROJECT_CONTENT_ROOT_SEGMENTS.has(part.toLowerCase()));
+  if (contentIndex <= 0) return undefined;
+  return nodePath.join(parsed.root, ...relativeParts.slice(0, contentIndex));
 }
 
 export function resolveArtifactPathInWorkspace(path: string, root: vscode.Uri, ctx: WorkspacePathContext): string | undefined {
@@ -597,7 +682,7 @@ function isGeneratedArtifactDirSegment(segment: string): boolean {
 function getWorkspaceRootForWrite(options: ResolveWorkspaceWritePathOptions): vscode.Uri | undefined {
   if (options.workspaceRootFsPath) return vscode.Uri.file(options.workspaceRootFsPath);
 
-  const fromPrompt = getWorkspaceRootUri(options.requestPrompt, options.preferredAbsolutePaths);
+  const fromPrompt = getPathResolutionRootUri(options.requestPrompt, options.preferredAbsolutePaths);
   if (fromPrompt) return fromPrompt;
 
   if (options.defaultWorkdir) {
@@ -607,6 +692,24 @@ function getWorkspaceRootForWrite(options: ResolveWorkspaceWritePathOptions): vs
 
   const folders = vscode.workspace.workspaceFolders || [];
   return folders.length === 1 ? folders[0].uri : undefined;
+}
+
+function getPathResolutionRootUri(
+  requestPrompt?: string,
+  preferredAbsolutePaths?: string[],
+): vscode.Uri | undefined {
+  const workspaceRoots = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+  const anchoredRoot = resolveProjectRootFromAnchors([
+    ...(preferredAbsolutePaths ?? []),
+    ...extractAbsolutePathHints(requestPrompt || ''),
+  ], workspaceRoots);
+  if (anchoredRoot) return vscode.Uri.file(anchoredRoot);
+
+  return getWorkspaceRootUri(requestPrompt, preferredAbsolutePaths);
+}
+
+function extractAbsolutePathHints(text: string): string[] {
+  return text.match(/\/[^\s'"`，。！？；：\n]+/g) || [];
 }
 
 function normalizeExplicitWritePath(rawPath: string, userPrompt: string, content: string): string {
