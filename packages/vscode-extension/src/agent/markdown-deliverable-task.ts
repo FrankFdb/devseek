@@ -80,7 +80,7 @@ const EXCLUDED_DIR_NAMES = new Set([
 ]);
 const BAD_PROVIDER_REPORT_RE = /(?:\[TOOL:|\[工具执行结果\]|Calling\s*:\s*(?:read_file|list_dir|file_search)|调用\s*(?:read_file|list_dir|file_search))/i;
 const PROVIDER_COPY_CONTROL_RE = /(?:plain\s*text|text|json|cpp|c\+\+|c|bash|shell|sh|python|typescript|javascript|yaml|yml|xml|html|sql|ini|toml|go|rust|markdown|md)\s*复制\s*下载/gi;
-const MARKDOWN_METADATA_LABELS = '文档编号|文档版本|对应需求版本|对应需求|关联需求|文档路径|目标路径|创建日期|生成时间|文档类型|状态|版本';
+const MARKDOWN_METADATA_LABELS = '文档编号|文档版本|对应需求版本|对应需求|关联需求|文档路径|目标路径|创建日期|生成日期|生成时间|文档类型|状态|版本';
 const MARKDOWN_METADATA_LABEL_RE = new RegExp(`(?:\\*\\*)?(${MARKDOWN_METADATA_LABELS})(?:\\*\\*)?\\s*[:：]`, 'g');
 const MARKDOWN_METADATA_LABEL_FINDER_RE = new RegExp(`(?:\\*\\*)?(?:${MARKDOWN_METADATA_LABELS})(?:\\*\\*)?\\s*[:：]`);
 const MARKDOWN_NUMBERED_HEADING_WORD_RE = /(?:文档|目标|依据|范围|需求|差异|旧实现|职责|观察|实现|对策|总体|架构|接口|方向|消息|数据结构|字段|说明|异常|时序|任务|拆分|风险|验证|结论|模块|线程|持久|测试|设计|决策|输入|输出|发布|存储|复位|兼容)/;
@@ -563,6 +563,9 @@ function normalizeNumberedHeadingLines(text: string): string {
     const trimmed = line.trim();
     const match = trimmed.match(/^(\d{1,2}(?:\.\d{1,2}){0,4}\.?)\s+(.+)$/);
     if (!match || !MARKDOWN_NUMBERED_HEADING_WORD_RE.test(match[2])) return line;
+    if (/^-\s+\S/.test(match[2].trim())) {
+      return `${match[1]} ${match[2].trim().replace(/^-\s+/, '')}`;
+    }
     const depth = match[1].replace(/\.$/, '').split('.').filter(Boolean).length;
     const level = Math.min(6, Math.max(2, depth + 1));
     return `${'#'.repeat(level)} ${match[1]} ${match[2].trim()}`;

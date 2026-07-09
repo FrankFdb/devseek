@@ -243,7 +243,7 @@ test('markdown deliverable: accepts complete but fully flattened DeepSeek report
       `第${index + 1}项对比说明旧实现由主控本地计算并持久化，新需求以平台状态为权威来源，主控同步平台快照并补偿离线增量，需要明确遥控器、主控、平台之间的职责边界和异常恢复策略`
     )).join('，');
     const providerMarkdown = [
-      `维保提醒需求分析与实现建议文档版本：1.0生成时间：2026-07-09目标路径：src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md对应需求版本：uav-warranty-reminder-plan_v1.7.md1. 需求差异分析${longFlattenedParagraph}2. 旧实现职责观察MaintenanceDataCollector 可以复用本机增量采集，MaintenancePersistence 可以复用 JSON 原子写入，MaintenanceThresholdEngine 和 MaintenanceStateMachine 需要按平台状态重构。3. 实现对策建议主控不再独立判定平台权威状态，而是保存 platform_status、statisticsCutoffAt、metrics、thresholds，并通过离线补偿计算本机未同步增量。4. 主控任务拆分T001 定义同步消息结构，T002 保存平台快照，T003 采集离线补偿，T004 合并状态，T005 通过 UAV_EVENT 1022 回传提醒结果。5. 风险与验证建议需要验证平台数据缺失、重复消息、时区偏移、重启恢复、阈值边界和维保码成功后的状态清理。`,
+      `维保提醒需求分析与实现建议文档版本：1.0生成日期：2026-07-09目标路径：src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md对应需求版本：uav-warranty-reminder-plan_v1.7.md目录1. - 需求差异分析2. - 旧实现职责观察3. - 实现对策建议1. 需求差异分析${longFlattenedParagraph}2. 旧实现职责观察MaintenanceDataCollector 可以复用本机增量采集，MaintenancePersistence 可以复用 JSON 原子写入，MaintenanceThresholdEngine 和 MaintenanceStateMachine 需要按平台状态重构。3. 实现对策建议主控不再独立判定平台权威状态，而是保存 platform_status、statisticsCutoffAt、metrics、thresholds，并通过离线补偿计算本机未同步增量。4. 主控任务拆分T001 定义同步消息结构，T002 保存平台快照，T003 采集离线补偿，T004 合并状态，T005 通过 UAV_EVENT 1022 回传提醒结果。5. 风险与验证建议需要验证平台数据缺失、重复消息、时区偏移、重启恢复、阈值边界和维保码成功后的状态清理。`,
     ].join('\n');
 
     const result = await tryExecuteMarkdownDeliverableTask({
@@ -266,6 +266,9 @@ test('markdown deliverable: accepts complete but fully flattened DeepSeek report
     const content = readFileSync(target, 'utf8');
     assert.doesNotMatch(content, /Provider 未返回可用/);
     assert.match(content, /^# 维保提醒需求分析与实现建议/m);
+    assert.match(content, /- \*\*生成日期\*\*：2026-07-09/);
+    assert.match(content, /^1\. 需求差异分析$/m);
+    assert.doesNotMatch(content, /## 1\. - 需求差异分析/);
     assert.match(content, /## 1\. 需求差异分析/);
     assert.ok(Math.max(...content.split(/\r?\n/).map(line => line.length)) < 900);
   } finally {
