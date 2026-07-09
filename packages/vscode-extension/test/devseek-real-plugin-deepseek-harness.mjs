@@ -81,11 +81,21 @@ const fixture = usesExistingWorkspace
 const expectedArtifact = getArgValue('--expected-artifact')
   || process.env.DEVSEEK_REAL_PLUGIN_EXPECTED_ARTIFACT
   || fixture.expectedArtifactRel;
-const expectedArtifacts = parseExpectedArtifacts(
+const expectedArtifacts = normalizeExpectedWorkspacePaths(parseExpectedArtifacts(
   getArgValue('--expected-artifacts')
     || process.env.DEVSEEK_REAL_PLUGIN_EXPECTED_ARTIFACTS
     || expectedArtifact,
-);
+));
+const expectedCodeArtifacts = normalizeExpectedWorkspacePaths(parseExpectedArtifacts(
+  getArgValue('--expected-code-artifacts')
+    || process.env.DEVSEEK_REAL_PLUGIN_EXPECTED_CODE_ARTIFACTS
+    || '',
+));
+const expectedCodeDirs = normalizeExpectedWorkspacePaths(parseExpectedArtifacts(
+  getArgValue('--expected-code-dirs')
+    || process.env.DEVSEEK_REAL_PLUGIN_EXPECTED_CODE_DIRS
+    || '',
+));
 const prompt = promptFromArg || defaultPrompt(workspaceDir, fixture);
 
 const loginReport = relogin ? await prepareDeepSeekLogin() : null;
@@ -111,6 +121,8 @@ report.harness = {
   harnessMode,
   expectedArtifact,
   expectedArtifacts,
+  expectedCodeArtifacts,
+  expectedCodeDirs,
   usesExistingWorkspace,
   loginReport,
 };
@@ -158,6 +170,14 @@ function parseExpectedArtifacts(value) {
     .split(/[,\n]/)
     .map(item => item.trim().replace(/\\/g, '/').replace(/^\.\//, ''))
     .filter(Boolean);
+}
+
+function normalizeExpectedWorkspacePaths(paths) {
+  return paths.map((item) => {
+    const absolute = path.isAbsolute(item) ? item : path.resolve(workspaceDir, item);
+    const relative = path.relative(workspaceDir, absolute).replace(/\\/g, '/');
+    return relative && !relative.startsWith('../') && relative !== '..' ? relative : item;
+  });
 }
 
 function resolveVsixPath() {
@@ -476,6 +496,8 @@ const scenario = __SCENARIO__;
 const harnessMode = __HARNESS_MODE__;
 const expectedArtifact = __EXPECTED_ARTIFACT__;
 const expectedArtifacts = __EXPECTED_ARTIFACTS__;
+const expectedCodeArtifacts = __EXPECTED_CODE_ARTIFACTS__;
+const expectedCodeDirs = __EXPECTED_CODE_DIRS__;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -515,6 +537,28 @@ function hashText(text) {
   return crypto.createHash('sha1').update(text).digest('hex');
 }
 
+function assessMarkdownQuality(content) {
+  const lines = String(content || '').split(/\r?\n/);
+  const nonEmpty = lines.map((line) => line.trim()).filter(Boolean);
+  const firstLineLength = nonEmpty.length ? nonEmpty[0].length : 0;
+  const maxLineLength = lines.reduce((max, line) => Math.max(max, line.length), 0);
+  const headingCount = lines.filter((line) => /^#{1,6}\s+\S/.test(line.trim())).length;
+  const hasCopyControls = /复制下载|(?:plain\s*text|text|json|cpp|c\+\+|bash|shell|markdown|md)\s*复制\s*下载/i.test(content);
+  const ok = Boolean(nonEmpty.length > 0
+    && /^#{1,6}\s+\S/.test(nonEmpty[0])
+    && headingCount >= 2
+    && firstLineLength <= 260
+    && maxLineLength <= 2400
+    && !hasCopyControls);
+  return {
+    ok,
+    firstLineLength,
+    maxLineLength,
+    headingCount,
+    hasCopyControls,
+  };
+}
+
 function markdownSnapshot() {
   const map = new Map();
   walk(workspaceDir, (filePath) => {
@@ -529,6 +573,96 @@ function markdownSnapshot() {
   return map;
 }
 
+function selectedArtifactSnapshot(paths) {
+  const map = new Map();
+  for (const artifactPath of paths) {
+    const absolutePath = path.join(workspaceDir, artifactPath);
+    if (!fs.existsSync(absolutePath)) {
+      map.set(artifactPath, { exists: false, size: 0, hash: '' });
+      continue;
+    }
+    const content = fs.readFileSync(absolutePath);
+    map.set(artifactPath, {
+      exists: true,
+      size: content.length,
+      hash: crypto.createHash('sha1').update(content).digest('hex'),
+    });
+  }
+  return map;
+}
+
+function selectedArtifactRecords(paths, before, normalizedChangedPaths) {
+  return paths.map((artifactPath) => {
+    const absolutePath = path.join(workspaceDir, artifactPath);
+    const previous = before.get(artifactPath) || { exists: false, size: 0, hash: '' };
+    const exists = fs.existsSync(absolutePath);
+    const content = exists ? fs.readFileSync(absolutePath) : Buffer.alloc(0);
+    const hash = exists ? crypto.createHash('sha1').update(content).digest('hex') : '';
+    return {
+      path: artifactPath,
+      absolutePath,
+      exists,
+      created: exists && !previous.exists,
+      changed: exists && previous.exists && hash !== previous.hash,
+      size: content.length,
+      inRunLog: normalizedChangedPaths.includes(artifactPath),
+    };
+  });
+}
+
+function isHarnessCodeArtifact(relative) {
+  const normalized = String(relative || '').replace(/\\/g, '/');
+  if (/(^|\/)docs?\//i.test(normalized)) return false;
+  const base = path.posix.basename(normalized);
+  return /\.(?:c|cc|cpp|cxx|h|hh|hpp|ipp|inl|ts|tsx|js|jsx|mjs|cjs|py|go|rs|java|kt|sh|bash|cmake)$/i.test(base)
+    || /^(?:CMakeLists\.txt|Makefile|Dockerfile)$/i.test(base);
+}
+
+function selectedCodeDirSnapshot(dirs) {
+  const map = new Map();
+  for (const dirRel of dirs) {
+    const dirAbs = path.join(workspaceDir, dirRel);
+    if (!fs.existsSync(dirAbs)) continue;
+    walk(dirAbs, (filePath) => {
+      const relative = rel(workspaceDir, filePath);
+      if (!isHarnessCodeArtifact(relative)) return;
+      const content = fs.readFileSync(filePath);
+      map.set(relative, {
+        exists: true,
+        size: content.length,
+        hash: crypto.createHash('sha1').update(content).digest('hex'),
+      });
+    });
+  }
+  return map;
+}
+
+function selectedCodeDirRecords(dirs, before, normalizedChangedPaths) {
+  const records = [];
+  for (const dirRel of dirs) {
+    const dirAbs = path.join(workspaceDir, dirRel);
+    if (!fs.existsSync(dirAbs)) continue;
+    walk(dirAbs, (filePath) => {
+      const relative = rel(workspaceDir, filePath);
+      if (!isHarnessCodeArtifact(relative)) return;
+      const content = fs.readFileSync(filePath);
+      const hash = crypto.createHash('sha1').update(content).digest('hex');
+      const previous = before.get(relative) || { exists: false, size: 0, hash: '' };
+      records.push({
+        dir: dirRel,
+        path: relative,
+        absolutePath: filePath,
+        exists: true,
+        created: !previous.exists,
+        changed: previous.exists && hash !== previous.hash,
+        size: content.length,
+        inRunLog: normalizedChangedPaths.includes(relative),
+      });
+    });
+  }
+  return records.sort((a, b) => a.path.localeCompare(b.path));
+}
+
 function changedMarkdownArtifacts(before) {
   const artifacts = [];
   walk(workspaceDir, (filePath) => {
@@ -541,6 +675,7 @@ function changedMarkdownArtifacts(before) {
       size: Buffer.byteLength(content),
       hash: hashText(content),
       preview: content.slice(0, 600),
+      markdownQuality: assessMarkdownQuality(content),
     };
     const previous = before.get(relative);
     if (!previous || previous.hash !== current.hash) {
@@ -549,6 +684,7 @@ function changedMarkdownArtifacts(before) {
         created: !previous,
         changed: Boolean(previous && previous.hash !== current.hash),
         containsMaintenanceAnalysis: /(维保|主控|task|任务|阈值|对策|重构|吊运)/i.test(content),
+        markdownQualityOk: current.markdownQuality.ok,
       });
     }
   });
@@ -563,6 +699,20 @@ function parseJsonLine(line) {
   }
 }
 
+function parseRunLogStartedAtMs(name) {
+  const match = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.log$/.exec(String(name || ''));
+  if (!match) return 0;
+  const [, year, month, day, hour, minute, second] = match;
+  return new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  ).getTime();
+}
+
 function collectRunLogs(startedAtMs) {
   const runDir = path.join(workspaceDir, '.devseek', 'runs');
   const logs = [];
@@ -571,7 +721,11 @@ function collectRunLogs(startedAtMs) {
     if (!name.endsWith('.log')) continue;
     const full = path.join(runDir, name);
     const stat = fs.statSync(full);
-    if (stat.mtimeMs + 2000 < startedAtMs) continue;
+    const runStartedAtMs = parseRunLogStartedAtMs(name);
+    const isCurrentRun = runStartedAtMs
+      ? runStartedAtMs + 2000 >= startedAtMs
+      : stat.mtimeMs + 2000 >= startedAtMs;
+    if (!isCurrentRun) continue;
     const events = fs.readFileSync(full, 'utf8')
       .split(/\r?\n/)
       .filter(Boolean)
@@ -581,6 +735,8 @@ function collectRunLogs(startedAtMs) {
     logs.push({
       path: rel(workspaceDir, full),
       absolutePath: full,
+      runStartedAtMs,
+      mtimeMs: stat.mtimeMs,
       size: stat.size,
       events: events.length,
       lastEvent: events.length ? events[events.length - 1].event : '',
@@ -591,7 +747,7 @@ function collectRunLogs(startedAtMs) {
         .map((event) => ({ event: event.event, data: event.data || {} })),
     });
   }
-  logs.sort((a, b) => b.size - a.size);
+  logs.sort((a, b) => (b.runStartedAtMs - a.runStartedAtMs) || (b.mtimeMs - a.mtimeMs) || (b.size - a.size));
   const terminal = logs.map((log) => log.terminal).find(Boolean) || null;
   return { logs, terminal };
 }
@@ -610,7 +766,7 @@ async function updateConfig(key, value) {
   await vscode.workspace.getConfiguration('devseek').update(key, value, vscode.ConfigurationTarget.Workspace);
 }
 
-function evaluate(before, startedAtMs) {
+function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedCodeDirBefore = new Map()) {
   const artifacts = changedMarkdownArtifacts(before);
   const runLogs = collectRunLogs(startedAtMs);
   const terminalData = runLogs.terminal && runLogs.terminal.data ? runLogs.terminal.data : {};
@@ -619,7 +775,7 @@ function evaluate(before, startedAtMs) {
   const changedPaths = Array.isArray(terminalData.changedPaths) ? terminalData.changedPaths : [];
   const normalizedChangedPaths = changedPaths.map(normalizeChangedPathForWorkspace);
   const changedMarkdownByLog = normalizedChangedPaths.some((item) => /\.(?:md|markdown)$/i.test(item));
-  const hasUsefulMarkdown = artifacts.some((artifact) => artifact.size >= 500 && artifact.containsMaintenanceAnalysis);
+  const hasUsefulMarkdown = artifacts.some((artifact) => artifact.size >= 500 && artifact.containsMaintenanceAnalysis && artifact.markdownQualityOk);
   const expectedArtifactRecords = expectedArtifacts.map((artifactPath) => ({
     path: artifactPath,
     artifact: artifacts.find((artifact) => artifact.path === artifactPath) || null,
@@ -632,11 +788,31 @@ function evaluate(before, startedAtMs) {
     ? expectedArtifactRecords.every((record) => Boolean(record.artifact
       && record.artifact.created
       && record.artifact.size >= 500
-      && record.artifact.containsMaintenanceAnalysis))
+      && record.artifact.containsMaintenanceAnalysis
+      && record.artifact.markdownQualityOk))
     : hasUsefulMarkdown;
   const expectedArtifactInRunLog = expectedArtifacts.length > 0
     ? expectedArtifactRecords.every((record) => record.inRunLog)
     : changedMarkdownByLog;
+  const expectedCodeArtifactRecords = selectedArtifactRecords(expectedCodeArtifacts, expectedCodeBefore, normalizedChangedPaths);
+  const expectedCodeArtifactsWritten = expectedCodeArtifacts.length > 0
+    ? expectedCodeArtifactRecords.every((record) => record.exists && (record.created || record.changed) && record.size > 0)
+    : true;
+  const expectedCodeArtifactsInRunLog = expectedCodeArtifacts.length > 0
+    ? expectedCodeArtifactRecords.every((record) => record.inRunLog)
+    : true;
+  const expectedCodeDirRecords = selectedCodeDirRecords(expectedCodeDirs, expectedCodeDirBefore, normalizedChangedPaths);
+  const expectedCodeDirArtifactsWritten = expectedCodeDirs.length > 0
+    ? expectedCodeDirRecords.some((record) => record.exists && (record.created || record.changed) && record.size > 0)
+    : true;
+  const expectedCodeDirArtifactsInRunLog = expectedCodeDirs.length > 0
+    ? expectedCodeDirRecords.some((record) => record.inRunLog && (record.created || record.changed))
+    : true;
+  const codeEvidenceRequired = expectedCodeArtifacts.length > 0 || expectedCodeDirs.length > 0;
+  const markdownRequired = expectedArtifacts.length > 0 || !codeEvidenceRequired;
+  const markdownEvidenceOk = markdownRequired
+    ? changedMarkdownByLog && hasUsefulMarkdown && expectedArtifactWritten && expectedArtifactInRunLog
+    : true;
   const staleAnalysisChanged = artifacts.some((artifact) => artifact.path === 'docs/analysis/uav_warranty_reminder_analysis_v1.7.md');
   const successTerminal = runLogs.terminal
     && runLogs.terminal.event === 'agent-run-completed'
@@ -644,10 +820,11 @@ function evaluate(before, startedAtMs) {
     && tasksFailed === 0;
   const ok = Boolean(successTerminal
     && tasksApplied > 0
-    && changedMarkdownByLog
-    && hasUsefulMarkdown
-    && expectedArtifactWritten
-    && expectedArtifactInRunLog);
+    && markdownEvidenceOk
+    && expectedCodeArtifactsWritten
+    && expectedCodeArtifactsInRunLog
+    && expectedCodeDirArtifactsWritten
+    && expectedCodeDirArtifactsInRunLog);
   return {
     ok,
     artifacts,
@@ -663,6 +840,16 @@ function evaluate(before, startedAtMs) {
       expectedArtifactRecords,
       expectedArtifactWritten,
       expectedArtifactInRunLog,
+      markdownRequired,
+      markdownEvidenceOk,
+      expectedCodeArtifacts,
+      expectedCodeArtifactRecords,
+      expectedCodeArtifactsWritten,
+      expectedCodeArtifactsInRunLog,
+      expectedCodeDirs,
+      expectedCodeDirRecords,
+      expectedCodeDirArtifactsWritten,
+      expectedCodeDirArtifactsInRunLog,
       staleAnalysisChanged,
     },
   };
@@ -678,6 +865,8 @@ function normalizeChangedPathForWorkspace(value) {
 async function activate() {
   const startedAtMs = Date.now();
   const before = markdownSnapshot();
+  const expectedCodeBefore = selectedArtifactSnapshot(expectedCodeArtifacts);
+  const expectedCodeDirBefore = selectedCodeDirSnapshot(expectedCodeDirs);
   logProgress('activate-started', { workspaceDir });
   const baseReport = {
     ok: false,
@@ -686,6 +875,8 @@ async function activate() {
     harnessMode,
     expectedArtifact,
     expectedArtifacts,
+    expectedCodeArtifacts,
+    expectedCodeDirs,
     startedAt: new Date(startedAtMs).toISOString(),
     workspaceDir,
     promptPreview: prompt.slice(0, 600),
@@ -743,7 +934,7 @@ async function activate() {
 
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const evaluation = evaluate(before, startedAtMs);
+      const evaluation = evaluate(before, startedAtMs, expectedCodeBefore, expectedCodeDirBefore);
       Object.assign(baseReport, evaluation);
       if (commandError) {
         baseReport.errors.push(commandError);
@@ -763,18 +954,20 @@ async function activate() {
       await delay(3000);
     }
 
-    const finalEvaluation = evaluate(before, startedAtMs);
+    const finalEvaluation = evaluate(before, startedAtMs, expectedCodeBefore, expectedCodeDirBefore);
     Object.assign(baseReport, finalEvaluation);
     if (!baseReport.ok) {
-      baseReport.errors.push(expectedArtifacts.length > 0
-        ? '真实插件链路未形成成功 agent-run-completed + 预期 Markdown 仿真产物写盘证据。'
-        : '真实插件链路未形成成功 agent-run-completed + Markdown 写盘证据。');
+      baseReport.errors.push((expectedCodeArtifacts.length > 0 || expectedCodeDirs.length > 0)
+        ? '真实插件链路未形成成功 agent-run-completed + 预期 Markdown 与代码产物写盘证据。'
+        : expectedArtifacts.length > 0
+          ? '真实插件链路未形成成功 agent-run-completed + 预期 Markdown 仿真产物写盘证据。'
+          : '真实插件链路未形成成功 agent-run-completed + Markdown 写盘证据。');
     }
     logProgress('write-report', { ok: baseReport.ok, errors: baseReport.errors.length });
     writeReport(baseReport);
   } catch (error) {
     baseReport.errors.push(String(error && error.stack || error && error.message || error));
-    Object.assign(baseReport, evaluate(before, startedAtMs));
+    Object.assign(baseReport, evaluate(before, startedAtMs, expectedCodeBefore, expectedCodeDirBefore));
     logProgress('activate-failed', { error: baseReport.errors[baseReport.errors.length - 1] });
     writeReport(baseReport);
   } finally {
@@ -795,7 +988,9 @@ module.exports = { activate };
     .replace('__SCENARIO__', JSON.stringify(scenario))
     .replace('__HARNESS_MODE__', JSON.stringify(harnessMode))
     .replace('__EXPECTED_ARTIFACT__', JSON.stringify(expectedArtifact))
-    .replace('__EXPECTED_ARTIFACTS__', JSON.stringify(expectedArtifacts));
+    .replace('__EXPECTED_ARTIFACTS__', JSON.stringify(expectedArtifacts))
+    .replace('__EXPECTED_CODE_ARTIFACTS__', JSON.stringify(expectedCodeArtifacts))
+    .replace('__EXPECTED_CODE_DIRS__', JSON.stringify(expectedCodeDirs));
 
   fs.writeFileSync(path.join(driverDir, 'extension.js'), source, 'utf8');
 }

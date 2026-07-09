@@ -394,6 +394,68 @@ test('agent-task-decomposer: advisory Markdown deliverable creates a real md out
   }
 });
 
+test('agent-task-decomposer: Markdown plus code implementation uses full planning path', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    mkdirSync(path.join(externalRoot, '.devseek'), { recursive: true });
+    const licenseDir = path.join(externalRoot, 'src/oam/src/license');
+    const docsDir = path.join(externalRoot, 'src/oam/src/lifting/zc_maintenance/docs');
+    const implDir = path.join(externalRoot, 'src/oam/src/lifting/zc_maintenance');
+    const requirementDoc = path.join(docsDir, 'uav-warranty-reminder-plan_v1.7.md');
+    mkdirSync(licenseDir, { recursive: true });
+    mkdirSync(docsDir, { recursive: true });
+    writeFileSync(path.join(licenseDir, 'license_core_worker.cpp'), '// license worker\n');
+    writeFileSync(requirementDoc, '# warranty plan\n');
+
+    const rawPlan = JSON.stringify({
+      tasks: [
+        {
+          id: 't1',
+          file: 'src/oam/src/lifting/zc_maintenance/docs/01-warranty-interface-design.md',
+          action: 'create',
+          desc: '编写遥控器与主控交互接口设计文档',
+        },
+        {
+          id: 't2',
+          file: 'src/oam/src/lifting/zc_maintenance/warranty_core_worker.hpp',
+          action: 'create',
+          desc: '实现维保提醒独立工作线程接口',
+        },
+        {
+          id: 't3',
+          file: 'src/oam/src/lifting/zc_maintenance/warranty_core_worker.cpp',
+          action: 'create',
+          desc: '实现维保提醒独立工作线程逻辑',
+        },
+      ],
+    });
+    const prompt = [
+      `参考 ${licenseDir} 模块通讯方式`,
+      `基于 ${requirementDoc} 进行遥控器和主控交互接口设计，并通过 md 文档提供`,
+      `另外添加：代码实现，创建于：${implDir} 目录下`,
+      '请按照软件工程流程：分析既有项目原来代码逻辑，根据需求进行设计，最后实现代码，完成自闭环测试。',
+    ].join('\n');
+
+    let plannerCalled = false;
+    const result = await decomposeTask(prompt, [], undefined, () => {}, undefined, async () => {
+      plannerCalled = true;
+      return rawPlan;
+    }, requirementDoc);
+
+    assert.equal(result.ok, true);
+    assert.equal(plannerCalled, true);
+    assert.equal(result.tasks.some(task => task.action === 'create' && /\.md$/i.test(task.file)), true);
+    assert.equal(result.tasks.some(task => task.action === 'create' && /\.hpp$/i.test(task.file)), true);
+    assert.equal(result.tasks.some(task => task.action === 'create' && /\.cpp$/i.test(task.file)), true);
+    assert.doesNotMatch(result.prose || '', /跳过大上下文模型调用/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
 test('agent-task-decomposer: Markdown deliverable path prefers explicit requirement document directory', async () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
   const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));

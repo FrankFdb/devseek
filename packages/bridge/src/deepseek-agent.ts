@@ -26,6 +26,33 @@ const RESPONSE_LATE_GROWTH_PROBE_MS = 900;
 const CONTINUE_GENERATION_RESUME_WAIT_MS = 250;
 const CODE_TAB_RENDER_WAIT_MS = 180;
 const INCOMPLETE_INTENT_WAIT_MS = 1_500;
+const RESPONSE_ABSOLUTE_TIMEOUT_MIN_MS = 90_000;
+const RESPONSE_ABSOLUTE_TIMEOUT_MAX_MS = 180_000;
+const RESPONSE_ABSOLUTE_TIMEOUT_FACTOR = 1.5;
+const GENERATION_ABORT_TIMEOUT_MS = 12_000;
+const GENERATION_ABORT_STABLE_TICKS = 5;
+const PROMPT_SUBMIT_RETRY_WAIT_MS = 800;
+
+function responseAbsoluteTimeoutMs(timeoutMs: number): number {
+  const scaled = Math.ceil(timeoutMs * RESPONSE_ABSOLUTE_TIMEOUT_FACTOR);
+  return Math.min(Math.max(scaled, RESPONSE_ABSOLUTE_TIMEOUT_MIN_MS), RESPONSE_ABSOLUTE_TIMEOUT_MAX_MS);
+}
+
+function responseStreamTimeoutError(input: {
+  timeoutMs: number;
+  absoluteTimeoutMs: number;
+  partialChars: number;
+  newMessageSeen: boolean;
+  phase: string;
+}): Error {
+  const progress = input.newMessageSeen
+    ? `partialChars=${input.partialChars}`
+    : 'no new assistant message was detected';
+  return new Error(
+    `RESPONSE_CORRUPTED:stream-timeout:DeepSeek response did not complete within ${input.absoluteTimeoutMs}ms `
+    + `(single-round timeout=${input.timeoutMs}ms, phase=${input.phase}, ${progress}).`,
+  );
+}
 
 function looksLikeIncompleteAssistantIntent(text: string): boolean {
   const tail = String(text || '')
@@ -399,6 +426,8 @@ export class DeepSeekAgent {
       this._preAttachedFiles = [];
     }
 
+    await this.ensureReadyForNewPrompt(page, opts.trace, 'before-submit');
+
     // 找到输入框
     const input = await waitForAny(page, SELECTORS.chatInput, 10_000);
     await input.click();
@@ -456,29 +485,45 @@ export class DeepSeekAgent {
     const requestPayloadId = opts.trace?.payload('provider', 'bridge.effective-prompt', effectivePrompt);
     opts.trace?.debug('deepseek-web', 'effective-prompt-recorded', { payloadId: requestPayloadId });
 
-    // 提交：优先找发送按钮，找不到就按 Enter
-    const sendBtn = await findElement(page, SELECTORS.sendButton);
-    const submitMethod = sendBtn ? 'button' : 'enter';
-    if (sendBtn) {
-      await sendBtn.click();
-    } else {
-      await page.keyboard.press('Enter');
-    }
+    const submitCurrentPrompt = async (attempt: 'initial' | 'retry'): Promise<string> => {
+      // 提交：优先找发送按钮，找不到就按 Enter
+      const sendBtn = await findElement(page, SELECTORS.sendButton);
+      const submitMethod = sendBtn ? 'button' : 'enter';
+      if (sendBtn) {
+        await sendBtn.click();
+      } else {
+        await page.keyboard.press('Enter');
+      }
+      opts.trace?.info('deepseek-web', 'message-submit-clicked', {
+        promptLength: effectivePrompt.length,
+        method: submitMethod,
+        attempt,
+        baselineMessageCount: submitBaseline.messageCount,
+        baselineComposerLength: submitBaseline.composerText.length,
+      });
+      return submitMethod;
+    };
 
-    opts.trace?.info('deepseek-web', 'message-submit-clicked', {
-      promptLength: effectivePrompt.length,
-      method: submitMethod,
-      baselineMessageCount: submitBaseline.messageCount,
-      baselineComposerLength: submitBaseline.composerText.length,
-    });
-    const submitResult = await this.waitForSubmitConfirmation(page, submitBaseline, effectivePrompt);
+    let submitMethod = await submitCurrentPrompt('initial');
+    let submitResult = await this.waitForSubmitConfirmation(page, submitBaseline, effectivePrompt);
     if (!submitResult.confirmed) {
-      throw new Error(`PROMPT_SUBMIT_FAILED: DeepSeek 网页未确认收到本轮请求（${submitResult.reason}）。请缩小上下文或重试；如果页面输入框仍有内容，说明网页未接收发送动作。`);
+      opts.trace?.error('deepseek-web', 'message-submit-unconfirmed', {
+        reason: submitResult.reason,
+        promptLength: effectivePrompt.length,
+      });
+      await this.ensureReadyForNewPrompt(page, opts.trace, 'submit-unconfirmed');
+      await page.waitForTimeout(PROMPT_SUBMIT_RETRY_WAIT_MS);
+      submitMethod = await submitCurrentPrompt('retry');
+      submitResult = await this.waitForSubmitConfirmation(page, submitBaseline, effectivePrompt);
+    }
+    if (!submitResult.confirmed) {
+      throw new Error(`RESPONSE_CORRUPTED:prompt-submit-failed:PROMPT_SUBMIT_FAILED: DeepSeek 网页未确认收到本轮请求（${submitResult.reason}）。请缩小上下文或重试；如果页面输入框仍有内容，说明网页未接收发送动作。`);
     }
 
-    console.log(`[agent] Message sent (${effectivePrompt.length} chars), baselineAiMsgs=${baselineAiMsgCount}, baselineTextLen=${baselineText.length}, submit=${submitResult.reason}`);
+    console.log(`[agent] Message sent (${effectivePrompt.length} chars), baselineAiMsgs=${baselineAiMsgCount}, baselineTextLen=${baselineText.length}, method=${submitMethod}, submit=${submitResult.reason}`);
     opts.trace?.info('deepseek-web', 'message-sent', {
       promptLength: effectivePrompt.length,
+      method: submitMethod,
       baselineAiMsgCount,
       baselineTextLength: baselineText.length,
       submitEvidence: submitResult.reason,
@@ -755,6 +800,58 @@ export class DeepSeekAgent {
     })()`).catch(() => false) as boolean;
   }
 
+  private async waitUntilGenerationIdle(page: Page, timeoutMs = GENERATION_ABORT_TIMEOUT_MS): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    let stableTicks = 0;
+    while (Date.now() < deadline) {
+      const busy = await this.isGenerationBusy(page);
+      if (!busy) {
+        stableTicks++;
+        if (stableTicks >= GENERATION_ABORT_STABLE_TICKS) return true;
+      } else {
+        stableTicks = 0;
+      }
+      await page.waitForTimeout(200);
+    }
+    return false;
+  }
+
+  private async abortActiveGeneration(
+    page: Page,
+    reason: string,
+    trace?: DevSeekTraceLogger,
+  ): Promise<void> {
+    const wasBusy = await this.isGenerationBusy(page).catch(() => false);
+    if (!wasBusy) return;
+    trace?.info('deepseek-web', 'generation-abort-start', { reason });
+    try {
+      const stopBtn = await findElement(page, SELECTORS.stopButton);
+      if (stopBtn) {
+        await stopBtn.click();
+        trace?.info('deepseek-web', 'generation-stop-clicked', { reason });
+      } else {
+        await page.keyboard.press('Escape').catch(() => undefined);
+      }
+    } catch (error) {
+      trace?.error('deepseek-web', 'generation-stop-click-failed', {
+        reason,
+        message: (error as Error).message,
+      });
+    }
+    const idle = await this.waitUntilGenerationIdle(page);
+    trace?.info('deepseek-web', 'generation-abort-complete', { reason, idle });
+  }
+
+  private async ensureReadyForNewPrompt(
+    page: Page,
+    trace: DevSeekTraceLogger | undefined,
+    reason: string,
+  ): Promise<void> {
+    if (!await this.isGenerationBusy(page).catch(() => false)) return;
+    trace?.info('deepseek-web', 'generation-busy-before-submit', { reason });
+    await this.abortActiveGeneration(page, reason, trace);
+  }
+
   private async waitForResponse(
     page: Page,
     timeoutMs: number,
@@ -782,6 +879,8 @@ export class DeepSeekAgent {
     // 累积文本：跨越多次"继续生成"后把所有轮次内容拼接
     let accumulatedPrefix = '';
     let deadline = Date.now() + timeoutMs; // let 以便续代时重置
+    const absoluteTimeoutMs = responseAbsoluteTimeoutMs(timeoutMs);
+    const absoluteDeadline = Date.now() + absoluteTimeoutMs;
     let sawStopButton = false;
     let stableFor = 0;
     let lastTextChangedAt = Date.now();
@@ -817,7 +916,7 @@ export class DeepSeekAgent {
       }
     };
 
-    while (Date.now() < deadline) {
+    while (Date.now() < deadline && Date.now() < absoluteDeadline) {
       if (this.cancelRequested) throw new Error('Cancelled');
 
       if (!newMsgSeen) {
@@ -965,6 +1064,27 @@ export class DeepSeekAgent {
       await page.waitForTimeout(STREAM_POLL_INTERVAL_MS);
     }
 
+    if (Date.now() >= absoluteDeadline) {
+      await this.abortActiveGeneration(page, 'streaming-absolute-deadline');
+      throw responseStreamTimeoutError({
+        timeoutMs,
+        absoluteTimeoutMs,
+        partialChars: lastText.length,
+        newMessageSeen: newMsgSeen,
+        phase: 'streaming-absolute-deadline',
+      });
+    }
+    if (Date.now() >= deadline) {
+      await this.abortActiveGeneration(page, 'streaming-idle-deadline');
+      throw responseStreamTimeoutError({
+        timeoutMs,
+        absoluteTimeoutMs,
+        partialChars: lastText.length,
+        newMessageSeen: newMsgSeen,
+        phase: 'streaming-idle-deadline',
+      });
+    }
+
     await this._clickCodeTabs(page);
     await this._dumpLastMsg(page);
     const postText = await this.getLastAssistantText(page);
@@ -986,6 +1106,8 @@ export class DeepSeekAgent {
   /** 等待生成完成后读取最终文本（非流式模式）*/
   private async waitForGenerationDone(page: Page, timeoutMs: number): Promise<string> {
     const deadline = Date.now() + timeoutMs;
+    const absoluteTimeoutMs = responseAbsoluteTimeoutMs(timeoutMs);
+    const absoluteDeadline = Date.now() + absoluteTimeoutMs;
     let lastObservedText = '';
     let lastTextChangedAt = Date.now();
 
@@ -1001,7 +1123,7 @@ export class DeepSeekAgent {
     }
 
     // 等待 textarea 恢复可用（生成结束），同时检测"继续生成"按钮
-    while (Date.now() < deadline) {
+    while (Date.now() < deadline && Date.now() < absoluteDeadline) {
       if (this.cancelRequested) throw new Error('Cancelled');
       const busy = await this.isGenerationBusy(page);
       const currentText = await this.getStreamingAssistantText(page).catch(() => '');
@@ -1046,6 +1168,17 @@ export class DeepSeekAgent {
         }
       }
       await page.waitForTimeout(200);
+    }
+
+    if (Date.now() >= absoluteDeadline || Date.now() >= deadline) {
+      await this.abortActiveGeneration(page, Date.now() >= absoluteDeadline ? 'nonstream-absolute-deadline' : 'nonstream-idle-deadline');
+      throw responseStreamTimeoutError({
+        timeoutMs,
+        absoluteTimeoutMs,
+        partialChars: lastObservedText.length,
+        newMessageSeen: lastObservedText.length > 0,
+        phase: Date.now() >= absoluteDeadline ? 'nonstream-absolute-deadline' : 'nonstream-idle-deadline',
+      });
     }
 
     console.log('[agent] Response complete.');

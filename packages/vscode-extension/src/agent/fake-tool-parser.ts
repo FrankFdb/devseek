@@ -446,6 +446,74 @@ function parseToolCallEnvelopeInput(name: string, rawBody: string): Record<strin
   }
 }
 
+function parseToolArgumentsRecord(name: string, value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith('{')) return null;
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return parseLooseFileWriteToolInput(name, trimmed);
+  }
+}
+
+function jsonFunctionEnvelopeToFakeTool(obj: Record<string, unknown>): FakeTool | null {
+  const fn = obj.function;
+  if (!fn || typeof fn !== 'object' || Array.isArray(fn)) return null;
+  const fnObj = fn as Record<string, unknown>;
+  const rawName = typeof fnObj.name === 'string' ? fnObj.name.trim() : '';
+  if (!rawName || !isRegisteredFakeToolName(rawName)) return null;
+  const name = normalizeAgentToolName(rawName);
+  const input = parseToolArgumentsRecord(name, fnObj.arguments ?? obj.arguments ?? obj.params ?? obj.parameters ?? obj.args);
+  if (!input) return null;
+  return { name, input: normalizeToolInput(name, input) };
+}
+
+function extractMalformedFunctionEnvelopeName(body: string): { name: string; afterName: number } | null {
+  const fnStart = /"function"\s*:\s*\{/.exec(body);
+  if (!fnStart) return null;
+  const nameRe = /"name"\s*:\s*"((?:\\.|[^"\\])*)"/g;
+  nameRe.lastIndex = fnStart.index + fnStart[0].length;
+  const match = nameRe.exec(body);
+  if (!match) return null;
+  const name = decodeLooseJsonString(match[1] || '').trim();
+  if (!name || !isRegisteredFakeToolName(name)) return null;
+  return { name: normalizeAgentToolName(name), afterName: nameRe.lastIndex };
+}
+
+function findMalformedFunctionArgumentsObjectStart(body: string, afterName: number): number {
+  const argsRe = /"arguments"\s*:\s*/g;
+  argsRe.lastIndex = afterName;
+  const match = argsRe.exec(body);
+  if (!match) return -1;
+  let index = argsRe.lastIndex;
+  while (index < body.length && /[ \t\r\n]/.test(body[index])) index++;
+  if (body[index] === '"') {
+    index++;
+    while (index < body.length && /[ \t\r\n]/.test(body[index])) index++;
+  }
+  return body[index] === '{' ? index : -1;
+}
+
+function parseMalformedFunctionEnvelopeTool(body: string): FakeTool | null {
+  const named = extractMalformedFunctionEnvelopeName(body);
+  if (!named) return null;
+  const argsStart = findMalformedFunctionArgumentsObjectStart(body, named.afterName);
+  if (argsStart < 0) return null;
+  const argsEnd = findToolInputObjectEnd(body, named.name, argsStart);
+  if (argsEnd < 0) return null;
+  const argsText = body.slice(argsStart, argsEnd + 1);
+  const input = parseToolArgumentsRecord(named.name, argsText);
+  if (!input) return null;
+  return { name: named.name, input: normalizeToolInput(named.name, input) };
+}
+
 function parseToolCallEnvelopeCalls(text: string): FakeTool[] {
   const tools: Array<{ index: number; tool: FakeTool }> = [];
   let match: RegExpExecArray | null;
@@ -467,9 +535,13 @@ function parseToolCallEnvelopeCalls(text: string): FakeTool[] {
       try {
         const parsed = JSON.parse(body) as unknown;
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue;
-        const converted = jsonObjectToFakeTool(parsed as Record<string, unknown>);
+        const converted = jsonFunctionEnvelopeToFakeTool(parsed as Record<string, unknown>)
+          ?? jsonObjectToFakeTool(parsed as Record<string, unknown>);
         if (converted) tools.push({ index: match.index, tool: converted });
-      } catch { /* ignore non-tool JSON */ }
+      } catch {
+        const converted = parseMalformedFunctionEnvelopeTool(body);
+        if (converted) tools.push({ index: match.index, tool: converted });
+      }
     }
   }
 
@@ -748,6 +820,8 @@ function hasShellTranscriptMarker(text: string): boolean {
 }
 
 export function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | null {
+  const functionTool = jsonFunctionEnvelopeToFakeTool(obj);
+  if (functionTool) return functionTool;
   const rawName = typeof obj.tool === 'string'
     ? obj.tool
     : typeof obj.name === 'string'
@@ -758,14 +832,15 @@ export function jsonObjectToFakeTool(obj: Record<string, unknown>): FakeTool | n
   const name = rawName.trim();
   if (!name || !isRegisteredFakeToolName(name)) return null;
   const canonicalName = normalizeAgentToolName(name);
-  const maybeArgs = obj.arguments ?? obj.parameters ?? obj.args;
+  const maybeArgs = obj.arguments ?? obj.parameters ?? obj.params ?? obj.args;
   let input: Record<string, unknown>;
-  if (maybeArgs && typeof maybeArgs === 'object' && !Array.isArray(maybeArgs)) {
-    input = maybeArgs as Record<string, unknown>;
+  const parsedArgs = parseToolArgumentsRecord(canonicalName, maybeArgs);
+  if (parsedArgs) {
+    input = parsedArgs;
   } else {
     input = {};
     for (const [k, v] of Object.entries(obj)) {
-      if (!['tool', 'name', 'type', 'arguments', 'parameters', 'args'].includes(k)) input[k] = v;
+      if (!['tool', 'name', 'type', 'arguments', 'parameters', 'params', 'args'].includes(k)) input[k] = v;
     }
   }
   return { name: canonicalName, input: normalizeToolInput(canonicalName, input) };

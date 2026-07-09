@@ -15,6 +15,9 @@ const DEFAULT_PORT = 3721;
 const TOKEN_REL_PATH = nodePath.join('.devseek', 'bridge-token');
 const TRACE_RUN_ID_HEADER = 'X-DevSeek-Run-Id';
 const TRACE_WORKSPACE_ROOT_HEADER = 'X-DevSeek-Trace-Workspace-Root';
+const BRIDGE_STREAM_HTTP_TIMEOUT_MIN_MS = 120_000;
+const BRIDGE_STREAM_HTTP_TIMEOUT_MAX_MS = 210_000;
+const BRIDGE_STREAM_HTTP_TIMEOUT_FACTOR = 2;
 let extensionRootFsPath: string | undefined;
 
 interface DevSeekRuntimeBuildInfo {
@@ -76,6 +79,11 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
 
 function getTraceLevel(): string {
   return vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', process.env.DEVSEEK_TRACE_LEVEL ?? 'debug');
+}
+
+function bridgeStreamHttpTimeoutMs(timeoutMs: number): number {
+  const scaled = Math.ceil(timeoutMs * BRIDGE_STREAM_HTTP_TIMEOUT_FACTOR);
+  return Math.min(Math.max(scaled, BRIDGE_STREAM_HTTP_TIMEOUT_MIN_MS), BRIDGE_STREAM_HTTP_TIMEOUT_MAX_MS);
 }
 
 function createBridgeClientTraceLogger(runId?: string, workspaceRoot?: string): DevSeekTraceLogger {
@@ -423,15 +431,26 @@ async function chatStream(body: string, onDelta: (delta: string) => void, trace:
   const config = vscode.workspace.getConfiguration('devseek');
   const timeoutMs = JSON.parse(body).timeoutMs ?? config.get<number>('requestTimeoutMs', 120000);
 
-  // SSE 流可能跨越多次"继续生成"，总耗时大幅超过单轮 timeoutMs。
-  // HTTP 连接超时设为单轮的 10 倍（最少 10 分钟），由 Bridge 侧 Playwright deadline 负责实际终止。
-  const httpTimeout = Math.max(timeoutMs * 10, 600_000);
-  const res = await fetch(`${baseUrl()}/chat`, {
-    method: 'POST',
-    headers: traceHeaders(trace, { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' }, traceWorkspaceRoot),
-    body,
-    signal: AbortSignal.timeout(httpTimeout),
-  });
+  // SSE can legitimately run longer than one model turn, but it must still have
+  // an interactive wall-clock cap. Bridge has its own Playwright deadline; this
+  // client-side cap is the backstop when the bridge process or web page stalls.
+  const httpTimeout = bridgeStreamHttpTimeoutMs(timeoutMs);
+  let res: Response;
+  try {
+    res = await fetch(`${baseUrl()}/chat`, {
+      method: 'POST',
+      headers: traceHeaders(trace, { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' }, traceWorkspaceRoot),
+      body,
+      signal: AbortSignal.timeout(httpTimeout),
+    });
+  } catch (error) {
+    const message = (error as Error).message || String(error);
+    trace.error('bridge-client', 'chat-request-failed', { message });
+    if (/abort|timeout|timed out|signal/i.test(message)) {
+      throw new Error(`RESPONSE_CORRUPTED:stream-timeout:Bridge SSE stream exceeded ${httpTimeout}ms without completion.`);
+    }
+    throw error;
+  }
 
   if (!res.ok) {
     const text = await res.text();
@@ -447,38 +466,47 @@ async function chatStream(body: string, onDelta: (delta: string) => void, trace:
   let buffer = '';
   let fullText = '';
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split('\n');
-    buffer = lines.pop() ?? '';
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() ?? '';
 
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue;
-      const data = line.slice(6).trim();
-      if (!data) continue;
-      try {
-        const parsed = JSON.parse(data) as { delta?: string; done?: boolean; error?: string };
-        if (parsed.error) {
-          if (parsed.error === 'LOGIN_REQUIRED') throw new Error('LOGIN_REQUIRED');
-          throw new Error(parsed.error);
-        }
-        if (parsed.delta) {
-          if (parsed.delta.startsWith('\x00RESET\x00')) {
-            // 全量替换信号：清空已积累内容，重新开始
-            fullText = parsed.delta.slice(7);
-            onDelta('\x00RESET\x00' + fullText);
-          } else {
-            fullText += parsed.delta;
-            onDelta(parsed.delta);
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const data = line.slice(6).trim();
+        if (!data) continue;
+        try {
+          const parsed = JSON.parse(data) as { delta?: string; done?: boolean; error?: string };
+          if (parsed.error) {
+            if (parsed.error === 'LOGIN_REQUIRED') throw new Error('LOGIN_REQUIRED');
+            throw new Error(parsed.error);
           }
+          if (parsed.delta) {
+            if (parsed.delta.startsWith('\x00RESET\x00')) {
+              // 全量替换信号：清空已积累内容，重新开始
+              fullText = parsed.delta.slice(7);
+              onDelta('\x00RESET\x00' + fullText);
+            } else {
+              fullText += parsed.delta;
+              onDelta(parsed.delta);
+            }
+          }
+        } catch (e) {
+          if ((e as Error).message && !(e instanceof SyntaxError)) throw e;
         }
-      } catch (e) {
-        if ((e as Error).message && !(e instanceof SyntaxError)) throw e;
       }
     }
+  } catch (error) {
+    const message = (error as Error).message || String(error);
+    trace.error('bridge-client', 'chat-request-failed', { message });
+    if (/abort|timeout|timed out|signal/i.test(message)) {
+      throw new Error(`RESPONSE_CORRUPTED:stream-timeout:Bridge SSE stream exceeded ${httpTimeout}ms without completion.`);
+    }
+    throw error;
   }
 
   const responsePayloadId = trace.payload('provider', 'extension.response.raw', fullText);

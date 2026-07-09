@@ -61,6 +61,25 @@ test('task-execution-policy: plan mode allows only requested Markdown document d
   assert.match(result.tasks[0].desc, /Markdown 建议文档/);
 });
 
+test('task-execution-policy: plan mode does not partially execute mixed Markdown and code implementation', () => {
+  const result = enforceAgentTaskExecutionPolicy(
+    [
+      { id: 't1', file: 'docs/warranty-interface.md', action: 'create', desc: '创建接口设计 Markdown 文档', absPath: '/project/docs/warranty-interface.md' },
+      { id: 't2', file: 'src/oam/src/lifting/zc_maintenance/warranty_core_worker.hpp', action: 'create', desc: '实现维保提醒独立线程接口', absPath: '/project/src/oam/src/lifting/zc_maintenance/warranty_core_worker.hpp' },
+    ],
+    {
+      mode: 'plan',
+      userPrompt: '请进行接口设计并通过 md 文档提供，另外添加代码实现，创建于 zc_maintenance 目录下，完成自闭环测试',
+    },
+  );
+
+  assert.equal(result.changed, true);
+  assert.equal(result.tasks.length, 1);
+  assert.equal(result.tasks[0].action, 'analyze');
+  assert.equal(result.tasks.some(task => task.action === 'create'), false);
+  assert.match(result.reason, /规划\/建议模式/);
+});
+
 test('task-execution-policy: plan mode adds missing Markdown deliverable task', () => {
   const result = enforceAgentTaskExecutionPolicy(
     [

@@ -223,6 +223,48 @@ test('path-resolver: external active editor with project marker becomes task pro
   }
 });
 
+test('path-resolver: absolute workspace write path is not re-anchored into docs scope', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    mkdirSync(path.join(externalRoot, '.devseek'), { recursive: true });
+    const docsDir = path.join(externalRoot, 'src/oam/src/lifting/zc_maintenance/docs');
+    const codeDir = path.join(externalRoot, 'src/oam/src/lifting/zc_maintenance');
+    mkdirSync(docsDir, { recursive: true });
+    mkdirSync(codeDir, { recursive: true });
+    const requirementDoc = path.join(docsDir, 'uav-warranty-reminder-plan_v1.7.md');
+    writeFileSync(requirementDoc, '# warranty plan\n');
+
+    const prompt = [
+      `基于需求文档：${requirementDoc}`,
+      `并把代码实现创建于：${codeDir}目录下`,
+      '先分析既有项目原来代码逻辑，再根据需求进行设计，最后实现代码。',
+    ].join('\n');
+    const absoluteTarget = path.join(codeDir, 'warranty_types.hpp');
+
+    assert.equal(
+      resolveGeneratedArtifactPathForPrompt(absoluteTarget, prompt, [requirementDoc]),
+      'src/oam/src/lifting/zc_maintenance/warranty_types.hpp',
+    );
+
+    const write = resolveWorkspaceWritePath(absoluteTarget, {
+      requestPrompt: prompt,
+      content: '#pragma once\nstruct WarrantyStatus {};\n',
+      workspaceRootFsPath: externalRoot,
+      defaultWorkdir: docsDir,
+      preferredAbsolutePaths: [requirementDoc],
+    });
+
+    assert.equal(write.relPath, 'src/oam/src/lifting/zc_maintenance/warranty_types.hpp');
+    assert.equal(write.absPath, absoluteTarget);
+    assert.equal(write.note, undefined);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
 test('path-resolver: formal project advisory prompt uses project root instead of requirement doc directory', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
   const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));

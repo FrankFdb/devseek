@@ -96,7 +96,10 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
   input.callbacks.onToolActivity?.('write', resolved.relPath);
   let writeResult;
   try {
-    writeResult = workspaceEditService.writeTextFileSync(resolved.absPath, request.content, { validateSourceSanity: true });
+    writeResult = workspaceEditService.writeTextFileSync(resolved.absPath, request.content, {
+      validateSourceSanity: true,
+      repairSourceTransportEscapes: true,
+    });
   } catch (error) {
     return finishSimpleFileTask({
       ...input,

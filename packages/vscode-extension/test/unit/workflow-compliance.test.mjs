@@ -53,14 +53,36 @@ function assertDoesNotContain(content, pattern, msg) {
 }
 
 function assertWorkspaceWritesValidateSourceSanity(relPath, content) {
-  const unsafe = content
-    .split(/\r?\n/)
-    .map((line, index) => ({ line: index + 1, text: line.trim() }))
-    .filter(({ text }) => text.includes('writeTextFileSync(') && !text.includes('validateSourceSanity: true'));
+  const lines = content.split(/\r?\n/);
+  const unsafe = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lines[index].includes('writeTextFileSync(')) continue;
+    const windowText = lines.slice(index, Math.min(lines.length, index + 8)).join('\n');
+    if (!windowText.includes('validateSourceSanity: true')) {
+      unsafe.push({ line: index + 1, text: lines[index].trim() });
+    }
+  }
   assert.deepEqual(
     unsafe,
     [],
     `${relPath} has workspace write calls without validateSourceSanity: true`,
+  );
+}
+
+function assertSourceSanityWritesRepairTransportEscapes(relPath, content) {
+  const lines = content.split(/\r?\n/);
+  const unsafe = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lines[index].includes('validateSourceSanity: true')) continue;
+    const windowText = lines.slice(index, Math.min(lines.length, index + 5)).join('\n');
+    if (!windowText.includes('repairSourceTransportEscapes: true')) {
+      unsafe.push({ line: index + 1, text: lines[index].trim() });
+    }
+  }
+  assert.deepEqual(
+    unsafe,
+    [],
+    `${relPath} enables source sanity without source transport escape repair`,
   );
 }
 
@@ -76,6 +98,16 @@ test('§1 Agent loop: AGENTIC_ROUNDS_NORMAL constant exists', () => {
 test('§1 Agent loop: AGENTIC_ROUNDS_AUTOPILOT constant exists', () => {
   const code = src('src/agent/agentic-loop.ts');
   assertContains(code, 'AGENTIC_ROUNDS_AUTOPILOT', '§1 autopilot round limit');
+});
+
+test('§1 Agent loop: repeated blocking tool failures are stateful', () => {
+  const code = src('src/agent/agentic-loop.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
+  assertContains(code, 'AGENTIC_REPEATED_TOOL_FAILURE_WARN_COUNT', 'agent loop must warn on repeated blocking tool failures');
+  assertContains(code, 'AGENTIC_REPEATED_TOOL_FAILURE_STOP_COUNT', 'agent loop must stop no-progress repeated tool failures');
+  assertContains(code, 'repeatedToolFailures', 'agent loop must carry repeated tool failure state across rounds');
+  assertContains(code, 'buildRepeatedToolFailureFeedback', 'agent loop must tell the model how to change strategy');
+  assertContains(toolLoop, 'toolFailures?: ToolFailureEvidence[]', 'tool loop must return structured blocking failure evidence');
 });
 
 test('§2/§3 Tool system: parseFakeToolCalls exists', () => {
@@ -664,6 +696,19 @@ test('Agentic loop: fallback todos are shown only after real tool work starts', 
   );
 });
 
+test('Agent planning: task shape guidance is injected before code is written', () => {
+  const decomposer = src('src/agent-task-decomposer.ts');
+  const agentic = src('src/agent/agentic-loop.ts');
+  const guidelines = src('src/agent/engineering-guidelines.ts');
+  const prompts = src('src/agent/agent-prompt-builder.ts');
+
+  assertContains(decomposer, 'buildTaskShapeGuidancePrompt(userPrompt)', 'Architect planner must classify task shape from the current user prompt');
+  assertContains(agentic, 'buildTaskShapeGuidancePrompt(userPrompt)', 'Agentic loop must classify task shape from the current user prompt');
+  assertContains(guidelines, '既有大项目/正式项目', 'engineering guidelines must distinguish existing-project work');
+  assertContains(guidelines, '独立新项目/原型/练习', 'engineering guidelines must preserve standalone task behavior');
+  assertContains(prompts, 'replace_in_file', 'tool prompt must expose targeted edit tool, not only full-file writes');
+});
+
 test('§7 Final summary: done refreshes visible prose with files and validation', () => {
   const code = webviewRuntime();
   assertContains(code, 'agentValidationSummary', 'validation result is tracked for final prose');
@@ -807,9 +852,11 @@ test('Agentic loop: repeated terminal failures enter root-cause recovery before 
   assertContains(recovery, 'create_file / write_file 或 SEARCH/REPLACE', 'recovery prompt must require a repair action');
   assert.match(
     code,
-    /blockedRepeatedTerminalToolIndexes[\s\S]*?toolsToExecute[\s\S]*?executeFakeToolsForLoop\(\s*toolsToExecute,/,
-    'runAgenticLoop must filter repeated run_terminal calls before executing tools',
+    /blockedRepeatedToolIndexes[\s\S]*?toolsToExecute[\s\S]*?executeFakeToolsForLoop\(\s*toolsToExecute,/,
+    'runAgenticLoop must filter repeated blocking tools before executing tools',
   );
+  assertContains(code, 'CONTEXT_GATHERING_TOOL_NAMES', 'context gathering repeats must share the same no-progress guard');
+  assertContains(code, 'seenContextToolSignatures', 'context tool repeats must be tracked across rounds');
   assertContains(code, 'lastProgressEpoch', 'terminal repeats must be compared against file-write progress');
 });
 
@@ -984,6 +1031,15 @@ test('Architecture: webview runtime manifest owns script loading order', () => {
   assert.doesNotMatch(html, /webview-agent-sanitizer\.js|webview-agent-todos\.js|webview-working-copy\.js/, 'production HTML must not hardcode runtime module names');
 });
 
+test('Real DeepSeek harness: run log evidence is bound to current run', () => {
+  const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
+  assertContains(harness, 'parseRunLogStartedAtMs', 'real harness must parse run ids from log filenames');
+  assertContains(harness, 'const isCurrentRun = runStartedAtMs', 'real harness must prefer run-id time over stale mtime');
+  assertContains(harness, 'runStartedAtMs + 2000 >= startedAtMs', 'real harness must filter out older run logs');
+  assertContains(harness, 'logs.sort((a, b) => (b.runStartedAtMs - a.runStartedAtMs)', 'real harness must prefer the newest current run, not the largest stale log');
+  assertDoesNotContain(harness, 'logs.sort((a, b) => b.size - a.size)', 'real harness must not rank stale logs by size');
+});
+
 test('Agentic free-explore: follow-up turns keep same-session context', () => {
   const ext = src('src/extension.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
@@ -1053,13 +1109,16 @@ test('Architecture: PermissionService maps ExecutionMode to tool policy', () => 
   const ext = src('src/extension.ts');
   const controller = src('src/app/chat-controller.ts');
   const terminalCoordinator = src('src/app/terminal-permission-coordinator.ts');
+  const fileWritePolicy = src('src/app/agent-file-write-policy.ts');
   assertContains(service, 'buildToolPolicy', 'permission service must build mode tool policies');
   assertContains(service, 'decideToolPermission', 'permission service must decide tool permissions');
   assertContains(service, "case 'inspect'", 'permission service must handle inspect mode');
   assertContains(service, "case 'destructive'", 'permission service must handle destructive mode');
   assertContains(controller, 'const toolPolicy = buildToolPolicy(workflow.toolPolicyMode)', 'chat controller must bind tool policy from workflow mode');
   assertContains(ext, 'const { intentRoutingText, intent, toolPolicy, workflow } = routeDecision', 'runChat must use routed tool policy');
-  assertContains(ext, "decideToolPermission(toolPolicy, 'edit')", 'file writes must check ToolPolicy');
+  assertContains(ext, 'confirmAgentFileWrite({', 'file writes must route through the shared file-write policy boundary');
+  assertContains(ext, 'toolPolicy,', 'file writes must pass ToolPolicy into the shared file-write policy boundary');
+  assertContains(fileWritePolicy, "decideToolPermission(input.toolPolicy, 'edit')", 'file writes must check ToolPolicy');
   assertContains(terminalCoordinator, "decideToolPermission(toolPolicy, 'terminal')", 'terminal commands must check ToolPolicy');
 });
 
@@ -1292,10 +1351,20 @@ test('Architecture: WorkspaceEditService owns text file writes', () => {
   assertContains(applier, 'validateSourceSanity: true', 'workspace applier writes must enable source sanity validation');
   assertContains(simpleFileTask, 'validateSourceSanity: true', 'simple file task writes must enable source sanity validation');
   assertContains(deterministicTaskExecutor, 'validateSourceSanity: true', 'deterministic task writes must enable source sanity validation');
+  assertContains(service, 'repairGeneratedSourceTransportEscapes', 'workspace edit service must repair provider source transport escapes before validation');
   assertWorkspaceWritesValidateSourceSanity('src/agent-loop.ts', agentLoop);
   assertWorkspaceWritesValidateSourceSanity('src/agent/tool-loop.ts', toolLoop);
   assertWorkspaceWritesValidateSourceSanity('src/agent/simple-file-task.ts', simpleFileTask);
   assertWorkspaceWritesValidateSourceSanity('src/agent/deterministic-task-executor.ts', deterministicTaskExecutor);
+  for (const [relPath, content] of [
+    ['src/agent-loop.ts', agentLoop],
+    ['src/agent/tool-loop.ts', toolLoop],
+    ['src/workspace-applier.ts', applier],
+    ['src/agent/simple-file-task.ts', simpleFileTask],
+    ['src/agent/deterministic-task-executor.ts', deterministicTaskExecutor],
+  ]) {
+    assertSourceSanityWritesRepairTransportEscapes(relPath, content);
+  }
   assert.doesNotMatch(agentLoop, /fs\.writeFileSync/, 'agent loop must not write workspace files directly');
   assert.doesNotMatch(applier, /workspace\.fs\.writeFile/, 'workspace applier must not write workspace files directly');
 });
@@ -1446,6 +1515,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   const history = src('src/app/task-history-store.ts');
   const resume = src('src/app/resume-context-builder.ts');
   const recovery = src('src/app/provider-recovery-service.ts');
+  const agentProviderRecovery = src('src/agent/provider-response-recovery.ts');
   const runDisplay = src('src/agent/agent-run-display.ts');
   const loop = src('src/agent-loop.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
@@ -1453,6 +1523,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   const idempotency = src('src/agent/idempotency-guard.ts');
   const reliability = src('src/llm/providers/web-reliability.ts');
   const bridgeProvider = src('src/llm/providers/bridge.ts');
+  const bridgeClient = src('src/bridge-client.ts');
   const extension = src('src/extension.ts');
 
   assertContains(checkpoint, 'class TaskCheckpointStore', 'Phase 7 checkpoint store must exist');
@@ -1476,6 +1547,16 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(reliability, 'class StreamWatchdog', 'DeepSeek Web provider must have stream watchdog semantics');
   assertContains(reliability, 'class BridgeHealthMonitor', 'DeepSeek Web provider must have bridge health monitor semantics');
   assertContains(bridgeProvider, 'ResponseIntegrityChecker', 'BridgeProvider must run integrity checks on completed responses');
+  assertContains(bridgeClient, 'bridgeStreamHttpTimeoutMs', 'Bridge SSE client must have an interactive timeout backstop');
+  assertContains(bridgeClient, 'BRIDGE_STREAM_HTTP_TIMEOUT_MAX_MS = 210_000', 'Bridge SSE client must cap wall-clock wait time');
+  assert.doesNotMatch(bridgeClient, /timeoutMs\s*\*\s*10/, 'Bridge SSE client must not wait 10x request timeout and freeze the UI');
+  assertContains(agentProviderRecovery, 'parseAgentProviderFailure', 'agent core must parse provider corruption at the runtime boundary');
+  assertContains(agentProviderRecovery, '最多 6 个只读工具', 'provider recovery must force small context batches');
+  assertContains(agentProviderRecovery, '最多 1 个写入工具', 'provider recovery must force small write batches');
+  assertContains(agentProviderRecovery, '不要引用、续写或执行上一轮损坏文本', 'provider recovery must never trust corrupted response text');
+  assertContains(agenticLoop, 'parseAgentProviderFailure(error)', 'agentic loop must catch provider corruption before extension-level failure');
+  assertContains(agenticLoop, 'buildAgentProviderRecoveryPrompt', 'agentic loop must recover inside the current task from safe facts');
+  assertContains(agenticLoop, 'AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS', 'agentic loop provider recovery must be bounded');
   assertContains(extension, 'new ProviderRecoveryService().classify', 'agent provider errors must be classified before showing UI errors');
   assertContains(extension, 'buildProviderRecoveryCheckpointTasks', 'provider recovery must save a resumable checkpoint from task facts');
   assertContains(extension, 'buildAgentRunDisplayProfile', 'free-explore UI copy must be selected by the display classifier');

@@ -108,6 +108,15 @@ export interface ToolLoopResult {
   readFiles?: string[];
   /** Unified evidence refs produced from normalized ToolCall plans. */
   evidenceRefs?: EvidenceRef[];
+  /** Blocking tool failures that should be audited across rounds for no-progress loops. */
+  toolFailures?: ToolFailureEvidence[];
+}
+
+export interface ToolFailureEvidence {
+  tool: string;
+  kind: 'write' | 'replace' | 'terminal-guard';
+  path?: string;
+  reason: string;
 }
 
 function isInternalMemoryTodo(item: TodoItem): boolean {
@@ -459,17 +468,25 @@ export async function applyMarkdownFileArtifactsForLoop(
     callbacks.onToolActivity?.('write', resolvedWrite.relPath);
     let writeResult;
     try {
-      writeResult = workspaceEditService.writeTextFileSync(resolvedAbs, artifact.content, { validateSourceSanity: true });
+      writeResult = workspaceEditService.writeTextFileSync(resolvedAbs, artifact.content, {
+        validateSourceSanity: true,
+        repairSourceTransportEscapes: true,
+      });
     } catch (error) {
       feedback.push(`[generated_file: ${artifact.path}] 跳过（源码语法护栏）：${error instanceof Error ? error.message : String(error)}`);
       continue;
     }
-    if (writeResult.existed && writeResult.oldContent === artifact.content) {
+    if (writeResult.normalization) {
+      feedback.push(
+        `[generated_file: ${artifact.path}] 诊断: 已修复 ${writeResult.normalization.repairCount} 处源码工具协议转义污染。`,
+      );
+    }
+    if (writeResult.existed && writeResult.oldContent === writeResult.newContent) {
       feedback.push(`[generated_file: ${artifact.path}] 未发生内容变化，未计入本轮修改证据：${resolvedWrite.relPath}`);
       continue;
     }
     await callbacks.onAppliedChange({ path: resolvedAbs, ...writeResult });
-    const newLines = artifact.content.split('\n').length;
+    const newLines = writeResult.newContent.split('\n').length;
     const oldLines = writeResult.oldContent ? writeResult.oldContent.split('\n').length : 0;
     writtenFiles.push({
       path: resolvedAbs,
@@ -514,12 +531,164 @@ export async function executeFakeToolsForLoop(
   const terminalCommands: string[] = [];
   const terminalEvidence: TerminalEvidence[] = [];
   const evidenceRefs: EvidenceRef[] = [];
+  const toolFailures: ToolFailureEvidence[] = [];
   let deferredCompletedTodoItems: TodoItem[] | undefined;
   let lastTodoItems: TodoItem[] | undefined;
   let summaryEmitted = false;
   // Track consecutive file-write failures per path so feedback can stay specific
   // without steering the model into shell redirection as a write fallback.
   const createFileFailCounts = new Map<string, number>();
+  const recordToolFailure = (
+    toolName: string,
+    kind: ToolFailureEvidence['kind'],
+    rawPath: string | undefined,
+    reason: string,
+  ): void => {
+    toolFailures.push({
+      tool: toolName,
+      kind,
+      ...(rawPath ? { path: rawPath } : {}),
+      reason,
+    });
+  };
+  const applyWorkspaceFileContent = async (
+    toolName: string,
+    rawPath: string,
+    content: string,
+  ): Promise<boolean> => {
+    if (!callbacks.onAppliedChange) {
+      parts.push(`[${toolName}] 错误: 当前运行环境没有注册文件写入执行器，未写入任何文件。`);
+      return false;
+    }
+    if (!rawPath) {
+      parts.push(`[${toolName}] 错误: 缺少 path/filePath，未写入任何文件。请提供目标文件路径和完整 content。`);
+      return false;
+    }
+    callbacks.onToolActivity?.('write', rawPath);
+    try {
+      const taskPrompt = taskContext?.userPrompt ?? '';
+      const normalized = normalizeExplicitFileWritePathForAgent(rawPath, taskPrompt, content, workspaceRoot, defaultWorkdir);
+      if (normalized.note) parts.push(`[${toolName}: ${rawPath}] 诊断: ${normalized.note}`);
+      if (!content && requiresCodeArtifactForEvidence(taskPrompt)) {
+        parts.push(`[${toolName}: ${rawPath}] 错误: content 为空，不能创建空源码文件。请提供完整文件内容。`);
+        return false;
+      }
+      if (looksLikeRawToolCallText(content)) {
+        parts.push(`[${toolName}: ${rawPath}] 错误: content 是工具调用文本，不是文件内容，已阻止写入。请只把目标文件源码放入 content。`);
+        return false;
+      }
+      const absPath = normalized.absPath;
+      if (!absPath) {
+        parts.push(`[${toolName}: ${rawPath}] 错误: 无法解析为工作区内文件路径，已阻止写入。`);
+        return false;
+      }
+      const instructionDecision = decideProjectInstructionFileWrite({
+        filePath: normalized.path,
+        content,
+        requestPrompt: taskPrompt,
+      });
+      if (!instructionDecision.allowed) {
+        parts.push(`[${toolName}: ${rawPath}] 错误: ${instructionDecision.reason ?? '项目指令文件写入未被允许'}`);
+        return false;
+      }
+      const payloadDrift = detectNestedFilePayloadDrift({
+        targetAbsPath: absPath,
+        content,
+        workspaceRoot,
+        defaultWorkdir,
+      });
+      if (payloadDrift.block) {
+        parts.push(`[${toolName}: ${rawPath}] 错误: ${payloadDrift.reason}`);
+        return false;
+      }
+      if (callbacks.onBeforeFileWrite) {
+        const allowed = await callbacks.onBeforeFileWrite(absPath, {
+          purpose: 'tool-write',
+          userRequested: false,
+          displayName: rawPath,
+        });
+        if (!allowed) {
+          parts.push(`[${toolName}: ${rawPath}] 跳过（写入权限策略阻止）`);
+          return false;
+        }
+      }
+      const existed = fs.existsSync(absPath);
+      if (existed && fs.statSync(absPath).isDirectory()) {
+        parts.push(`[${toolName}: ${rawPath}] 错误: 目标是目录，不是文件：${absPath}`);
+        return false;
+      }
+      if (taskContext?.requireReadBeforeOverwrite) {
+        const guard = shouldBlockUnverifiedSourceOverwrite({
+          absPath,
+          existed,
+          readEvidencePaths,
+        });
+        if (guard.block) {
+          parts.push(`[${toolName}: ${rawPath}] 错误: ${guard.reason}`);
+          return false;
+        }
+      }
+      let writeResult;
+      try {
+        writeResult = workspaceEditService.writeTextFileSync(absPath, content, {
+          validateSourceSanity: true,
+          repairSourceTransportEscapes: true,
+        });
+      } catch (error) {
+        const reason = `源码语法护栏阻止写入：${error instanceof Error ? error.message : String(error)}`;
+        recordToolFailure(toolName, 'write', rawPath, reason);
+        parts.push(`[${toolName}: ${rawPath}] 错误: ${reason}`);
+        return false;
+      }
+      const stat = fs.statSync(absPath);
+      if (!stat.isFile() || stat.size === 0) {
+        const failN = (createFileFailCounts.get(rawPath) || 0) + 1;
+        createFileFailCounts.set(rawPath, failN);
+        let errMsg = `[${toolName}: ${rawPath}] 错误: 写入后校验失败（不是有效文件或文件为空）：${absPath}`;
+        if (failN >= 2) errMsg += `\n请不要改用 run_terminal 写文件；继续使用 create_file/write_file/replace_in_file，并检查 path 与内容参数是否正确。`;
+        recordToolFailure(toolName, 'write', rawPath, `写入后校验失败（不是有效文件或文件为空）：${absPath}`);
+        parts.push(errMsg);
+        return false;
+      }
+      if (writeResult.normalization) {
+        parts.push(`[${toolName}: ${rawPath}] 诊断: 已修复 ${writeResult.normalization.repairCount} 处源码工具协议转义污染。`);
+      }
+      if (writeResult.existed && writeResult.oldContent === writeResult.newContent) {
+        parts.push(`[${toolName}: ${rawPath}] 未发生内容变化，未计入本轮修改证据：${normalized.path}`);
+        return false;
+      }
+      await callbacks.onAppliedChange({ path: absPath, ...writeResult });
+      const newLines = writeResult.newContent.split('\n').length;
+      const oldLines = writeResult.oldContent ? writeResult.oldContent.split('\n').length : 0;
+      writtenFiles.push({
+        path: absPath,
+        basename: nodePath.basename(absPath),
+        linesAdded: newLines,
+        linesRemoved: oldLines,
+        action: writeResult.existed ? 'modify' : 'create',
+      });
+      parts.push(`[${toolName}: ${rawPath}] 已写入 ${normalized.path} (${newLines} 行)`);
+      return true;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const code = typeof err === 'object' && err && 'code' in err ? String((err as NodeJS.ErrnoException).code) : '';
+      if ((code === 'EACCES' || code === 'EPERM') && callbacks.onTerminalCommand) {
+        const normalized = normalizeExplicitFileWritePathForAgent(rawPath, taskContext?.userPrompt ?? '', content, workspaceRoot, defaultWorkdir);
+        const dir = normalized.absPath ? nodePath.dirname(normalized.absPath) : (defaultWorkdir ?? workspaceRoot);
+        callbacks.onToolActivity?.('terminal', `请求修复写入权限: ${nodePath.basename(dir)}`);
+        const repair = await callbacks.onTerminalCommand(`chmod u+w ${shellQuote(dir)}`, defaultWorkdir);
+        parts.push(`[${toolName}: ${rawPath}] 权限不足: ${msg}\n[permission_repair]\n${repair}`);
+      } else {
+        const failN = (createFileFailCounts.get(rawPath) || 0) + 1;
+        createFileFailCounts.set(rawPath, failN);
+        let errMsg = `[${toolName}: ${rawPath}] 错误: ${msg}`;
+        if (failN >= 2) errMsg += `\n请不要改用 run_terminal 写文件；继续使用 create_file/write_file/replace_in_file，并检查 path、content/old_str/new_str 和目标目录。`;
+        recordToolFailure(toolName, 'write', rawPath, msg);
+        parts.push(errMsg);
+      }
+      return false;
+    }
+  };
 
   // isLastTask: only the final task should emit phase:done and onTaskComplete.
   // For intermediate tasks the orchestrator (runAgentLoop) drives sequencing; side-
@@ -627,12 +796,14 @@ export async function executeFakeToolsForLoop(
         }
         const shellWriteTarget = detectShellFileWriteCommand(command);
         if (shellWriteTarget) {
+          const reason = `检测到通过 shell 重定向/tee 写入源码文件：${shellWriteTarget}`;
           const msg = [
             `[run_terminal: ${command}] 已阻止`,
-            `检测到通过 shell 重定向/tee 写入源码文件：${shellWriteTarget}`,
+            reason,
             `请改用 create_file 或 write_file，并把完整文件内容放入 content 字段。run_terminal 仅用于编译、运行、测试、查询。`,
           ].join('\n');
           callbacks.onToolActivity?.('terminal', `阻止 shell 写文件: ${nodePath.basename(shellWriteTarget)}`);
+          recordToolFailure('run_terminal', 'terminal-guard', shellWriteTarget, reason);
           parts.push(msg);
           continue;
         }
@@ -791,6 +962,51 @@ export async function executeFakeToolsForLoop(
           parts.push(`[memory_write] 失败：${(err as Error).message}`);
         }
       }
+    } else if (tool.name === 'replace_in_file') {
+      const input = tool.input as Record<string, unknown>;
+      const rawPath = typeof input.path === 'string' ? input.path.trim() : '';
+      const oldStr = typeof input.old_str === 'string' ? input.old_str : '';
+      const newStr = typeof input.new_str === 'string' ? input.new_str : '';
+      const replaceAll = input.replaceAll === true;
+      markToolCall();
+      if (!rawPath) {
+        parts.push(`[replace_in_file] 错误: 缺少 path，未修改任何文件。`);
+        continue;
+      }
+      if (!oldStr) {
+        parts.push(`[replace_in_file: ${rawPath}] 错误: old_str 为空，不能执行不确定替换。请先 read_file 后提供精确原文。`);
+        continue;
+      }
+      const absPath = resolveAgentToolEvidencePath(rawPath, workspaceRoot, defaultWorkdir);
+      try {
+        if (!absPath || !fs.existsSync(absPath)) {
+          const reason = '目标文件不存在，无法替换。请先 list_dir/read_file 确认路径。';
+          recordToolFailure('replace_in_file', 'replace', rawPath, reason);
+          parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);
+          continue;
+        }
+        if (fs.statSync(absPath).isDirectory()) {
+          parts.push(`[replace_in_file: ${rawPath}] 错误: 目标是目录，不是文件：${absPath}`);
+          continue;
+        }
+        const oldContent = fs.readFileSync(absPath, 'utf8');
+        readFiles.push(absPath);
+        readEvidencePaths.add(absPath);
+        if (!oldContent.includes(oldStr)) {
+          const reason = 'old_str 未在当前文件中找到。请重新 read_file 读取最新内容后再精确替换。';
+          recordToolFailure('replace_in_file', 'replace', rawPath, reason);
+          parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);
+          continue;
+        }
+        const nextContent = replaceAll
+          ? oldContent.split(oldStr).join(newStr)
+          : oldContent.slice(0, oldContent.indexOf(oldStr)) + newStr + oldContent.slice(oldContent.indexOf(oldStr) + oldStr.length);
+        await applyWorkspaceFileContent('replace_in_file', rawPath, nextContent);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        recordToolFailure('replace_in_file', 'replace', rawPath, msg);
+        parts.push(`[replace_in_file: ${rawPath}] 错误: ${msg}`);
+      }
     } else if (agentToolExecutor.isFileWrite(tool) && callbacks.onAppliedChange) {
       // Unified file create/overwrite — works for new files AND full rewrites.
       // Matching Copilot's #edit/editFiles for the agentic free-explore loop.
@@ -802,122 +1018,7 @@ export async function executeFakeToolsForLoop(
       }
       for (const fileWrite of fileWrites) {
         const { rawPath, content } = fileWrite;
-        if (!rawPath) {
-          parts.push(`[${tool.name}] 错误: 缺少 path/filePath，未写入任何文件。请提供目标文件路径和完整 content。`);
-          continue;
-        }
-        callbacks.onToolActivity?.('write', rawPath);
-        try {
-          const taskPrompt = taskContext?.userPrompt ?? '';
-          const normalized = normalizeExplicitFileWritePathForAgent(rawPath, taskPrompt, content, workspaceRoot, defaultWorkdir);
-          if (normalized.note) parts.push(`[${tool.name}: ${rawPath}] 诊断: ${normalized.note}`);
-          if (!content && requiresCodeArtifactForEvidence(taskPrompt)) {
-            parts.push(`[${tool.name}: ${rawPath}] 错误: content 为空，不能创建空源码文件。请提供完整文件内容。`);
-            continue;
-          }
-          if (looksLikeRawToolCallText(content)) {
-            parts.push(`[${tool.name}: ${rawPath}] 错误: content 是工具调用文本，不是文件内容，已阻止写入。请只把目标文件源码放入 content。`);
-            continue;
-          }
-          const absPath = normalized.absPath;
-          if (!absPath) {
-            parts.push(`[${tool.name}: ${rawPath}] 错误: 无法解析为工作区内文件路径，已阻止写入。`);
-            continue;
-          }
-          const instructionDecision = decideProjectInstructionFileWrite({
-            filePath: normalized.path,
-            content,
-            requestPrompt: taskPrompt,
-          });
-          if (!instructionDecision.allowed) {
-            parts.push(`[${tool.name}: ${rawPath}] 错误: ${instructionDecision.reason ?? '项目指令文件写入未被允许'}`);
-            continue;
-          }
-          const payloadDrift = detectNestedFilePayloadDrift({
-            targetAbsPath: absPath,
-            content,
-            workspaceRoot,
-            defaultWorkdir,
-          });
-          if (payloadDrift.block) {
-            parts.push(`[${tool.name}: ${rawPath}] 错误: ${payloadDrift.reason}`);
-            continue;
-          }
-          if (callbacks.onBeforeFileWrite) {
-            const allowed = await callbacks.onBeforeFileWrite(absPath, {
-              purpose: 'tool-write',
-              userRequested: false,
-              displayName: rawPath,
-            });
-            if (!allowed) {
-              parts.push(`[${tool.name}: ${rawPath}] 跳过（写入权限策略阻止）`);
-              continue;
-            }
-          }
-          const existed = fs.existsSync(absPath);
-          if (existed && fs.statSync(absPath).isDirectory()) {
-            parts.push(`[${tool.name}: ${rawPath}] 错误: 目标是目录，不是文件：${absPath}`);
-            continue;
-          }
-          if (taskContext?.requireReadBeforeOverwrite) {
-            const guard = shouldBlockUnverifiedSourceOverwrite({
-              absPath,
-              existed,
-              readEvidencePaths,
-            });
-            if (guard.block) {
-              parts.push(`[${tool.name}: ${rawPath}] 错误: ${guard.reason}`);
-              continue;
-            }
-          }
-          let writeResult;
-          try {
-            writeResult = workspaceEditService.writeTextFileSync(absPath, content, { validateSourceSanity: true });
-          } catch (error) {
-            parts.push(`[${tool.name}: ${rawPath}] 错误: 源码语法护栏阻止写入：${error instanceof Error ? error.message : String(error)}`);
-            continue;
-          }
-          const stat = fs.statSync(absPath);
-          if (!stat.isFile() || stat.size === 0) {
-            const failN = (createFileFailCounts.get(rawPath) || 0) + 1;
-            createFileFailCounts.set(rawPath, failN);
-            let errMsg = `[${tool.name}: ${rawPath}] 错误: 写入后校验失败（不是有效文件或文件为空）：${absPath}`;
-            if (failN >= 2) errMsg += `\n请不要改用 run_terminal 写文件；继续使用 create_file/write_file，并检查 path 与 content 是否正确。`;
-            parts.push(errMsg);
-            continue;
-          }
-          if (writeResult.existed && writeResult.oldContent === content) {
-            parts.push(`[${tool.name}: ${rawPath}] 未发生内容变化，未计入本轮修改证据：${normalized.path}`);
-            continue;
-          }
-          await callbacks.onAppliedChange({ path: absPath, ...writeResult });
-          const newLines = content.split('\n').length;
-          const oldLines = writeResult.oldContent ? writeResult.oldContent.split('\n').length : 0;
-          writtenFiles.push({
-            path: absPath,
-            basename: nodePath.basename(absPath),
-            linesAdded: newLines,
-            linesRemoved: oldLines,
-            action: writeResult.existed ? 'modify' : 'create',
-          });
-          parts.push(`[${tool.name}: ${rawPath}] 已写入 ${normalized.path} (${newLines} 行)`);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          const code = typeof err === 'object' && err && 'code' in err ? String((err as NodeJS.ErrnoException).code) : '';
-          if ((code === 'EACCES' || code === 'EPERM') && callbacks.onTerminalCommand) {
-            const normalized = normalizeExplicitFileWritePathForAgent(rawPath, taskContext?.userPrompt ?? '', content, workspaceRoot, defaultWorkdir);
-            const dir = normalized.absPath ? nodePath.dirname(normalized.absPath) : (defaultWorkdir ?? workspaceRoot);
-            callbacks.onToolActivity?.('terminal', `请求修复写入权限: ${nodePath.basename(dir)}`);
-            const repair = await callbacks.onTerminalCommand(`chmod u+w ${shellQuote(dir)}`, defaultWorkdir);
-            parts.push(`[${tool.name}: ${rawPath}] 权限不足: ${msg}\n[permission_repair]\n${repair}`);
-          } else {
-            const failN = (createFileFailCounts.get(rawPath) || 0) + 1;
-            createFileFailCounts.set(rawPath, failN);
-            let errMsg = `[${tool.name}: ${rawPath}] 错误: ${msg}`;
-            if (failN >= 2) errMsg += `\n请不要改用 run_terminal 写文件；继续使用 create_file/write_file，并检查 path/filePath、content 和目标目录。`;
-            parts.push(errMsg);
-          }
-        }
+        await applyWorkspaceFileContent(tool.name, rawPath, content);
       }
     } else if (tool.name === 'get_changed_files' && callbacks.onGetChangedFiles) {
       markToolCall();
@@ -1022,6 +1123,7 @@ export async function executeFakeToolsForLoop(
     writtenFileCount: writtenFiles.length,
     readFileCount: readFiles.length,
     evidenceRefCount: evidenceRefs.length,
+    toolFailureCount: toolFailures.length,
   });
   return {
     taskComplete,
@@ -1037,5 +1139,6 @@ export async function executeFakeToolsForLoop(
     writtenFiles: writtenFiles.length > 0 ? writtenFiles : undefined,
     readFiles: readFiles.length > 0 ? readFiles : undefined,
     evidenceRefs: evidenceRefs.length > 0 ? evidenceRefs : undefined,
+    toolFailures: toolFailures.length > 0 ? toolFailures : undefined,
   };
 }

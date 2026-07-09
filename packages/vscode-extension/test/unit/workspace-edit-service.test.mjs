@@ -136,6 +136,30 @@ test('WorkspaceEditService: validates generated C++ source before writing when r
   }
 });
 
+test('WorkspaceEditService: repairs source transport escapes before validation when requested', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
+  try {
+    const target = path.join(dir, 'main.cpp');
+    const service = new WorkspaceEditService();
+    const result = service.writeTextFileSync(target, [
+      '#include <cstdio>',
+      'int main() {',
+      '  printf("ready',
+      '");',
+      '}',
+    ].join('\n'), {
+      validateSourceSanity: true,
+      repairSourceTransportEscapes: true,
+    });
+
+    assert.equal(result.normalization?.kind, 'source-transport-escape-repair');
+    assert.equal(result.normalization?.repairCount, 1);
+    assert.match(readFileSync(target, 'utf8'), /printf\("ready\\n"\);/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 function readFileSyncSafe(filePath) {
   try {
     return readFileSync(filePath, 'utf8');

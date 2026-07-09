@@ -23,7 +23,7 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { findGeneratedSourceSanityIssue } = req(bundlePath);
+const { findGeneratedSourceSanityIssue, repairGeneratedSourceTransportEscapes } = req(bundlePath);
 
 test('source sanity detects raw newlines inside C++ string literals', () => {
   const issue = findGeneratedSourceSanityIssue('main.cpp', [
@@ -47,6 +47,26 @@ test('source sanity allows escaped newlines and C++ raw strings', () => {
     findGeneratedSourceSanityIssue('main.cpp', 'const char* s = R"(line1\\nline2)";\n'),
     undefined,
   );
+});
+
+test('source sanity repairs C++ string newlines caused by web tool JSON transport decoding', () => {
+  const polluted = [
+    '#include <iostream>',
+    'int main() {',
+    '  std::cout << "first',
+    'second";',
+    '  const char* raw = R"(keep',
+    'raw)";',
+    '}',
+  ].join('\n');
+
+  const repaired = repairGeneratedSourceTransportEscapes('main.cpp', polluted);
+
+  assert.equal(repaired.repaired, true);
+  assert.equal(repaired.repairCount, 1);
+  assert.match(repaired.content, /"first\\nsecond"/);
+  assert.match(repaired.content, /R"\(keep\nraw\)"/);
+  assert.equal(findGeneratedSourceSanityIssue('main.cpp', repaired.content), undefined);
 });
 
 test('source sanity ignores non C/C++ files', () => {

@@ -53,6 +53,7 @@ export const AGENT_TOOL_DEFINITIONS: Record<string, AgentToolDefinition> = {
   create_file: { name: 'create_file', kind: 'edit', risk: 'medium', allowedModes: EDIT_MODES, activityKind: 'write', mutatesWorkspace: true, schema: schema(['path', 'content'], { path: { type: 'string' }, content: { type: 'string' } }) },
   write_file: { name: 'write_file', kind: 'edit', risk: 'medium', allowedModes: EDIT_MODES, activityKind: 'write', mutatesWorkspace: true, schema: schema(['path', 'content'], { path: { type: 'string' }, content: { type: 'string' } }) },
   replace_file: { name: 'replace_file', kind: 'edit', risk: 'medium', allowedModes: EDIT_MODES, activityKind: 'write', mutatesWorkspace: true, schema: schema(['path', 'content'], { path: { type: 'string' }, content: { type: 'string' } }) },
+  replace_in_file: { name: 'replace_in_file', kind: 'edit', risk: 'medium', allowedModes: EDIT_MODES, activityKind: 'write', mutatesWorkspace: true, schema: schema(['path', 'old_str'], { path: { type: 'string' }, old_str: { type: 'string' }, new_str: { type: 'string' }, replaceAll: { type: 'boolean' } }) },
   run_terminal: { name: 'run_terminal', kind: 'terminal', risk: 'high', allowedModes: RUN_MODES, activityKind: 'terminal', requiresTerminal: true, schema: schema(['command'], { command: { type: 'string' }, workdir: { type: 'string' } }) },
   run_vscode_command: { name: 'run_vscode_command', kind: 'vscode', risk: 'high', allowedModes: DESTRUCTIVE_MODES, activityKind: 'vscode-command', schema: schema(['command'], { command: { type: 'string' }, args: { type: 'array' } }) },
   vscode_listCodeUsages: { name: 'vscode_listCodeUsages', kind: 'read', risk: 'low', allowedModes: READ_MODES, activityKind: 'search', schema: schema(['symbol'], { symbol: { type: 'string' }, path: { type: 'string' } }) },
@@ -63,6 +64,8 @@ export const AGENT_TOOL_DEFINITIONS: Record<string, AgentToolDefinition> = {
 
 export const AGENT_TOOL_ALIASES: Record<string, string> = {
   search_content: 'grep_search',
+  edit_file: 'replace_in_file',
+  search_replace: 'replace_in_file',
 };
 
 export function normalizeAgentToolName(name: string): string {
@@ -112,7 +115,21 @@ export function normalizeAgentToolInput(toolName: string, input: Record<string, 
   if (canonicalToolName === 'run_terminal' && typeof normalized.command !== 'string' && typeof normalized.cmd === 'string') {
     normalized.command = normalized.cmd;
   }
+  if (canonicalToolName === 'replace_in_file') {
+    normalizeReplaceInFileAliases(normalized);
+  }
   return normalized;
+}
+
+function normalizeReplaceInFileAliases(input: Record<string, unknown>): void {
+  if (typeof input.old_str !== 'string') {
+    const oldText = input.oldString ?? input.old_string ?? input.oldText ?? input.old_text ?? input.search ?? input.find ?? input.target;
+    if (typeof oldText === 'string') input.old_str = oldText;
+  }
+  if (typeof input.new_str !== 'string') {
+    const newText = input.newString ?? input.new_string ?? input.newText ?? input.new_text ?? input.replace ?? input.replacement ?? input.with;
+    if (typeof newText === 'string') input.new_str = newText;
+  }
 }
 
 function normalizeLineRangeAliases(input: Record<string, unknown>): void {
@@ -171,7 +188,9 @@ export function isRegisteredToolName(name: string): boolean {
 }
 
 export function isFileWriteTool(name: string): boolean {
-  return getToolDefinition(name)?.mutatesWorkspace === true && ['create_file', 'write_file', 'replace_file'].includes(name);
+  const canonicalName = normalizeAgentToolName(name);
+  return getToolDefinition(canonicalName)?.mutatesWorkspace === true
+    && ['create_file', 'write_file', 'replace_file', 'replace_in_file'].includes(canonicalName);
 }
 
 export function getToolActivity(tool: FakeTool): AgentToolActivity | null {
@@ -184,7 +203,8 @@ export function getToolActivity(tool: FakeTool): AgentToolActivity | null {
     }
     case 'create_file':
     case 'write_file':
-    case 'replace_file': {
+    case 'replace_file':
+    case 'replace_in_file': {
       const p = String(inp.path ?? inp.filePath ?? '').trim();
       return { kind: 'write', label: p };
     }

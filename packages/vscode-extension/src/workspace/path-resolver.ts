@@ -217,6 +217,12 @@ export function resolveGeneratedArtifactPathForPrompt(
   const root = getPathResolutionRootUri(requestPrompt, preferredAbsolutePaths);
   if (!root) return normalizeWorkspaceTargetPath(rawPath);
 
+  const expandedRaw = expandHomePath(rawPath).replace(/\\/g, '/');
+  if (nodePath.isAbsolute(expandedRaw)) {
+    const directRelPath = sanitizeWorkspacePath(expandedRaw, root);
+    if (directRelPath) return normalizeWorkspaceTargetPath(directRelPath);
+  }
+
   const pathContext = buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths);
   const resolvedPath = resolveArtifactPathInWorkspace(rawPath, root, pathContext);
   if (!resolvedPath) return normalizeWorkspaceTargetPath(rawPath);
@@ -256,8 +262,18 @@ export function resolveWorkspaceWritePath(
   });
 
   const expandedOriginal = expandHomePath(original).replace(/\\/g, '/');
-  if (nodePath.isAbsolute(expandedOriginal) && !sanitizeWorkspacePath(expandedOriginal, root)) {
-    return undefined;
+  if (nodePath.isAbsolute(expandedOriginal)) {
+    const directRelPath = sanitizeWorkspacePath(expandedOriginal, root);
+    if (!directRelPath) return undefined;
+    const relPath = normalizeWorkspaceTargetPath(directRelPath);
+    const drift = detectWriteDriftForRelPaths([relPath], ctx);
+    if (drift) return undefined;
+    const absPath = vscode.Uri.joinPath(root, ...relPath.split('/')).fsPath;
+    return {
+      rawPath: original,
+      relPath,
+      absPath,
+    };
   }
 
   const normalized = normalizeExplicitWritePath(original, options.requestPrompt || '', options.content || '');

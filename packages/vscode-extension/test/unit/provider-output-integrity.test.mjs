@@ -36,6 +36,16 @@ test('provider output integrity: classifies executable tool calls before settlem
   assert.equal(result.toolCallCount, 1);
 });
 
+test('provider output integrity: classifies malformed DeepSeek function envelopes as executable tool calls', () => {
+  const result = classifyProviderOutputIntegrity(
+    '<TOOL_CALL>{"id":"2","type":"function","function":{"name":"list_dir","arguments":"{"path":"/home/ff/uav/tars/huida_uav/src/oam/src/license"}"}}</TOOL_CALL>',
+  );
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 1);
+});
+
 test('provider output integrity: rejects short no-tool intent', () => {
   const result = classifyProviderOutputIntegrity('现在让我再查看几个关键文件来完整了解原实现的设计。');
 

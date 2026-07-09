@@ -4,6 +4,7 @@ import type { ExecutionMode } from '../intent/intent-types';
 import {
   isMarkdownDocumentCreateTask,
   isMarkdownDocumentDeliverableRequest,
+  isMarkdownDocumentOnlyDeliverableRequest,
   isMarkdownDocumentPath,
   MARKDOWN_DOCUMENT_DELIVERABLE_TASK_DESC,
   markdownDocumentFilenameForPrompt,
@@ -154,7 +155,7 @@ export function enforceAgentTaskExecutionPolicy(
     return { tasks, changed: false };
   }
 
-  if (isMarkdownDocumentDeliverableRequest(input.userPrompt)) {
+  if (isMarkdownDocumentDeliverableRequest(input.userPrompt) && isMarkdownDocumentOnlyDeliverableRequest(input.userPrompt)) {
     return collapseToMarkdownDocumentCreateTask(tasks, input.userPrompt);
   }
 

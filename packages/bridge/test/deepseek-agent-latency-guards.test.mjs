@@ -42,4 +42,27 @@ test('DeepSeekAgent: incomplete action cues keep generation open', () => {
   assert.match(agent, /incomplete-intent/);
 });
 
+test('DeepSeekAgent: streaming has an absolute wall-clock timeout', () => {
+  const agent = src('src/deepseek-agent.ts');
+  const streaming = agent.match(/private async pollForStreamingResponse[\s\S]*?await this\._clickCodeTabs/)?.[0] || '';
+
+  assert.match(agent, /RESPONSE_ABSOLUTE_TIMEOUT_MAX_MS = 180_000/);
+  assert.match(agent, /responseAbsoluteTimeoutMs/);
+  assert.match(agent, /streaming-absolute-deadline/);
+  assert.match(agent, /RESPONSE_CORRUPTED:stream-timeout/);
+  assert.match(streaming, /Date\.now\(\) < deadline && Date\.now\(\) < absoluteDeadline/);
+  assert.doesNotMatch(streaming, /while \(Date\.now\(\) < deadline\)\s*\{/);
+});
+
+test('DeepSeekAgent: recovery stops busy generation before new prompt submission', () => {
+  const agent = src('src/deepseek-agent.ts');
+
+  assert.match(agent, /ensureReadyForNewPrompt\(page, opts\.trace, 'before-submit'\)/);
+  assert.match(agent, /generation-busy-before-submit/);
+  assert.match(agent, /abortActiveGeneration/);
+  assert.match(agent, /generation-stop-clicked/);
+  assert.match(agent, /prompt-submit-failed/);
+  assert.match(agent, /message-submit-unconfirmed/);
+});
+
 console.log('\nDeepSeek agent latency guard tests passed.\n');

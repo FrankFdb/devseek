@@ -7,7 +7,6 @@
  */
 
 import * as vscode from 'vscode';
-import { getActiveProvider } from '../llm/provider-router';
 import { type ChatMessage } from '../llm/types';
 import { getProjectRulesSync, wrapRulesAsContext, getProjectMemorySync, wrapMemoryAsContext } from '../project-rules';
 import { type McpToolRef } from '../mcp/client';
@@ -73,6 +72,7 @@ import {
   executeFakeToolsForLoop,
   isAgentWorkToolName,
   normalizeVisibleTodos,
+  type ToolFailureEvidence,
 } from './tool-loop';
 import {
   buildTaskSettlementFailureStatus,
@@ -84,11 +84,100 @@ import {
 } from './task-state-machine';
 import { tryRunSimpleFileTask } from './simple-file-task';
 import { buildEngineeringGuidelinesPrompt } from './engineering-guidelines';
+import { buildTaskShapeGuidancePrompt } from './task-shape';
 import {
   runtimeStateCanDeliver,
   settleAgentRuntimeState,
 } from './agent-runtime-state-machine';
+import { stableStringify } from './stable-stringify';
 import { describeProviderOutputIntegrity } from './provider-output-integrity';
+import {
+  buildAgentProviderRecoveryPrompt,
+  canRecoverAgentProviderFailure,
+  describeAgentProviderRecoveryForUser,
+  parseAgentProviderFailure,
+} from './provider-response-recovery';
+
+const AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
+const AGENTIC_TASK_PROMPT_CHAR_BUDGET = 34_000;
+const AGENTIC_TOOL_FEEDBACK_CHAR_BUDGET = 8_000;
+const AGENTIC_ASSISTANT_HISTORY_CHAR_BUDGET = 6_000;
+const AGENTIC_USER_HISTORY_CHAR_BUDGET = 8_000;
+const AGENTIC_RECENT_MESSAGE_KEEP_COUNT = 5;
+const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
+
+function agenticMessageContentLength(content: ChatMessage['content']): number {
+  return typeof content === 'string' ? content.length : JSON.stringify(content).length;
+}
+
+function totalAgenticMessageChars(messages: ChatMessage[]): number {
+  return messages.reduce((sum, message) => sum + agenticMessageContentLength(message.content), 0);
+}
+
+function truncateAgenticHistoryText(text: string, maxChars: number, label: string): string {
+  if (text.length <= maxChars) return text;
+  const omitted = text.length - maxChars;
+  const headChars = Math.max(1000, Math.floor(maxChars * 0.58));
+  const tailChars = Math.max(1000, maxChars - headChars - 320);
+  return [
+    text.slice(0, headChars).trimEnd(),
+    '',
+    `[DevSeek 上下文压缩] ${label} 已压缩 ${omitted} 字符，保留首尾关键信息；如需细节，请继续用 read_file/grep_search 精确读取。`,
+    '',
+    text.slice(Math.max(0, text.length - tailChars)).trimStart(),
+  ].join('\n');
+}
+
+function isAgenticToolFeedback(content: string): boolean {
+  return /^\s*\[工具结果 Round \d+\]/.test(content)
+    || /^\s*【系统反馈】/.test(content)
+    || /^\s*\[DevSeek 上下文压缩]/.test(content);
+}
+
+function agenticMessageBudgetFor(message: ChatMessage, index: number): number {
+  if (typeof message.content !== 'string') return Number.POSITIVE_INFINITY;
+  if (index === 0) return AGENTIC_TASK_PROMPT_CHAR_BUDGET;
+  if (isAgenticToolFeedback(message.content)) return AGENTIC_TOOL_FEEDBACK_CHAR_BUDGET;
+  if (message.role === 'assistant') return AGENTIC_ASSISTANT_HISTORY_CHAR_BUDGET;
+  return AGENTIC_USER_HISTORY_CHAR_BUDGET;
+}
+
+function compactAgenticMessageHistory(messages: ChatMessage[]): number {
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (typeof message.content !== 'string') continue;
+    const budget = agenticMessageBudgetFor(message, index);
+    message.content = truncateAgenticHistoryText(
+      message.content,
+      budget,
+      index === 0 ? '任务上下文' : message.role === 'assistant' ? '模型历史回复' : '工具反馈/用户补充',
+    );
+  }
+
+  let total = totalAgenticMessageChars(messages);
+  if (total <= AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET) return total;
+
+  if (messages.length > AGENTIC_RECENT_MESSAGE_KEEP_COUNT + 1) {
+    const head = messages[0];
+    const tail = messages.slice(-AGENTIC_RECENT_MESSAGE_KEEP_COUNT);
+    const omitted = messages.length - 1 - tail.length;
+    messages.splice(0, messages.length, head, {
+      role: 'user',
+      content: `[DevSeek 上下文压缩] 已省略 ${omitted} 条早期 Agentic 往返，保留任务原文和最近 ${tail.length} 条消息；请基于最新工具证据继续。`,
+    }, ...tail);
+    total = totalAgenticMessageChars(messages);
+  }
+
+  if (total <= AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET) return total;
+
+  for (let index = 1; index < messages.length - 1; index += 1) {
+    const message = messages[index];
+    if (typeof message.content !== 'string') continue;
+    message.content = truncateAgenticHistoryText(message.content, 2_500, '早期轮次历史');
+  }
+
+  return totalAgenticMessageChars(messages);
+}
 
 function extractPlanningTodoItems(text: string): TodoItem[] {
   const lines = text
@@ -200,8 +289,66 @@ function normalizeAgenticAutoValidation(input: {
 /** Normal mode ≈ Copilot's toolCallLimit ~25; autopilot mode ≈ Copilot's ~200. */
 const AGENTIC_ROUNDS_NORMAL   = 25;
 const AGENTIC_ROUNDS_AUTOPILOT = 200;
+const AGENTIC_REPEATED_TOOL_FAILURE_WARN_COUNT = 2;
+const AGENTIC_REPEATED_TOOL_FAILURE_STOP_COUNT = 4;
+const CONTEXT_GATHERING_TOOL_NAMES = new Set([
+  'read_file',
+  'list_dir',
+  'grep_search',
+  'file_search',
+  'semantic_search',
+]);
+
+function normalizeToolFailurePath(pathValue: string | undefined): string {
+  return (pathValue || '').replace(/\\/g, '/').replace(/\/+/g, '/');
+}
+
+function makeToolFailureSignature(failure: ToolFailureEvidence): string {
+  return [
+    failure.tool,
+    failure.kind,
+    normalizeToolFailurePath(failure.path),
+    failure.reason.slice(0, 220),
+  ].join('::');
+}
+
+function describeToolFailureTarget(failure: ToolFailureEvidence): string {
+  return failure.path ? `${failure.tool}(${failure.path})` : failure.tool;
+}
+
+function buildRepeatedToolFailureFeedback(failure: ToolFailureEvidence, count: number): string {
+  const target = describeToolFailureTarget(failure);
+  const strategy = failure.kind === 'replace'
+    ? '不要继续用同一个 old_str 重试。先 read_file 读取当前文件；如果文件不存在，改用 create_file 新建；如果内容已变化，基于最新内容给出精确 old_str/new_str。'
+    : failure.kind === 'terminal-guard'
+      ? 'run_terminal 只能用于查询、编译、运行和测试。写文件必须改用 create_file/write_file/replace_in_file，且每次写入后用 read_file 或验证命令确认。'
+      : '不要重复提交同一份完整内容。请改成小步策略：先创建最小可验证骨架，再用 replace_in_file 分段补充；C/C++ 字符串换行必须写成 \\n 或使用合法 raw string。';
+  return [
+    `【系统反馈】检测到同一工具失败重复 ${count} 次：${target}`,
+    `失败原因：${failure.reason}`,
+    strategy,
+    '下一轮必须改变工具或写入粒度；如果不能继续推进，请明确报告阻塞，不能 task_complete。',
+  ].join('\n');
+}
+
+function describeRepeatedToolFailureStop(failure: ToolFailureEvidence, count: number): string {
+  return `同一工具失败重复 ${count} 次仍无有效进展：${describeToolFailureTarget(failure)}；${failure.reason}`;
+}
+
+function makeContextToolSignature(tool: ReturnType<typeof parseFakeToolCalls>[number]): string {
+  return `${tool.name}:${stableStringify(tool.input ?? {})}`;
+}
+
+function buildRepeatedContextToolFeedback(tool: ReturnType<typeof parseFakeToolCalls>[number], count: number): string {
+  return [
+    `【系统反馈】检测到上下文工具重复 ${count} 次：${tool.name}`,
+    '这批读取/搜索已经执行过，且期间没有新的写盘或验证进展。',
+    '请不要重复读取相同路径或重复相同搜索；下一轮必须基于已有事实进入设计/写入/验证，或换用更精确的新文件范围。',
+  ].join('\n');
+}
 
 function buildAgenticSystemPrompt(
+  userPrompt: string,
   workspaceRoot: string,
   dataFiles: string[],
   mcpTools?: McpToolRef[],
@@ -234,6 +381,8 @@ function buildAgenticSystemPrompt(
 
 【工作区根目录】${workspaceRoot}
 ${rulesSection}${memSection}${filesSection}${workflowModeSection}
+${buildTaskShapeGuidancePrompt(userPrompt)}
+
 ${buildEngineeringGuidelinesPrompt('agent')}
 
 【可用工具】
@@ -263,6 +412,9 @@ ${buildEngineeringGuidelinesPrompt('agent')}
 创建或完整覆写文件（提供绝对路径或相对 workspaceRoot 的路径）：
 [TOOL:create_file {"path":"code/hello.cpp","content":"文件全部内容"}]
 
+精确替换既有文件片段（修改正式工程既有文件时优先使用；old_str 必须来自 read_file 读取到的原文）：
+[TOOL:replace_in_file {"path":"src/foo.cpp","old_str":"原始文本","new_str":"替换后文本"}]
+
 记录并追踪任务进度（第一轮先用此工具列出子任务；每步开始标 in-progress，完成标 completed）：
 [TOOL:manage_todo_list {"todoList":[{"id":1,"title":"任务描述","status":"in-progress"},{"id":2,"title":"另一任务","status":"not-started"}]}]
 
@@ -274,7 +426,7 @@ ${mcpSection}
 - 开始前先用 manage_todo_list 列出所有子任务（Copilot 规划阶段）
 - 每个子任务开始时标为 in-progress，完成时标为 completed
 - memory_write / 项目记忆属于智能体内部能力，不要放进 manage_todo_list，也不要作为用户可见任务展示
-- 创建/修改文件必须调用 create_file 工具并提供完整 content；“我正在创建/将创建/现在创建”这类自然语言不算执行；不要用 run_terminal 里的 python/echo/tee/cat 重定向写文件
+- 创建/修改文件必须调用 create_file 工具并提供完整 content；修改既有文件可优先调用 replace_in_file 并提供 read_file 得到的 old_str/new_str；“我正在创建/将创建/现在创建”这类自然语言不算执行；不要用 run_terminal 里的 python/echo/tee/cat 重定向写文件
 - AGENTS.md、CLAUDE.md、.devseek/rules.md、.github/copilot-instructions.md 是项目指令文件，不是普通源码文件；除非用户明确要求修改指令，否则不要把源码实现写入或引用为源码事实
 - 用户指定“code 目录/code目录”时，必须把源码写到 ${workspaceRoot}/code/ 下；不要只描述创建，也不要把文件写到扩展目录或临时目录
 - 你已经拥有 run_terminal/read_file/create_file 等工具；禁止声称“无法执行命令/无法访问文件/只是对话模式”。需要执行时必须调用 run_terminal，并以真实退出码和输出作为证据
@@ -318,6 +470,7 @@ export async function runAgenticLoop(
   });
 
   const systemPrompt = buildAgenticSystemPrompt(
+    userPrompt,
     workspaceRoot,
     dataFiles,
     callbacks.mcpToolRefs,
@@ -362,8 +515,10 @@ export async function runAgenticLoop(
   let lastProviderText = '';
   let lastRoundToolRequestCount = 0;
   let executedToolRoundCount = 0;
+  let providerRecoveryAttempts = 0;
   const announcedProseKeys = new Set<string>();
   const allReadEvidencePaths = new Set<string>();
+  const repeatedToolFailures = new Map<string, number>();
   // Whether the AI has called manage_todo_list yet.
   let todoEverSet = false;
   let fallbackTodosVisible = false;
@@ -413,17 +568,11 @@ export async function runAgenticLoop(
   const maxAgenticRounds = callbacks.autopilot ? AGENTIC_ROUNDS_AUTOPILOT : AGENTIC_ROUNDS_NORMAL;
   // Track terminal command signatures across rounds to detect and break stuck loops
   const seenTerminalCmdSignatures = new Map<string, { count: number; lastProgressEpoch: number }>();
+  const seenContextToolSignatures = new Map<string, { count: number; lastProgressEpoch: number }>();
   let progressEpoch = 0;
   while (roundCount < maxAgenticRounds) {
     if (callbacks.signal?.aborted) break;
     roundCount++;
-
-    // Context window management: keep first message (system+prompt) + recent 6
-    if (totalChars > 80000 && messages.length > 8) {
-      const head = messages.slice(0, 1);
-      const tail = messages.slice(-6);
-      messages.splice(0, messages.length, ...head, ...tail);
-    }
 
     // ── Streaming delta: early manage_todo_list detection ───────────────────
     // As DeepSeek streams its response, detect the first completed manage_todo_list
@@ -492,15 +641,67 @@ export async function runAgenticLoop(
     // - Final round (no tools called): route AI answer to prose bubble via ASUM.
     // This avoids showing the same content in both working box AND bubble.
     messages.push(...consumeUserSteerMessages(callbacks));
-    const { text, tools } = await chatWithMessages(
-      messages,
-      mode,
-      roundStreamDelta,  // stream delta for early todo detection
-      callbacks.signal,
-      roundCount === 1,
-      callbacks.traceRunId,
-      callbacks.traceWorkspaceRoot,
-    );
+    totalChars = compactAgenticMessageHistory(messages);
+    let text = '';
+    let tools: ReturnType<typeof parseFakeToolCalls> = [];
+    try {
+      const providerTurn = await chatWithMessages(
+        messages,
+        mode,
+        roundStreamDelta,  // stream delta for early todo detection
+        callbacks.signal,
+        roundCount === 1,
+        callbacks.traceRunId,
+        callbacks.traceWorkspaceRoot,
+      );
+      text = providerTurn.text;
+      tools = providerTurn.tools;
+    } catch (error) {
+      const providerFailure = parseAgentProviderFailure(error);
+      if (!callbacks.signal?.aborted
+        && canRecoverAgentProviderFailure(
+          providerFailure,
+          providerRecoveryAttempts,
+          AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS,
+        )) {
+        providerRecoveryAttempts++;
+        const display = describeAgentProviderRecoveryForUser(
+          providerFailure,
+          providerRecoveryAttempts,
+          AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS,
+        );
+        callbacks.onToolActivity?.('label', display.activityLabel);
+        await callbacks.onAgentStatus({
+          type: 'agentStatus',
+          phase: 'execute',
+          taskId: 'agentic',
+          taskFile: initialDisplayTarget,
+          taskAction: initialDisplayAction,
+          taskIndex: 1,
+          taskTotal: 1,
+          state: 'started',
+          title: display.title,
+          detail: display.detail,
+        });
+        const recoveryMessage = buildAgentProviderRecoveryPrompt({
+          userPrompt,
+          failure: providerFailure,
+          recoveryAttempt: providerRecoveryAttempts,
+          maxRecoveryAttempts: AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS,
+          promptRequiresTools,
+          currentTodos,
+          readEvidencePaths: [...allReadEvidencePaths],
+          writtenFiles: allWrittenFiles,
+          terminalEvidence: allTerminalEvidence,
+          partialResponseLength: sAccum.trim().length,
+        });
+        messages.splice(1, Math.max(0, messages.length - 1), recoveryMessage);
+        totalChars = messages.reduce((sum, message) => sum + agenticMessageContentLength(message.content), 0);
+        totalChars = compactAgenticMessageHistory(messages);
+        continue;
+      }
+      throw error;
+    }
 
     messages.push({ role: 'assistant', content: text });
     lastProviderText = text;
@@ -660,7 +861,7 @@ export async function runAgenticLoop(
       progressEpoch++;
     }
 
-    const blockedRepeatedTerminalToolIndexes = new Set<number>();
+    const blockedRepeatedToolIndexes = new Set<number>();
     const loopWarnings: string[] = [];
     const hasFileWriteIntentThisRound = hasExplicitFileWriteTool || artifactApply.writtenFiles.length > 0;
     tools.forEach((tool, toolIndex) => {
@@ -670,13 +871,25 @@ export async function runAgenticLoop(
       const sig = makeTerminalCmdSignature(command);
       const seen = seenTerminalCmdSignatures.get(sig);
       if (seen && seen.lastProgressEpoch === progressEpoch && !hasFileWriteIntentThisRound) {
-        blockedRepeatedTerminalToolIndexes.add(toolIndex);
+        blockedRepeatedToolIndexes.add(toolIndex);
         loopWarnings.push(getTerminalRecoveryProtocol(command, seen.count + 1));
         callbacks.onToolActivity?.('terminal', `跳过重复命令: ${sig.slice(0, 50)}`);
       }
     });
-    const toolsToExecute = blockedRepeatedTerminalToolIndexes.size > 0
-      ? tools.filter((_, toolIndex) => !blockedRepeatedTerminalToolIndexes.has(toolIndex))
+    tools.forEach((tool, toolIndex) => {
+      if (!CONTEXT_GATHERING_TOOL_NAMES.has(tool.name)) return;
+      const sig = makeContextToolSignature(tool);
+      const seen = seenContextToolSignatures.get(sig);
+      if (seen && seen.lastProgressEpoch === progressEpoch && !hasFileWriteIntentThisRound) {
+        const nextCount = seen.count + 1;
+        seenContextToolSignatures.set(sig, { count: nextCount, lastProgressEpoch: progressEpoch });
+        blockedRepeatedToolIndexes.add(toolIndex);
+        loopWarnings.push(buildRepeatedContextToolFeedback(tool, nextCount));
+        callbacks.onToolActivity?.('search', `跳过重复上下文工具: ${tool.name}`);
+      }
+    });
+    const toolsToExecute = blockedRepeatedToolIndexes.size > 0
+      ? tools.filter((_, toolIndex) => !blockedRepeatedToolIndexes.has(toolIndex))
       : tools;
 
     // Execute tools — full callbacks so file creation/edits register as pending edits
@@ -709,6 +922,12 @@ export async function runAgenticLoop(
     }
     if (loopRes.writtenFiles?.length) {
       allWrittenFiles.push(...loopRes.writtenFiles);
+      const writtenPathKeys = new Set(loopRes.writtenFiles.map(file => normalizeToolFailurePath(file.path)));
+      for (const key of [...repeatedToolFailures.keys()]) {
+        if ([...writtenPathKeys].some(pathKey => pathKey && key.includes(pathKey))) {
+          repeatedToolFailures.delete(key);
+        }
+      }
       progressEpoch++;
     }
     if (loopRes.readFiles?.length) {
@@ -724,6 +943,20 @@ export async function runAgenticLoop(
     }
     if (loopRes.evidenceRefs?.length) {
       allEvidenceRefs.push(...loopRes.evidenceRefs);
+    }
+    for (const failure of loopRes.toolFailures ?? []) {
+      const sig = makeToolFailureSignature(failure);
+      const count = (repeatedToolFailures.get(sig) || 0) + 1;
+      repeatedToolFailures.set(sig, count);
+      if (count >= AGENTIC_REPEATED_TOOL_FAILURE_WARN_COUNT) {
+        loopWarnings.push(buildRepeatedToolFailureFeedback(failure, count));
+      }
+      if (count >= AGENTIC_REPEATED_TOOL_FAILURE_STOP_COUNT && !failedReason) {
+        failedReason = describeRepeatedToolFailureStop(failure, count);
+      }
+    }
+    if (failedReason) {
+      break;
     }
     const autoValidation = await runAgentAutoValidationForWrites(
       allWrittenFiles.slice(autoValidatedWriteCount),
@@ -762,6 +995,16 @@ export async function runAgenticLoop(
       seenTerminalCmdSignatures.set(sig, { count: nextCount, lastProgressEpoch: progressEpoch });
       if (prev && prev.lastProgressEpoch === progressEpoch && nextCount >= 2) {
         loopWarnings.push(getTerminalRecoveryProtocol(cmd, nextCount));
+      }
+    }
+    for (const tool of toolsToExecute) {
+      if (!CONTEXT_GATHERING_TOOL_NAMES.has(tool.name)) continue;
+      const sig = makeContextToolSignature(tool);
+      const prev = seenContextToolSignatures.get(sig);
+      const nextCount = (prev?.count ?? 0) + 1;
+      seenContextToolSignatures.set(sig, { count: nextCount, lastProgressEpoch: progressEpoch });
+      if (prev && prev.lastProgressEpoch === progressEpoch && nextCount >= 2) {
+        loopWarnings.push(buildRepeatedContextToolFeedback(tool, nextCount));
       }
     }
     // Clear any ASUM delta that task_complete may have emitted during this round.

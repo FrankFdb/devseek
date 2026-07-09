@@ -1,11 +1,17 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
-import { findGeneratedSourceSanityIssue } from './source-sanity';
+import { findGeneratedSourceSanityIssue, repairGeneratedSourceTransportEscapes } from './source-sanity';
 
 export interface WorkspaceWriteResult {
   existed: boolean;
   oldContent: string;
   newContent: string;
+  normalization?: WorkspaceWriteNormalization;
+}
+
+export interface WorkspaceWriteNormalization {
+  kind: 'source-transport-escape-repair';
+  repairCount: number;
 }
 
 export interface WorkspaceEditProposal {
@@ -28,6 +34,7 @@ export interface WorkspaceAppliedEdit {
 
 export interface WorkspaceEditApplyOptions {
   validateSourceSanity?: boolean;
+  repairSourceTransportEscapes?: boolean;
 }
 
 export class WorkspaceEditValidationError extends Error {
@@ -66,19 +73,32 @@ export class WorkspaceEditService {
     snapshot = this.snapshotTextFile(proposal.absPath),
     options: WorkspaceEditApplyOptions = {},
   ): WorkspaceAppliedEdit {
-    if (options.validateSourceSanity) {
-      this.validateTextFileProposal(proposal);
+    let appliedProposal = proposal;
+    let normalization: WorkspaceWriteNormalization | undefined;
+    if (options.repairSourceTransportEscapes) {
+      const repaired = repairGeneratedSourceTransportEscapes(proposal.absPath, proposal.content);
+      if (repaired.repaired) {
+        appliedProposal = { ...proposal, content: repaired.content };
+        normalization = {
+          kind: 'source-transport-escape-repair',
+          repairCount: repaired.repairCount,
+        };
+      }
     }
-    const dir = nodePath.dirname(proposal.absPath);
+    if (options.validateSourceSanity) {
+      this.validateTextFileProposal(appliedProposal);
+    }
+    const dir = nodePath.dirname(appliedProposal.absPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(proposal.absPath, proposal.content, 'utf8');
+    fs.writeFileSync(appliedProposal.absPath, appliedProposal.content, 'utf8');
     return {
-      proposal,
+      proposal: appliedProposal,
       snapshot,
       result: {
         existed: snapshot.existed,
         oldContent: snapshot.content,
-        newContent: proposal.content,
+        newContent: appliedProposal.content,
+        ...(normalization ? { normalization } : {}),
       },
     };
   }

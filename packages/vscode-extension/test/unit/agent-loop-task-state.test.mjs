@@ -70,6 +70,13 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
   assert.match(agentLoop, /buildAgentMetaOnlyToolFeedback/, 'two-phase agent loops must feed back meta-only tool rounds as non-work');
   assert.match(agentLoop, /AGENT_LOOP_MESSAGE_TOTAL_CHAR_BUDGET/, 'two-phase agent loops must cap provider prompt history size');
   assert.match(agentLoop, /function compactAgentLoopMessageHistory/, 'two-phase agent loops must own context compaction at the runtime boundary');
+  assert.match(agenticLoop, /AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET/, 'agentic loop must cap provider prompt history size');
+  assert.match(agenticLoop, /function compactAgenticMessageHistory/, 'agentic loop must own context compaction at the runtime boundary');
+  assert.match(
+    agenticLoop,
+    /messages\.push\(\.\.\.consumeUserSteerMessages\(callbacks\)\);\s*totalChars\s*=\s*compactAgenticMessageHistory\(messages\);/,
+    'agentic loop must compact message history before provider calls',
+  );
   assert.match(
     agentLoop,
     /execMessages\.push\(\.\.\.consumeUserSteerMessages\(callbacks\)\);\s*compactAgentLoopMessageHistory\(execMessages\);/,

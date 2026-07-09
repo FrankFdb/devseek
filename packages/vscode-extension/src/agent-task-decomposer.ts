@@ -20,11 +20,13 @@ import { sanitizeWorkspaceContextAnchorPath } from './workspace/context-anchor';
 import { resolveLocalExecutionProjectDirFromCandidate } from './workspace/local-execution-target';
 import { isCodeArtifactPath, requiresCodeArtifactForEvidence, requiresCommandEvidence } from './agent/completion-evidence';
 import { buildEngineeringGuidelinesPrompt } from './agent/engineering-guidelines';
+import { buildTaskShapeGuidancePrompt } from './agent/task-shape';
 import { classifyIntent } from './intent/intent-classifier';
 import { isCppBuildArtifactDirName } from './cpp-build-layout';
 import {
   isMarkdownDocumentCreateTask,
   isMarkdownDocumentDeliverableRequest,
+  isMarkdownDocumentOnlyDeliverableRequest,
   MARKDOWN_DOCUMENT_DELIVERABLE_TASK_DESC,
   markdownDocumentFilenameForPrompt,
 } from './agent/deliverable-document';
@@ -429,6 +431,8 @@ function buildDecomposeSystemPrompt(
     '先用 1-2 句话（中文）简述你的分析思路和计划方向，然后输出 JSON 任务计划。不要输出代码。',
     projectRulesSection,
     projectMemorySection,
+    buildTaskShapeGuidancePrompt(userPrompt),
+    '',
     buildEngineeringGuidelinesPrompt('planner'),
     '',
     '【用户需求】',
@@ -581,6 +585,30 @@ function normalizeMarkdownDocumentDeliverableTasks(
 
   const explicitSingleOutput = selectExplicitMarkdownDocumentOutputPath(userPrompt);
   const structuredSpecs = explicitSingleOutput ? [] : detectStructuredMarkdownDocumentSpecs(userPrompt);
+  if (!isMarkdownDocumentOnlyDeliverableRequest(userPrompt)) {
+    const existingMarkdownTasks = tasks.filter(isMarkdownDocumentCreateTask);
+    if (existingMarkdownTasks.length > 0) return tasks;
+    if (structuredSpecs.length > 1) {
+      const outputDir = selectMarkdownDocumentOutputDir(tasks, userPrompt, promptDir, activeEditorFile);
+      if (outputDir) {
+        const generated = structuredSpecs.map((spec, index) => {
+          const outputAbs = uniqueMarkdownDocumentPath(outputDir, spec.filename);
+          const outputFile = taskDisplayPathForAbs(outputAbs, promptDir);
+          return {
+            id: `md${index + 1}`,
+            file: outputFile,
+            action: 'create' as AgentTaskAction,
+            desc: spec.desc,
+            visibleTarget: outputFile,
+            absPath: outputAbs,
+          };
+        });
+        return [...generated, ...tasks];
+      }
+    }
+    return [buildMarkdownDocumentCreateTask(tasks, userPrompt, promptDir, activeEditorFile), ...tasks];
+  }
+
   if (structuredSpecs.length > 1) {
     const outputDir = selectMarkdownDocumentOutputDir(tasks, userPrompt, promptDir, activeEditorFile);
     if (outputDir) {
@@ -1452,7 +1480,7 @@ export async function decomposeTask(
   onProgress(attachedFiles.length > 0 ? `正在分析任务（共 ${attachedFiles.length} 个文件）…` : '正在分析任务…');
   const contextActiveEditorFile = sanitizeActiveEditorContextPath(activeEditorFile);
 
-  if (isMarkdownDocumentDeliverableRequest(userPrompt)) {
+  if (shouldUseLocalMarkdownDocumentFastPath(userPrompt)) {
     const tasks = buildLocalMarkdownDocumentDeliverableTasks(userPrompt, attachedFiles, contextActiveEditorFile);
     const documentTaskCount = tasks.filter(isMarkdownDocumentCreateTask).length;
     onProgress(documentTaskCount > 1
@@ -1504,4 +1532,8 @@ export async function decomposeTask(
   })();
 
   return { tasks, raw, ok: true, prose: proseLines.length > 0 ? proseLines.join('\n') : undefined };
+}
+
+function shouldUseLocalMarkdownDocumentFastPath(userPrompt: string): boolean {
+  return isMarkdownDocumentOnlyDeliverableRequest(userPrompt);
 }

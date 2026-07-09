@@ -4,11 +4,24 @@ export interface SourceSanityIssue {
   detail: string;
 }
 
+export interface SourceTransportRepairResult {
+  content: string;
+  repaired: boolean;
+  repairCount: number;
+}
+
 const CPP_SOURCE_EXT_RE = /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i;
 
 export function findGeneratedSourceSanityIssue(filePath: string, content: string): SourceSanityIssue | undefined {
   if (!CPP_SOURCE_EXT_RE.test(filePath || '')) return undefined;
   return findCppUnterminatedStringLiteral(content || '');
+}
+
+export function repairGeneratedSourceTransportEscapes(filePath: string, content: string): SourceTransportRepairResult {
+  if (!CPP_SOURCE_EXT_RE.test(filePath || '')) {
+    return { content, repaired: false, repairCount: 0 };
+  }
+  return repairCppStringLiteralTransportNewlines(content || '');
 }
 
 function findCppUnterminatedStringLiteral(content: string): SourceSanityIssue | undefined {
@@ -107,6 +120,121 @@ function findCppUnterminatedStringLiteral(content: string): SourceSanityIssue | 
     };
   }
   return undefined;
+}
+
+function repairCppStringLiteralTransportNewlines(content: string): SourceTransportRepairResult {
+  let output = '';
+  let inLineComment = false;
+  let inBlockComment = false;
+  let inChar = false;
+  let inString = false;
+  let escape = false;
+  let repairCount = 0;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const ch = content[index];
+    const next = content[index + 1];
+
+    if (inLineComment) {
+      output += ch;
+      if (ch === '\n') {
+        inLineComment = false;
+        inChar = false;
+        escape = false;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      output += ch;
+      if (ch === '*' && next === '/') {
+        output += next;
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+
+    if (inString) {
+      if (ch === '\r' && next === '\n') {
+        output += '\\n';
+        repairCount += 1;
+        escape = false;
+        index += 1;
+        continue;
+      }
+      if (ch === '\n' || ch === '\r') {
+        output += '\\n';
+        repairCount += 1;
+        escape = false;
+        continue;
+      }
+      output += ch;
+      if (escape) {
+        escape = false;
+      } else if (ch === '\\') {
+        escape = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (inChar) {
+      output += ch;
+      if (escape) {
+        escape = false;
+      } else if (ch === '\\') {
+        escape = true;
+      } else if (ch === "'") {
+        inChar = false;
+      } else if (ch === '\n') {
+        inChar = false;
+        escape = false;
+      }
+      continue;
+    }
+
+    if (ch === 'R' && next === '"') {
+      const rawEnd = findRawStringLiteralEnd(content, index);
+      if (rawEnd !== -1) {
+        output += content.slice(index, rawEnd + 1);
+        index = rawEnd;
+        continue;
+      }
+    }
+    if (ch === '/' && next === '/') {
+      output += ch + next;
+      inLineComment = true;
+      index += 1;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      output += ch + next;
+      inBlockComment = true;
+      index += 1;
+      continue;
+    }
+    if (ch === "'") {
+      output += ch;
+      inChar = true;
+      escape = false;
+      continue;
+    }
+    if (ch === '"') {
+      output += ch;
+      inString = true;
+      escape = false;
+      continue;
+    }
+    output += ch;
+  }
+
+  return {
+    content: output,
+    repaired: repairCount > 0,
+    repairCount,
+  };
 }
 
 function findRawStringLiteralEnd(content: string, start: number): number {

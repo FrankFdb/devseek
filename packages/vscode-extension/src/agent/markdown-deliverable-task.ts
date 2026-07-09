@@ -65,6 +65,8 @@ const MAX_FILE_CHARS = 6_000;
 const MAX_TOTAL_EVIDENCE_CHARS = 30_000;
 const SOURCE_DIR_DEPTH = 2;
 const REPORT_MIN_CHARS = 240;
+const MAX_MARKDOWN_FIRST_LINE_CHARS = 260;
+const MAX_MARKDOWN_LINE_CHARS = 2_400;
 const POSIX_ABSOLUTE_PATH_RE = /\/(?:[A-Za-z0-9._@%+=-]+\/)*[A-Za-z0-9._@%+=-]+/g;
 const SOURCE_EXTENSIONS = new Set([
   '.c', '.cc', '.cpp', '.cxx',
@@ -77,6 +79,9 @@ const EXCLUDED_DIR_NAMES = new Set([
   'Debug', 'Release', 'logs', 'log', 'cache', '.cache',
 ]);
 const BAD_PROVIDER_REPORT_RE = /(?:\[TOOL:|\[工具执行结果\]|Calling\s*:\s*(?:read_file|list_dir|file_search)|调用\s*(?:read_file|list_dir|file_search))/i;
+const PROVIDER_COPY_CONTROL_RE = /(?:plain\s*text|text|json|cpp|c\+\+|c|bash|shell|sh|python|typescript|javascript|yaml|yml|xml|html|sql|ini|toml|go|rust|markdown|md)\s*复制\s*下载/gi;
+const MARKDOWN_METADATA_LABEL_RE = /(文档编号|版本|状态|关联需求|目标路径)\s*[:：]/g;
+const MARKDOWN_NUMBERED_HEADING_WORD_RE = /(?:文档|目标|依据|范围|需求|差异|旧实现|职责|观察|实现|对策|总体|架构|接口|方向|消息|数据结构|字段|说明|异常|时序|任务|拆分|风险|验证|结论|模块|线程|持久|测试|设计|决策|输入|输出|发布|存储|复位|兼容)/;
 
 export async function tryExecuteMarkdownDeliverableTask(
   input: MarkdownDeliverableTaskInput,
@@ -171,7 +176,10 @@ export async function tryExecuteMarkdownDeliverableTask(
       title: '写入并验证 Markdown 文档',
       detail: `正在写入 ${relPath}，随后读回校验内容一致性。`,
     });
-    const writeResult = workspaceEditService.writeTextFileSync(absPath, ensureFinalNewline(markdown), { validateSourceSanity: true });
+    const writeResult = workspaceEditService.writeTextFileSync(absPath, ensureFinalNewline(markdown), {
+      validateSourceSanity: true,
+      repairSourceTransportEscapes: true,
+    });
     const freshContent = fs.readFileSync(absPath, 'utf8');
     const finalContent = ensureFinalNewline(markdown);
     const diff = roughLineDiff(writeResult.oldContent, finalContent);
@@ -407,6 +415,7 @@ function buildProviderPrompt(input: MarkdownDeliverableTaskInput, evidence: Evid
   return [
     '你是顶级编程智能体的文档交付模块。所有文件证据已经由本地运行时读取完毕。',
     '请只输出完整 Markdown 文档正文，不要请求工具，不要输出 [TOOL:...]、Calling、工具执行结果或代码块包裹整个文档。',
+    '请使用真实 Markdown 排版：标题、元数据、列表、表格和代码块必须保留换行；不要输出网页复制控件文字，例如“复制”“下载”。',
     '文档必须包含：需求差异、旧实现职责观察、实现对策、主控任务拆分、风险与验证建议、后续任务清单。',
     `目标写入路径：${relTarget}`,
     '',
@@ -426,22 +435,122 @@ function normalizeProviderMarkdown(text: string): string | undefined {
   if (!integrity.okForSettlement) return undefined;
   let trimmed = unwrapMarkdownFence(stripToolCallBlocks(text).trim());
   if (BAD_PROVIDER_REPORT_RE.test(trimmed)) return undefined;
+  trimmed = normalizeProviderMarkdownDocumentText(trimmed);
   if (trimmed.length < REPORT_MIN_CHARS) return undefined;
   if (!/(?:^|\n)#{1,3}\s+\S/.test(trimmed)) {
     trimmed = `# Markdown 建议文档\n\n${trimmed}`;
   }
+  if (!hasAcceptableMarkdownDocumentShape(trimmed)) return undefined;
   return ensureFinalNewline(trimmed);
 }
 
 function describeProviderMarkdownRejection(text: string, integrityKind: string): string {
-  const trimmed = unwrapMarkdownFence(stripToolCallBlocks(text).trim());
+  const trimmed = normalizeProviderMarkdownDocumentText(unwrapMarkdownFence(stripToolCallBlocks(text).trim()));
   if (BAD_PROVIDER_REPORT_RE.test(trimmed)) {
     return `${integrityKind}: Provider 返回包含工具调用痕迹，不能作为最终 Markdown 文档。`;
+  }
+  if (hasProviderCopyControlArtifact(trimmed)) {
+    return `${integrityKind}: Provider 返回包含网页复制控件残留，不能作为最终 Markdown 文档。`;
   }
   if (trimmed.length < REPORT_MIN_CHARS) {
     return `${integrityKind}: Provider 返回正文过短（${trimmed.length} 字符），不能作为完整交付物。`;
   }
+  if (!hasAcceptableMarkdownDocumentShape(trimmed)) {
+    return `${integrityKind}: Provider 返回的 Markdown 结构异常，不能作为完整交付物。`;
+  }
   return `${integrityKind}: ${describeProviderOutputIntegrity(integrityKind)}`;
+}
+
+function normalizeProviderMarkdownDocumentText(text: string): string {
+  let normalized = text
+    .replace(/\r\n?/g, '\n')
+    .replace(PROVIDER_COPY_CONTROL_RE, '\n\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+
+  normalized = promoteInlineMetadataTitle(normalized);
+  normalized = insertMarkdownDocumentBreaks(normalized);
+  normalized = normalizeMarkdownMetadataLines(normalized);
+  normalized = normalizeNumberedHeadingLines(normalized);
+  return squeezeMarkdownBlankLines(normalized).trim();
+}
+
+function promoteInlineMetadataTitle(text: string): string {
+  if (/^#{1,6}\s+\S/.test(text)) return text;
+  const match = /(文档编号|版本|状态|关联需求|目标路径)\s*[:：]/.exec(text);
+  if (!match || match.index <= 3 || match.index > 160) return text;
+  const title = text.slice(0, match.index).trim();
+  const rest = text.slice(match.index).trim();
+  if (!title || !rest) return text;
+  return `# ${title}\n\n${rest}`;
+}
+
+function insertMarkdownDocumentBreaks(text: string): string {
+  let normalized = text;
+  normalized = normalized.replace(MARKDOWN_METADATA_LABEL_RE, (_match, label: string, offset: number, source: string) => {
+    const prefix = offset > 0 && source[offset - 1] !== '\n' ? '\n' : '';
+    return `${prefix}${label}：`;
+  });
+
+  normalized = normalized.replace(
+    /(\.(?:md|markdown))(\d{1,2}(?:\.\d{1,2}){0,4}\.?)\s*(?=\S)/gi,
+    (match, ext: string, number: string, offset: number, source: string) => {
+      const after = source.slice(offset + match.length, offset + match.length + 16);
+      if (!MARKDOWN_NUMBERED_HEADING_WORD_RE.test(after)) return match;
+      return `${ext}\n\n${number} `;
+    },
+  );
+
+  normalized = normalized.replace(
+    /([^\nA-Za-z0-9_])(\d{1,2}(?:\.\d{1,2}){0,4}\.?)(?!\d)\s*(?=\S)/g,
+    (match, before: string, number: string, offset: number, source: string) => {
+      const after = source.slice(offset + match.length, offset + match.length + 16);
+      if (!MARKDOWN_NUMBERED_HEADING_WORD_RE.test(after)) return match;
+      return `${before}\n\n${number} `;
+    },
+  );
+
+  return normalized;
+}
+
+function normalizeMarkdownMetadataLines(text: string): string {
+  return text.split('\n').map(line => {
+    const match = line.trim().match(/^(文档编号|版本|状态|关联需求|目标路径)\s*[:：]\s*(.+)$/);
+    if (!match) return line;
+    return `- **${match[1]}**：${match[2].trim()}`;
+  }).join('\n');
+}
+
+function normalizeNumberedHeadingLines(text: string): string {
+  return text.split('\n').map(line => {
+    const trimmed = line.trim();
+    const match = trimmed.match(/^(\d{1,2}(?:\.\d{1,2}){0,4}\.?)\s+(.+)$/);
+    if (!match || !MARKDOWN_NUMBERED_HEADING_WORD_RE.test(match[2])) return line;
+    const depth = match[1].replace(/\.$/, '').split('.').filter(Boolean).length;
+    const level = Math.min(6, Math.max(2, depth + 1));
+    return `${'#'.repeat(level)} ${match[1]} ${match[2].trim()}`;
+  }).join('\n');
+}
+
+function squeezeMarkdownBlankLines(text: string): string {
+  return text
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n');
+}
+
+function hasAcceptableMarkdownDocumentShape(text: string): boolean {
+  if (hasProviderCopyControlArtifact(text)) return false;
+  const lines = text.split(/\n/);
+  const nonEmpty = lines.map(line => line.trim()).filter(Boolean);
+  if (!nonEmpty.length) return false;
+  if (nonEmpty[0].length > MAX_MARKDOWN_FIRST_LINE_CHARS) return false;
+  if (lines.some(line => line.length > MAX_MARKDOWN_LINE_CHARS)) return false;
+  return nonEmpty.some(line => /^#{1,6}\s+\S/.test(line));
+}
+
+function hasProviderCopyControlArtifact(text: string): boolean {
+  PROVIDER_COPY_CONTROL_RE.lastIndex = 0;
+  return PROVIDER_COPY_CONTROL_RE.test(text) || /复制下载/.test(text);
 }
 
 function describeEvidenceSummary(evidence: EvidenceBundle): string {

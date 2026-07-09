@@ -8,6 +8,8 @@ import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import Module from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -26,6 +28,9 @@ class Uri {
   }
   static file(fsPath) {
     return new Uri(fsPath);
+  }
+  static joinPath(base, ...segments) {
+    return new Uri(path.join(base.fsPath, ...segments));
   }
 }
 
@@ -175,6 +180,163 @@ test('ToolLoop terminal guard: raw ReAct Action protocol text never reaches shel
   assert.equal(result.workToolCallsMade, true);
   assert.deepEqual(result.terminalCommands ?? [], []);
   assert.match(result.feedbackForAI, /工具协议文本/);
+});
+
+test('ToolLoop replace_in_file edits existing workspace file with write evidence', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-replace-tool-'));
+  try {
+    const srcDir = path.join(workspaceRoot, 'src');
+    mkdirSync(srcDir, { recursive: true });
+    const filePath = path.join(srcDir, 'worker.cpp');
+    writeFileSync(filePath, 'int threshold = 7000;\nint keep = 1;\n', 'utf8');
+    const applied = [];
+    const result = await executeFakeToolsForLoop(
+      [
+        {
+          name: 'replace_in_file',
+          input: {
+            path: 'src/worker.cpp',
+            old_str: 'int threshold = 7000;',
+            new_str: 'int threshold = 6800;',
+          },
+        },
+      ],
+      {
+        onAppliedChange: async (change) => {
+          applied.push(change);
+        },
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.equal(result.toolCallsMade, true);
+    assert.equal(result.workToolCallsMade, true);
+    assert.equal(readFileSync(filePath, 'utf8'), 'int threshold = 6800;\nint keep = 1;\n');
+    assert.equal(applied.length, 1);
+    assert.equal(result.writtenFiles?.[0].path, filePath);
+    assert.equal(result.readFiles?.[0], filePath);
+    assert.match(result.feedbackForAI, /replace_in_file: src\/worker\.cpp.*已写入/s);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ToolLoop replace_in_file fails clearly when old_str is stale', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-replace-stale-'));
+  try {
+    const srcDir = path.join(workspaceRoot, 'src');
+    mkdirSync(srcDir, { recursive: true });
+    const filePath = path.join(srcDir, 'worker.cpp');
+    writeFileSync(filePath, 'int threshold = 7000;\n', 'utf8');
+    let applied = false;
+    const result = await executeFakeToolsForLoop(
+      [
+        {
+          name: 'replace_in_file',
+          input: {
+            path: 'src/worker.cpp',
+            old_str: 'int threshold = 9000;',
+            new_str: 'int threshold = 6800;',
+          },
+        },
+      ],
+      {
+        onAppliedChange: async () => {
+          applied = true;
+        },
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.equal(applied, false);
+    assert.equal(readFileSync(filePath, 'utf8'), 'int threshold = 7000;\n');
+    assert.equal(result.writtenFiles, undefined);
+    assert.equal(result.toolFailures?.[0]?.tool, 'replace_in_file');
+    assert.equal(result.toolFailures?.[0]?.kind, 'replace');
+    assert.match(result.feedbackForAI, /old_str 未在当前文件中找到/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ToolLoop records blocking source sanity failures as structured tool failures', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-source-sanity-failure-'));
+  try {
+    const result = await executeFakeToolsForLoop(
+      [
+        {
+          name: 'create_file',
+          input: {
+            path: 'src/broken.cpp',
+            content: 'int main() { const char* s = "unterminated; }\n',
+          },
+        },
+      ],
+      {
+        onAppliedChange: async () => {},
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.equal(result.writtenFiles, undefined);
+    assert.equal(result.toolFailures?.[0]?.tool, 'create_file');
+    assert.equal(result.toolFailures?.[0]?.kind, 'write');
+    assert.match(result.toolFailures?.[0]?.reason ?? '', /源码语法护栏/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ToolLoop repairs C++ string newline transport pollution before writing source files', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-source-transport-repair-'));
+  try {
+    const filePath = path.join(workspaceRoot, 'src', 'main.cpp');
+    const applied = [];
+    const result = await executeFakeToolsForLoop(
+      [
+        {
+          name: 'create_file',
+          input: {
+            path: 'src/main.cpp',
+            content: [
+              '#include <cstdio>',
+              'int main() {',
+              '  printf("ready',
+              '");',
+              '}',
+            ].join('\n'),
+          },
+        },
+      ],
+      {
+        onAppliedChange: async (change) => {
+          applied.push(change);
+        },
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.equal(result.toolCallsMade, true);
+    assert.equal(result.workToolCallsMade, true);
+    assert.equal(applied.length, 1);
+    assert.equal(result.writtenFiles?.[0].path, filePath);
+    assert.match(readFileSync(filePath, 'utf8'), /printf\("ready\\n"\);/);
+    assert.match(result.feedbackForAI, /源码工具协议转义污染/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
 });
 
 console.log('\nAgent tool-loop terminal guard tests passed.\n');

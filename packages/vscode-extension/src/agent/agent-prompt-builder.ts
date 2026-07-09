@@ -101,6 +101,12 @@ ${includeTerminal ? `执行终端命令（输出将在下轮可见，可用于�
 
 ${includeWorkspaceMutationTools ? `创建目录（含父级目录，相对于工作区根或绝对路径）：
 [TOOL:create_directory {"path":"src/utils/helpers"}]
+
+创建或完整覆写文件（提供目标路径和完整文件内容）：
+[TOOL:create_file {"path":"src/foo.ts","content":"文件全部内容"}]
+
+精确替换既有文件片段（修改正式工程既有文件时优先使用；old_str 必须来自 read_file 读取到的原文）：
+[TOOL:replace_in_file {"path":"src/foo.ts","old_str":"原始文本","new_str":"替换后文本"}]
 ` : ''}
 
 获取网页内容（用于查阅文档、API 参考、错误信息等；仅支持 http/https）：

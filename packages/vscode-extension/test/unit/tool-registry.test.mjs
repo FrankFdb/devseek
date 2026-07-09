@@ -36,6 +36,8 @@ test('ToolRegistry: identifies workspace file write tools', () => {
   assert.equal(isFileWriteTool('create_file'), true);
   assert.equal(isFileWriteTool('write_file'), true);
   assert.equal(isFileWriteTool('replace_file'), true);
+  assert.equal(isFileWriteTool('replace_in_file'), true);
+  assert.equal(isFileWriteTool('search_replace'), true);
   assert.equal(isFileWriteTool('run_terminal'), false);
 });
 
@@ -44,6 +46,7 @@ test('ToolRegistry: exposes mutating metadata for write tools', () => {
   assert.equal(AGENT_TOOL_DEFINITIONS.create_file.kind, 'edit');
   assert.equal(AGENT_TOOL_DEFINITIONS.create_file.risk, 'medium');
   assert.deepEqual(AGENT_TOOL_DEFINITIONS.create_file.schema.required, ['path', 'content']);
+  assert.deepEqual(AGENT_TOOL_DEFINITIONS.replace_in_file.schema.required, ['path', 'old_str']);
   assert.equal(AGENT_TOOL_DEFINITIONS.run_terminal.requiresTerminal, true);
   assert.equal(AGENT_TOOL_DEFINITIONS.fetch_webpage.kind, 'network');
   assert.equal(AGENT_TOOL_DEFINITIONS.memory_write.kind, 'memory');
@@ -60,7 +63,11 @@ test('ToolRegistry: resolves registered and MCP tools', () => {
 
 test('ToolRegistry: normalizes model-specific tool aliases and argument aliases', () => {
   assert.equal(normalizeAgentToolName('search_content'), 'grep_search');
+  assert.equal(normalizeAgentToolName('edit_file'), 'replace_in_file');
+  assert.equal(normalizeAgentToolName('search_replace'), 'replace_in_file');
   assert.equal(isRegisteredToolName('search_content'), true);
+  assert.equal(isRegisteredToolName('edit_file'), true);
+  assert.equal(getToolDefinition('search_replace').name, 'replace_in_file');
   assert.equal(getToolDefinition('search_content').name, 'grep_search');
   assert.equal(listAgentToolNames(true).includes('search_content'), true);
   assert.deepEqual(
@@ -76,6 +83,21 @@ test('ToolRegistry: normalizes model-specific tool aliases and argument aliases'
       pattern: 'glutMouseFunc|mouse',
       path: '/tmp/project',
       includePattern: '.cpp,.h',
+    },
+  );
+  assert.deepEqual(
+    normalizeAgentToolInput('search_replace', {
+      filePath: '/tmp/project/main.cpp',
+      oldString: 'old text',
+      newString: 'new text',
+    }),
+    {
+      filePath: '/tmp/project/main.cpp',
+      oldString: 'old text',
+      newString: 'new text',
+      path: '/tmp/project/main.cpp',
+      old_str: 'old text',
+      new_str: 'new text',
     },
   );
   assert.deepEqual(

@@ -237,6 +237,49 @@ test('FakeToolParser: parses DeepSeek markdown Tool blocks with fenced JSON', ()
   assert.equal(stripToolCallBlocks(text), '我来分析新旧需求差异，并给出实现对策建议。首先让我查看相关文件。');
 });
 
+test('FakeToolParser: unwraps DeepSeek TOOL_CALL params envelope', () => {
+  const text = [
+    '我先规划任务。',
+    '<TOOL_CALL>{"id":"todo1","type":"manage_todo_list","params":{"todoList":[{"id":1,"title":"分析现有代码","status":"in-progress"}]}}</TOOL_CALL>',
+    '继续执行。',
+    '<TOOL_CALL>{"id":"read1","type":"read_file","params":{"path":"/tmp/project/src/main.cpp"}}</TOOL_CALL>',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+  assert.deepEqual(tools.map(tool => tool.name), ['manage_todo_list', 'read_file']);
+  assert.deepEqual(tools[0].input, {
+    todoList: [{ id: 1, title: '分析现有代码', status: 'in-progress' }],
+  });
+  assert.deepEqual(tools[1].input, { path: '/tmp/project/src/main.cpp' });
+  assert.equal(stripToolCallBlocks(text), '我先规划任务。\n继续执行。');
+});
+
+test('FakeToolParser: unwraps DeepSeek OpenAI function envelope with raw arguments object string', () => {
+  const text = [
+    '我从收集项目集成锚点开始。',
+    '<TOOL_CALL>{"id":"1","type":"function","function":{"name":"manage_todo_list","arguments":"{"todoList":[{"id":1,"title":"分析既有项目架构","status":"in-progress"}]}"}}</TOOL_CALL>',
+    '<TOOL_CALL>{"id":"2","type":"function","function":{"name":"list_dir","arguments":"{"path":"/home/ff/uav/tars/huida_uav/src/oam/src/license"}"}}</TOOL_CALL>',
+    '<TOOL_CALL>{"id":"3","type":"function","function":{"name":"grep_search","arguments":"{"pattern":"HDStringPublisher|Publisher|subscribe","path":"/home/ff/uav/tars/huida_uav/src/oam/src/license","isRegexp":true}"}}</TOOL_CALL>',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.deepEqual(tools.map(tool => tool.name), ['manage_todo_list', 'list_dir', 'grep_search']);
+  assert.equal(tools[0].input.todoList[0].title, '分析既有项目架构');
+  assert.equal(tools[1].input.path, '/home/ff/uav/tars/huida_uav/src/oam/src/license');
+  assert.equal(tools[2].input.isRegexp, true);
+  assert.equal(stripToolCallBlocks(text), '我从收集项目集成锚点开始。');
+});
+
+test('FakeToolParser: unwraps valid OpenAI function envelope JSON inside TOOL_CALL block', () => {
+  const text = '<TOOL_CALL>{"id":"read1","type":"function","function":{"name":"read_file","arguments":"{\\"path\\":\\"/tmp/project/README.md\\"}"}}</TOOL_CALL>';
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'read_file');
+  assert.deepEqual(tools[0].input, { path: '/tmp/project/README.md' });
+});
+
 test('FakeToolParser: parses bash Calling JSON command payload as shell command', () => {
   const text = [
     '我先查找这个文件。',

@@ -22,7 +22,7 @@ import { ReviewLedger, type ReviewLedgerSnapshot } from './workspace/review-ledg
 import { ValidationService, type AutoValidationResult } from './workspace/validation-service';
 import { QualityGateService, type QualityGateDecision } from './app/quality-gate-service';
 import { shouldBlockProjectInstructionFileWrite } from './workspace/instruction-file-safety';
-import { findGeneratedSourceSanityIssue } from './workspace/source-sanity';
+import { findGeneratedSourceSanityIssue, repairGeneratedSourceTransportEscapes } from './workspace/source-sanity';
 import { createWorkspaceFilePathTokenRegExp } from './workspace/path-patterns';
 
 export interface ApplyWorkflowStatus {
@@ -148,7 +148,7 @@ export function looksLikeTargetScopedSourceResponse(
 }
 
 async function applyPreparedChanges(
-  prepared: PreparedChange[],
+  preparedInput: PreparedChange[],
   reporter?: ApplyWorkflowReporter,
   autoApply = false,
   targetPathForMsg?: string,
@@ -158,6 +158,7 @@ async function applyPreparedChanges(
   options?: ApplyGeneratedArtifactsOptions,
   nonTargetCandidatePaths: string[] = [],
 ): Promise<ApplyWorkflowResult> {
+  const prepared = normalizePreparedSourceTransportEscapes(preparedInput);
   const root = getWorkspaceRoot(requestPrompt, preferredAbsolutePaths);
   const pathContext = root ? buildWorkspacePathContext(root, requestPrompt, preferredAbsolutePaths) : undefined;
   const rollbackOnValidationFailure = options?.rollbackOnValidationFailure === true;
@@ -335,7 +336,10 @@ async function applyPreparedChanges(
           absPath: change.targetUri.fsPath,
           existed: change.exists,
           content: change.oldContent,
-        }, { validateSourceSanity: true });
+        }, {
+          validateSourceSanity: true,
+          repairSourceTransportEscapes: true,
+        });
       }
     },
   );
@@ -455,6 +459,17 @@ async function applyPreparedChanges(
     qualityGate,
     review: ledger.snapshot(),
   };
+}
+
+function normalizePreparedSourceTransportEscapes(prepared: PreparedChange[]): PreparedChange[] {
+  return prepared.map((change) => {
+    const repaired = repairGeneratedSourceTransportEscapes(change.relPath, change.newContent);
+    if (!repaired.repaired) return change;
+    return {
+      ...change,
+      newContent: repaired.content,
+    };
+  });
 }
 
 function createChangeSetFromPrepared(prepared: PreparedChange[]) {
