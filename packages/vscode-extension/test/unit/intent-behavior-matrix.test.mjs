@@ -252,6 +252,19 @@ const routingCases = [
     toolActions: { read: 'allow', plan: 'allow', edit: 'allow', terminal: 'requireConfirm' },
   },
   {
+    id: 'EDIT-000C',
+    title: 'formal project delivery with uncovered-risk reporting stays in edit workflow',
+    prompt: [
+      '请在既有主控项目中调查通讯链路、实现新增代码和验证脚本，并修复到通过。',
+      '所有新增文档和代码放入 /home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607110603/docs 和 src 目录。',
+      '不要修改正式源码目录里的既有文件；正式集成改动写入修改清单。',
+      '最终返回生成文件路径、修改摘要、验证证据和未覆盖风险，并说明测试覆盖率。',
+    ].join('\n'),
+    expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: EDIT_TOOLS },
+    signal: 'deliverable-write-request',
+    toolActions: { read: 'allow', plan: 'allow', edit: 'allow', terminal: 'requireConfirm' },
+  },
+  {
     id: 'EDIT-001',
     title: 'create and run C++ hello world is edit workflow',
     prompt: '创建一个 hello world C++ 程序并运行',

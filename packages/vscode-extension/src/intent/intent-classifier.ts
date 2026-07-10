@@ -17,7 +17,9 @@ const GREETING_PREFIX_RE = /^(?:hi|hello|hey|你好|您好|嗨|哈喽)[,，\s]+/
 const EDIT_RE = /(修复|修正|修改|改一下|改成|改为|改用|换成|换为|调整为|实现|编写|写一个|写个|创建|新建|生成|新增|添加|补全|完善|重构|改造|替换|替换为|优化|升级|接入|封装|拆分|fix|modify|change|implement|create|write|add|update|refactor|generate)/i;
 
 const DESTRUCTIVE_RE = /(删除|清空|覆盖|重置|移除|删掉|干掉|drop|delete|remove|reset|overwrite|truncate)/gi;
-const DESTRUCTIVE_NEGATION_PREFIX_RE = /(?:不|不要|不能|不可|禁止|避免|不得|请勿|无需|不需要|不允许|do\s+not|don't|must\s+not|without|avoid).{0,16}$/i;
+const DESTRUCTIVE_NEGATION_PREFIX_RE = /(?:不|未|尚未|没有|不要|不能|不可|禁止|避免|不得|请勿|无需|无须|不需要|不允许|do\s+not|don't|must\s+not|without|avoid).{0,16}$/i;
+const NON_DESTRUCTIVE_COVERAGE_PREFIX_RE = /(?:测试|代码|分支|条件|路径|需求|场景|功能|风险|验证|证据|用例|范围|协议|接口|平台|环境).{0,12}$/i;
+const NON_DESTRUCTIVE_COVERAGE_SUFFIX_RE = /^(?:率|范围|情况|不足|缺口|风险|场景|证据|用例|分析|检查)/i;
 
 const RUN_RE = /(运行|执行|编译|构建|测试|跑一下|验证|启动|调试|run|execute|compile|build|test|debug|start)/i;
 
@@ -268,7 +270,16 @@ function hasDestructiveIntent(text: string): boolean {
   let match: RegExpExecArray | null;
   while ((match = DESTRUCTIVE_RE.exec(text)) !== null) {
     const prefix = text.slice(Math.max(0, match.index - 24), match.index);
-    if (!DESTRUCTIVE_NEGATION_PREFIX_RE.test(prefix)) return true;
+    if (DESTRUCTIVE_NEGATION_PREFIX_RE.test(prefix)) continue;
+    if (match[0] === '覆盖' && isNonDestructiveCoverageUsage(text, match.index, match[0].length)) continue;
+    return true;
   }
   return false;
+}
+
+function isNonDestructiveCoverageUsage(text: string, index: number, length: number): boolean {
+  const prefix = text.slice(Math.max(0, index - 24), index);
+  const suffix = text.slice(index + length, index + length + 24);
+  return NON_DESTRUCTIVE_COVERAGE_PREFIX_RE.test(prefix)
+    || NON_DESTRUCTIVE_COVERAGE_SUFFIX_RE.test(suffix);
 }

@@ -184,6 +184,25 @@ test('decideChatIntent: destructive request requires confirmation', () => {
   assert.equal(result.requiresConfirmation, true);
 });
 
+test('decideChatIntent: uncovered risks and test coverage remain normal edit language', () => {
+  const result = decideChatIntent([
+    '请实现新增代码和验证脚本并修复到测试通过。',
+    '最终返回修改摘要、验证证据和未覆盖风险，并说明代码覆盖率不足的部分。',
+  ].join('\n'));
+
+  assert.equal(result.kind, 'code-change');
+  assert.equal(result.mode, 'edit');
+  assert.equal(result.requiresConfirmation, false);
+});
+
+test('decideChatIntent: explicit overwrite of an existing file remains destructive', () => {
+  const result = decideChatIntent('覆盖已有配置文件 config.json，并重置缓存');
+
+  assert.equal(result.kind, 'code-change');
+  assert.equal(result.mode, 'destructive');
+  assert.equal(result.requiresConfirmation, true);
+});
+
 test('decideChatIntent: returns required fields', () => {
   const result = decideChatIntent('修改文件main.cpp');
   assert.ok(typeof result.kind === 'string');
