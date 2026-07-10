@@ -36,6 +36,34 @@ function findJsonObjectEndInText(text, start) {
   return -1;
 }
 
+function findJsonArrayEndInText(text, start) {
+  var depth = 0;
+  var inStr = false;
+  for (var j = start; j < text.length; j++) {
+    var ch = text[j];
+    if (inStr) {
+      if (ch === '\\') j++;
+      else if (ch === '"') inStr = false;
+    } else {
+      if (ch === '"') inStr = true;
+      else if (ch === '[') depth++;
+      else if (ch === ']') {
+        depth--;
+        if (depth === 0) return j;
+      }
+    }
+  }
+  return -1;
+}
+
+function findNextWebviewJsonStart(text, startAt) {
+  var objectStart = text.indexOf('{', startAt);
+  var arrayStart = text.indexOf('[', startAt);
+  if (objectStart < 0) return arrayStart;
+  if (arrayStart < 0) return objectStart;
+  return Math.min(objectStart, arrayStart);
+}
+
 var WEBVIEW_TOOL_NAMES = Object.create(null);
 (function initWebviewToolNames() {
   var manifest = (typeof globalThis !== 'undefined' && globalThis.DevSeekAgentToolManifest)
@@ -450,6 +478,67 @@ function jsonObjectToWebviewTool(obj) {
   return name;
 }
 
+var WEBVIEW_IMPLICIT_FILE_PATH_KEYS = {
+  path: true, filePath: true, filepath: true, filename: true, targetPath: true,
+};
+var WEBVIEW_IMPLICIT_FILE_CONTENT_KEYS = {
+  content: true, contents: true, text: true, body: true, fileContent: true,
+  file_content: true, source: true, code: true, newContent: true, new_content: true,
+};
+var WEBVIEW_IMPLICIT_FILE_WRITE_KEYS = Object.assign(
+  {},
+  WEBVIEW_IMPLICIT_FILE_PATH_KEYS,
+  WEBVIEW_IMPLICIT_FILE_CONTENT_KEYS,
+);
+var WEBVIEW_IMPLICIT_TERMINAL_KEYS = {
+  command: true, cmd: true, workdir: true, cwd: true, maxOutputLines: true,
+  timeout: true, timeoutMs: true, is_background: true, requires_approval: true,
+};
+var WEBVIEW_IMPLICIT_READ_KEYS = {
+  path: true, filePath: true, filepath: true, recursive: true,
+  maxDepth: true, startLine: true, endLine: true,
+};
+
+function firstWebviewStringField(obj, keys) {
+  for (var key in keys) {
+    if (Object.prototype.hasOwnProperty.call(keys, key) && typeof obj[key] === 'string') {
+      return obj[key];
+    }
+  }
+  return undefined;
+}
+
+function webviewObjectKeysAllowed(obj, allowed) {
+  return Object.keys(obj).every(function(key) { return !!allowed[key]; });
+}
+
+function looksLikeWebviewToolPath(value) {
+  return /^(?:\/|~\/|\.\.?\/|[A-Za-z]:[\\/])/.test(String(value || '').trim());
+}
+
+function jsonObjectToImplicitWebviewArrayTool(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
+
+  var command = firstWebviewStringField(obj, { command: true, cmd: true });
+  if (command && command.trim()) {
+    return webviewObjectKeysAllowed(obj, WEBVIEW_IMPLICIT_TERMINAL_KEYS) ? 'run_terminal' : null;
+  }
+
+  var path = firstWebviewStringField(obj, WEBVIEW_IMPLICIT_FILE_PATH_KEYS);
+  if (!looksLikeWebviewToolPath(path)) return null;
+  var content = firstWebviewStringField(obj, WEBVIEW_IMPLICIT_FILE_CONTENT_KEYS);
+  if (content !== undefined) {
+    return webviewObjectKeysAllowed(obj, WEBVIEW_IMPLICIT_FILE_WRITE_KEYS) ? 'write_file' : null;
+  }
+  return webviewObjectKeysAllowed(obj, WEBVIEW_IMPLICIT_READ_KEYS) ? 'read_file' : null;
+}
+
+function jsonArrayIsWebviewToolPayload(value) {
+  return Array.isArray(value) && value.length > 0 && value.every(function(item) {
+    return !!(jsonObjectToWebviewTool(item) || jsonObjectToImplicitWebviewArrayTool(item));
+  });
+}
+
 function stripJsonToolPayloadsFromText(text) {
   if (!text) return '';
   var result = text.replace(/```(?:json|JSON)?\s*\n([\s\S]*?)```/g, function(full, inner) {
@@ -458,7 +547,7 @@ function stripJsonToolPayloadsFromText(text) {
     try {
       var parsed = JSON.parse(trimmed);
       if (Array.isArray(parsed)) {
-        return parsed.some(function(item) { return jsonObjectToWebviewTool(item); }) ? '' : full;
+        return jsonArrayIsWebviewToolPayload(parsed) ? '' : full;
       }
       return jsonObjectToWebviewTool(parsed) ? '' : full;
     } catch (_) {
@@ -469,23 +558,28 @@ function stripJsonToolPayloadsFromText(text) {
   var out = '';
   var i = 0;
   while (i < result.length) {
-    var start = result.indexOf('{', i);
+    var start = findNextWebviewJsonStart(result, i);
     if (start < 0) { out += result.slice(i); break; }
     out += result.slice(i, start);
-    var end = findJsonObjectEndInText(result, start);
+    var isArray = result[start] === '[';
+    var end = isArray
+      ? findJsonArrayEndInText(result, start)
+      : findJsonObjectEndInText(result, start);
     if (end < 0) {
       var tail = result.slice(start);
-      if (/"tool"\s*:\s*"[A-Za-z_]\w*"/.test(tail)) break;
+      if (!isArray && /"tool"\s*:\s*"[A-Za-z_]\w*"/.test(tail)) break;
       out += tail;
       break;
     }
     var candidate = result.slice(start, end + 1);
     var shouldStrip = false;
     try {
-      var obj = JSON.parse(candidate);
-      shouldStrip = !!jsonObjectToWebviewTool(obj);
+      var parsed = JSON.parse(candidate);
+      shouldStrip = isArray
+        ? jsonArrayIsWebviewToolPayload(parsed)
+        : !!jsonObjectToWebviewTool(parsed);
     } catch (_) {
-      shouldStrip = /"tool"\s*:\s*"[A-Za-z_]\w*"/.test(candidate);
+      shouldStrip = !isArray && /"tool"\s*:\s*"[A-Za-z_]\w*"/.test(candidate);
     }
     if (!shouldStrip) out += candidate;
     i = end + 1;

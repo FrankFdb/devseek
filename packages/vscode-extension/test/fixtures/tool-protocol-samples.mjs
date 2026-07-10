@@ -127,6 +127,45 @@ export const TOOL_PROTOCOL_SAMPLES = [
     expectedToolNames: ['list_dir', 'read_file'],
   },
   {
+    id: 'deepseek-nameless-artifact-array',
+    text: [
+      'I will create the implementation files.',
+      '```',
+      '[',
+      '  {"path":"/tmp/project/src/worker.hpp","content":"#pragma once\\n"},',
+      '  {"path":"/tmp/project/src/worker.cpp","content":"#include \\"worker.hpp\\"\\n"}',
+      ']',
+      '```',
+    ].join('\n'),
+    expectedVisible: 'I will create the implementation files.',
+    expectedToolNames: ['write_file', 'write_file'],
+  },
+  {
+    id: 'deepseek-nameless-read-command-array',
+    text: [
+      'I will inspect and validate the implementation.',
+      '```json',
+      '[',
+      '  {"path":"/tmp/project/src/worker.cpp"},',
+      '  {"command":"g++ -std=c++17 -c worker.cpp","workdir":"/tmp/project/src","timeout":30000}',
+      ']',
+      '```',
+    ].join('\n'),
+    expectedVisible: 'I will inspect and validate the implementation.',
+    expectedToolNames: ['read_file', 'run_terminal'],
+  },
+  {
+    id: 'deepseek-unfenced-nameless-artifact-array',
+    text: [
+      'I will write the validation hook.',
+      '[',
+      '  {"path":"/tmp/project/src/verify.sh","content":"#!/usr/bin/env bash\\nset -e\\n"}',
+      ']',
+    ].join('\n'),
+    expectedVisible: 'I will write the validation hook.',
+    expectedToolNames: ['write_file'],
+  },
+  {
     id: 'react-glued-action-input',
     text: [
       'I need to read the file first.',

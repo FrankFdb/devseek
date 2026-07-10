@@ -155,6 +155,57 @@ test('run log replay accepts deterministically recoverable terminal tool blocks'
   }
 });
 
+test('run log replay detects an unexecuted DeepSeek nameless artifact array', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-11T06:40:00.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'nameless-artifact-not-executed',
+      data: {
+        name: 'extension.response.raw',
+        content: [
+          '现在创建核心代码文件。',
+          '```',
+          '[',
+          '  {"path":"/tmp/app/worker.hpp","content":"#pragma once\\n"},',
+          '  {"path":"/tmp/app/worker.cpp","content":"#include \\"worker.hpp\\"\\n"}',
+          ']',
+          '```',
+        ].join('\n'),
+      },
+    },
+    {
+      ts: '2026-07-11T06:40:01.000Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-complete',
+      runId: 'nameless-artifact-not-executed',
+      data: {
+        taskComplete: false,
+        toolCallsMade: false,
+        feedbackLength: 0,
+        readFileCount: 0,
+        terminalCommandCount: 0,
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const issue = report.issues.find(item => item.kind === 'provider-tool-request-not-executed');
+
+    assert.equal(report.providerResponses, 1);
+    assert.equal(issue?.severity, 'error');
+    assert.match(issue?.message ?? '', /2 个可解析工具调用/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay detects unrecoverable bracket tool blocks', () => {
   const { dir, logPath } = writeLog([
     {

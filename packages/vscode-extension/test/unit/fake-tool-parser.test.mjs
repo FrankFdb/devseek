@@ -749,6 +749,80 @@ test('FakeToolParser: parses DeepSeek raw JSON arrays without explicit type fiel
   assert.equal(containsFakeToolCallProtocol(text), true);
 });
 
+test('FakeToolParser: normalizes DeepSeek nameless file artifact arrays as write tools', () => {
+  const text = [
+    '现在创建核心代码文件。',
+    '```',
+    '[',
+    '  {',
+    '    "path":"/tmp/project/src/warranty_core_worker.hpp",',
+    '    "content":"#pragma once\\nclass WarrantyCoreWorker {};\\n"',
+    '  },',
+    '  {',
+    '    "path":"/tmp/project/src/warranty_core_worker.cpp",',
+    '    "content":"#include \\"warranty_core_worker.hpp\\"\\n"',
+    '  }',
+    ']',
+    '```',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.deepEqual(tools.map(tool => tool.name), ['write_file', 'write_file']);
+  assert.equal(tools[0].input.path, '/tmp/project/src/warranty_core_worker.hpp');
+  assert.match(tools[0].input.content, /WarrantyCoreWorker/);
+  assert.equal(tools[1].input.path, '/tmp/project/src/warranty_core_worker.cpp');
+  assert.equal(findFirstToolCallStart(text), text.indexOf('['));
+  assert.equal(stripToolCallBlocks(text), '现在创建核心代码文件。');
+  assert.equal(containsFakeToolCallProtocol(text), true);
+});
+
+test('FakeToolParser: normalizes DeepSeek nameless command arrays with safe metadata', () => {
+  const text = [
+    '```json',
+    '[',
+    '  {',
+    '    "command":"g++ -std=c++17 -c warranty_core_worker.cpp",',
+    '    "workdir":"/tmp/project/src",',
+    '    "timeout":30000',
+    '  }',
+    ']',
+    '```',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'run_terminal');
+  assert.equal(tools[0].input.command, 'g++ -std=c++17 -c warranty_core_worker.cpp');
+  assert.equal(tools[0].input.workdir, '/tmp/project/src');
+  assert.equal(stripToolCallBlocks(text), '');
+});
+
+test('FakeToolParser: rejects ambiguous nameless JSON artifacts instead of auto-writing', () => {
+  const interfaceExample = [
+    '```json',
+    '[{"request":{"topic":"warranty/status"},"response":{"accepted":true}}]',
+    '```',
+  ].join('\n');
+  const artifactReport = [
+    '```json',
+    '[{"path":"/tmp/project/report.md","content":"draft","description":"example only"}]',
+    '```',
+  ].join('\n');
+  const mixedEnvelope = [
+    '```json',
+    '[{"path":"/tmp/project/real.cpp","content":"int value;"},{"note":"example"}]',
+    '```',
+  ].join('\n');
+
+  for (const text of [interfaceExample, artifactReport, mixedEnvelope]) {
+    assert.deepEqual(parseFakeToolCalls(text), []);
+    assert.equal(containsFakeToolCallProtocol(text), false);
+    assert.equal(stripToolCallBlocks(text), text);
+  }
+});
+
 test('FakeToolParser: strips fenced DeepSeek JSON tool arrays from visible text', () => {
   const text = [
     '让我先查看当前的代码结构：',

@@ -1522,6 +1522,24 @@ test('webview sanitizer: shared protocol fixture hides every complete dialect', 
   }
 });
 
+test('webview sanitizer: keeps ambiguous nameless artifact JSON visible', () => {
+  const fenced = [
+    '# Artifact report',
+    '```json',
+    '[{"path":"/tmp/app/example.cpp","content":"int example;","description":"documentation example"}]',
+    '```',
+  ].join('\n');
+  const unfenced = [
+    '# Artifact report',
+    '[{"path":"/tmp/app/example.cpp","content":"int example;","description":"documentation example"}]',
+  ].join('\n');
+
+  for (const text of [fenced, unfenced]) {
+    assert.equal(sanitizeRuntimeVisibleDeltaForMode(text, true), text);
+    assert.equal(sanitizeRuntimeVisibleDeltaForMode(text, false), text);
+  }
+});
+
 test('webview sanitizer: shared protocol fixture hides incomplete streaming tails', () => {
   for (const sample of TOOL_PROTOCOL_STREAMING_TAIL_SAMPLES) {
     assert.equal(

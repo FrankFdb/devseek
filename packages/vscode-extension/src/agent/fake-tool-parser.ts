@@ -28,9 +28,17 @@ const LOOSE_FILE_WRITE_CONTENT_KEYS = [
   'content', 'contents', 'text', 'body',
   'fileContent', 'file_content', 'source', 'code', 'newContent', 'new_content',
 ];
+const IMPLICIT_FILE_WRITE_KEYS = new Set([
+  ...LOOSE_FILE_WRITE_PATH_KEYS,
+  ...LOOSE_FILE_WRITE_CONTENT_KEYS,
+]);
 const LOOSE_TERMINAL_TRAILING_KEYS = new Set([
   'workdir', 'cwd', 'maxOutputLines', 'timeout', 'timeoutMs',
   'is_background', 'requires_approval',
+]);
+const IMPLICIT_TERMINAL_KEYS = new Set([
+  'command', 'cmd',
+  ...LOOSE_TERMINAL_TRAILING_KEYS,
 ]);
 
 const DSML_BAR_PATTERN = '[|｜]{1,2}';
@@ -1136,34 +1144,41 @@ function jsonArrayToFakeTools(value: unknown): FakeTool[] {
 
 function jsonValueContainsToolPayload(value: unknown): boolean {
   if (Array.isArray(value)) {
-    return value.some(item => item && typeof item === 'object' && !Array.isArray(item)
-      && (jsonObjectToFakeTool(item as Record<string, unknown>)
-        || jsonObjectToImplicitArrayFakeTool(item as Record<string, unknown>)));
+    return jsonArrayToFakeTools(value).length > 0;
   }
   return Boolean(value && typeof value === 'object' && !Array.isArray(value)
     && jsonObjectToFakeTool(value as Record<string, unknown>));
 }
 
+function firstStringObjectField(
+  obj: Record<string, unknown>,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    if (typeof obj[key] === 'string') return obj[key] as string;
+  }
+  return undefined;
+}
+
 function jsonObjectToImplicitArrayFakeTool(obj: Record<string, unknown>): FakeTool | null {
-  const command = typeof obj.command === 'string'
-    ? obj.command
-    : typeof obj.cmd === 'string'
-      ? obj.cmd
-      : '';
-  if (command.trim()) {
-    return { name: 'run_terminal', input: { command: command.trim() } };
+  const objectKeys = Object.keys(obj);
+  const command = firstStringObjectField(obj, ['command', 'cmd']);
+  if (command?.trim()) {
+    if (!objectKeys.every(key => IMPLICIT_TERMINAL_KEYS.has(key))) return null;
+    const input: Record<string, unknown> = { command: command.trim() };
+    const workdir = firstStringObjectField(obj, ['workdir', 'cwd']);
+    if (workdir?.trim()) input.workdir = workdir.trim();
+    return { name: 'run_terminal', input };
   }
 
-  const rawPath = typeof obj.path === 'string'
-    ? obj.path
-    : typeof obj.filePath === 'string'
-      ? obj.filePath
-      : typeof obj.filepath === 'string'
-        ? obj.filepath
-        : '';
-  const pathValue = rawPath.trim();
+  const pathValue = (firstStringObjectField(obj, LOOSE_FILE_WRITE_PATH_KEYS) ?? '').trim();
   if (!pathValue || !looksLikeToolPathValue(pathValue)) return null;
-  const objectKeys = Object.keys(obj).filter(key => obj[key] !== undefined && obj[key] !== null);
+  const content = firstStringObjectField(obj, LOOSE_FILE_WRITE_CONTENT_KEYS);
+  if (content !== undefined) {
+    if (!objectKeys.every(key => IMPLICIT_FILE_WRITE_KEYS.has(key))) return null;
+    return { name: 'write_file', input: { path: pathValue, content } };
+  }
+
   const harmlessKeys = new Set(['path', 'filePath', 'filepath', 'recursive', 'maxDepth', 'startLine', 'endLine']);
   if (!objectKeys.every(key => harmlessKeys.has(key))) return null;
   const name = looksLikeDirectoryPathValue(pathValue) ? 'list_dir' : 'read_file';

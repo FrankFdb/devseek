@@ -36,6 +36,36 @@ test('provider output integrity: classifies executable tool calls before settlem
   assert.equal(result.toolCallCount, 1);
 });
 
+test('provider output integrity: classifies DeepSeek nameless artifact arrays as tool calls', () => {
+  const result = classifyProviderOutputIntegrity([
+    '现在创建核心代码文件。',
+    '```',
+    '[',
+    '  {"path":"/tmp/app/worker.hpp","content":"#pragma once\\n"},',
+    '  {"path":"/tmp/app/worker.cpp","content":"#include \\"worker.hpp\\"\\n"}',
+    ']',
+    '```',
+  ].join('\n'));
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 2);
+});
+
+test('provider output integrity: does not execute ambiguous artifact-report JSON', () => {
+  const result = classifyProviderOutputIntegrity([
+    '# Artifact report',
+    '```json',
+    '[{"path":"/tmp/app/example.cpp","content":"int example;","description":"documentation example"}]',
+    '```',
+    '结论：该数组只是文档中的输出格式示例，不是需要执行的工具请求。',
+  ].join('\n'));
+
+  assert.equal(result.kind, 'complete_answer');
+  assert.equal(result.okForSettlement, true);
+  assert.equal(result.toolCallCount, 0);
+});
+
 test('provider output integrity: classifies real generic TOOL envelopes before settlement', () => {
   const result = classifyProviderOutputIntegrity([
     '现在开始调查。',
