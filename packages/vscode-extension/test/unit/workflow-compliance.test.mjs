@@ -130,6 +130,16 @@ test('§1 Agent loop: repeated blocking tool failures are stateful', () => {
   assertContains(toolLoop, 'toolFailures?: ToolFailureEvidence[]', 'tool loop must return structured blocking failure evidence');
 });
 
+test('§1 Agent loop: QualityGate loop detection requires a no-progress state', () => {
+  const code = src('src/agent/agentic-loop.ts');
+  const stagnation = src('src/agent/quality-gate-stagnation.ts');
+  assertContains(code, 'QualityGateStagnationLedger', 'agent loop must delegate QualityGate loop detection');
+  assertContains(code, 'qualityGateStagnation.record(qualityGate, progressEpoch)', 'QualityGate settlement must include the current progress revision');
+  assertDoesNotContain(code, 'repeatedQualityGateFailures', 'agent loop must not count repeated summary text as failure by itself');
+  assertContains(stagnation, 'this.progressRevision !== progressRevision', 'new workspace progress must reset stale QualityGate repetition');
+  assertContains(stagnation, 'makeQualityGateFailureFingerprint', 'QualityGate repetition must include detailed risks, evidence, and actions');
+});
+
 test('§2/§3 Tool system: parseFakeToolCalls exists', () => {
   const code = src('src/agent/fake-tool-parser.ts');
   assertContains(code, 'parseFakeToolCalls', '§3 fake tool call parser');

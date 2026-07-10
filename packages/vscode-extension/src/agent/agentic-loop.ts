@@ -107,6 +107,7 @@ import {
   replaceLatestAssistantToolHistory,
 } from './agent-history-compaction';
 import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
+import { QualityGateStagnationLedger } from './quality-gate-stagnation';
 
 const AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
 const AGENTIC_TASK_PROMPT_CHAR_BUDGET = 34_000;
@@ -310,8 +311,6 @@ function normalizeAgenticAutoValidation(input: {
 /** Normal mode ≈ Copilot's toolCallLimit ~25; autopilot mode ≈ Copilot's ~200. */
 const AGENTIC_ROUNDS_NORMAL   = 25;
 const AGENTIC_ROUNDS_AUTOPILOT = 200;
-const AGENTIC_REPEATED_QUALITY_GATE_WARN_COUNT = 2;
-const AGENTIC_REPEATED_QUALITY_GATE_STOP_COUNT = 3;
 const AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE = 2;
 const AGENTIC_CONTEXT_GATHERING_EVIDENCE_LIMIT_BEFORE_WRITE = 6;
 const AGENTIC_CONTEXT_CONVERGENCE_MAX_WARNINGS = 2;
@@ -534,27 +533,12 @@ export async function runAgenticLoop(
   const announcedProseKeys = new Set<string>();
   const allReadEvidencePaths = new Set<string>();
   const toolFailureRecovery = new ToolFailureRecoveryLedger();
-  const repeatedQualityGateFailures = new Map<string, number>();
+  const qualityGateStagnation = new QualityGateStagnationLedger();
+  let progressEpoch = 0;
   const recordQualityGateFailureFeedback = (qualityGate: AgenticHistoryQualityGate | undefined): string => {
-    if (!qualityGate) return '';
-    if (qualityGate.status === 'pass') {
-      repeatedQualityGateFailures.clear();
-      return '';
-    }
-    const signature = `${qualityGate.status}:${qualityGate.summary}`;
-    const count = (repeatedQualityGateFailures.get(signature) || 0) + 1;
-    repeatedQualityGateFailures.set(signature, count);
-    if (count >= AGENTIC_REPEATED_QUALITY_GATE_STOP_COUNT && !failedReason) {
-      failedReason = `QualityGate 连续 ${count} 次未通过：${qualityGate.summary}`;
-    }
-    if (count >= AGENTIC_REPEATED_QUALITY_GATE_WARN_COUNT) {
-      return [
-        `【系统反馈】QualityGate 已连续 ${count} 次以同一原因未通过：${qualityGate.summary}`,
-        '不要继续做同样的无效修复；必须回到源项目证据、接口事实、代码集成点或验证入口，换策略补齐缺口。',
-        ...(qualityGate.requiredActions?.length ? [`requiredActions:\n${qualityGate.requiredActions.map(action => `- ${action}`).join('\n')}`] : []),
-      ].join('\n');
-    }
-    return '';
+    const observation = qualityGateStagnation.record(qualityGate, progressEpoch);
+    if (observation.stopReason && !failedReason) failedReason = observation.stopReason;
+    return observation.warning ?? '';
   };
   // Whether the AI has called manage_todo_list yet.
   let todoEverSet = false;
@@ -628,7 +612,6 @@ export async function runAgenticLoop(
   // Track terminal command signatures across rounds to detect and break stuck loops
   const seenTerminalCmdSignatures = new Map<string, { count: number; lastProgressEpoch: number }>();
   const seenContextToolSignatures = new Map<string, { count: number; lastProgressEpoch: number }>();
-  let progressEpoch = 0;
   while (roundCount < maxAgenticRounds) {
     if (callbacks.signal?.aborted) break;
     roundCount++;
