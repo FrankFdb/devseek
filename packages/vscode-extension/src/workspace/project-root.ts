@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import * as os from 'os';
 
 const STRONG_ROOT_MARKERS = ['.devseek', '.git', 'AGENTS.md', 'CLAUDE.md'];
 const WEAK_ROOT_MARKERS = [
@@ -36,8 +37,9 @@ export function resolveProjectRootFromAnchorPath(
   let firstWeak: string | undefined;
   let current = startDir;
   while (true) {
-    if (hasAnyMarker(current, STRONG_ROOT_MARKERS)) return current;
-    if (!firstWeak && hasAnyMarker(current, WEAK_ROOT_MARKERS)) firstWeak = current;
+    const ambientRoot = isAmbientProjectRootCandidate(current, startDir, workspaceRoots);
+    if (!ambientRoot && hasAnyMarker(current, STRONG_ROOT_MARKERS)) return current;
+    if (!ambientRoot && !firstWeak && hasAnyMarker(current, WEAK_ROOT_MARKERS)) firstWeak = current;
 
     const parent = nodePath.dirname(current);
     if (parent === current) break;
@@ -68,4 +70,19 @@ function resolveAnchorDirectory(absPath: string): string | undefined {
 
 function hasAnyMarker(dir: string, markers: readonly string[]): boolean {
   return markers.some((marker) => fs.existsSync(nodePath.join(dir, marker)));
+}
+
+function isAmbientProjectRootCandidate(
+  dir: string,
+  startDir: string,
+  workspaceRoots: readonly string[],
+): boolean {
+  const resolved = nodePath.resolve(dir);
+  const resolvedStart = nodePath.resolve(startDir);
+  if (resolved === resolvedStart) return false;
+  if (workspaceRoots.some(root => isInsideOrSamePath(resolved, root) && isInsideOrSamePath(root, resolved))) {
+    return false;
+  }
+
+  return resolved === nodePath.resolve(os.tmpdir());
 }

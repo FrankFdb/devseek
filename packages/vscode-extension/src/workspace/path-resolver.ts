@@ -411,7 +411,10 @@ function inferExternalAdvisoryProjectRoot(
   );
   if (contentRoots.length === 1) return contentRoots[0];
 
-  return contentRoots.find(root => candidates.every(candidate => isInsideOrSamePath(candidate, root)));
+  const commonRoots = contentRoots
+    .filter(root => candidates.every(candidate => isInsideOrSamePath(candidate, root)))
+    .sort((a, b) => pathDepth(b) - pathDepth(a));
+  return commonRoots[0];
 }
 
 function normalizeAbsolutePathHint(value: string): string {
@@ -425,6 +428,12 @@ function inferProjectRootBeforeContentSegment(absPath: string): string | undefin
   const contentIndex = relativeParts.findIndex(part => PROJECT_CONTENT_ROOT_SEGMENTS.has(part.toLowerCase()));
   if (contentIndex <= 0) return undefined;
   return nodePath.join(parsed.root, ...relativeParts.slice(0, contentIndex));
+}
+
+function pathDepth(absPath: string): number {
+  const resolved = nodePath.resolve(absPath);
+  const parsed = nodePath.parse(resolved);
+  return resolved.slice(parsed.root.length).split(nodePath.sep).filter(Boolean).length;
 }
 
 export function resolveArtifactPathInWorkspace(path: string, root: vscode.Uri, ctx: WorkspacePathContext): string | undefined {

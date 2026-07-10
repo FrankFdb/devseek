@@ -40,6 +40,9 @@ test('TaskShape: existing formal project implementation requires integration anc
   assert.match(guidance, /既有大项目\/正式项目内实现/);
   assert.match(guidance, /主入口\/调度链路/);
   assert.match(guidance, /线程或事件模型/);
+  assert.match(guidance, /源项目事实矩阵/);
+  assert.match(guidance, /面向对端的接口文档/);
+  assert.match(guidance, /原有代码修改清单/);
   assert.match(guidance, /不要创建脱离主流程的孤岛模块/);
 });
 

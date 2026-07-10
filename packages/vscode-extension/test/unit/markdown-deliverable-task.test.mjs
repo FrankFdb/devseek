@@ -192,7 +192,7 @@ test('markdown deliverable: cleans flattened DeepSeek web markdown before writin
   const io = makeCallbacks();
   try {
     const providerMarkdown = [
-      '无人机维保提醒功能 —— 遥控器与主控交互接口设计文档**文档编号**: ZC-MAINTENANCE-IFACE-001**文档版本**: 1.0**生成时间**: 2026-07-09**文档路径**: src/oam/src/lifting/zc_maintenance/docs/01-warranty-remote-controller-interface-design.md**文档类型**: 接口设计**状态**: 待评审**对应需求版本**: UAV-WARRANTY-REMINDER-PLAN-V1.7**目标路径**: src/oam/src/lifting/zc_maintenance/docs/01-warranty-remote-controller-interface-design.md### 1.1 文档目标本文档定义遥控器与主控之间关于无人机维保提醒功能的交互接口，包括平台 JSON 数据转发、主控统计结果回传、字段定义、时序关系、异常处理和容错机制。2. 需求差异分析基于需求文档与平台接口文档的对比，识别数据流向、统计结果回传、离线补偿和状态同步差异。| 状态说明 | 旧实现二元状态：统计中 / 待维保 | 新需求三元状态：normal / expiring_soon / expired |3. 旧实现职责观察通信架构：text复制下载遥控器 App <--- MAVLink Tunnel ---> 主控。4. 实现对策遥控器作为纯转发通道，主控接收平台 JSON 后结合本机增量数据完成计算。5. 主控任务拆分T001 接收平台 JSON，T002 解析字段，T003 管理本地增量，T004 计算维保状态，T005 通过 UAV_EVENT 1022 回传结果。6. 接口协议定义6.1 方向：遥控器到主控6.2 数据结构json复制下载{"type":"warranty_result","status":"expired"}7. 风险与验证建议需要验证 JSON 解析失败、平台数据缺失、重复消息、重启恢复和阈值边界。8. 后续任务清单实现 Tunnel 传输、状态机、持久化、发布器和自动化测试。',
+      '无人机维保提醒功能 —— 遥控器与主控交互接口设计文档**文档编号**: ZC-MAINTENANCE-IFACE-001**文档版本**: 1.0**生成时间**: 2026-07-09**文档路径**: src/oam/src/lifting/zc_maintenance/docs/01-warranty-remote-controller-interface-design.md**关联需求**: uav-warranty-reminder-plan_v1.7.md**关联旧实现**: lifting_maintenance_design.md**文档类型**: 接口设计**状态**: 待评审**对应需求版本**: UAV-WARRANTY-REMINDER-PLAN-V1.7**目标路径**: src/oam/src/lifting/zc_maintenance/docs/01-warranty-remote-controller-interface-design.md### 1.1 文档目标本文档定义遥控器与主控之间关于无人机维保提醒功能的交互接口，包括平台 JSON 数据转发、主控统计结果回传、字段定义、时序关系、异常处理和容错机制。2. 需求差异分析基于需求文档与平台接口文档的对比，识别数据流向、统计结果回传、离线补偿和状态同步差异。| 状态说明 | 旧实现二元状态：统计中 / 待维保 | 新需求三元状态：normal / expiring_soon / expired |3. 旧实现职责观察通信架构：text复制下载遥控器 App <--- MAVLink Tunnel ---> 主控。4. 源项目事实矩阵| 源文件 | 原项目事实 | 复用方式 || src/oam/src/license/license_types.hpp:8 | kTopicLicenseTunnelRx="/uav/license/tunnel/rx"，kTopicLicenseTunnelTx="/uav/license/tunnel/tx" | 维保通道复用 topic 命名边界 || src/oam/src/license/license_types.hpp:11 | kMavTunnelCmdLicense=33007，kTunnelVersion=1 | 新维保 tunnel 需要独立 payload_type 或明确复用规则 || src/oam/src/license/license_types.hpp:15 | kTunnelMaxTotalLen=64 * 1024，kTunnelSessionTimeoutMs=5000 | 分片最大长度和超时对齐 || src/oam/src/license/license_tunnel_transport.cpp:12 | kDuplicateRequestDropWindowMs=1000，kMaxActiveSessions=128，kMaxCompletedRequests=256 | 重复请求和会话上限对齐 || src/oam/src/license/license_tunnel_transport.cpp:304 | LicenseTunnelHeader 字段包含 sessionId、seq、total、payloadLen、totalLen、crc32 | 遥控器消息按相同分片和 CRC 规则校验 |5. 实现对策遥控器作为纯转发通道，主控接收平台 JSON 后结合本机增量数据完成计算。6. 主控任务拆分T001 接收平台 JSON，T002 解析字段，T003 管理本地增量，T004 计算维保状态，T005 通过 UAV_EVENT 1022 回传结果。7. 接口协议定义7.1 方向：遥控器到主控7.2 数据结构json复制下载{"type":"warranty_result","status":"expired"}7.3 消息容量需容纳 metrics（3 字段）+ thresholds（6 字段）+ 时间戳。7.4 示例 request：{"type":"platform_status","requestId":"r1","metrics":{"flightSorties":120},"version":1}。示例 response：{"type":"warranty_status","requestId":"r1","level":"expiring_soon","errorCode":0,"version":1}。超时 5000ms 后重试，幂等键使用 requestId + sessionId，错误码包含 payload_invalid、crc_mismatch、timeout。8. 风险与验证建议需要验证 JSON 解析失败、平台数据缺失、重复消息、重启恢复和阈值边界。9. 后续任务清单实现 Tunnel 传输、状态机、持久化、发布器和自动化测试。',
     ].join('\n');
 
     const result = await tryExecuteMarkdownDeliverableTask({
@@ -218,8 +218,13 @@ test('markdown deliverable: cleans flattened DeepSeek web markdown before writin
     assert.match(content, /- \*\*文档编号\*\*：ZC-MAINTENANCE-IFACE-001/);
     assert.match(content, /- \*\*生成时间\*\*：2026-07-09/);
     assert.match(content, /- \*\*文档路径\*\*：src\/oam\/src\/lifting\/zc_maintenance\/docs\/01-warranty-remote-controller-interface-design\.md/);
+    assert.match(content, /- \*\*关联需求\*\*：uav-warranty-reminder-plan_v1\.7\.md/);
+    assert.match(content, /- \*\*关联旧实现\*\*：lifting_maintenance_design\.md/);
     assert.match(content, /- \*\*对应需求版本\*\*：UAV-WARRANTY-REMINDER-PLAN-V1\.7/);
     assert.doesNotMatch(content, /## 09/);
+    assert.doesNotMatch(content, /^\s*#{1,6}\s*$/m);
+    assert.doesNotMatch(content, /^## 3 字段/m);
+    assert.doesNotMatch(content, /^## 6 字段/m);
     assert.match(content, /### 1\.1 文档目标/);
     assert.doesNotMatch(content, /###\s+\n\n1\.1/);
     assert.match(content, /旧实现二元状态：统计中 \/ 待维保/);
@@ -271,6 +276,53 @@ test('markdown deliverable: accepts complete but fully flattened DeepSeek report
     assert.doesNotMatch(content, /## 1\. - 需求差异分析/);
     assert.match(content, /## 1\. 需求差异分析/);
     assert.ok(Math.max(...content.split(/\r?\n/).map(line => line.length)) < 900);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: restores glued metadata and Chinese section headings from DeepSeek web text', async () => {
+  const { root, maintenanceDir, docsDir, requirementDoc } = createMaintenanceWorkspace();
+  const target = path.join(docsDir, 'warranty-maintenance-advice.md');
+  const io = makeCallbacks();
+  try {
+    const providerMarkdown = [
+      '无人机维保提醒功能重构建议文档文档版本：1.0创建日期：2026-07-10文档类型：实现对策与主控任务拆分目标路径：src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md一、需求差异分析1.1 核心设计理念差异维度旧实现（lifting/maintenance）新需求（zc_maintenance）数据权威主控本机计算，共享内存存储平台为权威来源状态判定主控基于本机累计数据判定平台计算状态，遥控器和无人机同步触发。1.2 阈值参数差异首次周期与维保后周期阈值不同，需要保留平台状态作为权威输入。二、旧实现职责观察2.1 旧实现设计优点MaintenanceManager 聚合采集、阈值计算、状态机、持久化、推送、重置处理，符合单一职责原则。2.2 旧实现不适用于新需求的原因数据源权威反转，主控从计算者变为同步者。三、实现对策3.1 整体架构建议在 zc_maintenance 目录下新建实现，但必须接入主控调度、MAVLink 协议、平台消息和现有持久化边界。四、主控任务拆分T001 定义平台状态结构，T002 增加同步入口，T003 维护离线补偿，T004 发布 UAV_EVENT 1022，T005 增加单元测试和重启恢复测试。',
+    ].join('\n');
+
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: {
+        id: 't1',
+        file: 'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md',
+        absPath: target,
+        action: 'create',
+        desc: '创建 Markdown 建议文档，先分析需求文档、旧实现和主控职责，再写入完整的新旧需求对比、实现对策和主控任务清单，并返回文档路径',
+      },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: `请分析 ${requirementDoc} 和 ${maintenanceDir} 下面的旧实现，通过md文档提供建议`,
+      workspaceRoot: { fsPath: root },
+      callbacks: io.callbacks,
+      chat: async () => providerMarkdown,
+    });
+
+    assert.equal(result?.applied, true);
+    const content = readFileSync(target, 'utf8');
+    const lines = content.split(/\r?\n/);
+    assert.doesNotMatch(content, /Provider 未返回可用/);
+    assert.match(content, /^# 无人机维保提醒功能重构建议文档/m);
+    assert.match(content, /- \*\*文档版本\*\*：1\.0/);
+    assert.match(content, /- \*\*创建日期\*\*：2026-07-10/);
+    assert.match(content, /- \*\*文档类型\*\*：实现对策与主控任务拆分/);
+    assert.match(content, /- \*\*目标路径\*\*：src\/oam\/src\/lifting\/zc_maintenance\/docs\/warranty-maintenance-advice\.md/);
+    assert.match(content, /^## 一、需求差异分析$/m);
+    assert.match(content, /^### 1\.1 核心设计理念差异/m);
+    assert.match(content, /^## 二、旧实现职责观察$/m);
+    assert.match(content, /^## 三、实现对策$/m);
+    assert.match(content, /^## 四、主控任务拆分/m);
+    assert.equal(lines.some(line => (line.match(/文档版本|创建日期|文档类型|目标路径/g) || []).length >= 2), false);
+    assert.equal(lines.some(line => /^[一二三四五六七八九十]{1,3}[、.．]\s*\S/.test(line.trim())), false);
+    assert.ok(Math.max(...lines.map(line => line.length)) < 900);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

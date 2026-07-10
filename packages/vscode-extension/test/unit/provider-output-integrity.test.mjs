@@ -36,6 +36,19 @@ test('provider output integrity: classifies executable tool calls before settlem
   assert.equal(result.toolCallCount, 1);
 });
 
+test('provider output integrity: accepts complete tool call followed by provider footer', () => {
+  const result = classifyProviderOutputIntegrity([
+    '让我修复这些问题：',
+    '[TOOL:read_file] {"path": "/tmp/app/main.cpp", "startLine": 1, "endLine": 20}',
+    '',
+    '本回答由 AI 生成，内容仅供参考，请仔细甄别',
+  ].join('\n'));
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 1);
+});
+
 test('provider output integrity: classifies malformed DeepSeek function envelopes as executable tool calls', () => {
   const result = classifyProviderOutputIntegrity(
     '<TOOL_CALL>{"id":"2","type":"function","function":{"name":"list_dir","arguments":"{"path":"/home/ff/uav/tars/huida_uav/src/oam/src/license"}"}}</TOOL_CALL>',

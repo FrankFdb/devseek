@@ -34,6 +34,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '../../..');
 const extensionRoot = path.join(repoRoot, 'packages/vscode-extension');
 const bridgeServerPath = path.join(repoRoot, 'packages/bridge/dist/server.js');
+const markdownQualityModulePath = path.join(extensionRoot, 'dist/agent/markdown-document-quality.js');
+const formalProjectQualityModulePath = path.join(extensionRoot, 'dist/agent/formal-project-document-quality.js');
 const codeBin = getArgValue('--code') || process.env.VSCODE_BIN || 'code';
 const timeoutMs = Number(getArgValue('--timeout-ms') || process.env.DEVSEEK_REAL_PLUGIN_TIMEOUT_MS || 900000);
 const relogin = hasFlag('--relogin') || process.env.DEVSEEK_REAL_PLUGIN_RELOGIN === '1';
@@ -45,6 +47,8 @@ const scenario = getArgValue('--scenario') || process.env.DEVSEEK_REAL_PLUGIN_SC
 const harnessMode = normalizeHarnessMode(getArgValue('--mode') || process.env.DEVSEEK_REAL_PLUGIN_MODE || 'fast');
 const workspaceDirArg = getArgValue('--workspace-dir') || process.env.DEVSEEK_REAL_PLUGIN_WORKSPACE_DIR || '';
 const outputDocArg = getArgValue('--output-doc') || process.env.DEVSEEK_REAL_PLUGIN_OUTPUT_DOC || '';
+const artifactRootArg = getArgValue('--artifact-root') || process.env.DEVSEEK_REAL_PLUGIN_ARTIFACT_ROOT || '';
+const artifactRunIdArg = getArgValue('--artifact-run-id') || process.env.DEVSEEK_REAL_PLUGIN_ARTIFACT_RUN_ID || '';
 const vsixPath = resolveVsixPath();
 
 if (!vsixPath || !fs.existsSync(vsixPath)) {
@@ -76,7 +80,11 @@ for (const dir of [driverDir, userDataDir, extensionsDir]) {
 if (!usesExistingWorkspace) fs.mkdirSync(workspaceDir, { recursive: true });
 
 const fixture = usesExistingWorkspace
-  ? describeExistingWorkspace(workspaceDir, { outputDoc: outputDocArg })
+  ? describeExistingWorkspace(workspaceDir, {
+      outputDoc: outputDocArg,
+      artifactRoot: artifactRootArg,
+      artifactRunId: artifactRunIdArg,
+    })
   : createFixtureWorkspace(workspaceDir, { scenario });
 const expectedArtifact = getArgValue('--expected-artifact')
   || process.env.DEVSEEK_REAL_PLUGIN_EXPECTED_ARTIFACT
@@ -94,9 +102,10 @@ const expectedCodeArtifacts = normalizeExpectedWorkspacePaths(parseExpectedArtif
 const expectedCodeDirs = normalizeExpectedWorkspacePaths(parseExpectedArtifacts(
   getArgValue('--expected-code-dirs')
     || process.env.DEVSEEK_REAL_PLUGIN_EXPECTED_CODE_DIRS
+    || fixture.expectedCodeDirRel
     || '',
 ));
-const prompt = promptFromArg || defaultPrompt(workspaceDir, fixture);
+const prompt = buildHarnessPrompt(promptFromArg || defaultPrompt(workspaceDir, fixture), fixture);
 
 const loginReport = relogin ? await prepareDeepSeekLogin() : null;
 installVsixIntoTempExtensions();
@@ -123,6 +132,10 @@ report.harness = {
   expectedArtifacts,
   expectedCodeArtifacts,
   expectedCodeDirs,
+  artifactRoot: fixture.artifactRoot || '',
+  artifactRunId: fixture.artifactRunId || '',
+  artifactDocsDir: fixture.artifactDocsDir || '',
+  artifactSrcDir: fixture.artifactSrcDir || '',
   usesExistingWorkspace,
   loginReport,
 };
@@ -133,6 +146,7 @@ if (cleanup) {
 } else {
   report.harness.cleanup = 'temporary directory retained for inspection';
 }
+writeHarnessReport(report);
 
 const serialized = JSON.stringify(report, null, 2);
 if (report.ok) {
@@ -163,6 +177,11 @@ function getArgValue(flag) {
 
 function normalizeHarnessMode(value) {
   return String(value || '').toLowerCase() === 'r1' ? 'r1' : 'fast';
+}
+
+function writeHarnessReport(payload) {
+  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+  fs.writeFileSync(reportPath, JSON.stringify(payload, null, 2), 'utf8');
 }
 
 function parseExpectedArtifacts(value) {
@@ -305,17 +324,74 @@ function createFixtureWorkspace(root, options = {}) {
 }
 
 function describeExistingWorkspace(root, options = {}) {
-  const requestedOutputDoc = options.outputDoc
-    ? path.resolve(root, options.outputDoc)
+  const artifactRoot = options.artifactRoot ? path.resolve(root, options.artifactRoot) : '';
+  const artifactRunId = artifactRoot
+    ? uniqueArtifactRunId(artifactRoot, options.artifactRunId || minuteTimestamp())
     : '';
+  const artifactRunRoot = artifactRoot && artifactRunId ? path.join(artifactRoot, artifactRunId) : '';
+  const artifactDocsDir = artifactRunRoot ? path.join(artifactRunRoot, 'docs') : '';
+  const artifactSrcDir = artifactRunRoot ? path.join(artifactRunRoot, 'src') : '';
+  if (artifactRunRoot) {
+    fs.mkdirSync(artifactDocsDir, { recursive: true });
+    fs.mkdirSync(artifactSrcDir, { recursive: true });
+  }
+  const requestedOutputDoc = artifactDocsDir
+    ? path.join(artifactDocsDir, path.basename(options.outputDoc || 'warranty-maintenance-implementation.md'))
+    : (options.outputDoc ? path.resolve(root, options.outputDoc) : '');
   if (!requestedOutputDoc) {
     return { requestedOutputDoc: '', expectedArtifactRel: '' };
   }
-  const expectedAbs = uniqueMarkdownDocumentPath(path.dirname(requestedOutputDoc), path.basename(requestedOutputDoc));
+  const expectedAbs = artifactRunRoot
+    ? requestedOutputDoc
+    : uniqueMarkdownDocumentPath(path.dirname(requestedOutputDoc), path.basename(requestedOutputDoc));
   return {
     requestedOutputDoc,
     expectedArtifactRel: workspaceRelative(root, expectedAbs),
+    expectedCodeDirRel: artifactSrcDir ? workspaceRelative(root, artifactSrcDir) : '',
+    artifactRoot: artifactRoot ? workspaceRelative(root, artifactRoot) : '',
+    artifactRunId,
+    artifactRunRoot: artifactRunRoot ? workspaceRelative(root, artifactRunRoot) : '',
+    artifactDocsDir: artifactDocsDir ? workspaceRelative(root, artifactDocsDir) : '',
+    artifactSrcDir: artifactSrcDir ? workspaceRelative(root, artifactSrcDir) : '',
   };
+}
+
+function buildHarnessPrompt(basePrompt, fixtureInfo = {}) {
+  const lines = [String(basePrompt || '').trim()].filter(Boolean);
+  if (fixtureInfo.artifactRunRoot) {
+    lines.push([
+      '',
+      '【真实测试输出目录要求】',
+      `本次测试所有新增设计文档、实施文档、代码和验证脚本必须放在：${path.join(workspaceDir, fixtureInfo.artifactRunRoot)}`,
+      `- 设计/实施 Markdown 文档放入：${path.join(workspaceDir, fixtureInfo.artifactDocsDir)}`,
+      `- 新增代码、测试代码和验证脚本放入：${path.join(workspaceDir, fixtureInfo.artifactSrcDir)}`,
+      '- 文件名使用正式、可读的业务命名，例如 warranty-maintenance-implementation.md、warranty-tunnel-transport.hpp；不要添加 selfloop、codex、verify、simulation 等临时后缀。',
+      '- 不要修改正式源码目录里的既有文件；如果正式集成需要改原代码，必须在文档中提供“原有代码修改清单”，写明文件、函数/类、改动内容、原因、风险和验证方式。',
+      '- 文档必须包含源项目事实矩阵、遥控器/主控接口文档、原有代码修改清单、验证证据和生成文件路径。',
+    ].join('\n'));
+  }
+  return lines.join('\n');
+}
+
+function minuteTimestamp(date = new Date()) {
+  const pad = value => String(value).padStart(2, '0');
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+  ].join('');
+}
+
+function uniqueArtifactRunId(root, preferred) {
+  const base = String(preferred || minuteTimestamp()).replace(/[^0-9A-Za-z_-]/g, '') || minuteTimestamp();
+  let candidate = base;
+  for (let index = 2; index <= 50; index += 1) {
+    if (!fs.existsSync(path.join(root, candidate))) return candidate;
+    candidate = `${base}-${String(index).padStart(2, '0')}`;
+  }
+  return `${base}-${Date.now()}`;
 }
 
 function uniqueMarkdownDocumentPath(dir, filename) {
@@ -498,6 +574,20 @@ const expectedArtifact = __EXPECTED_ARTIFACT__;
 const expectedArtifacts = __EXPECTED_ARTIFACTS__;
 const expectedCodeArtifacts = __EXPECTED_CODE_ARTIFACTS__;
 const expectedCodeDirs = __EXPECTED_CODE_DIRS__;
+const markdownQualityModulePath = __MARKDOWN_QUALITY_MODULE_PATH__;
+const formalProjectQualityModulePath = __FORMAL_PROJECT_QUALITY_MODULE_PATH__;
+let assessRuntimeMarkdownDocumentQuality = null;
+let assessRuntimeFormalProjectDocumentQuality = null;
+try {
+  assessRuntimeMarkdownDocumentQuality = require(markdownQualityModulePath).assessMarkdownDocumentQuality;
+} catch {
+  assessRuntimeMarkdownDocumentQuality = null;
+}
+try {
+  assessRuntimeFormalProjectDocumentQuality = require(formalProjectQualityModulePath).assessFormalProjectDocumentQuality;
+} catch {
+  assessRuntimeFormalProjectDocumentQuality = null;
+}
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -538,25 +628,76 @@ function hashText(text) {
 }
 
 function assessMarkdownQuality(content) {
+  if (typeof assessRuntimeMarkdownDocumentQuality === 'function') {
+    return assessRuntimeMarkdownDocumentQuality(content);
+  }
   const lines = String(content || '').split(/\r?\n/);
   const nonEmpty = lines.map((line) => line.trim()).filter(Boolean);
   const firstLineLength = nonEmpty.length ? nonEmpty[0].length : 0;
   const maxLineLength = lines.reduce((max, line) => Math.max(max, line.length), 0);
   const headingCount = lines.filter((line) => /^#{1,6}\s+\S/.test(line.trim())).length;
+  const emptyHeadingCount = lines.filter((line) => /^#{1,6}\s*$/.test(line.trim())).length;
   const hasCopyControls = /复制下载|(?:plain\s*text|text|json|cpp|c\+\+|bash|shell|markdown|md)\s*复制\s*下载/i.test(content);
+  const gluedMetadataLineCount = lines.filter((line) => {
+    const trimmed = line.trim();
+    if (!/^\s*(?:[-*]\s*)?(?:\*\*)?(?:文档编号|文档版本|对应需求版本|对应需求|关联需求|关联旧实现|旧实现|参考实现|文档路径|目标路径|创建日期|生成日期|生成时间|文档类型|状态|版本)(?:\*\*)?\s*[:：]/.test(trimmed)) return false;
+    const matches = trimmed.match(/(?:\*\*)?(?:文档编号|文档版本|对应需求版本|对应需求|关联需求|关联旧实现|旧实现|参考实现|文档路径|目标路径|创建日期|生成日期|生成时间|文档类型|状态|版本)(?:\*\*)?\s*[:：]/g);
+    return matches && matches.length >= 2;
+  }).length;
+  const rawChineseSectionCount = lines.filter((line) => /^[一二三四五六七八九十]{1,3}[、.．]\s*\S/.test(line.trim())).length;
   const ok = Boolean(nonEmpty.length > 0
     && /^#{1,6}\s+\S/.test(nonEmpty[0])
     && headingCount >= 2
+    && emptyHeadingCount === 0
     && firstLineLength <= 260
     && maxLineLength <= 2400
+    && gluedMetadataLineCount === 0
+    && rawChineseSectionCount === 0
     && !hasCopyControls);
   return {
     ok,
     firstLineLength,
     maxLineLength,
     headingCount,
+    emptyHeadingCount,
     hasCopyControls,
+    gluedMetadataLineCount,
+    rawChineseSectionCount,
+    reasons: [
+      nonEmpty.length === 0 ? 'empty-document' : '',
+      nonEmpty.length > 0 && !/^#{1,6}\s+\S/.test(nonEmpty[0]) ? 'missing-title-heading' : '',
+      headingCount < 2 ? 'insufficient-heading-count' : '',
+      emptyHeadingCount > 0 ? 'empty-heading' : '',
+      firstLineLength > 260 ? 'first-line-too-long' : '',
+      maxLineLength > 2400 ? 'line-too-long' : '',
+      gluedMetadataLineCount > 0 ? 'glued-metadata-lines' : '',
+      rawChineseSectionCount > 0 ? 'raw-chinese-section-headings' : '',
+      hasCopyControls ? 'provider-copy-controls' : '',
+    ].filter(Boolean),
   };
+}
+
+function assessFormalProjectQuality(content, promptText) {
+  if (typeof assessRuntimeFormalProjectDocumentQuality === 'function') {
+    return assessRuntimeFormalProjectDocumentQuality(content, promptText);
+  }
+  const combined = String(promptText || '') + '\n' + String(content || '');
+  const required = /(?:既有|现有|原项目|大项目|正式项目|生产项目|主控|平台|遥控器|模块|接口文档|\/src\/)/i.test(combined);
+  const hasSourceRefs = ((String(content || '').match(/(?:[\w.-]+\.(?:cpp|hpp|h|md)(?::\d+)?|src\/[\w./-]+|\/src\/[\w./-]+)/gi) || []).length >= 4);
+  const hasProtocolFacts = ((String(content || '').match(/(?:kTunnel\w*|TunnelMsgType|MAVLINK_MSG_TUNNEL|crc32|sessionId|payloadLen|totalLen|topic|UAV_EVENT|COMMAND_LONG|分片|超时|重试)/gi) || []).length >= 6);
+  const hasInterfaceDoc = /(?:遥控器|遥控|主控|平台)/i.test(combined)
+    ? /(?:JSON|schema|字段|payload).{0,120}(?:示例|request|response)|(?:示例|request|response).{0,120}(?:JSON|schema|字段|payload)/i.test(content)
+    : true;
+  const hasModificationPlan = /(?:代码实现|实现代码|新增|修改|创建|验证)/i.test(promptText || '')
+    ? /(?:原有代码修改清单|修改点|需要修改|目标文件).{0,200}(?:风险|验证|回归)/is.test(content)
+    : true;
+  const reasons = [
+    required && !hasSourceRefs ? 'missing-source-fact-matrix' : '',
+    required && !hasProtocolFacts ? 'missing-concrete-protocol-facts' : '',
+    required && !hasInterfaceDoc ? 'missing-remote-controller-interface-doc' : '',
+    required && !hasModificationPlan ? 'missing-existing-code-modification-plan' : '',
+  ].filter(Boolean);
+  return { required, ok: !required || reasons.length === 0, reasons };
 }
 
 function markdownSnapshot() {
@@ -656,11 +797,64 @@ function selectedCodeDirRecords(dirs, before, normalizedChangedPaths) {
         created: !previous.exists,
         changed: previous.exists && hash !== previous.hash,
         size: content.length,
+        qualitySignals: assessCodeArtifactSignals(relative, content.toString('utf8')),
         inRunLog: normalizedChangedPaths.includes(relative),
       });
     });
   }
   return records.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+function assessCodeArtifactSignals(relative, content) {
+  const normalizedPath = String(relative || '').replace(/\\/g, '/');
+  const base = path.posix.basename(normalizedPath);
+  const text = String(content || '');
+  const isTestLike = /(?:^|\/)(?:tests?|selftests?|__tests__)(?:\/|$)/i.test(normalizedPath)
+    || /(?:test|spec|selftest|verify|validation)/i.test(base);
+  const hasImplementationSyntax = /(?:#include|namespace\s+\w+|class\s+\w+|struct\s+\w+|enum\s+(?:class\s+)?\w+|\b(?:void|bool|int|double|float|std::string)\s+\w+\s*\()/i.test(text);
+  const hasFormalProjectAnchor = /(?:UAV_EVENT|MAVLink|mavlink|remote.?controller|RemoteController|platform|Platform|warranty|Warranty|maintenance|Maintenance|主控|遥控器|平台|维保)/i.test(text);
+  const hasValidationHook = /(?:assert\s*\(|static_assert|EXPECT_|ASSERT_|self.?test|SelfTest|verify|validate|validation|单元测试|自测|验证)/i.test(text);
+  const hasStandaloneSampleMain = /\bint\s+main\s*\(/.test(text) && !isTestLike;
+  const hasToySample = /hello\s+world|Hello\s+World|TODO:\s*implement/i.test(text);
+  return {
+    isTestLike,
+    hasImplementationSyntax,
+    hasFormalProjectAnchor,
+    hasValidationHook,
+    hasStandaloneSampleMain,
+    hasToySample,
+  };
+}
+
+function assessCodeDirQuality(records, promptText) {
+  const changedRecords = records.filter(record => record.exists && (record.created || record.changed) && record.size > 0);
+  const productionRecords = changedRecords.filter(record => !record.qualitySignals.isTestLike);
+  const validationRequired = /(?:自闭环|测试|验证|单体|单元|self.?loop|test|verify|validation)/i.test(promptText || '');
+  const hasImplementationSyntax = productionRecords.some(record => record.qualitySignals.hasImplementationSyntax);
+  const hasFormalProjectAnchor = changedRecords.some(record => record.qualitySignals.hasFormalProjectAnchor);
+  const hasValidationHook = changedRecords.some(record => record.qualitySignals.hasValidationHook || record.qualitySignals.isTestLike);
+  const standaloneSampleRecords = changedRecords
+    .filter(record => record.qualitySignals.hasStandaloneSampleMain || record.qualitySignals.hasToySample)
+    .map(record => record.path);
+  const reasons = [
+    changedRecords.length === 0 ? 'no-code-change' : '',
+    productionRecords.length === 0 ? 'no-production-code-artifact' : '',
+    !hasImplementationSyntax ? 'missing-implementation-syntax' : '',
+    !hasFormalProjectAnchor ? 'missing-formal-project-anchor' : '',
+    validationRequired && !hasValidationHook ? 'missing-validation-hook' : '',
+    standaloneSampleRecords.length > 0 ? 'standalone-sample-code' : '',
+  ].filter(Boolean);
+  return {
+    ok: reasons.length === 0,
+    changedCount: changedRecords.length,
+    productionCount: productionRecords.length,
+    validationRequired,
+    hasImplementationSyntax,
+    hasFormalProjectAnchor,
+    hasValidationHook,
+    standaloneSampleRecords,
+    reasons,
+  };
 }
 
 function changedMarkdownArtifacts(before) {
@@ -676,6 +870,7 @@ function changedMarkdownArtifacts(before) {
       hash: hashText(content),
       preview: content.slice(0, 600),
       markdownQuality: assessMarkdownQuality(content),
+      formalProjectQuality: assessFormalProjectQuality(content, prompt),
     };
     const previous = before.get(relative);
     if (!previous || previous.hash !== current.hash) {
@@ -685,6 +880,7 @@ function changedMarkdownArtifacts(before) {
         changed: Boolean(previous && previous.hash !== current.hash),
         containsMaintenanceAnalysis: /(维保|主控|task|任务|阈值|对策|重构|吊运)/i.test(content),
         markdownQualityOk: current.markdownQuality.ok,
+        formalProjectQualityOk: current.formalProjectQuality.ok,
       });
     }
   });
@@ -776,6 +972,10 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
   const normalizedChangedPaths = changedPaths.map(normalizeChangedPathForWorkspace);
   const changedMarkdownByLog = normalizedChangedPaths.some((item) => /\.(?:md|markdown)$/i.test(item));
   const hasUsefulMarkdown = artifacts.some((artifact) => artifact.size >= 500 && artifact.containsMaintenanceAnalysis && artifact.markdownQualityOk);
+  const formalProjectQuality = assessFormalProjectQuality(
+    artifacts.map(artifact => fs.readFileSync(artifact.absolutePath, 'utf8')).join('\n\n'),
+    prompt,
+  );
   const expectedArtifactRecords = expectedArtifacts.map((artifactPath) => ({
     path: artifactPath,
     artifact: artifacts.find((artifact) => artifact.path === artifactPath) || null,
@@ -802,17 +1002,22 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
     ? expectedCodeArtifactRecords.every((record) => record.inRunLog)
     : true;
   const expectedCodeDirRecords = selectedCodeDirRecords(expectedCodeDirs, expectedCodeDirBefore, normalizedChangedPaths);
+  const expectedCodeDirQuality = assessCodeDirQuality(expectedCodeDirRecords, prompt);
   const expectedCodeDirArtifactsWritten = expectedCodeDirs.length > 0
     ? expectedCodeDirRecords.some((record) => record.exists && (record.created || record.changed) && record.size > 0)
     : true;
   const expectedCodeDirArtifactsInRunLog = expectedCodeDirs.length > 0
     ? expectedCodeDirRecords.some((record) => record.inRunLog && (record.created || record.changed))
     : true;
+  const expectedCodeDirQualityOk = expectedCodeDirs.length > 0
+    ? expectedCodeDirQuality.ok
+    : true;
   const codeEvidenceRequired = expectedCodeArtifacts.length > 0 || expectedCodeDirs.length > 0;
   const markdownRequired = expectedArtifacts.length > 0 || !codeEvidenceRequired;
   const markdownEvidenceOk = markdownRequired
     ? changedMarkdownByLog && hasUsefulMarkdown && expectedArtifactWritten && expectedArtifactInRunLog
     : true;
+  const formalProjectQualityOk = formalProjectQuality.required ? formalProjectQuality.ok : true;
   const staleAnalysisChanged = artifacts.some((artifact) => artifact.path === 'docs/analysis/uav_warranty_reminder_analysis_v1.7.md');
   const successTerminal = runLogs.terminal
     && runLogs.terminal.event === 'agent-run-completed'
@@ -824,7 +1029,9 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
     && expectedCodeArtifactsWritten
     && expectedCodeArtifactsInRunLog
     && expectedCodeDirArtifactsWritten
-    && expectedCodeDirArtifactsInRunLog);
+    && expectedCodeDirArtifactsInRunLog
+    && expectedCodeDirQualityOk
+    && formalProjectQualityOk);
   return {
     ok,
     artifacts,
@@ -842,6 +1049,8 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
       expectedArtifactInRunLog,
       markdownRequired,
       markdownEvidenceOk,
+      formalProjectQuality,
+      formalProjectQualityOk,
       expectedCodeArtifacts,
       expectedCodeArtifactRecords,
       expectedCodeArtifactsWritten,
@@ -850,6 +1059,8 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
       expectedCodeDirRecords,
       expectedCodeDirArtifactsWritten,
       expectedCodeDirArtifactsInRunLog,
+      expectedCodeDirQuality,
+      expectedCodeDirQualityOk,
       staleAnalysisChanged,
     },
   };
@@ -957,6 +1168,9 @@ async function activate() {
     const finalEvaluation = evaluate(before, startedAtMs, expectedCodeBefore, expectedCodeDirBefore);
     Object.assign(baseReport, finalEvaluation);
     if (!baseReport.ok) {
+      if (baseReport.checks?.formalProjectQualityOk === false) {
+        baseReport.errors.push('正式项目文档质量不达标：' + (baseReport.checks.formalProjectQuality.reasons || []).join(', '));
+      }
       baseReport.errors.push((expectedCodeArtifacts.length > 0 || expectedCodeDirs.length > 0)
         ? '真实插件链路未形成成功 agent-run-completed + 预期 Markdown 与代码产物写盘证据。'
         : expectedArtifacts.length > 0
@@ -990,7 +1204,9 @@ module.exports = { activate };
     .replace('__EXPECTED_ARTIFACT__', JSON.stringify(expectedArtifact))
     .replace('__EXPECTED_ARTIFACTS__', JSON.stringify(expectedArtifacts))
     .replace('__EXPECTED_CODE_ARTIFACTS__', JSON.stringify(expectedCodeArtifacts))
-    .replace('__EXPECTED_CODE_DIRS__', JSON.stringify(expectedCodeDirs));
+    .replace('__EXPECTED_CODE_DIRS__', JSON.stringify(expectedCodeDirs))
+    .replace('__MARKDOWN_QUALITY_MODULE_PATH__', JSON.stringify(markdownQualityModulePath))
+    .replace('__FORMAL_PROJECT_QUALITY_MODULE_PATH__', JSON.stringify(formalProjectQualityModulePath));
 
   fs.writeFileSync(path.join(driverDir, 'extension.js'), source, 'utf8');
 }

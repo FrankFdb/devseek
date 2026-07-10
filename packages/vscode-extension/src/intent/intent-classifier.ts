@@ -14,7 +14,8 @@ const GREETING_PREFIX_RE = /^(?:hi|hello|hey|你好|您好|嗨|哈喽)[,，\s]+/
 
 const EDIT_RE = /(修复|修正|修改|改一下|改成|改为|改用|换成|换为|调整为|实现|编写|写一个|写个|创建|新建|生成|新增|添加|补全|完善|重构|改造|替换|替换为|优化|升级|接入|封装|拆分|fix|modify|change|implement|create|write|add|update|refactor|generate)/i;
 
-const DESTRUCTIVE_RE = /(删除|清空|覆盖|重置|移除|删掉|干掉|drop|delete|remove|reset|overwrite|truncate)/i;
+const DESTRUCTIVE_RE = /(删除|清空|覆盖|重置|移除|删掉|干掉|drop|delete|remove|reset|overwrite|truncate)/gi;
+const DESTRUCTIVE_NEGATION_PREFIX_RE = /(?:不|不要|不能|不可|禁止|避免|不得|请勿|无需|不需要|不允许|do\s+not|don't|must\s+not|without|avoid).{0,16}$/i;
 
 const RUN_RE = /(运行|执行|编译|构建|测试|跑一下|验证|启动|调试|run|execute|compile|build|test|debug|start)/i;
 
@@ -114,7 +115,7 @@ export function classifyIntent(prompt: string): IntentClassification {
     );
   }
 
-  if (DESTRUCTIVE_RE.test(text)) {
+  if (hasDestructiveIntent(text)) {
     return baseDecision(
       'destructive',
       0.9,
@@ -242,4 +243,14 @@ export function classifyIntent(prompt: string): IntentClassification {
   }
 
   return baseDecision('qa', 0.6, -1, ['default-chat'], 'default-chat', []);
+}
+
+function hasDestructiveIntent(text: string): boolean {
+  DESTRUCTIVE_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = DESTRUCTIVE_RE.exec(text)) !== null) {
+    const prefix = text.slice(Math.max(0, match.index - 24), match.index);
+    if (!DESTRUCTIVE_NEGATION_PREFIX_RE.test(prefix)) return true;
+  }
+  return false;
 }

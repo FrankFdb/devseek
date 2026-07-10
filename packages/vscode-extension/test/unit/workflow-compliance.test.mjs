@@ -872,6 +872,8 @@ test('Agentic loop: terminal completion evidence requires successful validation 
   assertContains(toolLoop, '验证命令未通过，不能把编译/运行/测试标记为完成', 'failed validation must be fed back to the agent');
   assertContains(code, 'buildTerminalFailureRepairFeedback', 'terminal failure prose must be converted into a repair instruction');
   assertContains(code, 'getMissingCompletionEvidence', 'agent loop must delegate completion checks to evidence boundary');
+  assertContains(code, 'getAgenticBlockingTerminalFailure', 'agentic runtime must use a final settlement gate for terminal failures');
+  assertContains(code, 'findBlockingTerminalFailureEvidence(terminalEvidence)', 'agentic runtime must not let failed validation evidence be hidden by provider completion prose');
   assert.match(
     toolLoop,
     /terminalEvidence\.push\(evidenceResult\.evidence\)/,

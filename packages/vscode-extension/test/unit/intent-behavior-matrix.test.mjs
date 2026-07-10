@@ -223,6 +223,20 @@ const routingCases = [
     toolActions: { read: 'allow', plan: 'allow', edit: 'deny', terminal: 'deny' },
   },
   {
+    id: 'EDIT-000',
+    title: 'formal project markdown design plus code implementation is edit workflow',
+    prompt: [
+      '参考 /home/ff/uav/tars/huida_uav/src/oam/src/license 模块的通讯方式',
+      '基于 /home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md 需求和平台接口文档进行遥控器和主控交互接口设计，主控逻辑实现设计，并通过 md 文档提供',
+      '另外添加：代码实现，创建于：/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance 目录下',
+      '所有新增文件必须避免覆盖已有正式文件。',
+      '请按照软件工程流程：分析既有项目原来代码逻辑，根据需求进行设计，最后实现代码，完成自闭环测试。',
+    ].join('\n'),
+    expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: EDIT_TOOLS },
+    signal: 'edit-request',
+    toolActions: { read: 'allow', plan: 'allow', edit: 'allow', terminal: 'requireConfirm' },
+  },
+  {
     id: 'EDIT-001',
     title: 'create and run C++ hello world is edit workflow',
     prompt: '创建一个 hello world C++ 程序并运行',

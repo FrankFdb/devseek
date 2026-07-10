@@ -1147,6 +1147,50 @@ test('run log replay detects plan failure statuses reported as completed', () =>
   }
 });
 
+test('run log replay rejects completed run after uncleared auto validation failure', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-06T03:05:00.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'validation-failed-completed',
+      data: {
+        phase: 'validate',
+        state: 'failed',
+        title: '自动验证失败',
+        detail: 'g++ test_selfloop_codex.cpp exitCode=1',
+      },
+    },
+    {
+      ts: '2026-07-06T03:05:01.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-completed',
+      runId: 'validation-failed-completed',
+      data: {
+        status: 'completed',
+        tasksTotal: 1,
+        tasksApplied: 1,
+        tasksFailed: 0,
+        changedPaths: ['src/oam/src/lifting/zc_maintenance/test_selfloop_codex.cpp'],
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const issue = report.issues.find(item => item.kind === 'failure-status-reported-completed');
+
+    assert.ok(issue);
+    assert.match(issue.message, /自动验证失败/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay classifies provider integrity failures and old bridge runtime', () => {
   const { dir, logPath } = writeLog([
     {

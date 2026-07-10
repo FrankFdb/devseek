@@ -445,6 +445,26 @@ test('completion evidence: generic blocking terminal evidence is cleared by late
   assert.equal(findBlockingTerminalFailureEvidence([failedRun, successfulRun]), undefined);
 });
 
+test('completion evidence: failed automatic compile validation remains blocking until cleared', () => {
+  const failedAutoValidation = {
+    command: "mkdir -p build/devseek && g++ test_selfloop_codex.cpp -o build/devseek/deepseek_auto_exec",
+    kind: 'compile',
+    ok: false,
+    exitCode: 1,
+    detail: 'fatal error: mc_log.h: No such file or directory',
+  };
+  const successfulCompile = {
+    command: 'g++ -std=c++17 -I. test_selfloop_codex.cpp -o /tmp/test_warranty',
+    kind: 'compile',
+    ok: true,
+    exitCode: 0,
+    detail: 'compiled',
+  };
+
+  assert.equal(findBlockingTerminalFailureEvidence([failedAutoValidation]), failedAutoValidation);
+  assert.equal(findBlockingTerminalFailureEvidence([failedAutoValidation, successfulCompile]), undefined);
+});
+
 test('completion evidence: transfer-source filenames are not treated as modified-file claims', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-transfer-source-'));
   try {

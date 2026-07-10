@@ -538,6 +538,37 @@ test('CLI attaches mentioned workspace files to Bridge requests', async () => {
   }, () => ({ content: 'No file edits requested.' }));
 });
 
+test('CLI attaches mentioned workspace files with non-ASCII path segments', async () => {
+  await withTestBridge(async ({ port, seenBodies }) => {
+    await withTempCwdAsync(async (cwd) => {
+      mkdirSync(path.join(cwd, 'src/oam/src/lifting/zc_maintenance/docs'), { recursive: true });
+      mkdirSync(path.join(cwd, 'src/oam/src/lifting'), { recursive: true });
+      writeFileSync(path.join(cwd, 'src/oam/src/lifting/zc_maintenance/docs/维保预警接口文档.md'), '# 接口文档\n', 'utf8');
+      writeFileSync(path.join(cwd, 'src/oam/src/lifting/main_control_bus.hpp'), '#pragma once\n', 'utf8');
+
+      const result = await runCli([
+        bin,
+        'exec',
+        '--jsonl',
+        '请结合 src/oam/src/lifting/zc_maintenance/docs/维保预警接口文档.md 和 src/oam/src/lifting/main_control_bus.hpp 进行正式项目设计',
+      ], {
+        cwd,
+        env: {
+          ...process.env,
+          DEVSEEK_BRIDGE_PORT: String(port),
+          DEVSEEK_CLI_PROGRESS_DELAY_MS: '1',
+        },
+        timeout: 5000,
+      });
+
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(seenBodies.length, 1);
+      assert.ok(seenBodies[0].files.includes(path.join(cwd, 'src/oam/src/lifting/zc_maintenance/docs/维保预警接口文档.md')));
+      assert.ok(seenBodies[0].files.includes(path.join(cwd, 'src/oam/src/lifting/main_control_bus.hpp')));
+    });
+  }, () => ({ content: 'No file edits requested.' }));
+});
+
 test('CLI attaches bounded implicit project context for coding prompts', async () => {
   await withTestBridge(async ({ port, seenBodies }) => {
     await withTempCwdAsync(async (cwd) => {

@@ -37,6 +37,9 @@ test('EngineeringGuidelines: agent prompt carries file and function size constra
   assert.match(prompt, new RegExp(`${COMPLEX_FUNCTION_LINE_LIMIT} 行`));
   assert.match(prompt, /相同逻辑原则上只能有一份/);
   assert.match(prompt, /除非用户明确要求单文件交付/);
+  assert.match(prompt, /源项目事实矩阵/);
+  assert.match(prompt, /接口交付文档/);
+  assert.match(prompt, /原有代码修改清单/);
 });
 
 test('EngineeringGuidelines: planner prompt tells Architect to split responsibilities', () => {

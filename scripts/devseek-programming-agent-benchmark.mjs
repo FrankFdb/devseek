@@ -642,6 +642,302 @@ async function pathSafetyGuardCase() {
   return { output: 'unsafe write refused' };
 }
 
+async function formalMainControlUavWorkflowCase() {
+  const workspace = makeWorkspace('pa13-formal-main-control-uav');
+  const requirementRel = 'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md';
+  const interfaceRel = 'src/oam/src/lifting/zc_maintenance/docs/维保预警接口文档.md';
+  const mainControlRel = 'src/oam/src/lifting/main_control_bus.hpp';
+  const licenseWorkerRel = 'src/oam/src/license/license_core_worker.cpp';
+  const designRel = 'src/oam/src/lifting/zc_maintenance/docs/01-warranty-remote-controller-interface-design.md';
+  const headerRel = 'src/oam/src/lifting/zc_maintenance/warranty_status.hpp';
+  const sourceRel = 'src/oam/src/lifting/zc_maintenance/warranty_controller.cpp';
+  const testRel = 'src/oam/src/lifting/zc_maintenance/tests/warranty_controller_test.cpp';
+
+  writeWorkspaceFile(workspace, requirementRel, [
+    '# UAV 维保提醒需求 v1.7',
+    '',
+    '- 遥控器从平台获取维保状态 JSON，并同步给主控。',
+    '- 主控需要基于平台状态和本机离线增量生成 UAV_EVENT 1022。',
+    '- 首次周期和维保后周期阈值不同，必须支持 expiring_soon 与 expired。',
+    '- 维保验证码成功后平台记录，主控需要清理本地增量。',
+    '',
+  ].join('\n'));
+  writeWorkspaceFile(workspace, interfaceRel, [
+    '# 维保预警接口文档',
+    '',
+    '- platform_status.currentMaintenanceStartAt: 平台本轮维保开始时间。',
+    '- platform_status.statisticsCutoffAt: 平台统计截止时间。',
+    '- platform_status.metrics.flightSorties/workTonnage: 平台累计指标。',
+    '- platform_status.thresholds: 首次和维保后阈值。',
+    '',
+  ].join('\n'));
+  writeWorkspaceFile(workspace, mainControlRel, [
+    '#pragma once',
+    'namespace oam::lifting {',
+    'constexpr int UAV_EVENT_WARRANTY_REMINDER = 1022;',
+    'struct MainControlBus {',
+    '  void publishWarrantyEvent(int eventId, const char* reason);',
+    '};',
+    '}',
+    '',
+  ].join('\n'));
+  writeWorkspaceFile(workspace, licenseWorkerRel, [
+    '#include <string>',
+    'namespace oam::license {',
+    'constexpr int kMavTunnelCmdLicense = 33007;',
+    'constexpr int kTunnelVersion = 1;',
+    'constexpr int kTunnelMaxTotalLen = 64 * 1024;',
+    'constexpr int kTunnelSessionTimeoutMs = 5000;',
+    'constexpr int kDuplicateRequestDropWindowMs = 1000;',
+    'constexpr int kMaxActiveSessions = 128;',
+    'struct LicenseTunnelHeader {',
+    '  int sessionId;',
+    '  int seq;',
+    '  int total;',
+    '  int payloadLen;',
+    '  int totalLen;',
+    '  unsigned int crc32;',
+    '};',
+    'class LicenseCoreWorker {',
+    ' public:',
+    '  void postJsonToMainControl(const std::string& topic, const std::string& payload);',
+    '};',
+    '}',
+    '',
+  ].join('\n'));
+
+  const response = [
+    toolCall('create_file', {
+      filePath: designRel,
+      content: [
+        '# 维保提醒遥控器与主控接口设计',
+        '',
+        '## 主控集成边界',
+        '',
+        '- 主控通过 `MainControlBus::publishWarrantyEvent` 发布 `UAV_EVENT 1022`，不重新实现平台 HTTP 访问。',
+        '- 遥控器负责平台 JSON 获取和转发，主控只消费 `platform_status` 与本机离线增量。',
+        '- 平台字段以 `statisticsCutoffAt` 为离线补偿分界，避免主控和平台重复计算。',
+        '',
+        '## 源项目事实矩阵',
+        '',
+        '| 文件 | 原项目事实 | 复用方式 |',
+        '|------|------------|----------|',
+        '| `src/oam/src/license/license_core_worker.cpp:3` | `kMavTunnelCmdLicense=33007` | 维保 tunnel 必须定义独立 payload type 或明确复用隔离规则 |',
+        '| `src/oam/src/license/license_core_worker.cpp:4` | `kTunnelVersion=1`，`kTunnelMaxTotalLen=64 * 1024`，`kTunnelSessionTimeoutMs=5000` | 维保 JSON 分片版本、最大长度和超时按同等模型设计 |',
+        '| `src/oam/src/license/license_core_worker.cpp:7` | `kDuplicateRequestDropWindowMs=1000`，`kMaxActiveSessions=128` | 重复请求和会话上限需要写入主控接口约束 |',
+        '| `src/oam/src/license/license_core_worker.cpp:9` | `LicenseTunnelHeader` 包含 `sessionId/seq/total/payloadLen/totalLen/crc32` | 遥控器与主控消息必须具备分片、顺序、长度和 CRC 校验 |',
+        '| `src/oam/src/lifting/main_control_bus.hpp:3` | `UAV_EVENT_WARRANTY_REMINDER=1022` | 主控提醒输出使用既有事件边界 |',
+        '',
+        '## 遥控器与主控接口文档',
+        '',
+        '| 方向 | 承载通道 | 消息类型 | request JSON/schema 字段 | response JSON/schema 字段 |',
+        '|------|----------|----------|--------------------------|---------------------------|',
+        '| 遥控器 -> 主控 | MAVLink tunnel payload type warranty | `platform_status` | `requestId`、`statisticsCutoffAt`、`metrics.flightSorties`、`thresholds`、`version` | `accepted`、`errorCode` |',
+        '| 主控 -> 遥控器 | `MainControlBus::publishWarrantyEvent` + tunnel ack | `warranty_status` | `requestId` | `eventId=1022`、`level`、`triggerReason`、`version` |',
+        '',
+        '- 示例 request：`{"type":"platform_status","requestId":"r1","metrics":{"flightSorties":7100},"version":1}`。',
+        '- 示例 response：`{"type":"warranty_status","requestId":"r1","eventId":1022,"level":"expired","errorCode":0,"version":1}`。',
+        '- 超时采用 `kTunnelSessionTimeoutMs=5000`，幂等键使用 `requestId + sessionId`，错误码覆盖 `payload_invalid`、`crc_mismatch`、`timeout`。',
+        '',
+        '## 原有代码修改清单',
+        '',
+        '| 目标文件 | 函数/类 | 改动内容 | 原因 | 风险 | 验证方式 |',
+        '|----------|---------|----------|------|------|----------|',
+        '| `src/oam/src/lifting/main_control_bus.hpp:3` | `MainControlBus` | 复用 `publishWarrantyEvent` 输出 `UAV_EVENT 1022` | 接入主控事件边界 | 事件重复上报 | 单元测试校验 eventId |',
+        '| `src/oam/src/license/license_core_worker.cpp:19` | `LicenseCoreWorker` | 复用 JSON 转发边界，不在主控重复平台 HTTP | 保持职责分离 | 平台/主控权责混乱 | fake bridge 上下文校验 |',
+        '| `src/oam/src/lifting/zc_maintenance/warranty_controller.cpp` | `buildMainControlWarrantyEvent` | 新增状态合并逻辑 | 落地维保提醒规则 | 阈值边界错误 | PA13 verifier |',
+        '',
+        '## 实现与验证',
+        '',
+        '- 代码放在 `src/oam/src/lifting/zc_maintenance`，不创建脱离主控的大样例 main。',
+        '- 单元测试覆盖 normal、expiring_soon、expired、verified reset 四条路径。',
+        '',
+      ].join('\n'),
+    }),
+    toolCall('create_file', {
+      filePath: headerRel,
+      content: [
+        '#pragma once',
+        '#include <string>',
+        '',
+        'namespace oam::lifting::zc_maintenance {',
+        '',
+        'enum class WarrantyLevel { Normal, ExpiringSoon, Expired };',
+        '',
+        'struct PlatformWarrantySnapshot {',
+        '  int flightSorties = 0;',
+        '  double workTonnage = 0.0;',
+        '  int daysSinceMaintenance = 0;',
+        '  bool verified = false;',
+        '};',
+        '',
+        'struct MainControlWarrantyEvent {',
+        '  int eventId = 1022;',
+        '  WarrantyLevel level = WarrantyLevel::Normal;',
+        '  std::string triggerReason;',
+        '  bool shouldNotifyRemote = false;',
+        '};',
+        '',
+        'MainControlWarrantyEvent buildMainControlWarrantyEvent(const PlatformWarrantySnapshot& snapshot);',
+        '',
+        '}',
+        '',
+      ].join('\n'),
+    }),
+    toolCall('create_file', {
+      filePath: sourceRel,
+      content: [
+        '#include "warranty_status.hpp"',
+        '',
+        'namespace oam::lifting::zc_maintenance {',
+        '',
+        'MainControlWarrantyEvent buildMainControlWarrantyEvent(const PlatformWarrantySnapshot& snapshot) {',
+        '  MainControlWarrantyEvent event;',
+        '  if (snapshot.verified) {',
+        '    event.level = WarrantyLevel::Normal;',
+        '    event.triggerReason = "maintenance_verified";',
+        '    event.shouldNotifyRemote = false;',
+        '    return event;',
+        '  }',
+        '',
+        '  if (snapshot.daysSinceMaintenance >= 365 || snapshot.flightSorties >= 7000 || snapshot.workTonnage >= 1300.0) {',
+        '    event.level = WarrantyLevel::Expired;',
+        '    event.triggerReason = "platform_threshold_expired";',
+        '    event.shouldNotifyRemote = true;',
+        '    return event;',
+        '  }',
+        '',
+        '  if (snapshot.daysSinceMaintenance >= 345 || snapshot.flightSorties >= 6650 || snapshot.workTonnage >= 1230.0) {',
+        '    event.level = WarrantyLevel::ExpiringSoon;',
+        '    event.triggerReason = "platform_threshold_expiring_soon";',
+        '    event.shouldNotifyRemote = true;',
+        '    return event;',
+        '  }',
+        '',
+        '  event.level = WarrantyLevel::Normal;',
+        '  event.triggerReason = "platform_threshold_normal";',
+        '  event.shouldNotifyRemote = false;',
+        '  return event;',
+        '}',
+        '',
+        '}',
+        '',
+      ].join('\n'),
+    }),
+    toolCall('create_file', {
+      filePath: testRel,
+      content: [
+        '#include <cassert>',
+        '#include <iostream>',
+        '#include "warranty_status.hpp"',
+        '',
+        'using namespace oam::lifting::zc_maintenance;',
+        '',
+        'int main() {',
+        '  auto normal = buildMainControlWarrantyEvent({100, 10.0, 30, false});',
+        '  assert(normal.level == WarrantyLevel::Normal);',
+        '  assert(!normal.shouldNotifyRemote);',
+        '',
+        '  auto soon = buildMainControlWarrantyEvent({6650, 200.0, 100, false});',
+        '  assert(soon.eventId == 1022);',
+        '  assert(soon.level == WarrantyLevel::ExpiringSoon);',
+        '  assert(soon.shouldNotifyRemote);',
+        '',
+        '  auto expired = buildMainControlWarrantyEvent({7100, 100.0, 50, false});',
+        '  assert(expired.level == WarrantyLevel::Expired);',
+        '  assert(expired.triggerReason == "platform_threshold_expired");',
+        '',
+        '  auto reset = buildMainControlWarrantyEvent({7100, 1400.0, 400, true});',
+        '  assert(reset.level == WarrantyLevel::Normal);',
+        '  assert(reset.triggerReason == "maintenance_verified");',
+        '',
+        '  std::cout << "PA13_UAV_FORMAL_OK" << std::endl;',
+        '  return 0;',
+        '}',
+        '',
+      ].join('\n'),
+    }),
+    toolCall('create_file', {
+      filePath: 'devseek.verify.json',
+      content: JSON.stringify({
+        commands: [
+          {
+            cmd: 'g++',
+            args: [
+              '-std=c++17',
+              '-Isrc/oam/src/lifting/zc_maintenance',
+              testRel,
+              sourceRel,
+              '-o',
+              '.devseek/bin/pa13-uav-formal',
+            ],
+          },
+          {
+            cmd: './.devseek/bin/pa13-uav-formal',
+            expectStdoutIncludes: 'PA13_UAV_FORMAL_OK',
+          },
+        ],
+      }, null, 2),
+    }),
+  ].join('\n');
+
+  const prompt = [
+    `参考 ${licenseWorkerRel} 模块通讯方式。`,
+    `基于 ${requirementRel} 和 ${interfaceRel} 进行遥控器和主控交互接口设计，并通过 md 文档提供。`,
+    `主控集成边界参考 ${mainControlRel}。`,
+    '另外添加：代码实现，创建于：src/oam/src/lifting/zc_maintenance 目录下。',
+    '请按照软件工程流程：分析既有项目原来代码逻辑，根据需求进行设计，最后实现代码，完成自闭环测试。',
+  ].join('\n');
+
+  let events = [];
+  let sawFormalContext = false;
+  await withFakeBridge((body) => {
+    const files = Array.isArray(body.files) ? body.files.map(file => path.relative(workspace, file).replace(/\\/g, '/')) : [];
+    sawFormalContext = files.includes(requirementRel)
+      && files.includes(interfaceRel)
+      && files.includes(mainControlRel)
+      && files.includes(licenseWorkerRel);
+    return { content: response };
+  }, async ({ port }) => {
+    const result = await runCli(['exec', '--jsonl', prompt], {
+      cwd: workspace,
+      env: { DEVSEEK_BRIDGE_PORT: String(port) },
+      timeoutMs: 30000,
+    });
+    assert.equal(result.status, 0, result.stderr);
+    events = parseJsonl(result.stdout);
+  });
+
+  assert.equal(sawFormalContext, true, 'DevSeek did not attach formal project requirement, interface, main-control, and reference communication files');
+  const design = fs.readFileSync(path.join(workspace, designRel), 'utf8');
+  assert.match(design, /主控集成边界/);
+  assert.match(design, /源项目事实矩阵/);
+  assert.match(design, /license_core_worker\.cpp:3/);
+  assert.match(design, /kMavTunnelCmdLicense=33007/);
+  assert.match(design, /kTunnelMaxTotalLen=64 \* 1024/);
+  assert.match(design, /LicenseTunnelHeader/);
+  assert.match(design, /遥控器与主控接口文档/);
+  assert.match(design, /示例 request/);
+  assert.match(design, /原有代码修改清单/);
+  assert.match(design, /UAV_EVENT 1022/);
+  assert.match(design, /不创建脱离主控/);
+  assert.ok(fs.existsSync(path.join(workspace, headerRel)), 'missing zc_maintenance header implementation');
+  assert.ok(fs.existsSync(path.join(workspace, sourceRel)), 'missing zc_maintenance source implementation');
+  assert.ok(fs.existsSync(path.join(workspace, testRel)), 'missing zc_maintenance unit test implementation');
+  assert.equal(fs.existsSync(path.join(workspace, 'src/main.cpp')), false, 'formal project task created a standalone main outside the target module');
+  const validation = events.find(event => event.type === 'validation.completed');
+  assert.ok(validation?.passed, `formal project validation did not pass: ${JSON.stringify(validation)}`);
+  assert.ok(
+    Array.isArray(validation.evidenceRefs) && validation.evidenceRefs.some(ref => String(ref).includes('PA13_UAV_FORMAL_OK')),
+    `validation evidence did not include PA13 run output: ${JSON.stringify(validation)}`,
+  );
+  return {
+    output: 'PA13_UAV_FORMAL_OK',
+    context: 'requirement,interface,main-control,license-reference',
+    eventTypes: events.map(event => event.type),
+  };
+}
+
 async function withFakeBridge(responder, fn) {
   const seenBodies = [];
   const server = createServer((req, res) => {
@@ -814,6 +1110,9 @@ function analyzeReport() {
   if (findings.some(finding => finding.category === 'workspace-boundary-regression')) {
     iterationDecision.push('Stop autonomous file edits until workspace boundary checks are restored and PA12 passes.');
   }
+  if (findings.some(finding => finding.category === 'formal-project-workflow-gap')) {
+    iterationDecision.push('For formal project work, attach requirement/design/main-control/reference files, produce integration design, implement inside the target module, and verify with project-shaped tests before completion.');
+  }
   if (findings.some(finding => finding.category === 'test-case-design-gap')) {
     iterationDecision.push('Fix the benchmark oracle before using that case as product evidence.');
   }
@@ -858,6 +1157,9 @@ function classifyFailure(testCase) {
   if (testCase.id === 'PA12-path-safety-guard') {
     return 'workspace-boundary-regression';
   }
+  if (testCase.id === 'PA13-formal-main-control-uav-workflow') {
+    return 'formal-project-workflow-gap';
+  }
   if (/g\+\+|No such file|ENOENT/i.test(text)) {
     return 'missing-tool-execution';
   }
@@ -877,6 +1179,7 @@ function diagnosisFor(category) {
     'missing-python-verifier': 'DevSeek did not allow or execute Python-based verifier commands from devseek.verify.json.',
     'missing-implicit-project-context': 'DevSeek did not attach relevant project files when the user made a coding request without naming exact paths.',
     'workspace-boundary-regression': 'DevSeek allowed or failed to clearly reject a model-requested write outside the workspace boundary.',
+    'formal-project-workflow-gap': 'DevSeek did not complete the formal-project software workflow: context anchoring, integration design, target-module implementation, and verifier evidence.',
     'test-case-design-gap': 'The case failed in a way that does not yet isolate a DevSeek product capability.',
   };
   return diagnoses[category] ?? diagnoses['test-case-design-gap'];
@@ -895,6 +1198,7 @@ function nextActionFor(category) {
     'missing-python-verifier': 'Allow python3/python verifier commands in the safe verifier allowlist, then rerun PA10.',
     'missing-implicit-project-context': 'Add bounded project context discovery for coding prompts that omit file paths, then rerun PA11.',
     'workspace-boundary-regression': 'Restore safe workspace path checks for all file tools and diff application, then rerun PA12.',
+    'formal-project-workflow-gap': 'Strengthen formal-project task handling so implementation requests collect integration anchors, write design/code/tests in the requested module, and pass verifier evidence, then rerun PA13.',
     'test-case-design-gap': 'Rewrite the oracle so it distinguishes benchmark defects from product defects.',
   };
   return actions[category] ?? actions['test-case-design-gap'];
@@ -989,6 +1293,7 @@ async function main() {
   await runCase('PA10-python-verifier-command', pythonVerifierCommandCase);
   await runCase('PA11-implicit-project-context', implicitProjectContextCase);
   await runCase('PA12-path-safety-guard', pathSafetyGuardCase);
+  await runCase('PA13-formal-main-control-uav-workflow', formalMainControlUavWorkflowCase);
   writeReports();
 }
 

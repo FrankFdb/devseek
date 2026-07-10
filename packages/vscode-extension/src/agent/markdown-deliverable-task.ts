@@ -12,6 +12,12 @@ import {
 import { stripToolCallBlocks } from './fake-tool-parser';
 import type { AgentLoopCallbacks } from './loop-types';
 import {
+  hasAcceptableMarkdownDocumentShape,
+  hasProviderCopyControlArtifact,
+  normalizeProviderMarkdownDocumentText,
+} from './markdown-document-quality';
+import { assessFormalProjectDocumentQuality } from './formal-project-document-quality';
+import {
   classifyProviderOutputIntegrity,
   describeProviderOutputIntegrity,
 } from './provider-output-integrity';
@@ -65,8 +71,6 @@ const MAX_FILE_CHARS = 6_000;
 const MAX_TOTAL_EVIDENCE_CHARS = 30_000;
 const SOURCE_DIR_DEPTH = 2;
 const REPORT_MIN_CHARS = 240;
-const MAX_MARKDOWN_FIRST_LINE_CHARS = 260;
-const MAX_MARKDOWN_LINE_CHARS = 2_400;
 const POSIX_ABSOLUTE_PATH_RE = /\/(?:[A-Za-z0-9._@%+=-]+\/)*[A-Za-z0-9._@%+=-]+/g;
 const SOURCE_EXTENSIONS = new Set([
   '.c', '.cc', '.cpp', '.cxx',
@@ -79,11 +83,6 @@ const EXCLUDED_DIR_NAMES = new Set([
   'Debug', 'Release', 'logs', 'log', 'cache', '.cache',
 ]);
 const BAD_PROVIDER_REPORT_RE = /(?:\[TOOL:|\[工具执行结果\]|Calling\s*:\s*(?:read_file|list_dir|file_search)|调用\s*(?:read_file|list_dir|file_search))/i;
-const PROVIDER_COPY_CONTROL_RE = /(?:plain\s*text|text|json|cpp|c\+\+|c|bash|shell|sh|python|typescript|javascript|yaml|yml|xml|html|sql|ini|toml|go|rust|markdown|md)\s*复制\s*下载/gi;
-const MARKDOWN_METADATA_LABELS = '文档编号|文档版本|对应需求版本|对应需求|关联需求|文档路径|目标路径|创建日期|生成日期|生成时间|文档类型|状态|版本';
-const MARKDOWN_METADATA_LABEL_RE = new RegExp(`(?:\\*\\*)?(${MARKDOWN_METADATA_LABELS})(?:\\*\\*)?\\s*[:：]`, 'g');
-const MARKDOWN_METADATA_LABEL_FINDER_RE = new RegExp(`(?:\\*\\*)?(?:${MARKDOWN_METADATA_LABELS})(?:\\*\\*)?\\s*[:：]`);
-const MARKDOWN_NUMBERED_HEADING_WORD_RE = /(?:文档|目标|依据|范围|需求|差异|旧实现|职责|观察|实现|对策|总体|架构|接口|方向|消息|数据结构|字段|说明|异常|时序|任务|拆分|风险|验证|结论|模块|线程|持久|测试|设计|决策|输入|输出|发布|存储|复位|兼容)/;
 
 export async function tryExecuteMarkdownDeliverableTask(
   input: MarkdownDeliverableTaskInput,
@@ -269,6 +268,17 @@ async function generateProviderMarkdown(
     const integrity = classifyProviderOutputIntegrity(response);
     const normalized = normalizeProviderMarkdown(response);
     if (normalized) {
+      const formalQuality = assessFormalProjectDocumentQuality(
+        normalized,
+        [input.userPrompt, input.task.desc].filter(Boolean).join('\n'),
+      );
+      if (!formalQuality.ok) {
+        return {
+          reason: `formal-project-quality: ${formalQuality.reasons.join(', ')}`,
+          responseChars: response.length,
+          integrityKind: integrity.kind,
+        };
+      }
       return {
         markdown: normalized,
         responseChars: response.length,
@@ -419,6 +429,8 @@ function buildProviderPrompt(input: MarkdownDeliverableTaskInput, evidence: Evid
     '请只输出完整 Markdown 文档正文，不要请求工具，不要输出 [TOOL:...]、Calling、工具执行结果或代码块包裹整个文档。',
     '请使用真实 Markdown 排版：标题、元数据、列表、表格和代码块必须保留换行；不要输出网页复制控件文字，例如“复制”“下载”。',
     '文档必须包含：需求差异、旧实现职责观察、实现对策、主控任务拆分、风险与验证建议、后续任务清单。',
+    '如果这是既有正式项目任务，文档还必须包含：源项目事实矩阵（文件路径、类/函数/常量、关键数值、协议字段、topic/命令号和复用方式）、面向遥控器/主控/平台的接口文档（方向、承载通道、消息类型、JSON/schema字段、枚举、分片/超时/重试/幂等/错误码、版本兼容和示例）、原有代码修改清单（文件、函数/类、改动内容、原因、风险、验证方式）。',
+    '不能只写“参考某模块”；凡是引用 license、主控、遥控器、平台或 tunnel 方案，必须写出从证据中看到的具体常量、数值和字段。',
     `目标写入路径：${relTarget}`,
     '',
     '## 本文档交付目标',
@@ -463,176 +475,6 @@ function describeProviderMarkdownRejection(text: string, integrityKind: string):
   return `${integrityKind}: ${describeProviderOutputIntegrity(integrityKind)}`;
 }
 
-function normalizeProviderMarkdownDocumentText(text: string): string {
-  let normalized = text
-    .replace(/\r\n?/g, '\n')
-    .replace(PROVIDER_COPY_CONTROL_RE, '\n\n')
-    .replace(/[ \t]+\n/g, '\n')
-    .trim();
-
-  normalized = promoteInlineMetadataTitle(normalized);
-  normalized = insertMarkdownDocumentBreaks(normalized);
-  normalized = normalizeMarkdownMetadataLines(normalized);
-  normalized = normalizeNumberedHeadingLines(normalized);
-  normalized = wrapOverlongMarkdownLines(normalized);
-  return squeezeMarkdownBlankLines(normalized).trim();
-}
-
-function promoteInlineMetadataTitle(text: string): string {
-  if (/^#{1,6}\s+\S/.test(text)) return text;
-  const match = MARKDOWN_METADATA_LABEL_FINDER_RE.exec(text);
-  if (!match || match.index <= 3 || match.index > 160) return text;
-  const title = text.slice(0, match.index).trim();
-  const rest = text.slice(match.index).trim();
-  if (!title || !rest) return text;
-  return `# ${title}\n\n${rest}`;
-}
-
-function insertMarkdownDocumentBreaks(text: string): string {
-  let normalized = insertMarkdownMetadataBreaks(text);
-
-  normalized = normalized.replace(
-    /(\.(?:md|markdown))(\d{1,2}(?:\.\d{1,2}){0,4}\.?)\s*(?=\S)/gi,
-    (match, ext: string, number: string, offset: number, source: string) => {
-      const after = source.slice(offset + match.length, offset + match.length + 16);
-      if (!MARKDOWN_NUMBERED_HEADING_WORD_RE.test(after)) return match;
-      return `${ext}\n\n${number} `;
-    },
-  );
-
-  normalized = normalized.replace(
-    /([^\nA-Za-z0-9_])(\d{1,2}(?:\.\d{1,2}){0,4}\.?)(?!\d)\s*(?=\S)/g,
-    (match, before: string, number: string, offset: number, source: string) => {
-      if (isMarkdownHeadingPrefixBeforeNumber(source, offset, before)) return match;
-      if (before === '-' && /\d/.test(source[offset - 1] || '')) return match;
-      if (before === '.' && /\d/.test(source[offset - 1] || '')) return match;
-      const after = source.slice(offset + match.length, offset + match.length + 16);
-      if (!MARKDOWN_NUMBERED_HEADING_WORD_RE.test(after)) return match;
-      return `${before}\n\n${number} `;
-    },
-  );
-
-  return normalized;
-}
-
-function insertMarkdownMetadataBreaks(text: string): string {
-  const titleMatch = text.match(/^#{1,6}\s+\S[^\n]*(?:\n{1,2}|$)/);
-  const searchStart = titleMatch ? titleMatch[0].length : 0;
-  const searchText = text.slice(searchStart);
-  const firstLabel = MARKDOWN_METADATA_LABEL_FINDER_RE.exec(searchText);
-  if (!firstLabel || firstLabel.index > 240) return text;
-  const blockStart = searchStart;
-  const blockEnd = findMarkdownMetadataBlockEnd(text, searchStart + firstLabel.index);
-  const block = text.slice(blockStart, blockEnd).replace(MARKDOWN_METADATA_LABEL_RE, (_match, label: string, offset: number, source: string) => {
-    const prefix = offset > 0 && source[offset - 1] !== '\n' ? '\n' : '';
-    return `${prefix}${label}：`;
-  });
-  return `${text.slice(0, blockStart)}${block}${text.slice(blockEnd)}`;
-}
-
-function findMarkdownMetadataBlockEnd(text: string, from: number): number {
-  const tail = text.slice(from);
-  const candidates = [
-    tail.search(/\n\s*---\s*(?:\n|$)/),
-    tail.search(/\n#{2,6}\s+\S/),
-    tail.search(/#{2,6}\s+\d{1,2}(?:\.\d{1,2}){0,4}\.?\s+\S/),
-    tail.search(/\d{1,2}(?:\.\d{1,2}){0,4}\.?\s*(?=(?:文档|目标|需求|差异|旧实现|职责|观察|实现|对策|接口|风险|验证|后续|任务))/),
-    tail.search(/(?:^|\n)##\s*[一二三四五六七八九十]+[、.．]/),
-  ].filter(index => index >= 0);
-  if (candidates.length === 0) return Math.min(text.length, from + 1_200);
-  return from + Math.min(...candidates);
-}
-
-function isMarkdownHeadingPrefixBeforeNumber(source: string, offset: number, before: string): boolean {
-  if (!/\s/.test(before)) return false;
-  const lineStart = source.lastIndexOf('\n', offset) + 1;
-  const prefix = source.slice(lineStart, offset + before.length);
-  return /^#{1,6}\s*$/.test(prefix);
-}
-
-function normalizeMarkdownMetadataLines(text: string): string {
-  return text.split('\n').map(line => {
-    const match = line.trim().match(new RegExp(`^(?:[-*]\\s*)?(?:\\*\\*)?(${MARKDOWN_METADATA_LABELS})(?:\\*\\*)?\\s*[:：]\\s*(.+)$`));
-    if (!match) return line;
-    return `- **${match[1]}**：${match[2].trim()}`;
-  }).join('\n');
-}
-
-function normalizeNumberedHeadingLines(text: string): string {
-  return text.split('\n').map(line => {
-    const trimmed = line.trim();
-    const match = trimmed.match(/^(\d{1,2}(?:\.\d{1,2}){0,4}\.?)\s+(.+)$/);
-    if (!match || !MARKDOWN_NUMBERED_HEADING_WORD_RE.test(match[2])) return line;
-    if (/^-\s+\S/.test(match[2].trim())) {
-      return `${match[1]} ${match[2].trim().replace(/^-\s+/, '')}`;
-    }
-    const depth = match[1].replace(/\.$/, '').split('.').filter(Boolean).length;
-    const level = Math.min(6, Math.max(2, depth + 1));
-    return `${'#'.repeat(level)} ${match[1]} ${match[2].trim()}`;
-  }).join('\n');
-}
-
-function wrapOverlongMarkdownLines(text: string): string {
-  const output: string[] = [];
-  let inFence = false;
-  for (const line of text.split('\n')) {
-    if (/^\s*```/.test(line)) {
-      inFence = !inFence;
-      output.push(line);
-      continue;
-    }
-    if (inFence || line.length <= 900) {
-      output.push(line);
-      continue;
-    }
-    output.push(...wrapLongMarkdownLine(line, 860));
-  }
-  return output.join('\n');
-}
-
-function wrapLongMarkdownLine(line: string, maxLength: number): string[] {
-  const chunks: string[] = [];
-  let rest = line.trim();
-  while (rest.length > maxLength) {
-    const head = rest.slice(0, maxLength);
-    const splitAt = bestMarkdownLineSplitIndex(head, maxLength);
-    chunks.push(rest.slice(0, splitAt).trim());
-    rest = rest.slice(splitAt).trim();
-  }
-  if (rest) chunks.push(rest);
-  return chunks.length > 0 ? chunks : [line];
-}
-
-function bestMarkdownLineSplitIndex(text: string, maxLength: number): number {
-  const minUsefulSplit = Math.floor(maxLength * 0.55);
-  for (const marker of ['。', '；', ';', '，', ',', '、', ' ']) {
-    const index = text.lastIndexOf(marker);
-    if (index >= minUsefulSplit) return index + marker.length;
-  }
-  return maxLength;
-}
-
-function squeezeMarkdownBlankLines(text: string): string {
-  return text
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/\n{3,}/g, '\n\n');
-}
-
-function hasAcceptableMarkdownDocumentShape(text: string): boolean {
-  if (hasProviderCopyControlArtifact(text)) return false;
-  const lines = text.split(/\n/);
-  const nonEmpty = lines.map(line => line.trim()).filter(Boolean);
-  if (!nonEmpty.length) return false;
-  if (nonEmpty[0].length > MAX_MARKDOWN_FIRST_LINE_CHARS) return false;
-  if (lines.some(line => line.length > MAX_MARKDOWN_LINE_CHARS)) return false;
-  return nonEmpty.some(line => /^#{1,6}\s+\S/.test(line));
-}
-
-function hasProviderCopyControlArtifact(text: string): boolean {
-  PROVIDER_COPY_CONTROL_RE.lastIndex = 0;
-  return PROVIDER_COPY_CONTROL_RE.test(text) || /复制下载/.test(text);
-}
-
 function describeEvidenceSummary(evidence: EvidenceBundle): string {
   const requirementCount = evidence.files.filter(file => file.kind === 'requirement').length;
   const sourceCount = evidence.files.filter(file => file.kind === 'source').length;
@@ -668,6 +510,9 @@ function buildFallbackMarkdown(input: {
   const sourceDigest = sourceFiles
     .map(file => `### ${file.relPath}\n${extractSourceResponsibilities(file.content)}`)
     .join('\n\n') || '- 未读取到旧实现源码，请补充旧实现路径后复核。';
+  const sourceFactMatrix = buildSourceFactMatrix(sourceFiles);
+  const interfaceSection = buildRemoteControllerInterfaceFallback(input.deliveryObjective, input.userPrompt);
+  const modificationPlan = buildExistingCodeModificationPlan(sourceFiles);
   const sourceList = sourceFiles.length > 0
     ? sourceFiles.map(file => `- ${file.relPath}${file.truncated ? '（已截断）' : ''}`).join('\n')
     : '- 无';
@@ -700,6 +545,14 @@ function buildFallbackMarkdown(input: {
     '',
     sourceDigest,
     '',
+    '## 源项目事实矩阵',
+    '',
+    sourceFactMatrix,
+    '',
+    '## 遥控器与主控接口文档',
+    '',
+    interfaceSection,
+    '',
     '## 实现对策',
     '',
     fallbackFocusedDesignAdvice(input.deliveryObjective),
@@ -719,6 +572,10 @@ function buildFallbackMarkdown(input: {
     '- 接入事件发布或主控消费接口，避免主控直接读取内部临时状态。',
     '- 增加回放测试和异常恢复测试，覆盖旧数据、断电重启、重复提醒和手动复位。',
     '',
+    '## 原有代码修改清单',
+    '',
+    modificationPlan,
+    '',
     '## 风险与验证建议',
     '',
     '- 风险：模型正文生成失败时，文档内容可能只有本地证据级分析，需要人工复核需求细节。',
@@ -736,6 +593,134 @@ function fallbackTitleForObjective(objective: string): string {
     return '# 02 主控维保提醒逻辑实现设计';
   }
   return '# 维保提醒需求分析与实现建议';
+}
+
+function buildSourceFactMatrix(sourceFiles: EvidenceFile[]): string {
+  const rows = sourceFiles.flatMap(file => extractSourceFactRows(file)).slice(0, 14);
+  if (rows.length === 0) {
+    return [
+      '| 源文件 | 原项目事实 | 复用/约束方式 |',
+      '|--------|------------|----------------|',
+      '| 待补充 | 当前证据预算内未提取到常量、协议字段或关键函数 | 继续读取原项目代码后补齐，不能只写“参考某模块” |',
+    ].join('\n');
+  }
+  return [
+    '| 源文件 | 原项目事实 | 复用/约束方式 |',
+    '|--------|------------|----------------|',
+    ...rows.map(row => `| \`${row.ref}\` | ${escapeTableCell(row.fact)} | ${row.reuse} |`),
+  ].join('\n');
+}
+
+function extractSourceFactRows(file: EvidenceFile): Array<{ ref: string; fact: string; reuse: string }> {
+  const rows: Array<{ ref: string; fact: string; reuse: string }> = [];
+  const lines = file.content.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (!isSourceFactLine(line)) continue;
+    rows.push({
+      ref: `${file.relPath}:${index + 1}`,
+      fact: line.slice(0, 180),
+      reuse: describeSourceFactReuse(line),
+    });
+    if (rows.length >= 4) break;
+  }
+  return rows;
+}
+
+function isSourceFactLine(line: string): boolean {
+  return /(?:constexpr|#define|enum class|struct|class|static const|const char\*|UAV_EVENT|COMMAND_LONG|MAVLINK|TUNNEL|Tunnel|topic|payload|sessionId|payloadLen|totalLen|crc32|seq|timeout|Timeout|Retry|retry|Publisher|publish|route|Route)/.test(line)
+    && !/^\s*(?:\/\/|\*)/.test(line);
+}
+
+function describeSourceFactReuse(line: string): string {
+  if (/(?:topic|Publisher|publish|\/uav\/)/i.test(line)) {
+    return '通信 topic 和发布边界必须与原项目保持一致。';
+  }
+  if (/(?:Tunnel|MAVLINK|payload|sessionId|payloadLen|totalLen|crc32|seq)/.test(line)) {
+    return '分片、会话、CRC 和 payload 字段需要沿用或明确隔离。';
+  }
+  if (/(?:constexpr|#define|enum|Timeout|timeout|Retry|retry)/.test(line)) {
+    return '关键常量、枚举和超时策略需要写入接口约束。';
+  }
+  if (/(?:class|struct)/.test(line)) {
+    return '类型职责和模块边界需要作为集成锚点。';
+  }
+  return '作为正式项目设计约束，不得泛化为口头参考。';
+}
+
+function buildRemoteControllerInterfaceFallback(objective: string, userPrompt: string): string {
+  const requested = isRemoteControllerInterfaceObjective(`${objective}\n${userPrompt}`)
+    || /(?:主控|平台|接口|通信|通讯|JSON|MAVLink|tunnel|license)/i.test(`${objective}\n${userPrompt}`);
+  if (!requested) {
+    return '- 当前任务未明确要求遥控器/主控接口；若后续接入通信链路，需要补充方向、承载、字段、错误码和示例。';
+  }
+  return [
+    '| 方向 | 承载通道 | 消息类型 | request JSON/schema 字段 | response JSON/schema 字段 |',
+    '|------|----------|----------|--------------------------|---------------------------|',
+    '| 遥控器 -> 主控 | 参考原项目 tunnel/topic 证据确认 | `platform_status` / `maintenance_verified` | `requestId`、`deviceId`、`statisticsCutoffAt`、`metrics`、`thresholds`、`version` | `accepted`、`errorCode`、`errorMessage` |',
+    '| 主控 -> 遥控器 | 参考主控发布器或 MAVLink tunnel | `warranty_status` / `compensation_report` | `requestId`、`status`、`level`、`triggerReason`、`updatedAtMs`、`version` | `ack`、`errorCode` |',
+    '',
+    '- 示例 request：`{"type":"platform_status","requestId":"r1","metrics":{"flightSorties":120},"version":1}`。',
+    '- 示例 response：`{"type":"warranty_status","requestId":"r1","level":"expiring_soon","errorCode":0,"version":1}`。',
+    '- 分片/超时/重试/幂等：必须从原项目 tunnel 常量和 session 规则取值；若证据不足，本节标记为待补证，不允许直接落正式协议。',
+  ].join('\n');
+}
+
+function buildExistingCodeModificationPlan(sourceFiles: EvidenceFile[]): string {
+  const candidates = sourceFiles
+    .flatMap(file => extractModificationCandidates(file))
+    .slice(0, 8);
+  if (candidates.length === 0) {
+    return [
+      '| 目标文件 | 函数/类 | 改动内容 | 原因 | 风险 | 验证方式 |',
+      '|----------|---------|----------|------|------|----------|',
+      '| 待补充 | 待补充 | 继续读取主入口、调度和发布器代码后再确定 | 避免孤岛实现 | 接入点错误 | 源码审计 + 编译/单测 |',
+    ].join('\n');
+  }
+  return [
+    '| 目标文件 | 函数/类 | 改动内容 | 原因 | 风险 | 验证方式 |',
+    '|----------|---------|----------|------|------|----------|',
+    ...candidates.map(item => `| \`${item.ref}\` | ${escapeTableCell(item.symbol)} | ${item.change} | ${item.reason} | ${item.risk} | ${item.validation} |`),
+  ].join('\n');
+}
+
+function extractModificationCandidates(file: EvidenceFile): Array<{
+  ref: string;
+  symbol: string;
+  change: string;
+  reason: string;
+  risk: string;
+  validation: string;
+}> {
+  const rows: Array<{
+    ref: string;
+    symbol: string;
+    change: string;
+    reason: string;
+    risk: string;
+    validation: string;
+  }> = [];
+  const lines = file.content.split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    const match = line.match(/(?:class|struct)\s+([A-Za-z_]\w*)|(?:bool|void|int|double|float|std::string)\s+([A-Za-z_]\w*)\s*\(|([A-Za-z_]\w*)\s*=\s*.+createPubTopic/);
+    if (!match) continue;
+    const symbol = match[1] || match[2] || match[3] || '待确认';
+    rows.push({
+      ref: `${file.relPath}:${index + 1}`,
+      symbol,
+      change: '作为正式集成候选点，需要明确新增调用、注入或复用方式。',
+      reason: '保持新功能嵌入既有主流程。',
+      risk: '生命周期、线程安全或 topic/协议冲突。',
+      validation: '编译、单测、运行日志和接口回放。',
+    });
+    if (rows.length >= 3) break;
+  }
+  return rows;
+}
+
+function escapeTableCell(value: string): string {
+  return String(value || '').replace(/\|/g, '\\|').replace(/\r?\n/g, ' ').trim();
 }
 
 function fallbackFocusedDesignAdvice(objective: string): string {

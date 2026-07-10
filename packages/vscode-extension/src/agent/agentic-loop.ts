@@ -106,6 +106,16 @@ const AGENTIC_USER_HISTORY_CHAR_BUDGET = 8_000;
 const AGENTIC_RECENT_MESSAGE_KEEP_COUNT = 5;
 const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
 
+function getAgenticBlockingTerminalFailure(
+  userPrompt: string,
+  todos: TodoItem[],
+  writtenFiles: WrittenFileEvidence[],
+  terminalEvidence: TerminalEvidence[],
+): TerminalEvidence | undefined {
+  return getBlockingTerminalFailure(userPrompt, todos, writtenFiles, terminalEvidence)
+    ?? findBlockingTerminalFailureEvidence(terminalEvidence);
+}
+
 function agenticMessageContentLength(content: ChatMessage['content']): number {
   return typeof content === 'string' ? content.length : JSON.stringify(content).length;
 }
@@ -1018,7 +1028,7 @@ export async function runAgenticLoop(
       ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
       : [];
     const blockingFailureAfterTools = promptRequiresTools
-      ? getBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+      ? getAgenticBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
       : undefined;
     const roundSummaryForFactCheck = loopRes.completeSummary !== undefined
       ? loopRes.completeSummary ?? ''
@@ -1101,7 +1111,7 @@ export async function runAgenticLoop(
         ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
         : [];
       const blockingFailureNow = promptRequiresTools
-        ? getBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+        ? getAgenticBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
         : undefined;
       if (blockingFailureNow && noToolRounds < 2 && !callbacks.signal?.aborted) {
         noToolRounds++;
@@ -1124,7 +1134,7 @@ export async function runAgenticLoop(
     ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
     : [];
   const finalBlockingFailure = promptRequiresTools
-    ? getBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+    ? getAgenticBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
     : undefined;
   const finalSummaryFactFailures = completeSummary
     ? getUnsupportedSummaryFileClaims(completeSummary, allWrittenFiles, workspaceRoot)

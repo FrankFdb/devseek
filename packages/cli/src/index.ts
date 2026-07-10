@@ -149,10 +149,18 @@ async function selectWorkspaceContextFiles(cwd: string, prompt: string): Promise
 }
 
 function extractMentionedFilePaths(prompt: string): string[] {
-  const matches = prompt.matchAll(/(?:^|[\s`'":])((?:\.\/)?[A-Za-z0-9._/-]+\.(?:cpp|cxx|cc|hpp|tsx|jsx|mjs|cjs|toml|yaml|json|java|yml|ts|js|py|rs|go|md|h|c))/g);
-  return [...matches]
-    .map(match => match[1])
-    .filter((candidate): candidate is string => typeof candidate === 'string' && candidate.length > 0);
+  const matches = prompt.matchAll(
+    /(?:^|[\s`'":：])((?:\/|\.{0,2}\/)?[^\s`'"<>，。；;、)）\]}]+?\.(?:cpp|cxx|cc|hpp|tsx|jsx|mjs|cjs|toml|yaml|json|java|yml|ts|js|py|rs|go|markdown|md|h|c))(?=$|[\s`'")）\]}，。；;、])/giu,
+  );
+  return [...new Set([...matches]
+    .map(match => cleanMentionedFilePath(match[1]))
+    .filter((candidate): candidate is string => Boolean(candidate)))];
+}
+
+function cleanMentionedFilePath(value: string | undefined): string {
+  return String(value || '')
+    .replace(/[)\]}>，。；;、]+$/gu, '')
+    .trim();
 }
 
 const CONTEXT_SCAN_DIRS = ['src', 'test', 'tests', 'lib', 'app'];

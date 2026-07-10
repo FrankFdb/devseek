@@ -125,6 +125,7 @@ function looksLikeTruncatedToolProtocol(text: string): boolean {
   const bracketStart = text.lastIndexOf('[TOOL:');
   if (bracketStart >= 0 && bracketStart > text.length - 240) {
     const tail = text.slice(bracketStart);
+    if (parseFakeToolCalls(tail).length > 0) return false;
     if (!/\}\s*\]?\s*$/.test(tail)) return true;
   }
   const fencedStart = text.lastIndexOf('```');

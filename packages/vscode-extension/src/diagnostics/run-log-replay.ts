@@ -142,6 +142,7 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
   const completedRunChangedPaths: string[] = [];
   let completedRunTasksApplied = 0;
   let completedStatusEditedFiles = 0;
+  let pendingValidationFailure: { line: number; evidence: string } | undefined;
   let pendingBridgeRuntimeMismatch: RunLogReplayIssue | undefined;
 
   for (const event of events) {
@@ -179,6 +180,15 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       if (agentRunCompletedSuccessfully) {
         completedRunChangedPaths.push(...stringArrayValue(data?.changedPaths));
         completedRunTasksApplied = Math.max(completedRunTasksApplied, numberValue(data?.tasksApplied) ?? 0);
+        if (pendingValidationFailure) {
+          issues.push({
+            kind: 'failure-status-reported-completed',
+            severity: 'error',
+            line: event.line,
+            message: '自动验证失败尚未被后续成功验证清除，但 agent-run-completed 仍报告 completed。',
+            evidence: pendingValidationFailure.evidence,
+          });
+        }
       } else {
         issues.push({
           kind: 'agent-run-failed',
@@ -197,6 +207,14 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       const taskDesc = stringValue(data?.taskDesc) ?? '';
       const title = stringValue(data?.title) ?? '';
       const detail = stringValue(data?.detail) ?? '';
+      if (phase === 'validate' && state === 'failed') {
+        pendingValidationFailure = {
+          line: event.line,
+          evidence: truncateOneLine(`${title} ${detail}`, 220),
+        };
+      } else if (phase === 'validate' && state === 'completed') {
+        pendingValidationFailure = undefined;
+      }
       if (state === 'completed' && /(失败|failed|error|fetch failed|HTTP 5\d\d)/i.test(`${title}\n${detail}`)) {
         issues.push({
           kind: 'failure-status-reported-completed',
@@ -355,12 +373,13 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     if (entry.source === 'vscode-extension.tool-loop' && entry.event === 'execute-complete') {
       terminalCommands += numberValue(data?.terminalCommandCount) ?? 0;
       const toolCallsMade = booleanValue(data?.toolCallsMade);
+      const taskComplete = booleanValue(data?.taskComplete);
       const readFileCount = numberValue(data?.readFileCount) ?? 0;
       const feedbackLength = numberValue(data?.feedbackLength) ?? 0;
       if (toolCallsMade || readFileCount > 0 || feedbackLength > 0) {
         sawSuccessfulToolRound = true;
       }
-      if (toolCallsMade === false && latestExtensionResponse?.parsedToolCount) {
+      if (toolCallsMade === false && !taskComplete && latestExtensionResponse?.parsedToolCount) {
         issues.push({
           kind: 'provider-tool-request-not-executed',
           severity: 'error',
@@ -482,6 +501,7 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
   }
 
   if (agentRunCompletedSuccessfully
+    && !workspaceMutationRequested
     && sawReadOnlyTask
     && latestExtensionResponse
     && !hasReadOnlyAnswerEvidence(latestExtensionResponse.content)) {
@@ -651,7 +671,7 @@ function collectProviderResponseIssues(content: string, line: number, issues: Ru
     if (parsedTools.length < markerCount) {
       issues.push({
         kind: 'malformed-tool-block',
-        severity: 'error',
+        severity: parsedTools.length > 0 ? 'warn' : 'error',
         line,
         message: `检测到 ${markerCount} 个 [TOOL:*] 标记，但只解析出 ${parsedTools.length} 个工具调用。`,
       });
