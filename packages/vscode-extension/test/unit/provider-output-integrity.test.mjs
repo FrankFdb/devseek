@@ -36,6 +36,15 @@ test('provider output integrity: classifies executable tool calls before settlem
   assert.equal(result.toolCallCount, 1);
 });
 
+test('provider output integrity: accepts a complete quote-damaged replace call as an executable tool request', () => {
+  const result = classifyProviderOutputIntegrity(String.raw`我立即修复头文件。
+<TOOL_CALL>[TOOL:replace_in_file] {"path":"/tmp/project/worker.hpp","old_str":"#include <string>\n\n#include "worker_types.hpp"","new_str":"#include <string>\n#include <unordered_map>\n\n#include "worker_types.hpp""}</TOOL_CALL>`);
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 1);
+});
+
 test('provider output integrity: classifies DeepSeek nameless artifact arrays as tool calls', () => {
   const result = classifyProviderOutputIntegrity([
     '现在创建核心代码文件。',

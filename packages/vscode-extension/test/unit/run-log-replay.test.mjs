@@ -155,6 +155,51 @@ test('run log replay accepts deterministically recoverable terminal tool blocks'
   }
 });
 
+test('run log replay accepts the real quote-damaged replace_in_file response as executable', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-10T23:21:26.160Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'malformed-replace-recovery',
+      data: {
+        name: 'extension.response.raw',
+        content: String.raw`我立即修复头文件。
+<TOOL_CALL>[TOOL:replace_in_file] {"path":"/tmp/project/warranty_core_worker.hpp","old_str":"#include <string>\n\n#include "warranty_types.hpp"","new_str":"#include <string>\n#include <unordered_map>\n#include <cstdint>\n\n#include "warranty_types.hpp""}</TOOL_CALL>`,
+      },
+    },
+    {
+      ts: '2026-07-10T23:21:26.200Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-start',
+      runId: 'malformed-replace-recovery',
+      data: { toolCount: 1, tools: ['replace_in_file'] },
+    },
+    {
+      ts: '2026-07-10T23:21:26.250Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-complete',
+      runId: 'malformed-replace-recovery',
+      data: { toolCallsMade: true, workToolCallsMade: true, writtenFileCount: 1 },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    assert.equal(report.issues.some(issue => issue.kind === 'malformed-tool-block'), false);
+    assert.equal(report.issues.some(issue => issue.kind === 'unexecuted-tool-intent'), false);
+    assert.equal(report.toolExecutions, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay detects an unexecuted DeepSeek nameless artifact array', () => {
   const { dir, logPath } = writeLog([
     {

@@ -732,6 +732,7 @@ test('Agent planning: task shape guidance is injected before code is written', (
   const agentic = src('src/agent/agentic-loop.ts');
   const guidelines = src('src/agent/engineering-guidelines.ts');
   const prompts = src('src/agent/agent-prompt-builder.ts');
+  const toolProtocolPrompt = src('src/agent/tool-protocol-prompt.ts');
 
   assertContains(decomposer, 'buildTaskShapeGuidancePrompt(userPrompt)', 'Architect planner must classify task shape from the current user prompt');
   assertContains(agentLoop, 'buildTaskShapeGuidancePrompt(userPrompt)', 'generic Editor loop must preserve task shape guidance before emitting file content');
@@ -741,7 +742,10 @@ test('Agent planning: task shape guidance is injected before code is written', (
   assertContains(guidelines, 'request JSON 示例', 'engineering guidelines must require request examples for interface deliverables');
   assertContains(guidelines, 'response JSON 示例', 'engineering guidelines must require response examples for interface deliverables');
   assertContains(guidelines, '独立新项目/原型/练习', 'engineering guidelines must preserve standalone task behavior');
-  assertContains(prompts, 'replace_in_file', 'tool prompt must expose targeted edit tool, not only full-file writes');
+  assertContains(prompts, 'buildReplaceInFileToolPrompt()', 'task-specific prompt must use the shared targeted-edit protocol');
+  assertContains(agentic, 'buildReplaceInFileToolPrompt()', 'Agentic prompt must use the shared targeted-edit protocol');
+  assertContains(toolProtocolPrompt, 'replace_in_file', 'shared tool prompt must expose targeted edits, not only full-file writes');
+  assertContains(toolProtocolPrompt, '<old_str>', 'shared tool prompt must expose a quote-safe raw edit format');
 });
 
 test('Agent progress UI: user-facing digest is primary and tool details stay collapsible', () => {

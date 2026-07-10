@@ -108,6 +108,7 @@ import {
 } from './agent-history-compaction';
 import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
 import { QualityGateStagnationLedger } from './quality-gate-stagnation';
+import { buildReplaceInFileToolPrompt } from './tool-protocol-prompt';
 
 const AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
 const AGENTIC_TASK_PROMPT_CHAR_BUDGET = 34_000;
@@ -408,7 +409,7 @@ ${buildEngineeringGuidelinesPrompt('agent')}
 [TOOL:create_file {"path":"code/hello.cpp","content":"文件全部内容"}]
 
 精确替换既有文件片段（修改正式工程既有文件时优先使用；old_str 必须来自 read_file 读取到的原文）：
-[TOOL:replace_in_file {"path":"src/foo.cpp","old_str":"原始文本","new_str":"替换后文本"}]
+${buildReplaceInFileToolPrompt()}
 
 删除已确认不再需要的文件（必须先 read_file 核对；禁止用 rm/mv/sed -i 绕过文件审计）：
 [TOOL:delete_file {"path":"src/obsolete.cpp"}]

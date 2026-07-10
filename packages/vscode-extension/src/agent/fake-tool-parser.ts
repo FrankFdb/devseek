@@ -28,6 +28,13 @@ const LOOSE_FILE_WRITE_CONTENT_KEYS = [
   'content', 'contents', 'text', 'body',
   'fileContent', 'file_content', 'source', 'code', 'newContent', 'new_content',
 ];
+const LOOSE_REPLACE_OLD_KEYS = [
+  'old_str', 'oldString', 'old_string', 'oldText', 'old_text', 'search', 'find', 'target',
+];
+const LOOSE_REPLACE_NEW_KEYS = [
+  'new_str', 'newString', 'new_string', 'newText', 'new_text', 'replace', 'replacement', 'with',
+];
+const LOOSE_REPLACE_TRAILING_KEYS = new Set(['replaceAll']);
 const IMPLICIT_FILE_WRITE_KEYS = new Set([
   ...LOOSE_FILE_WRITE_PATH_KEYS,
   ...LOOSE_FILE_WRITE_CONTENT_KEYS,
@@ -1060,8 +1067,24 @@ function findLooseObjectCloseAfterString(text: string, afterStringQuote: number)
     i++;
   }
   if (i >= text.length || text[i] === ']' || sawLineBreak) return closeBrace;
+  if (/^<\/?\s*(?:TOOL_CALL|TOOL)\s*>/i.test(text.slice(i))) return closeBrace;
   if (text.startsWith('[TOOL:', i) || text.startsWith('```', i)) return closeBrace;
   if (/^(?:Calling|Call|调用)\b/i.test(text.slice(i, i + 20))) return closeBrace;
+  return -1;
+}
+
+function findLooseReplaceObjectEnd(text: string, name: string, jsonStart: number): number {
+  if (normalizeAgentToolName(name) !== 'replace_in_file' || text[jsonStart] !== '{') return -1;
+  if (findLooseJsonStringFieldValueStart(text, jsonStart, LOOSE_FILE_WRITE_PATH_KEYS) < 0) return -1;
+  if (findLooseJsonStringFieldValueStart(text, jsonStart, LOOSE_REPLACE_OLD_KEYS) < 0) return -1;
+  const newValueStart = findLooseJsonStringFieldValueStart(text, jsonStart, LOOSE_REPLACE_NEW_KEYS);
+  if (newValueStart < 0) return -1;
+
+  for (let i = newValueStart; i < text.length; i++) {
+    if (text[i] !== '"' || isEscapedQuote(text, i, newValueStart)) continue;
+    const close = findLooseObjectCloseAfterString(text, i + 1);
+    if (close >= 0) return close;
+  }
   return -1;
 }
 
@@ -1081,12 +1104,20 @@ function findLooseFileWriteObjectEnd(text: string, name: string, jsonStart: numb
 
 function findToolInputObjectEnd(text: string, name: string, jsonStart: number): number {
   const strictEnd = findJsonObjectEnd(text, jsonStart);
-  if (strictEnd < 0) return findLooseFileWriteObjectEnd(text, name, jsonStart);
+  if (strictEnd < 0) {
+    return Math.max(
+      findLooseFileWriteObjectEnd(text, name, jsonStart),
+      findLooseReplaceObjectEnd(text, name, jsonStart),
+    );
+  }
   try {
     JSON.parse(text.slice(jsonStart, strictEnd + 1));
     return strictEnd;
   } catch {
-    const looseEnd = findLooseFileWriteObjectEnd(text, name, jsonStart);
+    const looseEnd = Math.max(
+      findLooseFileWriteObjectEnd(text, name, jsonStart),
+      findLooseReplaceObjectEnd(text, name, jsonStart),
+    );
     return looseEnd > strictEnd ? looseEnd : strictEnd;
   }
 }
@@ -1124,8 +1155,47 @@ function parseLooseRunTerminalToolInput(name: string, jsonText: string): Record<
   return input;
 }
 
+function parseLooseReplaceInFileToolInput(name: string, jsonText: string): Record<string, unknown> | null {
+  if (normalizeAgentToolName(name) !== 'replace_in_file') return null;
+
+  let path: string | undefined;
+  for (const key of LOOSE_FILE_WRITE_PATH_KEYS) {
+    const value = extractLooseJsonStringField(jsonText, key);
+    if (typeof value === 'string' && value.trim()) {
+      path = value.trim();
+      break;
+    }
+  }
+
+  let oldStr: string | undefined;
+  const newFieldKeys = new Set(LOOSE_REPLACE_NEW_KEYS);
+  for (const key of LOOSE_REPLACE_OLD_KEYS) {
+    const value = extractLooseJsonStringField(jsonText, key, newFieldKeys);
+    if (typeof value === 'string') {
+      oldStr = value;
+      break;
+    }
+  }
+
+  let newStr: string | undefined;
+  for (const key of LOOSE_REPLACE_NEW_KEYS) {
+    const value = extractLooseJsonStringField(jsonText, key, LOOSE_REPLACE_TRAILING_KEYS);
+    if (typeof value === 'string') {
+      newStr = value;
+      break;
+    }
+  }
+
+  if (!path || typeof oldStr !== 'string' || typeof newStr !== 'string') return null;
+  const input: Record<string, unknown> = { path, old_str: oldStr, new_str: newStr };
+  const replaceAll = /"replaceAll"\s*:\s*(true|false)/i.exec(jsonText);
+  if (replaceAll) input.replaceAll = replaceAll[1].toLowerCase() === 'true';
+  return input;
+}
+
 function parseLooseToolInput(name: string, jsonText: string): Record<string, unknown> | null {
   return parseLooseFileWriteToolInput(name, jsonText)
+    ?? parseLooseReplaceInFileToolInput(name, jsonText)
     ?? parseLooseRunTerminalToolInput(name, jsonText);
 }
 

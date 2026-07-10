@@ -1,6 +1,7 @@
 import type { ChatMessage } from '../llm/types';
 import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
 import type { TodoItem } from './evidence-recovery';
+import { buildReplaceInFileRecoveryPrompt } from './tool-protocol-prompt';
 
 export interface AgentProviderFailure {
   status: string;
@@ -119,7 +120,7 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
     : '- 恢复轮必须小步推进：最多 6 个只读工具；如需写入，最多 1 个写入工具，content 控制在 6000 字符以内。';
   const resetProviderSession = shouldResetProviderSessionForRecovery(input.failure);
   const toolSerializationLine = input.failure.status.toLowerCase() === 'incomplete-tool-block'
-    ? '- 上一轮工具块序列化不完整：本轮只输出 1 个工具调用。run_terminal.command 必须是合法 JSON 字符串；shell 文本优先使用单引号，必须使用双引号时写成 \\"；输出工具块后立即停止。'
+    ? buildReplaceInFileRecoveryPrompt()
     : '';
 
   return {

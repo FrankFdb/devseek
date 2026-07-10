@@ -86,8 +86,10 @@ test('Agent provider recovery prompt keeps only durable facts and forces small t
   assert.match(prompt, /最多 6 个只读工具/);
   assert.match(prompt, /content 控制在 6000 字符以内/);
   assert.match(prompt, /本轮只输出 1 个工具调用/);
-  assert.match(prompt, /run_terminal\.command 必须是合法 JSON 字符串/);
-  assert.match(prompt, /双引号时写成 \\"/);
+  assert.match(prompt, /不要再次把含源码双引号或多行文本的 old_str\/new_str 手写进 JSON/);
+  assert.match(prompt, /<replace_in_file>/);
+  assert.match(prompt, /<old_str>#include "old\.hpp"<\/old_str>/);
+  assert.match(prompt, /command 必须是合法 JSON 字符串/);
   assert.match(prompt, /输出工具块后立即停止/);
   assert.match(prompt, /正式既有工程任务必须继续沿既有入口/);
   assert.match(prompt, /src\/lifting\/lifting_manager\.hpp/);

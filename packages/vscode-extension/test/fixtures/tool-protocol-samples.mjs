@@ -84,6 +84,26 @@ export const TOOL_PROTOCOL_SAMPLES = [
     expectedToolNames: ['run_terminal'],
   },
   {
+    id: 'deepseek-malformed-replace-envelope',
+    text: String.raw`I will repair the missing include.
+<TOOL_CALL>[TOOL:replace_in_file] {"path":"/tmp/project/worker.hpp","old_str":"#include <string>\n\n#include "worker_types.hpp"","new_str":"#include <string>\n#include <unordered_map>\n\n#include "worker_types.hpp""}</TOOL_CALL>`,
+    expectedVisible: 'I will repair the missing include.',
+    expectedToolNames: ['replace_in_file'],
+  },
+  {
+    id: 'raw-parameter-replace-tool',
+    text: [
+      'I will apply a quote-safe replacement.',
+      '<replace_in_file>',
+      '<path>/tmp/project/worker.hpp</path>',
+      '<old_str>#include "old.hpp"</old_str>',
+      '<new_str>#include "new.hpp"</new_str>',
+      '</replace_in_file>',
+    ].join('\n'),
+    expectedVisible: 'I will apply a quote-safe replacement.',
+    expectedToolNames: ['replace_in_file'],
+  },
+  {
     id: 'generic-tool-envelope',
     text: [
       'I will inspect the project.',

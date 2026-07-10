@@ -686,6 +686,29 @@ test('FakeToolParser: recovers malformed DeepSeek file tools with unescaped code
   assert.equal(stripToolCallBlocks(text), '现在创建 C++ 文件：');
 });
 
+test('FakeToolParser: recovers a complete malformed replace_in_file envelope from a real run', () => {
+  const text = String.raw`我立即修复头文件。
+<TOOL_CALL>[TOOL:replace_in_file] {"path":"/tmp/project/warranty_core_worker.hpp","old_str":"#include <string>\n\n#include "warranty_types.hpp"","new_str":"#include <string>\n#include <unordered_map>\n#include <cstdint>\n\n#include "warranty_types.hpp""}</TOOL_CALL>`;
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'replace_in_file');
+  assert.equal(tools[0].input.path, '/tmp/project/warranty_core_worker.hpp');
+  assert.equal(tools[0].input.old_str, '#include <string>\n\n#include "warranty_types.hpp"');
+  assert.equal(
+    tools[0].input.new_str,
+    '#include <string>\n#include <unordered_map>\n#include <cstdint>\n\n#include "warranty_types.hpp"',
+  );
+  assert.equal(stripToolCallBlocks(text), '我立即修复头文件。');
+});
+
+test('FakeToolParser: rejects malformed replace_in_file calls without all required edit fields', () => {
+  const text = String.raw`[TOOL:replace_in_file] {"path":"/tmp/project/worker.hpp","old_str":"#include "old.hpp""}`;
+
+  assert.equal(parseFakeToolCalls(text).length, 0);
+});
+
 test('FakeToolParser: recovers a complete DeepSeek terminal call with unescaped shell quotes', () => {
   const text = '[TOOL:run_terminal] {"command":"cd /tmp/project && echo "=== files ===" && find . -name "*.cpp" | sort","maxOutputLines":100}';
   const tools = parseFakeToolCalls(text);
