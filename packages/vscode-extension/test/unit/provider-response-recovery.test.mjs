@@ -21,6 +21,7 @@ const {
   canRecoverAgentProviderFailure,
   describeAgentProviderRecoveryForUser,
   parseAgentProviderFailure,
+  shouldResetProviderSessionForRecovery,
 } = req(bundlePath);
 
 test('Agent provider recovery: response corruption is recoverable but login is not', () => {
@@ -38,6 +39,7 @@ test('Agent provider recovery: response corruption is recoverable but login is n
   assert.equal(timeout.status, 'stream-timeout');
   assert.equal(timeout.recoverable, true);
   assert.equal(canRecoverAgentProviderFailure(timeout, 1, 3), true);
+  assert.equal(shouldResetProviderSessionForRecovery(timeout), true);
 
   const submitFailed = parseAgentProviderFailure(
     new Error('RESPONSE_CORRUPTED:prompt-submit-failed:PROMPT_SUBMIT_FAILED: composer did not clear.'),
@@ -45,6 +47,7 @@ test('Agent provider recovery: response corruption is recoverable but login is n
   assert.equal(submitFailed.status, 'prompt-submit-failed');
   assert.equal(submitFailed.recoverable, true);
   assert.equal(canRecoverAgentProviderFailure(submitFailed, 1, 3), true);
+  assert.equal(shouldResetProviderSessionForRecovery(submitFailed), true);
 
   const legacySubmitFailed = parseAgentProviderFailure(
     new Error('PROMPT_SUBMIT_FAILED: DeepSeek 网页未确认收到本轮请求。'),
@@ -57,6 +60,7 @@ test('Agent provider recovery: response corruption is recoverable but login is n
   );
   assert.equal(login.recoverable, false);
   assert.equal(canRecoverAgentProviderFailure(login, 0, 3), false);
+  assert.equal(shouldResetProviderSessionForRecovery(login), false);
 });
 
 test('Agent provider recovery prompt keeps only durable facts and forces small tool batches', () => {
@@ -105,8 +109,17 @@ test('Agent provider recovery prompt tightens the last retry', () => {
 
   assert.match(prompt, /最后一次恢复/);
   assert.match(prompt, /最多 3 个只读工具或 1 个写入工具/);
+  assert.match(prompt, /本轮会重建 Provider 会话/);
   assert.match(prompt, /原始用户任务：.{100,900}/s);
   assert.doesNotMatch(prompt, /实现一个正式项目功能.{1800}/s);
+});
+
+test('Agent provider recovery does not reset the provider session for repairable text corruption', () => {
+  const failure = parseAgentProviderFailure(
+    new Error('RESPONSE_CORRUPTED:incomplete-tool-block:Tool block is incomplete.'),
+  );
+
+  assert.equal(shouldResetProviderSessionForRecovery(failure), false);
 });
 
 test('Agent provider recovery display tells the user a safe retry is running', () => {
@@ -119,6 +132,16 @@ test('Agent provider recovery display tells the user a safe retry is running', (
   assert.match(display.activityLabel, /安全续跑 2\/3/);
 });
 
+test('Agent provider recovery display names provider session rebuilds', () => {
+  const failure = parseAgentProviderFailure(
+    new Error('RESPONSE_CORRUPTED:stream-timeout:DeepSeek response did not complete.'),
+  );
+  const display = describeAgentProviderRecoveryForUser(failure, 1, 3);
+
+  assert.match(display.detail, /重建模型会话/);
+  assert.match(display.activityLabel, /重建模型会话/);
+});
+
 test('Agent provider recovery display distinguishes submit failures from truncated responses', () => {
   const failure = parseAgentProviderFailure(
     new Error('RESPONSE_CORRUPTED:prompt-submit-failed:PROMPT_SUBMIT_FAILED: composer did not clear.'),
@@ -127,5 +150,6 @@ test('Agent provider recovery display distinguishes submit failures from truncat
 
   assert.match(display.title, /请求未送达/);
   assert.match(display.detail, /网页确认接收/);
-  assert.match(display.activityLabel, /安全重试 1\/3/);
+  assert.match(display.detail, /重建模型会话/);
+  assert.match(display.activityLabel, /重建模型会话，安全恢复 1\/3/);
 });

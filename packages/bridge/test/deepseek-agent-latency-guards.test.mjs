@@ -42,6 +42,20 @@ test('DeepSeekAgent: incomplete action cues keep generation open', () => {
   assert.match(agent, /incomplete-intent/);
 });
 
+test('DeepSeekAgent: reused-container text diff must be substantive before response starts', () => {
+  const agent = src('src/deepseek-agent.ts');
+  const streaming = agent.match(/private async pollForStreamingResponse[\s\S]*?const currentText = await this\.getStreamingAssistantText/)?.[0] || '';
+
+  assert.match(agent, /function isSubstantiveAssistantTextDiff/);
+  assert.match(agent, /looksLikeSubstantiveAssistantText/);
+  assert.match(agent, /trimmed\.length >= 120/);
+  assert.match(agent, /trimmed\.length >= 80/);
+  assert.match(streaming, /generationBusyForTextDiff/);
+  assert.match(streaming, /\(sawStopButton \|\| generationBusyForTextDiff\) && isSubstantiveAssistantTextDiff/);
+  assert.match(streaming, /isSubstantiveAssistantTextDiff\(t, baselineText\)/);
+  assert.doesNotMatch(streaming, /t\.length > 0 && t !== baselineText/);
+});
+
 test('DeepSeekAgent: streaming has an absolute wall-clock timeout', () => {
   const agent = src('src/deepseek-agent.ts');
   const streaming = agent.match(/private async pollForStreamingResponse[\s\S]*?await this\._clickCodeTabs/)?.[0] || '';

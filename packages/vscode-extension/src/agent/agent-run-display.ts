@@ -15,14 +15,14 @@ export interface AgentRunDisplayProfile {
 
 const DEFAULT_FREE_EXPLORE_PROFILE: AgentRunDisplayProfile = {
   kind: 'workspace-explore',
-  planStartedTitle: '分析任务，准备探索工作区',
-  planStartedDetail: '正在理解请求，并准备读取相关文件、生成执行步骤。',
-  planCompletedTitle: '已确定执行方式：Agent 自主探索',
+  planStartedTitle: '正在理解任务和项目边界',
+  planStartedDetail: '正在识别任务类型、输出要求和需要优先验证的项目锚点。',
+  planCompletedTitle: '已确定软件工程执行路线',
   planCompletedDetail: [
-    '1. 理解需求和工作区范围',
-    '2. 读取或搜索相关文件',
-    '3. 按需创建或修改文件',
-    '4. 编译、运行或验证结果',
+    '1. 确认需求、输出目录和任务边界',
+    '2. 收集原项目代码、通信链路和接口证据',
+    '3. 基于证据设计并生成必要成果物',
+    '4. 运行验证并汇总交付结果',
   ].join('\n'),
   initialTaskAction: 'explore',
   suppressToolPlanning: false,

@@ -66,6 +66,27 @@ function looksLikeIncompleteAssistantIntent(text: string): boolean {
   return /(?:让我|我来|接下来|下面|现在|首先|然后|继续|需要|将|准备)[\s\S]{0,120}(?:修复|修改|更新|创建|写入|执行|读取|查看|检查|编译|运行|调用|处理)[\s\S]{0,80}[：:]\s*$/i.test(tail);
 }
 
+function looksLikeSubstantiveAssistantText(text: string): boolean {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return false;
+  if (/(?:\[TOOL:|<TOOL_STREAM>|<TOOL\b|<\/TOOL>|<TOOL_|<\/TOOL_|Action\s*:|```\w*)/i.test(trimmed)) {
+    return true;
+  }
+  if (trimmed.length >= 120) return true;
+  if (trimmed.length >= 80 && /(?:结论|依据|原因|风险|建议|方案|已完成|创建|修改|验证|写入|运行|编译|测试)/i.test(trimmed)) {
+    return true;
+  }
+  return false;
+}
+
+function isSubstantiveAssistantTextDiff(currentText: string, baselineText: string): boolean {
+  const current = String(currentText || '').trim();
+  const baseline = String(baselineText || '').trim();
+  if (!current || current === baseline) return false;
+  if (current.length < 80 && baseline.includes(current)) return false;
+  return looksLikeSubstantiveAssistantText(current);
+}
+
 function contentMutationClockScript(reset: boolean): string {
   return `(function(reset){
     var w = window;
@@ -937,7 +958,9 @@ export class DeepSeekAgent {
         } else {
           // 方案2：文本内容变化（DeepSeek 复用容器，计数不变但内容已更新）
           const t = await this.getStreamingAssistantText(page);
-          if (t.length > 0 && t !== baselineText) {
+          const generationBusyForTextDiff = await this.isGenerationBusy(page).catch(() => false);
+          if (generationBusyForTextDiff) sawStopButton = true;
+          if ((sawStopButton || generationBusyForTextDiff) && isSubstantiveAssistantTextDiff(t, baselineText)) {
             console.log(`[agent] New AI content detected via text diff (len: ${t.length})`);
             newMsgSeen = true;
             lastText = t;

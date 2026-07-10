@@ -152,6 +152,58 @@ test('VerificationPlanner: C++ compile-only artifacts use stable project build d
   assert.equal(first.command, second.command);
 });
 
+test('VerificationPlanner: blocks C++ validation when generated local include closure is incomplete', () => {
+  const projectDir = path.join('/repo', 'generated', 'warranty');
+  const files = new Set([
+    projectDir,
+    path.join(projectDir, 'worker.cpp'),
+  ]);
+  const fsNode = {
+    existsSync: (p) => files.has(p),
+    readdirSync: () => ['worker.cpp'],
+    readFileSync: (p) => p.endsWith('worker.cpp')
+      ? '#include "warranty_data_collector.hpp"\nint worker() { return 0; }\n'
+      : '',
+  };
+
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['generated/warranty/worker.cpp'],
+    fsNode,
+  });
+
+  assert.equal(plan.kind, 'blocked');
+  assert.equal(plan.reason, 'cpp-dependency-closure-incomplete');
+  assert.ok(plan.risks.some((risk) => /warranty_data_collector\.hpp/.test(risk)));
+  assert.ok(plan.alternativeChecks.some((check) => /一次性补齐/.test(check)));
+});
+
+test('VerificationPlanner: blocks C++ validation when common std include is missing', () => {
+  const projectDir = path.join('/repo', 'generated', 'warranty');
+  const files = new Set([
+    projectDir,
+    path.join(projectDir, 'state.cpp'),
+    path.join(projectDir, 'state.hpp'),
+  ]);
+  const fsNode = {
+    existsSync: (p) => files.has(p),
+    readdirSync: () => ['state.cpp', 'state.hpp'],
+    readFileSync: (p) => p.endsWith('state.hpp')
+      ? 'class Store; class State { std::unique_ptr<Store> store_; };\n'
+      : '#include "state.hpp"\nint state() { return 0; }\n',
+  };
+
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['generated/warranty/state.cpp'],
+    fsNode,
+  });
+
+  assert.equal(plan.kind, 'blocked');
+  assert.equal(plan.reason, 'cpp-dependency-closure-incomplete');
+  assert.ok(plan.risks.some((risk) => /<memory>/.test(risk)));
+});
+
 test('VerificationPlanner: unknown targets without file-fact intent produce blocked plan with alternatives', () => {
   const plan = new VerificationPlanner().planWorkspaceChanges({
     rootFsPath: '/repo',

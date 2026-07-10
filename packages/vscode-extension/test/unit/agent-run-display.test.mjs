@@ -37,7 +37,12 @@ test('agent run display: ordinary workspace requests keep explore copy', () => {
   const profile = buildAgentRunDisplayProfile('创建 docs/example.md，内容为 hello，并验证文件内容。');
 
   assert.equal(profile.kind, 'workspace-explore');
-  assert.equal(profile.planStartedTitle, '分析任务，准备探索工作区');
+  assert.equal(profile.planStartedTitle, '正在理解任务和项目边界');
+  assert.equal(profile.planCompletedTitle, '已确定软件工程执行路线');
+  assert.match(profile.planStartedDetail, /任务类型、输出要求和需要优先验证的项目锚点/);
+  assert.match(profile.planCompletedDetail, /收集原项目代码、通信链路和接口证据/);
+  assert.match(profile.planCompletedDetail, /基于证据设计并生成必要成果物/);
+  assert.match(profile.planCompletedDetail, /运行验证并汇总交付结果/);
   assert.equal(profile.initialTaskAction, 'explore');
   assert.equal(profile.suppressToolPlanning, false);
 });

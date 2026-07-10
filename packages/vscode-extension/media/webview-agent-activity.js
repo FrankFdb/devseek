@@ -157,6 +157,10 @@ function defaultAgentToolActivityTarget(kind) {
   return getAgentActivityDisplay(kind).target || 'tool';
 }
 
+function isAgentContextGatheringActivityKind(kind) {
+  return kind === 'read' || kind === 'search' || kind === 'list';
+}
+
 function formatAgentActivityCountSummary(counts) {
   var c = counts || {};
   var parts = [];
@@ -188,6 +192,15 @@ function inferAgentProgressStageTitle(kind, label, taskLabel) {
   if (kind === 'failed') return '正在整理失败原因';
   if (kind === 'done') return '正在汇总结论';
   return task || '正在推进任务';
+}
+
+function getAgentProgressStageKey(kind, label, taskLabel) {
+  if (isAgentContextGatheringActivityKind(kind)) return 'context-evidence';
+  if (kind === 'terminal' || kind === 'diagnostics') return 'validation';
+  if (kind === 'write') return 'artifact-write';
+  if (kind === 'web') return 'external-research';
+  if (kind === 'plan') return 'planning';
+  return inferAgentProgressStageTitle(kind, label, taskLabel);
 }
 
 function inferAgentProgressNextStep(counts, latestKind, state) {

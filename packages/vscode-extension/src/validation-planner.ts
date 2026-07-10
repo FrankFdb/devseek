@@ -20,18 +20,56 @@ export interface CppValidationOptions {
   run?: boolean;
 }
 
+export interface CppDependencyClosureIssue {
+  file: string;
+  include: string;
+  reason: 'missing-local-include' | 'missing-standard-include';
+  expectedPath?: string;
+}
+
+export interface CppDependencyClosureReport {
+  ok: boolean;
+  targetDir?: string;
+  checkedFiles: string[];
+  issues: CppDependencyClosureIssue[];
+}
+
+type CppValidationFsNode = {
+  existsSync: (p: string) => boolean;
+  readdirSync: (p: string) => string[];
+  readFileSync: (p: string, enc: string) => string;
+};
+
 const CPP_SOURCE_RE = /\.(cpp|cc|cxx|c)$/i;
 const CPP_HEADER_RE = /\.(h|hpp)$/i;
 const CMAKE_LISTS_RE = /(?:^|\/)CMakeLists\.txt$/;
+const CPP_RELATED_RE = /\.(cpp|cc|cxx|c|h|hpp)$/i;
+
+const COMMON_CPP_SYMBOL_INCLUDES: Array<{ include: string; symbol: RegExp; includeRe: RegExp }> = [
+  { include: '<memory>', symbol: /\bstd::(?:unique_ptr|shared_ptr|weak_ptr|make_unique|make_shared)\b/, includeRe: /^\s*#include\s*<memory>/m },
+  { include: '<vector>', symbol: /\bstd::vector\b/, includeRe: /^\s*#include\s*<vector>/m },
+  { include: '<string>', symbol: /\bstd::(?:string|string_view)\b/, includeRe: /^\s*#include\s*<(?:string|string_view)>/m },
+  { include: '<map>', symbol: /\bstd::(?:map|multimap)\b/, includeRe: /^\s*#include\s*<map>/m },
+  { include: '<unordered_map>', symbol: /\bstd::unordered_map\b/, includeRe: /^\s*#include\s*<unordered_map>/m },
+  { include: '<unordered_set>', symbol: /\bstd::unordered_set\b/, includeRe: /^\s*#include\s*<unordered_set>/m },
+  { include: '<set>', symbol: /\bstd::(?:set|multiset)\b/, includeRe: /^\s*#include\s*<set>/m },
+  { include: '<optional>', symbol: /\bstd::optional\b/, includeRe: /^\s*#include\s*<optional>/m },
+  { include: '<variant>', symbol: /\bstd::variant\b/, includeRe: /^\s*#include\s*<variant>/m },
+  { include: '<functional>', symbol: /\bstd::function\b/, includeRe: /^\s*#include\s*<functional>/m },
+  { include: '<thread>', symbol: /\bstd::thread\b/, includeRe: /^\s*#include\s*<thread>/m },
+  { include: '<mutex>', symbol: /\bstd::(?:mutex|lock_guard|unique_lock)\b/, includeRe: /^\s*#include\s*<mutex>/m },
+  { include: '<atomic>', symbol: /\bstd::atomic\b/, includeRe: /^\s*#include\s*<atomic>/m },
+  { include: '<chrono>', symbol: /\bstd::chrono::/, includeRe: /^\s*#include\s*<chrono>/m },
+];
 
 export function planCppValidation(
   changedPaths: string[],
   rootFsPath: string,
-  fsNode: { existsSync: (p: string) => boolean; readdirSync: (p: string) => string[]; readFileSync: (p: string, enc: string) => string },
+  fsNode: CppValidationFsNode,
   policy: CppValidationPolicy = 'conservative',
   options: CppValidationOptions = {},
 ): PlannedValidation | null {
-  const cppRelated = changedPaths.filter((p) => /\.(cpp|cc|cxx|c|h|hpp)$/i.test(p) || CMAKE_LISTS_RE.test(p.replace(/\\/g, '/')));
+  const cppRelated = changedPaths.filter((p) => CPP_RELATED_RE.test(p) || CMAKE_LISTS_RE.test(p.replace(/\\/g, '/')));
   if (cppRelated.length === 0) return null;
 
   const dirCount = new Map<string, number>();
@@ -160,6 +198,38 @@ export function planCppValidation(
   };
 }
 
+export function inspectCppDependencyClosure(
+  changedPaths: string[],
+  rootFsPath: string,
+  fsNode: CppValidationFsNode,
+): CppDependencyClosureReport {
+  const cppRelated = changedPaths.filter((p) => CPP_RELATED_RE.test(p));
+  const targetDir = resolveDominantCppTargetDir(cppRelated, rootFsPath, fsNode);
+  if (!targetDir) {
+    return { ok: true, checkedFiles: [], issues: [] };
+  }
+
+  const fileNames = safeReadDir(targetDir, fsNode);
+  const checkedFiles = fileNames
+    .filter((name) => CPP_SOURCE_RE.test(name) || CPP_HEADER_RE.test(name))
+    .map((name) => nodePath.join(targetDir, name));
+  const issues: CppDependencyClosureIssue[] = [];
+
+  for (const file of checkedFiles) {
+    const content = readText(file, fsNode);
+    if (!content) continue;
+    issues.push(...findMissingLocalIncludes(file, content, targetDir, rootFsPath, fsNode));
+    issues.push(...findMissingStandardIncludes(file, content));
+  }
+
+  return {
+    ok: issues.length === 0,
+    targetDir,
+    checkedFiles,
+    issues: uniqueDependencyIssues(issues),
+  };
+}
+
 function buildCmakeRunCommand(
   cmakeFile: string,
   buildDir: string,
@@ -191,7 +261,7 @@ function detectCmakeExecutableTarget(
 function inferImpactedSourcesByHeader(
   changedHeaders: string[],
   sourceFiles: string[],
-  fsNode: { readFileSync: (p: string, enc: string) => string },
+  fsNode: CppValidationFsNode,
 ): string[] {
   if (changedHeaders.length === 0) return [];
   const matched = new Set<string>();
@@ -224,7 +294,7 @@ function uniqueAbsPaths(paths: string[]): string[] {
   return out;
 }
 
-function hasMainFunction(absPath: string, fsNode: { readFileSync: (p: string, enc: string) => string }): boolean {
+function hasMainFunction(absPath: string, fsNode: CppValidationFsNode): boolean {
   try {
     const content = fsNode.readFileSync(absPath, 'utf8');
     return /\bint\s+main\s*\(/.test(content);
@@ -250,4 +320,88 @@ function buildRunFirstExistingExecutableCommand(candidates: string[], fallbackCo
 
 function q(value: string): string {
   return `'${value.replace(/'/g, `"'"'`)}'`;
+}
+
+function resolveDominantCppTargetDir(
+  cppRelated: string[],
+  rootFsPath: string,
+  fsNode: CppValidationFsNode,
+): string | undefined {
+  if (cppRelated.length === 0) return undefined;
+  const dirCount = new Map<string, number>();
+  for (const rel of cppRelated) {
+    const dir = nodePath.posix.dirname(rel.replace(/\\/g, '/'));
+    dirCount.set(dir, (dirCount.get(dir) || 0) + 1);
+  }
+  const targetRelDir = [...dirCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  if (!targetRelDir) return undefined;
+  const targetDir = nodePath.join(rootFsPath, targetRelDir);
+  return fsNode.existsSync(targetDir) ? targetDir : undefined;
+}
+
+function safeReadDir(dir: string, fsNode: CppValidationFsNode): string[] {
+  try {
+    return fsNode.readdirSync(dir);
+  } catch {
+    return [];
+  }
+}
+
+function readText(absPath: string, fsNode: CppValidationFsNode): string {
+  try {
+    return fsNode.readFileSync(absPath, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+function findMissingLocalIncludes(
+  file: string,
+  content: string,
+  targetDir: string,
+  rootFsPath: string,
+  fsNode: CppValidationFsNode,
+): CppDependencyClosureIssue[] {
+  const issues: CppDependencyClosureIssue[] = [];
+  const includeRe = /^\s*#include\s*"([^"]+)"/gm;
+  let match: RegExpExecArray | null;
+  while ((match = includeRe.exec(content)) !== null) {
+    const include = match[1]?.trim();
+    if (!include) continue;
+    const candidates = [
+      nodePath.resolve(nodePath.dirname(file), include),
+      nodePath.resolve(targetDir, include),
+      nodePath.resolve(rootFsPath, include),
+    ];
+    if (candidates.some(candidate => fsNode.existsSync(candidate))) continue;
+    issues.push({
+      file,
+      include: `"${include}"`,
+      reason: 'missing-local-include',
+      expectedPath: candidates[0],
+    });
+  }
+  return issues;
+}
+
+function findMissingStandardIncludes(file: string, content: string): CppDependencyClosureIssue[] {
+  return COMMON_CPP_SYMBOL_INCLUDES
+    .filter(rule => rule.symbol.test(content) && !rule.includeRe.test(content))
+    .map(rule => ({
+      file,
+      include: rule.include,
+      reason: 'missing-standard-include' as const,
+    }));
+}
+
+function uniqueDependencyIssues(issues: CppDependencyClosureIssue[]): CppDependencyClosureIssue[] {
+  const seen = new Set<string>();
+  const out: CppDependencyClosureIssue[] = [];
+  for (const issue of issues) {
+    const key = `${issue.reason}:${issue.file}:${issue.include}:${issue.expectedPath || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(issue);
+  }
+  return out;
 }

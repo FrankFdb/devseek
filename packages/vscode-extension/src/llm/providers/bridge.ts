@@ -55,12 +55,14 @@ export class BridgeProvider implements LLMProvider {
     if (isProviderOutputFatal(providerOutput.kind)) {
       throw new Error(`RESPONSE_CORRUPTED:${providerOutput.kind}:${describeProviderOutputIntegrity(providerOutput.kind)}`);
     }
-    recordBridgePromptSessionResponse({
-      messages: opts.messages,
-      newSession: opts.newSession,
-      traceRunId: opts.traceRunId,
-      traceWorkspaceRoot: opts.traceWorkspaceRoot,
-    }, response);
+    if (providerOutput.kind === 'tool_call' || providerOutput.kind === 'complete_answer') {
+      recordBridgePromptSessionResponse({
+        messages: opts.messages,
+        newSession: opts.newSession,
+        traceRunId: opts.traceRunId,
+        traceWorkspaceRoot: opts.traceWorkspaceRoot,
+      }, response);
+    }
     return response;
   }
 }

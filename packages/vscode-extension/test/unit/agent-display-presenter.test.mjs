@@ -60,6 +60,29 @@ test('AgentDisplayPresenter: source snippets never become user-facing titles', (
   assert.equal(status.title, '处理中');
 });
 
+test('AgentDisplayPresenter: long user prompt execute titles become engineering progress', () => {
+  const status = presenter.presentStatus({
+    type: 'agentStatus',
+    phase: 'execute',
+    state: 'started',
+    taskAction: 'explore',
+    title: '关于遥控器的通讯请参考：/home/ff/uav/tars/huida_uav/src/oam/src/license 模块的方式，并分析主控通信链路后实现。',
+  });
+
+  assert.equal(status.title, '正在建立任务上下文');
+});
+
+test('AgentDisplayPresenter: tool transcripts never become done titles', () => {
+  const status = presenter.presentStatus({
+    type: 'agentStatus',
+    phase: 'done',
+    state: 'failed',
+    title: '我理解了，需要执行验证。<TOOL_STREAM><TOOL name="run_terminal">{"command":"npm test"}</TOOL></TOOL_STREAM>',
+  });
+
+  assert.equal(status.title, '任务未完成');
+});
+
 test('AgentDisplayPresenter: long details are kept bounded for the webview', () => {
   const status = presenter.presentStatus({
     type: 'agentStatus',

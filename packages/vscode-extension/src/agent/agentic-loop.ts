@@ -96,7 +96,12 @@ import {
   canRecoverAgentProviderFailure,
   describeAgentProviderRecoveryForUser,
   parseAgentProviderFailure,
+  shouldResetProviderSessionForRecovery,
 } from './provider-response-recovery';
+import {
+  buildTaskOutputScopeRecoveryPrompt,
+  detectTaskOutputScopeDrift,
+} from './task-output-scope';
 
 const AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
 const AGENTIC_TASK_PROMPT_CHAR_BUDGET = 34_000;
@@ -187,6 +192,17 @@ function compactAgenticMessageHistory(messages: ChatMessage[]): number {
   }
 
   return totalAgenticMessageChars(messages);
+}
+
+function replaceTrailingAgentProviderRecoveryMessage(messages: ChatMessage[], recoveryMessage: ChatMessage): void {
+  const last = messages[messages.length - 1];
+  if (last?.role === 'user'
+    && typeof last.content === 'string'
+    && last.content.startsWith('【系统恢复】上一轮 Provider 回复未通过完整性门禁')) {
+    messages.splice(messages.length - 1, 1, recoveryMessage);
+    return;
+  }
+  messages.push(recoveryMessage);
 }
 
 function extractPlanningTodoItems(text: string): TodoItem[] {
@@ -526,6 +542,8 @@ export async function runAgenticLoop(
   let lastRoundToolRequestCount = 0;
   let executedToolRoundCount = 0;
   let providerRecoveryAttempts = 0;
+  let taskOutputScopeRecoveryAttempts = 0;
+  let forceProviderNewSessionNextTurn = false;
   const announcedProseKeys = new Set<string>();
   const allReadEvidencePaths = new Set<string>();
   const repeatedToolFailures = new Map<string, number>();
@@ -654,13 +672,18 @@ export async function runAgenticLoop(
     totalChars = compactAgenticMessageHistory(messages);
     let text = '';
     let tools: ReturnType<typeof parseFakeToolCalls> = [];
+    const useFreshProviderSession = roundCount === 1 || forceProviderNewSessionNextTurn;
+    if (forceProviderNewSessionNextTurn) {
+      callbacks.onToolActivity?.('label', '重建模型会话并从任务事实恢复');
+    }
+    forceProviderNewSessionNextTurn = false;
     try {
       const providerTurn = await chatWithMessages(
         messages,
         mode,
         roundStreamDelta,  // stream delta for early todo detection
         callbacks.signal,
-        roundCount === 1,
+        useFreshProviderSession,
         callbacks.traceRunId,
         callbacks.traceWorkspaceRoot,
       );
@@ -675,6 +698,8 @@ export async function runAgenticLoop(
           AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS,
         )) {
         providerRecoveryAttempts++;
+        const resetProviderSession = shouldResetProviderSessionForRecovery(providerFailure);
+        if (resetProviderSession) forceProviderNewSessionNextTurn = true;
         const display = describeAgentProviderRecoveryForUser(
           providerFailure,
           providerRecoveryAttempts,
@@ -705,12 +730,46 @@ export async function runAgenticLoop(
           terminalEvidence: allTerminalEvidence,
           partialResponseLength: sAccum.trim().length,
         });
-        messages.splice(1, Math.max(0, messages.length - 1), recoveryMessage);
+        if (resetProviderSession) {
+          replaceTrailingAgentProviderRecoveryMessage(messages, recoveryMessage);
+        } else {
+          messages.splice(1, Math.max(0, messages.length - 1), recoveryMessage);
+        }
         totalChars = messages.reduce((sum, message) => sum + agenticMessageContentLength(message.content), 0);
         totalChars = compactAgenticMessageHistory(messages);
         continue;
       }
       throw error;
+    }
+
+    const outputScopeDrift = detectTaskOutputScopeDrift({
+      requestPrompt: userPrompt,
+      text,
+      workspaceRoot,
+    });
+    if (outputScopeDrift.blocked && !callbacks.signal?.aborted) {
+      taskOutputScopeRecoveryAttempts++;
+      callbacks.onToolActivity?.('label', '检测到旧运行目录，正在要求模型切回当前输出目录');
+      await callbacks.onAgentStatus({
+        type: 'agentStatus',
+        phase: 'execute',
+        taskId: 'agentic',
+        taskFile: initialDisplayTarget,
+        taskAction: initialDisplayAction,
+        taskIndex: 1,
+        taskTotal: 1,
+        state: 'started',
+        title: '已拦截旧运行上下文',
+        detail: outputScopeDrift.reason,
+      });
+      if (taskOutputScopeRecoveryAttempts <= 2) {
+        const recoveryMessage = buildTaskOutputScopeRecoveryPrompt(outputScopeDrift);
+        messages.push({ role: 'user', content: recoveryMessage });
+        totalChars += recoveryMessage.length;
+        continue;
+      }
+      failedReason = outputScopeDrift.reason || '模型持续输出旧运行目录，任务上下文已污染。';
+      break;
     }
 
     messages.push({ role: 'assistant', content: text });
@@ -1140,6 +1199,9 @@ export async function runAgenticLoop(
     ? getUnsupportedSummaryFileClaims(completeSummary, allWrittenFiles, workspaceRoot)
     : lastSummaryFactFailures;
   const runtimeTaskAction = workflowMode === 'inspect' || workflowMode === 'plan' ? 'analyze' : 'edit';
+  const validationFailedReason = latestAutoQualityGate && latestAutoQualityGate.status !== 'pass'
+    ? latestAutoQualityGate.summary
+    : undefined;
   const finalRuntimeSettlement = settleAgentRuntimeState({
     taskAction: runtimeTaskAction,
     taskTitle: userPrompt,
@@ -1151,6 +1213,8 @@ export async function runAgenticLoop(
     readEvidenceCount: allReadEvidencePaths.size,
     writtenEvidenceCount: allWrittenFiles.length,
     terminalEvidenceCount: allTerminalEvidence.length,
+    validationPassed: latestAutoQualityGate?.status === 'pass',
+    validationFailedReason,
     taskComplete: hadTaskComplete,
     allTodosCompleted: currentTodos.length > 0 && currentTodos.every(todo => todo.status === 'completed'),
     failedReason: failedReason || undefined,
@@ -1165,6 +1229,11 @@ export async function runAgenticLoop(
     && runtimeTaskAction === 'analyze'
     && !runtimeStateCanDeliver(finalRuntimeSettlement)) {
     failedReason = describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind);
+  } else if (!failedReason
+    && runtimeTaskAction !== 'analyze'
+    && !runtimeStateCanDeliver(finalRuntimeSettlement)) {
+    failedReason = finalRuntimeSettlement.failedReason
+      || `任务已有执行证据，但缺少完成信号、通过验证或可交付总结：${describeProviderOutputIntegrity(finalRuntimeSettlement.providerOutput.kind)}`;
   }
   if (!failedReason && finalBlockingFailure) {
     failedReason = describeBlockingTerminalFailure(finalBlockingFailure);

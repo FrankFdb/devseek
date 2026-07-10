@@ -182,6 +182,42 @@ test('ToolLoop terminal guard: raw ReAct Action protocol text never reaches shel
   assert.match(result.feedbackForAI, /工具协议文本/);
 });
 
+test('ToolLoop terminal guard: stale timestamp artifact directories never reach shell', async () => {
+  let terminalCalled = false;
+  const requestPrompt = [
+    '本次测试所有新增设计文档、实施文档、代码和验证脚本必须放在：/tmp/project/out/202607101945',
+    '- 代码和测试文件放入：/tmp/project/out/202607101945/src',
+  ].join('\n');
+
+  const result = await executeFakeToolsForLoop(
+    [
+      {
+        name: 'run_terminal',
+        input: {
+          command: 'cd /tmp/project/out/202607101942/src && g++ -std=c++11 main.cpp -o test_app',
+        },
+      },
+    ],
+    {
+      onTerminalCommand: async () => {
+        terminalCalled = true;
+        return 'should-not-run';
+      },
+      onToolActivity: () => {},
+      onAgentStatus: async () => {},
+    },
+    '/tmp/project',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project', userPrompt: requestPrompt },
+  );
+
+  assert.equal(terminalCalled, false);
+  assert.equal(result.toolCallsMade, true);
+  assert.equal(result.workToolCallsMade, true);
+  assert.deepEqual(result.terminalCommands ?? [], []);
+  assert.equal(result.toolFailures?.[0]?.tool, 'run_terminal');
+  assert.match(result.feedbackForAI, /旧运行目录/);
+});
+
 test('ToolLoop replace_in_file edits existing workspace file with write evidence', async () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-replace-tool-'));
   try {

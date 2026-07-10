@@ -1,6 +1,11 @@
 import * as nodePath from 'path';
 import * as fs from 'fs';
-import { planCppValidation, type CppValidationPolicy } from '../validation-planner';
+import {
+  inspectCppDependencyClosure,
+  planCppValidation,
+  type CppDependencyClosureIssue,
+  type CppValidationPolicy,
+} from '../validation-planner';
 
 export type ValidationMode = 'compile-only' | 'compile-link' | 'compile-run' | 'cmake' | 'file-check' | 'not-available';
 
@@ -128,6 +133,26 @@ export class VerificationPlanner {
 
     const cppRelated = changedPaths.filter(isCppRelatedValidationPath);
     if (cppRelated.length > 0) {
+      const closure = inspectCppDependencyClosure(
+        cppRelated,
+        rootFsPath,
+        input.fsNode ?? this.defaultFsNode,
+      );
+      if (!closure.ok) {
+        return blockedPlan(
+          'cpp-dependency-closure-incomplete',
+          closure.targetDir || rootFsPath,
+          [
+            'C/C++ 本地依赖闭包未满足，直接编译会进入逐个缺文件/缺头文件的反复修复循环。',
+            ...formatCppDependencyClosureIssues(closure.issues),
+          ],
+          [
+            '一次性补齐上述本地 include 文件或标准库 #include 后，再运行编译验证。',
+            '如果这些 include 属于主项目既有目录，先读取并复用既有头文件路径，不要在测试目录里臆造替代接口。',
+          ],
+        );
+      }
+
       const cppPlan = planCppValidation(
         cppRelated,
         rootFsPath,
@@ -208,7 +233,7 @@ function commandPlan(input: Omit<VerificationCommandPlan, 'kind' | 'risks' | 'al
   };
 }
 
-function blockedPlan(reason: string, cwd: string, risks: string[]): VerificationBlockedPlan {
+function blockedPlan(reason: string, cwd: string, risks: string[], alternativeChecks: string[] = []): VerificationBlockedPlan {
   return {
     kind: 'blocked',
     mode: 'not-available',
@@ -221,10 +246,21 @@ function blockedPlan(reason: string, cwd: string, risks: string[]): Verification
       '无法证明变更后的运行时行为正确，不能把 QualityGate 标记为通过。',
     ],
     alternativeChecks: [
+      ...alternativeChecks,
       '人工检查变更文件内容是否符合用户请求。',
       '在项目规则中补充可自动运行的 build/test/lint 命令后重试。',
     ],
   };
+}
+
+function formatCppDependencyClosureIssues(issues: CppDependencyClosureIssue[]): string[] {
+  return issues.slice(0, 12).map((issue) => {
+    const file = issue.file.replace(/\\/g, '/');
+    if (issue.reason === 'missing-local-include') {
+      return `${file} 引用了 ${issue.include}，但未找到对应本地文件${issue.expectedPath ? `（期望：${issue.expectedPath.replace(/\\/g, '/')}）` : ''}。`;
+    }
+    return `${file} 使用了需要 ${issue.include} 的 std 类型/函数，但文件没有显式包含该标准库头文件。`;
+  });
 }
 
 function timeoutForCppPlan(mode: Exclude<ValidationMode, 'file-check' | 'not-available'>, shouldRun: boolean): number {

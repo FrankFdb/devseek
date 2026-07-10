@@ -917,7 +917,7 @@ function assessStageArtifactQuality(input) {
     codeEvidenceRequired && !input.expectedCodeArtifactsInRunLog ? 'expected-code-artifacts-not-in-run-log' : '',
     codeEvidenceRequired && !input.expectedCodeDirArtifactsWritten ? 'expected-code-dir-not-written' : '',
     codeEvidenceRequired && !input.expectedCodeDirArtifactsInRunLog ? 'expected-code-dir-not-in-run-log' : '',
-    codeEvidenceRequired && !codeQuality.ok ? `code-quality:${(codeQuality.reasons || []).join('|')}` : '',
+    codeEvidenceRequired && !codeQuality.ok ? 'code-quality:' + (codeQuality.reasons || []).join('|') : '',
   ].filter(Boolean);
   stages.push({
     id: 'implementation',
@@ -943,7 +943,7 @@ function assessStageArtifactQuality(input) {
 
   const deliveryReasons = [
     input.markdownRequired && !input.markdownEvidenceOk ? 'markdown-deliverable-missing-or-not-in-run-log' : '',
-    formal.required && !formal.ok ? `formal-document-quality:${(formal.reasons || []).join('|')}` : '',
+    formal.required && !formal.ok ? 'formal-document-quality:' + (formal.reasons || []).join('|') : '',
   ].filter(Boolean);
   stages.push({
     id: 'delivery',
@@ -1293,7 +1293,7 @@ async function activate() {
       if (baseReport.checks?.stageArtifactQuality?.ok === false) {
         const failedStages = baseReport.checks.stageArtifactQuality.stages
           .filter(stage => !stage.ok)
-          .map(stage => `${stage.label || stage.id}:${(stage.reasons || []).join('|') || 'not-ok'}`)
+          .map(stage => (stage.label || stage.id) + ':' + ((stage.reasons || []).join('|') || 'not-ok'))
           .join('; ');
         baseReport.errors.push('阶段成果物质量不达标：' + failedStages);
       }

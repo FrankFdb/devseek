@@ -68,6 +68,30 @@ test('agent runtime state machine: mutating task_complete text without evidence 
   assert.equal(runtimeStateCanDeliver(settlement), false);
 });
 
+test('agent runtime state machine: mutating evidence without delivery signal stays non-terminal', () => {
+  const settlement = settleAgentRuntimeState({
+    taskAction: 'edit',
+    providerText: '现在我来继续修复这些编译问题。',
+    writtenEvidenceCount: 2,
+    terminalEvidenceCount: 1,
+  });
+
+  assert.equal(settlement.state, 'verified');
+  assert.equal(runtimeStateCanDeliver(settlement), false);
+});
+
+test('agent runtime state machine: mutating validation block fails before delivery', () => {
+  const settlement = settleAgentRuntimeState({
+    taskAction: 'edit',
+    providerText: '已写入源码。',
+    writtenEvidenceCount: 2,
+    validationFailedReason: 'QualityGate 阻塞：C/C++ 依赖闭包未满足。',
+  });
+
+  assert.equal(settlement.state, 'failed');
+  assert.match(settlement.failedReason, /依赖闭包/);
+});
+
 test('agent runtime state machine: provider fatal output fails immediately', () => {
   const settlement = settleAgentRuntimeState({
     taskAction: 'respond',

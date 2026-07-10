@@ -2447,15 +2447,21 @@ function activeAgentContainerHasProcessRows(container) {
 function prepareAgentToolActivityContainer(kind, label) {
   var nextLabel = inferAgentProgressStageTitle(kind, label, agentCurrentTaskLabel);
   var nextToolKey = sanitizeAgentActivityLabelValue(kind, label).slice(0, 160);
+  var nextStageKey = getAgentProgressStageKey(kind, label, agentCurrentTaskLabel);
   var current = agentExecContainer;
   if (current && current.isConnected && !current.hasAttribute('data-done')) {
     var currentKind = current.getAttribute('data-active-tool-kind') || '';
     var currentToolKey = current.getAttribute('data-active-tool-label') || '';
+    var currentStageKey = current.getAttribute('data-active-stage-key') || '';
     var stepCount = current.querySelectorAll('.aut-step, .term-output-details, .ran-command-row').length;
     var hasTerminalOutput = !!current.querySelector('.term-output-details, .ran-command-row');
     var isDifferentTerminalCommand = kind === 'terminal' && currentKind === 'terminal'
       && hasTerminalOutput && currentToolKey && currentToolKey !== nextToolKey;
+    var sameContextEvidenceStage = currentStageKey === 'context-evidence'
+      && nextStageKey === 'context-evidence'
+      && !hasTerminalOutput;
     var shouldSplit = activeAgentContainerHasProcessRows(current)
+      && !sameContextEvidenceStage
       && (
         (kind === 'terminal' && currentKind !== 'terminal')
         || isDifferentTerminalCommand
@@ -2476,6 +2482,7 @@ function prepareAgentToolActivityContainer(kind, label) {
   var container = ensureAgentProgressContainer(nextLabel);
   container.setAttribute('data-active-tool-kind', kind || 'tool');
   container.setAttribute('data-active-tool-label', nextToolKey);
+  container.setAttribute('data-active-stage-key', nextStageKey || kind || 'tool');
   setAgentContainerLabel(container, inferAgentProgressStageTitle(kind, label, agentCurrentTaskLabel), true);
   updateAgentProgressDigest(kind, label, 'started');
   return container;

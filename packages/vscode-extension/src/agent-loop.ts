@@ -107,7 +107,7 @@ import { shouldRequestManualReviewForRun } from './agent/manual-review-validatio
 import { decideAgentRuntimeTurn } from './agent/agent-runtime-turn-policy';
 import { WorkspaceEditService } from './workspace/edit-service';
 import { buildTaskShapeGuidancePrompt } from './agent/task-shape';
-import type { CppValidationPolicy } from './validation-planner';
+import { inspectCppDependencyClosure, type CppValidationPolicy } from './validation-planner';
 import type { ExecutionMode } from './intent/intent-types';
 
 // ----------------------------------------------------------------
@@ -1657,6 +1657,38 @@ async function runValidation(
   // Only C/C++ files need compile validation; Python, MD, etc. are skipped
   const compilable = changedPaths.filter(p => isCompilableFile(p));
   if (compilable.length === 0) return { ran: false, ok: true, reason: 'no-compilable-files' };
+
+  const workspaceRootFsPath = workspaceRoot.fsPath;
+  const workspaceRelativeCompilable = compilable.map(filePath => {
+    const absPath = nodePath.isAbsolute(filePath) ? filePath : nodePath.join(workspaceRootFsPath, filePath);
+    return nodePath.relative(workspaceRootFsPath, absPath).replace(/\\/g, '/');
+  });
+  const dependencyClosure = inspectCppDependencyClosure(workspaceRelativeCompilable, workspaceRootFsPath, {
+    existsSync: fs.existsSync,
+    readdirSync: (path) => fs.readdirSync(path),
+    readFileSync: (path, encoding) => fs.readFileSync(path, encoding as BufferEncoding),
+  });
+  if (!dependencyClosure.ok) {
+    const detail = [
+      'C/C++ 依赖闭包未满足，已阻止直接编译，避免逐个缺文件/缺头文件的反复修复循环。',
+      ...dependencyClosure.issues.slice(0, 12).map(issue => issue.reason === 'missing-local-include'
+        ? `${issue.file}: 缺失本地 include ${issue.include}${issue.expectedPath ? `（期望：${issue.expectedPath}）` : ''}`
+        : `${issue.file}: 使用了需要 ${issue.include} 的 std 类型/函数，但缺少对应 #include。`),
+    ].join('\n');
+    await callbacks.onAgentStatus({
+      type: 'agentStatus',
+      phase: 'validate',
+      state: 'failed',
+      title: 'C/C++ 依赖闭包不完整',
+      detail: detail.slice(0, 1200),
+    });
+    return {
+      ran: false,
+      ok: false,
+      reason: 'cpp-dependency-closure-incomplete',
+      detail,
+    };
+  }
 
   await callbacks.onAgentStatus({
     type: 'agentStatus',

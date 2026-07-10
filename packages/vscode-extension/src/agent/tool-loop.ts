@@ -34,6 +34,9 @@ import {
 } from '../execution-outcome-classifier';
 import type { TodoItem } from './evidence-recovery';
 import type { AgentLoopCallbacks } from './loop-types';
+import {
+  detectTaskOutputScopeDrift,
+} from './task-output-scope';
 
 const workspaceEditService = new WorkspaceEditService();
 const agentToolExecutor = new AgentToolExecutor();
@@ -806,6 +809,23 @@ export async function executeFakeToolsForLoop(
           ].join('\n');
           callbacks.onToolActivity?.('terminal', `阻止 shell 写文件: ${nodePath.basename(shellWriteTarget)}`);
           recordToolFailure('run_terminal', 'terminal-guard', shellWriteTarget, reason);
+          parts.push(msg);
+          continue;
+        }
+        const outputScopeDrift = detectTaskOutputScopeDrift({
+          requestPrompt: taskContext?.userPrompt,
+          text: `${command}\n${workdir ?? ''}`,
+          workspaceRoot,
+        });
+        if (outputScopeDrift.blocked) {
+          const reason = outputScopeDrift.reason ?? '检测到旧运行目录或过期产物路径。';
+          const msg = [
+            `[run_terminal: ${command}] 已阻止`,
+            reason,
+            `请使用当前用户指定的输出目录重新生成命令；不要复用旧时间戳目录或旧会话路径。`,
+          ].join('\n');
+          callbacks.onToolActivity?.('terminal', '阻止旧运行目录命令');
+          recordToolFailure('run_terminal', 'terminal-guard', command, reason);
           parts.push(msg);
           continue;
         }

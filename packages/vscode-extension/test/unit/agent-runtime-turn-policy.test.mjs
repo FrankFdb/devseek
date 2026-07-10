@@ -17,6 +17,7 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const {
+  buildMutatingNoToolRecoveryFeedback,
   buildReadOnlyNoToolRecoveryFeedback,
   decideAgentRuntimeTurn,
   decideReadOnlyNoToolRecovery,
@@ -116,6 +117,37 @@ test('agent runtime turn policy: non-read-only no-tool output remains final-answ
   assert.equal(decision.kind, 'final-answer');
 });
 
+test('agent runtime turn policy: mutating short no-tool intent recovers before editor parser', () => {
+  const decision = decideAgentRuntimeTurn({
+    taskAction: 'modify',
+    toolCallsMade: false,
+    aggregateRaw: '现在我来继续修复这些编译问题。',
+    roundRaw: '现在我来继续修复这些编译问题。',
+    taskTitle: '修复自动验证失败',
+    recoveryAttempts: 0,
+    maxRecoveryAttempts: 2,
+  });
+
+  assert.equal(decision.kind, 'recover');
+  assert.match(decision.feedback, /可应用的代码修改/);
+  assert.match(decision.feedback, /SEARCH\/REPLACE/);
+});
+
+test('agent runtime turn policy: mutating short no-tool intent stops after recovery budget', () => {
+  const decision = decideAgentRuntimeTurn({
+    taskAction: 'create',
+    toolCallsMade: false,
+    aggregateRaw: '接下来我会生成代码。',
+    roundRaw: '接下来我会生成代码。',
+    taskTitle: '创建实现代码',
+    recoveryAttempts: 2,
+    maxRecoveryAttempts: 2,
+  });
+
+  assert.equal(decision.kind, 'give-up');
+  assert.match(decision.failedReason, /没有输出可应用补丁/);
+});
+
 test('agent runtime turn policy: read-only action classifier stays centralized', () => {
   assert.equal(isReadOnlyRuntimeAction('analyze'), true);
   assert.equal(isReadOnlyRuntimeAction('explain'), true);
@@ -130,6 +162,14 @@ test('agent runtime turn policy: recovery feedback stays read-only and asks for 
   assert.match(feedback, /path、pattern 或 command/);
   assert.match(feedback, /只读分析任务/);
   assert.match(feedback, /不要修改文件/);
+});
+
+test('agent runtime turn policy: mutating recovery feedback asks for tools or concrete patch', () => {
+  const feedback = buildMutatingNoToolRecoveryFeedback('修改源码');
+
+  assert.match(feedback, /create_file\/write_file/);
+  assert.match(feedback, /完整 SEARCH\/REPLACE/);
+  assert.match(feedback, /短意图/);
 });
 
 console.log('\nAgent runtime turn policy tests passed.\n');
