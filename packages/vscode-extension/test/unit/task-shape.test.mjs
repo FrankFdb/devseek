@@ -60,6 +60,7 @@ test('TaskShape: scoped no-change plus isolated docs/src delivery remains existi
   const guidance = buildTaskShapeGuidancePrompt(prompt);
   assert.match(guidance, /uart\*_tx\/rx_main/);
   assert.match(guidance, /TunnelTransport\/分片传输/);
+  assert.match(guidance, /不能只在用户给出的目录内自洽实现/);
 });
 
 test('TaskShape: standalone task remains allowed to create its own entrypoint', () => {

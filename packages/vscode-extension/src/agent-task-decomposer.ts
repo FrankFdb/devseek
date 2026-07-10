@@ -478,6 +478,7 @@ function buildDecomposeSystemPrompt(
     '   每个附件有 modify/create 任务需求时，直接规划修改任务；需要整体理解时，合并为 1 个 explore 任务。',
     '2. 需要理解代码后再修改：生成 1 个整体性 explore 任务 + 若干针对性 modify/create 任务（只列真正需要改的文件）。',
     '   对“参考既有通讯模块方式”的既有工程任务，explore 任务必须覆盖参考模块、项目级收发入口/出口、uart*_tx/rx_main 或等价通道、TunnelTransport/分片、publisher/subscriber、topic/payload_type/命令号和调度调用点。',
+    '   对“既有/正式项目 + 代码实现 + 设计/文档交付”的任务，计划必须按软件工程阶段组织：项目级事实调查 → 设计/接口/修改清单 → 代码实现 → 编译/测试/验证；不要按固定文档数量驱动计划，文档数量由用户明确要求和调查结果决定。',
     '3. 纯信息需求（Q2 答案为"满意"，无代码变更期望）：生成 1 个总体 analyze/explain 任务，不逐文件拆分。',
     '4. 需要执行命令（编译/运行/测试）：action=analyze，file 必须指向项目目录或源文件，不要指向 build/bin 等构建产物。',
     '   desc 只描述验证意图（如"编译并运行项目确认效果"），不要拼 run_terminal 命令、清理命令或构建目录；执行器会选择标准命令。',
@@ -535,7 +536,7 @@ function isImplementationContextTask(task: AgentTask): boolean {
   const file = task.file || '';
   const text = `${file} ${task.desc}`.toLowerCase();
   if (/\.(?:md|markdown|txt|rst|adoc|json|ya?ml|toml|csv)$/i.test(file)) return true;
-  return /需求|规格|方案|设计|文档|计划|上下文|提取|requirements?|spec(?:ification)?|design|plan|context/.test(text);
+  return /需求|规格|方案|设计|文档|计划|上下文|提取|通讯|通信|链路|接口|参考|主控|遥控器|平台|license|uart|tunnel|mavlink|topic|publisher|subscriber|requirements?|spec(?:ification)?|design|plan|context/.test(text);
 }
 
 function normalizeReadOnlyPlanTasks(
@@ -589,24 +590,6 @@ function normalizeMarkdownDocumentDeliverableTasks(
   if (!isMarkdownDocumentOnlyDeliverableRequest(userPrompt)) {
     const existingMarkdownTasks = tasks.filter(isMarkdownDocumentCreateTask);
     if (existingMarkdownTasks.length > 0) return tasks;
-    if (structuredSpecs.length > 1) {
-      const outputDir = selectMarkdownDocumentOutputDir(tasks, userPrompt, promptDir, activeEditorFile);
-      if (outputDir) {
-        const generated = structuredSpecs.map((spec, index) => {
-          const outputAbs = uniqueMarkdownDocumentPath(outputDir, spec.filename);
-          const outputFile = taskDisplayPathForAbs(outputAbs, promptDir);
-          return {
-            id: `md${index + 1}`,
-            file: outputFile,
-            action: 'create' as AgentTaskAction,
-            desc: spec.desc,
-            visibleTarget: outputFile,
-            absPath: outputAbs,
-          };
-        });
-        return [...generated, ...tasks];
-      }
-    }
     return [buildMarkdownDocumentCreateTask(tasks, userPrompt, promptDir, activeEditorFile), ...tasks];
   }
 

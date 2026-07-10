@@ -69,6 +69,32 @@ test('source sanity repairs C++ string newlines caused by web tool JSON transpor
   assert.equal(findGeneratedSourceSanityIssue('main.cpp', repaired.content), undefined);
 });
 
+test('source sanity repairs Markdown emphasis corruption in variadic C++ macros', () => {
+  const polluted = [
+    '#include <cstdio>',
+    '#define WARRANTY_LOG(fmt, ...) std::fprintf(stderr, "[warranty] " fmt "\\n", ##**VA_ARGS**)',
+    'int main() { return 0; }',
+  ].join('\n');
+
+  const repaired = repairGeneratedSourceTransportEscapes('warranty_logger.hpp', polluted);
+
+  assert.equal(repaired.repaired, true);
+  assert.equal(repaired.repairCount, 1);
+  assert.match(repaired.content, /##__VA_ARGS__\)/);
+  assert.doesNotMatch(repaired.content, /\*\*VA_ARGS\*\*/);
+});
+
+test('source sanity blocks tool protocol text embedded in C++ source', () => {
+  const issue = findGeneratedSourceSanityIssue('proc_license_main.cpp', [
+    '#include <iostream>',
+    'int main() { return 0; }[调用 create_file] {"path":"/workspace/docs/out.md","content":"# report"}',
+  ].join('\n'));
+
+  assert.equal(issue?.kind, 'tool-protocol-contamination');
+  assert.equal(issue?.line, 2);
+  assert.match(issue?.detail || '', /工具调用协议文本/);
+});
+
 test('source sanity ignores non C/C++ files', () => {
   assert.equal(
     findGeneratedSourceSanityIssue('note.md', '```cpp\nstd::cout << "\nbroken";\n```\n'),

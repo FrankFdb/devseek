@@ -24,7 +24,7 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { decideAgentFileWrite } = req(bundlePath);
+const { decideAgentFileWrite, detectIsolatedArtifactWriteScope } = req(bundlePath);
 
 const planPolicy = {
   mode: 'plan',
@@ -118,6 +118,86 @@ test('AgentFileWritePolicy: explicit deliverable exception is limited to Markdow
 
   assert.equal(decision.action, 'deny');
   assert.match(decision.reason, /(?:tool-kind-denied|tool-kind-not-allowed-for-plan):edit/);
+});
+
+test('AgentFileWritePolicy: detects isolated artifact output roots from Chinese project prompts', () => {
+  const prompt = [
+    '本次测试所有新增设计文档、实施文档、代码和验证脚本必须放在：/workspace/src/oam/src/lifting/zc_maintenance/202607101807',
+    '- 设计/实施 Markdown 文档放入：/workspace/src/oam/src/lifting/zc_maintenance/202607101807/docs',
+    '- 代码和测试文件放入：/workspace/src/oam/src/lifting/zc_maintenance/202607101807/src',
+    '不要修改正式源码目录里的既有文件；如需改原项目关联代码，请写入原有代码修改清单。',
+    '必须创建主设计 Markdown 文档：/workspace/src/oam/src/lifting/zc_maintenance/202607101807/docs/01-warranty-remote-controller-interface-design.md',
+  ].join('\n');
+
+  const scope = detectIsolatedArtifactWriteScope(prompt, '/workspace');
+
+  assert.equal(scope.required, true);
+  assert.ok(scope.allowedRoots.includes('/workspace/src/oam/src/lifting/zc_maintenance/202607101807'));
+  assert.ok(scope.allowedRoots.includes('/workspace/src/oam/src/lifting/zc_maintenance/202607101807/docs'));
+  assert.ok(scope.allowedRoots.includes('/workspace/src/oam/src/lifting/zc_maintenance/202607101807/src'));
+});
+
+test('AgentFileWritePolicy: isolated artifact scope blocks writes to formal source directories', () => {
+  const requestPrompt = [
+    '本次测试所有新增设计文档、实施文档、代码和验证脚本必须放在：/workspace/src/oam/src/lifting/zc_maintenance/202607101807',
+    '- 代码和测试文件放入：/workspace/src/oam/src/lifting/zc_maintenance/202607101807/src',
+    '不要修改正式源码目录里的既有文件；如需改原项目关联代码，请写入原有代码修改清单。',
+  ].join('\n');
+
+  const denied = decideAgentFileWrite({
+    absPath: '/workspace/src/oam/src/license/proc_license_main.cpp',
+    workspaceRoot: '/workspace',
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      displayName: 'src/oam/src/license/proc_license_main.cpp',
+      requestPrompt,
+    },
+  });
+
+  assert.equal(denied.action, 'deny');
+  assert.equal(denied.reason, 'isolated-artifact-scope');
+
+  const allowedSourceArtifact = decideAgentFileWrite({
+    absPath: '/workspace/src/oam/src/lifting/zc_maintenance/202607101807/src/warranty_manager.cpp',
+    workspaceRoot: '/workspace',
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      displayName: 'src/oam/src/lifting/zc_maintenance/202607101807/src/warranty_manager.cpp',
+      requestPrompt,
+    },
+  });
+
+  assert.equal(allowedSourceArtifact.action, 'allow');
+
+  const allowedDocArtifact = decideAgentFileWrite({
+    absPath: '/workspace/src/oam/src/lifting/zc_maintenance/202607101807/docs/01-warranty-remote-controller-interface-design.md',
+    workspaceRoot: '/workspace',
+    context: {
+      purpose: 'markdown-deliverable',
+      userRequested: true,
+      displayName: 'src/oam/src/lifting/zc_maintenance/202607101807/docs/01-warranty-remote-controller-interface-design.md',
+      requestPrompt,
+    },
+  });
+
+  assert.equal(allowedDocArtifact.action, 'allow');
+});
+
+test('AgentFileWritePolicy: ordinary prompts keep normal workspace write behavior', () => {
+  const decision = decideAgentFileWrite({
+    absPath: '/workspace/src/main.cpp',
+    workspaceRoot: '/workspace',
+    context: {
+      purpose: 'workspace-edit',
+      userRequested: true,
+      requestPrompt: '请修复 src/main.cpp 的编译错误。',
+    },
+  });
+
+  assert.equal(decision.action, 'allow');
+  assert.equal(decision.reason, 'workspace-write-allowed');
 });
 
 console.log('\nAgent file write policy tests passed.\n');

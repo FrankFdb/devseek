@@ -770,7 +770,7 @@ export async function runAgenticLoop(
           break;
         }
         const validationFeedback = normalizedAutoValidation.feedbackForAI ? `\n\n${normalizedAutoValidation.feedbackForAI}` : '';
-        const missingAfterArtifact = getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths]);
+        const missingAfterArtifact = getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot);
         const continueMessage = missingAfterArtifact.length > 0
           ? `【系统反馈】已从你输出的文件代码块落地文件，但仍缺少${missingAfterArtifact.join('、')}。请继续调用实际工具修复或补充验证，完成后再 task_complete。\n${artifactApply.feedbackForAI}${validationFeedback}`
           : `【系统反馈】已从你输出的文件代码块落地文件。请根据工具结果更新 todo，并在必要时调用 task_complete。\n${artifactApply.feedbackForAI}${validationFeedback}`;
@@ -813,7 +813,7 @@ export async function runAgenticLoop(
         continue;
       }
       const missingWithoutTools = promptRequiresTools
-        ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
+        ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
         : [];
       if (!callbacks.signal?.aborted && missingWithoutTools.length > 0 && noToolRounds < 4) {
         noToolRounds++;
@@ -856,7 +856,7 @@ export async function runAgenticLoop(
     }
 
     const missingBeforeTools = promptRequiresTools
-      ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
+      ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
       : [];
 
     const hasExplicitFileWriteTool = tools.some(t => t.name === 'create_file' || t.name === 'write_file');
@@ -1025,7 +1025,7 @@ export async function runAgenticLoop(
     }
 
     const missingAfterTools = promptRequiresTools
-      ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
+      ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
       : [];
     const blockingFailureAfterTools = promptRequiresTools
       ? getAgenticBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
@@ -1108,7 +1108,7 @@ export async function runAgenticLoop(
 
     if (!loopRes.toolCallsMade && loopWarnings.length === 0) {
       const missingNow = promptRequiresTools
-        ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
+        ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
         : [];
       const blockingFailureNow = promptRequiresTools
         ? getAgenticBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
@@ -1131,7 +1131,7 @@ export async function runAgenticLoop(
   }
 
   const finalMissingEvidence = promptRequiresTools
-    ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths])
+    ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
     : [];
   const finalBlockingFailure = promptRequiresTools
     ? getAgenticBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)

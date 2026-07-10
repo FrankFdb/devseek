@@ -14,6 +14,7 @@ export interface AgentFileWriteContext {
   userRequested?: boolean;
   taskAction?: string;
   displayName?: string;
+  requestPrompt?: string;
 }
 
 export interface AgentFileWriteDecisionInput {
@@ -39,6 +40,8 @@ export interface AgentFileWriteDecision {
     protectedPath?: boolean;
     autopilotMode?: boolean;
     explicitMarkdownDeliverable?: boolean;
+    isolatedArtifactScopeRequired?: boolean;
+    isolatedArtifactAllowedRoots?: string[];
   };
 }
 
@@ -59,28 +62,41 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
     autopilotMode: !!input.autopilotMode,
     explicitMarkdownDeliverable,
   };
+  const isolatedScope = detectIsolatedArtifactWriteScope(input.context?.requestPrompt, workspaceRoot);
+  const scopedAudit = {
+    ...audit,
+    isolatedArtifactScopeRequired: isolatedScope.required,
+    isolatedArtifactAllowedRoots: isolatedScope.allowedRoots.length > 0 ? isolatedScope.allowedRoots : undefined,
+  };
 
   if (!absPath) {
-    return deny('missing-target-path', '缺少可写入的目标路径。', audit);
+    return deny('missing-target-path', '缺少可写入的目标路径。', scopedAudit);
   }
   if (workspaceRoot && !isInsidePath(absPath, workspaceRoot)) {
-    return deny('target-outside-workspace', `写入目标不在当前 workspace 内：${relPath}`, audit);
+    return deny('target-outside-workspace', `写入目标不在当前 workspace 内：${relPath}`, scopedAudit);
   }
   if (input.protectedPath) {
-    return deny('protected-files-match', `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）`, audit);
+    return deny('protected-files-match', `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）`, scopedAudit);
+  }
+  if (isolatedScope.required && isolatedScope.allowedRoots.length > 0 && !isInsideAnyPath(absPath, isolatedScope.allowedRoots)) {
+    return deny(
+      'isolated-artifact-scope',
+      `写入被测试/交付产物隔离规则阻止：${relPath}。本次请求要求新增产物只能写入 ${isolatedScope.allowedRoots.map(root => displayWritePath(root, workspaceRoot)).join('、')}；正式源码修改请写入“原有代码修改清单”，不要直接改正式源码。`,
+      scopedAudit,
+    );
   }
 
   if (!explicitMarkdownDeliverable && input.toolPolicy) {
     const writePermission = decideToolPermission(input.toolPolicy, 'edit');
     if (writePermission.action === 'deny') {
-      return deny(writePermission.reason, `当前 ${input.toolPolicy.mode} 模式不允许写入文件（${writePermission.reason}）。`, audit);
+      return deny(writePermission.reason, `当前 ${input.toolPolicy.mode} 模式不允许写入文件（${writePermission.reason}）。`, scopedAudit);
     }
     if (writePermission.action === 'requireConfirm') {
       return {
         action: 'requireConfirm',
         reason: writePermission.reason,
         confirmationTitle: `确认写入文件：${relPath}`,
-        audit,
+        audit: scopedAudit,
       };
     }
   }
@@ -90,14 +106,14 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
       action: 'requireConfirm',
       reason: 'sensitive-file-requires-confirmation',
       confirmationTitle: `⚠️ 写入敏感文件：${relPath}`,
-      audit,
+      audit: scopedAudit,
     };
   }
 
   return {
     action: 'allow',
     reason: explicitMarkdownDeliverable ? 'explicit-markdown-deliverable' : 'workspace-write-allowed',
-    audit,
+    audit: scopedAudit,
   };
 }
 
@@ -121,4 +137,60 @@ function displayWritePath(absPath: string, workspaceRoot: string, fallback?: str
 function isInsidePath(absPath: string, root: string): boolean {
   const rel = nodePath.relative(root, absPath);
   return rel === '' || (!!rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel));
+}
+
+function isInsideAnyPath(absPath: string, roots: readonly string[]): boolean {
+  return roots.some(root => isInsidePath(absPath, root));
+}
+
+export interface IsolatedArtifactWriteScope {
+  required: boolean;
+  allowedRoots: string[];
+}
+
+const ISOLATED_ARTIFACT_SCOPE_RE = /(?:不要|不得|禁止).{0,18}(?:修改|改动|写入).{0,18}(?:正式源码|正式代码|原项目|既有文件|正式源码目录)|(?:本次测试|测试产物|所有新增|新增设计文档|新增代码|验证脚本).{0,60}(?:必须|统一).{0,12}(?:放在|放入|写入|保存到|输出到)/i;
+const OUTPUT_ROOT_RE = /(?:必须放在|放入|放到|放置到|写入到|保存到|输出到|输出目录(?:要求)?|必须创建[^：:\n]{0,60}(?:文档|文件)?)\s*[:：]?\s*([~/][^\s"'`<>，。；;]+)/gi;
+
+export function detectIsolatedArtifactWriteScope(
+  requestPrompt: string | undefined,
+  workspaceRoot?: string,
+): IsolatedArtifactWriteScope {
+  const text = String(requestPrompt || '');
+  const required = ISOLATED_ARTIFACT_SCOPE_RE.test(text);
+  if (!required) return { required: false, allowedRoots: [] };
+
+  const roots = new Set<string>();
+  let match: RegExpExecArray | null;
+  OUTPUT_ROOT_RE.lastIndex = 0;
+  while ((match = OUTPUT_ROOT_RE.exec(text)) !== null) {
+    const root = coerceAllowedOutputRoot(match[1], workspaceRoot);
+    if (root) roots.add(root);
+  }
+
+  return {
+    required: true,
+    allowedRoots: [...roots].sort((a, b) => a.length - b.length),
+  };
+}
+
+function coerceAllowedOutputRoot(value: string | undefined, workspaceRoot?: string): string | undefined {
+  let raw = String(value || '')
+    .replace(/[)\]}>，。；;：:,.]+$/g, '')
+    .replace(/\/+$/g, '')
+    .trim();
+  if (!raw) return undefined;
+  if (raw.startsWith('~/')) {
+    const home = process.env.HOME || '';
+    if (!home) return undefined;
+    raw = nodePath.join(home, raw.slice(2));
+  }
+  const absPath = nodePath.isAbsolute(raw)
+    ? nodePath.normalize(raw)
+    : workspaceRoot
+      ? nodePath.resolve(workspaceRoot, raw)
+      : '';
+  if (!absPath) return undefined;
+  const ext = nodePath.extname(absPath).toLowerCase();
+  if (ext === '.md' || ext === '.markdown') return nodePath.dirname(absPath);
+  return absPath;
 }

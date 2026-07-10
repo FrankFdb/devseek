@@ -81,6 +81,7 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
       purpose: 'workspace-edit',
       userRequested: true,
       displayName: resolved.relPath,
+      requestPrompt: input.userPrompt,
     });
     if (!allowed) {
       return finishSimpleFileTask({

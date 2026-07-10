@@ -603,6 +603,78 @@ test('agent-task-decomposer: separate numbered Markdown deliverables stay separa
   }
 });
 
+test('agent-task-decomposer: formal implementation with docs does not use fixed multi-md fast path', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-open-workspace-'));
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'huida-uav-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(workspaceRoot), name: 'devseek', index: 0 }];
+    mkdirSync(path.join(externalRoot, '.devseek'), { recursive: true });
+    const licenseDir = path.join(externalRoot, 'src/oam/src/license');
+    const projectRoot = path.join(externalRoot, 'src/oam/src');
+    const docsDir = path.join(externalRoot, 'src/oam/src/lifting/zc_maintenance/202607101755/docs');
+    const srcDir = path.join(externalRoot, 'src/oam/src/lifting/zc_maintenance/202607101755/src');
+    const requirementDoc = path.join(externalRoot, 'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md');
+    const interfaceDoc = path.join(externalRoot, 'src/oam/src/lifting/zc_maintenance/docs/维保预警接口文档.md');
+    mkdirSync(licenseDir, { recursive: true });
+    mkdirSync(docsDir, { recursive: true });
+    mkdirSync(srcDir, { recursive: true });
+    mkdirSync(path.dirname(requirementDoc), { recursive: true });
+    writeFileSync(path.join(licenseDir, 'license_tunnel_transport.cpp'), '// TunnelTransport\n');
+    writeFileSync(path.join(projectRoot, 'uart1_tx_main.cpp'), '// HDStringPublisher\n');
+    writeFileSync(path.join(projectRoot, 'uart1_rx_main.cpp'), '// HDStringSubscriber\n');
+    writeFileSync(requirementDoc, '# warranty plan\n');
+    writeFileSync(interfaceDoc, '# platform api\n');
+
+    const prompt = [
+      '添加：代码实现。',
+      `1）关于和遥控器的通讯参考：${licenseDir} 模块的方式`,
+      '2）遥控器负责和平台进行数据交互，然后把平台的 json 数据转发给主控',
+      '3）主控负责统计计算，把最终是否维保提醒信息给遥控器',
+      `4）基于 ${requirementDoc} 需求 和 平台的接口文档：${interfaceDoc}`,
+      `进行遥控器和主控的交互接口设计、主控逻辑实现设计，并分别做成 md 文档放到 ${docsDir}，代码放到 ${srcDir}`,
+    ].join('\n');
+    const rawPlan = JSON.stringify({
+      tasks: [
+        {
+          id: 't1',
+          file: 'src/oam/src',
+          action: 'explore',
+          desc: '全项目追踪license通讯、uart1_tx/rx_main、TunnelTransport和topic路由',
+        },
+        {
+          id: 't2',
+          file: 'src/oam/src/lifting/zc_maintenance/202607101755/src/warranty_manager.cpp',
+          action: 'create',
+          desc: '基于项目通讯锚点实现维保主控逻辑',
+        },
+        {
+          id: 't3',
+          file: 'src/oam/src/lifting/zc_maintenance/202607101755/src',
+          action: 'analyze',
+          desc: '编译或语法验证新增代码并记录结果',
+        },
+      ],
+    });
+
+    const progress = [];
+    let plannerCalled = false;
+    const result = await decomposeTask(prompt, [], undefined, text => progress.push(text), undefined, async () => {
+      plannerCalled = true;
+      return rawPlan;
+    }, requirementDoc);
+
+    assert.equal(result.ok, true);
+    assert.equal(plannerCalled, true);
+    assert.equal(progress.some(text => /生成 2 个文档创建任务/.test(text)), false);
+    assert.equal(result.tasks.some(task => task.action === 'explore' && /uart1_tx\/rx_main|TunnelTransport/.test(task.desc)), true);
+    assert.equal(result.tasks.some(task => task.action === 'create' && task.file.endsWith('warranty_manager.cpp')), true);
+    assert.equal(result.tasks.filter(task => /\.md$/i.test(task.file)).length, 1);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(externalRoot, { recursive: true, force: true });
+  }
+});
+
 test('agent-task-decomposer: planner prompt keeps bounded file previews for large attachments', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-large-plan-'));
   try {

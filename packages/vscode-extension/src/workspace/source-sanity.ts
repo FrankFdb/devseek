@@ -1,5 +1,5 @@
 export interface SourceSanityIssue {
-  kind: 'unterminated-string-literal';
+  kind: 'unterminated-string-literal' | 'tool-protocol-contamination';
   line: number;
   detail: string;
 }
@@ -11,17 +11,25 @@ export interface SourceTransportRepairResult {
 }
 
 const CPP_SOURCE_EXT_RE = /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i;
+const SOURCE_TOOL_PROTOCOL_RE = /(?:\[调用\s+(?:create_file|write_file|replace_in_file|run_terminal|read_file|list_dir|search_file)\]|\bCalling:\s*(?:create_file|write_file|replace_in_file|run_terminal|read_file|list_dir|search_file)\b|<TOOL_[A-Za-z0-9_]+>|<\/TOOL_[A-Za-z0-9_]+>)/;
 
 export function findGeneratedSourceSanityIssue(filePath: string, content: string): SourceSanityIssue | undefined {
   if (!CPP_SOURCE_EXT_RE.test(filePath || '')) return undefined;
-  return findCppUnterminatedStringLiteral(content || '');
+  return findSourceToolProtocolContamination(content || '') || findCppUnterminatedStringLiteral(content || '');
 }
 
 export function repairGeneratedSourceTransportEscapes(filePath: string, content: string): SourceTransportRepairResult {
   if (!CPP_SOURCE_EXT_RE.test(filePath || '')) {
     return { content, repaired: false, repairCount: 0 };
   }
-  return repairCppStringLiteralTransportNewlines(content || '');
+  const newlineRepair = repairCppStringLiteralTransportNewlines(content || '');
+  const macroRepair = repairCppMacroMarkdownEmphasisEscapes(newlineRepair.content);
+  const repairCount = newlineRepair.repairCount + macroRepair.repairCount;
+  return {
+    content: macroRepair.content,
+    repaired: repairCount > 0,
+    repairCount,
+  };
 }
 
 function findCppUnterminatedStringLiteral(content: string): SourceSanityIssue | undefined {
@@ -120,6 +128,17 @@ function findCppUnterminatedStringLiteral(content: string): SourceSanityIssue | 
     };
   }
   return undefined;
+}
+
+function findSourceToolProtocolContamination(content: string): SourceSanityIssue | undefined {
+  const match = SOURCE_TOOL_PROTOCOL_RE.exec(content);
+  if (!match) return undefined;
+  const line = countNewlines(content.slice(0, match.index)) + 1;
+  return {
+    kind: 'tool-protocol-contamination',
+    line,
+    detail: `第 ${line} 行附近的 C/C++ 源码混入了工具调用协议文本（${match[0]}）。请只写入源码内容，工具调用必须由工具通道执行。`,
+  };
 }
 
 function repairCppStringLiteralTransportNewlines(content: string): SourceTransportRepairResult {
@@ -230,6 +249,26 @@ function repairCppStringLiteralTransportNewlines(content: string): SourceTranspo
     output += ch;
   }
 
+  return {
+    content: output,
+    repaired: repairCount > 0,
+    repairCount,
+  };
+}
+
+function repairCppMacroMarkdownEmphasisEscapes(content: string): SourceTransportRepairResult {
+  let repairCount = 0;
+  const output = content.replace(/^(\s*#\s*define[^\n]*(?:\*\*VA_ARGS\*\*|\*\*VA_OPT\*\*)[^\n]*)$/gm, (line) => {
+    let next = line.replace(/\*\*VA_ARGS\*\*/g, () => {
+      repairCount += 1;
+      return '__VA_ARGS__';
+    });
+    next = next.replace(/\*\*VA_OPT\*\*/g, () => {
+      repairCount += 1;
+      return '__VA_OPT__';
+    });
+    return next;
+  });
   return {
     content: output,
     repaired: repairCount > 0,

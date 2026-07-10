@@ -86,6 +86,23 @@ function assertSourceSanityWritesRepairTransportEscapes(relPath, content) {
   );
 }
 
+function assertFileWritePolicyContextsCarryRequestPrompt(relPath, content) {
+  const lines = content.split(/\r?\n/);
+  const unsafe = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!lines[index].includes('onBeforeFileWrite(')) continue;
+    const windowText = lines.slice(index, Math.min(lines.length, index + 12)).join('\n');
+    if (!windowText.includes('requestPrompt:')) {
+      unsafe.push({ line: index + 1, text: lines[index].trim() });
+    }
+  }
+  assert.deepEqual(
+    unsafe,
+    [],
+    `${relPath} has onBeforeFileWrite calls without requestPrompt context`,
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §一 / §五: Agent loop — core execution
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1338,6 +1355,7 @@ test('Architecture: WorkspaceEditService owns text file writes', () => {
   const applier = src('src/workspace-applier.ts');
   const simpleFileTask = src('src/agent/simple-file-task.ts');
   const deterministicTaskExecutor = src('src/agent/deterministic-task-executor.ts');
+  const markdownDeliverableTask = src('src/agent/markdown-deliverable-task.ts');
   assertContains(service, 'class WorkspaceEditService', 'workspace edit service class must exist');
   assertContains(service, 'writeTextFileSync', 'workspace edit service must expose text-file write boundary');
   assertContains(service, 'proposeTextFileWrite', 'workspace edit service must expose edit proposal boundary');
@@ -1361,6 +1379,15 @@ test('Architecture: WorkspaceEditService owns text file writes', () => {
   assertWorkspaceWritesValidateSourceSanity('src/agent/tool-loop.ts', toolLoop);
   assertWorkspaceWritesValidateSourceSanity('src/agent/simple-file-task.ts', simpleFileTask);
   assertWorkspaceWritesValidateSourceSanity('src/agent/deterministic-task-executor.ts', deterministicTaskExecutor);
+  for (const [relPath, content] of [
+    ['src/agent-loop.ts', agentLoop],
+    ['src/agent/tool-loop.ts', toolLoop],
+    ['src/agent/simple-file-task.ts', simpleFileTask],
+    ['src/agent/deterministic-task-executor.ts', deterministicTaskExecutor],
+    ['src/agent/markdown-deliverable-task.ts', markdownDeliverableTask],
+  ]) {
+    assertFileWritePolicyContextsCarryRequestPrompt(relPath, content);
+  }
   for (const [relPath, content] of [
     ['src/agent-loop.ts', agentLoop],
     ['src/agent/tool-loop.ts', toolLoop],

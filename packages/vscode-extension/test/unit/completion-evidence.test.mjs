@@ -89,7 +89,7 @@ test('completion evidence: scoped no-change with isolated docs/src delivery stil
   assert.equal(requiresCodeArtifactForEvidence(implementationPrompt), true);
   assert.deepEqual(
     getMissingCompletionEvidence(implementationPrompt, [], [], []),
-    ['代码修改结果', '成功的测试/运行结果'],
+    ['代码修改结果', '成功的测试/运行结果', '正式项目 Markdown 设计/接口文档'],
   );
 });
 
@@ -307,6 +307,119 @@ test('completion evidence: generic file todos do not turn markdown creation into
         todos,
         [{ path: file, basename: 'manual-phase5-smoke.md', linesAdded: 2, linesRemoved: 0, action: 'create' }],
         [{ command: 'test -f docs/manual-phase5-smoke.md', kind: 'other', ok: true, exitCode: 0 }],
+      ),
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('completion evidence: formal project Markdown must pass engineering quality gate', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-formal-doc-gate-'));
+  try {
+    const file = path.join(root, 'docs', '01-warranty-design.md');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, [
+      '# 维保提醒设计',
+      '',
+      '## 概述',
+      '',
+      '参考 license 模块的通讯方式，新增遥控器和主控 JSON 交互。',
+    ].join('\n'));
+    const formalPrompt = [
+      '参考 /repo/src/oam/src/license 模块的通讯方式。',
+      '基于 /repo/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md 和接口文档，',
+      '完成遥控器和主控的交互接口设计，主控逻辑实现设计，并添加代码实现和自闭环验证。',
+    ].join('\n');
+
+    assert.deepEqual(
+      getMissingCompletionEvidence(
+        formalPrompt,
+        [{ title: '输出正式项目设计 Markdown 文档' }],
+        [{ path: file, basename: '01-warranty-design.md', linesAdded: 5, linesRemoved: 0, action: 'create' }],
+        [{ command: 'test -f docs/01-warranty-design.md', kind: 'other', ok: true, exitCode: 0 }],
+        [],
+        root,
+      ),
+      [
+        '代码修改结果',
+        '正式项目源项目事实矩阵',
+        '正式项目协议/通讯数值事实',
+        '遥控器/主控接口 schema、request/response 示例',
+        '原有代码修改清单（文件、函数/类、风险、验证方式）',
+        '项目级通讯链路证据（uart*_tx/rx_main、TunnelTransport/分片、MAVLink/topic）',
+      ],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('completion evidence: formal project Markdown quality can be satisfied across written docs', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-formal-doc-pass-'));
+  try {
+    const docsDir = path.join(root, 'docs');
+    const srcDir = path.join(root, 'src');
+    mkdirSync(docsDir, { recursive: true });
+    mkdirSync(srcDir, { recursive: true });
+    const design = path.join(docsDir, '01-warranty-design.md');
+    const interfaceDoc = path.join(docsDir, '02-remote-interface.md');
+    const codeFile = path.join(srcDir, 'warranty_manager.cpp');
+    writeFileSync(design, [
+      '# 维保提醒正式项目设计与实现说明',
+      '',
+      '## 源项目事实矩阵',
+      '',
+      '| 文件 | 事实 | 复用方式 |',
+      '|------|------|----------|',
+      '| `src/oam/src/license/license_types.hpp:8` | `kTopicLicenseTunnelRx="/uav/license/tunnel/rx"`，`kTopicLicenseTunnelTx="/uav/license/tunnel/tx"` | 维保通道复用 topic 命名和收发边界 |',
+      '| `src/oam/src/license/license_types.hpp:11` | `kMavTunnelCmdLicense=33007` | 新维保 tunnel 需独立 payload_type 或明确复用规则 |',
+      '| `src/oam/src/license/license_types.hpp:15` | `kTunnelVersion=1`，`kTunnelMaxTotalLen=64 * 1024`，`kTunnelSessionTimeoutMs=5000` | 维保分片版本、最大长度和超时策略按此对齐 |',
+      '| `src/oam/src/license/license_tunnel_transport.cpp:304` | `LicenseTunnelHeader` 字段含 `sessionId/seq/total/payloadLen/totalLen/crc32` | 维保 JSON 按同一分片/CRC 模型验证 |',
+      '| `src/oam/src/uart1_tx_main.cpp:35` | `HDStringPublisher` 通过 `/uav/dt/oam_msg/tx` 发送到遥控器链路 | 维保结果必须接入真实发送入口 |',
+      '| `src/oam/src/uart1_rx_main.cpp:52` | `HDStringSubscriber` 接收遥控器/平台消息并按 topic 路由 | 维保平台状态从接收入口进入主控 |',
+      '',
+      '## 原有代码修改清单',
+      '',
+      '| 目标文件 | 函数/类 | 改动内容 | 原因 | 风险 | 验证方式 |',
+      '|----------|---------|----------|------|------|----------|',
+      '| `src/oam/src/lifting/lifting_manager.hpp:16` | `LiftingManager` | 增加 WarrantyManager 成员和 init 注入 | 接入主控生命周期 | 初始化顺序 | 单测 + 启动日志 |',
+      '| `src/oam/src/lifting/pump_adjust_main.cpp:146` | `rc_maintenance_publisher` | 复用 `/uav/dt/oam_msg/tx` 发布器 | 遥控器通道统一 | topic 冲突 | 回归 topic 发布 |',
+      '| `src/oam/src/lifting/pump_adjust_main.cpp:4329` | `init` | 调用维保模块 init | 接入调度 | 空指针风险 | 自检验证 |',
+      '| `src/oam/src/lifting/zc_maintenance/warranty_manager.hpp` | `WarrantyManager` | 新增状态合并和复位 | 维保主逻辑 | 状态迁移 | 边界测试 |',
+    ].join('\n'));
+    writeFileSync(interfaceDoc, [
+      '# 遥控器与主控接口文档',
+      '',
+      '| 方向 | 承载通道 | 消息类型 | request JSON schema 字段 | response JSON schema 字段 |',
+      '|------|----------|----------|--------------------------|---------------------------|',
+      '| 遥控器 -> 主控 | MAVLINK_MSG_TUNNEL, payload_type warranty | `platform_status` | `requestId`、`deviceSn`、`statisticsCutoffAt`、`metrics.flightSorties`、`thresholds.expiringSoonDays` | `accepted`、`errorCode` |',
+      '| 主控 -> 遥控器 | topic `/uav/dt/oam_msg/tx` | `warranty_status` | `requestId` | `status`、`level`、`triggerReason`、`nextCheckAtMs`、`version` |',
+      '',
+      '示例 request JSON payload：`{"type":"platform_status","requestId":"r1","metrics":{"flightSorties":120},"version":1}`。',
+      '示例 response JSON payload：`{"type":"warranty_status","requestId":"r1","level":"expiring_soon","errorCode":0,"version":1}`。',
+      '超时 5000ms 后重试，幂等键使用 requestId + sessionId，错误码包括 payload_invalid、crc_mismatch、timeout，版本字段用于兼容演进。',
+    ].join('\n'));
+    writeFileSync(codeFile, 'int warranty_manager_validation_anchor() { return 0; }\n');
+    const formalPrompt = [
+      '参考 /repo/src/oam/src/license 模块的通讯方式。',
+      '基于 /repo/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md 和接口文档，',
+      '完成遥控器和主控的交互接口设计，主控逻辑实现设计，并添加代码实现和自闭环验证。',
+    ].join('\n');
+
+    assert.deepEqual(
+      getMissingCompletionEvidence(
+        formalPrompt,
+        [{ title: '输出正式项目设计 Markdown 文档' }],
+        [
+          { path: design, basename: '01-warranty-design.md', linesAdded: 20, linesRemoved: 0, action: 'create' },
+          { path: interfaceDoc, basename: '02-remote-interface.md', linesAdded: 10, linesRemoved: 0, action: 'create' },
+          { path: codeFile, basename: 'warranty_manager.cpp', linesAdded: 1, linesRemoved: 0, action: 'create' },
+        ],
+        [{ command: 'npm run build', kind: 'compile', ok: true, exitCode: 0 }],
+        [],
+        root,
       ),
       [],
     );

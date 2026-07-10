@@ -8,6 +8,7 @@ import {
 } from '../intent/advisory-patterns';
 import { classifyShellCommandEvidence } from '../tools/shell-command-analysis';
 import { stripToolCallBlocks } from './fake-tool-parser';
+import { assessFormalProjectDocumentQuality } from './formal-project-document-quality';
 
 export interface CompletionTodo {
   title: string;
@@ -43,6 +44,7 @@ const CODE_FILE_EXTENSIONS = new Set([
   '.java', '.go', '.rs', '.cs', '.php', '.rb', '.swift', '.kt', '.kts', '.scala',
   '.html', '.css', '.scss', '.sass', '.vue', '.svelte', '.sh', '.bash', '.zsh',
 ]);
+const MARKDOWN_FILE_EXTENSIONS = new Set(['.md', '.markdown']);
 
 const FILE_CHANGE_RE = /(?:写|创建|新建|生成|编写|实现|开发|做(?:一个|一款)?|修复|修改|改进|改造|重构|更新|添加|删除|create|write|implement|develop|fix|repair|modify|edit|refactor|update|add|delete)/i;
 const CODE_TARGET_PATTERNS = [
@@ -89,6 +91,21 @@ const GENERIC_EVIDENCE_TODO_TITLES = new Set([
 
 export function isCodeArtifactPath(filePath: string): boolean {
   return CODE_FILE_EXTENSIONS.has(nodePath.extname(filePath).toLowerCase());
+}
+
+function isMarkdownArtifactPath(filePath: string): boolean {
+  return MARKDOWN_FILE_EXTENSIONS.has(nodePath.extname(filePath).toLowerCase());
+}
+
+function resolveWrittenEvidencePath(filePath: string, workspaceRoot?: string): string {
+  if (!filePath) return '';
+  if (nodePath.isAbsolute(filePath)) return filePath;
+  return workspaceRoot ? nodePath.resolve(workspaceRoot, filePath) : filePath;
+}
+
+function writtenEvidenceExists(file: WrittenFileEvidence, workspaceRoot?: string): boolean {
+  const absPath = resolveWrittenEvidencePath(file.path, workspaceRoot);
+  try { return !!absPath && fs.existsSync(absPath); } catch { return false; }
 }
 
 function normalizeWrittenFileEvidenceKey(filePath: string, workspaceRoot?: string): string {
@@ -477,11 +494,11 @@ export function getMissingCompletionEvidence(
   writtenFiles: WrittenFileEvidence[],
   terminalEvidence: TerminalEvidence[],
   readEvidencePaths: string[] = [],
+  workspaceRoot?: string,
 ): string[] {
   const text = buildEvidenceText(userPrompt, todos);
-  const existingWrittenFiles = coalesceWrittenFileEvidence(writtenFiles).filter(f => {
-    try { return fs.existsSync(f.path); } catch { return false; }
-  });
+  const existingWrittenFiles = coalesceWrittenFileEvidence(writtenFiles, workspaceRoot)
+    .filter(f => writtenEvidenceExists(f, workspaceRoot));
   const existingCodeWrites = existingWrittenFiles.filter(f => isCodeArtifactPath(f.path));
   const successfulEvidence = terminalEvidence.filter(e => e.ok);
   const missing: string[] = [];
@@ -526,5 +543,53 @@ export function getMissingCompletionEvidence(
     missing.push('成功的编译/测试/语法验证命令结果');
   }
 
+  const formalProjectPrompt = `${userPrompt}\n${todos.map(t => t.title).join('\n')}`;
+  missing.push(...getFormalProjectMarkdownQualityMissingEvidence(formalProjectPrompt, existingWrittenFiles, workspaceRoot));
+
   return missing;
+}
+
+const FORMAL_PROJECT_DOC_REQUEST_RE = /(?:markdown|\.md\b|文档|设计|接口文档|修改清单|事实矩阵|实施文档)/i;
+const FORMAL_PROJECT_REASON_LABELS: Record<string, string> = {
+  'missing-source-fact-matrix': '正式项目源项目事实矩阵',
+  'missing-concrete-protocol-facts': '正式项目协议/通讯数值事实',
+  'missing-remote-controller-interface-doc': '遥控器/主控接口 schema、request/response 示例',
+  'missing-existing-code-modification-plan': '原有代码修改清单（文件、函数/类、风险、验证方式）',
+  'missing-project-wide-communication-chain': '项目级通讯链路证据（uart*_tx/rx_main、TunnelTransport/分片、MAVLink/topic）',
+};
+
+function getFormalProjectMarkdownQualityMissingEvidence(
+  userPrompt: string,
+  existingWrittenFiles: WrittenFileEvidence[],
+  workspaceRoot?: string,
+): string[] {
+  const baseline = assessFormalProjectDocumentQuality('', userPrompt);
+  if (!baseline.required) return [];
+
+  const markdownFiles = existingWrittenFiles.filter(f => isMarkdownArtifactPath(f.path));
+  if (markdownFiles.length === 0) {
+    return FORMAL_PROJECT_DOC_REQUEST_RE.test(userPrompt)
+      ? ['正式项目 Markdown 设计/接口文档']
+      : [];
+  }
+
+  const markdownContent = markdownFiles
+    .map(file => readWrittenMarkdownEvidence(file, workspaceRoot))
+    .filter(Boolean)
+    .join('\n\n');
+  if (!markdownContent.trim()) return ['正式项目 Markdown 设计/接口文档'];
+
+  const quality = assessFormalProjectDocumentQuality(markdownContent, userPrompt);
+  if (!quality.required || quality.ok) return [];
+  return quality.reasons.map(reason => FORMAL_PROJECT_REASON_LABELS[reason] ?? `正式项目文档质量：${reason}`);
+}
+
+function readWrittenMarkdownEvidence(file: WrittenFileEvidence, workspaceRoot?: string): string {
+  const absPath = resolveWrittenEvidencePath(file.path, workspaceRoot);
+  try {
+    if (!absPath || !fs.existsSync(absPath) || fs.statSync(absPath).isDirectory()) return '';
+    return fs.readFileSync(absPath, 'utf8');
+  } catch {
+    return '';
+  }
 }

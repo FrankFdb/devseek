@@ -169,6 +169,7 @@ export async function tryExecuteMarkdownDeliverableTask(
     userRequested: true,
     taskAction: task.action,
     displayName: relPath,
+    requestPrompt: input.userPrompt,
   }))) {
     await postMarkdownStatus(input, 'failed', basename, {
       title: 'Markdown 写入被阻止',

@@ -365,10 +365,13 @@ function buildHarnessPrompt(basePrompt, fixtureInfo = {}) {
       `本次测试所有新增设计文档、实施文档、代码和验证脚本必须放在：${path.join(workspaceDir, fixtureInfo.artifactRunRoot)}`,
       `- 设计/实施 Markdown 文档放入：${path.join(workspaceDir, fixtureInfo.artifactDocsDir)}`,
       `- 新增代码、测试代码和验证脚本放入：${path.join(workspaceDir, fixtureInfo.artifactSrcDir)}`,
+      fixtureInfo.requestedOutputDoc
+        ? `- 必须创建主设计 Markdown 文档：${fixtureInfo.requestedOutputDoc}；可以另建事实矩阵、接口文档、修改清单等辅助文档，但主文档必须存在并汇总关键结论。`
+        : '',
       '- 文件名使用正式、可读的业务命名，例如 warranty-maintenance-implementation.md、warranty-tunnel-transport.hpp；不要添加 selfloop、codex、verify、simulation 等临时后缀。',
       '- 不要修改正式源码目录里的既有文件；如果正式集成需要改原代码，必须在文档中提供“原有代码修改清单”，写明文件、函数/类、改动内容、原因、风险和验证方式。',
       '- 文档必须包含源项目事实矩阵、遥控器/主控接口文档、原有代码修改清单、验证证据和生成文件路径。',
-    ].join('\n'));
+    ].filter(Boolean).join('\n'));
   }
   return lines.join('\n');
 }

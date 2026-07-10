@@ -459,6 +459,7 @@ export async function applyMarkdownFileArtifactsForLoop(
         purpose: 'tool-write',
         userRequested: false,
         displayName: resolvedWrite.relPath,
+        requestPrompt: userPrompt,
       });
       if (!allowed) {
         feedback.push(`[generated_file: ${artifact.path}] 跳过（写入权限策略阻止）`);
@@ -606,6 +607,7 @@ export async function executeFakeToolsForLoop(
           purpose: 'tool-write',
           userRequested: false,
           displayName: rawPath,
+          requestPrompt: taskPrompt,
         });
         if (!allowed) {
           parts.push(`[${toolName}: ${rawPath}] 跳过（写入权限策略阻止）`);

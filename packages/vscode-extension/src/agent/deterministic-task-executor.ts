@@ -39,6 +39,7 @@ export async function tryExecuteDeterministicCreateTask(input: {
     userRequested: true,
     taskAction: task.action,
     displayName: task.file,
+    requestPrompt: task.desc || task.file,
   }))) {
     await postDeterministicStatus(input, 'failed', basename, '写入被权限或保护规则阻止。');
     return { applied: false, raw: 'deterministic create blocked by write guard' };

@@ -160,6 +160,27 @@ test('WorkspaceEditService: repairs source transport escapes before validation w
   }
 });
 
+test('WorkspaceEditService: blocks tool protocol contamination in generated C++ source', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
+  try {
+    const target = path.join(dir, 'proc_license_main.cpp');
+    const service = new WorkspaceEditService();
+    assert.throws(
+      () => service.writeTextFileSync(target, [
+        '#include <iostream>',
+        'int main() { return 0; }[调用 create_file] {"path":"/workspace/docs/out.md","content":"# report"}',
+      ].join('\n'), {
+        validateSourceSanity: true,
+        repairSourceTransportEscapes: true,
+      }),
+      /工具调用协议文本/,
+    );
+    assert.equal(readFileSyncSafe(target), undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 function readFileSyncSafe(filePath) {
   try {
     return readFileSync(filePath, 'utf8');

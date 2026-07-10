@@ -1357,6 +1357,7 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
           userRequested: true,
           taskAction: task.action,
           displayName: task.file,
+          requestPrompt: userPrompt,
         });
         if (!allowed) {
           await callbacks.onAgentStatus({
