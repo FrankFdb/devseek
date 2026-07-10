@@ -813,6 +813,36 @@ test('FakeToolParser: strips fenced ReAct Action/Input JSON blocks', () => {
   assert.equal(stripToolCallBlocks(text), '我需要先读取完整文件内容。\n然后继续修改。');
 });
 
+test('FakeToolParser: parses DeepSeek XML tool tags with JSON bodies', () => {
+  const text = [
+    '我理解质量门禁的要求。现在我来补充读取关键证据。',
+    '',
+    '<read_file>',
+    '{"path":"/home/ff/uav/tars/huida_uav/src/oam/src/license/license_tunnel_transport.cpp","startLine":1,"endLine":200}',
+    '</read_file>',
+    '<grep_search>',
+    '{"pattern":"uart.*tx|uart.*rx|_tx_main|_rx_main","path":"/home/ff/uav/tars/huida_uav/src/oam/src/license","isRegexp":false}',
+    '</grep_search>',
+    '<grep_search>',
+    '{"pattern":"HDStringPublisher|publish.*topic","path":"/home/ff/uav/tars/huida_uav/src/oam/src/license","isRegexp":false}',
+    '</grep_search>',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.deepEqual(
+    tools.map(tool => tool.name),
+    ['read_file', 'grep_search', 'grep_search'],
+  );
+  assert.deepEqual(tools[0].input, {
+    path: '/home/ff/uav/tars/huida_uav/src/oam/src/license/license_tunnel_transport.cpp',
+    startLine: 1,
+    endLine: 200,
+  });
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(stripToolCallBlocks(text), '我理解质量门禁的要求。现在我来补充读取关键证据。');
+});
+
 test('FakeToolParser: shared protocol fixture parses and strips every complete dialect', () => {
   for (const sample of TOOL_PROTOCOL_SAMPLES) {
     const tools = parseFakeToolCalls(sample.text);

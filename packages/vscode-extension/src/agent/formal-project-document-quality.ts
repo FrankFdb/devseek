@@ -11,6 +11,8 @@ export interface FormalProjectDocumentQuality {
   modificationPlanSignalCount: number;
   projectCommunicationEntryCount: number;
   communicationTransportSignalCount: number;
+  hasUartOrEquivalentCommunicationEntry: boolean;
+  hasResolvedProjectFacts: boolean;
   hasSourceFactMatrix: boolean;
   hasConcreteProtocolFacts: boolean;
   hasRemoteControllerInterfaceDoc: boolean;
@@ -20,6 +22,12 @@ export interface FormalProjectDocumentQuality {
   hasExistingCodeModificationPlan: boolean;
   hasProjectWideCommunicationChain: boolean;
   reasons: string[];
+}
+
+export interface FormalProjectMarkdownNormalization {
+  text: string;
+  changed: boolean;
+  repairedFenceCount: number;
 }
 
 const FORMAL_PROJECT_RE = /(?:既有|现有|原项目|大项目|正式项目|生产项目|主控|平台|遥控器|模块|接口文档|参考.+模块|\/src\/|CMakeLists\.txt|Makefile|工程|代码库)/i;
@@ -41,6 +49,41 @@ const FENCED_JSON_EXAMPLE_RE = /```(?:json|JSON)\s*[\s\S]*?\{[\s\S]*?```/;
 const MODIFICATION_PLAN_SIGNAL_RE = /(?:原有代码修改清单|修改点|需要修改|集成点|目标文件|函数|类|方法|改动内容|原因|风险|验证方式|回归|影响范围)/gi;
 const PROJECT_COMMUNICATION_ENTRY_RE = /(?:uart\d+_(?:tx|rx)_main\.(?:c|cc|cpp|h|hpp)|(?:^|\s|`)(?:[\w./-]+\/)?(?:uart\d+|mavlink|tunnel|oam_msg|publisher|subscriber)[\w./-]*\.(?:c|cc|cpp|h|hpp)(?::\d+)?|(?:收发入口|通讯入口|通信入口|发送入口|接收入口|串口入口|全项目搜索|项目级通讯链路))/gi;
 const COMMUNICATION_TRANSPORT_SIGNAL_RE = /(?:TunnelTransport|tunnel_transport|license_tunnel_transport|分片传输|分片组装|MAVLINK_MSG_TUNNEL|payload_type|HDStringPublisher|HDStringSubscriber|Publisher|Subscriber|topic|sessionId|payloadLen|totalLen|crc32|route|路由|调度|uart\d+)/gi;
+const UART_OR_EQUIVALENT_COMMUNICATION_ENTRY_RE = /(?:uart\d*[_-]?(?:tx|rx)(?:_main)?|(?:tx|rx)_main|串口(?:发送|接收|收发)?入口|全项目搜索.{0,80}(?:uart|_tx_main|_rx_main)|(?:未找到|不存在|无需).{0,80}(?:uart|_tx_main|_rx_main).{0,80}(?:证据|原因|等价通道))/i;
+const UNRESOLVED_PROJECT_FACT_RE = /(?:(?:待确认|待分配|待定|建议范围|后续确认|TODO|TBD|FIXME).{0,100}(?:注入点|命令号|command|MAV_CMD|topic|通道|通讯|通信|接口|schema|字段|文件|函数|类|路径|集成点)|(?:注入点|命令号|command|MAV_CMD|topic|通道|通讯|通信|接口|schema|字段|文件|函数|类|路径|集成点).{0,100}(?:待确认|待分配|待定|建议范围|后续确认|TODO|TBD|FIXME))/i;
+
+export function normalizeFormalProjectMarkdown(text: string): FormalProjectMarkdownNormalization {
+  const lines = String(text || '').split(/\r?\n/);
+  const normalized: string[] = [];
+  let inSingleBacktickBlock = false;
+  let repairedFenceCount = 0;
+
+  for (const line of lines) {
+    const marker = line.trim();
+    const openMatch = marker.match(/^`([A-Za-z0-9_-]+)?$/);
+    if (!inSingleBacktickBlock && openMatch) {
+      const language = openMatch[1] ? openMatch[1] : '';
+      normalized.push(language ? '```' + language : '```');
+      inSingleBacktickBlock = true;
+      repairedFenceCount++;
+      continue;
+    }
+    if (inSingleBacktickBlock && marker === '`') {
+      normalized.push('```');
+      inSingleBacktickBlock = false;
+      repairedFenceCount++;
+      continue;
+    }
+    normalized.push(line);
+  }
+
+  const normalizedText = normalized.join('\n');
+  return {
+    text: normalizedText,
+    changed: normalizedText !== String(text || ''),
+    repairedFenceCount,
+  };
+}
 
 export function assessFormalProjectDocumentQuality(
   text: string,
@@ -66,6 +109,8 @@ export function assessFormalProjectDocumentQuality(
   const modificationPlanSignalCount = countMatches(content, MODIFICATION_PLAN_SIGNAL_RE);
   const projectCommunicationEntryCount = countMatches(content, PROJECT_COMMUNICATION_ENTRY_RE);
   const communicationTransportSignalCount = countMatches(content, COMMUNICATION_TRANSPORT_SIGNAL_RE);
+  const hasUartOrEquivalentCommunicationEntry = UART_OR_EQUIVALENT_COMMUNICATION_ENTRY_RE.test(content);
+  const hasResolvedProjectFacts = !UNRESOLVED_PROJECT_FACT_RE.test(content);
   const hasSourceFactMatrix = sourceReferenceCount >= 4
     && numericFactCount >= 3
     && SOURCE_FACT_LABEL_RE.test(content);
@@ -83,9 +128,14 @@ export function assessFormalProjectDocumentQuality(
       && hasInterfaceFencedJsonExample);
   const hasExistingCodeModificationPlan = !requiresModificationPlan
     || (modificationPlanSignalCount >= 8 && sourceReferenceCount >= 4 && /(?:风险|验证|回归)/i.test(content));
+  const requiresUartOrEquivalentCommunicationEntry = requiresCommunicationChain
+    && (requiresLicenseReference || /(?:uart|串口|_tx_main|_rx_main)/i.test(prompt));
   const hasProjectWideCommunicationChain = !requiresCommunicationChain
-    || (projectCommunicationEntryCount >= 1 && communicationTransportSignalCount >= 6);
+    || (projectCommunicationEntryCount >= 1
+      && communicationTransportSignalCount >= 6
+      && (!requiresUartOrEquivalentCommunicationEntry || hasUartOrEquivalentCommunicationEntry));
   const reasons = [
+    required && !hasResolvedProjectFacts ? 'unresolved-project-facts' : '',
     required && !hasSourceFactMatrix ? 'missing-source-fact-matrix' : '',
     required && !hasConcreteProtocolFacts ? 'missing-concrete-protocol-facts' : '',
     required && requiresRemoteControllerInterface && !hasRemoteControllerInterfaceDoc ? 'missing-remote-controller-interface-doc' : '',
@@ -106,6 +156,8 @@ export function assessFormalProjectDocumentQuality(
     modificationPlanSignalCount,
     projectCommunicationEntryCount,
     communicationTransportSignalCount,
+    hasUartOrEquivalentCommunicationEntry,
+    hasResolvedProjectFacts,
     hasSourceFactMatrix,
     hasConcreteProtocolFacts,
     hasRemoteControllerInterfaceDoc,

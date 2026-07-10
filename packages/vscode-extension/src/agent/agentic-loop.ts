@@ -102,6 +102,11 @@ import {
   buildTaskOutputScopeRecoveryPrompt,
   detectTaskOutputScopeDrift,
 } from './task-output-scope';
+import {
+  applyProviderRecoveryHistory,
+  replaceAllAssistantToolHistory,
+  replaceLatestAssistantToolHistory,
+} from './agent-history-compaction';
 
 const AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
 const AGENTIC_TASK_PROMPT_CHAR_BUDGET = 34_000;
@@ -158,6 +163,7 @@ function agenticMessageBudgetFor(message: ChatMessage, index: number): number {
 }
 
 function compactAgenticMessageHistory(messages: ChatMessage[]): number {
+  replaceAllAssistantToolHistory(messages);
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
     if (typeof message.content !== 'string') continue;
@@ -192,17 +198,6 @@ function compactAgenticMessageHistory(messages: ChatMessage[]): number {
   }
 
   return totalAgenticMessageChars(messages);
-}
-
-function replaceTrailingAgentProviderRecoveryMessage(messages: ChatMessage[], recoveryMessage: ChatMessage): void {
-  const last = messages[messages.length - 1];
-  if (last?.role === 'user'
-    && typeof last.content === 'string'
-    && last.content.startsWith('【系统恢复】上一轮 Provider 回复未通过完整性门禁')) {
-    messages.splice(messages.length - 1, 1, recoveryMessage);
-    return;
-  }
-  messages.push(recoveryMessage);
 }
 
 function extractPlanningTodoItems(text: string): TodoItem[] {
@@ -317,12 +312,24 @@ const AGENTIC_ROUNDS_NORMAL   = 25;
 const AGENTIC_ROUNDS_AUTOPILOT = 200;
 const AGENTIC_REPEATED_TOOL_FAILURE_WARN_COUNT = 2;
 const AGENTIC_REPEATED_TOOL_FAILURE_STOP_COUNT = 4;
+const AGENTIC_REPEATED_QUALITY_GATE_WARN_COUNT = 2;
+const AGENTIC_REPEATED_QUALITY_GATE_STOP_COUNT = 3;
+const AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE = 2;
+const AGENTIC_CONTEXT_GATHERING_EVIDENCE_LIMIT_BEFORE_WRITE = 6;
+const AGENTIC_CONTEXT_CONVERGENCE_MAX_WARNINGS = 2;
 const CONTEXT_GATHERING_TOOL_NAMES = new Set([
   'read_file',
   'list_dir',
   'grep_search',
   'file_search',
   'semantic_search',
+]);
+const FILE_WRITE_PROGRESS_TOOL_NAMES = new Set([
+  'create_file',
+  'write_file',
+  'replace_file',
+  'replace_in_file',
+  'create_directory',
 ]);
 
 function normalizeToolFailurePath(pathValue: string | undefined): string {
@@ -507,9 +514,15 @@ export async function runAgenticLoop(
 
   const promptIsReadOnly = isExplicitlyReadOnlyRequest(userPrompt);
   const literalToolProtocolPrompt = isLiteralToolProtocolPrompt(userPrompt);
+  const promptRequiresFileChange = !literalToolProtocolPrompt
+    && !promptIsReadOnly
+    && (
+      requiresFileChangeEvidence(userPrompt)
+      || /(?:代码实现|实现代码|创建|新建|写入|生成|修改|修复|添加|删除|更新|改造|重构|implement|create|write|modify|fix)/i.test(userPrompt)
+    );
   const promptRequiresTools = !literalToolProtocolPrompt && (
     requiresReadEvidence(userPrompt)
-    || requiresFileChangeEvidence(userPrompt)
+    || promptRequiresFileChange
     || requiresCommandEvidence(userPrompt)
     || (!promptIsReadOnly && /(?:创建|新建|修改|生成|修复|添加|删除|更新|改造|重构|看(?:一下)?(?:运行|执行)?结果|看到(?:运行|执行)?结果|输出效果|效果|create|write|modify|fix|implement)/i.test(userPrompt))
   );
@@ -531,6 +544,8 @@ export async function runAgenticLoop(
   let completeSummary = '';
   let failedReason = '';
   let noToolRounds = 0;
+  let contextGatheringOnlyRoundsWithoutWrite = 0;
+  let contextConvergenceWarnings = 0;
   let sawWorkTool = false;
   const allTerminalEvidence: TerminalEvidence[] = [];
   const allEvidenceRefs: EvidenceRef[] = [];
@@ -544,9 +559,35 @@ export async function runAgenticLoop(
   let providerRecoveryAttempts = 0;
   let taskOutputScopeRecoveryAttempts = 0;
   let forceProviderNewSessionNextTurn = false;
+  const resetProviderRecoveryAttemptsAfterProgress = () => {
+    providerRecoveryAttempts = 0;
+    forceProviderNewSessionNextTurn = false;
+  };
   const announcedProseKeys = new Set<string>();
   const allReadEvidencePaths = new Set<string>();
   const repeatedToolFailures = new Map<string, number>();
+  const repeatedQualityGateFailures = new Map<string, number>();
+  const recordQualityGateFailureFeedback = (qualityGate: AgenticHistoryQualityGate | undefined): string => {
+    if (!qualityGate) return '';
+    if (qualityGate.status === 'pass') {
+      repeatedQualityGateFailures.clear();
+      return '';
+    }
+    const signature = `${qualityGate.status}:${qualityGate.summary}`;
+    const count = (repeatedQualityGateFailures.get(signature) || 0) + 1;
+    repeatedQualityGateFailures.set(signature, count);
+    if (count >= AGENTIC_REPEATED_QUALITY_GATE_STOP_COUNT && !failedReason) {
+      failedReason = `QualityGate 连续 ${count} 次未通过：${qualityGate.summary}`;
+    }
+    if (count >= AGENTIC_REPEATED_QUALITY_GATE_WARN_COUNT) {
+      return [
+        `【系统反馈】QualityGate 已连续 ${count} 次以同一原因未通过：${qualityGate.summary}`,
+        '不要继续做同样的无效修复；必须回到源项目证据、接口事实、代码集成点或验证入口，换策略补齐缺口。',
+        ...(qualityGate.requiredActions?.length ? [`requiredActions:\n${qualityGate.requiredActions.map(action => `- ${action}`).join('\n')}`] : []),
+      ].join('\n');
+    }
+    return '';
+  };
   // Whether the AI has called manage_todo_list yet.
   let todoEverSet = false;
   let fallbackTodosVisible = false;
@@ -561,6 +602,22 @@ export async function runAgenticLoop(
   const _agentLabel = _shortPrompt.length > 38 ? _shortPrompt.slice(0, 36) + '…' : _shortPrompt;
   const initialDisplayAction = callbacks.runDisplayAction || 'explore';
   const initialDisplayTarget = callbacks.runDisplayTarget || '';
+  const emitAgenticCorrectionStatus = async (title: string, detail: string, activityLabel?: string) => {
+    if (callbacks.signal?.aborted) return;
+    callbacks.onToolActivity?.('label', activityLabel || title);
+    await callbacks.onAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      taskId: 'agentic',
+      taskFile: initialDisplayTarget,
+      taskAction: initialDisplayAction,
+      taskIndex: 1,
+      taskTotal: 1,
+      state: 'started',
+      title,
+      detail,
+    });
+  };
   await callbacks.onAgentStatus({
     type: 'agentStatus',
     phase: 'execute',
@@ -730,11 +787,7 @@ export async function runAgenticLoop(
           terminalEvidence: allTerminalEvidence,
           partialResponseLength: sAccum.trim().length,
         });
-        if (resetProviderSession) {
-          replaceTrailingAgentProviderRecoveryMessage(messages, recoveryMessage);
-        } else {
-          messages.splice(1, Math.max(0, messages.length - 1), recoveryMessage);
-        }
+        applyProviderRecoveryHistory(messages, recoveryMessage);
         totalChars = messages.reduce((sum, message) => sum + agenticMessageContentLength(message.content), 0);
         totalChars = compactAgenticMessageHistory(messages);
         continue;
@@ -805,6 +858,7 @@ export async function runAgenticLoop(
         noToolRounds = 0;
         allWrittenFiles.push(...artifactApply.writtenFiles);
         progressEpoch++;
+        resetProviderRecoveryAttemptsAfterProgress();
         const autoValidation = await runAgentAutoValidationForWrites(
           allWrittenFiles.slice(autoValidatedWriteCount),
           workspaceRoot,
@@ -820,6 +874,8 @@ export async function runAgenticLoop(
         });
         if (normalizedAutoValidation.qualityGate) latestAutoQualityGate = normalizedAutoValidation.qualityGate;
         if (normalizedAutoValidation.evidence.length) allTerminalEvidence.push(...normalizedAutoValidation.evidence);
+        const qualityGateFeedback = recordQualityGateFailureFeedback(normalizedAutoValidation.qualityGate);
+        if (failedReason) break;
         if (autoValidation.repairBlockedReason) {
           if (callbacks.onTodoUpdate && currentTodos.length > 0) {
             currentTodos = settleValidationFailureTodos(currentTodos);
@@ -828,7 +884,8 @@ export async function runAgenticLoop(
           failedReason = autoValidation.repairBlockedReason;
           break;
         }
-        const validationFeedback = normalizedAutoValidation.feedbackForAI ? `\n\n${normalizedAutoValidation.feedbackForAI}` : '';
+        const validationFeedbackText = [normalizedAutoValidation.feedbackForAI, qualityGateFeedback].filter(Boolean).join('\n\n');
+        const validationFeedback = validationFeedbackText ? `\n\n${validationFeedbackText}` : '';
         const missingAfterArtifact = getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot);
         const continueMessage = missingAfterArtifact.length > 0
           ? `【系统反馈】已从你输出的文件代码块落地文件，但仍缺少${missingAfterArtifact.join('、')}。请继续调用实际工具修复或补充验证，完成后再 task_complete。\n${artifactApply.feedbackForAI}${validationFeedback}`
@@ -853,6 +910,19 @@ export async function runAgenticLoop(
         continue;
       }
       const stripped = stripToolCallBlocks(text).trim();
+      const danglingActionWithoutTools = promptRequiresTools && hasDanglingAgentActionIntent(stripped);
+      if (!callbacks.signal?.aborted && danglingActionWithoutTools && noToolRounds < 4) {
+        noToolRounds++;
+        await emitAgenticCorrectionStatus(
+          '已拦接口头承诺，要求真实工具执行',
+          '模型刚才只说明要继续检查、创建、写入或验证，但没有调用任何工具。DevSeek 已保留这个失败事实，并要求下一轮必须使用真实文件、搜索或终端工具推进。',
+          '拦接口头承诺，要求真实工具执行',
+        );
+        const retryMessage = buildDanglingAgentActionFeedback();
+        messages.push({ role: 'user', content: retryMessage });
+        totalChars += retryMessage.length;
+        continue;
+      }
       if (!callbacks.signal?.aborted && promptRequiresTools && !sawWorkTool && noToolRounds < 2) {
         noToolRounds++;
         const userAnnouncement = normalizeAgentUserAnnouncement(stripped);
@@ -866,6 +936,11 @@ export async function runAgenticLoop(
             callbacks.onToolActivity('label', firstSentence);
           }
         }
+        await emitAgenticCorrectionStatus(
+          '等待真实工具执行',
+          '当前回复没有任何工具调用，不能把规划或说明当作完成结果。DevSeek 正在要求模型先建立任务清单，再读取、写入或运行验证命令。',
+          '要求模型调用真实工具',
+        );
         const retryMessage = '【系统反馈】本轮没有检测到任何工具调用，不能把需要创建/修改/运行的任务标记为完成。请继续执行：先更新 manage_todo_list，然后调用 read_file/list_dir/create_file/run_terminal 等实际工具；完成前必须提供可验证的文件或命令结果。';
         messages.push({ role: 'user', content: retryMessage });
         totalChars += retryMessage.length;
@@ -876,14 +951,12 @@ export async function runAgenticLoop(
         : [];
       if (!callbacks.signal?.aborted && missingWithoutTools.length > 0 && noToolRounds < 4) {
         noToolRounds++;
+        await emitAgenticCorrectionStatus(
+          '交付证据不足，继续要求执行',
+          `当前仍缺少${missingWithoutTools.join('、')}。DevSeek 不会把目录检查或说明文字结算为完成，下一轮必须补齐真实写盘、读取或验证证据。`,
+          '交付证据不足，继续执行',
+        );
         const retryMessage = `【系统反馈】不能停在检查目录或说明阶段。当前缺少${missingWithoutTools.join('、')}。${buildMissingEvidenceRecoveryInstruction(missingWithoutTools)}不要把 memory_write/项目记忆列为用户 todo。`;
-        messages.push({ role: 'user', content: retryMessage });
-        totalChars += retryMessage.length;
-        continue;
-      }
-      if (!callbacks.signal?.aborted && promptRequiresTools && sawWorkTool && hasDanglingAgentActionIntent(stripped) && noToolRounds < 4) {
-        noToolRounds++;
-        const retryMessage = buildDanglingAgentActionFeedback();
         messages.push({ role: 'user', content: retryMessage });
         totalChars += retryMessage.length;
         continue;
@@ -977,6 +1050,9 @@ export async function runAgenticLoop(
         readEvidencePaths: [...allReadEvidencePaths],
       },
     );
+    if (loopRes.toolCallsMade) {
+      replaceLatestAssistantToolHistory(messages);
+    }
 
     if (loopRes.workToolCallsMade || artifactApply.writtenFiles.length > 0) {
       sawWorkTool = true;
@@ -1013,6 +1089,31 @@ export async function runAgenticLoop(
     if (loopRes.evidenceRefs?.length) {
       allEvidenceRefs.push(...loopRes.evidenceRefs);
     }
+    if ((loopRes.readFiles?.length ?? 0) > 0
+      || (loopRes.writtenFiles?.length ?? 0) > 0
+      || (loopRes.terminalEvidence?.length ?? 0) > 0
+      || (loopRes.evidenceRefs?.length ?? 0) > 0) {
+      resetProviderRecoveryAttemptsAfterProgress();
+    }
+    const roundHasWriteProgress = hasFileWriteIntentThisRound
+      || (loopRes.writtenFiles?.length ?? 0) > 0
+      || toolsToExecute.some(tool => FILE_WRITE_PROGRESS_TOOL_NAMES.has(tool.name));
+    const roundHasTerminalProgress = (loopRes.terminalCommands?.length ?? 0) > 0
+      || (loopRes.terminalEvidence?.length ?? 0) > 0;
+    const roundHasOnlyContextGathering = toolsToExecute.length > 0
+      && toolsToExecute.some(tool => CONTEXT_GATHERING_TOOL_NAMES.has(tool.name))
+      && toolsToExecute.every(tool => (
+        CONTEXT_GATHERING_TOOL_NAMES.has(tool.name)
+        || tool.name === 'manage_todo_list'
+        || tool.name === 'memory_write'
+      ))
+      && !roundHasWriteProgress
+      && !roundHasTerminalProgress;
+    if (roundHasOnlyContextGathering) {
+      contextGatheringOnlyRoundsWithoutWrite++;
+    } else if (roundHasWriteProgress || roundHasTerminalProgress) {
+      contextGatheringOnlyRoundsWithoutWrite = 0;
+    }
     for (const failure of loopRes.toolFailures ?? []) {
       const sig = makeToolFailureSignature(failure);
       const count = (repeatedToolFailures.get(sig) || 0) + 1;
@@ -1044,6 +1145,7 @@ export async function runAgenticLoop(
     if (normalizedAutoValidation.evidence.length) {
       allTerminalEvidence.push(...normalizedAutoValidation.evidence);
     }
+    const qualityGateFeedback = recordQualityGateFailureFeedback(normalizedAutoValidation.qualityGate);
     if (autoValidation.repairBlockedReason) {
       if (callbacks.onTodoUpdate && currentTodos.length > 0) {
         currentTodos = settleValidationFailureTodos(currentTodos);
@@ -1052,7 +1154,10 @@ export async function runAgenticLoop(
       failedReason = autoValidation.repairBlockedReason;
       break;
     }
-    const autoValidationFeedback = normalizedAutoValidation.feedbackForAI ?? '';
+    if (failedReason) {
+      break;
+    }
+    const autoValidationFeedback = [normalizedAutoValidation.feedbackForAI, qualityGateFeedback].filter(Boolean).join('\n\n');
 
     // Loop detection: track terminal command signatures across rounds.
     // If the same command is executed 2+ times without making progress, inject
@@ -1099,6 +1204,27 @@ export async function runAgenticLoop(
     lastSummaryFactFailures = summaryFactFailuresAfterTools;
     if (summaryFactFailuresAfterTools.length > 0) {
       loopWarnings.push(`【系统反馈】完成文字缺少文件事实证据：${summaryFactFailuresAfterTools.join('、')}。请核对磁盘并补齐真实文件，或修正完成摘要。`);
+    }
+    const gatheredEvidenceCount = allReadEvidencePaths.size + allEvidenceRefs.length;
+    if (!callbacks.signal?.aborted
+      && promptRequiresFileChange
+      && allWrittenFiles.length === 0
+      && missingAfterTools.length > 0
+      && contextGatheringOnlyRoundsWithoutWrite >= AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE
+      && gatheredEvidenceCount >= AGENTIC_CONTEXT_GATHERING_EVIDENCE_LIMIT_BEFORE_WRITE
+      && contextConvergenceWarnings < AGENTIC_CONTEXT_CONVERGENCE_MAX_WARNINGS) {
+      contextConvergenceWarnings++;
+      await emitAgenticCorrectionStatus(
+        '项目证据已收集，正在切换到交付落盘',
+        `已读取或搜索 ${gatheredEvidenceCount} 项项目证据，但尚未写入目标文件。DevSeek 正在要求模型停止横向调查，基于已有证据创建文档/源码并继续验证。`,
+        '项目证据已足够，切换到交付落盘',
+      );
+      loopWarnings.push([
+        '【系统反馈】项目调查证据已足够，必须从调查阶段切换到交付阶段。',
+        `当前已读取/搜索 ${gatheredEvidenceCount} 项证据，连续 ${contextGatheringOnlyRoundsWithoutWrite} 轮只有上下文收集，但还没有任何写盘证据。`,
+        '下一轮不要继续横向 grep/list/read；请直接使用 create_file/write_file 创建用户要求的 Markdown 文档、源码或测试骨架，随后用 read_file/run_terminal 等工具验证。',
+        '如果仍缺少一个关键事实，只允许读取一个精确文件或行范围，并在同一轮后续工具中落盘。',
+      ].join('\n'));
     }
 
     if (!callbacks.signal?.aborted

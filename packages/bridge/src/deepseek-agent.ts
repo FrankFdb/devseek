@@ -69,7 +69,7 @@ function looksLikeIncompleteAssistantIntent(text: string): boolean {
 function looksLikeSubstantiveAssistantText(text: string): boolean {
   const trimmed = String(text || '').trim();
   if (!trimmed) return false;
-  if (/(?:\[TOOL:|<TOOL_STREAM>|<TOOL\b|<\/TOOL>|<TOOL_|<\/TOOL_|Action\s*:|```\w*)/i.test(trimmed)) {
+  if (/(?:\[TOOL:|<TOOL_STREAM>|<TOOL\b|<\/TOOL>|<TOOL_|<\/TOOL_|<(?:read_file|grep_search|list_dir|file_search|create_file|write_file|replace_file|replace_in_file|run_terminal|manage_todo_list|task_complete)\b|Action\s*:|```\w*)/i.test(trimmed)) {
     return true;
   }
   if (trimmed.length >= 120) return true;
@@ -888,6 +888,32 @@ export class DeepSeekAgent {
     return this.waitForGenerationDone(page, timeoutMs);
   }
 
+  private async recoverVisibleStreamingResponseBeforeTimeout(
+    page: Page,
+    baselineText: string,
+    accumulatedPrefix: string,
+    lastText: string,
+    onDelta: (delta: string) => void,
+  ): Promise<string> {
+    await this._clickCodeTabs(page).catch(() => undefined);
+    const finalText = await this.getLastAssistantText(page).catch(() => '');
+    const streamingText = await this.getStreamingAssistantText(page).catch(() => '');
+    const candidates = [finalText, streamingText, lastText]
+      .map(text => String(text || '').trim())
+      .filter(Boolean);
+
+    for (const candidate of candidates) {
+      const combinedText = accumulatedPrefix && !candidate.startsWith(accumulatedPrefix)
+        ? accumulatedPrefix + '\n\n' + candidate
+        : candidate;
+      if (!isSubstantiveAssistantTextDiff(combinedText, baselineText)) continue;
+      if (combinedText !== lastText) onDelta('\x00RESET\x00' + combinedText);
+      await saveCookies(this.context!);
+      return combinedText;
+    }
+    return '';
+  }
+
   /** 轮询 DOM，把新增文本通过 onDelta 推送出去 */
   private async pollForStreamingResponse(
     page: Page,
@@ -960,8 +986,9 @@ export class DeepSeekAgent {
           const t = await this.getStreamingAssistantText(page);
           const generationBusyForTextDiff = await this.isGenerationBusy(page).catch(() => false);
           if (generationBusyForTextDiff) sawStopButton = true;
-          if ((sawStopButton || generationBusyForTextDiff) && isSubstantiveAssistantTextDiff(t, baselineText)) {
-            console.log(`[agent] New AI content detected via text diff (len: ${t.length})`);
+          if (isSubstantiveAssistantTextDiff(t, baselineText)) {
+            const reason = (sawStopButton || generationBusyForTextDiff) ? 'busy-text-diff' : 'visible-text-diff';
+            console.log(`[agent] New AI content detected via ${reason} (len: ${t.length})`);
             newMsgSeen = true;
             lastText = t;
             onDelta('\x00RESET\x00' + t);
@@ -1088,6 +1115,8 @@ export class DeepSeekAgent {
     }
 
     if (Date.now() >= absoluteDeadline) {
+      const recovered = await this.recoverVisibleStreamingResponseBeforeTimeout(page, baselineText, accumulatedPrefix, lastText, onDelta);
+      if (recovered) return recovered;
       await this.abortActiveGeneration(page, 'streaming-absolute-deadline');
       throw responseStreamTimeoutError({
         timeoutMs,
@@ -1098,6 +1127,8 @@ export class DeepSeekAgent {
       });
     }
     if (Date.now() >= deadline) {
+      const recovered = await this.recoverVisibleStreamingResponseBeforeTimeout(page, baselineText, accumulatedPrefix, lastText, onDelta);
+      if (recovered) return recovered;
       await this.abortActiveGeneration(page, 'streaming-idle-deadline');
       throw responseStreamTimeoutError({
         timeoutMs,

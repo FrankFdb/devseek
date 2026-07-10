@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -194,4 +196,125 @@ test('Agent auto validation: markdown file checks become read/check evidence, no
   assert.equal(result.evidence.ok, true);
   assert.equal(result.evidence.kind, 'other');
   assert.match(result.feedbackForAI, /non-code-file-validation/);
+});
+
+test('Agent auto validation: formal project Markdown quality fails even when file check passes', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-formal-md-quality-'));
+  try {
+    const docsDir = path.join(root, 'docs');
+    mkdirSync(docsDir, { recursive: true });
+    const target = path.join(docsDir, '01-warranty-design.md');
+    writeFileSync(target, [
+      '# 维保提醒设计',
+      '',
+      '参考 license 模块通讯方式，后续实现遥控器和主控交互。',
+      '',
+      '`json',
+      '{"type":"status"}',
+      '`',
+    ].join('\n'));
+
+    const statuses = [];
+    const validationService = {
+      validateWorkspaceChanges: async () => ({
+        ran: true,
+        ok: true,
+        status: 'passed',
+        command: "test -f 'docs/01-warranty-design.md' && wc -c 'docs/01-warranty-design.md'",
+        exitCode: 0,
+        output: '88 docs/01-warranty-design.md',
+        cwd: root,
+        mode: 'file-check',
+        reason: 'non-code-file-validation',
+        risks: [],
+        alternativeChecks: [],
+      }),
+    };
+
+    const prompt = [
+      '参考 /repo/src/oam/src/license 模块的通讯方式。',
+      '基于 /repo/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md 和平台接口文档，',
+      '完成遥控器和主控的交互接口设计，主控逻辑实现设计，并添加代码实现和自闭环验证。',
+    ].join('\n');
+
+    const result = await runAgentAutoValidationForWrites(
+      [{ path: target, basename: '01-warranty-design.md', linesAdded: 7, linesRemoved: 0, action: 'create' }],
+      root,
+      prompt,
+      makeCallbacks(statuses, []),
+      'conservative',
+      { validationService },
+    );
+
+    assert.equal(result.evidence.ok, true);
+    assert.equal(result.qualityGate.status, 'fail');
+    assert.match(result.feedbackForAI, /formal_project_markdown_quality/);
+    assert.match(result.feedbackForAI, /formal_project_markdown_normalized/);
+    assert.match(result.feedbackForAI, /JSON 示例必须使用标准 Markdown 三反引号代码块/);
+    assert.match(readFileSync(target, 'utf8'), /```json\n\{"type":"status"\}\n```/);
+    assert.equal(
+      statuses.some(status => status.state === 'failed' && /正式项目质量门禁未通过/.test(status.title)),
+      true,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Agent auto validation: formal project source quality rejects standalone sample main', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-formal-source-quality-'));
+  try {
+    const srcDir = path.join(root, 'src/oam/src/lifting/zc_maintenance/202607111200/src');
+    mkdirSync(srcDir, { recursive: true });
+    const target = path.join(srcDir, 'proc_warranty_main.cpp');
+    writeFileSync(target, [
+      '#include <iostream>',
+      'class ProcWarrantyApp {',
+      'public:',
+      '  static ProcWarrantyApp& instance();',
+      '};',
+      'int main(int argc, char** argv) {',
+      '  (void)argc; (void)argv;',
+      '  std::cout << "standalone";',
+      '  return 0;',
+      '}',
+    ].join('\n'));
+
+    const validationService = {
+      validateWorkspaceChanges: async () => ({
+        ran: true,
+        ok: true,
+        status: 'passed',
+        command: 'g++ -fsyntax-only proc_warranty_main.cpp',
+        exitCode: 0,
+        output: 'ok',
+        cwd: srcDir,
+        mode: 'compile-only',
+        reason: 'single-main-safe-compile-only',
+        risks: [],
+        alternativeChecks: [],
+      }),
+    };
+    const prompt = [
+      '原来实现的吊运维保功能：设计文档+代码。',
+      '参考 /repo/src/oam/src/license 模块的通讯方式，在既有主控正式项目内实现遥控器和主控交互，',
+      '需要分析原项目逻辑、设计、代码实现和自闭环测试。',
+    ].join('\n');
+
+    const result = await runAgentAutoValidationForWrites(
+      [{ path: target, basename: 'proc_warranty_main.cpp', linesAdded: 10, linesRemoved: 0, action: 'create' }],
+      root,
+      prompt,
+      makeCallbacks([], []),
+      'conservative',
+      { validationService },
+    );
+
+    assert.equal(result.evidence.ok, true);
+    assert.equal(result.qualityGate.status, 'fail');
+    assert.match(result.feedbackForAI, /formal_project_source_quality/);
+    assert.match(result.feedbackForAI, /孤岛 main|样例入口/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

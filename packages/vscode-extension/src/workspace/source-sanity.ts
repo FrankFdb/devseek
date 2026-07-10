@@ -32,6 +32,9 @@ export function repairGeneratedSourceTransportEscapes(filePath: string, content:
   let current = content || '';
   let repairCount = 0;
   if (CPP_SOURCE_EXT_RE.test(filePath || '')) {
+    const macroTransportRepair = repairCppMacroTransportEscapedNewlines(current);
+    current = macroTransportRepair.content;
+    repairCount += macroTransportRepair.repairCount;
     const newlineRepair = repairCppStringLiteralTransportNewlines(current);
     current = newlineRepair.content;
     repairCount += newlineRepair.repairCount;
@@ -280,6 +283,72 @@ function repairCppStringLiteralTransportNewlines(content: string): SourceTranspo
     output += ch;
   }
 
+  return {
+    content: output,
+    repaired: repairCount > 0,
+    repairCount,
+  };
+}
+
+function repairCppMacroTransportEscapedNewlines(content: string): SourceTransportRepairResult {
+  let repairCount = 0;
+  const output = content.split('\n').map((line) => {
+    if (!/^\s*#\s*define\b/.test(line) || !/\\n/.test(line)) return line;
+    let next = '';
+    let inString = false;
+    let inChar = false;
+    let escape = false;
+
+    for (let index = 0; index < line.length; index += 1) {
+      const ch = line[index];
+      const following = line[index + 1];
+
+      if (inString) {
+        next += ch;
+        if (escape) {
+          escape = false;
+        } else if (ch === '\\') {
+          escape = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+
+      if (inChar) {
+        next += ch;
+        if (escape) {
+          escape = false;
+        } else if (ch === '\\') {
+          escape = true;
+        } else if (ch === "'") {
+          inChar = false;
+        }
+        continue;
+      }
+
+      if (ch === '"') {
+        next += ch;
+        inString = true;
+        escape = false;
+        continue;
+      }
+      if (ch === "'") {
+        next += ch;
+        inChar = true;
+        escape = false;
+        continue;
+      }
+      if (ch === '\\' && following === 'n') {
+        next += '\\\n';
+        repairCount += 1;
+        index += 1;
+        continue;
+      }
+      next += ch;
+    }
+    return next;
+  }).join('\n');
   return {
     content: output,
     repaired: repairCount > 0,

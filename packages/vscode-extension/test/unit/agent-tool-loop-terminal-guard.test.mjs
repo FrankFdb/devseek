@@ -301,6 +301,46 @@ test('ToolLoop replace_in_file fails clearly when old_str is stale', async () =>
   }
 });
 
+test('ToolLoop replace_in_file treats identical replacement as structured no-op failure', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-replace-noop-'));
+  try {
+    const srcDir = path.join(workspaceRoot, 'src');
+    mkdirSync(srcDir, { recursive: true });
+    const filePath = path.join(srcDir, 'worker.cpp');
+    writeFileSync(filePath, 'int threshold = 7000;\n', 'utf8');
+    let applied = false;
+    const result = await executeFakeToolsForLoop(
+      [
+        {
+          name: 'replace_in_file',
+          input: {
+            path: 'src/worker.cpp',
+            old_str: 'int threshold = 7000;',
+            new_str: 'int threshold = 7000;',
+          },
+        },
+      ],
+      {
+        onAppliedChange: async () => {
+          applied = true;
+        },
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.equal(applied, false);
+    assert.equal(result.writtenFiles, undefined);
+    assert.equal(result.toolFailures?.[0]?.tool, 'replace_in_file');
+    assert.equal(result.toolFailures?.[0]?.kind, 'replace');
+    assert.match(result.feedbackForAI, /old_str 与 new_str 完全相同/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('ToolLoop records blocking source sanity failures as structured tool failures', async () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-source-sanity-failure-'));
   try {

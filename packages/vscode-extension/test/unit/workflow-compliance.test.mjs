@@ -1559,6 +1559,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   const resume = src('src/app/resume-context-builder.ts');
   const recovery = src('src/app/provider-recovery-service.ts');
   const agentProviderRecovery = src('src/agent/provider-response-recovery.ts');
+  const agentHistoryCompaction = src('src/agent/agent-history-compaction.ts');
   const runDisplay = src('src/agent/agent-run-display.ts');
   const loop = src('src/agent-loop.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
@@ -1601,7 +1602,14 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assertContains(agenticLoop, 'parseAgentProviderFailure(error)', 'agentic loop must catch provider corruption before extension-level failure');
   assertContains(agenticLoop, 'buildAgentProviderRecoveryPrompt', 'agentic loop must recover inside the current task from safe facts');
   assertContains(agenticLoop, 'forceProviderNewSessionNextTurn', 'agentic loop must rebuild a wedged Provider session from task history');
-  assertContains(agenticLoop, 'replaceTrailingAgentProviderRecoveryMessage', 'provider recovery must preserve safe tool history while replacing duplicate recovery prompts');
+  assertContains(agenticLoop, 'applyProviderRecoveryHistory', 'provider recovery must rebuild a minimal ledger context instead of replaying raw history');
+  assertContains(agenticLoop, 'resetProviderRecoveryAttemptsAfterProgress', 'provider recovery budget must reset after real tool progress');
+  assertContains(agenticLoop, 'replaceAllAssistantToolHistory', 'agentic loop must summarize all executed assistant tool calls before provider sends');
+  assertContains(agenticLoop, 'replaceLatestAssistantToolHistory', 'agentic loop must summarize executed tool calls before the next provider round');
+  assertContains(agentHistoryCompaction, 'applyProviderRecoveryHistory', 'agent history compaction must own provider recovery history rebuilding');
+  assertContains(agentHistoryCompaction, 'replaceAllAssistantToolHistory', 'agent history compaction must support whole-history tool request summarization');
+  assertContains(agentHistoryCompaction, 'summarizeExecutedAssistantToolHistory', 'agent history compaction must summarize executed tool requests');
+  assertContains(agentHistoryCompaction, 'contentChars=', 'agent history compaction must preserve write payload size without resending content');
   assertContains(agenticLoop, 'AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS', 'agentic loop provider recovery must be bounded');
   assertContains(extension, 'new ProviderRecoveryService().classify', 'agent provider errors must be classified before showing UI errors');
   assertContains(extension, 'buildProviderRecoveryCheckpointTasks', 'provider recovery must save a resumable checkpoint from task facts');
@@ -1675,6 +1683,22 @@ test('Architecture: Bridge chat owns browser reset boundaries and trace-scoped p
   assertContains(promptSession, 'traceRunId', 'bridge prompt reuse must be scoped to the current agent run');
   assertContains(promptSession, 'recordBridgePromptSessionResponse', 'bridge prompt reuse must update state from provider responses');
   assertContains(extension, 'Bridge 网页侧历史不作为上下文来源', 'extension session history comment must document explicit context ownership');
+});
+
+test('Agentic loop: visible correction and context convergence are owned by Agent Core', () => {
+  const agenticLoop = src('src/agent/agentic-loop.ts');
+  const noToolIntent = src('src/agent/no-tool-intent.ts');
+  const autoValidation = src('src/agent/auto-validation.ts');
+
+  assertContains(agenticLoop, 'emitAgenticCorrectionStatus', 'agentic loop must surface internal recovery as user-visible status');
+  assertContains(agenticLoop, '已拦接口头承诺，要求真实工具执行', 'dangling model promises must be visible to the user');
+  assertContains(agenticLoop, 'AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE', 'context-gathering convergence must be bounded');
+  assertContains(agenticLoop, 'contextGatheringOnlyRoundsWithoutWrite', 'agentic loop must track read/search-only rounds');
+  assertContains(agenticLoop, '项目证据已收集，正在切换到交付落盘', 'formal project work must visibly transition from investigation to delivery');
+  assertContains(agenticLoop, '项目调查证据已足够，必须从调查阶段切换到交付阶段', 'model feedback must force delivery after enough evidence');
+  assertContains(noToolIntent, '检查、创建、修改、写入、编译或运行', 'no-tool recovery must cover create/write promises');
+  assertContains(autoValidation, 'evaluateFormalProjectMarkdownQuality', 'formal Markdown quality must run after generic file-tool writes');
+  assertContains(autoValidation, 'JSON 示例必须使用标准 Markdown 三反引号代码块', 'Markdown quality feedback must reject malformed fenced examples');
 });
 
 test('Architecture: Markdown deliverables bypass the generic editor tool loop', () => {

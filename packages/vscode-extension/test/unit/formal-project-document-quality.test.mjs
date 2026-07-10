@@ -20,7 +20,7 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { assessFormalProjectDocumentQuality } = req(bundlePath);
+const { assessFormalProjectDocumentQuality, normalizeFormalProjectMarkdown } = req(bundlePath);
 
 const prompt = [
   '参考 /repo/src/oam/src/license 模块的通讯方式。',
@@ -53,6 +53,75 @@ test('formal project quality: generic reference document is rejected', () => {
     'missing-existing-code-modification-plan',
     'missing-project-wide-communication-chain',
   ]);
+});
+
+test('formal project quality: normalizes single-backtick code blocks', () => {
+  const doc = [
+    '# 接口示例',
+    '',
+    '`json',
+    '{"type":"status"}',
+    '`',
+    '',
+    '`',
+    '平台 --HTTP--> 遥控器 --MAVLink--> 主控',
+    '`',
+  ].join('\n');
+
+  const normalized = normalizeFormalProjectMarkdown(doc);
+
+  assert.equal(normalized.changed, true);
+  assert.equal(normalized.repairedFenceCount, 4);
+  assert.match(normalized.text, /```json\n\{"type":"status"\}\n```/);
+  assert.match(normalized.text, /```\n平台 --HTTP--> 遥控器 --MAVLink--> 主控\n```/);
+});
+
+test('formal project quality: unresolved protocol facts and missing UART chain are rejected', () => {
+  const doc = [
+    '# 维保提醒正式项目设计',
+    '',
+    '## 源项目事实矩阵',
+    '',
+    '| 文件 | 事实 | 复用方式 |',
+    '|------|------|----------|',
+    '| `src/oam/src/license/license_types.hpp:8` | `kTopicLicenseTunnelRx="/uav/license/tunnel/rx"`，`kTopicLicenseTunnelTx="/uav/license/tunnel/tx"` | 复用 topic 边界 |',
+    '| `src/oam/src/license/license_types.hpp:11` | `kMavTunnelCmdLicense=33007` | 参考命令号分配 |',
+    '| `src/oam/src/license/license_types.hpp:15` | `kTunnelVersion=1`，`kTunnelMaxTotalLen=64 * 1024`，`kTunnelSessionTimeoutMs=5000` | 复用超时和大小 |',
+    '| `src/oam/src/license/license_tunnel_transport.cpp:304` | `sessionId/seq/total/payloadLen/totalLen/crc32` | 复用分片字段 |',
+    '',
+    '## 通讯链路',
+    '',
+    '仅说明 TunnelTransport、MAVLINK_MSG_TUNNEL、HDStringPublisher、HDStringSubscriber、topic、payload_type、crc32、sessionId 和 route。',
+    '',
+    '## 遥控器接口',
+    '',
+    '命令号待分配，建议范围 41000-41099。',
+    '',
+    '示例 request：',
+    '```json',
+    '{"type":"platform_status","requestId":"r1"}',
+    '```',
+    '示例 response：',
+    '```json',
+    '{"type":"warranty_status","requestId":"r1","errorCode":0}',
+    '```',
+    '超时 5000ms 后重试，幂等键 requestId，错误码 errorCode。',
+    '',
+    '## 原有代码修改清单',
+    '| 目标文件 | 函数/类 | 改动内容 | 原因 | 风险 | 验证方式 |',
+    '|---|---|---|---|---|---|',
+    '| `src/oam/src/lifting/lifting_manager.hpp:16` | `LiftingManager` | 增加管理器 | 生命周期接入 | 初始化顺序 | 单测 |',
+    '| `src/oam/src/lifting/pump_adjust_main.cpp:146` | `init` | 注入发布器 | 通道统一 | topic 冲突 | 回归 |',
+  ].join('\n');
+
+  const quality = assessFormalProjectDocumentQuality(doc, prompt);
+
+  assert.equal(quality.required, true);
+  assert.equal(quality.ok, false);
+  assert.equal(quality.hasResolvedProjectFacts, false);
+  assert.equal(quality.hasUartOrEquivalentCommunicationEntry, false);
+  assert.match(quality.reasons.join(','), /unresolved-project-facts/);
+  assert.match(quality.reasons.join(','), /missing-project-wide-communication-chain/);
 });
 
 test('formal project quality: source facts, interface schema, and modification plan pass', () => {

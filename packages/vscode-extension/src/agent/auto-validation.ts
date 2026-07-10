@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as nodePath from 'path';
 import type { AgentStatusEvent } from './events';
 import {
@@ -6,6 +7,8 @@ import {
   type TerminalEvidenceKind,
   type WrittenFileEvidence,
 } from './completion-evidence';
+import { assessFormalProjectDocumentQuality, normalizeFormalProjectMarkdown } from './formal-project-document-quality';
+import { assessFormalProjectSourceQuality } from './formal-project-source-quality';
 import { isInsideWorkspacePath } from './write-guard';
 import { ValidationService, type AutoValidationResult } from '../workspace/validation-service';
 import type { CppValidationPolicy } from '../validation-planner';
@@ -93,6 +96,178 @@ function formatBlockedAutoValidationFeedback(result: AutoValidationResult): stri
   ].filter(Boolean).join('\n');
 }
 
+const FORMAL_PROJECT_DOC_REASON_LABELS: Record<string, string> = {
+  'unresolved-project-facts': '未落定的项目事实（待确认/待分配/建议范围等）',
+  'missing-source-fact-matrix': '源项目事实矩阵',
+  'missing-concrete-protocol-facts': '协议/通讯数值事实',
+  'missing-remote-controller-interface-doc': '遥控器/主控接口 schema、request/response 示例',
+  'missing-existing-code-modification-plan': '原有代码修改清单（文件、函数/类、风险、验证方式）',
+  'missing-project-wide-communication-chain': '项目级通讯链路证据（uart*_tx/rx_main、TunnelTransport/分片、MAVLink/topic）',
+};
+
+const FORMAL_PROJECT_SOURCE_REASON_LABELS: Record<string, string> = {
+  'standalone-sample-code': '正式项目中禁止新建孤岛 main/样例入口',
+  'unresolved-project-facts': '源码中仍有待确认/待分配/建议范围等未落定事实',
+};
+
+function readWrittenMarkdownFilesForQuality(
+  writtenFiles: WrittenFileEvidence[],
+  workspaceRootFsPath: string,
+): { paths: string[]; content: string; normalizedPaths: string[] } {
+  const root = nodePath.resolve(workspaceRootFsPath);
+  const paths: string[] = [];
+  const normalizedPaths: string[] = [];
+  const parts: string[] = [];
+  for (const file of writtenFiles) {
+    if (!/\.md$/i.test(file.path) && !/\.md$/i.test(file.basename)) continue;
+    const absPath = nodePath.resolve(nodePath.isAbsolute(file.path) ? file.path : nodePath.join(root, file.path));
+    if (!isInsideWorkspacePath(absPath, root)) continue;
+    try {
+      if (!fs.existsSync(absPath) || fs.statSync(absPath).isDirectory()) continue;
+      let content = fs.readFileSync(absPath, 'utf8');
+      const relPath = nodePath.relative(root, absPath).replace(/\\/g, '/');
+      const normalized = normalizeFormalProjectMarkdown(content);
+      if (normalized.changed) {
+        fs.writeFileSync(absPath, normalized.text, 'utf8');
+        content = normalized.text;
+        normalizedPaths.push(relPath);
+      }
+      paths.push(relPath);
+      parts.push(content);
+    } catch {
+      // Ignore transient read failures here; the normal file-check validation
+      // still records the lower-level write/read problem.
+    }
+  }
+  return { paths, normalizedPaths, content: parts.join('\n\n') };
+}
+
+function readWrittenSourceFilesForQuality(
+  writtenFiles: WrittenFileEvidence[],
+  workspaceRootFsPath: string,
+): { files: Array<{ path: string; content: string; action?: string }> } {
+  const root = nodePath.resolve(workspaceRootFsPath);
+  const files: Array<{ path: string; content: string; action?: string }> = [];
+  for (const file of writtenFiles) {
+    if (!/\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i.test(file.path) && !/\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i.test(file.basename)) continue;
+    const absPath = nodePath.resolve(nodePath.isAbsolute(file.path) ? file.path : nodePath.join(root, file.path));
+    if (!isInsideWorkspacePath(absPath, root)) continue;
+    try {
+      if (!fs.existsSync(absPath) || fs.statSync(absPath).isDirectory()) continue;
+      const relPath = nodePath.relative(root, absPath).replace(/\\/g, '/');
+      files.push({
+        path: relPath,
+        content: fs.readFileSync(absPath, 'utf8'),
+        action: file.action,
+      });
+    } catch {
+      // Ignore transient reads; normal validation still records lower-level failures.
+    }
+  }
+  return { files };
+}
+
+function evaluateFormalProjectMarkdownQuality(
+  writtenFiles: WrittenFileEvidence[],
+  workspaceRootFsPath: string,
+  userPrompt: string,
+): AgentAutoValidationResult | undefined {
+  const baseline = assessFormalProjectDocumentQuality('', userPrompt);
+  if (!baseline.required) return undefined;
+
+  const markdown = readWrittenMarkdownFilesForQuality(writtenFiles, workspaceRootFsPath);
+  if (markdown.paths.length === 0) return undefined;
+  const quality = assessFormalProjectDocumentQuality(markdown.content, userPrompt);
+  if (!quality.required || quality.ok) return undefined;
+
+  const missing = quality.reasons.map(reason => FORMAL_PROJECT_DOC_REASON_LABELS[reason] ?? reason);
+  const summary = `正式项目 Markdown 质量门禁未通过：缺少${missing.join('、')}。`;
+  const feedbackForAI = [
+    '[formal_project_markdown_quality]',
+    `files=${markdown.paths.join(', ')}`,
+    markdown.normalizedPaths.length
+      ? `[formal_project_markdown_normalized] 已本地规范化 Markdown 代码块: ${markdown.normalizedPaths.join(', ')}`
+      : '',
+    summary,
+    '请继续调用 read_file/grep_search 精确补证据，并用 create_file/write_file/replace_in_file 修正文档；JSON 示例必须使用标准 Markdown 三反引号代码块，例如 ```json。',
+    '完成摘要只能引用修正后的真实文件内容，不能把不合格草稿标记完成。',
+  ].filter(Boolean).join('\n');
+  return {
+    feedbackForAI,
+    qualityGate: {
+      status: 'fail',
+      summary,
+      risks: missing.map(item => `缺少${item}`),
+      evidenceRefs: markdown.paths.map(path => `file:${path}`),
+      requiredActions: [
+        '补齐源项目事实矩阵、通讯链路、接口示例和原有代码修改清单后重新验证。',
+      ],
+    },
+  };
+}
+
+function evaluateFormalProjectSourceQuality(
+  writtenFiles: WrittenFileEvidence[],
+  workspaceRootFsPath: string,
+  userPrompt: string,
+): AgentAutoValidationResult | undefined {
+  const baseline = assessFormalProjectDocumentQuality('', userPrompt);
+  if (!baseline.required) return undefined;
+
+  const source = readWrittenSourceFilesForQuality(writtenFiles, workspaceRootFsPath);
+  if (source.files.length === 0) return undefined;
+  const quality = assessFormalProjectSourceQuality(source.files, userPrompt);
+  if (!quality.required || quality.ok) return undefined;
+
+  const missing = quality.reasons.map(reason => FORMAL_PROJECT_SOURCE_REASON_LABELS[reason] ?? reason);
+  const summary = `正式项目源码质量门禁未通过：${missing.join('、')}。`;
+  const feedbackForAI = [
+    '[formal_project_source_quality]',
+    `files=${source.files.map(file => file.path).join(', ')}`,
+    summary,
+    'A 类正式项目代码必须嵌入既有主流程/模块边界；除非用户明确要求新增独立可执行程序，不要新建 proc_*_main.cpp、main() 或只为自洽存在的样例入口。',
+    '请改为读取既有入口、调度、通讯和构建锚点，输出需要修改的原有文件/函数/类，并把新增代码设计为可被既有主流程接入的模块。',
+  ].join('\n');
+  return {
+    feedbackForAI,
+    qualityGate: {
+      status: 'fail',
+      summary,
+      risks: missing.map(item => item),
+      evidenceRefs: quality.offendingPaths.map(path => `file:${path}`),
+      requiredActions: [
+        '删除或改造孤岛入口/样例代码，补齐既有工程集成锚点后重新验证。',
+      ],
+    },
+  };
+}
+
+function combineFormalProjectQualityResults(
+  results: Array<AgentAutoValidationResult | undefined>,
+): AgentAutoValidationResult | undefined {
+  const present = results.filter((result): result is AgentAutoValidationResult => !!result);
+  if (present.length === 0) return undefined;
+  const gates = present.map(result => result.qualityGate).filter((gate): gate is NonNullable<AgentAutoValidationResult['qualityGate']> => !!gate);
+  const status = gates.some(gate => gate.status === 'fail')
+    ? 'fail'
+    : gates.some(gate => gate.status === 'blocked')
+      ? 'blocked'
+      : 'pass';
+  return {
+    feedbackForAI: present.map(result => result.feedbackForAI).filter(Boolean).join('\n\n'),
+    qualityGate: gates.length > 0
+      ? {
+        status,
+        summary: gates.map(gate => gate.summary).filter(Boolean).join('；'),
+        risks: gates.flatMap(gate => gate.risks ?? []),
+        evidenceRefs: gates.flatMap(gate => gate.evidenceRefs ?? []),
+        alternativeChecks: gates.flatMap(gate => gate.alternativeChecks ?? []),
+        requiredActions: gates.flatMap(gate => gate.requiredActions ?? []),
+      }
+      : undefined,
+  };
+}
+
 function isExplicitContentWriteRequest(prompt: string): boolean {
   return /(?:内容为|内容是|写入内容|文件内容|content\s*(?:is|:|=)|with\s+content)/i.test(prompt || '');
 }
@@ -173,45 +348,69 @@ export async function runAgentAutoValidationForWrites(
       requestPrompt: userPrompt,
       cppValidationPolicy,
     });
+    const formalProjectQuality = combineFormalProjectQualityResults([
+      evaluateFormalProjectMarkdownQuality(
+        writtenFiles,
+        workspaceRootFsPath,
+        userPrompt,
+      ),
+      evaluateFormalProjectSourceQuality(
+        writtenFiles,
+        workspaceRootFsPath,
+        userPrompt,
+      ),
+    ]);
     if (!result) {
       await callbacks.onAgentStatus({
         type: 'agentStatus',
         phase: 'validate',
-        state: 'skipped',
-        title: '未识别到自动验证目标',
-        detail: changedPaths.join('\n'),
+        state: formalProjectQuality ? 'failed' : 'skipped',
+        title: formalProjectQuality ? '正式项目质量门禁未通过' : '未识别到自动验证目标',
+        detail: [changedPaths.join('\n'), formalProjectQuality?.feedbackForAI].filter(Boolean).join('\n\n').slice(0, 1200),
       });
-      return {};
+      return formalProjectQuality ?? {};
     }
     if (result.status === 'blocked' || result.ran === false) {
       const feedbackForAI = formatBlockedAutoValidationFeedback(result);
-      const qualityGate = buildAutoValidationQualityGate(result);
+      const qualityGate = formalProjectQuality?.qualityGate ?? buildAutoValidationQualityGate(result);
       await callbacks.onAgentStatus({
         type: 'agentStatus',
         phase: 'validate',
-        state: 'skipped',
-        title: '自动验证阻塞',
-        detail: feedbackForAI.slice(0, 1200),
+        state: formalProjectQuality ? 'failed' : 'skipped',
+        title: formalProjectQuality ? '正式项目质量门禁未通过' : '自动验证阻塞',
+        detail: [feedbackForAI, formalProjectQuality?.feedbackForAI].filter(Boolean).join('\n\n').slice(0, 1200),
       });
-      return { feedbackForAI, qualityGate };
+      return {
+        feedbackForAI: [feedbackForAI, formalProjectQuality?.feedbackForAI].filter(Boolean).join('\n\n'),
+        qualityGate,
+      };
     }
     callbacks.onToolActivity?.('terminal', `自动验证: ${result.command}`);
     const feedbackForAI = formatAutoValidationFeedback(result);
     const repairBlockedReason = !result.ok && isExplicitContentWriteRequest(userPrompt)
       ? buildExactContentRepairBlockedReason(result)
       : undefined;
+    const finalFeedbackForAI = [feedbackForAI, repairBlockedReason, formalProjectQuality?.feedbackForAI]
+      .filter(Boolean)
+      .join('\n\n');
+    const finalQualityGate = formalProjectQuality?.qualityGate ?? buildAutoValidationQualityGate(result);
+    const validationPassed = result.ok && !formalProjectQuality;
     await callbacks.onAgentStatus({
       type: 'agentStatus',
       phase: 'validate',
-      state: result.ok ? 'completed' : 'failed',
-      title: result.ok ? '自动验证通过' : '自动验证失败',
-      detail: [feedbackForAI, repairBlockedReason].filter(Boolean).join('\n\n').slice(0, 1200),
+      state: validationPassed ? 'completed' : 'failed',
+      title: validationPassed
+        ? '自动验证通过'
+        : formalProjectQuality
+          ? '正式项目质量门禁未通过'
+          : '自动验证失败',
+      detail: finalFeedbackForAI.slice(0, 1200),
     });
     return {
       evidence: validationResultToTerminalEvidence(result),
-      feedbackForAI: [feedbackForAI, repairBlockedReason].filter(Boolean).join('\n\n'),
+      feedbackForAI: finalFeedbackForAI,
       repairBlockedReason,
-      qualityGate: buildAutoValidationQualityGate(result),
+      qualityGate: finalQualityGate,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

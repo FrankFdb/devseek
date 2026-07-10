@@ -34,6 +34,10 @@ test('NoToolIntent: detects dangling Chinese validation promises', () => {
     hasDanglingAgentActionIntent('接下来我会运行程序验证三维图形展示效果。'),
     true,
   );
+  assert.equal(
+    hasDanglingAgentActionIntent('现在按分钟级时间戳 `202607102208` 写入完整设计文档、接口文档和实现代码。'),
+    true,
+  );
 });
 
 test('NoToolIntent: detects dangling English tool promises', () => {
@@ -56,6 +60,7 @@ test('NoToolIntent: keeps completed summaries as final prose', () => {
 
 test('NoToolIntent: feedback names concrete required tools', () => {
   const feedback = buildDanglingAgentActionFeedback();
+  assert.match(feedback, /创建、修改、写入/);
   assert.match(feedback, /list_dir\/read_file/);
   assert.match(feedback, /create_file\/write_file/);
   assert.match(feedback, /run_terminal/);

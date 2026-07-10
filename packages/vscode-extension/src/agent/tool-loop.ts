@@ -659,6 +659,7 @@ export async function executeFakeToolsForLoop(
         parts.push(`[${toolName}: ${rawPath}] 诊断: 已修复 ${writeResult.normalization.repairCount} 处源码工具协议转义污染。`);
       }
       if (writeResult.existed && writeResult.oldContent === writeResult.newContent) {
+        recordToolFailure(toolName, 'write', rawPath, `未发生内容变化：${normalized.path}`);
         parts.push(`[${toolName}: ${rawPath}] 未发生内容变化，未计入本轮修改证据：${normalized.path}`);
         return false;
       }
@@ -997,6 +998,12 @@ export async function executeFakeToolsForLoop(
       }
       if (!oldStr) {
         parts.push(`[replace_in_file: ${rawPath}] 错误: old_str 为空，不能执行不确定替换。请先 read_file 后提供精确原文。`);
+        continue;
+      }
+      if (oldStr === newStr) {
+        const reason = 'old_str 与 new_str 完全相同，不会产生任何修改。请重新 read_file 后给出真正变化的替换内容。';
+        recordToolFailure('replace_in_file', 'replace', rawPath, reason);
+        parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);
         continue;
       }
       const absPath = resolveAgentToolEvidencePath(rawPath, workspaceRoot, defaultWorkdir);

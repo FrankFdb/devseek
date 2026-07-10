@@ -42,17 +42,18 @@ test('DeepSeekAgent: incomplete action cues keep generation open', () => {
   assert.match(agent, /incomplete-intent/);
 });
 
-test('DeepSeekAgent: reused-container text diff must be substantive before response starts', () => {
+test('DeepSeekAgent: reused-container visible text diff must be substantive before response starts', () => {
   const agent = src('src/deepseek-agent.ts');
   const streaming = agent.match(/private async pollForStreamingResponse[\s\S]*?const currentText = await this\.getStreamingAssistantText/)?.[0] || '';
 
   assert.match(agent, /function isSubstantiveAssistantTextDiff/);
   assert.match(agent, /looksLikeSubstantiveAssistantText/);
+  assert.match(agent, /read_file\|grep_search\|list_dir/);
   assert.match(agent, /trimmed\.length >= 120/);
   assert.match(agent, /trimmed\.length >= 80/);
   assert.match(streaming, /generationBusyForTextDiff/);
-  assert.match(streaming, /\(sawStopButton \|\| generationBusyForTextDiff\) && isSubstantiveAssistantTextDiff/);
   assert.match(streaming, /isSubstantiveAssistantTextDiff\(t, baselineText\)/);
+  assert.match(streaming, /visible-text-diff/);
   assert.doesNotMatch(streaming, /t\.length > 0 && t !== baselineText/);
 });
 
@@ -77,6 +78,18 @@ test('DeepSeekAgent: recovery stops busy generation before new prompt submission
   assert.match(agent, /generation-stop-clicked/);
   assert.match(agent, /prompt-submit-failed/);
   assert.match(agent, /message-submit-unconfirmed/);
+});
+
+test('DeepSeekAgent: streaming timeout recovers visible assistant text before failing', () => {
+  const agent = src('src/deepseek-agent.ts');
+  const streaming = agent.match(/private async pollForStreamingResponse[\s\S]*?await saveCookies\(this\.context!\)/)?.[0] || '';
+
+  assert.match(agent, /recoverVisibleStreamingResponseBeforeTimeout/);
+  assert.match(agent, /getLastAssistantText\(page\)/);
+  assert.match(agent, /getStreamingAssistantText\(page\)/);
+  assert.match(agent, /isSubstantiveAssistantTextDiff\(combinedText, baselineText\)/);
+  assert.match(streaming, /recoverVisibleStreamingResponseBeforeTimeout[\s\S]*streaming-absolute-deadline/);
+  assert.match(streaming, /recoverVisibleStreamingResponseBeforeTimeout[\s\S]*streaming-idle-deadline/);
 });
 
 console.log('\nDeepSeek agent latency guard tests passed.\n');

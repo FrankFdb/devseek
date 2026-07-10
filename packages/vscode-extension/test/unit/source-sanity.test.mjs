@@ -69,6 +69,23 @@ test('source sanity repairs C++ string newlines caused by web tool JSON transpor
   assert.equal(findGeneratedSourceSanityIssue('main.cpp', repaired.content), undefined);
 });
 
+test('source sanity repairs escaped macro line continuations without touching string newlines', () => {
+  const polluted = [
+    '#include <cstdio>',
+    '#define TEST_ASSERT(cond, msg) \\n    do { \\n        printf("[PASS] %s\\n", msg); \\n    } while(0)',
+    'int main() { TEST_ASSERT(true, "ok"); }',
+  ].join('\n');
+
+  const repaired = repairGeneratedSourceTransportEscapes('test_warranty.cpp', polluted);
+
+  assert.equal(repaired.repaired, true);
+  assert.equal(repaired.repairCount, 3);
+  assert.match(repaired.content, /#define TEST_ASSERT\(cond, msg\) \\\n    do \{/);
+  assert.match(repaired.content, /printf\("\[PASS\] %s\\n", msg\); \\\n    \} while\(0\)/);
+  assert.doesNotMatch(repaired.content, /#define TEST_ASSERT\(cond, msg\) \\n/);
+  assert.equal(findGeneratedSourceSanityIssue('test_warranty.cpp', repaired.content), undefined);
+});
+
 test('source sanity repairs Markdown emphasis corruption in variadic C++ macros', () => {
   const polluted = [
     '#include <cstdio>',
