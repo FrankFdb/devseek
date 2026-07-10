@@ -121,6 +121,10 @@ function isToolName(name) {
   return !!TOOL_NAMES[n] || n.startsWith('mcp__');
 }
 
+function normalizeXmlToolName(name) {
+  return String(name || '').trim().replace(/^TOOL_/i, '');
+}
+
 function isShellTranscriptName(name) {
   return !!SHELL_TRANSCRIPT_NAMES[String(name || '').toLowerCase()];
 }
@@ -164,7 +168,7 @@ function makeXmlToolTagRegex() {
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join('|');
-  return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b([^<>]*?)\\/\\s*(?:>|&gt;)`, 'gi');
+  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL_)?(?:${names}|mcp__[A-Za-z0-9_]+))\\b([^<>]*?)\\/\\s*(?:>|&gt;)`, 'gi');
 }
 
 function makeXmlToolPairRegex() {
@@ -172,7 +176,7 @@ function makeXmlToolPairRegex() {
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join('|');
-  return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b[^<>]*?(?:>|&gt;)([\\s\\S]*?)(?:<\\/|&lt;\\/)\\s*\\1\\s*(?:>|&gt;)`, 'gi');
+  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL_)?(?:${names}|mcp__[A-Za-z0-9_]+))\\b[^<>]*?(?:>|&gt;)([\\s\\S]*?)(?:<\\/|&lt;\\/)\\s*\\1\\s*(?:>|&gt;)`, 'gi');
 }
 
 function makeXmlToolTagTailRegex() {
@@ -180,7 +184,7 @@ function makeXmlToolTagTailRegex() {
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join('|');
-  return new RegExp(`(?:<|&lt;)\\s*(${names}|mcp__[A-Za-z0-9_]+)\\b[\\s\\S]*$`, 'i');
+  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL_)?(?:${names}|mcp__[A-Za-z0-9_]+))\\b[\\s\\S]*$`, 'i');
 }
 
 function stripXmlToolTagBlocksFromText(text) {
@@ -190,7 +194,7 @@ function stripXmlToolTagBlocksFromText(text) {
   const tagRe = makeXmlToolTagRegex();
   let match;
   while ((match = tagRe.exec(raw)) !== null) {
-    if (!isToolName(match[1])) continue;
+    if (!isToolName(normalizeXmlToolName(match[1]))) continue;
     out += raw.slice(cursor, match.index).replace(/[ \t]+$/, '');
     cursor = tagRe.lastIndex;
   }
@@ -199,7 +203,7 @@ function stripXmlToolTagBlocksFromText(text) {
   cursor = 0;
   const pairRe = makeXmlToolPairRegex();
   while ((match = pairRe.exec(cleaned)) !== null) {
-    if (!isToolName(match[1])) continue;
+    if (!isToolName(normalizeXmlToolName(match[1]))) continue;
     out += cleaned.slice(cursor, match.index).replace(/[ \t]+$/, '');
     cursor = pairRe.lastIndex;
   }
@@ -212,14 +216,14 @@ function containsXmlToolTag(text) {
   const tagRe = makeXmlToolTagRegex();
   let match;
   while ((match = tagRe.exec(raw)) !== null) {
-    if (isToolName(match[1])) return true;
+    if (isToolName(normalizeXmlToolName(match[1]))) return true;
   }
   const pairRe = makeXmlToolPairRegex();
   while ((match = pairRe.exec(raw)) !== null) {
-    if (isToolName(match[1])) return true;
+    if (isToolName(normalizeXmlToolName(match[1]))) return true;
   }
   const tail = makeXmlToolTagTailRegex().exec(raw);
-  return !!tail && isToolName(tail[1]);
+  return !!tail && isToolName(normalizeXmlToolName(tail[1]));
 }
 
 function containsCallingToolIntent(text) {

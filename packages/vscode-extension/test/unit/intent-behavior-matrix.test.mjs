@@ -237,6 +237,21 @@ const routingCases = [
     toolActions: { read: 'allow', plan: 'allow', edit: 'allow', terminal: 'requireConfirm' },
   },
   {
+    id: 'EDIT-000B',
+    title: 'isolated formal-project docs and src delivery is not downgraded by scoped no-change',
+    prompt: [
+      '添加：代码实现，创建于：/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance目录下',
+      '让DevSeek完成整体编程任务：先调查原项目，再设计，再实现，再验证。',
+      '本次测试所有新增设计文档、实施文档、代码和验证脚本必须放在：/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607101637',
+      '设计/实施 Markdown 文档放入：/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607101637/docs',
+      '新增代码、测试代码和验证脚本放入：/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607101637/src',
+      '不要修改正式源码目录里的既有文件；如果正式集成需要改原代码，必须在文档中提供原有代码修改清单。',
+    ].join('\n'),
+    expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: EDIT_TOOLS },
+    signal: 'deliverable-write-request',
+    toolActions: { read: 'allow', plan: 'allow', edit: 'allow', terminal: 'requireConfirm' },
+  },
+  {
     id: 'EDIT-001',
     title: 'create and run C++ hello world is edit workflow',
     prompt: '创建一个 hello world C++ 程序并运行',

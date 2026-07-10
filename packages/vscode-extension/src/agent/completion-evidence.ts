@@ -1,5 +1,11 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import {
+  isAdvisoryPlanningRequest,
+  isDeferredImplementationRequest,
+  isDirectImplementationRequest,
+  isScopedNoChangeWithDeliverableWriteRequest,
+} from '../intent/advisory-patterns';
 import { classifyShellCommandEvidence } from '../tools/shell-command-analysis';
 import { stripToolCallBlocks } from './fake-tool-parser';
 
@@ -60,9 +66,6 @@ const CODE_TARGET_PATTERNS = [
 const CODE_TARGET_RE = new RegExp(`(?:${CODE_TARGET_PATTERNS})`, 'i');
 const FILE_PATH_TARGET_RE = /(?:^|[^\w/.-])(?:\.{0,2}\/)?[\w.-]+(?:\/[\w.-]+)*\.[A-Za-z0-9]{1,12}\b/;
 const READ_ONLY_RE = /(?:(?:不要|不用|无需|不需要|禁止|别).{0,8}(?:修改|改动|改|变更|写|写入|创建|新建|生成|更新|删除).{0,4}(?:代码|文件|内容)?|(?:只|仅).{0,6}(?:分析|评估|说明|解释|计划|审计|查看|确认|检查|读取|显示)|do not .{0,20}(?:modify|edit|change|write|create|update|delete))/i;
-const ADVISORY_PLAN_RE = /(?:(?:给出|提供|输出|列出|制定|梳理).{0,40}(?:建议|对策|检讨|方案|计划|任务|task|步骤|清单)|(?:建议|对策|检讨).{0,30}(?:分析|方案|计划|任务|task)|(?:从|站在).{0,24}(?:角度|视角).{0,24}(?:给出|输出|列出).{0,20}(?:task|任务|建议|对策))/i;
-const DIRECT_IMPLEMENTATION_RE = /(?:(?:直接|现在|马上|开始).{0,12}(?:修改|改造|实现|新增|添加|重构|落地|执行)|(?:并|然后|同时|再|最后).{0,8}(?:实现|修改|新增|添加|重构|落地|执行)|(?:修改|新增|添加|重构|改造|实现).{0,8}(?:代码|文件))/i;
-const DEFERRED_IMPLEMENTATION_RE = /(?:(?:当前|现在|暂时|先).{0,10}(?:不准备|不打算|不需要|不要|暂不|先不).{0,24}(?:修改|实现|落地|改代码|使用原来|采用原来|写代码)|(?:准备|打算).{0,18}(?:重新做|重做|按.{0,8}需求).{0,24}(?:分析|建议|对策|方案|计划|任务|task))/i;
 const READ_EVIDENCE_RE = /(?:检查|查看|读取|显示|确认|是否存在|内容|read|show|display|check|inspect|exists?)/i;
 const FILE_CONTENT_EVIDENCE_RE = /(?:(?:显示|查看|读取|输出|打印).{0,8}(?:文件)?内容|(?:read|show|display|print).{0,16}(?:file\s*)?content)/i;
 const READ_ONLY_TERMINAL_EVIDENCE_RE = /\b(?:cat|ls|test|grep|head|tail|sed|wc|stat|file|find)\b/i;
@@ -246,8 +249,9 @@ function buildEvidenceText(userPrompt: string, todos: CompletionTodo[]): string 
 }
 
 export function isExplicitlyReadOnlyRequest(text: string): boolean {
+  if (isScopedNoChangeWithDeliverableWriteRequest(text)) return false;
   return READ_ONLY_RE.test(text)
-    || (ADVISORY_PLAN_RE.test(text) && (!DIRECT_IMPLEMENTATION_RE.test(text) || DEFERRED_IMPLEMENTATION_RE.test(text)));
+    || (isAdvisoryPlanningRequest(text) && (!isDirectImplementationRequest(text) || isDeferredImplementationRequest(text)));
 }
 
 function stripInlineFileContent(text: string): string {

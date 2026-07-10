@@ -210,7 +210,8 @@ function createSimulatedDeepSeekWeb(responseFactory) {
   };
 }
 
-async function runMarkdownClosedLoop(responseFactory) {
+async function runMarkdownClosedLoop(responseFactory, options = {}) {
+  const expectApplied = options.expectApplied ?? true;
   const workspace = createFormalMaintenanceWorkspace();
   const io = makeCallbacks();
   const web = createSimulatedDeepSeekWeb(responseFactory);
@@ -245,9 +246,9 @@ async function runMarkdownClosedLoop(responseFactory) {
     });
 
     const target = plan.tasks[0].absPath;
-    assert.equal(result?.applied, true);
+    assert.equal(result?.applied, expectApplied);
     assert.equal(existsSync(target), true);
-    assert.equal(io.statuses.at(-1).state, 'completed');
+    assert.equal(io.statuses.at(-1).state, expectApplied ? 'completed' : 'failed');
     assert.equal(io.changes.length, 1);
     assert.match(io.changes[0].path, /src\/oam\/src\/lifting\/zc_maintenance\/docs\/warranty-maintenance-advice\.md$/);
     assert.equal(web.requests.length, 1);
@@ -324,14 +325,15 @@ test('markdown deliverable flow: same formal-project request reaches simulated D
   }
 });
 
-test('markdown deliverable flow: corrupted simulated DeepSeek response still produces a verified md artifact', async () => {
+test('markdown deliverable flow: corrupted simulated DeepSeek response writes artifact but blocks formal completion', async () => {
   const output = await runMarkdownClosedLoop(() => {
     throw new Error('RESPONSE_CORRUPTED:truncated:Provider 响应疑似被截断。');
-  });
+  }, { expectApplied: false });
   try {
     assert.match(output.content, /# 维保提醒需求分析与实现建议/);
     assert.match(output.content, /Provider 未返回可用的完整报告/);
     assert.match(output.content, /maintenance_threshold_engine\.hpp/);
+    assert.match(output.result.failedReason || '', /formal-project-quality/);
   } finally {
     rmSync(output.workspace.root, { recursive: true, force: true });
   }

@@ -76,6 +76,23 @@ test('completion evidence: advisory implementation countermeasure request is rea
   assert.equal(requiresCodeArtifactForEvidence(advisoryPrompt), false);
 });
 
+test('completion evidence: scoped no-change with isolated docs/src delivery still requires artifact evidence', () => {
+  const implementationPrompt = [
+    '添加：代码实现，创建于：/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance目录下',
+    '本次测试所有新增设计文档、实施文档、代码和验证脚本必须放在：/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607101637',
+    '设计/实施 Markdown 文档放入：/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607101637/docs',
+    '新增代码、测试代码和验证脚本放入：/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607101637/src',
+    '不要修改正式源码目录里的既有文件；如果正式集成需要改原代码，必须在文档中提供原有代码修改清单。',
+  ].join('\n');
+
+  assert.equal(requiresFileChangeEvidence(implementationPrompt), true);
+  assert.equal(requiresCodeArtifactForEvidence(implementationPrompt), true);
+  assert.deepEqual(
+    getMissingCompletionEvidence(implementationPrompt, [], [], []),
+    ['代码修改结果', '成功的测试/运行结果'],
+  );
+});
+
 test('completion evidence: tool-intent prose is not a delivered read-only answer', () => {
   const interrupted = [
     '我来分析新旧需求差异，并给出实现对策建议。首先让我查看相关文件。',

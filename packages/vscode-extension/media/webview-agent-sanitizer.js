@@ -57,6 +57,10 @@ function isWebviewToolName(name) {
   return !!WEBVIEW_TOOL_NAMES[n] || n.indexOf('mcp__') === 0;
 }
 
+function normalizeWebviewXmlToolName(name) {
+  return String(name || '').trim().replace(/^TOOL_/i, '');
+}
+
 function isWebviewShellTranscriptName(name) {
   return !!WEBVIEW_SHELL_TRANSCRIPT_NAMES[String(name || '').toLowerCase()];
 }
@@ -140,15 +144,46 @@ function makeWebviewFunctionStyleToolCallRegex() {
 }
 
 function makeWebviewXmlToolTagRegex() {
-  return new RegExp('(?:<|&lt;)\\s*(' + makeWebviewToolNamePattern() + ')\\b([^<>]*?)\\/\\s*(?:>|&gt;)', 'gi');
+  return new RegExp('(?:<|&lt;)\\s*((?:TOOL_)?' + makeWebviewToolNamePattern() + ')\\b([^<>]*?)\\/\\s*(?:>|&gt;)', 'gi');
 }
 
 function makeWebviewXmlToolPairRegex() {
-  return new RegExp('(?:<|&lt;)\\s*(' + makeWebviewToolNamePattern() + ')\\b[^<>]*?(?:>|&gt;)([\\s\\S]*?)(?:<\\/|&lt;\\/)\\s*\\1\\s*(?:>|&gt;)', 'gi');
+  return new RegExp('(?:<|&lt;)\\s*((?:TOOL_)?' + makeWebviewToolNamePattern() + ')\\b[^<>]*?(?:>|&gt;)([\\s\\S]*?)(?:<\\/|&lt;\\/)\\s*\\1\\s*(?:>|&gt;)', 'gi');
+}
+
+function makeWebviewXmlToolOpenJsonRegex() {
+  return new RegExp('(?:<|&lt;)\\s*((?:TOOL_)?' + makeWebviewToolNamePattern() + ')\\b[^<>]*?(?:>|&gt;)\\s*\\{', 'gi');
 }
 
 function makeWebviewXmlToolTagTailRegex() {
-  return new RegExp('(?:<|&lt;)\\s*(' + makeWebviewToolNamePattern() + ')\\b[\\s\\S]*$', 'i');
+  return new RegExp('(?:<|&lt;)\\s*((?:TOOL_)?' + makeWebviewToolNamePattern() + ')\\b[\\s\\S]*$', 'i');
+}
+
+function hasWebviewXmlCloseTagAfterJson(text, rawName, fromIndex) {
+  var i = fromIndex;
+  while (i < text.length && /[ \t\r\n]/.test(text[i])) i++;
+  var name = escapeWebviewRegExp(String(rawName || '').trim());
+  if (!name) return false;
+  return new RegExp('^(?:<\\/|&lt;\\/)\\s*' + name + '\\s*(?:>|&gt;)', 'i').test(text.slice(i));
+}
+
+function stripXmlToolOpenJsonBlocksFromText(text) {
+  var raw = String(text || '');
+  var out = '';
+  var cursor = 0;
+  var openRe = makeWebviewXmlToolOpenJsonRegex();
+  var match;
+  while ((match = openRe.exec(raw)) !== null) {
+    if (!isWebviewToolName(normalizeWebviewXmlToolName(match[1]))) continue;
+    var jsonStart = match.index + match[0].lastIndexOf('{');
+    var jsonEnd = findJsonObjectEndInText(raw, jsonStart);
+    if (jsonEnd < 0) continue;
+    if (hasWebviewXmlCloseTagAfterJson(raw, match[1], jsonEnd + 1)) continue;
+    out += raw.slice(cursor, match.index).replace(/[ \t]+$/, '');
+    cursor = jsonEnd + 1;
+    openRe.lastIndex = jsonEnd + 1;
+  }
+  return out + raw.slice(cursor);
 }
 
 function stripXmlToolTagBlocksFromText(text) {
@@ -158,7 +193,7 @@ function stripXmlToolTagBlocksFromText(text) {
   var tagRe = makeWebviewXmlToolTagRegex();
   var match;
   while ((match = tagRe.exec(raw)) !== null) {
-    if (!isWebviewToolName(match[1])) continue;
+    if (!isWebviewToolName(normalizeWebviewXmlToolName(match[1]))) continue;
     out += raw.slice(cursor, match.index).replace(/[ \t]+$/, '');
     cursor = tagRe.lastIndex;
   }
@@ -167,11 +202,12 @@ function stripXmlToolTagBlocksFromText(text) {
   cursor = 0;
   var pairRe = makeWebviewXmlToolPairRegex();
   while ((match = pairRe.exec(cleaned)) !== null) {
-    if (!isWebviewToolName(match[1])) continue;
+    if (!isWebviewToolName(normalizeWebviewXmlToolName(match[1]))) continue;
     out += cleaned.slice(cursor, match.index).replace(/[ \t]+$/, '');
     cursor = pairRe.lastIndex;
   }
   cleaned = out + cleaned.slice(cursor);
+  cleaned = stripXmlToolOpenJsonBlocksFromText(cleaned);
   return cleaned.replace(makeWebviewXmlToolTagTailRegex(), '').trimEnd();
 }
 
@@ -180,14 +216,18 @@ function containsWebviewXmlToolTag(text) {
   var tagRe = makeWebviewXmlToolTagRegex();
   var match;
   while ((match = tagRe.exec(raw)) !== null) {
-    if (isWebviewToolName(match[1])) return true;
+    if (isWebviewToolName(normalizeWebviewXmlToolName(match[1]))) return true;
   }
   var pairRe = makeWebviewXmlToolPairRegex();
   while ((match = pairRe.exec(raw)) !== null) {
-    if (isWebviewToolName(match[1])) return true;
+    if (isWebviewToolName(normalizeWebviewXmlToolName(match[1]))) return true;
+  }
+  var openJsonRe = makeWebviewXmlToolOpenJsonRegex();
+  while ((match = openJsonRe.exec(raw)) !== null) {
+    if (isWebviewToolName(normalizeWebviewXmlToolName(match[1]))) return true;
   }
   var tail = makeWebviewXmlToolTagTailRegex().exec(raw);
-  return !!tail && isWebviewToolName(tail[1]);
+  return !!tail && isWebviewToolName(normalizeWebviewXmlToolName(tail[1]));
 }
 
 function webviewLineEndAfter(text, index) {

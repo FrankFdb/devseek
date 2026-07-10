@@ -46,6 +46,22 @@ test('TaskShape: existing formal project implementation requires integration anc
   assert.match(guidance, /不要创建脱离主流程的孤岛模块/);
 });
 
+test('TaskShape: scoped no-change plus isolated docs/src delivery remains existing-project implementation', () => {
+  const prompt = [
+    '请作为优秀编程智能体，产物必须隔离创建在 /repo/src/oam/src/lifting/zc_maintenance/202607101701 下，',
+    '其中 docs 放设计文档，src 放本次新增或修改代码副本；不要修改正式源码目录。',
+    '参考 /repo/src/oam/src/license 模块通讯方式，进行遥控器和主控交互接口设计，并做代码实现。',
+  ].join('\n');
+
+  const result = classifyAgentTaskShape(prompt);
+  assert.equal(result.shape, 'existing-project');
+  assert.equal(result.readOnlyLikely, false);
+
+  const guidance = buildTaskShapeGuidancePrompt(prompt);
+  assert.match(guidance, /uart\*_tx\/rx_main/);
+  assert.match(guidance, /TunnelTransport\/分片传输/);
+});
+
 test('TaskShape: standalone task remains allowed to create its own entrypoint', () => {
   const prompt = '请从零创建一个独立 demo，小工具可以自建 main 和运行方式。';
   const result = classifyAgentTaskShape(prompt);

@@ -698,13 +698,16 @@ test('Agentic loop: fallback todos are shown only after real tool work starts', 
 
 test('Agent planning: task shape guidance is injected before code is written', () => {
   const decomposer = src('src/agent-task-decomposer.ts');
+  const agentLoop = src('src/agent-loop.ts');
   const agentic = src('src/agent/agentic-loop.ts');
   const guidelines = src('src/agent/engineering-guidelines.ts');
   const prompts = src('src/agent/agent-prompt-builder.ts');
 
   assertContains(decomposer, 'buildTaskShapeGuidancePrompt(userPrompt)', 'Architect planner must classify task shape from the current user prompt');
+  assertContains(agentLoop, 'buildTaskShapeGuidancePrompt(userPrompt)', 'generic Editor loop must preserve task shape guidance before emitting file content');
   assertContains(agentic, 'buildTaskShapeGuidancePrompt(userPrompt)', 'Agentic loop must classify task shape from the current user prompt');
   assertContains(guidelines, '既有大项目/正式项目', 'engineering guidelines must distinguish existing-project work');
+  assertContains(guidelines, '项目级通讯链路追踪', 'engineering guidelines must require project-wide communication tracing for referenced communication modules');
   assertContains(guidelines, '独立新项目/原型/练习', 'engineering guidelines must preserve standalone task behavior');
   assertContains(prompts, 'replace_in_file', 'tool prompt must expose targeted edit tool, not only full-file writes');
 });
@@ -1731,6 +1734,23 @@ test('Extension apply gate: unfenced target-scoped source can enter applier', ()
     code,
     'looksLikeTargetScopedSourceResponse(finalResponseForArtifacts, prompt, effectiveFiles)',
     'plain source fallback must not require markdown code fences before applying',
+  );
+});
+
+test('Release packaging: VSIX package scripts compile the extension before zipping dist', () => {
+  const rootPackage = JSON.parse(src('../../package.json'));
+  const debugScript = rootPackage.scripts?.['extension:package:debug'] || '';
+  const releaseScript = rootPackage.scripts?.['extension:package:release'] || '';
+
+  assertContains(
+    debugScript,
+    'npm run compile --workspace=packages/vscode-extension',
+    'debug package must rebuild extension dist before packaging VSIX',
+  );
+  assertContains(
+    releaseScript,
+    'npm run compile --workspace=packages/vscode-extension',
+    'release package must rebuild extension dist before packaging VSIX',
   );
 });
 

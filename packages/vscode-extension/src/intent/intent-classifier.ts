@@ -3,7 +3,9 @@ import { hasExplicitWorkspacePath } from '../workspace/path-patterns';
 import {
   isAdvisoryPlanningRequest,
   isDeferredImplementationRequest,
+  isDeliverableWriteRequest,
   isDirectImplementationRequest,
+  isScopedNoChangeWithDeliverableWriteRequest,
 } from './advisory-patterns';
 
 const EXPLICIT_NO_CHANGE_RE = /(不要修改|无需修改|不要改|别改|只讨论|仅讨论|只分析|仅分析|不要落地|先不要改|不需要代码|不要apply|不做变更|just\s+(?:chat|talk|discuss|explain)|only\s+(?:explain|discuss|answer))/i;
@@ -84,12 +86,14 @@ export function classifyIntent(prompt: string): IntentClassification {
   const isCapabilityFeatureRequest = hasCodeContext
     && CAPABILITY_FEATURE_REQUEST_RE.test(text)
     && !READ_ONLY_CAPABILITY_QUESTION_RE.test(withoutGreeting);
+  const hasDeliverableWriteRequest = isDeliverableWriteRequest(text);
+  const hasScopedNoChangeWithDeliverableWrite = isScopedNoChangeWithDeliverableWriteRequest(text);
 
   if (GREETING_ONLY_RE.test(text)) {
     return baseDecision('smalltalk', 0.95, -4, ['greeting-only'], 'greeting-only', []);
   }
 
-  if (EXPLICIT_NO_CHANGE_RE.test(text)) {
+  if (EXPLICIT_NO_CHANGE_RE.test(text) && !hasScopedNoChangeWithDeliverableWrite) {
     const isReadOnlyPlanning = EXPLICIT_PLAN_RE.test(text) && hasCodeContext;
     const mode = isReadOnlyPlanning
       ? 'plan'
@@ -125,6 +129,20 @@ export function classifyIntent(prompt: string): IntentClassification {
       ALL_AGENT_TOOLS,
       [],
       true,
+    );
+  }
+
+  if (hasDeliverableWriteRequest && hasCodeContext && !isDeferredImplementationRequest(text)) {
+    const signals = ['edit-request', 'deliverable-write-request'];
+    if (hasPath) signals.push('explicit-file-path');
+    if (hasScopedNoChangeWithDeliverableWrite) signals.push('scoped-existing-source-no-change');
+    return baseDecision(
+      'edit',
+      hasPath ? 0.92 : 0.84,
+      hasPath ? 5 : 4,
+      signals,
+      hasPath ? 'deliverable-write-with-file-path' : 'deliverable-write-request',
+      EDIT_TOOLS,
     );
   }
 

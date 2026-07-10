@@ -477,6 +477,7 @@ function buildDecomposeSystemPrompt(
     '1. 不得把每个附件文件独立生成 analyze 任务——读文件是手段，不是目标，更不是交付物。',
     '   每个附件有 modify/create 任务需求时，直接规划修改任务；需要整体理解时，合并为 1 个 explore 任务。',
     '2. 需要理解代码后再修改：生成 1 个整体性 explore 任务 + 若干针对性 modify/create 任务（只列真正需要改的文件）。',
+    '   对“参考既有通讯模块方式”的既有工程任务，explore 任务必须覆盖参考模块、项目级收发入口/出口、uart*_tx/rx_main 或等价通道、TunnelTransport/分片、publisher/subscriber、topic/payload_type/命令号和调度调用点。',
     '3. 纯信息需求（Q2 答案为"满意"，无代码变更期望）：生成 1 个总体 analyze/explain 任务，不逐文件拆分。',
     '4. 需要执行命令（编译/运行/测试）：action=analyze，file 必须指向项目目录或源文件，不要指向 build/bin 等构建产物。',
     '   desc 只描述验证意图（如"编译并运行项目确认效果"），不要拼 run_terminal 命令、清理命令或构建目录；执行器会选择标准命令。',

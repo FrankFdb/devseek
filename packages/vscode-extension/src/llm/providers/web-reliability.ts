@@ -30,6 +30,7 @@ const REGISTERED_TOOL_NAMES_PATTERN = listAgentToolNames(true)
   .sort((a, b) => b.length - a.length)
   .join('|');
 const MODEL_TOOL_NAME_PATTERN = `(?:${REGISTERED_TOOL_NAMES_PATTERN}|mcp__[A-Za-z0-9_]+)`;
+const XML_MODEL_TOOL_NAME_PATTERN = `(?:TOOL_)?${MODEL_TOOL_NAME_PATTERN}`;
 const BRACKET_TOOL_PAYLOAD_RE = new RegExp(`\\[TOOL:${MODEL_TOOL_NAME_PATTERN}(?:\\s*\\]|\\s+)\\s*\\{`, 'i');
 const JSON_TOOL_NAME_RE = new RegExp(`"(?:tool|name|function|type)"\\s*:\\s*"${MODEL_TOOL_NAME_PATTERN}"`, 'i');
 const TOOL_INPUT_FIELD_RE = /"(?:arguments|input|parameters|path|filePath|command|todoList|summary|content)"\s*:/i;
@@ -39,7 +40,7 @@ const CALLING_TOOL_ONLY_TAIL_RE = new RegExp(`(?:^|\\n)\\s*(?:\\[\\s*)?[*_]{0,3}
 const TOOL_CALL_ENVELOPE_TAIL_RE = /(?:<|&lt;)\s*(?:T|TO|TOO|TOOL|TOOL_|TOOL_C|TOOL_CA|TOOL_CAL|TOOL_CALLS?)?$/i;
 const TOOL_CALL_ENVELOPE_OPEN_RE = /(?:<|&lt;)\s*TOOL_CALLS?\b/gi;
 const TOOL_CALL_ENVELOPE_CLOSE_RE = /(?:<\/|&lt;\/)\s*TOOL_CALLS?\s*(?:>|&gt;)/gi;
-const XML_REGISTERED_TOOL_OPEN_RE = new RegExp(`(?:<|&lt;)\\s*(${MODEL_TOOL_NAME_PATTERN})\\b[^<>]*(?:>|&gt;)?`, 'gi');
+const XML_REGISTERED_TOOL_OPEN_RE = new RegExp(`(?:<|&lt;)\\s*(${XML_MODEL_TOOL_NAME_PATTERN})\\b[^<>]*(?:>|&gt;)?`, 'gi');
 
 export class ResponseIntegrityChecker {
   check(content: string): ResponseIntegrityResult {
@@ -232,9 +233,18 @@ function hasIncompleteRegisteredXmlTool(text: string): boolean {
     if (isSelfClosingXmlTag(openTag)) continue;
     const toolName = match[1];
     const closeRe = new RegExp(`(?:<\\/|&lt;\\/)\\s*${escapeRegExp(toolName)}\\s*(?:>|&gt;)`, 'i');
-    if (!closeRe.test(text.slice(XML_REGISTERED_TOOL_OPEN_RE.lastIndex))) return true;
+    if (closeRe.test(text.slice(XML_REGISTERED_TOOL_OPEN_RE.lastIndex))) continue;
+    if (hasCompleteJsonPayloadAfterXmlToolOpen(text, XML_REGISTERED_TOOL_OPEN_RE.lastIndex)) continue;
+    return true;
   }
   return false;
+}
+
+function hasCompleteJsonPayloadAfterXmlToolOpen(text: string, start: number): boolean {
+  let i = start;
+  while (i < text.length && /[ \t\r\n]/.test(text[i])) i++;
+  if (text[i] !== '{') return false;
+  return findJsonObjectEndAt(text, i) >= 0;
 }
 
 function hasXmlTagTerminator(tag: string): boolean {

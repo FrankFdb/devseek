@@ -447,6 +447,39 @@ test('FakeToolParser: parses paired XML tool tags with JSON bodies', () => {
   assert.equal(stripToolCallBlocks(text), '现在开始实现：');
 });
 
+test('FakeToolParser: parses DeepSeek prefixed XML tool tags with JSON bodies', () => {
+  const text = [
+    '我需要先查看相关目录和需求文档。',
+    '<TOOL_list_dir>{"path":"/home/ff/uav/tars/huida_uav/src/oam/src/license"}</TOOL_list_dir>',
+    '<TOOL_list_dir>{"path":"/home/ff/uav/tars/huida_uav/src/oam/src/lifting/maintenance"}</TOOL_list_dir>',
+    '<TOOL_read_file>{"path":"/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md"}</TOOL_read_file>',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.deepEqual(tools.map(tool => tool.name), ['list_dir', 'list_dir', 'read_file']);
+  assert.equal(tools[0].input.path, '/home/ff/uav/tars/huida_uav/src/oam/src/license');
+  assert.equal(tools[1].input.path, '/home/ff/uav/tars/huida_uav/src/oam/src/lifting/maintenance');
+  assert.equal(tools[2].input.path, '/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md');
+  assert.equal(findFirstToolCallStart(text), text.indexOf('<TOOL_list_dir>'));
+  assert.equal(stripToolCallBlocks(text), '我需要先查看相关目录和需求文档。');
+});
+
+test('FakeToolParser: parses DeepSeek prefixed XML open tags with complete JSON payloads', () => {
+  const text = [
+    '我直接基于已有证据完成验证并结束任务。',
+    '<TOOL_run_terminal> {"command":"ls -1 /home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607101701/src/*.hpp /home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607101701/src/*.cpp 2>/dev/null | wc -l","requires_approval":false}',
+    '<TOOL_task_complete> {"summary":"已完成 zc_maintenance 模块代码实现与自闭环验证。"}',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.deepEqual(tools.map(tool => tool.name), ['run_terminal', 'task_complete']);
+  assert.match(String(tools[0].input.command), /wc -l/);
+  assert.match(String(tools[1].input.summary), /自闭环验证/);
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(stripToolCallBlocks(text), '我直接基于已有证据完成验证并结束任务。');
+});
+
 test('FakeToolParser: parses paired XML tool tags with nested parameter tags', () => {
   const text = [
     '我先读取需求文档和代码目录。',

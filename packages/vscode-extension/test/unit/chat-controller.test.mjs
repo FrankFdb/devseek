@@ -191,6 +191,31 @@ test('ChatRouteController: explicit directory edit is not downgraded by webview 
   assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
 });
 
+test('ChatRouteController: isolated output directory keeps implementation workflow despite scoped no-change', () => {
+  const controller = new ChatRouteController();
+  const prompt = [
+    '添加：代码实现，创建于：/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance目录下',
+    '请按照软件工程流程：分析既有项目原来代码逻辑，根据需求进行设计，最后实现代码，完成自闭环测试。',
+    '本次测试所有新增设计文档、实施文档、代码和验证脚本必须放在：/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607101637',
+    '设计/实施 Markdown 文档放入：/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607101637/docs',
+    '新增代码、测试代码和验证脚本放入：/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607101637/src',
+    '不要修改正式源码目录里的既有文件；如果正式集成需要改原代码，必须在文档中提供原有代码修改清单。',
+  ].join('\n');
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: [],
+    agentEnabled: true,
+  });
+
+  assert.equal(decision.intent.mode, 'edit');
+  assert.ok(decision.intent.signals.includes('deliverable-write-request'));
+  assert.ok(decision.intent.signals.includes('scoped-existing-source-no-change'));
+  assert.equal(decision.workflow.kind, 'edit-agent');
+  assert.equal(decision.toolPolicy.mode, 'edit');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+});
+
 test('ChatRouteController: capability feature follow-up with context stays in edit workflow', () => {
   const controller = new ChatRouteController();
   const prompt = '现在可以同时显示，但是，6个图形，不能单独通过鼠标或者键盘操作，能提供单独控制每个图形旋转';

@@ -1,3 +1,8 @@
+import {
+  isDeliverableWriteRequest,
+  isScopedNoChangeWithDeliverableWriteRequest,
+} from '../intent/advisory-patterns';
+
 export type AgentTaskShape =
   | 'existing-project'
   | 'standalone-project'
@@ -27,7 +32,9 @@ export function classifyAgentTaskShape(userPrompt: string): AgentTaskShapeClassi
   const standaloneLikely = STANDALONE_RE.test(text) && !existingProjectLikely;
   const validationLikely = VALIDATION_RE.test(text);
   const failureRepairLikely = FAILURE_RE.test(text);
-  const hasWriteIntent = WRITE_INTENT_RE.test(text) && !NEGATED_WRITE_INTENT_RE.test(text);
+  const hasScopedDeliverableWrite = isScopedNoChangeWithDeliverableWriteRequest(text);
+  const hasWriteIntent = (WRITE_INTENT_RE.test(text) || isDeliverableWriteRequest(text))
+    && (!NEGATED_WRITE_INTENT_RE.test(text) || hasScopedDeliverableWrite);
   const readOnlyLikely = READ_ONLY_RE.test(text) && !hasWriteIntent;
 
   let shape: AgentTaskShape = 'general';
@@ -69,6 +76,7 @@ export function buildTaskShapeGuidancePrompt(userPrompt: string): string {
       '- 必须先收集既有工程集成锚点：主入口/调度链路、线程或事件模型、消息/协议、既有数据结构、配置、日志/错误处理、构建和测试入口。',
       '- 设计阶段必须形成可追溯的源项目事实矩阵，写明文件路径、类/函数/常量、关键数值、topic/命令号、协议字段和复用方式；不能用泛泛的“参考某模块”替代调查事实。',
       '- 涉及主控、平台、遥控器或通讯接口时，必须补齐面向对端的接口文档：方向、承载通道、消息类型、JSON/schema 字段、枚举值、分片/超时/重试/幂等/错误码、版本兼容和示例。',
+      '- 涉及“参考某模块通讯方式”时，必须像 Claude Code/Codex 一样从参考模块反向追踪真实通讯链路，并扩大到全项目搜索入口/出口：uart*_tx/rx_main、TunnelTransport/分片传输、MAVLink tunnel、HDStringPublisher/Subscriber、topic/payload_type/命令号、路由和调度调用点；不能只在用户给出的目录内自洽实现。',
       '- 涉及代码落地时，必须列出原有代码修改清单：文件、函数/类、改动内容、原因、风险和验证方式；仿真/验证产物应隔离在独立输出目录中，文件名保持正式可读。',
       '- 设计和实现都要说明并使用这些锚点；不要创建脱离主流程的孤岛模块、样例 main 或只为自洽而存在的小测试程序。',
       '- 如果还不知道应接入哪个既有模块或方法，继续读取/搜索项目上下文，不能直接写代码。',

@@ -83,6 +83,8 @@ const EXCLUDED_DIR_NAMES = new Set([
   'Debug', 'Release', 'logs', 'log', 'cache', '.cache',
 ]);
 const BAD_PROVIDER_REPORT_RE = /(?:\[TOOL:|\[工具执行结果\]|Calling\s*:\s*(?:read_file|list_dir|file_search)|调用\s*(?:read_file|list_dir|file_search))/i;
+const COMMUNICATION_EVIDENCE_PROMPT_RE = /(?:(?:参考|复用|对齐).{0,80}(?:通讯|通信|通道|传输|tunnel|MAVLink|license)|(?:通讯|通信|通道|传输|tunnel|MAVLink).{0,80}(?:参考|复用|对齐|license)|遥控器.{0,120}(?:主控|平台).{0,120}(?:通讯|通信|交互|接口))/i;
+const COMMUNICATION_SOURCE_FILE_RE = /(?:uart\d+_(?:tx|rx)_main|(?:^|[_-])tunnel|tunnel[_-]?transport|mavlink|publisher|subscriber|license).*\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i;
 
 export async function tryExecuteMarkdownDeliverableTask(
   input: MarkdownDeliverableTaskInput,
@@ -110,7 +112,11 @@ export async function tryExecuteMarkdownDeliverableTask(
       '正在读取需求文档和旧实现证据；本阶段只读文件，不修改源码。',
     ].join('\n'),
   });
-  const evidence = collectMarkdownEvidence(input.userPrompt, input.workspaceRoot.fsPath, absPath);
+  const evidence = collectMarkdownEvidence(
+    [input.userPrompt, task.desc].filter(Boolean).join('\n'),
+    input.workspaceRoot.fsPath,
+    absPath,
+  );
   if (evidence.sourceDirs.length > 0) {
     callbacks.onToolActivity?.('list', summarizeActivityPaths(evidence.sourceDirs, input.workspaceRoot.fsPath));
   }
@@ -204,6 +210,31 @@ export async function tryExecuteMarkdownDeliverableTask(
     const action = writeResult.existed ? 'modify' : 'create';
     const verb = writeResult.existed ? '已更新' : '已创建';
     const writtenFiles = [buildWrittenFileEvidence(absPath, action, diff.added, diff.removed)];
+    const finalFormalQuality = assessFormalProjectDocumentQuality(
+      finalContent,
+      [input.userPrompt, input.task.desc].filter(Boolean).join('\n'),
+    );
+    if (!finalFormalQuality.ok) {
+      const reason = `formal-project-quality: ${finalFormalQuality.reasons.join(', ')}`;
+      await postMarkdownStatus(input, 'failed', basename, {
+        title: 'Markdown 正式项目质量门禁未通过',
+        detail: `${relPath} · 已写入并读回验证，但缺少正式项目证据闭环：${finalFormalQuality.reasons.join('、')}。`,
+        diff,
+      });
+      return {
+        applied: false,
+        path: absPath,
+        raw: [
+          `${verb} Markdown 建议文档：${relPath}`,
+          `本地证据文件：${evidence.files.length} 个`,
+          `质量门禁：${reason}`,
+        ].join('\n'),
+        linesAdded: diff.added,
+        linesRemoved: diff.removed,
+        writtenFiles,
+        failedReason: reason,
+      };
+    }
     const providerNote = provider.markdown ? 'Provider 正文已通过完整性检查' : 'Provider 输出不可用，已使用本地证据兜底正文';
     await postMarkdownStatus(input, 'completed', basename, {
       title: 'Markdown 文档已生成',
@@ -318,6 +349,9 @@ function collectMarkdownEvidence(userPrompt: string, workspaceRoot: string, targ
     .filter(absPath => nodePath.normalize(absPath) !== nodePath.normalize(targetDir))
     .filter(absPath => !isExcludedPath(absPath))
     .slice(0, 4);
+  const communicationEvidence = shouldCollectProjectCommunicationEvidence(userPrompt)
+    ? collectProjectCommunicationEvidence(paths, workspaceRoot, targetAbsPath)
+    : { files: [] as string[], roots: [] as string[] };
 
   const files: EvidenceFile[] = [];
   let remainingChars = MAX_TOTAL_EVIDENCE_CHARS;
@@ -329,7 +363,10 @@ function collectMarkdownEvidence(userPrompt: string, workspaceRoot: string, targ
   }
 
   const sourceFiles = uniquePaths(
-    sourceDirs.flatMap(dir => collectSourceFiles(dir, SOURCE_DIR_DEPTH, MAX_EVIDENCE_FILES)),
+    [
+      ...communicationEvidence.files,
+      ...sourceDirs.flatMap(dir => collectSourceFiles(dir, SOURCE_DIR_DEPTH, MAX_EVIDENCE_FILES)),
+    ],
   )
     .filter(absPath => !requirementFiles.includes(absPath))
     .slice(0, Math.max(0, MAX_EVIDENCE_FILES - files.length));
@@ -342,7 +379,7 @@ function collectMarkdownEvidence(userPrompt: string, workspaceRoot: string, targ
     if (remainingChars <= 0) break;
   }
 
-  return { files, sourceDirs };
+  return { files, sourceDirs: uniquePaths([...sourceDirs, ...communicationEvidence.roots]) };
 }
 
 function extractExistingAbsolutePaths(text: string): string[] {
@@ -389,6 +426,92 @@ function collectSourceFiles(dir: string, maxDepth: number, maxFiles: number): st
   return result;
 }
 
+function shouldCollectProjectCommunicationEvidence(userPrompt: string): boolean {
+  return COMMUNICATION_EVIDENCE_PROMPT_RE.test(String(userPrompt || ''));
+}
+
+function collectProjectCommunicationEvidence(
+  explicitPaths: string[],
+  workspaceRoot: string,
+  targetAbsPath: string,
+): { files: string[]; roots: string[] } {
+  const roots = inferProjectCommunicationRoots(explicitPaths, workspaceRoot, targetAbsPath);
+  const files = uniquePaths(
+    roots.flatMap(root => collectCommunicationSourceFiles(root, 4, 10)),
+  ).slice(0, Math.max(0, MAX_EVIDENCE_FILES));
+  return { files, roots };
+}
+
+function inferProjectCommunicationRoots(
+  explicitPaths: string[],
+  workspaceRoot: string,
+  targetAbsPath: string,
+): string[] {
+  const roots: string[] = [];
+  for (const absPath of [...explicitPaths, targetAbsPath, workspaceRoot]) {
+    for (const candidate of projectSourceRootCandidates(absPath)) {
+      if (!candidate || !isDirectory(candidate) || isExcludedPath(candidate)) continue;
+      roots.push(candidate);
+    }
+  }
+  return uniquePaths(roots).slice(0, 4);
+}
+
+function projectSourceRootCandidates(absPath: string): string[] {
+  const normalized = nodePath.normalize(absPath || '');
+  if (!normalized) return [];
+  const asDir = isDirectory(normalized) ? normalized : nodePath.dirname(normalized);
+  const candidates = [asDir];
+  const posix = normalized.replace(/\\/g, '/');
+  const oamSrc = posix.match(/^(.*\/src\/oam\/src)(?:\/|$)/);
+  if (oamSrc?.[1]) candidates.push(oamSrc[1]);
+  const srcRoot = posix.match(/^(.*\/src)(?:\/|$)/);
+  if (srcRoot?.[1]) candidates.push(srcRoot[1]);
+  return uniquePaths(candidates.map(value => nodePath.normalize(value)));
+}
+
+function collectCommunicationSourceFiles(root: string, maxDepth: number, maxFiles: number): string[] {
+  const result: string[] = [];
+  const scanLimit = Math.max(maxFiles * 4, maxFiles);
+  const visit = (current: string, depth: number) => {
+    if (depth < 0 || result.length >= scanLimit || isExcludedPath(current)) return;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      if (result.length >= scanLimit) break;
+      const absPath = nodePath.join(current, entry.name);
+      if (entry.isDirectory()) {
+        visit(absPath, depth - 1);
+      } else if (entry.isFile() && shouldReadCommunicationSourceFile(absPath)) {
+        result.push(absPath);
+      }
+    }
+  };
+  visit(root, maxDepth);
+  return result
+    .sort((a, b) => communicationFilePriority(a) - communicationFilePriority(b) || a.localeCompare(b))
+    .slice(0, maxFiles);
+}
+
+function shouldReadCommunicationSourceFile(absPath: string): boolean {
+  return shouldReadSourceFile(absPath) && COMMUNICATION_SOURCE_FILE_RE.test(nodePath.basename(absPath));
+}
+
+function communicationFilePriority(absPath: string): number {
+  const base = nodePath.basename(absPath).toLowerCase();
+  if (/uart\d+_(?:tx|rx)_main/.test(base)) return 0;
+  if (/tunnel/.test(base)) return 1;
+  if (/mavlink/.test(base)) return 2;
+  if (/publisher|subscriber/.test(base)) return 3;
+  if (/license/.test(base)) return 4;
+  return 9;
+}
+
 function readEvidenceFile(
   absPath: string,
   workspaceRoot: string,
@@ -430,6 +553,7 @@ function buildProviderPrompt(input: MarkdownDeliverableTaskInput, evidence: Evid
     '请使用真实 Markdown 排版：标题、元数据、列表、表格和代码块必须保留换行；不要输出网页复制控件文字，例如“复制”“下载”。',
     '文档必须包含：需求差异、旧实现职责观察、实现对策、主控任务拆分、风险与验证建议、后续任务清单。',
     '如果这是既有正式项目任务，文档还必须包含：源项目事实矩阵（文件路径、类/函数/常量、关键数值、协议字段、topic/命令号和复用方式）、面向遥控器/主控/平台的接口文档（方向、承载通道、消息类型、JSON/schema字段、枚举、分片/超时/重试/幂等/错误码、版本兼容和示例）、原有代码修改清单（文件、函数/类、改动内容、原因、风险、验证方式）。',
+    '如果用户要求参考既有通讯方式，必须写清项目级真实通讯链路：参考模块、uart*_tx/rx_main 或等价收发入口、TunnelTransport/分片组装、MAVLink tunnel、publisher/subscriber、topic/payload_type/命令号、路由调度和主流程调用点。',
     '不能只写“参考某模块”；凡是引用 license、主控、遥控器、平台或 tunnel 方案，必须写出从证据中看到的具体常量、数值和字段。',
     `目标写入路径：${relTarget}`,
     '',

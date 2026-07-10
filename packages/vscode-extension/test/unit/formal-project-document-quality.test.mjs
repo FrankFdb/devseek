@@ -51,6 +51,7 @@ test('formal project quality: generic reference document is rejected', () => {
     'missing-concrete-protocol-facts',
     'missing-remote-controller-interface-doc',
     'missing-existing-code-modification-plan',
+    'missing-project-wide-communication-chain',
   ]);
 });
 
@@ -67,6 +68,8 @@ test('formal project quality: source facts, interface schema, and modification p
     '| `src/oam/src/license/license_types.hpp:15` | `kTunnelVersion=1`，`kTunnelMaxTotalLen=64 * 1024`，`kTunnelSessionTimeoutMs=5000` | 维保分片版本、最大长度和超时策略按此对齐 |',
     '| `src/oam/src/license/license_tunnel_transport.cpp:12` | `kDuplicateRequestDropWindowMs=1000`，`kMaxActiveSessions=128`，`kMaxCompletedRequests=256` | 维保请求重复抑制和会话上限按同等规则设计 |',
     '| `src/oam/src/license/license_tunnel_transport.cpp:304` | `LicenseTunnelHeader` 字段含 `sessionId/seq/total/payloadLen/totalLen/crc32` | 维保 JSON 按同一分片/CRC 模型验证 |',
+    '| `src/oam/src/uart1_tx_main.cpp:35` | `HDStringPublisher` 把主控 JSON 通过 `/uav/dt/oam_msg/tx` 发送到遥控器侧链路 | 维保结果必须接入这个真实发送入口，而不是只在 zc_maintenance 目录内自洽 |',
+    '| `src/oam/src/uart1_rx_main.cpp:52` | `HDStringSubscriber` 接收遥控器/平台转发消息，并按 topic 路由给业务模块 | 维保平台状态同步从接收入口进入主控 |',
     '',
     '## 遥控器与主控接口文档',
     '',
@@ -97,6 +100,7 @@ test('formal project quality: source facts, interface schema, and modification p
   assert.equal(quality.hasConcreteProtocolFacts, true);
   assert.equal(quality.hasRemoteControllerInterfaceDoc, true);
   assert.equal(quality.hasExistingCodeModificationPlan, true);
+  assert.equal(quality.hasProjectWideCommunicationChain, true);
 });
 
 console.log('\nFormal project document quality tests passed.\n');

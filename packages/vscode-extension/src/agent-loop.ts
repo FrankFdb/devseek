@@ -106,6 +106,7 @@ import { tryRunSimpleFileTask } from './agent/simple-file-task';
 import { shouldRequestManualReviewForRun } from './agent/manual-review-validation';
 import { decideAgentRuntimeTurn } from './agent/agent-runtime-turn-policy';
 import { WorkspaceEditService } from './workspace/edit-service';
+import { buildTaskShapeGuidancePrompt } from './agent/task-shape';
 import type { CppValidationPolicy } from './validation-planner';
 import type { ExecutionMode } from './intent/intent-types';
 
@@ -475,6 +476,8 @@ function buildEditorPrompt(
     ``,
     projectRulesSection,
     projectMemorySection,
+    buildTaskShapeGuidancePrompt(userPrompt),
+    ``,
     `【原始用户需求】`,
     userPrompt,
     ``,
@@ -489,6 +492,8 @@ function buildEditorPrompt(
     `【输出格式要求（严格遵守）】`,
     isCreate
       ? [
+          `如果本任务属于既有大项目/正式项目，且当前缺少源项目事实、通信链路、主入口或修改锚点证据，先调用 read_file/list_dir/grep_search/file_search 收集证据；不要直接臆造新文件内容。`,
+          ``,
           `请输出新文件 ${displayPath} 的完整内容：`,
           ``,
           `${displayPath}`,

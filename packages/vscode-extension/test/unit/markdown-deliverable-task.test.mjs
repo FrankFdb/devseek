@@ -58,8 +58,11 @@ function makeCallbacks() {
 function createMaintenanceWorkspace() {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-md-deliverable-'));
   const maintenanceDir = path.join(root, 'src/oam/src/lifting/maintenance');
+  const licenseDir = path.join(root, 'src/oam/src/license');
+  const oamSrcDir = path.join(root, 'src/oam/src');
   const docsDir = path.join(root, 'src/oam/src/lifting/zc_maintenance/docs');
   mkdirSync(maintenanceDir, { recursive: true });
+  mkdirSync(licenseDir, { recursive: true });
   mkdirSync(docsDir, { recursive: true });
   const requirementDoc = path.join(docsDir, 'uav-warranty-reminder-plan_v1.7.md');
   writeFileSync(requirementDoc, [
@@ -82,7 +85,26 @@ function createMaintenanceWorkspace() {
     '  bool updateState(const MaintenanceStat& stat);',
     '};',
   ].join('\n'));
-  return { root, maintenanceDir, docsDir, requirementDoc };
+  writeFileSync(path.join(licenseDir, 'license_tunnel_transport.hpp'), [
+    '#pragma once',
+    'constexpr uint16_t kMavTunnelCmdLicense = 33007;',
+    'constexpr uint32_t kTunnelMaxTotalLen = 64 * 1024;',
+    'constexpr uint32_t kTunnelSessionTimeoutMs = 5000;',
+    'struct LicenseTunnelHeader { uint32_t sessionId; uint16_t seq; uint16_t total; uint16_t payloadLen; uint32_t totalLen; uint32_t crc32; };',
+    'class TunnelTransport { public: bool appendFragment(const LicenseTunnelHeader& header); };',
+  ].join('\n'));
+  writeFileSync(path.join(oamSrcDir, 'uart1_tx_main.cpp'), [
+    '#include "license/license_tunnel_transport.hpp"',
+    'static const char* kTopicLicenseTunnelTx = "/uav/license/tunnel/tx";',
+    'static const char* kOamTxTopic = "/uav/dt/oam_msg/tx";',
+    'void uart1_tx_main() { HDStringPublisher publisher(kOamTxTopic); publisher.publish(kTopicLicenseTunnelTx); }',
+  ].join('\n'));
+  writeFileSync(path.join(oamSrcDir, 'uart1_rx_main.cpp'), [
+    '#include "license/license_tunnel_transport.hpp"',
+    'static const char* kTopicLicenseTunnelRx = "/uav/license/tunnel/rx";',
+    'void uart1_rx_main() { HDStringSubscriber subscriber(kTopicLicenseTunnelRx); route(payload_type); }',
+  ].join('\n'));
+  return { root, maintenanceDir, licenseDir, docsDir, requirementDoc };
 }
 
 test('markdown deliverable: corrupted provider output still writes verified local artifact', async () => {
@@ -186,13 +208,55 @@ test('markdown deliverable: complete provider report is written instead of fallb
   }
 });
 
+test('markdown deliverable: formal communication references collect project-wide UART and tunnel evidence', async () => {
+  const { root, licenseDir, docsDir, requirementDoc } = createMaintenanceWorkspace();
+  const target = path.join(docsDir, 'warranty-remote-controller-interface-design.md');
+  const io = makeCallbacks();
+  let providerPrompt = '';
+  try {
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: {
+        id: 't1',
+        file: 'src/oam/src/lifting/zc_maintenance/docs/warranty-remote-controller-interface-design.md',
+        absPath: target,
+        action: 'create',
+        desc: '创建遥控器与主控交互接口 Markdown 文档，参考 license 通讯方式并写明源项目事实矩阵和通信链路',
+      },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: [
+        `参考 ${licenseDir} 模块通讯方式`,
+        `基于 ${requirementDoc} 完成遥控器和主控交互接口设计，通过 md 文档提供`,
+      ].join('\n'),
+      workspaceRoot: { fsPath: root },
+      callbacks: io.callbacks,
+      chat: async (messages) => {
+        providerPrompt = messages[0].content;
+        return '我还需要调用工具继续查找。<TOOL_file_search>{"glob":"**/*.cpp"}';
+      },
+    });
+
+    assert.equal(result?.applied, true);
+    const content = readFileSync(target, 'utf8');
+    assert.match(content, /uart1_tx_main\.cpp/);
+    assert.match(content, /uart1_rx_main\.cpp/);
+    assert.match(content, /TunnelTransport|kMavTunnelCmdLicense|kTunnelMaxTotalLen/);
+    assert.match(content, /HDStringPublisher|HDStringSubscriber|payload_type/);
+    assert.match(providerPrompt, /uart1_tx_main\.cpp/);
+    assert.match(providerPrompt, /项目级真实通讯链路/);
+    assert.equal(io.statuses.at(-1).state, 'completed');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('markdown deliverable: cleans flattened DeepSeek web markdown before writing', async () => {
   const { root, maintenanceDir, docsDir, requirementDoc } = createMaintenanceWorkspace();
   const target = path.join(docsDir, '01-warranty-remote-controller-interface-design.md');
   const io = makeCallbacks();
   try {
     const providerMarkdown = [
-      '无人机维保提醒功能 —— 遥控器与主控交互接口设计文档**文档编号**: ZC-MAINTENANCE-IFACE-001**文档版本**: 1.0**生成时间**: 2026-07-09**文档路径**: src/oam/src/lifting/zc_maintenance/docs/01-warranty-remote-controller-interface-design.md**关联需求**: uav-warranty-reminder-plan_v1.7.md**关联旧实现**: lifting_maintenance_design.md**文档类型**: 接口设计**状态**: 待评审**对应需求版本**: UAV-WARRANTY-REMINDER-PLAN-V1.7**目标路径**: src/oam/src/lifting/zc_maintenance/docs/01-warranty-remote-controller-interface-design.md### 1.1 文档目标本文档定义遥控器与主控之间关于无人机维保提醒功能的交互接口，包括平台 JSON 数据转发、主控统计结果回传、字段定义、时序关系、异常处理和容错机制。2. 需求差异分析基于需求文档与平台接口文档的对比，识别数据流向、统计结果回传、离线补偿和状态同步差异。| 状态说明 | 旧实现二元状态：统计中 / 待维保 | 新需求三元状态：normal / expiring_soon / expired |3. 旧实现职责观察通信架构：text复制下载遥控器 App <--- MAVLink Tunnel ---> 主控。4. 源项目事实矩阵| 源文件 | 原项目事实 | 复用方式 || src/oam/src/license/license_types.hpp:8 | kTopicLicenseTunnelRx="/uav/license/tunnel/rx"，kTopicLicenseTunnelTx="/uav/license/tunnel/tx" | 维保通道复用 topic 命名边界 || src/oam/src/license/license_types.hpp:11 | kMavTunnelCmdLicense=33007，kTunnelVersion=1 | 新维保 tunnel 需要独立 payload_type 或明确复用规则 || src/oam/src/license/license_types.hpp:15 | kTunnelMaxTotalLen=64 * 1024，kTunnelSessionTimeoutMs=5000 | 分片最大长度和超时对齐 || src/oam/src/license/license_tunnel_transport.cpp:12 | kDuplicateRequestDropWindowMs=1000，kMaxActiveSessions=128，kMaxCompletedRequests=256 | 重复请求和会话上限对齐 || src/oam/src/license/license_tunnel_transport.cpp:304 | LicenseTunnelHeader 字段包含 sessionId、seq、total、payloadLen、totalLen、crc32 | 遥控器消息按相同分片和 CRC 规则校验 |5. 实现对策遥控器作为纯转发通道，主控接收平台 JSON 后结合本机增量数据完成计算。6. 主控任务拆分T001 接收平台 JSON，T002 解析字段，T003 管理本地增量，T004 计算维保状态，T005 通过 UAV_EVENT 1022 回传结果。7. 接口协议定义7.1 方向：遥控器到主控7.2 数据结构json复制下载{"type":"warranty_result","status":"expired"}7.3 消息容量需容纳 metrics（3 字段）+ thresholds（6 字段）+ 时间戳。7.4 示例 request：{"type":"platform_status","requestId":"r1","metrics":{"flightSorties":120},"version":1}。示例 response：{"type":"warranty_status","requestId":"r1","level":"expiring_soon","errorCode":0,"version":1}。超时 5000ms 后重试，幂等键使用 requestId + sessionId，错误码包含 payload_invalid、crc_mismatch、timeout。8. 风险与验证建议需要验证 JSON 解析失败、平台数据缺失、重复消息、重启恢复和阈值边界。9. 后续任务清单实现 Tunnel 传输、状态机、持久化、发布器和自动化测试。',
+      '无人机维保提醒功能 —— 遥控器与主控交互接口设计文档**文档编号**: ZC-MAINTENANCE-IFACE-001**文档版本**: 1.0**生成时间**: 2026-07-09**文档路径**: src/oam/src/lifting/zc_maintenance/docs/01-warranty-remote-controller-interface-design.md**关联需求**: uav-warranty-reminder-plan_v1.7.md**关联旧实现**: lifting_maintenance_design.md**文档类型**: 接口设计**状态**: 待评审**对应需求版本**: UAV-WARRANTY-REMINDER-PLAN-V1.7**目标路径**: src/oam/src/lifting/zc_maintenance/docs/01-warranty-remote-controller-interface-design.md### 1.1 文档目标本文档定义遥控器与主控之间关于无人机维保提醒功能的交互接口，包括平台 JSON 数据转发、主控统计结果回传、字段定义、时序关系、异常处理和容错机制。2. 需求差异分析基于需求文档与平台接口文档的对比，识别数据流向、统计结果回传、离线补偿和状态同步差异。| 状态说明 | 旧实现二元状态：统计中 / 待维保 | 新需求三元状态：normal / expiring_soon / expired |3. 旧实现职责观察通信架构：text复制下载遥控器 App <--- MAVLink Tunnel ---> 主控。4. 源项目事实矩阵| 源文件 | 原项目事实 | 复用方式 || src/oam/src/license/license_types.hpp:8 | kTopicLicenseTunnelRx="/uav/license/tunnel/rx"，kTopicLicenseTunnelTx="/uav/license/tunnel/tx" | 维保通道复用 topic 命名边界 || src/oam/src/license/license_types.hpp:11 | kMavTunnelCmdLicense=33007，kTunnelVersion=1 | 新维保 tunnel 需要独立 payload_type 或明确复用规则 || src/oam/src/license/license_types.hpp:15 | kTunnelMaxTotalLen=64 * 1024，kTunnelSessionTimeoutMs=5000 | 分片最大长度和超时对齐 || src/oam/src/license/license_tunnel_transport.cpp:12 | kDuplicateRequestDropWindowMs=1000，kMaxActiveSessions=128，kMaxCompletedRequests=256 | 重复请求和会话上限对齐 || src/oam/src/license/license_tunnel_transport.cpp:304 | LicenseTunnelHeader 字段包含 sessionId、seq、total、payloadLen、totalLen、crc32 | 遥控器消息按相同分片和 CRC 规则校验 || src/oam/src/uart1_tx_main.cpp:35 | HDStringPublisher 通过 /uav/dt/oam_msg/tx 发送主控 JSON，topic 路由到遥控器 | 维保结果必须接入真实发送入口而不是目录内自洽 || src/oam/src/uart1_rx_main.cpp:52 | HDStringSubscriber 接收遥控器/平台转发消息，按 payload_type 和 topic 路由给业务模块 | 平台状态同步从真实接收入口进入主控 |5. 实现对策遥控器作为纯转发通道，主控接收平台 JSON 后结合本机增量数据完成计算。6. 主控任务拆分T001 接收平台 JSON，T002 解析字段，T003 管理本地增量，T004 计算维保状态，T005 通过 UAV_EVENT 1022 回传结果。7. 接口协议定义7.1 方向：遥控器到主控7.2 数据结构json复制下载{"type":"warranty_result","status":"expired"}7.3 消息容量需容纳 metrics（3 字段）+ thresholds（6 字段）+ 时间戳。7.4 示例 request：{"type":"platform_status","requestId":"r1","metrics":{"flightSorties":120},"version":1}。示例 response：{"type":"warranty_status","requestId":"r1","level":"expiring_soon","errorCode":0,"version":1}。超时 5000ms 后重试，幂等键使用 requestId + sessionId，错误码包含 payload_invalid、crc_mismatch、timeout。8. 风险与验证建议需要验证 JSON 解析失败、平台数据缺失、重复消息、重启恢复和阈值边界。9. 后续任务清单实现 Tunnel 传输、状态机、持久化、发布器和自动化测试。',
     ].join('\n');
 
     const result = await tryExecuteMarkdownDeliverableTask({

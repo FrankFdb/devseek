@@ -53,6 +53,27 @@ export const TOOL_PROTOCOL_SAMPLES = [
     expectedToolNames: ['manage_todo_list', 'run_terminal'],
   },
   {
+    id: 'prefixed-paired-xml-tools',
+    text: [
+      'I will inspect implementation points.',
+      '<TOOL_list_dir>{"path":"/tmp/project/src/license"}</TOOL_list_dir>',
+      '<TOOL_read_file>{"path":"/tmp/project/docs/uav-warranty-reminder-plan_v1.7.md"}</TOOL_read_file>',
+    ].join('\n'),
+    expectedVisible: 'I will inspect implementation points.',
+    expectedToolNames: ['list_dir', 'read_file'],
+  },
+  {
+    id: 'prefixed-open-xml-json-tools',
+    text: [
+      'I will finish validation.',
+      '<TOOL_run_terminal> {"command":"ls -1 /tmp/project/src/*.hpp /tmp/project/src/*.cpp 2>/dev/null | wc -l","requires_approval":false}',
+      '<TOOL_task_complete> {"summary":"Generated docs and source files; validation passed."}',
+      'Validation evidence is ready.',
+    ].join('\n'),
+    expectedVisible: 'I will finish validation.\nValidation evidence is ready.',
+    expectedToolNames: ['run_terminal', 'task_complete'],
+  },
+  {
     id: 'tool-call-envelope',
     text: [
       'I will run validation.',
@@ -127,6 +148,12 @@ export const TOOL_PROTOCOL_STREAMING_TAIL_SAMPLES = [
   {
     id: 'incomplete-xml-tool',
     text: 'I will inspect the file.<read_file path="/tmp/project/main.cpp"',
+    expectedVisible: 'I will inspect the file.',
+    expectedToolNames: [],
+  },
+  {
+    id: 'incomplete-prefixed-xml-tool',
+    text: 'I will inspect the file.<TOOL_read_file>{"path":"/tmp/project/main.cpp"',
     expectedVisible: 'I will inspect the file.',
     expectedToolNames: [],
   },
