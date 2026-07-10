@@ -62,6 +62,20 @@ test('FakeToolParser: ignores tool calls after provider-authored tool results', 
   assert.equal(stripToolCallBlocks(text), '我先读取文件。');
 });
 
+test('FakeToolParser: isolates generic TOOL envelopes from provider-authored tool results', () => {
+  const text = [
+    '我先读取当前实现。',
+    '<TOOL>read_file {"path":"src/index.ts"}</TOOL>',
+    '',
+    '[工具执行结果] 已读取 src/index.ts',
+    '<TOOL>run_terminal {"command":"npm test"}</TOOL>',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+  assert.deepEqual(tools.map(tool => tool.name), ['read_file']);
+  assert.equal(stripToolCallBlocks(text), '我先读取当前实现。');
+});
+
 test('FakeToolParser: does not treat result-only transcripts as fresh tool calls', () => {
   const text = [
     '[工具执行结果]文件内容：',
@@ -672,6 +686,16 @@ test('FakeToolParser: recovers malformed DeepSeek file tools with unescaped code
   assert.equal(stripToolCallBlocks(text), '现在创建 C++ 文件：');
 });
 
+test('FakeToolParser: recovers a complete DeepSeek terminal call with unescaped shell quotes', () => {
+  const text = '[TOOL:run_terminal] {"command":"cd /tmp/project && echo "=== files ===" && find . -name "*.cpp" | sort","maxOutputLines":100}';
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'run_terminal');
+  assert.equal(tools[0].input.command, 'cd /tmp/project && echo "=== files ===" && find . -name "*.cpp" | sort');
+  assert.equal(stripToolCallBlocks(text), '');
+});
+
 test('FakeToolParser: recovers bracket-closed malformed CMake file tools with braces', () => {
   const text = String.raw`好的，我需要修改CMakeLists.txt来同时编译二维和三维程序。
 [TOOL:create_file] {"path":"/tmp/shape_manager/CMakeLists.txt","content":"cmake_minimum_required(VERSION 3.10)\nproject(ShapeManager)\nset(CMAKE_CXX_FLAGS "{CMAKE_CXX_FLAGS} -Wall -Wextra\")\nadd_executable(shape_manager_2d {SOURCES_2D} {HEADERS_2D})\nset_target_properties(shape_manager_2d shape_manager_3d PROPERTIES\n RUNTIME_OUTPUT_DIRECTORY \"{CMAKE_BINARY_DIR}/bin"\n)\nmessage(STATUS "构建二维图形程序: shape_manager_2d (使用 X11)")\n"}`;
@@ -703,6 +727,28 @@ test('FakeToolParser: parses raw JSON file tool arrays with content aliases', ()
   assert.equal(tools[0].input.fileContent, 'class Sphere {};');
 });
 
+test('FakeToolParser: parses DeepSeek raw JSON arrays without explicit type fields', () => {
+  const text = [
+    '我先确认目录和文件：',
+    '```json',
+    '[',
+    '  {"path":"/tmp/project/src/"},',
+    '  {"path":"/tmp/project/src/main.cpp"},',
+    '  {"command":"ls -la /tmp/project/src 2>&1"}',
+    ']',
+    '```',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.deepEqual(tools.map(tool => tool.name), ['list_dir', 'read_file', 'run_terminal']);
+  assert.equal(tools[0].input.path, '/tmp/project/src/');
+  assert.equal(tools[1].input.path, '/tmp/project/src/main.cpp');
+  assert.equal(tools[2].input.command, 'ls -la /tmp/project/src 2>&1');
+  assert.equal(stripToolCallBlocks(text), '我先确认目录和文件：');
+  assert.equal(containsFakeToolCallProtocol(text), true);
+});
+
 test('FakeToolParser: strips fenced DeepSeek JSON tool arrays from visible text', () => {
   const text = [
     '让我先查看当前的代码结构：',
@@ -718,6 +764,14 @@ test('FakeToolParser: strips fenced DeepSeek JSON tool arrays from visible text'
 
   assert.deepEqual(tools.map(tool => tool.name), ['list_dir', 'read_file']);
   assert.equal(stripToolCallBlocks(text), '让我先查看当前的代码结构：');
+});
+
+test('FakeToolParser: parses audited delete_file calls', () => {
+  const tools = parseFakeToolCalls('[TOOL:delete_file {"path":"src/obsolete.cpp"}]');
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'delete_file');
+  assert.equal(tools[0].input.path, 'src/obsolete.cpp');
 });
 
 test('FakeToolParser: parses and strips function-style pseudo tool calls', () => {

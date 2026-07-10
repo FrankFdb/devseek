@@ -132,7 +132,7 @@ test('AgentFileWritePolicy: detects isolated artifact output roots from Chinese 
   const scope = detectIsolatedArtifactWriteScope(prompt, '/workspace');
 
   assert.equal(scope.required, true);
-  assert.ok(scope.allowedRoots.includes('/workspace/src/oam/src/lifting/zc_maintenance/202607101807'));
+  assert.equal(scope.allowedRoots.includes('/workspace/src/oam/src/lifting/zc_maintenance/202607101807'), false);
   assert.ok(scope.allowedRoots.includes('/workspace/src/oam/src/lifting/zc_maintenance/202607101807/docs'));
   assert.ok(scope.allowedRoots.includes('/workspace/src/oam/src/lifting/zc_maintenance/202607101807/src'));
 });
@@ -140,6 +140,7 @@ test('AgentFileWritePolicy: detects isolated artifact output roots from Chinese 
 test('AgentFileWritePolicy: isolated artifact scope blocks writes to formal source directories', () => {
   const requestPrompt = [
     '本次测试所有新增设计文档、实施文档、代码和验证脚本必须放在：/workspace/src/oam/src/lifting/zc_maintenance/202607101807',
+    '- 设计/实施 Markdown 文档放入：/workspace/src/oam/src/lifting/zc_maintenance/202607101807/docs',
     '- 代码和测试文件放入：/workspace/src/oam/src/lifting/zc_maintenance/202607101807/src',
     '不要修改正式源码目录里的既有文件；如需改原项目关联代码，请写入原有代码修改清单。',
   ].join('\n');
@@ -157,6 +158,20 @@ test('AgentFileWritePolicy: isolated artifact scope blocks writes to formal sour
 
   assert.equal(denied.action, 'deny');
   assert.equal(denied.reason, 'isolated-artifact-scope');
+
+  const deniedContainerRootArtifact = decideAgentFileWrite({
+    absPath: '/workspace/src/oam/src/lifting/zc_maintenance/202607101807/warranty_types.hpp',
+    workspaceRoot: '/workspace',
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      displayName: 'src/oam/src/lifting/zc_maintenance/202607101807/warranty_types.hpp',
+      requestPrompt,
+    },
+  });
+
+  assert.equal(deniedContainerRootArtifact.action, 'deny');
+  assert.equal(deniedContainerRootArtifact.reason, 'isolated-artifact-scope');
 
   const allowedSourceArtifact = decideAgentFileWrite({
     absPath: '/workspace/src/oam/src/lifting/zc_maintenance/202607101807/src/warranty_manager.cpp',

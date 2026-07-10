@@ -63,4 +63,25 @@ export const DEEPSEEK_TOOL_TRANSCRIPT_FIXTURES = [
     expectedToolNames: ['run_terminal'],
     expectedVisibleText: '好的，现在执行编译和运行。',
   },
+  {
+    name: 'real DeepSeek generic TOOL envelopes with adjacent calls',
+    text: [
+      '现在开始调查。首先阅读需求文档，然后追踪license模块实现。',
+      '<TOOL>manage_todo_list {"todoList":[{"id":1,"title":"扩大项目调查：license模块独立线程和HDStringPublisher通信方式","status":"in-progress"},{"id":2,"title":"追踪uart1_tx_main.cpp和TunnelTransport分片传输实现","status":"not-started"}]}</TOOL>',
+      '<TOOL>read_file {"path":"/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md"}</TOOL>',
+      '<TOOL>list_dir {"path":"/home/ff/uav/tars/huida_uav/src/oam/src/license"}</TOOL>',
+      '<TOOL>grep_search {"pattern":"HDStringPublisher","path":"/home/ff/uav/tars/huida_uav/src/oam/src/license"}</TOOL>',
+    ].join(''),
+    expectedToolNames: ['manage_todo_list', 'read_file', 'list_dir', 'grep_search'],
+    expectedVisibleText: '现在开始调查。首先阅读需求文档，然后追踪license模块实现。',
+  },
+  {
+    name: 'real DeepSeek terminal call with unescaped shell quotes',
+    text: [
+      '我立即执行真实验证。',
+      '[TOOL:run_terminal] {"command":"cd /home/ff/uav/tars/huida_uav && echo "=== 交付目录完整文件列表 ===" && find src/oam/src/lifting/zc_maintenance/202607110506 -type f | sort && echo "" && echo "=== 源码文件数 ===" && find src/oam/src/lifting/zc_maintenance/202607110506/src -name "*.cpp" -o -name "*.hpp" | wc -l","maxOutputLines":100}',
+    ].join('\n'),
+    expectedToolNames: ['run_terminal'],
+    expectedVisibleText: '我立即执行真实验证。',
+  },
 ];

@@ -157,70 +157,38 @@ function defaultAgentToolActivityTarget(kind) {
   return getAgentActivityDisplay(kind).target || 'tool';
 }
 
-function isAgentContextGatheringActivityKind(kind) {
-  return kind === 'read' || kind === 'search' || kind === 'list';
+function decideAgentProgressTransition(currentStage, currentTitle, currentOwner, nextStage, nextTitle, nextOwner) {
+  if (!currentStage || !currentTitle) return 'update';
+  if (currentStage !== nextStage) return 'new-group';
+  if (nextOwner === 'status' && currentTitle !== nextTitle) return 'new-group';
+  if (nextOwner === 'activity' && currentOwner === 'status') return 'keep-summary';
+  return 'update';
 }
 
-function formatAgentActivityCountSummary(counts) {
-  var c = counts || {};
-  var parts = [];
-  if ((c.read || 0) > 0) parts.push('读取 ' + c.read + ' 个文件');
-  if ((c.search || 0) > 0) parts.push('搜索 ' + c.search + ' 次');
-  if ((c.list || 0) > 0) parts.push('查看 ' + c.list + ' 个目录');
-  if ((c.write || 0) > 0) parts.push('写入 ' + c.write + ' 个成果物');
-  if ((c.terminal || 0) > 0) parts.push('执行 ' + c.terminal + ' 次验证');
-  if ((c.diagnostics || 0) > 0) parts.push('检查诊断 ' + c.diagnostics + ' 次');
-  if ((c.web || 0) > 0) parts.push('查阅网页 ' + c.web + ' 次');
-  return parts.join('，');
+function shouldStartNewAgentProgressGroup(currentStage, nextStage) {
+  return !!currentStage && !!nextStage && currentStage !== nextStage;
 }
 
-function inferAgentProgressStageTitle(kind, label, taskLabel) {
-  var task = sanitizeAgentTaskLabelValue(taskLabel || '');
-  var text = String((task || label || '')).replace(/\s+/g, ' ');
-  if (/(验证|测试|编译|运行|run_terminal|compile|build|test|verify)/i.test(text) || kind === 'terminal' || kind === 'diagnostics') {
-    return '正在验证实现结果';
+function formatAgentActivitySummary(counts) {
+  var source = counts || {};
+  var labels = [];
+  var definitions = [
+    ['read', '读取文件'],
+    ['search', '搜索代码'],
+    ['list', '查看目录'],
+    ['write', '修改文件'],
+    ['terminal', '运行命令'],
+    ['diagnostics', '检查诊断'],
+    ['web', '查看网页'],
+    ['mcp', '调用工具'],
+    ['vscode-command', '运行 VS Code 命令'],
+  ];
+  for (var i = 0; i < definitions.length; i++) {
+    if (Number(source[definitions[i][0]] || 0) > 0) labels.push(definitions[i][1]);
   }
-  if (/(写入|创建|修改|实现|代码|文档|成果物|create|write|modify|implement)/i.test(text) || kind === 'write') {
-    return '正在生成和更新成果物';
-  }
-  if (/(接口|协议|通讯|通信|主控|遥控器|平台|设计|schema|request|response)/i.test(text)) {
-    return '正在分析接口和集成边界';
-  }
-  if (kind === 'read' || kind === 'search' || kind === 'list') return '正在收集项目证据';
-  if (kind === 'web') return '正在查阅外部资料';
-  if (kind === 'plan') return '正在拆解任务计划';
-  if (kind === 'failed') return '正在整理失败原因';
-  if (kind === 'done') return '正在汇总结论';
-  return task || '正在推进任务';
-}
-
-function getAgentProgressStageKey(kind, label, taskLabel) {
-  if (isAgentContextGatheringActivityKind(kind)) return 'context-evidence';
-  if (kind === 'terminal' || kind === 'diagnostics') return 'validation';
-  if (kind === 'write') return 'artifact-write';
-  if (kind === 'web') return 'external-research';
-  if (kind === 'plan') return 'planning';
-  return inferAgentProgressStageTitle(kind, label, taskLabel);
-}
-
-function inferAgentProgressNextStep(counts, latestKind, state) {
-  var c = counts || {};
-  if (state === 'failed') return '下一步：根据失败证据调整方案或修复问题。';
-  if ((c.terminal || 0) > 0) return '下一步：根据验证结果决定修复或交付。';
-  if ((c.write || 0) > 0) return '下一步：运行验证并确认交付质量。';
-  if ((c.read || 0) + (c.search || 0) + (c.list || 0) > 0) return '下一步：整理证据，形成设计和修改点。';
-  if (latestKind === 'plan') return '下一步：按计划收集上下文证据。';
-  return '下一步：继续推进当前阶段。';
-}
-
-function buildAgentProgressDigest(counts, latestKind, latestLabel, taskLabel, state) {
-  var title = inferAgentProgressStageTitle(latestKind, latestLabel, taskLabel);
-  var done = formatAgentActivityCountSummary(counts);
-  var next = inferAgentProgressNextStep(counts, latestKind, state);
-  return {
-    title: title,
-    detail: (done ? '已完成：' + done + '。' : '正在准备上下文和执行路径。') + ' ' + next,
-  };
+  if (labels.length === 0) return '';
+  if (labels.length === 1) return labels[0];
+  return labels.slice(0, -1).join('、') + '并' + labels[labels.length - 1];
 }
 
 function formatAgentToolActivityStep(kind, label) {

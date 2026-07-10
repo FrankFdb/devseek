@@ -1,5 +1,9 @@
 export interface SourceSanityIssue {
-  kind: 'unterminated-string-literal' | 'tool-protocol-contamination' | 'markdown-emphasis-dunder-corruption';
+  kind:
+    | 'unterminated-string-literal'
+    | 'tool-protocol-contamination'
+    | 'markdown-emphasis-dunder-corruption'
+    | 'collapsed-preprocessor-directive';
   line: number;
   detail: string;
 }
@@ -13,7 +17,7 @@ export interface SourceTransportRepairResult {
 const CPP_SOURCE_EXT_RE = /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i;
 const PYTHON_SOURCE_EXT_RE = /\.py$/i;
 const CODE_SOURCE_EXT_RE = /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|py|js|jsx|ts|tsx|mjs|cjs|java|go|rs|cs|php|rb|swift|kt|kts|scala|sh|bash|zsh)$/i;
-const SOURCE_TOOL_PROTOCOL_RE = /(?:\[调用\s+(?:create_file|write_file|replace_in_file|run_terminal|read_file|list_dir|search_file)\]|\bCalling:\s*(?:create_file|write_file|replace_in_file|run_terminal|read_file|list_dir|search_file)\b|<TOOL_[A-Za-z0-9_]+>|<\/TOOL_[A-Za-z0-9_]+>)/;
+const SOURCE_TOOL_PROTOCOL_RE = /(?:\[调用\s+(?:create_file|write_file|replace_in_file|delete_file|run_terminal|read_file|list_dir|search_file)\]|\bCalling:\s*(?:create_file|write_file|replace_in_file|delete_file|run_terminal|read_file|list_dir|search_file)\b|<TOOL_[A-Za-z0-9_]+>|<\/TOOL_[A-Za-z0-9_]+>)/;
 const PYTHON_DUNDER_NAME_RE = /(?:init|name|main|str|repr|len|iter|next|enter|exit|eq|ne|lt|le|gt|ge|hash|call|dict|class|module|all|file|doc|annotations|slots|getattr|setattr|delattr|contains|getitem|setitem|delitem|bool|bytes|format|new|del)/;
 const PYTHON_MARKDOWN_DUNDER_RE = new RegExp(`\\*\\*${PYTHON_DUNDER_NAME_RE.source}\\*\\*`);
 const PYTHON_MARKDOWN_DUNDER_GLOBAL_RE = new RegExp(`\\*\\*(${PYTHON_DUNDER_NAME_RE.source})\\*\\*`, 'g');
@@ -22,7 +26,9 @@ export function findGeneratedSourceSanityIssue(filePath: string, content: string
   if (!CODE_SOURCE_EXT_RE.test(filePath || '')) return undefined;
   return findSourceToolProtocolContamination(content || '')
     || findPythonMarkdownDunderCorruption(filePath, content || '')
-    || (CPP_SOURCE_EXT_RE.test(filePath || '') ? findCppUnterminatedStringLiteral(content || '') : undefined);
+    || (CPP_SOURCE_EXT_RE.test(filePath || '')
+      ? findCppCollapsedPreprocessorDirective(content || '') || findCppUnterminatedStringLiteral(content || '')
+      : undefined);
 }
 
 export function repairGeneratedSourceTransportEscapes(filePath: string, content: string): SourceTransportRepairResult {
@@ -150,6 +156,122 @@ function findCppUnterminatedStringLiteral(content: string): SourceSanityIssue | 
     };
   }
   return undefined;
+}
+
+interface CppPreprocessorMarker {
+  line: number;
+  column: number;
+  directive: string;
+}
+
+function findCppCollapsedPreprocessorDirective(content: string): SourceSanityIssue | undefined {
+  const lines = content.split('\n');
+  const markers = scanCppPreprocessorMarkers(content);
+  for (const marker of markers) {
+    const lineText = lines[marker.line - 1] || '';
+    const firstTokenColumn = lineText.search(/\S/);
+    if (firstTokenColumn >= 0 && marker.column !== firstTokenColumn) {
+      return {
+        kind: 'collapsed-preprocessor-directive',
+        line: marker.line,
+        detail: `第 ${marker.line} 行的 #${marker.directive} 被拼接到其他源码后。C/C++ 预处理指令必须独占物理行，请保留真实换行后重试。`,
+      };
+    }
+
+    if (marker.directive === 'include') {
+      const match = /^\s*#\s*include\s*(?:<[^>\n]+>|"[^"\n]+")\s*(.*)$/.exec(lineText);
+      if (match && match[1] && !/^\/\//.test(match[1]) && !/^\/\*/.test(match[1])) {
+        return collapsedDirectiveTailIssue(marker, 'include');
+      }
+    }
+    if (marker.directive === 'pragma') {
+      const match = /^\s*#\s*pragma\s+pack\s*\([^)]*\)\s*(.*)$/i.exec(lineText);
+      if (match && match[1] && !/^\/\//.test(match[1]) && !/^\/\*/.test(match[1])) {
+        return collapsedDirectiveTailIssue(marker, 'pragma');
+      }
+    }
+  }
+  return undefined;
+}
+
+function collapsedDirectiveTailIssue(marker: CppPreprocessorMarker, directive: string): SourceSanityIssue {
+  return {
+    kind: 'collapsed-preprocessor-directive',
+    line: marker.line,
+    detail: `第 ${marker.line} 行的 #${directive} 后拼接了源码。C/C++ 预处理指令必须独占物理行，请保留真实换行后重试。`,
+  };
+}
+
+function scanCppPreprocessorMarkers(content: string): CppPreprocessorMarker[] {
+  const markers: CppPreprocessorMarker[] = [];
+  let line = 1;
+  let lineStart = 0;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let inString = false;
+  let inChar = false;
+  let escape = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const ch = content[index];
+    const next = content[index + 1];
+    if (ch === '\n') {
+      line += 1;
+      lineStart = index + 1;
+      inLineComment = false;
+      if (!inBlockComment) {
+        inString = false;
+        inChar = false;
+        escape = false;
+      }
+      continue;
+    }
+    if (inLineComment) continue;
+    if (inBlockComment) {
+      if (ch === '*' && next === '/') {
+        inBlockComment = false;
+        index += 1;
+      }
+      continue;
+    }
+    if (inString || inChar) {
+      if (escape) escape = false;
+      else if (ch === '\\') escape = true;
+      else if ((inString && ch === '"') || (inChar && ch === "'")) {
+        inString = false;
+        inChar = false;
+      }
+      continue;
+    }
+    if (ch === '/' && next === '/') {
+      inLineComment = true;
+      index += 1;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      inBlockComment = true;
+      index += 1;
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "'") {
+      inChar = true;
+      continue;
+    }
+    if (ch !== '#') continue;
+
+    const match = /^#\s*(include|define|ifndef|ifdef|if|elif|else|endif|pragma|undef|error|warning|line)\b/i.exec(content.slice(index));
+    if (!match) continue;
+    markers.push({
+      line,
+      column: index - lineStart,
+      directive: match[1].toLowerCase(),
+    });
+  }
+  return markers;
 }
 
 function findSourceToolProtocolContamination(content: string): SourceSanityIssue | undefined {

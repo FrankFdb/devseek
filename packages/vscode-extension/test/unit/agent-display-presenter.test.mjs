@@ -96,4 +96,50 @@ test('AgentDisplayPresenter: long details are kept bounded for the webview', () 
   assert.match(status.detail, /…$/);
 });
 
+test('AgentDisplayPresenter: emits a concise context summary from structured status facts', () => {
+  const localPresenter = new AgentDisplayPresenter();
+  const status = localPresenter.presentStatus({
+    type: 'agentStatus',
+    phase: 'execute',
+    state: 'started',
+    taskAction: 'explore',
+    taskDesc: '追踪 license 模块的独立线程、分片传输和主控接口',
+    title: '分析 license',
+  });
+
+  assert.equal(status.progressStage, 'context');
+  assert.equal(status.progressTitle, '正在调查：追踪 license 模块的独立线程、分片传输和主控接口');
+  assert.match(status.progressDetail, /当前重点/);
+  assert.match(status.progressDetail, /下一步：整理发现/);
+});
+
+test('AgentDisplayPresenter: de-duplicates detail facts and changes stage by tool semantics', () => {
+  const localPresenter = new AgentDisplayPresenter();
+  localPresenter.presentStatus({
+    type: 'agentStatus',
+    phase: 'execute',
+    state: 'started',
+    taskAction: 'explore',
+    taskDesc: '核对项目通信链路',
+    title: '项目调查',
+  });
+
+  const firstRead = localPresenter.presentToolActivity('read', '/repo/src/license_transport.cpp');
+  const duplicateRead = localPresenter.presentToolActivity('read', '/repo/src/license_transport.cpp');
+  const search = localPresenter.presentToolActivity('search', 'TunnelTransport');
+
+  assert.equal(firstRead.progressStage, 'context');
+  assert.equal(firstRead.activityTotal, 1);
+  assert.equal(duplicateRead.activityTotal, 1);
+  assert.equal(search.activityTotal, 1);
+  assert.match(search.progressDetail, /读取 1 个文件/);
+  assert.match(search.progressDetail, /搜索 1 次/);
+
+  const write = localPresenter.presentToolActivity('write', '/repo/src/remote_controller.cpp');
+  assert.equal(write.progressStage, 'implementation');
+  assert.equal(write.progressTitle, '正在实现：核对项目通信链路');
+  assert.match(write.progressDetail, /更新成果物 1 个/);
+  assert.match(write.progressDetail, /下一步：运行编译、测试和交付检查/);
+});
+
 console.log('\nAgent display presenter tests passed.\n');

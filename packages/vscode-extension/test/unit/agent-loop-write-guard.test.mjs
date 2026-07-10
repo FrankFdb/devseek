@@ -22,6 +22,7 @@ execSync(
 const req = createRequire(import.meta.url);
 const {
   detectNestedFilePayloadDrift,
+  detectShellFileMutationCommand,
   detectShellFileWriteCommand,
   shouldBlockUnverifiedSourceOverwrite,
 } = req(bundlePath);
@@ -92,6 +93,22 @@ test('AgentLoop write guard: detects in-place shell editors as file writes', () 
     detectShellFileWriteCommand("perl -pi -e 's/x/y/g' docs/plan.md"),
     'docs/plan.md',
   );
+});
+
+test('AgentLoop write guard: detects terminal commands that bypass structured file mutations', () => {
+  assert.equal(
+    detectShellFileMutationCommand('rm -f src/maintenance_validation.hpp'),
+    'rm src/maintenance_validation.hpp',
+  );
+  assert.equal(
+    detectShellFileMutationCommand('cd src && mv old.hpp new.hpp'),
+    'mv new.hpp',
+  );
+  assert.equal(
+    detectShellFileMutationCommand("find generated -name '*.tmp' -delete"),
+    'find -delete',
+  );
+  assert.equal(detectShellFileMutationCommand('g++ -fsyntax-only src/types.hpp'), undefined);
 });
 
 test('AgentLoop write guard: blocks nested file payload drift into an unrelated target path', () => {

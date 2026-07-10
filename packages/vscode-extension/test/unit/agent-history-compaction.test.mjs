@@ -92,4 +92,19 @@ test('Agent history compaction: provider recovery rebuilds from task prompt and 
   assert.doesNotMatch(JSON.stringify(messages), /<read_file>/);
 });
 
+test('Agent history compaction: internal summaries are not nested into the next tool intent', () => {
+  const text = [
+    '正在修复验证脚本。',
+    '[DevSeek 已执行工具请求摘要] 意图：上一轮内部摘要不应继续嵌套',
+    '[工具结果 Round 9] old output',
+    '<replace_in_file>{"path":"/repo/verify.sh","old_str":"old","new_str":"new"}</replace_in_file>',
+  ].join('\n');
+
+  const summary = summarizeExecutedAssistantToolHistory(text);
+
+  assert.match(summary, /意图：正在修复验证脚本/);
+  assert.doesNotMatch(summary, /上一轮内部摘要/);
+  assert.doesNotMatch(summary, /old output/);
+});
+
 console.log('\nAgent history compaction tests passed.\n');

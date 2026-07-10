@@ -9,6 +9,7 @@ import {
 import { classifyShellCommandEvidence } from '../tools/shell-command-analysis';
 import { stripToolCallBlocks } from './fake-tool-parser';
 import { assessFormalProjectDocumentQuality } from './formal-project-document-quality';
+import { getMissingRequiredDeliverables } from './required-deliverable-contract';
 
 export interface CompletionTodo {
   title: string;
@@ -544,6 +545,10 @@ export function getMissingCompletionEvidence(
   }
 
   const formalProjectPrompt = `${userPrompt}\n${todos.map(t => t.title).join('\n')}`;
+  const missingDeliverables = existingWrittenFiles.length > 0
+    ? getMissingRequiredDeliverables(userPrompt, existingWrittenFiles, workspaceRoot)
+    : [];
+  missing.push(...missingDeliverables.map(deliverable => `指定交付文件：${deliverable.path}`));
   missing.push(...getFormalProjectMarkdownQualityMissingEvidence(formalProjectPrompt, existingWrittenFiles, workspaceRoot));
 
   return missing;

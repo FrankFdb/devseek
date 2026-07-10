@@ -1,8 +1,8 @@
 import type { ApplyWorkflowStatus } from '../workspace-applier';
-import type { AgentStatusEvent } from '../agent/events';
+import type { AgentStatusEvent, AgentToolActivityEvent } from '../agent/events';
 import type { ChatMessage } from '../llm/types';
 import type { TaskRunRecord } from '../app/task-history-store';
-export type { AgentEditedFileEvent, AgentEvent, AgentStatusEvent } from '../agent/events';
+export type { AgentEditedFileEvent, AgentEvent, AgentStatusEvent, AgentToolActivityEvent } from '../agent/events';
 
 export type ChatProviderMode = 'fast' | 'r1';
 
@@ -106,7 +106,7 @@ export type WebviewOutboundMessage =
   | { type: 'error'; text: string; loginRequired?: boolean }
   | { type: 'workflowStatus' } & ApplyWorkflowStatus
   | AgentStatusEvent
-  | { type: 'agentToolActivity'; activityKind: string; activityLabel: string; activityTotal?: number }
+  | AgentToolActivityEvent
   | { type: 'agentAnnouncement'; text: string }
   | { type: 'agentNotice'; kind: 'info' | 'warn' | 'error'; text: string }
   | { type: 'todoUpdate'; items: unknown[] }

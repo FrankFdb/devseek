@@ -17,6 +17,7 @@ import { cleanAgentFinalSummaryForUser } from './agentic-summary';
 import {
   detectNestedFilePayloadDrift,
   detectShellFileWriteCommand,
+  detectShellFileMutationCommand,
   isInsideWorkspacePath,
   resolveAgentToolEvidencePath,
   shouldBlockUnverifiedSourceOverwrite,
@@ -173,6 +174,26 @@ function shellTokenizeSimple(command: string): string[] {
   }
   if (current) tokens.push(current);
   return tokens;
+}
+
+function hasPollutedReplaceArgument(value: string): boolean {
+  return /[\u200B-\u200D\u2060\uFEFF]/.test(value)
+    || /<\/?\s*(?:old_?str|new_?str|oldstr|newstr|replace_in_file|TOOL_[A-Za-z0-9_]+)\b/i.test(value);
+}
+
+function formatReplaceRecoverySnapshot(content: string): string {
+  const maxChars = 4_200;
+  if (content.length <= maxChars) {
+    return `[current_file_snapshot chars=${content.length}]\n${content}`;
+  }
+  const head = content.slice(0, 2_400);
+  const tail = content.slice(-1_400);
+  return [
+    `[current_file_snapshot chars=${content.length} truncated=${content.length - head.length - tail.length}]`,
+    head,
+    '... [中间内容已省略，请用 read_file 指定行范围继续读取] ...',
+    tail,
+  ].join('\n');
 }
 
 function resolveCompilerOutputPath(command: string, workdir: string): string | undefined {
@@ -536,6 +557,7 @@ export async function executeFakeToolsForLoop(
   const terminalEvidence: TerminalEvidence[] = [];
   const evidenceRefs: EvidenceRef[] = [];
   const toolFailures: ToolFailureEvidence[] = [];
+  const replaceMissSnapshots = new Set<string>();
   let deferredCompletedTodoItems: TodoItem[] | undefined;
   let lastTodoItems: TodoItem[] | undefined;
   let summaryEmitted = false;
@@ -813,6 +835,19 @@ export async function executeFakeToolsForLoop(
           parts.push(msg);
           continue;
         }
+        const shellMutation = detectShellFileMutationCommand(command);
+        if (shellMutation) {
+          const reason = `检测到终端命令绕过结构化文件工具执行工作区变更：${shellMutation}`;
+          const msg = [
+            `[run_terminal: ${command}] 已阻止`,
+            reason,
+            '请使用 create_directory/create_file/write_file/replace_in_file/delete_file；run_terminal 仅用于查询、编译、运行和测试。',
+          ].join('\n');
+          callbacks.onToolActivity?.('terminal', `阻止终端文件变更: ${shellMutation}`);
+          recordToolFailure('run_terminal', 'terminal-guard', shellMutation, reason);
+          parts.push(msg);
+          continue;
+        }
         const outputScopeDrift = detectTaskOutputScopeDrift({
           requestPrompt: taskContext?.userPrompt,
           text: `${command}\n${workdir ?? ''}`,
@@ -985,6 +1020,82 @@ export async function executeFakeToolsForLoop(
           parts.push(`[memory_write] 失败：${(err as Error).message}`);
         }
       }
+    } else if (tool.name === 'delete_file') {
+      const rawPath = typeof tool.input.path === 'string' ? tool.input.path.trim() : '';
+      markToolCall();
+      if (!rawPath) {
+        const reason = '缺少 path，未删除任何文件。';
+        recordToolFailure('delete_file', 'write', undefined, reason);
+        parts.push(`[delete_file] 错误: ${reason}`);
+        continue;
+      }
+      const absPath = resolveAgentToolEvidencePath(rawPath, workspaceRoot, defaultWorkdir);
+      try {
+        if (!absPath || (workspaceRoot && !isInsideWorkspacePath(absPath, workspaceRoot))) {
+          const reason = '无法解析为工作区内文件路径，已阻止删除。';
+          recordToolFailure('delete_file', 'write', rawPath, reason);
+          parts.push(`[delete_file: ${rawPath}] 错误: ${reason}`);
+          continue;
+        }
+        if (!fs.existsSync(absPath)) {
+          const reason = '目标文件不存在，无法删除。请先 list_dir/read_file 确认当前路径。';
+          recordToolFailure('delete_file', 'write', rawPath, reason);
+          parts.push(`[delete_file: ${rawPath}] 错误: ${reason}`);
+          continue;
+        }
+        if (fs.statSync(absPath).isDirectory()) {
+          const reason = '目标是目录；delete_file 只允许删除已确认的单个文件。';
+          recordToolFailure('delete_file', 'write', rawPath, reason);
+          parts.push(`[delete_file: ${rawPath}] 错误: ${reason}`);
+          continue;
+        }
+        if (taskContext?.requireReadBeforeOverwrite) {
+          const guard = shouldBlockUnverifiedSourceOverwrite({
+            absPath,
+            existed: true,
+            readEvidencePaths,
+          });
+          if (guard.block) {
+            const reason = guard.reason ?? '删除既有源码前必须先读取同一路径。';
+            recordToolFailure('delete_file', 'write', rawPath, reason);
+            parts.push(`[delete_file: ${rawPath}] 错误: ${reason}`);
+            continue;
+          }
+        }
+        if (callbacks.onBeforeFileWrite) {
+          const allowed = await callbacks.onBeforeFileWrite(absPath, {
+            purpose: 'tool-write',
+            userRequested: false,
+            displayName: rawPath,
+            requestPrompt: taskContext?.userPrompt ?? '',
+          });
+          if (!allowed) {
+            parts.push(`[delete_file: ${rawPath}] 跳过（写入权限策略阻止）`);
+            continue;
+          }
+        }
+        const oldContent = fs.readFileSync(absPath, 'utf8');
+        fs.unlinkSync(absPath);
+        callbacks.onToolActivity?.('write', `删除 ${rawPath}`);
+        await callbacks.onAppliedChange({
+          path: absPath,
+          existed: true,
+          oldContent,
+          newContent: '',
+        });
+        writtenFiles.push({
+          path: absPath,
+          basename: nodePath.basename(absPath),
+          linesAdded: 0,
+          linesRemoved: oldContent ? oldContent.split('\n').length : 0,
+          action: 'delete',
+        });
+        parts.push(`[delete_file: ${rawPath}] 已删除 ${absPath}`);
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        recordToolFailure('delete_file', 'write', rawPath, reason);
+        parts.push(`[delete_file: ${rawPath}] 错误: ${reason}`);
+      }
     } else if (tool.name === 'replace_in_file') {
       const input = tool.input as Record<string, unknown>;
       const rawPath = typeof input.path === 'string' ? input.path.trim() : '';
@@ -993,11 +1104,21 @@ export async function executeFakeToolsForLoop(
       const replaceAll = input.replaceAll === true;
       markToolCall();
       if (!rawPath) {
-        parts.push(`[replace_in_file] 错误: 缺少 path，未修改任何文件。`);
+        const reason = '缺少 path，未修改任何文件。';
+        recordToolFailure('replace_in_file', 'replace', undefined, reason);
+        parts.push(`[replace_in_file] 错误: ${reason}`);
         continue;
       }
       if (!oldStr) {
-        parts.push(`[replace_in_file: ${rawPath}] 错误: old_str 为空，不能执行不确定替换。请先 read_file 后提供精确原文。`);
+        const reason = 'old_str 为空，不能执行不确定替换。请先 read_file 后提供精确原文。';
+        recordToolFailure('replace_in_file', 'replace', rawPath, reason);
+        parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);
+        continue;
+      }
+      if (hasPollutedReplaceArgument(oldStr) || hasPollutedReplaceArgument(newStr)) {
+        const reason = 'old_str/new_str 混入工具标签或不可见控制字符，无法作为可信补丁执行。请基于最新文件快照重新生成结构化替换参数。';
+        recordToolFailure('replace_in_file', 'replace', rawPath, reason);
+        parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);
         continue;
       }
       if (oldStr === newStr) {
@@ -1024,7 +1145,12 @@ export async function executeFakeToolsForLoop(
         if (!oldContent.includes(oldStr)) {
           const reason = 'old_str 未在当前文件中找到。请重新 read_file 读取最新内容后再精确替换。';
           recordToolFailure('replace_in_file', 'replace', rawPath, reason);
-          parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}`);
+          const snapshotKey = nodePath.normalize(absPath);
+          const snapshot = replaceMissSnapshots.has(snapshotKey)
+            ? '当前文件快照已在本轮前一个失败结果中提供，请不要继续猜测 old_str。'
+            : formatReplaceRecoverySnapshot(oldContent);
+          replaceMissSnapshots.add(snapshotKey);
+          parts.push(`[replace_in_file: ${rawPath}] 错误: ${reason}\n${snapshot}`);
           continue;
         }
         const nextContent = replaceAll
@@ -1036,7 +1162,7 @@ export async function executeFakeToolsForLoop(
         recordToolFailure('replace_in_file', 'replace', rawPath, msg);
         parts.push(`[replace_in_file: ${rawPath}] 错误: ${msg}`);
       }
-    } else if (agentToolExecutor.isFileWrite(tool) && callbacks.onAppliedChange) {
+    } else if (agentToolExecutor.isFileWrite(tool)) {
       // Unified file create/overwrite — works for new files AND full rewrites.
       // Matching Copilot's #edit/editFiles for the agentic free-explore loop.
       const fileWrites = normalizeFileWriteInputs(tool.input);

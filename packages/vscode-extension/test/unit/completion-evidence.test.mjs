@@ -62,6 +62,32 @@ test('completion evidence: explicit fix request requires code edit evidence', ()
   );
 });
 
+test('completion evidence: an explicitly named deliverable cannot be replaced by a different file', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-required-deliverable-'));
+  try {
+    const required = path.join(root, 'docs', 'result.txt');
+    const alternative = path.join(root, 'docs', 'alternative.txt');
+    mkdirSync(path.dirname(required), { recursive: true });
+    writeFileSync(required, 'pre-existing\n');
+    writeFileSync(alternative, 'new output\n');
+    const deliverablePrompt = `请生成结果。必须创建输出文件：${required}`;
+    const alternativeEvidence = [{ path: alternative, basename: 'alternative.txt', linesAdded: 1, linesRemoved: 0, action: 'create' }];
+
+    assert.deepEqual(
+      getMissingCompletionEvidence(deliverablePrompt, [], alternativeEvidence, [], [], root),
+      [`指定交付文件：${required}`],
+    );
+
+    const requiredEvidence = [{ path: required, basename: 'result.txt', linesAdded: 1, linesRemoved: 0, action: 'modify' }];
+    assert.deepEqual(
+      getMissingCompletionEvidence(deliverablePrompt, [], requiredEvidence, [], [], root),
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('completion evidence: read-only analysis does not require code edit evidence', () => {
   assert.equal(
     requiresCodeArtifactForEvidence('只分析 packages/vscode-extension/src/app/workflow-service.ts 的问题，不要修改代码'),

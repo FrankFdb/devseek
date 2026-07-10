@@ -34,6 +34,7 @@ artifacts/
 backups/
 code/
 aircraft/
+docs/testing/programming-agent-benchmark-reports/
 probe_mermaid*.js
 packages/vscode-extension/test/unit/*.bundle.cjs
 packages/bridge/test/*.bundle.cjs

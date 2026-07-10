@@ -63,8 +63,8 @@ export class QualityGateService {
         status: 'pass',
         summary: `QualityGate 通过：${validation.command || '自动验证'} 已通过。`,
         evidenceRefs: [ref],
-        risks: [],
-        alternativeChecks: [],
+        risks: validation.risks || [],
+        alternativeChecks: validation.alternativeChecks || [],
         requiredActions: [],
         ...(input.acceptedRisk ? { acceptedRisk: input.acceptedRisk } : {}),
       };

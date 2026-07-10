@@ -107,6 +107,24 @@ export function detectShellFileWriteCommand(cmd: string): string | undefined {
   return undefined;
 }
 
+export function detectShellFileMutationCommand(cmd: string): string | undefined {
+  const directMutation = /(?:^|[;&|]\s*)(?:sudo\s+)?(rm|mv|cp|touch|mkdir|rmdir|truncate|ln|chmod|chown)\b([^;&|]*)/i.exec(cmd);
+  if (directMutation) {
+    const operation = directMutation[1].toLowerCase();
+    const target = lastShellArgument(directMutation[2] || '');
+    return target ? `${operation} ${target}` : operation;
+  }
+  const gitMutation = /(?:^|[;&|]\s*)git\s+(rm|mv)\b([^;&|]*)/i.exec(cmd);
+  if (gitMutation) {
+    const operation = `git ${gitMutation[1].toLowerCase()}`;
+    const target = lastShellArgument(gitMutation[2] || '');
+    return target ? `${operation} ${target}` : operation;
+  }
+  if (/(?:^|[;&|]\s*)find\b[^;&|]*\s-delete(?:\s|$)/i.test(cmd)) return 'find -delete';
+  if (/\bxargs\b[^;&|]*\b(?:rm|mv|cp|touch|truncate|chmod|chown)\b/i.test(cmd)) return 'xargs file mutation';
+  return undefined;
+}
+
 export function makeTerminalCmdSignature(cmd: string): string {
   return cmd.trim().replace(/\s+/g, ' ').slice(0, 120);
 }
@@ -201,4 +219,10 @@ function getLoopBreakFeedback(cmd: string): string {
     return '编译命令多次失败。请先用 read_file 确认源文件内容，内容有误则先用 create_file 修正，再尝试编译。';
   }
   return '相同命令已重复多次没有进展，请改变策略：直接调用 create_file 写入目标文件的完整内容。';
+}
+
+function lastShellArgument(raw: string): string {
+  const tokens = raw.trim().match(/(?:"[^"]*"|'[^']*'|\S+)/g) || [];
+  const target = [...tokens].reverse().find(token => token !== '--' && !token.startsWith('-')) || '';
+  return cleanShellTarget(target);
 }

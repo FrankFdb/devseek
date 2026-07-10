@@ -186,15 +186,23 @@ export function buildWorkspacePathContext(
     scopedDirs.push('code');
   }
 
-  let preferredClean = dedupeStringList(preferredDirs).filter(d => !isInternalDir(d));
-  let scopedClean = dedupeStringList(scopedDirs).filter(d => !isInternalDir(d));
+  let preferredClean = pruneStructuredArtifactContainerDirs(
+    dedupeStringList(preferredDirs).filter(d => !isInternalDir(d)),
+  );
+  let scopedClean = pruneStructuredArtifactContainerDirs(
+    dedupeStringList(scopedDirs).filter(d => !isInternalDir(d)),
+  );
 
   if (preferredClean.length === 0 && options.fallbackAbsoluteDirs && options.fallbackAbsoluteDirs.length > 0) {
     const fallbackDirs = options.fallbackAbsoluteDirs
       .map((dir) => sourceScopeFromFallbackDir(dir, root))
       .filter((dir): dir is string => !!dir && dir !== '.');
-    preferredClean = dedupeStringList([...preferredClean, ...fallbackDirs]).filter(d => !isInternalDir(d));
-    scopedClean = dedupeStringList([...scopedClean, ...fallbackDirs]).filter(d => !isInternalDir(d));
+    preferredClean = pruneStructuredArtifactContainerDirs(
+      dedupeStringList([...preferredClean, ...fallbackDirs]).filter(d => !isInternalDir(d)),
+    );
+    scopedClean = pruneStructuredArtifactContainerDirs(
+      dedupeStringList([...scopedClean, ...fallbackDirs]).filter(d => !isInternalDir(d)),
+    );
   }
 
   const compileLikePrompt = /编译|构建|运行|recompile|compile|build|run/i.test(text);
@@ -207,6 +215,44 @@ export function buildWorkspacePathContext(
     strictScope: compileLikePrompt && scopedClean.length > 0,
     forceCodeDir,
   };
+}
+
+function pruneStructuredArtifactContainerDirs(dirs: string[]): string[] {
+  const normalized = dirs.map(dir => dir.replace(/\\/g, '/').replace(/\/+$/g, ''));
+  const set = new Set(normalized);
+  return normalized.filter((dir) => !isStructuredArtifactContainerDir(dir, set));
+}
+
+function isStructuredArtifactContainerDir(dir: string, allDirs: ReadonlySet<string>): boolean {
+  if (!dir || dir === '.') return false;
+  const directChildren = ['docs', 'doc', 'src', 'source']
+    .filter(child => allDirs.has(`${dir}/${child}`));
+  const hasDocChild = directChildren.some(child => child === 'docs' || child === 'doc');
+  const hasSourceChild = directChildren.some(child => child === 'src' || child === 'source');
+  return hasDocChild && hasSourceChild;
+}
+
+function selectStructuredArtifactLeafDir(dirs: readonly string[], baseName: string): string | undefined {
+  const normalized = dedupeStringList(
+    dirs.map(dir => dir.replace(/\\/g, '/').replace(/\/+$/g, '')).filter(Boolean),
+  );
+  const set = new Set(normalized);
+  const isMarkdown = /\.(?:md|markdown)$/i.test(baseName);
+  const isCodeFile = isCodeLikeFileName(baseName);
+  if (!isMarkdown && !isCodeFile) return undefined;
+
+  for (const dir of normalized) {
+    const leaf = nodePath.posix.basename(dir).toLowerCase();
+    const parent = nodePath.posix.dirname(dir);
+    if (!parent || parent === '.') continue;
+    const hasDocs = set.has(`${parent}/docs`) || set.has(`${parent}/doc`);
+    const hasSrc = set.has(`${parent}/src`) || set.has(`${parent}/source`);
+    if (!hasDocs || !hasSrc) continue;
+    if (isMarkdown && (leaf === 'docs' || leaf === 'doc')) return dir;
+    if (isCodeFile && (leaf === 'src' || leaf === 'source')) return dir;
+  }
+
+  return undefined;
 }
 
 export function resolveGeneratedArtifactPathForPrompt(
@@ -455,6 +501,10 @@ export function resolveArtifactPathInWorkspace(path: string, root: vscode.Uri, c
 
   const isDocDir = (dir: string) => /(^|\/)docs?(?:\/|$)/i.test(dir);
   const isCodeFile = isCodeLikeFileName(baseName);
+  const structuredLeafDir = selectStructuredArtifactLeafDir(ctx.preferredDirs, baseName);
+  if (structuredLeafDir) {
+    return nodePath.posix.join(structuredLeafDir, baseName);
+  }
 
   for (const dir of ctx.preferredDirs) {
     if (isCodeFile && isDocDir(dir)) continue;
@@ -492,6 +542,11 @@ export function alignRelPathToScope(relPath: string, root: vscode.Uri, ctx: Work
   if (anchored) return anchored;
 
   if (clean.includes('/')) return clean;
+
+  const structuredLeafDir = selectStructuredArtifactLeafDir(scoped, base);
+  if (structuredLeafDir) {
+    return nodePath.posix.join(structuredLeafDir, base);
+  }
 
   for (const dir of scoped) {
     const candidate = nodePath.posix.join(dir, base);

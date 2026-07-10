@@ -54,6 +54,7 @@ export const AGENT_TOOL_DEFINITIONS: Record<string, AgentToolDefinition> = {
   write_file: { name: 'write_file', kind: 'edit', risk: 'medium', allowedModes: EDIT_MODES, activityKind: 'write', mutatesWorkspace: true, schema: schema(['path', 'content'], { path: { type: 'string' }, content: { type: 'string' } }) },
   replace_file: { name: 'replace_file', kind: 'edit', risk: 'medium', allowedModes: EDIT_MODES, activityKind: 'write', mutatesWorkspace: true, schema: schema(['path', 'content'], { path: { type: 'string' }, content: { type: 'string' } }) },
   replace_in_file: { name: 'replace_in_file', kind: 'edit', risk: 'medium', allowedModes: EDIT_MODES, activityKind: 'write', mutatesWorkspace: true, schema: schema(['path', 'old_str'], { path: { type: 'string' }, old_str: { type: 'string' }, new_str: { type: 'string' }, replaceAll: { type: 'boolean' } }) },
+  delete_file: { name: 'delete_file', kind: 'edit', risk: 'high', allowedModes: EDIT_MODES, activityKind: 'write', mutatesWorkspace: true, schema: schema(['path'], { path: { type: 'string' } }) },
   run_terminal: { name: 'run_terminal', kind: 'terminal', risk: 'high', allowedModes: RUN_MODES, activityKind: 'terminal', requiresTerminal: true, schema: schema(['command'], { command: { type: 'string' }, workdir: { type: 'string' } }) },
   run_vscode_command: { name: 'run_vscode_command', kind: 'vscode', risk: 'high', allowedModes: DESTRUCTIVE_MODES, activityKind: 'vscode-command', schema: schema(['command'], { command: { type: 'string' }, args: { type: 'array' } }) },
   vscode_listCodeUsages: { name: 'vscode_listCodeUsages', kind: 'read', risk: 'low', allowedModes: READ_MODES, activityKind: 'search', schema: schema(['symbol'], { symbol: { type: 'string' }, path: { type: 'string' } }) },
@@ -204,7 +205,8 @@ export function getToolActivity(tool: FakeTool): AgentToolActivity | null {
     case 'create_file':
     case 'write_file':
     case 'replace_file':
-    case 'replace_in_file': {
+    case 'replace_in_file':
+    case 'delete_file': {
       const p = String(inp.path ?? inp.filePath ?? '').trim();
       return { kind: 'write', label: p };
     }

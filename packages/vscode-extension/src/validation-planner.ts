@@ -18,6 +18,7 @@ export type CppValidationPolicy = 'conservative' | 'balanced' | 'aggressive';
 
 export interface CppValidationOptions {
   run?: boolean;
+  includeRoots?: string[];
 }
 
 export interface CppDependencyClosureIssue {
@@ -30,6 +31,7 @@ export interface CppDependencyClosureIssue {
 export interface CppDependencyClosureReport {
   ok: boolean;
   targetDir?: string;
+  includeRoots: string[];
   checkedFiles: string[];
   issues: CppDependencyClosureIssue[];
 }
@@ -80,6 +82,10 @@ export function planCppValidation(
   const targetRelDir = [...dirCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || 'code';
   const targetDir = nodePath.join(rootFsPath, targetRelDir);
   if (!fsNode.existsSync(targetDir)) return null;
+  const includeRoots = options.includeRoots?.length
+    ? uniqueAbsPaths(options.includeRoots.map(root => nodePath.resolve(root)))
+    : discoverCppProjectIncludeRoots(targetDir, rootFsPath, fsNode);
+  const includeFlags = buildCppIncludeFlags(includeRoots);
 
   const cmakeFile = nodePath.join(targetDir, 'CMakeLists.txt');
   if (fsNode.existsSync(cmakeFile)) {
@@ -138,7 +144,7 @@ export function planCppValidation(
       const exeOut = getCppAutoExecutablePath(targetDir);
       const exeDir = getDevSeekBuildDir(targetDir);
       return {
-        command: `mkdir -p ${q(exeDir)} && g++ ${linkSet.map(q).join(' ')} -o ${q(exeOut)} && ${q(exeOut)}`,
+        command: `mkdir -p ${q(exeDir)} && g++ ${joinCommandParts(includeFlags, linkSet.map(q).join(' '), '-o', q(exeOut))} && ${q(exeOut)}`,
         cwd: targetDir,
         mode: 'compile-run',
         reason: options.run ? 'multi-main-single-entry-run-requested' : 'multi-main-aggressive-single-entry-run',
@@ -146,7 +152,7 @@ export function planCppValidation(
     }
 
     return {
-      command: buildCompileOnlyCommand(compileTargets, targetDir),
+      command: buildCompileOnlyCommand(compileTargets, targetDir, includeRoots),
       cwd: targetDir,
       mode: 'compile-only',
       reason: 'multi-main-minimal-compile-only',
@@ -161,7 +167,7 @@ export function planCppValidation(
 
     if (options.run || (policy === 'aggressive' && changedSources.length > 0)) {
       return {
-        command: `mkdir -p ${q(exeDir)} && g++ ${compileSet.map(q).join(' ')} -o ${q(exeOut)} && ${q(exeOut)}`,
+        command: `mkdir -p ${q(exeDir)} && g++ ${joinCommandParts(includeFlags, compileSet.map(q).join(' '), '-o', q(exeOut))} && ${q(exeOut)}`,
         cwd: targetDir,
         mode: 'compile-run',
         reason: options.run ? 'single-main-run-requested' : 'single-main-aggressive-run',
@@ -170,7 +176,7 @@ export function planCppValidation(
 
     if (policy === 'balanced' && changedSources.length > 0) {
       return {
-        command: `mkdir -p ${q(exeDir)} && g++ ${compileSet.map(q).join(' ')} -o ${q(exeOut)}`,
+        command: `mkdir -p ${q(exeDir)} && g++ ${joinCommandParts(includeFlags, compileSet.map(q).join(' '), '-o', q(exeOut))}`,
         cwd: targetDir,
         mode: 'compile-link',
         reason: 'single-main-link-check-no-run',
@@ -180,7 +186,7 @@ export function planCppValidation(
     const compileTargets = fallbackCompileTargets.length > 0 ? fallbackCompileTargets : compileSet;
     if (compileTargets.length > 0) {
       return {
-        command: buildCompileOnlyCommand(compileTargets, targetDir),
+        command: buildCompileOnlyCommand(compileTargets, targetDir, includeRoots),
         cwd: targetDir,
         mode: 'compile-only',
         reason: changedHeaders.length > 0 ? 'header-change-minimal-compile-only' : 'single-main-safe-compile-only',
@@ -191,7 +197,7 @@ export function planCppValidation(
   // Case 3: library-like (no main) or unresolved shape.
   const fallbackTargets = fallbackCompileTargets.length > 0 ? fallbackCompileTargets : sourceFiles.slice(0, 4);
   return {
-    command: buildCompileOnlyCommand(fallbackTargets, targetDir),
+    command: buildCompileOnlyCommand(fallbackTargets, targetDir, includeRoots),
     cwd: targetDir,
     mode: 'compile-only',
     reason: 'fallback-minimal-compile-only',
@@ -206,8 +212,9 @@ export function inspectCppDependencyClosure(
   const cppRelated = changedPaths.filter((p) => CPP_RELATED_RE.test(p));
   const targetDir = resolveDominantCppTargetDir(cppRelated, rootFsPath, fsNode);
   if (!targetDir) {
-    return { ok: true, checkedFiles: [], issues: [] };
+    return { ok: true, includeRoots: [], checkedFiles: [], issues: [] };
   }
+  const includeRoots = discoverCppProjectIncludeRoots(targetDir, rootFsPath, fsNode);
 
   const fileNames = safeReadDir(targetDir, fsNode);
   const checkedFiles = fileNames
@@ -218,13 +225,14 @@ export function inspectCppDependencyClosure(
   for (const file of checkedFiles) {
     const content = readText(file, fsNode);
     if (!content) continue;
-    issues.push(...findMissingLocalIncludes(file, content, targetDir, rootFsPath, fsNode));
+    issues.push(...findMissingLocalIncludes(file, content, includeRoots, fsNode));
     issues.push(...findMissingStandardIncludes(file, content));
   }
 
   return {
     ok: issues.length === 0,
     targetDir,
+    includeRoots,
     checkedFiles,
     issues: uniqueDependencyIssues(issues),
   };
@@ -303,9 +311,48 @@ function hasMainFunction(absPath: string, fsNode: CppValidationFsNode): boolean 
   }
 }
 
-function buildCompileOnlyCommand(targets: string[], targetDir: string): string {
+function buildCompileOnlyCommand(targets: string[], targetDir: string, includeRoots: string[]): string {
   const objDir = getCppCompileOnlyDir(targetDir);
-  return `mkdir -p ${q(objDir)} && ${targets.map((abs, idx) => `g++ -fsyntax-only ${q(abs)} && g++ -c ${q(abs)} -o ${q(nodePath.join(objDir, `obj_${idx}.o`))}`).join(' && ')}`;
+  const includeFlags = buildCppIncludeFlags(includeRoots);
+  return `mkdir -p ${q(objDir)} && ${targets.map((abs, idx) => {
+    const source = q(abs);
+    return `g++ ${joinCommandParts(includeFlags, '-fsyntax-only', source)} && g++ ${joinCommandParts(includeFlags, '-c', source, '-o', q(nodePath.join(objDir, `obj_${idx}.o`)))}`;
+  }).join(' && ')}`;
+}
+
+export function discoverCppProjectIncludeRoots(
+  targetDir: string,
+  rootFsPath: string,
+  fsNode: Pick<CppValidationFsNode, 'existsSync'>,
+): string[] {
+  const workspaceRoot = nodePath.resolve(rootFsPath);
+  const roots: string[] = [];
+  let cursor = nodePath.resolve(targetDir);
+  while (isPathWithin(workspaceRoot, cursor)) {
+    if (fsNode.existsSync(cursor)) roots.push(cursor);
+    const includeDir = nodePath.join(cursor, 'include');
+    if (fsNode.existsSync(includeDir)) roots.push(includeDir);
+    if (cursor === workspaceRoot) break;
+    const parent = nodePath.dirname(cursor);
+    if (parent === cursor) break;
+    cursor = parent;
+  }
+  const workspaceInclude = nodePath.join(workspaceRoot, 'include');
+  if (fsNode.existsSync(workspaceInclude)) roots.push(workspaceInclude);
+  return uniqueAbsPaths(roots);
+}
+
+function buildCppIncludeFlags(includeRoots: string[]): string {
+  return includeRoots.map(root => `-I ${q(root)}`).join(' ');
+}
+
+function joinCommandParts(...parts: string[]): string {
+  return parts.map(part => String(part || '').trim()).filter(Boolean).join(' ');
+}
+
+function isPathWithin(root: string, candidate: string): boolean {
+  const relative = nodePath.relative(root, candidate);
+  return relative === '' || (!relative.startsWith('..' + nodePath.sep) && relative !== '..' && !nodePath.isAbsolute(relative));
 }
 
 function buildRunFirstExistingExecutableCommand(candidates: string[], fallbackCommand: string): string {
@@ -358,8 +405,7 @@ function readText(absPath: string, fsNode: CppValidationFsNode): string {
 function findMissingLocalIncludes(
   file: string,
   content: string,
-  targetDir: string,
-  rootFsPath: string,
+  includeRoots: string[],
   fsNode: CppValidationFsNode,
 ): CppDependencyClosureIssue[] {
   const issues: CppDependencyClosureIssue[] = [];
@@ -370,8 +416,7 @@ function findMissingLocalIncludes(
     if (!include) continue;
     const candidates = [
       nodePath.resolve(nodePath.dirname(file), include),
-      nodePath.resolve(targetDir, include),
-      nodePath.resolve(rootFsPath, include),
+      ...includeRoots.map(root => nodePath.resolve(root, include)),
     ];
     if (candidates.some(candidate => fsNode.existsSync(candidate))) continue;
     issues.push({

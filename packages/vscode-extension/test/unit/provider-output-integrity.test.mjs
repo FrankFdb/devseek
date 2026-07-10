@@ -36,6 +36,38 @@ test('provider output integrity: classifies executable tool calls before settlem
   assert.equal(result.toolCallCount, 1);
 });
 
+test('provider output integrity: classifies real generic TOOL envelopes before settlement', () => {
+  const result = classifyProviderOutputIntegrity([
+    '现在开始调查。',
+    '<TOOL>read_file {"path":"/tmp/app/main.cpp"}</TOOL>',
+    '<TOOL>grep_search {"pattern":"TunnelTransport","path":"/tmp/app"}</TOOL>',
+  ].join(''));
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 2);
+});
+
+test('provider output integrity: rejects incomplete generic TOOL envelopes as truncated', () => {
+  const result = classifyProviderOutputIntegrity(
+    '现在读取实现。<TOOL>read_file {"path":"/tmp/app/main.cpp"',
+  );
+
+  assert.equal(result.kind, 'truncated');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 0);
+});
+
+test('provider output integrity: rejects an incomplete generic TOOL tail after a complete call', () => {
+  const result = classifyProviderOutputIntegrity([
+    '<TOOL>read_file {"path":"/tmp/app/main.cpp"}</TOOL>',
+    '<TOOL>grep_search {"pattern":"TunnelTransport"',
+  ].join(''));
+
+  assert.equal(result.kind, 'truncated');
+  assert.equal(result.okForSettlement, false);
+});
+
 test('provider output integrity: accepts complete tool call followed by provider footer', () => {
   const result = classifyProviderOutputIntegrity([
     '让我修复这些问题：',

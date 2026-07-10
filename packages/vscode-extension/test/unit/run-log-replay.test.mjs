@@ -130,7 +130,7 @@ test('run log replay detects path drift, legacy build dirs, protocol contaminati
   }
 });
 
-test('run log replay detects malformed bracket tool blocks', () => {
+test('run log replay accepts deterministically recoverable terminal tool blocks', () => {
   const { dir, logPath } = writeLog([
     {
       ts: '2026-07-02T05:06:00.000Z',
@@ -148,6 +148,32 @@ test('run log replay detects malformed bracket tool blocks', () => {
 
   try {
     const report = replayRunLog(logPath);
+    assert.equal(report.terminalCommands, 1);
+    assert.equal(report.issues.some(issue => issue.kind === 'malformed-tool-block'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay detects unrecoverable bracket tool blocks', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-02T05:06:00.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'bad-tool-json',
+      data: {
+        name: 'extension.response.raw',
+        content: '[TOOL:run_terminal] {"command":}',
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    assert.equal(report.terminalCommands, 0);
     assert.equal(report.issues.some(issue => issue.kind === 'malformed-tool-block'), true);
   } finally {
     rmSync(dir, { recursive: true, force: true });

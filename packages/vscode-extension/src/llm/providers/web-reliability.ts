@@ -1,4 +1,5 @@
 import { listAgentToolNames } from '../../agent/tool-registry';
+import { hasIncompleteFakeToolCallProtocol } from '../../agent/fake-tool-parser';
 import {
   looksLikeProviderLoginGate,
   looksLikeProviderRateLimitGate,
@@ -209,6 +210,7 @@ function hasIncompleteToolBlock(text: string): boolean {
 }
 
 function hasIncompleteModelToolProtocol(text: string): boolean {
+  if (hasIncompleteFakeToolCallProtocol(text)) return true;
   if (REACT_ACTION_ONLY_TAIL_RE.test(text)) return true;
   if (REACT_ACTION_INPUT_EMPTY_TAIL_RE.test(text)) return true;
   if (CALLING_TOOL_ONLY_TAIL_RE.test(text)) return true;

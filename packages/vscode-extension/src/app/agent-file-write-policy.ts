@@ -169,7 +169,7 @@ export function detectIsolatedArtifactWriteScope(
 
   return {
     required: true,
-    allowedRoots: [...roots].sort((a, b) => a.length - b.length),
+    allowedRoots: pruneStructuredArtifactContainerRoots([...roots].sort((a, b) => a.length - b.length)),
   };
 }
 
@@ -193,4 +193,17 @@ function coerceAllowedOutputRoot(value: string | undefined, workspaceRoot?: stri
   const ext = nodePath.extname(absPath).toLowerCase();
   if (ext === '.md' || ext === '.markdown') return nodePath.dirname(absPath);
   return absPath;
+}
+
+function pruneStructuredArtifactContainerRoots(roots: string[]): string[] {
+  const normalized = roots.map(root => nodePath.normalize(root).replace(/[\\/]+$/g, ''));
+  const set = new Set(normalized);
+  return normalized.filter(root => !isStructuredArtifactContainerRoot(root, set));
+}
+
+function isStructuredArtifactContainerRoot(root: string, allRoots: ReadonlySet<string>): boolean {
+  if (!root) return false;
+  const hasDocs = allRoots.has(nodePath.join(root, 'docs')) || allRoots.has(nodePath.join(root, 'doc'));
+  const hasSrc = allRoots.has(nodePath.join(root, 'src')) || allRoots.has(nodePath.join(root, 'source'));
+  return hasDocs && hasSrc;
 }

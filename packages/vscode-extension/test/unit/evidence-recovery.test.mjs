@@ -76,6 +76,21 @@ test('Evidence recovery: markdown verification uses file-check todo wording', ()
   assert.equal(todos[1].status, 'not-started');
 });
 
+test('Evidence recovery: formal existing-project implementation gets staged engineering todos', () => {
+  const todos = inferInitialAgenticTodos(
+    '添加：代码实现，创建于：/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance目录下。参考 license 模块、遥控器、主控和平台通讯，生成设计 md 文档并实现代码，完成自闭环验证。',
+  );
+
+  assert.deepEqual(todos.map(todo => todo.title), [
+    '项目调查：事实矩阵、通讯链路和集成锚点',
+    '设计交付：接口文档、原代码修改清单和实现边界',
+    '实现：创建/更新代码文件并嵌入既有边界',
+    '验证：编译/测试/静态审计与 QualityGate 自闭环',
+  ]);
+  assert.equal(todos[0].status, 'in-progress');
+  assert.equal(todos[3].status, 'not-started');
+});
+
 test('Evidence recovery: missing file-check evidence reopens verification todo', () => {
   const todos = [
     { id: 1, title: '创建 docs/manual-phase6-quality.md 文件', status: 'completed' },

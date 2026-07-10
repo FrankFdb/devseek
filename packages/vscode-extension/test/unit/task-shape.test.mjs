@@ -40,12 +40,16 @@ test('TaskShape: existing formal project implementation requires integration anc
   assert.match(guidance, /既有大项目\/正式项目内实现/);
   assert.match(guidance, /主入口\/调度链路/);
   assert.match(guidance, /线程或事件模型/);
+  assert.match(guidance, /项目调查 → 设计\/接口与原代码修改清单 → 代码实现 → 编译\/测试\/QualityGate 验证/);
+  assert.match(guidance, /源项目事实矩阵\/调查证据/);
   assert.match(guidance, /源项目事实矩阵/);
+  assert.match(guidance, /协议数值/);
   assert.match(guidance, /面向对端的接口文档/);
   assert.match(guidance, /request JSON 示例/);
   assert.match(guidance, /response JSON 示例/);
   assert.match(guidance, /```json/);
   assert.match(guidance, /原有代码修改清单/);
+  assert.match(guidance, /静态审计通过/);
   assert.match(guidance, /不要创建脱离主流程的孤岛模块/);
 });
 

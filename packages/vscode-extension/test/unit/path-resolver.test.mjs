@@ -395,4 +395,43 @@ test('path-resolver: current single-file prompt rejects stale history artifact n
   }
 });
 
+test('path-resolver: structured timestamp artifact scope routes bare docs and source files to leaf dirs', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-structured-artifact-'));
+  try {
+    const artifactRoot = path.join(root, 'src/oam/src/lifting/zc_maintenance/202607110103');
+    const docsDir = path.join(artifactRoot, 'docs');
+    const srcDir = path.join(artifactRoot, 'src');
+    mkdirSync(docsDir, { recursive: true });
+    mkdirSync(srcDir, { recursive: true });
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+
+    const prompt = [
+      `本次测试所有新增设计文档、实施文档、代码和验证脚本必须放在：${artifactRoot}`,
+      `- 设计/实施 Markdown 文档放入：${docsDir}`,
+      `- 新增代码、测试代码和验证脚本放入：${srcDir}`,
+      `- 必须创建主设计 Markdown 文档：${path.join(docsDir, 'warranty-maintenance-implementation.md')}`,
+    ].join('\n');
+
+    const sourceWrite = resolveWorkspaceWritePath('warranty_types.hpp', {
+      requestPrompt: prompt,
+      content: '#pragma once\n#include <string>\nstruct WarrantyStatus {};\n',
+      workspaceRootFsPath: root,
+      defaultWorkdir: root,
+    });
+    assert.equal(sourceWrite.relPath, 'src/oam/src/lifting/zc_maintenance/202607110103/src/warranty_types.hpp');
+    assert.equal(sourceWrite.absPath, path.join(srcDir, 'warranty_types.hpp'));
+
+    const docWrite = resolveWorkspaceWritePath('warranty-maintenance-implementation.md', {
+      requestPrompt: prompt,
+      content: '# Warranty Maintenance Implementation\n',
+      workspaceRootFsPath: root,
+      defaultWorkdir: root,
+    });
+    assert.equal(docWrite.relPath, 'src/oam/src/lifting/zc_maintenance/202607110103/docs/warranty-maintenance-implementation.md');
+    assert.equal(docWrite.absPath, path.join(docsDir, 'warranty-maintenance-implementation.md'));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 console.log('\nShared path resolver tests passed.\n');

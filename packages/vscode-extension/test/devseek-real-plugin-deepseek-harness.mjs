@@ -879,15 +879,18 @@ function assessStageArtifactQuality(input) {
   const formal = input.formalProjectQuality || {};
   const codeQuality = input.expectedCodeDirQuality || { ok: true, reasons: [], hasValidationHook: false };
   const promptText = String(input.promptText || '');
+  const formalSignal = (key) => Object.prototype.hasOwnProperty.call(formal, key)
+    ? Boolean(formal[key])
+    : Boolean(formal.ok);
   const codeEvidenceRequired = Boolean(input.codeEvidenceRequired);
   const validationRequired = codeEvidenceRequired
     || /(?:自闭环|测试|验证|单体|单元|编译|运行|self.?loop|test|verify|validation|compile|build)/i.test(promptText);
   const stages = [];
 
   const contextReasons = [
-    formal.required && !formal.hasSourceFactMatrix ? 'missing-source-fact-matrix' : '',
-    formal.required && !formal.hasConcreteProtocolFacts ? 'missing-concrete-protocol-facts' : '',
-    formal.required && formal.requiresLicenseReference && !formal.hasProjectWideCommunicationChain ? 'missing-project-wide-communication-chain' : '',
+    formal.required && !formalSignal('hasSourceFactMatrix') ? 'missing-source-fact-matrix' : '',
+    formal.required && !formalSignal('hasConcreteProtocolFacts') ? 'missing-concrete-protocol-facts' : '',
+    formal.required && formal.requiresLicenseReference && !formalSignal('hasProjectWideCommunicationChain') ? 'missing-project-wide-communication-chain' : '',
   ].filter(Boolean);
   stages.push({
     id: 'context-investigation',
@@ -898,11 +901,11 @@ function assessStageArtifactQuality(input) {
   });
 
   const designReasons = [
-    formal.required && formal.requiresRemoteControllerInterface && !formal.hasRemoteControllerInterfaceDoc ? 'missing-remote-controller-interface-doc' : '',
-    formal.required && formal.requiresRemoteControllerInterface && !formal.hasInterfaceRequestExample ? 'missing-interface-request-example' : '',
-    formal.required && formal.requiresRemoteControllerInterface && !formal.hasInterfaceResponseExample ? 'missing-interface-response-example' : '',
-    formal.required && formal.requiresRemoteControllerInterface && !formal.hasInterfaceFencedJsonExample ? 'missing-fenced-json-interface-example' : '',
-    formal.required && formal.requiresModificationPlan && !formal.hasExistingCodeModificationPlan ? 'missing-existing-code-modification-plan' : '',
+    formal.required && formal.requiresRemoteControllerInterface && !formalSignal('hasRemoteControllerInterfaceDoc') ? 'missing-remote-controller-interface-doc' : '',
+    formal.required && formal.requiresRemoteControllerInterface && !formalSignal('hasInterfaceRequestExample') ? 'missing-interface-request-example' : '',
+    formal.required && formal.requiresRemoteControllerInterface && !formalSignal('hasInterfaceResponseExample') ? 'missing-interface-response-example' : '',
+    formal.required && formal.requiresRemoteControllerInterface && !formalSignal('hasInterfaceFencedJsonExample') ? 'missing-fenced-json-interface-example' : '',
+    formal.required && formal.requiresModificationPlan && !formalSignal('hasExistingCodeModificationPlan') ? 'missing-existing-code-modification-plan' : '',
   ].filter(Boolean);
   stages.push({
     id: 'design-interface',

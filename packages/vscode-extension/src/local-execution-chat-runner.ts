@@ -28,6 +28,7 @@ import { postWebviewMessage } from './ui/webview-event-adapter';
 import type { ToolPolicy } from './app/permission-service';
 import type { AppliedChangeRecord, ApplyWorkflowStatus } from './workspace-applier';
 import { askRepairExhaustedAction, requestManualFixGuidance } from './app/repair-exhaustion-interaction';
+import { AgentDisplayPresenter } from './app/agent-display-presenter';
 
 export interface LocalExecutionRouteChatOptions {
   prompt: string;
@@ -253,22 +254,23 @@ async function runAgentRepairRound(
     return false;
   }
 
-  input.webview.postMessage({
+  const repairDisplayPresenter = new AgentDisplayPresenter();
+  input.webview.postMessage(repairDisplayPresenter.presentStatus({
     type: 'agentStatus',
     phase: 'plan',
     state: 'started',
     title: '本地执行失败，进入 Agent 修复',
     detail: '参考 Claude Code / Codex 的闭环策略：失败输出 → 读/搜源码 → 修改 → 重跑验证。',
     taskTotal: repairTasks.length,
-  });
-  input.webview.postMessage({
+  }));
+  input.webview.postMessage(repairDisplayPresenter.presentStatus({
     type: 'agentStatus',
     phase: 'plan',
     state: 'completed',
     title: `已生成 ${repairTasks.length} 个修复子任务`,
     detail: repairTasks.map((t, i) => `${i + 1}. [${t.action}] ${getAgentTaskDisplayTarget(t)} — ${t.desc}`).join('\n'),
     taskTotal: repairTasks.length,
-  });
+  }));
 
   const repairLoop = await runAgentLoop(
     repairTasks,
@@ -290,6 +292,7 @@ async function runAgentRepairRound(
       mcpToolRefs: input.mcpToolRefs,
       onMcpToolCall: input.onMcpToolCall,
       signal: input.signal,
+      displayPresenter: repairDisplayPresenter,
     }),
     undefined,
     0,

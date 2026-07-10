@@ -20,6 +20,7 @@ export interface VerificationPlannerInput {
   rootFsPath?: string;
   requestPrompt?: string;
   cppValidationPolicy?: CppValidationPolicy;
+  runCpp?: boolean;
   fsNode?: VerificationPlannerFs;
 }
 
@@ -131,8 +132,10 @@ export class VerificationPlanner {
       });
     }
 
+    const shellScripts = changedPaths.filter(isShellScriptValidationPath);
     const cppRelated = changedPaths.filter(isCppRelatedValidationPath);
     if (cppRelated.length > 0) {
+      const runCpp = input.runCpp ?? shouldRunCppValidation(input.requestPrompt || '');
       const closure = inspectCppDependencyClosure(
         cppRelated,
         rootFsPath,
@@ -158,20 +161,78 @@ export class VerificationPlanner {
         rootFsPath,
         input.fsNode ?? this.defaultFsNode,
         input.cppValidationPolicy ?? 'conservative',
-        { run: shouldRunCppValidation(input.requestPrompt || '') },
+        { run: runCpp },
       );
       if (!cppPlan) {
+        if (shouldRunIsolatedCppArtifactStaticAudit(cppRelated, input.requestPrompt || '')) {
+          const shellValidation = buildShellScriptValidationCommand(
+            shellScripts,
+            rootFsPath,
+            input.requestPrompt || '',
+            input.fsNode ?? this.defaultFsNode,
+          );
+          return commandPlan({
+            command: joinValidationCommands([
+              shellValidation.command,
+              buildCppStaticArtifactAuditCommand(cppRelated),
+            ]),
+            cwd: rootFsPath,
+            timeoutMs: shellValidation.runsScript ? CPP_RUN_VALIDATION_TIMEOUT_MS : FILE_CHECK_VALIDATION_TIMEOUT_MS,
+            mode: shellValidation.runsScript ? 'compile-run' : 'file-check',
+            reason: shellValidation.runsScript
+              ? 'validation-script-and-cpp-static-artifact-audit'
+              : shellValidation.command
+                ? 'shell-syntax-and-cpp-static-artifact-audit'
+                : 'cpp-static-artifact-audit',
+            risks: [
+              '未识别到可执行的项目级 C/C++ 构建入口；本次仅对隔离交付目录中的源码草案做静态审计。',
+              '静态审计不能证明正式主控工程的链接、运行时行为或硬件通讯链路正确。',
+            ],
+            alternativeChecks: [
+              '在正式工程中接入 CMake/Make/构建脚本后重新运行项目级编译或单元测试。',
+              '人工复核新增源码是否已在设计文档中映射到既有主入口、调度、通讯和接口边界。',
+            ],
+          });
+        }
         return blockedPlan('cpp-validation-plan-unavailable', rootFsPath, [
           '未能识别可执行的 C/C++ 构建或编译入口。',
         ]);
       }
 
+      const shellValidation = buildShellScriptValidationCommand(
+        shellScripts,
+        rootFsPath,
+        input.requestPrompt || '',
+        input.fsNode ?? this.defaultFsNode,
+      );
       return commandPlan({
-        command: cppPlan.command,
+        command: joinValidationCommands([shellValidation.command, cppPlan.command]),
         cwd: cppPlan.cwd,
-        timeoutMs: timeoutForCppPlan(cppPlan.mode, shouldRunCppValidation(input.requestPrompt || '')),
-        mode: cppPlan.mode,
-        reason: cppPlan.reason,
+        timeoutMs: shellValidation.runsScript
+          ? Math.max(CPP_RUN_VALIDATION_TIMEOUT_MS, timeoutForCppPlan(cppPlan.mode, runCpp))
+          : timeoutForCppPlan(cppPlan.mode, runCpp),
+        mode: shellValidation.runsScript ? 'compile-run' : cppPlan.mode,
+        reason: shellValidation.runsScript
+          ? `validation-script-and-${cppPlan.reason}`
+          : shellValidation.command
+            ? `shell-syntax-and-${cppPlan.reason}`
+            : cppPlan.reason,
+      });
+    }
+
+    if (shellScripts.length > 0) {
+      const shellValidation = buildShellScriptValidationCommand(
+        shellScripts,
+        rootFsPath,
+        input.requestPrompt || '',
+        input.fsNode ?? this.defaultFsNode,
+      );
+      return commandPlan({
+        command: shellValidation.command,
+        cwd: rootFsPath,
+        timeoutMs: shellValidation.runsScript ? CPP_RUN_VALIDATION_TIMEOUT_MS : FILE_CHECK_VALIDATION_TIMEOUT_MS,
+        mode: shellValidation.runsScript ? 'compile-run' : 'file-check',
+        reason: shellValidation.runsScript ? 'shell-validation-script-run' : 'shell-script-syntax-check',
       });
     }
 
@@ -224,11 +285,14 @@ export function buildExtensionTypeCheckCommand(packageRelativePaths: string[]): 
   return `npx tsc ${EXTENSION_TS_TYPECHECK_FLAGS} ${targets}`.trim();
 }
 
-function commandPlan(input: Omit<VerificationCommandPlan, 'kind' | 'risks' | 'alternativeChecks'>): VerificationCommandPlan {
+function commandPlan(
+  input: Omit<VerificationCommandPlan, 'kind' | 'risks' | 'alternativeChecks'>
+    & Partial<Pick<VerificationCommandPlan, 'risks' | 'alternativeChecks'>>,
+): VerificationCommandPlan {
   return {
     kind: 'command',
-    risks: [],
-    alternativeChecks: [],
+    risks: input.risks ?? [],
+    alternativeChecks: input.alternativeChecks ?? [],
     ...input,
   };
 }
@@ -286,10 +350,111 @@ function isCodeValidationPath(relPath: string): boolean {
     || nodePath.posix.basename(relPath.replace(/\\/g, '/')) === 'CMakeLists.txt';
 }
 
+function isShellScriptValidationPath(relPath: string): boolean {
+  return /\.(?:sh|bash)$/i.test(relPath.replace(/\\/g, '/'));
+}
+
 function isCppRelatedValidationPath(relPath: string): boolean {
   const normalized = relPath.replace(/\\/g, '/');
   return /\.(cpp|cc|cxx|c|h|hpp)$/i.test(normalized)
     || nodePath.posix.basename(normalized) === 'CMakeLists.txt';
+}
+
+function shouldRunIsolatedCppArtifactStaticAudit(changedPaths: string[], prompt: string): boolean {
+  const text = String(prompt || '');
+  if (!/(?:既有|现有|原项目|大项目|正式项目|主控|平台|遥控器|参考.+模块|\/src\/|工程)/i.test(text)) {
+    return false;
+  }
+  if (!/(?:隔离|时间戳|仿真|测试输出|不要修改正式源码|docs\s*和\s*src|docs\/.*src\/|src\s*和\s*docs)/i.test(text)) {
+    return false;
+  }
+  return changedPaths.length > 0 && changedPaths.every((relPath) => {
+    const normalized = relPath.replace(/\\/g, '/');
+    return /\/\d{10,14}\/src\//.test('/' + normalized);
+  });
+}
+
+function buildShellScriptSyntaxCheckCommand(changedPaths: string[], rootFsPath: string): string {
+  return [...new Set(changedPaths.filter(isShellScriptValidationPath))]
+    .slice(0, 8)
+    .map((relPath) => {
+      const scriptPath = nodePath.isAbsolute(relPath) ? relPath : nodePath.join(rootFsPath, relPath);
+      const quoted = shellQuote(scriptPath);
+      return `test -s ${quoted} && bash -n ${quoted}`;
+    })
+    .join(' && ');
+}
+
+function buildShellScriptValidationCommand(
+  changedPaths: string[],
+  rootFsPath: string,
+  requestPrompt: string,
+  fsNode: VerificationPlannerFs,
+): { command: string; runsScript: boolean } {
+  const scripts = [...new Set(changedPaths.filter(isShellScriptValidationPath))].slice(0, 8);
+  const syntaxCommand = buildShellScriptSyntaxCheckCommand(scripts, rootFsPath);
+  const runnableScripts = shouldRunGeneratedValidationScripts(requestPrompt)
+    ? scripts.filter((relPath) => {
+      if (!isRunnableValidationScriptPath(relPath)) return false;
+      const scriptPath = nodePath.isAbsolute(relPath) ? relPath : nodePath.join(rootFsPath, relPath);
+      return isSubstantiveValidationScript(scriptPath, fsNode);
+    }).slice(0, 4)
+    : [];
+  const runCommand = runnableScripts
+    .map((relPath) => {
+      const scriptPath = nodePath.isAbsolute(relPath) ? relPath : nodePath.join(rootFsPath, relPath);
+      return `bash ${shellQuote(scriptPath)}`;
+    })
+    .join(' && ');
+  return {
+    command: joinValidationCommands([syntaxCommand, runCommand]),
+    runsScript: runnableScripts.length > 0,
+  };
+}
+
+function isSubstantiveValidationScript(scriptPath: string, fsNode: VerificationPlannerFs): boolean {
+  let content = '';
+  try {
+    content = fsNode.readFileSync(scriptPath, 'utf8');
+  } catch {
+    return false;
+  }
+  const executableText = content
+    .split(/\r?\n/)
+    .map(line => line.replace(/\s+#.*$/, '').trim())
+    .filter(line => line && !line.startsWith('#'))
+    .join('\n');
+  const propagatesFailure = /(?:^|\n)\s*set\s+-[^\n]*e|\bset\s+-o\s+errexit\b|\|\|\s*(?:exit|return)\s+[1-9]|\bexit\s+[1-9]\b/i.test(executableText);
+  const runsVerification = /(?:^|[;&|\n]\s*)(?:cmake|ctest|make|ninja|meson|bazel|g\+\+|gcc|clang\+\+|clang|pytest|python\s+-m\s+(?:pytest|unittest)|npm\s+(?:test|run\s+test)|pnpm\s+(?:test|run\s+test)|yarn\s+test|cargo\s+test|go\s+test|mvn\s+test|gradle\s+test|\.\/[A-Za-z0-9_./-]+)(?:\s|$)/im.test(executableText);
+  return propagatesFailure && runsVerification;
+}
+
+function shouldRunGeneratedValidationScripts(prompt: string): boolean {
+  return /(?:自闭环|运行.{0,12}(?:验证|测试|脚本)|执行.{0,12}(?:验证|测试|脚本)|run.{0,12}(?:verification|validation|tests?|script)|execute.{0,12}(?:verification|validation|tests?|script))/i.test(prompt || '');
+}
+
+function isRunnableValidationScriptPath(filePath: string): boolean {
+  const basename = nodePath.posix.basename(filePath.replace(/\\/g, '/'));
+  return /(?:^|[_-])(?:verify|verification|validate|validation|test|tests|check)(?:[_-]|\.)/i.test(basename)
+    || /^(?:verify|validate|test|check)[A-Za-z0-9_-]*\.(?:sh|bash)$/i.test(basename);
+}
+
+function joinValidationCommands(commands: string[]): string {
+  return commands.filter(Boolean).join(' && ');
+}
+
+function buildCppStaticArtifactAuditCommand(changedPaths: string[]): string {
+  const files = [...new Set(changedPaths.filter(isCppRelatedValidationPath))]
+    .slice(0, 12)
+    .map((relPath) => shellQuote(relPath));
+  const fileList = files.join(' ');
+  const forbiddenPattern = shellQuote('\\b(int|auto)[[:space:]]+main[[:space:]]*\\(|TODO:[[:space:]]*implement|Calling:|<TOOL_|待确认|待分配|待定|TBD|FIXME');
+  const structurePattern = shellQuote('#pragma once|#include|namespace[[:space:]]+[A-Za-z_]|class[[:space:]]+[A-Za-z_]|struct[[:space:]]+[A-Za-z_]|enum([[:space:]]+class)?[[:space:]]+[A-Za-z_]|static_assert|assert[[:space:]]*\\(');
+  return [
+    `for f in ${fileList}; do test -s "$f"; done`,
+    `! grep -nE ${forbiddenPattern} -- ${fileList}`,
+    `grep -nE ${structurePattern} -- ${fileList} | head -n 20`,
+  ].join(' && ');
 }
 
 function shellQuote(value: string): string {

@@ -84,6 +84,25 @@ export const TOOL_PROTOCOL_SAMPLES = [
     expectedToolNames: ['run_terminal'],
   },
   {
+    id: 'generic-tool-envelope',
+    text: [
+      'I will inspect the project.',
+      '<TOOL>read_file {"path":"/tmp/project/main.cpp"}</TOOL>',
+      '<TOOL>list_dir {"path":"/tmp/project"}</TOOL>',
+    ].join(''),
+    expectedVisible: 'I will inspect the project.',
+    expectedToolNames: ['read_file', 'list_dir'],
+  },
+  {
+    id: 'escaped-generic-tool-envelope',
+    text: [
+      'I will search the project.',
+      '&lt;TOOL&gt;grep_search {&quot;pattern&quot;:&quot;TunnelTransport&quot;,&quot;path&quot;:&quot;/tmp/project&quot;}&lt;/TOOL&gt;',
+    ].join(''),
+    expectedVisible: 'I will search the project.',
+    expectedToolNames: ['grep_search'],
+  },
+  {
     id: 'function-style-tools',
     text: [
       'I will locate the source files.',
@@ -143,6 +162,12 @@ export const TOOL_PROTOCOL_STREAMING_TAIL_SAMPLES = [
     id: 'incomplete-tool-call-envelope',
     text: 'I will inspect the title.<TOOL',
     expectedVisible: 'I will inspect the title.',
+    expectedToolNames: [],
+  },
+  {
+    id: 'incomplete-generic-tool-envelope',
+    text: 'I will inspect the file.<TOOL>read_file {"path":"/tmp/project/main.cpp"',
+    expectedVisible: 'I will inspect the file.',
     expectedToolNames: [],
   },
   {

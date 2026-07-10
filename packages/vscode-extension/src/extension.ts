@@ -618,6 +618,9 @@ async function runChat(
       agentRunContext?.recordAgentStatus(msg);
       webview.postMessage(agentDisplayPresenter.presentStatus(msg));
     };
+    const postAgentToolActivity = (kind: string, label: string) => {
+      webview.postMessage(agentDisplayPresenter.presentToolActivity(kind, label));
+    };
     const agentWorkspaceRoot = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath)
       ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
       ?? process.cwd();
@@ -707,7 +710,7 @@ async function runChat(
             postWebviewMessage(webview, { type: 'agentAnnouncement', text });
           },
           onToolActivity: (kind, label) => {
-            webview.postMessage({ type: 'agentToolActivity', activityKind: kind, activityLabel: label });
+            postAgentToolActivity(kind, label);
           },
           onTodoUpdate: (items) => { webview.postMessage({ type: 'todoUpdate', items }); },
           onUserSteer: consumeAgentSteer,
@@ -977,7 +980,7 @@ async function runChat(
           onResponseMeta: async (_raw) => { /* suppressed in agent mode */ },
           // G-tool: AI performed read/search/list — show activity chip in working area
           onToolActivity: (kind, label) => {
-            webview.postMessage({ type: 'agentToolActivity', activityKind: kind, activityLabel: label });
+            postAgentToolActivity(kind, label);
           },
           // L-2: AI called manage_todo_list — push to webview todo widget
           onTodoUpdate: (items) => { webview.postMessage({ type: 'todoUpdate', items }); },

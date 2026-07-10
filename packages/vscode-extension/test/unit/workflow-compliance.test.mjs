@@ -119,11 +119,14 @@ test('§1 Agent loop: AGENTIC_ROUNDS_AUTOPILOT constant exists', () => {
 
 test('§1 Agent loop: repeated blocking tool failures are stateful', () => {
   const code = src('src/agent/agentic-loop.ts');
+  const recovery = src('src/agent/tool-failure-recovery.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
-  assertContains(code, 'AGENTIC_REPEATED_TOOL_FAILURE_WARN_COUNT', 'agent loop must warn on repeated blocking tool failures');
-  assertContains(code, 'AGENTIC_REPEATED_TOOL_FAILURE_STOP_COUNT', 'agent loop must stop no-progress repeated tool failures');
-  assertContains(code, 'repeatedToolFailures', 'agent loop must carry repeated tool failure state across rounds');
-  assertContains(code, 'buildRepeatedToolFailureFeedback', 'agent loop must tell the model how to change strategy');
+  assertContains(code, 'ToolFailureRecoveryLedger', 'agent loop must delegate repeated failure settlement to one ledger');
+  assertContains(code, 'toolFailureRecovery.recordRound', 'agent loop must settle failures once per provider round');
+  assertContains(recovery, 'DEFAULT_WARN_AFTER_ROUNDS', 'recovery ledger must warn on repeated blocking failures');
+  assertContains(recovery, 'DEFAULT_STOP_AFTER_ROUNDS', 'recovery ledger must stop no-progress repeated failures');
+  assertContains(recovery, 'current.occurrences > 1', 'same-response duplicate failures must be grouped');
+  assertContains(recovery, 'buildRepeatedToolFailureFeedback', 'recovery ledger must tell the model how to change strategy');
   assertContains(toolLoop, 'toolFailures?: ToolFailureEvidence[]', 'tool loop must return structured blocking failure evidence');
 });
 
@@ -733,11 +736,14 @@ test('Agent planning: task shape guidance is injected before code is written', (
 
 test('Agent progress UI: user-facing digest is primary and tool details stay collapsible', () => {
   const runtime = webviewRuntime();
-  assertContains(runtime, 'buildAgentProgressDigest', 'agent progress must summarize current stage for users');
+  const presenter = src('src/app/agent-display-presenter.ts');
+  assertContains(presenter, 'buildProgressPresentation', 'application presenter must summarize current stage from Agent facts');
+  assertContains(presenter, '下一步：', 'application presenter must tell the user what happens next');
+  assertContains(runtime, 'applyPresentedAgentProgress', 'webview must render the supplied progress presentation');
   assertContains(runtime, 'aut-progress-digest', 'agent progress container must render a user-facing stage digest');
-  assertContains(runtime, 'updateAgentProgressDigest', 'tool events must update the stage digest instead of only raw tool rows');
-  assertContains(runtime, '下一步：', 'progress digest must tell the user what happens next');
+  assertContains(runtime, 'data-presented-progress', 'progress summaries must stay separate from execution detail labels');
   assertContains(runtime, 'aut-step-details', 'raw tool details must remain collapsible for debugging');
+  assertDoesNotContain(runtime, 'buildAgentProgressDigest', 'webview surface must not infer business progress from raw labels');
 });
 
 test('§7 Final summary: done refreshes visible prose with files and validation', () => {
@@ -839,7 +845,7 @@ test('Agent loop: file tools and validation use ground-truth outcomes', () => {
   assertContains(code, 'buildValidationRepairContext', 'agent validation failures must build a repair context');
   assertContains(code, 'makeValidationRepairTask', 'agent validation failures must create an internal repair task');
   assertContains(code, '第 ${repairRound} 轮自动修复验证失败', 'agent validation failures must enter an automatic repair loop');
-  assertContains(code, 'analyzeTerminalEvidence(runCmd, output, compilePlan.cwd)', 'runtime validation must parse terminal exit status');
+  assertContains(code, 'analyzeTerminalEvidence(runCmd, output, runPlan.cwd)', 'runtime validation must parse terminal exit status from the shared run plan');
   assertContains(code, 'run-failed', 'non-zero runtime exits must be reported as failed validation');
 });
 
@@ -1004,7 +1010,7 @@ test('Agentic loop: markdown fallback writes C++ code blocks as real artifacts',
     'markdown fallback must scan cpp/cxx/cc code fences, not only c fences',
   );
   assertContains(code, "defaultCodeArtifactBasename(userPrompt)}${ext}", 'fallback path must use prompt-aware default basename and extension');
-  assertContains(agenticLoop, '创建/修改文件必须调用 create_file 工具并提供完整 content', 'agent prompt must forbid natural-language-only file creation');
+  assertContains(agenticLoop, '创建/修改/删除文件必须调用 create_file/write_file/replace_in_file/delete_file', 'agent prompt must forbid natural-language-only file mutations');
 });
 
 test('Agentic loop: final summary never exposes backend tool transcripts', () => {
@@ -1438,6 +1444,10 @@ test('Architecture: ValidationService owns automatic validation execution', () =
   assertContains(applier, 'new QualityGateService()', 'workspace applier must evaluate quality gate');
   assertContains(service, 'runShell', 'validation service must own shell execution');
   assertContains(applier, 'new ValidationService()', 'workspace applier must delegate validation to service');
+  const agentLoop = src('src/agent-loop.ts');
+  assertContains(agentLoop, 'new ValidationService()', 'main agent loop must delegate compile validation to the shared service');
+  assertContains(agentLoop, 'new VerificationPlanner()', 'interactive agent runs must reuse the shared verification planner');
+  assert.doesNotMatch(agentLoop, /planLocalExecution\(/, 'main agent validation must not bypass the shared verification planner');
   assert.doesNotMatch(applier, /planCppValidation|child_process|runShell|runCppAutoValidation/, 'workspace applier must not own validation execution internals');
 });
 

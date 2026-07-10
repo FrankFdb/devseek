@@ -533,9 +533,44 @@ var DSML_INCOMPLETE_TAIL_REGEX = new RegExp(
 var TOOL_CALL_OPEN_PATTERN = '(?:<|&lt;)\\s*TOOL_CALL\\s*(?:>|&gt;)';
 var TOOL_CALL_CLOSE_PATTERN = '(?:<\\/|&lt;\\/)\\s*TOOL_CALL\\s*(?:>|&gt;)';
 var TOOL_CALL_INCOMPLETE_TAIL_REGEX = /(?:<|&lt;)\s*(?:T|TO|TOO|TOOL|TOOL_|TOOL_C|TOOL_CA|TOOL_CAL|TOOL_CALL)?$/i;
+var GENERIC_TOOL_ENVELOPE_OPEN_PATTERN = '(?:<|&lt;)\\s*TOOL\\s*(?:>|&gt;)';
+var GENERIC_TOOL_ENVELOPE_CLOSE_PATTERN = '(?:<\\/|&lt;\\/)\\s*TOOL\\s*(?:>|&gt;)';
+var GENERIC_TOOL_ENVELOPE_PREFIX_TAIL_REGEX = /(?:<|&lt;)\s*(?:T(?:O(?:O(?:L)?)?)?)?$/i;
 
 function makeDsmlStartRegexInText() {
   return new RegExp(DSML_OPEN_PREFIX_PATTERN + DSML_MARKER_PATTERN + '\\s*' + DSML_START_NAMES_PATTERN + '\\b', 'gi');
+}
+
+function makeGenericToolEnvelopeOpenRegexInText() {
+  return new RegExp(GENERIC_TOOL_ENVELOPE_OPEN_PATTERN, 'gi');
+}
+
+function makeGenericToolEnvelopeBlockRegexInText() {
+  return new RegExp(
+    GENERIC_TOOL_ENVELOPE_OPEN_PATTERN + '[\\s\\S]*?' + GENERIC_TOOL_ENVELOPE_CLOSE_PATTERN,
+    'gi'
+  );
+}
+
+function findNextGenericToolEnvelopeStartInText(text, startAt) {
+  var raw = String(text || '');
+  var openRe = makeGenericToolEnvelopeOpenRegexInText();
+  openRe.lastIndex = startAt || 0;
+  var open = openRe.exec(raw);
+  var tail = (startAt || 0) === 0 ? GENERIC_TOOL_ENVELOPE_PREFIX_TAIL_REGEX.exec(raw) : null;
+  if (!open) return tail ? tail.index : -1;
+  return tail ? Math.min(open.index, tail.index) : open.index;
+}
+
+function stripGenericToolEnvelopeBlocksFromText(text) {
+  var cleaned = String(text || '').replace(makeGenericToolEnvelopeBlockRegexInText(), '');
+  var incompleteStart = findNextGenericToolEnvelopeStartInText(cleaned, 0);
+  if (incompleteStart >= 0) cleaned = cleaned.slice(0, incompleteStart);
+  return cleaned.replace(GENERIC_TOOL_ENVELOPE_PREFIX_TAIL_REGEX, '').trimEnd();
+}
+
+function containsGenericToolEnvelopeTranscript(text) {
+  return findNextGenericToolEnvelopeStartInText(String(text || ''), 0) >= 0;
 }
 
 function makeDsmlCloseRegexInText(name) {
@@ -761,6 +796,9 @@ function stripToolCallBlocks(text) {
     i++;
   }
   var beforeToolCallEnvelopeCleanup = result;
+  result = stripGenericToolEnvelopeBlocksFromText(result);
+  removedInternalBlock = removedInternalBlock || result !== beforeToolCallEnvelopeCleanup;
+  beforeToolCallEnvelopeCleanup = result;
   result = stripToolCallEnvelopeBlocksFromText(result);
   removedInternalBlock = removedInternalBlock || result !== beforeToolCallEnvelopeCleanup;
   var beforeReactCleanup = result;
@@ -855,6 +893,7 @@ function renderAgentMarkdown(text) {
 
 function containsAgentInternalTranscript(text) {
   return containsDsmlToolTranscript(text)
+    || containsGenericToolEnvelopeTranscript(text)
     || containsToolCallEnvelopeTranscript(text)
     || containsReactActionTranscript(text)
     || containsAgentRoutingMarkerLeak(text)

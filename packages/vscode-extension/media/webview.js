@@ -1710,7 +1710,7 @@ function getSpinnerWord(category) {
 }
 /** G-tool: activity chip state */
 var agentActivityRowId = null;
-var agentActivityCounts = { read: 0, search: 0, list: 0, terminal: 0, write: 0, web: 0, memory: 0, todo: 0, prose: 0 };/** Tracks which taskIndex owns the current agentExecContainer (-1 = plan container) */
+var agentActivityCounts = createAgentActivityCounts();/** Tracks which taskIndex owns the current agentExecContainer (-1 = plan container) */
 var agentActivitySeen = new Set();
 var agentCurrentTaskIndex = -1;
 /** Short label for the current task (file + brief desc), shown in finalized header */
@@ -2019,12 +2019,12 @@ function handleTodoUpdate(items) {
       var activeContainers = document.querySelectorAll('.aut-container:not([data-done])');
       for (var ci = 0; ci < activeContainers.length; ci++) {
         var autLblEl = activeContainers[ci].querySelector('.aut-label');
-        if (autLblEl) autLblEl.textContent = truncated;
+        if (autLblEl && !activeContainers[ci].hasAttribute('data-presented-progress')) autLblEl.textContent = truncated;
       }
       // Also update agentExecContainer directly as a second safety path
       if (agentExecContainer && agentExecContainer.isConnected) {
         var autLblEl2 = agentExecContainer.querySelector('.aut-label');
-        if (autLblEl2) autLblEl2.textContent = truncated;
+        if (autLblEl2 && !agentExecContainer.hasAttribute('data-presented-progress')) autLblEl2.textContent = truncated;
       }
     }
   }
@@ -2130,7 +2130,7 @@ function buildFinishedLabel(isFailed, container) {
   // Count tool activity steps for appending step info
   var stepCount = 0;
   if (container) {
-    stepCount = container.querySelectorAll('.aut-step').length;
+    stepCount = container.querySelectorAll('.aut-step:not([data-progress-narration]), .aut-row, .term-output-details, .ran-command-row').length;
   }
   if (!stepCount) {
     stepCount = Object.keys(agentActivityCounts).reduce(function(s, k) { return s + agentActivityCounts[k]; }, 0);
@@ -2139,6 +2139,11 @@ function buildFinishedLabel(isFailed, container) {
   var containerLabel = sanitizeAgentTaskLabelValue(container
     ? (container.getAttribute('data-finished-label') || container.getAttribute('data-running-label') || '')
     : '');
+  if (container && container.hasAttribute('data-presented-progress')) {
+    var activitySummary = formatAgentActivitySummary(collectAgentContainerActivityCounts(container));
+    if (activitySummary) return (isFailed ? '失败：' : '') + activitySummary + stepSuffix;
+    return isFailed ? '执行明细失败' : '执行明细';
+  }
   if (isFailed) {
     if (agentLastErrorTitle) return agentLastErrorTitle + stepSuffix;
     var failedTodoLabel = findFailedTodoLabel();
@@ -2224,6 +2229,7 @@ function finalizeExecContainer(container, isFailed) {
     autDets.removeAttribute('open');
     autDets.setAttribute('data-done', '1');
     if (isFailed) autDets.setAttribute('data-failed', '1');
+    if (!agentContainerHasExecutionDetails(container)) autDets.hidden = true;
   }
   // Stop any row-level loading icons that were left in started state. The final
   // thinking box must not keep a spinner after all tasks are complete.
@@ -2272,28 +2278,6 @@ function finalizeActiveAgentWorkingContainers(isFailed) {
   if (agentExecContainer && agentExecContainer.isConnected && !agentExecContainer.hasAttribute('data-done')) {
     finalizeExecContainer(agentExecContainer, isFailed);
   }
-}
-
-function isTaskIndexFailed(taskIndex) {
-  var idx = Number(taskIndex) - 1;
-  if (idx >= 0 && idx < agentTodos.length && agentTodos[idx].state === 'failed') return true;
-  return (agentToolTodos || []).some(function(t) {
-    return t && Number(t.id) === Number(taskIndex) && t.status === 'failed';
-  });
-}
-
-function isAgentContainerFailed(container) {
-  if (!container) return false;
-  if (container.hasAttribute('data-failed')) return true;
-  if (container.querySelector('.state-failed,[data-failed="1"]')) return true;
-  return false;
-}
-
-function finalizePreviousAgentContainer(container, previousTaskIndex) {
-  finalizeExecContainer(
-    container,
-    isAgentContainerFailed(container) || isTaskIndexFailed(previousTaskIndex),
-  );
 }
 
 function hasAgentFailureState() {
@@ -2367,7 +2351,7 @@ function createExecStepsList(container) {
     sw.id = 'aut-activity-' + Date.now();
     dets.insertBefore(sw, rows);
     agentActivityRowId = sw.id;
-    agentActivityCounts = { read: 0, search: 0, list: 0, terminal: 0, write: 0, web: 0, memory: 0, todo: 0, prose: 0 };
+    agentActivityCounts = createAgentActivityCounts();
     agentActivitySeen = new Set();
   }
 }
@@ -2375,28 +2359,88 @@ function createExecStepsList(container) {
 function ensureAgentProgressDigest(container) {
   if (!container) return null;
   var dets = container.querySelector('.aut-details');
-  var rows = container.querySelector('.aut-rows');
-  if (!dets || !rows) return null;
-  var digest = dets.querySelector('.aut-progress-digest');
+  if (!dets) return null;
+  var digest = container.querySelector('.aut-progress-digest');
   if (digest) return digest;
   digest = document.createElement('div');
   digest.className = 'aut-progress-digest';
   digest.innerHTML = '<div class="aut-progress-title"></div><div class="aut-progress-detail"></div>';
-  dets.insertBefore(digest, rows);
+  container.insertBefore(digest, dets);
   return digest;
 }
 
 function updateAgentProgressDigest(kind, label, state) {
   if (!agentExecContainer || !agentExecContainer.isConnected || agentExecContainer.hasAttribute('data-done')) return;
+  if (agentExecContainer.hasAttribute('data-presented-progress')) return;
   var digest = ensureAgentProgressDigest(agentExecContainer);
   if (!digest) return;
-  var data = buildAgentProgressDigest(agentActivityCounts, kind || '', label || '', agentCurrentTaskLabel || agentExecContainer.getAttribute('data-running-label') || '', state || 'started');
   var titleEl = digest.querySelector('.aut-progress-title');
   var detailEl = digest.querySelector('.aut-progress-detail');
-  if (titleEl) titleEl.textContent = data.title || '正在推进任务';
-  if (detailEl) detailEl.textContent = data.detail || '';
+  if (titleEl) titleEl.textContent = '正在推进任务';
+  if (detailEl) detailEl.textContent = '';
   var spinLbl = agentExecContainer.querySelector('.aut-spinner-label');
-  if (spinLbl && data.title) spinLbl.textContent = data.title;
+  if (spinLbl) spinLbl.textContent = '正在推进任务';
+}
+
+function resetAgentActivityStageState() {
+  agentActivityRowId = null;
+  agentTaskCards.clear();
+  agentActivityCounts = createAgentActivityCounts();
+  agentActivitySeen = new Set();
+}
+
+function applyPresentedAgentProgress(msg) {
+  var stageKey = String((msg && msg.progressStage) || '').trim();
+  var title = String((msg && msg.progressTitle) || '').trim();
+  var detail = String((msg && msg.progressDetail) || '').trim();
+  var owner = msg && msg.type === 'agentToolActivity' ? 'activity' : 'status';
+  if (!stageKey || !title) return null;
+
+  var current = agentExecContainer;
+  var currentStage = current && current.isConnected && !current.hasAttribute('data-done')
+    ? (current.getAttribute('data-progress-stage') || '')
+    : '';
+  var currentTitle = current && current.isConnected && !current.hasAttribute('data-done')
+    ? (current.getAttribute('data-progress-title') || '')
+    : '';
+  var currentOwner = current && current.isConnected && !current.hasAttribute('data-done')
+    ? (current.getAttribute('data-progress-owner') || '')
+    : '';
+  var transition = decideAgentProgressTransition(
+    currentStage,
+    currentTitle,
+    currentOwner,
+    stageKey,
+    title,
+    owner,
+  );
+  if (current && current.isConnected && !current.hasAttribute('data-done')
+      && transition === 'new-group') {
+    finalizeExecContainer(current, false);
+    agentExecContainer = null;
+    resetAgentActivityStageState();
+  }
+
+  var container = ensureAgentProgressContainer(title);
+  container.setAttribute('data-presented-progress', '1');
+  container.setAttribute('data-progress-stage', stageKey);
+  if (transition === 'keep-summary') {
+    return container;
+  }
+  container.setAttribute('data-progress-title', title);
+  container.setAttribute('data-progress-owner', owner);
+  var digest = ensureAgentProgressDigest(container);
+  if (digest) {
+    var titleEl = digest.querySelector('.aut-progress-title');
+    var detailEl = digest.querySelector('.aut-progress-detail');
+    if (titleEl) titleEl.textContent = title;
+    if (detailEl) detailEl.textContent = detail;
+    digest.setAttribute('data-progress-state', String(msg.progressState || 'started'));
+  }
+  setAgentContainerLabel(container, title, true);
+  var spinLbl = container.querySelector('.aut-spinner-label');
+  if (spinLbl) spinLbl.textContent = title;
+  return container;
 }
 
 function setAgentContainerLabel(container, label, persistForDone) {
@@ -2404,7 +2448,11 @@ function setAgentContainerLabel(container, label, persistForDone) {
   var normalized = String(label).replace(/\s+/g, ' ').trim();
   if (!normalized) return;
   var activeLabel = container.querySelector('.aut-label');
-  if (activeLabel) activeLabel.textContent = normalized;
+  if (activeLabel) {
+    activeLabel.textContent = container.hasAttribute('data-presented-progress')
+      ? '执行明细'
+      : normalized;
+  }
   container.setAttribute('data-running-label', normalized);
   if (persistForDone !== false) container.setAttribute('data-finished-label', normalized);
 }
@@ -2444,46 +2492,51 @@ function activeAgentContainerHasProcessRows(container) {
   return !!container.querySelector('.aut-step, .aut-row, .term-output-details, .ran-command-row');
 }
 
-function prepareAgentToolActivityContainer(kind, label) {
-  var nextLabel = inferAgentProgressStageTitle(kind, label, agentCurrentTaskLabel);
+function agentContainerHasExecutionDetails(container) {
+  if (!container) return false;
+  return !!container.querySelector('.aut-step:not([data-progress-narration]), .aut-row, .term-output-details, .ran-command-row, .aut-analysis-body');
+}
+
+function createAgentActivityCounts() {
+  return { read: 0, search: 0, list: 0, terminal: 0, write: 0, web: 0, diagnostics: 0, mcp: 0, 'vscode-command': 0, memory: 0, todo: 0, prose: 0 };
+}
+
+function collectAgentContainerActivityCounts(container) {
+  var counts = createAgentActivityCounts();
+  if (!container) return counts;
+  var activityNodes = container.querySelectorAll('[data-agent-activity-kind]');
+  for (var i = 0; i < activityNodes.length; i++) {
+    var kind = activityNodes[i].getAttribute('data-agent-activity-kind') || '';
+    if (counts[kind] !== undefined) counts[kind]++;
+  }
+  if (activityNodes.length === 0 && container === agentExecContainer) {
+    Object.keys(agentActivityCounts).forEach(function(kind) { counts[kind] = agentActivityCounts[kind]; });
+  }
+  return counts;
+}
+
+function prepareAgentToolActivityContainer(kind, label, presentedStageKey) {
+  var nextLabel = agentExecContainer && agentExecContainer.getAttribute('data-running-label') || '正在推进任务';
   var nextToolKey = sanitizeAgentActivityLabelValue(kind, label).slice(0, 160);
-  var nextStageKey = getAgentProgressStageKey(kind, label, agentCurrentTaskLabel);
+  var nextStageKey = presentedStageKey || kind || 'execution';
   var current = agentExecContainer;
   if (current && current.isConnected && !current.hasAttribute('data-done')) {
-    var currentKind = current.getAttribute('data-active-tool-kind') || '';
-    var currentToolKey = current.getAttribute('data-active-tool-label') || '';
     var currentStageKey = current.getAttribute('data-active-stage-key') || '';
-    var stepCount = current.querySelectorAll('.aut-step, .term-output-details, .ran-command-row').length;
-    var hasTerminalOutput = !!current.querySelector('.term-output-details, .ran-command-row');
-    var isDifferentTerminalCommand = kind === 'terminal' && currentKind === 'terminal'
-      && hasTerminalOutput && currentToolKey && currentToolKey !== nextToolKey;
-    var sameContextEvidenceStage = currentStageKey === 'context-evidence'
-      && nextStageKey === 'context-evidence'
-      && !hasTerminalOutput;
     var shouldSplit = activeAgentContainerHasProcessRows(current)
-      && !sameContextEvidenceStage
-      && (
-        (kind === 'terminal' && currentKind !== 'terminal')
-        || isDifferentTerminalCommand
-        || (currentKind === 'terminal' && kind !== 'terminal')
-        || kind === 'write'
-        || stepCount >= 3
-        || (currentKind && currentKind !== kind)
-        || hasTerminalOutput
-      );
+      && currentStageKey
+      && nextStageKey
+      && currentStageKey !== nextStageKey;
     if (shouldSplit) {
       finalizeExecContainer(current, false);
       agentExecContainer = null;
-      agentActivityRowId = null;
-      agentActivityCounts = { read: 0, search: 0, list: 0, terminal: 0, write: 0, web: 0, memory: 0, todo: 0, prose: 0 };
-      agentActivitySeen = new Set();
+      resetAgentActivityStageState();
     }
   }
   var container = ensureAgentProgressContainer(nextLabel);
   container.setAttribute('data-active-tool-kind', kind || 'tool');
   container.setAttribute('data-active-tool-label', nextToolKey);
   container.setAttribute('data-active-stage-key', nextStageKey || kind || 'tool');
-  setAgentContainerLabel(container, inferAgentProgressStageTitle(kind, label, agentCurrentTaskLabel), true);
+  setAgentContainerLabel(container, nextLabel, true);
   updateAgentProgressDigest(kind, label, 'started');
   return container;
 }
@@ -2509,6 +2562,7 @@ function appendAgentProgressStep(kind, label, detail, state) {
     : 'codicon-info';
   var step = document.createElement('div');
   step.className = 'aut-step aut-step-prose state-' + (state || 'started');
+  step.setAttribute('data-progress-narration', '1');
   var detailHtml = detail
     ? '<details class="aut-step-details"><summary>详情</summary><pre>' + escapeHtml(detail) + '</pre></details>'
     : '';
@@ -2526,6 +2580,7 @@ function addAgentStatus(msg) {
   // P5: isAgentMode is now set synchronously in the startResponse handler.
   // Keep this as a fallback for backward compatibility.
   if (msg.phase === 'plan' && !isAgentMode) isAgentMode = true;
+  applyPresentedAgentProgress(msg);
 
   // Agent mode uses the interactive aut-container as the single visible progress
   // surface. Do not also write to the global working-area, or the feedback area
@@ -2628,7 +2683,7 @@ function addAgentStatus(msg) {
         stepsWrap.id = 'aut-activity-' + Date.now();
         autDetsEl.insertBefore(stepsWrap, autRowsEl);
         agentActivityRowId = stepsWrap.id;
-        agentActivityCounts = { read: 0, search: 0, list: 0, terminal: 0, write: 0, web: 0, memory: 0, todo: 0, prose: 0 };
+        agentActivityCounts = createAgentActivityCounts();
         agentActivitySeen = new Set();
       }
       appendAgentProgressStep('plan', msg.title || ('任务计划已生成：' + agentTodos.length + ' 个子任务'), msg.detail || '', 'completed');
@@ -2665,13 +2720,12 @@ function addAgentStatus(msg) {
     var stateIcon = msg.state === 'completed' ? 'codicon-check' : msg.state === 'failed' ? 'codicon-error' : msg.state === 'skipped' ? 'codicon-dash' : 'codicon-loading aut-spin';
     var fname = msg.taskFile ? basename(msg.taskFile) : '';
 
-    // Per-task Working boxes: when a NEW task starts, finalize the previous container
-    // and create a fresh one. Each file analysis gets its own Working box (Copilot style).
+    // Task rows stay inside the semantic stage selected by AgentDisplayPresenter.
+    // A new file is detail evidence, not a new user-facing progress stage.
     var effectiveTaskAction = (msg.taskAction || (agentTodos[msg.taskIndex - 1] || {}).action || '');
     var isNewTask = msg.taskIndex != null && msg.taskIndex !== agentCurrentTaskIndex;
     if (isNewTask && (msg.state === 'started' || !msg.state)) {
       // Build label FIRST so finalizeExecContainer sees the correct task label
-      var prevTaskIdx = agentCurrentTaskIndex;  // save BEFORE update
       agentCurrentTaskIndex = msg.taskIndex;
       // Do not infer previous-task completion merely because the next task started.
       // The backend task ledger owns completed/failed settlement from actual write,
@@ -2688,25 +2742,7 @@ function addAgentStatus(msg) {
       if (!taskDesc) taskDesc = fname ? basename(fname) : '任务';
       var taskAction = todoForLabel ? todoForLabel.action : (msg.taskAction || '');
       var actionPrefix = getAgentTaskActionPrefix(taskAction, rawDesc);
-      var prevTaskLabel = agentCurrentTaskLabel;  // save OLD label for finalization
       agentCurrentTaskLabel = compactAgentTaskLabel(actionPrefix + taskDesc, taskDesc, 40);
-
-      {
-        if (agentExecContainer && agentExecContainer.isConnected) {
-          // Finish the plan/batch or previous task container before opening the
-          // next task. This preserves Copilot-style process history as separate
-          // one-line thinking rows instead of replacing it with the newest task.
-          var _newLabel = agentCurrentTaskLabel;
-          agentCurrentTaskLabel = prevTaskLabel;
-          finalizePreviousAgentContainer(agentExecContainer, prevTaskIdx);
-          agentCurrentTaskLabel = _newLabel;
-        }
-        agentExecContainer = null;
-        agentActivityRowId = null;
-        agentTaskCards.clear();
-        agentActivityCounts = { read: 0, search: 0, list: 0, terminal: 0, write: 0, web: 0, memory: 0, todo: 0, prose: 0 };
-        agentActivitySeen = new Set();
-      }
     }
 
     // Create container for this task if not present
@@ -2802,14 +2838,15 @@ function addAgentStatus(msg) {
     if (agentExecContainer && agentExecContainer.isConnected) {
       var autCount = agentExecContainer.querySelector('.aut-count');
       var autLbl = agentExecContainer.querySelector('.aut-label');
+      var presentedProgress = agentExecContainer.hasAttribute('data-presented-progress');
       // Only show N/M counter once at least one task is done (avoids confusing "0/N" at start)
       var showCount = agentTodos.length > 1 && doneCount > 0;
       if (msg.state === 'started' || (!msg.state && fname)) {
         // Use action-based label while working: "创建 X", "修改 Y", etc.
-        if (autLbl) autLbl.textContent = agentCurrentTaskLabel || (fname ? ('处理 ' + fname) : '处理中\u2026');
+        if (autLbl) autLbl.textContent = presentedProgress ? '执行明细' : (agentCurrentTaskLabel || (fname ? ('处理 ' + fname) : '处理中\u2026'));
         if (autCount) autCount.textContent = showCount ? (doneCount + '/' + agentTodos.length) : '';
       } else {
-        if (autLbl) autLbl.textContent = agentCurrentTaskLabel || '处理中\u2026';
+        if (autLbl) autLbl.textContent = presentedProgress ? '执行明细' : (agentCurrentTaskLabel || '处理中\u2026');
         if (autCount) autCount.textContent = showCount ? (doneCount + '/' + agentTodos.length) : '';
       }
     }
@@ -3427,10 +3464,10 @@ function injectWorkingAreaStyles() {
     '.run-in-terminal-btn:hover { opacity:1; background:rgba(127,127,127,.12); }',
     /* ── Tool activity chip (shows "Read N  Search M") ── */
     /* ── Tool-call step list (one row per read/search/list/run, Copilot-style) ── */
-    '.aut-progress-digest { margin:5px 8px 4px 14px; padding:5px 7px; border-left:2px solid rgba(99,179,255,.34); background:rgba(99,179,255,.06); }',
+    '.aut-progress-digest { margin:2px 8px 5px 0; padding:6px 8px; border-left:2px solid rgba(99,179,255,.52); background:rgba(99,179,255,.07); user-select:text; }',
     '.aut-progress-title { font-size:11px; font-weight:650; line-height:1.35; color:var(--vscode-foreground); }',
     '.aut-progress-detail { font-size:10.5px; line-height:1.45; margin-top:2px; opacity:.72; overflow-wrap:anywhere; }',
-    '.aut-details[data-done] .aut-progress-digest { background:transparent; border-left-color:rgba(127,127,127,.25); opacity:.8; padding-top:2px; padding-bottom:2px; }',
+    '.aut-container[data-done] .aut-progress-digest { background:rgba(99,179,255,.035); border-left-color:rgba(127,127,127,.28); opacity:.9; margin:3px 5px 2px; }',
     '.aut-steps-list { display:flex; flex-direction:column; gap:0; margin:4px 0 2px; max-height:180px; overflow-y:auto; overflow-x:hidden; scroll-behavior:smooth; }',
     /* Done-state steps: no height limit so all steps are visible after completion */
     '.aut-details[data-done] .aut-steps-list { max-height:none; overflow:visible; opacity:.82; margin:5px 8px 6px 14px; }',
@@ -4268,7 +4305,7 @@ function resetWorkingArea() {
     isAgentMode = false;
     agentDeferredBubbleTurn = null;
     agentActivityRowId = null;
-    agentActivityCounts = { read: 0, search: 0, list: 0, terminal: 0, write: 0, web: 0, memory: 0, todo: 0, prose: 0 };
+    agentActivityCounts = createAgentActivityCounts();
     agentActivitySeen = new Set();
     agentCurrentTaskIndex = -1;
     // Remove the "analyzing" placeholder if it's still in the DOM
@@ -5343,6 +5380,7 @@ window.addEventListener('message', function(event) {
         // Always show output in a collapsible block — collapsed on success, expanded on failure
         var termDets = document.createElement('details');
         termDets.className = 'term-output-details';
+        termDets.setAttribute('data-agent-activity-kind', 'terminal');
         if (!exitOk) termDets.setAttribute('data-failed', '1');
         var termSum = document.createElement('summary');
         termSum.className = 'term-output-summary';
@@ -5360,6 +5398,7 @@ window.addEventListener('message', function(event) {
         var ranRowsEl = agentExecContainer.querySelector('.aut-rows');
         if (ranRowsEl) { ranRowsEl.appendChild(termDets); ranRowsEl.scrollTop = ranRowsEl.scrollHeight; }
       } else {
+        ranRow.setAttribute('data-agent-activity-kind', 'terminal');
         ranRow.innerHTML = '<i class="codicon codicon-terminal"></i>'
           + '<span class="rc-cmd">$ ' + escapeHtml(cmdDisplay) + '</span>'
           + exitHtml;
@@ -5377,6 +5416,7 @@ window.addEventListener('message', function(event) {
     }
   } else if (msg.type === 'agentToolActivity') {
     // Append one readable step row per tool call (Copilot-style: "Searched for X", "Read Y")
+    applyPresentedAgentProgress(msg);
     var actKind = normalizeAgentToolActivityKind(msg.activityKind);
     var actLabel = normalizeAgentToolActivityLabel(msg.activityLabel);
     var actDisplayLabel = sanitizeAgentActivityLabelValue(actKind, actLabel) || defaultAgentToolActivityTarget(actKind);
@@ -5386,7 +5426,9 @@ window.addEventListener('message', function(event) {
       if (actDisplayLabel && agentExecContainer && agentExecContainer.isConnected) {
         var labelTrunc = actDisplayLabel.length > 42 ? actDisplayLabel.slice(0, 40) + '\u2026' : actDisplayLabel;
         var intentLblEl = agentExecContainer.querySelector('.aut-label');
-        if (intentLblEl && !agentExecContainer.hasAttribute('data-done') && !activeAgentContainerHasProcessRows(agentExecContainer)) {
+        if (intentLblEl && !agentExecContainer.hasAttribute('data-done')
+            && !agentExecContainer.hasAttribute('data-presented-progress')
+            && !activeAgentContainerHasProcessRows(agentExecContainer)) {
           intentLblEl.textContent = labelTrunc;
           agentCurrentTaskLabel = labelTrunc;
         }
@@ -5397,7 +5439,7 @@ window.addEventListener('message', function(event) {
       return;
     }
     if (actKind === 'todo' || actKind === 'memory') return;
-    prepareAgentToolActivityContainer(actKind, actLabel);
+    prepareAgentToolActivityContainer(actKind, actLabel, msg.progressStage || '');
     var seenLabel = String(actDisplayLabel || '').replace(/\s+/g, ' ').trim();
     if (actKind === 'read' || actKind === 'write' || actKind === 'list') {
       seenLabel = seenLabel.replace(/\\/g, '/').split('/').pop() || seenLabel;
@@ -5427,6 +5469,7 @@ window.addEventListener('message', function(event) {
       var step = formatAgentToolActivityStep(actKind, actDisplayLabel);
       var stepEl = document.createElement('div');
       stepEl.className = (actKind === 'terminal') ? 'aut-step aut-step-terminal' : 'aut-step';
+      stepEl.setAttribute('data-agent-activity-kind', actKind);
       stepEl.innerHTML = '<i class="codicon ' + step.icon + ' aut-step-icon"></i>'
         + '<span class="aut-step-text">' + step.html + '</span>';
       actRow.appendChild(stepEl);

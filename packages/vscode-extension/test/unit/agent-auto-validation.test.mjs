@@ -198,6 +198,66 @@ test('Agent auto validation: markdown file checks become read/check evidence, no
   assert.match(result.feedbackForAI, /non-code-file-validation/);
 });
 
+test('Agent auto validation: cumulative formal Markdown quality is not lost after later source writes', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-cumulative-formal-quality-'));
+  try {
+    const docsDir = path.join(root, 'src/oam/src/lifting/zc_maintenance/202607111230/docs');
+    const srcDir = path.join(root, 'src/oam/src/lifting/zc_maintenance/202607111230/src');
+    mkdirSync(docsDir, { recursive: true });
+    mkdirSync(srcDir, { recursive: true });
+    const doc = path.join(docsDir, 'warranty-maintenance-implementation.md');
+    const source = path.join(srcDir, 'warranty_types.hpp');
+    writeFileSync(doc, [
+      '# 维保提醒设计',
+      '',
+      '参考 license 模块通讯方式，后续实现遥控器和主控交互。',
+    ].join('\n'));
+    writeFileSync(source, '#pragma once\nnamespace warranty { struct WarrantyStatus { int level; }; }\n');
+
+    const validationService = {
+      validateWorkspaceChanges: async () => ({
+        ran: false,
+        ok: false,
+        status: 'blocked',
+        command: '',
+        exitCode: null,
+        output: '未执行自动验证: cpp-validation-plan-unavailable',
+        cwd: root,
+        mode: 'not-available',
+        reason: 'cpp-validation-plan-unavailable',
+        risks: ['未能识别可执行的 C/C++ 构建或编译入口。'],
+        alternativeChecks: ['人工检查变更文件内容是否符合用户请求。'],
+      }),
+    };
+    const prompt = [
+      '正式项目内实现维保功能，参考 /repo/src/oam/src/license 模块通讯方式。',
+      '需要遥控器和主控接口文档、代码实现和自闭环验证，产物隔离到时间戳 docs/src 目录。',
+    ].join('\n');
+
+    const result = await runAgentAutoValidationForWrites(
+      [{ path: source, basename: 'warranty_types.hpp', linesAdded: 1, linesRemoved: 0, action: 'create' }],
+      root,
+      prompt,
+      makeCallbacks([], []),
+      'conservative',
+      {
+        validationService,
+        qualityWrittenFiles: [
+          { path: doc, basename: 'warranty-maintenance-implementation.md', linesAdded: 3, linesRemoved: 0, action: 'create' },
+          { path: source, basename: 'warranty_types.hpp', linesAdded: 1, linesRemoved: 0, action: 'create' },
+        ],
+      },
+    );
+
+    assert.equal(result.qualityGate.status, 'fail');
+    assert.match(result.feedbackForAI, /formal_project_markdown_quality/);
+    assert.match(result.feedbackForAI, /源项目事实矩阵/);
+    assert.match(result.feedbackForAI, /payload_type/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Agent auto validation: formal project Markdown quality fails even when file check passes', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-formal-md-quality-'));
   try {
@@ -256,6 +316,219 @@ test('Agent auto validation: formal project Markdown quality fails even when fil
       statuses.some(status => status.state === 'failed' && /正式项目质量门禁未通过/.test(status.title)),
       true,
     );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Agent auto validation: formal project source quality requires validation hook for self-loop tasks', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-formal-source-validation-hook-'));
+  try {
+    const srcDir = path.join(root, 'src/oam/src/lifting/zc_maintenance/202607111240/src');
+    mkdirSync(srcDir, { recursive: true });
+    const target = path.join(srcDir, 'warranty_types.hpp');
+    writeFileSync(target, '#pragma once\nnamespace warranty { struct WarrantyStatus { int level; }; }\n');
+
+    const validationService = {
+      validateWorkspaceChanges: async () => ({
+        ran: true,
+        ok: true,
+        status: 'passed',
+        command: "test -s 'src/oam/src/lifting/zc_maintenance/202607111240/src/warranty_types.hpp'",
+        exitCode: 0,
+        output: 'ok',
+        cwd: root,
+        mode: 'file-check',
+        reason: 'cpp-static-artifact-audit',
+        risks: ['静态审计不能证明运行时行为正确。'],
+        alternativeChecks: ['接入正式工程后重新编译。'],
+      }),
+    };
+    const prompt = [
+      '正式项目内实现维保功能，参考 /repo/src/oam/src/license 模块通讯方式。',
+      '需要代码实现和自闭环验证，产物隔离到时间戳 docs/src 目录。',
+    ].join('\n');
+
+    const result = await runAgentAutoValidationForWrites(
+      [{ path: target, basename: 'warranty_types.hpp', linesAdded: 1, linesRemoved: 0, action: 'create' }],
+      root,
+      prompt,
+      makeCallbacks([], []),
+      'conservative',
+      { validationService },
+    );
+
+    assert.equal(result.evidence.ok, true);
+    assert.equal(result.qualityGate.status, 'fail');
+    assert.match(result.feedbackForAI, /formal_project_source_quality/);
+    assert.match(result.feedbackForAI, /验证钩子/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Agent auto validation: Python validation artifact satisfies formal project validation hook', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-formal-source-python-validation-hook-'));
+  try {
+    const srcDir = path.join(root, 'src/oam/src/lifting/zc_maintenance/202607111245/src');
+    mkdirSync(srcDir, { recursive: true });
+    const header = path.join(srcDir, 'warranty_types.hpp');
+    const testFile = path.join(srcDir, 'test_warranty.py');
+    writeFileSync(header, '#pragma once\nnamespace warranty { struct WarrantyStatus { int level; }; }\n');
+    writeFileSync(testFile, 'def test_validate_warranty_schema():\n    assert True\n');
+
+    const validationService = {
+      validateWorkspaceChanges: async () => ({
+        ran: true,
+        ok: true,
+        status: 'passed',
+        command: 'python3 src/oam/src/lifting/zc_maintenance/202607111245/src/test_warranty.py',
+        exitCode: 0,
+        output: 'ok',
+        cwd: root,
+        mode: 'file-check',
+        reason: 'cpp-static-artifact-audit',
+        risks: ['静态审计不能证明运行时行为正确。'],
+        alternativeChecks: ['接入正式工程后重新编译。'],
+      }),
+    };
+    const prompt = [
+      '正式项目内实现维保功能，参考 /repo/src/oam/src/license 模块通讯方式。',
+      '需要代码实现和自闭环验证，产物隔离到时间戳 docs/src 目录。',
+    ].join('\n');
+
+    const result = await runAgentAutoValidationForWrites(
+      [
+        { path: header, basename: 'warranty_types.hpp', linesAdded: 1, linesRemoved: 0, action: 'create' },
+        { path: testFile, basename: 'test_warranty.py', linesAdded: 2, linesRemoved: 0, action: 'create' },
+      ],
+      root,
+      prompt,
+      makeCallbacks([], []),
+      'conservative',
+      { validationService },
+    );
+
+    assert.equal(result.evidence.ok, true);
+    assert.equal(result.qualityGate.status, 'pass');
+    assert.doesNotMatch(result.feedbackForAI || '', /formal_project_source_quality/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Agent auto validation: corrupted shell validation artifact fails formal project source quality', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-formal-source-corrupt-shell-validation-'));
+  try {
+    const srcDir = path.join(root, 'src/oam/src/lifting/zc_maintenance/202607110235/src');
+    mkdirSync(srcDir, { recursive: true });
+    const header = path.join(srcDir, 'warranty_types.hpp');
+    const script = path.join(srcDir, 'test_warranty_integration.sh');
+    writeFileSync(header, '#pragma once\nnamespace warranty { struct WarrantyStatus { int level; }; }\n');
+    writeFileSync(script, [
+      '#!/bin/bash',
+      'set -e',
+      'SCRIPT_DIR=(dirname "0")" && pwd)',
+      'HEADERS=("warranty_types.hpp")',
+      'for f in "{HEADERS[@]}"; do',
+      '  if [ -f "SCRIPT_DIR/f" ]; then echo "ok"; fi',
+      'done',
+    ].join('\n'));
+
+    const validationService = {
+      validateWorkspaceChanges: async () => ({
+        ran: true,
+        ok: true,
+        status: 'passed',
+        command: 'bash -n test_warranty_integration.sh && static audit',
+        exitCode: 0,
+        output: 'ok',
+        cwd: root,
+        mode: 'file-check',
+        reason: 'shell-syntax-and-cpp-static-artifact-audit',
+        risks: ['静态审计不能证明运行时行为正确。'],
+        alternativeChecks: ['接入正式工程后重新编译。'],
+      }),
+    };
+    const prompt = [
+      '正式项目内实现维保功能，参考 /repo/src/oam/src/license 模块通讯方式。',
+      '需要代码实现和自闭环验证，产物隔离到时间戳 docs/src 目录。',
+    ].join('\n');
+
+    const result = await runAgentAutoValidationForWrites(
+      [
+        { path: header, basename: 'warranty_types.hpp', linesAdded: 1, linesRemoved: 0, action: 'create' },
+        { path: script, basename: 'test_warranty_integration.sh', linesAdded: 7, linesRemoved: 0, action: 'create' },
+      ],
+      root,
+      prompt,
+      makeCallbacks([], []),
+      'conservative',
+      { validationService },
+    );
+
+    assert.equal(result.evidence.ok, true);
+    assert.equal(result.qualityGate.status, 'fail');
+    assert.match(result.feedbackForAI, /formal_project_source_quality/);
+    assert.match(result.feedbackForAI, /验证脚本语法或变量引用明显损坏/);
+    assert.match(result.feedbackForAI, /bash -n/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Agent auto validation: validation scripts cannot reference deleted run artifacts', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-missing-validation-artifact-'));
+  try {
+    const srcDir = path.join(root, 'src/oam/src/lifting/zc_maintenance/202607111315/src');
+    mkdirSync(srcDir, { recursive: true });
+    const deletedHeader = path.join(srcDir, 'maintenance_validation.hpp');
+    const script = path.join(srcDir, 'verify_warranty.sh');
+    writeFileSync(script, [
+      '#!/usr/bin/env bash',
+      'set -euo pipefail',
+      'SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"',
+      'test -s "$SCRIPT_DIR/maintenance_validation.hpp"',
+    ].join('\n'));
+
+    const validationService = {
+      validateWorkspaceChanges: async () => ({
+        ran: true,
+        ok: true,
+        status: 'passed',
+        command: 'bash verify_warranty.sh',
+        exitCode: 0,
+        output: 'ok',
+        cwd: srcDir,
+        mode: 'compile-run',
+        reason: 'shell-validation-script-run',
+        risks: [],
+        alternativeChecks: [],
+      }),
+    };
+    const prompt = [
+      '在既有主控正式项目中实现维修保养功能，参考 license 模块通信方式。',
+      '代码隔离到时间戳目录，并完成编译、测试和自闭环验证。',
+    ].join('\n');
+    const writtenFiles = [
+      { path: deletedHeader, basename: 'maintenance_validation.hpp', linesAdded: 0, linesRemoved: 20, action: 'delete' },
+      { path: script, basename: 'verify_warranty.sh', linesAdded: 4, linesRemoved: 0, action: 'create' },
+    ];
+
+    const result = await runAgentAutoValidationForWrites(
+      writtenFiles,
+      root,
+      prompt,
+      makeCallbacks([], []),
+      'conservative',
+      { validationService, qualityWrittenFiles: writtenFiles },
+    );
+
+    assert.equal(result.evidence.ok, true);
+    assert.equal(result.qualityGate.status, 'fail');
+    assert.match(result.feedbackForAI, /formal_project_source_quality/);
+    assert.match(result.feedbackForAI, /验证脚本仍引用已删除或缺失的本轮产物/);
+    assert.match(result.feedbackForAI, /maintenance_validation\.hpp/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

@@ -181,6 +181,47 @@ test('WorkspaceEditService: blocks tool protocol contamination in generated C++ 
   }
 });
 
+test('WorkspaceEditService: blocks C++ preprocessor directives collapsed onto one line', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
+  try {
+    const target = path.join(dir, 'MaintenanceTypes.hpp');
+    const service = new WorkspaceEditService();
+    assert.throws(
+      () => service.writeTextFileSync(target, [
+        '#ifndef MAINTENANCE_TYPES_HPP#define MAINTENANCE_TYPES_HPP',
+        '#include <cstddef>#include <cstdint>',
+        '#pragma pack(push, 1)struct Header { int value; };#pragma pack(pop)',
+        '#endif',
+      ].join('\n'), {
+        validateSourceSanity: true,
+        repairSourceTransportEscapes: true,
+      }),
+      /预处理指令必须独占物理行/,
+    );
+    assert.equal(readFileSyncSafe(target), undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: allows valid preprocessor directives and macro stringification', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
+  try {
+    const target = path.join(dir, 'valid.hpp');
+    const service = new WorkspaceEditService();
+    service.writeTextFileSync(target, [
+      '#pragma once',
+      '#include <cstdint>',
+      '#define STRINGIFY_INNER(x) #x',
+      '#define STRINGIFY(x) STRINGIFY_INNER(x)',
+      'struct Header { std::uint8_t value; };',
+    ].join('\n'), { validateSourceSanity: true });
+    assert.match(readFileSync(target, 'utf8'), /struct Header/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 function readFileSyncSafe(filePath) {
   try {
     return readFileSync(filePath, 'utf8');

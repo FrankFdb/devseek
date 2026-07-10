@@ -28,6 +28,10 @@ const LOOSE_FILE_WRITE_CONTENT_KEYS = [
   'content', 'contents', 'text', 'body',
   'fileContent', 'file_content', 'source', 'code', 'newContent', 'new_content',
 ];
+const LOOSE_TERMINAL_TRAILING_KEYS = new Set([
+  'workdir', 'cwd', 'maxOutputLines', 'timeout', 'timeoutMs',
+  'is_background', 'requires_approval',
+]);
 
 const DSML_BAR_PATTERN = '[|｜]{1,2}';
 const DSML_MARKER_PATTERN = `${DSML_BAR_PATTERN}\\s*DSML\\s*${DSML_BAR_PATTERN}`;
@@ -37,6 +41,9 @@ const DSML_START_NAMES_PATTERN = '(?:tool_calls|invoke|parameter)';
 const TOOL_CALL_OPEN_PATTERN = '(?:<|&lt;)\\s*TOOL_CALL\\s*(?:>|&gt;)';
 const TOOL_CALL_CLOSE_PATTERN = '(?:<\\/|&lt;\\/)\\s*TOOL_CALL\\s*(?:>|&gt;)';
 const TOOL_CALL_INCOMPLETE_TAIL_PATTERN = /(?:<|&lt;)\s*(?:T|TO|TOO|TOOL|TOOL_|TOOL_C|TOOL_CA|TOOL_CAL|TOOL_CALL)?$/i;
+const GENERIC_TOOL_ENVELOPE_OPEN_PATTERN = '(?:<|&lt;)\\s*TOOL\\s*(?:>|&gt;)';
+const GENERIC_TOOL_ENVELOPE_CLOSE_PATTERN = '(?:<\\/|&lt;\\/)\\s*TOOL\\s*(?:>|&gt;)';
+const GENERIC_TOOL_ENVELOPE_PREFIX_TAIL_PATTERN = /(?:<|&lt;)\s*(?:T(?:O(?:O(?:L)?)?)?)?$/i;
 const DSML_INCOMPLETE_TAIL_PATTERN = new RegExp(
   `${DSML_OPEN_PREFIX_PATTERN}(?:${DSML_BAR_PATTERN}\\s*(?:D(?:S(?:M(?:L)?)?)?(?:\\s*${DSML_BAR_PATTERN})?)?)?$`,
   'i',
@@ -126,6 +133,17 @@ function makeToolCallEnvelopePairRegex(flags = 'gi'): RegExp {
   return new RegExp(
     `${TOOL_CALL_OPEN_PATTERN}([\\s\\S]*?)${TOOL_CALL_CLOSE_PATTERN}\\s*` +
     `${TOOL_CALL_OPEN_PATTERN}([\\s\\S]*?)${TOOL_CALL_CLOSE_PATTERN}`,
+    flags,
+  );
+}
+
+function makeGenericToolEnvelopeOpenRegex(flags = 'gi'): RegExp {
+  return new RegExp(GENERIC_TOOL_ENVELOPE_OPEN_PATTERN, flags);
+}
+
+function makeGenericToolEnvelopeBlockRegex(flags = 'gi'): RegExp {
+  return new RegExp(
+    `${GENERIC_TOOL_ENVELOPE_OPEN_PATTERN}([\\s\\S]*?)${GENERIC_TOOL_ENVELOPE_CLOSE_PATTERN}`,
     flags,
   );
 }
@@ -318,7 +336,7 @@ function extractFunctionStyleToolCall(
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     return { tool: { name, input: normalizeToolInput(name, parsed as Record<string, unknown>) }, start, end: next };
   } catch {
-    const looseInput = parseLooseFileWriteToolInput(name, jsonText);
+    const looseInput = parseLooseToolInput(name, jsonText);
     return looseInput ? { tool: { name, input: normalizeToolInput(name, looseInput) }, start, end: next } : null;
   }
 }
@@ -419,7 +437,7 @@ function parseXmlToolBodyInput(name: string, rawBody: string): Record<string, un
       return parsed as Record<string, unknown>;
     }
   } catch {
-    const looseInput = parseLooseFileWriteToolInput(name, body);
+    const looseInput = parseLooseToolInput(name, body);
     if (looseInput) return looseInput;
   }
   const nestedParams = parseXmlToolParameterBody(body);
@@ -493,7 +511,7 @@ function parseToolCallEnvelopeInput(name: string, rawBody: string): Record<strin
       ? parsed as Record<string, unknown>
       : null;
   } catch {
-    return parseLooseFileWriteToolInput(name, jsonText);
+    return parseLooseToolInput(name, jsonText);
   }
 }
 
@@ -510,8 +528,46 @@ function parseToolArgumentsRecord(name: string, value: unknown): Record<string, 
       ? parsed as Record<string, unknown>
       : null;
   } catch {
-    return parseLooseFileWriteToolInput(name, trimmed);
+    return parseLooseToolInput(name, trimmed);
   }
+}
+
+function parseGenericToolEnvelopeBody(rawBody: string): FakeTool | null {
+  const body = stripJsonFence(decodeXmlishText(rawBody)).trim();
+  const nameMatch = /^([A-Za-z_][A-Za-z0-9_]*)\b/.exec(body);
+  if (!nameMatch || !isRegisteredFakeToolName(nameMatch[1])) return null;
+  const name = normalizeAgentToolName(nameMatch[1]);
+  const rawInput = body.slice(nameMatch[0].length).trim();
+  const input = rawInput ? parseToolArgumentsRecord(name, rawInput) : {};
+  if (!input) return null;
+  return normalizeFakeTool({ name, input });
+}
+
+function parseGenericToolEnvelopeCalls(text: string): FakeTool[] {
+  const tools: FakeTool[] = [];
+  const blockRe = makeGenericToolEnvelopeBlockRegex();
+  let match: RegExpExecArray | null;
+  while ((match = blockRe.exec(text)) !== null) {
+    const tool = parseGenericToolEnvelopeBody(match[1] || '');
+    if (tool) tools.push(tool);
+  }
+  return tools;
+}
+
+function findNextGenericToolEnvelopeStart(text: string, startAt = 0): number {
+  const openRe = makeGenericToolEnvelopeOpenRegex();
+  openRe.lastIndex = startAt;
+  const open = openRe.exec(text);
+  const tail = startAt === 0 ? GENERIC_TOOL_ENVELOPE_PREFIX_TAIL_PATTERN.exec(text) : null;
+  if (!open) return tail?.index ?? -1;
+  return tail ? Math.min(open.index, tail.index) : open.index;
+}
+
+function stripGenericToolEnvelopeBlocks(text: string): string {
+  let cleaned = text.replace(makeGenericToolEnvelopeBlockRegex(), '');
+  const incompleteStart = findNextGenericToolEnvelopeStart(cleaned);
+  if (incompleteStart >= 0) cleaned = cleaned.slice(0, incompleteStart);
+  return cleaned.replace(GENERIC_TOOL_ENVELOPE_PREFIX_TAIL_PATTERN, '').trimEnd();
 }
 
 function jsonFunctionEnvelopeToFakeTool(obj: Record<string, unknown>): FakeTool | null {
@@ -766,7 +822,7 @@ function extractToolArgumentsPayload(
       return { tool: { name, input: parsed as Record<string, unknown> }, end };
     }
   } catch {
-    const looseInput = parseLooseFileWriteToolInput(name, jsonText);
+    const looseInput = parseLooseToolInput(name, jsonText);
     if (looseInput) return { tool: { name, input: looseInput }, end };
   }
   return null;
@@ -948,7 +1004,11 @@ function isEscapedQuote(text: string, quoteIndex: number, valueStart: number): b
   return slashCount % 2 === 1;
 }
 
-function extractLooseJsonStringField(jsonText: string, key: string): string | undefined {
+function extractLooseJsonStringField(
+  jsonText: string,
+  key: string,
+  allowedFollowingKeys?: ReadonlySet<string>,
+): string | undefined {
   const keyRe = new RegExp(`"${escapeRegExp(key)}"\\s*:\\s*"`, 'i');
   const match = keyRe.exec(jsonText);
   if (!match) return undefined;
@@ -958,7 +1018,9 @@ function extractLooseJsonStringField(jsonText: string, key: string): string | un
   for (let i = valueStart; i < jsonText.length; i++) {
     if (jsonText[i] !== '"' || isEscapedQuote(jsonText, i, valueStart)) continue;
     const afterQuote = jsonText.slice(i + 1);
-    if (/^\s*(?:,\s*"[A-Za-z_][\w-]*"\s*:|}\s*$)/.test(afterQuote)) {
+    const nextField = /^\s*,\s*"([A-Za-z_][\w-]*)"\s*:/.exec(afterQuote);
+    const closesObject = /^\s*}\s*$/.test(afterQuote);
+    if (closesObject || (nextField && (!allowedFollowingKeys || allowedFollowingKeys.has(nextField[1])))) {
       valueEnd = i;
       break;
     }
@@ -1041,12 +1103,31 @@ function parseLooseFileWriteToolInput(name: string, jsonText: string): Record<st
   return typeof input.path === 'string' && typeof input.content === 'string' ? input : null;
 }
 
+function parseLooseRunTerminalToolInput(name: string, jsonText: string): Record<string, unknown> | null {
+  if (normalizeAgentToolName(name) !== 'run_terminal') return null;
+  const command = extractLooseJsonStringField(jsonText, 'command', LOOSE_TERMINAL_TRAILING_KEYS)
+    ?? extractLooseJsonStringField(jsonText, 'cmd', LOOSE_TERMINAL_TRAILING_KEYS);
+  if (typeof command !== 'string' || !command.trim()) return null;
+
+  const input: Record<string, unknown> = { command };
+  const workdir = extractLooseJsonStringField(jsonText, 'workdir')
+    ?? extractLooseJsonStringField(jsonText, 'cwd');
+  if (typeof workdir === 'string' && workdir.trim()) input.workdir = workdir.trim();
+  return input;
+}
+
+function parseLooseToolInput(name: string, jsonText: string): Record<string, unknown> | null {
+  return parseLooseFileWriteToolInput(name, jsonText)
+    ?? parseLooseRunTerminalToolInput(name, jsonText);
+}
+
 function jsonArrayToFakeTools(value: unknown): FakeTool[] {
   if (!Array.isArray(value) || value.length === 0) return [];
   const tools: FakeTool[] = [];
   for (const item of value) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) return [];
-    const tool = jsonObjectToFakeTool(item as Record<string, unknown>);
+    const tool = jsonObjectToFakeTool(item as Record<string, unknown>)
+      ?? jsonObjectToImplicitArrayFakeTool(item as Record<string, unknown>);
     if (!tool) return [];
     tools.push(tool);
   }
@@ -1056,10 +1137,48 @@ function jsonArrayToFakeTools(value: unknown): FakeTool[] {
 function jsonValueContainsToolPayload(value: unknown): boolean {
   if (Array.isArray(value)) {
     return value.some(item => item && typeof item === 'object' && !Array.isArray(item)
-      && jsonObjectToFakeTool(item as Record<string, unknown>));
+      && (jsonObjectToFakeTool(item as Record<string, unknown>)
+        || jsonObjectToImplicitArrayFakeTool(item as Record<string, unknown>)));
   }
   return Boolean(value && typeof value === 'object' && !Array.isArray(value)
     && jsonObjectToFakeTool(value as Record<string, unknown>));
+}
+
+function jsonObjectToImplicitArrayFakeTool(obj: Record<string, unknown>): FakeTool | null {
+  const command = typeof obj.command === 'string'
+    ? obj.command
+    : typeof obj.cmd === 'string'
+      ? obj.cmd
+      : '';
+  if (command.trim()) {
+    return { name: 'run_terminal', input: { command: command.trim() } };
+  }
+
+  const rawPath = typeof obj.path === 'string'
+    ? obj.path
+    : typeof obj.filePath === 'string'
+      ? obj.filePath
+      : typeof obj.filepath === 'string'
+        ? obj.filepath
+        : '';
+  const pathValue = rawPath.trim();
+  if (!pathValue || !looksLikeToolPathValue(pathValue)) return null;
+  const objectKeys = Object.keys(obj).filter(key => obj[key] !== undefined && obj[key] !== null);
+  const harmlessKeys = new Set(['path', 'filePath', 'filepath', 'recursive', 'maxDepth', 'startLine', 'endLine']);
+  if (!objectKeys.every(key => harmlessKeys.has(key))) return null;
+  const name = looksLikeDirectoryPathValue(pathValue) ? 'list_dir' : 'read_file';
+  return { name, input: { path: pathValue } };
+}
+
+function looksLikeToolPathValue(value: string): boolean {
+  return /^(?:\/|~\/|\.\.?\/|[A-Za-z]:[\\/])/.test(value);
+}
+
+function looksLikeDirectoryPathValue(value: string): boolean {
+  const normalized = value.replace(/\\/g, '/');
+  if (normalized.endsWith('/')) return true;
+  const base = normalized.split('/').filter(Boolean).pop() || '';
+  return !/\.[A-Za-z0-9]+$/.test(base);
 }
 
 function parseJsonArrayToolCalls(text: string): FakeTool[] {
@@ -1241,7 +1360,7 @@ function parseBracketToolCalls(text: string): FakeTool[] {
     try {
       tools.push({ name, input: JSON.parse(jsonStr) });
     } catch {
-      const looseInput = parseLooseFileWriteToolInput(name, jsonStr);
+      const looseInput = parseLooseToolInput(name, jsonStr);
       if (looseInput) tools.push({ name, input: looseInput });
     }
     re.lastIndex = jsonEnd + 1;
@@ -1302,7 +1421,7 @@ function parseCallingToolCalls(text: string): FakeTool[] {
       tools.push({ name, input: JSON.parse(jsonText) });
       callRe.lastIndex = jsonEnd + 1;
     } catch {
-      const looseInput = parseLooseFileWriteToolInput(name, jsonText);
+      const looseInput = parseLooseToolInput(name, jsonText);
       if (looseInput) {
         tools.push({ name, input: looseInput });
         callRe.lastIndex = jsonEnd + 1;
@@ -1531,7 +1650,7 @@ function extractReactActionToolCall(
     try {
       return { tool: { name, input: JSON.parse(jsonText) }, start: match.index, end: jsonEnd + 1 };
     } catch {
-      const looseInput = parseLooseFileWriteToolInput(name, jsonText);
+      const looseInput = parseLooseToolInput(name, jsonText);
       return looseInput ? { tool: { name, input: looseInput }, start: match.index, end: jsonEnd + 1 } : null;
     }
   }
@@ -1770,6 +1889,12 @@ const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[
     strip: stripBracketToolBlocks,
   },
   {
+    name: 'generic-tool-envelope',
+    parse: parseGenericToolEnvelopeCalls,
+    findStart: findNextGenericToolEnvelopeStart,
+    strip: stripGenericToolEnvelopeBlocks,
+  },
+  {
     name: 'tool-call-envelope',
     parse: parseToolCallEnvelopeCalls,
     findStart: (text: string) => {
@@ -1853,4 +1978,12 @@ export function parseFakeToolCalls(text: string): FakeTool[] {
     isolateModelToolRequestText(text).text,
     MODEL_TOOL_PROTOCOL_DIALECTS,
   ).map(normalizeFakeTool);
+}
+
+export function hasIncompleteFakeToolCallProtocol(text: string): boolean {
+  const requestText = isolateModelToolRequestText(text).text;
+  const genericRemainder = requestText.replace(makeGenericToolEnvelopeBlockRegex(), '');
+  if (findNextGenericToolEnvelopeStart(genericRemainder) >= 0) return true;
+  return findFirstModelToolProtocolStart(requestText, MODEL_TOOL_PROTOCOL_DIALECTS) >= 0
+    && parseModelToolProtocol(requestText, MODEL_TOOL_PROTOCOL_DIALECTS).length === 0;
 }

@@ -24,6 +24,7 @@ const { AgentToolExecutor, classifyToolKind } = req(bundlePath);
 
 test('AgentToolExecutor: classifies mutating and terminal tools', () => {
   assert.equal(classifyToolKind('create_file'), 'edit');
+  assert.equal(classifyToolKind('delete_file'), 'edit');
   assert.equal(classifyToolKind('run_terminal'), 'terminal');
   assert.equal(classifyToolKind('read_file'), 'read');
   assert.equal(classifyToolKind('fetch_webpage'), 'network');
@@ -107,6 +108,16 @@ test('AgentToolExecutor: detects file write tools', () => {
   const executor = new AgentToolExecutor();
   assert.equal(executor.isFileWrite({ name: 'write_file', input: {} }), true);
   assert.equal(executor.isFileWrite({ name: 'read_file', input: {} }), false);
+});
+
+test('AgentToolExecutor: registers delete_file as an audited high-risk edit', () => {
+  const executor = new AgentToolExecutor();
+  const plan = executor.plan({ name: 'delete_file', input: { path: 'src/obsolete.cpp' } });
+
+  assert.equal(plan.registered, true);
+  assert.equal(plan.kind, 'edit');
+  assert.equal(plan.risk, 'high');
+  assert.deepEqual(plan.evidence, [{ kind: 'edit', label: 'src/obsolete.cpp' }]);
 });
 
 console.log('\nTool executor tests passed.\n');

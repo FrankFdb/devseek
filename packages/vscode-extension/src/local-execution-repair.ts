@@ -12,6 +12,7 @@ import type { AgentTask } from './agent-task-decomposer';
 import type { AgentLoopCallbacks } from './agent/loop-types';
 import type { AppliedChangeRecord, ApplyWorkflowStatus } from './workspace-applier';
 import { MemoryService } from './app/memory-service';
+import { AgentDisplayPresenter } from './app/agent-display-presenter';
 import { decideToolPermission, type ToolPolicy } from './app/permission-service';
 import { decideAgentFileWrite, type AgentFileWriteContext } from './app/agent-file-write-policy';
 import { listCppBuildOutputDirNames } from './cpp-build-layout';
@@ -42,6 +43,7 @@ export interface LocalExecutionRepairCallbacksDeps {
   mcpToolRefs?: AgentLoopCallbacks['mcpToolRefs'];
   onMcpToolCall?: AgentLoopCallbacks['onMcpToolCall'];
   signal?: AbortSignal;
+  displayPresenter?: AgentDisplayPresenter;
 }
 
 export function relPathFromRepairWorkspace(workspaceRoot: string, absPath: string): string | null {
@@ -135,6 +137,7 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
     onMcpToolCall,
     signal,
   } = deps;
+  const displayPresenter = deps.displayPresenter ?? new AgentDisplayPresenter();
   const repairFileSet = new Set((repairFiles ?? []).map((filePath) => nodePath.resolve(filePath)));
 
   const resolveReadablePath = (filePath: string, workDir?: string): string | null => {
@@ -173,7 +176,7 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
       }
     },
     onWorkflowStatus: workflowReporter,
-    onAgentStatus: async (s) => { webview.postMessage(s); },
+    onAgentStatus: async (s) => { webview.postMessage(displayPresenter.presentStatus(s)); },
     onAppliedChange: async (change) => {
       await registerAppliedChange(change);
       const absPath = nodePath.isAbsolute(change.path)
@@ -183,7 +186,7 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
     },
     onResponseMeta: async () => { /* suppressed for local execution repair */ },
     onToolActivity: (kind, label) => {
-      webview.postMessage({ type: 'agentToolActivity', activityKind: kind, activityLabel: label });
+      webview.postMessage(displayPresenter.presentToolActivity(kind, label));
     },
     onTodoUpdate: (items) => { webview.postMessage({ type: 'todoUpdate', items }); },
     onUserSteer: consumeAgentSteer,

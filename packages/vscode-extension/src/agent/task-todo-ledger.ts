@@ -22,6 +22,7 @@ import {
 import { stripToolCallBlocks } from './fake-tool-parser';
 import { extractTaskFileTokens, normalizeEvidencePath, taskFileTokensMatchWrittenEvidence } from './task-file-tokens';
 import { buildTaskTerminalFailureDetail } from './task-execution-result';
+import { classifyAgentTaskShape } from './task-shape';
 
 type TodoStatus = TodoItem['status'];
 type LinearTodoInput = Pick<TodoItem, 'title'> & Partial<Pick<TodoItem, 'status' | '__agentState'>>;
@@ -293,6 +294,24 @@ export function appendQualityGateTodo(todos: TodoItem[], status: Extract<TodoSta
 }
 
 export function inferInitialAgenticTodos(userPrompt: string): TodoItem[] {
+  const taskShape = classifyAgentTaskShape(userPrompt);
+  if (taskShape.shape === 'existing-project' && !taskShape.readOnlyLikely) {
+    const needsCode = requiresCodeArtifactForEvidence(userPrompt);
+    const needsCommand = requiresCommandEvidence(userPrompt)
+      || /(?:自闭环|测试|验证|编译|运行|代码实现|实现代码|程序|compile|build|test|run|verify)/i.test(userPrompt);
+    const items: LinearTodoInput[] = [
+      { title: '项目调查：事实矩阵、通讯链路和集成锚点', status: 'in-progress' },
+      { title: '设计交付：接口文档、原代码修改清单和实现边界', status: 'not-started' },
+    ];
+    if (needsCode) {
+      items.push({ title: '实现：创建/更新代码文件并嵌入既有边界', status: 'not-started' });
+    }
+    if (needsCommand || needsCode) {
+      items.push({ title: '验证：编译/测试/静态审计与 QualityGate 自闭环', status: 'not-started' });
+    }
+    return createLinearAgentTodos(items);
+  }
+
   const items: LinearTodoInput[] = [];
   const needsRead = requiresReadEvidence(userPrompt);
   const needsFile = requiresFileChangeEvidence(userPrompt);

@@ -49,7 +49,6 @@ import { AgentTask, getAgentTaskDisplayTarget, readFileContentSafe, readFileCont
 import { fenceLangForFile, roughLineDiff } from './utils';
 import { findWorkspaceFolderForRelativePath } from './workspace-roots';
 import { applyGeneratedArtifactPathWithPrompt } from './workspace-applier';
-import { runLocalExecution, LocalExecutionPlan, planLocalExecution } from './execution-planner';
 import { resolveWorkspaceWritePath } from './workspace/path-resolver';
 import { McpToolRef } from './mcp/client';
 import { getProjectRulesSync, wrapRulesAsContext, getProjectMemorySync, wrapMemoryAsContext } from './project-rules';
@@ -107,7 +106,8 @@ import { shouldRequestManualReviewForRun } from './agent/manual-review-validatio
 import { decideAgentRuntimeTurn } from './agent/agent-runtime-turn-policy';
 import { WorkspaceEditService } from './workspace/edit-service';
 import { buildTaskShapeGuidancePrompt } from './agent/task-shape';
-import { inspectCppDependencyClosure, type CppValidationPolicy } from './validation-planner';
+import { VerificationPlanner } from './app/verification-planner';
+import { ValidationService } from './workspace/validation-service';
 import type { ExecutionMode } from './intent/intent-types';
 
 // ----------------------------------------------------------------
@@ -1663,32 +1663,6 @@ async function runValidation(
     const absPath = nodePath.isAbsolute(filePath) ? filePath : nodePath.join(workspaceRootFsPath, filePath);
     return nodePath.relative(workspaceRootFsPath, absPath).replace(/\\/g, '/');
   });
-  const dependencyClosure = inspectCppDependencyClosure(workspaceRelativeCompilable, workspaceRootFsPath, {
-    existsSync: fs.existsSync,
-    readdirSync: (path) => fs.readdirSync(path),
-    readFileSync: (path, encoding) => fs.readFileSync(path, encoding as BufferEncoding),
-  });
-  if (!dependencyClosure.ok) {
-    const detail = [
-      'C/C++ 依赖闭包未满足，已阻止直接编译，避免逐个缺文件/缺头文件的反复修复循环。',
-      ...dependencyClosure.issues.slice(0, 12).map(issue => issue.reason === 'missing-local-include'
-        ? `${issue.file}: 缺失本地 include ${issue.include}${issue.expectedPath ? `（期望：${issue.expectedPath}）` : ''}`
-        : `${issue.file}: 使用了需要 ${issue.include} 的 std 类型/函数，但缺少对应 #include。`),
-    ].join('\n');
-    await callbacks.onAgentStatus({
-      type: 'agentStatus',
-      phase: 'validate',
-      state: 'failed',
-      title: 'C/C++ 依赖闭包不完整',
-      detail: detail.slice(0, 1200),
-    });
-    return {
-      ran: false,
-      ok: false,
-      reason: 'cpp-dependency-closure-incomplete',
-      detail,
-    };
-  }
 
   await callbacks.onAgentStatus({
     type: 'agentStatus',
@@ -1698,37 +1672,46 @@ async function runValidation(
     detail: `验证 ${compilable.length} 个 C/C++ 文件`,
   });
 
-  // Always compile-only for validation first; if run requested we run separately
-  const compilePlan = planLocalExecution('编译', compilable, workspaceRoot.fsPath) as LocalExecutionPlan | null;
-  if (!compilePlan) {
+  // ValidationService is the sole compile/QualityGate execution boundary. The
+  // interactive run below asks the same VerificationPlanner for its run plan.
+  const compileResult = await new ValidationService().validateWorkspaceChanges({
+    changedPaths: workspaceRelativeCompilable,
+    rootFsPath: workspaceRootFsPath,
+    requestPrompt: userPrompt,
+    cppValidationPolicy: 'conservative',
+    runCpp: false,
+  });
+  if (!compileResult) {
     await callbacks.onAgentStatus({
       type: 'agentStatus',
       phase: 'validate',
-      state: 'skipped',
-      title: '未找到构建命令，跳过编译验证',
+      state: 'failed',
+      title: '未找到可执行验证计划',
       detail: '未识别到 CMakeLists.txt 或 C++ 源文件。',
     });
     return { ran: false, ok: false, reason: 'no-build-plan' };
   }
-
-  const compileResult = await runLocalExecution(compilePlan);
+  if (compileResult.command) callbacks.onToolActivity?.('terminal', `自动验证: ${compileResult.command}`);
 
   await callbacks.onAgentStatus({
     type: 'agentStatus',
     phase: 'validate',
     state: compileResult.ok ? 'completed' : 'failed',
-    title: compileResult.ok ? '编译验证通过 ✓' : '编译验证失败',
+    title: compileResult.ok
+      ? '编译验证通过 ✓'
+      : compileResult.status === 'blocked' ? 'C/C++ 验证被质量门禁阻止' : '编译验证失败',
     detail: compileResult.ok
-      ? `命令: ${compilePlan.command}  exitCode: 0`
+      ? `命令: ${compileResult.command}  exitCode: 0`
       : compileResult.output.slice(0, 400),
   });
   if (!compileResult.ok) {
     return {
-      ran: true,
+      ran: compileResult.ran,
       ok: false,
-      command: compilePlan.command,
+      command: compileResult.command,
       detail: compileResult.output.slice(0, 1200),
-      reason: 'compile-failed',
+      exitCode: compileResult.exitCode,
+      reason: compileResult.reason || (compileResult.status === 'blocked' ? 'validation-blocked' : 'compile-failed'),
     };
   }
 
@@ -1745,7 +1728,7 @@ async function runValidation(
     return {
       ran: true,
       ok: true,
-      command: compilePlan.command,
+      command: compileResult.command,
       detail,
       reason: 'runtime-validation-unavailable',
       exitCode: 0,
@@ -1756,12 +1739,25 @@ async function runValidation(
 
   // If compilation succeeded and user wants to run — execute in terminal
   if (wantRun && callbacks.onTerminalCommand) {
-    // Build a run-only command from the compile plan's output binary.
-    // Pass '运行' to planLocalExecution so it enables the run step (compile-run mode).
-    const runPlan = planLocalExecution('运行', compilable, workspaceRoot.fsPath) as LocalExecutionPlan | null;
-    const runCmd = runPlan?.mode === 'compile-run'
-      ? runPlan.command       // planner already includes run step
-      : compilePlan.command;  // fallback: reuse compile command
+    const runPlan = new VerificationPlanner().planWorkspaceChanges({
+      changedPaths: workspaceRelativeCompilable,
+      rootFsPath: workspaceRootFsPath,
+      requestPrompt: userPrompt,
+      cppValidationPolicy: 'conservative',
+      runCpp: true,
+    });
+    if (runPlan.kind === 'blocked') {
+      const detail = [`运行验证计划被阻止：${runPlan.reason}`, ...runPlan.risks].join('\n');
+      await callbacks.onAgentStatus({
+        type: 'agentStatus',
+        phase: 'validate',
+        state: 'failed',
+        title: '无法生成运行验证计划',
+        detail: detail.slice(0, 1200),
+      });
+      return { ran: false, ok: false, command: compileResult.command, detail, reason: runPlan.reason };
+    }
+    const runCmd = runPlan.command;
     runCommandForEvidence = runCmd;
     try {
       await callbacks.onAgentStatus({
@@ -1771,8 +1767,8 @@ async function runValidation(
         title: '正在执行程序',
         detail: `终端运行: ${runCmd}`,
       });
-      const output = await callbacks.onTerminalCommand(runCmd, compilePlan.cwd);
-      const evidence = analyzeTerminalEvidence(runCmd, output, compilePlan.cwd);
+      const output = await callbacks.onTerminalCommand(runCmd, runPlan.cwd);
+      const evidence = analyzeTerminalEvidence(runCmd, output, runPlan.cwd);
       // G-4: truncate and feed output back into sessionHistory so LLM sees actual results
       const truncated = output.length > 2000
         ? output.slice(0, 2000) + `\n[输出已截断，共 ${output.length} 字符]`
@@ -1865,7 +1861,7 @@ async function runValidation(
   return {
     ran: true,
     ok: true,
-    command: runCommandForEvidence ?? compilePlan.command,
+    command: runCommandForEvidence ?? compileResult.command,
     exitCode: 0,
     reason: wantRun ? 'compile-and-run-passed' : 'compile-passed',
   };

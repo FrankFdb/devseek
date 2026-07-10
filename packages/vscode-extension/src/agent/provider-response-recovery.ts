@@ -118,6 +118,9 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
     ? '- 这是最后一次恢复：只能输出最小下一步。最多 3 个只读工具或 1 个写入工具；不能重新做全量项目探索。'
     : '- 恢复轮必须小步推进：最多 6 个只读工具；如需写入，最多 1 个写入工具，content 控制在 6000 字符以内。';
   const resetProviderSession = shouldResetProviderSessionForRecovery(input.failure);
+  const toolSerializationLine = input.failure.status.toLowerCase() === 'incomplete-tool-block'
+    ? '- 上一轮工具块序列化不完整：本轮只输出 1 个工具调用。run_terminal.command 必须是合法 JSON 字符串；shell 文本优先使用单引号，必须使用双引号时写成 \\"；输出工具块后立即停止。'
+    : '';
 
   return {
     role: 'user',
@@ -141,6 +144,7 @@ export function buildAgentProviderRecoveryPrompt(input: AgentProviderRecoveryPro
       '- 不要重复已读取路径、相同 list_dir、相同 grep_search 或相同 file_search；如确实缺少内容，只读取更精确的新文件或行范围。',
       '- 需要上下文时，只输出具体 read_file/list_dir/grep_search/file_search/只读 run_terminal 工具调用，不要同时输出长篇分析。',
       '- 需要创建或修改文件时，只使用 create_file 或 replace_in_file；大产物先写最小骨架，再分轮补充。',
+      toolSerializationLine,
       readLimitLine,
       '- 不要在自然语言里粘贴大段 Markdown/源码代码块，不要一次性输出长报告；大产物分多轮通过工具落盘。',
       '- 正式既有工程任务必须继续沿既有入口、边界、线程/事件、消息协议和构建验证证据推进，不能降级成孤立 demo。',

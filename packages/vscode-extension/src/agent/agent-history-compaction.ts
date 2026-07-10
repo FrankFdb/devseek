@@ -52,7 +52,8 @@ export function summarizeExecutedAssistantToolHistory(text: string): string {
   const lines = [
     '[DevSeek 已执行工具请求摘要]',
   ];
-  if (prose) lines.push(`意图：${truncateOneLine(prose, 260)}`);
+  const intent = summarizeProviderIntent(prose);
+  if (intent) lines.push(`意图：${intent}`);
   lines.push(`工具调用：${tools.length} 个；真实执行结果、文件写入和验证证据见后续 [工具结果 Round]。`);
 
   for (const tool of tools.slice(0, MAX_TOOL_SUMMARIES)) {
@@ -65,6 +66,20 @@ export function summarizeExecutedAssistantToolHistory(text: string): string {
     lines.push('大段 content/源码/Markdown 已从对话历史省略；如需细节，必须通过 read_file 读取已落盘文件。');
   }
   return lines.join('\n');
+}
+
+function summarizeProviderIntent(prose: string): string {
+  const providerOnly = String(prose || '').split(/\[DevSeek (?:已执行工具请求摘要|上下文压缩)\]|\[工具结果 Round\b/)[0];
+  const cleanLines = providerOnly
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .filter(line => !/^\[DevSeek (?:已执行工具请求摘要|上下文压缩)\]/.test(line))
+    .filter(line => !/^\[工具结果 Round\b/.test(line))
+    .filter(line => !/^(?:工具调用：|大段 content\/源码\/Markdown 已从对话历史省略)/.test(line))
+    .filter(line => !/^-\s+(?:read_file|list_dir|grep_search|file_search|semantic_search|create_file|write_file|replace_in_file|delete_file|run_terminal)\b/.test(line))
+    .filter(line => !/^意图：.*\[DevSeek 已执行工具请求摘要\]/.test(line));
+  return truncateOneLine(cleanLines.slice(0, 4).join(' '), 260);
 }
 
 function describeToolForHistory(tool: FakeTool): string {

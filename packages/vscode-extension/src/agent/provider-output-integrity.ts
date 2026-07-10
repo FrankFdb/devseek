@@ -1,5 +1,5 @@
 import { hasReadOnlyAnswerEvidence } from './completion-evidence';
-import { parseFakeToolCalls } from './fake-tool-parser';
+import { hasIncompleteFakeToolCallProtocol, parseFakeToolCalls } from './fake-tool-parser';
 import { isolateModelToolRequestText } from './model-tool-protocol-adapter';
 import {
   looksLikeProviderErrorSurface,
@@ -122,6 +122,8 @@ function looksLikeConcreteAnswer(text: string): boolean {
 }
 
 function looksLikeTruncatedToolProtocol(text: string): boolean {
+  const isolated = isolateModelToolRequestText(text).text;
+  if (hasIncompleteFakeToolCallProtocol(isolated)) return true;
   const bracketStart = text.lastIndexOf('[TOOL:');
   if (bracketStart >= 0 && bracketStart > text.length - 240) {
     const tail = text.slice(bracketStart);

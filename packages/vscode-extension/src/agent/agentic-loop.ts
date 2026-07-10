@@ -72,7 +72,6 @@ import {
   executeFakeToolsForLoop,
   isAgentWorkToolName,
   normalizeVisibleTodos,
-  type ToolFailureEvidence,
 } from './tool-loop';
 import {
   buildTaskSettlementFailureStatus,
@@ -107,6 +106,7 @@ import {
   replaceAllAssistantToolHistory,
   replaceLatestAssistantToolHistory,
 } from './agent-history-compaction';
+import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
 
 const AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
 const AGENTIC_TASK_PROMPT_CHAR_BUDGET = 34_000;
@@ -310,8 +310,6 @@ function normalizeAgenticAutoValidation(input: {
 /** Normal mode ≈ Copilot's toolCallLimit ~25; autopilot mode ≈ Copilot's ~200. */
 const AGENTIC_ROUNDS_NORMAL   = 25;
 const AGENTIC_ROUNDS_AUTOPILOT = 200;
-const AGENTIC_REPEATED_TOOL_FAILURE_WARN_COUNT = 2;
-const AGENTIC_REPEATED_TOOL_FAILURE_STOP_COUNT = 4;
 const AGENTIC_REPEATED_QUALITY_GATE_WARN_COUNT = 2;
 const AGENTIC_REPEATED_QUALITY_GATE_STOP_COUNT = 3;
 const AGENTIC_CONTEXT_GATHERING_ROUND_LIMIT_BEFORE_WRITE = 2;
@@ -329,44 +327,9 @@ const FILE_WRITE_PROGRESS_TOOL_NAMES = new Set([
   'write_file',
   'replace_file',
   'replace_in_file',
+  'delete_file',
   'create_directory',
 ]);
-
-function normalizeToolFailurePath(pathValue: string | undefined): string {
-  return (pathValue || '').replace(/\\/g, '/').replace(/\/+/g, '/');
-}
-
-function makeToolFailureSignature(failure: ToolFailureEvidence): string {
-  return [
-    failure.tool,
-    failure.kind,
-    normalizeToolFailurePath(failure.path),
-    failure.reason.slice(0, 220),
-  ].join('::');
-}
-
-function describeToolFailureTarget(failure: ToolFailureEvidence): string {
-  return failure.path ? `${failure.tool}(${failure.path})` : failure.tool;
-}
-
-function buildRepeatedToolFailureFeedback(failure: ToolFailureEvidence, count: number): string {
-  const target = describeToolFailureTarget(failure);
-  const strategy = failure.kind === 'replace'
-    ? '不要继续用同一个 old_str 重试。先 read_file 读取当前文件；如果文件不存在，改用 create_file 新建；如果内容已变化，基于最新内容给出精确 old_str/new_str。'
-    : failure.kind === 'terminal-guard'
-      ? 'run_terminal 只能用于查询、编译、运行和测试。写文件必须改用 create_file/write_file/replace_in_file，且每次写入后用 read_file 或验证命令确认。'
-      : '不要重复提交同一份完整内容。请改成小步策略：先创建最小可验证骨架，再用 replace_in_file 分段补充；C/C++ 字符串换行必须写成 \\n 或使用合法 raw string。';
-  return [
-    `【系统反馈】检测到同一工具失败重复 ${count} 次：${target}`,
-    `失败原因：${failure.reason}`,
-    strategy,
-    '下一轮必须改变工具或写入粒度；如果不能继续推进，请明确报告阻塞，不能 task_complete。',
-  ].join('\n');
-}
-
-function describeRepeatedToolFailureStop(failure: ToolFailureEvidence, count: number): string {
-  return `同一工具失败重复 ${count} 次仍无有效进展：${describeToolFailureTarget(failure)}；${failure.reason}`;
-}
 
 function makeContextToolSignature(tool: ReturnType<typeof parseFakeToolCalls>[number]): string {
   return `${tool.name}:${stableStringify(tool.input ?? {})}`;
@@ -448,6 +411,9 @@ ${buildEngineeringGuidelinesPrompt('agent')}
 精确替换既有文件片段（修改正式工程既有文件时优先使用；old_str 必须来自 read_file 读取到的原文）：
 [TOOL:replace_in_file {"path":"src/foo.cpp","old_str":"原始文本","new_str":"替换后文本"}]
 
+删除已确认不再需要的文件（必须先 read_file 核对；禁止用 rm/mv/sed -i 绕过文件审计）：
+[TOOL:delete_file {"path":"src/obsolete.cpp"}]
+
 记录并追踪任务进度（第一轮先用此工具列出子任务；每步开始标 in-progress，完成标 completed）：
 [TOOL:manage_todo_list {"todoList":[{"id":1,"title":"任务描述","status":"in-progress"},{"id":2,"title":"另一任务","status":"not-started"}]}]
 
@@ -459,7 +425,8 @@ ${mcpSection}
 - 开始前先用 manage_todo_list 列出所有子任务（Copilot 规划阶段）
 - 每个子任务开始时标为 in-progress，完成时标为 completed
 - memory_write / 项目记忆属于智能体内部能力，不要放进 manage_todo_list，也不要作为用户可见任务展示
-- 创建/修改文件必须调用 create_file 工具并提供完整 content；修改既有文件可优先调用 replace_in_file 并提供 read_file 得到的 old_str/new_str；“我正在创建/将创建/现在创建”这类自然语言不算执行；不要用 run_terminal 里的 python/echo/tee/cat 重定向写文件
+- 创建/修改/删除文件必须调用 create_file/write_file/replace_in_file/delete_file；修改或删除既有文件前先 read_file，replace_in_file 的 old_str 必须来自最新原文；“我正在创建/将创建/现在创建”这类自然语言不算执行；不要用 run_terminal 里的 rm/mv/cp/sed -i/python/echo/tee/cat 等命令绕过文件审计
+- 生成源码时必须保留真实换行，C/C++ 的 #include/#define/#pragma/#endif 等预处理指令必须独占物理行；不要为了缩短响应把源码压成单行
 - AGENTS.md、CLAUDE.md、.devseek/rules.md、.github/copilot-instructions.md 是项目指令文件，不是普通源码文件；除非用户明确要求修改指令，否则不要把源码实现写入或引用为源码事实
 - 用户指定“code 目录/code目录”时，必须把源码写到 ${workspaceRoot}/code/ 下；不要只描述创建，也不要把文件写到扩展目录或临时目录
 - 你已经拥有 run_terminal/read_file/create_file 等工具；禁止声称“无法执行命令/无法访问文件/只是对话模式”。需要执行时必须调用 run_terminal，并以真实退出码和输出作为证据
@@ -551,6 +518,7 @@ export async function runAgenticLoop(
   const allEvidenceRefs: EvidenceRef[] = [];
   let latestAutoQualityGate: AgenticHistoryQualityGate | undefined;
   let currentTodos: TodoItem[] = [];
+  let initialAgenticTodos: TodoItem[] = [];
   let lastMissingEvidence: string[] = [];
   let lastSummaryFactFailures: string[] = [];
   let lastProviderText = '';
@@ -565,7 +533,7 @@ export async function runAgenticLoop(
   };
   const announcedProseKeys = new Set<string>();
   const allReadEvidencePaths = new Set<string>();
-  const repeatedToolFailures = new Map<string, number>();
+  const toolFailureRecovery = new ToolFailureRecoveryLedger();
   const repeatedQualityGateFailures = new Map<string, number>();
   const recordQualityGateFailureFeedback = (qualityGate: AgenticHistoryQualityGate | undefined): string => {
     if (!qualityGate) return '';
@@ -591,6 +559,11 @@ export async function runAgenticLoop(
   // Whether the AI has called manage_todo_list yet.
   let todoEverSet = false;
   let fallbackTodosVisible = false;
+  const preserveInitialTodosWhenModelPlanIsTooCoarse = (items: TodoItem[]): TodoItem[] => {
+    if (initialAgenticTodos.length < 3) return items;
+    if (items.length >= 3) return items;
+    return initialAgenticTodos;
+  };
   // Accumulate files written across all rounds for the phase:done editedFiles payload.
   const allWrittenFiles: Array<{path: string; basename: string; linesAdded: number; linesRemoved: number; action: string}> = [];
   let autoValidatedWriteCount = 0;
@@ -638,6 +611,7 @@ export async function runAgenticLoop(
   if (promptRequiresTools) {
     const initialTodos = inferInitialAgenticTodos(userPrompt);
     if (initialTodos.length > 0) {
+      initialAgenticTodos = initialTodos;
       currentTodos = initialTodos;
     }
   }
@@ -690,7 +664,9 @@ export async function runAgenticLoop(
         const earlyTools = parseFakeToolCalls(sAccum);
         const firstTodo = earlyTools.find(t => t.name === 'manage_todo_list');
         if (firstTodo) {
-          const earlyItems = normalizeVisibleTodos((firstTodo.input.todoList ?? []) as TodoItem[]);
+          const earlyItems = preserveInitialTodosWhenModelPlanIsTooCoarse(
+            normalizeVisibleTodos((firstTodo.input.todoList ?? []) as TodoItem[]),
+          );
           if (Array.isArray(earlyItems) && earlyItems.length > 0) {
             if (earlyItems.every(item => item.status === 'completed')) return;
             sEarlyFired = true; // stop checking — already fired
@@ -862,10 +838,11 @@ export async function runAgenticLoop(
         const autoValidation = await runAgentAutoValidationForWrites(
           allWrittenFiles.slice(autoValidatedWriteCount),
           workspaceRoot,
-          userPrompt,
-          callbacks,
-          cppValidationPolicy,
-        );
+        userPrompt,
+        callbacks,
+        cppValidationPolicy,
+        { qualityWrittenFiles: allWrittenFiles },
+      );
         autoValidatedWriteCount = allWrittenFiles.length;
         const normalizedAutoValidation = normalizeAgenticAutoValidation({
           autoValidation,
@@ -894,7 +871,10 @@ export async function runAgenticLoop(
         totalChars += continueMessage.length;
         continue;
       }
-      const fallbackTodos = normalizeVisibleTodos(extractPlanningTodoItems(text));
+      const rawFallbackTodos = normalizeVisibleTodos(extractPlanningTodoItems(text));
+      const fallbackTodos = rawFallbackTodos.length > 0
+        ? preserveInitialTodosWhenModelPlanIsTooCoarse(rawFallbackTodos)
+        : [];
       if (fallbackTodos.length > 0) {
         todoEverSet = true;
         currentTodos = fallbackTodos;
@@ -1067,12 +1047,7 @@ export async function runAgenticLoop(
     }
     if (loopRes.writtenFiles?.length) {
       allWrittenFiles.push(...loopRes.writtenFiles);
-      const writtenPathKeys = new Set(loopRes.writtenFiles.map(file => normalizeToolFailurePath(file.path)));
-      for (const key of [...repeatedToolFailures.keys()]) {
-        if ([...writtenPathKeys].some(pathKey => pathKey && key.includes(pathKey))) {
-          repeatedToolFailures.delete(key);
-        }
-      }
+      toolFailureRecovery.clearForWrittenPaths(loopRes.writtenFiles.map(file => file.path));
       progressEpoch++;
     }
     if (loopRes.readFiles?.length) {
@@ -1114,16 +1089,10 @@ export async function runAgenticLoop(
     } else if (roundHasWriteProgress || roundHasTerminalProgress) {
       contextGatheringOnlyRoundsWithoutWrite = 0;
     }
-    for (const failure of loopRes.toolFailures ?? []) {
-      const sig = makeToolFailureSignature(failure);
-      const count = (repeatedToolFailures.get(sig) || 0) + 1;
-      repeatedToolFailures.set(sig, count);
-      if (count >= AGENTIC_REPEATED_TOOL_FAILURE_WARN_COUNT) {
-        loopWarnings.push(buildRepeatedToolFailureFeedback(failure, count));
-      }
-      if (count >= AGENTIC_REPEATED_TOOL_FAILURE_STOP_COUNT && !failedReason) {
-        failedReason = describeRepeatedToolFailureStop(failure, count);
-      }
+    const failureRound = toolFailureRecovery.recordRound(loopRes.toolFailures ?? []);
+    loopWarnings.push(...failureRound.warnings);
+    if (failureRound.stopReason && !failedReason) {
+      failedReason = failureRound.stopReason;
     }
     if (failedReason) {
       break;
@@ -1134,6 +1103,7 @@ export async function runAgenticLoop(
       userPrompt,
       callbacks,
       cppValidationPolicy,
+      { qualityWrittenFiles: allWrittenFiles },
     );
     autoValidatedWriteCount = allWrittenFiles.length;
     const normalizedAutoValidation = normalizeAgenticAutoValidation({

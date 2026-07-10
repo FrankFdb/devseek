@@ -8,7 +8,22 @@ export interface AgentEditedFileEvent {
   action: string;
 }
 
-export interface AgentStatusEvent {
+export type AgentProgressStage =
+  | 'planning'
+  | 'context'
+  | 'implementation'
+  | 'validation'
+  | 'recovery'
+  | 'delivery';
+
+export interface AgentProgressPresentation {
+  progressStage?: AgentProgressStage;
+  progressTitle?: string;
+  progressDetail?: string;
+  progressState?: 'started' | 'completed' | 'failed' | 'skipped';
+}
+
+export interface AgentStatusEvent extends AgentProgressPresentation {
   type: 'agentStatus';
   phase: 'plan' | 'execute' | 'validate' | 'repair' | 'done' | 'error' | 'analyzeFile' | 'analyzeSummary';
   taskId?: string;
@@ -27,10 +42,17 @@ export interface AgentStatusEvent {
   editedFiles?: AgentEditedFileEvent[];
 }
 
+export interface AgentToolActivityEvent extends AgentProgressPresentation {
+  type: 'agentToolActivity';
+  activityKind: string;
+  activityLabel: string;
+  activityTotal?: number;
+}
+
 export type AgentEvent =
   | AgentStatusEvent
   | { type: 'agentDelta'; text: string }
-  | { type: 'agentToolActivity'; activityKind: string; activityLabel: string; activityTotal?: number }
+  | AgentToolActivityEvent
   | { type: 'agentAnnouncement'; text: string }
   | { type: 'agentNotice'; kind: 'info' | 'warn' | 'error'; text: string }
   | { type: 'todoUpdate'; items: unknown[] };

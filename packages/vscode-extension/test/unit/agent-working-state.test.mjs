@@ -63,9 +63,9 @@ test('agent working state: end and error finalize active working containers', ()
 test('agent working state: tool activity keeps user-facing stage digest with task context', () => {
   assert.match(
     webview,
-    /setAgentContainerLabel\(container, inferAgentProgressStageTitle\(kind, label, agentCurrentTaskLabel\), true\);/,
+    /function applyPresentedAgentProgress\(msg\)[\s\S]*?msg\.progressTitle[\s\S]*?data-presented-progress/,
   );
-  assert.match(webview, /updateAgentProgressDigest\(kind, label, 'started'\);/);
+  assert.match(webview, /prepareAgentToolActivityContainer\(actKind, actLabel, msg\.progressStage \|\| ''\);/);
 });
 
 test('agent working state: failed final labels use explicit failed todo before finalize', () => {
@@ -83,15 +83,16 @@ test('agent working state: failed final labels use explicit failed todo before f
   );
 });
 
-test('agent working state: next task start does not mark previous task completed optimistically', () => {
+test('agent working state: next task stays in the semantic stage without optimistic settlement', () => {
   assert.match(
     webview,
-    /function finalizePreviousAgentContainer\(container, previousTaskIndex\)[\s\S]*?isAgentContainerFailed\(container\) \|\| isTaskIndexFailed\(previousTaskIndex\)/,
+    /Task rows stay inside the semantic stage selected by AgentDisplayPresenter/,
   );
   assert.match(
     webview,
     /Do not infer previous-task completion merely because the next task started/,
   );
+  assert.doesNotMatch(webview, /finalizePreviousAgentContainer/);
   assert.doesNotMatch(
     webview,
     /for \(var pti = 0; pti < Math\.max\(0, msg\.taskIndex - 1\); pti\+\+\)[\s\S]*?agentTodos\[pti\]\.state = 'completed'/,

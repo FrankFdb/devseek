@@ -20,6 +20,7 @@ import { assessFormalProjectDocumentQuality } from './formal-project-document-qu
 import {
   classifyProviderOutputIntegrity,
   describeProviderOutputIntegrity,
+  type ProviderOutputIntegrityKind,
 } from './provider-output-integrity';
 import type { TaskExecutionResult } from './task-execution-result';
 import type { WrittenFileEvidence } from './completion-evidence';
@@ -55,7 +56,7 @@ interface ProviderMarkdownResult {
   markdown?: string;
   reason?: string;
   responseChars?: number;
-  integrityKind?: string;
+  integrityKind?: ProviderOutputIntegrityKind;
 }
 
 interface MarkdownStatusOptions {
@@ -660,7 +661,7 @@ function extractBalancedJsonObject(text: string, startIndex: number): string | u
   return undefined;
 }
 
-function describeProviderMarkdownRejection(text: string, integrityKind: string): string {
+function describeProviderMarkdownRejection(text: string, integrityKind: ProviderOutputIntegrityKind): string {
   const trimmed = normalizeProviderMarkdownDocumentText(unwrapMarkdownFence(stripToolCallBlocks(text).trim()));
   if (BAD_PROVIDER_REPORT_RE.test(trimmed)) {
     return `${integrityKind}: Provider 返回包含工具调用痕迹，不能作为最终 Markdown 文档。`;

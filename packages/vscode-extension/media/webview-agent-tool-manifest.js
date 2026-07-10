@@ -4,6 +4,7 @@
   var toolNames = [
     "create_directory",
     "create_file",
+    "delete_file",
     "edit_file",
     "fetch_webpage",
     "file_search",

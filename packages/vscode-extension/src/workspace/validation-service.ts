@@ -66,6 +66,7 @@ export interface ValidateWorkspaceChangesInput {
   rootFsPath?: string;
   requestPrompt?: string;
   cppValidationPolicy?: CppValidationPolicy;
+  runCpp?: boolean;
 }
 
 export class ValidationService {
@@ -89,6 +90,7 @@ export class ValidationService {
       changedPaths: input.changedPaths,
       requestPrompt: input.requestPrompt,
       cppValidationPolicy: input.cppValidationPolicy,
+      runCpp: input.runCpp,
       fsNode: this.fsNode,
     });
     if (plan.kind === 'blocked') return blockedValidationEvidence(plan);
