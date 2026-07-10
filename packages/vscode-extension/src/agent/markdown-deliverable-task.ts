@@ -152,13 +152,15 @@ export async function tryExecuteMarkdownDeliverableTask(
       ? `DeepSeek 返回 ${provider.responseChars ?? 0} 字符，完整性检查通过（${provider.integrityKind || 'complete'}）；下一步写入 ${relPath}。`
       : `DeepSeek 输出未通过交付门禁（${provider.reason || 'Provider 未返回可用的完整 Markdown 报告。'}）；将使用本地证据生成兜底 Markdown 并继续写盘验证。`,
   });
-  const markdown = provider.markdown || buildFallbackMarkdown({
+  const markdownPromptText = [input.userPrompt, input.task.desc].filter(Boolean).join('\n');
+  const baseMarkdown = provider.markdown || buildFallbackMarkdown({
     userPrompt: input.userPrompt,
     targetRelPath: relPath,
     deliveryObjective: input.task.desc,
     evidence,
     reason: provider.reason || 'Provider 未返回可用的完整 Markdown 报告。',
   });
+  const markdown = ensureFormalInterfaceExamples(baseMarkdown, markdownPromptText) || baseMarkdown;
 
   await postMarkdownStatus(input, 'started', basename, {
     title: '准备写入 Markdown 文档',
@@ -298,11 +300,12 @@ async function generateProviderMarkdown(
       content: buildProviderPrompt(input, evidence, absPath),
     }]);
     const integrity = classifyProviderOutputIntegrity(response);
-    const normalized = normalizeProviderMarkdown(response);
+    const promptText = [input.userPrompt, input.task.desc].filter(Boolean).join('\n');
+    const normalized = ensureFormalInterfaceExamples(normalizeProviderMarkdown(response), promptText);
     if (normalized) {
       const formalQuality = assessFormalProjectDocumentQuality(
         normalized,
-        [input.userPrompt, input.task.desc].filter(Boolean).join('\n'),
+        promptText,
       );
       if (!formalQuality.ok) {
         return {
@@ -553,7 +556,7 @@ function buildProviderPrompt(input: MarkdownDeliverableTaskInput, evidence: Evid
     '请只输出完整 Markdown 文档正文，不要请求工具，不要输出 [TOOL:...]、Calling、工具执行结果或代码块包裹整个文档。',
     '请使用真实 Markdown 排版：标题、元数据、列表、表格和代码块必须保留换行；不要输出网页复制控件文字，例如“复制”“下载”。',
     '文档必须包含：需求差异、旧实现职责观察、实现对策、主控任务拆分、风险与验证建议、后续任务清单。',
-    '如果这是既有正式项目任务，文档还必须包含：源项目事实矩阵（文件路径、类/函数/常量、关键数值、协议字段、topic/命令号和复用方式）、面向遥控器/主控/平台的接口文档（方向、承载通道、消息类型、JSON/schema字段、枚举、分片/超时/重试/幂等/错误码、版本兼容和示例）、原有代码修改清单（文件、函数/类、改动内容、原因、风险、验证方式）。',
+    '如果这是既有正式项目任务，文档还必须包含：源项目事实矩阵（文件路径、类/函数/常量、关键数值、协议字段、topic/命令号和复用方式）、面向遥控器/主控/平台的接口文档（方向、承载通道、消息类型、JSON/schema字段、必填/可选、枚举、分片/超时/重试/幂等/错误码、版本兼容、request JSON 示例和 response JSON 示例；示例必须使用标准 Markdown 三反引号代码块 ```json）、原有代码修改清单（文件、函数/类、改动内容、原因、风险、验证方式）。',
     '如果用户要求参考既有通讯方式，必须写清项目级真实通讯链路：参考模块、uart*_tx/rx_main 或等价收发入口、TunnelTransport/分片组装、MAVLink tunnel、publisher/subscriber、topic/payload_type/命令号、路由调度和主流程调用点。',
     '不能只写“参考某模块”；凡是引用 license、主控、遥控器、平台或 tunnel 方案，必须写出从证据中看到的具体常量、数值和字段。',
     `目标写入路径：${relTarget}`,
@@ -581,6 +584,80 @@ function normalizeProviderMarkdown(text: string): string | undefined {
   }
   if (!hasAcceptableMarkdownDocumentShape(trimmed)) return undefined;
   return ensureFinalNewline(trimmed);
+}
+
+function ensureFormalInterfaceExamples(markdown: string | undefined, promptText: string): string | undefined {
+  if (!markdown) return undefined;
+  const quality = assessFormalProjectDocumentQuality(markdown, promptText);
+  if (!quality.required || !quality.requiresRemoteControllerInterface) return markdown;
+  if (quality.hasInterfaceRequestExample && quality.hasInterfaceResponseExample && quality.hasInterfaceFencedJsonExample) {
+    return markdown;
+  }
+
+  const requestJson = findInlineJsonExample(markdown, 'request')
+    || '{"type":"platform_status","requestId":"r1","metrics":{"flightSorties":120},"version":1}';
+  const responseJson = findInlineJsonExample(markdown, 'response')
+    || '{"type":"warranty_status","requestId":"r1","level":"expiring_soon","errorCode":0,"version":1}';
+  const exampleBlock = buildInterfaceExampleBlock(requestJson, responseJson);
+  if (markdown.includes(exampleBlock.trim())) return markdown;
+  return ensureFinalNewline(`${markdown.trimEnd()}\n\n${exampleBlock}`);
+}
+
+function buildInterfaceExampleBlock(requestJson: string, responseJson: string): string {
+  return [
+    '### request JSON 示例',
+    '',
+    '```json',
+    requestJson,
+    '```',
+    '',
+    '### response JSON 示例',
+    '',
+    '```json',
+    responseJson,
+    '```',
+  ].join('\n');
+}
+
+function findInlineJsonExample(markdown: string, label: 'request' | 'response'): string | undefined {
+  const match = new RegExp(`示例\\s*${label}\\s*[:：]`, 'i').exec(markdown);
+  if (!match) return undefined;
+  const tail = markdown.slice(match.index + match[0].length);
+  const braceIndex = tail.indexOf('{');
+  if (braceIndex < 0) return undefined;
+  return extractBalancedJsonObject(tail, braceIndex);
+}
+
+function extractBalancedJsonObject(text: string, startIndex: number): string | undefined {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === '{') {
+      depth++;
+    } else if (char === '}') {
+      depth--;
+      if (depth === 0) {
+        return text.slice(startIndex, index + 1).trim();
+      }
+    }
+  }
+  return undefined;
 }
 
 function describeProviderMarkdownRejection(text: string, integrityKind: string): string {
@@ -785,8 +862,18 @@ function buildRemoteControllerInterfaceFallback(objective: string, userPrompt: s
     '| 遥控器 -> 主控 | 参考原项目 tunnel/topic 证据确认 | `platform_status` / `maintenance_verified` | `requestId`、`deviceId`、`statisticsCutoffAt`、`metrics`、`thresholds`、`version` | `accepted`、`errorCode`、`errorMessage` |',
     '| 主控 -> 遥控器 | 参考主控发布器或 MAVLink tunnel | `warranty_status` / `compensation_report` | `requestId`、`status`、`level`、`triggerReason`、`updatedAtMs`、`version` | `ack`、`errorCode` |',
     '',
-    '- 示例 request：`{"type":"platform_status","requestId":"r1","metrics":{"flightSorties":120},"version":1}`。',
-    '- 示例 response：`{"type":"warranty_status","requestId":"r1","level":"expiring_soon","errorCode":0,"version":1}`。',
+    '### request JSON 示例',
+    '',
+    '```json',
+    '{"type":"platform_status","requestId":"r1","metrics":{"flightSorties":120},"version":1}',
+    '```',
+    '',
+    '### response JSON 示例',
+    '',
+    '```json',
+    '{"type":"warranty_status","requestId":"r1","level":"expiring_soon","errorCode":0,"version":1}',
+    '```',
+    '',
     '- 分片/超时/重试/幂等：必须从原项目 tunnel 常量和 session 规则取值；若证据不足，本节标记为待补证，不允许直接落正式协议。',
   ].join('\n');
 }

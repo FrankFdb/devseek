@@ -90,4 +90,21 @@ test('TerminalCommandPolicy: confirms shell writes and destructive commands', ()
   );
 });
 
+test('TerminalCommandPolicy: classifies in-place editors as mutating commands', () => {
+  assert.equal(
+    decideTerminalCommandPermission({
+      command: "sed -i 's/x/y/g' /workspace/devseek/src/test_warranty_protocol.py",
+      workspaceRoot,
+    }).risk,
+    'mutating',
+  );
+  assert.equal(
+    decideTerminalCommandPermission({
+      command: "perl -pi -e 's/x/y/g' /workspace/devseek/docs/plan.md",
+      workspaceRoot,
+    }).risk,
+    'mutating',
+  );
+});
+
 console.log('\nTerminal command policy tests passed.\n');

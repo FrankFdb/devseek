@@ -79,6 +79,21 @@ test('AgentLoop write guard: detects Python open/write shell write targets', () 
   );
 });
 
+test('AgentLoop write guard: detects in-place shell editors as file writes', () => {
+  assert.equal(
+    detectShellFileWriteCommand("sed -i 's/x/y/g' src/test_warranty_protocol.py"),
+    'src/test_warranty_protocol.py',
+  );
+  assert.equal(
+    detectShellFileWriteCommand("cd src && sed -i.bak 's/x/y/g' test_warranty_protocol.py && python3 test_warranty_protocol.py"),
+    'test_warranty_protocol.py',
+  );
+  assert.equal(
+    detectShellFileWriteCommand("perl -pi -e 's/x/y/g' docs/plan.md"),
+    'docs/plan.md',
+  );
+});
+
 test('AgentLoop write guard: blocks nested file payload drift into an unrelated target path', () => {
   const decision = detectNestedFilePayloadDrift({
     targetAbsPath: '/workspace/packages/vscode-extension/src/app/AGENTS.md',

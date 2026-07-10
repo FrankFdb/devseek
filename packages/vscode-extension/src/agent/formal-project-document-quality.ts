@@ -14,6 +14,9 @@ export interface FormalProjectDocumentQuality {
   hasSourceFactMatrix: boolean;
   hasConcreteProtocolFacts: boolean;
   hasRemoteControllerInterfaceDoc: boolean;
+  hasInterfaceRequestExample: boolean;
+  hasInterfaceResponseExample: boolean;
+  hasInterfaceFencedJsonExample: boolean;
   hasExistingCodeModificationPlan: boolean;
   hasProjectWideCommunicationChain: boolean;
   reasons: string[];
@@ -32,6 +35,9 @@ const LICENSE_STRONG_SIGNAL_RE = /(?:kMavTunnelCmdLicense|33007|kTunnelMaxTotalL
 const INTERFACE_SIGNAL_RE = /(?:方向|承载|通道|topic|命令|command|消息类型|request|response|JSON|schema|字段|payload|枚举|状态码|错误码|超时|重试|幂等|版本|兼容|示例|遥控器|主控|平台)/gi;
 const INTERFACE_SCHEMA_EXAMPLE_RE = /(?:JSON|schema|字段|payload).{0,240}(?:示例|example|request|response)|(?:示例|example|request|response).{0,240}(?:JSON|schema|字段|payload)/is;
 const INTERFACE_OPERATION_RULE_RE = /(?:版本|兼容|超时|重试|幂等|错误码|状态码|timeout|retry|idempotent|errorCode)/i;
+const INTERFACE_REQUEST_EXAMPLE_RE = /(?:request|请求).{0,80}(?:示例|example)|(?:示例|example).{0,80}(?:request|请求)/i;
+const INTERFACE_RESPONSE_EXAMPLE_RE = /(?:response|响应|返回).{0,80}(?:示例|example)|(?:示例|example).{0,80}(?:response|响应|返回)/i;
+const FENCED_JSON_EXAMPLE_RE = /```(?:json|JSON)\s*[\s\S]*?\{[\s\S]*?```/;
 const MODIFICATION_PLAN_SIGNAL_RE = /(?:原有代码修改清单|修改点|需要修改|集成点|目标文件|函数|类|方法|改动内容|原因|风险|验证方式|回归|影响范围)/gi;
 const PROJECT_COMMUNICATION_ENTRY_RE = /(?:uart\d+_(?:tx|rx)_main\.(?:c|cc|cpp|h|hpp)|(?:^|\s|`)(?:[\w./-]+\/)?(?:uart\d+|mavlink|tunnel|oam_msg|publisher|subscriber)[\w./-]*\.(?:c|cc|cpp|h|hpp)(?::\d+)?|(?:收发入口|通讯入口|通信入口|发送入口|接收入口|串口入口|全项目搜索|项目级通讯链路))/gi;
 const COMMUNICATION_TRANSPORT_SIGNAL_RE = /(?:TunnelTransport|tunnel_transport|license_tunnel_transport|分片传输|分片组装|MAVLINK_MSG_TUNNEL|payload_type|HDStringPublisher|HDStringSubscriber|Publisher|Subscriber|topic|sessionId|payloadLen|totalLen|crc32|route|路由|调度|uart\d+)/gi;
@@ -65,10 +71,16 @@ export function assessFormalProjectDocumentQuality(
     && SOURCE_FACT_LABEL_RE.test(content);
   const hasConcreteProtocolFacts = protocolSignalCount >= 6
     && (!requiresLicenseReference || licenseStrongSignalCount >= 4);
+  const hasInterfaceRequestExample = INTERFACE_REQUEST_EXAMPLE_RE.test(content);
+  const hasInterfaceResponseExample = INTERFACE_RESPONSE_EXAMPLE_RE.test(content);
+  const hasInterfaceFencedJsonExample = FENCED_JSON_EXAMPLE_RE.test(content);
   const hasRemoteControllerInterfaceDoc = !requiresRemoteControllerInterface
     || (interfaceSignalCount >= 12
       && INTERFACE_SCHEMA_EXAMPLE_RE.test(content)
-      && INTERFACE_OPERATION_RULE_RE.test(content));
+      && INTERFACE_OPERATION_RULE_RE.test(content)
+      && hasInterfaceRequestExample
+      && hasInterfaceResponseExample
+      && hasInterfaceFencedJsonExample);
   const hasExistingCodeModificationPlan = !requiresModificationPlan
     || (modificationPlanSignalCount >= 8 && sourceReferenceCount >= 4 && /(?:风险|验证|回归)/i.test(content));
   const hasProjectWideCommunicationChain = !requiresCommunicationChain
@@ -97,6 +109,9 @@ export function assessFormalProjectDocumentQuality(
     hasSourceFactMatrix,
     hasConcreteProtocolFacts,
     hasRemoteControllerInterfaceDoc,
+    hasInterfaceRequestExample,
+    hasInterfaceResponseExample,
+    hasInterfaceFencedJsonExample,
     hasExistingCodeModificationPlan,
     hasProjectWideCommunicationChain,
     reasons,

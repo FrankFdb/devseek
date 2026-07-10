@@ -93,6 +93,8 @@ export function detectShellFileWriteCommand(cmd: string): string | undefined {
     { regexp: /\bcat\s*>\s*([^\s;&|]+)/i, targetGroup: 1 },
     { regexp: /\b(?:printf|echo)\b[\s\S]*?(?<!\d)>{1,2}\s*([^\s;&|]+)/i, targetGroup: 1 },
     { regexp: /\btee\s+(?:-a\s+)?([^\s;&|]+)/i, targetGroup: 1 },
+    { regexp: /\bsed\b(?=[^;&|]*\s-i(?:\b|[^\s;&|]*))[^;&|]*\s([^\s;&|]+)(?=\s*(?:[;&|]|$))/i, targetGroup: 1 },
+    { regexp: /\bperl\b(?=[^;&|]*\s-[^\s;&|]*p)(?=[^;&|]*\s-[^\s;&|]*i)[^;&|]*\s([^\s;&|]+)(?=\s*(?:[;&|]|$))/i, targetGroup: 1 },
     { regexp: /\bpython3?\s+-c\s+["'][\s\S]*?\bopen\(\s*(['"])([^'"]+)\1\s*,\s*(['"])[^'"]*[wax+][^'"]*\3/i, targetGroup: 2 },
     { regexp: /\bpython3?\s+-c\s+["'][\s\S]*?\bPath\(\s*(['"])([^'"]+)\1\s*\)\.write_(?:text|bytes)\s*\(/i, targetGroup: 2 },
   ];

@@ -33,6 +33,7 @@ const GIT_READ_ONLY_COMMANDS = new Set([
 const DESTRUCTIVE_RE = /(?:^|[;&|]\s*)(?:sudo\s+)?(?:rm\s+-[^\s]*r[^\s]*f|dd\s+|mkfs\b)|\bgit\s+(?:reset\s+--hard|clean\s+-[^\s]*f)/i;
 const MUTATING_RE = /(?:^|[;&|]\s*)(?:touch|mkdir|cp|mv|rm|chmod|chown|ln|truncate)\b|\bgit\s+(?:add|apply|checkout|commit|merge|pull|push|rebase|reset|restore|stash|switch)\b|\b(?:npm|pnpm|yarn|bun)\s+(?:install|add|remove|update|upgrade)\b|\b(?:pip|pip3|python3?\s+-m\s+pip)\s+install\b|\b(?:python3?|node)\s+-e\s+[\s\S]*(?:writeFile|appendFile|mkdirSync|rmSync|open\()/i;
 const PYTHON_FILE_WRITE_RE = /\bpython3?\s+-c\s+["'][\s\S]*(?:\bopen\(\s*["'][^"']+["']\s*,\s*["'][^"']*[wax+]|Path\(\s*["'][^"']+["']\s*\)\.write_(?:text|bytes)\s*\()/i;
+const IN_PLACE_EDIT_RE = /\bsed\b(?=[^;&|]*\s-i(?:\b|[^\s;&|]*))|\bperl\b(?=[^;&|]*\s-[^\s;&|]*p)(?=[^;&|]*\s-[^\s;&|]*i)/i;
 const COMMAND_SUBSTITUTION_RE = /[`$]\(/;
 
 export function decideTerminalCommandPermission(input: TerminalCommandPermissionInput): TerminalCommandPermissionDecision {
@@ -40,7 +41,7 @@ export function decideTerminalCommandPermission(input: TerminalCommandPermission
   if (!command) return decision('unknown', 'empty-command');
 
   if (DESTRUCTIVE_RE.test(command)) return decision('destructive', 'destructive-command');
-  if (hasShellWriteRedirection(command) || PYTHON_FILE_WRITE_RE.test(command) || MUTATING_RE.test(command)) {
+  if (hasShellWriteRedirection(command) || PYTHON_FILE_WRITE_RE.test(command) || IN_PLACE_EDIT_RE.test(command) || MUTATING_RE.test(command)) {
     return decision('mutating', 'mutating-command');
   }
   if (COMMAND_SUBSTITUTION_RE.test(command)) return decision('unknown', 'command-substitution');
@@ -158,7 +159,7 @@ function isReadOnlySegment(rawSegment: string): boolean {
   }
   if (!READ_ONLY_COMMANDS.has(command)) return false;
   if (command === 'find' && /\s-(?:delete|exec|ok)\b/.test(segment)) return false;
-  if (command === 'sed' && /(?:^|\s)-i(?:\s|$)/.test(segment)) return false;
+  if (command === 'sed' && /(?:^|\s)-i(?:\b|[^\s]*)/.test(segment)) return false;
   if (command === 'awk' && /\bsystem\s*\(/.test(segment)) return false;
   return true;
 }

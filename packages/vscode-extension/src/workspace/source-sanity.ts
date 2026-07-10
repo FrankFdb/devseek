@@ -1,5 +1,5 @@
 export interface SourceSanityIssue {
-  kind: 'unterminated-string-literal' | 'tool-protocol-contamination';
+  kind: 'unterminated-string-literal' | 'tool-protocol-contamination' | 'markdown-emphasis-dunder-corruption';
   line: number;
   detail: string;
 }
@@ -11,22 +11,41 @@ export interface SourceTransportRepairResult {
 }
 
 const CPP_SOURCE_EXT_RE = /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx)$/i;
+const PYTHON_SOURCE_EXT_RE = /\.py$/i;
+const CODE_SOURCE_EXT_RE = /\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|py|js|jsx|ts|tsx|mjs|cjs|java|go|rs|cs|php|rb|swift|kt|kts|scala|sh|bash|zsh)$/i;
 const SOURCE_TOOL_PROTOCOL_RE = /(?:\[调用\s+(?:create_file|write_file|replace_in_file|run_terminal|read_file|list_dir|search_file)\]|\bCalling:\s*(?:create_file|write_file|replace_in_file|run_terminal|read_file|list_dir|search_file)\b|<TOOL_[A-Za-z0-9_]+>|<\/TOOL_[A-Za-z0-9_]+>)/;
+const PYTHON_DUNDER_NAME_RE = /(?:init|name|main|str|repr|len|iter|next|enter|exit|eq|ne|lt|le|gt|ge|hash|call|dict|class|module|all|file|doc|annotations|slots|getattr|setattr|delattr|contains|getitem|setitem|delitem|bool|bytes|format|new|del)/;
+const PYTHON_MARKDOWN_DUNDER_RE = new RegExp(`\\*\\*${PYTHON_DUNDER_NAME_RE.source}\\*\\*`);
+const PYTHON_MARKDOWN_DUNDER_GLOBAL_RE = new RegExp(`\\*\\*(${PYTHON_DUNDER_NAME_RE.source})\\*\\*`, 'g');
 
 export function findGeneratedSourceSanityIssue(filePath: string, content: string): SourceSanityIssue | undefined {
-  if (!CPP_SOURCE_EXT_RE.test(filePath || '')) return undefined;
-  return findSourceToolProtocolContamination(content || '') || findCppUnterminatedStringLiteral(content || '');
+  if (!CODE_SOURCE_EXT_RE.test(filePath || '')) return undefined;
+  return findSourceToolProtocolContamination(content || '')
+    || findPythonMarkdownDunderCorruption(filePath, content || '')
+    || (CPP_SOURCE_EXT_RE.test(filePath || '') ? findCppUnterminatedStringLiteral(content || '') : undefined);
 }
 
 export function repairGeneratedSourceTransportEscapes(filePath: string, content: string): SourceTransportRepairResult {
-  if (!CPP_SOURCE_EXT_RE.test(filePath || '')) {
+  if (!CODE_SOURCE_EXT_RE.test(filePath || '')) {
     return { content, repaired: false, repairCount: 0 };
   }
-  const newlineRepair = repairCppStringLiteralTransportNewlines(content || '');
-  const macroRepair = repairCppMacroMarkdownEmphasisEscapes(newlineRepair.content);
-  const repairCount = newlineRepair.repairCount + macroRepair.repairCount;
+  let current = content || '';
+  let repairCount = 0;
+  if (CPP_SOURCE_EXT_RE.test(filePath || '')) {
+    const newlineRepair = repairCppStringLiteralTransportNewlines(current);
+    current = newlineRepair.content;
+    repairCount += newlineRepair.repairCount;
+    const macroRepair = repairCppMacroMarkdownEmphasisEscapes(current);
+    current = macroRepair.content;
+    repairCount += macroRepair.repairCount;
+  }
+  if (PYTHON_SOURCE_EXT_RE.test(filePath || '')) {
+    const dunderRepair = repairPythonMarkdownDunderEscapes(current);
+    current = dunderRepair.content;
+    repairCount += dunderRepair.repairCount;
+  }
   return {
-    content: macroRepair.content,
+    content: current,
     repaired: repairCount > 0,
     repairCount,
   };
@@ -137,7 +156,19 @@ function findSourceToolProtocolContamination(content: string): SourceSanityIssue
   return {
     kind: 'tool-protocol-contamination',
     line,
-    detail: `第 ${line} 行附近的 C/C++ 源码混入了工具调用协议文本（${match[0]}）。请只写入源码内容，工具调用必须由工具通道执行。`,
+    detail: `第 ${line} 行附近的源码混入了工具调用协议文本（${match[0]}）。请只写入源码内容，工具调用必须由工具通道执行。`,
+  };
+}
+
+function findPythonMarkdownDunderCorruption(filePath: string, content: string): SourceSanityIssue | undefined {
+  if (!PYTHON_SOURCE_EXT_RE.test(filePath || '')) return undefined;
+  const match = PYTHON_MARKDOWN_DUNDER_RE.exec(content);
+  if (!match) return undefined;
+  const line = countNewlines(content.slice(0, match.index)) + 1;
+  return {
+    kind: 'markdown-emphasis-dunder-corruption',
+    line,
+    detail: `第 ${line} 行附近的 Python 特殊标识符疑似被 Markdown 强调语法污染（${match[0]}）。请使用 __name__/__init__/__main__ 这类真实源码标识符。`,
   };
 }
 
@@ -268,6 +299,19 @@ function repairCppMacroMarkdownEmphasisEscapes(content: string): SourceTransport
       return '__VA_OPT__';
     });
     return next;
+  });
+  return {
+    content: output,
+    repaired: repairCount > 0,
+    repairCount,
+  };
+}
+
+function repairPythonMarkdownDunderEscapes(content: string): SourceTransportRepairResult {
+  let repairCount = 0;
+  const output = content.replace(PYTHON_MARKDOWN_DUNDER_GLOBAL_RE, (_match, name: string) => {
+    repairCount += 1;
+    return `__${name}__`;
   });
   return {
     content: output,

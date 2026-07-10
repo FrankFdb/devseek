@@ -735,8 +735,18 @@ async function formalMainControlUavWorkflowCase() {
         '| 遥控器 -> 主控 | MAVLink tunnel payload type warranty | `platform_status` | `requestId`、`statisticsCutoffAt`、`metrics.flightSorties`、`thresholds`、`version` | `accepted`、`errorCode` |',
         '| 主控 -> 遥控器 | `MainControlBus::publishWarrantyEvent` + tunnel ack | `warranty_status` | `requestId` | `eventId=1022`、`level`、`triggerReason`、`version` |',
         '',
-        '- 示例 request：`{"type":"platform_status","requestId":"r1","metrics":{"flightSorties":7100},"version":1}`。',
-        '- 示例 response：`{"type":"warranty_status","requestId":"r1","eventId":1022,"level":"expired","errorCode":0,"version":1}`。',
+        '示例 request：',
+        '',
+        '```json',
+        '{"type":"platform_status","requestId":"r1","metrics":{"flightSorties":7100},"version":1}',
+        '```',
+        '',
+        '示例 response：',
+        '',
+        '```json',
+        '{"type":"warranty_status","requestId":"r1","eventId":1022,"level":"expired","errorCode":0,"version":1}',
+        '```',
+        '',
         '- 超时采用 `kTunnelSessionTimeoutMs=5000`，幂等键使用 `requestId + sessionId`，错误码覆盖 `payload_invalid`、`crc_mismatch`、`timeout`。',
         '',
         '## 原有代码修改清单',
@@ -918,6 +928,10 @@ async function formalMainControlUavWorkflowCase() {
   assert.match(design, /LicenseTunnelHeader/);
   assert.match(design, /遥控器与主控接口文档/);
   assert.match(design, /示例 request/);
+  assert.match(design, /示例 response/);
+  assert.match(design, /```json/);
+  assert.match(design, /幂等键/);
+  assert.match(design, /错误码/);
   assert.match(design, /原有代码修改清单/);
   assert.match(design, /UAV_EVENT 1022/);
   assert.match(design, /不创建脱离主控/);

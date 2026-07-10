@@ -2372,6 +2372,33 @@ function createExecStepsList(container) {
   }
 }
 
+function ensureAgentProgressDigest(container) {
+  if (!container) return null;
+  var dets = container.querySelector('.aut-details');
+  var rows = container.querySelector('.aut-rows');
+  if (!dets || !rows) return null;
+  var digest = dets.querySelector('.aut-progress-digest');
+  if (digest) return digest;
+  digest = document.createElement('div');
+  digest.className = 'aut-progress-digest';
+  digest.innerHTML = '<div class="aut-progress-title"></div><div class="aut-progress-detail"></div>';
+  dets.insertBefore(digest, rows);
+  return digest;
+}
+
+function updateAgentProgressDigest(kind, label, state) {
+  if (!agentExecContainer || !agentExecContainer.isConnected || agentExecContainer.hasAttribute('data-done')) return;
+  var digest = ensureAgentProgressDigest(agentExecContainer);
+  if (!digest) return;
+  var data = buildAgentProgressDigest(agentActivityCounts, kind || '', label || '', agentCurrentTaskLabel || agentExecContainer.getAttribute('data-running-label') || '', state || 'started');
+  var titleEl = digest.querySelector('.aut-progress-title');
+  var detailEl = digest.querySelector('.aut-progress-detail');
+  if (titleEl) titleEl.textContent = data.title || '正在推进任务';
+  if (detailEl) detailEl.textContent = data.detail || '';
+  var spinLbl = agentExecContainer.querySelector('.aut-spinner-label');
+  if (spinLbl && data.title) spinLbl.textContent = data.title;
+}
+
 function setAgentContainerLabel(container, label, persistForDone) {
   if (!container || !label) return;
   var normalized = String(label).replace(/\s+/g, ' ').trim();
@@ -2403,6 +2430,8 @@ function ensureAgentProgressContainer(label) {
     + '</details>';
   startWorkingShimmer(agentExecContainer);
   setAgentContainerLabel(agentExecContainer, label || '处理中...', true);
+  ensureAgentProgressDigest(agentExecContainer);
+  updateAgentProgressDigest('plan', label || '处理中...', 'started');
   createExecStepsList(agentExecContainer);
   wrap.appendChild(agentExecContainer);
   messagesEl.appendChild(wrap);
@@ -2416,7 +2445,7 @@ function activeAgentContainerHasProcessRows(container) {
 }
 
 function prepareAgentToolActivityContainer(kind, label) {
-  var nextLabel = buildAgentToolActivityLabel(kind, label);
+  var nextLabel = inferAgentProgressStageTitle(kind, label, agentCurrentTaskLabel);
   var nextToolKey = sanitizeAgentActivityLabelValue(kind, label).slice(0, 160);
   var current = agentExecContainer;
   if (current && current.isConnected && !current.hasAttribute('data-done')) {
@@ -2447,7 +2476,8 @@ function prepareAgentToolActivityContainer(kind, label) {
   var container = ensureAgentProgressContainer(nextLabel);
   container.setAttribute('data-active-tool-kind', kind || 'tool');
   container.setAttribute('data-active-tool-label', nextToolKey);
-  setAgentContainerLabel(container, agentCurrentTaskLabel || nextLabel, true);
+  setAgentContainerLabel(container, inferAgentProgressStageTitle(kind, label, agentCurrentTaskLabel), true);
+  updateAgentProgressDigest(kind, label, 'started');
   return container;
 }
 
@@ -2520,6 +2550,7 @@ function addAgentStatus(msg) {
       agentCurrentTaskIndex = -1;
       ensureAgentProgressContainer(planLabel);
       setAgentContainerLabel(agentExecContainer, planLabel, true);
+      updateAgentProgressDigest('plan', planLabel, msg.state || 'started');
       appendAgentProgressStep('plan', planLabel, msg.detail || '', msg.state || 'started');
       var planSpin = agentExecContainer && agentExecContainer.querySelector('.aut-spinner-label');
       if (planSpin) planSpin.textContent = planLabel;
@@ -2570,10 +2601,13 @@ function addAgentStatus(msg) {
           + '</details>';
         startWorkingShimmer(agentExecContainer);
         setAgentContainerLabel(agentExecContainer, msg.title || '任务计划已生成', true);
+        ensureAgentProgressDigest(agentExecContainer);
+        updateAgentProgressDigest('plan', msg.title || '任务计划已生成', 'completed');
         unifiedWrap.appendChild(agentExecContainer);
         messagesEl.appendChild(unifiedWrap);
       } else {
         setAgentContainerLabel(agentExecContainer, msg.title || '任务计划已生成', true);
+        updateAgentProgressDigest('plan', msg.title || '任务计划已生成', 'completed');
       }
       agentTaskCards.clear();
       agentCurrentTaskIndex = -1; // -1 marks this as the plan container (not a task container)
@@ -2608,6 +2642,7 @@ function addAgentStatus(msg) {
         ? existingPhaseLabel + '；' + batchLabel
         : batchLabel;
       setAgentContainerLabel(agentExecContainer, combinedBatchLabel, true);
+      updateAgentProgressDigest('execute', batchLabel, msg.state || 'started');
       appendAgentProgressStep('execute', batchLabel, msg.detail || '', msg.state || 'started');
       var batchSpin = agentExecContainer && agentExecContainer.querySelector('.aut-spinner-label');
       if (batchSpin) batchSpin.textContent = batchLabel;
@@ -2686,6 +2721,8 @@ function addAgentStatus(msg) {
         + '</details>';
       startWorkingShimmer(agentExecContainer);
       setAgentContainerLabel(agentExecContainer, initLabel, true);
+      ensureAgentProgressDigest(agentExecContainer);
+      updateAgentProgressDigest(effectiveTaskAction || 'execute', initLabel, msg.state || 'started');
       createExecStepsList(agentExecContainer);
       ecWrap.appendChild(agentExecContainer);
       messagesEl.appendChild(ecWrap);
@@ -3383,6 +3420,10 @@ function injectWorkingAreaStyles() {
     '.run-in-terminal-btn:hover { opacity:1; background:rgba(127,127,127,.12); }',
     /* ── Tool activity chip (shows "Read N  Search M") ── */
     /* ── Tool-call step list (one row per read/search/list/run, Copilot-style) ── */
+    '.aut-progress-digest { margin:5px 8px 4px 14px; padding:5px 7px; border-left:2px solid rgba(99,179,255,.34); background:rgba(99,179,255,.06); }',
+    '.aut-progress-title { font-size:11px; font-weight:650; line-height:1.35; color:var(--vscode-foreground); }',
+    '.aut-progress-detail { font-size:10.5px; line-height:1.45; margin-top:2px; opacity:.72; overflow-wrap:anywhere; }',
+    '.aut-details[data-done] .aut-progress-digest { background:transparent; border-left-color:rgba(127,127,127,.25); opacity:.8; padding-top:2px; padding-bottom:2px; }',
     '.aut-steps-list { display:flex; flex-direction:column; gap:0; margin:4px 0 2px; max-height:180px; overflow-y:auto; overflow-x:hidden; scroll-behavior:smooth; }',
     /* Done-state steps: no height limit so all steps are visible after completion */
     '.aut-details[data-done] .aut-steps-list { max-height:none; overflow:visible; opacity:.82; margin:5px 8px 6px 14px; }',
@@ -5318,10 +5359,12 @@ window.addEventListener('message', function(event) {
         var ranRowsElPlain = agentExecContainer.querySelector('.aut-rows');
         if (ranRowsElPlain) { ranRowsElPlain.appendChild(ranRow); ranRowsElPlain.scrollTop = ranRowsElPlain.scrollHeight; }
       }
-      setAgentContainerLabel(agentExecContainer, (exitOk ? 'Ran ' : 'Failed ') + (cmdDisplay || 'command'), true);
+      if (agentActivityCounts.terminal !== undefined) agentActivityCounts.terminal++;
+      setAgentContainerLabel(agentExecContainer, exitOk ? '验证命令已完成' : '验证命令失败', true);
+      updateAgentProgressDigest('terminal', cmdDisplay || 'command', exitOk ? 'completed' : 'failed');
       var termSpinLbl = agentExecContainer.querySelector('.aut-spinner-label');
       if (termSpinLbl) {
-        termSpinLbl.textContent = exitOk ? 'Command completed' : 'Command failed';
+        termSpinLbl.textContent = exitOk ? '验证命令已完成' : '验证命令失败';
       }
       maybeScrollToBottom();
     }
@@ -5342,6 +5385,7 @@ window.addEventListener('message', function(event) {
         }
         var intentSpinEl = agentExecContainer.querySelector('.aut-spinner-label');
         if (intentSpinEl) intentSpinEl.textContent = labelTrunc;
+        updateAgentProgressDigest('label', labelTrunc, 'started');
       }
       return;
     }
@@ -5356,6 +5400,7 @@ window.addEventListener('message', function(event) {
     if (agentActivitySeen.has(seenKey)) return;
     agentActivitySeen.add(seenKey);
     if (agentActivityCounts[actKind] !== undefined) agentActivityCounts[actKind]++;
+    updateAgentProgressDigest(actKind, actDisplayLabel, 'started');
     // Lazy-create steps list if agentToolActivity fires before plan phase created it
     var actRow = agentActivityRowId ? document.getElementById(agentActivityRowId) : null;
     if (!actRow && agentExecContainer && agentExecContainer.isConnected) {

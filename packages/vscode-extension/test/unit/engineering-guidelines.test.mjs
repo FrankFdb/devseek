@@ -39,6 +39,9 @@ test('EngineeringGuidelines: agent prompt carries file and function size constra
   assert.match(prompt, /除非用户明确要求单文件交付/);
   assert.match(prompt, /源项目事实矩阵/);
   assert.match(prompt, /接口交付文档/);
+  assert.match(prompt, /request JSON 示例/);
+  assert.match(prompt, /response JSON 示例/);
+  assert.match(prompt, /```json/);
   assert.match(prompt, /原有代码修改清单/);
 });
 

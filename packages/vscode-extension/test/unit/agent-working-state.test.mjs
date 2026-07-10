@@ -60,11 +60,12 @@ test('agent working state: end and error finalize active working containers', ()
   );
 });
 
-test('agent working state: tool activity keeps task-scoped header when available', () => {
+test('agent working state: tool activity keeps user-facing stage digest with task context', () => {
   assert.match(
     webview,
-    /setAgentContainerLabel\(container, agentCurrentTaskLabel \|\| nextLabel, true\);/,
+    /setAgentContainerLabel\(container, inferAgentProgressStageTitle\(kind, label, agentCurrentTaskLabel\), true\);/,
   );
+  assert.match(webview, /updateAgentProgressDigest\(kind, label, 'started'\);/);
 });
 
 test('agent working state: failed final labels use explicit failed todo before finalize', () => {

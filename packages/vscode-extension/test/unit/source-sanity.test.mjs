@@ -95,6 +95,32 @@ test('source sanity blocks tool protocol text embedded in C++ source', () => {
   assert.match(issue?.detail || '', /工具调用协议文本/);
 });
 
+test('source sanity repairs Markdown emphasis corruption in Python dunder identifiers', () => {
+  const polluted = [
+    'class WarrantyTunnelHeader:',
+    '    def **init**(self):',
+    '        pass',
+    '',
+    'if **name** == "**main**":',
+    '    print("ok")',
+  ].join('\n');
+
+  const repaired = repairGeneratedSourceTransportEscapes('test_warranty_protocol.py', polluted);
+
+  assert.equal(repaired.repaired, true);
+  assert.equal(repaired.repairCount, 3);
+  assert.match(repaired.content, /def __init__\(self\):/);
+  assert.match(repaired.content, /if __name__ == "__main__":/);
+  assert.equal(findGeneratedSourceSanityIssue('test_warranty_protocol.py', repaired.content), undefined);
+});
+
+test('source sanity detects uncorrected Python dunder Markdown corruption', () => {
+  const issue = findGeneratedSourceSanityIssue('test_warranty_protocol.py', 'def **init**(self):\n    pass\n');
+
+  assert.equal(issue?.kind, 'markdown-emphasis-dunder-corruption');
+  assert.equal(issue?.line, 1);
+});
+
 test('source sanity ignores non C/C++ files', () => {
   assert.equal(
     findGeneratedSourceSanityIssue('note.md', '```cpp\nstd::cout << "\nbroken";\n```\n'),

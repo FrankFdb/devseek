@@ -78,8 +78,18 @@ test('formal project quality: source facts, interface schema, and modification p
     '| 遥控器 -> 主控 | MAVLINK_MSG_TUNNEL, payload_type warranty | `platform_status` | `requestId`、`deviceSn`、`statisticsCutoffAt`、`metrics.flightSorties`、`thresholds.expiringSoonDays` | `accepted`、`errorCode` |',
     '| 主控 -> 遥控器 | topic `/uav/dt/oam_msg/tx` | `warranty_status` | `requestId` | `status`、`level`、`triggerReason`、`nextCheckAtMs`、`version` |',
     '',
-    '示例 request：`{"type":"platform_status","requestId":"r1","metrics":{"flightSorties":120},"version":1}`。',
-    '示例 response：`{"type":"warranty_status","requestId":"r1","level":"expiring_soon","errorCode":0,"version":1}`。',
+    '示例 request：',
+    '',
+    '```json',
+    '{"type":"platform_status","requestId":"r1","metrics":{"flightSorties":120},"version":1}',
+    '```',
+    '',
+    '示例 response：',
+    '',
+    '```json',
+    '{"type":"warranty_status","requestId":"r1","level":"expiring_soon","errorCode":0,"version":1}',
+    '```',
+    '',
     '超时 5000ms 后重试，幂等键使用 requestId + sessionId，错误码包括 payload_invalid、crc_mismatch、timeout。',
     '',
     '## 原有代码修改清单',
@@ -99,6 +109,9 @@ test('formal project quality: source facts, interface schema, and modification p
   assert.deepEqual(quality.reasons, []);
   assert.equal(quality.hasConcreteProtocolFacts, true);
   assert.equal(quality.hasRemoteControllerInterfaceDoc, true);
+  assert.equal(quality.hasInterfaceRequestExample, true);
+  assert.equal(quality.hasInterfaceResponseExample, true);
+  assert.equal(quality.hasInterfaceFencedJsonExample, true);
   assert.equal(quality.hasExistingCodeModificationPlan, true);
   assert.equal(quality.hasProjectWideCommunicationChain, true);
 });

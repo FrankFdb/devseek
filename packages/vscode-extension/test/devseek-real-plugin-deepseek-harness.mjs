@@ -371,6 +371,7 @@ function buildHarnessPrompt(basePrompt, fixtureInfo = {}) {
       '- 文件名使用正式、可读的业务命名，例如 warranty-maintenance-implementation.md、warranty-tunnel-transport.hpp；不要添加 selfloop、codex、verify、simulation 等临时后缀。',
       '- 不要修改正式源码目录里的既有文件；如果正式集成需要改原代码，必须在文档中提供“原有代码修改清单”，写明文件、函数/类、改动内容、原因、风险和验证方式。',
       '- 文档必须包含源项目事实矩阵、遥控器/主控接口文档、原有代码修改清单、验证证据和生成文件路径。',
+      '- 遥控器/主控接口文档必须包含 request JSON 示例、response JSON 示例、字段类型/必填、版本兼容、超时/重试/幂等和错误码；JSON 示例必须使用标准 Markdown 三反引号代码块（```json），不能使用单反引号伪代码块。',
     ].filter(Boolean).join('\n'));
   }
   return lines.join('\n');
@@ -819,6 +820,8 @@ function assessCodeArtifactSignals(relative, content) {
   const hasValidationHook = /(?:assert\s*\(|static_assert|EXPECT_|ASSERT_|self.?test|SelfTest|verify|validate|validation|单元测试|自测|验证)/i.test(text);
   const hasStandaloneSampleMain = /\bint\s+main\s*\(/.test(text) && !isTestLike;
   const hasToySample = /hello\s+world|Hello\s+World|TODO:\s*implement/i.test(text);
+  const hasMarkdownDunderCorruption = /\*\*(?:init|name|main|str|repr|len|iter|next|enter|exit|eq|ne|lt|le|gt|ge|hash|call|dict|class|module|all|file|doc|annotations|slots|getattr|setattr|delattr|contains|getitem|setitem|delitem|bool|bytes|format|new|del)\*\*/.test(text);
+  const hasToolProtocolContamination = /(?:\[调用\s+(?:create_file|write_file|replace_in_file|run_terminal|read_file|list_dir|search_file)\]|\bCalling:\s*(?:create_file|write_file|replace_in_file|run_terminal|read_file|list_dir|search_file)\b|<TOOL_[A-Za-z0-9_]+>|<\/TOOL_[A-Za-z0-9_]+>)/.test(text);
   return {
     isTestLike,
     hasImplementationSyntax,
@@ -826,6 +829,8 @@ function assessCodeArtifactSignals(relative, content) {
     hasValidationHook,
     hasStandaloneSampleMain,
     hasToySample,
+    hasMarkdownDunderCorruption,
+    hasToolProtocolContamination,
   };
 }
 
@@ -839,6 +844,12 @@ function assessCodeDirQuality(records, promptText) {
   const standaloneSampleRecords = changedRecords
     .filter(record => record.qualitySignals.hasStandaloneSampleMain || record.qualitySignals.hasToySample)
     .map(record => record.path);
+  const markdownDunderCorruptionRecords = changedRecords
+    .filter(record => record.qualitySignals.hasMarkdownDunderCorruption)
+    .map(record => record.path);
+  const toolProtocolContaminationRecords = changedRecords
+    .filter(record => record.qualitySignals.hasToolProtocolContamination)
+    .map(record => record.path);
   const reasons = [
     changedRecords.length === 0 ? 'no-code-change' : '',
     productionRecords.length === 0 ? 'no-production-code-artifact' : '',
@@ -846,6 +857,8 @@ function assessCodeDirQuality(records, promptText) {
     !hasFormalProjectAnchor ? 'missing-formal-project-anchor' : '',
     validationRequired && !hasValidationHook ? 'missing-validation-hook' : '',
     standaloneSampleRecords.length > 0 ? 'standalone-sample-code' : '',
+    markdownDunderCorruptionRecords.length > 0 ? 'code-markdown-emphasis-corruption' : '',
+    toolProtocolContaminationRecords.length > 0 ? 'code-tool-protocol-contamination' : '',
   ].filter(Boolean);
   return {
     ok: reasons.length === 0,
@@ -856,7 +869,93 @@ function assessCodeDirQuality(records, promptText) {
     hasFormalProjectAnchor,
     hasValidationHook,
     standaloneSampleRecords,
+    markdownDunderCorruptionRecords,
+    toolProtocolContaminationRecords,
     reasons,
+  };
+}
+
+function assessStageArtifactQuality(input) {
+  const formal = input.formalProjectQuality || {};
+  const codeQuality = input.expectedCodeDirQuality || { ok: true, reasons: [], hasValidationHook: false };
+  const promptText = String(input.promptText || '');
+  const codeEvidenceRequired = Boolean(input.codeEvidenceRequired);
+  const validationRequired = codeEvidenceRequired
+    || /(?:自闭环|测试|验证|单体|单元|编译|运行|self.?loop|test|verify|validation|compile|build)/i.test(promptText);
+  const stages = [];
+
+  const contextReasons = [
+    formal.required && !formal.hasSourceFactMatrix ? 'missing-source-fact-matrix' : '',
+    formal.required && !formal.hasConcreteProtocolFacts ? 'missing-concrete-protocol-facts' : '',
+    formal.required && formal.requiresLicenseReference && !formal.hasProjectWideCommunicationChain ? 'missing-project-wide-communication-chain' : '',
+  ].filter(Boolean);
+  stages.push({
+    id: 'context-investigation',
+    label: '需求/原项目事实调查',
+    required: Boolean(formal.required),
+    ok: !formal.required || contextReasons.length === 0,
+    reasons: contextReasons,
+  });
+
+  const designReasons = [
+    formal.required && formal.requiresRemoteControllerInterface && !formal.hasRemoteControllerInterfaceDoc ? 'missing-remote-controller-interface-doc' : '',
+    formal.required && formal.requiresRemoteControllerInterface && !formal.hasInterfaceRequestExample ? 'missing-interface-request-example' : '',
+    formal.required && formal.requiresRemoteControllerInterface && !formal.hasInterfaceResponseExample ? 'missing-interface-response-example' : '',
+    formal.required && formal.requiresRemoteControllerInterface && !formal.hasInterfaceFencedJsonExample ? 'missing-fenced-json-interface-example' : '',
+    formal.required && formal.requiresModificationPlan && !formal.hasExistingCodeModificationPlan ? 'missing-existing-code-modification-plan' : '',
+  ].filter(Boolean);
+  stages.push({
+    id: 'design-interface',
+    label: '设计/接口/原代码修改清单',
+    required: Boolean(formal.required),
+    ok: !formal.required || designReasons.length === 0,
+    reasons: designReasons,
+  });
+
+  const implementationReasons = [
+    codeEvidenceRequired && !input.expectedCodeArtifactsWritten ? 'expected-code-artifacts-not-written' : '',
+    codeEvidenceRequired && !input.expectedCodeArtifactsInRunLog ? 'expected-code-artifacts-not-in-run-log' : '',
+    codeEvidenceRequired && !input.expectedCodeDirArtifactsWritten ? 'expected-code-dir-not-written' : '',
+    codeEvidenceRequired && !input.expectedCodeDirArtifactsInRunLog ? 'expected-code-dir-not-in-run-log' : '',
+    codeEvidenceRequired && !codeQuality.ok ? `code-quality:${(codeQuality.reasons || []).join('|')}` : '',
+  ].filter(Boolean);
+  stages.push({
+    id: 'implementation',
+    label: '代码实现成果物',
+    required: codeEvidenceRequired,
+    ok: !codeEvidenceRequired || implementationReasons.length === 0,
+    reasons: implementationReasons,
+  });
+
+  const verificationReasons = [
+    validationRequired && !input.successTerminal ? 'agent-run-not-successful' : '',
+    validationRequired && Number(input.tasksApplied || 0) <= 0 ? 'no-applied-task' : '',
+    validationRequired && Number(input.tasksFailed || 0) > 0 ? 'task-failed' : '',
+    codeEvidenceRequired && !codeQuality.hasValidationHook ? 'missing-code-validation-hook' : '',
+  ].filter(Boolean);
+  stages.push({
+    id: 'verification',
+    label: '编译/测试/自闭环验证',
+    required: validationRequired,
+    ok: !validationRequired || verificationReasons.length === 0,
+    reasons: verificationReasons,
+  });
+
+  const deliveryReasons = [
+    input.markdownRequired && !input.markdownEvidenceOk ? 'markdown-deliverable-missing-or-not-in-run-log' : '',
+    formal.required && !formal.ok ? `formal-document-quality:${(formal.reasons || []).join('|')}` : '',
+  ].filter(Boolean);
+  stages.push({
+    id: 'delivery',
+    label: '最终交付与用户可读成果',
+    required: Boolean(input.markdownRequired || formal.required),
+    ok: (!input.markdownRequired || input.markdownEvidenceOk) && (!formal.required || formal.ok),
+    reasons: deliveryReasons,
+  });
+
+  return {
+    ok: stages.every(stage => stage.ok),
+    stages,
   };
 }
 
@@ -1026,6 +1125,21 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
     && runLogs.terminal.event === 'agent-run-completed'
     && String(terminalData.status || '') === 'completed'
     && tasksFailed === 0;
+  const stageArtifactQuality = assessStageArtifactQuality({
+    formalProjectQuality,
+    expectedCodeDirQuality,
+    expectedCodeArtifactsWritten,
+    expectedCodeArtifactsInRunLog,
+    expectedCodeDirArtifactsWritten,
+    expectedCodeDirArtifactsInRunLog,
+    markdownRequired,
+    markdownEvidenceOk,
+    successTerminal: Boolean(successTerminal),
+    tasksApplied,
+    tasksFailed,
+    codeEvidenceRequired,
+    promptText: prompt,
+  });
   const ok = Boolean(successTerminal
     && tasksApplied > 0
     && markdownEvidenceOk
@@ -1034,7 +1148,8 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
     && expectedCodeDirArtifactsWritten
     && expectedCodeDirArtifactsInRunLog
     && expectedCodeDirQualityOk
-    && formalProjectQualityOk);
+    && formalProjectQualityOk
+    && stageArtifactQuality.ok);
   return {
     ok,
     artifacts,
@@ -1064,6 +1179,7 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
       expectedCodeDirArtifactsInRunLog,
       expectedCodeDirQuality,
       expectedCodeDirQualityOk,
+      stageArtifactQuality,
       staleAnalysisChanged,
     },
   };
@@ -1173,6 +1289,13 @@ async function activate() {
     if (!baseReport.ok) {
       if (baseReport.checks?.formalProjectQualityOk === false) {
         baseReport.errors.push('正式项目文档质量不达标：' + (baseReport.checks.formalProjectQuality.reasons || []).join(', '));
+      }
+      if (baseReport.checks?.stageArtifactQuality?.ok === false) {
+        const failedStages = baseReport.checks.stageArtifactQuality.stages
+          .filter(stage => !stage.ok)
+          .map(stage => `${stage.label || stage.id}:${(stage.reasons || []).join('|') || 'not-ok'}`)
+          .join('; ');
+        baseReport.errors.push('阶段成果物质量不达标：' + failedStages);
       }
       baseReport.errors.push((expectedCodeArtifacts.length > 0 || expectedCodeDirs.length > 0)
         ? '真实插件链路未形成成功 agent-run-completed + 预期 Markdown 与代码产物写盘证据。'

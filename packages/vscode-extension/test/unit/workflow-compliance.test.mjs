@@ -725,8 +725,19 @@ test('Agent planning: task shape guidance is injected before code is written', (
   assertContains(agentic, 'buildTaskShapeGuidancePrompt(userPrompt)', 'Agentic loop must classify task shape from the current user prompt');
   assertContains(guidelines, '既有大项目/正式项目', 'engineering guidelines must distinguish existing-project work');
   assertContains(guidelines, '项目级通讯链路追踪', 'engineering guidelines must require project-wide communication tracing for referenced communication modules');
+  assertContains(guidelines, 'request JSON 示例', 'engineering guidelines must require request examples for interface deliverables');
+  assertContains(guidelines, 'response JSON 示例', 'engineering guidelines must require response examples for interface deliverables');
   assertContains(guidelines, '独立新项目/原型/练习', 'engineering guidelines must preserve standalone task behavior');
   assertContains(prompts, 'replace_in_file', 'tool prompt must expose targeted edit tool, not only full-file writes');
+});
+
+test('Agent progress UI: user-facing digest is primary and tool details stay collapsible', () => {
+  const runtime = webviewRuntime();
+  assertContains(runtime, 'buildAgentProgressDigest', 'agent progress must summarize current stage for users');
+  assertContains(runtime, 'aut-progress-digest', 'agent progress container must render a user-facing stage digest');
+  assertContains(runtime, 'updateAgentProgressDigest', 'tool events must update the stage digest instead of only raw tool rows');
+  assertContains(runtime, '下一步：', 'progress digest must tell the user what happens next');
+  assertContains(runtime, 'aut-step-details', 'raw tool details must remain collapsible for debugging');
 });
 
 test('§7 Final summary: done refreshes visible prose with files and validation', () => {
@@ -1639,16 +1650,27 @@ test('Architecture: Phase 10 application service owns Provider chat routing prot
   assert.doesNotMatch(extension, /getActiveProvider\(\)\.chat\(/, 'extension.ts must not call provider.chat directly');
 });
 
-test('Architecture: Bridge chat uses explicit DevSeek session context, not browser history', () => {
+test('Architecture: Bridge chat owns browser reset boundaries and trace-scoped prompt reuse', () => {
   const service = src('../shared/src/agent-application-service.ts');
   const bridgeProvider = src('src/llm/providers/bridge.ts');
+  const promptSession = src('src/llm/providers/bridge-prompt-session.ts');
   const extension = src('src/extension.ts');
 
   assertContains(service, 'buildBridgeTransportRequest', 'application service must prepare bridge transport requests centrally');
   assertContains(service, 'buildBridgePromptWithExplicitHistory', 'bridge requests must inject explicit current-session history when requested');
   assertContains(service, '不要使用 DeepSeek 网页中可能残留的旧对话作为上下文', 'bridge prompt must instruct against stale web history');
   assert.match(service, /buildBridgeTransportRequest[\s\S]*?newSession: true/, 'bridge transport requests must reset browser-side history');
-  assert.match(bridgeProvider, /flattenMessages\(opts\.messages\)[\s\S]*?newSession: opts\.newSession \?\? false/, 'BridgeProvider must honor caller-owned browser reset boundaries');
+  assertContains(bridgeProvider, 'prepareBridgePromptForSession', 'BridgeProvider must prepare trace-scoped prompt reuse centrally');
+  assertContains(bridgeProvider, 'recordBridgePromptSessionResponse', 'BridgeProvider must remember successful same-session turns');
+  assert.match(bridgeProvider, /newSession: opts\.newSession \?\? false/, 'BridgeProvider must honor caller-owned browser reset boundaries');
+  assert.match(
+    bridgeProvider,
+    /new ResponseIntegrityChecker\(\)\.assertSafeForExecution\(response\);[\s\S]*?isProviderOutputFatal\(providerOutput\.kind\)[\s\S]*?recordBridgePromptSessionResponse/,
+    'BridgeProvider must only cache same-session responses after provider integrity gates pass',
+  );
+  assertContains(promptSession, '沿用本会话上一轮已经建立的 DevSeek 编程智能体规则', 'bridge prompt reuse must send a clear same-session continuation marker');
+  assertContains(promptSession, 'traceRunId', 'bridge prompt reuse must be scoped to the current agent run');
+  assertContains(promptSession, 'recordBridgePromptSessionResponse', 'bridge prompt reuse must update state from provider responses');
   assertContains(extension, 'Bridge 网页侧历史不作为上下文来源', 'extension session history comment must document explicit context ownership');
 });
 
