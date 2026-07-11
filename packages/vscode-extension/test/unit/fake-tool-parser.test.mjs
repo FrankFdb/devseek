@@ -888,6 +888,21 @@ test('FakeToolParser: parses and strips function-style pseudo tool calls', () =>
   assert.equal(containsFakeToolCallProtocol(text), true);
 });
 
+test('FakeToolParser: a restarted response keeps only the final full-file write', () => {
+  const text = [
+    '开始创建文档。create_file({"path":"/tmp/design.md","content":"# Design\\npartial WARRANTY_EL',
+    '',
+    '开始创建文档。create_file({"path":"/tmp/design.md","content":"# Design\\ncomplete\\nend"})',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'create_file');
+  assert.equal(tools[0].input.path, '/tmp/design.md');
+  assert.equal(tools[0].input.content, '# Design\ncomplete\nend');
+});
+
 test('FakeToolParser: detects the first tool call start for streaming UI', () => {
   const text = '先说明一下\n{"tool":"write_file","path":"code/hello.cpp","content":"int main(){}"}';
   assert.equal(findFirstToolCallStart(text), text.indexOf('{'));

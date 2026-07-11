@@ -42,6 +42,7 @@ export type RunLogReplayIssueKind =
   | 'old-bridge-runtime'
   | 'provider-prompt-too-large'
   | 'nested-tool-history-summary'
+  | 'duplicate-full-file-write'
   | 'agent-run-failed'
   | 'markdown-deliverable-completed-without-file-evidence';
 
@@ -602,6 +603,16 @@ function collectProviderRequestIssues(content: string, line: number, issues: Run
 }
 
 function collectProviderResponseIssues(content: string, line: number, issues: RunLogReplayIssue[]): void {
+  const duplicateWritePath = findDuplicateFullFileWritePath(content);
+  if (duplicateWritePath) {
+    issues.push({
+      kind: 'duplicate-full-file-write',
+      severity: 'error',
+      line,
+      message: '同一 Provider 响应对同一路径发出了多个全量写入，通常表示“继续生成”内容被重复拼接。',
+      evidence: duplicateWritePath,
+    });
+  }
   const integrity = classifyProviderOutputIntegrity(content);
   if (integrity.kind === 'empty') {
     issues.push({
@@ -711,6 +722,20 @@ function collectProviderResponseIssues(content: string, line: number, issues: Ru
       }
     }
   }
+}
+
+function findDuplicateFullFileWritePath(content: string): string | undefined {
+  const counts = new Map<string, number>();
+  const writeRe = /(?:create_file|write_file|replace_file)\s*(?:\(|\])?\s*\{\s*"path"\s*:\s*"([^"\r\n]+)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = writeRe.exec(content)) !== null) {
+    const path = match[1].trim();
+    if (!path) continue;
+    const count = (counts.get(path) ?? 0) + 1;
+    if (count > 1) return path;
+    counts.set(path, count);
+  }
+  return undefined;
 }
 
 function countRunTerminalTools(content: string): number {

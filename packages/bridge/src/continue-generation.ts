@@ -34,6 +34,44 @@ export function isContinueGenerationText(text: string): boolean {
   return CONTINUE_GENERATION_ENGLISH.has(normalized);
 }
 
+export function mergeContinuedAssistantText(prefix: string, current: string): string {
+  const previous = String(prefix || '').trim();
+  const next = String(current || '').trim();
+  if (!previous) return next;
+  if (!next) return previous;
+  if (next.startsWith(previous)) return next;
+
+  const previousFingerprint = normalizeResponseFingerprint(previous);
+  const nextFingerprint = normalizeResponseFingerprint(next);
+  if (commonPrefixLength(previousFingerprint, nextFingerprint, 240) >= 80) {
+    return next;
+  }
+  if (previous.startsWith(next)) return previous;
+
+  const overlap = longestContinuationOverlap(previous, next);
+  if (overlap >= 24) return previous + next.slice(overlap);
+  return `${previous}\n\n${next}`;
+}
+
+function normalizeResponseFingerprint(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function commonPrefixLength(left: string, right: string, limit: number): number {
+  const max = Math.min(left.length, right.length, limit);
+  let index = 0;
+  while (index < max && left[index] === right[index]) index += 1;
+  return index;
+}
+
+function longestContinuationOverlap(prefix: string, continuation: string): number {
+  const max = Math.min(prefix.length, continuation.length, 4_000);
+  for (let length = max; length >= 24; length -= 1) {
+    if (prefix.endsWith(continuation.slice(0, length))) return length;
+  }
+  return 0;
+}
+
 export async function clickContinueGenerationButton(
   page: Page,
   selectors: readonly string[],

@@ -162,6 +162,37 @@ test('run log replay detects an executed-tool summary collapsed into a fake term
   }
 });
 
+test('run log replay detects a restarted response with duplicate full-file writes', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-11T00:34:50.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'restarted-provider-response',
+      data: {
+        name: 'extension.response.raw',
+        content: [
+          '开始创建文档。create_file({"path":"/tmp/design.md","content":"# Design\\npartial WARRANTY_EL',
+          '',
+          '开始创建文档。create_file({"path":"/tmp/design.md","content":"# Design\\ncomplete\\nend"})',
+        ].join('\n'),
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const issue = report.issues.find(item => item.kind === 'duplicate-full-file-write');
+
+    assert.equal(issue?.severity, 'error');
+    assert.equal(issue?.evidence, '/tmp/design.md');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay accepts deterministically recoverable terminal tool blocks', () => {
   const { dir, logPath } = writeLog([
     {

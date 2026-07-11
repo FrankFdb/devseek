@@ -22,6 +22,7 @@ execSync(
 const req = createRequire(import.meta.url);
 const {
   isContinueGenerationText,
+  mergeContinuedAssistantText,
   normalizeContinueGenerationText,
 } = req(bundlePath);
 
@@ -42,6 +43,40 @@ test('ContinueGeneration: rejects unrelated continuation actions', () => {
   assert.equal(isContinueGenerationText('Regenerate'), false);
   assert.equal(isContinueGenerationText('Continue with Google'), false);
   assert.equal(isContinueGenerationText('继续登录'), false);
+});
+
+test('ContinueGeneration: replaces a partial round when DeepSeek restarts the answer', () => {
+  const partial = [
+    '收到。现在开始交付，创建设计文档和实现代码。',
+    'create_file({"path":"/tmp/design.md","content":"# Design\\npartial WARRANTY_EL',
+  ].join('\n');
+  const restarted = [
+    '收到。现在开始交付，创建设计文档和实现代码。',
+    '',
+    'create_file({"path":"/tmp/design.md","content":"# Design\\ncomplete\\nend"})',
+  ].join('\n');
+
+  const merged = mergeContinuedAssistantText(partial, restarted);
+
+  assert.equal(merged, restarted);
+  assert.equal(merged.match(/create_file/g)?.length, 1);
+});
+
+test('ContinueGeneration: merges overlapping continuation text once', () => {
+  assert.equal(
+    mergeContinuedAssistantText(
+      'first section\nshared continuation boundary',
+      'shared continuation boundary\nsecond section',
+    ),
+    'first section\nshared continuation boundary\nsecond section',
+  );
+});
+
+test('ContinueGeneration: keeps cumulative DOM text without duplication', () => {
+  assert.equal(
+    mergeContinuedAssistantText('first section', 'first section\nsecond section'),
+    'first section\nsecond section',
+  );
 });
 
 console.log('\nBridge continue-generation tests passed.\n');

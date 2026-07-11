@@ -15,6 +15,7 @@ import { checkBridgeHealth } from './bridge-health-check';
 import {
   clickContinueGenerationButton,
   CONTINUE_GENERATION_APPEAR_WAIT_MS,
+  mergeContinuedAssistantText,
   waitAndClickContinueGenerationButton,
 } from './continue-generation';
 
@@ -903,9 +904,7 @@ export class DeepSeekAgent {
       .filter(Boolean);
 
     for (const candidate of candidates) {
-      const combinedText = accumulatedPrefix && !candidate.startsWith(accumulatedPrefix)
-        ? accumulatedPrefix + '\n\n' + candidate
-        : candidate;
+      const combinedText = mergeContinuedAssistantText(accumulatedPrefix, candidate);
       if (!isSubstantiveAssistantTextDiff(combinedText, baselineText)) continue;
       if (combinedText !== lastText) onDelta('\x00RESET\x00' + combinedText);
       await saveCookies(this.context!);
@@ -939,9 +938,10 @@ export class DeepSeekAgent {
       try {
         const currentRoundText = await this.getStreamingAssistantText(page);
         if (currentRoundText) {
-          accumulatedPrefix = accumulatedPrefix
-            ? accumulatedPrefix + '\n\n' + currentRoundText
-            : currentRoundText;
+          accumulatedPrefix = mergeContinuedAssistantText(
+            accumulatedPrefix,
+            mergeContinuedAssistantText(lastText, currentRoundText),
+          );
         }
         sawStopButton = false;
         stableFor = 0;
@@ -1003,9 +1003,7 @@ export class DeepSeekAgent {
       }
 
       const currentText = await this.getStreamingAssistantText(page);
-      const combinedText = accumulatedPrefix
-        ? accumulatedPrefix + '\n\n' + currentText
-        : currentText;
+      const combinedText = mergeContinuedAssistantText(accumulatedPrefix, currentText);
 
       if (combinedText.length > lastText.length) {
         onDelta('\x00RESET\x00' + combinedText);
@@ -1062,9 +1060,7 @@ export class DeepSeekAgent {
             continue;
           }
           const probedText = await this.getStreamingAssistantText(page);
-          const probedCombinedText = accumulatedPrefix
-            ? accumulatedPrefix + '\n\n' + probedText
-            : probedText;
+          const probedCombinedText = mergeContinuedAssistantText(accumulatedPrefix, probedText);
           if (probedCombinedText !== lastText) {
             if (probedCombinedText.length > 0) {
               onDelta('\x00RESET\x00' + probedCombinedText);
@@ -1094,9 +1090,7 @@ export class DeepSeekAgent {
               continue;
             }
             const intentProbeText = await this.getStreamingAssistantText(page);
-            const intentCombinedText = accumulatedPrefix
-              ? accumulatedPrefix + '\n\n' + intentProbeText
-              : intentProbeText;
+            const intentCombinedText = mergeContinuedAssistantText(accumulatedPrefix, intentProbeText);
             if (intentCombinedText !== probedCombinedText) {
               if (intentCombinedText.length > 0) {
                 onDelta('\x00RESET\x00' + intentCombinedText);
@@ -1142,9 +1136,7 @@ export class DeepSeekAgent {
     await this._clickCodeTabs(page);
     await this._dumpLastMsg(page);
     const postText = await this.getLastAssistantText(page);
-    const finalText = accumulatedPrefix
-      ? accumulatedPrefix + '\n\n' + postText
-      : postText;
+    const finalText = mergeContinuedAssistantText(accumulatedPrefix, postText);
     // Only fire the final RESET if we actually saw a new AI message.
     // Without this guard, a timed-out request (newMsgSeen=false) would read
     // the previous response from the DOM and replay it as the current response.

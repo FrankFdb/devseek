@@ -2073,10 +2073,26 @@ const MODEL_TOOL_PROTOCOL_DIALECTS: readonly ModelToolProtocolDialect<FakeTool>[
 ];
 
 export function parseFakeToolCalls(text: string): FakeTool[] {
-  return parseModelToolProtocol(
+  const normalized = parseModelToolProtocol(
     isolateModelToolRequestText(text).text,
     MODEL_TOOL_PROTOCOL_DIALECTS,
   ).map(normalizeFakeTool);
+  return collapseSupersededFullFileWrites(normalized);
+}
+
+function collapseSupersededFullFileWrites(tools: FakeTool[]): FakeTool[] {
+  const fullFileWriteNames = new Set(['create_file', 'write_file', 'replace_file']);
+  const lastWriteByPath = new Map<string, number>();
+  tools.forEach((tool, index) => {
+    if (!fullFileWriteNames.has(tool.name)) return;
+    const path = typeof tool.input.path === 'string' ? tool.input.path.trim() : '';
+    if (path) lastWriteByPath.set(path, index);
+  });
+  return tools.filter((tool, index) => {
+    if (!fullFileWriteNames.has(tool.name)) return true;
+    const path = typeof tool.input.path === 'string' ? tool.input.path.trim() : '';
+    return !path || lastWriteByPath.get(path) === index;
+  });
 }
 
 export function hasIncompleteFakeToolCallProtocol(text: string): boolean {
