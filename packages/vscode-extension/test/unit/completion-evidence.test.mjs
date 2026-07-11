@@ -42,6 +42,7 @@ const {
   getBlockingTerminalFailure,
   getMissingCompletionEvidence,
   hasReadOnlyAnswerEvidence,
+  isExplicitlyReadOnlyRequest,
   isBlockingTerminalFailureEvidence,
   isFileContentTerminalEvidenceCommand,
   isReadOnlyTerminalEvidenceCommand,
@@ -95,6 +96,20 @@ test('completion evidence: read-only analysis does not require code edit evidenc
   );
 });
 
+test('completion evidence: prohibited artifact mutations never become required writes', () => {
+  for (const negativePrompt of [
+    '不允许生成 Markdown 报告 /workspace/report.md。',
+    '我们先别修改 /workspace/report.md。',
+    'Do not provide Markdown report /workspace/report.md.',
+  ]) {
+    assert.equal(isExplicitlyReadOnlyRequest(negativePrompt), true, negativePrompt);
+    assert.equal(requiresFileChangeEvidence(negativePrompt), false, negativePrompt);
+  }
+  const mixedPrompt = '请创建 Markdown 报告 /workspace/a.md，不要修改 /workspace/b.md。';
+  assert.equal(isExplicitlyReadOnlyRequest(mixedPrompt), false);
+  assert.equal(requiresFileChangeEvidence(mixedPrompt), true);
+});
+
 test('completion evidence: read-only source-fact answers do not require artifact verification', () => {
   const sourcePath = '/workspace/include/license_types.hpp';
   const sourceFactPrompt = [
@@ -111,6 +126,15 @@ test('completion evidence: read-only source-fact answers do not require artifact
   assert.match(
     getMissingCompletionEvidence(reportPrompt, [], [], [], [sourcePath], '/workspace').join('\n'),
     /交付物源码事实逐项验证结果（2 项）/,
+  );
+});
+
+test('completion evidence: unfamiliar source-report verbs still require claim verification', () => {
+  const prompt = '读取 /workspace/config.hpp，提取 kValue 的真实值并记录到 Markdown 报告 /workspace/report.md。';
+  assert.equal(requiresFileChangeEvidence(prompt), true);
+  assert.match(
+    getMissingCompletionEvidence(prompt, [], [], [], ['/workspace/config.hpp'], '/workspace').join('\n'),
+    /交付物源码事实逐项验证结果（1 项）/,
   );
 });
 

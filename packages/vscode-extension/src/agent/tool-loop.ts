@@ -37,6 +37,7 @@ import type { AgentLoopCallbacks } from './loop-types';
 import {
   detectTaskOutputScopeDrift,
 } from './task-output-scope';
+import { decideTerminalCommandPermission } from '../app/terminal-command-policy';
 
 const workspaceEditService = new WorkspaceEditService();
 const agentToolExecutor = new AgentToolExecutor();
@@ -561,8 +562,6 @@ export async function executeFakeToolsForLoop(
   let deferredCompletedTodoItems: TodoItem[] | undefined;
   let lastTodoItems: TodoItem[] | undefined;
   let summaryEmitted = false;
-  // Track consecutive file-write failures per path so feedback can stay specific
-  // without steering the model into shell redirection as a write fallback.
   const createFileFailCounts = new Map<string, number>();
   const recordToolFailure = (
     toolName: string,
@@ -753,13 +752,9 @@ export async function executeFakeToolsForLoop(
     if (tool.name === 'manage_todo_list') {
       let items = normalizeVisibleTodos((tool.input.todoList ?? []) as TodoItem[]);
       if (Array.isArray(items)) {
-        // Treat todo updates as a real tool action so the loop continues.
-        // Some models emit planning-only manage_todo_list in round-1, then
-        // emit create/edit tools in round-2 after receiving tool feedback.
+        // Planning-only todo updates must keep the loop alive for later work tools.
         markToolCall(false);
-        // ARCHITECTURAL GUARD (mirrors Copilot/Claude Code API-level enforcement):
-        // The orchestrator owns task-sequence state. AI may never pre-emptively mark
-        // future tasks as completed — clamp any such items back to 'not-started'.
+        // The orchestrator owns task sequence state; the model cannot complete future tasks.
         if (taskContext) {
           items = items.map((item) =>
             typeof item.id === 'number' && item.id > taskContext.currentTaskIndex && item.status === 'completed'
@@ -767,7 +762,6 @@ export async function executeFakeToolsForLoop(
               : item,
           );
         }
-        // Detect implicit completion: all items are 'completed' → AI is done.
         const todoUpdateIsAllCompleted = items.length > 0 && items.every(it => it.status === 'completed');
         const hasLaterWorkTools = tools.slice(toolIndex + 1).some(t => isAgentWorkToolName(t.name));
         callbacks.onToolActivity?.('todo', items.map(i => i.title).filter(Boolean).slice(0, 3).join('、') || '更新任务清单');
@@ -780,9 +774,7 @@ export async function executeFakeToolsForLoop(
           allTodosCompleted = true;
         }
         lastTodoItems = items;
-        // Re-inject todo state into next round's context (mirrors Copilot's
-        // getCurrentTodoContext() — explicit state beats relying on AI memory alone,
-        // especially after context-window truncation strips early manage_todo_list messages).
+        // Re-inject explicit todo state because context truncation can drop earlier updates.
         parts.push(`[manage_todo_list] 任务清单已更新：\n${items.map(i => `${i.id}. [${i.status}] ${i.title}`).join('\n')}`);
       }
     } else if (tool.name === 'task_complete') {
@@ -793,8 +785,6 @@ export async function executeFakeToolsForLoop(
       taskComplete = true;
     } else if (tool.name === 'run_terminal' && callbacks.onTerminalCommand) {
       const command = typeof tool.input.command === 'string' ? tool.input.command.trim() : '';
-      // Use AI-specified workdir first; fall back to task directory so binaries land
-      // in the correct subdirectory (code/) rather than the workspace root.
       const workdir = typeof tool.input.workdir === 'string' ? tool.input.workdir : defaultWorkdir;
       if (command) {
         markToolCall();
@@ -849,6 +839,14 @@ export async function executeFakeToolsForLoop(
           callbacks.onToolActivity?.('terminal', '阻止旧运行目录命令');
           recordToolFailure('run_terminal', 'terminal-guard', command, reason);
           parts.push(msg);
+          continue;
+        }
+        const terminalPermission = decideTerminalCommandPermission({ command, workspaceRoot, workdir });
+        if (terminalPermission.risk !== 'read-only' && terminalPermission.risk !== 'validation') {
+          const reason = `终端命令未通过只读/验证分类：${terminalPermission.reason}`;
+          callbacks.onToolActivity?.('terminal', `阻止未分类终端命令: ${terminalPermission.risk}`);
+          recordToolFailure('run_terminal', 'terminal-guard', command, reason);
+          parts.push(`[run_terminal: ${command}] 已阻止\n${reason}\n请改用结构化文件工具；run_terminal 仅允许只读查询和已分类验证命令。`);
           continue;
         }
         callbacks.onToolActivity?.('terminal', command);
@@ -1053,6 +1051,7 @@ export async function executeFakeToolsForLoop(
           const allowed = await callbacks.onBeforeFileWrite(absPath, {
             purpose: 'tool-write',
             userRequested: false,
+            taskAction: 'delete_file',
             displayName: rawPath,
             requestPrompt: taskContext?.userPrompt ?? '',
           });
@@ -1180,7 +1179,21 @@ export async function executeFakeToolsForLoop(
         markToolCall();
         callbacks.onToolActivity?.('write', `mkdir ${dirPath}`);
         try {
-          const result = await callbacks.onCreateDirectory(dirPath);
+          const absPath = resolveAgentToolEvidencePath(dirPath, workspaceRoot, defaultWorkdir);
+          if (callbacks.onBeforeFileWrite) {
+            const allowed = await callbacks.onBeforeFileWrite(absPath, {
+              purpose: 'tool-write',
+              userRequested: false,
+              taskAction: 'create_directory',
+              displayName: dirPath,
+              requestPrompt: taskContext?.userPrompt ?? '',
+            });
+            if (!allowed) {
+              parts.push(`[create_directory: ${dirPath}] 跳过（写入权限策略阻止）`);
+              continue;
+            }
+          }
+          const result = await callbacks.onCreateDirectory(absPath);
           parts.push(`[create_directory: ${dirPath}] ${result}`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);

@@ -57,7 +57,8 @@ import {
 import { shouldRequestManualReviewForRun } from './manual-review-validation';
 import type { AgentLoopCallbacks, AgentLoopResult } from './loop-types';
 import type { EvidenceRef } from './tool-executor';
-import { chatWithMessages, consumeUserSteerMessages } from './loop-chat';
+import { chatWithMessages } from './loop-chat';
+import { createWriteAuthority } from './write-authority';
 import {
   analyzeTerminalEvidence,
   applyMarkdownFileArtifactsForLoop,
@@ -456,7 +457,8 @@ export async function runAgenticLoop(
   workflowMode: ExecutionMode = 'edit',
   memoryRelatedPaths: readonly string[] = [],
 ): Promise<AgentLoopResult> {
-  const groundedMarkdown = await tryRunGroundedMarkdownAgenticTask(userPrompt, workspaceRoot, mode, workflowMode, callbacks, chatWithMessages, dataFiles, sessionContextText);
+  const writeAuthority = createWriteAuthority(userPrompt, callbacks);
+  const groundedMarkdown = await tryRunGroundedMarkdownAgenticTask(userPrompt, workspaceRoot, mode, workflowMode, writeAuthority.callbacks, chatWithMessages, dataFiles, sessionContextText);
   if (groundedMarkdown) return groundedMarkdown;
 
   const rules  = getProjectRulesSync();
@@ -600,7 +602,7 @@ export async function runAgenticLoop(
   const simpleFileResult = await tryRunSimpleFileTask({
     userPrompt,
     workspaceRoot,
-    callbacks,
+    callbacks: writeAuthority.callbacks,
     cppValidationPolicy,
   });
   if (simpleFileResult) return simpleFileResult;
@@ -676,12 +678,9 @@ export async function runAgenticLoop(
       }
     };
 
-    // Copilot/Claude Code ReAct pattern:
-    // - Intermediate rounds (AI calls tools): suppress LLM prose — tool activity
-    //   chips in the Working box are enough. Prose reasoning is internal scaffolding.
-    // - Final round (no tools called): route AI answer to prose bubble via ASUM.
+    // ReAct: suppress intermediate prose; route only the final answer to ASUM.
     // This avoids showing the same content in both working box AND bubble.
-    messages.push(...consumeUserSteerMessages(callbacks));
+    messages.push(...writeAuthority.takePendingAndDrain());
     totalChars = compactAgenticMessageHistory(messages);
     let text = '';
     let tools: ReturnType<typeof parseFakeToolCalls> = [];
@@ -732,7 +731,7 @@ export async function runAgenticLoop(
           detail: display.detail,
         });
         const recoveryMessage = buildAgentProviderRecoveryPrompt({
-          userPrompt,
+          userPrompt: writeAuthority.currentPrompt,
           failure: providerFailure,
           recoveryAttempt: providerRecoveryAttempts,
           maxRecoveryAttempts: AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS,
@@ -751,8 +750,10 @@ export async function runAgenticLoop(
       throw error;
     }
 
+    const postProviderSteerMessages = writeAuthority.drainAfterProvider();
+
     const outputScopeDrift = detectTaskOutputScopeDrift({
-      requestPrompt: userPrompt,
+      requestPrompt: writeAuthority.currentPrompt,
       text,
       workspaceRoot,
     });
@@ -773,7 +774,7 @@ export async function runAgenticLoop(
       });
       if (taskOutputScopeRecoveryAttempts <= 2) {
         const recoveryMessage = buildTaskOutputScopeRecoveryPrompt(outputScopeDrift);
-        messages.push({ role: 'user', content: recoveryMessage });
+        messages.push(...postProviderSteerMessages, { role: 'user', content: recoveryMessage });
         totalChars += recoveryMessage.length;
         continue;
       }
@@ -781,7 +782,7 @@ export async function runAgenticLoop(
       break;
     }
 
-    messages.push({ role: 'assistant', content: text });
+    messages.push({ role: 'assistant', content: text }, ...postProviderSteerMessages);
     lastProviderText = text;
     totalChars += text.length;
 
@@ -804,7 +805,7 @@ export async function runAgenticLoop(
 
     if (!tools.length) {
       const artifactApply = promptRequiresTools
-        ? await applyMarkdownFileArtifactsForLoop(text, userPrompt, workspaceRoot, callbacks, {
+        ? await applyMarkdownFileArtifactsForLoop(text, writeAuthority.currentPrompt, workspaceRoot, writeAuthority.callbacks, {
           requireReadBeforeOverwrite: true,
           readEvidencePaths: allReadEvidencePaths,
         })
@@ -818,15 +819,15 @@ export async function runAgenticLoop(
         const autoValidation = await runAgentAutoValidationForWrites(
           allWrittenFiles.slice(autoValidatedWriteCount),
           workspaceRoot,
-        userPrompt,
-        callbacks,
+        writeAuthority.currentPrompt,
+        writeAuthority.callbacks,
         cppValidationPolicy,
         { qualityWrittenFiles: allWrittenFiles },
       );
         autoValidatedWriteCount = allWrittenFiles.length;
         const normalizedAutoValidation = normalizeAgenticAutoValidation({
           autoValidation,
-          userPrompt,
+          userPrompt: writeAuthority.currentPrompt,
           writtenFiles: allWrittenFiles,
         });
         if (normalizedAutoValidation.qualityGate) latestAutoQualityGate = normalizedAutoValidation.qualityGate;
@@ -843,7 +844,7 @@ export async function runAgenticLoop(
         }
         const validationFeedbackText = [normalizedAutoValidation.feedbackForAI, qualityGateFeedback].filter(Boolean).join('\n\n');
         const validationFeedback = validationFeedbackText ? `\n\n${validationFeedbackText}` : '';
-        const missingAfterArtifact = getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot);
+        const missingAfterArtifact = getMissingCompletionEvidence(writeAuthority.currentPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot);
         const continueMessage = missingAfterArtifact.length > 0
           ? `【系统反馈】已从你输出的文件代码块落地文件，但仍缺少${missingAfterArtifact.join('、')}。请继续调用实际工具修复或补充验证，完成后再 task_complete。\n${artifactApply.feedbackForAI}${validationFeedback}`
           : `【系统反馈】已从你输出的文件代码块落地文件。请根据工具结果更新 todo，并在必要时调用 task_complete。\n${artifactApply.feedbackForAI}${validationFeedback}`;
@@ -907,7 +908,7 @@ export async function runAgenticLoop(
         continue;
       }
       const missingWithoutTools = promptRequiresTools
-        ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
+        ? getMissingCompletionEvidence(writeAuthority.currentPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
         : [];
       if (!callbacks.signal?.aborted && missingWithoutTools.length > 0 && noToolRounds < 4) {
         noToolRounds++;
@@ -948,12 +949,12 @@ export async function runAgenticLoop(
     }
 
     const missingBeforeTools = promptRequiresTools
-      ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
+      ? getMissingCompletionEvidence(writeAuthority.currentPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
       : [];
 
     const hasExplicitFileWriteTool = tools.some(t => t.name === 'create_file' || t.name === 'write_file');
     const artifactApply = !hasExplicitFileWriteTool
-      ? await applyMarkdownFileArtifactsForLoop(text, userPrompt, workspaceRoot, callbacks, {
+      ? await applyMarkdownFileArtifactsForLoop(text, writeAuthority.currentPrompt, workspaceRoot, writeAuthority.callbacks, {
         requireReadBeforeOverwrite: true,
         readEvidencePaths: allReadEvidencePaths,
       })
@@ -997,14 +998,14 @@ export async function runAgenticLoop(
     // Execute tools — full callbacks so file creation/edits register as pending edits
     const loopRes = await executeFakeToolsForLoop(
       toolsToExecute,
-      callbacks,
+      writeAuthority.callbacks,
       workspaceRoot,
       {
         currentTaskIndex: Number.MAX_SAFE_INTEGER,
         taskTotal: 1,
         deferDoneStatus: true,
         requireWorkBeforeComplete: missingBeforeTools.length > 0,
-        userPrompt,
+        userPrompt: writeAuthority.currentPrompt,
         workspaceRoot,
         requireReadBeforeOverwrite: true,
         readEvidencePaths: [...allReadEvidencePaths],
@@ -1037,7 +1038,7 @@ export async function runAgenticLoop(
       allTerminalEvidence.push(...classifyAgenticManualReviewEvidence({
         evidence: loopRes.terminalEvidence,
         feedbackForAI: loopRes.feedbackForAI,
-        userPrompt,
+        userPrompt: writeAuthority.currentPrompt,
         writtenFiles: allWrittenFiles,
       }));
     }
@@ -1080,15 +1081,15 @@ export async function runAgenticLoop(
     const autoValidation = await runAgentAutoValidationForWrites(
       allWrittenFiles.slice(autoValidatedWriteCount),
       workspaceRoot,
-      userPrompt,
-      callbacks,
+      writeAuthority.currentPrompt,
+      writeAuthority.callbacks,
       cppValidationPolicy,
       { qualityWrittenFiles: allWrittenFiles },
     );
     autoValidatedWriteCount = allWrittenFiles.length;
     const normalizedAutoValidation = normalizeAgenticAutoValidation({
       autoValidation,
-      userPrompt,
+      userPrompt: writeAuthority.currentPrompt,
       writtenFiles: allWrittenFiles,
     });
     if (normalizedAutoValidation.qualityGate) latestAutoQualityGate = normalizedAutoValidation.qualityGate;
@@ -1139,10 +1140,10 @@ export async function runAgenticLoop(
     }
 
     const missingAfterTools = promptRequiresTools
-      ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
+      ? getMissingCompletionEvidence(writeAuthority.currentPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
       : [];
     const blockingFailureAfterTools = promptRequiresTools
-      ? getAgenticBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+      ? getAgenticBlockingTerminalFailure(writeAuthority.currentPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
       : undefined;
     const roundSummaryForFactCheck = loopRes.completeSummary !== undefined
       ? loopRes.completeSummary ?? ''
@@ -1243,10 +1244,10 @@ export async function runAgenticLoop(
 
     if (!loopRes.toolCallsMade && loopWarnings.length === 0) {
       const missingNow = promptRequiresTools
-        ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
+        ? getMissingCompletionEvidence(writeAuthority.currentPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
         : [];
       const blockingFailureNow = promptRequiresTools
-        ? getAgenticBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+        ? getAgenticBlockingTerminalFailure(writeAuthority.currentPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
         : undefined;
       if (blockingFailureNow && noToolRounds < 2 && !callbacks.signal?.aborted) {
         noToolRounds++;
@@ -1266,10 +1267,10 @@ export async function runAgenticLoop(
   }
 
   const finalMissingEvidence = promptRequiresTools
-    ? getMissingCompletionEvidence(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
+    ? getMissingCompletionEvidence(writeAuthority.currentPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
     : [];
   const finalBlockingFailure = promptRequiresTools
-    ? getAgenticBlockingTerminalFailure(userPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+    ? getAgenticBlockingTerminalFailure(writeAuthority.currentPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
     : undefined;
   const finalSummaryFactFailures = completeSummary
     ? getUnsupportedSummaryFileClaims(completeSummary, allWrittenFiles, workspaceRoot)

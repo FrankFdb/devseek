@@ -118,6 +118,179 @@ test('AgentFileWritePolicy: workspace symlinks cannot redirect deliverables outs
   }
 });
 
+test('AgentFileWritePolicy: prohibited and unrequested Markdown targets fail at the final write boundary', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-write-contract-'));
+  const allowedTarget = path.join(workspaceRoot, 'a.md');
+  const deniedTarget = path.join(workspaceRoot, 'b.md');
+  try {
+    const prohibited = decideAgentFileWrite({
+      absPath: deniedTarget,
+      workspaceRoot,
+      context: {
+        purpose: 'tool-write',
+        requestPrompt: `不允许生成 Markdown 报告 ${deniedTarget}。`,
+      },
+    });
+    assert.equal(prohibited.action, 'deny');
+    assert.equal(prohibited.reason, 'markdown-artifact-write-prohibited');
+
+    const mixedPrompt = `请创建 Markdown 报告 ${allowedTarget}，不要修改 ${deniedTarget}。`;
+    const allowed = decideAgentFileWrite({
+      absPath: allowedTarget,
+      workspaceRoot,
+      context: { purpose: 'tool-write', requestPrompt: mixedPrompt },
+    });
+    assert.equal(allowed.action, 'allow');
+
+    const wrongTarget = decideAgentFileWrite({
+      absPath: deniedTarget,
+      workspaceRoot,
+      context: { purpose: 'tool-write', requestPrompt: mixedPrompt },
+    });
+    assert.equal(wrongTarget.action, 'deny');
+    assert.equal(wrongTarget.reason, 'markdown-artifact-write-prohibited');
+
+    for (const requestPrompt of [
+      '不要创建任何文件。',
+      '禁止写入文件。',
+      'Do not create any files.',
+    ]) {
+      const genericProhibition = decideAgentFileWrite({
+        absPath: deniedTarget,
+        workspaceRoot,
+        context: { purpose: 'tool-write', requestPrompt },
+      });
+      assert.equal(genericProhibition.action, 'deny', requestPrompt);
+      assert.equal(genericProhibition.reason, 'markdown-artifact-write-prohibited', requestPrompt);
+    }
+
+    const targetSpecific = decideAgentFileWrite({
+      absPath: deniedTarget,
+      workspaceRoot,
+      context: {
+        purpose: 'tool-write',
+        requestPrompt: `请创建一个 Markdown 报告，但不要修改 ${deniedTarget}。`,
+      },
+    });
+    assert.equal(targetSpecific.action, 'deny');
+    assert.equal(targetSpecific.reason, 'markdown-artifact-write-prohibited');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('AgentFileWritePolicy: no-source and no-other-file contracts protect sibling write paths', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-write-scope-'));
+  const source = path.join(workspaceRoot, 'source.hpp');
+  const report = path.join(workspaceRoot, 'report.md');
+  const extra = path.join(workspaceRoot, 'notes.txt');
+  try {
+    for (const requestPrompt of [
+      `读取 ${source}，创建 Markdown 报告 ${report}；不得修改任何源码，不要创建其他文件。`,
+      `Read ${source} and create Markdown report ${report}; do not modify any source files and do not create other files.`,
+    ]) {
+      assert.equal(decideAgentFileWrite({
+        absPath: report,
+        workspaceRoot,
+        context: { purpose: 'markdown-deliverable', userRequested: true, requestPrompt },
+      }).action, 'allow', requestPrompt);
+
+      const sourceWrite = decideAgentFileWrite({
+        absPath: source,
+        workspaceRoot,
+        context: { purpose: 'tool-write', requestPrompt },
+      });
+      assert.equal(sourceWrite.action, 'deny', requestPrompt);
+      assert.match(sourceWrite.reason, /(?:source-file|artifact-other-file)-write-prohibited/, requestPrompt);
+
+      const extraWrite = decideAgentFileWrite({
+        absPath: extra,
+        workspaceRoot,
+        context: { purpose: 'tool-write', requestPrompt },
+      });
+      assert.equal(extraWrite.action, 'deny', requestPrompt);
+      assert.equal(extraWrite.reason, 'artifact-other-file-write-prohibited', requestPrompt);
+    }
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('AgentFileWritePolicy: neutral Markdown and non-Markdown prohibitions fail closed', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-write-neutral-'));
+  try {
+    for (const requestPrompt of ['只读 report.md。', '请读取 report.md 并汇总内容告诉我。', '解释问题。']) {
+      assert.equal(decideAgentFileWrite({
+        absPath: path.join(workspaceRoot, 'report.md'),
+        workspaceRoot,
+        context: { purpose: 'tool-write', requestPrompt },
+      }).action, 'deny', requestPrompt);
+    }
+    for (const [requestPrompt, relativeTarget] of [
+      ['不要创建文件。', 'notes.txt'],
+      ['Do not create files.', 'notes.txt'],
+      ['请创建 report.md；不要修改 src/main.ts。', 'src/main.ts'],
+      ['请创建 report.md；禁止覆盖 config.json。', 'config.json'],
+    ]) {
+      assert.equal(decideAgentFileWrite({
+        absPath: path.join(workspaceRoot, relativeTarget),
+        workspaceRoot,
+        context: { purpose: 'tool-write', requestPrompt },
+      }).action, 'deny', requestPrompt);
+    }
+    const scopedSourceProhibition = decideAgentFileWrite({
+      absPath: path.join(workspaceRoot, 'src/main.ts'),
+      workspaceRoot,
+      context: {
+        purpose: 'tool-write',
+        requestPrompt: '不要修改正式源码目录里的既有文件。',
+      },
+    });
+    assert.equal(scopedSourceProhibition.action, 'deny');
+    assert.equal(scopedSourceProhibition.reason, 'source-file-write-prohibited');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('AgentFileWritePolicy: global directory prohibitions reach the final directory boundary', () => {
+  for (const requestPrompt of [
+    '不要创建任何目录。',
+    'Do not create any directories.',
+  ]) {
+    const decision = decideAgentFileWrite({
+      absPath: '/workspace/generated',
+      workspaceRoot: '/workspace',
+      context: {
+        purpose: 'tool-write',
+        taskAction: 'create_directory',
+        requestPrompt,
+      },
+    });
+    assert.equal(decision.action, 'deny', requestPrompt);
+    assert.equal(decision.reason, 'all-file-writes-prohibited', requestPrompt);
+  }
+});
+
+test('AgentFileWritePolicy: scoped source protection follows directory role, not filename extension', () => {
+  const cases = [
+    ['/workspace/src/NOTICE.txt', false],
+    ['/workspace/app/config/app.properties', false],
+    ['/workspace/docs/NOTICE.txt', true],
+    ['/workspace/generated/app.properties', true],
+  ];
+  for (const [absPath, allowed] of cases) {
+    const requestPrompt = `不要修改正式源码目录里的既有文件；请更新 ${absPath}。`;
+    const decision = decideAgentFileWrite({
+      absPath,
+      workspaceRoot: '/workspace',
+      context: { purpose: 'tool-write', taskAction: 'update', requestPrompt },
+    });
+    assert.equal(decision.action, allowed ? 'allow' : 'deny', absPath);
+    if (!allowed) assert.equal(decision.reason, 'source-file-write-prohibited', absPath);
+  }
+});
+
 test('AgentFileWritePolicy: protected files hard-block even explicit deliverables', () => {
   const decision = decideAgentFileWrite({
     absPath: '/workspace/docs/warranty-maintenance-advice.md',
@@ -160,12 +333,119 @@ test('AgentFileWritePolicy: detects isolated artifact output roots from Chinese 
   assert.ok(scope.allowedRoots.includes('/workspace/src/oam/src/lifting/zc_maintenance/202607101807/src'));
 });
 
+test('AgentFileWritePolicy: isolated output roots preserve relative and quoted path boundaries', () => {
+  const cases = [
+    ['所有新增产物必须放在：isolated/output', '/workspace/isolated/output'],
+    ['所有新增产物必须放在：./isolated/output', '/workspace/isolated/output'],
+    ['所有新增产物必须放在："/workspace/my output"', '/workspace/my output'],
+    ['All new artifacts must be placed in "./isolated output".', '/workspace/isolated output'],
+    ['所有生成文件必须放在：isolated/output。', '/workspace/isolated/output'],
+    ['All generated artifacts must be placed in isolated/output.', '/workspace/isolated/output'],
+  ];
+  for (const [requestPrompt, expectedRoot] of cases) {
+    assert.deepEqual(
+      detectIsolatedArtifactWriteScope(requestPrompt, '/workspace'),
+      { required: true, allowedRoots: [expectedRoot] },
+      requestPrompt,
+    );
+  }
+});
+
+test('AgentFileWritePolicy: ambiguous unquoted space roots fail closed instead of widening scope', () => {
+  const requestPrompt = 'All new artifacts must be placed in /workspace/my output. Create /workspace/my/evil.txt.';
+  assert.deepEqual(
+    detectIsolatedArtifactWriteScope(requestPrompt, '/workspace'),
+    { required: true, allowedRoots: [] },
+  );
+  const decision = decideAgentFileWrite({
+    absPath: '/workspace/my/evil.txt',
+    workspaceRoot: '/workspace',
+    context: { purpose: 'tool-write', requestPrompt },
+  });
+  assert.equal(decision.action, 'deny');
+  assert.equal(decision.reason, 'invalid-isolated-artifact-scope');
+});
+
+test('AgentFileWritePolicy: generated-artifact wording enforces the parsed isolated root', () => {
+  for (const requestPrompt of [
+    'All generated artifacts must be placed in isolated/output. Create outside/a.txt.',
+    'All generated outputs must be placed in isolated/output. Create outside/a.txt.',
+    '所有生成文件必须放在：isolated/output。请创建 outside/a.txt。',
+    '所有输出必须放在：isolated/output。请创建 outside/a.txt。',
+  ]) {
+    const decision = decideAgentFileWrite({
+      absPath: '/workspace/outside/a.txt',
+      workspaceRoot: '/workspace',
+      context: { purpose: 'tool-write', requestPrompt },
+    });
+    assert.equal(decision.action, 'deny', requestPrompt);
+    assert.equal(decision.reason, 'isolated-artifact-scope', requestPrompt);
+  }
+});
+
+test('AgentFileWritePolicy: a latest standalone stop or cancel steer revokes the original target', () => {
+  for (const revoke of [
+    '停止写入。',
+    '停止。',
+    '取消任务。',
+    '不要继续。',
+    '算了。',
+    '不用了。',
+    'Stop writing.',
+    'Stop.',
+    'Cancel the task.',
+    'Do not continue.',
+    'Never mind.',
+  ]) {
+    const requestPrompt = [
+      '请创建 report.md。',
+      '【用户实时补充/纠偏】',
+      revoke,
+      '',
+      '请将以上内容作为当前任务的最新约束继续执行；如它与旧计划冲突，以这条补充为准。不要从头开启新任务。',
+    ].join('\n');
+    const decision = decideAgentFileWrite({
+      absPath: '/workspace/report.md',
+      workspaceRoot: '/workspace',
+      autopilotMode: true,
+      context: {
+        purpose: 'markdown-deliverable',
+        userRequested: true,
+        taskAction: 'create',
+        requestPrompt,
+      },
+    });
+    assert.equal(decision.action, 'deny', revoke);
+    assert.equal(decision.reason, 'all-file-writes-prohibited', revoke);
+  }
+});
+
+test('AgentFileWritePolicy: an unparseable required isolated scope fails closed', () => {
+  const requestPrompt = '所有新增产物必须放在指定的隔离目录。';
+  const scope = detectIsolatedArtifactWriteScope(requestPrompt, '/workspace');
+  assert.equal(scope.required, true);
+  assert.deepEqual(scope.allowedRoots, []);
+
+  const decision = decideAgentFileWrite({
+    absPath: '/workspace/docs/report.md',
+    workspaceRoot: '/workspace',
+    context: {
+      purpose: 'markdown-deliverable',
+      userRequested: true,
+      requestPrompt,
+    },
+  });
+  assert.equal(decision.action, 'deny');
+  assert.equal(decision.reason, 'invalid-isolated-artifact-scope');
+});
+
 test('AgentFileWritePolicy: isolated artifact scope blocks writes to formal source directories', () => {
   const requestPrompt = [
     '本次测试所有新增设计文档、实施文档、代码和验证脚本必须放在：/workspace/src/oam/src/lifting/zc_maintenance/202607101807',
     '- 设计/实施 Markdown 文档放入：/workspace/src/oam/src/lifting/zc_maintenance/202607101807/docs',
     '- 代码和测试文件放入：/workspace/src/oam/src/lifting/zc_maintenance/202607101807/src',
     '不要修改正式源码目录里的既有文件；如需改原项目关联代码，请写入原有代码修改清单。',
+    '必须创建主设计 Markdown 文档：/workspace/src/oam/src/lifting/zc_maintenance/202607101807/docs/01-warranty-remote-controller-interface-design.md',
   ].join('\n');
 
   const denied = decideAgentFileWrite({

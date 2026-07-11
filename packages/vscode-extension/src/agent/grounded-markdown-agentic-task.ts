@@ -1,3 +1,4 @@
+import * as fs from 'fs';
 import * as nodePath from 'path';
 import * as vscode from 'vscode';
 import type { AgentTask } from '../agent-task-decomposer';
@@ -8,7 +9,11 @@ import { ArtifactGroundingCollector } from './artifact-grounding-lifecycle';
 import { coalesceWrittenFileEvidence } from './completion-evidence';
 import type { AgentLoopCallbacks, AgentLoopResult } from './loop-types';
 import { tryExecuteMarkdownDeliverableTask } from './markdown-deliverable-task';
-import { buildTaskContract } from './task-contract';
+import {
+  buildTaskContract,
+  getSourceClaimArtifactContractIssue,
+  hasSourceClaimArtifactContract,
+} from './task-contract';
 import { createAgentTaskTodoLedger } from './task-state-machine';
 import type { TaskExecutionResult } from './task-execution-result';
 
@@ -33,30 +38,29 @@ export async function tryRunGroundedMarkdownAgenticTask(
   sessionContextText = '',
 ): Promise<AgentLoopResult | undefined> {
   if (workflowMode !== 'edit') return undefined;
-  // Preserve the generic agent's richer attachment/session-context handling.
-  // The deterministic shortcut runs only when the current prompt is self-contained.
-  if (externalEvidencePaths.length > 0 || sessionContextText.trim()) return undefined;
+  // Attachments and free-text session history are not source-claim evidence.
+  // A self-contained current request must stay on the verified route; otherwise
+  // stale context could divert it into an unverified simple/generic writer.
+  void externalEvidencePaths;
+  void sessionContextText;
   const contract = buildTaskContract(userPrompt);
-  const isExplicitGroundedArtifact = contract.verificationContract.requireSourceClaimGrounding
-    && contract.deliverables.includes('report')
-    && contract.inputs.some(input => /\.(?:md|markdown)$/i.test(input))
-    && /(?:创建|新建|生成|写入|写出|保存|输出|产出|落盘|create|write|save|output|generate|produce)/i.test(userPrompt);
+  // Source-claim artifact obligations are security-sensitive even when the
+  // user's mutation verb is unfamiliar. Route them here or fail closed rather
+  // than letting a generic writer bypass ArtifactClaim verification.
+  const isExplicitGroundedArtifact = hasSourceClaimArtifactContract(contract);
   if (!isExplicitGroundedArtifact) return undefined;
   const [target] = contract.deliverableTargets;
-  const invalidReason = contract.evidenceRequirements.length === 0
-    ? '源码事实报告契约未能解析出明确的 claim symbol，已安全阻止未验证交付。'
-    : contract.evidenceRequirements.some(requirement => !requirement.sourcePath)
-      ? '源码事实 claim 无法唯一绑定到源文件，已安全阻止猜测性写入。'
-      : contract.deliverableTargets.length !== 1 || !target
+  const invalidReason = getSourceClaimArtifactContractIssue(contract)
+    ?? (contract.deliverableTargets.length !== 1 || !target
         ? `源码事实报告必须唯一绑定一个 Markdown 目标，当前解析到 ${contract.deliverableTargets.length} 个。`
-        : undefined;
+        : undefined);
   if (invalidReason) {
     return failGroundedMarkdownRouting(userPrompt, workspaceRoot, callbacks, target, invalidReason);
   }
   const absPath = nodePath.isAbsolute(target) ? target : nodePath.join(workspaceRoot, target.replace(/^\.\//, ''));
   const task: AgentTask = {
     id: 'grounded-markdown-report',
-    action: 'create',
+    action: fs.existsSync(absPath) ? 'modify' : 'create',
     file: target || '',
     absPath,
     visibleTarget: target,
@@ -80,7 +84,15 @@ export async function tryRunGroundedMarkdownAgenticTask(
       callbacks.traceWorkspaceRoot,
     )).text,
   });
-  if (!result) return undefined;
+  if (!result) {
+    return failGroundedMarkdownRouting(
+      userPrompt,
+      workspaceRoot,
+      callbacks,
+      target,
+      '源码事实报告未进入受验证的 Markdown 执行器，已安全阻止通用写入回退。',
+    );
+  }
   return settleGroundedMarkdownAgenticResult(userPrompt, task, workspaceRoot, callbacks, result);
 }
 
@@ -97,7 +109,7 @@ async function failGroundedMarkdownRouting(
     : nodePath.join(workspaceRoot, 'unresolved-grounded-report.md');
   const task: AgentTask = {
     id: 'grounded-markdown-report',
-    action: 'create',
+    action: fs.existsSync(absPath) ? 'modify' : 'create',
     file: target || '',
     absPath,
     visibleTarget,

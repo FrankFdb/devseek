@@ -298,6 +298,284 @@ test('ToolLoop terminal guard: stale timestamp artifact directories never reach 
   assert.match(result.feedbackForAI, /旧运行目录/);
 });
 
+test('ToolLoop terminal guard blocks shell writes to every file class, not only source extensions', async () => {
+  let terminalCalls = 0;
+  const commands = [
+    "printf '%s' report > docs/result.markdown",
+    'echo enabled > config/runtime.yaml',
+    'echo started >> logs/agent.log',
+    'echo terms > LICENSE',
+  ];
+
+  const result = await executeFakeToolsForLoop(
+    commands.map(command => ({ name: 'run_terminal', input: { command } })),
+    {
+      onTerminalCommand: async () => {
+        terminalCalls += 1;
+        return 'should-not-run';
+      },
+      onToolActivity: () => {},
+      onAgentStatus: async () => {},
+    },
+    '/tmp/project',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
+  );
+
+  assert.equal(terminalCalls, 0);
+  assert.deepEqual(result.terminalCommands ?? [], []);
+  assert.deepEqual(
+    result.toolFailures?.map(failure => failure.path),
+    ['docs/result.markdown', 'config/runtime.yaml', 'logs/agent.log', 'LICENSE'],
+  );
+  assert.ok(result.toolFailures?.every(failure => failure.kind === 'terminal-guard'));
+  assert.match(result.feedbackForAI, /docs\/result\.markdown/);
+  assert.match(result.feedbackForAI, /config\/runtime\.yaml/);
+  assert.match(result.feedbackForAI, /logs\/agent\.log/);
+  assert.match(result.feedbackForAI, /LICENSE/);
+});
+
+test('ToolLoop terminal guard fail-closes destructive, mutating, and unclassified write-capable commands', async () => {
+  let terminalCalls = 0;
+  const commands = [
+    'dd if=input.bin of=output.bin bs=1',
+    'patch -p0 < changes.diff',
+    'git apply changes.patch',
+  ];
+  const result = await executeFakeToolsForLoop(
+    commands.map(command => ({ name: 'run_terminal', input: { command } })),
+    {
+      onTerminalCommand: async () => { terminalCalls += 1; return 'should-not-run'; },
+      onToolActivity: () => {},
+      onAgentStatus: async () => {},
+    },
+    '/tmp/project',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
+  );
+
+  assert.equal(terminalCalls, 0);
+  assert.deepEqual(result.terminalCommands ?? [], []);
+  assert.equal(result.toolFailures?.length, 3);
+  assert.match(result.toolFailures?.[0].reason || '', /destructive-command/);
+  assert.match(result.toolFailures?.[1].reason || '', /unclassified-command/);
+  assert.match(result.toolFailures?.[2].reason || '', /mutating-command/);
+  assert.match(result.feedbackForAI, /仅允许只读查询和已分类验证命令/);
+});
+
+test('ToolLoop terminal guard never dispatches read-only allowlist commands with hidden writes', async () => {
+  let terminalCalls = 0;
+  const commands = [
+    'sed -n "w out.txt" input.txt',
+    'git diff --output=out.patch',
+    'find . -fprint out.txt',
+    "find . -fprintf out.txt '%p\\n'",
+    'find . -fls out.txt',
+    String.raw`find . -execdir touch marker.txt \;`,
+    'sort input.txt -o out.txt',
+    'sort --output=out.txt input.txt',
+    `awk '{print > "out.txt"}' input.txt`,
+    `awk '{print>"out.txt"}' input.txt`,
+    'echo x>out.txt',
+  ];
+  const result = await executeFakeToolsForLoop(
+    commands.map(command => ({ name: 'run_terminal', input: { command } })),
+    {
+      onTerminalCommand: async () => { terminalCalls += 1; return 'should-not-run'; },
+      onToolActivity: () => {},
+      onAgentStatus: async () => {},
+    },
+    '/tmp/project',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
+  );
+
+  assert.equal(terminalCalls, 0, 'no hidden-write command may reach the host terminal callback');
+  assert.equal(result.toolFailures?.length, commands.length);
+  assert.ok(result.toolFailures?.every(failure => failure.kind === 'terminal-guard'));
+  assert.deepEqual(result.terminalCommands ?? [], []);
+});
+
+test('ToolLoop terminal guard blocks branch mutations, awk command pipes, and writing validation flags', async () => {
+  let terminalCalls = 0;
+  const commands = [
+    'git branch feature/new',
+    'git branch -D feature/old',
+    'git branch -m old new',
+    'git branch --set-upstream-to=origin/main feature/current',
+    `awk 'BEGIN { "touch marker.txt" | getline }'`,
+    `awk 'BEGIN { "touch marker.txt"|getline }'`,
+    'npx eslint . --fix',
+    'npx jest -u',
+    'npx jest --updateSnapshot',
+    'npm run lint -- --fix',
+    'npm test -- -u',
+    'npx tsc',
+    'tsc',
+    'npx tsc --noEmit=false',
+    'npx tsc --noEmit --incremental',
+  ];
+  const result = await executeFakeToolsForLoop(
+    commands.map(command => ({ name: 'run_terminal', input: { command } })),
+    {
+      onTerminalCommand: async () => { terminalCalls += 1; return 'should-not-run'; },
+      onToolActivity: () => {},
+      onAgentStatus: async () => {},
+    },
+    '/tmp/project',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
+  );
+
+  assert.equal(terminalCalls, 0, 'write-capable branch/awk/validation commands must never reach the host');
+  assert.equal(result.toolFailures?.length, commands.length);
+  assert.ok(result.toolFailures?.every(failure => failure.kind === 'terminal-guard'));
+  assert.deepEqual(result.terminalCommands ?? [], []);
+});
+
+test('ToolLoop terminal guard still allows classified inspection and validation commands', async () => {
+  const terminalCommands = [];
+  const result = await executeFakeToolsForLoop(
+    [
+      { name: 'run_terminal', input: { command: 'cat package.json' } },
+      { name: 'run_terminal', input: { command: 'rg -n TODO src' } },
+      { name: 'run_terminal', input: { command: 'git diff -- src/app.ts' } },
+      { name: 'run_terminal', input: { command: 'git branch --show-current' } },
+      { name: 'run_terminal', input: { command: 'npx eslint . --fix-dry-run' } },
+      { name: 'run_terminal', input: { command: 'npx tsc --noEmit' } },
+      { name: 'run_terminal', input: { command: 'npm test' } },
+    ],
+    {
+      onTerminalCommand: async command => { terminalCommands.push(command); return 'ok'; },
+      onToolActivity: () => {},
+      onAgentStatus: async () => {},
+    },
+    '/tmp/project',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
+  );
+
+  assert.deepEqual(terminalCommands, [
+    'cat package.json',
+    'rg -n TODO src',
+    'git diff -- src/app.ts',
+    'git branch --show-current',
+    'npx eslint . --fix-dry-run',
+    'npx tsc --noEmit',
+    'npm test',
+  ]);
+  assert.equal(result.toolFailures, undefined);
+});
+
+test('ToolLoop create_directory consults the file-write policy before invoking the host mkdir', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-create-directory-policy-'));
+  try {
+    const requestPrompt = '不要创建任何文件或目录。';
+    let hostMkdirCalls = 0;
+    const policyCalls = [];
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'create_directory', input: { path: 'generated/docs' } }],
+      {
+        onBeforeFileWrite: async (absPath, context) => {
+          policyCalls.push({ absPath, context });
+          return false;
+        },
+        onCreateDirectory: async () => {
+          hostMkdirCalls += 1;
+          return 'should-not-create';
+        },
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot, userPrompt: requestPrompt },
+    );
+
+    assert.equal(hostMkdirCalls, 0);
+    assert.deepEqual(policyCalls, [{
+      absPath: path.join(workspaceRoot, 'generated/docs'),
+      context: {
+        purpose: 'tool-write',
+        userRequested: false,
+        taskAction: 'create_directory',
+        displayName: 'generated/docs',
+        requestPrompt,
+      },
+    }]);
+    assert.equal(result.writtenFiles, undefined);
+    assert.match(result.feedbackForAI, /create_directory: generated\/docs.*写入权限策略阻止/s);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ToolLoop create_directory gives policy and host the same resolved absolute path', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-create-directory-resolution-'));
+  const defaultWorkdir = path.join(workspaceRoot, 'task');
+  mkdirSync(defaultWorkdir, { recursive: true });
+  try {
+    const policyPaths = [];
+    const hostPaths = [];
+    await executeFakeToolsForLoop(
+      [{ name: 'create_directory', input: { path: 'generated/docs' } }],
+      {
+        onBeforeFileWrite: async absPath => { policyPaths.push(absPath); return true; },
+        onCreateDirectory: async absPath => { hostPaths.push(absPath); return 'created'; },
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      defaultWorkdir,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    const expected = path.join(defaultWorkdir, 'generated/docs');
+    assert.deepEqual(policyPaths, [expected]);
+    assert.deepEqual(hostPaths, [expected]);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ToolLoop delete_file leaves the file intact when the file-write policy rejects deletion', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-delete-file-policy-'));
+  try {
+    const filePath = path.join(workspaceRoot, 'notes.txt');
+    const originalContent = 'keep this file\n';
+    const requestPrompt = '不要删除 notes.txt。';
+    writeFileSync(filePath, originalContent, 'utf8');
+    let appliedChanges = 0;
+    const policyCalls = [];
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'delete_file', input: { path: 'notes.txt' } }],
+      {
+        onBeforeFileWrite: async (absPath, context) => {
+          policyCalls.push({ absPath, context });
+          return false;
+        },
+        onAppliedChange: async () => {
+          appliedChanges += 1;
+        },
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot, userPrompt: requestPrompt },
+    );
+
+    assert.equal(appliedChanges, 0);
+    assert.equal(readFileSync(filePath, 'utf8'), originalContent);
+    assert.deepEqual(policyCalls, [{
+      absPath: filePath,
+      context: {
+        purpose: 'tool-write',
+        userRequested: false,
+        taskAction: 'delete_file',
+        displayName: 'notes.txt',
+        requestPrompt,
+      },
+    }]);
+    assert.equal(result.writtenFiles, undefined);
+    assert.match(result.feedbackForAI, /delete_file: notes\.txt.*写入权限策略阻止/s);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('ToolLoop replace_in_file edits existing workspace file with write evidence', async () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-replace-tool-'));
   try {

@@ -9,6 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import {
   existsSync,
@@ -120,6 +121,7 @@ function createLicenseFactWorkspace() {
     .replace('/home/ff/uav/tars/huida_uav/src/oam/src/license/license_types.hpp', source);
   const repaired = wrong
     .replace('# License 模块传输常量事实记录', '# 源码事实报告')
+    .replace(/\n\n\*\*源码路径\*\*: `([^\n`]+)`\n\n/, '\n源码路径：$1\n')
     .replace('/uav/dt/license/state', '/uav/license/state')
     .replace('/uav/dt/license/tunnel/rx', '/uav/license/tunnel/rx')
     .replace('`300`', '`33007`')
@@ -131,6 +133,61 @@ function createLicenseFactWorkspace() {
   const prompt = `请读取 ${source}，从源码提取 kTopicLicenseState、kTopicLicenseTunnelRx、kMavTunnelCmdLicense、kTunnelVersion、kTunnelMaxTotalLen、kTunnelSessionTimeoutMs 六个常量的真实定义和值。请创建 Markdown 报告 ${target}，包含标题、源码路径和六个常量的表格，并加入 Python 代码块，代码内容必须是 print("\\nready")。写入后重新读取该报告，确认内容完整。不要修改任何源码，不要创建其他文件。`;
   return { root, source, target, wrong, repaired, prompt };
 }
+
+function addCommunicationEvidencePressure(workspace) {
+  const licenseDir = path.dirname(workspace.source);
+  for (let index = 0; index < 10; index += 1) {
+    const name = `license_${String(index).padStart(2, '0')}.cpp`;
+    const prefix = `// supplemental communication evidence ${index}\n`;
+    writeFileSync(path.join(licenseDir, name), prefix.padEnd(6_200, 'x'));
+  }
+}
+
+function createLiveEvidenceStarvationReplay() {
+  const workspace = createLicenseFactWorkspace();
+  const fixtureDir = path.join(rootDir, 'test/fixtures/runtime-replay/20260711-165205');
+  const prompt = readFileSync(path.join(fixtureDir, 'request.txt'), 'utf8').trimEnd()
+    .replaceAll('{{SOURCE}}', workspace.source)
+    .replaceAll('{{TARGET}}', workspace.target);
+  const wrong = readFileSync(path.join(fixtureDir, 'provider-response.wrong.md'), 'utf8').trimEnd()
+    .replaceAll('{{SOURCE}}', workspace.source);
+  const repaired = [
+    '# 源码事实报告',
+    `源码路径：${workspace.source}`,
+    '| Symbol | Value |',
+    '| --- | --- |',
+    '| kTopicLicenseState | /uav/license/state |',
+    '| kTopicLicenseTunnelRx | /uav/license/tunnel/rx |',
+    '| kMavTunnelCmdLicense | 33007 |',
+    '| kTunnelVersion | 1 |',
+    '| kTunnelMaxTotalLen | 64 * 1024 |',
+    '| kTunnelSessionTimeoutMs | 5000 |',
+    '```python',
+    'print("\\nready")',
+    '```',
+    '',
+  ].join('\n');
+  addCommunicationEvidencePressure(workspace);
+  return { ...workspace, prompt, wrong, repaired };
+}
+
+test('markdown deliverable fixture: 20260711-165205 prompt and provider response preserve the live payload hashes', () => {
+  const fixtureDir = path.join(rootDir, 'test/fixtures/runtime-replay/20260711-165205');
+  const metadata = JSON.parse(readFileSync(path.join(fixtureDir, 'fixture.json'), 'utf8'));
+  const source = '/home/ff/uav/tars/huida_uav/src/oam/src/license/license_types.hpp';
+  const target = '/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/p0a-canary-20260711-165123/docs/license-transport-facts.md';
+  const prompt = readFileSync(path.join(fixtureDir, 'request.txt'), 'utf8').trimEnd()
+    .replaceAll('{{SOURCE}}', source)
+    .replaceAll('{{TARGET}}', target);
+  const response = readFileSync(path.join(fixtureDir, 'provider-response.wrong.md'), 'utf8').trimEnd()
+    .replaceAll('{{SOURCE}}', source);
+  const sha256 = value => createHash('sha256').update(value).digest('hex');
+
+  assert.equal(prompt.length, metadata.originalPromptLength);
+  assert.equal(sha256(prompt), metadata.originalPromptSha256);
+  assert.equal(response.length, metadata.providerResponseLength);
+  assert.equal(sha256(response), metadata.providerResponseSha256);
+});
 
 test('markdown deliverable: corrupted provider output still writes verified local artifact', async () => {
   const { root, maintenanceDir, docsDir, requirementDoc } = createMaintenanceWorkspace();
@@ -161,7 +218,7 @@ test('markdown deliverable: corrupted provider output still writes verified loca
       },
     });
 
-    assert.equal(result?.applied, true);
+    assert.equal(result?.applied, true, result?.failedReason || result?.feedback || 'missing result');
     assert.equal(result?.taskComplete, true);
     assert.equal(existsSync(target), true);
     const content = readFileSync(target, 'utf8');
@@ -262,7 +319,7 @@ test('markdown deliverable: formal communication references collect project-wide
       },
     });
 
-    assert.equal(result?.applied, true);
+    assert.equal(result?.applied, true, result?.failedReason || result?.feedback || 'missing result');
     const content = readFileSync(target, 'utf8');
     assert.match(content, /uart1_tx_main\.cpp/);
     assert.match(content, /uart1_rx_main\.cpp/);
@@ -611,6 +668,218 @@ test('markdown deliverable: 20260711-131537 wrong facts trigger one bounded repa
   }
 });
 
+test('markdown deliverable: revocation while bounded repair provider is in flight blocks the second write', async () => {
+  const workspace = createLicenseFactWorkspace();
+  const io = makeCallbacks();
+  let writeAuthorized = true;
+  let providerCalls = 0;
+  let writeGuardCalls = 0;
+  try {
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'repair-revoke', file: workspace.target, absPath: workspace.target, action: 'create', desc: '创建六个常量的 Markdown 事实报告' },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: workspace.prompt,
+      workspaceRoot: { fsPath: workspace.root },
+      callbacks: {
+        ...io.callbacks,
+        onBeforeFileWrite: async () => {
+          writeGuardCalls += 1;
+          return writeAuthorized;
+        },
+      },
+      chat: async () => {
+        providerCalls += 1;
+        if (providerCalls === 2) writeAuthorized = false;
+        return providerCalls === 1 ? workspace.wrong : workspace.repaired;
+      },
+    });
+
+    assert.equal(result?.applied, false);
+    assert.match(result?.failedReason || '', /write blocked by guard/);
+    assert.equal(providerCalls, 2);
+    assert.equal(writeGuardCalls, 2, 'each physical write attempt must re-check current authority');
+    assert.equal(result?.verificationResults?.length, 1);
+    assert.equal(result?.verificationResults?.[0].ok, false);
+    assert.equal(io.changes.length, 1);
+    assert.equal(readFileSync(workspace.target, 'utf8'), io.changes[0].newContent);
+    assert.match(readFileSync(workspace.target, 'utf8'), /`kMavTunnelCmdLicense` \| `300`/);
+    assert.doesNotMatch(readFileSync(workspace.target, 'utf8'), /`kMavTunnelCmdLicense` \| `33007`/);
+  } finally {
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: 20260711-165205 required claim source cannot be starved by heuristic evidence', async () => {
+  const workspace = createLiveEvidenceStarvationReplay();
+  const io = makeCallbacks();
+  const responses = [workspace.wrong, workspace.repaired];
+  const prompts = [];
+  try {
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'live-evidence-priority', file: workspace.target, absPath: workspace.target, action: 'create', desc: '创建严格的六常量 Markdown 源码事实报告' },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: workspace.prompt,
+      workspaceRoot: { fsPath: workspace.root },
+      callbacks: io.callbacks,
+      chat: async messages => {
+        prompts.push(messages[0].content);
+        return responses.shift();
+      },
+    });
+
+    assert.equal(result?.applied, true, result?.failedReason);
+    assert.equal(result?.taskComplete, true);
+    assert.equal(prompts.length, 2);
+    assert.match(prompts[0], /"symbol": "kTopicLicenseState"[\s\S]*?"artifactValue": "\/uav\/license\/state"/);
+    assert.match(prompts[0], /"symbol": "kTunnelMaxTotalLen"[\s\S]*?"artifactValue": "64 \* 1024"[\s\S]*?"normalizedValue": 65536/);
+    assert.doesNotMatch(prompts[0], /license_00\.cpp/, 'claim symbols alone must not trigger broad communication scanning');
+    assert.match(prompts[1], /唯一一次有界修复/);
+    assert.match(prompts[1], new RegExp(`标题下一行必须逐字为“源码路径：${workspace.source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}”`));
+    assert.match(prompts[1], /kTopicLicenseState: 实际 license_state，期望 "\/uav\/license\/state"/);
+    assert.match(prompts[1], /"symbol": "kTunnelSessionTimeoutMs"[\s\S]*?"artifactValue": "5000"/);
+    const sourceEvidence = result?.evidenceRefs?.find(ref => ref.kind === 'read' && ref.sourcePath === workspace.source);
+    assert.equal(sourceEvidence?.captureSequence, 1, 'the contract-required source must be the first captured file evidence');
+    assert.equal(result?.verificationResults?.[0]?.ok, false);
+    assert.equal(result?.verificationResults?.[1]?.ok, true);
+    assert.equal(readFileSync(workspace.target, 'utf8'), workspace.repaired);
+  } finally {
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: explicit claim source remains first when project communication evidence is requested', async () => {
+  const workspace = createLiveEvidenceStarvationReplay();
+  const io = makeCallbacks();
+  io.callbacks.onBeforeFileWrite = async () => false;
+  const prompts = [];
+  try {
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'communication-evidence-priority', file: workspace.target, absPath: workspace.target, action: 'create', desc: '创建严格的六常量 Markdown 源码事实报告' },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: `${workspace.prompt}\n同时参考并对齐现有 tunnel 通信链路，但只交付上述事实报告。`,
+      workspaceRoot: { fsPath: workspace.root },
+      callbacks: io.callbacks,
+      chat: async messages => {
+        prompts.push(messages[0].content);
+        return workspace.repaired;
+      },
+    });
+
+    assert.equal(result?.applied, false);
+    assert.equal(result?.failedReason, 'Markdown deliverable write blocked by guard');
+    assert.equal(prompts.length, 1);
+    const requiredIndex = prompts[0].indexOf('### 必需源码事实（最高优先级）: src/oam/src/license/license_types.hpp');
+    const supplementalIndex = prompts[0].indexOf('### 补充源码: src/oam/src/license/license_00.cpp');
+    assert.ok(requiredIndex >= 0 && supplementalIndex > requiredIndex, 'required source evidence must precede heuristic evidence');
+    const sourceEvidence = result?.evidenceRefs?.find(ref => ref.kind === 'read' && ref.sourcePath === workspace.source);
+    assert.equal(sourceEvidence?.captureSequence, 1);
+    const supplementalEvidence = result?.evidenceRefs?.find(ref => ref.sourcePath?.endsWith('/license_00.cpp'));
+    assert.ok(supplementalEvidence?.captureSequence > sourceEvidence.captureSequence);
+  } finally {
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: a missing required source fails before any provider call or write', async () => {
+  const workspace = createLicenseFactWorkspace();
+  const io = makeCallbacks();
+  let chatCalls = 0;
+  try {
+    rmSync(workspace.source, { force: true });
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'missing-claim-source', file: workspace.target, absPath: workspace.target, action: 'create', desc: '创建六常量 Markdown 源码事实报告' },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: workspace.prompt,
+      workspaceRoot: { fsPath: workspace.root },
+      callbacks: io.callbacks,
+      chat: async () => { chatCalls += 1; return workspace.repaired; },
+    });
+
+    assert.equal(chatCalls, 0);
+    assert.equal(result?.applied, false);
+    assert.match(result?.failedReason || '', /^missing-source-evidence:/);
+    assert.equal(existsSync(workspace.target), false);
+    assert.equal(io.activities.some(activity => activity.kind === 'web'), false);
+  } finally {
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: definitions beyond the raw prompt projection are supplied as host-derived facts', async () => {
+  const workspace = createLicenseFactWorkspace();
+  const io = makeCallbacks();
+  let providerPrompt = '';
+  try {
+    const originalSource = readFileSync(workspace.source, 'utf8');
+    writeFileSync(workspace.source, `// ${'padding'.repeat(1_100)}\n${originalSource}`);
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'late-claim-definitions', file: workspace.target, absPath: workspace.target, action: 'create', desc: '创建六常量 Markdown 源码事实报告' },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: workspace.prompt,
+      workspaceRoot: { fsPath: workspace.root },
+      callbacks: io.callbacks,
+      chat: async messages => { providerPrompt = messages[0].content; return workspace.repaired; },
+    });
+
+    assert.equal(result?.applied, true, result?.failedReason);
+    assert.match(providerPrompt, /必需源码事实（最高优先级）: src\/oam\/src\/license\/license_types\.hpp（原文未投影）/);
+    assert.match(providerPrompt, /"symbol": "kTopicLicenseTunnelRx"[\s\S]*?"artifactValue": "\/uav\/license\/tunnel\/rx"/);
+    assert.match(providerPrompt, /"symbol": "kTunnelMaxTotalLen"[\s\S]*?"normalizedValue": 65536/);
+    const sourceEvidence = result?.evidenceRefs?.find(ref => ref.sourcePath === workspace.source);
+    assert.ok(sourceEvidence?.content?.length > 6_000);
+  } finally {
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: more than twelve contract-required sources bypass optional evidence limits', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-many-claim-sources-'));
+  const target = path.join(root, 'docs/many-facts.md');
+  const io = makeCallbacks();
+  io.callbacks.onBeforeFileWrite = async () => false;
+  let providerPrompt = '';
+  try {
+    mkdirSync(path.dirname(target), { recursive: true });
+    const sourcePaths = Array.from({ length: 13 }, (_, index) => {
+      const sourcePath = path.join(root, 'src', `fact_${String(index + 1).padStart(2, '0')}.hpp`);
+      mkdirSync(path.dirname(sourcePath), { recursive: true });
+      writeFileSync(sourcePath, `constexpr int kClaim${String(index + 1).padStart(2, '0')} = ${index + 1};\n`);
+      return sourcePath;
+    });
+    const prompt = [
+      ...sourcePaths.map((sourcePath, index) => (
+        `请读取 ${sourcePath}，提取 kClaim${String(index + 1).padStart(2, '0')} 的真实值。`
+      )),
+      `请创建 Markdown 报告 ${target}。`,
+    ].join('\n');
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'many-claim-sources', file: target, absPath: target, action: 'create', desc: prompt },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: prompt,
+      workspaceRoot: { fsPath: root },
+      callbacks: io.callbacks,
+      chat: async messages => {
+        providerPrompt = messages[0].content;
+        return `# 多源码事实报告\n\n${'正文。'.repeat(100)}`;
+      },
+    });
+
+    assert.equal(result?.failedReason, 'Markdown deliverable write blocked by guard');
+    const capturedSources = result?.evidenceRefs?.filter(ref => sourcePaths.includes(ref.sourcePath)) || [];
+    assert.equal(capturedSources.length, 13);
+    assert.deepEqual(capturedSources.map(ref => ref.captureSequence), Array.from({ length: 13 }, (_, index) => index + 1));
+    assert.match(providerPrompt, /"symbol": "kClaim13"[\s\S]*?"artifactValue": "13"/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('markdown deliverable: second claim mismatch is sticky and task_complete remains blocked', async () => {
   const workspace = createLicenseFactWorkspace();
   const io = makeCallbacks();
@@ -747,7 +1016,7 @@ test('markdown deliverable: a valid short exact fact report is not padded to the
   const target = path.join(root, 'report.md');
   writeFileSync(source, 'constexpr uint32_t timeoutMs = 5000;\n');
   const prompt = `读取 ${source}，提取 timeoutMs 的真实值。创建 Markdown 报告 ${target}，包含标题、源码路径和一个常量的表格，写入后重新读取。`;
-  const markdown = `# 源码事实报告\n\n源码路径：${source}\n\n| Symbol | Value |\n| --- | --- |\n| timeoutMs | 5000 |\n`;
+  const markdown = `# 源码事实报告\n源码路径：${source}\n| Symbol | Value |\n| --- | --- |\n| timeoutMs | 5000 |\n`;
   assert.ok(markdown.length < 240);
   try {
     const io = makeCallbacks();
@@ -765,6 +1034,110 @@ test('markdown deliverable: a valid short exact fact report is not padded to the
     const written = readFileSync(target, 'utf8');
     assert.ok(written.length < 240);
     assert.match(written, /\| timeoutMs \| 5000 \|/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: direct modify task with only an update md path remains grounded', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-md-update-fact-'));
+  const source = path.join(root, 'config.hpp');
+  const target = path.join(root, 'report.md');
+  writeFileSync(source, 'constexpr uint32_t timeoutMs = 5000;\n');
+  writeFileSync(target, '# stale unverified report\n');
+  const prompt = `读取 ${source}，提取 timeoutMs 的真实值；更新 ${target}，包含标题、源码路径和一行表格，写入后重新读取。`;
+  const markdown = `# 源码事实报告\n源码路径：${source}\n| Symbol | Value |\n| --- | --- |\n| timeoutMs | 5000 |\n`;
+  try {
+    const io = makeCallbacks();
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'update-fact', file: target, absPath: target, action: 'modify', desc: `更新 ${target}` },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: prompt,
+      workspaceRoot: { fsPath: root },
+      callbacks: io.callbacks,
+      chat: async () => markdown,
+    });
+
+    assert.equal(result?.applied, true, result?.failedReason);
+    assert.equal(result?.writtenFiles?.[0]?.action, 'modify');
+    assert.equal(result?.verificationResults?.at(-1)?.ok, true);
+    assert.equal(readFileSync(target, 'utf8'), markdown);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: negated document mutations never enter the writer', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-md-negated-write-'));
+  const target = path.join(root, 'report.md');
+  const original = '# existing report\n';
+  writeFileSync(target, original);
+  let providerCalls = 0;
+  try {
+    for (const prompt of [
+      `不修改 ${target}。`,
+      `勿修改 ${target}。`,
+      `不得提供 Markdown 报告 ${target}。`,
+      `不允许生成 Markdown 报告 ${target}。`,
+    ]) {
+      const io = makeCallbacks();
+      const result = await tryExecuteMarkdownDeliverableTask({
+        task: { id: 'negated-write', file: target, absPath: target, action: 'modify', desc: prompt },
+        taskIndex: 1,
+        taskTotal: 1,
+        userPrompt: prompt,
+        workspaceRoot: { fsPath: root },
+        callbacks: io.callbacks,
+        chat: async () => {
+          providerCalls += 1;
+          return '# forbidden\n';
+        },
+      });
+      assert.equal(result, undefined, prompt);
+      assert.equal(readFileSync(target, 'utf8'), original, prompt);
+    }
+    assert.equal(providerCalls, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: planner drift cannot authorize a prohibited or sibling target', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-md-planner-drift-'));
+  const allowedTarget = path.join(root, 'a.md');
+  const deniedTarget = path.join(root, 'b.md');
+  let providerCalls = 0;
+  try {
+    for (const prompt of [
+      `不要创建 Markdown 报告 ${deniedTarget}。`,
+      `请创建 Markdown 报告 ${allowedTarget}，不要修改 ${deniedTarget}。`,
+    ]) {
+      const io = makeCallbacks();
+      const result = await tryExecuteMarkdownDeliverableTask({
+        task: {
+          id: 'planner-drift',
+          file: deniedTarget,
+          absPath: deniedTarget,
+          action: 'create',
+          desc: `创建 Markdown 报告 ${deniedTarget}`,
+        },
+        taskIndex: 1,
+        taskTotal: 1,
+        userPrompt: prompt,
+        workspaceRoot: { fsPath: root },
+        callbacks: io.callbacks,
+        chat: async () => {
+          providerCalls += 1;
+          return '# forbidden provider output\n';
+        },
+      });
+      assert.equal(result?.applied, false, prompt);
+      assert.match(result?.failedReason || '', /markdown-artifact-(?:write-prohibited|target-not-requested)/, prompt);
+      assert.equal(existsSync(deniedTarget), false, prompt);
+      assert.deepEqual(io.changes, [], prompt);
+    }
+    assert.equal(providerCalls, 0);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

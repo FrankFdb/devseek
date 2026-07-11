@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "runId": "20260711-165205",
+  "build": "1.0.0-debug.20260711.t165023.g7981f99",
+  "gitCommit": "7981f99",
+  "sourceRunLog": "/home/ff/uav/tars/huida_uav/.devseek/runs/20260711-165205.log",
+  "runLogSha256": "d066aa0d3d7c3e688d02646b171e68583322ca61077ac9282445f43f3c346421",
+  "sourceSha256": "973c155c79ab8f9902fd2b8c519734a4f2d64621fd2f1cada384ab4a5869225f",
+  "originalPromptLength": 700,
+  "originalPromptSha256": "8cb799ca7008ac7635c6c965e16f43093bb141be77731672a60b06a755538dbe",
+  "providerResponseLength": 345,
+  "providerResponseSha256": "746e5ebc2739d7206f520e0d4c14a295a7b2a9099aa0923144c4088e270cea70",
+  "failureClass": "required-source-evidence-starved-by-heuristic-budget",
+  "observedEvidenceFiles": 10,
+  "requiredSourceWasCollected": false,
+  "workspaceApplications": 0,
+  "artifactVerifications": 0,
+  "terminal": {
+    "status": "failed",
+    "tasksApplied": 0,
+    "tasksFailed": 1,
+    "changedPaths": [],
+    "verificationIds": []
+  },
+  "replayIssue": "agent-run-failed"
+}

@@ -10,7 +10,11 @@ import { classifyShellCommandEvidence } from '../tools/shell-command-analysis';
 import { stripToolCallBlocks } from './fake-tool-parser';
 import { assessFormalProjectDocumentQuality } from './formal-project-document-quality';
 import { getMissingRequiredDeliverables } from './required-deliverable-contract';
-import { buildTaskContract, hasSourceClaimArtifactContract } from './task-contract';
+import {
+  buildTaskContract,
+  classifyArtifactWriteIntent,
+  hasSourceClaimArtifactContract,
+} from './task-contract';
 import type { VerificationResult } from './evidence-grounding';
 
 export interface CompletionTodo {
@@ -269,9 +273,16 @@ function buildEvidenceText(userPrompt: string, todos: CompletionTodo[]): string 
 }
 
 export function isExplicitlyReadOnlyRequest(text: string): boolean {
-  if (isScopedNoChangeWithDeliverableWriteRequest(text)) return false;
-  return READ_ONLY_RE.test(text)
-    || (isAdvisoryPlanningRequest(text) && (!isDirectImplementationRequest(text) || isDeferredImplementationRequest(text)));
+  const intentText = text
+    .split(/\r?\n/)
+    .filter(line => !GENERIC_EVIDENCE_TODO_TITLES.has(line.trim()))
+    .join('\n');
+  if (isScopedNoChangeWithDeliverableWriteRequest(intentText)) return false;
+  const artifactIntent = classifyArtifactWriteIntent(intentText);
+  if (artifactIntent.requested) return false;
+  if (artifactIntent.prohibited && !artifactIntent.requested) return true;
+  return READ_ONLY_RE.test(intentText)
+    || (isAdvisoryPlanningRequest(intentText) && (!isDirectImplementationRequest(intentText) || isDeferredImplementationRequest(intentText)));
 }
 
 function stripInlineFileContent(text: string): string {
@@ -293,7 +304,8 @@ function extractTrailingContentIntent(text: string): string {
 
 export function requiresFileChangeEvidence(text: string): boolean {
   if (!text.trim() || isExplicitlyReadOnlyRequest(text)) return false;
-  return FILE_CHANGE_RE.test(text) && (CODE_TARGET_RE.test(text) || FILE_PATH_TARGET_RE.test(text));
+  return (FILE_CHANGE_RE.test(text) || classifyArtifactWriteIntent(text).requested)
+    && (CODE_TARGET_RE.test(text) || FILE_PATH_TARGET_RE.test(text));
 }
 
 export function requiresCodeArtifactForEvidence(text: string): boolean {
@@ -508,8 +520,7 @@ export function getMissingCompletionEvidence(
   const missing: string[] = [];
   const contract = buildTaskContract(userPrompt);
   const needsFileChange = requiresFileChangeEvidence(text);
-  const hasGroundedArtifactContract = needsFileChange
-    && hasSourceClaimArtifactContract(contract);
+  const hasGroundedArtifactContract = hasSourceClaimArtifactContract(contract);
   if (hasGroundedArtifactContract && contract.evidenceRequirements.length === 0) {
     missing.push('未解析的交付物源码事实 claim 契约');
   } else if (contract.evidenceRequirements.length > 0 && hasGroundedArtifactContract) {

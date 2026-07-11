@@ -1,4 +1,5 @@
 import * as nodePath from 'path';
+import { authorizeAgentFileWriteContract } from '../agent/task-contract';
 import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import type { ToolPolicy } from './permission-service';
 import { decideToolPermission } from './permission-service';
@@ -41,6 +42,9 @@ export interface AgentFileWriteDecision {
     protectedPath?: boolean;
     autopilotMode?: boolean;
     explicitMarkdownDeliverable?: boolean;
+    markdownArtifactWriteAllowed?: boolean;
+    markdownArtifactWriteReason?: string;
+    markdownArtifactRequestedTargets?: string[];
     isolatedArtifactScopeRequired?: boolean;
     isolatedArtifactAllowedRoots?: string[];
   };
@@ -53,6 +57,18 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
   const workspaceRoot = input.workspaceRoot ? nodePath.normalize(input.workspaceRoot) : '';
   const relPath = displayWritePath(absPath, workspaceRoot, input.context?.displayName);
   const explicitMarkdownDeliverable = isExplicitMarkdownDeliverable(input.context, absPath);
+  const isolatedScope = detectIsolatedArtifactWriteScope(input.context?.requestPrompt, workspaceRoot);
+  const markdownAuthorization = authorizeAgentFileWriteContract({
+    promptText: input.context?.requestPrompt || '',
+    targetPath: absPath,
+    workspaceRoot: workspaceRoot || undefined,
+    allowImplicitPrimaryArtifact: input.context?.purpose === 'markdown-deliverable'
+      && input.context?.userRequested === true,
+    allowScopedSourceArtifact: isolatedScope.required
+      && isolatedScope.allowedRoots.length > 0
+      && isInsideAnyCanonicalPath(absPath, isolatedScope.allowedRoots),
+    targetKind: isDirectoryWriteAction(input.context?.taskAction) ? 'directory' : 'file',
+  });
   const audit = {
     absPath,
     workspaceRoot: workspaceRoot || undefined,
@@ -62,8 +78,12 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
     protectedPath: !!input.protectedPath,
     autopilotMode: !!input.autopilotMode,
     explicitMarkdownDeliverable,
+    markdownArtifactWriteAllowed: markdownAuthorization.allowed,
+    markdownArtifactWriteReason: markdownAuthorization.reason,
+    markdownArtifactRequestedTargets: markdownAuthorization.requestedTargets.length > 0
+      ? markdownAuthorization.requestedTargets
+      : undefined,
   };
-  const isolatedScope = detectIsolatedArtifactWriteScope(input.context?.requestPrompt, workspaceRoot);
   const scopedAudit = {
     ...audit,
     isolatedArtifactScopeRequired: isolatedScope.required,
@@ -76,8 +96,12 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
   if (workspaceRoot && (!isInsidePath(absPath, workspaceRoot) || !isCanonicalPathInsideRoot(absPath, workspaceRoot))) {
     return deny('target-outside-workspace', `写入目标不在当前 workspace 内：${relPath}`, scopedAudit);
   }
-  if (input.protectedPath) {
-    return deny('protected-files-match', `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）`, scopedAudit);
+  if (isolatedScope.required && isolatedScope.allowedRoots.length === 0) {
+    return deny(
+      'invalid-isolated-artifact-scope',
+      '本次请求要求隔离新增产物，但未能解析出可验证的输出目录；为避免写入正式源码或未授权位置，已停止写入。',
+      scopedAudit,
+    );
   }
   if (isolatedScope.required && isolatedScope.allowedRoots.length > 0 && !isInsideAnyCanonicalPath(absPath, isolatedScope.allowedRoots)) {
     return deny(
@@ -86,7 +110,19 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
       scopedAudit,
     );
   }
-
+  if (!markdownAuthorization.allowed) {
+    const targetList = markdownAuthorization.requestedTargets.length > 0
+      ? `；用户明确允许的 Markdown 目标为 ${markdownAuthorization.requestedTargets.join('、')}`
+      : '';
+    return deny(
+      markdownAuthorization.reason || 'markdown-artifact-write-prohibited',
+      `文件写入不符合当前用户请求：${relPath}${targetList}。`,
+      scopedAudit,
+    );
+  }
+  if (input.protectedPath) {
+    return deny('protected-files-match', `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）`, scopedAudit);
+  }
   if (input.toolPolicy) {
     const writePermission = decideToolPermission(input.toolPolicy, 'edit');
     if (writePermission.action === 'deny') {
@@ -121,7 +157,11 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
 export function isExplicitMarkdownDeliverable(context: AgentFileWriteContext | undefined, absPath: string): boolean {
   return context?.purpose === 'markdown-deliverable'
     && context.userRequested === true
-    && nodePath.extname(absPath).toLowerCase() === '.md';
+    && ['.md', '.markdown'].includes(nodePath.extname(absPath).toLowerCase());
+}
+
+function isDirectoryWriteAction(taskAction: string | undefined): boolean {
+  return /^(?:create[_-]?directory|mkdir|make[_-]?(?:directory|folder))$/i.test(String(taskAction || '').trim());
 }
 
 function deny(reason: string, notice: string, audit?: AgentFileWriteDecision['audit']): AgentFileWriteDecision {
@@ -144,13 +184,21 @@ function isInsideAnyCanonicalPath(absPath: string, roots: readonly string[]): bo
   return roots.some(root => isInsidePath(absPath, root) && isCanonicalPathInsideRoot(absPath, root));
 }
 
+function isFormalSourceDirectoryTarget(absPath: string, workspaceRoot: string): boolean {
+  const relative = workspaceRoot
+    ? nodePath.relative(workspaceRoot, absPath).replace(/\\/g, '/')
+    : nodePath.normalize(absPath).replace(/\\/g, '/').replace(/^\/+/, '');
+  return /(?:^|\/)(?:src|source|sources|lib|app)(?:\/|$)/i.test(relative)
+    || /(?:^|\/)packages\/[^/]+\/src(?:\/|$)/i.test(relative);
+}
+
 export interface IsolatedArtifactWriteScope {
   required: boolean;
   allowedRoots: string[];
 }
 
-const ISOLATED_ARTIFACT_SCOPE_RE = /(?:不要|不得|禁止).{0,18}(?:修改|改动|写入).{0,18}(?:正式源码|正式代码|原项目|既有文件|正式源码目录)|(?:本次测试|测试产物|所有新增|新增设计文档|新增代码|验证脚本).{0,60}(?:必须|统一).{0,12}(?:放在|放入|写入|保存到|输出到)/i;
-const OUTPUT_ROOT_RE = /(?:必须放在|放入|放到|放置到|写入到|保存到|输出到|输出目录(?:要求)?|必须创建[^：:\n]{0,60}(?:文档|文件)?)\s*[:：]?\s*([~/][^\s"'`<>，。；;]+)/gi;
+const ISOLATED_ARTIFACT_SCOPE_RE = /(?:本次测试|测试产物|所有(?:(?:新增|生成|产出)(?:的)?)?(?:产物|输出|交付物|文档|文件|代码|脚本)|所有(?:新增|生成|产出)(?:的)?|新增设计文档|新增代码|验证脚本|新增产物).{0,72}(?:必须|统一|只能).{0,18}(?:放在|放入|写入|保存到|输出到|隔离目录)|\b(?:(?:all\s+)?(?:(?:new|generated|produced|created)\s+)?|test\s+)(?:artifacts?|outputs?|deliverables?|documents?|files?|code|scripts?)[^\n,.;]{0,72}\b(?:must|shall)\s+be\s+(?:placed|written|saved|created|output)\s+(?:in|to)\b/i;
+const OUTPUT_ROOT_RE = /(?:必须(?:统一)?放在|只能放在|放入|放到|放置到|写入到|保存到|输出到|输出目录(?:要求)?|必须创建[^：:\n]{0,60}(?:文档|文件)?|\bmust\s+be\s+(?:placed|written|saved|created|output)\s+(?:in|to)|\b(?:output|artifact)\s+(?:root|director(?:y|ies))\s*(?:is|are)?)\s*[:：]?\s*(?:"([^"\n]+)"|'([^'\n]+)'|`([^`\n]+)`|“([^”\n]+)”|((?:~\/|\.{0,2}\/|\/)[^\s"'`<>，。；;]+|[A-Za-z0-9_-]+(?:[\\/][A-Za-z0-9_.-]+)+))(?=$|[\n，。；;,.])/gi;
 
 export function detectIsolatedArtifactWriteScope(
   requestPrompt: string | undefined,
@@ -164,7 +212,7 @@ export function detectIsolatedArtifactWriteScope(
   let match: RegExpExecArray | null;
   OUTPUT_ROOT_RE.lastIndex = 0;
   while ((match = OUTPUT_ROOT_RE.exec(text)) !== null) {
-    const root = coerceAllowedOutputRoot(match[1], workspaceRoot);
+    const root = coerceAllowedOutputRoot(match.slice(1).find(Boolean), workspaceRoot);
     if (root) roots.add(root);
   }
 

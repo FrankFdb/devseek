@@ -1,0 +1,9 @@
+请读取 {{SOURCE}}，从源码提取 kTopicLicenseState、kTopicLicenseTunnelRx、kMavTunnelCmdLicense、kTunnelVersion、kTunnelMaxTotalLen、kTunnelSessionTimeoutMs 六个常量的真实定义和值。
+只创建 Markdown 报告 {{TARGET}}。
+报告必须严格满足以下结构：
+1. 仅包含一个 Markdown 标题，且必须逐字为：# 源码事实报告
+2. 紧接一行必须逐字为：源码路径：{{SOURCE}}
+3. 仅包含一个 Markdown 表格，表头必须是 Symbol 和 Value，数据行恰好六行，分别对应上述六个常量，不得增加其他行。
+4. 仅包含一个 Python fenced 代码块，语言标记必须为 python，块内内容必须逐字为：print("\nready")
+不得增加其他标题、表格数据行、代码块或说明段落；不得修改任何源码；不得创建其他文件。
+写入后必须重新读取该报告并核验内容完整、数值与源码一致，然后完成任务。

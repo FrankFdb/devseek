@@ -107,4 +107,106 @@ test('TerminalCommandPolicy: classifies in-place editors as mutating commands', 
   );
 });
 
+test('TerminalCommandPolicy: read-only allowlist rejects embedded output primitives', () => {
+  const commands = [
+    'sed -n "w out.txt" input.txt',
+    'git diff --output=out.patch',
+    'find . -fprint out.txt',
+    "find . -fprintf out.txt '%p\\n'",
+    'find . -fls out.txt',
+    String.raw`find . -execdir touch marker.txt \;`,
+    'sort input.txt -o out.txt',
+    'sort --output=out.txt input.txt',
+    `awk '{print > "out.txt"}' input.txt`,
+    `awk '{print>"out.txt"}' input.txt`,
+    'echo x>out.txt',
+  ];
+
+  for (const command of commands) {
+    const decision = decideTerminalCommandPermission({ command, workspaceRoot });
+    assert.equal(decision.risk, 'mutating', command);
+    assert.equal(decision.requiresConfirmation, true, command);
+  }
+});
+
+test('TerminalCommandPolicy: normal inspection and validation commands remain classified', () => {
+  for (const command of [
+    'cat package.json',
+    'rg -n TODO src',
+    'git diff -- src/app.ts',
+  ]) {
+    assert.equal(decideTerminalCommandPermission({ command, workspaceRoot }).risk, 'read-only', command);
+  }
+  assert.equal(decideTerminalCommandPermission({ command: 'npm test', workspaceRoot }).risk, 'validation');
+});
+
+test('TerminalCommandPolicy: git branch only allows explicit inspection forms', () => {
+  for (const command of [
+    'git branch',
+    'git branch --list',
+    "git branch --list 'feature/*'",
+    'git branch --show-current',
+    'git branch -a -v',
+  ]) {
+    assert.equal(decideTerminalCommandPermission({ command, workspaceRoot }).risk, 'read-only', command);
+  }
+
+  for (const command of [
+    'git branch feature/new',
+    'git branch feature/new HEAD',
+    'git branch -d feature/old',
+    'git branch -D feature/old',
+    'git branch -m old new',
+    'git branch -M old new',
+    'git branch -c old copy',
+    'git branch -C old copy',
+    'git branch -f feature/reset HEAD~1',
+    'git branch --set-upstream-to=origin/main feature/current',
+    'git branch --unset-upstream feature/current',
+    'git branch --edit-description feature/current',
+  ]) {
+    assert.equal(decideTerminalCommandPermission({ command, workspaceRoot }).risk, 'mutating', command);
+  }
+});
+
+test('TerminalCommandPolicy: awk command pipes and validation write flags are mutating', () => {
+  for (const command of [
+    `awk 'BEGIN { "touch marker.txt" | getline }'`,
+    `awk 'BEGIN { "touch marker.txt"|getline }'`,
+    'npx eslint . --fix',
+    'npx eslint . --cache',
+    'npx eslint . -o eslint-report.txt',
+    'npx eslint . -oeslint-report.txt',
+    'npx jest -u',
+    'npx jest -u=true',
+    'npx jest --updateSnapshot',
+    'npx jest --coverage',
+    'npx jest --coverageDirectory=coverage',
+    'npx jest --cacheDirectory=.jest-cache',
+    'npm run lint -- --fix',
+    'npm test -- -u',
+    'npx tsc',
+    'tsc',
+    'npx tsc --noEmit=false',
+    'npx tsc --noEmit --incremental',
+  ]) {
+    assert.equal(decideTerminalCommandPermission({ command, workspaceRoot }).risk, 'mutating', command);
+  }
+});
+
+test('TerminalCommandPolicy: non-writing validation counterexamples remain validation', () => {
+  for (const command of [
+    'npx eslint .',
+    'npx eslint . --fix-dry-run',
+    'npx jest --runInBand',
+    'npm test',
+    'npm run lint',
+    'npx tsc --noEmit',
+    'npx tsc --noEmit=true',
+    'tsc --noEmit',
+  ]) {
+    assert.equal(decideTerminalCommandPermission({ command, workspaceRoot }).risk, 'validation', command);
+  }
+});
+
 console.log('\nTerminal command policy tests passed.\n');

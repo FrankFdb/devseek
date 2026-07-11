@@ -15,6 +15,7 @@ execSync(`npx esbuild src/agent/evidence-grounding.ts --bundle --outfile=${bundl
 const {
   EvidenceStore,
   deriveArtifactClaimSpecs,
+  formatArtifactClaimSpecsForPrompt,
   formatClaimVerificationFeedback,
   verifyArtifactClaims,
 } = createRequire(import.meta.url)(bundlePath);
@@ -56,6 +57,20 @@ test('20260711-131537 replay rejects five hallucinated facts with exact differen
   assert.equal(result.claims.find(claim => claim.symbol === 'kTunnelVersion')?.status, 'verified');
   assert.match(formatClaimVerificationFeedback(result), /kMavTunnelCmdLicense: 实际 300，期望 33007/);
   assert.match(formatClaimVerificationFeedback(result), /kTunnelMaxTotalLen: 实际 81920，期望 64 \* 1024/);
+});
+
+test('host-derived claim prompt facts preserve artifact spelling and JSON escaping', () => {
+  const replay = loadReplay();
+  const store = new EvidenceStore('/replay', 'prompt-facts');
+  const sourceRef = store.recordFileRead({ path: '/replay/license_types.hpp', content: replay.source });
+  const specs = deriveArtifactClaimSpecs(requirements(replay.prompt), [sourceRef]);
+  const facts = JSON.parse(formatArtifactClaimSpecsForPrompt(specs));
+
+  assert.equal(facts.find(fact => fact.symbol === 'kTopicLicenseState').artifactValue, '/uav/license/state');
+  assert.equal(facts.find(fact => fact.symbol === 'kTopicLicenseState').sourceInitializer, '"/uav/license/state"');
+  assert.equal(facts.find(fact => fact.symbol === 'kTunnelMaxTotalLen').artifactValue, '64 * 1024');
+  assert.equal(facts.find(fact => fact.symbol === 'kTunnelMaxTotalLen').normalizedValue, 65536);
+  assert.equal(facts.every(fact => fact.evidenceId === sourceRef.evidenceId), true);
 });
 
 test('all six source claims pass after a grounded repair and evidence is immutable', () => {
@@ -573,11 +588,15 @@ test('verification is fail-closed for empty specs, missing independent source re
     'scope: 精确事实表格只允许 symbol/value 两列，禁止携带未经证据验证的说明列',
     'scope: 精确事实表格表头必须严格为 Symbol/Value 或 常量名/值，禁止写入未经证据验证的事实',
     'scope: 精确事实报告标题必须使用固定无事实模板“源码事实报告”或“Source Facts Report”',
+    'structure: 精确事实报告第一行必须逐字为“# 源码事实报告”或“# Source Facts Report”',
+    'structure: 精确事实报告标题下一行必须逐字为“源码路径：/home/ff/uav/tars/huida_uav/src/oam/src/license/license_types.hpp”',
+    'scope: 精确事实报告包含任务范围外内容：**源码路径**: `/home/ff/uav/tars/huida_uav/src/oam/src/license/license_types.hpp`',
     'structure: 缺少精确 python 代码块 print("\\nready")',
   ]);
 
   const strictBase = repairedWithoutPythonFence
     .replace('# License 模块传输常量事实记录', '# 源码事实报告')
+    .replace(/\n\n\*\*源码路径\*\*: `([^\n`]+)`\n\n/, '\n源码路径：$1\n')
     .replace(/^\| 常量名 \| 值 \| 说明 \|$/m, '| Symbol | Value |')
     .replace(/^\| --- \| --- \| --- \|$/m, '| --- | --- |')
     .replace(/^\|(\s*`?k[^|]+\|\s*`?[^|]+`?\s*)\|\s*[^|]+\|$/gm, '|$1|')
@@ -662,6 +681,45 @@ test('verification is fail-closed for empty specs, missing independent source re
   assert.equal(outOfScope.ok, false);
   assert.equal(outOfScope.contractDifferences.some(item => /只允许唯一 claim 表格/.test(item)), true);
   assert.equal(outOfScope.contractDifferences.some(item => /任务范围外内容/.test(item)), true);
+});
+
+test('strict fact report requires an exact first-line title and immediately adjacent exact source path', () => {
+  const sourcePath = '/replay/config.hpp';
+  const artifactPath = '/replay/report.md';
+  const source = 'inline constexpr int timeoutMs = 5000;\n';
+  const store = new EvidenceStore('/replay', 'strict-title-source-layout');
+  const sourceRef = store.recordFileRead({ path: sourcePath, content: source });
+  const specs = deriveArtifactClaimSpecs([{ symbol: 'timeoutMs', sourcePath }], [sourceRef]);
+  const contract = {
+    requireTitle: true,
+    requiredSourcePaths: [sourcePath],
+    exactClaimTable: { symbols: ['timeoutMs'], rowCount: 1, forbidAdditionalRows: true },
+    requireArtifactReadback: true,
+  };
+  const table = '| Symbol | Value |\n| --- | --- |\n| timeoutMs | 5000 |';
+  const verify = content => {
+    const artifactRef = store.recordFileRead({ path: artifactPath, content, kind: 'artifact-readback' });
+    const sourceReadback = store.recordFileRead({ path: sourcePath, content: source });
+    return verifyArtifactClaims(specs, artifactRef, [sourceReadback], contract);
+  };
+
+  const valid = verify(`# 源码事实报告\n源码路径：${sourcePath}\n${table}\n`);
+  assert.equal(valid.ok, true, valid.differences.join('\n'));
+
+  for (const invalid of [
+    `# 源码事实报告\n\n源码路径：${sourcePath}\n${table}\n`,
+    `# 源码事实报告\n${table}\n源码路径：${sourcePath}\n`,
+    `# 源码事实报告\n**源码路径**: \`${sourcePath}\`\n${table}\n`,
+    `# 源码事实报告\n${sourcePath}\n${table}\n`,
+  ]) {
+    const result = verify(invalid);
+    assert.equal(result.ok, false);
+    assert.equal(result.contractDifferences.some(item => /标题下一行必须逐字为/.test(item)), true);
+  }
+
+  const paddedTitle = verify(` # 源码事实报告\n源码路径：${sourcePath}\n${table}\n`);
+  assert.equal(paddedTitle.ok, false);
+  assert.equal(paddedTitle.contractDifferences.some(item => /第一行必须逐字为/.test(item)), true);
 });
 
 console.log('\nEvidence grounding tests passed.\n');

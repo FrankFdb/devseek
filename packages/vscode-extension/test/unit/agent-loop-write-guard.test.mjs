@@ -67,6 +67,13 @@ test('AgentLoop write guard: still detects config/doc shell write targets', () =
     detectShellFileWriteCommand('echo "notes" >> docs/plan.md'),
     'docs/plan.md',
   );
+  assert.equal(detectShellFileWriteCommand('echo x > report.markdown'), 'report.markdown');
+  assert.equal(detectShellFileWriteCommand('echo x > notes.yaml'), 'notes.yaml');
+  assert.equal(detectShellFileWriteCommand('printf x > BUILDSTAMP'), 'BUILDSTAMP');
+  assert.equal(
+    detectShellFileWriteCommand(`python3 -c "open('notes.log','w').write('x')"`),
+    'notes.log',
+  );
 });
 
 test('AgentLoop write guard: detects Python open/write shell write targets', () => {

@@ -56,7 +56,8 @@ import { getCommandHints } from './agent-learner';
 import {
   findFirstToolCallStart,
 } from './agent/fake-tool-parser';
-import { chatViaProvider, chatWithMessages, consumeUserSteerMessages } from './agent/loop-chat';
+import { chatViaProvider, chatWithMessages } from './agent/loop-chat';
+import { createWriteAuthority, type WriteAuthority } from './agent/write-authority';
 import { buildLocalRespondTaskMessage, buildToolsSuffix } from './agent/agent-prompt-builder';
 import { isNetworkError } from './agent/network-error';
 import {
@@ -70,6 +71,7 @@ import {
 } from './agent/completion-evidence';
 import { tryExecuteDeterministicCreateTask } from './agent/deterministic-task-executor';
 import { tryExecuteMarkdownDeliverableTask } from './agent/markdown-deliverable-task';
+import { authorizeAgentFileWriteContract } from './agent/task-contract';
 import {
   buildTaskTerminalFailureDetail,
   withTaskTerminalEvidence as attachTaskTerminalEvidence,
@@ -528,249 +530,13 @@ function buildEditorPrompt(
   ].filter(Boolean).join('\n');
 }
 
-// ----------------------------------------------------------------
-// Consolidated analysis: one call for all analyze/explain tasks
-// ----------------------------------------------------------------
-
-/**
- * Execute ALL analyze/explain tasks in a single LLM call.
- *
- * Instead of N separate streaming calls that flood the chat bubble, this
- * function embeds all file contents into one prompt and streams a single
- * organized markdown response.  Much faster and cleaner.
- */
-async function executeAnalysisConsolidated(
-  tasks: AgentTask[],
-  userPrompt: string,
-  mode: 'fast' | 'r1' | undefined,
-  callbacks: AgentLoopCallbacks,
-  history?: ChatMessage[],
-  newSession = false,
-): Promise<string> {  // returns full analysis text for findings extraction
-  const total = tasks.length;
-  // Per-file content limit — prevents context overflow; generous since each call only has ONE file.
-  const MAX_FILE_CHARS = 14000; // ~400 lines of code
-  // Per-file analysis result buffer (for summary prompt)
-  const fileAnalyses: { file: string; text: string }[] = [];
-  const langMap: Record<string, string> = {
-    cpp: 'cpp', cc: 'cpp', h: 'c', c: 'c', hpp: 'cpp',
-    ts: 'typescript', js: 'javascript', py: 'python', md: 'markdown',
-  };
-
-  // ── Sequential per-file analysis (Copilot/Claude Code pattern) ───────────
-  // Each file gets its own LLM call: no cross-file context overflow, per-file
-  // collapsible cards stream in the webview as results arrive.
-  for (let i = 0; i < total; i++) {
-    const t = tasks[i];
-    const basename = nodePath.basename(t.file);
-    const lang = langMap[(basename.split('.').pop() ?? '').toLowerCase()] ?? '';
-
-    // Emit analyzeFile:started — webview creates a collapsible streaming card
-    await callbacks.onAgentStatus({
-      type: 'agentStatus',
-      phase: 'analyzeFile',
-      taskId: t.id, taskFile: basename,
-      taskAction: t.action, taskDesc: t.desc,
-      taskIndex: i + 1, taskTotal: total,
-      state: 'started',
-      title: t.desc || `分析 ${basename}`,
-      detail: basename,
-    });
-    // Also emit execute:started for Working-box progress row
-    await callbacks.onAgentStatus({
-      type: 'agentStatus',
-      phase: 'execute',
-      taskId: t.id, taskFile: basename,
-      taskAction: t.action, taskDesc: t.desc,
-      taskIndex: i + 1, taskTotal: total,
-      state: 'started',
-      title: t.desc || `分析 ${basename}`,
-      detail: basename,
-    });
-
-    // Read file content with truncation safeguard
-    let rawContent = t.absPath ? readFileContentFull(t.absPath) : '';
-    const wasTruncated = rawContent.length > MAX_FILE_CHARS;
-    if (wasTruncated) rawContent = rawContent.slice(0, MAX_FILE_CHARS);
-    const truncNote = wasTruncated
-      ? `\n\n⚠️ 文件内容较长，已截取前 ${MAX_FILE_CHARS} 字符（约 400 行）进行分析。`
-      : '';
-
-    const filePrompt = [
-      `你是代码分析智能体，请分析以下文件（第 ${i + 1} / ${total} 个）。`,
-      ``,
-      `【用户需求】`,
-      userPrompt,
-      ``,
-      `【文件】${basename}${truncNote}`,
-      rawContent
-        ? ['```' + lang, rawContent, '```'].join('\n')
-        : `（无法读取 ${basename} 的内容）`,
-      ``,
-      `【任务说明】${t.desc}`,
-      ``,
-      `【输出格式】（必须按此格式输出，不要重复文件名作为标题）`,
-      `**概述**：（2-4 句描述文件功能和结构）`,
-      `**分析**：（针对用户需求，列出关键发现，可用 bullet points，指出关键函数/行号）`,
-      `**建议**：（具体改进点，如无则省略）`,
-      ``,
-      `用简体中文回复，分析要具体，不要空泛。`,
-    ].join('\n');
-
-    let fileText = '';
-    try {
-      const { tools: fTools } = await chatViaProvider(
-        filePrompt, mode,
-        (delta) => {
-          if (delta.startsWith('\x00RESET\x00')) {
-            fileText = delta.slice(7); // reset accumulated text
-            callbacks.onDelta('\x00AFILE:' + basename + '\x00\x00RESET\x00' + delta.slice(7));
-          } else {
-            fileText += delta;
-            callbacks.onDelta('\x00AFILE:' + basename + '\x00' + delta);
-          }
-        },
-        history,
-        callbacks.signal,
-        i === 0 ? newSession : false, // only the first file uses newSession
-        callbacks.traceRunId,
-        callbacks.traceWorkspaceRoot,
-      );
-      const analyzeWorkdir = t.absPath ? nodePath.dirname(t.absPath) : undefined;
-      await executeFakeToolsForLoop(fTools, callbacks, analyzeWorkdir, {
-        currentTaskIndex: i + 1,
-        taskTotal: total,
-        deferDoneStatus: true,
-        userPrompt,
-      });
-      fileAnalyses.push({ file: basename, text: fileText });
-
-      await callbacks.onAgentStatus({
-        type: 'agentStatus',
-        phase: 'analyzeFile',
-        taskId: t.id, taskFile: basename,
-        taskAction: t.action, taskDesc: t.desc,
-        taskIndex: i + 1, taskTotal: total,
-        state: 'completed',
-        title: t.desc || basename,
-        detail: basename,
-      });
-      await callbacks.onAgentStatus({
-        type: 'agentStatus',
-        phase: 'execute',
-        taskId: t.id, taskFile: basename,
-        taskAction: t.action, taskDesc: t.desc,
-        taskIndex: i + 1, taskTotal: total,
-        state: 'completed',
-        title: t.desc || basename,
-        detail: basename,
-      });
-    } catch (e) {
-      await callbacks.onAgentStatus({
-        type: 'agentStatus',
-        phase: 'analyzeFile',
-        taskId: t.id, taskFile: basename,
-        taskAction: t.action, taskDesc: t.desc,
-        taskIndex: i + 1, taskTotal: total,
-        state: 'failed',
-        title: t.desc || basename,
-        detail: (e as Error).message,
-      });
-      await callbacks.onAgentStatus({
-        type: 'agentStatus',
-        phase: 'execute',
-        taskId: t.id, taskFile: basename,
-        taskAction: t.action, taskDesc: t.desc,
-        taskIndex: i + 1, taskTotal: total,
-        state: 'failed',
-        title: t.desc || basename,
-        detail: (e as Error).message,
-      });
-      if (callbacks.signal?.aborted) break;
-    }
-  }
-
-  if (fileAnalyses.length === 0) return '';
-
-  // ── Final summary call ────────────────────────────────────────────────────
-  // Emit analyzeSummary:started — webview creates the summary card
-  await callbacks.onAgentStatus({
-    type: 'agentStatus',
-    phase: 'analyzeSummary',
-    taskId: 'summary',
-    taskFile: '',
-    taskIndex: total,
-    taskTotal: total,
-    state: 'started',
-    title: '综合总结',
-  });
-
-  // Build summary prompt — truncate each file's analysis to keep total context small
-  const MAX_ANALYSIS_CHARS_PER_FILE = 600;
-  const analysisList = fileAnalyses
-    .map((fa, i) => {
-      const snippet = fa.text.length > MAX_ANALYSIS_CHARS_PER_FILE
-        ? fa.text.slice(0, MAX_ANALYSIS_CHARS_PER_FILE) + '…'
-        : fa.text;
-      return `${i + 1}. **${fa.file}**\n${snippet}`;
-    })
-    .join('\n\n');
-
-  const summaryPrompt = [
-    `以下是对 ${total} 个文件的逐一分析摘要：`,
-    ``,
-    analysisList,
-    ``,
-    `【用户需求】`,
-    userPrompt,
-    ``,
-    `请给出 3-5 句整体评价，指出最重要的改进方向或共性问题。`,
-    `用简体中文，直接输出总结文字，不加标题，不重复文件名。`,
-  ].join('\n');
-
-  let summaryText = '';
-  try {
-    await chatViaProvider(
-      summaryPrompt, mode,
-      (delta) => {
-        if (delta.startsWith('\x00RESET\x00')) {
-          summaryText = delta.slice(7);
-          callbacks.onDelta('\x00ASUM\x00\x00RESET\x00' + delta.slice(7));
-        } else {
-          summaryText += delta;
-          callbacks.onDelta('\x00ASUM\x00' + delta);
-        }
-      },
-      undefined, // no history for summary — avoid polluting context
-      callbacks.signal,
-      false,
-      callbacks.traceRunId,
-      callbacks.traceWorkspaceRoot,
-    );
-  } catch (_e) { /* summary failure is non-fatal */ }
-
-  await callbacks.onAgentStatus({
-    type: 'agentStatus',
-    phase: 'analyzeSummary',
-    taskId: 'summary',
-    taskFile: '',
-    taskIndex: total,
-    taskTotal: total,
-    state: 'completed',
-    title: '综合总结',
-  });
-
-  const fullAnalysisText = fileAnalyses.map(fa => `## ${fa.file}\n${fa.text}`).join('\n\n')
-    + (summaryText ? '\n\n## 综合总结\n' + summaryText : '');
-  return fullAnalysisText;
-}
 
 async function executeTask(
   task: AgentTask,
   taskIndex: number,
   allTasks: AgentTask[],
   changedPaths: string[],
-  userPrompt: string,
+  writeAuthority: WriteAuthority,
   mode: 'fast' | 'r1' | undefined,
   workspaceRoot: vscode.Uri,
   callbacks: AgentLoopCallbacks,
@@ -805,7 +571,7 @@ async function executeTask(
   });
 
   if (task.action === 'respond') {
-    const response = buildLocalRespondTaskMessage(task, userPrompt);
+    const response = buildLocalRespondTaskMessage(task, writeAuthority.currentPrompt);
     callbacks.onDelta(response);
     await callbacks.onAgentStatus({
       type: 'agentStatus',
@@ -850,7 +616,7 @@ async function executeTask(
         ? [...countByValue(fallbackDirs).entries()].sort((a, b) => b[1] - a[1])[0][0]
         : undefined;
       const resolved = resolveWorkspaceWritePath(relNorm, {
-        requestPrompt: userPrompt,
+        requestPrompt: writeAuthority.currentPrompt,
         workspaceRootFsPath: workspaceRoot.fsPath,
         defaultWorkdir: fallbackDir,
       });
@@ -892,7 +658,7 @@ async function executeTask(
       task,
       taskIndex,
       taskTotal: allTasks.length,
-      userPrompt,
+      userPrompt: writeAuthority.currentPrompt,
       workspaceRoot,
       callbacks,
       workdir: analyzeWorkdir,
@@ -900,7 +666,7 @@ async function executeTask(
     if (deterministicResult) return deterministicResult;
 
     // G3: pass taskIndex/taskTotal/mcpTools so the prompt includes full tool definitions
-    const analyzePrompt = buildAnalyzePrompt(userPrompt, task, currentContent, analyzeWorkdir, taskIndex, allTasks.length, callbacks.mcpToolRefs, callbacks.executionMode);
+    const analyzePrompt = buildAnalyzePrompt(writeAuthority.currentPrompt, task, currentContent, analyzeWorkdir, taskIndex, allTasks.length, callbacks.mcpToolRefs, callbacks.executionMode);
     let analyzeRaw = '';
 
     // G4+G5: unified multi-round tool loop for ALL analyze/explain/explore tasks.
@@ -925,7 +691,7 @@ async function executeTask(
     try {
       for (let r = 0; r < MAX_ANALYZE_ROUNDS; r++) {
         if (callbacks.signal?.aborted) break;
-        execMessages.push(...consumeUserSteerMessages(callbacks));
+        execMessages.push(...writeAuthority.takePendingAndDrain());
         compactAgentLoopMessageHistory(execMessages);
         const { text, tools } = await chatWithMessages(
           execMessages, mode,
@@ -944,14 +710,15 @@ async function executeTask(
           callbacks.traceRunId,
           callbacks.traceWorkspaceRoot,
         );
+        const postProviderSteers = writeAuthority.drainAfterProvider();
         lastAnalyzeRoundText = text;
-        execMessages.push({ role: 'assistant', content: text });
+        execMessages.push({ role: 'assistant', content: text }, ...postProviderSteers);
         // Pass analyzeWorkdir so run_terminal defaults to task directory when AI omits workdir.
         const loopRes = collectToolReadEvidence(taskReadEvidence, await executeFakeToolsForLoop(tools, taskToolCallbacks, analyzeWorkdir, {
           currentTaskIndex: taskIndex,
           taskTotal: allTasks.length,
           deferDoneStatus: true,
-          userPrompt,
+          userPrompt: writeAuthority.currentPrompt,
           workspaceRoot: workspaceRoot.fsPath,
           readEvidenceRecorder,
         }));
@@ -980,7 +747,7 @@ async function executeTask(
             const reviewEvidence = classifyTaskTerminalManualReview(
               terminalFailure,
               taskTerminalEvidence,
-              userPrompt,
+              writeAuthority.currentPrompt,
               changedPaths,
             );
             if (reviewEvidence) {
@@ -1089,7 +856,7 @@ async function executeTask(
       const reviewEvidence = classifyTaskTerminalManualReview(
         terminalFailure,
         taskTerminalEvidence,
-        userPrompt,
+        writeAuthority.currentPrompt,
         changedPaths,
       );
       if (reviewEvidence) {
@@ -1139,6 +906,28 @@ async function executeTask(
   }
 
   // ──── modify / create / delete ────────────────────────────────
+  if ((task.action === 'create' || task.action === 'modify') && earlyEffectiveAbsPath) {
+    const targetAuthorization = authorizeAgentFileWriteContract({
+      promptText: writeAuthority.currentPrompt,
+      targetPath: earlyEffectiveAbsPath,
+      workspaceRoot: workspaceRoot.fsPath,
+    });
+    if (!targetAuthorization.allowed) {
+      await callbacks.onAgentStatus({
+        type: 'agentStatus', phase: 'execute',
+        taskId: task.id, taskFile: basename, taskAction: task.action,
+        taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
+        state: 'failed',
+        title: `${basename} — 当前请求未授权写入`,
+        detail: targetAuthorization.reason || 'Markdown 目标不在当前用户请求允许范围内。',
+      });
+      return {
+        applied: false,
+        path: earlyEffectiveAbsPath,
+        failedReason: targetAuthorization.reason || 'Markdown artifact write is not authorized',
+      };
+    }
+  }
   // P9: Early-fail when the task is 'modify' but the target file can't be read.
   // Proceeding without content forces the LLM to hallucinate the full file from
   // scratch, which almost always produces a garbled or wrong result.
@@ -1160,6 +949,7 @@ async function executeTask(
     taskTotal: allTasks.length,
     workspaceRoot,
     effectiveAbsPath: earlyEffectiveAbsPath,
+    userPrompt: writeAuthority.currentPrompt,
     callbacks,
   });
   if (deterministicCreate) return deterministicCreate;
@@ -1168,7 +958,7 @@ async function executeTask(
     task,
     taskIndex,
     taskTotal: allTasks.length,
-    userPrompt,
+    userPrompt: writeAuthority.currentPrompt,
     workspaceRoot,
     effectiveAbsPath: earlyEffectiveAbsPath,
     callbacks,
@@ -1182,6 +972,7 @@ async function executeTask(
         callbacks.traceRunId,
         callbacks.traceWorkspaceRoot,
       );
+      writeAuthority.drainAfterProvider();
       return text;
     },
   });
@@ -1199,7 +990,7 @@ async function executeTask(
   // Build editor prompt with current file content injected.
   const editorWorkdir = earlyEffectiveAbsPath ? nodePath.dirname(earlyEffectiveAbsPath) : undefined;
   const editorPrompt = buildEditorPrompt(
-    userPrompt, task, allTasks, currentContent, taskIndex, allTasks.length,
+    writeAuthority.currentPrompt, task, allTasks, currentContent, taskIndex, allTasks.length,
     callbacks.mcpToolRefs, analysisContext, editorWorkdir, workspaceRoot.fsPath,
   );
 
@@ -1269,17 +1060,18 @@ async function executeTask(
       return withTaskTerminalEvidence({ applied: false, raw }, taskTerminalEvidence);
     }
     try {
-      taskMessages.push(...consumeUserSteerMessages(callbacks));
+      taskMessages.push(...writeAuthority.takePendingAndDrain());
       compactAgentLoopMessageHistory(taskMessages);
       const { text, tools } = await chatWithMessages(taskMessages, mode, undefined, callbacks.signal, consumeNewSession(), callbacks.traceRunId, callbacks.traceWorkspaceRoot);
-      taskMessages.push({ role: 'assistant', content: text });
+      const postProviderSteers = writeAuthority.drainAfterProvider();
+      taskMessages.push({ role: 'assistant', content: text }, ...postProviderSteers);
       raw = text;
 
       const loopRes = collectToolReadEvidence(taskReadEvidence, await executeFakeToolsForLoop(tools, taskToolCallbacks, editorWorkdir, {
         currentTaskIndex: taskIndex,
         taskTotal: allTasks.length,
         deferDoneStatus: true,
-        userPrompt,
+        userPrompt: writeAuthority.currentPrompt,
         workspaceRoot: workspaceRoot.fsPath,
         readEvidenceRecorder,
       }));
@@ -1367,7 +1159,7 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
           userRequested: true,
           taskAction: task.action,
           displayName: task.file,
-          requestPrompt: userPrompt,
+          requestPrompt: writeAuthority.currentPrompt,
         });
         if (!allowed) {
           await callbacks.onAgentStatus({
@@ -1474,6 +1266,29 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
   const applyTargetPath = effectiveAbsPath
     ? nodePath.relative(workspaceRoot.fsPath, effectiveAbsPath).replace(/\\/g, '/')
     : task.file;
+  const authorizeFullFileApply = async (): Promise<boolean> => Boolean(
+    effectiveAbsPath
+    && (!callbacks.onBeforeFileWrite || await callbacks.onBeforeFileWrite(effectiveAbsPath, {
+      purpose: 'workspace-edit',
+      userRequested: true,
+      taskAction: task.action,
+      displayName: task.file,
+      requestPrompt: writeAuthority.currentPrompt,
+    })),
+  );
+  const fullFileWriteBlocked = async (): Promise<TaskExecutionResult> => {
+    const failedReason = effectiveAbsPath
+      ? 'Full-file write blocked by the current user authority or file policy'
+      : 'Full-file write blocked because the target path is unresolved';
+    await callbacks.onAgentStatus({
+      type: 'agentStatus', phase: 'execute', state: 'failed',
+      taskId: task.id, taskFile: basename, taskAction: task.action,
+      taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
+      title: `${basename} — 当前请求未授权写入`, detail: failedReason,
+    });
+    return withTaskTerminalEvidence({ applied: false, raw, path: effectiveAbsPath, failedReason }, taskTerminalEvidence);
+  };
+  if (!(await authorizeFullFileApply())) return fullFileWriteBlocked();
   let applyResult = await applyGeneratedArtifactPathWithPrompt(
     raw,
     applyTargetPath,
@@ -1514,18 +1329,20 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
     let retryRaw = '';
     try {
       const { text: rText, tools: rTools } = await chatViaProvider(retryPrompt, mode, undefined, history, callbacks.signal, false, callbacks.traceRunId, callbacks.traceWorkspaceRoot);
+      writeAuthority.drainAfterProvider();
       retryRaw = rText;
       collectToolReadEvidence(taskReadEvidence, await executeFakeToolsForLoop(rTools, taskToolCallbacks, editorWorkdir, {
         currentTaskIndex: taskIndex,
         taskTotal: allTasks.length,
         deferDoneStatus: true,
-        userPrompt,
+        userPrompt: writeAuthority.currentPrompt,
         workspaceRoot: workspaceRoot.fsPath,
         readEvidenceRecorder,
       }));
     } catch { /* retry failed, fall through */ }
 
     if (retryRaw) {
+      if (!(await authorizeFullFileApply())) return fullFileWriteBlocked();
       applyResult = await applyGeneratedArtifactPathWithPrompt(
         retryRaw,
         applyTargetPath,
@@ -1891,9 +1708,11 @@ export async function runAgentLoop(
   analysisContext?: string,
   startFromIndex = 0,
 ): Promise<AgentLoopResult> {
+  const writeAuthority = createWriteAuthority(userPrompt, callbacks);
+  callbacks = writeAuthority.callbacks;
   const policyResult = enforceAgentTaskExecutionPolicy(tasks, {
     mode: callbacks.executionMode,
-    userPrompt,
+    userPrompt: writeAuthority.currentPrompt,
   });
   if (policyResult.changed) {
     tasks = policyResult.tasks;
@@ -1965,14 +1784,14 @@ export async function runAgentLoop(
       await callbacks.onTodoUpdate(taskTodoLedger.startTask(i));
     }
 
-    sessionHistory.push(...consumeUserSteerMessages(callbacks));
+    sessionHistory.push(...writeAuthority.takePendingAndDrain());
 
     const result = await executeTask(
       task,
       i + 1,
       tasks,
       changedPaths,
-      userPrompt,
+      writeAuthority,
       mode,
       workspaceRoot,
       callbacks,
@@ -1982,7 +1801,7 @@ export async function runAgentLoop(
       needsNewSession,
       readEvidenceRecorder,
     );
-    const taskGrounding = artifactGrounding.captureTask(userPrompt, result);
+    const taskGrounding = artifactGrounding.captureTask(writeAuthority.currentPrompt, result);
     needsNewSession = true;
 
     // ── Network-error detection: save checkpoint and abort loop ──────────
@@ -2006,7 +1825,7 @@ export async function runAgentLoop(
         tasksApplied,
         tasksFailed: tasksFailed + 1,
         changedPaths,
-        userPrompt,
+        userPrompt: writeAuthority.currentPrompt,
         todos: taskTodoLedger.snapshot(),
         editedFileRecords,
         terminalEvidence: allTerminalEvidence,
@@ -2124,6 +1943,7 @@ export async function runAgentLoop(
   // Compile validation must be evidence-backed. Planned task targets may point at
   // old files even when the model artifact was not applied, which would turn a
   // stale build into false completion evidence.
+  sessionHistory.push(...writeAuthority.takePendingAndDrain());
   const modifiedPaths = uniquePaths(
     editedFileRecords
       .filter(file => isCompilableFile(file.path))
@@ -2136,14 +1956,15 @@ export async function runAgentLoop(
     // such as exitCode=139/Segmentation fault instead of stopping at compile-only.
     const wantRun = tasks.some(
       t => t.action === 'analyze' && /run_terminal|运行程序|执行程序|compile.*run|build.*run/i.test(t.desc)
-    ) || requiresRuntimeValidation(userPrompt);
-    validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, userPrompt, sessionHistory);
+    ) || requiresRuntimeValidation(writeAuthority.currentPrompt);
+    validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, writeAuthority.currentPrompt, sessionHistory);
     appendValidationEvidence(allTerminalEvidence, validationOutcome);
 
     const maxRepairRounds = getAgentAutoFixRounds();
     for (let repairRound = 1;
       validationOutcome && !validationOutcome.ok && repairRound <= maxRepairRounds && !callbacks.signal?.aborted;
       repairRound += 1) {
+      sessionHistory.push(...writeAuthority.takePendingAndDrain());
       const repairTarget = selectValidationRepairTarget(validationOutcome, modifiedPaths);
       if (!repairTarget) break;
 
@@ -2176,7 +1997,7 @@ export async function runAgentLoop(
         1,
         [repairTask],
         changedPaths,
-        userPrompt,
+        writeAuthority,
         mode,
         workspaceRoot,
         callbacks,
@@ -2186,7 +2007,7 @@ export async function runAgentLoop(
         true,
         readEvidenceRecorder,
       );
-      artifactGrounding.captureTask(userPrompt, repairResult);
+      artifactGrounding.captureTask(writeAuthority.currentPrompt, repairResult);
 
       if (repairResult.networkError) {
         const retryIndex = taskTodoLedger.firstUnfinishedTaskIndex() ?? tasks.length;
@@ -2206,7 +2027,7 @@ export async function runAgentLoop(
           tasksApplied,
           tasksFailed: tasksFailed + 1,
           changedPaths,
-          userPrompt,
+          userPrompt: writeAuthority.currentPrompt,
           todos: taskTodoLedger.snapshot(),
           editedFileRecords,
           terminalEvidence: allTerminalEvidence,
@@ -2246,7 +2067,8 @@ export async function runAgentLoop(
         break;
       }
 
-      validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, userPrompt, sessionHistory);
+      sessionHistory.push(...writeAuthority.takePendingAndDrain());
+      validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, writeAuthority.currentPrompt, sessionHistory);
       appendValidationEvidence(allTerminalEvidence, validationOutcome);
     }
   }
@@ -2312,7 +2134,7 @@ export async function runAgentLoop(
     tasksApplied,
     tasksFailed: finalFailed,
     changedPaths,
-    userPrompt,
+    userPrompt: writeAuthority.currentPrompt,
     todos: taskTodoLedger.snapshot(),
     editedFileRecords,
     terminalEvidence: allTerminalEvidence,

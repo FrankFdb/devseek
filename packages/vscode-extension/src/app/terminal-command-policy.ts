@@ -35,13 +35,21 @@ const MUTATING_RE = /(?:^|[;&|]\s*)(?:touch|mkdir|cp|mv|rm|chmod|chown|ln|trunca
 const PYTHON_FILE_WRITE_RE = /\bpython3?\s+-c\s+["'][\s\S]*(?:\bopen\(\s*["'][^"']+["']\s*,\s*["'][^"']*[wax+]|Path\(\s*["'][^"']+["']\s*\)\.write_(?:text|bytes)\s*\()/i;
 const IN_PLACE_EDIT_RE = /\bsed\b(?=[^;&|]*\s-i(?:\b|[^\s;&|]*))|\bperl\b(?=[^;&|]*\s-[^\s;&|]*p)(?=[^;&|]*\s-[^\s;&|]*i)/i;
 const COMMAND_SUBSTITUTION_RE = /[`$]\(/;
+const FIND_WRITE_ACTION_RE = /(?:^|\s)-(?:delete|exec(?:dir)?|ok(?:dir)?|fprint(?:0)?|fprintf|fls)(?=\s|$)/i;
+const GIT_OUTPUT_RE = /(?:^|\s)--output(?==|\s|$)/i;
+const SORT_OUTPUT_RE = /(?:^|\s)(?:-o\S*|--out(?:put)?(?:=\S*)?)(?=\s|$)/i;
+const SED_SIDE_EFFECT_RE = /(?:^|[\s"';{}])(?:\d+(?:,\d+)?|\$|\/[^/\n]*\/)?[ \t]*(?:w|W|e)[ \t]+[^\s"';&|]+|\bs([^\w\s]).*?\1.*?\1[0-9gIpMm]*[we](?=\s|["']|$)/i;
+const AWK_SIDE_EFFECT_RE = /\bsystem\s*\(|\bprint(?:f)?\b[^;{}\n]*(?:>{1,2}|\|&?)|\|&?\s*getline\b/i;
+const GIT_BRANCH_MUTATION_FLAG_RE = /(?:^|\s)(?:-[dDmMcCf](?=\s|$)|--(?:delete|move|copy|force|edit-description|set-upstream-to|unset-upstream|create-reflog)(?==|\s|$))/i;
+const VALIDATION_WRITE_FLAG_RE = /(?:^|\s)(?:--fix(?==|\s|$)|--write(?==|\s|$)|-u(?==|\s|$)|--update-?snapshots?(?==|\s|$)|--coverage(?:-?directory|-?reporters?)?(?==|\s|$)|--output-?file(?==|\s|$)|--cache(?:-?(?:directory|location|file))?(?==|\s|$)|--clear-?cache(?==|\s|$))/i;
+const TSC_AUXILIARY_WRITE_RE = /(?:^|\s)--(?:incremental|composite|generateTrace|generateCpuProfile|tsBuildInfoFile)(?==|\s|$)/i;
 
 export function decideTerminalCommandPermission(input: TerminalCommandPermissionInput): TerminalCommandPermissionDecision {
   const command = input.command.trim();
   if (!command) return decision('unknown', 'empty-command');
 
   if (DESTRUCTIVE_RE.test(command)) return decision('destructive', 'destructive-command');
-  if (hasShellWriteRedirection(command) || PYTHON_FILE_WRITE_RE.test(command) || IN_PLACE_EDIT_RE.test(command) || MUTATING_RE.test(command)) {
+  if (hasShellWriteRedirection(command) || hasAllowlistedCommandSideEffect(command) || hasValidationWrapperSideEffect(command) || PYTHON_FILE_WRITE_RE.test(command) || IN_PLACE_EDIT_RE.test(command) || MUTATING_RE.test(command)) {
     return decision('mutating', 'mutating-command');
   }
   if (COMMAND_SUBSTITUTION_RE.test(command)) return decision('unknown', 'command-substitution');
@@ -77,14 +85,87 @@ function decision(risk: TerminalCommandRiskClass, reason: string): TerminalComma
 }
 
 function hasShellWriteRedirection(command: string): boolean {
-  const re = /(?:^|[\s;&|])(?:[0-9]?>{1,2})\s*([^\s;&|]+)/g;
-  let match: RegExpExecArray | null;
-  while ((match = re.exec(command)) !== null) {
-    const target = cleanToken(match[1] || '');
+  let quote = '';
+  for (let index = 0; index < command.length; index++) {
+    const ch = command[index];
+    if (ch === '\\') {
+      index += 1;
+      continue;
+    }
+    if (quote) {
+      if (ch === quote) quote = '';
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (ch !== '>') continue;
+    let cursor = index + 1;
+    if (command[cursor] === '>') cursor += 1;
+    if (command[cursor] === '|') cursor += 1;
+    while (/\s/.test(command[cursor] ?? '')) cursor += 1;
+    const target = readShellRedirectionTarget(command, cursor);
     if (!target || /^&\d+$/.test(target) || target === '/dev/null') continue;
     return true;
   }
   return false;
+}
+
+function readShellRedirectionTarget(command: string, start: number): string {
+  const quote = command[start];
+  if (quote === '"' || quote === "'") {
+    const end = command.indexOf(quote, start + 1);
+    return cleanToken(command.slice(start + 1, end < 0 ? command.length : end));
+  }
+  let end = start;
+  while (end < command.length && !/[\s;&|]/.test(command[end])) end += 1;
+  return cleanToken(command.slice(start, end));
+}
+
+function hasAllowlistedCommandSideEffect(command: string): boolean {
+  return splitShellSegments(command).some((rawSegment) => {
+    const segment = stripLeadingAssignments(rawSegment).trim();
+    const commandNameValue = commandName(firstCommandToken(segment));
+    if (commandNameValue === 'git') {
+      const subcommand = segment.split(/\s+/)[1]?.toLowerCase();
+      return GIT_OUTPUT_RE.test(segment) || (subcommand === 'branch' && !isGitBranchReadOnly(segment));
+    }
+    if (commandNameValue === 'find') return FIND_WRITE_ACTION_RE.test(segment);
+    if (commandNameValue === 'sort') return SORT_OUTPUT_RE.test(segment);
+    if (commandNameValue === 'sed') return SED_SIDE_EFFECT_RE.test(segment);
+    if (commandNameValue === 'awk') return AWK_SIDE_EFFECT_RE.test(segment);
+    return false;
+  });
+}
+
+function isGitBranchReadOnly(segment: string): boolean {
+  const match = segment.trim().match(/^git\s+branch(?:\s+([\s\S]*))?$/i);
+  const args = match?.[1]?.trim() ?? '';
+  if (!match || GIT_BRANCH_MUTATION_FLAG_RE.test(args)) return false;
+  if (!args || args === '--show-current') return true;
+  if (/^(?:--list|-l)(?:\s|$)/.test(args)) return true;
+  return /^(?:(?:-a|-r|-v|-vv|--all|--remotes|--verbose)(?:\s+|$))+$/.test(args);
+}
+
+function hasValidationWrapperSideEffect(command: string): boolean {
+  return splitShellSegments(command).some((rawSegment) => {
+    const segment = stripLeadingAssignments(rawSegment).trim();
+    const executable = commandName(firstCommandToken(segment));
+    const npxTool = executable === 'npx'
+      ? segment.match(/^npx\s+(?:--yes\s+)?([^\s]+)/i)?.[1]?.toLowerCase()
+      : undefined;
+    const isTsc = executable === 'tsc' || npxTool === 'tsc';
+    if (isTsc) return !isNoEmitTypeScriptValidation(segment);
+    if (VALIDATION_WRITE_FLAG_RE.test(segment)) return true;
+    if (npxTool === 'eslint' && /(?:^|\s)(?:-o\S*|--output-file(?==|\s|$))(?=\s|$)/.test(segment)) return true;
+    return false;
+  });
+}
+
+function isNoEmitTypeScriptValidation(segment: string): boolean {
+  if (/(?:^|\s)--noEmit(?:=|\s+)(?:false|0)(?=\s|$)/i.test(segment)) return false;
+  return /(?:^|\s)--noEmit(?:=true)?(?=\s|$)/i.test(segment) && !TSC_AUXILIARY_WRITE_RE.test(segment);
 }
 
 function referencesOutsideWorkspace(command: string, workspaceRoot?: string, workdir?: string): boolean {
@@ -155,12 +236,12 @@ function isReadOnlySegment(rawSegment: string): boolean {
 
   if (command === 'git') {
     const subcommand = segment.trim().split(/\s+/)[1] ?? '';
-    return GIT_READ_ONLY_COMMANDS.has(subcommand);
+    if (subcommand === 'branch') return isGitBranchReadOnly(segment);
+    return GIT_READ_ONLY_COMMANDS.has(subcommand) && !GIT_OUTPUT_RE.test(segment);
   }
   if (!READ_ONLY_COMMANDS.has(command)) return false;
-  if (command === 'find' && /\s-(?:delete|exec|ok)\b/.test(segment)) return false;
+  if (hasAllowlistedCommandSideEffect(segment)) return false;
   if (command === 'sed' && /(?:^|\s)-i(?:\b|[^\s]*)/.test(segment)) return false;
-  if (command === 'awk' && /\bsystem\s*\(/.test(segment)) return false;
   return true;
 }
 
@@ -170,10 +251,13 @@ function isValidationSegment(rawSegment: string): boolean {
   if (!token) return false;
   const command = commandName(token);
 
-  if (command === 'npx') return /\bnpx\s+(?:--yes\s+)?(?:tsc|eslint|jest)\b/i.test(segment);
-  if (command === 'tsc') return /\b--noEmit\b/i.test(segment);
+  if (command === 'npx') {
+    if (/\bnpx\s+(?:--yes\s+)?tsc\b/i.test(segment)) return isNoEmitTypeScriptValidation(segment);
+    return /\bnpx\s+(?:--yes\s+)?(?:eslint|jest)\b/i.test(segment) && !hasValidationWrapperSideEffect(segment);
+  }
+  if (command === 'tsc') return isNoEmitTypeScriptValidation(segment);
   if (['npm', 'pnpm', 'yarn', 'bun'].includes(command)) {
-    return /\b(?:test|run\s+(?:test|build|compile|lint|typecheck))\b/i.test(segment);
+    return /\b(?:test|run\s+(?:test|build|compile|lint|typecheck))\b/i.test(segment) && !hasValidationWrapperSideEffect(segment);
   }
   if (command === 'node') return /\bnode\s+(?:--test\b|(?:\.\/)?test\/|[\w./-]+\.test\.(?:mjs|cjs|js))\b/i.test(segment);
   if (['pytest', 'ctest'].includes(command)) return true;

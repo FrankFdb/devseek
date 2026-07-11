@@ -196,6 +196,27 @@ export function deriveArtifactClaimSpecs(
   return specs;
 }
 
+/**
+ * Serialize host-derived claim facts for an untrusted provider prompt.
+ * JSON encoding keeps source strings from changing the surrounding prompt
+ * structure, while artifactValue preserves the representation expected in the
+ * deliverable (unquoted strings and source expressions for numeric claims).
+ */
+export function formatArtifactClaimSpecsForPrompt(specs: ArtifactClaimSpec[]): string {
+  return JSON.stringify(specs.map(spec => ({
+    symbol: spec.symbol,
+    artifactValue: spec.validator === 'exact'
+      ? String(spec.normalizedExpectedValue)
+      : spec.expectedValue,
+    sourceInitializer: spec.expectedValue,
+    normalizedValue: spec.normalizedExpectedValue,
+    validator: spec.validator,
+    sourcePath: spec.sourcePath,
+    sourceLine: spec.sourceLine,
+    evidenceId: spec.evidenceId,
+  })), null, 2);
+}
+
 export function verifyArtifactClaims(
   specs: ArtifactClaimSpec[],
   artifactEvidence: EvidenceRef,
@@ -365,16 +386,26 @@ function verifyStrictFactReport(content: string, contract: ArtifactVerificationC
   const outsideCode = stripFencedCodeBlocks(content);
   const lines = outsideCode.split('\n');
   const headings = lines.filter(line => /^#{1,6}\s+\S/.test(line.trim()));
+  const title = lines[0] || '';
+  const expectedSourcePathLines = getExpectedStrictSourcePathLines(title, contract.requiredSourcePaths || []);
   const unexpectedLines = lines.filter(line => {
     const trimmed = line.trim();
     if (!trimmed || trimmed.includes('|') || /^#{1,6}\s+\S/.test(trimmed)) return false;
-    return !isExactSourcePathLine(trimmed, contract.requiredSourcePaths || []);
+    return !expectedSourcePathLines.includes(line);
   });
   const differences: string[] = [];
   if (headings.length !== 1) {
     differences.push(`structure: 精确事实报告标题数量为 ${headings.length}，期望 1`);
   } else if (!isAllowedStrictFactTitle(headings[0])) {
     differences.push('scope: 精确事实报告标题必须使用固定无事实模板“源码事实报告”或“Source Facts Report”');
+  }
+  if (!isAllowedStrictFactTitle(title)) {
+    differences.push('structure: 精确事实报告第一行必须逐字为“# 源码事实报告”或“# Source Facts Report”');
+  }
+  for (const [index, expectedLine] of expectedSourcePathLines.entries()) {
+    if (lines[index + 1] !== expectedLine) {
+      differences.push(`structure: 精确事实报告标题${index === 0 ? '下一行' : `后的第 ${index + 1} 行`}必须逐字为“${expectedLine}”`);
+    }
   }
   if (unexpectedLines.length > 0) {
     differences.push(`scope: 精确事实报告包含任务范围外内容：${unexpectedLines[0].trim().slice(0, 120)}`);
@@ -395,16 +426,12 @@ function isAllowedExactClaimHeader(cells: string[]): boolean {
 }
 
 function isAllowedStrictFactTitle(line: string): boolean {
-  const title = line.trim();
-  return title === '# 源码事实报告' || title === '# Source Facts Report';
+  return line === '# 源码事实报告' || line === '# Source Facts Report';
 }
 
-function isExactSourcePathLine(line: string, sourcePaths: string[]): boolean {
-  const plain = line.replace(/\*\*/g, '').replace(/`/g, '').trim();
-  return sourcePaths.some(sourcePath => (
-    plain === sourcePath
-    || new RegExp(`^(?:源码路径|源文件路径|source(?: file)? path)\\s*[:：]\\s*${escapeRegExp(sourcePath)}$`, 'i').test(plain)
-  ));
+function getExpectedStrictSourcePathLines(title: string, sourcePaths: string[]): string[] {
+  const prefix = title === '# Source Facts Report' ? 'Source path: ' : '源码路径：';
+  return sourcePaths.map(sourcePath => `${prefix}${sourcePath}`);
 }
 
 function parseFencedCodeBlocks(content: string): Array<{ language: string; content: string }> {

@@ -102,7 +102,10 @@ export function detectShellFileWriteCommand(cmd: string): string | undefined {
     const match = pattern.regexp.exec(cmd);
     if (!match) continue;
     const target = cleanShellTarget(match[pattern.targetGroup] || '');
-    if (target && isSourcePath(target)) return target;
+    // Terminal writes are never an allowed alternate file protocol. Returning
+    // every concrete target keeps Markdown/config/extensionless writes from
+    // bypassing the same request contract enforced by structured tools.
+    if (target) return target;
   }
   return undefined;
 }

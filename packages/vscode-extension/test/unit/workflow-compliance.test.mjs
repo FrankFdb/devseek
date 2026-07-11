@@ -179,6 +179,9 @@ test('§7 Recovery: checkpoint create facts are executed deterministically', () 
   const executor = src('src/agent/deterministic-task-executor.ts');
   assertContains(loop, 'tryExecuteDeterministicCreateTask', 'checkpoint create executor is wired into agent loop');
   assertContains(executor, 'task.expectedContent', 'checkpoint content fact is required before deterministic create');
+  assertContains(executor, 'hasSourceClaimArtifactContract', 'source-claim artifacts bypass unverified deterministic recovery writes');
+  assertContains(executor, 'authorizeAgentFileWriteContract', 'checkpoint writes must honor the current request at the final boundary');
+  assertContains(executor, 'buildTaskContract(input.userPrompt || task.desc)', 'planner descriptions cannot override the current request contract');
   assertContains(executor, 'writeTextFileSync', 'deterministic create writes through WorkspaceEditService');
   assertContains(executor, 'readFileContentFull', 'deterministic create verifies content by reading from disk');
 });
@@ -433,8 +436,8 @@ test('§8.3 File edits: code directory prompts force generated code paths under 
   assertContains(agentLoop, 'resolveWorkspaceWritePath', 'agent loop must resolve bare task filenames through the shared path resolver before editing or validating');
   assert.match(
     agentLoop,
-    /resolveWorkspaceWritePath\(relNorm,\s*\{[\s\S]*?requestPrompt: userPrompt[\s\S]*?workspaceRootFsPath: workspaceRoot\.fsPath[\s\S]*?defaultWorkdir: fallbackDir[\s\S]*?\}\)/,
-    'agent loop must resolve bare task filenames against prompt/project scope, not only workspace root',
+    /resolveWorkspaceWritePath\(relNorm,\s*\{[\s\S]*?requestPrompt: writeAuthority\.currentPrompt[\s\S]*?workspaceRootFsPath: workspaceRoot\.fsPath[\s\S]*?defaultWorkdir: fallbackDir[\s\S]*?\}\)/,
+    'agent loop must resolve bare task filenames against the latest prompt/project scope, not only workspace root',
   );
   assert.match(
     toolLoop,
@@ -1743,10 +1746,15 @@ test('Architecture: Markdown deliverables bypass the generic editor tool loop', 
   const deliverable = src('src/agent/markdown-deliverable-task.ts');
   const routeIndex = loop.indexOf('tryExecuteMarkdownDeliverableTask({');
   const editorPromptIndex = loop.indexOf('const editorPrompt = buildEditorPrompt');
+  const finalWriteAuthorizationIndex = loop.indexOf('const targetAuthorization = authorizeAgentFileWriteContract({');
+  const fullFileApplyIndex = loop.indexOf('await applyGeneratedArtifactPathWithPrompt(');
 
   assert.ok(routeIndex >= 0, 'agent-loop must route Markdown deliverables through the dedicated executor');
   assert.ok(editorPromptIndex >= 0, 'agent-loop must still have the generic editor prompt path');
   assert.ok(routeIndex < editorPromptIndex, 'Markdown deliverables must be settled before the generic Editor/tool loop');
+  assert.ok(finalWriteAuthorizationIndex >= 0, 'generic full-file writes must have a current-request authorization boundary');
+  assert.ok(fullFileApplyIndex >= 0, 'generic full-file application path must remain visible to the architecture guard');
+  assert.ok(finalWriteAuthorizationIndex < fullFileApplyIndex, 'authorization must run before generic full-file application');
   assertContains(deliverable, 'collectMarkdownEvidence', 'Markdown deliverables must collect local evidence deterministically');
   assertContains(deliverable, 'classifyProviderOutputIntegrity', 'Markdown deliverables must gate provider output completeness');
   assertContains(deliverable, 'Provider 未返回可用的完整报告', 'Markdown deliverables must preserve provider failure facts in fallback artifacts');

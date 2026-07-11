@@ -21,12 +21,15 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const agentLoop = readFileSync(path.join(rootDir, 'src/agent-loop.ts'), 'utf8');
 const agenticLoop = readFileSync(path.join(rootDir, 'src/agent/agentic-loop.ts'), 'utf8');
+const writeAuthority = readFileSync(path.join(rootDir, 'src/agent/write-authority.ts'), 'utf8');
 const simpleFileTask = readFileSync(path.join(rootDir, 'src/agent/simple-file-task.ts'), 'utf8');
 const bridgeProvider = readFileSync(path.join(rootDir, 'src/llm/providers/bridge.ts'), 'utf8');
 const replayDiagnostics = readFileSync(path.join(rootDir, 'src/diagnostics/run-log-replay.ts'), 'utf8');
 const taskTodoLedger = readFileSync(path.join(rootDir, 'src/agent/task-todo-ledger.ts'), 'utf8');
 const bundlePath = path.join(rootDir, 'test/unit/task-state-machine.bundle.cjs');
 const groundingBundlePath = path.join(rootDir, 'test/unit/task-state-grounding.bundle.cjs');
+const writeAuthorityBundlePath = path.join(rootDir, 'test/unit/write-authority.bundle.cjs');
+const fileWritePolicyBundlePath = path.join(rootDir, 'test/unit/task-state-file-write-policy.bundle.cjs');
 
 execSync(
   `npx esbuild src/agent/task-state-machine.ts --bundle ` +
@@ -36,6 +39,16 @@ execSync(
 execSync(
   `npx esbuild src/agent/evidence-grounding.ts --bundle ` +
   `--outfile=${groundingBundlePath} --format=cjs --platform=node`,
+  { cwd: rootDir, stdio: 'pipe' },
+);
+execSync(
+  `npx esbuild src/agent/write-authority.ts --bundle ` +
+  `--outfile=${writeAuthorityBundlePath} --format=cjs --platform=node`,
+  { cwd: rootDir, stdio: 'pipe' },
+);
+execSync(
+  `npx esbuild src/app/agent-file-write-policy.ts --bundle ` +
+  `--outfile=${fileWritePolicyBundlePath} --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );
 
@@ -55,6 +68,8 @@ const {
   deriveArtifactClaimSpecs,
   verifyArtifactClaims,
 } = req(groundingBundlePath);
+const { createWriteAuthority } = req(writeAuthorityBundlePath);
+const { decideAgentFileWrite } = req(fileWritePolicyBundlePath);
 
 test('two-phase agent todos are delegated to the task state machine boundary', () => {
   assert.match(agentLoop, /from '\.\/agent\/task-state-machine'/, 'agent-loop must use the task state machine boundary');
@@ -80,11 +95,11 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
   assert.match(agentLoop, /executeFakeToolsForLoop\(tools,\s*taskToolCallbacks,/, 'editor tool loops must use the todo-suppressed callback boundary');
   assert.match(agentLoop, /new ToolReadEvidenceRecorder\(workspaceRoot\.fsPath, callbacks\.traceRunId\)/, 'one recorder must span every task and repair round in a run');
   assert.equal((agentLoop.match(/collectToolReadEvidence\(taskReadEvidence, await executeFakeToolsForLoop/g) ?? []).length, 3, 'analyze, editor, and retry tool rounds must all retain read evidence');
-  assert.match(agentLoop, /const taskGrounding = artifactGrounding\.captureTask\(userPrompt, result\)/, 'two-phase task evidence must reach top-level settlement');
+  assert.match(agentLoop, /const taskGrounding = artifactGrounding\.captureTask\(writeAuthority\.currentPrompt, result\)/, 'two-phase task evidence must use the latest authorized prompt at top-level settlement');
   assert.match(agentLoop, /buildTaskSettlementFailureStatus/, 'ledger settlement failures must override optimistic task status');
   assert.match(agentLoop, /applyGeneratedArtifactPathWithPrompt/, 'editor fallback must apply only the current task target file');
   assert.match(agentLoop, /async function executeTask\([\s\S]*?changedPaths: string\[\]/, 'executeTask must receive changedPaths explicitly instead of closing over an undefined outer variable');
-  assert.match(agentLoop, /executeTask\([\s\S]*?tasks,\s*changedPaths,\s*userPrompt/, 'runAgentLoop must pass changedPaths into task execution');
+  assert.match(agentLoop, /executeTask\([\s\S]*?tasks,\s*changedPaths,\s*writeAuthority/, 'runAgentLoop must pass changedPaths and live authority into task execution');
   assert.match(agentLoop, /buildAgenticHistoryText/, 'agent loop must own restored history evidence text');
   assert.match(agentLoop, /createTaskConvergenceGuard/, 'agent-loop must use the shared convergence guard for no-progress tool loops');
   assert.match(agentLoop, /convergence\.feedbackSuffix/, 'editor/analyze loops must feed convergence warnings back to the model');
@@ -95,18 +110,33 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
   assert.match(agenticLoop, /function compactAgenticMessageHistory/, 'agentic loop must own context compaction at the runtime boundary');
   assert.match(
     agenticLoop,
-    /messages\.push\(\.\.\.consumeUserSteerMessages\(callbacks\)\);\s*totalChars\s*=\s*compactAgenticMessageHistory\(messages\);/,
+    /messages\.push\(\.\.\.writeAuthority\.takePendingAndDrain\(\)\);\s*totalChars\s*=\s*compactAgenticMessageHistory\(messages\);/,
     'agentic loop must compact message history before provider calls',
   );
+  assert.match(agenticLoop, /writeAuthority\.drainAfterProvider\(\)/, 'agentic loop must drain in-flight steers before executing provider tools');
+  assert.match(writeAuthority, /pendingMessages\.push\(\.\.\.drain\(\)\)/, 'file writes must re-check steers at the actual mutation boundary');
   assert.match(
     agentLoop,
-    /execMessages\.push\(\.\.\.consumeUserSteerMessages\(callbacks\)\);\s*compactAgentLoopMessageHistory\(execMessages\);/,
+    /execMessages\.push\(\.\.\.writeAuthority\.takePendingAndDrain\(\)\);\s*compactAgentLoopMessageHistory\(execMessages\);/,
     'analyze loops must compact message history before provider calls',
   );
   assert.match(
     agentLoop,
-    /taskMessages\.push\(\.\.\.consumeUserSteerMessages\(callbacks\)\);\s*compactAgentLoopMessageHistory\(taskMessages\);/,
+    /taskMessages\.push\(\.\.\.writeAuthority\.takePendingAndDrain\(\)\);\s*compactAgentLoopMessageHistory\(taskMessages\);/,
     'editor loops must compact message history before provider calls',
+  );
+  assert.match(agentLoop, /createWriteAuthority\(userPrompt, callbacks\)/, 'legacy loop must share the live write-authority boundary');
+  assert.ok((agentLoop.match(/writeAuthority\.drainAfterProvider\(\)/g) ?? []).length >= 3, 'every legacy provider path must drain in-flight steers');
+  assert.equal((agentLoop.match(/authorizeFullFileApply\(\)/g) ?? []).length, 2, 'initial and retry full-file writes must each re-authorize');
+  assert.match(
+    agentLoop,
+    /if \(!\(await authorizeFullFileApply\(\)\)\) return fullFileWriteBlocked\(\);\s*let applyResult = await applyGeneratedArtifactPathWithPrompt/,
+    'the first full-file apply must be immediately preceded by the central write policy',
+  );
+  assert.match(
+    agentLoop,
+    /if \(retryRaw\) \{\s*if \(!\(await authorizeFullFileApply\(\)\)\) return fullFileWriteBlocked\(\);\s*applyResult = await applyGeneratedArtifactPathWithPrompt/,
+    'the retry full-file apply must independently re-check the central write policy',
   );
   assert.match(agentLoop, /loopRes\.workToolCallsMade/, 'two-phase agent loops must use shared real-work evidence from tool-loop');
   assert.match(agentLoop, /decideAgentRuntimeTurn/, 'analyze loops must route round settlement through the runtime turn policy');
@@ -166,6 +196,72 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
     /status:\s*'failed'\s+as\s+const/,
     'simple-file-task must not hand-roll failed todo transitions',
   );
+});
+
+for (const [timing, revokePoll] of [['provider-in-flight', 2], ['write-boundary', 3]]) {
+test(`shared write authority applies a ${timing} revocation before a legacy mutation`, async () => {
+  const revoke = '停止写入。不要创建任何文件。';
+  let polls = 0;
+  let policyPrompt = '';
+  const authority = createWriteAuthority('请创建 report.md。', {
+    onUserSteer: () => (++polls === revokePoll ? [revoke] : []),
+    onBeforeFileWrite: async (_path, context) => {
+      policyPrompt = context?.requestPrompt ?? '';
+      return !policyPrompt.includes(revoke);
+    },
+  });
+
+  authority.takePendingAndDrain(); // before provider
+  authority.drainAfterProvider(); // steer arrived while provider was in flight
+  const allowed = await authority.callbacks.onBeforeFileWrite('/workspace/report.md', {
+    purpose: 'workspace-edit',
+    userRequested: true,
+    requestPrompt: 'stale prompt',
+  });
+
+  assert.equal(allowed, false);
+  assert.match(authority.currentPrompt, /不要创建任何文件/);
+  assert.match(policyPrompt, /不要创建任何文件/);
+  assert.doesNotMatch(policyPrompt, /stale prompt/);
+});
+}
+
+test('shared write authority feeds a wrapped live revocation into the real file-write policy', async () => {
+  const revoke = '停止写入。';
+  let polls = 0;
+  let decision;
+  const authority = createWriteAuthority([
+    '【原始用户需求】',
+    '请创建 report.md。',
+    '【本次子任务】',
+    '创建报告。',
+  ].join('\n'), {
+    onUserSteer: () => (++polls === 2 ? [revoke] : []),
+    onBeforeFileWrite: async (absPath, context) => {
+      decision = decideAgentFileWrite({
+        absPath,
+        workspaceRoot: '/workspace',
+        autopilotMode: true,
+        context,
+      });
+      return decision.action === 'allow';
+    },
+  });
+
+  authority.takePendingAndDrain(); // before provider
+  authority.drainAfterProvider(); // steer arrived while provider was in flight
+  const allowed = await authority.callbacks.onBeforeFileWrite('/workspace/report.md', {
+    purpose: 'markdown-deliverable',
+    userRequested: true,
+    taskAction: 'create',
+    requestPrompt: 'stale prompt',
+  });
+
+  assert.equal(allowed, false);
+  assert.equal(decision?.action, 'deny');
+  assert.match(decision?.reason ?? '', /prohibited/);
+  assert.match(authority.currentPrompt, /【用户实时补充\/纠偏】/);
+  assert.match(authority.currentPrompt, /停止写入/);
 });
 
 test('two-phase agent history is evidence based, not extension-level thin summary', () => {

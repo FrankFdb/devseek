@@ -5,6 +5,12 @@ import { readFileContentFull } from '../agent-task-decomposer';
 import type { AgentLoopCallbacks } from './loop-types';
 import { roughLineDiff } from '../utils';
 import { WorkspaceEditService } from '../workspace/edit-service';
+import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
+import {
+  authorizeAgentFileWriteContract,
+  buildTaskContract,
+  hasSourceClaimArtifactContract,
+} from './task-contract';
 
 export interface DeterministicTaskResult {
   applied: boolean;
@@ -22,10 +28,15 @@ export async function tryExecuteDeterministicCreateTask(input: {
   taskTotal: number;
   workspaceRoot: vscode.Uri;
   effectiveAbsPath?: string;
+  userPrompt?: string;
   callbacks: AgentLoopCallbacks;
 }): Promise<DeterministicTaskResult | undefined> {
   const { task, callbacks } = input;
   if (task.action !== 'create' || task.expectedContent === undefined) return undefined;
+  const requestContract = buildTaskContract(input.userPrompt || task.desc);
+  // Recovery/checkpoint content is not source evidence. Source-backed Markdown
+  // must fall through to the grounded executor before any bytes are written.
+  if (hasSourceClaimArtifactContract(requestContract)) return undefined;
 
   const basename = nodePath.basename(task.file);
   const absPath = input.effectiveAbsPath || task.absPath;
@@ -33,13 +44,28 @@ export async function tryExecuteDeterministicCreateTask(input: {
     await postDeterministicStatus(input, 'failed', basename, '缺少可写入的目标路径。');
     return { applied: false, raw: 'deterministic create skipped: missing target path' };
   }
+  if (!isCanonicalPathInsideRoot(absPath, input.workspaceRoot.fsPath)) {
+    await postDeterministicStatus(input, 'failed', basename, '目标路径不在当前 workspace 内。');
+    return { applied: false, path: absPath, raw: 'deterministic create blocked: target escapes workspace' };
+  }
+
+  const currentRequest = String(input.userPrompt || task.desc || task.file || '');
+  const targetAuthorization = authorizeAgentFileWriteContract({
+    promptText: currentRequest,
+    targetPath: absPath,
+    workspaceRoot: input.workspaceRoot.fsPath,
+  });
+  if (!targetAuthorization.allowed) {
+    await postDeterministicStatus(input, 'failed', basename, `目标未获当前用户请求授权：${targetAuthorization.reason}`);
+    return { applied: false, path: absPath, raw: targetAuthorization.reason };
+  }
 
   if (callbacks.onBeforeFileWrite && !(await callbacks.onBeforeFileWrite(absPath, {
     purpose: 'deterministic-task',
     userRequested: true,
     taskAction: task.action,
     displayName: task.file,
-    requestPrompt: task.desc || task.file,
+    requestPrompt: currentRequest,
   }))) {
     await postDeterministicStatus(input, 'failed', basename, '写入被权限或保护规则阻止。');
     return { applied: false, raw: 'deterministic create blocked by write guard' };

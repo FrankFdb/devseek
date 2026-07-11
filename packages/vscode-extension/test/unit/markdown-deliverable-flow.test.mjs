@@ -30,6 +30,8 @@ const rootDir = path.resolve(__dirname, '../../');
 const decomposerBundlePath = path.join(tmpdir(), `devseek-md-flow-decomposer-${process.pid}.cjs`);
 const markdownBundlePath = path.join(tmpdir(), `devseek-md-flow-executor-${process.pid}.cjs`);
 const agenticBundlePath = path.join(tmpdir(), `devseek-md-flow-agentic-${process.pid}.cjs`);
+const deterministicBundlePath = path.join(tmpdir(), `devseek-md-flow-deterministic-${process.pid}.cjs`);
+const fileWritePolicyBundlePath = path.join(tmpdir(), `devseek-md-flow-write-policy-${process.pid}.cjs`);
 
 execSync(
   `npx esbuild src/agent-task-decomposer.ts --bundle ` +
@@ -39,6 +41,16 @@ execSync(
 execSync(
   `npx esbuild src/agent/markdown-deliverable-task.ts --bundle ` +
   `--outfile=${markdownBundlePath} --format=cjs --platform=node --external:vscode`,
+  { cwd: rootDir, stdio: 'pipe' },
+);
+execSync(
+  `npx esbuild src/agent/deterministic-task-executor.ts --bundle ` +
+  `--outfile=${deterministicBundlePath} --format=cjs --platform=node --external:vscode`,
+  { cwd: rootDir, stdio: 'pipe' },
+);
+execSync(
+  `npx esbuild src/app/agent-file-write-policy.ts --bundle ` +
+  `--outfile=${fileWritePolicyBundlePath} --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );
 await build({
@@ -60,7 +72,21 @@ await build({
       build.onLoad({ filter: /.*/, namespace: 'devseek-test' }, () => ({
         loader: 'ts',
         contents: `
-          export function consumeUserSteerMessages() { return []; }
+          export function consumeUserSteerMessages(callbacks) {
+            const items = callbacks.onUserSteer?.() ?? [];
+            return items
+              .map(text => String(text || '').trim())
+              .filter(Boolean)
+              .map(text => ({
+                role: 'user',
+                content: [
+                  '【用户实时补充/纠偏】',
+                  text,
+                  '',
+                  '请将以上内容作为当前任务的最新约束继续执行；如它与旧计划冲突，以这条补充为准。',
+                ].join('\\n'),
+              }));
+          }
           export async function chatWithMessages(messages, mode, onDelta, signal, newSession, traceRunId, traceWorkspaceRoot) {
             const handler = globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
             if (typeof handler !== 'function') throw new Error('agentic loop chat stub is not installed');
@@ -115,6 +141,8 @@ const req = createRequire(import.meta.url);
 const { decomposeTask } = req(decomposerBundlePath);
 const { tryExecuteMarkdownDeliverableTask } = req(markdownBundlePath);
 const { runAgenticLoop } = req(agenticBundlePath);
+const { tryExecuteDeterministicCreateTask } = req(deterministicBundlePath);
+const { decideAgentFileWrite } = req(fileWritePolicyBundlePath);
 
 function createFormalMaintenanceWorkspace() {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-md-flow-huida-uav-'));
@@ -217,6 +245,7 @@ function createLicenseGroundingWorkspace() {
     .replace(fixture.source.originalPath, source);
   const repaired = wrong
     .replace('# License 模块传输常量事实记录', '# 源码事实报告')
+    .replace(/\n\n\*\*源码路径\*\*: `([^\n`]+)`\n\n/, '\n源码路径：$1\n')
     .replace('/uav/dt/license/state', '/uav/license/state')
     .replace('/uav/dt/license/tunnel/rx', '/uav/license/tunnel/rx')
     .replace('`300`', '`33007`')
@@ -244,7 +273,7 @@ function createBareLicenseGroundingWorkspace() {
   const wrong = readFileSync(path.join(fixtureDir, 'license-transport-facts.wrong.md'), 'utf8');
   const repaired = [
     '# 源码事实报告',
-    source,
+    `源码路径：${source}`,
     '| Symbol | Value |',
     '| --- | --- |',
     '| `kTopicLicenseState` | `"/uav/license/state"` |',
@@ -337,7 +366,7 @@ async function runMarkdownClosedLoop(responseFactory, options = {}) {
       workspace.requirementDoc,
     );
 
-    assert.equal(plan.ok, true);
+    assert.equal(plan.ok, true, plan.error || JSON.stringify(plan));
     assert.equal(plan.tasks.length, 1);
     assert.equal(plan.tasks[0].action, 'create');
     assert.match(plan.tasks[0].file, /src\/oam\/src\/lifting\/zc_maintenance\/docs\/warranty-maintenance-advice\.md$/);
@@ -353,7 +382,7 @@ async function runMarkdownClosedLoop(responseFactory, options = {}) {
     });
 
     const target = plan.tasks[0].absPath;
-    assert.equal(result?.applied, expectApplied);
+    assert.equal(result?.applied, expectApplied, result?.failedReason || result?.feedback || 'missing result');
     assert.equal(existsSync(target), true);
     assert.equal(io.statuses.at(-1).state, expectApplied ? 'started' : 'failed');
     assert.equal(io.changes.length, 1);
@@ -380,6 +409,82 @@ async function runMarkdownClosedLoop(responseFactory, options = {}) {
     throw error;
   }
 }
+
+test('recovery route: deterministic create cannot write a source-claim Markdown artifact', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-grounded-recovery-guard-'));
+  const source = path.join(root, 'config.hpp');
+  const target = path.join(root, 'report.md');
+  mkdirSync(path.dirname(source), { recursive: true });
+  writeFileSync(source, 'constexpr int kTimeoutMs = 5000;\n');
+  const prompt = `请读取 ${source}，提取 kTimeoutMs 的真实值并创建 Markdown 报告 ${target}。`;
+  const io = makeCallbacks();
+  try {
+    const result = await tryExecuteDeterministicCreateTask({
+      task: {
+        id: 'recovered-grounded-report',
+        action: 'create',
+        file: target,
+        absPath: target,
+        desc: prompt,
+        expectedContent: '# forged\n\nkTimeoutMs = 30000\n',
+      },
+      taskIndex: 1,
+      taskTotal: 1,
+      workspaceRoot: Uri.file(root),
+      effectiveAbsPath: target,
+      userPrompt: prompt,
+      callbacks: io.callbacks,
+    });
+
+    assert.equal(result, undefined, 'grounded executor must own this recovered task');
+    assert.equal(existsSync(target), false);
+    assert.deepEqual(io.changes, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('recovery route: deterministic expectedContent cannot override the current user prohibition', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-deterministic-prohibited-'));
+  const target = path.join(root, 'forbidden.md');
+  const prompt = [
+    `不要创建 Markdown 报告 ${target}。`,
+    '',
+    '【同一会话续作上下文】',
+    `上一轮曾要求创建 Markdown 报告 ${target}。`,
+  ].join('\n');
+  const io = makeCallbacks();
+  try {
+    io.callbacks.onBeforeFileWrite = async (absPath, context) => decideAgentFileWrite({
+      absPath,
+      workspaceRoot: root,
+      context,
+    }).action === 'allow';
+    const result = await tryExecuteDeterministicCreateTask({
+      task: {
+        id: 'malicious-recovery-create',
+        action: 'create',
+        file: target,
+        absPath: target,
+        desc: `创建 Markdown 报告 ${target}`,
+        expectedContent: '# forbidden\n',
+      },
+      taskIndex: 1,
+      taskTotal: 1,
+      workspaceRoot: Uri.file(root),
+      effectiveAbsPath: target,
+      userPrompt: prompt,
+      callbacks: io.callbacks,
+    });
+
+    assert.equal(result?.applied, false);
+    assert.match(result?.raw || '', /markdown-artifact-write-prohibited/);
+    assert.equal(existsSync(target), false);
+    assert.deepEqual(io.changes, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('markdown deliverable flow: same formal-project request reaches simulated DeepSeek Web and writes md', async () => {
   const providerMarkdown = [
@@ -484,9 +589,10 @@ test('markdown deliverable flow: real wrong-facts fixture gets one bounded repai
     assert.equal(result?.taskComplete, true);
     assert.equal(web.requests.length, 2, 'only the initial attempt and one bounded repair are allowed');
     assert.match(web.requests[0][0].content, /所有文件证据已经由本地运行时读取完毕/);
-    assert.match(web.requests[0][0].content, /constexpr const char\* kTopicLicenseState/);
+    assert.match(web.requests[0][0].content, /"symbol": "kTopicLicenseState"[\s\S]*?"artifactValue": "\/uav\/license\/state"/);
     assert.match(web.requests[1][0].content, /唯一一次有界修复/);
     assert.match(web.requests[1][0].content, /kMavTunnelCmdLicense: 实际 300，期望 33007/);
+    assert.match(web.requests[1][0].content, /标题下一行必须逐字为“源码路径：/);
     assert.match(web.requests[1][0].content, /structure: 缺少精确 python 代码块/);
 
     assert.equal(result?.verificationResults?.length, 2);
@@ -494,7 +600,7 @@ test('markdown deliverable flow: real wrong-facts fixture gets one bounded repai
     assert.equal(wrongVerification.ok, false);
     assert.equal(wrongVerification.claims.filter(claim => claim.status === 'mismatch').length, 5);
     assert.equal(wrongVerification.claims.filter(claim => claim.status === 'verified').length, 1);
-    assert.equal(wrongVerification.contractDifferences.length, 4);
+    assert.equal(wrongVerification.contractDifferences.length, 7);
     assert.equal(finalVerification.ok, true);
     assert.deepEqual(finalVerification.differences, []);
     assert.deepEqual(finalVerification.contractDifferences, []);
@@ -569,7 +675,8 @@ test('agentic route: fixture-relative fact report repairs once and passes centra
     assert.equal(requests.every(request => request.options.newSession === true), true);
     assert.equal(requests[0].messages.length, 1);
     assert.match(requests[0].messages[0].content, /所有文件证据已经由本地运行时读取完毕/);
-    assert.match(requests[0].messages[0].content, /### 旧实现: src\/oam\/src\/license\/license_types\.hpp/);
+    assert.match(requests[0].messages[0].content, /### 必需源码事实（最高优先级）: src\/oam\/src\/license\/license_types\.hpp（原文未投影）/);
+    assert.match(requests[0].messages[0].content, /"symbol": "kTopicLicenseState"[\s\S]*?"artifactValue": "\/uav\/license\/state"/);
     assert.match(requests[0].messages[0].content, /目标写入路径：license-transport-facts\.md/);
     assert.match(requests[0].messages[0].content, new RegExp(workspace.prompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.match(requests[1].messages[0].content, /这是唯一一次有界修复/);
@@ -621,6 +728,221 @@ test('agentic route: fixture-relative fact report repairs once and passes centra
   }
 });
 
+test('agentic route: natural record wording remains grounded and ignores provider file tools', async () => {
+  const workspace = createBareLicenseGroundingWorkspace();
+  const prompt = workspace.prompt.replace('请创建 Markdown 报告', '请记录到 Markdown 报告');
+  const extraTarget = path.join(workspace.root, 'unverified.md');
+  const io = makeCallbacks();
+  const responses = [workspace.wrong, workspace.repaired];
+  let providerCalls = 0;
+  globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__ = async () => {
+    const text = responses.shift();
+    providerCalls += 1;
+    return {
+      text,
+      tools: providerCalls === 1
+        ? [{ name: 'create_file', input: { path: extraTarget, content: '# unverified\n' } }]
+        : [],
+    };
+  };
+  try {
+    io.callbacks.onBeforeFileWrite = async (absPath, context) => decideAgentFileWrite({
+      absPath,
+      workspaceRoot: workspace.root,
+      context,
+    }).action === 'allow';
+    const result = await runAgenticLoop(prompt, [], workspace.root, 'fast', io.callbacks, '', 'edit', []);
+
+    assert.equal(providerCalls, 2, 'the natural verb must keep the bounded verifier repair loop');
+    assert.equal(result.tasksApplied, 1, result.historyText);
+    assert.equal(result.tasksFailed, 0, result.historyText);
+    assert.deepEqual(result.verificationResults?.map(item => item.ok), [false, true]);
+    assert.equal(result.artifactClaims?.length, 6);
+    assert.equal(result.artifactClaims?.every(claim => claim.status === 'verified'), true);
+    assert.equal(readFileSync(workspace.target, 'utf8'), workspace.repaired);
+    assert.equal(existsSync(extraTarget), false, 'provider tool output is data, never an executable side channel');
+    assert.deepEqual(new Set(io.changes.map(change => change.path)), new Set(['license-transport-facts.md']));
+  } finally {
+    delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('agentic route: an unfamiliar source-report mutation verb fails before provider or disk write', async () => {
+  const workspace = createBareLicenseGroundingWorkspace();
+  const prompt = workspace.prompt.replace('请创建 Markdown 报告', '请登记于 Markdown 报告');
+  const io = makeCallbacks();
+  let providerCalls = 0;
+  globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__ = async () => {
+    providerCalls += 1;
+    return { text: workspace.repaired, tools: [] };
+  };
+  try {
+    const result = await runAgenticLoop(prompt, [], workspace.root, 'fast', io.callbacks, '', 'edit', []);
+
+    assert.equal(providerCalls, 0);
+    assert.equal(result.tasksApplied, 0);
+    assert.equal(result.tasksFailed, 1);
+    assert.equal(existsSync(workspace.target), false);
+    assert.match(io.statuses.at(-1)?.detail || '', /必须唯一绑定一个 Markdown 目标/);
+  } finally {
+    delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+for (const verb of ['提供', '更新', '修改']) {
+  test(`agentic route: ${verb} source-backed Markdown stays on the verified executor`, async () => {
+    const workspace = createBareLicenseGroundingWorkspace();
+    const prompt = verb === '提供'
+      ? workspace.prompt.replace('请创建 Markdown 报告', '请提供 Markdown 报告')
+      : workspace.prompt.replace('请创建 Markdown 报告', `请${verb}`);
+    const io = makeCallbacks();
+    const requests = [];
+    if (verb !== '提供') writeFileSync(workspace.target, '# stale unverified report\n');
+    globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__ = async (messages, options) => {
+      requests.push({ messages, options });
+      return { text: workspace.repaired, tools: [] };
+    };
+    try {
+      const result = await runAgenticLoop(prompt, [], workspace.root, 'fast', io.callbacks, '', 'edit', []);
+
+      assert.equal(requests.length, 1);
+      assert.equal(result.tasksApplied, 1, result.historyText);
+      assert.equal(result.tasksFailed, 0, result.historyText);
+      assert.equal(result.verificationResults?.at(-1)?.ok, true);
+      assert.equal(result.artifactClaims?.every(claim => claim.status === 'verified'), true);
+      assert.equal(readFileSync(workspace.target, 'utf8'), workspace.repaired);
+      assert.match(requests[0].messages[0].content, /宿主派生的必需源码事实（最高优先级）/);
+    } finally {
+      delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
+      rmSync(workspace.root, { recursive: true, force: true });
+    }
+  });
+}
+
+test('agentic route: a prohibited Markdown mutation never becomes a forced write', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-md-prohibited-write-'));
+  const target = path.join(root, 'report.md');
+  const io = makeCallbacks();
+  const requests = [];
+  globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__ = async (messages, options) => {
+    requests.push({ messages, options });
+    if (requests.length === 1) {
+      return {
+        text: '尝试写入被用户禁止的目标。',
+        tools: [{ name: 'create_file', input: { path: target, content: '# forbidden\n' } }],
+      };
+    }
+    return { text: '[TOOL:task_complete {"summary":"已遵守限制，未生成或修改报告。"}]', tools: [] };
+  };
+  try {
+    io.callbacks.onBeforeFileWrite = async (absPath, context) => decideAgentFileWrite({
+      absPath,
+      workspaceRoot: root,
+      context,
+    }).action === 'allow';
+    const result = await runAgenticLoop(
+      `不允许生成 Markdown 报告 ${target}。`,
+      [],
+      root,
+      'fast',
+      io.callbacks,
+      '',
+      'edit',
+      [],
+    );
+
+    assert.ok(requests.length >= 2);
+    assert.equal(existsSync(target), false);
+    assert.deepEqual(io.changes, []);
+    assert.equal(result.tasksApplied, 0);
+    assert.equal(result.changedPaths.length, 0);
+  } finally {
+    delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+for (const scenario of [
+  {
+    name: 'explicit grounded report remains on verifier with unrelated session context',
+    setup(workspace) {
+      return { dataFiles: [], sessionContextText: '上一轮讨论的是无关的普通文档，请继续当前明确任务。' };
+    },
+  },
+  {
+    name: 'explicit grounded report remains on verifier with a non-code attachment',
+    setup(workspace) {
+      const attachment = path.join(workspace.root, 'notes.log');
+      writeFileSync(attachment, 'untrusted supplemental note: timeout=30000\n');
+      return { dataFiles: [attachment], sessionContextText: '' };
+    },
+  },
+]) {
+  test(`agentic route: ${scenario.name}`, async () => {
+    const workspace = createBareLicenseGroundingWorkspace();
+    const io = makeCallbacks();
+    const responses = [workspace.wrong, workspace.repaired];
+    const requests = [];
+    const routeInput = scenario.setup(workspace);
+    globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__ = async (messages, options) => {
+      requests.push({ messages, options });
+      return { text: responses.shift(), tools: [] };
+    };
+    try {
+      const result = await runAgenticLoop(
+        workspace.prompt,
+        routeInput.dataFiles,
+        workspace.root,
+        'fast',
+        io.callbacks,
+        routeInput.sessionContextText,
+        'edit',
+        [],
+      );
+
+      assert.equal(requests.length, 2);
+      assert.equal(result.tasksApplied, 1, result.historyText);
+      assert.equal(result.tasksFailed, 0, result.historyText);
+      assert.deepEqual(result.verificationResults?.map(item => item.ok), [false, true]);
+      assert.equal(result.artifactClaims?.length, 6);
+      assert.equal(result.artifactClaims?.every(claim => claim.status === 'verified'), true);
+      assert.equal(readFileSync(workspace.target, 'utf8'), workspace.repaired);
+      assert.match(requests[0].messages[0].content, /宿主派生的必需源码事实（最高优先级）/);
+      assert.doesNotMatch(requests[0].messages[0].content, /untrusted supplemental note/);
+    } finally {
+      delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
+      rmSync(workspace.root, { recursive: true, force: true });
+    }
+  });
+}
+
+test('agentic route: attachment-only ambiguous claim source fails before provider or disk write', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-attachment-only-grounding-'));
+  const attachment = path.join(root, 'facts.log');
+  const target = path.join(root, 'report.md');
+  writeFileSync(attachment, 'kTunnelSessionTimeoutMs=5000\n');
+  const prompt = `请读取附件，提取 kTunnelSessionTimeoutMs 的真实值并创建 Markdown 报告 ${target}。`;
+  const io = makeCallbacks();
+  let providerCalls = 0;
+  globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__ = async () => {
+    providerCalls += 1;
+    return { text: '# forged\n\n| Symbol | Value |\n| --- | --- |\n| kTunnelSessionTimeoutMs | 30000 |', tools: [] };
+  };
+  try {
+    const result = await runAgenticLoop(prompt, [attachment], root, 'fast', io.callbacks, '', 'edit', []);
+    assert.equal(providerCalls, 0);
+    assert.equal(result.tasksApplied, 0);
+    assert.equal(result.tasksFailed, 1);
+    assert.equal(existsSync(target), false);
+    assert.match(io.statuses.at(-1)?.detail || '', /无法唯一绑定到源文件/);
+  } finally {
+    delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('agentic route: inspect mode never enters the grounded writer or creates its target', async () => {
   const workspace = createBareLicenseGroundingWorkspace();
   const io = makeCallbacks();
@@ -667,3 +989,50 @@ test('agentic route: an unresolved source-fact claim contract fails before provi
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+for (const [timing, revokePoll] of [['provider-in-flight', 2], ['write-boundary', 3]]) {
+test(`agentic route: a ${timing} steer revokes write authority before provider tools execute`, async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-agentic-steer-revoke-'));
+  const target = path.join(root, 'notes.txt');
+  const prompt = `请检查工作区，然后创建总结文件 ${target}，根据检查结果填充内容。`;
+  const revoke = '停止写入。不要创建任何文件。';
+  const io = makeCallbacks();
+  const controller = new AbortController();
+  const observedAuthorityPrompts = [];
+  let steerPolls = 0;
+  let providerCalls = 0;
+  io.callbacks.signal = controller.signal;
+  io.callbacks.onUserSteer = () => {
+    steerPolls += 1;
+    return steerPolls === revokePoll ? [revoke] : [];
+  };
+  io.callbacks.onBeforeFileWrite = async (absPath, context) => {
+    observedAuthorityPrompts.push(context?.requestPrompt || '');
+    const decision = decideAgentFileWrite({ absPath, workspaceRoot: root, context });
+    controller.abort();
+    return decision.action === 'allow';
+  };
+  globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__ = async () => {
+    providerCalls += 1;
+    const text = `[TOOL:create_file ${JSON.stringify({ path: target, content: 'must not persist\n' })}]`;
+    return {
+      text,
+      tools: [{ name: 'create_file', input: { path: target, content: 'must not persist\n' } }],
+    };
+  };
+  try {
+    const result = await runAgenticLoop(prompt, [], root, 'fast', io.callbacks, '', 'edit', []);
+    assert.equal(providerCalls, 1);
+    assert.ok(steerPolls >= revokePoll, 'steers must be drained after the provider and at the write boundary');
+    assert.equal(observedAuthorityPrompts.length, 1);
+    assert.match(observedAuthorityPrompts[0], /创建总结文件/);
+    assert.match(observedAuthorityPrompts[0], /不要创建任何文件/);
+    assert.deepEqual(io.changes, []);
+    assert.equal(existsSync(target), false);
+    assert.equal(result.tasksApplied, 0);
+  } finally {
+    delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+}

@@ -68,7 +68,7 @@ export interface AgentLoopCallbacks {
   onTerminalCommand?: (command: string, workdir?: string) => Promise<string>;
   /**
    * P-SEC: About to write a file — return false to block the write (e.g., sensitive files).
-   * Only called for SEARCH/REPLACE-path writes; full-file writes go via onAppliedChange.
+   * Called at every structured write boundary, including SEARCH/REPLACE and full-file apply.
    */
   onBeforeFileWrite?: (absPath: string, context?: AgentFileWriteContext) => Promise<boolean>;
   /**
