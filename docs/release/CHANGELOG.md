@@ -16,7 +16,7 @@
 - 修复混合动作路由：`读取既有源码 + 创建报告 + 不修改源码` 不再被直读快路径吞掉；显式输出路径保持 edit-agent，纯提取/比较请求也不会退化成“文件存在”。
 - 真实插件 harness 改用 canary/medium/formal 质量 profile 和任务级必含事实断言，删除“所有 Markdown 都必须包含维保关键词/正式项目修改清单”的测试硬编码。
 - 新增 ARCH-18 新窗口接管与 100% 收敛计划，把 Evidence Grounding、通用 TaskContract/QualityPolicy、唯一运行终态和分级真实资格设为后续唯一主线。
-- 事实状态：2026-07-11 留存的 7 次正式真实插件仿真均失败；`06894bb` 的真实短 canary 虽成功路由并写盘，但六项源码事实仅一项正确、无成功终态且 Replay 失败。确定性门禁通过仅代表 regression-safe，当前不得宣称 DevSeek 已稳定。
+- 事实状态：2026-07-11 留存的 7 次正式真实插件仿真均失败；rebase 前 `06894bb`（当前等价代码提交 `e78c253`）的真实短 canary 虽成功路由并写盘，但六项源码事实仅一项正确、无成功终态且 Replay 失败。确定性门禁通过仅代表 regression-safe，当前不得宣称 DevSeek 已稳定。
 
 验证：
 - 无损工具协议、工作流共享提示词和稳定性资格 focused tests 通过。
