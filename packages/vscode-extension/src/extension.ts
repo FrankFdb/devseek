@@ -34,6 +34,7 @@ import { decomposeTask, getAgentTaskDisplayTarget, inferTasksFromFiles, type Age
 import { runAgentLoop, AgentStatusMessage, extractAnalysisFindings, type AgentLoopResult } from './agent-loop';
 import { createAgentHostToolCallbacks } from './agent/agent-host-tools';
 import { runAgenticLoop } from './agent/agentic-loop';
+import { buildArtifactVerificationCompletionMetadata } from './agent/artifact-grounding-lifecycle';
 import { getTaskWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
 import { McpManager } from './mcp/client';
 import { isFileProtected } from './protected-files';
@@ -52,6 +53,7 @@ import { buildLocalAttachmentContextPrompt } from './app/local-attachment-contex
 import { MemoryService } from './app/memory-service';
 import { AgentDisplayPresenter } from './app/agent-display-presenter';
 import { createDevSeekRunContext } from './app/run-context';
+import { createAgentCheckpointCallback } from './app/agent-checkpoint-callback';
 import { guardNonAgentResponse } from './app/non-agent-response-guard';
 import { AgentApplicationService } from './app/agent-application-service';
 import type { AgentChatRequest } from './app/agent-protocol';
@@ -86,11 +88,7 @@ import { DeepSeekViewProvider } from './ui/deepseek-view-provider';
 import type { WebviewInboundMessage } from './ui/webview-protocol';
 import { buildAgentRunDisplayProfile } from './agent/agent-run-display';
 import { enforceAgentTaskExecutionPolicy } from './agent/task-execution-policy';
-import {
-  discoverFilesFromDirectoryPrompt,
-  relPathFromWorkspace,
-  toContextDisplayLabels,
-} from './app/context-discovery-service';
+import { discoverFilesFromDirectoryPrompt, relPathFromWorkspace, toContextDisplayLabels } from './app/context-discovery-service';
 import { TaskHistoryUiService } from './app/task-history-ui-service';
 import { registerExtensionCommands } from './ui/extension-command-registration';
 import { FileContextService } from './workspace/file-context-service';
@@ -754,9 +752,7 @@ async function runChat(
             terminalPermissionCoordinator,
           }),
           signal: chatSignal,
-          onTaskCheckpoint: async (completedUpToIndex, _remainingTasks) => {
-            if (completedUpToIndex === null) { await saveAgentCheckpoint(null); webview.postMessage({ type: 'agentCheckpointCleared' }); }
-          },
+          onTaskCheckpoint: createAgentCheckpointCallback({ userPrompt: prompt, displayPrompt: userDisplay, mode, workspaceRoot: agWsRoot, sessionId: activeSessionId, save: saveAgentCheckpoint, postMessage: message => { webview.postMessage(message); } }),
           autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
         }, agSessionContext, intent.mode, agMemoryRelatedPaths);
         if (agResult.changedPaths.length > 0) {
@@ -802,6 +798,7 @@ async function runChat(
           tasksApplied: agResult.tasksApplied,
           tasksFailed: agResult.tasksFailed,
           changedPaths: lastAgentChangedPaths.slice(0, 12),
+          ...buildArtifactVerificationCompletionMetadata(agResult),
         });
         webview.postMessage({ type: 'endResponse' });
         return;
@@ -1211,6 +1208,7 @@ async function runChat(
         tasksApplied: loopResult?.tasksApplied ?? 0,
         tasksFailed: loopResult?.tasksFailed ?? 0,
         changedPaths: loopResult?.changedPaths?.slice(0, 12) ?? [],
+        ...buildArtifactVerificationCompletionMetadata(loopResult),
       });
     }
     pendingEditCoordinator.scheduleAutoAccept(webview, autoAcceptResult, loopAutopilotHandled);

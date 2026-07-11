@@ -1,0 +1,1 @@
+请读取 license_types.hpp，从源码提取 kTopicLicenseState、kTopicLicenseTunnelRx、kMavTunnelCmdLicense、kTunnelVersion、kTunnelMaxTotalLen、kTunnelSessionTimeoutMs 六个常量的真实定义和值。请创建 Markdown 报告 license-transport-facts.md，包含标题、源码路径和六个常量的表格，并加入 Python 代码块，代码内容必须是 print("\nready")。写入后重新读取该报告，确认内容完整，然后调用 task_complete。不要修改任何源码，不要创建其他文件。

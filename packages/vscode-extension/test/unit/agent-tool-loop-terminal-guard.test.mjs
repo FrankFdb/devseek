@@ -11,14 +11,21 @@ import { fileURLToPath } from 'node:url';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const bundlePath = path.join(rootDir, 'test/unit/agent-tool-loop-terminal-guard.bundle.cjs');
+const readEvidenceBundlePath = path.join(rootDir, 'test/unit/tool-read-evidence.bundle.cjs');
 
 execSync(
   `npx esbuild src/agent/tool-loop.ts --bundle ` +
   `--outfile=${bundlePath} --format=cjs --platform=node --external:vscode`,
+  { cwd: rootDir, stdio: 'pipe' },
+);
+execSync(
+  `npx esbuild src/agent/tool-read-evidence.ts --bundle ` +
+  `--outfile=${readEvidenceBundlePath} --format=cjs --platform=node`,
   { cwd: rootDir, stdio: 'pipe' },
 );
 
@@ -56,6 +63,11 @@ const {
   executeFakeToolsForLoop,
   isAgentWorkToolName,
 } = req(bundlePath);
+const {
+  collectToolReadEvidence,
+  ToolReadEvidenceRecorder,
+  withToolReadEvidence,
+} = req(readEvidenceBundlePath);
 
 test('ToolLoop work-tool classifier keeps meta tools separate from real work', () => {
   assert.equal(isAgentWorkToolName('manage_todo_list'), false);
@@ -118,6 +130,74 @@ test('ToolLoop validates required tool parameters before dispatch', async () => 
   assert.equal(result.workToolCallsMade, true);
   assert.match(result.feedbackForAI, /list_dir.*缺少必填参数: path/s);
   assert.match(result.feedbackForAI, /read_file.*缺少必填参数: path/s);
+  assert.equal(result.evidenceRefs, undefined);
+});
+
+test('ToolLoop records immutable evidence only after a successful read using the resolved path and payload hash', async () => {
+  const resolvedPath = '/tmp/project/src/actual.hpp';
+  const rawContent = 'constexpr int kValue = 42;\n';
+  const success = await executeFakeToolsForLoop(
+    [{ name: 'read_file', input: { path: 'actual.hpp' } }],
+    {
+      onReadFile: async () => [
+        '[file_context]',
+        'path=actual.hpp',
+        `resolvedPath=${resolvedPath}`,
+        'source=fs',
+        'bytes=27',
+        'lines=2',
+        'returnedLines=1-2/2',
+        'truncated=false',
+        'reason=full-file',
+        '[/file_context]',
+        rawContent,
+      ].join('\n'),
+      onToolActivity: () => {},
+      onAgentStatus: async () => {},
+    },
+    '/tmp/project/src',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
+  );
+  assert.equal(success.evidenceRefs?.length, 1);
+  assert.equal(success.evidenceRefs?.[0].sourcePath, resolvedPath);
+  assert.equal(success.evidenceRefs?.[0].content, rawContent);
+  assert.equal(success.evidenceRefs?.[0].contentHash, createHash('sha256').update(rawContent).digest('hex'));
+  assert.equal(Object.isFrozen(success.evidenceRefs?.[0]), true);
+
+  const failed = await executeFakeToolsForLoop(
+    [{ name: 'read_file', input: { path: 'missing.hpp' } }],
+    {
+      onReadFile: async () => { throw new Error('missing'); },
+      onToolActivity: () => {},
+      onAgentStatus: async () => {},
+    },
+    '/tmp/project/src',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
+  );
+  assert.equal(failed.evidenceRefs, undefined);
+});
+
+test('ToolLoop shares one read recorder across rounds and task settlement retains both refs', async () => {
+  const recorder = new ToolReadEvidenceRecorder('/tmp/project', 'run-shared');
+  const collected = [];
+  const callbacks = {
+    onReadFile: async () => 'same payload\n',
+    onToolActivity: () => {},
+    onAgentStatus: async () => {},
+  };
+  for (let round = 0; round < 2; round++) {
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'read_file', input: { path: 'same.hpp' } }],
+      callbacks,
+      '/tmp/project',
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project', readEvidenceRecorder: recorder },
+    );
+    collectToolReadEvidence(collected, result);
+  }
+  const taskResult = withToolReadEvidence({ applied: false }, collected);
+  assert.deepEqual(taskResult.evidenceRefs?.map(ref => ref.operationId), ['read-1', 'read-2']);
+  assert.deepEqual(taskResult.evidenceRefs?.map(ref => ref.captureSequence), [1, 2]);
+  assert.notEqual(taskResult.evidenceRefs?.[0].evidenceId, taskResult.evidenceRefs?.[1].evidenceId);
 });
 
 test('ToolLoop terminal guard: raw TOOL_CALL protocol text never reaches shell', async () => {

@@ -44,7 +44,12 @@ export type RunLogReplayIssueKind =
   | 'nested-tool-history-summary'
   | 'duplicate-full-file-write'
   | 'agent-run-failed'
-  | 'markdown-deliverable-completed-without-file-evidence';
+  | 'markdown-deliverable-completed-without-file-evidence'
+  | 'invalid-artifact-verification'
+  | 'non-append-only-artifact-verification'
+  | 'artifact-verification-completion-mismatch'
+  | 'completed-before-artifact-verification'
+  | 'completed-with-failed-artifact-verification';
 
 export interface RunLogReplayIssue {
   kind: RunLogReplayIssueKind;
@@ -58,6 +63,23 @@ export interface RunLogReplayEvent {
   line: number;
   entry?: Record<string, unknown>;
   parseError?: string;
+}
+
+export interface RunLogReplayArtifactVerification {
+  line: number;
+  verificationId?: string;
+  artifactEvidenceId?: string;
+  artifactPath?: string;
+  artifactHash?: string;
+  checkedAt?: string;
+  ok: boolean;
+  failedClaims: string[];
+  differences: string[];
+}
+
+interface SourceClaimArtifactVerificationObligation {
+  requiresVerification: boolean;
+  taskContractFingerprint?: string;
 }
 
 export interface RunLogReplayReport {
@@ -76,6 +98,8 @@ export interface RunLogReplayReport {
   terminalCommands: number;
   plannedExecutionTasks: number;
   workspaceApplications: number;
+  artifactVerifications: number;
+  latestArtifactVerifications: RunLogReplayArtifactVerification[];
   issues: RunLogReplayIssue[];
 }
 
@@ -92,6 +116,14 @@ const SOURCE_CODE_RESPONSE_RE = /```(?:[A-Za-z0-9_+#.-]+)?\s*[\s\S]{200,}?```|#i
 const LONG_RUNNING_RUN_MS = 60_000;
 const PROVIDER_PROMPT_TOO_LARGE_CHARS = 45_000;
 const NESTED_TOOL_HISTORY_SUMMARY_RE = /(?:^|\n)-\s+run_terminal\s+command=工具调用：\d+\s*个/;
+const ARTIFACT_VERIFICATION_EVENT_NAMES = new Set([
+  'artifact-verification-completed',
+  'artifact-verification-result',
+]);
+const ARTIFACT_VERIFICATION_EVENT_SOURCES = new Set([
+  'vscode-extension.artifact-grounding',
+  'vscode-extension.agent',
+]);
 
 export function loadRunLogEvents(logPath: string): RunLogReplayEvent[] {
   const content = fs.readFileSync(logPath, 'utf8');
@@ -129,6 +161,12 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
   let agentRunStarted = false;
   let agentRunCompleted = false;
   let agentRunCompletedSuccessfully = false;
+  let successfulAgentRunCompletionLine: number | undefined;
+  let successfulCompletionVerificationIds: string[] = [];
+  let successfulCompletionArtifactVerificationOk: boolean | undefined;
+  let groundedArtifactVerificationRequested = false;
+  let startedArtifactVerificationObligation: SourceClaimArtifactVerificationObligation | undefined;
+  let completedArtifactVerificationObligation: SourceClaimArtifactVerificationObligation | undefined;
   let chatRequestStarts = 0;
   let chatRequestCompletions = 0;
   let chatRequestFailures = 0;
@@ -147,6 +185,9 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
   let completedStatusEditedFiles = 0;
   let pendingValidationFailure: { line: number; evidence: string } | undefined;
   let pendingBridgeRuntimeMismatch: RunLogReplayIssue | undefined;
+  const artifactVerifications: RunLogReplayArtifactVerification[] = [];
+  const latestArtifactVerificationByPath = new Map<string, RunLogReplayArtifactVerification>();
+  const artifactVerificationById = new Map<string, RunLogReplayArtifactVerification>();
 
   for (const event of events) {
     if (event.parseError) {
@@ -176,11 +217,39 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     }
     if (entry.event === 'agent-run-started') {
       agentRunStarted = true;
+      startedArtifactVerificationObligation = parseSourceClaimArtifactVerificationObligation(data);
+      groundedArtifactVerificationRequested ||= startedArtifactVerificationObligation?.requiresVerification === true;
+    }
+    if (ARTIFACT_VERIFICATION_EVENT_NAMES.has(stringValue(entry.event) || '')) {
+      const source = stringValue(entry.source);
+      if (!source || !ARTIFACT_VERIFICATION_EVENT_SOURCES.has(source)) {
+        issues.push({
+          kind: 'invalid-artifact-verification',
+          severity: 'error',
+          line: event.line,
+          message: '交付物核验事件来自非可信 source，不能参与完成结算或覆盖既有失败。',
+          evidence: source || 'missing-source',
+        });
+        continue;
+      }
+      const verification = parseArtifactVerification(data, event.line, issues);
+      artifactVerifications.push(verification);
+      collectArtifactVerificationAppendOnlyIssues(
+        verification,
+        latestArtifactVerificationByPath,
+        artifactVerificationById,
+        issues,
+      );
     }
     if (entry.event === 'agent-run-completed') {
       agentRunCompleted = true;
+      completedArtifactVerificationObligation = parseSourceClaimArtifactVerificationObligation(data);
+      groundedArtifactVerificationRequested ||= completedArtifactVerificationObligation?.requiresVerification === true;
       agentRunCompletedSuccessfully = stringValue(data?.status) === 'completed';
       if (agentRunCompletedSuccessfully) {
+        successfulAgentRunCompletionLine = event.line;
+        successfulCompletionVerificationIds = stringArrayValue(data?.verificationIds);
+        successfulCompletionArtifactVerificationOk = booleanValue(data?.artifactVerificationOk);
         completedRunChangedPaths.push(...stringArrayValue(data?.changedPaths));
         completedRunTasksApplied = Math.max(completedRunTasksApplied, numberValue(data?.tasksApplied) ?? 0);
         if (pendingValidationFailure) {
@@ -503,6 +572,100 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     });
   }
 
+  if (agentRunCompletedSuccessfully && successfulAgentRunCompletionLine !== undefined) {
+    if (startedArtifactVerificationObligation
+        && completedArtifactVerificationObligation
+        && (startedArtifactVerificationObligation.requiresVerification
+          !== completedArtifactVerificationObligation.requiresVerification
+          || startedArtifactVerificationObligation.taskContractFingerprint
+            !== completedArtifactVerificationObligation.taskContractFingerprint)) {
+      issues.push({
+        kind: 'artifact-verification-completion-mismatch',
+        severity: 'error',
+        line: successfulAgentRunCompletionLine,
+        message: 'agent-run-started 与 agent-run-completed 的源码事实交付义务或 task contract fingerprint 不一致。',
+      });
+    }
+    const groundedArtifactWasWritten = completedRunChangedPaths
+      .some(pathValue => /\.(?:md|markdown)$/i.test(pathValue));
+    const groundedArtifactVerificationRequired = groundedArtifactVerificationRequested
+      && groundedArtifactWasWritten;
+    const hasArtifactVerificationObligation = groundedArtifactVerificationRequired
+      || latestArtifactVerificationByPath.size > 0;
+    if (groundedArtifactVerificationRequired && artifactVerifications.length === 0) {
+      issues.push({
+        kind: 'artifact-verification-completion-mismatch',
+        severity: 'error',
+        line: successfulAgentRunCompletionLine,
+        message: 'source-claim 报告已完成，但日志中缺少可信的 VerificationResult。',
+      });
+    }
+    if (successfulCompletionArtifactVerificationOk === false) {
+      issues.push({
+        kind: 'artifact-verification-completion-mismatch',
+        severity: 'error',
+        line: successfulAgentRunCompletionLine,
+        message: 'agent-run-completed 显式携带 artifactVerificationOk=false，却报告 status=completed。',
+      });
+    } else if (hasArtifactVerificationObligation
+        && successfulCompletionArtifactVerificationOk !== true) {
+      issues.push({
+        kind: 'artifact-verification-completion-mismatch',
+        severity: 'error',
+        line: successfulAgentRunCompletionLine,
+        message: 'agent-run-completed 存在交付物核验却未显式携带 artifactVerificationOk=true。',
+      });
+    }
+    if (hasArtifactVerificationObligation
+        && successfulCompletionVerificationIds.length === 0) {
+      issues.push({
+        kind: 'artifact-verification-completion-mismatch',
+        severity: 'error',
+        line: successfulAgentRunCompletionLine,
+        message: 'agent-run-completed 存在交付物核验却未绑定 verificationIds。',
+      });
+    }
+    const completionVerificationIdSet = new Set(successfulCompletionVerificationIds);
+    const unknownCompletionIds = successfulCompletionVerificationIds.filter(id => !artifactVerificationById.has(id));
+    if (unknownCompletionIds.length > 0) {
+      issues.push({
+        kind: 'artifact-verification-completion-mismatch',
+        severity: 'error',
+        line: successfulAgentRunCompletionLine,
+        message: 'agent-run-completed 引用了日志中不存在的 VerificationResult。',
+        evidence: unknownCompletionIds.join(', '),
+      });
+    }
+    for (const verification of latestArtifactVerificationByPath.values()) {
+      if (!verification.verificationId || !completionVerificationIdSet.has(verification.verificationId)) {
+        issues.push({
+          kind: 'artifact-verification-completion-mismatch',
+          severity: 'error',
+          line: successfulAgentRunCompletionLine,
+          message: 'agent-run-completed 未引用最终生效的交付物 VerificationResult。',
+          evidence: formatArtifactVerificationEvidence(verification),
+        });
+      }
+      if (!verification.ok) {
+        issues.push({
+          kind: 'completed-with-failed-artifact-verification',
+          severity: 'error',
+          line: successfulAgentRunCompletionLine,
+          message: '最新交付物核验仍未通过，但 agent-run-completed 报告了 completed。',
+          evidence: formatArtifactVerificationEvidence(verification),
+        });
+      } else if (verification.line > successfulAgentRunCompletionLine) {
+        issues.push({
+          kind: 'completed-before-artifact-verification',
+          severity: 'error',
+          line: successfulAgentRunCompletionLine,
+          message: 'agent-run-completed 早于最终通过的交付物核验，完成终态缺少当时可用的验证证据。',
+          evidence: formatArtifactVerificationEvidence(verification),
+        });
+      }
+    }
+  }
+
   if (agentRunCompletedSuccessfully
     && !workspaceMutationRequested
     && sawReadOnlyTask
@@ -533,6 +696,8 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
     terminalCommands,
     plannedExecutionTasks,
     workspaceApplications,
+    artifactVerifications: artifactVerifications.length,
+    latestArtifactVerifications: [...latestArtifactVerificationByPath.values()],
     issues,
   };
 }
@@ -550,11 +715,163 @@ function taskStatusKey(data: Record<string, unknown> | undefined): string {
   ].filter(Boolean).join('|') || 'task';
 }
 
+function parseArtifactVerification(
+  data: Record<string, unknown> | undefined,
+  line: number,
+  issues: RunLogReplayIssue[],
+): RunLogReplayArtifactVerification {
+  const claims = arrayValue(data?.claims)
+    .map(objectValue)
+    .filter((claim): claim is Record<string, unknown> => Boolean(claim));
+  const declaredOk = booleanValue(data?.ok) === true;
+  const differences = stringArrayValue(data?.differences);
+  const contractDifferences = stringArrayValue(data?.contractDifferences);
+  const passInconsistencies = declaredOk
+    ? [
+      ...(claims.length === 0 ? ['claims 为空'] : []),
+      ...(claims.some(claim => stringValue(claim.status) !== 'verified') ? ['claims 含非 verified 状态'] : []),
+      ...(differences.length > 0 ? ['differences 非空'] : []),
+      ...(contractDifferences.length > 0 ? ['contractDifferences 非空'] : []),
+      ...(!stringValue(data?.verificationId) ? ['缺少 verificationId'] : []),
+      ...(!stringValue(data?.artifactEvidenceId) ? ['缺少 artifactEvidenceId'] : []),
+      ...(!stringValue(data?.artifactPath) ? ['缺少 artifactPath'] : []),
+      ...(!stringValue(data?.artifactHash) ? ['缺少 artifactHash'] : []),
+      ...(stringArrayValue(data?.sourceReadbackEvidenceIds).length === 0 ? ['缺少独立源码读回 evidenceId'] : []),
+    ]
+    : [];
+  if (passInconsistencies.length > 0) {
+    issues.push({
+      kind: 'invalid-artifact-verification',
+      severity: 'error',
+      line,
+      message: '`ok: true` 与交付物核验负载不一致，按失败处理。',
+      evidence: passInconsistencies.join('；'),
+    });
+  }
+  return {
+    line,
+    verificationId: stringValue(data?.verificationId),
+    artifactEvidenceId: stringValue(data?.artifactEvidenceId),
+    artifactPath: stringValue(data?.artifactPath),
+    artifactHash: stringValue(data?.artifactHash),
+    checkedAt: stringValue(data?.checkedAt),
+    ok: declaredOk && passInconsistencies.length === 0,
+    failedClaims: claims
+      .filter(claim => stringValue(claim.status) !== 'verified')
+      .map(claim => stringValue(claim.symbol) || stringValue(claim.claimId) || 'unknown-claim'),
+    differences: [...differences, ...contractDifferences, ...passInconsistencies],
+  };
+}
+
+function collectArtifactVerificationAppendOnlyIssues(
+  verification: RunLogReplayArtifactVerification,
+  latestByPath: Map<string, RunLogReplayArtifactVerification>,
+  byId: Map<string, RunLogReplayArtifactVerification>,
+  issues: RunLogReplayIssue[],
+): void {
+  const verificationId = verification.verificationId;
+  const previousById = verificationId ? byId.get(verificationId) : undefined;
+  const identityConflict = Boolean(previousById
+    && artifactVerificationFingerprint(previousById) !== artifactVerificationFingerprint(verification));
+  if (identityConflict) {
+    issues.push({
+      kind: 'non-append-only-artifact-verification',
+      severity: 'error',
+      line: verification.line,
+      message: '同一 verificationId 被用于不同核验结果，append-only 核验事实发生冲突。',
+      evidence: formatArtifactVerificationEvidence(verification),
+    });
+  }
+  if (verificationId && !previousById) {
+    byId.set(verificationId, verification);
+  }
+
+  const artifactKey = artifactVerificationKey(verification);
+  const previous = latestByPath.get(artifactKey);
+  if (!previous) {
+    latestByPath.set(artifactKey, verification);
+    return;
+  }
+
+  const hasNewArtifactHash = Boolean(verification.artifactHash
+    && previous.artifactHash
+    && verification.artifactHash !== previous.artifactHash);
+  const hasNewVerificationId = Boolean(verificationId
+    && previous.verificationId
+    && verificationId !== previous.verificationId);
+
+  // A failed result is sticky and may always make the effective latest verdict stricter.
+  if (!verification.ok) {
+    latestByPath.set(artifactKey, verification);
+    return;
+  }
+
+  // Passing the same immutable artifact again is only an audit event; it cannot
+  // clear an earlier failure. A repair must produce both a new hash and a new id.
+  if (!previous.ok && (!hasNewArtifactHash || !hasNewVerificationId || identityConflict)) {
+    if (!identityConflict) {
+      issues.push({
+        kind: 'non-append-only-artifact-verification',
+        severity: 'error',
+        line: verification.line,
+        message: '通过结果复用了失败结果的 artifact hash 或 verificationId，不能覆盖 append-only 失败事实。',
+        evidence: formatArtifactVerificationEvidence(verification),
+      });
+    }
+    return;
+  }
+
+  if (!identityConflict && hasNewArtifactHash && hasNewVerificationId) {
+    latestByPath.set(artifactKey, verification);
+  }
+}
+
+function artifactVerificationKey(verification: RunLogReplayArtifactVerification): string {
+  const path = verification.artifactPath?.trim().replace(/\\/g, '/');
+  return path
+    || verification.artifactEvidenceId
+    || verification.verificationId
+    || `line:${verification.line}`;
+}
+
+function artifactVerificationFingerprint(verification: RunLogReplayArtifactVerification): string {
+  return JSON.stringify({
+    artifactEvidenceId: verification.artifactEvidenceId,
+    artifactPath: verification.artifactPath,
+    artifactHash: verification.artifactHash,
+    ok: verification.ok,
+    failedClaims: verification.failedClaims,
+    differences: verification.differences,
+  });
+}
+
+function parseSourceClaimArtifactVerificationObligation(
+  data: Record<string, unknown> | undefined,
+): SourceClaimArtifactVerificationObligation | undefined {
+  const requiresVerification = booleanValue(data?.requiresSourceClaimArtifactVerification);
+  const taskContractFingerprint = stringValue(data?.taskContractFingerprint);
+  if (requiresVerification === undefined && !taskContractFingerprint) return undefined;
+  return {
+    requiresVerification: requiresVerification === true,
+    taskContractFingerprint,
+  };
+}
+
+function formatArtifactVerificationEvidence(verification: RunLogReplayArtifactVerification): string {
+  return truncateOneLine([
+    `artifact=${verification.artifactPath || 'unknown'}`,
+    `verificationId=${verification.verificationId || 'unknown'}`,
+    `hash=${verification.artifactHash || 'unknown'}`,
+    `failedClaims=${verification.failedClaims.join(',') || 'none'}`,
+    verification.differences.join(' | '),
+  ].filter(Boolean).join(' '), 260);
+}
+
 export function formatRunLogReplayReport(report: RunLogReplayReport): string {
   const lines = [
     `Run log: ${report.logPath}`,
     `Run: ${report.runId ?? 'unknown'}  Version: ${report.appVersion ?? 'unknown'}  Commit: ${report.gitCommit ?? 'unknown'}`,
-    `Events: ${report.parsedEvents}/${report.totalLines}  Provider: ${report.providerRequests} request(s), ${report.providerResponses} response(s)  Tool loops: ${report.toolExecutions}  Terminal commands: ${report.terminalCommands}  Planned execution tasks: ${report.plannedExecutionTasks}  Workspace applications: ${report.workspaceApplications}`,
+    `Events: ${report.parsedEvents}/${report.totalLines}  Provider: ${report.providerRequests} request(s), ${report.providerResponses} response(s)  Tool loops: ${report.toolExecutions}  Terminal commands: ${report.terminalCommands}  Planned execution tasks: ${report.plannedExecutionTasks}  Workspace applications: ${report.workspaceApplications}  Artifact verifications: ${report.artifactVerifications}`,
   ];
   if (typeof report.durationMs === 'number' && Number.isFinite(report.durationMs)) {
     lines.push(`Duration: ${(report.durationMs / 1000).toFixed(1)}s`);

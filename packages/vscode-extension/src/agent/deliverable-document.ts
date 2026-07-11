@@ -3,9 +3,12 @@ import type { AgentTask } from '../agent-task-decomposer';
 
 const MARKDOWN_DOCUMENT_HINT_RE = /(?:\.md\b|markdown|md\s*(?:文档|文件|报告)|(?:文档|文件|报告).{0,8}(?:md|markdown))/i;
 const MARKDOWN_DOCUMENT_DELIVERABLE_RE = /(?:(?:通过|以|用|使用).{0,12}(?:md|markdown|\.md).{0,8}(?:文档|文件|报告).{0,16}(?:提供|输出|给出|返回|保存|生成|产出)?|(?:生成|创建|新建|写入|写出|保存|输出|提供|产出|落盘).{0,28}(?:md|markdown|\.md).{0,8}(?:文档|文件|报告)|(?:生成|创建|新建|写入|写出|保存|输出|提供|产出|落盘).{0,28}(?:文档|文件|报告).{0,12}(?:md|markdown|\.md)|(?:md|markdown|\.md).{0,8}(?:文档|文件|报告))/i;
-const EXPLICIT_NO_DOCUMENT_WRITE_RE = /(?:不要|不用|无需|不需要|禁止|别).{0,18}(?:写|写入|创建|新建|生成|保存|输出|产出|落盘).{0,10}(?:文件|文档|报告|md|markdown|\.md)/i;
+const EXPLICIT_NO_DOCUMENT_WRITE_RE = /(?:不要|不用|无需|不需要|禁止|别)[^，。；;\n]{0,18}(?:写|写入|创建|新建|生成|保存|输出|产出|落盘)[^，。；;\n]{0,10}(?:文件|文档|报告|md|markdown|\.md)/i;
+const SCOPED_OTHER_FILE_EXCLUSION_RE = /(?:不要|不用|无需|不需要|禁止|别)[^，。；;\n]{0,18}(?:写|写入|创建|新建|生成|保存|输出|产出|落盘)[^，。；;\n]{0,6}(?:其他|其它|其余)(?:的)?(?:文件|文档|报告)/i;
 const DEFERRED_CODE_IMPLEMENTATION_RE = /(?:(?:当前|现在|暂时|先).{0,12}(?:不准备|不打算|不需要|不要|暂不|先不).{0,28}(?:修改|实现|落地|改代码|写代码|代码实现)|(?:准备|打算).{0,18}(?:重新做|重做|按.{0,8}需求).{0,24}(?:分析|建议|对策|方案|计划|任务|task))/i;
 const EXPLICIT_CODE_IMPLEMENTATION_DELIVERABLE_RE = /(?:代码实现|实现代码|落地代码|改代码|修改代码|编写代码|新增代码|添加代码|创建代码|代码文件|源码实现|实现源码|\.c\b|\.cc\b|\.cpp\b|\.cxx\b|\.h\b|\.hh\b|\.hpp\b|\.hxx\b|\.py\b|\.ts\b|\.tsx\b|\.js\b|\.jsx\b)|(?:(?:请|帮我|需要|要求|直接|现在|马上|开始|另外|同时|并|然后|最后|完成).{0,20}(?:实现|修改|新增|添加|编写|创建).{0,24}(?:代码|源码|代码文件))/i;
+const EXPLICIT_CODE_ACTION_DELIVERABLE_RE = /(?:代码实现|实现代码|落地代码|改代码|修改代码|编写代码|新增代码|添加代码|创建代码|代码文件|源码实现|实现源码)|(?:实现|修改|新增|添加|编写|创建|生成|写入)[^，。；;\n]{0,36}\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|py|ts|tsx|js|jsx)\b/i;
+const EXPLICIT_NO_SOURCE_CHANGE_RE = /(?:不要|不得|禁止|无需|不需要|不允许)[^，。；;\n]{0,24}(?:修改|改动|写入|覆盖)[^，。；;\n]{0,12}(?:源码|源代码|代码)/i;
 const MARKDOWN_PATH_RE = /\.(?:md|markdown)$/i;
 
 export const MARKDOWN_DOCUMENT_DELIVERABLE_TASK_DESC =
@@ -28,7 +31,8 @@ export function isMarkdownDocumentDeliverableRequest(text: string | undefined): 
   const normalized = String(text || '').replace(/\s+/g, ' ').trim();
   if (!normalized) return false;
   if (!MARKDOWN_DOCUMENT_HINT_RE.test(normalized)) return false;
-  if (EXPLICIT_NO_DOCUMENT_WRITE_RE.test(normalized)) return false;
+  if (EXPLICIT_NO_DOCUMENT_WRITE_RE.test(normalized)
+      && !SCOPED_OTHER_FILE_EXCLUSION_RE.test(normalized)) return false;
   return MARKDOWN_DOCUMENT_DELIVERABLE_RE.test(normalized);
 }
 
@@ -36,6 +40,8 @@ export function isMarkdownDocumentOnlyDeliverableRequest(text: string | undefine
   const normalized = String(text || '').replace(/\s+/g, ' ').trim();
   if (!isMarkdownDocumentDeliverableRequest(normalized)) return false;
   if (DEFERRED_CODE_IMPLEMENTATION_RE.test(normalized)) return true;
+  if (EXPLICIT_NO_SOURCE_CHANGE_RE.test(normalized)
+      && !EXPLICIT_CODE_ACTION_DELIVERABLE_RE.test(normalized)) return true;
   return !EXPLICIT_CODE_IMPLEMENTATION_DELIVERABLE_RE.test(normalized);
 }
 

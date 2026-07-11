@@ -95,6 +95,54 @@ test('completion evidence: read-only analysis does not require code edit evidenc
   );
 });
 
+test('completion evidence: read-only source-fact answers do not require artifact verification', () => {
+  const sourcePath = '/workspace/include/license_types.hpp';
+  const sourceFactPrompt = [
+    `只分析 ${sourcePath}，提取 kAlpha、kBeta 的真实值并在回复中说明。`,
+    '不要创建报告，不要修改或写入任何文件。',
+  ].join('\n');
+
+  assert.deepEqual(
+    getMissingCompletionEvidence(sourceFactPrompt, [], [], [], [sourcePath], '/workspace'),
+    [],
+  );
+
+  const reportPrompt = `读取 ${sourcePath}，提取 kAlpha、kBeta 的真实值，只创建一个 Markdown 报告 /workspace/report.md`;
+  assert.match(
+    getMissingCompletionEvidence(reportPrompt, [], [], [], [sourcePath], '/workspace').join('\n'),
+    /交付物源码事实逐项验证结果（2 项）/,
+  );
+});
+
+test('completion evidence: unresolved report claims fail closed while source-informed code edits do not require report verification', () => {
+  const unresolved = '读取 /workspace/config.hpp，提取真实配置值并创建 Markdown 报告 /workspace/report.md。';
+  assert.match(
+    getMissingCompletionEvidence(unresolved, [], [], [], ['/workspace/config.hpp'], '/workspace').join('\n'),
+    /未解析的交付物源码事实 claim 契约/,
+  );
+
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-source-informed-edit-'));
+  const source = path.join(root, 'config.hpp');
+  const target = path.join(root, 'src/foo.ts');
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(source, 'constexpr int kMax = 7;\n');
+  writeFileSync(target, 'export const max = 7;\n');
+  try {
+    const prompt = `读取 ${source} 中 kMax 的真实值并据此修改 ${target}`;
+    const missing = getMissingCompletionEvidence(
+      prompt,
+      [],
+      [{ path: target, basename: 'foo.ts', linesAdded: 1, linesRemoved: 1, action: 'modify' }],
+      [{ command: 'npx tsc --noEmit', kind: 'compile', ok: true, exitCode: 0 }],
+      [source],
+      root,
+    );
+    assert.equal(missing.some(item => /源码事实.*验证|claim 契约/.test(item)), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('completion evidence: advisory implementation countermeasure request is read-only', () => {
   const advisoryPrompt = '原来实现的吊运维保功能：设计文档+代码等/home/ff/uav/tars/huida_uav/src/oam/src/lifting/maintenance 下面是最新的维保提醒的需求： /home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md 请分析，给出新需求的实现对策建议，并从主控需要实现功能角度给出task 当前不准备使用原来的逻辑，准备按照新的需求重新做，请帮我结合这些信息分析，给出你的建议';
 

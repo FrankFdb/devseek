@@ -10,6 +10,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -46,7 +48,7 @@ test('AgentFileWritePolicy: plan mode blocks ordinary workspace edits', () => {
   assert.match(decision.reason, /(?:tool-kind-denied|tool-kind-not-allowed-for-plan):edit/);
 });
 
-test('AgentFileWritePolicy: plan mode allows explicit Markdown deliverable artifacts', () => {
+test('AgentFileWritePolicy: plan mode hard-blocks even explicit Markdown deliverable artifacts', () => {
   const decision = decideAgentFileWrite({
     absPath: '/workspace/docs/warranty-maintenance-advice.md',
     workspaceRoot: '/workspace',
@@ -59,11 +61,11 @@ test('AgentFileWritePolicy: plan mode allows explicit Markdown deliverable artif
     },
   });
 
-  assert.equal(decision.action, 'allow');
-  assert.equal(decision.reason, 'explicit-markdown-deliverable');
+  assert.equal(decision.action, 'deny');
+  assert.match(decision.reason, /(?:tool-kind-denied|tool-kind-not-allowed-for-plan):edit/);
 });
 
-test('AgentFileWritePolicy: explicit Markdown deliverables are not tied to provider speed mode names', () => {
+test('AgentFileWritePolicy: a misleading mode label cannot bypass a deny-list', () => {
   const decision = decideAgentFileWrite({
     absPath: '/workspace/docs/warranty-maintenance-advice.md',
     workspaceRoot: '/workspace',
@@ -79,8 +81,8 @@ test('AgentFileWritePolicy: explicit Markdown deliverables are not tied to provi
     },
   });
 
-  assert.equal(decision.action, 'allow');
-  assert.equal(decision.reason, 'explicit-markdown-deliverable');
+  assert.equal(decision.action, 'deny');
+  assert.match(decision.reason, /tool-kind-denied:edit/);
 });
 
 test('AgentFileWritePolicy: Markdown deliverable cannot escape workspace', () => {
@@ -93,6 +95,27 @@ test('AgentFileWritePolicy: Markdown deliverable cannot escape workspace', () =>
 
   assert.equal(decision.action, 'deny');
   assert.equal(decision.reason, 'target-outside-workspace');
+});
+
+test('AgentFileWritePolicy: workspace symlinks cannot redirect deliverables outside the workspace', () => {
+  const tempRoot = mkdtempSync(path.join(tmpdir(), 'devseek-write-containment-'));
+  const workspaceRoot = path.join(tempRoot, 'workspace');
+  const outsideRoot = path.join(tempRoot, 'outside');
+  mkdirSync(workspaceRoot);
+  mkdirSync(outsideRoot);
+  symlinkSync(outsideRoot, path.join(workspaceRoot, 'linked'));
+  try {
+    const decision = decideAgentFileWrite({
+      absPath: path.join(workspaceRoot, 'linked', 'report.md'),
+      workspaceRoot,
+      toolPolicy: planPolicy,
+      context: { purpose: 'markdown-deliverable', userRequested: true },
+    });
+    assert.equal(decision.action, 'deny');
+    assert.equal(decision.reason, 'target-outside-workspace');
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('AgentFileWritePolicy: protected files hard-block even explicit deliverables', () => {
@@ -198,6 +221,36 @@ test('AgentFileWritePolicy: isolated artifact scope blocks writes to formal sour
   });
 
   assert.equal(allowedDocArtifact.action, 'allow');
+});
+
+test('AgentFileWritePolicy: isolated artifact symlinks cannot redirect writes into another workspace directory', () => {
+  const tempRoot = mkdtempSync(path.join(tmpdir(), 'devseek-isolated-containment-'));
+  const workspaceRoot = path.join(tempRoot, 'workspace');
+  const allowedRoot = path.join(workspaceRoot, 'isolated', 'docs');
+  const formalRoot = path.join(workspaceRoot, 'src');
+  mkdirSync(allowedRoot, { recursive: true });
+  mkdirSync(formalRoot, { recursive: true });
+  symlinkSync(formalRoot, path.join(allowedRoot, 'linked'));
+  const requestPrompt = [
+    `本次测试所有新增设计文档必须放在：${allowedRoot}`,
+    `- 设计文档放入：${allowedRoot}`,
+    '不要修改正式源码目录里的既有文件。',
+  ].join('\n');
+  try {
+    const decision = decideAgentFileWrite({
+      absPath: path.join(allowedRoot, 'linked', 'report.md'),
+      workspaceRoot,
+      context: {
+        purpose: 'markdown-deliverable',
+        userRequested: true,
+        requestPrompt,
+      },
+    });
+    assert.equal(decision.action, 'deny');
+    assert.equal(decision.reason, 'isolated-artifact-scope');
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test('AgentFileWritePolicy: ordinary prompts keep normal workspace write behavior', () => {

@@ -51,7 +51,7 @@ test('AgentToolExecutor: plans activity and permission', () => {
   assert.equal(plan.registered, true);
   assert.equal(plan.activity.kind, 'terminal');
   assert.equal(plan.permission.action, 'requireConfirm');
-  assert.deepEqual(plan.evidence, [{ kind: 'terminal', label: 'npm test' }]);
+  assert.deepEqual(plan.plannedRefs, [{ kind: 'terminal', label: 'npm test' }]);
 });
 
 test('AgentToolExecutor: rejects unregistered tools before execution', () => {
@@ -82,7 +82,7 @@ test('AgentToolExecutor: validates required schema fields', () => {
   assert.equal(executor.validateInput(valid).ok, true);
 });
 
-test('AgentToolExecutor: emits unified tool results with evidence refs', () => {
+test('AgentToolExecutor: only successful host results can emit evidence refs', () => {
   const executor = new AgentToolExecutor();
   const plan = executor.plan(
     { name: 'fetch_webpage', input: { url: 'https://example.com' } },
@@ -94,14 +94,16 @@ test('AgentToolExecutor: emits unified tool results with evidence refs', () => {
       requireUserConfirmation: false,
     },
   );
-  const result = executor.toResult(plan, { output: 'ok' });
+  const hostEvidence = { kind: 'network', label: 'https://example.com', evidenceId: 'ev-host' };
+  const result = executor.toResult(plan, { output: 'ok', evidence: [hostEvidence] });
 
   assert.equal(plan.kind, 'network');
-  assert.deepEqual(plan.evidence, [{ kind: 'network', label: 'https://example.com' }]);
+  assert.deepEqual(plan.plannedRefs, [{ kind: 'network', label: 'https://example.com' }]);
   assert.equal(result.ok, true);
   assert.equal(result.toolName, 'fetch_webpage');
   assert.equal(result.output, 'ok');
-  assert.deepEqual(result.evidence, plan.evidence);
+  assert.deepEqual(result.evidence, [hostEvidence]);
+  assert.deepEqual(executor.toResult(plan, { error: 'network failed', evidence: [hostEvidence] }).evidence, []);
 });
 
 test('AgentToolExecutor: detects file write tools', () => {
@@ -117,7 +119,7 @@ test('AgentToolExecutor: registers delete_file as an audited high-risk edit', ()
   assert.equal(plan.registered, true);
   assert.equal(plan.kind, 'edit');
   assert.equal(plan.risk, 'high');
-  assert.deepEqual(plan.evidence, [{ kind: 'edit', label: 'src/obsolete.cpp' }]);
+  assert.deepEqual(plan.plannedRefs, [{ kind: 'edit', label: 'src/obsolete.cpp' }]);
 });
 
 console.log('\nTool executor tests passed.\n');

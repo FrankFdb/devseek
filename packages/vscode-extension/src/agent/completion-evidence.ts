@@ -10,6 +10,8 @@ import { classifyShellCommandEvidence } from '../tools/shell-command-analysis';
 import { stripToolCallBlocks } from './fake-tool-parser';
 import { assessFormalProjectDocumentQuality } from './formal-project-document-quality';
 import { getMissingRequiredDeliverables } from './required-deliverable-contract';
+import { buildTaskContract, hasSourceClaimArtifactContract } from './task-contract';
+import type { VerificationResult } from './evidence-grounding';
 
 export interface CompletionTodo {
   title: string;
@@ -496,6 +498,7 @@ export function getMissingCompletionEvidence(
   terminalEvidence: TerminalEvidence[],
   readEvidencePaths: string[] = [],
   workspaceRoot?: string,
+  verificationResults: VerificationResult[] = [],
 ): string[] {
   const text = buildEvidenceText(userPrompt, todos);
   const existingWrittenFiles = coalesceWrittenFileEvidence(writtenFiles, workspaceRoot)
@@ -503,8 +506,26 @@ export function getMissingCompletionEvidence(
   const existingCodeWrites = existingWrittenFiles.filter(f => isCodeArtifactPath(f.path));
   const successfulEvidence = terminalEvidence.filter(e => e.ok);
   const missing: string[] = [];
-
+  const contract = buildTaskContract(userPrompt);
   const needsFileChange = requiresFileChangeEvidence(text);
+  const hasGroundedArtifactContract = needsFileChange
+    && hasSourceClaimArtifactContract(contract);
+  if (hasGroundedArtifactContract && contract.evidenceRequirements.length === 0) {
+    missing.push('未解析的交付物源码事实 claim 契约');
+  } else if (contract.evidenceRequirements.length > 0 && hasGroundedArtifactContract) {
+    const latest = verificationResults.at(-1);
+    const expectedSymbols = new Set(contract.evidenceRequirements.map(requirement => requirement.symbol));
+    const actualSymbols = new Set(latest?.claims.map(claim => claim.symbol) || []);
+    if (!latest) {
+      missing.push(`交付物源码事实逐项验证结果（${expectedSymbols.size} 项）`);
+    } else if (!latest.ok
+        || latest.claims.length !== expectedSymbols.size
+        || actualSymbols.size !== expectedSymbols.size
+        || [...expectedSymbols].some(symbol => !actualSymbols.has(symbol))) {
+      missing.push(`未通过的交付物源码事实验证（${latest.differences.join('；') || 'claim 覆盖不完整'}）`);
+    }
+  }
+
   const needsCodeArtifact = requiresCodeArtifactForEvidence(text);
   const needsReadEvidence = requiresReadEvidence(text);
   const needsFileContentReadEvidence = requiresFileContentReadEvidence(text);

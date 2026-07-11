@@ -1,0 +1,25 @@
+{
+  "runId": "20260711-131537",
+  "source": {
+    "originalPath": "/home/ff/uav/tars/huida_uav/src/oam/src/license/license_types.hpp",
+    "sha256": "973c155c79ab8f9902fd2b8c519734a4f2d64621fd2f1cada384ab4a5869225f"
+  },
+  "observedArtifact": {
+    "originalPath": "/home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607111312/docs/license-transport-facts.md",
+    "sha256": "3d12adbfeecb4bde72036f743a4a9dfd1cdf61afa80cc90b0bbb9e1679d214f2"
+  },
+  "originalPrompt": {
+    "length": 445,
+    "sha256": "87876f2d0bab48da1c8bb7ec3e56a1e38762913dafc178564a969627e08e5d29"
+  },
+  "fixtureFiles": {
+    "license_types.hpp": "973c155c79ab8f9902fd2b8c519734a4f2d64621fd2f1cada384ab4a5869225f",
+    "license-transport-facts.wrong.md": "3d12adbfeecb4bde72036f743a4a9dfd1cdf61afa80cc90b0bbb9e1679d214f2",
+    "request.txt": "4be55764c1b7de26004b9e25a0872ebc491bdec957da58010e2e0c990e3225a7",
+    "oracle.json": "4696af4fb4bce70fcfa76ea96b2e65ead2c8fd3ce94698b519de04eaf490e7e4",
+    "artifact-verification-wrong-completed.jsonl": "d3c69445ef2efda2b0b9fe9073260b3bdfbed6cb39f433e77bbbe56fa51a86ea",
+    "artifact-verification-repaired-completed.jsonl": "ce6e7436fa417760ddb2f4828eeeb04e0d6baee67890e0d0767ef17c004dffd5"
+  },
+  "originalRunLogSha256": "b5969c82ad318857f2d6aa27cc22e59d49184db331fd0e0a17d432d68af16995",
+  "note": "request.txt uses fixture-relative paths for deterministic replay; hashes bind it to the original live evidence."
+}

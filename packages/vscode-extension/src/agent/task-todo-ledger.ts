@@ -1,4 +1,8 @@
+import { createHash } from 'crypto';
+import * as fs from 'fs';
+import * as nodePath from 'path';
 import type { AgentTask, AgentTaskAction } from '../agent-task-decomposer';
+import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import type { AgentStatusEvent } from './events';
 import {
   coalesceWrittenFileEvidence,
@@ -23,10 +27,18 @@ import { stripToolCallBlocks } from './fake-tool-parser';
 import { extractTaskFileTokens, normalizeEvidencePath, taskFileTokensMatchWrittenEvidence } from './task-file-tokens';
 import { buildTaskTerminalFailureDetail } from './task-execution-result';
 import { classifyAgentTaskShape } from './task-shape';
+import { buildTaskContract, hasSourceClaimArtifactContract, resolveTaskContractSourcePaths } from './task-contract';
+import {
+  deriveArtifactClaimSpecs,
+  verifyArtifactClaims,
+  type ArtifactClaim,
+  type EvidenceRef,
+  type VerificationResult,
+} from './evidence-grounding';
 
 type TodoStatus = TodoItem['status'];
 type LinearTodoInput = Pick<TodoItem, 'title'> & Partial<Pick<TodoItem, 'status' | '__agentState'>>;
-type TaskFailureKind = 'terminal' | 'missing-evidence' | 'missing-write' | 'validation' | 'execution-error';
+type TaskFailureKind = 'terminal' | 'missing-evidence' | 'missing-write' | 'validation' | 'execution-error' | 'artifact-grounding';
 
 const TODO_TITLE_MAX = 36;
 
@@ -40,6 +52,10 @@ interface TaskEvidence {
   failedReason?: string;
   terminalEvidence?: TerminalEvidence[];
   workspaceRoot?: string;
+  promptText?: string;
+  evidenceRefs?: EvidenceRef[];
+  artifactClaims?: ArtifactClaim[];
+  verificationResults?: VerificationResult[];
 }
 
 interface FinalTaskEvidence {
@@ -52,6 +68,7 @@ interface FinalTaskEvidence {
 export interface TaskSettleResult {
   completed: boolean;
   failed: boolean;
+  failedReason?: string;
   todos: TodoItem[];
 }
 
@@ -62,6 +79,7 @@ export interface TaskReconcileResult {
 
 export interface AgentTaskTodoLedger {
   snapshot(): TodoItem[];
+  firstUnfinishedTaskIndex(): number | undefined;
   startTask(index: number): TodoItem[];
   settleTask(index: number, evidence: TaskEvidence): TaskSettleResult;
   reconcileFinalEvidence(evidence: FinalTaskEvidence): TaskReconcileResult;
@@ -108,6 +126,10 @@ export function createAgentTaskTodoLedger(
 
   return {
     snapshot,
+    firstUnfinishedTaskIndex(): number | undefined {
+      const index = statuses.findIndex(status => status !== 'completed');
+      return index >= 0 ? index : undefined;
+    },
     startTask(index: number): TodoItem[] {
       if (isTaskIndex(index, tasks) && !isTerminalStatus(statuses[index])) {
         statuses[index] = 'in-progress';
@@ -116,14 +138,20 @@ export function createAgentTaskTodoLedger(
     },
     settleTask(index: number, evidence: TaskEvidence): TaskSettleResult {
       const terminalFailure = findBlockingTerminalFailureEvidence(evidence.terminalEvidence);
+      const groundingFailure = isTaskIndex(index, tasks)
+        ? getArtifactGroundingFailure(tasks[index], evidence)
+        : undefined;
       const missingEvidence = isTaskIndex(index, tasks)
         ? getTaskMissingCompletionEvidence(tasks[index], evidence)
         : [];
       const completed = !evidence.failedReason
         && !terminalFailure
+        && !groundingFailure
         && missingEvidence.length === 0
         && taskRuntimeCanDeliver(evidence);
-      const failureKind: TaskFailureKind | undefined = evidence.failedReason
+      const failureKind: TaskFailureKind | undefined = groundingFailure
+        ? 'artifact-grounding'
+        : evidence.failedReason
         ? 'execution-error'
         : terminalFailure
           ? 'terminal'
@@ -137,7 +165,12 @@ export function createAgentTaskTodoLedger(
         statuses[index] = failed ? 'failed' : completed ? 'completed' : 'in-progress';
         failureKinds[index] = failed ? failureKind : undefined;
       }
-      return { completed, failed, todos: snapshot() };
+      return {
+        completed,
+        failed,
+        failedReason: groundingFailure || evidence.failedReason,
+        todos: snapshot(),
+      };
     },
     reconcileFinalEvidence(evidence: FinalTaskEvidence): TaskReconcileResult {
       if (evidence.validationFailed) {
@@ -384,6 +417,259 @@ function hasSuccessfulTerminalCompletionEvidence(evidence: TerminalEvidence[] | 
 
 function isRecoverableFailureKind(kind: TaskFailureKind | undefined): boolean {
   return kind === 'missing-evidence' || kind === 'missing-write' || kind === 'terminal';
+}
+
+function getArtifactGroundingFailure(task: AgentTask, evidence: TaskEvidence): string | undefined {
+  const semanticPrompt = [...new Set([task.desc, evidence.promptText].filter(Boolean))].join('\n');
+  const contract = resolveTaskContractSourcePaths(buildTaskContract(semanticPrompt), (evidence.evidenceRefs || []).flatMap(ref => (
+    ref.sourcePath && ref.kind !== 'artifact-readback' ? [ref.sourcePath] : []
+  )), evidence.workspaceRoot);
+  const requirements = contract.evidenceRequirements;
+  const writesMarkdownArtifact = [task.file, task.absPath, evidence.path]
+    .some(pathValue => /\.(?:md|markdown)$/i.test(String(pathValue || '')));
+  const hasGroundedArtifactContract = (task.action === 'create' || task.action === 'modify')
+    && (hasSourceClaimArtifactContract(contract)
+      || (requirements.length > 0 && writesMarkdownArtifact));
+  if (!hasGroundedArtifactContract) return undefined;
+  if (requirements.length === 0) {
+    return 'artifact-grounding: 源码事实报告契约未解析出明确 claim symbol';
+  }
+  const expectedSymbols = new Set(requirements.map(requirement => requirement.symbol));
+  const latest = evidence.verificationResults?.at(-1);
+  if (!latest) return `artifact-grounding: 缺少 ${requirements.length} 项源码事实的写后 VerificationResult`;
+  const claimSymbols = latest.claims.map(claim => claim.symbol);
+  const uniqueClaimSymbols = new Set(claimSymbols);
+  const hasExactCoverage = latest.claims.length === requirements.length
+    && uniqueClaimSymbols.size === requirements.length
+    && [...expectedSymbols].every(symbol => uniqueClaimSymbols.has(symbol));
+  if (!hasExactCoverage) {
+    return `artifact-grounding: VerificationResult 覆盖 ${uniqueClaimSymbols.size}/${requirements.length} 项请求事实`;
+  }
+  if (!latest.ok || latest.claims.some(claim => claim.status !== 'verified')) {
+    return `artifact-grounding: ${latest.differences.join('; ') || '存在未通过的源码事实 claim'}`;
+  }
+  const workspaceBindingFailure = getVerificationEvidenceWorkspaceBindingFailure(
+    latest,
+    evidence.evidenceRefs || [],
+    evidence.workspaceRoot,
+  );
+  if (workspaceBindingFailure) return `artifact-grounding: ${workspaceBindingFailure}`;
+  if (contract.deliverableTargets.length > 1) {
+    return `artifact-grounding: 存在 ${contract.deliverableTargets.length} 个交付目标，无法唯一绑定 VerificationResult`;
+  }
+  const structuredTarget = resolveStructuredArtifactTarget(task, evidence.workspaceRoot);
+  if (structuredTarget.error) {
+    return `artifact-grounding: ${structuredTarget.error}`;
+  }
+  if (!structuredTarget.target) {
+    return 'artifact-grounding: source-claim 写任务缺少唯一的结构化交付目标';
+  }
+  const absoluteStructuredTarget = nodePath.isAbsolute(structuredTarget.target)
+    ? structuredTarget.target
+    : nodePath.resolve(evidence.workspaceRoot || '', structuredTarget.target);
+  if (!evidence.workspaceRoot
+      || !isCanonicalPathInsideRoot(absoluteStructuredTarget, evidence.workspaceRoot)) {
+    return `artifact-grounding: 任务结构化目标不在中央结算 workspaceRoot 内：${structuredTarget.target}`;
+  }
+  if (!evidencePathsMatch(structuredTarget.target, latest.artifactPath, evidence.workspaceRoot)) {
+    return `artifact-grounding: VerificationResult 交付物 ${latest.artifactPath} 与任务目标 ${structuredTarget.target} 不一致`;
+  }
+  const [contractTarget] = contract.deliverableTargets;
+  if (contractTarget && !evidencePathsMatch(contractTarget, latest.artifactPath, evidence.workspaceRoot)) {
+    return `artifact-grounding: VerificationResult 交付物 ${latest.artifactPath} 与请求目标 ${contractTarget} 不一致`;
+  }
+  const artifactRef = evidence.evidenceRefs?.find(ref => ref.evidenceId === latest.artifactEvidenceId);
+  if (!artifactRef
+      || artifactRef.kind !== 'artifact-readback'
+      || !artifactRef.sourcePath
+      || !evidencePathsMatch(artifactRef.sourcePath, latest.artifactPath, evidence.workspaceRoot)
+      || artifactRef.contentHash !== latest.artifactHash
+      || !evidenceRefContentMatchesHash(artifactRef)) {
+    return 'artifact-grounding: VerificationResult 未绑定有效的交付物读回 EvidenceRef';
+  }
+  const currentArtifactHash = hashCurrentEvidenceFile(latest.artifactPath, evidence.workspaceRoot);
+  if (!currentArtifactHash || currentArtifactHash !== latest.artifactHash) {
+    return `artifact-grounding: 交付物在 VerificationResult 后已变化或不可读取 ${latest.artifactPath}`;
+  }
+  const sourceReadbackIds = new Set(latest.sourceReadbackEvidenceIds);
+  const currentSourceHashes = new Map<string, string | undefined>();
+  for (const claim of latest.claims) {
+    const sourceKey = normalizeEvidencePath(claim.sourcePath);
+    if (!currentSourceHashes.has(sourceKey)) {
+      currentSourceHashes.set(
+        sourceKey,
+        hashCurrentEvidenceFile(claim.sourcePath, evidence.workspaceRoot),
+      );
+    }
+  }
+  const hasBoundSourceEvidence = latest.claims.every(claim => {
+    const sourceEvidence = evidence.evidenceRefs?.find(ref => ref.evidenceId === claim.evidenceId);
+    const readbackEvidence = evidence.evidenceRefs?.find(ref => (
+      ref.evidenceId
+      && sourceReadbackIds.has(ref.evidenceId)
+      && ref.evidenceId !== claim.evidenceId
+      && ref.sourcePath
+      && evidencePathsMatch(ref.sourcePath, claim.sourcePath, evidence.workspaceRoot)
+      && ref.contentHash === claim.sourceHash
+      && evidenceRefContentMatchesHash(ref)
+    ));
+    return Boolean(
+      sourceEvidence?.sourcePath
+      && evidencePathsMatch(sourceEvidence.sourcePath, claim.sourcePath, evidence.workspaceRoot)
+      && sourceEvidence.contentHash === claim.sourceHash
+      && currentSourceHashes.get(normalizeEvidencePath(claim.sourcePath)) === claim.sourceHash
+      && sourceEvidence.captureSequence === claim.evidenceSequence
+      && artifactRef.captureSequence !== undefined
+      && sourceEvidence.captureSequence !== undefined
+      && artifactRef.captureSequence > sourceEvidence.captureSequence
+      && evidenceRefContentMatchesHash(sourceEvidence)
+      && readbackEvidence?.kind === 'read'
+      && readbackEvidence.operationId
+      && readbackEvidence.captureSequence !== undefined
+      && readbackEvidence.captureSequence > artifactRef.captureSequence
+      && readbackEvidence,
+    );
+  });
+  if (!hasBoundSourceEvidence) {
+    return 'artifact-grounding: VerificationResult 未绑定当前磁盘源码、原始源码证据和独立源码读回证据';
+  }
+  try {
+    const sourceEvidenceIds = new Set(latest.claims.map(claim => claim.evidenceId));
+    const sourceEvidenceRefs = (evidence.evidenceRefs || []).filter(ref => (
+      ref.evidenceId && sourceEvidenceIds.has(ref.evidenceId)
+    ));
+    const sourceReadbackRefs = latest.sourceReadbackEvidenceIds.flatMap(evidenceId => {
+      const ref = evidence.evidenceRefs?.find(candidate => candidate.evidenceId === evidenceId);
+      return ref ? [ref] : [];
+    });
+    const recomputedSpecs = deriveArtifactClaimSpecs(requirements, sourceEvidenceRefs);
+    const recomputed = verifyArtifactClaims(
+      recomputedSpecs,
+      artifactRef,
+      sourceReadbackRefs,
+      contract.verificationContract,
+    );
+    const semanticResultMatches = recomputed.verificationId === latest.verificationId
+      && JSON.stringify(recomputed.claims) === JSON.stringify(latest.claims)
+      && JSON.stringify(recomputed.differences) === JSON.stringify(latest.differences)
+      && JSON.stringify(recomputed.contractDifferences) === JSON.stringify(latest.contractDifferences)
+      && JSON.stringify(recomputed.sourceReadbackEvidenceIds) === JSON.stringify(latest.sourceReadbackEvidenceIds);
+    if (!recomputed.ok || !semanticResultMatches) {
+      return 'artifact-grounding: VerificationResult 与中央结算重算的源码/交付物语义不一致';
+    }
+  } catch (error) {
+    return `artifact-grounding: 中央结算无法重算 VerificationResult（${(error as Error).message}）`;
+  }
+  const writtenFiles = coalesceWrittenFileEvidence(evidence.writtenFiles ?? [], evidence.workspaceRoot);
+  if (!writtenFiles.some(file => evidencePathsMatch(file.path, latest.artifactPath, evidence.workspaceRoot))) {
+    return `artifact-grounding: VerificationResult 未绑定本次写盘交付物 ${latest.artifactPath}`;
+  }
+  const unrelatedWrittenFile = writtenFiles.find(file => (
+    !evidencePathsMatch(file.path, structuredTarget.target!, evidence.workspaceRoot)
+  ));
+  if (unrelatedWrittenFile) {
+    return `artifact-grounding: 本任务写入了未绑定唯一交付目标的文件 ${unrelatedWrittenFile.path}`;
+  }
+  if (contract.verificationContract.maxWrittenFiles !== undefined
+      && writtenFiles.length > contract.verificationContract.maxWrittenFiles) {
+    return `artifact-grounding: 本次写入 ${writtenFiles.length} 个文件，超过契约上限 ${contract.verificationContract.maxWrittenFiles}`;
+  }
+  return undefined;
+}
+
+function getVerificationEvidenceWorkspaceBindingFailure(
+  verification: VerificationResult,
+  evidenceRefs: EvidenceRef[],
+  settlementWorkspaceRoot?: string,
+): string | undefined {
+  if (!settlementWorkspaceRoot) {
+    return '中央结算缺少 workspaceRoot，不能重锚 EvidenceRef';
+  }
+  const settlementRoot = canonicalWorkspaceRoot(settlementWorkspaceRoot);
+  const referencedIds = new Set([
+    verification.artifactEvidenceId,
+    ...verification.claims.map(claim => claim.evidenceId),
+    ...verification.sourceReadbackEvidenceIds,
+  ]);
+  for (const evidenceId of referencedIds) {
+    const matches = evidenceRefs.filter(ref => ref.evidenceId === evidenceId);
+    if (matches.length !== 1) {
+      return `VerificationResult 引用的 EvidenceRef ${evidenceId} 数量为 ${matches.length}，要求唯一`;
+    }
+    const [ref] = matches;
+    if (!ref.workspaceRoot) {
+      return `EvidenceRef ${evidenceId} 缺少 workspaceRoot，不能由中央结算外部重锚`;
+    }
+    if (canonicalWorkspaceRoot(ref.workspaceRoot) !== settlementRoot) {
+      return `EvidenceRef ${evidenceId} 的 workspaceRoot ${ref.workspaceRoot} 与中央结算 ${settlementWorkspaceRoot} 不一致`;
+    }
+  }
+  return undefined;
+}
+
+function canonicalWorkspaceRoot(workspaceRoot: string): string {
+  const resolved = nodePath.resolve(workspaceRoot);
+  try {
+    return normalizeEvidencePath(fs.realpathSync.native(resolved));
+  } catch {
+    return normalizeEvidencePath(resolved);
+  }
+}
+
+function resolveStructuredArtifactTarget(
+  task: AgentTask,
+  workspaceRoot?: string,
+): { target?: string; error?: string } {
+  if (task.action !== 'create' && task.action !== 'modify') {
+    return { error: `source-claim 交付要求 create/modify 动作，实际为 ${task.action}` };
+  }
+  const absoluteTarget = task.absPath?.trim();
+  const fileTarget = task.file?.trim();
+  if (absoluteTarget && fileTarget) {
+    const normalizedFileTarget = fileTarget.replace(/\\/g, '/');
+    const allowsBasenameFallback = nodePath.posix.basename(normalizedFileTarget) === normalizedFileTarget;
+    const compatible = evidencePathsMatch(absoluteTarget, fileTarget, workspaceRoot)
+      || (allowsBasenameFallback && nodePath.basename(absoluteTarget) === normalizedFileTarget);
+    if (!compatible) {
+      return { error: `任务结构化目标冲突：absPath=${absoluteTarget} file=${fileTarget}` };
+    }
+    return { target: absoluteTarget };
+  }
+  if (absoluteTarget || fileTarget) return { target: absoluteTarget || fileTarget };
+  const visibleTarget = task.visibleTarget?.trim();
+  if (visibleTarget && /\.(?:md|markdown)$/i.test(visibleTarget)) return { target: visibleTarget };
+  return {};
+}
+
+function evidenceRefContentMatchesHash(ref: EvidenceRef): boolean {
+  return typeof ref.content === 'string'
+    && typeof ref.contentHash === 'string'
+    && createHash('sha256').update(ref.content).digest('hex') === ref.contentHash;
+}
+
+function hashCurrentEvidenceFile(filePath: string, workspaceRoot?: string): string | undefined {
+  const absolutePath = nodePath.isAbsolute(filePath)
+    ? filePath
+    : nodePath.resolve(workspaceRoot || '', filePath);
+  try {
+    return createHash('sha256').update(fs.readFileSync(absolutePath)).digest('hex');
+  } catch {
+    return undefined;
+  }
+}
+
+function evidencePathsMatch(left: string, right: string, workspaceRoot?: string): boolean {
+  const normalizedLeft = normalizeEvidencePath(left);
+  const normalizedRight = normalizeEvidencePath(right);
+  if (normalizedLeft === normalizedRight) return true;
+  const root = normalizeEvidencePath(workspaceRoot || '');
+  const absoluteLeft = root && !nodePath.isAbsolute(normalizedLeft)
+    ? normalizeEvidencePath(nodePath.join(root, normalizedLeft))
+    : normalizedLeft;
+  const absoluteRight = root && !nodePath.isAbsolute(normalizedRight)
+    ? normalizeEvidencePath(nodePath.join(root, normalizedRight))
+    : normalizedRight;
+  return absoluteLeft === absoluteRight;
 }
 
 function hasFinalTaskCompletionEvidence(

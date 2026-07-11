@@ -6,6 +6,7 @@ import type { AgentStatusEvent } from './events';
 import type { TodoItem } from './evidence-recovery';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { AgentFileWriteContext } from '../app/agent-file-write-policy';
+import type { ArtifactClaim, EvidenceRef, VerificationResult } from './evidence-grounding';
 
 export type AgentStatusMessage = AgentStatusEvent;
 
@@ -175,4 +176,8 @@ export interface AgentLoopResult {
   analysisText?: string;
   /** Collapsible, user-visible summary persisted into restored chat history. */
   historyText?: string;
+  /** Immutable host evidence and claim verdicts retained through top-level settlement/replay. */
+  evidenceRefs?: EvidenceRef[];
+  artifactClaims?: ArtifactClaim[];
+  verificationResults?: VerificationResult[];
 }

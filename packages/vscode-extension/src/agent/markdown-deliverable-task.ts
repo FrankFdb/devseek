@@ -5,6 +5,7 @@ import type { AgentTask } from '../agent-task-decomposer';
 import type { ChatMessage } from '../llm/types';
 import { roughLineDiff } from '../utils';
 import { WorkspaceEditService } from '../workspace/edit-service';
+import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import {
   isMarkdownDocumentCreateTask,
   isMarkdownDocumentDeliverableRequest,
@@ -24,6 +25,20 @@ import {
 } from './provider-output-integrity';
 import type { TaskExecutionResult } from './task-execution-result';
 import type { WrittenFileEvidence } from './completion-evidence';
+import {
+  EvidenceStore,
+  deriveArtifactClaimSpecs,
+  formatClaimVerificationFeedback,
+  verifyArtifactClaims,
+  type ArtifactClaimSpec,
+  type EvidenceRef,
+  type VerificationResult,
+} from './evidence-grounding';
+import {
+  buildTaskContract,
+  hasQualityObligation,
+  resolveTaskContractSourcePaths,
+} from './task-contract';
 
 export type MarkdownDeliverableChat = (messages: ChatMessage[]) => Promise<string>;
 
@@ -44,6 +59,7 @@ interface EvidenceFile {
   kind: 'requirement' | 'source';
   content: string;
   truncated: boolean;
+  evidenceRef: EvidenceRef;
 }
 
 interface EvidenceBundle {
@@ -57,6 +73,7 @@ interface ProviderMarkdownResult {
   reason?: string;
   responseChars?: number;
   integrityKind?: ProviderOutputIntegrityKind;
+  aborted?: boolean;
 }
 
 interface MarkdownStatusOptions {
@@ -104,7 +121,15 @@ export async function tryExecuteMarkdownDeliverableTask(
     });
     return { applied: false, failedReason: 'Markdown deliverable target path is missing' };
   }
+  if (!isCanonicalPathInsideRoot(absPath, input.workspaceRoot.fsPath)) {
+    await postMarkdownStatus(input, 'failed', basename, {
+      title: 'Markdown 目标路径越界',
+      detail: '目标路径经符号链接解析后不在当前 workspace 内。',
+    });
+    return { applied: false, path: absPath, failedReason: 'Markdown deliverable target escapes workspace' };
+  }
   const relPath = displayPath(input.workspaceRoot.fsPath, absPath, task.file || basename);
+  const evidenceStore = new EvidenceStore(input.workspaceRoot.fsPath, `markdown-${task.id || input.taskIndex}`);
 
   await postMarkdownStatus(input, 'started', basename, {
     title: '收集 Markdown 交付证据',
@@ -117,6 +142,7 @@ export async function tryExecuteMarkdownDeliverableTask(
     [input.userPrompt, task.desc].filter(Boolean).join('\n'),
     input.workspaceRoot.fsPath,
     absPath,
+    evidenceStore,
   );
   if (evidence.sourceDirs.length > 0) {
     callbacks.onToolActivity?.('list', summarizeActivityPaths(evidence.sourceDirs, input.workspaceRoot.fsPath));
@@ -147,13 +173,42 @@ export async function tryExecuteMarkdownDeliverableTask(
     ].join('\n'),
   });
   const provider = await generateProviderMarkdown(input, evidence, absPath);
+  if (provider.aborted) {
+    await postMarkdownStatus(input, 'failed', basename, {
+      title: 'Markdown 生成已中止',
+      detail: `目标：${relPath}\n用户已中止任务，未写入交付物。`,
+    });
+    return { applied: false, path: absPath, failedReason: 'Markdown deliverable aborted before write', evidenceRefs: evidenceStore.all() };
+  }
   await postMarkdownStatus(input, 'started', basename, {
     title: provider.markdown ? 'DeepSeek 报告已返回' : 'DeepSeek 返回不可直接采用',
     detail: provider.markdown
       ? `DeepSeek 返回 ${provider.responseChars ?? 0} 字符，完整性检查通过（${provider.integrityKind || 'complete'}）；下一步写入 ${relPath}。`
       : `DeepSeek 输出未通过交付门禁（${provider.reason || 'Provider 未返回可用的完整 Markdown 报告。'}）；将使用本地证据生成兜底 Markdown 并继续写盘验证。`,
   });
-  const markdownPromptText = [input.userPrompt, input.task.desc].filter(Boolean).join('\n');
+  const markdownPromptText = combineUniquePromptParts(input.userPrompt, input.task.desc);
+  const taskContract = resolveTaskContractSourcePaths(
+    buildTaskContract(markdownPromptText),
+    evidence.files.map(file => file.absPath),
+    input.workspaceRoot.fsPath,
+  );
+  let claimSpecs: ArtifactClaimSpec[];
+  try {
+    const claimRequirements = taskContract.evidenceRequirements;
+    claimSpecs = deriveArtifactClaimSpecs(claimRequirements, evidence.files.map(file => file.evidenceRef));
+  } catch (error) {
+    const reason = (error as Error).message;
+    await postMarkdownStatus(input, 'failed', basename, {
+      title: '缺少可验证的源码事实证据',
+      detail: `${relPath} · ${reason}`,
+    });
+    return {
+      applied: false,
+      path: absPath,
+      failedReason: reason,
+      evidenceRefs: evidenceStore.all(),
+    };
+  }
   const baseMarkdown = provider.markdown || buildFallbackMarkdown({
     userPrompt: input.userPrompt,
     targetRelPath: relPath,
@@ -161,7 +216,11 @@ export async function tryExecuteMarkdownDeliverableTask(
     evidence,
     reason: provider.reason || 'Provider 未返回可用的完整 Markdown 报告。',
   });
-  const markdown = ensureFormalInterfaceExamples(baseMarkdown, markdownPromptText) || baseMarkdown;
+  let markdown = ensureFormalInterfaceExamples(baseMarkdown, markdownPromptText) || baseMarkdown;
+
+  if (callbacks.signal?.aborted) {
+    return { applied: false, path: absPath, failedReason: 'Markdown deliverable aborted before write', evidenceRefs: evidenceStore.all() };
+  }
 
   await postMarkdownStatus(input, 'started', basename, {
     title: '准备写入 Markdown 文档',
@@ -181,89 +240,160 @@ export async function tryExecuteMarkdownDeliverableTask(
     return { applied: false, path: absPath, failedReason: 'Markdown deliverable write blocked by guard' };
   }
 
+  const verificationResults: VerificationResult[] = [];
+  let latestArtifactClaims: VerificationResult['claims'] | undefined;
   try {
-    callbacks.onToolActivity?.('write', relPath);
-    await postMarkdownStatus(input, 'started', basename, {
-      title: '写入并验证 Markdown 文档',
-      detail: `正在写入 ${relPath}，随后读回校验内容一致性。`,
-    });
-    const writeResult = workspaceEditService.writeTextFileSync(absPath, ensureFinalNewline(markdown), {
-      validateSourceSanity: true,
-      repairSourceTransportEscapes: true,
-    });
-    const freshContent = fs.readFileSync(absPath, 'utf8');
-    const finalContent = ensureFinalNewline(markdown);
-    const diff = roughLineDiff(writeResult.oldContent, finalContent);
-    if (freshContent !== finalContent) {
-      await postMarkdownStatus(input, 'failed', basename, {
-        title: 'Markdown 写入校验失败',
-        detail: `目标：${relPath}\n写入后读回内容不一致。`,
-        diff,
+    const targetExistedInitially = fs.existsSync(absPath);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (callbacks.signal?.aborted) {
+        return { applied: false, path: absPath, failedReason: 'Markdown deliverable aborted before write', evidenceRefs: evidenceStore.all(), verificationResults };
+      }
+      if (!isCanonicalPathInsideRoot(absPath, input.workspaceRoot.fsPath)) {
+        return { applied: false, path: absPath, failedReason: 'Markdown deliverable target escapes workspace', evidenceRefs: evidenceStore.all(), verificationResults };
+      }
+      callbacks.onToolActivity?.('write', relPath);
+      await postMarkdownStatus(input, 'started', basename, {
+        title: attempt === 0 ? '写入并验证 Markdown 文档' : '写入并验证事实修复结果',
+        detail: `正在写入 ${relPath}，随后由宿主重新读取源码和交付物逐项验证事实 claim。`,
       });
-      return {
-        applied: false,
+      const finalContent = ensureFinalNewline(markdown);
+      const writeResult = workspaceEditService.writeTextFileSync(absPath, finalContent, {
+        validateSourceSanity: true,
+        repairSourceTransportEscapes: true,
+      });
+      const freshContent = fs.readFileSync(absPath, 'utf8');
+      const diff = roughLineDiff(writeResult.oldContent, finalContent);
+      if (freshContent !== finalContent) {
+        await postMarkdownStatus(input, 'failed', basename, {
+          title: 'Markdown 写入校验失败',
+          detail: `目标：${relPath}\n写入后读回内容不一致。`,
+          diff,
+        });
+        return {
+          applied: false,
+          path: absPath,
+          raw: `Markdown deliverable verification failed: ${relPath}`,
+          linesAdded: diff.added,
+          linesRemoved: diff.removed,
+          failedReason: 'Markdown deliverable verification failed after write',
+          evidenceRefs: evidenceStore.all(),
+        };
+      }
+      const artifactEvidence = evidenceStore.recordFileRead({
         path: absPath,
-        raw: `Markdown deliverable verification failed: ${relPath}`,
-        linesAdded: diff.added,
-        linesRemoved: diff.removed,
-        failedReason: 'Markdown deliverable verification failed after write',
-      };
-    }
+        content: freshContent,
+        kind: 'artifact-readback',
+        operationId: `artifact-readback-${attempt + 1}`,
+      });
 
-    await callbacks.onAppliedChange({ path: relPath, ...writeResult });
-    const action = writeResult.existed ? 'modify' : 'create';
-    const verb = writeResult.existed ? '已更新' : '已创建';
-    const writtenFiles = [buildWrittenFileEvidence(absPath, action, diff.added, diff.removed)];
-    const finalFormalQuality = assessFormalProjectDocumentQuality(
-      finalContent,
-      [input.userPrompt, input.task.desc].filter(Boolean).join('\n'),
-    );
-    if (!finalFormalQuality.ok) {
-      const reason = `formal-project-quality: ${finalFormalQuality.reasons.join(', ')}`;
-      await postMarkdownStatus(input, 'failed', basename, {
-        title: 'Markdown 正式项目质量门禁未通过',
-        detail: `${relPath} · 已写入并读回验证，但缺少正式项目证据闭环：${finalFormalQuality.reasons.join('、')}。`,
+      await callbacks.onAppliedChange({ path: relPath, ...writeResult });
+      const action = targetExistedInitially ? 'modify' : 'create';
+      const verb = targetExistedInitially ? '已更新' : '已创建';
+      const writtenFiles = [buildWrittenFileEvidence(absPath, action, diff.added, diff.removed)];
+      const finalFormalQuality = assessFormalProjectDocumentQuality(freshContent, markdownPromptText);
+      if (!finalFormalQuality.ok) {
+        const reason = `formal-project-quality: ${finalFormalQuality.reasons.join(', ')}`;
+        await postMarkdownStatus(input, 'failed', basename, {
+          title: 'Markdown 质量门禁未通过',
+          detail: `${relPath} · 已写入并读回验证：${finalFormalQuality.reasons.join('、')}。`,
+          diff,
+        });
+        return {
+          applied: false,
+          path: absPath,
+          raw: `${verb} Markdown 文档：${relPath}\n质量门禁：${reason}`,
+          linesAdded: diff.added,
+          linesRemoved: diff.removed,
+          writtenFiles,
+          failedReason: reason,
+          evidenceRefs: evidenceStore.all(),
+        };
+      }
+
+      const sourceReadbacks = claimSpecs.length > 0
+        ? [...new Set(claimSpecs.map(spec => spec.sourcePath))].map((sourcePath, index) => evidenceStore.recordFileRead({
+          path: sourcePath,
+          content: fs.readFileSync(sourcePath, 'utf8'),
+          operationId: `source-readback-${attempt + 1}-${index + 1}`,
+        }))
+        : [];
+      const grounding = claimSpecs.length > 0
+        ? verifyArtifactClaims(claimSpecs, artifactEvidence, sourceReadbacks, taskContract.verificationContract)
+        : undefined;
+      if (grounding) {
+        verificationResults.push(grounding);
+        latestArtifactClaims = grounding.claims;
+      }
+      if (grounding && !grounding.ok) {
+        const feedback = formatClaimVerificationFeedback(grounding);
+        if (attempt === 0) {
+          await postMarkdownStatus(input, 'started', basename, {
+            title: '源码事实验证未通过，执行一次有界修复',
+            detail: `${relPath}\n${feedback}`,
+            diff,
+          });
+          const repaired = await generateProviderMarkdown(input, evidence, absPath, feedback);
+          if (repaired.aborted) {
+            return { applied: false, path: absPath, writtenFiles, failedReason: 'Markdown deliverable repair aborted', evidenceRefs: evidenceStore.all(), verificationResults };
+          }
+          if (repaired.markdown) {
+            markdown = ensureFormalInterfaceExamples(repaired.markdown, markdownPromptText) || repaired.markdown;
+            continue;
+          }
+        }
+        const reason = `artifact-grounding: ${grounding.differences.join('; ')}`;
+        await postMarkdownStatus(input, 'failed', basename, {
+          title: 'Markdown 源码事实验证失败',
+          detail: `${relPath} · ${grounding.differences.join('；')}`,
+          diff,
+        });
+        return {
+          applied: false,
+          path: absPath,
+          raw: `${verb} Markdown 文档，但源码事实未通过逐项验证：${relPath}`,
+          linesAdded: diff.added,
+          linesRemoved: diff.removed,
+          writtenFiles,
+          failedReason: reason,
+          evidenceRefs: evidenceStore.all(),
+          artifactClaims: grounding.claims,
+          verificationResults,
+        };
+      }
+
+      const providerNote = provider.markdown ? 'Provider 正文已通过完整性检查' : 'Provider 输出不可用，已使用本地证据兜底正文';
+      await postMarkdownStatus(input, 'started', basename, {
+        title: 'Markdown 文档已通过执行器验证，等待中央结算',
+        detail: `${relPath} · 已写入并读回验证；${claimSpecs.length} 项源码事实 claim 全部通过；${providerNote}；尚未发布完成态。`,
         diff,
       });
       return {
-        applied: false,
+        applied: true,
         path: absPath,
-        raw: [
-          `${verb} Markdown 建议文档：${relPath}`,
-          `本地证据文件：${evidence.files.length} 个`,
-          `质量门禁：${reason}`,
-        ].join('\n'),
+        raw: `${verb} Markdown 文档：${relPath}\n本地证据文件：${evidence.files.length} 个\n源码事实 claim：${claimSpecs.length} 项全部通过。`,
+        taskComplete: true,
         linesAdded: diff.added,
         linesRemoved: diff.removed,
         writtenFiles,
-        failedReason: reason,
+        evidenceRefs: evidenceStore.all(),
+        artifactClaims: grounding?.claims,
+        verificationResults,
       };
     }
-    const providerNote = provider.markdown ? 'Provider 正文已通过完整性检查' : 'Provider 输出不可用，已使用本地证据兜底正文';
-    await postMarkdownStatus(input, 'completed', basename, {
-      title: 'Markdown 文档已生成',
-      detail: `${relPath} · 已写入并读回验证；${providerNote}。`,
-      diff,
-    });
-    return {
-      applied: true,
-      path: absPath,
-      raw: [
-        `${verb} Markdown 建议文档：${relPath}`,
-        `本地证据文件：${evidence.files.length} 个`,
-        provider.markdown ? 'Provider 结果：已采用完整 Markdown 正文。' : `Provider 结果：${provider.reason || '不可用'}，已写入本地证据兜底正文。`,
-      ].join('\n'),
-      taskComplete: true,
-      linesAdded: diff.added,
-      linesRemoved: diff.removed,
-      writtenFiles,
-    };
+    return { applied: false, path: absPath, failedReason: 'artifact-grounding: bounded repair exhausted' };
   } catch (error) {
     await postMarkdownStatus(input, 'failed', basename, {
       title: 'Markdown 文档写入失败',
       detail: `${relPath}\n${(error as Error).message}`,
     });
-    return { applied: false, path: absPath, failedReason: (error as Error).message };
+    return {
+      applied: false,
+      path: absPath,
+      failedReason: (error as Error).message,
+      evidenceRefs: evidenceStore.all(),
+      artifactClaims: latestArtifactClaims,
+      verificationResults,
+    };
   }
 }
 
@@ -294,15 +424,16 @@ async function generateProviderMarkdown(
   input: MarkdownDeliverableTaskInput,
   evidence: EvidenceBundle,
   absPath: string,
+  verificationFeedback?: string,
 ): Promise<ProviderMarkdownResult> {
   try {
     const response = await input.chat([{
       role: 'user',
-      content: buildProviderPrompt(input, evidence, absPath),
+      content: buildProviderPrompt(input, evidence, absPath, verificationFeedback),
     }]);
     const integrity = classifyProviderOutputIntegrity(response);
-    const promptText = [input.userPrompt, input.task.desc].filter(Boolean).join('\n');
-    const normalized = ensureFormalInterfaceExamples(normalizeProviderMarkdown(response), promptText);
+    const promptText = combineUniquePromptParts(input.userPrompt, input.task.desc);
+    const normalized = ensureFormalInterfaceExamples(normalizeProviderMarkdown(response, promptText), promptText);
     if (normalized) {
       const formalQuality = assessFormalProjectDocumentQuality(
         normalized,
@@ -322,11 +453,14 @@ async function generateProviderMarkdown(
       };
     }
     return {
-      reason: describeProviderMarkdownRejection(response, integrity.kind),
+      reason: describeProviderMarkdownRejection(response, integrity.kind, promptText),
       responseChars: response.length,
       integrityKind: integrity.kind,
     };
   } catch (error) {
+    if (input.callbacks.signal?.aborted || (error as Error).name === 'AbortError') {
+      return { reason: 'Provider call aborted', aborted: true };
+    }
     return { reason: `Provider 调用失败：${(error as Error).message}` };
   }
 }
@@ -343,12 +477,23 @@ function resolveTargetAbsPath(input: MarkdownDeliverableTaskInput): string | und
   return nodePath.join(input.workspaceRoot.fsPath, ...normalized.split('/').filter(Boolean));
 }
 
-function collectMarkdownEvidence(userPrompt: string, workspaceRoot: string, targetAbsPath: string): EvidenceBundle {
-  const paths = extractExistingAbsolutePaths(userPrompt);
+function collectMarkdownEvidence(
+  userPrompt: string,
+  workspaceRoot: string,
+  targetAbsPath: string,
+  evidenceStore: EvidenceStore,
+): EvidenceBundle {
+  const paths = uniquePaths([
+    ...extractExistingAbsolutePaths(userPrompt),
+    ...resolveContractExistingPaths(userPrompt, workspaceRoot, targetAbsPath),
+  ]);
   const targetDir = nodePath.dirname(targetAbsPath);
   const requirementFiles = paths
     .filter(absPath => isFile(absPath) && isMarkdownPath(absPath))
     .slice(0, MAX_REQUIREMENT_FILES);
+  const explicitSourceFiles = paths
+    .filter(absPath => isFile(absPath) && shouldReadSourceFile(absPath) && !isMarkdownPath(absPath))
+    .filter(absPath => nodePath.normalize(absPath) !== nodePath.normalize(targetAbsPath));
   const sourceDirs = paths
     .filter(absPath => isDirectory(absPath))
     .filter(absPath => nodePath.normalize(absPath) !== nodePath.normalize(targetDir))
@@ -361,7 +506,7 @@ function collectMarkdownEvidence(userPrompt: string, workspaceRoot: string, targ
   const files: EvidenceFile[] = [];
   let remainingChars = MAX_TOTAL_EVIDENCE_CHARS;
   for (const absPath of requirementFiles) {
-    const loaded = readEvidenceFile(absPath, workspaceRoot, 'requirement', remainingChars);
+    const loaded = readEvidenceFile(absPath, workspaceRoot, 'requirement', remainingChars, evidenceStore);
     if (!loaded) continue;
     files.push(loaded);
     remainingChars -= loaded.content.length;
@@ -370,6 +515,7 @@ function collectMarkdownEvidence(userPrompt: string, workspaceRoot: string, targ
   const sourceFiles = uniquePaths(
     [
       ...communicationEvidence.files,
+      ...explicitSourceFiles,
       ...sourceDirs.flatMap(dir => collectSourceFiles(dir, SOURCE_DIR_DEPTH, MAX_EVIDENCE_FILES)),
     ],
   )
@@ -377,7 +523,7 @@ function collectMarkdownEvidence(userPrompt: string, workspaceRoot: string, targ
     .slice(0, Math.max(0, MAX_EVIDENCE_FILES - files.length));
 
   for (const absPath of sourceFiles) {
-    const loaded = readEvidenceFile(absPath, workspaceRoot, 'source', remainingChars);
+    const loaded = readEvidenceFile(absPath, workspaceRoot, 'source', remainingChars, evidenceStore);
     if (!loaded) continue;
     files.push(loaded);
     remainingChars -= loaded.content.length;
@@ -385,6 +531,64 @@ function collectMarkdownEvidence(userPrompt: string, workspaceRoot: string, targ
   }
 
   return { files, sourceDirs: uniquePaths([...sourceDirs, ...communicationEvidence.roots]) };
+}
+
+function resolveContractExistingPaths(
+  promptText: string,
+  workspaceRoot: string,
+  targetAbsPath: string,
+): string[] {
+  const contract = buildTaskContract(promptText);
+  const result: string[] = [];
+  for (const inputPath of contract.inputs) {
+    const absolute = nodePath.isAbsolute(inputPath)
+      ? nodePath.resolve(inputPath)
+      : nodePath.resolve(workspaceRoot, inputPath.replace(/^\.\//, ''));
+    if (nodePath.normalize(absolute) === nodePath.normalize(targetAbsPath)) continue;
+    if (fs.existsSync(absolute)) {
+      result.push(absolute);
+      continue;
+    }
+    if (!nodePath.isAbsolute(inputPath)) {
+      const uniqueMatch = findUniqueWorkspaceInputPath(workspaceRoot, inputPath);
+      if (uniqueMatch && nodePath.normalize(uniqueMatch) !== nodePath.normalize(targetAbsPath)) {
+        result.push(uniqueMatch);
+      }
+    }
+  }
+  return uniquePaths(result);
+}
+
+function findUniqueWorkspaceInputPath(workspaceRoot: string, requestedPath: string): string | undefined {
+  const requested = requestedPath.replace(/^\.\//, '').replace(/\\/g, '/');
+  const requestedBasename = nodePath.basename(requested);
+  const matches: string[] = [];
+  let visitedDirectories = 0;
+  const visit = (current: string, depth: number): void => {
+    if (matches.length > 1 || depth < 0 || visitedDirectories >= 2_000 || isExcludedPath(current)) return;
+    visitedDirectories += 1;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      if (matches.length > 1) return;
+      const absolute = nodePath.join(current, entry.name);
+      if (entry.isDirectory()) {
+        visit(absolute, depth - 1);
+        continue;
+      }
+      if (!entry.isFile() || entry.name !== requestedBasename) continue;
+      const relative = nodePath.relative(workspaceRoot, absolute).replace(/\\/g, '/');
+      if (requested.includes('/') && relative !== requested && !relative.endsWith(`/${requested}`)) continue;
+      matches.push(absolute);
+    }
+  };
+  visit(workspaceRoot, 8);
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 function extractExistingAbsolutePaths(text: string): string[] {
@@ -522,6 +726,7 @@ function readEvidenceFile(
   workspaceRoot: string,
   kind: EvidenceFile['kind'],
   remainingChars: number,
+  evidenceStore: EvidenceStore,
 ): EvidenceFile | undefined {
   if (remainingChars <= 0) return undefined;
   try {
@@ -536,14 +741,22 @@ function readEvidenceFile(
       kind,
       content,
       truncated: raw.length > limit,
+      evidenceRef: evidenceStore.recordFileRead({ path: absPath, content: raw }),
     };
   } catch {
     return undefined;
   }
 }
 
-function buildProviderPrompt(input: MarkdownDeliverableTaskInput, evidence: EvidenceBundle, absPath: string): string {
+function buildProviderPrompt(
+  input: MarkdownDeliverableTaskInput,
+  evidence: EvidenceBundle,
+  absPath: string,
+  verificationFeedback?: string,
+): string {
   const relTarget = displayPath(input.workspaceRoot.fsPath, absPath, input.task.file || nodePath.basename(absPath));
+  const promptText = combineUniquePromptParts(input.userPrompt, input.task.desc);
+  const contract = buildTaskContract(promptText);
   const evidenceText = evidence.files.length > 0
     ? evidence.files.map(file => [
       `### ${file.kind === 'requirement' ? '需求文档' : '旧实现'}: ${file.relPath}${file.truncated ? '（已截断）' : ''}`,
@@ -552,14 +765,33 @@ function buildProviderPrompt(input: MarkdownDeliverableTaskInput, evidence: Evid
       '```',
     ].join('\n')).join('\n\n')
     : '未读取到本地证据文件。';
+  const qualityInstructions = [
+    contract.evidenceRequirements.length > 0 && contract.verificationContract.exactClaimTable
+      ? '这是精确事实报告：第一行必须严格为“# 源码事实报告”；只允许这一个标题；唯一表格表头必须严格为“| Symbol | Value |”；除请求的源码路径行、请求的表格行和请求的精确代码块外，不得加入任何说明或额外事实。'
+      : '',
+    hasQualityObligation(contract, 'source-evidence')
+      ? '逐项引用用户要求的源码事实；常量、路径、数值和字段必须与本地证据原文完全一致，缺少证据时明确阻塞，不得猜测。'
+      : '',
+    hasQualityObligation(contract, 'protocol-facts')
+      ? '协议字段、topic、命令号、分片大小、超时和版本必须引用本地源码证据。'
+      : '',
+    hasQualityObligation(contract, 'interface-contract')
+      ? '按请求提供接口方向、承载通道、schema、错误处理和兼容规则；只有用户要求示例时才提供 request/response 示例。'
+      : '',
+    hasQualityObligation(contract, 'modification-plan')
+      ? '提供既有代码修改清单，包含目标文件、函数/类、原因、风险和验证方式。'
+      : '',
+    hasQualityObligation(contract, 'project-communication-chain')
+      ? '写清证据支持的项目级真实通讯链路和收发入口，不得只写“参考某模块”。'
+      : '',
+  ].filter(Boolean);
   return [
     '你是顶级编程智能体的文档交付模块。所有文件证据已经由本地运行时读取完毕。',
     '请只输出完整 Markdown 文档正文，不要请求工具，不要输出 [TOOL:...]、Calling、工具执行结果或代码块包裹整个文档。',
     '请使用真实 Markdown 排版：标题、元数据、列表、表格和代码块必须保留换行；不要输出网页复制控件文字，例如“复制”“下载”。',
-    '文档必须包含：需求差异、旧实现职责观察、实现对策、主控任务拆分、风险与验证建议、后续任务清单。',
-    '如果这是既有正式项目任务，文档还必须包含：源项目事实矩阵（文件路径、类/函数/常量、关键数值、协议字段、topic/命令号和复用方式）、面向遥控器/主控/平台的接口文档（方向、承载通道、消息类型、JSON/schema字段、必填/可选、枚举、分片/超时/重试/幂等/错误码、版本兼容、request JSON 示例和 response JSON 示例；示例必须使用标准 Markdown 三反引号代码块 ```json）、原有代码修改清单（文件、函数/类、改动内容、原因、风险、验证方式）。',
-    '如果用户要求参考既有通讯方式，必须写清项目级真实通讯链路：参考模块、uart*_tx/rx_main 或等价收发入口、TunnelTransport/分片组装、MAVLink tunnel、publisher/subscriber、topic/payload_type/命令号、路由调度和主流程调用点。',
-    '不能只写“参考某模块”；凡是引用 license、主控、遥控器、平台或 tunnel 方案，必须写出从证据中看到的具体常量、数值和字段。',
+    ...qualityInstructions,
+    verificationFeedback ? '这是唯一一次有界修复。必须修正下面列出的每一项差异，其他已验证内容保持不变。' : '',
+    verificationFeedback || '',
     `目标写入路径：${relTarget}`,
     '',
     '## 本文档交付目标',
@@ -573,17 +805,25 @@ function buildProviderPrompt(input: MarkdownDeliverableTaskInput, evidence: Evid
   ].join('\n');
 }
 
-function normalizeProviderMarkdown(text: string): string | undefined {
+function combineUniquePromptParts(...parts: Array<string | undefined>): string {
+  return [...new Set(parts.map(part => String(part || '').trim()).filter(Boolean))].join('\n');
+}
+
+function normalizeProviderMarkdown(text: string, promptText: string): string | undefined {
   const integrity = classifyProviderOutputIntegrity(text);
   if (!integrity.okForSettlement) return undefined;
   let trimmed = unwrapMarkdownFence(stripToolCallBlocks(text).trim());
   if (BAD_PROVIDER_REPORT_RE.test(trimmed)) return undefined;
   trimmed = normalizeProviderMarkdownDocumentText(trimmed);
-  if (trimmed.length < REPORT_MIN_CHARS) return undefined;
+  const contract = buildTaskContract(promptText);
+  const strictFactReport = contract.verificationContract.requireSourceClaimGrounding
+    && !!contract.verificationContract.exactClaimTable;
+  if (trimmed.length < (strictFactReport ? 1 : REPORT_MIN_CHARS)) return undefined;
   if (!/(?:^|\n)#{1,3}\s+\S/.test(trimmed)) {
     trimmed = `# Markdown 建议文档\n\n${trimmed}`;
   }
-  if (!hasAcceptableMarkdownDocumentShape(trimmed)) return undefined;
+  const minHeadingCount = contract.evidenceRequirements.length > 0 ? 1 : 2;
+  if (!hasAcceptableMarkdownDocumentShape(trimmed, { minHeadingCount })) return undefined;
   return ensureFinalNewline(trimmed);
 }
 
@@ -630,7 +870,11 @@ function extractBalancedJsonObject(text: string, startIndex: number): string | u
   return undefined;
 }
 
-function describeProviderMarkdownRejection(text: string, integrityKind: ProviderOutputIntegrityKind): string {
+function describeProviderMarkdownRejection(
+  text: string,
+  integrityKind: ProviderOutputIntegrityKind,
+  promptText: string,
+): string {
   const trimmed = normalizeProviderMarkdownDocumentText(unwrapMarkdownFence(stripToolCallBlocks(text).trim()));
   if (BAD_PROVIDER_REPORT_RE.test(trimmed)) {
     return `${integrityKind}: Provider 返回包含工具调用痕迹，不能作为最终 Markdown 文档。`;
@@ -638,7 +882,10 @@ function describeProviderMarkdownRejection(text: string, integrityKind: Provider
   if (hasProviderCopyControlArtifact(trimmed)) {
     return `${integrityKind}: Provider 返回包含网页复制控件残留，不能作为最终 Markdown 文档。`;
   }
-  if (trimmed.length < REPORT_MIN_CHARS) {
+  const contract = buildTaskContract(promptText);
+  const strictFactReport = contract.verificationContract.requireSourceClaimGrounding
+    && !!contract.verificationContract.exactClaimTable;
+  if (trimmed.length < (strictFactReport ? 1 : REPORT_MIN_CHARS)) {
     return `${integrityKind}: Provider 返回正文过短（${trimmed.length} 字符），不能作为完整交付物。`;
   }
   if (!hasAcceptableMarkdownDocumentShape(trimmed)) {

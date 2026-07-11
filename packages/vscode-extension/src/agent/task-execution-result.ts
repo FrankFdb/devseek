@@ -1,4 +1,5 @@
 import type { TerminalEvidence, WrittenFileEvidence } from './completion-evidence';
+import type { ArtifactClaim, EvidenceRef, VerificationResult } from './evidence-grounding';
 
 export interface TaskExecutionResult {
   applied: boolean;
@@ -11,6 +12,9 @@ export interface TaskExecutionResult {
   networkError?: boolean;
   failedReason?: string;
   terminalEvidence?: TerminalEvidence[];
+  evidenceRefs?: EvidenceRef[];
+  artifactClaims?: ArtifactClaim[];
+  verificationResults?: VerificationResult[];
 }
 
 export function withTaskTerminalEvidence<T extends Omit<TaskExecutionResult, 'terminalEvidence'>>(

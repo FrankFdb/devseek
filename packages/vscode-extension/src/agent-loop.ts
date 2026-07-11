@@ -60,12 +60,6 @@ import { chatViaProvider, chatWithMessages, consumeUserSteerMessages } from './a
 import { buildLocalRespondTaskMessage, buildToolsSuffix } from './agent/agent-prompt-builder';
 import { isNetworkError } from './agent/network-error';
 import {
-  buildAgenticHistoryText,
-  buildAgenticQualityGateForHistory,
-  type AgenticHistoryQualityGate,
-  type AgenticHistoryTodoStatus,
-} from './agent/agentic-history';
-import {
   classifyTerminalEvidenceCommand,
   coalesceWrittenFileEvidence,
   buildTerminalFailureRepairFeedback,
@@ -78,7 +72,7 @@ import { tryExecuteDeterministicCreateTask } from './agent/deterministic-task-ex
 import { tryExecuteMarkdownDeliverableTask } from './agent/markdown-deliverable-task';
 import {
   buildTaskTerminalFailureDetail,
-  withTaskTerminalEvidence,
+  withTaskTerminalEvidence as attachTaskTerminalEvidence,
   type TaskExecutionResult,
 } from './agent/task-execution-result';
 import { createTaskConvergenceGuard } from './agent/task-convergence-guard';
@@ -109,6 +103,14 @@ import { buildTaskShapeGuidancePrompt } from './agent/task-shape';
 import { VerificationPlanner } from './app/verification-planner';
 import { ValidationService } from './workspace/validation-service';
 import type { ExecutionMode } from './intent/intent-types';
+import { ArtifactGroundingCollector } from './agent/artifact-grounding-lifecycle';
+import { buildAgentLoopResult } from './agent/agent-loop-result';
+import {
+  collectToolReadEvidence,
+  ToolReadEvidenceRecorder,
+  withToolReadEvidence,
+} from './agent/tool-read-evidence';
+// buildAgenticHistoryText composition lives behind buildAgentLoopResult's history boundary.
 
 // ----------------------------------------------------------------
 // Reporter types (passed in from extension.ts)
@@ -776,11 +778,17 @@ async function executeTask(
   history?: ChatMessage[],
   analysisContext?: string,
   newSession = false,
+  readEvidenceRecorder?: ToolReadEvidenceRecorder,
 ): Promise<TaskExecutionResult> {
   const basename = getAgentTaskDisplayTarget(task);
   const taskToolCallbacks: AgentLoopCallbacks = { ...callbacks, onTodoUpdate: undefined };
   let firstCall = true;
   const consumeNewSession = () => { const ns = firstCall && newSession; firstCall = false; return ns; };
+  const taskReadEvidence: import('./agent/evidence-grounding').EvidenceRef[] = [];
+  const withTaskTerminalEvidence = <T extends Omit<TaskExecutionResult, 'terminalEvidence'>>(
+    result: T,
+    evidence: TerminalEvidence[],
+  ) => withToolReadEvidence(attachTaskTerminalEvidence(result, evidence), taskReadEvidence);
 
   await callbacks.onAgentStatus({
     type: 'agentStatus',
@@ -939,13 +947,14 @@ async function executeTask(
         lastAnalyzeRoundText = text;
         execMessages.push({ role: 'assistant', content: text });
         // Pass analyzeWorkdir so run_terminal defaults to task directory when AI omits workdir.
-        const loopRes = await executeFakeToolsForLoop(tools, taskToolCallbacks, analyzeWorkdir, {
+        const loopRes = collectToolReadEvidence(taskReadEvidence, await executeFakeToolsForLoop(tools, taskToolCallbacks, analyzeWorkdir, {
           currentTaskIndex: taskIndex,
           taskTotal: allTasks.length,
           deferDoneStatus: true,
           userPrompt,
           workspaceRoot: workspaceRoot.fsPath,
-        });
+          readEvidenceRecorder,
+        }));
         if (loopRes.terminalEvidence?.length) {
           taskTerminalEvidence.push(...loopRes.terminalEvidence);
         }
@@ -1266,13 +1275,14 @@ async function executeTask(
       taskMessages.push({ role: 'assistant', content: text });
       raw = text;
 
-      const loopRes = await executeFakeToolsForLoop(tools, taskToolCallbacks, editorWorkdir, {
+      const loopRes = collectToolReadEvidence(taskReadEvidence, await executeFakeToolsForLoop(tools, taskToolCallbacks, editorWorkdir, {
         currentTaskIndex: taskIndex,
         taskTotal: allTasks.length,
         deferDoneStatus: true,
         userPrompt,
         workspaceRoot: workspaceRoot.fsPath,
-      });
+        readEvidenceRecorder,
+      }));
       if (loopRes.terminalEvidence?.length) {
         taskTerminalEvidence.push(...loopRes.terminalEvidence);
       }
@@ -1505,13 +1515,14 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
     try {
       const { text: rText, tools: rTools } = await chatViaProvider(retryPrompt, mode, undefined, history, callbacks.signal, false, callbacks.traceRunId, callbacks.traceWorkspaceRoot);
       retryRaw = rText;
-      await executeFakeToolsForLoop(rTools, taskToolCallbacks, editorWorkdir, {
+      collectToolReadEvidence(taskReadEvidence, await executeFakeToolsForLoop(rTools, taskToolCallbacks, editorWorkdir, {
         currentTaskIndex: taskIndex,
         taskTotal: allTasks.length,
         deferDoneStatus: true,
         userPrompt,
         workspaceRoot: workspaceRoot.fsPath,
-      });
+        readEvidenceRecorder,
+      }));
     } catch { /* retry failed, fall through */ }
 
     if (retryRaw) {
@@ -1936,6 +1947,8 @@ export async function runAgentLoop(
   // Accumulate analysis text from read-only tasks to return as analysisText (for findings injection)
   const analysisTexts: string[] = [];
   const allTerminalEvidence: TerminalEvidence[] = [];
+  const artifactGrounding = new ArtifactGroundingCollector(callbacks, workspaceRoot.fsPath);
+  const readEvidenceRecorder = new ToolReadEvidenceRecorder(workspaceRoot.fsPath, callbacks.traceRunId);
   // Each task starts from a clean DeepSeek web conversation. The current task
   // context is carried explicitly through `sessionHistory`, avoiding stale
   // browser-side conversations from previous sessions.
@@ -1967,7 +1980,9 @@ export async function runAgentLoop(
       sessionHistory.length > 0 ? [...sessionHistory] : undefined,
       analysisContext,
       needsNewSession,
+      readEvidenceRecorder,
     );
+    const taskGrounding = artifactGrounding.captureTask(userPrompt, result);
     needsNewSession = true;
 
     // ── Network-error detection: save checkpoint and abort loop ──────────
@@ -1976,7 +1991,8 @@ export async function runAgentLoop(
     // remaining tasks — they will all fail for the same reason.
     // Save a checkpoint so the user can resume from this task after reconnecting.
     if (result.networkError) {
-      await callbacks.onTaskCheckpoint?.(i, tasks.slice(i), 'paused');
+      const retryIndex = taskTodoLedger.firstUnfinishedTaskIndex() ?? i;
+      await callbacks.onTaskCheckpoint?.(retryIndex, tasks.slice(retryIndex), 'paused');
       const providerInterrupted = Boolean(result.failedReason && /^RESPONSE_CORRUPTED:/i.test(result.failedReason));
       const failedReason = `${providerInterrupted ? 'Provider 响应中断' : '网络中断'}，已在第 ${i + 1}/${tasks.length} 个任务暂停。`;
       await callbacks.onAgentStatus({
@@ -1997,6 +2013,7 @@ export async function runAgentLoop(
         workspaceRoot: workspaceRoot.fsPath,
         failedReason,
         analysisTexts,
+        ...artifactGrounding.resultFields(),
       });
     }
 
@@ -2018,6 +2035,7 @@ export async function runAgentLoop(
       failedReason: result.failedReason,
       terminalEvidence: result.terminalEvidence,
       workspaceRoot: workspaceRoot.fsPath,
+      ...taskGrounding,
     };
     if (result.terminalEvidence?.length) {
       allTerminalEvidence.push(...result.terminalEvidence);
@@ -2049,7 +2067,10 @@ export async function runAgentLoop(
     const taskSettlement = taskTodoLedger.settleTask(i, taskSettlementInput);
     if (taskSettlement.failed) {
       tasksFailed += 1;
-      await callbacks.onAgentStatus(buildTaskSettlementFailureStatus(task, i + 1, tasks.length, taskSettlementInput));
+      await callbacks.onAgentStatus(buildTaskSettlementFailureStatus(task, i + 1, tasks.length, {
+        ...taskSettlementInput,
+        failedReason: taskSettlement.failedReason || taskSettlementInput.failedReason,
+      }));
       if (isReadOnlyAction(task.action)) {
         sessionHistory.push({
           role: 'assistant',
@@ -2081,10 +2102,11 @@ export async function runAgentLoop(
       await callbacks.onResponseMeta(result.raw);
     }
 
-    // Update checkpoint after each successful task so a future network error
-    // only re-runs from the NEXT task, not from the beginning.
+    // Preserve the earliest failed/unfinished task. A later successful task must
+    // never advance the resumable checkpoint past an earlier failure.
     if (i + 1 < tasks.length) {
-      await callbacks.onTaskCheckpoint?.(i + 1, tasks.slice(i + 1), 'progress');
+      const checkpointIndex = taskTodoLedger.firstUnfinishedTaskIndex() ?? (i + 1);
+      await callbacks.onTaskCheckpoint?.(checkpointIndex, tasks.slice(checkpointIndex), 'progress');
     }
 
     // task_complete from the AI means "I finished this task".
@@ -2098,9 +2120,6 @@ export async function runAgentLoop(
       // Intermediate task: advance to the next task automatically.
     }
   }
-
-  // All tasks completed — clear the checkpoint (null signals "done, nothing to resume").
-  await callbacks.onTaskCheckpoint?.(null, [], 'completed');
 
   // Compile validation must be evidence-backed. Planned task targets may point at
   // old files even when the model artifact was not applied, which would turn a
@@ -2165,10 +2184,13 @@ export async function runAgentLoop(
         sessionHistory.length > 0 ? [...sessionHistory] : undefined,
         repairContext,
         true,
+        readEvidenceRecorder,
       );
+      artifactGrounding.captureTask(userPrompt, repairResult);
 
       if (repairResult.networkError) {
-        await callbacks.onTaskCheckpoint?.(tasks.length, [], 'paused');
+        const retryIndex = taskTodoLedger.firstUnfinishedTaskIndex() ?? tasks.length;
+        await callbacks.onTaskCheckpoint?.(retryIndex, tasks.slice(retryIndex), 'paused');
         const providerInterrupted = Boolean(repairResult.failedReason && /^RESPONSE_CORRUPTED:/i.test(repairResult.failedReason));
         const failedReason = `${providerInterrupted ? 'Provider 响应中断' : '网络中断'}，验证修复第 ${repairRound} 轮暂停。`;
         await callbacks.onAgentStatus({
@@ -2191,6 +2213,7 @@ export async function runAgentLoop(
           workspaceRoot: workspaceRoot.fsPath,
           failedReason,
           analysisTexts,
+          ...artifactGrounding.resultFields(),
         });
       }
 
@@ -2254,6 +2277,13 @@ export async function runAgentLoop(
 
   void hadTaskComplete;
   const finalFailed = tasksFailed + (validationFailed ? 1 : 0);
+  if (finalFailed === 0) {
+    await callbacks.onTaskCheckpoint?.(null, [], 'completed');
+  } else {
+    const retryIndex = taskTodoLedger.firstUnfinishedTaskIndex()
+      ?? Math.max(0, tasks.length - 1);
+    await callbacks.onTaskCheckpoint?.(retryIndex, tasks.slice(retryIndex), 'paused');
+  }
   await callbacks.onAgentStatus({
     type: 'agentStatus',
     phase: 'done',
@@ -2295,6 +2325,7 @@ export async function runAgentLoop(
       : undefined,
     manualReviewReason,
     analysisTexts,
+    ...artifactGrounding.resultFields(),
   });
 }
 
@@ -2354,82 +2385,6 @@ function buildAgentLoopHistoryFailedReason(input: {
   }
   if (input.tasksFailed > 0) return `${input.tasksFailed} 个子任务缺少完成证据或执行失败。`;
   return undefined;
-}
-
-function buildAgentLoopResult(input: {
-  tasks: AgentTask[];
-  tasksApplied: number;
-  tasksFailed: number;
-  changedPaths: string[];
-  userPrompt: string;
-  todos: Array<{ id: number | string; title: string; status: string }>;
-  editedFileRecords: WrittenFileEvidence[];
-  terminalEvidence: TerminalEvidence[];
-  workspaceRoot: string;
-  failedReason?: string;
-  summary?: string;
-  manualReviewReason?: string;
-  analysisTexts?: string[];
-}): AgentLoopResult {
-  const historyWrittenFiles = coalesceEditedFileRecordsForHistory(input.editedFileRecords, input.workspaceRoot);
-  const historyQualityGate: AgenticHistoryQualityGate | undefined = input.manualReviewReason
-    ? buildManualReviewQualityGate(input.manualReviewReason, input.terminalEvidence)
-    : buildAgenticQualityGateForHistory({
-      failedReason: input.failedReason,
-      writtenFiles: historyWrittenFiles,
-      terminalEvidence: input.terminalEvidence,
-    });
-  const historyText = buildAgenticHistoryText({
-    label: 'Agent',
-    countLabel: `${input.tasksApplied}/${input.tasks.length} 个任务`,
-    userPrompt: input.userPrompt,
-    roundCount: input.tasks.length,
-    completed: input.tasksFailed === 0,
-    failedReason: input.failedReason,
-    summary: input.summary,
-    todos: input.todos.map(todo => ({
-      id: typeof todo.id === 'number' ? todo.id : undefined,
-      title: todo.title,
-      status: normalizeHistoryTodoStatus(todo.status),
-    })),
-    writtenFiles: historyWrittenFiles,
-    terminalEvidence: input.terminalEvidence,
-    qualityGate: historyQualityGate,
-    workspaceRoot: input.workspaceRoot,
-  });
-
-  return {
-    tasksTotal: input.tasks.length,
-    tasksApplied: input.tasksApplied,
-    tasksFailed: input.tasksFailed,
-    changedPaths: input.changedPaths,
-    ...(input.manualReviewReason ? {
-      manualReviewRequired: true,
-      manualReviewReason: input.manualReviewReason,
-    } : {}),
-    // G6: return collected analysis text so extension.ts can use it for findings injection
-    ...(input.analysisTexts?.length ? { analysisText: input.analysisTexts.join('\n\n') } : {}),
-    historyText,
-  };
-}
-
-function buildManualReviewQualityGate(
-  reason: string,
-  terminalEvidence: TerminalEvidence[],
-): AgenticHistoryQualityGate {
-  const latest = terminalEvidence[terminalEvidence.length - 1];
-  const qualityGate: AgenticHistoryQualityGate = {
-    status: 'blocked',
-    summary: `QualityGate 阻塞：${reason}`,
-    risks: ['图形或交互式运行结果无法由退出码自动证明，不能自动接受文件改动。'],
-    alternativeChecks: ['人工确认图形窗口、界面或交互输出是否符合用户请求。'],
-    requiredActions: ['确认效果后手动保留文件改动；如效果不符，继续发起修正。'],
-  };
-  if (latest) {
-    const code = latest.exitCode === null || latest.exitCode === undefined ? 'null' : String(latest.exitCode);
-    qualityGate.evidenceRefs = [`terminal:review:${latest.kind}:exitCode=${code}:${latest.command}`];
-  }
-  return qualityGate;
 }
 
 function buildWrittenFileEvidence(
@@ -2526,23 +2481,4 @@ function countByValue(values: string[]): Map<string, number> {
 
 function normalizePathForSet(filePath: string, workspaceRoot: string): string {
   return nodePath.normalize(nodePath.isAbsolute(filePath) ? filePath : nodePath.join(workspaceRoot, filePath));
-}
-
-function coalesceEditedFileRecordsForHistory(
-  records: WrittenFileEvidence[],
-  workspaceRoot: string,
-): WrittenFileEvidence[] {
-  const absoluteRecords = records.map(record => ({
-    ...record,
-    path: nodePath.isAbsolute(record.path)
-      ? record.path
-      : nodePath.join(workspaceRoot, record.path),
-  }));
-  return coalesceWrittenFileEvidence(absoluteRecords, workspaceRoot);
-}
-
-function normalizeHistoryTodoStatus(status: string): AgenticHistoryTodoStatus {
-  return status === 'completed' || status === 'failed' || status === 'in-progress'
-    ? status
-    : 'not-started';
 }

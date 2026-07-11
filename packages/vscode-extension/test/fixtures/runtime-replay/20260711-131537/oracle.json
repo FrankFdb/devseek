@@ -1,0 +1,56 @@
+{
+  "runId": "20260711-131537",
+  "claims": {
+    "kTopicLicenseState": "/uav/license/state",
+    "kTopicLicenseTunnelRx": "/uav/license/tunnel/rx",
+    "kMavTunnelCmdLicense": 33007,
+    "kTunnelVersion": 1,
+    "kTunnelMaxTotalLen": 65536,
+    "kTunnelSessionTimeoutMs": 5000
+  },
+  "claimResults": [
+    {
+      "symbol": "kTopicLicenseState",
+      "expected": "/uav/license/state",
+      "observed": "/uav/dt/license/state",
+      "validator": "exact",
+      "status": "mismatch"
+    },
+    {
+      "symbol": "kTopicLicenseTunnelRx",
+      "expected": "/uav/license/tunnel/rx",
+      "observed": "/uav/dt/license/tunnel/rx",
+      "validator": "exact",
+      "status": "mismatch"
+    },
+    {
+      "symbol": "kMavTunnelCmdLicense",
+      "expected": 33007,
+      "observed": 300,
+      "validator": "numeric",
+      "status": "mismatch"
+    },
+    {
+      "symbol": "kTunnelVersion",
+      "expected": 1,
+      "observed": 1,
+      "validator": "numeric",
+      "status": "verified"
+    },
+    {
+      "symbol": "kTunnelMaxTotalLen",
+      "expected": 65536,
+      "observed": 81920,
+      "validator": "numeric",
+      "status": "mismatch"
+    },
+    {
+      "symbol": "kTunnelSessionTimeoutMs",
+      "expected": 5000,
+      "observed": 30000,
+      "validator": "numeric",
+      "status": "mismatch"
+    }
+  ],
+  "wrongArtifactExpectedFailures": 5
+}

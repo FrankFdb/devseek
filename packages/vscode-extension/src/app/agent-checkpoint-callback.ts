@@ -1,0 +1,64 @@
+import type { AgentTask } from '../agent-task-decomposer';
+import type { AgentLoopCallbacks } from '../agent/loop-types';
+import type { TaskCheckpointRecord } from './task-checkpoint-store';
+
+interface AgentCheckpointCallbackInput {
+  userPrompt: string;
+  displayPrompt: string;
+  mode?: 'fast' | 'r1';
+  workspaceRoot: string;
+  sessionId: string;
+  save: (checkpoint: TaskCheckpointRecord<AgentTask> | null) => Promise<void>;
+  postMessage: (message: Record<string, unknown>) => void;
+}
+
+export function createAgentCheckpointCallback(
+  input: AgentCheckpointCallbackInput,
+): NonNullable<AgentLoopCallbacks['onTaskCheckpoint']> {
+  return async (firstUnfinishedIndex, remainingTasks, reason = 'progress') => {
+    if (firstUnfinishedIndex === null) {
+      await input.save(null);
+      input.postMessage({ type: 'agentCheckpointCleared' });
+      return;
+    }
+    const pendingTasks = [...remainingTasks];
+    if (pendingTasks.length === 0) {
+      await input.save(null);
+      input.postMessage({ type: 'agentCheckpointCleared' });
+      return;
+    }
+    const completedBeforePending = Math.max(0, Math.trunc(firstUnfinishedIndex));
+    const savedAt = Date.now();
+    const pauseReason = reason === 'paused'
+      ? `Agent execution paused with ${pendingTasks.length} unfinished task(s).`
+      : undefined;
+    await input.save({
+      userPrompt: input.userPrompt,
+      displayPrompt: input.displayPrompt,
+      mode: input.mode,
+      wsRootFsPath: input.workspaceRoot,
+      // The callback receives a global first-unfinished index together with a
+      // pending-only task slice. Rebase the persisted queue so every stored
+      // index is relative to `allTasks`; otherwise late checkpoints are
+      // normalized as already complete and discarded by TaskCheckpointStore.
+      allTasks: pendingTasks,
+      startFromIndex: 0,
+      completedCount: 0,
+      savedAt,
+      sessionId: input.sessionId,
+      ...(pauseReason ? { pauseReason } : {}),
+    });
+    if (reason === 'paused') {
+      input.postMessage({
+        type: 'agentCheckpointAvailable',
+        // UI progress remains in the original task coordinate space. Resume
+        // itself uses the rebased pending queue persisted above.
+        resumeTaskIndex: completedBeforePending,
+        totalTasks: completedBeforePending + pendingTasks.length,
+        userPrompt: input.displayPrompt,
+        savedAt,
+        pauseReason,
+      });
+    }
+  };
+}

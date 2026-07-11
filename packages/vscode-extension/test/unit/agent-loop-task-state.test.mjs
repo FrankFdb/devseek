@@ -9,10 +9,12 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -24,10 +26,16 @@ const bridgeProvider = readFileSync(path.join(rootDir, 'src/llm/providers/bridge
 const replayDiagnostics = readFileSync(path.join(rootDir, 'src/diagnostics/run-log-replay.ts'), 'utf8');
 const taskTodoLedger = readFileSync(path.join(rootDir, 'src/agent/task-todo-ledger.ts'), 'utf8');
 const bundlePath = path.join(rootDir, 'test/unit/task-state-machine.bundle.cjs');
+const groundingBundlePath = path.join(rootDir, 'test/unit/task-state-grounding.bundle.cjs');
 
 execSync(
   `npx esbuild src/agent/task-state-machine.ts --bundle ` +
   `--outfile=${bundlePath} --format=cjs --platform=node --external:vscode`,
+  { cwd: rootDir, stdio: 'pipe' },
+);
+execSync(
+  `npx esbuild src/agent/evidence-grounding.ts --bundle ` +
+  `--outfile=${groundingBundlePath} --format=cjs --platform=node`,
   { cwd: rootDir, stdio: 'pipe' },
 );
 
@@ -42,12 +50,22 @@ const {
   settleMissingEvidenceTodos,
   summarizeAgentTodoTitle,
 } = req(bundlePath);
+const {
+  EvidenceStore,
+  deriveArtifactClaimSpecs,
+  verifyArtifactClaims,
+} = req(groundingBundlePath);
 
 test('two-phase agent todos are delegated to the task state machine boundary', () => {
   assert.match(agentLoop, /from '\.\/agent\/task-state-machine'/, 'agent-loop must use the task state machine boundary');
   assert.match(agenticLoop, /from '\.\/task-state-machine'/, 'agentic-loop must use the task state machine boundary');
   assert.match(simpleFileTask, /from '\.\/task-state-machine'/, 'simple-file-task must use the task state machine boundary');
   assert.match(agentLoop, /createAgentTaskTodoLedger/, 'agent-loop must use the task state machine boundary');
+  assert.match(
+    agentLoop,
+    /taskTodoLedger\.firstUnfinishedTaskIndex\(\)/,
+    'agent-loop checkpoints must resume from the earliest failed or unfinished task',
+  );
   assert.match(agenticLoop, /settleValidationFailureTodos/, 'agentic loop must route validation-failure todo updates through task state machine');
   assert.match(agenticLoop, /completeAgentTodos/, 'agentic loop success settlement must use the task state machine boundary');
   assert.match(agenticLoop, /settleMissingEvidenceTodos/, 'agentic loop missing-evidence settlement must use the task state machine boundary');
@@ -60,6 +78,9 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
   assert.match(agentLoop, /completeFromTaskToolWrite\(loopRes\.taskComplete\)/, 'matching tool writes must complete the current mutating task');
   assert.match(agentLoop, /onTodoUpdate:\s*undefined/, 'nested editor tool loops must not publish model todos directly');
   assert.match(agentLoop, /executeFakeToolsForLoop\(tools,\s*taskToolCallbacks,/, 'editor tool loops must use the todo-suppressed callback boundary');
+  assert.match(agentLoop, /new ToolReadEvidenceRecorder\(workspaceRoot\.fsPath, callbacks\.traceRunId\)/, 'one recorder must span every task and repair round in a run');
+  assert.equal((agentLoop.match(/collectToolReadEvidence\(taskReadEvidence, await executeFakeToolsForLoop/g) ?? []).length, 3, 'analyze, editor, and retry tool rounds must all retain read evidence');
+  assert.match(agentLoop, /const taskGrounding = artifactGrounding\.captureTask\(userPrompt, result\)/, 'two-phase task evidence must reach top-level settlement');
   assert.match(agentLoop, /buildTaskSettlementFailureStatus/, 'ledger settlement failures must override optimistic task status');
   assert.match(agentLoop, /applyGeneratedArtifactPathWithPrompt/, 'editor fallback must apply only the current task target file');
   assert.match(agentLoop, /async function executeTask\([\s\S]*?changedPaths: string\[\]/, 'executeTask must receive changedPaths explicitly instead of closing over an undefined outer variable');
@@ -204,6 +225,31 @@ test('task todo ledger: starting later task preserves previous failed evidence',
 
   assert.equal(todos[0].status, 'failed');
   assert.equal(todos[1].status, 'in-progress');
+});
+
+test('task todo ledger: checkpoint index stays on the earliest failed task after later completion', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'first.cpp', 'modify', '修改第一项'),
+    task('2', '', 'respond', '返回第二项结论'),
+  ]);
+
+  ledger.startTask(0);
+  const failedFirst = ledger.settleTask(0, {
+    action: 'modify',
+    applied: false,
+    taskComplete: true,
+  });
+  assert.equal(failedFirst.failed, true);
+
+  ledger.startTask(1);
+  const completedSecond = ledger.settleTask(1, {
+    action: 'respond',
+    raw: '结论：第二项已基于本地安全边界完成。',
+    taskComplete: true,
+  });
+  assert.equal(completedSecond.completed, true);
+  assert.equal(ledger.firstUnfinishedTaskIndex(), 0);
+  assert.deepEqual(ledger.snapshot().map(item => item.status), ['failed', 'completed']);
 });
 
 test('task todo ledger: validation failure preserves existing failures', () => {
@@ -619,6 +665,81 @@ test('task todo ledger: full markdown advisory report completes read-only tasks'
   assert.equal(settled.todos[0].status, 'completed');
 });
 
+test('task todo ledger: read-only source-fact answers settle without an artifact VerificationResult', () => {
+  const sourcePath = '/workspace/include/license_types.hpp';
+  const sourceFactPrompt = [
+    `只分析 ${sourcePath}，提取 kAlpha、kBeta 的真实值并在回复中说明。`,
+    '不要创建报告，不要修改或写入任何文件。',
+  ].join('\n');
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'include/license_types.hpp', 'analyze', sourceFactPrompt),
+  ]);
+
+  ledger.startTask(0);
+  const settled = ledger.settleTask(0, {
+    action: 'analyze',
+    raw: [
+      '# 源码事实问答',
+      '',
+      '## 结论',
+      'kAlpha 的真实值为 1，kBeta 的真实值为 2；两个结果均来自目标头文件中的常量定义。',
+      '',
+      '## 逐项依据',
+      '- kAlpha：定义表达式归一化后的十进制值是 1。',
+      '- kBeta：定义表达式归一化后的十进制值是 2。',
+      '',
+      '## 边界',
+      '本次仅回答源码事实，没有创建报告，也没有修改或写入任何项目文件。',
+    ].join('\n'),
+    taskComplete: true,
+    workspaceRoot: '/workspace',
+  });
+
+  assert.equal(settled.completed, true);
+  assert.equal(settled.failed, false);
+  assert.equal(settled.todos[0].status, 'completed');
+});
+
+test('task todo ledger: unresolved fact reports fail closed but source-informed code edits do not become report contracts', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-grounding-contract-kind-'));
+  const source = path.join(root, 'config.hpp');
+  const report = path.join(root, 'report.md');
+  const code = path.join(root, 'foo.ts');
+  writeFileSync(source, 'constexpr int kMax = 7;\n');
+  writeFileSync(report, '# report\n');
+  writeFileSync(code, 'export const max = 7;\n');
+  try {
+    const unresolvedPrompt = `读取 ${source}，提取真实配置值并创建 Markdown 报告 ${report}。`;
+    const reportLedger = createAgentTaskTodoLedger([task('report', report, 'create', unresolvedPrompt)]);
+    reportLedger.startTask(0);
+    const reportSettlement = reportLedger.settleTask(0, {
+      action: 'create',
+      applied: true,
+      path: report,
+      writtenFiles: [writeEvidence(report, 'create')],
+      taskComplete: true,
+      workspaceRoot: root,
+    });
+    assert.equal(reportSettlement.failed, true);
+    assert.match(reportSettlement.failedReason || '', /未解析出明确 claim symbol/);
+
+    const editPrompt = `读取 ${source}，提取 kMax 的真实值并据此修改 ${code}。`;
+    const editLedger = createAgentTaskTodoLedger([task('edit', code, 'modify', editPrompt)]);
+    editLedger.startTask(0);
+    const editSettlement = editLedger.settleTask(0, {
+      action: 'modify',
+      applied: true,
+      path: code,
+      writtenFiles: [writeEvidence(code, 'modify')],
+      taskComplete: true,
+      workspaceRoot: root,
+    });
+    assert.equal(editSettlement.failed, false, editSettlement.failedReason);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('task todo ledger: build-only terminal evidence cannot complete a run task', () => {
   const ledger = createAgentTaskTodoLedger([
     task('1', 'shape_manager', 'analyze', '使用 run_terminal 执行 cmake 编译并运行程序验证 X11 图形显示'),
@@ -684,6 +805,347 @@ test('task todo ledger: successful runtime evidence is completion evidence witho
   assert.equal(settled.todos[0].status, 'completed');
 });
 
+test('task todo ledger: source-claim reports reject EvidenceRef workspaceRoot reanchoring and keep failures sticky', () => {
+  const tempRoot = mkdtempSync(path.join(tmpdir(), 'devseek-grounding-ledger-'));
+  const sourcePath = path.join(tempRoot, 'source.hpp');
+  const reportPath = path.join(tempRoot, 'report.md');
+  const sourceContent = 'inline constexpr int kAlpha = 1;\ninline constexpr int kBeta = 2;\n';
+  const reportContent = '# 源码事实报告\n\n| Symbol | Value |\n| --- | --- |\n| kAlpha | 1 |\n| kBeta | 2 |\n';
+  writeFileSync(sourcePath, sourceContent);
+  writeFileSync(reportPath, reportContent);
+  const sourceHash = hashText(sourceContent);
+  const artifactHash = hashText(reportContent);
+  const prompt = `读取 ${sourcePath}，提取 kAlpha、kBeta 的真实值，只创建一个 Markdown 报告 ${reportPath}，包含 2 行表格并重新读取`;
+  const reportTask = { id: 'facts', file: reportPath, action: 'create', desc: prompt, absPath: reportPath };
+  const writtenFiles = [writeEvidence(reportPath, 'create')];
+  const ledger = createAgentTaskTodoLedger([reportTask]);
+  ledger.startTask(0);
+
+  const missing = ledger.settleTask(0, {
+    action: 'create',
+    applied: true,
+    path: reportPath,
+    writtenFiles,
+    promptText: prompt,
+    taskComplete: true,
+  });
+  assert.equal(missing.failed, true);
+  assert.match(missing.failedReason || '', /缺少 2 项源码事实/);
+
+  const promptShadowLedger = createAgentTaskTodoLedger([reportTask]);
+  promptShadowLedger.startTask(0);
+  const promptShadow = promptShadowLedger.settleTask(0, {
+    action: 'create',
+    applied: true,
+    path: reportPath,
+    writtenFiles,
+    promptText: 'create report',
+    taskComplete: true,
+  });
+  assert.equal(promptShadow.failed, true);
+  assert.match(promptShadow.failedReason || '', /缺少 2 项源码事实/);
+
+  const failedVerification = verificationResult(false, [
+    claim('kAlpha', 'verified', sourcePath, sourceHash, reportPath),
+    claim('kBeta', 'mismatch', sourcePath, sourceHash, reportPath),
+  ], reportPath, artifactHash);
+  const mismatch = ledger.settleTask(0, {
+    action: 'create',
+    applied: true,
+    path: reportPath,
+    writtenFiles,
+    promptText: prompt,
+    taskComplete: true,
+    verificationResults: [failedVerification],
+  });
+  assert.equal(mismatch.failed, true);
+  assert.match(mismatch.failedReason || '', /kBeta mismatch/);
+
+  const reconciled = ledger.reconcileFinalEvidence({ writtenFiles, workspaceRoot: tempRoot });
+  assert.equal(reconciled.clearedFailures, 0);
+  assert.equal(reconciled.todos[0].status, 'failed');
+
+  const groundingStore = new EvidenceStore(tempRoot, 'ledger-grounding');
+  const sourceRef = groundingStore.recordFileRead({ path: sourcePath, content: sourceContent });
+  const specs = deriveArtifactClaimSpecs([
+    { symbol: 'kAlpha', sourcePath },
+    { symbol: 'kBeta', sourcePath },
+  ], [sourceRef]);
+  const artifactRef = groundingStore.recordFileRead({ path: reportPath, content: reportContent, kind: 'artifact-readback' });
+  const sourceReadback = groundingStore.recordFileRead({ path: sourcePath, content: sourceContent });
+  const passingResult = verifyArtifactClaims(specs, artifactRef, [sourceReadback], {
+    exactClaimTable: { symbols: ['kAlpha', 'kBeta'], rowCount: 2, forbidAdditionalRows: true },
+    requireArtifactReadback: true,
+  });
+  const evidenceRefs = groundingStore.all();
+
+  const forgedLedger = createAgentTaskTodoLedger([reportTask]);
+  forgedLedger.startTask(0);
+  const forged = forgedLedger.settleTask(0, {
+    action: 'create',
+    applied: true,
+    path: reportPath,
+    writtenFiles,
+    promptText: prompt,
+    taskComplete: true,
+    verificationResults: [passingResult],
+  });
+  assert.equal(forged.failed, true);
+  assert.match(forged.failedReason || '', /EvidenceRef/);
+
+  const freshLedger = createAgentTaskTodoLedger([reportTask]);
+  freshLedger.startTask(0);
+  const passed = freshLedger.settleTask(0, {
+    action: 'create',
+    applied: true,
+    path: reportPath,
+    writtenFiles,
+    workspaceRoot: tempRoot,
+    promptText: prompt,
+    taskComplete: true,
+    evidenceRefs,
+    verificationResults: [passingResult],
+  });
+  assert.equal(passed.completed, true);
+  assert.equal(passed.failed, false);
+
+  const malformedReportContent = '# 源码事实报告\n\n| Symbol | Value |\n| --- | --- |\n| kAlpha | `1 |\n| kBeta | 2 |\n';
+  writeFileSync(reportPath, malformedReportContent);
+  const malformedStore = new EvidenceStore(tempRoot, 'ledger-malformed-delimiter');
+  const malformedSource = malformedStore.recordFileRead({ path: sourcePath, content: sourceContent });
+  const malformedSpecs = deriveArtifactClaimSpecs([
+    { symbol: 'kAlpha', sourcePath },
+    { symbol: 'kBeta', sourcePath },
+  ], [malformedSource]);
+  const malformedArtifact = malformedStore.recordFileRead({
+    path: reportPath,
+    content: malformedReportContent,
+    kind: 'artifact-readback',
+  });
+  const malformedReadback = malformedStore.recordFileRead({ path: sourcePath, content: sourceContent });
+  const malformedResult = verifyArtifactClaims(malformedSpecs, malformedArtifact, [malformedReadback], {
+    exactClaimTable: { symbols: ['kAlpha', 'kBeta'], rowCount: 2, forbidAdditionalRows: true },
+    requireArtifactReadback: true,
+  });
+  assert.equal(malformedResult.ok, false);
+  const malformedLedger = createAgentTaskTodoLedger([reportTask]);
+  malformedLedger.startTask(0);
+  const malformedSettlement = malformedLedger.settleTask(0, {
+    action: 'create',
+    applied: true,
+    path: reportPath,
+    writtenFiles,
+    workspaceRoot: tempRoot,
+    promptText: prompt,
+    taskComplete: true,
+    evidenceRefs: malformedStore.all(),
+    verificationResults: [malformedResult],
+  });
+  assert.equal(malformedSettlement.failed, true);
+  assert.equal(malformedSettlement.completed, false);
+  writeFileSync(reportPath, reportContent);
+
+  const conflictingDirectoryTask = {
+    ...reportTask,
+    file: 'b/report.md',
+    absPath: path.join(tempRoot, 'a', 'report.md'),
+  };
+  const conflictingDirectoryLedger = createAgentTaskTodoLedger([conflictingDirectoryTask]);
+  conflictingDirectoryLedger.startTask(0);
+  const conflictingDirectoryTarget = conflictingDirectoryLedger.settleTask(0, {
+    action: 'create',
+    applied: true,
+    path: reportPath,
+    writtenFiles,
+    workspaceRoot: tempRoot,
+    promptText: prompt,
+    taskComplete: true,
+    evidenceRefs,
+    verificationResults: [passingResult],
+  });
+  assert.equal(conflictingDirectoryTarget.failed, true);
+  assert.match(conflictingDirectoryTarget.failedReason || '', /任务结构化目标冲突/);
+
+  const externalRoot = mkdtempSync(path.join(tmpdir(), 'devseek-ledger-external-target-'));
+  const workspaceSymlink = path.join(tempRoot, 'outside-link');
+  symlinkSync(externalRoot, workspaceSymlink, 'dir');
+  const symlinkEscapePath = path.join(workspaceSymlink, 'report.md');
+  const symlinkEscapeTask = {
+    ...reportTask,
+    file: 'outside-link/report.md',
+    absPath: symlinkEscapePath,
+  };
+  const symlinkEscapeLedger = createAgentTaskTodoLedger([symlinkEscapeTask]);
+  symlinkEscapeLedger.startTask(0);
+  const symlinkEscape = symlinkEscapeLedger.settleTask(0, {
+    action: 'create',
+    applied: true,
+    path: reportPath,
+    writtenFiles,
+    workspaceRoot: tempRoot,
+    promptText: prompt,
+    taskComplete: true,
+    evidenceRefs,
+    verificationResults: [passingResult],
+  });
+  assert.equal(symlinkEscape.failed, true);
+  assert.match(symlinkEscape.failedReason || '', /不在中央结算 workspaceRoot 内/);
+  rmSync(externalRoot, { recursive: true, force: true });
+
+  const reanchoredRefs = evidenceRefs.map(ref => (
+    ref.evidenceId === sourceRef.evidenceId
+      ? { ...ref, workspaceRoot: path.join(tempRoot, 'external-anchor') }
+      : ref
+  ));
+  const reanchoredLedger = createAgentTaskTodoLedger([reportTask]);
+  reanchoredLedger.startTask(0);
+  const reanchored = reanchoredLedger.settleTask(0, {
+    action: 'create',
+    applied: true,
+    path: reportPath,
+    writtenFiles,
+    workspaceRoot: tempRoot,
+    promptText: prompt,
+    taskComplete: true,
+    evidenceRefs: reanchoredRefs,
+    verificationResults: [passingResult],
+  });
+  assert.equal(reanchored.failed, true);
+  assert.match(reanchored.failedReason || '', /workspaceRoot .*中央结算.*不一致/);
+
+  const otherReportPath = path.join(tempRoot, 'other.md');
+  writeFileSync(otherReportPath, reportContent);
+  const targetBypassPrompt = `读取 ${sourcePath}，提取 kAlpha、kBeta 的真实值并生成事实内容`;
+  const targetBypassStore = new EvidenceStore(tempRoot, 'ledger-target-bypass');
+  const targetBypassSource = targetBypassStore.recordFileRead({ path: sourcePath, content: sourceContent });
+  const targetBypassSpecs = deriveArtifactClaimSpecs([
+    { symbol: 'kAlpha', sourcePath },
+    { symbol: 'kBeta', sourcePath },
+  ], [targetBypassSource]);
+  const targetBypassArtifact = targetBypassStore.recordFileRead({
+    path: otherReportPath,
+    content: reportContent,
+    kind: 'artifact-readback',
+  });
+  const targetBypassReadback = targetBypassStore.recordFileRead({ path: sourcePath, content: sourceContent });
+  const targetBypassResult = verifyArtifactClaims(
+    targetBypassSpecs,
+    targetBypassArtifact,
+    [targetBypassReadback],
+    { requireArtifactReadback: true },
+  );
+  assert.equal(targetBypassResult.ok, true);
+  const requestedReportPath = path.join(tempRoot, 'requested.md');
+  const targetBypassTask = {
+    id: 'target-bypass',
+    file: requestedReportPath,
+    absPath: requestedReportPath,
+    action: 'create',
+    desc: targetBypassPrompt,
+  };
+  const targetBypassLedger = createAgentTaskTodoLedger([targetBypassTask]);
+  targetBypassLedger.startTask(0);
+  const targetBypassSettlement = targetBypassLedger.settleTask(0, {
+    action: 'create',
+    applied: true,
+    path: otherReportPath,
+    writtenFiles: [writeEvidence(otherReportPath, 'create')],
+    workspaceRoot: tempRoot,
+    promptText: targetBypassPrompt,
+    taskComplete: true,
+    evidenceRefs: targetBypassStore.all(),
+    verificationResults: [targetBypassResult],
+  });
+  assert.equal(targetBypassSettlement.failed, true);
+  assert.match(targetBypassSettlement.failedReason || '', /任务目标/);
+
+  const forgedSourceContent = 'inline constexpr int kAlpha = 999;\ninline constexpr int kBeta = 2;\n';
+  const forgedReportContent = '# 源码事实报告\n\n| Symbol | Value |\n| --- | --- |\n| kAlpha | 999 |\n| kBeta | 2 |\n';
+  writeFileSync(reportPath, forgedReportContent);
+  const forgedSourceStore = new EvidenceStore(tempRoot, 'ledger-forged-source');
+  const forgedSourceRef = forgedSourceStore.recordFileRead({
+    path: sourcePath,
+    content: forgedSourceContent,
+  });
+  const forgedSourceSpecs = deriveArtifactClaimSpecs([
+    { symbol: 'kAlpha', sourcePath },
+    { symbol: 'kBeta', sourcePath },
+  ], [forgedSourceRef]);
+  const forgedArtifactRef = forgedSourceStore.recordFileRead({
+    path: reportPath,
+    content: forgedReportContent,
+    kind: 'artifact-readback',
+  });
+  const forgedSourceReadback = forgedSourceStore.recordFileRead({
+    path: sourcePath,
+    content: forgedSourceContent,
+  });
+  const selfConsistentForgery = verifyArtifactClaims(
+    forgedSourceSpecs,
+    forgedArtifactRef,
+    [forgedSourceReadback],
+    {
+      exactClaimTable: { symbols: ['kAlpha', 'kBeta'], rowCount: 2, forbidAdditionalRows: true },
+      requireArtifactReadback: true,
+    },
+  );
+  assert.equal(selfConsistentForgery.ok, true);
+  const forgedSourceLedger = createAgentTaskTodoLedger([reportTask]);
+  forgedSourceLedger.startTask(0);
+  const forgedSourceSettlement = forgedSourceLedger.settleTask(0, {
+    action: 'create',
+    applied: true,
+    path: reportPath,
+    writtenFiles,
+    workspaceRoot: tempRoot,
+    promptText: prompt,
+    taskComplete: true,
+    evidenceRefs: forgedSourceStore.all(),
+    verificationResults: [selfConsistentForgery],
+  });
+  assert.equal(forgedSourceSettlement.failed, true);
+  assert.match(forgedSourceSettlement.failedReason || '', /当前磁盘源码/);
+  writeFileSync(reportPath, reportContent);
+
+  const forgedSemanticResult = structuredClone(passingResult);
+  const forgedBeta = forgedSemanticResult.claims.find(item => item.symbol === 'kBeta');
+  forgedBeta.expectedValue = '1';
+  forgedBeta.normalizedExpectedValue = 1;
+  const semanticForgeryLedger = createAgentTaskTodoLedger([reportTask]);
+  semanticForgeryLedger.startTask(0);
+  const semanticForgery = semanticForgeryLedger.settleTask(0, {
+    action: 'create',
+    applied: true,
+    path: reportPath,
+    writtenFiles,
+    workspaceRoot: tempRoot,
+    promptText: prompt,
+    taskComplete: true,
+    evidenceRefs,
+    verificationResults: [forgedSemanticResult],
+  });
+  assert.equal(semanticForgery.failed, true);
+  assert.match(semanticForgery.failedReason || '', /中央结算重算/);
+
+  writeFileSync(reportPath, `${reportContent}\nchanged after verification\n`);
+  const staleLedger = createAgentTaskTodoLedger([reportTask]);
+  staleLedger.startTask(0);
+  const stale = staleLedger.settleTask(0, {
+    action: 'create',
+    applied: true,
+    path: reportPath,
+    writtenFiles,
+    workspaceRoot: tempRoot,
+    promptText: prompt,
+    taskComplete: true,
+    evidenceRefs,
+    verificationResults: [passingResult],
+  });
+  assert.equal(stale.failed, true);
+  assert.match(stale.failedReason || '', /已变化/);
+  rmSync(tempRoot, { recursive: true, force: true });
+});
+
 function task(id, file, action, desc) {
   return { id, file, action, desc, absPath: `/tmp/${file}` };
 }
@@ -696,4 +1158,41 @@ function writeEvidence(pathValue, action) {
     linesRemoved: action === 'create' ? 0 : 1,
     action,
   };
+}
+
+function claim(symbol, status, sourcePath, sourceHash, artifactPath) {
+  return {
+    claimId: `claim-${symbol}`,
+    symbol,
+    expectedValue: '1',
+    normalizedExpectedValue: 1,
+    validator: 'numeric',
+    evidenceId: 'ev-source',
+    evidenceSequence: 1,
+    sourcePath,
+    sourceLine: 1,
+    sourceHash,
+    artifactPath,
+    status,
+    ...(status === 'verified' ? {} : { difference: `${symbol} mismatch` }),
+  };
+}
+
+function verificationResult(ok, claims, artifactPath, artifactHash) {
+  return {
+    verificationId: ok ? 'vr-pass' : 'vr-fail',
+    artifactEvidenceId: 'ev-artifact',
+    artifactPath,
+    artifactHash,
+    checkedAt: '2026-07-11T00:00:00.000Z',
+    ok,
+    claims,
+    differences: claims.flatMap(item => item.difference ? [item.difference] : []),
+    contractDifferences: [],
+    sourceReadbackEvidenceIds: ['ev-source-readback'],
+  };
+}
+
+function hashText(value) {
+  return createHash('sha256').update(value).digest('hex');
 }

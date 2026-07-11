@@ -12,8 +12,8 @@ import {
   decideProjectInstructionFileWrite,
 } from '../workspace/instruction-file-safety';
 import { AgentToolExecutor, type EvidenceRef } from './tool-executor';
+import { ToolReadEvidenceRecorder } from './tool-read-evidence';
 import { containsFakeToolCallProtocol, type FakeTool } from './fake-tool-parser';
-import { cleanAgentFinalSummaryForUser } from './agentic-summary';
 import {
   detectNestedFilePayloadDrift,
   detectShellFileWriteCommand,
@@ -24,7 +24,6 @@ import {
 } from './write-guard';
 import {
   classifyTerminalEvidenceCommand,
-  coalesceWrittenFileEvidence,
   isReadOnlyTerminalEvidenceCommand,
   requiresCodeArtifactForEvidence,
   type TerminalEvidence,
@@ -539,6 +538,7 @@ export async function executeFakeToolsForLoop(
     workspaceRoot?: string;
     requireReadBeforeOverwrite?: boolean;
     readEvidencePaths?: string[];
+    readEvidenceRecorder?: ToolReadEvidenceRecorder;
   },
 ): Promise<ToolLoopResult> {
   let taskComplete = false;
@@ -667,6 +667,13 @@ export async function executeFakeToolsForLoop(
         parts.push(`[${toolName}: ${rawPath}] 错误: ${reason}`);
         return false;
       }
+      const persistedContent = fs.readFileSync(absPath, 'utf8');
+      if (persistedContent !== writeResult.newContent) {
+        const reason = `写入后读回内容不一致：${absPath}`;
+        recordToolFailure(toolName, 'write', rawPath, reason);
+        parts.push(`[${toolName}: ${rawPath}] 错误: ${reason}`);
+        return false;
+      }
       const stat = fs.statSync(absPath);
       if (!stat.isFile() || stat.size === 0) {
         const failN = (createFileFailCounts.get(rawPath) || 0) + 1;
@@ -695,6 +702,7 @@ export async function executeFakeToolsForLoop(
         linesRemoved: oldLines,
         action: writeResult.existed ? 'modify' : 'create',
       });
+      evidenceRefs.push(readEvidenceRecorder.recordArtifactReadback(absPath, persistedContent));
       parts.push(`[${toolName}: ${rawPath}] 已写入 ${normalized.path} (${newLines} 行)`);
       return true;
     } catch (err) {
@@ -718,15 +726,11 @@ export async function executeFakeToolsForLoop(
     }
   };
 
-  // isLastTask: only the final task should emit phase:done and onTaskComplete.
-  // For intermediate tasks the orchestrator (runAgentLoop) drives sequencing; side-
-  // effects are suppressed here to prevent premature "done" state in the UI.
-  // This is the Copilot/Claude Code pattern: orchestrator owns task-sequence state,
-  // not the model.
-  const isLastTask = !taskContext || taskContext.currentTaskIndex >= taskContext.taskTotal;
   const workspaceRoot = taskContext?.workspaceRoot ?? inferWorkspaceRootForAgentTool(defaultWorkdir);
   const readEvidencePaths = new Set(taskContext?.readEvidencePaths ?? []);
   const trace = getToolTraceLogger(callbacks.traceWorkspaceRoot ?? workspaceRoot, callbacks.traceRunId);
+  const readEvidenceRecorder = taskContext?.readEvidenceRecorder
+    ?? new ToolReadEvidenceRecorder(workspaceRoot, callbacks.traceRunId);
   trace?.debug('tool-loop', 'execute-start', {
     toolCount: tools.length,
     tools: tools.map(t => t.name),
@@ -736,7 +740,6 @@ export async function executeFakeToolsForLoop(
 
   for (let toolIndex = 0; toolIndex < tools.length; toolIndex++) {
     const toolPlan = agentToolExecutor.plan(tools[toolIndex]);
-    evidenceRefs.push(...toolPlan.evidence);
     const tool = toolPlan.tool;
     const inputValidation = agentToolExecutor.validateInput(toolPlan);
     if (!inputValidation.ok) {
@@ -785,25 +788,8 @@ export async function executeFakeToolsForLoop(
     } else if (tool.name === 'task_complete') {
       const summary = typeof tool.input.summary === 'string' ? tool.input.summary : '';
       completeSummary = summary;
-      const visibleSummary = cleanAgentFinalSummaryForUser(summary);
-      // G-analy-feedback: Stream substantial summaries via ASUM prefix so analysis
-      // conclusions are visible even when AI puts all analysis in task_complete rather
-      // than inline streaming prose. Webview routes ASUM to currentRaw → prose bubble.
-      if (visibleSummary.length > 20 && !taskContext?.requireWorkBeforeComplete) {
-        callbacks.onDelta('\x00ASUM\x00' + visibleSummary);
-        summaryEmitted = true;
-      }
-      // Only fire done-phase UI + onTaskComplete for the final task. For intermediate
-      // tasks the outer runAgentLoop manages progression — no premature phase:done.
-      if (isLastTask && !taskContext?.deferDoneStatus) {
-        if (callbacks.onTaskComplete) { await callbacks.onTaskComplete(summary); }
-        const finalWrittenFiles = coalesceWrittenFileEvidence(writtenFiles, workspaceRoot);
-        await callbacks.onAgentStatus({
-          type: 'agentStatus', phase: 'done', state: 'completed',
-          title: visibleSummary || '任务已完成',
-          ...(finalWrittenFiles.length > 0 ? { editedFiles: finalWrittenFiles } : {}),
-        });
-      }
+      // task_complete is a model intent only. The orchestrator owns user-visible
+      // completion, checkpoint clearing, and final settlement after host evidence.
       taskComplete = true;
     } else if (tool.name === 'run_terminal' && callbacks.onTerminalCommand) {
       const command = typeof tool.input.command === 'string' ? tool.input.command.trim() : '';
@@ -908,6 +894,7 @@ export async function executeFakeToolsForLoop(
             readFiles.push(readEvidencePath);
             readEvidencePaths.add(readEvidencePath);
           }
+          evidenceRefs.push(readEvidenceRecorder.record(content, readEvidencePath || filePath));
           // Silent: file content goes to AI context only (shown as chip in Working box)
           parts.push(`[read_file: ${filePath}]\n${content}`);
         } catch (err) {

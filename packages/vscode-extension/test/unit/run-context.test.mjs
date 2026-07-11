@@ -52,12 +52,81 @@ test('RunContext: owns one run id and one chronological log file', () => {
     assert.equal(context.runId, 'run-context-1');
     assert.equal(entries[0].event, 'run-started');
     assert.equal(entries.every(entry => entry.runId === 'run-context-1'), true);
-    assert.equal(entries.some(entry => entry.event === 'agent-run-started'), true);
+    const started = entries.find(entry => entry.event === 'agent-run-started');
+    assert.equal(typeof started.data.prompt, 'object');
+    assert.equal(started.data.prompt.length, '修复 shape_manager title'.length);
+    assert.match(started.data.prompt.sha256, /^[a-f0-9]{64}$/);
+    assert.equal(JSON.stringify(started.data).includes('修复 shape_manager title'), false);
+    assert.equal(started.data.requiresSourceClaimArtifactVerification, false);
+    assert.match(started.data.taskContractFingerprint, /^[a-f0-9]{64}$/);
     assert.equal(entries.some(entry => entry.event === 'tool-fact-recorded'), true);
     const completed = entries.find(entry => entry.event === 'agent-run-completed');
     assert.equal(completed.data.status, 'completed');
     assert.equal(completed.data.tasksFailed, 0);
+    assert.equal(completed.data.requiresSourceClaimArtifactVerification, false);
+    assert.equal(completed.data.taskContractFingerprint, started.data.taskContractFingerprint);
     assert.equal(entries.every((entry, index) => index === 0 || entry.seq >= entries[index - 1].seq), true);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('RunContext: records a non-sensitive source-claim artifact obligation at start and completion', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  const userPrompt = '读取 /repo/source.hpp，提取 kAlpha、kBeta 的真实值，创建 Markdown 报告 /repo/facts.md。';
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-source-claim-artifact',
+      userPrompt,
+      traceLevel: 'debug',
+    });
+    context.complete('completed', { changedPaths: ['/repo/facts.md'], tasksApplied: 1 });
+
+    const entries = readJsonl(path.join(
+      workspaceRoot,
+      '.devseek',
+      'runs',
+      'run-context-source-claim-artifact.log',
+    ));
+    const started = entries.find(entry => entry.event === 'agent-run-started');
+    const completed = entries.find(entry => entry.event === 'agent-run-completed');
+
+    assert.equal(started.data.requiresSourceClaimArtifactVerification, true);
+    assert.equal(completed.data.requiresSourceClaimArtifactVerification, true);
+    assert.equal(completed.data.taskContractFingerprint, started.data.taskContractFingerprint);
+    assert.equal(JSON.stringify(started.data).includes(userPrompt), false);
+    assert.equal(JSON.stringify(completed.data).includes(userPrompt), false);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('RunContext: read-only source-fact answers do not acquire an artifact obligation', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  const userPrompt = [
+    '只分析 /repo/source.hpp，提取 kAlpha、kBeta 的真实值并在回复中说明。',
+    '不要创建报告，不要修改或写入任何文件。',
+  ].join('\n');
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-read-only-source-claim',
+      userPrompt,
+      traceLevel: 'debug',
+    });
+    context.complete('completed', { changedPaths: [], tasksApplied: 0 });
+
+    const entries = readJsonl(path.join(
+      workspaceRoot,
+      '.devseek',
+      'runs',
+      'run-context-read-only-source-claim.log',
+    ));
+    const started = entries.find(entry => entry.event === 'agent-run-started');
+    const completed = entries.find(entry => entry.event === 'agent-run-completed');
+    assert.equal(started.data.requiresSourceClaimArtifactVerification, false);
+    assert.equal(completed.data.requiresSourceClaimArtifactVerification, false);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }

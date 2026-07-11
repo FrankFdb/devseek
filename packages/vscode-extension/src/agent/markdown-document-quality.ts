@@ -10,6 +10,10 @@ export interface MarkdownDocumentQuality {
   reasons: string[];
 }
 
+export interface MarkdownDocumentQualityPolicy {
+  minHeadingCount?: number;
+}
+
 const MAX_MARKDOWN_FIRST_LINE_CHARS = 260;
 const MAX_MARKDOWN_LINE_CHARS = 2_400;
 const PROVIDER_COPY_CONTROL_RE = /(?:plain\s*text|text|json|cpp|c\+\+|c|bash|shell|sh|python|typescript|javascript|yaml|yml|xml|html|sql|ini|toml|go|rust|markdown|md)\s*复制\s*下载/gi;
@@ -38,7 +42,10 @@ export function normalizeProviderMarkdownDocumentText(text: string): string {
   return squeezeMarkdownBlankLines(normalized).trim();
 }
 
-export function assessMarkdownDocumentQuality(text: string): MarkdownDocumentQuality {
+export function assessMarkdownDocumentQuality(
+  text: string,
+  policy: MarkdownDocumentQualityPolicy = {},
+): MarkdownDocumentQuality {
   const lines = String(text || '').split(/\r?\n/);
   const nonEmpty = lines.map(line => line.trim()).filter(Boolean);
   const firstLineLength = nonEmpty.length ? nonEmpty[0].length : 0;
@@ -57,7 +64,8 @@ export function assessMarkdownDocumentQuality(text: string): MarkdownDocumentQua
 
   if (!nonEmpty.length) reasons.push('empty-document');
   if (nonEmpty.length > 0 && !/^#{1,6}\s+\S/.test(nonEmpty[0])) reasons.push('missing-title-heading');
-  if (headingCount < 2) reasons.push('insufficient-heading-count');
+  const minHeadingCount = Math.max(1, policy.minHeadingCount ?? 2);
+  if (headingCount < minHeadingCount) reasons.push('insufficient-heading-count');
   if (emptyHeadingCount > 0) reasons.push('empty-heading');
   if (firstLineLength > MAX_MARKDOWN_FIRST_LINE_CHARS) reasons.push('first-line-too-long');
   if (maxLineLength > MAX_MARKDOWN_LINE_CHARS) reasons.push('line-too-long');
@@ -78,8 +86,11 @@ export function assessMarkdownDocumentQuality(text: string): MarkdownDocumentQua
   };
 }
 
-export function hasAcceptableMarkdownDocumentShape(text: string): boolean {
-  return assessMarkdownDocumentQuality(text).ok;
+export function hasAcceptableMarkdownDocumentShape(
+  text: string,
+  policy: MarkdownDocumentQualityPolicy = {},
+): boolean {
+  return assessMarkdownDocumentQuality(text, policy).ok;
 }
 
 export function hasProviderCopyControlArtifact(text: string): boolean {

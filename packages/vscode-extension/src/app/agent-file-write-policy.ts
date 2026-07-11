@@ -1,4 +1,5 @@
 import * as nodePath from 'path';
+import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import type { ToolPolicy } from './permission-service';
 import { decideToolPermission } from './permission-service';
 
@@ -72,13 +73,13 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
   if (!absPath) {
     return deny('missing-target-path', '缺少可写入的目标路径。', scopedAudit);
   }
-  if (workspaceRoot && !isInsidePath(absPath, workspaceRoot)) {
+  if (workspaceRoot && (!isInsidePath(absPath, workspaceRoot) || !isCanonicalPathInsideRoot(absPath, workspaceRoot))) {
     return deny('target-outside-workspace', `写入目标不在当前 workspace 内：${relPath}`, scopedAudit);
   }
   if (input.protectedPath) {
     return deny('protected-files-match', `已跳过受保护文件：${relPath}（匹配 devseek.protectedFiles 规则）`, scopedAudit);
   }
-  if (isolatedScope.required && isolatedScope.allowedRoots.length > 0 && !isInsideAnyPath(absPath, isolatedScope.allowedRoots)) {
+  if (isolatedScope.required && isolatedScope.allowedRoots.length > 0 && !isInsideAnyCanonicalPath(absPath, isolatedScope.allowedRoots)) {
     return deny(
       'isolated-artifact-scope',
       `写入被测试/交付产物隔离规则阻止：${relPath}。本次请求要求新增产物只能写入 ${isolatedScope.allowedRoots.map(root => displayWritePath(root, workspaceRoot)).join('、')}；正式源码修改请写入“原有代码修改清单”，不要直接改正式源码。`,
@@ -86,12 +87,12 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
     );
   }
 
-  if (!explicitMarkdownDeliverable && input.toolPolicy) {
+  if (input.toolPolicy) {
     const writePermission = decideToolPermission(input.toolPolicy, 'edit');
     if (writePermission.action === 'deny') {
       return deny(writePermission.reason, `当前 ${input.toolPolicy.mode} 模式不允许写入文件（${writePermission.reason}）。`, scopedAudit);
     }
-    if (writePermission.action === 'requireConfirm') {
+    if (writePermission.action === 'requireConfirm' && !explicitMarkdownDeliverable) {
       return {
         action: 'requireConfirm',
         reason: writePermission.reason,
@@ -139,8 +140,8 @@ function isInsidePath(absPath: string, root: string): boolean {
   return rel === '' || (!!rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel));
 }
 
-function isInsideAnyPath(absPath: string, roots: readonly string[]): boolean {
-  return roots.some(root => isInsidePath(absPath, root));
+function isInsideAnyCanonicalPath(absPath: string, roots: readonly string[]): boolean {
+  return roots.some(root => isInsidePath(absPath, root) && isCanonicalPathInsideRoot(absPath, root));
 }
 
 export interface IsolatedArtifactWriteScope {

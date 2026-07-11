@@ -138,7 +138,7 @@ export function assessFormalProjectDocumentQuality(
       && (!requiresUartOrEquivalentCommunicationEntry || hasUartOrEquivalentCommunicationEntry));
   const reasons = [
     required && !hasResolvedProjectFacts ? 'unresolved-project-facts' : '',
-    required && requiresSourceEvidence && !hasSourceFactMatrix ? 'missing-source-fact-matrix' : '',
+    required && requiresSourceEvidence && contract.evidenceRequirements.length === 0 && !hasSourceFactMatrix ? 'missing-source-fact-matrix' : '',
     required && requiresProtocolFacts && !hasConcreteProtocolFacts ? 'missing-concrete-protocol-facts' : '',
     required && requiresRemoteControllerInterface && !hasRemoteControllerInterfaceDoc ? 'missing-remote-controller-interface-doc' : '',
     required && requiresModificationPlan && !hasExistingCodeModificationPlan ? 'missing-existing-code-modification-plan' : '',

@@ -12,6 +12,7 @@ import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import Module from 'node:module';
+import { build } from 'esbuild';
 import {
   existsSync,
   mkdirSync,
@@ -28,6 +29,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const decomposerBundlePath = path.join(tmpdir(), `devseek-md-flow-decomposer-${process.pid}.cjs`);
 const markdownBundlePath = path.join(tmpdir(), `devseek-md-flow-executor-${process.pid}.cjs`);
+const agenticBundlePath = path.join(tmpdir(), `devseek-md-flow-agentic-${process.pid}.cjs`);
 
 execSync(
   `npx esbuild src/agent-task-decomposer.ts --bundle ` +
@@ -39,6 +41,37 @@ execSync(
   `--outfile=${markdownBundlePath} --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );
+await build({
+  absWorkingDir: rootDir,
+  entryPoints: ['src/agent/agentic-loop.ts'],
+  outfile: agenticBundlePath,
+  bundle: true,
+  format: 'cjs',
+  platform: 'node',
+  external: ['vscode'],
+  plugins: [{
+    name: 'virtual-loop-chat',
+    setup(build) {
+      build.onResolve({ filter: /^\.\/loop-chat$/ }, args => (
+        args.importer.endsWith('/agent/agentic-loop.ts')
+          ? { path: 'loop-chat-stub', namespace: 'devseek-test' }
+          : undefined
+      ));
+      build.onLoad({ filter: /.*/, namespace: 'devseek-test' }, () => ({
+        loader: 'ts',
+        contents: `
+          export function consumeUserSteerMessages() { return []; }
+          export async function chatWithMessages(messages, mode, onDelta, signal, newSession, traceRunId, traceWorkspaceRoot) {
+            const handler = globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
+            if (typeof handler !== 'function') throw new Error('agentic loop chat stub is not installed');
+            const response = await handler(messages, { mode, onDelta, signal, newSession, traceRunId, traceWorkspaceRoot });
+            return typeof response === 'string' ? { text: response, tools: [] } : response;
+          }
+        `,
+      }));
+    },
+  }],
+});
 
 class Uri {
   constructor(fsPath) {
@@ -81,6 +114,7 @@ Module._load = function loadWithVscodeMock(request, parent, isMain) {
 const req = createRequire(import.meta.url);
 const { decomposeTask } = req(decomposerBundlePath);
 const { tryExecuteMarkdownDeliverableTask } = req(markdownBundlePath);
+const { runAgenticLoop } = req(agenticBundlePath);
 
 function createFormalMaintenanceWorkspace() {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-md-flow-huida-uav-'));
@@ -168,6 +202,69 @@ function createFormalMaintenanceWorkspace() {
   return { root, maintenanceDir, docsDir, requirementDoc };
 }
 
+function createLicenseGroundingWorkspace() {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-md-flow-license-grounding-'));
+  const source = path.join(root, 'src/oam/src/license/license_types.hpp');
+  const target = path.join(root, 'docs/license-transport-facts.md');
+  const fixtureDir = path.join(rootDir, 'test/fixtures/runtime-replay/20260711-131537');
+  const fixture = JSON.parse(readFileSync(path.join(fixtureDir, 'fixture.json'), 'utf8'));
+  const oracle = JSON.parse(readFileSync(path.join(fixtureDir, 'oracle.json'), 'utf8'));
+  mkdirSync(path.dirname(source), { recursive: true });
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(source, readFileSync(path.join(fixtureDir, 'license_types.hpp'), 'utf8'), 'utf8');
+
+  const wrong = readFileSync(path.join(fixtureDir, 'license-transport-facts.wrong.md'), 'utf8')
+    .replace(fixture.source.originalPath, source);
+  const repaired = wrong
+    .replace('# License 模块传输常量事实记录', '# 源码事实报告')
+    .replace('/uav/dt/license/state', '/uav/license/state')
+    .replace('/uav/dt/license/tunnel/rx', '/uav/license/tunnel/rx')
+    .replace('`300`', '`33007`')
+    .replace('`81920`', '`64 * 1024`')
+    .replace('`30000`', '`5000`')
+    .replace('\n```\nprint("\\nready")', '\n```python\nprint("\\nready")')
+    .replace(/^(\|\s*[^|\n]+\|\s*[^|\n]+\|)\s*[^|\n]+\|$/gm, '$1');
+  const prompt = [
+    `请读取 ${source}，从源码提取 kTopicLicenseState、kTopicLicenseTunnelRx、kMavTunnelCmdLicense、kTunnelVersion、kTunnelMaxTotalLen、kTunnelSessionTimeoutMs 六个常量的真实定义和值。`,
+    `请创建 Markdown 报告 ${target}，包含标题、源码路径和六个常量的表格，并加入 Python 代码块，代码内容必须是 print("\\nready")。`,
+    '写入后重新读取该报告，确认内容完整，然后调用 task_complete。不要修改任何源码，不要创建其他文件。',
+  ].join('');
+
+  fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'huida_uav', index: 0 }];
+  return { root, source, target, wrong, repaired, prompt, oracle };
+}
+
+function createBareLicenseGroundingWorkspace() {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-md-flow-agentic-license-'));
+  const source = path.join(root, 'src/oam/src/license/license_types.hpp');
+  const target = path.join(root, 'license-transport-facts.md');
+  const fixtureDir = path.join(rootDir, 'test/fixtures/runtime-replay/20260711-131537');
+  const prompt = readFileSync(path.join(fixtureDir, 'request.txt'), 'utf8').trim();
+  const oracle = JSON.parse(readFileSync(path.join(fixtureDir, 'oracle.json'), 'utf8'));
+  const wrong = readFileSync(path.join(fixtureDir, 'license-transport-facts.wrong.md'), 'utf8');
+  const repaired = [
+    '# 源码事实报告',
+    source,
+    '| Symbol | Value |',
+    '| --- | --- |',
+    '| `kTopicLicenseState` | `"/uav/license/state"` |',
+    '| `kTopicLicenseTunnelRx` | `"/uav/license/tunnel/rx"` |',
+    '| `kMavTunnelCmdLicense` | `33007` |',
+    '| `kTunnelVersion` | `1` |',
+    '| `kTunnelMaxTotalLen` | `64 * 1024` |',
+    '| `kTunnelSessionTimeoutMs` | `5000` |',
+    '```python',
+    'print("\\nready")',
+    '```',
+    '',
+  ].join('\n');
+
+  mkdirSync(path.dirname(source), { recursive: true });
+  writeFileSync(source, readFileSync(path.join(fixtureDir, 'license_types.hpp'), 'utf8'), 'utf8');
+  fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'huida_uav', index: 0 }];
+  return { root, source, target, prompt, wrong, repaired, oracle };
+}
+
 function buildFormalProjectPrompt(workspace) {
   return [
     `原来实现的吊运维保功能：设计文档+代码等${workspace.maintenanceDir} 下面是最新的维保提醒的需求：`,
@@ -182,17 +279,27 @@ function makeCallbacks() {
   const changes = [];
   const activities = [];
   const progress = [];
+  const deltas = [];
+  const todos = [];
+  const checkpoints = [];
   return {
     statuses,
     changes,
     activities,
     progress,
+    deltas,
+    todos,
+    checkpoints,
     callbacks: {
-      onDelta() {},
+      onDelta(delta) { deltas.push(delta); },
       onWorkflowStatus() {},
       onAgentStatus(status) { statuses.push(status); },
       onAppliedChange(change) { changes.push(change); },
       onResponseMeta() {},
+      onTodoUpdate(items) { todos.push(items); },
+      onTaskCheckpoint(completedUpToIndex, remainingTasks, reason) {
+        checkpoints.push({ completedUpToIndex, remainingTasks, reason });
+      },
       onToolActivity(kind, label) { activities.push({ kind, label }); },
       onBeforeFileWrite: async () => true,
     },
@@ -248,7 +355,7 @@ async function runMarkdownClosedLoop(responseFactory, options = {}) {
     const target = plan.tasks[0].absPath;
     assert.equal(result?.applied, expectApplied);
     assert.equal(existsSync(target), true);
-    assert.equal(io.statuses.at(-1).state, expectApplied ? 'completed' : 'failed');
+    assert.equal(io.statuses.at(-1).state, expectApplied ? 'started' : 'failed');
     assert.equal(io.changes.length, 1);
     assert.match(io.changes[0].path, /src\/oam\/src\/lifting\/zc_maintenance\/docs\/warranty-maintenance-advice\.md$/);
     assert.equal(web.requests.length, 1);
@@ -336,5 +443,227 @@ test('markdown deliverable flow: corrupted provider can settle a verified analys
     assert.equal(output.result.failedReason, undefined);
   } finally {
     rmSync(output.workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable flow: real wrong-facts fixture gets one bounded repair and settles only after strict readback verification', async () => {
+  const workspace = createLicenseGroundingWorkspace();
+  const io = makeCallbacks();
+  const responses = [workspace.wrong, workspace.repaired];
+  const web = createSimulatedDeepSeekWeb(() => responses.shift());
+
+  try {
+    const plan = await decomposeTask(
+      workspace.prompt,
+      [],
+      undefined,
+      text => io.progress.push(text),
+      undefined,
+      async () => {
+        throw new Error('planner should not be called for an explicit Markdown fact-report request');
+      },
+      workspace.source,
+    );
+
+    assert.equal(plan.ok, true);
+    assert.equal(plan.tasks.length, 1);
+    assert.equal(plan.tasks[0].action, 'create');
+    assert.equal(plan.tasks[0].absPath, workspace.target);
+
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: plan.tasks[0],
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: workspace.prompt,
+      workspaceRoot: Uri.file(workspace.root),
+      callbacks: io.callbacks,
+      chat: web.chat,
+    });
+
+    assert.equal(result?.applied, true, result?.failedReason);
+    assert.equal(result?.taskComplete, true);
+    assert.equal(web.requests.length, 2, 'only the initial attempt and one bounded repair are allowed');
+    assert.match(web.requests[0][0].content, /所有文件证据已经由本地运行时读取完毕/);
+    assert.match(web.requests[0][0].content, /constexpr const char\* kTopicLicenseState/);
+    assert.match(web.requests[1][0].content, /唯一一次有界修复/);
+    assert.match(web.requests[1][0].content, /kMavTunnelCmdLicense: 实际 300，期望 33007/);
+    assert.match(web.requests[1][0].content, /structure: 缺少精确 python 代码块/);
+
+    assert.equal(result?.verificationResults?.length, 2);
+    const [wrongVerification, finalVerification] = result.verificationResults;
+    assert.equal(wrongVerification.ok, false);
+    assert.equal(wrongVerification.claims.filter(claim => claim.status === 'mismatch').length, 5);
+    assert.equal(wrongVerification.claims.filter(claim => claim.status === 'verified').length, 1);
+    assert.equal(wrongVerification.contractDifferences.length, 4);
+    assert.equal(finalVerification.ok, true);
+    assert.deepEqual(finalVerification.differences, []);
+    assert.deepEqual(finalVerification.contractDifferences, []);
+
+    assert.equal(result.artifactClaims.length, 6);
+    assert.equal(result.artifactClaims.every(claim => claim.status === 'verified'), true);
+    const actualClaims = Object.fromEntries(
+      result.artifactClaims.map(claim => [claim.symbol, claim.normalizedActualValue]),
+    );
+    assert.deepEqual(actualClaims, workspace.oracle.claims);
+
+    const evidenceById = new Map(result.evidenceRefs.map(ref => [ref.evidenceId, ref]));
+    const originalSourceEvidenceIds = new Set(result.artifactClaims.map(claim => claim.evidenceId));
+    assert.equal(finalVerification.sourceReadbackEvidenceIds.length, 1);
+    for (const evidenceId of finalVerification.sourceReadbackEvidenceIds) {
+      const sourceReadback = evidenceById.get(evidenceId);
+      assert.equal(sourceReadback?.sourcePath, workspace.source);
+      assert.match(sourceReadback?.operationId || '', /^source-readback-2-/);
+      assert.equal(originalSourceEvidenceIds.has(evidenceId), false, 'verification must use an independent source readback');
+    }
+    const artifactReadback = evidenceById.get(finalVerification.artifactEvidenceId);
+    assert.equal(artifactReadback?.kind, 'artifact-readback');
+    assert.equal(artifactReadback?.sourcePath, workspace.target);
+
+    const content = readFileSync(workspace.target, 'utf8');
+    assert.equal(artifactReadback?.content, content);
+    assert.equal((content.match(/^# /gm) || []).length, 1);
+    assert.equal((content.match(/^\|\s*常量名\s*\|/gm) || []).length, 1);
+    const claimRows = content.split(/\r?\n/).filter(line => /^\|.*`k[A-Za-z0-9_]+`.*\|$/.test(line));
+    assert.equal(claimRows.length, 6);
+    for (const symbol of Object.keys(workspace.oracle.claims)) {
+      assert.equal(claimRows.filter(line => line.includes(`\`${symbol}\``)).length, 1);
+    }
+    const codeBlocks = [...content.matchAll(/```([^\n`]*)\n([\s\S]*?)\n```/g)];
+    assert.equal(codeBlocks.length, 1);
+    assert.equal(codeBlocks[0][1], 'python');
+    assert.equal(codeBlocks[0][2], 'print("\\nready")');
+    assert.match(content, new RegExp(workspace.source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.doesNotMatch(content, /\/uav\/dt\/|`300`|`81920`|`30000`/);
+    assert.equal(new Set(io.changes.map(change => change.path)).size, 1);
+    assert.equal(io.statuses.at(-1).state, 'started');
+  } finally {
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('agentic route: fixture-relative fact report repairs once and passes central ledger settlement', async () => {
+  const workspace = createBareLicenseGroundingWorkspace();
+  const io = makeCallbacks();
+  const responses = [workspace.wrong, workspace.repaired];
+  const requests = [];
+  globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__ = async (messages, options) => {
+    requests.push({ messages, options });
+    const text = responses.shift();
+    assert.equal(typeof text, 'string', 'agentic route must perform at most the expected two provider calls');
+    return { text, tools: [] };
+  };
+
+  try {
+    const result = await runAgenticLoop(
+      workspace.prompt,
+      [],
+      workspace.root,
+      'fast',
+      io.callbacks,
+      '',
+      'edit',
+      [],
+    );
+
+    assert.equal(requests.length, 2, 'the routed executor gets one initial response and one bounded repair');
+    assert.equal(requests.every(request => request.options.newSession === true), true);
+    assert.equal(requests[0].messages.length, 1);
+    assert.match(requests[0].messages[0].content, /所有文件证据已经由本地运行时读取完毕/);
+    assert.match(requests[0].messages[0].content, /### 旧实现: src\/oam\/src\/license\/license_types\.hpp/);
+    assert.match(requests[0].messages[0].content, /目标写入路径：license-transport-facts\.md/);
+    assert.match(requests[0].messages[0].content, new RegExp(workspace.prompt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(requests[1].messages[0].content, /这是唯一一次有界修复/);
+    assert.match(requests[1].messages[0].content, /kMavTunnelCmdLicense: 实际 300，期望 33007/);
+
+    assert.equal(result.tasksTotal, 1);
+    assert.equal(result.tasksApplied, 1);
+    assert.equal(result.tasksFailed, 0, result.historyText);
+    assert.deepEqual(result.changedPaths, [workspace.target]);
+    assert.equal(result.verificationResults?.length, 2);
+    assert.equal(result.verificationResults?.[0]?.ok, false);
+    assert.equal(result.verificationResults?.[1]?.ok, true);
+    assert.equal(result.verificationResults?.[1]?.differences.length, 0);
+    assert.equal(result.verificationResults?.[1]?.contractDifferences.length, 0);
+    assert.equal(result.artifactClaims?.length, 6);
+    assert.equal(result.artifactClaims?.every(claim => claim.status === 'verified'), true);
+    assert.deepEqual(
+      Object.fromEntries(result.artifactClaims.map(claim => [claim.symbol, claim.normalizedActualValue])),
+      workspace.oracle.claims,
+    );
+
+    assert.equal(io.statuses.at(-1)?.state, 'completed', 'central settlement owns the final green state');
+    assert.match(io.statuses.at(-1)?.title || '', /6 项源码事实已验证并完成交付/);
+    assert.equal(io.todos.at(-1)?.every(todo => todo.status === 'completed'), true);
+    assert.deepEqual(io.checkpoints.at(-1), {
+      completedUpToIndex: null,
+      remainingTasks: [],
+      reason: 'completed',
+    });
+    assert.match(io.deltas.at(-1) || '', /^\x00ASUM\x00已完成 license-transport-facts\.md/);
+
+    const content = readFileSync(workspace.target, 'utf8');
+    assert.equal(content, workspace.repaired, 'the final disk artifact must equal the exact grounded provider response');
+    assert.equal((content.match(/^# /gm) || []).length, 1);
+    assert.equal((content.match(/^\| `k[A-Za-z0-9_]+` \|/gm) || []).length, 6);
+    const codeBlocks = [...content.matchAll(/```([^\n`]*)\n([\s\S]*?)\n```/g)];
+    assert.equal(codeBlocks.length, 1);
+    assert.equal(codeBlocks[0][1], 'python');
+    assert.equal(codeBlocks[0][2], 'print("\\nready")');
+    assert.equal(existsSync(workspace.source), true);
+    assert.deepEqual(
+      io.changes.map(change => change.path),
+      ['license-transport-facts.md', 'license-transport-facts.md'],
+      'wrong and repaired writes stay bounded to the single requested artifact',
+    );
+  } finally {
+    delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('agentic route: inspect mode never enters the grounded writer or creates its target', async () => {
+  const workspace = createBareLicenseGroundingWorkspace();
+  const io = makeCallbacks();
+  const requests = [];
+  globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__ = async (messages, options) => {
+    requests.push({ messages, options });
+    return { text: '[TOOL:task_complete {"summary":"只读检查完成，不写文件"}]', tools: [] };
+  };
+  try {
+    const result = await runAgenticLoop(workspace.prompt, [], workspace.root, 'fast', io.callbacks, '', 'inspect', []);
+    assert.ok(requests.length > 0, 'inspect mode should continue through the generic read-only agent route');
+    assert.equal(existsSync(workspace.target), false);
+    assert.deepEqual(io.changes, []);
+    assert.equal(result.tasksApplied, 0);
+    assert.ok(result.tasksFailed > 0);
+  } finally {
+    delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('agentic route: an unresolved source-fact claim contract fails before provider or disk write', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-unresolved-grounding-'));
+  const source = path.join(root, 'config.hpp');
+  const target = path.join(root, 'report.md');
+  writeFileSync(source, 'constexpr uint32_t timeoutMs = 5000;\n');
+  const prompt = `读取 ${source}，提取真实配置值并创建 Markdown 报告 ${target}。`;
+  const io = makeCallbacks();
+  let providerCalls = 0;
+  globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__ = async () => {
+    providerCalls += 1;
+    return { text: '# forged\n\n| Symbol | Value |\n| --- | --- |\n| timeoutMs | 30000 |', tools: [] };
+  };
+  try {
+    const result = await runAgenticLoop(prompt, [], root, 'fast', io.callbacks, '', 'edit', []);
+    assert.equal(providerCalls, 0);
+    assert.equal(result.tasksFailed, 1);
+    assert.equal(result.tasksApplied, 0);
+    assert.equal(existsSync(target), false);
+    assert.match(io.statuses.at(-1)?.detail || '', /未能解析出明确的 claim symbol/);
+    assert.equal(io.checkpoints.at(-1)?.reason, 'paused');
+  } finally {
+    delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
+    rmSync(root, { recursive: true, force: true });
   }
 });

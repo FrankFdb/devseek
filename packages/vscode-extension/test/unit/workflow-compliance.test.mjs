@@ -785,8 +785,8 @@ test('Agent loop: task_complete does not bypass final editedFiles accounting', (
   );
   assert.match(
     code,
-    /const resultWrittenFiles = taskSettlementInput\.writtenFiles[\s\S]*?if \(result\.applied && resultWrittenFiles\.length > 0\)[\s\S]*?appendAgentLoopWrittenFiles\(changedPaths,\s*editedFileRecords,\s*resultWrittenFiles[\s\S]*?if \(i \+ 1 < tasks\.length\) \{[\s\S]*?await callbacks\.onTaskCheckpoint\?\.\(i \+ 1[\s\S]*?if \(result\.taskComplete\)/,
-    'runAgentLoop must record applied result before honoring task_complete break and only checkpoint unfinished work',
+    /const resultWrittenFiles = taskSettlementInput\.writtenFiles[\s\S]*?if \(result\.applied && resultWrittenFiles\.length > 0\)[\s\S]*?appendAgentLoopWrittenFiles\(changedPaths,\s*editedFileRecords,\s*resultWrittenFiles[\s\S]*?if \(i \+ 1 < tasks\.length\) \{[\s\S]*?firstUnfinishedTaskIndex\(\) \?\? \(i \+ 1\)[\s\S]*?onTaskCheckpoint\?\.\(checkpointIndex, tasks\.slice\(checkpointIndex\), 'progress'\)[\s\S]*?if \(result\.taskComplete\)/,
+    'runAgentLoop must record applied result before task_complete and checkpoint the earliest unfinished task',
   );
 });
 

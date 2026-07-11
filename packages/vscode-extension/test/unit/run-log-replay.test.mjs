@@ -8,9 +8,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import {
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -20,11 +22,18 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
+const p0aFixtureDir = path.join(rootDir, 'test/fixtures/runtime-replay/20260711-131537');
 const bundlePath = path.join(tmpdir(), `devseek-run-log-replay-test-${process.pid}.cjs`);
+const runContextBundlePath = path.join(tmpdir(), `devseek-run-context-replay-test-${process.pid}.cjs`);
 
 execSync(
   `npx esbuild src/diagnostics/run-log-replay.ts --bundle ` +
   `--outfile=${bundlePath} --format=cjs --platform=node --external:vscode`,
+  { cwd: rootDir, stdio: 'pipe' },
+);
+execSync(
+  `npx esbuild src/app/run-context.ts --bundle ` +
+  `--outfile=${runContextBundlePath} --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );
 
@@ -33,12 +42,50 @@ const {
   replayRunLog,
   formatRunLogReplayReport,
 } = req(bundlePath);
+const { createDevSeekRunContext } = req(runContextBundlePath);
 
 function writeLog(lines) {
   const dir = mkdtempSync(path.join(tmpdir(), 'devseek-run-log-replay-'));
   const logPath = path.join(dir, 'run.log');
   writeFileSync(logPath, `${lines.map(line => JSON.stringify(line)).join('\n')}\n`, 'utf8');
   return { dir, logPath };
+}
+
+function writeProductionRunLog({ prompt, statuses = [], traceEvents = [], completion }) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-production-run-log-'));
+  const runId = `production-replay-${process.pid}-${Date.now()}`;
+  const context = createDevSeekRunContext({
+    workspaceRoot: dir,
+    source: 'vscode-extension.agent',
+    runId,
+    userPrompt: prompt,
+    mode: 'agent',
+    traceLevel: 'debug',
+  });
+  for (const event of traceEvents) {
+    context.childTrace(event.source || 'vscode-extension').info(
+      event.phase || 'execute',
+      event.event,
+      event.data,
+    );
+  }
+  for (const status of statuses) context.recordAgentStatus(status);
+  context.complete(completion.status, completion.data);
+  return {
+    dir,
+    logPath: path.join(dir, '.devseek', 'runs', `${runId}.log`),
+  };
+}
+
+function loadProductionRunEvents(logPath) {
+  return readFileSync(logPath, 'utf8')
+    .trim()
+    .split('\n')
+    .map(line => JSON.parse(line));
+}
+
+function sha256File(filePath) {
+  return createHash('sha256').update(readFileSync(filePath)).digest('hex');
 }
 
 test('run log replay detects path drift, legacy build dirs, protocol contamination and missing convergence', () => {
@@ -1606,4 +1653,481 @@ test('run log replay does not classify business verification-code analysis as pr
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('run log replay rejects completed terminal when the latest artifact verification failed', () => {
+  const report = replayRunLog(path.join(
+    p0aFixtureDir,
+    'artifact-verification-wrong-completed.jsonl',
+  ));
+
+  assert.equal(report.artifactVerifications, 1);
+  assert.deepEqual(report.latestArtifactVerifications.map(verification => ({
+    line: verification.line,
+    verificationId: verification.verificationId,
+    artifactHash: verification.artifactHash,
+    ok: verification.ok,
+    failedClaims: verification.failedClaims,
+  })), [{
+    line: 3,
+    verificationId: 'vr-wrong-3d12adbfeecb',
+    artifactHash: '3d12adbfeecb4bde72036f743a4a9dfd1cdf61afa80cc90b0bbb9e1679d214f2',
+    ok: false,
+    failedClaims: [
+      'kTopicLicenseState',
+      'kTopicLicenseTunnelRx',
+      'kMavTunnelCmdLicense',
+      'kTunnelMaxTotalLen',
+      'kTunnelSessionTimeoutMs',
+    ],
+  }]);
+  assert.deepEqual(report.issues.map(issue => ({
+    kind: issue.kind,
+    severity: issue.severity,
+    line: issue.line,
+    message: issue.message,
+  })), [{
+    kind: 'completed-with-failed-artifact-verification',
+    severity: 'error',
+    line: 4,
+    message: '最新交付物核验仍未通过，但 agent-run-completed 报告了 completed。',
+  }]);
+  assert.match(report.issues[0].evidence ?? '', /failedClaims=kTopicLicenseState/);
+});
+
+test('run log replay accepts completion after a new artifact hash passes verification', () => {
+  const report = replayRunLog(path.join(
+    p0aFixtureDir,
+    'artifact-verification-repaired-completed.jsonl',
+  ));
+
+  assert.equal(report.artifactVerifications, 2);
+  assert.deepEqual(report.latestArtifactVerifications.map(verification => ({
+    line: verification.line,
+    verificationId: verification.verificationId,
+    artifactHash: verification.artifactHash,
+    ok: verification.ok,
+    failedClaims: verification.failedClaims,
+  })), [{
+    line: 4,
+    verificationId: 'vr-repaired-a4a54c8f90e1',
+    artifactHash: 'a4a54c8f90e1d6acc41ad39978ad96b472a19f020ddf5907864cbe2e33494f23',
+    ok: true,
+    failedClaims: [],
+  }]);
+  assert.deepEqual(report.issues, []);
+});
+
+test('run log replay keeps failed verification sticky when a pass reuses hash or id', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-11T05:17:00.000Z',
+      event: 'agent-run-started',
+      data: {},
+    },
+    {
+      ts: '2026-07-11T05:17:01.000Z',
+      source: 'vscode-extension.artifact-grounding',
+      event: 'artifact-verification-completed',
+      data: {
+        verificationId: 'vr-failed',
+        artifactEvidenceId: 'ev-artifact-failed',
+        artifactPath: 'docs/facts.md',
+        artifactHash: 'same-hash',
+        ok: false,
+        claims: [{ symbol: 'kValue', status: 'mismatch' }],
+        differences: ['kValue mismatch'],
+      },
+    },
+    {
+      ts: '2026-07-11T05:17:02.000Z',
+      source: 'vscode-extension.artifact-grounding',
+      event: 'artifact-verification-completed',
+      data: {
+        verificationId: 'vr-failed-relabelled',
+        artifactEvidenceId: 'ev-artifact-failed-reread',
+        artifactPath: 'docs/facts.md',
+        artifactHash: 'same-hash',
+        ok: true,
+        claims: [{ symbol: 'kValue', status: 'verified' }],
+        differences: [],
+        sourceReadbackEvidenceIds: ['ev-source-readback-2'],
+      },
+    },
+    {
+      ts: '2026-07-11T05:17:03.000Z',
+      source: 'vscode-extension.artifact-grounding',
+      event: 'artifact-verification-completed',
+      data: {
+        verificationId: 'vr-failed',
+        artifactEvidenceId: 'ev-artifact-repaired',
+        artifactPath: 'docs/facts.md',
+        artifactHash: 'new-hash-with-reused-id',
+        ok: true,
+        claims: [{ symbol: 'kValue', status: 'verified' }],
+        differences: [],
+        sourceReadbackEvidenceIds: ['ev-source-readback-3'],
+      },
+    },
+    {
+      ts: '2026-07-11T05:17:04.000Z',
+      event: 'agent-run-completed',
+      data: {
+        status: 'completed',
+        verificationIds: ['vr-failed'],
+        artifactVerificationOk: true,
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    assert.deepEqual(report.issues.map(issue => ({
+      kind: issue.kind,
+      line: issue.line,
+    })), [
+      { kind: 'non-append-only-artifact-verification', line: 3 },
+      { kind: 'non-append-only-artifact-verification', line: 4 },
+      { kind: 'completed-with-failed-artifact-verification', line: 5 },
+    ]);
+    assert.equal(report.latestArtifactVerifications[0].ok, false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay rejects a failed verification appended after completed', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-11T05:18:00.000Z',
+      event: 'agent-run-started',
+      data: {},
+    },
+    {
+      ts: '2026-07-11T05:18:01.000Z',
+      event: 'agent-run-completed',
+      data: { status: 'completed' },
+    },
+    {
+      ts: '2026-07-11T05:18:02.000Z',
+      source: 'vscode-extension.artifact-grounding',
+      event: 'artifact-verification-completed',
+      data: {
+        verificationId: 'vr-late-failure',
+        artifactEvidenceId: 'ev-artifact-late-failure',
+        artifactPath: 'docs/facts.md',
+        artifactHash: 'late-failure-hash',
+        ok: false,
+        claims: [{ symbol: 'kValue', status: 'mismatch' }],
+        differences: ['kValue mismatch'],
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    assert.equal(report.latestArtifactVerifications[0].ok, false);
+    assert.equal(
+      report.issues.some(issue => issue.kind === 'completed-with-failed-artifact-verification' && issue.line === 2),
+      true,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay treats internally contradictory ok true as a sticky failure', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-11T05:19:00.000Z',
+      source: 'vscode-extension.artifact-grounding',
+      event: 'artifact-verification-completed',
+      data: {
+        verificationId: 'vr-contradictory',
+        artifactEvidenceId: 'ev-artifact-contradictory',
+        artifactPath: 'docs/facts.md',
+        artifactHash: 'contradictory-hash',
+        ok: true,
+        claims: [{ symbol: 'kValue', status: 'mismatch' }],
+        differences: [],
+        sourceReadbackEvidenceIds: ['ev-source-readback'],
+      },
+    },
+    {
+      ts: '2026-07-11T05:19:01.000Z',
+      event: 'agent-run-completed',
+      data: { status: 'completed' },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    assert.equal(report.latestArtifactVerifications[0].ok, false);
+    assert.equal(report.issues.some(issue => issue.kind === 'invalid-artifact-verification'), true);
+    assert.equal(report.issues.some(issue => issue.kind === 'completed-with-failed-artifact-verification'), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay ignores artifact verification events from an untrusted source', () => {
+  const { dir, logPath } = writeLog([{
+    ts: '2026-07-11T05:20:00.000Z',
+    source: 'provider-output',
+    event: 'artifact-verification-completed',
+    data: {
+      verificationId: 'vr-spoofed',
+      artifactEvidenceId: 'ev-spoofed',
+      artifactPath: 'docs/facts.md',
+      artifactHash: 'spoofed-hash',
+      ok: true,
+      claims: [{ symbol: 'kValue', status: 'verified' }],
+      differences: [],
+      sourceReadbackEvidenceIds: ['ev-spoofed-source'],
+    },
+  }]);
+
+  try {
+    const report = replayRunLog(logPath);
+    assert.equal(report.artifactVerifications, 0);
+    assert.equal(report.issues.some(issue => issue.kind === 'invalid-artifact-verification'), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay binds completed metadata to the final trusted VerificationResult', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-11T05:21:00.000Z',
+      source: 'vscode-extension.artifact-grounding',
+      event: 'artifact-verification-completed',
+      data: {
+        verificationId: 'vr-final-pass',
+        artifactEvidenceId: 'ev-final-artifact',
+        artifactPath: 'docs/facts.md',
+        artifactHash: 'final-hash',
+        ok: true,
+        claims: [{ symbol: 'kValue', status: 'verified' }],
+        differences: [],
+        sourceReadbackEvidenceIds: ['ev-final-source-readback'],
+      },
+    },
+    {
+      ts: '2026-07-11T05:21:01.000Z',
+      event: 'agent-run-completed',
+      data: {
+        status: 'completed',
+        verificationIds: ['vr-missing'],
+        artifactVerificationOk: false,
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const mismatches = report.issues.filter(issue => issue.kind === 'artifact-verification-completion-mismatch');
+    assert.equal(mismatches.length, 3);
+    assert.equal(mismatches.some(issue => /artifactVerificationOk=false/.test(issue.message)), true);
+    assert.equal(mismatches.some(issue => /不存在/.test(issue.message)), true);
+    assert.equal(mismatches.some(issue => /未引用最终生效/.test(issue.message)), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay rejects completed metadata that omits artifact verification binding', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-11T05:22:00.000Z',
+      source: 'vscode-extension.artifact-grounding',
+      event: 'artifact-verification-completed',
+      data: {
+        verificationId: 'vr-final-pass',
+        artifactEvidenceId: 'ev-final-artifact',
+        artifactPath: 'docs/facts.md',
+        artifactHash: 'final-hash',
+        ok: true,
+        claims: [{ symbol: 'kValue', status: 'verified' }],
+        differences: [],
+        sourceReadbackEvidenceIds: ['ev-final-source-readback'],
+      },
+    },
+    {
+      ts: '2026-07-11T05:22:01.000Z',
+      event: 'agent-run-completed',
+      data: { status: 'completed' },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const mismatches = report.issues.filter(issue => issue.kind === 'artifact-verification-completion-mismatch');
+    assert.equal(mismatches.some(issue => /artifactVerificationOk=true/.test(issue.message)), true);
+    assert.equal(mismatches.some(issue => /verificationIds/.test(issue.message)), true);
+    assert.equal(mismatches.some(issue => /未引用最终生效/.test(issue.message)), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay rejects a completed source-claim report with no grounding event', () => {
+  const prompt = '读取 /repo/source.hpp，提取 kAlpha、kBeta 的真实值，创建 Markdown 报告 /repo/facts.md。';
+  const { dir, logPath } = writeProductionRunLog({
+    prompt,
+    statuses: [{
+      type: 'agentStatus',
+      phase: 'apply',
+      state: 'completed',
+      taskAction: 'create',
+      taskFile: '/repo/facts.md',
+      taskDesc: '创建源码事实 Markdown 报告',
+      title: 'Markdown 文档已写入',
+      detail: '/repo/facts.md',
+    }],
+    completion: {
+      status: 'completed',
+      data: {
+        changedPaths: ['/repo/facts.md'],
+        tasksApplied: 0,
+      },
+    },
+  });
+
+  try {
+    const events = loadProductionRunEvents(logPath);
+    const started = events.find(entry => entry.event === 'agent-run-started');
+    const completed = events.find(entry => entry.event === 'agent-run-completed');
+    assert.equal(started.data.requiresSourceClaimArtifactVerification, true);
+    assert.equal(typeof started.data.prompt, 'object');
+    assert.equal(JSON.stringify(started.data).includes(prompt), false);
+    assert.equal(completed.data.taskContractFingerprint, started.data.taskContractFingerprint);
+    const report = replayRunLog(logPath);
+    assert.equal(report.artifactVerifications, 0);
+    const mismatches = report.issues.filter(issue => issue.kind === 'artifact-verification-completion-mismatch');
+    assert.equal(mismatches.some(issue => /缺少可信的 VerificationResult/.test(issue.message)), true);
+    assert.equal(mismatches.some(issue => /artifactVerificationOk=true/.test(issue.message)), true);
+    assert.equal(mismatches.some(issue => /verificationIds/.test(issue.message)), true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay does not require artifact verification for a read-only source-fact answer', () => {
+  const prompt = [
+    '只分析 /repo/source.hpp，提取 kAlpha、kBeta 的真实值并在回复中说明。',
+    '不要创建报告，不要修改或写入任何文件。',
+  ].join('\n');
+  const { dir, logPath } = writeProductionRunLog({
+    prompt,
+    traceEvents: [{
+      phase: 'payload',
+      event: 'payload-recorded',
+      data: {
+        name: 'extension.response.raw',
+        content: [
+          '# 源码事实问答',
+          '## 结论',
+          'kAlpha 的真实值为 1，kBeta 的真实值为 2。',
+          '## 依据',
+          '两个值均来自 source.hpp 的常量定义，本次没有创建或修改文件。',
+        ].join('\n'),
+      },
+    }],
+    statuses: [{
+      type: 'agentStatus',
+      phase: 'execute',
+      state: 'completed',
+      taskAction: 'analyze',
+      taskFile: '/repo/source.hpp',
+      taskDesc: '只读源码事实说明',
+      title: '源码事实问答已完成',
+    }],
+    completion: {
+      status: 'completed',
+      data: { changedPaths: [], tasksApplied: 0 },
+    },
+  });
+
+  try {
+    const events = loadProductionRunEvents(logPath);
+    const started = events.find(entry => entry.event === 'agent-run-started');
+    const completed = events.find(entry => entry.event === 'agent-run-completed');
+    assert.equal(started.data.requiresSourceClaimArtifactVerification, false);
+    assert.equal(completed.data.requiresSourceClaimArtifactVerification, false);
+    assert.equal(completed.data.taskContractFingerprint, started.data.taskContractFingerprint);
+    const report = replayRunLog(logPath);
+    assert.equal(
+      report.issues.some(issue => issue.kind === 'artifact-verification-completion-mismatch'),
+      false,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('P0-A runtime replay manifest binds exact evidence and six claim outcomes', () => {
+  const manifest = JSON.parse(readFileSync(path.join(p0aFixtureDir, 'fixture.json'), 'utf8'));
+  const oracle = JSON.parse(readFileSync(path.join(p0aFixtureDir, 'oracle.json'), 'utf8'));
+
+  for (const [relativePath, expectedHash] of Object.entries(manifest.fixtureFiles)) {
+    assert.equal(
+      sha256File(path.join(p0aFixtureDir, relativePath)),
+      expectedHash,
+      `${relativePath} must remain byte-identical to the manifest`,
+    );
+  }
+  assert.equal(manifest.source.sha256, manifest.fixtureFiles['license_types.hpp']);
+  assert.equal(
+    manifest.observedArtifact.sha256,
+    manifest.fixtureFiles['license-transport-facts.wrong.md'],
+  );
+  assert.deepEqual(oracle.claimResults, [
+    {
+      symbol: 'kTopicLicenseState',
+      expected: '/uav/license/state',
+      observed: '/uav/dt/license/state',
+      validator: 'exact',
+      status: 'mismatch',
+    },
+    {
+      symbol: 'kTopicLicenseTunnelRx',
+      expected: '/uav/license/tunnel/rx',
+      observed: '/uav/dt/license/tunnel/rx',
+      validator: 'exact',
+      status: 'mismatch',
+    },
+    {
+      symbol: 'kMavTunnelCmdLicense',
+      expected: 33007,
+      observed: 300,
+      validator: 'numeric',
+      status: 'mismatch',
+    },
+    {
+      symbol: 'kTunnelVersion',
+      expected: 1,
+      observed: 1,
+      validator: 'numeric',
+      status: 'verified',
+    },
+    {
+      symbol: 'kTunnelMaxTotalLen',
+      expected: 65536,
+      observed: 81920,
+      validator: 'numeric',
+      status: 'mismatch',
+    },
+    {
+      symbol: 'kTunnelSessionTimeoutMs',
+      expected: 5000,
+      observed: 30000,
+      validator: 'numeric',
+      status: 'mismatch',
+    },
+  ]);
+  assert.equal(
+    oracle.claimResults.filter(claim => claim.status !== 'verified').length,
+    oracle.wrongArtifactExpectedFailures,
+  );
 });

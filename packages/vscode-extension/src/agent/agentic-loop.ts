@@ -27,16 +27,9 @@ import {
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './completion-evidence';
-import {
-  buildAgenticHistoryText,
-  buildAgenticQualityGateForHistory,
-  type AgenticHistoryQualityGate,
-} from './agentic-history';
+import { buildAgenticHistoryText, buildAgenticQualityGateForHistory, type AgenticHistoryQualityGate } from './agentic-history';
 import { runAgentAutoValidationForWrites, type AgentAutoValidationResult } from './auto-validation';
-import {
-  buildMissingEvidenceRecoveryInstruction,
-  type TodoItem,
-} from './evidence-recovery';
+import { buildMissingEvidenceRecoveryInstruction, type TodoItem } from './evidence-recovery';
 import {
   buildDanglingAgentActionFeedback,
   hasDanglingAgentActionIntent,
@@ -109,6 +102,7 @@ import {
 import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
 import { QualityGateStagnationLedger } from './quality-gate-stagnation';
 import { buildFullFileWriteToolPrompt, buildReplaceInFileToolPrompt } from './tool-protocol-prompt';
+import { tryRunGroundedMarkdownAgenticTask } from './grounded-markdown-agentic-task';
 
 const AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
 const AGENTIC_TASK_PROMPT_CHAR_BUDGET = 34_000;
@@ -462,6 +456,9 @@ export async function runAgenticLoop(
   workflowMode: ExecutionMode = 'edit',
   memoryRelatedPaths: readonly string[] = [],
 ): Promise<AgentLoopResult> {
+  const groundedMarkdown = await tryRunGroundedMarkdownAgenticTask(userPrompt, workspaceRoot, mode, workflowMode, callbacks, chatWithMessages, dataFiles, sessionContextText);
+  if (groundedMarkdown) return groundedMarkdown;
+
   const rules  = getProjectRulesSync();
   const memory = getProjectMemorySync({
     prompt: userPrompt,
@@ -1376,7 +1373,9 @@ export async function runAgenticLoop(
     callbacks.onDelta('\x00ASUM\x00' + finalMsg);
   }
 
-  await callbacks.onTaskCheckpoint?.(null, [], 'completed');
+  if (!(cleanAbort || failedReason)) {
+    await callbacks.onTaskCheckpoint?.(null, [], 'completed');
+  }
 
   const derivedQualityGate = buildAgenticQualityGateForHistory({
     failedReason: cleanAbort ? '用户中断。' : failedReason,

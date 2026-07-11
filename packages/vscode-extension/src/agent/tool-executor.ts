@@ -11,12 +11,8 @@ import {
   getToolActivity,
   isFileWriteTool,
 } from './tool-registry';
-
-export interface EvidenceRef {
-  kind: ToolKind | 'tool-call' | 'workspace';
-  label: string;
-  ref?: string;
-}
+import type { EvidenceRef } from './evidence-grounding';
+export type { EvidenceRef } from './evidence-grounding';
 
 export interface ToolResult {
   ok: boolean;
@@ -42,7 +38,8 @@ export interface AgentToolExecutionPlan {
   activity: AgentToolActivity | null;
   call: ToolCall;
   definition?: AgentToolDefinition;
-  evidence: EvidenceRef[];
+  /** Display/audit intent only. These are not execution evidence and never enter EvidenceStore. */
+  plannedRefs: EvidenceRef[];
   permission?: ToolPermissionDecision;
 }
 
@@ -76,7 +73,7 @@ export class AgentToolExecutor {
       activity: getToolActivity(normalizedTool),
       call,
       definition,
-      evidence: buildEvidenceRefs(call),
+      plannedRefs: buildPlannedRefs(call),
       permission,
     };
   }
@@ -97,12 +94,13 @@ export class AgentToolExecutor {
   }
 
   toResult(plan: AgentToolExecutionPlan, result: ToolResultInput = {}): ToolResult {
+    const ok = result.ok ?? !result.error;
     return {
-      ok: result.ok ?? !result.error,
+      ok,
       toolName: plan.tool.name,
       output: result.output,
       error: result.error,
-      evidence: [...plan.evidence, ...(result.evidence ?? [])],
+      evidence: ok ? [...(result.evidence ?? [])] : [],
       permission: plan.permission,
     };
   }
@@ -128,7 +126,7 @@ export function classifyToolKind(name: string): ToolKind {
   return getToolDefinition(name)?.kind ?? 'plan';
 }
 
-function buildEvidenceRefs(call: ToolCall): EvidenceRef[] {
+function buildPlannedRefs(call: ToolCall): EvidenceRef[] {
   const input = call.input;
   const activity = getToolActivity(toolCallToFakeTool(call));
   const label = activity?.label || stringField(input, 'path', 'filePath', 'query', 'pattern', 'url', 'command') || call.name;
