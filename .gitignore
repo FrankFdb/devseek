@@ -35,6 +35,8 @@ backups/
 code/
 aircraft/
 docs/testing/programming-agent-benchmark-reports/
+docs/testing/agent-loop-eval-reports/
+docs/testing/phase0-12-verification-reports/
 probe_mermaid*.js
 packages/vscode-extension/test/unit/*.bundle.cjs
 packages/bridge/test/*.bundle.cjs

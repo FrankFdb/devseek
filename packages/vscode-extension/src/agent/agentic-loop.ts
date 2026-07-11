@@ -108,7 +108,7 @@ import {
 } from './agent-history-compaction';
 import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
 import { QualityGateStagnationLedger } from './quality-gate-stagnation';
-import { buildReplaceInFileToolPrompt } from './tool-protocol-prompt';
+import { buildFullFileWriteToolPrompt, buildReplaceInFileToolPrompt } from './tool-protocol-prompt';
 
 const AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
 const AGENTIC_TASK_PROMPT_CHAR_BUDGET = 34_000;
@@ -405,8 +405,7 @@ ${buildEngineeringGuidelinesPrompt('agent')}
 将重要发现写入项目记忆（由 DevSeek MemoryService 管理）：
 [TOOL:memory_write {"content":"关键记录内容（100字以内）"}]
 
-创建或完整覆写文件（提供绝对路径或相对 workspaceRoot 的路径）：
-[TOOL:create_file {"path":"code/hello.cpp","content":"文件全部内容"}]
+${buildFullFileWriteToolPrompt()}
 
 精确替换既有文件片段（修改正式工程既有文件时优先使用；old_str 必须来自 read_file 读取到的原文）：
 ${buildReplaceInFileToolPrompt()}

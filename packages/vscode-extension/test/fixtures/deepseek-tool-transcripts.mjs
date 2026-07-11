@@ -96,4 +96,18 @@ export const DEEPSEEK_TOOL_TRANSCRIPT_FIXTURES = [
     expectedToolNames: ['run_terminal'],
     expectedVisibleText: '让我先搜索 mc_log.h 的实际位置：',
   },
+  {
+    name: 'lossless raw XML multiline file write',
+    text: [
+      '我写入经过调查确认的实现文件。',
+      '<create_file>',
+      '<path>/tmp/warranty_transport.py</path>',
+      '<content><![CDATA[print("\\nready")',
+      'literal = "&amp;"',
+      ']]></content>',
+      '</create_file>',
+    ].join('\n'),
+    expectedToolNames: ['create_file'],
+    expectedVisibleText: '我写入经过调查确认的实现文件。',
+  },
 ];

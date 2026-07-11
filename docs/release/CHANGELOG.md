@@ -4,7 +4,21 @@
 
 ---
 
-## [Unreleased] — 2026-06-19
+## [Unreleased] — 2026-07-11
+
+### DeepSeek Web 无损写盘与稳定性资格门禁
+
+- 对标 Claude Code/Codex 的结构化工具边界，为 Web 文本 Provider 新增 XML + CDATA 多行文件 mutation 协议，避免 Python/Markdown 中的反斜杠、引号和换行经手写 JSON 后损坏。
+- DeepSeek continuation merger 能区分累计 DOM、从头重启和重叠续写；Replay 新增同一路径重复全量写入诊断，parser 只保留同一响应内最后一份完整全文件写入。
+- 新增架构债务预算，冻结 `extension.ts`、Agent 编排、Bridge 和 WebView 等 7 个超目标文件；后续职责外移后预算只能下降。
+- Phase 0-12 报告新增稳定性资格：确定性回归、真实 Provider CLI、真实 VS Code 插件证据分别结算；真实报告必须通过 Replay、匹配当前 Git/VSIX，且 dirty worktree 不得借用 `HEAD` 身份。
+- 稳定声明改为证据配额：同一提交至少 3 个短任务、2 个中型任务、1 个正式任务成功；单次成功只能标记候选可用。
+- 事实状态：2026-07-11 留存的 7 次正式真实插件仿真均失败；截至 `56effd7` 的 Extension 108 suite、Bridge 20 测试和 PA0-PA13 通过仅代表确定性合格，当前不得宣称 DevSeek 已稳定。
+
+验证：
+- 无损工具协议、工作流共享提示词和稳定性资格 focused tests 通过。
+- 提交前完整 `verify:phase0-12` 通过，覆盖全量 Extension、shared/Bridge/CLI、Agent 子环、PA0-PA13、架构预算和 diff 门禁；报告因未提交工作树正确标记为 `deterministic-dirty`，未提升为稳定。
+- 精确提交的 compile/package/install 和真实短 canary 在提交后执行，真实结果不得回写成未经证据支持的稳定声明。
 
 ### [BUG FIX] RunContext GUI 证据归并与 Agent 展示收敛
 

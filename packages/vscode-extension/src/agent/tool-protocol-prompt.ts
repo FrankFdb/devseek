@@ -9,6 +9,25 @@ export const REPLACE_IN_FILE_RAW_EXAMPLE = [
   '</replace_in_file>',
 ].join('\n');
 
+export const FULL_FILE_WRITE_RAW_EXAMPLE = [
+  '<create_file>',
+  '<path>src/foo.py</path>',
+  '<content><![CDATA[print("\\nready")',
+  ']]></content>',
+  '</create_file>',
+].join('\n');
+
+export function buildFullFileWriteToolPrompt(): string {
+  return [
+    '使用文本工具协议创建或完整覆写多行源码、Markdown、JSON、脚本时，必须使用不经 JSON 字符串转义的无损原始格式：',
+    FULL_FILE_WRITE_RAW_EXAMPLE,
+    'CDATA 中的内容按原字节写入；反斜杠、双引号、Markdown 代码块和真实换行不得改写。',
+    '每轮最多输出 1 个较大的整文件写入工具；输出工具块后立即停止，等待真实写盘结果。',
+    '只有无反斜杠、无双引号的短单行内容才可使用 [TOOL:create_file {...}] JSON 格式。',
+    '若 Provider 已提供原生 function calling，则直接调用原生 create_file，不输出文本伪工具块。',
+  ].join('\n');
+}
+
 export function buildReplaceInFileToolPrompt(): string {
   return [
     REPLACE_IN_FILE_JSON_EXAMPLE,

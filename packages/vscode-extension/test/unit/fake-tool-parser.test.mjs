@@ -510,6 +510,54 @@ test('FakeToolParser: parses paired XML tool tags with nested parameter tags', (
   assert.equal(stripToolCallBlocks(text), '我先读取需求文档和代码目录。');
 });
 
+test('FakeToolParser: preserves multiline source bytes in raw XML file writes', () => {
+  const source = [
+    '#!/usr/bin/env python3',
+    'print("\\nready")',
+    'markup = "&amp; must stay encoded"',
+    'closing_tag = "</content>"',
+    '',
+  ].join('\n');
+  const text = [
+    '我创建脚本。',
+    '<create_file>',
+    '<path>/tmp/transport.py</path>',
+    `<content><![CDATA[${source}]]></content>`,
+    '</create_file>',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'create_file');
+  assert.equal(tools[0].input.path, '/tmp/transport.py');
+  assert.equal(tools[0].input.content, source);
+  assert.equal(stripToolCallBlocks(text), '我创建脚本。');
+});
+
+test('FakeToolParser: preserves source bytes in raw XML targeted edits', () => {
+  const oldStr = 'if (ready && value == "&amp;") {\\n  print("\\nold");\\n}';
+  const newStr = 'if (ready && value == "&amp;") {\\n  print("\\nnew");\\n}';
+  const text = [
+    '<replace_in_file>',
+    '<path>/tmp/source.cpp</path>',
+    `<old_str><![CDATA[${oldStr}]]></old_str>`,
+    `<new_str><![CDATA[${newStr}]]></new_str>`,
+    '<replaceAll>false</replaceAll>',
+    '</replace_in_file>',
+  ].join('\n');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.deepEqual(tools[0].input, {
+    path: '/tmp/source.cpp',
+    old_str: oldStr,
+    new_str: newStr,
+    replaceAll: false,
+  });
+});
+
 test('FakeToolParser: hides incomplete paired XML tool tag while streaming', () => {
   const partial = [
     '现在编译测试：',

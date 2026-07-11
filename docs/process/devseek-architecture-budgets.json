@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "policy": "Files above their target are frozen at the recorded ceiling. A ceiling may only move down after responsibilities are extracted.",
+  "files": {
+    "packages/vscode-extension/src/extension.ts": {
+      "maxLines": 2061,
+      "targetLines": 1024,
+      "boundary": "VS Code composition root and Surface Adapter"
+    },
+    "packages/vscode-extension/src/agent-loop.ts": {
+      "maxLines": 2548,
+      "targetLines": 1024,
+      "boundary": "legacy two-stage Agent compatibility adapter"
+    },
+    "packages/vscode-extension/src/agent/agentic-loop.ts": {
+      "maxLines": 1416,
+      "targetLines": 1024,
+      "boundary": "Headless Agent orchestration"
+    },
+    "packages/vscode-extension/src/agent/tool-loop.ts": {
+      "maxLines": 1299,
+      "targetLines": 1024,
+      "boundary": "normalized ToolCall execution"
+    },
+    "packages/vscode-extension/src/agent/fake-tool-parser.ts": {
+      "maxLines": 2107,
+      "targetLines": 1024,
+      "boundary": "DeepSeek Web text-tool compatibility adapter"
+    },
+    "packages/bridge/src/deepseek-agent.ts": {
+      "maxLines": 1725,
+      "targetLines": 1024,
+      "boundary": "DeepSeek browser driver orchestration"
+    },
+    "packages/vscode-extension/media/webview.js": {
+      "maxLines": 5531,
+      "targetLines": 2048,
+      "boundary": "VS Code WebView Surface rendering"
+    }
+  }
+}

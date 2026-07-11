@@ -68,6 +68,23 @@
 
 ---
 
+**变更标题**：DeepSeek Web 无损文件协议与稳定性资格收敛（2026-07-11）
+- **需求归因**：实现缺陷 + 测试判据缺陷 + 架构债务 — 真实正式任务连续失败，但确定性 benchmark 容易被误读为“稳定”；多行 Python/Markdown 经模型手写 JSON 后发生反斜杠和换行损坏。
+- **影响能力层**：Provider 工具协议、文件写入、Runtime Replay、验证资格、发布判断、架构治理。
+- **架构影响**：
+  - Web 文本 Provider 的多行 mutation 统一走 `tool-protocol-prompt` 定义的 XML + CDATA 无损边界，`fake-tool-parser` 只调用独立 parser，不继续堆业务判断。
+  - `devseek-stability-qualification` 分离 deterministic、live Provider CLI、real VS Code plugin 三类证据，并绑定运行日志中的 Git commit；dirty worktree 不得借用 `HEAD` 身份。
+  - `devseek-architecture-budgets.json` 冻结 7 个超目标编排/Surface 文件，新增职责必须迁入拥有该事实的服务或适配器。
+- **方案选择理由**：Claude Code/Codex 通过结构化工具或宿主写盘传递源码，并把工具结果、验证和当前运行版本作为交付事实；继续放宽 JSON parser 或仅增加提示词无法保证字节无损，也无法防止旧报告证明新代码。
+- **备选方案**：继续修复 JSON escape、提高 token 限制或重跑正式任务；未采用，因为这些方案没有消除文本协议歧义，也没有修复测试结论越级。
+- **主链路验证**：多行源码 CDATA fixture 保留 `\n`、XML 字面量和 Markdown 内容；Phase 0-12 报告明确输出资格等级和实时证据配额。
+- **回退链路验证**：旧 JSON 单行工具格式继续用于标量/兼容输入；损坏、旧提交或 replay 失败的真实插件报告不能进入候选/稳定证据。
+- **结果判据变化**：确定性测试通过只允许 `deterministic`；至少一份同提交真实插件报告才是候选可用；`stable` 需要 3 个短任务、2 个中型任务和 1 个正式任务全部成功。
+- **文档更新**：`docs/architecture/05-代码重构实施计划.md`、`docs/process/devseek-architecture-budgets.json`、`docs/release/CHANGELOG.md`、本文件。
+- **备份/发布动作**：完成全量单测、Replay、PA benchmark、compile/package/install 后提交；随后只跑真实短 canary，不直接重跑正式长任务。
+
+---
+
 **变更标题**：RunContext GUI 证据归并与 Agent 展示收敛（2026-07-03）
 - **需求归因**：实现缺陷 + 体验退化 + 架构债务 — `shape_manager` 已编译运行并弹出 GUI 后，早期终端失败仍残留为最终失败；同时 Todo/Working 区出现长任务文本和重复进度行。
 - **影响能力层**：执行、验证、RunContext 事实归并、Todo 状态、WebView 展示。

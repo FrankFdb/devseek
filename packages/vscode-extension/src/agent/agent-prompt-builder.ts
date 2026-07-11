@@ -1,7 +1,7 @@
 import type { AgentTask } from '../agent-task-decomposer';
 import type { McpToolRef } from '../mcp/client';
 import { buildEngineeringGuidelinesPrompt } from './engineering-guidelines';
-import { buildReplaceInFileToolPrompt } from './tool-protocol-prompt';
+import { buildFullFileWriteToolPrompt, buildReplaceInFileToolPrompt } from './tool-protocol-prompt';
 
 export function buildLocalRespondTaskMessage(task: AgentTask, userPrompt: string): string {
   if (task.targetKind === 'provider-response') {
@@ -103,8 +103,7 @@ ${includeTerminal ? `执行终端命令（输出将在下轮可见，可用于�
 ${includeWorkspaceMutationTools ? `创建目录（含父级目录，相对于工作区根或绝对路径）：
 [TOOL:create_directory {"path":"src/utils/helpers"}]
 
-创建或完整覆写文件（提供目标路径和完整文件内容）：
-[TOOL:create_file {"path":"src/foo.ts","content":"文件全部内容"}]
+${buildFullFileWriteToolPrompt()}
 
 精确替换既有文件片段（修改正式工程既有文件时优先使用；old_str 必须来自 read_file 读取到的原文）：
 ${buildReplaceInFileToolPrompt()}

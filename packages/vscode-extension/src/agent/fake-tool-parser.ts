@@ -10,6 +10,7 @@ import {
   stripModelToolProtocolBlocks,
   type ModelToolProtocolDialect,
 } from './model-tool-protocol-adapter';
+import { parseLosslessXmlMutationInput } from './lossless-xml-tool-input';
 
 export interface FakeTool {
   name: string;
@@ -444,6 +445,8 @@ function parseXmlToolParameterBody(rawBody: string): Record<string, unknown> {
 }
 
 function parseXmlToolBodyInput(name: string, rawBody: string): Record<string, unknown> {
+  const losslessMutationInput = parseLosslessXmlMutationInput(name, rawBody);
+  if (losslessMutationInput) return losslessMutationInput;
   const body = stripJsonFence(decodeXmlishText(rawBody));
   if (!body) return {};
   try {

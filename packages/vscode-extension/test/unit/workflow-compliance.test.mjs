@@ -744,8 +744,13 @@ test('Agent planning: task shape guidance is injected before code is written', (
   assertContains(guidelines, '独立新项目/原型/练习', 'engineering guidelines must preserve standalone task behavior');
   assertContains(prompts, 'buildReplaceInFileToolPrompt()', 'task-specific prompt must use the shared targeted-edit protocol');
   assertContains(agentic, 'buildReplaceInFileToolPrompt()', 'Agentic prompt must use the shared targeted-edit protocol');
+  assertContains(prompts, 'buildFullFileWriteToolPrompt()', 'task-specific prompt must use the shared lossless full-file protocol');
+  assertContains(agentic, 'buildFullFileWriteToolPrompt()', 'Agentic prompt must use the shared lossless full-file protocol');
   assertContains(toolProtocolPrompt, 'replace_in_file', 'shared tool prompt must expose targeted edits, not only full-file writes');
   assertContains(toolProtocolPrompt, '<old_str>', 'shared tool prompt must expose a quote-safe raw edit format');
+  assertContains(toolProtocolPrompt, '<content><![CDATA[', 'shared tool prompt must expose a lossless multiline file format');
+  assertContains(toolProtocolPrompt, '每轮最多输出 1 个较大的整文件写入工具', 'weak text providers must serialize large writes one at a time');
+  assertContains(toolProtocolPrompt, '原生 function calling', 'native providers must keep using structured tool calls');
 });
 
 test('Agent progress UI: user-facing digest is primary and tool details stay collapsible', () => {
