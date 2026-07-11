@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const LIVE_STABILITY_QUOTA = Object.freeze({
+export const LEGACY_LIVE_OBSERVATION_THRESHOLDS = Object.freeze({
   canary: 3,
   medium: 2,
   formal: 1,
@@ -63,36 +63,30 @@ export function buildStabilityQualification({
     : 'not-run';
   const passedEvidence = distinctPassedEvidence(realPluginEvidence);
   const scenarioCounts = countScenarios(passedEvidence);
-  const quotaSatisfied = Object.entries(LIVE_STABILITY_QUOTA)
+  const legacyObservationThresholdMet = Object.entries(LEGACY_LIVE_OBSERVATION_THRESHOLDS)
     .every(([scenario, required]) => scenarioCounts[scenario] >= required);
-  const candidateClaimAllowed = deterministicPassed && !worktreeDirty && passedEvidence.length > 0;
-  const stableClaimAllowed = deterministicPassed
-    && !worktreeDirty
-    && quotaSatisfied
-    && liveDeepSeekCli !== 'failed';
 
   return {
+    qualificationProtocol: 'legacy-development-live-observation/v1',
+    qualificationAuthority: 'none',
     currentCommit,
     worktree: worktreeDirty ? 'dirty' : 'clean',
     deterministic: deterministicPassed ? 'passed' : 'failed',
     liveDeepSeekCli,
-    realPlugin: passedEvidence.length > 0 ? 'passed' : (realPluginEvidence?.length ? 'failed' : 'not-run'),
+    realPlugin: passedEvidence.length > 0 ? 'observed' : (realPluginEvidence?.length ? 'invalid' : 'not-run'),
     realPluginEvidence,
     scenarioCounts,
-    requiredScenarioCounts: LIVE_STABILITY_QUOTA,
-    candidateClaimAllowed,
-    stableClaimAllowed,
+    legacyObservationThresholds: LEGACY_LIVE_OBSERVATION_THRESHOLDS,
+    legacyObservationThresholdMet,
+    candidateClaimAllowed: false,
+    stableClaimAllowed: false,
     level: !deterministicPassed
       ? 'failed'
       : worktreeDirty
         ? 'deterministic-dirty'
-      : stableClaimAllowed
-        ? 'stable'
-        : candidateClaimAllowed
-          ? 'live-plugin'
-          : liveDeepSeekCli === 'passed'
-            ? 'live-provider-cli'
-            : 'deterministic',
+        : passedEvidence.length > 0 || liveDeepSeekCli === 'passed'
+          ? 'legacy-development-live-observation'
+          : 'deterministic',
   };
 }
 

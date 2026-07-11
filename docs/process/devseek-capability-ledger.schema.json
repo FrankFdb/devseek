@@ -1,0 +1,291 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-capability-ledger-v1.json",
+  "title": "DevSeek Capability Ledger v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "ledger_id",
+    "qualification_claim_policy",
+    "classification_rules",
+    "capabilities",
+    "ledger_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.capability-ledger/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "ledger_id": { "type": "string", "minLength": 1 },
+    "qualification_claim_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "profile_registry_sha256", "evidence_registry_sha256"],
+      "properties": {
+        "mode": { "const": "deny-until-signed-evidence-validator" },
+        "profile_registry_sha256": { "type": "null" },
+        "evidence_registry_sha256": { "type": "null" }
+      }
+    },
+    "classification_rules": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/classificationRule" }
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/capability" }
+    },
+    "ledger_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "applicability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "claim_scopes", "not_applicable_requires_adjudication"],
+      "properties": {
+        "state": { "enum": ["active", "conditional", "deferred", "experimental"] },
+        "claim_scopes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "not_applicable_requires_adjudication": { "type": "boolean" }
+      }
+    },
+    "selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "capability_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/capabilityId" }
+        },
+        "domains": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^C(?:[0-9]|1[0-4])$" }
+        },
+        "prefixes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "classificationRule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule_id", "specificity", "selector", "priority", "applicability"],
+      "properties": {
+        "rule_id": { "type": "string", "minLength": 1 },
+        "specificity": { "type": "integer", "minimum": 0 },
+        "selector": { "$ref": "#/$defs/selector" },
+        "priority": { "enum": ["P0", "P1", "P2"] },
+        "applicability": { "$ref": "#/$defs/applicability" }
+      }
+    },
+    "capabilityId": {
+      "type": "string",
+      "pattern": "^C(?:[0-9]|1[0-4])-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+    },
+    "authorityContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "contract_id", "decision_scope", "failure_semantics", "source_ref"],
+      "properties": {
+        "schema_version": { "const": "devseek.authority-contract/v1" },
+        "contract_id": { "type": "string", "minLength": 1 },
+        "decision_scope": { "type": "string", "minLength": 1 },
+        "failure_semantics": { "type": "string", "minLength": 1 },
+        "source_ref": { "type": "string", "minLength": 1 }
+      }
+    },
+    "qualificationClaimSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "profile_sha256", "claim_scope", "surface", "provider", "platform_profile"],
+      "properties": {
+        "profile_id": { "type": "string", "minLength": 1 },
+        "profile_sha256": { "$ref": "#/$defs/sha256" },
+        "claim_scope": { "type": "string", "minLength": 1 },
+        "surface": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "platform_profile": { "type": "string", "minLength": 1 }
+      }
+    },
+    "requiredClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "profile_sha256", "claim_scope", "surface", "provider", "platform_profile", "minimum_level"],
+      "properties": {
+        "profile_id": { "type": "string", "minLength": 1 },
+        "profile_sha256": { "$ref": "#/$defs/sha256" },
+        "claim_scope": { "type": "string", "minLength": 1 },
+        "surface": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "platform_profile": { "type": "string", "minLength": 1 },
+        "minimum_level": { "enum": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"] }
+      }
+    },
+    "qualificationClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claim_id",
+        "profile_id",
+        "profile_sha256",
+        "claim_scope",
+        "surface",
+        "provider",
+        "platform_profile",
+        "level",
+        "evidence_manifest_id",
+        "evidence_manifest_sha256",
+        "valid_from",
+        "expires_at",
+        "status"
+      ],
+      "properties": {
+        "claim_id": { "type": "string", "minLength": 1 },
+        "profile_id": { "type": "string", "minLength": 1 },
+        "profile_sha256": { "$ref": "#/$defs/sha256" },
+        "claim_scope": { "type": "string", "minLength": 1 },
+        "surface": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "platform_profile": { "type": "string", "minLength": 1 },
+        "level": { "enum": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"] },
+        "evidence_manifest_id": { "type": "string", "minLength": 1 },
+        "evidence_manifest_sha256": { "$ref": "#/$defs/sha256" },
+        "valid_from": { "type": "string", "format": "date-time" },
+        "expires_at": { "type": "string", "format": "date-time" },
+        "status": { "enum": ["valid", "expired", "revoked", "invalidated"] }
+      }
+    },
+    "semanticAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "port", "contract", "contract_sha256"],
+      "properties": {
+        "key": { "type": "string", "minLength": 1 },
+        "port": { "type": "string", "minLength": 1 },
+        "contract": { "$ref": "#/$defs/authorityContract" },
+        "contract_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "dependency": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability_id", "relation", "required_implementation_state", "contract_sha256"],
+      "properties": {
+        "capability_id": { "$ref": "#/$defs/capabilityId" },
+        "relation": {
+          "enum": [
+            "authority",
+            "context",
+            "control",
+            "delivery",
+            "evidence",
+            "execution",
+            "extension",
+            "qualification",
+            "recovery",
+            "semantic",
+            "verification"
+          ]
+        },
+        "required_implementation_state": { "enum": ["specified", "implemented", "wired"] },
+        "contract_sha256": { "$ref": "#/$defs/sha256" },
+        "required_claim": { "$ref": "#/$defs/requiredClaim" }
+      }
+    },
+    "implementationComponent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "path"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commands", "evidence_kind"],
+      "properties": {
+        "commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "evidence_kind": {
+          "enum": ["static-analysis", "deterministic-regression", "replay-regression", "development-observation"]
+        }
+      }
+    },
+    "capability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_id",
+        "domain",
+        "title",
+        "priority",
+        "applicability",
+        "semantic_authority",
+        "implementation_state",
+        "qualification_claims",
+        "qualification_level_view",
+        "implementation_components",
+        "architecture_dependencies"
+      ],
+      "properties": {
+        "capability_id": { "$ref": "#/$defs/capabilityId" },
+        "domain": { "type": "string", "pattern": "^C(?:[0-9]|1[0-4])$" },
+        "title": { "type": "string", "minLength": 1 },
+        "priority": { "enum": ["P0", "P1", "P2"] },
+        "applicability": { "$ref": "#/$defs/applicability" },
+        "semantic_authority": { "$ref": "#/$defs/semanticAuthority" },
+        "implementation_state": {
+          "enum": ["proposed", "specified", "implemented", "wired", "deprecated", "superseded"]
+        },
+        "qualification_claims": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/qualificationClaim" }
+        },
+        "qualification_level_view": {
+          "oneOf": [
+            { "type": "null" },
+            { "enum": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"] }
+          ]
+        },
+        "implementation_components": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/implementationComponent" }
+        },
+        "architecture_dependencies": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/dependency" }
+        },
+        "verification": { "$ref": "#/$defs/verification" }
+      }
+    }
+  }
+}

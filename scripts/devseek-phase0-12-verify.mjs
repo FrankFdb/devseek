@@ -33,10 +33,16 @@ const gates = [
     purpose: 'Freeze oversized orchestration and Surface files so new fixes must move responsibility into owned boundaries.',
   },
   {
+    id: 'capability-ledger-governance',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:capability-ledger'],
+    purpose: 'Fail closed on capability graph, typed dependency, scoped qualification target, R1 closure, or generated-manifest drift.',
+  },
+  {
     id: 'stability-qualification-unit',
     phases: '0-12',
     command: ['npm', 'run', 'verify:stability-qualification'],
-    purpose: 'Prevent deterministic green gates or stale VSIX reports from being promoted to a live stability claim.',
+    purpose: 'Prevent deterministic gates or legacy scenario-name observations from being promoted to a product qualification claim.',
   },
   {
     id: 'P0-P9-vscode-extension-unit',
@@ -184,16 +190,17 @@ function analyze() {
   }
 
   if (report.findings.length === 0) {
-    report.iterationDecision.push('Deterministic Phase 0-12 gates passed; this proves regression safety, not live VS Code plugin stability.');
+    report.iterationDecision.push('Deterministic Phase 0-12 gates passed; this proves regression safety only and authorizes no product qualification.');
   } else {
     report.iterationDecision.push('Stop promotion: fix failed Phase 0-12 gates, rerun this script, and keep the failed report as iteration evidence.');
   }
-  if (report.qualification.stableClaimAllowed) {
-    report.iterationDecision.push('Same-commit live evidence met the canary/medium/formal quota; a stability claim is allowed for this exact build.');
-  } else {
-    const counts = report.qualification.scenarioCounts;
-    report.iterationDecision.push(`Do not claim stable: same-commit live evidence is canary ${counts.canary}/3, medium ${counts.medium}/2, formal ${counts.formal}/1.`);
-  }
+  const counts = report.qualification.scenarioCounts;
+  const thresholds = report.qualification.legacyObservationThresholds;
+  report.iterationDecision.push(
+    `Legacy development live observations: canary ${counts.canary}/${thresholds.canary}, `
+      + `medium ${counts.medium}/${thresholds.medium}, formal ${counts.formal}/${thresholds.formal}; `
+      + 'these scenario-name buckets are coverage statistics only and cannot authorize candidate or stable.',
+  );
 }
 
 function phaseCovered(spec, phase) {
@@ -207,7 +214,8 @@ function phaseCovered(spec, phase) {
 
 function classifyGateFailure(gate) {
   if (/architecture-drift/i.test(gate.id)) return 'architecture-boundary-regression';
-  if (/stability-qualification/i.test(gate.id)) return 'stability-oracle-regression';
+  if (/capability-ledger/i.test(gate.id)) return 'capability-governance-regression';
+  if (/stability-qualification/i.test(gate.id)) return 'legacy-observation-guard-regression';
   if (/programming-agent/i.test(gate.id)) return 'programming-agent-benchmark-failure';
   if (/live-deepseek/i.test(gate.id)) return 'agent-loop-live-deepseek-failure';
   if (/agent-loop/i.test(gate.id)) return 'agent-loop-subloop-failure';
@@ -219,7 +227,8 @@ function classifyGateFailure(gate) {
 function nextActionFor(gate) {
   const actions = {
     'architecture-drift-budget': 'Move the new responsibility into the owning service/adapter, lower the frozen ceiling after extraction, then rerun verify:architecture-drift.',
-    'stability-qualification-unit': 'Fix the qualification oracle before interpreting any deterministic or live test result.',
+    'capability-ledger-governance': 'Fix the machine ledger, typed dependency, scoped claim target, or generated manifest at its semantic authority, then rerun verify:capability-ledger.',
+    'stability-qualification-unit': 'Fix the legacy observation guard before interpreting deterministic or live development coverage.',
     'P0-P9-vscode-extension-unit': 'Fix the failing extension unit suite or update the runner only if the oracle is invalid, then rerun verify:phase0-12.',
     'P10-runtime-surface': 'Fix shared/bridge/CLI/extension compile or runtime-surface tests, then rerun verify:phase10 and verify:phase0-12.',
     'P11-engineering-integrity': 'Fix engineering context shared-core regressions, then rerun verify:phase11 and verify:phase0-12.',
@@ -257,11 +266,13 @@ function renderMarkdown() {
     `- Run ID: ${report.runId}`,
     `- Target: ${report.target}`,
     `- Result: ${report.ok ? 'PASS' : 'FAIL'}`,
-    `- Qualification: ${report.qualification.level}`,
+    `- Legacy observation level: ${report.qualification.level}`,
+    `- Qualification authority: ${report.qualification.qualificationAuthority}`,
     `- Worktree: ${report.qualification.worktree}`,
+    `- Candidate claim allowed: ${report.qualification.candidateClaimAllowed ? 'yes' : 'no'}`,
     `- Stable claim allowed: ${report.qualification.stableClaimAllowed ? 'yes' : 'no'}`,
     `- Real DeepSeek CLI smoke: ${report.qualification.liveDeepSeekCli}`,
-    `- Real VS Code plugin: ${report.qualification.realPlugin}`,
+    `- Real VS Code plugin observation: ${report.qualification.realPlugin}`,
     `- JSON: \`${path.relative(repoRoot, jsonReportPath)}\``,
     `- Latest: \`${path.relative(repoRoot, latestReportPath)}\``,
     '',
@@ -277,16 +288,17 @@ function renderMarkdown() {
     '| ---: | --- | --- |',
     ...report.phaseSummary.map(phase => `| ${phase.phase} | ${phase.status} | ${phase.gates.join(', ')} |`),
     '',
-    '## Stability Qualification',
+    '## Legacy Development Observations (Non-Qualification)',
     '',
     '| Evidence | Status |',
     '| --- | --- |',
     `| Deterministic gates | ${report.qualification.deterministic} |`,
     `| Live DeepSeek CLI smoke | ${report.qualification.liveDeepSeekCli} |`,
-    `| Same-commit real VS Code plugin | ${report.qualification.realPlugin} |`,
-    `| Canary quota | ${report.qualification.scenarioCounts.canary}/${report.qualification.requiredScenarioCounts.canary} |`,
-    `| Medium quota | ${report.qualification.scenarioCounts.medium}/${report.qualification.requiredScenarioCounts.medium} |`,
-    `| Formal quota | ${report.qualification.scenarioCounts.formal}/${report.qualification.requiredScenarioCounts.formal} |`,
+    `| Same-commit real VS Code plugin observation | ${report.qualification.realPlugin} |`,
+    `| Canary name-bucket coverage | ${report.qualification.scenarioCounts.canary}/${report.qualification.legacyObservationThresholds.canary} |`,
+    `| Medium name-bucket coverage | ${report.qualification.scenarioCounts.medium}/${report.qualification.legacyObservationThresholds.medium} |`,
+    `| Formal name-bucket coverage | ${report.qualification.scenarioCounts.formal}/${report.qualification.legacyObservationThresholds.formal} |`,
+    `| Legacy coverage threshold observed | ${report.qualification.legacyObservationThresholdMet ? 'yes' : 'no'} |`,
     '',
     '## Findings',
     '',

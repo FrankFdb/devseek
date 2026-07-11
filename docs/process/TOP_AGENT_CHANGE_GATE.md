@@ -68,6 +68,20 @@
 
 ---
 
+**变更标题**：G0-A 机器能力账本与资格防越级门禁（2026-07-12）
+- **需求归因**：架构债务 + 验收口径缺陷 — 功能增长后简单编程反复回退，现有文档、实现状态、deterministic 测试、3/2/1 live 观测和产品资格没有共同机器事实源。
+- **影响能力层**：能力治理、架构依赖、里程碑计划、证据完整性、资格判定、默认回归门禁。
+- **架构影响**：新增 76 项 capability/138 条 typed edge 的 JSON ledger、claim/milestone profile、R1 目标工作 manifest、标准 schema、语义校验器和生成物漂移 gate；Phase 0～12 默认执行该 gate。只有 `C0-CAPABILITY-LEDGER-SCHEMA` 标记 wired，其余 75 项仍为 proposed，全部正式 qualification claim 为空。
+- **方案选择理由**：先让工作范围、authority、依赖 state、精确 claim tuple 和 hash contract 可复算，后续 Kernel 重构才能在同一边界内收敛；目标 manifest 明确不等于当前能力成绩。
+- **备选方案**：直接进入 R1 Loop/Kernel 重构；未采用，因为没有 typed closure 和资格边界时会继续漏依赖、扩大工作量或把确定性通过外推成产品稳定。
+- **主链路验证**：R1 从 10 个 roots 确定性展开为 45/76 项，完整保留 68 条选中 edge、selection path、relation、目标 contract 和逐 tuple state/level；生成文件与源 hash 一致。
+- **回退链路验证**：缺失/重复/循环 edge、未知 relation、未注册或 hash 漂移 claim profile、无作用域 L 级、断链 authority anchor、未知完整性版本和 stale 生成物均 fail closed。
+- **结果判据变化**：旧 canary 3/3、medium 2/2、formal 1/1 只允许称 development observation；没有签名 Evidence Manifest 与独立 aggregator 时，candidate/stable 恒为 false。
+- **文档更新**：顶级智能体收敛审计包 01～10、根文档索引、ARCH-18 superseded 标记、本文件和 release changelog；下一步唯一入口为 G0-B。
+- **备份/发布动作**：`verify:capability-ledger` 10/10、`verify:stability-qualification` 8/8、架构漂移与完整 Phase 0～12 均通过；未修改 Extension/Bridge 产品行为，不打包、不安装 VSIX、不运行 live、不发布。
+
+---
+
 **变更标题**：DeepSeek Web 无损文件协议与稳定性资格收敛（2026-07-11）
 - **需求归因**：实现缺陷 + 测试判据缺陷 + 架构债务 — 真实正式任务连续失败，但确定性 benchmark 容易被误读为“稳定”；多行 Python/Markdown 经模型手写 JSON 后发生反斜杠和换行损坏。
 - **影响能力层**：Provider 工具协议、文件写入、Runtime Replay、验证资格、发布判断、架构治理。

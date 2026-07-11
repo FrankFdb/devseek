@@ -1,0 +1,3457 @@
+{
+  "schema_version": "devseek.capability-ledger/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
+  "qualification_claim_policy": {
+    "mode": "deny-until-signed-evidence-validator",
+    "profile_registry_sha256": null,
+    "evidence_registry_sha256": null
+  },
+  "classification_rules": [
+    {
+      "rule_id": "c0-qualification-infrastructure",
+      "specificity": 10,
+      "selector": {
+        "domains": [
+          "C0"
+        ]
+      },
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true
+      }
+    },
+    {
+      "rule_id": "core-coding-p0",
+      "specificity": 10,
+      "selector": {
+        "domains": [
+          "C1",
+          "C2",
+          "C6",
+          "C7",
+          "C8",
+          "C9"
+        ]
+      },
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      }
+    },
+    {
+      "rule_id": "core-coding-p1",
+      "specificity": 10,
+      "selector": {
+        "domains": [
+          "C3",
+          "C4",
+          "C5",
+          "C10",
+          "C11",
+          "C12"
+        ]
+      },
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      }
+    },
+    {
+      "rule_id": "extension-default",
+      "specificity": 10,
+      "selector": {
+        "domains": [
+          "C13"
+        ]
+      },
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "orchestration-capable",
+          "extension-capable"
+        ],
+        "not_applicable_requires_adjudication": true
+      }
+    },
+    {
+      "rule_id": "qualification-aggregate",
+      "specificity": 10,
+      "selector": {
+        "domains": [
+          "C14"
+        ]
+      },
+      "priority": "P0",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "qualification-aggregate"
+        ],
+        "not_applicable_requires_adjudication": true
+      }
+    },
+    {
+      "rule_id": "safety-boundary-override",
+      "specificity": 100,
+      "selector": {
+        "capability_ids": [
+          "C4-EXTERNAL-BOUNDARY",
+          "C10-INDEPENDENT-REVIEW",
+          "C10-DELIVERY-MANIFEST",
+          "C10-ARTIFACT-IDENTITY",
+          "C12-RUN-EVIDENCE-RETENTION"
+        ]
+      },
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding",
+          "safety"
+        ],
+        "not_applicable_requires_adjudication": true
+      }
+    },
+    {
+      "rule_id": "visual-computer-use-override",
+      "specificity": 100,
+      "selector": {
+        "capability_ids": [
+          "C6-VISUAL-COMPUTER-USE"
+        ]
+      },
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "visual-computer-use"
+        ],
+        "not_applicable_requires_adjudication": true
+      }
+    },
+    {
+      "rule_id": "release-capable-override",
+      "specificity": 100,
+      "selector": {
+        "capability_ids": [
+          "C10-GIT-DELIVERY",
+          "C10-RELEASE-GATE",
+          "C10-CI-DEPLOY-OBSERVE",
+          "C10-ROLLBACK"
+        ]
+      },
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "release-capable"
+        ],
+        "not_applicable_requires_adjudication": true
+      }
+    },
+    {
+      "rule_id": "background-automation-override",
+      "specificity": 100,
+      "selector": {
+        "capability_ids": [
+          "C11-BACKGROUND-AUTOMATION"
+        ]
+      },
+      "priority": "P2",
+      "applicability": {
+        "state": "deferred",
+        "claim_scopes": [
+          "background-automation"
+        ],
+        "not_applicable_requires_adjudication": true
+      }
+    },
+    {
+      "rule_id": "mcp-safety-override",
+      "specificity": 100,
+      "selector": {
+        "capability_ids": [
+          "C13-MCP-BOUNDARY"
+        ]
+      },
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "mcp-exposed-safety-boundary"
+        ],
+        "not_applicable_requires_adjudication": true
+      }
+    },
+    {
+      "rule_id": "peer-agent-experimental-override",
+      "specificity": 100,
+      "selector": {
+        "capability_ids": [
+          "C13-PEER-AGENT-COORDINATION"
+        ]
+      },
+      "priority": "P2",
+      "applicability": {
+        "state": "experimental",
+        "claim_scopes": [
+          "peer-agent"
+        ],
+        "not_applicable_requires_adjudication": true
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+      "domain": "C0",
+      "title": "C0 可证地基 / CapabilityLedgerSchema",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c0-capability-ledger-schema",
+        "port": "CapabilityLedgerSchema",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C0-CAPABILITY-LEDGER-SCHEMA/v1",
+          "decision_scope": "Own the semantic decision boundary for C0-CAPABILITY-LEDGER-SCHEMA.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C0-CAPABILITY-LEDGER-SCHEMA"
+        },
+        "contract_sha256": "8d68ea6eb2dcf0cdfcda59cc5872448f7f9aaf29da339f5874fded0294fad9d5"
+      },
+      "implementation_state": "wired",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [
+        {
+          "role": "schema",
+          "path": "docs/process/devseek-capability-ledger.schema.json"
+        },
+        {
+          "role": "milestone-profile-schema",
+          "path": "docs/process/devseek-milestone-profiles.schema.json"
+        },
+        {
+          "role": "work-manifest-schema",
+          "path": "docs/process/devseek-capability-work-manifest.schema.json"
+        },
+        {
+          "role": "source-of-truth",
+          "path": "docs/process/devseek-capability-ledger.json"
+        },
+        {
+          "role": "milestone-profile-source",
+          "path": "docs/process/devseek-milestone-profiles.json"
+        },
+        {
+          "role": "semantic-validator-and-generator",
+          "path": "scripts/lib/devseek-capability-ledger.mjs"
+        },
+        {
+          "role": "gate-cli",
+          "path": "scripts/devseek-capability-ledger-check.mjs"
+        },
+        {
+          "role": "contract-tests",
+          "path": "scripts/test/devseek-capability-ledger.test.mjs"
+        }
+      ],
+      "architecture_dependencies": [],
+      "verification": {
+        "commands": [
+          "npm run verify:capability-ledger"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
+    },
+    {
+      "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+      "domain": "C0",
+      "title": "C0 可证地基 / RunEvidenceLedgerPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c0-run-evidence-ledger",
+        "port": "RunEvidenceLedgerPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C0-RUN-EVIDENCE-LEDGER/v1",
+          "decision_scope": "Own the semantic decision boundary for C0-RUN-EVIDENCE-LEDGER.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C0-RUN-EVIDENCE-LEDGER"
+        },
+        "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": []
+    },
+    {
+      "capability_id": "C0-CASE-CATALOG",
+      "domain": "C0",
+      "title": "C0 可证地基 / GoldenCaseCatalogPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c0-case-catalog",
+        "port": "GoldenCaseCatalogPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C0-CASE-CATALOG/v1",
+          "decision_scope": "Own the semantic decision boundary for C0-CASE-CATALOG.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C0-CASE-CATALOG"
+        },
+        "contract_sha256": "422abd8c76af9da92acc076f5fd562bcfe7b8eddb92d8bb3e003a012510b6b91"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+          "relation": "evidence",
+          "required_implementation_state": "wired",
+          "contract_sha256": "8d68ea6eb2dcf0cdfcda59cc5872448f7f9aaf29da339f5874fded0294fad9d5"
+        }
+      ]
+    },
+    {
+      "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+      "domain": "C0",
+      "title": "C0 可证地基 / QualificationProfileSchemaPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c0-qualification-profile-schema",
+        "port": "QualificationProfileSchemaPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C0-QUALIFICATION-PROFILE-SCHEMA/v1",
+          "decision_scope": "Own the semantic decision boundary for C0-QUALIFICATION-PROFILE-SCHEMA.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C0-QUALIFICATION-PROFILE-SCHEMA"
+        },
+        "contract_sha256": "6904ecbc6fa936f36fef9f06860ca616332cbbb6cb07706bb4c7ab535893c032"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+          "relation": "evidence",
+          "required_implementation_state": "wired",
+          "contract_sha256": "8d68ea6eb2dcf0cdfcda59cc5872448f7f9aaf29da339f5874fded0294fad9d5"
+        },
+        {
+          "capability_id": "C0-CASE-CATALOG",
+          "relation": "evidence",
+          "required_implementation_state": "wired",
+          "contract_sha256": "422abd8c76af9da92acc076f5fd562bcfe7b8eddb92d8bb3e003a012510b6b91"
+        }
+      ]
+    },
+    {
+      "capability_id": "C0-PREREGISTRATION-PLAN",
+      "domain": "C0",
+      "title": "C0 可证地基 / QualificationPlanRegistrationPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c0-preregistration-plan",
+        "port": "QualificationPlanRegistrationPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C0-PREREGISTRATION-PLAN/v1",
+          "decision_scope": "Own the semantic decision boundary for C0-PREREGISTRATION-PLAN.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C0-PREREGISTRATION-PLAN"
+        },
+        "contract_sha256": "441750ed63f2e8d0b9b702c050e27d9c8fd8362281285ceff081c5b31f84e91b"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "relation": "evidence",
+          "required_implementation_state": "wired",
+          "contract_sha256": "6904ecbc6fa936f36fef9f06860ca616332cbbb6cb07706bb4c7ab535893c032"
+        },
+        {
+          "capability_id": "C0-CASE-CATALOG",
+          "relation": "evidence",
+          "required_implementation_state": "wired",
+          "contract_sha256": "422abd8c76af9da92acc076f5fd562bcfe7b8eddb92d8bb3e003a012510b6b91"
+        }
+      ]
+    },
+    {
+      "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+      "domain": "C0",
+      "title": "C0 可证地基 / QualificationEvidenceManifestPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c0-qualification-evidence-manifest",
+        "port": "QualificationEvidenceManifestPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST/v1",
+          "decision_scope": "Own the semantic decision boundary for C0-QUALIFICATION-EVIDENCE-MANIFEST.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C0-QUALIFICATION-EVIDENCE-MANIFEST"
+        },
+        "contract_sha256": "bb80191aed73432cf3b147c9cba9bbe4176cae1d972306cd3efa57cb711fc86f"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C0-PREREGISTRATION-PLAN",
+          "relation": "evidence",
+          "required_implementation_state": "wired",
+          "contract_sha256": "441750ed63f2e8d0b9b702c050e27d9c8fd8362281285ceff081c5b31f84e91b"
+        },
+        {
+          "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+          "relation": "evidence",
+          "required_implementation_state": "wired",
+          "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
+        }
+      ]
+    },
+    {
+      "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+      "domain": "C0",
+      "title": "C0 可证地基 / QualificationAggregationPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c0-qualification-aggregator",
+        "port": "QualificationAggregationPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C0-QUALIFICATION-AGGREGATOR/v1",
+          "decision_scope": "Own the semantic decision boundary for C0-QUALIFICATION-AGGREGATOR.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C0-QUALIFICATION-AGGREGATOR"
+        },
+        "contract_sha256": "99fd7b7af1537a3943ff573907e221d07889ba11fc1bc02e5ea24671cd7073f1"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "relation": "evidence",
+          "required_implementation_state": "wired",
+          "contract_sha256": "bb80191aed73432cf3b147c9cba9bbe4176cae1d972306cd3efa57cb711fc86f"
+        },
+        {
+          "capability_id": "C0-PREREGISTRATION-PLAN",
+          "relation": "evidence",
+          "required_implementation_state": "wired",
+          "contract_sha256": "441750ed63f2e8d0b9b702c050e27d9c8fd8362281285ceff081c5b31f84e91b"
+        }
+      ]
+    },
+    {
+      "capability_id": "C1-RUN-LIFECYCLE",
+      "domain": "C1",
+      "title": "C1 控制内核 / RunLifecyclePort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c1-run-lifecycle",
+        "port": "RunLifecyclePort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C1-RUN-LIFECYCLE/v1",
+          "decision_scope": "Own the semantic decision boundary for C1-RUN-LIFECYCLE.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C1-RUN-LIFECYCLE"
+        },
+        "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+          "relation": "evidence",
+          "required_implementation_state": "wired",
+          "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
+        }
+      ]
+    },
+    {
+      "capability_id": "C1-AGENT-COMMAND",
+      "domain": "C1",
+      "title": "C1 控制内核 / AgentCommandPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c1-agent-command",
+        "port": "AgentCommandPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C1-AGENT-COMMAND/v1",
+          "decision_scope": "Own the semantic decision boundary for C1-AGENT-COMMAND.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C1-AGENT-COMMAND"
+        },
+        "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C1-RUN-LIFECYCLE",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
+        }
+      ]
+    },
+    {
+      "capability_id": "C1-SETTLEMENT",
+      "domain": "C1",
+      "title": "C1 控制内核 / SettlementDecisionPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c1-settlement",
+        "port": "SettlementDecisionPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C1-SETTLEMENT/v1",
+          "decision_scope": "Own the semantic decision boundary for C1-SETTLEMENT.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C1-SETTLEMENT"
+        },
+        "contract_sha256": "26b3a0d6c6190ccd11f95381a26078363b58ebd60512e155aa6f67f1df9ae274"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C1-RUN-LIFECYCLE",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
+        }
+      ]
+    },
+    {
+      "capability_id": "C1-SURFACE-ADAPTER-CONFORMANCE",
+      "domain": "C1",
+      "title": "C1 控制内核 / SurfaceAdapterConformancePort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c1-surface-adapter-conformance",
+        "port": "SurfaceAdapterConformancePort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C1-SURFACE-ADAPTER-CONFORMANCE/v1",
+          "decision_scope": "Own the semantic decision boundary for C1-SURFACE-ADAPTER-CONFORMANCE.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C1-SURFACE-ADAPTER-CONFORMANCE"
+        },
+        "contract_sha256": "3ed3b52727759895fde7223977772771677cd3bd68e706f7d5895b802a643ec6"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C1-RUN-LIFECYCLE",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
+        },
+        {
+          "capability_id": "C1-AGENT-COMMAND",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+        },
+        {
+          "capability_id": "C1-SETTLEMENT",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "26b3a0d6c6190ccd11f95381a26078363b58ebd60512e155aa6f67f1df9ae274"
+        }
+      ]
+    },
+    {
+      "capability_id": "C2-ORIENTATION",
+      "domain": "C2",
+      "title": "C2 定向与意图 / OrientationDecisionPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c2-orientation",
+        "port": "OrientationDecisionPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C2-ORIENTATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C2-ORIENTATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C2-ORIENTATION"
+        },
+        "contract_sha256": "d8c86037c75a71ee7c0eda2ee5e00ea069b4a1dd48895be6ccedcb87b233b065"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C1-AGENT-COMMAND",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+        }
+      ]
+    },
+    {
+      "capability_id": "C2-TASK-CONTRACT",
+      "domain": "C2",
+      "title": "C2 定向与意图 / TaskContractPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c2-task-contract",
+        "port": "TaskContractPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C2-TASK-CONTRACT/v1",
+          "decision_scope": "Own the semantic decision boundary for C2-TASK-CONTRACT.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C2-TASK-CONTRACT"
+        },
+        "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C2-ORIENTATION",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "d8c86037c75a71ee7c0eda2ee5e00ea069b4a1dd48895be6ccedcb87b233b065"
+        }
+      ]
+    },
+    {
+      "capability_id": "C3-ENGINEERING-ORIENTATION",
+      "domain": "C3",
+      "title": "C3 上下文与指令 / EngineeringOrientationPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c3-engineering-orientation",
+        "port": "EngineeringOrientationPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C3-ENGINEERING-ORIENTATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C3-ENGINEERING-ORIENTATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C3-ENGINEERING-ORIENTATION"
+        },
+        "contract_sha256": "98f3cb9ee28ebdb106b78b272aaeb3f582d12e8137857a5d7de221bf59e31a74"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C2-TASK-CONTRACT",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
+        }
+      ]
+    },
+    {
+      "capability_id": "C3-CODEBASE-EXPLORATION",
+      "domain": "C3",
+      "title": "C3 上下文与指令 / CodebaseExplorationPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c3-codebase-exploration",
+        "port": "CodebaseExplorationPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C3-CODEBASE-EXPLORATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C3-CODEBASE-EXPLORATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C3-CODEBASE-EXPLORATION"
+        },
+        "contract_sha256": "ea303a67a73064fe7057c8337c48c433f85d8cbef1cbb7829407b9c79c684c3c"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C3-ENGINEERING-ORIENTATION",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "98f3cb9ee28ebdb106b78b272aaeb3f582d12e8137857a5d7de221bf59e31a74"
+        }
+      ]
+    },
+    {
+      "capability_id": "C3-CONTEXT-GRAPH",
+      "domain": "C3",
+      "title": "C3 上下文与指令 / ContextGraphPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c3-context-graph",
+        "port": "ContextGraphPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C3-CONTEXT-GRAPH/v1",
+          "decision_scope": "Own the semantic decision boundary for C3-CONTEXT-GRAPH.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C3-CONTEXT-GRAPH"
+        },
+        "contract_sha256": "36643d1f21d30e2dbe331d962f6f4807d0613ae8f6ebb2a08209ceca39b23cf2"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C2-TASK-CONTRACT",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
+        },
+        {
+          "capability_id": "C3-CODEBASE-EXPLORATION",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "ea303a67a73064fe7057c8337c48c433f85d8cbef1cbb7829407b9c79c684c3c"
+        }
+      ]
+    },
+    {
+      "capability_id": "C3-CONTEXT-PROVENANCE",
+      "domain": "C3",
+      "title": "C3 上下文与指令 / ContextProvenancePort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c3-context-provenance",
+        "port": "ContextProvenancePort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C3-CONTEXT-PROVENANCE/v1",
+          "decision_scope": "Own the semantic decision boundary for C3-CONTEXT-PROVENANCE.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C3-CONTEXT-PROVENANCE"
+        },
+        "contract_sha256": "8234f342b398c5fc3d0e6ee403c58a5a40296ed4d93c6e302301765702428b79"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C3-CONTEXT-GRAPH",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "36643d1f21d30e2dbe331d962f6f4807d0613ae8f6ebb2a08209ceca39b23cf2"
+        }
+      ]
+    },
+    {
+      "capability_id": "C3-INSTRUCTION-PRECEDENCE",
+      "domain": "C3",
+      "title": "C3 上下文与指令 / InstructionPrecedencePort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c3-instruction-precedence",
+        "port": "InstructionPrecedencePort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C3-INSTRUCTION-PRECEDENCE/v1",
+          "decision_scope": "Own the semantic decision boundary for C3-INSTRUCTION-PRECEDENCE.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C3-INSTRUCTION-PRECEDENCE"
+        },
+        "contract_sha256": "2080bfb3e7cd74dcb3f0f1ce3ae169a8b742eb4a07005aa5b469a8807bd49c5b"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C3-CONTEXT-GRAPH",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "36643d1f21d30e2dbe331d962f6f4807d0613ae8f6ebb2a08209ceca39b23cf2"
+        }
+      ]
+    },
+    {
+      "capability_id": "C4-REQUIREMENTS",
+      "domain": "C4",
+      "title": "C4 需求 / RequirementDecisionPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c4-requirements",
+        "port": "RequirementDecisionPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C4-REQUIREMENTS/v1",
+          "decision_scope": "Own the semantic decision boundary for C4-REQUIREMENTS.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C4-REQUIREMENTS"
+        },
+        "contract_sha256": "ec4ae5f3b7dda8feef0d417a633b302affe5b417b7d72f825a69bd6d2d694244"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C3-CONTEXT-GRAPH",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "36643d1f21d30e2dbe331d962f6f4807d0613ae8f6ebb2a08209ceca39b23cf2"
+        }
+      ]
+    },
+    {
+      "capability_id": "C4-EXTERNAL-BOUNDARY",
+      "domain": "C4",
+      "title": "C4 需求 / ExternalBoundaryPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding",
+          "safety"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c4-external-boundary",
+        "port": "ExternalBoundaryPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C4-EXTERNAL-BOUNDARY/v1",
+          "decision_scope": "Own the semantic decision boundary for C4-EXTERNAL-BOUNDARY.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C4-EXTERNAL-BOUNDARY"
+        },
+        "contract_sha256": "629ef6794131fea3dc435e32531dd36501f73b6f1d6ebd9f14e7d64404f6919f"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C4-REQUIREMENTS",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "ec4ae5f3b7dda8feef0d417a633b302affe5b417b7d72f825a69bd6d2d694244"
+        },
+        {
+          "capability_id": "C3-CONTEXT-PROVENANCE",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "8234f342b398c5fc3d0e6ee403c58a5a40296ed4d93c6e302301765702428b79"
+        }
+      ]
+    },
+    {
+      "capability_id": "C4-SOURCE-GROUNDING",
+      "domain": "C4",
+      "title": "C4 需求 / SourceGroundingPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c4-source-grounding",
+        "port": "SourceGroundingPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C4-SOURCE-GROUNDING/v1",
+          "decision_scope": "Own the semantic decision boundary for C4-SOURCE-GROUNDING.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C4-SOURCE-GROUNDING"
+        },
+        "contract_sha256": "95d3514dce3389adab2e4238686197b73324ba398e0755b3dbd75eb51b641a9c"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C4-EXTERNAL-BOUNDARY",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "629ef6794131fea3dc435e32531dd36501f73b6f1d6ebd9f14e7d64404f6919f"
+        },
+        {
+          "capability_id": "C6-TOOL-EXECUTION",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
+        },
+        {
+          "capability_id": "C7-EXTERNAL-EFFECT",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+        }
+      ]
+    },
+    {
+      "capability_id": "C4-ACCEPTANCE-CONTRACT",
+      "domain": "C4",
+      "title": "C4 需求 / AcceptanceContractPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c4-acceptance-contract",
+        "port": "AcceptanceContractPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C4-ACCEPTANCE-CONTRACT/v1",
+          "decision_scope": "Own the semantic decision boundary for C4-ACCEPTANCE-CONTRACT.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C4-ACCEPTANCE-CONTRACT"
+        },
+        "contract_sha256": "d7e501a88971dc52071f5da81c2e1763e6d9b0334a4012b3ff9a3a9f42597e73"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C4-REQUIREMENTS",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "ec4ae5f3b7dda8feef0d417a633b302affe5b417b7d72f825a69bd6d2d694244"
+        },
+        {
+          "capability_id": "C4-EXTERNAL-BOUNDARY",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "629ef6794131fea3dc435e32531dd36501f73b6f1d6ebd9f14e7d64404f6919f"
+        }
+      ]
+    },
+    {
+      "capability_id": "C5-DESIGN-DECISION",
+      "domain": "C5",
+      "title": "C5 设计 / DesignDecisionPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c5-design-decision",
+        "port": "DesignDecisionPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C5-DESIGN-DECISION/v1",
+          "decision_scope": "Own the semantic decision boundary for C5-DESIGN-DECISION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C5-DESIGN-DECISION"
+        },
+        "contract_sha256": "c045f040e3d551ef8efbc6b18b51026ddc5faa77228eac7956c999e4d4b5fa76"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C4-ACCEPTANCE-CONTRACT",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "d7e501a88971dc52071f5da81c2e1763e6d9b0334a4012b3ff9a3a9f42597e73"
+        }
+      ]
+    },
+    {
+      "capability_id": "C5-CHANGE-PLAN",
+      "domain": "C5",
+      "title": "C5 设计 / ChangePlanPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c5-change-plan",
+        "port": "ChangePlanPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C5-CHANGE-PLAN/v1",
+          "decision_scope": "Own the semantic decision boundary for C5-CHANGE-PLAN.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C5-CHANGE-PLAN"
+        },
+        "contract_sha256": "32510c5d94cc21cc462729e130e00ae0424155bca2cac26e7e070d8edcce6aa0"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C5-DESIGN-DECISION",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "c045f040e3d551ef8efbc6b18b51026ddc5faa77228eac7956c999e4d4b5fa76"
+        }
+      ]
+    },
+    {
+      "capability_id": "C6-PROVIDER-NORMALIZATION",
+      "domain": "C6",
+      "title": "C6 Provider/工具 / ProviderEventPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c6-provider-normalization",
+        "port": "ProviderEventPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C6-PROVIDER-NORMALIZATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C6-PROVIDER-NORMALIZATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C6-PROVIDER-NORMALIZATION"
+        },
+        "contract_sha256": "76f9d9aa48d6845fc06fddba998fa9534f46fe446c9a875f97f955c9736b1067"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C1-RUN-LIFECYCLE",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
+        }
+      ]
+    },
+    {
+      "capability_id": "C6-TOOL-SCHEMA",
+      "domain": "C6",
+      "title": "C6 Provider/工具 / ToolSchemaRegistryPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c6-tool-schema",
+        "port": "ToolSchemaRegistryPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C6-TOOL-SCHEMA/v1",
+          "decision_scope": "Own the semantic decision boundary for C6-TOOL-SCHEMA.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C6-TOOL-SCHEMA"
+        },
+        "contract_sha256": "08a390eea1ecb473dc09da20671fbaafa2df634719176ba9dcc8ee66e230b268"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C1-RUN-LIFECYCLE",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
+        }
+      ]
+    },
+    {
+      "capability_id": "C6-TOOL-DISPATCH",
+      "domain": "C6",
+      "title": "C6 Provider/工具 / ToolDispatchPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c6-tool-dispatch",
+        "port": "ToolDispatchPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C6-TOOL-DISPATCH/v1",
+          "decision_scope": "Own the semantic decision boundary for C6-TOOL-DISPATCH.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C6-TOOL-DISPATCH"
+        },
+        "contract_sha256": "4cb5a7114370be7a4e3810970e0989a480445527a5cff7d959b853603cb8b74c"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C6-TOOL-SCHEMA",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "08a390eea1ecb473dc09da20671fbaafa2df634719176ba9dcc8ee66e230b268"
+        },
+        {
+          "capability_id": "C1-AGENT-COMMAND",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+        }
+      ]
+    },
+    {
+      "capability_id": "C6-TOOL-EXECUTION",
+      "domain": "C6",
+      "title": "C6 Provider/工具 / ToolExecutionPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c6-tool-execution",
+        "port": "ToolExecutionPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C6-TOOL-EXECUTION/v1",
+          "decision_scope": "Own the semantic decision boundary for C6-TOOL-EXECUTION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C6-TOOL-EXECUTION"
+        },
+        "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C6-TOOL-DISPATCH",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "4cb5a7114370be7a4e3810970e0989a480445527a5cff7d959b853603cb8b74c"
+        }
+      ]
+    },
+    {
+      "capability_id": "C6-CAPABILITY-NEGOTIATION",
+      "domain": "C6",
+      "title": "C6 Provider/工具 / ProviderCapabilityPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c6-capability-negotiation",
+        "port": "ProviderCapabilityPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C6-CAPABILITY-NEGOTIATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C6-CAPABILITY-NEGOTIATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C6-CAPABILITY-NEGOTIATION"
+        },
+        "contract_sha256": "6e86daedd4515ae7af4b93512e789f3479d72f828b0deb8858759867b16990d3"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C6-PROVIDER-NORMALIZATION",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "76f9d9aa48d6845fc06fddba998fa9534f46fe446c9a875f97f955c9736b1067"
+        },
+        {
+          "capability_id": "C6-TOOL-SCHEMA",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "08a390eea1ecb473dc09da20671fbaafa2df634719176ba9dcc8ee66e230b268"
+        }
+      ]
+    },
+    {
+      "capability_id": "C6-DEEPSEEK-WEB-CONNECTOR",
+      "domain": "C6",
+      "title": "C6 Provider/工具 / DeepSeekWebConnectorPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c6-deepseek-web-connector",
+        "port": "DeepSeekWebConnectorPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C6-DEEPSEEK-WEB-CONNECTOR/v1",
+          "decision_scope": "Own the semantic decision boundary for C6-DEEPSEEK-WEB-CONNECTOR.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C6-DEEPSEEK-WEB-CONNECTOR"
+        },
+        "contract_sha256": "560d04ac339f8f65228d7e99aa194f8fbf0a01b0df224cccdd00aa24a52bdad3"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C6-PROVIDER-NORMALIZATION",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "76f9d9aa48d6845fc06fddba998fa9534f46fe446c9a875f97f955c9736b1067"
+        },
+        {
+          "capability_id": "C7-EXTERNAL-EFFECT",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+        },
+        {
+          "capability_id": "C7-SECRETS-REDACTION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "1c1dbdeae68c8b9864608d53d79b21848a4e0a3a83401f1edaead035ac0f6e6a"
+        }
+      ]
+    },
+    {
+      "capability_id": "C6-VISUAL-COMPUTER-USE",
+      "domain": "C6",
+      "title": "C6 Provider/工具 / VisualComputerUsePort",
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "visual-computer-use"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c6-visual-computer-use",
+        "port": "VisualComputerUsePort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C6-VISUAL-COMPUTER-USE/v1",
+          "decision_scope": "Own the semantic decision boundary for C6-VISUAL-COMPUTER-USE.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C6-VISUAL-COMPUTER-USE"
+        },
+        "contract_sha256": "9f155f41a289ffac37218b155a1459c58eeeca418feb339c5ac04673f0e610d1"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C6-TOOL-EXECUTION",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
+        },
+        {
+          "capability_id": "C7-EXTERNAL-EFFECT",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+        },
+        {
+          "capability_id": "C7-SECRETS-REDACTION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "1c1dbdeae68c8b9864608d53d79b21848a4e0a3a83401f1edaead035ac0f6e6a"
+        }
+      ]
+    },
+    {
+      "capability_id": "C7-PERMISSION-DECISION",
+      "domain": "C7",
+      "title": "C7 权限/副作用 / PermissionDecisionPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c7-permission-decision",
+        "port": "PermissionDecisionPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C7-PERMISSION-DECISION/v1",
+          "decision_scope": "Own the semantic decision boundary for C7-PERMISSION-DECISION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C7-PERMISSION-DECISION"
+        },
+        "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C2-TASK-CONTRACT",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
+        }
+      ]
+    },
+    {
+      "capability_id": "C7-SANDBOX-POLICY",
+      "domain": "C7",
+      "title": "C7 权限/副作用 / SandboxPolicyPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c7-sandbox-policy",
+        "port": "SandboxPolicyPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C7-SANDBOX-POLICY/v1",
+          "decision_scope": "Own the semantic decision boundary for C7-SANDBOX-POLICY.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C7-SANDBOX-POLICY"
+        },
+        "contract_sha256": "663a23b0afc25b680ca0e55250b2dd7b385d93e6e8a094f4af7a3ead33d7bce1"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C7-PERMISSION-DECISION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+        }
+      ]
+    },
+    {
+      "capability_id": "C7-WORKSPACE-MUTATION",
+      "domain": "C7",
+      "title": "C7 权限/副作用 / WorkspaceMutationPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c7-workspace-mutation",
+        "port": "WorkspaceMutationPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C7-WORKSPACE-MUTATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C7-WORKSPACE-MUTATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C7-WORKSPACE-MUTATION"
+        },
+        "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C7-PERMISSION-DECISION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+        },
+        {
+          "capability_id": "C7-SANDBOX-POLICY",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "663a23b0afc25b680ca0e55250b2dd7b385d93e6e8a094f4af7a3ead33d7bce1"
+        },
+        {
+          "capability_id": "C6-TOOL-EXECUTION",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
+        }
+      ]
+    },
+    {
+      "capability_id": "C7-EXTERNAL-EFFECT",
+      "domain": "C7",
+      "title": "C7 权限/副作用 / ExternalEffectPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c7-external-effect",
+        "port": "ExternalEffectPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C7-EXTERNAL-EFFECT/v1",
+          "decision_scope": "Own the semantic decision boundary for C7-EXTERNAL-EFFECT.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C7-EXTERNAL-EFFECT"
+        },
+        "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C7-PERMISSION-DECISION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+        },
+        {
+          "capability_id": "C7-SANDBOX-POLICY",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "663a23b0afc25b680ca0e55250b2dd7b385d93e6e8a094f4af7a3ead33d7bce1"
+        },
+        {
+          "capability_id": "C6-TOOL-EXECUTION",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
+        }
+      ]
+    },
+    {
+      "capability_id": "C7-SECRETS-REDACTION",
+      "domain": "C7",
+      "title": "C7 权限/副作用 / SecretRedactionPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c7-secrets-redaction",
+        "port": "SecretRedactionPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C7-SECRETS-REDACTION/v1",
+          "decision_scope": "Own the semantic decision boundary for C7-SECRETS-REDACTION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C7-SECRETS-REDACTION"
+        },
+        "contract_sha256": "1c1dbdeae68c8b9864608d53d79b21848a4e0a3a83401f1edaead035ac0f6e6a"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C7-EXTERNAL-EFFECT",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+        }
+      ]
+    },
+    {
+      "capability_id": "C7-DIRTY-WORKTREE",
+      "domain": "C7",
+      "title": "C7 权限/副作用 / DirtyWorktreePolicyPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c7-dirty-worktree",
+        "port": "DirtyWorktreePolicyPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C7-DIRTY-WORKTREE/v1",
+          "decision_scope": "Own the semantic decision boundary for C7-DIRTY-WORKTREE.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C7-DIRTY-WORKTREE"
+        },
+        "contract_sha256": "f53335c33f0991f53caea7835b5d359fb0c39b3fec849eb63343d9ddfe27045d"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C7-WORKSPACE-MUTATION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
+        }
+      ]
+    },
+    {
+      "capability_id": "C7-PLATFORM-ADAPTER-CONFORMANCE",
+      "domain": "C7",
+      "title": "C7 权限/副作用 / PlatformAdapterConformancePort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c7-platform-adapter-conformance",
+        "port": "PlatformAdapterConformancePort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C7-PLATFORM-ADAPTER-CONFORMANCE/v1",
+          "decision_scope": "Own the semantic decision boundary for C7-PLATFORM-ADAPTER-CONFORMANCE.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C7-PLATFORM-ADAPTER-CONFORMANCE"
+        },
+        "contract_sha256": "75433b00d4a023800a950f109f7b9c79b5233617b10b49512cde68e05b63182c"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C7-SANDBOX-POLICY",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "663a23b0afc25b680ca0e55250b2dd7b385d93e6e8a094f4af7a3ead33d7bce1"
+        },
+        {
+          "capability_id": "C7-WORKSPACE-MUTATION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
+        },
+        {
+          "capability_id": "C7-EXTERNAL-EFFECT",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+        }
+      ]
+    },
+    {
+      "capability_id": "C8-CODE-CHANGE",
+      "domain": "C8",
+      "title": "C8 代码实现 / CodeChangePort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c8-code-change",
+        "port": "CodeChangePort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C8-CODE-CHANGE/v1",
+          "decision_scope": "Own the semantic decision boundary for C8-CODE-CHANGE.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C8-CODE-CHANGE"
+        },
+        "contract_sha256": "9100ae371979e1eddcf6f965c8447aa20e8b703d1b326a9560ef0951406ecc0a"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C5-CHANGE-PLAN",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "32510c5d94cc21cc462729e130e00ae0424155bca2cac26e7e070d8edcce6aa0"
+        },
+        {
+          "capability_id": "C7-WORKSPACE-MUTATION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
+        }
+      ]
+    },
+    {
+      "capability_id": "C8-INTEGRATION-CONFORMANCE",
+      "domain": "C8",
+      "title": "C8 代码实现 / IntegrationConformancePort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c8-integration-conformance",
+        "port": "IntegrationConformancePort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C8-INTEGRATION-CONFORMANCE/v1",
+          "decision_scope": "Own the semantic decision boundary for C8-INTEGRATION-CONFORMANCE.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C8-INTEGRATION-CONFORMANCE"
+        },
+        "contract_sha256": "d43aa070be91954a213162a27f13ce513a328ecfae15650399c50d43f4921b1d"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C8-CODE-CHANGE",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "9100ae371979e1eddcf6f965c8447aa20e8b703d1b326a9560ef0951406ecc0a"
+        },
+        {
+          "capability_id": "C6-TOOL-DISPATCH",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "4cb5a7114370be7a4e3810970e0989a480445527a5cff7d959b853603cb8b74c"
+        }
+      ]
+    },
+    {
+      "capability_id": "C9-VERIFIER-SELECTION",
+      "domain": "C9",
+      "title": "C9 验证修复 / VerifierSelectionPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c9-verifier-selection",
+        "port": "VerifierSelectionPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C9-VERIFIER-SELECTION/v1",
+          "decision_scope": "Own the semantic decision boundary for C9-VERIFIER-SELECTION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C9-VERIFIER-SELECTION"
+        },
+        "contract_sha256": "a9ac15b5a6187d1a4a955b215af1ce36ad0fa8c71d4b6303fddc71a904d9284a"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C4-ACCEPTANCE-CONTRACT",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "d7e501a88971dc52071f5da81c2e1763e6d9b0334a4012b3ff9a3a9f42597e73"
+        }
+      ]
+    },
+    {
+      "capability_id": "C9-BUILD-ORCHESTRATION",
+      "domain": "C9",
+      "title": "C9 验证修复 / BuildOrchestrationPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c9-build-orchestration",
+        "port": "BuildOrchestrationPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C9-BUILD-ORCHESTRATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C9-BUILD-ORCHESTRATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C9-BUILD-ORCHESTRATION"
+        },
+        "contract_sha256": "feeede9333ab637184a4c75ff5cfd5812f80dd0d989ec1524345ef11b5102e15"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C8-CODE-CHANGE",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "9100ae371979e1eddcf6f965c8447aa20e8b703d1b326a9560ef0951406ecc0a"
+        },
+        {
+          "capability_id": "C7-EXTERNAL-EFFECT",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+        }
+      ]
+    },
+    {
+      "capability_id": "C9-INDEPENDENT-VERIFICATION",
+      "domain": "C9",
+      "title": "C9 验证修复 / VerificationEvidencePort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c9-independent-verification",
+        "port": "VerificationEvidencePort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C9-INDEPENDENT-VERIFICATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C9-INDEPENDENT-VERIFICATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C9-INDEPENDENT-VERIFICATION"
+        },
+        "contract_sha256": "d195f446cfb96484eb54502164a98ea8f8b322ab1c5faede0d24d2abfbcc4bc8"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C9-VERIFIER-SELECTION",
+          "relation": "verification",
+          "required_implementation_state": "wired",
+          "contract_sha256": "a9ac15b5a6187d1a4a955b215af1ce36ad0fa8c71d4b6303fddc71a904d9284a"
+        },
+        {
+          "capability_id": "C9-BUILD-ORCHESTRATION",
+          "relation": "verification",
+          "required_implementation_state": "wired",
+          "contract_sha256": "feeede9333ab637184a4c75ff5cfd5812f80dd0d989ec1524345ef11b5102e15"
+        }
+      ]
+    },
+    {
+      "capability_id": "C9-DIAGNOSTIC-NORMALIZATION",
+      "domain": "C9",
+      "title": "C9 验证修复 / DiagnosticPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c9-diagnostic-normalization",
+        "port": "DiagnosticPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C9-DIAGNOSTIC-NORMALIZATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C9-DIAGNOSTIC-NORMALIZATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C9-DIAGNOSTIC-NORMALIZATION"
+        },
+        "contract_sha256": "d8d24868384bc04decb0a66c40477d6ba50c0e5efbc9d817f08c270746d5085d"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C9-INDEPENDENT-VERIFICATION",
+          "relation": "verification",
+          "required_implementation_state": "wired",
+          "contract_sha256": "d195f446cfb96484eb54502164a98ea8f8b322ab1c5faede0d24d2abfbcc4bc8"
+        }
+      ]
+    },
+    {
+      "capability_id": "C9-BOUNDED-REPAIR",
+      "domain": "C9",
+      "title": "C9 验证修复 / RepairDecisionPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c9-bounded-repair",
+        "port": "RepairDecisionPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C9-BOUNDED-REPAIR/v1",
+          "decision_scope": "Own the semantic decision boundary for C9-BOUNDED-REPAIR.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C9-BOUNDED-REPAIR"
+        },
+        "contract_sha256": "44dbfdd4ec8fa6dad41c7b09973e9b974ef7686d6d6fcd521206205a824a7a73"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C9-DIAGNOSTIC-NORMALIZATION",
+          "relation": "verification",
+          "required_implementation_state": "wired",
+          "contract_sha256": "d8d24868384bc04decb0a66c40477d6ba50c0e5efbc9d817f08c270746d5085d"
+        },
+        {
+          "capability_id": "C7-WORKSPACE-MUTATION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
+        }
+      ]
+    },
+    {
+      "capability_id": "C9-REGRESSION-SELECTION",
+      "domain": "C9",
+      "title": "C9 验证修复 / RegressionSelectionPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c9-regression-selection",
+        "port": "RegressionSelectionPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C9-REGRESSION-SELECTION/v1",
+          "decision_scope": "Own the semantic decision boundary for C9-REGRESSION-SELECTION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C9-REGRESSION-SELECTION"
+        },
+        "contract_sha256": "80b6521836c53943d378680290c7929bed1a333d002a4d02f490171989d7476c"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C9-INDEPENDENT-VERIFICATION",
+          "relation": "verification",
+          "required_implementation_state": "wired",
+          "contract_sha256": "d195f446cfb96484eb54502164a98ea8f8b322ab1c5faede0d24d2abfbcc4bc8"
+        }
+      ]
+    },
+    {
+      "capability_id": "C10-INDEPENDENT-REVIEW",
+      "domain": "C10",
+      "title": "C10 审查交付 / IndependentReviewPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding",
+          "safety"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c10-independent-review",
+        "port": "IndependentReviewPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C10-INDEPENDENT-REVIEW/v1",
+          "decision_scope": "Own the semantic decision boundary for C10-INDEPENDENT-REVIEW.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C10-INDEPENDENT-REVIEW"
+        },
+        "contract_sha256": "66d6c625306488b9c8ef1becfccc44e0d4dc3593f6fa5a3ea88db23ba146c0dd"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C9-INDEPENDENT-VERIFICATION",
+          "relation": "verification",
+          "required_implementation_state": "wired",
+          "contract_sha256": "d195f446cfb96484eb54502164a98ea8f8b322ab1c5faede0d24d2abfbcc4bc8"
+        }
+      ]
+    },
+    {
+      "capability_id": "C10-DELIVERY-MANIFEST",
+      "domain": "C10",
+      "title": "C10 审查交付 / DeliveryManifestPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding",
+          "safety"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c10-delivery-manifest",
+        "port": "DeliveryManifestPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C10-DELIVERY-MANIFEST/v1",
+          "decision_scope": "Own the semantic decision boundary for C10-DELIVERY-MANIFEST.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C10-DELIVERY-MANIFEST"
+        },
+        "contract_sha256": "f5e9f7c1b9b574bdec7c8002c7c458bedec26a87b42958401ee3361beaf65c4a"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C10-INDEPENDENT-REVIEW",
+          "relation": "delivery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "66d6c625306488b9c8ef1becfccc44e0d4dc3593f6fa5a3ea88db23ba146c0dd"
+        },
+        {
+          "capability_id": "C10-ARTIFACT-IDENTITY",
+          "relation": "delivery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "ef42b8d843f4ba12a3ef8cc18d215ce750c58316fe9d85648be2e630bc4bef04"
+        }
+      ]
+    },
+    {
+      "capability_id": "C10-GIT-DELIVERY",
+      "domain": "C10",
+      "title": "C10 审查交付 / GitDeliveryPort",
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "release-capable"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c10-git-delivery",
+        "port": "GitDeliveryPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C10-GIT-DELIVERY/v1",
+          "decision_scope": "Own the semantic decision boundary for C10-GIT-DELIVERY.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C10-GIT-DELIVERY"
+        },
+        "contract_sha256": "d48945be8427bee10e2b93be07cdb60ccd6098b428007bcb3552f9e5338eac39"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C10-INDEPENDENT-REVIEW",
+          "relation": "delivery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "66d6c625306488b9c8ef1becfccc44e0d4dc3593f6fa5a3ea88db23ba146c0dd"
+        },
+        {
+          "capability_id": "C7-EXTERNAL-EFFECT",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+        }
+      ]
+    },
+    {
+      "capability_id": "C10-ARTIFACT-IDENTITY",
+      "domain": "C10",
+      "title": "C10 审查交付 / ArtifactIdentityPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding",
+          "safety"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c10-artifact-identity",
+        "port": "ArtifactIdentityPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C10-ARTIFACT-IDENTITY/v1",
+          "decision_scope": "Own the semantic decision boundary for C10-ARTIFACT-IDENTITY.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C10-ARTIFACT-IDENTITY"
+        },
+        "contract_sha256": "ef42b8d843f4ba12a3ef8cc18d215ce750c58316fe9d85648be2e630bc4bef04"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C9-BUILD-ORCHESTRATION",
+          "relation": "verification",
+          "required_implementation_state": "wired",
+          "contract_sha256": "feeede9333ab637184a4c75ff5cfd5812f80dd0d989ec1524345ef11b5102e15"
+        },
+        {
+          "capability_id": "C10-INDEPENDENT-REVIEW",
+          "relation": "delivery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "66d6c625306488b9c8ef1becfccc44e0d4dc3593f6fa5a3ea88db23ba146c0dd"
+        }
+      ]
+    },
+    {
+      "capability_id": "C10-RELEASE-GATE",
+      "domain": "C10",
+      "title": "C10 审查交付 / ReleaseGatePort",
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "release-capable"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c10-release-gate",
+        "port": "ReleaseGatePort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C10-RELEASE-GATE/v1",
+          "decision_scope": "Own the semantic decision boundary for C10-RELEASE-GATE.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C10-RELEASE-GATE"
+        },
+        "contract_sha256": "a845a49d593dab538927e150f086ecbe4261053ca596e6ef04a2e0e19b72191b"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C10-DELIVERY-MANIFEST",
+          "relation": "delivery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "f5e9f7c1b9b574bdec7c8002c7c458bedec26a87b42958401ee3361beaf65c4a"
+        },
+        {
+          "capability_id": "C10-GIT-DELIVERY",
+          "relation": "delivery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "d48945be8427bee10e2b93be07cdb60ccd6098b428007bcb3552f9e5338eac39"
+        },
+        {
+          "capability_id": "C10-ARTIFACT-IDENTITY",
+          "relation": "delivery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "ef42b8d843f4ba12a3ef8cc18d215ce750c58316fe9d85648be2e630bc4bef04"
+        }
+      ]
+    },
+    {
+      "capability_id": "C10-CI-DEPLOY-OBSERVE",
+      "domain": "C10",
+      "title": "C10 审查交付 / CiDeployObservePort",
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "release-capable"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c10-ci-deploy-observe",
+        "port": "CiDeployObservePort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C10-CI-DEPLOY-OBSERVE/v1",
+          "decision_scope": "Own the semantic decision boundary for C10-CI-DEPLOY-OBSERVE.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C10-CI-DEPLOY-OBSERVE"
+        },
+        "contract_sha256": "dd572e05bc772227bc9daf08bfbf0cdd384689f3048680cdf363634cc667a9f0"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C10-RELEASE-GATE",
+          "relation": "delivery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "a845a49d593dab538927e150f086ecbe4261053ca596e6ef04a2e0e19b72191b"
+        },
+        {
+          "capability_id": "C7-EXTERNAL-EFFECT",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+        }
+      ]
+    },
+    {
+      "capability_id": "C10-ROLLBACK",
+      "domain": "C10",
+      "title": "C10 审查交付 / RollbackPort",
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "release-capable"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c10-rollback",
+        "port": "RollbackPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C10-ROLLBACK/v1",
+          "decision_scope": "Own the semantic decision boundary for C10-ROLLBACK.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C10-ROLLBACK"
+        },
+        "contract_sha256": "eff85e00fbe0a1ea6e27691a55a38f8cf60deed4e9133aa7b5f97aa7c4719890"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C10-CI-DEPLOY-OBSERVE",
+          "relation": "delivery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "dd572e05bc772227bc9daf08bfbf0cdd384689f3048680cdf363634cc667a9f0"
+        }
+      ]
+    },
+    {
+      "capability_id": "C11-CHECKPOINT",
+      "domain": "C11",
+      "title": "C11 恢复长任务 / CheckpointPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c11-checkpoint",
+        "port": "CheckpointPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C11-CHECKPOINT/v1",
+          "decision_scope": "Own the semantic decision boundary for C11-CHECKPOINT.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C11-CHECKPOINT"
+        },
+        "contract_sha256": "ae8106fe6cbbc6cf8b75ddf8ce724b6ecd7626939a4a9087034acfc93d442069"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C1-RUN-LIFECYCLE",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "040103dbdd9acb186583edf610e521d7d88e88be58a2a62b551ff1d3d8f83a4e"
+        },
+        {
+          "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+          "relation": "evidence",
+          "required_implementation_state": "wired",
+          "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
+        }
+      ]
+    },
+    {
+      "capability_id": "C11-RESUME-IDEMPOTENCY",
+      "domain": "C11",
+      "title": "C11 恢复长任务 / ResumeIdempotencyPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c11-resume-idempotency",
+        "port": "ResumeIdempotencyPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C11-RESUME-IDEMPOTENCY/v1",
+          "decision_scope": "Own the semantic decision boundary for C11-RESUME-IDEMPOTENCY.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C11-RESUME-IDEMPOTENCY"
+        },
+        "contract_sha256": "3da2e08b7262828bdd3d7bfdc28438caf62f0908cbbe8163baa35415cd428dad"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C11-CHECKPOINT",
+          "relation": "recovery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "ae8106fe6cbbc6cf8b75ddf8ce724b6ecd7626939a4a9087034acfc93d442069"
+        },
+        {
+          "capability_id": "C7-EXTERNAL-EFFECT",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+        },
+        {
+          "capability_id": "C7-WORKSPACE-MUTATION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
+        }
+      ]
+    },
+    {
+      "capability_id": "C11-CANCEL-INTERRUPT",
+      "domain": "C11",
+      "title": "C11 恢复长任务 / CancellationPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c11-cancel-interrupt",
+        "port": "CancellationPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C11-CANCEL-INTERRUPT/v1",
+          "decision_scope": "Own the semantic decision boundary for C11-CANCEL-INTERRUPT.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C11-CANCEL-INTERRUPT"
+        },
+        "contract_sha256": "d85aeaa0f8c1b57adf9dba0cc5e3c955b822a68d91343bcb96e1e414d5abc387"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C1-AGENT-COMMAND",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+        }
+      ]
+    },
+    {
+      "capability_id": "C11-STEERING",
+      "domain": "C11",
+      "title": "C11 恢复长任务 / SteeringPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c11-steering",
+        "port": "SteeringPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C11-STEERING/v1",
+          "decision_scope": "Own the semantic decision boundary for C11-STEERING.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C11-STEERING"
+        },
+        "contract_sha256": "a191f503198bb14f32e5e81bb45e12037d4f2bbcafa7a869587cd85c096ebbb9"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C1-AGENT-COMMAND",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+        },
+        {
+          "capability_id": "C2-TASK-CONTRACT",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
+        }
+      ]
+    },
+    {
+      "capability_id": "C11-USER-COLLABORATION",
+      "domain": "C11",
+      "title": "C11 用户协作 / UserCollaborationPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c11-user-collaboration",
+        "port": "UserCollaborationPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C11-USER-COLLABORATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C11-USER-COLLABORATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C11-USER-COLLABORATION"
+        },
+        "contract_sha256": "4f443efaf241d9367616a903fb633a8acdfd95057279a192ec0846f6c2f0f7cf"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C1-AGENT-COMMAND",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+        },
+        {
+          "capability_id": "C2-TASK-CONTRACT",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "2f7c8833fb07d3515342649b184c9079f84a5ed5c1cea952b384dfa4a25ae55e"
+        },
+        {
+          "capability_id": "C11-CANCEL-INTERRUPT",
+          "relation": "recovery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "d85aeaa0f8c1b57adf9dba0cc5e3c955b822a68d91343bcb96e1e414d5abc387"
+        },
+        {
+          "capability_id": "C11-STEERING",
+          "relation": "recovery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "a191f503198bb14f32e5e81bb45e12037d4f2bbcafa7a869587cd85c096ebbb9"
+        }
+      ]
+    },
+    {
+      "capability_id": "C11-SURFACE-ACCESSIBILITY",
+      "domain": "C11",
+      "title": "C11 用户协作 / SurfaceAccessibilityPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c11-surface-accessibility",
+        "port": "SurfaceAccessibilityPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C11-SURFACE-ACCESSIBILITY/v1",
+          "decision_scope": "Own the semantic decision boundary for C11-SURFACE-ACCESSIBILITY.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C11-SURFACE-ACCESSIBILITY"
+        },
+        "contract_sha256": "9c2dbb75d6923cbe80504944c2e46991b215b4cdf3a2c0e547015e3607e3455c"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C11-USER-COLLABORATION",
+          "relation": "recovery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "4f443efaf241d9367616a903fb633a8acdfd95057279a192ec0846f6c2f0f7cf"
+        }
+      ]
+    },
+    {
+      "capability_id": "C11-BACKGROUND-AUTOMATION",
+      "domain": "C11",
+      "title": "C11 恢复长任务 / BackgroundAutomationPort",
+      "priority": "P2",
+      "applicability": {
+        "state": "deferred",
+        "claim_scopes": [
+          "background-automation"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c11-background-automation",
+        "port": "BackgroundAutomationPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C11-BACKGROUND-AUTOMATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C11-BACKGROUND-AUTOMATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C11-BACKGROUND-AUTOMATION"
+        },
+        "contract_sha256": "31fa69413a8a27c2a100d64b3fd228f3350d0816c6fff40f394f070168cb053f"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C11-CHECKPOINT",
+          "relation": "recovery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "ae8106fe6cbbc6cf8b75ddf8ce724b6ecd7626939a4a9087034acfc93d442069"
+        },
+        {
+          "capability_id": "C11-RESUME-IDEMPOTENCY",
+          "relation": "recovery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "3da2e08b7262828bdd3d7bfdc28438caf62f0908cbbe8163baa35415cd428dad"
+        },
+        {
+          "capability_id": "C11-CANCEL-INTERRUPT",
+          "relation": "recovery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "d85aeaa0f8c1b57adf9dba0cc5e3c955b822a68d91343bcb96e1e414d5abc387"
+        },
+        {
+          "capability_id": "C7-EXTERNAL-EFFECT",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+        }
+      ]
+    },
+    {
+      "capability_id": "C12-CONTEXT-COMPACTION",
+      "domain": "C12",
+      "title": "C12 记忆证据 / ContextCompactionPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c12-context-compaction",
+        "port": "ContextCompactionPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C12-CONTEXT-COMPACTION/v1",
+          "decision_scope": "Own the semantic decision boundary for C12-CONTEXT-COMPACTION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C12-CONTEXT-COMPACTION"
+        },
+        "contract_sha256": "348e6490ef7c54aafeadbe9e51afa644f024826e550737f27bc283fdbaacf545"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C3-CONTEXT-GRAPH",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "36643d1f21d30e2dbe331d962f6f4807d0613ae8f6ebb2a08209ceca39b23cf2"
+        },
+        {
+          "capability_id": "C11-CHECKPOINT",
+          "relation": "recovery",
+          "required_implementation_state": "wired",
+          "contract_sha256": "ae8106fe6cbbc6cf8b75ddf8ce724b6ecd7626939a4a9087034acfc93d442069"
+        }
+      ]
+    },
+    {
+      "capability_id": "C12-RUN-EVIDENCE-RETENTION",
+      "domain": "C12",
+      "title": "C12 记忆证据 / RunEvidenceRetentionPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding",
+          "safety"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c12-run-evidence-retention",
+        "port": "RunEvidenceRetentionPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C12-RUN-EVIDENCE-RETENTION/v1",
+          "decision_scope": "Own the semantic decision boundary for C12-RUN-EVIDENCE-RETENTION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C12-RUN-EVIDENCE-RETENTION"
+        },
+        "contract_sha256": "342945b722fb25ad6d80d98dcc574bc9a14a4b8805c6eb7d846579fd09d64069"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+          "relation": "evidence",
+          "required_implementation_state": "wired",
+          "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
+        }
+      ]
+    },
+    {
+      "capability_id": "C12-MEMORY-POLICY",
+      "domain": "C12",
+      "title": "C12 记忆证据 / MemoryPolicyPort",
+      "priority": "P1",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "core-coding"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c12-memory-policy",
+        "port": "MemoryPolicyPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C12-MEMORY-POLICY/v1",
+          "decision_scope": "Own the semantic decision boundary for C12-MEMORY-POLICY.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C12-MEMORY-POLICY"
+        },
+        "contract_sha256": "7c8749b26b104570a2b657e284274f00928202c9676c3e87f26c64342a46dd38"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C3-INSTRUCTION-PRECEDENCE",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "2080bfb3e7cd74dcb3f0f1ce3ae169a8b742eb4a07005aa5b469a8807bd49c5b"
+        },
+        {
+          "capability_id": "C12-RUN-EVIDENCE-RETENTION",
+          "relation": "context",
+          "required_implementation_state": "wired",
+          "contract_sha256": "342945b722fb25ad6d80d98dcc574bc9a14a4b8805c6eb7d846579fd09d64069"
+        }
+      ]
+    },
+    {
+      "capability_id": "C13-SKILL-BOUNDARY",
+      "domain": "C13",
+      "title": "C13 扩展并发 / SkillBoundaryPort",
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "orchestration-capable",
+          "extension-capable"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c13-skill-boundary",
+        "port": "SkillBoundaryPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C13-SKILL-BOUNDARY/v1",
+          "decision_scope": "Own the semantic decision boundary for C13-SKILL-BOUNDARY.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-SKILL-BOUNDARY"
+        },
+        "contract_sha256": "bda6ed6c28b4af57cc0f7c53238c61711e8fb24c247a63b8e64e5f8693893563"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C3-INSTRUCTION-PRECEDENCE",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "2080bfb3e7cd74dcb3f0f1ce3ae169a8b742eb4a07005aa5b469a8807bd49c5b"
+        },
+        {
+          "capability_id": "C6-TOOL-SCHEMA",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "08a390eea1ecb473dc09da20671fbaafa2df634719176ba9dcc8ee66e230b268"
+        }
+      ]
+    },
+    {
+      "capability_id": "C13-HOOK-BOUNDARY",
+      "domain": "C13",
+      "title": "C13 扩展并发 / HookBoundaryPort",
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "orchestration-capable",
+          "extension-capable"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c13-hook-boundary",
+        "port": "HookBoundaryPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C13-HOOK-BOUNDARY/v1",
+          "decision_scope": "Own the semantic decision boundary for C13-HOOK-BOUNDARY.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-HOOK-BOUNDARY"
+        },
+        "contract_sha256": "561fb25193f018eab9f79e3200a8165791f84f6a6595c6e8a4bf00bad9d872d0"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C6-TOOL-EXECUTION",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
+        },
+        {
+          "capability_id": "C7-PERMISSION-DECISION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+        },
+        {
+          "capability_id": "C7-EXTERNAL-EFFECT",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+        },
+        {
+          "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+          "relation": "evidence",
+          "required_implementation_state": "wired",
+          "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
+        }
+      ]
+    },
+    {
+      "capability_id": "C13-MCP-BOUNDARY",
+      "domain": "C13",
+      "title": "C13 扩展并发 / McpBoundaryPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "active",
+        "claim_scopes": [
+          "mcp-exposed-safety-boundary"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c13-mcp-boundary",
+        "port": "McpBoundaryPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C13-MCP-BOUNDARY/v1",
+          "decision_scope": "Own the semantic decision boundary for C13-MCP-BOUNDARY.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-MCP-BOUNDARY"
+        },
+        "contract_sha256": "02eb49f0e34dcbfc087bc5df3816259ae15825a933d9d7f2443579affa41af65"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C6-TOOL-EXECUTION",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "09db09027c6d85500dae7784902ca36d51654aaee749f0066d04b975f534f878"
+        },
+        {
+          "capability_id": "C7-PERMISSION-DECISION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+        },
+        {
+          "capability_id": "C7-EXTERNAL-EFFECT",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+        }
+      ]
+    },
+    {
+      "capability_id": "C13-SUBAGENT-DELEGATION",
+      "domain": "C13",
+      "title": "C13 扩展并发 / DelegationPort",
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "orchestration-capable",
+          "extension-capable"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c13-subagent-delegation",
+        "port": "DelegationPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C13-SUBAGENT-DELEGATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C13-SUBAGENT-DELEGATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-SUBAGENT-DELEGATION"
+        },
+        "contract_sha256": "5438abb3f349953a559b54869cd67c41d2698682877397d72c3c6b4ecfc5f3c8"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C1-AGENT-COMMAND",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "1cdf7be1d9b1b6830bd533e8b9a7aecdf34d2b0c4f43d8abaf7fe7415949daad"
+        },
+        {
+          "capability_id": "C3-CONTEXT-GRAPH",
+          "relation": "semantic",
+          "required_implementation_state": "wired",
+          "contract_sha256": "36643d1f21d30e2dbe331d962f6f4807d0613ae8f6ebb2a08209ceca39b23cf2"
+        },
+        {
+          "capability_id": "C6-TOOL-DISPATCH",
+          "relation": "execution",
+          "required_implementation_state": "wired",
+          "contract_sha256": "4cb5a7114370be7a4e3810970e0989a480445527a5cff7d959b853603cb8b74c"
+        },
+        {
+          "capability_id": "C7-PERMISSION-DECISION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+        }
+      ]
+    },
+    {
+      "capability_id": "C13-WORKTREE-ISOLATION",
+      "domain": "C13",
+      "title": "C13 扩展并发 / WorktreeIsolationPort",
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "orchestration-capable",
+          "extension-capable"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c13-worktree-isolation",
+        "port": "WorktreeIsolationPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C13-WORKTREE-ISOLATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C13-WORKTREE-ISOLATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-WORKTREE-ISOLATION"
+        },
+        "contract_sha256": "3ade53ed5202aca513865402977a6e08310d9c8c9d9401b9c3b1476317578b52"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C7-WORKSPACE-MUTATION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "3d40c41d418c02213eacbcbce6f25bbb71b65c0c4bfe819ea3e43e8ef73566c6"
+        },
+        {
+          "capability_id": "C7-EXTERNAL-EFFECT",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "fef040f3c686d7d41cda6a73b988122193156ef3b140315f281bd8ff9a951d7d"
+        }
+      ]
+    },
+    {
+      "capability_id": "C13-EXTENSION-CONFORMANCE",
+      "domain": "C13",
+      "title": "C13 扩展并发 / ExtensionConformancePort",
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "orchestration-capable",
+          "extension-capable"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c13-extension-conformance",
+        "port": "ExtensionConformancePort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C13-EXTENSION-CONFORMANCE/v1",
+          "decision_scope": "Own the semantic decision boundary for C13-EXTENSION-CONFORMANCE.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-EXTENSION-CONFORMANCE"
+        },
+        "contract_sha256": "d8355245d3d793762a5e2d58adc4144acd73a83492198134a0efcd9682fc08a5"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C13-SKILL-BOUNDARY",
+          "relation": "extension",
+          "required_implementation_state": "wired",
+          "contract_sha256": "bda6ed6c28b4af57cc0f7c53238c61711e8fb24c247a63b8e64e5f8693893563"
+        },
+        {
+          "capability_id": "C13-HOOK-BOUNDARY",
+          "relation": "extension",
+          "required_implementation_state": "wired",
+          "contract_sha256": "561fb25193f018eab9f79e3200a8165791f84f6a6595c6e8a4bf00bad9d872d0"
+        },
+        {
+          "capability_id": "C13-MCP-BOUNDARY",
+          "relation": "extension",
+          "required_implementation_state": "wired",
+          "contract_sha256": "02eb49f0e34dcbfc087bc5df3816259ae15825a933d9d7f2443579affa41af65"
+        },
+        {
+          "capability_id": "C13-SUBAGENT-DELEGATION",
+          "relation": "extension",
+          "required_implementation_state": "wired",
+          "contract_sha256": "5438abb3f349953a559b54869cd67c41d2698682877397d72c3c6b4ecfc5f3c8"
+        },
+        {
+          "capability_id": "C13-WORKTREE-ISOLATION",
+          "relation": "extension",
+          "required_implementation_state": "wired",
+          "contract_sha256": "3ade53ed5202aca513865402977a6e08310d9c8c9d9401b9c3b1476317578b52"
+        }
+      ]
+    },
+    {
+      "capability_id": "C13-PLUGIN-SUPPLY-CHAIN",
+      "domain": "C13",
+      "title": "C13 扩展并发 / PluginSupplyChainPort",
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "orchestration-capable",
+          "extension-capable"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c13-plugin-supply-chain",
+        "port": "PluginSupplyChainPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C13-PLUGIN-SUPPLY-CHAIN/v1",
+          "decision_scope": "Own the semantic decision boundary for C13-PLUGIN-SUPPLY-CHAIN.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-PLUGIN-SUPPLY-CHAIN"
+        },
+        "contract_sha256": "2392a3f242936a1cb2b08d1568125de0205b9ceeadf9a24413344499818f2bbc"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C13-EXTENSION-CONFORMANCE",
+          "relation": "extension",
+          "required_implementation_state": "wired",
+          "contract_sha256": "d8355245d3d793762a5e2d58adc4144acd73a83492198134a0efcd9682fc08a5"
+        },
+        {
+          "capability_id": "C7-SECRETS-REDACTION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "1c1dbdeae68c8b9864608d53d79b21848a4e0a3a83401f1edaead035ac0f6e6a"
+        },
+        {
+          "capability_id": "C7-PERMISSION-DECISION",
+          "relation": "authority",
+          "required_implementation_state": "wired",
+          "contract_sha256": "f347173365df730be2abf7aaed1648a499ade8897509a0a6a990d89ee433b2f5"
+        }
+      ]
+    },
+    {
+      "capability_id": "C13-PEER-AGENT-COORDINATION",
+      "domain": "C13",
+      "title": "C13 扩展并发 / PeerAgentCoordinationPort",
+      "priority": "P2",
+      "applicability": {
+        "state": "experimental",
+        "claim_scopes": [
+          "peer-agent"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c13-peer-agent-coordination",
+        "port": "PeerAgentCoordinationPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C13-PEER-AGENT-COORDINATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C13-PEER-AGENT-COORDINATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-PEER-AGENT-COORDINATION"
+        },
+        "contract_sha256": "3cd95913a20124a464449c21c645989e90dc00a884d6530c100a3c8ba9472026"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C13-SUBAGENT-DELEGATION",
+          "relation": "extension",
+          "required_implementation_state": "wired",
+          "contract_sha256": "5438abb3f349953a559b54869cd67c41d2698682877397d72c3c6b4ecfc5f3c8"
+        },
+        {
+          "capability_id": "C13-WORKTREE-ISOLATION",
+          "relation": "extension",
+          "required_implementation_state": "wired",
+          "contract_sha256": "3ade53ed5202aca513865402977a6e08310d9c8c9d9401b9c3b1476317578b52"
+        }
+      ]
+    },
+    {
+      "capability_id": "C13-HEADLESS-SDK",
+      "domain": "C13",
+      "title": "C13 扩展并发 / HeadlessSdkPort",
+      "priority": "P2",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "orchestration-capable",
+          "extension-capable"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c13-headless-sdk",
+        "port": "HeadlessSdkPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C13-HEADLESS-SDK/v1",
+          "decision_scope": "Own the semantic decision boundary for C13-HEADLESS-SDK.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C13-HEADLESS-SDK"
+        },
+        "contract_sha256": "e9f317472be3384730fa4dcd8f6c4f255840fb312bd90676b94d9a49c12464c7"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C1-SURFACE-ADAPTER-CONFORMANCE",
+          "relation": "control",
+          "required_implementation_state": "wired",
+          "contract_sha256": "3ed3b52727759895fde7223977772771677cd3bd68e706f7d5895b802a643ec6"
+        },
+        {
+          "capability_id": "C13-EXTENSION-CONFORMANCE",
+          "relation": "extension",
+          "required_implementation_state": "wired",
+          "contract_sha256": "d8355245d3d793762a5e2d58adc4144acd73a83492198134a0efcd9682fc08a5"
+        }
+      ]
+    },
+    {
+      "capability_id": "C14-RC-ELIGIBILITY",
+      "domain": "C14",
+      "title": "C14 顶级资格 / RcEligibilityPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "qualification-aggregate"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c14-rc-eligibility",
+        "port": "RcEligibilityPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C14-RC-ELIGIBILITY/v1",
+          "decision_scope": "Own the semantic decision boundary for C14-RC-ELIGIBILITY.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C14-RC-ELIGIBILITY"
+        },
+        "contract_sha256": "b81a5ed04863914c86af969e5a392c207c85e3ad8273770a65425f01f33b3691"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+          "relation": "evidence",
+          "required_implementation_state": "wired",
+          "contract_sha256": "99fd7b7af1537a3943ff573907e221d07889ba11fc1bc02e5ea24671cd7073f1"
+        }
+      ]
+    },
+    {
+      "capability_id": "C14-LIVE-QUALIFICATION",
+      "domain": "C14",
+      "title": "C14 顶级资格 / LiveQualificationPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "qualification-aggregate"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c14-live-qualification",
+        "port": "LiveQualificationPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C14-LIVE-QUALIFICATION/v1",
+          "decision_scope": "Own the semantic decision boundary for C14-LIVE-QUALIFICATION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C14-LIVE-QUALIFICATION"
+        },
+        "contract_sha256": "9a1d9501231f587fdd562240dc61ab9b31cc08c52abd698370ff47fc53f9e8e8"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C14-RC-ELIGIBILITY",
+          "relation": "qualification",
+          "required_implementation_state": "wired",
+          "contract_sha256": "b81a5ed04863914c86af969e5a392c207c85e3ad8273770a65425f01f33b3691"
+        }
+      ]
+    },
+    {
+      "capability_id": "C14-HOLDOUT-BLIND-COMPARE",
+      "domain": "C14",
+      "title": "C14 顶级资格 / HoldoutEvaluationPort",
+      "priority": "P0",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "qualification-aggregate"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c14-holdout-blind-compare",
+        "port": "HoldoutEvaluationPort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C14-HOLDOUT-BLIND-COMPARE/v1",
+          "decision_scope": "Own the semantic decision boundary for C14-HOLDOUT-BLIND-COMPARE.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C14-HOLDOUT-BLIND-COMPARE"
+        },
+        "contract_sha256": "96ec30ab64d31a218f8fde667517a24efeec04d04497dc8f5416cfb33816e8a1"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C14-LIVE-QUALIFICATION",
+          "relation": "qualification",
+          "required_implementation_state": "wired",
+          "contract_sha256": "9a1d9501231f587fdd562240dc61ab9b31cc08c52abd698370ff47fc53f9e8e8"
+        }
+      ]
+    },
+    {
+      "capability_id": "C14-RELEASE-DECISION",
+      "domain": "C14",
+      "title": "C14 顶级资格 / QualificationReleasePort",
+      "priority": "P0",
+      "applicability": {
+        "state": "conditional",
+        "claim_scopes": [
+          "qualification-aggregate"
+        ],
+        "not_applicable_requires_adjudication": true
+      },
+      "semantic_authority": {
+        "key": "c14-release-decision",
+        "port": "QualificationReleasePort",
+        "contract": {
+          "schema_version": "devseek.authority-contract/v1",
+          "contract_id": "C14-RELEASE-DECISION/v1",
+          "decision_scope": "Own the semantic decision boundary for C14-RELEASE-DECISION.",
+          "failure_semantics": "Fail closed when the authority is unavailable or returns an invalid decision.",
+          "source_ref": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md#C14-RELEASE-DECISION"
+        },
+        "contract_sha256": "e0ef79be8986b28caf7b50200aa66ccc01f5efd902f43c89f4047dba6efa6f00"
+      },
+      "implementation_state": "proposed",
+      "qualification_claims": [],
+      "qualification_level_view": null,
+      "implementation_components": [],
+      "architecture_dependencies": [
+        {
+          "capability_id": "C14-HOLDOUT-BLIND-COMPARE",
+          "relation": "qualification",
+          "required_implementation_state": "wired",
+          "contract_sha256": "96ec30ab64d31a218f8fde667517a24efeec04d04497dc8f5416cfb33816e8a1"
+        }
+      ]
+    }
+  ],
+  "ledger_sha256": "4b99765a8978b9927d9586e4c0dc16d8ef2bc72917d4565327a3f96310263383"
+}

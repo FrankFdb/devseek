@@ -1,0 +1,181 @@
+{
+  "schema_version": "devseek.milestone-profiles/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "claim_profiles": [
+    {
+      "schema_version": "devseek.qualification-claim-profile/v1",
+      "integrity": {
+        "hash_algorithm": "sha256",
+        "canonicalization_version": "devseek-canonical-json/v1"
+      },
+      "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+      "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+      "claim_scope": "gate0-infrastructure",
+      "surface": "repository-governance",
+      "provider": "local-node",
+      "platform_profile": "linux-x64-v1"
+    },
+    {
+      "schema_version": "devseek.qualification-claim-profile/v1",
+      "integrity": {
+        "hash_algorithm": "sha256",
+        "canonicalization_version": "devseek-canonical-json/v1"
+      },
+      "profile_id": "DEVSEEK-R1-ROOT-SMOKE/v1",
+      "profile_sha256": "6f0f92d3a63a7cd61d392c6f7c89886dc01576b108cf37b09afa99a088479409",
+      "claim_scope": "r1-root-smoke",
+      "surface": "headless",
+      "provider": "fixture",
+      "platform_profile": "linux-x64-v1"
+    },
+    {
+      "schema_version": "devseek.qualification-claim-profile/v1",
+      "integrity": {
+        "hash_algorithm": "sha256",
+        "canonicalization_version": "devseek-canonical-json/v1"
+      },
+      "profile_id": "DEVSEEK-R1-MINIMAL-CONTRACT/v1",
+      "profile_sha256": "bbb17fb5c599a2c6d8d578cf58a3aef16e5d3d7ada222ed5c661c346c7f08de0",
+      "claim_scope": "r1-minimal-contract",
+      "surface": "headless",
+      "provider": "fixture",
+      "platform_profile": "linux-x64-v1"
+    },
+    {
+      "schema_version": "devseek.qualification-claim-profile/v1",
+      "integrity": {
+        "hash_algorithm": "sha256",
+        "canonicalization_version": "devseek-canonical-json/v1"
+      },
+      "profile_id": "DEVSEEK-R1-TRANSITIVE-SEAM/v1",
+      "profile_sha256": "10676b9de080941f27998ac1518e25950cd402df0596b837d25e77997645b6e4",
+      "claim_scope": "r1-transitive-seam",
+      "surface": "headless",
+      "provider": "fixture",
+      "platform_profile": "linux-x64-v1"
+    }
+  ],
+  "profiles": [
+    {
+      "integrity": {
+        "hash_algorithm": "sha256",
+        "canonicalization_version": "devseek-canonical-json/v1"
+      },
+      "profile_id": "R1-MINIMAL-SEAM/v1",
+      "profile_sha256": "27c90f86cab61156766e18b36bcb368842e424d25c5fae2de2534fcdd1753ad9",
+      "groups": [
+        {
+          "group_id": "gate0",
+          "roots": [
+            "C0-QUALIFICATION-AGGREGATOR"
+          ],
+          "root_requirement": {
+            "required_implementation_state": "wired",
+            "required_claim": {
+              "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+              "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+              "claim_scope": "gate0-infrastructure",
+              "surface": "repository-governance",
+              "provider": "local-node",
+              "platform_profile": "linux-x64-v1",
+              "minimum_level": "L2"
+            }
+          },
+          "dependency_rules": [],
+          "default_dependency_requirement": {
+            "required_implementation_state": "wired",
+            "required_claim": {
+              "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+              "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+              "claim_scope": "gate0-infrastructure",
+              "surface": "repository-governance",
+              "provider": "local-node",
+              "platform_profile": "linux-x64-v1",
+              "minimum_level": "L2"
+            }
+          }
+        },
+        {
+          "group_id": "gate1",
+          "roots": [
+            "C1-SURFACE-ADAPTER-CONFORMANCE",
+            "C6-PROVIDER-NORMALIZATION",
+            "C6-DEEPSEEK-WEB-CONNECTOR",
+            "C7-DIRTY-WORKTREE",
+            "C7-PLATFORM-ADAPTER-CONFORMANCE",
+            "C8-INTEGRATION-CONFORMANCE",
+            "C9-BOUNDED-REPAIR",
+            "C9-REGRESSION-SELECTION",
+            "C10-DELIVERY-MANIFEST"
+          ],
+          "root_requirement": {
+            "required_implementation_state": "wired",
+            "required_claim": {
+              "profile_id": "DEVSEEK-R1-ROOT-SMOKE/v1",
+              "profile_sha256": "6f0f92d3a63a7cd61d392c6f7c89886dc01576b108cf37b09afa99a088479409",
+              "claim_scope": "r1-root-smoke",
+              "surface": "headless",
+              "provider": "fixture",
+              "platform_profile": "linux-x64-v1",
+              "minimum_level": "L2"
+            }
+          },
+          "dependency_rules": [
+            {
+              "rule_id": "r1-engineering-brain-minimal-seam",
+              "specificity": 100,
+              "selector": {
+                "domains": [
+                  "C2",
+                  "C3",
+                  "C4",
+                  "C5"
+                ]
+              },
+              "requirement": {
+                "required_implementation_state": "wired",
+                "required_claim": {
+                  "profile_id": "DEVSEEK-R1-MINIMAL-CONTRACT/v1",
+                  "profile_sha256": "bbb17fb5c599a2c6d8d578cf58a3aef16e5d3d7ada222ed5c661c346c7f08de0",
+                  "claim_scope": "r1-minimal-contract",
+                  "surface": "headless",
+                  "provider": "fixture",
+                  "platform_profile": "linux-x64-v1",
+                  "minimum_level": "L1"
+                }
+              }
+            }
+          ],
+          "default_dependency_requirement": {
+            "required_implementation_state": "wired",
+            "required_claim": {
+              "profile_id": "DEVSEEK-R1-TRANSITIVE-SEAM/v1",
+              "profile_sha256": "10676b9de080941f27998ac1518e25950cd402df0596b837d25e77997645b6e4",
+              "claim_scope": "r1-transitive-seam",
+              "surface": "headless",
+              "provider": "fixture",
+              "platform_profile": "linux-x64-v1",
+              "minimum_level": "L1"
+            }
+          }
+        }
+      ],
+      "expected": {
+        "ledger_capabilities": 76,
+        "selected_capabilities": 45,
+        "group_closure_counts": {
+          "gate0": 7,
+          "gate1": 39
+        }
+      },
+      "forbidden_required_qualification_levels": [
+        "L4",
+        "L5",
+        "L6"
+      ]
+    }
+  ]
+}

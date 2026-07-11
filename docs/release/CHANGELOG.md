@@ -4,7 +4,15 @@
 
 ---
 
-## [Unreleased] — 2026-07-11
+## [Unreleased] — 2026-07-12
+
+### G0-A 机器能力账本与资格防越级门禁
+
+- 新增 76 项 capability、138 条 typed architecture edge 的机器账本，以及 claim/milestone profile、R1 45 项目标工作 manifest、JSON Schema、语义校验器和生成物漂移 gate。
+- R1 manifest 以精确 `requirements[]{required_implementation_state,required_claim}` 保留不同 Surface/Provider/platform tuple；同 tuple 只取最严 state/level，不同 tuple 不合并，且明确 `asserts_current_qualification=false`。
+- 固定 `sha256 + devseek-canonical-json/v1` 完整性协议和 golden vector；authority source anchor、edge claim profile 注册、relation、contract/hash、闭包与生成物不一致均 fail closed。
+- 旧 canary/medium/formal 3/2/1 降为 development observation；未实现签名 Evidence Manifest/独立 aggregator 前，legacy evidence 永远不能授予 candidate/stable。
+- Phase 0～12 默认增加 capability ledger governance gate。定向测试 10/10、稳定性资格测试 8/8、架构漂移和完整 Phase 0～12 均通过；本轮无 Extension/Bridge 行为变化，未打包安装 VSIX、未运行 live、未发布产品资格。
 
 - P0-B TaskContract/QualityPolicy 第一切片及跨领域隔离回归已落地；P0-A 的 deterministic claim/read-back/exact materialization 已收敛，但因没有同提交真实成功，阶段退出与真实资格均未完成。
 

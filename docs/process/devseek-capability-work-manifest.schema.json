@@ -1,0 +1,214 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-capability-work-manifest-v1.json",
+  "title": "DevSeek Capability Work Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "manifest_kind",
+    "asserts_current_qualification",
+    "manifest_id",
+    "source_ledger_sha256",
+    "milestone_profile_sha256",
+    "counts",
+    "entries",
+    "manifest_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.capability-work-manifest/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "manifest_kind": { "const": "target-work-requirements" },
+    "asserts_current_qualification": { "const": false },
+    "manifest_id": { "type": "string", "minLength": 1 },
+    "source_ledger_sha256": { "$ref": "#/$defs/sha256" },
+    "milestone_profile_sha256": { "$ref": "#/$defs/sha256" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/entry" }
+    },
+    "manifest_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "capabilityId": {
+      "type": "string",
+      "pattern": "^C(?:[0-9]|1[0-4])-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+    },
+    "claimSelector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "profile_sha256", "claim_scope", "surface", "provider", "platform_profile"],
+      "properties": {
+        "profile_id": { "type": "string", "minLength": 1 },
+        "profile_sha256": { "$ref": "#/$defs/sha256" },
+        "claim_scope": { "type": "string", "minLength": 1 },
+        "surface": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "platform_profile": { "type": "string", "minLength": 1 }
+      }
+    },
+    "requiredClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile_id", "profile_sha256", "claim_scope", "surface", "provider", "platform_profile", "minimum_level"],
+      "properties": {
+        "profile_id": { "type": "string", "minLength": 1 },
+        "profile_sha256": { "$ref": "#/$defs/sha256" },
+        "claim_scope": { "type": "string", "minLength": 1 },
+        "surface": { "type": "string", "minLength": 1 },
+        "provider": { "type": "string", "minLength": 1 },
+        "platform_profile": { "type": "string", "minLength": 1 },
+        "minimum_level": { "enum": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"] }
+      }
+    },
+    "relation": {
+      "enum": [
+        "authority",
+        "context",
+        "control",
+        "delivery",
+        "evidence",
+        "execution",
+        "extension",
+        "qualification",
+        "recovery",
+        "semantic",
+        "verification"
+      ]
+    },
+    "tupleRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_implementation_state", "required_claim"],
+      "properties": {
+        "required_implementation_state": { "enum": ["specified", "implemented", "wired"] },
+        "required_claim": { "$ref": "#/$defs/requiredClaim" }
+      }
+    },
+    "applicability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "claim_scopes", "not_applicable_requires_adjudication"],
+      "properties": {
+        "state": { "enum": ["active", "conditional", "deferred", "experimental"] },
+        "claim_scopes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "not_applicable_requires_adjudication": { "type": "boolean" }
+      }
+    },
+    "relationStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "to", "relation", "required_implementation_state", "contract_sha256"],
+      "properties": {
+        "from": { "$ref": "#/$defs/capabilityId" },
+        "to": { "$ref": "#/$defs/capabilityId" },
+        "relation": { "$ref": "#/$defs/relation" },
+        "required_implementation_state": { "enum": ["specified", "implemented", "wired"] },
+        "contract_sha256": { "$ref": "#/$defs/sha256" },
+        "required_claim": { "$ref": "#/$defs/requiredClaim" }
+      }
+    },
+    "selectionPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["group_id", "root_target", "capability_path", "relation_path", "required_implementation_state", "required_claim", "path_sha256"],
+      "properties": {
+        "group_id": { "type": "string", "minLength": 1 },
+        "root_target": { "$ref": "#/$defs/capabilityId" },
+        "capability_path": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/capabilityId" }
+        },
+        "relation_path": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/relationStep" }
+        },
+        "required_implementation_state": { "enum": ["specified", "implemented", "wired"] },
+        "required_claim": { "$ref": "#/$defs/requiredClaim" },
+        "path_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "architectureRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_by", "relation", "required_implementation_state", "contract_sha256"],
+      "properties": {
+        "required_by": { "$ref": "#/$defs/capabilityId" },
+        "relation": { "$ref": "#/$defs/relation" },
+        "required_implementation_state": { "enum": ["specified", "implemented", "wired"] },
+        "contract_sha256": { "$ref": "#/$defs/sha256" },
+        "required_claim": { "$ref": "#/$defs/requiredClaim" }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ledger_capabilities", "selected_capabilities", "root_targets", "groups"],
+      "properties": {
+        "ledger_capabilities": { "type": "integer", "minimum": 1 },
+        "selected_capabilities": { "type": "integer", "minimum": 1 },
+        "root_targets": { "type": "integer", "minimum": 1 },
+        "groups": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_id",
+        "priority",
+        "applicability",
+        "work_mode",
+        "required_implementation_state_view",
+        "profile_scopes",
+        "profile_sha256s",
+        "groups",
+        "root_targets",
+        "requirements",
+        "selection_paths",
+        "architecture_requirements",
+        "relation_types"
+      ],
+      "properties": {
+        "capability_id": { "$ref": "#/$defs/capabilityId" },
+        "priority": { "enum": ["P0", "P1", "P2"] },
+        "applicability": { "$ref": "#/$defs/applicability" },
+        "work_mode": { "enum": ["root", "seam"] },
+        "required_implementation_state_view": { "enum": ["specified", "implemented", "wired"] },
+        "profile_scopes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "profile_sha256s": { "type": "array", "items": { "$ref": "#/$defs/sha256" } },
+        "groups": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "root_targets": { "type": "array", "items": { "$ref": "#/$defs/capabilityId" } },
+        "requirements": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/tupleRequirement" } },
+        "selection_paths": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/selectionPath" } },
+        "architecture_requirements": { "type": "array", "items": { "$ref": "#/$defs/architectureRequirement" } },
+        "relation_types": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/relation" }
+        }
+      }
+    }
+  }
+}

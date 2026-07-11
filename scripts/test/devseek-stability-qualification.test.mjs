@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  LIVE_STABILITY_QUOTA,
+  LEGACY_LIVE_OBSERVATION_THRESHOLDS,
   buildStabilityQualification,
   inspectRealPluginEvidence,
 } from '../lib/devseek-stability-qualification.mjs';
@@ -21,6 +21,7 @@ test('deterministic green does not authorize a stability claim', () => {
   });
 
   assert.equal(result.level, 'deterministic');
+  assert.equal(result.qualificationAuthority, 'none');
   assert.equal(result.candidateClaimAllowed, false);
   assert.equal(result.stableClaimAllowed, false);
 });
@@ -35,7 +36,7 @@ test('real plugin evidence must be successful, replayed, and bound to the curren
   assert.ok(stale.reasons.includes('stale-or-different-git-commit'));
 });
 
-test('one live success permits a candidate claim but not a stable claim', () => {
+test('one legacy live success is an observation and cannot authorize a product claim', () => {
   const result = buildStabilityQualification({
     gates: deterministicGates,
     includeRealDeepSeek: false,
@@ -43,12 +44,13 @@ test('one live success permits a candidate claim but not a stable claim', () => 
     currentCommit: commit,
   });
 
-  assert.equal(result.level, 'live-plugin');
-  assert.equal(result.candidateClaimAllowed, true);
+  assert.equal(result.level, 'legacy-development-live-observation');
+  assert.equal(result.realPlugin, 'observed');
+  assert.equal(result.candidateClaimAllowed, false);
   assert.equal(result.stableClaimAllowed, false);
 });
 
-test('a dirty worktree cannot borrow the HEAD commit identity for live qualification', () => {
+test('a dirty worktree cannot borrow the HEAD commit identity for a live observation level', () => {
   const result = buildStabilityQualification({
     gates: deterministicGates,
     includeRealDeepSeek: false,
@@ -63,9 +65,9 @@ test('a dirty worktree cannot borrow the HEAD commit identity for live qualifica
   assert.equal(result.stableClaimAllowed, false);
 });
 
-test('stable requires distinct same-commit live evidence across the convergence ladder', () => {
+test('full legacy name-bucket coverage remains an observation and cannot authorize stable', () => {
   const evidence = [];
-  for (const [scenario, count] of Object.entries(LIVE_STABILITY_QUOTA)) {
+  for (const [scenario, count] of Object.entries(LEGACY_LIVE_OBSERVATION_THRESHOLDS)) {
     for (let index = 0; index < count; index++) evidence.push(passedEvidence(scenario, `${scenario}-${index}`));
   }
   const result = buildStabilityQualification({
@@ -75,11 +77,13 @@ test('stable requires distinct same-commit live evidence across the convergence 
     currentCommit: commit,
   });
 
-  assert.equal(result.level, 'stable');
-  assert.equal(result.stableClaimAllowed, true);
+  assert.equal(result.level, 'legacy-development-live-observation');
+  assert.equal(result.legacyObservationThresholdMet, true);
+  assert.equal(result.candidateClaimAllowed, false);
+  assert.equal(result.stableClaimAllowed, false);
 });
 
-test('the same live run cannot be copied or repeated to satisfy the quota', () => {
+test('the same live run cannot be copied or repeated to satisfy the observation threshold', () => {
   const duplicate = passedEvidence('canary', 'same-run');
   const result = buildStabilityQualification({
     gates: deterministicGates,
@@ -89,12 +93,13 @@ test('the same live run cannot be copied or repeated to satisfy the quota', () =
   });
 
   assert.equal(result.scenarioCounts.canary, 1);
+  assert.equal(result.legacyObservationThresholdMet, false);
   assert.equal(result.stableClaimAllowed, false);
 });
 
-test('a requested live CLI failure blocks stability even with full plugin evidence', () => {
+test('a requested live CLI failure is retained without changing the no-qualification invariant', () => {
   const evidence = [];
-  for (const [scenario, count] of Object.entries(LIVE_STABILITY_QUOTA)) {
+  for (const [scenario, count] of Object.entries(LEGACY_LIVE_OBSERVATION_THRESHOLDS)) {
     for (let index = 0; index < count; index++) evidence.push(passedEvidence(scenario, `${scenario}-${index}`));
   }
   const result = buildStabilityQualification({
@@ -105,7 +110,38 @@ test('a requested live CLI failure blocks stability even with full plugin eviden
   });
 
   assert.equal(result.liveDeepSeekCli, 'failed');
+  assert.equal(result.legacyObservationThresholdMet, true);
+  assert.equal(result.candidateClaimAllowed, false);
   assert.equal(result.stableClaimAllowed, false);
+});
+
+test('legacy evidence can never emit candidate, stable, or their former level labels', () => {
+  const fullEvidence = Object.entries(LEGACY_LIVE_OBSERVATION_THRESHOLDS).flatMap(([scenario, count]) => (
+    Array.from({ length: count }, (_, index) => passedEvidence(scenario, `${scenario}-${index}`))
+  ));
+  const cases = [
+    { gates: deterministicGates, realPluginEvidence: [] },
+    { gates: deterministicGates, realPluginEvidence: fullEvidence },
+    { gates: deterministicGates, realPluginEvidence: fullEvidence, worktreeDirty: true },
+    { gates: [{ id: 'extension-unit', status: 'failed' }], realPluginEvidence: fullEvidence },
+    {
+      gates: [...deterministicGates, { id: 'agent-loop-live-deepseek-cli', status: 'passed' }],
+      includeRealDeepSeek: true,
+      realPluginEvidence: fullEvidence,
+    },
+  ];
+
+  for (const input of cases) {
+    const result = buildStabilityQualification({
+      includeRealDeepSeek: false,
+      currentCommit: commit,
+      ...input,
+    });
+    assert.equal(result.candidateClaimAllowed, false);
+    assert.equal(result.stableClaimAllowed, false);
+    assert.notEqual(result.level, 'live-plugin');
+    assert.notEqual(result.level, 'stable');
+  }
 });
 
 function realPluginReport({ commit: reportCommit }) {
