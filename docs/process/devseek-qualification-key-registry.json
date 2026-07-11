@@ -1,0 +1,130 @@
+{
+  "schema_version": "devseek.qualification-key-registry/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1",
+    "signature_algorithm": "ed25519"
+  },
+  "integrity_scope": "local-protocol-conformance",
+  "qualification_eligible": false,
+  "source_status": "verified",
+  "registry_id": "DEVSEEK-G0B-LOCAL-TEST-KEYS",
+  "registry_version": 1,
+  "keys": [
+    {
+      "key_id": "devseek-g0b-test-plan-authority-01",
+      "algorithm": "ed25519",
+      "public_key_encoding": "spki-der-base64",
+      "public_key_spki_base64": "MCowBQYDK2VwAyEAiojj3XQJ8ZX9UtstPLpdcspnCb8dlBIb83SIAbQPb1w=",
+      "public_key_spki_sha256": "fd110d301d2f077de1414b8f99f441b1403fab207b2052fbd2c065e4ee8e7dc2",
+      "trust_scope": "deterministic-test-only",
+      "identity": "local-fixture/devseek-g0b-protocol-authority",
+      "purposes": [
+        "qualification-plan"
+      ],
+      "status": "test-only",
+      "valid_from": "2026-07-12T00:00:00.000Z",
+      "expires_at": null,
+      "private_key_material_prohibited": true,
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "key_sha256": "e89df0caf640d638a63702c630c902f88cd49977736a116c18ee12e727d3ad7f"
+    },
+    {
+      "key_id": "devseek-g0b-test-runner-event-01",
+      "algorithm": "ed25519",
+      "public_key_encoding": "spki-der-base64",
+      "public_key_spki_base64": "MCowBQYDK2VwAyEAgTl3Dqh9F19Wo1Rmw0x+zMuNipG07jeiXfYPW4/Js5Q=",
+      "public_key_spki_sha256": "47dea58ea00fae9417ee19d76755bfef690899021132effb04fe1f9e4f0c8059",
+      "trust_scope": "deterministic-test-only",
+      "identity": "local-fixture/devseek-g0b-runner",
+      "purposes": [
+        "runner-event"
+      ],
+      "status": "test-only",
+      "valid_from": "2026-07-12T00:00:00.000Z",
+      "expires_at": null,
+      "private_key_material_prohibited": true,
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "key_sha256": "1cd85fc0b9100e492bca660c711b258321ffbc9ae38acfe98f4e848a5a35139b"
+    },
+    {
+      "key_id": "devseek-g0b-test-store-receipt-01",
+      "algorithm": "ed25519",
+      "public_key_encoding": "spki-der-base64",
+      "public_key_spki_base64": "MCowBQYDK2VwAyEA7UkoxijRwsbq6QM4kFmVYSlZJzpcY/k2NsFGFKyHN9E=",
+      "public_key_spki_sha256": "8cef065b7af83669150b7d32704d3d3e75c3e9aee0d4f6740544c68e81b377aa",
+      "trust_scope": "deterministic-test-only",
+      "identity": "local-fixture/devseek-g0b-event-store",
+      "purposes": [
+        "store-receipt"
+      ],
+      "status": "test-only",
+      "valid_from": "2026-07-12T00:00:00.000Z",
+      "expires_at": null,
+      "private_key_material_prohibited": true,
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "key_sha256": "e677a4a5fe1fbeab1e37958cc411cf519acc8859cfdb37a31183d5ce168b7c05"
+    },
+    {
+      "key_id": "devseek-g0b-test-guard-receipt-01",
+      "algorithm": "ed25519",
+      "public_key_encoding": "spki-der-base64",
+      "public_key_spki_base64": "MCowBQYDK2VwAyEAypOsFwUYcHHWe4PH/w7+gQjo7EUwV113JoeTM9vavnw=",
+      "public_key_spki_sha256": "d016df3d83373617c06b5e1d6359caa06eeba8b3af2c7077234f109f2194516c",
+      "trust_scope": "deterministic-test-only",
+      "identity": "local-fixture/devseek-g0b-action-guard",
+      "purposes": [
+        "action-guard"
+      ],
+      "status": "test-only",
+      "valid_from": "2026-07-12T00:00:00.000Z",
+      "expires_at": null,
+      "private_key_material_prohibited": true,
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "key_sha256": "21db49fed0565e757575db02f739971b08f9d046e339cbfe5712ea055e1ce386"
+    },
+    {
+      "key_id": "devseek-g0b-test-oracle-01",
+      "algorithm": "ed25519",
+      "public_key_encoding": "spki-der-base64",
+      "public_key_spki_base64": "MCowBQYDK2VwAyEAbnoc3Smwt4/ROvTFWY/v9O8qlxZuPKby5Pv8zYBQW/E=",
+      "public_key_spki_sha256": "3774845b9147b50cf00771ca20eb29cc3043c078f79ee13ebd0c63062a133b4d",
+      "trust_scope": "deterministic-test-only",
+      "identity": "local-fixture/devseek-g0b-independent-oracle",
+      "purposes": [
+        "oracle-classification"
+      ],
+      "status": "test-only",
+      "valid_from": "2026-07-12T00:00:00.000Z",
+      "expires_at": null,
+      "private_key_material_prohibited": true,
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "key_sha256": "9cb3a4f017edf0b8df100133645cbbc87f403d36acbeab70d07bd986860753b7"
+    },
+    {
+      "key_id": "devseek-g0b-test-adjudicator-01",
+      "algorithm": "ed25519",
+      "public_key_encoding": "spki-der-base64",
+      "public_key_spki_base64": "MCowBQYDK2VwAyEAiodf/x6zhFFXes1a/uQFRWVo3XyJ4JCGOgVXvHr0nxc=",
+      "public_key_spki_sha256": "4e389156bee8dc63ddc4c115543169c51ac218d9d4674935bcdfe67de81f0dfc",
+      "trust_scope": "deterministic-test-only",
+      "identity": "local-fixture/devseek-g0b-independent-adjudicator",
+      "purposes": [
+        "infra-adjudication"
+      ],
+      "status": "test-only",
+      "valid_from": "2026-07-12T00:00:00.000Z",
+      "expires_at": null,
+      "private_key_material_prohibited": true,
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "key_sha256": "1108c09057435a3df81cc8c2c3b29d55268b9aefd3549028d004b9a2daa05f3f"
+    }
+  ],
+  "registry_sha256": "4e7dfc5a9bb4cbf11446823f0e0c0fc658c5a57b5b480f2cba6453945beda8cf"
+}

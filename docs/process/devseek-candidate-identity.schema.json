@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-candidate-identity-v1.json",
+  "title": "DevSeek Qualification Candidate Identity v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "integrity_scope",
+    "qualification_eligible",
+    "candidate_id",
+    "candidate_version",
+    "source",
+    "artifacts",
+    "provider_connector",
+    "execution_inputs",
+    "dependency_snapshot_sha256",
+    "candidate_identity_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.candidate-identity/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "integrity_scope": { "const": "local-protocol-conformance" },
+    "qualification_eligible": { "const": false },
+    "candidate_id": { "type": "string", "minLength": 1 },
+    "candidate_version": { "type": "integer", "minimum": 1 },
+    "source": { "$ref": "#/$defs/sourceIdentity" },
+    "artifacts": { "$ref": "#/$defs/artifactIdentity" },
+    "provider_connector": { "$ref": "#/$defs/providerIdentity" },
+    "execution_inputs": { "$ref": "#/$defs/executionInputs" },
+    "dependency_snapshot_sha256": { "$ref": "#/$defs/sha256" },
+    "candidate_identity_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nullableSha256": {
+      "oneOf": [
+        { "$ref": "#/$defs/sha256" },
+        { "type": "null" }
+      ]
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version", "signature_algorithm"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" },
+        "signature_algorithm": { "const": "ed25519" }
+      }
+    },
+    "sourceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_id",
+        "git_commit",
+        "worktree_state",
+        "source_tree_sha256",
+        "submodule_state_sha256"
+      ],
+      "properties": {
+        "repository_id": { "type": "string", "minLength": 1 },
+        "git_commit": { "type": "string", "pattern": "^[a-f0-9]{7,64}$" },
+        "worktree_state": { "enum": ["clean", "dirty"] },
+        "source_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "submodule_state_sha256": { "$ref": "#/$defs/nullableSha256" }
+      }
+    },
+    "artifactIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "installed_artifact_sha256",
+        "extension_artifact_sha256",
+        "bridge_artifact_sha256",
+        "cli_artifact_sha256",
+        "packaging_metadata_sha256"
+      ],
+      "properties": {
+        "installed_artifact_sha256": { "$ref": "#/$defs/sha256" },
+        "extension_artifact_sha256": { "$ref": "#/$defs/sha256" },
+        "bridge_artifact_sha256": { "$ref": "#/$defs/sha256" },
+        "cli_artifact_sha256": { "$ref": "#/$defs/nullableSha256" },
+        "packaging_metadata_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "providerIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_product",
+        "provider_model",
+        "provider_mode",
+        "provider_connector_sha256",
+        "provider_page_fingerprint",
+        "provider_dom_fingerprint"
+      ],
+      "properties": {
+        "provider_product": { "type": "string", "minLength": 1 },
+        "provider_model": { "type": "string", "minLength": 1 },
+        "provider_mode": { "type": "string", "minLength": 1 },
+        "provider_connector_sha256": { "$ref": "#/$defs/sha256" },
+        "provider_page_fingerprint": { "$ref": "#/$defs/nullableSha256" },
+        "provider_dom_fingerprint": { "$ref": "#/$defs/nullableSha256" }
+      }
+    },
+    "executionInputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prompt_bundle_sha256",
+        "runtime_config_sha256",
+        "environment_fingerprint_sha256",
+        "platform_profile",
+        "runner_image_sha256",
+        "toolchain_lock_sha256"
+      ],
+      "properties": {
+        "prompt_bundle_sha256": { "$ref": "#/$defs/sha256" },
+        "runtime_config_sha256": { "$ref": "#/$defs/sha256" },
+        "environment_fingerprint_sha256": { "$ref": "#/$defs/sha256" },
+        "platform_profile": { "type": "string", "minLength": 1 },
+        "runner_image_sha256": { "$ref": "#/$defs/sha256" },
+        "toolchain_lock_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

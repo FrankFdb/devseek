@@ -39,6 +39,12 @@ const gates = [
     purpose: 'Fail closed on capability graph, typed dependency, scoped qualification target, R1 closure, or generated-manifest drift.',
   },
   {
+    id: 'qualification-protocol-conformance',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:qualification-protocol'],
+    purpose: 'Fail closed on qualification catalog/profile drift, signed preregistration plans, append-only event CAS, trusted-time rollback, or one-time external-action authorization.',
+  },
+  {
     id: 'stability-qualification-unit',
     phases: '0-12',
     command: ['npm', 'run', 'verify:stability-qualification'],

@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-qualification-event-v1.json",
+  "title": "DevSeek Append-only Qualification Event v1",
+  "$comment": "event_sha256 excludes event_sha256 and the complete event_attestation envelope before devseek-canonical-json/v1 hashing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "integrity_scope",
+    "qualification_eligible",
+    "event_id",
+    "qualification_plan_sha256",
+    "candidate_identity_sha256",
+    "stream_kind",
+    "correlation_id",
+    "event_type",
+    "sequence",
+    "occurred_at",
+    "recorded_at",
+    "actor_id",
+    "payload",
+    "previous_event_sha256",
+    "key_registry_sha256",
+    "event_sha256",
+    "event_attestation"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.qualification-event/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "integrity_scope": { "const": "local-protocol-conformance" },
+    "qualification_eligible": { "const": false },
+    "event_id": { "$ref": "#/$defs/id" },
+    "qualification_plan_sha256": { "$ref": "#/$defs/sha256" },
+    "candidate_identity_sha256": { "$ref": "#/$defs/sha256" },
+    "stream_kind": { "enum": ["plan", "session", "attempt"] },
+    "correlation_id": { "$ref": "#/$defs/id" },
+    "event_type": {
+      "enum": [
+        "QualificationPlanRegistered",
+        "CandidateBlocked",
+        "CandidateClosed",
+        "QualificationSessionRegistered",
+        "PreflightAttemptStarted",
+        "PreflightObserved",
+        "PreflightClassified",
+        "QualificationSessionReady",
+        "QualificationSessionBlocked",
+        "SessionProductFailure",
+        "SlotBranchSkipped",
+        "AttemptRegistered",
+        "AttemptStarted",
+        "ExternalActionAuthorized",
+        "ExternalActionStarted",
+        "RunObserved",
+        "AttemptAbandoned",
+        "OracleClassified",
+        "InfraAdjudicated",
+        "AttemptTerminated"
+      ]
+    },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "occurred_at": { "$ref": "#/$defs/time" },
+    "recorded_at": { "$ref": "#/$defs/time" },
+    "actor_id": { "$ref": "#/$defs/id" },
+    "payload": {
+      "type": "object",
+      "minProperties": 1
+    },
+    "previous_event_sha256": { "$ref": "#/$defs/nullableSha256" },
+    "key_registry_sha256": { "$ref": "#/$defs/sha256" },
+    "event_sha256": { "$ref": "#/$defs/sha256" },
+    "event_attestation": { "$ref": "#/$defs/eventAttestation" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": { "event_type": { "const": "QualificationPlanRegistered" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "stream_kind": { "const": "plan" },
+          "event_attestation": {
+            "allOf": [
+              { "$ref": "#/$defs/eventAttestation" },
+              {
+                "type": "object",
+                "properties": { "purpose": { "const": "qualification-plan" } },
+                "required": ["purpose"]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "event_type": { "const": "OracleClassified" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "event_attestation": {
+            "allOf": [
+              { "$ref": "#/$defs/eventAttestation" },
+              {
+                "type": "object",
+                "properties": { "purpose": { "const": "oracle-classification" } },
+                "required": ["purpose"]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "event_type": { "const": "InfraAdjudicated" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "payload": { "$ref": "#/$defs/infraAdjudicatedPayload" },
+          "event_attestation": {
+            "allOf": [
+              { "$ref": "#/$defs/eventAttestation" },
+              {
+                "type": "object",
+                "properties": { "purpose": { "const": "infra-adjudication" } },
+                "required": ["purpose"]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "event_type": {
+            "enum": ["ExternalActionAuthorized", "ExternalActionStarted"]
+          }
+        },
+        "required": ["event_type"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "event_attestation": {
+            "allOf": [
+              { "$ref": "#/$defs/eventAttestation" },
+              {
+                "type": "object",
+                "properties": { "purpose": { "const": "action-guard" } },
+                "required": ["purpose"]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": {
+          "event_type": {
+            "not": {
+              "enum": [
+                "QualificationPlanRegistered",
+                "OracleClassified",
+                "InfraAdjudicated",
+                "ExternalActionAuthorized",
+                "ExternalActionStarted"
+              ]
+            }
+          }
+        },
+        "required": ["event_type"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "event_attestation": {
+            "allOf": [
+              { "$ref": "#/$defs/eventAttestation" },
+              {
+                "type": "object",
+                "properties": { "purpose": { "const": "runner-event" } },
+                "required": ["purpose"]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nullableSha256": {
+      "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+    },
+    "time": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version", "signature_algorithm"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" },
+        "signature_algorithm": { "const": "ed25519" }
+      }
+    },
+    "eventAttestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "key_id",
+        "signer_identity",
+        "purpose",
+        "key_registry_sha256",
+        "signed_payload_sha256",
+        "signature_base64"
+      ],
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "key_id": { "$ref": "#/$defs/id" },
+        "signer_identity": { "$ref": "#/$defs/id" },
+        "purpose": {
+          "enum": [
+            "qualification-plan",
+            "runner-event",
+            "oracle-classification",
+            "infra-adjudication",
+            "action-guard"
+          ]
+        },
+        "key_registry_sha256": { "$ref": "#/$defs/sha256" },
+        "signed_payload_sha256": { "$ref": "#/$defs/sha256" },
+        "signature_base64": { "type": "string", "minLength": 1 }
+      }
+    },
+    "infraAdjudicatedPayload": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "failure_class",
+        "original_slot_id",
+        "original_failure_event_sha256",
+        "adjudication_evidence_sha256",
+        "reason_code"
+      ],
+      "properties": {
+        "failure_class": { "enum": ["environment", "test-infra"] },
+        "original_slot_id": { "$ref": "#/$defs/id" },
+        "original_attempt_role": { "enum": ["original", "primary"] },
+        "original_failure_event_sha256": { "$ref": "#/$defs/sha256" },
+        "adjudication_evidence_sha256": { "$ref": "#/$defs/sha256" },
+        "reason_code": { "$ref": "#/$defs/id" }
+      }
+    }
+  }
+}

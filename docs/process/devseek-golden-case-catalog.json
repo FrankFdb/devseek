@@ -1,0 +1,517 @@
+{
+  "schema_version": "devseek.golden-case-catalog/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1",
+    "signature_algorithm": "ed25519"
+  },
+  "integrity_scope": "local-protocol-conformance",
+  "qualification_eligible": false,
+  "source_status": "verified",
+  "catalog_id": "DEVSEEK-G0B-PROTOCOL-CONFORMANCE",
+  "catalog_version": 1,
+  "case_id_policy": "case-id-plus-version-is-immutable",
+  "cases": [
+    {
+      "schema_version": "devseek.golden-case/v1",
+      "case_id": "G0B-P01",
+      "case_version": 1,
+      "case_sha256": "91de723b2dbb90c7262114c4eee82c2ad6d4e0186aaf2bae67a2c570ce322949",
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "implementation_state": "implemented-local-conformance",
+      "category": "protocol",
+      "title": "Canonical plan, slot, event, and receipt hashing is deterministic",
+      "capability_ids": [
+        "C0-PREREGISTRATION-PLAN"
+      ],
+      "stage_types": [
+        "T0"
+      ],
+      "threat_model": "Different serializers or key ordering create divergent identities.",
+      "stimulus": "Recompute every fixture hash with independent devseek-canonical-json/v1 implementations.",
+      "expected_result": "All SHA-256 values agree byte-for-byte and unsupported JSON values fail closed.",
+      "hard_veto_codes": [
+        "canonical-hash-divergence"
+      ],
+      "fixture": {
+        "fixture_id": "g0b-p01-canonical-hash",
+        "integrity_scope": "local-protocol-conformance",
+        "qualification_eligible": false,
+        "input_sha256": "5642dc0e3e7c6aa66680f4ba98cd1b56da27126f31da45eb6a1b1152c7359484",
+        "workspace_fixture_sha256": "7b5ea386c7a3c8f5c2780e9b87e4cbc006eb67a89ef42522919f3aa6c66770a3",
+        "hidden_variant_id": "local-visible-v1"
+      },
+      "executor_ref": {
+        "executor_id": "g0b-protocol-runner/v1",
+        "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+        "entrypoint": "canonical-hash-vectors",
+        "contract_sha256": "d8b27af9d07ae1a40169cbff31b1a2b7f4988474f8d7b29d2f6359258a773a21",
+        "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+      },
+      "oracle_refs": [
+        {
+          "oracle_id": "g0b-independent-integrity-oracle/v1",
+          "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+          "entrypoint": "verify-canonical-hashes",
+          "expected_decision": "allow",
+          "independent_from_executor": true,
+          "contract_sha256": "93122cdc428dd683eb5a7400fe62fde340b39025b74396b9cb555a928ed0afb4",
+          "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+        }
+      ]
+    },
+    {
+      "schema_version": "devseek.golden-case/v1",
+      "case_id": "G0B-A01",
+      "case_version": 1,
+      "case_sha256": "2bb24d71d8e086d631462fb4b26f9ff4aa4b48703f3439a824689631d151bce2",
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "implementation_state": "implemented-local-conformance",
+      "category": "attack",
+      "title": "Unsigned or mutated plan cannot authorize an external action",
+      "capability_ids": [
+        "C0-PREREGISTRATION-PLAN"
+      ],
+      "stage_types": [
+        "T1"
+      ],
+      "threat_model": "A plan is added, removed, reordered, or changed after registration.",
+      "stimulus": "Present an unsigned plan and a signed plan whose slot list changed after signing.",
+      "expected_result": "The guard denies before browser, authentication, or network activity.",
+      "hard_veto_codes": [
+        "missing-plan-signature",
+        "plan-hash-mismatch",
+        "external-action-before-guard"
+      ],
+      "fixture": {
+        "fixture_id": "g0b-a01-plan-mutation",
+        "integrity_scope": "local-protocol-conformance",
+        "qualification_eligible": false,
+        "input_sha256": "f7919e1bb2265c7896d3ca9255d0bf56625de81e56a2e051c83858a00cdaa8db",
+        "workspace_fixture_sha256": "6b62d931cbd161c8e7a4d3bdcca06778a20b6a07d032c8967ba4f9c20193dbae",
+        "hidden_variant_id": "local-visible-v1"
+      },
+      "executor_ref": {
+        "executor_id": "g0b-guard-attack-runner/v1",
+        "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+        "entrypoint": "reject-unsigned-or-mutated-plan",
+        "contract_sha256": "f10e9e03dcb001344535373f7b7a19f08603b59e7e993f07b0824e625093899e",
+        "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+      },
+      "oracle_refs": [
+        {
+          "oracle_id": "g0b-side-effect-oracle/v1",
+          "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+          "entrypoint": "assert-zero-external-actions",
+          "expected_decision": "deny",
+          "independent_from_executor": true,
+          "contract_sha256": "9851fa78ed83e949d4f9ab607a18f4ae95f25d8c5a6a8c0456f59a5c082224d4",
+          "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+        }
+      ]
+    },
+    {
+      "schema_version": "devseek.golden-case/v1",
+      "case_id": "G0B-A02",
+      "case_version": 1,
+      "case_sha256": "a28fb038001a174391d42defc135f79253e9a159eb029a12a2f7f7e021bc4874",
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "implementation_state": "implemented-local-conformance",
+      "category": "attack",
+      "title": "Local clock drift cannot extend a trusted plan window",
+      "capability_ids": [
+        "C0-PREREGISTRATION-PLAN"
+      ],
+      "stage_types": [
+        "T1"
+      ],
+      "threat_model": "A runner changes its local clock to use an expired or not-yet-valid slot.",
+      "stimulus": "Move runner time inside the window while trusted store time remains outside it.",
+      "expected_result": "The attempt is invalid and no slot is consumed.",
+      "hard_veto_codes": [
+        "trusted-time-window-violation"
+      ],
+      "fixture": {
+        "fixture_id": "g0b-a02-time-drift",
+        "integrity_scope": "local-protocol-conformance",
+        "qualification_eligible": false,
+        "input_sha256": "1a1f57de88230e388abc44b0c0b13f0383e4b9d36a07e1e4611b822e91f4645c",
+        "workspace_fixture_sha256": "f156192f3fc7f93b3a830e5002433586bd22ff3ae07efe0c0b54c9de66cce1da",
+        "hidden_variant_id": "local-visible-v1"
+      },
+      "executor_ref": {
+        "executor_id": "g0b-time-attack-runner/v1",
+        "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+        "entrypoint": "reject-runner-clock-drift",
+        "contract_sha256": "ff55b9bac8bf83898ceca9dc253b3966f0a6f4792ac31e352ed76a3e1454b653",
+        "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+      },
+      "oracle_refs": [
+        {
+          "oracle_id": "g0b-trusted-time-oracle/v1",
+          "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+          "entrypoint": "classify-window",
+          "expected_decision": "invalidate",
+          "independent_from_executor": true,
+          "contract_sha256": "612dd82f9b61986cb67de52251e9f7b59fac494ea5fe92fd13a6b05e2195e5f9",
+          "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+        }
+      ]
+    },
+    {
+      "schema_version": "devseek.golden-case/v1",
+      "case_id": "G0B-A03",
+      "case_version": 1,
+      "case_sha256": "97bc4788f3d13e035612fb5a74efaea69172a00dd4ce91672b15ef5feed9a037",
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "implementation_state": "implemented-local-conformance",
+      "category": "attack",
+      "title": "Receipt replay across sessions is rejected",
+      "capability_ids": [
+        "C0-PREREGISTRATION-PLAN"
+      ],
+      "stage_types": [
+        "T1",
+        "T2"
+      ],
+      "threat_model": "A valid one-time receipt is copied into another qualification session.",
+      "stimulus": "Replay a receipt with a different qualification_session_id.",
+      "expected_result": "The guard rejects the receipt and records a replay event.",
+      "hard_veto_codes": [
+        "cross-session-receipt-replay"
+      ],
+      "fixture": {
+        "fixture_id": "g0b-a03-cross-session-replay",
+        "integrity_scope": "local-protocol-conformance",
+        "qualification_eligible": false,
+        "input_sha256": "ae75289b56dee3b166fc80be0a20f10f562b4c9f334e8fcab94a324260f5daa2",
+        "workspace_fixture_sha256": "c0a79a2430e7a173ec00004a13b9ec610e350cb823f58cb6d42a8998b9f4009f",
+        "hidden_variant_id": "local-visible-v1"
+      },
+      "executor_ref": {
+        "executor_id": "g0b-replay-attack-runner/v1",
+        "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+        "entrypoint": "reject-cross-session-receipt",
+        "contract_sha256": "b7ec701d07d6ef6913675ffbb283c264c5444e8cc0eabe0ddc89b6c639d439c5",
+        "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+      },
+      "oracle_refs": [
+        {
+          "oracle_id": "g0b-receipt-binding-oracle/v1",
+          "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+          "entrypoint": "verify-session-binding",
+          "expected_decision": "deny",
+          "independent_from_executor": true,
+          "contract_sha256": "d9545e60637d3b7ae31dc80c210b1bf302f36d0ec3c0af63dbf63a2e64cf5abc",
+          "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+        }
+      ]
+    },
+    {
+      "schema_version": "devseek.golden-case/v1",
+      "case_id": "G0B-A04",
+      "case_version": 1,
+      "case_sha256": "a4b708b0ea7230f5d5181c8c9bd04d61926fe0956d7d9461b2fa38a7f9b9cd52",
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "implementation_state": "implemented-local-conformance",
+      "category": "attack",
+      "title": "Concurrent slot consumption has exactly one winner",
+      "capability_ids": [
+        "C0-PREREGISTRATION-PLAN"
+      ],
+      "stage_types": [
+        "T2"
+      ],
+      "threat_model": "Two runners race to consume the same preregistered slot.",
+      "stimulus": "Issue concurrent compare-and-swap requests for one slot and baseline version.",
+      "expected_result": "Exactly one signed receipt is issued; all other requests fail as already consumed.",
+      "hard_veto_codes": [
+        "double-slot-consumption"
+      ],
+      "fixture": {
+        "fixture_id": "g0b-a04-concurrent-cas",
+        "integrity_scope": "local-protocol-conformance",
+        "qualification_eligible": false,
+        "input_sha256": "cbc2c7ed0d0467c82afa177671ca072bd7a24eabb20fe270d69b78fbeccb04ec",
+        "workspace_fixture_sha256": "ece972e3c73f6db9a0759141c813c0b0cb2e224666b34af2082e4d5106536fea",
+        "hidden_variant_id": "local-visible-v1"
+      },
+      "executor_ref": {
+        "executor_id": "g0b-concurrency-attack-runner/v1",
+        "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+        "entrypoint": "race-double-consumption",
+        "contract_sha256": "df59e9b2b53f01ac2bb994c9ad612386e5126bf769325ac3fa03c5843e89613a",
+        "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+      },
+      "oracle_refs": [
+        {
+          "oracle_id": "g0b-linearizability-oracle/v1",
+          "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+          "entrypoint": "verify-single-winner",
+          "expected_decision": "exactly-one-consumer",
+          "independent_from_executor": true,
+          "contract_sha256": "c52caa32b7b2ba27d356132b5a50533c32c92f0ef7a77931480844813ea2812e",
+          "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+        }
+      ]
+    },
+    {
+      "schema_version": "devseek.golden-case/v1",
+      "case_id": "G0B-A05",
+      "case_version": 1,
+      "case_sha256": "0bbcd62f543c259e0ee4d92c00876dfab987afc16dfac7bfd630e3d1fb90bfbd",
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "implementation_state": "implemented-local-conformance",
+      "category": "attack",
+      "title": "Global slot order cannot be skipped or reordered",
+      "capability_ids": [
+        "C0-PREREGISTRATION-PLAN"
+      ],
+      "stage_types": [
+        "T2"
+      ],
+      "threat_model": "A runner cherry-picks an easier later slot after observing prior results.",
+      "stimulus": "Request slot order 2 while unconsumed slot order 1 remains open.",
+      "expected_result": "CAS is denied without consuming either slot.",
+      "hard_veto_codes": [
+        "global-slot-order-violation"
+      ],
+      "fixture": {
+        "fixture_id": "g0b-a05-slot-order",
+        "integrity_scope": "local-protocol-conformance",
+        "qualification_eligible": false,
+        "input_sha256": "f4cb436c3d7bf5b85aaecf5e7fdad739b3f8dd0a39b4a89ccec7518da8f7dcb9",
+        "workspace_fixture_sha256": "902c774230c22a3dc8295658dc48f997005a7fd1a674b33e28ed097dc4f166ba",
+        "hidden_variant_id": "local-visible-v1"
+      },
+      "executor_ref": {
+        "executor_id": "g0b-order-attack-runner/v1",
+        "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+        "entrypoint": "reject-out-of-order-slot",
+        "contract_sha256": "ac6097f99412a94cde181a539c102e5c7d7f076150c7b022e44e1dc432cc685b",
+        "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+      },
+      "oracle_refs": [
+        {
+          "oracle_id": "g0b-slot-order-oracle/v1",
+          "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+          "entrypoint": "verify-next-global-order",
+          "expected_decision": "deny",
+          "independent_from_executor": true,
+          "contract_sha256": "daef8628a5237c988c7a1fa45b6594237a6c6ec7ff667db25fe82e4fe273e2bf",
+          "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+        }
+      ]
+    },
+    {
+      "schema_version": "devseek.golden-case/v1",
+      "case_id": "G0B-A06",
+      "case_version": 1,
+      "case_sha256": "7bd1d9c1efce2e54b3d6ca03fa8533551e751f2dcdff639a99d45b20ba31a723",
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "implementation_state": "implemented-local-conformance",
+      "category": "attack",
+      "title": "Receipt tampering fails signature and binding validation",
+      "capability_ids": [
+        "C0-PREREGISTRATION-PLAN"
+      ],
+      "stage_types": [
+        "T1",
+        "T2"
+      ],
+      "threat_model": "An attacker changes slot, session, order, event, or trusted time on a receipt.",
+      "stimulus": "Mutate each receipt-bound field while retaining the original signature.",
+      "expected_result": "Every mutation is rejected before external action.",
+      "hard_veto_codes": [
+        "receipt-signature-invalid",
+        "receipt-binding-mismatch"
+      ],
+      "fixture": {
+        "fixture_id": "g0b-a06-receipt-tamper",
+        "integrity_scope": "local-protocol-conformance",
+        "qualification_eligible": false,
+        "input_sha256": "731bf15e30ba108dd48b1b87c55356ffa2bcbb613f38b7431ef78815c9ff3e61",
+        "workspace_fixture_sha256": "0b12ded2c03a090a6416a2f9a94b4cff3d62eb038485a52ec6e8cdb94cf83362",
+        "hidden_variant_id": "local-visible-v1"
+      },
+      "executor_ref": {
+        "executor_id": "g0b-receipt-attack-runner/v1",
+        "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+        "entrypoint": "tamper-bound-fields",
+        "contract_sha256": "b98cad96f3d8308288c177b1c6f0481d785ee75c2d320ba455846b391e2092a8",
+        "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+      },
+      "oracle_refs": [
+        {
+          "oracle_id": "g0b-receipt-signature-oracle/v1",
+          "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+          "entrypoint": "verify-receipt-signature-and-bindings",
+          "expected_decision": "deny",
+          "independent_from_executor": true,
+          "contract_sha256": "82c8f8fc3bf2ad16578951f79fa78f82c80103b63e06b3614b94eca671a48ebf",
+          "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+        }
+      ]
+    },
+    {
+      "schema_version": "devseek.golden-case/v1",
+      "case_id": "G0B-A07",
+      "case_version": 1,
+      "case_sha256": "1cc446046379cb84b65b2aca9119ae4f6aab2f863e7ddb088ecf8fd4ab083b4c",
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "implementation_state": "implemented-local-conformance",
+      "category": "attack",
+      "title": "Infrastructure retry requires independent adjudication",
+      "capability_ids": [
+        "C0-PREREGISTRATION-PLAN"
+      ],
+      "stage_types": [
+        "T2"
+      ],
+      "threat_model": "A failed attempt is silently rerun until it passes.",
+      "stimulus": "Request an infrastructure retry without a valid adjudication event and retry budget.",
+      "expected_result": "Retry is denied and the original failure remains in the denominator.",
+      "hard_veto_codes": [
+        "retry-without-adjudication",
+        "attempt-overwrite"
+      ],
+      "fixture": {
+        "fixture_id": "g0b-a07-retry-adjudication",
+        "integrity_scope": "local-protocol-conformance",
+        "qualification_eligible": false,
+        "input_sha256": "0a0f9360a42310e2c3c486361a9139fc0f3e01c5249d718b88f17914870a1993",
+        "workspace_fixture_sha256": "f7229d886e428328ab900c53a79d814daed8c72887d8544dbd036f703e8fa1b8",
+        "hidden_variant_id": "local-visible-v1"
+      },
+      "executor_ref": {
+        "executor_id": "g0b-retry-attack-runner/v1",
+        "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+        "entrypoint": "reject-unadjudicated-retry",
+        "contract_sha256": "4ac1f021459ea39753bd628a89e49274c3cd30f2d5ab41c93d899d76a2aa38ab",
+        "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+      },
+      "oracle_refs": [
+        {
+          "oracle_id": "g0b-adjudication-oracle/v1",
+          "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+          "entrypoint": "verify-retry-authority",
+          "expected_decision": "deny",
+          "independent_from_executor": true,
+          "contract_sha256": "0d71a15fea755a348a3e1ebcd5bfff57a62bc8bc9f154be6a0a87c744a9eefe6",
+          "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+        }
+      ]
+    },
+    {
+      "schema_version": "devseek.golden-case/v1",
+      "case_id": "G0B-A08",
+      "case_version": 1,
+      "case_sha256": "e2f7f30aca97d16aaa9827e2ad755f315e193f380730d03f7ced5fe935d03e9d",
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "implementation_state": "implemented-local-conformance",
+      "category": "attack",
+      "title": "Truncated or reordered append-only event chain is invalid",
+      "capability_ids": [
+        "C0-PREREGISTRATION-PLAN"
+      ],
+      "stage_types": [
+        "T2"
+      ],
+      "threat_model": "Failure or veto events are removed, reordered, or replaced after execution.",
+      "stimulus": "Delete a middle event, swap sequences, and alter previous_event_sha256.",
+      "expected_result": "Independent replay rejects every broken stream and never grants coverage.",
+      "hard_veto_codes": [
+        "event-chain-broken",
+        "event-sequence-invalid"
+      ],
+      "fixture": {
+        "fixture_id": "g0b-a08-event-chain",
+        "integrity_scope": "local-protocol-conformance",
+        "qualification_eligible": false,
+        "input_sha256": "85c817194e91fbe0ccc783a4155a5c8574ac1286a84475e93deb3175b877122f",
+        "workspace_fixture_sha256": "a7faf7028774442284fc09e995b7b8228581b04f69e4f6ce86437c45f435bde7",
+        "hidden_variant_id": "local-visible-v1"
+      },
+      "executor_ref": {
+        "executor_id": "g0b-event-chain-attack-runner/v1",
+        "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+        "entrypoint": "break-event-chain",
+        "contract_sha256": "d8154166772478d399ab8fd0e9513f762e1b6fef42c0663c94f3dbbfa43aad34",
+        "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+      },
+      "oracle_refs": [
+        {
+          "oracle_id": "g0b-event-chain-oracle/v1",
+          "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+          "entrypoint": "replay-and-verify-chain",
+          "expected_decision": "invalidate",
+          "independent_from_executor": true,
+          "contract_sha256": "3adc3a778ee8f8f5cd37c886515b9883190c75ad178db3ac5aa1232a6dc2b001",
+          "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+        }
+      ]
+    },
+    {
+      "schema_version": "devseek.golden-case/v1",
+      "case_id": "G0B-A09",
+      "case_version": 1,
+      "case_sha256": "70f752e41a9bc7b51c157b433cd9e2cb893ab087498077d999b7cc6d0334071d",
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "implementation_state": "implemented-local-conformance",
+      "category": "attack",
+      "title": "Unknown key, wrong role, or non-Ed25519 signature fails closed",
+      "capability_ids": [
+        "C0-PREREGISTRATION-PLAN"
+      ],
+      "stage_types": [
+        "T1",
+        "T2"
+      ],
+      "threat_model": "A valid key for one role is reused to sign another role or an unsupported algorithm is selected.",
+      "stimulus": "Verify signatures with an unknown key id, a wrong-purpose key, and a changed algorithm label.",
+      "expected_result": "All inputs are denied with no fallback algorithm or key discovery.",
+      "hard_veto_codes": [
+        "unknown-signing-key",
+        "signing-role-mismatch",
+        "unsupported-signature-algorithm"
+      ],
+      "fixture": {
+        "fixture_id": "g0b-a09-key-role",
+        "integrity_scope": "local-protocol-conformance",
+        "qualification_eligible": false,
+        "input_sha256": "440e5b87b0404cfb21d9c7a4ceb9b033e219361fb91a265d6238d03edba22023",
+        "workspace_fixture_sha256": "f3783f860d30d883659feeb36d9b278e0ce1937716b97f1f1db5a3f1a34cd7aa",
+        "hidden_variant_id": "local-visible-v1"
+      },
+      "executor_ref": {
+        "executor_id": "g0b-signature-attack-runner/v1",
+        "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+        "entrypoint": "reject-key-role-and-algorithm-confusion",
+        "contract_sha256": "4b8816e688710aac1ec8ec5ff9300be3fef830a340cffdbf4d6b7fb2b4a09222",
+        "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+      },
+      "oracle_refs": [
+        {
+          "oracle_id": "g0b-key-role-oracle/v1",
+          "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+          "entrypoint": "verify-key-role-and-algorithm",
+          "expected_decision": "deny",
+          "independent_from_executor": true,
+          "contract_sha256": "256ec7418abc3135c6ce0be9d0e320498be0e3e3d9752eb19f4130cd273304d7",
+          "source_content_sha256": "023430c8ecad13de66dcff35d6f97cd0894733946b13df7740e36622aea9bdcb"
+        }
+      ]
+    }
+  ],
+  "catalog_sha256": "a82b73b8d66dafb9060f90ee1d2d70f346b1281c9e98be23dbebb6a4d9059e94"
+}

@@ -342,10 +342,35 @@
         },
         "contract_sha256": "422abd8c76af9da92acc076f5fd562bcfe7b8eddb92d8bb3e003a012510b6b91"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "catalog-schema",
+          "path": "docs/process/devseek-golden-case-catalog.schema.json"
+        },
+        {
+          "role": "catalog-source",
+          "path": "docs/process/devseek-golden-case-catalog.json"
+        },
+        {
+          "role": "semantic-validator-and-generator",
+          "path": "scripts/lib/devseek-qualification-protocol.mjs"
+        },
+        {
+          "role": "gate-cli",
+          "path": "scripts/devseek-qualification-protocol-check.mjs"
+        },
+        {
+          "role": "contract-and-attack-tests",
+          "path": "scripts/test/devseek-qualification-protocol.test.mjs"
+        },
+        {
+          "role": "default-phase-gate",
+          "path": "scripts/devseek-phase0-12-verify.mjs"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
@@ -353,7 +378,13 @@
           "required_implementation_state": "wired",
           "contract_sha256": "8d68ea6eb2dcf0cdfcda59cc5872448f7f9aaf29da339f5874fded0294fad9d5"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:qualification-protocol"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
@@ -379,10 +410,39 @@
         },
         "contract_sha256": "6904ecbc6fa936f36fef9f06860ca616332cbbb6cb07706bb4c7ab535893c032"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "profile-schema",
+          "path": "docs/process/devseek-qualification-profile.schema.json"
+        },
+        {
+          "role": "profile-source",
+          "path": "docs/process/devseek-qualification-profiles.json"
+        },
+        {
+          "role": "candidate-identity-schema",
+          "path": "docs/process/devseek-candidate-identity.schema.json"
+        },
+        {
+          "role": "semantic-validator-and-generator",
+          "path": "scripts/lib/devseek-qualification-protocol.mjs"
+        },
+        {
+          "role": "gate-cli",
+          "path": "scripts/devseek-qualification-protocol-check.mjs"
+        },
+        {
+          "role": "contract-and-boundary-tests",
+          "path": "scripts/test/devseek-qualification-protocol.test.mjs"
+        },
+        {
+          "role": "default-phase-gate",
+          "path": "scripts/devseek-phase0-12-verify.mjs"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
@@ -396,7 +456,13 @@
           "required_implementation_state": "wired",
           "contract_sha256": "422abd8c76af9da92acc076f5fd562bcfe7b8eddb92d8bb3e003a012510b6b91"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:qualification-protocol"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C0-PREREGISTRATION-PLAN",
@@ -422,10 +488,43 @@
         },
         "contract_sha256": "441750ed63f2e8d0b9b702c050e27d9c8fd8362281285ceff081c5b31f84e91b"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "implemented",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "preregistration-plan-schema",
+          "path": "docs/process/devseek-qualification-plan.schema.json"
+        },
+        {
+          "role": "append-only-event-schema",
+          "path": "docs/process/devseek-qualification-event.schema.json"
+        },
+        {
+          "role": "store-and-action-receipt-schema",
+          "path": "docs/process/devseek-qualification-receipt.schema.json"
+        },
+        {
+          "role": "purpose-separated-key-registry-schema",
+          "path": "docs/process/devseek-qualification-key-registry.schema.json"
+        },
+        {
+          "role": "local-conformance-key-registry",
+          "path": "docs/process/devseek-qualification-key-registry.json"
+        },
+        {
+          "role": "protocol-store-and-external-action-guard",
+          "path": "scripts/lib/devseek-qualification-protocol.mjs"
+        },
+        {
+          "role": "contract-and-attack-tests",
+          "path": "scripts/test/devseek-qualification-protocol.test.mjs"
+        },
+        {
+          "role": "default-phase-gate",
+          "path": "scripts/devseek-phase0-12-verify.mjs"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
@@ -439,7 +538,13 @@
           "required_implementation_state": "wired",
           "contract_sha256": "422abd8c76af9da92acc076f5fd562bcfe7b8eddb92d8bb3e003a012510b6b91"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:qualification-protocol"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
@@ -3453,5 +3558,5 @@
       ]
     }
   ],
-  "ledger_sha256": "4b99765a8978b9927d9586e4c0dc16d8ef2bc72917d4565327a3f96310263383"
+  "ledger_sha256": "cf3a6b237660ddb1685714a54b22353f10adf1145df45df693c643378802404e"
 }

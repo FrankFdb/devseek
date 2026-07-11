@@ -1,0 +1,165 @@
+{
+  "schema_version": "devseek.qualification-profile-set/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1",
+    "signature_algorithm": "ed25519"
+  },
+  "integrity_scope": "local-protocol-conformance",
+  "qualification_eligible": false,
+  "source_status": "verified",
+  "profiles": [
+    {
+      "schema_version": "devseek.qualification-profile/v1",
+      "profile_id": "GATE0-G0B-LOCAL-PROTOCOL-CONFORMANCE/v1",
+      "profile_version": 1,
+      "title": "G0-B local signed-plan and append-only protocol conformance",
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "target_capability_ids": [
+        "C0-CASE-CATALOG",
+        "C0-QUALIFICATION-PROFILE-SCHEMA",
+        "C0-PREREGISTRATION-PLAN"
+      ],
+      "catalog_binding": {
+        "catalog_id": "DEVSEEK-G0B-PROTOCOL-CONFORMANCE",
+        "catalog_version": 1,
+        "catalog_sha256": "a82b73b8d66dafb9060f90ee1d2d70f346b1281c9e98be23dbebb6a4d9059e94"
+      },
+      "key_registry_binding": {
+        "registry_id": "DEVSEEK-G0B-LOCAL-TEST-KEYS",
+        "registry_version": 1,
+        "registry_sha256": "4e7dfc5a9bb4cbf11446823f0e0c0fc658c5a57b5b480f2cba6453945beda8cf",
+        "purpose_keys": {
+          "qualification-plan": [
+            "devseek-g0b-test-plan-authority-01"
+          ],
+          "runner-event": [
+            "devseek-g0b-test-runner-event-01"
+          ],
+          "oracle-classification": [
+            "devseek-g0b-test-oracle-01"
+          ],
+          "infra-adjudication": [
+            "devseek-g0b-test-adjudicator-01"
+          ],
+          "store-receipt": [
+            "devseek-g0b-test-store-receipt-01"
+          ],
+          "action-guard": [
+            "devseek-g0b-test-guard-receipt-01"
+          ]
+        }
+      },
+      "required_cases": [
+        {
+          "case_id": "G0B-P01",
+          "case_version": 1,
+          "case_sha256": "91de723b2dbb90c7262114c4eee82c2ad6d4e0186aaf2bae67a2c570ce322949",
+          "category": "protocol"
+        },
+        {
+          "case_id": "G0B-A01",
+          "case_version": 1,
+          "case_sha256": "2bb24d71d8e086d631462fb4b26f9ff4aa4b48703f3439a824689631d151bce2",
+          "category": "attack"
+        },
+        {
+          "case_id": "G0B-A02",
+          "case_version": 1,
+          "case_sha256": "a28fb038001a174391d42defc135f79253e9a159eb029a12a2f7f7e021bc4874",
+          "category": "attack"
+        },
+        {
+          "case_id": "G0B-A03",
+          "case_version": 1,
+          "case_sha256": "97bc4788f3d13e035612fb5a74efaea69172a00dd4ce91672b15ef5feed9a037",
+          "category": "attack"
+        },
+        {
+          "case_id": "G0B-A04",
+          "case_version": 1,
+          "case_sha256": "a4b708b0ea7230f5d5181c8c9bd04d61926fe0956d7d9461b2fa38a7f9b9cd52",
+          "category": "attack"
+        },
+        {
+          "case_id": "G0B-A05",
+          "case_version": 1,
+          "case_sha256": "0bbcd62f543c259e0ee4d92c00876dfab987afc16dfac7bfd630e3d1fb90bfbd",
+          "category": "attack"
+        },
+        {
+          "case_id": "G0B-A06",
+          "case_version": 1,
+          "case_sha256": "7bd1d9c1efce2e54b3d6ca03fa8533551e751f2dcdff639a99d45b20ba31a723",
+          "category": "attack"
+        },
+        {
+          "case_id": "G0B-A07",
+          "case_version": 1,
+          "case_sha256": "1cc446046379cb84b65b2aca9119ae4f6aab2f863e7ddb088ecf8fd4ab083b4c",
+          "category": "attack"
+        },
+        {
+          "case_id": "G0B-A08",
+          "case_version": 1,
+          "case_sha256": "e2f7f30aca97d16aaa9827e2ad755f315e193f380730d03f7ced5fe935d03e9d",
+          "category": "attack"
+        },
+        {
+          "case_id": "G0B-A09",
+          "case_version": 1,
+          "case_sha256": "70f752e41a9bc7b51c157b433cd9e2cb893ab087498077d999b7cc6d0334071d",
+          "category": "attack"
+        }
+      ],
+      "stage_types": [
+        "T0",
+        "T1",
+        "T2"
+      ],
+      "preflight_validity_policy": {
+        "minimum_ready_ttl": "PT1H",
+        "maximum_ready_ttl": "PT4H",
+        "trusted_time_required": true,
+        "runner_reported_time_is_authoritative": false
+      },
+      "qualification_plan_policy": {
+        "must_be_signed_before_external_action": true,
+        "immutable_after_registration": true,
+        "seed_commitment_required": true,
+        "global_slot_order_required": true,
+        "minimum_coverage_slots": 1000,
+        "maximum_adjudicated_retry_per_slot": 1,
+        "external_action_types": [
+          "browser",
+          "auth",
+          "network"
+        ]
+      },
+      "execution_policy": {
+        "minimum_deterministic_traces": 1000,
+        "random_seed": 20260712,
+        "invalid_prefix_external_action_count": 0,
+        "slot_consumption": "linearizable-compare-and-set",
+        "authorization_receipt_consumption": "exactly-once"
+      },
+      "evidence_policy": {
+        "event_storage": "append-only-local-cas",
+        "event_hash_chain_required": true,
+        "signed_store_receipt_required": true,
+        "integrity_scope": "local-protocol-conformance",
+        "qualification_claims_permitted": false,
+        "unresolved_protected_evidence_requirements": [
+          "trusted-nonrollback-time",
+          "retention-lock-or-worm",
+          "organizationally-independent-signers",
+          "externally-anchored-stream-head",
+          "clean-tail-truncation-detection"
+        ]
+      },
+      "profile_sha256": "95da05aa061d26ff9132719c00851f29cdb1b95bc7d602e7267b4b66f7bb9ab3"
+    }
+  ],
+  "document_sha256": "f9a117a6be8d7a1cddeaa4095162378b0e72536bcbebeac88c39eeb4a65bf0ce"
+}

@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-golden-case-catalog-v1.json",
+  "title": "DevSeek Golden Case Catalog v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "integrity_scope",
+    "qualification_eligible",
+    "source_status",
+    "catalog_id",
+    "catalog_version",
+    "case_id_policy",
+    "cases",
+    "catalog_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.golden-case-catalog/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "integrity_scope": {
+      "enum": ["local-protocol-conformance", "protected-qualification"]
+    },
+    "qualification_eligible": { "type": "boolean" },
+    "source_status": {
+      "enum": ["verified", "hash-placeholders-require-canonical-regeneration"]
+    },
+    "catalog_id": { "type": "string", "minLength": 1 },
+    "catalog_version": { "type": "integer", "minimum": 1 },
+    "case_id_policy": { "const": "case-id-plus-version-is-immutable" },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/case" }
+    },
+    "catalog_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "integrity_scope": { "const": "local-protocol-conformance" }
+        },
+        "required": ["integrity_scope"]
+      },
+      "then": {
+        "properties": {
+          "qualification_eligible": { "const": false }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version", "signature_algorithm"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" },
+        "signature_algorithm": { "const": "ed25519" }
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_id",
+        "integrity_scope",
+        "qualification_eligible",
+        "input_sha256",
+        "workspace_fixture_sha256",
+        "hidden_variant_id"
+      ],
+      "properties": {
+        "fixture_id": { "type": "string", "minLength": 1 },
+        "integrity_scope": { "const": "local-protocol-conformance" },
+        "qualification_eligible": { "const": false },
+        "input_sha256": { "$ref": "#/$defs/sha256" },
+        "workspace_fixture_sha256": { "$ref": "#/$defs/sha256" },
+        "hidden_variant_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "executorRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executor_id",
+        "source_ref",
+        "source_content_sha256",
+        "entrypoint",
+        "contract_sha256"
+      ],
+      "properties": {
+        "executor_id": { "type": "string", "minLength": 1 },
+        "source_ref": { "type": "string", "minLength": 1 },
+        "source_content_sha256": { "$ref": "#/$defs/sha256" },
+        "entrypoint": { "type": "string", "minLength": 1 },
+        "contract_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "oracleRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "oracle_id",
+        "source_ref",
+        "source_content_sha256",
+        "entrypoint",
+        "expected_decision",
+        "independent_from_executor",
+        "contract_sha256"
+      ],
+      "properties": {
+        "oracle_id": { "type": "string", "minLength": 1 },
+        "source_ref": { "type": "string", "minLength": 1 },
+        "source_content_sha256": { "$ref": "#/$defs/sha256" },
+        "entrypoint": { "type": "string", "minLength": 1 },
+        "expected_decision": { "enum": ["allow", "deny", "invalidate", "exactly-one-consumer"] },
+        "independent_from_executor": { "const": true },
+        "contract_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "case_id",
+        "case_version",
+        "case_sha256",
+        "integrity_scope",
+        "qualification_eligible",
+        "implementation_state",
+        "category",
+        "title",
+        "capability_ids",
+        "stage_types",
+        "threat_model",
+        "stimulus",
+        "expected_result",
+        "hard_veto_codes",
+        "fixture",
+        "executor_ref",
+        "oracle_refs"
+      ],
+      "properties": {
+        "schema_version": { "const": "devseek.golden-case/v1" },
+        "case_id": { "type": "string", "pattern": "^G0B-[PA][0-9]{2}$" },
+        "case_version": { "type": "integer", "minimum": 1 },
+        "case_sha256": { "$ref": "#/$defs/sha256" },
+        "integrity_scope": { "const": "local-protocol-conformance" },
+        "qualification_eligible": { "const": false },
+        "implementation_state": {
+          "enum": ["specified-not-wired", "implemented-local-conformance"]
+        },
+        "category": { "enum": ["protocol", "attack"] },
+        "title": { "type": "string", "minLength": 1 },
+        "capability_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^C0-[A-Z0-9]+(?:-[A-Z0-9]+)*$" }
+        },
+        "stage_types": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["T0", "T1", "T2"] }
+        },
+        "threat_model": { "type": "string", "minLength": 1 },
+        "stimulus": { "type": "string", "minLength": 1 },
+        "expected_result": { "type": "string", "minLength": 1 },
+        "hard_veto_codes": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "fixture": { "$ref": "#/$defs/fixture" },
+        "executor_ref": { "$ref": "#/$defs/executorRef" },
+        "oracle_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/oracleRef" }
+        }
+      }
+    }
+  }
+}

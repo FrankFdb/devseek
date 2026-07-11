@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-qualification-receipt-v1.json",
+  "title": "DevSeek Qualification Protocol Receipt v1",
+  "$comment": "receipt_sha256 excludes receipt_sha256 and the complete attestation envelope before devseek-canonical-json/v1 hashing.",
+  "oneOf": [
+    { "$ref": "#/$defs/storeReceipt" },
+    { "$ref": "#/$defs/actionReceipt" }
+  ],
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "nullableSha256": { "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+    "time": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$"
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version", "signature_algorithm"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" },
+        "signature_algorithm": { "const": "ed25519" }
+      }
+    },
+    "attestation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm", "key_id", "signer_identity", "purpose",
+        "key_registry_sha256", "signed_payload_sha256", "signature_base64"
+      ],
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "key_id": { "type": "string", "minLength": 1 },
+        "signer_identity": { "type": "string", "minLength": 1 },
+        "purpose": { "enum": ["store-receipt", "action-guard"] },
+        "key_registry_sha256": { "$ref": "#/$defs/sha256" },
+        "signed_payload_sha256": { "$ref": "#/$defs/sha256" },
+        "signature_base64": { "type": "string", "minLength": 1 }
+      }
+    },
+    "storeAttestation": {
+      "allOf": [
+        { "$ref": "#/$defs/attestation" },
+        {
+          "type": "object",
+          "properties": { "purpose": { "const": "store-receipt" } },
+          "required": ["purpose"]
+        }
+      ]
+    },
+    "actionAttestation": {
+      "allOf": [
+        { "$ref": "#/$defs/attestation" },
+        {
+          "type": "object",
+          "properties": { "purpose": { "const": "action-guard" } },
+          "required": ["purpose"]
+        }
+      ]
+    },
+    "storeReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "integrity", "integrity_scope", "qualification_eligible",
+        "receipt_id", "receipt_type", "qualification_plan_sha256", "event_sha256",
+        "stream_kind", "correlation_id", "object_version", "previous_head_sha256",
+        "new_head_sha256", "trusted_recorded_at", "one_time", "receipt_sha256", "attestation"
+      ],
+      "properties": {
+        "schema_version": { "const": "devseek.qualification-receipt/v1" },
+        "integrity": { "$ref": "#/$defs/integrity" },
+        "integrity_scope": { "const": "local-protocol-conformance" },
+        "qualification_eligible": { "const": false },
+        "receipt_id": { "type": "string", "minLength": 1 },
+        "receipt_type": { "enum": ["plan-registration", "event-append"] },
+        "qualification_plan_sha256": { "$ref": "#/$defs/sha256" },
+        "event_sha256": { "$ref": "#/$defs/sha256" },
+        "stream_kind": { "enum": ["plan", "session", "attempt"] },
+        "correlation_id": { "type": "string", "minLength": 1 },
+        "object_version": { "type": "integer", "minimum": 1 },
+        "previous_head_sha256": { "$ref": "#/$defs/nullableSha256" },
+        "new_head_sha256": { "$ref": "#/$defs/sha256" },
+        "trusted_recorded_at": { "$ref": "#/$defs/time" },
+        "one_time": { "const": false },
+        "receipt_sha256": { "$ref": "#/$defs/sha256" },
+        "attestation": { "$ref": "#/$defs/storeAttestation" }
+      }
+    },
+    "actionReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "integrity", "integrity_scope", "qualification_eligible",
+        "receipt_id", "receipt_type", "qualification_plan_sha256", "candidate_identity_sha256",
+        "slot_consumption_id", "stream_kind", "correlation_id", "stream_head_sha256",
+        "authorization_event_sha256",
+        "action_id", "action_ordinal", "action_type", "destination", "nonce",
+        "issued_at", "expires_at", "one_time", "receipt_sha256", "attestation"
+      ],
+      "properties": {
+        "schema_version": { "const": "devseek.qualification-receipt/v1" },
+        "integrity": { "$ref": "#/$defs/integrity" },
+        "integrity_scope": { "const": "local-protocol-conformance" },
+        "qualification_eligible": { "const": false },
+        "receipt_id": { "type": "string", "minLength": 1 },
+        "receipt_type": { "const": "external-action-authorization" },
+        "qualification_plan_sha256": { "$ref": "#/$defs/sha256" },
+        "candidate_identity_sha256": { "$ref": "#/$defs/sha256" },
+        "slot_consumption_id": { "type": "string", "minLength": 1 },
+        "stream_kind": { "enum": ["session", "attempt"] },
+        "correlation_id": { "type": "string", "minLength": 1 },
+        "stream_head_sha256": { "$ref": "#/$defs/sha256" },
+        "authorization_event_sha256": { "$ref": "#/$defs/sha256" },
+        "action_id": { "type": "string", "minLength": 1 },
+        "action_ordinal": { "type": "integer", "minimum": 1 },
+        "action_type": { "type": "string", "minLength": 1 },
+        "destination": { "type": "string", "minLength": 1 },
+        "nonce": { "type": "string", "minLength": 16 },
+        "issued_at": { "$ref": "#/$defs/time" },
+        "expires_at": { "$ref": "#/$defs/time" },
+        "one_time": { "const": true },
+        "receipt_sha256": { "$ref": "#/$defs/sha256" },
+        "attestation": { "$ref": "#/$defs/actionAttestation" }
+      }
+    }
+  }
+}
