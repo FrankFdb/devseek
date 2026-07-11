@@ -1748,6 +1748,8 @@ test('Architecture: Markdown deliverables bypass the generic editor tool loop', 
   const editorPromptIndex = loop.indexOf('const editorPrompt = buildEditorPrompt');
   const finalWriteAuthorizationIndex = loop.indexOf('const targetAuthorization = authorizeAgentFileWriteContract({');
   const fullFileApplyIndex = loop.indexOf('await applyGeneratedArtifactPathWithPrompt(');
+  const baselineCaptureIndex = deliverable.indexOf('const initialTargetSnapshot = tryCaptureTextFileBaseline(');
+  const atomicCommitIndex = deliverable.indexOf('workspaceEditService.commitTextFileProposal(');
 
   assert.ok(routeIndex >= 0, 'agent-loop must route Markdown deliverables through the dedicated executor');
   assert.ok(editorPromptIndex >= 0, 'agent-loop must still have the generic editor prompt path');
@@ -1758,7 +1760,11 @@ test('Architecture: Markdown deliverables bypass the generic editor tool loop', 
   assertContains(deliverable, 'collectMarkdownEvidence', 'Markdown deliverables must collect local evidence deterministically');
   assertContains(deliverable, 'classifyProviderOutputIntegrity', 'Markdown deliverables must gate provider output completeness');
   assertContains(deliverable, 'Provider 未返回可用的完整报告', 'Markdown deliverables must preserve provider failure facts in fallback artifacts');
-  assertContains(deliverable, 'writeTextFileSync(absPath', 'Markdown deliverables must write the artifact locally');
+  assert.ok(baselineCaptureIndex >= 0, 'Markdown deliverables must capture the target baseline before asynchronous work');
+  assert.ok(atomicCommitIndex >= 0, 'Markdown deliverables must commit the verified artifact through the atomic CAS boundary');
+  assert.ok(baselineCaptureIndex < atomicCommitIndex, 'Markdown deliverables must capture the target baseline before committing');
+  assertContains(deliverable, 'isTextFileBaselineCurrent(initialTargetSnapshot)', 'Markdown deliverables must reject target drift before commit');
+  assertDoesNotContain(deliverable, 'workspaceEditService.writeTextFileSync(', 'Markdown deliverables must not bypass the atomic CAS boundary');
   assertWorkspaceWritesValidateSourceSanity('src/agent/markdown-deliverable-task.ts', deliverable);
 });
 

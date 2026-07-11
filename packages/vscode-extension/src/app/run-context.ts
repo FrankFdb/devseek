@@ -119,11 +119,32 @@ function fingerprintTaskContract(contract: TaskContract): string {
       exactClaimRowCount: contract.verificationContract.exactClaimTable?.rowCount,
       forbidAdditionalClaimRows: contract.verificationContract.exactClaimTable?.forbidAdditionalRows,
       exactCodeBlockCount: contract.verificationContract.exactCodeBlocks.length,
+      exactArtifactRequested: contract.verificationContract.exactArtifactRequested,
+      exactArtifact: normalizeExactArtifactForFingerprint(contract.verificationContract.exactArtifact),
       requireArtifactReadback: contract.verificationContract.requireArtifactReadback,
       maxWrittenFiles: contract.verificationContract.maxWrittenFiles,
     },
   };
   return summarizeTraceText(JSON.stringify(normalized)).sha256;
+}
+
+function normalizeExactArtifactForFingerprint(
+  artifact: TaskContract['verificationContract']['exactArtifact'],
+): Record<string, unknown> | undefined {
+  if (!artifact) return undefined;
+  return {
+    kind: artifact.kind,
+    title: summarizeTraceText(artifact.title),
+    sourcePathLines: artifact.sourcePathLines.map(line => summarizeTraceText(line)),
+    tableHeader: artifact.tableHeader.map(cell => summarizeTraceText(cell)),
+    symbols: artifact.symbols.map(symbol => summarizeTraceText(symbol)),
+    valuePresentation: artifact.valuePresentation,
+    codeBlocks: artifact.codeBlocks.map(block => ({
+      language: block.language,
+      content: summarizeTraceText(block.content),
+    })),
+    forbidAdditionalContent: artifact.forbidAdditionalContent,
+  };
 }
 
 function summarizeAgentStatusForTrace(status: AgentStatusEvent): Record<string, unknown> {

@@ -61,6 +61,131 @@ test('exact fact report produces executable artifact verification requirements',
   assert.equal(contract.verificationContract.maxWrittenFiles, 1);
 });
 
+test('strict source-fact structure compiles into a complete host-owned artifact contract', () => {
+  const source = '/repo/src/config.hpp';
+  const contract = buildTaskContract([
+    `请读取 ${source}，从源码提取 kRequestTimeoutMs、kMaxRetries 两个常量的真实定义和值。`,
+    '只创建 Markdown 报告 /repo/docs/config.md。',
+    '报告必须严格满足以下结构：',
+    '1. 仅包含一个 Markdown 标题，且必须逐字为：# 配置源码事实',
+    `2. 紧接一行必须逐字为：源码路径：${source}`,
+    '3. 仅包含一个 Markdown 表格，表头必须是 Symbol 和 Value，数据行恰好两行。',
+    '4. 仅包含一个 Python 代码块，语言标记必须为 python，块内内容必须逐字为：print("ready")',
+    '不得增加其他标题、表格数据行、代码块或说明段落；写入后重新读取。',
+  ].join('\n'));
+
+  assert.equal(contract.verificationContract.exactArtifactRequested, true);
+  assert.deepEqual(contract.verificationContract.exactArtifact, {
+    kind: 'source-fact-markdown',
+    title: '# 配置源码事实',
+    sourcePathLines: [`源码路径：${source}`],
+    tableHeader: ['Symbol', 'Value'],
+    symbols: ['kRequestTimeoutMs', 'kMaxRetries'],
+    valuePresentation: 'source-initializer',
+    codeBlocks: [{ language: 'python', content: 'print("ready")' }],
+    forbidAdditionalContent: true,
+  });
+  assert.equal(getSourceClaimArtifactContractIssue(contract), undefined);
+});
+
+test('English strict source-fact contract preserves paths, ordered symbols, and exact bytes', () => {
+  const source = '/repo/src/config.hpp';
+  const target = '/repo/docs/config.md';
+  const contract = buildTaskContract([
+    `Read ${source} and extract the real definitions and values of kRequestTimeoutMs, kMaxRetries.`,
+    `Create only one Markdown report ${target}.`,
+    'The report must strictly follow this structure:',
+    '1. The title must exactly be: # Source Facts Report',
+    `2. The next line must exactly be: Source path: ${source}`,
+    '3. Include only one Markdown table; the header must be Symbol and Value; the table must have 2 rows.',
+    '4. Include only one Python code block; the language marker must be python; code block content must exactly be: print("ready")',
+    'No additional content, headings, rows, or blocks may be added; read it back after writing.',
+  ].join('\n'));
+
+  assert.deepEqual(contract.inputs, [source, target]);
+  assert.deepEqual(contract.deliverableTargets, [target]);
+  assert.deepEqual(contract.evidenceRequirements.map(item => [item.symbol, item.sourcePath]), [
+    ['kRequestTimeoutMs', source],
+    ['kMaxRetries', source],
+  ]);
+  assert.deepEqual(contract.verificationContract.requiredSourcePaths, [source]);
+  assert.equal(contract.verificationContract.exactArtifactRequested, true);
+  assert.deepEqual(contract.verificationContract.exactArtifact, {
+    kind: 'source-fact-markdown',
+    title: '# Source Facts Report',
+    sourcePathLines: [`Source path: ${source}`],
+    tableHeader: ['Symbol', 'Value'],
+    symbols: ['kRequestTimeoutMs', 'kMaxRetries'],
+    valuePresentation: 'source-initializer',
+    codeBlocks: [{ language: 'python', content: 'print("ready")' }],
+    forbidAdditionalContent: true,
+  });
+  assert.equal(getSourceClaimArtifactContractIssue(contract), undefined);
+});
+
+test('strict-looking wording does not transfer artifact ownership without affirmative no-extra-content semantics', () => {
+  const base = [
+    '请读取 /repo/config.hpp，提取 kValue 的真实值并创建 Markdown 报告 /repo/facts.md。',
+    '报告必须严格满足以下结构：标题必须逐字为：# 源码事实报告。',
+    '表格之后再增加一段风险解释。',
+  ];
+  assert.equal(buildTaskContract(base.join('\n')).verificationContract.exactArtifactRequested, false);
+  assert.equal(buildTaskContract([
+    base[0],
+    '报告无需严格满足以下结构：标题必须逐字为：# 源码事实报告。',
+    '不得增加其他内容。',
+  ].join('\n')).verificationContract.exactArtifactRequested, false);
+
+  for (const wording of [
+    '报告不需要严格满足以下结构：',
+    '报告不要求严格满足以下结构：',
+    'The report does not have to strictly follow this structure:',
+  ]) {
+    const contract = buildTaskContract([
+      base[0],
+      wording,
+      '标题必须逐字为：# 源码事实报告。',
+      '不得增加其他内容。',
+    ].join('\n'));
+    assert.equal(contract.verificationContract.exactArtifactRequested, false, wording);
+  }
+
+  for (const scopedForbid of [
+    '代码块内不得增加其他内容；表格之后再增加一段风险解释。',
+    '其他文件不得增加其他内容；表格之后再增加一段风险解释。',
+    '对于附录，不得增加其他标题；表格之后再增加一段风险解释。',
+    '表格之后必须增加一段风险解释；No additional content inside the Python code block.',
+    '报告不得增加其他内容。更正：允许增加风险说明。',
+    '不要求“不得增加其他内容”这一限制，表格后允许添加说明。',
+  ]) {
+    const contract = buildTaskContract([
+      base[0],
+      '报告必须严格满足以下结构：标题必须逐字为：# 源码事实报告。',
+      scopedForbid,
+    ].join('\n'));
+    assert.equal(contract.verificationContract.exactArtifactRequested, false, scopedForbid);
+  }
+
+  const corrected = buildTaskContract([
+    base[0],
+    '报告无需严格满足以下结构。更正：报告必须严格满足以下结构：',
+    '标题必须逐字为：# 源码事实报告。',
+    '不得增加其他内容。',
+  ].join('\n'));
+  assert.equal(corrected.verificationContract.exactArtifactRequested, true);
+});
+
+test('an incomplete strict artifact contract fails closed instead of falling back to provider prose', () => {
+  const contract = buildTaskContract([
+    '请读取 /repo/config.hpp，提取 kValue 的真实值并创建 Markdown 报告 /repo/facts.md。',
+    '报告必须严格满足以下结构：标题必须逐字为：# 源码事实报告。',
+    '不得增加其他内容。',
+  ].join('\n'));
+  assert.equal(contract.verificationContract.exactArtifactRequested, true);
+  assert.equal(contract.verificationContract.exactArtifact, undefined);
+  assert.match(getSourceClaimArtifactContractIssue(contract), /逐字源码事实报告契约不完整/);
+});
+
 test('an unfamiliar source-report mutation verb becomes a grounded fail-closed obligation', () => {
   const contract = buildTaskContract([
     '请读取 src/config.hpp，提取 kRequestTimeoutMs 的真实值。',

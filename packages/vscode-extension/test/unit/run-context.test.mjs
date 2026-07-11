@@ -28,6 +28,11 @@ function readJsonl(filePath) {
   return readFileSync(filePath, 'utf8').trim().split('\n').map(line => JSON.parse(line));
 }
 
+function readStartedContractFingerprint(workspaceRoot, runId) {
+  const entries = readJsonl(path.join(workspaceRoot, '.devseek', 'runs', `${runId}.log`));
+  return entries.find(entry => entry.event === 'agent-run-started').data.taskContractFingerprint;
+}
+
 test('RunContext: owns one run id and one chronological log file', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   try {
@@ -97,6 +102,38 @@ test('RunContext: records a non-sensitive source-claim artifact obligation at st
     assert.equal(completed.data.taskContractFingerprint, started.data.taskContractFingerprint);
     assert.equal(JSON.stringify(started.data).includes(userPrompt), false);
     assert.equal(JSON.stringify(completed.data).includes(userPrompt), false);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('RunContext: exact artifact fingerprint is stable and changes with its executable contract', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-exact-contract-'));
+  const strictPrompt = title => [
+    '请读取 /repo/source.hpp，从源码提取 kAlpha 的真实定义和值。',
+    '只创建 Markdown 报告 /repo/facts.md。',
+    '报告必须严格满足以下结构：',
+    `1. 标题必须逐字为：${title}`,
+    '2. 紧接一行必须逐字为：源码路径：/repo/source.hpp',
+    '3. 仅包含一个 Markdown 表格，表头必须是 Symbol 和 Value，数据行恰好一行。',
+    '不得增加其他标题、表格数据行、代码块或说明段落。',
+  ].join('\n');
+  try {
+    for (const [runId, prompt] of [
+      ['exact-contract-a1', strictPrompt('# 源码事实报告 A')],
+      ['exact-contract-a2', strictPrompt('# 源码事实报告 A')],
+      ['exact-contract-b', strictPrompt('# 源码事实报告 B')],
+    ]) {
+      createDevSeekRunContext({ workspaceRoot, runId, userPrompt: prompt, traceLevel: 'debug' })
+        .complete('completed');
+    }
+
+    const first = readStartedContractFingerprint(workspaceRoot, 'exact-contract-a1');
+    const repeated = readStartedContractFingerprint(workspaceRoot, 'exact-contract-a2');
+    const changed = readStartedContractFingerprint(workspaceRoot, 'exact-contract-b');
+    assert.match(first, /^[a-f0-9]{64}$/);
+    assert.equal(repeated, first, 'the same executable exact artifact contract must be stable');
+    assert.notEqual(changed, first, 'changing an exact artifact literal must change the contract fingerprint');
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }

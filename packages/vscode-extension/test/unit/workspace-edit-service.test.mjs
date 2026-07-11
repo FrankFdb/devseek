@@ -6,7 +6,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -110,6 +117,61 @@ test('WorkspaceEditService: applies proposals with attached snapshot evidence', 
       newContent: 'new',
     });
     assert.equal(readFileSync(target, 'utf8'), 'new');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: secure commit is CAS-bound, atomic, mode-preserving, and rollback-tokened', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-secure-'));
+  const target = path.join(dir, 'hello.txt');
+  try {
+    writeFileSync(target, 'old');
+    chmodSync(target, 0o644);
+    const service = new WorkspaceEditService();
+    const baseline = service.captureTextFileBaseline(target, dir);
+    const committed = service.commitTextFileProposal(service.proposeTextFileWrite(target, 'new'), baseline);
+
+    assert.equal(readFileSync(target, 'utf8'), 'new');
+    assert.equal(statSync(target).mode & 0o777, 0o644);
+    assert.deepEqual(committed.result, { existed: true, oldContent: 'old', newContent: 'new' });
+    assert.deepEqual(service.rollbackTextFileCommit(committed.commitToken), { rolledBack: true });
+    assert.equal(readFileSync(target, 'utf8'), 'old');
+    assert.equal(statSync(target).mode & 0o777, 0o644);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: secure commit creates missing parents through an anchored directory handle', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-secure-parent-'));
+  const target = path.join(dir, 'nested', 'deeper', 'hello.txt');
+  try {
+    const service = new WorkspaceEditService();
+    const baseline = service.captureTextFileBaseline(target, dir);
+    const committed = service.commitTextFileProposal(service.proposeTextFileWrite(target, 'hello'), baseline);
+
+    assert.equal(readFileSync(target, 'utf8'), 'hello');
+    assert.equal(statSync(target).mode & 0o777, 0o666 & ~process.umask());
+    assert.equal(committed.result.existed, false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: secure commit rejects a stale baseline without overwriting newer content', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-conflict-'));
+  const target = path.join(dir, 'hello.txt');
+  try {
+    writeFileSync(target, 'old');
+    const service = new WorkspaceEditService();
+    const baseline = service.captureTextFileBaseline(target, dir);
+    writeFileSync(target, 'newer-user-content');
+    assert.throws(
+      () => service.commitTextFileProposal(service.proposeTextFileWrite(target, 'agent-content'), baseline),
+      /target changed after write authority was captured/,
+    );
+    assert.equal(readFileSync(target, 'utf8'), 'newer-user-content');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

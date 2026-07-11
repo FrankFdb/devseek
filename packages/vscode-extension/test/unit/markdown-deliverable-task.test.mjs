@@ -16,7 +16,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -539,18 +541,18 @@ test('markdown deliverable: user-visible states explain provider wait and file v
       '请求 DeepSeek 生成 Markdown 报告',
       'DeepSeek 报告已返回',
       '准备写入 Markdown 文档',
-      '写入并验证 Markdown 文档',
+      '提交已验证的 Markdown 候选',
       'Markdown 文档已通过执行器验证，等待中央结算',
     ].includes(title)), [
       '收集 Markdown 交付证据',
       '请求 DeepSeek 生成 Markdown 报告',
       'DeepSeek 报告已返回',
       '准备写入 Markdown 文档',
-      '写入并验证 Markdown 文档',
+      '提交已验证的 Markdown 候选',
       'Markdown 文档已通过执行器验证，等待中央结算',
     ]);
     assert.match(io.statuses.find(status => status.title === 'DeepSeek 报告已返回').detail, /DeepSeek 返回 \d+ 字符/);
-    assert.match(io.statuses.at(-1).detail, /已写入并读回验证/);
+    assert.match(io.statuses.at(-1).detail, /写前验证、唯一写入、读回/);
     assert.equal(io.statuses.at(-1).state, 'started');
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -668,7 +670,7 @@ test('markdown deliverable: 20260711-131537 wrong facts trigger one bounded repa
   }
 });
 
-test('markdown deliverable: revocation while bounded repair provider is in flight blocks the second write', async () => {
+test('markdown deliverable: revocation while bounded repair is in flight leaves no unverified draft', async () => {
   const workspace = createLicenseFactWorkspace();
   const io = makeCallbacks();
   let writeAuthorized = true;
@@ -698,13 +700,11 @@ test('markdown deliverable: revocation while bounded repair provider is in fligh
     assert.equal(result?.applied, false);
     assert.match(result?.failedReason || '', /write blocked by guard/);
     assert.equal(providerCalls, 2);
-    assert.equal(writeGuardCalls, 2, 'each physical write attempt must re-check current authority');
+    assert.equal(writeGuardCalls, 1, 'only the final verified candidate reaches the physical write guard');
     assert.equal(result?.verificationResults?.length, 1);
     assert.equal(result?.verificationResults?.[0].ok, false);
-    assert.equal(io.changes.length, 1);
-    assert.equal(readFileSync(workspace.target, 'utf8'), io.changes[0].newContent);
-    assert.match(readFileSync(workspace.target, 'utf8'), /`kMavTunnelCmdLicense` \| `300`/);
-    assert.doesNotMatch(readFileSync(workspace.target, 'utf8'), /`kMavTunnelCmdLicense` \| `33007`/);
+    assert.equal(io.changes.length, 0);
+    assert.equal(existsSync(workspace.target), false, 'the rejected first candidate must never touch disk');
   } finally {
     rmSync(workspace.root, { recursive: true, force: true });
   }
@@ -713,8 +713,7 @@ test('markdown deliverable: revocation while bounded repair provider is in fligh
 test('markdown deliverable: 20260711-165205 required claim source cannot be starved by heuristic evidence', async () => {
   const workspace = createLiveEvidenceStarvationReplay();
   const io = makeCallbacks();
-  const responses = [workspace.wrong, workspace.repaired];
-  const prompts = [];
+  let providerCalls = 0;
   try {
     const result = await tryExecuteMarkdownDeliverableTask({
       task: { id: 'live-evidence-priority', file: workspace.target, absPath: workspace.target, action: 'create', desc: '创建严格的六常量 Markdown 源码事实报告' },
@@ -723,29 +722,278 @@ test('markdown deliverable: 20260711-165205 required claim source cannot be star
       userPrompt: workspace.prompt,
       workspaceRoot: { fsPath: workspace.root },
       callbacks: io.callbacks,
-      chat: async messages => {
-        prompts.push(messages[0].content);
-        return responses.shift();
+      chat: async () => {
+        providerCalls += 1;
+        return workspace.wrong;
       },
     });
 
     assert.equal(result?.applied, true, result?.failedReason);
     assert.equal(result?.taskComplete, true);
-    assert.equal(prompts.length, 2);
-    assert.match(prompts[0], /"symbol": "kTopicLicenseState"[\s\S]*?"artifactValue": "\/uav\/license\/state"/);
-    assert.match(prompts[0], /"symbol": "kTunnelMaxTotalLen"[\s\S]*?"artifactValue": "64 \* 1024"[\s\S]*?"normalizedValue": 65536/);
-    assert.doesNotMatch(prompts[0], /license_00\.cpp/, 'claim symbols alone must not trigger broad communication scanning');
-    assert.match(prompts[1], /唯一一次有界修复/);
-    assert.match(prompts[1], new RegExp(`标题下一行必须逐字为“源码路径：${workspace.source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}”`));
-    assert.match(prompts[1], /kTopicLicenseState: 实际 license_state，期望 "\/uav\/license\/state"/);
-    assert.match(prompts[1], /"symbol": "kTunnelSessionTimeoutMs"[\s\S]*?"artifactValue": "5000"/);
+    assert.equal(providerCalls, 0, 'a fully executable exact contract is host-owned');
     const sourceEvidence = result?.evidenceRefs?.find(ref => ref.kind === 'read' && ref.sourcePath === workspace.source);
     assert.equal(sourceEvidence?.captureSequence, 1, 'the contract-required source must be the first captured file evidence');
-    assert.equal(result?.verificationResults?.[0]?.ok, false);
-    assert.equal(result?.verificationResults?.[1]?.ok, true);
+    assert.equal(result?.verificationResults?.length, 1);
+    assert.equal(result?.verificationResults?.[0]?.ok, true);
+    assert.equal(io.changes.length, 1, 'the verified artifact is committed once');
     assert.equal(readFileSync(workspace.target, 'utf8'), workspace.repaired);
+    assert.match(readFileSync(workspace.target, 'utf8'), /\| kTunnelMaxTotalLen \| 64 \* 1024 \|/);
+    assert.doesNotMatch(readFileSync(workspace.target, 'utf8'), /\| kTunnelMaxTotalLen \| 65536 \|/);
   } finally {
     rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: English executable exact contract is host-owned and byte-exact', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-english-exact-'));
+  const source = path.join(root, 'src/config.hpp');
+  const target = path.join(root, 'docs/config.md');
+  mkdirSync(path.dirname(source), { recursive: true });
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(source, [
+    'constexpr int kRequestTimeoutMs = 5000;',
+    'constexpr int kMaxRetries = 3;',
+  ].join('\n'));
+  const prompt = [
+    `Read ${source} and extract the real definitions and values of kRequestTimeoutMs, kMaxRetries.`,
+    `Create only one Markdown report ${target}.`,
+    'The report must strictly follow this structure:',
+    '1. The title must exactly be: # Source Facts Report',
+    `2. The next line must exactly be: Source path: ${source}`,
+    '3. Include only one Markdown table; the header must be Symbol and Value; the table must have 2 rows.',
+    '4. Include only one Python code block; the language marker must be python; code block content must exactly be: print("ready")',
+    'No additional content, headings, rows, or blocks may be added; read it back after writing.',
+  ].join('\n');
+  const expected = [
+    '# Source Facts Report',
+    `Source path: ${source}`,
+    '| Symbol | Value |',
+    '| --- | --- |',
+    '| kRequestTimeoutMs | 5000 |',
+    '| kMaxRetries | 3 |',
+    '```python',
+    'print("ready")',
+    '```',
+    '',
+  ].join('\n');
+  let providerCalls = 0;
+  try {
+    const io = makeCallbacks();
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'english-exact', file: target, absPath: target, action: 'create', desc: prompt },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: prompt,
+      workspaceRoot: { fsPath: root },
+      callbacks: io.callbacks,
+      chat: async () => { providerCalls += 1; return '# must-not-run'; },
+    });
+    assert.equal(result?.applied, true, result?.failedReason);
+    assert.equal(providerCalls, 0);
+    assert.equal(io.changes.length, 1);
+    assert.equal(readFileSync(target, 'utf8'), expected);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: unsafe exact table values fail closed before provider, guard, or disk', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-exact-unsafe-cell-'));
+  const source = path.join(root, 'src/facts.hpp');
+  const target = path.join(root, 'docs/facts.md');
+  mkdirSync(path.dirname(source), { recursive: true });
+  writeFileSync(source, 'inline constexpr const char* kPipe = "left|right";\n');
+  const prompt = [
+    `请读取 ${source}，从源码提取 kPipe 的真实定义和值。`,
+    `只创建 Markdown 报告 ${target}。`,
+    '报告必须严格满足以下结构：',
+    '1. 标题必须逐字为：# 源码事实报告',
+    `2. 紧接一行必须逐字为：源码路径：${source}`,
+    '3. 仅包含一个 Markdown 表格，表头必须是 Symbol 和 Value，数据行恰好一行。',
+    '不得增加其他标题、表格数据行、代码块或说明段落。',
+  ].join('\n');
+  let providerCalls = 0;
+  let guardCalls = 0;
+  try {
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'unsafe-exact-cell', file: target, absPath: target, action: 'create', desc: prompt },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: prompt,
+      workspaceRoot: { fsPath: root },
+      callbacks: {
+        ...makeCallbacks().callbacks,
+        onBeforeFileWrite: async () => { guardCalls += 1; return true; },
+      },
+      chat: async () => { providerCalls += 1; return '# should-not-run'; },
+    });
+
+    assert.equal(result?.applied, false);
+    assert.match(result?.failedReason || '', /无法安全放入 Markdown 表格/);
+    assert.equal(providerCalls, 0);
+    assert.equal(guardCalls, 0);
+    assert.equal(existsSync(target), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: precommit source drift blocks the candidate without touching the target', async () => {
+  const workspace = createLicenseFactWorkspace();
+  const io = makeCallbacks();
+  let providerCalls = 0;
+  try {
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'precommit-source-drift', file: workspace.target, absPath: workspace.target, action: 'create', desc: '创建六个常量的 Markdown 事实报告' },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: workspace.prompt,
+      workspaceRoot: { fsPath: workspace.root },
+      callbacks: io.callbacks,
+      chat: async () => {
+        providerCalls += 1;
+        writeFileSync(workspace.source, `${readFileSync(workspace.source, 'utf8')}\n// concurrent drift\n`);
+        return workspace.repaired;
+      },
+    });
+
+    assert.equal(result?.applied, false);
+    assert.match(result?.failedReason || '', /源码在生成后发生变化/);
+    assert.equal(providerCalls, 1, 'source drift is not repairable by another provider response');
+    assert.equal(io.changes.length, 0);
+    assert.equal(existsSync(workspace.target), false);
+  } finally {
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: source drift during asynchronous write authorization never touches an existing target', async () => {
+  const workspace = createLicenseFactWorkspace();
+  const io = makeCallbacks();
+  const sentinel = '# existing user artifact\n';
+  writeFileSync(workspace.target, sentinel);
+  const beforeMtime = statSync(workspace.target).mtimeMs;
+  try {
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'guard-source-drift', file: workspace.target, absPath: workspace.target, action: 'modify', desc: '更新六个常量的 Markdown 事实报告' },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: workspace.prompt,
+      workspaceRoot: { fsPath: workspace.root },
+      callbacks: {
+        ...io.callbacks,
+        onBeforeFileWrite: async () => {
+          writeFileSync(workspace.source, `${readFileSync(workspace.source, 'utf8')}\n// drift during guard\n`);
+          return true;
+        },
+      },
+      chat: async () => workspace.repaired,
+    });
+
+    assert.equal(result?.applied, false);
+    assert.match(result?.failedReason || '', /源码在生成后发生变化/);
+    assert.equal(readFileSync(workspace.target, 'utf8'), sentinel);
+    assert.equal(statSync(workspace.target).mtimeMs, beforeMtime);
+    assert.equal(io.changes.length, 0);
+  } finally {
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: target creation during write authorization is detected and never deleted', async () => {
+  const workspace = createLicenseFactWorkspace();
+  const io = makeCallbacks();
+  const sentinel = '# concurrently created artifact\n';
+  try {
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'guard-target-drift', file: workspace.target, absPath: workspace.target, action: 'create', desc: '创建六个常量的 Markdown 事实报告' },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: workspace.prompt,
+      workspaceRoot: { fsPath: workspace.root },
+      callbacks: {
+        ...io.callbacks,
+        onBeforeFileWrite: async () => {
+          writeFileSync(workspace.target, sentinel);
+          return true;
+        },
+      },
+      chat: async () => workspace.repaired,
+    });
+
+    assert.equal(result?.applied, false);
+    assert.match(result?.failedReason || '', /target changed while write authority was pending/);
+    assert.equal(readFileSync(workspace.target, 'utf8'), sentinel);
+    assert.equal(io.changes.length, 0);
+  } finally {
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: target created during provider generation is rejected against the task-start baseline', async () => {
+  const workspace = createLicenseFactWorkspace();
+  const sentinel = '# user created this while provider was running\n';
+  try {
+    const io = makeCallbacks();
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'provider-target-drift', file: workspace.target, absPath: workspace.target, action: 'create', desc: '创建六个常量的 Markdown 事实报告' },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: workspace.prompt,
+      workspaceRoot: { fsPath: workspace.root },
+      callbacks: io.callbacks,
+      chat: async () => {
+        writeFileSync(workspace.target, sentinel);
+        return workspace.repaired;
+      },
+    });
+    assert.equal(result?.applied, false);
+    assert.match(result?.failedReason || '', /target changed after task authorization/);
+    assert.equal(readFileSync(workspace.target, 'utf8'), sentinel);
+    assert.equal(io.changes.length, 0);
+  } finally {
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: guard-time parent symlink swap cannot create an outside file', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-md-parent-swap-'));
+  const outside = mkdtempSync(path.join(tmpdir(), 'devseek-md-parent-swap-outside-'));
+  const source = path.join(root, 'facts.hpp');
+  const docs = path.join(root, 'docs');
+  const target = path.join(docs, 'facts.md');
+  writeFileSync(source, 'constexpr int kValue = 7;\n');
+  const prompt = [
+    `请读取 ${source}，提取 kValue 的真实定义和值。`,
+    `只创建 Markdown 报告 ${target}。`,
+    '报告必须严格满足以下结构：',
+    '标题必须逐字为：# 源码事实报告',
+    `紧接一行必须逐字为：源码路径：${source}`,
+    '仅包含一个 Markdown 表格，表头必须是 Symbol 和 Value，数据行恰好一行。',
+    '不得增加其他标题、表格数据行、代码块或说明段落。',
+  ].join('\n');
+  try {
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'parent-swap', file: target, absPath: target, action: 'create', desc: prompt },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: prompt,
+      workspaceRoot: { fsPath: root },
+      callbacks: {
+        ...makeCallbacks().callbacks,
+        async onBeforeFileWrite() {
+          symlinkSync(outside, docs, 'dir');
+          return true;
+        },
+      },
+      chat: async () => '# must-not-run',
+    });
+    assert.equal(result?.applied, false);
+    assert.match(result?.failedReason || '', /escapes workspace at commit boundary/);
+    assert.equal(existsSync(path.join(outside, 'facts.md')), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
   }
 });
 
@@ -753,7 +1001,7 @@ test('markdown deliverable: explicit claim source remains first when project com
   const workspace = createLiveEvidenceStarvationReplay();
   const io = makeCallbacks();
   io.callbacks.onBeforeFileWrite = async () => false;
-  const prompts = [];
+  let providerCalls = 0;
   try {
     const result = await tryExecuteMarkdownDeliverableTask({
       task: { id: 'communication-evidence-priority', file: workspace.target, absPath: workspace.target, action: 'create', desc: '创建严格的六常量 Markdown 源码事实报告' },
@@ -762,18 +1010,16 @@ test('markdown deliverable: explicit claim source remains first when project com
       userPrompt: `${workspace.prompt}\n同时参考并对齐现有 tunnel 通信链路，但只交付上述事实报告。`,
       workspaceRoot: { fsPath: workspace.root },
       callbacks: io.callbacks,
-      chat: async messages => {
-        prompts.push(messages[0].content);
+      chat: async () => {
+        providerCalls += 1;
         return workspace.repaired;
       },
     });
 
     assert.equal(result?.applied, false);
     assert.equal(result?.failedReason, 'Markdown deliverable write blocked by guard');
-    assert.equal(prompts.length, 1);
-    const requiredIndex = prompts[0].indexOf('### 必需源码事实（最高优先级）: src/oam/src/license/license_types.hpp');
-    const supplementalIndex = prompts[0].indexOf('### 补充源码: src/oam/src/license/license_00.cpp');
-    assert.ok(requiredIndex >= 0 && supplementalIndex > requiredIndex, 'required source evidence must precede heuristic evidence');
+    assert.equal(providerCalls, 0);
+    assert.equal(existsSync(workspace.target), false);
     const sourceEvidence = result?.evidenceRefs?.find(ref => ref.kind === 'read' && ref.sourcePath === workspace.source);
     assert.equal(sourceEvidence?.captureSequence, 1);
     const supplementalEvidence = result?.evidenceRefs?.find(ref => ref.sourcePath?.endsWith('/license_00.cpp'));
@@ -866,14 +1112,22 @@ test('markdown deliverable: more than twelve contract-required sources bypass op
       callbacks: io.callbacks,
       chat: async messages => {
         providerPrompt = messages[0].content;
-        return `# 多源码事实报告\n\n${'正文。'.repeat(100)}`;
+        return [
+          '# 多源码事实报告',
+          '',
+          '| Symbol | Value |',
+          '| --- | --- |',
+          ...sourcePaths.map((_, index) => `| kClaim${String(index + 1).padStart(2, '0')} | ${index + 1} |`),
+        ].join('\n');
       },
     });
 
     assert.equal(result?.failedReason, 'Markdown deliverable write blocked by guard');
     const capturedSources = result?.evidenceRefs?.filter(ref => sourcePaths.includes(ref.sourcePath)) || [];
-    assert.equal(capturedSources.length, 13);
-    assert.deepEqual(capturedSources.map(ref => ref.captureSequence), Array.from({ length: 13 }, (_, index) => index + 1));
+    const initialCaptures = capturedSources.filter(ref => ref.captureSequence <= sourcePaths.length);
+    assert.equal(initialCaptures.length, 13);
+    assert.deepEqual(initialCaptures.map(ref => ref.captureSequence), Array.from({ length: 13 }, (_, index) => index + 1));
+    assert.equal(capturedSources.filter(ref => ref.operationId?.startsWith('source-precommit-readback-')).length, 13);
     assert.match(providerPrompt, /"symbol": "kClaim13"[\s\S]*?"artifactValue": "13"/);
   } finally {
     rmSync(root, { recursive: true, force: true });
@@ -907,7 +1161,7 @@ test('markdown deliverable: second claim mismatch is sticky and task_complete re
   }
 });
 
-test('markdown deliverable: a second-attempt exception preserves the first failed verification audit trail', async () => {
+test('markdown deliverable: final delivery callback failure rolls back while preserving candidate audit trail', async () => {
   const workspace = createLicenseFactWorkspace();
   const io = makeCallbacks();
   const responses = [workspace.wrong, workspace.repaired];
@@ -921,22 +1175,95 @@ test('markdown deliverable: a second-attempt exception preserves the first faile
       workspaceRoot: { fsPath: workspace.root },
       callbacks: {
         ...io.callbacks,
-        onAppliedChange(change) {
+        onAppliedChange() {
           appliedCallbacks += 1;
-          if (appliedCallbacks === 2) throw new Error('simulated second-attempt delivery failure');
-          io.changes.push(change);
+          throw new Error('simulated final delivery failure');
         },
       },
       chat: async () => responses.shift(),
     });
 
     assert.equal(result?.applied, false);
-    assert.match(result?.failedReason || '', /second-attempt delivery failure/);
-    assert.equal(result?.verificationResults?.length, 1);
+    assert.match(result?.failedReason || '', /final delivery failure/);
+    assert.equal(appliedCallbacks, 1);
+    assert.equal(result?.verificationResults?.length, 2);
     assert.equal(result?.verificationResults?.[0].ok, false);
-    assert.equal(result?.artifactClaims?.filter(claim => claim.status === 'mismatch').length, 5);
-    assert.equal(result?.evidenceRefs?.some(ref => ref.operationId === 'artifact-readback-1'), true);
+    assert.equal(result?.verificationResults?.[1].ok, true);
+    assert.equal(result?.artifactClaims?.every(claim => claim.status === 'verified'), true);
+    assert.equal(result?.evidenceRefs?.some(ref => ref.operationId === 'artifact-readback-commit'), true);
+    assert.equal(existsSync(workspace.target), false, 'failed delivery must roll back the new target');
     assert.equal(io.statuses.at(-1).state, 'failed');
+  } finally {
+    rmSync(workspace.root, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: rollback never follows a callback-time parent symlink or deletes outside content', async () => {
+  const workspace = createLicenseFactWorkspace();
+  const outside = mkdtempSync(path.join(tmpdir(), 'devseek-md-rollback-outside-'));
+  const docs = path.dirname(workspace.target);
+  const movedDocs = `${docs}-committed`;
+  let originalCommittedPath = '';
+  let committedContent = '';
+  try {
+    const io = makeCallbacks();
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'callback-parent-swap', file: workspace.target, absPath: workspace.target, action: 'create', desc: '创建六个常量的 Markdown 事实报告' },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: workspace.prompt,
+      workspaceRoot: { fsPath: workspace.root },
+      callbacks: {
+        ...io.callbacks,
+        onAppliedChange(change) {
+          committedContent = change.newContent;
+          renameSync(docs, movedDocs);
+          symlinkSync(outside, docs, 'dir');
+          const outsideTarget = path.join(outside, path.basename(workspace.target));
+          writeFileSync(outsideTarget, change.newContent);
+          originalCommittedPath = path.join(movedDocs, path.basename(workspace.target));
+          throw new Error('simulated callback failure after parent swap');
+        },
+      },
+      chat: async () => workspace.repaired,
+    });
+
+    const outsideTarget = path.join(outside, path.basename(workspace.target));
+    assert.equal(result?.applied, false);
+    assert.match(result?.failedReason || '', /rollback-aborted/);
+    assert.equal(readFileSync(outsideTarget, 'utf8'), committedContent, 'outside file must be preserved');
+    assert.equal(readFileSync(originalCommittedPath, 'utf8'), committedContent, 'commit remains reachable only through its original directory inode');
+  } finally {
+    rmSync(workspace.root, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('markdown deliverable: final UI status failure cannot rewrite a verified commit as failed', async () => {
+  const workspace = createLicenseFactWorkspace();
+  let changes = 0;
+  let committedContent = '';
+  try {
+    const io = makeCallbacks();
+    const result = await tryExecuteMarkdownDeliverableTask({
+      task: { id: 'status-transport-failure', file: workspace.target, absPath: workspace.target, action: 'create', desc: '创建六个常量的 Markdown 事实报告' },
+      taskIndex: 1,
+      taskTotal: 1,
+      userPrompt: workspace.prompt,
+      workspaceRoot: { fsPath: workspace.root },
+      callbacks: {
+        ...io.callbacks,
+        onAgentStatus(status) {
+          if (/等待中央结算/.test(status.title || '')) throw new Error('simulated status transport failure');
+        },
+        onAppliedChange(change) { changes += 1; committedContent = change.newContent; },
+      },
+      chat: async () => workspace.repaired,
+    });
+
+    assert.equal(result?.applied, true, result?.failedReason);
+    assert.equal(changes, 1);
+    assert.equal(readFileSync(workspace.target, 'utf8'), committedContent);
   } finally {
     rmSync(workspace.root, { recursive: true, force: true });
   }

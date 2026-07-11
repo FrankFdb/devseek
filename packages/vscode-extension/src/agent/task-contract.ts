@@ -1,4 +1,5 @@
 import * as nodePath from 'path';
+import type { ExactGroundedArtifactContract } from './evidence-grounding';
 
 export type TaskShape =
   | 'existing-project'
@@ -45,6 +46,8 @@ export interface TaskContract {
       language?: string;
       content: string;
     }>;
+    exactArtifactRequested: boolean;
+    exactArtifact?: ExactGroundedArtifactContract;
     requireArtifactReadback: boolean;
     maxWrittenFiles?: number;
   };
@@ -943,7 +946,37 @@ export function buildTaskContract(promptText: string): TaskContract {
     : [];
   const requestedTableRows = extractRequestedTableRowCount(prompt)
     ?? (evidenceRequirements.length > 0 && /(?:表格|table)/i.test(prompt) ? evidenceRequirements.length : undefined);
-  const sourceInputs = inputs.filter(input => !/\.(?:md|markdown)$/i.test(input));
+  const sourceInputs = [...new Set(inputs.filter(input => !/\.(?:md|markdown)$/i.test(input)))];
+  const exactClaimTable = evidenceRequirements.length > 0 && requestedTableRows !== undefined
+    ? {
+      symbols: evidenceRequirements.map(requirement => requirement.symbol),
+      rowCount: requestedTableRows,
+      forbidAdditionalRows: true,
+    }
+    : undefined;
+  const exactCodeBlocks = extractExactCodeBlocks(prompt);
+  const exactArtifactRequested = isExactGroundedArtifactRequested(prompt, extractsSourceFacts, reportDelivery);
+  const exactTitle = extractExactMarkdownTitle(prompt);
+  const exactSourcePathLines = extractExactSourcePathLines(prompt, sourceInputs);
+  const exactTableHeader = extractExactClaimTableHeader(prompt);
+  const exactArtifact = exactArtifactRequested
+    && exactTitle
+    && exactClaimTable
+    && exactTableHeader
+    && exactSourcePathLines.length === sourceInputs.length
+    && exactClaimTable.rowCount === exactClaimTable.symbols.length
+    && (!requestsExactCodeBlock(prompt) || exactCodeBlocks.length > 0)
+    ? {
+      kind: 'source-fact-markdown' as const,
+      title: exactTitle,
+      sourcePathLines: exactSourcePathLines,
+      tableHeader: exactTableHeader,
+      symbols: exactClaimTable.symbols,
+      valuePresentation: 'source-initializer' as const,
+      codeBlocks: exactCodeBlocks,
+      forbidAdditionalContent: true as const,
+    }
+    : undefined;
   return {
     taskShapes: [...shapes],
     objectives: [prompt.trim()].filter(Boolean),
@@ -963,14 +996,10 @@ export function buildTaskContract(promptText: string): TaskContract {
       requiredSourcePaths: /(?:源码路径|源文件路径|source\s+(?:file\s+)?path)/i.test(prompt)
         ? [...new Set(sourceInputs)]
         : [],
-      exactClaimTable: evidenceRequirements.length > 0 && requestedTableRows !== undefined
-        ? {
-          symbols: evidenceRequirements.map(requirement => requirement.symbol),
-          rowCount: requestedTableRows,
-          forbidAdditionalRows: true,
-        }
-        : undefined,
-      exactCodeBlocks: extractExactCodeBlocks(prompt),
+      exactClaimTable,
+      exactCodeBlocks,
+      exactArtifactRequested,
+      exactArtifact,
       requireArtifactReadback: /(?:重新读取|再次读取|读回|read\s*(?:it\s*)?back|re-?read)/i.test(prompt),
       maxWrittenFiles: /(?:只|仅)(?:创建|生成|写入)(?:一个|1\s*个)|(?:不要|不得|禁止)[^，。；;\n]{0,16}(?:创建|生成|写入)[^，。；;\n]{0,6}(?:其他|其它|其余)(?:的)?文件|(?:create|write)\s+only\s+one/i.test(prompt)
         ? 1
@@ -1036,7 +1065,7 @@ function extractActionBoundFilenameOccurrences(prompt: string): PathOccurrence[]
 function extractPathOccurrences(prompt: string): PathOccurrence[] {
   const occurrences: PathOccurrence[] = [];
   const add = (pathValue: string, index: number): void => {
-    const value = pathValue.trim();
+    const value = pathValue.trim().replace(/[.,;!?，。；]+$/u, '');
     if (!value || index < 0) return;
     occurrences.push({ path: value, index });
   };
@@ -1080,22 +1109,29 @@ function extractPathOccurrences(prompt: string): PathOccurrence[] {
 function extractEvidenceRequirementSymbols(prompt: string): string[] {
   const segments: string[] = [];
   const extractionClauses = [
-    /(?:提取|列出|核对|读取)([\s\S]{0,320}?)(?=(?:并|然后|并且)?(?:创建|新建|生成|写入|写出|保存|输出|提供|产出|落盘|更新|修改|改写|覆盖)|[，。；;\n]|$)/gi,
-    /\b(?:extract|list|verify|read)\b([\s\S]{0,320}?)(?=\b(?:create|write|save|output|generate|produce|provide|update|modify|revise|replace)\b|[,.;\n]|$)/gi,
+    /(?:提取|列出|核对|读取)([\s\S]{0,320}?)(?=(?:并|然后|并且)?(?:创建|新建|生成|写入|写出|保存|输出|提供|产出|落盘|更新|修改|改写|覆盖)|[。；;\n]|$)/gi,
+    /\b(?:extract|list|verify|read)\b([\s\S]{0,320}?)(?=\b(?:create|write|save|output|generate|produce|provide|update|modify|revise|replace)\b|[.;\n]|$)/gi,
   ];
   for (const regexp of extractionClauses) {
-    for (const match of prompt.matchAll(regexp)) segments.push(match[1]);
+    for (const match of prompt.matchAll(regexp)) {
+      if (hasClaimSemantics(match[1])) segments.push(match[1]);
+    }
   }
   const stopWords = new Set([
-    'and', 'code', 'config', 'configuration', 'constant', 'constants', 'definition', 'definitions',
-    'field', 'fields', 'file', 'from', 'markdown', 'of', 'real', 'report', 'source', 'the', 'true',
-    'value', 'values', 'version', 'versions',
+    'after', 'and', 'back', 'code', 'config', 'configuration', 'constant', 'constants',
+    'definition', 'definitions', 'extract', 'field', 'fields', 'file', 'from', 'it', 'list',
+    'markdown', 'of', 'read', 'real', 'report', 'source', 'the', 'true', 'value', 'values',
+    'verify', 'version', 'versions', 'writing',
   ]);
   const explicit = segments.flatMap(segment => segment.match(/\b[A-Za-z_][A-Za-z0-9_]*\b/g) || [])
     .filter(symbol => !stopWords.has(symbol.toLowerCase()));
   if (explicit.length > 0) return [...new Set(explicit)];
   return [...new Set(prompt.match(/\b[A-Za-z_][A-Za-z0-9_]{2,}\b/g) || [])]
     .filter(symbol => /^(?:k[A-Z]|[A-Z][A-Z0-9_]+$)/.test(symbol));
+}
+
+function hasClaimSemantics(segment: string): boolean {
+  return /(?:常量|数值|配置|字段|版本|真实(?:定义|值)|定义|值)|\b(?:constants?|values?|config(?:uration)?|fields?|versions?|definitions?)\b/i.test(segment);
 }
 
 export function hasQualityObligation(contract: TaskContract, obligation: QualityObligation): boolean {
@@ -1116,6 +1152,9 @@ export function getSourceClaimArtifactContractIssue(contract: TaskContract): str
   }
   if (contract.evidenceRequirements.some(requirement => !requirement.sourcePath)) {
     return '源码事实 claim 无法唯一绑定到源文件，已安全阻止猜测性写入。';
+  }
+  if (contract.verificationContract.exactArtifactRequested && !contract.verificationContract.exactArtifact) {
+    return '逐字源码事实报告契约不完整或存在歧义，已在写盘前安全阻止 Provider 猜测。';
   }
   return undefined;
 }
@@ -1153,8 +1192,113 @@ export function resolveTaskContractSourcePaths(
       requiredSourcePaths: contract.verificationContract.requiredSourcePaths.map(pathValue => (
         resolveOne(pathValue) || pathValue
       )),
+      exactArtifact: contract.verificationContract.exactArtifact
+        ? {
+          ...contract.verificationContract.exactArtifact,
+          sourcePathLines: contract.verificationContract.exactArtifact.sourcePathLines.map(line => {
+            const source = contract.verificationContract.requiredSourcePaths.find(pathValue => line.endsWith(pathValue));
+            const resolved = resolveOne(source);
+            return source && resolved ? `${line.slice(0, -source.length)}${resolved}` : line;
+          }),
+        }
+        : undefined,
     },
   };
+}
+
+function isExactGroundedArtifactRequested(
+  prompt: string,
+  extractsSourceFacts: boolean,
+  reportDelivery: boolean,
+): boolean {
+  if (!extractsSourceFacts || !reportDelivery) return false;
+  const exactCount = (prompt.match(/逐字|\bexactly\b/gi) || []).length;
+  const structureMatches = [...prompt.matchAll(/严格满足(?:以下|下列)?结构|strictly\s+(?:match|follow)[^\n.]{0,32}structure/gi)];
+  const latestStructure = structureMatches.at(-1);
+  const affirmativeStructure = latestStructure
+    ? !isNegatedExactStructureDirective(prompt, latestStructure.index || 0)
+    : exactCount >= 2;
+  if (!affirmativeStructure) return false;
+
+  const noExtraMatches = [...prompt.matchAll(/不得增加其他|禁止增加其他|不得添加额外|禁止添加额外|no\s+(?:additional|extra)\s+(?:content|headings?|rows?|blocks?)/gi)]
+    .filter(match => !isNegatedNoExtraDirective(prompt, match.index || 0))
+    .filter(match => !isScopedNoExtraDirective(prompt, match.index || 0, match[0].length));
+  const latestNoExtra = noExtraMatches.at(-1);
+  if (!latestNoExtra) return false;
+  return !hasLaterAdditionalContentDirective(prompt, (latestNoExtra.index || 0) + latestNoExtra[0].length);
+}
+
+function isNegatedExactStructureDirective(prompt: string, structureIndex: number): boolean {
+  const prefix = prompt.slice(Math.max(0, structureIndex - 64), structureIndex);
+  return /(?:无需|无须|不必|不要|不需要|不要求|无需再|并非|不是)\s*(?:必须)?\s*$/i.test(prefix)
+    || /(?:need\s+not|do(?:es)?\s+not\s+(?:need|have)\s+to|must\s+not|should\s+not|is\s+not\s+required\s+to)\s*$/i.test(prefix);
+}
+
+function isNegatedNoExtraDirective(prompt: string, directiveIndex: number): boolean {
+  const prefix = prompt.slice(Math.max(0, directiveIndex - 64), directiveIndex);
+  return /(?:不要求|不需要|无需|无须|不必|取消|忽略|不适用|并非要求)\s*["'“”]?\s*$/i.test(prefix)
+    || /(?:do(?:es)?\s+not\s+require|need\s+not|ignore|cancel)\s*["']?\s*$/i.test(prefix)
+    || /["'“]\s*$/.test(prefix);
+}
+
+function isScopedNoExtraDirective(prompt: string, directiveIndex: number, directiveLength: number): boolean {
+  const clauseStart = Math.max(
+    prompt.lastIndexOf('\n', directiveIndex - 1),
+    prompt.lastIndexOf('；', directiveIndex - 1),
+    prompt.lastIndexOf(';', directiveIndex - 1),
+    prompt.lastIndexOf('。', directiveIndex - 1),
+  );
+  const prefix = prompt.slice(clauseStart + 1, directiveIndex).trim();
+  const clauseEndCandidates = [
+    prompt.indexOf('\n', directiveIndex + directiveLength),
+    prompt.indexOf('；', directiveIndex + directiveLength),
+    prompt.indexOf(';', directiveIndex + directiveLength),
+    prompt.indexOf('。', directiveIndex + directiveLength),
+    prompt.indexOf('.', directiveIndex + directiveLength),
+  ].filter(index => index >= 0);
+  const clauseEnd = clauseEndCandidates.length > 0 ? Math.min(...clauseEndCandidates) : prompt.length;
+  const suffix = prompt.slice(directiveIndex + directiveLength, clauseEnd).trim();
+  return /(?:对于|针对)?\s*(?:代码块|表格|标题|附录|其他文件|其它文件|源码|源代码)(?:之?内|中|里|方面)?\s*[,，:：]?\s*$/i.test(prefix)
+    || /(?:for|within|inside)\s+(?:the\s+)?(?:code\s+block|table|title|appendix|other\s+files?|source\s+code)\s*[,，:：]?\s*$/i.test(prefix)
+    || /^(?:仅限|只限|只针对|在)\s*(?:代码块|表格|标题|附录|其他文件|其它文件|源码|源代码)(?:之?内|中|里|方面)?/i.test(suffix)
+    || /^(?:inside|within|for)\s+(?:the\s+)?(?:python\s+)?(?:code\s+block|table|title|appendix|other\s+files?|source\s+code)\b/i.test(suffix);
+}
+
+function hasLaterAdditionalContentDirective(prompt: string, afterIndex: number): boolean {
+  const suffix = prompt.slice(afterIndex);
+  return /(?:(?:更正|改为|但是|但)?\s*(?:允许|可以|可|需要|必须)\s*|(?:再|还(?:要|需)?|另外|同时)\s*)(?:增加|添加|加入|补充)\s*(?:一段|额外)?\s*(?:风险|说明|解释|段落|内容|附录)/i.test(suffix)
+    || /\b(?:then|also|additionally)\s+(?:add|include)\b[^\n.]{0,60}\b(?:explanation|paragraph|content|appendix|notes?)\b/i.test(suffix);
+}
+
+function extractExactMarkdownTitle(prompt: string): string | undefined {
+  const match = prompt.match(/(?:标题|title)[^\n。]{0,48}?(?:必须逐字为|must\s+exactly\s+be)\s*[:：]?\s*(#{1,6}\s+[^\r\n。]+)/i);
+  const title = match?.[1]?.trim();
+  return title && !/[|\x00-\x1f]/.test(title) ? title : undefined;
+}
+
+function extractExactSourcePathLines(prompt: string, sourceInputs: string[]): string[] {
+  const lines: string[] = [];
+  const regexp = /(?:必须逐字为|must\s+exactly\s+be)\s*[:：]?\s*((?:源码路径\s*[：:]|source\s+path\s*:)\s*[^\r\n。]+)/gi;
+  for (const match of prompt.matchAll(regexp)) {
+    const line = match[1].trim();
+    if (sourceInputs.some(source => line.endsWith(source)) && !/[|\x00-\x1f]/.test(line)) lines.push(line);
+  }
+  return [...new Set(lines)];
+}
+
+function extractExactClaimTableHeader(prompt: string): [string, string] | undefined {
+  if (/(?:表头|header)[^\n。]{0,40}?Symbol\s*(?:和|与|及|、|\/|and)\s*Value/i.test(prompt)) {
+    return ['Symbol', 'Value'];
+  }
+  if (/(?:表头|header)[^\n。]{0,40}?常量名\s*(?:和|与|及|、|\/)\s*值/i.test(prompt)) {
+    return ['常量名', '值'];
+  }
+  return undefined;
+}
+
+function requestsExactCodeBlock(prompt: string): boolean {
+  return /(?:仅包含(?:一个|1\s*个)?|包含(?:一个|1\s*个)|加入|添加)[^\n。]{0,40}(?:代码块|code\s+blocks?)/i.test(prompt)
+    || /\b(?:must\s+(?:include|contain)|include|add)\b[^\n.]{0,40}\bcode\s+blocks?\b/i.test(prompt);
 }
 
 function extractRequestedTableRowCount(prompt: string): number | undefined {

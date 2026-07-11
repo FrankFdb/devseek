@@ -17,6 +17,7 @@ export type EvidenceKind =
   | 'plan'
   | 'tool-call'
   | 'workspace'
+  | 'artifact-candidate'
   | 'artifact-readback';
 
 export interface EvidenceRef {
@@ -84,7 +85,27 @@ export interface ArtifactVerificationContract {
     language?: string;
     content: string;
   }>;
+  exactArtifact?: ExactGroundedArtifactContract;
   requireArtifactReadback?: boolean;
+}
+
+/**
+ * A fully executable artifact contract. When present, every output byte is
+ * owned by the host and derived from verified source evidence instead of an
+ * untrusted provider response.
+ */
+export interface ExactGroundedArtifactContract {
+  kind: 'source-fact-markdown';
+  title: string;
+  sourcePathLines: string[];
+  tableHeader: [string, string];
+  symbols: string[];
+  valuePresentation: 'source-initializer';
+  codeBlocks: Array<{
+    language?: string;
+    content: string;
+  }>;
+  forbidAdditionalContent: true;
 }
 
 export class EvidenceStore {
@@ -100,7 +121,7 @@ export class EvidenceStore {
   recordFileRead(input: {
     path: string;
     content: string;
-    kind?: 'read' | 'artifact-readback';
+    kind?: 'read' | 'artifact-candidate' | 'artifact-readback';
     operationId?: string;
     lineStart?: number;
     lineEnd?: number;
@@ -142,6 +163,13 @@ export class EvidenceStore {
   all(): EvidenceRef[] {
     return [...this.refs.values()];
   }
+}
+
+/** The exact artifact value is the source initializer, not a numeric rewrite. */
+export function projectArtifactClaimValue(spec: ArtifactClaimSpec): string {
+  return spec.validator === 'exact'
+    ? String(spec.normalizedExpectedValue)
+    : spec.expectedValue;
 }
 
 export interface SourceClaimRequirement {
@@ -205,9 +233,7 @@ export function deriveArtifactClaimSpecs(
 export function formatArtifactClaimSpecsForPrompt(specs: ArtifactClaimSpec[]): string {
   return JSON.stringify(specs.map(spec => ({
     symbol: spec.symbol,
-    artifactValue: spec.validator === 'exact'
-      ? String(spec.normalizedExpectedValue)
-      : spec.expectedValue,
+    artifactValue: projectArtifactClaimValue(spec),
     sourceInitializer: spec.expectedValue,
     normalizedValue: spec.normalizedExpectedValue,
     validator: spec.validator,
@@ -230,7 +256,10 @@ export function verifyArtifactClaims(
       || !artifactEvidence.sourcePath
       || !artifactEvidence.contentHash
       || artifactEvidence.captureSequence === undefined) {
-    throw new Error('Artifact verification requires a persisted read-back EvidenceRef');
+    throw new Error('Artifact verification requires a recorded artifact EvidenceRef');
+  }
+  if (artifactEvidence.kind !== 'artifact-candidate' && artifactEvidence.kind !== 'artifact-readback') {
+    throw new Error('Artifact verification requires an artifact candidate or read-back EvidenceRef');
   }
   if (contract.requireArtifactReadback && artifactEvidence.kind !== 'artifact-readback') {
     throw new Error('Artifact verification requires an artifact-readback EvidenceRef');
@@ -263,7 +292,7 @@ export function verifyArtifactClaims(
         difference: `${spec.symbol}: 源码在生成后发生变化，必须重新收集证据（${spec.sourcePath}）`,
       };
     }
-    return verifyClaim(spec, content, artifactEvidence.sourcePath!);
+    return verifyClaim(spec, content, artifactEvidence.sourcePath!, contract);
   });
   const contractDifferences = verifyArtifactContract(content, contract);
   const differences = [
@@ -289,7 +318,7 @@ export function verifyArtifactClaims(
   };
 }
 
-function verifyArtifactContract(content: string, contract: ArtifactVerificationContract): string[] {
+export function verifyArtifactContract(content: string, contract: ArtifactVerificationContract): string[] {
   const differences: string[] = [];
   const normalized = String(content || '').replace(/\r\n?/g, '\n');
   const firstNonEmpty = normalized.split('\n').find(line => line.trim())?.trim() || '';
@@ -304,6 +333,9 @@ function verifyArtifactContract(content: string, contract: ArtifactVerificationC
   if (contract.exactClaimTable) {
     differences.push(...verifyExactClaimTable(stripFencedCodeBlocks(normalized), contract.exactClaimTable));
     differences.push(...verifyStrictFactReport(normalized, contract));
+  }
+  if (contract.exactArtifact) {
+    differences.push(...verifyExactGroundedArtifactStructure(normalized, contract.exactArtifact));
   }
   const codeBlocks = parseFencedCodeBlocks(normalized);
   const unmatchedCodeBlockIndexes = new Set(codeBlocks.map((_block, index) => index));
@@ -323,6 +355,40 @@ function verifyArtifactContract(content: string, contract: ArtifactVerificationC
   }
   if (contract.exactClaimTable && codeBlocks.length !== (contract.exactCodeBlocks || []).length) {
     differences.push(`structure: 代码块数量为 ${codeBlocks.length}，期望 ${(contract.exactCodeBlocks || []).length}`);
+  }
+  return differences;
+}
+
+function verifyExactGroundedArtifactStructure(
+  content: string,
+  contract: ExactGroundedArtifactContract,
+): string[] {
+  const differences: string[] = [];
+  const lines = stripFencedCodeBlocks(content).split('\n');
+  if (lines[0] !== contract.title) {
+    differences.push(`structure: 标题必须逐字为“${contract.title}”`);
+  }
+  contract.sourcePathLines.forEach((line, index) => {
+    if (lines[index + 1] !== line) {
+      differences.push(`structure: 标题后的第 ${index + 1} 行必须逐字为“${line}”`);
+    }
+  });
+  const tableLines = lines.filter(line => line.includes('|'));
+  const expectedHeader = `| ${contract.tableHeader[0]} | ${contract.tableHeader[1]} |`;
+  if (tableLines[0] !== expectedHeader) {
+    differences.push(`structure: claim 表头必须逐字为“${expectedHeader}”`);
+  }
+  if (tableLines[1] !== '| --- | --- |') {
+    differences.push('structure: claim 表格分隔行必须逐字为“| --- | --- |”');
+  }
+  const dataLines = tableLines.slice(2);
+  const actualSymbols = dataLines.map(line => line.split('|')[1]?.trim()).filter(Boolean);
+  if (actualSymbols.join('\0') !== contract.symbols.join('\0')) {
+    differences.push(`structure: claim 行顺序必须逐字对应 ${contract.symbols.join(', ')}`);
+  }
+  const codeBlocks = parseFencedCodeBlocks(content);
+  if (codeBlocks.length !== contract.codeBlocks.length) {
+    differences.push(`structure: 代码块数量为 ${codeBlocks.length}，期望 ${contract.codeBlocks.length}`);
   }
   return differences;
 }
@@ -387,7 +453,10 @@ function verifyStrictFactReport(content: string, contract: ArtifactVerificationC
   const lines = outsideCode.split('\n');
   const headings = lines.filter(line => /^#{1,6}\s+\S/.test(line.trim()));
   const title = lines[0] || '';
-  const expectedSourcePathLines = getExpectedStrictSourcePathLines(title, contract.requiredSourcePaths || []);
+  const exactArtifact = contract.exactArtifact;
+  const expectedTitle = exactArtifact?.title;
+  const expectedSourcePathLines = exactArtifact?.sourcePathLines
+    || getExpectedStrictSourcePathLines(title, contract.requiredSourcePaths || []);
   const unexpectedLines = lines.filter(line => {
     const trimmed = line.trim();
     if (!trimmed || trimmed.includes('|') || /^#{1,6}\s+\S/.test(trimmed)) return false;
@@ -396,11 +465,13 @@ function verifyStrictFactReport(content: string, contract: ArtifactVerificationC
   const differences: string[] = [];
   if (headings.length !== 1) {
     differences.push(`structure: 精确事实报告标题数量为 ${headings.length}，期望 1`);
-  } else if (!isAllowedStrictFactTitle(headings[0])) {
+  } else if (expectedTitle ? headings[0] !== expectedTitle : !isAllowedStrictFactTitle(headings[0])) {
     differences.push('scope: 精确事实报告标题必须使用固定无事实模板“源码事实报告”或“Source Facts Report”');
   }
-  if (!isAllowedStrictFactTitle(title)) {
-    differences.push('structure: 精确事实报告第一行必须逐字为“# 源码事实报告”或“# Source Facts Report”');
+  if (expectedTitle ? title !== expectedTitle : !isAllowedStrictFactTitle(title)) {
+    differences.push(expectedTitle
+      ? `structure: 精确事实报告第一行必须逐字为“${expectedTitle}”`
+      : 'structure: 精确事实报告第一行必须逐字为“# 源码事实报告”或“# Source Facts Report”');
   }
   for (const [index, expectedLine] of expectedSourcePathLines.entries()) {
     if (lines[index + 1] !== expectedLine) {
@@ -452,7 +523,12 @@ export function formatClaimVerificationFeedback(result: VerificationResult): str
   ].join('\n');
 }
 
-function verifyClaim(spec: ArtifactClaimSpec, content: string, artifactPath: string): ArtifactClaim {
+function verifyClaim(
+  spec: ArtifactClaimSpec,
+  content: string,
+  artifactPath: string,
+  contract: ArtifactVerificationContract,
+): ArtifactClaim {
   const located = locateArtifactValues(content, spec.symbol);
   if (located.length === 0) {
     return {
@@ -472,7 +548,10 @@ function verifyClaim(spec: ArtifactClaimSpec, content: string, artifactPath: str
   }
   const actual = located[0];
   const normalized = normalizeClaimValue(actual.value, spec.validator);
-  const matches = normalized.value === spec.normalizedExpectedValue;
+  const exactPresentation = contract.exactArtifact?.valuePresentation === 'source-initializer';
+  const matches = exactPresentation
+    ? actual.value === projectArtifactClaimValue(spec)
+    : normalized.value === spec.normalizedExpectedValue;
   return {
     ...spec,
     artifactPath,
@@ -482,7 +561,9 @@ function verifyClaim(spec: ArtifactClaimSpec, content: string, artifactPath: str
     status: matches ? 'verified' : 'mismatch',
     difference: matches
       ? undefined
-      : `${spec.symbol}: 实际 ${actual.value}，期望 ${spec.expectedValue}（${spec.sourcePath}:${spec.sourceLine}）`,
+      : exactPresentation
+        ? `${spec.symbol}: 实际表示 ${actual.value}，期望源码 initializer ${projectArtifactClaimValue(spec)}（${spec.sourcePath}:${spec.sourceLine}）`
+        : `${spec.symbol}: 实际 ${actual.value}，期望 ${spec.expectedValue}（${spec.sourcePath}:${spec.sourceLine}）`,
   };
 }
 

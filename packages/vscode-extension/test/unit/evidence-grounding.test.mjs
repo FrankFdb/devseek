@@ -722,4 +722,56 @@ test('strict fact report requires an exact first-line title and immediately adja
   assert.equal(paddedTitle.contractDifferences.some(item => /第一行必须逐字为/.test(item)), true);
 });
 
+test('host-owned exact artifacts preserve numeric source initializers instead of accepting equivalent rewrites', () => {
+  const sourcePath = '/replay/limits.hpp';
+  const artifactPath = '/replay/limits.md';
+  const source = 'inline constexpr uint32_t kMaxSize = 64 * 1024;\n';
+  const store = new EvidenceStore('/replay', 'exact-initializer-presentation');
+  const sourceRef = store.recordFileRead({ path: sourcePath, content: source });
+  const specs = deriveArtifactClaimSpecs([{ symbol: 'kMaxSize', sourcePath }], [sourceRef]);
+  const exactArtifact = {
+    kind: 'source-fact-markdown',
+    title: '# 源码事实报告',
+    sourcePathLines: [`源码路径：${sourcePath}`],
+    tableHeader: ['Symbol', 'Value'],
+    symbols: ['kMaxSize'],
+    valuePresentation: 'source-initializer',
+    codeBlocks: [{ language: 'python', content: 'print("left|right")' }],
+    forbidAdditionalContent: true,
+  };
+  const contract = {
+    requireTitle: true,
+    requiredSourcePaths: [sourcePath],
+    exactClaimTable: { symbols: ['kMaxSize'], rowCount: 1, forbidAdditionalRows: true },
+    exactCodeBlocks: exactArtifact.codeBlocks,
+    exactArtifact,
+    requireArtifactReadback: true,
+  };
+  const verify = value => {
+    const artifact = store.recordFileRead({
+      path: artifactPath,
+      content: [
+        exactArtifact.title,
+        exactArtifact.sourcePathLines[0],
+        '| Symbol | Value |',
+        '| --- | --- |',
+        `| kMaxSize | ${value} |`,
+        '```python',
+        'print("left|right")',
+        '```',
+        '',
+      ].join('\n'),
+      kind: 'artifact-readback',
+    });
+    const readback = store.recordFileRead({ path: sourcePath, content: source });
+    return verifyArtifactClaims(specs, artifact, [readback], contract);
+  };
+
+  assert.equal(verify('64 * 1024').ok, true, 'pipes inside the exact code block are not table rows');
+  const rewritten = verify('65536');
+  assert.equal(rewritten.ok, false);
+  assert.equal(rewritten.claims[0].status, 'mismatch');
+  assert.match(rewritten.claims[0].difference, /期望源码 initializer 64 \* 1024/);
+});
+
 console.log('\nEvidence grounding tests passed.\n');

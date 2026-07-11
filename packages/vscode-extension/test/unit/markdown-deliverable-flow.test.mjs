@@ -618,7 +618,7 @@ test('markdown deliverable flow: real wrong-facts fixture gets one bounded repai
     for (const evidenceId of finalVerification.sourceReadbackEvidenceIds) {
       const sourceReadback = evidenceById.get(evidenceId);
       assert.equal(sourceReadback?.sourcePath, workspace.source);
-      assert.match(sourceReadback?.operationId || '', /^source-readback-2-/);
+      assert.match(sourceReadback?.operationId || '', /^source-readback-commit-/);
       assert.equal(originalSourceEvidenceIds.has(evidenceId), false, 'verification must use an independent source readback');
     }
     const artifactReadback = evidenceById.get(finalVerification.artifactEvidenceId);
@@ -719,8 +719,8 @@ test('agentic route: fixture-relative fact report repairs once and passes centra
     assert.equal(existsSync(workspace.source), true);
     assert.deepEqual(
       io.changes.map(change => change.path),
-      ['license-transport-facts.md', 'license-transport-facts.md'],
-      'wrong and repaired writes stay bounded to the single requested artifact',
+      ['license-transport-facts.md'],
+      'only the repaired candidate is physically committed to the requested artifact',
     );
   } finally {
     delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
@@ -762,6 +762,7 @@ test('agentic route: natural record wording remains grounded and ignores provide
     assert.equal(readFileSync(workspace.target, 'utf8'), workspace.repaired);
     assert.equal(existsSync(extraTarget), false, 'provider tool output is data, never an executable side channel');
     assert.deepEqual(new Set(io.changes.map(change => change.path)), new Set(['license-transport-facts.md']));
+    assert.equal(io.changes.length, 1, 'the rejected candidate never becomes a physical write');
   } finally {
     delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
     rmSync(workspace.root, { recursive: true, force: true });
@@ -813,6 +814,7 @@ for (const verb of ['提供', '更新', '修改']) {
       assert.equal(result.verificationResults?.at(-1)?.ok, true);
       assert.equal(result.artifactClaims?.every(claim => claim.status === 'verified'), true);
       assert.equal(readFileSync(workspace.target, 'utf8'), workspace.repaired);
+      assert.equal(io.changes.length, 1);
       assert.match(requests[0].messages[0].content, /宿主派生的必需源码事实（最高优先级）/);
     } finally {
       delete globalThis.__DEVSEEK_AGENTIC_LOOP_CHAT_STUB__;
@@ -909,6 +911,7 @@ for (const scenario of [
       assert.equal(result.artifactClaims?.length, 6);
       assert.equal(result.artifactClaims?.every(claim => claim.status === 'verified'), true);
       assert.equal(readFileSync(workspace.target, 'utf8'), workspace.repaired);
+      assert.equal(io.changes.length, 1, 'provider repair remains an in-memory candidate until the single commit');
       assert.match(requests[0].messages[0].content, /宿主派生的必需源码事实（最高优先级）/);
       assert.doesNotMatch(requests[0].messages[0].content, /untrusted supplemental note/);
     } finally {
