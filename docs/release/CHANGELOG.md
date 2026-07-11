@@ -6,7 +6,28 @@
 
 ## [Unreleased] — 2026-07-11
 
-- 新增 P0-B TaskContract/QualityPolicy 第一切片及跨领域隔离回归；P0-A Evidence claim grounding 仍待完成，不提升真实资格。
+- P0-B TaskContract/QualityPolicy 第一切片及跨领域隔离回归已落地；P0-A 的 deterministic claim/read-back/exact materialization 已收敛，但因没有同提交真实成功，阶段退出与真实资格均未完成。
+
+### P0-A exact grounded Markdown 确定性收口（真实资格待验证）
+
+- `7981f99` 建立 EvidenceRef/ArtifactClaim/VerificationResult；`e8d36f4` 把 grounding 前移到 Markdown mutation 边界；`368cacf` 增加宿主 exact materializer 和统一原子 CAS 提交。
+- 完整可执行的 exact 契约不再调用 Provider；宿主从独立源码 readback 生成逐字标题、源码路径、表头/行序、源码初始化器值和代码块。普通 Provider 候选最多一次内存修复，未验证候选不落盘。
+- 目标文件在任务开始固定 baseline/canonical route/ancestor identity，授权后经同目录 temp、fsync、atomic rename 和 CAS 提交；提交后 target/source 独立复核，rollback 只消费 commit token 并拒绝 route/inode/content drift。
+- RunContext 指纹纳入规范化 exact contract；status/callback delivery 失败不会把已提交事实改写为失败或触发第二次写入。
+
+真实证据序列：
+
+1. `20260711-131537`：报告落盘但六项强事实仅一项正确，暴露无 grounding 假成功。
+2. `20260711-165205`（`7981f99`）：证据不足时安全失败且未创建目标，已固化 runtime replay fixture。
+3. `20260711-200642`（`e8d36f4`）：Provider/修复违反 exact 结构，并把 `64 * 1024` 改为 `65536`；中央 verifier 安全拒绝。
+
+验证与发布：
+
+- 功能提交 `368cacf`：相关核心 114/114、TaskContract 38/38、Markdown 闭环 19/19、Extension 113/113 suites、TypeScript、compile、架构漂移和 diff 检查通过。
+- 干净提交 `verify:phase0-12` 九项 gate 全通过，报告：`docs/testing/phase0-12-verification-reports/2026-07-11T12-54-35-452Z/report.md`；报告等级仅为 `deterministic`。
+- 已生成并安装 `devseek-netai-1.0.0-debug.20260711.t205615.g368cacf.vsix`，packaged Bridge 校验成功，SHA-256 `8bfd219312ed3fa59d8eacb7b63bb8d79a6c813786e40984bf143ba2b0cbb560`。
+- 新包未运行真实插件。资格仍为 canary `0/3`、medium `0/2`、formal `0/1`；不得宣称 candidate/stable。
+- 下一轮先迁移 sibling mutation/Undo、移除 validation 隐藏写盘、补跨平台原子目录与故障注入；只有重新获得明确授权后才运行无关领域短 canary。
 
 ### DeepSeek Web 无损写盘与稳定性资格门禁
 
@@ -18,7 +39,7 @@
 - 修复混合动作路由：`读取既有源码 + 创建报告 + 不修改源码` 不再被直读快路径吞掉；显式输出路径保持 edit-agent，纯提取/比较请求也不会退化成“文件存在”。
 - 真实插件 harness 改用 canary/medium/formal 质量 profile 和任务级必含事实断言，删除“所有 Markdown 都必须包含维保关键词/正式项目修改清单”的测试硬编码。
 - 新增 ARCH-18 新窗口接管与 100% 收敛计划，把 Evidence Grounding、通用 TaskContract/QualityPolicy、唯一运行终态和分级真实资格设为后续唯一主线。
-- 事实状态：2026-07-11 留存的 7 次正式真实插件仿真均失败；rebase 前 `06894bb`（当前等价代码提交 `e78c253`）的真实短 canary 虽成功路由并写盘，但六项源码事实仅一项正确、无成功终态且 Replay 失败。确定性门禁通过仅代表 regression-safe，当前不得宣称 DevSeek 已稳定。
+- 事实状态：2026-07-11 留存的 7 次正式真实插件仿真均失败；rebase 前 `06894bb`（当时等价代码提交 `e78c253`）的真实短 canary 虽成功路由并写盘，但六项源码事实仅一项正确、无成功终态且 Replay 失败。确定性门禁通过仅代表 regression-safe，当前不得宣称 DevSeek 已稳定。
 
 验证：
 - 无损工具协议、工作流共享提示词和稳定性资格 focused tests 通过。

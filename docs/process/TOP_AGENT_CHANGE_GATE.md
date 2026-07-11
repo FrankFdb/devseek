@@ -816,3 +816,23 @@
 - **结果判据变化**：QualityPolicy 按任务语义组合；本切片不提升真实 canary 配额，P0-A claim grounding 仍是阻断项。
 - **文档更新**：ARCH-18、CHANGELOG、release CHANGELOG、本文件。
 - **备份/发布动作**：完成全量测试后执行 extension compile/package/install。
+
+---
+
+**变更标题**：P0-A exact grounded Markdown 宿主物化与原子提交收口（2026-07-11）
+- **需求归因**：实现缺陷 + 安全缺陷 + 架构债务 — 模型候选能在 claim/结构完全证明前写盘；授权等待期间目标或父目录可能漂移；逐字源码初始化器会被模型数值归一化；状态/回调异常可能混淆真实磁盘结果。
+- **影响能力层**：TaskContract、Evidence Grounding、Markdown executor、RunContext 指纹、WorkspaceEdit 原子提交、回滚与 UI delivery truth。
+- **架构影响**：
+  - `7981f99` 建立 `EvidenceRef -> ArtifactClaim -> VerificationResult`；`e8d36f4` 将 grounded 复核接到每个 Markdown mutation 边界。
+  - `368cacf` 新增 Provider 无关 exact materializer；完整可执行契约以 Provider 0 调用生成精确字节，普通候选最多一次内存修复且只提交验证后的最终候选。
+  - `WorkspaceEditService` 新增 task-start baseline、canonical route/nearest ancestor identity、CAS、同目录 temp、payload fsync、atomic rename、commit token 和漂移感知 rollback。
+  - Markdown commit 前后独立复读目标/源码；status/callback 为 best-effort delivery，不得触发第二次写入或覆盖成功提交事实。
+- **Claude Code/Codex 对标**：模型负责推理和候选，宿主负责授权、证据、exact bytes、副作用原子性与交付真相；完全结构化契约不继续交给模型自由改写。
+- **主链路验证**：中英文 exact contract、六项源码值/行序/源码初始化器、Provider 0 调用、一次物理写、read-back、RunContext fingerprint、模式保留均通过。
+- **回退/攻击链路验证**：证据不足、错误候选/一次修复、撤销授权、unsafe table cell、源码/目标漂移、guard/callback 期间父目录 symlink swap、status/callback 异常、CAS stale baseline、失败 temp/空目录清理均 fail-closed。
+- **真实结果**：`20260711-165205` 在 `7981f99` 上因证据不足安全失败；`20260711-200642` 在 `e8d36f4` 上安全拒绝 exact 结构错误及 `64 * 1024 -> 65536`。最终 `368cacf` 未运行 live canary，真实配额保持 canary 0/3、medium 0/2、formal 0/1。
+- **确定性验证**：相关核心 114/114、TaskContract 38/38、Markdown 闭环 19/19、workflow compliance 123/123、Extension 113/113 suites、TypeScript/compile/architecture/diff 均通过；干净提交 Phase 0-12 九项 gate 全通过，报告 `docs/testing/phase0-12-verification-reports/2026-07-11T12-54-35-452Z/report.md`。
+- **结果判据变化**：exact grounded Markdown 的 deterministic implementation 记为收敛；P0-A 退出条件、candidate/stable 均不成立，除非同提交真实 canary 与后续配额通过。
+- **后续迭代登记**：迁移 `simple-file-task`、`deterministic-task-executor`、`tool-loop`、legacy `agent-loop`、`workspace-applier` 和 Pending Edit Undo/Hunk Undo；移除 `auto-validation` 隐藏写盘；封存 legacy write API；补 direct-fs 静态守卫、Windows/macOS anchored-directory 方案及 ENOSPC/rename/fsync/symlink/ABA fault injection。
+- **文档更新**：ARCH-18、ARCH-05、根 CHANGELOG、release CHANGELOG、本文件。
+- **备份/发布动作**：已生成并安装 `devseek-netai-1.0.0-debug.20260711.t205615.g368cacf.vsix`；packaged Bridge 校验通过；SHA-256 `8bfd219312ed3fa59d8eacb7b63bb8d79a6c813786e40984bf143ba2b0cbb560`。

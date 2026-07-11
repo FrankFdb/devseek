@@ -3,6 +3,11 @@
 ## [Unreleased] — 2026-07-11
 
 - [AGENT CORE] 新增 Provider 无关 TaskContract 与可组合 QualityPolicy，隔离普通报告、TypeScript 修复、独立 Python 工具和协议任务的验收义务。
+- [AGENT CORE] `EvidenceRef -> ArtifactClaim -> VerificationResult` 已覆盖 exact 源码事实 Markdown；完整契约由宿主按源码初始化器确定性物化，普通候选只允许一次写前内存修复。
+- [SAFETY] Markdown 交付改为任务起始 baseline、canonical/ancestor identity、CAS、同目录临时文件、fsync、atomic rename、commit token 与漂移感知回滚；验证、状态与回调不能制造重复写或错误交付真相。
+- [QUALITY] TaskContract 增加中英文 exact 结构、表格顺序、逐字源码路径/标题/代码块与 no-extra-content 所有权；否定、局部限制和后续更正反例不会误触发宿主物化。
+- [QUALIFICATION] 功能提交 `368cacf` 的 Extension 113/113 suites、相关核心 114/114 和干净 Phase 0-12 九项门禁通过；精确包 `1.0.0-debug.20260711.t205615.g368cacf` 已校验安装。最近真实 canary 仍为 `e8d36f4` 上的安全失败，当前配额保持 canary 0/3、medium 0/2、formal 0/1。
+- [NEXT] 下一轮迁移所有 sibling mutation/Undo 到统一 CAS/commit-token 边界，移除 validation 隐藏写盘，并补跨平台安全目录策略、direct-fs 静态守卫与故障注入；本轮已暂停，不继续真实测试。
 
 所有版本变更记录于此。格式：`## [版本号] — 日期`，按时间倒序排列。  
 问题修复单独标注 `[BUG FIX]` 便于追溯，避免同类问题重复出现。
