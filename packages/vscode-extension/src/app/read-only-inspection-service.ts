@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import { fenceLangForFile } from '../utils';
+import { isExplicitDeliverablePathWriteRequest } from '../intent/advisory-patterns';
 
 export interface ReadOnlyInspectionRequest {
   prompt: string;
@@ -21,7 +22,7 @@ const DEFAULT_MAX_BYTES = 24 * 1024;
 const EXPLICIT_READ_ONLY_RE = /(不要|无需|不需要|别|禁止).{0,10}(修改|改动|更改|写入|创建|删除|保存|编辑)|只读|read[-\s]?only|no\s+changes?/i;
 const SIMPLE_INSPECTION_RE = /(检查|确认|查看|读取|显示|展示|是否存在|存在|内容|inspect|check|read|show|display|exist|cat)/i;
 const CONTENT_REQUEST_RE = /(显示|展示|读取|查看).{0,12}(文件)?内容|文件内容|content|show|display|cat|read\s+file/i;
-const COMPLEX_ANALYSIS_RE = /(分析|评估|审计|诊断|定位|找出|根本原因|问题|建议|计划|方案|重构|修复|优化|review|audit|analy[sz]e|diagnose|root\s+cause|refactor|fix)/i;
+const COMPLEX_ANALYSIS_RE = /(分析|评估|审计|诊断|定位|找出|提取|汇总|比较|对比|验证|交付|根本原因|问题|建议|计划|方案|重构|修复|优化|review|audit|analy[sz]e|diagnose|extract|compare|verify|root\s+cause|refactor|fix)/i;
 
 const PATH_RE = /(?:^|[\s`'":：，。；；（(【\[])(\/?[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+\.[A-Za-z0-9][A-Za-z0-9_.-]{0,15})(?=$|[\s`'"),，。；；）)】\]])/g;
 
@@ -110,6 +111,7 @@ export function tryBuildReadOnlyInspectionResult(request: ReadOnlyInspectionRequ
   const prompt = request.prompt || '';
   const rawWorkspaceRoot = (request.workspaceRoot || '').trim();
   if (!prompt.trim() || !rawWorkspaceRoot) return null;
+  if (isExplicitDeliverablePathWriteRequest(prompt)) return null;
   const workspaceRoot = nodePath.resolve(rawWorkspaceRoot);
   if (!fs.existsSync(workspaceRoot)) return null;
   let realWorkspaceRoot: string;

@@ -198,6 +198,14 @@ const routingCases = [
     toolActions: { read: 'allow', search: 'allow', diagnostics: 'allow', edit: 'deny', terminal: 'deny' },
   },
   {
+    id: 'READ-004',
+    title: 'a negated artifact action remains read-only',
+    prompt: '确认 /tmp/report.md 是否存在，不要创建 /tmp/report.md，也不要修改文件。',
+    expect: { kind: 'chat', mode: 'inspect', workflow: 'inspect-agent', useAgent: true, tools: READ_TOOLS },
+    blocker: 'explicit-no-change',
+    toolActions: { read: 'allow', search: 'allow', diagnostics: 'allow', edit: 'deny', terminal: 'deny' },
+  },
+  {
     id: 'PLAN-001',
     title: 'project architecture plan uses plan agent when context exists',
     prompt: '给出这个项目的重构方案',
@@ -259,6 +267,18 @@ const routingCases = [
       '所有新增文档和代码放入 /home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607110603/docs 和 src 目录。',
       '不要修改正式源码目录里的既有文件；正式集成改动写入修改清单。',
       '最终返回生成文件路径、修改摘要、验证证据和未覆盖风险，并说明测试覆盖率。',
+    ].join('\n'),
+    expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: EDIT_TOOLS },
+    signal: 'deliverable-write-request',
+    toolActions: { read: 'allow', plan: 'allow', edit: 'allow', terminal: 'requireConfirm' },
+  },
+  {
+    id: 'EDIT-000D',
+    title: 'read source and write a scoped report is a mixed edit task, not read-only inspection',
+    prompt: [
+      '读取 /home/ff/uav/tars/huida_uav/src/oam/src/license/license_types.hpp 并提取协议常量。',
+      '创建 /home/ff/uav/tars/huida_uav/src/oam/src/lifting/zc_maintenance/202607111215/docs/license-transport-facts.md，写盘后读回验证。',
+      '不要修改任何源码，不要创建其他文件。',
     ].join('\n'),
     expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: EDIT_TOOLS },
     signal: 'deliverable-write-request',

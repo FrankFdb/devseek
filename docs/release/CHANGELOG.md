@@ -13,6 +13,8 @@
 - 新增架构债务预算，冻结 `extension.ts`、Agent 编排、Bridge 和 WebView 等 7 个超目标文件；后续职责外移后预算只能下降。
 - Phase 0-12 报告新增稳定性资格：确定性回归、真实 Provider CLI、真实 VS Code 插件证据分别结算；真实报告必须通过 Replay、匹配当前 Git/VSIX，且 dirty worktree 不得借用 `HEAD` 身份。
 - 稳定声明改为证据配额：同一提交至少 3 个短任务、2 个中型任务、1 个正式任务成功；单次成功只能标记候选可用。
+- 修复混合动作路由：`读取既有源码 + 创建报告 + 不修改源码` 不再被直读快路径吞掉；显式输出路径保持 edit-agent，纯提取/比较请求也不会退化成“文件存在”。
+- 真实插件 harness 改用 canary/medium/formal 质量 profile 和任务级必含事实断言，删除“所有 Markdown 都必须包含维保关键词/正式项目修改清单”的测试硬编码。
 - 事实状态：2026-07-11 留存的 7 次正式真实插件仿真均失败；截至 `56effd7` 的 Extension 108 suite、Bridge 20 测试和 PA0-PA13 通过仅代表确定性合格，当前不得宣称 DevSeek 已稳定。
 
 验证：

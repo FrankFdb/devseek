@@ -17,6 +17,10 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  buildRealPluginQualityProfile,
+  parseRequiredArtifactSnippets,
+} from './harness/real-plugin-quality-profile.mjs';
 
 const args = process.argv.slice(2);
 const runRequested = hasFlag('--run') || process.env.DEVSEEK_REAL_PLUGIN_DEEPSEEK_RUN === '1';
@@ -44,6 +48,10 @@ const keepTmp = hasFlag('--keep') || process.env.DEVSEEK_REAL_PLUGIN_KEEP === '1
 const autopilot = !hasFlag('--no-autopilot') && process.env.DEVSEEK_REAL_PLUGIN_AUTOPILOT !== '0';
 const promptFromArg = getArgValue('--prompt');
 const scenario = getArgValue('--scenario') || process.env.DEVSEEK_REAL_PLUGIN_SCENARIO || 'formal-simulation';
+const qualityProfile = buildRealPluginQualityProfile(scenario);
+const requiredArtifactSnippets = parseRequiredArtifactSnippets(
+  getArgValue('--artifact-must-contain') || process.env.DEVSEEK_REAL_PLUGIN_ARTIFACT_MUST_CONTAIN,
+);
 const harnessMode = normalizeHarnessMode(getArgValue('--mode') || process.env.DEVSEEK_REAL_PLUGIN_MODE || 'fast');
 const workspaceDirArg = getArgValue('--workspace-dir') || process.env.DEVSEEK_REAL_PLUGIN_WORKSPACE_DIR || '';
 const outputDocArg = getArgValue('--output-doc') || process.env.DEVSEEK_REAL_PLUGIN_OUTPUT_DOC || '';
@@ -127,6 +135,8 @@ report.harness = {
   autopilot,
   pluginPort,
   scenario,
+  qualityProfile,
+  requiredArtifactSnippets,
   harnessMode,
   expectedArtifact,
   expectedArtifacts,
@@ -574,6 +584,8 @@ const pluginPort = __PLUGIN_PORT__;
 const autopilot = __AUTOPILOT__;
 const scenario = __SCENARIO__;
 const harnessMode = __HARNESS_MODE__;
+const qualityProfile = __QUALITY_PROFILE__;
+const requiredArtifactSnippets = __REQUIRED_ARTIFACT_SNIPPETS__;
 const expectedArtifact = __EXPECTED_ARTIFACT__;
 const expectedArtifacts = __EXPECTED_ARTIFACTS__;
 const expectedCodeArtifacts = __EXPECTED_CODE_ARTIFACTS__;
@@ -682,6 +694,9 @@ function assessMarkdownQuality(content) {
 }
 
 function assessFormalProjectQuality(content, promptText) {
+  if (!qualityProfile.requireFormalProjectQuality) {
+    return { required: false, ok: true, reasons: [], skippedByProfile: qualityProfile.kind };
+  }
   if (typeof assessRuntimeFormalProjectDocumentQuality === 'function') {
     return assessRuntimeFormalProjectDocumentQuality(content, promptText);
   }
@@ -968,12 +983,18 @@ function changedMarkdownArtifacts(before) {
     if (!/\.(?:md|markdown)$/i.test(filePath)) return;
     const relative = rel(workspaceDir, filePath);
     const content = fs.readFileSync(filePath, 'utf8');
+    const requiredContentMatches = requiredArtifactSnippets.map((snippet) => ({
+      snippet,
+      present: content.includes(snippet),
+    }));
     const current = {
       path: relative,
       absolutePath: filePath,
       size: Buffer.byteLength(content),
       hash: hashText(content),
       preview: content.slice(0, 600),
+      requiredContentMatches,
+      requiredContentOk: requiredContentMatches.every((item) => item.present),
       markdownQuality: assessMarkdownQuality(content),
       formalProjectQuality: assessFormalProjectQuality(content, prompt),
     };
@@ -983,7 +1004,6 @@ function changedMarkdownArtifacts(before) {
         ...current,
         created: !previous,
         changed: Boolean(previous && previous.hash !== current.hash),
-        containsMaintenanceAnalysis: /(维保|主控|task|任务|阈值|对策|重构|吊运)/i.test(content),
         markdownQualityOk: current.markdownQuality.ok,
         formalProjectQualityOk: current.formalProjectQuality.ok,
       });
@@ -1076,7 +1096,9 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
   const changedPaths = Array.isArray(terminalData.changedPaths) ? terminalData.changedPaths : [];
   const normalizedChangedPaths = changedPaths.map(normalizeChangedPathForWorkspace);
   const changedMarkdownByLog = normalizedChangedPaths.some((item) => /\.(?:md|markdown)$/i.test(item));
-  const hasUsefulMarkdown = artifacts.some((artifact) => artifact.size >= 500 && artifact.containsMaintenanceAnalysis && artifact.markdownQualityOk);
+  const hasUsefulMarkdown = artifacts.some((artifact) => artifact.size >= qualityProfile.minimumMarkdownBytes
+    && artifact.requiredContentOk
+    && artifact.markdownQualityOk);
   const formalProjectQuality = assessFormalProjectQuality(
     artifacts.map(artifact => fs.readFileSync(artifact.absolutePath, 'utf8')).join('\n\n'),
     prompt,
@@ -1092,8 +1114,8 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
   const expectedArtifactWritten = expectedArtifacts.length > 0
     ? expectedArtifactRecords.every((record) => Boolean(record.artifact
       && record.artifact.created
-      && record.artifact.size >= 500
-      && record.artifact.containsMaintenanceAnalysis
+      && record.artifact.size >= qualityProfile.minimumMarkdownBytes
+      && record.artifact.requiredContentOk
       && record.artifact.markdownQualityOk))
     : hasUsefulMarkdown;
   const expectedArtifactInRunLog = expectedArtifacts.length > 0
@@ -1168,6 +1190,8 @@ function evaluate(before, startedAtMs, expectedCodeBefore = new Map(), expectedC
       expectedArtifactRecords,
       expectedArtifactWritten,
       expectedArtifactInRunLog,
+      qualityProfile,
+      requiredArtifactSnippets,
       markdownRequired,
       markdownEvidenceOk,
       formalProjectQuality,
@@ -1330,6 +1354,8 @@ module.exports = { activate };
     .replace('__AUTOPILOT__', JSON.stringify(autopilot))
     .replace('__SCENARIO__', JSON.stringify(scenario))
     .replace('__HARNESS_MODE__', JSON.stringify(harnessMode))
+    .replace('__QUALITY_PROFILE__', JSON.stringify(qualityProfile))
+    .replace('__REQUIRED_ARTIFACT_SNIPPETS__', JSON.stringify(requiredArtifactSnippets))
     .replace('__EXPECTED_ARTIFACT__', JSON.stringify(expectedArtifact))
     .replace('__EXPECTED_ARTIFACTS__', JSON.stringify(expectedArtifacts))
     .replace('__EXPECTED_CODE_ARTIFACTS__', JSON.stringify(expectedCodeArtifacts))

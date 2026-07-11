@@ -94,6 +94,46 @@ test('ReadOnlyInspectionService: complex analysis remains in the agent path', ()
   }
 });
 
+test('ReadOnlyInspectionService: reading source plus writing a report cannot take the direct read shortcut', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-readonly-mixed-action-'));
+  try {
+    const source = path.join(workspaceRoot, 'src', 'license_types.hpp');
+    mkdirSync(path.dirname(source), { recursive: true });
+    writeFileSync(source, 'constexpr int kTunnelVersion = 1;\n');
+
+    const result = tryBuildReadOnlyInspectionResult({
+      workspaceRoot,
+      prompt: [
+        `读取 ${source} 并提取 kTunnelVersion 的实际值。`,
+        `创建 ${path.join(workspaceRoot, 'out', 'facts.md')}，写盘后读回验证。`,
+        '不要修改任何源码，不要创建其他文件。',
+      ].join('\n'),
+    });
+
+    assert.equal(result, null);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ReadOnlyInspectionService: extraction requests require the agent even without a write', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-readonly-extract-'));
+  try {
+    const source = path.join(workspaceRoot, 'src', 'license_types.hpp');
+    mkdirSync(path.dirname(source), { recursive: true });
+    writeFileSync(source, 'constexpr int kTunnelVersion = 1;\n');
+
+    const result = tryBuildReadOnlyInspectionResult({
+      workspaceRoot,
+      prompt: `读取 ${source}，提取 kTunnelVersion 的实际值，不要修改文件。`,
+    });
+
+    assert.equal(result, null);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('ReadOnlyInspectionService: empty workspace root is not resolved to process cwd', () => {
   const result = tryBuildReadOnlyInspectionResult({
     workspaceRoot: '',

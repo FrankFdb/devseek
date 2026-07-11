@@ -5,6 +5,7 @@ import {
   isDeferredImplementationRequest,
   isDeliverableWriteRequest,
   isDirectImplementationRequest,
+  isExplicitDeliverablePathWriteRequest,
   isScopedNoChangeWithDeliverableWriteRequest,
 } from './advisory-patterns';
 
@@ -89,13 +90,16 @@ export function classifyIntent(prompt: string): IntentClassification {
     && CAPABILITY_FEATURE_REQUEST_RE.test(text)
     && !READ_ONLY_CAPABILITY_QUESTION_RE.test(withoutGreeting);
   const hasDeliverableWriteRequest = isDeliverableWriteRequest(text);
+  const hasExplicitDeliverablePathWrite = isExplicitDeliverablePathWriteRequest(text);
   const hasScopedNoChangeWithDeliverableWrite = isScopedNoChangeWithDeliverableWriteRequest(text);
 
   if (GREETING_ONLY_RE.test(text)) {
     return baseDecision('smalltalk', 0.95, -4, ['greeting-only'], 'greeting-only', []);
   }
 
-  if (EXPLICIT_NO_CHANGE_RE.test(text) && !hasScopedNoChangeWithDeliverableWrite) {
+  if (EXPLICIT_NO_CHANGE_RE.test(text)
+    && !hasScopedNoChangeWithDeliverableWrite
+    && !hasExplicitDeliverablePathWrite) {
     const isReadOnlyPlanning = EXPLICIT_PLAN_RE.test(text) && hasCodeContext;
     const mode = isReadOnlyPlanning
       ? 'plan'

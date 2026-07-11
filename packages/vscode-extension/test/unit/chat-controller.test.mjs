@@ -216,6 +216,21 @@ test('ChatRouteController: isolated output directory keeps implementation workfl
   assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
 });
 
+test('ChatRouteController: a source read constraint does not cancel an explicit report path write', () => {
+  const controller = new ChatRouteController();
+  const prompt = [
+    '读取 /workspace/src/license_types.hpp 并提取协议常量。',
+    '创建 /workspace/out/license-facts.md，写盘后读回验证。',
+    '不要修改任何源码，不要创建其他文件。',
+  ].join('\n');
+  const decision = controller.decide({ userDisplay: prompt, prompt, files: [], agentEnabled: true });
+
+  assert.equal(decision.intent.mode, 'edit');
+  assert.ok(decision.intent.signals.includes('deliverable-write-request'));
+  assert.equal(decision.workflow.kind, 'edit-agent');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+});
+
 test('ChatRouteController: capability feature follow-up with context stays in edit workflow', () => {
   const controller = new ChatRouteController();
   const prompt = '现在可以同时显示，但是，6个图形，不能单独通过鼠标或者键盘操作，能提供单独控制每个图形旋转';

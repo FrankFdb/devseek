@@ -75,6 +75,8 @@
   - Web 文本 Provider 的多行 mutation 统一走 `tool-protocol-prompt` 定义的 XML + CDATA 无损边界，`fake-tool-parser` 只调用独立 parser，不继续堆业务判断。
   - `devseek-stability-qualification` 分离 deterministic、live Provider CLI、real VS Code plugin 三类证据，并绑定运行日志中的 Git commit；dirty worktree 不得借用 `HEAD` 身份。
   - `devseek-architecture-budgets.json` 冻结 7 个超目标编排/Surface 文件，新增职责必须迁入拥有该事实的服务或适配器。
+  - 混合任务按子句区分“既有源码只读”与“新交付物写入”；直读快路径只能处理能由本地存在性/内容展示完整回答的请求。
+  - 真实仿真质量门禁改为 canary/medium/formal profile，并由 `artifact-must-contain` 表达任务事实，删除维保领域硬编码。
 - **方案选择理由**：Claude Code/Codex 通过结构化工具或宿主写盘传递源码，并把工具结果、验证和当前运行版本作为交付事实；继续放宽 JSON parser 或仅增加提示词无法保证字节无损，也无法防止旧报告证明新代码。
 - **备选方案**：继续修复 JSON escape、提高 token 限制或重跑正式任务；未采用，因为这些方案没有消除文本协议歧义，也没有修复测试结论越级。
 - **主链路验证**：多行源码 CDATA fixture 保留 `\n`、XML 字面量和 Markdown 内容；Phase 0-12 报告明确输出资格等级和实时证据配额。

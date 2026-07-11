@@ -1098,6 +1098,14 @@ test('Real DeepSeek harness: run log evidence is bound to current run', () => {
   assertDoesNotContain(harness, 'logs.sort((a, b) => b.size - a.size)', 'real harness must not rank stale logs by size');
 });
 
+test('Real DeepSeek harness: quality gates are scenario-driven and task-specific', () => {
+  const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
+  assertContains(harness, 'buildRealPluginQualityProfile', 'real harness must select canary/medium/formal quality profiles');
+  assertContains(harness, 'requiredArtifactSnippets', 'real harness must support task-specific artifact facts');
+  assertContains(harness, 'requiredContentOk', 'artifact acceptance must check the requested task facts');
+  assertDoesNotContain(harness, 'containsMaintenanceAnalysis', 'generic harness must not hard-code the maintenance benchmark domain');
+});
+
 test('Agentic free-explore: follow-up turns keep same-session context', () => {
   const ext = src('src/extension.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
