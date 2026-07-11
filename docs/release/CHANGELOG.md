@@ -6,6 +6,8 @@
 
 ## [Unreleased] — 2026-07-11
 
+- 新增 P0-B TaskContract/QualityPolicy 第一切片及跨领域隔离回归；P0-A Evidence claim grounding 仍待完成，不提升真实资格。
+
 ### DeepSeek Web 无损写盘与稳定性资格门禁
 
 - 对标 Claude Code/Codex 的结构化工具边界，为 Web 文本 Provider 新增 XML + CDATA 多行文件 mutation 协议，避免 Python/Markdown 中的反斜杠、引号和换行经手写 JSON 后损坏。

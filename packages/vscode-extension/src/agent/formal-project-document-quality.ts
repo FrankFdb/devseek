@@ -1,3 +1,5 @@
+import { buildTaskContract, hasQualityObligation } from './task-contract';
+
 export interface FormalProjectDocumentQuality {
   required: boolean;
   ok: boolean;
@@ -92,15 +94,14 @@ export function assessFormalProjectDocumentQuality(
   const content = String(text || '');
   const prompt = String(promptText || '');
   const combined = `${prompt}\n${content}`;
-  const requiresRemoteControllerInterface = REMOTE_CONTROLLER_INTERFACE_RE.test(prompt);
-  const requiresLicenseReference = LICENSE_REFERENCE_RE.test(prompt);
-  const requiresCommunicationChain = COMMUNICATION_REFERENCE_RE.test(prompt);
-  const requiresModificationPlan = CODE_IMPLEMENTATION_RE.test(prompt);
-  const required = (FORMAL_PROJECT_RE.test(prompt) || /(?:正式项目|大项目|生产项目)/i.test(combined))
-    && (requiresRemoteControllerInterface
-      || requiresLicenseReference
-      || requiresModificationPlan
-      || /(?:正式项目|大项目|生产项目)/i.test(prompt));
+  const contract = buildTaskContract(prompt);
+  const requiresRemoteControllerInterface = hasQualityObligation(contract, 'interface-contract');
+  const requiresLicenseReference = LICENSE_REFERENCE_RE.test(prompt) && hasQualityObligation(contract, 'protocol-facts');
+  const requiresCommunicationChain = hasQualityObligation(contract, 'project-communication-chain');
+  const requiresModificationPlan = hasQualityObligation(contract, 'modification-plan');
+  const requiresSourceEvidence = hasQualityObligation(contract, 'source-evidence');
+  const requiresProtocolFacts = hasQualityObligation(contract, 'protocol-facts');
+  const required = contract.qualityObligations.length > 0;
   const sourceReferenceCount = countMatches(content, SOURCE_REFERENCE_RE);
   const numericFactCount = countMatches(stripLikelyLineCountRows(content), NUMERIC_FACT_RE);
   const protocolSignalCount = countMatches(content, PROTOCOL_SIGNAL_RE);
@@ -119,13 +120,14 @@ export function assessFormalProjectDocumentQuality(
   const hasInterfaceRequestExample = INTERFACE_REQUEST_EXAMPLE_RE.test(content);
   const hasInterfaceResponseExample = INTERFACE_RESPONSE_EXAMPLE_RE.test(content);
   const hasInterfaceFencedJsonExample = FENCED_JSON_EXAMPLE_RE.test(content);
+  const requiresInterfaceExamples = /(?:request.{0,80}response|请求.{0,80}响应|JSON\s*(?:示例|schema)|(?:示例|schema).{0,40}JSON)/i.test(prompt);
   const hasRemoteControllerInterfaceDoc = !requiresRemoteControllerInterface
     || (interfaceSignalCount >= 12
       && INTERFACE_SCHEMA_EXAMPLE_RE.test(content)
       && INTERFACE_OPERATION_RULE_RE.test(content)
-      && hasInterfaceRequestExample
-      && hasInterfaceResponseExample
-      && hasInterfaceFencedJsonExample);
+      && (!requiresInterfaceExamples || (hasInterfaceRequestExample
+        && hasInterfaceResponseExample
+        && hasInterfaceFencedJsonExample)));
   const hasExistingCodeModificationPlan = !requiresModificationPlan
     || (modificationPlanSignalCount >= 8 && sourceReferenceCount >= 4 && /(?:风险|验证|回归)/i.test(content));
   const requiresUartOrEquivalentCommunicationEntry = requiresCommunicationChain
@@ -136,8 +138,8 @@ export function assessFormalProjectDocumentQuality(
       && (!requiresUartOrEquivalentCommunicationEntry || hasUartOrEquivalentCommunicationEntry));
   const reasons = [
     required && !hasResolvedProjectFacts ? 'unresolved-project-facts' : '',
-    required && !hasSourceFactMatrix ? 'missing-source-fact-matrix' : '',
-    required && !hasConcreteProtocolFacts ? 'missing-concrete-protocol-facts' : '',
+    required && requiresSourceEvidence && !hasSourceFactMatrix ? 'missing-source-fact-matrix' : '',
+    required && requiresProtocolFacts && !hasConcreteProtocolFacts ? 'missing-concrete-protocol-facts' : '',
     required && requiresRemoteControllerInterface && !hasRemoteControllerInterfaceDoc ? 'missing-remote-controller-interface-doc' : '',
     required && requiresModificationPlan && !hasExistingCodeModificationPlan ? 'missing-existing-code-modification-plan' : '',
     required && requiresCommunicationChain && !hasProjectWideCommunicationChain ? 'missing-project-wide-communication-chain' : '',

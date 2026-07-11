@@ -325,15 +325,15 @@ test('markdown deliverable flow: same formal-project request reaches simulated D
   }
 });
 
-test('markdown deliverable flow: corrupted simulated DeepSeek response writes artifact but blocks formal completion', async () => {
+test('markdown deliverable flow: corrupted provider can settle a verified analysis report without unrelated protocol obligations', async () => {
   const output = await runMarkdownClosedLoop(() => {
     throw new Error('RESPONSE_CORRUPTED:truncated:Provider 响应疑似被截断。');
-  }, { expectApplied: false });
+  });
   try {
     assert.match(output.content, /# 维保提醒需求分析与实现建议/);
     assert.match(output.content, /Provider 未返回可用的完整报告/);
     assert.match(output.content, /maintenance_threshold_engine\.hpp/);
-    assert.match(output.result.failedReason || '', /formal-project-quality/);
+    assert.equal(output.result.failedReason, undefined);
   } finally {
     rmSync(output.workspace.root, { recursive: true, force: true });
   }

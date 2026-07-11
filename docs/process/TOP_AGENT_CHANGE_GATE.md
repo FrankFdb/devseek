@@ -803,3 +803,16 @@
 - **回退链路验证**：失败时显示 Failed 与失败摘要，5 秒后自动清理
 - **文档更新**：需求 / 设计 / 变更日志 / 阔门文档
 - **备份/发布动作**：待本轮代码稳定后重新打包 latest VSIX
+
+---
+
+**变更标题**：P0-B TaskContract 与通用 QualityPolicy 第一切片（2026-07-11）
+- **需求归因**：实现缺陷 + 架构债务 — 领域正则把 license/Tunnel、遥控器接口和修改清单要求传播到无关任务。
+- **影响能力层**：任务理解、质量门禁、Markdown 交付、验证结算。
+- **架构影响**：新增 Provider 无关 `TaskContract` 语义边界；文档质量门禁改为消费组合 obligation，不再自行从领域关键词决定整套验收项。
+- **方案选择理由**：对标 Claude Code/Codex，用户目标和约束构成任务契约；工具证据与验证消费契约，Provider 文本不能直接决定完成。
+- **主链路验证**：普通配置事实提取只要求 source evidence；协议接口任务组合 protocol/interface/communication obligations。
+- **回退链路验证**：普通分析报告、TypeScript bugfix、独立 Python 工具均不继承无关 license/Tunnel 或既有工程集成要求；原正式项目质量测试与 Markdown 9 场景通过。
+- **结果判据变化**：QualityPolicy 按任务语义组合；本切片不提升真实 canary 配额，P0-A claim grounding 仍是阻断项。
+- **文档更新**：ARCH-18、CHANGELOG、release CHANGELOG、本文件。
+- **备份/发布动作**：完成全量测试后执行 extension compile/package/install。

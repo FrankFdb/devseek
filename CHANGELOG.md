@@ -1,5 +1,9 @@
 # DevSeek — CHANGELOG
 
+## [Unreleased] — 2026-07-11
+
+- [AGENT CORE] 新增 Provider 无关 TaskContract 与可组合 QualityPolicy，隔离普通报告、TypeScript 修复、独立 Python 工具和协议任务的验收义务。
+
 所有版本变更记录于此。格式：`## [版本号] — 日期`，按时间倒序排列。  
 问题修复单独标注 `[BUG FIX]` 便于追溯，避免同类问题重复出现。
 

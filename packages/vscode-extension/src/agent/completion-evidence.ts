@@ -555,6 +555,7 @@ export function getMissingCompletionEvidence(
 }
 
 const FORMAL_PROJECT_DOC_REQUEST_RE = /(?:markdown|\.md\b|文档|设计|接口文档|修改清单|事实矩阵|实施文档)/i;
+const DOCUMENT_DELIVERY_ACTION_RE = /(?:创建|生成|编写|撰写|提供|交付|写入|放入|输出|create|write|generate|deliver)/i;
 const FORMAL_PROJECT_REASON_LABELS: Record<string, string> = {
   'missing-source-fact-matrix': '正式项目源项目事实矩阵',
   'missing-concrete-protocol-facts': '正式项目协议/通讯数值事实',
@@ -568,15 +569,18 @@ function getFormalProjectMarkdownQualityMissingEvidence(
   existingWrittenFiles: WrittenFileEvidence[],
   workspaceRoot?: string,
 ): string[] {
+  const requestsMarkdownDeliverable = FORMAL_PROJECT_DOC_REQUEST_RE.test(userPrompt)
+    && DOCUMENT_DELIVERY_ACTION_RE.test(userPrompt);
   const baseline = assessFormalProjectDocumentQuality('', userPrompt);
-  if (!baseline.required) return [];
 
   const markdownFiles = existingWrittenFiles.filter(f => isMarkdownArtifactPath(f.path));
   if (markdownFiles.length === 0) {
-    return FORMAL_PROJECT_DOC_REQUEST_RE.test(userPrompt)
+    return baseline.required && requestsMarkdownDeliverable
       ? ['正式项目 Markdown 设计/接口文档']
       : [];
   }
+
+  if (!baseline.required) return [];
 
   const markdownContent = markdownFiles
     .map(file => readWrittenMarkdownEvidence(file, workspaceRoot))

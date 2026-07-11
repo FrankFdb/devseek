@@ -591,33 +591,16 @@ function ensureFormalInterfaceExamples(markdown: string | undefined, promptText:
   if (!markdown) return undefined;
   const quality = assessFormalProjectDocumentQuality(markdown, promptText);
   if (!quality.required || !quality.requiresRemoteControllerInterface) return markdown;
-  if (quality.hasInterfaceRequestExample && quality.hasInterfaceResponseExample && quality.hasInterfaceFencedJsonExample) {
-    return markdown;
-  }
-
+  if (quality.hasInterfaceRequestExample && quality.hasInterfaceResponseExample && quality.hasInterfaceFencedJsonExample) return markdown;
   const requestJson = findInlineJsonExample(markdown, 'request')
     || '{"type":"platform_status","requestId":"r1","metrics":{"flightSorties":120},"version":1}';
   const responseJson = findInlineJsonExample(markdown, 'response')
     || '{"type":"warranty_status","requestId":"r1","level":"expiring_soon","errorCode":0,"version":1}';
-  const exampleBlock = buildInterfaceExampleBlock(requestJson, responseJson);
-  if (markdown.includes(exampleBlock.trim())) return markdown;
-  return ensureFinalNewline(`${markdown.trimEnd()}\n\n${exampleBlock}`);
+  return ensureFinalNewline(`${markdown.trimEnd()}\n\n${buildInterfaceExampleBlock(requestJson, responseJson)}`);
 }
 
 function buildInterfaceExampleBlock(requestJson: string, responseJson: string): string {
-  return [
-    '### request JSON 示例',
-    '',
-    '```json',
-    requestJson,
-    '```',
-    '',
-    '### response JSON 示例',
-    '',
-    '```json',
-    responseJson,
-    '```',
-  ].join('\n');
+  return ['### request JSON 示例', '', '```json', requestJson, '```', '', '### response JSON 示例', '', '```json', responseJson, '```'].join('\n');
 }
 
 function findInlineJsonExample(markdown: string, label: 'request' | 'response'): string | undefined {
@@ -625,8 +608,7 @@ function findInlineJsonExample(markdown: string, label: 'request' | 'response'):
   if (!match) return undefined;
   const tail = markdown.slice(match.index + match[0].length);
   const braceIndex = tail.indexOf('{');
-  if (braceIndex < 0) return undefined;
-  return extractBalancedJsonObject(tail, braceIndex);
+  return braceIndex < 0 ? undefined : extractBalancedJsonObject(tail, braceIndex);
 }
 
 function extractBalancedJsonObject(text: string, startIndex: number): string | undefined {
@@ -636,27 +618,14 @@ function extractBalancedJsonObject(text: string, startIndex: number): string | u
   for (let index = startIndex; index < text.length; index += 1) {
     const char = text[index];
     if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === '\\') {
-        escaped = true;
-      } else if (char === '"') {
-        inString = false;
-      }
+      if (escaped) escaped = false;
+      else if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
       continue;
     }
-    if (char === '"') {
-      inString = true;
-      continue;
-    }
-    if (char === '{') {
-      depth++;
-    } else if (char === '}') {
-      depth--;
-      if (depth === 0) {
-        return text.slice(startIndex, index + 1).trim();
-      }
-    }
+    if (char === '"') inString = true;
+    else if (char === '{') depth++;
+    else if (char === '}' && --depth === 0) return text.slice(startIndex, index + 1).trim();
   }
   return undefined;
 }
