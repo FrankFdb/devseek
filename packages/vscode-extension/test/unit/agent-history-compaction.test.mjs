@@ -71,6 +71,22 @@ test('Agent history compaction: replaces every assistant tool message before pro
   assert.doesNotMatch(messages[3].content, /# Design/);
 });
 
+test('Agent history compaction: an executed-tool summary is idempotent across later compaction passes', () => {
+  const raw = [
+    '正在调查项目事实。',
+    '<read_file>{"path":"/repo/a.cpp"}</read_file>',
+    '<run_terminal>{"command":"find /repo -name \\"*.cpp\\""}</run_terminal>',
+  ].join('\n');
+  const summary = summarizeExecutedAssistantToolHistory(raw);
+  const messages = [{ role: 'assistant', content: summary }];
+
+  assert.equal(summarizeExecutedAssistantToolHistory(summary), summary);
+  assert.equal(replaceAllAssistantToolHistory(messages), 0);
+  assert.equal(messages[0].content, summary);
+  assert.match(summary, /工具调用：2 个/);
+  assert.doesNotMatch(summary, /run_terminal command=工具调用/);
+});
+
 test('Agent history compaction: provider recovery rebuilds from task prompt and ledger only', () => {
   const messages = [
     { role: 'user', content: '完整任务提示和工具协议' },

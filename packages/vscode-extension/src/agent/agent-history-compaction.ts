@@ -7,6 +7,7 @@ import {
 } from './fake-tool-parser';
 
 const MAX_TOOL_SUMMARIES = 14;
+const EXECUTED_TOOL_SUMMARY_MARKER = '[DevSeek 已执行工具请求摘要]';
 
 export function replaceLatestAssistantToolHistory(messages: ChatMessage[]): boolean {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -42,6 +43,7 @@ export function applyProviderRecoveryHistory(
 }
 
 export function summarizeExecutedAssistantToolHistory(text: string): string {
+  if (text.trimStart().startsWith(EXECUTED_TOOL_SUMMARY_MARKER)) return text;
   const tools = parseFakeToolCalls(text);
   if (!tools.length) return text;
 
@@ -50,7 +52,7 @@ export function summarizeExecutedAssistantToolHistory(text: string): string {
     ? stripToolCallBlocks(text.slice(0, firstToolIndex)).trim()
     : stripToolCallBlocks(text).trim();
   const lines = [
-    '[DevSeek 已执行工具请求摘要]',
+    EXECUTED_TOOL_SUMMARY_MARKER,
   ];
   const intent = summarizeProviderIntent(prose);
   if (intent) lines.push(`意图：${intent}`);

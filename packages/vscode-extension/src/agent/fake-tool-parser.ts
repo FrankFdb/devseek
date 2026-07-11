@@ -41,7 +41,7 @@ const IMPLICIT_FILE_WRITE_KEYS = new Set([
 ]);
 const LOOSE_TERMINAL_TRAILING_KEYS = new Set([
   'workdir', 'cwd', 'maxOutputLines', 'timeout', 'timeoutMs',
-  'is_background', 'requires_approval',
+  'is_background', 'isBackground', 'requires_approval', 'requiresApproval',
 ]);
 const IMPLICIT_TERMINAL_KEYS = new Set([
   'command', 'cmd',
@@ -1013,6 +1013,19 @@ function decodeLooseJsonString(value: string): string {
   });
 }
 
+function parseJsonWithRepairedInvalidEscapes(jsonText: string): Record<string, unknown> | null {
+  const repaired = jsonText.replace(/\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})/g, '\\\\');
+  if (repaired === jsonText) return null;
+  try {
+    const parsed = JSON.parse(repaired) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function isEscapedQuote(text: string, quoteIndex: number, valueStart: number): boolean {
   let slashCount = 0;
   for (let i = quoteIndex - 1; i >= valueStart && text[i] === '\\'; i--) slashCount++;
@@ -1194,7 +1207,8 @@ function parseLooseReplaceInFileToolInput(name: string, jsonText: string): Recor
 }
 
 function parseLooseToolInput(name: string, jsonText: string): Record<string, unknown> | null {
-  return parseLooseFileWriteToolInput(name, jsonText)
+  return parseJsonWithRepairedInvalidEscapes(jsonText)
+    ?? parseLooseFileWriteToolInput(name, jsonText)
     ?? parseLooseReplaceInFileToolInput(name, jsonText)
     ?? parseLooseRunTerminalToolInput(name, jsonText);
 }

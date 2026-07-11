@@ -130,6 +130,38 @@ test('run log replay detects path drift, legacy build dirs, protocol contaminati
   }
 });
 
+test('run log replay detects an executed-tool summary collapsed into a fake terminal command', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-10T23:45:00.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'nested-history-summary',
+      data: {
+        name: 'extension.request.prompt',
+        content: [
+          '[DevSeek 已执行工具请求摘要]',
+          '意图：工具调用：19 个；真实执行结果见后续工具结果。',
+          '工具调用：1 个；真实执行结果、文件写入和验证证据见后续 [工具结果 Round]。',
+          '- run_terminal command=工具调用：19 个；真实执行结果、文件写入和验证证据见后续',
+        ].join('\n'),
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const issue = report.issues.find(item => item.kind === 'nested-tool-history-summary');
+
+    assert.equal(issue?.severity, 'error');
+    assert.match(issue?.message ?? '', /再次当成终端工具解析/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay accepts deterministically recoverable terminal tool blocks', () => {
   const { dir, logPath } = writeLog([
     {
@@ -150,6 +182,84 @@ test('run log replay accepts deterministically recoverable terminal tool blocks'
     const report = replayRunLog(logPath);
     assert.equal(report.terminalCommands, 1);
     assert.equal(report.issues.some(issue => issue.kind === 'malformed-tool-block'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay accepts the real Chinese malformed search recovery sequence', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-10T23:54:00.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'deepseek-malformed-search-recovery',
+      data: {
+        name: 'extension.response.raw',
+        content: '让我搜索 mc_log.h：[调用 grep_search] {"pattern": "mc_log\\.h", "path": "/tmp/project", "isRegexp": false, "maxResults": 10}',
+      },
+    },
+    {
+      ts: '2026-07-10T23:54:00.100Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-start',
+      runId: 'deepseek-malformed-search-recovery',
+      data: { toolCount: 1, tools: ['grep_search'] },
+    },
+    {
+      ts: '2026-07-10T23:54:00.200Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-complete',
+      runId: 'deepseek-malformed-search-recovery',
+      data: { toolCallsMade: true, workToolCallsMade: true, readFileCount: 1 },
+    },
+    {
+      ts: '2026-07-10T23:54:01.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'deepseek-malformed-search-recovery',
+      data: {
+        name: 'extension.response.raw',
+        content: '让我搜索文件：[调用 run_terminal] {"command": "find /tmp/project -name "mc_log.h" | head -5", "isBackground": false}',
+      },
+    },
+    {
+      ts: '2026-07-10T23:54:01.100Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-start',
+      runId: 'deepseek-malformed-search-recovery',
+      data: { toolCount: 1, tools: ['run_terminal'] },
+    },
+    {
+      ts: '2026-07-10T23:54:01.200Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-complete',
+      runId: 'deepseek-malformed-search-recovery',
+      data: { toolCallsMade: true, workToolCallsMade: true, terminalCommandCount: 1 },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(report.providerResponses, 2);
+    assert.equal(report.toolExecutions, 2);
+    assert.equal(kinds.has('provider-truncated-response'), false);
+    assert.equal(kinds.has('malformed-tool-block'), false);
+    assert.equal(kinds.has('provider-tool-request-not-executed'), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

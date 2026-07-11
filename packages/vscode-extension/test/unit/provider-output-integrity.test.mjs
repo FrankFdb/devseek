@@ -45,6 +45,20 @@ test('provider output integrity: accepts a complete quote-damaged replace call a
   assert.equal(result.toolCallCount, 1);
 });
 
+test('provider output integrity: accepts real malformed read-only DeepSeek calls as executable requests', () => {
+  const grepResult = classifyProviderOutputIntegrity(
+    '让我搜索 mc_log.h：[调用 grep_search] {"pattern": "mc_log\\.h", "path": "/tmp/project", "isRegexp": false, "maxResults": 10}',
+  );
+  const terminalResult = classifyProviderOutputIntegrity(
+    '让我搜索文件：[调用 run_terminal] {"command": "find /tmp/project -name "mc_log.h" | head -5", "isBackground": false}',
+  );
+
+  assert.equal(grepResult.kind, 'tool_call');
+  assert.equal(grepResult.toolCallCount, 1);
+  assert.equal(terminalResult.kind, 'tool_call');
+  assert.equal(terminalResult.toolCallCount, 1);
+});
+
 test('provider output integrity: classifies DeepSeek nameless artifact arrays as tool calls', () => {
   const result = classifyProviderOutputIntegrity([
     '现在创建核心代码文件。',

@@ -84,4 +84,16 @@ export const DEEPSEEK_TOOL_TRANSCRIPT_FIXTURES = [
     expectedToolNames: ['run_terminal'],
     expectedVisibleText: '我立即执行真实验证。',
   },
+  {
+    name: 'real DeepSeek Chinese grep call with an unescaped regex backslash',
+    text: '让我搜索 mc_log.h 的实际路径：[调用 grep_search] {"pattern": "mc_log\\.h", "path": "/home/ff/uav/tars/huida_uav", "isRegexp": false, "maxResults": 10}',
+    expectedToolNames: ['grep_search'],
+    expectedVisibleText: '让我搜索 mc_log.h 的实际路径：',
+  },
+  {
+    name: 'real DeepSeek Chinese terminal call with shell quotes and camel-case metadata',
+    text: '让我先搜索 mc_log.h 的实际位置：[调用 run_terminal] {"command": "find /home/ff/uav/tars/huida_uav -name "mc_log.h" 2>/dev/null | head -5", "isBackground": false}',
+    expectedToolNames: ['run_terminal'],
+    expectedVisibleText: '让我先搜索 mc_log.h 的实际位置：',
+  },
 ];

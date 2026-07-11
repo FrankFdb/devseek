@@ -41,6 +41,7 @@ export type RunLogReplayIssueKind =
   | 'provider-incomplete-answer'
   | 'old-bridge-runtime'
   | 'provider-prompt-too-large'
+  | 'nested-tool-history-summary'
   | 'agent-run-failed'
   | 'markdown-deliverable-completed-without-file-evidence';
 
@@ -89,6 +90,7 @@ const WORKSPACE_TARGET_TEXT_RE = /(\/|\\|\.cpp\b|\.h\b|\.ts\b|\.js\b|\.py\b|代�
 const SOURCE_CODE_RESPONSE_RE = /```(?:[A-Za-z0-9_+#.-]+)?\s*[\s\S]{200,}?```|#include\s+[<"]|(?:^|\n)\s*(?:int|void|class|struct|const|let|function)\s+[A-Za-z_]\w*[\s({=]/;
 const LONG_RUNNING_RUN_MS = 60_000;
 const PROVIDER_PROMPT_TOO_LARGE_CHARS = 45_000;
+const NESTED_TOOL_HISTORY_SUMMARY_RE = /(?:^|\n)-\s+run_terminal\s+command=工具调用：\d+\s*个/;
 
 export function loadRunLogEvents(logPath: string): RunLogReplayEvent[] {
   const content = fs.readFileSync(logPath, 'utf8');
@@ -586,6 +588,15 @@ function collectProviderRequestIssues(content: string, line: number, issues: Run
       line,
       message: '请求 prompt 把 DevSeek 内部日志/状态文件当成当前项目上下文。',
       evidence: firstMatch(content, INTERNAL_CONTEXT_ANCHOR_RE),
+    });
+  }
+  if (NESTED_TOOL_HISTORY_SUMMARY_RE.test(content)) {
+    issues.push({
+      kind: 'nested-tool-history-summary',
+      severity: 'error',
+      line,
+      message: '已压缩的工具历史被再次当成终端工具解析，Provider 上下文已丢失真实工具清单。',
+      evidence: firstMatch(content, NESTED_TOOL_HISTORY_SUMMARY_RE),
     });
   }
 }
