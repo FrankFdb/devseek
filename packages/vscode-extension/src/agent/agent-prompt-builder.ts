@@ -115,9 +115,8 @@ ${buildReplaceInFileToolPrompt()}
 查找某个符号（函数/类/变量/接口）在整个代码库中的所有引用位置（使用语言服务器语义分析，比 grep 更精确；可跳过注释和字符串误匹配）：
 [TOOL:vscode_listCodeUsages {"symbol":"FunctionName","filePath":"src/foo.ts"}]
 
-${includeWorkspaceMutationTools ? `执行 VS Code 编辑器命令（格式化文档、整理 import、运行任务、重启类型检查等；非白名单命令需用户确认）：
+${includeWorkspaceMutationTools ? `执行封闭注册表内的 VS Code 编辑器动作（如格式化、整理 import、保存、刷新或重启语言服务；构建、测试及脚本必须使用 run_terminal）：
 [TOOL:run_vscode_command {"command":"editor.action.formatDocument"}]
-[TOOL:run_vscode_command {"command":"workbench.action.tasks.runTask","args":["Build"]}]
 ` : ''}
 ${isSingle || isLast ? `\n状态枚举："not-started" | "in-progress" | "completed"` : ''}
 ${workflowHint}${mcpSection}`;

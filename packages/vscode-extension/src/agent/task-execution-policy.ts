@@ -151,15 +151,16 @@ export function enforceAgentTaskExecutionPolicy(
   tasks: AgentTask[],
   input: { mode?: ExecutionMode; userPrompt?: string },
 ): AgentTaskExecutionPolicyResult {
-  if (!tasks.length || !input.mode || taskModeAllowsWorkspaceWrites(input.mode)) {
+  if (!tasks.length || (input.mode && taskModeAllowsWorkspaceWrites(input.mode))) {
     return { tasks, changed: false };
   }
+  const effectiveMode = input.mode ?? 'inspect';
 
-  if (isMarkdownDocumentDeliverableRequest(input.userPrompt) && isMarkdownDocumentOnlyDeliverableRequest(input.userPrompt)) {
+  if (input.mode && isMarkdownDocumentDeliverableRequest(input.userPrompt) && isMarkdownDocumentOnlyDeliverableRequest(input.userPrompt)) {
     return collapseToMarkdownDocumentCreateTask(tasks, input.userPrompt);
   }
 
-  if (input.mode === 'plan') {
+  if (effectiveMode === 'plan') {
     const alreadySingleReadOnlyPlanTask =
       tasks.length === 1 &&
       tasks[0].action === 'analyze' &&
@@ -178,8 +179,8 @@ export function enforceAgentTaskExecutionPolicy(
   if (!hasWriteTasks) return { tasks, changed: false };
 
   return {
-    tasks: convertWriteTasksToReadOnly(tasks, input.mode),
+    tasks: convertWriteTasksToReadOnly(tasks, effectiveMode),
     changed: true,
-    reason: `当前为${modeLabel(input.mode)}模式，已将写入型任务转换为只读分析任务。`,
+    reason: `当前为${modeLabel(effectiveMode)}模式，已将写入型任务转换为只读分析任务。`,
   };
 }

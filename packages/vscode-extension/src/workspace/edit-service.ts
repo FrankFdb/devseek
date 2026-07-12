@@ -67,6 +67,11 @@ export interface WorkspaceRollbackResult {
   reason?: string;
 }
 
+export interface WorkspaceDirectoryCreateResult {
+  created: boolean;
+  canonicalPath: string;
+}
+
 export interface WorkspaceEditApplyOptions {
   validateSourceSanity?: boolean;
   repairSourceTransportEscapes?: boolean;
@@ -95,13 +100,93 @@ export class WorkspaceEditService {
     };
   }
 
-  snapshotTextFile(absPath: string): WorkspaceFileSnapshot {
-    const existed = fs.existsSync(absPath);
-    return {
-      absPath,
-      existed,
-      content: existed ? fs.readFileSync(absPath, 'utf8') : '',
+  createWorkspaceDirectory(absPath: string, workspaceRoot: string): WorkspaceDirectoryCreateResult {
+    const resolvedPath = nodePath.resolve(absPath);
+    const resolvedRoot = nodePath.resolve(workspaceRoot);
+    const route = captureCanonicalPathRouteIdentity(resolvedPath);
+    const parentRoute = captureCanonicalPathRouteIdentity(nodePath.dirname(resolvedPath));
+    if (!route || !parentRoute || !isCanonicalPathInsideRoot(resolvedPath, resolvedRoot)) {
+      throw new WorkspaceEditConflictError(resolvedPath, 'workspace-edit-boundary: directory escapes workspace or has an unresolved route');
+    }
+    try {
+      const existing = fs.lstatSync(resolvedPath);
+      if (existing.isSymbolicLink() || !existing.isDirectory()) {
+        throw new WorkspaceEditConflictError(resolvedPath, 'workspace-edit-boundary: directory target is not a real directory');
+      }
+      const canonicalPath = fs.realpathSync.native(resolvedPath);
+      if (!isCanonicalPathInsideRoot(canonicalPath, resolvedRoot)) {
+        throw new WorkspaceEditConflictError(resolvedPath, 'workspace-edit-boundary: existing directory escapes workspace');
+      }
+      return { created: false, canonicalPath };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+
+    const baseline: WorkspaceTargetParentBaseline = {
+      absPath: resolvedPath,
+      workspaceRoot: resolvedRoot,
+      parentRoute,
     };
+    const parent = openAuthorizedParentDirectory(baseline);
+    let createdIdentity: { device: string; inode: string } | undefined;
+    try {
+      if (parent.directoryCanonicalPath !== nodePath.dirname(route.canonicalPath)
+        || !isCanonicalPathInsideRoot(parent.directoryCanonicalPath, resolvedRoot)) {
+        throw new WorkspaceEditConflictError(resolvedPath, 'workspace-edit-boundary: directory parent changed before commit');
+      }
+      const targetPath = anchoredChildPath(parent, nodePath.basename(resolvedPath));
+      fs.mkdirSync(targetPath);
+      const descriptor = fs.openSync(
+        targetPath,
+        fs.constants.O_RDONLY | (fs.constants.O_DIRECTORY || 0) | (fs.constants.O_NOFOLLOW || 0),
+      );
+      try {
+        const stats = fs.fstatSync(descriptor, { bigint: true });
+        if (!stats.isDirectory()) {
+          throw new WorkspaceEditConflictError(resolvedPath, 'workspace-edit-boundary: created target is not a directory');
+        }
+        createdIdentity = { device: stats.dev.toString(), inode: stats.ino.toString() };
+      } finally {
+        fs.closeSync(descriptor);
+      }
+      fsyncDirectoryBestEffort(parent.directoryFd);
+      const canonicalPath = fs.realpathSync.native(resolvedPath);
+      if (!isCanonicalPathInsideRoot(canonicalPath, resolvedRoot)) {
+        throw new WorkspaceEditConflictError(resolvedPath, 'workspace-edit-boundary: created directory failed canonical readback');
+      }
+      return { created: true, canonicalPath };
+    } catch (error) {
+      if (createdIdentity) removeAnchoredDirectory(parent, nodePath.basename(resolvedPath), createdIdentity);
+      cleanupCreatedDirectories(parent);
+      throw error;
+    } finally {
+      closeAuthorizedParentDirectory(parent);
+    }
+  }
+
+  deleteTextFile(absPath: string, workspaceRoot: string): boolean {
+    const baseline = this.captureTextFileBaseline(absPath, workspaceRoot);
+    if (!baseline.snapshot.existed) return false;
+    const parent = openAuthorizedParentDirectory(baseline);
+    try {
+      const current = this.captureTextFileBaseline(absPath, workspaceRoot);
+      if (!sameTextFileBaseline(baseline, current) || !parentMatchesBaseline(parent, current)) {
+        throw new WorkspaceEditConflictError(absPath, 'workspace-edit-boundary: delete target changed after authorization');
+      }
+      assertAnchoredTargetMatches(parent, current);
+      const targetPath = anchoredChildPath(parent, nodePath.basename(current.absPath));
+      fs.unlinkSync(targetPath);
+      fsyncDirectoryBestEffort(parent.directoryFd);
+      try {
+        fs.lstatSync(targetPath);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true;
+        throw error;
+      }
+      throw new WorkspaceEditConflictError(absPath, 'workspace-edit-boundary: deleted target still exists after commit');
+    } finally {
+      closeAuthorizedParentDirectory(parent);
+    }
   }
 
   captureTextFileBaseline(absPath: string, workspaceRoot: string): WorkspaceTextFileBaseline {
@@ -345,44 +430,6 @@ export class WorkspaceEditService {
     throw new WorkspaceEditValidationError(proposal.absPath, issue.detail);
   }
 
-  applyTextFileProposal(
-    proposal: WorkspaceEditProposal,
-    snapshot = this.snapshotTextFile(proposal.absPath),
-    options: WorkspaceEditApplyOptions = {},
-  ): WorkspaceAppliedEdit {
-    let appliedProposal = proposal;
-    let normalization: WorkspaceWriteNormalization | undefined;
-    if (options.repairSourceTransportEscapes) {
-      const repaired = repairGeneratedSourceTransportEscapes(proposal.absPath, proposal.content);
-      if (repaired.repaired) {
-        appliedProposal = { ...proposal, content: repaired.content };
-        normalization = {
-          kind: 'source-transport-escape-repair',
-          repairCount: repaired.repairCount,
-        };
-      }
-    }
-    if (options.validateSourceSanity) {
-      this.validateTextFileProposal(appliedProposal);
-    }
-    const dir = nodePath.dirname(appliedProposal.absPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(appliedProposal.absPath, appliedProposal.content, 'utf8');
-    return {
-      proposal: appliedProposal,
-      snapshot,
-      result: {
-        existed: snapshot.existed,
-        oldContent: snapshot.content,
-        newContent: appliedProposal.content,
-        ...(normalization ? { normalization } : {}),
-      },
-    };
-  }
-
-  writeTextFileSync(absPath: string, content: string, options: WorkspaceEditApplyOptions = {}): WorkspaceWriteResult {
-    return this.applyTextFileProposal(this.proposeTextFileWrite(absPath, content), undefined, options).result;
-  }
 }
 
 interface CreatedDirectoryAnchor {
@@ -407,7 +454,13 @@ interface AnchoredTemporaryFile {
   inode: string;
 }
 
-function openAuthorizedParentDirectory(baseline: WorkspaceTextFileBaseline): AuthorizedParentDirectory {
+interface WorkspaceTargetParentBaseline {
+  absPath: string;
+  workspaceRoot: string;
+  parentRoute: CanonicalPathRouteIdentity;
+}
+
+function openAuthorizedParentDirectory(baseline: WorkspaceTargetParentBaseline): AuthorizedParentDirectory {
   const route = baseline.parentRoute;
   if (route.existingAncestorFingerprint.endsWith(':symlink')) {
     throw new WorkspaceEditConflictError(baseline.absPath, 'workspace-edit-boundary: symlink parent routes are not writable');
@@ -484,6 +537,24 @@ function closeAuthorizedParentDirectory(parent: AuthorizedParentDirectory): void
     try { fs.closeSync(descriptor); } catch { /* already closed */ }
   }
   parent.openFds.length = 0;
+}
+
+function removeAnchoredDirectory(
+  parent: AuthorizedParentDirectory,
+  name: string,
+  identity: { device: string; inode: string },
+): void {
+  const targetPath = anchoredChildPath(parent, name);
+  try {
+    const stats = fs.lstatSync(targetPath, { bigint: true });
+    if (stats.isDirectory()
+      && stats.dev.toString() === identity.device
+      && stats.ino.toString() === identity.inode) {
+      fs.rmdirSync(targetPath);
+    }
+  } catch {
+    // Never remove a directory whose identity or emptiness cannot be proven.
+  }
 }
 
 function fsyncDirectoryBestEffort(directoryFd: number): void {

@@ -9,7 +9,7 @@ import {
   resolveLocalExecutionProjectDirFromCandidate,
   resolveLocalExecutionWorkdir,
 } from '../workspace/local-execution-target';
-import { planLocalExecution, runLocalExecution, type LocalExecutionPlan } from '../execution-planner';
+import { planLocalExecution, type LocalExecutionPlan } from '../execution-planner';
 import type { AgentLoopCallbacks } from './loop-types';
 import { withTaskTerminalEvidence, type TaskExecutionResult } from './task-execution-result';
 import { analyzeTerminalEvidence } from './tool-loop';
@@ -174,19 +174,19 @@ async function runPlannedCommand(
   plan: LocalExecutionPlan,
 ): Promise<TerminalEvidence[]> {
   try {
-    if (callbacks.onTerminalCommand) {
-      const output = await callbacks.onTerminalCommand(plan.command, plan.cwd);
-      return [analyzeTerminalEvidence(plan.command, output, plan.cwd).evidence];
+    if (!callbacks.onTerminalCommand) {
+      return [{
+        command: plan.command,
+        kind: classifyTerminalEvidenceCommand(plan.command),
+        ok: false,
+        exitCode: null,
+        detail: '未配置终端副作用授权边界，命令未执行。',
+      }];
     }
 
-    const result = await runLocalExecution(plan);
+    const output = await callbacks.onTerminalCommand(plan.command, plan.cwd);
     return [{
-      command: result.command,
-      kind: classifyTerminalEvidenceCommand(result.command),
-      ok: result.ok,
-      exitCode: result.exitCode,
-      detail: result.output.slice(0, 1200),
-      ...(result.reviewRequired ? { reviewRequired: true } : {}),
+      ...analyzeTerminalEvidence(plan.command, output, plan.cwd).evidence,
     }];
   } catch {
     return [];

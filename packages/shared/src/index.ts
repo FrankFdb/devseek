@@ -10,6 +10,10 @@ export * from './diagnostic-logger';
 export * from './engineering-context';
 export * from './llm-types';
 export * from './platform-runtime';
+export * from './persisted-secret';
+export * from './run-evidence-ledger';
+export * from './run-evidence-integration';
+export * from './run-evidence-migration';
 export * from './surface-adapter';
 
 /** POST /chat 请求体 */

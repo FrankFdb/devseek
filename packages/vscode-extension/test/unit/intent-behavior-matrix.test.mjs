@@ -384,7 +384,7 @@ const routingCases = [
     title: 'delete request requires confirmation and does not run agent',
     prompt: '删除 code/main.cpp',
     expect: { kind: 'code-change', mode: 'destructive', workflow: 'confirmation-required', useAgent: false, requireConfirmation: true },
-    toolActions: { read: 'requireConfirm', edit: 'requireConfirm', terminal: 'requireConfirm', 'vscode-command': 'requireConfirm' },
+    toolActions: { read: 'allow', edit: 'requireConfirm', terminal: 'requireConfirm', 'vscode-command': 'requireConfirm' },
   },
   {
     id: 'CTRL-001',

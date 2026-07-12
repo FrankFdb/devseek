@@ -60,6 +60,14 @@ export async function tryExecuteDeterministicCreateTask(input: {
     return { applied: false, path: absPath, raw: targetAuthorization.reason };
   }
 
+  let baseline;
+  try {
+    baseline = workspaceEditService.captureTextFileBaseline(absPath, input.workspaceRoot.fsPath);
+  } catch (error) {
+    await postDeterministicStatus(input, 'failed', basename, (error as Error).message);
+    return { applied: false, path: absPath, raw: (error as Error).message };
+  }
+
   if (callbacks.onBeforeFileWrite && !(await callbacks.onBeforeFileWrite(absPath, {
     purpose: 'deterministic-task',
     userRequested: true,
@@ -73,10 +81,14 @@ export async function tryExecuteDeterministicCreateTask(input: {
 
   try {
     callbacks.onToolActivity?.('write', task.file);
-    const writeResult = workspaceEditService.writeTextFileSync(absPath, task.expectedContent, {
-      validateSourceSanity: true,
-      repairSourceTransportEscapes: true,
-    });
+    const writeResult = workspaceEditService.commitTextFileProposal(
+      workspaceEditService.proposeTextFileWrite(absPath, task.expectedContent),
+      baseline,
+      {
+        validateSourceSanity: true,
+        repairSourceTransportEscapes: true,
+      },
+    ).result;
     const freshContent = readFileContentFull(absPath);
     const diff = roughLineDiff(writeResult.oldContent, task.expectedContent);
     const relPath = displayPath(input.workspaceRoot, absPath, task.file);

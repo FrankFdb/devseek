@@ -8,6 +8,7 @@ import {
 } from '../workspace-applier';
 import { AgenticRepairService } from './agentic-repair-service';
 import { askRepairExhaustedAction, requestManualFixGuidance } from './repair-exhaustion-interaction';
+import type { ValidationCommandRunner } from '../workspace/validation-service';
 
 export interface ClosedLoopRepairRouteChatOptions {
   prompt: string;
@@ -17,6 +18,8 @@ export interface ClosedLoopRepairRouteChatOptions {
   onDelta?: (delta: string) => void;
   traceRunId?: string;
   traceWorkspaceRoot?: string;
+  traceEvidenceParticipantToken?: string;
+  onTraceEvidenceError?: (error: unknown) => void;
 }
 
 export interface RunClosedLoopRepairInput {
@@ -29,6 +32,7 @@ export interface RunClosedLoopRepairInput {
   registerAppliedChange: (change: AppliedChangeRecord) => Promise<void>;
   getSessionId: () => string;
   postVisibleDelta: (text: string) => void;
+  validationCommandRunner: ValidationCommandRunner;
 }
 
 export async function runClosedLoopRepair(input: RunClosedLoopRepairInput): Promise<void> {
@@ -106,7 +110,10 @@ export async function runClosedLoopRepair(input: RunClosedLoopRepairInput): Prom
       true,
       input.registerAppliedChange,
       input.preferredAbsolutePaths,
-      { rollbackOnValidationFailure: false },
+      {
+        rollbackOnValidationFailure: false,
+        validationCommandRunner: input.validationCommandRunner,
+      },
     );
     if (!repairApply.applied) {
       if (repairApply.failureReason === 'truncating-overwrite') {

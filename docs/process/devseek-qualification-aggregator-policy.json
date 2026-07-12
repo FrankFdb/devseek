@@ -1,0 +1,59 @@
+{
+  "schema_version": "devseek.qualification-aggregator-policy/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1",
+    "signature_algorithm": "ed25519"
+  },
+  "integrity_scope": "local-protocol-conformance",
+  "qualification_eligible": false,
+  "policy_id": "DEVSEEK-G0C-LOCAL-AGGREGATOR-POLICY",
+  "policy_version": 1,
+  "source_status": "test-fixture",
+  "maximum_manifest_ttl_seconds": 7200,
+  "manifest_signers": [
+    {
+      "key_id": "devseek-g0c-test-manifest-aggregator-01",
+      "identity": "local-fixture/devseek-g0c-independent-aggregator",
+      "purpose": "qualification-manifest",
+      "algorithm": "ed25519",
+      "public_key_encoding": "spki-der-base64",
+      "public_key_spki_base64": "MCowBQYDK2VwAyEA3hZ1hEdN/CoRHgCWcon6NumiH5IkJjzBJqTwqtbjGwU=",
+      "public_key_spki_sha256": "9ea53ab61b39f2d7f0bdb64816b32874b3d2c4b99f8222f57d860f0c7fa388bf",
+      "valid_from": "2026-07-12T00:00:00.000Z",
+      "expires_at": null,
+      "status": "test-only",
+      "key_sha256": "aa303e4a2b4af892a678d41e2f83d91aa9bdde477e3cc4156e783f8675dfb048"
+    }
+  ],
+  "retention_signers": [
+    {
+      "key_id": "devseek-g0c-test-retention-lock-01",
+      "identity": "local-fixture/devseek-g0c-independent-retention",
+      "purpose": "retention-lock",
+      "algorithm": "ed25519",
+      "public_key_encoding": "spki-der-base64",
+      "public_key_spki_base64": "MCowBQYDK2VwAyEAtUKvD2tu1m1TeDVq3cVZg42DfF0zRDPXCOihWIXY2c4=",
+      "public_key_spki_sha256": "f8a4c9005d6f3d6660154086ef8f6e0445f1c779d1e3956957013de7d1107579",
+      "valid_from": "2026-07-12T00:00:00.000Z",
+      "expires_at": null,
+      "status": "test-only",
+      "key_sha256": "71778cef339426c463c162c2d5ee9cc8024d0bb3ab187589fd379885b4c53ca1"
+    }
+  ],
+  "identity_separation": {
+    "manifest_and_retention_must_differ": true,
+    "must_differ_from_plan_and_event_actors": true,
+    "key_material_reuse_forbidden": true,
+    "purpose_separation_required": true
+  },
+  "retention_policy": {
+    "storage_class": "append-only-local-cas",
+    "minimum_retention_seconds": 86400,
+    "independent_expected_anchor_required": true,
+    "immutable_manifest_id_binding_required": true,
+    "supersession_chain_required": true
+  },
+  "claim_rules": [],
+  "policy_sha256": "08897f5f2c6994fd2ae4d130648c38ab2eb6971b840a02b3b212430fcd45fb9e"
+}

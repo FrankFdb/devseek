@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-import { exec, type ExecException } from 'child_process';
 import type { CppValidationPolicy } from '../validation-planner';
 import {
   CPP_COMPILE_VALIDATION_TIMEOUT_MS,
@@ -11,10 +10,6 @@ import {
   type ValidationMode,
   type VerificationPlan,
 } from '../app/verification-planner';
-import {
-  buildValidationTimeoutFailureDetail,
-  executionOutcomeClassifier,
-} from '../execution-outcome-classifier';
 
 export {
   CPP_COMPILE_VALIDATION_TIMEOUT_MS,
@@ -30,6 +25,8 @@ export interface ValidationCommandResult {
   ok: boolean;
   command: string;
   exitCode: number | null;
+  stdout: string;
+  stderr: string;
   output: string;
   cwd: string;
 }
@@ -75,7 +72,10 @@ export class ValidationService {
   private readonly fsNode: NonNullable<ValidationServiceOptions['fsNode']>;
 
   constructor(options: ValidationServiceOptions = {}) {
-    this.commandRunner = options.commandRunner ?? runShell;
+    // ValidationService owns planning and result semantics, not process authority.
+    // Product callers must inject the evidence-aware terminal boundary. Missing
+    // authority fails closed so a new call site cannot silently bypass evidence.
+    this.commandRunner = options.commandRunner ?? rejectMissingCommandAuthority;
     this.verificationPlanner = options.verificationPlanner ?? new VerificationPlanner();
     this.fsNode = options.fsNode ?? {
       existsSync: fs.existsSync,
@@ -123,6 +123,8 @@ function blockedValidationEvidence(plan: VerificationPlan): AutoValidationResult
     status: 'blocked',
     command: '',
     exitCode: null,
+    stdout: '',
+    stderr: '',
     output: [
       `未执行自动验证: ${plan.reason}`,
       ...plan.risks,
@@ -138,30 +140,18 @@ function blockedValidationEvidence(plan: VerificationPlan): AutoValidationResult
   };
 }
 
-async function runShell(invocation: ValidationCommandInvocation): Promise<ValidationCommandResult> {
-  return new Promise((resolve) => {
-    exec(invocation.command, { cwd: invocation.cwd, timeout: invocation.timeoutMs, encoding: 'utf8' }, (
-      error: ExecException | null,
-      stdout: string,
-      stderr: string,
-    ) => {
-      const outcome = executionOutcomeClassifier.classifyExecResult({
-        error,
-        stdout,
-        stderr,
-        command: invocation.command,
-        timeoutMs: invocation.timeoutMs,
-        allowManualReview: false,
-        timeoutFailureDetail: buildValidationTimeoutFailureDetail(invocation.timeoutMs),
-      });
-      resolve({
-        ran: true,
-        ok: outcome.ok,
-        command: invocation.command,
-        exitCode: outcome.exitCode,
-        output: outcome.output,
-        cwd: invocation.cwd,
-      });
-    });
-  });
+async function rejectMissingCommandAuthority(
+  invocation: ValidationCommandInvocation,
+): Promise<ValidationCommandResult> {
+  const detail = '未配置验证命令授权边界，命令未执行。';
+  return {
+    ran: false,
+    ok: false,
+    command: invocation.command,
+    exitCode: null,
+    stdout: '',
+    stderr: detail,
+    output: detail,
+    cwd: invocation.cwd,
+  };
 }

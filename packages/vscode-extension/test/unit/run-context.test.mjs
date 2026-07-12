@@ -23,6 +23,7 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const { createDevSeekRunContext } = req(bundlePath);
+const { FileSystemRunEvidenceLedger, productRunEvidenceRoot } = req(path.join(rootDir, '../shared/dist/index.js'));
 
 function readJsonl(filePath) {
   return readFileSync(filePath, 'utf8').trim().split('\n').map(line => JSON.parse(line));
@@ -71,6 +72,15 @@ test('RunContext: owns one run id and one chronological log file', () => {
     assert.equal(completed.data.requiresSourceClaimArtifactVerification, false);
     assert.equal(completed.data.taskContractFingerprint, started.data.taskContractFingerprint);
     assert.equal(entries.every((entry, index) => index === 0 || entry.seq >= entries[index - 1].seq), true);
+    const evidence = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const evidenceEvents = evidence.read('run-context-1');
+    assert.deepEqual(evidenceEvents.map(event => event.type), [
+      'run.opened',
+      'command.accepted',
+      'run.settled',
+    ]);
+    assert.equal(evidence.verify('run-context-1').status, 'valid-sealed');
+    assert.equal(evidenceEvents.every(event => event.qualification_eligible === false), true);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }
@@ -178,8 +188,11 @@ test('RunContext: completion is idempotent', () => {
       userPrompt: 'compile',
       traceLevel: 'debug',
     });
-    context.complete('failed', { reason: 'first' });
-    context.complete('completed', { reason: 'second' });
+    const first = context.complete('failed', { reason: 'first' });
+    const second = context.complete('completed', { reason: 'second' });
+
+    assert.equal(first, 'failed');
+    assert.equal(second, 'failed');
 
     const entries = readJsonl(path.join(workspaceRoot, '.devseek', 'runs', 'run-context-2.log'));
     const completions = entries.filter(entry => entry.event === 'agent-run-completed');
@@ -220,6 +233,297 @@ test('RunContext: records agent status events for failure diagnosis', () => {
     assert.equal(status.data.state, 'failed');
     assert.equal(status.data.taskFile, 'maintenance_types.hpp');
     assert.match(status.data.detail, /不存在或无法读取/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('RunContext: projects mutation, verification, gate, tool and checkpoint facts into one sealed ledger', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-unified-evidence',
+      userPrompt: '修改 src/main.ts 并运行测试',
+      traceLevel: 'debug',
+    });
+    const task = {
+      type: 'agentStatus',
+      phase: 'execute',
+      taskId: 'write-main',
+      taskFile: 'main.ts',
+      taskAction: 'modify',
+      taskIndex: 1,
+      taskTotal: 1,
+      title: '修改 main.ts',
+    };
+    context.recordAgentStatus({ ...task, state: 'started' });
+    context.recordToolActivity('file-write', 'main.ts');
+    context.recordAgentStatus({ ...task, state: 'completed' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'validate', state: 'started', title: '运行测试', evidenceOperationId: 'verify-main' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'validate', state: 'completed', title: '测试通过', evidenceOperationId: 'verify-main' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'quality', state: 'started', title: '评估质量门禁', evidenceOperationId: 'verify-main' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'quality', state: 'completed', title: '质量门禁通过', evidenceOperationId: 'verify-main' });
+    context.recordCheckpoint(1, 1, 'progress');
+    context.complete('completed', { changedPaths: ['src/main.ts'] });
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read('run-context-unified-evidence');
+    for (const type of [
+      'agent.status',
+      'tool.activity',
+      'side_effect.requested',
+      'side_effect.authorized',
+      'side_effect.started',
+      'side_effect.committed',
+      'verification.started',
+      'verification.completed',
+      'quality_gate.started',
+      'quality_gate.passed',
+      'checkpoint.created',
+      'run.settled',
+    ]) {
+      assert.equal(events.some(event => event.type === type), true, `missing ${type}`);
+    }
+    assert.equal(ledger.head('run-context-unified-evidence').sealed, true);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('RunContext: repaired mutation uses a new attempt and resolves the failed side effect only after validation', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-mutation-recovery',
+      userPrompt: '修改 src/main.ts 并修复失败',
+      traceLevel: 'debug',
+    });
+    const task = {
+      type: 'agentStatus',
+      phase: 'execute',
+      taskId: 'write-main',
+      taskFile: 'main.ts',
+      taskAction: 'modify',
+      title: '修改 main.ts',
+    };
+    context.recordAgentStatus({ ...task, state: 'failed' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'repair', state: 'started', title: '开始修复' });
+    context.recordAgentStatus({ ...task, state: 'started' });
+    context.recordAgentStatus({ ...task, state: 'completed' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'validate', state: 'started', title: '重新验证', evidenceOperationId: 'verify-repair' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'validate', state: 'completed', title: '重新验证通过', evidenceOperationId: 'verify-repair' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'quality', state: 'started', title: '评估修复质量门禁', evidenceOperationId: 'verify-repair' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'quality', state: 'completed', title: '修复质量门禁通过', evidenceOperationId: 'verify-repair' });
+    context.complete('completed');
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read('run-context-mutation-recovery');
+    const sideEffectTerminals = events.filter(event => (
+      event.type === 'side_effect.failed' || event.type === 'side_effect.committed'
+    ));
+    assert.equal(sideEffectTerminals.length, 2);
+    assert.notEqual(sideEffectTerminals[0].payload.operation_id, sideEffectTerminals[1].payload.operation_id);
+    const recovery = events.find(event => event.type === 'recovery.completed');
+    assert.equal(recovery.payload.resolves_operation_ids.includes(sideEffectTerminals[0].payload.operation_id), true);
+    assert.equal(recovery.payload.verification_operation_id, 'verify-repair');
+    assert.equal(ledger.verify('run-context-mutation-recovery').status, 'valid-sealed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('RunContext: recovery without a correlated retry mutation fails closed', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-recovery-without-retry',
+      userPrompt: '修复 src/main.ts',
+      traceLevel: 'debug',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'execute', state: 'failed',
+      taskId: 'write-main', taskFile: 'main.ts', taskAction: 'modify', title: '修改失败',
+    });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'repair', state: 'started', title: '开始修复' });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'validate', state: 'started',
+      title: '验证修复', evidenceOperationId: 'verify-without-retry',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'validate', state: 'completed',
+      title: '验证通过', evidenceOperationId: 'verify-without-retry',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'quality', state: 'started',
+      title: '评估门禁', evidenceOperationId: 'verify-without-retry',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'quality', state: 'completed',
+      title: '门禁通过', evidenceOperationId: 'verify-without-retry',
+    });
+
+    assert.equal(context.complete('completed'), 'failed');
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read('run-context-recovery-without-retry');
+    assert.equal(events.some(event => event.type === 'recovery.completed'), false);
+    assert.equal(events.some(event => event.type === 'evidence.degraded'), true);
+    assert.equal(events.find(event => event.type === 'run.settled')?.payload.status, 'failed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('RunContext: a pre-detection mutation cannot become repair proof by tagging only its commit', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-stale-mutation-recovery',
+      userPrompt: '修复 src/main.ts',
+      traceLevel: 'debug',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'execute', state: 'failed',
+      taskId: 'failed-write', taskFile: 'main.ts', taskAction: 'modify', title: '原修改失败',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'execute', state: 'started',
+      taskId: 'stale-write', taskFile: 'other.ts', taskAction: 'modify', title: '旧修改已开始',
+    });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'repair', state: 'started', title: '开始修复' });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'execute', state: 'completed',
+      taskId: 'stale-write', taskFile: 'other.ts', taskAction: 'modify', title: '旧修改结束',
+    });
+    for (const [phase, state, title] of [
+      ['validate', 'started', '验证开始'],
+      ['validate', 'completed', '验证通过'],
+      ['quality', 'started', '门禁开始'],
+      ['quality', 'completed', '门禁通过'],
+    ]) {
+      context.recordAgentStatus({
+        type: 'agentStatus', phase, state, title, evidenceOperationId: 'verify-stale-write',
+      });
+    }
+
+    assert.equal(context.complete('completed'), 'failed');
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read('run-context-stale-mutation-recovery');
+    const commit = events.find(event => event.type === 'side_effect.committed');
+    const request = events.find(event => (
+      event.type === 'side_effect.requested'
+      && event.payload.operation_id === commit?.payload.operation_id
+    ));
+    const detected = events.find(event => event.type === 'recovery.detected');
+    assert.ok(request.sequence < detected.sequence && detected.sequence < commit.sequence);
+    assert.equal(request.payload.recovery_operation_id, undefined);
+    assert.equal(typeof commit.payload.recovery_operation_id, 'string');
+    assert.equal(events.some(event => event.type === 'recovery.completed'), false);
+    assert.equal(events.find(event => event.type === 'run.settled')?.payload.status, 'failed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('RunContext: an unbound quality gate cannot resolve a recovered mutation', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-unbound-recovery-gate',
+      userPrompt: '修复 src/main.ts',
+      traceLevel: 'debug',
+    });
+    const task = {
+      type: 'agentStatus', taskId: 'write-main', taskFile: 'main.ts', taskAction: 'modify', title: '修改 main.ts',
+    };
+    context.recordAgentStatus({ ...task, phase: 'execute', state: 'failed' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'repair', state: 'started', title: '开始修复' });
+    context.recordAgentStatus({ ...task, phase: 'execute', state: 'started' });
+    context.recordAgentStatus({ ...task, phase: 'execute', state: 'completed' });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'validate', state: 'started',
+      title: '验证开始', evidenceOperationId: 'verify-real',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'validate', state: 'completed',
+      title: '验证通过', evidenceOperationId: 'verify-real',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'quality', state: 'completed',
+      title: '伪门禁通过', evidenceOperationId: 'verify-fake',
+    });
+
+    assert.equal(context.complete('completed'), 'failed');
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read('run-context-unbound-recovery-gate');
+    assert.equal(events.some(event => event.type === 'quality_gate.passed'), false);
+    assert.equal(events.some(event => event.type === 'recovery.completed'), false);
+    assert.equal(events.some(event => event.type === 'evidence.degraded'), true);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('RunContext: failed settlement closes an in-flight mutation as indeterminate before sealing', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-abrupt-failure',
+      userPrompt: '修改 src/main.ts',
+      traceLevel: 'debug',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      state: 'started',
+      taskId: 'write-main',
+      taskFile: 'main.ts',
+      taskAction: 'modify',
+      title: '修改 main.ts',
+    });
+    context.complete('failed', { reason: 'process-aborted' });
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read('run-context-abrupt-failure');
+    assert.equal(events.some(event => event.type === 'side_effect.indeterminate'), true);
+    assert.equal(events.find(event => event.type === 'run.settled').payload.status, 'failed');
+    assert.equal(ledger.verify('run-context-abrupt-failure').status, 'valid-sealed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('RunContext: evidence degradation converts completion into one durable failed seal', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-degraded',
+      userPrompt: '修改程序',
+      traceLevel: 'debug',
+    });
+    context.markEvidenceDegraded(new Error('simulated append failure'));
+    const first = context.complete('completed');
+    const second = context.complete('completed');
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read('run-context-degraded');
+    assert.equal(first, 'failed');
+    assert.equal(second, 'failed');
+    assert.equal(events.some(event => event.type === 'evidence.degraded'), true);
+    assert.equal(events.filter(event => event.type === 'run.settled').length, 1);
+    assert.equal(events.find(event => event.type === 'run.settled').payload.status, 'failed');
+    assert.equal(ledger.verify('run-context-degraded').status, 'valid-sealed');
+    const entries = readJsonl(path.join(workspaceRoot, '.devseek', 'runs', 'run-context-degraded.log'));
+    const completions = entries.filter(entry => entry.event === 'agent-run-completed');
+    assert.equal(completions.length, 1);
+    assert.equal(completions[0].data.status, 'failed');
+    assert.equal(completions[0].data.reason, 'evidence-degraded');
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }

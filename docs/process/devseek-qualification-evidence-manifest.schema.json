@@ -1,0 +1,438 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-qualification-evidence-manifest-v1.json",
+  "title": "DevSeek Qualification Evidence Manifest v1",
+  "$comment": "evidence_manifest_sha256 excludes evidence_manifest_sha256 and the complete manifest_attestation envelope. The separately signed retention lock binds the final manifest hash.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "integrity", "integrity_scope", "qualification_eligible",
+    "manifest_id", "generated_at", "supersedes_manifest_sha256",
+    "aggregation_policy_sha256", "frozen_identity", "event_stream_heads",
+    "event_receipt_bindings", "planned_slot_bindings", "attempt_slot_bindings",
+    "run_evidence_auxiliary", "slot_accounting", "failures_and_vetoes",
+    "claim_candidates", "qualification_claims", "validity", "evidence_manifest_sha256", "manifest_attestation"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.qualification-evidence-manifest/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "integrity_scope": { "enum": ["local-protocol-conformance", "protected-qualification"] },
+    "qualification_eligible": { "type": "boolean" },
+    "manifest_id": { "$ref": "#/$defs/id" },
+    "generated_at": { "$ref": "#/$defs/time" },
+    "supersedes_manifest_sha256": { "$ref": "#/$defs/nullableSha256" },
+    "aggregation_policy_sha256": { "$ref": "#/$defs/sha256" },
+    "frozen_identity": { "$ref": "#/$defs/frozenIdentity" },
+    "event_stream_heads": { "$ref": "#/$defs/eventStreamHeads" },
+    "event_receipt_bindings": {
+      "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/receiptBinding" }
+    },
+    "planned_slot_bindings": {
+      "type": "object", "additionalProperties": false,
+      "required": ["preflight", "coverage"],
+      "properties": {
+        "preflight": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/plannedPreflight" } },
+        "coverage": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/plannedCoverage" } }
+      }
+    },
+    "attempt_slot_bindings": {
+      "type": "array", "items": { "$ref": "#/$defs/attemptBinding" }
+    },
+    "run_evidence_auxiliary": {
+      "type": "array", "items": { "$ref": "#/$defs/runEvidence" }
+    },
+    "slot_accounting": { "$ref": "#/$defs/slotAccounting" },
+    "failures_and_vetoes": { "$ref": "#/$defs/failuresAndVetoes" },
+    "claim_candidates": {
+      "type": "array", "items": { "$ref": "#/$defs/claim" }
+    },
+    "qualification_claims": {
+      "type": "array", "items": { "$ref": "#/$defs/claim" }
+    },
+    "validity": { "$ref": "#/$defs/validity" },
+    "evidence_manifest_sha256": { "$ref": "#/$defs/sha256" },
+    "manifest_attestation": { "$ref": "#/$defs/attestation" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "integrity_scope": { "const": "local-protocol-conformance" } },
+        "required": ["integrity_scope"]
+      },
+      "then": {
+        "properties": {
+          "qualification_eligible": { "const": false },
+          "qualification_claims": { "type": "array", "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "qualification_eligible": { "const": false } },
+        "required": ["qualification_eligible"]
+      },
+      "then": { "properties": { "qualification_claims": { "type": "array", "maxItems": 0 } } }
+    }
+  ],
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "nullableSha256": { "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+    "time": { "type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$" },
+    "integrity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version", "signature_algorithm"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" },
+        "signature_algorithm": { "const": "ed25519" }
+      }
+    },
+    "frozenIdentity": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "qualification_campaign_id", "candidate_identity_sha256", "candidate_commit",
+        "source_tree_sha256", "installed_artifact_sha256", "bridge_artifact_sha256",
+        "prompt_bundle_sha256", "runtime_config_sha256", "provider_connector_sha256",
+        "qualification_plan_id", "qualification_plan_sha256", "profile_id", "profile_sha256",
+        "catalog_sha256", "key_registry_sha256", "oracle_bundle_sha256", "corpus_sha256",
+        "metric_and_statistical_plan_sha256", "dependency_snapshot_sha256",
+        "execution_environment_sha256", "provider", "surface_set", "platform_profile"
+      ],
+      "properties": {
+        "qualification_campaign_id": { "$ref": "#/$defs/id" },
+        "candidate_identity_sha256": { "$ref": "#/$defs/sha256" },
+        "candidate_commit": { "type": "string", "pattern": "^[a-f0-9]{7,64}$" },
+        "source_tree_sha256": { "$ref": "#/$defs/sha256" },
+        "installed_artifact_sha256": { "$ref": "#/$defs/sha256" },
+        "bridge_artifact_sha256": { "$ref": "#/$defs/sha256" },
+        "prompt_bundle_sha256": { "$ref": "#/$defs/sha256" },
+        "runtime_config_sha256": { "$ref": "#/$defs/sha256" },
+        "provider_connector_sha256": { "$ref": "#/$defs/sha256" },
+        "qualification_plan_id": { "$ref": "#/$defs/id" },
+        "qualification_plan_sha256": { "$ref": "#/$defs/sha256" },
+        "profile_id": { "$ref": "#/$defs/id" },
+        "profile_sha256": { "$ref": "#/$defs/sha256" },
+        "catalog_sha256": { "$ref": "#/$defs/sha256" },
+        "key_registry_sha256": { "$ref": "#/$defs/sha256" },
+        "oracle_bundle_sha256": { "$ref": "#/$defs/sha256" },
+        "corpus_sha256": { "$ref": "#/$defs/sha256" },
+        "metric_and_statistical_plan_sha256": { "$ref": "#/$defs/sha256" },
+        "dependency_snapshot_sha256": { "$ref": "#/$defs/sha256" },
+        "execution_environment_sha256": { "$ref": "#/$defs/sha256" },
+        "provider": { "$ref": "#/$defs/id" },
+        "surface_set": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+        "platform_profile": { "$ref": "#/$defs/id" }
+      }
+    },
+    "streamHead": {
+      "type": "object", "additionalProperties": false,
+      "required": ["stream_kind", "correlation_id", "sequence", "event_id", "event_sha256"],
+      "properties": {
+        "stream_kind": { "enum": ["plan", "session", "attempt"] },
+        "correlation_id": { "$ref": "#/$defs/id" },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "event_id": { "$ref": "#/$defs/id" },
+        "event_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "eventStreamHeads": {
+      "type": "object", "additionalProperties": false,
+      "required": ["campaign", "sessions", "attempts"],
+      "properties": {
+        "campaign": { "$ref": "#/$defs/streamHead" },
+        "sessions": { "type": "array", "items": { "$ref": "#/$defs/streamHead" } },
+        "attempts": { "type": "array", "items": { "$ref": "#/$defs/streamHead" } }
+      }
+    },
+    "receiptBinding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["event_sha256", "receipt_id", "receipt_sha256"],
+      "properties": {
+        "event_sha256": { "$ref": "#/$defs/sha256" },
+        "receipt_id": { "$ref": "#/$defs/id" },
+        "receipt_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "plannedPreflight": {
+      "type": "object", "additionalProperties": false,
+      "required": ["preflight_slot_id", "preflight_slot_sha256", "order", "session_ids", "status"],
+      "properties": {
+        "preflight_slot_id": { "$ref": "#/$defs/id" },
+        "preflight_slot_sha256": { "$ref": "#/$defs/sha256" },
+        "order": { "type": "integer", "minimum": 1 },
+        "session_ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+        "status": { "enum": ["ready", "product-failure", "infra-invalid", "blocked", "unconsumed", "skipped", "invalid"] }
+      }
+    },
+    "plannedCoverage": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "coverage_slot_id", "coverage_slot_sha256", "order", "capability_id", "surface",
+        "attempt_ids", "status"
+      ],
+      "properties": {
+        "coverage_slot_id": { "$ref": "#/$defs/id" },
+        "coverage_slot_sha256": { "$ref": "#/$defs/sha256" },
+        "order": { "type": "integer", "minimum": 1 },
+        "capability_id": { "type": "string", "pattern": "^C[0-9]+-[A-Z0-9]+(?:-[A-Z0-9]+)*$" },
+        "surface": { "$ref": "#/$defs/id" },
+        "attempt_ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+        "status": { "enum": ["pass", "product-miss", "infra-invalid", "unclassified", "unconsumed", "veto", "invalid-duplicate"] }
+      }
+    },
+    "eventRef": {
+      "type": "object", "additionalProperties": false,
+      "required": ["event_id", "event_sha256"],
+      "properties": {
+        "event_id": { "$ref": "#/$defs/id" },
+        "event_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "attemptBinding": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "attempt_id", "coverage_key", "coverage_slot_sha256", "qualification_session_id",
+        "preflight_slot_id", "preflight_slot_sha256", "attempt_role",
+        "infra_adjudication_event", "oracle_event", "terminal_event", "outcome"
+      ],
+      "properties": {
+        "attempt_id": { "$ref": "#/$defs/id" },
+        "coverage_key": {
+          "type": "array", "minItems": 2, "maxItems": 2,
+          "prefixItems": [{ "$ref": "#/$defs/sha256" }, { "$ref": "#/$defs/id" }], "items": false
+        },
+        "coverage_slot_sha256": { "$ref": "#/$defs/sha256" },
+        "qualification_session_id": { "$ref": "#/$defs/id" },
+        "preflight_slot_id": { "$ref": "#/$defs/id" },
+        "preflight_slot_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_role": { "enum": ["primary", "adjudicated-infra-retry"] },
+        "infra_adjudication_event": { "oneOf": [{ "$ref": "#/$defs/eventRef" }, { "type": "null" }] },
+        "oracle_event": { "oneOf": [{ "$ref": "#/$defs/eventRef" }, { "type": "null" }] },
+        "terminal_event": { "oneOf": [{ "$ref": "#/$defs/eventRef" }, { "type": "null" }] },
+        "outcome": { "enum": ["pass", "product-miss", "infra-invalid", "unclassified", "veto"] }
+      }
+    },
+    "runEvidence": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "run_id", "snapshot_sha256", "expected_anchor_sha256", "sealed",
+        "integrity_scope", "qualification_eligible", "auxiliary_only"
+      ],
+      "properties": {
+        "run_id": { "$ref": "#/$defs/id" },
+        "snapshot_sha256": { "$ref": "#/$defs/sha256" },
+        "expected_anchor_sha256": { "$ref": "#/$defs/sha256" },
+        "sealed": { "const": true },
+        "integrity_scope": { "const": "product-run-diagnostics" },
+        "qualification_eligible": { "const": false },
+        "auxiliary_only": { "const": true }
+      }
+    },
+    "excluded": {
+      "type": "object", "additionalProperties": false,
+      "required": ["coverage_key", "reason_code", "evidence_event_sha256"],
+      "properties": {
+        "coverage_key": {
+          "type": "array", "minItems": 2, "maxItems": 2,
+          "prefixItems": [{ "$ref": "#/$defs/sha256" }, { "$ref": "#/$defs/id" }], "items": false
+        },
+        "reason_code": { "enum": ["independently-adjudicated-test-infra", "unclassified", "unconsumed-or-blocked"] },
+        "evidence_event_sha256": { "$ref": "#/$defs/nullableSha256" }
+      }
+    },
+    "slotAccounting": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "planned_coverage_slot_count", "uniquely_consumed_slot_count", "passed_slot_count",
+        "product_miss_slot_count", "infra_invalid_slot_count", "unclassified_slot_count",
+        "unconsumed_or_blocked_slot_count", "duplicate_or_invalid_attempt_count",
+        "denominator_policy", "denominator_count", "numerator_count", "excluded_from_denominator"
+      ],
+      "properties": {
+        "planned_coverage_slot_count": { "type": "integer", "minimum": 0 },
+        "uniquely_consumed_slot_count": { "type": "integer", "minimum": 0 },
+        "passed_slot_count": { "type": "integer", "minimum": 0 },
+        "product_miss_slot_count": { "type": "integer", "minimum": 0 },
+        "infra_invalid_slot_count": { "type": "integer", "minimum": 0 },
+        "unclassified_slot_count": { "type": "integer", "minimum": 0 },
+        "unconsumed_or_blocked_slot_count": { "type": "integer", "minimum": 0 },
+        "duplicate_or_invalid_attempt_count": { "type": "integer", "minimum": 0 },
+        "denominator_policy": { "const": "all-preregistered-and-classifiable" },
+        "denominator_count": { "type": "integer", "minimum": 0 },
+        "numerator_count": { "type": "integer", "minimum": 0 },
+        "excluded_from_denominator": { "type": "array", "items": { "$ref": "#/$defs/excluded" } }
+      }
+    },
+    "failure": {
+      "type": "object", "additionalProperties": false,
+      "required": ["attempt_id", "coverage_key", "failure_class", "oracle_event_sha256"],
+      "properties": {
+        "attempt_id": { "$ref": "#/$defs/id" },
+        "coverage_key": {
+          "type": "array", "minItems": 2, "maxItems": 2,
+          "prefixItems": [{ "$ref": "#/$defs/sha256" }, { "$ref": "#/$defs/id" }], "items": false
+        },
+        "failure_class": { "enum": ["product", "agent", "model", "connector"] },
+        "oracle_event_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "veto": {
+      "type": "object", "additionalProperties": false,
+      "required": ["attempt_id", "coverage_key", "reason_code", "oracle_event_sha256"],
+      "properties": {
+        "attempt_id": { "$ref": "#/$defs/id" },
+        "coverage_key": {
+          "type": "array", "minItems": 2, "maxItems": 2,
+          "prefixItems": [{ "$ref": "#/$defs/sha256" }, { "$ref": "#/$defs/id" }], "items": false
+        },
+        "reason_code": { "$ref": "#/$defs/id" },
+        "oracle_event_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "failuresAndVetoes": {
+      "type": "object", "additionalProperties": false,
+      "required": ["failures", "session_failures", "vetoes", "preflight_vetoes", "candidate_closures", "veto_count"],
+      "properties": {
+        "failures": { "type": "array", "items": { "$ref": "#/$defs/failure" } },
+        "session_failures": { "type": "array", "items": { "$ref": "#/$defs/sessionFailure" } },
+        "vetoes": { "type": "array", "items": { "$ref": "#/$defs/veto" } },
+        "preflight_vetoes": { "type": "array", "items": { "$ref": "#/$defs/preflightVeto" } },
+        "candidate_closures": { "type": "array", "items": { "$ref": "#/$defs/candidateClosure" } },
+        "veto_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "sessionFailure": {
+      "type": "object", "additionalProperties": false,
+      "required": ["qualification_session_id", "preflight_slot_id", "failure_class", "event_sha256"],
+      "properties": {
+        "qualification_session_id": { "$ref": "#/$defs/id" },
+        "preflight_slot_id": { "$ref": "#/$defs/id" },
+        "failure_class": { "enum": ["product", "agent", "model", "connector"] },
+        "event_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "preflightVeto": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "preflight_slot_id", "qualification_session_id", "reason_code", "evidence_event_sha256"
+      ],
+      "properties": {
+        "preflight_slot_id": { "$ref": "#/$defs/id" },
+        "qualification_session_id": {
+          "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }]
+        },
+        "reason_code": { "$ref": "#/$defs/id" },
+        "evidence_event_sha256": {
+          "oneOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }]
+        }
+      }
+    },
+    "candidateClosure": {
+      "type": "object", "additionalProperties": false,
+      "required": ["correlation_id", "reason_code", "event_sha256"],
+      "properties": {
+        "correlation_id": { "$ref": "#/$defs/id" },
+        "reason_code": { "$ref": "#/$defs/id" },
+        "event_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "metricResult": {
+      "type": "object", "additionalProperties": false,
+      "required": ["metric_id", "numerator", "denominator", "estimate", "passed"],
+      "properties": {
+        "metric_id": { "$ref": "#/$defs/id" },
+        "numerator": { "type": "integer", "minimum": 0 },
+        "denominator": { "type": "integer", "minimum": 0 },
+        "estimate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "passed": { "type": "boolean" }
+      }
+    },
+    "dependency": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "capability_id", "claim_manifest_sha256", "profile_id", "profile_sha256",
+        "claim_scope", "surface", "provider", "platform_profile", "awarded_level"
+      ],
+      "properties": {
+        "capability_id": { "type": "string", "pattern": "^C[0-9]+-[A-Z0-9]+(?:-[A-Z0-9]+)*$" },
+        "claim_manifest_sha256": { "$ref": "#/$defs/sha256" },
+        "profile_id": { "$ref": "#/$defs/id" },
+        "profile_sha256": { "$ref": "#/$defs/sha256" },
+        "claim_scope": { "$ref": "#/$defs/id" },
+        "surface": { "$ref": "#/$defs/id" },
+        "provider": { "$ref": "#/$defs/id" },
+        "platform_profile": { "$ref": "#/$defs/id" },
+        "awarded_level": { "enum": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"] }
+      }
+    },
+    "claim": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "claim_id", "capability_id", "profile_id", "profile_sha256", "claim_scope", "surface",
+        "provider", "platform_profile", "requested_level", "awarded_level", "decision",
+        "contributing_coverage_keys", "metric_results", "satisfied_dependencies"
+      ],
+      "properties": {
+        "claim_id": { "$ref": "#/$defs/id" },
+        "capability_id": { "type": "string", "pattern": "^C[0-9]+-[A-Z0-9]+(?:-[A-Z0-9]+)*$" },
+        "profile_id": { "$ref": "#/$defs/id" },
+        "profile_sha256": { "$ref": "#/$defs/sha256" },
+        "claim_scope": { "$ref": "#/$defs/id" },
+        "surface": { "$ref": "#/$defs/id" },
+        "provider": { "$ref": "#/$defs/id" },
+        "platform_profile": { "$ref": "#/$defs/id" },
+        "requested_level": { "enum": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"] },
+        "awarded_level": { "enum": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"] },
+        "decision": { "const": "qualified" },
+        "contributing_coverage_keys": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "array", "minItems": 2, "maxItems": 2,
+            "prefixItems": [{ "$ref": "#/$defs/sha256" }, { "$ref": "#/$defs/id" }], "items": false
+          }
+        },
+        "metric_results": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/metricResult" } },
+        "satisfied_dependencies": { "type": "array", "items": { "$ref": "#/$defs/dependency" } }
+      }
+    },
+    "validity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["valid_from", "expires_at", "invalidated_by"],
+      "properties": {
+        "valid_from": { "$ref": "#/$defs/time" },
+        "expires_at": { "$ref": "#/$defs/time" },
+        "invalidated_by": {
+          "type": "array", "minItems": 10, "uniqueItems": true,
+          "items": {
+            "enum": [
+              "candidate-or-artifact-identity-change", "plan-or-profile-hash-change",
+              "catalog-oracle-corpus-metric-change", "event-stream-head-advance-or-chain-failure",
+              "omitted-attempt-slot-failure-veto-or-denominator-entry",
+              "slot-replay-order-or-retry-adjudication-invalid",
+              "dependency-claim-or-dependency-snapshot-change",
+              "provider-surface-platform-or-environment-change",
+              "signer-revocation-or-retention-lock-loss", "expires-at-reached"
+            ]
+          }
+        }
+      }
+    },
+    "attestation": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "algorithm", "key_id", "signer_identity", "purpose", "aggregation_policy_sha256",
+        "signed_payload_sha256", "signature_base64"
+      ],
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "key_id": { "$ref": "#/$defs/id" },
+        "signer_identity": { "$ref": "#/$defs/id" },
+        "purpose": { "const": "qualification-manifest" },
+        "aggregation_policy_sha256": { "$ref": "#/$defs/sha256" },
+        "signed_payload_sha256": { "$ref": "#/$defs/sha256" },
+        "signature_base64": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

@@ -75,7 +75,14 @@ export class PermissionKernel {
     if (request.risk === 'destructive') {
       return { action: 'requireConfirm', reason: `tool-risk-requires-confirmation:${subject}` };
     }
-    if (this.policy.requireUserConfirmation || this.policy.requireConfirmationKinds.includes(kind)) {
+    const inherentlyMutableOrOpaque = request.mutatesWorkspace === true
+      || request.risk === 'high'
+      || kind === 'terminal'
+      || kind === 'vscode'
+      || kind === 'vscode-command'
+      || kind === 'mcp';
+    if ((this.policy.requireUserConfirmation && inherentlyMutableOrOpaque)
+      || this.policy.requireConfirmationKinds.includes(kind)) {
       return { action: 'requireConfirm', reason: `tool-kind-requires-confirmation:${subject}` };
     }
     return { action: 'allow', reason: `tool-kind-allowed:${subject}` };

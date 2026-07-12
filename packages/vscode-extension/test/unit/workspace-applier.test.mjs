@@ -6,7 +6,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { execSync } from 'node:child_process';
+import { exec, execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import Module from 'node:module';
 import {
@@ -137,6 +137,35 @@ function hasCommand(command) {
   }
 }
 
+function runValidationCommand(invocation) {
+  return new Promise((resolve) => {
+    exec(
+      invocation.command,
+      { cwd: invocation.cwd, timeout: invocation.timeoutMs, encoding: 'utf8' },
+      (error, stdout, stderr) => {
+        const normalizedStdout = String(stdout ?? '');
+        const normalizedStderr = String(stderr ?? '');
+        const output = (
+          normalizedStdout
+          + (normalizedStderr ? `\n[stderr]\n${normalizedStderr}` : '')
+        ).trim() || error?.message || '';
+        resolve({
+          ran: true,
+          ok: !error,
+          command: invocation.command,
+          exitCode: error
+            ? (typeof error.code === 'number' ? error.code : error.killed ? 124 : null)
+            : 0,
+          stdout: normalizedStdout,
+          stderr: normalizedStderr,
+          output,
+          cwd: invocation.cwd,
+        });
+      },
+    );
+  });
+}
+
 test('workspace-applier: short project path anchors to explicit code subdirectory', async () => {
   const { root, projectDir } = createShapeManagerWorkspace();
   try {
@@ -158,6 +187,70 @@ test('workspace-applier: short project path anchors to explicit code subdirector
     assert.match(readFileSync(path.join(projectDir, 'CMakeLists.txt'), 'utf8'), /project\(shape_manager\)/);
     assert.equal(existsSync(path.join(root, 'shape_manager', 'CMakeLists.txt')), false);
     assert.equal(statuses.some((status) => status.title === '已阻止写入（路径漂移）'), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('workspace-applier: confirmation-time concurrent edits are preserved by the captured CAS baseline', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-confirm-race-'));
+  const target = path.join(root, 'report.txt');
+  const originalWarning = fakeVscode.window.showWarningMessage;
+  try {
+    writeFileSync(target, 'old\n');
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+    fakeVscode.window.showWarningMessage = async () => {
+      writeFileSync(target, 'newer-user-content\n');
+      return '应用全部';
+    };
+
+    const result = await applyGeneratedArtifactsWithPrompt([
+      'report.txt',
+      '```text',
+      'agent-content',
+      '```',
+    ].join('\n'), '修改 report.txt', undefined, false);
+
+    assert.equal(result.applied, false);
+    assert.equal(result.failureReason, 'write-conflict');
+    assert.equal(result.rolledBack, true);
+    assert.equal(readFileSync(target, 'utf8'), 'newer-user-content\n');
+  } finally {
+    fakeVscode.window.showWarningMessage = originalWarning;
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('workspace-applier: a later-file conflict rolls back earlier atomic commits', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-multifile-race-'));
+  const first = path.join(root, 'first.txt');
+  const second = path.join(root, 'second.txt');
+  try {
+    writeFileSync(first, 'first-old\n');
+    writeFileSync(second, 'second-old\n');
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+    let injectedConflict = false;
+    const result = await applyGeneratedArtifactsWithPrompt([
+      'first.txt',
+      '```text',
+      'first-agent',
+      '```',
+      'second.txt',
+      '```text',
+      'second-agent',
+      '```',
+    ].join('\n'), '修改 first.txt 和 second.txt', (status) => {
+      if (!injectedConflict && status.phase === 'apply' && status.state === 'started') {
+        injectedConflict = true;
+        writeFileSync(second, 'second-newer-user-content\n');
+      }
+    }, true);
+
+    assert.equal(result.applied, false);
+    assert.equal(result.failureReason, 'write-conflict');
+    assert.equal(result.rolledBack, true);
+    assert.equal(readFileSync(first, 'utf8'), 'first-old\n');
+    assert.equal(readFileSync(second, 'utf8'), 'second-newer-user-content\n');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -389,7 +482,7 @@ test('workspace-applier: generated basename files use project path hints instead
       true,
       undefined,
       preferredFiles,
-      { rollbackOnValidationFailure: false },
+      { rollbackOnValidationFailure: false, validationCommandRunner: runValidationCommand },
     );
 
     assert.equal(result.applied, true);
@@ -428,7 +521,7 @@ test('workspace-applier: target-path apply ignores unrelated generated artifacts
       true,
       undefined,
       [path.join(projectDir, 'Circle.cpp')],
-      { rollbackOnValidationFailure: false },
+      { rollbackOnValidationFailure: false, validationCommandRunner: runValidationCommand },
     );
 
     assert.equal(result.applied, false);
@@ -468,7 +561,7 @@ test('workspace-applier: target-path apply selects only the current agent task f
       true,
       undefined,
       [path.join(projectDir, 'Circle.cpp')],
-      { rollbackOnValidationFailure: false },
+      { rollbackOnValidationFailure: false, validationCommandRunner: runValidationCommand },
     );
 
     assert.equal(result.applied, true);
@@ -530,7 +623,7 @@ test('workspace-applier: target-path fallback maps unlabeled full-file block to 
       true,
       undefined,
       [path.join(projectDir, 'Circle.cpp')],
-      { rollbackOnValidationFailure: false },
+      { rollbackOnValidationFailure: false, validationCommandRunner: runValidationCommand },
     );
 
     assert.equal(result.applied, true);
@@ -589,7 +682,7 @@ test('workspace-applier: target-path fallback rejects unlabeled partial snippets
       true,
       undefined,
       [path.join(projectDir, 'Circle.cpp')],
-      { rollbackOnValidationFailure: false },
+      { rollbackOnValidationFailure: false, validationCommandRunner: runValidationCommand },
     );
 
     assert.equal(result.applied, false);
@@ -649,7 +742,7 @@ test('workspace-applier: preferred session target maps unlabeled complete main b
       true,
       undefined,
       preferredFiles,
-      { rollbackOnValidationFailure: false },
+      { rollbackOnValidationFailure: false, validationCommandRunner: runValidationCommand },
     );
 
     assert.equal(result.applied, true);
@@ -712,7 +805,7 @@ test('workspace-applier: preferred session target maps unfenced complete main so
       true,
       undefined,
       preferredFiles,
-      { rollbackOnValidationFailure: false },
+      { rollbackOnValidationFailure: false, validationCommandRunner: runValidationCommand },
     );
 
     const written = readFileSync(path.join(projectDir, 'main.cpp'), 'utf8');
@@ -817,7 +910,15 @@ test('workspace-applier: markdown writes include review ledger file-check valida
     ].join('\n');
     const statuses = [];
 
-    const result = await applyGeneratedArtifactsWithPrompt(raw, '更新 notes/review.md', (status) => statuses.push(status), true);
+    const result = await applyGeneratedArtifactsWithPrompt(
+      raw,
+      '更新 notes/review.md',
+      (status) => statuses.push(status),
+      true,
+      undefined,
+      undefined,
+      { validationCommandRunner: runValidationCommand },
+    );
 
     assert.equal(result.applied, true);
     assert.equal(result.changeCount, 1);
@@ -864,7 +965,7 @@ test('workspace-applier: explicit unknown text writes pass file-check validation
       true,
       undefined,
       undefined,
-      { rollbackOnValidationFailure: false },
+      { rollbackOnValidationFailure: false, validationCommandRunner: runValidationCommand },
     );
 
     assert.equal(result.applied, true);
@@ -918,7 +1019,7 @@ test('workspace-applier: compile-only C++ validation does not run the produced p
       true,
       undefined,
       undefined,
-      { rollbackOnValidationFailure: false },
+      { rollbackOnValidationFailure: false, validationCommandRunner: runValidationCommand },
     );
 
     assert.equal(result.applied, true);
@@ -954,7 +1055,15 @@ test('workspace-applier: validation failure preserves auto-applied changes by de
     ].join('\n');
     const prompt = `请修改 ${projectDir}，只做本地编译确认`;
 
-    const result = await applyGeneratedArtifactsWithPrompt(raw, prompt, undefined, true);
+    const result = await applyGeneratedArtifactsWithPrompt(
+      raw,
+      prompt,
+      undefined,
+      true,
+      undefined,
+      undefined,
+      { validationCommandRunner: runValidationCommand },
+    );
 
     assert.equal(result.applied, true);
     assert.deepEqual(result.changedPaths, ['code/compile_failure_demo/main.cpp']);
@@ -1001,7 +1110,7 @@ test('workspace-applier: requested CMake runtime validation catches segfault', {
       true,
       undefined,
       undefined,
-      { rollbackOnValidationFailure: false },
+      { rollbackOnValidationFailure: false, validationCommandRunner: runValidationCommand },
     );
 
     assert.equal(result.applied, true);

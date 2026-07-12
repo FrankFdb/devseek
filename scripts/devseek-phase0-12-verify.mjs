@@ -45,6 +45,18 @@ const gates = [
     purpose: 'Fail closed on qualification catalog/profile drift, signed preregistration plans, append-only event CAS, trusted-time rollback, or one-time external-action authorization.',
   },
   {
+    id: 'qualification-evidence-manifest-conformance',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:qualification-evidence-manifest'],
+    purpose: 'Fail closed on frozen slot/attempt denominators, signed exact-tuple claims, event-head invalidation, independent retention locks, or local evidence promoted beyond its integrity scope.',
+  },
+  {
+    id: 'run-evidence-machine-contract',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:run-evidence-contract'],
+    purpose: 'Fail closed on product-run event taxonomy, operation correlation, immutable record/receipt/seal/snapshot shape, expected-anchor drift, or attempted qualification escalation.',
+  },
+  {
     id: 'stability-qualification-unit',
     phases: '0-12',
     command: ['npm', 'run', 'verify:stability-qualification'],
@@ -221,6 +233,7 @@ function phaseCovered(spec, phase) {
 function classifyGateFailure(gate) {
   if (/architecture-drift/i.test(gate.id)) return 'architecture-boundary-regression';
   if (/capability-ledger/i.test(gate.id)) return 'capability-governance-regression';
+  if (/run-evidence/i.test(gate.id)) return 'run-evidence-contract-regression';
   if (/stability-qualification/i.test(gate.id)) return 'legacy-observation-guard-regression';
   if (/programming-agent/i.test(gate.id)) return 'programming-agent-benchmark-failure';
   if (/live-deepseek/i.test(gate.id)) return 'agent-loop-live-deepseek-failure';
@@ -234,6 +247,7 @@ function nextActionFor(gate) {
   const actions = {
     'architecture-drift-budget': 'Move the new responsibility into the owning service/adapter, lower the frozen ceiling after extraction, then rerun verify:architecture-drift.',
     'capability-ledger-governance': 'Fix the machine ledger, typed dependency, scoped claim target, or generated manifest at its semantic authority, then rerun verify:capability-ledger.',
+    'run-evidence-machine-contract': 'Fix the shared product-run protocol or its strict event/receipt/record/seal/snapshot/anchor schema at the single evidence authority, then rerun verify:run-evidence-contract.',
     'stability-qualification-unit': 'Fix the legacy observation guard before interpreting deterministic or live development coverage.',
     'P0-P9-vscode-extension-unit': 'Fix the failing extension unit suite or update the runner only if the oracle is invalid, then rerun verify:phase0-12.',
     'P10-runtime-surface': 'Fix shared/bridge/CLI/extension compile or runtime-surface tests, then rerun verify:phase10 and verify:phase0-12.',

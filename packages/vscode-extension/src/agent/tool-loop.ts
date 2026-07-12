@@ -5,7 +5,7 @@ import {
   createDevSeekTraceLogger,
   type DevSeekTraceLogger,
 } from '@devseek-netai/shared';
-import { looksLikeRawToolCallText, parseGeneratedArtifacts } from '../generated-file-parser';
+import { looksLikeRawToolCallText } from '../generated-file-parser';
 import { resolveGeneratedArtifactPathForPrompt, resolveWorkspaceWritePath } from '../workspace/path-resolver';
 import { WorkspaceEditService } from '../workspace/edit-service';
 import {
@@ -38,11 +38,29 @@ import {
   detectTaskOutputScopeDrift,
 } from './task-output-scope';
 import { decideTerminalCommandPermission } from '../app/terminal-command-policy';
+import { buildToolPolicy } from '../app/permission-service';
+import type { ToolKind } from '../intent/intent-types';
 
 const workspaceEditService = new WorkspaceEditService();
 const agentToolExecutor = new AgentToolExecutor();
 const NON_WORK_TOOL_NAMES = new Set(['manage_todo_list', 'task_complete', 'memory_write']);
 const TOOL_TRACE_LOGGERS = new Map<string, DevSeekTraceLogger>();
+
+function hasEvidenceAwareToolAuthority(kind: ToolKind, callbacks: AgentLoopCallbacks): boolean {
+  switch (kind) {
+    case 'edit':
+      return typeof callbacks.onBeforeFileWrite === 'function';
+    case 'terminal':
+      return typeof callbacks.onTerminalCommand === 'function';
+    case 'vscode':
+    case 'vscode-command':
+      return typeof callbacks.onRunVscodeCommand === 'function';
+    case 'mcp':
+      return typeof callbacks.onMcpToolCall === 'function';
+    default:
+      return false;
+  }
+}
 
 export function isAgentWorkToolName(name: string): boolean {
   return !NON_WORK_TOOL_NAMES.has(name);
@@ -263,24 +281,12 @@ function promptRequestsCodeDirectory(userPrompt: string): boolean {
   return /(?:code\s*目录|code目录|code\/|code\s+dir|code\s+folder)/i.test(userPrompt);
 }
 
-function promptLooksLikeCppProgram(userPrompt: string): boolean {
-  return /(?:c\+\+|cpp|\.cpp\b|\.cc\b|\.cxx\b|C\+\+)/i.test(userPrompt);
-}
-
-function promptLooksLikeCProgram(userPrompt: string): boolean {
-  return /(?:\bC\b|C语言|c程序|\.c\b)/i.test(userPrompt) && !promptLooksLikeCppProgram(userPrompt);
-}
-
 function contentLooksLikeCProgram(content: string): boolean {
   return /#include\s*</.test(content) && /\bmain\s*\(/.test(content) && !contentLooksLikeCppProgram(content);
 }
 
 function contentLooksLikeCppProgram(content: string): boolean {
   return /#include\s*<(?:iostream|vector|string|map|memory|algorithm|GL\/glut|GLFW|SFML)|\bstd::|using\s+namespace\s+std|class\s+\w+/i.test(content);
-}
-
-function defaultCodeArtifactBasename(userPrompt: string): string {
-  return /(?:三维|3d|3D|OpenGL|GLUT|动画世界)/i.test(userPrompt) ? '3d_world' : 'main';
 }
 
 function normalizeExplicitFileWritePathForAgent(
@@ -321,34 +327,6 @@ function inferWorkspaceRootForAgentTool(defaultWorkdir?: string): string {
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function isLikelyWritableFilePathForAgent(filePath: string): boolean {
-  const normalized = (filePath || '').trim().replace(/\\/g, '/');
-  if (!normalized || normalized.endsWith('/')) return false;
-  const base = nodePath.posix.basename(normalized);
-  if (['Makefile', 'Dockerfile', 'CMakeLists.txt'].includes(base)) return true;
-  return /\.[A-Za-z0-9]+$/.test(base);
-}
-
-function inferCArtifactFromMarkdown(text: string, userPrompt: string): Array<{path: string; content: string}> {
-  const wantsCpp = promptLooksLikeCppProgram(userPrompt);
-  const wantsC = !wantsCpp && promptLooksLikeCProgram(userPrompt);
-  if (!wantsCpp && !wantsC) return [];
-  const blockRe = /```(?:c|cpp|cxx|cc|c\+\+)\s*\n([\s\S]*?)```/gi;
-  const results: Array<{path: string; content: string}> = [];
-  let m: RegExpExecArray | null;
-  while ((m = blockRe.exec(text)) !== null) {
-    const content = (m[1] || '').trim();
-    if (!/#include\s*</.test(content) || !/\bmain\s*\(/.test(content)) continue;
-    if (wantsCpp && !contentLooksLikeCppProgram(content) && !/(?:c\+\+|cpp|cxx|cc)/i.test(m[0].slice(0, 24))) continue;
-    const before = text.slice(Math.max(0, m.index - 400), m.index);
-    const pathMatch = before.match(/([A-Za-z0-9_./-]+\.(?:c|cc|cpp|cxx))\b/g);
-    const ext = wantsCpp ? '.cpp' : '.c';
-    const path = pathMatch?.[pathMatch.length - 1] || `code/${defaultCodeArtifactBasename(userPrompt)}${ext}`;
-    results.push({ path: normalizeGeneratedArtifactPathForAgent(path, userPrompt), content });
-  }
-  return results;
 }
 
 const FILE_WRITE_PATH_KEYS = ['path', 'filePath', 'filepath', 'filename', 'targetPath'];
@@ -401,129 +379,6 @@ function normalizeFileWriteInputs(input: Record<string, unknown>): Array<{rawPat
   if (batch.length > 0) return batch;
   if (directRawPath || directContent) return [{ rawPath: directRawPath, content: directContent }];
   return [];
-}
-
-export async function applyMarkdownFileArtifactsForLoop(
-  text: string,
-  userPrompt: string,
-  workspaceRoot: string,
-  callbacks: AgentLoopCallbacks,
-  writeGuard?: {
-    requireReadBeforeOverwrite?: boolean;
-    readEvidencePaths?: Iterable<string>;
-  },
-): Promise<{ feedbackForAI: string; writtenFiles: WrittenFileEvidence[] }> {
-  const parsed = parseGeneratedArtifacts(text)
-    .filter((artifact): artifact is Extract<ReturnType<typeof parseGeneratedArtifacts>[number], { type: 'file' }> => artifact.type === 'file')
-    .map(artifact => ({ path: artifact.path, content: artifact.content }));
-  const inferred = parsed.length > 0 ? [] : inferCArtifactFromMarkdown(text, userPrompt);
-  const candidates = parsed.length > 0 ? parsed : inferred;
-  const feedback: string[] = [];
-  const writtenFiles: WrittenFileEvidence[] = [];
-  const seen = new Set<string>();
-
-  for (const artifact of candidates) {
-    if (!artifact.path || !artifact.content.trim()) continue;
-    const resolvedWrite = resolveWorkspaceWritePath(artifact.path, {
-      requestPrompt: userPrompt,
-      content: artifact.content,
-      workspaceRootFsPath: workspaceRoot,
-      defaultWorkdir: workspaceRoot,
-    });
-    if (!resolvedWrite) {
-      feedback.push(`[generated_file: ${artifact.path}] 跳过（无法解析为工作区内路径）`);
-      continue;
-    }
-    if (!isLikelyWritableFilePathForAgent(resolvedWrite.relPath)) {
-      feedback.push(`[generated_file: ${artifact.path}] 跳过（目标是目录或缺少文件名）`);
-      continue;
-    }
-    const instructionDecision = decideProjectInstructionFileWrite({
-      filePath: resolvedWrite.relPath,
-      content: artifact.content,
-      requestPrompt: userPrompt,
-    });
-    if (!instructionDecision.allowed) {
-      feedback.push(`[generated_file: ${artifact.path}] 跳过（${instructionDecision.reason ?? '项目指令文件写入未被允许'}）`);
-      continue;
-    }
-    const resolvedAbs = resolvedWrite.absPath;
-    const payloadDrift = detectNestedFilePayloadDrift({
-      targetAbsPath: resolvedAbs,
-      content: artifact.content,
-      workspaceRoot,
-      defaultWorkdir: workspaceRoot,
-    });
-    if (payloadDrift.block) {
-      feedback.push(`[generated_file: ${artifact.path}] 跳过：${payloadDrift.reason}`);
-      continue;
-    }
-    if (seen.has(resolvedAbs)) continue;
-    seen.add(resolvedAbs);
-    try {
-      if (fs.existsSync(resolvedAbs) && fs.statSync(resolvedAbs).isDirectory()) {
-        feedback.push(`[generated_file: ${artifact.path}] 跳过（目标是目录）`);
-        continue;
-      }
-    } catch { /* allow normal write path to report errors */ }
-    const existed = fs.existsSync(resolvedAbs);
-    if (writeGuard?.requireReadBeforeOverwrite) {
-      const guard = shouldBlockUnverifiedSourceOverwrite({
-        absPath: resolvedAbs,
-        existed,
-        readEvidencePaths: writeGuard.readEvidencePaths,
-      });
-      if (guard.block) {
-        feedback.push(`[generated_file: ${artifact.path}] 跳过：${guard.reason}`);
-        continue;
-      }
-    }
-    if (callbacks.onBeforeFileWrite) {
-      const allowed = await callbacks.onBeforeFileWrite(resolvedAbs, {
-        purpose: 'tool-write',
-        userRequested: false,
-        displayName: resolvedWrite.relPath,
-        requestPrompt: userPrompt,
-      });
-      if (!allowed) {
-        feedback.push(`[generated_file: ${artifact.path}] 跳过（写入权限策略阻止）`);
-        continue;
-      }
-    }
-    callbacks.onToolActivity?.('write', resolvedWrite.relPath);
-    let writeResult;
-    try {
-      writeResult = workspaceEditService.writeTextFileSync(resolvedAbs, artifact.content, {
-        validateSourceSanity: true,
-        repairSourceTransportEscapes: true,
-      });
-    } catch (error) {
-      feedback.push(`[generated_file: ${artifact.path}] 跳过（源码语法护栏）：${error instanceof Error ? error.message : String(error)}`);
-      continue;
-    }
-    if (writeResult.normalization) {
-      feedback.push(
-        `[generated_file: ${artifact.path}] 诊断: 已修复 ${writeResult.normalization.repairCount} 处源码工具协议转义污染。`,
-      );
-    }
-    if (writeResult.existed && writeResult.oldContent === writeResult.newContent) {
-      feedback.push(`[generated_file: ${artifact.path}] 未发生内容变化，未计入本轮修改证据：${resolvedWrite.relPath}`);
-      continue;
-    }
-    await callbacks.onAppliedChange({ path: resolvedAbs, ...writeResult });
-    const newLines = writeResult.newContent.split('\n').length;
-    const oldLines = writeResult.oldContent ? writeResult.oldContent.split('\n').length : 0;
-    writtenFiles.push({
-      path: resolvedAbs,
-      basename: nodePath.basename(resolvedAbs),
-      linesAdded: newLines,
-      linesRemoved: oldLines,
-      action: writeResult.existed ? 'modify' : 'create',
-    });
-    feedback.push(`[generated_file: ${artifact.path}] 已写入 ${resolvedWrite.relPath} (${newLines} 行)`);
-  }
-
-  return { feedbackForAI: feedback.join('\n'), writtenFiles };
 }
 
 export async function executeFakeToolsForLoop(
@@ -626,6 +481,27 @@ export async function executeFakeToolsForLoop(
         parts.push(`[${toolName}: ${rawPath}] 错误: ${payloadDrift.reason}`);
         return false;
       }
+      let baseline;
+      try {
+        baseline = workspaceEditService.captureTextFileBaseline(absPath, workspaceRoot);
+      } catch (error) {
+        const reason = `工作区写入边界阻止写入：${error instanceof Error ? error.message : String(error)}`;
+        recordToolFailure(toolName, 'write', rawPath, reason);
+        parts.push(`[${toolName}: ${rawPath}] 错误: ${reason}`);
+        return false;
+      }
+      const existed = baseline.snapshot.existed;
+      if (taskContext?.requireReadBeforeOverwrite) {
+        const guard = shouldBlockUnverifiedSourceOverwrite({
+          absPath,
+          existed,
+          readEvidencePaths,
+        });
+        if (guard.block) {
+          parts.push(`[${toolName}: ${rawPath}] 错误: ${guard.reason}`);
+          return false;
+        }
+      }
       if (callbacks.onBeforeFileWrite) {
         const allowed = await callbacks.onBeforeFileWrite(absPath, {
           purpose: 'tool-write',
@@ -638,28 +514,16 @@ export async function executeFakeToolsForLoop(
           return false;
         }
       }
-      const existed = fs.existsSync(absPath);
-      if (existed && fs.statSync(absPath).isDirectory()) {
-        parts.push(`[${toolName}: ${rawPath}] 错误: 目标是目录，不是文件：${absPath}`);
-        return false;
-      }
-      if (taskContext?.requireReadBeforeOverwrite) {
-        const guard = shouldBlockUnverifiedSourceOverwrite({
-          absPath,
-          existed,
-          readEvidencePaths,
-        });
-        if (guard.block) {
-          parts.push(`[${toolName}: ${rawPath}] 错误: ${guard.reason}`);
-          return false;
-        }
-      }
       let writeResult;
       try {
-        writeResult = workspaceEditService.writeTextFileSync(absPath, content, {
-          validateSourceSanity: true,
-          repairSourceTransportEscapes: true,
-        });
+        writeResult = workspaceEditService.commitTextFileProposal(
+          workspaceEditService.proposeTextFileWrite(absPath, content),
+          baseline,
+          {
+            validateSourceSanity: true,
+            repairSourceTransportEscapes: true,
+          },
+        ).result;
       } catch (error) {
         const reason = `源码语法护栏阻止写入：${error instanceof Error ? error.message : String(error)}`;
         recordToolFailure(toolName, 'write', rawPath, reason);
@@ -738,7 +602,10 @@ export async function executeFakeToolsForLoop(
   });
 
   for (let toolIndex = 0; toolIndex < tools.length; toolIndex++) {
-    const toolPlan = agentToolExecutor.plan(tools[toolIndex]);
+    const toolPlan = agentToolExecutor.plan(
+      tools[toolIndex],
+      buildToolPolicy(callbacks.executionMode ?? 'inspect'),
+    );
     const tool = toolPlan.tool;
     const inputValidation = agentToolExecutor.validateInput(toolPlan);
     if (!inputValidation.ok) {
@@ -747,6 +614,16 @@ export async function executeFakeToolsForLoop(
         `[${tool.name || 'unknown'}] 工具调用无效：${inputValidation.error}`,
         `请按工具说明重新调用，并提供完整 JSON 参数；不要省略必填字段。`,
       ].join('\n'));
+      continue;
+    }
+    if (toolPlan.permission?.action === 'deny') {
+      markToolCall(isAgentWorkToolName(tool.name));
+      parts.push(`[${tool.name}] 工具调用被执行策略拒绝：${toolPlan.permission.reason}`);
+      continue;
+    }
+    if (toolPlan.permission?.action === 'requireConfirm' && !hasEvidenceAwareToolAuthority(toolPlan.kind, callbacks)) {
+      markToolCall(isAgentWorkToolName(tool.name));
+      parts.push(`[${tool.name}] 工具调用被拒绝：需要确认，但当前执行面没有证据感知的授权边界。`);
       continue;
     }
     if (tool.name === 'manage_todo_list') {
@@ -1061,7 +938,7 @@ export async function executeFakeToolsForLoop(
           }
         }
         const oldContent = fs.readFileSync(absPath, 'utf8');
-        fs.unlinkSync(absPath);
+        workspaceEditService.deleteTextFile(absPath, workspaceRoot);
         callbacks.onToolActivity?.('write', `删除 ${rawPath}`);
         await callbacks.onAppliedChange({
           path: absPath,
@@ -1180,20 +1057,22 @@ export async function executeFakeToolsForLoop(
         callbacks.onToolActivity?.('write', `mkdir ${dirPath}`);
         try {
           const absPath = resolveAgentToolEvidencePath(dirPath, workspaceRoot, defaultWorkdir);
-          if (callbacks.onBeforeFileWrite) {
-            const allowed = await callbacks.onBeforeFileWrite(absPath, {
-              purpose: 'tool-write',
-              userRequested: false,
-              taskAction: 'create_directory',
-              displayName: dirPath,
-              requestPrompt: taskContext?.userPrompt ?? '',
-            });
-            if (!allowed) {
-              parts.push(`[create_directory: ${dirPath}] 跳过（写入权限策略阻止）`);
-              continue;
-            }
+          if (!callbacks.onBeforeFileWrite) {
+            parts.push(`[create_directory: ${dirPath}] 跳过（缺少写入授权边界）`);
+            continue;
           }
-          const result = await callbacks.onCreateDirectory(absPath);
+          const allowed = await callbacks.onBeforeFileWrite(absPath, {
+            purpose: 'tool-write',
+            userRequested: false,
+            taskAction: 'create_directory',
+            displayName: dirPath,
+            requestPrompt: taskContext?.userPrompt ?? '',
+          });
+          if (!allowed) {
+            parts.push(`[create_directory: ${dirPath}] 跳过（写入权限策略阻止）`);
+            continue;
+          }
+          const result = await callbacks.onCreateDirectory(absPath, { policyPreauthorized: true });
           parts.push(`[create_directory: ${dirPath}] ${result}`);
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);

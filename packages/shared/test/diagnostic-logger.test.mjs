@@ -46,6 +46,32 @@ test('Diagnostic logger writes one chronological log file with events and payloa
   }
 });
 
+test('Diagnostic logger never persists embedded DevSeek authority capabilities', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-trace-secret-'));
+  const capability = `devseek-ra1_${'Z'.repeat(43)}`;
+  try {
+    const logger = createDevSeekTraceLogger({
+      workspaceRoot,
+      source: `source:${capability}`,
+      runId: `run:${capability}`,
+      level: 'debug',
+    });
+    logger.info('provider', 'failed', {
+      message: `before:${capability}:after`,
+      nested: [{ [`key:${capability}`]: capability }],
+    });
+    logger.payload('provider', `name:${capability}`, `payload:${capability}`);
+
+    assert.equal(logger.runId.includes(capability), false);
+    assert.equal(logger.logPath.includes(capability), false);
+    const persisted = readFileSync(logger.logPath, 'utf8');
+    assert.equal(persisted.includes(capability), false);
+    assert.match(persisted, /REDACTED-DEVSEEK-CAPABILITY/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('Diagnostic logger normalizes trace levels', () => {
   assert.equal(resolveDevSeekTraceLevel('trace'), 'trace');
   assert.equal(resolveDevSeekTraceLevel('bad', 'info'), 'info');

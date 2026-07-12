@@ -74,6 +74,18 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
   if (!resolved) return undefined;
 
   const todos = buildSimpleFileTodos(resolved.relPath);
+  let baseline;
+  try {
+    baseline = workspaceEditService.captureTextFileBaseline(resolved.absPath, input.workspaceRoot);
+  } catch (error) {
+    return finishSimpleFileTask({
+      ...input,
+      todos: failLinearAgentTodo(todos, 0),
+      writtenFiles: [],
+      terminalEvidence: [],
+      failedReason: `工作区写入边界阻止写入：${error instanceof Error ? error.message : String(error)}`,
+    });
+  }
   await input.callbacks.onTodoUpdate?.(todos);
 
   if (input.callbacks.onBeforeFileWrite) {
@@ -97,10 +109,14 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
   input.callbacks.onToolActivity?.('write', resolved.relPath);
   let writeResult;
   try {
-    writeResult = workspaceEditService.writeTextFileSync(resolved.absPath, request.content, {
-      validateSourceSanity: true,
-      repairSourceTransportEscapes: true,
-    });
+    writeResult = workspaceEditService.commitTextFileProposal(
+      workspaceEditService.proposeTextFileWrite(resolved.absPath, request.content),
+      baseline,
+      {
+        validateSourceSanity: true,
+        repairSourceTransportEscapes: true,
+      },
+    ).result;
   } catch (error) {
     return finishSimpleFileTask({
       ...input,

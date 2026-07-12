@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-run-evidence-expected-anchor-v1.json",
+  "title": "DevSeek Product Run Evidence Expected Seal Anchor v1",
+  "$comment": "This anchor detects a missing local seal/tail only when retained independently. It does not itself grant qualification eligibility.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "eventCount",
+    "finalEventSha256",
+    "finalRecordSha256",
+    "sealSha256"
+  ],
+  "properties": {
+    "eventCount": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "finalEventSha256": { "$ref": "#/$defs/sha256" },
+    "finalRecordSha256": { "$ref": "#/$defs/sha256" },
+    "sealSha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  }
+}

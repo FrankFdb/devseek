@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-run-evidence-snapshot-v1.json",
+  "title": "DevSeek Product Run Evidence Snapshot v1",
+  "$comment": "A replayable product-diagnostic projection. It remains qualification-ineligible even when sealed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "runId",
+    "integrityScope",
+    "qualificationEligible",
+    "records",
+    "seal",
+    "head"
+  ],
+  "properties": {
+    "runId": { "$ref": "#/$defs/text512" },
+    "integrityScope": { "const": "product-run-diagnostics" },
+    "qualificationEligible": { "const": false },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/committedRecord" }
+    },
+    "seal": {
+      "oneOf": [
+        { "$ref": "#/$defs/sealSnapshot" },
+        { "type": "null" }
+      ]
+    },
+    "head": { "$ref": "#/$defs/head" }
+  },
+  "$defs": {
+    "text512": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "allOf": [
+        { "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" },
+        { "pattern": "^(?![\\s\\S]*devseek-ra1_[A-Za-z0-9_-]{43})[\\s\\S]*$" }
+      ]
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "nullableSha256": {
+      "oneOf": [
+        { "$ref": "#/$defs/sha256" },
+        { "type": "null" }
+      ]
+    },
+    "committedRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slotSequence",
+        "previousRecordSha256",
+        "event",
+        "receipt",
+        "recordSha256"
+      ],
+      "properties": {
+        "slotSequence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "previousRecordSha256": { "$ref": "#/$defs/nullableSha256" },
+        "event": { "$ref": "https://devseek.local/schemas/devseek-run-evidence-event-v1.json" },
+        "receipt": { "$ref": "https://devseek.local/schemas/devseek-run-evidence-receipt-v1.json" },
+        "recordSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sealSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slotSequence", "previousRecordSha256", "seal", "recordSha256"],
+      "properties": {
+        "slotSequence": { "type": "integer", "minimum": 2, "maximum": 9007199254740991 },
+        "previousRecordSha256": { "$ref": "#/$defs/sha256" },
+        "seal": { "$ref": "https://devseek.local/schemas/devseek-run-evidence-seal-v1.json" },
+        "recordSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "head": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "sequence", "eventSha256", "recordSha256", "sealed"],
+      "properties": {
+        "runId": { "$ref": "#/$defs/text512" },
+        "sequence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+        "eventSha256": { "$ref": "#/$defs/sha256" },
+        "recordSha256": { "$ref": "#/$defs/sha256" },
+        "sealed": { "type": "boolean" },
+        "sealSha256": { "$ref": "#/$defs/sha256" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "type": "object",
+            "properties": { "sealed": { "const": true } },
+            "required": ["sealed"]
+          },
+          "then": {
+            "type": "object",
+            "properties": { "sealSha256": { "$ref": "#/$defs/sha256" } },
+            "required": ["sealSha256"]
+          },
+          "else": {
+            "type": "object",
+            "not": {
+              "type": "object",
+              "properties": { "sealSha256": { "$ref": "#/$defs/sha256" } },
+              "required": ["sealSha256"]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

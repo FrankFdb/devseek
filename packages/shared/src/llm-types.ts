@@ -41,6 +41,8 @@ export interface LLMChatOptions {
   traceRunId?: string;
   /** Filesystem root where all logs for this top-level run should be written. */
   traceWorkspaceRoot?: string;
+  /** Correlates one provider operation across client, transport and server boundaries. */
+  traceOperationId?: string;
 }
 
 export interface LLMProvider {

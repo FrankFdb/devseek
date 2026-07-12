@@ -1,7 +1,10 @@
+import * as fs from 'fs';
 import * as nodePath from 'path';
 import * as vscode from 'vscode';
 import type { AgentLoopResult } from './agent/loop-types';
 import { decideAgentAutopilotAccept } from './app/agent-autopilot-policy';
+import { ProductMutationCoordinator, ProductMutationIndeterminateError } from './app/product-mutation-coordinator';
+import { createDevSeekRunContext } from './app/run-context';
 import {
   allHunksResolved,
   computePendingHunks,
@@ -14,6 +17,7 @@ import { resolveWorkspaceFileUri } from './workspace-roots';
 import { DiffDecorationManager, type DiffRecordInfo } from './diff-decorator';
 import { closePendingEditDiffTabAsync, DeepSeekOriginalContentProvider } from './ui/pending-edit-diff';
 import { openWorkspacePathInEditor, revealEditorLine } from './ui/generated-artifact-ui';
+import { WorkspaceEditService } from './workspace/edit-service';
 
 export interface PendingEditRecord {
   id: string;
@@ -312,8 +316,14 @@ export class PendingEditCoordinator {
   private async undoHunk(editId?: string, path?: string, hunkId?: string): Promise<void> {
     const { record, hunk } = this.resolveHunk(editId, path, hunkId);
     if (!record || !hunk) return;
+    const previousResolution = hunk.resolution;
     hunk.resolution = 'undone';
-    await this.applyRecordSnapshot(record);
+    try {
+      await this.applyRecordSnapshot(record);
+    } catch (error) {
+      hunk.resolution = previousResolution;
+      throw error;
+    }
     this.settleHunkRecord(record);
   }
 
@@ -334,20 +344,20 @@ export class PendingEditCoordinator {
     if (!id) return;
     const record = this.pendingEdits.get(id);
     if (!record) return;
+    await this.restoreRecord(record);
     closePendingEditDiffTabAsync(record);
     this.diffDecoManager?.deactivate(id);
-    await this.restoreRecord(record);
     this.pendingEdits.delete(id);
   }
 
   private async undoAll(): Promise<void> {
     const records = Array.from(this.pendingEdits.values()).sort((a, b) => b.createdAt - a.createdAt);
     for (const record of records) {
-      closePendingEditDiffTabAsync(record);
       await this.restoreRecord(record);
+      closePendingEditDiffTabAsync(record);
+      this.pendingEdits.delete(record.id);
+      this.diffDecoManager?.deactivate(record.id);
     }
-    this.pendingEdits.clear();
-    this.diffDecoManager?.deactivateAll();
   }
 
   private acceptAll(webview: vscode.Webview, detail: string): void {
@@ -374,33 +384,81 @@ export class PendingEditCoordinator {
   }
 
   private async applyRecordSnapshot(record: PendingEditRecord): Promise<void> {
-    const target = resolveWorkspaceFileUri(record.path, this.options.getContextFiles());
-    if (!target) return;
+    const { target, workspaceRoot } = this.resolveMutationTarget(record);
     const content = renderPendingContentFromHunks(record);
     if (!record.existed && content.length === 0) {
-      try {
-        await vscode.workspace.fs.delete(target, { useTrash: false });
-      } catch {
-        // Ignore delete failures when the file does not exist.
-      }
+      await this.runPendingEditMutation(record, 'undo pending edit by deleting the generated file', async (editService) => {
+        editService.deleteTextFile(target.fsPath, workspaceRoot);
+      }, () => !fs.existsSync(target.fsPath), content.length);
       return;
     }
-    await vscode.workspace.fs.createDirectory(vscode.Uri.file(nodePath.dirname(target.fsPath)));
-    await vscode.workspace.fs.writeFile(target, Buffer.from(content, 'utf8'));
+    await this.runPendingEditMutation(record, 'undo pending edit hunk by restoring the selected snapshot', async (editService) => {
+      const baseline = editService.captureTextFileBaseline(target.fsPath, workspaceRoot);
+      const proposal = editService.proposeTextFileWrite(target.fsPath, content);
+      editService.commitTextFileProposal(proposal, baseline);
+    }, () => readTextFileEquals(target.fsPath, content), content.length);
   }
 
   private async restoreRecord(record: PendingEditRecord): Promise<void> {
-    const target = resolveWorkspaceFileUri(record.path, this.options.getContextFiles());
-    if (!target) return;
+    const { target, workspaceRoot } = this.resolveMutationTarget(record);
     if (record.existed) {
-      await vscode.workspace.fs.createDirectory(vscode.Uri.file(nodePath.dirname(target.fsPath)));
-      await vscode.workspace.fs.writeFile(target, Buffer.from(record.oldContent, 'utf8'));
+      await this.runPendingEditMutation(record, 'undo pending edit by restoring the original file', async (editService) => {
+        const baseline = editService.captureTextFileBaseline(target.fsPath, workspaceRoot);
+        const proposal = editService.proposeTextFileWrite(target.fsPath, record.oldContent);
+        editService.commitTextFileProposal(proposal, baseline);
+      }, () => readTextFileEquals(target.fsPath, record.oldContent), record.oldContent.length);
       return;
     }
+    await this.runPendingEditMutation(record, 'undo pending edit by deleting the generated file', async (editService) => {
+      editService.deleteTextFile(target.fsPath, workspaceRoot);
+    }, () => !fs.existsSync(target.fsPath), 0);
+  }
+
+  private resolveMutationTarget(record: PendingEditRecord): { target: vscode.Uri; workspaceRoot: string } {
+    const target = resolveWorkspaceFileUri(record.path, this.options.getContextFiles());
+    if (!target) throw new Error(`Unable to resolve pending edit inside a workspace: ${record.path}`);
+    const folder = vscode.workspace.getWorkspaceFolder(target);
+    if (!folder) throw new Error(`Pending edit is not owned by an open workspace: ${record.path}`);
+    return { target, workspaceRoot: folder.uri.fsPath };
+  }
+
+  private async runPendingEditMutation(
+    record: PendingEditRecord,
+    label: string,
+    invoke: (editService: WorkspaceEditService) => void | Promise<void>,
+    verify: () => boolean | Promise<boolean>,
+    expectedContentLength: number,
+  ): Promise<void> {
+    const { workspaceRoot } = this.resolveMutationTarget(record);
+    const runContext = createDevSeekRunContext({
+      workspaceRoot,
+      source: 'vscode-extension.pending-edit',
+      userPrompt: label,
+      mode: 'pending-edit-user-action',
+    });
+    const mutation = new ProductMutationCoordinator(runContext, 'vscode-pending-edit');
+    const editService = new WorkspaceEditService();
     try {
-      await vscode.workspace.fs.delete(target, { useTrash: false });
-    } catch {
-      // Ignore when file already does not exist.
+      await mutation.run({
+        kind: 'pending-edit-undo',
+        label,
+        authorize: () => ({ allowed: true, source: 'explicit-user-action' }),
+        invoke: () => invoke(editService),
+        completionEvidence: {
+          kind: 'verified-postcondition',
+          verify,
+          proof: () => ({
+            kind: 'workspace-text-readback',
+            expected_content_length: expectedContentLength,
+          }),
+        },
+      });
+      if (runContext.complete('completed', { mutationKind: 'pending-edit-undo' }) !== 'completed') {
+        throw new ProductMutationIndeterminateError('Pending edit mutation could not be sealed as completed');
+      }
+    } catch (error) {
+      runContext.complete('failed', { mutationKind: 'pending-edit-undo' });
+      throw error;
     }
   }
 
@@ -563,6 +621,14 @@ class PendingEditDecorationProvider implements vscode.FileDecorationProvider {
       tooltip: 'Pending AI edit — Keep or Undo in DevSeek panel',
       propagate: false,
     };
+  }
+}
+
+function readTextFileEquals(absPath: string, expected: string): boolean {
+  try {
+    return fs.readFileSync(absPath, 'utf8') === expected;
+  } catch {
+    return false;
   }
 }
 

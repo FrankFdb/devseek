@@ -8,10 +8,15 @@ import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import {
   chmodSync,
+  existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   statSync,
+  symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -31,12 +36,21 @@ execSync(
 const req = createRequire(import.meta.url);
 const { WorkspaceEditService } = req(bundlePath);
 
+function commitText(service, target, workspaceRoot, content, options = {}) {
+  const baseline = service.captureTextFileBaseline(target, workspaceRoot);
+  return service.commitTextFileProposal(
+    service.proposeTextFileWrite(target, content),
+    baseline,
+    options,
+  );
+}
+
 test('WorkspaceEditService: creates parent directories and writes text files', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
   try {
     const target = path.join(dir, 'nested', 'hello.txt');
     const service = new WorkspaceEditService();
-    const result = service.writeTextFileSync(target, 'hello');
+    const result = commitText(service, target, dir, 'hello').result;
     assert.deepEqual(result, { existed: false, oldContent: '', newContent: 'hello' });
     assert.equal(readFileSync(target, 'utf8'), 'hello');
   } finally {
@@ -49,8 +63,8 @@ test('WorkspaceEditService: returns old content when overwriting', () => {
   try {
     const target = path.join(dir, 'hello.txt');
     const service = new WorkspaceEditService();
-    service.writeTextFileSync(target, 'old');
-    const result = service.writeTextFileSync(target, 'new');
+    commitText(service, target, dir, 'old');
+    const result = commitText(service, target, dir, 'new').result;
     assert.deepEqual(result, { existed: true, oldContent: 'old', newContent: 'new' });
     assert.equal(readFileSync(target, 'utf8'), 'new');
   } finally {
@@ -74,20 +88,20 @@ test('WorkspaceEditService: proposes text writes without touching disk', () => {
   }
 });
 
-test('WorkspaceEditService: snapshots file state before applying a proposal', () => {
+test('WorkspaceEditService: captures file state and route identity before committing a proposal', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
   try {
     const target = path.join(dir, 'hello.txt');
     const service = new WorkspaceEditService();
 
-    assert.deepEqual(service.snapshotTextFile(target), {
+    assert.deepEqual(service.captureTextFileBaseline(target, dir).snapshot, {
       absPath: target,
       existed: false,
       content: '',
     });
 
-    service.writeTextFileSync(target, 'old');
-    assert.deepEqual(service.snapshotTextFile(target), {
+    commitText(service, target, dir, 'old');
+    assert.deepEqual(service.captureTextFileBaseline(target, dir).snapshot, {
       absPath: target,
       existed: true,
       content: 'old',
@@ -97,13 +111,14 @@ test('WorkspaceEditService: snapshots file state before applying a proposal', ()
   }
 });
 
-test('WorkspaceEditService: applies proposals with attached snapshot evidence', () => {
+test('WorkspaceEditService: commits proposals with attached baseline evidence', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
   try {
     const target = path.join(dir, 'nested', 'hello.txt');
     const service = new WorkspaceEditService();
     const proposal = service.proposeTextFileWrite(target, 'new');
-    const applied = service.applyTextFileProposal(proposal);
+    const baseline = service.captureTextFileBaseline(target, dir);
+    const applied = service.commitTextFileProposal(proposal, baseline);
 
     assert.equal(applied.proposal, proposal);
     assert.deepEqual(applied.snapshot, {
@@ -177,13 +192,83 @@ test('WorkspaceEditService: secure commit rejects a stale baseline without overw
   }
 });
 
+test('WorkspaceEditService: secure commit rejects a missing target swapped to an outside symlink', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-symlink-root-'));
+  const outsideRoot = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-symlink-outside-'));
+  const target = path.join(workspaceRoot, 'hello.txt');
+  const outsideTarget = path.join(outsideRoot, 'outside.txt');
+  try {
+    writeFileSync(outsideTarget, 'outside-content');
+    const service = new WorkspaceEditService();
+    const baseline = service.captureTextFileBaseline(target, workspaceRoot);
+    symlinkSync(outsideTarget, target, 'file');
+
+    assert.throws(
+      () => service.commitTextFileProposal(service.proposeTextFileWrite(target, 'agent-content'), baseline),
+      /symbolic-link|target changed|route changed|boundary/i,
+    );
+    assert.equal(readFileSync(outsideTarget, 'utf8'), 'outside-content');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(outsideRoot, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: secure commit rejects an existing target swapped to a symlink', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-leaf-swap-root-'));
+  const outsideRoot = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-leaf-swap-outside-'));
+  const target = path.join(workspaceRoot, 'hello.txt');
+  const outsideTarget = path.join(outsideRoot, 'outside.txt');
+  try {
+    writeFileSync(target, 'old');
+    writeFileSync(outsideTarget, 'outside-content');
+    const service = new WorkspaceEditService();
+    const baseline = service.captureTextFileBaseline(target, workspaceRoot);
+    unlinkSync(target);
+    symlinkSync(outsideTarget, target, 'file');
+
+    assert.throws(
+      () => service.commitTextFileProposal(service.proposeTextFileWrite(target, 'agent-content'), baseline),
+      /symbolic-link|target changed|route changed|boundary/i,
+    );
+    assert.equal(readFileSync(outsideTarget, 'utf8'), 'outside-content');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(outsideRoot, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: secure commit rejects parent-directory replacement after baseline capture', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-parent-swap-'));
+  const parent = path.join(workspaceRoot, 'safe');
+  const movedParent = path.join(workspaceRoot, 'safe-before-swap');
+  const target = path.join(parent, 'hello.txt');
+  try {
+    mkdirSync(parent);
+    writeFileSync(target, 'old');
+    const service = new WorkspaceEditService();
+    const baseline = service.captureTextFileBaseline(target, workspaceRoot);
+    renameSync(parent, movedParent);
+    mkdirSync(parent);
+
+    assert.throws(
+      () => service.commitTextFileProposal(service.proposeTextFileWrite(target, 'agent-content'), baseline),
+      /target changed|parent identity|route changed|boundary/i,
+    );
+    assert.equal(readFileSync(path.join(movedParent, 'hello.txt'), 'utf8'), 'old');
+    assert.equal(readFileSyncSafe(target), undefined);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('WorkspaceEditService: validates generated C++ source before writing when requested', () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'devseek-edit-service-'));
   try {
     const target = path.join(dir, 'main.cpp');
     const service = new WorkspaceEditService();
     assert.throws(
-      () => service.writeTextFileSync(target, [
+      () => commitText(service, target, dir, [
         '#include <iostream>',
         'int main() {',
         '  std::cout << "',
@@ -203,7 +288,7 @@ test('WorkspaceEditService: repairs source transport escapes before validation w
   try {
     const target = path.join(dir, 'main.cpp');
     const service = new WorkspaceEditService();
-    const result = service.writeTextFileSync(target, [
+    const result = commitText(service, target, dir, [
       '#include <cstdio>',
       'int main() {',
       '  printf("ready',
@@ -212,7 +297,7 @@ test('WorkspaceEditService: repairs source transport escapes before validation w
     ].join('\n'), {
       validateSourceSanity: true,
       repairSourceTransportEscapes: true,
-    });
+    }).result;
 
     assert.equal(result.normalization?.kind, 'source-transport-escape-repair');
     assert.equal(result.normalization?.repairCount, 1);
@@ -228,7 +313,7 @@ test('WorkspaceEditService: blocks tool protocol contamination in generated C++ 
     const target = path.join(dir, 'proc_license_main.cpp');
     const service = new WorkspaceEditService();
     assert.throws(
-      () => service.writeTextFileSync(target, [
+      () => commitText(service, target, dir, [
         '#include <iostream>',
         'int main() { return 0; }[调用 create_file] {"path":"/workspace/docs/out.md","content":"# report"}',
       ].join('\n'), {
@@ -249,7 +334,7 @@ test('WorkspaceEditService: blocks C++ preprocessor directives collapsed onto on
     const target = path.join(dir, 'MaintenanceTypes.hpp');
     const service = new WorkspaceEditService();
     assert.throws(
-      () => service.writeTextFileSync(target, [
+      () => commitText(service, target, dir, [
         '#ifndef MAINTENANCE_TYPES_HPP#define MAINTENANCE_TYPES_HPP',
         '#include <cstddef>#include <cstdint>',
         '#pragma pack(push, 1)struct Header { int value; };#pragma pack(pop)',
@@ -271,7 +356,7 @@ test('WorkspaceEditService: allows valid preprocessor directives and macro strin
   try {
     const target = path.join(dir, 'valid.hpp');
     const service = new WorkspaceEditService();
-    service.writeTextFileSync(target, [
+    commitText(service, target, dir, [
       '#pragma once',
       '#include <cstdint>',
       '#define STRINGIFY_INNER(x) #x',
@@ -281,6 +366,54 @@ test('WorkspaceEditService: allows valid preprocessor directives and macro strin
     assert.match(readFileSync(target, 'utf8'), /struct Header/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: directory creation uses canonical containment, not a string prefix', () => {
+  const parent = mkdtempSync(path.join(tmpdir(), 'devseek-directory-boundary-'));
+  const workspaceRoot = path.join(parent, 'workspace');
+  const prefixSibling = path.join(parent, 'workspace-evil');
+  mkdirSync(workspaceRoot);
+  mkdirSync(prefixSibling);
+  try {
+    const target = path.join(prefixSibling, 'created-by-prefix-bypass');
+    assert.throws(
+      () => new WorkspaceEditService().createWorkspaceDirectory(target, workspaceRoot),
+      /escapes workspace|boundary/,
+    );
+    assert.equal(existsSync(target), false);
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: directory creation rejects a workspace symlink escape', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-directory-workspace-'));
+  const outsideRoot = mkdtempSync(path.join(tmpdir(), 'devseek-directory-outside-'));
+  try {
+    symlinkSync(outsideRoot, path.join(workspaceRoot, 'linked'), 'dir');
+    const target = path.join(workspaceRoot, 'linked', 'outside-child');
+    assert.throws(
+      () => new WorkspaceEditService().createWorkspaceDirectory(target, workspaceRoot),
+      /changed before commit|escapes workspace|canonical|symbolic/i,
+    );
+    assert.equal(existsSync(path.join(outsideRoot, 'outside-child')), false);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(outsideRoot, { recursive: true, force: true });
+  }
+});
+
+test('WorkspaceEditService: directory creation supports missing anchored parents and verifies readback', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-directory-workspace-'));
+  try {
+    const target = path.join(workspaceRoot, 'one', 'two', 'three');
+    const result = new WorkspaceEditService().createWorkspaceDirectory(target, workspaceRoot);
+    assert.equal(result.created, true);
+    assert.equal(statSync(result.canonicalPath).isDirectory(), true);
+    assert.equal(result.canonicalPath, target);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
   }
 });
 

@@ -201,6 +201,7 @@ test('Phase 10: provider chat routing lives in AgentApplicationService', () => {
   const protocol = read('../shared/src/agent-protocol.ts');
   const vscodeServiceFacade = read('src/app/agent-application-service.ts');
   const vscodeProtocolFacade = read('src/app/agent-protocol.ts');
+  const router = read('src/app/evidence-aware-chat-router.ts');
 
   assert.match(service, /class AgentApplicationService/, 'AgentApplicationService must own the application chat entry');
   assert.match(protocol, /export type AgentCommand/, 'AgentCommand must live in the application protocol');
@@ -209,7 +210,9 @@ test('Phase 10: provider chat routing lives in AgentApplicationService', () => {
   assert.match(protocol, /interface PlatformProfile/, 'PlatformProfile must be explicit');
   assert.match(vscodeServiceFacade, /from '@devseek-netai\/shared'/, 'VS Code app service facade must re-export shared core');
   assert.match(vscodeProtocolFacade, /from '@devseek-netai\/shared'/, 'VS Code app protocol facade must re-export shared protocol');
-  assert.match(extension, /getAgentApplicationService\(\)\.routeChat\(opts\)/, 'extension routeChat must delegate to the application service');
+  assert.match(router, /new AgentApplicationService\(deps\)/, 'evidence-aware router must compose the application service');
+  assert.match(router, /this\.application\.routeChat\(request\)/, 'evidence-aware router must delegate provider routing to the application service');
+  assert.match(extension, /evidenceAwareChatRouter\.route\(opts\)/, 'extension routeChat must delegate to its evidence-aware adapter');
   assert.doesNotMatch(extension, /const messages: ChatMessage\[\]/, 'extension.ts must not assemble provider chat messages');
   assert.doesNotMatch(extension, /\.chat\(\{\s*messages,/, 'extension.ts must not call provider.chat directly');
 });

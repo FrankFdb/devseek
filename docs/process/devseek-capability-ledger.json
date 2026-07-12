@@ -243,7 +243,7 @@
         },
         "contract_sha256": "8d68ea6eb2dcf0cdfcda59cc5872448f7f9aaf29da339f5874fded0294fad9d5"
       },
-      "implementation_state": "wired",
+      "implementation_state": "implemented",
       "qualification_claims": [],
       "qualification_level_view": null,
       "implementation_components": [
@@ -312,11 +312,118 @@
         },
         "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "implemented",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
-      "architecture_dependencies": []
+      "implementation_components": [
+        {
+          "role": "protocol-and-port",
+          "path": "packages/shared/src/run-evidence-protocol.ts"
+        },
+        {
+          "role": "filesystem-semantic-authority",
+          "path": "packages/shared/src/run-evidence-ledger.ts"
+        },
+        {
+          "role": "strict-replay-validation",
+          "path": "packages/shared/src/run-evidence-validation.ts"
+        },
+        {
+          "role": "closed-envelope-validation",
+          "path": "packages/shared/src/run-evidence-envelope.ts"
+        },
+        {
+          "role": "write-before-prefix-semantics",
+          "path": "packages/shared/src/run-evidence-prefix-reducer.ts"
+        },
+        {
+          "role": "product-session-integration",
+          "path": "packages/shared/src/run-evidence-integration.ts"
+        },
+        {
+          "role": "legacy-unverified-projection",
+          "path": "packages/shared/src/run-evidence-migration.ts"
+        },
+        {
+          "role": "cli-jsonl-owner-entrypoint",
+          "path": "packages/cli/src/index.ts"
+        },
+        {
+          "role": "cli-bridge-correlation",
+          "path": "packages/cli/src/bridge-client.ts"
+        },
+        {
+          "role": "vscode-run-owner-entrypoint",
+          "path": "packages/vscode-extension/src/app/run-context.ts"
+        },
+        {
+          "role": "vscode-provider-participant",
+          "path": "packages/vscode-extension/src/app/provider-run-evidence.ts"
+        },
+        {
+          "role": "vscode-terminal-permission-evidence-boundary",
+          "path": "packages/vscode-extension/src/app/terminal-permission-coordinator.ts"
+        },
+        {
+          "role": "vscode-legacy-migration-adapter",
+          "path": "packages/vscode-extension/src/app/legacy-run-evidence-migration.ts"
+        },
+        {
+          "role": "bridge-participant-adapter",
+          "path": "packages/bridge/src/run-evidence.ts"
+        },
+        {
+          "role": "bridge-provider-entrypoint",
+          "path": "packages/bridge/src/server.ts"
+        },
+        {
+          "role": "core-protocol-and-attack-tests",
+          "path": "packages/shared/test/run-evidence-ledger.test.mjs"
+        },
+        {
+          "role": "product-session-and-migration-tests",
+          "path": "packages/shared/test/run-evidence-integration.test.mjs"
+        },
+        {
+          "role": "cli-surface-tests",
+          "path": "packages/cli/test/cli-jsonl.test.mjs"
+        },
+        {
+          "role": "vscode-owner-tests",
+          "path": "packages/vscode-extension/test/unit/run-context.test.mjs"
+        },
+        {
+          "role": "vscode-provider-tests",
+          "path": "packages/vscode-extension/test/unit/provider-run-evidence.test.mjs"
+        },
+        {
+          "role": "vscode-terminal-permission-evidence-tests",
+          "path": "packages/vscode-extension/test/unit/terminal-permission-evidence.test.mjs"
+        },
+        {
+          "role": "vscode-migration-tests",
+          "path": "packages/vscode-extension/test/unit/legacy-run-evidence-migration.test.mjs"
+        },
+        {
+          "role": "bridge-participant-tests",
+          "path": "packages/bridge/test/run-evidence.test.mjs"
+        }
+      ],
+      "architecture_dependencies": [],
+      "verification": {
+        "commands": [
+          "npm run shared:build",
+          "npm run shared:test",
+          "npm run verify:run-evidence-contract",
+          "npm run cli:build",
+          "npm run cli:test",
+          "npm run compile --workspace=packages/vscode-extension",
+          "node --test packages/vscode-extension/test/unit/run-context.test.mjs packages/vscode-extension/test/unit/provider-run-evidence.test.mjs packages/vscode-extension/test/unit/legacy-run-evidence-migration.test.mjs packages/vscode-extension/test/unit/terminal-permission-evidence.test.mjs",
+          "npm run build --workspace=packages/bridge",
+          "npm run test --workspace=packages/bridge"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C0-CASE-CATALOG",
@@ -570,10 +677,31 @@
         },
         "contract_sha256": "bb80191aed73432cf3b147c9cba9bbe4176cae1d972306cd3efa57cb711fc86f"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "implemented",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "manifest-machine-schema",
+          "path": "docs/process/devseek-qualification-evidence-manifest.schema.json"
+        },
+        {
+          "role": "retention-lock-machine-schema",
+          "path": "docs/process/devseek-qualification-retention-lock.schema.json"
+        },
+        {
+          "role": "manifest-and-retention-authority",
+          "path": "scripts/lib/devseek-qualification-evidence-manifest.mjs"
+        },
+        {
+          "role": "machine-contract-checker",
+          "path": "scripts/devseek-qualification-evidence-manifest-check.mjs"
+        },
+        {
+          "role": "deterministic-attack-tests",
+          "path": "scripts/test/devseek-qualification-evidence-manifest.test.mjs"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C0-PREREGISTRATION-PLAN",
@@ -587,7 +715,13 @@
           "required_implementation_state": "wired",
           "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:qualification-evidence-manifest"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C0-QUALIFICATION-AGGREGATOR",
@@ -613,10 +747,31 @@
         },
         "contract_sha256": "99fd7b7af1537a3943ff573907e221d07889ba11fc1bc02e5ea24671cd7073f1"
       },
-      "implementation_state": "proposed",
+      "implementation_state": "implemented",
       "qualification_claims": [],
       "qualification_level_view": null,
-      "implementation_components": [],
+      "implementation_components": [
+        {
+          "role": "aggregator-policy-machine-schema",
+          "path": "docs/process/devseek-qualification-aggregator-policy.schema.json"
+        },
+        {
+          "role": "audited-local-policy-fixture",
+          "path": "docs/process/devseek-qualification-aggregator-policy.json"
+        },
+        {
+          "role": "independent-aggregation-and-verification-authority",
+          "path": "scripts/lib/devseek-qualification-evidence-manifest.mjs"
+        },
+        {
+          "role": "deterministic-attack-tests",
+          "path": "scripts/test/devseek-qualification-evidence-manifest.test.mjs"
+        },
+        {
+          "role": "generated-machine-view",
+          "path": "docs/process/generated/devseek-qualification-evidence-manifest.md"
+        }
+      ],
       "architecture_dependencies": [
         {
           "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
@@ -630,7 +785,13 @@
           "required_implementation_state": "wired",
           "contract_sha256": "441750ed63f2e8d0b9b702c050e27d9c8fd8362281285ceff081c5b31f84e91b"
         }
-      ]
+      ],
+      "verification": {
+        "commands": [
+          "npm run verify:qualification-evidence-manifest"
+        ],
+        "evidence_kind": "deterministic-regression"
+      }
     },
     {
       "capability_id": "C1-RUN-LIFECYCLE",
@@ -3558,5 +3719,5 @@
       ]
     }
   ],
-  "ledger_sha256": "cf3a6b237660ddb1685714a54b22353f10adf1145df45df693c643378802404e"
+  "ledger_sha256": "b9e0e10f03d933992e22662596d9a45d3aa5a1ff84738b1e710a4d8fc3914d2c"
 }

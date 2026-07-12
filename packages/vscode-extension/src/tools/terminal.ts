@@ -12,6 +12,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import {
   buildInteractiveTimeoutFailureDetail,
+  buildValidationTimeoutFailureDetail,
   executionOutcomeClassifier,
   formatManualReviewTerminalDetail,
   hasHardExecutionFailureEvidence,
@@ -36,6 +37,8 @@ export interface TerminalRunOptions {
   manualReviewOnLongRunning?: boolean;
   /** Observation window before returning manual-review evidence. */
   launchObservationMs?: number;
+  /** Selects validation-specific timeout evidence without changing process execution. */
+  executionProfile?: 'interactive' | 'validation';
 }
 
 export interface TerminalRunResult {
@@ -215,7 +218,9 @@ export function runCommand(opts: TerminalRunOptions): Promise<TerminalRunResult>
         allowManualReview: Boolean(opts.manualReviewOnLongRunning),
         manualReviewContext: command,
         manualReviewDetail: INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL,
-        timeoutFailureDetail: buildInteractiveTimeoutFailureDetail(timeoutMs),
+        timeoutFailureDetail: opts.executionProfile === 'validation'
+          ? buildValidationTimeoutFailureDetail(timeoutMs)
+          : buildInteractiveTimeoutFailureDetail(timeoutMs),
       });
       const summary = outcome.timedOut
         ? outcome.reviewRequired

@@ -1,9 +1,9 @@
 # DevSeek 顶级编程智能体收敛审计与目标架构
 
 - 审计日期：2026-07-11
-- 实施检查点：2026-07-12，G0-A/G0-B 已完成本地治理与协议纵切，Gate 0 整体尚未通过
+- 实施检查点：2026-07-12，G0-A/G0-B/G0-C/G0-D 已形成机器治理、签名资格协议、本地 Manifest/聚合和统一产品运行证据纵切；Core/Surface 独立复审均为 P0=0、P1=0，全部仍为零 qualification claim
 - 审计基线：`591a266`
-- 状态：下一工作包为 G0-D，随后 G0-C；两者完成前不得进入 R1
+- 状态：Gate 0 未通过、未运行 live；当前只能闭合真实 runner、独立 trust/retention 与精确 tuple 资格缺口，R1 禁止开始
 
 ## 1. 文档包目的
 
@@ -44,10 +44,15 @@ DevSeek 的目标原则基本正确，但物理架构尚未收敛：
 | [07-原需求与架构设计正确性审计.md](07-原需求与架构设计正确性审计.md) | 逐文件判断旧设计哪里正确、错误、过期或已被事实证伪 |
 | [08-决策结论与最短收敛实施方案.md](08-决策结论与最短收敛实施方案.md) | 四个收敛里程碑、Gate 0 顺序和 Gate 0 后的 R1-KERNEL-DG01-03 工作包 |
 | [09-文档自闭环反证审计报告.md](09-文档自闭环反证审计报告.md) | 对本包做事实、架构、可实现性、资格真实性和最少迭代的独立反证收口 |
-| [10-G0-A机器能力账本实施与迭代计划.md](10-G0-A机器能力账本实施与迭代计划.md) | G0-A 实施证据、机器账本边界及 G0-B/D/C 接续作业 |
+| [10-G0-A机器能力账本实施与迭代计划.md](10-G0-A机器能力账本实施与迭代计划.md) | G0-A 实施证据、机器账本边界及 G0-B/D/C 闭环状态 |
 | [11-G0-B签名资格协议实施报告.md](11-G0-B签名资格协议实施报告.md) | G0-B 签名计划/事件/receipt/guard 实施、攻击测试、能力状态与诚实限制 |
+| [12-G0-D统一运行证据账本实施报告.md](12-G0-D统一运行证据账本实施报告.md) | G0-D 双 head/record 链、产品纵切、legacy migration、攻击测试与非资格边界 |
+| [13-G0-C资格证据清单与独立聚合协议实施报告.md](13-G0-C资格证据清单与独立聚合协议实施报告.md) | G0-C Manifest/独立复算/retention 协议、攻击测试、零 claim 与 Gate 0 缺口 |
+| [14-未完成事项与后续整体迭代计划.md](14-未完成事项与后续整体迭代计划.md) | README 与 01～16 的完成度真值矩阵、统一 backlog、依赖 DAG、分批验收和停止/回滚条件 |
+| [15-新窗口与跨模型接管手册.md](15-新窗口与跨模型接管手册.md) | 无聊天上下文接管的唯一阅读顺序、dirty 边界、条件原子任务与 commit/Phase/VSIX/installed identity 动态回执契约 |
+| [16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md](16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md) | 模型无关的不可违反原则、全生命周期 DoD、固定收敛作业模板与候选 Skills 矩阵 |
 
-建议新迭代窗口按 `README → 11 → 10 → 09 → 08 → 04 → 05` 阅读；需要理解架构与历史原因时再读 `01～03、07`。
+新窗口或跨模型接管必须按 `AGENTS → README → 15 → 动态 Git/制品基线 → 14 → 16 → 12 → 13 → 11 → 10 → 机器 SSOT` 的唯一顺序执行。需要理解架构与历史原因时再读 `01～09、ARCH-18`，其中 ARCH-18 仅作历史资料。
 
 ## 4. 决策边界
 
@@ -59,14 +64,14 @@ DevSeek 的目标原则基本正确，但物理架构尚未收敛：
 - 在未冻结候选版本时反复消耗真实 Provider 配额。
 - 在核心基础编程纵切尚未稳定前继续扩张高级能力面。
 
-### 4.2 立即开始
+### 4.2 当前只允许开始
 
-- 建立能力账本，先锁定 D-G01～D-G03 核心黄金旅程，再逐步覆盖 D-G00～D-G14；密封 holdout 使用独立 H-* 身份。
-- 把附件从“执行引擎选择条件”降为“Context 输入”。
-- 建立 `start(TaskRequest)` / `dispatch(runId, AgentCommand)` 的单一重入会话入口；`TaskContract` 由内核创建并按用户决定修订。
-- 建立唯一 workspace-mutation semantic authority（多个短事务组成 run saga）和独立 external-effect 权限/回执边界。
-- 将 P0-MUTATION 纳入单内核迁移，迁移后删除旧 owner。
-- 用真实 VS Code 路由复现并锁住简单 create、modify、repair。
+- 按 [15](15-新窗口与跨模型接管手册.md) 动态核对本轮 containing commit、matching Phase、VSIX/Bridge 和 installed identity；任一不成立时只恢复 `CLOSE-INTEGRATION`。
+- 仅当上述集成身份全部成立时，才执行 `G0-RUNNER-WIRING`：闭合声明 qualification runner 的全入口接线和旁路守卫；随后再做 Active Baseline/文档迁移并准备逐节点 Gate 0 profile 的可执行证据。
+- 申请并接入独立 protected policy、非测试职责分离身份、外部 WORM/anchor/trusted time 和必要账号/条款授权；外部 authority 缺失时保持 blocked，不以本地 fixture 替代。
+- 冻结候选后只按签名 plan 执行 Gate 0 所需 deterministic/replay/Surface/获授权 live，并由受保护 Manifest 和机器 Gate 裁决七个精确 claim tuple。
+
+附件降为 Context、单一 `start/dispatch`、workspace mutation/external effect authority 和 D-G01～D-G03 cutover 都属于 **Gate 0 PASS 后**的 R1-A～D；当前不得因这些目标已经写入 03/08 而提前开始。
 
 ### 4.3 最终晋级条件
 

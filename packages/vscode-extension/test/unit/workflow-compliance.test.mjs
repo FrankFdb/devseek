@@ -56,8 +56,8 @@ function assertWorkspaceWritesValidateSourceSanity(relPath, content) {
   const lines = content.split(/\r?\n/);
   const unsafe = [];
   for (let index = 0; index < lines.length; index += 1) {
-    if (!lines[index].includes('writeTextFileSync(')) continue;
-    const windowText = lines.slice(index, Math.min(lines.length, index + 8)).join('\n');
+    if (!lines[index].includes('commitTextFileProposal(')) continue;
+    const windowText = lines.slice(index, Math.min(lines.length, index + 12)).join('\n');
     if (!windowText.includes('validateSourceSanity: true')) {
       unsafe.push({ line: index + 1, text: lines[index].trim() });
     }
@@ -182,7 +182,7 @@ test('§7 Recovery: checkpoint create facts are executed deterministically', () 
   assertContains(executor, 'hasSourceClaimArtifactContract', 'source-claim artifacts bypass unverified deterministic recovery writes');
   assertContains(executor, 'authorizeAgentFileWriteContract', 'checkpoint writes must honor the current request at the final boundary');
   assertContains(executor, 'buildTaskContract(input.userPrompt || task.desc)', 'planner descriptions cannot override the current request contract');
-  assertContains(executor, 'writeTextFileSync', 'deterministic create writes through WorkspaceEditService');
+  assertContains(executor, 'commitTextFileProposal', 'deterministic create writes through the atomic WorkspaceEditService boundary');
   assertContains(executor, 'readFileContentFull', 'deterministic create verifies content by reading from disk');
 });
 
@@ -282,17 +282,17 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
   const discovery = src('src/app/context-discovery-service.ts');
   assert.match(
     extension,
-    /applyGeneratedArtifactsWithPrompt\([\s\S]*?workflowReporter[\s\S]*?\{ rollbackOnValidationFailure: false \}/,
+    /applyGeneratedArtifactsWithPrompt\([\s\S]*?workflowReporter[\s\S]*?\{ rollbackOnValidationFailure: false, validationCommandRunner:/,
     'automatic code-generation apply must keep failed files so runClosedLoopRepair can iterate',
   );
   assert.match(
     viewProvider,
-    /applyGeneratedArtifactsWithPrompt\([\s\S]*?\{ rollbackOnValidationFailure: false \}/,
+    /applyGeneratedArtifactsWithPrompt\([\s\S]*?\{ rollbackOnValidationFailure: false, validationCommandRunner \}/,
     'webview apply must keep validation-failed files for pending edit review',
   );
   assert.match(
     closedLoopRunner,
-    /const repairApply = await applyGeneratedArtifactsWithPrompt\([\s\S]*?\{ rollbackOnValidationFailure: false \}/,
+    /const repairApply = await applyGeneratedArtifactsWithPrompt\([\s\S]*?rollbackOnValidationFailure: false,[\s\S]*?validationCommandRunner: input\.validationCommandRunner/,
     'repair rounds must keep failed repair files for the next validation loop',
   );
   const repairService = src('src/app/agentic-repair-service.ts');
@@ -376,6 +376,7 @@ test('§8.3 File edits: timeout evidence follows validation vs interactive-run s
   const manualReview = src('src/agent/manual-review-validation.ts');
   const launchClassifier = src('src/app/terminal-launch-classifier.ts');
   const terminalTool = src('src/tools/terminal.ts');
+  const terminalCoordinator = src('src/app/terminal-permission-coordinator.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
   assertContains(classifier, 'timedOut ? 124', 'timed-out local commands must not be reported as exitCode 0');
   assertContains(classifier, 'buildValidationTimeoutFailureDetail', 'workspace validation timeout detail must be centralized');
@@ -387,14 +388,15 @@ test('§8.3 File edits: timeout evidence follows validation vs interactive-run s
   assertContains(classifier, '自动验证按失败处理', 'workspace validation timeout must remain failed evidence');
   assertContains(classifier, '自动验证不能标记通过', 'interactive local execution timeout must not become a false pass');
   for (const code of [planner, localExecution]) {
-    assertContains(code, 'executionOutcomeClassifier.classifyExecResult', 'local execution paths must delegate timeout and manual-review classification');
+    assertDoesNotContain(code, /child_process|executionOutcomeClassifier\.classifyExecResult/, 'local planners must not execute or classify outside terminal authority');
   }
   assertContains(terminalTool, 'executionOutcomeClassifier.classifyExecResult', 'terminal tool must delegate timeout and manual-review classification');
   assertContains(terminalTool, 'makeExecutionTimeoutError', 'terminal tool must construct timeout evidence through the classifier owner');
   assertContains(terminalTool, 'formatManualReviewTerminalDetail', 'terminal tool must use shared manual-review terminal marker');
   assertDoesNotContain(terminalTool, 'const LONG_RUNNING_MANUAL_REVIEW_DETAIL', 'terminal tool must not own a separate manual-review message');
   assertDoesNotContain(terminalTool, 'timedOut ? -1', 'terminal tool must not classify timeout exit codes locally');
-  assertContains(validationService, 'executionOutcomeClassifier.classifyExecResult', 'workspace validation must delegate timeout classification');
+  assertDoesNotContain(validationService, /child_process|executionOutcomeClassifier\.classifyExecResult/, 'workspace validation must not execute or classify outside terminal authority');
+  assertContains(terminalCoordinator, "executionProfile: 'validation'", 'validation authority must select strict validation timeout semantics');
   assertContains(manualReview, 'hasHardExecutionFailureEvidence', 'manual review validation must share hard-failure classification');
   assertContains(launchClassifier, 'sourceTextLooksVisualOrInteractive', 'terminal launch mode must share visual-source classification');
   assertContains(toolLoop, 'classifyFormattedTerminalExecutionEvidence', 'tool loop must use shared formatted terminal execution evidence parser');
@@ -422,10 +424,11 @@ test('§8.3 File edits: code directory prompts force generated code paths under 
 
   const agentLoop = src('src/agent-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
+  const markdownArtifactApplier = src('src/agent/markdown-artifact-applier.ts');
   const extension = src('src/extension.ts');
   const discovery = src('src/app/context-discovery-service.ts');
-  assertContains(toolLoop, 'promptLooksLikeCppProgram', 'tool loop detects C++ prompts separately from C');
-  assertContains(toolLoop, 'contentLooksLikeCppProgram', 'tool loop detects C++ content separately from C');
+  assertContains(markdownArtifactApplier, 'promptLooksLikeCppProgram', 'markdown artifact adapter detects C++ prompts separately from C');
+  assertContains(markdownArtifactApplier, 'contentLooksLikeCppProgram', 'markdown artifact adapter detects C++ content separately from C');
   assertContains(toolLoop, 'resolveWorkspaceWritePath', 'tool loop delegates create_file/write_file path decisions to shared resolver');
   assert.match(
     discovery,
@@ -1023,7 +1026,7 @@ test('Agentic loop: terminal must not be used as a fallback file writer', () => 
 });
 
 test('Agentic loop: markdown fallback writes C++ code blocks as real artifacts', () => {
-  const code = src('src/agent/tool-loop.ts');
+  const code = src('src/agent/markdown-artifact-applier.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
   assertContains(code, 'promptLooksLikeCppProgram(userPrompt)', 'markdown fallback must detect C++ prompts');
   assert.match(
@@ -1118,7 +1121,7 @@ test('Agentic free-explore: follow-up turns keep same-session context', () => {
   assertContains(sessionContext, '不要泛化为分析整个 code 目录', 'follow-up context must prevent broad code-directory reinterpretation');
   assert.match(
     ext,
-    /runAgenticLoop\([\s\S]*?\}, agSessionContext, intent\.mode, agMemoryRelatedPaths\)/,
+    /runAgenticLoop\([\s\S]*?\}, agSessionContext, workflow\.toolPolicyMode, agMemoryRelatedPaths\)/,
     'free-explore runAgenticLoop call must receive same-session context, workflow mode, and memory path anchors',
   );
   assert.match(
@@ -1338,11 +1341,12 @@ test('Architecture: agent loop stays orchestration-only for tool execution detai
   const agentLoop = src('src/agent-loop.ts');
   const toolLoop = src('src/agent/tool-loop.ts');
   const summary = src('src/agent/agentic-summary.ts');
+  const markdownArtifactApplier = src('src/agent/markdown-artifact-applier.ts');
   const lineCount = agentLoop.split(/\r?\n/).length;
   assert.ok(lineCount <= 2800, `agent-loop.ts should stay below 2800 lines after tool-loop extraction, got ${lineCount}`);
   assertContains(agentLoop, 'executeFakeToolsForLoop', 'agent loop must call the tool-loop service');
   assertContains(toolLoop, 'export async function executeFakeToolsForLoop', 'tool loop must own fake-tool dispatch');
-  assertContains(toolLoop, 'export async function applyMarkdownFileArtifactsForLoop', 'tool loop must own markdown artifact application');
+  assertContains(markdownArtifactApplier, 'export async function applyMarkdownFileArtifactsForLoop', 'markdown artifact adapter must own parsed artifact application');
   assertContains(toolLoop, 'export function analyzeTerminalEvidence', 'tool loop must expose terminal evidence adapter');
   assertContains(src('src/execution-outcome-classifier.ts'), 'classifyFormattedTerminalExecutionEvidence', 'execution outcome owner must parse formatted terminal execution evidence');
   assertContains(summary, 'export function cleanAgentFinalSummaryForUser', 'summary sanitizer must live in agentic summary module');
@@ -1404,18 +1408,23 @@ test('Architecture: WorkspaceEditService owns text file writes', () => {
   const deterministicTaskExecutor = src('src/agent/deterministic-task-executor.ts');
   const markdownDeliverableTask = src('src/agent/markdown-deliverable-task.ts');
   assertContains(service, 'class WorkspaceEditService', 'workspace edit service class must exist');
-  assertContains(service, 'writeTextFileSync', 'workspace edit service must expose text-file write boundary');
   assertContains(service, 'proposeTextFileWrite', 'workspace edit service must expose edit proposal boundary');
-  assertContains(service, 'snapshotTextFile', 'workspace edit service must expose snapshot boundary');
-  assertContains(service, 'applyTextFileProposal', 'workspace edit service must expose apply boundary');
+  assertContains(service, 'captureTextFileBaseline', 'workspace edit service must expose the CAS baseline boundary');
+  assertContains(service, 'commitTextFileProposal', 'workspace edit service must expose the atomic commit boundary');
+  assertContains(service, 'rollbackTextFileCommit', 'workspace edit service must expose token-bound rollback');
   assertContains(service, 'validateTextFileProposal', 'workspace edit service must own generated source sanity validation');
-  assertContains(service, 'return this.applyTextFileProposal(this.proposeTextFileWrite', 'legacy text writes must delegate through proposal/apply flow');
+  assertDoesNotContain(service, 'writeTextFileSync(', 'unsafe legacy text write API must stay deleted');
+  assertDoesNotContain(service, 'snapshotTextFile(', 'unscoped legacy snapshot API must stay deleted');
+  assertDoesNotContain(service, 'applyTextFileProposal(', 'unsafe legacy apply API must stay deleted');
   assertContains(agentLoop, 'new WorkspaceEditService()', 'agent loop must construct workspace edit service');
-  assertContains(agentLoop, 'workspaceEditService.writeTextFileSync', 'agent loop writes must go through workspace edit service');
+  assertContains(agentLoop, 'workspaceEditService.captureTextFileBaseline', 'agent loop must capture write authority before asynchronous work');
+  assertContains(agentLoop, 'workspaceEditService.commitTextFileProposal', 'agent loop writes must use atomic CAS commit');
   assertContains(toolLoop, 'new WorkspaceEditService()', 'tool loop must construct workspace edit service for tool writes');
-  assertContains(toolLoop, 'workspaceEditService.writeTextFileSync', 'tool loop writes must go through workspace edit service');
+  assertContains(toolLoop, 'workspaceEditService.captureTextFileBaseline', 'tool loop must capture write authority before permission callbacks');
+  assertContains(toolLoop, 'workspaceEditService.commitTextFileProposal', 'tool loop writes must use atomic CAS commit');
   assertContains(applier, 'new WorkspaceEditService()', 'workspace applier must construct workspace edit service');
-  assertContains(applier, 'workspaceEditService.applyTextFileProposal', 'workspace applier must apply files through workspace edit service');
+  assertContains(applier, 'workspaceEditService.commitTextFileProposal', 'workspace applier must apply files through atomic CAS commit');
+  assertContains(applier, 'rollbackTextFileCommit', 'workspace applier must rollback partial multi-file commits by token');
   assertContains(agentLoop, 'validateSourceSanity: true', 'agent loop model-driven writes must enable source sanity validation');
   assertContains(toolLoop, 'validateSourceSanity: true', 'tool loop file writes must enable source sanity validation');
   assertContains(applier, 'validateSourceSanity: true', 'workspace applier writes must enable source sanity validation');
@@ -1461,7 +1470,7 @@ test('Architecture: Workspace review ledger owns apply result summary', () => {
   assertContains(applier, 'review: ledger.snapshot()', 'workspace applier must return ledger snapshots');
 });
 
-test('Architecture: ValidationService owns automatic validation execution', () => {
+test('Architecture: ValidationService owns validation semantics and receives execution authority', () => {
   const service = src('src/workspace/validation-service.ts');
   const planner = src('src/app/verification-planner.ts');
   const qualityGate = src('src/app/quality-gate-service.ts');
@@ -1472,10 +1481,11 @@ test('Architecture: ValidationService owns automatic validation execution', () =
   assertContains(planner, 'planCppValidation', 'verification planner must own C++ validation planning integration');
   assertContains(qualityGate, 'class QualityGateService', 'quality gate service class must exist');
   assertContains(applier, 'new QualityGateService()', 'workspace applier must evaluate quality gate');
-  assertContains(service, 'runShell', 'validation service must own shell execution');
-  assertContains(applier, 'new ValidationService()', 'workspace applier must delegate validation to service');
+  assertContains(service, 'rejectMissingCommandAuthority', 'validation service must fail closed without injected command authority');
+  assertDoesNotContain(service, /child_process|\bexec\s*\(/, 'validation service must not execute a process outside the terminal evidence boundary');
+  assertContains(applier, 'new ValidationService({ commandRunner: validationCommandRunner })', 'workspace applier must inject validation command authority');
   const agentLoop = src('src/agent-loop.ts');
-  assertContains(agentLoop, 'new ValidationService()', 'main agent loop must delegate compile validation to the shared service');
+  assertContains(agentLoop, 'commandRunner: callbacks.onValidationCommand', 'main agent loop must inject validation command authority');
   assertContains(agentLoop, 'new VerificationPlanner()', 'interactive agent runs must reuse the shared verification planner');
   assert.doesNotMatch(agentLoop, /planLocalExecution\(/, 'main agent validation must not bypass the shared verification planner');
   assert.doesNotMatch(applier, /planCppValidation|child_process|runShell|runCppAutoValidation/, 'workspace applier must not own validation execution internals');
@@ -1672,6 +1682,7 @@ test('Architecture: Phase 10 application service owns Provider chat routing prot
   const profiles = src('../shared/src/build-profile.ts');
   const vscodeSurface = src('src/ui/vscode-surface-adapter.ts');
   const sessionTurn = src('src/app/chat-session-turn-service.ts');
+  const evidenceRouter = src('src/app/evidence-aware-chat-router.ts');
   const extension = src('src/extension.ts');
   const appIndex = src('src/app/index.ts');
 
@@ -1695,8 +1706,9 @@ test('Architecture: Phase 10 application service owns Provider chat routing prot
   assertContains(extension, 'getChatSessionTurnService(webview).beginTurn', 'runChat must delegate session turn state to app service');
   assertContains(appIndex, "export * from './agent-application-service';", 'application service must be exported through app boundary');
   assertContains(appIndex, "export * from './agent-protocol';", 'application protocol must be exported through app boundary');
-  assertContains(extension, 'new AgentApplicationService', 'VS Code entry must compose the application service');
-  assertContains(extension, 'getAgentApplicationService().routeChat(opts)', 'VS Code routeChat wrapper must delegate to app service');
+  assertContains(evidenceRouter, 'new AgentApplicationService(deps)', 'evidence-aware VS Code adapter must compose the application service');
+  assertContains(evidenceRouter, 'this.application.routeChat(request)', 'evidence-aware adapter must delegate provider routing to app service');
+  assertContains(extension, 'evidenceAwareChatRouter.route(opts)', 'VS Code routeChat wrapper must delegate to the evidence-aware adapter');
   assert.doesNotMatch(extension, /const messages: ChatMessage\[\] = \[/, 'extension.ts must not assemble provider chat messages');
   assert.doesNotMatch(extension, /getActiveProvider\(\)\.chat\(/, 'extension.ts must not call provider.chat directly');
 });
@@ -1810,13 +1822,29 @@ test('Architecture: ARCH-17 agent runs are created through RunContext', () => {
   const extension = src('src/extension.ts');
   const appIndex = src('src/app/index.ts');
   const runContext = src('src/app/run-context.ts');
+  const terminalCoordinator = src('src/app/terminal-permission-coordinator.ts');
 
   assertContains(appIndex, "export * from './run-context';", 'RunContext owner must be exported through app boundary');
   assertContains(runContext, 'createDevSeekRunContext', 'RunContext owner must expose context creation');
   assertContains(runContext, 'agent-run-started', 'RunContext must record top-level run start facts');
   assertContains(runContext, 'agent-run-completed', 'RunContext must record top-level convergence facts');
   assertContains(extension, 'createDevSeekRunContext({', 'agent entry must create a top-level RunContext');
-  assertContains(extension, 'agentRunContext.complete(', 'agent entry must settle the top-level RunContext');
+  assertContains(
+    extension,
+    'terminalPermissionCoordinator.completeRunContext(agentRunContext',
+    'agent entry must settle through the terminal-evidence convergence boundary',
+  );
+  assertContains(terminalCoordinator, 'runContext.complete(status, completionData)', 'convergence boundary must settle RunContext');
+  assertContains(
+    terminalCoordinator,
+    'resolveCommandFailuresAfterQualityGate({',
+    'completed settlement must resolve terminal failures only after replayed quality evidence',
+  );
+  assertDoesNotContain(
+    extension,
+    /agentRunContext\??\.complete\s*\(/,
+    'agent entry must not bypass the terminal-evidence convergence boundary',
+  );
   assertDoesNotContain(extension, 'createDevSeekRunId', 'agent entry must not create bare run ids outside RunContext');
 });
 

@@ -25,6 +25,8 @@ type GroundedMarkdownChatWithMessages = (
   newSession?: boolean,
   traceRunId?: string,
   traceWorkspaceRoot?: string,
+  traceEvidenceParticipantToken?: string,
+  onTraceEvidenceError?: (error: unknown) => void,
 ) => Promise<{ text: string }>;
 
 export async function tryRunGroundedMarkdownAgenticTask(
@@ -82,6 +84,8 @@ export async function tryRunGroundedMarkdownAgenticTask(
       true,
       callbacks.traceRunId,
       callbacks.traceWorkspaceRoot,
+      callbacks.traceEvidenceParticipantToken,
+      callbacks.onTraceEvidenceError,
     )).text,
   });
   if (!result) {

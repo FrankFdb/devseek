@@ -68,6 +68,13 @@ export interface LLMChatOptions {
   traceRunId?: string;
   /** 本次 trace 的统一落盘根目录，避免 provider/tool 日志被不同 workspace 拆开。 */
   traceWorkspaceRoot?: string;
+  /** 跨 provider client/Bridge server 共享的单次操作标识。 */
+  traceOperationId?: string;
+  /** Bridge-only authority envelope. Callers must omit it for every non-Bridge provider. */
+  evidenceCapability?: {
+    readonly role: 'participant';
+    readonly token: string;
+  };
 }
 
 export interface LLMProvider {

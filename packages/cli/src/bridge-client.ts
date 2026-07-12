@@ -1,12 +1,16 @@
 import { randomBytes } from 'crypto';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { dirname, join, parse, resolve } from 'path';
-import type { AgentChatRequest, ChatResponse, StreamDelta } from '@devseek-netai/shared';
+import type { BridgeAgentChatRequest, ChatResponse, StreamDelta } from '@devseek-netai/shared';
 
 const DEFAULT_BRIDGE_PORT = 3721;
 const RESET_DELTA_MARKER = '\x00RESET\x00';
+const TRACE_RUN_ID_HEADER = 'X-DevSeek-Run-Id';
+const TRACE_WORKSPACE_ROOT_HEADER = 'X-DevSeek-Trace-Workspace-Root';
+const TRACE_OPERATION_ID_HEADER = 'X-DevSeek-Operation-Id';
+const EVIDENCE_AUTHORITY_HEADER = 'X-DevSeek-Evidence-Authority';
 
-export async function bridgeChat(cwd: string, request: AgentChatRequest): Promise<string> {
+export async function bridgeChat(cwd: string, request: BridgeAgentChatRequest): Promise<string> {
   const port = Number(process.env.DEVSEEK_BRIDGE_PORT ?? DEFAULT_BRIDGE_PORT);
   const token = await readOrCreateBridgeToken(cwd);
   const response = await fetch(`http://127.0.0.1:${port}/chat`, {
@@ -14,6 +18,14 @@ export async function bridgeChat(cwd: string, request: AgentChatRequest): Promis
     headers: {
       'Content-Type': 'application/json',
       'X-DevSeek-Token': token,
+      ...(request.traceRunId ? { [TRACE_RUN_ID_HEADER]: request.traceRunId } : {}),
+      ...(request.traceWorkspaceRoot
+        ? { [TRACE_WORKSPACE_ROOT_HEADER]: request.traceWorkspaceRoot }
+        : { [TRACE_WORKSPACE_ROOT_HEADER]: cwd }),
+      ...(request.traceOperationId ? { [TRACE_OPERATION_ID_HEADER]: request.traceOperationId } : {}),
+      ...(request.evidenceCapability
+        ? { [EVIDENCE_AUTHORITY_HEADER]: request.evidenceCapability.token }
+        : {}),
     },
     body: JSON.stringify({
       prompt: request.prompt,
@@ -41,7 +53,7 @@ export async function bridgeChat(cwd: string, request: AgentChatRequest): Promis
   return payload.content ?? '';
 }
 
-async function readBridgeStream(response: Response, request: AgentChatRequest): Promise<string> {
+async function readBridgeStream(response: Response, request: BridgeAgentChatRequest): Promise<string> {
   if (!response.body) {
     throw new Error('Bridge stream response did not include a body');
   }

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as nodePath from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { ChangeAction, createChangeAction, ResolvedGeneratedArtifact } from './change-plan';
 import { GeneratedArtifact, GeneratedFile, looksLikeRawToolCallText, parseGeneratedArtifacts } from './generated-file-parser';
 import type { CppValidationPolicy } from './validation-planner';
@@ -17,26 +18,41 @@ import {
   isGeneratedArtifactAllowedForPrompt,
 } from './workspace/path-resolver';
 import { createChangeSet } from './workspace/change-set';
-import { WorkspaceEditService } from './workspace/edit-service';
+import {
+  WorkspaceEditService,
+  type WorkspaceTextFileBaseline,
+  type WorkspaceTextFileCommitToken,
+} from './workspace/edit-service';
 import { ReviewLedger, type ReviewLedgerSnapshot } from './workspace/review-ledger';
-import { ValidationService, type AutoValidationResult } from './workspace/validation-service';
+import {
+  ValidationService,
+  type AutoValidationResult,
+  type ValidationCommandRunner,
+} from './workspace/validation-service';
 import { QualityGateService, type QualityGateDecision } from './app/quality-gate-service';
 import { shouldBlockProjectInstructionFileWrite } from './workspace/instruction-file-safety';
 import { findGeneratedSourceSanityIssue, repairGeneratedSourceTransportEscapes } from './workspace/source-sanity';
 import { createWorkspaceFilePathTokenRegExp } from './workspace/path-patterns';
 
-export interface ApplyWorkflowStatus {
-  phase: 'apply' | 'validate' | 'quality' | 'repair';
+interface ApplyWorkflowStatusBase {
   state: 'started' | 'completed' | 'skipped' | 'passed' | 'failed';
   title: string;
   detail?: string;
 }
 
+export type ApplyWorkflowStatus =
+  | (ApplyWorkflowStatusBase & { phase: 'apply' | 'repair'; operationId?: never })
+  | (ApplyWorkflowStatusBase & {
+      phase: 'validate' | 'quality';
+      /** One correlation id for exactly one verification + quality-gate pair. */
+      operationId: string;
+    });
+
 export interface ApplyWorkflowResult {
   applied: boolean;
   changeCount: number;
   changedPaths: string[];
-  failureReason?: 'no-artifacts' | 'user-cancelled' | 'path-drift' | 'protected-file' | 'truncating-overwrite' | 'source-sanity';
+  failureReason?: 'no-artifacts' | 'user-cancelled' | 'path-drift' | 'protected-file' | 'truncating-overwrite' | 'source-sanity' | 'write-conflict';
   failureDetail?: string;
   blockedChangePaths?: string[];
   validation?: AutoValidationResult;
@@ -61,6 +77,8 @@ export interface ApplyGeneratedArtifactsOptions {
    * review/repair; callers must opt in when rollback is truly desired.
    */
   rollbackOnValidationFailure?: boolean;
+  /** Product callers inject the terminal side-effect authority here. */
+  validationCommandRunner?: ValidationCommandRunner;
 }
 
 interface PreparedChange {
@@ -70,6 +88,7 @@ interface PreparedChange {
   exists: boolean;
   oldContent: string;
   newContent: string;
+  baseline: WorkspaceTextFileBaseline;
 }
 
 export async function previewGeneratedArtifactsWithPrompt(raw: string, requestPrompt?: string): Promise<void> {
@@ -323,26 +342,56 @@ async function applyPreparedChanges(
   });
 
   const createdDirs = new Set<string>();
+  const commitTokens: WorkspaceTextFileCommitToken[] = [];
+  let applyFailure: string | undefined;
+  let applyRollbackComplete = true;
   await vscode.window.withProgress(
     { location: vscode.ProgressLocation.Notification, title: 'DeepSeek: 正在应用文件变更...', cancellable: false },
     async () => {
-      for (const change of prepared) {
-        const parentFsPath = nodePath.dirname(change.targetUri.fsPath);
-        for (const dir of collectMissingParentDirs(parentFsPath, root?.fsPath)) {
-          createdDirs.add(dir);
+      try {
+        for (const change of prepared) {
+          const parentFsPath = nodePath.dirname(change.targetUri.fsPath);
+          for (const dir of collectMissingParentDirs(parentFsPath, root?.fsPath)) {
+            createdDirs.add(dir);
+          }
+          const proposal = workspaceEditService.proposeTextFileWrite(change.targetUri.fsPath, change.newContent);
+          const committed = workspaceEditService.commitTextFileProposal(proposal, change.baseline, {
+            validateSourceSanity: true,
+            repairSourceTransportEscapes: true,
+          });
+          commitTokens.push(committed.commitToken);
         }
-        const proposal = workspaceEditService.proposeTextFileWrite(change.targetUri.fsPath, change.newContent);
-        workspaceEditService.applyTextFileProposal(proposal, {
-          absPath: change.targetUri.fsPath,
-          existed: change.exists,
-          content: change.oldContent,
-        }, {
-          validateSourceSanity: true,
-          repairSourceTransportEscapes: true,
-        });
+      } catch (error) {
+        const rollbackFailure = await rollbackCommittedChanges(commitTokens, createdDirs, workspaceEditService);
+        applyRollbackComplete = !rollbackFailure;
+        applyFailure = [
+          error instanceof Error ? error.message : String(error),
+          rollbackFailure ? `rollback: ${rollbackFailure}` : '',
+        ].filter(Boolean).join('\n');
       }
     },
   );
+
+  if (applyFailure) {
+    await reportWorkflow(reporter, {
+      phase: 'apply',
+      state: 'failed',
+      title: '文件应用失败（写入冲突）',
+      detail: applyFailure,
+    });
+    ledger.addUnfinishedItem(`文件应用失败: ${applyFailure}`);
+    vscode.window.showErrorMessage('DeepSeek: 文件在确认后发生变化，本轮写入已阻止。');
+    return {
+      applied: !applyRollbackComplete,
+      changeCount: applyRollbackComplete ? 0 : commitTokens.length,
+      changedPaths: applyRollbackComplete ? [] : changeSet.changedPaths,
+      failureReason: 'write-conflict',
+      failureDetail: applyFailure,
+      blockedChangePaths: changeSet.changedPaths,
+      rolledBack: applyRollbackComplete,
+      review: ledger.snapshot(),
+    };
+  }
 
   vscode.window.showInformationMessage(`DeepSeek: 已应用 ${prepared.length} 个文件变更`);
   await vscode.window.showTextDocument(prepared[0].targetUri, { preview: false });
@@ -354,14 +403,21 @@ async function applyPreparedChanges(
     detail: prepared.slice(0, 6).map((change) => change.relPath).join('\n'),
   });
 
+  const validationOperationId = `vscode-workspace-validation-${crypto.randomUUID()}`;
   await reportWorkflow(reporter, {
     phase: 'validate',
+    operationId: validationOperationId,
     state: 'started',
     title: '正在执行自动编译/验证',
     detail: '根据变更路径自动选择构建命令',
   });
 
-  const validation = await runAutoValidation(prepared.map((p) => p.relPath), root, requestPrompt);
+  const validation = await runAutoValidation(
+    prepared.map((p) => p.relPath),
+    root,
+    requestPrompt,
+    options?.validationCommandRunner,
+  );
   if (!validation || validation.status === 'blocked' || validation.ran === false) {
     if (validation) {
       ledger.recordValidation(validation);
@@ -376,6 +432,7 @@ async function applyPreparedChanges(
     ledger.addUnfinishedItem('QualityGate 阻塞：缺少自动验证证据');
     await reportWorkflow(reporter, {
       phase: 'validate',
+      operationId: validationOperationId,
       state: 'skipped',
       title: '自动验证阻塞',
       detail: validation
@@ -384,6 +441,7 @@ async function applyPreparedChanges(
     });
     await reportWorkflow(reporter, {
       phase: 'quality',
+      operationId: validationOperationId,
       state: 'failed',
       title: 'QualityGate 阻塞',
       detail: renderQualityGateDetail(qualityGate),
@@ -402,6 +460,7 @@ async function applyPreparedChanges(
   ledger.recordValidation(validation);
   await reportWorkflow(reporter, {
     phase: 'validate',
+    operationId: validationOperationId,
     state: validation.ok ? 'passed' : 'failed',
     title: validation.ok ? '自动验证通过' : '自动验证失败',
     detail: `模式: ${validation.mode || 'unknown'}\n原因: ${validation.reason || 'n/a'}\n命令: ${validation.command}\nexitCode: ${validation.exitCode ?? 'null'}\n${validation.output.trim().slice(0, 1200)}`,
@@ -414,6 +473,7 @@ async function applyPreparedChanges(
   ledger.recordQualityGate(qualityGate);
   await reportWorkflow(reporter, {
     phase: 'quality',
+    operationId: validationOperationId,
     state: qualityGate.status === 'pass' ? 'passed' : 'failed',
     title: qualityGate.status === 'pass'
       ? 'QualityGate 通过'
@@ -424,7 +484,26 @@ async function applyPreparedChanges(
   });
 
   if (!validation.ok && autoApply && rollbackOnValidationFailure) {
-    await rollbackPreparedChanges(prepared, createdDirs, workspaceEditService);
+    const rollbackFailure = await rollbackCommittedChanges(commitTokens, createdDirs, workspaceEditService);
+    if (rollbackFailure) {
+      ledger.addUnfinishedItem(`自动验证失败且安全回滚未完成: ${rollbackFailure}`);
+      await reportWorkflow(reporter, {
+        phase: 'apply',
+        state: 'failed',
+        title: '自动验证失败，安全回滚未完成',
+        detail: rollbackFailure,
+      });
+      vscode.window.showErrorMessage('DeepSeek: 自动验证失败，且工作区在回滚前又发生变化；已停止继续覆盖。');
+      return {
+        applied: true,
+        changeCount: summary.total,
+        changedPaths: changeSet.changedPaths,
+        validation,
+        qualityGate,
+        rolledBack: false,
+        review: ledger.snapshot(),
+      };
+    }
     ledger.addUnfinishedItem('自动验证失败，文件变更已回滚');
     await reportWorkflow(reporter, {
       phase: 'apply',
@@ -552,16 +631,17 @@ async function prepareChanges(raw: string, requestPrompt?: string, preferredAbso
     } as ResolvedGeneratedArtifact;
 
     const targetUri = vscode.Uri.joinPath(root, ...relPath.split('/'));
-    const exists = await fileExists(targetUri);
+    const baseline = new WorkspaceEditService().captureTextFileBaseline(targetUri.fsPath, root.fsPath);
+    const exists = baseline.snapshot.existed;
     const action = createChangeAction(resolved, exists);
-    const oldContent = exists ? await readText(targetUri) : '';
+    const oldContent = baseline.snapshot.content;
     const newContent = action.type === 'patch-file'
       ? applyUnifiedDiff(oldContent, action.diff, relPath)
       : ensureFinalNewline(action.content);
     if (looksLikeRawToolCallText(newContent)) continue;
     if (shouldBlockProjectInstructionFileWrite({ filePath: relPath, content: newContent, requestPrompt })) continue;
 
-    changes.push({ action, targetUri, relPath, exists, oldContent, newContent });
+    changes.push({ action, targetUri, relPath, exists, oldContent, newContent, baseline });
   }
 
   const deduped = dedupeChanges(changes);
@@ -600,8 +680,9 @@ async function prepareTargetScopedFallbackChanges(
   if (!isGeneratedArtifactAllowedForPrompt(relPath, requestPrompt, preferredAbsolutePaths)) return [];
 
   const targetUri = vscode.Uri.joinPath(root, ...relPath.split('/'));
-  const exists = await fileExists(targetUri);
-  const oldContent = exists ? await readText(targetUri) : '';
+  const baseline = new WorkspaceEditService().captureTextFileBaseline(targetUri.fsPath, root.fsPath);
+  const exists = baseline.snapshot.existed;
+  const oldContent = baseline.snapshot.content;
   const content = selectTargetScopedFallbackContent(raw, relPath, oldContent, requestPrompt);
   if (!content) return [];
   if (looksLikeRawToolCallText(content)) return [];
@@ -620,7 +701,7 @@ async function prepareTargetScopedFallbackChanges(
   const newContent = action.type === 'patch-file'
     ? applyUnifiedDiff(oldContent, action.diff, relPath)
     : ensureFinalNewline(action.content);
-  return [{ action, targetUri, relPath, exists, oldContent, newContent }];
+  return [{ action, targetUri, relPath, exists, oldContent, newContent, baseline }];
 }
 
 export function resolveGeneratedArtifactPathForPrompt(
@@ -691,30 +772,21 @@ function buildTruncatingOverwriteDetail(change: PreparedChange): string {
   ].join('\n');
 }
 
-async function rollbackPreparedChanges(
-  prepared: PreparedChange[],
+async function rollbackCommittedChanges(
+  commitTokens: WorkspaceTextFileCommitToken[],
   createdDirs?: Set<string>,
   workspaceEditService = new WorkspaceEditService(),
-): Promise<void> {
-  for (const change of [...prepared].reverse()) {
-    if (change.exists) {
-      const proposal = workspaceEditService.proposeTextFileWrite(change.targetUri.fsPath, change.oldContent);
-      workspaceEditService.applyTextFileProposal(proposal, {
-        absPath: change.targetUri.fsPath,
-        existed: true,
-        content: change.newContent,
-      });
-      continue;
-    }
-
-    try {
-      await vscode.workspace.fs.delete(change.targetUri, { useTrash: false });
-    } catch {
-      // Ignore rollback delete errors for files that do not exist.
+): Promise<string | undefined> {
+  const failures: string[] = [];
+  for (const token of [...commitTokens].reverse()) {
+    const result = workspaceEditService.rollbackTextFileCommit(token);
+    if (!result.rolledBack) {
+      failures.push(`${nodePath.basename(token.absPath)}: ${result.reason ?? 'unknown rollback failure'}`);
     }
   }
 
   await cleanupCreatedEmptyDirs(createdDirs);
+  return failures.length > 0 ? failures.join('; ') : undefined;
 }
 
 function collectMissingParentDirs(parentFsPath: string, rootFsPath?: string): string[] {
@@ -1166,15 +1238,6 @@ function getWorkspaceRoot(requestPrompt?: string, preferredAbsolutePaths?: strin
   return getWorkspaceRootUri(requestPrompt, preferredAbsolutePaths);
 }
 
-async function fileExists(uri: vscode.Uri): Promise<boolean> {
-  try { await vscode.workspace.fs.stat(uri); return true; } catch { return false; }
-}
-
-async function readText(uri: vscode.Uri): Promise<string> {
-  const bytes = await vscode.workspace.fs.readFile(uri);
-  return Buffer.from(bytes).toString('utf8');
-}
-
 function ensureFinalNewline(text: string): string {
   return text.endsWith('\n') ? text : text + '\n';
 }
@@ -1318,10 +1381,15 @@ function applyUnifiedDiff(original: string, diff: string, relPath: string): stri
   return ensureFinalNewline(result.join('\n'));
 }
 
-async function runAutoValidation(changedPaths: string[], root?: vscode.Uri, requestPrompt?: string): Promise<AutoValidationResult | null> {
+async function runAutoValidation(
+  changedPaths: string[],
+  root?: vscode.Uri,
+  requestPrompt?: string,
+  validationCommandRunner?: ValidationCommandRunner,
+): Promise<AutoValidationResult | null> {
   if (!root) return null;
   const config = vscode.workspace.getConfiguration('devseek');
-  const validationService = new ValidationService();
+  const validationService = new ValidationService({ commandRunner: validationCommandRunner });
   return validationService.validateWorkspaceChanges({
     rootFsPath: root.fsPath,
     changedPaths,

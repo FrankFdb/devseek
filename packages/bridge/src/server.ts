@@ -2,12 +2,16 @@ import express, { Request, Response, NextFunction } from 'express';
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import {
+  assertRunEvidencePersistedSecretBoundary,
   createDevSeekTraceLogger,
+  DevSeekCapabilityTextStreamGuard,
+  redactDevSeekAuthorityCapabilities,
   summarizeTraceText,
   type DevSeekTraceLogger,
 } from '@devseek-netai/shared';
 import { DeepSeekAgent, LoginRequiredError } from './deepseek-agent';
 import { RequestQueue } from './queue';
+import { attachBridgeRunEvidence, type BridgeRunEvidence } from './run-evidence';
 import type {
   ChatRequest,
   ChatResponse,
@@ -21,6 +25,8 @@ const VERSION = '0.1.0';
 const TOKEN_FILE = '.devseek/bridge-token';
 const TRACE_RUN_ID_HEADER = 'x-devseek-run-id';
 const TRACE_WORKSPACE_ROOT_HEADER = 'x-devseek-trace-workspace-root';
+const TRACE_OPERATION_ID_HEADER = 'x-devseek-operation-id';
+const EVIDENCE_AUTHORITY_HEADER = 'x-devseek-evidence-authority';
 
 // ----------------------------------------------------------------
 // 全局单例
@@ -84,11 +90,96 @@ function resolveTraceWorkspaceRoot(req: Request): string {
   if (!requested) return WORKSPACE_ROOT;
   try {
     const resolved = fs.realpathSync(requested);
-    if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) return resolved;
+    if (
+      fs.existsSync(resolved)
+      && fs.statSync(resolved).isDirectory()
+      && isPathInsideOrEqual(WORKSPACE_ROOT, resolved)
+    ) return resolved;
   } catch {
     // Fall back to the bridge workspace root below.
   }
   return WORKSPACE_ROOT;
+}
+
+function createRequestEvidence(
+  req: Request,
+  trace: DevSeekTraceLogger,
+): BridgeRunEvidence | undefined {
+  const runId = req.header(TRACE_RUN_ID_HEADER) ?? '';
+  if (!runId) return undefined;
+  const operationId = req.header(TRACE_OPERATION_ID_HEADER) ?? '';
+  const authorityToken = req.header(EVIDENCE_AUTHORITY_HEADER) ?? '';
+  if (!operationId || !authorityToken) {
+    trace.error('run-evidence', 'attach-rejected', {
+      reason: !operationId ? 'missing-operation-id' : 'missing-participant-authority',
+    });
+    return undefined;
+  }
+  try {
+    return attachBridgeRunEvidence({
+      workspaceRoot: resolveTraceWorkspaceRoot(req),
+      runId,
+      operationId,
+      authorityToken,
+    });
+  } catch (error) {
+    trace.error('run-evidence', 'attach-failed', summarizeBridgeEvidenceError(error));
+    return undefined;
+  }
+}
+
+function isPathInsideOrEqual(root: string, candidate: string): boolean {
+  const relative = nodePath.relative(root, candidate);
+  return relative === '' || (!relative.startsWith('..') && !nodePath.isAbsolute(relative));
+}
+
+function recordBridgeEvidence(
+  evidence: ReturnType<typeof createRequestEvidence>,
+  trace: DevSeekTraceLogger,
+  type: 'provider.requested' | 'provider.completed' | 'provider.failed',
+  payload: Record<string, unknown>,
+): void {
+  if (!evidence) return;
+  try {
+    evidence.record(type, payload);
+  } catch (error) {
+    trace.error('run-evidence', 'append-failed', summarizeBridgeEvidenceError(error));
+  }
+}
+
+function summarizeBridgeEvidenceError(error: unknown): { name: string; code: string | null; message: string } {
+  let name = 'Error';
+  let code: string | null = null;
+  try {
+    const value = error as { name?: unknown; code?: unknown } | null;
+    if (typeof value?.name === 'string') name = redactDevSeekAuthorityCapabilities(value.name);
+    if (typeof value?.code === 'string') code = redactDevSeekAuthorityCapabilities(value.code);
+  } catch {
+    // A hostile error object receives the generic identity below.
+  }
+  return {
+    name,
+    code,
+    message: safeBridgeErrorMessage(error),
+  };
+}
+
+function requireBridgePrimitiveText(value: unknown, name: string): string {
+  assertRunEvidencePersistedSecretBoundary(value);
+  if (typeof value !== 'string') throw new Error(`${name} must be primitive text`);
+  return value;
+}
+
+function safeBridgeErrorMessage(error: unknown): string {
+  try {
+    assertRunEvidencePersistedSecretBoundary(error);
+    if (typeof error === 'string') return redactDevSeekAuthorityCapabilities(error);
+    const message = (error as { message?: unknown } | null)?.message;
+    if (typeof message === 'string') return redactDevSeekAuthorityCapabilities(message);
+  } catch {
+    return 'External provider data contained forbidden secret material';
+  }
+  return 'Bridge provider operation failed';
 }
 
 // 简单安全：只允许本地连接（localhost / 127.0.0.1）
@@ -182,7 +273,7 @@ app.post('/relogin', async (_req: Request, res: Response) => {
     })
     .catch((e) => {
       agentInitializing = false;
-      console.error('[bridge] Re-login failed:', e);
+      console.error('[bridge] Re-login failed:', safeBridgeErrorMessage(e));
     });
 });
 
@@ -200,7 +291,7 @@ app.post('/preattach', async (req: Request, res: Response) => {
   try {
     await ensureAgent();
   } catch (e) {
-    res.status(503).json({ error: `Agent init failed: ${(e as Error).message}` });
+    res.status(503).json({ error: `Agent init failed: ${safeBridgeErrorMessage(e)}` });
     return;
   }
 
@@ -210,7 +301,7 @@ app.post('/preattach', async (req: Request, res: Response) => {
     });
     res.json({ ok: true, count: body.files!.length });
   } catch (e) {
-    res.status(500).json({ error: (e as Error).message });
+    res.status(500).json({ error: safeBridgeErrorMessage(e) });
   }
 });
 
@@ -221,32 +312,54 @@ app.post('/chat', async (req: Request, res: Response) => {
   const body = req.body as ChatRequest;
   const trace = createRequestTrace(req);
 
-  if (!body?.prompt || typeof body.prompt !== 'string' || body.prompt.trim() === '') {
+  let prompt: string;
+  try {
+    prompt = requireBridgePrimitiveText(body?.prompt, 'prompt');
+  } catch {
+    trace.error('bridge-server', 'chat-request-invalid', { reason: 'missing-prompt' });
+    res.status(400).json({ error: 'prompt is required and must be a non-empty string' });
+    return;
+  }
+  if (prompt.trim() === '') {
     trace.error('bridge-server', 'chat-request-invalid', { reason: 'missing-prompt' });
     res.status(400).json({ error: 'prompt is required and must be a non-empty string' });
     return;
   }
 
   const useStream = body.stream !== false; // 默认 true
+  const evidence = createRequestEvidence(req, trace);
   trace.info('bridge-server', 'chat-request-start', {
     stream: useStream,
     newSession: body.newSession,
     timeoutMs: body.timeoutMs,
     mode: body.mode,
     files: body.files?.map(file => nodePath.basename(file)),
-    prompt: summarizeTraceText(body.prompt),
+    prompt: summarizeTraceText(prompt),
+  });
+  recordBridgeEvidence(evidence, trace, 'provider.requested', {
+    provider: 'deepseek-web',
+    stream: useStream,
+    mode: body.mode ?? null,
+    prompt: summarizeTraceText(prompt),
+    file_count: body.files?.length ?? 0,
   });
 
   // 初始化 agent（异步，第一次请求会等待浏览器启动）
   try {
     await ensureAgent();
   } catch (e) {
+    const safeMessage = safeBridgeErrorMessage(e);
+    recordBridgeEvidence(evidence, trace, 'provider.failed', {
+      provider: 'deepseek-web',
+      phase: 'initialization',
+      error: summarizeTraceText(safeMessage),
+    });
     if (e instanceof LoginRequiredError) {
       trace.error('bridge-server', 'chat-request-login-required');
       res.status(401).json({ error: 'LOGIN_REQUIRED' });
     } else {
-      trace.error('bridge-server', 'chat-request-agent-init-failed', { message: (e as Error).message });
-      res.status(503).json({ error: `Agent init failed: ${(e as Error).message}` });
+      trace.error('bridge-server', 'chat-request-agent-init-failed', { message: safeMessage });
+      res.status(503).json({ error: `Agent init failed: ${safeMessage}` });
     }
     return;
   }
@@ -261,23 +374,38 @@ app.post('/chat', async (req: Request, res: Response) => {
     const sendEvent = (data: object) => {
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     };
+    const responseGuard = new DevSeekCapabilityTextStreamGuard();
 
     try {
       await queue.enqueue(async () => {
-        const content = await agent.sendMessage(body.prompt.trim(), {
+        const content = requireBridgePrimitiveText(await agent.sendMessage(prompt.trim(), {
           newSession: body.newSession,
           timeoutMs: body.timeoutMs,
           mode: body.mode,
           files: body.files,
           trace: trace.child('deepseek-web'),
-          onDelta: (delta) => sendEvent({ delta, done: false }),
-        });
+          onDelta: (delta) => {
+            const released = responseGuard.push(delta);
+            if (released) sendEvent({ delta: released, done: false });
+          },
+        }), 'response');
+        const trailingDelta = responseGuard.finish();
+        if (trailingDelta) sendEvent({ delta: trailingDelta, done: false });
         trace.info('bridge-server', 'chat-request-complete', { response: summarizeTraceText(content) });
+        recordBridgeEvidence(evidence, trace, 'provider.completed', {
+          provider: 'deepseek-web',
+          response: summarizeTraceText(content),
+        });
       });
       sendEvent({ delta: '', done: true });
     } catch (e) {
-      const msg = (e as Error).message;
+      const msg = safeBridgeErrorMessage(e);
       trace.error('bridge-server', 'chat-request-failed', { message: msg });
+      recordBridgeEvidence(evidence, trace, 'provider.failed', {
+        provider: 'deepseek-web',
+        phase: 'generation',
+        error: summarizeTraceText(msg),
+      });
       // 浏览器被关闭 → 清理状态，下次请求会重新 headless init（cookies 仍有效则自动恢复，否则提示重新登录）
       if (msg?.includes('closed') || msg?.includes('Target page') || msg?.includes('browser')) {
         agentInitialized = false;
@@ -295,7 +423,7 @@ app.post('/chat', async (req: Request, res: Response) => {
     // ---- 非流式，等待全量响应 ----
     try {
       const content = await queue.enqueue(async () => {
-        return agent.sendMessage(body.prompt.trim(), {
+        return agent.sendMessage(prompt.trim(), {
           newSession: body.newSession,
           timeoutMs: body.timeoutMs,
           mode: body.mode,
@@ -303,12 +431,22 @@ app.post('/chat', async (req: Request, res: Response) => {
           trace: trace.child('deepseek-web'),
         });
       });
-      trace.info('bridge-server', 'chat-request-complete', { response: summarizeTraceText(String(content || '')) });
-      const response: ChatResponse = { content: content as string };
+      const safeContent = requireBridgePrimitiveText(content, 'response');
+      trace.info('bridge-server', 'chat-request-complete', { response: summarizeTraceText(safeContent) });
+      recordBridgeEvidence(evidence, trace, 'provider.completed', {
+        provider: 'deepseek-web',
+        response: summarizeTraceText(safeContent),
+      });
+      const response: ChatResponse = { content: safeContent };
       res.json(response);
     } catch (e) {
-      const msg = (e as Error).message;
+      const msg = safeBridgeErrorMessage(e);
       trace.error('bridge-server', 'chat-request-failed', { message: msg });
+      recordBridgeEvidence(evidence, trace, 'provider.failed', {
+        provider: 'deepseek-web',
+        phase: 'generation',
+        error: summarizeTraceText(msg),
+      });
       // 浏览器被关闭 → 清理状态
       if (msg?.includes('closed') || msg?.includes('Target page') || msg?.includes('browser')) {
         agentInitialized = false;
@@ -399,7 +537,7 @@ app.get('/index/file', (req: Request, res: Response) => {
     }
     res.json({ content, absPath: abs, size });
   } catch (e) {
-    res.status(404).json({ error: `File not found or not readable: ${(e as Error).message}` });
+    res.status(404).json({ error: `File not found or not readable: ${safeBridgeErrorMessage(e)}` });
   }
 });
 
@@ -450,8 +588,9 @@ app.get('/index/search', (req: Request, res: Response) => {
 // 全局错误处理
 // ----------------------------------------------------------------
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[server] Unhandled error:', err);
-  res.status(500).json({ error: err.message });
+  const message = safeBridgeErrorMessage(err);
+  console.error('[server] Unhandled error:', message);
+  res.status(500).json({ error: message });
 });
 
 // ----------------------------------------------------------------

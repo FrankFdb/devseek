@@ -1,0 +1,478 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-run-evidence-event-v1.json",
+  "title": "DevSeek Product Run Evidence Event v1",
+  "$comment": "Product diagnostics only. event_sha256 is the canonical SHA-256 of this object without event_sha256.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "protocol",
+    "integrity_scope",
+    "qualification_eligible",
+    "run_id",
+    "sequence",
+    "previous_event_sha256",
+    "type",
+    "surface",
+    "idempotency_key",
+    "idempotency_fingerprint_sha256",
+    "occurred_at",
+    "payload",
+    "event_sha256"
+  ],
+  "properties": {
+    "protocol": { "const": "devseek.run-evidence-event/v1" },
+    "integrity_scope": { "const": "product-run-diagnostics" },
+    "qualification_eligible": { "const": false },
+    "run_id": { "$ref": "#/$defs/text512" },
+    "sequence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "previous_event_sha256": { "$ref": "#/$defs/nullableSha256" },
+    "type": {
+      "enum": [
+        "run.opened",
+        "run.recovered",
+        "run.settled",
+        "command.accepted",
+        "agent.status",
+        "tool.activity",
+        "provider.requested",
+        "provider.completed",
+        "provider.failed",
+        "side_effect.requested",
+        "side_effect.authorized",
+        "side_effect.started",
+        "side_effect.committed",
+        "side_effect.failed",
+        "side_effect.indeterminate",
+        "verification.started",
+        "verification.completed",
+        "verification.failed",
+        "quality_gate.started",
+        "quality_gate.passed",
+        "quality_gate.failed",
+        "quality_gate.vetoed",
+        "checkpoint.created",
+        "checkpoint.restored",
+        "recovery.detected",
+        "recovery.completed",
+        "recovery.failed",
+        "evidence.degraded",
+        "legacy.imported"
+      ]
+    },
+    "surface": { "$ref": "#/$defs/text512" },
+    "idempotency_key": { "$ref": "#/$defs/text512" },
+    "idempotency_fingerprint_sha256": { "$ref": "#/$defs/sha256" },
+    "occurred_at": { "$ref": "#/$defs/canonicalTime" },
+    "payload": { "$ref": "#/$defs/basePayload" },
+    "event_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "evidence.degraded" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/degradedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "run.opened" } },
+        "required": ["type"]
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "sequence": { "const": 1 },
+          "previous_event_sha256": { "type": "null" },
+          "payload": { "$ref": "#/$defs/openedPayload" }
+        }
+      }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "sequence": { "const": 1 } },
+        "required": ["sequence"]
+      },
+      "then": { "type": "object", "properties": { "type": { "const": "run.opened" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "legacy.imported" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/legacyPayload" } } },
+      "else": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/safePayloadObject" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "recovery.detected" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/detectedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "recovery.completed" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/completedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "recovery.failed" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/failedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "provider.requested" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/requestedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "provider.completed" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/completedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "provider.failed" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/failedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "side_effect.requested" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/requestedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "side_effect.authorized" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/authorizedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "side_effect.started" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/startedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "side_effect.committed" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/committedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "side_effect.failed" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/failedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "side_effect.indeterminate" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/indeterminatePayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "verification.started" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/startedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "verification.completed" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/completedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "verification.failed" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/failedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "quality_gate.started" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/startedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "quality_gate.passed" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/passedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "quality_gate.failed" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/failedPayload" } } }
+    },
+    {
+      "if": {
+        "type": "object",
+        "properties": { "type": { "const": "quality_gate.vetoed" } },
+        "required": ["type"]
+      },
+      "then": { "type": "object", "properties": { "payload": { "$ref": "#/$defs/vetoedPayload" } } }
+    }
+  ],
+  "$defs": {
+    "text512": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "allOf": [
+        { "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])[\\s\\S]+$" },
+        { "$ref": "#/$defs/secretFreeString" }
+      ]
+    },
+    "secretFreeString": {
+      "type": "string",
+      "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\u0000-\\u001F\\u007F-\\u009F])(?![\\s\\S]*devseek-ra1_[A-Za-z0-9_-]{43})[\\s\\S]*$"
+    },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "nullableSha256": {
+      "oneOf": [
+        { "$ref": "#/$defs/sha256" },
+        { "type": "null" }
+      ]
+    },
+    "canonicalTime": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-5][0-9]\\.[0-9]{3}Z$"
+    },
+    "basePayload": { "type": "object" },
+    "authorityMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol", "owner_token_sha256", "participant_token_sha256"],
+      "properties": {
+        "protocol": { "const": "devseek.product-run-evidence-authority/v1" },
+        "owner_token_sha256": { "$ref": "#/$defs/sha256" },
+        "participant_token_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "openedPayload": {
+      "type": "object",
+      "required": ["_devseek_run_evidence_authority"],
+      "properties": {
+        "_devseek_run_evidence_authority": { "$ref": "#/$defs/authorityMetadata" }
+      }
+    },
+    "safePayloadValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "$ref": "#/$defs/secretFreeString" },
+        { "type": "array", "items": { "$ref": "#/$defs/safePayloadValue" } },
+        { "$ref": "#/$defs/safePayloadObject" }
+      ]
+    },
+    "secretFreePayloadValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "$ref": "#/$defs/secretFreeString" },
+        { "type": "array", "items": { "$ref": "#/$defs/secretFreePayloadValue" } },
+        { "$ref": "#/$defs/secretFreePayloadObject" }
+      ]
+    },
+    "secretFreePayloadObject": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/secretFreeString" },
+      "additionalProperties": { "$ref": "#/$defs/secretFreePayloadValue" }
+    },
+    "safePayloadObject": {
+      "type": "object",
+      "propertyNames": {
+        "allOf": [
+          { "$ref": "#/$defs/secretFreeString" },
+          {
+            "not": {
+              "pattern": "^_*[Qq]_*[Uu]_*[Aa]_*[Ll]_*[Ii]_*[Ff]_*[Ii]_*[Cc]_*[Aa]_*[Tt]_*[Ii]_*[Oo]_*[Nn](?!_*[Ee]_*[Ll]_*[Ii]_*[Gg]_*[Ii]_*[Bb]_*[Ll]_*[Ee]_*$)"
+            }
+          }
+        ]
+      },
+      "patternProperties": {
+        "^_*[Qq]_*[Uu]_*[Aa]_*[Ll]_*[Ii]_*[Ff]_*[Ii]_*[Cc]_*[Aa]_*[Tt]_*[Ii]_*[Oo]_*[Nn]_*[Ee]_*[Ll]_*[Ii]_*[Gg]_*[Ii]_*[Bb]_*[Ll]_*[Ee]_*$": { "const": false },
+        "^_*[Ii]_*[Nn]_*[Tt]_*[Ee]_*[Gg]_*[Rr]_*[Ii]_*[Tt]_*[Yy]_*[Ss]_*[Cc]_*[Oo]_*[Pp]_*[Ee]_*$": { "const": "product-run-diagnostics" }
+      },
+      "properties": {
+        "qualification_claim": false,
+        "qualification_claims": false,
+        "qualification_level": false,
+        "qualification_level_view": false,
+        "qualificationClaim": false,
+        "qualificationClaims": false,
+        "qualificationLevel": false,
+        "qualificationLevelView": false
+      },
+      "additionalProperties": { "$ref": "#/$defs/safePayloadValue" }
+    },
+    "operationFields": {
+      "type": "object",
+      "required": ["operation_id", "status", "trust"],
+      "properties": {
+        "operation_id": { "$ref": "#/$defs/text512" },
+        "status": {
+          "enum": [
+            "requested",
+            "detected",
+            "authorized",
+            "started",
+            "completed",
+            "committed",
+            "failed",
+            "indeterminate",
+            "passed",
+            "vetoed",
+            "degraded"
+          ]
+        },
+        "trust": { "const": "product-runtime-observation" }
+      }
+    },
+    "requestedPayload": {
+      "allOf": [
+        { "$ref": "#/$defs/operationFields" },
+        { "type": "object", "properties": { "status": { "const": "requested" } }, "required": ["status"] }
+      ]
+    },
+    "detectedPayload": {
+      "allOf": [
+        { "$ref": "#/$defs/operationFields" },
+        { "type": "object", "properties": { "status": { "const": "detected" } }, "required": ["status"] }
+      ]
+    },
+    "authorizedPayload": {
+      "allOf": [
+        { "$ref": "#/$defs/operationFields" },
+        { "type": "object", "properties": { "status": { "const": "authorized" } }, "required": ["status"] }
+      ]
+    },
+    "startedPayload": {
+      "allOf": [
+        { "$ref": "#/$defs/operationFields" },
+        { "type": "object", "properties": { "status": { "const": "started" } }, "required": ["status"] }
+      ]
+    },
+    "completedPayload": {
+      "allOf": [
+        { "$ref": "#/$defs/operationFields" },
+        { "type": "object", "properties": { "status": { "const": "completed" } }, "required": ["status"] }
+      ]
+    },
+    "committedPayload": {
+      "allOf": [
+        { "$ref": "#/$defs/operationFields" },
+        { "type": "object", "properties": { "status": { "const": "committed" } }, "required": ["status"] }
+      ]
+    },
+    "failedPayload": {
+      "allOf": [
+        { "$ref": "#/$defs/operationFields" },
+        { "type": "object", "properties": { "status": { "const": "failed" } }, "required": ["status"] }
+      ]
+    },
+    "indeterminatePayload": {
+      "allOf": [
+        { "$ref": "#/$defs/operationFields" },
+        { "type": "object", "properties": { "status": { "const": "indeterminate" } }, "required": ["status"] }
+      ]
+    },
+    "passedPayload": {
+      "allOf": [
+        { "$ref": "#/$defs/operationFields" },
+        { "type": "object", "properties": { "status": { "const": "passed" } }, "required": ["status"] }
+      ]
+    },
+    "vetoedPayload": {
+      "allOf": [
+        { "$ref": "#/$defs/operationFields" },
+        { "type": "object", "properties": { "status": { "const": "vetoed" } }, "required": ["status"] }
+      ]
+    },
+    "degradedPayload": {
+      "type": "object",
+      "required": ["status", "trust", "reason"],
+      "properties": {
+        "status": { "const": "degraded" },
+        "trust": { "const": "product-runtime-observation" },
+        "reason": { "$ref": "#/$defs/text512" }
+      }
+    },
+    "legacyPayload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "correlation_id",
+        "trust",
+        "qualification_eligible",
+        "source_kind",
+        "source_ref",
+        "source_sha256",
+        "record_count",
+        "projection"
+      ],
+      "properties": {
+        "correlation_id": { "$ref": "#/$defs/text512" },
+        "trust": { "const": "legacy-unverified" },
+        "qualification_eligible": { "const": false },
+        "source_kind": { "enum": ["task-history", "review-ledger", "diagnostic-jsonl", "other"] },
+        "source_ref": { "$ref": "#/$defs/text512" },
+        "source_sha256": { "$ref": "#/$defs/sha256" },
+        "record_count": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "projection": { "$ref": "#/$defs/secretFreePayloadValue" }
+      }
+    }
+  }
+}

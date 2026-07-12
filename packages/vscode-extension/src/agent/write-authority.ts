@@ -24,15 +24,15 @@ export function createWriteAuthority(
     if (updates.length > 0) currentPrompt = [currentPrompt, ...updates].filter(Boolean).join('\n\n');
     return messages;
   };
-  const guardedCallbacks: AgentLoopCallbacks = {
-    ...callbacks,
-    onBeforeFileWrite: async (absPath, context) => {
+  const guardedCallbacks: AgentLoopCallbacks = { ...callbacks };
+  const onBeforeFileWrite = callbacks.onBeforeFileWrite;
+  if (onBeforeFileWrite) {
+    guardedCallbacks.onBeforeFileWrite = async (absPath, context) => {
       // A correction can arrive while an earlier provider/tool operation awaits I/O.
       pendingMessages.push(...drain());
-      if (!callbacks.onBeforeFileWrite) return true;
-      return callbacks.onBeforeFileWrite(absPath, { ...context, requestPrompt: currentPrompt });
-    },
-  };
+      return onBeforeFileWrite(absPath, { ...context, requestPrompt: currentPrompt });
+    };
+  }
   return {
     callbacks: guardedCallbacks,
     get currentPrompt() { return currentPrompt; },

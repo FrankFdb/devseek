@@ -264,7 +264,7 @@ test('Agent auto validation: formal project Markdown quality fails even when fil
     const docsDir = path.join(root, 'docs');
     mkdirSync(docsDir, { recursive: true });
     const target = path.join(docsDir, '01-warranty-design.md');
-    writeFileSync(target, [
+    const malformedMarkdown = [
       '# 维保提醒设计',
       '',
       '参考 license 模块通讯方式，后续实现遥控器和主控交互。',
@@ -272,7 +272,8 @@ test('Agent auto validation: formal project Markdown quality fails even when fil
       '`json',
       '{"type":"status"}',
       '`',
-    ].join('\n'));
+    ].join('\n');
+    writeFileSync(target, malformedMarkdown);
 
     const statuses = [];
     const validationService = {
@@ -309,9 +310,9 @@ test('Agent auto validation: formal project Markdown quality fails even when fil
     assert.equal(result.evidence.ok, true);
     assert.equal(result.qualityGate.status, 'fail');
     assert.match(result.feedbackForAI, /formal_project_markdown_quality/);
-    assert.match(result.feedbackForAI, /formal_project_markdown_normalized/);
+    assert.doesNotMatch(result.feedbackForAI, /formal_project_markdown_normalized/);
     assert.match(result.feedbackForAI, /JSON 示例必须使用标准 Markdown 三反引号代码块/);
-    assert.match(readFileSync(target, 'utf8'), /```json\n\{"type":"status"\}\n```/);
+    assert.equal(readFileSync(target, 'utf8'), malformedMarkdown, 'validation and quality evaluation must be pure reads');
     assert.equal(
       statuses.some(status => status.state === 'failed' && /正式项目质量门禁未通过/.test(status.title)),
       true,

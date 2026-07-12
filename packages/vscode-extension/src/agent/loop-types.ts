@@ -7,6 +7,7 @@ import type { TodoItem } from './evidence-recovery';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { AgentFileWriteContext } from '../app/agent-file-write-policy';
 import type { ArtifactClaim, EvidenceRef, VerificationResult } from './evidence-grounding';
+import type { ValidationCommandRunner } from '../workspace/validation-service';
 
 export type AgentStatusMessage = AgentStatusEvent;
 
@@ -34,6 +35,10 @@ export interface AgentLoopCallbacks {
   traceRunId?: string;
   /** Unified filesystem root for this run's provider/tool trace files. */
   traceWorkspaceRoot?: string;
+  /** Run-scoped participant capability used by provider/Bridge evidence adapters. */
+  traceEvidenceParticipantToken?: string;
+  /** Marks the owner run degraded while allowing the coding operation to continue. */
+  onTraceEvidenceError?: (error: unknown) => void;
   /**
    * Session checkpoint callback — called after each task completes (success or fail).
    * Extension saves the next-pending-task index to workspaceState for resume-on-reconnect.
@@ -66,6 +71,9 @@ export interface AgentLoopCallbacks {
    * Returns the formatted terminal output string.
    */
   onTerminalCommand?: (command: string, workdir?: string) => Promise<string>;
+  /** Automatic build/test commands must use the product's side-effect authority. */
+  /** Evidence-aware authority for every automatic validation process. */
+  onValidationCommand: ValidationCommandRunner;
   /**
    * P-SEC: About to write a file — return false to block the write (e.g., sensitive files).
    * Called at every structured write boundary, including SEARCH/REPLACE and full-file apply.
@@ -120,7 +128,7 @@ export interface AgentLoopCallbacks {
    * AI called create_directory — create a directory (and parents) in workspace.
    * Corresponds to Copilot's #edit/createDirectory tool.
    */
-  onCreateDirectory?: (path: string) => Promise<string>;
+  onCreateDirectory?: (path: string, authorization: { policyPreauthorized: true }) => Promise<string>;
   /**
    * AI called fetch_webpage — fetch a URL and return text content (truncated).
    * Corresponds to Copilot's #web/fetch tool. Only http/https allowed.
@@ -133,9 +141,9 @@ export interface AgentLoopCallbacks {
    */
   onListCodeUsages?: (symbol: string, filePath?: string) => Promise<string>;
   /**
-   * AI called run_vscode_command — execute a VS Code command by ID.
-   * Safe-listed commands execute immediately; others require user confirmation
-   * unless autopilot mode is enabled. Corresponds to Copilot's #vscode/runCommand.
+   * AI called run_vscode_command — execute a command from DevSeek's closed,
+   * typed VS Code registry. Workspace-mutating entries require permission;
+   * unknown commands and terminal-owned build/test actions fail before dispatch.
    */
   onRunVscodeCommand?: (command: string, args?: unknown[]) => Promise<string>;
   /**
@@ -162,6 +170,11 @@ export interface AgentLoopCallbacks {
    */
   autopilot?: boolean;
 }
+
+/** Top-level loop compositions must bind one explicit tool-policy mode. */
+export type ExecutionScopedAgentLoopCallbacks = AgentLoopCallbacks & {
+  executionMode: ExecutionMode;
+};
 
 export interface AgentLoopResult {
   tasksTotal: number;

@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-qualification-aggregator-policy-v1.json",
+  "title": "DevSeek Qualification Aggregator Policy v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "integrity", "integrity_scope", "qualification_eligible",
+    "policy_id", "policy_version", "source_status", "manifest_signers",
+    "retention_signers", "identity_separation", "retention_policy",
+    "maximum_manifest_ttl_seconds", "claim_rules", "policy_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.qualification-aggregator-policy/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "integrity_scope": { "enum": ["local-protocol-conformance", "protected-qualification"] },
+    "qualification_eligible": { "type": "boolean" },
+    "policy_id": { "$ref": "#/$defs/id" },
+    "policy_version": { "type": "integer", "minimum": 1 },
+    "source_status": { "enum": ["verified", "test-fixture"] },
+    "maximum_manifest_ttl_seconds": { "type": "integer", "minimum": 1 },
+    "manifest_signers": {
+      "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/signerKey" }
+    },
+    "retention_signers": {
+      "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/signerKey" }
+    },
+    "identity_separation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_and_retention_must_differ", "must_differ_from_plan_and_event_actors",
+        "key_material_reuse_forbidden", "purpose_separation_required"
+      ],
+      "properties": {
+        "manifest_and_retention_must_differ": { "const": true },
+        "must_differ_from_plan_and_event_actors": { "const": true },
+        "key_material_reuse_forbidden": { "const": true },
+        "purpose_separation_required": { "const": true }
+      }
+    },
+    "retention_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "storage_class", "minimum_retention_seconds", "independent_expected_anchor_required",
+        "immutable_manifest_id_binding_required", "supersession_chain_required"
+      ],
+      "properties": {
+        "storage_class": { "enum": ["append-only-local-cas", "retention-lock-or-worm"] },
+        "minimum_retention_seconds": { "type": "integer", "minimum": 1 },
+        "independent_expected_anchor_required": { "const": true },
+        "immutable_manifest_id_binding_required": { "const": true },
+        "supersession_chain_required": { "const": true }
+      }
+    },
+    "claim_rules": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/claimRule" }
+    },
+    "policy_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "integrity_scope": { "const": "local-protocol-conformance" } },
+        "required": ["integrity_scope"]
+      },
+      "then": { "properties": { "qualification_eligible": { "const": false } } }
+    },
+    {
+      "if": {
+        "properties": { "source_status": { "const": "test-fixture" } },
+        "required": ["source_status"]
+      },
+      "then": { "properties": { "qualification_eligible": { "const": false } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "retention_policy": {
+            "type": "object",
+            "properties": { "storage_class": { "const": "append-only-local-cas" } },
+            "required": ["storage_class"]
+          }
+        },
+        "required": ["retention_policy"]
+      },
+      "then": { "properties": { "qualification_eligible": { "const": false } } }
+    }
+  ],
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "time": { "type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$" },
+    "integrity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version", "signature_algorithm"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" },
+        "signature_algorithm": { "const": "ed25519" }
+      }
+    },
+    "signerKey": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "key_id", "identity", "purpose", "algorithm", "public_key_encoding",
+        "public_key_spki_base64", "public_key_spki_sha256", "valid_from", "expires_at",
+        "status", "key_sha256"
+      ],
+      "properties": {
+        "key_id": { "$ref": "#/$defs/id" },
+        "identity": { "$ref": "#/$defs/id" },
+        "purpose": { "enum": ["qualification-manifest", "retention-lock"] },
+        "algorithm": { "const": "ed25519" },
+        "public_key_encoding": { "const": "spki-der-base64" },
+        "public_key_spki_base64": { "type": "string", "minLength": 1 },
+        "public_key_spki_sha256": { "$ref": "#/$defs/sha256" },
+        "valid_from": { "$ref": "#/$defs/time" },
+        "expires_at": { "oneOf": [{ "$ref": "#/$defs/time" }, { "type": "null" }] },
+        "status": { "enum": ["test-only", "active", "revoked"] },
+        "key_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "dependency": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "capability_id", "minimum_level", "profile_id", "profile_sha256", "claim_scope",
+        "surface", "provider", "platform_profile"
+      ],
+      "properties": {
+        "capability_id": { "type": "string", "pattern": "^C[0-9]+-[A-Z0-9]+(?:-[A-Z0-9]+)*$" },
+        "minimum_level": { "enum": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"] },
+        "profile_id": { "$ref": "#/$defs/id" },
+        "profile_sha256": { "$ref": "#/$defs/sha256" },
+        "claim_scope": { "$ref": "#/$defs/id" },
+        "surface": { "$ref": "#/$defs/id" },
+        "provider": { "$ref": "#/$defs/id" },
+        "platform_profile": { "$ref": "#/$defs/id" }
+      }
+    },
+    "claimRule": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "rule_id", "capability_id", "profile_id", "profile_sha256", "claim_scope", "surface",
+        "provider", "platform_profile", "requested_level", "awarded_level",
+        "required_coverage_slot_ids", "minimum_numerator", "minimum_denominator",
+        "minimum_rate", "maximum_product_miss", "veto_forbidden", "dependencies"
+      ],
+      "properties": {
+        "rule_id": { "$ref": "#/$defs/id" },
+        "capability_id": { "type": "string", "pattern": "^C[0-9]+-[A-Z0-9]+(?:-[A-Z0-9]+)*$" },
+        "profile_id": { "$ref": "#/$defs/id" },
+        "profile_sha256": { "$ref": "#/$defs/sha256" },
+        "claim_scope": { "$ref": "#/$defs/id" },
+        "surface": { "$ref": "#/$defs/id" },
+        "provider": { "$ref": "#/$defs/id" },
+        "platform_profile": { "$ref": "#/$defs/id" },
+        "requested_level": { "enum": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"] },
+        "awarded_level": { "enum": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"] },
+        "required_coverage_slot_ids": {
+          "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" }
+        },
+        "minimum_numerator": { "type": "integer", "minimum": 0 },
+        "minimum_denominator": { "type": "integer", "minimum": 1 },
+        "minimum_rate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "maximum_product_miss": { "type": "integer", "minimum": 0 },
+        "veto_forbidden": { "const": true },
+        "dependencies": { "type": "array", "items": { "$ref": "#/$defs/dependency" } }
+      }
+    }
+  }
+}

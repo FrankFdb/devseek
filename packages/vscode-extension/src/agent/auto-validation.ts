@@ -7,15 +7,21 @@ import {
   type TerminalEvidenceKind,
   type WrittenFileEvidence,
 } from './completion-evidence';
-import { assessFormalProjectDocumentQuality, normalizeFormalProjectMarkdown } from './formal-project-document-quality';
+import { assessFormalProjectDocumentQuality } from './formal-project-document-quality';
 import { assessFormalProjectSourceQuality } from './formal-project-source-quality';
 import { isInsideWorkspacePath } from './write-guard';
-import { ValidationService, type AutoValidationResult } from '../workspace/validation-service';
+import {
+  ValidationService,
+  type AutoValidationResult,
+  type ValidationCommandRunner,
+} from '../workspace/validation-service';
 import type { CppValidationPolicy } from '../validation-planner';
 
 export interface AgentAutoValidationCallbacks {
   onAgentStatus: (status: AgentStatusEvent) => void | Promise<void>;
   onToolActivity?: (kind: 'terminal', label: string) => void;
+  /** Evidence-aware authority for every automatic validation process. */
+  onValidationCommand: ValidationCommandRunner;
   signal?: AbortSignal;
 }
 
@@ -119,11 +125,10 @@ const FORMAL_PROJECT_SOURCE_REASON_LABELS: Record<string, string> = {
 function readWrittenMarkdownFilesForQuality(
   writtenFiles: WrittenFileEvidence[],
   workspaceRootFsPath: string,
-): { paths: string[]; content: string; normalizedPaths: string[] } {
+): { paths: string[]; content: string } {
   const root = nodePath.resolve(workspaceRootFsPath);
   const seen = new Set<string>();
   const paths: string[] = [];
-  const normalizedPaths: string[] = [];
   const parts: string[] = [];
   for (const file of writtenFiles) {
     if (!/\.md$/i.test(file.path) && !/\.md$/i.test(file.basename)) continue;
@@ -131,16 +136,10 @@ function readWrittenMarkdownFilesForQuality(
     if (!isInsideWorkspacePath(absPath, root)) continue;
     try {
       if (!fs.existsSync(absPath) || fs.statSync(absPath).isDirectory()) continue;
-      let content = fs.readFileSync(absPath, 'utf8');
+      const content = fs.readFileSync(absPath, 'utf8');
       const relPath = nodePath.relative(root, absPath).replace(/\\/g, '/');
       if (seen.has(relPath)) continue;
       seen.add(relPath);
-      const normalized = normalizeFormalProjectMarkdown(content);
-      if (normalized.changed) {
-        fs.writeFileSync(absPath, normalized.text, 'utf8');
-        content = normalized.text;
-        normalizedPaths.push(relPath);
-      }
       paths.push(relPath);
       parts.push(content);
     } catch {
@@ -148,7 +147,7 @@ function readWrittenMarkdownFilesForQuality(
       // still records the lower-level write/read problem.
     }
   }
-  return { paths, normalizedPaths, content: parts.join('\n\n') };
+  return { paths, content: parts.join('\n\n') };
 }
 
 function readWrittenSourceFilesForQuality(
@@ -202,9 +201,6 @@ function evaluateFormalProjectMarkdownQuality(
   const feedbackForAI = [
     '[formal_project_markdown_quality]',
     `files=${markdown.paths.join(', ')}`,
-    markdown.normalizedPaths.length
-      ? `[formal_project_markdown_normalized] 已本地规范化 Markdown 代码块: ${markdown.normalizedPaths.join(', ')}`
-      : '',
     summary,
     '请继续调用 read_file/grep_search 精确补证据，并用 create_file/write_file/replace_in_file 修正文档；需要把源项目事实矩阵、项目级通讯链路、接口 request/response schema 示例和原有代码修改清单落实到交付物中。',
     '协议/通讯事实必须来自源码或接口文档中的具体常量、topic、payload_type、命令号、字段名、超时/分片/重试数值；不要用 100、128 字节这类未从项目证据中证明的默认值。',
@@ -358,7 +354,9 @@ export async function runAgentAutoValidationForWrites(
   const changedPaths = workspaceRelativeValidationPaths(writtenFiles, workspaceRootFsPath);
   if (changedPaths.length === 0 || callbacks.signal?.aborted) return {};
 
-  const validationService = options.validationService ?? new ValidationService();
+  const validationService = options.validationService ?? new ValidationService({
+    commandRunner: callbacks.onValidationCommand,
+  });
   try {
     await callbacks.onAgentStatus({
       type: 'agentStatus',

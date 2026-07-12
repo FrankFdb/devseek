@@ -1,7 +1,5 @@
 import * as vscode from 'vscode';
 import * as nodePath from 'path';
-import * as fs from 'fs';
-import type { DevSeekTraceLogger } from '@devseek-netai/shared';
 import { chat, relogin, readWorkspaceFile, ensureBridgeRunning, setBridgeExtensionRoot } from './bridge-client';
 import { createProviderStatusBar, getActiveProvider, getActiveProviderType, getProviderConfigService, promptUpdateApiKey } from './llm/provider-router';
 import { type ChatMessage } from './llm/types';
@@ -34,12 +32,9 @@ import { decomposeTask, getAgentTaskDisplayTarget, inferTasksFromFiles, type Age
 import { runAgentLoop, AgentStatusMessage, extractAnalysisFindings, type AgentLoopResult } from './agent-loop';
 import { createAgentHostToolCallbacks } from './agent/agent-host-tools';
 import { runAgenticLoop } from './agent/agentic-loop';
-import { buildArtifactVerificationCompletionMetadata } from './agent/artifact-grounding-lifecycle';
 import { getTaskWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
 import { McpManager } from './mcp/client';
-import { isFileProtected } from './protected-files';
-import type { ToolPolicy } from './app/permission-service';
-import { decideAgentFileWrite, type AgentFileWriteContext } from './app/agent-file-write-policy';
+import type { AgentFileWriteContext } from './app/agent-file-write-policy';
 import { recoverApplyFailureIfPossible } from './app/apply-failure-recovery-service';
 import { responseClaimsStatusOk, shouldRunClosedLoopRepair } from './app/agentic-repair-service';
 import { runClosedLoopRepair } from './app/closed-loop-repair-runner';
@@ -52,11 +47,14 @@ import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { MemoryService } from './app/memory-service';
 import { AgentDisplayPresenter } from './app/agent-display-presenter';
-import { createDevSeekRunContext } from './app/run-context';
+import { createDevSeekRunContext, type RunContextStatus } from './app/run-context';
 import { createAgentCheckpointCallback } from './app/agent-checkpoint-callback';
 import { guardNonAgentResponse } from './app/non-agent-response-guard';
-import { AgentApplicationService } from './app/agent-application-service';
 import type { AgentChatRequest } from './app/agent-protocol';
+import { settleAgentLoopResult } from './app/agent-run-settlement';
+import { createAgentApplicationBridgeAdapter, EvidenceAwareChatRouter } from './app/evidence-aware-chat-router';
+import { createEvidenceAwareMcpToolCallFactory } from './app/evidence-aware-mcp-tool-call';
+import { recordApplyWorkflowEvidence } from './app/workflow-run-evidence-adapter';
 import { isProjectInitRequest, ProjectInitService, renderProjectInitDraftMarkdown } from './app/project-init-service';
 import { tryBuildReadOnlyInspectionResult } from './app/read-only-inspection-service';
 import { buildRestoredSessionLlmHistory, buildSessionLoadedPayload } from './app/session-display-service';
@@ -83,9 +81,12 @@ import {
   type AgentSessionState,
 } from './app/agent-session-context';
 import { emitResponseMeta, injectFileHintsIntoResponse } from './ui/generated-artifact-ui';
+import { createAgentFileWriteConfirmation } from './ui/agent-file-write-confirmation';
 import { postWebviewEvent, postWebviewMessage } from './ui/webview-event-adapter';
+import { postAgentSettlementRefusal } from './ui/agent-run-settlement-presenter';
 import { DeepSeekViewProvider } from './ui/deepseek-view-provider';
 import type { WebviewInboundMessage } from './ui/webview-protocol';
+import { recordRealPluginHarnessProgress, registerRealPluginDeepSeekHarnessCommand } from './ui/real-plugin-harness';
 import { buildAgentRunDisplayProfile } from './agent/agent-run-display';
 import { enforceAgentTaskExecutionPolicy } from './agent/task-execution-policy';
 import { discoverFilesFromDirectoryPrompt, relPathFromWorkspace, toContextDisplayLabels } from './app/context-discovery-service';
@@ -118,7 +119,6 @@ let lastLocalExecutionPlan: LocalExecutionPlan | undefined;
 let pendingEditCoordinator: PendingEditCoordinator;
 const chatRouteController = new ChatRouteController();
 const terminalPermissionCoordinator = new TerminalPermissionCoordinator();
-let agentApplicationService: AgentApplicationService | undefined;
 let lastConversationFiles: string[] = [];
 let lastAnalysisText = '';
 /** Workspace-relative paths of files created/modified by the last agent run */
@@ -138,6 +138,22 @@ const sessionRecentFiles = new Map<string, string>();
 let activeSessionId = '';
 // P3-5: MCP manager (singleton; initialized lazily in activate)
 const mcpManager = new McpManager();
+const confirmAgentFileWrite = createAgentFileWriteConfirmation(terminalPermissionCoordinator);
+const createEvidenceAwareMcpToolCall = createEvidenceAwareMcpToolCallFactory({
+  terminalPermissions: terminalPermissionCoordinator,
+  mcpManager,
+});
+const evidenceAwareChatRouter = new EvidenceAwareChatRouter({
+  getProviderType: getActiveProviderType,
+  getProvider: getActiveProvider,
+  bridgeChat: createAgentApplicationBridgeAdapter(chat),
+  getChatHistory: () => [...nonBridgeChatHistory],
+  recordChatHistory: recordTrackedChatHistory,
+  promptForApiKeyUpdate: promptUpdateApiKey,
+  getWorkspaceRoot: () => vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(),
+  getSessionId: () => activeSessionId,
+  getTraceLevel: () => vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', 'debug'),
+});
 
 function createFileContextService(workspaceRoot?: string): FileContextService {
   return new FileContextService({
@@ -565,7 +581,9 @@ async function runChat(
     return;
   }
 
+  let workflowRunContext: ReturnType<typeof createDevSeekRunContext> | undefined;
   const workflowReporter = async (status: ApplyWorkflowStatus): Promise<void> => {
+    recordApplyWorkflowEvidence(workflowRunContext, status);
     postWebviewEvent(webview, { kind: 'workflow', status });
   };
   const localPreflightConfig = vscode.workspace.getConfiguration('devseek');
@@ -617,6 +635,7 @@ async function runChat(
       webview.postMessage(agentDisplayPresenter.presentStatus(msg));
     };
     const postAgentToolActivity = (kind: string, label: string) => {
+      agentRunContext?.recordToolActivity(kind, label);
       webview.postMessage(agentDisplayPresenter.presentToolActivity(kind, label));
     };
     const agentWorkspaceRoot = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath)
@@ -630,6 +649,7 @@ async function runChat(
       mode,
       traceLevel: vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', 'debug'),
     });
+    workflowRunContext = agentRunContext;
     const agentTraceRunId = agentRunContext.runId;
     const agentTraceWorkspaceRoot = agentRunContext.workspaceRoot;
     // L1a: filled inside try/catch, used after to persist agent turn in session history
@@ -638,6 +658,7 @@ async function runChat(
     let loopAutopilotHandled = false;
     let loopFailedForAutoAccept = false;
     let decomposedTaskCount = 0;
+    let durableAgentSettlement: RunContextStatus | undefined;
 
     try {
       const checkpointResumeTasks = resumeFromIndex !== undefined && resumeTasks && resumeTasks.length > 0
@@ -685,8 +706,11 @@ async function runChat(
           detail: agDisplayProfile.planCompletedDetail,
         });
         const agResult = await runAgenticLoop(prompt, dataFiles, agWsRoot, mode, {
+          executionMode: workflow.toolPolicyMode,
           traceRunId: agentTraceRunId,
           traceWorkspaceRoot: agentTraceWorkspaceRoot,
+          traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
+          onTraceEvidenceError: error => agentRunContext?.markEvidenceDegraded(error),
           runDisplayAction: agDisplayProfile.initialTaskAction,
           runDisplayTarget: agDisplayProfile.initialTaskLabel,
           onDelta: (delta) => {
@@ -726,7 +750,7 @@ async function runChat(
           }),
           mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
           onMcpToolCall: mcpManager.hasMcpTools
-            ? (fakeName, args) => mcpManager.callTool(fakeName, args)
+            ? createEvidenceAwareMcpToolCall(agentRunContext, webview)
             : undefined,
           onTerminalCommand: async (command, workdir) => {
             return terminalPermissionCoordinator.runCommandWithPermission({
@@ -737,8 +761,19 @@ async function runChat(
               mode: intent.mode,
               toolPolicy,
               traceRunId: agentTraceRunId,
+              traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
+              onTraceEvidenceError: error => agentRunContext?.markEvidenceDegraded(error),
             });
           },
+          onValidationCommand: terminalPermissionCoordinator.createValidationCommandRunner({
+            webview,
+            workspaceRoot: agWsRoot,
+            mode: intent.mode,
+            toolPolicy,
+            traceRunId: agentTraceRunId,
+            traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
+            onTraceEvidenceError: error => agentRunContext?.markEvidenceDegraded(error),
+          }),
           onReadFile: async (filePath: string, workDir?: string, range?: { startLine?: number; endLine?: number }) => (
             createFileContextService(agWsRoot).readFileForAi(filePath, { workDir, ...range })
           ),
@@ -750,11 +785,23 @@ async function runChat(
             workspaceRoot: agWsRoot,
             webview,
             terminalPermissionCoordinator,
+            runContext: agentRunContext,
           }),
           signal: chatSignal,
-          onTaskCheckpoint: createAgentCheckpointCallback({ userPrompt: prompt, displayPrompt: userDisplay, mode, workspaceRoot: agWsRoot, sessionId: activeSessionId, save: saveAgentCheckpoint, postMessage: message => { webview.postMessage(message); } }),
+          onTaskCheckpoint: async (firstUnfinishedIndex, remainingTasks, reason = 'progress') => {
+            agentRunContext?.recordCheckpoint(firstUnfinishedIndex, remainingTasks.length, reason);
+            return createAgentCheckpointCallback({
+              userPrompt: prompt,
+              displayPrompt: userDisplay,
+              mode,
+              workspaceRoot: agWsRoot,
+              sessionId: activeSessionId,
+              save: saveAgentCheckpoint,
+              postMessage: message => { webview.postMessage(message); },
+            })(firstUnfinishedIndex, remainingTasks, reason);
+          },
           autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
-        }, agSessionContext, intent.mode, agMemoryRelatedPaths);
+        }, agSessionContext, workflow.toolPolicyMode, agMemoryRelatedPaths);
         if (agResult.changedPaths.length > 0) {
           lastAgentChangedPaths = agResult.changedPaths.map(p => {
             const fsPath = nodePath.isAbsolute(p) ? p : nodePath.join(agWsRoot, p);
@@ -766,16 +813,24 @@ async function runChat(
             registerToMemory(absPath);
           });
         }
+        const agSettlement = settleAgentLoopResult(
+          terminalPermissionCoordinator, agentRunContext, agResult, lastAgentChangedPaths,
+        );
+        const agDurablyCompleted = agSettlement.completed;
+        if (agSettlement.refused) postAgentSettlementRefusal(webview, agentDisplayPresenter);
         const agChangedDetails = lastAgentChangedPaths.length > 0
           ? '\n**涉及文件（workspace 相对路径）：**\n' + lastAgentChangedPaths.map(p => `  - ${p}`).join('\n')
           : '';
         agentHistoryText = agResult.historyText
-          || `**[Agentic] 已完成（${agResult.tasksTotal} 轮）**${agChangedDetails}`;
+          || `**[Agentic] ${agDurablyCompleted ? '已完成' : '未完成'}（${agResult.tasksTotal} 轮）**${agChangedDetails}`;
+        if (agSettlement.refused) {
+          agentHistoryText = `**[Agentic] 未完成：运行证据结算失败**\n\n${agentHistoryText}`;
+        }
         saveAgentSessionState({
           lastUserPrompt: userDisplay,
           lastSummary: agentHistoryText,
           changedPaths: lastAgentChangedPaths.slice(0, 12),
-          completed: agResult.tasksFailed === 0,
+          completed: agDurablyCompleted,
           savedAt: Date.now(),
         });
         nonBridgeChatHistory.push({ role: 'user', content: userDisplay });
@@ -791,15 +846,10 @@ async function runChat(
           saveCurrentSession();
           recordIntentOutcome(intentRoutingText, 'code-change', activeSessionId, extContext);
         }
-        const agAutopilotHandled = pendingEditCoordinator.handleAgentAutopilot(webview, agResult);
-        pendingEditCoordinator.scheduleAutoAccept(webview, agResult, agAutopilotHandled);
-        agentRunContext.complete(agResult.tasksFailed > 0 ? 'failed' : 'completed', {
-          tasksTotal: agResult.tasksTotal,
-          tasksApplied: agResult.tasksApplied,
-          tasksFailed: agResult.tasksFailed,
-          changedPaths: lastAgentChangedPaths.slice(0, 12),
-          ...buildArtifactVerificationCompletionMetadata(agResult),
-        });
+        if (agDurablyCompleted) {
+          const agAutopilotHandled = pendingEditCoordinator.handleAgentAutopilot(webview, agResult);
+          pendingEditCoordinator.scheduleAutoAccept(webview, agResult, agAutopilotHandled);
+        }
         webview.postMessage({ type: 'endResponse' });
         return;
       }
@@ -873,6 +923,8 @@ async function runChat(
             trackHistory: false,
             traceRunId: agentTraceRunId,
             traceWorkspaceRoot: agentTraceWorkspaceRoot,
+            traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
+            onTraceEvidenceError: error => agentRunContext?.markEvidenceDegraded(error),
           }),
           // Active editor file: used as path anchor when no files are attached and no
           // explicit path is in the prompt. Mirrors Copilot's per-file context behaviour.
@@ -915,7 +967,7 @@ async function runChat(
           }
           postWebviewMessage(webview, { type: 'error', text: errDelta, loginRequired: false });
           postAgent({ type: 'agentStatus', phase: 'done', state: 'failed', title: '执行结束（无可执行计划）', detail: 'Agent 模式已终止；请先解决计划生成失败原因后重试' });
-          agentRunContext.complete('failed', {
+          terminalPermissionCoordinator.completeRunContext(agentRunContext, 'failed', {
             reason: 'plan-generation-failed',
             detail: errMsg,
           });
@@ -964,6 +1016,8 @@ async function runChat(
           executionMode: workflow.toolPolicyMode,
           traceRunId: agentTraceRunId,
           traceWorkspaceRoot: agentTraceWorkspaceRoot,
+          traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
+          onTraceEvidenceError: error => agentRunContext?.markEvidenceDegraded(error),
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
               postWebviewMessage(webview, { type: 'resetResponse', text: delta.slice(7) });
@@ -1003,7 +1057,7 @@ async function runChat(
           // P3-5: MCP tools available in this session
           mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
           onMcpToolCall: mcpManager.hasMcpTools
-            ? (fakeName, args) => mcpManager.callTool(fakeName, args)
+            ? createEvidenceAwareMcpToolCall(agentRunContext, webview)
             : undefined,
           // P4-1: run_terminal tool — AI can execute shell commands from agent loop
           // G-2: replaced showWarningMessage modal with an inline confirm card in the webview
@@ -1016,8 +1070,19 @@ async function runChat(
               mode: intent.mode,
               toolPolicy,
               traceRunId: agentTraceRunId,
+              traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
+              onTraceEvidenceError: error => agentRunContext?.markEvidenceDegraded(error),
             });
           },
+          onValidationCommand: terminalPermissionCoordinator.createValidationCommandRunner({
+            webview,
+            workspaceRoot: wsRoot.fsPath,
+            mode: intent.mode,
+            toolPolicy,
+            traceRunId: agentTraceRunId,
+            traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
+            onTraceEvidenceError: error => agentRunContext?.markEvidenceDegraded(error),
+          }),
           // P5-3: read_file tool — AI can read workspace files during agent loop
           // workDir = absolute path of the current task's directory (passed by executeFakeToolsForLoop).
           // Copilot/Claude Code pattern: tool calls inherit parent task's working directory so
@@ -1035,13 +1100,15 @@ async function runChat(
             workspaceRoot: wsRoot.fsPath,
             webview,
             terminalPermissionCoordinator,
+            runContext: agentRunContext,
           }),
           // Stop button support: abort in-progress LLM calls
           // Stop button support: abort in-progress LLM calls
           signal: chatSignal,
           // 断点续传：save/clear checkpoint after each task and on network failure
           autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
-          onTaskCheckpoint: async (completedUpToIndex, _remainingTasks, checkpointReason = 'progress') => {
+          onTaskCheckpoint: async (completedUpToIndex, remainingTasks, checkpointReason = 'progress') => {
+            agentRunContext?.recordCheckpoint(completedUpToIndex, remainingTasks.length, checkpointReason);
             if (completedUpToIndex === null) {
               // Loop completed successfully — clear any stale checkpoint
               await saveAgentCheckpoint(null);
@@ -1103,14 +1170,25 @@ async function runChat(
             registerToMemory(absPath);
           });
         }
-        loopAutopilotHandled = pendingEditCoordinator.handleAgentAutopilot(webview, loopResult);
+        const agentSettlement = settleAgentLoopResult(
+          terminalPermissionCoordinator, agentRunContext, loopResult,
+        );
+        durableAgentSettlement = agentSettlement.status;
+        const agentDurablyCompleted = agentSettlement.completed;
+        if (agentSettlement.refused) postAgentSettlementRefusal(webview, agentDisplayPresenter);
+        loopAutopilotHandled = agentDurablyCompleted
+          ? pendingEditCoordinator.handleAgentAutopilot(webview, loopResult)
+          : false;
         agentHistoryText = loopResult.historyText
-          || `**[Agent] ${loopResult.tasksFailed === 0 ? '已完成' : '未完成'}（${loopResult.tasksApplied}/${tasks.length} 个任务）**\n\n未生成可恢复的执行证据摘要。`;
+          || `**[Agent] ${agentDurablyCompleted ? '已完成' : '未完成'}（${loopResult.tasksApplied}/${tasks.length} 个任务）**\n\n未生成可恢复的执行证据摘要。`;
+        if (agentSettlement.refused) {
+          agentHistoryText = `**[Agent] 未完成：运行证据结算失败**\n\n${agentHistoryText}`;
+        }
         saveAgentSessionState({
           lastUserPrompt: userDisplay,
           lastSummary: agentHistoryText,
           changedPaths: lastAgentChangedPaths.slice(0, 12),
-          completed: loopResult.tasksFailed === 0,
+          completed: agentDurablyCompleted,
           savedAt: Date.now(),
         });
       }
@@ -1176,7 +1254,7 @@ async function runChat(
         completed: false,
         savedAt: Date.now(),
       });
-      agentRunContext.complete('failed', {
+      durableAgentSettlement = terminalPermissionCoordinator.completeRunContext(agentRunContext, 'failed', {
         reason: 'agent-error',
         changedPaths: [],
       });
@@ -1202,16 +1280,19 @@ async function runChat(
 
     const autoAcceptResult = loopResult
       ?? (loopFailedForAutoAccept ? { tasksTotal: decomposedTaskCount, tasksApplied: 0, tasksFailed: 1, changedPaths: [] } : undefined);
-    if (!loopFailedForAutoAccept) {
-      agentRunContext.complete(loopResult && loopResult.tasksFailed > 0 ? 'failed' : 'completed', {
-        tasksTotal: loopResult?.tasksTotal ?? decomposedTaskCount,
-        tasksApplied: loopResult?.tasksApplied ?? 0,
-        tasksFailed: loopResult?.tasksFailed ?? 0,
-        changedPaths: loopResult?.changedPaths?.slice(0, 12) ?? [],
-        ...buildArtifactVerificationCompletionMetadata(loopResult),
-      });
+    if (!loopFailedForAutoAccept && !durableAgentSettlement) {
+      durableAgentSettlement = loopResult
+        ? settleAgentLoopResult(terminalPermissionCoordinator, agentRunContext, loopResult).status
+        : terminalPermissionCoordinator.completeRunContext(agentRunContext, 'failed', {
+          tasksTotal: decomposedTaskCount,
+          tasksApplied: 0,
+          tasksFailed: 0,
+          changedPaths: [],
+        });
     }
-    pendingEditCoordinator.scheduleAutoAccept(webview, autoAcceptResult, loopAutopilotHandled);
+    if (!loopFailedForAutoAccept && durableAgentSettlement === 'completed') {
+      pendingEditCoordinator.scheduleAutoAccept(webview, autoAcceptResult, loopAutopilotHandled);
+    }
     webview.postMessage({ type: 'endResponse' });
     return;
   }
@@ -1334,6 +1415,16 @@ async function runChat(
       mode,
       traceLevel: config.get<string>('traceLevel', 'debug'),
     });
+    workflowRunContext = chatRunContext;
+    const chatValidationCommandRunner = terminalPermissionCoordinator.createValidationCommandRunner({
+      webview,
+      workspaceRoot: chatWorkspaceRoot,
+      mode: intent.mode,
+      toolPolicy,
+      traceRunId: chatRunContext.runId,
+      traceEvidenceParticipantToken: chatRunContext.evidenceParticipantToken,
+      onTraceEvidenceError: error => chatRunContext?.markEvidenceDegraded(error),
+    });
     chatRunContext.trace.info('routing', 'route-decision', {
       agentEnabled: config.get<boolean>('agentEnabled', true),
       forceNoAgent,
@@ -1412,18 +1503,37 @@ async function runChat(
         requestTerminalConfirmation: (command, workdir) => terminalPermissionCoordinator.requestInlineConfirmation(webview, command, workdir ?? ''),
         routeChat,
         toolPolicy,
+        terminalPermissionCoordinator,
+        traceRunId: chatRunContext.runId,
+        traceEvidenceParticipantToken: chatRunContext.evidenceParticipantToken,
+        onTraceEvidenceError: error => chatRunContext?.markEvidenceDegraded(error),
         consumeAgentSteer,
         registerAppliedChange: (change) => pendingEditCoordinator.registerChange(webview, change),
         registerToMemory,
         sessionRecentFiles,
         mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
-        onMcpToolCall: mcpManager.hasMcpTools ? (fakeName, args) => mcpManager.callTool(fakeName, args) : undefined,
+        onMcpToolCall: mcpManager.hasMcpTools ? createEvidenceAwareMcpToolCall(chatRunContext, webview) : undefined,
         signal: chatSignal,
         sessionId: activeSessionId,
         onChangedPaths: (relativePaths) => { lastAgentChangedPaths = relativePaths; },
       });
       if (localExecutionResult.handled) {
-        chatRunContext.complete('completed', { reason: 'local-execution-handled' });
+        const requestedStatus = localExecutionResult.status ?? 'failed';
+        const settlementStatus = terminalPermissionCoordinator.completeRunContext(chatRunContext, requestedStatus, {
+          reason: 'local-execution-handled',
+          terminalOutcome: requestedStatus,
+        });
+        if (requestedStatus === 'completed') {
+          if (settlementStatus === 'completed' && localExecutionResult.successMessage) {
+            postWebviewMessage(webview, { type: 'delta', text: localExecutionResult.successMessage });
+          } else if (settlementStatus !== 'completed') {
+            postWebviewMessage(webview, {
+              type: 'error',
+              text: '本地命令已成功，但运行证据结算失败；本轮不能标记完成。',
+            });
+          }
+          webview.postMessage({ type: 'endResponse' });
+        }
         return;
       }
     }
@@ -1453,6 +1563,8 @@ async function runChat(
       onDelta: postChatDelta,
       traceRunId: chatRunContext.runId,
       traceWorkspaceRoot: chatRunContext.workspaceRoot,
+      traceEvidenceParticipantToken: chatRunContext.evidenceParticipantToken,
+      onTraceEvidenceError: error => chatRunContext?.markEvidenceDegraded(error),
       onUsage: (usage) => {
         webview.postMessage({ type: 'tokenUsage', promptTokens: usage.promptTokens, completionTokens: usage.completionTokens });
       },
@@ -1506,6 +1618,8 @@ async function runChat(
           mode,
           traceRunId: chatRunContext.runId,
           traceWorkspaceRoot: chatRunContext.workspaceRoot,
+          traceEvidenceParticipantToken: chatRunContext.evidenceParticipantToken,
+          onTraceEvidenceError: error => chatRunContext?.markEvidenceDegraded(error),
           onDelta: (delta) => {
             if (delta.startsWith('\x00RESET\x00')) {
               postWebviewMessage(webview, { type: 'delta', text: delta.slice(7) });
@@ -1538,7 +1652,10 @@ async function runChat(
     if (shouldApplyToReviewQueue) {
       const firstApply = await applyGeneratedArtifactsWithPrompt(responseToApply, prompt, workflowReporter, true, async (change) => {
         await pendingEditCoordinator.registerChange(webview, change);
-      }, pathResolutionHints, { rollbackOnValidationFailure: false });
+      }, pathResolutionHints, {
+        rollbackOnValidationFailure: false,
+        validationCommandRunner: chatValidationCommandRunner,
+      });
       const recoveredApply = await recoverApplyFailureIfPossible({
         reporter: workflowReporter,
         originalPrompt: prompt,
@@ -1553,9 +1670,17 @@ async function runChat(
           trackHistory: false,
           traceRunId: chatRunContext?.runId,
           traceWorkspaceRoot: chatRunContext?.workspaceRoot,
+          traceEvidenceParticipantToken: chatRunContext?.evidenceParticipantToken,
+          onTraceEvidenceError: error => chatRunContext?.markEvidenceDegraded(error),
         }),
         apply: (repairResponse, repairPrompt, onAppliedChange) => applyGeneratedArtifactsWithPrompt(
-          repairResponse, repairPrompt, workflowReporter, true, onAppliedChange, pathResolutionHints, { rollbackOnValidationFailure: false },
+          repairResponse,
+          repairPrompt,
+          workflowReporter,
+          true,
+          onAppliedChange,
+          pathResolutionHints,
+          { rollbackOnValidationFailure: false, validationCommandRunner: chatValidationCommandRunner },
         ),
         onAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(webview, change); },
       });
@@ -1567,21 +1692,31 @@ async function runChat(
           mode,
           initialApply: finalApply,
           preferredAbsolutePaths: pathResolutionHints,
-          routeChat: (request) => routeChat({ ...request, traceRunId: request.traceRunId ?? chatRunContext?.runId }),
+          routeChat: (request) => routeChat({
+            ...request,
+            traceRunId: request.traceRunId ?? chatRunContext?.runId,
+            traceWorkspaceRoot: request.traceWorkspaceRoot ?? chatRunContext?.workspaceRoot,
+            traceEvidenceParticipantToken: request.traceEvidenceParticipantToken ?? chatRunContext?.evidenceParticipantToken,
+            onTraceEvidenceError: request.onTraceEvidenceError ?? (error => chatRunContext?.markEvidenceDegraded(error)),
+          }),
           registerAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(webview, change); },
           getSessionId: () => activeSessionId,
           postVisibleDelta: (text) => { postWebviewMessage(webview, { type: 'delta', text }); },
+          validationCommandRunner: chatValidationCommandRunner,
         });
       }
     }
-    chatRunContext.complete('completed', {
+    const chatSettlementStatus = terminalPermissionCoordinator.completeRunContext(chatRunContext, 'completed', {
       intent: intent.kind,
       workflow: workflow.kind,
       changedPaths: lastAgentChangedPaths.slice(0, 12),
     });
+    if (chatSettlementStatus !== 'completed') {
+      throw new Error('运行证据结算失败；本轮回复和文件候选不能标记为完成。');
+    }
   } catch (e) {
     const msg = (e as Error).message;
-    chatRunContext?.complete('failed', {
+    if (chatRunContext) terminalPermissionCoordinator.completeRunContext(chatRunContext, 'failed', {
       reason: 'chat-error',
       message: msg,
     });
@@ -1622,76 +1757,6 @@ async function runChat(
 
 function pushChatPanel(userDisplay: string, prompt: string, newSession: boolean): void { viewProvider.push(userDisplay, prompt, newSession); }
 
-function registerRealPluginDeepSeekHarnessCommand(context: vscode.ExtensionContext): void {
-  if (process.env.DEVSEEK_REAL_PLUGIN_DEEPSEEK !== '1') return;
-
-  context.subscriptions.push(vscode.commands.registerCommand(
-    '_devseek.harnessRunChat',
-    async (userDisplay: string, prompt: string, newSession: boolean, mode?: 'fast' | 'r1') => {
-      recordRealPluginHarnessProgress('extension-command-started');
-      viewProvider.focus();
-      const webview = await waitForHarnessWebview(30_000);
-      recordRealPluginHarnessProgress('extension-command-webview-resolved', { hasWebview: !!webview });
-      if (!webview) {
-        throw new Error('DevSeek harness could not resolve the chat webview within 30s');
-      }
-      const harnessMode = mode === 'r1' ? 'r1' : 'fast';
-      recordRealPluginHarnessProgress('extension-command-run-chat-started', { mode: harnessMode });
-      await runChat(webview, userDisplay, prompt, newSession, harnessMode, undefined, undefined, undefined, undefined, undefined, true);
-      recordRealPluginHarnessProgress('extension-command-run-chat-completed');
-    },
-  ));
-
-  context.subscriptions.push(vscode.commands.registerCommand(
-    '_devseek.harnessSubmitChatMessage',
-    async (userDisplay: string, prompt: string, newSession: boolean, mode?: 'fast' | 'r1') => {
-      recordRealPluginHarnessProgress('extension-command-started', { route: 'webview-message' });
-      viewProvider.focus();
-      const webview = await waitForHarnessWebview(30_000);
-      recordRealPluginHarnessProgress('extension-command-webview-resolved', { hasWebview: !!webview, route: 'webview-message' });
-      if (!webview) {
-        throw new Error('DevSeek harness could not resolve the chat webview within 30s');
-      }
-      const harnessMode = mode === 'r1' ? 'r1' : 'fast';
-      recordRealPluginHarnessProgress('extension-command-submit-chat-started', { mode: harnessMode, route: 'webview-message' });
-      await viewProvider.submitHarnessChatMessage({
-        type: 'chat',
-        text: userDisplay,
-        prompt,
-        newSession,
-        mode: harnessMode,
-        intentConfirmed: true,
-      });
-      recordRealPluginHarnessProgress('extension-command-submit-chat-completed', { route: 'webview-message' });
-    },
-  ));
-}
-
-async function waitForHarnessWebview(timeoutMs: number): Promise<vscode.Webview | undefined> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const webview = viewProvider?.webview;
-    if (webview) return webview;
-    await new Promise<void>(resolve => setTimeout(resolve, 250));
-  }
-  return viewProvider?.webview;
-}
-
-function recordRealPluginHarnessProgress(stage: string, extra?: Record<string, unknown>): void {
-  const progressPath = process.env.DEVSEEK_REAL_PLUGIN_PROGRESS_PATH;
-  if (!progressPath) return;
-  try {
-    fs.mkdirSync(nodePath.dirname(progressPath), { recursive: true });
-    fs.appendFileSync(progressPath, `${JSON.stringify({
-      ts: new Date().toISOString(),
-      stage,
-      ...(extra ?? {}),
-    })}\n`, 'utf8');
-  } catch {
-    // Harness diagnostics must never affect production or test execution.
-  }
-}
-
 function getChatSessionTurnService(webview: vscode.Webview): ChatSessionTurnService {
   return new ChatSessionTurnService({
     getHistory: () => nonBridgeChatHistory,
@@ -1714,34 +1779,6 @@ function getChatSessionTurnService(webview: vscode.Webview): ChatSessionTurnServ
   });
 }
 
-/**
- * Phase 10 application entry: route chat through the headless application
- * service so VS Code remains a surface/composition root.
- */
-function getAgentApplicationService(): AgentApplicationService {
-  if (!agentApplicationService) {
-    agentApplicationService = new AgentApplicationService({
-      getProviderType: getActiveProviderType,
-      getProvider: getActiveProvider,
-      bridgeChat: (request) => chat({
-        prompt: request.prompt,
-        newSession: request.newSession,
-        timeoutMs: request.timeoutMs,
-        stream: request.stream,
-        mode: request.mode,
-        onDelta: request.onDelta,
-        files: request.files,
-        traceRunId: request.traceRunId,
-        traceWorkspaceRoot: request.traceWorkspaceRoot,
-      }),
-      getChatHistory: () => [...nonBridgeChatHistory],
-      recordChatHistory: recordTrackedChatHistory,
-      promptForApiKeyUpdate: promptUpdateApiKey,
-    });
-  }
-  return agentApplicationService;
-}
-
 function recordTrackedChatHistory(opts: AgentChatRequest, response: string): void {
   recordTrackedChatHistoryState({
     opts,
@@ -1757,8 +1794,8 @@ function recordTrackedChatHistory(opts: AgentChatRequest, response: string): voi
   });
 }
 
-async function routeChat(opts: AgentChatRequest): Promise<string> {
-  return getAgentApplicationService().routeChat(opts);
+function routeChat(opts: AgentChatRequest): Promise<string> {
+  return evidenceAwareChatRouter.route(opts);
 }
 
 // ================================================================
@@ -1918,53 +1955,6 @@ function initOrRestoreSession(): void {
   }
 }
 
-async function confirmAgentFileWrite(input: {
-  webview: vscode.Webview;
-  absPath: string;
-  context?: AgentFileWriteContext;
-  workspaceRoot?: string;
-  toolPolicy: ToolPolicy;
-  trace?: DevSeekTraceLogger;
-}): Promise<boolean> {
-  const autopilotMode = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-  const protectedPath = isFileProtected(input.absPath, input.workspaceRoot || '');
-  const decision = decideAgentFileWrite({
-    absPath: input.absPath,
-    workspaceRoot: input.workspaceRoot,
-    toolPolicy: input.toolPolicy,
-    autopilotMode,
-    protectedPath,
-    context: input.context,
-  });
-  input.trace?.info('file-write-policy', 'file-write-decision', {
-    action: decision.action,
-    reason: decision.reason,
-    absPath: input.absPath,
-    workspaceRoot: input.workspaceRoot,
-    toolPolicyMode: input.toolPolicy.mode,
-    context: input.context,
-    autopilotMode,
-    protectedPath,
-    audit: decision.audit,
-  });
-
-  if (decision.action === 'allow') return true;
-  if (decision.action === 'deny') {
-    postWebviewMessage(input.webview, {
-      type: 'agentNotice',
-      kind: 'warn',
-      text: decision.notice || `写入被权限策略阻止：${decision.reason}`,
-    });
-    return false;
-  }
-
-  const confirmResult = await terminalPermissionCoordinator.requestInlineConfirmation(
-    input.webview,
-    decision.confirmationTitle || `确认写入文件：${nodePath.basename(input.absPath)}`,
-  );
-  return confirmResult.allow;
-}
-
 // ----------------------------------------------------------------
 // Extension entry point
 // ----------------------------------------------------------------
@@ -2049,8 +2039,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
 
-  registerExtensionCommands(context, { viewProvider, pushChatPanel, routeChat });
-  registerRealPluginDeepSeekHarnessCommand(context);
+  registerExtensionCommands(context, {
+    viewProvider,
+    terminalPermissionCoordinator,
+    pushChatPanel,
+    routeChat,
+  });
+  registerRealPluginDeepSeekHarnessCommand(context, viewProvider, runChat);
 
   // ── Session memory: restore previous session on startup ────────────
   initOrRestoreSession();

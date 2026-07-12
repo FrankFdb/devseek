@@ -49,6 +49,8 @@ export class BridgeProvider implements LLMProvider {
       files: opts.files,
       traceRunId: opts.traceRunId,
       traceWorkspaceRoot: opts.traceWorkspaceRoot,
+      traceOperationId: opts.traceOperationId,
+      traceEvidenceParticipantToken: opts.evidenceCapability?.token,
     });
     new ResponseIntegrityChecker().assertSafeForExecution(response);
     const providerOutput = classifyProviderOutputIntegrity(response);

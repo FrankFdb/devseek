@@ -6,6 +6,11 @@ import { stdin as input, stdout as output } from 'process';
 import { dirname, join, relative, resolve } from 'path';
 import {
   AgentApplicationService,
+  createProductRunEvidenceAuthorityToken,
+  createProductRunEvidenceId,
+  ProductRunEvidenceSession,
+  productRunEvidenceIdempotencyKey,
+  summarizeTraceText,
   type AgentEvent,
   type LLMProvider,
 } from '@devseek-netai/shared';
@@ -81,6 +86,9 @@ function parseArgs(argv: readonly string[]): CliOptions {
 async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
   const surface = new CliSurfaceAdapter({ jsonl: options.jsonl });
   const renderEvent = (event: AgentEvent) => surface.renderEvent(event);
+  const runId = createProductRunEvidenceId();
+  const evidence = openCliRunEvidence(options, runId, prompt);
+  const initialProviderOperationId = 'cli-provider-1';
   const service = new AgentApplicationService({
     getProviderType: () => options.mock ? 'local-api' : 'bridge',
     getProvider: () => createMockProvider(),
@@ -97,24 +105,197 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
       stream: !options.jsonl,
       trackHistory: true,
       files: contextFiles,
+      traceRunId: runId,
+      traceWorkspaceRoot: options.cwd,
+      traceOperationId: initialProviderOperationId,
+      traceEvidenceParticipantToken: evidence.participantToken,
     },
   });
 
   try {
-    const events = await service.handle(command);
+    recordCliOperationEvidence(evidence, {
+      type: 'provider.requested',
+      idempotencyKey: productRunEvidenceIdempotencyKey('cli-provider-requested', { runId, attempt: 1 }),
+      payload: { provider: options.mock ? 'local-api' : 'bridge', attempt: 1 },
+    }, initialProviderOperationId, 'cli-provider-client');
+    let events: AgentEvent[];
+    try {
+      events = await service.handle(command);
+    } catch (error) {
+      recordCliOperationEvidence(evidence, {
+        type: 'provider.failed',
+        idempotencyKey: productRunEvidenceIdempotencyKey('cli-provider-failed', { runId, attempt: 1 }),
+        payload: { provider: options.mock ? 'local-api' : 'bridge', attempt: 1, error: summarizeTraceText(formatCliError(error)) },
+      }, initialProviderOperationId, 'cli-provider-client');
+      if (!options.mock) assertCliBridgeEvidenceComplete(evidence, initialProviderOperationId, 'failed');
+      throw error;
+    }
+    const response = extractCompletedResponse(events);
+    recordCliOperationEvidence(evidence, {
+      type: 'provider.completed',
+      idempotencyKey: productRunEvidenceIdempotencyKey('cli-provider-completed', { runId, attempt: 1 }),
+      payload: { provider: options.mock ? 'local-api' : 'bridge', attempt: 1, response: summarizeTraceText(response) },
+    }, initialProviderOperationId, 'cli-provider-client');
+    if (!options.mock) assertCliBridgeEvidenceComplete(evidence, initialProviderOperationId, 'completed');
     await runCodingLoop({
       cwd: options.cwd,
       prompt,
-      response: extractCompletedResponse(events),
+      response,
       service,
       surface,
       renderEvent,
+      evidence,
+      runId,
+      usesBridge: !options.mock,
     });
     await appendHistory(options.cwd, prompt);
+    settleCliEvidence(evidence, runId, 'completed');
     return 0;
   } catch (error) {
+    settleCliEvidence(evidence, runId, 'failed');
     console.error(`DevSeek CLI error: ${formatCliError(error)}`);
     return 1;
+  }
+}
+
+interface CliEvidenceContext {
+  readonly session?: ProductRunEvidenceSession;
+  readonly participantToken: string;
+  degraded: boolean;
+  degradationRecorded: boolean;
+}
+
+function openCliRunEvidence(
+  options: CliOptions,
+  runId: string,
+  prompt: string,
+): CliEvidenceContext {
+  const ownerToken = createProductRunEvidenceAuthorityToken();
+  const participantToken = createProductRunEvidenceAuthorityToken();
+  try {
+    const session = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot: options.cwd,
+      runId,
+      surface: options.jsonl ? 'jsonl' : 'cli',
+      authority: { role: 'owner', token: ownerToken, participantToken },
+      openIfMissing: true,
+      openPayload: {
+        owner_surface: options.jsonl ? 'jsonl' : 'cli',
+        cwd: summarizeTraceText(options.cwd),
+      },
+    });
+    session.record({
+      type: 'command.accepted',
+      idempotencyKey: productRunEvidenceIdempotencyKey('cli-command-accepted', { runId }),
+      payload: { prompt: summarizeTraceText(prompt) },
+    });
+    return { session, participantToken, degraded: false, degradationRecorded: false };
+  } catch (error) {
+    console.error(`DevSeek evidence warning: ${formatCliError(error)}`);
+    return { participantToken, degraded: true, degradationRecorded: false };
+  }
+}
+
+function recordCliEvidence(
+  evidence: CliEvidenceContext,
+  input: Parameters<ProductRunEvidenceSession['record']>[0],
+): void {
+  if (!evidence.session) {
+    evidence.degraded = true;
+    return;
+  }
+  try {
+    evidence.session.record(input);
+  } catch (error) {
+    markCliEvidenceDegraded(evidence, error);
+  }
+}
+
+function recordCliOperationEvidence(
+  evidence: CliEvidenceContext,
+  input: Parameters<ProductRunEvidenceSession['record']>[0],
+  operationId: string,
+  boundary?: string,
+): void {
+  const payload = input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
+    ? input.payload
+    : {};
+  recordCliEvidence(evidence, {
+    ...input,
+    payload: {
+      ...payload,
+      operation_id: operationId,
+      ...(boundary ? { boundary } : {}),
+      status: input.type.slice(input.type.indexOf('.') + 1),
+      trust: 'product-runtime-observation',
+    },
+  });
+}
+
+function markCliEvidenceDegraded(evidence: CliEvidenceContext, error: unknown): void {
+  evidence.degraded = true;
+  const message = formatCliError(error);
+  console.error(`DevSeek evidence warning: ${message}`);
+  if (!evidence.session || evidence.degradationRecorded) return;
+  try {
+    evidence.session.record({
+      type: 'evidence.degraded',
+      idempotencyKey: productRunEvidenceIdempotencyKey('cli-evidence-degraded', { message }),
+      payload: {
+        trust: 'product-runtime-observation',
+        status: 'degraded',
+        reason: message,
+      },
+    });
+    evidence.degradationRecorded = true;
+  } catch (appendError) {
+    console.error(`DevSeek evidence warning: ${formatCliError(appendError)}`);
+  }
+}
+
+function assertCliBridgeEvidenceComplete(
+  evidence: CliEvidenceContext,
+  operationId: string,
+  expectedTerminal: 'completed' | 'failed',
+): void {
+  if (!evidence.session) return;
+  try {
+    const matching = evidence.session.readEvents().filter(event => {
+      if (!event.type.startsWith('provider.')) return false;
+      if (!event.payload || typeof event.payload !== 'object' || Array.isArray(event.payload)) return false;
+      return event.payload.operation_id === operationId && event.payload.boundary === 'bridge-server';
+    });
+    const requested = matching.filter(event => event.type === 'provider.requested').length;
+    const terminal = matching.filter(event => event.type === 'provider.completed' || event.type === 'provider.failed').length;
+    if (requested !== 1 || terminal !== 1 || matching.at(-1)?.type !== `provider.${expectedTerminal}`) {
+      markCliEvidenceDegraded(
+        evidence,
+        new Error(`Bridge evidence boundary is incomplete for ${operationId}; expected provider.${expectedTerminal}`),
+      );
+    }
+  } catch (error) {
+    markCliEvidenceDegraded(evidence, error);
+  }
+}
+
+function settleCliEvidence(
+  evidence: CliEvidenceContext,
+  runId: string,
+  status: 'completed' | 'failed',
+): void {
+  if (!evidence.session) return;
+  if (status === 'completed' && evidence.degraded) {
+    console.error('DevSeek evidence warning: completed settlement refused because evidence is degraded');
+    return;
+  }
+  try {
+    evidence.session.settleAndSeal({
+      status,
+      idempotencyKey: productRunEvidenceIdempotencyKey('cli-run-settled', { runId }),
+      payload: { surface: 'cli' },
+    });
+  } catch (error) {
+    markCliEvidenceDegraded(evidence, error);
   }
 }
 
@@ -268,6 +449,9 @@ interface CodingLoopInput {
   service: AgentApplicationService;
   surface: CliSurfaceAdapter;
   renderEvent: (event: AgentEvent) => void;
+  evidence: CliEvidenceContext;
+  runId: string;
+  usesBridge: boolean;
 }
 
 interface FileToolCall {
@@ -276,45 +460,340 @@ interface FileToolCall {
   content: string;
 }
 
+interface CliRecoveryBoundary {
+  operationId: string;
+  targetOperationIds: string[];
+  unresolvedOperationIds: string[];
+  closed: boolean;
+}
+
 async function runCodingLoop(input: CodingLoopInput): Promise<void> {
   let response = input.response;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const files = await applyCodingArtifacts(input.cwd, response);
-    if (files.length === 0) return;
-    emitSyntheticEvent(input.renderEvent, {
-      type: 'fileChanges.proposed',
-      files,
-    });
-
-    const validation = await validateChangedFiles(input.cwd, files, input.prompt);
-    emitSyntheticEvent(input.renderEvent, {
-      type: 'validation.completed',
-      passed: validation.passed,
-      evidenceRefs: validation.evidenceRefs,
-    });
-    emitSyntheticEvent(input.renderEvent, {
-      type: 'qualityGate.completed',
-      passed: validation.passed,
-      evidenceRefs: validation.evidenceRefs,
-    });
-
-    if (validation.passed) return;
-    if (attempt === 1) {
-      throw new Error(`DevSeek coding validation failed after repair: ${validation.summary}`);
-    }
-
-    const repairPrompt = buildRepairPrompt(input.prompt, response, files, validation);
-    const repairCommand = input.surface.toChatCommand({
-      prompt: repairPrompt,
-      request: {
-        stream: false,
-        trackHistory: true,
+  let recovery: CliRecoveryBoundary | undefined;
+  let recoveryExitError: unknown;
+  try {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const executionAttempt = attempt + 1;
+      const fileToolCalls = parseFileToolCalls(response);
+      const unifiedDiffs = parseUnifiedDiffs(response);
+      const candidateCount = fileToolCalls.length + unifiedDiffs.length;
+      if (candidateCount === 0) {
+        if (recovery) {
+          throw new Error('DevSeek repair response contained no workspace artifacts to validate');
+        }
+        return;
+      }
+      const sideEffectOperationId = `cli-file-write-${executionAttempt}`;
+      const verificationOperationId = `cli-verification-${executionAttempt}`;
+      const recoveryCorrelation: Record<string, string> = recovery
+        ? { recovery_operation_id: recovery.operationId }
+        : {};
+      recordCliOperationEvidence(input.evidence, {
+        type: 'side_effect.requested',
+        idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-requested', {
+          runId: input.runId,
+          attempt: executionAttempt,
+        }),
+        payload: {
+          kind: 'workspace-file-write',
+          attempt: executionAttempt,
+          candidate_count: candidateCount,
+          ...recoveryCorrelation,
+        },
+      }, sideEffectOperationId);
+      recordCliOperationEvidence(input.evidence, {
+        type: 'side_effect.authorized',
+        idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-authorized', {
+          runId: input.runId,
+          attempt: executionAttempt,
+        }),
+        payload: {
+          kind: 'workspace-file-write',
+          attempt: executionAttempt,
+          authorization: 'cli-exec-request',
+          ...recoveryCorrelation,
+        },
+      }, sideEffectOperationId);
+      recordCliOperationEvidence(input.evidence, {
+        type: 'side_effect.started',
+        idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-started', {
+          runId: input.runId,
+          attempt: executionAttempt,
+        }),
+        payload: {
+          kind: 'workspace-file-write',
+          attempt: executionAttempt,
+          candidate_count: candidateCount,
+          ...recoveryCorrelation,
+        },
+      }, sideEffectOperationId);
+      let files: string[];
+      try {
+        files = await applyCodingArtifacts(input.cwd, fileToolCalls, unifiedDiffs);
+      } catch (error) {
+        noteCliRecoveryAdverse(recovery, sideEffectOperationId);
+        recordCliOperationEvidence(input.evidence, {
+          type: 'side_effect.indeterminate',
+          idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-indeterminate', {
+            runId: input.runId,
+            attempt: executionAttempt,
+          }),
+          payload: {
+            kind: 'workspace-file-write',
+            attempt: executionAttempt,
+            error: summarizeTraceText(formatCliError(error)),
+            ...recoveryCorrelation,
+          },
+        }, sideEffectOperationId);
+        throw error;
+      }
+      if (files.length === 0) {
+        noteCliRecoveryAdverse(recovery, sideEffectOperationId);
+        recordCliOperationEvidence(input.evidence, {
+          type: 'side_effect.failed',
+          idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-failed', {
+            runId: input.runId,
+            attempt: executionAttempt,
+          }),
+          payload: {
+            kind: 'workspace-file-write',
+            attempt: executionAttempt,
+            reason: 'no-applicable-workspace-artifact',
+            ...recoveryCorrelation,
+          },
+        }, sideEffectOperationId);
+        throw new Error('Model returned workspace artifacts, but none could be applied');
+      }
+      recordCliOperationEvidence(input.evidence, {
+        type: 'side_effect.committed',
+        idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-committed', {
+          runId: input.runId,
+          attempt: executionAttempt,
+        }),
+        payload: {
+          kind: 'workspace-file-write',
+          attempt: executionAttempt,
+          changed_file_count: files.length,
+          ...recoveryCorrelation,
+        },
+      }, sideEffectOperationId);
+      emitSyntheticEvent(input.renderEvent, {
+        type: 'fileChanges.proposed',
         files,
-      },
-    });
-    const repairEvents = await input.service.handle(repairCommand);
-    response = extractCompletedResponse(repairEvents);
+      });
+
+      recordCliOperationEvidence(input.evidence, {
+        type: 'verification.started',
+        idempotencyKey: productRunEvidenceIdempotencyKey('cli-verification-started', {
+          runId: input.runId,
+          attempt: executionAttempt,
+        }),
+        payload: { attempt: executionAttempt, changed_file_count: files.length },
+      }, verificationOperationId);
+      let validation: ValidationResult;
+      try {
+        validation = await validateChangedFiles(input.cwd, files, input.prompt);
+      } catch (error) {
+        noteCliRecoveryAdverse(recovery, verificationOperationId);
+        recordCliOperationEvidence(input.evidence, {
+          type: 'verification.failed',
+          idempotencyKey: productRunEvidenceIdempotencyKey('cli-verification-settled', {
+            runId: input.runId,
+            attempt: executionAttempt,
+          }),
+          payload: { attempt: executionAttempt, passed: false, error: summarizeTraceText(formatCliError(error)) },
+        }, verificationOperationId);
+        recordCliOperationEvidence(input.evidence, {
+          type: 'quality_gate.started',
+          idempotencyKey: productRunEvidenceIdempotencyKey('cli-quality-gate-started', {
+            runId: input.runId,
+            attempt: executionAttempt,
+          }),
+          payload: { attempt: executionAttempt, changed_file_count: files.length },
+        }, verificationOperationId);
+        recordCliOperationEvidence(input.evidence, {
+          type: 'quality_gate.failed',
+          idempotencyKey: productRunEvidenceIdempotencyKey('cli-quality-gate-settled', {
+            runId: input.runId,
+            attempt: executionAttempt,
+          }),
+          payload: { attempt: executionAttempt, passed: false, reason: 'verification-error' },
+        }, verificationOperationId);
+        throw error;
+      }
+      recordCliOperationEvidence(input.evidence, {
+        type: validation.passed ? 'verification.completed' : 'verification.failed',
+        idempotencyKey: productRunEvidenceIdempotencyKey('cli-verification-settled', {
+          runId: input.runId,
+          attempt: executionAttempt,
+        }),
+        payload: {
+          attempt: executionAttempt,
+          passed: validation.passed,
+          evidence_ref_count: validation.evidenceRefs.length,
+          summary: summarizeTraceText(validation.summary),
+        },
+      }, verificationOperationId);
+      recordCliOperationEvidence(input.evidence, {
+        type: 'quality_gate.started',
+        idempotencyKey: productRunEvidenceIdempotencyKey('cli-quality-gate-started', {
+          runId: input.runId,
+          attempt: executionAttempt,
+        }),
+        payload: { attempt: executionAttempt, changed_file_count: files.length },
+      }, verificationOperationId);
+      recordCliOperationEvidence(input.evidence, {
+        type: validation.passed ? 'quality_gate.passed' : 'quality_gate.failed',
+        idempotencyKey: productRunEvidenceIdempotencyKey('cli-quality-gate-settled', {
+          runId: input.runId,
+          attempt: executionAttempt,
+        }),
+        payload: { attempt: executionAttempt, passed: validation.passed },
+      }, verificationOperationId);
+      emitSyntheticEvent(input.renderEvent, {
+        type: 'validation.completed',
+        passed: validation.passed,
+        evidenceRefs: validation.evidenceRefs,
+      });
+      emitSyntheticEvent(input.renderEvent, {
+        type: 'qualityGate.completed',
+        passed: validation.passed,
+        evidenceRefs: validation.evidenceRefs,
+      });
+
+      const recoveryOperationId = 'cli-recovery-1';
+      if (validation.passed) {
+        if (recovery) {
+          closeCliRecoveryCompleted(input.evidence, input.runId, recovery, verificationOperationId);
+        }
+        return;
+      }
+      if (attempt === 1) {
+        noteCliRecoveryAdverse(recovery, verificationOperationId);
+        throw new Error(`DevSeek coding validation failed after repair: ${validation.summary}`);
+      }
+
+      recovery = {
+        operationId: recoveryOperationId,
+        targetOperationIds: [verificationOperationId],
+        unresolvedOperationIds: [verificationOperationId],
+        closed: false,
+      };
+      recordCliOperationEvidence(input.evidence, {
+        type: 'recovery.detected',
+        idempotencyKey: productRunEvidenceIdempotencyKey('cli-recovery-detected', { runId: input.runId }),
+        payload: { target_operation_ids: [verificationOperationId] },
+      }, recoveryOperationId);
+
+      const repairPrompt = buildRepairPrompt(input.prompt, response, files, validation);
+      const providerAttempt = attempt + 2;
+      const repairProviderOperationId = `cli-provider-${providerAttempt}`;
+      const repairCommand = input.surface.toChatCommand({
+        prompt: repairPrompt,
+        request: {
+          stream: false,
+          trackHistory: true,
+          files,
+          traceRunId: input.runId,
+          traceWorkspaceRoot: input.cwd,
+          traceOperationId: repairProviderOperationId,
+          traceEvidenceParticipantToken: input.evidence.participantToken,
+        },
+      });
+      recordCliOperationEvidence(input.evidence, {
+        type: 'provider.requested',
+        idempotencyKey: productRunEvidenceIdempotencyKey('cli-provider-requested', {
+          runId: input.runId,
+          attempt: providerAttempt,
+        }),
+        payload: { provider: 'repair', attempt: providerAttempt },
+      }, repairProviderOperationId, 'cli-provider-client');
+      let repairEvents: AgentEvent[];
+      try {
+        repairEvents = await input.service.handle(repairCommand);
+      } catch (error) {
+        noteCliRecoveryAdverse(recovery, repairProviderOperationId);
+        recordCliOperationEvidence(input.evidence, {
+          type: 'provider.failed',
+          idempotencyKey: productRunEvidenceIdempotencyKey('cli-provider-failed', {
+            runId: input.runId,
+            attempt: providerAttempt,
+          }),
+          payload: { provider: 'repair', attempt: providerAttempt, error: summarizeTraceText(formatCliError(error)) },
+        }, repairProviderOperationId, 'cli-provider-client');
+        if (input.usesBridge) {
+          assertCliBridgeEvidenceComplete(input.evidence, repairProviderOperationId, 'failed');
+        }
+        throw error;
+      }
+      response = extractCompletedResponse(repairEvents);
+      recordCliOperationEvidence(input.evidence, {
+        type: 'provider.completed',
+        idempotencyKey: productRunEvidenceIdempotencyKey('cli-provider-completed', {
+          runId: input.runId,
+          attempt: providerAttempt,
+        }),
+        payload: { provider: 'repair', attempt: providerAttempt, response: summarizeTraceText(response) },
+      }, repairProviderOperationId, 'cli-provider-client');
+      if (input.usesBridge) {
+        assertCliBridgeEvidenceComplete(input.evidence, repairProviderOperationId, 'completed');
+      }
+    }
+    throw new Error('DevSeek repair loop exhausted without a validated terminal result');
+  } catch (error) {
+    recoveryExitError = error;
+    throw error;
+  } finally {
+    if (recovery && !recovery.closed) {
+      closeCliRecoveryFailed(
+        input.evidence,
+        input.runId,
+        recovery,
+        recoveryExitError ?? new Error('DevSeek repair exited before successful revalidation'),
+      );
+    }
   }
+}
+
+function noteCliRecoveryAdverse(recovery: CliRecoveryBoundary | undefined, operationId: string): void {
+  if (!recovery || recovery.unresolvedOperationIds.includes(operationId)) return;
+  recovery.unresolvedOperationIds.push(operationId);
+}
+
+function closeCliRecoveryCompleted(
+  evidence: CliEvidenceContext,
+  runId: string,
+  recovery: CliRecoveryBoundary,
+  verificationOperationId: string,
+): void {
+  if (recovery.closed) return;
+  recordCliOperationEvidence(evidence, {
+    type: 'recovery.completed',
+    idempotencyKey: productRunEvidenceIdempotencyKey('cli-recovery-completed', { runId }),
+    payload: {
+      resolves_operation_ids: recovery.targetOperationIds,
+      verification_operation_id: verificationOperationId,
+    },
+  }, recovery.operationId);
+  recovery.closed = true;
+}
+
+function closeCliRecoveryFailed(
+  evidence: CliEvidenceContext,
+  runId: string,
+  recovery: CliRecoveryBoundary,
+  error: unknown,
+): void {
+  if (recovery.closed) return;
+  recordCliOperationEvidence(evidence, {
+    type: 'recovery.failed',
+    idempotencyKey: productRunEvidenceIdempotencyKey('cli-recovery-failed', { runId }),
+    payload: {
+      unresolved_operation_ids: recovery.unresolvedOperationIds,
+      reason: summarizeTraceText(formatCliError(error)),
+    },
+  }, recovery.operationId);
+  recovery.closed = true;
 }
 
 function buildRepairPrompt(
@@ -344,10 +823,14 @@ function truncateForPrompt(text: string, maxChars: number): string {
   return `${text.slice(0, maxChars)}\n[truncated]`;
 }
 
-async function applyCodingArtifacts(cwd: string, response: string): Promise<string[]> {
+async function applyCodingArtifacts(
+  cwd: string,
+  fileToolCalls: readonly FileToolCall[],
+  unifiedDiffs: readonly UnifiedDiffArtifact[],
+): Promise<string[]> {
   const files = [
-    ...await applyFileToolCalls(cwd, parseFileToolCalls(response)),
-    ...await applyUnifiedDiffs(cwd, parseUnifiedDiffs(response)),
+    ...await applyFileToolCalls(cwd, fileToolCalls),
+    ...await applyUnifiedDiffs(cwd, unifiedDiffs),
   ];
   return [...new Set(files)];
 }

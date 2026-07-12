@@ -1,4 +1,3 @@
-import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import {
@@ -14,10 +13,7 @@ import {
   getDevSeekBuildDir,
 } from './cpp-build-layout';
 import {
-  buildInteractiveTimeoutFailureDetail,
-  executionOutcomeClassifier,
   hasHardExecutionFailureEvidence,
-  INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL,
   isVisualOrInteractiveContext,
   visualSourcePathsLookInteractive,
 } from './execution-outcome-classifier';
@@ -84,6 +80,10 @@ export function shouldPreferLocalExecution(prompt: string, files?: string[], wor
 
   const discovered = discoverPromptCandidates(prompt, workspaceRoot);
   return discovered.length > 0;
+}
+
+export function getLocalExecutionTimeoutMs(plan: LocalExecutionPlan): number {
+  return LOCAL_EXECUTION_TIMEOUT_MS[plan.mode] ?? 30_000;
 }
 
 export function planLocalExecution(
@@ -161,38 +161,6 @@ export function shouldRepairLocalExecutionFailure(plan: LocalExecutionPlan, resu
   if (plan.mode === 'compile-only') return true;
   if (plan.mode === 'run-only' || plan.mode === 'script-run') return false;
   return hasHardExecutionFailureEvidence(`${result.output || ''}\n${result.command || ''}`);
-}
-
-export async function runLocalExecution(plan: LocalExecutionPlan): Promise<LocalExecutionResult> {
-  return new Promise((resolve) => {
-    const timeoutMs = LOCAL_EXECUTION_TIMEOUT_MS[plan.mode] ?? 30_000;
-    cp.exec(plan.command, { cwd: plan.cwd, timeout: timeoutMs, encoding: 'utf8' }, (error: cp.ExecException | null, stdout: string, stderr: string) => {
-      const outcome = executionOutcomeClassifier.classifyExecResult({
-        error,
-        stdout,
-        stderr,
-        command: plan.command,
-        timeoutMs,
-        allowManualReview: canRequireInteractiveUserReview(plan),
-        manualReviewContext: buildInteractiveReviewContext(plan),
-        visualSourcePaths: [...plan.targetFiles, ...plan.attachedFiles],
-        manualReviewDetail: INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL,
-        timeoutFailureDetail: buildInteractiveTimeoutFailureDetail(timeoutMs),
-        fallbackToErrorMessage: true,
-      });
-      resolve({
-        ok: outcome.ok,
-        command: plan.command,
-        cwd: plan.cwd,
-        exitCode: outcome.exitCode,
-        output: outcome.output,
-        ...(outcome.reviewRequired ? {
-          reviewRequired: true,
-          reviewReason: outcome.reviewReason,
-        } : {}),
-      });
-    });
-  });
 }
 
 export function selectRepairFiles(plan: LocalExecutionPlan, result: LocalExecutionResult): string[] {

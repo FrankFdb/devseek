@@ -4,13 +4,20 @@ import { spawn } from 'node:child_process';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import path from 'node:path';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const cliRoot = path.resolve(__dirname, '..');
 const bin = path.join(cliRoot, 'dist/index.js');
+const require = createRequire(import.meta.url);
+const {
+  ProductRunEvidenceSession,
+  productRunEvidenceIdempotencyKey,
+  summarizeTraceText,
+} = require('../../shared/dist/index.js');
 
 function withTempCwd(fn) {
   const cwd = mkdtempSync(path.join(tmpdir(), 'devseek-cli-test-'));
@@ -28,6 +35,20 @@ async function withTempCwdAsync(fn) {
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }
+}
+
+function readProductEvidenceRecords(cwd) {
+  const evidenceRoot = path.join(cwd, '.devseek', 'run-evidence', 'v1');
+  const [runDirectory] = readdirSync(evidenceRoot);
+  return readdirSync(path.join(evidenceRoot, runDirectory, 'records'))
+    .sort()
+    .map(name => JSON.parse(readFileSync(path.join(evidenceRoot, runDirectory, 'records', name), 'utf8')));
+}
+
+function readCliErrorMessage(stderr) {
+  const match = stderr.match(/DevSeek CLI error: ([^\r\n]+)/);
+  assert.ok(match, `missing CLI error diagnostic in stderr: ${stderr}`);
+  return match[1];
 }
 
 test('CLI JSONL mode emits parseable AgentEvent lines', () => {
@@ -58,8 +79,8 @@ test('CLI text mode prints provider response', () => {
   assert.match(stdout, /mock: phase10 cli text smoke/);
 });
 
-test('CLI bridge text mode streams SSE and reports delayed provider wait on stderr', async () => {
-  await withTestBridge(async ({ port, seenBodies }) => {
+test('CLI bridge text mode streams SSE, propagates one run identity, and seals product evidence', async () => {
+  await withTestBridge(async ({ port, seenBodies, seenHeaders }) => {
     await withTempCwdAsync(async (cwd) => {
       const result = await runCli([bin, 'exec', 'phase10 delayed bridge smoke'], {
         cwd,
@@ -77,6 +98,30 @@ test('CLI bridge text mode streams SSE and reports delayed provider wait on stde
       assert.match(result.stderr, /waiting for Bridge provider response/);
       assert.equal(seenBodies.length, 1);
       assert.equal(seenBodies[0].stream, true);
+      assert.match(String(seenHeaders[0]['x-devseek-run-id']), /^\d{8}-\d{6}/);
+      assert.equal(seenHeaders[0]['x-devseek-trace-workspace-root'], cwd);
+      assert.equal(seenHeaders[0]['x-devseek-operation-id'], 'cli-provider-1');
+      assert.match(String(seenHeaders[0]['x-devseek-evidence-authority']), /^devseek-ra1_/);
+
+      const evidenceRoot = path.join(cwd, '.devseek', 'run-evidence', 'v1');
+      const [runDirectory] = readdirSync(evidenceRoot);
+      const records = readdirSync(path.join(evidenceRoot, runDirectory, 'records'))
+        .sort()
+        .map(name => JSON.parse(readFileSync(path.join(evidenceRoot, runDirectory, 'records', name), 'utf8')));
+      assert.deepEqual(
+        records.filter(record => record.record_kind === 'event').map(record => record.event.type),
+        [
+          'run.opened',
+          'command.accepted',
+          'provider.requested',
+          'provider.requested',
+          'provider.completed',
+          'provider.completed',
+          'run.settled',
+        ],
+      );
+      assert.equal(records.at(-1).record_kind, 'seal');
+      assert.equal(records.every(record => record.record_kind !== 'event' || record.event.qualification_eligible === false), true);
     });
   });
 });
@@ -180,6 +225,53 @@ test('CLI repair prompt treats first-turn failure instructions as fulfilled', as
         events.filter(event => event.type === 'validation.completed').map(event => event.passed),
         [false, true],
       );
+      const evidenceRoot = path.join(cwd, '.devseek', 'run-evidence', 'v1');
+      const [runDirectory] = readdirSync(evidenceRoot);
+      const records = readdirSync(path.join(evidenceRoot, runDirectory, 'records'))
+        .sort()
+        .map(name => JSON.parse(readFileSync(path.join(evidenceRoot, runDirectory, 'records', name), 'utf8')));
+      const evidenceEvents = records
+        .filter(record => record.record_kind === 'event')
+        .map(record => record.event);
+      const recoveryLifecycle = evidenceEvents.filter(event => (
+        event.payload?.operation_id === 'cli-verification-1'
+        || event.payload?.operation_id === 'cli-recovery-1'
+        || event.payload?.operation_id === 'cli-file-write-2'
+        || event.payload?.operation_id === 'cli-verification-2'
+      ) && (
+        event.type.startsWith('verification.')
+        || event.type.startsWith('quality_gate.')
+        || event.type.startsWith('recovery.')
+        || event.type.startsWith('side_effect.')
+      ));
+      assert.deepEqual(recoveryLifecycle.map(event => event.type), [
+        'verification.started',
+        'verification.failed',
+        'quality_gate.started',
+        'quality_gate.failed',
+        'recovery.detected',
+        'side_effect.requested',
+        'side_effect.authorized',
+        'side_effect.started',
+        'side_effect.committed',
+        'verification.started',
+        'verification.completed',
+        'quality_gate.started',
+        'quality_gate.passed',
+        'recovery.completed',
+      ]);
+      const repairSideEffects = recoveryLifecycle.filter(event => (
+        event.payload.operation_id === 'cli-file-write-2'
+      ));
+      assert.equal(repairSideEffects.length, 4);
+      assert.equal(repairSideEffects.every(event => (
+        event.payload.recovery_operation_id === 'cli-recovery-1'
+      )), true);
+      const recoveryCompleted = recoveryLifecycle.at(-1);
+      assert.deepEqual(recoveryCompleted.payload.resolves_operation_ids, ['cli-verification-1']);
+      assert.equal(recoveryCompleted.payload.verification_operation_id, 'cli-verification-2');
+      assert.ok(evidenceEvents.some(event => event.type === 'run.settled'));
+      assert.equal(records.at(-1).record_kind, 'seal');
     });
   }, () => {
     turn += 1;
@@ -190,6 +282,101 @@ test('CLI repair prompt treats first-turn failure instructions as fulfilled', as
     }
     return {
       content: `[TOOL:replace_file ${JSON.stringify({ filePath: 'src/repair.cpp', content: fixedSource })}]`,
+    };
+  });
+});
+
+test('CLI records recovery.failed and seals failed evidence when the repair provider throws', async () => {
+  const brokenSource = [
+    '#include <iostream>',
+    'int main() {',
+    '  return missing_repair_symbol;',
+    '}',
+    '',
+  ].join('\n');
+  let turn = 0;
+
+  await withTestBridge(async ({ port }) => {
+    await withTempCwdAsync(async (cwd) => {
+      const result = await runCli([bin, 'exec', '--jsonl', 'create and validate src/provider-failure.cpp'], {
+        cwd,
+        env: {
+          ...process.env,
+          DEVSEEK_BRIDGE_PORT: String(port),
+          DEVSEEK_CLI_PROGRESS_DELAY_MS: '1',
+        },
+        timeout: 10000,
+      });
+
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, /repair provider unavailable|Bridge request failed|503/);
+      const records = readProductEvidenceRecords(cwd);
+      const events = records.filter(record => record.record_kind === 'event').map(record => record.event);
+      assert.ok(events.some(event => event.type === 'recovery.detected'));
+      const recoveryFailed = events.find(event => event.type === 'recovery.failed');
+      assert.ok(recoveryFailed);
+      assert.deepEqual(recoveryFailed.payload.reason, summarizeTraceText(readCliErrorMessage(result.stderr)));
+      assert.equal(events.some(event => event.type === 'recovery.completed'), false);
+      assert.equal(events.at(-1)?.type, 'run.settled');
+      assert.equal(events.at(-1)?.payload.status, 'failed');
+      assert.equal(records.at(-1)?.record_kind, 'seal');
+    });
+  }, () => {
+    turn += 1;
+    if (turn === 1) {
+      return {
+        content: `[TOOL:create_file ${JSON.stringify({ filePath: 'src/provider-failure.cpp', content: brokenSource })}]`,
+      };
+    }
+    return { statusCode: 503, error: 'repair provider unavailable', content: '' };
+  });
+});
+
+test('CLI records recovery.failed and preserves an unsafe repair apply error', async () => {
+  const brokenSource = [
+    '#include <iostream>',
+    'int main() {',
+    '  return missing_apply_symbol;',
+    '}',
+    '',
+  ].join('\n');
+  let turn = 0;
+
+  await withTestBridge(async ({ port }) => {
+    await withTempCwdAsync(async (cwd) => {
+      const result = await runCli([bin, 'exec', '--jsonl', 'create and validate src/apply-failure.cpp'], {
+        cwd,
+        env: {
+          ...process.env,
+          DEVSEEK_BRIDGE_PORT: String(port),
+          DEVSEEK_CLI_PROGRESS_DELAY_MS: '1',
+        },
+        timeout: 10000,
+      });
+
+      assert.equal(result.status, 1, result.stderr);
+      assert.match(result.stderr, /Refusing to write outside workspace/);
+      const records = readProductEvidenceRecords(cwd);
+      const events = records.filter(record => record.record_kind === 'event').map(record => record.event);
+      const recoveryFailed = events.find(event => event.type === 'recovery.failed');
+      assert.ok(recoveryFailed);
+      assert.deepEqual(recoveryFailed.payload.reason, summarizeTraceText(readCliErrorMessage(result.stderr)));
+      assert.ok(recoveryFailed.payload.unresolved_operation_ids.includes('cli-file-write-2'));
+      assert.ok(events.some(event => event.type === 'side_effect.indeterminate'));
+      assert.equal(events.some(event => event.type === 'recovery.completed'), false);
+      assert.equal(events.at(-1)?.type, 'run.settled');
+      assert.equal(events.at(-1)?.payload.status, 'failed');
+      assert.equal(records.at(-1)?.record_kind, 'seal');
+    });
+  }, () => {
+    turn += 1;
+    if (turn === 1) {
+      return {
+        content: `[TOOL:create_file ${JSON.stringify({ filePath: 'src/apply-failure.cpp', content: brokenSource })}]`,
+      };
+    }
+    return {
+      content: `[TOOL:replace_file ${JSON.stringify({ filePath: '../escape.cpp', content: 'int main() { return 0; }\n' })}]`,
     };
   });
 });
@@ -472,7 +659,39 @@ test('CLI requires verifier evidence for explicit requested stdout outputs', asy
   });
 });
 
-test('CLI bridge failures report diagnostics on stderr', async () => {
+test('CLI verifies the Bridge failed boundary without degrading the original provider failure', async () => {
+  await withTestBridge(async ({ port }) => {
+    await withTempCwdAsync(async (cwd) => {
+      const result = await runCli([bin, 'exec', '--jsonl', 'bridge server failure smoke'], {
+        cwd,
+        env: {
+          ...process.env,
+          DEVSEEK_BRIDGE_PORT: String(port),
+          DEVSEEK_CLI_PROGRESS_DELAY_MS: '1',
+        },
+        timeout: 5000,
+      });
+
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /Bridge HTTP 503/);
+      const records = readProductEvidenceRecords(cwd);
+      const events = records.filter(record => record.record_kind === 'event').map(record => record.event);
+      assert.deepEqual(
+        events.filter(event => event.type.startsWith('provider.')).map(event => [event.type, event.payload.boundary]),
+        [
+          ['provider.requested', 'cli-provider-client'],
+          ['provider.requested', 'bridge-server'],
+          ['provider.failed', 'bridge-server'],
+          ['provider.failed', 'cli-provider-client'],
+        ],
+      );
+      assert.equal(events.some(event => event.type === 'evidence.degraded'), false);
+      assert.equal(records.at(-1).record_kind, 'seal');
+    });
+  }, () => ({ statusCode: 503, error: 'test bridge failed' }));
+});
+
+test('CLI bridge failures report diagnostics and degrade when the server boundary is absent', async () => {
   const port = await getUnusedPort();
   await withTempCwdAsync(async (cwd) => {
     const result = await runCli([bin, 'exec', '--jsonl', 'bridge unavailable smoke'], {
@@ -488,6 +707,11 @@ test('CLI bridge failures report diagnostics on stderr', async () => {
     assert.equal(result.status, 1);
     assert.match(result.stderr, /DevSeek CLI error:/);
     assert.match(result.stderr, /fetch failed|ECONNREFUSED|connect/i);
+    assert.match(result.stderr, /expected provider\.failed/);
+    const records = readProductEvidenceRecords(cwd);
+    const events = records.filter(record => record.record_kind === 'event').map(record => record.event);
+    assert.equal(events.some(event => event.type === 'evidence.degraded'), true);
+    assert.equal(records.at(-1).record_kind, 'seal');
   });
 });
 
@@ -675,6 +899,7 @@ function runCli(args, options) {
 
 async function withTestBridge(fn, responder = () => ({ content: 'delayed bridge response', delayMs: 80 }), expectedToken) {
   const seenBodies = [];
+  const seenHeaders = [];
   const server = createServer((req, res) => {
     if (req.method !== 'POST' || req.url !== '/chat') {
       res.writeHead(404).end();
@@ -692,8 +917,40 @@ async function withTestBridge(fn, responder = () => ({ content: 'delayed bridge 
     req.on('end', () => {
       const body = JSON.parse(raw);
       seenBodies.push(body);
+      seenHeaders.push(req.headers);
+      const runId = String(req.headers['x-devseek-run-id'] || '');
+      const workspaceRoot = String(req.headers['x-devseek-trace-workspace-root'] || '');
+      const operationId = String(req.headers['x-devseek-operation-id'] || '');
+      const authorityToken = String(req.headers['x-devseek-evidence-authority'] || '');
+      const evidence = runId && workspaceRoot && operationId && authorityToken
+        ? ProductRunEvidenceSession.forWorkspace({
+          workspaceRoot,
+          runId,
+          surface: 'bridge',
+          authority: { role: 'participant', token: authorityToken },
+        })
+        : undefined;
+      const recordEvidence = (type) => evidence?.record({
+        type,
+        idempotencyKey: productRunEvidenceIdempotencyKey(`test-bridge-${type}`, { operationId }),
+        payload: {
+          operation_id: operationId,
+          boundary: 'bridge-server',
+          status: type.slice('provider.'.length),
+          trust: 'product-runtime-observation',
+          provider: 'test-bridge',
+        },
+      });
+      recordEvidence('provider.requested');
       const response = responder(body);
       if (body.stream === false) {
+        if (response.statusCode && response.statusCode >= 400) {
+          recordEvidence('provider.failed');
+          res.writeHead(response.statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: response.error ?? 'test bridge failure' }));
+          return;
+        }
+        recordEvidence('provider.completed');
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ content: response.content }));
         return;
@@ -709,6 +966,7 @@ async function withTestBridge(fn, responder = () => ({ content: 'delayed bridge 
         res.write(`data: ${JSON.stringify({ delta: `\u0000RESET\u0000${first}`, done: false })}\n\n`);
         res.write(`data: ${JSON.stringify({ delta: `\u0000RESET\u0000${response.content}`, done: false })}\n\n`);
         res.write(`data: ${JSON.stringify({ delta: '', done: true })}\n\n`);
+        recordEvidence('provider.completed');
         res.end();
       }, response.delayMs ?? 0);
     });
@@ -716,7 +974,7 @@ async function withTestBridge(fn, responder = () => ({ content: 'delayed bridge 
 
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
-    await fn({ port: server.address().port, seenBodies });
+    await fn({ port: server.address().port, seenBodies, seenHeaders });
   } finally {
     await new Promise(resolve => server.close(resolve));
   }

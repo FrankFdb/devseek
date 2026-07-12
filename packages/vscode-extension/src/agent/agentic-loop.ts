@@ -61,12 +61,12 @@ import { chatWithMessages } from './loop-chat';
 import { createWriteAuthority } from './write-authority';
 import {
   analyzeTerminalEvidence,
-  applyMarkdownFileArtifactsForLoop,
   describeAgentToolActivity,
   executeFakeToolsForLoop,
   isAgentWorkToolName,
   normalizeVisibleTodos,
 } from './tool-loop';
+import { applyMarkdownFileArtifactsForLoop } from './markdown-artifact-applier';
 import {
   buildTaskSettlementFailureStatus,
   completeAgentTodos,
@@ -457,6 +457,7 @@ export async function runAgenticLoop(
   workflowMode: ExecutionMode = 'edit',
   memoryRelatedPaths: readonly string[] = [],
 ): Promise<AgentLoopResult> {
+  callbacks = { ...callbacks, executionMode: workflowMode };
   const writeAuthority = createWriteAuthority(userPrompt, callbacks);
   const groundedMarkdown = await tryRunGroundedMarkdownAgenticTask(userPrompt, workspaceRoot, mode, workflowMode, writeAuthority.callbacks, chatWithMessages, dataFiles, sessionContextText);
   if (groundedMarkdown) return groundedMarkdown;
@@ -696,8 +697,7 @@ export async function runAgenticLoop(
         roundStreamDelta,  // stream delta for early todo detection
         callbacks.signal,
         useFreshProviderSession,
-        callbacks.traceRunId,
-        callbacks.traceWorkspaceRoot,
+        callbacks.traceRunId, callbacks.traceWorkspaceRoot, callbacks.traceEvidenceParticipantToken, callbacks.onTraceEvidenceError,
       );
       text = providerTurn.text;
       tools = providerTurn.tools;

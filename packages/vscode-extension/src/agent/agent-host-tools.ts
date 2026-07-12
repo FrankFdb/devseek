@@ -2,7 +2,13 @@ import * as fs from 'fs';
 import * as nodePath from 'path';
 import * as vscode from 'vscode';
 import type { TerminalPermissionCoordinator } from '../app/terminal-permission-coordinator';
+import { buildToolPolicy } from '../app/permission-service';
+import { ProductMutationCoordinator } from '../app/product-mutation-coordinator';
+import type { DevSeekRunContext } from '../app/run-context';
+import { WorkspaceEditService } from '../workspace/edit-service';
+import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import type { AgentLoopCallbacks } from './loop-types';
+import { explainUnsupportedVscodeCommand, getSupportedVscodeCommandPolicy } from './vscode-command-policy';
 
 type HostToolCallbacks = Pick<
   AgentLoopCallbacks,
@@ -19,27 +25,8 @@ export interface AgentHostToolContext {
   workspaceRoot: string;
   webview: vscode.Webview;
   terminalPermissionCoordinator: TerminalPermissionCoordinator;
+  runContext: DevSeekRunContext;
 }
-
-const SAFE_VSCODE_COMMANDS = new Set([
-  'editor.action.formatDocument',
-  'editor.action.formatSelection',
-  'editor.action.organizeImports',
-  'editor.action.fixAll',
-  'workbench.action.files.saveAll',
-  'workbench.action.files.save',
-  'workbench.files.action.refreshFilesExplorer',
-  'typescript.restartTsServer',
-  'eslint.executeAutofix',
-  'workbench.action.tasks.runTask',
-  'workbench.action.tasks.build',
-  'testing.runAll',
-  'testing.refreshTests',
-  'editor.action.triggerSuggest',
-  'rust-analyzer.reloadWorkspace',
-  'python.execInTerminal',
-  'C_Cpp.BuildAndDebugActiveFile',
-]);
 
 function isInternalNetworkHost(host: string): boolean {
   return /^(localhost|127\.|0\.0\.0\.0|::1|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(host);
@@ -87,7 +74,14 @@ async function fetchWebpageText(url: string): Promise<string> {
   });
 }
 
-async function listCodeUsages(workspaceRoot: string, symbol: string, filePath?: string): Promise<string> {
+type ReadOnlyCommandRunner = (command: string, timeoutMs: number) => Promise<{ stdout: string }>;
+
+async function listCodeUsages(
+  workspaceRoot: string,
+  symbol: string,
+  filePath: string | undefined,
+  runReadOnlyCommand: ReadOnlyCommandRunner,
+): Promise<string> {
   let targetUri: vscode.Uri | undefined;
   let targetPos: vscode.Position | undefined;
   const lookupPath = filePath
@@ -97,15 +91,11 @@ async function listCodeUsages(workspaceRoot: string, symbol: string, filePath?: 
   if (lookupPath && fs.existsSync(lookupPath)) {
     targetUri = vscode.Uri.file(lookupPath);
   } else {
-    const { runCommand } = await import('../tools/terminal');
     const esc = escapeShellSingleQuotes(symbol);
     const exts = ['ts', 'tsx', 'js', 'jsx', 'py', 'java', 'go', 'rs', 'cs', 'cpp', 'c', 'h'];
     const includes = exts.map(e => `--include='*.${e}'`).join(' ');
     const root = workspaceRoot.replace(/'/g, "'\\''");
-    const result = await runCommand({
-      command: `grep -r -l -w '${esc}' ${includes} '${root}' 2>/dev/null | head -3`,
-      timeoutMs: 8000,
-    });
+    const result = await runReadOnlyCommand(`grep -r -l -w '${esc}' ${includes} '${root}' 2>/dev/null | head -3`, 8000);
     const first = result.stdout.trim().split('\n')[0];
     if (first && fs.existsSync(first)) targetUri = vscode.Uri.file(first);
   }
@@ -141,20 +131,38 @@ async function listCodeUsages(workspaceRoot: string, symbol: string, filePath?: 
     }
   }
 
-  const { runCommand } = await import('../tools/terminal');
   const esc = escapeShellSingleQuotes(symbol);
   const exts = ['ts', 'tsx', 'js', 'jsx', 'py', 'java', 'go', 'rs', 'cs', 'cpp', 'c', 'h', 'hpp'];
   const includes = exts.map(e => `--include='*.${e}'`).join(' ');
   const root = workspaceRoot.replace(/'/g, "'\\''");
-  const result = await runCommand({
-    command: `grep -r -n -w '${esc}' ${includes} '${root}' 2>/dev/null | head -40`,
-    timeoutMs: 10000,
-  });
+  const result = await runReadOnlyCommand(`grep -r -n -w '${esc}' ${includes} '${root}' 2>/dev/null | head -40`, 10000);
   return result.stdout ? `"${symbol}" 引用（grep fallback）:\n${result.stdout}` : '（未找到引用）';
 }
 
 export function createAgentHostToolCallbacks(context: AgentHostToolContext): HostToolCallbacks {
-  const { workspaceRoot, webview, terminalPermissionCoordinator } = context;
+  const { workspaceRoot, webview, terminalPermissionCoordinator, runContext } = context;
+  const mutations = new ProductMutationCoordinator(runContext, 'vscode-agent-host');
+  const workspaceEditService = new WorkspaceEditService();
+  const runReadOnlyCommand: ReadOnlyCommandRunner = async (command, timeoutMs) => {
+    const result = await terminalPermissionCoordinator.runCommandWithPermissionDetailed({
+      webview,
+      command,
+      workdir: workspaceRoot,
+      workspaceRoot,
+      mode: 'run',
+      toolPolicy: buildToolPolicy('run'),
+      policyPreauthorized: true,
+      presentation: 'captured',
+      timeoutMs,
+      traceRunId: runContext.runId,
+      traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
+      onTraceEvidenceError: error => runContext.markEvidenceDegraded(error),
+    });
+    if (result.outcome !== 'committed') {
+      throw new Error(`Read-only host inspection did not complete: ${result.output}`);
+    }
+    return { stdout: result.stdout ?? '' };
+  };
 
   return {
     onGetErrors: async () => {
@@ -175,10 +183,9 @@ export function createAgentHostToolCallbacks(context: AgentHostToolContext): Hos
     },
     onGetChangedFiles: async () => {
       if (!workspaceRoot) return '（无工作区）';
-      const { runCommand } = await import('../tools/terminal');
       try {
-        const status = await runCommand({ command: 'git status --short', cwd: workspaceRoot, timeoutMs: 5000 });
-        const diff = await runCommand({ command: 'git diff --stat HEAD', cwd: workspaceRoot, timeoutMs: 5000 });
+        const status = await runReadOnlyCommand('git status --short', 5000);
+        const diff = await runReadOnlyCommand('git diff --stat HEAD', 5000);
         const statusText = status.stdout.trim() || '（无变更）';
         const diffText = diff.stdout.trim();
         return diffText ? `${statusText}\n\n${diffText}` : statusText;
@@ -186,29 +193,80 @@ export function createAgentHostToolCallbacks(context: AgentHostToolContext): Hos
         return '（非 git 工作区或无变更）';
       }
     },
-    onCreateDirectory: async (dirPath: string) => {
+    onCreateDirectory: async (dirPath: string, authorization: { policyPreauthorized: true }) => {
       const absPath = nodePath.isAbsolute(dirPath) ? dirPath : nodePath.join(workspaceRoot, dirPath);
-      if (workspaceRoot && !absPath.startsWith(workspaceRoot)) throw new Error('禁止在工作区外创建目录');
-      fs.mkdirSync(absPath, { recursive: true });
-      return `目录已创建: ${dirPath}`;
+      const result = await mutations.run({
+        kind: 'workspace-directory',
+        label: `create-directory:${nodePath.relative(workspaceRoot, absPath)}`,
+        authorize: () => ({
+          allowed: authorization.policyPreauthorized === true,
+          source: 'execution-policy',
+          reason: 'agent file-write policy did not authorize directory creation',
+        }),
+        invoke: () => workspaceEditService.createWorkspaceDirectory(absPath, workspaceRoot),
+        completionEvidence: {
+          kind: 'verified-postcondition',
+          verify: value => fs.statSync(value.canonicalPath).isDirectory()
+            && isCanonicalPathInsideRoot(value.canonicalPath, workspaceRoot),
+          proof: value => ({ created: value.created, canonical_path: summarizePath(value.canonicalPath, workspaceRoot) }),
+        },
+      });
+      return result.created ? `目录已创建: ${dirPath}` : `目录已存在: ${dirPath}`;
     },
     onFetchWebpage: fetchWebpageText,
-    onListCodeUsages: (symbol: string, filePath?: string) => listCodeUsages(workspaceRoot, symbol, filePath),
+    onListCodeUsages: (symbol: string, filePath?: string) => listCodeUsages(
+      workspaceRoot,
+      symbol,
+      filePath,
+      runReadOnlyCommand,
+    ),
     onRunVscodeCommand: async (command: string, args?: unknown[]) => {
       if (!/^[\w.-]+$/.test(command)) throw new Error(`无效命令 ID: ${command}`);
+      const policy = getSupportedVscodeCommandPolicy(command);
+      if (!policy || (args?.length ?? 0) > 0) {
+        const reason = policy
+          ? `${command} does not accept opaque agent-supplied arguments`
+          : explainUnsupportedVscodeCommand(command);
+        await mutations.run({
+          kind: 'vscode-command',
+          label: `vscode-command:${command}`,
+          authorize: () => ({ allowed: false, source: 'execution-policy', reason }),
+          invoke: () => undefined,
+          completionEvidence: {
+            kind: 'invocation-receipt',
+            proof: () => ({ command_id: command, receipt: 'unreachable' }),
+          },
+        });
+        throw new Error(reason);
+      }
       const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-      if (!isAutopilot && !SAFE_VSCODE_COMMANDS.has(command)) {
-        const commandConfirm = await terminalPermissionCoordinator.requestInlineConfirmation(webview, `⚡ VS Code: ${command}`);
-        if (!commandConfirm.allow) return '（命令未执行：用户拒绝）';
-      }
-      try {
-        const result = await vscode.commands.executeCommand(command, ...(args ?? []));
-        return result !== undefined
-          ? `命令已执行: ${command}\n返回: ${JSON.stringify(result).slice(0, 500)}`
-          : `命令已执行: ${command}`;
-      } catch (err) {
-        throw new Error(`命令执行失败: ${(err as Error).message}`);
-      }
+      const result = await mutations.run({
+        kind: 'vscode-command',
+        label: `vscode-command:${command}`,
+        authorize: async () => {
+          if (policy.classification !== 'mutating-with-permission' || isAutopilot) {
+            return { allowed: true, source: 'execution-policy' };
+          }
+          const decision = await terminalPermissionCoordinator.requestInlineConfirmation(webview, `⚡ VS Code: ${command}`);
+          return { allowed: decision.allow, source: 'user-confirmed', reason: decision.reason };
+        },
+        invoke: () => vscode.commands.executeCommand(command),
+        completionEvidence: {
+          kind: 'invocation-receipt',
+          proof: () => ({
+            command_id: command,
+            command_classification: policy.classification,
+            receipt: 'vscode-command-promise-resolved',
+          }),
+        },
+      });
+      return result !== undefined
+        ? `VS Code 已接受命令: ${command}\n返回: ${JSON.stringify(result).slice(0, 500)}\n（仅证明命令 Promise 已成功返回）`
+        : `VS Code 已接受命令: ${command}（仅证明命令 Promise 已成功返回）`;
     },
   };
+}
+
+function summarizePath(absPath: string, workspaceRoot: string): string {
+  return nodePath.relative(workspaceRoot, absPath).replace(/\\/g, '/').slice(0, 512);
 }

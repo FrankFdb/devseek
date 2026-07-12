@@ -9,12 +9,13 @@ import {
   selectRepairFiles,
 } from './execution-planner';
 import type { AgentTask } from './agent-task-decomposer';
-import type { AgentLoopCallbacks } from './agent/loop-types';
+import type { AgentLoopCallbacks, ExecutionScopedAgentLoopCallbacks } from './agent/loop-types';
 import type { AppliedChangeRecord, ApplyWorkflowStatus } from './workspace-applier';
 import { MemoryService } from './app/memory-service';
 import { AgentDisplayPresenter } from './app/agent-display-presenter';
-import { decideToolPermission, type ToolPolicy } from './app/permission-service';
+import type { ToolPolicy } from './app/permission-service';
 import { decideAgentFileWrite, type AgentFileWriteContext } from './app/agent-file-write-policy';
+import type { TerminalPermissionCoordinator } from './app/terminal-permission-coordinator';
 import { listCppBuildOutputDirNames } from './cpp-build-layout';
 import { isFileProtected } from './protected-files';
 import { postWebviewMessage } from './ui/webview-event-adapter';
@@ -34,6 +35,10 @@ export interface LocalExecutionRepairCallbacksDeps {
   workspaceRoot: string;
   defaultWorkdir: string;
   toolPolicy: ToolPolicy;
+  terminalPermissionCoordinator: TerminalPermissionCoordinator;
+  traceRunId: string;
+  traceEvidenceParticipantToken: string;
+  onTraceEvidenceError: (error: unknown) => void;
   consumeAgentSteer: () => string[];
   confirmTerminal: (command: string, workdir?: string) => Promise<{ allow: boolean; alwaysAllow?: boolean; reason?: string }>;
   registerAppliedChange: (change: AppliedChangeRecord) => Promise<void>;
@@ -120,13 +125,17 @@ export function buildLocalExecutionAgentRepairPrompt(
   ].join('\n');
 }
 
-export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCallbacksDeps): AgentLoopCallbacks {
+export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCallbacksDeps): ExecutionScopedAgentLoopCallbacks {
   const {
     webview,
     workflowReporter,
     workspaceRoot,
     defaultWorkdir,
     toolPolicy,
+    terminalPermissionCoordinator,
+    traceRunId,
+    traceEvidenceParticipantToken,
+    onTraceEvidenceError,
     consumeAgentSteer,
     confirmTerminal,
     registerAppliedChange,
@@ -168,6 +177,11 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
   };
 
   return {
+    executionMode: toolPolicy.mode,
+    traceRunId,
+    traceWorkspaceRoot: workspaceRoot,
+    traceEvidenceParticipantToken,
+    onTraceEvidenceError,
     onDelta: (delta) => {
       if (delta.startsWith('\x00RESET\x00')) {
         postWebviewMessage(webview, { type: 'resetResponse', text: delta.slice(7) });
@@ -190,12 +204,33 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
     },
     onTodoUpdate: (items) => { webview.postMessage({ type: 'todoUpdate', items }); },
     onUserSteer: consumeAgentSteer,
-    onTerminalCommand: (command, workdir) => runAgentTerminalCommandForLocalRepair({
+    onTerminalCommand: (command, workdir) => terminalPermissionCoordinator.runCommandWithPermission({
       webview,
-      toolPolicy,
-      confirmTerminal,
       command,
       workdir: workdir ?? defaultWorkdir,
+      workspaceRoot,
+      mode: toolPolicy.mode,
+      toolPolicy,
+      traceRunId,
+      traceEvidenceParticipantToken,
+      onTraceEvidenceError,
+      forceConfirmation: !vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
+      onAlwaysAllow: async () => {
+        await vscode.workspace.getConfiguration('devseek').update(
+          'autopilotMode',
+          true,
+          vscode.ConfigurationTarget.Global,
+        );
+      },
+    }),
+    onValidationCommand: terminalPermissionCoordinator.createValidationCommandRunner({
+      webview,
+      workspaceRoot,
+      mode: toolPolicy.mode,
+      toolPolicy,
+      traceRunId,
+      traceEvidenceParticipantToken,
+      onTraceEvidenceError,
     }),
     onReadFile: async (filePath, workDir) => {
       const resolved = resolveReadablePath(filePath, workDir ?? defaultWorkdir);
@@ -290,33 +325,6 @@ export function buildLocalExecutionAgentCallbacks(deps: LocalExecutionRepairCall
     signal,
     autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
   };
-}
-
-async function runAgentTerminalCommandForLocalRepair(args: {
-  webview: vscode.Webview;
-  toolPolicy: ToolPolicy;
-  confirmTerminal: (command: string, workdir?: string) => Promise<{ allow: boolean; alwaysAllow?: boolean; reason?: string }>;
-  command: string;
-  workdir?: string;
-}): Promise<string> {
-  const { webview, toolPolicy, confirmTerminal, command, workdir } = args;
-  const terminalPermission = decideToolPermission(toolPolicy, 'terminal');
-  if (terminalPermission.action === 'deny') {
-    return `（命令未执行：当前 ${toolPolicy.mode} 模式不允许终端工具：${terminalPermission.reason}）`;
-  }
-  const isAutopilot = vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false);
-  if (terminalPermission.action === 'requireConfirm' || !isAutopilot) {
-    const confirmResult = await confirmTerminal(command, workdir ?? '');
-    if (confirmResult.alwaysAllow) {
-      await vscode.workspace.getConfiguration('devseek').update('autopilotMode', true, vscode.ConfigurationTarget.Global);
-    }
-    if (!confirmResult.allow) return `（命令未执行：${confirmResult.reason ?? '用户拒绝'}）`;
-  }
-  const { runCommand, formatTerminalOutputForPrompt } = await import('./tools/terminal');
-  const result = await runCommand({ command, cwd: workdir, visible: false, allowRisky: !isAutopilot });
-  const outputPreview = result.output.slice(0, 4000);
-  webview.postMessage({ type: 'terminalRanNotice', command, workdir: workdir ?? '', exitCode: result.exitCode, output: outputPreview });
-  return formatTerminalOutputForPrompt(command, result);
 }
 
 function isPathInsideRoot(absPath: string, root: string): boolean {

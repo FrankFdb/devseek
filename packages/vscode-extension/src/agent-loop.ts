@@ -79,7 +79,7 @@ import {
 } from './agent/task-execution-result';
 import { createTaskConvergenceGuard } from './agent/task-convergence-guard';
 import { normalizeToolCall } from './agent/tool-call-normalizer';
-import type { AgentLoopCallbacks, AgentLoopResult } from './agent/loop-types';
+import type { AgentLoopCallbacks, AgentLoopResult, ExecutionScopedAgentLoopCallbacks } from './agent/loop-types';
 import {
   analyzeTerminalEvidence,
   buildAgentMetaOnlyToolFeedback,
@@ -100,7 +100,7 @@ import { enforceAgentTaskExecutionPolicy } from './agent/task-execution-policy';
 import { tryRunSimpleFileTask } from './agent/simple-file-task';
 import { shouldRequestManualReviewForRun } from './agent/manual-review-validation';
 import { decideAgentRuntimeTurn } from './agent/agent-runtime-turn-policy';
-import { WorkspaceEditService } from './workspace/edit-service';
+import { WorkspaceEditService, type WorkspaceTextFileBaseline } from './workspace/edit-service';
 import { buildTaskShapeGuidancePrompt } from './agent/task-shape';
 import { VerificationPlanner } from './app/verification-planner';
 import { ValidationService } from './workspace/validation-service';
@@ -339,8 +339,8 @@ function buildAnalyzePrompt(
 ): string {
   const basename = nodePath.basename(task.file);
   const ext = (basename.split('.').pop() ?? '').toLowerCase();
-  const allowTerminalTools = !executionMode || executionMode === 'edit' || executionMode === 'run' || executionMode === 'destructive';
-  const allowWorkspaceMutationTools = !executionMode || executionMode === 'edit' || executionMode === 'destructive';
+  const allowTerminalTools = executionMode === 'edit' || executionMode === 'run' || executionMode === 'destructive';
+  const allowWorkspaceMutationTools = executionMode === 'edit' || executionMode === 'destructive';
   const langMap: Record<string, string> = {
     cpp: 'cpp', cc: 'cpp', h: 'c', c: 'c', hpp: 'cpp',
     ts: 'typescript', js: 'javascript', py: 'python', md: 'markdown',
@@ -592,9 +592,34 @@ async function executeTask(
   // Read current file content — prefer contentCache (updated by prior tasks in this
   // same loop) over disk read, so multi-task edits on the same file properly chain.
   // Use readFileContentFull: Editor needs the COMPLETE file for exact SEARCH matching.
-  const currentContent = (task.absPath && contentCache.has(task.absPath))
+  let currentContent = (task.absPath && contentCache.has(task.absPath))
     ? (contentCache.get(task.absPath) ?? '')
     : (task.absPath && !isExistingDirectory(task.absPath) ? readFileContentFull(task.absPath) : '');
+  let directWriteBaseline: WorkspaceTextFileBaseline | undefined;
+  if ((task.action === 'create' || task.action === 'modify') && task.absPath) {
+    try {
+      directWriteBaseline = workspaceEditService.captureTextFileBaseline(task.absPath, workspaceRoot.fsPath);
+      // The baseline is the authoritative read used to construct an edit. A stale
+      // in-memory cache must never become a blind overwrite of newer disk content.
+      currentContent = directWriteBaseline.snapshot.content;
+    } catch (error) {
+      const failedReason = error instanceof Error ? error.message : String(error);
+      await callbacks.onAgentStatus({
+        type: 'agentStatus',
+        phase: 'execute',
+        taskId: task.id,
+        taskFile: basename,
+        taskAction: task.action,
+        taskDesc: task.desc,
+        taskIndex,
+        taskTotal: allTasks.length,
+        state: 'failed',
+        title: task.desc || basename,
+        detail: failedReason,
+      });
+      return { applied: false, path: task.absPath, raw: '', failedReason };
+    }
+  }
 
   // Pre-compute effectiveAbsPath early — needed by both analyze and editor paths.
   let earlyEffectiveAbsPath = task.absPath;
@@ -709,6 +734,8 @@ async function executeTask(
           consumeNewSession(),
           callbacks.traceRunId,
           callbacks.traceWorkspaceRoot,
+          callbacks.traceEvidenceParticipantToken,
+          callbacks.onTraceEvidenceError,
         );
         const postProviderSteers = writeAuthority.drainAfterProvider();
         lastAnalyzeRoundText = text;
@@ -971,6 +998,8 @@ async function executeTask(
         consumeNewSession(),
         callbacks.traceRunId,
         callbacks.traceWorkspaceRoot,
+        callbacks.traceEvidenceParticipantToken,
+        callbacks.onTraceEvidenceError,
       );
       writeAuthority.drainAfterProvider();
       return text;
@@ -1062,7 +1091,7 @@ async function executeTask(
     try {
       taskMessages.push(...writeAuthority.takePendingAndDrain());
       compactAgentLoopMessageHistory(taskMessages);
-      const { text, tools } = await chatWithMessages(taskMessages, mode, undefined, callbacks.signal, consumeNewSession(), callbacks.traceRunId, callbacks.traceWorkspaceRoot);
+      const { text, tools } = await chatWithMessages(taskMessages, mode, undefined, callbacks.signal, consumeNewSession(), callbacks.traceRunId, callbacks.traceWorkspaceRoot, callbacks.traceEvidenceParticipantToken, callbacks.onTraceEvidenceError);
       const postProviderSteers = writeAuthority.drainAfterProvider();
       taskMessages.push({ role: 'assistant', content: text }, ...postProviderSteers);
       raw = text;
@@ -1149,7 +1178,7 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
 
   // ── Try SEARCH/REPLACE blocks first ───────────────────────────
   const srBlocks = parseSearchReplaceBlocks(raw);
-  if (srBlocks.length > 0 && currentContent && task.absPath) {
+  if (srBlocks.length > 0 && currentContent && task.absPath && directWriteBaseline) {
     const srResult = applySearchReplaceBlocks(currentContent, srBlocks);
     if (srResult.applied > 0 && srResult.failed === 0) {
       // P-SEC: check with extension before writing (sensitive file protection)
@@ -1179,10 +1208,14 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
       }
       // Write through the workspace edit service so Agent write paths stay centralized.
       try {
-        workspaceEditService.writeTextFileSync(task.absPath, srResult.result, {
-          validateSourceSanity: true,
-          repairSourceTransportEscapes: true,
-        });
+        workspaceEditService.commitTextFileProposal(
+          workspaceEditService.proposeTextFileWrite(task.absPath, srResult.result),
+          directWriteBaseline,
+          {
+            validateSourceSanity: true,
+            repairSourceTransportEscapes: true,
+          },
+        );
         // Update cache so subsequent tasks on the same file see this result
         contentCache.set(task.absPath, srResult.result);
         await callbacks.onAppliedChange({
@@ -1297,6 +1330,7 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
     true,
     async (change) => { await callbacks.onAppliedChange(change); },
     absFiles,
+    { validationCommandRunner: callbacks.onValidationCommand },
   );
 
   // ── Retry once if nothing was applied ─────────────────────────
@@ -1328,7 +1362,7 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
 
     let retryRaw = '';
     try {
-      const { text: rText, tools: rTools } = await chatViaProvider(retryPrompt, mode, undefined, history, callbacks.signal, false, callbacks.traceRunId, callbacks.traceWorkspaceRoot);
+      const { text: rText, tools: rTools } = await chatViaProvider(retryPrompt, mode, undefined, history, callbacks.signal, false, callbacks.traceRunId, callbacks.traceWorkspaceRoot, callbacks.traceEvidenceParticipantToken, callbacks.onTraceEvidenceError);
       writeAuthority.drainAfterProvider();
       retryRaw = rText;
       collectToolReadEvidence(taskReadEvidence, await executeFakeToolsForLoop(rTools, taskToolCallbacks, editorWorkdir, {
@@ -1351,6 +1385,7 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
         true,
         async (change) => { await callbacks.onAppliedChange(change); },
         absFiles,
+        { validationCommandRunner: callbacks.onValidationCommand },
       );
       if (applyResult.applied) raw = retryRaw;
     }
@@ -1502,7 +1537,9 @@ async function runValidation(
 
   // ValidationService is the sole compile/QualityGate execution boundary. The
   // interactive run below asks the same VerificationPlanner for its run plan.
-  const compileResult = await new ValidationService().validateWorkspaceChanges({
+  const compileResult = await new ValidationService({
+    commandRunner: callbacks.onValidationCommand,
+  }).validateWorkspaceChanges({
     changedPaths: workspaceRelativeCompilable,
     rootFsPath: workspaceRootFsPath,
     requestPrompt: userPrompt,
@@ -1704,12 +1741,16 @@ export async function runAgentLoop(
   userPrompt: string,
   mode: 'fast' | 'r1' | undefined,
   workspaceRoot: vscode.Uri,
-  callbacks: AgentLoopCallbacks,
+  callbacks: ExecutionScopedAgentLoopCallbacks,
   analysisContext?: string,
   startFromIndex = 0,
 ): Promise<AgentLoopResult> {
+  if (!callbacks.executionMode) {
+    throw new Error('agent-loop-boundary: an explicit executionMode/tool policy is required');
+  }
+  const executionMode = callbacks.executionMode;
   const writeAuthority = createWriteAuthority(userPrompt, callbacks);
-  callbacks = writeAuthority.callbacks;
+  callbacks = { ...writeAuthority.callbacks, executionMode };
   const policyResult = enforceAgentTaskExecutionPolicy(tasks, {
     mode: callbacks.executionMode,
     userPrompt: writeAuthority.currentPrompt,

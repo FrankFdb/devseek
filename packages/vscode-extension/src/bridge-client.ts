@@ -15,6 +15,8 @@ const DEFAULT_PORT = 3721;
 const TOKEN_REL_PATH = nodePath.join('.devseek', 'bridge-token');
 const TRACE_RUN_ID_HEADER = 'X-DevSeek-Run-Id';
 const TRACE_WORKSPACE_ROOT_HEADER = 'X-DevSeek-Trace-Workspace-Root';
+const TRACE_OPERATION_ID_HEADER = 'X-DevSeek-Operation-Id';
+const EVIDENCE_AUTHORITY_HEADER = 'X-DevSeek-Evidence-Authority';
 const BRIDGE_STREAM_HTTP_TIMEOUT_MIN_MS = 120_000;
 const BRIDGE_STREAM_HTTP_TIMEOUT_MAX_MS = 210_000;
 const BRIDGE_STREAM_HTTP_TIMEOUT_FACTOR = 2;
@@ -96,11 +98,19 @@ function createBridgeClientTraceLogger(runId?: string, workspaceRoot?: string): 
   });
 }
 
-function traceHeaders(trace: DevSeekTraceLogger, extra?: Record<string, string>, traceWorkspaceRoot?: string): Record<string, string> {
+function traceHeaders(
+  trace: DevSeekTraceLogger,
+  extra?: Record<string, string>,
+  traceWorkspaceRoot?: string,
+  traceOperationId?: string,
+  traceEvidenceParticipantToken?: string,
+): Record<string, string> {
   return authHeaders({
     ...(extra ?? {}),
     [TRACE_RUN_ID_HEADER]: trace.runId,
     ...(traceWorkspaceRoot ? { [TRACE_WORKSPACE_ROOT_HEADER]: traceWorkspaceRoot } : {}),
+    ...(traceOperationId ? { [TRACE_OPERATION_ID_HEADER]: traceOperationId } : {}),
+    ...(traceEvidenceParticipantToken ? { [EVIDENCE_AUTHORITY_HEADER]: traceEvidenceParticipantToken } : {}),
   });
 }
 
@@ -156,6 +166,10 @@ export interface ChatOptions {
   traceRunId?: string;
   /** 本次 trace 统一落盘根目录。 */
   traceWorkspaceRoot?: string;
+  /** 跨 client/server 的单次 provider 操作标识。 */
+  traceOperationId?: string;
+  /** owner 签发给 Bridge participant 的 run capability。 */
+  traceEvidenceParticipantToken?: string;
 }
 
 /** 检查 bridge server 是否在线 */
@@ -417,13 +431,26 @@ export async function chat(opts: ChatOptions): Promise<string> {
   //  2. The non-stream path uses AbortSignal.timeout(62s) which is far too short
   //     for large files; the stream path uses timeoutMs×10 (up to 20 min).
   if (useStream) {
-    return chatStream(body, opts.onDelta ?? (() => {}), trace, opts.traceWorkspaceRoot);
+    return chatStream(
+      body,
+      opts.onDelta ?? (() => {}),
+      trace,
+      opts.traceWorkspaceRoot,
+      opts.traceOperationId,
+      opts.traceEvidenceParticipantToken,
+    );
   }
 
   try {
     const res = await fetch(`${baseUrl()}/chat`, {
       method: 'POST',
-      headers: traceHeaders(trace, { 'Content-Type': 'application/json' }, opts.traceWorkspaceRoot),
+      headers: traceHeaders(
+        trace,
+        { 'Content-Type': 'application/json' },
+        opts.traceWorkspaceRoot,
+        opts.traceOperationId,
+        opts.traceEvidenceParticipantToken,
+      ),
       body,
       signal: AbortSignal.timeout(opts.timeoutMs ?? config.get<number>('requestTimeoutMs', 120000)),
     });
@@ -445,7 +472,14 @@ export async function chat(opts: ChatOptions): Promise<string> {
   }
 }
 
-async function chatStream(body: string, onDelta: (delta: string) => void, trace: DevSeekTraceLogger, traceWorkspaceRoot?: string): Promise<string> {
+async function chatStream(
+  body: string,
+  onDelta: (delta: string) => void,
+  trace: DevSeekTraceLogger,
+  traceWorkspaceRoot?: string,
+  traceOperationId?: string,
+  traceEvidenceParticipantToken?: string,
+): Promise<string> {
   const config = vscode.workspace.getConfiguration('devseek');
   const timeoutMs = JSON.parse(body).timeoutMs ?? config.get<number>('requestTimeoutMs', 120000);
 
@@ -457,7 +491,13 @@ async function chatStream(body: string, onDelta: (delta: string) => void, trace:
   try {
     res = await fetch(`${baseUrl()}/chat`, {
       method: 'POST',
-      headers: traceHeaders(trace, { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' }, traceWorkspaceRoot),
+      headers: traceHeaders(
+        trace,
+        { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+        traceWorkspaceRoot,
+        traceOperationId,
+        traceEvidenceParticipantToken,
+      ),
       body,
       signal: AbortSignal.timeout(httpTimeout),
     });

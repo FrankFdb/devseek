@@ -132,15 +132,24 @@ async function agentCoreProtocolCase() {
   });
 
   await service.handle(command);
-  assert.deepEqual(emitted.map(event => event.type), [
+  const eventTypes = emitted.map(event => event.type);
+  assert.deepEqual(eventTypes.slice(0, 2), [
     'chat.started',
     'provider.selected',
-    'chat.delta',
-    'chat.delta',
-    'chat.completed',
   ]);
+  assert.equal(eventTypes.at(-1), 'chat.completed');
+
+  // The persisted-secret stream boundary deliberately retains a trailing
+  // window so a bearer capability split across provider chunks cannot leak.
+  // Consequently, public chat.delta cardinality need not match provider chunk
+  // cardinality. The protocol invariant is ordered deltas whose concatenation
+  // equals the final response, followed by exactly one terminal event.
+  const deltaEvents = emitted.slice(2, -1);
+  assert.ok(deltaEvents.length > 0, 'streaming response must emit at least one chat.delta');
+  assert.equal(deltaEvents.every(event => event.type === 'chat.delta'), true);
+  assert.equal(deltaEvents.map(event => event.delta).join(''), emitted.at(-1).response);
   assert.equal(emitted.at(-1).response, 'CORE_OK');
-  return { eventTypes: emitted.map(event => event.type) };
+  return { eventTypes };
 }
 
 async function cliJsonlMockCase() {

@@ -1,5 +1,6 @@
 import * as nodePath from 'path';
 import * as vscode from 'vscode';
+import * as crypto from 'crypto';
 import { emitLearningEvent, getErrorFixHint } from './agent-learner';
 import { runAgentLoop } from './agent-loop';
 import { getAgentTaskDisplayTarget } from './agent-task-decomposer';
@@ -10,11 +11,12 @@ import {
   buildLocalExecutionFailureMessage,
   buildLocalExecutionSuccessMessage,
   buildLocalExecutionWorkflowDetail,
+  getLocalExecutionTimeoutMs,
   isRepeatExecutionRequest,
+  type LocalExecutionResult,
   type LocalExecutionPlan,
   planLocalExecution,
   planRepeatLocalExecution,
-  runLocalExecution,
   shouldPreferLocalExecution,
   shouldRepairLocalExecutionFailure,
 } from './execution-planner';
@@ -29,6 +31,7 @@ import type { ToolPolicy } from './app/permission-service';
 import type { AppliedChangeRecord, ApplyWorkflowStatus } from './workspace-applier';
 import { askRepairExhaustedAction, requestManualFixGuidance } from './app/repair-exhaustion-interaction';
 import { AgentDisplayPresenter } from './app/agent-display-presenter';
+import type { TerminalPermissionCoordinator } from './app/terminal-permission-coordinator';
 
 export interface LocalExecutionRouteChatOptions {
   prompt: string;
@@ -52,6 +55,10 @@ export interface LocalExecutionChatRunnerInput {
   requestTerminalConfirmation: (command: string, workdir?: string) => Promise<{ allow: boolean; alwaysAllow?: boolean; reason?: string }>;
   routeChat: (opts: LocalExecutionRouteChatOptions) => Promise<string>;
   toolPolicy: ToolPolicy;
+  terminalPermissionCoordinator: TerminalPermissionCoordinator;
+  traceRunId: string;
+  traceEvidenceParticipantToken: string;
+  onTraceEvidenceError: (error: unknown) => void;
   consumeAgentSteer: () => string[];
   registerAppliedChange: (change: AppliedChangeRecord) => Promise<void>;
   registerToMemory: (absPath: string) => void;
@@ -65,6 +72,9 @@ export interface LocalExecutionChatRunnerInput {
 
 export interface LocalExecutionChatRunnerResult {
   handled: boolean;
+  status?: 'completed' | 'failed' | 'cancelled';
+  /** Candidate success is presented only after the owner run seals successfully. */
+  successMessage?: string;
 }
 
 export async function runLocalExecutionChatIfPossible(
@@ -75,33 +85,101 @@ export async function runLocalExecutionChatIfPossible(
 
   input.setLastLocalExecutionPlan(localPlan);
 
-  if (input.executionApproval === 'confirm') {
-    const confirmResult = await input.requestTerminalConfirmation(localPlan.command, localPlan.cwd);
-    if (confirmResult.alwaysAllow) {
-      await vscode.workspace.getConfiguration('devseek').update('autopilotMode', true, vscode.ConfigurationTarget.Global);
-    }
-    if (!confirmResult.allow) {
-      await input.workflowReporter({
-        phase: 'validate',
-        state: 'skipped',
-        title: '本地执行已取消',
-        detail: confirmResult.reason ?? '用户取消了本地编译/运行命令。',
-      });
-      input.webview.postMessage({ type: 'endResponse' });
-      return { handled: true };
-    }
-  }
-
+  let validationOperationId = `vscode-local-validation-${crypto.randomUUID()}`;
   await input.workflowReporter({
     phase: 'validate',
+    operationId: validationOperationId,
     state: 'started',
     title: localPlan.mode === 'run-only' ? '插件正在本地执行已有程序' : '插件正在本地编译/执行',
     detail: buildLocalExecutionWorkflowDetail(localPlan),
   });
 
   let maxRounds = Math.max(0, Math.min(6, input.config.get<number>('autoFixRounds', 6)));
+  const adverseTerminalOperationIds: string[] = [];
   for (let round = 0; round <= maxRounds; round += 1) {
-    const localResult = await runLocalExecution(localPlan);
+    if (round > 0) {
+      validationOperationId = `vscode-local-validation-${crypto.randomUUID()}`;
+      await input.workflowReporter({
+        phase: 'validate',
+        operationId: validationOperationId,
+        state: 'started',
+        title: '正在验证修复后的本地执行',
+        detail: buildLocalExecutionWorkflowDetail(localPlan),
+      });
+    }
+    const recoveryOperationId = adverseTerminalOperationIds.length > 0
+      ? input.terminalPermissionCoordinator.beginCommandRecovery({
+          workspaceRoot: input.workspaceRoot ?? localPlan.cwd,
+          runId: input.traceRunId,
+          traceEvidenceParticipantToken: input.traceEvidenceParticipantToken,
+          targetOperationIds: adverseTerminalOperationIds,
+          onTraceEvidenceError: input.onTraceEvidenceError,
+        })
+      : undefined;
+    const terminalResult = await input.terminalPermissionCoordinator.runCommandWithPermissionDetailed({
+      webview: input.webview,
+      command: localPlan.command,
+      workdir: localPlan.cwd,
+      workspaceRoot: input.workspaceRoot ?? localPlan.cwd,
+      mode: input.toolPolicy.mode,
+      toolPolicy: input.toolPolicy,
+      traceRunId: input.traceRunId,
+      traceEvidenceParticipantToken: input.traceEvidenceParticipantToken,
+      onTraceEvidenceError: input.onTraceEvidenceError,
+      policyPreauthorized: input.executionApproval === 'auto',
+      forceConfirmation: input.executionApproval === 'confirm',
+      onAlwaysAllow: async () => {
+        await vscode.workspace.getConfiguration('devseek').update(
+          'autopilotMode',
+          true,
+          vscode.ConfigurationTarget.Global,
+        );
+      },
+      timeoutMs: getLocalExecutionTimeoutMs(localPlan),
+      manageRecoveryExternally: true,
+      recoveryOperationId,
+    });
+    if (!terminalResult.executed) {
+      if (recoveryOperationId) {
+        input.terminalPermissionCoordinator.finishCommandRecovery({
+          workspaceRoot: input.workspaceRoot ?? localPlan.cwd,
+          runId: input.traceRunId,
+          traceEvidenceParticipantToken: input.traceEvidenceParticipantToken,
+          targetOperationIds: adverseTerminalOperationIds,
+          recoveryOperationId,
+          status: 'failed',
+          reason: 'terminal-retry-not-authorized',
+          onTraceEvidenceError: input.onTraceEvidenceError,
+        });
+      }
+      await input.workflowReporter({
+        phase: 'validate',
+        operationId: validationOperationId,
+        state: 'skipped',
+        title: '本地执行未获授权',
+        detail: terminalResult.output,
+      });
+      await input.workflowReporter({
+        phase: 'quality',
+        operationId: validationOperationId,
+        state: 'skipped',
+        title: '本地执行 QualityGate 被否决',
+        detail: '执行未获授权，不能产生通过结论。',
+      });
+      input.webview.postMessage({ type: 'endResponse' });
+      return { handled: true, status: 'cancelled' };
+    }
+    const localResult: LocalExecutionResult = {
+      ok: terminalResult.outcome === 'committed',
+      command: localPlan.command,
+      cwd: localPlan.cwd,
+      exitCode: terminalResult.exitCode ?? null,
+      output: terminalResult.executionOutput ?? terminalResult.output,
+      ...(terminalResult.reviewRequired ? {
+        reviewRequired: true,
+        reviewReason: '命令仍在运行或退出状态不可确定，需要人工确认。',
+      } : {}),
+    };
     const manualReview = shouldRequestManualReviewForRun({
       userPrompt: input.prompt,
       command: localResult.command,
@@ -116,39 +194,105 @@ export async function runLocalExecutionChatIfPossible(
       },
     });
     if (manualReview) {
+      if (recoveryOperationId) {
+        input.terminalPermissionCoordinator.finishCommandRecovery({
+          workspaceRoot: input.workspaceRoot ?? localPlan.cwd,
+          runId: input.traceRunId,
+          traceEvidenceParticipantToken: input.traceEvidenceParticipantToken,
+          targetOperationIds: adverseTerminalOperationIds,
+          recoveryOperationId,
+          status: 'failed',
+          reason: 'terminal-retry-requires-manual-review',
+          onTraceEvidenceError: input.onTraceEvidenceError,
+        });
+      }
+      adverseTerminalOperationIds.push(terminalResult.operationId);
       await input.workflowReporter({
         phase: 'validate',
-        state: 'passed',
+        operationId: validationOperationId,
+        state: 'skipped',
         title: '本地程序已启动，等待人工确认',
         detail: `${buildLocalExecutionWorkflowDetail(localPlan, localResult)}\n${manualReview.detail}`,
       });
+      await input.workflowReporter({
+        phase: 'quality',
+        operationId: validationOperationId,
+        state: 'skipped',
+        title: '本地执行 QualityGate 等待人工确认',
+        detail: manualReview.detail,
+      });
       postWebviewMessage(input.webview, { type: 'delta', text: manualReview.detail });
       input.webview.postMessage({ type: 'endResponse' });
-      return { handled: true };
+      return { handled: true, status: 'cancelled' };
     }
     await input.workflowReporter({
       phase: 'validate',
+      operationId: validationOperationId,
       state: localResult.ok ? 'passed' : 'failed',
       title: localResult.ok ? '本地执行通过' : '本地执行失败',
       detail: buildLocalExecutionWorkflowDetail(localPlan, localResult),
     });
+    await input.workflowReporter({
+      phase: 'quality',
+      operationId: validationOperationId,
+      state: localResult.ok ? 'passed' : 'failed',
+      title: localResult.ok ? '本地执行 QualityGate 通过' : '本地执行 QualityGate 未通过',
+      detail: buildLocalExecutionWorkflowDetail(localPlan, localResult),
+    });
 
     if (localResult.ok) {
+      if (recoveryOperationId) {
+        const recoveryCompleted = input.terminalPermissionCoordinator.finishCommandRecovery({
+          workspaceRoot: input.workspaceRoot ?? localPlan.cwd,
+          runId: input.traceRunId,
+          traceEvidenceParticipantToken: input.traceEvidenceParticipantToken,
+          targetOperationIds: adverseTerminalOperationIds,
+          recoveryOperationId,
+          status: 'completed',
+          verificationOperationId: validationOperationId,
+          onTraceEvidenceError: input.onTraceEvidenceError,
+        });
+        if (!recoveryCompleted) {
+          postWebviewMessage(input.webview, {
+            type: 'delta',
+            text: '本地命令已成功，但恢复证据顺序不完整，本轮不能标记完成。',
+          });
+          input.webview.postMessage({ type: 'endResponse' });
+          return { handled: true, status: 'failed' };
+        }
+        adverseTerminalOperationIds.length = 0;
+      }
       emitLearningEvent({
         type: 'command_succeeded',
         command: localPlan.command,
         context: input.prompt.slice(0, 80),
         sessionId: input.sessionId,
       });
-      postWebviewMessage(input.webview, { type: 'delta', text: buildLocalExecutionSuccessMessage(localPlan, localResult) });
-      input.webview.postMessage({ type: 'endResponse' });
-      return { handled: true };
+      return {
+        handled: true,
+        status: 'completed',
+        successMessage: buildLocalExecutionSuccessMessage(localPlan, localResult),
+      };
     }
+
+    if (recoveryOperationId) {
+      input.terminalPermissionCoordinator.finishCommandRecovery({
+        workspaceRoot: input.workspaceRoot ?? localPlan.cwd,
+        runId: input.traceRunId,
+        traceEvidenceParticipantToken: input.traceEvidenceParticipantToken,
+        targetOperationIds: adverseTerminalOperationIds,
+        recoveryOperationId,
+        status: 'failed',
+        reason: 'terminal-retry-failed',
+        onTraceEvidenceError: input.onTraceEvidenceError,
+      });
+    }
+    adverseTerminalOperationIds.push(terminalResult.operationId);
 
     if (!shouldRepairLocalExecutionFailure(localPlan, localResult)) {
       postWebviewMessage(input.webview, { type: 'delta', text: buildLocalExecutionFailureMessage(localPlan, localResult) });
       input.webview.postMessage({ type: 'endResponse' });
-      return { handled: true };
+      return { handled: true, status: 'failed' };
     }
 
     if (round >= maxRounds) {
@@ -157,14 +301,14 @@ export async function runLocalExecutionChatIfPossible(
         maxRounds += 3;
         continue;
       }
-      return { handled: true };
+      return { handled: true, status: 'failed' };
     }
 
     const repaired = await runAgentRepairRound(input, localPlan, localResult, round + 1);
-    if (!repaired) return { handled: true };
+    if (!repaired) return { handled: true, status: 'failed' };
   }
 
-  return { handled: true };
+  return { handled: true, status: 'failed' };
 }
 
 function buildLocalPlan(input: LocalExecutionChatRunnerInput): LocalExecutionPlan | undefined {
@@ -222,7 +366,7 @@ async function handleRepairExhausted(
 async function runAgentRepairRound(
   input: LocalExecutionChatRunnerInput,
   localPlan: LocalExecutionPlan,
-  localResult: Awaited<ReturnType<typeof runLocalExecution>>,
+  localResult: LocalExecutionResult,
   round: number,
 ): Promise<boolean> {
   await input.workflowReporter({
@@ -283,6 +427,10 @@ async function runAgentRepairRound(
       workspaceRoot: repairWsRoot,
       defaultWorkdir: localPlan.cwd,
       toolPolicy: input.toolPolicy,
+      terminalPermissionCoordinator: input.terminalPermissionCoordinator,
+      traceRunId: input.traceRunId,
+      traceEvidenceParticipantToken: input.traceEvidenceParticipantToken,
+      onTraceEvidenceError: input.onTraceEvidenceError,
       consumeAgentSteer: input.consumeAgentSteer,
       confirmTerminal: input.requestTerminalConfirmation,
       registerAppliedChange: input.registerAppliedChange,

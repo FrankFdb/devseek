@@ -1,15 +1,9 @@
-import * as cp from 'child_process';
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import {
   getCppAutoExecutablePath,
   getDevSeekBuildDir,
 } from './cpp-build-layout';
-import {
-  buildInteractiveTimeoutFailureDetail,
-  executionOutcomeClassifier,
-  INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL,
-} from './execution-outcome-classifier';
 
 export interface LocalExecutionDecision {
   handled: boolean;
@@ -21,22 +15,9 @@ export interface LocalExecutionDecision {
   reason: string;
 }
 
-export interface LocalExecutionResult {
-  ok: boolean;
-  command: string;
-  cwd: string;
-  exitCode: number | null;
-  output: string;
-  relatedFiles: string[];
-  reviewRequired?: boolean;
-  reviewReason?: string;
-}
-
 const COMPILE_INTENT_RE = /(编译|compile|构建|build|g\+\+|gcc|clang\+\+)/i;
 const RUN_INTENT_RE = /(运行|执行|run|execute|启动|测试|test|看结果|输出效果|运行效果)/i;
 const CPP_RE = /\.(cpp|cc|cxx|c)$/i;
-const CPP_COMPILE_TIMEOUT_MS = 15_000;
-const CPP_RUN_TIMEOUT_MS = 30_000;
 
 export function decideLocalExecution(prompt: string, files: string[] | undefined): LocalExecutionDecision | null {
   const attached = (files || []).filter(Boolean);
@@ -73,37 +54,6 @@ export function decideLocalExecution(prompt: string, files: string[] | undefined
     relatedFiles: dirCppFiles,
     reason: compileOnly ? 'local-cpp-compile-request' : 'local-cpp-compile-run-request',
   };
-}
-
-export async function runLocalExecution(decision: LocalExecutionDecision): Promise<LocalExecutionResult> {
-  return new Promise((resolve) => {
-    const timeoutMs = decision.compileOnly ? CPP_COMPILE_TIMEOUT_MS : CPP_RUN_TIMEOUT_MS;
-    cp.exec(decision.command, { cwd: decision.cwd, timeout: timeoutMs, encoding: 'utf8' }, (error: cp.ExecException | null, stdout: string, stderr: string) => {
-      const outcome = executionOutcomeClassifier.classifyExecResult({
-        error,
-        stdout,
-        stderr,
-        command: decision.command,
-        timeoutMs,
-        allowManualReview: !decision.compileOnly,
-        visualSourcePaths: decision.relatedFiles,
-        manualReviewDetail: INTERACTIVE_RUN_MANUAL_REVIEW_DETAIL,
-        timeoutFailureDetail: buildInteractiveTimeoutFailureDetail(timeoutMs),
-      });
-      resolve({
-        ok: outcome.ok,
-        command: decision.command,
-        cwd: decision.cwd,
-        exitCode: outcome.exitCode,
-        output: outcome.output,
-        relatedFiles: decision.relatedFiles,
-        ...(outcome.reviewRequired ? {
-          reviewRequired: true,
-          reviewReason: outcome.reviewReason,
-        } : {}),
-      });
-    });
-  });
 }
 
 function q(value: string): string {

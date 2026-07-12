@@ -167,12 +167,14 @@ test('task-execution-policy: edit mode leaves write tasks untouched', () => {
   assert.equal(taskModeAllowsWorkspaceWrites('plan'), false);
 });
 
-test('task-execution-policy: unknown mode is left untouched for legacy internal callers', () => {
+test('task-execution-policy: missing mode fails closed as inspect and removes write tasks', () => {
   const tasks = [
     { id: 't1', file: 'src/a.ts', action: 'modify', desc: '本地修复', absPath: '/project/src/a.ts' },
   ];
   const result = enforceAgentTaskExecutionPolicy(tasks, { userPrompt: 'local repair' });
 
-  assert.equal(result.changed, false);
-  assert.equal(result.tasks, tasks);
+  assert.equal(result.changed, true);
+  assert.notEqual(result.tasks, tasks);
+  assert.deepEqual(result.tasks.map(task => task.action), ['analyze']);
+  assert.match(result.reason, /审查模式/);
 });

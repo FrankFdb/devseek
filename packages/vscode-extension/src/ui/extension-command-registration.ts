@@ -19,11 +19,23 @@ import { getActiveProvider } from '../llm/provider-router';
 import type { DeepSeekViewProvider } from './deepseek-view-provider';
 import { addResourceToChat } from '../app/chat-resource-actions';
 import { MemoryService } from '../app/memory-service';
+import { createDevSeekRunContext } from '../app/run-context';
+import type { TerminalPermissionCoordinator } from '../app/terminal-permission-coordinator';
 
 interface ExtensionCommandRegistrationDeps {
   viewProvider: DeepSeekViewProvider;
+  terminalPermissionCoordinator: TerminalPermissionCoordinator;
   pushChatPanel: (userDisplay: string, prompt: string, newSession: boolean) => void | Promise<void>;
-  routeChat: (opts: { prompt: string; stream?: boolean }) => Promise<string>;
+  routeChat: (opts: {
+    prompt: string;
+    stream?: boolean;
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    traceRunId?: string;
+    traceWorkspaceRoot?: string;
+    traceEvidenceParticipantToken?: string;
+    onTraceEvidenceError?: (error: unknown) => void;
+  }) => Promise<string>;
 }
 
 interface CompletionState {
@@ -38,7 +50,7 @@ export function registerExtensionCommands(
   registerChatRelayCommand(context, deps);
   registerVisibleCommands(context, deps);
   registerInlineChatCommand(context, deps);
-  registerInlineCompletionProvider(context);
+  registerInlineCompletionProvider(context, deps.routeChat);
 }
 
 function registerChatRelayCommand(
@@ -64,11 +76,11 @@ function registerVisibleCommands(
     ['devseek.fix', fixBug],
     ['devseek.refactor', refactorCode],
     ['devseek.genTest', genTest],
-    ['devseek.runTests', runTests],
+    ['devseek.runTests', async () => runTests(deps.terminalPermissionCoordinator)],
     ['devseek.genDoc', genDoc],
     ['devseek.ask', askQuestion],
-    ['devseek.generateCommit', generateCommitMessage],
-    ['devseek.applyDiff', applyDiff],
+    ['devseek.generateCommit', async () => generateCommitMessage(deps.routeChat)],
+    ['devseek.applyDiff', async () => applyDiff(deps.routeChat)],
     ['devseek.openChat', async () => { deps.viewProvider.focus(); }],
     ['devseek.triggerCompletion', async () => {
       await vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
@@ -97,12 +109,19 @@ async function runTerminalCommand(deps: ExtensionCommandRegistrationDeps): Promi
   });
   if (!command) return;
 
-  const { runCommand, formatTerminalOutputForPrompt } = await import('../tools/terminal');
-  const result = await runCommand({ command, visible: false });
-  const formatted = formatTerminalOutputForPrompt(command, result);
+  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+  const result = await deps.terminalPermissionCoordinator.runOwnedCommandWithPermission({
+    command,
+    workdir: workspaceRoot,
+    workspaceRoot,
+    mode: 'run',
+    source: 'vscode-extension.run-terminal-command',
+    userConfirmed: true,
+    presentation: 'captured',
+  });
   await deps.pushChatPanel(
     `> ${command}`,
-    `请分析以下命令输出并给出建议：\n\n${formatted}`,
+    `请分析以下命令输出并给出建议：\n\n${result.output}`,
     false,
   );
   deps.viewProvider.focus();
@@ -222,11 +241,29 @@ async function applyInlineChatResult(args: {
   prompt: string;
   filename: string;
 }): Promise<void> {
+  let runContext: ReturnType<typeof createDevSeekRunContext> | undefined;
   try {
-    const result = await args.deps.routeChat({ prompt: args.prompt, stream: false });
+    const workspaceRoot = vscode.workspace.getWorkspaceFolder(args.editor.document.uri)?.uri.fsPath
+      ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      ?? process.cwd();
+    runContext = createDevSeekRunContext({
+      workspaceRoot,
+      source: 'vscode-extension.inline-chat',
+      userPrompt: args.prompt,
+      traceLevel: vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', 'debug'),
+    });
+    const result = await args.deps.routeChat({
+      prompt: args.prompt,
+      stream: false,
+      traceRunId: runContext.runId,
+      traceWorkspaceRoot: runContext.workspaceRoot,
+      traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
+      onTraceEvidenceError: error => runContext?.markEvidenceDegraded(error),
+    });
     const codeMatch = result.match(/```[^\n]*\n([\s\S]*?)```/);
     const newCode = codeMatch ? codeMatch[1].trimEnd() : result.trim();
     if (!newCode) {
+      runContext.complete('failed', { reason: 'empty-provider-response' });
       vscode.window.showWarningMessage('DeepSeek: 未收到有效代码');
       return;
     }
@@ -234,24 +271,48 @@ async function applyInlineChatResult(args: {
     if (!args.editor.selection.isEmpty) {
       const originalContent = args.editor.document.getText();
       const relPath = vscode.workspace.asRelativePath(args.editor.document.uri, false);
-      await args.editor.edit(edit => edit.replace(args.editor.selection, newCode));
+      const task = {
+        type: 'agentStatus' as const,
+        phase: 'execute' as const,
+        taskId: 'inline-chat-editor-edit',
+        taskFile: relPath,
+        taskAction: 'modify' as const,
+        title: `应用 ${args.filename} 行内修改`,
+      };
+      runContext.recordAgentStatus({ ...task, state: 'started' });
+      const applied = await args.editor.edit(edit => edit.replace(args.editor.selection, newCode));
+      runContext.recordAgentStatus({ ...task, state: applied ? 'completed' : 'failed' });
+      if (!applied) throw new Error('VS Code 拒绝应用行内编辑');
       await args.deps.viewProvider.registerInlineChatEdit({
         path: relPath,
         oldContent: originalContent,
         newContent: args.editor.document.getText(),
         existed: true,
       });
-      vscode.window.showInformationMessage('✅ DeepSeek 行内修改已应用（侧边栏可对比 / 撤销）');
+      const settlementStatus = runContext.complete('completed', { changedPaths: [relPath] });
+      if (settlementStatus === 'completed') {
+        vscode.window.showInformationMessage('✅ DeepSeek 行内修改已应用（侧边栏可对比 / 撤销）');
+      } else {
+        vscode.window.showErrorMessage('DeepSeek: 行内修改已写入，但运行证据结算失败；本轮不能标记完成。');
+      }
       return;
     }
 
     await args.deps.pushChatPanel(`⚡ **${args.instruction}** · \`${args.filename}\``, args.prompt, false);
+    const settlementStatus = runContext.complete('completed', { reason: 'forwarded-to-chat-panel' });
+    if (settlementStatus !== 'completed') {
+      throw new Error('内容已转发到聊天面板，但运行证据结算失败；本轮不能标记完成。');
+    }
   } catch (error) {
+    runContext?.complete('failed', { reason: 'inline-chat-error' });
     vscode.window.showErrorMessage(`DeepSeek Inline Chat: ${(error as Error).message}`);
   }
 }
 
-function registerInlineCompletionProvider(context: vscode.ExtensionContext): void {
+function registerInlineCompletionProvider(
+  context: vscode.ExtensionContext,
+  routeChat: ExtensionCommandRegistrationDeps['routeChat'],
+): void {
   const state: CompletionState = {
     cache: new Map<string, vscode.InlineCompletionItem[]>(),
   };
@@ -260,7 +321,7 @@ function registerInlineCompletionProvider(context: vscode.ExtensionContext): voi
     { pattern: '**' },
     {
       provideInlineCompletionItems: async (document, position, _context, token) => {
-        return provideInlineCompletions(state, document, position, token);
+        return provideInlineCompletions(state, document, position, token, routeChat);
       },
     },
   );
@@ -272,6 +333,7 @@ async function provideInlineCompletions(
   document: vscode.TextDocument,
   position: vscode.Position,
   token: vscode.CancellationToken,
+  routeChat: ExtensionCommandRegistrationDeps['routeChat'],
 ): Promise<vscode.InlineCompletionItem[]> {
   const config = vscode.workspace.getConfiguration('devseek');
   if (!config.get<boolean>('completionEnabled', false) || token.isCancellationRequested) {
@@ -295,7 +357,7 @@ async function provideInlineCompletions(
         resolve([]);
         return;
       }
-      await completeAfterDebounce({ state, provider, request, token, resolve });
+      await completeAfterDebounce({ state, routeChat, request, token, resolve });
     }, delay);
   });
 }
@@ -324,7 +386,7 @@ function buildCompletionRequest(document: vscode.TextDocument, position: vscode.
 
 async function completeAfterDebounce(args: {
   state: CompletionState;
-  provider: ReturnType<typeof getActiveProvider>;
+  routeChat: ExtensionCommandRegistrationDeps['routeChat'];
   request: { cacheKey: string; prompt: string };
   token: vscode.CancellationToken;
   resolve: (items: vscode.InlineCompletionItem[]) => void;
@@ -332,8 +394,8 @@ async function completeAfterDebounce(args: {
   try {
     const abortCtrl = new AbortController();
     args.token.onCancellationRequested(() => abortCtrl.abort());
-    const result = await args.provider.chat({
-      messages: [{ role: 'user', content: args.request.prompt }],
+    const result = await args.routeChat({
+      prompt: args.request.prompt,
       stream: false,
       timeoutMs: 15000,
       signal: abortCtrl.signal,

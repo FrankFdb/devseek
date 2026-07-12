@@ -2,6 +2,8 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as nodePath from 'path';
 
+import { redactDevSeekAuthorityCapabilities } from './persisted-secret';
+
 export type DevSeekTraceLevel = 'off' | 'error' | 'info' | 'debug' | 'trace';
 
 export interface DevSeekTraceLoggerOptions {
@@ -104,9 +106,9 @@ export class DevSeekTraceLogger {
 
   constructor(options: DevSeekTraceLoggerOptions) {
     this.workspaceRoot = nodePath.resolve(options.workspaceRoot);
-    this.source = options.source;
+    this.source = redactDevSeekAuthorityCapabilities(options.source);
     this.level = resolveDevSeekTraceLevel(String(options.level ?? process.env.DEVSEEK_TRACE_LEVEL ?? 'debug'));
-    this.runId = options.runId || createDevSeekRunId(options.now);
+    this.runId = redactDevSeekAuthorityCapabilities(options.runId || createDevSeekRunId(options.now));
     this.runDir = getDevSeekTraceRoot(this.workspaceRoot);
     this.logPath = nodePath.join(this.runDir, traceLogFileName(this.runId));
     this.buildInfo = resolveBuildInfo(options);
@@ -259,7 +261,8 @@ export class DevSeekTraceLogger {
       source: entry.source ?? this.source,
       runId: entry.runId ?? this.runId,
     };
-    fs.appendFileSync(this.logPath, `${JSON.stringify(normalized)}\n`, 'utf8');
+    const secretFree = sanitizeTraceData(normalized) as DevSeekTraceEvent;
+    fs.appendFileSync(this.logPath, `${JSON.stringify(secretFree)}\n`, 'utf8');
   }
 
   private nextSeq(): number {
@@ -302,13 +305,15 @@ function sanitizeTraceData(value: unknown, key = ''): unknown {
   if (value === null || value === undefined) return value;
   if (SENSITIVE_KEY_RE.test(key)) return REDACTED;
   if (typeof value === 'string') {
-    return value.length > 8000 ? `${value.slice(0, 8000)}...[truncated:${value.length}]` : value;
+    const redacted = redactDevSeekAuthorityCapabilities(value);
+    return redacted.length > 8000 ? `${redacted.slice(0, 8000)}...[truncated:${redacted.length}]` : redacted;
   }
   if (typeof value !== 'object') return value;
   if (Array.isArray(value)) return value.map(item => sanitizeTraceData(item));
   const out: Record<string, unknown> = {};
   for (const [entryKey, entryValue] of Object.entries(value as Record<string, unknown>)) {
-    out[entryKey] = sanitizeTraceData(entryValue, entryKey);
+    const safeKey = redactDevSeekAuthorityCapabilities(entryKey);
+    out[safeKey] = sanitizeTraceData(entryValue, safeKey);
   }
   return out;
 }

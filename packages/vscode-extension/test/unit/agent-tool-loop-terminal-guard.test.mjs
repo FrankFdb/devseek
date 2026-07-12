@@ -60,7 +60,7 @@ Module._load = function loadWithVscodeMock(request, parent, isMain) {
 
 const req = createRequire(import.meta.url);
 const {
-  executeFakeToolsForLoop,
+  executeFakeToolsForLoop: executeFakeToolsWithoutFixturePolicy,
   isAgentWorkToolName,
 } = req(bundlePath);
 const {
@@ -69,12 +69,38 @@ const {
   withToolReadEvidence,
 } = req(readEvidenceBundlePath);
 
+function executeFakeToolsForLoop(tools, callbacks, ...args) {
+  return executeFakeToolsWithoutFixturePolicy(
+    tools,
+    { executionMode: 'edit', ...callbacks },
+    ...args,
+  );
+}
+
 test('ToolLoop work-tool classifier keeps meta tools separate from real work', () => {
   assert.equal(isAgentWorkToolName('manage_todo_list'), false);
   assert.equal(isAgentWorkToolName('task_complete'), false);
   assert.equal(isAgentWorkToolName('memory_write'), false);
   assert.equal(isAgentWorkToolName('read_file'), true);
   assert.equal(isAgentWorkToolName('run_terminal'), true);
+});
+
+test('ToolLoop fails closed when an execution policy is missing', async () => {
+  let terminalCalled = false;
+  const result = await executeFakeToolsWithoutFixturePolicy(
+    [{ name: 'run_terminal', input: { command: 'echo must-not-run' } }],
+    {
+      onTerminalCommand: async () => {
+        terminalCalled = true;
+        return 'must-not-run';
+      },
+      onAgentStatus: async () => {},
+    },
+    '/tmp/project',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
+  );
+  assert.equal(terminalCalled, false);
+  assert.match(result.feedbackForAI, /tool-kind-denied:terminal/);
 });
 
 test('ToolLoop returns feedback for manage_todo_list even when UI todo callback is suppressed', async () => {

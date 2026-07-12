@@ -25,7 +25,13 @@ export interface AgentProgressPresentation {
 
 export interface AgentStatusEvent extends AgentProgressPresentation {
   type: 'agentStatus';
-  phase: 'plan' | 'execute' | 'validate' | 'repair' | 'done' | 'error' | 'analyzeFile' | 'analyzeSummary';
+  phase: 'plan' | 'execute' | 'validate' | 'quality' | 'repair' | 'done' | 'error' | 'analyzeFile' | 'analyzeSummary';
+  /**
+   * Stable evidence operation shared by verification and its subsequently
+   * evaluated quality gate. Product workflow adapters must never infer this
+   * correlation from display text or arrival order.
+   */
+  evidenceOperationId?: string;
   taskId?: string;
   taskFile?: string;
   taskAction?: AgentTaskAction;

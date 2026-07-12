@@ -45,7 +45,32 @@ export interface AgentChatRequest {
   traceRunId?: string;
   /** Filesystem root where all logs for this top-level run should be written. */
   traceWorkspaceRoot?: string;
+  /** Correlates one provider operation across client, transport and server boundaries. */
+  traceOperationId?: string;
+  /** Participant capability for appending facts to an owner-created run evidence ledger. */
+  traceEvidenceParticipantToken?: string;
+  /** Reports diagnostic evidence degradation without failing the product operation. */
+  onTraceEvidenceError?: (error: unknown) => void;
 }
+
+/** Minimal, capability-free value which a history adapter may persist. */
+export interface AgentChatHistoryRequest {
+  prompt: string;
+  trackHistory?: boolean;
+  displayPrompt?: string;
+}
+
+/** The participant bearer exists only inside the Bridge transport boundary. */
+export interface BridgeEvidenceCapability {
+  readonly role: 'participant';
+  readonly token: string;
+}
+
+export type CapabilityFreeAgentChatRequest = Omit<AgentChatRequest, 'traceEvidenceParticipantToken'>;
+
+export type BridgeAgentChatRequest = CapabilityFreeAgentChatRequest & {
+  readonly evidenceCapability?: BridgeEvidenceCapability;
+};
 
 export interface ChatRequestCommand extends AgentCommandBase {
   type: 'chat.request';

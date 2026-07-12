@@ -12,6 +12,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -74,6 +75,39 @@ function makeCallbacks(events) {
     onTodoUpdate: (items) => events.todos.push(items),
     onToolActivity: (kind, label) => events.activities.push({ kind, label }),
     onBeforeFileWrite: async () => true,
+    onValidationCommand: async ({ command, cwd, timeoutMs }) => {
+      try {
+        const stdout = execSync(command, {
+          cwd,
+          timeout: timeoutMs,
+          encoding: 'utf8',
+          stdio: ['ignore', 'pipe', 'pipe'],
+        });
+        return {
+          ran: true,
+          ok: true,
+          command,
+          exitCode: 0,
+          stdout,
+          stderr: '',
+          output: stdout,
+          cwd,
+        };
+      } catch (error) {
+        const stdout = String(error?.stdout ?? '');
+        const stderr = String(error?.stderr ?? error?.message ?? error);
+        return {
+          ran: true,
+          ok: false,
+          command,
+          exitCode: Number.isInteger(error?.status) ? error.status : null,
+          stdout,
+          stderr,
+          output: [stdout, stderr].filter(Boolean).join('\n'),
+          cwd,
+        };
+      }
+    },
     onTaskCheckpoint: (completedUpToIndex, remainingTasks) => {
       events.checkpoints.push({ completedUpToIndex, remainingTasks });
     },
@@ -162,6 +196,36 @@ test('Simple file task: writes markdown and completes with file-check evidence',
     assert.equal(events.activities.some((activity) => activity.kind === 'write'), true);
     assert.equal(events.activities.some((activity) => activity.kind === 'terminal'), true);
     assert.match(events.deltas.at(-1), /^\x00ASUM\x00已创建 docs\/manual-phase6-quality\.md/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Simple file task: preserves a concurrent user edit made during the permission callback', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-simple-file-task-race-'));
+  const target = path.join(root, 'notes.txt');
+  fakeVscode.workspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+  const events = makeEvents();
+  const callbacks = makeCallbacks(events);
+  try {
+    writeFileSync(target, 'old-content');
+    callbacks.onBeforeFileWrite = async () => {
+      writeFileSync(target, 'newer-user-content');
+      return true;
+    };
+
+    const result = await tryRunSimpleFileTask({
+      userPrompt: '写 notes.txt，内容为：agent-content',
+      workspaceRoot: root,
+      callbacks,
+      cppValidationPolicy: 'conservative',
+    });
+
+    assert.equal(readFileSync(target, 'utf8'), 'newer-user-content');
+    assert.equal(result.tasksApplied, 0);
+    assert.equal(result.tasksFailed, 1);
+    assert.equal(events.applied.length, 0);
+    assert.match(result.historyText, /target changed after write authority was captured/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
