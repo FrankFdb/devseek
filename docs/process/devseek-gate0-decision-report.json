@@ -1,0 +1,380 @@
+{
+  "schema_version": "devseek.gate0-decision/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "decision_id": "DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1",
+  "decision_scope": "gate0-infrastructure",
+  "asserts_protocol_execution": false,
+  "asserts_gate_pass": false,
+  "sources": {
+    "capability_ledger": {
+      "path": "docs/process/devseek-capability-ledger.json",
+      "schema_version": "devseek.capability-ledger/v1",
+      "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
+      "source_sha256": "b9e0e10f03d933992e22662596d9a45d3aa5a1ff84738b1e710a4d8fc3914d2c",
+      "qualification_claim_authority": {
+        "mode": "deny-until-signed-evidence-validator",
+        "profile_registry_sha256": null,
+        "evidence_registry_sha256": null,
+        "profile_source_sha256": "2d9a678b096c3b1ba089d74d957ff8721fb2af24dfd00d57318eb3af7a3b644f",
+        "evidence_source_sha256": "eeac897a3cc23b85cd3315d09e8619608f2e174e3101a7081d3c28d785465697",
+        "source_digests_bound": false,
+        "independent_authority_attested": false,
+        "independent_authority_status": "UNAVAILABLE_NO_EXTERNAL_ATTESTATION_ADAPTER",
+        "configured_and_bound": false
+      }
+    },
+    "milestone_profile": {
+      "path": "docs/process/devseek-milestone-profiles.json",
+      "schema_version": "devseek.milestone-profiles/v1",
+      "profile_id": "R1-MINIMAL-SEAM/v1",
+      "profile_sha256": "27c90f86cab61156766e18b36bcb368842e424d25c5fae2de2534fcdd1753ad9",
+      "group_id": "gate0"
+    },
+    "qualification_profiles": {
+      "path": "docs/process/devseek-qualification-profiles.json",
+      "schema_version": "devseek.qualification-profile-set/v1",
+      "document_sha256": "f9a117a6be8d7a1cddeaa4095162378b0e72536bcbebeac88c39eeb4a65bf0ce",
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "source_status": "verified",
+      "profile_ids": [
+        "GATE0-G0B-LOCAL-PROTOCOL-CONFORMANCE/v1"
+      ]
+    },
+    "aggregator_policy": {
+      "path": "docs/process/devseek-qualification-aggregator-policy.json",
+      "schema_version": "devseek.qualification-aggregator-policy/v1",
+      "policy_id": "DEVSEEK-G0C-LOCAL-AGGREGATOR-POLICY",
+      "policy_sha256": "08897f5f2c6994fd2ae4d130648c38ab2eb6971b840a02b3b212430fcd45fb9e",
+      "integrity_scope": "local-protocol-conformance",
+      "qualification_eligible": false,
+      "source_status": "test-fixture"
+    }
+  },
+  "local_conformance": {
+    "status": "PASSED",
+    "scope": "local-protocol-conformance-source-contract",
+    "source_contract_consistent": true,
+    "asserts_protocol_execution": false,
+    "qualification_effect": "NONE"
+  },
+  "qualification": {
+    "status": "NOT_PASSED",
+    "gate_passed": false,
+    "qualification_eligible": false,
+    "external_authority_trust_anchored": false,
+    "implementation_requirements_passed": false,
+    "exact_claim_requirements_passed": false
+  },
+  "claims": [],
+  "capabilities": [
+    {
+      "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+      "implementation_requirement": {
+        "required_state": "wired",
+        "observed_state": "implemented",
+        "satisfied": false
+      },
+      "claim_requirements": [
+        {
+          "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+          "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+          "claim_scope": "gate0-infrastructure",
+          "surface": "repository-governance",
+          "provider": "local-node",
+          "platform_profile": "linux-x64-v1",
+          "minimum_level": "L2",
+          "satisfied": false,
+          "matching_claim_ids": []
+        }
+      ],
+      "observed_claims": [],
+      "claims_satisfied": false
+    },
+    {
+      "capability_id": "C0-CASE-CATALOG",
+      "implementation_requirement": {
+        "required_state": "wired",
+        "observed_state": "wired",
+        "satisfied": true
+      },
+      "claim_requirements": [
+        {
+          "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+          "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+          "claim_scope": "gate0-infrastructure",
+          "surface": "repository-governance",
+          "provider": "local-node",
+          "platform_profile": "linux-x64-v1",
+          "minimum_level": "L2",
+          "satisfied": false,
+          "matching_claim_ids": []
+        }
+      ],
+      "observed_claims": [],
+      "claims_satisfied": false
+    },
+    {
+      "capability_id": "C0-PREREGISTRATION-PLAN",
+      "implementation_requirement": {
+        "required_state": "wired",
+        "observed_state": "implemented",
+        "satisfied": false
+      },
+      "claim_requirements": [
+        {
+          "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+          "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+          "claim_scope": "gate0-infrastructure",
+          "surface": "repository-governance",
+          "provider": "local-node",
+          "platform_profile": "linux-x64-v1",
+          "minimum_level": "L2",
+          "satisfied": false,
+          "matching_claim_ids": []
+        }
+      ],
+      "observed_claims": [],
+      "claims_satisfied": false
+    },
+    {
+      "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+      "implementation_requirement": {
+        "required_state": "wired",
+        "observed_state": "implemented",
+        "satisfied": false
+      },
+      "claim_requirements": [
+        {
+          "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+          "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+          "claim_scope": "gate0-infrastructure",
+          "surface": "repository-governance",
+          "provider": "local-node",
+          "platform_profile": "linux-x64-v1",
+          "minimum_level": "L2",
+          "satisfied": false,
+          "matching_claim_ids": []
+        }
+      ],
+      "observed_claims": [],
+      "claims_satisfied": false
+    },
+    {
+      "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+      "implementation_requirement": {
+        "required_state": "wired",
+        "observed_state": "implemented",
+        "satisfied": false
+      },
+      "claim_requirements": [
+        {
+          "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+          "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+          "claim_scope": "gate0-infrastructure",
+          "surface": "repository-governance",
+          "provider": "local-node",
+          "platform_profile": "linux-x64-v1",
+          "minimum_level": "L2",
+          "satisfied": false,
+          "matching_claim_ids": []
+        }
+      ],
+      "observed_claims": [],
+      "claims_satisfied": false
+    },
+    {
+      "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+      "implementation_requirement": {
+        "required_state": "wired",
+        "observed_state": "wired",
+        "satisfied": true
+      },
+      "claim_requirements": [
+        {
+          "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+          "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+          "claim_scope": "gate0-infrastructure",
+          "surface": "repository-governance",
+          "provider": "local-node",
+          "platform_profile": "linux-x64-v1",
+          "minimum_level": "L2",
+          "satisfied": false,
+          "matching_claim_ids": []
+        }
+      ],
+      "observed_claims": [],
+      "claims_satisfied": false
+    },
+    {
+      "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+      "implementation_requirement": {
+        "required_state": "wired",
+        "observed_state": "implemented",
+        "satisfied": false
+      },
+      "claim_requirements": [
+        {
+          "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+          "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+          "claim_scope": "gate0-infrastructure",
+          "surface": "repository-governance",
+          "provider": "local-node",
+          "platform_profile": "linux-x64-v1",
+          "minimum_level": "L2",
+          "satisfied": false,
+          "matching_claim_ids": []
+        }
+      ],
+      "observed_claims": [],
+      "claims_satisfied": false
+    }
+  ],
+  "blockers": {
+    "repository_pending": [
+      {
+        "blocker_id": "repository-implementation-not-wired:C0-CAPABILITY-LEDGER-SCHEMA",
+        "capability_ids": [
+          "C0-CAPABILITY-LEDGER-SCHEMA"
+        ],
+        "requirement": "implementation_state>=wired",
+        "observed": "implemented"
+      },
+      {
+        "blocker_id": "repository-implementation-not-wired:C0-PREREGISTRATION-PLAN",
+        "capability_ids": [
+          "C0-PREREGISTRATION-PLAN"
+        ],
+        "requirement": "implementation_state>=wired",
+        "observed": "implemented"
+      },
+      {
+        "blocker_id": "repository-implementation-not-wired:C0-QUALIFICATION-AGGREGATOR",
+        "capability_ids": [
+          "C0-QUALIFICATION-AGGREGATOR"
+        ],
+        "requirement": "implementation_state>=wired",
+        "observed": "implemented"
+      },
+      {
+        "blocker_id": "repository-implementation-not-wired:C0-QUALIFICATION-EVIDENCE-MANIFEST",
+        "capability_ids": [
+          "C0-QUALIFICATION-EVIDENCE-MANIFEST"
+        ],
+        "requirement": "implementation_state>=wired",
+        "observed": "implemented"
+      },
+      {
+        "blocker_id": "repository-implementation-not-wired:C0-RUN-EVIDENCE-LEDGER",
+        "capability_ids": [
+          "C0-RUN-EVIDENCE-LEDGER"
+        ],
+        "requirement": "implementation_state>=wired",
+        "observed": "implemented"
+      }
+    ],
+    "external_authority": [
+      {
+        "blocker_id": "external-signed-evidence-source-digest-binding-unavailable",
+        "capability_ids": [
+          "C0-CAPABILITY-LEDGER-SCHEMA",
+          "C0-CASE-CATALOG",
+          "C0-PREREGISTRATION-PLAN",
+          "C0-QUALIFICATION-AGGREGATOR",
+          "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "C0-RUN-EVIDENCE-LEDGER"
+        ],
+        "requirement": "signed-evidence-validator mode with profile and evidence source digests bound in the capability ledger",
+        "observed": "deny-until-signed-evidence-validator;profile_bound=false;evidence_bound=false"
+      },
+      {
+        "blocker_id": "external-independent-evidence-authority-attestation-unavailable",
+        "capability_ids": [
+          "C0-CAPABILITY-LEDGER-SCHEMA",
+          "C0-CASE-CATALOG",
+          "C0-PREREGISTRATION-PLAN",
+          "C0-QUALIFICATION-AGGREGATOR",
+          "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "C0-RUN-EVIDENCE-LEDGER"
+        ],
+        "requirement": "attestation from an independently controlled external authority adapter",
+        "observed": "UNAVAILABLE_NO_EXTERNAL_ATTESTATION_ADAPTER"
+      },
+      {
+        "blocker_id": "external-protected-qualification-profile-unavailable",
+        "capability_ids": [
+          "C0-CAPABILITY-LEDGER-SCHEMA",
+          "C0-CASE-CATALOG",
+          "C0-PREREGISTRATION-PLAN",
+          "C0-QUALIFICATION-AGGREGATOR",
+          "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "C0-RUN-EVIDENCE-LEDGER"
+        ],
+        "requirement": "independently-authorized protected-qualification profile",
+        "observed": "local-protocol-conformance;verified;qualification_eligible=false"
+      },
+      {
+        "blocker_id": "external-protected-aggregator-policy-unavailable",
+        "capability_ids": [
+          "C0-CAPABILITY-LEDGER-SCHEMA",
+          "C0-CASE-CATALOG",
+          "C0-PREREGISTRATION-PLAN",
+          "C0-QUALIFICATION-AGGREGATOR",
+          "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "C0-RUN-EVIDENCE-LEDGER"
+        ],
+        "requirement": "verified protected aggregator with retention-lock-or-worm storage",
+        "observed": "local-protocol-conformance;test-fixture;append-only-local-cas;qualification_eligible=false"
+      },
+      {
+        "blocker_id": "external-exact-gate0-claims-missing",
+        "capability_ids": [
+          "C0-CAPABILITY-LEDGER-SCHEMA",
+          "C0-CASE-CATALOG",
+          "C0-PREREGISTRATION-PLAN",
+          "C0-QUALIFICATION-AGGREGATOR",
+          "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "C0-RUN-EVIDENCE-LEDGER"
+        ],
+        "requirement": "valid exact-tuple Gate 0 claims at or above the milestone minimum level",
+        "observed": "no qualifying exact-tuple claim"
+      },
+      {
+        "blocker_id": "external-protected-evidence-controls-unresolved",
+        "capability_ids": [
+          "C0-CAPABILITY-LEDGER-SCHEMA",
+          "C0-CASE-CATALOG",
+          "C0-PREREGISTRATION-PLAN",
+          "C0-QUALIFICATION-AGGREGATOR",
+          "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "C0-RUN-EVIDENCE-LEDGER"
+        ],
+        "requirement": "clean-tail-truncation-detection,externally-anchored-stream-head,organizationally-independent-signers,retention-lock-or-worm,trusted-nonrollback-time",
+        "observed": "unresolved by local protocol-conformance sources"
+      }
+    ]
+  },
+  "counts": {
+    "capabilities": 7,
+    "implementation_requirements_satisfied": 2,
+    "exact_claim_requirements_satisfied": 0,
+    "observed_claims": 0,
+    "repository_pending_blockers": 5,
+    "external_authority_blockers": 6
+  },
+  "checker_contract": {
+    "self_check_can_pass_without_gate_pass": true,
+    "checker_pass_meaning": "report-schema-source-binding-and-decision-invariants-only",
+    "gate_pass_requires_protected_qualification": true
+  },
+  "decision_sha256": "7d42c3bfda8fa40ad6357eff6f82e17a6d901fb3c3efb2c36648493f1553018a"
+}

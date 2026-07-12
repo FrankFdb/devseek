@@ -51,6 +51,18 @@ const gates = [
     purpose: 'Fail closed on frozen slot/attempt denominators, signed exact-tuple claims, event-head invalidation, independent retention locks, or local evidence promoted beyond its integrity scope.',
   },
   {
+    id: 'qualification-runner-wiring',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:qualification-runner'],
+    purpose: 'Keep every declared qualification runner behind the single plan/session/slot, authorization, signed event/receipt, and independent-reader path while catalog-only and disabled entries remain non-qualifying.',
+  },
+  {
+    id: 'gate0-machine-decision-contract',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:gate0-decision'],
+    purpose: 'Recompute the seven-C0 machine decision while keeping local conformance, protected qualification eligibility, repository blockers, and external-authority blockers separate.',
+  },
+  {
     id: 'run-evidence-machine-contract',
     phases: '0-12',
     command: ['npm', 'run', 'verify:run-evidence-contract'],
@@ -233,6 +245,8 @@ function phaseCovered(spec, phase) {
 function classifyGateFailure(gate) {
   if (/architecture-drift/i.test(gate.id)) return 'architecture-boundary-regression';
   if (/capability-ledger/i.test(gate.id)) return 'capability-governance-regression';
+  if (/qualification-runner/i.test(gate.id)) return 'qualification-runner-bypass-regression';
+  if (/gate0-machine-decision/i.test(gate.id)) return 'gate0-machine-decision-regression';
   if (/run-evidence/i.test(gate.id)) return 'run-evidence-contract-regression';
   if (/stability-qualification/i.test(gate.id)) return 'legacy-observation-guard-regression';
   if (/programming-agent/i.test(gate.id)) return 'programming-agent-benchmark-failure';
@@ -247,6 +261,8 @@ function nextActionFor(gate) {
   const actions = {
     'architecture-drift-budget': 'Move the new responsibility into the owning service/adapter, lower the frozen ceiling after extraction, then rerun verify:architecture-drift.',
     'capability-ledger-governance': 'Fix the machine ledger, typed dependency, scoped claim target, or generated manifest at its semantic authority, then rerun verify:capability-ledger.',
+    'qualification-runner-wiring': 'Restore the single guarded runner composition root, remove or disable bypass entry points, and rerun verify:qualification-runner; local runner conformance must remain non-qualifying without protected authority.',
+    'gate0-machine-decision-contract': 'Fix the source-bound Gate 0 report or its decision invariants; a green checker validates the decision contract and never substitutes for protected Gate 0 qualification.',
     'run-evidence-machine-contract': 'Fix the shared product-run protocol or its strict event/receipt/record/seal/snapshot/anchor schema at the single evidence authority, then rerun verify:run-evidence-contract.',
     'stability-qualification-unit': 'Fix the legacy observation guard before interpreting deterministic or live development coverage.',
     'P0-P9-vscode-extension-unit': 'Fix the failing extension unit suite or update the runner only if the oracle is invalid, then rerun verify:phase0-12.',

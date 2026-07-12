@@ -819,7 +819,7 @@ async function main() {
     exitCode: 1,
     output: "3d_world.cpp:1:1: error: expected unqualified-id before '[' token\\n[TOOL:run_terminal {\\\"command\\\":\\\"g++ code/3d_world.cpp -lGL -lglut -o code/3d_world\\\"}]",
   });
-    await dispatch(page, { type: 'delta', text: '\\x00ASUM\\x00已完成三维动画世界 C++ 程序，并完成编译验证。' });
+    await dispatch(page, { type: 'delta', text: '\x00ASUM\x00已完成三维动画世界 C++ 程序，并完成编译验证。' });
     await dispatch(page, { type: 'agentToolActivity', activityKind: 'write', activityLabel: 'code/3d_world.cpp' });
     await dispatch(page, { type: 'agentToolActivity', activityKind: 'terminal', activityLabel: 'g++ code/3d_world.cpp -lGL -lglut -o code/3d_world' });
     await dispatch(page, {
@@ -856,10 +856,19 @@ async function main() {
     const todoText = document.getElementById('agent-todos-widget')?.textContent.replace(/\\s+/g, ' ').trim() || '';
     const turns = [...messages.children];
     const lastWorkingIndex = turns.reduce((idx, el, i) => el.querySelector && el.querySelector('.aut-container') ? i : idx, -1);
+    const isCompletionBubble = (bubble) => {
+      const text = bubble?.textContent?.replace(/\s+/g, ' ').trim() || '';
+      return (/已完成\s*4\s*个任务|已完成三维动画世界 C\+\+ 程序/.test(text)
+        && text.includes('3d_world.cpp'));
+    };
     const finalProseIndex = turns.reduce((idx, el, i) => {
       const bubble = el.querySelector && el.querySelector('.assistant-bubble');
-      return bubble && bubble.textContent.includes('已完成三维动画世界 C++ 程序') ? i : idx;
+      return isCompletionBubble(bubble) ? i : idx;
     }, -1);
+    const finalProseBubble = finalProseIndex >= 0
+      ? turns[finalProseIndex].querySelector('.assistant-bubble')
+      : null;
+    const finalProseText = finalProseBubble?.textContent?.replace(/\s+/g, ' ').trim() || '';
     return {
       summaryTexts,
       stepTexts,
@@ -871,6 +880,8 @@ async function main() {
       doneContainers: document.querySelectorAll('.aut-container[data-done]').length,
       lastWorkingIndex,
       finalProseIndex,
+      finalProseText,
+      assistantTexts: [...document.querySelectorAll('.assistant-bubble')].map((el) => el.textContent.replace(/\s+/g, ' ').trim()),
       scrollTop: messages.scrollTop,
       scrollHeight: messages.scrollHeight,
       clientHeight: messages.clientHeight,
@@ -883,17 +894,18 @@ async function main() {
     assert(report.stepTexts.some((text) => text.includes('开始执行 4 个任务')), '没有显示批量执行开始信息');
     assert(report.summaryTexts.length >= 3, `过程信息被覆盖，只剩 ${report.summaryTexts.length} 个 Thinking summary：${report.summaryTexts.join(' | ')}`);
     assert(report.summaryTexts.some((text) => text.includes('开始执行 4 个任务')), `完成后的 Thinking summary 没有保留执行开始信息：${report.summaryTexts.join(' | ')}`);
-    assert(report.summaryTexts.some((text) => text.includes('Analyzing') || text.includes('Creating') || text.includes('Created') || text.includes('编写3D动画世界')), `完成后的 Thinking summary 没有保留任务执行信息：${report.summaryTexts.join(' | ')}`);
-    assert(report.stepTexts.some((text) => text.includes('Wrote') && text.includes('3d_world.cpp')), '没有显示写文件工具活动');
-    assert(report.stepTexts.some((text) => text.includes('Ran') && text.includes('g++')), '没有显示终端工具活动');
+    assert(report.summaryTexts.some((text) => /(?:Analyz|Creat|Wrote|Ran|分析|创建|编写|修改文件|运行命令|验证命令)/i.test(text)), `完成后的 Thinking summary 没有保留任务执行信息：${report.summaryTexts.join(' | ')}`);
+    assert(report.stepTexts.some((text) => /(?:Wrote|已写入)/i.test(text) && text.includes('3d_world.cpp')), '没有显示写文件工具活动');
+    assert(report.stepTexts.some((text) => /(?:Ran|已运行)/i.test(text) && text.includes('g++')), '没有显示终端工具活动');
     assert(report.todoText.includes('Todos (4/4)'), `Todos 没有显示 4/4 完成状态：${report.todoText}`);
     assert(report.detailsCount >= 2, '计划/执行详情没有折叠显示');
     assert(report.terminalDetails >= 1, '终端输出没有折叠显示');
     assert(report.openTerminalDetails === 0, '失败终端输出不应默认展开撑开 Working 区域');
     assert(report.doneContainers >= 3, `执行过程没有拆成多个可折叠 Working 区域：${report.doneContainers}`);
-    assert(report.finalProseIndex > report.lastWorkingIndex, `最终总结没有显示在最后一个 Working 后面：prose=${report.finalProseIndex}, working=${report.lastWorkingIndex}`);
+    assert(report.finalProseIndex > report.lastWorkingIndex, `最终总结没有显示在最后一个 Working 后面：prose=${report.finalProseIndex}, working=${report.lastWorkingIndex}, bubbles=${report.assistantTexts.join(' | ')}`);
+    assert((/已完成\s*4\s*个任务|已完成三维动画世界 C\+\+ 程序/.test(report.finalProseText) && report.finalProseText.includes('3d_world.cpp')), `最后一个 Working 后的同一完成气泡没有同时绑定完成事实与修改文件：${report.finalProseText}`);
     assert(report.scrollTop + report.clientHeight >= report.scrollHeight - 4, '消息区域没有自动滚动到底部');
-    assert(report.finalText.includes('已完成三维动画世界 C++ 程序'), '最终反馈没有显示');
+    assert(/已完成\s*4\s*个任务|已完成三维动画世界 C\+\+ 程序/.test(report.finalText) && report.finalText.includes('3d_world.cpp'), '最终反馈没有显示完成事实与修改文件');
 
     console.log(JSON.stringify({
       ok: true,

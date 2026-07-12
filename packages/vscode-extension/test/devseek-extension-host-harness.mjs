@@ -95,14 +95,14 @@ function validate(report, chatSeen) {
   if (!hasStep('开始执行 4 个任务')) errors.push('没有显示批量执行开始信息');
   if (summaries.length < 3) errors.push('过程信息被覆盖，只剩 ' + summaries.length + ' 个 Thinking summary：' + summaries.join(' | '));
   if (!summaries.some((text) => text.includes('开始执行 4 个任务'))) errors.push('完成后的 Thinking summary 没有保留执行开始信息：' + summaries.join(' | '));
-  if (!summaries.some((text) => text.includes('Analyzing') || text.includes('Creating') || text.includes('Created') || text.includes('编写3D动画世界'))) errors.push('完成后的 Thinking summary 没有保留任务执行信息：' + summaries.join(' | '));
-  if (!steps.some((text) => text.includes('Wrote') && text.includes('3d_world.cpp'))) errors.push('没有显示写文件工具活动');
-  if (!steps.some((text) => text.includes('Ran') && text.includes('g++'))) errors.push('没有显示终端工具活动');
+  if (!summaries.some((text) => /(?:Analyz|Creat|Wrote|Ran|分析|创建|编写|修改文件|运行命令|验证命令)/i.test(text))) errors.push('完成后的 Thinking summary 没有保留任务执行信息：' + summaries.join(' | '));
+  if (!steps.some((text) => /(?:Wrote|已写入)/i.test(text) && text.includes('3d_world.cpp'))) errors.push('没有显示写文件工具活动');
+  if (!steps.some((text) => /(?:Ran|已运行)/i.test(text) && text.includes('g++'))) errors.push('没有显示终端工具活动');
   if (!String(report.todoText || '').includes('Todos (4/4)')) errors.push('Todos 没有显示 4/4 完成状态：' + String(report.todoText || ''));
   if ((report.detailsCount || 0) < 2) errors.push('计划/执行详情没有折叠显示');
   if ((report.terminalDetails || 0) < 1) errors.push('终端输出没有折叠显示');
   if (!report.scrolledToBottom) errors.push('消息区域没有自动滚动到底部');
-  if (!String(report.finalText || '').includes('已完成三维动画世界 C++ 程序')) errors.push('最终反馈没有显示');
+  if (!(/已完成\s*4\s*个任务|已完成三维动画世界 C\+\+ 程序/.test(String(report.finalText || '')) && String(report.finalText || '').includes('3d_world.cpp'))) errors.push('最终反馈没有显示完成事实与修改文件');
   return errors;
 }
 

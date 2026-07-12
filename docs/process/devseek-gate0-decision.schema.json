@@ -1,0 +1,460 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-gate0-decision-v1.json",
+  "title": "DevSeek Gate 0 Machine Decision v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "decision_id",
+    "decision_scope",
+    "asserts_protocol_execution",
+    "asserts_gate_pass",
+    "sources",
+    "local_conformance",
+    "qualification",
+    "claims",
+    "capabilities",
+    "blockers",
+    "counts",
+    "checker_contract",
+    "decision_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.gate0-decision/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "decision_id": { "const": "DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1" },
+    "decision_scope": { "const": "gate0-infrastructure" },
+    "asserts_protocol_execution": { "const": false },
+    "asserts_gate_pass": { "type": "boolean" },
+    "sources": { "$ref": "#/$defs/sources" },
+    "local_conformance": { "$ref": "#/$defs/localConformance" },
+    "qualification": { "$ref": "#/$defs/qualification" },
+    "claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/claim" }
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/capabilityDecision" }
+    },
+    "blockers": { "$ref": "#/$defs/blockers" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "checker_contract": { "$ref": "#/$defs/checkerContract" },
+    "decision_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nullableSha256": {
+      "oneOf": [
+        { "$ref": "#/$defs/sha256" },
+        { "type": "null" }
+      ]
+    },
+    "safeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "capabilityId": {
+      "type": "string",
+      "pattern": "^C0-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+    },
+    "implementationState": {
+      "enum": ["proposed", "specified", "implemented", "wired", "deprecated", "superseded"]
+    },
+    "qualificationLevel": {
+      "enum": ["L0", "L1", "L2", "L3", "L4", "L5", "L6"]
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "sourceBase": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string", "pattern": "^docs/process/" },
+        "schema_version": { "$ref": "#/$defs/safeId" }
+      },
+      "required": ["path", "schema_version"]
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_ledger",
+        "milestone_profile",
+        "qualification_profiles",
+        "aggregator_policy"
+      ],
+      "properties": {
+        "capability_ledger": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceBase" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "schema_version",
+                "ledger_id",
+                "source_sha256",
+                "qualification_claim_authority"
+              ],
+              "properties": {
+                "path": { "const": "docs/process/devseek-capability-ledger.json" },
+                "schema_version": { "const": "devseek.capability-ledger/v1" },
+                "ledger_id": { "$ref": "#/$defs/safeId" },
+                "source_sha256": { "$ref": "#/$defs/sha256" },
+                "qualification_claim_authority": { "$ref": "#/$defs/qualificationClaimAuthority" }
+              }
+            }
+          ]
+        },
+        "milestone_profile": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceBase" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "schema_version", "profile_id", "profile_sha256", "group_id"],
+              "properties": {
+                "path": { "const": "docs/process/devseek-milestone-profiles.json" },
+                "schema_version": { "const": "devseek.milestone-profiles/v1" },
+                "profile_id": { "const": "R1-MINIMAL-SEAM/v1" },
+                "profile_sha256": { "$ref": "#/$defs/sha256" },
+                "group_id": { "const": "gate0" }
+              }
+            }
+          ]
+        },
+        "qualification_profiles": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceBase" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "schema_version",
+                "document_sha256",
+                "integrity_scope",
+                "qualification_eligible",
+                "source_status",
+                "profile_ids"
+              ],
+              "properties": {
+                "path": { "const": "docs/process/devseek-qualification-profiles.json" },
+                "schema_version": { "$ref": "#/$defs/safeId" },
+                "document_sha256": { "$ref": "#/$defs/sha256" },
+                "integrity_scope": { "enum": ["local-protocol-conformance", "protected-qualification"] },
+                "qualification_eligible": { "type": "boolean" },
+                "source_status": { "enum": ["verified", "hash-placeholders-require-canonical-regeneration"] },
+                "profile_ids": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": { "$ref": "#/$defs/safeId" }
+                }
+              }
+            }
+          ]
+        },
+        "aggregator_policy": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceBase" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "schema_version",
+                "policy_id",
+                "policy_sha256",
+                "integrity_scope",
+                "qualification_eligible",
+                "source_status"
+              ],
+              "properties": {
+                "path": { "const": "docs/process/devseek-qualification-aggregator-policy.json" },
+                "schema_version": { "$ref": "#/$defs/safeId" },
+                "policy_id": { "$ref": "#/$defs/safeId" },
+                "policy_sha256": { "$ref": "#/$defs/sha256" },
+                "integrity_scope": { "enum": ["local-protocol-conformance", "protected-qualification"] },
+                "qualification_eligible": { "type": "boolean" },
+                "source_status": { "enum": ["verified", "test-fixture"] }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "localConformance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "scope",
+        "source_contract_consistent",
+        "asserts_protocol_execution",
+        "qualification_effect"
+      ],
+      "properties": {
+        "status": { "enum": ["PASSED", "FAILED", "NOT_APPLICABLE"] },
+        "scope": { "$ref": "#/$defs/safeId" },
+        "source_contract_consistent": { "type": "boolean" },
+        "asserts_protocol_execution": { "const": false },
+        "qualification_effect": { "const": "NONE" }
+      }
+    },
+    "qualificationClaimAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "profile_registry_sha256",
+        "evidence_registry_sha256",
+        "profile_source_sha256",
+        "evidence_source_sha256",
+        "source_digests_bound",
+        "independent_authority_attested",
+        "independent_authority_status",
+        "configured_and_bound"
+      ],
+      "properties": {
+        "mode": { "$ref": "#/$defs/safeId" },
+        "profile_registry_sha256": { "$ref": "#/$defs/nullableSha256" },
+        "evidence_registry_sha256": { "$ref": "#/$defs/nullableSha256" },
+        "profile_source_sha256": { "$ref": "#/$defs/sha256" },
+        "evidence_source_sha256": { "$ref": "#/$defs/sha256" },
+        "source_digests_bound": { "type": "boolean" },
+        "independent_authority_attested": { "const": false },
+        "independent_authority_status": { "const": "UNAVAILABLE_NO_EXTERNAL_ATTESTATION_ADAPTER" },
+        "configured_and_bound": { "const": false }
+      }
+    },
+    "qualification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "gate_passed",
+        "qualification_eligible",
+        "external_authority_trust_anchored",
+        "implementation_requirements_passed",
+        "exact_claim_requirements_passed"
+      ],
+      "properties": {
+        "status": { "enum": ["PASSED", "NOT_PASSED"] },
+        "gate_passed": { "type": "boolean" },
+        "qualification_eligible": { "type": "boolean" },
+        "external_authority_trust_anchored": { "const": false },
+        "implementation_requirements_passed": { "type": "boolean" },
+        "exact_claim_requirements_passed": { "type": "boolean" }
+      }
+    },
+    "claimSelector": {
+      "type": "object",
+      "required": [
+        "profile_id",
+        "profile_sha256",
+        "claim_scope",
+        "surface",
+        "provider",
+        "platform_profile"
+      ],
+      "properties": {
+        "profile_id": { "$ref": "#/$defs/safeId" },
+        "profile_sha256": { "$ref": "#/$defs/sha256" },
+        "claim_scope": { "$ref": "#/$defs/safeId" },
+        "surface": { "$ref": "#/$defs/safeId" },
+        "provider": { "$ref": "#/$defs/safeId" },
+        "platform_profile": { "$ref": "#/$defs/safeId" }
+      }
+    },
+    "claimRequirement": {
+      "allOf": [
+        { "$ref": "#/$defs/claimSelector" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "profile_id",
+            "profile_sha256",
+            "claim_scope",
+            "surface",
+            "provider",
+            "platform_profile",
+            "minimum_level",
+            "satisfied",
+            "matching_claim_ids"
+          ],
+          "properties": {
+            "profile_id": { "$ref": "#/$defs/safeId" },
+            "profile_sha256": { "$ref": "#/$defs/sha256" },
+            "claim_scope": { "$ref": "#/$defs/safeId" },
+            "surface": { "$ref": "#/$defs/safeId" },
+            "provider": { "$ref": "#/$defs/safeId" },
+            "platform_profile": { "$ref": "#/$defs/safeId" },
+            "minimum_level": { "$ref": "#/$defs/qualificationLevel" },
+            "satisfied": { "type": "boolean" },
+            "matching_claim_ids": {
+              "type": "array",
+              "uniqueItems": true,
+              "items": { "$ref": "#/$defs/safeId" }
+            }
+          }
+        }
+      ]
+    },
+    "claim": {
+      "allOf": [
+        { "$ref": "#/$defs/claimSelector" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "claim_id",
+            "profile_id",
+            "profile_sha256",
+            "claim_scope",
+            "surface",
+            "provider",
+            "platform_profile",
+            "level",
+            "evidence_manifest_id",
+            "evidence_manifest_sha256",
+            "valid_from",
+            "expires_at",
+            "status"
+          ],
+          "properties": {
+            "claim_id": { "$ref": "#/$defs/safeId" },
+            "profile_id": { "$ref": "#/$defs/safeId" },
+            "profile_sha256": { "$ref": "#/$defs/sha256" },
+            "claim_scope": { "$ref": "#/$defs/safeId" },
+            "surface": { "$ref": "#/$defs/safeId" },
+            "provider": { "$ref": "#/$defs/safeId" },
+            "platform_profile": { "$ref": "#/$defs/safeId" },
+            "level": { "$ref": "#/$defs/qualificationLevel" },
+            "evidence_manifest_id": { "$ref": "#/$defs/safeId" },
+            "evidence_manifest_sha256": { "$ref": "#/$defs/sha256" },
+            "valid_from": { "type": "string", "format": "date-time" },
+            "expires_at": { "type": "string", "format": "date-time" },
+            "status": { "enum": ["valid", "expired", "revoked", "invalidated"] }
+          }
+        }
+      ]
+    },
+    "implementationRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_state", "observed_state", "satisfied"],
+      "properties": {
+        "required_state": { "$ref": "#/$defs/implementationState" },
+        "observed_state": { "$ref": "#/$defs/implementationState" },
+        "satisfied": { "type": "boolean" }
+      }
+    },
+    "capabilityDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_id",
+        "implementation_requirement",
+        "claim_requirements",
+        "observed_claims",
+        "claims_satisfied"
+      ],
+      "properties": {
+        "capability_id": { "$ref": "#/$defs/capabilityId" },
+        "implementation_requirement": { "$ref": "#/$defs/implementationRequirement" },
+        "claim_requirements": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/claimRequirement" }
+        },
+        "observed_claims": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/claim" }
+        },
+        "claims_satisfied": { "type": "boolean" }
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blocker_id", "capability_ids", "requirement", "observed"],
+      "properties": {
+        "blocker_id": { "$ref": "#/$defs/safeId" },
+        "capability_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/capabilityId" }
+        },
+        "requirement": { "type": "string", "minLength": 1 },
+        "observed": { "type": "string", "minLength": 1 }
+      }
+    },
+    "blockers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository_pending", "external_authority"],
+      "properties": {
+        "repository_pending": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blocker" }
+        },
+        "external_authority": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/blocker" }
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capabilities",
+        "implementation_requirements_satisfied",
+        "exact_claim_requirements_satisfied",
+        "observed_claims",
+        "repository_pending_blockers",
+        "external_authority_blockers"
+      ],
+      "properties": {
+        "capabilities": { "type": "integer", "minimum": 1 },
+        "implementation_requirements_satisfied": { "type": "integer", "minimum": 0 },
+        "exact_claim_requirements_satisfied": { "type": "integer", "minimum": 0 },
+        "observed_claims": { "type": "integer", "minimum": 0 },
+        "repository_pending_blockers": { "type": "integer", "minimum": 0 },
+        "external_authority_blockers": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "checkerContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "self_check_can_pass_without_gate_pass",
+        "checker_pass_meaning",
+        "gate_pass_requires_protected_qualification"
+      ],
+      "properties": {
+        "self_check_can_pass_without_gate_pass": { "const": true },
+        "checker_pass_meaning": { "const": "report-schema-source-binding-and-decision-invariants-only" },
+        "gate_pass_requires_protected_qualification": { "const": true }
+      }
+    }
+  }
+}

@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-qualification-runner-inventory.schema.json",
+  "title": "DevSeek qualification runner entry inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity_scope",
+    "qualification_eligible",
+    "composition_root",
+    "entries"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "devseek.qualification-runner-inventory/v1"
+    },
+    "integrity_scope": {
+      "const": "local-protocol-conformance"
+    },
+    "qualification_eligible": {
+      "const": false
+    },
+    "composition_root": {
+      "const": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry_id",
+        "classification",
+        "role",
+        "source_ref",
+        "entrypoint",
+        "qualification_enabled",
+        "composition_root",
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "entry_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$"
+        },
+        "classification": {
+          "enum": [
+            "production",
+            "test-fixture",
+            "historical-disabled"
+          ]
+        },
+        "role": {
+          "enum": [
+            "qualification-runner",
+            "catalog-executor",
+            "product-surface",
+            "provider-transport",
+            "development-harness"
+          ]
+        },
+        "source_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entrypoint": {
+          "type": "string",
+          "minLength": 1
+        },
+        "catalog_case_id": {
+          "type": "string",
+          "pattern": "^G0B-[A-Z][0-9]{2}$"
+        },
+        "qualification_enabled": {
+          "type": "boolean"
+        },
+        "composition_root": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "enum": [
+            "wired-local-nonqualification",
+            "catalog-metadata-conformance-only",
+            "qualification-disabled"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "qualification_enabled": {
+                "const": true
+              }
+            },
+            "required": [
+              "qualification_enabled"
+            ]
+          },
+          "then": {
+            "properties": {
+              "role": {
+                "const": "qualification-runner"
+              },
+              "composition_root": {
+                "const": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner"
+              },
+              "status": {
+                "const": "wired-local-nonqualification"
+              }
+            }
+          },
+          "else": {
+            "allOf": [
+              {
+                "properties": {
+                  "composition_root": {
+                    "type": "null"
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "role": {
+                      "const": "catalog-executor"
+                    }
+                  },
+                  "required": [
+                    "role"
+                  ]
+                },
+                "then": {
+                  "required": [
+                    "catalog_case_id"
+                  ],
+                  "properties": {
+                    "catalog_case_id": {
+                      "type": "string"
+                    },
+                    "classification": {
+                      "const": "test-fixture"
+                    },
+                    "status": {
+                      "const": "catalog-metadata-conformance-only"
+                    }
+                  }
+                },
+                "else": {
+                  "properties": {
+                    "status": {
+                      "const": "qualification-disabled"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

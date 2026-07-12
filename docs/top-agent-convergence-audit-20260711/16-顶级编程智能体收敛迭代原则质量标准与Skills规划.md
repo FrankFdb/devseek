@@ -1,7 +1,7 @@
 # 顶级编程智能体收敛迭代原则、质量标准与 Skills 规划
 
 - 更新日期：2026-07-12
-- 文档性质：模型无关的工程执行规范与候选 Skills backlog
+- 文档性质：模型无关的工程执行规范、GPT-5.5 原子作业协议与候选 Skills backlog
 - 当前状态：规范已定义；Skills 矩阵中的候选均未因本文而自动实现或取得资格
 - 审计包入口：[README.md](README.md)
 - 接管入口：[15-新窗口与跨模型接管手册.md](15-新窗口与跨模型接管手册.md)
@@ -23,6 +23,10 @@
 10. **比较可观察行为，不臆测内部**：对标 Codex/Claude 时记录任务契约、上下文发现、工具执行、变更边界、验证恢复和交付体验；结论必须落到 DevSeek 的 owner、contract、测试和删除项。
 11. **失败事实粘性**：后续成功不能覆盖旧失败；解除 adverse state 必须有新的 committed effect、matching verification、quality gate 和显式 recovery 因果链。
 12. **发布身份是实现的一部分**：Extension/Bridge 行为改变后，compile、package、packaged Bridge verify、hash、local install 和 installed identity 缺一不可。
+13. **模型不是 authority**：从 GPT-5.6 Sol Ultra 切换到 GPT-5.5 只改变执行者，不改变 SSOT、权限、profile、claim、质量门或完成定义；模型自信度永远不是证据。
+14. **WIP=1、窗口=一张卡**：一个窗口只认领一个 atomic ID 和一个 semantic authority。并行只允许只读复审或无写冲突验证，提交权仍归集成 owner。
+15. **小上下文、可恢复 checkpoint**：定向读取任务直接依赖；工具输出保留必要证据。接近压缩时先记录 task id、baseline、dirty、首个失败、已改路径、验证与下一步，再切窗口，禁止重新扫全仓。
+16. **元数据不是执行证据**：catalog、profile、prompt、Skill 或 runner inventory 的存在不证明语义已执行；每个声明语义必须有绑定输入、真实 executor、oracle、receipt 和 terminal evidence。
 
 ## 2. 生命周期质量标准与 Definition of Done
 
@@ -91,24 +95,53 @@ focused unit/property/schema attacks
 ### 3.4 每轮作业卡
 
 ```text
-atomic_capability_or_defect_class:
+task_id:
+model: GPT-5.5
+authority_mode: read-only | implementation | integration-release
 user_outcome:
-baseline_commit_and_dirty_state:
+machine_state_before:
+source_of_truth_files:
+baseline_branch_head:
+dirty_staged_untracked_state:
+containing_commit_phase_vsix_installed_identity:
+
+prerequisites_and_dependency_ids:
 semantic_authority:
-contract_and_schema:
-sibling_entrypoints:
+input_output_contract_and_schema:
+defect_class_or_atomic_capability:
+
+allowed_paths:
+no_touch_paths:
+non_goals:
+external_actions_forbidden_or_explicitly_authorized:
+
 minimal_failing_evidence:
-minimal_change_and_deleted_path:
-focused_gates:
-full_gates:
-adversarial_review:
-commit_identity:
-vsix_bridge_hash_installed_identity:
-live_or_manual_not_run_reason:
-qualification_scope_and_claim:
+sibling_entrypoints:
+state_protocol_persistence_recovery_ui_audit:
+minimal_change:
+replaced_or_deleted_paths:
+
+focused_commands_and_expected_counts:
+affected_package_commands:
+architecture_and_generated_drift_commands:
+independent_review_requirement:
+phase_command:
+release_identity_commands_if_applicable:
+
+evidence_paths_hashes_and_receipts:
+commit_phase_vsix_bridge_installed_identity:
+live_or_manual_result_or_not_run_reason:
+qualification_scope_and_claim_effect:
+not_run_items:
 new_p2_backlog:
-stop_or_next_atomic_id:
+
+stop_if:
+done_iff:
+terminal_state: PASS | BLOCKED | FAIL
+next_atomic_id_or_blocked_reason:
 ```
+
+GPT-5.5 必须在写代码前补齐所有字段。`allowed_paths` 不是搜索提示而是变更上限；`no_touch_paths`、`non_goals` 和 `stop_if` 不能在执行中静默删除。如果发现需要第二个 authority，应登记新卡并以当前卡 `BLOCKED` 或限定 `PASS` 结束。
 
 ## 4. Skills 规划原则
 
@@ -142,6 +175,24 @@ Skill 不能：自行写盘、绕过 permission、自己宣称 task complete、�
 
 可追加但不应先于以上核心 Skills 的候选：Collaboration/Subagent、Long-term Memory 和 UI Progress Projection。它们必须复用同一 TaskContract、Evidence、Permission、Mutation、Validation 与 Settlement，不得产生新的 owner。
 
+### 5.1 GPT-5.5 工程 Workflow Skills 候选
+
+下表是“帮助模型按本仓规则工作”的 workflow Skill，不是 DevSeek 产品能力。即使未来实现，也只能编排既有 checker/authority，不能替产品生成 claim、修改 completion 或绕过权限。
+
+| Workflow Skill | 输入 → 输出 | 允许调用 / 明确禁止 | 机器门 | 当前状态 |
+| --- | --- | --- | --- | --- |
+| Baseline Resolver | repo path + handoff doc → branch/HEAD/containing commit/dirty/Phase/artifact identity receipt | 只读 Git、报告、VSIX metadata；禁止 reset/clean/stash | stale/mismatch/missing identity fail closed | `candidate-design`；G0-01 后评估 |
+| Atomic Card Compiler | 14 中 atomic ID + machine state → 完整 GPT-5.5 作业卡 | 只读 docs/SSOT；禁止扩大 allowlist 或自动选择下一阶段 | required fields、dependency、WIP=1、no-touch checks | `candidate-design` |
+| Runner Reachability Auditor | runner inventory + entrypoints → coverage/bypass report | 定向 source graph/static checks；禁止把 catalog metadata 计 runner | inventory coverage=100%、unknown import fail | `candidate-design`；现有 checker 是组件，不是完整 Skill |
+| Gate0 Decision Inspector | decision report + source hashes → 本地/仓库/外部/claim 四栏解释 | 只读 checker；禁止生成 claim/override PASS | source-bound、const-false external trust、exact counts | `candidate-design`；现有 decision checker 是组件 |
+| Documentation Truth Reconciler | machine SSOT + migration manifest → generated status/link drift | 只改批准 generated views；禁止 Markdown 反向提升 ledger | selector unique、links valid、second generation diff=0 | `candidate-design`；G0-01～03 |
+| Verification Planner | task card + changed paths → focused/full/Phase/manual plan | 只选已注册 commands；外部动作仍需 permission | missing command/weak oracle/GUI classification tests | `candidate-design`；R1-C/R2-08 |
+| Release Identity Verifier | clean commit + VSIX + Bridge + install → exact identity receipt | package/local install 可按 AGENTS；禁止 push/marketplace | commit/version/build/hash/installed exact match | `candidate-design`；脚本 authority 尚未统一 |
+| Same-Window Surface Auditor | exact installed identity + explicit user authorization + prompt marker → 用户窗口证据 | 只操作隔离 probe path并恢复临时设置；禁止把隔离窗口替代、禁止资格提升 | prompt/file/command/settlement/UI/cleanup 全绑定 | `candidate-design`；本轮人工协议见 17 |
+| Handoff Generator | task/evidence/release receipts → 15 格式无聊天接管包 | 只写批准 docs/generated handoff；禁止静态自引用 hash | placeholder/stale baseline/link/drift tests | `candidate-design` |
+
+优先级：先实现 G0-01～03 的 Baseline/Truth 基础，再评估 workflow Skill；不得为了“让 GPT-5.5 更聪明”抢占 Gate 0 repository blockers。任何 workflow Skill 只有在至少两轮人工协议重复且边界稳定后才值得产品化。
+
 ## 6. Skill 实施与晋级门禁
 
 每个 Skill 必须逐级取得以下证据：
@@ -154,16 +205,52 @@ Skill 不能：自行写盘、绕过 permission、自己宣称 task complete、�
 
 任何 Skill 只能请求它声明的权限；副作用发生前必须有 durable operation identity 和 authorization，发生后必须有 terminal receipt。Skill 组合由 Kernel 调度，不能互相直接改 completion 或 qualification 状态。
 
-## 7. 新模型执行与输出契约
+## 7. GPT-5.5 执行与输出契约
 
-新 Codex、Claude 或其他模型接管时：
+### 7.1 三种 authority mode
 
-1. 先执行 [15](15-新窗口与跨模型接管手册.md) 的唯一阅读顺序和 dynamic baseline。
-2. 只选择一个 atomic capability/defect class，先说明 authority、范围、非目标和退出门。
-3. 输出区分 `repository fact`、`test evidence`、`inference`、`proposal`；外部竞品事实需要官方公开来源。
-4. 不因模型更换重写已有设计、重复跑 live、清理 dirty worktree或改变 qualification state。
-5. 工具输出只保留必要证据，遵守 AGENTS 的定向搜索和小输出要求。
-6. 最终交付顺序固定为：结果、改动、测试/复审、commit/artifact identity、未运行/风险、资格边界、下一原子任务或暂停。
+| mode | 可以做 | 不可以做 | 典型终态 |
+| --- | --- | --- | --- |
+| `read-only` | 基线、inventory、diff、机器报告、设计与独立复审 | 写产品/docs、提交、安装、触网 | finding + `PASS/BLOCKED/FAIL` |
+| `implementation` | 作业卡 allowlist 内实现、测试、同步机器 SSOT/批准 docs、local commit | 外部 live/发布、越过依赖、修改 no-touch paths | 一个 atomic commit |
+| `integration-release` | 合并已复审切片、全量/Phase、package/Bridge/hash/install/用户授权的 Surface gate | 新增无关能力、push/marketplace、补跑覆盖失败 | 精确动态 release receipt |
+
+一个窗口只使用一种 mode；需要提升 mode 时先结束当前卡并取得用户/集成 owner 明确授权。
+
+### 7.2 GPT-5.5 微循环
+
+1. **Resolve**：按 15 复算 Git、dirty、Phase、runner/decision、VSIX/installed；机器事实与聊天冲突时机器优先。
+2. **Claim one card**：从 14 只选前置已满足的一项，补齐第 3.4 节作业卡；说明 user outcome、authority、allowlist/no-touch、非目标和停止条件。
+3. **Reproduce first**：建立最小失败/攻击证据，记录首个根因；没有可证伪 oracle 时不实施。
+4. **Change owner only**：修改事实 owner，审计 sibling/state/protocol/persistence/recovery/UI；删除旧 owner或加不可绕过 guard。
+5. **Verify outward**：focused→affected package→replay/headless→architecture/generated drift；任何失败立即回 owner。
+6. **Adversarial review**：独立复审 P0=0/P1=0；reviewer 不能用实现者自述替代 diff/测试。
+7. **Integrate**：Phase、docs/SSOT、staged boundary、一个 commit；需要时从 clean commit release。
+8. **Settle and stop**：只输出 `PASS/BLOCKED/FAIL`，完整动态 receipt 和下一 atomic ID；不自动进入下一卡。
+
+### 7.3 输出事实分栏
+
+GPT-5.5 的 commentary/checkpoint/final 必须区分：
+
+- `repository fact`：文件、Git、Schema、machine report 可直接读取的事实；
+- `test evidence`：本轮实际命令、版本、计数、first failure、修复后结果、未运行项；
+- `inference`：由多项事实推导，必须写出依据和不确定性；
+- `proposal`：尚未实施的新卡/P2/外部请求，不能写成现状。
+
+外部竞品事实需要官方公开来源；不推测 Codex/Claude 闭源内部。最终交付顺序固定：结果 → 改动 → 测试/独立复审 → commit/Phase/artifact/install/用户窗口 identity → 未运行/风险 → qualification boundary → 下一 atomic ID/暂停。
+
+### 7.4 GPT-5.5 停止与 checkpoint
+
+立即停止并结算当前卡：
+
+- P0/P1 未清零、focused/full/Phase 任一失败或 oracle 无法绑定用户意图；
+- 新改动需要第二 authority、dual writer/settlement、fallback 或任务外路径；
+- dirty ownership 不明、用户选择会实质改变结果、外部 authority/账号/条款缺失；
+- candidate 冻结后任一 source/profile/oracle/Provider/Surface/artifact identity 变化；
+- Gate 0 未 PASS 却准备进入 R1；
+- context 接近压缩且尚未留下 checkpoint。
+
+checkpoint 最小字段：`task_id`、mode、branch/HEAD、dirty/staged/untracked、事实/假设、首个失败、已改路径、已跑命令与结果、P0/P1、未运行项、Gate/claim 状态、下一条精确命令。新窗口从 checkpoint 和 Git 继续，禁止重做整仓审计。
 
 禁止项：
 
@@ -174,6 +261,9 @@ Skill 不能：自行写盘、绕过 permission、自己宣称 task complete、�
 - 不在未获授权时登录、触网、消耗 Provider、发布、push 或修改外部基础设施；
 - 不在共享 dirty worktree 上执行破坏性 Git 操作；
 - 不在 Gate 0 PASS 前开始 R1，也不因路线图写完而称产品完成。
+- 不把 catalog metadata、profile 声明或通用 happy-path executor 统计成语义执行覆盖；
+- 不让同仓 mode + fresh self-hash 建立 independent authority；受保护 claim 必须逐项绑定受信 profile、manifest、retention 和 provenance；
+- 不用隔离 Extension Host 代替用户明确要求的同一 DevSeek 窗口 Surface gate；两者必须分级报告。
 
 ## 8. 与现有审计包的分工
 
