@@ -3,6 +3,7 @@
 - 日期：2026-07-11
 - 基线：`591a266`
 - 审计范围：`docs/`、VS Code Extension、Shared、CLI、Bridge、测试脚本和全部 156 条可见 Git 提交
+- 接管定位：2026-07-11 事实/根因审计快照，不是当前状态表或作业队列；GPT-5.5 任务只从 14 领取
 
 ## 1. 执行结论
 
@@ -163,7 +164,7 @@ DevSeek 已有 Intent Router、Workflow Selector、TaskContract、Task Decompose
 
 典型冲突：
 
-- [`requirements/04-Agent优化路线图.md`](../requirements/04-Agent优化路线图.md) 自称主迭代入口，[`architecture/18`](../architecture/18-优秀编程智能体100%25收敛与新窗口接管计划.md) 又自称唯一执行入口，而审计前的 [`docs/README.md`](../README.md) 未收录 ARCH-18；本次已修订索引并把旧文档列为待状态迁移。
+- [`requirements/04-Agent优化路线图.md`](../requirements/04-Agent优化路线图.md) 自称主迭代入口，[`architecture/18`](../architecture/18-优秀编程智能体100%收敛与新窗口接管计划.md) 又自称唯一执行入口，而审计前的 [`docs/README.md`](../README.md) 未收录 ARCH-18；本次已修订索引并把旧文档列为待状态迁移。
 - [`requirements/01-当前需求现状.md`](../requirements/01-当前需求现状.md) 仍说 CLI/JSONL 尚未形成，后续文档又把 Phase 10 写成完成。
 - “接入 source-sanity”被写成“统一写入事实”，而 ARCH-18 又列出相同入口尚未接入完整 baseline/CAS/commit-token。
 - 旧 PRD、历史路线、事故复盘、最终审计和当前计划都留在活跃区。

@@ -1,9 +1,9 @@
 # DevSeek 顶级编程智能体收敛审计与目标架构
 
 - 审计日期：2026-07-11
-- 实施检查点：2026-07-12，G0-A/B/C/D、本地非资格 runner composition root、Gate 0 machine decision contract 与 exact-VSIX/用户窗口仿真协议已形成；最终独立复审 P0=0、P1=0，全部仍为零 qualification claim
+- 实施检查点：2026-07-12，G0-A/B/C/D、本地非资格 runner composition root、Gate 0 machine decision contract 与 exact-VSIX controlled harness 已形成；稳定安装包与制品一致，但用户窗口仍运行旧 debug Bridge，同窗口仿真为 `NOT_RUN`
 - 审计基线：`591a266`
-- 状态：Gate 0 `NOT_PASSED`、claims=0、R1 `NOT_STARTED`；当前机器报告为 5 个 repository blocker、6 个 external-authority blocker，下一窗口使用 GPT-5.5 按 14/15 的原子卡继续
+- 状态：Gate 0 `NOT_PASSED`、claims=0、R1 `NOT_STARTED`；当前机器报告为 5 个 repository blocker、6 个 external-authority blocker。下一窗口使用 GPT-5.5，当前工作包是 `CLOSE-INTEGRATION-GATE0-LOCAL`，首个可领取 leaf 是 `CLOSE-01-ACTIVE-RUNTIME-IDENTITY`
 
 ## 1. 文档包目的
 
@@ -48,12 +48,22 @@ DevSeek 的目标原则基本正确，但物理架构尚未收敛：
 | [11-G0-B签名资格协议实施报告.md](11-G0-B签名资格协议实施报告.md) | G0-B 签名计划/事件/receipt/guard 实施、攻击测试、能力状态与诚实限制 |
 | [12-G0-D统一运行证据账本实施报告.md](12-G0-D统一运行证据账本实施报告.md) | G0-D 双 head/record 链、产品纵切、legacy migration、攻击测试与非资格边界 |
 | [13-G0-C资格证据清单与独立聚合协议实施报告.md](13-G0-C资格证据清单与独立聚合协议实施报告.md) | G0-C Manifest/独立复算/retention 协议、攻击测试、零 claim 与 Gate 0 缺口 |
-| [14-未完成事项与后续整体迭代计划.md](14-未完成事项与后续整体迭代计划.md) | README 与 01～17 真值、GPT-5.5 原子 backlog、依赖 DAG、验收与停止/回滚条件 |
+| [14-未完成事项与后续整体迭代计划.md](14-未完成事项与后续整体迭代计划.md) | README 与 01～18 真值、GPT-5.5 原子 backlog、依赖 DAG、验收与停止/回滚条件 |
 | [15-新窗口与跨模型接管手册.md](15-新窗口与跨模型接管手册.md) | GPT-5.5 无聊天接管、动态 Git/Phase/VSIX/安装/用户窗口身份、首个原子作业卡与停止协议 |
 | [16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md](16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md) | 不可违反原则、全生命周期 DoD、GPT-5.5 WIP=1 作业协议、产品与 workflow Skills 候选 |
 | [17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md](17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md) | 本轮 runner/decision 架构、机器真值、exact-VSIX 与用户同窗口仿真边界、动态接管回执 |
+| [18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md](18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md) | `docs/architecture` 01～18 与 ARCH-05 的保留/废止/atomic ID 承接，以及防止旧路线复活的规则 |
 
-GPT-5.5 新窗口必须按 `AGENTS → README → 15 → 动态 Git/Phase/VSIX/安装/用户窗口基线 → 14 → 17 → 16 → 机器 SSOT → 当前原子卡直接依赖` 的顺序执行。需要理解架构与历史原因时再读 `01～13、ARCH-18`，其中 ARCH-18 仅作历史资料。
+### 3.1 唯一人工执行基线
+
+本目录现在是后续 DevSeek 迭代的唯一人工规划与执行包，但不是已经生效的机器 Active Baseline：`G0-01～03` 仍须实现 selector、legacy inventory 和生成式 banner/status。权威分工固定为：
+
+- 15 复算动态身份并选择当前唯一卡；14 是唯一 backlog；16 约束每卡 DoD；17 保存本轮静态检查点；18 裁决旧文档承接。
+- 01～09 是审计/对标/目标/资格规范，10～13 是历史实施证据；它们都不能直接发出作业卡。
+- `docs/requirements` 与 `docs/architecture` 仅在 atomic card 明确引用时定向读取；其中所有“当前、下一轮、已完成、stable”必须先经过 18 和机器事实复核。
+- 真正的机器事实来自 `docs/process` Schema、ledger、inventory、decision report 与 checker；06 只是治理设计规范。
+
+GPT-5.5 新窗口固定按 `AGENTS → README → 15 → 14 → 16 → 18 → docs/process 机器事实 → 当前 atomic card 直接依赖` 执行。不得从旧聊天、ARCH-05 或 ARCH-18 的历史相对时序开始工作。
 
 ## 4. 决策边界
 
@@ -67,8 +77,8 @@ GPT-5.5 新窗口必须按 `AGENTS → README → 15 → 动态 Git/Phase/VSIX/�
 
 ### 4.2 当前只允许开始
 
-- 按 [15](15-新窗口与跨模型接管手册.md) 动态核对本轮 containing commit、matching Phase、VSIX/Bridge 和 installed identity；任一不成立时只恢复 `CLOSE-INTEGRATION`。
-- 仅当上述集成身份和用户当前 DevSeek 窗口仿真回执全部成立时，GPT-5.5 才执行 `G0-01-ACTIVE-BASELINE-SELECTOR`；本地 runner slice 已实现但仍是 nonqualification，4 个 production entrypoints 保持 disabled。
+- 按 [15](15-新窗口与跨模型接管手册.md) 分别复算 handoff、implementation/Phase、artifact/stable install、active runtime 与用户窗口 receipt；短 SHA 必须先唯一解析。当前工作包是 `CLOSE-INTEGRATION-GATE0-LOCAL`，只领取其首个 leaf `CLOSE-01-ACTIVE-RUNTIME-IDENTITY`；需要用户窗口动作却未获新授权时以 `BLOCKED` 停止。
+- 仅当上述集成关闭卡 `PASS` 后，GPT-5.5 才执行 `G0-01-ACTIVE-BASELINE-SELECTOR`；本地 runner slice 已实现但仍是 nonqualification，4 个 production entrypoints 保持 disabled。
 - 申请并接入独立 protected policy、非测试职责分离身份、外部 WORM/anchor/trusted time 和必要账号/条款授权；外部 authority 缺失时保持 blocked，不以本地 fixture 替代。
 - 冻结候选后只按签名 plan 执行 Gate 0 所需 deterministic/replay/Surface/获授权 live，并由受保护 Manifest 和机器 Gate 裁决七个精确 claim tuple。
 
@@ -76,7 +86,7 @@ GPT-5.5 新窗口必须按 `AGENTS → README → 15 → 动态 Git/Phase/VSIX/�
 
 ### 4.3 最终晋级条件
 
-唯一可执行口径在 [05 第 10 节](05-黄金用户旅程与正式项目资格方案.md#10-唯一正式晋级协议)，机器可读 SSOT 在 [06](06-能力追踪与文档治理方案.md)。简述：C0 Gate 0 先达 wired/L2，适用 C1～C13 产品能力 P0/P1 再按精确 `profile/scope/Surface/Provider/platform` claim tuple 达 L4；C14 只消费这些结果，不参与自己的前置集合。冻结候选后才跑预注册且 append-only 的 live 配额；`3/2/1` 只是 RC smoke，不是“顶级”资格或统计稳定性证明。
+唯一正式资格晋级协议在 [05 第 10 节](05-黄金用户旅程与正式项目资格方案.md#10-唯一正式晋级协议)，06 只定义治理方案，机器事实位于 `docs/process` 的 ledger/profile/inventory/decision report 与 checker。简述：C0 Gate 0 先达 wired/L2，适用 C1～C13 产品能力 P0/P1 再按精确 `profile/scope/Surface/Provider/platform` claim tuple 达 L4；C14 只消费这些结果，不参与自己的前置集合。冻结候选后才跑预注册且 append-only 的 live 配额；`3/2/1` 只是 RC smoke，不是“顶级”资格或统计稳定性证明。
 
 ## 5. 对标来源与限制
 

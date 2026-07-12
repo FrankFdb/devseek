@@ -1,9 +1,10 @@
 # Gate 0 本地纵切、机器裁决、用户窗口仿真与 GPT-5.5 接管报告
 
 - 更新日期：2026-07-12
-- 适用范围：本轮 Gate 0 仓库内纵切、默认门禁、VSIX 发布验证与用户窗口仿真
+- 适用范围：本轮 Gate 0 仓库内纵切、默认门禁、VSIX 发布验证与用户窗口仿真边界
 - 结论：仓库内新增的 runner 与机器裁决契约已达到本地一致性要求；**Gate 0 仍为 `NOT_PASSED`，七项精确 claim 仍为空，R1 仍为 `NOT_STARTED`**
-- 动态身份：最终 commit、Phase 报告、VSIX SHA-256、安装身份和同窗口仿真结果必须按本文第 8 节从当前制品复算，本文不保存会自引用失效的静态 hash
+- 集成检查点：implementation/matching Phase、exact VSIX/packaged Bridge 与 stable install 已在各自范围 PASS；当前用户窗口 active Bridge 仍为旧 debug `368cacf`，same-window simulation=`NOT_RUN`
+- 身份规则：handoff 文档、implementation/Phase、artifact、stable install、active runtime 必须按第 8 节分别复算；不得强制它们使用同一原始 SHA 字符串
 
 ## 1. 本轮到底完成了什么
 
@@ -14,7 +15,7 @@
 3. 建立 Gate 0 机器裁决报告；它逐项读取七个 C0 节点，分别输出本地一致性、仓库接线缺口、外部 authority 缺口和精确 claim 缺口。
 4. 把 runner 与 decision checker 加入默认 Phase 0～12；checker 通过只说明契约自洽，不授予资格。
 5. 建立 exact-VSIX controlled Surface harness，并修正 human-input/extension-host sibling 的过时双语 oracle。
-6. 按用户要求，最终发布后必须直接在用户正在使用的 DevSeek 窗口完成一次简单编程仿真；隔离 Extension Host 只能作为辅助诊断。
+6. 已定义“直接在用户正在使用的 DevSeek 窗口完成简单编程仿真”的交付门；本轮因用户随后切换为 docs-only/stop 而未执行，隔离 Extension Host 只能辅助诊断。
 
 没有完成、也没有伪装完成的事项：受保护 policy、独立 evidence authority attestation、非测试职责分离、外部 WORM/retention、可信不可回拨时间、冻结候选的精确 claims、live holdout 和任何 L 级资格。
 
@@ -82,10 +83,10 @@ flowchart LR
 | --- | --- | --- | --- |
 | deterministic/unit/replay | 协议、攻击、拒绝和 UI projection | 代码与 oracle 在 fixture 范围一致 | VSIX、真实窗口、live Provider |
 | T3 exact-VSIX controlled | 精确 VSIX 临时安装、真实 extension runtime、受控 fake Bridge | package/install/runtime 身份、真实扩展路径、mutation/settlement/Run Evidence | 自然输入、真实审批、live Provider、资格 |
-| 用户当前 DevSeek 窗口仿真 | 最终 VSIX 安装后，在用户同一窗口输入简单编程任务 | 用户可见入口、同窗口输入、写文件、命令验证、最终反馈没有功能回退 | protected authority、holdout、L4/L5/L6 或 Gate 0 PASS |
+| 用户当前 DevSeek 窗口仿真 | **当前 `NOT_RUN`**；只在 stable artifact 已成为 active runtime 且获 fresh 授权后执行 | 若未来 PASS，可证明该 prompt scope 的入口、写文件、命令验证和最终反馈 | protected authority、holdout、L4/L5/L6 或 Gate 0 PASS |
 | T5/live/holdout | 仅在新计划、账号条款、profile 和用户授权齐备后 | 对应冻结 scope 的受保护证据 | 其他 Provider/Surface/platform 的外推 |
 
-用户同窗口仿真必须满足：
+未来用户同窗口仿真必须满足：
 
 1. 使用最终安装的 DevSeek 扩展，而不是另起 Extension Host 测试窗口；
 2. 从 DevSeek 对话输入框提交一条有唯一 marker 的简单编程任务；
@@ -94,7 +95,7 @@ flowchart LR
 5. 保存动态结果后只清理该测试目录，并恢复为测试临时改变的设置；
 6. 结果标为 `same-user-window-development-simulation`、`qualification_eligible=false`。
 
-旧 `test:extension-host --run` 在 VS Code 1.112 上发生于 oracle 之前的 Webview `harnessReport` 超时；首个 fixture 保留在运行主机的 `/tmp`。它不得被重跑成功覆盖，也不得推导产品失败。exact-VSIX 和用户同窗口是本轮 Surface 交付门；旧 harness 兼容性登记为 P2，后续触碰该 harness 时修复。
+旧 `test:extension-host --run` 在 VS Code 1.112 上发生于 oracle 之前的 Webview `harnessReport` 超时；首个 fixture 保留在运行主机的 `/tmp`。它不得被重跑成功覆盖，也不得推导产品失败。exact-VSIX controlled gate 已有证据；用户同窗口 gate 当前 `NOT_RUN`。旧 harness 兼容性登记为 P2，后续触碰该 harness 时修复。
 
 ## 6. 本轮独立反证收口
 
@@ -112,7 +113,8 @@ flowchart LR
 当前顺序是：
 
 ```text
-close current integration and release identities
+CLOSE-01 active runtime identity
+  → CLOSE-02 same-window Surface receipt
   → G0-01 ACTIVE-BASELINE-SELECTOR
   → G0 governance/profile/executor/candidate/C0 wiring atomic cards
   → import independently authorized trust/evidence controls
@@ -123,24 +125,27 @@ close current integration and release identities
 
 ## 8. 动态完成回执
 
-由于 commit 不能在自身内容中包含自身 hash、VSIX 又必须从 commit 构建，同窗口仿真发生在最终安装之后，接管者必须现场解析：
+由于 docs-only handoff commit、实现 source、Phase、VSIX 与运行窗口具有不同生命周期，接管者必须现场分层解析。当前静态锚点只用于发现漂移：implementation=`6d26aa6abe80d8bfd921a1ee176ece279487e9c3`，matching Phase run=`2026-07-12T12-11-26-901Z`，VSIX SHA-256=`bc4359d444ab791c42aa4509e1bda03c37a3d546907eb6402cd2c37a59679cff`，active Bridge 仍是 debug `368cacf`，same-window=`NOT_RUN`。
 
 ```text
-containing_commit: git log -1 --format=%H -- docs/top-agent-convergence-audit-20260711/17-*.md
+handoff_doc_commit: git log -1 --format=%H -- docs/top-agent-convergence-audit-20260711/15-*.md; must be HEAD ancestor
 tracked_tree: git status --short + explained local artifacts
-phase0_12_report: must identify containing_commit and include qualification-runner-wiring + gate0-machine-decision-contract
+implementation_commit: full commit that owns runner/decision source
+phase0_12_report: resolved source commit must equal implementation_commit and include qualification-runner-wiring + gate0-machine-decision-contract
 runner_checker: ok=true; inventory=19; local_runner=1; catalog=10; production_disabled=4; historical_disabled=4; forbidden_imports=0
 gate0_decision: local_conformance=PASSED; gate0=NOT_PASSED; claims=0; repository_blockers=5; external_blockers=6
-vsix: exact path + sha256 + packaged version/build/gitCommit
-packaged_bridge: PASS and same gitCommit
-installed_extension: same id/version/build/gitCommit as exact VSIX
-same_user_window_simulation: PASS|FAIL|NOT_RUN with prompt marker, changed path, validation output and cleanup receipt
+artifact: exact path + sha256 + packaged version/build/resolved source commit + applicability; docs-only handoff need not rebuild
+packaged_bridge: PASS and source identity matches applicable implementation
+stable_installed_extension: same id/version/build/resolved source commit as exact artifact
+active_extension_bridge: actual user-window extension/Bridge path/build/source, observed separately from stable install
+same_user_window_simulation: current NOT_RUN/AUTHORIZATION_NOT_CARRIED_FORWARD; future PASS|FAIL needs fresh authorization, prompt marker, changed path, validation output and cleanup receipt
 same_user_window_qualification_effect: NONE
 qualification_claims: []
 gate_0: NOT_PASSED
 r1: NOT_STARTED
 next_model: GPT-5.5
-next_atomic_task: G0-01-ACTIVE-BASELINE-SELECTOR if every integration identity matches; otherwise CLOSE-INTEGRATION
+current_work_package: CLOSE-INTEGRATION-GATE0-LOCAL
+next_claimable_leaf: CLOSE-01-ACTIVE-RUNTIME-IDENTITY
 ```
 
-真实 live、canary/medium/formal 和 holdout 不得从历史聊天或本地仿真继承授权；新窗口如需执行，必须重新核对 profile、冻结候选、账号条款、外部 authority 和用户明确授权。
+用户窗口 reload/Bridge retirement、同窗口 probe、真实 live、canary/medium/formal 和 holdout 都不得从历史聊天或本地仿真继承授权；新窗口如需执行，必须重新核对当前 atomic ID、scope/action、profile、冻结候选、账号条款、外部 authority 和用户明确授权。`CLOSE-01` PASS 后停止；不得在同一窗口自动进入 `CLOSE-02` 或 G0-01。
