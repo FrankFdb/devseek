@@ -53,12 +53,13 @@ DevSeek 的目标原则基本正确，但物理架构尚未收敛：
 | [16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md](16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md) | 不可违反原则、全生命周期 DoD、GPT-5.5 WIP=1 作业协议、产品与 workflow Skills 候选 |
 | [17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md](17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md) | 本轮 runner/decision 架构、机器真值、exact-VSIX 与用户同窗口仿真边界、动态接管回执 |
 | [18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md](18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md) | `docs/architecture` 01～18 与 ARCH-05 的保留/废止/atomic ID 承接，以及防止旧路线复活的规则 |
+| [19-GPT5.5新窗口启动与授权指令.md](19-GPT5.5新窗口启动与授权指令.md) | 用户可直接复制给 GPT-5.5 的只读启动提示、动态回执字段与条件性 `CLOSE-01` 授权文本；不发卡、不继承授权 |
 
 ### 3.1 唯一人工执行基线
 
 本目录现在是后续 DevSeek 迭代的唯一人工规划与执行包，但不是已经生效的机器 Active Baseline：`G0-01～03` 仍须实现 selector、legacy inventory 和生成式 banner/status。权威分工固定为：
 
-- 15 复算动态身份并选择当前唯一卡；14 是唯一 backlog；16 约束每卡 DoD；17 保存本轮静态检查点；18 裁决旧文档承接。
+- 15 复算动态身份并选择当前唯一卡；14 是唯一 backlog；16 约束每卡 DoD；17 保存本轮静态检查点；18 裁决旧文档承接；19 仅提供可复制启动文本。
 - 01～09 是审计/对标/目标/资格规范，10～13 是历史实施证据；它们都不能直接发出作业卡。
 - `docs/requirements` 与 `docs/architecture` 仅在 atomic card 明确引用时定向读取；其中所有“当前、下一轮、已完成、stable”必须先经过 18 和机器事实复核。
 - 真正的机器事实来自 `docs/process` Schema、ledger、inventory、decision report 与 checker；06 只是治理设计规范。

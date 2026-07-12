@@ -17,6 +17,7 @@
 | [top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md](top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md) | 唯一 backlog | Gate 0～R4/EXT 原子 leaf、依赖和验证条件 |
 | [top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md](top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md) | 执行规范 | 单 owner、WIP=1、生命周期 DoD、Skills 与 GPT-5.5 作业模板 |
 | [top-agent-convergence-audit-20260711/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md](top-agent-convergence-audit-20260711/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md) | 旧文档承接 | ARCH-01～18/ARCH-05 的保留、废止和 atomic ID 映射 |
+| [top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md](top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md) | 复制启动信息 | 直接复制给新窗口的只读接管提示、回执字段和条件性 `CLOSE-01` 授权文本 |
 | [process/devseek-capability-ledger.json](process/devseek-capability-ledger.json) | 机器 SSOT | 76 项 capability、138 条 typed architecture edge、实现状态与精确资格 claim 容器 |
 | [process/generated/r1-minimal-capability-manifest.md](process/generated/r1-minimal-capability-manifest.md) | 生成目标视图 | R1 的 45 项目标依赖闭包；只表示未来工作要求，不表示当前资格 |
 | [top-agent-convergence-audit-20260711/08-决策结论与最短收敛实施方案.md](top-agent-convergence-audit-20260711/08-决策结论与最短收敛实施方案.md) | 历史战略路线 | 审计阶段形成的里程碑与顺序依据；不发放当前任务，实际 leaf 只由 14 发放 |
