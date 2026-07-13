@@ -95,6 +95,51 @@ test('VerificationPlanner: mixed file facts and unplanned code targets stay bloc
   assert.equal(plan.reason, 'no-auto-validation-target');
 });
 
+test('VerificationPlanner: JavaScript probe writes get syntax validation without treating negative run constraints as runtime requests', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['.devseek-close02-probe/CLOSE02-20260713-manual-probe/probe.js'],
+    requestPrompt: [
+      '创建 .devseek-close02-probe/CLOSE02-20260713-manual-probe/probe.js 文件。',
+      '最后一行打印：CLOSE02-20260713-manual-probe: 2+3=5。',
+      '不运行网络，不安装依赖，不修改 git。',
+    ].join(' '),
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'file-check');
+  assert.equal(plan.reason, 'javascript-syntax-check');
+  assert.match(plan.command, /node --check '\/repo\/\.devseek-close02-probe\/CLOSE02-20260713-manual-probe\/probe\.js'/);
+  assert.doesNotMatch(plan.command, /&& node '\/repo\/\.devseek-close02-probe\/CLOSE02-20260713-manual-probe\/probe\.js'/);
+});
+
+test('VerificationPlanner: explicit isolated JavaScript probe run checks syntax before executing', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['.devseek-close02-probe/CLOSE02-20260713-manual-probe/probe.js'],
+    requestPrompt: '创建隔离 probe.js 后运行本地 probe 看输出。',
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'compile-run');
+  assert.equal(plan.reason, 'javascript-syntax-and-run-validation');
+  assert.match(plan.command, /node --check '\/repo\/\.devseek-close02-probe\/CLOSE02-20260713-manual-probe\/probe\.js' && node '\/repo\/\.devseek-close02-probe\/CLOSE02-20260713-manual-probe\/probe\.js'/);
+});
+
+test('VerificationPlanner: ordinary JavaScript artifacts stay syntax-only even when prompt mentions running unrelated network constraints', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['src/app.js'],
+    requestPrompt: '创建 src/app.js，不运行网络，不安装依赖。',
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'file-check');
+  assert.equal(plan.reason, 'javascript-syntax-check');
+  assert.match(plan.command, /node --check '\/repo\/src\/app\.js'/);
+  assert.doesNotMatch(plan.command, /&& node '\/repo\/src\/app\.js'/);
+});
+
 test('VerificationPlanner: CMakeLists-only C++ project changes still plan CMake validation', () => {
   const files = new Set([
     path.join('/repo', 'code', 'shape_manager'),

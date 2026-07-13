@@ -47,10 +47,12 @@ const {
   isFileContentTerminalEvidenceCommand,
   isReadOnlyTerminalEvidenceCommand,
   requiresCodeArtifactForEvidence,
+  requiresCommandEvidence,
   requiresFileCheckEvidence,
   requiresFileContentReadEvidence,
   requiresFileChangeEvidence,
   requiresReadEvidence,
+  requiresRuntimeValidation,
 } = req(bundlePath);
 
 const prompt = '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题';
@@ -617,6 +619,41 @@ test('completion evidence: code edit requires successful validation evidence', (
         [],
         [{ path: file, basename: 'workflow-service.ts', linesAdded: 1, linesRemoved: 1, action: 'modify' }],
         [{ command: 'npm run compile', kind: 'compile', ok: true, exitCode: 0 }],
+      ),
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('completion evidence: negative run constraints do not become runtime-validation requirements', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-negative-run-'));
+  try {
+    const file = path.join(root, '.devseek-close02-probe', 'CLOSE02-20260713-manual-probe', 'probe.js');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, 'function close02Add(a, b) { return a + b; }\nconsole.log("CLOSE02-20260713-manual-probe: 2+3=5");\n');
+    const probePrompt = [
+      '创建 .devseek-close02-probe/CLOSE02-20260713-manual-probe/probe.js 文件。',
+      '最后一行打印：CLOSE02-20260713-manual-probe: 2+3=5。',
+      '不运行网络，不安装依赖，不修改 git。',
+    ].join(' ');
+    const written = [{ path: file, basename: 'probe.js', linesAdded: 2, linesRemoved: 0, action: 'create' }];
+
+    assert.equal(requiresCommandEvidence(probePrompt), false);
+    assert.equal(requiresRuntimeValidation(probePrompt), false);
+    assert.deepEqual(
+      getMissingCompletionEvidence(probePrompt, [], written, [], [], root),
+      ['成功的编译/测试/语法验证命令结果'],
+    );
+    assert.deepEqual(
+      getMissingCompletionEvidence(
+        probePrompt,
+        [],
+        written,
+        [{ command: `node --check ${file}`, kind: 'other', ok: true, exitCode: 0 }],
+        [],
+        root,
       ),
       [],
     );

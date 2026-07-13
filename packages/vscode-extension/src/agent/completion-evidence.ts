@@ -352,20 +352,27 @@ export function isFileContentTerminalEvidenceCommand(command: string): boolean {
   return FILE_CONTENT_TERMINAL_EVIDENCE_RE.test(command || '');
 }
 
+function commandEvidenceIntentText(text: string): string {
+  return String(text || '')
+    .replace(/(?:不(?:要|用|需|需要|必|得|准|能)?|禁止|别|勿|请勿|未)\s*[^，,。；;\n]*(?:编译|运行|执行|启动|测试|验证|调试|安装|联网|网络)[^，,。；;\n]*/gi, ' ')
+    .replace(/(?:do\s+not|don't|never|no\s+need\s+to|without)\s+[^,.;\n]*(?:compile|build|run|execute|start|test|verify|debug|install|network)[^,.;\n]*/gi, ' ');
+}
+
 export function requiresCommandEvidence(text: string): boolean {
-  return /(?:编译|运行|执行|测试|验证|调试|compile|build|test|run|execute|verify)/i.test(text);
+  return /(?:编译|运行|执行|测试|验证|调试|compile|build|test|run|execute|verify)/i.test(commandEvidenceIntentText(text));
 }
 
 function requiresRunEvidence(text: string): boolean {
-  return /(?:运行|执行|run|execute)/i.test(text);
+  return /(?:运行|执行|run|execute)/i.test(commandEvidenceIntentText(text));
 }
 
 function requiresTestEvidence(text: string): boolean {
-  return /(?:测试|run\s+tests?|execute\s+tests?|npm\s+test|pnpm\s+test|yarn\s+test|bun\s+test|unit\s+tests?|pytest|go\s+test|cargo\s+test)/i.test(text);
+  return /(?:测试|run\s+tests?|execute\s+tests?|npm\s+test|pnpm\s+test|yarn\s+test|bun\s+test|unit\s+tests?|pytest|go\s+test|cargo\s+test)/i.test(commandEvidenceIntentText(text));
 }
 
 export function requiresRuntimeValidation(text: string): boolean {
-  return requiresRunEvidence(text) || requiresTestEvidence(text) || /(?:启动|看结果|输出效果|运行效果)/i.test(text);
+  const intentText = commandEvidenceIntentText(text);
+  return requiresRunEvidence(intentText) || requiresTestEvidence(intentText) || /(?:启动|看结果|输出效果|运行效果)/i.test(intentText);
 }
 
 export function requiresFileCheckEvidence(text: string): boolean {

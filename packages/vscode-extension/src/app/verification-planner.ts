@@ -236,6 +236,24 @@ export class VerificationPlanner {
       });
     }
 
+    const javaScriptFiles = changedPaths.filter(isJavaScriptValidationPath);
+    if (javaScriptFiles.length > 0 && javaScriptFiles.length === changedPaths.length) {
+      const runJavaScript = shouldRunStandaloneJavaScriptValidation(javaScriptFiles, input.requestPrompt || '');
+      return commandPlan({
+        command: buildJavaScriptValidationCommand(javaScriptFiles, rootFsPath, runJavaScript),
+        cwd: rootFsPath,
+        timeoutMs: runJavaScript ? CPP_RUN_VALIDATION_TIMEOUT_MS : FILE_CHECK_VALIDATION_TIMEOUT_MS,
+        mode: runJavaScript ? 'compile-run' : 'file-check',
+        reason: runJavaScript ? 'javascript-syntax-and-run-validation' : 'javascript-syntax-check',
+        risks: runJavaScript
+          ? ['仅对隔离 JavaScript probe 执行本地 Node 运行验证；不代表项目级集成测试已覆盖。']
+          : ['node --check 只验证 JavaScript 语法，不执行运行时逻辑。'],
+        alternativeChecks: runJavaScript
+          ? []
+          : ['如果需要证明运行时输出，请在隔离 probe/验证脚本中明确请求运行，或补充项目级测试命令。'],
+      });
+    }
+
     const requestPrompt = input.requestPrompt || '';
     const fileCheckPaths = changedPaths.filter((path) => isFileFactValidationPath(path, requestPrompt));
     if (fileCheckPaths.length > 0 && fileCheckPaths.length === changedPaths.length && shouldValidateNonCodeFiles(requestPrompt)) {
@@ -255,7 +273,7 @@ export class VerificationPlanner {
 }
 
 export function shouldRunCppValidation(prompt: string): boolean {
-  return /(?:运行|执行|启动|测试|test|run|execute|看结果|输出效果|运行效果)/i.test(prompt || '');
+  return /(?:运行|执行|启动|测试|test|run|execute|看结果|输出效果|运行效果)/i.test(commandEvidenceIntentText(prompt));
 }
 
 export function shouldValidateNonCodeFiles(prompt: string): boolean {
@@ -354,10 +372,45 @@ function isShellScriptValidationPath(relPath: string): boolean {
   return /\.(?:sh|bash)$/i.test(relPath.replace(/\\/g, '/'));
 }
 
+function isJavaScriptValidationPath(relPath: string): boolean {
+  return /\.(?:js|mjs|cjs)$/i.test(relPath.replace(/\\/g, '/'));
+}
+
 function isCppRelatedValidationPath(relPath: string): boolean {
   const normalized = relPath.replace(/\\/g, '/');
   return /\.(cpp|cc|cxx|c|h|hpp)$/i.test(normalized)
     || nodePath.posix.basename(normalized) === 'CMakeLists.txt';
+}
+
+function shouldRunStandaloneJavaScriptValidation(changedPaths: string[], prompt: string): boolean {
+  const intentText = commandEvidenceIntentText(prompt);
+  if (!/(?:运行|执行|启动|run|execute|看结果|输出效果|运行效果)/i.test(intentText)) return false;
+  return changedPaths.length > 0 && changedPaths.every(isIsolatedJavaScriptRuntimePath);
+}
+
+function isIsolatedJavaScriptRuntimePath(relPath: string): boolean {
+  const normalized = relPath.replace(/\\/g, '/');
+  return normalized.startsWith('.devseek-')
+    || /(?:^|\/)(?:probe|verify|validation|validate|test|check)[A-Za-z0-9_.-]*\.(?:js|mjs|cjs)$/i.test(normalized);
+}
+
+function buildJavaScriptValidationCommand(changedPaths: string[], rootFsPath: string, runJavaScript: boolean): string {
+  return [...new Set(changedPaths.filter(isJavaScriptValidationPath))]
+    .slice(0, 8)
+    .map((relPath) => {
+      const scriptPath = nodePath.isAbsolute(relPath) ? relPath : nodePath.join(rootFsPath, relPath);
+      const quoted = shellQuote(scriptPath);
+      return runJavaScript
+        ? `test -s ${quoted} && node --check ${quoted} && node ${quoted}`
+        : `test -s ${quoted} && node --check ${quoted}`;
+    })
+    .join(' && ');
+}
+
+function commandEvidenceIntentText(text: string): string {
+  return String(text || '')
+    .replace(/(?:不(?:要|用|需|需要|必|得|准|能)?|禁止|别|勿|请勿|未)\s*[^，,。；;\n]*(?:编译|运行|执行|启动|测试|验证|调试|安装|联网|网络)[^，,。；;\n]*/gi, ' ')
+    .replace(/(?:do\s+not|don't|never|no\s+need\s+to|without)\s+[^,.;\n]*(?:compile|build|run|execute|start|test|verify|debug|install|network)[^,.;\n]*/gi, ' ');
 }
 
 function shouldRunIsolatedCppArtifactStaticAudit(changedPaths: string[], prompt: string): boolean {
