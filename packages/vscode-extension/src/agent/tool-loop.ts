@@ -510,6 +510,8 @@ export async function executeFakeToolsForLoop(
           requestPrompt: taskPrompt,
         });
         if (!allowed) {
+          const reason = `写入权限策略阻止：${absPath}`;
+          recordToolFailure(toolName, 'write', rawPath, reason);
           parts.push(`[${toolName}: ${rawPath}] 跳过（写入权限策略阻止）`);
           return false;
         }
@@ -933,6 +935,8 @@ export async function executeFakeToolsForLoop(
             requestPrompt: taskContext?.userPrompt ?? '',
           });
           if (!allowed) {
+            const reason = `写入权限策略阻止：${absPath}`;
+            recordToolFailure('delete_file', 'write', rawPath, reason);
             parts.push(`[delete_file: ${rawPath}] 跳过（写入权限策略阻止）`);
             continue;
           }
@@ -1058,6 +1062,8 @@ export async function executeFakeToolsForLoop(
         try {
           const absPath = resolveAgentToolEvidencePath(dirPath, workspaceRoot, defaultWorkdir);
           if (!callbacks.onBeforeFileWrite) {
+            const reason = '缺少写入授权边界。';
+            recordToolFailure('create_directory', 'write', dirPath, reason);
             parts.push(`[create_directory: ${dirPath}] 跳过（缺少写入授权边界）`);
             continue;
           }
@@ -1069,6 +1075,8 @@ export async function executeFakeToolsForLoop(
             requestPrompt: taskContext?.userPrompt ?? '',
           });
           if (!allowed) {
+            const reason = `写入权限策略阻止：${absPath}`;
+            recordToolFailure('create_directory', 'write', dirPath, reason);
             parts.push(`[create_directory: ${dirPath}] 跳过（写入权限策略阻止）`);
             continue;
           }

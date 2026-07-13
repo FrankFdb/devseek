@@ -401,6 +401,10 @@ test('AgentFileWritePolicy: explicit isolated probe file path survives no-other-
     detectIsolatedArtifactWriteScope(requestPrompt, '/workspace'),
     { required: true, allowedRoots: [target] },
   );
+  assert.deepEqual(
+    detectIsolatedArtifactWriteScope(requestPrompt.replace(/\n/g, ' '), '/workspace'),
+    { required: true, allowedRoots: [target] },
+  );
 
   const allowed = decideAgentFileWrite({
     absPath: target,
@@ -408,6 +412,17 @@ test('AgentFileWritePolicy: explicit isolated probe file path survives no-other-
     context: { purpose: 'tool-write', taskAction: 'create', requestPrompt },
   });
   assert.equal(allowed.action, 'allow', allowed.reason);
+
+  const flattenedAllowed = decideAgentFileWrite({
+    absPath: target,
+    workspaceRoot: '/workspace',
+    context: {
+      purpose: 'tool-write',
+      taskAction: 'create',
+      requestPrompt: requestPrompt.replace(/\n/g, ' '),
+    },
+  });
+  assert.equal(flattenedAllowed.action, 'allow', flattenedAllowed.reason);
 
   const sibling = decideAgentFileWrite({
     absPath: `/workspace/.devseek-close02-probe/${marker}/probe_mermaid.js`,

@@ -7,7 +7,7 @@ export interface IsolatedArtifactWriteScope {
 }
 
 const ISOLATED_ARTIFACT_SCOPE_RE = /(?:本次测试|测试产物|所有(?:(?:新增|生成|产出)(?:的)?)?(?:产物|输出|交付物|文档|文件|代码|脚本)|所有(?:新增|生成|产出)(?:的)?|新增设计文档|新增代码|验证脚本|新增产物).{0,72}(?:必须|统一|只能).{0,18}(?:放在|放入|写入|保存到|输出到|隔离(?:目录|路径))|(?:只|仅)[^，,。；;\n]{0,32}隔离(?:目录|路径)[^，,。；;\n]{0,40}(?:创建|新建|生成|编写|写入|保存|输出)|\b(?:(?:all\s+)?(?:(?:new|generated|produced|created)\s+)?|test\s+)(?:artifacts?|outputs?|deliverables?|documents?|files?|code|scripts?)[^\n,.;]{0,72}\b(?:must|shall)\s+be\s+(?:placed|written|saved|created|output)\s+(?:in|to)\b/i;
-const OUTPUT_ROOT_RE = /(?:必须(?:统一)?放在|只能放在|放入|放到|放置到|写入到|保存到|输出到|输出目录(?:要求)?|隔离(?:目录|路径)[^：:\n]{0,80}|目标(?:目录|路径|文件)[^：:\n]{0,80}|必须创建[^：:\n]{0,60}(?:文档|文件)?|\bmust\s+be\s+(?:placed|written|saved|created|output)\s+(?:in|to)|\b(?:output|artifact)\s+(?:root|director(?:y|ies))\s*(?:is|are)?)\s*[:：]?\s*(?:"([^"\n]+)"|'([^'\n]+)'|`([^`\n]+)`|“([^”\n]+)”|((?:~\/|\.{0,2}\/|\/)[^\s"'`<>，。；;]+|[A-Za-z0-9_.@+~-]+(?:[\\/][A-Za-z0-9_.@+~-]+)+))(?=$|[\n，。；;,.])/gi;
+const OUTPUT_ROOT_RE = /(?:必须(?:统一)?放在|只能放在|放入|放到|放置到|写入到|保存到|输出到|输出目录(?:要求)?|隔离(?:目录|路径)[^：:\n]{0,80}|目标(?:目录|路径|文件)[^：:\n]{0,80}|必须创建[^：:\n]{0,60}(?:文档|文件)?|\bmust\s+be\s+(?:placed|written|saved|created|output)\s+(?:in|to)|\b(?:output|artifact)\s+(?:root|director(?:y|ies))\s*(?:is|are)?)\s*[:：]?\s*(?:"([^"\n]+)"|'([^'\n]+)'|`([^`\n]+)`|“([^”\n]+)”|((?:~\/|\.{0,2}\/|\/)[^\s"'`<>，。；;]+|[A-Za-z0-9_.@+~-]+(?:[\\/][A-Za-z0-9_.@+~-]+)+))(?=$|[\n，。；;,.]|\s+(?:文件内容要求|内容要求|文件要求|文件内容|content\s+requirements?|file\s+contents?|requirements?)(?:\s|[:：]|$))/gi;
 
 export function detectIsolatedArtifactWriteScope(
   requestPrompt: string | undefined,

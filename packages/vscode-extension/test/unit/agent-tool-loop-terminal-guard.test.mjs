@@ -524,7 +524,42 @@ test('ToolLoop create_directory consults the file-write policy before invoking t
       },
     }]);
     assert.equal(result.writtenFiles, undefined);
+    assert.equal(result.toolFailures?.[0]?.tool, 'create_directory');
+    assert.equal(result.toolFailures?.[0]?.kind, 'write');
+    assert.match(result.toolFailures?.[0]?.reason ?? '', /写入权限策略阻止/);
     assert.match(result.feedbackForAI, /create_directory: generated\/docs.*写入权限策略阻止/s);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ToolLoop file-write policy denials are structured tool failures', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-file-write-policy-failure-'));
+  try {
+    const result = await executeFakeToolsForLoop(
+      [{
+        name: 'create_file',
+        input: {
+          path: 'probe.js',
+          content: 'console.log("blocked");\n',
+        },
+      }],
+      {
+        onBeforeFileWrite: async () => false,
+        onAppliedChange: async () => {},
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot, userPrompt: '请创建 probe.js。' },
+    );
+
+    assert.equal(result.writtenFiles, undefined);
+    assert.equal(result.toolFailures?.[0]?.tool, 'create_file');
+    assert.equal(result.toolFailures?.[0]?.kind, 'write');
+    assert.equal(result.toolFailures?.[0]?.path, 'probe.js');
+    assert.match(result.toolFailures?.[0]?.reason ?? '', /写入权限策略阻止/);
+    assert.match(result.feedbackForAI, /create_file: probe\.js.*写入权限策略阻止/s);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }
