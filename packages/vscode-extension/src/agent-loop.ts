@@ -73,6 +73,10 @@ import { tryExecuteDeterministicCreateTask } from './agent/deterministic-task-ex
 import { tryExecuteMarkdownDeliverableTask } from './agent/markdown-deliverable-task';
 import { authorizeAgentFileWriteContract } from './agent/task-contract';
 import {
+  isTargetExactIsolatedArtifactWriteScope,
+  isTargetInsideIsolatedArtifactWriteScope,
+} from './agent/isolated-artifact-write-scope';
+import {
   buildTaskTerminalFailureDetail,
   withTaskTerminalEvidence as attachTaskTerminalEvidence,
   type TaskExecutionResult,
@@ -938,6 +942,16 @@ async function executeTask(
       promptText: writeAuthority.currentPrompt,
       targetPath: earlyEffectiveAbsPath,
       workspaceRoot: workspaceRoot.fsPath,
+      allowScopedSourceArtifact: isTargetInsideIsolatedArtifactWriteScope(
+        writeAuthority.currentPrompt,
+        earlyEffectiveAbsPath,
+        workspaceRoot.fsPath,
+      ),
+      allowExactScopedArtifact: isTargetExactIsolatedArtifactWriteScope(
+        writeAuthority.currentPrompt,
+        earlyEffectiveAbsPath,
+        workspaceRoot.fsPath,
+      ),
     });
     if (!targetAuthorization.allowed) {
       await callbacks.onAgentStatus({

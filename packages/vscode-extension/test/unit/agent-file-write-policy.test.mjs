@@ -383,6 +383,71 @@ test('AgentFileWritePolicy: generated-artifact wording enforces the parsed isola
   }
 });
 
+test('AgentFileWritePolicy: explicit isolated probe file path survives no-other-file constraints', () => {
+  const marker = 'CLOSE02-20260713-manual-probe';
+  const target = `/workspace/.devseek-close02-probe/${marker}/probe.js`;
+  const requestPrompt = [
+    marker,
+    '请只在这个隔离路径创建一个最小 JavaScript probe 文件：',
+    `.devseek-close02-probe/${marker}/probe.js`,
+    '内容要求：',
+    '1. 定义函数 close02Add(a, b)，返回 a + b。',
+    `2. 最后一行打印：${marker}: 2+3=5`,
+    '3. 不修改任何其他文件，不运行网络，不安装依赖，不修改 git，不触碰产品源码。',
+    '4. 完成后只告诉我创建的文件路径和最终状态。',
+  ].join('\n');
+
+  assert.deepEqual(
+    detectIsolatedArtifactWriteScope(requestPrompt, '/workspace'),
+    { required: true, allowedRoots: [target] },
+  );
+
+  const allowed = decideAgentFileWrite({
+    absPath: target,
+    workspaceRoot: '/workspace',
+    context: { purpose: 'tool-write', taskAction: 'create', requestPrompt },
+  });
+  assert.equal(allowed.action, 'allow', allowed.reason);
+
+  const sibling = decideAgentFileWrite({
+    absPath: `/workspace/.devseek-close02-probe/${marker}/probe_mermaid.js`,
+    workspaceRoot: '/workspace',
+    context: { purpose: 'tool-write', taskAction: 'create', requestPrompt },
+  });
+  assert.equal(sibling.action, 'deny');
+  assert.equal(sibling.reason, 'isolated-artifact-scope');
+
+  const source = decideAgentFileWrite({
+    absPath: '/workspace/src/probe.js',
+    workspaceRoot: '/workspace',
+    context: { purpose: 'tool-write', taskAction: 'create', requestPrompt },
+  });
+  assert.equal(source.action, 'deny');
+  assert.equal(source.reason, 'isolated-artifact-scope');
+});
+
+test('AgentFileWritePolicy: isolated directories do not override explicit only-target constraints', () => {
+  const requestPrompt = [
+    '所有新增产物必须放在：isolated/output。',
+    '请只创建 isolated/output/report.js，不要创建其他文件。',
+  ].join('\n');
+
+  const allowed = decideAgentFileWrite({
+    absPath: '/workspace/isolated/output/report.js',
+    workspaceRoot: '/workspace',
+    context: { purpose: 'tool-write', taskAction: 'create', requestPrompt },
+  });
+  assert.equal(allowed.action, 'allow', allowed.reason);
+
+  const extra = decideAgentFileWrite({
+    absPath: '/workspace/isolated/output/extra.js',
+    workspaceRoot: '/workspace',
+    context: { purpose: 'tool-write', taskAction: 'create', requestPrompt },
+  });
+  assert.equal(extra.action, 'deny');
+  assert.equal(extra.reason, 'artifact-other-file-write-prohibited');
+});
+
 test('AgentFileWritePolicy: a latest standalone stop or cancel steer revokes the original target', () => {
   for (const revoke of [
     '停止写入。',

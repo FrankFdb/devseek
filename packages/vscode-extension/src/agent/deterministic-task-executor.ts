@@ -7,6 +7,10 @@ import { roughLineDiff } from '../utils';
 import { WorkspaceEditService } from '../workspace/edit-service';
 import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import {
+  isTargetExactIsolatedArtifactWriteScope,
+  isTargetInsideIsolatedArtifactWriteScope,
+} from './isolated-artifact-write-scope';
+import {
   authorizeAgentFileWriteContract,
   buildTaskContract,
   hasSourceClaimArtifactContract,
@@ -54,6 +58,16 @@ export async function tryExecuteDeterministicCreateTask(input: {
     promptText: currentRequest,
     targetPath: absPath,
     workspaceRoot: input.workspaceRoot.fsPath,
+    allowScopedSourceArtifact: isTargetInsideIsolatedArtifactWriteScope(
+      currentRequest,
+      absPath,
+      input.workspaceRoot.fsPath,
+    ),
+    allowExactScopedArtifact: isTargetExactIsolatedArtifactWriteScope(
+      currentRequest,
+      absPath,
+      input.workspaceRoot.fsPath,
+    ),
   });
   if (!targetAuthorization.allowed) {
     await postDeterministicStatus(input, 'failed', basename, `目标未获当前用户请求授权：${targetAuthorization.reason}`);

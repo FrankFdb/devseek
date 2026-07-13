@@ -591,6 +591,7 @@ export function authorizeAgentFileWriteContract(input: {
   workspaceRoot?: string;
   allowImplicitPrimaryArtifact?: boolean;
   allowScopedSourceArtifact?: boolean;
+  allowExactScopedArtifact?: boolean;
   targetKind?: 'file' | 'directory';
 }): AgentFileWriteContractAuthorization {
   const promptText = extractCurrentUserRequest(input.promptText);
@@ -634,7 +635,7 @@ export function authorizeAgentFileWriteContract(input: {
   if (scopeRestriction && !targetExcepted) {
     const namedByRestriction = scopeRestriction.allowedTargets.has(target);
     if (!namedByRestriction
-      && (scopeRestriction.allowedTargets.size > 0 || !targetMutation.requested)) {
+      && (scopeRestriction.allowedTargets.size > 0 || (!input.allowExactScopedArtifact && !targetMutation.requested))) {
       return { allowed: false, reason: 'artifact-other-file-write-prohibited', requestedTargets };
     }
   }

@@ -1,8 +1,16 @@
 import * as nodePath from 'path';
 import { authorizeAgentFileWriteContract } from '../agent/task-contract';
+import {
+  detectIsolatedArtifactWriteScope,
+  isTargetExactIsolatedArtifactWriteScope,
+  isTargetInsideIsolatedArtifactWriteScope,
+} from '../agent/isolated-artifact-write-scope';
 import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import type { ToolPolicy } from './permission-service';
 import { decideToolPermission } from './permission-service';
+
+export { detectIsolatedArtifactWriteScope };
+export type { IsolatedArtifactWriteScope } from '../agent/isolated-artifact-write-scope';
 
 export type AgentFileWritePurpose =
   | 'workspace-edit'
@@ -58,15 +66,24 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
   const relPath = displayWritePath(absPath, workspaceRoot, input.context?.displayName);
   const explicitMarkdownDeliverable = isExplicitMarkdownDeliverable(input.context, absPath);
   const isolatedScope = detectIsolatedArtifactWriteScope(input.context?.requestPrompt, workspaceRoot);
+  const targetInsideIsolatedScope = isTargetInsideIsolatedArtifactWriteScope(
+    input.context?.requestPrompt,
+    absPath,
+    workspaceRoot || undefined,
+  );
+  const targetExactIsolatedScope = isTargetExactIsolatedArtifactWriteScope(
+    input.context?.requestPrompt,
+    absPath,
+    workspaceRoot || undefined,
+  );
   const markdownAuthorization = authorizeAgentFileWriteContract({
     promptText: input.context?.requestPrompt || '',
     targetPath: absPath,
     workspaceRoot: workspaceRoot || undefined,
     allowImplicitPrimaryArtifact: input.context?.purpose === 'markdown-deliverable'
       && input.context?.userRequested === true,
-    allowScopedSourceArtifact: isolatedScope.required
-      && isolatedScope.allowedRoots.length > 0
-      && isInsideAnyCanonicalPath(absPath, isolatedScope.allowedRoots),
+    allowScopedSourceArtifact: targetInsideIsolatedScope,
+    allowExactScopedArtifact: targetExactIsolatedScope,
     targetKind: isDirectoryWriteAction(input.context?.taskAction) ? 'directory' : 'file',
   });
   const audit = {
@@ -103,7 +120,7 @@ export function decideAgentFileWrite(input: AgentFileWriteDecisionInput): AgentF
       scopedAudit,
     );
   }
-  if (isolatedScope.required && isolatedScope.allowedRoots.length > 0 && !isInsideAnyCanonicalPath(absPath, isolatedScope.allowedRoots)) {
+  if (isolatedScope.required && isolatedScope.allowedRoots.length > 0 && !targetInsideIsolatedScope) {
     return deny(
       'isolated-artifact-scope',
       `写入被测试/交付产物隔离规则阻止：${relPath}。本次请求要求新增产物只能写入 ${isolatedScope.allowedRoots.map(root => displayWritePath(root, workspaceRoot)).join('、')}；正式源码修改请写入“原有代码修改清单”，不要直接改正式源码。`,
@@ -180,79 +197,10 @@ function isInsidePath(absPath: string, root: string): boolean {
   return rel === '' || (!!rel && !rel.startsWith('..') && !nodePath.isAbsolute(rel));
 }
 
-function isInsideAnyCanonicalPath(absPath: string, roots: readonly string[]): boolean {
-  return roots.some(root => isInsidePath(absPath, root) && isCanonicalPathInsideRoot(absPath, root));
-}
-
 function isFormalSourceDirectoryTarget(absPath: string, workspaceRoot: string): boolean {
   const relative = workspaceRoot
     ? nodePath.relative(workspaceRoot, absPath).replace(/\\/g, '/')
     : nodePath.normalize(absPath).replace(/\\/g, '/').replace(/^\/+/, '');
   return /(?:^|\/)(?:src|source|sources|lib|app)(?:\/|$)/i.test(relative)
     || /(?:^|\/)packages\/[^/]+\/src(?:\/|$)/i.test(relative);
-}
-
-export interface IsolatedArtifactWriteScope {
-  required: boolean;
-  allowedRoots: string[];
-}
-
-const ISOLATED_ARTIFACT_SCOPE_RE = /(?:本次测试|测试产物|所有(?:(?:新增|生成|产出)(?:的)?)?(?:产物|输出|交付物|文档|文件|代码|脚本)|所有(?:新增|生成|产出)(?:的)?|新增设计文档|新增代码|验证脚本|新增产物).{0,72}(?:必须|统一|只能).{0,18}(?:放在|放入|写入|保存到|输出到|隔离目录)|\b(?:(?:all\s+)?(?:(?:new|generated|produced|created)\s+)?|test\s+)(?:artifacts?|outputs?|deliverables?|documents?|files?|code|scripts?)[^\n,.;]{0,72}\b(?:must|shall)\s+be\s+(?:placed|written|saved|created|output)\s+(?:in|to)\b/i;
-const OUTPUT_ROOT_RE = /(?:必须(?:统一)?放在|只能放在|放入|放到|放置到|写入到|保存到|输出到|输出目录(?:要求)?|必须创建[^：:\n]{0,60}(?:文档|文件)?|\bmust\s+be\s+(?:placed|written|saved|created|output)\s+(?:in|to)|\b(?:output|artifact)\s+(?:root|director(?:y|ies))\s*(?:is|are)?)\s*[:：]?\s*(?:"([^"\n]+)"|'([^'\n]+)'|`([^`\n]+)`|“([^”\n]+)”|((?:~\/|\.{0,2}\/|\/)[^\s"'`<>，。；;]+|[A-Za-z0-9_-]+(?:[\\/][A-Za-z0-9_.-]+)+))(?=$|[\n，。；;,.])/gi;
-
-export function detectIsolatedArtifactWriteScope(
-  requestPrompt: string | undefined,
-  workspaceRoot?: string,
-): IsolatedArtifactWriteScope {
-  const text = String(requestPrompt || '');
-  const required = ISOLATED_ARTIFACT_SCOPE_RE.test(text);
-  if (!required) return { required: false, allowedRoots: [] };
-
-  const roots = new Set<string>();
-  let match: RegExpExecArray | null;
-  OUTPUT_ROOT_RE.lastIndex = 0;
-  while ((match = OUTPUT_ROOT_RE.exec(text)) !== null) {
-    const root = coerceAllowedOutputRoot(match.slice(1).find(Boolean), workspaceRoot);
-    if (root) roots.add(root);
-  }
-
-  return {
-    required: true,
-    allowedRoots: pruneStructuredArtifactContainerRoots([...roots].sort((a, b) => a.length - b.length)),
-  };
-}
-
-function coerceAllowedOutputRoot(value: string | undefined, workspaceRoot?: string): string | undefined {
-  let raw = String(value || '')
-    .replace(/[)\]}>，。；;：:,.]+$/g, '')
-    .replace(/\/+$/g, '')
-    .trim();
-  if (!raw) return undefined;
-  if (raw.startsWith('~/')) {
-    const home = process.env.HOME || '';
-    if (!home) return undefined;
-    raw = nodePath.join(home, raw.slice(2));
-  }
-  const absPath = nodePath.isAbsolute(raw)
-    ? nodePath.normalize(raw)
-    : workspaceRoot
-      ? nodePath.resolve(workspaceRoot, raw)
-      : '';
-  if (!absPath) return undefined;
-  const ext = nodePath.extname(absPath).toLowerCase();
-  if (ext === '.md' || ext === '.markdown') return nodePath.dirname(absPath);
-  return absPath;
-}
-
-function pruneStructuredArtifactContainerRoots(roots: string[]): string[] {
-  const normalized = roots.map(root => nodePath.normalize(root).replace(/[\\/]+$/g, ''));
-  const set = new Set(normalized);
-  return normalized.filter(root => !isStructuredArtifactContainerRoot(root, set));
-}
-
-function isStructuredArtifactContainerRoot(root: string, allRoots: ReadonlySet<string>): boolean {
-  if (!root) return false;
-  const hasDocs = allRoots.has(nodePath.join(root, 'docs')) || allRoots.has(nodePath.join(root, 'doc'));
-  const hasSrc = allRoots.has(nodePath.join(root, 'src')) || allRoots.has(nodePath.join(root, 'source'));
-  return hasDocs && hasSrc;
 }
