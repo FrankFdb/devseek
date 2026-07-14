@@ -54,7 +54,7 @@ DevSeek 的目标原则基本正确，但物理架构尚未收敛：
 
 - 同一任务会因附件、入口和会话状态进入不同执行循环。
 - VS Code 与 CLI 尚未消费同一个完整 Coding Kernel。
-- TaskContract、权限、工具、mutation、验证、完成和 UI 事实仍有多个 owner。
+- TaskContract、意图识别、权限、工具、mutation、验证、完成和 UI 事实仍有多个 owner；任务形态、验证计划、终端策略和完成证据会重复理解用户原文，必须收敛到同一个版本化语义契约。
 - deterministic 测试大量通过，但 legacy VS Code development observation buckets 仍为 `canary 0/3、medium 0/2、formal 0/1`；当前 qualification authority 为 none，因此不构成候选资格。
 - 文档把“已设计、已编码、已接入、deterministic、Surface、live”混成了“完成”。
 - 原设计不是全部错误：Headless/Surface/Provider/Evidence 方向应保留；模型完成权、多状态机、多格式写盘和错误安全边界必须废止。
