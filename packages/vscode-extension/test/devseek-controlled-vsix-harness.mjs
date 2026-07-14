@@ -28,6 +28,7 @@ const sharedPath = path.join(repoRoot, 'packages/shared/dist/index.js');
 const codeBin = argValue('--code') || process.env.VSCODE_BIN || 'code';
 const timeoutMs = positiveInteger(argValue('--timeout-ms') || process.env.DEVSEEK_CONTROLLED_VSIX_TIMEOUT_MS, 180_000);
 const keepTmp = hasFlag('--keep') || process.env.DEVSEEK_CONTROLLED_VSIX_KEEP === '1';
+const keepWindow = hasFlag('--keep-window') || process.env.DEVSEEK_CONTROLLED_VSIX_KEEP_WINDOW === '1';
 const targetRelativePath = 'controlled-sim.txt';
 const targetContent = 'CONTROLLED_SIM_OK\n';
 const prompt = [
@@ -382,15 +383,17 @@ function bindControlledPromptContract({ promptText, ordinal, expectedPrompt, run
   const text = String(promptText || '');
   const expectedUserSha256 = sha256Text(expectedPrompt);
   const feedbackRounds = promptFeedbackRounds(text);
+  const expectedPromptOccurrences = countExactOccurrences(text, expectedPrompt);
+  const fullPromptHasInitialIntent = expectedPromptOccurrences > 0;
   const mode = text.startsWith(incrementalPromptPrefix)
     ? 'incremental'
-    : text.startsWith('[指令]\n') ? 'full' : 'unknown';
+    : fullPromptHasInitialIntent ? 'full' : 'unknown';
   const baseObserved = {
     mode,
     promptLength: text.length,
     promptSha256: sha256Text(text),
     feedbackRounds,
-    expectedUserPromptOccurrences: countExactOccurrences(text, expectedPrompt),
+    expectedUserPromptOccurrences: expectedPromptOccurrences,
   };
 
   if (ordinal === 1) {
@@ -402,7 +405,7 @@ function bindControlledPromptContract({ promptText, ordinal, expectedPrompt, run
       ['prompt is non-empty', text.length > 0],
       ['prompt ends at the exact expected user intent', text.endsWith(`\n\n${expectedPrompt}`)],
       ['extracted user intent equals the expected text', observedUserPrompt === expectedPrompt],
-      ['expected user intent occurs exactly once', countExactOccurrences(text, expectedPrompt) === 1],
+      ['expected user intent occurs exactly once', expectedPromptOccurrences === 1],
       ['first request contains no tool-feedback round', feedbackRounds.length === 0],
     ];
     const failed = conditions.find(([, passed]) => !passed);
@@ -446,7 +449,7 @@ function bindControlledPromptContract({ promptText, ordinal, expectedPrompt, run
   const initialIntentBound = mode === 'incremental'
     ? priorRequests[0]?.promptContract?.bound === true
     : text.includes(fullIntentBoundary)
-      && countExactOccurrences(text, expectedPrompt) === 1;
+      && expectedPromptOccurrences === 1;
   const conditions = [
     ['all prior request attempts are present and bound', priorChainBound],
     ['runId matches the bound initial request', sameRun],
@@ -487,6 +490,7 @@ function bindControlledPromptContract({ promptText, ordinal, expectedPrompt, run
 function runPromptContractSelfTest(expectedPrompt) {
   const runId = 'prompt-contract-self-test-run';
   const validInitialText = `[指令]\nself-test system contract\n\n${expectedPrompt}`;
+  const validProductInitialText = `你是一个拥有完整工具访问权限的编程智能体。\n\n[工具协议]\n必须使用受控工具。\n\n${expectedPrompt}`;
   const validInitial = bindControlledPromptContract({
     promptText: validInitialText,
     ordinal: 1,
@@ -503,6 +507,17 @@ function runPromptContractSelfTest(expectedPrompt) {
   const validFullRoundTwoText = `${validInitialText}\n\n[助手]\n[DevSeek 已执行工具请求摘要]\n\n[工具结果 Round 1]\nself-test tool result`;
   const cases = [
     { name: 'exact-initial-intent', expectedBound: true, binding: validInitial },
+    {
+      name: 'product-flattened-initial-intent',
+      expectedBound: true,
+      binding: bindControlledPromptContract({
+        promptText: validProductInitialText,
+        ordinal: 1,
+        expectedPrompt,
+        runId,
+        priorRequests: [],
+      }),
+    },
     {
       name: 'empty-prompt',
       expectedBound: false,
@@ -818,6 +833,7 @@ function writeDriverExtension(options) {
     targetContent: expectedContent,
     timeoutMs: driverTimeoutMs,
     port,
+    keepWindow,
   } = options;
   fs.writeFileSync(path.join(driverDir, 'package.json'), JSON.stringify({
     name: 'devseek-controlled-vsix-driver',
@@ -845,6 +861,7 @@ const targetRelativePath = __TARGET_RELATIVE_PATH__;
 const targetContent = __TARGET_CONTENT__;
 const timeoutMs = __TIMEOUT_MS__;
 const port = __PORT__;
+const keepWindow = __KEEP_WINDOW__;
 
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function normalize(value) { return path.resolve(value).replace(/\\/g, '/'); }
@@ -1027,7 +1044,9 @@ async function activate() {
     progress('write-report', { ok: report.ok });
     writeReport(report);
     await delay(300);
-    await vscode.commands.executeCommand('workbench.action.closeWindow').catch(() => {});
+    if (!keepWindow) {
+      await vscode.commands.executeCommand('workbench.action.closeWindow').catch(() => {});
+    }
   }
 }
 
@@ -1043,7 +1062,8 @@ module.exports = { activate };
     .replace('__TARGET_RELATIVE_PATH__', JSON.stringify(targetPath))
     .replace('__TARGET_CONTENT__', JSON.stringify(expectedContent))
     .replace('__TIMEOUT_MS__', JSON.stringify(driverTimeoutMs))
-    .replace('__PORT__', JSON.stringify(port));
+    .replace('__PORT__', JSON.stringify(port))
+    .replace('__KEEP_WINDOW__', JSON.stringify(keepWindow));
   fs.writeFileSync(path.join(driverDir, 'extension.js'), source, 'utf8');
 }
 
@@ -1056,6 +1076,7 @@ async function runVsCodeDriver(options) {
     userDataDir,
     extensionsDir,
     vscodeLogPath,
+    keepWindow,
   } = options;
   const logFd = fs.openSync(vscodeLogPath, 'a');
   const child = cp.spawn(codeBin, [
@@ -1076,6 +1097,7 @@ async function runVsCodeDriver(options) {
     workspaceDir,
   ], {
     cwd: repoRoot,
+    detached: keepWindow,
     env: {
       ...process.env,
       DEVSEEK_REAL_PLUGIN_DEEPSEEK: '1',
@@ -1084,6 +1106,7 @@ async function runVsCodeDriver(options) {
     },
     stdio: ['ignore', logFd, logFd],
   });
+  if (keepWindow) child.unref();
   let exited = false;
   let exitCode = null;
   child.on('exit', code => { exited = true; exitCode = code; });
@@ -1091,7 +1114,7 @@ async function runVsCodeDriver(options) {
   try {
     while (Date.now() < deadline) {
       if (fs.existsSync(driverReportPath)) {
-        await waitForChildExit(child, 10_000);
+        if (!keepWindow) await waitForChildExit(child, 10_000);
         return JSON.parse(fs.readFileSync(driverReportPath, 'utf8'));
       }
       if (exited) {
@@ -1109,7 +1132,7 @@ async function runVsCodeDriver(options) {
       progress: readTail(progressPath),
     };
   } finally {
-    if (child.exitCode === null) child.kill('SIGTERM');
+    if (child.exitCode === null && !keepWindow) child.kill('SIGTERM');
     fs.closeSync(logFd);
   }
 }
