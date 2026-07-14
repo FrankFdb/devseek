@@ -39,6 +39,12 @@ const gates = [
     purpose: 'Fail closed when the current requirement, architecture, or process baseline is missing, ambiguous, stale, or only implied by Markdown prose.',
   },
   {
+    id: 'legacy-doc-inventory-governance',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:legacy-doc-inventory'],
+    purpose: 'Fail closed when a governed legacy requirement, architecture, or handoff document is missing inventory coverage, conflicts with the active baseline selector, or loses supporting-ref reverse coverage.',
+  },
+  {
     id: 'capability-ledger-governance',
     phases: '0-12',
     command: ['npm', 'run', 'verify:capability-ledger'],

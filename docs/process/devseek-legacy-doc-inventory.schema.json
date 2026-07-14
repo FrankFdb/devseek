@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "devseek.legacy-doc-inventory.schema.json",
+  "title": "DevSeek Legacy Document Inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "inventory_id",
+    "scope",
+    "asserts_gate_pass",
+    "active_selector",
+    "governed_roots",
+    "decision_policy",
+    "entries",
+    "inventory_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.legacy-doc-inventory/v1" },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "inventory_id": { "const": "DEVSEEK-LEGACY-DOC-INVENTORY/v1" },
+    "scope": { "type": "string", "minLength": 1 },
+    "asserts_gate_pass": { "const": false },
+    "active_selector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "selector_sha256", "active_baseline_paths"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativeJsonPath" },
+        "selector_sha256": { "$ref": "#/$defs/sha256" },
+        "active_baseline_paths": {
+          "type": "array",
+          "minItems": 3,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/relativeMarkdownPath" }
+        }
+      }
+    },
+    "governed_roots": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/governedRoot" }
+    },
+    "decision_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "allowed_decisions",
+        "active_baseline_rule",
+        "coverage_rule",
+        "supporting_ref_rule"
+      ],
+      "properties": {
+        "allowed_decisions": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["keep", "revise", "supersede", "archive", "not-applicable"]
+          }
+        },
+        "active_baseline_rule": { "type": "string", "minLength": 1 },
+        "coverage_rule": { "type": "string", "minLength": 1 },
+        "supporting_ref_rule": { "type": "string", "minLength": 1 }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/entry" }
+    },
+    "inventory_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "relativeMarkdownPath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+\\.md$"
+    },
+    "relativeJsonPath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+\\.json$"
+    },
+    "governedRoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_group", "path"],
+      "properties": {
+        "source_group": { "enum": ["requirements", "architecture", "handoff"] },
+        "path": {
+          "enum": [
+            "docs/requirements",
+            "docs/architecture",
+            "docs/top-agent-convergence-audit-20260711"
+          ]
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "source_group", "decision", "relationship", "rationale"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativeMarkdownPath" },
+        "source_group": { "enum": ["requirements", "architecture", "handoff"] },
+        "decision": {
+          "enum": ["keep", "revise", "supersede", "archive", "not-applicable"]
+        },
+        "relationship": {
+          "enum": [
+            "external-reference",
+            "handoff-entry",
+            "legacy-architecture",
+            "legacy-audit-report",
+            "legacy-requirement",
+            "superseded-implementation-plan",
+            "supporting-ref"
+          ]
+        },
+        "supporting_for": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "rationale": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

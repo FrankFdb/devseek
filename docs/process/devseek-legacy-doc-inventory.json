@@ -1,0 +1,409 @@
+{
+  "schema_version": "devseek.legacy-doc-inventory/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "inventory_id": "DEVSEEK-LEGACY-DOC-INVENTORY/v1",
+  "scope": "top-agent-convergence",
+  "asserts_gate_pass": false,
+  "active_selector": {
+    "path": "docs/process/devseek-active-baseline-selector.json",
+    "selector_sha256": "869219726bd2b5e23a4b03ec7d9b6ea58fb02efb4903ca6672de2bbac7cb0332",
+    "active_baseline_paths": [
+      "docs/architecture/01-顶级编程智能体总体架构设计.md",
+      "docs/requirements/02-顶级编程智能体需求基线.md",
+      "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md"
+    ]
+  },
+  "governed_roots": [
+    {
+      "source_group": "requirements",
+      "path": "docs/requirements"
+    },
+    {
+      "source_group": "architecture",
+      "path": "docs/architecture"
+    },
+    {
+      "source_group": "handoff",
+      "path": "docs/top-agent-convergence-audit-20260711"
+    }
+  ],
+  "decision_policy": {
+    "allowed_decisions": [
+      "keep",
+      "revise",
+      "supersede",
+      "archive",
+      "not-applicable"
+    ],
+    "active_baseline_rule": "G0-01 active baseline paths are excluded from legacy inventory and must fail if listed as legacy entries.",
+    "coverage_rule": "Every governed Markdown document under the declared roots, except active baselines, must have exactly one inventory entry.",
+    "supporting_ref_rule": "Every Markdown supporting_ref in the active selector must have an inventory entry with relationship=supporting-ref and reverse supporting_for coverage."
+  },
+  "entries": [
+    {
+      "path": "docs/architecture/02-模型供应商与工具协议架构设计.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as architecture evidence under ARCH-01; it is not a current task owner."
+    },
+    {
+      "path": "docs/architecture/03-Agent运行时与工作流重构设计.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as architecture evidence under ARCH-01; current work still routes through 14."
+    },
+    {
+      "path": "docs/architecture/04-记忆体架构设计.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as architecture evidence under ARCH-01; it does not issue standalone work."
+    },
+    {
+      "path": "docs/architecture/05-代码重构实施计划.md",
+      "source_group": "architecture",
+      "decision": "supersede",
+      "relationship": "superseded-implementation-plan",
+      "rationale": "18 no-resurrection matrix keeps ARCH-05 as historical implementation record, not a current Phase authority."
+    },
+    {
+      "path": "docs/architecture/06-竞品实现方式对标审计与设计修正.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as design evidence under ARCH-01 and the convergence audit package."
+    },
+    {
+      "path": "docs/architecture/07-DeepSeek网页异常与恢复设计.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as recovery design evidence under ARCH-01; Provider authority is not changed here."
+    },
+    {
+      "path": "docs/architecture/08-历史任务与续作架构设计.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as task-history design evidence under ARCH-01."
+    },
+    {
+      "path": "docs/architecture/09-程序员工程完整性架构设计.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as engineering-integrity design evidence under ARCH-01."
+    },
+    {
+      "path": "docs/architecture/10-运行形态与界面解耦架构设计.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as Surface/Core separation evidence under ARCH-01."
+    },
+    {
+      "path": "docs/architecture/11-需求设计覆盖最终审计.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as requirement-architecture coverage evidence; it does not override active baselines."
+    },
+    {
+      "path": "docs/architecture/12-Agentic修复运行时专题设计.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as runtime repair design evidence under ARCH-01."
+    },
+    {
+      "path": "docs/architecture/13-工程完整性与顶级增强核心设计.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as top-agent enhancement design evidence under ARCH-01."
+    },
+    {
+      "path": "docs/architecture/14-自动闭环迭代与测试方法论检讨.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as iteration and test-methodology evidence; qualification remains machine-gated."
+    },
+    {
+      "path": "docs/architecture/15-文件上下文与大文件治理专题设计.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as context governance evidence under ARCH-01."
+    },
+    {
+      "path": "docs/architecture/16-重复判定逻辑治理专题设计.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as duplicate-decision governance evidence under ARCH-01."
+    },
+    {
+      "path": "docs/architecture/17-顶层RunContext与执行事实治理专题设计.md",
+      "source_group": "architecture",
+      "decision": "keep",
+      "relationship": "legacy-architecture",
+      "rationale": "Retained as execution-fact governance evidence under ARCH-01."
+    },
+    {
+      "path": "docs/architecture/18-优秀编程智能体100%收敛与新窗口接管计划.md",
+      "source_group": "architecture",
+      "decision": "supersede",
+      "relationship": "superseded-implementation-plan",
+      "rationale": "Superseded by the 20260711 convergence audit routing and 14 backlog; retained as historical plan evidence."
+    },
+    {
+      "path": "docs/requirements/01-当前需求现状.md",
+      "source_group": "requirements",
+      "decision": "keep",
+      "relationship": "legacy-requirement",
+      "rationale": "Retained as historical current-state evidence; REQ-02 is the active requirement baseline."
+    },
+    {
+      "path": "docs/requirements/03-产品需求分析.md",
+      "source_group": "requirements",
+      "decision": "keep",
+      "relationship": "legacy-requirement",
+      "rationale": "Retained as requirement evidence under REQ-02; it does not issue current work."
+    },
+    {
+      "path": "docs/requirements/04-Agent优化路线图.md",
+      "source_group": "requirements",
+      "decision": "keep",
+      "relationship": "legacy-requirement",
+      "rationale": "Retained as roadmap evidence under REQ-02; active execution routes through 14."
+    },
+    {
+      "path": "docs/requirements/05-意图识别需求.md",
+      "source_group": "requirements",
+      "decision": "keep",
+      "relationship": "legacy-requirement",
+      "rationale": "Retained as requirement evidence under REQ-02."
+    },
+    {
+      "path": "docs/requirements/06-记忆体需求.md",
+      "source_group": "requirements",
+      "decision": "keep",
+      "relationship": "legacy-requirement",
+      "rationale": "Retained as memory requirement evidence under REQ-02."
+    },
+    {
+      "path": "docs/requirements/07-架构重构需求澄清.md",
+      "source_group": "requirements",
+      "decision": "keep",
+      "relationship": "legacy-requirement",
+      "rationale": "Retained as architecture-refactor requirement evidence cited by active baselines."
+    },
+    {
+      "path": "docs/requirements/08-程序员智能编程体需求完备性审计.md",
+      "source_group": "requirements",
+      "decision": "keep",
+      "relationship": "legacy-requirement",
+      "rationale": "Retained as requirement completeness evidence under REQ-02."
+    },
+    {
+      "path": "docs/requirements/09-运行形态与界面解耦需求.md",
+      "source_group": "requirements",
+      "decision": "keep",
+      "relationship": "legacy-requirement",
+      "rationale": "Retained as Surface/Core separation requirement evidence under REQ-02."
+    },
+    {
+      "path": "docs/requirements/10-工程完整性与顶级增强需求.md",
+      "source_group": "requirements",
+      "decision": "keep",
+      "relationship": "legacy-requirement",
+      "rationale": "Retained as engineering-integrity requirement evidence under REQ-02."
+    },
+    {
+      "path": "docs/requirements/references/01-claude-code.md",
+      "source_group": "requirements",
+      "decision": "not-applicable",
+      "relationship": "external-reference",
+      "rationale": "External capability reference snapshot supporting REQ-02, not a DevSeek backlog or source owner."
+    },
+    {
+      "path": "docs/requirements/references/02-openai-codex.md",
+      "source_group": "requirements",
+      "decision": "not-applicable",
+      "relationship": "external-reference",
+      "rationale": "External capability reference snapshot supporting REQ-02, not a DevSeek backlog or source owner."
+    },
+    {
+      "path": "docs/requirements/references/03-github-copilot.md",
+      "source_group": "requirements",
+      "decision": "not-applicable",
+      "relationship": "external-reference",
+      "rationale": "External capability reference snapshot supporting REQ-02, not a DevSeek backlog or source owner."
+    },
+    {
+      "path": "docs/requirements/references/04-other-coding-agents.md",
+      "source_group": "requirements",
+      "decision": "not-applicable",
+      "relationship": "external-reference",
+      "rationale": "External capability reference snapshot supporting REQ-02, not a DevSeek backlog or source owner."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/01-DevSeek现状与功能回退根因审计.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as convergence audit evidence; 14 remains the active process backlog."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as comparative architecture evidence; it does not issue current work."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/03-顶级编程智能体目标软件架构.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "supporting-ref",
+      "supporting_for": [
+        "ARCH-01-TOP-AGENT-ARCHITECTURE-BASELINE"
+      ],
+      "rationale": "G0-01 selector marks this as supporting ARCH-01 target overlay, not a second active architecture owner."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/04-分能力专项迭代与收敛路线图.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "supporting-ref",
+      "supporting_for": [
+        "REQ-02-TOP-AGENT-REQUIREMENT-BASELINE"
+      ],
+      "rationale": "G0-01 selector marks this as supporting REQ-02 capability route, not an independent backlog."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/05-黄金用户旅程与正式项目资格方案.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as formal qualification design evidence; Gate 0 remains machine-decided."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as document-governance design evidence now being converted into machine gates."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/07-原需求与架构设计正确性审计.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as historical correctness audit evidence."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/08-决策结论与最短收敛实施方案.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as convergence decision evidence; current atomic work still comes from 14."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/09-文档自闭环反证审计报告.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as self-loop falsification evidence for document governance."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/10-G0-A机器能力账本实施与迭代计划.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as historical implementation report; machine status must come from docs/process."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/11-G0-B签名资格协议实施报告.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as historical implementation report; machine status must come from docs/process."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/12-G0-D统一运行证据账本实施报告.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as historical implementation report; machine status must come from docs/process."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/13-G0-C资格证据清单与独立聚合协议实施报告.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "legacy-audit-report",
+      "rationale": "Retained as historical implementation report; machine status must come from docs/process."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/15-新窗口与跨模型接管手册.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "supporting-ref",
+      "supporting_for": [
+        "PROCESS-14-GPT55-BACKLOG-BASELINE"
+      ],
+      "rationale": "G0-01 selector marks this as supporting PROCESS-14 handoff procedure, not a second backlog."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "supporting-ref",
+      "supporting_for": [
+        "PROCESS-14-GPT55-BACKLOG-BASELINE"
+      ],
+      "rationale": "G0-01 selector marks this as supporting PROCESS-14 engineering rules, not a task issuer."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "handoff-entry",
+      "rationale": "Retained as historical integration report; dynamic identity must be recalculated, not inherited."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "supporting-ref",
+      "supporting_for": [
+        "ARCH-01-TOP-AGENT-ARCHITECTURE-BASELINE"
+      ],
+      "rationale": "G0-01 selector marks this as supporting ARCH-01 no-resurrection routing."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "handoff-entry",
+      "rationale": "Retained as derived startup instruction; 15 and 14 keep authority for handoff and task issuance."
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/README.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "supporting-ref",
+      "supporting_for": [
+        "REQ-02-TOP-AGENT-REQUIREMENT-BASELINE"
+      ],
+      "rationale": "G0-01 selector marks this as supporting REQ-02 audit entry and applicability boundary."
+    }
+  ],
+  "inventory_sha256": "91bece15aaa5d623fc7a08c87f9004c45be67c5cd10c196e09ca4d0c08beb339"
+}
