@@ -253,6 +253,68 @@ test('AgentFileWritePolicy: neutral Markdown and non-Markdown prohibitions fail 
   }
 });
 
+test('AgentFileWritePolicy: simple programming prompts authorize bounded source artifacts', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-code-artifact-'));
+  try {
+    const requestPrompt = '编写一个 C++ 程序，打印下午好';
+    const allowHello = decideAgentFileWrite({
+      absPath: path.join(workspaceRoot, 'hello.cpp'),
+      workspaceRoot,
+      context: {
+        purpose: 'tool-write',
+        userRequested: false,
+        taskAction: 'create',
+        displayName: 'hello.cpp',
+        requestPrompt,
+      },
+    });
+    assert.equal(allowHello.action, 'allow');
+
+    const allowScopedSource = decideAgentFileWrite({
+      absPath: path.join(workspaceRoot, 'code/hello_afternoon.cpp'),
+      workspaceRoot,
+      context: {
+        purpose: 'tool-write',
+        userRequested: false,
+        taskAction: 'create',
+        displayName: 'code/hello_afternoon.cpp',
+        requestPrompt,
+      },
+    });
+    assert.equal(allowScopedSource.action, 'allow');
+
+    const unrelated = decideAgentFileWrite({
+      absPath: path.join(workspaceRoot, 'notes.txt'),
+      workspaceRoot,
+      context: {
+        purpose: 'tool-write',
+        userRequested: false,
+        taskAction: 'create',
+        displayName: 'notes.txt',
+        requestPrompt,
+      },
+    });
+    assert.equal(unrelated.action, 'deny');
+    assert.equal(unrelated.reason, 'target-file-write-prohibited');
+
+    const noFiles = decideAgentFileWrite({
+      absPath: path.join(workspaceRoot, 'hello.cpp'),
+      workspaceRoot,
+      context: {
+        purpose: 'tool-write',
+        userRequested: false,
+        taskAction: 'create',
+        displayName: 'hello.cpp',
+        requestPrompt: `${requestPrompt}，不要创建文件。`,
+      },
+    });
+    assert.equal(noFiles.action, 'deny');
+    assert.equal(noFiles.reason, 'all-file-writes-prohibited');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('AgentFileWritePolicy: global directory prohibitions reach the final directory boundary', () => {
   for (const requestPrompt of [
     '不要创建任何目录。',

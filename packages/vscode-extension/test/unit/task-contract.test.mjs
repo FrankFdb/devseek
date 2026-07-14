@@ -539,6 +539,24 @@ test('file-write authorization covers neutral, prohibited, exclusive, and correc
   assert.equal(decide('请创建 report.md；更正：不要创建 report.md。', `${root}/report.md`).allowed, false);
 });
 
+test('file-write authorization treats standalone programming requests as bounded source artifacts', () => {
+  const root = '/workspace/project';
+  const authorize = (promptText, relativeTarget) => authorizeAgentFileWriteContract({
+    promptText,
+    targetPath: path.join(root, relativeTarget),
+    workspaceRoot: root,
+  });
+  const prompt = '编写一个 C++ 程序，打印下午好';
+  const contract = buildTaskContract(prompt);
+  assert.ok(contract.deliverables.includes('source-change'));
+  assert.equal(authorize(prompt, 'hello.cpp').allowed, true);
+  assert.equal(authorize(prompt, 'code/hello_afternoon.cpp').allowed, true);
+  assert.equal(authorize(prompt, 'notes.txt').reason, 'target-file-write-prohibited');
+  assert.equal(authorize(`${prompt}，不要创建文件。`, 'hello.cpp').reason, 'all-file-writes-prohibited');
+  assert.equal(authorize('只回答代码，不要写文件：编写一个 C++ 程序，打印下午好。', 'hello.cpp').allowed, false);
+  assert.equal(authorize('请创建 main.cpp。', 'hello.cpp').reason, 'target-file-write-prohibited');
+});
+
 test('file-write authorization binds actions to output roles and fails closed on read-only paths', () => {
   const authorize = (promptText, relativeTarget, extra = {}) => authorizeAgentFileWriteContract({
     promptText,

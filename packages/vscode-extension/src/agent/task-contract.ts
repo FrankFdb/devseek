@@ -58,6 +58,9 @@ const PATH_RE = new RegExp(`(?:^|[^A-Za-z0-9_.@+~/-])((?:(?:/|\\./|\\.\\./)[\\w.
 const DOCUMENT_RE = /(?:文档|报告|说明|设计|方案|markdown|\.md\b|document|report)/i;
 const INSPECTION_RE = /(?:读取|提取|检查|审计|分析|列出|查看|只读|read|extract|inspect|audit|analy[sz]e)/i;
 const CHANGE_RE = /(?:修复|修改|实现|新增|添加|重构|集成|落地|fix|modify|implement|add|refactor)/i;
+const CODE_GENERATION_RE = /(?:(?:编写|写一个|写个|创建|新建|生成|实现|新增|添加|制作)[^，,。；;\n]{0,36}(?:C\+\+|C#|C\s*语言|JavaScript|TypeScript|Python|Java|Go|Rust|程序|脚本|源码|代码|函数|类|模块)|\b(?:create|write|generate|implement|add|build)\b[^,.;\n]{0,36}\b(?:C\+\+|C#|JavaScript|TypeScript|Python|Java|Go|Rust|program|script|code|function|class|module)\b)/i;
+const CODE_GENERATION_REPORT_RE = /(?:原有代码修改清单|代码修改清单|修改点清单|代码审计|代码分析|代码说明|代码文档|code\s+(?:review|analysis|audit|report|document|documentation|change\s+list))/i;
+const EXPLICIT_SOURCE_IMPLEMENTATION_DELIVERY_RE = /(?:(?:代码实现|实现代码|落地实现)|(?:创建|新建|生成|编写|写入|输出|保存|新增|添加|修改|改动|重构|修复)[^，,。；;\n]{0,40}(?:源代码文件|源码文件|代码文件|源文件|\bsrc\b|source\s+files?|code\s+files?|\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|ts|tsx|js|jsx|py|java|go|rs)\b))/i;
 const STANDALONE_RE = /(?:独立(?:项目|工具|程序|脚本)|standalone|从零|new\s+(?:project|tool))/i;
 const PROTOCOL_RE = /(?:协议|schema|request|response|消息字段|命令号|topic|MAVLink|tunnel|串口|通讯方式|通信方式|protocol)/i;
 const INTERFACE_RE = /(?:接口文档|接口设计|交互接口|API\b|request.{0,40}response|schema)/i;
@@ -506,6 +509,10 @@ export function hasArtifactWriteIntent(promptText: string): boolean {
   return classifyArtifactWriteIntent(promptText).requested;
 }
 
+function hasStandaloneCodeGenerationIntent(promptText: string): boolean {
+  return CODE_GENERATION_RE.test(promptText) && !CODE_GENERATION_REPORT_RE.test(promptText);
+}
+
 /** Final write-boundary authorization for Markdown artifacts named by the user. */
 export function authorizeMarkdownArtifactWrite(input: {
   promptText: string;
@@ -653,9 +660,20 @@ export function authorizeAgentFileWriteContract(input: {
     && !input.allowImplicitPrimaryArtifact) {
     return { allowed: false, reason: 'target-file-write-prohibited', requestedTargets };
   }
+  const standaloneCodeArtifactAuthority = hasStandaloneCodeGenerationIntent(promptText)
+    && requestedFileTargets.size === 0
+    && !targetMutation.requested;
+  const sourceChangeAuthority = contract.deliverables.includes('source-change')
+    && (!standaloneCodeArtifactAuthority
+      || isLikelyStandaloneCodeArtifactTarget(
+        target,
+        promptText,
+        input.workspaceRoot,
+        input.targetKind || 'file',
+      ));
   const hasBroadMutationAuthority = targetMutation.requested
     || classifyArtifactWriteIntent(promptText).requested
-    || contract.deliverables.includes('source-change')
+    || sourceChangeAuthority
     || contract.taskShapes.includes('destructive')
     || input.allowScopedSourceArtifact === true;
   if (promptText.trim()
@@ -840,6 +858,20 @@ function isLikelySourceWriteTarget(targetPath: string, prompt: string): boolean 
     .some(input => nodePath.basename(input.path) === basename);
 }
 
+function isLikelyStandaloneCodeArtifactTarget(
+  targetPath: string,
+  prompt: string,
+  workspaceRoot: string | undefined,
+  targetKind: 'file' | 'directory',
+): boolean {
+  if (targetKind === 'file') return isLikelySourceWriteTarget(targetPath, prompt);
+  const normalized = nodePath.resolve(targetPath);
+  const relative = workspaceRoot
+    ? nodePath.relative(nodePath.resolve(workspaceRoot), normalized).replace(/\\/g, '/')
+    : normalized.replace(/\\/g, '/').replace(/^\/+/, '');
+  return /(?:^|\/)(?:src|source|sources|code|scripts?|lib|app|include|test|tests)(?:\/|$)/i.test(relative);
+}
+
 function isLikelyFormalSourceWriteTarget(
   targetPath: string,
   prompt: string,
@@ -897,14 +929,6 @@ export function buildTaskContract(promptText: string): TaskContract {
   const documentation = DOCUMENT_RE.test(prompt);
   const artifactWriteIntent = classifyArtifactWriteIntentWithTarget(prompt, ARTIFACT_TARGET_HINT_RE);
   const inspection = INSPECTION_RE.test(prompt);
-  const sourceChange = CHANGE_RE.test(prompt)
-    && !NO_SOURCE_CHANGE_RE.test(prompt)
-    && (!documentation || /(?:(?:修改|改动|新增|重构|修复).{0,20}(?:源码|代码|文件)|代码实现|实现代码|落地实现|fix|modify|implement|refactor)/i.test(prompt));
-  const standalone = STANDALONE_RE.test(prompt);
-  const protocol = PROTOCOL_RE.test(prompt);
-  const interfaceContract = INTERFACE_RE.test(prompt);
-  const communicationChain = COMMUNICATION_CHAIN_RE.test(prompt);
-  const explicitModificationPlan = /(?:原有代码修改清单|代码修改清单|修改点清单|existing.?code modification plan)/i.test(prompt);
   const hasSourceInput = /(?:\/src\/|\.(?:c|cc|cpp|h|hpp|ts|tsx|js|py|json|ya?ml|toml)\b)/i.test(prompt);
   const extractsSourceFacts = /(?:提取|列出|核对|读取)[\s\S]{0,240}(?:常量|数值|配置|字段|版本|真实(?:定义|值)|(?:定义|值))|(?:extract|list|verify|read)[\s\S]{0,240}(?:constant|value|config|field|version)/i.test(prompt);
   // A source-fact request with a report destination is security-sensitive even
@@ -917,6 +941,18 @@ export function buildTaskContract(promptText: string): TaskContract {
   );
   const reportDelivery = documentation
     && (artifactWriteIntent.requested || ambiguousSourceReportDestination);
+  const standaloneCodeGeneration = hasStandaloneCodeGenerationIntent(prompt);
+  const sourceChange = (CHANGE_RE.test(prompt) || standaloneCodeGeneration)
+    && !NO_SOURCE_CHANGE_RE.test(prompt)
+    && (!documentation
+      || (standaloneCodeGeneration && !reportDelivery)
+      || EXPLICIT_SOURCE_IMPLEMENTATION_DELIVERY_RE.test(prompt)
+      || /(?:(?:修改|改动|新增|重构|修复).{0,20}(?:源码|代码|文件)|代码实现|实现代码|落地实现|fix|modify|implement|refactor)/i.test(prompt));
+  const standalone = STANDALONE_RE.test(prompt);
+  const protocol = PROTOCOL_RE.test(prompt);
+  const interfaceContract = INTERFACE_RE.test(prompt);
+  const communicationChain = COMMUNICATION_CHAIN_RE.test(prompt);
+  const explicitModificationPlan = /(?:原有代码修改清单|代码修改清单|修改点清单|existing.?code modification plan)/i.test(prompt);
   const shapes = new Set<TaskShape>();
   if (standalone) shapes.add('standalone');
   else if (sourceChange || /(?:既有|现有|原项目|代码库|工程|\/src\/)/i.test(prompt)) shapes.add('existing-project');
