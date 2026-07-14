@@ -224,6 +224,66 @@ test('bridge provider verifies the failed server boundary and preserves the prov
   }
 });
 
+test('bridge provider accepts server completion when client integrity rejects the response', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-provider-evidence-'));
+  try {
+    const ownerToken = createProductRunEvidenceAuthorityToken();
+    const participantToken = createProductRunEvidenceAuthorityToken();
+    const owner = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId: 'provider-bridge-local-integrity-failure',
+      surface: 'vscode',
+      authority: { role: 'owner', token: ownerToken, participantToken },
+      openIfMissing: true,
+    });
+    const errors = [];
+    await assert.rejects(invokeProviderWithRunEvidence({
+      request: {
+        prompt: 'hello',
+        traceRunId: 'provider-bridge-local-integrity-failure',
+        traceWorkspaceRoot: workspaceRoot,
+        traceOperationId: 'integrity-rejected-op',
+        traceEvidenceParticipantToken: participantToken,
+      },
+      providerType: 'bridge',
+      onEvidenceError: error => errors.push(error),
+      invoke: async () => {
+        const bridge = ProductRunEvidenceSession.forWorkspace({
+          workspaceRoot,
+          runId: 'provider-bridge-local-integrity-failure',
+          surface: 'bridge',
+          authority: { role: 'participant', token: participantToken },
+        });
+        for (const type of ['provider.requested', 'provider.completed']) {
+          bridge.record({
+            type,
+            idempotencyKey: productRunEvidenceIdempotencyKey(`bridge-${type}`, { operationId: 'integrity-rejected-op' }),
+            payload: {
+              operation_id: 'integrity-rejected-op',
+              boundary: 'bridge-server',
+              status: type.slice('provider.'.length),
+              trust: 'product-runtime-observation',
+            },
+          });
+        }
+        throw new Error('RESPONSE_CORRUPTED:incomplete-tool-block');
+      },
+    }), /RESPONSE_CORRUPTED:incomplete-tool-block/);
+
+    assert.deepEqual(errors, []);
+    owner.settleAndSeal({ status: 'failed', idempotencyKey: 'integrity-rejected-settled' });
+    const events = owner.readEvents().filter(event => event.type.startsWith('provider.'));
+    assert.deepEqual(events.map(event => `${event.payload.boundary}:${event.type}`), [
+      'vscode-provider-client:provider.requested',
+      'bridge-server:provider.requested',
+      'bridge-server:provider.completed',
+      'vscode-provider-client:provider.failed',
+    ]);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('bridge provider marks a missing failed server boundary as degraded without replacing the original error', async () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-provider-evidence-'));
   try {
@@ -250,7 +310,7 @@ test('bridge provider marks a missing failed server boundary as degraded without
       invoke: async () => { throw new Error('transport failed first'); },
     }), /transport failed first/);
     assert.equal(errors.length, 1);
-    assert.match(String(errors[0]), /expected provider\.failed/);
+    assert.match(String(errors[0]), /expected provider\.completed or provider\.failed/);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }

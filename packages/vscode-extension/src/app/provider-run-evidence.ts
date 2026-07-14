@@ -120,12 +120,21 @@ function assertBridgeParticipantTerminal(
     });
     const requested = matching.filter(event => event.type === 'provider.requested').length;
     const terminal = matching.filter(event => event.type === 'provider.completed' || event.type === 'provider.failed').length;
-    if (requested !== 1 || terminal !== 1 || matching.at(-1)?.type !== expectedTerminal) {
+    const actualTerminal = matching.at(-1)?.type;
+    const terminalMatches = expectedTerminal === 'provider.completed'
+      ? actualTerminal === 'provider.completed'
+      : actualTerminal === 'provider.completed' || actualTerminal === 'provider.failed';
+    if (requested !== 1 || terminal !== 1 || !terminalMatches) {
       throw new Error(
-        `Bridge evidence boundary is incomplete for operation ${operationId}; expected ${expectedTerminal}`,
+        `Bridge evidence boundary is incomplete for operation ${operationId}; expected ${describeExpectedBridgeTerminal(expectedTerminal)}`,
       );
     }
   } catch (error) {
     input.onEvidenceError?.(error);
   }
+}
+
+function describeExpectedBridgeTerminal(expectedTerminal: 'provider.completed' | 'provider.failed'): string {
+  if (expectedTerminal === 'provider.completed') return 'provider.completed';
+  return 'provider.completed or provider.failed';
 }
