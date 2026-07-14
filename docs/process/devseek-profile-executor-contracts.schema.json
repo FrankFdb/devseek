@@ -1,0 +1,358 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-profile-executor-contracts-v1.json",
+  "title": "DevSeek Gate 0 Profile Executor Contracts v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "contract_registry_id",
+    "contract_registry_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "sources",
+    "executor_policy",
+    "contracts",
+    "counts",
+    "contract_registry_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.profile-executor-contracts/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "contract_registry_id": { "const": "DEVSEEK-GATE0-PROFILE-EXECUTOR-CONTRACTS/v1" },
+    "contract_registry_version": { "const": 1 },
+    "source_status": { "const": "verified" },
+    "integrity_scope": { "const": "local-executor-contract-conformance" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "sources": { "$ref": "#/$defs/sources" },
+    "executor_policy": { "$ref": "#/$defs/executorPolicy" },
+    "contracts": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": { "$ref": "#/$defs/contract" }
+    },
+    "counts": { "$ref": "#/$defs/counts" },
+    "contract_registry_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "safeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "not": {
+        "enum": ["*", "default", "DEFAULT"]
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_denominator_registry",
+        "qualification_runner_inventory",
+        "runner_source",
+        "oracle_source"
+      ],
+      "properties": {
+        "profile_denominator_registry": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "schema_version", "registry_id", "source_sha256"],
+          "properties": {
+            "path": { "const": "docs/process/devseek-profile-denominator-registry.json" },
+            "schema_version": { "const": "devseek.profile-denominator-registry/v1" },
+            "registry_id": { "const": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1" },
+            "source_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "qualification_runner_inventory": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "schema_version", "inventory_sha256"],
+          "properties": {
+            "path": { "const": "docs/process/devseek-qualification-runner-inventory.json" },
+            "schema_version": { "const": "devseek.qualification-runner-inventory/v1" },
+            "inventory_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "runner_source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "source_sha256"],
+          "properties": {
+            "path": { "const": "scripts/lib/devseek-qualification-runner.mjs" },
+            "source_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "oracle_source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "source_sha256"],
+          "properties": {
+            "path": { "const": "scripts/test/devseek-profile-executor-contracts.test.mjs" },
+            "source_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        }
+      }
+    },
+    "executorPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "composition_root",
+        "semantic_contracts_required",
+        "runner_root_cardinality",
+        "catalog_metadata_counts_as_execution",
+        "execution_result_count",
+        "zero_action_attacks_per_semantic",
+        "independent_oracle_per_semantic",
+        "empty_input_veto",
+        "replacement_input_veto",
+        "wrong_slot_or_attempt_veto",
+        "missing_receipt_veto",
+        "unauthorized_external_action_veto"
+      ],
+      "properties": {
+        "composition_root": {
+          "const": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner"
+        },
+        "semantic_contracts_required": { "const": 5 },
+        "runner_root_cardinality": { "const": 1 },
+        "catalog_metadata_counts_as_execution": { "const": false },
+        "execution_result_count": { "const": 0 },
+        "zero_action_attacks_per_semantic": { "const": 5 },
+        "independent_oracle_per_semantic": { "const": true },
+        "empty_input_veto": { "const": true },
+        "replacement_input_veto": { "const": true },
+        "wrong_slot_or_attempt_veto": { "const": true },
+        "missing_receipt_veto": { "const": true },
+        "unauthorized_external_action_veto": { "const": true }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slot_semantics",
+        "denominator_slots",
+        "denominator_attempts",
+        "executor_contracts",
+        "oracle_contracts",
+        "zero_action_attack_oracles",
+        "execution_results",
+        "qualification_claims"
+      ],
+      "properties": {
+        "slot_semantics": { "const": 5 },
+        "denominator_slots": { "const": 35 },
+        "denominator_attempts": { "const": 70 },
+        "executor_contracts": { "const": 5 },
+        "oracle_contracts": { "const": 5 },
+        "zero_action_attack_oracles": { "const": 25 },
+        "execution_results": { "const": 0 },
+        "qualification_claims": { "const": 0 }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_id",
+        "slot_semantic",
+        "category",
+        "stage_type",
+        "purpose",
+        "denominator_binding",
+        "runner_binding",
+        "executor_ref",
+        "oracle_ref",
+        "zero_action_attack_oracles",
+        "catalog_metadata_counts_as_execution",
+        "execution_result_count",
+        "qualification_effect",
+        "asserts_gate_pass",
+        "contract_sha256"
+      ],
+      "properties": {
+        "contract_id": { "$ref": "#/$defs/safeId" },
+        "slot_semantic": {
+          "enum": [
+            "profile-tuple-binding",
+            "catalog-corpus-binding",
+            "schema-invalid-denominator",
+            "slot-attempt-identity-drift",
+            "applicability-denominator-lowering"
+          ]
+        },
+        "category": { "enum": ["protocol", "attack"] },
+        "stage_type": { "enum": ["T0", "T1", "T2"] },
+        "purpose": { "$ref": "#/$defs/safeId" },
+        "denominator_binding": { "$ref": "#/$defs/denominatorBinding" },
+        "runner_binding": { "$ref": "#/$defs/runnerBinding" },
+        "executor_ref": { "$ref": "#/$defs/executorRef" },
+        "oracle_ref": { "$ref": "#/$defs/oracleRef" },
+        "zero_action_attack_oracles": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": { "$ref": "#/$defs/zeroActionAttack" }
+        },
+        "catalog_metadata_counts_as_execution": { "const": false },
+        "execution_result_count": { "const": 0 },
+        "qualification_effect": { "const": "NONE" },
+        "asserts_gate_pass": { "const": false },
+        "contract_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "denominatorBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "denominator_registry_id",
+        "denominator_registry_sha256",
+        "capability_ids",
+        "slot_ids",
+        "attempt_ids",
+        "slot_count",
+        "attempt_count"
+      ],
+      "properties": {
+        "denominator_registry_id": { "const": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1" },
+        "denominator_registry_sha256": { "$ref": "#/$defs/sha256" },
+        "capability_ids": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": { "type": "string", "pattern": "^C0-[A-Z0-9]+(?:-[A-Z0-9]+)*$" }
+        },
+        "slot_ids": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": { "$ref": "#/$defs/safeId" }
+        },
+        "attempt_ids": {
+          "type": "array",
+          "minItems": 14,
+          "maxItems": 14,
+          "items": { "$ref": "#/$defs/safeId" }
+        },
+        "slot_count": { "const": 7 },
+        "attempt_count": { "const": 14 }
+      }
+    },
+    "runnerBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runner_inventory_entry_id",
+        "composition_root",
+        "source_ref",
+        "entrypoint",
+        "qualification_enabled",
+        "status"
+      ],
+      "properties": {
+        "runner_inventory_entry_id": { "const": "local-simulation/guard-to-g0c" },
+        "composition_root": { "const": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner" },
+        "source_ref": { "const": "scripts/lib/devseek-qualification-runner.mjs" },
+        "entrypoint": { "const": "createQualificationRunner" },
+        "qualification_enabled": { "const": true },
+        "status": { "const": "wired-local-nonqualification" }
+      }
+    },
+    "executorRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "executor_id",
+        "source_ref",
+        "source_content_sha256",
+        "entrypoint",
+        "composition_root",
+        "requires_guarded_action_adapter",
+        "requires_independent_g0c_reader",
+        "contract_sha256"
+      ],
+      "properties": {
+        "executor_id": { "$ref": "#/$defs/safeId" },
+        "source_ref": { "const": "scripts/lib/devseek-qualification-runner.mjs" },
+        "source_content_sha256": { "$ref": "#/$defs/sha256" },
+        "entrypoint": { "const": "createQualificationRunner.runLocalSimulation" },
+        "composition_root": { "const": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner" },
+        "requires_guarded_action_adapter": { "const": true },
+        "requires_independent_g0c_reader": { "const": true },
+        "contract_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "oracleRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "oracle_id",
+        "source_ref",
+        "source_content_sha256",
+        "entrypoint",
+        "independent_from_executor",
+        "expected_decision",
+        "contract_sha256"
+      ],
+      "properties": {
+        "oracle_id": { "$ref": "#/$defs/safeId" },
+        "source_ref": { "const": "scripts/test/devseek-profile-executor-contracts.test.mjs" },
+        "source_content_sha256": { "$ref": "#/$defs/sha256" },
+        "entrypoint": { "$ref": "#/$defs/safeId" },
+        "independent_from_executor": { "const": true },
+        "expected_decision": { "const": "veto-invalid-input-before-dispatch" },
+        "contract_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "zeroActionAttack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attack_id",
+        "stimulus",
+        "expected_error_class",
+        "expected_external_actions",
+        "expected_terminal_state"
+      ],
+      "properties": {
+        "attack_id": {
+          "enum": [
+            "empty-input",
+            "replacement-case-input",
+            "wrong-slot-or-attempt",
+            "missing-authorization-receipt",
+            "unauthorized-external-action"
+          ]
+        },
+        "stimulus": { "$ref": "#/$defs/safeId" },
+        "expected_error_class": { "$ref": "#/$defs/safeId" },
+        "expected_external_actions": { "const": 0 },
+        "expected_terminal_state": { "const": "blocked-before-dispatch" }
+      }
+    }
+  }
+}

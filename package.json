@@ -40,6 +40,8 @@
     "verify:doc-governance": "node --test scripts/test/devseek-doc-governance.test.mjs && node scripts/devseek-doc-governance-check.mjs",
     "generate:profile-denominator-registry": "node scripts/devseek-profile-denominator-registry-check.mjs --write",
     "verify:profile-denominator-registry": "node --test scripts/test/devseek-profile-denominator-registry.test.mjs && node scripts/devseek-profile-denominator-registry-check.mjs",
+    "generate:profile-executor-contracts": "node scripts/devseek-profile-executor-contracts-check.mjs --write",
+    "verify:profile-executor-contracts": "node --test scripts/test/devseek-profile-executor-contracts.test.mjs && node scripts/devseek-profile-executor-contracts-check.mjs",
     "generate:capability-ledger": "node scripts/devseek-capability-ledger-check.mjs --write",
     "verify:capability-ledger": "node --test scripts/test/devseek-capability-ledger.test.mjs && node scripts/devseek-capability-ledger-check.mjs",
     "generate:qualification-protocol": "node scripts/devseek-qualification-protocol-check.mjs --write",

@@ -112,10 +112,16 @@ test('the single runner root reaches guard dispatch and the independent G0-C rea
 });
 
 test('missing or invalid plan/session/slot/receipt prerequisites dispatch zero external actions', async t => {
+  await assertZeroActionFailure(t, () => null, /RUN_REQUEST_REQUIRED/);
   await assertZeroActionFailure(t, fixture => ({ ...fixture.request, registrationEvent: null }), /RUN_REGISTRATIONEVENT_REQUIRED/);
   await assertZeroActionFailure(t, fixture => {
     const plan = structuredClone(fixture.request.plan);
     plan.candidate_identity.source.source_tree_sha256 = digest('mutated-source');
+    return { ...fixture.request, plan };
+  }, { code: 'PLAN_INVALID' });
+  await assertZeroActionFailure(t, fixture => {
+    const plan = structuredClone(fixture.request.plan);
+    plan.coverage_slots[0].case_id = 'G0B-A09';
     return { ...fixture.request, plan };
   }, { code: 'PLAN_INVALID' });
   await assertZeroActionFailure(t, fixture => ({
@@ -126,6 +132,15 @@ test('missing or invalid plan/session/slot/receipt prerequisites dispatch zero e
     ...fixture.request,
     attempt: { ...fixture.request.attempt, coverageSlotId: 'missing-coverage' },
   }), /RUN_COVERAGE_SLOT_NOT_DECLARED/);
+  await assertZeroActionFailure(t, fixture => ({
+    ...fixture.request,
+    action: {
+      ...fixture.request.action,
+      action_id: 'action-not-in-signed-slot',
+      action_type: 'network-call',
+      destination: 'fixture://not-planned',
+    },
+  }), { code: 'ACTION_NOT_PLANNED' });
 
   const fixture = makeFixture(t, { omitAuthorizationReceipt: true });
   await assert.rejects(

@@ -1,0 +1,643 @@
+{
+  "schema_version": "devseek.profile-executor-contracts/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "contract_registry_id": "DEVSEEK-GATE0-PROFILE-EXECUTOR-CONTRACTS/v1",
+  "contract_registry_version": 1,
+  "source_status": "verified",
+  "integrity_scope": "local-executor-contract-conformance",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "sources": {
+    "profile_denominator_registry": {
+      "path": "docs/process/devseek-profile-denominator-registry.json",
+      "schema_version": "devseek.profile-denominator-registry/v1",
+      "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+      "source_sha256": "da1c555ce3952b59c9f5d2100c1971771b0310547821f31dbb3be755cd4789cb"
+    },
+    "qualification_runner_inventory": {
+      "path": "docs/process/devseek-qualification-runner-inventory.json",
+      "schema_version": "devseek.qualification-runner-inventory/v1",
+      "inventory_sha256": "fd9b5201c3769ff4df0b936bb5b7676815e7d517076d3cfb631ebf2a91e0c9d2"
+    },
+    "runner_source": {
+      "path": "scripts/lib/devseek-qualification-runner.mjs",
+      "source_sha256": "fec73a09d3cece71dc55aee22a832de154c0594563f801e2ec6dac8cb656e5b0"
+    },
+    "oracle_source": {
+      "path": "scripts/test/devseek-profile-executor-contracts.test.mjs",
+      "source_sha256": "3305a3dcf6287fc81bf91165988a6ec484174908be9f74f5761c678359e996c3"
+    }
+  },
+  "executor_policy": {
+    "composition_root": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner",
+    "semantic_contracts_required": 5,
+    "runner_root_cardinality": 1,
+    "catalog_metadata_counts_as_execution": false,
+    "execution_result_count": 0,
+    "zero_action_attacks_per_semantic": 5,
+    "independent_oracle_per_semantic": true,
+    "empty_input_veto": true,
+    "replacement_input_veto": true,
+    "wrong_slot_or_attempt_veto": true,
+    "missing_receipt_veto": true,
+    "unauthorized_external_action_veto": true
+  },
+  "contracts": [
+    {
+      "contract_id": "G0-05:applicability-denominator-lowering:executor-contract/v1",
+      "slot_semantic": "applicability-denominator-lowering",
+      "category": "attack",
+      "stage_type": "T2",
+      "purpose": "Reject lowered applicability, platform, provider, or qualification level denominators.",
+      "denominator_binding": {
+        "denominator_registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+        "denominator_registry_sha256": "da1c555ce3952b59c9f5d2100c1971771b0310547821f31dbb3be755cd4789cb",
+        "capability_ids": [
+          "C0-CAPABILITY-LEDGER-SCHEMA",
+          "C0-CASE-CATALOG",
+          "C0-PREREGISTRATION-PLAN",
+          "C0-QUALIFICATION-AGGREGATOR",
+          "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "C0-RUN-EVIDENCE-LEDGER"
+        ],
+        "slot_ids": [
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:applicability-denominator-lowering",
+          "G0-04:C0-CASE-CATALOG:applicability-denominator-lowering",
+          "G0-04:C0-PREREGISTRATION-PLAN:applicability-denominator-lowering",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:applicability-denominator-lowering",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:applicability-denominator-lowering",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:applicability-denominator-lowering",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:applicability-denominator-lowering"
+        ],
+        "attempt_ids": [
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:applicability-denominator-lowering:adjudicated-infra-retry",
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:applicability-denominator-lowering:primary",
+          "G0-04:C0-CASE-CATALOG:applicability-denominator-lowering:adjudicated-infra-retry",
+          "G0-04:C0-CASE-CATALOG:applicability-denominator-lowering:primary",
+          "G0-04:C0-PREREGISTRATION-PLAN:applicability-denominator-lowering:adjudicated-infra-retry",
+          "G0-04:C0-PREREGISTRATION-PLAN:applicability-denominator-lowering:primary",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:applicability-denominator-lowering:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:applicability-denominator-lowering:primary",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:applicability-denominator-lowering:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:applicability-denominator-lowering:primary",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:applicability-denominator-lowering:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:applicability-denominator-lowering:primary",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:applicability-denominator-lowering:adjudicated-infra-retry",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:applicability-denominator-lowering:primary"
+        ],
+        "slot_count": 7,
+        "attempt_count": 14
+      },
+      "runner_binding": {
+        "runner_inventory_entry_id": "local-simulation/guard-to-g0c",
+        "composition_root": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner",
+        "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+        "entrypoint": "createQualificationRunner",
+        "qualification_enabled": true,
+        "status": "wired-local-nonqualification"
+      },
+      "executor_ref": {
+        "executor_id": "g0-05-applicability-denominator-lowering-executor/v1",
+        "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+        "source_content_sha256": "fec73a09d3cece71dc55aee22a832de154c0594563f801e2ec6dac8cb656e5b0",
+        "entrypoint": "createQualificationRunner.runLocalSimulation",
+        "composition_root": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner",
+        "requires_guarded_action_adapter": true,
+        "requires_independent_g0c_reader": true,
+        "contract_sha256": "3b06b09552d8a1749747124bab0673db762cabd103b05a6f8164ee10562287f0"
+      },
+      "oracle_ref": {
+        "oracle_id": "g0-05-applicability-denominator-lowering-oracle/v1",
+        "source_ref": "scripts/test/devseek-profile-executor-contracts.test.mjs",
+        "source_content_sha256": "3305a3dcf6287fc81bf91165988a6ec484174908be9f74f5761c678359e996c3",
+        "entrypoint": "assert-applicability-denominator-lowering-executor-contract",
+        "independent_from_executor": true,
+        "expected_decision": "veto-invalid-input-before-dispatch",
+        "contract_sha256": "f674d7ed1671f8b7e13742d5eca805995b54f39ff3080a37a690a1ef916c570c"
+      },
+      "zero_action_attack_oracles": [
+        {
+          "attack_id": "empty-input",
+          "stimulus": "Submit no run request object.",
+          "expected_error_class": "RUN_REQUEST_REQUIRED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "replacement-case-input",
+          "stimulus": "Replace the signed case input after plan creation.",
+          "expected_error_class": "PLAN_INVALID",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "wrong-slot-or-attempt",
+          "stimulus": "Bind the attempt to a missing or wrong slot.",
+          "expected_error_class": "RUN_COVERAGE_SLOT_NOT_DECLARED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "missing-authorization-receipt",
+          "stimulus": "Drop the durable authorization receipt before dispatch.",
+          "expected_error_class": "ACTION_RECEIPT_REQUIRED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "unauthorized-external-action",
+          "stimulus": "Request an action not listed in the signed slot window.",
+          "expected_error_class": "ACTION_NOT_PLANNED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        }
+      ],
+      "catalog_metadata_counts_as_execution": false,
+      "execution_result_count": 0,
+      "qualification_effect": "NONE",
+      "asserts_gate_pass": false,
+      "contract_sha256": "81424499ad08c17376e18493753c3a107326ca631e71412eeed1a986d8429cd3"
+    },
+    {
+      "contract_id": "G0-05:catalog-corpus-binding:executor-contract/v1",
+      "slot_semantic": "catalog-corpus-binding",
+      "category": "protocol",
+      "stage_type": "T0",
+      "purpose": "Bind the exact catalog and corpus denominator before case metadata can be consumed.",
+      "denominator_binding": {
+        "denominator_registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+        "denominator_registry_sha256": "da1c555ce3952b59c9f5d2100c1971771b0310547821f31dbb3be755cd4789cb",
+        "capability_ids": [
+          "C0-CAPABILITY-LEDGER-SCHEMA",
+          "C0-CASE-CATALOG",
+          "C0-PREREGISTRATION-PLAN",
+          "C0-QUALIFICATION-AGGREGATOR",
+          "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "C0-RUN-EVIDENCE-LEDGER"
+        ],
+        "slot_ids": [
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:catalog-corpus-binding",
+          "G0-04:C0-CASE-CATALOG:catalog-corpus-binding",
+          "G0-04:C0-PREREGISTRATION-PLAN:catalog-corpus-binding",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:catalog-corpus-binding",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:catalog-corpus-binding",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:catalog-corpus-binding",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:catalog-corpus-binding"
+        ],
+        "attempt_ids": [
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:catalog-corpus-binding:adjudicated-infra-retry",
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:catalog-corpus-binding:primary",
+          "G0-04:C0-CASE-CATALOG:catalog-corpus-binding:adjudicated-infra-retry",
+          "G0-04:C0-CASE-CATALOG:catalog-corpus-binding:primary",
+          "G0-04:C0-PREREGISTRATION-PLAN:catalog-corpus-binding:adjudicated-infra-retry",
+          "G0-04:C0-PREREGISTRATION-PLAN:catalog-corpus-binding:primary",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:catalog-corpus-binding:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:catalog-corpus-binding:primary",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:catalog-corpus-binding:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:catalog-corpus-binding:primary",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:catalog-corpus-binding:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:catalog-corpus-binding:primary",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:catalog-corpus-binding:adjudicated-infra-retry",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:catalog-corpus-binding:primary"
+        ],
+        "slot_count": 7,
+        "attempt_count": 14
+      },
+      "runner_binding": {
+        "runner_inventory_entry_id": "local-simulation/guard-to-g0c",
+        "composition_root": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner",
+        "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+        "entrypoint": "createQualificationRunner",
+        "qualification_enabled": true,
+        "status": "wired-local-nonqualification"
+      },
+      "executor_ref": {
+        "executor_id": "g0-05-catalog-corpus-binding-executor/v1",
+        "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+        "source_content_sha256": "fec73a09d3cece71dc55aee22a832de154c0594563f801e2ec6dac8cb656e5b0",
+        "entrypoint": "createQualificationRunner.runLocalSimulation",
+        "composition_root": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner",
+        "requires_guarded_action_adapter": true,
+        "requires_independent_g0c_reader": true,
+        "contract_sha256": "d4af3906dc2552bfe5953d309b61d4c89074809a1959383f347ac2173bcb7deb"
+      },
+      "oracle_ref": {
+        "oracle_id": "g0-05-catalog-corpus-binding-oracle/v1",
+        "source_ref": "scripts/test/devseek-profile-executor-contracts.test.mjs",
+        "source_content_sha256": "3305a3dcf6287fc81bf91165988a6ec484174908be9f74f5761c678359e996c3",
+        "entrypoint": "assert-catalog-corpus-binding-executor-contract",
+        "independent_from_executor": true,
+        "expected_decision": "veto-invalid-input-before-dispatch",
+        "contract_sha256": "fb0c9839d75d5143b7e86dfcc439d2801b8955b2514f1d8b3fa1f0a821ecafcb"
+      },
+      "zero_action_attack_oracles": [
+        {
+          "attack_id": "empty-input",
+          "stimulus": "Submit no run request object.",
+          "expected_error_class": "RUN_REQUEST_REQUIRED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "replacement-case-input",
+          "stimulus": "Replace the signed case input after plan creation.",
+          "expected_error_class": "PLAN_INVALID",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "wrong-slot-or-attempt",
+          "stimulus": "Bind the attempt to a missing or wrong slot.",
+          "expected_error_class": "RUN_COVERAGE_SLOT_NOT_DECLARED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "missing-authorization-receipt",
+          "stimulus": "Drop the durable authorization receipt before dispatch.",
+          "expected_error_class": "ACTION_RECEIPT_REQUIRED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "unauthorized-external-action",
+          "stimulus": "Request an action not listed in the signed slot window.",
+          "expected_error_class": "ACTION_NOT_PLANNED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        }
+      ],
+      "catalog_metadata_counts_as_execution": false,
+      "execution_result_count": 0,
+      "qualification_effect": "NONE",
+      "asserts_gate_pass": false,
+      "contract_sha256": "d0d3490c51a34d26685a75e4e908f53bd25063d5c7ae86cb6a90a24a54ea1e4f"
+    },
+    {
+      "contract_id": "G0-05:profile-tuple-binding:executor-contract/v1",
+      "slot_semantic": "profile-tuple-binding",
+      "category": "protocol",
+      "stage_type": "T0",
+      "purpose": "Bind the exact Gate 0 profile tuple before any execution result can be interpreted.",
+      "denominator_binding": {
+        "denominator_registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+        "denominator_registry_sha256": "da1c555ce3952b59c9f5d2100c1971771b0310547821f31dbb3be755cd4789cb",
+        "capability_ids": [
+          "C0-CAPABILITY-LEDGER-SCHEMA",
+          "C0-CASE-CATALOG",
+          "C0-PREREGISTRATION-PLAN",
+          "C0-QUALIFICATION-AGGREGATOR",
+          "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "C0-RUN-EVIDENCE-LEDGER"
+        ],
+        "slot_ids": [
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:profile-tuple-binding",
+          "G0-04:C0-CASE-CATALOG:profile-tuple-binding",
+          "G0-04:C0-PREREGISTRATION-PLAN:profile-tuple-binding",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:profile-tuple-binding",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:profile-tuple-binding",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:profile-tuple-binding",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:profile-tuple-binding"
+        ],
+        "attempt_ids": [
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:profile-tuple-binding:adjudicated-infra-retry",
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:profile-tuple-binding:primary",
+          "G0-04:C0-CASE-CATALOG:profile-tuple-binding:adjudicated-infra-retry",
+          "G0-04:C0-CASE-CATALOG:profile-tuple-binding:primary",
+          "G0-04:C0-PREREGISTRATION-PLAN:profile-tuple-binding:adjudicated-infra-retry",
+          "G0-04:C0-PREREGISTRATION-PLAN:profile-tuple-binding:primary",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:profile-tuple-binding:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:profile-tuple-binding:primary",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:profile-tuple-binding:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:profile-tuple-binding:primary",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:profile-tuple-binding:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:profile-tuple-binding:primary",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:profile-tuple-binding:adjudicated-infra-retry",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:profile-tuple-binding:primary"
+        ],
+        "slot_count": 7,
+        "attempt_count": 14
+      },
+      "runner_binding": {
+        "runner_inventory_entry_id": "local-simulation/guard-to-g0c",
+        "composition_root": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner",
+        "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+        "entrypoint": "createQualificationRunner",
+        "qualification_enabled": true,
+        "status": "wired-local-nonqualification"
+      },
+      "executor_ref": {
+        "executor_id": "g0-05-profile-tuple-binding-executor/v1",
+        "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+        "source_content_sha256": "fec73a09d3cece71dc55aee22a832de154c0594563f801e2ec6dac8cb656e5b0",
+        "entrypoint": "createQualificationRunner.runLocalSimulation",
+        "composition_root": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner",
+        "requires_guarded_action_adapter": true,
+        "requires_independent_g0c_reader": true,
+        "contract_sha256": "035971fab322afdac996ca63fb259ecd3e8410a0012ac350e49f0c131e37ec50"
+      },
+      "oracle_ref": {
+        "oracle_id": "g0-05-profile-tuple-binding-oracle/v1",
+        "source_ref": "scripts/test/devseek-profile-executor-contracts.test.mjs",
+        "source_content_sha256": "3305a3dcf6287fc81bf91165988a6ec484174908be9f74f5761c678359e996c3",
+        "entrypoint": "assert-profile-tuple-binding-executor-contract",
+        "independent_from_executor": true,
+        "expected_decision": "veto-invalid-input-before-dispatch",
+        "contract_sha256": "2a063d4a2fb1e0997fb178bf3c21f6b47359d6dd140c4915acb876c92046eef1"
+      },
+      "zero_action_attack_oracles": [
+        {
+          "attack_id": "empty-input",
+          "stimulus": "Submit no run request object.",
+          "expected_error_class": "RUN_REQUEST_REQUIRED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "replacement-case-input",
+          "stimulus": "Replace the signed case input after plan creation.",
+          "expected_error_class": "PLAN_INVALID",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "wrong-slot-or-attempt",
+          "stimulus": "Bind the attempt to a missing or wrong slot.",
+          "expected_error_class": "RUN_COVERAGE_SLOT_NOT_DECLARED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "missing-authorization-receipt",
+          "stimulus": "Drop the durable authorization receipt before dispatch.",
+          "expected_error_class": "ACTION_RECEIPT_REQUIRED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "unauthorized-external-action",
+          "stimulus": "Request an action not listed in the signed slot window.",
+          "expected_error_class": "ACTION_NOT_PLANNED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        }
+      ],
+      "catalog_metadata_counts_as_execution": false,
+      "execution_result_count": 0,
+      "qualification_effect": "NONE",
+      "asserts_gate_pass": false,
+      "contract_sha256": "b71c5d2e46c5ebba3d416487e42ab3360ef80577042aaa8e4a0b61051b909226"
+    },
+    {
+      "contract_id": "G0-05:schema-invalid-denominator:executor-contract/v1",
+      "slot_semantic": "schema-invalid-denominator",
+      "category": "attack",
+      "stage_type": "T1",
+      "purpose": "Reject missing, wildcard, or default denominator fields at the schema/runtime boundary.",
+      "denominator_binding": {
+        "denominator_registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+        "denominator_registry_sha256": "da1c555ce3952b59c9f5d2100c1971771b0310547821f31dbb3be755cd4789cb",
+        "capability_ids": [
+          "C0-CAPABILITY-LEDGER-SCHEMA",
+          "C0-CASE-CATALOG",
+          "C0-PREREGISTRATION-PLAN",
+          "C0-QUALIFICATION-AGGREGATOR",
+          "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "C0-RUN-EVIDENCE-LEDGER"
+        ],
+        "slot_ids": [
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:schema-invalid-denominator",
+          "G0-04:C0-CASE-CATALOG:schema-invalid-denominator",
+          "G0-04:C0-PREREGISTRATION-PLAN:schema-invalid-denominator",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:schema-invalid-denominator",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:schema-invalid-denominator",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:schema-invalid-denominator",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:schema-invalid-denominator"
+        ],
+        "attempt_ids": [
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:schema-invalid-denominator:adjudicated-infra-retry",
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:schema-invalid-denominator:primary",
+          "G0-04:C0-CASE-CATALOG:schema-invalid-denominator:adjudicated-infra-retry",
+          "G0-04:C0-CASE-CATALOG:schema-invalid-denominator:primary",
+          "G0-04:C0-PREREGISTRATION-PLAN:schema-invalid-denominator:adjudicated-infra-retry",
+          "G0-04:C0-PREREGISTRATION-PLAN:schema-invalid-denominator:primary",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:schema-invalid-denominator:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:schema-invalid-denominator:primary",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:schema-invalid-denominator:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:schema-invalid-denominator:primary",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:schema-invalid-denominator:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:schema-invalid-denominator:primary",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:schema-invalid-denominator:adjudicated-infra-retry",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:schema-invalid-denominator:primary"
+        ],
+        "slot_count": 7,
+        "attempt_count": 14
+      },
+      "runner_binding": {
+        "runner_inventory_entry_id": "local-simulation/guard-to-g0c",
+        "composition_root": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner",
+        "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+        "entrypoint": "createQualificationRunner",
+        "qualification_enabled": true,
+        "status": "wired-local-nonqualification"
+      },
+      "executor_ref": {
+        "executor_id": "g0-05-schema-invalid-denominator-executor/v1",
+        "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+        "source_content_sha256": "fec73a09d3cece71dc55aee22a832de154c0594563f801e2ec6dac8cb656e5b0",
+        "entrypoint": "createQualificationRunner.runLocalSimulation",
+        "composition_root": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner",
+        "requires_guarded_action_adapter": true,
+        "requires_independent_g0c_reader": true,
+        "contract_sha256": "dec0565c9bf3195a5a3e2b722ee5e8d5fbb41faf93151528daa925577c1de43b"
+      },
+      "oracle_ref": {
+        "oracle_id": "g0-05-schema-invalid-denominator-oracle/v1",
+        "source_ref": "scripts/test/devseek-profile-executor-contracts.test.mjs",
+        "source_content_sha256": "3305a3dcf6287fc81bf91165988a6ec484174908be9f74f5761c678359e996c3",
+        "entrypoint": "assert-schema-invalid-denominator-executor-contract",
+        "independent_from_executor": true,
+        "expected_decision": "veto-invalid-input-before-dispatch",
+        "contract_sha256": "4f77ad71519a47989313a6ae8829a0a8da02d9a84fc0e6a3f4e2f5f6f6f84f69"
+      },
+      "zero_action_attack_oracles": [
+        {
+          "attack_id": "empty-input",
+          "stimulus": "Submit no run request object.",
+          "expected_error_class": "RUN_REQUEST_REQUIRED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "replacement-case-input",
+          "stimulus": "Replace the signed case input after plan creation.",
+          "expected_error_class": "PLAN_INVALID",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "wrong-slot-or-attempt",
+          "stimulus": "Bind the attempt to a missing or wrong slot.",
+          "expected_error_class": "RUN_COVERAGE_SLOT_NOT_DECLARED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "missing-authorization-receipt",
+          "stimulus": "Drop the durable authorization receipt before dispatch.",
+          "expected_error_class": "ACTION_RECEIPT_REQUIRED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "unauthorized-external-action",
+          "stimulus": "Request an action not listed in the signed slot window.",
+          "expected_error_class": "ACTION_NOT_PLANNED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        }
+      ],
+      "catalog_metadata_counts_as_execution": false,
+      "execution_result_count": 0,
+      "qualification_effect": "NONE",
+      "asserts_gate_pass": false,
+      "contract_sha256": "838ce4f5a373efaeed29c44309b79494d2feddd75170959d8a83f202f4e5e8e6"
+    },
+    {
+      "contract_id": "G0-05:slot-attempt-identity-drift:executor-contract/v1",
+      "slot_semantic": "slot-attempt-identity-drift",
+      "category": "attack",
+      "stage_type": "T1",
+      "purpose": "Reject slot, case, profile, platform, or attempt-role identity drift.",
+      "denominator_binding": {
+        "denominator_registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+        "denominator_registry_sha256": "da1c555ce3952b59c9f5d2100c1971771b0310547821f31dbb3be755cd4789cb",
+        "capability_ids": [
+          "C0-CAPABILITY-LEDGER-SCHEMA",
+          "C0-CASE-CATALOG",
+          "C0-PREREGISTRATION-PLAN",
+          "C0-QUALIFICATION-AGGREGATOR",
+          "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "C0-RUN-EVIDENCE-LEDGER"
+        ],
+        "slot_ids": [
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:slot-attempt-identity-drift",
+          "G0-04:C0-CASE-CATALOG:slot-attempt-identity-drift",
+          "G0-04:C0-PREREGISTRATION-PLAN:slot-attempt-identity-drift",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:slot-attempt-identity-drift",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:slot-attempt-identity-drift",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:slot-attempt-identity-drift",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:slot-attempt-identity-drift"
+        ],
+        "attempt_ids": [
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:slot-attempt-identity-drift:adjudicated-infra-retry",
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:slot-attempt-identity-drift:primary",
+          "G0-04:C0-CASE-CATALOG:slot-attempt-identity-drift:adjudicated-infra-retry",
+          "G0-04:C0-CASE-CATALOG:slot-attempt-identity-drift:primary",
+          "G0-04:C0-PREREGISTRATION-PLAN:slot-attempt-identity-drift:adjudicated-infra-retry",
+          "G0-04:C0-PREREGISTRATION-PLAN:slot-attempt-identity-drift:primary",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:slot-attempt-identity-drift:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:slot-attempt-identity-drift:primary",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:slot-attempt-identity-drift:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:slot-attempt-identity-drift:primary",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:slot-attempt-identity-drift:adjudicated-infra-retry",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:slot-attempt-identity-drift:primary",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:slot-attempt-identity-drift:adjudicated-infra-retry",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:slot-attempt-identity-drift:primary"
+        ],
+        "slot_count": 7,
+        "attempt_count": 14
+      },
+      "runner_binding": {
+        "runner_inventory_entry_id": "local-simulation/guard-to-g0c",
+        "composition_root": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner",
+        "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+        "entrypoint": "createQualificationRunner",
+        "qualification_enabled": true,
+        "status": "wired-local-nonqualification"
+      },
+      "executor_ref": {
+        "executor_id": "g0-05-slot-attempt-identity-drift-executor/v1",
+        "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+        "source_content_sha256": "fec73a09d3cece71dc55aee22a832de154c0594563f801e2ec6dac8cb656e5b0",
+        "entrypoint": "createQualificationRunner.runLocalSimulation",
+        "composition_root": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner",
+        "requires_guarded_action_adapter": true,
+        "requires_independent_g0c_reader": true,
+        "contract_sha256": "47e2c190ef6cb1abba68526c950ef16a67a41b56557824374cd365b2679ef5d9"
+      },
+      "oracle_ref": {
+        "oracle_id": "g0-05-slot-attempt-identity-drift-oracle/v1",
+        "source_ref": "scripts/test/devseek-profile-executor-contracts.test.mjs",
+        "source_content_sha256": "3305a3dcf6287fc81bf91165988a6ec484174908be9f74f5761c678359e996c3",
+        "entrypoint": "assert-slot-attempt-identity-drift-executor-contract",
+        "independent_from_executor": true,
+        "expected_decision": "veto-invalid-input-before-dispatch",
+        "contract_sha256": "de3ff1e4a6a9c5db058c98f73f0c1f576c964849672f4bb95f9fa1122e03f6af"
+      },
+      "zero_action_attack_oracles": [
+        {
+          "attack_id": "empty-input",
+          "stimulus": "Submit no run request object.",
+          "expected_error_class": "RUN_REQUEST_REQUIRED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "replacement-case-input",
+          "stimulus": "Replace the signed case input after plan creation.",
+          "expected_error_class": "PLAN_INVALID",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "wrong-slot-or-attempt",
+          "stimulus": "Bind the attempt to a missing or wrong slot.",
+          "expected_error_class": "RUN_COVERAGE_SLOT_NOT_DECLARED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "missing-authorization-receipt",
+          "stimulus": "Drop the durable authorization receipt before dispatch.",
+          "expected_error_class": "ACTION_RECEIPT_REQUIRED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        },
+        {
+          "attack_id": "unauthorized-external-action",
+          "stimulus": "Request an action not listed in the signed slot window.",
+          "expected_error_class": "ACTION_NOT_PLANNED",
+          "expected_external_actions": 0,
+          "expected_terminal_state": "blocked-before-dispatch"
+        }
+      ],
+      "catalog_metadata_counts_as_execution": false,
+      "execution_result_count": 0,
+      "qualification_effect": "NONE",
+      "asserts_gate_pass": false,
+      "contract_sha256": "49975a806cd5aa07db22402c16dc9759d5a3d15f539e763f6fe6b19d16df33a6"
+    }
+  ],
+  "counts": {
+    "slot_semantics": 5,
+    "denominator_slots": 35,
+    "denominator_attempts": 70,
+    "executor_contracts": 5,
+    "oracle_contracts": 5,
+    "zero_action_attack_oracles": 25,
+    "execution_results": 0,
+    "qualification_claims": 0
+  },
+  "contract_registry_sha256": "7ead83ffd8a8baf0f77ab4cd62ac05265dd7296a0e0d3a7c4c0a2ff3e4c11250"
+}
