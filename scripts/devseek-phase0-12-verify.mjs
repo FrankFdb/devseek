@@ -51,6 +51,12 @@ const gates = [
     purpose: 'Fail closed when governed document front matter, legacy banners, README status, or generated document-governance status drift from the machine selector and inventory sources.',
   },
   {
+    id: 'profile-denominator-registry-governance',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:profile-denominator-registry'],
+    purpose: 'Fail closed when the seven-C0 profile, corpus, catalog, slot, attempt, or applicability denominators drift or are promoted beyond local non-qualification scope.',
+  },
+  {
     id: 'capability-ledger-governance',
     phases: '0-12',
     command: ['npm', 'run', 'verify:capability-ledger'],

@@ -1,0 +1,462 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-profile-denominator-registry-v1.json",
+  "title": "DevSeek Gate 0 Profile Denominator Registry v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "registry_id",
+    "registry_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "sources",
+    "denominator_policy",
+    "capability_denominators",
+    "counts",
+    "registry_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.profile-denominator-registry/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "registry_id": { "const": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1" },
+    "registry_version": { "const": 1 },
+    "source_status": { "const": "verified" },
+    "integrity_scope": { "const": "local-denominator-conformance" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "sources": { "$ref": "#/$defs/sources" },
+    "denominator_policy": { "$ref": "#/$defs/denominatorPolicy" },
+    "capability_denominators": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": { "$ref": "#/$defs/capabilityDenominator" }
+    },
+    "counts": { "$ref": "#/$defs/counts" },
+    "registry_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "safeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "not": {
+        "enum": ["*", "default", "DEFAULT"]
+      }
+    },
+    "capabilityId": {
+      "type": "string",
+      "pattern": "^C0-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability_ledger", "milestone_profile", "claim_profile"],
+      "properties": {
+        "capability_ledger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "schema_version", "ledger_id", "source_sha256"],
+          "properties": {
+            "path": { "const": "docs/process/devseek-capability-ledger.json" },
+            "schema_version": { "const": "devseek.capability-ledger/v1" },
+            "ledger_id": { "$ref": "#/$defs/safeId" },
+            "source_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "milestone_profile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "schema_version", "profile_id", "profile_sha256", "group_id"],
+          "properties": {
+            "path": { "const": "docs/process/devseek-milestone-profiles.json" },
+            "schema_version": { "const": "devseek.milestone-profiles/v1" },
+            "profile_id": { "const": "R1-MINIMAL-SEAM/v1" },
+            "profile_sha256": { "$ref": "#/$defs/sha256" },
+            "group_id": { "const": "gate0" }
+          }
+        },
+        "claim_profile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "schema_version",
+            "profile_id",
+            "profile_sha256",
+            "claim_scope",
+            "surface",
+            "provider",
+            "platform_profile"
+          ],
+          "properties": {
+            "path": { "const": "docs/process/devseek-milestone-profiles.json" },
+            "schema_version": { "const": "devseek.qualification-claim-profile/v1" },
+            "profile_id": { "const": "DEVSEEK-GATE0-INFRASTRUCTURE/v1" },
+            "profile_sha256": { "$ref": "#/$defs/sha256" },
+            "claim_scope": { "const": "gate0-infrastructure" },
+            "surface": { "const": "repository-governance" },
+            "provider": { "const": "local-node" },
+            "platform_profile": { "const": "linux-x64-v1" }
+          }
+        }
+      }
+    },
+    "denominatorPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_count",
+        "slot_semantics_per_capability",
+        "required_attempts_per_slot",
+        "attempt_roles",
+        "minimum_level",
+        "wildcard_claims_permitted",
+        "default_claims_permitted",
+        "catalog_metadata_counts_as_execution",
+        "missing_denominator_veto",
+        "duplicate_slot_veto",
+        "attempt_identity_drift_veto",
+        "profile_applicability_lowering_veto",
+        "schema_runtime_bidirectional_attacks_fail_closed"
+      ],
+      "properties": {
+        "capability_count": { "const": 7 },
+        "slot_semantics_per_capability": { "const": 5 },
+        "required_attempts_per_slot": { "const": 2 },
+        "attempt_roles": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "prefixItems": [
+            { "const": "primary" },
+            { "const": "adjudicated-infra-retry" }
+          ]
+        },
+        "minimum_level": { "const": "L2" },
+        "wildcard_claims_permitted": { "const": false },
+        "default_claims_permitted": { "const": false },
+        "catalog_metadata_counts_as_execution": { "const": false },
+        "missing_denominator_veto": { "const": true },
+        "duplicate_slot_veto": { "const": true },
+        "attempt_identity_drift_veto": { "const": true },
+        "profile_applicability_lowering_veto": { "const": true },
+        "schema_runtime_bidirectional_attacks_fail_closed": { "const": true }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capabilities",
+        "slots_per_capability",
+        "total_slots",
+        "attempts_per_slot",
+        "total_attempts",
+        "catalog_metadata_executions",
+        "qualification_claims"
+      ],
+      "properties": {
+        "capabilities": { "const": 7 },
+        "slots_per_capability": { "const": 5 },
+        "total_slots": { "const": 35 },
+        "attempts_per_slot": { "const": 2 },
+        "total_attempts": { "const": 70 },
+        "catalog_metadata_executions": { "const": 0 },
+        "qualification_claims": { "const": 0 }
+      }
+    },
+    "capabilityDenominator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_id",
+        "capability_title",
+        "semantic_authority_port",
+        "implementation_state",
+        "required_implementation_state",
+        "profile_denominator",
+        "applicability_denominator",
+        "corpus_denominator",
+        "catalog_denominator",
+        "slots",
+        "capability_denominator_sha256"
+      ],
+      "properties": {
+        "capability_id": { "$ref": "#/$defs/capabilityId" },
+        "capability_title": { "$ref": "#/$defs/safeId" },
+        "semantic_authority_port": { "$ref": "#/$defs/safeId" },
+        "implementation_state": {
+          "enum": ["specified", "implemented", "wired"]
+        },
+        "required_implementation_state": { "const": "wired" },
+        "profile_denominator": { "$ref": "#/$defs/profileDenominator" },
+        "applicability_denominator": { "$ref": "#/$defs/applicabilityDenominator" },
+        "corpus_denominator": { "$ref": "#/$defs/corpusDenominator" },
+        "catalog_denominator": { "$ref": "#/$defs/catalogDenominator" },
+        "slots": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": { "$ref": "#/$defs/slotDenominator" }
+        },
+        "capability_denominator_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "profileDenominator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_id",
+        "profile_sha256",
+        "claim_scope",
+        "surface",
+        "provider",
+        "platform_profile",
+        "minimum_level",
+        "claim_profile_id",
+        "required_implementation_state"
+      ],
+      "properties": {
+        "profile_id": { "const": "DEVSEEK-GATE0-INFRASTRUCTURE/v1" },
+        "profile_sha256": { "$ref": "#/$defs/sha256" },
+        "claim_scope": { "const": "gate0-infrastructure" },
+        "surface": { "const": "repository-governance" },
+        "provider": { "const": "local-node" },
+        "platform_profile": { "const": "linux-x64-v1" },
+        "minimum_level": { "const": "L2" },
+        "claim_profile_id": { "const": "DEVSEEK-GATE0-INFRASTRUCTURE/v1" },
+        "required_implementation_state": { "const": "wired" }
+      }
+    },
+    "applicabilityDenominator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_id",
+        "capability_applicability_state",
+        "capability_claim_scopes",
+        "not_applicable_requires_adjudication",
+        "claim_scope",
+        "surface",
+        "provider",
+        "platform_profiles",
+        "minimum_level",
+        "qualification_eligible",
+        "qualification_effect",
+        "applicability_sha256"
+      ],
+      "properties": {
+        "capability_id": { "$ref": "#/$defs/capabilityId" },
+        "capability_applicability_state": { "const": "active" },
+        "capability_claim_scopes": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "const": "qualification-infrastructure" }
+        },
+        "not_applicable_requires_adjudication": { "const": true },
+        "claim_scope": { "const": "gate0-infrastructure" },
+        "surface": { "const": "repository-governance" },
+        "provider": { "const": "local-node" },
+        "platform_profiles": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "prefixItems": [
+            { "const": "linux-x64-v1" }
+          ]
+        },
+        "minimum_level": { "const": "L2" },
+        "qualification_eligible": { "const": false },
+        "qualification_effect": { "const": "NONE" },
+        "applicability_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "corpusDenominator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["corpus_id", "corpus_kind", "capability_id", "slot_ids", "slot_count", "attempt_count", "corpus_sha256"],
+      "properties": {
+        "corpus_id": { "$ref": "#/$defs/safeId" },
+        "corpus_kind": { "const": "gate0-c0-denominator" },
+        "capability_id": { "$ref": "#/$defs/capabilityId" },
+        "slot_ids": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": { "$ref": "#/$defs/safeId" }
+        },
+        "slot_count": { "const": 5 },
+        "attempt_count": { "const": 10 },
+        "corpus_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "catalogDenominator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "catalog_id",
+        "catalog_kind",
+        "capability_id",
+        "catalog_metadata_counts_as_execution",
+        "cases",
+        "case_count",
+        "execution_result_count",
+        "catalog_sha256"
+      ],
+      "properties": {
+        "catalog_id": { "$ref": "#/$defs/safeId" },
+        "catalog_kind": { "const": "gate0-denominator-catalog" },
+        "capability_id": { "$ref": "#/$defs/capabilityId" },
+        "catalog_metadata_counts_as_execution": { "const": false },
+        "cases": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": { "$ref": "#/$defs/catalogCase" }
+        },
+        "case_count": { "const": 5 },
+        "execution_result_count": { "const": 0 },
+        "catalog_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "catalogCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "case_version", "category", "slot_id", "stage_type", "required_for_denominator"],
+      "properties": {
+        "case_id": { "$ref": "#/$defs/safeId" },
+        "case_version": { "const": 1 },
+        "category": { "enum": ["protocol", "attack"] },
+        "slot_id": { "$ref": "#/$defs/safeId" },
+        "stage_type": { "enum": ["T0", "T1", "T2"] },
+        "required_for_denominator": { "const": true }
+      }
+    },
+    "slotDenominator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slot_id",
+        "slot_semantic",
+        "capability_id",
+        "case_id",
+        "case_version",
+        "case_category",
+        "stage_type",
+        "purpose",
+        "required_for_denominator",
+        "catalog_metadata_counts_as_execution",
+        "attempts",
+        "slot_denominator_sha256"
+      ],
+      "properties": {
+        "slot_id": { "$ref": "#/$defs/safeId" },
+        "slot_semantic": {
+          "enum": [
+            "profile-tuple-binding",
+            "catalog-corpus-binding",
+            "schema-invalid-denominator",
+            "slot-attempt-identity-drift",
+            "applicability-denominator-lowering"
+          ]
+        },
+        "capability_id": { "$ref": "#/$defs/capabilityId" },
+        "case_id": { "$ref": "#/$defs/safeId" },
+        "case_version": { "const": 1 },
+        "case_category": { "enum": ["protocol", "attack"] },
+        "stage_type": { "enum": ["T0", "T1", "T2"] },
+        "purpose": { "$ref": "#/$defs/safeId" },
+        "required_for_denominator": { "const": true },
+        "catalog_metadata_counts_as_execution": { "const": false },
+        "attempts": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "$ref": "#/$defs/attemptDenominator" }
+        },
+        "slot_denominator_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "attemptDenominator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempt_id",
+        "attempt_role",
+        "retry_of_attempt_id",
+        "attempt_identity",
+        "attempt_identity_sha256"
+      ],
+      "properties": {
+        "attempt_id": { "$ref": "#/$defs/safeId" },
+        "attempt_role": { "enum": ["primary", "adjudicated-infra-retry"] },
+        "retry_of_attempt_id": {
+          "oneOf": [
+            { "$ref": "#/$defs/safeId" },
+            { "type": "null" }
+          ]
+        },
+        "attempt_identity": { "$ref": "#/$defs/attemptIdentity" },
+        "attempt_identity_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "attemptIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "registry_id",
+        "capability_id",
+        "profile_id",
+        "profile_sha256",
+        "claim_scope",
+        "surface",
+        "provider",
+        "platform_profile",
+        "applicability_sha256",
+        "slot_id",
+        "case_id",
+        "case_version",
+        "attempt_role",
+        "qualification_effect"
+      ],
+      "properties": {
+        "registry_id": { "const": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1" },
+        "capability_id": { "$ref": "#/$defs/capabilityId" },
+        "profile_id": { "const": "DEVSEEK-GATE0-INFRASTRUCTURE/v1" },
+        "profile_sha256": { "$ref": "#/$defs/sha256" },
+        "claim_scope": { "const": "gate0-infrastructure" },
+        "surface": { "const": "repository-governance" },
+        "provider": { "const": "local-node" },
+        "platform_profile": { "const": "linux-x64-v1" },
+        "applicability_sha256": { "$ref": "#/$defs/sha256" },
+        "slot_id": { "$ref": "#/$defs/safeId" },
+        "case_id": { "$ref": "#/$defs/safeId" },
+        "case_version": { "const": 1 },
+        "attempt_role": { "enum": ["primary", "adjudicated-infra-retry"] },
+        "qualification_effect": { "const": "NONE" }
+      }
+    }
+  }
+}

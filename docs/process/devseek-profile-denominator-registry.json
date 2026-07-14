@@ -1,0 +1,2870 @@
+{
+  "schema_version": "devseek.profile-denominator-registry/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+  "registry_version": 1,
+  "source_status": "verified",
+  "integrity_scope": "local-denominator-conformance",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "sources": {
+    "capability_ledger": {
+      "path": "docs/process/devseek-capability-ledger.json",
+      "schema_version": "devseek.capability-ledger/v1",
+      "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
+      "source_sha256": "b9e0e10f03d933992e22662596d9a45d3aa5a1ff84738b1e710a4d8fc3914d2c"
+    },
+    "milestone_profile": {
+      "path": "docs/process/devseek-milestone-profiles.json",
+      "schema_version": "devseek.milestone-profiles/v1",
+      "profile_id": "R1-MINIMAL-SEAM/v1",
+      "profile_sha256": "27c90f86cab61156766e18b36bcb368842e424d25c5fae2de2534fcdd1753ad9",
+      "group_id": "gate0"
+    },
+    "claim_profile": {
+      "path": "docs/process/devseek-milestone-profiles.json",
+      "schema_version": "devseek.qualification-claim-profile/v1",
+      "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+      "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+      "claim_scope": "gate0-infrastructure",
+      "surface": "repository-governance",
+      "provider": "local-node",
+      "platform_profile": "linux-x64-v1"
+    }
+  },
+  "denominator_policy": {
+    "capability_count": 7,
+    "slot_semantics_per_capability": 5,
+    "required_attempts_per_slot": 2,
+    "attempt_roles": [
+      "primary",
+      "adjudicated-infra-retry"
+    ],
+    "minimum_level": "L2",
+    "wildcard_claims_permitted": false,
+    "default_claims_permitted": false,
+    "catalog_metadata_counts_as_execution": false,
+    "missing_denominator_veto": true,
+    "duplicate_slot_veto": true,
+    "attempt_identity_drift_veto": true,
+    "profile_applicability_lowering_veto": true,
+    "schema_runtime_bidirectional_attacks_fail_closed": true
+  },
+  "capability_denominators": [
+    {
+      "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+      "capability_title": "C0 可证地基 / CapabilityLedgerSchema",
+      "semantic_authority_port": "CapabilityLedgerSchema",
+      "implementation_state": "implemented",
+      "required_implementation_state": "wired",
+      "profile_denominator": {
+        "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+        "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+        "claim_scope": "gate0-infrastructure",
+        "surface": "repository-governance",
+        "provider": "local-node",
+        "platform_profile": "linux-x64-v1",
+        "minimum_level": "L2",
+        "claim_profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+        "required_implementation_state": "wired"
+      },
+      "applicability_denominator": {
+        "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+        "capability_applicability_state": "active",
+        "capability_claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true,
+        "claim_scope": "gate0-infrastructure",
+        "surface": "repository-governance",
+        "provider": "local-node",
+        "platform_profiles": [
+          "linux-x64-v1"
+        ],
+        "minimum_level": "L2",
+        "qualification_eligible": false,
+        "qualification_effect": "NONE",
+        "applicability_sha256": "8320bb2f02c79657b46b45b87a1268587f79e8898a20f5833ba9aa1b882a17e0"
+      },
+      "corpus_denominator": {
+        "corpus_id": "DEVSEEK-GATE0-DENOMINATOR-CORPUS:C0-CAPABILITY-LEDGER-SCHEMA/v1",
+        "corpus_kind": "gate0-c0-denominator",
+        "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+        "slot_ids": [
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:profile-tuple-binding",
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:catalog-corpus-binding",
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:schema-invalid-denominator",
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:slot-attempt-identity-drift",
+          "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:applicability-denominator-lowering"
+        ],
+        "slot_count": 5,
+        "attempt_count": 10,
+        "corpus_sha256": "4c997074b4f9b875cf565993c347f00bcf191d53d4b58b21f8662f5541a2ee32"
+      },
+      "catalog_denominator": {
+        "catalog_id": "DEVSEEK-GATE0-DENOMINATOR-CATALOG:C0-CAPABILITY-LEDGER-SCHEMA/v1",
+        "catalog_kind": "gate0-denominator-catalog",
+        "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+        "catalog_metadata_counts_as_execution": false,
+        "cases": [
+          {
+            "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-profile-tuple-binding",
+            "case_version": 1,
+            "category": "protocol",
+            "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:profile-tuple-binding",
+            "stage_type": "T0",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-catalog-corpus-binding",
+            "case_version": 1,
+            "category": "protocol",
+            "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:catalog-corpus-binding",
+            "stage_type": "T0",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-schema-invalid-denominator",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:schema-invalid-denominator",
+            "stage_type": "T1",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-slot-attempt-identity-drift",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:slot-attempt-identity-drift",
+            "stage_type": "T1",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-applicability-denominator-lowering",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:applicability-denominator-lowering",
+            "stage_type": "T2",
+            "required_for_denominator": true
+          }
+        ],
+        "case_count": 5,
+        "execution_result_count": 0,
+        "catalog_sha256": "d665fef2ab3e8f12383ca3e5376b49b6c4695b358749fa47b6104cc59479c3db"
+      },
+      "slots": [
+        {
+          "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:profile-tuple-binding",
+          "slot_semantic": "profile-tuple-binding",
+          "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+          "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-profile-tuple-binding",
+          "case_version": 1,
+          "case_category": "protocol",
+          "stage_type": "T0",
+          "purpose": "Bind the exact Gate 0 profile tuple before any execution result can be interpreted.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:profile-tuple-binding:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "8320bb2f02c79657b46b45b87a1268587f79e8898a20f5833ba9aa1b882a17e0",
+                "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:profile-tuple-binding",
+                "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-profile-tuple-binding",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "a84e85379d472120aa8865f98669fb6de5acc625e6cafdcc3933650134d832bd"
+            },
+            {
+              "attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:profile-tuple-binding:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:profile-tuple-binding:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "8320bb2f02c79657b46b45b87a1268587f79e8898a20f5833ba9aa1b882a17e0",
+                "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:profile-tuple-binding",
+                "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-profile-tuple-binding",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "3c88861a5e33d74e239e3360bf01c940ac7e6138ffa38c5859bd449ddb7f161f"
+            }
+          ],
+          "slot_denominator_sha256": "43488e01928e2cec651595528a0080e13e05202a51c6472cf14465e08d810a01"
+        },
+        {
+          "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:catalog-corpus-binding",
+          "slot_semantic": "catalog-corpus-binding",
+          "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+          "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-catalog-corpus-binding",
+          "case_version": 1,
+          "case_category": "protocol",
+          "stage_type": "T0",
+          "purpose": "Bind the exact catalog and corpus denominator before case metadata can be consumed.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:catalog-corpus-binding:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "8320bb2f02c79657b46b45b87a1268587f79e8898a20f5833ba9aa1b882a17e0",
+                "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:catalog-corpus-binding",
+                "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-catalog-corpus-binding",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "340a409cc6fc481e46abb905d470e7f836e9cb11ef46a0f9bad3bf7eb11f0326"
+            },
+            {
+              "attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:catalog-corpus-binding:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:catalog-corpus-binding:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "8320bb2f02c79657b46b45b87a1268587f79e8898a20f5833ba9aa1b882a17e0",
+                "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:catalog-corpus-binding",
+                "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-catalog-corpus-binding",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "27da9d9c03f902a92cd01eda6b77dd755f15e6e704cd557e864b03a54bf392af"
+            }
+          ],
+          "slot_denominator_sha256": "69523e84a19799f936503e1d031b877f4a9b3cc6acefca850df52b4c9c99795f"
+        },
+        {
+          "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:schema-invalid-denominator",
+          "slot_semantic": "schema-invalid-denominator",
+          "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+          "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-schema-invalid-denominator",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T1",
+          "purpose": "Reject missing, wildcard, or default denominator fields at the schema/runtime boundary.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:schema-invalid-denominator:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "8320bb2f02c79657b46b45b87a1268587f79e8898a20f5833ba9aa1b882a17e0",
+                "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:schema-invalid-denominator",
+                "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-schema-invalid-denominator",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "9fbf0c34d21392e27796d6153fc441aa41210ee786adf8c2cdb0e70f3eb411d7"
+            },
+            {
+              "attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:schema-invalid-denominator:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:schema-invalid-denominator:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "8320bb2f02c79657b46b45b87a1268587f79e8898a20f5833ba9aa1b882a17e0",
+                "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:schema-invalid-denominator",
+                "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-schema-invalid-denominator",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "92afccf9b2e6e502b61c496c5b2fdb555f83d3821395de54d918c883c989ef15"
+            }
+          ],
+          "slot_denominator_sha256": "c734c4455d94c1c08936ac045cabad67b3d6b73ce5d74581b368f365db74d38a"
+        },
+        {
+          "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:slot-attempt-identity-drift",
+          "slot_semantic": "slot-attempt-identity-drift",
+          "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+          "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-slot-attempt-identity-drift",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T1",
+          "purpose": "Reject slot, case, profile, platform, or attempt-role identity drift.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:slot-attempt-identity-drift:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "8320bb2f02c79657b46b45b87a1268587f79e8898a20f5833ba9aa1b882a17e0",
+                "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:slot-attempt-identity-drift",
+                "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-slot-attempt-identity-drift",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "e209eb616dee976524afe99854ffb5a48d6754ab91236634e3704fd888e80aab"
+            },
+            {
+              "attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:slot-attempt-identity-drift:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:slot-attempt-identity-drift:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "8320bb2f02c79657b46b45b87a1268587f79e8898a20f5833ba9aa1b882a17e0",
+                "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:slot-attempt-identity-drift",
+                "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-slot-attempt-identity-drift",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "3532e5e074815ffed08b49cf5040e6830397a7aaa9f81dd187a42ae3ee7c8b2c"
+            }
+          ],
+          "slot_denominator_sha256": "c6e129574ac32be8c7c13f805230bf5d8f34eec484495d7c62d6c6cc3074bfbe"
+        },
+        {
+          "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:applicability-denominator-lowering",
+          "slot_semantic": "applicability-denominator-lowering",
+          "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+          "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-applicability-denominator-lowering",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T2",
+          "purpose": "Reject lowered applicability, platform, provider, or qualification level denominators.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:applicability-denominator-lowering:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "8320bb2f02c79657b46b45b87a1268587f79e8898a20f5833ba9aa1b882a17e0",
+                "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:applicability-denominator-lowering",
+                "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-applicability-denominator-lowering",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "20fbd4d9be3c0f1986eb8be96d91e4956619ea3f6375d851105c6a7b01062c20"
+            },
+            {
+              "attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:applicability-denominator-lowering:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:applicability-denominator-lowering:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "8320bb2f02c79657b46b45b87a1268587f79e8898a20f5833ba9aa1b882a17e0",
+                "slot_id": "G0-04:C0-CAPABILITY-LEDGER-SCHEMA:applicability-denominator-lowering",
+                "case_id": "G0-04-C0-CAPABILITY-LEDGER-SCHEMA-applicability-denominator-lowering",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "39e90c208a2db0066401e15487be00182e89d774ced727b9702437ffd52e21a8"
+            }
+          ],
+          "slot_denominator_sha256": "ded9836afb37761ec9c796cf8106d3aa4305c54500cec65e5d193b74dd6fd1bf"
+        }
+      ],
+      "capability_denominator_sha256": "ba47cbcda804ac132c0f6c41bd36d8c64b17be1fe73ebb956e2ae4e137552718"
+    },
+    {
+      "capability_id": "C0-CASE-CATALOG",
+      "capability_title": "C0 可证地基 / GoldenCaseCatalogPort",
+      "semantic_authority_port": "GoldenCaseCatalogPort",
+      "implementation_state": "wired",
+      "required_implementation_state": "wired",
+      "profile_denominator": {
+        "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+        "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+        "claim_scope": "gate0-infrastructure",
+        "surface": "repository-governance",
+        "provider": "local-node",
+        "platform_profile": "linux-x64-v1",
+        "minimum_level": "L2",
+        "claim_profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+        "required_implementation_state": "wired"
+      },
+      "applicability_denominator": {
+        "capability_id": "C0-CASE-CATALOG",
+        "capability_applicability_state": "active",
+        "capability_claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true,
+        "claim_scope": "gate0-infrastructure",
+        "surface": "repository-governance",
+        "provider": "local-node",
+        "platform_profiles": [
+          "linux-x64-v1"
+        ],
+        "minimum_level": "L2",
+        "qualification_eligible": false,
+        "qualification_effect": "NONE",
+        "applicability_sha256": "b45ce82aa305f3eaeda84c70528f464947e46f56e992d1a4b42cba1eac2fb087"
+      },
+      "corpus_denominator": {
+        "corpus_id": "DEVSEEK-GATE0-DENOMINATOR-CORPUS:C0-CASE-CATALOG/v1",
+        "corpus_kind": "gate0-c0-denominator",
+        "capability_id": "C0-CASE-CATALOG",
+        "slot_ids": [
+          "G0-04:C0-CASE-CATALOG:profile-tuple-binding",
+          "G0-04:C0-CASE-CATALOG:catalog-corpus-binding",
+          "G0-04:C0-CASE-CATALOG:schema-invalid-denominator",
+          "G0-04:C0-CASE-CATALOG:slot-attempt-identity-drift",
+          "G0-04:C0-CASE-CATALOG:applicability-denominator-lowering"
+        ],
+        "slot_count": 5,
+        "attempt_count": 10,
+        "corpus_sha256": "f65ee9efbea7342330d6575093c4ce0dcfc72726ffe40288bbdf4b6e203653bf"
+      },
+      "catalog_denominator": {
+        "catalog_id": "DEVSEEK-GATE0-DENOMINATOR-CATALOG:C0-CASE-CATALOG/v1",
+        "catalog_kind": "gate0-denominator-catalog",
+        "capability_id": "C0-CASE-CATALOG",
+        "catalog_metadata_counts_as_execution": false,
+        "cases": [
+          {
+            "case_id": "G0-04-C0-CASE-CATALOG-profile-tuple-binding",
+            "case_version": 1,
+            "category": "protocol",
+            "slot_id": "G0-04:C0-CASE-CATALOG:profile-tuple-binding",
+            "stage_type": "T0",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-CASE-CATALOG-catalog-corpus-binding",
+            "case_version": 1,
+            "category": "protocol",
+            "slot_id": "G0-04:C0-CASE-CATALOG:catalog-corpus-binding",
+            "stage_type": "T0",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-CASE-CATALOG-schema-invalid-denominator",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-CASE-CATALOG:schema-invalid-denominator",
+            "stage_type": "T1",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-CASE-CATALOG-slot-attempt-identity-drift",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-CASE-CATALOG:slot-attempt-identity-drift",
+            "stage_type": "T1",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-CASE-CATALOG-applicability-denominator-lowering",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-CASE-CATALOG:applicability-denominator-lowering",
+            "stage_type": "T2",
+            "required_for_denominator": true
+          }
+        ],
+        "case_count": 5,
+        "execution_result_count": 0,
+        "catalog_sha256": "221d3051afcbbbe3775a215e41d9089d311e58a9763eb924757551d6afb549d4"
+      },
+      "slots": [
+        {
+          "slot_id": "G0-04:C0-CASE-CATALOG:profile-tuple-binding",
+          "slot_semantic": "profile-tuple-binding",
+          "capability_id": "C0-CASE-CATALOG",
+          "case_id": "G0-04-C0-CASE-CATALOG-profile-tuple-binding",
+          "case_version": 1,
+          "case_category": "protocol",
+          "stage_type": "T0",
+          "purpose": "Bind the exact Gate 0 profile tuple before any execution result can be interpreted.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-CASE-CATALOG:profile-tuple-binding:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CASE-CATALOG",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "b45ce82aa305f3eaeda84c70528f464947e46f56e992d1a4b42cba1eac2fb087",
+                "slot_id": "G0-04:C0-CASE-CATALOG:profile-tuple-binding",
+                "case_id": "G0-04-C0-CASE-CATALOG-profile-tuple-binding",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "30a65e03a9ca9ca61f0ed60e1c9d3f8df50aa6ed81b41a349dc735b6ebf903d0"
+            },
+            {
+              "attempt_id": "G0-04:C0-CASE-CATALOG:profile-tuple-binding:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-CASE-CATALOG:profile-tuple-binding:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CASE-CATALOG",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "b45ce82aa305f3eaeda84c70528f464947e46f56e992d1a4b42cba1eac2fb087",
+                "slot_id": "G0-04:C0-CASE-CATALOG:profile-tuple-binding",
+                "case_id": "G0-04-C0-CASE-CATALOG-profile-tuple-binding",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "6bb12d998040bdfeb89ec604caa2967ae90997f4fc7bb9399cd99a9915b0673e"
+            }
+          ],
+          "slot_denominator_sha256": "8b51c0e055251a5b9765de0c84397912c399a2f10c01aec19ab0b479b02a32ac"
+        },
+        {
+          "slot_id": "G0-04:C0-CASE-CATALOG:catalog-corpus-binding",
+          "slot_semantic": "catalog-corpus-binding",
+          "capability_id": "C0-CASE-CATALOG",
+          "case_id": "G0-04-C0-CASE-CATALOG-catalog-corpus-binding",
+          "case_version": 1,
+          "case_category": "protocol",
+          "stage_type": "T0",
+          "purpose": "Bind the exact catalog and corpus denominator before case metadata can be consumed.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-CASE-CATALOG:catalog-corpus-binding:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CASE-CATALOG",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "b45ce82aa305f3eaeda84c70528f464947e46f56e992d1a4b42cba1eac2fb087",
+                "slot_id": "G0-04:C0-CASE-CATALOG:catalog-corpus-binding",
+                "case_id": "G0-04-C0-CASE-CATALOG-catalog-corpus-binding",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "30412c3c321e6964da91532450aaa3b8931612f52a3d2ebf519424e3b99b30e7"
+            },
+            {
+              "attempt_id": "G0-04:C0-CASE-CATALOG:catalog-corpus-binding:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-CASE-CATALOG:catalog-corpus-binding:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CASE-CATALOG",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "b45ce82aa305f3eaeda84c70528f464947e46f56e992d1a4b42cba1eac2fb087",
+                "slot_id": "G0-04:C0-CASE-CATALOG:catalog-corpus-binding",
+                "case_id": "G0-04-C0-CASE-CATALOG-catalog-corpus-binding",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "dd00655d0c4a97a16ad351e9e634924e7234d431ae1eb4de0be2a25a8e7a32ea"
+            }
+          ],
+          "slot_denominator_sha256": "6f4cec3ad3658f90ab44739a49be8faf602f19ce7206d5bc92e5cd7b75504501"
+        },
+        {
+          "slot_id": "G0-04:C0-CASE-CATALOG:schema-invalid-denominator",
+          "slot_semantic": "schema-invalid-denominator",
+          "capability_id": "C0-CASE-CATALOG",
+          "case_id": "G0-04-C0-CASE-CATALOG-schema-invalid-denominator",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T1",
+          "purpose": "Reject missing, wildcard, or default denominator fields at the schema/runtime boundary.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-CASE-CATALOG:schema-invalid-denominator:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CASE-CATALOG",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "b45ce82aa305f3eaeda84c70528f464947e46f56e992d1a4b42cba1eac2fb087",
+                "slot_id": "G0-04:C0-CASE-CATALOG:schema-invalid-denominator",
+                "case_id": "G0-04-C0-CASE-CATALOG-schema-invalid-denominator",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "fba287f93f97e04855161076710645c217427b8c20b6d6f6244f346facf6d6fc"
+            },
+            {
+              "attempt_id": "G0-04:C0-CASE-CATALOG:schema-invalid-denominator:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-CASE-CATALOG:schema-invalid-denominator:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CASE-CATALOG",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "b45ce82aa305f3eaeda84c70528f464947e46f56e992d1a4b42cba1eac2fb087",
+                "slot_id": "G0-04:C0-CASE-CATALOG:schema-invalid-denominator",
+                "case_id": "G0-04-C0-CASE-CATALOG-schema-invalid-denominator",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "71de7a6faf84740ca3024070e6d4dc685a84d23aa0993802ec6aa4c8f74a11b2"
+            }
+          ],
+          "slot_denominator_sha256": "337a96d53dfd2e5a5290ba9e10eef2a91031279c2242aa22140f5ff6caadcb3a"
+        },
+        {
+          "slot_id": "G0-04:C0-CASE-CATALOG:slot-attempt-identity-drift",
+          "slot_semantic": "slot-attempt-identity-drift",
+          "capability_id": "C0-CASE-CATALOG",
+          "case_id": "G0-04-C0-CASE-CATALOG-slot-attempt-identity-drift",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T1",
+          "purpose": "Reject slot, case, profile, platform, or attempt-role identity drift.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-CASE-CATALOG:slot-attempt-identity-drift:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CASE-CATALOG",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "b45ce82aa305f3eaeda84c70528f464947e46f56e992d1a4b42cba1eac2fb087",
+                "slot_id": "G0-04:C0-CASE-CATALOG:slot-attempt-identity-drift",
+                "case_id": "G0-04-C0-CASE-CATALOG-slot-attempt-identity-drift",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "fc604d3d209a4a93436a08ae5999d269b2356faed78d0a12d8f7a6a36c76183e"
+            },
+            {
+              "attempt_id": "G0-04:C0-CASE-CATALOG:slot-attempt-identity-drift:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-CASE-CATALOG:slot-attempt-identity-drift:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CASE-CATALOG",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "b45ce82aa305f3eaeda84c70528f464947e46f56e992d1a4b42cba1eac2fb087",
+                "slot_id": "G0-04:C0-CASE-CATALOG:slot-attempt-identity-drift",
+                "case_id": "G0-04-C0-CASE-CATALOG-slot-attempt-identity-drift",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "0372a44e7ee35d9075d95e3d6114accc0a0edb647ab2ec16901f8010fd496499"
+            }
+          ],
+          "slot_denominator_sha256": "45468fb14ac0046dbe892f4e0974ffb2c5acc38ea641e6e0034fd41ba5e8771c"
+        },
+        {
+          "slot_id": "G0-04:C0-CASE-CATALOG:applicability-denominator-lowering",
+          "slot_semantic": "applicability-denominator-lowering",
+          "capability_id": "C0-CASE-CATALOG",
+          "case_id": "G0-04-C0-CASE-CATALOG-applicability-denominator-lowering",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T2",
+          "purpose": "Reject lowered applicability, platform, provider, or qualification level denominators.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-CASE-CATALOG:applicability-denominator-lowering:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CASE-CATALOG",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "b45ce82aa305f3eaeda84c70528f464947e46f56e992d1a4b42cba1eac2fb087",
+                "slot_id": "G0-04:C0-CASE-CATALOG:applicability-denominator-lowering",
+                "case_id": "G0-04-C0-CASE-CATALOG-applicability-denominator-lowering",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "3201b0fd6b282e79f504cf3caeb5c76f040255f21ee558b38240e1f68981cc39"
+            },
+            {
+              "attempt_id": "G0-04:C0-CASE-CATALOG:applicability-denominator-lowering:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-CASE-CATALOG:applicability-denominator-lowering:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-CASE-CATALOG",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "b45ce82aa305f3eaeda84c70528f464947e46f56e992d1a4b42cba1eac2fb087",
+                "slot_id": "G0-04:C0-CASE-CATALOG:applicability-denominator-lowering",
+                "case_id": "G0-04-C0-CASE-CATALOG-applicability-denominator-lowering",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "709c06cbadff00358884b0e87b24fd4f7c52744645c5bef8450c8e39886b2505"
+            }
+          ],
+          "slot_denominator_sha256": "18c9af554f86f8d25a0c0ab7d405316b79d984c993481e806ad3314725caa5cb"
+        }
+      ],
+      "capability_denominator_sha256": "1f02e4f5bb9d74b90e3665b1b935535431ed9105977af62563a04c08447cc8c9"
+    },
+    {
+      "capability_id": "C0-PREREGISTRATION-PLAN",
+      "capability_title": "C0 可证地基 / QualificationPlanRegistrationPort",
+      "semantic_authority_port": "QualificationPlanRegistrationPort",
+      "implementation_state": "implemented",
+      "required_implementation_state": "wired",
+      "profile_denominator": {
+        "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+        "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+        "claim_scope": "gate0-infrastructure",
+        "surface": "repository-governance",
+        "provider": "local-node",
+        "platform_profile": "linux-x64-v1",
+        "minimum_level": "L2",
+        "claim_profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+        "required_implementation_state": "wired"
+      },
+      "applicability_denominator": {
+        "capability_id": "C0-PREREGISTRATION-PLAN",
+        "capability_applicability_state": "active",
+        "capability_claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true,
+        "claim_scope": "gate0-infrastructure",
+        "surface": "repository-governance",
+        "provider": "local-node",
+        "platform_profiles": [
+          "linux-x64-v1"
+        ],
+        "minimum_level": "L2",
+        "qualification_eligible": false,
+        "qualification_effect": "NONE",
+        "applicability_sha256": "18af3e67cdd50ad1623418658f995396cc386626442c114908018d9e4bc21223"
+      },
+      "corpus_denominator": {
+        "corpus_id": "DEVSEEK-GATE0-DENOMINATOR-CORPUS:C0-PREREGISTRATION-PLAN/v1",
+        "corpus_kind": "gate0-c0-denominator",
+        "capability_id": "C0-PREREGISTRATION-PLAN",
+        "slot_ids": [
+          "G0-04:C0-PREREGISTRATION-PLAN:profile-tuple-binding",
+          "G0-04:C0-PREREGISTRATION-PLAN:catalog-corpus-binding",
+          "G0-04:C0-PREREGISTRATION-PLAN:schema-invalid-denominator",
+          "G0-04:C0-PREREGISTRATION-PLAN:slot-attempt-identity-drift",
+          "G0-04:C0-PREREGISTRATION-PLAN:applicability-denominator-lowering"
+        ],
+        "slot_count": 5,
+        "attempt_count": 10,
+        "corpus_sha256": "d153d7c12aa634ab344305e616adc7ef745ed3861f1d5af71bd66dd2445c3d19"
+      },
+      "catalog_denominator": {
+        "catalog_id": "DEVSEEK-GATE0-DENOMINATOR-CATALOG:C0-PREREGISTRATION-PLAN/v1",
+        "catalog_kind": "gate0-denominator-catalog",
+        "capability_id": "C0-PREREGISTRATION-PLAN",
+        "catalog_metadata_counts_as_execution": false,
+        "cases": [
+          {
+            "case_id": "G0-04-C0-PREREGISTRATION-PLAN-profile-tuple-binding",
+            "case_version": 1,
+            "category": "protocol",
+            "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:profile-tuple-binding",
+            "stage_type": "T0",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-PREREGISTRATION-PLAN-catalog-corpus-binding",
+            "case_version": 1,
+            "category": "protocol",
+            "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:catalog-corpus-binding",
+            "stage_type": "T0",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-PREREGISTRATION-PLAN-schema-invalid-denominator",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:schema-invalid-denominator",
+            "stage_type": "T1",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-PREREGISTRATION-PLAN-slot-attempt-identity-drift",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:slot-attempt-identity-drift",
+            "stage_type": "T1",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-PREREGISTRATION-PLAN-applicability-denominator-lowering",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:applicability-denominator-lowering",
+            "stage_type": "T2",
+            "required_for_denominator": true
+          }
+        ],
+        "case_count": 5,
+        "execution_result_count": 0,
+        "catalog_sha256": "ed4bca5448f2d5cf1a6b5d7df950ab8cb3080b8cd67b3c7ece3235aa7f8e4431"
+      },
+      "slots": [
+        {
+          "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:profile-tuple-binding",
+          "slot_semantic": "profile-tuple-binding",
+          "capability_id": "C0-PREREGISTRATION-PLAN",
+          "case_id": "G0-04-C0-PREREGISTRATION-PLAN-profile-tuple-binding",
+          "case_version": 1,
+          "case_category": "protocol",
+          "stage_type": "T0",
+          "purpose": "Bind the exact Gate 0 profile tuple before any execution result can be interpreted.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:profile-tuple-binding:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-PREREGISTRATION-PLAN",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "18af3e67cdd50ad1623418658f995396cc386626442c114908018d9e4bc21223",
+                "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:profile-tuple-binding",
+                "case_id": "G0-04-C0-PREREGISTRATION-PLAN-profile-tuple-binding",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "b44c8671b895fa4be991df041d00c64749084c366894ab0f712354a8dffe9d78"
+            },
+            {
+              "attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:profile-tuple-binding:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:profile-tuple-binding:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-PREREGISTRATION-PLAN",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "18af3e67cdd50ad1623418658f995396cc386626442c114908018d9e4bc21223",
+                "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:profile-tuple-binding",
+                "case_id": "G0-04-C0-PREREGISTRATION-PLAN-profile-tuple-binding",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "12ccfc4f42e64939090fb52bf0825c05f6df126268eba1af964f489a12e22ab6"
+            }
+          ],
+          "slot_denominator_sha256": "99ffd33c18de09c74ef51ca410352fc7c307452f8e8dd8c23fa6c167485dac69"
+        },
+        {
+          "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:catalog-corpus-binding",
+          "slot_semantic": "catalog-corpus-binding",
+          "capability_id": "C0-PREREGISTRATION-PLAN",
+          "case_id": "G0-04-C0-PREREGISTRATION-PLAN-catalog-corpus-binding",
+          "case_version": 1,
+          "case_category": "protocol",
+          "stage_type": "T0",
+          "purpose": "Bind the exact catalog and corpus denominator before case metadata can be consumed.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:catalog-corpus-binding:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-PREREGISTRATION-PLAN",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "18af3e67cdd50ad1623418658f995396cc386626442c114908018d9e4bc21223",
+                "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:catalog-corpus-binding",
+                "case_id": "G0-04-C0-PREREGISTRATION-PLAN-catalog-corpus-binding",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "201303b99f9b7bcb3ae87cffa6af03bf91a036defd51ac7ac1692a83805f90fd"
+            },
+            {
+              "attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:catalog-corpus-binding:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:catalog-corpus-binding:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-PREREGISTRATION-PLAN",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "18af3e67cdd50ad1623418658f995396cc386626442c114908018d9e4bc21223",
+                "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:catalog-corpus-binding",
+                "case_id": "G0-04-C0-PREREGISTRATION-PLAN-catalog-corpus-binding",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "cbba0d2402721de20bf74fc22029e82f0220eef544cd0cbb7a9ea607e328ae77"
+            }
+          ],
+          "slot_denominator_sha256": "9c9476ac6f2f5a61259b718d1e50487b93351eb4d267fe526bfb6628e023cac4"
+        },
+        {
+          "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:schema-invalid-denominator",
+          "slot_semantic": "schema-invalid-denominator",
+          "capability_id": "C0-PREREGISTRATION-PLAN",
+          "case_id": "G0-04-C0-PREREGISTRATION-PLAN-schema-invalid-denominator",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T1",
+          "purpose": "Reject missing, wildcard, or default denominator fields at the schema/runtime boundary.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:schema-invalid-denominator:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-PREREGISTRATION-PLAN",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "18af3e67cdd50ad1623418658f995396cc386626442c114908018d9e4bc21223",
+                "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:schema-invalid-denominator",
+                "case_id": "G0-04-C0-PREREGISTRATION-PLAN-schema-invalid-denominator",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "11f472750e630539a7e6543d629edbc557d2594d8fa656f45fbecd8ae5286fb3"
+            },
+            {
+              "attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:schema-invalid-denominator:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:schema-invalid-denominator:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-PREREGISTRATION-PLAN",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "18af3e67cdd50ad1623418658f995396cc386626442c114908018d9e4bc21223",
+                "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:schema-invalid-denominator",
+                "case_id": "G0-04-C0-PREREGISTRATION-PLAN-schema-invalid-denominator",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "3763086bd2dd7d5a50dcc2db0e90b0dc8480abdf9a01f62d1e927f33702c078d"
+            }
+          ],
+          "slot_denominator_sha256": "b419b2bf05a81d7243b5c98d03ae928566ca0c9e9877be9c85e11e102b42181e"
+        },
+        {
+          "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:slot-attempt-identity-drift",
+          "slot_semantic": "slot-attempt-identity-drift",
+          "capability_id": "C0-PREREGISTRATION-PLAN",
+          "case_id": "G0-04-C0-PREREGISTRATION-PLAN-slot-attempt-identity-drift",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T1",
+          "purpose": "Reject slot, case, profile, platform, or attempt-role identity drift.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:slot-attempt-identity-drift:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-PREREGISTRATION-PLAN",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "18af3e67cdd50ad1623418658f995396cc386626442c114908018d9e4bc21223",
+                "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:slot-attempt-identity-drift",
+                "case_id": "G0-04-C0-PREREGISTRATION-PLAN-slot-attempt-identity-drift",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "527af814d9dc3040ad255b33c03dbd7fe1461a5b6e0c5bc56c19b8d5342025f3"
+            },
+            {
+              "attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:slot-attempt-identity-drift:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:slot-attempt-identity-drift:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-PREREGISTRATION-PLAN",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "18af3e67cdd50ad1623418658f995396cc386626442c114908018d9e4bc21223",
+                "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:slot-attempt-identity-drift",
+                "case_id": "G0-04-C0-PREREGISTRATION-PLAN-slot-attempt-identity-drift",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "fc8e46c05b6ac91227406c6c462afb7d2937d9d7aaeadfccc974f175c68edc78"
+            }
+          ],
+          "slot_denominator_sha256": "48892566dae79d00e46aaf6619a3d956faf431df5f052e259e587c66a3d61657"
+        },
+        {
+          "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:applicability-denominator-lowering",
+          "slot_semantic": "applicability-denominator-lowering",
+          "capability_id": "C0-PREREGISTRATION-PLAN",
+          "case_id": "G0-04-C0-PREREGISTRATION-PLAN-applicability-denominator-lowering",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T2",
+          "purpose": "Reject lowered applicability, platform, provider, or qualification level denominators.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:applicability-denominator-lowering:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-PREREGISTRATION-PLAN",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "18af3e67cdd50ad1623418658f995396cc386626442c114908018d9e4bc21223",
+                "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:applicability-denominator-lowering",
+                "case_id": "G0-04-C0-PREREGISTRATION-PLAN-applicability-denominator-lowering",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "6b3c6f0fb030d3c2d5ac930e1dc30cf51af039c9372b3b06586a3d8a27683f17"
+            },
+            {
+              "attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:applicability-denominator-lowering:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-PREREGISTRATION-PLAN:applicability-denominator-lowering:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-PREREGISTRATION-PLAN",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "18af3e67cdd50ad1623418658f995396cc386626442c114908018d9e4bc21223",
+                "slot_id": "G0-04:C0-PREREGISTRATION-PLAN:applicability-denominator-lowering",
+                "case_id": "G0-04-C0-PREREGISTRATION-PLAN-applicability-denominator-lowering",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "2ec432147670a5977d5251de914531320c405d5505e0fb9b7e59a83f218f7f3d"
+            }
+          ],
+          "slot_denominator_sha256": "b73b9d675065f9ef798c95f22bcfd6898686ca9307a3e20057e7aac961d47a1d"
+        }
+      ],
+      "capability_denominator_sha256": "85eb10d1f91cc42e3a1daa7ca5b061abb0f6a6233720d0138c1125b6d38cce55"
+    },
+    {
+      "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+      "capability_title": "C0 可证地基 / QualificationAggregationPort",
+      "semantic_authority_port": "QualificationAggregationPort",
+      "implementation_state": "implemented",
+      "required_implementation_state": "wired",
+      "profile_denominator": {
+        "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+        "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+        "claim_scope": "gate0-infrastructure",
+        "surface": "repository-governance",
+        "provider": "local-node",
+        "platform_profile": "linux-x64-v1",
+        "minimum_level": "L2",
+        "claim_profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+        "required_implementation_state": "wired"
+      },
+      "applicability_denominator": {
+        "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+        "capability_applicability_state": "active",
+        "capability_claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true,
+        "claim_scope": "gate0-infrastructure",
+        "surface": "repository-governance",
+        "provider": "local-node",
+        "platform_profiles": [
+          "linux-x64-v1"
+        ],
+        "minimum_level": "L2",
+        "qualification_eligible": false,
+        "qualification_effect": "NONE",
+        "applicability_sha256": "9afc1f2d78fb3509a49276ca9d43e9161cd878c94359274458a0cd8c0ca82843"
+      },
+      "corpus_denominator": {
+        "corpus_id": "DEVSEEK-GATE0-DENOMINATOR-CORPUS:C0-QUALIFICATION-AGGREGATOR/v1",
+        "corpus_kind": "gate0-c0-denominator",
+        "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+        "slot_ids": [
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:profile-tuple-binding",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:catalog-corpus-binding",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:schema-invalid-denominator",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:slot-attempt-identity-drift",
+          "G0-04:C0-QUALIFICATION-AGGREGATOR:applicability-denominator-lowering"
+        ],
+        "slot_count": 5,
+        "attempt_count": 10,
+        "corpus_sha256": "6b3e81e7badda73e51468eec04037d6cb877abed641e3daeef3e7d824f0a6064"
+      },
+      "catalog_denominator": {
+        "catalog_id": "DEVSEEK-GATE0-DENOMINATOR-CATALOG:C0-QUALIFICATION-AGGREGATOR/v1",
+        "catalog_kind": "gate0-denominator-catalog",
+        "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+        "catalog_metadata_counts_as_execution": false,
+        "cases": [
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-profile-tuple-binding",
+            "case_version": 1,
+            "category": "protocol",
+            "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:profile-tuple-binding",
+            "stage_type": "T0",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-catalog-corpus-binding",
+            "case_version": 1,
+            "category": "protocol",
+            "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:catalog-corpus-binding",
+            "stage_type": "T0",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-schema-invalid-denominator",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:schema-invalid-denominator",
+            "stage_type": "T1",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-slot-attempt-identity-drift",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:slot-attempt-identity-drift",
+            "stage_type": "T1",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-applicability-denominator-lowering",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:applicability-denominator-lowering",
+            "stage_type": "T2",
+            "required_for_denominator": true
+          }
+        ],
+        "case_count": 5,
+        "execution_result_count": 0,
+        "catalog_sha256": "7091019d7fc6a6a0e1e9c545c189b85acf811b0c6a7f44e0b9daa80edd07d582"
+      },
+      "slots": [
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:profile-tuple-binding",
+          "slot_semantic": "profile-tuple-binding",
+          "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+          "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-profile-tuple-binding",
+          "case_version": 1,
+          "case_category": "protocol",
+          "stage_type": "T0",
+          "purpose": "Bind the exact Gate 0 profile tuple before any execution result can be interpreted.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:profile-tuple-binding:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "9afc1f2d78fb3509a49276ca9d43e9161cd878c94359274458a0cd8c0ca82843",
+                "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:profile-tuple-binding",
+                "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-profile-tuple-binding",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "52c08bfa9ac76133dc12f6c80c4fe1b81f2d13ebb18f6341dd50fd58ab74e792"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:profile-tuple-binding:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:profile-tuple-binding:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "9afc1f2d78fb3509a49276ca9d43e9161cd878c94359274458a0cd8c0ca82843",
+                "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:profile-tuple-binding",
+                "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-profile-tuple-binding",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "989bce3ca63b43066bd6b6e21ea4491050e4edcec91042c60d0985dca72057ef"
+            }
+          ],
+          "slot_denominator_sha256": "b024c06f2ec2091e2d939ea47ea2d7241ac739434a7d0db8ba5d279bc49f81bc"
+        },
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:catalog-corpus-binding",
+          "slot_semantic": "catalog-corpus-binding",
+          "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+          "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-catalog-corpus-binding",
+          "case_version": 1,
+          "case_category": "protocol",
+          "stage_type": "T0",
+          "purpose": "Bind the exact catalog and corpus denominator before case metadata can be consumed.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:catalog-corpus-binding:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "9afc1f2d78fb3509a49276ca9d43e9161cd878c94359274458a0cd8c0ca82843",
+                "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:catalog-corpus-binding",
+                "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-catalog-corpus-binding",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "1a6cadc59eb711a9d17f3facb2448864fd3a835ac4ac265e72aa5bcad9181656"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:catalog-corpus-binding:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:catalog-corpus-binding:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "9afc1f2d78fb3509a49276ca9d43e9161cd878c94359274458a0cd8c0ca82843",
+                "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:catalog-corpus-binding",
+                "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-catalog-corpus-binding",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "c4cfb5d67b4276522cf6a0a52068601ba2f983a52f67bd1d67dff7c6e0a9dbe5"
+            }
+          ],
+          "slot_denominator_sha256": "a9378c50895689954e299a54bd2efffe05b6b4bfc6e5114113de8c2c55b5c8ae"
+        },
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:schema-invalid-denominator",
+          "slot_semantic": "schema-invalid-denominator",
+          "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+          "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-schema-invalid-denominator",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T1",
+          "purpose": "Reject missing, wildcard, or default denominator fields at the schema/runtime boundary.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:schema-invalid-denominator:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "9afc1f2d78fb3509a49276ca9d43e9161cd878c94359274458a0cd8c0ca82843",
+                "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:schema-invalid-denominator",
+                "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-schema-invalid-denominator",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "dee15af8201b2562d82a18fefff93418305e5dc9a4731f93c3bac50ba3857073"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:schema-invalid-denominator:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:schema-invalid-denominator:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "9afc1f2d78fb3509a49276ca9d43e9161cd878c94359274458a0cd8c0ca82843",
+                "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:schema-invalid-denominator",
+                "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-schema-invalid-denominator",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "f253ba7f4b4029ced760d764b6e81cc096fecd58310864ac7dde64e49f0eb861"
+            }
+          ],
+          "slot_denominator_sha256": "c07783046186e291837ea6b8836609af6d94599ac51d156e764b95d7f0eb92d5"
+        },
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:slot-attempt-identity-drift",
+          "slot_semantic": "slot-attempt-identity-drift",
+          "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+          "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-slot-attempt-identity-drift",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T1",
+          "purpose": "Reject slot, case, profile, platform, or attempt-role identity drift.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:slot-attempt-identity-drift:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "9afc1f2d78fb3509a49276ca9d43e9161cd878c94359274458a0cd8c0ca82843",
+                "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:slot-attempt-identity-drift",
+                "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-slot-attempt-identity-drift",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "11414093d8cc0afe0d33879ed6b4e7070b6a6adb87976e36ff822766b9a8946c"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:slot-attempt-identity-drift:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:slot-attempt-identity-drift:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "9afc1f2d78fb3509a49276ca9d43e9161cd878c94359274458a0cd8c0ca82843",
+                "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:slot-attempt-identity-drift",
+                "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-slot-attempt-identity-drift",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "972ecb7a5a00022b4f8541bbc7b09d76802fc3dce0a5724d8600595eaddbb304"
+            }
+          ],
+          "slot_denominator_sha256": "687f8b668fe25767d03fa324d31409802ce563f97c3213d7c30f6a50d635057f"
+        },
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:applicability-denominator-lowering",
+          "slot_semantic": "applicability-denominator-lowering",
+          "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+          "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-applicability-denominator-lowering",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T2",
+          "purpose": "Reject lowered applicability, platform, provider, or qualification level denominators.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:applicability-denominator-lowering:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "9afc1f2d78fb3509a49276ca9d43e9161cd878c94359274458a0cd8c0ca82843",
+                "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:applicability-denominator-lowering",
+                "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-applicability-denominator-lowering",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "c01cefe92382e32cfaa76a1c243cd3acd3aeebf9a7e8663ddf1eae10a48c35b3"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:applicability-denominator-lowering:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:applicability-denominator-lowering:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "9afc1f2d78fb3509a49276ca9d43e9161cd878c94359274458a0cd8c0ca82843",
+                "slot_id": "G0-04:C0-QUALIFICATION-AGGREGATOR:applicability-denominator-lowering",
+                "case_id": "G0-04-C0-QUALIFICATION-AGGREGATOR-applicability-denominator-lowering",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "77c3500ad94ef6086170c4845f87cbc255978b762e7c3284c7016a48cc44876e"
+            }
+          ],
+          "slot_denominator_sha256": "c35261c778b0719e349027db20d240475f9116d0447bf55088bcb9465dc6f15d"
+        }
+      ],
+      "capability_denominator_sha256": "5b70434c5b06ec02a15f9ef8edb888f0b62a97e0fca976de2025877871b96251"
+    },
+    {
+      "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+      "capability_title": "C0 可证地基 / QualificationEvidenceManifestPort",
+      "semantic_authority_port": "QualificationEvidenceManifestPort",
+      "implementation_state": "implemented",
+      "required_implementation_state": "wired",
+      "profile_denominator": {
+        "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+        "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+        "claim_scope": "gate0-infrastructure",
+        "surface": "repository-governance",
+        "provider": "local-node",
+        "platform_profile": "linux-x64-v1",
+        "minimum_level": "L2",
+        "claim_profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+        "required_implementation_state": "wired"
+      },
+      "applicability_denominator": {
+        "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+        "capability_applicability_state": "active",
+        "capability_claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true,
+        "claim_scope": "gate0-infrastructure",
+        "surface": "repository-governance",
+        "provider": "local-node",
+        "platform_profiles": [
+          "linux-x64-v1"
+        ],
+        "minimum_level": "L2",
+        "qualification_eligible": false,
+        "qualification_effect": "NONE",
+        "applicability_sha256": "964bea64431d62af796f86673fe9ea76b551dee1bf4143fed02a573f1c9e8c75"
+      },
+      "corpus_denominator": {
+        "corpus_id": "DEVSEEK-GATE0-DENOMINATOR-CORPUS:C0-QUALIFICATION-EVIDENCE-MANIFEST/v1",
+        "corpus_kind": "gate0-c0-denominator",
+        "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+        "slot_ids": [
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:profile-tuple-binding",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:catalog-corpus-binding",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:schema-invalid-denominator",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:slot-attempt-identity-drift",
+          "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:applicability-denominator-lowering"
+        ],
+        "slot_count": 5,
+        "attempt_count": 10,
+        "corpus_sha256": "985451ad7525d68a8b5ae9a75ba492dace36b0c40a5c5cd0cc030f9953a37d26"
+      },
+      "catalog_denominator": {
+        "catalog_id": "DEVSEEK-GATE0-DENOMINATOR-CATALOG:C0-QUALIFICATION-EVIDENCE-MANIFEST/v1",
+        "catalog_kind": "gate0-denominator-catalog",
+        "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+        "catalog_metadata_counts_as_execution": false,
+        "cases": [
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-profile-tuple-binding",
+            "case_version": 1,
+            "category": "protocol",
+            "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:profile-tuple-binding",
+            "stage_type": "T0",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-catalog-corpus-binding",
+            "case_version": 1,
+            "category": "protocol",
+            "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:catalog-corpus-binding",
+            "stage_type": "T0",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-schema-invalid-denominator",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:schema-invalid-denominator",
+            "stage_type": "T1",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-slot-attempt-identity-drift",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:slot-attempt-identity-drift",
+            "stage_type": "T1",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-applicability-denominator-lowering",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:applicability-denominator-lowering",
+            "stage_type": "T2",
+            "required_for_denominator": true
+          }
+        ],
+        "case_count": 5,
+        "execution_result_count": 0,
+        "catalog_sha256": "0a8beab3115983467b57ff62b60a3a21f7883c7c8991610cf37c796a5729bc4f"
+      },
+      "slots": [
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:profile-tuple-binding",
+          "slot_semantic": "profile-tuple-binding",
+          "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-profile-tuple-binding",
+          "case_version": 1,
+          "case_category": "protocol",
+          "stage_type": "T0",
+          "purpose": "Bind the exact Gate 0 profile tuple before any execution result can be interpreted.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:profile-tuple-binding:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "964bea64431d62af796f86673fe9ea76b551dee1bf4143fed02a573f1c9e8c75",
+                "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:profile-tuple-binding",
+                "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-profile-tuple-binding",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "3b7455083948a6de65c9c4d545c5c8699e37e1c88caad0c32705b69261442537"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:profile-tuple-binding:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:profile-tuple-binding:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "964bea64431d62af796f86673fe9ea76b551dee1bf4143fed02a573f1c9e8c75",
+                "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:profile-tuple-binding",
+                "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-profile-tuple-binding",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "80b104759e99375732719b74c736e5746f24952bc6d4d6383504af7fa871b9c2"
+            }
+          ],
+          "slot_denominator_sha256": "4d5f934e5ae3f2fc9b8a6f6b6f2ef039c1046b7d9121a5f450dea7d450e7f7e2"
+        },
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:catalog-corpus-binding",
+          "slot_semantic": "catalog-corpus-binding",
+          "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-catalog-corpus-binding",
+          "case_version": 1,
+          "case_category": "protocol",
+          "stage_type": "T0",
+          "purpose": "Bind the exact catalog and corpus denominator before case metadata can be consumed.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:catalog-corpus-binding:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "964bea64431d62af796f86673fe9ea76b551dee1bf4143fed02a573f1c9e8c75",
+                "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:catalog-corpus-binding",
+                "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-catalog-corpus-binding",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "8272f532bb44f860525ab5f781da90df21fc9b22b0085ff59b880d48d80c1f97"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:catalog-corpus-binding:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:catalog-corpus-binding:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "964bea64431d62af796f86673fe9ea76b551dee1bf4143fed02a573f1c9e8c75",
+                "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:catalog-corpus-binding",
+                "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-catalog-corpus-binding",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "9e0a36d5420b70e833b9091a888e156ae3ca3b7ea0b7a4bd33dfbaaf5230b7f8"
+            }
+          ],
+          "slot_denominator_sha256": "c946b242391af319a358d33469aef08f08754d9555bcecd6e9f34bf9d6cabdf3"
+        },
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:schema-invalid-denominator",
+          "slot_semantic": "schema-invalid-denominator",
+          "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-schema-invalid-denominator",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T1",
+          "purpose": "Reject missing, wildcard, or default denominator fields at the schema/runtime boundary.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:schema-invalid-denominator:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "964bea64431d62af796f86673fe9ea76b551dee1bf4143fed02a573f1c9e8c75",
+                "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:schema-invalid-denominator",
+                "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-schema-invalid-denominator",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "1a633eb14542f83e7b92cbf8c85a89a239384451d9950b3f6ed3ffe7998a6cb4"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:schema-invalid-denominator:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:schema-invalid-denominator:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "964bea64431d62af796f86673fe9ea76b551dee1bf4143fed02a573f1c9e8c75",
+                "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:schema-invalid-denominator",
+                "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-schema-invalid-denominator",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "374cf74c9ebdf225ec0b9447df3af17e66cb0aa1fe610662f131adbf8e6ceb6e"
+            }
+          ],
+          "slot_denominator_sha256": "92ba016aea20e707ceff30952b9398ad20f01b2f181cf86890c0c5e716362f35"
+        },
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:slot-attempt-identity-drift",
+          "slot_semantic": "slot-attempt-identity-drift",
+          "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-slot-attempt-identity-drift",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T1",
+          "purpose": "Reject slot, case, profile, platform, or attempt-role identity drift.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:slot-attempt-identity-drift:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "964bea64431d62af796f86673fe9ea76b551dee1bf4143fed02a573f1c9e8c75",
+                "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:slot-attempt-identity-drift",
+                "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-slot-attempt-identity-drift",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "d12210c52a37914048d108c581b4d0f5b6250178e73ee8bdc89ebba64d31bdde"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:slot-attempt-identity-drift:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:slot-attempt-identity-drift:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "964bea64431d62af796f86673fe9ea76b551dee1bf4143fed02a573f1c9e8c75",
+                "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:slot-attempt-identity-drift",
+                "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-slot-attempt-identity-drift",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "759a4238b4cc7a4f075c25ff7be1d6850fbb39cb0652bda12865890c1211618b"
+            }
+          ],
+          "slot_denominator_sha256": "2bbe18230c58fbc819c2f6f14f0e16ca6f61e6111b7c1e401ad5b06d615eeff8"
+        },
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:applicability-denominator-lowering",
+          "slot_semantic": "applicability-denominator-lowering",
+          "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+          "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-applicability-denominator-lowering",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T2",
+          "purpose": "Reject lowered applicability, platform, provider, or qualification level denominators.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:applicability-denominator-lowering:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "964bea64431d62af796f86673fe9ea76b551dee1bf4143fed02a573f1c9e8c75",
+                "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:applicability-denominator-lowering",
+                "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-applicability-denominator-lowering",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "4e5dac7765e23223eab0843502552e7bdcfa55f90be5fa8edf128017cab45f72"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:applicability-denominator-lowering:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:applicability-denominator-lowering:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "964bea64431d62af796f86673fe9ea76b551dee1bf4143fed02a573f1c9e8c75",
+                "slot_id": "G0-04:C0-QUALIFICATION-EVIDENCE-MANIFEST:applicability-denominator-lowering",
+                "case_id": "G0-04-C0-QUALIFICATION-EVIDENCE-MANIFEST-applicability-denominator-lowering",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "4ab9d97d2dabc04e251088e0bcf849b80955959e58733b6deb8eb78b7cff81a2"
+            }
+          ],
+          "slot_denominator_sha256": "4c9da992882950662bdd3866eedc1a7334d8013b2167753b1bbb4c0afe839962"
+        }
+      ],
+      "capability_denominator_sha256": "69bc433c013c5a7345c9e4eb7fc0ec11d482b106e48ae0dd41479e67294be436"
+    },
+    {
+      "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+      "capability_title": "C0 可证地基 / QualificationProfileSchemaPort",
+      "semantic_authority_port": "QualificationProfileSchemaPort",
+      "implementation_state": "wired",
+      "required_implementation_state": "wired",
+      "profile_denominator": {
+        "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+        "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+        "claim_scope": "gate0-infrastructure",
+        "surface": "repository-governance",
+        "provider": "local-node",
+        "platform_profile": "linux-x64-v1",
+        "minimum_level": "L2",
+        "claim_profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+        "required_implementation_state": "wired"
+      },
+      "applicability_denominator": {
+        "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+        "capability_applicability_state": "active",
+        "capability_claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true,
+        "claim_scope": "gate0-infrastructure",
+        "surface": "repository-governance",
+        "provider": "local-node",
+        "platform_profiles": [
+          "linux-x64-v1"
+        ],
+        "minimum_level": "L2",
+        "qualification_eligible": false,
+        "qualification_effect": "NONE",
+        "applicability_sha256": "f9fd7649c4d61f4e2676518ab81286db69211fce23d1c96af6daec100558bac9"
+      },
+      "corpus_denominator": {
+        "corpus_id": "DEVSEEK-GATE0-DENOMINATOR-CORPUS:C0-QUALIFICATION-PROFILE-SCHEMA/v1",
+        "corpus_kind": "gate0-c0-denominator",
+        "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+        "slot_ids": [
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:profile-tuple-binding",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:catalog-corpus-binding",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:schema-invalid-denominator",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:slot-attempt-identity-drift",
+          "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:applicability-denominator-lowering"
+        ],
+        "slot_count": 5,
+        "attempt_count": 10,
+        "corpus_sha256": "27b343365f892db910cea5706de10d5afe6450add326989a8a869c7c8cbf0eaf"
+      },
+      "catalog_denominator": {
+        "catalog_id": "DEVSEEK-GATE0-DENOMINATOR-CATALOG:C0-QUALIFICATION-PROFILE-SCHEMA/v1",
+        "catalog_kind": "gate0-denominator-catalog",
+        "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+        "catalog_metadata_counts_as_execution": false,
+        "cases": [
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-profile-tuple-binding",
+            "case_version": 1,
+            "category": "protocol",
+            "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:profile-tuple-binding",
+            "stage_type": "T0",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-catalog-corpus-binding",
+            "case_version": 1,
+            "category": "protocol",
+            "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:catalog-corpus-binding",
+            "stage_type": "T0",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-schema-invalid-denominator",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:schema-invalid-denominator",
+            "stage_type": "T1",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-slot-attempt-identity-drift",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:slot-attempt-identity-drift",
+            "stage_type": "T1",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-applicability-denominator-lowering",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:applicability-denominator-lowering",
+            "stage_type": "T2",
+            "required_for_denominator": true
+          }
+        ],
+        "case_count": 5,
+        "execution_result_count": 0,
+        "catalog_sha256": "e46a5b1b3472ced41cc86a65df2c36b62a990af8693faade2c257bad55993b00"
+      },
+      "slots": [
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:profile-tuple-binding",
+          "slot_semantic": "profile-tuple-binding",
+          "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-profile-tuple-binding",
+          "case_version": 1,
+          "case_category": "protocol",
+          "stage_type": "T0",
+          "purpose": "Bind the exact Gate 0 profile tuple before any execution result can be interpreted.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:profile-tuple-binding:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "f9fd7649c4d61f4e2676518ab81286db69211fce23d1c96af6daec100558bac9",
+                "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:profile-tuple-binding",
+                "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-profile-tuple-binding",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "f751c57aca8d6816162de818a2a7667d81c08d2a01d8658375f891bdb56c2c33"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:profile-tuple-binding:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:profile-tuple-binding:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "f9fd7649c4d61f4e2676518ab81286db69211fce23d1c96af6daec100558bac9",
+                "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:profile-tuple-binding",
+                "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-profile-tuple-binding",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "0019011dcc514b0fedce537762b3c1605fe68403fb4c5816a400382a263d02b5"
+            }
+          ],
+          "slot_denominator_sha256": "8f0a6ace043c87e4a98f7586473920b22931689e0beec509b74f916e87ebbe25"
+        },
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:catalog-corpus-binding",
+          "slot_semantic": "catalog-corpus-binding",
+          "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-catalog-corpus-binding",
+          "case_version": 1,
+          "case_category": "protocol",
+          "stage_type": "T0",
+          "purpose": "Bind the exact catalog and corpus denominator before case metadata can be consumed.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:catalog-corpus-binding:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "f9fd7649c4d61f4e2676518ab81286db69211fce23d1c96af6daec100558bac9",
+                "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:catalog-corpus-binding",
+                "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-catalog-corpus-binding",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "4f2ab92a63094321250990a0106a8f8fb5d4f7df788e0c45f67817a36d71690d"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:catalog-corpus-binding:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:catalog-corpus-binding:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "f9fd7649c4d61f4e2676518ab81286db69211fce23d1c96af6daec100558bac9",
+                "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:catalog-corpus-binding",
+                "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-catalog-corpus-binding",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "f00f746458d32b2ea1824b6dd33ecf727601c940e879bbb4be8c766f7003e3d0"
+            }
+          ],
+          "slot_denominator_sha256": "11a441c54e970dd5a34affc2ea44aeba51d6d40a5ac53f74220fe6fdfef4404d"
+        },
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:schema-invalid-denominator",
+          "slot_semantic": "schema-invalid-denominator",
+          "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-schema-invalid-denominator",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T1",
+          "purpose": "Reject missing, wildcard, or default denominator fields at the schema/runtime boundary.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:schema-invalid-denominator:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "f9fd7649c4d61f4e2676518ab81286db69211fce23d1c96af6daec100558bac9",
+                "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:schema-invalid-denominator",
+                "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-schema-invalid-denominator",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "f4a991fa4c6c96c5303f00e7cf95c666222b144349acefb72806358584277a7d"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:schema-invalid-denominator:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:schema-invalid-denominator:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "f9fd7649c4d61f4e2676518ab81286db69211fce23d1c96af6daec100558bac9",
+                "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:schema-invalid-denominator",
+                "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-schema-invalid-denominator",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "9820b6c9905c0629e5135a86948de1695b1fca5508d9b18c4e5c3bae88b89d75"
+            }
+          ],
+          "slot_denominator_sha256": "cdc6edc2bc7a81a95d5470727a066626222de5a9ae1a47fbf6a4aec97a30c36a"
+        },
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:slot-attempt-identity-drift",
+          "slot_semantic": "slot-attempt-identity-drift",
+          "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-slot-attempt-identity-drift",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T1",
+          "purpose": "Reject slot, case, profile, platform, or attempt-role identity drift.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:slot-attempt-identity-drift:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "f9fd7649c4d61f4e2676518ab81286db69211fce23d1c96af6daec100558bac9",
+                "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:slot-attempt-identity-drift",
+                "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-slot-attempt-identity-drift",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "fdbfc4082a6504e06cc60246446a6a44f6b836d03b2558f013e972ba1547ed42"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:slot-attempt-identity-drift:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:slot-attempt-identity-drift:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "f9fd7649c4d61f4e2676518ab81286db69211fce23d1c96af6daec100558bac9",
+                "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:slot-attempt-identity-drift",
+                "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-slot-attempt-identity-drift",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "d0557f2caec8cf30d43310af3513daf6ddc32a14c8df06ffe36e1fcd87dee5e8"
+            }
+          ],
+          "slot_denominator_sha256": "12b4ab632fe3e087a8ac65a1fc2029dd384f68b11a6de60f91413ae40d6c81b6"
+        },
+        {
+          "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:applicability-denominator-lowering",
+          "slot_semantic": "applicability-denominator-lowering",
+          "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+          "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-applicability-denominator-lowering",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T2",
+          "purpose": "Reject lowered applicability, platform, provider, or qualification level denominators.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:applicability-denominator-lowering:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "f9fd7649c4d61f4e2676518ab81286db69211fce23d1c96af6daec100558bac9",
+                "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:applicability-denominator-lowering",
+                "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-applicability-denominator-lowering",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "fd16175882c5f29b638119e404b262dd3c6c29fc243d83d3dc95c327a3047a69"
+            },
+            {
+              "attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:applicability-denominator-lowering:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:applicability-denominator-lowering:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "f9fd7649c4d61f4e2676518ab81286db69211fce23d1c96af6daec100558bac9",
+                "slot_id": "G0-04:C0-QUALIFICATION-PROFILE-SCHEMA:applicability-denominator-lowering",
+                "case_id": "G0-04-C0-QUALIFICATION-PROFILE-SCHEMA-applicability-denominator-lowering",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "b1f3b55afe569d0bdc20fab5ed8890b04748102b85ed525b00cf00dd3657a5c8"
+            }
+          ],
+          "slot_denominator_sha256": "ec5433c4adbb87d481497971068979774d5181d662af78e7c10cb1f54701f63d"
+        }
+      ],
+      "capability_denominator_sha256": "95dbe7315721512877a381818f89391448865cad6125e342f770776ad02ed84c"
+    },
+    {
+      "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+      "capability_title": "C0 可证地基 / RunEvidenceLedgerPort",
+      "semantic_authority_port": "RunEvidenceLedgerPort",
+      "implementation_state": "implemented",
+      "required_implementation_state": "wired",
+      "profile_denominator": {
+        "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+        "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+        "claim_scope": "gate0-infrastructure",
+        "surface": "repository-governance",
+        "provider": "local-node",
+        "platform_profile": "linux-x64-v1",
+        "minimum_level": "L2",
+        "claim_profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+        "required_implementation_state": "wired"
+      },
+      "applicability_denominator": {
+        "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+        "capability_applicability_state": "active",
+        "capability_claim_scopes": [
+          "qualification-infrastructure"
+        ],
+        "not_applicable_requires_adjudication": true,
+        "claim_scope": "gate0-infrastructure",
+        "surface": "repository-governance",
+        "provider": "local-node",
+        "platform_profiles": [
+          "linux-x64-v1"
+        ],
+        "minimum_level": "L2",
+        "qualification_eligible": false,
+        "qualification_effect": "NONE",
+        "applicability_sha256": "4c150f94fa14167e986cb3a8c6e79550c35a21dbf1ad6cf548ea5f40aefbebda"
+      },
+      "corpus_denominator": {
+        "corpus_id": "DEVSEEK-GATE0-DENOMINATOR-CORPUS:C0-RUN-EVIDENCE-LEDGER/v1",
+        "corpus_kind": "gate0-c0-denominator",
+        "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+        "slot_ids": [
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:profile-tuple-binding",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:catalog-corpus-binding",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:schema-invalid-denominator",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:slot-attempt-identity-drift",
+          "G0-04:C0-RUN-EVIDENCE-LEDGER:applicability-denominator-lowering"
+        ],
+        "slot_count": 5,
+        "attempt_count": 10,
+        "corpus_sha256": "8669cc3d7e782737a5db80f4ff3d1a2b9f0489ae1f37e971b718f988e4f31d24"
+      },
+      "catalog_denominator": {
+        "catalog_id": "DEVSEEK-GATE0-DENOMINATOR-CATALOG:C0-RUN-EVIDENCE-LEDGER/v1",
+        "catalog_kind": "gate0-denominator-catalog",
+        "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+        "catalog_metadata_counts_as_execution": false,
+        "cases": [
+          {
+            "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-profile-tuple-binding",
+            "case_version": 1,
+            "category": "protocol",
+            "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:profile-tuple-binding",
+            "stage_type": "T0",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-catalog-corpus-binding",
+            "case_version": 1,
+            "category": "protocol",
+            "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:catalog-corpus-binding",
+            "stage_type": "T0",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-schema-invalid-denominator",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:schema-invalid-denominator",
+            "stage_type": "T1",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-slot-attempt-identity-drift",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:slot-attempt-identity-drift",
+            "stage_type": "T1",
+            "required_for_denominator": true
+          },
+          {
+            "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-applicability-denominator-lowering",
+            "case_version": 1,
+            "category": "attack",
+            "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:applicability-denominator-lowering",
+            "stage_type": "T2",
+            "required_for_denominator": true
+          }
+        ],
+        "case_count": 5,
+        "execution_result_count": 0,
+        "catalog_sha256": "140997f83cc4e5c4623a936e54a84e112a27aa2b2d45466d2f983b39192a20c2"
+      },
+      "slots": [
+        {
+          "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:profile-tuple-binding",
+          "slot_semantic": "profile-tuple-binding",
+          "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+          "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-profile-tuple-binding",
+          "case_version": 1,
+          "case_category": "protocol",
+          "stage_type": "T0",
+          "purpose": "Bind the exact Gate 0 profile tuple before any execution result can be interpreted.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:profile-tuple-binding:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "4c150f94fa14167e986cb3a8c6e79550c35a21dbf1ad6cf548ea5f40aefbebda",
+                "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:profile-tuple-binding",
+                "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-profile-tuple-binding",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "0920c32e6db44ac2afa2f7ab16230b1fa412f4502f8a8873f9f7ceaa8b088f31"
+            },
+            {
+              "attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:profile-tuple-binding:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:profile-tuple-binding:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "4c150f94fa14167e986cb3a8c6e79550c35a21dbf1ad6cf548ea5f40aefbebda",
+                "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:profile-tuple-binding",
+                "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-profile-tuple-binding",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "285890fb593b49e4f142f679a4d116354e807832cb6b1c5cda7d340c4341da03"
+            }
+          ],
+          "slot_denominator_sha256": "3b77aaf046eb763b36b006156f79cffe2e19f512a194f1dca831476554dca757"
+        },
+        {
+          "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:catalog-corpus-binding",
+          "slot_semantic": "catalog-corpus-binding",
+          "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+          "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-catalog-corpus-binding",
+          "case_version": 1,
+          "case_category": "protocol",
+          "stage_type": "T0",
+          "purpose": "Bind the exact catalog and corpus denominator before case metadata can be consumed.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:catalog-corpus-binding:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "4c150f94fa14167e986cb3a8c6e79550c35a21dbf1ad6cf548ea5f40aefbebda",
+                "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:catalog-corpus-binding",
+                "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-catalog-corpus-binding",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "ffda41fd6620d12c6f457558132b7982bd85debb9e6e143a544c2b919e86a0b3"
+            },
+            {
+              "attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:catalog-corpus-binding:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:catalog-corpus-binding:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "4c150f94fa14167e986cb3a8c6e79550c35a21dbf1ad6cf548ea5f40aefbebda",
+                "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:catalog-corpus-binding",
+                "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-catalog-corpus-binding",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "adb339e187153e4912a72dcee5a4c3f7eb323e97f8c8c756b0f17a10e793e230"
+            }
+          ],
+          "slot_denominator_sha256": "18eb949ba20cc5baafd0c07328842317cc1756c684534e8bcc1990a9d0342fb4"
+        },
+        {
+          "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:schema-invalid-denominator",
+          "slot_semantic": "schema-invalid-denominator",
+          "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+          "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-schema-invalid-denominator",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T1",
+          "purpose": "Reject missing, wildcard, or default denominator fields at the schema/runtime boundary.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:schema-invalid-denominator:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "4c150f94fa14167e986cb3a8c6e79550c35a21dbf1ad6cf548ea5f40aefbebda",
+                "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:schema-invalid-denominator",
+                "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-schema-invalid-denominator",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "9a68ff2ad9488cef22d00da50af84a6eca7aa56134a2b9089bd3c89bcc8d4f32"
+            },
+            {
+              "attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:schema-invalid-denominator:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:schema-invalid-denominator:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "4c150f94fa14167e986cb3a8c6e79550c35a21dbf1ad6cf548ea5f40aefbebda",
+                "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:schema-invalid-denominator",
+                "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-schema-invalid-denominator",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "f59d2c52b7a9ae6dc28eb440616f12a0ca2279e3676b29ba90a9c3f0d2d36a23"
+            }
+          ],
+          "slot_denominator_sha256": "b9f226473c1d30c87105f36c6d13960680ecaf1849f02c01e195f6150b3bb8c4"
+        },
+        {
+          "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:slot-attempt-identity-drift",
+          "slot_semantic": "slot-attempt-identity-drift",
+          "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+          "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-slot-attempt-identity-drift",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T1",
+          "purpose": "Reject slot, case, profile, platform, or attempt-role identity drift.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:slot-attempt-identity-drift:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "4c150f94fa14167e986cb3a8c6e79550c35a21dbf1ad6cf548ea5f40aefbebda",
+                "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:slot-attempt-identity-drift",
+                "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-slot-attempt-identity-drift",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "b7057fb875e595d188db57c89b6d4b6d3f38344ea0f3106ec2ab8504a9d1c4f4"
+            },
+            {
+              "attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:slot-attempt-identity-drift:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:slot-attempt-identity-drift:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "4c150f94fa14167e986cb3a8c6e79550c35a21dbf1ad6cf548ea5f40aefbebda",
+                "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:slot-attempt-identity-drift",
+                "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-slot-attempt-identity-drift",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "28727277cf5a260280661ab016503c88f4e58896048b7da8a1cc75a75e3c3d13"
+            }
+          ],
+          "slot_denominator_sha256": "cac72ae89b71d331fbe6b0aaf7c19ed67a2e45be66b71c04993fd5e96de23ad4"
+        },
+        {
+          "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:applicability-denominator-lowering",
+          "slot_semantic": "applicability-denominator-lowering",
+          "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+          "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-applicability-denominator-lowering",
+          "case_version": 1,
+          "case_category": "attack",
+          "stage_type": "T2",
+          "purpose": "Reject lowered applicability, platform, provider, or qualification level denominators.",
+          "required_for_denominator": true,
+          "catalog_metadata_counts_as_execution": false,
+          "attempts": [
+            {
+              "attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:applicability-denominator-lowering:primary",
+              "attempt_role": "primary",
+              "retry_of_attempt_id": null,
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "4c150f94fa14167e986cb3a8c6e79550c35a21dbf1ad6cf548ea5f40aefbebda",
+                "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:applicability-denominator-lowering",
+                "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-applicability-denominator-lowering",
+                "case_version": 1,
+                "attempt_role": "primary",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "26ef649628662193a8cab92c125a0b628c2b240bb73bd12e750984decef26350"
+            },
+            {
+              "attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:applicability-denominator-lowering:adjudicated-infra-retry",
+              "attempt_role": "adjudicated-infra-retry",
+              "retry_of_attempt_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:applicability-denominator-lowering:primary",
+              "attempt_identity": {
+                "registry_id": "DEVSEEK-GATE0-PROFILE-DENOMINATOR-REGISTRY/v1",
+                "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+                "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
+                "profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af",
+                "claim_scope": "gate0-infrastructure",
+                "surface": "repository-governance",
+                "provider": "local-node",
+                "platform_profile": "linux-x64-v1",
+                "applicability_sha256": "4c150f94fa14167e986cb3a8c6e79550c35a21dbf1ad6cf548ea5f40aefbebda",
+                "slot_id": "G0-04:C0-RUN-EVIDENCE-LEDGER:applicability-denominator-lowering",
+                "case_id": "G0-04-C0-RUN-EVIDENCE-LEDGER-applicability-denominator-lowering",
+                "case_version": 1,
+                "attempt_role": "adjudicated-infra-retry",
+                "qualification_effect": "NONE"
+              },
+              "attempt_identity_sha256": "98af69419ada66e82ce1f17c26a370beefc38d1ffc9a5ca14ae51b851bf4a61d"
+            }
+          ],
+          "slot_denominator_sha256": "f91bad8a7e84787552368c0ce975d5f2bf3731318380034e6db09c2749771149"
+        }
+      ],
+      "capability_denominator_sha256": "a161c22e887d228084fcfe360ed8ac00979c3edcebfd1154fe4553a292ddfc9c"
+    }
+  ],
+  "counts": {
+    "capabilities": 7,
+    "slots_per_capability": 5,
+    "total_slots": 35,
+    "attempts_per_slot": 2,
+    "total_attempts": 70,
+    "catalog_metadata_executions": 0,
+    "qualification_claims": 0
+  },
+  "registry_sha256": "da1c555ce3952b59c9f5d2100c1971771b0310547821f31dbb3be755cd4789cb"
+}
