@@ -1,3 +1,24 @@
+---
+devseek_governance:
+  generator: "devseek-doc-governance/v1"
+  status: "historical"
+  path: "docs/top-agent-convergence-audit-20260711/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md"
+  source_group: "handoff"
+  decision: "keep"
+  relationship: "handoff-entry"
+  active_baselines:
+    - "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md"
+  machine_sources:
+    active_selector: "docs/process/devseek-active-baseline-selector.json"
+    legacy_inventory: "docs/process/devseek-legacy-doc-inventory.json"
+  asserts_gate_pass: false
+---
+
+<!-- DEVSEEK-GOVERNANCE-BANNER:START -->
+> [!NOTE]
+> DevSeek governance: this document is `historical` with decision `keep` and relationship `handoff-entry`. Current authority: `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md`. Machine source: `docs/process/devseek-legacy-doc-inventory.json`.
+<!-- DEVSEEK-GOVERNANCE-BANNER:END -->
+
 # Gate 0 本地纵切、机器裁决、用户窗口仿真与 GPT-5.5 接管报告
 
 - 更新日期：2026-07-12

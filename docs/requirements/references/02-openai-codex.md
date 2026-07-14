@@ -1,3 +1,24 @@
+---
+devseek_governance:
+  generator: "devseek-doc-governance/v1"
+  status: "reference"
+  path: "docs/requirements/references/02-openai-codex.md"
+  source_group: "requirements"
+  decision: "not-applicable"
+  relationship: "external-reference"
+  active_baselines:
+    - "docs/requirements/02-顶级编程智能体需求基线.md"
+  machine_sources:
+    active_selector: "docs/process/devseek-active-baseline-selector.json"
+    legacy_inventory: "docs/process/devseek-legacy-doc-inventory.json"
+  asserts_gate_pass: false
+---
+
+<!-- DEVSEEK-GOVERNANCE-BANNER:START -->
+> [!NOTE]
+> DevSeek governance: this document is `reference` with decision `not-applicable` and relationship `external-reference`. Current authority: `docs/requirements/02-顶级编程智能体需求基线.md`. Machine source: `docs/process/devseek-legacy-doc-inventory.json`.
+<!-- DEVSEEK-GOVERNANCE-BANNER:END -->
+
 # OpenAI Codex 官方能力参考
 
 文档编号：REQ-REF-02

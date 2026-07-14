@@ -1,3 +1,24 @@
+---
+devseek_governance:
+  generator: "devseek-doc-governance/v1"
+  status: "historical"
+  path: "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md"
+  source_group: "handoff"
+  decision: "keep"
+  relationship: "supporting-ref"
+  active_baselines:
+    - "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md"
+  machine_sources:
+    active_selector: "docs/process/devseek-active-baseline-selector.json"
+    legacy_inventory: "docs/process/devseek-legacy-doc-inventory.json"
+  asserts_gate_pass: false
+---
+
+<!-- DEVSEEK-GOVERNANCE-BANNER:START -->
+> [!NOTE]
+> DevSeek governance: this document is `historical` with decision `keep` and relationship `supporting-ref`. Current authority: `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md`. Machine source: `docs/process/devseek-legacy-doc-inventory.json`.
+<!-- DEVSEEK-GOVERNANCE-BANNER:END -->
+
 # 顶级编程智能体收敛迭代原则、质量标准与 Skills 规划
 
 - 更新日期：2026-07-12

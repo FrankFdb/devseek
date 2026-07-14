@@ -1,3 +1,24 @@
+---
+devseek_governance:
+  generator: "devseek-doc-governance/v1"
+  status: "historical"
+  path: "docs/requirements/04-Agent优化路线图.md"
+  source_group: "requirements"
+  decision: "keep"
+  relationship: "legacy-requirement"
+  active_baselines:
+    - "docs/requirements/02-顶级编程智能体需求基线.md"
+  machine_sources:
+    active_selector: "docs/process/devseek-active-baseline-selector.json"
+    legacy_inventory: "docs/process/devseek-legacy-doc-inventory.json"
+  asserts_gate_pass: false
+---
+
+<!-- DEVSEEK-GOVERNANCE-BANNER:START -->
+> [!NOTE]
+> DevSeek governance: this document is `historical` with decision `keep` and relationship `legacy-requirement`. Current authority: `docs/requirements/02-顶级编程智能体需求基线.md`. Machine source: `docs/process/devseek-legacy-doc-inventory.json`.
+<!-- DEVSEEK-GOVERNANCE-BANNER:END -->
+
 # DeepSeek 插件 Agent 模式改进需求文档
 
 > **📌 主迭代入口** — 新会话恢复任务时首先读本文件。完整文档体系见 [docs/README.md](../README.md)。

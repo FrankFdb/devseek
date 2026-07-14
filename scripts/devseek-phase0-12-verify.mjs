@@ -45,6 +45,12 @@ const gates = [
     purpose: 'Fail closed when a governed legacy requirement, architecture, or handoff document is missing inventory coverage, conflicts with the active baseline selector, or loses supporting-ref reverse coverage.',
   },
   {
+    id: 'doc-governance-generation',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:doc-governance'],
+    purpose: 'Fail closed when governed document front matter, legacy banners, README status, or generated document-governance status drift from the machine selector and inventory sources.',
+  },
+  {
     id: 'capability-ledger-governance',
     phases: '0-12',
     command: ['npm', 'run', 'verify:capability-ledger'],

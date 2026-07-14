@@ -1,4 +1,36 @@
+---
+devseek_governance:
+  generator: "devseek-doc-governance/v1"
+  status: "historical"
+  path: "docs/top-agent-convergence-audit-20260711/README.md"
+  source_group: "handoff"
+  decision: "keep"
+  relationship: "supporting-ref"
+  active_baselines:
+    - "docs/requirements/02-顶级编程智能体需求基线.md"
+  machine_sources:
+    active_selector: "docs/process/devseek-active-baseline-selector.json"
+    legacy_inventory: "docs/process/devseek-legacy-doc-inventory.json"
+  asserts_gate_pass: false
+---
+
+<!-- DEVSEEK-GOVERNANCE-BANNER:START -->
+> [!NOTE]
+> DevSeek governance: this document is `historical` with decision `keep` and relationship `supporting-ref`. Current authority: `docs/requirements/02-顶级编程智能体需求基线.md`. Machine source: `docs/process/devseek-legacy-doc-inventory.json`.
+<!-- DEVSEEK-GOVERNANCE-BANNER:END -->
+
 # DevSeek 顶级编程智能体收敛审计与目标架构
+
+<!-- DEVSEEK-GOVERNANCE-STATUS:START -->
+## Machine Governance Status
+
+- generator: `devseek-doc-governance/v1`
+- active selector: `docs/process/devseek-active-baseline-selector.json` sha256=`869219726bd2b5e23a4b03ec7d9b6ea58fb02efb4903ca6672de2bbac7cb0332`
+- legacy inventory: `docs/process/devseek-legacy-doc-inventory.json` sha256=`91bece15aaa5d623fc7a08c87f9004c45be67c5cd10c196e09ca4d0c08beb339`
+- governed documents: `52`; active baselines: `3`; legacy/reference: `49`
+- status view: `docs/process/generated/devseek-doc-governance-status.md`
+- Gate 0 / claims effect: `NONE`; this generated status does not assert qualification.
+<!-- DEVSEEK-GOVERNANCE-STATUS:END -->
 
 - 审计日期：2026-07-11
 - 实施检查点：2026-07-12，G0-A/B/C/D、本地非资格 runner composition root、Gate 0 machine decision contract 与 exact-VSIX controlled harness 已形成；稳定安装包与制品一致，但用户窗口仍运行旧 debug Bridge，同窗口仿真为 `NOT_RUN`
