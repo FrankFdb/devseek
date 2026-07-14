@@ -1,4 +1,5 @@
 import type { AgentTaskAction } from '../agent-task-decomposer';
+import { classifyAgentTaskShape } from './task-shape';
 
 export type AgentRunDisplayKind = 'workspace-explore' | 'safe-response';
 
@@ -28,6 +29,21 @@ const DEFAULT_FREE_EXPLORE_PROFILE: AgentRunDisplayProfile = {
   suppressToolPlanning: false,
 };
 
+const STANDALONE_PROGRAM_PROFILE: AgentRunDisplayProfile = {
+  kind: 'workspace-explore',
+  planStartedTitle: '正在理解独立编程任务',
+  planStartedDetail: '正在确认要生成的程序、输出位置和可运行验证目标。',
+  planCompletedTitle: '已确定轻量编程路线',
+  planCompletedDetail: [
+    '1. 确认程序需求和输出目标',
+    '2. 创建或更新最小源码文件',
+    '3. 编译/运行并核对输出',
+    '4. 汇总文件路径和验证结果',
+  ].join('\n'),
+  initialTaskAction: 'explore',
+  suppressToolPlanning: false,
+};
+
 const SAFE_RESPONSE_PROFILE: AgentRunDisplayProfile = {
   kind: 'safe-response',
   planStartedTitle: '检查响应安全性',
@@ -47,6 +63,9 @@ const SAFE_RESPONSE_PROFILE: AgentRunDisplayProfile = {
 export function buildAgentRunDisplayProfile(prompt: string): AgentRunDisplayProfile {
   if (isLiteralToolProtocolPrompt(prompt)) {
     return SAFE_RESPONSE_PROFILE;
+  }
+  if (classifyAgentTaskShape(prompt).shape === 'standalone-project') {
+    return STANDALONE_PROGRAM_PROFILE;
   }
   return DEFAULT_FREE_EXPLORE_PROFILE;
 }

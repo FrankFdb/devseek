@@ -62,6 +62,7 @@ const CODE_GENERATION_RE = /(?:(?:编写|写一个|写个|创建|新建|生成|�
 const CODE_GENERATION_REPORT_RE = /(?:原有代码修改清单|代码修改清单|修改点清单|代码审计|代码分析|代码说明|代码文档|code\s+(?:review|analysis|audit|report|document|documentation|change\s+list))/i;
 const EXPLICIT_SOURCE_IMPLEMENTATION_DELIVERY_RE = /(?:(?:代码实现|实现代码|落地实现)|(?:创建|新建|生成|编写|写入|输出|保存|新增|添加|修改|改动|重构|修复)[^，,。；;\n]{0,40}(?:源代码文件|源码文件|代码文件|源文件|\bsrc\b|source\s+files?|code\s+files?|\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|ts|tsx|js|jsx|py|java|go|rs)\b))/i;
 const STANDALONE_RE = /(?:独立(?:项目|工具|程序|脚本)|standalone|从零|new\s+(?:project|tool))/i;
+const EXISTING_PROJECT_SCOPE_RE = /(?:既有|现有|原来|原项目|大项目|正式项目|生产项目|代码库|工程|\/src\/|src\/|CMakeLists\.txt|Makefile|参考.{0,80}模块)/i;
 const PROTOCOL_RE = /(?:协议|schema|request|response|消息字段|命令号|topic|MAVLink|tunnel|串口|通讯方式|通信方式|protocol)/i;
 const INTERFACE_RE = /(?:接口文档|接口设计|交互接口|API\b|request.{0,40}response|schema)/i;
 const COMMUNICATION_CHAIN_RE = /(?:通信链路|通讯链路|收发链路|端到端链路|主控.{0,100}(?:平台|遥控器)|(?:平台|遥控器).{0,100}主控|(?:参考|复用|对齐).{0,80}(?:通讯|通信|通道|传输|tunnel|MAVLink)|project.?wide communication)/i;
@@ -509,7 +510,7 @@ export function hasArtifactWriteIntent(promptText: string): boolean {
   return classifyArtifactWriteIntent(promptText).requested;
 }
 
-function hasStandaloneCodeGenerationIntent(promptText: string): boolean {
+export function hasStandaloneCodeGenerationIntent(promptText: string): boolean {
   return CODE_GENERATION_RE.test(promptText) && !CODE_GENERATION_REPORT_RE.test(promptText);
 }
 
@@ -948,17 +949,18 @@ export function buildTaskContract(promptText: string): TaskContract {
       || (standaloneCodeGeneration && !reportDelivery)
       || EXPLICIT_SOURCE_IMPLEMENTATION_DELIVERY_RE.test(prompt)
       || /(?:(?:修改|改动|新增|重构|修复).{0,20}(?:源码|代码|文件)|代码实现|实现代码|落地实现|fix|modify|implement|refactor)/i.test(prompt));
-  const standalone = STANDALONE_RE.test(prompt);
+  const existingProjectScope = EXISTING_PROJECT_SCOPE_RE.test(prompt);
+  const standalone = (STANDALONE_RE.test(prompt) || standaloneCodeGeneration) && !existingProjectScope;
   const protocol = PROTOCOL_RE.test(prompt);
   const interfaceContract = INTERFACE_RE.test(prompt);
   const communicationChain = COMMUNICATION_CHAIN_RE.test(prompt);
   const explicitModificationPlan = /(?:原有代码修改清单|代码修改清单|修改点清单|existing.?code modification plan)/i.test(prompt);
   const shapes = new Set<TaskShape>();
+  if (existingProjectScope || (sourceChange && !standalone)) shapes.add('existing-project');
   if (standalone) shapes.add('standalone');
-  else if (sourceChange || /(?:既有|现有|原项目|代码库|工程|\/src\/)/i.test(prompt)) shapes.add('existing-project');
   if (inspection) shapes.add('inspection');
   if (documentation) shapes.add('documentation');
-  if (sourceChange) shapes.add('repair');
+  if (sourceChange && !standalone) shapes.add('repair');
   if (DESTRUCTIVE_RE.test(prompt)) shapes.add('destructive');
 
   const obligations = new Set<QualityObligation>();

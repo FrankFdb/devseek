@@ -535,6 +535,58 @@ test('Agent auto validation: validation scripts cannot reference deleted run art
   }
 });
 
+test('Agent auto validation: requested standalone C++ program passes after compile-run evidence', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-standalone-cpp-run-'));
+  try {
+    const codeDir = path.join(root, 'code');
+    mkdirSync(codeDir, { recursive: true });
+    const target = path.join(codeDir, 'hello.cpp');
+    writeFileSync(target, [
+      '#include <iostream>',
+      '',
+      'int main() {',
+      '  std::cout << "helloworld" << std::endl;',
+      '  return 0;',
+      '}',
+    ].join('\n'));
+
+    const validationService = {
+      validateWorkspaceChanges: async () => ({
+        ran: true,
+        ok: true,
+        status: 'passed',
+        command: "mkdir -p 'code/build/devseek' && g++ 'code/hello.cpp' -o 'code/build/devseek/deepseek_auto_exec' && 'code/build/devseek/deepseek_auto_exec'",
+        exitCode: 0,
+        output: 'helloworld\n',
+        cwd: codeDir,
+        mode: 'compile-run',
+        reason: 'single-main-run-requested',
+        risks: [],
+        alternativeChecks: [],
+      }),
+    };
+    const statuses = [];
+    const prompt = '编写C++程序，打印helloworld,编译执行';
+
+    const result = await runAgentAutoValidationForWrites(
+      [{ path: target, basename: 'hello.cpp', linesAdded: 6, linesRemoved: 0, action: 'create' }],
+      root,
+      prompt,
+      makeCallbacks(statuses, []),
+      'conservative',
+      { validationService },
+    );
+
+    assert.equal(result.evidence.ok, true);
+    assert.equal(result.qualityGate.status, 'pass');
+    assert.doesNotMatch(result.feedbackForAI || '', /formal_project_source_quality|正式项目源码质量门禁/);
+    assert.deepEqual(statuses.map(status => status.state), ['started', 'completed']);
+    assert.equal(statuses.at(-1).title, '自动验证通过');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Agent auto validation: formal project source quality rejects standalone sample main', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-formal-source-quality-'));
   try {

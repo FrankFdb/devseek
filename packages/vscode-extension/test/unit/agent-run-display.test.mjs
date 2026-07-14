@@ -46,3 +46,16 @@ test('agent run display: ordinary workspace requests keep explore copy', () => {
   assert.equal(profile.initialTaskAction, 'explore');
   assert.equal(profile.suppressToolPlanning, false);
 });
+
+test('agent run display: simple standalone programs use lightweight programming copy', () => {
+  const profile = buildAgentRunDisplayProfile('编写C++程序，打印helloworld,编译执行');
+
+  assert.equal(profile.kind, 'workspace-explore');
+  assert.equal(profile.planStartedTitle, '正在理解独立编程任务');
+  assert.equal(profile.planCompletedTitle, '已确定轻量编程路线');
+  assert.match(profile.planCompletedDetail, /创建或更新最小源码文件/);
+  assert.match(profile.planCompletedDetail, /编译\/运行并核对输出/);
+  assert.doesNotMatch(profile.planCompletedDetail, /通信链路|接口证据|原项目代码/);
+  assert.equal(profile.initialTaskAction, 'explore');
+  assert.equal(profile.suppressToolPlanning, false);
+});

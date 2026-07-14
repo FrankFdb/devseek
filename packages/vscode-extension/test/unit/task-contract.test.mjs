@@ -549,6 +549,10 @@ test('file-write authorization treats standalone programming requests as bounded
   const prompt = '编写一个 C++ 程序，打印下午好';
   const contract = buildTaskContract(prompt);
   assert.ok(contract.deliverables.includes('source-change'));
+  assert.ok(contract.taskShapes.includes('standalone'));
+  assert.ok(!contract.taskShapes.includes('existing-project'));
+  assert.ok(!contract.taskShapes.includes('repair'));
+  assert.ok(!contract.qualityObligations.includes('modification-plan'));
   assert.equal(authorize(prompt, 'hello.cpp').allowed, true);
   assert.equal(authorize(prompt, 'code/hello_afternoon.cpp').allowed, true);
   assert.equal(authorize(prompt, 'notes.txt').reason, 'target-file-write-prohibited');

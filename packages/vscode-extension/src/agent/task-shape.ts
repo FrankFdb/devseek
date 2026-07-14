@@ -2,6 +2,7 @@ import {
   isDeliverableWriteRequest,
   isScopedNoChangeWithDeliverableWriteRequest,
 } from '../intent/advisory-patterns';
+import { hasStandaloneCodeGenerationIntent } from './task-contract';
 
 export type AgentTaskShape =
   | 'existing-project'
@@ -29,7 +30,8 @@ const FAILURE_RE = /(?:日志|失败|报错|重试|回归|QualityGate|replay|err
 export function classifyAgentTaskShape(userPrompt: string): AgentTaskShapeClassification {
   const text = String(userPrompt || '');
   const existingProjectLikely = EXISTING_PROJECT_RE.test(text);
-  const standaloneLikely = STANDALONE_RE.test(text) && !existingProjectLikely;
+  const standaloneLikely = (STANDALONE_RE.test(text) || hasStandaloneCodeGenerationIntent(text))
+    && !existingProjectLikely;
   const validationLikely = VALIDATION_RE.test(text);
   const failureRepairLikely = FAILURE_RE.test(text);
   const hasScopedDeliverableWrite = isScopedNoChangeWithDeliverableWriteRequest(text);
@@ -88,6 +90,8 @@ export function buildTaskShapeGuidancePrompt(userPrompt: string): string {
   } else if (classification.shape === 'standalone-project') {
     lines.push(
       '- 可以自建目录、入口和运行方式，但仍需提供可运行/可验证证据。',
+      '- 简单程序优先直接创建最小源码、编译/运行并核对用户要求的输出。',
+      '- 不要套用正式项目集成门禁；除非用户同时提供既有项目、模块或源码锚点。',
     );
   } else if (classification.shape === 'read-only-analysis') {
     lines.push(

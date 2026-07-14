@@ -101,7 +101,9 @@ export function assessFormalProjectDocumentQuality(
   const requiresModificationPlan = hasQualityObligation(contract, 'modification-plan');
   const requiresSourceEvidence = hasQualityObligation(contract, 'source-evidence');
   const requiresProtocolFacts = hasQualityObligation(contract, 'protocol-facts');
-  const required = contract.qualityObligations.length > 0;
+  const required = contract.taskShapes.includes('existing-project')
+    && !contract.taskShapes.includes('standalone')
+    && contract.qualityObligations.length > 0;
   const sourceReferenceCount = countMatches(content, SOURCE_REFERENCE_RE);
   const numericFactCount = countMatches(stripLikelyLineCountRows(content), NUMERIC_FACT_RE);
   const protocolSignalCount = countMatches(content, PROTOCOL_SIGNAL_RE);

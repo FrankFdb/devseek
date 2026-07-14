@@ -79,6 +79,20 @@ test('TaskShape: standalone task remains allowed to create its own entrypoint', 
   assert.match(guidance, /可以自建目录、入口和运行方式/);
 });
 
+test('TaskShape: simple programming prompt is standalone instead of formal project work', () => {
+  const prompt = '编写C++程序，打印helloworld,编译执行';
+  const result = classifyAgentTaskShape(prompt);
+  assert.equal(result.shape, 'standalone-project');
+  assert.equal(result.existingProjectLikely, false);
+  assert.equal(result.standaloneLikely, true);
+
+  const guidance = buildTaskShapeGuidancePrompt(prompt);
+  assert.match(guidance, /独立新项目\/原型\/练习/);
+  assert.match(guidance, /可以自建目录、入口和运行方式/);
+  assert.match(guidance, /简单程序/);
+  assert.doesNotMatch(guidance, /通信链路|原有代码修改清单|主入口\/调度链路/);
+});
+
 test('TaskShape: read-only advice is not treated as implementation work', () => {
   const prompt = '当前不准备修改代码，只读分析现有实现，给出对策检讨和 task 建议，通过 md 文档提供。';
   const result = classifyAgentTaskShape(prompt);
