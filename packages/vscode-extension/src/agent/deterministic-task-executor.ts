@@ -82,6 +82,22 @@ export async function tryExecuteDeterministicCreateTask(input: {
     return { applied: false, path: absPath, raw: (error as Error).message };
   }
 
+  if (deterministicContentAlreadySatisfied(baseline.snapshot.content, task.expectedContent)) {
+    const relPath = displayPath(input.workspaceRoot, absPath, task.file);
+    callbacks.onToolActivity?.('read', task.file);
+    await postDeterministicStatus(input, 'completed', basename, `${relPath} · 已存在并读回验证`, {
+      added: 0,
+      removed: 0,
+    });
+    return {
+      applied: true,
+      path: absPath,
+      raw: `deterministic create already satisfied: ${relPath}`,
+      linesAdded: 0,
+      linesRemoved: 0,
+    };
+  }
+
   if (callbacks.onBeforeFileWrite && !(await callbacks.onBeforeFileWrite(absPath, {
     purpose: 'deterministic-task',
     userRequested: true,
@@ -165,4 +181,12 @@ function displayPath(workspaceRoot: vscode.Uri, absPath: string, fallback: strin
   const rel = nodePath.relative(workspaceRoot.fsPath, absPath).replace(/\\/g, '/');
   if (!rel || rel.startsWith('..') || nodePath.isAbsolute(rel)) return fallback;
   return rel;
+}
+
+function deterministicContentAlreadySatisfied(currentContent: string, expectedContent: string): boolean {
+  return normalizeLineEndings(currentContent) === normalizeLineEndings(expectedContent);
+}
+
+function normalizeLineEndings(value: string): string {
+  return String(value || '').replace(/\r\n/g, '\n');
 }

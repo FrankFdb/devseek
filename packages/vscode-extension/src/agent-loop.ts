@@ -133,6 +133,14 @@ function isCompilableFile(filename: string): boolean {
   );
 }
 
+function isJavaScriptValidationFile(filename: string): boolean {
+  return ['.js', '.mjs', '.cjs'].includes(nodePath.extname(filename).toLowerCase());
+}
+
+function isLegacyAutoValidationFile(filename: string): boolean {
+  return isCompilableFile(filename) || isJavaScriptValidationFile(filename);
+}
+
 const AGENT_LOOP_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
 const AGENT_LOOP_TASK_PROMPT_CHAR_BUDGET = 32_000;
 const AGENT_LOOP_TOOL_FEEDBACK_CHAR_BUDGET = 7_000;
@@ -1531,22 +1539,24 @@ async function runValidation(
   userPrompt = '',
   sessionHistory?: ChatMessage[],
 ): Promise<ValidationOutcome> {
-  // Only C/C++ files need compile validation; Python, MD, etc. are skipped
-  const compilable = changedPaths.filter(p => isCompilableFile(p));
-  if (compilable.length === 0) return { ran: false, ok: true, reason: 'no-compilable-files' };
+  // Keep the legacy loop on the same validation authority as the agentic loop
+  // for safe local targets. Unknown code types still stay out of scope here.
+  const validationTargets = changedPaths.filter(p => isLegacyAutoValidationFile(p));
+  if (validationTargets.length === 0) return { ran: false, ok: true, reason: 'no-auto-validation-files' };
 
   const workspaceRootFsPath = workspaceRoot.fsPath;
-  const workspaceRelativeCompilable = compilable.map(filePath => {
+  const workspaceRelativeValidationTargets = validationTargets.map(filePath => {
     const absPath = nodePath.isAbsolute(filePath) ? filePath : nodePath.join(workspaceRootFsPath, filePath);
     return nodePath.relative(workspaceRootFsPath, absPath).replace(/\\/g, '/');
   });
+  const hasCppTargets = validationTargets.some(p => isCompilableFile(p));
 
   await callbacks.onAgentStatus({
     type: 'agentStatus',
     phase: 'validate',
     state: 'started',
-    title: wantRun ? '正在编译并运行' : '正在执行编译验证',
-    detail: `验证 ${compilable.length} 个 C/C++ 文件`,
+    title: wantRun && hasCppTargets ? '正在编译并运行' : '正在执行自动验证',
+    detail: `验证 ${validationTargets.length} 个本地变更文件`,
   });
 
   // ValidationService is the sole compile/QualityGate execution boundary. The
@@ -1554,7 +1564,7 @@ async function runValidation(
   const compileResult = await new ValidationService({
     commandRunner: callbacks.onValidationCommand,
   }).validateWorkspaceChanges({
-    changedPaths: workspaceRelativeCompilable,
+    changedPaths: workspaceRelativeValidationTargets,
     rootFsPath: workspaceRootFsPath,
     requestPrompt: userPrompt,
     cppValidationPolicy: 'conservative',
@@ -1566,9 +1576,9 @@ async function runValidation(
       phase: 'validate',
       state: 'failed',
       title: '未找到可执行验证计划',
-      detail: '未识别到 CMakeLists.txt 或 C++ 源文件。',
+      detail: '未识别到可自动验证的本地变更文件。',
     });
-    return { ran: false, ok: false, reason: 'no-build-plan' };
+    return { ran: false, ok: false, reason: 'no-validation-plan' };
   }
   if (compileResult.command) callbacks.onToolActivity?.('terminal', `自动验证: ${compileResult.command}`);
 
@@ -1577,8 +1587,8 @@ async function runValidation(
     phase: 'validate',
     state: compileResult.ok ? 'completed' : 'failed',
     title: compileResult.ok
-      ? '编译验证通过 ✓'
-      : compileResult.status === 'blocked' ? 'C/C++ 验证被质量门禁阻止' : '编译验证失败',
+      ? '自动验证通过 ✓'
+      : compileResult.status === 'blocked' ? '自动验证被质量门禁阻止' : '自动验证失败',
     detail: compileResult.ok
       ? `命令: ${compileResult.command}  exitCode: 0`
       : compileResult.output.slice(0, 400),
@@ -1595,7 +1605,7 @@ async function runValidation(
   }
 
   let runCommandForEvidence: string | undefined;
-  if (wantRun && !callbacks.onTerminalCommand) {
+  if (wantRun && hasCppTargets && !callbacks.onTerminalCommand) {
     const detail = '当前入口没有可用终端执行能力，已完成编译，但运行效果需要人工确认。';
     await callbacks.onAgentStatus({
       type: 'agentStatus',
@@ -1617,9 +1627,9 @@ async function runValidation(
   }
 
   // If compilation succeeded and user wants to run — execute in terminal
-  if (wantRun && callbacks.onTerminalCommand) {
+  if (wantRun && hasCppTargets && callbacks.onTerminalCommand) {
     const runPlan = new VerificationPlanner().planWorkspaceChanges({
-      changedPaths: workspaceRelativeCompilable,
+      changedPaths: workspaceRelativeValidationTargets,
       rootFsPath: workspaceRootFsPath,
       requestPrompt: userPrompt,
       cppValidationPolicy: 'conservative',
@@ -1742,7 +1752,7 @@ async function runValidation(
     ok: true,
     command: runCommandForEvidence ?? compileResult.command,
     exitCode: 0,
-    reason: wantRun ? 'compile-and-run-passed' : 'compile-passed',
+    reason: runCommandForEvidence ? 'compile-and-run-passed' : compileResult.reason || 'validation-passed',
   };
 }
 

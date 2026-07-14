@@ -224,4 +224,29 @@ test('ProviderRecoveryService: preserves create content facts for shorthand reco
   assert.match(tasks[1].desc, /内容为: phase7 bridge b/);
 });
 
+test('ProviderRecoveryService: extracts deterministic JavaScript probe content from same-window receipt prompt', () => {
+  const tasks = buildProviderRecoveryCheckpointTasks({
+    recoveryKind: 'ResponseCorrupted',
+    prompt: [
+      'CLOSE02-20260713-manual-probe 请只在这个隔离路径创建一个最小 JavaScript probe 文件：',
+      '.devseek-close02-probe/CLOSE02-20260713-manual-probe/probe.js',
+      '文件内容要求：1. 定义函数 close02Add(a, b)，返回 a + b。',
+      '2. 最后一行打印：CLOSE02-20260713-manual-probe: 2+3=5。',
+      '不运行网络，不安装依赖，不修改 git，不触碰产品源码。',
+    ].join(' '),
+    workspaceRootFsPath: '/repo',
+  });
+
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].file, '.devseek-close02-probe/CLOSE02-20260713-manual-probe/probe.js');
+  assert.equal(tasks[0].action, 'create');
+  assert.equal(tasks[0].expectedContent, [
+    'function close02Add(a, b) {return a + b;}',
+    '',
+    "console.log('CLOSE02-20260713-manual-probe: 2+3=' + close02Add(2, 3));",
+    '',
+  ].join('\n'));
+  assert.match(tasks[0].desc, /内容为: function close02Add/);
+});
+
 console.log('\nProvider recovery service tests passed.\n');

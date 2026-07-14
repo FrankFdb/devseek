@@ -215,7 +215,7 @@ export function buildProviderRecoveryCheckpointTasks(input: {
     if (input.recoveryKind === 'ResponseCorrupted') return [buildExplorationRecoveryTask()];
     return [buildFallbackRecoveryTask(input.recoveryKind)];
   }
-  const expectedContents = action === 'create' ? extractExpectedContents(trustedPrompt) : [];
+  const expectedContents = action === 'create' ? extractExpectedContents(trustedPrompt, refsList) : [];
   const shouldVerify = hasValidationIntent(trustedPrompt);
   const tasks = refsList.map((file, index) => {
     const expectedContent = expectedContents[index];
@@ -369,7 +369,7 @@ function buildRecoveryTaskDesc(
   return parts.join('，');
 }
 
-function extractExpectedContents(prompt: string): string[] {
+function extractExpectedContents(prompt: string, files: string[] = []): string[] {
   const separate = /内容\s*分别(?:为|是|:|：)\s*([\s\S]+)/i.exec(prompt);
   if (separate) {
     const body = cleanContentClause(separate[1]);
@@ -383,7 +383,39 @@ function extractExpectedContents(prompt: string): string[] {
     if (value) return [value];
   }
 
+  const codeProbeContents = extractJavaScriptProbeExpectedContents(prompt, files);
+  if (codeProbeContents.length > 0) return codeProbeContents;
+
   return [];
+}
+
+function extractJavaScriptProbeExpectedContents(prompt: string, files: string[]): string[] {
+  if (!files.some(file => /\.(?:js|mjs|cjs)$/i.test(file))) return [];
+  const functionSpec = /定义函数\s+([A-Za-z_$][\w$]*)\s*\(([^)]*)\)\s*[，,]?\s*返回\s*([^。；;\n]+)/i.exec(prompt);
+  const printSpec = /(?:最后一行)?\s*打印\s*[:：]\s*([^。；;\n]+)/i.exec(prompt);
+  if (!functionSpec || !printSpec) return [];
+
+  const functionName = functionSpec[1];
+  const args = functionSpec[2].split(',').map(arg => arg.trim()).filter(Boolean).join(', ');
+  const returnExpr = functionSpec[3].trim();
+  const printText = printSpec[1].trim();
+  const logLine = buildJavaScriptProbeLogLine(functionName, printText);
+  return [`function ${functionName}(${args}) {return ${returnExpr};}\n\n${logLine}\n`];
+}
+
+function buildJavaScriptProbeLogLine(functionName: string, printText: string): string {
+  const arithmetic = /^(.*?)(-?\d+)\s*\+\s*(-?\d+)\s*=\s*(-?\d+)\s*$/.exec(printText);
+  if (arithmetic && Number(arithmetic[2]) + Number(arithmetic[3]) === Number(arithmetic[4])) {
+    const prefix = arithmetic[1];
+    const left = arithmetic[2];
+    const right = arithmetic[3];
+    return `console.log('${escapeJavaScriptSingleQuoted(prefix)}${left}+${right}=' + ${functionName}(${left}, ${right}));`;
+  }
+  return `console.log('${escapeJavaScriptSingleQuoted(printText)}');`;
+}
+
+function escapeJavaScriptSingleQuoted(value: string): string {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 }
 
 function cleanContentClause(value: string): string {

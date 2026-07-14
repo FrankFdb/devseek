@@ -150,6 +150,9 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
   assert.match(agentLoop, /模型未输出分析结论，继续要求工具调用或最终答复/, 'read-only recovery status must be visible in run logs');
   assert.match(agenticLoop, /isAgentWorkToolName/, 'agentic-loop must use the shared tool classifier instead of duplicating work-tool rules');
   assert.match(agentLoop, /classifyTaskTerminalManualReview/, 'analyze run_terminal failures must support manual visual review before hard-failing');
+  assert.match(agentLoop, /isJavaScriptValidationFile/, 'legacy agent loop must recognize JavaScript probe files as local validation targets');
+  assert.match(agentLoop, /changedPaths\.filter\(p\s*=>\s*isLegacyAutoValidationFile\(p\)\)/, 'legacy agent loop must route JS probe validation through the shared validation boundary');
+  assert.match(agentLoop, /validateWorkspaceChanges\(\{\s*changedPaths:\s*workspaceRelativeValidationTargets/, 'legacy agent loop must pass JS validation targets to ValidationService');
   assert.doesNotMatch(
     agentLoop,
     /return\s*\{\s*tasksTotal:\s*tasks\.length,\s*tasksApplied,\s*tasksFailed:\s*tasksFailed\s*\+\s*1,\s*changedPaths\s*\}/,

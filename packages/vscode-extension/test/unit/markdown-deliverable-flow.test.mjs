@@ -486,6 +486,57 @@ test('recovery route: deterministic expectedContent cannot override the current 
   }
 });
 
+test('recovery route: deterministic create settles an already-satisfied JavaScript probe without rewriting', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-deterministic-js-satisfied-'));
+  const target = path.join(root, '.devseek-close02-probe/CLOSE02-20260713-manual-probe/probe.js');
+  const expectedContent = [
+    'function close02Add(a, b) {return a + b;}',
+    '',
+    "console.log('CLOSE02-20260713-manual-probe: 2+3=' + close02Add(2, 3));",
+    '',
+  ].join('\n');
+  const prompt = `创建 ${target}，定义函数 close02Add(a, b)，返回 a + b。最后一行打印：CLOSE02-20260713-manual-probe: 2+3=5。`;
+  const io = makeCallbacks();
+  const writeGuardCalls = [];
+  try {
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, expectedContent.replace(/\n/g, '\r\n'), 'utf8');
+    io.callbacks.onBeforeFileWrite = async (absPath, context) => {
+      writeGuardCalls.push({ absPath, context });
+      return true;
+    };
+
+    const result = await tryExecuteDeterministicCreateTask({
+      task: {
+        id: 'close02-satisfied-probe',
+        action: 'create',
+        file: '.devseek-close02-probe/CLOSE02-20260713-manual-probe/probe.js',
+        absPath: target,
+        desc: prompt,
+        expectedContent,
+      },
+      taskIndex: 1,
+      taskTotal: 1,
+      workspaceRoot: Uri.file(root),
+      effectiveAbsPath: target,
+      userPrompt: prompt,
+      callbacks: io.callbacks,
+    });
+
+    assert.equal(result?.applied, true);
+    assert.equal(result?.linesAdded, 0);
+    assert.equal(result?.linesRemoved, 0);
+    assert.match(result?.raw || '', /already satisfied/);
+    assert.equal(readFileSync(target, 'utf8'), expectedContent.replace(/\n/g, '\r\n'));
+    assert.deepEqual(io.changes, []);
+    assert.deepEqual(writeGuardCalls, []);
+    assert.equal(io.activities.some(item => item.kind === 'read' && item.label.endsWith('probe.js')), true);
+    assert.match(io.statuses.at(-1)?.detail || '', /已存在并读回验证/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('markdown deliverable flow: same formal-project request reaches simulated DeepSeek Web and writes md', async () => {
   const providerMarkdown = [
     '# 维保提醒实现建议',
