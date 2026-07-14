@@ -197,6 +197,33 @@ test('VerificationPlanner: C++ compile-only artifacts use stable project build d
   assert.equal(first.command, second.command);
 });
 
+test('VerificationPlanner: standalone C++ print program plans compile-run evidence', () => {
+  const projectDir = path.join('/repo', 'code');
+  const source = path.join(projectDir, 'hello.cpp');
+  const files = new Set(['/repo', projectDir, source]);
+  const fsNode = {
+    existsSync: (p) => files.has(p),
+    readdirSync: (p) => p === projectDir ? ['hello.cpp'] : [],
+    readFileSync: (p) => p === source
+      ? '#include <iostream>\nint main(){ std::cout << "下午好" << std::endl; return 0; }\n'
+      : '',
+  };
+
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['code/hello.cpp'],
+    requestPrompt: '编写一个C++程序，打印下午好',
+    fsNode,
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'compile-run');
+  assert.equal(plan.reason, 'single-main-run-requested');
+  assert.match(plan.command, /g\+\+/);
+  assert.match(plan.command, /hello\.cpp/);
+  assert.match(plan.command, /deepseek_auto_exec/);
+});
+
 test('VerificationPlanner: blocks C++ validation when generated local include closure is incomplete', () => {
   const projectDir = path.join('/repo', 'generated', 'warranty');
   const files = new Set([

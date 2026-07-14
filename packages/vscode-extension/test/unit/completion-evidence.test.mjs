@@ -275,6 +275,12 @@ test('completion evidence: quoted CMake planner run command is compile-run evide
   );
 });
 
+test('completion evidence: g++ compile plus executable run is compile-run evidence', () => {
+  const command = 'cd /tmp/devseek-live-standalone && g++ hello.cpp -o hello && ./hello';
+
+  assert.equal(classifyTerminalEvidenceCommand(command), 'compile-run');
+});
+
 test('completion evidence: common Chinese implementation wording requires code evidence', () => {
   assert.equal(requiresCodeArtifactForEvidence('写一个排序算法并放到 code 目录'), true);
 });

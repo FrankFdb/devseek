@@ -273,7 +273,8 @@ export class VerificationPlanner {
 }
 
 export function shouldRunCppValidation(prompt: string): boolean {
-  return /(?:运行|执行|启动|测试|test|run|execute|看结果|输出效果|运行效果)/i.test(commandEvidenceIntentText(prompt));
+  return /(?:运行|执行|启动|测试|test|run|execute|看结果|输出效果|运行效果|打印|print|stdout|std::cout|\bcout\b|console)/i
+    .test(commandEvidenceIntentText(prompt));
 }
 
 export function shouldValidateNonCodeFiles(prompt: string): boolean {

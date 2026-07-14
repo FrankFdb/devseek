@@ -63,7 +63,7 @@ export function decideTerminalCommandPermission(input: TerminalCommandPermission
   let sawValidation = false;
   for (const segment of segments) {
     if (isReadOnlySegment(segment)) continue;
-    if (isValidationSegment(segment)) {
+    if (isValidationSegment(segment, input.workspaceRoot, input.workdir)) {
       sawValidation = true;
       continue;
     }
@@ -245,7 +245,7 @@ function isReadOnlySegment(rawSegment: string): boolean {
   return true;
 }
 
-function isValidationSegment(rawSegment: string): boolean {
+function isValidationSegment(rawSegment: string, workspaceRoot?: string, workdir?: string): boolean {
   const segment = stripLeadingAssignments(rawSegment).trim();
   const token = firstCommandToken(segment);
   if (!token) return false;
@@ -265,7 +265,32 @@ function isValidationSegment(rawSegment: string): boolean {
   if (command === 'cargo') return /\bcargo\s+test\b/i.test(segment);
   if (command === 'dotnet') return /\bdotnet\s+test\b/i.test(segment);
   if (command === 'make') return /\bmake\s+(?:test|check)\b/i.test(segment);
+  if (isCppCompilerCommand(command)) return isCppCompilerValidationSegment(segment);
+  if (isWorkspaceExecutableValidationSegment(token, workspaceRoot, workdir)) return true;
   return false;
+}
+
+function isCppCompilerCommand(command: string): boolean {
+  return /^(?:g\+\+|gcc|clang\+\+|clang|cc|c\+\+)$/.test(command);
+}
+
+function isCppCompilerValidationSegment(segment: string): boolean {
+  // Compilers may write build artifacts via -o/-c; those artifacts are validation
+  // evidence, while source/content writes still stay blocked by redirection guards.
+  return /(?:^|\s)(?:-[cS]|-fsyntax-only)(?=\s|$)/.test(segment)
+    || /(?:^|\s)-o(?:\s+|[^\s]+\s*)/.test(segment)
+    || /\.(?:c|cc|cpp|cxx)(?:['"])?(?:\s|$)/i.test(segment);
+}
+
+function isWorkspaceExecutableValidationSegment(token: string, workspaceRoot?: string, workdir?: string): boolean {
+  const cleaned = cleanToken(token);
+  if (!cleaned) return false;
+  const executableLike = cleaned.startsWith('./') || cleaned.startsWith('/');
+  if (!executableLike) return false;
+  if (!workspaceRoot) return !cleaned.startsWith('/');
+  const baseDir = workdir && nodePath.isAbsolute(workdir) ? workdir : workspaceRoot;
+  const resolved = nodePath.resolve(baseDir, cleaned);
+  return isInsideWorkspace(resolved, workspaceRoot);
 }
 
 function stripLeadingAssignments(segment: string): string {

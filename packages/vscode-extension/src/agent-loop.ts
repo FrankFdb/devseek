@@ -106,7 +106,7 @@ import { shouldRequestManualReviewForRun } from './agent/manual-review-validatio
 import { decideAgentRuntimeTurn } from './agent/agent-runtime-turn-policy';
 import { WorkspaceEditService, type WorkspaceTextFileBaseline } from './workspace/edit-service';
 import { buildTaskShapeGuidancePrompt } from './agent/task-shape';
-import { VerificationPlanner } from './app/verification-planner';
+import { VerificationPlanner, shouldRunCppValidation } from './app/verification-planner';
 import { ValidationService } from './workspace/validation-service';
 import type { ExecutionMode } from './intent/intent-types';
 import { ArtifactGroundingCollector } from './agent/artifact-grounding-lifecycle';
@@ -1550,12 +1550,13 @@ async function runValidation(
     return nodePath.relative(workspaceRootFsPath, absPath).replace(/\\/g, '/');
   });
   const hasCppTargets = validationTargets.some(p => isCompilableFile(p));
+  const effectiveWantRun = wantRun || (hasCppTargets && shouldRunCppValidation(userPrompt));
 
   await callbacks.onAgentStatus({
     type: 'agentStatus',
     phase: 'validate',
     state: 'started',
-    title: wantRun && hasCppTargets ? '正在编译并运行' : '正在执行自动验证',
+    title: effectiveWantRun && hasCppTargets ? '正在编译并运行' : '正在执行自动验证',
     detail: `验证 ${validationTargets.length} 个本地变更文件`,
   });
 
@@ -1605,7 +1606,7 @@ async function runValidation(
   }
 
   let runCommandForEvidence: string | undefined;
-  if (wantRun && hasCppTargets && !callbacks.onTerminalCommand) {
+  if (effectiveWantRun && hasCppTargets && !callbacks.onTerminalCommand) {
     const detail = '当前入口没有可用终端执行能力，已完成编译，但运行效果需要人工确认。';
     await callbacks.onAgentStatus({
       type: 'agentStatus',
@@ -1627,7 +1628,7 @@ async function runValidation(
   }
 
   // If compilation succeeded and user wants to run — execute in terminal
-  if (wantRun && hasCppTargets && callbacks.onTerminalCommand) {
+  if (effectiveWantRun && hasCppTargets && callbacks.onTerminalCommand) {
     const runPlan = new VerificationPlanner().planWorkspaceChanges({
       changedPaths: workspaceRelativeValidationTargets,
       rootFsPath: workspaceRootFsPath,

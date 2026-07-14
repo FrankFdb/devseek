@@ -22,7 +22,7 @@ const CONTROL_COMMAND_TOKENS = new Set(['then', 'else', 'do']);
 export function classifyShellCommandEvidence(command: string): ShellCommandEvidenceKind {
   const c = String(command || '').trim();
   const lower = c.toLowerCase();
-  const compileLike = /\b(?:g\+\+|gcc|clang\+\+|clang|cmake|make|ninja)\b/.test(lower)
+  const compileLike = /(?:^|[\s;&|])(?:g\+\+|gcc|clang\+\+|clang|cmake|make|ninja)(?=\s|$)/.test(lower)
     || /\b(?:npm|pnpm|yarn|bun)\s+run\s+(?:build|compile)\b/.test(lower)
     || /\bcargo\s+build\b|\bgo\s+build\b|\bdotnet\s+build\b/.test(lower);
   const testLike = /\b(?:npm|pnpm|yarn|bun)\s+(?:test|run\s+test)\b/.test(lower)

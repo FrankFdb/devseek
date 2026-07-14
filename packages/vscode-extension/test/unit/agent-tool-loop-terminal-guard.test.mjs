@@ -387,6 +387,39 @@ test('ToolLoop terminal guard fail-closes destructive, mutating, and unclassifie
   assert.match(result.feedbackForAI, /仅允许只读查询和已分类验证命令/);
 });
 
+test('ToolLoop terminal guard allows workspace-local C++ compile-run validation', async () => {
+  const projectRoot = mkdtempSync(path.join(tmpdir(), 'devseek-tool-loop-cpp-run-'));
+  try {
+    writeFileSync(path.join(projectRoot, 'main.cpp'), '#include <iostream>\nint main(){std::cout<<"ok\\n";}\n');
+    const executable = path.join(projectRoot, 'hello');
+    writeFileSync(executable, '#!/bin/sh\necho ok\n', { mode: 0o755 });
+    let terminalCalls = 0;
+    const command = `cd ${projectRoot} && g++ main.cpp -o hello && ./hello`;
+
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'run_terminal', input: { command } }],
+      {
+        onTerminalCommand: async () => {
+          terminalCalls += 1;
+          return '[终端命令] ' + command + '\n[退出码] 0\n[stdout]\nok\n';
+        },
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      projectRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: projectRoot },
+    );
+
+    assert.equal(terminalCalls, 1);
+    assert.equal(result.toolFailures?.length ?? 0, 0);
+    assert.deepEqual(result.terminalCommands, [command]);
+    assert.equal(result.terminalEvidence?.[0]?.kind, 'compile-run');
+    assert.equal(result.terminalEvidence?.[0]?.ok, true);
+  } finally {
+    rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
 test('ToolLoop terminal guard never dispatches read-only allowlist commands with hidden writes', async () => {
   let terminalCalls = 0;
   const commands = [

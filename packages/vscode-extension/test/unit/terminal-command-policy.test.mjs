@@ -209,4 +209,16 @@ test('TerminalCommandPolicy: non-writing validation counterexamples remain valid
   }
 });
 
+test('TerminalCommandPolicy: C++ compile-run inside workspace is validation evidence', () => {
+  for (const command of [
+    'cd /workspace/devseek && g++ hello.cpp -o hello && ./hello',
+    "g++ -std=c++17 '/workspace/devseek/hello.cpp' -o '/workspace/devseek/hello' && '/workspace/devseek/hello'",
+  ]) {
+    const decision = decideTerminalCommandPermission({ command, workspaceRoot });
+    assert.equal(decision.risk, 'validation', command);
+    assert.equal(decision.requiresConfirmation, true, command);
+    assert.equal(decision.canRememberDecision, true, command);
+  }
+});
+
 console.log('\nTerminal command policy tests passed.\n');
