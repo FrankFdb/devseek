@@ -1,0 +1,79 @@
+{
+  "schema_version": "devseek.active-baseline-selector/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "selector_id": "DEVSEEK-ACTIVE-BASELINE-SELECTOR/v1",
+  "scope": "top-agent-convergence",
+  "asserts_gate_pass": false,
+  "governed_types": [
+    "requirement",
+    "architecture",
+    "process"
+  ],
+  "documents": [
+    {
+      "document_id": "REQ-02-TOP-AGENT-REQUIREMENT-BASELINE",
+      "document_type": "requirement",
+      "status": "active",
+      "role": "primary",
+      "path": "docs/requirements/02-顶级编程智能体需求基线.md",
+      "supersedes": [],
+      "rationale": "Primary active requirements baseline; convergence audit routes execution but does not replace the requirement baseline until G0-02/03 governance migration.",
+      "supporting_refs": [
+        {
+          "path": "docs/top-agent-convergence-audit-20260711/README.md",
+          "reason": "Current audit entry and applicability boundary."
+        },
+        {
+          "path": "docs/top-agent-convergence-audit-20260711/04-分能力专项迭代与收敛路线图.md",
+          "reason": "Capability maturity and qualification route derived from the requirement baseline."
+        }
+      ]
+    },
+    {
+      "document_id": "ARCH-01-TOP-AGENT-ARCHITECTURE-BASELINE",
+      "document_type": "architecture",
+      "status": "active",
+      "role": "primary",
+      "path": "docs/architecture/01-顶级编程智能体总体架构设计.md",
+      "supersedes": [],
+      "rationale": "Primary active architecture baseline; convergence audit 03 is the candidate target architecture overlay, not a second machine owner.",
+      "supporting_refs": [
+        {
+          "path": "docs/top-agent-convergence-audit-20260711/03-顶级编程智能体目标软件架构.md",
+          "reason": "Converged Coding Kernel target overlay for current atomic cards."
+        },
+        {
+          "path": "docs/top-agent-convergence-audit-20260711/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md",
+          "reason": "No-resurrection routing for legacy architecture and implementation plans."
+        }
+      ]
+    },
+    {
+      "document_id": "PROCESS-14-GPT55-BACKLOG-BASELINE",
+      "document_type": "process",
+      "status": "active",
+      "role": "primary",
+      "path": "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md",
+      "supersedes": [],
+      "rationale": "Primary active process and backlog baseline; it is the only task issuance source while docs/process remains the machine fact layer.",
+      "supporting_refs": [
+        {
+          "path": "docs/top-agent-convergence-audit-20260711/15-新窗口与跨模型接管手册.md",
+          "reason": "Dynamic handoff and identity recalculation procedure."
+        },
+        {
+          "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
+          "reason": "Invariant engineering rules and per-card DoD."
+        },
+        {
+          "path": "docs/process/devseek-gate0-decision-report.json",
+          "reason": "Machine Gate 0 state; Markdown cannot promote it."
+        }
+      ]
+    }
+  ],
+  "selector_sha256": "869219726bd2b5e23a4b03ec7d9b6ea58fb02efb4903ca6672de2bbac7cb0332"
+}

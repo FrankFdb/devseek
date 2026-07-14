@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "devseek.active-baseline-selector.schema.json",
+  "title": "DevSeek Active Baseline Selector",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "selector_id",
+    "scope",
+    "asserts_gate_pass",
+    "governed_types",
+    "documents",
+    "selector_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.active-baseline-selector/v1" },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "selector_id": { "const": "DEVSEEK-ACTIVE-BASELINE-SELECTOR/v1" },
+    "scope": { "type": "string", "minLength": 1 },
+    "asserts_gate_pass": { "const": false },
+    "governed_types": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "uniqueItems": true,
+      "items": { "enum": ["requirement", "architecture", "process"] }
+    },
+    "documents": {
+      "type": "array",
+      "minItems": 3,
+      "items": { "$ref": "#/$defs/document" }
+    },
+    "selector_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  },
+  "$defs": {
+    "relativeMarkdownPath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+\\.md$"
+    },
+    "relativeReferencePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+\\.(?:md|json)$"
+    },
+    "supportingRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "reason"],
+      "properties": {
+        "path": { "$ref": "#/$defs/relativeReferencePath" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "document_id",
+        "document_type",
+        "status",
+        "role",
+        "path",
+        "supersedes",
+        "rationale"
+      ],
+      "properties": {
+        "document_id": { "type": "string", "minLength": 1 },
+        "document_type": { "enum": ["requirement", "architecture", "process"] },
+        "status": { "enum": ["active", "supporting", "superseded", "historical"] },
+        "role": { "enum": ["primary", "supporting", "historical"] },
+        "path": { "$ref": "#/$defs/relativeMarkdownPath" },
+        "supersedes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "rationale": { "type": "string", "minLength": 1 },
+        "supporting_refs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/supportingRef" }
+        }
+      }
+    }
+  }
+}

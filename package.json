@@ -32,6 +32,8 @@
     "verify:agent-loop-eval:real": "npm run shared:build && npm run cli:build && node scripts/devseek-agent-loop-eval.mjs --real-deepseek",
     "verify:programming-agent-benchmark": "npm run shared:build && npm run cli:build && node scripts/devseek-programming-agent-benchmark.mjs",
     "verify:architecture-drift": "node scripts/devseek-architecture-drift-check.mjs",
+    "generate:active-baseline-selector": "node scripts/devseek-active-baseline-selector-check.mjs --write",
+    "verify:active-baseline-selector": "node --test scripts/test/devseek-active-baseline-selector.test.mjs && node scripts/devseek-active-baseline-selector-check.mjs",
     "generate:capability-ledger": "node scripts/devseek-capability-ledger-check.mjs --write",
     "verify:capability-ledger": "node --test scripts/test/devseek-capability-ledger.test.mjs && node scripts/devseek-capability-ledger-check.mjs",
     "generate:qualification-protocol": "node scripts/devseek-qualification-protocol-check.mjs --write",

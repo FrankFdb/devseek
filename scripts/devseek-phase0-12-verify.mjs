@@ -33,6 +33,12 @@ const gates = [
     purpose: 'Freeze oversized orchestration and Surface files so new fixes must move responsibility into owned boundaries.',
   },
   {
+    id: 'active-baseline-selector-governance',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:active-baseline-selector'],
+    purpose: 'Fail closed when the current requirement, architecture, or process baseline is missing, ambiguous, stale, or only implied by Markdown prose.',
+  },
+  {
     id: 'capability-ledger-governance',
     phases: '0-12',
     command: ['npm', 'run', 'verify:capability-ledger'],
