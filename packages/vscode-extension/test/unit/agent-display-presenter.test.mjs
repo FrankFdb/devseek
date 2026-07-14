@@ -113,6 +113,23 @@ test('AgentDisplayPresenter: emits a concise context summary from structured sta
   assert.match(status.progressDetail, /下一步：整理发现/);
 });
 
+test('AgentDisplayPresenter: user-facing progress focus is not hard-truncated before layout', () => {
+  const localPresenter = new AgentDisplayPresenter();
+  const focus = 'CLOSE02-20260713-manual-probe 请只在这个隔离路径创建一个最小 JavaScript probe 文件，返回 a+b，并报告最终状态';
+  const status = localPresenter.presentStatus({
+    type: 'agentStatus',
+    phase: 'execute',
+    state: 'started',
+    taskAction: 'explore',
+    taskDesc: focus,
+    title: 'CLOSE02 probe',
+  });
+
+  assert.equal(status.progressTitle, `正在调查：${focus}`);
+  assert.match(status.progressDetail, /报告最终状态/);
+  assert.doesNotMatch(status.progressTitle, /…$/);
+});
+
 test('AgentDisplayPresenter: de-duplicates detail facts and changes stage by tool semantics', () => {
   const localPresenter = new AgentDisplayPresenter();
   localPresenter.presentStatus({

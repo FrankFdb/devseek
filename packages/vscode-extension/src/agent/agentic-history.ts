@@ -210,15 +210,53 @@ function terminalEvidenceRef(evidence: TerminalEvidence): string {
   return `terminal:${evidence.ok ? 'ok' : 'failed'}:${evidence.kind}:exitCode=${code}:${evidence.command}`;
 }
 
+function synthesizeAgenticHistorySummary(input: AgenticHistoryInput, writtenFiles: WrittenFileEvidence[]): string {
+  const parts: string[] = [];
+  const todos = input.todos || [];
+  if (todos.length > 0) {
+    const completed = todos.filter(todo => todo.status === 'completed').length;
+    parts.push(`已完成 ${completed}/${todos.length} 个任务`);
+  }
+  if (writtenFiles.length > 0) {
+    const verb = dominantFileActionVerb(writtenFiles);
+    const preview = writtenFiles
+      .slice(0, 4)
+      .map(file => nodePath.basename(file.path || file.basename || '文件'))
+      .filter(Boolean)
+      .join('、');
+    const suffix = writtenFiles.length > 4 ? ' 等' : '';
+    parts.push(`${verb} ${writtenFiles.length} 个文件${preview ? `：${preview}${suffix}` : ''}`);
+  }
+  if (input.qualityGate?.summary) {
+    parts.push(input.qualityGate.summary.replace(/[。.]$/, ''));
+  } else {
+    const successfulTerminal = [...(input.terminalEvidence || [])].reverse().find(evidence => evidence.ok);
+    if (successfulTerminal) parts.push(`${successfulTerminal.kind || 'terminal'} 验证已通过`);
+  }
+  return parts.length > 0 ? `${parts.join('；')}。` : '';
+}
+
+function dominantFileActionVerb(files: WrittenFileEvidence[]): string {
+  const actions = new Set(files.map(file => String(file.action || '').toLowerCase()));
+  if (actions.size === 1 && actions.has('create')) return '创建';
+  if (actions.size === 1 && actions.has('delete')) return '删除';
+  if (actions.has('modify') || actions.has('update') || actions.has('patch')) return '修改';
+  return '处理';
+}
+
 export function buildAgenticHistoryText(input: AgenticHistoryInput): string {
   const rounds = Math.max(0, Number(input.roundCount) || 0);
   const label = truncate(input.label || 'Agentic', 32);
   const countLabel = truncate(input.countLabel || `${rounds} 轮`, 80);
   const status = input.completed ? '已完成' : '未完成';
-  const summary = truncate(input.failedReason || input.summary || '', MAX_SUMMARY_CHARS);
+  const writtenFiles = coalesceWrittenFileEvidence(input.writtenFiles || [], input.workspaceRoot);
+  const summary = truncate(
+    input.failedReason || input.summary || synthesizeAgenticHistorySummary(input, writtenFiles),
+    MAX_SUMMARY_CHARS,
+  );
   const prompt = truncate(input.userPrompt || '', MAX_PROMPT_CHARS);
   const todos = renderTodoList(input.todos || []);
-  const files = renderWrittenFiles(input.writtenFiles || [], input.workspaceRoot);
+  const files = renderWrittenFiles(writtenFiles, input.workspaceRoot);
   const terminal = renderTerminalEvidence(input.terminalEvidence || []);
   const qualityGate = renderQualityGate(input.qualityGate);
 

@@ -3350,19 +3350,19 @@ function injectWorkingAreaStyles() {
     '.aut-container[data-done][data-failed] { border-color:rgba(255,120,120,.38); background:rgba(255,120,120,.035); }',
     '.aut-details { }',
     /* Summary row — compact, normal weight matching Copilot */
-    '.aut-summary { display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; font-weight:400; list-style:none; padding:2px 0; user-select:none; color:var(--vscode-foreground,rgba(204,204,204,.92)); }',
+    '.aut-summary { display:flex; align-items:flex-start; gap:6px; cursor:pointer; font-size:12px; font-weight:400; list-style:none; padding:2px 0; user-select:none; color:var(--vscode-foreground,rgba(204,204,204,.92)); }',
     '.aut-summary::-webkit-details-marker { display:none; }',
     '.aut-summary::after { content:"\u203a"; font-size:13px; opacity:.38; margin-left:auto; transition:transform .16s; }',
     '.aut-details[open] .aut-summary::after { transform:rotate(90deg); }',
     /* Status icon: loading spinner while working, check/error on done */
-    '.aut-status-icon { font-size:12px; width:16px; text-align:center; flex-shrink:0; display:inline-flex; align-items:center; justify-content:center; color:var(--vscode-charts-blue,rgba(99,179,255,.9)); }',
+    '.aut-status-icon { font-size:12px; width:16px; text-align:center; flex-shrink:0; display:inline-flex; align-items:center; justify-content:center; color:var(--vscode-charts-blue,rgba(99,179,255,.9)); margin-top:1px; }',
     '.aut-status-icon .aut-spin { animation: autSpin 1.4s linear infinite; }',
     '.aut-container[data-done] .aut-spin, .aut-details[data-done] .aut-spin { animation:none !important; }',
     '.aut-details[data-done] .aut-spinner-row { display:none !important; }',
     '.aut-details[data-done] .aut-status-icon { color:var(--vscode-charts-green,rgba(120,220,150,.9)); opacity:.55; }',
     '.aut-details[data-done][data-failed] .aut-status-icon { color:var(--vscode-errorForeground,rgba(255,130,130,.9)); }',
     /* Label: animated shimmer while working, bold and visible like Copilot "Working: {file}" */
-    '.aut-label { font-size:12px; font-weight:600; color:var(--vscode-descriptionForeground,rgba(204,204,204,.9)); background:linear-gradient(90deg,var(--vscode-descriptionForeground,rgba(204,204,204,.9)) 0%,var(--vscode-descriptionForeground,rgba(204,204,204,.9)) 30%,var(--vscode-chat-thinkingShimmer,#ffffff) 50%,var(--vscode-descriptionForeground,rgba(204,204,204,.9)) 70%,var(--vscode-descriptionForeground,rgba(204,204,204,.9)) 100%); background-size:400% 100%; background-clip:text; -webkit-background-clip:text; -webkit-text-fill-color:transparent; animation:autShimmer 2s linear infinite; }',
+    '.aut-label { flex:1; min-width:0; white-space:normal; overflow-wrap:anywhere; font-size:12px; font-weight:600; color:var(--vscode-foreground,rgba(204,204,204,.95)); background:linear-gradient(90deg,var(--vscode-foreground,rgba(204,204,204,.95)) 0%,var(--vscode-foreground,rgba(204,204,204,.95)) 30%,var(--vscode-chat-thinkingShimmer,#ffffff) 50%,var(--vscode-foreground,rgba(204,204,204,.95)) 70%,var(--vscode-foreground,rgba(204,204,204,.95)) 100%); background-size:400% 100%; background-clip:text; -webkit-background-clip:text; -webkit-text-fill-color:transparent; animation:autShimmer 2s linear infinite; }',
     /* Done: ghost style — very subtle single-line text matching Copilot’s collapsed thinking box */
     '.aut-details[data-done] .aut-label { animation:none; background:none; -webkit-text-fill-color:unset; opacity:.58; font-weight:400; font-style:normal; font-size:11px; color:var(--vscode-descriptionForeground,rgba(204,204,204,.78)); }',
     '.aut-details[data-done][data-failed] .aut-label { opacity:.95; color:var(--vscode-errorForeground,rgba(255,130,130,.9)); }',
@@ -3465,18 +3465,18 @@ function injectWorkingAreaStyles() {
     /* ── Tool activity chip (shows "Read N  Search M") ── */
     /* ── Tool-call step list (one row per read/search/list/run, Copilot-style) ── */
     '.aut-progress-digest { margin:2px 8px 5px 0; padding:6px 8px; border-left:2px solid rgba(99,179,255,.52); background:rgba(99,179,255,.07); user-select:text; }',
-    '.aut-progress-title { font-size:11px; font-weight:650; line-height:1.35; color:var(--vscode-foreground); }',
-    '.aut-progress-detail { font-size:10.5px; line-height:1.45; margin-top:2px; opacity:.72; overflow-wrap:anywhere; }',
+    '.aut-progress-title { font-size:11px; font-weight:650; line-height:1.35; color:var(--vscode-foreground); white-space:normal; overflow-wrap:anywhere; }',
+    '.aut-progress-detail { font-size:10.5px; line-height:1.45; margin-top:2px; color:var(--vscode-foreground); opacity:1; white-space:normal; overflow-wrap:anywhere; }',
     '.aut-container[data-done] .aut-progress-digest { background:rgba(99,179,255,.035); border-left-color:rgba(127,127,127,.28); opacity:.9; margin:3px 5px 2px; }',
     '.aut-steps-list { display:flex; flex-direction:column; gap:0; margin:4px 0 2px; max-height:180px; overflow-y:auto; overflow-x:hidden; scroll-behavior:smooth; }',
     /* Done-state steps: no height limit so all steps are visible after completion */
     '.aut-details[data-done] .aut-steps-list { max-height:none; overflow:visible; opacity:.82; margin:5px 8px 6px 14px; }',
     '.aut-details[data-done] .aut-step { opacity:.78; font-size:11px; padding:2px 0; }',
-    '.aut-details[data-done] .aut-rows { opacity:.7; }',
+    '.aut-details[data-done] .aut-rows { opacity:.7; } .aut-details[data-done][open] .aut-steps-list, .aut-details[data-done][open] .aut-step, .aut-details[data-done][open] .aut-rows { opacity:1; color:var(--vscode-foreground); }',
     /* Show steps inline after done — collapse arrow still works for manual hide */
-    '.aut-step { display:flex; align-items:center; gap:6px; font-size:11px; padding:1px 2px; line-height:1.6; opacity:.82; }',
+    '.aut-step { display:flex; align-items:flex-start; gap:6px; font-size:11px; padding:1px 2px; line-height:1.6; opacity:1; color:var(--vscode-foreground); }',
     '.aut-step-icon { flex-shrink:0; font-size:10px; opacity:.55; }',
-    '.aut-step-text { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; }',
+    '.aut-step-text { overflow:visible; text-overflow:clip; white-space:normal; overflow-wrap:anywhere; flex:1; min-width:0; }',
     '.aut-step-prose { align-items:flex-start; }',
     '.aut-step-prose .aut-step-text { white-space:normal; overflow:visible; text-overflow:clip; line-height:1.5; }',
     '.aut-step-prose .aut-step-text p { margin:0; }',
@@ -3501,7 +3501,7 @@ function injectWorkingAreaStyles() {
     /* ── P-O: ● Status spinner row (Copilot chat-thinking-spinner-item) ── */
     '.aut-spinner-row { display:flex; align-items:center; gap:5px; padding:4px 2px; margin-top:3px; }',
     '.aut-spinner-dot { font-size:8px; opacity:0.55; color:var(--vscode-descriptionForeground); }',
-    '.aut-spinner-label { font-size:var(--vscode-chat-font-size-body-s,0.923em); font-style:italic; background:linear-gradient(90deg,var(--vscode-descriptionForeground,rgba(180,180,180,.65)) 0%,var(--vscode-descriptionForeground,rgba(180,180,180,.65)) 30%,var(--vscode-chat-thinkingShimmer,rgba(255,255,255,.9)) 50%,var(--vscode-descriptionForeground,rgba(180,180,180,.65)) 70%,var(--vscode-descriptionForeground,rgba(180,180,180,.65)) 100%); background-size:400% 100%; background-clip:text; -webkit-background-clip:text; -webkit-text-fill-color:transparent; animation:autShimmer 2.5s linear infinite; }',
+    '.aut-spinner-label { font-size:var(--vscode-chat-font-size-body-s,0.923em); font-style:normal; font-weight:500; color:var(--vscode-foreground); background:linear-gradient(90deg,var(--vscode-foreground,rgba(204,204,204,.92)) 0%,var(--vscode-foreground,rgba(204,204,204,.92)) 30%,var(--vscode-chat-thinkingShimmer,rgba(255,255,255,.95)) 50%,var(--vscode-foreground,rgba(204,204,204,.92)) 70%,var(--vscode-foreground,rgba(204,204,204,.92)) 100%); background-size:400% 100%; background-clip:text; -webkit-background-clip:text; -webkit-text-fill-color:transparent; animation:autShimmer 2.5s linear infinite; }',
     '.aut-spinner-row.is-settled { opacity:.78; }',
     '.aut-spinner-settled-icon { font-size:12px; color:var(--vscode-charts-green,rgba(120,220,150,.9)); }',
     '.aut-spinner-label.is-settled { animation:none; background:none; -webkit-text-fill-color:unset; color:var(--vscode-descriptionForeground,rgba(204,204,204,.75)); font-style:normal; }',

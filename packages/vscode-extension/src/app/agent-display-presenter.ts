@@ -10,6 +10,8 @@ export interface PresentedAgentStatus extends AgentStatusEvent {
   displayDetail?: string;
 }
 
+const MAX_USER_FACING_PROGRESS_FOCUS_CHARS = 220;
+
 export class AgentDisplayPresenter {
   private currentStage: AgentProgressStage = 'planning';
   private currentTaskAction: AgentStatusEvent['taskAction'];
@@ -210,7 +212,9 @@ function compactTaskFocus(value: string): string {
   if (!normalized || looksLikeInternalToolTranscript(normalized) || looksLikeSourceSnippet(normalized)) return '';
   if (/(?:\/home\/|[A-Za-z]:\\)/.test(normalized)) return '';
   if (/^思考中\s*\(/.test(normalized)) return '';
-  return normalized.length > 56 ? `${normalized.slice(0, 55)}…` : normalized;
+  return normalized.length > MAX_USER_FACING_PROGRESS_FOCUS_CHARS
+    ? `${normalized.slice(0, MAX_USER_FACING_PROGRESS_FOCUS_CHARS - 1)}…`
+    : normalized;
 }
 
 function compactFailureDetail(value: string): string {

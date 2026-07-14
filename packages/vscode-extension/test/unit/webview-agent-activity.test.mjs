@@ -50,6 +50,14 @@ test('WebviewAgentActivity: webview renders presenter summaries and keeps detail
   assert.doesNotMatch(source, /inferAgentProgressStageTitle/);
 });
 
+test('WebviewAgentActivity: expanded progress text wraps and uses normal foreground contrast', () => {
+  assert.match(webviewSource, /\.aut-label \{[^}]*white-space:normal[^}]*overflow-wrap:anywhere/s);
+  assert.match(webviewSource, /\.aut-progress-detail \{[^}]*color:var\(--vscode-foreground[^}]*opacity:1/s);
+  assert.match(webviewSource, /\.aut-step-text \{[^}]*overflow:visible[^}]*white-space:normal/s);
+  assert.match(webviewSource, /\.aut-spinner-label \{[^}]*color:var\(--vscode-foreground/s);
+  assert.match(webviewSource, /\.aut-details\[data-done\]\[open\] \.aut-steps-list,[^}]*opacity:1[^}]*color:var\(--vscode-foreground/s);
+});
+
 test('WebviewAgentActivity: every semantic stage transition starts a durable timeline group', () => {
   const policy = context.__activityPolicy;
   assert.equal(policy.shouldStartNewAgentProgressGroup('context', 'context'), false);

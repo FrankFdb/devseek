@@ -126,6 +126,46 @@ test('Agentic history: QualityGate records risks, alternatives, and required act
   assert.match(text, /运行自动验证 \/ QualityGate/);
 });
 
+test('Agentic history: synthesizes a result summary when the model did not provide one', () => {
+  const text = buildAgenticHistoryText({
+    userPrompt: 'CLOSE02 probe：创建 probe.js 并验证。',
+    roundCount: 4,
+    completed: true,
+    todos: [
+      { id: 1, title: '创建/更新代码文件', status: 'completed' },
+      { id: 2, title: '编译/运行并验证结果', status: 'completed' },
+    ],
+    writtenFiles: [
+      {
+        path: '/workspace/devseek/.devseek-close02-probe/CLOSE02-20260713-manual-probe/probe.js',
+        basename: 'probe.js',
+        linesAdded: 3,
+        linesRemoved: 1,
+        action: 'modify',
+      },
+    ],
+    terminalEvidence: [
+      {
+        command: "test -s '/workspace/devseek/.devseek-close02-probe/CLOSE02-20260713-manual-probe/probe.js' && node --check '/workspace/devseek/.devseek-close02-probe/CLOSE02-20260713-manual-probe/probe.js'",
+        kind: 'other',
+        ok: true,
+        exitCode: 0,
+      },
+    ],
+    qualityGate: {
+      status: 'pass',
+      summary: 'QualityGate 通过：other 证据已通过。',
+      evidenceRefs: ['terminal:ok:other:exitCode=0:test -s probe.js && node --check probe.js'],
+    },
+    workspaceRoot: '/workspace/devseek',
+  });
+
+  assert.match(text, /\*\*结果摘要：\*\*/);
+  assert.match(text, /已完成 2\/2 个任务/);
+  assert.match(text, /修改 1 个文件：probe\.js/);
+  assert.match(text, /QualityGate 通过/);
+});
+
 test('Agentic history: visual manual review evidence is a blocked QualityGate, not a failed one', () => {
   const terminalEvidence = [
     {
