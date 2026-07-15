@@ -2,6 +2,7 @@ import {
   isDeliverableWriteRequest,
   isScopedNoChangeWithDeliverableWriteRequest,
 } from '../intent/advisory-patterns';
+import { buildTaskSemanticContract } from '../task-semantic-contract';
 import { hasStandaloneCodeGenerationIntent } from './task-contract';
 
 export type AgentTaskShape =
@@ -29,15 +30,18 @@ const FAILURE_RE = /(?:日志|失败|报错|重试|回归|QualityGate|replay|err
 
 export function classifyAgentTaskShape(userPrompt: string): AgentTaskShapeClassification {
   const text = String(userPrompt || '');
-  const existingProjectLikely = EXISTING_PROJECT_RE.test(text);
-  const standaloneLikely = (STANDALONE_RE.test(text) || hasStandaloneCodeGenerationIntent(text))
+  const semanticContract = buildTaskSemanticContract(text);
+  const existingProjectLikely = semanticContract.scope === 'existing-project'
+    || EXISTING_PROJECT_RE.test(text);
+  const standaloneLikely = (semanticContract.scope === 'standalone' || STANDALONE_RE.test(text) || hasStandaloneCodeGenerationIntent(text))
     && !existingProjectLikely;
-  const validationLikely = VALIDATION_RE.test(text);
+  const validationLikely = semanticContract.validation.requested || VALIDATION_RE.test(text);
   const failureRepairLikely = FAILURE_RE.test(text);
   const hasScopedDeliverableWrite = isScopedNoChangeWithDeliverableWriteRequest(text);
-  const hasWriteIntent = (WRITE_INTENT_RE.test(text) || isDeliverableWriteRequest(text))
+  const legacyWriteIntent = (WRITE_INTENT_RE.test(text) || isDeliverableWriteRequest(text))
     && (!NEGATED_WRITE_INTENT_RE.test(text) || hasScopedDeliverableWrite);
-  const readOnlyLikely = READ_ONLY_RE.test(text) && !hasWriteIntent;
+  const hasWriteIntent = semanticContract.mutation.requested || legacyWriteIntent;
+  const readOnlyLikely = (semanticContract.kind === 'read-only' || READ_ONLY_RE.test(text)) && !hasWriteIntent;
 
   let shape: AgentTaskShape = 'general';
   if (failureRepairLikely) {

@@ -350,6 +350,22 @@ const routingCases = [
     toolActions: { read: 'allow', edit: 'allow', terminal: 'requireConfirm' },
   },
   {
+    id: 'EDIT-008',
+    title: 'simple standalone C++ print request uses controlled edit workflow',
+    prompt: '编写一个 C++ 程序，打印下午好',
+    expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: EDIT_TOOLS },
+    signal: 'standalone-code',
+    toolActions: { read: 'allow', edit: 'allow', terminal: 'requireConfirm' },
+  },
+  {
+    id: 'EDIT-009',
+    title: 'explicit artifact write is not downgraded by other-file no-touch constraint',
+    prompt: '请在当前工作区创建 controlled-sim.txt，文件内容必须精确包含一行 CONTROLLED_SIM_OK。完成写入和读回验证后结束任务，不要修改其他用户文件。',
+    expect: { kind: 'code-change', mode: 'edit', workflow: 'edit-agent', useAgent: true, tools: EDIT_TOOLS },
+    signal: 'explicit-file-artifact-target',
+    toolActions: { read: 'allow', edit: 'allow', terminal: 'requireConfirm' },
+  },
+  {
     id: 'RUN-001',
     title: 'run tests is terminal-confirmed run workflow',
     prompt: '运行测试',

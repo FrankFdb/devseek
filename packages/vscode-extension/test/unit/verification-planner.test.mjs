@@ -23,6 +23,7 @@ const req = createRequire(import.meta.url);
 const {
   PROJECT_BUILD_VALIDATION_TIMEOUT_MS,
   VerificationPlanner,
+  shouldValidateNonCodeFiles,
 } = req(bundlePath);
 
 test('VerificationPlanner: extension TypeScript entry changes plan semantic check plus compile', () => {
@@ -82,6 +83,20 @@ test('VerificationPlanner: explicit unknown text file writes use file checks, no
   assert.match(plan.command, /test -f/);
   assert.match(plan.command, /manual-phase6\.unknown/);
   assert.doesNotMatch(plan.command, /\bgcc\b|\bg\+\+\b|\bclang\b|\bnode\b|\bnpm\b/);
+});
+
+test('VerificationPlanner: scoped other-file no-touch artifact request still uses file check', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['controlled-sim.txt'],
+    requestPrompt: '请在当前工作区创建 controlled-sim.txt，文件内容必须精确包含一行 CONTROLLED_SIM_OK。完成写入和读回验证后结束任务，不要修改其他用户文件。',
+  });
+
+  assert.equal(shouldValidateNonCodeFiles('请在当前工作区创建 controlled-sim.txt，文件内容必须精确包含一行 CONTROLLED_SIM_OK。完成写入和读回验证后结束任务，不要修改其他用户文件。'), true);
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'file-check');
+  assert.equal(plan.reason, 'non-code-file-validation');
+  assert.match(plan.command, /controlled-sim\.txt/);
 });
 
 test('VerificationPlanner: mixed file facts and unplanned code targets stay blocked', () => {
@@ -222,6 +237,30 @@ test('VerificationPlanner: standalone C++ print program plans compile-run eviden
   assert.match(plan.command, /g\+\+/);
   assert.match(plan.command, /hello\.cpp/);
   assert.match(plan.command, /deepseek_auto_exec/);
+});
+
+test('VerificationPlanner: standalone C++ task respects explicit no-run constraint', () => {
+  const projectDir = path.join('/repo', 'code');
+  const source = path.join(projectDir, 'hello.cpp');
+  const files = new Set(['/repo', projectDir, source]);
+  const fsNode = {
+    existsSync: (p) => files.has(p),
+    readdirSync: (p) => p === projectDir ? ['hello.cpp'] : [],
+    readFileSync: (p) => p === source
+      ? '#include <iostream>\nint main(){ std::cout << "下午好" << std::endl; return 0; }\n'
+      : '',
+  };
+
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['code/hello.cpp'],
+    requestPrompt: '编写一个C++程序，打印下午好，但不要运行。',
+    fsNode,
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'compile-only');
+  assert.doesNotMatch(plan.command, /deepseek_auto_exec/);
 });
 
 test('VerificationPlanner: blocks C++ validation when generated local include closure is incomplete', () => {

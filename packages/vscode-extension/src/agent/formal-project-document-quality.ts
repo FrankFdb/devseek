@@ -1,4 +1,8 @@
 import { buildTaskContract, hasQualityObligation } from './task-contract';
+import {
+  buildTaskSemanticContract,
+  requiresFormalProjectQuality,
+} from '../task-semantic-contract';
 
 export interface FormalProjectDocumentQuality {
   required: boolean;
@@ -95,15 +99,14 @@ export function assessFormalProjectDocumentQuality(
   const prompt = String(promptText || '');
   const combined = `${prompt}\n${content}`;
   const contract = buildTaskContract(prompt);
+  const semanticContract = buildTaskSemanticContract(prompt);
   const requiresRemoteControllerInterface = hasQualityObligation(contract, 'interface-contract');
   const requiresLicenseReference = LICENSE_REFERENCE_RE.test(prompt) && hasQualityObligation(contract, 'protocol-facts');
   const requiresCommunicationChain = hasQualityObligation(contract, 'project-communication-chain');
   const requiresModificationPlan = hasQualityObligation(contract, 'modification-plan');
   const requiresSourceEvidence = hasQualityObligation(contract, 'source-evidence');
   const requiresProtocolFacts = hasQualityObligation(contract, 'protocol-facts');
-  const required = contract.taskShapes.includes('existing-project')
-    && !contract.taskShapes.includes('standalone')
-    && contract.qualityObligations.length > 0;
+  const required = requiresFormalProjectQuality(semanticContract);
   const sourceReferenceCount = countMatches(content, SOURCE_REFERENCE_RE);
   const numericFactCount = countMatches(stripLikelyLineCountRows(content), NUMERIC_FACT_RE);
   const protocolSignalCount = countMatches(content, PROTOCOL_SIGNAL_RE);

@@ -93,6 +93,14 @@ test('TaskShape: simple programming prompt is standalone instead of formal proje
   assert.doesNotMatch(guidance, /通信链路|原有代码修改清单|主入口\/调度链路/);
 });
 
+test('TaskShape: scoped no-touch constraint does not erase explicit artifact write', () => {
+  const prompt = '请在当前工作区创建 controlled-sim.txt，文件内容必须精确包含一行 CONTROLLED_SIM_OK。完成写入和读回验证后结束任务，不要修改其他用户文件。';
+  const result = classifyAgentTaskShape(prompt);
+  assert.equal(result.shape, 'general');
+  assert.equal(result.readOnlyLikely, false);
+  assert.equal(result.validationLikely, true);
+});
+
 test('TaskShape: read-only advice is not treated as implementation work', () => {
   const prompt = '当前不准备修改代码，只读分析现有实现，给出对策检讨和 task 建议，通过 md 文档提供。';
   const result = classifyAgentTaskShape(prompt);

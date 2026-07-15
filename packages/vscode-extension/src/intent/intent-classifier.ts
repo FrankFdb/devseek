@@ -8,6 +8,7 @@ import {
   isExplicitDeliverablePathWriteRequest,
   isScopedNoChangeWithDeliverableWriteRequest,
 } from './advisory-patterns';
+import { buildTaskSemanticContract } from '../task-semantic-contract';
 
 const EXPLICIT_NO_CHANGE_RE = /(不要修改|无需修改|不要改|别改|只讨论|仅讨论|只分析|仅分析|不要落地|先不要改|不需要代码|不要apply|不做变更|just\s+(?:chat|talk|discuss|explain)|only\s+(?:explain|discuss|answer))/i;
 
@@ -81,6 +82,7 @@ export function classifyIntent(prompt: string): IntentClassification {
     return baseDecision('smalltalk', 0, 0, [], 'empty-prompt', [], ['empty-prompt']);
   }
 
+  const semanticContract = buildTaskSemanticContract(text);
   const withoutGreeting = text.replace(GREETING_PREFIX_RE, '').trim();
   const hasPath = hasExplicitWorkspacePath(text);
   const hasInteractiveFeatureContext = INTERACTIVE_FEATURE_CONTEXT_RE.test(text);
@@ -99,7 +101,7 @@ export function classifyIntent(prompt: string): IntentClassification {
 
   if (EXPLICIT_NO_CHANGE_RE.test(text)
     && !hasScopedNoChangeWithDeliverableWrite
-    && !hasExplicitDeliverablePathWrite) {
+    && !semanticContract.mutation.requested) {
     const isReadOnlyPlanning = EXPLICIT_PLAN_RE.test(text) && hasCodeContext;
     const mode = isReadOnlyPlanning
       ? 'plan'
@@ -138,8 +140,27 @@ export function classifyIntent(prompt: string): IntentClassification {
     );
   }
 
+  if (semanticContract.mutation.requested
+    && (semanticContract.kind === 'standalone-code' || semanticContract.kind === 'file-artifact')) {
+    const signals = [
+      'edit-request',
+      ...semanticContract.signals,
+    ];
+    if (hasPath) signals.push('explicit-file-path');
+    return baseDecision(
+      'edit',
+      hasPath || semanticContract.mutation.targets.length > 0 ? 0.9 : 0.84,
+      hasPath || semanticContract.mutation.targets.length > 0 ? 5 : 4,
+      [...new Set(signals)],
+      semanticContract.kind === 'standalone-code'
+        ? 'task-contract-standalone-code'
+        : 'task-contract-file-artifact',
+      EDIT_TOOLS,
+    );
+  }
+
   if (hasDeliverableWriteRequest && hasCodeContext && !isDeferredImplementationRequest(text)) {
-    const signals = ['edit-request', 'deliverable-write-request'];
+    const signals = ['edit-request', 'deliverable-write-request', ...semanticContract.signals];
     if (hasPath) signals.push('explicit-file-path');
     if (hasScopedNoChangeWithDeliverableWrite) signals.push('scoped-existing-source-no-change');
     return baseDecision(
@@ -208,7 +229,10 @@ export function classifyIntent(prompt: string): IntentClassification {
 
   const isDirectEditRequest = EDIT_RE.test(text);
   if (isDirectEditRequest || isCapabilityFeatureRequest) {
-    const signals = isDirectEditRequest ? ['edit-request'] : ['capability-feature-request'];
+    const signals = [
+      ...(isDirectEditRequest ? ['edit-request'] : ['capability-feature-request']),
+      ...semanticContract.signals,
+    ];
     if (isDirectEditRequest && isCapabilityFeatureRequest) signals.push('capability-feature-request');
     if (hasInteractiveFeatureContext) signals.push('interactive-feature-context');
     if (hasPath) signals.push('explicit-file-path');
