@@ -38,8 +38,8 @@
     "ledger_owner": { "$ref": "#/$defs/ledgerOwner" },
     "governed_consumers": {
       "type": "array",
-      "minItems": 4,
-      "maxItems": 4,
+      "minItems": 5,
+      "maxItems": 5,
       "items": { "$ref": "#/$defs/governedConsumer" }
     },
     "bypass_guards": { "$ref": "#/$defs/bypassGuards" },
@@ -282,8 +282,8 @@
       "properties": {
         "ledger_source_owners": { "const": 1 },
         "ledger_schema_owners": { "const": 1 },
-        "governed_consumers": { "const": 4 },
-        "governed_consumers_covered": { "const": 4 },
+        "governed_consumers": { "const": 5 },
+        "governed_consumers_covered": { "const": 5 },
         "bypasses": { "const": 0 },
         "qualification_claims": { "const": 0 }
       }

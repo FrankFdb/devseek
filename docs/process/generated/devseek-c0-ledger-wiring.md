@@ -17,7 +17,7 @@
 - Implementation state: `wired`
 - Source owners: `1`
 - Schema owners: `1`
-- Source SHA-256: `d687e1cc63eb835a7260ccacf8e51157812e343b70a1d0e0979329b9c0330ae3`
+- Source SHA-256: `0a61fb30dddee3bb26fe98a68bd244faf4810395052a3d5ecb8811231c4689a3`
 
 ## Governed Consumers
 
@@ -26,6 +26,7 @@
 | `capability-ledger-owner` | `npm run verify:capability-ledger` | `capability-ledger-governance` | `true` | `covered` |
 | `c0-ledger-wiring` | `npm run verify:c0-ledger-wiring` | `c0-ledger-wiring-conformance` | `true` | `covered` |
 | `profile-denominator-registry` | `npm run verify:profile-denominator-registry` | `profile-denominator-registry-governance` | `true` | `covered` |
+| `c0-run-evidence-wiring` | `npm run verify:c0-run-evidence-wiring` | `c0-run-evidence-wiring-conformance` | `true` | `covered` |
 | `gate0-machine-decision` | `npm run verify:gate0-decision` | `gate0-machine-decision-contract` | `true` | `covered` |
 
 ## Bypass Guards
@@ -37,4 +38,4 @@
 
 ## Wiring Identity
 
-- Wiring SHA-256: `e83caee46e0777e625c451f1e4ec32938a49f203018e3cb22105efb89da65c3e`
+- Wiring SHA-256: `ae8229c563e7111aae538d43aaff5141137a8a9c0b1e1088ce5d6b11ee9e049c`

@@ -382,7 +382,7 @@ function makeAggregatorPolicy(plan, signerSet) {
   return hydrateAggregatorPolicy(policy);
 }
 
-function buildFixture({ outcome = 'pass', withRetry = false, sessionMode = 'ready' } = {}) {
+function buildFixture({ outcome = 'pass', withRetry = false, sessionMode = 'ready', runEvidenceAuxiliary = false } = {}) {
   const identity = makeQualificationIdentity();
   const sources = makeProfileAndCatalog(identity);
   const plan = makePlan(identity, sources, { withRetry });
@@ -428,12 +428,26 @@ function buildFixture({ outcome = 'pass', withRetry = false, sessionMode = 'read
     preflight_slot_sha256: plan.preflight_slots[0].preflight_slot_sha256,
     attempt_role: 'primary',
   } : null;
+  const primaryAuxiliary = runEvidenceAuxiliary && session
+    ? makeSealedRunEvidence({ operationId: 'operation-g0c-primary' })
+    : null;
+  const primaryRunObservedPayload = primaryAuxiliary ? {
+    run_evidence_auxiliary: true,
+    qualification_plan_sha256: plan.qualification_plan_sha256,
+    candidate_identity_sha256: plan.candidate_identity_sha256,
+    run_id: primaryAuxiliary.snapshot.runId,
+    operation_id: primaryAuxiliary.operation_id,
+    snapshot_sha256: sha256Object(primaryAuxiliary.snapshot),
+    expected_anchor_sha256: sha256Object(primaryAuxiliary.expected_anchor),
+    auxiliary_only: true,
+    qualification_effect: 'NONE',
+  } : { run_evidence_auxiliary: false };
   const primaryEvents = [
     { type: 'AttemptRegistered', payload: primaryStart },
     { type: 'AttemptStarted', payload: { started: true } },
     { type: 'ExternalActionAuthorized', payload: { action_id: 'action-primary' } },
     { type: 'ExternalActionStarted', payload: { action_id: 'action-primary' } },
-    { type: 'RunObserved', payload: { run_evidence_auxiliary: false } },
+    { type: 'RunObserved', payload: primaryRunObservedPayload },
     { type: 'OracleClassified', payload: primaryPayload },
   ];
   const attemptAllowed = sessionMode === 'ready' || sessionMode === 'blocked-ready';
@@ -447,6 +461,39 @@ function buildFixture({ outcome = 'pass', withRetry = false, sessionMode = 'read
       product_terminal_state: 'settled',
     }));
     primary.receipts.push(makeReceipt(identity, plan, primary.events.at(-1)));
+  }
+  if (primaryAuxiliary && primary) {
+    const runObserved = primary.events.find(event => event.event_type === 'RunObserved');
+    const terminal = primary.events.at(-1);
+    primaryAuxiliary.correlation = {
+      schema_version: 'devseek.run-evidence-qualification-correlation/v1',
+      integrity: {
+        hash_algorithm: 'sha256',
+        canonicalization_version: 'devseek-canonical-json/v1',
+      },
+      integrity_scope: 'local-run-evidence-correlation-conformance',
+      qualification_eligible: false,
+      qualification_effect: 'NONE',
+      claims_permitted: false,
+      asserts_gate_pass: false,
+      correlation_id: 'corr-g0c-primary',
+      qualification_plan_sha256: plan.qualification_plan_sha256,
+      candidate_identity_sha256: plan.candidate_identity_sha256,
+      attempt_correlation_id: primary.correlation_id,
+      run_observed_event_sha256: runObserved.event_sha256,
+      run_id: primaryAuxiliary.snapshot.runId,
+      operation_id: primaryAuxiliary.operation_id,
+      operation_event_sha256: primaryAuxiliary.operation_event_sha256,
+      snapshot_sha256: sha256Object(primaryAuxiliary.snapshot),
+      expected_anchor_sha256: sha256Object(primaryAuxiliary.expected_anchor),
+      anchor_source: 'independent-expected-anchor',
+      run_observed_payload_sha256: sha256Object(runObserved.payload),
+      oracle_event_sha256: primaryOracle.event_sha256,
+      attempt_terminal_event_sha256: terminal.event_sha256,
+      attempt_outcome: primaryOracle.payload.decision,
+      verdict_authority: 'qualification-oracle-only',
+      hidden_original_failure_policy: 'preserve-original-attempt-outcome',
+    };
   }
   const streams = [campaign, ...(session ? [session] : []), ...(primary ? [primary] : [])];
   if (withRetry) {
@@ -493,7 +540,7 @@ function buildFixture({ outcome = 'pass', withRetry = false, sessionMode = 'read
     catalog: sources.catalog,
     key_registry: identity.registry,
     event_streams: streams,
-    run_evidence_auxiliary: [],
+    run_evidence_auxiliary: primaryAuxiliary ? [primaryAuxiliary] : [],
     dependency_manifests: [],
   };
   const manifest = aggregateQualificationEvidence({
@@ -605,8 +652,8 @@ function resignRetentionLock(lock, fixture) {
   return lock;
 }
 
-function makeSealedRunEvidence() {
-  const event = {
+function makeSealedRunEvidence({ operationId = 'operation-g0c-primary' } = {}) {
+  const opened = {
     protocol: 'devseek.run-evidence-event/v1',
     integrity_scope: 'product-run-diagnostics',
     qualification_eligible: false,
@@ -627,34 +674,72 @@ function makeSealedRunEvidence() {
     },
     event_sha256: null,
   };
-  event.event_sha256 = sha256Object(Object.fromEntries(Object.entries(event).filter(([key]) => key !== 'event_sha256')));
-  const receipt = {
+  opened.event_sha256 = sha256Object(Object.fromEntries(Object.entries(opened).filter(([key]) => key !== 'event_sha256')));
+  const openedReceipt = {
     protocol: 'devseek.run-evidence-receipt/v1',
     integrity_scope: 'product-run-diagnostics',
     qualification_eligible: false,
-    run_id: event.run_id,
+    run_id: opened.run_id,
     sequence: 1,
-    event_sha256: event.event_sha256,
+    event_sha256: opened.event_sha256,
     previous_event_sha256: null,
-    idempotency_key: event.idempotency_key,
+    idempotency_key: opened.idempotency_key,
     committed_at: NOW,
     receipt_sha256: null,
   };
-  receipt.receipt_sha256 = sha256Object(Object.fromEntries(Object.entries(receipt).filter(([key]) => key !== 'receipt_sha256')));
-  const eventRecordBase = {
+  openedReceipt.receipt_sha256 = sha256Object(Object.fromEntries(Object.entries(openedReceipt).filter(([key]) => key !== 'receipt_sha256')));
+  const openedRecordBase = {
     protocol: 'devseek.run-evidence-record/v1', record_kind: 'event', slot_sequence: 1,
-    previous_record_sha256: null, event, receipt,
+    previous_record_sha256: null, event: opened, receipt: openedReceipt,
   };
-  const eventRecordSha256 = sha256Object(eventRecordBase);
+  const openedRecordSha256 = sha256Object(openedRecordBase);
+  const operation = {
+    protocol: 'devseek.run-evidence-event/v1',
+    integrity_scope: 'product-run-diagnostics',
+    qualification_eligible: false,
+    run_id: opened.run_id,
+    sequence: 2,
+    previous_event_sha256: opened.event_sha256,
+    type: 'verification.completed',
+    surface: 'vscode',
+    idempotency_key: 'run-g0c-verification-completed',
+    idempotency_fingerprint_sha256: digest('run-verification-idempotency'),
+    occurred_at: GENERATED,
+    payload: {
+      operation_id: operationId,
+      status: 'completed',
+      trust: 'product-runtime-observation',
+    },
+    event_sha256: null,
+  };
+  operation.event_sha256 = sha256Object(Object.fromEntries(Object.entries(operation).filter(([key]) => key !== 'event_sha256')));
+  const operationReceipt = {
+    protocol: 'devseek.run-evidence-receipt/v1',
+    integrity_scope: 'product-run-diagnostics',
+    qualification_eligible: false,
+    run_id: opened.run_id,
+    sequence: 2,
+    event_sha256: operation.event_sha256,
+    previous_event_sha256: opened.event_sha256,
+    idempotency_key: operation.idempotency_key,
+    committed_at: GENERATED,
+    receipt_sha256: null,
+  };
+  operationReceipt.receipt_sha256 = sha256Object(Object.fromEntries(Object.entries(operationReceipt).filter(([key]) => key !== 'receipt_sha256')));
+  const operationRecordBase = {
+    protocol: 'devseek.run-evidence-record/v1', record_kind: 'event', slot_sequence: 2,
+    previous_record_sha256: openedRecordSha256, event: operation, receipt: operationReceipt,
+  };
+  const operationRecordSha256 = sha256Object(operationRecordBase);
   const seal = {
     protocol: 'devseek.run-evidence-seal/v1',
     integrity_scope: 'product-run-diagnostics',
     qualification_eligible: false,
-    run_id: event.run_id,
-    slot_sequence: 2,
-    event_count: 1,
-    final_event_sha256: event.event_sha256,
-    final_record_sha256: eventRecordSha256,
+    run_id: opened.run_id,
+    slot_sequence: 3,
+    event_count: 2,
+    final_event_sha256: operation.event_sha256,
+    final_record_sha256: operationRecordSha256,
     idempotency_key: 'run-g0c-seal',
     idempotency_fingerprint_sha256: digest('seal-idempotency'),
     reason: 'fixture-complete',
@@ -663,35 +748,43 @@ function makeSealedRunEvidence() {
   };
   seal.seal_sha256 = sha256Object(Object.fromEntries(Object.entries(seal).filter(([key]) => key !== 'seal_sha256')));
   const sealRecordBase = {
-    protocol: 'devseek.run-evidence-record/v1', record_kind: 'seal', slot_sequence: 2,
-    previous_record_sha256: eventRecordSha256, seal,
+    protocol: 'devseek.run-evidence-record/v1', record_kind: 'seal', slot_sequence: 3,
+    previous_record_sha256: operationRecordSha256, seal,
   };
   const snapshot = {
-    runId: event.run_id,
+    runId: opened.run_id,
     integrityScope: 'product-run-diagnostics',
     qualificationEligible: false,
     records: [{
-      slotSequence: 1, previousRecordSha256: null, event, receipt, recordSha256: eventRecordSha256,
+      slotSequence: 1, previousRecordSha256: null, event: opened, receipt: openedReceipt, recordSha256: openedRecordSha256,
+    }, {
+      slotSequence: 2,
+      previousRecordSha256: openedRecordSha256,
+      event: operation,
+      receipt: operationReceipt,
+      recordSha256: operationRecordSha256,
     }],
     seal: {
-      slotSequence: 2,
-      previousRecordSha256: eventRecordSha256,
+      slotSequence: 3,
+      previousRecordSha256: operationRecordSha256,
       seal,
       recordSha256: sha256Object(sealRecordBase),
     },
     head: {
-      runId: event.run_id, sequence: 1, eventSha256: event.event_sha256,
-      recordSha256: eventRecordSha256, sealed: true, sealSha256: seal.seal_sha256,
+      runId: opened.run_id, sequence: 2, eventSha256: operation.event_sha256,
+      recordSha256: operationRecordSha256, sealed: true, sealSha256: seal.seal_sha256,
     },
   };
   return {
     snapshot,
     expected_anchor: {
-      eventCount: 1,
-      finalEventSha256: event.event_sha256,
-      finalRecordSha256: eventRecordSha256,
+      eventCount: 2,
+      finalEventSha256: operation.event_sha256,
+      finalRecordSha256: operationRecordSha256,
       sealSha256: seal.seal_sha256,
     },
+    operation_id: operationId,
+    operation_event_sha256: operation.event_sha256,
   };
 }
 
@@ -1017,40 +1110,21 @@ test('recursive dependency current validity uses top-level now, not the dependen
 });
 
 test('product Run Evidence is auxiliary-only and cannot enter without a sealed independent anchor', () => {
-  const fixture = buildFixture();
-  const withSealedAuxiliary = structuredClone(fixture.frozenEvidence);
-  withSealedAuxiliary.run_evidence_auxiliary = [makeSealedRunEvidence()];
-  const auxiliaryManifest = aggregateQualificationEvidence({
-    manifestId: 'manifest-sealed-run-evidence',
-    generatedAt: GENERATED,
-    expiresAt: EXPIRES,
-    frozenEvidence: withSealedAuxiliary,
-    aggregationPolicy: fixture.policy,
-    manifestSigner: fixture.signerSet.manifest.signer,
-    governanceMode: 'deterministic-test-only',
-  });
+  const fixture = buildFixture({ runEvidenceAuxiliary: true });
+  const auxiliaryManifest = fixture.manifest;
   assert.equal(auxiliaryManifest.run_evidence_auxiliary.length, 1);
   assert.equal(auxiliaryManifest.run_evidence_auxiliary[0].qualification_eligible, false);
   assert.equal(auxiliaryManifest.run_evidence_auxiliary[0].auxiliary_only, true);
-  assert.equal(auxiliaryManifest.claim_candidates.length, fixture.manifest.claim_candidates.length);
+  assert.equal(auxiliaryManifest.run_evidence_auxiliary[0].qualification_plan_sha256, fixture.plan.qualification_plan_sha256);
+  assert.equal(auxiliaryManifest.run_evidence_auxiliary[0].candidate_identity_sha256, fixture.plan.candidate_identity_sha256);
+  assert.equal(auxiliaryManifest.run_evidence_auxiliary[0].attempt_correlation_id, 'attempt-g0c-primary');
+  assert.equal(auxiliaryManifest.run_evidence_auxiliary[0].attempt_outcome, 'pass');
+  assert.equal(auxiliaryManifest.claim_candidates.length, 1);
   assert.equal(auxiliaryManifest.qualification_claims.length, 0);
   const frozenEvidence = structuredClone(fixture.frozenEvidence);
-  frozenEvidence.run_evidence_auxiliary = [{
-    snapshot: {
-      runId: 'run-unsealed',
-      integrityScope: 'product-run-diagnostics',
-      qualificationEligible: false,
-      records: [],
-      seal: null,
-      head: {
-        runId: 'run-unsealed', sequence: 1, eventSha256: digest('event'),
-        recordSha256: digest('record'), sealed: false,
-      },
-    },
-    expected_anchor: {
-      eventCount: 1, finalEventSha256: digest('event'), finalRecordSha256: digest('record'), sealSha256: digest('seal'),
-    },
-  }];
+  frozenEvidence.run_evidence_auxiliary[0].snapshot.seal = null;
+  frozenEvidence.run_evidence_auxiliary[0].snapshot.head.sealed = false;
+  delete frozenEvidence.run_evidence_auxiliary[0].snapshot.head.sealSha256;
   assertCode(() => aggregateQualificationEvidence({
     manifestId: 'manifest-unsealed-run-evidence',
     generatedAt: GENERATED,
@@ -1059,9 +1133,47 @@ test('product Run Evidence is auxiliary-only and cannot enter without a sealed i
     aggregationPolicy: fixture.policy,
     manifestSigner: fixture.signerSet.manifest.signer,
     governanceMode: 'deterministic-test-only',
-  }), 'RUN_EVIDENCE_SNAPSHOT_SCHEMA_INVALID');
-  assert.equal(fixture.manifest.run_evidence_auxiliary.length, 0);
+  }), 'RUN_EVIDENCE_SEALED_ANCHOR_MISMATCH');
   assert.equal(fixture.manifest.qualification_eligible, false);
+});
+
+test('run evidence correlation exact-binds operation, attempt, candidate, anchor, scope, and failed outcome', async t => {
+  const passFixture = buildFixture({ runEvidenceAuxiliary: true });
+  for (const [name, mutate, code] of [
+    ['wrong-candidate', entry => { entry.correlation.candidate_identity_sha256 = digest('wrong-candidate'); }, 'RUN_EVIDENCE_CANDIDATE_BINDING_MISMATCH'],
+    ['wrong-attempt', entry => { entry.correlation.attempt_correlation_id = 'attempt-g0c-missing'; }, 'RUN_EVIDENCE_ATTEMPT_BINDING_MISMATCH'],
+    ['wrong-operation', entry => { entry.correlation.operation_event_sha256 = digest('wrong-operation-event'); }, 'RUN_EVIDENCE_OPERATION_BINDING_MISMATCH'],
+    ['wrong-anchor', entry => { entry.correlation.expected_anchor_sha256 = digest('wrong-anchor'); }, 'RUN_EVIDENCE_ANCHOR_BINDING_MISMATCH'],
+    ['wrong-scope', entry => { entry.correlation.integrity_scope = 'protected-qualification'; }, 'RUN_EVIDENCE_CORRELATION_SCHEMA_INVALID'],
+  ]) {
+    await t.test(name, () => {
+      const frozenEvidence = structuredClone(passFixture.frozenEvidence);
+      mutate(frozenEvidence.run_evidence_auxiliary[0]);
+      assertCode(() => aggregateQualificationEvidence({
+        manifestId: `manifest-${name}`,
+        generatedAt: GENERATED,
+        expiresAt: EXPIRES,
+        frozenEvidence,
+        aggregationPolicy: passFixture.policy,
+        manifestSigner: passFixture.signerSet.manifest.signer,
+        governanceMode: 'deterministic-test-only',
+      }), code);
+    });
+  }
+
+  const failedFixture = buildFixture({ outcome: 'product-miss', runEvidenceAuxiliary: true });
+  assert.equal(failedFixture.manifest.run_evidence_auxiliary[0].attempt_outcome, 'product-miss');
+  const hiddenFailure = structuredClone(failedFixture.frozenEvidence);
+  hiddenFailure.run_evidence_auxiliary[0].correlation.attempt_outcome = 'pass';
+  assertCode(() => aggregateQualificationEvidence({
+    manifestId: 'manifest-hidden-product-miss',
+    generatedAt: GENERATED,
+    expiresAt: EXPIRES,
+    frozenEvidence: hiddenFailure,
+    aggregationPolicy: failedFixture.policy,
+    manifestSigner: failedFixture.signerSet.manifest.signer,
+    governanceMode: 'deterministic-test-only',
+  }), 'RUN_EVIDENCE_OUTCOME_BINDING_MISMATCH');
 });
 
 test('immutable retention store detects re-sign/rebind, deletion, and replacement with an independent anchor', async t => {

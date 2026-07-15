@@ -17,23 +17,23 @@
       "path": "docs/process/devseek-capability-ledger.json",
       "schema_version": "devseek.capability-ledger/v1",
       "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
-      "source_sha256": "d687e1cc63eb835a7260ccacf8e51157812e343b70a1d0e0979329b9c0330ae3"
+      "source_sha256": "0a61fb30dddee3bb26fe98a68bd244faf4810395052a3d5ecb8811231c4689a3"
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "9aa8d35990f6954c2231bedd9e815da0782a3c965754c630c2616fb764774907"
+      "source_sha256": "4ca778e0bdcde3552e7820f2f37c17150bdc1eb0cb46e9959c6bef3333777586"
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "8d74a6c0094394e14a120bc6759d5ae8135c4320139c992b1bbc65deaaf42e23"
+      "source_sha256": "3c12bc7b701d98a209496413c0be03815a4185c5c8b1650871f6c426cbd49a29"
     },
     "checker_source": {
       "path": "scripts/devseek-c0-ledger-wiring-check.mjs",
-      "source_sha256": "0b5e1e4a162a033a28aa5496a6be6cdec690ddfc84abba40dd676522b04438f0"
+      "source_sha256": "d9d2701a028a3a1017e9d6b76c37094a808c248f04e6c160bb38900e5174c21d"
     },
     "oracle_source": {
       "path": "scripts/test/devseek-c0-ledger-wiring.test.mjs",
-      "source_sha256": "059c072b1f83c32bbbf69754f3c7c2461a4f8849fbee37b3e189f8c59c91f324"
+      "source_sha256": "6aff84c2580ee787a4819813aaf64bc080e802247f54e5bbef234f316c25cf24"
     }
   },
   "ledger_owner": {
@@ -103,7 +103,7 @@
       "phase_gate_id": "c0-ledger-wiring-conformance",
       "phase_gate_present": true,
       "reader_path": "scripts/devseek-c0-ledger-wiring-check.mjs",
-      "reader_source_sha256": "0b5e1e4a162a033a28aa5496a6be6cdec690ddfc84abba40dd676522b04438f0",
+      "reader_source_sha256": "d9d2701a028a3a1017e9d6b76c37094a808c248f04e6c160bb38900e5174c21d",
       "direct_ledger_reader": true,
       "coverage_status": "covered"
     },
@@ -116,6 +116,18 @@
       "phase_gate_present": true,
       "reader_path": "scripts/devseek-profile-denominator-registry-check.mjs",
       "reader_source_sha256": "e8566a0f84003bc79262a8231e18da2a33ee6417921a8913f5886731e0f4fcf1",
+      "direct_ledger_reader": true,
+      "coverage_status": "covered"
+    },
+    {
+      "consumer_id": "c0-run-evidence-wiring",
+      "command": "npm run verify:c0-run-evidence-wiring",
+      "package_script": "verify:c0-run-evidence-wiring",
+      "package_script_present": true,
+      "phase_gate_id": "c0-run-evidence-wiring-conformance",
+      "phase_gate_present": true,
+      "reader_path": "scripts/devseek-c0-run-evidence-wiring-check.mjs",
+      "reader_source_sha256": "3471bb8a9a39f01ba0c4615f153e6a00209e4ddfc526e50c768248ae88051ae4",
       "direct_ledger_reader": true,
       "coverage_status": "covered"
     },
@@ -149,10 +161,10 @@
   "counts": {
     "ledger_source_owners": 1,
     "ledger_schema_owners": 1,
-    "governed_consumers": 4,
-    "governed_consumers_covered": 4,
+    "governed_consumers": 5,
+    "governed_consumers_covered": 5,
     "bypasses": 0,
     "qualification_claims": 0
   },
-  "wiring_sha256": "e83caee46e0777e625c451f1e4ec32938a49f203018e3cb22105efb89da65c3e"
+  "wiring_sha256": "ae8229c563e7111aae538d43aaff5141137a8a9c0b1e1088ce5d6b11ee9e049c"
 }

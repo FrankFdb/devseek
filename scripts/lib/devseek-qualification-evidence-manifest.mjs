@@ -564,7 +564,7 @@ function independentlyAggregateFrozenEvidence(frozenEvidence, policy, verificati
     || campaign.events[0].payload?.qualification_plan_sha256 !== plan.qualification_plan_sha256) {
     fail('CAMPAIGN_REGISTRATION_STREAM_INVALID');
   }
-  const runEvidenceAuxiliary = validateRunEvidenceAuxiliary(frozenEvidence.run_evidence_auxiliary ?? []);
+  const runEvidenceAuxiliary = validateRunEvidenceAuxiliary(frozenEvidence.run_evidence_auxiliary ?? [], { plan, streams });
   const accounting = deriveSlotAccounting({ plan, streams });
   const claims = deriveClaims({
     plan,
@@ -1094,27 +1094,100 @@ function findExactDependency(required, claims) {
   return copy;
 }
 
-function validateRunEvidenceAuxiliary(entries) {
+function validateRunEvidenceAuxiliary(entries, { plan, streams }) {
   return entries.map(entry => {
     assertSchema(SCHEMAS.runSnapshot, entry.snapshot, 'RUN_EVIDENCE_SNAPSHOT_SCHEMA_INVALID');
     assertSchema(SCHEMAS.runAnchor, entry.expected_anchor, 'RUN_EVIDENCE_ANCHOR_SCHEMA_INVALID');
-    const { snapshot, expected_anchor: anchor } = entry;
+    assertSchema(SCHEMAS.runCorrelation, entry.correlation, 'RUN_EVIDENCE_CORRELATION_SCHEMA_INVALID');
+    const { snapshot, expected_anchor: anchor, correlation } = entry;
     if (snapshot.seal === null || snapshot.head.sealed !== true
       || snapshot.records.length !== anchor.eventCount
       || snapshot.head.eventSha256 !== anchor.finalEventSha256
       || snapshot.head.recordSha256 !== anchor.finalRecordSha256
       || snapshot.head.sealSha256 !== anchor.sealSha256) fail('RUN_EVIDENCE_SEALED_ANCHOR_MISMATCH');
     verifyRunEvidenceSnapshot(snapshot);
+    const snapshotSha256 = sha256Object(snapshot);
+    const anchorSha256 = sha256Object(anchor);
+    const binding = verifyRunEvidenceCorrelation({ plan, streams, snapshot, snapshotSha256, anchorSha256, correlation });
     return {
       run_id: snapshot.runId,
-      snapshot_sha256: sha256Object(snapshot),
-      expected_anchor_sha256: sha256Object(anchor),
+      snapshot_sha256: snapshotSha256,
+      expected_anchor_sha256: anchorSha256,
       sealed: true,
       integrity_scope: 'product-run-diagnostics',
       qualification_eligible: false,
       auxiliary_only: true,
+      operation_id: correlation.operation_id,
+      operation_event_sha256: correlation.operation_event_sha256,
+      qualification_plan_sha256: correlation.qualification_plan_sha256,
+      candidate_identity_sha256: correlation.candidate_identity_sha256,
+      attempt_correlation_id: correlation.attempt_correlation_id,
+      run_observed_event_sha256: correlation.run_observed_event_sha256,
+      run_observed_payload_sha256: correlation.run_observed_payload_sha256,
+      oracle_event_sha256: correlation.oracle_event_sha256,
+      attempt_terminal_event_sha256: correlation.attempt_terminal_event_sha256,
+      attempt_outcome: binding.attemptOutcome,
+      correlation_sha256: sha256Object(correlation),
     };
   }).sort((left, right) => left.run_id.localeCompare(right.run_id));
+}
+
+function verifyRunEvidenceCorrelation({ plan, streams, snapshot, snapshotSha256, anchorSha256, correlation }) {
+  if (correlation.qualification_plan_sha256 !== plan.qualification_plan_sha256) {
+    fail('RUN_EVIDENCE_PLAN_BINDING_MISMATCH');
+  }
+  if (correlation.candidate_identity_sha256 !== plan.candidate_identity_sha256) {
+    fail('RUN_EVIDENCE_CANDIDATE_BINDING_MISMATCH');
+  }
+  if (correlation.run_id !== snapshot.runId) fail('RUN_EVIDENCE_RUN_BINDING_MISMATCH');
+  if (correlation.snapshot_sha256 !== snapshotSha256) fail('RUN_EVIDENCE_SNAPSHOT_BINDING_MISMATCH');
+  if (correlation.expected_anchor_sha256 !== anchorSha256) fail('RUN_EVIDENCE_ANCHOR_BINDING_MISMATCH');
+
+  const attempt = streams.find(stream => (
+    stream.stream_kind === 'attempt'
+    && stream.correlation_id === correlation.attempt_correlation_id
+  ));
+  if (!attempt) fail('RUN_EVIDENCE_ATTEMPT_BINDING_MISMATCH');
+  const observed = attempt.events.find(event => event.event_sha256 === correlation.run_observed_event_sha256);
+  if (!observed || observed.event_type !== 'RunObserved') fail('RUN_EVIDENCE_OBSERVATION_BINDING_MISMATCH');
+  if (observed.qualification_plan_sha256 !== plan.qualification_plan_sha256
+    || observed.candidate_identity_sha256 !== plan.candidate_identity_sha256
+    || observed.stream_kind !== 'attempt'
+    || observed.correlation_id !== attempt.correlation_id) fail('RUN_EVIDENCE_OBSERVATION_BINDING_MISMATCH');
+  const payload = observed.payload ?? {};
+  if (payload.run_evidence_auxiliary !== true
+    || payload.qualification_plan_sha256 !== plan.qualification_plan_sha256
+    || payload.candidate_identity_sha256 !== plan.candidate_identity_sha256
+    || payload.run_id !== correlation.run_id
+    || payload.operation_id !== correlation.operation_id
+    || payload.snapshot_sha256 !== correlation.snapshot_sha256
+    || payload.expected_anchor_sha256 !== correlation.expected_anchor_sha256
+    || payload.auxiliary_only !== true
+    || payload.qualification_effect !== 'NONE') fail('RUN_EVIDENCE_OBSERVATION_PAYLOAD_BINDING_MISMATCH');
+  if (correlation.run_observed_payload_sha256 !== sha256Object(payload)) {
+    fail('RUN_EVIDENCE_OBSERVATION_PAYLOAD_BINDING_MISMATCH');
+  }
+
+  const operationEvent = snapshot.records
+    .map(record => record.event)
+    .find(event => event.event_sha256 === correlation.operation_event_sha256);
+  if (!operationEvent
+    || operationEvent.run_id !== snapshot.runId
+    || operationEvent.payload?.operation_id !== correlation.operation_id
+    || operationEvent.payload?.trust !== 'product-runtime-observation'
+    || operationEvent.type === 'run.opened') fail('RUN_EVIDENCE_OPERATION_BINDING_MISMATCH');
+
+  const oracle = attempt.events.find(event => event.event_sha256 === correlation.oracle_event_sha256);
+  const terminal = attempt.events.at(-1);
+  if (!oracle || oracle.event_type !== 'OracleClassified') fail('RUN_EVIDENCE_ORACLE_BINDING_MISMATCH');
+  if (!terminal || terminal.event_sha256 !== correlation.attempt_terminal_event_sha256
+    || terminal.event_type !== 'AttemptTerminated') fail('RUN_EVIDENCE_TERMINAL_BINDING_MISMATCH');
+  const attemptOutcome = oracle.payload?.decision;
+  if (!['pass', 'product-miss', 'infra-invalid', 'unclassified', 'veto'].includes(attemptOutcome)) {
+    fail('RUN_EVIDENCE_OUTCOME_BINDING_MISMATCH');
+  }
+  if (correlation.attempt_outcome !== attemptOutcome) fail('RUN_EVIDENCE_OUTCOME_BINDING_MISMATCH');
+  return { attemptOutcome };
 }
 
 function verifyRunEvidenceSnapshot(snapshot) {
@@ -1654,6 +1727,7 @@ function buildSchemaValidators() {
     'devseek-run-evidence-event.schema.json',
     'devseek-run-evidence-receipt.schema.json',
     'devseek-run-evidence-seal.schema.json',
+    'devseek-run-evidence-correlation.schema.json',
   ]) ajv.addSchema(read(file));
   const profileSet = read('devseek-qualification-profile.schema.json');
   return {
@@ -1665,6 +1739,7 @@ function buildSchemaValidators() {
     receipt: ajv.getSchema('https://devseek.local/schemas/devseek-qualification-receipt-v1.json'),
     runSnapshot: ajv.compile(read('devseek-run-evidence-snapshot.schema.json')),
     runAnchor: ajv.compile(read('devseek-run-evidence-expected-anchor.schema.json')),
+    runCorrelation: ajv.getSchema('https://devseek.local/schemas/devseek-run-evidence-correlation-v1.json'),
   };
 }
 

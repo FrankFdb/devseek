@@ -1,0 +1,284 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-c0-run-evidence-wiring-v1.json",
+  "title": "DevSeek Gate 0 C0 Run Evidence Wiring v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "wiring_id",
+    "wiring_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "sources",
+    "run_evidence_owner",
+    "correlation_contract",
+    "binding_guards",
+    "failure_oracles",
+    "bypass_guards",
+    "counts",
+    "wiring_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.c0-run-evidence-wiring/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "wiring_id": { "const": "DEVSEEK-GATE0-C0-RUN-EVIDENCE-WIRING/v1" },
+    "wiring_version": { "const": 1 },
+    "source_status": { "const": "verified" },
+    "integrity_scope": { "const": "local-run-evidence-wiring-conformance" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "sources": { "$ref": "#/$defs/sources" },
+    "run_evidence_owner": { "$ref": "#/$defs/runEvidenceOwner" },
+    "correlation_contract": { "$ref": "#/$defs/correlationContract" },
+    "binding_guards": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": { "$ref": "#/$defs/bindingGuard" }
+    },
+    "failure_oracles": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": { "$ref": "#/$defs/failureOracle" }
+    },
+    "bypass_guards": { "$ref": "#/$defs/bypassGuards" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "wiring_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "source_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_ledger",
+        "qualification_evidence_manifest_schema",
+        "run_evidence_event_schema",
+        "run_evidence_snapshot_schema",
+        "run_evidence_expected_anchor_schema",
+        "run_evidence_correlation_schema",
+        "qualification_evidence_manifest_source",
+        "qualification_evidence_manifest_oracle",
+        "run_evidence_contract_checker",
+        "run_evidence_contract_oracle",
+        "package_scripts",
+        "phase_gate_source",
+        "checker_source",
+        "oracle_source"
+      ],
+      "properties": {
+        "capability_ledger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "schema_version", "ledger_id", "source_sha256"],
+          "properties": {
+            "path": { "const": "docs/process/devseek-capability-ledger.json" },
+            "schema_version": { "const": "devseek.capability-ledger/v1" },
+            "ledger_id": { "const": "DEVSEEK-CAPABILITY-LEDGER/v1" },
+            "source_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "qualification_evidence_manifest_schema": { "$ref": "#/$defs/sourceRef" },
+        "run_evidence_event_schema": { "$ref": "#/$defs/sourceRef" },
+        "run_evidence_snapshot_schema": { "$ref": "#/$defs/sourceRef" },
+        "run_evidence_expected_anchor_schema": { "$ref": "#/$defs/sourceRef" },
+        "run_evidence_correlation_schema": { "$ref": "#/$defs/sourceRef" },
+        "qualification_evidence_manifest_source": { "$ref": "#/$defs/sourceRef" },
+        "qualification_evidence_manifest_oracle": { "$ref": "#/$defs/sourceRef" },
+        "run_evidence_contract_checker": { "$ref": "#/$defs/sourceRef" },
+        "run_evidence_contract_oracle": { "$ref": "#/$defs/sourceRef" },
+        "package_scripts": { "$ref": "#/$defs/sourceRef" },
+        "phase_gate_source": { "$ref": "#/$defs/sourceRef" },
+        "checker_source": { "$ref": "#/$defs/sourceRef" },
+        "oracle_source": { "$ref": "#/$defs/sourceRef" }
+      }
+    },
+    "runEvidenceOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_id",
+        "implementation_state",
+        "authority_port",
+        "required_component_paths",
+        "verification_commands",
+        "verification_has_run_evidence_contract",
+        "verification_has_qualification_evidence_manifest",
+        "verification_has_c0_run_evidence_wiring"
+      ],
+      "properties": {
+        "capability_id": { "const": "C0-RUN-EVIDENCE-LEDGER" },
+        "implementation_state": { "const": "wired" },
+        "authority_port": { "const": "RunEvidenceLedgerPort" },
+        "required_component_paths": {
+          "type": "array",
+          "minItems": 9,
+          "maxItems": 9,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "present"],
+            "properties": {
+              "path": { "$ref": "#/$defs/nonEmpty" },
+              "present": { "const": true }
+            }
+          }
+        },
+        "verification_commands": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "verification_has_run_evidence_contract": { "const": true },
+        "verification_has_qualification_evidence_manifest": { "const": true },
+        "verification_has_c0_run_evidence_wiring": { "const": true }
+      }
+    },
+    "correlationContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapter_id",
+        "adapter_source_ref",
+        "correlation_schema_path",
+        "manifest_output_schema_path",
+        "schema_has_local_scope",
+        "schema_forbids_claims",
+        "manifest_output_has_exact_binding_fields",
+        "package_script_present",
+        "phase_gate_id",
+        "phase_gate_present",
+        "adapter_produces_verdict",
+        "second_ledger_created",
+        "hides_original_failure",
+        "qualification_effect",
+        "manifest_reader_uses_correlation"
+      ],
+      "properties": {
+        "adapter_id": { "const": "G0-D-RUN-EVIDENCE-CORRELATION-ADAPTER/v1" },
+        "adapter_source_ref": { "const": "scripts/lib/devseek-qualification-evidence-manifest.mjs#validateRunEvidenceAuxiliary" },
+        "correlation_schema_path": { "const": "docs/process/devseek-run-evidence-correlation.schema.json" },
+        "manifest_output_schema_path": { "const": "docs/process/devseek-qualification-evidence-manifest.schema.json#/$defs/runEvidence" },
+        "schema_has_local_scope": { "const": true },
+        "schema_forbids_claims": { "const": true },
+        "manifest_output_has_exact_binding_fields": { "const": true },
+        "package_script_present": { "const": true },
+        "phase_gate_id": { "const": "c0-run-evidence-wiring-conformance" },
+        "phase_gate_present": { "const": true },
+        "adapter_produces_verdict": { "const": false },
+        "second_ledger_created": { "const": false },
+        "hides_original_failure": { "const": false },
+        "qualification_effect": { "const": "NONE" },
+        "manifest_reader_uses_correlation": { "const": true }
+      }
+    },
+    "bindingGuard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["guard_id", "source_ref", "required_fragments", "fragments_present", "coverage_status"],
+      "properties": {
+        "guard_id": { "$ref": "#/$defs/nonEmpty" },
+        "source_ref": { "$ref": "#/$defs/nonEmpty" },
+        "required_fragments": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "fragments_present": { "const": true },
+        "coverage_status": { "const": "covered" }
+      }
+    },
+    "failureOracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["oracle_id", "expected_error", "source_ref", "fragments_present", "coverage_status"],
+      "properties": {
+        "oracle_id": { "$ref": "#/$defs/nonEmpty" },
+        "expected_error": { "$ref": "#/$defs/nonEmpty" },
+        "source_ref": { "$ref": "#/$defs/nonEmpty" },
+        "fragments_present": { "const": true },
+        "coverage_status": { "const": "covered" }
+      }
+    },
+    "bypassGuards": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "g0d_adapter_may_produce_verdict",
+        "product_run_evidence_may_be_qualification_eligible",
+        "second_run_evidence_ledger_allowed",
+        "unsealed_run_evidence_aggregable",
+        "wrong_anchor_aggregable",
+        "wrong_scope_aggregable",
+        "hidden_original_failure_allowed"
+      ],
+      "properties": {
+        "g0d_adapter_may_produce_verdict": { "const": false },
+        "product_run_evidence_may_be_qualification_eligible": { "const": false },
+        "second_run_evidence_ledger_allowed": { "const": false },
+        "unsealed_run_evidence_aggregable": { "const": false },
+        "wrong_anchor_aggregable": { "const": false },
+        "wrong_scope_aggregable": { "const": false },
+        "hidden_original_failure_allowed": { "const": false }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner_required_components",
+        "owner_required_components_present",
+        "binding_guards",
+        "binding_guards_covered",
+        "failure_oracles",
+        "failure_oracles_covered",
+        "bypasses",
+        "qualification_claims"
+      ],
+      "properties": {
+        "owner_required_components": { "const": 9 },
+        "owner_required_components_present": { "const": 9 },
+        "binding_guards": { "const": 7 },
+        "binding_guards_covered": { "const": 7 },
+        "failure_oracles": { "const": 7 },
+        "failure_oracles_covered": { "const": 7 },
+        "bypasses": { "const": 0 },
+        "qualification_claims": { "const": 0 }
+      }
+    }
+  }
+}

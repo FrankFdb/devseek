@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-run-evidence-correlation-v1.json",
+  "title": "DevSeek Run Evidence Qualification Correlation v1",
+  "$comment": "A local-only bridge from qualification attempt events to product Run Evidence. It binds existing evidence and cannot create qualification verdicts or claims.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "correlation_id",
+    "qualification_plan_sha256",
+    "candidate_identity_sha256",
+    "attempt_correlation_id",
+    "run_observed_event_sha256",
+    "run_id",
+    "operation_id",
+    "operation_event_sha256",
+    "snapshot_sha256",
+    "expected_anchor_sha256",
+    "anchor_source",
+    "run_observed_payload_sha256",
+    "oracle_event_sha256",
+    "attempt_terminal_event_sha256",
+    "attempt_outcome",
+    "verdict_authority",
+    "hidden_original_failure_policy"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.run-evidence-qualification-correlation/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "integrity_scope": { "const": "local-run-evidence-correlation-conformance" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "correlation_id": { "$ref": "#/$defs/id" },
+    "qualification_plan_sha256": { "$ref": "#/$defs/sha256" },
+    "candidate_identity_sha256": { "$ref": "#/$defs/sha256" },
+    "attempt_correlation_id": { "$ref": "#/$defs/id" },
+    "run_observed_event_sha256": { "$ref": "#/$defs/sha256" },
+    "run_id": { "$ref": "#/$defs/id" },
+    "operation_id": { "$ref": "#/$defs/id" },
+    "operation_event_sha256": { "$ref": "#/$defs/sha256" },
+    "snapshot_sha256": { "$ref": "#/$defs/sha256" },
+    "expected_anchor_sha256": { "$ref": "#/$defs/sha256" },
+    "anchor_source": { "const": "independent-expected-anchor" },
+    "run_observed_payload_sha256": { "$ref": "#/$defs/sha256" },
+    "oracle_event_sha256": { "$ref": "#/$defs/sha256" },
+    "attempt_terminal_event_sha256": { "$ref": "#/$defs/sha256" },
+    "attempt_outcome": {
+      "enum": ["pass", "product-miss", "infra-invalid", "unclassified", "veto"]
+    },
+    "verdict_authority": { "const": "qualification-oracle-only" },
+    "hidden_original_failure_policy": { "const": "preserve-original-attempt-outcome" }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    }
+  }
+}

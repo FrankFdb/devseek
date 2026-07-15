@@ -1,0 +1,299 @@
+{
+  "schema_version": "devseek.c0-run-evidence-wiring/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "wiring_id": "DEVSEEK-GATE0-C0-RUN-EVIDENCE-WIRING/v1",
+  "wiring_version": 1,
+  "source_status": "verified",
+  "integrity_scope": "local-run-evidence-wiring-conformance",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "sources": {
+    "capability_ledger": {
+      "path": "docs/process/devseek-capability-ledger.json",
+      "schema_version": "devseek.capability-ledger/v1",
+      "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
+      "source_sha256": "0a61fb30dddee3bb26fe98a68bd244faf4810395052a3d5ecb8811231c4689a3"
+    },
+    "qualification_evidence_manifest_schema": {
+      "path": "docs/process/devseek-qualification-evidence-manifest.schema.json",
+      "source_sha256": "b00ef568b7a635cc3db92266e3183dc6cd947ea700840428905290febd6a057e"
+    },
+    "run_evidence_event_schema": {
+      "path": "docs/process/devseek-run-evidence-event.schema.json",
+      "source_sha256": "bdcd7f71cf64f0321fedec26433aa44a7ca8088551a986c2b1735fd3b51b337f"
+    },
+    "run_evidence_snapshot_schema": {
+      "path": "docs/process/devseek-run-evidence-snapshot.schema.json",
+      "source_sha256": "bf85d4a139ccb9f7a8f20918183f889d0be8a9fa700b93347b9f2c188aaf07ae"
+    },
+    "run_evidence_expected_anchor_schema": {
+      "path": "docs/process/devseek-run-evidence-expected-anchor.schema.json",
+      "source_sha256": "788cce8503499041672cf2c5c1a44fcabdb067b8556f7022fbe788255577e6e1"
+    },
+    "run_evidence_correlation_schema": {
+      "path": "docs/process/devseek-run-evidence-correlation.schema.json",
+      "source_sha256": "ae80615276a57134c90017a69aa10e97cd4c08e8be3096d37be214ab0c480663"
+    },
+    "qualification_evidence_manifest_source": {
+      "path": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "source_sha256": "06068dddca365964e3dfeb55b76043e5c12a18e6f2242aa35325d0688107008f"
+    },
+    "qualification_evidence_manifest_oracle": {
+      "path": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "source_sha256": "dd74857c9bb164374e39fd5ffba3ae55ef303a9cf5c658e1d9eeba0e1d874572"
+    },
+    "run_evidence_contract_checker": {
+      "path": "scripts/devseek-run-evidence-contract-check.mjs",
+      "source_sha256": "b775f50296ea6c02908ff1554097ea1f79195d022127f7c8444f60aa93b044ea"
+    },
+    "run_evidence_contract_oracle": {
+      "path": "scripts/test/devseek-run-evidence-contract.test.mjs",
+      "source_sha256": "66a2000f4d347590552c615e45fb209bc3c4cae06729dbe05eac8858b89e10fd"
+    },
+    "package_scripts": {
+      "path": "package.json",
+      "source_sha256": "4ca778e0bdcde3552e7820f2f37c17150bdc1eb0cb46e9959c6bef3333777586"
+    },
+    "phase_gate_source": {
+      "path": "scripts/devseek-phase0-12-verify.mjs",
+      "source_sha256": "3c12bc7b701d98a209496413c0be03815a4185c5c8b1650871f6c426cbd49a29"
+    },
+    "checker_source": {
+      "path": "scripts/devseek-c0-run-evidence-wiring-check.mjs",
+      "source_sha256": "3471bb8a9a39f01ba0c4615f153e6a00209e4ddfc526e50c768248ae88051ae4"
+    },
+    "oracle_source": {
+      "path": "scripts/test/devseek-c0-run-evidence-wiring.test.mjs",
+      "source_sha256": "cba0e27bda43926509f01b54cd5fcbaf6347801d6b3f1ec0594df565d5e355e9"
+    }
+  },
+  "run_evidence_owner": {
+    "capability_id": "C0-RUN-EVIDENCE-LEDGER",
+    "implementation_state": "wired",
+    "authority_port": "RunEvidenceLedgerPort",
+    "required_component_paths": [
+      {
+        "path": "docs/process/devseek-c0-run-evidence-wiring.json",
+        "present": true
+      },
+      {
+        "path": "docs/process/devseek-c0-run-evidence-wiring.schema.json",
+        "present": true
+      },
+      {
+        "path": "docs/process/devseek-run-evidence-correlation.schema.json",
+        "present": true
+      },
+      {
+        "path": "docs/process/generated/devseek-c0-run-evidence-wiring.md",
+        "present": true
+      },
+      {
+        "path": "scripts/devseek-c0-run-evidence-wiring-check.mjs",
+        "present": true
+      },
+      {
+        "path": "scripts/lib/devseek-c0-run-evidence-wiring.mjs",
+        "present": true
+      },
+      {
+        "path": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+        "present": true
+      },
+      {
+        "path": "scripts/test/devseek-c0-run-evidence-wiring.test.mjs",
+        "present": true
+      },
+      {
+        "path": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+        "present": true
+      }
+    ],
+    "verification_commands": [
+      "npm run shared:build",
+      "npm run shared:test",
+      "npm run verify:run-evidence-contract",
+      "npm run verify:qualification-evidence-manifest",
+      "npm run verify:c0-run-evidence-wiring",
+      "npm run cli:build",
+      "npm run cli:test",
+      "npm run compile --workspace=packages/vscode-extension",
+      "node --test packages/vscode-extension/test/unit/run-context.test.mjs packages/vscode-extension/test/unit/provider-run-evidence.test.mjs packages/vscode-extension/test/unit/legacy-run-evidence-migration.test.mjs packages/vscode-extension/test/unit/terminal-permission-evidence.test.mjs",
+      "npm run build --workspace=packages/bridge",
+      "npm run test --workspace=packages/bridge"
+    ],
+    "verification_has_run_evidence_contract": true,
+    "verification_has_qualification_evidence_manifest": true,
+    "verification_has_c0_run_evidence_wiring": true
+  },
+  "correlation_contract": {
+    "adapter_id": "G0-D-RUN-EVIDENCE-CORRELATION-ADAPTER/v1",
+    "adapter_source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs#validateRunEvidenceAuxiliary",
+    "correlation_schema_path": "docs/process/devseek-run-evidence-correlation.schema.json",
+    "manifest_output_schema_path": "docs/process/devseek-qualification-evidence-manifest.schema.json#/$defs/runEvidence",
+    "schema_has_local_scope": true,
+    "schema_forbids_claims": true,
+    "manifest_output_has_exact_binding_fields": true,
+    "package_script_present": true,
+    "phase_gate_id": "c0-run-evidence-wiring-conformance",
+    "phase_gate_present": true,
+    "adapter_produces_verdict": false,
+    "second_ledger_created": false,
+    "hides_original_failure": false,
+    "qualification_effect": "NONE",
+    "manifest_reader_uses_correlation": true
+  },
+  "binding_guards": [
+    {
+      "guard_id": "sealed-independent-anchor",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "RUN_EVIDENCE_SEALED_ANCHOR_MISMATCH",
+        "verifyRunEvidenceSnapshot(snapshot);"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "correlation-schema-and-local-scope",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "SCHEMAS.runCorrelation",
+        "RUN_EVIDENCE_CORRELATION_SCHEMA_INVALID"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "plan-candidate-attempt-binding",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "RUN_EVIDENCE_PLAN_BINDING_MISMATCH",
+        "RUN_EVIDENCE_CANDIDATE_BINDING_MISMATCH",
+        "RUN_EVIDENCE_ATTEMPT_BINDING_MISMATCH"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "run-observed-payload-binding",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "RUN_EVIDENCE_OBSERVATION_PAYLOAD_BINDING_MISMATCH",
+        "payload.run_evidence_auxiliary !== true",
+        "payload.qualification_effect !== 'NONE'"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "operation-event-binding",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "RUN_EVIDENCE_OPERATION_BINDING_MISMATCH",
+        "operationEvent.payload?.trust !== 'product-runtime-observation'",
+        "operationEvent.type === 'run.opened'"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "oracle-outcome-preserved",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "RUN_EVIDENCE_OUTCOME_BINDING_MISMATCH",
+        "correlation.attempt_outcome !== attemptOutcome",
+        "terminal.event_type !== 'AttemptTerminated'"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "auxiliary-only-manifest-output",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "auxiliary_only: true",
+        "qualification_eligible: false",
+        "correlation_sha256: sha256Object(correlation)"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    }
+  ],
+  "failure_oracles": [
+    {
+      "oracle_id": "wrong-candidate",
+      "expected_error": "RUN_EVIDENCE_CANDIDATE_BINDING_MISMATCH",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "wrong-attempt",
+      "expected_error": "RUN_EVIDENCE_ATTEMPT_BINDING_MISMATCH",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "wrong-operation",
+      "expected_error": "RUN_EVIDENCE_OPERATION_BINDING_MISMATCH",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "wrong-anchor",
+      "expected_error": "RUN_EVIDENCE_ANCHOR_BINDING_MISMATCH",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "wrong-scope",
+      "expected_error": "RUN_EVIDENCE_CORRELATION_SCHEMA_INVALID",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "unsealed-evidence",
+      "expected_error": "RUN_EVIDENCE_SEALED_ANCHOR_MISMATCH",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "hidden-original-failure",
+      "expected_error": "RUN_EVIDENCE_OUTCOME_BINDING_MISMATCH",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    }
+  ],
+  "bypass_guards": {
+    "g0d_adapter_may_produce_verdict": false,
+    "product_run_evidence_may_be_qualification_eligible": false,
+    "second_run_evidence_ledger_allowed": false,
+    "unsealed_run_evidence_aggregable": false,
+    "wrong_anchor_aggregable": false,
+    "wrong_scope_aggregable": false,
+    "hidden_original_failure_allowed": false
+  },
+  "counts": {
+    "owner_required_components": 9,
+    "owner_required_components_present": 9,
+    "binding_guards": 7,
+    "binding_guards_covered": 7,
+    "failure_oracles": 7,
+    "failure_oracles_covered": 7,
+    "bypasses": 0,
+    "qualification_claims": 0
+  },
+  "wiring_sha256": "02072a27f4f229a3cde122ffddd55a176c9ac75d135b08e9aaa5d3b6f694dd2a"
+}

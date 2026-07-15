@@ -217,7 +217,11 @@
       "type": "object", "additionalProperties": false,
       "required": [
         "run_id", "snapshot_sha256", "expected_anchor_sha256", "sealed",
-        "integrity_scope", "qualification_eligible", "auxiliary_only"
+        "integrity_scope", "qualification_eligible", "auxiliary_only",
+        "operation_id", "operation_event_sha256", "qualification_plan_sha256",
+        "candidate_identity_sha256", "attempt_correlation_id", "run_observed_event_sha256",
+        "run_observed_payload_sha256", "oracle_event_sha256", "attempt_terminal_event_sha256",
+        "attempt_outcome", "correlation_sha256"
       ],
       "properties": {
         "run_id": { "$ref": "#/$defs/id" },
@@ -226,7 +230,18 @@
         "sealed": { "const": true },
         "integrity_scope": { "const": "product-run-diagnostics" },
         "qualification_eligible": { "const": false },
-        "auxiliary_only": { "const": true }
+        "auxiliary_only": { "const": true },
+        "operation_id": { "$ref": "#/$defs/id" },
+        "operation_event_sha256": { "$ref": "#/$defs/sha256" },
+        "qualification_plan_sha256": { "$ref": "#/$defs/sha256" },
+        "candidate_identity_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_correlation_id": { "$ref": "#/$defs/id" },
+        "run_observed_event_sha256": { "$ref": "#/$defs/sha256" },
+        "run_observed_payload_sha256": { "$ref": "#/$defs/sha256" },
+        "oracle_event_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_terminal_event_sha256": { "$ref": "#/$defs/sha256" },
+        "attempt_outcome": { "enum": ["pass", "product-miss", "infra-invalid", "unclassified", "veto"] },
+        "correlation_sha256": { "$ref": "#/$defs/sha256" }
       }
     },
     "excluded": {

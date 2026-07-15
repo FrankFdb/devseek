@@ -432,6 +432,42 @@
         {
           "role": "bridge-participant-tests",
           "path": "packages/bridge/test/run-evidence.test.mjs"
+        },
+        {
+          "role": "c0-run-evidence-wiring-source",
+          "path": "docs/process/devseek-c0-run-evidence-wiring.json"
+        },
+        {
+          "role": "c0-run-evidence-wiring-schema",
+          "path": "docs/process/devseek-c0-run-evidence-wiring.schema.json"
+        },
+        {
+          "role": "c0-run-evidence-correlation-schema",
+          "path": "docs/process/devseek-run-evidence-correlation.schema.json"
+        },
+        {
+          "role": "c0-run-evidence-wiring-generated-view",
+          "path": "docs/process/generated/devseek-c0-run-evidence-wiring.md"
+        },
+        {
+          "role": "c0-run-evidence-wiring-checker",
+          "path": "scripts/devseek-c0-run-evidence-wiring-check.mjs"
+        },
+        {
+          "role": "c0-run-evidence-wiring-library",
+          "path": "scripts/lib/devseek-c0-run-evidence-wiring.mjs"
+        },
+        {
+          "role": "c0-run-evidence-qualification-reader",
+          "path": "scripts/lib/devseek-qualification-evidence-manifest.mjs"
+        },
+        {
+          "role": "c0-run-evidence-wiring-contract-tests",
+          "path": "scripts/test/devseek-c0-run-evidence-wiring.test.mjs"
+        },
+        {
+          "role": "c0-run-evidence-correlation-oracles",
+          "path": "scripts/test/devseek-qualification-evidence-manifest.test.mjs"
         }
       ],
       "architecture_dependencies": [],
@@ -440,6 +476,8 @@
           "npm run shared:build",
           "npm run shared:test",
           "npm run verify:run-evidence-contract",
+          "npm run verify:qualification-evidence-manifest",
+          "npm run verify:c0-run-evidence-wiring",
           "npm run cli:build",
           "npm run cli:test",
           "npm run compile --workspace=packages/vscode-extension",
@@ -3778,5 +3816,5 @@
       ]
     }
   ],
-  "ledger_sha256": "d687e1cc63eb835a7260ccacf8e51157812e343b70a1d0e0979329b9c0330ae3"
+  "ledger_sha256": "0a61fb30dddee3bb26fe98a68bd244faf4810395052a3d5ecb8811231c4689a3"
 }

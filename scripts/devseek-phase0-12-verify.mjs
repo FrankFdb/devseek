@@ -87,6 +87,12 @@ const gates = [
     purpose: 'Fail closed when production declarations enter qualification, profile executor dispatch bypasses plan/session/slot/authorization/receipt preregistration, or receipt failure oracles dispatch external actions.',
   },
   {
+    id: 'c0-run-evidence-wiring-conformance',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:c0-run-evidence-wiring'],
+    purpose: 'Fail closed when qualification attempt/product Run Evidence correlation lacks exact operation, attempt, candidate, sealed-anchor, local-scope, or original-failure binding.',
+  },
+  {
     id: 'qualification-protocol-conformance',
     phases: '0-12',
     command: ['npm', 'run', 'verify:qualification-protocol'],
@@ -295,6 +301,7 @@ function classifyGateFailure(gate) {
   if (/capability-ledger/i.test(gate.id)) return 'capability-governance-regression';
   if (/c0-ledger-wiring/i.test(gate.id)) return 'c0-ledger-wiring-regression';
   if (/c0-preregistration-wiring/i.test(gate.id)) return 'c0-preregistration-wiring-regression';
+  if (/c0-run-evidence-wiring/i.test(gate.id)) return 'c0-run-evidence-wiring-regression';
   if (/profile-executor/i.test(gate.id)) return 'profile-executor-contract-regression';
   if (/current-candidate-identity/i.test(gate.id)) return 'current-candidate-identity-regression';
   if (/qualification-runner/i.test(gate.id)) return 'qualification-runner-bypass-regression';
@@ -315,6 +322,7 @@ function nextActionFor(gate) {
     'capability-ledger-governance': 'Fix the machine ledger, typed dependency, scoped claim target, or generated manifest at its semantic authority, then rerun verify:capability-ledger.',
     'c0-ledger-wiring-conformance': 'Restore the single capability ledger owner, direct reader coverage, Phase reachability, and wired-state evidence before rerunning verify:c0-ledger-wiring.',
     'c0-preregistration-wiring-conformance': 'Restore production declaration coverage, single runner-root preregistration through plan/session/slot/authorization/receipt, and zero-dispatch receipt oracles before rerunning verify:c0-preregistration-wiring.',
+    'c0-run-evidence-wiring-conformance': 'Restore exact product Run Evidence to qualification attempt/candidate/operation/anchor binding, preserve original oracle failures, and rerun verify:c0-run-evidence-wiring.',
     'profile-executor-contract-conformance': 'Restore one unique executor contract and independent oracle for each Gate 0 denominator slot semantic, keep execution behind the single runner root, and rerun verify:profile-executor-contracts.',
     'current-candidate-identity-probe': 'Restore the read-only source, VSIX, stable install, and active runtime identity binding; retire stale debug runtime only with fresh authorization, then rerun verify:current-candidate-identity.',
     'qualification-runner-wiring': 'Restore the single guarded runner composition root, remove or disable bypass entry points, and rerun verify:qualification-runner; local runner conformance must remain non-qualifying without protected authority.',
