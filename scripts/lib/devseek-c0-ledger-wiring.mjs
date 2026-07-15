@@ -75,6 +75,14 @@ export const REQUIRED_LEDGER_CONSUMERS = Object.freeze([
     direct_ledger_reader: true,
   },
   {
+    consumer_id: 'c0-wiring-reconciliation',
+    command: 'npm run verify:c0-wiring-reconciliation',
+    package_script: 'verify:c0-wiring-reconciliation',
+    phase_gate_id: 'c0-wiring-reconciliation-conformance',
+    reader_path: 'scripts/devseek-c0-wiring-reconciliation-check.mjs',
+    direct_ledger_reader: true,
+  },
+  {
     consumer_id: 'gate0-machine-decision',
     command: 'npm run verify:gate0-decision',
     package_script: 'verify:gate0-decision',

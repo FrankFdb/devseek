@@ -29,6 +29,7 @@
 | `c0-run-evidence-wiring` | `npm run verify:c0-run-evidence-wiring` | `c0-run-evidence-wiring-conformance` | `true` | `covered` |
 | `c0-manifest-aggregator-wiring` | `npm run verify:c0-manifest-aggregator-wiring` | `c0-manifest-aggregator-wiring-conformance` | `true` | `covered` |
 | `external-authority-adapter` | `npm run verify:external-authority-adapter` | `external-authority-adapter-contract` | `true` | `covered` |
+| `c0-wiring-reconciliation` | `npm run verify:c0-wiring-reconciliation` | `c0-wiring-reconciliation-conformance` | `true` | `covered` |
 | `gate0-machine-decision` | `npm run verify:gate0-decision` | `gate0-machine-decision-contract` | `true` | `covered` |
 
 ## Bypass Guards
@@ -40,4 +41,4 @@
 
 ## Wiring Identity
 
-- Wiring SHA-256: `ac0d1c6cd6e13a6ac282e80d7fed245dcdca90e88643af03a076bbed82804af8`
+- Wiring SHA-256: `a61fe122ea4a17ec5afd1078f87e0168d22c87bf94cc92458a8758dd05af541d`

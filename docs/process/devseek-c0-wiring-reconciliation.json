@@ -1,0 +1,217 @@
+{
+  "schema_version": "devseek.c0-wiring-reconciliation/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "reconciliation_id": "DEVSEEK-GATE0-C0-WIRING-RECONCILIATION/v1",
+  "reconciliation_version": 1,
+  "source_status": "verified",
+  "integrity_scope": "local-c0-wiring-reconciliation",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "sources": {
+    "capability_ledger": {
+      "path": "docs/process/devseek-capability-ledger.json",
+      "schema_version": "devseek.capability-ledger/v1",
+      "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
+      "source_sha256": "08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5"
+    },
+    "package_scripts": {
+      "path": "package.json",
+      "source_sha256": "54299ff8b8753d9f66d8393bb9e03fc0a0c6282ae7fa05f48cfa088af47d56d3"
+    },
+    "phase_gate_source": {
+      "path": "scripts/devseek-phase0-12-verify.mjs",
+      "source_sha256": "b86b1ef3e8b6c2c6bbc8037c4e13472a94fa905312ab7e88680866c53a297d83"
+    },
+    "checker_source": {
+      "path": "scripts/devseek-c0-wiring-reconciliation-check.mjs",
+      "source_sha256": "b51902a05ab67e9c82d88f1df79581b1aff27cf921f4f6552a56f27356882474"
+    },
+    "oracle_source": {
+      "path": "scripts/test/devseek-c0-wiring-reconciliation.test.mjs",
+      "source_sha256": "e5b6ace916384b5e211a2605c373413cdec1c4390e3e0e1ca430ac8fb12f23e0"
+    }
+  },
+  "reconciled_reports": [
+    {
+      "report_id": "c0-ledger-wiring",
+      "path": "docs/process/devseek-c0-ledger-wiring.json",
+      "schema_version": "devseek.c0-ledger-wiring/v1",
+      "expected_schema_version": "devseek.c0-ledger-wiring/v1",
+      "hash_field": "wiring_sha256",
+      "reported_sha256": "a61fe122ea4a17ec5afd1078f87e0168d22c87bf94cc92458a8758dd05af541d",
+      "computed_sha256": "a61fe122ea4a17ec5afd1078f87e0168d22c87bf94cc92458a8758dd05af541d",
+      "hash_status": "matched",
+      "package_script": "verify:c0-ledger-wiring",
+      "package_script_present": true,
+      "phase_gate_id": "c0-ledger-wiring-conformance",
+      "phase_gate_present": true,
+      "checker_path": "scripts/devseek-c0-ledger-wiring-check.mjs",
+      "checker_source_sha256": "e0096f80880601fbf793325ad66df956362d48d6f2e78df14c2b7129f9f276e0",
+      "generated_view": {
+        "path": "docs/process/generated/devseek-c0-ledger-wiring.md",
+        "status": "current",
+        "source_sha256": "93a8c0e953e8025dd6a45fdd74e371790d9787b2752013a706e4c39520bb473b"
+      }
+    },
+    {
+      "report_id": "c0-preregistration-wiring",
+      "path": "docs/process/devseek-c0-preregistration-wiring.json",
+      "schema_version": "devseek.c0-preregistration-wiring/v1",
+      "expected_schema_version": "devseek.c0-preregistration-wiring/v1",
+      "hash_field": "wiring_sha256",
+      "reported_sha256": "8bdc813c38da354262d2fdafffa63737e8448e83e33014edcf482ea6701dbcd6",
+      "computed_sha256": "8bdc813c38da354262d2fdafffa63737e8448e83e33014edcf482ea6701dbcd6",
+      "hash_status": "matched",
+      "package_script": "verify:c0-preregistration-wiring",
+      "package_script_present": true,
+      "phase_gate_id": "c0-preregistration-wiring-conformance",
+      "phase_gate_present": true,
+      "checker_path": "scripts/devseek-c0-preregistration-wiring-check.mjs",
+      "checker_source_sha256": "05b9268e86f372c8dd426fb5bdf804c03edcf86593619ee71e843f995c15ec2e",
+      "generated_view": {
+        "path": "docs/process/generated/devseek-c0-preregistration-wiring.md",
+        "status": "current",
+        "source_sha256": "bc5a193019040f2fdaebe86f835a87b97215b2b638138e6c03de34c8949ff302"
+      }
+    },
+    {
+      "report_id": "c0-run-evidence-wiring",
+      "path": "docs/process/devseek-c0-run-evidence-wiring.json",
+      "schema_version": "devseek.c0-run-evidence-wiring/v1",
+      "expected_schema_version": "devseek.c0-run-evidence-wiring/v1",
+      "hash_field": "wiring_sha256",
+      "reported_sha256": "4c4b3dd10fc0066b146c84b9f5ee907064aef91df9462de95a8c8731cdab5644",
+      "computed_sha256": "4c4b3dd10fc0066b146c84b9f5ee907064aef91df9462de95a8c8731cdab5644",
+      "hash_status": "matched",
+      "package_script": "verify:c0-run-evidence-wiring",
+      "package_script_present": true,
+      "phase_gate_id": "c0-run-evidence-wiring-conformance",
+      "phase_gate_present": true,
+      "checker_path": "scripts/devseek-c0-run-evidence-wiring-check.mjs",
+      "checker_source_sha256": "3471bb8a9a39f01ba0c4615f153e6a00209e4ddfc526e50c768248ae88051ae4",
+      "generated_view": {
+        "path": "docs/process/generated/devseek-c0-run-evidence-wiring.md",
+        "status": "current",
+        "source_sha256": "96a97c29f2f027f5263dab966643c0bfca630dd747aeca55477440fc8bc3a5d5"
+      }
+    },
+    {
+      "report_id": "c0-manifest-aggregator-wiring",
+      "path": "docs/process/devseek-c0-manifest-aggregator-wiring.json",
+      "schema_version": "devseek.c0-manifest-aggregator-wiring/v1",
+      "expected_schema_version": "devseek.c0-manifest-aggregator-wiring/v1",
+      "hash_field": "wiring_sha256",
+      "reported_sha256": "0760b578c0986b6823d07a1b02ff4eba8e570f910144761e91f287e65945763e",
+      "computed_sha256": "0760b578c0986b6823d07a1b02ff4eba8e570f910144761e91f287e65945763e",
+      "hash_status": "matched",
+      "package_script": "verify:c0-manifest-aggregator-wiring",
+      "package_script_present": true,
+      "phase_gate_id": "c0-manifest-aggregator-wiring-conformance",
+      "phase_gate_present": true,
+      "checker_path": "scripts/devseek-c0-manifest-aggregator-wiring-check.mjs",
+      "checker_source_sha256": "b0c594e758cab26e61ab051d61f21908fe4c18ab14d6dd30b8662f8197f30099",
+      "generated_view": {
+        "path": "docs/process/generated/devseek-c0-manifest-aggregator-wiring.md",
+        "status": "current",
+        "source_sha256": "9354dc7e0f545b3b4d5490b96ce6cbcd73b5f391fad1bca5d55ab5873f70099f"
+      }
+    },
+    {
+      "report_id": "external-authority-adapter",
+      "path": "docs/process/devseek-external-authority-adapter.json",
+      "schema_version": "devseek.external-authority-adapter/v1",
+      "expected_schema_version": "devseek.external-authority-adapter/v1",
+      "hash_field": "adapter_sha256",
+      "reported_sha256": "d4886fe9c2d739081ace00573e3474a548d799413edd780c548f639826720b76",
+      "computed_sha256": "d4886fe9c2d739081ace00573e3474a548d799413edd780c548f639826720b76",
+      "hash_status": "matched",
+      "package_script": "verify:external-authority-adapter",
+      "package_script_present": true,
+      "phase_gate_id": "external-authority-adapter-contract",
+      "phase_gate_present": true,
+      "checker_path": "scripts/devseek-external-authority-adapter-check.mjs",
+      "checker_source_sha256": "12cbe511ca4379a0955780da94fa7ad2600b18c3cda03d890a156d7609cfb414",
+      "generated_view": {
+        "path": "docs/process/generated/devseek-external-authority-adapter.md",
+        "status": "current",
+        "source_sha256": "c78795fe5a44b696394f0a993016c02e5897543d32d6f6f78ed4d1b43efdd57e"
+      }
+    },
+    {
+      "report_id": "gate0-decision",
+      "path": "docs/process/devseek-gate0-decision-report.json",
+      "schema_version": "devseek.gate0-decision/v1",
+      "expected_schema_version": "devseek.gate0-decision/v1",
+      "hash_field": "decision_sha256",
+      "reported_sha256": "ee717d9f30e835dd87fb021394f5c5e2b547ecb11cf044a7b4153ed113b32351",
+      "computed_sha256": "ee717d9f30e835dd87fb021394f5c5e2b547ecb11cf044a7b4153ed113b32351",
+      "hash_status": "matched",
+      "package_script": "verify:gate0-decision",
+      "package_script_present": true,
+      "phase_gate_id": "gate0-machine-decision-contract",
+      "phase_gate_present": true,
+      "checker_path": "scripts/devseek-gate0-decision-check.mjs",
+      "checker_source_sha256": "392d9a11b58d9366ba8764d7639af58b00b8559f16471bc7b31efcf39f339da5",
+      "generated_view": {
+        "path": null,
+        "status": "not-applicable",
+        "source_sha256": null
+      }
+    }
+  ],
+  "gate0_decision": {
+    "status": "NOT_PASSED",
+    "gate_passed": false,
+    "asserts_gate_pass": false,
+    "capabilities": 7,
+    "implementation_requirements_satisfied": 7,
+    "exact_claim_requirements_satisfied": 0,
+    "observed_claims": 0,
+    "repository_pending_blockers": 0,
+    "external_authority_blockers": 6,
+    "claims_empty": true,
+    "repository_blockers_empty": true,
+    "external_blockers_preserved": true,
+    "source_bindings": [
+      {
+        "binding_id": "gate0-ledger-source",
+        "observed_sha256": "08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5",
+        "expected_sha256": "08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5",
+        "status": "matched"
+      },
+      {
+        "binding_id": "gate0-external-authority-adapter-source",
+        "observed_sha256": "d4886fe9c2d739081ace00573e3474a548d799413edd780c548f639826720b76",
+        "expected_sha256": "d4886fe9c2d739081ace00573e3474a548d799413edd780c548f639826720b76",
+        "status": "matched"
+      }
+    ],
+    "independent_authority_status": "UNAVAILABLE_NO_EXTERNAL_TRUST_ROOT"
+  },
+  "bypass_guards": {
+    "local_reports_may_issue_claims": false,
+    "markdown_may_lower_external_blockers": false,
+    "local_fixture_claims_permitted": false,
+    "repository_blockers_may_be_manually_cleared": false,
+    "external_blockers_may_be_removed_by_local_report": false,
+    "r1_may_start_before_gate0_pass": false
+  },
+  "counts": {
+    "reconciled_reports": 6,
+    "report_hashes_matched": 6,
+    "package_scripts_covered": 7,
+    "phase_gates_covered": 7,
+    "generated_views": 5,
+    "generated_views_current": 5,
+    "gate0_repository_pending_blockers": 0,
+    "gate0_external_authority_blockers": 6,
+    "observed_claims": 0,
+    "bypasses": 0
+  },
+  "reconciliation_sha256": "4d91d639dd9b3d507caf408fc0696ead803f1140b33bee03ed73fc6f124be509"
+}

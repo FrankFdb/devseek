@@ -21,19 +21,19 @@
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "2d4f3f8a7cbe735a76a8fb3ce9413a01dbe487eb23766b98243f3d66bf36279e"
+      "source_sha256": "54299ff8b8753d9f66d8393bb9e03fc0a0c6282ae7fa05f48cfa088af47d56d3"
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "e91afd96660ce57c0e5fbce210ea4d5861566b9561914ffb9c2162bf3cdbe18c"
+      "source_sha256": "b86b1ef3e8b6c2c6bbc8037c4e13472a94fa905312ab7e88680866c53a297d83"
     },
     "checker_source": {
       "path": "scripts/devseek-c0-ledger-wiring-check.mjs",
-      "source_sha256": "ac4e718210a3b631d3368a09c7081e703f81c72da1c8cb78a29825ec080c5957"
+      "source_sha256": "e0096f80880601fbf793325ad66df956362d48d6f2e78df14c2b7129f9f276e0"
     },
     "oracle_source": {
       "path": "scripts/test/devseek-c0-ledger-wiring.test.mjs",
-      "source_sha256": "cde8934028db02f071e1944d6215214267d2ee4d820eb48fdecb13c39e0aaa6c"
+      "source_sha256": "ff06321b8a8b2911fa59af9ff22d34b57cdba59ccca142f5e02607ff39beee12"
     }
   },
   "ledger_owner": {
@@ -104,7 +104,7 @@
       "phase_gate_id": "c0-ledger-wiring-conformance",
       "phase_gate_present": true,
       "reader_path": "scripts/devseek-c0-ledger-wiring-check.mjs",
-      "reader_source_sha256": "ac4e718210a3b631d3368a09c7081e703f81c72da1c8cb78a29825ec080c5957",
+      "reader_source_sha256": "e0096f80880601fbf793325ad66df956362d48d6f2e78df14c2b7129f9f276e0",
       "direct_ledger_reader": true,
       "coverage_status": "covered"
     },
@@ -157,6 +157,18 @@
       "coverage_status": "covered"
     },
     {
+      "consumer_id": "c0-wiring-reconciliation",
+      "command": "npm run verify:c0-wiring-reconciliation",
+      "package_script": "verify:c0-wiring-reconciliation",
+      "package_script_present": true,
+      "phase_gate_id": "c0-wiring-reconciliation-conformance",
+      "phase_gate_present": true,
+      "reader_path": "scripts/devseek-c0-wiring-reconciliation-check.mjs",
+      "reader_source_sha256": "b51902a05ab67e9c82d88f1df79581b1aff27cf921f4f6552a56f27356882474",
+      "direct_ledger_reader": true,
+      "coverage_status": "covered"
+    },
+    {
       "consumer_id": "gate0-machine-decision",
       "command": "npm run verify:gate0-decision",
       "package_script": "verify:gate0-decision",
@@ -186,10 +198,10 @@
   "counts": {
     "ledger_source_owners": 1,
     "ledger_schema_owners": 1,
-    "governed_consumers": 7,
-    "governed_consumers_covered": 7,
+    "governed_consumers": 8,
+    "governed_consumers_covered": 8,
     "bypasses": 0,
     "qualification_claims": 0
   },
-  "wiring_sha256": "ac0d1c6cd6e13a6ac282e80d7fed245dcdca90e88643af03a076bbed82804af8"
+  "wiring_sha256": "a61fe122ea4a17ec5afd1078f87e0168d22c87bf94cc92458a8758dd05af541d"
 }

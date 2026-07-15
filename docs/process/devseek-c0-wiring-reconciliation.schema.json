@@ -1,0 +1,302 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-c0-wiring-reconciliation-v1.json",
+  "title": "DevSeek Gate 0 C0 Wiring Reconciliation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "reconciliation_id",
+    "reconciliation_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "sources",
+    "reconciled_reports",
+    "gate0_decision",
+    "bypass_guards",
+    "counts",
+    "reconciliation_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.c0-wiring-reconciliation/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "reconciliation_id": { "const": "DEVSEEK-GATE0-C0-WIRING-RECONCILIATION/v1" },
+    "reconciliation_version": { "const": 1 },
+    "source_status": { "const": "verified" },
+    "integrity_scope": { "const": "local-c0-wiring-reconciliation" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "sources": { "$ref": "#/$defs/sources" },
+    "reconciled_reports": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": { "$ref": "#/$defs/reconciledReport" }
+    },
+    "gate0_decision": { "$ref": "#/$defs/gate0Decision" },
+    "bypass_guards": { "$ref": "#/$defs/bypassGuards" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "reconciliation_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "source_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_ledger",
+        "package_scripts",
+        "phase_gate_source",
+        "checker_source",
+        "oracle_source"
+      ],
+      "properties": {
+        "capability_ledger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "schema_version", "ledger_id", "source_sha256"],
+          "properties": {
+            "path": { "const": "docs/process/devseek-capability-ledger.json" },
+            "schema_version": { "const": "devseek.capability-ledger/v1" },
+            "ledger_id": { "const": "DEVSEEK-CAPABILITY-LEDGER/v1" },
+            "source_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "package_scripts": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "properties": {
+                "path": { "const": "package.json" }
+              }
+            }
+          ]
+        },
+        "phase_gate_source": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "properties": {
+                "path": { "const": "scripts/devseek-phase0-12-verify.mjs" }
+              }
+            }
+          ]
+        },
+        "checker_source": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "properties": {
+                "path": { "const": "scripts/devseek-c0-wiring-reconciliation-check.mjs" }
+              }
+            }
+          ]
+        },
+        "oracle_source": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "properties": {
+                "path": { "const": "scripts/test/devseek-c0-wiring-reconciliation.test.mjs" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "reconciledReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "report_id",
+        "path",
+        "schema_version",
+        "expected_schema_version",
+        "hash_field",
+        "reported_sha256",
+        "computed_sha256",
+        "hash_status",
+        "package_script",
+        "package_script_present",
+        "phase_gate_id",
+        "phase_gate_present",
+        "checker_path",
+        "checker_source_sha256",
+        "generated_view"
+      ],
+      "properties": {
+        "report_id": { "$ref": "#/$defs/nonEmpty" },
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "schema_version": { "$ref": "#/$defs/nonEmpty" },
+        "expected_schema_version": { "$ref": "#/$defs/nonEmpty" },
+        "hash_field": { "$ref": "#/$defs/nonEmpty" },
+        "reported_sha256": { "$ref": "#/$defs/sha256" },
+        "computed_sha256": { "$ref": "#/$defs/sha256" },
+        "hash_status": { "const": "matched" },
+        "package_script": { "$ref": "#/$defs/nonEmpty" },
+        "package_script_present": { "const": true },
+        "phase_gate_id": { "$ref": "#/$defs/nonEmpty" },
+        "phase_gate_present": { "const": true },
+        "checker_path": { "$ref": "#/$defs/nonEmpty" },
+        "checker_source_sha256": { "$ref": "#/$defs/sha256" },
+        "generated_view": { "$ref": "#/$defs/generatedView" }
+      }
+    },
+    "generatedView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "status", "source_sha256"],
+      "properties": {
+        "path": {
+          "anyOf": [
+            { "$ref": "#/$defs/nonEmpty" },
+            { "type": "null" }
+          ]
+        },
+        "status": { "enum": ["current", "not-applicable"] },
+        "source_sha256": {
+          "anyOf": [
+            { "$ref": "#/$defs/sha256" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "gate0Decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "gate_passed",
+        "asserts_gate_pass",
+        "capabilities",
+        "implementation_requirements_satisfied",
+        "exact_claim_requirements_satisfied",
+        "observed_claims",
+        "repository_pending_blockers",
+        "external_authority_blockers",
+        "claims_empty",
+        "repository_blockers_empty",
+        "external_blockers_preserved",
+        "source_bindings",
+        "independent_authority_status"
+      ],
+      "properties": {
+        "status": { "const": "NOT_PASSED" },
+        "gate_passed": { "const": false },
+        "asserts_gate_pass": { "const": false },
+        "capabilities": { "const": 7 },
+        "implementation_requirements_satisfied": { "const": 7 },
+        "exact_claim_requirements_satisfied": { "const": 0 },
+        "observed_claims": { "const": 0 },
+        "repository_pending_blockers": { "const": 0 },
+        "external_authority_blockers": { "const": 6 },
+        "claims_empty": { "const": true },
+        "repository_blockers_empty": { "const": true },
+        "external_blockers_preserved": { "const": true },
+        "source_bindings": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "$ref": "#/$defs/sourceBinding" }
+        },
+        "independent_authority_status": { "const": "UNAVAILABLE_NO_EXTERNAL_TRUST_ROOT" }
+      }
+    },
+    "sourceBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["binding_id", "observed_sha256", "expected_sha256", "status"],
+      "properties": {
+        "binding_id": { "$ref": "#/$defs/nonEmpty" },
+        "observed_sha256": { "$ref": "#/$defs/sha256" },
+        "expected_sha256": { "$ref": "#/$defs/sha256" },
+        "status": { "const": "matched" }
+      }
+    },
+    "bypassGuards": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "local_reports_may_issue_claims",
+        "markdown_may_lower_external_blockers",
+        "local_fixture_claims_permitted",
+        "repository_blockers_may_be_manually_cleared",
+        "external_blockers_may_be_removed_by_local_report",
+        "r1_may_start_before_gate0_pass"
+      ],
+      "properties": {
+        "local_reports_may_issue_claims": { "const": false },
+        "markdown_may_lower_external_blockers": { "const": false },
+        "local_fixture_claims_permitted": { "const": false },
+        "repository_blockers_may_be_manually_cleared": { "const": false },
+        "external_blockers_may_be_removed_by_local_report": { "const": false },
+        "r1_may_start_before_gate0_pass": { "const": false }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reconciled_reports",
+        "report_hashes_matched",
+        "package_scripts_covered",
+        "phase_gates_covered",
+        "generated_views",
+        "generated_views_current",
+        "gate0_repository_pending_blockers",
+        "gate0_external_authority_blockers",
+        "observed_claims",
+        "bypasses"
+      ],
+      "properties": {
+        "reconciled_reports": { "const": 6 },
+        "report_hashes_matched": { "const": 6 },
+        "package_scripts_covered": { "const": 7 },
+        "phase_gates_covered": { "const": 7 },
+        "generated_views": { "const": 5 },
+        "generated_views_current": { "const": 5 },
+        "gate0_repository_pending_blockers": { "const": 0 },
+        "gate0_external_authority_blockers": { "const": 6 },
+        "observed_claims": { "const": 0 },
+        "bypasses": { "const": 0 }
+      }
+    }
+  }
+}
