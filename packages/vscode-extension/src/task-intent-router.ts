@@ -24,6 +24,7 @@ export type TaskIntentFamily =
   | 'ambiguous';
 
 export type RoutedAgentTaskShape =
+  | 'simple-file'
   | 'existing-project'
   | 'standalone-project'
   | 'read-only-analysis'
@@ -179,6 +180,7 @@ function resolveAgentTaskShape(
   if (FAILURE_RE.test(prompt)) {
     return 'validation-repair';
   }
+  if (family === 'simple-file') return 'simple-file';
   if (family === 'existing-project-edit') return 'existing-project';
   if (family === 'standalone-program') return 'standalone-project';
   if (family === 'read-only-advisory' || family === 'review') return 'read-only-analysis';

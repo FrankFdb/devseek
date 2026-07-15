@@ -23,7 +23,12 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const { createDevSeekRunContext } = req(bundlePath);
-const { FileSystemRunEvidenceLedger, productRunEvidenceRoot } = req(path.join(rootDir, '../shared/dist/index.js'));
+const {
+  FileSystemRunEvidenceLedger,
+  ProductRunEvidenceSession,
+  productRunEvidenceIdempotencyKey,
+  productRunEvidenceRoot,
+} = req(path.join(rootDir, '../shared/dist/index.js'));
 
 function readJsonl(filePath) {
   return readFileSync(filePath, 'utf8').trim().split('\n').map(line => JSON.parse(line));
@@ -32,6 +37,10 @@ function readJsonl(filePath) {
 function readStartedContractFingerprint(workspaceRoot, runId) {
   const entries = readJsonl(path.join(workspaceRoot, '.devseek', 'runs', `${runId}.log`));
   return entries.find(entry => entry.event === 'agent-run-started').data.taskContractFingerprint;
+}
+
+function observed(status, payload = {}) {
+  return { ...payload, status, trust: 'product-runtime-observation' };
 }
 
 test('RunContext: owns one run id and one chronological log file', () => {
@@ -329,6 +338,73 @@ test('RunContext: repaired mutation uses a new attempt and resolves the failed s
     assert.equal(recovery.payload.resolves_operation_ids.includes(sideEffectTerminals[0].payload.operation_id), true);
     assert.equal(recovery.payload.verification_operation_id, 'verify-repair');
     assert.equal(ledger.verify('run-context-mutation-recovery').status, 'valid-sealed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('RunContext: provider response recovery resolves participant provider failure after bounded retry validation', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-provider-recovery',
+      userPrompt: '创建 controlled-sim.txt 并读回验证',
+      traceLevel: 'debug',
+    });
+    const provider = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId: 'run-context-provider-recovery',
+      surface: 'vscode-provider',
+      authority: {
+        role: 'participant',
+        token: context.evidenceParticipantToken,
+      },
+    });
+    for (const type of ['provider.requested', 'provider.failed']) {
+      provider.record({
+        type,
+        idempotencyKey: productRunEvidenceIdempotencyKey(`provider-recovery:${type}`, {
+          operationId: 'provider:truncated-response',
+        }),
+        payload: observed(type.slice('provider.'.length), {
+          operation_id: 'provider:truncated-response',
+          boundary: 'vscode-provider-client',
+        }),
+      });
+    }
+
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'repair', state: 'started', title: 'Provider 响应被截断，正在安全续跑' });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      state: 'started',
+      taskId: 'agentic',
+      taskFile: 'controlled-sim.txt',
+      taskAction: 'create',
+      title: '创建 controlled-sim.txt',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      state: 'completed',
+      taskId: 'agentic',
+      taskFile: 'controlled-sim.txt',
+      taskAction: 'create',
+      title: '创建 controlled-sim.txt',
+    });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'validate', state: 'started', title: '自动验证写入结果', evidenceOperationId: 'verify-provider-recovery' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'validate', state: 'completed', title: '自动验证通过', evidenceOperationId: 'verify-provider-recovery' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'quality', state: 'started', title: '评估自动验证 QualityGate', evidenceOperationId: 'verify-provider-recovery' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'quality', state: 'completed', title: '自动验证 QualityGate 通过', evidenceOperationId: 'verify-provider-recovery' });
+    context.complete('completed');
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read('run-context-provider-recovery');
+    const recovery = events.find(event => event.type === 'recovery.completed');
+    assert.equal(recovery.payload.resolves_operation_ids.includes('provider:truncated-response'), true);
+    assert.equal(recovery.payload.verification_operation_id, 'verify-provider-recovery');
+    assert.equal(ledger.verify('run-context-provider-recovery').status, 'valid-sealed');
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }

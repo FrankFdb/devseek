@@ -44,6 +44,49 @@ export interface AgentAutoValidationOptions {
   qualityWrittenFiles?: WrittenFileEvidence[];
 }
 
+let autoValidationOperationSequence = 0;
+
+function nextAutoValidationOperationId(changedPaths: readonly string[]): string {
+  autoValidationOperationSequence += 1;
+  const scope = changedPaths.join('|').replace(/[^0-9A-Za-z._/-]+/g, '-').slice(0, 160) || 'workspace';
+  return `auto-validation-${autoValidationOperationSequence}-${scope}`.slice(0, 512);
+}
+
+function qualityGateStatusToAgentState(
+  status: NonNullable<AgentAutoValidationResult['qualityGate']>['status'],
+): AgentStatusEvent['state'] {
+  if (status === 'pass') return 'completed';
+  if (status === 'blocked') return 'skipped';
+  return 'failed';
+}
+
+async function emitAutoValidationQualityGateStatus(
+  callbacks: AgentAutoValidationCallbacks,
+  evidenceOperationId: string,
+  qualityGate: NonNullable<AgentAutoValidationResult['qualityGate']>,
+): Promise<void> {
+  await callbacks.onAgentStatus({
+    type: 'agentStatus',
+    phase: 'quality',
+    state: 'started',
+    evidenceOperationId,
+    title: '评估自动验证 QualityGate',
+    detail: qualityGate.summary,
+  });
+  await callbacks.onAgentStatus({
+    type: 'agentStatus',
+    phase: 'quality',
+    state: qualityGateStatusToAgentState(qualityGate.status),
+    evidenceOperationId,
+    title: qualityGate.status === 'pass'
+      ? '自动验证 QualityGate 通过'
+      : qualityGate.status === 'blocked'
+        ? '自动验证 QualityGate 阻塞'
+        : '自动验证 QualityGate 未通过',
+    detail: qualityGate.summary,
+  });
+}
+
 function workspaceRelativeValidationPaths(writtenFiles: WrittenFileEvidence[], workspaceRootFsPath: string): string[] {
   if (!workspaceRootFsPath) return [];
   const root = nodePath.resolve(workspaceRootFsPath);
@@ -353,6 +396,7 @@ export async function runAgentAutoValidationForWrites(
 ): Promise<AgentAutoValidationResult> {
   const changedPaths = workspaceRelativeValidationPaths(writtenFiles, workspaceRootFsPath);
   if (changedPaths.length === 0 || callbacks.signal?.aborted) return {};
+  const evidenceOperationId = nextAutoValidationOperationId(changedPaths);
 
   const validationService = options.validationService ?? new ValidationService({
     commandRunner: callbacks.onValidationCommand,
@@ -362,6 +406,7 @@ export async function runAgentAutoValidationForWrites(
       type: 'agentStatus',
       phase: 'validate',
       state: 'started',
+      evidenceOperationId,
       title: '自动验证写入结果',
       detail: changedPaths.join('\n'),
     });
@@ -389,9 +434,13 @@ export async function runAgentAutoValidationForWrites(
         type: 'agentStatus',
         phase: 'validate',
         state: formalProjectQuality ? 'failed' : 'skipped',
+        evidenceOperationId,
         title: formalProjectQuality ? '正式项目质量门禁未通过' : '未识别到自动验证目标',
         detail: [changedPaths.join('\n'), formalProjectQuality?.feedbackForAI].filter(Boolean).join('\n\n').slice(0, 1200),
       });
+      if (formalProjectQuality?.qualityGate) {
+        await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, formalProjectQuality.qualityGate);
+      }
       return formalProjectQuality ?? {};
     }
     if (result.status === 'blocked' || result.ran === false) {
@@ -401,9 +450,11 @@ export async function runAgentAutoValidationForWrites(
         type: 'agentStatus',
         phase: 'validate',
         state: formalProjectQuality ? 'failed' : 'skipped',
+        evidenceOperationId,
         title: formalProjectQuality ? '正式项目质量门禁未通过' : '自动验证阻塞',
         detail: [feedbackForAI, formalProjectQuality?.feedbackForAI].filter(Boolean).join('\n\n').slice(0, 1200),
       });
+      await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, qualityGate);
       return {
         feedbackForAI: [feedbackForAI, formalProjectQuality?.feedbackForAI].filter(Boolean).join('\n\n'),
         qualityGate,
@@ -423,6 +474,7 @@ export async function runAgentAutoValidationForWrites(
       type: 'agentStatus',
       phase: 'validate',
       state: validationPassed ? 'completed' : 'failed',
+      evidenceOperationId,
       title: validationPassed
         ? '自动验证通过'
         : formalProjectQuality
@@ -430,6 +482,7 @@ export async function runAgentAutoValidationForWrites(
           : '自动验证失败',
       detail: finalFeedbackForAI.slice(0, 1200),
     });
+    await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, finalQualityGate);
     return {
       evidence: validationResultToTerminalEvidence(result),
       feedbackForAI: finalFeedbackForAI,
@@ -442,6 +495,7 @@ export async function runAgentAutoValidationForWrites(
       type: 'agentStatus',
       phase: 'validate',
       state: 'failed',
+      evidenceOperationId,
       title: '自动验证异常',
       detail: message,
     });

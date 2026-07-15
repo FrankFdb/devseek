@@ -58,7 +58,13 @@ test('Agent auto validation: successful project validation becomes completion ev
   assert.equal(result.evidence.ok, true);
   assert.equal(result.evidence.kind, 'compile');
   assert.match(result.feedbackForAI, /npm run compile/);
-  assert.deepEqual(statuses.map(status => status.state), ['started', 'completed']);
+  assert.deepEqual(statuses.map(status => `${status.phase}:${status.state}`), [
+    'validate:started',
+    'validate:completed',
+    'quality:started',
+    'quality:completed',
+  ]);
+  assert.equal(new Set(statuses.map(status => status.evidenceOperationId)).size, 1);
   assert.deepEqual(activities, [{ kind: 'terminal', label: '自动验证: npm run compile' }]);
 });
 
@@ -166,7 +172,10 @@ test('Agent auto validation: blocked validation is a QualityGate block, not fail
   assert.deepEqual(statuses.map((status) => `${status.state}:${status.title}`), [
     'started:自动验证写入结果',
     'skipped:自动验证阻塞',
+    'started:评估自动验证 QualityGate',
+    'skipped:自动验证 QualityGate 阻塞',
   ]);
+  assert.equal(new Set(statuses.map(status => status.evidenceOperationId)).size, 1);
   assert.deepEqual(activities, []);
 });
 
@@ -580,8 +589,14 @@ test('Agent auto validation: requested standalone C++ program passes after compi
     assert.equal(result.evidence.ok, true);
     assert.equal(result.qualityGate.status, 'pass');
     assert.doesNotMatch(result.feedbackForAI || '', /formal_project_source_quality|正式项目源码质量门禁/);
-    assert.deepEqual(statuses.map(status => status.state), ['started', 'completed']);
-    assert.equal(statuses.at(-1).title, '自动验证通过');
+    assert.deepEqual(statuses.map(status => `${status.phase}:${status.state}`), [
+      'validate:started',
+      'validate:completed',
+      'quality:started',
+      'quality:completed',
+    ]);
+    assert.equal(statuses.find(status => status.phase === 'validate' && status.state === 'completed').title, '自动验证通过');
+    assert.equal(statuses.at(-1).title, '自动验证 QualityGate 通过');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

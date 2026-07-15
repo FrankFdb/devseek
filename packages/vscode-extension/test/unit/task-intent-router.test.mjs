@@ -34,7 +34,7 @@ test('TaskIntentRouter: explicit path plus exact content is deterministic simple
   assert.equal(route.family, 'simple-file');
   assert.equal(route.chatKind, 'code-change');
   assert.equal(route.mode, 'edit');
-  assert.equal(route.agentTaskShape, 'general');
+  assert.equal(route.agentTaskShape, 'simple-file');
   assert.equal(route.simpleFile.path, 'controlled-sim.txt');
   assert.equal(route.validation.fileCheckRequired, true);
   assert.equal(route.quality.formalProjectRequired, false);

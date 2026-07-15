@@ -15,6 +15,7 @@ export function classifyAgentTaskShape(userPrompt: string): AgentTaskShapeClassi
   const existingProjectLikely = route.agentTaskShape === 'existing-project'
     || route.semanticContract.scope === 'existing-project';
   const standaloneLikely = route.agentTaskShape === 'standalone-project'
+    || route.agentTaskShape === 'simple-file'
     || route.semanticContract.scope === 'standalone';
   const readOnlyLikely = route.agentTaskShape === 'read-only-analysis'
     && !route.mutation.requested;
@@ -32,8 +33,10 @@ export function classifyAgentTaskShape(userPrompt: string): AgentTaskShapeClassi
 }
 
 export function buildTaskShapeGuidancePrompt(userPrompt: string): string {
+  const route = routeTaskIntent(userPrompt);
   const classification = classifyAgentTaskShape(userPrompt);
   const shapeLabel: Record<AgentTaskShape, string> = {
+    'simple-file': '简单文件写入/读回验证',
     'existing-project': '既有大项目/正式项目内实现',
     'standalone-project': '独立新项目/原型/练习',
     'read-only-analysis': '只读分析/设计/文档',
@@ -45,7 +48,13 @@ export function buildTaskShapeGuidancePrompt(userPrompt: string): string {
     `- 初判：${shapeLabel[classification.shape]}。`,
   ];
 
-  if (classification.shape === 'existing-project') {
+  if (route.family === 'simple-file') {
+    lines.push(
+      '- 这是边界明确的简单文件任务；只创建或修改用户指定文件，不要扩展成项目调查、架构设计或正式工程集成任务。',
+      '- 优先直接写入目标内容，然后读回或执行最小文件检查命令验证内容；结论只引用真实文件路径和验证输出。',
+      '- 不要创建额外目录、示例工程、源码入口、设计文档或 Todo，除非用户明确要求。',
+    );
+  } else if (classification.shape === 'existing-project') {
     lines.push(
       '- 必须先收集既有工程集成锚点：主入口/调度链路、线程或事件模型、消息/协议、既有数据结构、配置、日志/错误处理、构建和测试入口。',
       '- 开始执行前的 manage_todo_list 必须按软件工程阶段组织：项目调查 → 设计/接口与原代码修改清单 → 代码实现 → 编译/测试/QualityGate 验证；不能只用一个“完成整个需求”的粗任务。',

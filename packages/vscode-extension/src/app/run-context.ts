@@ -317,10 +317,10 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     }
 
     if (status.phase === 'repair') {
-      if (this.pendingAdverseOperationIds.size === 0) return;
+      const targetOperationIds = this.collectRecoverableAdverseOperationIds();
+      if (targetOperationIds.length === 0) return;
       if (status.state === 'started' && !this.currentRecovery) {
         this.recoverySequence += 1;
-        const targetOperationIds = [...this.pendingAdverseOperationIds];
         const operationId = `vscode-recovery-${this.recoverySequence}`;
         this.currentRecovery = { operationId, targetOperationIds };
         this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
@@ -350,6 +350,34 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       this.recordOperationEvent('side_effect.committed', operationId, 'committed', summary, recoveryDetails);
       this.hasSideEffectEvidence = true;
     }
+  }
+
+  private collectRecoverableAdverseOperationIds(): string[] {
+    const operationIds = new Set(this.pendingAdverseOperationIds);
+    if (!this.evidence) return [...operationIds];
+    try {
+      const resolved = new Set<string>();
+      const events = this.evidence.readEvents();
+      for (const event of events) {
+        if (event.type !== 'recovery.completed') continue;
+        const payload = evidencePayloadObject(event.payload);
+        const resolvedIds = Array.isArray(payload?.resolves_operation_ids)
+          ? payload.resolves_operation_ids
+          : [];
+        for (const value of resolvedIds) {
+          if (typeof value === 'string' && value.trim()) resolved.add(value.trim());
+        }
+      }
+      for (const event of events) {
+        if (!isAdverseEvidenceType(event.type)) continue;
+        const payload = evidencePayloadObject(event.payload);
+        const operationId = typeof payload?.operation_id === 'string' ? payload.operation_id.trim() : '';
+        if (operationId && !resolved.has(operationId)) operationIds.add(operationId);
+      }
+    } catch (error) {
+      this.markEvidenceDegraded(error);
+    }
+    return [...operationIds];
   }
 
   private recordVerificationStatus(

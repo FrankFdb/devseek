@@ -12,6 +12,7 @@ import { getProjectRulesSync, wrapRulesAsContext, getProjectMemorySync, wrapMemo
 import { type McpToolRef } from '../mcp/client';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { CppValidationPolicy } from '../validation-planner';
+import { routeTaskIntent } from '../task-intent-router';
 import {
   buildTerminalFailureRepairFeedback,
   coalesceWrittenFileEvidence,
@@ -348,6 +349,7 @@ function buildAgenticSystemPrompt(
   projectMemoryText?: string,
   workflowMode: ExecutionMode = 'edit',
 ): string {
+  const taskIntent = routeTaskIntent(userPrompt);
   const rulesSection = projectRulesText ? `\n${wrapRulesAsContext(projectRulesText)}\n` : '';
   const memSection  = projectMemoryText ? `\n${wrapMemoryAsContext(projectMemoryText)}\n` : '';
   const filesSection = dataFiles.length > 0
@@ -374,8 +376,7 @@ function buildAgenticSystemPrompt(
 【工作区根目录】${workspaceRoot}
 ${rulesSection}${memSection}${filesSection}${workflowModeSection}
 ${buildTaskShapeGuidancePrompt(userPrompt)}
-
-${buildEngineeringGuidelinesPrompt('agent')}
+${buildEngineeringGuidelinesPrompt('agent', { taskIntent })}
 
 【可用工具】
 
@@ -719,7 +720,7 @@ export async function runAgenticLoop(
         callbacks.onToolActivity?.('label', display.activityLabel);
         await callbacks.onAgentStatus({
           type: 'agentStatus',
-          phase: 'execute',
+          phase: 'repair',
           taskId: 'agentic',
           taskFile: initialDisplayTarget,
           taskAction: initialDisplayAction,

@@ -106,6 +106,7 @@ import { shouldRequestManualReviewForRun } from './agent/manual-review-validatio
 import { decideAgentRuntimeTurn } from './agent/agent-runtime-turn-policy';
 import { WorkspaceEditService, type WorkspaceTextFileBaseline } from './workspace/edit-service';
 import { buildTaskShapeGuidancePrompt } from './agent/task-shape';
+import { routeTaskIntent } from './task-intent-router';
 import { VerificationPlanner, shouldRunCppValidation } from './app/verification-planner';
 import { ValidationService } from './workspace/validation-service';
 import type { ExecutionMode } from './intent/intent-types';
@@ -349,6 +350,7 @@ function buildAnalyzePrompt(
   mcpTools?: McpToolRef[],
   executionMode?: ExecutionMode,
 ): string {
+  const taskIntent = routeTaskIntent(userPrompt);
   const basename = nodePath.basename(task.file);
   const ext = (basename.split('.').pop() ?? '').toLowerCase();
   const allowTerminalTools = executionMode === 'edit' || executionMode === 'run' || executionMode === 'destructive';
@@ -423,6 +425,7 @@ function buildAnalyzePrompt(
     buildToolsSuffix(taskIndex, taskTotal, mcpTools, taskDir, {
       includeTerminal: allowTerminalTools,
       includeWorkspaceMutationTools: allowWorkspaceMutationTools,
+      taskIntent,
     }),
   ].join('\n');
 }
@@ -446,6 +449,7 @@ function buildEditorPrompt(
   workdirOverride?: string,
   wsRootPath?: string,
 ): string {
+  const taskIntent = routeTaskIntent(userPrompt);
   const basename = nodePath.basename(task.file);
   // Use workspace-relative path (e.g. 'code/3d_sphere.cpp') so the LLM knows the real
   // directory and won't guess a wrong one (e.g. 'src/') in the output file header.
@@ -538,7 +542,9 @@ function buildEditorPrompt(
           `- 只修改任务要求的部分，保留其余代码不变`,
           `- 禁止在格式块外添加解释性文字`,
         ].join('\n'),
-    buildToolsSuffix(taskIndex, taskTotal, mcpTools, workdirOverride ?? (task.absPath ? nodePath.dirname(task.absPath) : undefined)),
+    buildToolsSuffix(taskIndex, taskTotal, mcpTools, workdirOverride ?? (task.absPath ? nodePath.dirname(task.absPath) : undefined), {
+      taskIntent,
+    }),
   ].filter(Boolean).join('\n');
 }
 

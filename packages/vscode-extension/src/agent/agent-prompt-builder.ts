@@ -1,5 +1,6 @@
 import type { AgentTask } from '../agent-task-decomposer';
 import type { McpToolRef } from '../mcp/client';
+import type { TaskIntentRoute } from '../task-intent-router';
 import { buildEngineeringGuidelinesPrompt } from './engineering-guidelines';
 import { buildFullFileWriteToolPrompt, buildReplaceInFileToolPrompt } from './tool-protocol-prompt';
 
@@ -24,6 +25,7 @@ export function buildLocalRespondTaskMessage(task: AgentTask, userPrompt: string
 export interface BuildToolsSuffixOptions {
   includeTerminal?: boolean;
   includeWorkspaceMutationTools?: boolean;
+  taskIntent?: Pick<TaskIntentRoute, 'family' | 'agentTaskShape' | 'quality'>;
 }
 
 export function buildToolsSuffix(
@@ -58,7 +60,7 @@ export function buildToolsSuffix(
   const mcpSection = buildMcpToolsSection(mcpTools);
 
   return `
-${buildEngineeringGuidelinesPrompt('agent')}
+${buildEngineeringGuidelinesPrompt('agent', { taskIntent: options.taskIntent })}
 
 ## 可用工具（通过文本格式调用）
 

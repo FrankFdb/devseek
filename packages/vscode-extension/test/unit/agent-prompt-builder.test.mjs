@@ -51,6 +51,20 @@ test('AgentPromptBuilder: read-only tool suffix hides terminal and mutating tool
   assert.match(readOnly, /task_complete/);
 });
 
+test('AgentPromptBuilder: simple-file task receives lightweight engineering guidance', () => {
+  const simple = buildToolsSuffix(1, 1, undefined, '/tmp/project', {
+    taskIntent: {
+      family: 'simple-file',
+      agentTaskShape: 'simple-file',
+      quality: { formalProjectRequired: false },
+    },
+  });
+
+  assert.match(simple, /简单文件写入\/读回验证任务/);
+  assert.match(simple, /只处理用户指定的目标文件/);
+  assert.doesNotMatch(simple, /通信链路|原有代码修改清单|主入口\/调度链路/);
+});
+
 test('AgentPromptBuilder: local recovery message stays read-only without task facts', () => {
   const message = buildLocalRespondTaskMessage(
     { targetKind: 'unknown', action: 'analyze', description: 'recover' },

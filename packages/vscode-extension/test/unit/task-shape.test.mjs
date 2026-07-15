@@ -96,9 +96,14 @@ test('TaskShape: simple programming prompt is standalone instead of formal proje
 test('TaskShape: scoped no-touch constraint does not erase explicit artifact write', () => {
   const prompt = '请在当前工作区创建 controlled-sim.txt，文件内容必须精确包含一行 CONTROLLED_SIM_OK。完成写入和读回验证后结束任务，不要修改其他用户文件。';
   const result = classifyAgentTaskShape(prompt);
-  assert.equal(result.shape, 'general');
+  assert.equal(result.shape, 'simple-file');
   assert.equal(result.readOnlyLikely, false);
   assert.equal(result.validationLikely, true);
+
+  const guidance = buildTaskShapeGuidancePrompt(prompt);
+  assert.match(guidance, /简单文件写入\/读回验证/);
+  assert.match(guidance, /只创建或修改用户指定文件/);
+  assert.doesNotMatch(guidance, /通信链路|原有代码修改清单|主入口\/调度链路/);
 });
 
 test('TaskShape: read-only advice is not treated as implementation work', () => {

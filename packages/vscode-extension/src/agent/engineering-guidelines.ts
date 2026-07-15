@@ -1,13 +1,43 @@
+import type { TaskIntentRoute } from '../task-intent-router';
+
 export const CODE_FILE_REVIEW_LINE_LIMIT = 1024;
 export const CODE_FILE_SPLIT_PLAN_LINE_LIMIT = 2048;
 export const CODE_FILE_REFACTOR_PRIORITY_LINE_LIMIT = 3000;
 export const FUNCTION_LINE_LIMIT = 100;
 export const COMPLEX_FUNCTION_LINE_LIMIT = 300;
 
-export function buildEngineeringGuidelinesPrompt(role: 'agent' | 'planner' = 'agent'): string {
+export interface EngineeringGuidelinesPromptOptions {
+  taskIntent?: Pick<TaskIntentRoute, 'family' | 'agentTaskShape' | 'quality'>;
+}
+
+export function buildEngineeringGuidelinesPrompt(
+  role: 'agent' | 'planner' = 'agent',
+  options: EngineeringGuidelinesPromptOptions = {},
+): string {
   const plannerLine = role === 'planner'
     ? '- 任务计划要优先拆分到职责清晰的小文件/模块；不要默认把所有实现塞进一个文件。'
     : '- 生成或修改代码时优先新增小型领域服务、纯函数和清晰模块边界；不要把新逻辑继续堆进大入口文件。';
+  const family = options.taskIntent?.family;
+
+  if (family === 'simple-file') {
+    return [
+      '【工程设计与代码规模约束】',
+      '- 当前是简单文件写入/读回验证任务；只处理用户指定的目标文件和目标内容。',
+      '- 不要套用正式项目调查、接口文档、架构设计、源码入口、示例工程或项目级集成门禁。',
+      '- 写入后必须用 read_file 或最小只读命令验证文件存在和内容匹配；验证失败时只修正目标文件。',
+      '- 除非用户明确要求，不创建额外目录、源码、Markdown 交付物或长期项目记忆。',
+    ].join('\n');
+  }
+
+  if (family === 'standalone-program') {
+    return [
+      '【工程设计与代码规模约束】',
+      '- 当前是独立程序/练习/原型任务；可以自建最小源码入口和运行方式。',
+      '- 优先交付用户要求的最小可运行程序，编译/运行并核对输出；不要套用正式项目集成锚点。',
+      '- 代码保持清晰、直接、可验证；避免为简单程序引入多余框架、目录层级或设计文档。',
+      '- 如果用户明确禁止运行，只做源码/语法层面的可复算检查，并在结论中说明未运行。',
+    ].join('\n');
+  }
 
   return [
     '【工程设计与代码规模约束】',
