@@ -145,19 +145,23 @@ test('Mutation guard: durable settlement controls every completed success projec
   const commands = source('src/commands/index.ts');
   const commandRegistration = source('src/ui/extension-command-registration.ts');
   const viewProvider = source('src/ui/deepseek-view-provider.ts');
+  const agentKernel = source('src/app/agent-kernel-service.ts');
   const agentSettlement = source('src/app/agent-run-settlement.ts');
   const evidenceRouter = source('src/app/evidence-aware-chat-router.ts');
 
-  const agenticStart = extension.indexOf('const agSettlement = settleAgentLoopResult');
+  const agenticStart = extension.indexOf('const agSettlement = agentKernelRun.settleAgentLoopResult');
   const agenticSave = extension.indexOf('completed: agDurablyCompleted', agenticStart);
   const agenticAutopilot = extension.indexOf('if (agDurablyCompleted)', agenticStart);
   assert.ok(agenticStart >= 0 && agenticSave > agenticStart && agenticAutopilot > agenticStart);
   assert.match(extension, /\[Agentic\] \$\{agDurablyCompleted \? '已完成' : '未完成'\}/);
 
-  const twoPhaseStart = extension.indexOf('const agentSettlement = settleAgentLoopResult');
+  const twoPhaseStart = extension.indexOf('const agentSettlement = agentKernelRun.settleAgentLoopResult');
   const twoPhaseSave = extension.indexOf('completed: agentDurablyCompleted', twoPhaseStart);
   const twoPhaseAutoAccept = extension.indexOf("if (!loopFailedForAutoAccept && durableAgentSettlement === 'completed')", twoPhaseStart);
   assert.ok(twoPhaseStart >= 0 && twoPhaseSave > twoPhaseStart && twoPhaseAutoAccept > twoPhaseStart);
+  assert.doesNotMatch(extension, /from '\.\/app\/agent-run-settlement'/);
+  assert.match(agentKernel, /settleAgentLoopResult\(this\.terminalPermissions, this\.runContext/);
+  assert.match(agentKernel, /completeRunContext\(this\.runContext,\s*'failed'/);
   assert.match(agentSettlement, /const requestedStatus = result\.tasksFailed > 0 \? 'failed' : 'completed'/);
   assert.match(agentSettlement, /const status = terminalPermissions\.completeRunContext[\s\S]*?const completed = requestedStatus === 'completed' && status === 'completed'/);
 

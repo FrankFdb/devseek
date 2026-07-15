@@ -1874,18 +1874,26 @@ test('Architecture: ARCH-16 duplicate judgment domains have explicit owners', ()
 test('Architecture: ARCH-17 agent runs are created through RunContext', () => {
   const extension = src('src/extension.ts');
   const appIndex = src('src/app/index.ts');
+  const agentKernel = src('src/app/agent-kernel-service.ts');
   const runContext = src('src/app/run-context.ts');
   const terminalCoordinator = src('src/app/terminal-permission-coordinator.ts');
 
   assertContains(appIndex, "export * from './run-context';", 'RunContext owner must be exported through app boundary');
+  assertContains(appIndex, "export * from './agent-kernel-service';", 'AgentKernel owner must be exported through app boundary');
   assertContains(runContext, 'createDevSeekRunContext', 'RunContext owner must expose context creation');
   assertContains(runContext, 'agent-run-started', 'RunContext must record top-level run start facts');
   assertContains(runContext, 'agent-run-completed', 'RunContext must record top-level convergence facts');
-  assertContains(extension, 'createDevSeekRunContext({', 'agent entry must create a top-level RunContext');
+  assertContains(agentKernel, 'class AgentKernelService', 'Kernel service must own agent run composition');
+  assertContains(agentKernel, 'buildTaskContract(input.userPrompt)', 'Kernel service must receive/build TaskContract before RunContext creation');
+  assertContains(agentKernel, 'createDevSeekRunContext({', 'Kernel service must create the top-level RunContext');
+  assertContains(extension, 'agentKernelService.startRun({', 'agent entry must create a top-level Kernel run');
+  assertContains(extension, 'agentKernelRun.settleAgentLoopResult', 'agent entry must settle through Kernel run');
+  assertContains(extension, 'agentKernelRun.failRun', 'agent entry failure settlement must stay behind Kernel run');
+  assertDoesNotContain(extension, "from './app/agent-run-settlement'", 'agent Surface must not import completion settlement owner directly');
   assertContains(
-    extension,
-    'terminalPermissionCoordinator.completeRunContext(agentRunContext',
-    'agent entry must settle through the terminal-evidence convergence boundary',
+    agentKernel,
+    'settleAgentLoopResult(this.terminalPermissions, this.runContext',
+    'Kernel run must settle through the terminal-evidence convergence boundary',
   );
   assertContains(terminalCoordinator, 'runContext.complete(status, completionData)', 'convergence boundary must settle RunContext');
   assertContains(
@@ -1897,6 +1905,11 @@ test('Architecture: ARCH-17 agent runs are created through RunContext', () => {
     extension,
     /agentRunContext\??\.complete\s*\(/,
     'agent entry must not bypass the terminal-evidence convergence boundary',
+  );
+  assertDoesNotContain(
+    extension,
+    /terminalPermissionCoordinator\.completeRunContext\(agentRunContext/,
+    'agent entry must not bypass Kernel failure settlement',
   );
   assertDoesNotContain(extension, 'createDevSeekRunId', 'agent entry must not create bare run ids outside RunContext');
 });

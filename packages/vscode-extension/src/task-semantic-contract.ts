@@ -50,6 +50,7 @@ const WRITE_ACTION_RE = /(?:创建|新建|生成|编写|写一个|写个|写入|
 const NO_WRITE_RE = /(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:创建|新建|生成|编写|写入|写到|保存|输出|新增|添加|修改|更新|改动|触碰|覆盖|删除)|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:create|write|generate|save|add|update|modify|touch|overwrite|delete)/i;
 const NO_WRITE_CLAUSE_RE = /(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:创建|新建|生成|编写|写入|写到|保存|输出|新增|添加|修改|更新|改动|触碰|覆盖|删除)|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:create|write|generate|save|add|update|modify|touch|overwrite|delete)/gi;
 const OTHER_FILE_SCOPE_RE = /(?:其他|其它|其余|用户)(?:的)?(?:文件|文档|源码|代码)|(?:other|unrelated|user)\s+files?/i;
+const FORMAL_SOURCE_SCOPE_RE = /(?:正式|原有|现有|既有|生产|主线|原项目)[^，,。；;\n]{0,8}(?:源码|代码|源码目录|代码目录|source|code)|(?:formal|production|existing|original)\s+(?:source|code)/i;
 const VALIDATION_RE = /(?:验证|测试|编译|构建|运行|执行|确认|检查|读回|重新读取|test|verify|compile|build|run|execute|check|read\s*back)/i;
 const COMPILE_RE = /(?:编译|构建|g\+\+|gcc|clang|cmake|make|compile|build)/i;
 const RUN_RE = /(?:运行|执行|启动|跑一下|run|execute|start)/i;
@@ -71,7 +72,9 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const explicitSourceFileWrite = positiveWriteAction && sourceTargets.length > 0;
   const explicitNonCodeFileWrite = positiveWriteAction && nonCodeTargets.length > 0;
   const hasScopedOtherFileProhibition = NO_WRITE_RE.test(prompt) && OTHER_FILE_SCOPE_RE.test(prompt);
-  const hasUnscopedNoWrite = NO_WRITE_RE.test(prompt) && !hasScopedOtherFileProhibition;
+  const hasScopedFormalSourceProhibition = NO_WRITE_RE.test(prompt) && FORMAL_SOURCE_SCOPE_RE.test(prompt);
+  const hasScopedWriteProhibition = hasScopedOtherFileProhibition || hasScopedFormalSourceProhibition;
+  const hasUnscopedNoWrite = NO_WRITE_RE.test(prompt) && !hasScopedWriteProhibition;
   const standaloneCodeRaw = taskContract.taskShapes.includes('standalone')
     || (hasStandaloneCodeGenerationIntent(prompt) && !taskContract.taskShapes.includes('existing-project'))
     || (explicitSourceFileWrite && !taskContract.taskShapes.includes('existing-project'));
@@ -82,19 +85,22 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const sourceChange = taskContractSourceChange || explicitSourceFileWrite || standaloneCode;
   const fileArtifact = (taskContract.deliverables.includes('report') && positiveWriteAction)
     || explicitNonCodeFileWrite;
-  const prohibited = NO_WRITE_RE.test(prompt) && !hasScopedOtherFileProhibition && !sourceChange && !fileArtifact;
+  const prohibited = NO_WRITE_RE.test(prompt) && !hasScopedWriteProhibition && !sourceChange && !fileArtifact;
   const mutationRequested = (sourceChange || fileArtifact || taskContract.deliverableTargets.length > 0)
     && !prohibited;
-  const validationRequested = VALIDATION_RE.test(prompt) || taskContract.deliverables.includes('verification-result');
-  const positiveValidationText = prompt.replace(NO_RUN_CLAUSE_RE, ' ');
+  const validationText = maskTaskTargetPaths(prompt, taskContract.inputs);
+  const validationRequested = VALIDATION_RE.test(validationText) || taskContract.deliverables.includes('verification-result');
+  const positiveValidationText = maskTaskTargetPaths(prompt.replace(NO_RUN_CLAUSE_RE, ' '), taskContract.inputs);
   const compileRequested = COMPILE_RE.test(positiveValidationText);
-  const stdoutRequested = STDOUT_RE.test(prompt) && !OUTPUT_ARTIFACT_RE.test(prompt);
-  const runProhibited = NO_RUN_RE.test(prompt);
+  const stdoutRequested = STDOUT_RE.test(validationText) && !OUTPUT_ARTIFACT_RE.test(validationText);
+  const runProhibited = NO_RUN_RE.test(validationText);
   const testRequested = !runProhibited && TEST_RE.test(positiveValidationText);
   const runRequested = !runProhibited && (RUN_RE.test(positiveValidationText) || stdoutRequested || testRequested);
   const fileCheckRequested = fileArtifact
     && (validationRequested || taskContract.verificationContract.requireArtifactReadback || explicitNonCodeFileWrite);
   const formalProjectRequired = requiresFormalProjectQualityFromTaskContract(taskContract);
+  const readOnlyIntent = (READ_ONLY_RE.test(prompt) || (prohibited && !validationRequested))
+    && !mutationRequested;
   const scope: TaskSemanticScope = formalProjectRequired || (
     taskContract.taskShapes.includes('existing-project') && !standaloneCode
   )
@@ -103,9 +109,9 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
       ? 'standalone'
       : mutationRequested || validationRequested
         ? 'unknown'
-        : 'none';
+      : 'none';
   const kind = resolveKind({
-    readOnly: READ_ONLY_RE.test(prompt) && !mutationRequested,
+    readOnly: readOnlyIntent,
     standaloneCode,
     formalProjectRequired,
     fileArtifact,
@@ -118,6 +124,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     explicitSourceFileWrite ? 'explicit-source-file-target' : '',
     explicitNonCodeFileWrite ? 'explicit-file-artifact-target' : '',
     hasScopedOtherFileProhibition ? 'scoped-other-file-prohibition' : '',
+    hasScopedFormalSourceProhibition ? 'scoped-formal-source-prohibition' : '',
     formalProjectRequired ? 'formal-project-quality-required' : '',
     runRequested ? 'run-requested' : '',
     testRequested ? 'test-requested' : '',
@@ -210,4 +217,17 @@ function isSourcePath(pathValue: string): boolean {
 
 function isNonCodeArtifactPath(pathValue: string): boolean {
   return NON_CODE_ARTIFACT_RE.test(pathValue) && !isSourcePath(pathValue);
+}
+
+function maskTaskTargetPaths(text: string, paths: readonly string[]): string {
+  let masked = text;
+  for (const targetPath of [...new Set(paths)].sort((a, b) => b.length - a.length)) {
+    if (!targetPath) continue;
+    masked = masked.replace(new RegExp(escapeRegExp(targetPath), 'g'), ' ');
+  }
+  return masked;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

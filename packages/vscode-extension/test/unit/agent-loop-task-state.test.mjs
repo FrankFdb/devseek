@@ -289,7 +289,7 @@ test('two-phase agent history is evidence based, not extension-level thin summar
   );
   assert.match(
     extensionSource,
-    /terminalPermissionCoordinator\.completeRunContext\(agentRunContext,\s*'failed',\s*\{[\s\S]{0,160}reason:\s*'plan-generation-failed'/,
+    /agentKernelRun\.failRun\(\{[\s\S]{0,160}reason:\s*'plan-generation-failed'/,
     'plan generation failure must close the run context as failed through the convergence boundary',
   );
   assert.doesNotMatch(

@@ -94,4 +94,16 @@ test('TaskSemanticContract: file content wording does not become stdout runtime 
   assert.equal(contentLineContract.validation.runRequested, false);
 });
 
+test('TaskSemanticContract: read-only path tokens do not become runtime validation intent', () => {
+  const contract = buildTaskSemanticContract(
+    '解释 packages/vscode-extension/src/app/run-context.ts 做了什么，不要修改代码',
+  );
+
+  assert.equal(contract.kind, 'read-only');
+  assert.equal(contract.mutation.requested, false);
+  assert.equal(contract.validation.requested, false);
+  assert.equal(contract.validation.runRequested, false);
+  assert.equal(shouldRunCppValidationForContract(contract), false);
+});
+
 console.log('\nTask-semantic-contract tests passed.\n');

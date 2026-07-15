@@ -47,11 +47,11 @@ import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { MemoryService } from './app/memory-service';
 import { AgentDisplayPresenter } from './app/agent-display-presenter';
-import { createDevSeekRunContext, type RunContextStatus } from './app/run-context';
+import { AgentKernelService } from './app/agent-kernel-service';
+import { createDevSeekRunContext, type DevSeekRunContext, type RunContextStatus } from './app/run-context';
 import { createAgentCheckpointCallback } from './app/agent-checkpoint-callback';
 import { guardNonAgentResponse } from './app/non-agent-response-guard';
 import type { AgentChatRequest } from './app/agent-protocol';
-import { settleAgentLoopResult } from './app/agent-run-settlement';
 import { createAgentApplicationBridgeAdapter, EvidenceAwareChatRouter } from './app/evidence-aware-chat-router';
 import { createEvidenceAwareMcpToolCallFactory } from './app/evidence-aware-mcp-tool-call';
 import { recordApplyWorkflowEvidence } from './app/workflow-run-evidence-adapter';
@@ -119,6 +119,7 @@ let lastLocalExecutionPlan: LocalExecutionPlan | undefined;
 let pendingEditCoordinator: PendingEditCoordinator;
 const chatRouteController = new ChatRouteController();
 const terminalPermissionCoordinator = new TerminalPermissionCoordinator();
+const agentKernelService = new AgentKernelService(terminalPermissionCoordinator);
 let lastConversationFiles: string[] = [];
 let lastAnalysisText = '';
 /** Workspace-relative paths of files created/modified by the last agent run */
@@ -629,7 +630,7 @@ async function runChat(
     }
 
     const agentDisplayPresenter = new AgentDisplayPresenter();
-    let agentRunContext: ReturnType<typeof createDevSeekRunContext> | undefined;
+    let agentRunContext: DevSeekRunContext | undefined;
     const postAgent = (msg: AgentStatusMessage) => {
       agentRunContext?.recordAgentStatus(msg);
       webview.postMessage(agentDisplayPresenter.presentStatus(msg));
@@ -641,14 +642,19 @@ async function runChat(
     const agentWorkspaceRoot = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath)
       ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
       ?? process.cwd();
-    agentRunContext = createDevSeekRunContext({
+    const agentKernelRun = agentKernelService.startRun({
       workspaceRoot: agentWorkspaceRoot,
       source: 'vscode-extension.agent',
       userPrompt: prompt,
       sessionId: activeSessionId,
       mode,
       traceLevel: vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', 'debug'),
+      contextRefs: effectiveFiles.map(file => ({
+        kind: 'file',
+        uri: file,
+      })),
     });
+    agentRunContext = agentKernelRun.runContext;
     workflowRunContext = agentRunContext;
     const agentTraceRunId = agentRunContext.runId;
     const agentTraceWorkspaceRoot = agentRunContext.workspaceRoot;
@@ -817,9 +823,7 @@ async function runChat(
             registerToMemory(absPath);
           });
         }
-        const agSettlement = settleAgentLoopResult(
-          terminalPermissionCoordinator, agentRunContext, agResult, lastAgentChangedPaths,
-        );
+        const agSettlement = agentKernelRun.settleAgentLoopResult(agResult, lastAgentChangedPaths);
         const agDurablyCompleted = agSettlement.completed;
         if (agSettlement.refused) postAgentSettlementRefusal(webview, agentDisplayPresenter);
         const agChangedDetails = lastAgentChangedPaths.length > 0
@@ -971,7 +975,7 @@ async function runChat(
           }
           postWebviewMessage(webview, { type: 'error', text: errDelta, loginRequired: false });
           postAgent({ type: 'agentStatus', phase: 'done', state: 'failed', title: '执行结束（无可执行计划）', detail: 'Agent 模式已终止；请先解决计划生成失败原因后重试' });
-          terminalPermissionCoordinator.completeRunContext(agentRunContext, 'failed', {
+          agentKernelRun.failRun({
             reason: 'plan-generation-failed',
             detail: errMsg,
           });
@@ -1174,9 +1178,7 @@ async function runChat(
             registerToMemory(absPath);
           });
         }
-        const agentSettlement = settleAgentLoopResult(
-          terminalPermissionCoordinator, agentRunContext, loopResult,
-        );
+        const agentSettlement = agentKernelRun.settleAgentLoopResult(loopResult);
         durableAgentSettlement = agentSettlement.status;
         const agentDurablyCompleted = agentSettlement.completed;
         if (agentSettlement.refused) postAgentSettlementRefusal(webview, agentDisplayPresenter);
@@ -1258,7 +1260,7 @@ async function runChat(
         completed: false,
         savedAt: Date.now(),
       });
-      durableAgentSettlement = terminalPermissionCoordinator.completeRunContext(agentRunContext, 'failed', {
+      durableAgentSettlement = agentKernelRun.failRun({
         reason: 'agent-error',
         changedPaths: [],
       });
@@ -1286,8 +1288,8 @@ async function runChat(
       ?? (loopFailedForAutoAccept ? { tasksTotal: decomposedTaskCount, tasksApplied: 0, tasksFailed: 1, changedPaths: [] } : undefined);
     if (!loopFailedForAutoAccept && !durableAgentSettlement) {
       durableAgentSettlement = loopResult
-        ? settleAgentLoopResult(terminalPermissionCoordinator, agentRunContext, loopResult).status
-        : terminalPermissionCoordinator.completeRunContext(agentRunContext, 'failed', {
+        ? agentKernelRun.settleAgentLoopResult(loopResult).status
+        : agentKernelRun.failRun({
           tasksTotal: decomposedTaskCount,
           tasksApplied: 0,
           tasksFailed: 0,

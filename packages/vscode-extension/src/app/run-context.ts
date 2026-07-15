@@ -18,6 +18,7 @@ export interface DevSeekRunContextOptions {
   workspaceRoot: string;
   source?: string;
   userPrompt: string;
+  taskContract?: TaskContract;
   sessionId?: string;
   mode?: string;
   traceLevel?: DevSeekTraceLevel | string;
@@ -84,7 +85,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     this.workspaceRoot = options.workspaceRoot;
     this.sessionId = options.sessionId;
     this.mode = options.mode;
-    const taskContract = buildTaskContract(options.userPrompt);
+    const taskContract = options.taskContract ?? buildTaskContract(options.userPrompt);
     this.taskContractFingerprint = fingerprintTaskContract(taskContract);
     this.requiresSourceClaimArtifactVerification = hasSourceClaimArtifactContract(taskContract)
       && requiresFileChangeEvidence(options.userPrompt);
