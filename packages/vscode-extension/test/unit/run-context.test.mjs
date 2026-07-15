@@ -300,6 +300,51 @@ test('RunContext: projects mutation, verification, gate, tool and checkpoint fac
   }
 });
 
+test('RunContext: deterministic simple-file execution closes its side-effect before settlement', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-simple-file-'));
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-simple-file-settlement',
+      userPrompt: '创建 marker.txt，内容为：OK，并验证文件创建成功。',
+      traceLevel: 'debug',
+    });
+    const task = {
+      type: 'agentStatus',
+      phase: 'execute',
+      taskId: 'agentic',
+      taskFile: 'marker.txt',
+      taskAction: 'create',
+      taskIndex: 1,
+      taskTotal: 1,
+      title: 'marker.txt',
+    };
+    context.recordAgentStatus({ ...task, state: 'started' });
+    context.recordAgentStatus({ ...task, state: 'completed' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'validate', state: 'started', title: '读取 marker.txt', evidenceOperationId: 'simple-file-marker' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'validate', state: 'completed', title: '自动验证通过', evidenceOperationId: 'simple-file-marker' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'quality', state: 'started', title: '自动验证 QualityGate', evidenceOperationId: 'simple-file-marker' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'quality', state: 'completed', title: '自动验证 QualityGate 通过', evidenceOperationId: 'simple-file-marker' });
+    const settled = context.complete('completed', {
+      changedPaths: ['marker.txt'],
+      tasksTotal: 1,
+      tasksApplied: 1,
+      tasksFailed: 0,
+    });
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read('run-context-simple-file-settlement');
+    assert.equal(settled, 'completed');
+    assert.equal(events.some(event => event.type === 'side_effect.committed'), true);
+    assert.equal(events.some(event => event.type === 'side_effect.indeterminate'), false);
+    assert.equal(events.some(event => event.type === 'evidence.degraded'), false);
+    assert.equal(events.find(event => event.type === 'run.settled').payload.status, 'completed');
+    assert.equal(ledger.verify('run-context-simple-file-settlement').status, 'valid-sealed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('RunContext: repaired mutation uses a new attempt and resolves the failed side effect only after validation', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   try {

@@ -116,6 +116,7 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
     linesRemoved: oldLines,
     action: writeResult.existed ? 'modify' : 'create',
   };
+  await emitSimpleFileWriteCommitted(input.callbacks, resolved.relPath, writtenFile);
 
   const afterWriteTodos = advanceLinearAgentTodo(todos, 0, 1);
   await input.callbacks.onTodoUpdate?.(afterWriteTodos);
@@ -207,6 +208,25 @@ function buildSimpleFileCompletionSummary(relPath: string, evidence: TerminalEvi
     '验证：自动验证已通过。',
     '结论：任务已完成。',
   ].join('\n');
+}
+
+async function emitSimpleFileWriteCommitted(
+  callbacks: AgentLoopCallbacks,
+  relPath: string,
+  writtenFile: WrittenFileEvidence,
+): Promise<void> {
+  await callbacks.onAgentStatus({
+    type: 'agentStatus',
+    phase: 'execute',
+    state: 'completed',
+    taskId: 'agentic',
+    taskFile: relPath,
+    taskAction: 'create',
+    taskIndex: 1,
+    taskTotal: 1,
+    title: relPath,
+    editedFiles: [writtenFile],
+  });
 }
 
 async function finishSimpleFileTask(input: SimpleFileTaskInput & {

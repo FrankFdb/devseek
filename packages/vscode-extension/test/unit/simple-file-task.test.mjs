@@ -211,6 +211,16 @@ test('Simple file task: writes markdown and completes with file-check evidence',
     assert.equal(result.tasksFailed, 0);
     assert.equal(result.tasksApplied, 1);
     assert.deepEqual(validationInput.changedPaths, ['docs/manual-phase6-quality.md']);
+    const executeCompletedIndex = events.statuses.findIndex(status => (
+      status.phase === 'execute'
+      && status.state === 'completed'
+      && status.taskId === 'agentic'
+      && status.taskFile === 'docs/manual-phase6-quality.md'
+      && status.taskAction === 'create'
+    ));
+    const validateStartedIndex = events.statuses.findIndex(status => status.phase === 'validate');
+    assert.notEqual(executeCompletedIndex, -1);
+    assert.equal(executeCompletedIndex < validateStartedIndex, true);
     assert.equal(events.statuses.at(-1).phase, 'done');
     assert.equal(events.statuses.at(-1).state, 'completed');
     assert.equal(events.todos.at(-1).every((todo) => todo.status === 'completed'), true);
@@ -268,6 +278,16 @@ test('Simple file task: exact one-line text artifact uses deterministic fast pat
     assert.equal(result.tasksApplied, 1);
     assert.equal(result.tasksFailed, 0);
     assert.deepEqual(validationInput.changedPaths, ['ui-r1a1b-clean2-4a148c.txt']);
+    const executeCompletedIndex = events.statuses.findIndex(status => (
+      status.phase === 'execute'
+      && status.state === 'completed'
+      && status.taskId === 'agentic'
+      && status.taskFile === 'ui-r1a1b-clean2-4a148c.txt'
+      && status.taskAction === 'create'
+    ));
+    const validateStartedIndex = events.statuses.findIndex(status => status.phase === 'validate');
+    assert.notEqual(executeCompletedIndex, -1);
+    assert.equal(executeCompletedIndex < validateStartedIndex, true);
     assert.equal(events.statuses.at(-1).state, 'completed');
     assert.equal(events.todos.at(-1).length, 2);
     assert.equal(events.todos.at(-1).every((todo) => todo.status === 'completed'), true);
