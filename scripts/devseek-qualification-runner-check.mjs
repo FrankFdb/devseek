@@ -16,6 +16,7 @@ const authorityImportAllowlist = new Set([
   'scripts/devseek-profile-executor-contracts-check.mjs',
   'scripts/devseek-c0-preregistration-wiring-check.mjs',
   'scripts/devseek-c0-run-evidence-wiring-check.mjs',
+  'scripts/devseek-c0-manifest-aggregator-wiring-check.mjs',
 ]);
 
 export function checkQualificationRunnerWiring() {

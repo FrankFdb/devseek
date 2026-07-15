@@ -17,7 +17,7 @@
       "path": "docs/process/devseek-capability-ledger.json",
       "schema_version": "devseek.capability-ledger/v1",
       "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
-      "source_sha256": "0a61fb30dddee3bb26fe98a68bd244faf4810395052a3d5ecb8811231c4689a3"
+      "source_sha256": "0b39d420a63bd86a12cd2f92ad2a8744fc9cbd6bfee69297b54d71112828e6a0"
     },
     "milestone_profile": {
       "path": "docs/process/devseek-milestone-profiles.json",
@@ -1260,7 +1260,7 @@
       "capability_id": "C0-QUALIFICATION-AGGREGATOR",
       "capability_title": "C0 可证地基 / QualificationAggregationPort",
       "semantic_authority_port": "QualificationAggregationPort",
-      "implementation_state": "implemented",
+      "implementation_state": "wired",
       "required_implementation_state": "wired",
       "profile_denominator": {
         "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
@@ -1654,13 +1654,13 @@
           "slot_denominator_sha256": "c35261c778b0719e349027db20d240475f9116d0447bf55088bcb9465dc6f15d"
         }
       ],
-      "capability_denominator_sha256": "5b70434c5b06ec02a15f9ef8edb888f0b62a97e0fca976de2025877871b96251"
+      "capability_denominator_sha256": "8a81f83acd4c18b9a2cb74564a5c7105cc41cb1a4ed7dbf3a67c37120e353235"
     },
     {
       "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
       "capability_title": "C0 可证地基 / QualificationEvidenceManifestPort",
       "semantic_authority_port": "QualificationEvidenceManifestPort",
-      "implementation_state": "implemented",
+      "implementation_state": "wired",
       "required_implementation_state": "wired",
       "profile_denominator": {
         "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
@@ -2054,7 +2054,7 @@
           "slot_denominator_sha256": "4c9da992882950662bdd3866eedc1a7334d8013b2167753b1bbb4c0afe839962"
         }
       ],
-      "capability_denominator_sha256": "69bc433c013c5a7345c9e4eb7fc0ec11d482b106e48ae0dd41479e67294be436"
+      "capability_denominator_sha256": "8e5fd507d2721432738178f8d75c4f8bade03fb3350367320f1fd3a299305e02"
     },
     {
       "capability_id": "C0-QUALIFICATION-PROFILE-SCHEMA",
@@ -2866,5 +2866,5 @@
     "catalog_metadata_executions": 0,
     "qualification_claims": 0
   },
-  "registry_sha256": "22c8dd60eb617f40ca522e5c72b730973d4584ef6360dca9d74af33bb5f3ab44"
+  "registry_sha256": "34476c452bf160fe783539fb3768d991fea1715ba86bd19ebb99c69c2d31b44c"
 }

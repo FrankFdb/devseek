@@ -774,7 +774,7 @@
         },
         "contract_sha256": "bb80191aed73432cf3b147c9cba9bbe4176cae1d972306cd3efa57cb711fc86f"
       },
-      "implementation_state": "implemented",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
       "implementation_components": [
@@ -797,6 +797,34 @@
         {
           "role": "deterministic-attack-tests",
           "path": "scripts/test/devseek-qualification-evidence-manifest.test.mjs"
+        },
+        {
+          "role": "generated-machine-view",
+          "path": "docs/process/generated/devseek-qualification-evidence-manifest.md"
+        },
+        {
+          "role": "manifest-aggregator-wiring-source",
+          "path": "docs/process/devseek-c0-manifest-aggregator-wiring.json"
+        },
+        {
+          "role": "manifest-aggregator-wiring-schema",
+          "path": "docs/process/devseek-c0-manifest-aggregator-wiring.schema.json"
+        },
+        {
+          "role": "manifest-aggregator-wiring-generated-view",
+          "path": "docs/process/generated/devseek-c0-manifest-aggregator-wiring.md"
+        },
+        {
+          "role": "manifest-aggregator-wiring-checker",
+          "path": "scripts/devseek-c0-manifest-aggregator-wiring-check.mjs"
+        },
+        {
+          "role": "manifest-aggregator-wiring-library",
+          "path": "scripts/lib/devseek-c0-manifest-aggregator-wiring.mjs"
+        },
+        {
+          "role": "manifest-aggregator-wiring-oracles",
+          "path": "scripts/test/devseek-c0-manifest-aggregator-wiring.test.mjs"
         }
       ],
       "architecture_dependencies": [
@@ -815,7 +843,8 @@
       ],
       "verification": {
         "commands": [
-          "npm run verify:qualification-evidence-manifest"
+          "npm run verify:qualification-evidence-manifest",
+          "npm run verify:c0-manifest-aggregator-wiring"
         ],
         "evidence_kind": "deterministic-regression"
       }
@@ -844,7 +873,7 @@
         },
         "contract_sha256": "99fd7b7af1537a3943ff573907e221d07889ba11fc1bc02e5ea24671cd7073f1"
       },
-      "implementation_state": "implemented",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
       "implementation_components": [
@@ -867,6 +896,34 @@
         {
           "role": "generated-machine-view",
           "path": "docs/process/generated/devseek-qualification-evidence-manifest.md"
+        },
+        {
+          "role": "machine-contract-checker",
+          "path": "scripts/devseek-qualification-evidence-manifest-check.mjs"
+        },
+        {
+          "role": "manifest-aggregator-wiring-source",
+          "path": "docs/process/devseek-c0-manifest-aggregator-wiring.json"
+        },
+        {
+          "role": "manifest-aggregator-wiring-schema",
+          "path": "docs/process/devseek-c0-manifest-aggregator-wiring.schema.json"
+        },
+        {
+          "role": "manifest-aggregator-wiring-generated-view",
+          "path": "docs/process/generated/devseek-c0-manifest-aggregator-wiring.md"
+        },
+        {
+          "role": "manifest-aggregator-wiring-checker",
+          "path": "scripts/devseek-c0-manifest-aggregator-wiring-check.mjs"
+        },
+        {
+          "role": "manifest-aggregator-wiring-library",
+          "path": "scripts/lib/devseek-c0-manifest-aggregator-wiring.mjs"
+        },
+        {
+          "role": "manifest-aggregator-wiring-oracles",
+          "path": "scripts/test/devseek-c0-manifest-aggregator-wiring.test.mjs"
         }
       ],
       "architecture_dependencies": [
@@ -885,7 +942,8 @@
       ],
       "verification": {
         "commands": [
-          "npm run verify:qualification-evidence-manifest"
+          "npm run verify:qualification-evidence-manifest",
+          "npm run verify:c0-manifest-aggregator-wiring"
         ],
         "evidence_kind": "deterministic-regression"
       }
@@ -3816,5 +3874,5 @@
       ]
     }
   ],
-  "ledger_sha256": "0a61fb30dddee3bb26fe98a68bd244faf4810395052a3d5ecb8811231c4689a3"
+  "ledger_sha256": "0b39d420a63bd86a12cd2f92ad2a8744fc9cbd6bfee69297b54d71112828e6a0"
 }

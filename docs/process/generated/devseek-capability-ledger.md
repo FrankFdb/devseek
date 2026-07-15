@@ -4,7 +4,7 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `0a61fb30dddee3bb26fe98a68bd244faf4810395052a3d5ecb8811231c4689a3`
+- Ledger SHA-256: `0b39d420a63bd86a12cd2f92ad2a8744fc9cbd6bfee69297b54d71112828e6a0`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
@@ -12,8 +12,8 @@
 | `C0-CAPABILITY-LEDGER-SCHEMA` | P0 | active | qualification-infrastructure | wired | — | `CapabilityLedgerSchema` | — |
 | `C0-CASE-CATALOG` | P0 | active | qualification-infrastructure | wired | — | `GoldenCaseCatalogPort` | C0-CAPABILITY-LEDGER-SCHEMA (evidence/wired) |
 | `C0-PREREGISTRATION-PLAN` | P0 | active | qualification-infrastructure | wired | — | `QualificationPlanRegistrationPort` | C0-QUALIFICATION-PROFILE-SCHEMA (evidence/wired)<br>C0-CASE-CATALOG (evidence/wired) |
-| `C0-QUALIFICATION-AGGREGATOR` | P0 | active | qualification-infrastructure | implemented | — | `QualificationAggregationPort` | C0-QUALIFICATION-EVIDENCE-MANIFEST (evidence/wired)<br>C0-PREREGISTRATION-PLAN (evidence/wired) |
-| `C0-QUALIFICATION-EVIDENCE-MANIFEST` | P0 | active | qualification-infrastructure | implemented | — | `QualificationEvidenceManifestPort` | C0-PREREGISTRATION-PLAN (evidence/wired)<br>C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
+| `C0-QUALIFICATION-AGGREGATOR` | P0 | active | qualification-infrastructure | wired | — | `QualificationAggregationPort` | C0-QUALIFICATION-EVIDENCE-MANIFEST (evidence/wired)<br>C0-PREREGISTRATION-PLAN (evidence/wired) |
+| `C0-QUALIFICATION-EVIDENCE-MANIFEST` | P0 | active | qualification-infrastructure | wired | — | `QualificationEvidenceManifestPort` | C0-PREREGISTRATION-PLAN (evidence/wired)<br>C0-RUN-EVIDENCE-LEDGER (evidence/wired) |
 | `C0-QUALIFICATION-PROFILE-SCHEMA` | P0 | active | qualification-infrastructure | wired | — | `QualificationProfileSchemaPort` | C0-CAPABILITY-LEDGER-SCHEMA (evidence/wired)<br>C0-CASE-CATALOG (evidence/wired) |
 | `C0-RUN-EVIDENCE-LEDGER` | P0 | active | qualification-infrastructure | wired | — | `RunEvidenceLedgerPort` | — |
 | `C1-AGENT-COMMAND` | P0 | active | core-coding | proposed | — | `AgentCommandPort` | C1-RUN-LIFECYCLE (control/wired) |

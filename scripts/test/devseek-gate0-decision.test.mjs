@@ -34,18 +34,18 @@ test('current Gate 0 decision is locally consistent but honestly NOT_PASSED', ()
   assert.equal(decision.local_conformance.status, 'PASSED');
   assert.equal(decision.local_conformance.asserts_protocol_execution, false);
   assert.equal(decision.local_conformance.qualification_effect, 'NONE');
+  const expectedImplementationSatisfied = sources.ledger.capabilities.filter(
+    capability => capability.domain === 'C0' && capability.implementation_state === 'wired',
+  ).length;
   assert.deepEqual(decision.qualification, {
     status: 'NOT_PASSED',
     gate_passed: false,
     qualification_eligible: false,
     external_authority_trust_anchored: false,
-    implementation_requirements_passed: false,
+    implementation_requirements_passed: expectedImplementationSatisfied === 7,
     exact_claim_requirements_passed: false,
   });
   assert.deepEqual(decision.claims, []);
-  const expectedImplementationSatisfied = sources.ledger.capabilities.filter(
-    capability => capability.domain === 'C0' && capability.implementation_state === 'wired',
-  ).length;
   assert.deepEqual(decision.counts, {
     capabilities: 7,
     implementation_requirements_satisfied: expectedImplementationSatisfied,

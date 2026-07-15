@@ -13,7 +13,7 @@
       "path": "docs/process/devseek-capability-ledger.json",
       "schema_version": "devseek.capability-ledger/v1",
       "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
-      "source_sha256": "0a61fb30dddee3bb26fe98a68bd244faf4810395052a3d5ecb8811231c4689a3",
+      "source_sha256": "0b39d420a63bd86a12cd2f92ad2a8744fc9cbd6bfee69297b54d71112828e6a0",
       "qualification_claim_authority": {
         "mode": "deny-until-signed-evidence-validator",
         "profile_registry_sha256": null,
@@ -66,7 +66,7 @@
     "gate_passed": false,
     "qualification_eligible": false,
     "external_authority_trust_anchored": false,
-    "implementation_requirements_passed": false,
+    "implementation_requirements_passed": true,
     "exact_claim_requirements_passed": false
   },
   "claims": [],
@@ -144,8 +144,8 @@
       "capability_id": "C0-QUALIFICATION-AGGREGATOR",
       "implementation_requirement": {
         "required_state": "wired",
-        "observed_state": "implemented",
-        "satisfied": false
+        "observed_state": "wired",
+        "satisfied": true
       },
       "claim_requirements": [
         {
@@ -167,8 +167,8 @@
       "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
       "implementation_requirement": {
         "required_state": "wired",
-        "observed_state": "implemented",
-        "satisfied": false
+        "observed_state": "wired",
+        "satisfied": true
       },
       "claim_requirements": [
         {
@@ -234,24 +234,7 @@
     }
   ],
   "blockers": {
-    "repository_pending": [
-      {
-        "blocker_id": "repository-implementation-not-wired:C0-QUALIFICATION-AGGREGATOR",
-        "capability_ids": [
-          "C0-QUALIFICATION-AGGREGATOR"
-        ],
-        "requirement": "implementation_state>=wired",
-        "observed": "implemented"
-      },
-      {
-        "blocker_id": "repository-implementation-not-wired:C0-QUALIFICATION-EVIDENCE-MANIFEST",
-        "capability_ids": [
-          "C0-QUALIFICATION-EVIDENCE-MANIFEST"
-        ],
-        "requirement": "implementation_state>=wired",
-        "observed": "implemented"
-      }
-    ],
+    "repository_pending": [],
     "external_authority": [
       {
         "blocker_id": "external-signed-evidence-source-digest-binding-unavailable",
@@ -341,10 +324,10 @@
   },
   "counts": {
     "capabilities": 7,
-    "implementation_requirements_satisfied": 5,
+    "implementation_requirements_satisfied": 7,
     "exact_claim_requirements_satisfied": 0,
     "observed_claims": 0,
-    "repository_pending_blockers": 2,
+    "repository_pending_blockers": 0,
     "external_authority_blockers": 6
   },
   "checker_contract": {
@@ -352,5 +335,5 @@
     "checker_pass_meaning": "report-schema-source-binding-and-decision-invariants-only",
     "gate_pass_requires_protected_qualification": true
   },
-  "decision_sha256": "a9256e0792245e340795dc0298569007c5f53b0ffb89d8c0ca218639e9affe81"
+  "decision_sha256": "657aaf41a5c7a795c4f76e621ea9df8aec21225c496d29f2e28503aa4308950e"
 }

@@ -8,31 +8,39 @@ import {
   readJson,
 } from './lib/devseek-capability-ledger.mjs';
 import {
-  buildC0LedgerWiring,
-  collectProcessFiles,
-  renderC0LedgerWiringMarkdown,
-  validateC0LedgerWiring,
-} from './lib/devseek-c0-ledger-wiring.mjs';
+  buildC0ManifestAggregatorWiring,
+  renderC0ManifestAggregatorWiringMarkdown,
+  validateC0ManifestAggregatorWiring,
+} from './lib/devseek-c0-manifest-aggregator-wiring.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const write = process.argv.includes('--write');
 const unknownArguments = process.argv.slice(2).filter(argument => argument !== '--write');
 const paths = {
   ledger: processPath('docs/process/devseek-capability-ledger.json'),
-  packageJson: processPath('package.json'),
-  registry: processPath('docs/process/devseek-c0-ledger-wiring.json'),
-  schema: processPath('docs/process/devseek-c0-ledger-wiring.schema.json'),
-  generatedView: processPath('docs/process/generated/devseek-c0-ledger-wiring.md'),
-  packageSource: processPath('package.json'),
-  phaseSource: processPath('scripts/devseek-phase0-12-verify.mjs'),
-  capabilityLedgerChecker: processPath('scripts/devseek-capability-ledger-check.mjs'),
-  c0WiringChecker: processPath('scripts/devseek-c0-ledger-wiring-check.mjs'),
-  c0RunEvidenceWiringChecker: processPath('scripts/devseek-c0-run-evidence-wiring-check.mjs'),
-  c0ManifestAggregatorWiringChecker: processPath('scripts/devseek-c0-manifest-aggregator-wiring-check.mjs'),
-  profileDenominatorChecker: processPath('scripts/devseek-profile-denominator-registry-check.mjs'),
-  gate0DecisionChecker: processPath('scripts/devseek-gate0-decision-check.mjs'),
-  oracleSource: processPath('scripts/test/devseek-c0-ledger-wiring.test.mjs'),
+  policy: processPath('docs/process/devseek-qualification-aggregator-policy.json'),
+  registry: processPath('docs/process/devseek-c0-manifest-aggregator-wiring.json'),
+  schema: processPath('docs/process/devseek-c0-manifest-aggregator-wiring.schema.json'),
+  generatedView: processPath('docs/process/generated/devseek-c0-manifest-aggregator-wiring.md'),
 };
+const sourcePaths = [
+  'docs/process/devseek-qualification-aggregator-policy.json',
+  'docs/process/devseek-qualification-aggregator-policy.schema.json',
+  'docs/process/devseek-qualification-evidence-manifest.schema.json',
+  'docs/process/devseek-qualification-retention-lock.schema.json',
+  'docs/process/devseek-qualification-plan.schema.json',
+  'docs/process/devseek-qualification-event.schema.json',
+  'docs/process/devseek-qualification-receipt.schema.json',
+  'docs/process/devseek-run-evidence-correlation.schema.json',
+  'docs/process/devseek-c0-run-evidence-wiring.json',
+  'scripts/lib/devseek-qualification-evidence-manifest.mjs',
+  'scripts/devseek-qualification-evidence-manifest-check.mjs',
+  'scripts/test/devseek-qualification-evidence-manifest.test.mjs',
+  'package.json',
+  'scripts/devseek-phase0-12-verify.mjs',
+  'scripts/devseek-c0-manifest-aggregator-wiring-check.mjs',
+  'scripts/test/devseek-c0-manifest-aggregator-wiring.test.mjs',
+];
 
 const errors = unknownArguments.map(argument => `argument:unsupported-${argument}`);
 let sources = null;
@@ -40,21 +48,13 @@ let registry = null;
 
 try {
   sources = {
-    repoRoot,
     ledger: readJson(paths.ledger),
-    packageJson: readJson(paths.packageJson),
-    processFiles: collectProcessFiles(repoRoot),
-    sourceContents: {
-      'package.json': readText(paths.packageSource),
-      'scripts/devseek-phase0-12-verify.mjs': readText(paths.phaseSource),
-      'scripts/devseek-capability-ledger-check.mjs': readText(paths.capabilityLedgerChecker),
-      'scripts/devseek-c0-ledger-wiring-check.mjs': readText(paths.c0WiringChecker),
-      'scripts/devseek-c0-run-evidence-wiring-check.mjs': readText(paths.c0RunEvidenceWiringChecker),
-      'scripts/devseek-c0-manifest-aggregator-wiring-check.mjs': readText(paths.c0ManifestAggregatorWiringChecker),
-      'scripts/devseek-profile-denominator-registry-check.mjs': readText(paths.profileDenominatorChecker),
-      'scripts/devseek-gate0-decision-check.mjs': readText(paths.gate0DecisionChecker),
-      'scripts/test/devseek-c0-ledger-wiring.test.mjs': readText(paths.oracleSource),
-    },
+    aggregationPolicy: readJson(paths.policy),
+    packageJson: readJson(processPath('package.json')),
+    sourceContents: Object.fromEntries(sourcePaths.map(relativePath => [
+      relativePath,
+      readText(processPath(relativePath)),
+    ])),
   };
 } catch (error) {
   errors.push(`source:read:${error.message}`);
@@ -62,9 +62,9 @@ try {
 
 if (sources && write && errors.length === 0) {
   try {
-    registry = buildC0LedgerWiring(sources);
+    registry = buildC0ManifestAggregatorWiring(sources);
     writeJson(paths.registry, registry);
-    writeFile(paths.generatedView, renderC0LedgerWiringMarkdown(registry));
+    writeFile(paths.generatedView, renderC0ManifestAggregatorWiringMarkdown(registry));
   } catch (error) {
     errors.push(`write:${error.message}`);
   }
@@ -82,12 +82,12 @@ if (registry) {
 
 let validationResult = null;
 if (registry && sources) {
-  validationResult = validateC0LedgerWiring(registry, sources);
+  validationResult = validateC0ManifestAggregatorWiring(registry, sources);
   errors.push(...validationResult.errors);
 }
 
 if (registry) {
-  const expectedView = renderC0LedgerWiringMarkdown(registry);
+  const expectedView = renderC0ManifestAggregatorWiringMarkdown(registry);
   if (!fs.existsSync(paths.generatedView)) {
     errors.push('generated-view:missing');
   } else if (fs.readFileSync(paths.generatedView, 'utf8') !== expectedView) {

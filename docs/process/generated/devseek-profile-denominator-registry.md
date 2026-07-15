@@ -17,7 +17,7 @@
 
 ## Frozen Sources
 
-- Capability ledger: `0a61fb30dddee3bb26fe98a68bd244faf4810395052a3d5ecb8811231c4689a3`
+- Capability ledger: `0b39d420a63bd86a12cd2f92ad2a8744fc9cbd6bfee69297b54d71112828e6a0`
 - Milestone profile: `R1-MINIMAL-SEAM/v1` sha256=`27c90f86cab61156766e18b36bcb368842e424d25c5fae2de2534fcdd1753ad9`
 - Claim profile: `DEVSEEK-GATE0-INFRASTRUCTURE/v1` sha256=`23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af`
 
@@ -36,8 +36,8 @@
 | `C0-CAPABILITY-LEDGER-SCHEMA` | wired | `DEVSEEK-GATE0-INFRASTRUCTURE/v1` / `L2` | `repository-governance` / `local-node` / `linux-x64-v1` | 5 | 10 | `40ad3c2c0890a950a2f59331bf8f4b43ea9978bbd542ff10c1bed2e2214ccd5a` |
 | `C0-CASE-CATALOG` | wired | `DEVSEEK-GATE0-INFRASTRUCTURE/v1` / `L2` | `repository-governance` / `local-node` / `linux-x64-v1` | 5 | 10 | `1f02e4f5bb9d74b90e3665b1b935535431ed9105977af62563a04c08447cc8c9` |
 | `C0-PREREGISTRATION-PLAN` | wired | `DEVSEEK-GATE0-INFRASTRUCTURE/v1` / `L2` | `repository-governance` / `local-node` / `linux-x64-v1` | 5 | 10 | `d3dd6f0e239b019cc3e4ffb51679a4b4234772497df001256e4db5690e7ec616` |
-| `C0-QUALIFICATION-AGGREGATOR` | wired | `DEVSEEK-GATE0-INFRASTRUCTURE/v1` / `L2` | `repository-governance` / `local-node` / `linux-x64-v1` | 5 | 10 | `5b70434c5b06ec02a15f9ef8edb888f0b62a97e0fca976de2025877871b96251` |
-| `C0-QUALIFICATION-EVIDENCE-MANIFEST` | wired | `DEVSEEK-GATE0-INFRASTRUCTURE/v1` / `L2` | `repository-governance` / `local-node` / `linux-x64-v1` | 5 | 10 | `69bc433c013c5a7345c9e4eb7fc0ec11d482b106e48ae0dd41479e67294be436` |
+| `C0-QUALIFICATION-AGGREGATOR` | wired | `DEVSEEK-GATE0-INFRASTRUCTURE/v1` / `L2` | `repository-governance` / `local-node` / `linux-x64-v1` | 5 | 10 | `8a81f83acd4c18b9a2cb74564a5c7105cc41cb1a4ed7dbf3a67c37120e353235` |
+| `C0-QUALIFICATION-EVIDENCE-MANIFEST` | wired | `DEVSEEK-GATE0-INFRASTRUCTURE/v1` / `L2` | `repository-governance` / `local-node` / `linux-x64-v1` | 5 | 10 | `8e5fd507d2721432738178f8d75c4f8bade03fb3350367320f1fd3a299305e02` |
 | `C0-QUALIFICATION-PROFILE-SCHEMA` | wired | `DEVSEEK-GATE0-INFRASTRUCTURE/v1` / `L2` | `repository-governance` / `local-node` / `linux-x64-v1` | 5 | 10 | `95dbe7315721512877a381818f89391448865cad6125e342f770776ad02ed84c` |
 | `C0-RUN-EVIDENCE-LEDGER` | wired | `DEVSEEK-GATE0-INFRASTRUCTURE/v1` / `L2` | `repository-governance` / `local-node` / `linux-x64-v1` | 5 | 10 | `cd9c76ec25fddd294ab2878dff23fecab75f11ee57e1551af404af6d97d76808` |
 
@@ -53,4 +53,4 @@
 
 ## Registry Identity
 
-- Registry SHA-256: `22c8dd60eb617f40ca522e5c72b730973d4584ef6360dca9d74af33bb5f3ab44`
+- Registry SHA-256: `34476c452bf160fe783539fb3768d991fea1715ba86bd19ebb99c69c2d31b44c`

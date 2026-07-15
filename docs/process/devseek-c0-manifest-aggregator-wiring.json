@@ -1,0 +1,415 @@
+{
+  "schema_version": "devseek.c0-manifest-aggregator-wiring/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "wiring_id": "DEVSEEK-GATE0-C0-MANIFEST-AGGREGATOR-WIRING/v1",
+  "wiring_version": 1,
+  "source_status": "verified",
+  "integrity_scope": "local-manifest-aggregator-wiring-conformance",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "sources": {
+    "capability_ledger": {
+      "path": "docs/process/devseek-capability-ledger.json",
+      "schema_version": "devseek.capability-ledger/v1",
+      "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
+      "source_sha256": "0b39d420a63bd86a12cd2f92ad2a8744fc9cbd6bfee69297b54d71112828e6a0"
+    },
+    "aggregator_policy": {
+      "path": "docs/process/devseek-qualification-aggregator-policy.json",
+      "policy_id": "DEVSEEK-G0C-LOCAL-AGGREGATOR-POLICY",
+      "policy_sha256": "08897f5f2c6994fd2ae4d130648c38ab2eb6971b840a02b3b212430fcd45fb9e",
+      "source_sha256": "dafca6aa79755f85bac27c193782a8001ae984267d7b91963a0180cc8208c060"
+    },
+    "aggregator_policy_schema": {
+      "path": "docs/process/devseek-qualification-aggregator-policy.schema.json",
+      "source_sha256": "10f90ce1f89a96a6d92fef2f1c79ba51d0bbf530458218df7019bdf9fb6a9f8c"
+    },
+    "qualification_evidence_manifest_schema": {
+      "path": "docs/process/devseek-qualification-evidence-manifest.schema.json",
+      "source_sha256": "b00ef568b7a635cc3db92266e3183dc6cd947ea700840428905290febd6a057e"
+    },
+    "qualification_retention_lock_schema": {
+      "path": "docs/process/devseek-qualification-retention-lock.schema.json",
+      "source_sha256": "ed3b23396fba22c3be1a759037bcf2a97b9f9a36a1da7a80928bc23724a94642"
+    },
+    "qualification_plan_schema": {
+      "path": "docs/process/devseek-qualification-plan.schema.json",
+      "source_sha256": "34415290e152073afde0e43016d2b13b46ddfcefe1e4f083c0f0b0ccd0a7fc1b"
+    },
+    "qualification_event_schema": {
+      "path": "docs/process/devseek-qualification-event.schema.json",
+      "source_sha256": "b6d6a9b3e94e751d539d8675847cc2a50ea3bc2e3a39463a0feb709806a7f7f5"
+    },
+    "qualification_receipt_schema": {
+      "path": "docs/process/devseek-qualification-receipt.schema.json",
+      "source_sha256": "46d40c4c127a34ce7ddcc70d60829c56c6ba1d78e597c6b01488c71462152043"
+    },
+    "run_evidence_correlation_schema": {
+      "path": "docs/process/devseek-run-evidence-correlation.schema.json",
+      "source_sha256": "ae80615276a57134c90017a69aa10e97cd4c08e8be3096d37be214ab0c480663"
+    },
+    "run_evidence_wiring_source": {
+      "path": "docs/process/devseek-c0-run-evidence-wiring.json",
+      "source_sha256": "f21629749b9afb490c67fb78237c6c97d492bbd6812e2c2ed3e2a9c7badb2cc1"
+    },
+    "qualification_evidence_manifest_source": {
+      "path": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "source_sha256": "06068dddca365964e3dfeb55b76043e5c12a18e6f2242aa35325d0688107008f"
+    },
+    "qualification_evidence_manifest_checker": {
+      "path": "scripts/devseek-qualification-evidence-manifest-check.mjs",
+      "source_sha256": "bb4c258e5a7248d40b2f9e3093b9fcf78131be9885004f8e93a127df54451335"
+    },
+    "qualification_evidence_manifest_oracle": {
+      "path": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "source_sha256": "dd74857c9bb164374e39fd5ffba3ae55ef303a9cf5c658e1d9eeba0e1d874572"
+    },
+    "package_scripts": {
+      "path": "package.json",
+      "source_sha256": "7c889d5a0d90320d57dd55e020fef004bc1dd4838fa41b862c63d2bbb86a96a7"
+    },
+    "phase_gate_source": {
+      "path": "scripts/devseek-phase0-12-verify.mjs",
+      "source_sha256": "2ce294048c7fb478f6e311ff901e9caf7a71f680bbad0cdff6529a48e0a31d60"
+    },
+    "checker_source": {
+      "path": "scripts/devseek-c0-manifest-aggregator-wiring-check.mjs",
+      "source_sha256": "b0c594e758cab26e61ab051d61f21908fe4c18ab14d6dd30b8662f8197f30099"
+    },
+    "oracle_source": {
+      "path": "scripts/test/devseek-c0-manifest-aggregator-wiring.test.mjs",
+      "source_sha256": "04a35f7bf688f981f056449bf1a5d9c1f710653059d0f1b8c1b80a79cc1bf714"
+    }
+  },
+  "owners": {
+    "aggregator": {
+      "capability_id": "C0-QUALIFICATION-AGGREGATOR",
+      "implementation_state": "wired",
+      "authority_port": "QualificationAggregationPort",
+      "required_component_paths": [
+        {
+          "path": "docs/process/devseek-qualification-aggregator-policy.schema.json",
+          "present": true
+        },
+        {
+          "path": "docs/process/devseek-qualification-aggregator-policy.json",
+          "present": true
+        },
+        {
+          "path": "docs/process/generated/devseek-qualification-evidence-manifest.md",
+          "present": true
+        },
+        {
+          "path": "docs/process/devseek-c0-manifest-aggregator-wiring.json",
+          "present": true
+        },
+        {
+          "path": "docs/process/devseek-c0-manifest-aggregator-wiring.schema.json",
+          "present": true
+        },
+        {
+          "path": "docs/process/generated/devseek-c0-manifest-aggregator-wiring.md",
+          "present": true
+        },
+        {
+          "path": "scripts/devseek-qualification-evidence-manifest-check.mjs",
+          "present": true
+        },
+        {
+          "path": "scripts/devseek-c0-manifest-aggregator-wiring-check.mjs",
+          "present": true
+        },
+        {
+          "path": "scripts/lib/devseek-c0-manifest-aggregator-wiring.mjs",
+          "present": true
+        },
+        {
+          "path": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+          "present": true
+        },
+        {
+          "path": "scripts/test/devseek-c0-manifest-aggregator-wiring.test.mjs",
+          "present": true
+        },
+        {
+          "path": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+          "present": true
+        }
+      ],
+      "verification_commands": [
+        "npm run verify:qualification-evidence-manifest",
+        "npm run verify:c0-manifest-aggregator-wiring"
+      ],
+      "verification_has_qualification_evidence_manifest": true,
+      "verification_has_c0_manifest_aggregator_wiring": true,
+      "expected_authority_port": "QualificationAggregationPort"
+    },
+    "evidence_manifest": {
+      "capability_id": "C0-QUALIFICATION-EVIDENCE-MANIFEST",
+      "implementation_state": "wired",
+      "authority_port": "QualificationEvidenceManifestPort",
+      "required_component_paths": [
+        {
+          "path": "docs/process/devseek-qualification-evidence-manifest.schema.json",
+          "present": true
+        },
+        {
+          "path": "docs/process/devseek-qualification-retention-lock.schema.json",
+          "present": true
+        },
+        {
+          "path": "docs/process/generated/devseek-qualification-evidence-manifest.md",
+          "present": true
+        },
+        {
+          "path": "docs/process/devseek-c0-manifest-aggregator-wiring.json",
+          "present": true
+        },
+        {
+          "path": "docs/process/devseek-c0-manifest-aggregator-wiring.schema.json",
+          "present": true
+        },
+        {
+          "path": "docs/process/generated/devseek-c0-manifest-aggregator-wiring.md",
+          "present": true
+        },
+        {
+          "path": "scripts/devseek-qualification-evidence-manifest-check.mjs",
+          "present": true
+        },
+        {
+          "path": "scripts/devseek-c0-manifest-aggregator-wiring-check.mjs",
+          "present": true
+        },
+        {
+          "path": "scripts/lib/devseek-c0-manifest-aggregator-wiring.mjs",
+          "present": true
+        },
+        {
+          "path": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+          "present": true
+        },
+        {
+          "path": "scripts/test/devseek-c0-manifest-aggregator-wiring.test.mjs",
+          "present": true
+        },
+        {
+          "path": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+          "present": true
+        }
+      ],
+      "verification_commands": [
+        "npm run verify:qualification-evidence-manifest",
+        "npm run verify:c0-manifest-aggregator-wiring"
+      ],
+      "verification_has_qualification_evidence_manifest": true,
+      "verification_has_c0_manifest_aggregator_wiring": true,
+      "expected_authority_port": "QualificationEvidenceManifestPort"
+    }
+  },
+  "aggregation_contract": {
+    "adapter_id": "G0-C-MANIFEST-AGGREGATOR-ADAPTER/v1",
+    "adapter_source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs#aggregateQualificationEvidence",
+    "policy_path": "docs/process/devseek-qualification-aggregator-policy.json",
+    "manifest_schema_path": "docs/process/devseek-qualification-evidence-manifest.schema.json",
+    "retention_schema_path": "docs/process/devseek-qualification-retention-lock.schema.json",
+    "package_script_present": true,
+    "phase_gate_id": "c0-manifest-aggregator-wiring-conformance",
+    "phase_gate_present": true,
+    "policy_local_only": true,
+    "policy_has_zero_repository_claim_rules": true,
+    "manifest_schema_requires_run_evidence_auxiliary": true,
+    "retention_schema_requires_external_anchor_boundary": true,
+    "policy_schema_forbids_unknowns": true,
+    "run_evidence_wiring_is_prerequisite": true,
+    "reader_recomputes_manifest_derivation": true,
+    "reader_rejects_writer_summary": true,
+    "reader_verifies_retention_and_anchor": true,
+    "reader_checks_current_state_and_provenance": true,
+    "reader_preserves_failures_and_vetoes": true,
+    "reader_requires_exact_dependency_tuple": true,
+    "reader_consumes_run_evidence_as_auxiliary": true,
+    "aggregator_produces_protected_claims_locally": false,
+    "same_repository_hash_is_trust_root": false,
+    "writer_summary_is_authoritative": false,
+    "qualification_effect": "NONE"
+  },
+  "aggregation_guards": [
+    {
+      "guard_id": "independent-derived-manifest",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "const derived = independentlyAggregateFrozenEvidence(frozenEvidence, aggregationPolicy, generatedAt);",
+        "MANIFEST_DERIVATION_MISMATCH",
+        "qualificationEvidenceManifestHash(manifest)"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "denominator-and-slot-accounting",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "deriveSlotAccounting({ plan, streams })",
+        "planned_coverage",
+        "attempt_slot_bindings",
+        "ATTEMPT_SLOT_BINDING_INVALID"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "failure-and-veto-preservation",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "failures_and_vetoes",
+        "outcome === 'product-miss'",
+        "outcome === 'veto'",
+        "preflight_vetoes"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "retention-lock-and-anchor",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "ImmutableQualificationManifestStore",
+        "RETENTION_EXPECTED_ANCHOR_MISMATCH",
+        "MANIFEST_ID_REBIND_FORBIDDEN",
+        "RETAINED_MANIFEST_REPLACED"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "current-state-and-provenance-invalidates",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "assertCurrentStateMatchesManifest(currentState, manifest)",
+        "CURRENT_STATE_REQUIRED_OR_MISMATCH",
+        "MANIFEST_EVENT_HEAD_INVALIDATED",
+        "MANIFEST_CURRENT_IDENTITY_INVALIDATED"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "exact-claim-and-dependency-binding",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "findExactDependency(required, claims)",
+        "claim.profile_sha256 === required.profile_sha256",
+        "claim.surface === required.surface",
+        "claim.platform_profile === required.platform_profile"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "local-policy-cannot-claim",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "assertPolicyQualificationBoundary(policy)",
+        "qualification_claims: manifest.qualification_eligible",
+        "policy.qualification_eligible !== false"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "run-evidence-auxiliary-only",
+      "source_ref": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
+      "required_fragments": [
+        "validateRunEvidenceAuxiliary(frozenEvidence.run_evidence_auxiliary",
+        "auxiliary_only: true",
+        "RUN_EVIDENCE_OUTCOME_BINDING_MISMATCH"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    }
+  ],
+  "failure_oracles": [
+    {
+      "oracle_id": "writer-forged-summary",
+      "expected_error": "MANIFEST_DERIVATION_MISMATCH",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "denominator-conserved",
+      "expected_error": "denominator",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "primary-failure-sticky",
+      "expected_error": "product-miss",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "preflight-session-veto",
+      "expected_error": "veto",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "current-state-provenance-drift",
+      "expected_error": "MANIFEST_EVENT_HEAD_INVALIDATED",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "dependency-exactness",
+      "expected_error": "DEPENDENCY_MANIFEST_NOT_QUALIFICATION_ELIGIBLE",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "retention-anchor-and-rebind",
+      "expected_error": "MANIFEST_ID_REBIND_FORBIDDEN",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "run-evidence-correlation-not-verdict",
+      "expected_error": "RUN_EVIDENCE_OUTCOME_BINDING_MISMATCH",
+      "source_ref": "scripts/test/devseek-qualification-evidence-manifest.test.mjs",
+      "fragments_present": true,
+      "coverage_status": "covered"
+    }
+  ],
+  "bypass_guards": {
+    "writer_summary_trusted": false,
+    "same_repository_self_hash_trusted_as_protected_authority": false,
+    "any_profile_some_claim_allowed": false,
+    "local_manifest_claims_permitted": false,
+    "external_authority_fabricated": false,
+    "product_run_evidence_may_promote_claim": false
+  },
+  "counts": {
+    "owners": 2,
+    "owner_required_components": 24,
+    "owner_required_components_present": 24,
+    "aggregation_guards": 8,
+    "aggregation_guards_covered": 8,
+    "failure_oracles": 8,
+    "failure_oracles_covered": 8,
+    "bypasses": 0,
+    "qualification_claims": 0
+  },
+  "wiring_sha256": "f45d61da17c63731f05767fa3a0a200287268020d4ea9762499b94038772989d"
+}
