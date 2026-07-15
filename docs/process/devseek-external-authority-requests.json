@@ -1,0 +1,563 @@
+{
+  "schema_version": "devseek.external-authority-requests/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "request_set_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-REQUESTS/v1",
+  "request_set_version": 1,
+  "source_status": "generated-awaiting-external-authority",
+  "integrity_scope": "external-authority-request-generation",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "sources": {
+    "gate0_decision": {
+      "path": "docs/process/devseek-gate0-decision-report.json",
+      "schema_version": "devseek.gate0-decision/v1",
+      "decision_id": "DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1",
+      "source_sha256": "7bb96380cc6f55c8b5a1b3cc00f166741ef770f9cbd719fa266f851421ab3dc1"
+    },
+    "external_authority_adapter": {
+      "path": "docs/process/devseek-external-authority-adapter.json",
+      "schema_version": "devseek.external-authority-adapter/v1",
+      "adapter_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-ADAPTER/v1",
+      "source_sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801"
+    },
+    "c0_wiring_reconciliation": {
+      "path": "docs/process/devseek-c0-wiring-reconciliation.json",
+      "schema_version": "devseek.c0-wiring-reconciliation/v1",
+      "reconciliation_id": "DEVSEEK-GATE0-C0-WIRING-RECONCILIATION/v1",
+      "source_sha256": "039d7f2b9e89bc97332a9716bbfe7d9aedaf30563e09d84195f85cfd4b131558"
+    },
+    "package_scripts": {
+      "path": "package.json",
+      "source_sha256": "840019523ef7d6126dbf3356c6b68b27b69989fbf094cca0d191da976afbcf13",
+      "required_script": "verify:external-authority-requests",
+      "required_script_present": true
+    },
+    "phase_gate_source": {
+      "path": "scripts/devseek-phase0-12-verify.mjs",
+      "source_sha256": "8f8eb6533fb3d1ceef17d2398b682ad68eed104a8c454d6904c99b9ae49059f4",
+      "required_gate": "external-authority-request-packets",
+      "required_gate_present": true
+    },
+    "checker_source": {
+      "path": "scripts/devseek-external-authority-requests-check.mjs",
+      "source_sha256": "95ef3a7b6b38774c793e1b2e367d791d9a6adc0acad16d8d3327e30ec761c6ee"
+    },
+    "oracle_source": {
+      "path": "scripts/test/devseek-external-authority-requests.test.mjs",
+      "source_sha256": "f42adab64a364088cae93ab9302a544bba83a08498c8d5115b3e7dcbf0e57c98"
+    }
+  },
+  "request_contract": {
+    "schema_version": "devseek.external-authority-request/v1",
+    "required_fields": [
+      "request_id",
+      "atomic_id",
+      "requesting_owner",
+      "independent_decision_owner",
+      "requested_decision_and_scope",
+      "required_input_digests",
+      "required_artifact_schema_and_signature_purpose",
+      "trusted_root_or_registry_reference",
+      "role_separation_and_conflict_rules",
+      "valid_from",
+      "expires_at",
+      "revocation_source",
+      "repository_import_port_and_fail_closed_verifier",
+      "redaction_and_secret_non_observation",
+      "terminal_state"
+    ],
+    "allowed_terminal_states": [
+      "APPROVED",
+      "DENIED",
+      "EXPIRED",
+      "BLOCKED"
+    ],
+    "requested_atomic_ids": [
+      "EXT-01-SOURCE-REGISTRY-BINDING",
+      "EXT-02-INDEPENDENT-ATTESTATION",
+      "EXT-03-PROTECTED-PROFILE-POLICY",
+      "EXT-04-ROLES-KEYS",
+      "EXT-05-RETENTION-TIME"
+    ],
+    "repository_may_decide": false,
+    "local_fixture_may_substitute": false,
+    "markdown_may_approve": false
+  },
+  "gate0_current_state": {
+    "status": "NOT_PASSED",
+    "gate_passed": false,
+    "external_authority_trust_anchored": false,
+    "implementation_requirements_satisfied": 7,
+    "exact_claim_requirements_satisfied": 0,
+    "observed_claims": 0,
+    "repository_pending_blockers": 0,
+    "external_authority_blockers": 6,
+    "claims_empty": true
+  },
+  "requests": [
+    {
+      "schema_version": "devseek.external-authority-request/v1",
+      "request_id": "EXT-01-SOURCE-REGISTRY-BINDING/request-v1",
+      "atomic_id": "EXT-01-SOURCE-REGISTRY-BINDING",
+      "requesting_owner": "DevSeek local convergence runner",
+      "independent_decision_owner": "registry-owner",
+      "requested_decision_and_scope": {
+        "decision": "Approve profile and evidence registry digests, versions, and revocation policy for Gate 0 protected qualification.",
+        "scope": "gate0-protected-profile-execution-prerequisite",
+        "external_delivery": "Independently approved profile/evidence registry digests with version and revocation policy.",
+        "repository_may_decide": false,
+        "qualification_claim_effect": "NONE"
+      },
+      "required_input_digests": [
+        {
+          "input_id": "gate0-decision-report",
+          "path": "docs/process/devseek-gate0-decision-report.json",
+          "sha256": "7bb96380cc6f55c8b5a1b3cc00f166741ef770f9cbd719fa266f851421ab3dc1",
+          "purpose": "current Gate 0 machine decision and blocker counts"
+        },
+        {
+          "input_id": "external-authority-adapter",
+          "path": "docs/process/devseek-external-authority-adapter.json",
+          "sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
+          "purpose": "fail-closed external authority import adapter"
+        },
+        {
+          "input_id": "c0-wiring-reconciliation",
+          "path": "docs/process/devseek-c0-wiring-reconciliation.json",
+          "sha256": "039d7f2b9e89bc97332a9716bbfe7d9aedaf30563e09d84195f85cfd4b131558",
+          "purpose": "local C0 wiring and decision reconciliation"
+        },
+        {
+          "input_id": "capability-ledger-source",
+          "path": "docs/process/devseek-capability-ledger.json",
+          "sha256": "08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5",
+          "purpose": "C0 capability source digest"
+        },
+        {
+          "input_id": "qualification-profile-source",
+          "path": "docs/process/devseek-qualification-profiles.json",
+          "sha256": "2d9a678b096c3b1ba089d74d957ff8721fb2af24dfd00d57318eb3af7a3b644f",
+          "purpose": "qualification profile source digest requested for external binding"
+        },
+        {
+          "input_id": "qualification-evidence-source",
+          "path": "docs/process/devseek-qualification-aggregator-policy.json",
+          "sha256": "eeac897a3cc23b85cd3315d09e8619608f2e174e3101a7081d3c28d785465697",
+          "purpose": "evidence policy source digest requested for external binding"
+        }
+      ],
+      "required_artifact_schema_and_signature_purpose": {
+        "schema_version": "devseek.external-authority-attestation/v1",
+        "schema_path": "docs/process/devseek-external-authority-attestation.schema.json",
+        "signature_purpose": "source-registry-digest-binding",
+        "detached_signature_required": true
+      },
+      "trusted_root_or_registry_reference": {
+        "status": "required-external-not-present",
+        "reference": "external-profile-and-evidence-registry",
+        "local_fallback_accepted": false
+      },
+      "role_separation_and_conflict_rules": [
+        "registry owner must be independent from repository implementer",
+        "registry digest approval must bind exact source digests",
+        "revocation source must be external to this repository"
+      ],
+      "valid_from": null,
+      "expires_at": null,
+      "revocation_source": null,
+      "repository_import_port_and_fail_closed_verifier": {
+        "adapter_report_path": "docs/process/devseek-external-authority-adapter.json",
+        "attestation_schema_path": "docs/process/devseek-external-authority-attestation.schema.json",
+        "adapter_checker": "scripts/devseek-external-authority-adapter-check.mjs",
+        "gate0_decision_checker": "scripts/devseek-gate0-decision-check.mjs",
+        "fail_closed_without_external_artifact": true
+      },
+      "redaction_and_secret_non_observation": {
+        "secret_material_must_not_enter_repository": true,
+        "secret_values_observed_by_request_generator": false,
+        "redaction_required_for_external_receipts": true
+      },
+      "terminal_state": "BLOCKED",
+      "blocker_reason": "external-decision-artifact-not-provided",
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "schema_version": "devseek.external-authority-request/v1",
+      "request_id": "EXT-02-INDEPENDENT-ATTESTATION/request-v1",
+      "atomic_id": "EXT-02-INDEPENDENT-ATTESTATION",
+      "requesting_owner": "DevSeek local convergence runner",
+      "independent_decision_owner": "independent-attestation-security-authority",
+      "requested_decision_and_scope": {
+        "decision": "Issue verifiable external authority attestation and trusted root for Gate 0 protected qualification.",
+        "scope": "gate0-protected-profile-execution-prerequisite",
+        "external_delivery": "Verifiable external authority attestation and trusted root.",
+        "repository_may_decide": false,
+        "qualification_claim_effect": "NONE"
+      },
+      "required_input_digests": [
+        {
+          "input_id": "gate0-decision-report",
+          "path": "docs/process/devseek-gate0-decision-report.json",
+          "sha256": "7bb96380cc6f55c8b5a1b3cc00f166741ef770f9cbd719fa266f851421ab3dc1",
+          "purpose": "current Gate 0 machine decision and blocker counts"
+        },
+        {
+          "input_id": "external-authority-adapter",
+          "path": "docs/process/devseek-external-authority-adapter.json",
+          "sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
+          "purpose": "fail-closed external authority import adapter"
+        },
+        {
+          "input_id": "c0-wiring-reconciliation",
+          "path": "docs/process/devseek-c0-wiring-reconciliation.json",
+          "sha256": "039d7f2b9e89bc97332a9716bbfe7d9aedaf30563e09d84195f85cfd4b131558",
+          "purpose": "local C0 wiring and decision reconciliation"
+        },
+        {
+          "input_id": "capability-ledger-source",
+          "path": "docs/process/devseek-capability-ledger.json",
+          "sha256": "08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5",
+          "purpose": "C0 capability source digest"
+        },
+        {
+          "input_id": "qualification-profile-source",
+          "path": "docs/process/devseek-qualification-profiles.json",
+          "sha256": "2d9a678b096c3b1ba089d74d957ff8721fb2af24dfd00d57318eb3af7a3b644f",
+          "purpose": "qualification profile source digest requested for external binding"
+        },
+        {
+          "input_id": "qualification-evidence-source",
+          "path": "docs/process/devseek-qualification-aggregator-policy.json",
+          "sha256": "eeac897a3cc23b85cd3315d09e8619608f2e174e3101a7081d3c28d785465697",
+          "purpose": "evidence policy source digest requested for external binding"
+        }
+      ],
+      "required_artifact_schema_and_signature_purpose": {
+        "schema_version": "devseek.external-authority-attestation/v1",
+        "schema_path": "docs/process/devseek-external-authority-attestation.schema.json",
+        "signature_purpose": "independent-authority-attestation",
+        "detached_signature_required": true
+      },
+      "trusted_root_or_registry_reference": {
+        "status": "required-external-not-present",
+        "reference": "audited-external-trust-root-registry",
+        "local_fallback_accepted": false
+      },
+      "role_separation_and_conflict_rules": [
+        "attestation signer must be organizationally independent from local runner",
+        "trust root must be audited and revocation-aware",
+        "local self-signatures and repository fixtures are forbidden"
+      ],
+      "valid_from": null,
+      "expires_at": null,
+      "revocation_source": null,
+      "repository_import_port_and_fail_closed_verifier": {
+        "adapter_report_path": "docs/process/devseek-external-authority-adapter.json",
+        "attestation_schema_path": "docs/process/devseek-external-authority-attestation.schema.json",
+        "adapter_checker": "scripts/devseek-external-authority-adapter-check.mjs",
+        "gate0_decision_checker": "scripts/devseek-gate0-decision-check.mjs",
+        "fail_closed_without_external_artifact": true
+      },
+      "redaction_and_secret_non_observation": {
+        "secret_material_must_not_enter_repository": true,
+        "secret_values_observed_by_request_generator": false,
+        "redaction_required_for_external_receipts": true
+      },
+      "terminal_state": "BLOCKED",
+      "blocker_reason": "external-decision-artifact-not-provided",
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "schema_version": "devseek.external-authority-request/v1",
+      "request_id": "EXT-03-PROTECTED-PROFILE-POLICY/request-v1",
+      "atomic_id": "EXT-03-PROTECTED-PROFILE-POLICY",
+      "requesting_owner": "DevSeek local convergence runner",
+      "independent_decision_owner": "qualification-policy-owner",
+      "requested_decision_and_scope": {
+        "decision": "Approve protected profile, aggregator allowlist, and exact claim rules for Gate 0.",
+        "scope": "gate0-protected-profile-execution-prerequisite",
+        "external_delivery": "Protected profile, aggregator allowlist, and claim rules.",
+        "repository_may_decide": false,
+        "qualification_claim_effect": "NONE"
+      },
+      "required_input_digests": [
+        {
+          "input_id": "gate0-decision-report",
+          "path": "docs/process/devseek-gate0-decision-report.json",
+          "sha256": "7bb96380cc6f55c8b5a1b3cc00f166741ef770f9cbd719fa266f851421ab3dc1",
+          "purpose": "current Gate 0 machine decision and blocker counts"
+        },
+        {
+          "input_id": "external-authority-adapter",
+          "path": "docs/process/devseek-external-authority-adapter.json",
+          "sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
+          "purpose": "fail-closed external authority import adapter"
+        },
+        {
+          "input_id": "c0-wiring-reconciliation",
+          "path": "docs/process/devseek-c0-wiring-reconciliation.json",
+          "sha256": "039d7f2b9e89bc97332a9716bbfe7d9aedaf30563e09d84195f85cfd4b131558",
+          "purpose": "local C0 wiring and decision reconciliation"
+        },
+        {
+          "input_id": "capability-ledger-source",
+          "path": "docs/process/devseek-capability-ledger.json",
+          "sha256": "08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5",
+          "purpose": "C0 capability source digest"
+        },
+        {
+          "input_id": "qualification-profile-source",
+          "path": "docs/process/devseek-qualification-profiles.json",
+          "sha256": "2d9a678b096c3b1ba089d74d957ff8721fb2af24dfd00d57318eb3af7a3b644f",
+          "purpose": "qualification profile source digest requested for external binding"
+        },
+        {
+          "input_id": "qualification-evidence-source",
+          "path": "docs/process/devseek-qualification-aggregator-policy.json",
+          "sha256": "eeac897a3cc23b85cd3315d09e8619608f2e174e3101a7081d3c28d785465697",
+          "purpose": "evidence policy source digest requested for external binding"
+        }
+      ],
+      "required_artifact_schema_and_signature_purpose": {
+        "schema_version": "devseek.external-authority-attestation/v1",
+        "schema_path": "docs/process/devseek-external-authority-attestation.schema.json",
+        "signature_purpose": "protected-profile-policy-approval",
+        "detached_signature_required": true
+      },
+      "trusted_root_or_registry_reference": {
+        "status": "required-external-not-present",
+        "reference": "external-qualification-policy-registry",
+        "local_fallback_accepted": false
+      },
+      "role_separation_and_conflict_rules": [
+        "policy owner must approve qualification eligibility outside local fixtures",
+        "aggregator allowlist must bind exact profile and policy digests",
+        "local qualification_eligible flips are forbidden"
+      ],
+      "valid_from": null,
+      "expires_at": null,
+      "revocation_source": null,
+      "repository_import_port_and_fail_closed_verifier": {
+        "adapter_report_path": "docs/process/devseek-external-authority-adapter.json",
+        "attestation_schema_path": "docs/process/devseek-external-authority-attestation.schema.json",
+        "adapter_checker": "scripts/devseek-external-authority-adapter-check.mjs",
+        "gate0_decision_checker": "scripts/devseek-gate0-decision-check.mjs",
+        "fail_closed_without_external_artifact": true
+      },
+      "redaction_and_secret_non_observation": {
+        "secret_material_must_not_enter_repository": true,
+        "secret_values_observed_by_request_generator": false,
+        "redaction_required_for_external_receipts": true
+      },
+      "terminal_state": "BLOCKED",
+      "blocker_reason": "external-decision-artifact-not-provided",
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "schema_version": "devseek.external-authority-request/v1",
+      "request_id": "EXT-04-ROLES-KEYS/request-v1",
+      "atomic_id": "EXT-04-ROLES-KEYS",
+      "requesting_owner": "DevSeek local convergence runner",
+      "independent_decision_owner": "organizational-identity-key-management-authority",
+      "requested_decision_and_scope": {
+        "decision": "Approve active non-test plan, runner, watchdog, oracle, adjudicator, and aggregator role identities and keys.",
+        "scope": "gate0-protected-profile-execution-prerequisite",
+        "external_delivery": "Separated active non-test role identities, keys, purpose binding, and revocation controls.",
+        "repository_may_decide": false,
+        "qualification_claim_effect": "NONE"
+      },
+      "required_input_digests": [
+        {
+          "input_id": "gate0-decision-report",
+          "path": "docs/process/devseek-gate0-decision-report.json",
+          "sha256": "7bb96380cc6f55c8b5a1b3cc00f166741ef770f9cbd719fa266f851421ab3dc1",
+          "purpose": "current Gate 0 machine decision and blocker counts"
+        },
+        {
+          "input_id": "external-authority-adapter",
+          "path": "docs/process/devseek-external-authority-adapter.json",
+          "sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
+          "purpose": "fail-closed external authority import adapter"
+        },
+        {
+          "input_id": "c0-wiring-reconciliation",
+          "path": "docs/process/devseek-c0-wiring-reconciliation.json",
+          "sha256": "039d7f2b9e89bc97332a9716bbfe7d9aedaf30563e09d84195f85cfd4b131558",
+          "purpose": "local C0 wiring and decision reconciliation"
+        },
+        {
+          "input_id": "capability-ledger-source",
+          "path": "docs/process/devseek-capability-ledger.json",
+          "sha256": "08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5",
+          "purpose": "C0 capability source digest"
+        },
+        {
+          "input_id": "qualification-profile-source",
+          "path": "docs/process/devseek-qualification-profiles.json",
+          "sha256": "2d9a678b096c3b1ba089d74d957ff8721fb2af24dfd00d57318eb3af7a3b644f",
+          "purpose": "qualification profile source digest requested for external binding"
+        },
+        {
+          "input_id": "qualification-evidence-source",
+          "path": "docs/process/devseek-qualification-aggregator-policy.json",
+          "sha256": "eeac897a3cc23b85cd3315d09e8619608f2e174e3101a7081d3c28d785465697",
+          "purpose": "evidence policy source digest requested for external binding"
+        }
+      ],
+      "required_artifact_schema_and_signature_purpose": {
+        "schema_version": "devseek.external-authority-attestation/v1",
+        "schema_path": "docs/process/devseek-external-authority-attestation.schema.json",
+        "signature_purpose": "role-key-separation-and-revocation",
+        "detached_signature_required": true
+      },
+      "trusted_root_or_registry_reference": {
+        "status": "required-external-not-present",
+        "reference": "external-role-key-registry",
+        "local_fallback_accepted": false
+      },
+      "role_separation_and_conflict_rules": [
+        "plan, runner, watchdog, oracle, adjudicator, and aggregator roles must be conflict-checked",
+        "one operator changing key ids cannot satisfy role separation",
+        "private keys and secrets must never be committed to the repository"
+      ],
+      "valid_from": null,
+      "expires_at": null,
+      "revocation_source": null,
+      "repository_import_port_and_fail_closed_verifier": {
+        "adapter_report_path": "docs/process/devseek-external-authority-adapter.json",
+        "attestation_schema_path": "docs/process/devseek-external-authority-attestation.schema.json",
+        "adapter_checker": "scripts/devseek-external-authority-adapter-check.mjs",
+        "gate0_decision_checker": "scripts/devseek-gate0-decision-check.mjs",
+        "fail_closed_without_external_artifact": true
+      },
+      "redaction_and_secret_non_observation": {
+        "secret_material_must_not_enter_repository": true,
+        "secret_values_observed_by_request_generator": false,
+        "redaction_required_for_external_receipts": true
+      },
+      "terminal_state": "BLOCKED",
+      "blocker_reason": "external-decision-artifact-not-provided",
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "schema_version": "devseek.external-authority-request/v1",
+      "request_id": "EXT-05-RETENTION-TIME/request-v1",
+      "atomic_id": "EXT-05-RETENTION-TIME",
+      "requesting_owner": "DevSeek local convergence runner",
+      "independent_decision_owner": "external-storage-time-authority",
+      "requested_decision_and_scope": {
+        "decision": "Approve WORM or retention lock storage, external stream anchor, and trusted non-rollback time receipts.",
+        "scope": "gate0-protected-profile-execution-prerequisite",
+        "external_delivery": "External WORM or retention lock, stream anchor, and trusted non-rollback time receipts.",
+        "repository_may_decide": false,
+        "qualification_claim_effect": "NONE"
+      },
+      "required_input_digests": [
+        {
+          "input_id": "gate0-decision-report",
+          "path": "docs/process/devseek-gate0-decision-report.json",
+          "sha256": "7bb96380cc6f55c8b5a1b3cc00f166741ef770f9cbd719fa266f851421ab3dc1",
+          "purpose": "current Gate 0 machine decision and blocker counts"
+        },
+        {
+          "input_id": "external-authority-adapter",
+          "path": "docs/process/devseek-external-authority-adapter.json",
+          "sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
+          "purpose": "fail-closed external authority import adapter"
+        },
+        {
+          "input_id": "c0-wiring-reconciliation",
+          "path": "docs/process/devseek-c0-wiring-reconciliation.json",
+          "sha256": "039d7f2b9e89bc97332a9716bbfe7d9aedaf30563e09d84195f85cfd4b131558",
+          "purpose": "local C0 wiring and decision reconciliation"
+        },
+        {
+          "input_id": "capability-ledger-source",
+          "path": "docs/process/devseek-capability-ledger.json",
+          "sha256": "08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5",
+          "purpose": "C0 capability source digest"
+        },
+        {
+          "input_id": "qualification-profile-source",
+          "path": "docs/process/devseek-qualification-profiles.json",
+          "sha256": "2d9a678b096c3b1ba089d74d957ff8721fb2af24dfd00d57318eb3af7a3b644f",
+          "purpose": "qualification profile source digest requested for external binding"
+        },
+        {
+          "input_id": "qualification-evidence-source",
+          "path": "docs/process/devseek-qualification-aggregator-policy.json",
+          "sha256": "eeac897a3cc23b85cd3315d09e8619608f2e174e3101a7081d3c28d785465697",
+          "purpose": "evidence policy source digest requested for external binding"
+        }
+      ],
+      "required_artifact_schema_and_signature_purpose": {
+        "schema_version": "devseek.external-authority-attestation/v1",
+        "schema_path": "docs/process/devseek-external-authority-attestation.schema.json",
+        "signature_purpose": "retention-lock-time-anchor",
+        "detached_signature_required": true
+      },
+      "trusted_root_or_registry_reference": {
+        "status": "required-external-not-present",
+        "reference": "external-retention-time-service",
+        "local_fallback_accepted": false
+      },
+      "role_separation_and_conflict_rules": [
+        "retention lock must be outside local filesystem control",
+        "time source must be non-rollback and independently anchored",
+        "local CAS, hard links, or same-machine high water files are forbidden substitutes"
+      ],
+      "valid_from": null,
+      "expires_at": null,
+      "revocation_source": null,
+      "repository_import_port_and_fail_closed_verifier": {
+        "adapter_report_path": "docs/process/devseek-external-authority-adapter.json",
+        "attestation_schema_path": "docs/process/devseek-external-authority-attestation.schema.json",
+        "adapter_checker": "scripts/devseek-external-authority-adapter-check.mjs",
+        "gate0_decision_checker": "scripts/devseek-gate0-decision-check.mjs",
+        "fail_closed_without_external_artifact": true
+      },
+      "redaction_and_secret_non_observation": {
+        "secret_material_must_not_enter_repository": true,
+        "secret_values_observed_by_request_generator": false,
+        "redaction_required_for_external_receipts": true
+      },
+      "terminal_state": "BLOCKED",
+      "blocker_reason": "external-decision-artifact-not-provided",
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    }
+  ],
+  "bypass_guards": {
+    "repository_may_approve_requests": false,
+    "local_fixture_may_act_as_external_authority": false,
+    "request_packet_may_issue_claims": false,
+    "markdown_may_change_terminal_state": false,
+    "provider_or_network_required": false
+  },
+  "counts": {
+    "requests": 5,
+    "blocked_requests": 5,
+    "approved_requests": 0,
+    "denied_requests": 0,
+    "expired_requests": 0,
+    "gate0_external_authority_blockers": 6,
+    "claims": 0,
+    "gate_pass_assertions": 0,
+    "bypasses": 0
+  },
+  "request_set_sha256": "557a9ebabe83790eef8ff3b65afc0afb3c33e5f38d119a3d443c2e5e751f2190"
+}

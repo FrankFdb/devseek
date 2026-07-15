@@ -54,6 +54,8 @@
     "verify:c0-manifest-aggregator-wiring": "node --test scripts/test/devseek-c0-manifest-aggregator-wiring.test.mjs && node scripts/devseek-c0-manifest-aggregator-wiring-check.mjs",
     "generate:external-authority-adapter": "node scripts/devseek-external-authority-adapter-check.mjs --write",
     "verify:external-authority-adapter": "node --test scripts/test/devseek-external-authority-adapter.test.mjs && node scripts/devseek-external-authority-adapter-check.mjs",
+    "generate:external-authority-requests": "node scripts/devseek-external-authority-requests-check.mjs --write",
+    "verify:external-authority-requests": "node --test scripts/test/devseek-external-authority-requests.test.mjs && node scripts/devseek-external-authority-requests-check.mjs",
     "generate:c0-wiring-reconciliation": "node scripts/devseek-c0-wiring-reconciliation-check.mjs --write",
     "verify:c0-wiring-reconciliation": "node --test scripts/test/devseek-c0-wiring-reconciliation.test.mjs && node scripts/devseek-c0-wiring-reconciliation-check.mjs",
     "generate:capability-ledger": "node scripts/devseek-capability-ledger-check.mjs --write",

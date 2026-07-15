@@ -1,0 +1,427 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-external-authority-requests-v1.json",
+  "title": "DevSeek External Authority Requests v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "request_set_id",
+    "request_set_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "sources",
+    "request_contract",
+    "gate0_current_state",
+    "requests",
+    "bypass_guards",
+    "counts",
+    "request_set_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.external-authority-requests/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "request_set_id": { "const": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-REQUESTS/v1" },
+    "request_set_version": { "const": 1 },
+    "source_status": { "const": "generated-awaiting-external-authority" },
+    "integrity_scope": { "const": "external-authority-request-generation" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "sources": { "$ref": "#/$defs/sources" },
+    "request_contract": { "$ref": "#/$defs/requestContract" },
+    "gate0_current_state": { "$ref": "#/$defs/gate0CurrentState" },
+    "requests": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": { "$ref": "#/$defs/request" }
+    },
+    "bypass_guards": { "$ref": "#/$defs/bypassGuards" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "request_set_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "source_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gate0_decision",
+        "external_authority_adapter",
+        "c0_wiring_reconciliation",
+        "package_scripts",
+        "phase_gate_source",
+        "checker_source",
+        "oracle_source"
+      ],
+      "properties": {
+        "gate0_decision": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "schema_version", "decision_id", "source_sha256"],
+          "properties": {
+            "path": { "const": "docs/process/devseek-gate0-decision-report.json" },
+            "schema_version": { "const": "devseek.gate0-decision/v1" },
+            "decision_id": { "const": "DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1" },
+            "source_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "external_authority_adapter": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "schema_version", "adapter_id", "source_sha256"],
+          "properties": {
+            "path": { "const": "docs/process/devseek-external-authority-adapter.json" },
+            "schema_version": { "const": "devseek.external-authority-adapter/v1" },
+            "adapter_id": { "const": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-ADAPTER/v1" },
+            "source_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "c0_wiring_reconciliation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "schema_version", "reconciliation_id", "source_sha256"],
+          "properties": {
+            "path": { "const": "docs/process/devseek-c0-wiring-reconciliation.json" },
+            "schema_version": { "const": "devseek.c0-wiring-reconciliation/v1" },
+            "reconciliation_id": { "const": "DEVSEEK-GATE0-C0-WIRING-RECONCILIATION/v1" },
+            "source_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "package_scripts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "source_sha256", "required_script", "required_script_present"],
+          "properties": {
+            "path": { "const": "package.json" },
+            "source_sha256": { "$ref": "#/$defs/sha256" },
+            "required_script": { "const": "verify:external-authority-requests" },
+            "required_script_present": { "const": true }
+          }
+        },
+        "phase_gate_source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "source_sha256", "required_gate", "required_gate_present"],
+          "properties": {
+            "path": { "const": "scripts/devseek-phase0-12-verify.mjs" },
+            "source_sha256": { "$ref": "#/$defs/sha256" },
+            "required_gate": { "const": "external-authority-request-packets" },
+            "required_gate_present": { "const": true }
+          }
+        },
+        "checker_source": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "properties": {
+                "path": { "const": "scripts/devseek-external-authority-requests-check.mjs" }
+              }
+            }
+          ]
+        },
+        "oracle_source": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "properties": {
+                "path": { "const": "scripts/test/devseek-external-authority-requests.test.mjs" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "requestContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "required_fields",
+        "allowed_terminal_states",
+        "requested_atomic_ids",
+        "repository_may_decide",
+        "local_fixture_may_substitute",
+        "markdown_may_approve"
+      ],
+      "properties": {
+        "schema_version": { "const": "devseek.external-authority-request/v1" },
+        "required_fields": {
+          "type": "array",
+          "minItems": 15,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "allowed_terminal_states": {
+          "type": "array",
+          "minItems": 4,
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": { "enum": ["APPROVED", "DENIED", "EXPIRED", "BLOCKED"] }
+        },
+        "requested_atomic_ids": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/externalAtomicId" }
+        },
+        "repository_may_decide": { "const": false },
+        "local_fixture_may_substitute": { "const": false },
+        "markdown_may_approve": { "const": false }
+      }
+    },
+    "gate0CurrentState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "gate_passed",
+        "external_authority_trust_anchored",
+        "implementation_requirements_satisfied",
+        "exact_claim_requirements_satisfied",
+        "observed_claims",
+        "repository_pending_blockers",
+        "external_authority_blockers",
+        "claims_empty"
+      ],
+      "properties": {
+        "status": { "const": "NOT_PASSED" },
+        "gate_passed": { "const": false },
+        "external_authority_trust_anchored": { "const": false },
+        "implementation_requirements_satisfied": { "const": 7 },
+        "exact_claim_requirements_satisfied": { "const": 0 },
+        "observed_claims": { "const": 0 },
+        "repository_pending_blockers": { "const": 0 },
+        "external_authority_blockers": { "const": 6 },
+        "claims_empty": { "const": true }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "request_id",
+        "atomic_id",
+        "requesting_owner",
+        "independent_decision_owner",
+        "requested_decision_and_scope",
+        "required_input_digests",
+        "required_artifact_schema_and_signature_purpose",
+        "trusted_root_or_registry_reference",
+        "role_separation_and_conflict_rules",
+        "valid_from",
+        "expires_at",
+        "revocation_source",
+        "repository_import_port_and_fail_closed_verifier",
+        "redaction_and_secret_non_observation",
+        "terminal_state",
+        "blocker_reason",
+        "qualification_effect",
+        "claims_permitted",
+        "asserts_gate_pass"
+      ],
+      "properties": {
+        "schema_version": { "const": "devseek.external-authority-request/v1" },
+        "request_id": { "$ref": "#/$defs/nonEmpty" },
+        "atomic_id": { "$ref": "#/$defs/externalAtomicId" },
+        "requesting_owner": { "$ref": "#/$defs/nonEmpty" },
+        "independent_decision_owner": { "$ref": "#/$defs/nonEmpty" },
+        "requested_decision_and_scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "decision",
+            "scope",
+            "external_delivery",
+            "repository_may_decide",
+            "qualification_claim_effect"
+          ],
+          "properties": {
+            "decision": { "$ref": "#/$defs/nonEmpty" },
+            "scope": { "const": "gate0-protected-profile-execution-prerequisite" },
+            "external_delivery": { "$ref": "#/$defs/nonEmpty" },
+            "repository_may_decide": { "const": false },
+            "qualification_claim_effect": { "const": "NONE" }
+          }
+        },
+        "required_input_digests": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": { "$ref": "#/$defs/inputDigest" }
+        },
+        "required_artifact_schema_and_signature_purpose": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "schema_path",
+            "signature_purpose",
+            "detached_signature_required"
+          ],
+          "properties": {
+            "schema_version": { "const": "devseek.external-authority-attestation/v1" },
+            "schema_path": { "const": "docs/process/devseek-external-authority-attestation.schema.json" },
+            "signature_purpose": { "$ref": "#/$defs/nonEmpty" },
+            "detached_signature_required": { "const": true }
+          }
+        },
+        "trusted_root_or_registry_reference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "reference", "local_fallback_accepted"],
+          "properties": {
+            "status": { "const": "required-external-not-present" },
+            "reference": { "$ref": "#/$defs/nonEmpty" },
+            "local_fallback_accepted": { "const": false }
+          }
+        },
+        "role_separation_and_conflict_rules": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "valid_from": { "type": "null" },
+        "expires_at": { "type": "null" },
+        "revocation_source": { "type": "null" },
+        "repository_import_port_and_fail_closed_verifier": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "adapter_report_path",
+            "attestation_schema_path",
+            "adapter_checker",
+            "gate0_decision_checker",
+            "fail_closed_without_external_artifact"
+          ],
+          "properties": {
+            "adapter_report_path": { "const": "docs/process/devseek-external-authority-adapter.json" },
+            "attestation_schema_path": { "const": "docs/process/devseek-external-authority-attestation.schema.json" },
+            "adapter_checker": { "const": "scripts/devseek-external-authority-adapter-check.mjs" },
+            "gate0_decision_checker": { "const": "scripts/devseek-gate0-decision-check.mjs" },
+            "fail_closed_without_external_artifact": { "const": true }
+          }
+        },
+        "redaction_and_secret_non_observation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "secret_material_must_not_enter_repository",
+            "secret_values_observed_by_request_generator",
+            "redaction_required_for_external_receipts"
+          ],
+          "properties": {
+            "secret_material_must_not_enter_repository": { "const": true },
+            "secret_values_observed_by_request_generator": { "const": false },
+            "redaction_required_for_external_receipts": { "const": true }
+          }
+        },
+        "terminal_state": { "const": "BLOCKED" },
+        "blocker_reason": { "const": "external-decision-artifact-not-provided" },
+        "qualification_effect": { "const": "NONE" },
+        "claims_permitted": { "const": false },
+        "asserts_gate_pass": { "const": false }
+      }
+    },
+    "inputDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input_id", "path", "sha256", "purpose"],
+      "properties": {
+        "input_id": { "$ref": "#/$defs/nonEmpty" },
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "purpose": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "bypassGuards": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repository_may_approve_requests",
+        "local_fixture_may_act_as_external_authority",
+        "request_packet_may_issue_claims",
+        "markdown_may_change_terminal_state",
+        "provider_or_network_required"
+      ],
+      "properties": {
+        "repository_may_approve_requests": { "const": false },
+        "local_fixture_may_act_as_external_authority": { "const": false },
+        "request_packet_may_issue_claims": { "const": false },
+        "markdown_may_change_terminal_state": { "const": false },
+        "provider_or_network_required": { "const": false }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requests",
+        "blocked_requests",
+        "approved_requests",
+        "denied_requests",
+        "expired_requests",
+        "gate0_external_authority_blockers",
+        "claims",
+        "gate_pass_assertions",
+        "bypasses"
+      ],
+      "properties": {
+        "requests": { "const": 5 },
+        "blocked_requests": { "const": 5 },
+        "approved_requests": { "const": 0 },
+        "denied_requests": { "const": 0 },
+        "expired_requests": { "const": 0 },
+        "gate0_external_authority_blockers": { "const": 6 },
+        "claims": { "const": 0 },
+        "gate_pass_assertions": { "const": 0 },
+        "bypasses": { "const": 0 }
+      }
+    },
+    "externalAtomicId": {
+      "enum": [
+        "EXT-01-SOURCE-REGISTRY-BINDING",
+        "EXT-02-INDEPENDENT-ATTESTATION",
+        "EXT-03-PROTECTED-PROFILE-POLICY",
+        "EXT-04-ROLES-KEYS",
+        "EXT-05-RETENTION-TIME"
+      ]
+    }
+  }
+}

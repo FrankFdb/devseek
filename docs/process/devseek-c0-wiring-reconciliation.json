@@ -21,11 +21,11 @@
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "54299ff8b8753d9f66d8393bb9e03fc0a0c6282ae7fa05f48cfa088af47d56d3"
+      "source_sha256": "840019523ef7d6126dbf3356c6b68b27b69989fbf094cca0d191da976afbcf13"
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "b86b1ef3e8b6c2c6bbc8037c4e13472a94fa905312ab7e88680866c53a297d83"
+      "source_sha256": "8f8eb6533fb3d1ceef17d2398b682ad68eed104a8c454d6904c99b9ae49059f4"
     },
     "checker_source": {
       "path": "scripts/devseek-c0-wiring-reconciliation-check.mjs",
@@ -43,8 +43,8 @@
       "schema_version": "devseek.c0-ledger-wiring/v1",
       "expected_schema_version": "devseek.c0-ledger-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "a61fe122ea4a17ec5afd1078f87e0168d22c87bf94cc92458a8758dd05af541d",
-      "computed_sha256": "a61fe122ea4a17ec5afd1078f87e0168d22c87bf94cc92458a8758dd05af541d",
+      "reported_sha256": "62158845e63b8acc239b8064a5456c14d4f8d0d2d3a764b5b0cdaca5db1aba34",
+      "computed_sha256": "62158845e63b8acc239b8064a5456c14d4f8d0d2d3a764b5b0cdaca5db1aba34",
       "hash_status": "matched",
       "package_script": "verify:c0-ledger-wiring",
       "package_script_present": true,
@@ -55,7 +55,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-ledger-wiring.md",
         "status": "current",
-        "source_sha256": "93a8c0e953e8025dd6a45fdd74e371790d9787b2752013a706e4c39520bb473b"
+        "source_sha256": "b00b14cf0bcb8efe0500fca82b0678298646706426676af1845b50105bf7cd6b"
       }
     },
     {
@@ -64,8 +64,8 @@
       "schema_version": "devseek.c0-preregistration-wiring/v1",
       "expected_schema_version": "devseek.c0-preregistration-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "8bdc813c38da354262d2fdafffa63737e8448e83e33014edcf482ea6701dbcd6",
-      "computed_sha256": "8bdc813c38da354262d2fdafffa63737e8448e83e33014edcf482ea6701dbcd6",
+      "reported_sha256": "d20c993ca7a16f8ae459db7642d10d167b74a5eb3b79cc18d5e8203aa4acce57",
+      "computed_sha256": "d20c993ca7a16f8ae459db7642d10d167b74a5eb3b79cc18d5e8203aa4acce57",
       "hash_status": "matched",
       "package_script": "verify:c0-preregistration-wiring",
       "package_script_present": true,
@@ -76,7 +76,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-preregistration-wiring.md",
         "status": "current",
-        "source_sha256": "bc5a193019040f2fdaebe86f835a87b97215b2b638138e6c03de34c8949ff302"
+        "source_sha256": "2e8581ce6cc24325ea622a11dd8a3b1b45126e8e86bb3b4e43a1781d91bd18f3"
       }
     },
     {
@@ -85,8 +85,8 @@
       "schema_version": "devseek.c0-run-evidence-wiring/v1",
       "expected_schema_version": "devseek.c0-run-evidence-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "4c4b3dd10fc0066b146c84b9f5ee907064aef91df9462de95a8c8731cdab5644",
-      "computed_sha256": "4c4b3dd10fc0066b146c84b9f5ee907064aef91df9462de95a8c8731cdab5644",
+      "reported_sha256": "5b57af1f7a778faea62be627bd67dcd9a3ae5219df92d86d7ab3cc46621b5b16",
+      "computed_sha256": "5b57af1f7a778faea62be627bd67dcd9a3ae5219df92d86d7ab3cc46621b5b16",
       "hash_status": "matched",
       "package_script": "verify:c0-run-evidence-wiring",
       "package_script_present": true,
@@ -97,7 +97,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-run-evidence-wiring.md",
         "status": "current",
-        "source_sha256": "96a97c29f2f027f5263dab966643c0bfca630dd747aeca55477440fc8bc3a5d5"
+        "source_sha256": "278d03200ca1814c05e1dd1c2d87cd43ae9fcc8404f7413ed563bb7b653da386"
       }
     },
     {
@@ -106,8 +106,8 @@
       "schema_version": "devseek.c0-manifest-aggregator-wiring/v1",
       "expected_schema_version": "devseek.c0-manifest-aggregator-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "0760b578c0986b6823d07a1b02ff4eba8e570f910144761e91f287e65945763e",
-      "computed_sha256": "0760b578c0986b6823d07a1b02ff4eba8e570f910144761e91f287e65945763e",
+      "reported_sha256": "674b4f92534180d0f07bb0425af48e475e88e1e80e624d3d43ec5c3f083378df",
+      "computed_sha256": "674b4f92534180d0f07bb0425af48e475e88e1e80e624d3d43ec5c3f083378df",
       "hash_status": "matched",
       "package_script": "verify:c0-manifest-aggregator-wiring",
       "package_script_present": true,
@@ -118,7 +118,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-manifest-aggregator-wiring.md",
         "status": "current",
-        "source_sha256": "9354dc7e0f545b3b4d5490b96ce6cbcd73b5f391fad1bca5d55ab5873f70099f"
+        "source_sha256": "e4088f93abb14b6940131fd931ee4e63d4e7214f56efe7199db60490ebcbecc1"
       }
     },
     {
@@ -127,8 +127,8 @@
       "schema_version": "devseek.external-authority-adapter/v1",
       "expected_schema_version": "devseek.external-authority-adapter/v1",
       "hash_field": "adapter_sha256",
-      "reported_sha256": "d4886fe9c2d739081ace00573e3474a548d799413edd780c548f639826720b76",
-      "computed_sha256": "d4886fe9c2d739081ace00573e3474a548d799413edd780c548f639826720b76",
+      "reported_sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
+      "computed_sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
       "hash_status": "matched",
       "package_script": "verify:external-authority-adapter",
       "package_script_present": true,
@@ -139,7 +139,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-external-authority-adapter.md",
         "status": "current",
-        "source_sha256": "c78795fe5a44b696394f0a993016c02e5897543d32d6f6f78ed4d1b43efdd57e"
+        "source_sha256": "c0d05decf88a65cef41613f6ab803a084e3c7f8377c4b7001477b8a6a8d55351"
       }
     },
     {
@@ -148,8 +148,8 @@
       "schema_version": "devseek.gate0-decision/v1",
       "expected_schema_version": "devseek.gate0-decision/v1",
       "hash_field": "decision_sha256",
-      "reported_sha256": "ee717d9f30e835dd87fb021394f5c5e2b547ecb11cf044a7b4153ed113b32351",
-      "computed_sha256": "ee717d9f30e835dd87fb021394f5c5e2b547ecb11cf044a7b4153ed113b32351",
+      "reported_sha256": "7bb96380cc6f55c8b5a1b3cc00f166741ef770f9cbd719fa266f851421ab3dc1",
+      "computed_sha256": "7bb96380cc6f55c8b5a1b3cc00f166741ef770f9cbd719fa266f851421ab3dc1",
       "hash_status": "matched",
       "package_script": "verify:gate0-decision",
       "package_script_present": true,
@@ -186,8 +186,8 @@
       },
       {
         "binding_id": "gate0-external-authority-adapter-source",
-        "observed_sha256": "d4886fe9c2d739081ace00573e3474a548d799413edd780c548f639826720b76",
-        "expected_sha256": "d4886fe9c2d739081ace00573e3474a548d799413edd780c548f639826720b76",
+        "observed_sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
+        "expected_sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
         "status": "matched"
       }
     ],
@@ -213,5 +213,5 @@
     "observed_claims": 0,
     "bypasses": 0
   },
-  "reconciliation_sha256": "4d91d639dd9b3d507caf408fc0696ead803f1140b33bee03ed73fc6f124be509"
+  "reconciliation_sha256": "039d7f2b9e89bc97332a9716bbfe7d9aedaf30563e09d84195f85cfd4b131558"
 }

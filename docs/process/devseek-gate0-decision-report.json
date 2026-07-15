@@ -57,8 +57,8 @@
       "path": "docs/process/devseek-external-authority-adapter.json",
       "schema_version": "devseek.external-authority-adapter/v1",
       "adapter_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-ADAPTER/v1",
-      "adapter_sha256": "d4886fe9c2d739081ace00573e3474a548d799413edd780c548f639826720b76",
-      "source_sha256": "d4886fe9c2d739081ace00573e3474a548d799413edd780c548f639826720b76",
+      "adapter_sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
+      "source_sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
       "source_status": "unconfigured",
       "trust_roots": 0,
       "qualification_eligible": false
@@ -345,5 +345,5 @@
     "checker_pass_meaning": "report-schema-source-binding-and-decision-invariants-only",
     "gate_pass_requires_protected_qualification": true
   },
-  "decision_sha256": "ee717d9f30e835dd87fb021394f5c5e2b547ecb11cf044a7b4153ed113b32351"
+  "decision_sha256": "7bb96380cc6f55c8b5a1b3cc00f166741ef770f9cbd719fa266f851421ab3dc1"
 }
