@@ -99,6 +99,12 @@ const gates = [
     purpose: 'Fail closed when manifest aggregation trusts writer summaries, omits denominator/failure/veto/retention/provenance recomputation, or treats local fixture evidence as protected qualification.',
   },
   {
+    id: 'external-authority-adapter-contract',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:external-authority-adapter'],
+    purpose: 'Fail closed when a local object, boolean, stale key, revoked root, clock rollback, manifest/provenance mismatch, or self-hash attempts to forge external qualification authority.',
+  },
+  {
     id: 'qualification-protocol-conformance',
     phases: '0-12',
     command: ['npm', 'run', 'verify:qualification-protocol'],
@@ -309,6 +315,7 @@ function classifyGateFailure(gate) {
   if (/c0-preregistration-wiring/i.test(gate.id)) return 'c0-preregistration-wiring-regression';
   if (/c0-run-evidence-wiring/i.test(gate.id)) return 'c0-run-evidence-wiring-regression';
   if (/c0-manifest-aggregator-wiring/i.test(gate.id)) return 'c0-manifest-aggregator-wiring-regression';
+  if (/external-authority-adapter/i.test(gate.id)) return 'external-authority-adapter-regression';
   if (/profile-executor/i.test(gate.id)) return 'profile-executor-contract-regression';
   if (/current-candidate-identity/i.test(gate.id)) return 'current-candidate-identity-regression';
   if (/qualification-runner/i.test(gate.id)) return 'qualification-runner-bypass-regression';
@@ -331,6 +338,7 @@ function nextActionFor(gate) {
     'c0-preregistration-wiring-conformance': 'Restore production declaration coverage, single runner-root preregistration through plan/session/slot/authorization/receipt, and zero-dispatch receipt oracles before rerunning verify:c0-preregistration-wiring.',
     'c0-run-evidence-wiring-conformance': 'Restore exact product Run Evidence to qualification attempt/candidate/operation/anchor binding, preserve original oracle failures, and rerun verify:c0-run-evidence-wiring.',
     'c0-manifest-aggregator-wiring-conformance': 'Restore independent manifest aggregation over denominator/failure/veto/retention/provenance/run-evidence inputs, keep local evidence non-qualifying, and rerun verify:c0-manifest-aggregator-wiring.',
+    'external-authority-adapter-contract': 'Restore fail-closed external authority adapter schema, ordinary-object/boolean rejection, revocation/time/provenance guards, and non-qualifying Gate0 binding before rerunning verify:external-authority-adapter.',
     'profile-executor-contract-conformance': 'Restore one unique executor contract and independent oracle for each Gate 0 denominator slot semantic, keep execution behind the single runner root, and rerun verify:profile-executor-contracts.',
     'current-candidate-identity-probe': 'Restore the read-only source, VSIX, stable install, and active runtime identity binding; retire stale debug runtime only with fresh authorization, then rerun verify:current-candidate-identity.',
     'qualification-runner-wiring': 'Restore the single guarded runner composition root, remove or disable bypass entry points, and rerun verify:qualification-runner; local runner conformance must remain non-qualifying without protected authority.',

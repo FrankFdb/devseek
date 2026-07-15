@@ -67,6 +67,14 @@ export const REQUIRED_LEDGER_CONSUMERS = Object.freeze([
     direct_ledger_reader: true,
   },
   {
+    consumer_id: 'external-authority-adapter',
+    command: 'npm run verify:external-authority-adapter',
+    package_script: 'verify:external-authority-adapter',
+    phase_gate_id: 'external-authority-adapter-contract',
+    reader_path: 'scripts/devseek-external-authority-adapter-check.mjs',
+    direct_ledger_reader: true,
+  },
+  {
     consumer_id: 'gate0-machine-decision',
     command: 'npm run verify:gate0-decision',
     package_script: 'verify:gate0-decision',

@@ -21,6 +21,7 @@ const paths = {
   milestoneProfiles: processPath('docs/process/devseek-milestone-profiles.json'),
   qualificationProfiles: processPath('docs/process/devseek-qualification-profiles.json'),
   aggregatorPolicy: processPath('docs/process/devseek-qualification-aggregator-policy.json'),
+  externalAuthorityAdapter: processPath('docs/process/devseek-external-authority-adapter.json'),
   schema: processPath('docs/process/devseek-gate0-decision.schema.json'),
   report: processPath('docs/process/devseek-gate0-decision-report.json'),
 };
@@ -33,6 +34,7 @@ try {
     milestoneProfiles: readJson(paths.milestoneProfiles),
     qualificationProfiles: readJson(paths.qualificationProfiles),
     aggregatorPolicy: readJson(paths.aggregatorPolicy),
+    externalAuthorityAdapter: readJson(paths.externalAuthorityAdapter),
   });
 } catch (error) {
   errors.push(`decision:build:${error.code ?? error.message}`);

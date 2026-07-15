@@ -54,6 +54,10 @@ test('current Gate 0 decision is locally consistent but honestly NOT_PASSED', ()
     repository_pending_blockers: 7 - expectedImplementationSatisfied,
     external_authority_blockers: 6,
   });
+  const authorityBlocker = decision.blockers.external_authority.find(
+    blocker => blocker.blocker_id === 'external-independent-evidence-authority-attestation-unavailable',
+  );
+  assert.equal(authorityBlocker.observed, 'UNAVAILABLE_NO_EXTERNAL_TRUST_ROOT');
   assert.deepEqual(validateGate0DecisionInvariants(decision), []);
 });
 
@@ -145,7 +149,7 @@ test('self-declared protected sources and fresh self-hashes never establish inde
   const locallyBound = signedEvidenceAuthorityBinding(declared);
   assert.equal(locallyBound.source_digests_bound, true);
   assert.equal(locallyBound.independent_authority_attested, false);
-  assert.equal(locallyBound.independent_authority_status, 'UNAVAILABLE_NO_EXTERNAL_ATTESTATION_ADAPTER');
+  assert.equal(locallyBound.independent_authority_status, 'UNAVAILABLE_NO_EXTERNAL_TRUST_ROOT');
   assert.equal(locallyBound.configured_and_bound, false);
   assert.equal(protectedQualificationInputsEligible(declared), false);
 });
@@ -190,6 +194,7 @@ function loadSources() {
     milestoneProfiles: readJson('docs/process/devseek-milestone-profiles.json'),
     qualificationProfiles: readJson('docs/process/devseek-qualification-profiles.json'),
     aggregatorPolicy: readJson('docs/process/devseek-qualification-aggregator-policy.json'),
+    externalAuthorityAdapter: readJson('docs/process/devseek-external-authority-adapter.json'),
   };
 }
 

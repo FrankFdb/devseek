@@ -19,7 +19,7 @@
 
 ## Frozen Sources
 
-- Profile denominator registry: `34476c452bf160fe783539fb3768d991fea1715ba86bd19ebb99c69c2d31b44c`
+- Profile denominator registry: `76fef8d4b29f7e045206f4f42222402c7529576fe804e2d75d6b9cefa9e3781c`
 - Qualification runner inventory: `fd9b5201c3769ff4df0b936bb5b7676815e7d517076d3cfb631ebf2a91e0c9d2`
 - Runner source: `fec73a09d3cece71dc55aee22a832de154c0594563f801e2ec6dac8cb656e5b0`
 - Oracle source: `3305a3dcf6287fc81bf91165988a6ec484174908be9f74f5761c678359e996c3`
@@ -46,4 +46,4 @@
 
 ## Registry Identity
 
-- Contract registry SHA-256: `65a00b393a702c1c34585c7f89d111f849454d58423c89a375bb2b3c18120cb2`
+- Contract registry SHA-256: `9ac6d8185668a82862012026f632a743bf8136eb67f8fc7ac2e30cccf0733777`

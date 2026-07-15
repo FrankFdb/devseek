@@ -13,6 +13,10 @@ import {
   aggregatorPolicyHash,
   validateAggregatorPolicy,
 } from './devseek-qualification-evidence-manifest.mjs';
+import {
+  evaluateExternalAuthorityBinding,
+  externalAuthorityAdapterHash,
+} from './devseek-external-authority-adapter.mjs';
 
 export const GATE0_DECISION_SCHEMA_VERSION = 'devseek.gate0-decision/v1';
 export const GATE0_DECISION_ID = 'DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1';
@@ -51,8 +55,9 @@ export function buildGate0Decision({
   milestoneProfiles,
   qualificationProfiles,
   aggregatorPolicy,
+  externalAuthorityAdapter,
 }) {
-  assertValidSources({ ledger, milestoneProfiles, qualificationProfiles, aggregatorPolicy });
+  assertValidSources({ ledger, milestoneProfiles, qualificationProfiles, aggregatorPolicy, externalAuthorityAdapter });
 
   const milestoneProfile = milestoneProfiles.profiles.find(
     profile => profile.profile_id === GATE0_MILESTONE_PROFILE_ID,
@@ -85,11 +90,13 @@ export function buildGate0Decision({
     ledger,
     qualificationProfiles,
     aggregatorPolicy,
+    externalAuthorityAdapter,
   });
   const qualificationInputsEligible = protectedQualificationInputsEligible({
     ledger,
     qualificationProfiles,
     aggregatorPolicy,
+    externalAuthorityAdapter,
   });
   const gatePassed = implementationRequirementsPassed
     && exactClaimRequirementsPassed
@@ -105,6 +112,7 @@ export function buildGate0Decision({
     ledger,
     qualificationProfiles,
     aggregatorPolicy,
+    externalAuthorityAdapter,
   });
 
   const decision = {
@@ -156,6 +164,16 @@ export function buildGate0Decision({
         integrity_scope: aggregatorPolicy.integrity_scope,
         qualification_eligible: aggregatorPolicy.qualification_eligible,
         source_status: aggregatorPolicy.source_status,
+      },
+      external_authority_adapter: {
+        path: 'docs/process/devseek-external-authority-adapter.json',
+        schema_version: externalAuthorityAdapter.schema_version,
+        adapter_id: externalAuthorityAdapter.adapter_id,
+        adapter_sha256: externalAuthorityAdapter.adapter_sha256,
+        source_sha256: externalAuthorityAdapterHash(externalAuthorityAdapter),
+        source_status: externalAuthorityAdapter.source_status,
+        trust_roots: externalAuthorityAdapter.trust_roots.length,
+        qualification_eligible: externalAuthorityAdapter.qualification_eligible,
       },
     },
     local_conformance: localConformance,
@@ -313,6 +331,7 @@ function buildExternalAuthorityBlockers({
   ledger,
   qualificationProfiles,
   aggregatorPolicy,
+  externalAuthorityAdapter,
 }) {
   const allCapabilityIds = capabilities.map(capability => capability.capability_id);
   const blockers = [];
@@ -320,6 +339,7 @@ function buildExternalAuthorityBlockers({
     ledger,
     qualificationProfiles,
     aggregatorPolicy,
+    externalAuthorityAdapter,
   });
   if (!authorityBinding.source_digests_bound) {
     blockers.push({
@@ -424,11 +444,13 @@ export function protectedQualificationInputsEligible({
   ledger,
   qualificationProfiles,
   aggregatorPolicy,
+  externalAuthorityAdapter,
 }) {
   const authorityBinding = signedEvidenceAuthorityBinding({
     ledger,
     qualificationProfiles,
     aggregatorPolicy,
+    externalAuthorityAdapter,
   });
   return authorityBinding.configured_and_bound
     && qualificationProfiles.integrity_scope === 'protected-qualification'
@@ -448,32 +470,14 @@ export function signedEvidenceAuthorityBinding({
   ledger,
   qualificationProfiles,
   aggregatorPolicy,
+  externalAuthorityAdapter,
 }) {
-  const policy = ledger?.qualification_claim_policy ?? {};
-  const profileSourceSha256 = sha256Object(qualificationProfiles);
-  const evidenceSourceSha256 = sha256Object(aggregatorPolicy);
-  const profileBound = policy.profile_registry_sha256 === profileSourceSha256;
-  const evidenceBound = policy.evidence_registry_sha256 === evidenceSourceSha256;
-  const sourceDigestsBound = policy.mode === SIGNED_EVIDENCE_AUTHORITY_MODE
-    && profileBound
-    && evidenceBound;
-  // Gate0 decision v1 deliberately has no external attestation adapter. Do not
-  // accept an object field or caller-supplied boolean here: adjacent repository
-  // files cannot establish an organizationally independent trust root.
-  const independentAuthorityAttested = false;
-  return {
-    mode: policy.mode ?? null,
-    profile_registry_sha256: policy.profile_registry_sha256 ?? null,
-    evidence_registry_sha256: policy.evidence_registry_sha256 ?? null,
-    profile_source_sha256: profileSourceSha256,
-    evidence_source_sha256: evidenceSourceSha256,
-    profile_bound: profileBound,
-    evidence_bound: evidenceBound,
-    source_digests_bound: sourceDigestsBound,
-    independent_authority_attested: independentAuthorityAttested,
-    independent_authority_status: 'UNAVAILABLE_NO_EXTERNAL_ATTESTATION_ADAPTER',
-    configured_and_bound: sourceDigestsBound && independentAuthorityAttested,
-  };
+  return evaluateExternalAuthorityBinding({
+    ledger,
+    qualificationProfiles,
+    aggregatorPolicy,
+    externalAuthorityAdapter,
+  });
 }
 
 function claimSatisfies(claim, requirement) {
@@ -497,7 +501,7 @@ function uniqueRequirements(requirements) {
   return [...new Map(requirements.map(requirement => [canonicalJson(requirement), requirement])).values()];
 }
 
-function assertValidSources({ ledger, milestoneProfiles, qualificationProfiles, aggregatorPolicy }) {
+function assertValidSources({ ledger, milestoneProfiles, qualificationProfiles, aggregatorPolicy, externalAuthorityAdapter }) {
   const ledgerValidation = validateCapabilityLedger(ledger);
   if (!ledgerValidation.ok) throw new Error(`Invalid capability ledger:\n${ledgerValidation.errors.join('\n')}`);
   const profileValidation = validateMilestoneProfiles(milestoneProfiles, ledger);
@@ -516,6 +520,12 @@ function assertValidSources({ ledger, milestoneProfiles, qualificationProfiles, 
   validateAggregatorPolicy(aggregatorPolicy);
   if (aggregatorPolicy.policy_sha256 !== aggregatorPolicyHash(aggregatorPolicy)) {
     throw new Error('Qualification aggregator policy hash mismatch');
+  }
+  if (externalAuthorityAdapter?.schema_version !== 'devseek.external-authority-adapter/v1') {
+    throw new Error('Invalid external authority adapter schema version');
+  }
+  if (externalAuthorityAdapter.adapter_sha256 !== externalAuthorityAdapterHash(externalAuthorityAdapter)) {
+    throw new Error('External authority adapter hash mismatch');
   }
 }
 

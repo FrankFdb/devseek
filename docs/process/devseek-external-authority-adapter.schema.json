@@ -1,0 +1,278 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-external-authority-adapter-v1.json",
+  "title": "DevSeek External Authority Adapter Contract v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "adapter_id",
+    "adapter_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "accepted_attestation_schema",
+    "trust_roots",
+    "required_controls",
+    "deny_policy",
+    "sources",
+    "source_guards",
+    "failure_oracles",
+    "current_binding",
+    "counts",
+    "adapter_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.external-authority-adapter/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "adapter_id": { "const": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-ADAPTER/v1" },
+    "adapter_version": { "const": 1 },
+    "source_status": { "const": "unconfigured" },
+    "integrity_scope": { "const": "external-authority-import-contract" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "accepted_attestation_schema": { "const": "devseek.external-authority-attestation/v1" },
+    "trust_roots": {
+      "type": "array",
+      "maxItems": 0,
+      "items": { "$ref": "#/$defs/trustRoot" }
+    },
+    "required_controls": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "source-digest-binding",
+          "independent-authority-attestation",
+          "organizational-role-separation",
+          "revocation-aware-trust-root",
+          "trusted-nonrollback-time",
+          "retention-lock-or-worm",
+          "manifest-provenance-binding"
+        ]
+      }
+    },
+    "deny_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "boolean_pass_rejected",
+        "ordinary_object_rejected",
+        "local_fixture_fallback_rejected",
+        "self_hash_trust_rejected",
+        "revoked_or_expired_root_rejected",
+        "role_reuse_rejected",
+        "clock_rollback_rejected",
+        "manifest_or_provenance_mismatch_rejected"
+      ],
+      "properties": {
+        "boolean_pass_rejected": { "const": true },
+        "ordinary_object_rejected": { "const": true },
+        "local_fixture_fallback_rejected": { "const": true },
+        "self_hash_trust_rejected": { "const": true },
+        "revoked_or_expired_root_rejected": { "const": true },
+        "role_reuse_rejected": { "const": true },
+        "clock_rollback_rejected": { "const": true },
+        "manifest_or_provenance_mismatch_rejected": { "const": true }
+      }
+    },
+    "sources": { "$ref": "#/$defs/sources" },
+    "source_guards": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": { "$ref": "#/$defs/sourceGuard" }
+    },
+    "failure_oracles": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": { "$ref": "#/$defs/failureOracle" }
+    },
+    "current_binding": { "$ref": "#/$defs/currentBinding" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "adapter_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "safeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "trustRoot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root_id", "authority_id", "control_plane", "status", "not_before", "not_after", "public_key_pem"],
+      "properties": {
+        "root_id": { "$ref": "#/$defs/safeId" },
+        "authority_id": { "$ref": "#/$defs/safeId" },
+        "control_plane": { "enum": ["external-protected", "local-fixture"] },
+        "status": { "enum": ["active", "revoked", "expired"] },
+        "not_before": { "type": "string", "format": "date-time" },
+        "not_after": { "type": "string", "format": "date-time" },
+        "public_key_pem": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_ledger",
+        "qualification_profiles",
+        "aggregator_policy",
+        "package_json",
+        "implementation_sources"
+      ],
+      "properties": {
+        "capability_ledger": { "$ref": "#/$defs/sourceWithSchemaAndHash" },
+        "qualification_profiles": { "$ref": "#/$defs/sourceWithSchemaAndHash" },
+        "aggregator_policy": { "$ref": "#/$defs/sourceWithSchemaAndHash" },
+        "package_json": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "source_sha256"],
+          "properties": {
+            "path": { "const": "package.json" },
+            "source_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "implementation_sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "source_sha256"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "source_sha256": { "$ref": "#/$defs/sha256" }
+            }
+          }
+        }
+      }
+    },
+    "sourceWithSchemaAndHash": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["path", "schema_version", "source_sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "schema_version": { "$ref": "#/$defs/safeId" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sourceGuard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["guard_id", "source_ref", "required_fragments", "missing_fragments", "coverage_status"],
+      "properties": {
+        "guard_id": { "$ref": "#/$defs/safeId" },
+        "source_ref": { "type": "string", "minLength": 1 },
+        "required_fragments": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "missing_fragments": {
+          "type": "array",
+          "maxItems": 0,
+          "items": { "type": "string" }
+        },
+        "coverage_status": { "const": "covered" }
+      }
+    },
+    "failureOracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["oracle_id", "expected_status", "required_fragments", "missing_fragments", "coverage_status"],
+      "properties": {
+        "oracle_id": { "$ref": "#/$defs/safeId" },
+        "expected_status": { "$ref": "#/$defs/safeId" },
+        "required_fragments": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "missing_fragments": {
+          "type": "array",
+          "maxItems": 0,
+          "items": { "type": "string" }
+        },
+        "coverage_status": { "const": "covered" }
+      }
+    },
+    "currentBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "profile_registry_sha256",
+        "evidence_registry_sha256",
+        "profile_source_sha256",
+        "evidence_source_sha256",
+        "profile_bound",
+        "evidence_bound",
+        "source_digests_bound",
+        "independent_authority_attested",
+        "independent_authority_status",
+        "configured_and_bound"
+      ],
+      "properties": {
+        "mode": { "$ref": "#/$defs/safeId" },
+        "profile_registry_sha256": { "type": "null" },
+        "evidence_registry_sha256": { "type": "null" },
+        "profile_source_sha256": { "$ref": "#/$defs/sha256" },
+        "evidence_source_sha256": { "$ref": "#/$defs/sha256" },
+        "profile_bound": { "const": false },
+        "evidence_bound": { "const": false },
+        "source_digests_bound": { "const": false },
+        "independent_authority_attested": { "const": false },
+        "independent_authority_status": { "const": "UNAVAILABLE_NO_EXTERNAL_TRUST_ROOT" },
+        "configured_and_bound": { "const": false }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_controls",
+        "trust_roots",
+        "source_guards",
+        "source_guards_covered",
+        "failure_oracles",
+        "failure_oracles_covered",
+        "bypasses"
+      ],
+      "properties": {
+        "required_controls": { "const": 7 },
+        "trust_roots": { "const": 0 },
+        "source_guards": { "const": 8 },
+        "source_guards_covered": { "const": 8 },
+        "failure_oracles": { "const": 7 },
+        "failure_oracles_covered": { "const": 7 },
+        "bypasses": { "const": 0 }
+      }
+    }
+  }
+}

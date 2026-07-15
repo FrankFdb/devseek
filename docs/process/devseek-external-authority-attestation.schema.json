@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-external-authority-attestation-v1.json",
+  "title": "DevSeek External Authority Attestation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "attestation_id",
+    "root_id",
+    "authority_id",
+    "status",
+    "issued_at",
+    "valid_from",
+    "expires_at",
+    "source_bindings",
+    "manifest_binding",
+    "controls",
+    "role_bindings",
+    "time_anchor",
+    "signature"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.external-authority-attestation/v1" },
+    "attestation_id": { "$ref": "#/$defs/safeId" },
+    "root_id": { "$ref": "#/$defs/safeId" },
+    "authority_id": { "$ref": "#/$defs/safeId" },
+    "status": { "enum": ["active", "revoked"] },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "valid_from": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "source_bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_ledger_sha256",
+        "profile_source_sha256",
+        "evidence_source_sha256"
+      ],
+      "properties": {
+        "capability_ledger_sha256": { "$ref": "#/$defs/sha256" },
+        "profile_source_sha256": { "$ref": "#/$defs/sha256" },
+        "evidence_source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "manifest_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["evidence_manifest_sha256", "provenance_sha256"],
+      "properties": {
+        "evidence_manifest_sha256": { "$ref": "#/$defs/sha256" },
+        "provenance_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "controls": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source-digest-binding",
+        "independent-authority-attestation",
+        "organizational-role-separation",
+        "revocation-aware-trust-root",
+        "trusted-nonrollback-time",
+        "retention-lock-or-worm",
+        "manifest-provenance-binding"
+      ],
+      "properties": {
+        "source-digest-binding": { "const": true },
+        "independent-authority-attestation": { "const": true },
+        "organizational-role-separation": { "const": true },
+        "revocation-aware-trust-root": { "const": true },
+        "trusted-nonrollback-time": { "const": true },
+        "retention-lock-or-worm": { "const": true },
+        "manifest-provenance-binding": { "const": true }
+      }
+    },
+    "role_bindings": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "key_id"],
+        "properties": {
+          "role": { "enum": ["attestation", "retention", "time"] },
+          "key_id": { "$ref": "#/$defs/safeId" }
+        }
+      }
+    },
+    "time_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observed_at", "previous_observed_at", "trusted_nonrollback_time"],
+      "properties": {
+        "observed_at": { "type": "string", "format": "date-time" },
+        "previous_observed_at": { "type": "string", "format": "date-time" },
+        "trusted_nonrollback_time": { "const": true }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "payload_sha256", "signature_base64"],
+      "properties": {
+        "algorithm": { "const": "ed25519" },
+        "payload_sha256": { "$ref": "#/$defs/sha256" },
+        "signature_base64": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "safeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]*$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}

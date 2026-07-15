@@ -17,7 +17,7 @@
       "path": "docs/process/devseek-capability-ledger.json",
       "schema_version": "devseek.capability-ledger/v1",
       "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
-      "source_sha256": "0b39d420a63bd86a12cd2f92ad2a8744fc9cbd6bfee69297b54d71112828e6a0"
+      "source_sha256": "08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5"
     },
     "aggregator_policy": {
       "path": "docs/process/devseek-qualification-aggregator-policy.json",
@@ -55,7 +55,7 @@
     },
     "run_evidence_wiring_source": {
       "path": "docs/process/devseek-c0-run-evidence-wiring.json",
-      "source_sha256": "f21629749b9afb490c67fb78237c6c97d492bbd6812e2c2ed3e2a9c7badb2cc1"
+      "source_sha256": "5491662b6988d3846667028aa8934ff3431039987b84363d57d51f69e17cf3fc"
     },
     "qualification_evidence_manifest_source": {
       "path": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
@@ -71,11 +71,11 @@
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "7c889d5a0d90320d57dd55e020fef004bc1dd4838fa41b862c63d2bbb86a96a7"
+      "source_sha256": "2d4f3f8a7cbe735a76a8fb3ce9413a01dbe487eb23766b98243f3d66bf36279e"
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "2ce294048c7fb478f6e311ff901e9caf7a71f680bbad0cdff6529a48e0a31d60"
+      "source_sha256": "e91afd96660ce57c0e5fbce210ea4d5861566b9561914ffb9c2162bf3cdbe18c"
     },
     "checker_source": {
       "path": "scripts/devseek-c0-manifest-aggregator-wiring-check.mjs",
@@ -143,7 +143,8 @@
       ],
       "verification_commands": [
         "npm run verify:qualification-evidence-manifest",
-        "npm run verify:c0-manifest-aggregator-wiring"
+        "npm run verify:c0-manifest-aggregator-wiring",
+        "npm run verify:external-authority-adapter"
       ],
       "verification_has_qualification_evidence_manifest": true,
       "verification_has_c0_manifest_aggregator_wiring": true,
@@ -205,7 +206,8 @@
       ],
       "verification_commands": [
         "npm run verify:qualification-evidence-manifest",
-        "npm run verify:c0-manifest-aggregator-wiring"
+        "npm run verify:c0-manifest-aggregator-wiring",
+        "npm run verify:external-authority-adapter"
       ],
       "verification_has_qualification_evidence_manifest": true,
       "verification_has_c0_manifest_aggregator_wiring": true,
@@ -411,5 +413,5 @@
     "bypasses": 0,
     "qualification_claims": 0
   },
-  "wiring_sha256": "f45d61da17c63731f05767fa3a0a200287268020d4ea9762499b94038772989d"
+  "wiring_sha256": "76ca150880a274eda2f88537a64acf901d892e3027dbddb631a2e4282e1e8536"
 }

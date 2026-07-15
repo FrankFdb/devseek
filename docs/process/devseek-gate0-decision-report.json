@@ -13,7 +13,7 @@
       "path": "docs/process/devseek-capability-ledger.json",
       "schema_version": "devseek.capability-ledger/v1",
       "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
-      "source_sha256": "0b39d420a63bd86a12cd2f92ad2a8744fc9cbd6bfee69297b54d71112828e6a0",
+      "source_sha256": "08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5",
       "qualification_claim_authority": {
         "mode": "deny-until-signed-evidence-validator",
         "profile_registry_sha256": null,
@@ -22,7 +22,7 @@
         "evidence_source_sha256": "eeac897a3cc23b85cd3315d09e8619608f2e174e3101a7081d3c28d785465697",
         "source_digests_bound": false,
         "independent_authority_attested": false,
-        "independent_authority_status": "UNAVAILABLE_NO_EXTERNAL_ATTESTATION_ADAPTER",
+        "independent_authority_status": "UNAVAILABLE_NO_EXTERNAL_TRUST_ROOT",
         "configured_and_bound": false
       }
     },
@@ -52,6 +52,16 @@
       "integrity_scope": "local-protocol-conformance",
       "qualification_eligible": false,
       "source_status": "test-fixture"
+    },
+    "external_authority_adapter": {
+      "path": "docs/process/devseek-external-authority-adapter.json",
+      "schema_version": "devseek.external-authority-adapter/v1",
+      "adapter_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-ADAPTER/v1",
+      "adapter_sha256": "f00a145f0dd3907db727a3e02c7dd2f7c99e58a49bc461401eea81dddb61c4f9",
+      "source_sha256": "f00a145f0dd3907db727a3e02c7dd2f7c99e58a49bc461401eea81dddb61c4f9",
+      "source_status": "unconfigured",
+      "trust_roots": 0,
+      "qualification_eligible": false
     }
   },
   "local_conformance": {
@@ -262,7 +272,7 @@
           "C0-RUN-EVIDENCE-LEDGER"
         ],
         "requirement": "attestation from an independently controlled external authority adapter",
-        "observed": "UNAVAILABLE_NO_EXTERNAL_ATTESTATION_ADAPTER"
+        "observed": "UNAVAILABLE_NO_EXTERNAL_TRUST_ROOT"
       },
       {
         "blocker_id": "external-protected-qualification-profile-unavailable",
@@ -335,5 +345,5 @@
     "checker_pass_meaning": "report-schema-source-binding-and-decision-invariants-only",
     "gate_pass_requires_protected_qualification": true
   },
-  "decision_sha256": "657aaf41a5c7a795c4f76e621ea9df8aec21225c496d29f2e28503aa4308950e"
+  "decision_sha256": "2e8fdba1f03c15c718584ac070a6af67a274f0a4cabe04ad345624bea6a1e6bb"
 }

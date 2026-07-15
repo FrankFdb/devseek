@@ -302,13 +302,42 @@
         {
           "role": "c0-ledger-wiring-contract-tests",
           "path": "scripts/test/devseek-c0-ledger-wiring.test.mjs"
+        },
+        {
+          "role": "external-authority-adapter-source",
+          "path": "docs/process/devseek-external-authority-adapter.json"
+        },
+        {
+          "role": "external-authority-adapter-schema",
+          "path": "docs/process/devseek-external-authority-adapter.schema.json"
+        },
+        {
+          "role": "external-authority-attestation-schema",
+          "path": "docs/process/devseek-external-authority-attestation.schema.json"
+        },
+        {
+          "role": "external-authority-adapter-generated-view",
+          "path": "docs/process/generated/devseek-external-authority-adapter.md"
+        },
+        {
+          "role": "external-authority-adapter-checker",
+          "path": "scripts/devseek-external-authority-adapter-check.mjs"
+        },
+        {
+          "role": "external-authority-adapter-library",
+          "path": "scripts/lib/devseek-external-authority-adapter.mjs"
+        },
+        {
+          "role": "external-authority-adapter-contract-tests",
+          "path": "scripts/test/devseek-external-authority-adapter.test.mjs"
         }
       ],
       "architecture_dependencies": [],
       "verification": {
         "commands": [
           "npm run verify:capability-ledger",
-          "npm run verify:c0-ledger-wiring"
+          "npm run verify:c0-ledger-wiring",
+          "npm run verify:external-authority-adapter"
         ],
         "evidence_kind": "deterministic-regression"
       }
@@ -825,6 +854,34 @@
         {
           "role": "manifest-aggregator-wiring-oracles",
           "path": "scripts/test/devseek-c0-manifest-aggregator-wiring.test.mjs"
+        },
+        {
+          "role": "external-authority-adapter-source",
+          "path": "docs/process/devseek-external-authority-adapter.json"
+        },
+        {
+          "role": "external-authority-adapter-schema",
+          "path": "docs/process/devseek-external-authority-adapter.schema.json"
+        },
+        {
+          "role": "external-authority-attestation-schema",
+          "path": "docs/process/devseek-external-authority-attestation.schema.json"
+        },
+        {
+          "role": "external-authority-adapter-generated-view",
+          "path": "docs/process/generated/devseek-external-authority-adapter.md"
+        },
+        {
+          "role": "external-authority-adapter-checker",
+          "path": "scripts/devseek-external-authority-adapter-check.mjs"
+        },
+        {
+          "role": "external-authority-adapter-library",
+          "path": "scripts/lib/devseek-external-authority-adapter.mjs"
+        },
+        {
+          "role": "external-authority-adapter-contract-tests",
+          "path": "scripts/test/devseek-external-authority-adapter.test.mjs"
         }
       ],
       "architecture_dependencies": [
@@ -844,7 +901,8 @@
       "verification": {
         "commands": [
           "npm run verify:qualification-evidence-manifest",
-          "npm run verify:c0-manifest-aggregator-wiring"
+          "npm run verify:c0-manifest-aggregator-wiring",
+          "npm run verify:external-authority-adapter"
         ],
         "evidence_kind": "deterministic-regression"
       }
@@ -924,6 +982,34 @@
         {
           "role": "manifest-aggregator-wiring-oracles",
           "path": "scripts/test/devseek-c0-manifest-aggregator-wiring.test.mjs"
+        },
+        {
+          "role": "external-authority-adapter-source",
+          "path": "docs/process/devseek-external-authority-adapter.json"
+        },
+        {
+          "role": "external-authority-adapter-schema",
+          "path": "docs/process/devseek-external-authority-adapter.schema.json"
+        },
+        {
+          "role": "external-authority-attestation-schema",
+          "path": "docs/process/devseek-external-authority-attestation.schema.json"
+        },
+        {
+          "role": "external-authority-adapter-generated-view",
+          "path": "docs/process/generated/devseek-external-authority-adapter.md"
+        },
+        {
+          "role": "external-authority-adapter-checker",
+          "path": "scripts/devseek-external-authority-adapter-check.mjs"
+        },
+        {
+          "role": "external-authority-adapter-library",
+          "path": "scripts/lib/devseek-external-authority-adapter.mjs"
+        },
+        {
+          "role": "external-authority-adapter-contract-tests",
+          "path": "scripts/test/devseek-external-authority-adapter.test.mjs"
         }
       ],
       "architecture_dependencies": [
@@ -943,7 +1029,8 @@
       "verification": {
         "commands": [
           "npm run verify:qualification-evidence-manifest",
-          "npm run verify:c0-manifest-aggregator-wiring"
+          "npm run verify:c0-manifest-aggregator-wiring",
+          "npm run verify:external-authority-adapter"
         ],
         "evidence_kind": "deterministic-regression"
       }
@@ -3874,5 +3961,5 @@
       ]
     }
   ],
-  "ledger_sha256": "0b39d420a63bd86a12cd2f92ad2a8744fc9cbd6bfee69297b54d71112828e6a0"
+  "ledger_sha256": "08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5"
 }

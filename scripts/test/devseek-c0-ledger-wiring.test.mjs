@@ -29,8 +29,8 @@ test('current C0 ledger wiring has one ledger owner and complete consumer covera
   assert.deepEqual(actual.counts, {
     ledger_source_owners: 1,
     ledger_schema_owners: 1,
-    governed_consumers: 6,
-    governed_consumers_covered: 6,
+    governed_consumers: 7,
+    governed_consumers_covered: 7,
     bypasses: 0,
     qualification_claims: 0,
   });
@@ -100,7 +100,7 @@ test('runtime fails closed on second ledger owner or missing wiring evidence', (
 test('runtime fails closed on consumer bypass, missing phase gate, or manual state file', () => {
   const consumerBypass = structuredClone(expected);
   consumerBypass.governed_consumers[0].coverage_status = 'blocked';
-  consumerBypass.counts.governed_consumers_covered = 5;
+  consumerBypass.counts.governed_consumers_covered = 6;
   consumerBypass.counts.bypasses = 1;
   assertHasWiringError(consumerBypass, 'counts.governed_consumers_covered:must-equal-governed-consumers');
 
@@ -138,8 +138,8 @@ test('checker command validates C0 ledger wiring and generated view', async () =
     ledger_owner_state: 'wired',
     ledger_source_owners: 1,
     ledger_schema_owners: 1,
-    governed_consumers: 6,
-    governed_consumers_covered: 6,
+    governed_consumers: 7,
+    governed_consumers_covered: 7,
     bypasses: 0,
     qualification_effect: 'NONE',
     claims_permitted: false,
@@ -173,6 +173,7 @@ function loadSources() {
       'scripts/devseek-c0-ledger-wiring-check.mjs': readText('scripts/devseek-c0-ledger-wiring-check.mjs'),
       'scripts/devseek-c0-run-evidence-wiring-check.mjs': readText('scripts/devseek-c0-run-evidence-wiring-check.mjs'),
       'scripts/devseek-c0-manifest-aggregator-wiring-check.mjs': readText('scripts/devseek-c0-manifest-aggregator-wiring-check.mjs'),
+      'scripts/devseek-external-authority-adapter-check.mjs': readText('scripts/devseek-external-authority-adapter-check.mjs'),
       'scripts/devseek-profile-denominator-registry-check.mjs': readText('scripts/devseek-profile-denominator-registry-check.mjs'),
       'scripts/devseek-gate0-decision-check.mjs': readText('scripts/devseek-gate0-decision-check.mjs'),
       'scripts/test/devseek-c0-ledger-wiring.test.mjs': readText('scripts/test/devseek-c0-ledger-wiring.test.mjs'),

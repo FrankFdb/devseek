@@ -1,0 +1,281 @@
+{
+  "schema_version": "devseek.external-authority-adapter/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "adapter_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-ADAPTER/v1",
+  "adapter_version": 1,
+  "source_status": "unconfigured",
+  "integrity_scope": "external-authority-import-contract",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "accepted_attestation_schema": "devseek.external-authority-attestation/v1",
+  "trust_roots": [],
+  "required_controls": [
+    "source-digest-binding",
+    "independent-authority-attestation",
+    "organizational-role-separation",
+    "revocation-aware-trust-root",
+    "trusted-nonrollback-time",
+    "retention-lock-or-worm",
+    "manifest-provenance-binding"
+  ],
+  "deny_policy": {
+    "boolean_pass_rejected": true,
+    "ordinary_object_rejected": true,
+    "local_fixture_fallback_rejected": true,
+    "self_hash_trust_rejected": true,
+    "revoked_or_expired_root_rejected": true,
+    "role_reuse_rejected": true,
+    "clock_rollback_rejected": true,
+    "manifest_or_provenance_mismatch_rejected": true
+  },
+  "sources": {
+    "capability_ledger": {
+      "path": "docs/process/devseek-capability-ledger.json",
+      "schema_version": "devseek.capability-ledger/v1",
+      "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
+      "source_sha256": "08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5"
+    },
+    "qualification_profiles": {
+      "path": "docs/process/devseek-qualification-profiles.json",
+      "schema_version": "devseek.qualification-profile-set/v1",
+      "document_sha256": "f9a117a6be8d7a1cddeaa4095162378b0e72536bcbebeac88c39eeb4a65bf0ce",
+      "source_sha256": "2d9a678b096c3b1ba089d74d957ff8721fb2af24dfd00d57318eb3af7a3b644f"
+    },
+    "aggregator_policy": {
+      "path": "docs/process/devseek-qualification-aggregator-policy.json",
+      "schema_version": "devseek.qualification-aggregator-policy/v1",
+      "policy_id": "DEVSEEK-G0C-LOCAL-AGGREGATOR-POLICY",
+      "policy_sha256": "08897f5f2c6994fd2ae4d130648c38ab2eb6971b840a02b3b212430fcd45fb9e",
+      "source_sha256": "08897f5f2c6994fd2ae4d130648c38ab2eb6971b840a02b3b212430fcd45fb9e"
+    },
+    "package_json": {
+      "path": "package.json",
+      "source_sha256": "ca79453ba3399278ac7e234dac8a4171dd6760fa58b913f7412074fe1934dcb2"
+    },
+    "implementation_sources": [
+      {
+        "path": "docs/process/devseek-external-authority-adapter.schema.json",
+        "source_sha256": "e86496d0020335322f56069d326b1d005c0371d380d05acd4790fed16cefa8df"
+      },
+      {
+        "path": "docs/process/devseek-external-authority-attestation.schema.json",
+        "source_sha256": "820122764fdc100e5b9b703251d39db61f9d851b03ec2d39d9b4d64cd27751ba"
+      },
+      {
+        "path": "docs/process/devseek-gate0-decision.schema.json",
+        "source_sha256": "540a3a9c7623f9362b63928fa0447fcf3a6fcfd0ca37ca3ba9c7c7c46251e7dc"
+      },
+      {
+        "path": "package.json",
+        "source_sha256": "2d4f3f8a7cbe735a76a8fb3ce9413a01dbe487eb23766b98243f3d66bf36279e"
+      },
+      {
+        "path": "scripts/devseek-external-authority-adapter-check.mjs",
+        "source_sha256": "12cbe511ca4379a0955780da94fa7ad2600b18c3cda03d890a156d7609cfb414"
+      },
+      {
+        "path": "scripts/devseek-phase0-12-verify.mjs",
+        "source_sha256": "e91afd96660ce57c0e5fbce210ea4d5861566b9561914ffb9c2162bf3cdbe18c"
+      },
+      {
+        "path": "scripts/lib/devseek-external-authority-adapter.mjs",
+        "source_sha256": "a7880cc64c5529360a1da7a20d3734fcaa4377efc1aad244f99f0c1168563090"
+      },
+      {
+        "path": "scripts/lib/devseek-gate0-decision.mjs",
+        "source_sha256": "2f034ce80745319ac141bea9b90d4b6f39ff7511ba6941c6e89bc60c13ccb8aa"
+      },
+      {
+        "path": "scripts/test/devseek-external-authority-adapter.test.mjs",
+        "source_sha256": "0d38f68d43036dce509f23fb9c496b48622f1e13bae8b0a1496b77b64980f6d1"
+      },
+      {
+        "path": "scripts/test/devseek-gate0-decision.test.mjs",
+        "source_sha256": "718ce9268a0b9ddeed368577c6551a5f771c3df3c616a754db56a3c98efde65e"
+      }
+    ]
+  },
+  "source_guards": [
+    {
+      "guard_id": "gate0-consumes-adapter-result",
+      "source_ref": "scripts/lib/devseek-gate0-decision.mjs",
+      "required_fragments": [
+        "evaluateExternalAuthorityBinding",
+        "externalAuthorityAdapter",
+        "external_authority_adapter"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "ordinary-object-and-boolean-rejected",
+      "source_ref": "scripts/lib/devseek-external-authority-adapter.mjs",
+      "required_fragments": [
+        "REJECTED_ATTESTATION_NOT_OBJECT",
+        "typeof attestation !== 'object'",
+        "attestation === null"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "no-local-trust-root-fallback",
+      "source_ref": "scripts/lib/devseek-external-authority-adapter.mjs",
+      "required_fragments": [
+        "TRUSTED_EXTERNAL_AUTHORITY_REGISTRY_DIGESTS = new Set()",
+        "REJECTED_TRUST_ROOT_NOT_AUDITED",
+        "UNAVAILABLE_NO_EXTERNAL_TRUST_ROOT"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "revocation-and-role-reuse-rejected",
+      "source_ref": "scripts/lib/devseek-external-authority-adapter.mjs",
+      "required_fragments": [
+        "REJECTED_TRUST_ROOT_REVOKED",
+        "REJECTED_ROLE_REUSE",
+        "hasDuplicateRoleKey"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "clock-rollback-rejected",
+      "source_ref": "scripts/lib/devseek-external-authority-adapter.mjs",
+      "required_fragments": [
+        "REJECTED_CLOCK_ROLLBACK",
+        "previous_observed_at",
+        "observed_at"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "manifest-provenance-mismatch-rejected",
+      "source_ref": "scripts/lib/devseek-external-authority-adapter.mjs",
+      "required_fragments": [
+        "REJECTED_MANIFEST_OR_PROVENANCE_MISMATCH",
+        "expected_manifest_sha256",
+        "expected_provenance_sha256"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "detached-signature-verified-before-trust",
+      "source_ref": "scripts/lib/devseek-external-authority-adapter.mjs",
+      "required_fragments": [
+        "crypto.verify",
+        "ATTESTATION_SIGNATURE_INVALID",
+        "externalAuthorityAttestationPayloadHash"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "gate0-schema-remains-nonqualifying",
+      "source_ref": "docs/process/devseek-gate0-decision.schema.json",
+      "required_fragments": [
+        "\"external_authority_trust_anchored\": { \"const\": false }",
+        "\"independent_authority_attested\": { \"const\": false }",
+        "\"configured_and_bound\": { \"const\": false }"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    }
+  ],
+  "failure_oracles": [
+    {
+      "oracle_id": "boolean-pass-rejected",
+      "expected_status": "REJECTED_ATTESTATION_NOT_OBJECT",
+      "required_fragments": [
+        "boolean pass cannot forge external authority"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "ordinary-object-rejected",
+      "expected_status": "REJECTED_ATTESTATION_SCHEMA_VERSION",
+      "required_fragments": [
+        "ordinary object cannot forge external authority"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "revoked-root-rejected",
+      "expected_status": "REJECTED_TRUST_ROOT_REVOKED",
+      "required_fragments": [
+        "revoked trust root is rejected before any claim effect"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "role-reuse-rejected",
+      "expected_status": "REJECTED_ROLE_REUSE",
+      "required_fragments": [
+        "role reuse is rejected before any claim effect"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "clock-rollback-rejected",
+      "expected_status": "REJECTED_CLOCK_ROLLBACK",
+      "required_fragments": [
+        "clock rollback is rejected before any claim effect"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "manifest-provenance-mismatch-rejected",
+      "expected_status": "REJECTED_MANIFEST_OR_PROVENANCE_MISMATCH",
+      "required_fragments": [
+        "manifest provenance mismatch is rejected before any claim effect"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "valid-local-crypto-still-not-audited",
+      "expected_status": "REJECTED_TRUST_ROOT_NOT_AUDITED",
+      "required_fragments": [
+        "valid local crypto remains untrusted without audited registry digest"
+      ],
+      "missing_fragments": [],
+      "coverage_status": "covered"
+    }
+  ],
+  "current_binding": {
+    "mode": "deny-until-signed-evidence-validator",
+    "profile_registry_sha256": null,
+    "evidence_registry_sha256": null,
+    "profile_source_sha256": "2d9a678b096c3b1ba089d74d957ff8721fb2af24dfd00d57318eb3af7a3b644f",
+    "evidence_source_sha256": "eeac897a3cc23b85cd3315d09e8619608f2e174e3101a7081d3c28d785465697",
+    "profile_bound": false,
+    "evidence_bound": false,
+    "source_digests_bound": false,
+    "independent_authority_attested": false,
+    "independent_authority_status": "UNAVAILABLE_NO_EXTERNAL_TRUST_ROOT",
+    "configured_and_bound": false
+  },
+  "counts": {
+    "required_controls": 7,
+    "trust_roots": 0,
+    "source_guards": 8,
+    "source_guards_covered": 8,
+    "failure_oracles": 7,
+    "failure_oracles_covered": 7,
+    "bypasses": 0
+  },
+  "adapter_sha256": "f00a145f0dd3907db727a3e02c7dd2f7c99e58a49bc461401eea81dddb61c4f9"
+}

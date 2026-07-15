@@ -95,7 +95,8 @@
         "capability_ledger",
         "milestone_profile",
         "qualification_profiles",
-        "aggregator_policy"
+        "aggregator_policy",
+        "external_authority_adapter"
       ],
       "properties": {
         "capability_ledger": {
@@ -196,6 +197,35 @@
               }
             }
           ]
+        },
+        "external_authority_adapter": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceBase" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "schema_version",
+                "adapter_id",
+                "adapter_sha256",
+                "source_sha256",
+                "source_status",
+                "trust_roots",
+                "qualification_eligible"
+              ],
+              "properties": {
+                "path": { "const": "docs/process/devseek-external-authority-adapter.json" },
+                "schema_version": { "const": "devseek.external-authority-adapter/v1" },
+                "adapter_id": { "const": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-ADAPTER/v1" },
+                "adapter_sha256": { "$ref": "#/$defs/sha256" },
+                "source_sha256": { "$ref": "#/$defs/sha256" },
+                "source_status": { "const": "unconfigured" },
+                "trust_roots": { "const": 0 },
+                "qualification_eligible": { "const": false }
+              }
+            }
+          ]
         }
       }
     },
@@ -239,7 +269,7 @@
         "evidence_source_sha256": { "$ref": "#/$defs/sha256" },
         "source_digests_bound": { "type": "boolean" },
         "independent_authority_attested": { "const": false },
-        "independent_authority_status": { "const": "UNAVAILABLE_NO_EXTERNAL_ATTESTATION_ADAPTER" },
+        "independent_authority_status": { "const": "UNAVAILABLE_NO_EXTERNAL_TRUST_ROOT" },
         "configured_and_bound": { "const": false }
       }
     },
