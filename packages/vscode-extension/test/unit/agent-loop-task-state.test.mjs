@@ -140,6 +140,17 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
   );
   assert.match(agentLoop, /loopRes\.workToolCallsMade/, 'two-phase agent loops must use shared real-work evidence from tool-loop');
   assert.match(agentLoop, /decideAgentRuntimeTurn/, 'analyze loops must route round settlement through the runtime turn policy');
+  assert.match(agentLoop, /isNonRecoverableProviderRecoveryRespondTask/, 'provider recovery respond tasks must be classified before UI settlement');
+  assert.match(
+    agentLoop,
+    /state:\s*nonRecoverableProviderRecovery\s*\?\s*'failed'\s*:\s*'completed'/,
+    'nonrecoverable provider recovery responses must not publish completed status',
+  );
+  assert.match(
+    agentLoop,
+    /taskComplete:\s*false,\s*failedReason:\s*response/,
+    'nonrecoverable provider recovery responses must feed failure evidence into the task ledger',
+  );
   assert.match(agentLoop, /analyzeRaw\s*=\s*delta\.slice\(7\)/, 'analyze RESET deltas must update evidence, not only UI text');
   assert.match(agentLoop, /raw:\s*analyzeRaw\s*\|\|\s*lastAnalyzeRoundText/, 'analyze settlement must fall back to the last complete provider response');
   assert.match(agenticLoop, /settleAgentRuntimeState/, 'agentic loop final settlement must route through the runtime state machine');
@@ -613,6 +624,28 @@ test('task todo ledger: local safe response task completes without file or termi
   assert.equal(settled.completed, true);
   assert.equal(settled.failed, false);
   assert.equal(settled.todos[0].status, 'completed');
+});
+
+test('task todo ledger: nonrecoverable provider recovery response stays failed', () => {
+  const ledger = createAgentTaskTodoLedger([
+    {
+      ...task('1', '', 'respond', '无法从可信任务事实恢复，已停止执行并等待用户重新确认'),
+      targetKind: 'agent-session',
+      visibleTarget: 'Agent 任务',
+    },
+  ]);
+
+  ledger.startTask(0);
+  const settled = ledger.settleTask(0, {
+    action: 'respond',
+    raw: '已停止执行当前恢复任务。',
+    taskComplete: false,
+    failedReason: '已停止执行当前恢复任务。',
+  });
+
+  assert.equal(settled.completed, false);
+  assert.equal(settled.failed, true);
+  assert.equal(settled.todos[0].status, 'failed');
 });
 
 test('task todo ledger: task_complete alone cannot complete read-only analysis', () => {

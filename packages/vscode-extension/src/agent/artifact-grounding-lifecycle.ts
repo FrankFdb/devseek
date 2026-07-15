@@ -64,12 +64,9 @@ export function selectArtifactGroundingResultFields(
 /** Produces the replay-bound completion fields shared by both top-level routes. */
 export function buildArtifactVerificationCompletionMetadata(
   result: Pick<AgentLoopResult, 'verificationResults'> | undefined,
-): { verificationIds: string[]; artifactVerificationOk: boolean | undefined } {
+): { verificationIds: string[]; artifactVerificationOk?: boolean } {
   const verificationResults = result?.verificationResults;
-  return {
-    verificationIds: verificationResults?.map(item => item.verificationId) ?? [],
-    artifactVerificationOk: verificationResults?.length
-      ? verificationResults.at(-1)?.ok === true
-      : undefined,
-  };
+  const verificationIds = verificationResults?.map(item => item.verificationId) ?? [];
+  if (!verificationResults?.length) return { verificationIds };
+  return { verificationIds, artifactVerificationOk: verificationResults.at(-1)?.ok === true };
 }

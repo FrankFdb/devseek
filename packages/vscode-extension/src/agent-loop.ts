@@ -590,6 +590,7 @@ async function executeTask(
 
   if (task.action === 'respond') {
     const response = buildLocalRespondTaskMessage(task, writeAuthority.currentPrompt);
+    const nonRecoverableProviderRecovery = isNonRecoverableProviderRecoveryRespondTask(task);
     callbacks.onDelta(response);
     await callbacks.onAgentStatus({
       type: 'agentStatus',
@@ -600,11 +601,13 @@ async function executeTask(
       taskDesc: task.desc,
       taskIndex,
       taskTotal: allTasks.length,
-      state: 'completed',
+      state: nonRecoverableProviderRecovery ? 'failed' : 'completed',
       title: task.desc || basename,
-      detail: basename,
+      detail: nonRecoverableProviderRecovery ? response : basename,
     });
-    return { applied: false, raw: response, taskComplete: true };
+    return nonRecoverableProviderRecovery
+      ? { applied: false, raw: response, taskComplete: false, failedReason: response }
+      : { applied: false, raw: response, taskComplete: true };
   }
 
   // Read current file content — prefer contentCache (updated by prior tasks in this
@@ -1462,6 +1465,12 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
     writtenFiles,
     ...(taskCompleteByAI ? { taskComplete: true } : {}),
   }, taskTerminalEvidence);
+}
+
+function isNonRecoverableProviderRecoveryRespondTask(task: AgentTask): boolean {
+  return task.action === 'respond'
+    && task.targetKind === 'agent-session'
+    && /(?:无法从可信任务事实恢复|已停止执行)/.test(task.desc || '');
 }
 
 // ----------------------------------------------------------------

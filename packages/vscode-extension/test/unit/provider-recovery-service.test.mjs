@@ -194,6 +194,21 @@ test('ProviderRecoveryService: read-only recovery paths stay analyze-only', () =
   assert.match(tasks[0].desc, /检查 docs\/manual-phase7-safe\.md/);
 });
 
+test('ProviderRecoveryService: login-required checkpoint without trusted task facts is nonrecoverable', () => {
+  const tasks = buildProviderRecoveryCheckpointTasks({
+    recoveryKind: 'LoginRequired',
+    prompt: '写一个简单的C程序，打印hello everyday',
+    workspaceRootFsPath: '/repo',
+  });
+
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].file, '');
+  assert.equal(tasks[0].targetKind, 'agent-session');
+  assert.equal(tasks[0].visibleTarget, 'Agent 任务');
+  assert.equal(tasks[0].action, 'respond');
+  assert.match(tasks[0].desc, /无法从可信任务事实恢复/);
+});
+
 test('ProviderRecoveryService: negated side-effect guard does not erase explicit create target', () => {
   const tasks = buildProviderRecoveryCheckpointTasks({
     prompt: '创建 docs/manual-phase7-safe.md，内容为 phase7 safe，不要修改其他文件。',
