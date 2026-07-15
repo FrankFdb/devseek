@@ -1,6 +1,6 @@
 import { parseGeneratedArtifacts } from './generated-file-parser';
-import { classifyIntent } from './intent/intent-classifier';
 import { ExecutionMode, ToolKind } from './intent/intent-types';
+import { routeTaskIntent } from './task-intent-router';
 import { hasExplicitWorkspaceFilePath } from './workspace/path-patterns';
 
 export type ChatIntentKind = 'chat' | 'code-change';
@@ -41,23 +41,20 @@ const RESPONSE_DECLINE_RE = /(无法|不能|抱歉|仅供参考|示例|example|�
  *   accidental auto-apply while read-only agent workflows are introduced.
  */
 export function decideChatIntent(prompt: string): ChatIntentDecision {
-  const classification = classifyIntent(prompt);
-  const mutatingMode = classification.mode === 'edit'
-    || classification.mode === 'run'
-    || classification.mode === 'destructive';
+  const route = routeTaskIntent(prompt);
 
   return {
-    kind: mutatingMode ? 'code-change' : 'chat',
-    mode: classification.mode,
-    addStructuredHint: mutatingMode,
-    autoApplyEligible: classification.mode === 'edit',
-    confidence: classification.confidence,
-    score: classification.score,
-    signals: classification.signals,
-    blockers: classification.blockers,
-    reason: classification.reason,
-    requiresConfirmation: classification.requiresConfirmation,
-    allowedToolKinds: classification.allowedToolKinds,
+    kind: route.chatKind,
+    mode: route.mode,
+    addStructuredHint: route.chatKind === 'code-change',
+    autoApplyEligible: route.mode === 'edit',
+    confidence: route.classification.confidence,
+    score: route.classification.score,
+    signals: route.signals,
+    blockers: route.blockers,
+    reason: route.classification.reason,
+    requiresConfirmation: route.requiresConfirmation,
+    allowedToolKinds: route.allowedToolKinds,
   };
 }
 

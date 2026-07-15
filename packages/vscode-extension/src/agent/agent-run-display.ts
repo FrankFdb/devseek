@@ -1,6 +1,5 @@
 import type { AgentTaskAction } from '../agent-task-decomposer';
-import { parseSimpleFileWriteRequest } from './simple-file-intent';
-import { classifyAgentTaskShape } from './task-shape';
+import { routeTaskIntent } from '../task-intent-router';
 
 export type AgentRunDisplayKind = 'workspace-explore' | 'simple-file' | 'safe-response';
 
@@ -82,11 +81,11 @@ export function buildAgentRunDisplayProfile(prompt: string): AgentRunDisplayProf
   if (isLiteralToolProtocolPrompt(prompt)) {
     return SAFE_RESPONSE_PROFILE;
   }
-  const simpleFile = parseSimpleFileWriteRequest(prompt);
-  if (simpleFile) {
-    return buildSimpleFileProfile(simpleFile.path);
+  const route = routeTaskIntent(prompt);
+  if (route.family === 'simple-file' && route.simpleFile) {
+    return buildSimpleFileProfile(route.simpleFile.path);
   }
-  if (classifyAgentTaskShape(prompt).shape === 'standalone-project') {
+  if (route.agentTaskShape === 'standalone-project') {
     return STANDALONE_PROGRAM_PROFILE;
   }
   return DEFAULT_FREE_EXPLORE_PROFILE;

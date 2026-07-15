@@ -1231,6 +1231,46 @@ test('Architecture: ChatRouteController owns intent/workflow routing', () => {
   assertContains(testFile, 'routes by visible user text', 'chat route controller must have behavior tests');
 });
 
+test('R1-A2: TaskIntentRouter is the canonical task-family owner for downstream routing', () => {
+  const router = src('src/task-intent-router.ts');
+  assertContains(router, "version: 'devseek.task-intent-route/v1'", 'canonical route version must be explicit');
+  assertContains(router, 'export function routeTaskIntent', 'canonical router must expose routeTaskIntent');
+  assertContains(router, 'standalone-program', 'route matrix must distinguish standalone programs');
+  assertContains(router, 'existing-project-edit', 'route matrix must distinguish existing project edits');
+  assertContains(router, 'simple-file', 'route matrix must distinguish deterministic simple-file writes');
+  assertContains(router, 'read-only-advisory', 'route matrix must distinguish read-only/advisory work');
+  assertContains(router, 'terminal-validation', 'route matrix must distinguish run-only validation work');
+
+  const intentRouter = src('src/intent-router.ts');
+  assertContains(intentRouter, 'routeTaskIntent(prompt)', 'legacy intent facade must delegate to TaskIntentRouter');
+
+  const taskShape = src('src/agent/task-shape.ts');
+  assertContains(taskShape, 'routeTaskIntent(userPrompt)', 'task-shape guidance must consume TaskIntentRouter');
+  assertDoesNotContain(taskShape, 'buildTaskSemanticContract(', 'task-shape must not rebuild semantic contracts from raw prompt');
+  assertDoesNotContain(taskShape, 'const EXISTING_PROJECT_RE', 'task-shape must not own existing-project regex routing');
+  assertDoesNotContain(taskShape, 'const STANDALONE_RE', 'task-shape must not own standalone regex routing');
+  assertDoesNotContain(taskShape, 'const READ_ONLY_RE', 'task-shape must not own read-only regex routing');
+
+  const display = src('src/agent/agent-run-display.ts');
+  assertContains(display, 'routeTaskIntent(prompt)', 'agent run display must consume TaskIntentRouter');
+  assertDoesNotContain(display, 'parseSimpleFileWriteRequest', 'display must not bypass router for simple-file routing');
+  assertDoesNotContain(display, 'classifyAgentTaskShape', 'display must not bypass router through task-shape');
+
+  const workflow = src('src/app/workflow-service.ts');
+  assertContains(workflow, "input.intent.signals.includes('broad-scope')", 'workflow plan-review gate must consume route signals');
+  assertContains(workflow, "input.intent.signals.includes('complex-action')", 'workflow plan-review gate must consume route signals');
+  assertDoesNotContain(workflow, 'const hasBroadScope = /', 'workflow must not own broad-scope prompt regex routing');
+  assertDoesNotContain(workflow, 'function isPlanningOnlyRequest(', 'workflow must not own planning-only prompt regex routing');
+
+  const verification = src('src/app/verification-planner.ts');
+  assertContains(verification, 'routeTaskIntent(prompt)', 'verification planner public prompt gates must consume TaskIntentRouter');
+  assertDoesNotContain(verification, 'buildTaskSemanticContract(prompt)', 'verification planner must not rebuild semantic contracts from raw prompt gates');
+
+  const completion = src('src/agent/completion-evidence.ts');
+  assertContains(completion, 'routeTaskIntent(intentText)', 'completion evidence must consume TaskIntentRouter');
+  assertDoesNotContain(completion, 'buildTaskSemanticContract(intentText)', 'completion evidence must not rebuild semantic contracts from raw prompt');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const nonAgentGuard = src('src/app/non-agent-response-guard.ts');

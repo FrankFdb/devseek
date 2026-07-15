@@ -7,10 +7,10 @@ import {
   type CppValidationPolicy,
 } from '../validation-planner';
 import {
-  buildTaskSemanticContract,
-  shouldRunCppValidationForContract,
-  shouldValidateNonCodeFilesForContract,
-} from '../task-semantic-contract';
+  routeTaskIntent,
+  shouldRequireRuntimeValidationForRoute,
+  shouldValidateNonCodeFilesForRoute,
+} from '../task-intent-router';
 
 export type ValidationMode = 'compile-only' | 'compile-link' | 'compile-run' | 'cmake' | 'file-check' | 'not-available';
 
@@ -278,18 +278,17 @@ export class VerificationPlanner {
 }
 
 export function shouldRunCppValidation(prompt: string): boolean {
-  const contract = buildTaskSemanticContract(prompt);
-  return shouldRunCppValidationForContract(contract);
+  return shouldRequireRuntimeValidationForRoute(routeTaskIntent(prompt));
 }
 
 export function shouldValidateNonCodeFiles(prompt: string): boolean {
-  const contract = buildTaskSemanticContract(prompt);
-  return shouldValidateNonCodeFilesForContract(contract)
-    || /(?:创建|新建|生成|写|写入|更新|添加|修改|验证|确认|检查|显示|读取|是否存在|内容|create|write|update|add|verify|check|show|read|display|exist)/i.test(prompt || '');
+  const route = routeTaskIntent(prompt);
+  return shouldValidateNonCodeFilesForRoute(route)
+    || route.family === 'simple-file';
 }
 
 export function hasExplicitFileContentPrompt(prompt: string): boolean {
-  return /(?:内容为|内容是|内容如下|写入内容(?:为|是)?|content\s*(?:is|:|=)|with\s+content)/i.test(prompt || '');
+  return routeTaskIntent(prompt).simpleFile !== undefined;
 }
 
 export function buildNonCodeFileCheckCommand(changedPaths: string[]): string {

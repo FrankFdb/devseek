@@ -16,10 +16,10 @@ import {
   hasSourceClaimArtifactContract,
 } from './task-contract';
 import {
-  buildTaskSemanticContract,
-  shouldRunCppValidationForContract,
-  type TaskSemanticContract,
-} from '../task-semantic-contract';
+  routeTaskIntent,
+  shouldRequireRuntimeValidationForRoute,
+  type TaskIntentRoute,
+} from '../task-intent-router';
 import type { VerificationResult } from './evidence-grounding';
 
 export interface CompletionTodo {
@@ -286,7 +286,7 @@ function buildUserIntentEvidenceText(userPrompt: string): string {
 }
 
 type CompletionEvidenceSemanticView = {
-  contract: TaskSemanticContract;
+  route: TaskIntentRoute;
   readOnly: boolean;
   fileChange: boolean;
   codeArtifact: boolean;
@@ -298,25 +298,29 @@ type CompletionEvidenceSemanticView = {
 };
 
 function buildCompletionEvidenceSemanticView(text: string): CompletionEvidenceSemanticView {
-  const intentText = String(text || '');
-  const contract = buildTaskSemanticContract(intentText);
-  const readOnly = isExplicitlyReadOnlyRequestFromIntent(intentText);
+  const intentText = stripGenericEvidenceTodoLines(String(text || ''));
+  const route = routeTaskIntent(intentText);
+  const contract = route.semanticContract;
+  const readOnly = isExplicitlyReadOnlyRequestFromRoute(route, intentText);
   const commandIntentText = commandEvidenceIntentText(intentText);
 
   const legacyFileChange = (FILE_CHANGE_RE.test(intentText) || classifyArtifactWriteIntent(intentText).requested)
     && (CODE_TARGET_RE.test(intentText) || FILE_PATH_TARGET_RE.test(intentText));
   const legacyCodeArtifact = FILE_CHANGE_RE.test(intentText) && CODE_TARGET_RE.test(intentText);
-  const semanticFileChange = contract.mutation.requested
-    && (contract.mutation.sourceChange || contract.mutation.fileArtifact || contract.mutation.targets.length > 0);
-  const codeArtifact = !readOnly && (contract.mutation.sourceChange || legacyCodeArtifact);
-  const fileChange = !readOnly && (semanticFileChange || legacyFileChange);
+  const routedCodeArtifact = route.family === 'standalone-program'
+    || route.family === 'existing-project-edit'
+    || (route.family === 'general-edit' && contract.mutation.sourceChange);
+  const semanticFileChange = route.mutation.requested
+    && (route.mutation.sourceChange || route.mutation.fileArtifact || route.mutation.targets.length > 0);
+  const codeArtifact = !readOnly && (routedCodeArtifact || contract.mutation.sourceChange || legacyCodeArtifact);
+  const fileChange = !readOnly && (route.mutation.requested || semanticFileChange || legacyFileChange);
   const runEvidence = !readOnly && (
-    contract.validation.runRequested
-    || shouldRunCppValidationForContract(contract)
+    route.validation.runRequested
+    || shouldRequireRuntimeValidationForRoute(route)
     || RUN_EVIDENCE_RE.test(commandIntentText)
   );
   const testEvidence = !readOnly && (
-    contract.validation.testRequested
+    route.validation.testRequested
     || TEST_EVIDENCE_RE.test(commandIntentText)
   );
   const runtimeValidation = !readOnly && (
@@ -325,10 +329,10 @@ function buildCompletionEvidenceSemanticView(text: string): CompletionEvidenceSe
     || RUNTIME_VALIDATION_RE.test(commandIntentText)
   );
   const commandEvidence = !readOnly && (
-    contract.validation.compileRequested
-    || contract.validation.runRequested
-    || contract.validation.testRequested
-    || (contract.validation.fileCheckRequested && contract.validation.requested)
+    route.validation.commandEvidenceRequired
+    || route.validation.compileRequested
+    || route.validation.runRequested
+    || route.validation.testRequested
     || COMMAND_EVIDENCE_RE.test(commandIntentText)
   );
   const fileCheckEvidence = fileChange
@@ -337,7 +341,7 @@ function buildCompletionEvidenceSemanticView(text: string): CompletionEvidenceSe
     && !runtimeValidation;
 
   return {
-    contract,
+    route,
     readOnly,
     fileChange,
     codeArtifact,
@@ -354,11 +358,19 @@ export function isExplicitlyReadOnlyRequest(text: string): boolean {
 }
 
 function isExplicitlyReadOnlyRequestFromIntent(text: string): boolean {
-  const intentText = text
+  const intentText = stripGenericEvidenceTodoLines(text);
+  return isExplicitlyReadOnlyRequestFromRoute(routeTaskIntent(intentText), intentText);
+}
+
+function stripGenericEvidenceTodoLines(text: string): string {
+  return String(text || '')
     .split(/\r?\n/)
     .filter(line => !GENERIC_EVIDENCE_TODO_TITLES.has(line.trim()))
     .join('\n');
-  const semanticContract = buildTaskSemanticContract(intentText);
+}
+
+function isExplicitlyReadOnlyRequestFromRoute(route: TaskIntentRoute, intentText: string): boolean {
+  const semanticContract = route.semanticContract;
   const advisoryOnly = isAdvisoryPlanningRequest(intentText)
     && (!isDirectImplementationRequest(intentText) || isDeferredImplementationRequest(intentText));
   if (semanticContract.mutation.requested
@@ -374,6 +386,7 @@ function isExplicitlyReadOnlyRequestFromIntent(text: string): boolean {
   const artifactIntent = classifyArtifactWriteIntent(intentText);
   if (artifactIntent.requested) return false;
   if (artifactIntent.prohibited && !artifactIntent.requested) return true;
+  if (route.family === 'read-only-advisory' || route.family === 'review') return true;
   return READ_ONLY_RE.test(intentText)
     || advisoryOnly;
 }

@@ -1,16 +1,6 @@
-import {
-  isDeliverableWriteRequest,
-  isScopedNoChangeWithDeliverableWriteRequest,
-} from '../intent/advisory-patterns';
-import { buildTaskSemanticContract } from '../task-semantic-contract';
-import { hasStandaloneCodeGenerationIntent } from './task-contract';
+import { routeTaskIntent, type RoutedAgentTaskShape } from '../task-intent-router';
 
-export type AgentTaskShape =
-  | 'existing-project'
-  | 'standalone-project'
-  | 'read-only-analysis'
-  | 'validation-repair'
-  | 'general';
+export type AgentTaskShape = RoutedAgentTaskShape;
 
 export interface AgentTaskShapeClassification {
   shape: AgentTaskShape;
@@ -20,42 +10,20 @@ export interface AgentTaskShapeClassification {
   validationLikely: boolean;
 }
 
-const EXISTING_PROJECT_RE = /(?:既有|现有|原来|原项目|大项目|正式项目|生产项目|主控|平台|遥控器|模块|接口文档|参考.+模块|创建于\s*[:：]?\s*\/|\/src\/|src\/|CMakeLists\.txt|Makefile|工程|代码库)/i;
-const STANDALONE_RE = /(?:独立(?:的)?(?:编程)?任务|独立项目|新建项目|从零|练习|demo|样例|原型|小工具|scratch|standalone)/i;
-const READ_ONLY_RE = /(?:只读|不(?:准备|要|需要)修改|当前不准备|仅(?:分析|设计|建议|检查)|给出(?:建议|对策|task)|对策检讨|通过\s*md\s*文档提供|文档提供|分析.+建议)/i;
-const WRITE_INTENT_RE = /(?:实现代码|代码实现|落地实现|修改|创建|新建|新增|添加|删除|重构|修复|写入|生成.+文件|implement|create|modify|write|fix|refactor)/i;
-const NEGATED_WRITE_INTENT_RE = /(?:不(?:准备|要|需要|执行|做|进行)(?:[^。；;，,\n]{0,12})?(?:修改|创建|新建|新增|添加|删除|重构|修复|写入|实现|落地)|当前不准备(?:[^。；;，,\n]{0,12})?(?:修改|创建|新建|新增|添加|删除|重构|修复|写入|实现|落地))/i;
-const VALIDATION_RE = /(?:日志|失败|报错|编译|运行|测试|验证|重试|回归|QualityGate|replay|compile|build|test|run|error|failed)/i;
-const FAILURE_RE = /(?:日志|失败|报错|重试|回归|QualityGate|replay|error|failed)/i;
-
 export function classifyAgentTaskShape(userPrompt: string): AgentTaskShapeClassification {
-  const text = String(userPrompt || '');
-  const semanticContract = buildTaskSemanticContract(text);
-  const existingProjectLikely = semanticContract.scope === 'existing-project'
-    || EXISTING_PROJECT_RE.test(text);
-  const standaloneLikely = (semanticContract.scope === 'standalone' || STANDALONE_RE.test(text) || hasStandaloneCodeGenerationIntent(text))
-    && !existingProjectLikely;
-  const validationLikely = semanticContract.validation.requested || VALIDATION_RE.test(text);
-  const failureRepairLikely = FAILURE_RE.test(text);
-  const hasScopedDeliverableWrite = isScopedNoChangeWithDeliverableWriteRequest(text);
-  const legacyWriteIntent = (WRITE_INTENT_RE.test(text) || isDeliverableWriteRequest(text))
-    && (!NEGATED_WRITE_INTENT_RE.test(text) || hasScopedDeliverableWrite);
-  const hasWriteIntent = semanticContract.mutation.requested || legacyWriteIntent;
-  const readOnlyLikely = (semanticContract.kind === 'read-only' || READ_ONLY_RE.test(text)) && !hasWriteIntent;
-
-  let shape: AgentTaskShape = 'general';
-  if (failureRepairLikely) {
-    shape = 'validation-repair';
-  } else if (readOnlyLikely) {
-    shape = 'read-only-analysis';
-  } else if (existingProjectLikely) {
-    shape = 'existing-project';
-  } else if (standaloneLikely) {
-    shape = 'standalone-project';
-  }
+  const route = routeTaskIntent(userPrompt);
+  const existingProjectLikely = route.agentTaskShape === 'existing-project'
+    || route.semanticContract.scope === 'existing-project';
+  const standaloneLikely = route.agentTaskShape === 'standalone-project'
+    || route.semanticContract.scope === 'standalone';
+  const readOnlyLikely = route.agentTaskShape === 'read-only-analysis'
+    && !route.mutation.requested;
+  const validationLikely = route.validation.requested
+    || route.validation.commandEvidenceRequired
+    || route.agentTaskShape === 'validation-repair';
 
   return {
-    shape,
+    shape: route.agentTaskShape,
     existingProjectLikely,
     standaloneLikely,
     readOnlyLikely,
