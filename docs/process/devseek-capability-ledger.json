@@ -243,7 +243,7 @@
         },
         "contract_sha256": "8d68ea6eb2dcf0cdfcda59cc5872448f7f9aaf29da339f5874fded0294fad9d5"
       },
-      "implementation_state": "implemented",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
       "implementation_components": [
@@ -278,12 +278,37 @@
         {
           "role": "contract-tests",
           "path": "scripts/test/devseek-capability-ledger.test.mjs"
+        },
+        {
+          "role": "c0-ledger-wiring-source",
+          "path": "docs/process/devseek-c0-ledger-wiring.json"
+        },
+        {
+          "role": "c0-ledger-wiring-schema",
+          "path": "docs/process/devseek-c0-ledger-wiring.schema.json"
+        },
+        {
+          "role": "c0-ledger-wiring-generated-view",
+          "path": "docs/process/generated/devseek-c0-ledger-wiring.md"
+        },
+        {
+          "role": "c0-ledger-wiring-checker",
+          "path": "scripts/devseek-c0-ledger-wiring-check.mjs"
+        },
+        {
+          "role": "c0-ledger-wiring-library",
+          "path": "scripts/lib/devseek-c0-ledger-wiring.mjs"
+        },
+        {
+          "role": "c0-ledger-wiring-contract-tests",
+          "path": "scripts/test/devseek-c0-ledger-wiring.test.mjs"
         }
       ],
       "architecture_dependencies": [],
       "verification": {
         "commands": [
-          "npm run verify:capability-ledger"
+          "npm run verify:capability-ledger",
+          "npm run verify:c0-ledger-wiring"
         ],
         "evidence_kind": "deterministic-regression"
       }
@@ -3719,5 +3744,5 @@
       ]
     }
   ],
-  "ledger_sha256": "b9e0e10f03d933992e22662596d9a45d3aa5a1ff84738b1e710a4d8fc3914d2c"
+  "ledger_sha256": "ea5b7028e74c982f9c2f66cc25545d10e5554dd7487bcd47d2d6f93781f7b468"
 }

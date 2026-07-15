@@ -1,0 +1,158 @@
+{
+  "schema_version": "devseek.c0-ledger-wiring/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "wiring_id": "DEVSEEK-GATE0-C0-LEDGER-WIRING/v1",
+  "wiring_version": 1,
+  "source_status": "verified",
+  "integrity_scope": "local-ledger-wiring-conformance",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "sources": {
+    "capability_ledger": {
+      "path": "docs/process/devseek-capability-ledger.json",
+      "schema_version": "devseek.capability-ledger/v1",
+      "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
+      "source_sha256": "ea5b7028e74c982f9c2f66cc25545d10e5554dd7487bcd47d2d6f93781f7b468"
+    },
+    "package_scripts": {
+      "path": "package.json",
+      "source_sha256": "117b697891984692a681d71238e19c5240cd32fbfe98f995060b8184f1f93f34"
+    },
+    "phase_gate_source": {
+      "path": "scripts/devseek-phase0-12-verify.mjs",
+      "source_sha256": "57ffaeae10030a371da4ec8f8b48137dbefdc59d059274c5a40dc10912f0cae7"
+    },
+    "checker_source": {
+      "path": "scripts/devseek-c0-ledger-wiring-check.mjs",
+      "source_sha256": "0b5e1e4a162a033a28aa5496a6be6cdec690ddfc84abba40dd676522b04438f0"
+    },
+    "oracle_source": {
+      "path": "scripts/test/devseek-c0-ledger-wiring.test.mjs",
+      "source_sha256": "059c072b1f83c32bbbf69754f3c7c2461a4f8849fbee37b3e189f8c59c91f324"
+    }
+  },
+  "ledger_owner": {
+    "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
+    "implementation_state": "wired",
+    "semantic_authority_port": "CapabilityLedgerSchema",
+    "source_of_truth_path": "docs/process/devseek-capability-ledger.json",
+    "schema_path": "docs/process/devseek-capability-ledger.schema.json",
+    "source_owner_capability_ids": [
+      "C0-CAPABILITY-LEDGER-SCHEMA"
+    ],
+    "schema_owner_capability_ids": [
+      "C0-CAPABILITY-LEDGER-SCHEMA"
+    ],
+    "required_component_paths": [
+      {
+        "path": "docs/process/devseek-c0-ledger-wiring.json",
+        "present": true
+      },
+      {
+        "path": "docs/process/devseek-c0-ledger-wiring.schema.json",
+        "present": true
+      },
+      {
+        "path": "docs/process/generated/devseek-c0-ledger-wiring.md",
+        "present": true
+      },
+      {
+        "path": "scripts/devseek-c0-ledger-wiring-check.mjs",
+        "present": true
+      },
+      {
+        "path": "scripts/lib/devseek-c0-ledger-wiring.mjs",
+        "present": true
+      },
+      {
+        "path": "scripts/test/devseek-c0-ledger-wiring.test.mjs",
+        "present": true
+      }
+    ],
+    "verification_commands": [
+      "npm run verify:capability-ledger",
+      "npm run verify:c0-ledger-wiring"
+    ],
+    "verification_has_capability_ledger": true,
+    "verification_has_c0_wiring": true,
+    "direct_state_edit_guard": "wired-state-requires-c0-ledger-wiring-evidence"
+  },
+  "governed_consumers": [
+    {
+      "consumer_id": "capability-ledger-owner",
+      "command": "npm run verify:capability-ledger",
+      "package_script": "verify:capability-ledger",
+      "package_script_present": true,
+      "phase_gate_id": "capability-ledger-governance",
+      "phase_gate_present": true,
+      "reader_path": "scripts/devseek-capability-ledger-check.mjs",
+      "reader_source_sha256": "5e8546bfc72f4ff3af14b624a8597001bc4060bc24c0e63e5499af0e1ffc605c",
+      "direct_ledger_reader": true,
+      "coverage_status": "covered"
+    },
+    {
+      "consumer_id": "c0-ledger-wiring",
+      "command": "npm run verify:c0-ledger-wiring",
+      "package_script": "verify:c0-ledger-wiring",
+      "package_script_present": true,
+      "phase_gate_id": "c0-ledger-wiring-conformance",
+      "phase_gate_present": true,
+      "reader_path": "scripts/devseek-c0-ledger-wiring-check.mjs",
+      "reader_source_sha256": "0b5e1e4a162a033a28aa5496a6be6cdec690ddfc84abba40dd676522b04438f0",
+      "direct_ledger_reader": true,
+      "coverage_status": "covered"
+    },
+    {
+      "consumer_id": "profile-denominator-registry",
+      "command": "npm run verify:profile-denominator-registry",
+      "package_script": "verify:profile-denominator-registry",
+      "package_script_present": true,
+      "phase_gate_id": "profile-denominator-registry-governance",
+      "phase_gate_present": true,
+      "reader_path": "scripts/devseek-profile-denominator-registry-check.mjs",
+      "reader_source_sha256": "e8566a0f84003bc79262a8231e18da2a33ee6417921a8913f5886731e0f4fcf1",
+      "direct_ledger_reader": true,
+      "coverage_status": "covered"
+    },
+    {
+      "consumer_id": "gate0-machine-decision",
+      "command": "npm run verify:gate0-decision",
+      "package_script": "verify:gate0-decision",
+      "package_script_present": true,
+      "phase_gate_id": "gate0-machine-decision-contract",
+      "phase_gate_present": true,
+      "reader_path": "scripts/devseek-gate0-decision-check.mjs",
+      "reader_source_sha256": "b7b7e8e68ff2be2d292796756465e74971c71c1de8efd4f33756b5ccd975ce31",
+      "direct_ledger_reader": true,
+      "coverage_status": "covered"
+    }
+  ],
+  "bypass_guards": {
+    "markdown_drives_ledger": false,
+    "manual_capability_state_files_allowed": false,
+    "second_capability_ledger_allowed": false,
+    "direct_state_edit_without_wiring_evidence_allowed": false,
+    "forbidden_process_state_files": []
+  },
+  "document_governance_boundary": {
+    "active_baseline_selector_path": "docs/process/devseek-active-baseline-selector.json",
+    "doc_governance_status_path": "docs/process/generated/devseek-doc-governance-status.md",
+    "capability_state_source": "docs/process/devseek-capability-ledger.json",
+    "document_status_may_assert_gate_pass": false,
+    "markdown_may_promote_capability_state": false
+  },
+  "counts": {
+    "ledger_source_owners": 1,
+    "ledger_schema_owners": 1,
+    "governed_consumers": 4,
+    "governed_consumers_covered": 4,
+    "bypasses": 0,
+    "qualification_claims": 0
+  },
+  "wiring_sha256": "ab377809b0415c0fcacceb87a253c747c62e2ede8b9f377b59d799815428efa9"
+}

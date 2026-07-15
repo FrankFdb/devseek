@@ -13,7 +13,7 @@
       "path": "docs/process/devseek-capability-ledger.json",
       "schema_version": "devseek.capability-ledger/v1",
       "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
-      "source_sha256": "b9e0e10f03d933992e22662596d9a45d3aa5a1ff84738b1e710a4d8fc3914d2c",
+      "source_sha256": "ea5b7028e74c982f9c2f66cc25545d10e5554dd7487bcd47d2d6f93781f7b468",
       "qualification_claim_authority": {
         "mode": "deny-until-signed-evidence-validator",
         "profile_registry_sha256": null,
@@ -75,8 +75,8 @@
       "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
       "implementation_requirement": {
         "required_state": "wired",
-        "observed_state": "implemented",
-        "satisfied": false
+        "observed_state": "wired",
+        "satisfied": true
       },
       "claim_requirements": [
         {
@@ -236,14 +236,6 @@
   "blockers": {
     "repository_pending": [
       {
-        "blocker_id": "repository-implementation-not-wired:C0-CAPABILITY-LEDGER-SCHEMA",
-        "capability_ids": [
-          "C0-CAPABILITY-LEDGER-SCHEMA"
-        ],
-        "requirement": "implementation_state>=wired",
-        "observed": "implemented"
-      },
-      {
         "blocker_id": "repository-implementation-not-wired:C0-PREREGISTRATION-PLAN",
         "capability_ids": [
           "C0-PREREGISTRATION-PLAN"
@@ -365,10 +357,10 @@
   },
   "counts": {
     "capabilities": 7,
-    "implementation_requirements_satisfied": 2,
+    "implementation_requirements_satisfied": 3,
     "exact_claim_requirements_satisfied": 0,
     "observed_claims": 0,
-    "repository_pending_blockers": 5,
+    "repository_pending_blockers": 4,
     "external_authority_blockers": 6
   },
   "checker_contract": {
@@ -376,5 +368,5 @@
     "checker_pass_meaning": "report-schema-source-binding-and-decision-invariants-only",
     "gate_pass_requires_protected_qualification": true
   },
-  "decision_sha256": "7d42c3bfda8fa40ad6357eff6f82e17a6d901fb3c3efb2c36648493f1553018a"
+  "decision_sha256": "9d37c08e90ae423f0de6d49be05338320356fe901ae51cd6232b3988b1609942"
 }

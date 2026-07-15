@@ -17,7 +17,7 @@
 
 ## Frozen Sources
 
-- Capability ledger: `b9e0e10f03d933992e22662596d9a45d3aa5a1ff84738b1e710a4d8fc3914d2c`
+- Capability ledger: `ea5b7028e74c982f9c2f66cc25545d10e5554dd7487bcd47d2d6f93781f7b468`
 - Milestone profile: `R1-MINIMAL-SEAM/v1` sha256=`27c90f86cab61156766e18b36bcb368842e424d25c5fae2de2534fcdd1753ad9`
 - Claim profile: `DEVSEEK-GATE0-INFRASTRUCTURE/v1` sha256=`23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af`
 
@@ -33,7 +33,7 @@
 
 | Capability | Required state | Profile tuple | Applicability | Slots | Attempts | Denominator SHA-256 |
 | --- | --- | --- | --- | ---: | ---: | --- |
-| `C0-CAPABILITY-LEDGER-SCHEMA` | wired | `DEVSEEK-GATE0-INFRASTRUCTURE/v1` / `L2` | `repository-governance` / `local-node` / `linux-x64-v1` | 5 | 10 | `ba47cbcda804ac132c0f6c41bd36d8c64b17be1fe73ebb956e2ae4e137552718` |
+| `C0-CAPABILITY-LEDGER-SCHEMA` | wired | `DEVSEEK-GATE0-INFRASTRUCTURE/v1` / `L2` | `repository-governance` / `local-node` / `linux-x64-v1` | 5 | 10 | `40ad3c2c0890a950a2f59331bf8f4b43ea9978bbd542ff10c1bed2e2214ccd5a` |
 | `C0-CASE-CATALOG` | wired | `DEVSEEK-GATE0-INFRASTRUCTURE/v1` / `L2` | `repository-governance` / `local-node` / `linux-x64-v1` | 5 | 10 | `1f02e4f5bb9d74b90e3665b1b935535431ed9105977af62563a04c08447cc8c9` |
 | `C0-PREREGISTRATION-PLAN` | wired | `DEVSEEK-GATE0-INFRASTRUCTURE/v1` / `L2` | `repository-governance` / `local-node` / `linux-x64-v1` | 5 | 10 | `85eb10d1f91cc42e3a1daa7ca5b061abb0f6a6233720d0138c1125b6d38cce55` |
 | `C0-QUALIFICATION-AGGREGATOR` | wired | `DEVSEEK-GATE0-INFRASTRUCTURE/v1` / `L2` | `repository-governance` / `local-node` / `linux-x64-v1` | 5 | 10 | `5b70434c5b06ec02a15f9ef8edb888f0b62a97e0fca976de2025877871b96251` |
@@ -53,4 +53,4 @@
 
 ## Registry Identity
 
-- Registry SHA-256: `da1c555ce3952b59c9f5d2100c1971771b0310547821f31dbb3be755cd4789cb`
+- Registry SHA-256: `0525ba5a917f4366830b15887a1697c15e45f8af0cff79928f082010dd1049a5`

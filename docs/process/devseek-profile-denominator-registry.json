@@ -17,7 +17,7 @@
       "path": "docs/process/devseek-capability-ledger.json",
       "schema_version": "devseek.capability-ledger/v1",
       "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
-      "source_sha256": "b9e0e10f03d933992e22662596d9a45d3aa5a1ff84738b1e710a4d8fc3914d2c"
+      "source_sha256": "ea5b7028e74c982f9c2f66cc25545d10e5554dd7487bcd47d2d6f93781f7b468"
     },
     "milestone_profile": {
       "path": "docs/process/devseek-milestone-profiles.json",
@@ -60,7 +60,7 @@
       "capability_id": "C0-CAPABILITY-LEDGER-SCHEMA",
       "capability_title": "C0 可证地基 / CapabilityLedgerSchema",
       "semantic_authority_port": "CapabilityLedgerSchema",
-      "implementation_state": "implemented",
+      "implementation_state": "wired",
       "required_implementation_state": "wired",
       "profile_denominator": {
         "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
@@ -454,7 +454,7 @@
           "slot_denominator_sha256": "ded9836afb37761ec9c796cf8106d3aa4305c54500cec65e5d193b74dd6fd1bf"
         }
       ],
-      "capability_denominator_sha256": "ba47cbcda804ac132c0f6c41bd36d8c64b17be1fe73ebb956e2ae4e137552718"
+      "capability_denominator_sha256": "40ad3c2c0890a950a2f59331bf8f4b43ea9978bbd542ff10c1bed2e2214ccd5a"
     },
     {
       "capability_id": "C0-CASE-CATALOG",
@@ -2866,5 +2866,5 @@
     "catalog_metadata_executions": 0,
     "qualification_claims": 0
   },
-  "registry_sha256": "da1c555ce3952b59c9f5d2100c1971771b0310547821f31dbb3be755cd4789cb"
+  "registry_sha256": "0525ba5a917f4366830b15887a1697c15e45f8af0cff79928f082010dd1049a5"
 }

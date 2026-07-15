@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-c0-ledger-wiring-v1.json",
+  "title": "DevSeek Gate 0 C0 Ledger Wiring v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "wiring_id",
+    "wiring_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "sources",
+    "ledger_owner",
+    "governed_consumers",
+    "bypass_guards",
+    "document_governance_boundary",
+    "counts",
+    "wiring_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.c0-ledger-wiring/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "wiring_id": { "const": "DEVSEEK-GATE0-C0-LEDGER-WIRING/v1" },
+    "wiring_version": { "const": 1 },
+    "source_status": { "const": "verified" },
+    "integrity_scope": { "const": "local-ledger-wiring-conformance" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "sources": { "$ref": "#/$defs/sources" },
+    "ledger_owner": { "$ref": "#/$defs/ledgerOwner" },
+    "governed_consumers": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "$ref": "#/$defs/governedConsumer" }
+    },
+    "bypass_guards": { "$ref": "#/$defs/bypassGuards" },
+    "document_governance_boundary": { "$ref": "#/$defs/documentGovernanceBoundary" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "wiring_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "source_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_ledger",
+        "package_scripts",
+        "phase_gate_source",
+        "checker_source",
+        "oracle_source"
+      ],
+      "properties": {
+        "capability_ledger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "schema_version", "ledger_id", "source_sha256"],
+          "properties": {
+            "path": { "const": "docs/process/devseek-capability-ledger.json" },
+            "schema_version": { "const": "devseek.capability-ledger/v1" },
+            "ledger_id": { "const": "DEVSEEK-CAPABILITY-LEDGER/v1" },
+            "source_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "package_scripts": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "properties": {
+                "path": { "const": "package.json" }
+              }
+            }
+          ]
+        },
+        "phase_gate_source": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "properties": {
+                "path": { "const": "scripts/devseek-phase0-12-verify.mjs" }
+              }
+            }
+          ]
+        },
+        "checker_source": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "properties": {
+                "path": { "const": "scripts/devseek-c0-ledger-wiring-check.mjs" }
+              }
+            }
+          ]
+        },
+        "oracle_source": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "properties": {
+                "path": { "const": "scripts/test/devseek-c0-ledger-wiring.test.mjs" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "ledgerOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_id",
+        "implementation_state",
+        "semantic_authority_port",
+        "source_of_truth_path",
+        "schema_path",
+        "source_owner_capability_ids",
+        "schema_owner_capability_ids",
+        "required_component_paths",
+        "verification_commands",
+        "verification_has_capability_ledger",
+        "verification_has_c0_wiring",
+        "direct_state_edit_guard"
+      ],
+      "properties": {
+        "capability_id": { "const": "C0-CAPABILITY-LEDGER-SCHEMA" },
+        "implementation_state": { "const": "wired" },
+        "semantic_authority_port": { "const": "CapabilityLedgerSchema" },
+        "source_of_truth_path": { "const": "docs/process/devseek-capability-ledger.json" },
+        "schema_path": { "const": "docs/process/devseek-capability-ledger.schema.json" },
+        "source_owner_capability_ids": {
+          "type": "array",
+          "prefixItems": [{ "const": "C0-CAPABILITY-LEDGER-SCHEMA" }],
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "schema_owner_capability_ids": {
+          "type": "array",
+          "prefixItems": [{ "const": "C0-CAPABILITY-LEDGER-SCHEMA" }],
+          "minItems": 1,
+          "maxItems": 1
+        },
+        "required_component_paths": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "present"],
+            "properties": {
+              "path": { "$ref": "#/$defs/nonEmpty" },
+              "present": { "const": true }
+            }
+          }
+        },
+        "verification_commands": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "verification_has_capability_ledger": { "const": true },
+        "verification_has_c0_wiring": { "const": true },
+        "direct_state_edit_guard": { "const": "wired-state-requires-c0-ledger-wiring-evidence" }
+      }
+    },
+    "governedConsumer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "consumer_id",
+        "command",
+        "package_script",
+        "package_script_present",
+        "phase_gate_id",
+        "phase_gate_present",
+        "reader_path",
+        "reader_source_sha256",
+        "direct_ledger_reader",
+        "coverage_status"
+      ],
+      "properties": {
+        "consumer_id": { "$ref": "#/$defs/nonEmpty" },
+        "command": { "$ref": "#/$defs/nonEmpty" },
+        "package_script": { "$ref": "#/$defs/nonEmpty" },
+        "package_script_present": { "const": true },
+        "phase_gate_id": { "$ref": "#/$defs/nonEmpty" },
+        "phase_gate_present": { "const": true },
+        "reader_path": { "$ref": "#/$defs/nonEmpty" },
+        "reader_source_sha256": { "$ref": "#/$defs/sha256" },
+        "direct_ledger_reader": { "const": true },
+        "coverage_status": { "const": "covered" }
+      }
+    },
+    "bypassGuards": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "markdown_drives_ledger",
+        "manual_capability_state_files_allowed",
+        "second_capability_ledger_allowed",
+        "direct_state_edit_without_wiring_evidence_allowed",
+        "forbidden_process_state_files"
+      ],
+      "properties": {
+        "markdown_drives_ledger": { "const": false },
+        "manual_capability_state_files_allowed": { "const": false },
+        "second_capability_ledger_allowed": { "const": false },
+        "direct_state_edit_without_wiring_evidence_allowed": { "const": false },
+        "forbidden_process_state_files": {
+          "type": "array",
+          "maxItems": 0
+        }
+      }
+    },
+    "documentGovernanceBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "active_baseline_selector_path",
+        "doc_governance_status_path",
+        "capability_state_source",
+        "document_status_may_assert_gate_pass",
+        "markdown_may_promote_capability_state"
+      ],
+      "properties": {
+        "active_baseline_selector_path": { "const": "docs/process/devseek-active-baseline-selector.json" },
+        "doc_governance_status_path": { "const": "docs/process/generated/devseek-doc-governance-status.md" },
+        "capability_state_source": { "const": "docs/process/devseek-capability-ledger.json" },
+        "document_status_may_assert_gate_pass": { "const": false },
+        "markdown_may_promote_capability_state": { "const": false }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ledger_source_owners",
+        "ledger_schema_owners",
+        "governed_consumers",
+        "governed_consumers_covered",
+        "bypasses",
+        "qualification_claims"
+      ],
+      "properties": {
+        "ledger_source_owners": { "const": 1 },
+        "ledger_schema_owners": { "const": 1 },
+        "governed_consumers": { "const": 4 },
+        "governed_consumers_covered": { "const": 4 },
+        "bypasses": { "const": 0 },
+        "qualification_claims": { "const": 0 }
+      }
+    }
+  }
+}

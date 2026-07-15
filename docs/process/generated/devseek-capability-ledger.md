@@ -4,12 +4,12 @@
 
 - Schema: `devseek.capability-ledger/v1`
 - Capabilities: 76
-- Ledger SHA-256: `b9e0e10f03d933992e22662596d9a45d3aa5a1ff84738b1e710a4d8fc3914d2c`
+- Ledger SHA-256: `ea5b7028e74c982f9c2f66cc25545d10e5554dd7487bcd47d2d6f93781f7b468`
 - Qualification claim policy: `deny-until-signed-evidence-validator`
 
 | Capability | Priority | Applicability | Claim scopes | Implementation | Qualification | Authority port | Typed dependencies |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `C0-CAPABILITY-LEDGER-SCHEMA` | P0 | active | qualification-infrastructure | implemented | — | `CapabilityLedgerSchema` | — |
+| `C0-CAPABILITY-LEDGER-SCHEMA` | P0 | active | qualification-infrastructure | wired | — | `CapabilityLedgerSchema` | — |
 | `C0-CASE-CATALOG` | P0 | active | qualification-infrastructure | wired | — | `GoldenCaseCatalogPort` | C0-CAPABILITY-LEDGER-SCHEMA (evidence/wired) |
 | `C0-PREREGISTRATION-PLAN` | P0 | active | qualification-infrastructure | implemented | — | `QualificationPlanRegistrationPort` | C0-QUALIFICATION-PROFILE-SCHEMA (evidence/wired)<br>C0-CASE-CATALOG (evidence/wired) |
 | `C0-QUALIFICATION-AGGREGATOR` | P0 | active | qualification-infrastructure | implemented | — | `QualificationAggregationPort` | C0-QUALIFICATION-EVIDENCE-MANIFEST (evidence/wired)<br>C0-PREREGISTRATION-PLAN (evidence/wired) |

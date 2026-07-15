@@ -75,6 +75,12 @@ const gates = [
     purpose: 'Fail closed on capability graph, typed dependency, scoped qualification target, R1 closure, or generated-manifest drift.',
   },
   {
+    id: 'c0-ledger-wiring-conformance',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:c0-ledger-wiring'],
+    purpose: 'Fail closed when capability state has more than one ledger owner, governed consumers bypass the unique ledger schema, or a wired state lacks machine evidence.',
+  },
+  {
     id: 'qualification-protocol-conformance',
     phases: '0-12',
     command: ['npm', 'run', 'verify:qualification-protocol'],
@@ -281,6 +287,7 @@ function phaseCovered(spec, phase) {
 function classifyGateFailure(gate) {
   if (/architecture-drift/i.test(gate.id)) return 'architecture-boundary-regression';
   if (/capability-ledger/i.test(gate.id)) return 'capability-governance-regression';
+  if (/c0-ledger-wiring/i.test(gate.id)) return 'c0-ledger-wiring-regression';
   if (/profile-executor/i.test(gate.id)) return 'profile-executor-contract-regression';
   if (/current-candidate-identity/i.test(gate.id)) return 'current-candidate-identity-regression';
   if (/qualification-runner/i.test(gate.id)) return 'qualification-runner-bypass-regression';
@@ -299,6 +306,7 @@ function nextActionFor(gate) {
   const actions = {
     'architecture-drift-budget': 'Move the new responsibility into the owning service/adapter, lower the frozen ceiling after extraction, then rerun verify:architecture-drift.',
     'capability-ledger-governance': 'Fix the machine ledger, typed dependency, scoped claim target, or generated manifest at its semantic authority, then rerun verify:capability-ledger.',
+    'c0-ledger-wiring-conformance': 'Restore the single capability ledger owner, direct reader coverage, Phase reachability, and wired-state evidence before rerunning verify:c0-ledger-wiring.',
     'profile-executor-contract-conformance': 'Restore one unique executor contract and independent oracle for each Gate 0 denominator slot semantic, keep execution behind the single runner root, and rerun verify:profile-executor-contracts.',
     'current-candidate-identity-probe': 'Restore the read-only source, VSIX, stable install, and active runtime identity binding; retire stale debug runtime only with fresh authorization, then rerun verify:current-candidate-identity.',
     'qualification-runner-wiring': 'Restore the single guarded runner composition root, remove or disable bypass entry points, and rerun verify:qualification-runner; local runner conformance must remain non-qualifying without protected authority.',
