@@ -337,7 +337,7 @@
         },
         "contract_sha256": "cec65045423ca109d43db56d7045650393d4cf903f49909eaf28a6b22b645564"
       },
-      "implementation_state": "implemented",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
       "implementation_components": [
@@ -620,7 +620,7 @@
         },
         "contract_sha256": "441750ed63f2e8d0b9b702c050e27d9c8fd8362281285ceff081c5b31f84e91b"
       },
-      "implementation_state": "implemented",
+      "implementation_state": "wired",
       "qualification_claims": [],
       "qualification_level_view": null,
       "implementation_components": [
@@ -653,6 +653,38 @@
           "path": "scripts/test/devseek-qualification-protocol.test.mjs"
         },
         {
+          "role": "single-runner-composition-root",
+          "path": "scripts/lib/devseek-qualification-runner.mjs"
+        },
+        {
+          "role": "runner-inventory-and-production-entrypoints",
+          "path": "docs/process/devseek-qualification-runner-inventory.json"
+        },
+        {
+          "role": "preregistration-wiring-source",
+          "path": "docs/process/devseek-c0-preregistration-wiring.json"
+        },
+        {
+          "role": "preregistration-wiring-schema",
+          "path": "docs/process/devseek-c0-preregistration-wiring.schema.json"
+        },
+        {
+          "role": "preregistration-wiring-generated-view",
+          "path": "docs/process/generated/devseek-c0-preregistration-wiring.md"
+        },
+        {
+          "role": "preregistration-wiring-checker",
+          "path": "scripts/devseek-c0-preregistration-wiring-check.mjs"
+        },
+        {
+          "role": "preregistration-wiring-runtime",
+          "path": "scripts/lib/devseek-c0-preregistration-wiring.mjs"
+        },
+        {
+          "role": "preregistration-wiring-oracles",
+          "path": "scripts/test/devseek-c0-preregistration-wiring.test.mjs"
+        },
+        {
           "role": "default-phase-gate",
           "path": "scripts/devseek-phase0-12-verify.mjs"
         }
@@ -673,7 +705,9 @@
       ],
       "verification": {
         "commands": [
-          "npm run verify:qualification-protocol"
+          "npm run verify:qualification-protocol",
+          "npm run verify:qualification-runner",
+          "npm run verify:c0-preregistration-wiring"
         ],
         "evidence_kind": "deterministic-regression"
       }
@@ -3744,5 +3778,5 @@
       ]
     }
   ],
-  "ledger_sha256": "ea5b7028e74c982f9c2f66cc25545d10e5554dd7487bcd47d2d6f93781f7b468"
+  "ledger_sha256": "d687e1cc63eb835a7260ccacf8e51157812e343b70a1d0e0979329b9c0330ae3"
 }

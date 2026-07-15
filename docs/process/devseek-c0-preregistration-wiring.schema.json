@@ -1,0 +1,396 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-c0-preregistration-wiring-v1.json",
+  "title": "DevSeek Gate 0 C0 Preregistration Wiring v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "wiring_id",
+    "wiring_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "sources",
+    "preregistration_owner",
+    "production_entrypoints",
+    "runner_composition",
+    "preregistration_chain",
+    "protocol_guards",
+    "zero_dispatch_oracles",
+    "bypass_guards",
+    "counts",
+    "wiring_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.c0-preregistration-wiring/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "wiring_id": { "const": "DEVSEEK-GATE0-C0-PREREGISTRATION-WIRING/v1" },
+    "wiring_version": { "const": 1 },
+    "source_status": { "const": "verified" },
+    "integrity_scope": { "const": "local-preregistration-wiring-conformance" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "sources": { "$ref": "#/$defs/sources" },
+    "preregistration_owner": { "$ref": "#/$defs/preregistrationOwner" },
+    "production_entrypoints": {
+      "type": "array",
+      "minItems": 4,
+      "items": { "$ref": "#/$defs/productionEntrypoint" }
+    },
+    "runner_composition": { "$ref": "#/$defs/runnerComposition" },
+    "preregistration_chain": {
+      "type": "array",
+      "minItems": 7,
+      "maxItems": 7,
+      "items": { "$ref": "#/$defs/chainStep" }
+    },
+    "protocol_guards": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "$ref": "#/$defs/protocolGuard" }
+    },
+    "zero_dispatch_oracles": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "$ref": "#/$defs/zeroDispatchOracle" }
+    },
+    "bypass_guards": { "$ref": "#/$defs/bypassGuards" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "wiring_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "source_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_ledger",
+        "runner_inventory",
+        "profile_executor_contracts",
+        "qualification_plan_schema",
+        "qualification_event_schema",
+        "qualification_receipt_schema",
+        "qualification_protocol_source",
+        "qualification_runner_source",
+        "package_scripts",
+        "phase_gate_source",
+        "checker_source",
+        "oracle_source"
+      ],
+      "properties": {
+        "capability_ledger": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "schema_version", "ledger_id", "source_sha256"],
+          "properties": {
+            "path": { "const": "docs/process/devseek-capability-ledger.json" },
+            "schema_version": { "const": "devseek.capability-ledger/v1" },
+            "ledger_id": { "const": "DEVSEEK-CAPABILITY-LEDGER/v1" },
+            "source_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "runner_inventory": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "schema_version", "source_sha256"],
+          "properties": {
+            "path": { "const": "docs/process/devseek-qualification-runner-inventory.json" },
+            "schema_version": { "const": "devseek.qualification-runner-inventory/v1" },
+            "source_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "profile_executor_contracts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "schema_version", "contract_registry_id", "source_sha256"],
+          "properties": {
+            "path": { "const": "docs/process/devseek-profile-executor-contracts.json" },
+            "schema_version": { "const": "devseek.profile-executor-contracts/v1" },
+            "contract_registry_id": { "const": "DEVSEEK-GATE0-PROFILE-EXECUTOR-CONTRACTS/v1" },
+            "source_sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "qualification_plan_schema": { "$ref": "#/$defs/sourceRef" },
+        "qualification_event_schema": { "$ref": "#/$defs/sourceRef" },
+        "qualification_receipt_schema": { "$ref": "#/$defs/sourceRef" },
+        "qualification_protocol_source": { "$ref": "#/$defs/sourceRef" },
+        "qualification_runner_source": { "$ref": "#/$defs/sourceRef" },
+        "package_scripts": { "$ref": "#/$defs/sourceRef" },
+        "phase_gate_source": { "$ref": "#/$defs/sourceRef" },
+        "checker_source": { "$ref": "#/$defs/sourceRef" },
+        "oracle_source": { "$ref": "#/$defs/sourceRef" }
+      }
+    },
+    "preregistrationOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_id",
+        "implementation_state",
+        "authority_port",
+        "required_component_paths",
+        "verification_commands",
+        "verification_has_qualification_protocol",
+        "verification_has_qualification_runner",
+        "verification_has_preregistration_wiring"
+      ],
+      "properties": {
+        "capability_id": { "const": "C0-PREREGISTRATION-PLAN" },
+        "implementation_state": { "const": "wired" },
+        "authority_port": { "const": "QualificationPlanRegistrationPort" },
+        "required_component_paths": {
+          "type": "array",
+          "minItems": 6,
+          "maxItems": 6,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "present"],
+            "properties": {
+              "path": { "$ref": "#/$defs/nonEmpty" },
+              "present": { "const": true }
+            }
+          }
+        },
+        "verification_commands": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "verification_has_qualification_protocol": { "const": true },
+        "verification_has_qualification_runner": { "const": true },
+        "verification_has_preregistration_wiring": { "const": true }
+      }
+    },
+    "productionEntrypoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry_id",
+        "role",
+        "source_ref",
+        "entrypoint",
+        "qualification_enabled",
+        "composition_root",
+        "status",
+        "authority_imports_present",
+        "dispatch_to_qualification_runner",
+        "coverage_status"
+      ],
+      "properties": {
+        "entry_id": { "$ref": "#/$defs/nonEmpty" },
+        "role": { "enum": ["product-surface", "provider-transport"] },
+        "source_ref": { "$ref": "#/$defs/nonEmpty" },
+        "entrypoint": { "$ref": "#/$defs/nonEmpty" },
+        "qualification_enabled": { "const": false },
+        "composition_root": { "type": "null" },
+        "status": { "const": "qualification-disabled" },
+        "authority_imports_present": { "const": false },
+        "dispatch_to_qualification_runner": { "const": false },
+        "coverage_status": { "const": "covered" }
+      }
+    },
+    "runnerComposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "composition_root",
+        "expected_composition_root",
+        "declared_runner_entries",
+        "runner_root_cardinality",
+        "runner_source_ref",
+        "root_export_present",
+        "guarded_action_adapter_present",
+        "direct_dispatch_bypass_present",
+        "package_script_present",
+        "phase_gate_id",
+        "phase_gate_present",
+        "qualification_effect"
+      ],
+      "properties": {
+        "composition_root": { "const": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner" },
+        "expected_composition_root": { "const": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner" },
+        "declared_runner_entries": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "runner_root_cardinality": { "const": 1 },
+        "runner_source_ref": { "const": "scripts/lib/devseek-qualification-runner.mjs" },
+        "root_export_present": { "const": true },
+        "guarded_action_adapter_present": { "const": true },
+        "direct_dispatch_bypass_present": { "const": false },
+        "package_script_present": { "const": true },
+        "phase_gate_id": { "const": "c0-preregistration-wiring-conformance" },
+        "phase_gate_present": { "const": true },
+        "qualification_effect": { "const": "NONE" }
+      }
+    },
+    "chainStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "step_id",
+        "source_ref",
+        "required_fragments",
+        "fragments_present",
+        "order_index",
+        "must_precede_step_id",
+        "coverage_status"
+      ],
+      "properties": {
+        "step_id": { "$ref": "#/$defs/nonEmpty" },
+        "source_ref": { "const": "scripts/lib/devseek-qualification-runner.mjs" },
+        "required_fragments": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "fragments_present": { "const": true },
+        "order_index": { "type": "integer", "minimum": 0 },
+        "must_precede_step_id": {
+          "oneOf": [{ "$ref": "#/$defs/nonEmpty" }, { "type": "null" }]
+        },
+        "coverage_status": { "const": "covered" }
+      }
+    },
+    "protocolGuard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "guard_id",
+        "source_ref",
+        "required_fragments",
+        "fragments_present",
+        "coverage_status"
+      ],
+      "properties": {
+        "guard_id": { "$ref": "#/$defs/nonEmpty" },
+        "source_ref": { "const": "scripts/lib/devseek-qualification-protocol.mjs" },
+        "required_fragments": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "fragments_present": { "const": true },
+        "coverage_status": { "const": "covered" }
+      }
+    },
+    "zeroDispatchOracle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "oracle_id",
+        "source_ref",
+        "required_fragments",
+        "fragments_present",
+        "expected_external_actions",
+        "coverage_status"
+      ],
+      "properties": {
+        "oracle_id": { "$ref": "#/$defs/nonEmpty" },
+        "source_ref": {
+          "enum": [
+            "scripts/test/devseek-qualification-runner.test.mjs",
+            "scripts/test/devseek-qualification-protocol.test.mjs"
+          ]
+        },
+        "required_fragments": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "fragments_present": { "const": true },
+        "expected_external_actions": { "const": 0 },
+        "coverage_status": { "const": "covered" }
+      }
+    },
+    "bypassGuards": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "production_task_can_enter_qualification_runner",
+        "tofu_registration_allowed",
+        "durable_registration_after_dispatch_allowed",
+        "anonymous_or_unreceipted_dispatch_allowed",
+        "direct_dispatch_bypass_present",
+        "protocol_source_has_governance_anchor",
+        "receipt_persisted_before_authorization_event"
+      ],
+      "properties": {
+        "production_task_can_enter_qualification_runner": { "const": false },
+        "tofu_registration_allowed": { "const": false },
+        "durable_registration_after_dispatch_allowed": { "const": false },
+        "anonymous_or_unreceipted_dispatch_allowed": { "const": false },
+        "direct_dispatch_bypass_present": { "const": false },
+        "protocol_source_has_governance_anchor": { "const": true },
+        "receipt_persisted_before_authorization_event": { "const": true }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "production_declaration_entries",
+        "production_declaration_entries_covered",
+        "runner_roots",
+        "chain_steps",
+        "chain_steps_covered",
+        "protocol_guards",
+        "protocol_guards_covered",
+        "zero_dispatch_oracles",
+        "zero_dispatch_oracles_covered",
+        "dispatch_bypasses",
+        "qualification_claims"
+      ],
+      "properties": {
+        "production_declaration_entries": { "type": "integer", "minimum": 4 },
+        "production_declaration_entries_covered": { "type": "integer", "minimum": 4 },
+        "runner_roots": { "const": 1 },
+        "chain_steps": { "const": 7 },
+        "chain_steps_covered": { "const": 7 },
+        "protocol_guards": { "const": 4 },
+        "protocol_guards_covered": { "const": 4 },
+        "zero_dispatch_oracles": { "const": 4 },
+        "zero_dispatch_oracles_covered": { "const": 4 },
+        "dispatch_bypasses": { "const": 0 },
+        "qualification_claims": { "const": 0 }
+      }
+    }
+  }
+}

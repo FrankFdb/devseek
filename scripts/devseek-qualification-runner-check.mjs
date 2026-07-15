@@ -14,6 +14,7 @@ const authorityImportAllowlist = new Set([
   'scripts/devseek-qualification-evidence-manifest-check.mjs',
   'scripts/devseek-qualification-runner-check.mjs',
   'scripts/devseek-profile-executor-contracts-check.mjs',
+  'scripts/devseek-c0-preregistration-wiring-check.mjs',
 ]);
 
 export function checkQualificationRunnerWiring() {

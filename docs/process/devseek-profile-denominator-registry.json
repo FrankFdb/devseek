@@ -17,7 +17,7 @@
       "path": "docs/process/devseek-capability-ledger.json",
       "schema_version": "devseek.capability-ledger/v1",
       "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
-      "source_sha256": "ea5b7028e74c982f9c2f66cc25545d10e5554dd7487bcd47d2d6f93781f7b468"
+      "source_sha256": "d687e1cc63eb835a7260ccacf8e51157812e343b70a1d0e0979329b9c0330ae3"
     },
     "milestone_profile": {
       "path": "docs/process/devseek-milestone-profiles.json",
@@ -860,7 +860,7 @@
       "capability_id": "C0-PREREGISTRATION-PLAN",
       "capability_title": "C0 可证地基 / QualificationPlanRegistrationPort",
       "semantic_authority_port": "QualificationPlanRegistrationPort",
-      "implementation_state": "implemented",
+      "implementation_state": "wired",
       "required_implementation_state": "wired",
       "profile_denominator": {
         "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
@@ -1254,7 +1254,7 @@
           "slot_denominator_sha256": "b73b9d675065f9ef798c95f22bcfd6898686ca9307a3e20057e7aac961d47a1d"
         }
       ],
-      "capability_denominator_sha256": "85eb10d1f91cc42e3a1daa7ca5b061abb0f6a6233720d0138c1125b6d38cce55"
+      "capability_denominator_sha256": "d3dd6f0e239b019cc3e4ffb51679a4b4234772497df001256e4db5690e7ec616"
     },
     {
       "capability_id": "C0-QUALIFICATION-AGGREGATOR",
@@ -2460,7 +2460,7 @@
       "capability_id": "C0-RUN-EVIDENCE-LEDGER",
       "capability_title": "C0 可证地基 / RunEvidenceLedgerPort",
       "semantic_authority_port": "RunEvidenceLedgerPort",
-      "implementation_state": "implemented",
+      "implementation_state": "wired",
       "required_implementation_state": "wired",
       "profile_denominator": {
         "profile_id": "DEVSEEK-GATE0-INFRASTRUCTURE/v1",
@@ -2854,7 +2854,7 @@
           "slot_denominator_sha256": "f91bad8a7e84787552368c0ce975d5f2bf3731318380034e6db09c2749771149"
         }
       ],
-      "capability_denominator_sha256": "a161c22e887d228084fcfe360ed8ac00979c3edcebfd1154fe4553a292ddfc9c"
+      "capability_denominator_sha256": "cd9c76ec25fddd294ab2878dff23fecab75f11ee57e1551af404af6d97d76808"
     }
   ],
   "counts": {
@@ -2866,5 +2866,5 @@
     "catalog_metadata_executions": 0,
     "qualification_claims": 0
   },
-  "registry_sha256": "0525ba5a917f4366830b15887a1697c15e45f8af0cff79928f082010dd1049a5"
+  "registry_sha256": "6cfd3618f03dd5f9b00eedfeb24a07b515cd27833d726593f88de88f892b5448"
 }

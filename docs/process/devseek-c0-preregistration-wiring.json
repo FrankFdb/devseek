@@ -1,0 +1,374 @@
+{
+  "schema_version": "devseek.c0-preregistration-wiring/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "wiring_id": "DEVSEEK-GATE0-C0-PREREGISTRATION-WIRING/v1",
+  "wiring_version": 1,
+  "source_status": "verified",
+  "integrity_scope": "local-preregistration-wiring-conformance",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "sources": {
+    "capability_ledger": {
+      "path": "docs/process/devseek-capability-ledger.json",
+      "schema_version": "devseek.capability-ledger/v1",
+      "ledger_id": "DEVSEEK-CAPABILITY-LEDGER/v1",
+      "source_sha256": "d687e1cc63eb835a7260ccacf8e51157812e343b70a1d0e0979329b9c0330ae3"
+    },
+    "runner_inventory": {
+      "path": "docs/process/devseek-qualification-runner-inventory.json",
+      "schema_version": "devseek.qualification-runner-inventory/v1",
+      "source_sha256": "fd9b5201c3769ff4df0b936bb5b7676815e7d517076d3cfb631ebf2a91e0c9d2"
+    },
+    "profile_executor_contracts": {
+      "path": "docs/process/devseek-profile-executor-contracts.json",
+      "schema_version": "devseek.profile-executor-contracts/v1",
+      "contract_registry_id": "DEVSEEK-GATE0-PROFILE-EXECUTOR-CONTRACTS/v1",
+      "source_sha256": "c6ccd0507468c662421653836ebec7f6c2d67b451d14aba2a91f5f769632e106"
+    },
+    "qualification_plan_schema": {
+      "path": "docs/process/devseek-qualification-plan.schema.json",
+      "source_sha256": "34415290e152073afde0e43016d2b13b46ddfcefe1e4f083c0f0b0ccd0a7fc1b"
+    },
+    "qualification_event_schema": {
+      "path": "docs/process/devseek-qualification-event.schema.json",
+      "source_sha256": "b6d6a9b3e94e751d539d8675847cc2a50ea3bc2e3a39463a0feb709806a7f7f5"
+    },
+    "qualification_receipt_schema": {
+      "path": "docs/process/devseek-qualification-receipt.schema.json",
+      "source_sha256": "46d40c4c127a34ce7ddcc70d60829c56c6ba1d78e597c6b01488c71462152043"
+    },
+    "qualification_protocol_source": {
+      "path": "scripts/lib/devseek-qualification-protocol.mjs",
+      "source_sha256": "3bf8047d1d427113739d48109ff081e3759529242b02cf65e240085dba2f060a"
+    },
+    "qualification_runner_source": {
+      "path": "scripts/lib/devseek-qualification-runner.mjs",
+      "source_sha256": "fec73a09d3cece71dc55aee22a832de154c0594563f801e2ec6dac8cb656e5b0"
+    },
+    "package_scripts": {
+      "path": "package.json",
+      "source_sha256": "9aa8d35990f6954c2231bedd9e815da0782a3c965754c630c2616fb764774907"
+    },
+    "phase_gate_source": {
+      "path": "scripts/devseek-phase0-12-verify.mjs",
+      "source_sha256": "8d74a6c0094394e14a120bc6759d5ae8135c4320139c992b1bbc65deaaf42e23"
+    },
+    "checker_source": {
+      "path": "scripts/devseek-c0-preregistration-wiring-check.mjs",
+      "source_sha256": "05b9268e86f372c8dd426fb5bdf804c03edcf86593619ee71e843f995c15ec2e"
+    },
+    "oracle_source": {
+      "path": "scripts/test/devseek-c0-preregistration-wiring.test.mjs",
+      "source_sha256": "f46acedce2aeb5af33a3c660ee341d5edd9c9804c26ae805095d622bbab81f8d"
+    }
+  },
+  "preregistration_owner": {
+    "capability_id": "C0-PREREGISTRATION-PLAN",
+    "implementation_state": "wired",
+    "authority_port": "QualificationPlanRegistrationPort",
+    "required_component_paths": [
+      {
+        "path": "docs/process/devseek-c0-preregistration-wiring.json",
+        "present": true
+      },
+      {
+        "path": "docs/process/devseek-c0-preregistration-wiring.schema.json",
+        "present": true
+      },
+      {
+        "path": "docs/process/generated/devseek-c0-preregistration-wiring.md",
+        "present": true
+      },
+      {
+        "path": "scripts/devseek-c0-preregistration-wiring-check.mjs",
+        "present": true
+      },
+      {
+        "path": "scripts/lib/devseek-c0-preregistration-wiring.mjs",
+        "present": true
+      },
+      {
+        "path": "scripts/test/devseek-c0-preregistration-wiring.test.mjs",
+        "present": true
+      }
+    ],
+    "verification_commands": [
+      "npm run verify:qualification-protocol",
+      "npm run verify:qualification-runner",
+      "npm run verify:c0-preregistration-wiring"
+    ],
+    "verification_has_qualification_protocol": true,
+    "verification_has_qualification_runner": true,
+    "verification_has_preregistration_wiring": true
+  },
+  "production_entrypoints": [
+    {
+      "entry_id": "production/bridge-chat",
+      "role": "provider-transport",
+      "source_ref": "packages/bridge/src/server.ts",
+      "entrypoint": "POST /chat",
+      "qualification_enabled": false,
+      "composition_root": null,
+      "status": "qualification-disabled",
+      "authority_imports_present": false,
+      "dispatch_to_qualification_runner": false,
+      "coverage_status": "covered"
+    },
+    {
+      "entry_id": "production/bridge-preattach",
+      "role": "provider-transport",
+      "source_ref": "packages/bridge/src/server.ts",
+      "entrypoint": "POST /preattach",
+      "qualification_enabled": false,
+      "composition_root": null,
+      "status": "qualification-disabled",
+      "authority_imports_present": false,
+      "dispatch_to_qualification_runner": false,
+      "coverage_status": "covered"
+    },
+    {
+      "entry_id": "production/cli-exec",
+      "role": "product-surface",
+      "source_ref": "packages/cli/src/index.ts",
+      "entrypoint": "runPrompt",
+      "qualification_enabled": false,
+      "composition_root": null,
+      "status": "qualification-disabled",
+      "authority_imports_present": false,
+      "dispatch_to_qualification_runner": false,
+      "coverage_status": "covered"
+    },
+    {
+      "entry_id": "production/vscode-chat",
+      "role": "product-surface",
+      "source_ref": "packages/vscode-extension/src/extension.ts",
+      "entrypoint": "runChat",
+      "qualification_enabled": false,
+      "composition_root": null,
+      "status": "qualification-disabled",
+      "authority_imports_present": false,
+      "dispatch_to_qualification_runner": false,
+      "coverage_status": "covered"
+    }
+  ],
+  "runner_composition": {
+    "composition_root": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner",
+    "expected_composition_root": "scripts/lib/devseek-qualification-runner.mjs#createQualificationRunner",
+    "declared_runner_entries": [
+      "local-simulation/guard-to-g0c"
+    ],
+    "runner_root_cardinality": 1,
+    "runner_source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+    "root_export_present": true,
+    "guarded_action_adapter_present": true,
+    "direct_dispatch_bypass_present": false,
+    "package_script_present": true,
+    "phase_gate_id": "c0-preregistration-wiring-conformance",
+    "phase_gate_present": true,
+    "qualification_effect": "NONE"
+  },
+  "preregistration_chain": [
+    {
+      "step_id": "plan-registered-before-any-slot",
+      "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+      "required_fragments": [
+        "protocolStore.registerPlan(plan,"
+      ],
+      "fragments_present": true,
+      "order_index": 6363,
+      "must_precede_step_id": "session-preflight-slot-reserved",
+      "coverage_status": "covered"
+    },
+    {
+      "step_id": "session-preflight-slot-reserved",
+      "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+      "required_fragments": [
+        "slotKind: 'preflight'",
+        "ownerCorrelationId: session.correlationId"
+      ],
+      "fragments_present": true,
+      "order_index": 6559,
+      "must_precede_step_id": "session-preflight-slot-completed",
+      "coverage_status": "covered"
+    },
+    {
+      "step_id": "session-preflight-slot-completed",
+      "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+      "required_fragments": [
+        "protocolStore.completeSlot({ plan, reservation: preflightReservation"
+      ],
+      "fragments_present": true,
+      "order_index": 8171,
+      "must_precede_step_id": "attempt-coverage-slot-reserved",
+      "coverage_status": "covered"
+    },
+    {
+      "step_id": "attempt-coverage-slot-reserved",
+      "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+      "required_fragments": [
+        "slotKind: 'coverage'",
+        "ownerCorrelationId: attempt.correlationId"
+      ],
+      "fragments_present": true,
+      "order_index": 8571,
+      "must_precede_step_id": "external-action-authorized",
+      "coverage_status": "covered"
+    },
+    {
+      "step_id": "external-action-authorized",
+      "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+      "required_fragments": [
+        "protocolStore.authorizeExternalAction({",
+        "actionReceipt"
+      ],
+      "fragments_present": true,
+      "order_index": 9616,
+      "must_precede_step_id": "guarded-dispatch-with-receipt",
+      "coverage_status": "covered"
+    },
+    {
+      "step_id": "guarded-dispatch-with-receipt",
+      "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+      "required_fragments": [
+        "guardedAction.execute({ plan, receipt: actionReceipt, action })"
+      ],
+      "fragments_present": true,
+      "order_index": 9835,
+      "must_precede_step_id": "independent-g0c-reader-verifies-receipt",
+      "coverage_status": "covered"
+    },
+    {
+      "step_id": "independent-g0c-reader-verifies-receipt",
+      "source_ref": "scripts/lib/devseek-qualification-runner.mjs",
+      "required_fragments": [
+        "evidenceReader.readAndVerify({",
+        "actionReceipt"
+      ],
+      "fragments_present": true,
+      "order_index": 10993,
+      "must_precede_step_id": null,
+      "coverage_status": "covered"
+    }
+  ],
+  "protocol_guards": [
+    {
+      "guard_id": "approved-profile-and-catalog",
+      "source_ref": "scripts/lib/devseek-qualification-protocol.mjs",
+      "required_fragments": [
+        "PLAN_PROFILE_NOT_APPROVED",
+        "PLAN_CATALOG_NOT_APPROVED",
+        "validateQualificationPlan(plan"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "registered-plan-before-slot",
+      "source_ref": "scripts/lib/devseek-qualification-protocol.mjs",
+      "required_fragments": [
+        "this.assertRegisteredPlan(plan);",
+        "SLOT_WINDOW_CLOSED",
+        "SLOT_ALREADY_CONSUMED"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "receipt-bound-one-time-dispatch",
+      "source_ref": "scripts/lib/devseek-qualification-protocol.mjs",
+      "required_fragments": [
+        "verifyActionReceipt(receipt",
+        "ACTION_RECEIPT_ALREADY_CONSUMED",
+        "ACTION_RECEIPT_STALE_HEAD"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    },
+    {
+      "guard_id": "receipt-time-and-binding",
+      "source_ref": "scripts/lib/devseek-qualification-protocol.mjs",
+      "required_fragments": [
+        "ACTION_RECEIPT_EXPIRED",
+        "ACTION_RECEIPT_BINDING_MISMATCH",
+        "CLOCK_ROLLBACK"
+      ],
+      "fragments_present": true,
+      "coverage_status": "covered"
+    }
+  ],
+  "zero_dispatch_oracles": [
+    {
+      "oracle_id": "missing-receipt",
+      "source_ref": "scripts/test/devseek-qualification-runner.test.mjs",
+      "required_fragments": [
+        "omitAuthorizationReceipt",
+        "ACTION_RECEIPT_REQUIRED",
+        "fixture.externalActions.length, 0"
+      ],
+      "fragments_present": true,
+      "expected_external_actions": 0,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "expired-receipt",
+      "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+      "required_fragments": [
+        "ACTION_RECEIPT_EXPIRED",
+        "callbacks, 0"
+      ],
+      "fragments_present": true,
+      "expected_external_actions": 0,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "replay-receipt",
+      "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+      "required_fragments": [
+        "ACTION_RECEIPT_ALREADY_CONSUMED",
+        "receipt replay must not dispatch twice"
+      ],
+      "fragments_present": true,
+      "expected_external_actions": 0,
+      "coverage_status": "covered"
+    },
+    {
+      "oracle_id": "clock-rollback",
+      "source_ref": "scripts/test/devseek-qualification-protocol.test.mjs",
+      "required_fragments": [
+        "CLOCK_ROLLBACK",
+        "callbacks, 0"
+      ],
+      "fragments_present": true,
+      "expected_external_actions": 0,
+      "coverage_status": "covered"
+    }
+  ],
+  "bypass_guards": {
+    "production_task_can_enter_qualification_runner": false,
+    "tofu_registration_allowed": false,
+    "durable_registration_after_dispatch_allowed": false,
+    "anonymous_or_unreceipted_dispatch_allowed": false,
+    "direct_dispatch_bypass_present": false,
+    "protocol_source_has_governance_anchor": true,
+    "receipt_persisted_before_authorization_event": true
+  },
+  "counts": {
+    "production_declaration_entries": 4,
+    "production_declaration_entries_covered": 4,
+    "runner_roots": 1,
+    "chain_steps": 7,
+    "chain_steps_covered": 7,
+    "protocol_guards": 4,
+    "protocol_guards_covered": 4,
+    "zero_dispatch_oracles": 4,
+    "zero_dispatch_oracles_covered": 4,
+    "dispatch_bypasses": 0,
+    "qualification_claims": 0
+  },
+  "wiring_sha256": "4da4dd74febf5018c733f3c60ec46f54b8252458a4faa4df773a5caee5e00294"
+}
