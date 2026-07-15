@@ -149,6 +149,18 @@ test('Simple file task: parses explicit markdown create and trims verification c
       content: 'phase6 unknown validation target',
     },
   );
+  assert.deepEqual(
+    parseSimpleFileWriteRequest([
+      'UI-R1A1B-CLEAN2-20260715-4a148c',
+      '请在当前工作区创建 ui-r1a1b-clean2-4a148c.txt。',
+      '文件内容必须精确包含一行 UI_R1A1B_CLEAN2_OK。',
+      '完成写入和读回验证后结束任务，不要修改其他用户文件。',
+    ].join(' ')),
+    {
+      path: 'ui-r1a1b-clean2-4a148c.txt',
+      content: 'UI_R1A1B_CLEAN2_OK\n',
+    },
+  );
 });
 
 test('Simple file task: writes markdown and completes with file-check evidence', async () => {
@@ -196,6 +208,59 @@ test('Simple file task: writes markdown and completes with file-check evidence',
     assert.equal(events.activities.some((activity) => activity.kind === 'write'), true);
     assert.equal(events.activities.some((activity) => activity.kind === 'terminal'), true);
     assert.match(events.deltas.at(-1), /^\x00ASUM\x00已创建 docs\/manual-phase6-quality\.md/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Simple file task: exact one-line text artifact uses deterministic fast path', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-simple-file-task-line-'));
+  fakeVscode.workspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+  const events = makeEvents();
+  let validationInput;
+  const validationService = {
+    validateWorkspaceChanges: async (input) => {
+      validationInput = input;
+      return {
+        ran: true,
+        ok: true,
+        status: 'passed',
+        command: "test -f 'ui-r1a1b-clean2-4a148c.txt' && wc -c 'ui-r1a1b-clean2-4a148c.txt' && sed -n '1,80p' 'ui-r1a1b-clean2-4a148c.txt'",
+        exitCode: 0,
+        output: '19 ui-r1a1b-clean2-4a148c.txt\nUI_R1A1B_CLEAN2_OK',
+        cwd: root,
+        mode: 'file-check',
+        reason: 'non-code-file-validation',
+        risks: [],
+        alternativeChecks: [],
+      };
+    },
+  };
+
+  try {
+    const result = await tryRunSimpleFileTask({
+      userPrompt: [
+        'UI-R1A1B-CLEAN2-20260715-4a148c',
+        '请在当前工作区创建 ui-r1a1b-clean2-4a148c.txt。',
+        '文件内容必须精确包含一行 UI_R1A1B_CLEAN2_OK。',
+        '完成写入和读回验证后结束任务，不要修改其他用户文件。',
+      ].join(' '),
+      workspaceRoot: root,
+      callbacks: makeCallbacks(events),
+      cppValidationPolicy: 'conservative',
+      options: { validationService },
+    });
+
+    const target = path.join(root, 'ui-r1a1b-clean2-4a148c.txt');
+    assert.equal(existsSync(target), true);
+    assert.equal(readFileSync(target, 'utf8'), 'UI_R1A1B_CLEAN2_OK\n');
+    assert.equal(result.tasksApplied, 1);
+    assert.equal(result.tasksFailed, 0);
+    assert.deepEqual(validationInput.changedPaths, ['ui-r1a1b-clean2-4a148c.txt']);
+    assert.equal(events.statuses.at(-1).state, 'completed');
+    assert.equal(events.todos.at(-1).length, 2);
+    assert.equal(events.todos.at(-1).every((todo) => todo.status === 'completed'), true);
+    assert.match(events.deltas.at(-1), /文件存在、内容读取和大小检查验证/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

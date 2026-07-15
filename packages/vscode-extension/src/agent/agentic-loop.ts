@@ -123,6 +123,37 @@ function getAgenticBlockingTerminalFailure(
     ?? findBlockingTerminalFailureEvidence(terminalEvidence);
 }
 
+function canSettleProviderFailureFromCompletedEvidence(input: {
+  promptRequiresTools: boolean;
+  sawWorkTool: boolean;
+  missingEvidence: string[];
+  blockingFailure: TerminalEvidence | undefined;
+  summaryFactFailures: string[];
+  aborted: boolean | undefined;
+}): boolean {
+  return !input.aborted
+    && input.promptRequiresTools
+    && input.sawWorkTool
+    && input.missingEvidence.length === 0
+    && !input.blockingFailure
+    && input.summaryFactFailures.length === 0;
+}
+
+function buildCompletedEvidenceSummary(
+  writtenFiles: WrittenFileEvidence[],
+  terminalEvidence: TerminalEvidence[],
+  workspaceRoot?: string,
+): string {
+  const finalWrittenFiles = coalesceWrittenFileEvidence(writtenFiles, workspaceRoot);
+  const filePart = finalWrittenFiles.length > 0
+    ? `已完成，处理 ${finalWrittenFiles.length} 个文件：${finalWrittenFiles.map(f => `${f.basename} (+${f.linesAdded} -${f.linesRemoved})`).join('、')}。`
+    : '任务已完成。';
+  const validationPart = terminalEvidence.some(e => e.ok)
+    ? '验证证据已通过。'
+    : '';
+  return `${filePart}${validationPart}`;
+}
+
 function agenticMessageContentLength(content: ChatMessage['content']): number {
   return typeof content === 'string' ? content.length : JSON.stringify(content).length;
 }
@@ -702,6 +733,27 @@ export async function runAgenticLoop(
       text = providerTurn.text;
       tools = providerTurn.tools;
     } catch (error) {
+      const missingOnProviderFailure = promptRequiresTools
+        ? getMissingCompletionEvidence(writeAuthority.currentPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
+        : [];
+      const blockingOnProviderFailure = promptRequiresTools
+        ? getAgenticBlockingTerminalFailure(writeAuthority.currentPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
+        : undefined;
+      const summaryFactFailuresOnProviderFailure = completeSummary
+        ? getUnsupportedSummaryFileClaims(completeSummary, allWrittenFiles, workspaceRoot)
+        : [];
+      if (canSettleProviderFailureFromCompletedEvidence({
+        promptRequiresTools,
+        sawWorkTool,
+        missingEvidence: missingOnProviderFailure,
+        blockingFailure: blockingOnProviderFailure,
+        summaryFactFailures: summaryFactFailuresOnProviderFailure,
+        aborted: callbacks.signal?.aborted,
+      })) {
+        completeSummary = completeSummary
+          || buildCompletedEvidenceSummary(allWrittenFiles, allTerminalEvidence, workspaceRoot);
+        break;
+      }
       const providerFailure = parseAgentProviderFailure(error);
       if (!callbacks.signal?.aborted
         && canRecoverAgentProviderFailure(

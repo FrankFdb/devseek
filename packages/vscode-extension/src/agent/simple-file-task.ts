@@ -42,6 +42,7 @@ const SIMPLE_FILE_WRITE_PATH_RE = new RegExp(
   '(?:创建|新建|生成|写入?|create|write)\\s*[`\'"]?(' + WORKSPACE_FILE_PATH_PATTERN.source + ')[`\'"]?',
   'i',
 );
+const SIMPLE_FILE_EXACT_LINE_CONTENT_RE = /(?:文件)?内容(?:必须|需要|需|应当|应该)?\s*(?:精确|准确|完全)?\s*(?:只)?(?:包含|为|是)\s*(一行|1\s*行)?\s*[:：]?\s*([^\r\n。；;]+)/i;
 
 export function parseSimpleFileWriteRequest(userPrompt: string): SimpleFileWriteRequest | undefined {
   const text = String(userPrompt || '').trim();
@@ -52,14 +53,24 @@ export function parseSimpleFileWriteRequest(userPrompt: string): SimpleFileWrite
 
   const rawPath = pathMatch[1].trim();
 
-  const contentMarker = /(?:内容为|内容是|内容如下|写入内容(?:为|是)?|content\s*(?:is|:|=)|with\s+content)\s*[:：]?/i.exec(text);
-  if (!contentMarker || contentMarker.index < pathMatch.index) return undefined;
-
-  const rawContent = text.slice(contentMarker.index + contentMarker[0].length).trim();
-  const content = normalizeSimpleContent(rawContent);
+  const content = parseSimpleFileContent(text, pathMatch.index);
   if (!content || content.length > 20000) return undefined;
 
   return { path: rawPath, content };
+}
+
+function parseSimpleFileContent(text: string, pathMatchIndex: number): string | undefined {
+  const contentMarker = /(?:内容为|内容是|内容如下|写入内容(?:为|是)?|content\s*(?:is|:|=)|with\s+content)\s*[:：]?/i.exec(text);
+  if (contentMarker && contentMarker.index >= pathMatchIndex) {
+    return normalizeSimpleContent(text.slice(contentMarker.index + contentMarker[0].length).trim());
+  }
+
+  const tail = text.slice(pathMatchIndex);
+  const exactLineMatch = SIMPLE_FILE_EXACT_LINE_CONTENT_RE.exec(tail);
+  if (!exactLineMatch) return undefined;
+  const content = normalizeSimpleContent(exactLineMatch[2] || '');
+  if (!content) return undefined;
+  return exactLineMatch[1] ? `${content}\n` : content;
 }
 
 export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<AgentLoopResult | undefined> {

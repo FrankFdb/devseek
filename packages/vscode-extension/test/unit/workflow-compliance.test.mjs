@@ -1013,6 +1013,16 @@ test('Agent validation completion settles spinner instead of leaving validation 
   assertContains(webview, "msg.state === 'skipped'", 'skipped validation must also settle the spinner');
 });
 
+test('Agentic loop: provider failure after satisfied local evidence does not overturn completion', () => {
+  const code = src('src/agent/agentic-loop.ts');
+  assertContains(code, 'canSettleProviderFailureFromCompletedEvidence', 'agent loop must have a completed-evidence provider-failure short circuit');
+  assert.match(
+    code,
+    /catch \(error\) \{[\s\S]*?canSettleProviderFailureFromCompletedEvidence[\s\S]*?buildCompletedEvidenceSummary[\s\S]*?break;[\s\S]*?const providerFailure = parseAgentProviderFailure\(error\)/,
+    'provider errors must be checked against completed local evidence before provider recovery/failure handling',
+  );
+});
+
 test('Agentic loop: terminal must not be used as a fallback file writer', () => {
   const code = src('src/agent/tool-loop.ts');
   assertContains(code, 'detectShellFileWriteCommand', 'tool loop must detect shell redirection/tee file writes');

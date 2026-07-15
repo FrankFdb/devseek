@@ -281,6 +281,10 @@ function buildEvidenceText(userPrompt: string, todos: CompletionTodo[]): string 
   return `${promptIntentText}\n${todoText}`.toLowerCase();
 }
 
+function buildUserIntentEvidenceText(userPrompt: string): string {
+  return buildEvidenceText(userPrompt, []);
+}
+
 type CompletionEvidenceSemanticView = {
   contract: TaskSemanticContract;
   readOnly: boolean;
@@ -354,12 +358,24 @@ function isExplicitlyReadOnlyRequestFromIntent(text: string): boolean {
     .split(/\r?\n/)
     .filter(line => !GENERIC_EVIDENCE_TODO_TITLES.has(line.trim()))
     .join('\n');
+  const semanticContract = buildTaskSemanticContract(intentText);
+  const advisoryOnly = isAdvisoryPlanningRequest(intentText)
+    && (!isDirectImplementationRequest(intentText) || isDeferredImplementationRequest(intentText));
+  if (semanticContract.mutation.requested
+    && !semanticContract.mutation.prohibited
+    && !advisoryOnly
+    && (semanticContract.kind === 'standalone-code'
+      || semanticContract.kind === 'existing-project-code'
+      || semanticContract.mutation.targets.length > 0
+      || isDirectImplementationRequest(intentText))) {
+    return false;
+  }
   if (isScopedNoChangeWithDeliverableWriteRequest(intentText)) return false;
   const artifactIntent = classifyArtifactWriteIntent(intentText);
   if (artifactIntent.requested) return false;
   if (artifactIntent.prohibited && !artifactIntent.requested) return true;
   return READ_ONLY_RE.test(intentText)
-    || (isAdvisoryPlanningRequest(intentText) && (!isDirectImplementationRequest(intentText) || isDeferredImplementationRequest(intentText)));
+    || advisoryOnly;
 }
 
 function stripInlineFileContent(text: string): string {
@@ -532,24 +548,26 @@ export function getBlockingTerminalFailure(
 ): TerminalEvidence | undefined {
   if (terminalEvidence.length === 0) return undefined;
   const text = buildEvidenceText(userPrompt, todos);
+  const userIntentText = buildUserIntentEvidenceText(userPrompt);
   const existingWrittenFiles = coalesceWrittenFileEvidence(writtenFiles).filter(f => {
     try { return fs.existsSync(f.path); } catch { return false; }
   });
   const existingCodeWrites = existingWrittenFiles.filter(f => isCodeArtifactPath(f.path));
-  const needsReadEvidence = requiresReadEvidence(text);
+  const needsReadEvidence = requiresReadEvidence(userIntentText);
   const needsCodeArtifact = requiresCodeArtifactForEvidence(text);
   const needsCommand = !needsReadEvidence
-    && (requiresCommandEvidence(text) || (needsCodeArtifact && existingCodeWrites.length > 0));
+    && (requiresCommandEvidence(userIntentText) || (needsCodeArtifact && existingCodeWrites.length > 0));
 
   const runtimeKinds = new Set<TerminalEvidenceKind>(['run', 'test', 'compile-run']);
   const testKinds = new Set<TerminalEvidenceKind>(['test', 'run', 'compile-run']);
   const commandKinds = new Set<TerminalEvidenceKind>(['compile', 'run', 'test', 'compile-run']);
 
-  if (requiresTestEvidence(text)) {
+  if (requiresTestEvidence(userIntentText)) {
     const failure = lastUnclearedTerminalFailure(terminalEvidence, testKinds, testKinds);
     if (failure) return failure;
   }
-  if (requiresRunEvidence(text) || (requiresRuntimeValidation(text) && !requiresTestEvidence(text))) {
+  if (requiresRunEvidence(userIntentText)
+    || (requiresRuntimeValidation(userIntentText) && !requiresTestEvidence(userIntentText))) {
     const failure = lastUnclearedTerminalFailure(terminalEvidence, runtimeKinds, runtimeKinds);
     if (failure) return failure;
   }
@@ -592,6 +610,7 @@ export function getMissingCompletionEvidence(
   verificationResults: VerificationResult[] = [],
 ): string[] {
   const text = buildEvidenceText(userPrompt, todos);
+  const userIntentText = buildUserIntentEvidenceText(userPrompt);
   const existingWrittenFiles = coalesceWrittenFileEvidence(writtenFiles, workspaceRoot)
     .filter(f => writtenEvidenceExists(f, workspaceRoot));
   const existingCodeWrites = existingWrittenFiles.filter(f => isCodeArtifactPath(f.path));
@@ -617,9 +636,9 @@ export function getMissingCompletionEvidence(
   }
 
   const needsCodeArtifact = requiresCodeArtifactForEvidence(text);
-  const needsReadEvidence = requiresReadEvidence(text);
-  const needsFileContentReadEvidence = requiresFileContentReadEvidence(text);
-  const needsFileCheckEvidence = requiresFileCheckEvidence(text);
+  const needsReadEvidence = requiresReadEvidence(userIntentText);
+  const needsFileContentReadEvidence = requiresFileContentReadEvidence(userIntentText);
+  const needsFileCheckEvidence = requiresFileCheckEvidence(userIntentText);
   if (needsCodeArtifact && existingCodeWrites.length === 0) {
     missing.push('代码修改结果');
   } else if (needsFileChange && existingWrittenFiles.length === 0) {
@@ -637,11 +656,11 @@ export function getMissingCompletionEvidence(
     if (!hasReadEvidence) missing.push(needsFileContentReadEvidence ? '文件内容读取结果' : '文件读取/检查结果');
   }
 
-  const commandEvidenceNeeded = !needsReadEvidence && requiresCommandEvidence(text);
-  if (requiresTestEvidence(text)) {
+  const commandEvidenceNeeded = !needsReadEvidence && requiresCommandEvidence(userIntentText);
+  if (requiresTestEvidence(userIntentText)) {
     const hasTestEvidence = successfulEvidence.some(e => e.kind === 'test' || e.kind === 'run' || e.kind === 'compile-run');
     if (!hasTestEvidence) missing.push('成功的测试/运行结果');
-  } else if (requiresRunEvidence(text)) {
+  } else if (requiresRunEvidence(userIntentText)) {
     const hasRunEvidence = successfulEvidence.some(e => e.kind === 'run' || e.kind === 'test' || e.kind === 'compile-run');
     if (!hasRunEvidence) missing.push('成功的程序运行结果');
   } else if (needsFileCheckEvidence) {

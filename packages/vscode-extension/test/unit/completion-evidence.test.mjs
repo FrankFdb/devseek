@@ -364,6 +364,48 @@ test('completion evidence: markdown creation verification is satisfied by file-c
   }
 });
 
+test('completion evidence: non-code file artifact todos cannot upgrade readback verification into test evidence', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-evidence-file-readback-'));
+  try {
+    const file = path.join(root, 'ui-r1a1b-clean2-4a148c.txt');
+    writeFileSync(file, 'UI_R1A1B_CLEAN2_OK\n');
+    const filePrompt = [
+      'UI-R1A1B-CLEAN2-20260715-4a148c',
+      '请在当前工作区创建 ui-r1a1b-clean2-4a148c.txt。',
+      '文件内容必须精确包含一行 UI_R1A1B_CLEAN2_OK。',
+      '完成写入和读回验证后结束任务，不要修改其他用户文件。',
+    ].join(' ');
+    const todos = [
+      { title: '创建自然 UI 测试文件' },
+      { title: '读回并验证精确内容' },
+    ];
+    const writeEvidence = [{ path: file, basename: 'ui-r1a1b-clean2-4a148c.txt', linesAdded: 1, linesRemoved: 0, action: 'create' }];
+    const fileCheckEvidence = [{
+      command: "test -f 'ui-r1a1b-clean2-4a148c.txt' && wc -c 'ui-r1a1b-clean2-4a148c.txt' && sed -n '1,80p' 'ui-r1a1b-clean2-4a148c.txt'",
+      kind: 'other',
+      ok: true,
+      exitCode: 0,
+    }];
+
+    assert.equal(requiresFileCheckEvidence(filePrompt), true);
+    assert.equal(requiresRuntimeValidation(filePrompt), false);
+    assert.deepEqual(
+      getMissingCompletionEvidence(filePrompt, todos, writeEvidence, [], [], root),
+      ['文件读取/检查结果'],
+    );
+    assert.deepEqual(
+      getMissingCompletionEvidence(filePrompt, todos, writeEvidence, fileCheckEvidence, [], root),
+      [],
+    );
+    assert.equal(
+      getBlockingTerminalFailure(filePrompt, todos, writeEvidence, fileCheckEvidence),
+      undefined,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('completion evidence: coalesces repeated writes to the same file for UI and history accounting', () => {
   const merged = coalesceWrittenFileEvidence([
     {
