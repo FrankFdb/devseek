@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-current-candidate-identity-v1.json",
+  "title": "DevSeek Gate 0 Current Candidate Identity Probe v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "probe_id",
+    "probe_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "observation_authority",
+    "source_identity",
+    "artifact_identity",
+    "stable_install_identity",
+    "active_runtime_identity",
+    "live_runtime_policy",
+    "no_secret_observation",
+    "counts",
+    "identity_probe_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.current-candidate-identity/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "probe_id": { "const": "DEVSEEK-GATE0-CURRENT-CANDIDATE-IDENTITY/v1" },
+    "probe_version": { "const": 1 },
+    "source_status": { "const": "verified" },
+    "integrity_scope": { "const": "local-current-candidate-identity-probe" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "observation_authority": { "$ref": "#/$defs/observationAuthority" },
+    "source_identity": { "$ref": "#/$defs/sourceIdentity" },
+    "artifact_identity": { "$ref": "#/$defs/artifactIdentity" },
+    "stable_install_identity": { "$ref": "#/$defs/stableInstallIdentity" },
+    "active_runtime_identity": { "$ref": "#/$defs/activeRuntimeIdentity" },
+    "live_runtime_policy": { "$ref": "#/$defs/liveRuntimePolicy" },
+    "no_secret_observation": { "$ref": "#/$defs/noSecretObservation" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "identity_probe_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{7,64}$"
+    },
+    "fullCommit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "observationAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantic_authority",
+        "caller_identity_trusted",
+        "caller_identity_effect",
+        "writes_product_state",
+        "provider_actions",
+        "live_holdout_actions",
+        "secret_observation"
+      ],
+      "properties": {
+        "semantic_authority": { "const": "CurrentCandidateIdentityProbe" },
+        "caller_identity_trusted": { "const": false },
+        "caller_identity_effect": { "const": "IGNORED" },
+        "writes_product_state": { "const": false },
+        "provider_actions": { "const": "FORBIDDEN" },
+        "live_holdout_actions": { "const": "FORBIDDEN" },
+        "secret_observation": { "const": "FORBIDDEN" }
+      }
+    },
+    "sourceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_git_commit",
+        "candidate_source_commit",
+        "commit_resolution",
+        "commit_resolvable"
+      ],
+      "properties": {
+        "artifact_git_commit": { "$ref": "#/$defs/commit" },
+        "candidate_source_commit": { "$ref": "#/$defs/fullCommit" },
+        "commit_resolution": { "const": "git rev-parse <artifact_git_commit>^{commit}" },
+        "commit_resolvable": { "const": true }
+      }
+    },
+    "artifactIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary_vsix", "package_copy_vsix", "exact_match"],
+      "properties": {
+        "primary_vsix": { "$ref": "#/$defs/primaryVsixIdentity" },
+        "package_copy_vsix": { "$ref": "#/$defs/packageCopyVsixIdentity" },
+        "exact_match": { "const": true }
+      }
+    },
+    "primaryVsixIdentity": {
+      "allOf": [
+        { "$ref": "#/$defs/vsixIdentity" },
+        {
+          "type": "object",
+          "properties": {
+            "path": { "const": "devseek-netai-latest.vsix" }
+          }
+        }
+      ]
+    },
+    "packageCopyVsixIdentity": {
+      "allOf": [
+        { "$ref": "#/$defs/vsixIdentity" },
+        {
+          "type": "object",
+          "properties": {
+            "path": { "const": "packages/vscode-extension/devseek-netai-latest.vsix" }
+          }
+        }
+      ]
+    },
+    "vsixIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "package_identity",
+        "packaged_bridge_server_sha256"
+      ],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "package_identity": { "$ref": "#/$defs/packageIdentity" },
+        "packaged_bridge_server_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "stableInstallIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package_root",
+        "package_json_path",
+        "bridge_server_path",
+        "package_identity",
+        "installed_bridge_server_sha256",
+        "exact_match_artifact"
+      ],
+      "properties": {
+        "package_root": { "$ref": "#/$defs/nonEmpty" },
+        "package_json_path": { "$ref": "#/$defs/nonEmpty" },
+        "bridge_server_path": { "$ref": "#/$defs/nonEmpty" },
+        "package_identity": { "$ref": "#/$defs/packageIdentity" },
+        "installed_bridge_server_sha256": { "$ref": "#/$defs/sha256" },
+        "exact_match_artifact": { "const": true }
+      }
+    },
+    "activeRuntimeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expected_package_root",
+        "expected_bridge_server_path",
+        "expected_package_identity",
+        "expected_bridge_server_sha256",
+        "exact_match_stable_install",
+        "live_process_required"
+      ],
+      "properties": {
+        "expected_package_root": { "$ref": "#/$defs/nonEmpty" },
+        "expected_bridge_server_path": { "$ref": "#/$defs/nonEmpty" },
+        "expected_package_identity": { "$ref": "#/$defs/packageIdentity" },
+        "expected_bridge_server_sha256": { "$ref": "#/$defs/sha256" },
+        "exact_match_stable_install": { "const": true },
+        "live_process_required": { "const": true }
+      }
+    },
+    "packageIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version", "devseekBuild"],
+      "properties": {
+        "name": { "const": "devseek-netai" },
+        "version": { "$ref": "#/$defs/nonEmpty" },
+        "devseekBuild": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["baseVersion", "channel", "buildId", "gitCommit", "packagedAt"],
+          "properties": {
+            "baseVersion": { "$ref": "#/$defs/nonEmpty" },
+            "channel": { "enum": ["debug", "release"] },
+            "buildId": { "$ref": "#/$defs/nonEmpty" },
+            "gitCommit": { "$ref": "#/$defs/commit" },
+            "packagedAt": { "$ref": "#/$defs/nonEmpty" }
+          }
+        }
+      }
+    },
+    "liveRuntimePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stable_runtime_cardinality",
+        "isolated_controlled_vsix_runtime_allowed",
+        "stale_debug_runtime_allowed",
+        "unknown_devseek_bridge_runtime_allowed",
+        "unreadable_runtime_identity"
+      ],
+      "properties": {
+        "stable_runtime_cardinality": { "const": "exactly-one" },
+        "isolated_controlled_vsix_runtime_allowed": { "const": true },
+        "stale_debug_runtime_allowed": { "const": false },
+        "unknown_devseek_bridge_runtime_allowed": { "const": false },
+        "unreadable_runtime_identity": { "const": "fail-closed" }
+      }
+    },
+    "noSecretObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "environment_variables",
+        "provider_account",
+        "tokens",
+        "full_commandline",
+        "network_or_live_holdout",
+        "observed_runtime_process_fields"
+      ],
+      "properties": {
+        "environment_variables": { "const": false },
+        "provider_account": { "const": false },
+        "tokens": { "const": false },
+        "full_commandline": { "const": false },
+        "network_or_live_holdout": { "const": false },
+        "observed_runtime_process_fields": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "pid" },
+            { "const": "executable_path" },
+            { "const": "script_path" }
+          ],
+          "minItems": 3,
+          "maxItems": 3
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "vsix_artifacts",
+        "stable_installed_packages",
+        "active_runtime_identities",
+        "qualification_claims"
+      ],
+      "properties": {
+        "vsix_artifacts": { "const": 2 },
+        "stable_installed_packages": { "const": 1 },
+        "active_runtime_identities": { "const": 1 },
+        "qualification_claims": { "const": 0 }
+      }
+    }
+  }
+}
