@@ -1,7 +1,8 @@
 import type { AgentTaskAction } from '../agent-task-decomposer';
+import { parseSimpleFileWriteRequest } from './simple-file-intent';
 import { classifyAgentTaskShape } from './task-shape';
 
-export type AgentRunDisplayKind = 'workspace-explore' | 'safe-response';
+export type AgentRunDisplayKind = 'workspace-explore' | 'simple-file' | 'safe-response';
 
 export interface AgentRunDisplayProfile {
   kind: AgentRunDisplayKind;
@@ -44,6 +45,23 @@ const STANDALONE_PROGRAM_PROFILE: AgentRunDisplayProfile = {
   suppressToolPlanning: false,
 };
 
+function buildSimpleFileProfile(path: string): AgentRunDisplayProfile {
+  return {
+    kind: 'simple-file',
+    planStartedTitle: '正在确认文件写入要求',
+    planStartedDetail: '正在确认目标文件、精确内容和读回验证方式。',
+    planCompletedTitle: '已确定直接写入与读回验证',
+    planCompletedDetail: [
+      `1. 写入用户指定文件：${path}`,
+      '2. 读回确认文件存在、内容正确、大小正常',
+      '3. 汇总路径、验证结果和最终结论',
+    ].join('\n'),
+    initialTaskAction: 'create',
+    initialTaskLabel: path,
+    suppressToolPlanning: false,
+  };
+}
+
 const SAFE_RESPONSE_PROFILE: AgentRunDisplayProfile = {
   kind: 'safe-response',
   planStartedTitle: '检查响应安全性',
@@ -63,6 +81,10 @@ const SAFE_RESPONSE_PROFILE: AgentRunDisplayProfile = {
 export function buildAgentRunDisplayProfile(prompt: string): AgentRunDisplayProfile {
   if (isLiteralToolProtocolPrompt(prompt)) {
     return SAFE_RESPONSE_PROFILE;
+  }
+  const simpleFile = parseSimpleFileWriteRequest(prompt);
+  if (simpleFile) {
+    return buildSimpleFileProfile(simpleFile.path);
   }
   if (classifyAgentTaskShape(prompt).shape === 'standalone-project') {
     return STANDALONE_PROGRAM_PROFILE;

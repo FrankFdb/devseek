@@ -1,7 +1,6 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import { resolveWorkspaceWritePath } from '../workspace/path-resolver';
-import { WORKSPACE_FILE_PATH_PATTERN } from '../workspace/path-patterns';
 import { WorkspaceEditService } from '../workspace/edit-service';
 import { runAgentAutoValidationForWrites, type AgentAutoValidationOptions } from './auto-validation';
 import {
@@ -23,11 +22,13 @@ import {
   createLinearAgentTodos,
   failLinearAgentTodo,
 } from './task-state-machine';
+import {
+  parseSimpleFileWriteRequest,
+  type SimpleFileWriteRequest,
+} from './simple-file-intent';
 
-export interface SimpleFileWriteRequest {
-  path: string;
-  content: string;
-}
+export { parseSimpleFileWriteRequest };
+export type { SimpleFileWriteRequest };
 
 export interface SimpleFileTaskInput {
   userPrompt: string;
@@ -38,40 +39,6 @@ export interface SimpleFileTaskInput {
 }
 
 const workspaceEditService = new WorkspaceEditService();
-const SIMPLE_FILE_WRITE_PATH_RE = new RegExp(
-  '(?:创建|新建|生成|写入?|create|write)\\s*[`\'"]?(' + WORKSPACE_FILE_PATH_PATTERN.source + ')[`\'"]?',
-  'i',
-);
-const SIMPLE_FILE_EXACT_LINE_CONTENT_RE = /(?:文件)?内容(?:必须|需要|需|应当|应该)?\s*(?:精确|准确|完全)?\s*(?:只)?(?:包含|为|是)\s*(一行|1\s*行)?\s*[:：]?\s*([^\r\n。；;]+)/i;
-
-export function parseSimpleFileWriteRequest(userPrompt: string): SimpleFileWriteRequest | undefined {
-  const text = String(userPrompt || '').trim();
-  if (!text || text.length > 12000) return undefined;
-
-  const pathMatch = SIMPLE_FILE_WRITE_PATH_RE.exec(text);
-  if (!pathMatch || !pathMatch[1]) return undefined;
-
-  const rawPath = pathMatch[1].trim();
-
-  const content = parseSimpleFileContent(text, pathMatch.index);
-  if (!content || content.length > 20000) return undefined;
-
-  return { path: rawPath, content };
-}
-
-function parseSimpleFileContent(text: string, pathMatchIndex: number): string | undefined {
-  const contentMarker = /(?:内容为|内容是|内容如下|写入内容(?:为|是)?|content\s*(?:is|:|=)|with\s+content)\s*[:：]?/i.exec(text);
-  if (contentMarker && contentMarker.index >= pathMatchIndex) {
-    return normalizeSimpleContent(text.slice(contentMarker.index + contentMarker[0].length).trim());
-  }
-
-  const tail = text.slice(pathMatchIndex);
-  const exactLineMatch = SIMPLE_FILE_EXACT_LINE_CONTENT_RE.exec(tail);
-  if (!exactLineMatch) return undefined;
-  const content = normalizeSimpleContent(exactLineMatch[2] || '');
-  if (!content) return undefined;
-  return exactLineMatch[1] ? `${content}\n` : content;
-}
 
 export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<AgentLoopResult | undefined> {
   const request = parseSimpleFileWriteRequest(input.userPrompt);
@@ -202,9 +169,7 @@ export async function tryRunSimpleFileTask(input: SimpleFileTaskInput): Promise<
     terminalEvidence,
     failedReason: '',
     qualityGate: validation.qualityGate,
-    summary: validation.evidence?.kind === 'other'
-      ? `已创建 ${resolved.relPath}，并通过文件存在、内容读取和大小检查验证。`
-      : `已创建 ${resolved.relPath}，并通过自动验证。`,
+    summary: buildSimpleFileCompletionSummary(resolved.relPath, validation.evidence),
   });
 }
 
@@ -227,6 +192,21 @@ function buildFinalSimpleFileTodos(
   }
 
   return appendQualityGateTodo(contentVerifiedTodos, qualityGateStatus);
+}
+
+function buildSimpleFileCompletionSummary(relPath: string, evidence: TerminalEvidence | undefined): string {
+  if (evidence?.kind === 'other') {
+    return [
+      `完成：已创建 \`${relPath}\`。`,
+      '验证：已读回确认文件存在、内容正确、大小正常。',
+      '结论：任务已完成。',
+    ].join('\n');
+  }
+  return [
+    `完成：已创建 \`${relPath}\`。`,
+    '验证：自动验证已通过。',
+    '结论：任务已完成。',
+  ].join('\n');
 }
 
 async function finishSimpleFileTask(input: SimpleFileTaskInput & {
@@ -293,31 +273,4 @@ function verifyWrittenContent(absPath: string, expectedContent: string): { ok: t
   } catch (err) {
     return { ok: false, reason: `写入后文件检查异常：${err instanceof Error ? err.message : String(err)}` };
   }
-}
-
-function trimTrailingVerificationClause(value: string): string {
-  return value
-    .replace(/(?:[，,;；。.]?\s*(?:并|然后|并且|同时|随后)?\s*(?:验证|确认|检查|校验)[\s\S]*)$/i, '')
-    .replace(/(?:[，,;；.]?\s*(?:and\s+then\s+|then\s+|and\s+)?(?:verify|check|confirm)\b[\s\S]*)$/i, '')
-    .trim();
-}
-
-function normalizeSimpleContent(value: string): string {
-  const text = trimTrailingVerificationClause(value);
-  const unwrapped = unwrapSimpleContent(text);
-  if (unwrapped !== text.trim()) return unwrapped;
-  return unwrapped.replace(/。$/, '').trimEnd();
-}
-
-function unwrapSimpleContent(value: string): string {
-  let text = value.trim();
-  if (!text) return '';
-  const quotePairs: Array<[string, string]> = [['`', '`'], ['"', '"'], ["'", "'"], ['“', '”'], ['‘', '’']];
-  for (const [open, close] of quotePairs) {
-    if (text.startsWith(open) && text.endsWith(close) && text.length >= open.length + close.length) {
-      text = text.slice(open.length, text.length - close.length).trim();
-      break;
-    }
-  }
-  return text;
 }

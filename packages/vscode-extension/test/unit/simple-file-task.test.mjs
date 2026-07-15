@@ -207,7 +207,9 @@ test('Simple file task: writes markdown and completes with file-check evidence',
     assert.equal(events.todos.at(-1).every((todo) => todo.status === 'completed'), true);
     assert.equal(events.activities.some((activity) => activity.kind === 'write'), true);
     assert.equal(events.activities.some((activity) => activity.kind === 'terminal'), true);
-    assert.match(events.deltas.at(-1), /^\x00ASUM\x00已创建 docs\/manual-phase6-quality\.md/);
+    assert.match(events.deltas.at(-1), /^\x00ASUM\x00完成：已创建 `docs\/manual-phase6-quality\.md`。/);
+    assert.match(events.deltas.at(-1), /验证：已读回确认文件存在、内容正确、大小正常。/);
+    assert.match(events.deltas.at(-1), /结论：任务已完成。/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -260,7 +262,9 @@ test('Simple file task: exact one-line text artifact uses deterministic fast pat
     assert.equal(events.statuses.at(-1).state, 'completed');
     assert.equal(events.todos.at(-1).length, 2);
     assert.equal(events.todos.at(-1).every((todo) => todo.status === 'completed'), true);
-    assert.match(events.deltas.at(-1), /文件存在、内容读取和大小检查验证/);
+    assert.match(events.deltas.at(-1), /^\x00ASUM\x00完成：已创建 `ui-r1a1b-clean2-4a148c\.txt`。/);
+    assert.match(events.deltas.at(-1), /验证：已读回确认文件存在、内容正确、大小正常。/);
+    assert.match(events.deltas.at(-1), /结论：任务已完成。/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -380,7 +384,9 @@ test('Simple file task: writes explicit unknown text target and completes file-c
       events.statuses.some((status) => status.phase === 'validate' && status.state === 'completed' && /自动验证通过/.test(status.title)),
       true,
     );
-    assert.match(events.deltas.at(-1), /文件存在、内容读取和大小检查验证/);
+    assert.match(events.deltas.at(-1), /^\x00ASUM\x00完成：已创建 `assets\/manual-phase6\.unknown`。/);
+    assert.match(events.deltas.at(-1), /验证：已读回确认文件存在、内容正确、大小正常。/);
+    assert.match(events.deltas.at(-1), /结论：任务已完成。/);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

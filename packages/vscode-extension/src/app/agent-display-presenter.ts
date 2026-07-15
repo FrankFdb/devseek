@@ -78,10 +78,12 @@ export class AgentDisplayPresenter {
     status?: AgentStatusEvent,
   ): AgentProgressPresentation {
     const counts = this.countsFor(stage);
+    const computedTitle = progressTitle(stage, state, this.currentTaskFocus, this.currentTaskAction);
+    const computedDetail = progressDetail(stage, state, counts, status, this.currentTaskFocus);
     return {
       progressStage: stage,
-      progressTitle: progressTitle(stage, state, this.currentTaskFocus),
-      progressDetail: progressDetail(stage, state, counts, status, this.currentTaskFocus),
+      progressTitle: status?.progressTitle || computedTitle,
+      progressDetail: status?.progressDetail || computedDetail,
       progressState: state,
     };
   }
@@ -111,7 +113,12 @@ function progressStageForActivity(kind: string, current: AgentProgressStage): Ag
   return current;
 }
 
-function progressTitle(stage: AgentProgressStage, state: string, focus: string): string {
+function progressTitle(
+  stage: AgentProgressStage,
+  state: string,
+  focus: string,
+  action: AgentStatusEvent['taskAction'],
+): string {
   if (state === 'failed') {
     if (stage === 'validation') return '验证发现问题，正在保留失败证据';
     return '当前阶段未通过，正在整理失败原因';
@@ -125,10 +132,17 @@ function progressTitle(stage: AgentProgressStage, state: string, focus: string):
   }
   if (stage === 'planning') return '正在梳理任务、边界和执行路径';
   if (stage === 'context') return focus ? `正在调查：${focus}` : '正在收集项目证据和依赖关系';
-  if (stage === 'implementation') return focus ? `正在实现：${focus}` : '正在生成和更新成果物';
+  if (stage === 'implementation') return implementationProgressTitle(focus, action);
   if (stage === 'validation') return '正在运行验证并检查交付完整性';
   if (stage === 'recovery') return '正在根据失败证据修复问题';
   return '正在汇总结果和交付证据';
+}
+
+function implementationProgressTitle(focus: string, action: AgentStatusEvent['taskAction']): string {
+  if (action === 'create') return focus ? `正在创建：${focus}` : '正在创建成果物';
+  if (action === 'modify') return focus ? `正在修改：${focus}` : '正在修改成果物';
+  if (action === 'delete') return focus ? `正在删除：${focus}` : '正在删除成果物';
+  return focus ? `正在实现：${focus}` : '正在生成和更新成果物';
 }
 
 function progressDetail(

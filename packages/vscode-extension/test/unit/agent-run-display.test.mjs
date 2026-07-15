@@ -34,7 +34,7 @@ test('agent run display: literal tool protocol samples use safe response copy', 
 });
 
 test('agent run display: ordinary workspace requests keep explore copy', () => {
-  const profile = buildAgentRunDisplayProfile('创建 docs/example.md，内容为 hello，并验证文件内容。');
+  const profile = buildAgentRunDisplayProfile('分析 docs 目录里的发布说明，找出需要补充的验证证据。');
 
   assert.equal(profile.kind, 'workspace-explore');
   assert.equal(profile.planStartedTitle, '正在理解任务和项目边界');
@@ -44,6 +44,21 @@ test('agent run display: ordinary workspace requests keep explore copy', () => {
   assert.match(profile.planCompletedDetail, /基于证据设计并生成必要成果物/);
   assert.match(profile.planCompletedDetail, /运行验证并汇总交付结果/);
   assert.equal(profile.initialTaskAction, 'explore');
+  assert.equal(profile.suppressToolPlanning, false);
+});
+
+test('agent run display: simple file requests use direct write and readback copy', () => {
+  const profile = buildAgentRunDisplayProfile('创建 docs/example.md，内容为 hello，并验证文件内容。');
+
+  assert.equal(profile.kind, 'simple-file');
+  assert.equal(profile.planStartedTitle, '正在确认文件写入要求');
+  assert.equal(profile.planCompletedTitle, '已确定直接写入与读回验证');
+  assert.match(profile.planStartedDetail, /目标文件、精确内容和读回验证方式/);
+  assert.match(profile.planCompletedDetail, /写入用户指定文件：docs\/example\.md/);
+  assert.match(profile.planCompletedDetail, /读回确认文件存在、内容正确、大小正常/);
+  assert.doesNotMatch(profile.planCompletedDetail, /通信链路|接口证据|原项目代码/);
+  assert.equal(profile.initialTaskAction, 'create');
+  assert.equal(profile.initialTaskLabel, 'docs/example.md');
   assert.equal(profile.suppressToolPlanning, false);
 });
 

@@ -696,6 +696,8 @@ async function runChat(
           title: agDisplayProfile.planStartedTitle,
           taskTotal: 0,
           detail: agDisplayProfile.planStartedDetail,
+          progressTitle: agDisplayProfile.planStartedTitle,
+          progressDetail: agDisplayProfile.planStartedDetail,
         });
         postAgent({
           type: 'agentStatus',
@@ -704,6 +706,8 @@ async function runChat(
           title: agDisplayProfile.planCompletedTitle,
           taskTotal: 0,
           detail: agDisplayProfile.planCompletedDetail,
+          progressTitle: agDisplayProfile.planCompletedTitle,
+          progressDetail: agDisplayProfile.planCompletedDetail,
         });
         const agResult = await runAgenticLoop(prompt, dataFiles, agWsRoot, mode, {
           executionMode: workflow.toolPolicyMode,

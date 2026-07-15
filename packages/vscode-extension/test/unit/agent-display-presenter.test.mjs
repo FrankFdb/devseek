@@ -130,6 +130,38 @@ test('AgentDisplayPresenter: user-facing progress focus is not hard-truncated be
   assert.doesNotMatch(status.progressTitle, /…$/);
 });
 
+test('AgentDisplayPresenter: structured status can override progress copy', () => {
+  const localPresenter = new AgentDisplayPresenter();
+  const status = localPresenter.presentStatus({
+    type: 'agentStatus',
+    phase: 'plan',
+    state: 'started',
+    title: '计划',
+    progressTitle: '正在确认文件写入要求',
+    progressDetail: '正在确认目标文件、精确内容和读回验证方式。',
+  });
+
+  assert.equal(status.progressStage, 'planning');
+  assert.equal(status.progressTitle, '正在确认文件写入要求');
+  assert.equal(status.progressDetail, '正在确认目标文件、精确内容和读回验证方式。');
+});
+
+test('AgentDisplayPresenter: create actions use create language during implementation', () => {
+  const localPresenter = new AgentDisplayPresenter();
+  const status = localPresenter.presentStatus({
+    type: 'agentStatus',
+    phase: 'execute',
+    state: 'started',
+    taskAction: 'create',
+    taskDesc: 'docs/example.md',
+    title: '创建 docs/example.md',
+  });
+
+  assert.equal(status.progressStage, 'implementation');
+  assert.equal(status.progressTitle, '正在创建：docs/example.md');
+  assert.match(status.progressDetail, /当前重点：docs\/example\.md/);
+});
+
 test('AgentDisplayPresenter: de-duplicates detail facts and changes stage by tool semantics', () => {
   const localPresenter = new AgentDisplayPresenter();
   localPresenter.presentStatus({
