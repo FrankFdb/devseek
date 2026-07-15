@@ -126,16 +126,19 @@ try {
     extensionsDir,
     vscodeLogPath,
   });
-  const bridgeReport = summarizeControlledBridge(fakeBridge.state);
+  const deterministicFastPath = isControlledDeterministicFastPath(driverReport);
+  const bridgeReport = summarizeControlledBridge(fakeBridge.state, { providerExpected: !deterministicFastPath });
   const runIds = [...new Set(fakeBridge.state.chatRequests.map(request => request.runId).filter(Boolean))];
-  const evidence = runIds.length === 1
-    ? inspectRunEvidence(workspaceDir, runIds[0])
-    : {
-        ok: false,
-        runId: runIds[0] || '',
-        errors: [`Expected exactly one evidence runId, received ${runIds.length}`],
-        eventTypes: [],
-      };
+  const evidence = deterministicFastPath
+    ? inspectDeterministicRunLogEvidence(driverReport)
+    : runIds.length === 1
+      ? inspectRunEvidence(workspaceDir, runIds[0])
+      : {
+          ok: false,
+          runId: runIds[0] || '',
+          errors: [`Expected exactly one evidence runId, received ${runIds.length}`],
+          eventTypes: [],
+        };
 
   const errors = [];
   if (!driverReport.ok) errors.push(...(driverReport.errors || ['VS Code driver failed']));
@@ -172,6 +175,7 @@ try {
       installedExtensionPath: installed.extensionPath,
     },
     driver: driverReport,
+    deterministicFastPath,
     bridge: bridgeReport,
     evidence,
     errors,
@@ -1150,26 +1154,55 @@ function waitForChildExit(child, waitMs) {
   });
 }
 
-function summarizeControlledBridge(state) {
+function isControlledDeterministicFastPath(driverReport) {
+  const data = driverReport?.runLogs?.terminal?.data || {};
+  const userChangedPaths = Array.isArray(driverReport?.artifact?.userChangedPaths)
+    ? driverReport.artifact.userChangedPaths
+    : [];
+  return driverReport?.ok === true
+    && driverReport?.artifact?.exists === true
+    && driverReport?.artifact?.exactContent === true
+    && driverReport?.runLogs?.terminal?.event === 'agent-run-completed'
+    && data.status === 'completed'
+    && Number(data.tasksApplied || 0) > 0
+    && Number(data.tasksFailed || 0) === 0
+    && userChangedPaths.length === 1
+    && userChangedPaths[0] === targetRelativePath;
+}
+
+function summarizeControlledBridge(state, { providerExpected = true } = {}) {
   const errors = [...state.errors];
   const acceptedRequestCount = state.chatRequests.filter(request => request.bound === true).length;
   const allRequestsBound = state.chatRequests.length > 0
     && state.chatRequests.every(request => request.bound === true && request.promptContract?.bound === true);
   if (state.authFailures !== 0) errors.push(`Controlled Bridge observed ${state.authFailures} authentication failures`);
-  if (state.chatRequests.length < 1) errors.push('Controlled Bridge received no /chat request');
-  if (state.chatRequests.some(request => !request.runId || !request.operationId)) {
-    errors.push('At least one controlled /chat request lacked run/operation correlation');
-  }
   if (!state.promptContractSelfTest?.ok) errors.push('Controlled prompt-contract negative self-test did not pass');
-  if (state.rejectedRequests.length > 0) {
-    errors.push(`Controlled Bridge rejected ${state.rejectedRequests.length} prompt-contract request(s)`);
+  if (providerExpected) {
+    if (state.chatRequests.length < 1) errors.push('Controlled Bridge received no /chat request');
+    if (state.chatRequests.some(request => !request.runId || !request.operationId)) {
+      errors.push('At least one controlled /chat request lacked run/operation correlation');
+    }
+    if (state.rejectedRequests.length > 0) {
+      errors.push(`Controlled Bridge rejected ${state.rejectedRequests.length} prompt-contract request(s)`);
+    }
+    if (state.providerInvocationCount !== acceptedRequestCount) {
+      errors.push(`Controlled provider invocation count ${state.providerInvocationCount} does not match ${acceptedRequestCount} bound request(s)`);
+    }
+    if (!allRequestsBound) errors.push('Not every controlled /chat request is bound to the expected user intent');
+  } else {
+    if (state.chatRequests.length !== 0) {
+      errors.push(`Deterministic fast path should not call controlled Bridge /chat, observed ${state.chatRequests.length}`);
+    }
+    if (state.providerInvocationCount !== 0) {
+      errors.push(`Deterministic fast path should not invoke provider, observed ${state.providerInvocationCount}`);
+    }
+    if (state.rejectedRequests.length > 0) {
+      errors.push(`Deterministic fast path unexpectedly rejected ${state.rejectedRequests.length} prompt-contract request(s)`);
+    }
   }
-  if (state.providerInvocationCount !== acceptedRequestCount) {
-    errors.push(`Controlled provider invocation count ${state.providerInvocationCount} does not match ${acceptedRequestCount} bound request(s)`);
-  }
-  if (!allRequestsBound) errors.push('Not every controlled /chat request is bound to the expected user intent');
   return {
     ok: errors.length === 0,
+    providerExpected,
     statusRequests: state.statusRequests,
     authFailures: state.authFailures,
     chatRequestCount: state.chatRequests.length,
@@ -1182,9 +1215,41 @@ function summarizeControlledBridge(state) {
       selfTest: state.promptContractSelfTest,
       expected: state.chatRequests.map(request => request.expected),
       observed: state.chatRequests.map(request => request.observed),
-      bound: allRequestsBound,
+      bound: providerExpected ? allRequestsBound : state.promptContractSelfTest?.ok === true,
     },
     chatRequests: state.chatRequests,
+    errors,
+  };
+}
+
+function inspectDeterministicRunLogEvidence(driverReport) {
+  const logs = Array.isArray(driverReport?.runLogs?.logs) ? driverReport.runLogs.logs : [];
+  const terminalLogs = logs.filter(log => log.terminal);
+  const terminal = driverReport?.runLogs?.terminal || null;
+  const data = terminal?.data || {};
+  const userChangedPaths = Array.isArray(driverReport?.artifact?.userChangedPaths)
+    ? driverReport.artifact.userChangedPaths
+    : [];
+  const errors = [];
+  if (terminalLogs.length !== 1) errors.push(`Expected exactly one terminal run log, received ${terminalLogs.length}`);
+  if (terminal?.event !== 'agent-run-completed') errors.push(`Run log terminal event is ${terminal?.event || '(missing)'}`);
+  if (data.status !== 'completed') errors.push(`Run log terminal status is ${data.status || '(missing)'}`);
+  if (Number(data.tasksApplied || 0) <= 0) errors.push('Run log did not record an applied task');
+  if (Number(data.tasksFailed || 0) !== 0) errors.push(`Run log recorded ${Number(data.tasksFailed || 0)} failed task(s)`);
+  if (!driverReport?.artifact?.exists || !driverReport?.artifact?.exactContent) {
+    errors.push('Deterministic artifact content is not exact');
+  }
+  if (userChangedPaths.length !== 1 || userChangedPaths[0] !== targetRelativePath) {
+    errors.push(`Deterministic changed paths are not target-scoped: ${JSON.stringify(userChangedPaths)}`);
+  }
+  return {
+    ok: errors.length === 0,
+    mode: 'deterministic-fast-path-run-log',
+    runId: terminal?.runId || '',
+    integrityScope: 'product-run-diagnostics',
+    qualificationEligible: false,
+    terminal,
+    eventTypes: logs.map(log => log.lastEvent).filter(Boolean),
     errors,
   };
 }
