@@ -82,6 +82,7 @@ import {
   runtimeStateCanDeliver,
   settleAgentRuntimeState,
 } from './agent-runtime-state-machine';
+import { settleProviderFailureFromCompletedEvidence } from './agentic-provider-settlement';
 import { stableStringify } from './stable-stringify';
 import { describeProviderOutputIntegrity } from './provider-output-integrity';
 import {
@@ -121,37 +122,6 @@ function getAgenticBlockingTerminalFailure(
 ): TerminalEvidence | undefined {
   return getBlockingTerminalFailure(userPrompt, todos, writtenFiles, terminalEvidence)
     ?? findBlockingTerminalFailureEvidence(terminalEvidence);
-}
-
-function canSettleProviderFailureFromCompletedEvidence(input: {
-  promptRequiresTools: boolean;
-  sawWorkTool: boolean;
-  missingEvidence: string[];
-  blockingFailure: TerminalEvidence | undefined;
-  summaryFactFailures: string[];
-  aborted: boolean | undefined;
-}): boolean {
-  return !input.aborted
-    && input.promptRequiresTools
-    && input.sawWorkTool
-    && input.missingEvidence.length === 0
-    && !input.blockingFailure
-    && input.summaryFactFailures.length === 0;
-}
-
-function buildCompletedEvidenceSummary(
-  writtenFiles: WrittenFileEvidence[],
-  terminalEvidence: TerminalEvidence[],
-  workspaceRoot?: string,
-): string {
-  const finalWrittenFiles = coalesceWrittenFileEvidence(writtenFiles, workspaceRoot);
-  const filePart = finalWrittenFiles.length > 0
-    ? `已完成，处理 ${finalWrittenFiles.length} 个文件：${finalWrittenFiles.map(f => `${f.basename} (+${f.linesAdded} -${f.linesRemoved})`).join('、')}。`
-    : '任务已完成。';
-  const validationPart = terminalEvidence.some(e => e.ok)
-    ? '验证证据已通过。'
-    : '';
-  return `${filePart}${validationPart}`;
 }
 
 function agenticMessageContentLength(content: ChatMessage['content']): number {
@@ -465,19 +435,7 @@ ${mcpSection}
 - 使用简体中文`.trim();
 }
 
-/**
- * Agentic free-explore loop — Claude Code style single-phase ReAct cycle.
- *
- * Routing decision (extension.ts):
- *   - hasCodeFiles → run Architect+Editor two-phase pipeline (runAgentLoop)
- *   - !hasCodeFiles → run this function (free exploration / investigation)
- *
- * Key design differences vs runAgentLoop:
- *   - No Architect phase: LLM drives tool use directly
- *   - Tool results are fed back into messages history (NOT streamed to chat)
- *   - AI reasoning text (non-tool-call deltas) flows into Working box
- *   - Loop continues until AI calls task_complete or MAX_AGENTIC_ROUNDS
- */
+/** Agentic free-explore loop: Claude Code-style single-phase ReAct cycle. */
 export async function runAgenticLoop(
   userPrompt: string,
   dataFiles: string[],          // non-code files attached by user (.log/.csv/etc.)
@@ -733,25 +691,14 @@ export async function runAgenticLoop(
       text = providerTurn.text;
       tools = providerTurn.tools;
     } catch (error) {
-      const missingOnProviderFailure = promptRequiresTools
-        ? getMissingCompletionEvidence(writeAuthority.currentPrompt, currentTodos, allWrittenFiles, allTerminalEvidence, [...allReadEvidencePaths], workspaceRoot)
-        : [];
-      const blockingOnProviderFailure = promptRequiresTools
-        ? getAgenticBlockingTerminalFailure(writeAuthority.currentPrompt, currentTodos, allWrittenFiles, allTerminalEvidence)
-        : undefined;
-      const summaryFactFailuresOnProviderFailure = completeSummary
-        ? getUnsupportedSummaryFileClaims(completeSummary, allWrittenFiles, workspaceRoot)
-        : [];
-      if (canSettleProviderFailureFromCompletedEvidence({
-        promptRequiresTools,
-        sawWorkTool,
-        missingEvidence: missingOnProviderFailure,
-        blockingFailure: blockingOnProviderFailure,
-        summaryFactFailures: summaryFactFailuresOnProviderFailure,
-        aborted: callbacks.signal?.aborted,
-      })) {
-        completeSummary = completeSummary
-          || buildCompletedEvidenceSummary(allWrittenFiles, allTerminalEvidence, workspaceRoot);
+      const providerSettlement = settleProviderFailureFromCompletedEvidence({
+        promptRequiresTools, sawWorkTool, aborted: callbacks.signal?.aborted,
+        userPrompt: writeAuthority.currentPrompt, todos: currentTodos, writtenFiles: allWrittenFiles,
+        terminalEvidence: allTerminalEvidence, readEvidencePaths: [...allReadEvidencePaths],
+        workspaceRoot, completeSummary,
+      });
+      if (providerSettlement.completed) {
+        completeSummary = completeSummary || providerSettlement.summary;
         break;
       }
       const providerFailure = parseAgentProviderFailure(error);

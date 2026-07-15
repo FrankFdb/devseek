@@ -1015,10 +1015,13 @@ test('Agent validation completion settles spinner instead of leaving validation 
 
 test('Agentic loop: provider failure after satisfied local evidence does not overturn completion', () => {
   const code = src('src/agent/agentic-loop.ts');
-  assertContains(code, 'canSettleProviderFailureFromCompletedEvidence', 'agent loop must have a completed-evidence provider-failure short circuit');
+  const settlement = src('src/agent/agentic-provider-settlement.ts');
+  assertContains(code, 'settleProviderFailureFromCompletedEvidence', 'agent loop must delegate completed-evidence provider-failure settlement');
+  assertContains(settlement, 'getMissingCompletionEvidence', 'provider failure settlement must use the shared completion evidence boundary');
+  assertContains(settlement, 'findBlockingTerminalFailureEvidence', 'provider failure settlement must preserve terminal failure authority');
   assert.match(
     code,
-    /catch \(error\) \{[\s\S]*?canSettleProviderFailureFromCompletedEvidence[\s\S]*?buildCompletedEvidenceSummary[\s\S]*?break;[\s\S]*?const providerFailure = parseAgentProviderFailure\(error\)/,
+    /catch \(error\) \{[\s\S]*?settleProviderFailureFromCompletedEvidence[\s\S]*?if \(providerSettlement\.completed\) \{[\s\S]*?break;[\s\S]*?const providerFailure = parseAgentProviderFailure\(error\)/,
     'provider errors must be checked against completed local evidence before provider recovery/failure handling',
   );
 });
