@@ -33,6 +33,7 @@ export interface TaskSemanticContract {
     requested: boolean;
     compileRequested: boolean;
     runRequested: boolean;
+    testRequested: boolean;
     runProhibited: boolean;
     stdoutRequested: boolean;
     fileCheckRequested: boolean;
@@ -51,9 +52,12 @@ const NO_WRITE_CLAUSE_RE = /(?:当前不准备|先不准备|不准备|先不要|
 const OTHER_FILE_SCOPE_RE = /(?:其他|其它|其余|用户)(?:的)?(?:文件|文档|源码|代码)|(?:other|unrelated|user)\s+files?/i;
 const VALIDATION_RE = /(?:验证|测试|编译|构建|运行|执行|确认|检查|读回|重新读取|test|verify|compile|build|run|execute|check|read\s*back)/i;
 const COMPILE_RE = /(?:编译|构建|g\+\+|gcc|clang|cmake|make|compile|build)/i;
-const RUN_RE = /(?:运行|执行|启动|测试|跑一下|run|execute|start|test|ctest)/i;
+const RUN_RE = /(?:运行|执行|启动|跑一下|run|execute|start)/i;
+const TEST_RE = /(?:测试|单元测试|test|ctest|pytest|npm\s+test|pnpm\s+test|yarn\s+test|bun\s+test|go\s+test|cargo\s+test|unit\s+tests?)/i;
 const STDOUT_RE = /(?:打印|输出|stdout|std::cout|\bcout\b|console\.log|print)/i;
-const NO_RUN_RE = /(?:不要|不必|无需|无须|不需要|禁止|不得)[^，,。；;\n]{0,16}(?:运行|执行|启动|测试)|(?:do\s+not|don't|without|no)\s+(?:run|execute|start|test)/i;
+const OUTPUT_ARTIFACT_RE = /(?:(?:输出|打印)[^，,。；;\n]{0,20}(?:文件|文档|报告|Markdown|md|目录|路径|清单|内容)|(?:文件|文档|报告|内容|最后一行|每行|一行)[^，,。；;\n]{0,24}(?:打印|输出|console\.log|print)|(?:output|print)[^,.;\n]{0,24}(?:file|document|report|markdown|content|line))/i;
+const NO_RUN_RE = /(?:不(?:要|用|需|需要|必|得|准|能)?|禁止|别|勿|请勿|未)[^，,。；;\n]{0,24}(?:运行|执行|启动|测试)|(?:do\s+not|don't|without|no)\s+(?:run|execute|start|test)/i;
+const NO_RUN_CLAUSE_RE = /(?:不(?:要|用|需|需要|必|得|准|能)?|禁止|别|勿|请勿|未)[^，,。；;\n]{0,32}(?:运行|执行|启动|测试)[^，,。；;\n]*|(?:do\s+not|don't|without|no)\s+[^,.;\n]*(?:run|execute|start|test)[^,.;\n]*/gi;
 const READ_ONLY_RE = /(?:只读|仅分析|只分析|仅讨论|只讨论|当前不准备|不准备|先不要|暂不|不要落地|不需要代码|only\s+(?:explain|discuss|answer)|just\s+(?:chat|talk|discuss))/i;
 const DESTRUCTIVE_RE = /(?:删除|清空|覆盖|重置|移除|删掉|drop|delete|remove|reset|overwrite|truncate)/i;
 
@@ -82,10 +86,12 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const mutationRequested = (sourceChange || fileArtifact || taskContract.deliverableTargets.length > 0)
     && !prohibited;
   const validationRequested = VALIDATION_RE.test(prompt) || taskContract.deliverables.includes('verification-result');
-  const compileRequested = COMPILE_RE.test(prompt);
-  const stdoutRequested = STDOUT_RE.test(prompt);
+  const positiveValidationText = prompt.replace(NO_RUN_CLAUSE_RE, ' ');
+  const compileRequested = COMPILE_RE.test(positiveValidationText);
+  const stdoutRequested = STDOUT_RE.test(prompt) && !OUTPUT_ARTIFACT_RE.test(prompt);
   const runProhibited = NO_RUN_RE.test(prompt);
-  const runRequested = !runProhibited && (RUN_RE.test(prompt) || stdoutRequested);
+  const testRequested = !runProhibited && TEST_RE.test(positiveValidationText);
+  const runRequested = !runProhibited && (RUN_RE.test(positiveValidationText) || stdoutRequested || testRequested);
   const fileCheckRequested = fileArtifact
     && (validationRequested || taskContract.verificationContract.requireArtifactReadback || explicitNonCodeFileWrite);
   const formalProjectRequired = requiresFormalProjectQualityFromTaskContract(taskContract);
@@ -114,6 +120,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     hasScopedOtherFileProhibition ? 'scoped-other-file-prohibition' : '',
     formalProjectRequired ? 'formal-project-quality-required' : '',
     runRequested ? 'run-requested' : '',
+    testRequested ? 'test-requested' : '',
     stdoutRequested ? 'stdout-requested' : '',
     fileCheckRequested ? 'file-check-requested' : '',
   ].filter(Boolean);
@@ -135,6 +142,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
       requested: validationRequested,
       compileRequested,
       runRequested,
+      testRequested,
       runProhibited,
       stdoutRequested,
       fileCheckRequested,

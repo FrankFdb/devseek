@@ -633,6 +633,95 @@ test('completion evidence: code edit requires successful validation evidence', (
   }
 });
 
+test('completion evidence: standalone C++ stdout task requires runtime evidence after writing', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-cpp-stdout-'));
+  try {
+    const file = path.join(root, 'hello.cpp');
+    writeFileSync(file, '#include <iostream>\nint main(){ std::cout << "下午好\\n"; }\n');
+    const cppPrompt = '编写一个 C++ 程序，打印下午好';
+    const written = [{ path: file, basename: 'hello.cpp', linesAdded: 2, linesRemoved: 0, action: 'create' }];
+
+    assert.equal(requiresCodeArtifactForEvidence(cppPrompt), true);
+    assert.equal(requiresCommandEvidence(cppPrompt), true);
+    assert.equal(requiresRuntimeValidation(cppPrompt), true);
+    assert.deepEqual(
+      getMissingCompletionEvidence(cppPrompt, [], written, [], [], root),
+      ['成功的程序运行结果'],
+    );
+    assert.deepEqual(
+      getMissingCompletionEvidence(
+        cppPrompt,
+        [],
+        written,
+        [{ command: `g++ ${file} -o ${path.join(root, 'hello')}`, kind: 'compile', ok: true, exitCode: 0 }],
+        [],
+        root,
+      ),
+      ['成功的程序运行结果'],
+    );
+    assert.deepEqual(
+      getMissingCompletionEvidence(
+        cppPrompt,
+        [],
+        written,
+        [{
+          command: `g++ ${file} -o ${path.join(root, 'hello')} && ${path.join(root, 'hello')}`,
+          kind: 'compile-run',
+          ok: true,
+          exitCode: 0,
+        }],
+        [],
+        root,
+      ),
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('completion evidence: explicit test intent requires test or runtime result', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-test-intent-'));
+  try {
+    const file = path.join(root, 'code', 'shape_manager', 'main.cpp');
+    mkdirSync(path.dirname(file), { recursive: true });
+    writeFileSync(file, 'int main(){return 0;}\n');
+    const testPrompt = '请修改 code/shape_manager/main.cpp，然后编译和测试，看结果';
+    const written = [{ path: file, basename: 'main.cpp', linesAdded: 1, linesRemoved: 1, action: 'modify' }];
+
+    assert.equal(requiresCommandEvidence(testPrompt), true);
+    assert.equal(requiresRuntimeValidation(testPrompt), true);
+    assert.deepEqual(
+      getMissingCompletionEvidence(testPrompt, [], written, [], [], root),
+      ['成功的测试/运行结果'],
+    );
+    assert.deepEqual(
+      getMissingCompletionEvidence(
+        testPrompt,
+        [],
+        written,
+        [{ command: 'cmake --build build', kind: 'compile', ok: true, exitCode: 0 }],
+        [],
+        root,
+      ),
+      ['成功的测试/运行结果'],
+    );
+    assert.deepEqual(
+      getMissingCompletionEvidence(
+        testPrompt,
+        [],
+        written,
+        [{ command: 'ctest --test-dir build', kind: 'test', ok: true, exitCode: 0 }],
+        [],
+        root,
+      ),
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('completion evidence: negative run constraints do not become runtime-validation requirements', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-negative-run-'));
   try {

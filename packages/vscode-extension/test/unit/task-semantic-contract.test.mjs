@@ -72,11 +72,26 @@ test('TaskSemanticContract: test requests require runtime validation unless proh
   const noRunContract = buildTaskSemanticContract('请修改 /tmp/project/code/shape_manager，然后编译和测试，但不要运行或测试');
 
   assert.equal(contract.validation.runRequested, true);
+  assert.equal(contract.validation.testRequested, true);
   assert.equal(shouldRunCppValidationForContract(contract), true);
   assert.ok(contract.signals.includes('run-requested'));
+  assert.ok(contract.signals.includes('test-requested'));
   assert.equal(noRunContract.validation.runProhibited, true);
   assert.equal(noRunContract.validation.runRequested, false);
+  assert.equal(noRunContract.validation.testRequested, false);
   assert.equal(shouldRunCppValidationForContract(noRunContract), false);
+});
+
+test('TaskSemanticContract: file content wording does not become stdout runtime intent', () => {
+  const outputFileContract = buildTaskSemanticContract('请生成结果。必须创建输出文件：/tmp/result.txt');
+  const contentLineContract = buildTaskSemanticContract(
+    '创建 .devseek-close02-probe/probe.js 文件。最后一行打印：CLOSE02-20260713-manual-probe: 2+3=5。不运行网络，不安装依赖。',
+  );
+
+  assert.equal(outputFileContract.validation.stdoutRequested, false);
+  assert.equal(outputFileContract.validation.runRequested, false);
+  assert.equal(contentLineContract.validation.stdoutRequested, false);
+  assert.equal(contentLineContract.validation.runRequested, false);
 });
 
 console.log('\nTask-semantic-contract tests passed.\n');

@@ -15,6 +15,11 @@ import {
   classifyArtifactWriteIntent,
   hasSourceClaimArtifactContract,
 } from './task-contract';
+import {
+  buildTaskSemanticContract,
+  shouldRunCppValidationForContract,
+  type TaskSemanticContract,
+} from '../task-semantic-contract';
 import type { VerificationResult } from './evidence-grounding';
 
 export interface CompletionTodo {
@@ -79,6 +84,10 @@ const READ_EVIDENCE_RE = /(?:检查|查看|读取|显示|确认|是否存在|内
 const FILE_CONTENT_EVIDENCE_RE = /(?:(?:显示|查看|读取|输出|打印).{0,8}(?:文件)?内容|(?:read|show|display|print).{0,16}(?:file\s*)?content)/i;
 const READ_ONLY_TERMINAL_EVIDENCE_RE = /\b(?:cat|ls|test|grep|head|tail|sed|wc|stat|file|find)\b/i;
 const FILE_CONTENT_TERMINAL_EVIDENCE_RE = /\b(?:cat|grep|head|tail|sed)\b/i;
+const COMMAND_EVIDENCE_RE = /(?:编译|运行|执行|测试|验证|调试|compile|build|test|run|execute|verify)/i;
+const RUN_EVIDENCE_RE = /(?:运行|执行|run|execute)/i;
+const TEST_EVIDENCE_RE = /(?:测试|run\s+tests?|execute\s+tests?|npm\s+test|pnpm\s+test|yarn\s+test|bun\s+test|unit\s+tests?|pytest|go\s+test|cargo\s+test)/i;
+const RUNTIME_VALIDATION_RE = /(?:启动|看结果|输出效果|运行效果)/i;
 const READ_ONLY_TOOL_INTENT_RE = /(?:我(?:来|会|将|先|需要|已经)|让我|首先|先|接下来|下一步|现在我|需要).{0,140}(?:查看|读取|检查|搜索|列出|调用|使用|打开|浏览|生成|输出|整理|形成|收集|了解|分析|给出).{0,100}(?:文件|目录|代码|文档|结构|相关|信息|工具|报告|结论|分析|建议|差异|对策|tool|read_file|list_dir|grep_search)/i;
 const READ_ONLY_DELIVERY_STRUCTURE_RE = /(?:^|\n)\s*(?:#{1,6}\s+|[-*]\s+|\d+[.、]\s+|(?:结论|建议|对策|任务|差异|风险|主控|实现方案|分析结果)\s*[:：])/i;
 const READ_ONLY_ANSWER_MARKER_RE = /(?:结论|依据|原因|问题|风险|建议|对策|方案|任务|任务拆解|差异|主控|实现方案|分析结果|不存在|未找到|无法读取|summary|conclusion|evidence|recommendation|risk|not\s+found|does\s+not\s+exist)/i;
@@ -272,7 +281,75 @@ function buildEvidenceText(userPrompt: string, todos: CompletionTodo[]): string 
   return `${promptIntentText}\n${todoText}`.toLowerCase();
 }
 
+type CompletionEvidenceSemanticView = {
+  contract: TaskSemanticContract;
+  readOnly: boolean;
+  fileChange: boolean;
+  codeArtifact: boolean;
+  commandEvidence: boolean;
+  runEvidence: boolean;
+  testEvidence: boolean;
+  runtimeValidation: boolean;
+  fileCheckEvidence: boolean;
+};
+
+function buildCompletionEvidenceSemanticView(text: string): CompletionEvidenceSemanticView {
+  const intentText = String(text || '');
+  const contract = buildTaskSemanticContract(intentText);
+  const readOnly = isExplicitlyReadOnlyRequestFromIntent(intentText);
+  const commandIntentText = commandEvidenceIntentText(intentText);
+
+  const legacyFileChange = (FILE_CHANGE_RE.test(intentText) || classifyArtifactWriteIntent(intentText).requested)
+    && (CODE_TARGET_RE.test(intentText) || FILE_PATH_TARGET_RE.test(intentText));
+  const legacyCodeArtifact = FILE_CHANGE_RE.test(intentText) && CODE_TARGET_RE.test(intentText);
+  const semanticFileChange = contract.mutation.requested
+    && (contract.mutation.sourceChange || contract.mutation.fileArtifact || contract.mutation.targets.length > 0);
+  const codeArtifact = !readOnly && (contract.mutation.sourceChange || legacyCodeArtifact);
+  const fileChange = !readOnly && (semanticFileChange || legacyFileChange);
+  const runEvidence = !readOnly && (
+    contract.validation.runRequested
+    || shouldRunCppValidationForContract(contract)
+    || RUN_EVIDENCE_RE.test(commandIntentText)
+  );
+  const testEvidence = !readOnly && (
+    contract.validation.testRequested
+    || TEST_EVIDENCE_RE.test(commandIntentText)
+  );
+  const runtimeValidation = !readOnly && (
+    runEvidence
+    || testEvidence
+    || RUNTIME_VALIDATION_RE.test(commandIntentText)
+  );
+  const commandEvidence = !readOnly && (
+    contract.validation.compileRequested
+    || contract.validation.runRequested
+    || contract.validation.testRequested
+    || (contract.validation.fileCheckRequested && contract.validation.requested)
+    || COMMAND_EVIDENCE_RE.test(commandIntentText)
+  );
+  const fileCheckEvidence = fileChange
+    && !codeArtifact
+    && commandEvidence
+    && !runtimeValidation;
+
+  return {
+    contract,
+    readOnly,
+    fileChange,
+    codeArtifact,
+    commandEvidence,
+    runEvidence,
+    testEvidence,
+    runtimeValidation,
+    fileCheckEvidence,
+  };
+}
+
 export function isExplicitlyReadOnlyRequest(text: string): boolean {
+  return isExplicitlyReadOnlyRequestFromIntent(text);
+}
+
+function isExplicitlyReadOnlyRequestFromIntent(text: string): boolean {
   const intentText = text
     .split(/\r?\n/)
     .filter(line => !GENERIC_EVIDENCE_TODO_TITLES.has(line.trim()))
@@ -303,14 +380,13 @@ function extractTrailingContentIntent(text: string): string {
 }
 
 export function requiresFileChangeEvidence(text: string): boolean {
-  if (!text.trim() || isExplicitlyReadOnlyRequest(text)) return false;
-  return (FILE_CHANGE_RE.test(text) || classifyArtifactWriteIntent(text).requested)
-    && (CODE_TARGET_RE.test(text) || FILE_PATH_TARGET_RE.test(text));
+  if (!text.trim()) return false;
+  return buildCompletionEvidenceSemanticView(text).fileChange;
 }
 
 export function requiresCodeArtifactForEvidence(text: string): boolean {
-  if (!text.trim() || isExplicitlyReadOnlyRequest(text)) return false;
-  return FILE_CHANGE_RE.test(text) && CODE_TARGET_RE.test(text);
+  if (!text.trim()) return false;
+  return buildCompletionEvidenceSemanticView(text).codeArtifact;
 }
 
 export function requiresReadEvidence(text: string): boolean {
@@ -359,28 +435,24 @@ function commandEvidenceIntentText(text: string): string {
 }
 
 export function requiresCommandEvidence(text: string): boolean {
-  return /(?:编译|运行|执行|测试|验证|调试|compile|build|test|run|execute|verify)/i.test(commandEvidenceIntentText(text));
+  return buildCompletionEvidenceSemanticView(text).commandEvidence;
 }
 
 function requiresRunEvidence(text: string): boolean {
-  return /(?:运行|执行|run|execute)/i.test(commandEvidenceIntentText(text));
+  return buildCompletionEvidenceSemanticView(text).runEvidence;
 }
 
 function requiresTestEvidence(text: string): boolean {
-  return /(?:测试|run\s+tests?|execute\s+tests?|npm\s+test|pnpm\s+test|yarn\s+test|bun\s+test|unit\s+tests?|pytest|go\s+test|cargo\s+test)/i.test(commandEvidenceIntentText(text));
+  return buildCompletionEvidenceSemanticView(text).testEvidence;
 }
 
 export function requiresRuntimeValidation(text: string): boolean {
-  const intentText = commandEvidenceIntentText(text);
-  return requiresRunEvidence(intentText) || requiresTestEvidence(intentText) || /(?:启动|看结果|输出效果|运行效果)/i.test(intentText);
+  return buildCompletionEvidenceSemanticView(text).runtimeValidation;
 }
 
 export function requiresFileCheckEvidence(text: string): boolean {
-  if (!text.trim() || isExplicitlyReadOnlyRequest(text)) return false;
-  return requiresFileChangeEvidence(text)
-    && !requiresCodeArtifactForEvidence(text)
-    && requiresCommandEvidence(text)
-    && !requiresRuntimeValidation(text);
+  if (!text.trim()) return false;
+  return buildCompletionEvidenceSemanticView(text).fileCheckEvidence;
 }
 
 function lastUnclearedTerminalFailure(
@@ -473,12 +545,12 @@ export function getBlockingTerminalFailure(
   const testKinds = new Set<TerminalEvidenceKind>(['test', 'run', 'compile-run']);
   const commandKinds = new Set<TerminalEvidenceKind>(['compile', 'run', 'test', 'compile-run']);
 
-  if (requiresRunEvidence(text) || (requiresRuntimeValidation(text) && !requiresTestEvidence(text))) {
-    const failure = lastUnclearedTerminalFailure(terminalEvidence, runtimeKinds, runtimeKinds);
-    if (failure) return failure;
-  }
   if (requiresTestEvidence(text)) {
     const failure = lastUnclearedTerminalFailure(terminalEvidence, testKinds, testKinds);
+    if (failure) return failure;
+  }
+  if (requiresRunEvidence(text) || (requiresRuntimeValidation(text) && !requiresTestEvidence(text))) {
+    const failure = lastUnclearedTerminalFailure(terminalEvidence, runtimeKinds, runtimeKinds);
     if (failure) return failure;
   }
   if (needsCommand) {
@@ -566,12 +638,12 @@ export function getMissingCompletionEvidence(
   }
 
   const commandEvidenceNeeded = !needsReadEvidence && requiresCommandEvidence(text);
-  if (requiresRunEvidence(text)) {
-    const hasRunEvidence = successfulEvidence.some(e => e.kind === 'run' || e.kind === 'test' || e.kind === 'compile-run');
-    if (!hasRunEvidence) missing.push('成功的程序运行结果');
-  } else if (requiresTestEvidence(text)) {
+  if (requiresTestEvidence(text)) {
     const hasTestEvidence = successfulEvidence.some(e => e.kind === 'test' || e.kind === 'run' || e.kind === 'compile-run');
     if (!hasTestEvidence) missing.push('成功的测试/运行结果');
+  } else if (requiresRunEvidence(text)) {
+    const hasRunEvidence = successfulEvidence.some(e => e.kind === 'run' || e.kind === 'test' || e.kind === 'compile-run');
+    if (!hasRunEvidence) missing.push('成功的程序运行结果');
   } else if (needsFileCheckEvidence) {
     const hasFileCheckEvidence = successfulEvidence.some(e =>
       e.kind === 'other' && isReadOnlyTerminalEvidenceCommand(e.command),
