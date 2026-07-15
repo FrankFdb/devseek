@@ -6,7 +6,7 @@ export interface SimpleFileWriteRequest {
 }
 
 const SIMPLE_FILE_WRITE_PATH_RE = new RegExp(
-  '(?:创建|新建|生成|写入?|create|write)\\s*[`\'"]?(' + WORKSPACE_FILE_PATH_PATTERN.source + ')[`\'"]?',
+  '(?:创建|新建|生成|写入?|create|write)\\s*(?:(?:一个|一份|这个|该)?(?:文件|文档)|(?:a|the)?\\s*file)?\\s*[`\'"]?(' + WORKSPACE_FILE_PATH_PATTERN.source + ')[`\'"]?',
   'i',
 );
 const SIMPLE_FILE_EXACT_LINE_CONTENT_RE = /(?:文件)?内容(?:必须|需要|需|应当|应该)?\s*(?:精确|准确|完全)?\s*(?:只)?(?:包含|为|是)\s*(一行|1\s*行)?\s*[:：]?\s*([^\r\n。；;]+)/i;

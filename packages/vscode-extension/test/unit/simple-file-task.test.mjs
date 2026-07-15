@@ -161,6 +161,15 @@ test('Simple file task: parses explicit markdown create and trims verification c
       content: 'UI_R1A1B_CLEAN2_OK\n',
     },
   );
+  assert.deepEqual(
+    parseSimpleFileWriteRequest(
+      'INTENT-SIM-SIMPLE-intent-simple-20260715-172137-35d024 请在当前工作区创建文件 intent-simple-20260715-172137-35d024.txt。文件内容必须精确为一行 INTENT_SIM_SIMPLE_OK_intent-simple-20260715-172137-35d024。完成写入后读取该文件验证内容精确匹配，然后结束任务。不要创建目录，不要修改其他用户文件，不要访问网络。',
+    ),
+    {
+      path: 'intent-simple-20260715-172137-35d024.txt',
+      content: 'INTENT_SIM_SIMPLE_OK_intent-simple-20260715-172137-35d024\n',
+    },
+  );
 });
 
 test('Simple file task: writes markdown and completes with file-check evidence', async () => {

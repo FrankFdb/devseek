@@ -62,6 +62,17 @@ test('agent run display: simple file requests use direct write and readback copy
   assert.equal(profile.suppressToolPlanning, false);
 });
 
+test('agent run display: marked create-file requests do not use formal project copy', () => {
+  const profile = buildAgentRunDisplayProfile(
+    'INTENT-SIM-SIMPLE-intent-simple-20260715-172137-35d024 请在当前工作区创建文件 intent-simple-20260715-172137-35d024.txt。文件内容必须精确为一行 INTENT_SIM_SIMPLE_OK_intent-simple-20260715-172137-35d024。完成写入后读取该文件验证内容精确匹配，然后结束任务。不要创建目录，不要修改其他用户文件，不要访问网络。',
+  );
+
+  assert.equal(profile.kind, 'simple-file');
+  assert.equal(profile.planStartedTitle, '正在确认文件写入要求');
+  assert.match(profile.planCompletedDetail, /intent-simple-20260715-172137-35d024\.txt/);
+  assert.doesNotMatch(profile.planCompletedDetail, /通信链路|接口证据|原项目代码/);
+});
+
 test('agent run display: simple standalone programs use lightweight programming copy', () => {
   const profile = buildAgentRunDisplayProfile('编写C++程序，打印helloworld,编译执行');
 

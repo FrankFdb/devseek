@@ -106,6 +106,17 @@ test('TaskShape: scoped no-touch constraint does not erase explicit artifact wri
   assert.doesNotMatch(guidance, /通信链路|原有代码修改清单|主入口\/调度链路/);
 });
 
+test('TaskShape: marked create-file simulation keeps simple-file guidance', () => {
+  const prompt = 'INTENT-SIM-SIMPLE-intent-simple-20260715-172137-35d024 请在当前工作区创建文件 intent-simple-20260715-172137-35d024.txt。文件内容必须精确为一行 INTENT_SIM_SIMPLE_OK_intent-simple-20260715-172137-35d024。完成写入后读取该文件验证内容精确匹配，然后结束任务。不要创建目录，不要修改其他用户文件，不要访问网络。';
+  const result = classifyAgentTaskShape(prompt);
+  const guidance = buildTaskShapeGuidancePrompt(prompt);
+
+  assert.equal(result.shape, 'simple-file');
+  assert.match(guidance, /初判：简单文件写入\/读回验证/);
+  assert.match(guidance, /只创建或修改用户指定文件/);
+  assert.doesNotMatch(guidance, /通信链路|原有代码修改清单|主入口\/调度链路/);
+});
+
 test('TaskShape: read-only advice is not treated as implementation work', () => {
   const prompt = '当前不准备修改代码，只读分析现有实现，给出对策检讨和 task 建议，通过 md 文档提供。';
   const result = classifyAgentTaskShape(prompt);

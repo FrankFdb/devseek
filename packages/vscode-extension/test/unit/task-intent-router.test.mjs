@@ -42,6 +42,19 @@ test('TaskIntentRouter: explicit path plus exact content is deterministic simple
   assert.ok(route.signals.includes('scoped-other-file-prohibition'));
 });
 
+test('TaskIntentRouter: marked natural create-file prompt stays simple-file work', () => {
+  const route = routeTaskIntent(
+    'INTENT-SIM-SIMPLE-intent-simple-20260715-172137-35d024 请在当前工作区创建文件 intent-simple-20260715-172137-35d024.txt。文件内容必须精确为一行 INTENT_SIM_SIMPLE_OK_intent-simple-20260715-172137-35d024。完成写入后读取该文件验证内容精确匹配，然后结束任务。不要创建目录，不要修改其他用户文件，不要访问网络。',
+  );
+
+  assert.equal(route.family, 'simple-file');
+  assert.equal(route.agentTaskShape, 'simple-file');
+  assert.equal(route.simpleFile.path, 'intent-simple-20260715-172137-35d024.txt');
+  assert.equal(route.simpleFile.content, 'INTENT_SIM_SIMPLE_OK_intent-simple-20260715-172137-35d024\n');
+  assert.equal(route.quality.formalProjectRequired, false);
+  assert.equal(route.validation.fileCheckRequired, true);
+});
+
 test('TaskIntentRouter: simple C++ stdout program is standalone, not formal project work', () => {
   const route = routeTaskIntent('编写一个 C++ 程序，打印下午好');
 
