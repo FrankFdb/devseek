@@ -136,6 +136,19 @@ test('decideChatIntent: scoped unknown extension path is an explicit edit target
   assert.equal(result.reason, 'deliverable-write-with-file-path');
 });
 
+test('decideChatIntent: latest requirement target is edit even when old requirement is forbidden', () => {
+  const result = decideChatIntent(
+    '这是一次多轮需求的最终轮：前面曾说写 INITIAL_REQUIREMENT，但现在改为 FINAL_REQUIREMENT_OK。请只按最新要求创建 journey-result.txt，文件内容必须精确包含一行 FINAL_REQUIREMENT_OK。完成写入和读回验证后结束任务，不要创建旧要求文件。',
+  );
+
+  assert.equal(result.kind, 'code-change');
+  assert.equal(result.mode, 'edit');
+  assert.ok(result.signals.includes('explicit-file-path'));
+  assert.ok(result.signals.includes('scoped-historical-requirement-prohibition'));
+  assert.ok(!result.blockers.includes('explicit-no-change'));
+  assert.equal(shouldUseAgentMode(result, []), true);
+});
+
 test('decideChatIntent: execution result follow-up → run intent', () => {
   const result = decideChatIntent('能执行，看到执行结果吗');
   assert.equal(result.kind, 'code-change');
