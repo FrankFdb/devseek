@@ -429,7 +429,7 @@ function sendMessage(forceNewSession) {
     vscode.postMessage({ type: 'getProblems', text: promptText, newSession: newSession });
     return;
   }
-  const atMatch = userText.match(/@([^\s]+)/);
+  const atMatch = userText.match(/(?:^|\s)@([^\s]+)/);
   if (atMatch) {
     vscode.postMessage({ type: 'resolveFile', path: atMatch[1], text: promptText, newSession: newSession });
     return;
@@ -474,7 +474,7 @@ function sendExplicitPrompt(promptText, forceNewSession) {
     vscode.postMessage({ type: 'getProblems', text: text, newSession: newSession });
     return;
   }
-  var atMatch = text.match(/@([^\s]+)/);
+  var atMatch = text.match(/(?:^|\s)@([^\s]+)/);
   if (atMatch) {
     vscode.postMessage({ type: 'resolveFile', path: atMatch[1], text: text, newSession: newSession });
     return;
