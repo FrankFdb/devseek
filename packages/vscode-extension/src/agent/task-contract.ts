@@ -56,21 +56,24 @@ export interface TaskContract {
 const CONTRACT_FILE_EXTENSION_PATTERN = '(?:cxx|cpp|cc|c|hxx|hpp|hh|h|tsx|ts|jsx|js|mjs|cjs|py|json|ya?ml|toml|xml|txt|log|csv|ini|conf|cfg|proto|graphql|sh|bash|zsh|ps1|sql|cmake|gradle|markdown|md)';
 const PATH_RE = new RegExp(`(?:^|[^A-Za-z0-9_.@+~/-])((?:(?:/|\\./|\\.\\./)[\\w.@+~/-]+(?:\\.[\\w-]+)?)|(?:[\\w.@+~-]+(?:/[\\w.@+~-]+)*\\.${CONTRACT_FILE_EXTENSION_PATTERN}))`, 'gi');
 const DOCUMENT_RE = /(?:文档|报告|说明|设计|方案|markdown|\.md\b|document|report)/i;
-const INSPECTION_RE = /(?:读取|提取|检查|审计|分析|列出|查看|只读|read|extract|inspect|audit|analy[sz]e)/i;
-const CHANGE_RE = /(?:修复|修改|实现|新增|添加|重构|集成|落地|fix|modify|implement|add|refactor)/i;
+const INSPECTION_RE = /(?:读取|提取|检查|审计|分析|列出|查看|总结|摘要|概括|翻译|只读|read|extract|inspect|audit|analy[sz]e|summari[sz]e|translate)/i;
+const CHANGE_RE = /(?:修复|修正|修改|实现|新增|添加|重构|集成|落地|替换|重命名|移动|复制|追加|插入|删除|移除|fix|repair|modify|implement|add|refactor|replace|rename|move|copy|append|insert|delete|remove)/i;
 const CODE_GENERATION_RE = /(?:(?:编写|写一个|写个|创建|新建|生成|实现|新增|添加|制作)[^，,。；;\n]{0,36}(?:C\+\+|C#|C\s*语言|JavaScript|TypeScript|Python|Java|Go|Rust|程序|脚本|源码|代码|函数|类|模块)|\b(?:create|write|generate|implement|add|build)\b[^,.;\n]{0,36}\b(?:C\+\+|C#|JavaScript|TypeScript|Python|Java|Go|Rust|program|script|code|function|class|module)\b)/i;
 const CODE_GENERATION_REPORT_RE = /(?:原有代码修改清单|代码修改清单|修改点清单|代码审计|代码分析|代码说明|代码文档|code\s+(?:review|analysis|audit|report|document|documentation|change\s+list))/i;
-const EXPLICIT_SOURCE_IMPLEMENTATION_DELIVERY_RE = /(?:(?:代码实现|实现代码|落地实现)|(?:创建|新建|生成|编写|写入|输出|保存|新增|添加|修改|改动|重构|修复)[^，,。；;\n]{0,40}(?:源代码文件|源码文件|代码文件|源文件|\bsrc\b|source\s+files?|code\s+files?|\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|ts|tsx|js|jsx|py|java|go|rs)\b))/i;
+const EXPLICIT_SOURCE_IMPLEMENTATION_DELIVERY_RE = /(?:(?:代码实现|实现代码|落地实现)|(?:创建|新建|生成|编写|写入|输出|保存|新增|添加|修改|改动|重构|修复|替换|重命名|移动|复制|追加|插入)[^，,。；;\n]{0,40}(?:源代码文件|源码文件|代码文件|源文件|\bsrc\b|source\s+files?|code\s+files?|\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|ts|tsx|js|jsx|py|java|go|rs)\b))/i;
 const STANDALONE_RE = /(?:独立(?:项目|工具|程序|脚本)|standalone|从零|new\s+(?:project|tool))/i;
 const EXISTING_PROJECT_SCOPE_RE = /(?:既有|现有|原来|原项目|大项目|正式项目|生产项目|代码库|工程|\/src\/|src\/|CMakeLists\.txt|Makefile|参考.{0,80}模块)/i;
+const BROAD_PROJECT_CODE_SCOPE_RE = /(?:整个|全部|全局|项目|仓库|系统|架构|多入口|跨平台|跨模块|模块化|runtime|workflow|provider|权限|状态机)[^，,。；;\n]{0,40}(?:代码|模块|逻辑|runtime|workflow|provider|权限|状态机|code|logic)|(?:代码|模块|逻辑|code|logic)[^，,。；;\n]{0,40}(?:整个|全部|全局|项目|仓库|系统|架构|多入口|跨平台|跨模块|模块化|runtime|workflow|provider|权限|状态机)/i;
 const PROTOCOL_RE = /(?:协议|schema|request|response|消息字段|命令号|topic|MAVLink|tunnel|串口|通讯方式|通信方式|protocol)/i;
 const INTERFACE_RE = /(?:接口文档|接口设计|交互接口|API\b|request.{0,40}response|schema)/i;
 const COMMUNICATION_CHAIN_RE = /(?:通信链路|通讯链路|收发链路|端到端链路|主控.{0,100}(?:平台|遥控器)|(?:平台|遥控器).{0,100}主控|(?:参考|复用|对齐).{0,80}(?:通讯|通信|通道|传输|tunnel|MAVLink)|project.?wide communication)/i;
 const VALIDATION_RE = /(?:测试|验证|编译|运行|回归|test|verify|validation|compile|build)/i;
+const CONDITIONAL_REPAIR_RE = /(?:(?:运行|执行|测试|验证|编译|构建|run|execute|test|verify|compile|build)[^，,。；;\n]{0,80}(?:如果|若|如有|有|when|if)[^，,。；;\n]{0,40}(?:失败|错误|报错|error|fail)[^，,。；;\n]{0,40}(?:修复|修正|fix|repair)|(?:如果|若|如有|when|if)[^，,。；;\n]{0,40}(?:失败|错误|报错|error|fail)[^，,。；;\n]{0,40}(?:修复|修正|fix|repair))/i;
 const DESTRUCTIVE_RE = /(?:删除|清空|覆盖|重置|drop|delete|remove|reset)/i;
-const NO_SOURCE_CHANGE_RE = /(?:不要|禁止|无需|不允许|不得).{0,24}(?:修改|改动).{0,12}(?:源码|代码|文件)|(?:do not|don't|must not).{0,24}(?:modify|change).{0,12}(?:source|code|files?)/i;
-const ARTIFACT_WRITE_ACTION_PATTERN = '(?:(?:通过|以|用|使用)[^，,。；;\\n]{0,12}(?:md|markdown|\\.md)(?:文档|文件|报告)?[^，,。；;\\n]{0,16}(?:提供|输出|给出|返回|保存|生成|产出)|创建|新建|生成|编写|制作|做成|形成|整理成|记录|汇总(?:成|为|到|至|入)|写入|写出|写到|保存|产出|落盘|更新|修改|改写|改动|编辑|覆盖|删除|删|移除|写(?!法)|改(?!进)|输出(?=[^，,。；;\\n]{0,16}(?:到|至|为|成|入|markdown|文档|报告))|(?:提供|给出|交付)(?=[^，,。；;\\n]{0,16}(?:markdown|文档|报告))|\\b(?:create|write|compose|draft|render|record|save|generate|produce|update|modify|revise|replace|overwrite|edit|change|delete|remove|touch)\\b|\\bmake\\s+(?:a\\s+)?changes?\\b|\\boutput(?=[^,.;\\n]{0,20}\\b(?:to|into|as|markdown|report|document)\\b)|\\b(?:provide|deliver)(?=[^,.;\\n]{0,20}\\b(?:markdown|report|document)\\b|[^,.;\\n]{0,36}\\b(?:through|via|as)\\s+(?:an?\\s+)?(?:markdown\\s+)?(?:document|report)\\b)|\\bsummari[sz]e(?:\\s+(?:it|them|the\\s+(?:facts?|results?)))?\\s+(?:into|to|as)\\b)';
-const FILE_READ_ACTION_PATTERN = '(?:只读|读取|读出|查看|检查|审计|分析|解释|核对|参考|\\b(?:read|inspect|view|check|audit|analy[sz]e|explain|reference)\\b|\\bsummari[sz]e\\b)';
+const NON_DESTRUCTIVE_CONTENT_DELETE_RE = /(?:删除|移除|删掉|delete|remove)[^，,。；;\n]{0,64}(?:里|中|内|里的|中的|行|内容|注释|字段|配置项|段落|语句|line|lines?|content|comment|field|statement)/i;
+const NO_SOURCE_CHANGE_RE = /(?:不要|禁止|无需|不允许|不得).{0,24}(?:修改|改动|修复|重命名|移动|复制|追加|插入).{0,12}(?:源码|代码|文件)|(?:do not|don't|must not).{0,24}(?:modify|change|fix|repair|rename|move|copy|append|insert).{0,12}(?:source|code|files?)/i;
+const ARTIFACT_WRITE_ACTION_PATTERN = '(?:(?:通过|以|用|使用)[^，,。；;\\n]{0,12}(?:md|markdown|\\.md)(?:文档|文件|报告)?[^，,。；;\\n]{0,16}(?:提供|输出|给出|返回|保存|生成|产出)|创建|新建|生成|编写|制作|做成|形成|整理成|记录|汇总(?:成|为|到|至|入)|翻译(?=[^，,。；;\\n]{0,24}(?:成|为|到|至|入|保存|输出|写入|文档|文件|报告|markdown|md))|(?:总结|摘要|概括|提取)(?=[^，,。；;\\n]{0,24}(?:成|为|到|至|入|保存|输出|写入|文档|文件|报告|markdown|md))|写入|写出|写到|保存|产出|落盘|更新|修改|改写|改动|编辑|覆盖|删除|删|移除|重命名|移动|复制|追加|插入|写(?!法)|改(?!进)|输出(?=[^，,。；;\\n]{0,16}(?:到|至|为|成|入|markdown|文档|报告))|(?:提供|给出|交付)(?=[^，,。；;\\n]{0,16}(?:markdown|文档|报告))|\\b(?:create|write|compose|draft|render|record|save|generate|produce|update|modify|revise|replace|overwrite|edit|change|delete|remove|touch|rename|move|copy|append|insert|translate)\\b|\\bmake\\s+(?:a\\s+)?changes?\\b|\\boutput(?=[^,.;\\n]{0,20}\\b(?:to|into|as|markdown|report|document)\\b)|\\b(?:provide|deliver)(?=[^,.;\\n]{0,20}\\b(?:markdown|report|document)\\b|[^,.;\\n]{0,36}\\b(?:through|via|as)\\s+(?:an?\\s+)?(?:markdown\\s+)?(?:document|report)\\b)|\\bsummari[sz]e(?:\\s+(?:it|them|the\\s+(?:facts?|results?)))?\\s+(?:into|to|as)\\b)';
+const FILE_READ_ACTION_PATTERN = '(?:只读|读取|读出|查看|检查|审计|分析|解释|核对|参考|总结|摘要|概括|翻译|\\b(?:read|inspect|view|check|audit|analy[sz]e|explain|reference|translate)\\b|\\bsummari[sz]e\\b)';
 const ARTIFACT_TARGET_HINT_RE = /(?:\.md\b|markdown|文档|报告|文件|artifact|document|report|file)/i;
 const MARKDOWN_ARTIFACT_TARGET_HINT_RE = /(?:\.(?:md|markdown)\b|markdown|md\s*(?:文档|文件|报告)|文档|报告|文件|document|report|files?)/i;
 const STRONG_NEGATED_WRITE_PREFIX_RE = /(?:不要|不得|禁止|严禁|不可|无需|不用|不需要|不允许|勿|do\s+not|don't|should\s+not|must\s+not|may\s+not|shall\s+not|never)[^，,。；;\n]{0,20}$/i;
@@ -280,17 +283,20 @@ function classifyExplicitPathRole(
     return { kind: 'prohibited', index: occurrence.index };
   }
   const beforeRead = before.match(/(?:读取|查看|检查|审计|分析|解释|参考|根据|基于|依据|利用|使用|模板|输入|从)\s*[^，,。；;\n]{0,24}$/i)
-    || before.match(/\b(?:read|inspect|view|check|audit|analy[sz]e|explain|reference|using|use|from|based\s+on|according\s+to|template|input)\s+[^,.;\n]{0,28}$/i)
+    || before.match(/(?:总结|摘要|概括|翻译|提取)(?![^，,。；;\n]{0,16}(?:成|为|到|至|入)\s*$)\s*[^，,。；;\n]{0,24}$/i)
+    || before.match(/\b(?:read|inspect|view|check|audit|analy[sz]e|explain|extract|reference|using|use|from|based\s+on|according\s+to|template|input)\s+[^,.;\n]{0,28}$/i)
+    || before.match(/\b(?:summari[sz]e|translate)(?![^,.;\n]{0,20}\b(?:to|into|as)\s*$)\s+[^,.;\n]{0,28}$/i)
     || before.match(/(?:内容|contents?)\s+(?:of|from|in)\s+(?:the\s+)?$/i)
     || before.match(/(?:而不是|而非)\s*$/i)
     || before.match(/\b(?:instead\s+of|rather\s+than)\s*$/i);
   const afterRead = after.match(/^\s*(?:作为|当作|用作|为)\s*(?:输入|模板|参考|来源)/i)
-    || after.match(/^\s*(?:的)?\s*内容[^，,。；;\n]{0,16}(?:写|输出|汇总|保存|生成|渲染)(?:(?:到|入|至|为|成)|\s)/i)
+    || after.match(/^\s*(?:的)?\s*内容[^，,。；;\n]{0,16}(?:写|输出|汇总|保存|生成|渲染|总结|摘要|概括|翻译|提取)(?:(?:到|入|至|为|成)|\s)/i)
     || after.match(/^\s+as\s+(?:an?\s+)?(?:input|template|reference|source)\b/i)
     || after.match(/^\s+contents?\s+(?:as|in|into|to)\b/i)
     || (hasFollowingPath && (
       after.match(/^\s+(?:as|into|to)\b/i)
       || after.match(/^\s*(?:保存|生成|渲染|写入|写出|输出)(?:为|成|到|至|入)/i)
+      || after.match(/^\s*(?:并|然后|再)?\s*(?:复制|翻译|总结|摘要|概括|提取)[^，,。；;\n]{0,24}(?:到|至|为|成|入)|^\s*(?:copy|translate|summari[sz]e)[^,.;\n]{0,24}\b(?:to|into|as)\b/i)
     ));
   if (beforeRead) {
     return { kind: 'read', index: clauseStart + (beforeRead.index ?? 0) };
@@ -309,7 +315,7 @@ function classifyPassivePathMutation(
 ): TargetMutationDecision | undefined {
   const before = prompt.slice(clauseStart, occurrence.index);
   const after = prompt.slice(occurrence.index + occurrence.path.length, clauseEnd);
-  const passive = after.match(/^\s*["'\x60”’]?\s*(?:应当|应该|必须|可以|允许|may|must|shall|should|can)?\s*(?:被|be\s+)?(?:创建|新建|生成|写入|保存|更新|修改|编辑|删除|created\b|written\b|saved\b|updated\b|modified\b|edited\b|deleted\b)/i);
+  const passive = after.match(/^\s*["'\x60”’]?\s*(?:应当|应该|必须|可以|允许|may|must|shall|should|can)?\s*(?:被|be\s+)?(?:创建|新建|生成|写入|保存|更新|修改|编辑|删除|重命名|移动|复制|追加|插入|created\b|written\b|saved\b|updated\b|modified\b|edited\b|deleted\b|renamed\b|moved\b|copied\b|appended\b|inserted\b)/i);
   if (!passive) return undefined;
   const actionIndex = occurrence.index + occurrence.path.length + (passive.index ?? 0);
   return hasNegatedWritePrefix(before)
@@ -411,8 +417,8 @@ function findTargetPronounProhibition(
   workspaceRoot?: string,
 ): number | undefined {
   const patterns = [
-    /(?:不要|不得|禁止|严禁|不可|不允许|别)(?:再)?\s*(?:创建|写入|更新|修改|改写|改动|编辑|覆盖|删除|删|移除)\s*(?:它|该文件|这个文件|上述文件|该文档|这个文档)/gi,
-    /\b(?:do\s+not|don't|must\s+not|should\s+not|never)\s+(?:create|write|update|modify|revise|edit|overwrite|delete|remove)\s+(?:it|that\s+file|this\s+file|that\s+document|this\s+document)\b/gi,
+    /(?:不要|不得|禁止|严禁|不可|不允许|别)(?:再)?\s*(?:创建|写入|更新|修改|改写|改动|编辑|覆盖|删除|删|移除|重命名|移动|复制|追加|插入)\s*(?:它|该文件|这个文件|上述文件|该文档|这个文档)/gi,
+    /\b(?:do\s+not|don't|must\s+not|should\s+not|never)\s+(?:create|write|update|modify|revise|edit|overwrite|delete|remove|rename|move|copy|append|insert)\s+(?:it|that\s+file|this\s+file|that\s+document|this\s+document)\b/gi,
   ];
   let latest: number | undefined;
   for (const pattern of patterns) {
@@ -726,9 +732,9 @@ interface FileScopeRestriction {
 
 function getLatestFileScopeRestriction(prompt: string, workspaceRoot?: string): FileScopeRestriction | undefined {
   const patterns = [
-    /(?:只|仅)(?:允许)?[^，,。；;\n]{0,24}(?:创建|新建|生成|编写|写入|保存|输出|更新|修改|改写|改动|编辑|删除)|(?:创建|新建|生成|编写|写入|保存|输出|更新|修改|改写|改动|编辑|删除)[^，,。；;\n]{0,12}(?:只|仅)/gi,
+    /(?:只|仅)(?:允许)?[^，,。；;\n]{0,24}(?:创建|新建|生成|编写|写入|保存|输出|更新|修改|改写|改动|编辑|删除|重命名|移动|复制|追加|插入)|(?:创建|新建|生成|编写|写入|保存|输出|更新|修改|改写|改动|编辑|删除|重命名|移动|复制|追加|插入)[^，,。；;\n]{0,12}(?:只|仅)/gi,
     /(?:不要|不得|禁止|严禁|不允许|不可|勿|别)[^，,。；;\n]{0,36}(?:其他|其它|其余|额外)(?:的)?(?:文件|改动|修改|变更)|(?:不做|不要有|不得有)\s*(?:任何)?(?:其他|其它|其余|额外)(?:改动|修改|变更)/gi,
-    /\b(?:only|solely)\b[^,.;\n]{0,36}\b(?:create|write|save|generate|update|modify|change|edit|delete)|\b(?:create|write|save|generate|update|modify|change|edit|delete)\b[^,.;\n]{0,16}\bonly\b/gi,
+    /\b(?:only|solely)\b[^,.;\n]{0,36}\b(?:create|write|save|generate|update|modify|change|edit|delete|rename|move|copy|append|insert)|\b(?:create|write|save|generate|update|modify|change|edit|delete|rename|move|copy|append|insert)\b[^,.;\n]{0,16}\bonly\b/gi,
     /\b(?:do\s+not|don't|must\s+not|should\s+not|never)\b[^,.;\n]{0,48}\b(?:anything\s+else|(?:any\s+)?(?:other|additional)\s+(?:files?|changes?|modifications?))\b/gi,
     /\b(?:make|allow)\s+no\s+other\s+(?:changes?|modifications?)\b|\bleave\s+(?:all\s+)?other\s+files?\s+unchanged\b/gi,
   ];
@@ -811,8 +817,8 @@ function lastTargetTypeWriteProhibitionIndex(prompt: string, targetPath: string)
   let latest: number | undefined;
   for (const kind of kinds.filter(item => item.matches)) {
     const patterns = [
-      new RegExp(`(?:不(?:要|得|允许|可)?|禁止|严禁|不可|勿|别)[^，,。；;\\n]{0,32}(?:修改|改动|编辑|写入|覆盖|删除|创建)[^，,。；;\\n]{0,24}${kind.chinese}`, 'gi'),
-      new RegExp(`\\b(?:do\\s+not|don't|must\\s+not|should\\s+not|never)\\b[^,.;\\n]{0,40}\\b(?:modify|change|edit|write|overwrite|delete|create)\\b[^,.;\\n]{0,28}\\b${kind.english}\\b`, 'gi'),
+      new RegExp(`(?:不(?:要|得|允许|可)?|禁止|严禁|不可|勿|别)[^，,。；;\\n]{0,32}(?:修改|改动|编辑|写入|覆盖|删除|创建|重命名|移动|复制|追加|插入)[^，,。；;\\n]{0,24}${kind.chinese}`, 'gi'),
+      new RegExp(`\\b(?:do\\s+not|don't|must\\s+not|should\\s+not|never)\\b[^,.;\\n]{0,40}\\b(?:modify|change|edit|write|overwrite|delete|create|rename|move|copy|append|insert)\\b[^,.;\\n]{0,28}\\b${kind.english}\\b`, 'gi'),
     ];
     for (const pattern of patterns) {
       for (const match of prompt.matchAll(pattern)) {
@@ -828,7 +834,7 @@ function getSourceFileWriteProhibition(
   prompt: string,
 ): { scope: 'all' | 'scoped'; index: number } | undefined {
   let latest: { scope: 'all' | 'scoped'; index: number } | undefined;
-  const chinese = /(?:不要|不得|禁止|严禁|不允许|不可|勿|别)[^，,。；;\n]{0,16}(?:修改|改动|编辑|写入|覆盖|删除|移除|更新|创建)[^，,。；;\n]{0,24}(?:任何|所有|全部)?(?:正式|生产|原有|原|现有|已有|既有|主项目|原项目)?(?:关联)?(?:源码|源代码|代码)(?:目录|文件)?/gi;
+  const chinese = /(?:不要|不得|禁止|严禁|不允许|不可|勿|别)[^，,。；;\n]{0,16}(?:修改|改动|编辑|写入|覆盖|删除|移除|更新|创建|重命名|移动|复制|追加|插入)[^，,。；;\n]{0,24}(?:任何|所有|全部)?(?:正式|生产|原有|原|现有|已有|既有|主项目|原项目)?(?:关联)?(?:源码|源代码|代码)(?:目录|文件)?/gi;
   for (const match of prompt.matchAll(chinese)) {
     const next = {
       scope: /(?:正式|生产|原有|原代码|现有|已有|既有|主项目|原项目)/.test(match[0])
@@ -838,7 +844,7 @@ function getSourceFileWriteProhibition(
     };
     if (!latest || next.index >= latest.index) latest = next;
   }
-  const english = /\b(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|shall\s+not|never)\b[^,.;\n]{0,28}\b(?:modify|change|edit|write|overwrite|delete|remove|update|create)\b[^,.;\n]{0,24}\b(?:(?:any|all|formal|production|existing|current|main-project)\s+)*(?:source(?:\s+code|\s+files?)?|code\s+files?)\b/gi;
+  const english = /\b(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|shall\s+not|never)\b[^,.;\n]{0,28}\b(?:modify|change|edit|write|overwrite|delete|remove|update|create|rename|move|copy|append|insert)\b[^,.;\n]{0,24}\b(?:(?:any|all|formal|production|existing|current|main-project)\s+)*(?:source(?:\s+code|\s+files?)?|code\s+files?)\b/gi;
   for (const match of prompt.matchAll(english)) {
     const next = {
       scope: /\b(?:formal|production|existing|current|main-project)\b/i.test(match[0])
@@ -909,7 +915,7 @@ function isTargetExceptedFromFileProhibition(
     if (!exceptionSyntax) return false;
     const context = prompt.slice(Math.max(0, occurrence.index - 120), occurrence.index + occurrence.path.length + 80);
     return /(?:不要|不得|禁止|严禁|不可|不允许|勿|别)[^，。；;\n]{0,60}(?:创建|新建|生成|写|改|修改|变更|编辑|覆盖|删除|删|移除)[^，。；;\n]{0,60}(?:文件|文档|报告)/i.test(context)
-      || /\b(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|shall\s+not|never)\b[^,.;\n]{0,80}\b(?:create|write|save|generate|update|modify|change|edit|overwrite|delete|remove|touch)\b[^,.;\n]{0,80}\bfiles?\b/i.test(context);
+      || /\b(?:do\s+not|don't|must\s+not|should\s+not|may\s+not|shall\s+not|never)\b[^,.;\n]{0,80}\b(?:create|write|save|generate|update|modify|change|edit|overwrite|delete|remove|touch|rename|move|copy|append|insert)\b[^,.;\n]{0,80}\bfiles?\b/i.test(context);
   });
 }
 
@@ -943,13 +949,21 @@ export function buildTaskContract(promptText: string): TaskContract {
   const reportDelivery = documentation
     && (artifactWriteIntent.requested || ambiguousSourceReportDestination);
   const standaloneCodeGeneration = hasStandaloneCodeGenerationIntent(prompt);
-  const sourceChange = (CHANGE_RE.test(prompt) || standaloneCodeGeneration)
+  const changeAction = CHANGE_RE.test(prompt);
+  const existingProjectScope = EXISTING_PROJECT_SCOPE_RE.test(prompt);
+  const explicitSourceMutation = changeAction && (
+    hasSourceInput
+    || existingProjectScope
+    || BROAD_PROJECT_CODE_SCOPE_RE.test(prompt)
+    || CONDITIONAL_REPAIR_RE.test(prompt)
+    || EXPLICIT_SOURCE_IMPLEMENTATION_DELIVERY_RE.test(prompt)
+  );
+  const sourceChange = (explicitSourceMutation || standaloneCodeGeneration)
     && !NO_SOURCE_CHANGE_RE.test(prompt)
     && (!documentation
       || (standaloneCodeGeneration && !reportDelivery)
       || EXPLICIT_SOURCE_IMPLEMENTATION_DELIVERY_RE.test(prompt)
       || /(?:(?:修改|改动|新增|重构|修复).{0,20}(?:源码|代码|文件)|代码实现|实现代码|落地实现|fix|modify|implement|refactor)/i.test(prompt));
-  const existingProjectScope = EXISTING_PROJECT_SCOPE_RE.test(prompt);
   const standalone = (STANDALONE_RE.test(prompt) || standaloneCodeGeneration) && !existingProjectScope;
   const protocol = PROTOCOL_RE.test(prompt);
   const interfaceContract = INTERFACE_RE.test(prompt);
@@ -961,7 +975,8 @@ export function buildTaskContract(promptText: string): TaskContract {
   if (inspection) shapes.add('inspection');
   if (documentation) shapes.add('documentation');
   if (sourceChange && !standalone) shapes.add('repair');
-  if (DESTRUCTIVE_RE.test(prompt)) shapes.add('destructive');
+  const destructive = DESTRUCTIVE_RE.test(prompt) && !NON_DESTRUCTIVE_CONTENT_DELETE_RE.test(prompt);
+  if (destructive) shapes.add('destructive');
 
   const obligations = new Set<QualityObligation>();
   if (sourceChange || extractsSourceFacts || (inspection && hasSourceInput && protocol)) obligations.add('source-evidence');

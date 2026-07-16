@@ -10,23 +10,25 @@ import {
 } from './advisory-patterns';
 import { buildTaskSemanticContract } from '../task-semantic-contract';
 
-const EXPLICIT_NO_CHANGE_RE = /(不要修改|无需修改|不要改|别改|只讨论|仅讨论|只分析|仅分析|不要落地|先不要改|不需要代码|不要apply|不做变更|just\s+(?:chat|talk|discuss|explain)|only\s+(?:explain|discuss|answer))/i;
+const EXPLICIT_NO_CHANGE_RE = /(不要修改|无需修改|不要改|别改|不要修复|无需修复|不修复|别修复|不要改动|不要写入|不要写文件|不要写任何文件|不要创建|不要生成|不做修复|只讨论|仅讨论|只分析|仅分析|不要落地|先不要改|不需要代码|不要apply|不做变更|just\s+(?:chat|talk|discuss|explain)|only\s+(?:explain|discuss|answer))/i;
 
 const GREETING_ONLY_RE = /^(?:hi|hello|ello|hey|你好|您好|嗨|哈喽|早上好|上午好|下午好|晚上好|在吗|在不在|辛苦了)[\s!.。！？?]*$/i;
 
 const GREETING_PREFIX_RE = /^(?:hi|hello|hey|你好|您好|嗨|哈喽)[,，\s]+/i;
 
-const EDIT_RE = /(修复|修正|修改|改一下|改成|改为|改用|换成|换为|调整为|实现|编写|写一个|写个|创建|新建|生成|新增|添加|补全|完善|重构|改造|替换|替换为|优化|升级|接入|封装|拆分|发布|上线|部署|安装插件|安装扩展|fix|modify|change|implement|create|write|add|update|refactor|generate|release|deploy|publish|install\s+extension)/i;
+const EDIT_RE = /(修复|修正|修改|改一下|改成|改为|改用|换成|换为|调整为|实现|编写|写一个|写个|创建|新建|生成|新增|添加|补全|完善|重构|改造|替换|替换为|重命名|移动|复制|追加|插入|删除|移除|删掉|优化|升级|接入|封装|拆分|发布|上线|部署|安装插件|安装扩展|fix|repair|modify|change|implement|create|write|add|update|refactor|generate|replace|rename|move|copy|append|insert|delete|remove|release|deploy|publish|install\s+extension)/i;
 
-const EXTERNAL_EFFECT_RE = /(?:发布|上线|部署|安装插件|安装扩展|release|deploy|publish|install\s+extension)/i;
+const EXTERNAL_EFFECT_RE = /(?:发布|上线|部署|安装插件|安装扩展|提交(?:当前)?(?:修改|变更)?|推送(?:当前)?(?:分支)?|安装\s*(?:依赖|npm\s*包|包)|release|deploy|publish|install\s+extension|git\s+commit|commit\s+(?:changes?|current)|git\s+push|push\s+(?:current\s+)?branch|npm\s+(?:install|i|add)|pnpm\s+add|yarn\s+add|pip\s+install)/i;
 const EXTERNAL_EFFECT_QUESTION_RE = /(?:如何|怎么|怎样|为什么|什么是|介绍|说明|方案|计划|how\s+to|what\s+is|why|plan|design|approach)/i;
+const NEGATED_EDIT_CLAUSE_RE = /(?:当前不准备|先不准备|不准备|先不要|暂不|不要|不得|禁止|不允许|无需|无须|不需要|别)[^，,。；;\n]{0,24}(?:修复|修正|修改|改动|创建|新建|生成|编写|写入|保存|输出|新增|添加|实现|重构|替换|重命名|移动|复制|追加|插入|发布|上线|部署|安装|提交|推送)|(?:do\s+not|don't|must\s+not|should\s+not|never|without)[^,.;\n]{0,32}(?:fix|repair|modify|change|create|write|generate|save|add|update|implement|refactor|replace|rename|move|copy|append|insert|release|deploy|publish|install|commit|push)/gi;
 
 const DESTRUCTIVE_RE = /(删除|清空|覆盖|重置|移除|删掉|干掉|drop|delete|remove|reset|overwrite|truncate)/gi;
 const DESTRUCTIVE_NEGATION_PREFIX_RE = /(?:不|未|尚未|没有|不要|不能|不可|禁止|避免|不得|请勿|无需|无须|不需要|不允许|do\s+not|don't|must\s+not|without|avoid).{0,16}$/i;
 const NON_DESTRUCTIVE_COVERAGE_PREFIX_RE = /(?:测试|代码|分支|条件|路径|需求|场景|功能|风险|验证|证据|用例|范围|协议|接口|平台|环境).{0,12}$/i;
 const NON_DESTRUCTIVE_COVERAGE_SUFFIX_RE = /^(?:率|范围|情况|不足|缺口|风险|场景|证据|用例|分析|检查)/i;
+const NON_DESTRUCTIVE_CONTENT_DELETE_SUFFIX_RE = /^(?:[^，,。；;\n]{0,48}(?:里|中|内|里的|中的|行|内容|注释|字段|配置项|段落|语句|line|lines?|content|comment|field|statement))/i;
 
-const RUN_RE = /(运行|执行|编译|构建|测试|跑一下|验证|启动|调试|run|execute|compile|build|test|debug|start)/i;
+const RUN_RE = /(运行|执行|编译|构建|测试|跑一下|验证|启动|调试|\b(?:run|execute|compile|build|test|start)\b)/i;
 
 const FOLLOW_UP_RUN_RE = /(?:能(?:否)?(?:执行|运行|编译|构建|测试|验证)|看(?:一下|下|看)?(?:执行|运行|编译|构建|测试|验证)?结果|看到(?:执行|运行|编译|构建|测试|验证)?结果|(?:给(?:我)?|输出|展示|显示|提供|返回).{0,12}(?:执行|运行|编译|构建|测试|验证)?结果|(?:执行|运行|编译|构建|测试|验证|跑)(?:一下|下|一遍|一次)?(?:看看|看结果)|(?:执行|运行|编译|构建|测试|验证|跑).{0,8}结果|(?:show|see|view).{0,20}(?:result|output)|(?:can|could).{0,20}(?:run|execute|compile|build|test|verify))/i;
 
@@ -86,6 +88,7 @@ export function classifyIntent(prompt: string): IntentClassification {
   }
 
   const semanticContract = buildTaskSemanticContract(text);
+  const positiveActionText = text.replace(NEGATED_EDIT_CLAUSE_RE, ' ');
   const withoutGreeting = text.replace(GREETING_PREFIX_RE, '').trim();
   const hasPath = hasExplicitWorkspacePath(text);
   const hasInteractiveFeatureContext = INTERACTIVE_FEATURE_CONTEXT_RE.test(text);
@@ -104,7 +107,8 @@ export function classifyIntent(prompt: string): IntentClassification {
 
   if (EXPLICIT_NO_CHANGE_RE.test(text)
     && !hasScopedNoChangeWithDeliverableWrite
-    && !semanticContract.mutation.requested) {
+    && !semanticContract.mutation.requested
+    && !semanticContract.validation.runRequested) {
     const isReadOnlyPlanning = EXPLICIT_PLAN_RE.test(text) && hasCodeContext;
     const mode = isReadOnlyPlanning
       ? 'plan'
@@ -156,7 +160,7 @@ export function classifyIntent(prompt: string): IntentClassification {
     );
   }
 
-  if (EXTERNAL_EFFECT_RE.test(text) && EXTERNAL_EFFECT_QUESTION_RE.test(text)) {
+  if (EXTERNAL_EFFECT_RE.test(positiveActionText) && EXTERNAL_EFFECT_QUESTION_RE.test(text)) {
     return baseDecision(
       'qa',
       0.78,
@@ -167,7 +171,7 @@ export function classifyIntent(prompt: string): IntentClassification {
     );
   }
 
-  if (EXTERNAL_EFFECT_RE.test(text) && !EXTERNAL_EFFECT_QUESTION_RE.test(text)) {
+  if (EXTERNAL_EFFECT_RE.test(positiveActionText) && !EXTERNAL_EFFECT_QUESTION_RE.test(text)) {
     const signals = ['external-effect-request', 'edit-request'];
     if (hasPath) signals.push('explicit-file-path');
     return baseDecision(
@@ -199,7 +203,10 @@ export function classifyIntent(prompt: string): IntentClassification {
     );
   }
 
-  if (hasDeliverableWriteRequest && hasCodeContext && !isDeferredImplementationRequest(text)) {
+  if (hasDeliverableWriteRequest
+    && hasCodeContext
+    && !semanticContract.mutation.prohibited
+    && !isDeferredImplementationRequest(text)) {
     const signals = ['edit-request', 'deliverable-write-request', ...semanticContract.signals];
     if (hasPath) signals.push('explicit-file-path');
     if (hasScopedNoChangeWithDeliverableWrite) signals.push('scoped-existing-source-no-change');
@@ -254,7 +261,7 @@ export function classifyIntent(prompt: string): IntentClassification {
     );
   }
 
-  const isDirectEditRequest = EDIT_RE.test(text);
+  const isDirectEditRequest = EDIT_RE.test(positiveActionText);
   if (isDirectEditRequest || isCapabilityFeatureRequest) {
     const signals = [
       ...(isDirectEditRequest ? ['edit-request'] : ['capability-feature-request']),
@@ -325,8 +332,10 @@ function hasDestructiveIntent(text: string): boolean {
   let match: RegExpExecArray | null;
   while ((match = DESTRUCTIVE_RE.exec(text)) !== null) {
     const prefix = text.slice(Math.max(0, match.index - 24), match.index);
+    const suffix = text.slice(match.index + match[0].length, match.index + match[0].length + 64);
     if (DESTRUCTIVE_NEGATION_PREFIX_RE.test(prefix)) continue;
     if (match[0] === '覆盖' && isNonDestructiveCoverageUsage(text, match.index, match[0].length)) continue;
+    if (isNonDestructiveContentDelete(match[0], suffix)) continue;
     return true;
   }
   return false;
@@ -337,4 +346,9 @@ function isNonDestructiveCoverageUsage(text: string, index: number, length: numb
   const suffix = text.slice(index + length, index + length + 24);
   return NON_DESTRUCTIVE_COVERAGE_PREFIX_RE.test(prefix)
     || NON_DESTRUCTIVE_COVERAGE_SUFFIX_RE.test(suffix);
+}
+
+function isNonDestructiveContentDelete(action: string, suffix: string): boolean {
+  if (!/^(?:删除|移除|删掉|delete|remove)$/i.test(action)) return false;
+  return NON_DESTRUCTIVE_CONTENT_DELETE_SUFFIX_RE.test(suffix);
 }
