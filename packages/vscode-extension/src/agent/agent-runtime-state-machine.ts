@@ -130,7 +130,8 @@ function countEvidence(input: AgentRuntimeStateInput): number {
 function isVerified(input: AgentRuntimeStateInput, providerOutput: ProviderOutputIntegrity): boolean {
   if (input.validationPassed) return true;
   if (isReadOnlyRuntimeAction(input.taskAction)) {
-    return providerOutput.hasAnswerEvidence;
+    return providerOutput.hasAnswerEvidence
+      || ((input.taskComplete || input.allTodosCompleted) && countEvidence(input) > 0);
   }
   return countEvidence(input) > 0;
 }

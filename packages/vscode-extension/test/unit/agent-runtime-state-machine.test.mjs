@@ -57,6 +57,25 @@ test('agent runtime state machine: read-only conclusion reaches delivered', () =
   assert.equal(runtimeStateCanDeliver(settlement), true);
 });
 
+test('agent runtime state machine: read-only task_complete with executed evidence can deliver', () => {
+  const settlement = settleAgentRuntimeState({
+    taskAction: 'analyze',
+    providerText: '已读取 controlled-boundary.txt，第一行是 CONTROLLED_BOUNDARY_PRESENT，未修改任何文件。',
+    roundText: [
+      '我只读取指定文件，不做任何写入。',
+      '[TOOL:read_file {"path":"controlled-boundary.txt"}]',
+      '[TOOL:task_complete {"summary":"已读取 controlled-boundary.txt，第一行是 CONTROLLED_BOUNDARY_PRESENT，未修改任何文件。"}]',
+    ].join('\n'),
+    toolRequests: 2,
+    toolExecutions: 1,
+    readEvidenceCount: 1,
+    taskComplete: true,
+  });
+
+  assert.equal(settlement.state, 'delivered');
+  assert.equal(runtimeStateCanDeliver(settlement), true);
+});
+
 test('agent runtime state machine: mutating task_complete text without evidence cannot deliver', () => {
   const settlement = settleAgentRuntimeState({
     taskAction: 'modify',
