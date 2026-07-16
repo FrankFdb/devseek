@@ -138,15 +138,15 @@ function chatKindForMode(mode: ExecutionMode): 'chat' | 'code-change' {
 function allowedToolKindsForMode(mode: ExecutionMode): ToolKind[] {
   switch (mode) {
     case 'inspect':
-      return ['read', 'search', 'diagnostics', 'network'];
+      return ['read', 'search', 'diagnostics', 'network', 'control'];
     case 'plan':
-      return ['read', 'search', 'diagnostics', 'network', 'plan', 'memory'];
+      return ['read', 'search', 'diagnostics', 'network', 'control', 'plan', 'memory'];
     case 'edit':
-      return ['read', 'search', 'diagnostics', 'network', 'plan', 'memory', 'edit', 'terminal'];
+      return ['read', 'search', 'diagnostics', 'network', 'control', 'plan', 'memory', 'edit', 'terminal'];
     case 'run':
-      return ['read', 'search', 'diagnostics', 'network', 'plan', 'memory', 'terminal'];
+      return ['read', 'search', 'diagnostics', 'network', 'control', 'plan', 'memory', 'terminal'];
     case 'destructive':
-      return ['read', 'search', 'diagnostics', 'network', 'plan', 'memory', 'edit', 'terminal', 'vscode', 'vscode-command', 'mcp'];
+      return ['read', 'search', 'diagnostics', 'network', 'control', 'plan', 'memory', 'edit', 'terminal', 'vscode', 'vscode-command', 'mcp'];
     case 'smalltalk':
     case 'qa':
     default:

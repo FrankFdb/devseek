@@ -114,7 +114,7 @@ test('TaskIntentRouter: terminal validation remains run-only and denies mutation
   assert.equal(route.agentTaskShape, 'general');
   assert.equal(route.mutation.requested, false);
   assert.equal(route.validation.commandEvidenceRequired, true);
-  assert.deepEqual(route.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'plan', 'memory', 'terminal']);
+  assert.deepEqual(route.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'control', 'plan', 'memory', 'terminal']);
 });
 
 console.log('\nTask-intent-router tests passed.\n');

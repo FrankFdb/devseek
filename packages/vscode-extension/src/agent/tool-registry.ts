@@ -30,6 +30,7 @@ export type AgentToolDefinition = {
 };
 
 const READ_MODES: ExecutionMode[] = ['inspect', 'plan', 'edit', 'run', 'destructive'];
+const CONTROL_MODES: ExecutionMode[] = READ_MODES;
 const PLAN_MODES: ExecutionMode[] = ['plan', 'edit', 'run', 'destructive'];
 const EDIT_MODES: ExecutionMode[] = ['edit', 'destructive'];
 const RUN_MODES: ExecutionMode[] = ['edit', 'run', 'destructive'];
@@ -59,8 +60,8 @@ export const AGENT_TOOL_DEFINITIONS: Record<string, AgentToolDefinition> = {
   run_vscode_command: { name: 'run_vscode_command', kind: 'vscode', risk: 'high', allowedModes: DESTRUCTIVE_MODES, activityKind: 'vscode-command', schema: schema(['command'], { command: { type: 'string' }, args: { type: 'array' } }) },
   vscode_listCodeUsages: { name: 'vscode_listCodeUsages', kind: 'read', risk: 'low', allowedModes: READ_MODES, activityKind: 'search', schema: schema(['symbol'], { symbol: { type: 'string' }, path: { type: 'string' } }) },
   memory_write: { name: 'memory_write', kind: 'memory', risk: 'low', allowedModes: PLAN_MODES, activityKind: 'memory', schema: schema(['content'], { content: { type: 'string' } }) },
-  manage_todo_list: { name: 'manage_todo_list', kind: 'plan', risk: 'low', allowedModes: PLAN_MODES, activityKind: 'todo', schema: schema(['todoList'], { todoList: { type: 'array' } }) },
-  task_complete: { name: 'task_complete', kind: 'plan', risk: 'low', allowedModes: PLAN_MODES, schema: schema(['summary'], { summary: { type: 'string' } }) },
+  manage_todo_list: { name: 'manage_todo_list', kind: 'control', risk: 'low', allowedModes: CONTROL_MODES, activityKind: 'todo', schema: schema(['todoList'], { todoList: { type: 'array' } }) },
+  task_complete: { name: 'task_complete', kind: 'control', risk: 'low', allowedModes: CONTROL_MODES, schema: schema(['summary'], { summary: { type: 'string' } }) },
 };
 
 export const AGENT_TOOL_ALIASES: Record<string, string> = {

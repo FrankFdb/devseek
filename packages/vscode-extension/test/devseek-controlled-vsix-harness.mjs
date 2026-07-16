@@ -29,13 +29,10 @@ const codeBin = argValue('--code') || process.env.VSCODE_BIN || 'code';
 const timeoutMs = positiveInteger(argValue('--timeout-ms') || process.env.DEVSEEK_CONTROLLED_VSIX_TIMEOUT_MS, 180_000);
 const keepTmp = hasFlag('--keep') || process.env.DEVSEEK_CONTROLLED_VSIX_KEEP === '1';
 const keepWindow = hasFlag('--keep-window') || process.env.DEVSEEK_CONTROLLED_VSIX_KEEP_WINDOW === '1';
-const targetRelativePath = 'controlled-sim.txt';
-const targetContent = 'CONTROLLED_SIM_OK\n';
-const prompt = [
-  `请在当前工作区创建 ${targetRelativePath}。`,
-  '文件内容必须精确包含一行 CONTROLLED_SIM_OK。',
-  '完成写入和读回验证后结束任务，不要修改其他用户文件。',
-].join('');
+const scenario = resolveControlledScenario(argValue('--case') || process.env.DEVSEEK_CONTROLLED_VSIX_CASE || 'normal');
+const targetRelativePath = scenario.targetRelativePath;
+const targetContent = scenario.targetContent;
+const prompt = scenario.prompt;
 const incrementalPromptPrefix = [
   '【同一 DeepSeek 会话增量上下文】',
   '沿用本会话上一轮已经建立的 DevSeek 编程智能体规则、工具协议、项目约束和当前任务目标。',
@@ -98,10 +95,11 @@ try {
     token: bridgeToken,
     workspaceDir,
     runtimeIdentity: expectedIdentity,
+    scenario,
     expectedPrompt: prompt,
     promptContractSelfTest,
   });
-  writeWorkspaceFixture({ workspaceDir, bridgeToken, port: fakeBridge.port });
+  writeWorkspaceFixture({ workspaceDir, bridgeToken, port: fakeBridge.port, scenario });
   writeDriverExtension({
     driverDir,
     driverReportPath,
@@ -110,11 +108,13 @@ try {
     extensionsDir,
     expectedExtensionPath: installed.extensionPath,
     expectedIdentity,
+    scenario,
     prompt,
     targetRelativePath,
     targetContent,
     timeoutMs,
     port: fakeBridge.port,
+    keepWindow,
   });
 
   const driverReport = await runVsCodeDriver({
@@ -125,20 +125,11 @@ try {
     userDataDir,
     extensionsDir,
     vscodeLogPath,
+    keepWindow,
   });
-  const deterministicFastPath = isControlledDeterministicFastPath(driverReport);
+  const deterministicFastPath = driverReport?.ok === true && fakeBridge.state.chatRequests.length === 0;
   const bridgeReport = summarizeControlledBridge(fakeBridge.state, { providerExpected: !deterministicFastPath });
-  const runIds = [...new Set(fakeBridge.state.chatRequests.map(request => request.runId).filter(Boolean))];
-  const evidence = deterministicFastPath
-    ? inspectDeterministicRunLogEvidence(driverReport)
-    : runIds.length === 1
-      ? inspectRunEvidence(workspaceDir, runIds[0])
-      : {
-          ok: false,
-          runId: runIds[0] || '',
-          errors: [`Expected exactly one evidence runId, received ${runIds.length}`],
-          eventTypes: [],
-        };
+  const evidence = inspectControlledRunLogEvidence(driverReport, scenario);
 
   const errors = [];
   if (!driverReport.ok) errors.push(...(driverReport.errors || ['VS Code driver failed']));
@@ -165,6 +156,11 @@ try {
         'The provider is deterministic and local, not the live DeepSeek Web surface.',
         'This T3 result cannot be promoted to T4/T5 or a qualification claim.',
       ],
+    },
+    scenario: {
+      id: scenario.id,
+      kind: scenario.kind,
+      prompt,
     },
     artifact: {
       vsixPath,
@@ -201,6 +197,7 @@ try {
       qualificationEligible: false,
     },
     errors: [errorMessage(error)],
+    scenario: scenario ? { id: scenario.id, kind: scenario.kind, prompt } : null,
     harness: {
       tmpRoot,
       codeBin,
@@ -233,6 +230,56 @@ function argValue(flag) {
 function positiveInteger(value, fallback) {
   const parsed = Number(value || fallback);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function resolveControlledScenario(id) {
+  const scenarios = {
+    normal: {
+      id: 'normal',
+      kind: 'normal-write-read-qualitygate',
+      targetRelativePath: 'controlled-normal.txt',
+      targetContent: 'CONTROLLED_NORMAL_OK\n',
+      prompt: [
+        '请在当前工作区创建 controlled-normal.txt。',
+        '文件内容必须精确包含一行 CONTROLLED_NORMAL_OK。',
+        '完成写入和读回验证后结束任务，不要修改其他用户文件。',
+      ].join(''),
+      providerPlan: 'write-read-complete',
+      expected: 'completed-write',
+    },
+    exception: {
+      id: 'exception',
+      kind: 'exception-provider-fail-closed',
+      targetRelativePath: 'controlled-exception.txt',
+      targetContent: 'SHOULD_NOT_WRITE\n',
+      prompt: [
+        '请创建 controlled-exception.txt，文件内容为一行 SHOULD_NOT_WRITE。',
+        '本测试会模拟 Provider 响应失败；如果 Provider 失败，必须停止并保留失败状态，不要写入任何文件。',
+      ].join(''),
+      providerPlan: 'provider-error',
+      expected: 'failed-no-mutation',
+    },
+    boundary: {
+      id: 'boundary',
+      kind: 'boundary-read-only-no-change',
+      targetRelativePath: 'controlled-boundary.txt',
+      targetContent: 'CONTROLLED_BOUNDARY_PRESENT\n',
+      seedFiles: {
+        'controlled-boundary.txt': 'CONTROLLED_BOUNDARY_PRESENT\n',
+      },
+      prompt: [
+        '只检查当前工作区是否存在 controlled-boundary.txt，并告诉我第一行内容。',
+        '不要创建、修改或删除任何文件。',
+      ].join(''),
+      providerPlan: 'read-only-complete',
+      expected: 'completed-no-mutation',
+    },
+  };
+  const scenario = scenarios[String(id || '').trim()];
+  if (!scenario) {
+    throw new Error(`Unknown controlled VSIX case: ${id}. Expected one of: ${Object.keys(scenarios).join(', ')}`);
+  }
+  return scenario;
 }
 
 function errorMessage(error) {
@@ -340,7 +387,7 @@ function findInstalledExtension(extensionsDir, expectedId) {
   throw new Error(`Installed extension ${expectedId} was not found below ${extensionsDir}`);
 }
 
-function writeWorkspaceFixture({ workspaceDir, bridgeToken, port }) {
+function writeWorkspaceFixture({ workspaceDir, bridgeToken, port, scenario }) {
   const settingsDir = path.join(workspaceDir, '.vscode');
   const devseekDir = path.join(workspaceDir, '.devseek');
   fs.mkdirSync(settingsDir, { recursive: true });
@@ -356,6 +403,11 @@ function writeWorkspaceFixture({ workspaceDir, bridgeToken, port }) {
     'devseek.traceLevel': 'debug',
     'devseek.editAutoAcceptDelay': 0,
   }, null, 2), 'utf8');
+  for (const [relativePath, content] of Object.entries(scenario.seedFiles || {})) {
+    const absolutePath = path.join(workspaceDir, relativePath);
+    fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
+    fs.writeFileSync(absolutePath, content, 'utf8');
+  }
 }
 
 function sha256Text(value) {
@@ -507,6 +559,7 @@ function runPromptContractSelfTest(expectedPrompt) {
     bound: validInitial.bound,
     promptContract: validInitial,
   }];
+  const replacedUserIntent = `self-test replaced user intent ${sha256Text(expectedPrompt).slice(0, 12)}`;
   const validRoundTwoText = `${incrementalPromptPrefix}[助手]\n[DevSeek 已执行工具请求摘要]\n\n[工具结果 Round 1]\nself-test tool result`;
   const validFullRoundTwoText = `${validInitialText}\n\n[助手]\n[DevSeek 已执行工具请求摘要]\n\n[工具结果 Round 1]\nself-test tool result`;
   const cases = [
@@ -536,7 +589,7 @@ function runPromptContractSelfTest(expectedPrompt) {
       name: 'replaced-user-intent',
       expectedBound: false,
       binding: bindControlledPromptContract({
-        promptText: `[指令]\nself-test system contract\n\n${expectedPrompt.replace('CONTROLLED_SIM_OK', 'CONTROLLED_SIM_CHANGED')}`,
+        promptText: `[指令]\nself-test system contract\n\n${replacedUserIntent}`,
         ordinal: 1,
         expectedPrompt,
         runId,
@@ -627,7 +680,7 @@ function runPromptContractSelfTest(expectedPrompt) {
   };
 }
 
-async function startControlledBridge({ token, workspaceDir, runtimeIdentity, expectedPrompt, promptContractSelfTest }) {
+async function startControlledBridge({ token, workspaceDir, runtimeIdentity, scenario, expectedPrompt, promptContractSelfTest }) {
   const { attachBridgeRunEvidence } = require(bridgeEvidencePath);
   const state = {
     chatRequests: [],
@@ -727,8 +780,23 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, exp
             reason: promptContract.reason,
           });
         }
+        if (scenario.providerPlan === 'provider-error') {
+          state.providerInvocationCount += 1;
+          evidence.record('provider.failed', {
+            provider: 'controlled-fixture',
+            layer: 'deterministic-fake-provider',
+            error_code: 'CONTROLLED_PROVIDER_FAILURE',
+            prompt_contract_version: promptContract.contractVersion,
+            prompt_contract_bound: true,
+          });
+          requestRecord.responseLength = 0;
+          return sendJson(response, 503, {
+            error: 'CONTROLLED_PROVIDER_FAILURE',
+            message: 'controlled provider failure for exception-case testing',
+          });
+        }
         state.providerInvocationCount += 1;
-        const providerText = controlledProviderResponse({ ordinal, workspaceDir });
+        const providerText = controlledProviderResponse({ ordinal, workspaceDir, scenario });
         evidence.record('provider.completed', {
           provider: 'controlled-fixture',
           layer: 'deterministic-fake-provider',
@@ -769,8 +837,32 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, exp
   return { server, port: address.port, state };
 }
 
-function controlledProviderResponse({ ordinal, workspaceDir }) {
-  const targetExists = fs.existsSync(path.join(workspaceDir, targetRelativePath));
+function controlledProviderResponse({ ordinal, workspaceDir, scenario }) {
+  const targetExists = fs.existsSync(path.join(workspaceDir, scenario.targetRelativePath));
+  if (scenario.providerPlan === 'read-only-complete') {
+    const activeTodos = {
+      todoList: [
+        { id: 1, title: '读取边界文件', status: 'in-progress' },
+        { id: 2, title: '确认无文件改动', status: 'not-started' },
+      ],
+    };
+    const completedTodos = {
+      todoList: [
+        { id: 1, title: '读取边界文件', status: 'completed' },
+        { id: 2, title: '确认无文件改动', status: 'completed' },
+      ],
+    };
+    return [
+      '我只读取指定文件，不做任何写入。',
+      `[TOOL:manage_todo_list ${JSON.stringify(activeTodos)}]`,
+      `[TOOL:read_file ${JSON.stringify({ path: scenario.targetRelativePath })}]`,
+      `[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`,
+      `[TOOL:task_complete ${JSON.stringify({
+        summary: `已读取 ${scenario.targetRelativePath}，第一行是 ${scenario.targetContent.trim()}，未修改任何文件。`,
+      })}]`,
+    ].join('\n');
+  }
+
   const activeTodos = {
     todoList: [
       { id: 1, title: '创建受控仿真文件', status: 'in-progress' },
@@ -785,12 +877,12 @@ function controlledProviderResponse({ ordinal, workspaceDir }) {
   };
   const calls = [`[TOOL:manage_todo_list ${JSON.stringify(activeTodos)}]`];
   if (!targetExists || ordinal === 1) {
-    calls.push(`[TOOL:create_file ${JSON.stringify({ path: targetRelativePath, content: targetContent })}]`);
+    calls.push(`[TOOL:create_file ${JSON.stringify({ path: scenario.targetRelativePath, content: scenario.targetContent })}]`);
   }
-  calls.push(`[TOOL:read_file ${JSON.stringify({ path: targetRelativePath })}]`);
+  calls.push(`[TOOL:read_file ${JSON.stringify({ path: scenario.targetRelativePath })}]`);
   calls.push(`[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`);
   calls.push(`[TOOL:task_complete ${JSON.stringify({
-    summary: `已创建并读回 ${targetRelativePath}，确认精确内容为 CONTROLLED_SIM_OK。`,
+    summary: `已创建并读回 ${scenario.targetRelativePath}，确认精确内容为 ${scenario.targetContent.trim()}。`,
   })}]`);
   return ['我会创建指定文件，并通过真实文件工具读回核验后结算。', ...calls].join('\n');
 }
@@ -832,6 +924,7 @@ function writeDriverExtension(options) {
     extensionsDir,
     expectedExtensionPath,
     expectedIdentity,
+    scenario,
     prompt: driverPrompt,
     targetRelativePath: targetPath,
     targetContent: expectedContent,
@@ -860,12 +953,14 @@ const workspaceDir = __WORKSPACE_DIR__;
 const extensionsDir = __EXTENSIONS_DIR__;
 const expectedExtensionPath = __EXPECTED_EXTENSION_PATH__;
 const expectedIdentity = __EXPECTED_IDENTITY__;
+const scenario = __SCENARIO__;
 const prompt = __PROMPT__;
 const targetRelativePath = __TARGET_RELATIVE_PATH__;
 const targetContent = __TARGET_CONTENT__;
 const timeoutMs = __TIMEOUT_MS__;
 const port = __PORT__;
 const keepWindow = __KEEP_WINDOW__;
+let initialUserFiles = null;
 
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function normalize(value) { return path.resolve(value).replace(/\\/g, '/'); }
@@ -934,6 +1029,45 @@ function runtimeIdentity() {
     && normalize(actual.extensionPath).startsWith(normalize(extensionsDir) + '/');
   return { actual, identityMatches, pathMatches, extension };
 }
+function isInternalPath(value) {
+  return value === '.devseek' || value.startsWith('.devseek/')
+    || value === '.vscode' || value.startsWith('.vscode/');
+}
+function collectUserFiles(directory = workspaceDir, relativeDirectory = '') {
+  const files = {};
+  if (!fs.existsSync(directory)) return files;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const relativePath = path.posix.join(relativeDirectory, entry.name);
+    if (isInternalPath(relativePath) || relativePath === '.git' || relativePath.startsWith('.git/')) continue;
+    const absolutePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      Object.assign(files, collectUserFiles(absolutePath, relativePath));
+    } else if (entry.isFile()) {
+      const content = fs.readFileSync(absolutePath);
+      files[relativePath] = {
+        byteLength: content.length,
+        sha256: require('crypto').createHash('sha256').update(content).digest('hex'),
+      };
+    }
+  }
+  return files;
+}
+function changedUserFiles(before, after) {
+  const changed = [];
+  for (const relativePath of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (JSON.stringify(before[relativePath] || null) !== JSON.stringify(after[relativePath] || null)) {
+      changed.push(relativePath);
+    }
+  }
+  return changed.sort();
+}
+function normalizeChangedPaths(data) {
+  return Array.isArray(data.changedPaths) ? data.changedPaths.map(value => {
+    const candidate = String(value).replace(/\\/g, '/');
+    const relative = path.isAbsolute(candidate) ? path.relative(workspaceDir, candidate) : candidate;
+    return relative.replace(/\\/g, '/').replace(/^\.\//, '');
+  }) : [];
+}
 function evaluate() {
   const target = path.join(workspaceDir, targetRelativePath);
   const artifactExists = fs.existsSync(target) && fs.statSync(target).isFile();
@@ -941,44 +1075,56 @@ function evaluate() {
   const runLogs = collectRunLogs();
   const terminal = runLogs.terminal;
   const data = terminal?.data || {};
-  const changedPaths = Array.isArray(data.changedPaths) ? data.changedPaths.map(value => {
-    const candidate = String(value).replace(/\\/g, '/');
-    const relative = path.isAbsolute(candidate) ? path.relative(workspaceDir, candidate) : candidate;
-    return relative.replace(/\\/g, '/').replace(/^\.\//, '');
-  }) : [];
-  const isInternalPath = value => value === '.devseek' || value.startsWith('.devseek/')
-    || value === '.vscode' || value.startsWith('.vscode/');
+  const changedPaths = normalizeChangedPaths(data);
   const userChangedPaths = changedPaths.filter(value => !isInternalPath(value));
-  const unexpectedChangedPaths = userChangedPaths.filter(value => value !== targetRelativePath);
-  const unexpectedUserFiles = [];
-  function visitUserFiles(directory, relativeDirectory = '') {
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-      const relativePath = path.posix.join(relativeDirectory, entry.name);
-      if (isInternalPath(relativePath) || relativePath === '.git' || relativePath.startsWith('.git/')) continue;
-      const absolutePath = path.join(directory, entry.name);
-      if (entry.isDirectory()) visitUserFiles(absolutePath, relativePath);
-      else if (relativePath !== targetRelativePath) unexpectedUserFiles.push(relativePath);
-    }
-  }
-  visitUserFiles(workspaceDir);
-  return {
-    ok: artifactExists
+  const currentUserFiles = collectUserFiles();
+  const mutatedUserFiles = changedUserFiles(initialUserFiles || {}, currentUserFiles);
+  const outsidePath = scenario.outsideCheckPath ? path.resolve(workspaceDir, scenario.outsideCheckPath) : '';
+  const outsidePathExists = outsidePath ? fs.existsSync(outsidePath) : false;
+  const unexpectedChangedPaths = scenario.expected === 'completed-write'
+    ? userChangedPaths.filter(value => value !== targetRelativePath)
+    : userChangedPaths.slice();
+  const unexpectedUserFiles = scenario.expected === 'completed-write'
+    ? Object.keys(currentUserFiles).filter(value => value !== targetRelativePath)
+    : [];
+  const completed = terminal?.event === 'agent-run-completed' && data.status === 'completed';
+  const failedOrBlocked = Boolean(terminal)
+    && (terminal.event === 'agent-run-failed' || data.status === 'failed' || data.status === 'blocked');
+  const ok = scenario.expected === 'completed-write'
+    ? artifactExists
       && actualContent === targetContent
-      && terminal?.event === 'agent-run-completed'
-      && data.status === 'completed'
+      && completed
       && Number(data.tasksApplied || 0) > 0
       && Number(data.tasksFailed || 0) === 0
       && userChangedPaths.length === 1
       && userChangedPaths[0] === targetRelativePath
+      && mutatedUserFiles.length === 1
+      && mutatedUserFiles[0] === targetRelativePath
       && unexpectedChangedPaths.length === 0
-      && unexpectedUserFiles.length === 0,
+      && unexpectedUserFiles.length === 0
+    : scenario.expected === 'failed-no-mutation'
+      ? failedOrBlocked
+        && userChangedPaths.length === 0
+        && mutatedUserFiles.length === 0
+        && !outsidePathExists
+      : artifactExists
+        && actualContent === targetContent
+        && completed
+        && userChangedPaths.length === 0
+        && mutatedUserFiles.length === 0;
+  return {
+    ok,
     artifact: {
+      scenario: scenario.id,
       path: targetRelativePath,
       exists: artifactExists,
       exactContent: actualContent === targetContent,
       byteLength: Buffer.byteLength(actualContent),
       changedPaths,
       userChangedPaths,
+      mutatedUserFiles,
+      outsidePath,
+      outsidePathExists,
       unexpectedChangedPaths,
       unexpectedUserFiles,
     },
@@ -1017,6 +1163,7 @@ async function activate() {
     await vscode.commands.executeCommand('devseek.openChat').catch(() => {});
     if (!await waitForCommand(report.commandName, 60000)) throw new Error('DevSeek controlled inbound command was not registered within 60s');
     await delay(750);
+    initialUserFiles = collectUserFiles();
     let commandError = '';
     void vscode.commands.executeCommand(report.commandName, prompt, prompt, true, 'fast')
       .then(() => { report.commandCompleted = true; progress('command-completed'); })
@@ -1038,7 +1185,7 @@ async function activate() {
       if (evaluation.runLogs.terminal?.event === 'agent-run-failed') break;
       await delay(500);
     }
-    if (!report.ok) report.errors.push('Exact-VSIX run did not produce the expected artifact and completed settlement terminal.');
+    if (!report.ok) report.errors.push('Exact-VSIX run did not satisfy the expected controlled case outcome: ' + scenario.id);
   } catch (error) {
     report.errors.push(String(error?.stack || error?.message || error));
   } finally {
@@ -1062,6 +1209,7 @@ module.exports = { activate };
     .replace('__EXTENSIONS_DIR__', JSON.stringify(extensionsDir))
     .replace('__EXPECTED_EXTENSION_PATH__', JSON.stringify(expectedExtensionPath))
     .replace('__EXPECTED_IDENTITY__', JSON.stringify(expectedIdentity))
+    .replace('__SCENARIO__', JSON.stringify(scenario))
     .replace('__PROMPT__', JSON.stringify(driverPrompt))
     .replace('__TARGET_RELATIVE_PATH__', JSON.stringify(targetPath))
     .replace('__TARGET_CONTENT__', JSON.stringify(expectedContent))
@@ -1222,7 +1370,7 @@ function summarizeControlledBridge(state, { providerExpected = true } = {}) {
   };
 }
 
-function inspectDeterministicRunLogEvidence(driverReport) {
+function inspectControlledRunLogEvidence(driverReport, scenario) {
   const logs = Array.isArray(driverReport?.runLogs?.logs) ? driverReport.runLogs.logs : [];
   const terminalLogs = logs.filter(log => log.terminal);
   const terminal = driverReport?.runLogs?.terminal || null;
@@ -1230,21 +1378,42 @@ function inspectDeterministicRunLogEvidence(driverReport) {
   const userChangedPaths = Array.isArray(driverReport?.artifact?.userChangedPaths)
     ? driverReport.artifact.userChangedPaths
     : [];
+  const mutatedUserFiles = Array.isArray(driverReport?.artifact?.mutatedUserFiles)
+    ? driverReport.artifact.mutatedUserFiles
+    : [];
   const errors = [];
   if (terminalLogs.length !== 1) errors.push(`Expected exactly one terminal run log, received ${terminalLogs.length}`);
-  if (terminal?.event !== 'agent-run-completed') errors.push(`Run log terminal event is ${terminal?.event || '(missing)'}`);
-  if (data.status !== 'completed') errors.push(`Run log terminal status is ${data.status || '(missing)'}`);
-  if (Number(data.tasksApplied || 0) <= 0) errors.push('Run log did not record an applied task');
-  if (Number(data.tasksFailed || 0) !== 0) errors.push(`Run log recorded ${Number(data.tasksFailed || 0)} failed task(s)`);
-  if (!driverReport?.artifact?.exists || !driverReport?.artifact?.exactContent) {
-    errors.push('Deterministic artifact content is not exact');
-  }
-  if (userChangedPaths.length !== 1 || userChangedPaths[0] !== targetRelativePath) {
-    errors.push(`Deterministic changed paths are not target-scoped: ${JSON.stringify(userChangedPaths)}`);
+  if (scenario.expected === 'completed-write') {
+    if (terminal?.event !== 'agent-run-completed') errors.push(`Run log terminal event is ${terminal?.event || '(missing)'}`);
+    if (data.status !== 'completed') errors.push(`Run log terminal status is ${data.status || '(missing)'}`);
+    if (Number(data.tasksApplied || 0) <= 0) errors.push('Run log did not record an applied task');
+    if (Number(data.tasksFailed || 0) !== 0) errors.push(`Run log recorded ${Number(data.tasksFailed || 0)} failed task(s)`);
+    if (!driverReport?.artifact?.exists || !driverReport?.artifact?.exactContent) {
+      errors.push('Controlled normal artifact content is not exact');
+    }
+    if (userChangedPaths.length !== 1 || userChangedPaths[0] !== scenario.targetRelativePath) {
+      errors.push(`Controlled normal changed paths are not target-scoped: ${JSON.stringify(userChangedPaths)}`);
+    }
+  } else if (scenario.expected === 'failed-no-mutation') {
+    if (!terminal || (terminal.event !== 'agent-run-failed' && data.status !== 'failed' && data.status !== 'blocked')) {
+      errors.push(`Run log did not fail/block the exception case: event=${terminal?.event || '(missing)'} status=${data.status || '(missing)'}`);
+    }
+    if (userChangedPaths.length !== 0) errors.push(`Exception case reported user changed paths: ${JSON.stringify(userChangedPaths)}`);
+    if (mutatedUserFiles.length !== 0) errors.push(`Exception case mutated user files: ${JSON.stringify(mutatedUserFiles)}`);
+    if (driverReport?.artifact?.outsidePathExists) errors.push(`Exception case created outside path: ${driverReport.artifact.outsidePath}`);
+  } else {
+    if (terminal?.event !== 'agent-run-completed') errors.push(`Run log terminal event is ${terminal?.event || '(missing)'}`);
+    if (data.status !== 'completed') errors.push(`Run log terminal status is ${data.status || '(missing)'}`);
+    if (!driverReport?.artifact?.exists || !driverReport?.artifact?.exactContent) {
+      errors.push('Boundary seed artifact was not preserved exactly');
+    }
+    if (userChangedPaths.length !== 0) errors.push(`Boundary case reported user changed paths: ${JSON.stringify(userChangedPaths)}`);
+    if (mutatedUserFiles.length !== 0) errors.push(`Boundary case mutated user files: ${JSON.stringify(mutatedUserFiles)}`);
   }
   return {
     ok: errors.length === 0,
-    mode: 'deterministic-fast-path-run-log',
+    mode: 'controlled-run-log',
+    scenario: scenario.id,
     runId: terminal?.runId || '',
     integrityScope: 'product-run-diagnostics',
     qualificationEligible: false,

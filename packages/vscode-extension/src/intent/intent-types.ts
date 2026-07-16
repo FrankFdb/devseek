@@ -8,6 +8,7 @@ export type ExecutionMode =
   | 'destructive';
 
 export type ToolKind =
+  | 'control'
   | 'read'
   | 'search'
   | 'diagnostics'

@@ -33,6 +33,11 @@ execSync(
 const req = createRequire(import.meta.url);
 const { decideChatIntent, shouldUseAgentMode, shouldAutoApplyFromResponse } = req(bundlePath);
 
+const READ_CONTROL_TOOLS = ['read', 'search', 'diagnostics', 'network', 'control'];
+const PLAN_TOOLS = [...READ_CONTROL_TOOLS, 'plan', 'memory'];
+const EDIT_TOOLS = [...PLAN_TOOLS, 'edit', 'terminal'];
+const RUN_TOOLS = [...READ_CONTROL_TOOLS, 'plan', 'memory', 'terminal'];
+
 // ── decideChatIntent tests ────────────────────────────────────────────────────
 
 test('decideChatIntent: empty prompt → chat intent', () => {
@@ -53,7 +58,7 @@ test('decideChatIntent: "解释这段代码" → inspect read-only intent', () =
   const result = decideChatIntent('解释这段代码');
   assert.equal(result.kind, 'chat');
   assert.equal(result.mode, 'inspect');
-  assert.deepEqual(result.allowedToolKinds, ['read', 'search', 'diagnostics', 'network']);
+  assert.deepEqual(result.allowedToolKinds, READ_CONTROL_TOOLS);
 });
 
 test('decideChatIntent: "hello" → smalltalk chat intent', () => {
@@ -118,7 +123,7 @@ test('decideChatIntent: capability phrased feature request → edit intent', () 
   assert.equal(result.reason, 'capability-feature-request');
   assert.ok(result.signals.includes('capability-feature-request'));
   assert.ok(result.signals.includes('interactive-feature-context'));
-  assert.deepEqual(result.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'plan', 'memory', 'edit', 'terminal']);
+  assert.deepEqual(result.allowedToolKinds, EDIT_TOOLS);
   assert.equal(shouldUseAgentMode(result, []), true);
 });
 
@@ -139,7 +144,7 @@ test('decideChatIntent: execution result follow-up → run intent', () => {
   assert.ok(result.signals.includes('run-request'));
   assert.ok(result.signals.includes('follow-up-run-request'));
   assert.equal(result.signals.includes('explicit-file-path'), false);
-  assert.deepEqual(result.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'plan', 'memory', 'terminal']);
+  assert.deepEqual(result.allowedToolKinds, RUN_TOOLS);
   assert.equal(shouldUseAgentMode(result, []), true);
 });
 
@@ -150,7 +155,7 @@ test('decideChatIntent: compile/run with conditional repair remains run intent',
   assert.equal(result.autoApplyEligible, false);
   assert.ok(result.signals.includes('run-request'));
   assert.ok(result.signals.includes('conditional-repair-on-failure'));
-  assert.deepEqual(result.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'plan', 'memory', 'terminal']);
+  assert.deepEqual(result.allowedToolKinds, RUN_TOOLS);
 });
 
 test('decideChatIntent: "重构代码" → code-change intent', () => {
@@ -173,7 +178,7 @@ test('decideChatIntent: no-change refactor plan stays read-only planning', () =>
   assert.ok(result.signals.includes('read-only-planning'));
   assert.ok(result.signals.includes('explicit-file-path'));
   assert.ok(result.blockers.includes('explicit-no-change'));
-  assert.deepEqual(result.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'plan', 'memory']);
+  assert.deepEqual(result.allowedToolKinds, PLAN_TOOLS);
   assert.equal(shouldUseAgentMode(result, []), true);
 });
 

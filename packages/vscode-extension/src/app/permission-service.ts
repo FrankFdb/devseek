@@ -24,9 +24,10 @@ export interface ToolPermissionRequest {
 }
 
 const READ_ONLY_TOOLS: ToolKind[] = ['read', 'search', 'diagnostics', 'network'];
-const PLAN_TOOLS: ToolKind[] = [...READ_ONLY_TOOLS, 'plan', 'memory'];
+const READ_CONTROL_TOOLS: ToolKind[] = [...READ_ONLY_TOOLS, 'control'];
+const PLAN_TOOLS: ToolKind[] = [...READ_CONTROL_TOOLS, 'plan', 'memory'];
 const EDIT_TOOLS: ToolKind[] = [...PLAN_TOOLS, 'edit', 'terminal'];
-const RUN_TOOLS: ToolKind[] = [...READ_ONLY_TOOLS, 'plan', 'memory', 'terminal'];
+const RUN_TOOLS: ToolKind[] = [...READ_CONTROL_TOOLS, 'plan', 'memory', 'terminal'];
 const ALL_TOOLS: ToolKind[] = [
   ...EDIT_TOOLS,
   ...RUN_TOOLS,
@@ -41,7 +42,7 @@ export function buildToolPolicy(mode: ExecutionMode): ToolPolicy {
     case 'qa':
       return makePolicy(mode, [], []);
     case 'inspect':
-      return makePolicy(mode, READ_ONLY_TOOLS, []);
+      return makePolicy(mode, READ_CONTROL_TOOLS, []);
     case 'plan':
       return makePolicy(mode, PLAN_TOOLS, []);
     case 'edit':

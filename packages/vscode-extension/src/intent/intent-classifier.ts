@@ -54,9 +54,10 @@ const CAPABILITY_FEATURE_REQUEST_RE = /(?:(?:能|可以|可否|能否|能不能|
 const READ_ONLY_CAPABILITY_QUESTION_RE = /(什么是|为什么|什么原因|怎么理解|区别|介绍|解释|说明|原理|概念|文档|教程|示例|怎么用|如何使用|用法|what\s+is|why|how\s+to|explain|describe|introduction)/i;
 
 const READ_ONLY_TOOLS: ToolKind[] = ['read', 'search', 'diagnostics', 'network'];
-const PLAN_TOOLS: ToolKind[] = [...READ_ONLY_TOOLS, 'plan', 'memory'];
+const READ_CONTROL_TOOLS: ToolKind[] = [...READ_ONLY_TOOLS, 'control'];
+const PLAN_TOOLS: ToolKind[] = [...READ_CONTROL_TOOLS, 'plan', 'memory'];
 const EDIT_TOOLS: ToolKind[] = [...PLAN_TOOLS, 'edit', 'terminal'];
-const RUN_TOOLS: ToolKind[] = [...READ_ONLY_TOOLS, 'plan', 'memory', 'terminal'];
+const RUN_TOOLS: ToolKind[] = [...READ_CONTROL_TOOLS, 'plan', 'memory', 'terminal'];
 const ALL_AGENT_TOOLS: ToolKind[] = [...EDIT_TOOLS, 'vscode', 'vscode-command', 'mcp'];
 
 function baseDecision(
@@ -129,7 +130,7 @@ export function classifyIntent(prompt: string): IntentClassification {
       -3,
       signals,
       'explicit-no-change',
-      mode === 'plan' ? PLAN_TOOLS : mode === 'inspect' ? READ_ONLY_TOOLS : [],
+      mode === 'plan' ? PLAN_TOOLS : mode === 'inspect' ? READ_CONTROL_TOOLS : [],
       ['explicit-no-change'],
     );
   }
@@ -156,7 +157,7 @@ export function classifyIntent(prompt: string): IntentClassification {
       hasPath ? 3 : 2,
       signals,
       hasPath ? 'artifact-path-query-with-file-path' : 'artifact-path-query',
-      READ_ONLY_TOOLS,
+      READ_CONTROL_TOOLS,
     );
   }
 
@@ -316,7 +317,7 @@ export function classifyIntent(prompt: string): IntentClassification {
       hasPath ? 3 : 2,
       hasPath ? ['inspection-request', 'explicit-file-path'] : ['inspection-request'],
       hasPath ? 'inspect-with-file-path' : 'inspection-request',
-      READ_ONLY_TOOLS,
+      READ_CONTROL_TOOLS,
     );
   }
 

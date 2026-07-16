@@ -38,7 +38,9 @@ test('PermissionService: inspect is read-only', () => {
   assert.equal(decideToolPermission(policy, 'read').action, 'allow');
   assert.equal(decideToolPermission(policy, 'search').action, 'allow');
   assert.equal(decideToolPermission(policy, 'network').action, 'allow');
+  assert.equal(decideToolPermission(policy, { kind: 'control', toolName: 'task_complete', risk: 'low' }).action, 'allow');
   assert.equal(decideToolPermission(policy, 'memory').action, 'deny');
+  assert.equal(decideToolPermission(policy, 'plan').action, 'deny');
   assert.equal(decideToolPermission(policy, 'edit').action, 'deny');
   assert.equal(decideToolPermission(policy, 'terminal').action, 'deny');
 });

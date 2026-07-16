@@ -49,7 +49,7 @@ const { parseGeneratedArtifacts } = req(bundle(
 
 const controller = new ChatRouteController();
 
-const READ_TOOLS = ['read', 'search', 'diagnostics', 'network'];
+const READ_TOOLS = ['read', 'search', 'diagnostics', 'network', 'control'];
 const PLAN_TOOLS = [...READ_TOOLS, 'plan', 'memory'];
 const EDIT_TOOLS = [...PLAN_TOOLS, 'edit', 'terminal'];
 const RUN_TOOLS = [...READ_TOOLS, 'plan', 'memory', 'terminal'];
@@ -178,7 +178,7 @@ const routingCases = [
     files: ['/tmp/main.ts'],
     expect: { kind: 'chat', mode: 'inspect', workflow: 'inspect-agent', useAgent: true, tools: READ_TOOLS },
     blocker: 'explicit-no-change',
-    toolActions: { read: 'allow', search: 'allow', diagnostics: 'allow', edit: 'deny', terminal: 'deny' },
+    toolActions: { read: 'allow', search: 'allow', diagnostics: 'allow', control: 'allow', plan: 'deny', edit: 'deny', terminal: 'deny' },
   },
   {
     id: 'READ-002',
@@ -186,7 +186,7 @@ const routingCases = [
     prompt: '解释这段代码',
     files: ['/tmp/main.ts'],
     expect: { kind: 'chat', mode: 'inspect', workflow: 'inspect-agent', useAgent: true, tools: READ_TOOLS },
-    toolActions: { read: 'allow', search: 'allow', diagnostics: 'allow', edit: 'deny', terminal: 'deny' },
+    toolActions: { read: 'allow', search: 'allow', diagnostics: 'allow', control: 'allow', plan: 'deny', edit: 'deny', terminal: 'deny' },
   },
   {
     id: 'READ-003',
@@ -195,7 +195,7 @@ const routingCases = [
     agentEnabled: false,
     expect: { kind: 'chat', mode: 'inspect', workflow: 'inspect-agent', useAgent: true, tools: READ_TOOLS },
     blocker: 'explicit-no-change',
-    toolActions: { read: 'allow', search: 'allow', diagnostics: 'allow', edit: 'deny', terminal: 'deny' },
+    toolActions: { read: 'allow', search: 'allow', diagnostics: 'allow', control: 'allow', plan: 'deny', edit: 'deny', terminal: 'deny' },
   },
   {
     id: 'READ-004',
@@ -203,7 +203,7 @@ const routingCases = [
     prompt: '确认 /tmp/report.md 是否存在，不要创建 /tmp/report.md，也不要修改文件。',
     expect: { kind: 'chat', mode: 'inspect', workflow: 'inspect-agent', useAgent: true, tools: READ_TOOLS },
     blocker: 'explicit-no-change',
-    toolActions: { read: 'allow', search: 'allow', diagnostics: 'allow', edit: 'deny', terminal: 'deny' },
+    toolActions: { read: 'allow', search: 'allow', diagnostics: 'allow', control: 'allow', plan: 'deny', edit: 'deny', terminal: 'deny' },
   },
   {
     id: 'PLAN-001',
