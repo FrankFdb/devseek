@@ -233,6 +233,32 @@ function positiveInteger(value, fallback) {
 }
 
 function resolveControlledScenario(id) {
+  const cppProgramContent = [
+    '#include <iostream>',
+    '',
+    'int main() {',
+    '  std::cout << "下午好" << std::endl;',
+    '  return 0;',
+    '}',
+    '',
+  ].join('\n');
+  const brokenMathContent = [
+    'function add(a, b) {',
+    '  return a - b;',
+    '}',
+    '',
+    'module.exports = { add };',
+    '',
+  ].join('\n');
+  const fixedMathContent = [
+    'function add(a, b) {',
+    '  return a + b;',
+    '}',
+    '',
+    'module.exports = { add };',
+    '',
+  ].join('\n');
+  const latestRequirementContent = 'FINAL_REQUIREMENT_OK\n';
   const scenarios = {
     normal: {
       id: 'normal',
@@ -273,6 +299,63 @@ function resolveControlledScenario(id) {
       ].join(''),
       providerPlan: 'read-only-complete',
       expected: 'completed-no-mutation',
+    },
+    'cpp-program': {
+      id: 'cpp-program',
+      kind: 'journey-standalone-program-compile-run',
+      targetRelativePath: 'controlled-hello.cpp',
+      targetContent: cppProgramContent,
+      prompt: [
+        '请在当前工作区编写一个最小 C++ 程序 controlled-hello.cpp，运行后打印下午好。',
+        '必须用 g++ 编译并运行验证输出后结束，不要修改其他文件。',
+      ].join(''),
+      providerPlan: 'cpp-program-compile-run-complete',
+      expected: 'completed-workflow',
+      expectedFiles: {
+        'controlled-hello.cpp': cppProgramContent,
+      },
+      expectedChangedPaths: ['controlled-hello.cpp'],
+      expectedMutatedUserFiles: ['controlled-hello', 'controlled-hello.cpp'],
+    },
+    'existing-js-fix': {
+      id: 'existing-js-fix',
+      kind: 'journey-existing-source-modification-validation',
+      targetRelativePath: 'src/math.js',
+      targetContent: fixedMathContent,
+      seedFiles: {
+        'src/math.js': brokenMathContent,
+      },
+      prompt: [
+        '请修复 src/math.js 中 add(a, b) 的明显错误。',
+        '要求 add(2, 3) 返回 5，修改后用 node 命令验证并结束任务。',
+        '不要修改其他文件。',
+      ].join(''),
+      providerPlan: 'existing-js-fix-complete',
+      expected: 'completed-workflow',
+      expectedFiles: {
+        'src/math.js': fixedMathContent,
+      },
+      expectedChangedPaths: ['src/math.js'],
+      expectedMutatedUserFiles: ['src/math.js'],
+    },
+    'latest-requirement': {
+      id: 'latest-requirement',
+      kind: 'journey-latest-requirement-single-turn',
+      targetRelativePath: 'journey-result.txt',
+      targetContent: latestRequirementContent,
+      prompt: [
+        '这是一次多轮需求的最终轮：前面曾说写 INITIAL_REQUIREMENT，但现在改为 FINAL_REQUIREMENT_OK。',
+        '请只按最新要求创建 journey-result.txt，文件内容必须精确包含一行 FINAL_REQUIREMENT_OK。',
+        '完成写入和读回验证后结束任务，不要创建旧要求文件。',
+      ].join(''),
+      providerPlan: 'latest-requirement-complete',
+      expected: 'completed-workflow',
+      expectedFiles: {
+        'journey-result.txt': latestRequirementContent,
+      },
+      expectedChangedPaths: ['journey-result.txt'],
+      expectedMutatedUserFiles: ['journey-result.txt'],
+      forbiddenFiles: ['INITIAL_REQUIREMENT', 'initial-requirement.txt'],
     },
   };
   const scenario = scenarios[String(id || '').trim()];
@@ -863,6 +946,90 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario }) {
     ].join('\n');
   }
 
+  if (scenario.providerPlan === 'cpp-program-compile-run-complete') {
+    const activeTodos = {
+      todoList: [
+        { id: 1, title: '创建最小 C++ 程序', status: 'in-progress' },
+        { id: 2, title: '编译运行并验证输出', status: 'not-started' },
+      ],
+    };
+    const completedTodos = {
+      todoList: [
+        { id: 1, title: '创建最小 C++ 程序', status: 'completed' },
+        { id: 2, title: '编译运行并验证输出', status: 'completed' },
+      ],
+    };
+    const calls = [`[TOOL:manage_todo_list ${JSON.stringify(activeTodos)}]`];
+    if (!targetExists || ordinal === 1) {
+      calls.push(`[TOOL:create_file ${JSON.stringify({ path: scenario.targetRelativePath, content: scenario.targetContent })}]`);
+    }
+    calls.push(`[TOOL:run_terminal ${JSON.stringify({ command: 'g++ controlled-hello.cpp -o controlled-hello && ./controlled-hello' })}]`);
+    calls.push(`[TOOL:read_file ${JSON.stringify({ path: scenario.targetRelativePath })}]`);
+    calls.push(`[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`);
+    calls.push(`[TOOL:task_complete ${JSON.stringify({
+      summary: '已创建 controlled-hello.cpp，并用 g++ 编译运行确认输出为下午好。',
+    })}]`);
+    return ['我会创建 C++ 源文件，并用真实终端命令编译运行验证。', ...calls].join('\n');
+  }
+
+  if (scenario.providerPlan === 'existing-js-fix-complete') {
+    const activeTodos = {
+      todoList: [
+        { id: 1, title: '读取现有 add 实现', status: 'in-progress' },
+        { id: 2, title: '最小修改并运行验证', status: 'not-started' },
+      ],
+    };
+    const completedTodos = {
+      todoList: [
+        { id: 1, title: '读取现有 add 实现', status: 'completed' },
+        { id: 2, title: '最小修改并运行验证', status: 'completed' },
+      ],
+    };
+    return [
+      '我会先读取现有文件，再做精确替换并运行 node 验证。',
+      `[TOOL:manage_todo_list ${JSON.stringify(activeTodos)}]`,
+      `[TOOL:read_file ${JSON.stringify({ path: scenario.targetRelativePath })}]`,
+      `[TOOL:replace_in_file ${JSON.stringify({
+        path: scenario.targetRelativePath,
+        old_str: '  return a - b;',
+        new_str: '  return a + b;',
+      })}]`,
+      `[TOOL:run_terminal ${JSON.stringify({
+        command: 'node -e "const { add } = require(\'./src/math.js\'); if (add(2, 3) !== 5) process.exit(1); console.log(\'ADD_OK\')"',
+      })}]`,
+      `[TOOL:read_file ${JSON.stringify({ path: scenario.targetRelativePath })}]`,
+      `[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`,
+      `[TOOL:task_complete ${JSON.stringify({
+        summary: '已修复 src/math.js 的 add(a, b)，并用 node 验证 add(2, 3) 返回 5。',
+      })}]`,
+    ].join('\n');
+  }
+
+  if (scenario.providerPlan === 'latest-requirement-complete') {
+    const activeTodos = {
+      todoList: [
+        { id: 1, title: '按最新要求写入结果文件', status: 'in-progress' },
+        { id: 2, title: '读回验证旧要求未落地', status: 'not-started' },
+      ],
+    };
+    const completedTodos = {
+      todoList: [
+        { id: 1, title: '按最新要求写入结果文件', status: 'completed' },
+        { id: 2, title: '读回验证旧要求未落地', status: 'completed' },
+      ],
+    };
+    const calls = [`[TOOL:manage_todo_list ${JSON.stringify(activeTodos)}]`];
+    if (!targetExists || ordinal === 1) {
+      calls.push(`[TOOL:create_file ${JSON.stringify({ path: scenario.targetRelativePath, content: scenario.targetContent })}]`);
+    }
+    calls.push(`[TOOL:read_file ${JSON.stringify({ path: scenario.targetRelativePath })}]`);
+    calls.push(`[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`);
+    calls.push(`[TOOL:task_complete ${JSON.stringify({
+      summary: '已按最新要求创建 journey-result.txt，内容为 FINAL_REQUIREMENT_OK，未创建旧要求文件。',
+    })}]`);
+    return ['我会以最新用户要求为准，忽略已经被覆盖的旧要求。', ...calls].join('\n');
+  }
+
   const activeTodos = {
     todoList: [
       { id: 1, title: '创建受控仿真文件', status: 'in-progress' },
@@ -1061,6 +1228,29 @@ function changedUserFiles(before, after) {
   }
   return changed.sort();
 }
+function sortedStrings(values) {
+  return Array.isArray(values) ? values.map(value => String(value).replace(/\\/g, '/')).sort() : [];
+}
+function arraysEqual(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+function expectedFilesForScenario() {
+  const configured = scenario.expectedFiles && typeof scenario.expectedFiles === 'object'
+    ? scenario.expectedFiles
+    : {};
+  return Object.keys(configured).length > 0 ? configured : { [targetRelativePath]: targetContent };
+}
+function readExpectedFile(relativePath, expectedContent) {
+  const absolutePath = path.join(workspaceDir, relativePath);
+  const exists = fs.existsSync(absolutePath) && fs.statSync(absolutePath).isFile();
+  const actualContent = exists ? fs.readFileSync(absolutePath, 'utf8') : '';
+  return {
+    path: relativePath,
+    exists,
+    exactContent: actualContent === expectedContent,
+    byteLength: Buffer.byteLength(actualContent),
+  };
+}
 function normalizeChangedPaths(data) {
   return Array.isArray(data.changedPaths) ? data.changedPaths.map(value => {
     const candidate = String(value).replace(/\\/g, '/');
@@ -1079,17 +1269,35 @@ function evaluate() {
   const userChangedPaths = changedPaths.filter(value => !isInternalPath(value));
   const currentUserFiles = collectUserFiles();
   const mutatedUserFiles = changedUserFiles(initialUserFiles || {}, currentUserFiles);
+  const expectedFiles = expectedFilesForScenario();
+  const fileExpectations = Object.entries(expectedFiles).map(([relativePath, content]) => readExpectedFile(relativePath, content));
+  const exactFilesOk = fileExpectations.every(file => file.exists && file.exactContent);
+  const defaultExpectedChangedPaths = scenario.expected === 'completed-write' ? [targetRelativePath] : [];
+  const expectedChangedPaths = sortedStrings(scenario.expectedChangedPaths || defaultExpectedChangedPaths);
+  const defaultExpectedMutatedUserFiles = scenario.expected === 'completed-write' ? [targetRelativePath] : [];
+  const expectedMutatedUserFiles = sortedStrings(scenario.expectedMutatedUserFiles || defaultExpectedMutatedUserFiles);
+  const sortedUserChangedPaths = sortedStrings(userChangedPaths);
+  const sortedMutatedUserFiles = sortedStrings(mutatedUserFiles);
+  const changedPathsMatch = arraysEqual(sortedUserChangedPaths, expectedChangedPaths);
+  const mutatedUserFilesMatch = arraysEqual(sortedMutatedUserFiles, expectedMutatedUserFiles);
+  const forbiddenFiles = sortedStrings(scenario.forbiddenFiles || []);
+  const forbiddenFileHits = forbiddenFiles.filter(relativePath => fs.existsSync(path.join(workspaceDir, relativePath)));
   const outsidePath = scenario.outsideCheckPath ? path.resolve(workspaceDir, scenario.outsideCheckPath) : '';
   const outsidePathExists = outsidePath ? fs.existsSync(outsidePath) : false;
-  const unexpectedChangedPaths = scenario.expected === 'completed-write'
-    ? userChangedPaths.filter(value => value !== targetRelativePath)
-    : userChangedPaths.slice();
-  const unexpectedUserFiles = scenario.expected === 'completed-write'
-    ? Object.keys(currentUserFiles).filter(value => value !== targetRelativePath)
-    : [];
+  const unexpectedChangedPaths = sortedUserChangedPaths.filter(value => !expectedChangedPaths.includes(value));
+  const missingChangedPaths = expectedChangedPaths.filter(value => !sortedUserChangedPaths.includes(value));
+  const unexpectedUserFiles = sortedMutatedUserFiles.filter(value => !expectedMutatedUserFiles.includes(value));
+  const missingUserFiles = expectedMutatedUserFiles.filter(value => !sortedMutatedUserFiles.includes(value));
   const completed = terminal?.event === 'agent-run-completed' && data.status === 'completed';
   const failedOrBlocked = Boolean(terminal)
     && (terminal.event === 'agent-run-failed' || data.status === 'failed' || data.status === 'blocked');
+  const completedWorkflowOk = completed
+    && Number(data.tasksFailed || 0) === 0
+    && (scenario.requireAppliedTask === false || Number(data.tasksApplied || 0) > 0)
+    && exactFilesOk
+    && changedPathsMatch
+    && mutatedUserFilesMatch
+    && forbiddenFileHits.length === 0;
   const ok = scenario.expected === 'completed-write'
     ? artifactExists
       && actualContent === targetContent
@@ -1107,11 +1315,13 @@ function evaluate() {
         && userChangedPaths.length === 0
         && mutatedUserFiles.length === 0
         && !outsidePathExists
-      : artifactExists
-        && actualContent === targetContent
-        && completed
-        && userChangedPaths.length === 0
-        && mutatedUserFiles.length === 0;
+      : scenario.expected === 'completed-workflow'
+        ? completedWorkflowOk
+        : artifactExists
+          && actualContent === targetContent
+          && completed
+          && userChangedPaths.length === 0
+          && mutatedUserFiles.length === 0;
   return {
     ok,
     artifact: {
@@ -1123,10 +1333,16 @@ function evaluate() {
       changedPaths,
       userChangedPaths,
       mutatedUserFiles,
+      expectedChangedPaths,
+      expectedMutatedUserFiles,
+      fileExpectations,
       outsidePath,
       outsidePathExists,
       unexpectedChangedPaths,
+      missingChangedPaths,
       unexpectedUserFiles,
+      missingUserFiles,
+      forbiddenFileHits,
     },
     runLogs,
   };
@@ -1370,6 +1586,14 @@ function summarizeControlledBridge(state, { providerExpected = true } = {}) {
   };
 }
 
+function sortedStrings(values) {
+  return Array.isArray(values) ? values.map(value => String(value).replace(/\\/g, '/')).sort() : [];
+}
+
+function arraysEqual(left, right) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 function inspectControlledRunLogEvidence(driverReport, scenario) {
   const logs = Array.isArray(driverReport?.runLogs?.logs) ? driverReport.runLogs.logs : [];
   const terminalLogs = logs.filter(log => log.terminal);
@@ -1381,6 +1605,11 @@ function inspectControlledRunLogEvidence(driverReport, scenario) {
   const mutatedUserFiles = Array.isArray(driverReport?.artifact?.mutatedUserFiles)
     ? driverReport.artifact.mutatedUserFiles
     : [];
+  const fileExpectations = Array.isArray(driverReport?.artifact?.fileExpectations)
+    ? driverReport.artifact.fileExpectations
+    : [];
+  const expectedChangedPaths = sortedStrings(driverReport?.artifact?.expectedChangedPaths || scenario.expectedChangedPaths || []);
+  const expectedMutatedUserFiles = sortedStrings(driverReport?.artifact?.expectedMutatedUserFiles || scenario.expectedMutatedUserFiles || []);
   const errors = [];
   if (terminalLogs.length !== 1) errors.push(`Expected exactly one terminal run log, received ${terminalLogs.length}`);
   if (scenario.expected === 'completed-write') {
@@ -1401,6 +1630,23 @@ function inspectControlledRunLogEvidence(driverReport, scenario) {
     if (userChangedPaths.length !== 0) errors.push(`Exception case reported user changed paths: ${JSON.stringify(userChangedPaths)}`);
     if (mutatedUserFiles.length !== 0) errors.push(`Exception case mutated user files: ${JSON.stringify(mutatedUserFiles)}`);
     if (driverReport?.artifact?.outsidePathExists) errors.push(`Exception case created outside path: ${driverReport.artifact.outsidePath}`);
+  } else if (scenario.expected === 'completed-workflow') {
+    if (terminal?.event !== 'agent-run-completed') errors.push(`Run log terminal event is ${terminal?.event || '(missing)'}`);
+    if (data.status !== 'completed') errors.push(`Run log terminal status is ${data.status || '(missing)'}`);
+    if (Number(data.tasksApplied || 0) <= 0) errors.push('Run log did not record an applied task');
+    if (Number(data.tasksFailed || 0) !== 0) errors.push(`Run log recorded ${Number(data.tasksFailed || 0)} failed task(s)`);
+    if (fileExpectations.length === 0 || fileExpectations.some(file => !file.exists || !file.exactContent)) {
+      errors.push(`Workflow file expectations were not exact: ${JSON.stringify(fileExpectations)}`);
+    }
+    if (!arraysEqual(sortedStrings(userChangedPaths), expectedChangedPaths)) {
+      errors.push(`Workflow changed paths mismatch: expected=${JSON.stringify(expectedChangedPaths)} actual=${JSON.stringify(sortedStrings(userChangedPaths))}`);
+    }
+    if (!arraysEqual(sortedStrings(mutatedUserFiles), expectedMutatedUserFiles)) {
+      errors.push(`Workflow mutated user files mismatch: expected=${JSON.stringify(expectedMutatedUserFiles)} actual=${JSON.stringify(sortedStrings(mutatedUserFiles))}`);
+    }
+    if (Array.isArray(driverReport?.artifact?.forbiddenFileHits) && driverReport.artifact.forbiddenFileHits.length > 0) {
+      errors.push(`Workflow created forbidden files: ${JSON.stringify(driverReport.artifact.forbiddenFileHits)}`);
+    }
   } else {
     if (terminal?.event !== 'agent-run-completed') errors.push(`Run log terminal event is ${terminal?.event || '(missing)'}`);
     if (data.status !== 'completed') errors.push(`Run log terminal status is ${data.status || '(missing)'}`);
