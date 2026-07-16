@@ -74,6 +74,7 @@ export interface TaskIntentRoute {
 const REVIEW_RE = /(?:审查|评审|review|code\s+review|PR\b|pull\s+request)/i;
 const FAILURE_RE = /(?:日志|失败|报错|重试|回归|QualityGate|replay|error|failed)/i;
 const EXTERNAL_EFFECT_RE = /(?:发布|上线|部署|安装插件|安装扩展|release|deploy|publish|install\s+extension)/i;
+const EXTERNAL_EFFECT_QUESTION_RE = /(?:如何|怎么|怎样|为什么|什么是|介绍|说明|方案|计划|how\s+to|what\s+is|why|plan|design|approach)/i;
 const BROAD_SCOPE_RE = /(整个|全部|全局|项目|仓库|系统|架构|多入口|跨平台|跨模块|模块化|runtime|workflow|provider|权限|状态机)/i;
 const COMPLEX_ACTION_RE = /(重构|改造|拆分|迁移|重写|优化架构|革命性|架构设计|refactor|re-architect|architecture)/i;
 const PLANNING_TERM_RE = /(方案|计划|设计|怎么改|如何改|重构计划|实施步骤|roadmap|plan|design|approach)/i;
@@ -88,7 +89,7 @@ export function routeTaskIntent(promptText: string): TaskIntentRoute {
     : parseSimpleFileWriteRequest(prompt);
   const family = resolveTaskIntentFamily(prompt, classification, semanticContract, simpleFile);
   const agentTaskShape = resolveAgentTaskShape(prompt, family, semanticContract);
-  const chatKind = isMutatingExecutionMode(classification.mode) ? 'code-change' : 'chat';
+  const chatKind = isCodeChangeRoute(family, classification.mode) ? 'code-change' : 'chat';
   const fileCheckRequired = family === 'simple-file'
     || shouldValidateNonCodeFilesForContract(semanticContract);
   const runtimeRequired = !semanticContract.validation.runProhibited
@@ -153,11 +154,13 @@ function resolveTaskIntentFamily(
   if (!prompt) return 'smalltalk';
   if (classification.mode === 'destructive' || semanticContract.kind === 'destructive') return 'destructive';
   if (simpleFile) return 'simple-file';
+  if (EXTERNAL_EFFECT_RE.test(prompt) && !EXTERNAL_EFFECT_QUESTION_RE.test(prompt)) return 'release-external-effect';
   if (isReadOnlyRoute(classification, semanticContract)) {
     return REVIEW_RE.test(prompt) ? 'review' : 'read-only-advisory';
   }
   if (classification.mode === 'smalltalk') return 'smalltalk';
   if (classification.mode === 'qa') return 'qa';
+  if (classification.mode === 'run' || semanticContract.kind === 'validation') return 'terminal-validation';
   if (semanticContract.scope === 'existing-project' || semanticContract.kind === 'existing-project-code') {
     return 'existing-project-edit';
   }
@@ -165,9 +168,10 @@ function resolveTaskIntentFamily(
     return 'standalone-program';
   }
   if (semanticContract.kind === 'file-artifact') return 'file-artifact';
-  if (classification.mode === 'run' || semanticContract.kind === 'validation') return 'terminal-validation';
   if (classification.mode === 'edit') {
-    return EXTERNAL_EFFECT_RE.test(prompt) ? 'release-external-effect' : 'general-edit';
+    return EXTERNAL_EFFECT_RE.test(prompt) && !EXTERNAL_EFFECT_QUESTION_RE.test(prompt)
+      ? 'release-external-effect'
+      : 'general-edit';
   }
   return semanticContract.mutation.prohibited ? 'read-only-advisory' : 'ambiguous';
 }
@@ -199,6 +203,18 @@ function isReadOnlyRoute(
 
 function isMutatingExecutionMode(mode: ExecutionMode): boolean {
   return mode === 'edit' || mode === 'run' || mode === 'destructive';
+}
+
+function isCodeChangeRoute(family: TaskIntentFamily, mode: ExecutionMode): boolean {
+  return isMutatingExecutionMode(mode)
+    || family === 'release-external-effect'
+    || family === 'existing-project-edit'
+    || family === 'standalone-program'
+    || family === 'file-artifact'
+    || family === 'simple-file'
+    || family === 'terminal-validation'
+    || family === 'destructive'
+    || family === 'general-edit';
 }
 
 function buildRouteMetaSignals(prompt: string): string[] {

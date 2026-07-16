@@ -16,7 +16,10 @@ const GREETING_ONLY_RE = /^(?:hi|hello|ello|hey|你好|您好|嗨|哈喽|早上�
 
 const GREETING_PREFIX_RE = /^(?:hi|hello|hey|你好|您好|嗨|哈喽)[,，\s]+/i;
 
-const EDIT_RE = /(修复|修正|修改|改一下|改成|改为|改用|换成|换为|调整为|实现|编写|写一个|写个|创建|新建|生成|新增|添加|补全|完善|重构|改造|替换|替换为|优化|升级|接入|封装|拆分|fix|modify|change|implement|create|write|add|update|refactor|generate)/i;
+const EDIT_RE = /(修复|修正|修改|改一下|改成|改为|改用|换成|换为|调整为|实现|编写|写一个|写个|创建|新建|生成|新增|添加|补全|完善|重构|改造|替换|替换为|优化|升级|接入|封装|拆分|发布|上线|部署|安装插件|安装扩展|fix|modify|change|implement|create|write|add|update|refactor|generate|release|deploy|publish|install\s+extension)/i;
+
+const EXTERNAL_EFFECT_RE = /(?:发布|上线|部署|安装插件|安装扩展|release|deploy|publish|install\s+extension)/i;
+const EXTERNAL_EFFECT_QUESTION_RE = /(?:如何|怎么|怎样|为什么|什么是|介绍|说明|方案|计划|how\s+to|what\s+is|why|plan|design|approach)/i;
 
 const DESTRUCTIVE_RE = /(删除|清空|覆盖|重置|移除|删掉|干掉|drop|delete|remove|reset|overwrite|truncate)/gi;
 const DESTRUCTIVE_NEGATION_PREFIX_RE = /(?:不|未|尚未|没有|不要|不能|不可|禁止|避免|不得|请勿|无需|无须|不需要|不允许|do\s+not|don't|must\s+not|without|avoid).{0,16}$/i;
@@ -29,7 +32,7 @@ const FOLLOW_UP_RUN_RE = /(?:能(?:否)?(?:执行|运行|编译|构建|测试|�
 
 const RUN_WITH_CONDITIONAL_REPAIR_RE = /(?:(?:编译|构建|运行|执行|测试|验证|compile|build|run|execute|test|verify).{0,40}(?:如果|若|如有|有|when|if).{0,30}(?:错误|报错|失败|error|fail).{0,30}(?:修复|修正|fix|repair)|(?:如果|若|如有|when|if).{0,30}(?:编译|构建|运行|执行|测试|验证|compile|build|run|execute|test|verify).{0,30}(?:错误|报错|失败|error|fail).{0,30}(?:修复|修正|fix|repair))/i;
 
-const ARTIFACT_PATH_QUERY_RE = /(?:(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物).{0,18}(?:在哪|哪里|路径|位置|path|where)|(?:在哪|哪里|路径|位置|path|where).{0,18}(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物))/i;
+const ARTIFACT_PATH_QUERY_RE = /(?:(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物).{0,18}(?:在哪里|在哪|哪里|路径|位置|path|where)|(?:在哪里|在哪|哪里|路径|位置|path|where).{0,18}(?:可执行文件|执行文件|二进制|binary|executable|build\s+artifact|构建产物))/i;
 
 const PLAN_RE = /(方案|计划|设计|架构|怎么改|如何改|重构计划|实施步骤|roadmap|plan|design|architecture|approach)/i;
 
@@ -140,6 +143,43 @@ export function classifyIntent(prompt: string): IntentClassification {
     );
   }
 
+  if (ARTIFACT_PATH_QUERY_RE.test(text)) {
+    const signals = ['artifact-path-query'];
+    if (hasPath) signals.push('explicit-file-path');
+    return baseDecision(
+      'inspect',
+      hasPath ? 0.88 : 0.82,
+      hasPath ? 3 : 2,
+      signals,
+      hasPath ? 'artifact-path-query-with-file-path' : 'artifact-path-query',
+      READ_ONLY_TOOLS,
+    );
+  }
+
+  if (EXTERNAL_EFFECT_RE.test(text) && EXTERNAL_EFFECT_QUESTION_RE.test(text)) {
+    return baseDecision(
+      'qa',
+      0.78,
+      -2,
+      ['question-answer', 'external-effect-question'],
+      'external-effect-question',
+      [],
+    );
+  }
+
+  if (EXTERNAL_EFFECT_RE.test(text) && !EXTERNAL_EFFECT_QUESTION_RE.test(text)) {
+    const signals = ['external-effect-request', 'edit-request'];
+    if (hasPath) signals.push('explicit-file-path');
+    return baseDecision(
+      'edit',
+      hasPath ? 0.9 : 0.84,
+      hasPath ? 5 : 4,
+      signals,
+      hasPath ? 'external-effect-with-file-path' : 'external-effect-request',
+      EDIT_TOOLS,
+    );
+  }
+
   if (semanticContract.mutation.requested
     && (semanticContract.kind === 'standalone-code' || semanticContract.kind === 'file-artifact')) {
     const signals = [
@@ -195,19 +235,6 @@ export function classifyIntent(prompt: string): IntentClassification {
       hasPath ? ['planning-request', 'explicit-file-path'] : ['planning-request'],
       hasPath ? 'plan-with-file-path' : 'planning-request',
       PLAN_TOOLS,
-    );
-  }
-
-  if (ARTIFACT_PATH_QUERY_RE.test(text)) {
-    const signals = ['artifact-path-query'];
-    if (hasPath) signals.push('explicit-file-path');
-    return baseDecision(
-      'inspect',
-      hasPath ? 0.88 : 0.82,
-      hasPath ? 3 : 2,
-      signals,
-      hasPath ? 'artifact-path-query-with-file-path' : 'artifact-path-query',
-      READ_ONLY_TOOLS,
     );
   }
 

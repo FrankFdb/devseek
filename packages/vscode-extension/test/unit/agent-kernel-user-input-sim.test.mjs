@@ -39,13 +39,30 @@ const { routeTaskIntent } = req(taskIntentBundle);
 const { ChatRouteController } = req(chatControllerBundle);
 const { AgentKernelService } = req(kernelBundle);
 
-const BASIC_CASES = [
+const USER_INPUT_CASES = [
   {
     name: 'smalltalk',
     prompt: '你好',
     route: { family: 'smalltalk', chatKind: 'chat', mode: 'smalltalk', shape: 'general' },
     workflow: { kind: 'plain-chat', useAgent: false, toolPolicy: 'smalltalk' },
     validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
+  },
+  {
+    name: 'qa-external-effect-question',
+    prompt: '如何发布当前扩展？',
+    route: { family: 'qa', chatKind: 'chat', mode: 'qa', shape: 'general' },
+    workflow: { kind: 'plain-chat', useAgent: false, toolPolicy: 'qa' },
+    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
+  },
+  {
+    name: 'network-question',
+    prompt: '查询 npm 上 express 最新版本',
+    route: { family: 'qa', chatKind: 'chat', mode: 'qa', shape: 'general' },
+    workflow: { kind: 'plain-chat', useAgent: false, toolPolicy: 'qa' },
+    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
   },
   {
     name: 'simple-file',
@@ -53,6 +70,7 @@ const BASIC_CASES = [
     route: { family: 'simple-file', chatKind: 'code-change', mode: 'edit', shape: 'simple-file' },
     workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
     validation: { runtimeRequired: false, fileCheckRequired: true, formalProjectRequired: false },
+    mutation: { requested: true, sourceChange: false, fileArtifact: true, targets: ['basic.txt'] },
   },
   {
     name: 'standalone-cpp-run',
@@ -60,6 +78,7 @@ const BASIC_CASES = [
     route: { family: 'standalone-program', chatKind: 'code-change', mode: 'edit', shape: 'standalone-project' },
     workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
     validation: { runtimeRequired: true, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
   },
   {
     name: 'standalone-cpp-no-run',
@@ -67,6 +86,36 @@ const BASIC_CASES = [
     route: { family: 'standalone-program', chatKind: 'code-change', mode: 'edit', shape: 'standalone-project' },
     workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
     validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
+  },
+  {
+    name: 'existing-file-fix',
+    prompt: '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题',
+    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'existing-project' },
+    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
+    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: true },
+    mutation: {
+      requested: true,
+      sourceChange: true,
+      fileArtifact: false,
+      targets: ['packages/vscode-extension/src/app/workflow-service.ts'],
+    },
+  },
+  {
+    name: 'report-from-source-read-input',
+    prompt: '读取 src/a.ts 并生成 report.md，总结主要函数。',
+    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'existing-project' },
+    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
+    validation: { runtimeRequired: false, fileCheckRequired: true, formalProjectRequired: false },
+    mutation: { requested: true, sourceChange: false, fileArtifact: true, targets: ['report.md'] },
+  },
+  {
+    name: 'scoped-formal-source-delivery',
+    prompt: '请在 /tmp/out/src 交付代码副本，不要修改正式源码目录，参考 /repo/src/oam/src/license 模块通讯方式并实现接口。',
+    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'existing-project' },
+    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
+    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: true },
+    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
   },
   {
     name: 'read-only-path-with-run-token',
@@ -74,6 +123,31 @@ const BASIC_CASES = [
     route: { family: 'read-only-advisory', chatKind: 'chat', mode: 'inspect', shape: 'read-only-analysis' },
     workflow: { kind: 'inspect-agent', useAgent: true, toolPolicy: 'inspect' },
     validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
+  },
+  {
+    name: 'artifact-path-query',
+    prompt: '刚才生成的可执行文件在哪里？',
+    route: { family: 'read-only-advisory', chatKind: 'chat', mode: 'inspect', shape: 'read-only-analysis' },
+    workflow: { kind: 'inspect-agent', useAgent: true, toolPolicy: 'inspect' },
+    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
+  },
+  {
+    name: 'review-no-change',
+    prompt: 'review packages/vscode-extension/src/task-intent-router.ts，不要修改代码',
+    route: { family: 'review', chatKind: 'chat', mode: 'inspect', shape: 'read-only-analysis' },
+    workflow: { kind: 'inspect-agent', useAgent: true, toolPolicy: 'inspect' },
+    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
+  },
+  {
+    name: 'plan-only',
+    prompt: '给 packages/vscode-extension/src/task-intent-router.ts 一个重构计划，不要修改代码',
+    route: { family: 'read-only-advisory', chatKind: 'chat', mode: 'plan', shape: 'read-only-analysis' },
+    workflow: { kind: 'plan-agent', useAgent: true, toolPolicy: 'plan' },
+    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
   },
   {
     name: 'terminal-validation',
@@ -81,6 +155,31 @@ const BASIC_CASES = [
     route: { family: 'terminal-validation', chatKind: 'code-change', mode: 'run', shape: 'general' },
     workflow: { kind: 'run-agent', useAgent: true, toolPolicy: 'run' },
     validation: { runtimeRequired: true, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
+  },
+  {
+    name: 'conditional-run-repair',
+    prompt: '运行 npm test，如果失败请修复',
+    route: { family: 'terminal-validation', chatKind: 'code-change', mode: 'run', shape: 'validation-repair' },
+    workflow: { kind: 'run-agent', useAgent: true, toolPolicy: 'run' },
+    validation: { runtimeRequired: true, fileCheckRequired: false, formalProjectRequired: true },
+    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
+  },
+  {
+    name: 'release-external-effect',
+    prompt: '发布当前扩展到生产环境',
+    route: { family: 'release-external-effect', chatKind: 'code-change', mode: 'edit', shape: 'general' },
+    workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
+    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
+  },
+  {
+    name: 'destructive-requires-confirmation',
+    prompt: '删除 build 目录',
+    route: { family: 'destructive', chatKind: 'code-change', mode: 'destructive', shape: 'general', requiresConfirmation: true },
+    workflow: { kind: 'confirmation-required', useAgent: false, toolPolicy: 'destructive' },
+    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
+    mutation: { requested: false, sourceChange: false, fileArtifact: false, targets: [] },
   },
   {
     name: 'formal-project-refactor',
@@ -88,13 +187,14 @@ const BASIC_CASES = [
     route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'existing-project' },
     workflow: { kind: 'plan-agent', useAgent: false, toolPolicy: 'plan' },
     validation: { runtimeRequired: true, fileCheckRequired: false, formalProjectRequired: true },
+    mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
   },
 ];
 
-test('AgentKernel user-input simulation: basic prompts route through one canonical matrix', () => {
+test('AgentKernel user-input simulation: broad user prompts route through one canonical matrix', () => {
   const controller = new ChatRouteController();
 
-  for (const scenario of BASIC_CASES) {
+  for (const scenario of USER_INPUT_CASES) {
     const route = routeTaskIntent(scenario.prompt);
     const decision = controller.decide({
       userDisplay: scenario.prompt,
@@ -107,16 +207,21 @@ test('AgentKernel user-input simulation: basic prompts route through one canonic
     assert.equal(route.chatKind, scenario.route.chatKind, scenario.name);
     assert.equal(route.mode, scenario.route.mode, scenario.name);
     assert.equal(route.agentTaskShape, scenario.route.shape, scenario.name);
+    assert.equal(route.requiresConfirmation, scenario.route.requiresConfirmation ?? false, scenario.name);
     assert.equal(route.validation.runtimeRequired, scenario.validation.runtimeRequired, scenario.name);
     assert.equal(route.validation.fileCheckRequired, scenario.validation.fileCheckRequired, scenario.name);
     assert.equal(route.quality.formalProjectRequired, scenario.validation.formalProjectRequired, scenario.name);
+    assert.equal(route.mutation.requested, scenario.mutation.requested, scenario.name);
+    assert.equal(route.mutation.sourceChange, scenario.mutation.sourceChange, scenario.name);
+    assert.equal(route.mutation.fileArtifact, scenario.mutation.fileArtifact, scenario.name);
+    assert.deepEqual([...route.mutation.targets].sort(), [...scenario.mutation.targets].sort(), scenario.name);
     assert.equal(decision.workflow.kind, scenario.workflow.kind, scenario.name);
     assert.equal(decision.workflow.useAgent, scenario.workflow.useAgent, scenario.name);
     assert.equal(decision.toolPolicy.mode, scenario.workflow.toolPolicy, scenario.name);
   }
 });
 
-test('AgentKernel user-input simulation: code-change prompts enter kernel-owned settlement', () => {
+test('AgentKernel user-input simulation: agent-owned prompts enter kernel-owned settlement', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-kernel-user-input-'));
   const completions = [];
   const terminalPermissions = {
@@ -128,7 +233,7 @@ test('AgentKernel user-input simulation: code-change prompts enter kernel-owned 
 
   try {
     const kernel = new AgentKernelService(terminalPermissions);
-    const mutatingCases = BASIC_CASES.filter(scenario => scenario.route.chatKind === 'code-change');
+    const mutatingCases = USER_INPUT_CASES.filter(scenario => scenario.workflow.useAgent);
 
     for (const scenario of mutatingCases) {
       const run = kernel.startRun({
