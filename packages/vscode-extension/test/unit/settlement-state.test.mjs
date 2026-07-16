@@ -76,6 +76,44 @@ test('SettlementState: degraded evidence cannot settle as completed', () => {
   });
 });
 
+test('SettlementState: side-effect completion requires a passed QualityGate', () => {
+  assert.deepEqual(decideSettlementState({
+    requestedStatus: 'completed',
+    qualityGateRequired: true,
+    passedQualityGateCount: 0,
+    data: { tasksApplied: 1 },
+  }), {
+    status: 'failed',
+    terminal: true,
+    requestedStatus: 'completed',
+    reason: 'missing-quality-gate-verdict',
+    data: {
+      tasksApplied: 1,
+      reason: 'missing-quality-gate-verdict',
+      requestedStatus: 'completed',
+      passedQualityGateCount: 0,
+    },
+  });
+
+  assert.equal(decideSettlementState({
+    requestedStatus: 'completed',
+    qualityGateRequired: true,
+    passedQualityGateCount: 1,
+    data: { tasksApplied: 1 },
+  }).status, 'completed');
+});
+
+test('SettlementState: pending recovery or QualityGate vetoes completion', () => {
+  assert.equal(decideSettlementState({
+    requestedStatus: 'completed',
+    pendingRecoveryCount: 1,
+  }).reason, 'pending-recovery-settlement');
+  assert.equal(decideSettlementState({
+    requestedStatus: 'completed',
+    pendingQualityGateCount: 1,
+  }).reason, 'pending-quality-gate-settlement');
+});
+
 test('SettlementState: settlement append failure fails closed', () => {
   assert.deepEqual(decideSettlementState({
     requestedStatus: 'completed',

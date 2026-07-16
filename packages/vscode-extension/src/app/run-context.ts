@@ -221,6 +221,10 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     let settlement = decideSettlementState({
       requestedStatus: status,
       pendingAdverseOperationCount: this.pendingAdverseOperationIds.size,
+      qualityGateRequired: this.hasSideEffectEvidence,
+      passedQualityGateCount: this.passedQualityGateCount(),
+      pendingQualityGateCount: this.pendingQualityGateCount(),
+      pendingRecoveryCount: this.currentRecovery ? 1 : 0,
       evidenceDegraded: this.evidenceDegraded,
       data,
     });
@@ -360,6 +364,14 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       this.recordOperationEvent('side_effect.committed', operationId, 'committed', summary, recoveryDetails);
       this.hasSideEffectEvidence = true;
     }
+  }
+
+  private passedQualityGateCount(): number {
+    return [...this.qualityGateStates.values()].filter(state => state === 'passed').length;
+  }
+
+  private pendingQualityGateCount(): number {
+    return [...this.qualityGateStates.values()].filter(state => state === 'started').length;
   }
 
   private collectRecoverableAdverseOperationIds(): string[] {

@@ -10,6 +10,16 @@ export interface AgentRunSettlement {
   refused: boolean;
 }
 
+export function settleRunContextDirect(
+  runContext: DevSeekRunContext,
+  requestedStatus: RunContextStatus,
+  data: Record<string, unknown> = {},
+): AgentRunSettlement {
+  const status = runContext.complete(requestedStatus, data);
+  const completed = requestedStatus === 'completed' && status === 'completed';
+  return { requestedStatus, status, completed, refused: requestedStatus === 'completed' && !completed };
+}
+
 /** Settles an agent result before any UI/session success projection. */
 export function settleAgentLoopResult(
   terminalPermissions: Pick<TerminalPermissionCoordinator, 'completeRunContext'>,

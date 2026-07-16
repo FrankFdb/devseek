@@ -1,5 +1,3 @@
-import type { AutoValidationResult } from '../workspace/validation-service';
-
 export type VerificationResultStatus =
   | 'passed'
   | 'failed'
@@ -24,8 +22,21 @@ export interface VerificationAuthorityResult {
   sourceCanWrite: false;
 }
 
+export interface VerificationRawResult {
+  ran: boolean;
+  ok: boolean;
+  status?: 'passed' | 'failed' | 'blocked';
+  command?: string;
+  exitCode?: number | null;
+  reason?: string;
+  mode?: string;
+  output?: string;
+  risks?: string[];
+  alternativeChecks?: string[];
+}
+
 export function normalizeVerificationResult(
-  result: AutoValidationResult | null | undefined,
+  result: VerificationRawResult | null | undefined,
 ): VerificationAuthorityResult {
   if (!result) {
     return {

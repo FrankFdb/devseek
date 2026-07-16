@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { buildContext, buildPrompt, buildCommitPrompt, getDiagnosticsContext } from '../context-builder';
 import { getActiveProvider } from '../llm/provider-router';
+import { settleRunContextDirect } from '../app/agent-run-settlement';
 import { createDevSeekRunContext } from '../app/run-context';
 import type { TerminalPermissionCoordinator } from '../app/terminal-permission-coordinator';
 
@@ -205,7 +206,7 @@ export async function generateCommitMessage(routeChat: CommandRouteChat): Promis
       try {
         const diff = await repo.diff(true);
         if (!diff || diff.trim().length === 0) {
-          runContext.complete('cancelled', { reason: 'no-staged-diff' });
+          settleRunContextDirect(runContext, 'cancelled', { reason: 'no-staged-diff' });
           vscode.window.showWarningMessage('DeepSeek: 没有暂存的改动（请先 git add）');
           return;
         }
@@ -222,17 +223,17 @@ export async function generateCommitMessage(routeChat: CommandRouteChat): Promis
         });
 
         const msg = result.trim().replace(/^```[^\n]*\n?/, '').replace(/```$/, '').trim();
-        const settlementStatus = runContext.complete(msg ? 'completed' : 'failed', {
+        const settlement = settleRunContextDirect(runContext, msg ? 'completed' : 'failed', {
           reason: msg ? 'commit-message-generated' : 'empty-provider-response',
         });
-        if (msg && settlementStatus === 'completed') {
+        if (msg && settlement.completed) {
           repo.inputBox.value = msg;
           vscode.window.showInformationMessage(`✅ DeepSeek [${provider.displayName}] 已生成提交信息`);
         } else if (msg) {
           vscode.window.showErrorMessage('DeepSeek: 提交信息已生成，但运行证据结算失败，未写入 SCM 输入框。');
         }
       } catch (e) {
-        runContext.complete('failed', { reason: 'generate-commit-message-error' });
+        settleRunContextDirect(runContext, 'failed', { reason: 'generate-commit-message-error' });
         vscode.window.showErrorMessage(`DeepSeek: 生成提交信息失败 — ${(e as Error).message}`);
       }
     },
@@ -291,7 +292,7 @@ export async function applyDiff(routeChat: CommandRouteChat): Promise<void> {
         const newCode = codeMatch ? codeMatch[1].trimEnd() : result.trim();
 
         if (!newCode) {
-          runContext.complete('failed', { reason: 'empty-provider-response' });
+          settleRunContextDirect(runContext, 'failed', { reason: 'empty-provider-response' });
           vscode.window.showWarningMessage('DeepSeek: 未收到有效代码');
           return;
         }
@@ -335,17 +336,17 @@ export async function applyDiff(routeChat: CommandRouteChat): Promise<void> {
           const applied = await editor.edit(eb => eb.replace(editor.selection, newCode));
           runContext.recordAgentStatus({ ...task, state: applied ? 'completed' : 'failed' });
           if (!applied) throw new Error('VS Code 拒绝应用编辑');
-          const settlementStatus = runContext.complete('completed', { changedPaths: [ctx.relPath] });
-          if (settlementStatus === 'completed') {
+          const settlement = settleRunContextDirect(runContext, 'completed', { changedPaths: [ctx.relPath] });
+          if (settlement.completed) {
             vscode.window.showInformationMessage('✅ 代码已应用');
           } else {
             vscode.window.showErrorMessage('DeepSeek: 代码已写入，但运行证据结算失败；本轮不能标记完成。');
           }
         } else {
-          runContext.complete('cancelled', { reason: 'user-declined-diff' });
+          settleRunContextDirect(runContext, 'cancelled', { reason: 'user-declined-diff' });
         }
       } catch (e) {
-        runContext.complete('failed', { reason: 'apply-diff-error' });
+        settleRunContextDirect(runContext, 'failed', { reason: 'apply-diff-error' });
         vscode.window.showErrorMessage(`DeepSeek: 修改失败 — ${(e as Error).message}`);
       }
     },

@@ -1894,6 +1894,7 @@ test('Architecture: ARCH-17 agent runs are created through RunContext', () => {
   const extension = src('src/extension.ts');
   const appIndex = src('src/app/index.ts');
   const agentKernel = src('src/app/agent-kernel-service.ts');
+  const agentSettlement = src('src/app/agent-run-settlement.ts');
   const runContext = src('src/app/run-context.ts');
   const terminalCoordinator = src('src/app/terminal-permission-coordinator.ts');
 
@@ -1914,6 +1915,8 @@ test('Architecture: ARCH-17 agent runs are created through RunContext', () => {
     'settleAgentLoopResult(this.terminalPermissions, this.runContext',
     'Kernel run must settle through the terminal-evidence convergence boundary',
   );
+  assertContains(agentSettlement, 'settleRunContextDirect', 'legacy command completion must delegate to the settlement owner');
+  assertContains(agentSettlement, 'runContext.complete(requestedStatus, data)', 'settlement owner must be the only non-terminal direct completion delegate');
   assertContains(terminalCoordinator, 'runContext.complete(status, completionData)', 'convergence boundary must settle RunContext');
   assertContains(
     terminalCoordinator,

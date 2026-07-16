@@ -16,7 +16,47 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { settleAgentLoopResult } = req(bundlePath);
+const { settleAgentLoopResult, settleRunContextDirect } = req(bundlePath);
+
+test('direct run settlement reports refused completed state from RunContext authority', () => {
+  let completionRequest;
+  const runContext = {
+    complete(requestedStatus, data) {
+      completionRequest = { requestedStatus, data };
+      return 'failed';
+    },
+  };
+
+  const settlement = settleRunContextDirect(runContext, 'completed', { reason: 'missing-quality-gate' });
+
+  assert.deepEqual(completionRequest, {
+    requestedStatus: 'completed',
+    data: { reason: 'missing-quality-gate' },
+  });
+  assert.deepEqual(settlement, {
+    requestedStatus: 'completed',
+    status: 'failed',
+    completed: false,
+    refused: true,
+  });
+});
+
+test('direct run settlement keeps failed requests terminal but non-refused', () => {
+  const runContext = {
+    complete(requestedStatus) {
+      return requestedStatus;
+    },
+  };
+
+  const settlement = settleRunContextDirect(runContext, 'failed', { reason: 'provider-error' });
+
+  assert.deepEqual(settlement, {
+    requestedStatus: 'failed',
+    status: 'failed',
+    completed: false,
+    refused: false,
+  });
+});
 
 test('agent run settlement omits undefined verification fields for strict JSON completion data', () => {
   let completionData;

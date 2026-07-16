@@ -151,4 +151,129 @@ test('QualityGateService: blocked validation records accepted risk source', () =
   });
 });
 
+test('QualityGateService: weak or pending contract acceptance vetoes a passing verifier', () => {
+  const service = new QualityGateService();
+  const passingValidation = {
+    ran: true,
+    ok: true,
+    status: 'passed',
+    command: 'test -f report.md',
+    exitCode: 0,
+    output: 'ok',
+    cwd: '/repo',
+    mode: 'file-check',
+    reason: 'non-code-file-validation',
+    risks: [],
+    alternativeChecks: [],
+  };
+
+  const weak = service.evaluate({
+    changedPaths: ['report.md'],
+    validation: passingValidation,
+    contractAcceptance: {
+      status: 'weak-oracle',
+      reason: 'acceptance-not-bound-to-request',
+      evidenceRefs: ['contract:acceptance:not-bound'],
+    },
+  });
+  const pending = service.evaluate({
+    changedPaths: ['report.md'],
+    validation: passingValidation,
+    contractAcceptance: {
+      status: 'pending',
+      reason: 'acceptance-review-not-finished',
+    },
+  });
+
+  assert.equal(weak.status, 'blocked');
+  assert.equal(weak.contractAcceptanceStatus, 'weak-oracle');
+  assert.deepEqual(weak.evidenceRefs, ['contract:acceptance:not-bound']);
+  assert.equal(pending.status, 'blocked');
+  assert.equal(pending.contractAcceptanceStatus, 'pending');
+});
+
+test('QualityGateService: adverse evidence and model completion text cannot vote the gate pass', () => {
+  const service = new QualityGateService();
+  const decision = service.evaluate({
+    changedPaths: ['src/app.ts'],
+    validation: {
+      ran: true,
+      ok: true,
+      status: 'passed',
+      command: 'npm test',
+      exitCode: 0,
+      output: 'ok',
+      cwd: '/repo',
+      mode: 'test',
+      reason: 'extension-change',
+      risks: [],
+      alternativeChecks: [],
+    },
+    contractAcceptance: { status: 'accepted' },
+    adverseEvidenceCount: 1,
+    modelCompletionText: '我已经完成，测试全部通过。',
+  });
+
+  assert.equal(decision.status, 'fail');
+  assert.equal(decision.authority, 'QualityGateService');
+  assert.deepEqual(decision.evidenceRefs, ['run-context:adverse-evidence']);
+  assert.doesNotMatch(decision.summary, /我已经完成/);
+});
+
+test('QualityGateService: manual, not-run and flaky verification outcomes are explicit vetoes', () => {
+  const service = new QualityGateService();
+  const manual = service.evaluate({
+    changedPaths: ['docs/ui.md'],
+    validation: {
+      ran: false,
+      ok: false,
+      status: 'failed',
+      command: 'python visual_check.py',
+      exitCode: null,
+      output: 'manual observation required',
+      cwd: '/repo',
+      reason: 'manual-observation-required',
+      risks: [],
+      alternativeChecks: ['请人工确认 UI 输出。'],
+    },
+  });
+  const notRun = service.evaluate({
+    changedPaths: ['src/app.ts'],
+    validation: {
+      ran: false,
+      ok: false,
+      status: 'failed',
+      command: 'npm test',
+      exitCode: null,
+      output: '未配置验证命令授权边界，命令未执行。',
+      cwd: '/repo',
+      risks: [],
+      alternativeChecks: [],
+    },
+  });
+  const flaky = service.evaluate({
+    changedPaths: ['src/app.ts'],
+    validation: {
+      ran: true,
+      ok: false,
+      status: 'failed',
+      command: 'npm test',
+      exitCode: 124,
+      output: 'test timed out; possible flaky timeout',
+      cwd: '/repo',
+      reason: 'timeout',
+      risks: [],
+      alternativeChecks: [],
+    },
+  });
+
+  assert.equal(manual.status, 'blocked');
+  assert.equal(manual.verificationStatus, 'manual-required');
+  assert.match(manual.evidenceRefs[0], /^validation:blocked:manual-observation-required/);
+  assert.equal(notRun.status, 'blocked');
+  assert.equal(notRun.verificationStatus, 'not-run');
+  assert.equal(flaky.status, 'blocked');
+  assert.equal(flaky.verificationStatus, 'flaky');
+});
+
 console.log('\nQuality gate service tests passed.\n');

@@ -4,6 +4,10 @@ export interface SettlementStateInput {
   requestedStatus: SettlementTerminalStatus;
   existingTerminalStatus?: SettlementTerminalStatus;
   pendingAdverseOperationCount?: number;
+  qualityGateRequired?: boolean;
+  passedQualityGateCount?: number;
+  pendingQualityGateCount?: number;
+  pendingRecoveryCount?: number;
   evidenceDegraded?: boolean;
   settlementAppendFailed?: boolean;
   data?: Record<string, unknown>;
@@ -42,6 +46,37 @@ export function decideSettlementState(input: SettlementStateInput): SettlementSt
       requestedStatus: input.requestedStatus,
       unresolvedOperationCount: input.pendingAdverseOperationCount,
     }, 'unresolved-run-context-adverse-evidence');
+  }
+
+  if (input.requestedStatus === 'completed' && (input.pendingRecoveryCount ?? 0) > 0) {
+    return decision('failed', input.requestedStatus, {
+      ...data,
+      reason: 'pending-recovery-settlement',
+      requestedStatus: input.requestedStatus,
+      pendingRecoveryCount: input.pendingRecoveryCount,
+    }, 'pending-recovery-settlement');
+  }
+
+  if (input.requestedStatus === 'completed' && (input.pendingQualityGateCount ?? 0) > 0) {
+    return decision('failed', input.requestedStatus, {
+      ...data,
+      reason: 'pending-quality-gate-settlement',
+      requestedStatus: input.requestedStatus,
+      pendingQualityGateCount: input.pendingQualityGateCount,
+    }, 'pending-quality-gate-settlement');
+  }
+
+  if (
+    input.requestedStatus === 'completed'
+    && input.qualityGateRequired
+    && (input.passedQualityGateCount ?? 0) < 1
+  ) {
+    return decision('failed', input.requestedStatus, {
+      ...data,
+      reason: 'missing-quality-gate-verdict',
+      requestedStatus: input.requestedStatus,
+      passedQualityGateCount: input.passedQualityGateCount ?? 0,
+    }, 'missing-quality-gate-verdict');
   }
 
   if (input.requestedStatus === 'completed' && input.evidenceDegraded) {

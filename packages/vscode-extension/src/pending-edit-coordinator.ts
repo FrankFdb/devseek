@@ -3,6 +3,7 @@ import * as nodePath from 'path';
 import * as vscode from 'vscode';
 import type { AgentLoopResult } from './agent/loop-types';
 import { decideAgentAutopilotAccept } from './app/agent-autopilot-policy';
+import { settleRunContextDirect } from './app/agent-run-settlement';
 import { ProductMutationCoordinator, ProductMutationIndeterminateError } from './app/product-mutation-coordinator';
 import { createDevSeekRunContext } from './app/run-context';
 import {
@@ -466,11 +467,11 @@ export class PendingEditCoordinator {
           }),
         },
       });
-      if (runContext.complete('completed', { mutationKind: 'pending-edit-undo' }) !== 'completed') {
+      if (!settleRunContextDirect(runContext, 'completed', { mutationKind: 'pending-edit-undo' }).completed) {
         throw new ProductMutationIndeterminateError('Pending edit mutation could not be sealed as completed');
       }
     } catch (error) {
-      runContext.complete('failed', { mutationKind: 'pending-edit-undo' });
+      settleRunContextDirect(runContext, 'failed', { mutationKind: 'pending-edit-undo' });
       throw error;
     }
   }

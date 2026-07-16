@@ -3,6 +3,7 @@ import type { ChatOptions as BridgeChatOptions } from '../bridge-client';
 import type { AgentApplicationServiceDeps } from './agent-application-service';
 import { AgentApplicationService } from './agent-application-service';
 import type { AgentChatRequest } from './agent-protocol';
+import { settleRunContextDirect } from './agent-run-settlement';
 import { invokeProviderWithRunEvidence } from './provider-run-evidence';
 import { createDevSeekRunContext, type DevSeekRunContext } from './run-context';
 
@@ -79,12 +80,15 @@ export class EvidenceAwareChatRouter {
           (this.deps.warn ?? console.warn)(`[DevSeek] product run evidence provider event failed: ${message}`);
         },
       });
-      if (ownedContext && ownedContext.complete('completed', { reason: 'standalone-provider-completed' }) !== 'completed') {
+      if (
+        ownedContext
+        && !settleRunContextDirect(ownedContext, 'completed', { reason: 'standalone-provider-completed' }).completed
+      ) {
         throw new Error('standalone-provider-settlement-failed: provider response cannot be returned as a completed run');
       }
       return response;
     } catch (error) {
-      ownedContext?.complete('failed', { reason: 'standalone-provider-failed' });
+      if (ownedContext) settleRunContextDirect(ownedContext, 'failed', { reason: 'standalone-provider-failed' });
       throw error;
     }
   }

@@ -40,6 +40,7 @@ import {
   buildWorkspaceFileTree,
   getGitDiff,
 } from '../app/context-discovery-service';
+import { settleRunContextDirect } from '../app/agent-run-settlement';
 import { getProblemsContext } from '../context-builder';
 import { VSCodeSurfaceAdapter } from './vscode-surface-adapter';
 import { createDevSeekRunContext } from '../app/run-context';
@@ -368,15 +369,15 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
               }),
               invoke: () => undefined,
             });
-            const settlementStatus = commandRunContext.complete('completed');
-            if (settlementStatus !== 'completed') {
+            const settlement = settleRunContextDirect(commandRunContext, 'completed');
+            if (!settlement.completed) {
               postWebviewMessage(wv, {
                 type: 'error',
                 text: 'VS Code 命令候选已执行，但运行证据结算失败；本轮不能标记完成。',
               });
             }
           } catch (error) {
-            commandRunContext.complete('failed', { reason: 'generic-webview-command-refused' });
+            settleRunContextDirect(commandRunContext, 'failed', { reason: 'generic-webview-command-refused' });
             postWebviewMessage(wv, {
               type: 'error',
               text: error instanceof Error ? error.message : String(error),

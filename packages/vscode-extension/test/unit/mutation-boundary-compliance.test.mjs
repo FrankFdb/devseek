@@ -150,6 +150,7 @@ test('Mutation guard: durable settlement controls every completed success projec
   const agentKernel = source('src/app/agent-kernel-service.ts');
   const agentSettlement = source('src/app/agent-run-settlement.ts');
   const evidenceRouter = source('src/app/evidence-aware-chat-router.ts');
+  const pendingEdit = source('src/pending-edit-coordinator.ts');
 
   const agenticStart = extension.indexOf('const agSettlement = agentKernelRun.settleAgentLoopResult');
   const agenticSave = extension.indexOf('completed: agDurablyCompleted', agenticStart);
@@ -166,6 +167,7 @@ test('Mutation guard: durable settlement controls every completed success projec
   assert.match(agentKernel, /completeRunContext\(this\.runContext,\s*'failed'/);
   assert.match(agentSettlement, /const requestedStatus = result\.tasksFailed > 0 \? 'failed' : 'completed'/);
   assert.match(agentSettlement, /const status = terminalPermissions\.completeRunContext[\s\S]*?const completed = requestedStatus === 'completed' && status === 'completed'/);
+  assert.match(agentSettlement, /function settleRunContextDirect[\s\S]*?runContext\.complete\(requestedStatus, data\)/);
 
   assert.match(localRunner, /successMessage:\s*buildLocalExecutionSuccessMessage/);
   assert.doesNotMatch(
@@ -178,14 +180,24 @@ test('Mutation guard: durable settlement controls every completed success projec
     /const settlementStatus = terminalPermissionCoordinator\.completeRunContext\([\s\S]*?if \(settlementStatus === 'completed' && localExecutionResult\.successMessage\)/,
   );
   assert.match(extension, /const chatSettlementStatus = terminalPermissionCoordinator\.completeRunContext[\s\S]*?chatSettlementStatus !== 'completed'/);
-  assert.match(evidenceRouter, /ownedContext && ownedContext\.complete\('completed'[\s\S]*?\) !== 'completed'/);
+  assert.match(evidenceRouter, /settleRunContextDirect\(ownedContext, 'completed'[\s\S]*?\.completed/);
 
   assert.match(terminalCoordinator, /const settlementStatus = this\.completeRunContext\([\s\S]*?return \{ \.\.\.result, settlementStatus,/);
-  assert.match(commands, /const settlementStatus = runContext\.complete\(msg \? 'completed' : 'failed'/);
-  assert.match(commands, /if \(msg && settlementStatus === 'completed'\)/);
-  assert.match(commandRegistration, /const settlementStatus = runContext\.complete\('completed'[\s\S]*?settlementStatus === 'completed'/);
+  assert.match(commands, /const settlement = settleRunContextDirect\(runContext, msg \? 'completed' : 'failed'/);
+  assert.match(commands, /if \(msg && settlement\.completed\)/);
+  assert.match(commandRegistration, /const settlement = settleRunContextDirect\(runContext, 'completed'[\s\S]*?settlement\.completed/);
+  assert.match(pendingEdit, /settleRunContextDirect\(runContext, 'completed', \{ mutationKind: 'pending-edit-undo' \}\)\.completed/);
   assert.equal((viewProvider.match(/const settlementStatus = this\.deps\.terminalPermissionCoordinator\.completeRunContext/g) ?? []).length, 2);
   assert.equal((viewProvider.match(/requestedStatus === 'completed' && settlementStatus !== 'completed'/g) ?? []).length, 2);
+
+  const directRunCompletionOwners = sources
+    .filter(file => /\b[A-Za-z_$][\w$]*Context\??\.complete\s*\(/.test(file.source))
+    .map(file => file.relativePath)
+    .sort();
+  assert.deepEqual(directRunCompletionOwners, [
+    'src/app/agent-run-settlement.ts',
+    'src/app/terminal-permission-coordinator.ts',
+  ]);
 });
 
 test('Mutation guard: every ValidationService construction injects command authority and validation is pure', () => {

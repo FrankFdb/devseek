@@ -18,6 +18,7 @@ import {
 import { getActiveProvider } from '../llm/provider-router';
 import type { DeepSeekViewProvider } from './deepseek-view-provider';
 import { addResourceToChat } from '../app/chat-resource-actions';
+import { settleRunContextDirect } from '../app/agent-run-settlement';
 import { MemoryService } from '../app/memory-service';
 import { createDevSeekRunContext } from '../app/run-context';
 import type { TerminalPermissionCoordinator } from '../app/terminal-permission-coordinator';
@@ -263,7 +264,7 @@ async function applyInlineChatResult(args: {
     const codeMatch = result.match(/```[^\n]*\n([\s\S]*?)```/);
     const newCode = codeMatch ? codeMatch[1].trimEnd() : result.trim();
     if (!newCode) {
-      runContext.complete('failed', { reason: 'empty-provider-response' });
+      settleRunContextDirect(runContext, 'failed', { reason: 'empty-provider-response' });
       vscode.window.showWarningMessage('DeepSeek: 未收到有效代码');
       return;
     }
@@ -289,8 +290,8 @@ async function applyInlineChatResult(args: {
         newContent: args.editor.document.getText(),
         existed: true,
       });
-      const settlementStatus = runContext.complete('completed', { changedPaths: [relPath] });
-      if (settlementStatus === 'completed') {
+      const settlement = settleRunContextDirect(runContext, 'completed', { changedPaths: [relPath] });
+      if (settlement.completed) {
         vscode.window.showInformationMessage('✅ DeepSeek 行内修改已应用（侧边栏可对比 / 撤销）');
       } else {
         vscode.window.showErrorMessage('DeepSeek: 行内修改已写入，但运行证据结算失败；本轮不能标记完成。');
@@ -299,12 +300,12 @@ async function applyInlineChatResult(args: {
     }
 
     await args.deps.pushChatPanel(`⚡ **${args.instruction}** · \`${args.filename}\``, args.prompt, false);
-    const settlementStatus = runContext.complete('completed', { reason: 'forwarded-to-chat-panel' });
-    if (settlementStatus !== 'completed') {
+    const settlement = settleRunContextDirect(runContext, 'completed', { reason: 'forwarded-to-chat-panel' });
+    if (!settlement.completed) {
       throw new Error('内容已转发到聊天面板，但运行证据结算失败；本轮不能标记完成。');
     }
   } catch (error) {
-    runContext?.complete('failed', { reason: 'inline-chat-error' });
+    if (runContext) settleRunContextDirect(runContext, 'failed', { reason: 'inline-chat-error' });
     vscode.window.showErrorMessage(`DeepSeek Inline Chat: ${(error as Error).message}`);
   }
 }
