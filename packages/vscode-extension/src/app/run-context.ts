@@ -11,8 +11,9 @@ import {
 import { requiresFileChangeEvidence } from '../agent/completion-evidence';
 import type { AgentStatusEvent } from '../agent/events';
 import { buildTaskContract, hasSourceClaimArtifactContract, type TaskContract } from '../agent/task-contract';
+import { decideSettlementState, type SettlementTerminalStatus } from './settlement-state';
 
-export type RunContextStatus = 'completed' | 'failed' | 'cancelled';
+export type RunContextStatus = SettlementTerminalStatus;
 
 export interface DevSeekRunContextOptions {
   workspaceRoot: string;
@@ -202,25 +203,22 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   }
 
   complete(status: RunContextStatus, data: Record<string, unknown> = {}): RunContextStatus {
-    if (this.settlementStatus) return this.settlementStatus;
-    let effectiveStatus = status;
-    let completionData = data;
-    if (status === 'completed' && this.pendingAdverseOperationIds.size > 0) {
-      effectiveStatus = 'failed';
-      completionData = {
-        ...data,
-        reason: 'unresolved-run-context-adverse-evidence',
+    if (this.settlementStatus) {
+      return decideSettlementState({
         requestedStatus: status,
-        unresolvedOperationCount: this.pendingAdverseOperationIds.size,
-      };
+        existingTerminalStatus: this.settlementStatus,
+        data,
+      }).status;
     }
-    if (effectiveStatus === 'completed' && this.evidenceDegraded) {
-      effectiveStatus = 'failed';
-      completionData = {
-        ...completionData,
-        reason: 'evidence-degraded',
-        requestedStatus: status,
-      };
+    let settlement = decideSettlementState({
+      requestedStatus: status,
+      pendingAdverseOperationCount: this.pendingAdverseOperationIds.size,
+      evidenceDegraded: this.evidenceDegraded,
+      data,
+    });
+    let effectiveStatus = settlement.status;
+    let completionData = settlement.data;
+    if (settlement.reason === 'evidence-degraded') {
       this.trace.error('run-evidence', 'completed-settlement-refused', {
         reason: 'evidence-degraded',
       });
@@ -241,12 +239,13 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
         this.markEvidenceDegraded(error);
         this.trace.error('run-evidence', 'settlement-failed', summarizeEvidenceError(error));
         if (effectiveStatus !== 'failed') {
-          effectiveStatus = 'failed';
-          completionData = {
-            ...completionData,
-            reason: 'settlement-failed',
+          settlement = decideSettlementState({
             requestedStatus: status,
-          };
+            settlementAppendFailed: true,
+            data: completionData,
+          });
+          effectiveStatus = settlement.status;
+          completionData = settlement.data;
           try {
             this.closeOpenOperationsForAbnormalSettlement(completionData);
             this.evidence.settleAndSeal({
