@@ -11,6 +11,7 @@ import {
 import { requiresFileChangeEvidence } from '../agent/completion-evidence';
 import type { AgentStatusEvent } from '../agent/events';
 import { buildTaskContract, hasSourceClaimArtifactContract, type TaskContract } from '../agent/task-contract';
+import { buildRunSettlementSealBinding, type RunSettlementBuildIdentity } from './run-settlement-seal-binding';
 import { decideSettlementState, type SettlementTerminalStatus } from './settlement-state';
 
 export type RunContextStatus = SettlementTerminalStatus;
@@ -62,6 +63,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   private readonly evidenceOwnerToken = createProductRunEvidenceAuthorityToken();
   private readonly taskContractFingerprint: string;
   private readonly requiresSourceClaimArtifactVerification: boolean;
+  private readonly buildIdentity: RunSettlementBuildIdentity;
   private readonly evidence?: ProductRunEvidenceSession;
   private evidenceDegraded = false;
   private evidenceDegradationRecorded = false;
@@ -90,6 +92,12 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     this.taskContractFingerprint = fingerprintTaskContract(taskContract);
     this.requiresSourceClaimArtifactVerification = hasSourceClaimArtifactContract(taskContract)
       && requiresFileChangeEvidence(options.userPrompt);
+    this.buildIdentity = {
+      app_version: options.appVersion ?? null,
+      build_channel: options.buildChannel ?? null,
+      build_id: options.buildId ?? null,
+      git_commit: options.gitCommit ?? null,
+    };
     this.trace = createDevSeekTraceLogger({
       workspaceRoot: options.workspaceRoot,
       source: options.source || 'vscode-extension.run-context',
@@ -232,6 +240,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
           payload: {
             task_contract_fingerprint: this.taskContractFingerprint,
             requires_source_claim_artifact_verification: this.requiresSourceClaimArtifactVerification,
+            settlement_binding: this.buildSettlementBinding(),
             completion_summary: summarizeTraceText(safeCompletionSummary(completionData)),
           },
         });
@@ -254,6 +263,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
               payload: {
                 task_contract_fingerprint: this.taskContractFingerprint,
                 requires_source_claim_artifact_verification: this.requiresSourceClaimArtifactVerification,
+                settlement_binding: this.buildSettlementBinding(),
                 completion_summary: summarizeTraceText(safeCompletionSummary(completionData)),
               },
             });
@@ -677,10 +687,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
           owner_surface: 'vscode',
           session_id: this.sessionId ?? null,
           mode: this.mode ?? null,
-          app_version: options.appVersion ?? null,
-          build_channel: options.buildChannel ?? null,
-          build_id: options.buildId ?? null,
-          git_commit: options.gitCommit ?? null,
+          ...this.buildIdentity,
         },
       });
       evidence.record({
@@ -704,6 +711,16 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       this.evidenceDegraded = true;
       return undefined;
     }
+  }
+
+  private buildSettlementBinding(): Record<string, import('@devseek-netai/shared').RunEvidenceJson> {
+    return buildRunSettlementSealBinding({
+      runId: this.runId,
+      ownerSurface: 'vscode',
+      taskContractFingerprint: this.taskContractFingerprint,
+      requiresSourceClaimArtifactVerification: this.requiresSourceClaimArtifactVerification,
+      ...this.buildIdentity,
+    });
   }
 }
 

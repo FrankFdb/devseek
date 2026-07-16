@@ -300,6 +300,81 @@ test('RunContext: projects mutation, verification, gate, tool and checkpoint fac
   }
 });
 
+test('RunContext: sealed settlement binds run identity, contract and build version', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-seal-'));
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-seal-binding',
+      userPrompt: '创建 marker.txt，内容为：OK，并验证。',
+      traceLevel: 'debug',
+      appVersion: '1.0.0-test',
+      buildChannel: 'debug',
+      buildId: '20260716-test',
+      gitCommit: 'abc1234',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      state: 'started',
+      taskId: 'marker',
+      taskFile: 'marker.txt',
+      taskAction: 'create',
+      title: '创建 marker.txt',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      state: 'completed',
+      taskId: 'marker',
+      taskFile: 'marker.txt',
+      taskAction: 'create',
+      title: '创建 marker.txt',
+    });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'validate', state: 'started', title: '读取 marker.txt', evidenceOperationId: 'verify-marker' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'validate', state: 'completed', title: '验证通过', evidenceOperationId: 'verify-marker' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'quality', state: 'started', title: '评估质量门禁', evidenceOperationId: 'verify-marker' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'quality', state: 'completed', title: '质量门禁通过', evidenceOperationId: 'verify-marker' });
+    context.complete('completed', { changedPaths: ['marker.txt'] });
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read('run-context-seal-binding');
+    const opened = events.find(event => event.type === 'run.opened');
+    const accepted = events.find(event => event.type === 'command.accepted');
+    const settled = events.find(event => event.type === 'run.settled');
+    const seal = ledger.getSeal('run-context-seal-binding');
+    assert.equal(seal.final_event_sha256, settled.event_sha256);
+    assert.deepEqual(settled.payload.details.settlement_binding, {
+      protocol: 'devseek.settlement-seal-binding/v1',
+      owner_surface: opened.payload.owner_surface,
+      run_id: 'run-context-seal-binding',
+      task_contract_fingerprint: accepted.payload.task_contract_fingerprint,
+      requires_source_claim_artifact_verification: accepted.payload.requires_source_claim_artifact_verification,
+      app_version: opened.payload.app_version,
+      build_channel: opened.payload.build_channel,
+      build_id: opened.payload.build_id,
+      git_commit: opened.payload.git_commit,
+    });
+
+    const otherContext = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-seal-binding-other',
+      userPrompt: '创建 other.txt',
+      traceLevel: 'debug',
+    });
+    otherContext.complete('completed', { changedPaths: ['other.txt'] });
+    const otherSeal = ledger.getSeal('run-context-seal-binding-other');
+    assert.equal(ledger.verify('run-context-seal-binding', {
+      eventCount: otherSeal.event_count,
+      finalEventSha256: otherSeal.final_event_sha256,
+      finalRecordSha256: otherSeal.final_record_sha256,
+      sealSha256: otherSeal.seal_sha256,
+    }).status, 'invalid');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('RunContext: deterministic simple-file execution closes its side-effect before settlement', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-simple-file-'));
   try {
