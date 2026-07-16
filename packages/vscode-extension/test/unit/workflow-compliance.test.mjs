@@ -1549,6 +1549,20 @@ test('Architecture: ValidationService owns validation semantics and receives exe
   assert.doesNotMatch(applier, /planCppValidation|child_process|runShell|runCppAutoValidation/, 'workspace applier must not own validation execution internals');
 });
 
+test('Architecture: verification result authority normalizes runner facts before settlement', () => {
+  const authority = src('src/app/verification-result-authority.ts');
+  const autoValidation = src('src/agent/auto-validation.ts');
+  assertContains(authority, 'normalizeVerificationResult', 'verification result authority must expose the normalization boundary');
+  assertContains(authority, 'sourceCanWrite: false', 'verification authority must be read-only and unable to mutate source');
+  assertContains(authority, "status: 'missing'", 'missing verification must be an explicit blocked fact');
+  assertContains(authority, "status: 'not-run'", 'not-run verification must not masquerade as ordinary failure');
+  assertContains(authority, "status: 'manual-required'", 'manual verification must be explicit');
+  assertContains(authority, "status: 'flaky'", 'flaky verification must be explicit');
+  assertContains(autoValidation, 'normalizeVerificationResult', 'auto-validation must consume normalized verification results');
+  assertContains(autoValidation, 'shouldEmitTerminalEvidenceForVerification', 'auto-validation must not emit terminal evidence for non-terminal verification states');
+  assertContains(autoValidation, '[verification_result:', 'AI feedback must carry the normalized verification status');
+});
+
 test('Architecture: agent final validation uses written-file evidence, not planned targets', () => {
   const agentLoop = src('src/agent-loop.ts');
   const modifiedPathsBlock = agentLoop.match(/const modifiedPaths = uniquePaths\([\s\S]*?\n\s*\);\n\s*let validationOutcome/);

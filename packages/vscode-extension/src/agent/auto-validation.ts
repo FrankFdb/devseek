@@ -20,6 +20,13 @@ import {
   buildValidationFailureDiagnosis,
   type FailureDiagnosis,
 } from '../app/failure-diagnosis';
+import {
+  normalizeVerificationResult,
+  shouldEmitTerminalEvidenceForVerification,
+  verificationResultIsCompletionCandidate,
+  type VerificationAuthorityResult,
+  type VerificationResultStatus,
+} from '../app/verification-result-authority';
 
 export interface AgentAutoValidationCallbacks {
   onAgentStatus: (status: AgentStatusEvent) => void | Promise<void>;
@@ -108,7 +115,9 @@ function workspaceRelativeValidationPaths(writtenFiles: WrittenFileEvidence[], w
   return relPaths;
 }
 
-export function validationResultToTerminalEvidence(result: AutoValidationResult): TerminalEvidence {
+export function validationResultToTerminalEvidence(result: AutoValidationResult): TerminalEvidence | undefined {
+  const verification = normalizeVerificationResult(result);
+  if (!shouldEmitTerminalEvidenceForVerification(verification)) return undefined;
   const classified = classifyTerminalEvidenceCommand(result.command);
   const kind: TerminalEvidenceKind = result.mode === 'compile-run'
     ? 'compile-run'
@@ -130,7 +139,9 @@ export function validationResultToTerminalEvidence(result: AutoValidationResult)
 }
 
 function formatAutoValidationFeedback(result: AutoValidationResult): string {
+  const verification = normalizeVerificationResult(result);
   return [
+    `[verification_result: ${verification.status}]`,
     `[auto_validation: ${result.command}]`,
     `cwd=${result.cwd}`,
     `exitCode=${result.exitCode ?? 'unknown'}`,
@@ -143,9 +154,11 @@ function formatAutoValidationFeedback(result: AutoValidationResult): string {
 }
 
 function formatBlockedAutoValidationFeedback(result: AutoValidationResult): string {
+  const verification = normalizeVerificationResult(result);
   return [
+    `[verification_result: ${verification.status}]`,
     '[auto_validation: blocked]',
-    `reason=${result.reason ?? 'no-auto-validation-target'}`,
+    `reason=${verification.reason ?? result.reason ?? 'no-auto-validation-target'}`,
     result.output ? result.output.slice(0, 1600) : '',
     result.risks?.length ? `risks:\n${result.risks.map((risk) => `- ${risk}`).join('\n')}` : '',
     result.alternativeChecks?.length ? `alternativeChecks:\n${result.alternativeChecks.map((check) => `- ${check}`).join('\n')}` : '',
@@ -349,7 +362,7 @@ function buildExactContentRepairBlockedReason(result: AutoValidationResult): str
   ].filter(Boolean).join('\n');
 }
 
-function validationEvidenceRef(status: 'passed' | 'failed' | 'blocked', result: AutoValidationResult): string {
+function validationEvidenceRef(status: VerificationResultStatus, result: AutoValidationResult): string {
   return `validation:${status}:${result.command || result.reason || 'unknown'}`;
 }
 
@@ -363,33 +376,35 @@ function buildAutoValidationQualityGate(
   result: AutoValidationResult,
   changedPaths: string[] = [],
 ): NonNullable<AgentAutoValidationResult['qualityGate']> {
-  if (result.status === 'blocked' || result.ran === false) {
-    const evidenceRef = validationEvidenceRef('blocked', result);
+  const verification = normalizeVerificationResult(result);
+  if (!shouldEmitTerminalEvidenceForVerification(verification)) {
+    const evidenceRef = validationEvidenceRef(verification.status, result);
+    const diagnosisStatus = verification.status === 'missing' ? 'missing' : 'blocked';
     return {
       status: 'blocked',
-      summary: `QualityGate 阻塞：${result.reason || 'validation-blocked'}。`,
+      summary: `QualityGate 阻塞：${verification.reason || verification.status}。`,
       evidenceRefs: [evidenceRef],
       failureDiagnosis: buildValidationFailureDiagnosis({
-        status: 'blocked',
+        status: diagnosisStatus,
         changedPaths,
         command: result.command,
         exitCode: result.exitCode,
         output: result.output,
-        reason: result.reason || 'validation-blocked',
+        reason: verification.reason || verification.status,
         mode: result.mode,
         evidenceRef,
       }),
-      risks: result.risks?.length
-        ? result.risks
+      risks: verification.risks.length
+        ? verification.risks
         : ['没有自动验证证据，不能证明变更后的行为正确。'],
-      alternativeChecks: result.alternativeChecks?.length
-        ? result.alternativeChecks
+      alternativeChecks: verification.alternativeChecks.length
+        ? verification.alternativeChecks
         : ['人工检查变更文件内容是否符合用户请求。'],
       requiredActions: ['补充可运行验证，或由用户明确接受剩余风险。'],
     };
   }
 
-  if (result.ok) {
+  if (verificationResultIsCompletionCandidate(verification)) {
     return {
       status: 'pass',
       summary: `QualityGate 通过：${result.command || '自动验证'} 已通过。`,
@@ -480,7 +495,8 @@ export async function runAgentAutoValidationForWrites(
       }
       return formalProjectQuality ?? {};
     }
-    if (result.status === 'blocked' || result.ran === false) {
+  const verification = normalizeVerificationResult(result);
+  if (!shouldEmitTerminalEvidenceForVerification(verification)) {
       const feedbackForAI = formatBlockedAutoValidationFeedback(result);
       const qualityGate = formalProjectQuality?.qualityGate ?? buildAutoValidationQualityGate(result, changedPaths);
       await callbacks.onAgentStatus({
@@ -506,7 +522,8 @@ export async function runAgentAutoValidationForWrites(
       .filter(Boolean)
       .join('\n\n');
     const finalQualityGate = formalProjectQuality?.qualityGate ?? buildAutoValidationQualityGate(result, changedPaths);
-    const validationPassed = result.ok && !formalProjectQuality;
+    const validationPassed = verificationResultIsCompletionCandidate(verification) && !formalProjectQuality;
+    const evidence = validationResultToTerminalEvidence(result);
     await callbacks.onAgentStatus({
       type: 'agentStatus',
       phase: 'validate',
@@ -521,7 +538,7 @@ export async function runAgentAutoValidationForWrites(
     });
     await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, finalQualityGate);
     return {
-      evidence: validationResultToTerminalEvidence(result),
+      ...(evidence ? { evidence } : {}),
       feedbackForAI: finalFeedbackForAI,
       repairBlockedReason,
       qualityGate: finalQualityGate,

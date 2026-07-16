@@ -179,6 +179,40 @@ test('Agent auto validation: blocked validation is a QualityGate block, not fail
   assert.deepEqual(activities, []);
 });
 
+test('Agent auto validation: manual not-run verification is normalized before QualityGate projection', async () => {
+  const statuses = [];
+  const activities = [];
+  const validationService = {
+    validateWorkspaceChanges: async () => ({
+      ran: false,
+      ok: false,
+      status: 'failed',
+      command: 'python visual_check.py',
+      exitCode: null,
+      output: 'manual observation required',
+      cwd: '/repo',
+      reason: 'manual-observation-required',
+      risks: [],
+      alternativeChecks: ['请人工确认 UI 输出。'],
+    }),
+  };
+
+  const result = await runAgentAutoValidationForWrites(
+    [{ path: '/repo/docs/manual.md', basename: 'manual.md', linesAdded: 1, linesRemoved: 0, action: 'create' }],
+    '/repo',
+    '创建 docs/manual.md，并让用户人工确认 UI 输出。',
+    makeCallbacks(statuses, activities),
+    'conservative',
+    { validationService },
+  );
+
+  assert.equal(result.evidence, undefined);
+  assert.equal(result.qualityGate.status, 'blocked');
+  assert.match(result.feedbackForAI, /\[verification_result: manual-required\]/);
+  assert.match(result.qualityGate.evidenceRefs[0], /^validation:manual-required:/);
+  assert.deepEqual(activities, []);
+});
+
 test('Agent auto validation: markdown file checks become read/check evidence, not compile evidence', async () => {
   const validationService = {
     validateWorkspaceChanges: async () => ({
