@@ -364,6 +364,36 @@ async function collectUiReport(page) {
   });
 }
 
+async function assertProviderPromptIsolation(page) {
+  const userPrompt = '写一个简单 C 程序，打印 hello everyday';
+  const internalProviderPrompt = [
+    '你正在为 DevSeek 编程智能体做真实网页交互测试。',
+    '请严格按以下格式回复，第一行必须是一个 DevSeek 工具调用，不要放入代码块：',
+    '[TOOL:manage_todo_list {"todoList":[{"id":1,"title":"创建 C 程序","status":"in-progress"}]}]',
+    '随后用简体中文说明执行计划。',
+    '',
+    '用户任务：' + userPrompt,
+  ].join('\n');
+
+  await dispatch(page, { type: 'userMessage', text: userPrompt, prompt: internalProviderPrompt });
+  await page.click('.user-msg-actions button');
+  const editValue = await page.locator('.user-edit-wrap textarea').inputValue();
+  assert(editValue === userPrompt, '编辑重发默认文本泄漏了内部 Provider prompt');
+
+  const visibleAfterEdit = await page.evaluate(() => document.getElementById('messages')?.textContent || '');
+  assert(!visibleAfterEdit.includes('你正在为 DevSeek 编程智能体做真实网页交互测试'), '消息区泄漏了内部 Provider prompt');
+  assert(!visibleAfterEdit.includes('[TOOL:manage_todo_list'), '消息区泄漏了内部工具指令');
+  await page.click('.user-edit-actions button.cancel');
+
+  await dispatch(page, { type: 'startResponse', agentMode: false, prompt: internalProviderPrompt, expectGeneratedArtifacts: true });
+  await dispatch(page, { type: 'delta', text: '可以，下面是最小 C 程序。' });
+  await dispatch(page, { type: 'endResponse' });
+  const visibleAfterResponse = await page.evaluate(() => document.getElementById('messages')?.textContent || '');
+  assert(!visibleAfterResponse.includes('你正在为 DevSeek 编程智能体做真实网页交互测试'), '响应期间泄漏了内部 Provider prompt');
+  assert(!visibleAfterResponse.includes('[TOOL:manage_todo_list'), '响应期间泄漏了内部工具指令');
+  await page.evaluate(() => { document.getElementById('messages').innerHTML = ''; });
+}
+
 async function runRealBridgeFlow(page, promptText) {
   let bridge;
   const timings = { startedAt: Date.now(), firstDeltaMs: null, finishedMs: null };
@@ -686,6 +716,7 @@ async function main() {
       throw error;
     });
     await page.goto(pathToFileURL(htmlPath).href);
+    await assertProviderPromptIsolation(page);
 
     await page.fill('#input', prompt);
     await page.click('#send-btn');

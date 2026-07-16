@@ -1046,7 +1046,7 @@ function addUserBubble(markdown, promptText, images) {
   editBtn.textContent = '✎ 编辑重发';
   editBtn.title = '编辑后重新发送';
   editBtn.addEventListener('click', function() {
-    enterUserEditMode(turn, promptText || markdown);
+    enterUserEditMode(turn, markdown);
   });
 
   actions.appendChild(editBtn);
