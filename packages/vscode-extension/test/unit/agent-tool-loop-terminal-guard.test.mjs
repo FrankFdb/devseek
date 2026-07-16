@@ -8,7 +8,7 @@ import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import Module from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -698,6 +698,39 @@ test('ToolLoop delete_file leaves the file intact when the file-write policy rej
     }]);
     assert.equal(result.writtenFiles, undefined);
     assert.match(result.feedbackForAI, /delete_file: notes\.txt.*写入权限策略阻止/s);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('ToolLoop delete_file records applied change from the delete transaction evidence', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-delete-file-transaction-'));
+  try {
+    const filePath = path.join(workspaceRoot, 'obsolete.txt');
+    const originalContent = 'remove this file\n';
+    writeFileSync(filePath, originalContent, 'utf8');
+    const applied = [];
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'delete_file', input: { path: 'obsolete.txt' } }],
+      {
+        onBeforeFileWrite: async () => true,
+        onAppliedChange: async change => applied.push(change),
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.equal(existsSync(filePath), false);
+    assert.deepEqual(applied, [{
+      path: filePath,
+      existed: true,
+      oldContent: originalContent,
+      newContent: '',
+    }]);
+    assert.equal(result.writtenFiles?.[0]?.action, 'delete');
+    assert.match(result.feedbackForAI, /delete_file: obsolete\.txt.*已删除/s);
   } finally {
     rmSync(workspaceRoot, { recursive: true, force: true });
   }

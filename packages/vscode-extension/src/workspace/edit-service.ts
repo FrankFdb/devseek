@@ -58,6 +58,18 @@ export interface WorkspaceTextFileCommitToken {
   after: WorkspaceTextFileBaseline;
 }
 
+export interface WorkspaceTextFileDeleteCommitToken {
+  absPath: string;
+  workspaceRoot: string;
+  before: WorkspaceTextFileBaseline;
+  after: WorkspaceTextFileBaseline;
+}
+
+export interface WorkspaceDeleteResult {
+  deleted: boolean;
+  commitToken: WorkspaceTextFileDeleteCommitToken;
+}
+
 export interface WorkspaceCommittedEdit extends WorkspaceAppliedEdit {
   commitToken: WorkspaceTextFileCommitToken;
 }
@@ -204,9 +216,19 @@ export class WorkspaceEditService {
     }
   }
 
-  deleteTextFile(absPath: string, workspaceRoot: string): boolean {
+  deleteTextFile(absPath: string, workspaceRoot: string): WorkspaceDeleteResult {
     const baseline = this.captureTextFileBaseline(absPath, workspaceRoot);
-    if (!baseline.snapshot.existed) return false;
+    if (!baseline.snapshot.existed) {
+      return {
+        deleted: false,
+        commitToken: {
+          absPath: baseline.absPath,
+          workspaceRoot: baseline.workspaceRoot,
+          before: baseline,
+          after: baseline,
+        },
+      };
+    }
     const parent = openAuthorizedParentDirectory(baseline);
     try {
       const current = this.captureTextFileBaseline(absPath, workspaceRoot);
@@ -220,7 +242,21 @@ export class WorkspaceEditService {
       try {
         fs.lstatSync(targetPath);
       } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return true;
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+          const after = this.captureTextFileBaseline(baseline.absPath, baseline.workspaceRoot);
+          if (after.snapshot.existed || !parentMatchesBaseline(parent, after)) {
+            throw new WorkspaceEditConflictError(absPath, 'workspace-edit-boundary: deleted target failed absence/readback verification');
+          }
+          return {
+            deleted: true,
+            commitToken: {
+              absPath: baseline.absPath,
+              workspaceRoot: baseline.workspaceRoot,
+              before: baseline,
+              after,
+            },
+          };
+        }
         throw error;
       }
       throw new WorkspaceEditConflictError(absPath, 'workspace-edit-boundary: deleted target still exists after commit');

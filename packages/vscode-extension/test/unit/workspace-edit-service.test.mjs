@@ -438,6 +438,29 @@ test('WorkspaceEditService: directory creation returns route, absence and inode 
   }
 });
 
+test('WorkspaceEditService: delete returns CAS-bound content, inode and absence commit evidence', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-delete-transaction-'));
+  try {
+    const target = path.join(workspaceRoot, 'obsolete.txt');
+    writeFileSync(target, 'delete me\n', 'utf8');
+    const before = statSync(target);
+
+    const result = new WorkspaceEditService().deleteTextFile(target, workspaceRoot);
+
+    assert.equal(result.deleted, true);
+    assert.equal(result.commitToken.absPath, target);
+    assert.equal(result.commitToken.workspaceRoot, workspaceRoot);
+    assert.equal(result.commitToken.before.snapshot.existed, true);
+    assert.equal(result.commitToken.before.snapshot.content, 'delete me\n');
+    assert.equal(result.commitToken.before.leafInode, before.ino.toString());
+    assert.equal(result.commitToken.after.snapshot.existed, false);
+    assert.equal(result.commitToken.after.snapshot.content, '');
+    assert.equal(existsSync(target), false);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 function readFileSyncSafe(filePath) {
   try {
     return readFileSync(filePath, 'utf8');

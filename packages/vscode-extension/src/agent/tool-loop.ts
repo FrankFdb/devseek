@@ -948,8 +948,14 @@ export async function executeFakeToolsForLoop(
             continue;
           }
         }
-        const oldContent = fs.readFileSync(absPath, 'utf8');
-        workspaceEditService.deleteTextFile(absPath, workspaceRoot);
+        const deleteResult = workspaceEditService.deleteTextFile(absPath, workspaceRoot);
+        if (!deleteResult.deleted) {
+          const reason = '目标在授权后已不存在，删除未形成提交证据。请重新 list_dir/read_file 确认当前路径。';
+          recordToolFailure('delete_file', 'write', rawPath, reason);
+          parts.push(`[delete_file: ${rawPath}] 错误: ${reason}`);
+          continue;
+        }
+        const oldContent = deleteResult.commitToken.before.snapshot.content;
         callbacks.onToolActivity?.('write', `删除 ${rawPath}`);
         await callbacks.onAppliedChange({
           path: absPath,
