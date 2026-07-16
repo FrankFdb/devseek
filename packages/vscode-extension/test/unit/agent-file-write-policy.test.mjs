@@ -690,4 +690,36 @@ test('AgentFileWritePolicy: ordinary prompts keep normal workspace write behavio
   assert.equal(decision.reason, 'workspace-write-allowed');
 });
 
+test('AgentFileWritePolicy: repair prompts allow the named source file and block sibling writes', () => {
+  const requestPrompt = '请修复 src/math.js 中 add(a, b) 的明显错误。要求 add(2, 3) 返回 5，修改后用 node 命令验证并结束任务。不要修改其他文件。';
+  const allowed = decideAgentFileWrite({
+    absPath: '/workspace/src/math.js',
+    workspaceRoot: '/workspace',
+    autopilotMode: true,
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      taskAction: 'replace_in_file',
+      displayName: 'src/math.js',
+      requestPrompt,
+    },
+  });
+  assert.equal(allowed.action, 'allow');
+
+  const extra = decideAgentFileWrite({
+    absPath: '/workspace/src/other.js',
+    workspaceRoot: '/workspace',
+    autopilotMode: true,
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      taskAction: 'replace_in_file',
+      displayName: 'src/other.js',
+      requestPrompt,
+    },
+  });
+  assert.equal(extra.action, 'deny');
+  assert.equal(extra.reason, 'artifact-other-file-write-prohibited');
+});
+
 console.log('\nAgent file write policy tests passed.\n');

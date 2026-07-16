@@ -528,7 +528,14 @@ test('file-write authorization covers neutral, prohibited, exclusive, and correc
   for (const [prompt, primary, extra] of [
     ['请创建 config.json，不要创建其他文件。', 'config.json', 'extra.txt'],
     ['只修改 src/main.ts，不要修改其他文件。', 'src/main.ts', 'src/other.ts'],
+    ['只修复 src/math.js，不要修改其他文件。', 'src/math.js', 'src/other.js'],
+    [
+      '请修复 src/math.js 中 add(a, b) 的明显错误。要求 add(2, 3) 返回 5，修改后用 node 命令验证并结束任务。不要修改其他文件。',
+      'src/math.js',
+      'src/other.js',
+    ],
     ['Only create config.json; do not create other files.', 'config.json', 'extra.txt'],
+    ['Fix src/math.js so add(2, 3) returns 5; do not modify other files.', 'src/math.js', 'src/other.js'],
   ]) {
     assert.equal(decide(prompt, `${root}/${primary}`).allowed, true, prompt);
     assert.equal(decide(prompt, `${root}/${extra}`).reason, 'artifact-other-file-write-prohibited', prompt);
@@ -643,6 +650,8 @@ test('file-write authorization recognizes broad, target, exclusive, and latest p
     ['不要改 config.json。', 'config.json'],
     ['别删 notes.txt。', 'notes.txt'],
     ['Do not overwrite config.json.', 'config.json'],
+    ['Do not fix src/math.js.', 'src/math.js'],
+    ['请读取 src/math.js 并说明问题，不要修改其他文件。', 'src/math.js'],
     ['config.json is read-only.', 'config.json'],
     ['Create only report.md.', 'extra.json'],
     ['Only report.md may be created.', 'extra.json'],
