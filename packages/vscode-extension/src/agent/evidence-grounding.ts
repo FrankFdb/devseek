@@ -28,6 +28,9 @@ export interface EvidenceRef {
   operationId?: string;
   workspaceRoot?: string;
   sourcePath?: string;
+  workdir?: string;
+  command?: string;
+  exitCode?: number | null;
   lineStart?: number;
   lineEnd?: number;
   contentHash?: string;
@@ -143,6 +146,38 @@ export class EvidenceStore {
       lineEnd: input.lineEnd ?? (input.lineStart !== undefined
         ? input.lineStart + Math.max(0, countLines(content) - 1)
         : countLines(content)),
+      contentHash,
+      capturedAt: this.clock().toISOString(),
+      captureSequence,
+      content,
+    }) satisfies EvidenceRef;
+    this.refs.set(evidenceId, ref);
+    return ref;
+  }
+
+  recordTerminalOutput(input: {
+    command: string;
+    output: string;
+    workdir: string;
+    exitCode?: number | null;
+    operationId?: string;
+  }): EvidenceRef {
+    const content = String(input.output);
+    const contentHash = sha256(content);
+    const captureSequence = ++this.sequence;
+    const operationId = input.operationId || `terminal-${captureSequence}`;
+    const evidenceId = `ev-${sha256(`${this.runId}\0${operationId}\0${input.command}\0${input.workdir}\0${contentHash}`).slice(0, 24)}`;
+    const ref = Object.freeze({
+      kind: 'terminal',
+      label: input.command,
+      ref: evidenceId,
+      evidenceId,
+      operationId,
+      workspaceRoot: this.workspaceRoot,
+      sourcePath: input.workdir,
+      workdir: input.workdir,
+      command: input.command,
+      exitCode: input.exitCode ?? null,
       contentHash,
       capturedAt: this.clock().toISOString(),
       captureSequence,

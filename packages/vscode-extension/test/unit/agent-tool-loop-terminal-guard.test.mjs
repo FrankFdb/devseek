@@ -420,6 +420,39 @@ test('ToolLoop terminal guard allows workspace-local C++ compile-run validation'
   }
 });
 
+test('ToolLoop records terminal raw output as immutable EvidenceRef before settlement', async () => {
+  const projectRoot = mkdtempSync(path.join(tmpdir(), 'devseek-tool-loop-terminal-evidence-'));
+  try {
+    const command = 'test -f marker.txt';
+    const output = '[终端命令] test -f marker.txt\n[退出码] 1\n[stderr]\nmissing marker\n';
+
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'run_terminal', input: { command } }],
+      {
+        onTerminalCommand: async () => output,
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+        traceRunId: 'terminal-evidence-run',
+      },
+      projectRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: projectRoot },
+    );
+
+    const terminalRef = result.evidenceRefs?.find(ref => ref.kind === 'terminal');
+    assert.equal(result.terminalEvidence?.[0]?.ok, false);
+    assert.equal(terminalRef?.command, command);
+    assert.equal(terminalRef?.sourcePath, projectRoot);
+    assert.equal(terminalRef?.workdir, projectRoot);
+    assert.equal(terminalRef?.exitCode, 1);
+    assert.equal(terminalRef?.content, output);
+    assert.equal(terminalRef?.contentHash, createHash('sha256').update(output).digest('hex'));
+    assert.equal(Object.isFrozen(terminalRef), true);
+    assert.match(terminalRef?.evidenceId || '', /^ev-/);
+  } finally {
+    rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
 test('ToolLoop terminal guard never dispatches read-only allowlist commands with hidden writes', async () => {
   let terminalCalls = 0;
   const commands = [

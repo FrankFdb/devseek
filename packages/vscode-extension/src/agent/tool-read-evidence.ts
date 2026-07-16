@@ -12,6 +12,10 @@ export class ToolReadEvidenceRecorder {
     return this.evidenceStore.recordFileRead({ path, content, kind: 'artifact-readback' });
   }
 
+  recordTerminalOutput(command: string, output: string, workdir: string, exitCode?: number | null): EvidenceRef {
+    return this.evidenceStore.recordTerminalOutput({ command, output, workdir, exitCode });
+  }
+
   record(displayText: string, fallbackPath: string): EvidenceRef {
     const normalized = String(displayText || '').replace(/\r\n?/g, '\n');
     const envelope = normalized.match(/^\[file_context\]\n([\s\S]*?)\n\[\/file_context\]\n?/);

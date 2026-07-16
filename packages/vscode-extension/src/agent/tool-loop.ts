@@ -731,7 +731,14 @@ export async function executeFakeToolsForLoop(
         callbacks.onToolActivity?.('terminal', command);
         try {
           const output = await callbacks.onTerminalCommand(command, workdir);
-          const evidenceResult = analyzeTerminalEvidence(command, output, workdir ?? defaultWorkdir ?? workspaceRoot);
+          const evidenceWorkdir = workdir ?? defaultWorkdir ?? workspaceRoot;
+          const evidenceResult = analyzeTerminalEvidence(command, output, evidenceWorkdir);
+          evidenceRefs.push(readEvidenceRecorder.recordTerminalOutput(
+            command,
+            output,
+            evidenceWorkdir,
+            evidenceResult.evidence.exitCode,
+          ));
           if (evidenceResult.ran) {
             terminalCommands.push(command);
           }
