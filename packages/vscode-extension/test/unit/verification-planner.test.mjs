@@ -99,6 +99,20 @@ test('VerificationPlanner: scoped other-file no-touch artifact request still use
   assert.match(plan.command, /controlled-sim\.txt/);
 });
 
+test('VerificationPlanner: explicit content file checks include exact-line oracle', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['controlled-sim.txt'],
+    requestPrompt: '请在当前工作区创建 controlled-sim.txt，文件内容必须精确包含一行 CONTROLLED_SIM_OK。完成写入和读回验证后结束任务。',
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'file-check');
+  assert.equal(plan.reason, 'non-code-file-validation');
+  assert.match(plan.command, /grep -Fx -- 'CONTROLLED_SIM_OK' 'controlled-sim\.txt'/);
+  assert.doesNotMatch(plan.command, />|tee|cat\s+>|sed\s+-i/);
+});
+
 test('VerificationPlanner: mixed file facts and unplanned code targets stay blocked', () => {
   const plan = new VerificationPlanner().planWorkspaceChanges({
     rootFsPath: '/repo',

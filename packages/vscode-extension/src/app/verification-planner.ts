@@ -263,7 +263,7 @@ export class VerificationPlanner {
     const fileCheckPaths = changedPaths.filter((path) => isFileFactValidationPath(path, requestPrompt));
     if (fileCheckPaths.length > 0 && fileCheckPaths.length === changedPaths.length && shouldValidateNonCodeFiles(requestPrompt)) {
       return commandPlan({
-        command: buildNonCodeFileCheckCommand(fileCheckPaths),
+        command: buildNonCodeFileCheckCommand(fileCheckPaths, requestPrompt),
         cwd: rootFsPath,
         timeoutMs: FILE_CHECK_VALIDATION_TIMEOUT_MS,
         mode: 'file-check',
@@ -291,14 +291,45 @@ export function hasExplicitFileContentPrompt(prompt: string): boolean {
   return routeTaskIntent(prompt).simpleFile !== undefined;
 }
 
-export function buildNonCodeFileCheckCommand(changedPaths: string[]): string {
+export function buildNonCodeFileCheckCommand(changedPaths: string[], prompt = ''): string {
+  const contentOracle = extractRequiredNonCodeContentOracle(prompt);
   return changedPaths
     .slice(0, 8)
     .map((relPath) => {
       const quoted = shellQuote(relPath);
-      return `test -f ${quoted} && wc -c ${quoted} && sed -n '1,80p' ${quoted}`;
+      const checks = [
+        `test -f ${quoted}`,
+        `wc -c ${quoted}`,
+        `sed -n '1,80p' ${quoted}`,
+      ];
+      if (contentOracle.lines.length > 0 && contentOracle.path === normalizeValidationPath(relPath)) {
+        checks.push(...contentOracle.lines.map((line) => `grep -Fx -- ${shellQuote(line)} ${quoted}`));
+      }
+      return joinValidationCommands(checks);
     })
     .join(' && ');
+}
+
+function extractRequiredNonCodeContentOracle(prompt: string): { path: string; lines: string[] } {
+  const route = routeTaskIntent(prompt);
+  const simpleFile = route.simpleFile;
+  if (!simpleFile) {
+    return { path: '', lines: [] };
+  }
+  const lines = [...new Set(
+    simpleFile.content
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0 && line.length <= 200 && !line.includes('\0')),
+  )].slice(0, 3);
+  return {
+    path: normalizeValidationPath(simpleFile.path),
+    lines,
+  };
+}
+
+function normalizeValidationPath(value: string): string {
+  return String(value || '').replace(/\\/g, '/').replace(/^\.\//, '');
 }
 
 export function buildExtensionTypeCheckCommand(packageRelativePaths: string[]): string {
