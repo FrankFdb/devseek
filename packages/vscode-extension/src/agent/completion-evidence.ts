@@ -94,9 +94,13 @@ const READ_ONLY_ANSWER_MARKER_RE = /(?:结论|依据|原因|问题|风险|建议
 const READ_ONLY_TRANSITION_RE = /(?:我(?:已经|已)|现在我(?:已经|已)?|目前(?:已经|已)?|现在).{0,80}(?:收集|读取|查看|了解|掌握).{0,100}(?:让我|接下来|下一步|将|继续|准备).{0,60}(?:分析|给出|生成|输出|整理|形成|撰写)/i;
 const SUMMARY_FILE_CLAIM_RE = /(?:^|[^\w/.-])((?:[\w.-]+\/)*[\w.-]+(?:\.(?:cpp|cxx|cc|c|hpp|hxx|hh|h|tsx|jsx|mjs|cjs|ts|js|py|java|go|rs|cs|php|rb|swift|kts|kt|scala|html|scss|sass|css|svelte|vue|bash|zsh|sh|json|ya?ml|md|txt|cmake)|\/CMakeLists\.txt|CMakeLists\.txt))/gi;
 const SUMMARY_QUOTED_FILE_CLAIM_RE = /[《「“"'`]([^《》「」“”"'`\n\r]{1,180}\.(?:cpp|cxx|cc|c|hpp|hxx|hh|h|tsx|jsx|mjs|cjs|ts|js|py|java|go|rs|cs|php|rb|swift|kts|kt|scala|html|scss|sass|css|svelte|vue|bash|zsh|sh|json|ya?ml|md|txt|cmake))[》」”"'`]/gi;
-const SUMMARY_FILE_CLAIM_POSITIVE_RE = /(?:创建|新建|生成|添加|新增|编写|实现|更新|修改|改造|重构|写入|落地|复制|拷贝|重命名|改名|移动|迁移|替换|create|created|add|added|generate|generated|write|wrote|implement|implemented|update|updated|modify|modified|refactor|refactored|copy|copied|duplicate|duplicated|rename|renamed|move|moved|replace|replaced)/i;
+const SUMMARY_FILE_CLAIM_POSITIVE_RE = /(?:创建|新建|生成|添加|新增|编写|实现|更新|修改|改造|重构|写入|保存|输出|产出|交付|导出|落地|复制|拷贝|重命名|改名|移动|迁移|替换|create|created|add|added|generate|generated|write|wrote|save|saved|output|produce|produced|deliver|delivered|export|exported|implement|implemented|update|updated|modify|modified|refactor|refactored|copy|copied|duplicate|duplicated|rename|renamed|move|moved|replace|replaced)/i;
 const SUMMARY_FILE_CLAIM_NEGATIVE_RE = /(?:未|没有|尚未|无法|不能|失败|缺少|不存在|not\s+|no\s+|did\s+not|failed|missing|absent)/i;
 const SUMMARY_FILE_CLAIM_ADVISORY_RE = /(?:建议|应当|需要|可以|计划|准备|待|后续|下一步|should|could|would|plan(?:ned)?|todo).{0,20}$/i;
+const SUMMARY_FILE_CLAIM_NEGATED_POSITIVE_RE = new RegExp(
+  `(?:未|没有|尚未|无法|不能|失败|不曾|不会|not\\s+|no\\s+|did\\s+not|failed).{0,12}${SUMMARY_FILE_CLAIM_POSITIVE_RE.source}`,
+  'i',
+);
 const SUMMARY_FILE_TRANSFER_RE = /(?:复制|拷贝|重命名|改名|移动|迁移|替换|copy|copied|duplicate|duplicated|rename|renamed|move|moved|replace|replaced)/i;
 const SUMMARY_FILE_TRANSFER_SOURCE_MARKER_RE = /(?:将|把|从|复制|拷贝|重命名|改名|移动|迁移|\bfrom\b|\bcopy(?:ing|ied)?\b|\bcopied\b|\bduplicate(?:d)?\b|\brename(?:d)?\b|\bmove(?:d)?\b|\breplace(?:d)?\b)\s*$/i;
 const SUMMARY_FILE_TRANSFER_DEST_CONNECTOR_RE = /^\s*(?:复制为|拷贝为|复制到|拷贝到|重命名为|改名为|移动到|迁移到|替换为|作为|为|到|\bto\b|\bas\b|\binto\b|\bwith\b)/i;
@@ -184,11 +188,16 @@ function sentenceAround(text: string, start: number, end: number): string {
 }
 
 function summaryClaimIsPositive(sentence: string, tokenStartInSentence: number): boolean {
-  if (!SUMMARY_FILE_CLAIM_POSITIVE_RE.test(sentence)) return false;
   const beforeToken = sentence.slice(Math.max(0, tokenStartInSentence - 16), tokenStartInSentence);
   if (SUMMARY_FILE_CLAIM_NEGATIVE_RE.test(beforeToken)) return false;
   const beforeSentence = sentence.slice(0, tokenStartInSentence);
-  return !SUMMARY_FILE_CLAIM_ADVISORY_RE.test(beforeSentence);
+  if (SUMMARY_FILE_CLAIM_ADVISORY_RE.test(beforeSentence)) return false;
+  const nearbyBefore = sentence.slice(Math.max(0, tokenStartInSentence - 80), tokenStartInSentence);
+  const nearbyAfter = sentence.slice(tokenStartInSentence, Math.min(sentence.length, tokenStartInSentence + 80));
+  const nearby = `${nearbyBefore}${nearbyAfter}`;
+  if (SUMMARY_FILE_CLAIM_NEGATED_POSITIVE_RE.test(nearby)) return false;
+  return SUMMARY_FILE_CLAIM_POSITIVE_RE.test(nearbyBefore)
+    || SUMMARY_FILE_CLAIM_POSITIVE_RE.test(nearbyAfter);
 }
 
 function summaryFileClaimIsTransferSource(

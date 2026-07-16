@@ -644,6 +644,13 @@ test('completion evidence: advisory future document suggestions are not complete
   assert.deepEqual(extractClaimedSummaryFiles(summary), []);
 });
 
+test('completion evidence: read-only file summaries are not write claims', () => {
+  const summary = '已读取 controlled-boundary.txt，第一行是 CONTROLLED_BOUNDARY_PRESENT，未修改任何文件。';
+
+  assert.deepEqual(extractClaimedSummaryFiles(summary), []);
+  assert.deepEqual(getUnsupportedSummaryFileClaims(summary, [], '/workspace'), []);
+});
+
 test('completion evidence: code edit requires successful validation evidence', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-evidence-'));
   try {
