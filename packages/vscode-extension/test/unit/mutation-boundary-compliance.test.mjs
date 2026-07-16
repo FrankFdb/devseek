@@ -99,6 +99,8 @@ test('Mutation guard: workspace writes in audited flows route through the writer
   assert.match(source('src/agent/tool-loop.ts'), /workspaceEditService\.deleteTextFile\(absPath, workspaceRoot\)/);
   assert.match(source('src/pending-edit-coordinator.ts'), /kind:\s*'pending-edit-undo'/);
   assert.match(source('src/pending-edit-coordinator.ts'), /commitTextFileProposal\(/);
+  assert.match(source('src/pending-edit-coordinator.ts'), /buildPendingEditUndoProof\(/);
+  assert.doesNotMatch(source('src/pending-edit-coordinator.ts'), /kind:\s*['"]workspace-text-readback['"]/);
   assert.doesNotMatch(source('src/agent/auto-validation.ts'), /normalizeFormalProjectMarkdown|writeFileSync|workspace\.fs/);
 
   for (const file of sources) {

@@ -6,6 +6,11 @@ import { decideAgentAutopilotAccept } from './app/agent-autopilot-policy';
 import { ProductMutationCoordinator, ProductMutationIndeterminateError } from './app/product-mutation-coordinator';
 import { createDevSeekRunContext } from './app/run-context';
 import {
+  buildPendingEditUndoProof,
+  type PendingEditUndoPostcondition,
+  type PendingEditUndoTransaction,
+} from './app/pending-edit-undo-receipt';
+import {
   allHunksResolved,
   computePendingHunks,
   PendingEditService,
@@ -388,15 +393,17 @@ export class PendingEditCoordinator {
     const content = renderPendingContentFromHunks(record);
     if (!record.existed && content.length === 0) {
       await this.runPendingEditMutation(record, 'undo pending edit by deleting the generated file', async (editService) => {
-        editService.deleteTextFile(target.fsPath, workspaceRoot);
-      }, () => !fs.existsSync(target.fsPath), content.length);
+        const result = editService.deleteTextFile(target.fsPath, workspaceRoot);
+        return { operation: 'delete-created-file', targetPath: target.fsPath, result };
+      }, () => !fs.existsSync(target.fsPath), content.length, 'absent');
       return;
     }
     await this.runPendingEditMutation(record, 'undo pending edit hunk by restoring the selected snapshot', async (editService) => {
       const baseline = editService.captureTextFileBaseline(target.fsPath, workspaceRoot);
       const proposal = editService.proposeTextFileWrite(target.fsPath, content);
-      editService.commitTextFileProposal(proposal, baseline);
-    }, () => readTextFileEquals(target.fsPath, content), content.length);
+      const result = editService.commitTextFileProposal(proposal, baseline);
+      return { operation: 'restore-text-file', targetPath: target.fsPath, result };
+    }, () => readTextFileEquals(target.fsPath, content), content.length, 'content-readback');
   }
 
   private async restoreRecord(record: PendingEditRecord): Promise<void> {
@@ -405,13 +412,15 @@ export class PendingEditCoordinator {
       await this.runPendingEditMutation(record, 'undo pending edit by restoring the original file', async (editService) => {
         const baseline = editService.captureTextFileBaseline(target.fsPath, workspaceRoot);
         const proposal = editService.proposeTextFileWrite(target.fsPath, record.oldContent);
-        editService.commitTextFileProposal(proposal, baseline);
-      }, () => readTextFileEquals(target.fsPath, record.oldContent), record.oldContent.length);
+        const result = editService.commitTextFileProposal(proposal, baseline);
+        return { operation: 'restore-text-file', targetPath: target.fsPath, result };
+      }, () => readTextFileEquals(target.fsPath, record.oldContent), record.oldContent.length, 'content-readback');
       return;
     }
     await this.runPendingEditMutation(record, 'undo pending edit by deleting the generated file', async (editService) => {
-      editService.deleteTextFile(target.fsPath, workspaceRoot);
-    }, () => !fs.existsSync(target.fsPath), 0);
+      const result = editService.deleteTextFile(target.fsPath, workspaceRoot);
+      return { operation: 'delete-created-file', targetPath: target.fsPath, result };
+    }, () => !fs.existsSync(target.fsPath), 0, 'absent');
   }
 
   private resolveMutationTarget(record: PendingEditRecord): { target: vscode.Uri; workspaceRoot: string } {
@@ -425,9 +434,10 @@ export class PendingEditCoordinator {
   private async runPendingEditMutation(
     record: PendingEditRecord,
     label: string,
-    invoke: (editService: WorkspaceEditService) => void | Promise<void>,
+    invoke: (editService: WorkspaceEditService) => PendingEditUndoTransaction | Promise<PendingEditUndoTransaction>,
     verify: () => boolean | Promise<boolean>,
     expectedContentLength: number,
+    postcondition: PendingEditUndoPostcondition,
   ): Promise<void> {
     const { workspaceRoot } = this.resolveMutationTarget(record);
     const runContext = createDevSeekRunContext({
@@ -447,9 +457,12 @@ export class PendingEditCoordinator {
         completionEvidence: {
           kind: 'verified-postcondition',
           verify,
-          proof: () => ({
-            kind: 'workspace-text-readback',
-            expected_content_length: expectedContentLength,
+          proof: value => buildPendingEditUndoProof({
+            recordId: record.id,
+            recordPath: record.path,
+            expectedContentLength,
+            postcondition,
+            transaction: value,
           }),
         },
       });
