@@ -282,6 +282,8 @@ test('artifact mutation vocabulary is shared by intent routing and Markdown targ
   assert.equal(hasArtifactWriteIntent('读取 config.hpp，提取 kValue 并检查 report.md，不要修改源码。'), false);
   assert.equal(hasArtifactWriteIntent('provider 会检查 report.md，但不应写盘。'), false);
   assert.equal(hasArtifactWriteIntent('修改源码并检查 report.md。'), false);
+  assert.equal(hasArtifactWriteIntent('只检查 controlled-boundary.txt，并确认无文件改动。'), false);
+  assert.equal(hasArtifactWriteIntent('读取 controlled-boundary.txt，确认没有文件修改。'), false);
   for (const prompt of [
     '不修改 report.md。',
     '勿修改 report.md。',

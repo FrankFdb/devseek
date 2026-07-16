@@ -79,6 +79,7 @@ const FILE_READ_ACTION_PATTERN = '(?:只读|读取|读出|查看|检查|审计|�
 const ARTIFACT_TARGET_HINT_RE = /(?:\.md\b|markdown|文档|报告|文件|artifact|document|report|file)/i;
 const MARKDOWN_ARTIFACT_TARGET_HINT_RE = /(?:\.(?:md|markdown)\b|markdown|md\s*(?:文档|文件|报告)|文档|报告|文件|document|report|files?)/i;
 const STRONG_NEGATED_WRITE_PREFIX_RE = /(?:不要|不得|禁止|严禁|不可|无需|不用|不需要|不允许|勿|do\s+not|don't|should\s+not|must\s+not|may\s+not|shall\s+not|never)[^，,。；;\n]{0,20}$/i;
+const NO_CHANGE_FACT_PREFIX_RE = /(?:无(?!需|须)|没有|未发现|未产生|不存在|并无(?!需|须)|暂无(?!需|须))[^，,。；;\n]{0,16}(?:文件|代码|源码|内容|变更|修改|改动|变化|change|changes|modification|modifications)?\s*$/i;
 const NON_WRITE_NEGATION_THEN_ACTION_RE = /(?:无需|不用|不需要)[^，,。；;\n]{0,16}(?:并|但|然后|而|同时|直接)\s*$/i;
 const WEAK_NEGATED_WRITE_SUFFIX_RE = /(?:别(?:再)?|不(?:(?:再)?(?:应(?:该|当)?|可(?:以)?|能|准|许|允许|需要)?(?:再)?))\s*$/i;
 const LEXICAL_BIE_PREFIX_RE = /[分个性级类区识特差判辨告离永派]$/;
@@ -109,6 +110,7 @@ export function extractCurrentUserRequest(promptText: string | undefined): strin
 }
 
 function hasNegatedWritePrefix(beforeAction: string): boolean {
+  if (NO_CHANGE_FACT_PREFIX_RE.test(beforeAction)) return true;
   if (STRONG_NEGATED_WRITE_PREFIX_RE.test(beforeAction)) {
     return !NON_WRITE_NEGATION_THEN_ACTION_RE.test(beforeAction);
   }

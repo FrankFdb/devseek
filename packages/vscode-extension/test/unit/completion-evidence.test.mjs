@@ -233,6 +233,28 @@ test('completion evidence: read-only file inspection needs read evidence, not wr
   );
 });
 
+test('completion evidence: read-only user intent is not upgraded by agent no-change todos', () => {
+  const inspectPrompt = [
+    '只检查当前工作区是否存在 controlled-boundary.txt，并告诉我第一行内容。',
+    '不要创建、修改或删除任何文件。',
+  ].join('');
+  const readOnlyTodos = [
+    { title: '读取边界文件' },
+    { title: '确认无文件改动' },
+  ];
+
+  assert.equal(requiresReadEvidence(inspectPrompt), true);
+  assert.equal(requiresFileChangeEvidence(`${inspectPrompt}\n${readOnlyTodos.map(t => t.title).join('\n')}`), false);
+  assert.deepEqual(
+    getMissingCompletionEvidence(inspectPrompt, readOnlyTodos, [], [], ['controlled-boundary.txt']),
+    [],
+  );
+  assert.deepEqual(
+    getMissingCompletionEvidence(inspectPrompt, readOnlyTodos, [], [], []),
+    ['文件读取/检查结果'],
+  );
+});
+
 test('completion evidence: content display is not satisfied by existence-only terminal checks', () => {
   const inspectPrompt = '检查 docs/manual-phase5-smoke.md 是否存在，并显示文件内容。不要修改文件。';
   const testEvidence = [{ command: 'test -f docs/manual-phase5-smoke.md', kind: 'other', ok: true, exitCode: 0 }];

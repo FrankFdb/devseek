@@ -571,12 +571,13 @@ export function getBlockingTerminalFailure(
   if (terminalEvidence.length === 0) return undefined;
   const text = buildEvidenceText(userPrompt, todos);
   const userIntentText = buildUserIntentEvidenceText(userPrompt);
+  const evidenceIntentText = isExplicitlyReadOnlyRequest(userIntentText) ? userIntentText : text;
   const existingWrittenFiles = coalesceWrittenFileEvidence(writtenFiles).filter(f => {
     try { return fs.existsSync(f.path); } catch { return false; }
   });
   const existingCodeWrites = existingWrittenFiles.filter(f => isCodeArtifactPath(f.path));
   const needsReadEvidence = requiresReadEvidence(userIntentText);
-  const needsCodeArtifact = requiresCodeArtifactForEvidence(text);
+  const needsCodeArtifact = requiresCodeArtifactForEvidence(evidenceIntentText);
   const needsCommand = !needsReadEvidence
     && (requiresCommandEvidence(userIntentText) || (needsCodeArtifact && existingCodeWrites.length > 0));
 
@@ -633,13 +634,14 @@ export function getMissingCompletionEvidence(
 ): string[] {
   const text = buildEvidenceText(userPrompt, todos);
   const userIntentText = buildUserIntentEvidenceText(userPrompt);
+  const evidenceIntentText = isExplicitlyReadOnlyRequest(userIntentText) ? userIntentText : text;
   const existingWrittenFiles = coalesceWrittenFileEvidence(writtenFiles, workspaceRoot)
     .filter(f => writtenEvidenceExists(f, workspaceRoot));
   const existingCodeWrites = existingWrittenFiles.filter(f => isCodeArtifactPath(f.path));
   const successfulEvidence = terminalEvidence.filter(e => e.ok);
   const missing: string[] = [];
   const contract = buildTaskContract(userPrompt);
-  const needsFileChange = requiresFileChangeEvidence(text);
+  const needsFileChange = requiresFileChangeEvidence(evidenceIntentText);
   const hasGroundedArtifactContract = hasSourceClaimArtifactContract(contract);
   if (hasGroundedArtifactContract && contract.evidenceRequirements.length === 0) {
     missing.push('未解析的交付物源码事实 claim 契约');
@@ -657,7 +659,7 @@ export function getMissingCompletionEvidence(
     }
   }
 
-  const needsCodeArtifact = requiresCodeArtifactForEvidence(text);
+  const needsCodeArtifact = requiresCodeArtifactForEvidence(evidenceIntentText);
   const needsReadEvidence = requiresReadEvidence(userIntentText);
   const needsFileContentReadEvidence = requiresFileContentReadEvidence(userIntentText);
   const needsFileCheckEvidence = requiresFileCheckEvidence(userIntentText);
