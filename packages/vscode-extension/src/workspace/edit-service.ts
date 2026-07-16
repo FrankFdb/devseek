@@ -70,6 +70,30 @@ export interface WorkspaceRollbackResult {
 export interface WorkspaceDirectoryCreateResult {
   created: boolean;
   canonicalPath: string;
+  commitToken: WorkspaceDirectoryCommitToken;
+}
+
+export interface WorkspaceDirectorySnapshot {
+  absPath: string;
+  existed: boolean;
+  canonicalPath?: string;
+  device?: string;
+  inode?: string;
+  mode?: number;
+}
+
+export interface WorkspaceDirectoryBaseline {
+  absPath: string;
+  workspaceRoot: string;
+  route: CanonicalPathRouteIdentity;
+  snapshot: WorkspaceDirectorySnapshot;
+}
+
+export interface WorkspaceDirectoryCommitToken {
+  absPath: string;
+  workspaceRoot: string;
+  before: WorkspaceDirectoryBaseline;
+  after: WorkspaceDirectoryBaseline;
 }
 
 export interface WorkspaceEditApplyOptions {
@@ -103,23 +127,23 @@ export class WorkspaceEditService {
   createWorkspaceDirectory(absPath: string, workspaceRoot: string): WorkspaceDirectoryCreateResult {
     const resolvedPath = nodePath.resolve(absPath);
     const resolvedRoot = nodePath.resolve(workspaceRoot);
-    const route = captureCanonicalPathRouteIdentity(resolvedPath);
+    const before = captureDirectoryBaseline(resolvedPath, resolvedRoot);
+    const route = before.route;
     const parentRoute = captureCanonicalPathRouteIdentity(nodePath.dirname(resolvedPath));
-    if (!route || !parentRoute || !isCanonicalPathInsideRoot(resolvedPath, resolvedRoot)) {
+    if (!parentRoute || !isCanonicalPathInsideRoot(resolvedPath, resolvedRoot)) {
       throw new WorkspaceEditConflictError(resolvedPath, 'workspace-edit-boundary: directory escapes workspace or has an unresolved route');
     }
-    try {
-      const existing = fs.lstatSync(resolvedPath);
-      if (existing.isSymbolicLink() || !existing.isDirectory()) {
-        throw new WorkspaceEditConflictError(resolvedPath, 'workspace-edit-boundary: directory target is not a real directory');
-      }
-      const canonicalPath = fs.realpathSync.native(resolvedPath);
-      if (!isCanonicalPathInsideRoot(canonicalPath, resolvedRoot)) {
-        throw new WorkspaceEditConflictError(resolvedPath, 'workspace-edit-boundary: existing directory escapes workspace');
-      }
-      return { created: false, canonicalPath };
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    if (before.snapshot.existed) {
+      return {
+        created: false,
+        canonicalPath: before.snapshot.canonicalPath!,
+        commitToken: {
+          absPath: resolvedPath,
+          workspaceRoot: resolvedRoot,
+          before,
+          after: before,
+        },
+      };
     }
 
     const baseline: WorkspaceTargetParentBaseline = {
@@ -154,7 +178,23 @@ export class WorkspaceEditService {
       if (!isCanonicalPathInsideRoot(canonicalPath, resolvedRoot)) {
         throw new WorkspaceEditConflictError(resolvedPath, 'workspace-edit-boundary: created directory failed canonical readback');
       }
-      return { created: true, canonicalPath };
+      const after = captureDirectoryBaseline(resolvedPath, resolvedRoot);
+      if (!after.snapshot.existed
+        || after.snapshot.canonicalPath !== canonicalPath
+        || after.snapshot.device !== createdIdentity.device
+        || after.snapshot.inode !== createdIdentity.inode) {
+        throw new WorkspaceEditConflictError(resolvedPath, 'workspace-edit-boundary: created directory failed identity/readback verification');
+      }
+      return {
+        created: true,
+        canonicalPath,
+        commitToken: {
+          absPath: resolvedPath,
+          workspaceRoot: resolvedRoot,
+          before,
+          after,
+        },
+      };
     } catch (error) {
       if (createdIdentity) removeAnchoredDirectory(parent, nodePath.basename(resolvedPath), createdIdentity);
       cleanupCreatedDirectories(parent);
@@ -458,6 +498,46 @@ interface WorkspaceTargetParentBaseline {
   absPath: string;
   workspaceRoot: string;
   parentRoute: CanonicalPathRouteIdentity;
+}
+
+function captureDirectoryBaseline(absPath: string, workspaceRoot: string): WorkspaceDirectoryBaseline {
+  const route = captureCanonicalPathRouteIdentity(absPath);
+  if (!route || !isCanonicalPathInsideRoot(absPath, workspaceRoot)) {
+    throw new WorkspaceEditConflictError(absPath, 'workspace-edit-boundary: directory escapes workspace or has an unresolved route');
+  }
+  const snapshot = captureDirectorySnapshot(absPath, workspaceRoot);
+  return {
+    absPath,
+    workspaceRoot,
+    route,
+    snapshot,
+  };
+}
+
+function captureDirectorySnapshot(absPath: string, workspaceRoot: string): WorkspaceDirectorySnapshot {
+  try {
+    const stats = fs.lstatSync(absPath, { bigint: true });
+    if (stats.isSymbolicLink() || !stats.isDirectory()) {
+      throw new WorkspaceEditConflictError(absPath, 'workspace-edit-boundary: directory target is not a real directory');
+    }
+    const canonicalPath = fs.realpathSync.native(absPath);
+    if (!isCanonicalPathInsideRoot(canonicalPath, workspaceRoot)) {
+      throw new WorkspaceEditConflictError(absPath, 'workspace-edit-boundary: existing directory escapes workspace');
+    }
+    return {
+      absPath,
+      existed: true,
+      canonicalPath,
+      device: stats.dev.toString(),
+      inode: stats.ino.toString(),
+      mode: Number(stats.mode),
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { absPath, existed: false };
+    }
+    throw error;
+  }
 }
 
 function openAuthorizedParentDirectory(baseline: WorkspaceTargetParentBaseline): AuthorizedParentDirectory {

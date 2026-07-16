@@ -417,6 +417,27 @@ test('WorkspaceEditService: directory creation supports missing anchored parents
   }
 });
 
+test('WorkspaceEditService: directory creation returns route, absence and inode commit evidence', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-directory-transaction-'));
+  try {
+    const target = path.join(workspaceRoot, 'one', 'two', 'three');
+    const result = new WorkspaceEditService().createWorkspaceDirectory(target, workspaceRoot);
+
+    assert.equal(result.created, true);
+    assert.equal(result.commitToken.absPath, target);
+    assert.equal(result.commitToken.workspaceRoot, workspaceRoot);
+    assert.equal(result.commitToken.before.snapshot.existed, false);
+    assert.deepEqual(result.commitToken.before.route.missingSegments, ['one', 'two', 'three']);
+    assert.equal(result.commitToken.after.snapshot.existed, true);
+    assert.equal(result.commitToken.after.snapshot.canonicalPath, target);
+    assert.match(result.commitToken.after.snapshot.device, /^\d+$/);
+    assert.match(result.commitToken.after.snapshot.inode, /^\d+$/);
+    assert.equal(statSync(target).ino.toString(), result.commitToken.after.snapshot.inode);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 function readFileSyncSafe(filePath) {
   try {
     return readFileSync(filePath, 'utf8');

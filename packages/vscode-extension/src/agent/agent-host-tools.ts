@@ -208,7 +208,22 @@ export function createAgentHostToolCallbacks(context: AgentHostToolContext): Hos
           kind: 'verified-postcondition',
           verify: value => fs.statSync(value.canonicalPath).isDirectory()
             && isCanonicalPathInsideRoot(value.canonicalPath, workspaceRoot),
-          proof: value => ({ created: value.created, canonical_path: summarizePath(value.canonicalPath, workspaceRoot) }),
+          proof: value => ({
+            created: value.created,
+            canonical_path: summarizePath(value.canonicalPath, workspaceRoot),
+            directory_transaction: {
+              before_existed: value.commitToken.before.snapshot.existed,
+              before_missing_segments: value.commitToken.before.route.missingSegments,
+              before_existing_ancestor: summarizePath(value.commitToken.before.route.existingAncestorCanonicalPath, workspaceRoot),
+              before_existing_ancestor_fingerprint: value.commitToken.before.route.existingAncestorFingerprint,
+              after_existed: value.commitToken.after.snapshot.existed,
+              after_canonical_path: value.commitToken.after.snapshot.canonicalPath
+                ? summarizePath(value.commitToken.after.snapshot.canonicalPath, workspaceRoot)
+                : null,
+              after_device: value.commitToken.after.snapshot.device ?? null,
+              after_inode: value.commitToken.after.snapshot.inode ?? null,
+            },
+          }),
         },
       });
       return result.created ? `目录已创建: ${dirPath}` : `目录已存在: ${dirPath}`;
