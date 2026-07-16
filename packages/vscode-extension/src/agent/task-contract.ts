@@ -789,7 +789,7 @@ function lastGenericArtifactWriteProhibitionIndex(prompt: string): number | unde
 }
 
 function isScopedOrExceptedWriteProhibition(text: string): boolean {
-  return /(?:其他|其它|其余|额外)|(?:除|除了)[^，,。；;\n]*(?:以外|之外)|\b(?:other|additional|except|other\s+than)\b/i.test(text);
+  return /(?:其他|其它|其余|额外|旧要求|旧需求|旧版本|原要求|原需求|先前要求|之前要求|前面(?:曾)?说)|(?:除|除了)[^，,。；;\n]*(?:以外|之外)|\b(?:other|additional|except|other\s+than|old|previous|prior|earlier)\b/i.test(text);
 }
 
 function isExplicitAuthorizationCorrection(prompt: string, deniedIndex: number, allowedIndex: number): boolean {

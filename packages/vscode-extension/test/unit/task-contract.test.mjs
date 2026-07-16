@@ -670,6 +670,10 @@ test('file-write authorization recognizes broad, target, exclusive, and latest p
   assert.equal(authorize('Do not create any files except report.md.', 'report.md').allowed, true);
   assert.equal(authorize('不要创建任何文件，除了 report.md 之外。', 'report.md').allowed, true);
   assert.equal(authorize('`report.md` should be created.', 'report.md').allowed, true);
+  assert.equal(authorize(
+    '这是一次多轮需求的最终轮：前面曾说写 INITIAL_REQUIREMENT，但现在改为 FINAL_REQUIREMENT_OK。请只按最新要求创建 journey-result.txt，文件内容必须精确包含一行 FINAL_REQUIREMENT_OK。完成写入和读回验证后结束任务，不要创建旧要求文件。',
+    'journey-result.txt',
+  ).allowed, true);
   assert.equal(authorize('不要修改现有源码。更正：更新 src/main.ts。', 'src/main.ts').allowed, true);
   assert.equal(authorize('Do not modify existing source. Correction: update src/main.ts.', 'src/main.ts').allowed, true);
 });
