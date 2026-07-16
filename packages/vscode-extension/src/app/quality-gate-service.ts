@@ -1,3 +1,8 @@
+import {
+  buildValidationFailureDiagnosis,
+  type FailureDiagnosis,
+} from './failure-diagnosis';
+
 export type QualityGateStatus = 'pass' | 'fail' | 'blocked';
 
 export interface QualityGateRiskAcceptance {
@@ -30,6 +35,7 @@ export interface QualityGateDecision {
   status: QualityGateStatus;
   summary: string;
   evidenceRefs: string[];
+  failureDiagnosis?: FailureDiagnosis;
   risks: string[];
   alternativeChecks: string[];
   requiredActions: string[];
@@ -41,6 +47,8 @@ export class QualityGateService {
     const validation = input.validation;
     if (!validation) {
       return this.blockedDecision({
+        changedPaths: input.changedPaths,
+        status: 'missing',
         reason: 'no-validation-evidence',
         risks: ['没有自动验证证据，不能证明变更后的行为正确。'],
         alternativeChecks: [],
@@ -50,6 +58,8 @@ export class QualityGateService {
 
     if (validation.status === 'blocked' || !validation.ran) {
       return this.blockedDecision({
+        changedPaths: input.changedPaths,
+        status: 'blocked',
         reason: validation.reason || 'validation-blocked',
         risks: validation.risks || [],
         alternativeChecks: validation.alternativeChecks || [],
@@ -70,10 +80,21 @@ export class QualityGateService {
       };
     }
 
+    const evidenceRef = validationEvidenceRef('failed', validation);
     return {
       status: 'fail',
       summary: `QualityGate 未通过：自动验证失败（exitCode=${validation.exitCode ?? 'null'}）。`,
-      evidenceRefs: [validationEvidenceRef('failed', validation)],
+      evidenceRefs: [evidenceRef],
+      failureDiagnosis: buildValidationFailureDiagnosis({
+        status: 'failed',
+        changedPaths: input.changedPaths,
+        command: validation.command,
+        exitCode: validation.exitCode,
+        output: validation.output,
+        reason: validation.reason,
+        mode: validation.mode,
+        evidenceRef,
+      }),
       risks: [
         ...(validation.risks || []),
         '自动验证命令失败，不能把任务标记为完成。',
@@ -87,15 +108,25 @@ export class QualityGateService {
   }
 
   private blockedDecision(input: {
+    changedPaths: string[];
+    status: 'blocked' | 'missing';
     reason: string;
     risks: string[];
     alternativeChecks: string[];
     acceptedRisk?: QualityGateRiskAcceptance;
   }): QualityGateDecision {
+    const evidenceRef = `validation:blocked:${input.reason}`;
     return {
       status: 'blocked',
       summary: `QualityGate 阻塞：${input.reason}。`,
-      evidenceRefs: [`validation:blocked:${input.reason}`],
+      evidenceRefs: [evidenceRef],
+      failureDiagnosis: buildValidationFailureDiagnosis({
+        status: input.status,
+        changedPaths: input.changedPaths,
+        reason: input.reason,
+        output: input.risks.join('\n'),
+        evidenceRef,
+      }),
       risks: input.risks.length > 0
         ? input.risks
         : ['没有自动验证证据，不能证明变更后的行为正确。'],

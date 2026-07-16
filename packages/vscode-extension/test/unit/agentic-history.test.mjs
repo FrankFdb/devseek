@@ -210,6 +210,61 @@ test('Agentic history: visual manual review evidence is a blocked QualityGate, n
   assert.doesNotMatch(text, /<code>fail<\/code>/);
 });
 
+test('Agentic history: later successful terminal evidence does not overwrite failure diagnosis', () => {
+  const terminalEvidence = [
+    {
+      command: 'npm run compile',
+      kind: 'compile',
+      ok: false,
+      exitCode: 2,
+      detail: 'src/main.ts:7:1 - error TS2304: Cannot find name x.',
+    },
+    {
+      command: 'test -f src/main.ts',
+      kind: 'other',
+      ok: true,
+      exitCode: 0,
+    },
+  ];
+  const qualityGate = buildAgenticQualityGateForHistory({
+    writtenFiles: [
+      {
+        path: '/workspace/devseek/src/main.ts',
+        basename: 'main.ts',
+        linesAdded: 1,
+        linesRemoved: 0,
+        action: 'modify',
+      },
+    ],
+    terminalEvidence,
+  });
+  const text = buildAgenticHistoryText({
+    userPrompt: '修改 src/main.ts 并验证',
+    roundCount: 2,
+    completed: false,
+    todos: [{ id: 1, title: '修改 src/main.ts', status: 'failed' }],
+    writtenFiles: [
+      {
+        path: '/workspace/devseek/src/main.ts',
+        basename: 'main.ts',
+        linesAdded: 1,
+        linesRemoved: 0,
+        action: 'modify',
+      },
+    ],
+    terminalEvidence,
+    qualityGate,
+    workspaceRoot: '/workspace/devseek',
+  });
+
+  assert.equal(qualityGate.status, 'fail');
+  assert.equal(qualityGate.failureDiagnosis?.kind, 'validation-command-failed');
+  assert.deepEqual(qualityGate.failureDiagnosis?.relatedPaths, ['/workspace/devseek/src/main.ts']);
+  assert.match(text, /失败诊断/);
+  assert.match(text, /Cannot find name x/);
+  assert.doesNotMatch(text, /QualityGate 通过/);
+});
+
 test('Agent history: restored summary can preserve failed task progress and evidence', () => {
   const text = buildAgenticHistoryText({
     label: 'Agent',

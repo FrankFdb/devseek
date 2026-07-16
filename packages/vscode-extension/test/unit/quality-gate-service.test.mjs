@@ -51,6 +51,61 @@ test('QualityGateService: failed validation fails the gate and keeps evidence re
   assert.match(decision.requiredActions.join('\n'), /修复自动验证失败/);
 });
 
+test('QualityGateService: failed validation includes minimal EvidenceRef failure diagnosis', () => {
+  const service = new QualityGateService();
+  const decision = service.evaluate({
+    changedPaths: ['packages/vscode-extension/src/app/workflow-service.ts'],
+    validation: {
+      ran: true,
+      ok: false,
+      status: 'failed',
+      command: 'npm run compile',
+      exitCode: 2,
+      output: 'packages/vscode-extension/src/app/workflow-service.ts:17:5 - error TS2322: Type string is not assignable.',
+      cwd: '/repo',
+      mode: 'compile-only',
+      reason: 'extension-change',
+      risks: [],
+      alternativeChecks: [],
+    },
+  });
+
+  assert.equal(decision.status, 'fail');
+  assert.equal(decision.failureDiagnosis?.kind, 'validation-command-failed');
+  assert.equal(decision.failureDiagnosis?.rootCauseStatus, 'known');
+  assert.equal(decision.failureDiagnosis?.sticky, true);
+  assert.deepEqual(decision.failureDiagnosis?.evidenceRefs, ['validation:failed:npm run compile']);
+  assert.deepEqual(decision.failureDiagnosis?.relatedPaths, ['packages/vscode-extension/src/app/workflow-service.ts']);
+  assert.match(decision.failureDiagnosis?.summary || '', /workflow-service\.ts/);
+});
+
+test('QualityGateService: unrelated validation failure is diagnosed as unknown', () => {
+  const service = new QualityGateService();
+  const decision = service.evaluate({
+    changedPaths: ['packages/vscode-extension/src/app/workflow-service.ts'],
+    validation: {
+      ran: true,
+      ok: false,
+      status: 'failed',
+      command: 'npm run compile',
+      exitCode: 2,
+      output: 'Error: build worker exited unexpectedly',
+      cwd: '/repo',
+      mode: 'compile-only',
+      reason: 'extension-change',
+      risks: [],
+      alternativeChecks: [],
+    },
+  });
+
+  assert.equal(decision.status, 'fail');
+  assert.equal(decision.failureDiagnosis?.kind, 'unknown');
+  assert.equal(decision.failureDiagnosis?.rootCauseStatus, 'unknown');
+  assert.deepEqual(decision.failureDiagnosis?.evidenceRefs, ['validation:failed:npm run compile']);
+  assert.deepEqual(decision.failureDiagnosis?.relatedPaths, []);
+  assert.match(decision.failureDiagnosis?.summary || '', /相关性不足|unknown/i);
+});
+
 test('QualityGateService: missing validation blocks completion with alternatives and risks', () => {
   const service = new QualityGateService();
   const decision = service.evaluate({

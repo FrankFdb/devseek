@@ -1,5 +1,9 @@
 import * as nodePath from 'path';
 import { coalesceWrittenFileEvidence, type TerminalEvidence, type WrittenFileEvidence } from './completion-evidence';
+import {
+  buildTerminalFailureDiagnosis,
+  type FailureDiagnosis,
+} from '../app/failure-diagnosis';
 
 export type AgenticHistoryTodoStatus = 'not-started' | 'in-progress' | 'completed' | 'failed';
 
@@ -14,6 +18,7 @@ export interface AgenticHistoryQualityGate {
   summary: string;
   risks?: string[];
   evidenceRefs?: string[];
+  failureDiagnosis?: FailureDiagnosis;
   alternativeChecks?: string[];
   requiredActions?: string[];
 }
@@ -128,6 +133,9 @@ function renderQualityGate(qualityGate?: AgenticHistoryQualityGate): string {
     .slice(0, 4)
     .map(ref => `<li><code>${escapeHtml(truncate(ref, 220))}</code></li>`)
     .join('');
+  const diagnosis = qualityGate.failureDiagnosis
+    ? `<p><strong>失败诊断：</strong> <code>${escapeHtml(qualityGate.failureDiagnosis.kind)}</code> ${escapeHtml(truncate(qualityGate.failureDiagnosis.summary, 320))}</p>`
+    : '';
   const alternatives = (qualityGate.alternativeChecks || [])
     .slice(0, 4)
     .map(check => `<li>${escapeHtml(truncate(check, 220))}</li>`)
@@ -138,6 +146,7 @@ function renderQualityGate(qualityGate?: AgenticHistoryQualityGate): string {
     .join('');
   return [
     `<p><strong>QualityGate：</strong> <code>${escapeHtml(statusLabel)}</code> ${escapeHtml(truncate(qualityGate.summary, 320))}</p>`,
+    diagnosis,
     risks ? `<p><strong>风险：</strong></p><ul>${risks}</ul>` : '',
     evidence ? `<p><strong>证据引用：</strong></p><ul>${evidence}</ul>` : '',
     alternatives ? `<p><strong>替代检查：</strong></p><ul>${alternatives}</ul>` : '',
@@ -164,11 +173,20 @@ export function buildAgenticQualityGateForHistory(input: {
 
   const failedTerminal = [...input.terminalEvidence].reverse().find(e => !e.ok);
   if (failedTerminal) {
+    const evidenceRef = terminalEvidenceRef(failedTerminal);
     return {
       status: 'fail',
       summary: `QualityGate 未通过：${failedTerminal.kind || 'terminal'} 验证失败。`,
       risks: ['自动验证命令失败，不能把任务标记为完全完成。'],
-      evidenceRefs: [terminalEvidenceRef(failedTerminal)],
+      evidenceRefs: [evidenceRef],
+      failureDiagnosis: buildTerminalFailureDiagnosis({
+        evidenceRef,
+        command: failedTerminal.command,
+        exitCode: failedTerminal.exitCode,
+        detail: failedTerminal.detail,
+        kind: failedTerminal.kind,
+        changedPaths: input.writtenFiles.map(file => file.path || file.basename).filter(Boolean),
+      }),
       requiredActions: ['修复自动验证失败后重新运行 QualityGate。'],
     };
   }

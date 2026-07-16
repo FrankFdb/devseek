@@ -16,6 +16,10 @@ import {
   type ValidationCommandRunner,
 } from '../workspace/validation-service';
 import type { CppValidationPolicy } from '../validation-planner';
+import {
+  buildValidationFailureDiagnosis,
+  type FailureDiagnosis,
+} from '../app/failure-diagnosis';
 
 export interface AgentAutoValidationCallbacks {
   onAgentStatus: (status: AgentStatusEvent) => void | Promise<void>;
@@ -34,6 +38,7 @@ export interface AgentAutoValidationResult {
     summary: string;
     risks?: string[];
     evidenceRefs?: string[];
+    failureDiagnosis?: FailureDiagnosis;
     alternativeChecks?: string[];
     requiredActions?: string[];
   };
@@ -323,6 +328,7 @@ function combineFormalProjectQualityResults(
         summary: gates.map(gate => gate.summary).filter(Boolean).join('；'),
         risks: gates.flatMap(gate => gate.risks ?? []),
         evidenceRefs: gates.flatMap(gate => gate.evidenceRefs ?? []),
+        ...(selectStickyFailureDiagnosis(gates) ? { failureDiagnosis: selectStickyFailureDiagnosis(gates) } : {}),
         alternativeChecks: gates.flatMap(gate => gate.alternativeChecks ?? []),
         requiredActions: gates.flatMap(gate => gate.requiredActions ?? []),
       }
@@ -347,12 +353,32 @@ function validationEvidenceRef(status: 'passed' | 'failed' | 'blocked', result: 
   return `validation:${status}:${result.command || result.reason || 'unknown'}`;
 }
 
-function buildAutoValidationQualityGate(result: AutoValidationResult): NonNullable<AgentAutoValidationResult['qualityGate']> {
+function selectStickyFailureDiagnosis(
+  gates: Array<NonNullable<AgentAutoValidationResult['qualityGate']>>,
+): FailureDiagnosis | undefined {
+  return gates.find(gate => gate.status !== 'pass' && gate.failureDiagnosis)?.failureDiagnosis;
+}
+
+function buildAutoValidationQualityGate(
+  result: AutoValidationResult,
+  changedPaths: string[] = [],
+): NonNullable<AgentAutoValidationResult['qualityGate']> {
   if (result.status === 'blocked' || result.ran === false) {
+    const evidenceRef = validationEvidenceRef('blocked', result);
     return {
       status: 'blocked',
       summary: `QualityGate 阻塞：${result.reason || 'validation-blocked'}。`,
-      evidenceRefs: [validationEvidenceRef('blocked', result)],
+      evidenceRefs: [evidenceRef],
+      failureDiagnosis: buildValidationFailureDiagnosis({
+        status: 'blocked',
+        changedPaths,
+        command: result.command,
+        exitCode: result.exitCode,
+        output: result.output,
+        reason: result.reason || 'validation-blocked',
+        mode: result.mode,
+        evidenceRef,
+      }),
       risks: result.risks?.length
         ? result.risks
         : ['没有自动验证证据，不能证明变更后的行为正确。'],
@@ -373,10 +399,21 @@ function buildAutoValidationQualityGate(result: AutoValidationResult): NonNullab
     };
   }
 
+  const evidenceRef = validationEvidenceRef('failed', result);
   return {
     status: 'fail',
     summary: `QualityGate 未通过：自动验证失败（exitCode=${result.exitCode ?? 'null'}）。`,
-    evidenceRefs: [validationEvidenceRef('failed', result)],
+    evidenceRefs: [evidenceRef],
+    failureDiagnosis: buildValidationFailureDiagnosis({
+      status: 'failed',
+      changedPaths,
+      command: result.command,
+      exitCode: result.exitCode,
+      output: result.output,
+      reason: result.reason,
+      mode: result.mode,
+      evidenceRef,
+    }),
     risks: [
       ...(result.risks || []),
       '自动验证命令失败，不能把任务标记为完成。',
@@ -445,7 +482,7 @@ export async function runAgentAutoValidationForWrites(
     }
     if (result.status === 'blocked' || result.ran === false) {
       const feedbackForAI = formatBlockedAutoValidationFeedback(result);
-      const qualityGate = formalProjectQuality?.qualityGate ?? buildAutoValidationQualityGate(result);
+      const qualityGate = formalProjectQuality?.qualityGate ?? buildAutoValidationQualityGate(result, changedPaths);
       await callbacks.onAgentStatus({
         type: 'agentStatus',
         phase: 'validate',
@@ -468,7 +505,7 @@ export async function runAgentAutoValidationForWrites(
     const finalFeedbackForAI = [feedbackForAI, repairBlockedReason, formalProjectQuality?.feedbackForAI]
       .filter(Boolean)
       .join('\n\n');
-    const finalQualityGate = formalProjectQuality?.qualityGate ?? buildAutoValidationQualityGate(result);
+    const finalQualityGate = formalProjectQuality?.qualityGate ?? buildAutoValidationQualityGate(result, changedPaths);
     const validationPassed = result.ok && !formalProjectQuality;
     await callbacks.onAgentStatus({
       type: 'agentStatus',
