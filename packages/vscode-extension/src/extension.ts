@@ -200,6 +200,8 @@ const CHECKPOINT_KEY = DEFAULT_TASK_CHECKPOINT_KEY;
 /** Shape of the persisted checkpoint */
 type AgentTaskCheckpoint = TaskCheckpointRecord<AgentTask>;
 
+const getCheckpointScope = () => ({ wsRootFsPath: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath, sessionId: activeSessionId });
+
 /** Save or clear the agent task checkpoint. Pass null to clear (completed). */
 async function saveAgentCheckpoint(data: AgentTaskCheckpoint | null): Promise<void> {
   if (!extContext) return;
@@ -210,12 +212,12 @@ async function saveAgentCheckpoint(data: AgentTaskCheckpoint | null): Promise<vo
 /** Load the checkpoint if one exists for the current session. */
 function loadAgentCheckpoint(): AgentTaskCheckpoint | undefined {
   if (!extContext) return undefined;
-  return new TaskCheckpointStore<AgentTask>(extContext.workspaceState, CHECKPOINT_KEY).load();
+  return new TaskCheckpointStore<AgentTask>(extContext.workspaceState, CHECKPOINT_KEY).loadScoped(getCheckpointScope());
 }
 
 async function loadFreshAgentCheckpoint(maxAgeMs: number): Promise<AgentTaskCheckpoint | undefined> {
   if (!extContext) return undefined;
-  const result = await new TaskCheckpointStore<AgentTask>(extContext.workspaceState, CHECKPOINT_KEY).loadFresh(maxAgeMs);
+  const result = await new TaskCheckpointStore<AgentTask>(extContext.workspaceState, CHECKPOINT_KEY).loadFresh(maxAgeMs, Date.now(), getCheckpointScope());
   return result?.checkpoint;
 }
 

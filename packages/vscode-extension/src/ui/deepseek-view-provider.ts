@@ -774,7 +774,7 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleResumeAgentCheckpoint(wv: vscode.Webview): Promise<void> {
-    const checkpoint = this.deps.loadAgentCheckpoint();
+    const checkpoint = await this.deps.loadFreshAgentCheckpoint(7_200_000);
     if (!checkpoint) return;
     wv.postMessage({ type: 'agentCheckpointCleared' });
     await this.deps.runChat(

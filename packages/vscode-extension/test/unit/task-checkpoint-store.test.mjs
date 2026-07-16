@@ -76,6 +76,42 @@ test('TaskCheckpointStore: loadFresh returns current checkpoint', async () => {
   assert.equal(fresh.stale, false);
 });
 
+test('TaskCheckpointStore: loadFresh clears checkpoint from a different workspace or session', async () => {
+  const wrongWorkspaceStorage = new MemoryStorage();
+  const wrongWorkspaceStore = new TaskCheckpointStore(wrongWorkspaceStorage);
+  await wrongWorkspaceStore.save(checkpoint({ savedAt: 900, wsRootFsPath: '/repo-a', sessionId: 's1' }));
+
+  const wrongWorkspace = await wrongWorkspaceStore.loadFresh(200, 1_000, {
+    wsRootFsPath: '/repo-b',
+    sessionId: 's1',
+  });
+
+  assert.equal(wrongWorkspace, undefined);
+  assert.equal(wrongWorkspaceStore.load(), undefined);
+
+  const wrongSessionStorage = new MemoryStorage();
+  const wrongSessionStore = new TaskCheckpointStore(wrongSessionStorage);
+  await wrongSessionStore.save(checkpoint({ savedAt: 900, wsRootFsPath: '/repo-a', sessionId: 's1' }));
+
+  const wrongSession = await wrongSessionStore.loadFresh(200, 1_000, {
+    wsRootFsPath: '/repo-a',
+    sessionId: 's2',
+  });
+
+  assert.equal(wrongSession, undefined);
+  assert.equal(wrongSessionStore.load(), undefined);
+});
+
+test('TaskCheckpointStore: loadScoped refuses mismatched checkpoint without returning resumable facts', async () => {
+  const storage = new MemoryStorage();
+  const store = new TaskCheckpointStore(storage);
+  await store.save(checkpoint({ wsRootFsPath: '/repo-a', sessionId: 's1' }));
+
+  assert.equal(store.loadScoped({ wsRootFsPath: '/repo-a', sessionId: 's1' }).sessionId, 's1');
+  assert.equal(store.loadScoped({ wsRootFsPath: '/repo-a', sessionId: 's2' }), undefined);
+  assert.equal(store.loadScoped({ wsRootFsPath: '/repo-b', sessionId: 's1' }), undefined);
+});
+
 test('TaskCheckpointStore: loadFresh clears completed checkpoint', async () => {
   const storage = new MemoryStorage();
   const store = new TaskCheckpointStore(storage);

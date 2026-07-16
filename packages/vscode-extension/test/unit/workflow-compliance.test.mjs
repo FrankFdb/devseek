@@ -1953,6 +1953,15 @@ test('§8.4 Checkpoint: loadAgentCheckpoint present', () => {
   assertContains(code, 'loadAgentCheckpoint', '§8.4 checkpoint load');
 });
 
+test('§8.4 Checkpoint: resume UI must reload a fresh scoped checkpoint before executing', () => {
+  const viewProvider = src('src/ui/deepseek-view-provider.ts');
+  assert.match(
+    viewProvider,
+    /private async handleResumeAgentCheckpoint\(wv: vscode\.Webview\): Promise<void> \{[\s\S]*?const checkpoint = await this\.deps\.loadFreshAgentCheckpoint\(7_200_000\)/,
+    'stale checkpoint banners must not resume a raw checkpoint after workspace/session drift',
+  );
+});
+
 test('Extension apply gate: unfenced target-scoped source can enter applier', () => {
   const code = src('src/extension.ts');
   assertContains(code, 'looksLikeTargetScopedSourceResponse', 'plain source fallback helper must be imported');
