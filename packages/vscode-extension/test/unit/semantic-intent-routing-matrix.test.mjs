@@ -14,6 +14,10 @@ import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import {
+  EXTERNAL_INTENT_CORPUS,
+  EXTERNAL_INTENT_SOURCES,
+} from '../fixtures/external-intent-corpus.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
@@ -36,151 +40,22 @@ const { ChatRouteController } = req(routeBundlePath);
 const { buildPreExecutionInteraction } = req(interactionBundlePath);
 const controller = new ChatRouteController();
 
-function semantic(overrides) {
-  return {
-    version: 'devseek.semantic-intent/v1',
-    source: 'test',
-    mode: 'qa',
-    taskKind: 'question-answer',
-    confidence: 0.9,
-    mutation: 'none',
-    targetPaths: [],
-    requiresWorkspace: false,
-    requiresTerminal: false,
-    requiresExternalEffect: false,
-    requiresClarification: false,
-    reason: 'external coding-agent workflow case',
-    ...overrides,
-  };
-}
-
-const cases = [
-  {
-    id: 'SEM-QA-001',
-    prompt: 'What test framework does this repository use?',
-    files: [],
-    semanticIntent: semantic({ mode: 'qa', taskKind: 'question-answer' }),
-    expect: { mode: 'qa', workflow: 'plain-chat', useAgent: false, toolPolicy: 'qa' },
-  },
-  {
-    id: 'SEM-INSPECT-001',
-    prompt: 'Explain src/auth.ts without changing files.',
-    files: ['/tmp/project/src/auth.ts'],
-    semanticIntent: semantic({
-      mode: 'inspect',
-      taskKind: 'read-only-analysis',
-      targetPaths: ['/tmp/project/src/auth.ts'],
-      requiresWorkspace: true,
-    }),
-    expect: { mode: 'inspect', workflow: 'inspect-agent', useAgent: true, toolPolicy: 'inspect' },
-  },
-  {
-    id: 'SEM-PLAN-001',
-    prompt: 'Plan a refactor for src/router.ts, do not edit yet.',
-    files: ['/tmp/project/src/router.ts'],
-    semanticIntent: semantic({
-      mode: 'plan',
-      taskKind: 'planning',
-      targetPaths: ['/tmp/project/src/router.ts'],
-      requiresWorkspace: true,
-    }),
-    expect: { mode: 'plan', workflow: 'plan-agent', useAgent: true, toolPolicy: 'plan' },
-  },
-  {
-    id: 'SEM-REVIEW-001',
-    prompt: 'Review this change and list the highest-risk issues only.',
-    files: ['/tmp/project/src/payment.ts'],
-    semanticIntent: semantic({
-      mode: 'inspect',
-      taskKind: 'code-review',
-      targetPaths: ['/tmp/project/src/payment.ts'],
-      requiresWorkspace: true,
-    }),
-    expect: { mode: 'inspect', workflow: 'inspect-agent', useAgent: true, toolPolicy: 'inspect' },
-  },
-  {
-    id: 'SEM-STANDALONE-001',
-    prompt: 'Write a small C++ program that prints good afternoon and run it.',
-    files: [],
-    semanticIntent: semantic({
-      mode: 'edit',
-      taskKind: 'standalone-program',
-      mutation: 'create-file',
-      requiresWorkspace: true,
-      requiresTerminal: true,
-    }),
-    expect: { mode: 'edit', workflow: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-  },
-  {
-    id: 'SEM-FILE-001',
-    prompt: 'Create docs/migration-plan.md summarizing the migration steps.',
-    files: [],
-    semanticIntent: semantic({
-      mode: 'edit',
-      taskKind: 'file-artifact',
-      mutation: 'create-file',
-      targetPaths: ['docs/migration-plan.md'],
-      requiresWorkspace: true,
-    }),
-    expect: { mode: 'edit', workflow: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-  },
-  {
-    id: 'SEM-EXISTING-EDIT-001',
-    prompt: 'Fix the parser bug in src/parser.ts and add a focused test.',
-    files: ['/tmp/project/src/parser.ts'],
-    semanticIntent: semantic({
-      mode: 'edit',
-      taskKind: 'existing-project-edit',
-      mutation: 'modify-source',
-      targetPaths: ['/tmp/project/src/parser.ts'],
-      requiresWorkspace: true,
-      requiresTerminal: true,
-    }),
-    expect: { mode: 'edit', workflow: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-  },
-  {
-    id: 'SEM-RUN-001',
-    prompt: 'Run the test suite and report the failures, do not change files.',
-    files: ['/tmp/project/package.json'],
-    semanticIntent: semantic({
-      mode: 'run',
-      taskKind: 'terminal-validation',
-      mutation: 'run-only',
-      requiresWorkspace: true,
-      requiresTerminal: true,
-    }),
-    expect: { mode: 'run', workflow: 'run-agent', useAgent: true, toolPolicy: 'run' },
-  },
-  {
-    id: 'SEM-EXTERNAL-001',
-    prompt: 'Commit the current changes and push the branch.',
-    files: ['/tmp/project/src/parser.ts'],
-    semanticIntent: semantic({
-      mode: 'run',
-      taskKind: 'external-effect',
-      mutation: 'external-effect',
-      requiresWorkspace: true,
-      requiresTerminal: true,
-      requiresExternalEffect: true,
-    }),
-    expect: { mode: 'run', workflow: 'confirmation-required', useAgent: false, toolPolicy: 'run' },
-  },
-  {
-    id: 'SEM-DESTRUCTIVE-001',
-    prompt: 'Delete the generated build directory.',
-    files: ['/tmp/project/build'],
-    semanticIntent: semantic({
-      mode: 'destructive',
-      taskKind: 'destructive',
-      mutation: 'delete',
-      targetPaths: ['/tmp/project/build'],
-      requiresWorkspace: true,
-    }),
-    expect: { mode: 'destructive', workflow: 'confirmation-required', useAgent: false, toolPolicy: 'destructive' },
-  },
+const REQUIRED_TASK_KINDS = [
+  'smalltalk',
+  'question-answer',
+  'read-only-analysis',
+  'planning',
+  'code-review',
+  'standalone-program',
+  'file-artifact',
+  'existing-project-edit',
+  'terminal-validation',
+  'external-effect',
+  'destructive',
+  'ambiguous',
 ];
 
-for (const item of cases) {
+for (const item of EXTERNAL_INTENT_CORPUS) {
   test(`Semantic intent routing matrix: ${item.id}`, () => {
     const decision = controller.decide({
       userDisplay: item.prompt,
@@ -198,35 +73,98 @@ for (const item of cases) {
       decision.intent.signals.includes('semantic-intent-provider')
         || decision.intent.signals.includes('semantic-intent-constrained'),
     );
+
+    if (item.expect.interaction) {
+      const request = buildPreExecutionInteraction({
+        userText: item.prompt,
+        prompt: item.prompt,
+        files: item.files,
+        intent: decision.intent,
+        workflow: decision.workflow,
+      });
+      assert.equal(request?.kind, item.expect.interaction);
+      assert.equal(decision.intent.blockers.includes('semantic-clarification-needed'), true);
+    }
   });
 }
 
-test('Semantic intent routing matrix: ambiguity becomes clarification, not execution', () => {
-  const prompt = 'Handle the auth thing.';
-  const decision = controller.decide({
-    userDisplay: prompt,
-    prompt,
-    files: ['/tmp/project/src/auth.ts'],
-    agentEnabled: true,
-    semanticIntent: semantic({
-      mode: 'plan',
-      taskKind: 'ambiguous',
-      mutation: 'none',
-      targetPaths: ['/tmp/project/src/auth.ts'],
-      requiresWorkspace: true,
-      requiresClarification: true,
-    }),
-  });
-  const request = buildPreExecutionInteraction({
-    userText: prompt,
-    prompt,
-    files: ['/tmp/project/src/auth.ts'],
-    intent: decision.intent,
-    workflow: decision.workflow,
-  });
+test('Semantic intent routing matrix: external corpus covers every task kind', () => {
+  const counts = new Map(REQUIRED_TASK_KINDS.map(kind => [kind, 0]));
+  for (const item of EXTERNAL_INTENT_CORPUS) {
+    assert.ok(item.id.startsWith('EXT-'));
+    assert.equal(item.taskKind, item.semanticIntent.taskKind);
+    assert.ok(item.prompt.trim().length > 0);
+    assert.ok(item.sourceRefs.length > 0, `${item.id} should cite at least one external source family`);
+    for (const sourceRef of item.sourceRefs) {
+      assert.ok(EXTERNAL_INTENT_SOURCES[sourceRef], `${item.id} has unknown source ${sourceRef}`);
+    }
+    counts.set(item.taskKind, (counts.get(item.taskKind) || 0) + 1);
+  }
 
-  assert.equal(decision.intent.blockers.includes('semantic-clarification-needed'), true);
-  assert.equal(request?.kind, 'clarify');
+  const missing = [...counts.entries()].filter(([, count]) => count < 4);
+  assert.deepEqual(missing, []);
+});
+
+test('Semantic intent routing matrix: external effects and destructive actions remain gated', () => {
+  const gated = EXTERNAL_INTENT_CORPUS.filter(item =>
+    item.taskKind === 'external-effect' || item.taskKind === 'destructive'
+  );
+  assert.ok(gated.length >= 8);
+  for (const item of gated) {
+    const decision = controller.decide({
+      userDisplay: item.prompt,
+      prompt: item.prompt,
+      files: item.files,
+      agentEnabled: true,
+      semanticIntent: item.semanticIntent,
+    });
+    assert.equal(decision.workflow.kind, 'confirmation-required', item.id);
+    assert.equal(decision.workflow.useAgent, false, item.id);
+    assert.equal(decision.intent.requiresConfirmation, true, item.id);
+  }
+});
+
+test('Semantic intent routing matrix: no-write run-only cases are executable but not mutating', () => {
+  const runOnly = EXTERNAL_INTENT_CORPUS.filter(item =>
+    item.taskKind === 'terminal-validation'
+  );
+  assert.ok(runOnly.length >= 4);
+  for (const item of runOnly) {
+    const decision = controller.decide({
+      userDisplay: item.prompt,
+      prompt: item.prompt,
+      files: item.files,
+      agentEnabled: true,
+      semanticIntent: item.semanticIntent,
+    });
+    assert.equal(decision.intent.mode, 'run', item.id);
+    assert.equal(decision.workflow.kind, 'run-agent', item.id);
+    assert.equal(decision.toolPolicy.mode, 'run', item.id);
+    assert.equal(decision.intent.blockers.includes('explicit-no-change'), false, item.id);
+  }
+});
+
+test('Semantic intent routing matrix: ambiguous corpus asks instead of executing edits', () => {
+  const ambiguous = EXTERNAL_INTENT_CORPUS.filter(item => item.taskKind === 'ambiguous');
+  assert.ok(ambiguous.length >= 4);
+  for (const item of ambiguous) {
+    const decision = controller.decide({
+      userDisplay: item.prompt,
+      prompt: item.prompt,
+      files: item.files,
+      agentEnabled: true,
+      semanticIntent: item.semanticIntent,
+    });
+    const request = buildPreExecutionInteraction({
+      userText: item.prompt,
+      prompt: item.prompt,
+      files: item.files,
+      intent: decision.intent,
+      workflow: decision.workflow,
+    });
+    assert.equal(request?.kind, 'clarify', item.id);
+    assert.equal(decision.intent.blockers.includes('semantic-clarification-needed'), true, item.id);
+  }
 });
 
 console.log('\nSemantic intent routing matrix tests passed.\n');
