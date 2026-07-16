@@ -85,6 +85,26 @@ test('InteractionService: complex refactor asks for plan review first', () => {
   assert.match(request.details.join('\n'), /权限模式：plan/);
 });
 
+test('InteractionService: semantic clarification blocker asks before execution', () => {
+  const prompt = '处理一下 auth';
+  const intent = {
+    ...decideChatIntent(prompt),
+    mode: 'edit',
+    kind: 'code-change',
+    blockers: ['semantic-clarification-needed'],
+    signals: ['semantic-task:ambiguous', 'semantic-mutation:none'],
+    reason: 'semantic:ambiguous:target unclear',
+  };
+  const workflow = selectWorkflow({ intent, files: ['/tmp/src/auth.ts'], agentEnabled: true, prompt, userText: prompt });
+  const request = buildPreExecutionInteraction({ userText: prompt, prompt, files: ['/tmp/src/auth.ts'], intent, workflow });
+
+  assert.equal(request?.kind, 'clarify');
+  assert.equal(request.title, '需要先澄清任务意图');
+  assert.equal(request.options[0].id, 'clarify');
+  assert.equal(request.options[1].id, 'plan');
+  assert.match(request.details.join('\n'), /模型任务类型：ambiguous/);
+});
+
 test('InteractionService: confirmed request does not ask again', () => {
   const prompt = '删除 code/main.cpp';
   const { intent, workflow } = route(prompt, ['/tmp/main.cpp'], true);

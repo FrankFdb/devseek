@@ -57,10 +57,11 @@ const CONTRACT_FILE_EXTENSION_PATTERN = '(?:cxx|cpp|cc|c|hxx|hpp|hh|h|tsx|ts|jsx
 const PATH_RE = new RegExp(`(?:^|[^A-Za-z0-9_.@+~/-])((?:(?:/|\\./|\\.\\./)[\\w.@+~/-]+(?:\\.[\\w-]+)?)|(?:[\\w.@+~-]+(?:/[\\w.@+~-]+)*\\.${CONTRACT_FILE_EXTENSION_PATTERN}))`, 'gi');
 const DOCUMENT_RE = /(?:文档|报告|说明|设计|方案|markdown|\.md\b|document|report)/i;
 const INSPECTION_RE = /(?:读取|提取|检查|审计|分析|列出|查看|总结|摘要|概括|翻译|只读|read|extract|inspect|audit|analy[sz]e|summari[sz]e|translate)/i;
-const CHANGE_RE = /(?:修复|修正|修改|实现|新增|添加|重构|集成|落地|替换|重命名|移动|复制|追加|插入|删除|移除|fix|repair|modify|implement|add|refactor|replace|rename|move|copy|append|insert|delete|remove)/i;
+const CHANGE_RE = /(?:修复|修正|修改|实现|新增|添加|重构|集成|落地|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|删除|移除|fix|repair|modify|implement|add|refactor|replace|rename|move|copy|append|insert|delete|remove)/i;
 const CODE_GENERATION_RE = /(?:(?:编写|写一个|写个|创建|新建|生成|实现|新增|添加|制作)[^，,。；;\n]{0,36}(?:C\+\+|C#|C\s*语言|JavaScript|TypeScript|Python|Java|Go|Rust|程序|脚本|源码|代码|函数|类|模块)|\b(?:create|write|generate|implement|add|build)\b[^,.;\n]{0,36}\b(?:C\+\+|C#|JavaScript|TypeScript|Python|Java|Go|Rust|program|script|code|function|class|module)\b)/i;
 const CODE_GENERATION_REPORT_RE = /(?:原有代码修改清单|代码修改清单|修改点清单|代码审计|代码分析|代码说明|代码文档|code\s+(?:review|analysis|audit|report|document|documentation|change\s+list))/i;
-const EXPLICIT_SOURCE_IMPLEMENTATION_DELIVERY_RE = /(?:(?:代码实现|实现代码|落地实现)|(?:创建|新建|生成|编写|写入|输出|保存|新增|添加|修改|改动|重构|修复|替换|重命名|移动|复制|追加|插入)[^，,。；;\n]{0,40}(?:源代码文件|源码文件|代码文件|源文件|\bsrc\b|source\s+files?|code\s+files?|\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|ts|tsx|js|jsx|py|java|go|rs)\b))/i;
+const ADVISORY_CHANGE_REQUEST_RE = /(?:(?:给出|提供|输出|列出|制定|梳理).{0,60}(?:建议|对策|方案|计划|步骤|清单)|(?:建议|对策).{0,40}(?:修复|修正|修改|重构|方案|计划)|(?:suggest|recommend|propose|list|outline|draft).{0,80}(?:ways?|options?|recommendations?|plan|steps?|approach|how\s+to|fix|repair|refactor)|(?:how\s+to|ways?\s+to).{0,48}(?:fix|repair|refactor|improve|change|update))/i;
+const EXPLICIT_SOURCE_IMPLEMENTATION_DELIVERY_RE = /(?:(?:代码实现|实现代码|落地实现)|(?:创建|新建|生成|编写|写入|输出|保存|新增|添加|修改|改动|重构|修复|替换|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入)[^，,。；;\n]{0,40}(?:源代码文件|源码文件|代码文件|源文件|\bsrc\b|source\s+files?|code\s+files?|\.(?:c|cc|cpp|cxx|h|hh|hpp|hxx|ts|tsx|js|jsx|py|java|go|rs)\b))/i;
 const STANDALONE_RE = /(?:独立(?:项目|工具|程序|脚本)|standalone|从零|new\s+(?:project|tool))/i;
 const EXISTING_PROJECT_SCOPE_RE = /(?:既有|现有|原来|原项目|大项目|正式项目|生产项目|代码库|工程|\/src\/|src\/|CMakeLists\.txt|Makefile|参考.{0,80}模块)/i;
 const BROAD_PROJECT_CODE_SCOPE_RE = /(?:整个|全部|全局|项目|仓库|系统|架构|多入口|跨平台|跨模块|模块化|runtime|workflow|provider|权限|状态机)[^，,。；;\n]{0,40}(?:代码|模块|逻辑|runtime|workflow|provider|权限|状态机|code|logic)|(?:代码|模块|逻辑|code|logic)[^，,。；;\n]{0,40}(?:整个|全部|全局|项目|仓库|系统|架构|多入口|跨平台|跨模块|模块化|runtime|workflow|provider|权限|状态机)/i;
@@ -69,11 +70,12 @@ const INTERFACE_RE = /(?:接口文档|接口设计|交互接口|API\b|request.{0
 const COMMUNICATION_CHAIN_RE = /(?:通信链路|通讯链路|收发链路|端到端链路|主控.{0,100}(?:平台|遥控器)|(?:平台|遥控器).{0,100}主控|(?:参考|复用|对齐).{0,80}(?:通讯|通信|通道|传输|tunnel|MAVLink)|project.?wide communication)/i;
 const VALIDATION_RE = /(?:测试|验证|编译|运行|回归|test|verify|validation|compile|build)/i;
 const CONDITIONAL_REPAIR_RE = /(?:(?:运行|执行|测试|验证|编译|构建|run|execute|test|verify|compile|build)[^，,。；;\n]{0,80}(?:如果|若|如有|有|when|if)[^，,。；;\n]{0,40}(?:失败|错误|报错|error|fail)[^，,。；;\n]{0,40}(?:修复|修正|fix|repair)|(?:如果|若|如有|when|if)[^，,。；;\n]{0,40}(?:失败|错误|报错|error|fail)[^，,。；;\n]{0,40}(?:修复|修正|fix|repair))/i;
+const BUG_FIX_IMPLEMENTATION_RE = /(?:(?:修复|修正|解决|处理|fix|repair|resolve)[^，,。；;\n]{0,64}(?:bug|issue|问题|错误|失败|报错|异常|不工作|不生效|failing|broken)|(?:bug|issue|问题|错误|失败|报错|异常|不工作|不生效|failing|broken)[^，,。；;\n]{0,64}(?:修复|修正|解决|处理|fix|repair|resolve))/i;
 const DESTRUCTIVE_RE = /(?:删除|清空|覆盖|重置|drop|delete|remove|reset)/i;
 const NON_DESTRUCTIVE_CONTENT_DELETE_RE = /(?:删除|移除|删掉|delete|remove)[^，,。；;\n]{0,64}(?:里|中|内|里的|中的|行|内容|注释|字段|配置项|段落|语句|line|lines?|content|comment|field|statement)/i;
-const NO_SOURCE_CHANGE_RE = /(?:不要|禁止|无需|不允许|不得).{0,24}(?:修改|改动|修复|重命名|移动|复制|追加|插入).{0,12}(?:源码|代码|文件)|(?:do not|don't|must not).{0,24}(?:modify|change|fix|repair|rename|move|copy|append|insert).{0,12}(?:source|code|files?)/i;
-const ARTIFACT_WRITE_ACTION_PATTERN = '(?:(?:通过|以|用|使用)[^，,。；;\\n]{0,12}(?:md|markdown|\\.md)(?:文档|文件|报告)?[^，,。；;\\n]{0,16}(?:提供|输出|给出|返回|保存|生成|产出)|创建|新建|生成|编写|制作|做成|形成|整理成|记录|汇总(?:成|为|到|至|入)|翻译(?=[^，,。；;\\n]{0,24}(?:成|为|到|至|入|保存|输出|写入|文档|文件|报告|markdown|md))|(?:总结|摘要|概括|提取)(?=[^，,。；;\\n]{0,24}(?:成|为|到|至|入|保存|输出|写入|文档|文件|报告|markdown|md))|写入|写出|写到|保存|产出|落盘|更新|修改|改写|改动|编辑|覆盖|删除|删|移除|重命名|移动|复制|追加|插入|写(?!法)|改(?!进)|输出(?=[^，,。；;\\n]{0,16}(?:到|至|为|成|入|markdown|文档|报告))|(?:提供|给出|交付)(?=[^，,。；;\\n]{0,16}(?:markdown|文档|报告))|\\b(?:create|write|compose|draft|render|record|save|generate|produce|update|modify|revise|replace|overwrite|edit|change|delete|remove|touch|rename|move|copy|append|insert|translate)\\b|\\bmake\\s+(?:a\\s+)?changes?\\b|\\boutput(?=[^,.;\\n]{0,20}\\b(?:to|into|as|markdown|report|document)\\b)|\\b(?:provide|deliver)(?=[^,.;\\n]{0,20}\\b(?:markdown|report|document)\\b|[^,.;\\n]{0,36}\\b(?:through|via|as)\\s+(?:an?\\s+)?(?:markdown\\s+)?(?:document|report)\\b)|\\bsummari[sz]e(?:\\s+(?:it|them|the\\s+(?:facts?|results?)))?\\s+(?:into|to|as)\\b)';
-const FILE_READ_ACTION_PATTERN = '(?:只读|读取|读出|查看|检查|审计|分析|解释|核对|参考|总结|摘要|概括|翻译|\\b(?:read|inspect|view|check|audit|analy[sz]e|explain|reference|translate)\\b|\\bsummari[sz]e\\b)';
+const NO_SOURCE_CHANGE_RE = /(?:不要|禁止|无需|不允许|不得).{0,24}(?:修改|改动|修复|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入).{0,12}(?:源码|代码|文件)|(?:do not|don't|must not).{0,24}(?:modify|change|fix|repair|rename|move|copy|append|insert).{0,12}(?:source|code|files?)/i;
+const ARTIFACT_WRITE_ACTION_PATTERN = '(?:(?:通过|以|用|使用)[^，,。；;\\n]{0,12}(?:md|markdown|\\.md)(?:文档|文件|报告)?[^，,。；;\\n]{0,16}(?:提供|输出|给出|返回|保存|生成|产出)|创建|新建|生成|编写|制作|做成|形成|整理成|记录|汇总(?:成|为|到|至|入)|翻译(?=[^，,。；;\\n]{0,24}(?:成|为|到|至|入|保存|输出|写入|文档|文件|报告|markdown|md))|(?:总结|摘要|概括|提取)(?=[^，,。；;\\n]{0,24}(?:成|为|到|至|入|保存|输出|写入|文档|文件|报告|markdown|md))|写入|写出|写到|保存|产出|落盘|更新|修改|改写|改动|编辑|覆盖|删除|删|移除|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|写(?!法)|改(?!进)|输出(?=[^，,。；;\\n]{0,16}(?:到|至|为|成|入|markdown|文档|报告))|(?:提供|给出|交付)(?=[^，,。；;\\n]{0,16}(?:markdown|文档|报告))|\\b(?:create|write|compose|draft|render|record|save|generate|produce|update|modify|revise|replace|overwrite|edit|change|delete|remove|touch|rename|move|copy|append|insert|translate)\\b|\\bmake\\s+(?:a\\s+)?changes?\\b|\\boutput(?=[^,.;\\n]{0,20}\\b(?:to|into|as|markdown|report|document)\\b)|\\b(?:provide|deliver)(?=[^,.;\\n]{0,20}\\b(?:markdown|report|document)\\b|[^,.;\\n]{0,36}\\b(?:through|via|as)\\s+(?:an?\\s+)?(?:markdown\\s+)?(?:document|report)\\b)|\\bsummari[sz]e(?:\\s+(?:it|them|the\\s+(?:facts?|results?)))?\\s+(?:into|to|as)\\b)';
+const FILE_READ_ACTION_PATTERN = '(?:只读|读取|读出|查看|检查|审计|分析|解释|核对|参考|总结|摘要|概括|提取|翻译|\\b(?:read|inspect|view|check|audit|analy[sz]e|explain|extract|reference|translate)\\b|\\bsummari[sz]e\\b)';
 const ARTIFACT_TARGET_HINT_RE = /(?:\.md\b|markdown|文档|报告|文件|artifact|document|report|file)/i;
 const MARKDOWN_ARTIFACT_TARGET_HINT_RE = /(?:\.(?:md|markdown)\b|markdown|md\s*(?:文档|文件|报告)|文档|报告|文件|document|report|files?)/i;
 const STRONG_NEGATED_WRITE_PREFIX_RE = /(?:不要|不得|禁止|严禁|不可|无需|不用|不需要|不允许|勿|do\s+not|don't|should\s+not|must\s+not|may\s+not|shall\s+not|never)[^，,。；;\n]{0,20}$/i;
@@ -290,13 +292,13 @@ function classifyExplicitPathRole(
     || before.match(/(?:而不是|而非)\s*$/i)
     || before.match(/\b(?:instead\s+of|rather\s+than)\s*$/i);
   const afterRead = after.match(/^\s*(?:作为|当作|用作|为)\s*(?:输入|模板|参考|来源)/i)
-    || after.match(/^\s*(?:的)?\s*内容[^，,。；;\n]{0,16}(?:写|输出|汇总|保存|生成|渲染|总结|摘要|概括|翻译|提取)(?:(?:到|入|至|为|成)|\s)/i)
+    || after.match(/^\s*(?:的)?\s*(?:内容|标题|摘要|段落|字段|信息|结果)[^，,。；;\n]{0,16}(?:写|输出|汇总|保存|生成|渲染|总结|摘要|概括|翻译|提取)(?:(?:到|入|至|为|成)|\s)/i)
     || after.match(/^\s+as\s+(?:an?\s+)?(?:input|template|reference|source)\b/i)
     || after.match(/^\s+contents?\s+(?:as|in|into|to)\b/i)
     || (hasFollowingPath && (
       after.match(/^\s+(?:as|into|to)\b/i)
       || after.match(/^\s*(?:保存|生成|渲染|写入|写出|输出)(?:为|成|到|至|入)/i)
-      || after.match(/^\s*(?:并|然后|再)?\s*(?:复制|翻译|总结|摘要|概括|提取)[^，,。；;\n]{0,24}(?:到|至|为|成|入)|^\s*(?:copy|translate|summari[sz]e)[^,.;\n]{0,24}\b(?:to|into|as)\b/i)
+      || after.match(/^\s*(?:并|然后|再)?\s*(?:复制|拷贝|翻译|总结|摘要|概括|提取)[^，,。；;\n]{0,24}(?:到|至|为|成|入)|^\s*(?:copy|translate|summari[sz]e|extract)[^,.;\n]{0,24}\b(?:to|into|as)\b/i)
     ));
   if (beforeRead) {
     return { kind: 'read', index: clauseStart + (beforeRead.index ?? 0) };
@@ -951,11 +953,13 @@ export function buildTaskContract(promptText: string): TaskContract {
   const standaloneCodeGeneration = hasStandaloneCodeGenerationIntent(prompt);
   const changeAction = CHANGE_RE.test(prompt);
   const existingProjectScope = EXISTING_PROJECT_SCOPE_RE.test(prompt);
-  const explicitSourceMutation = changeAction && (
+  const advisoryChangeRequest = ADVISORY_CHANGE_REQUEST_RE.test(prompt);
+  const explicitSourceMutation = changeAction && !advisoryChangeRequest && (
     hasSourceInput
     || existingProjectScope
     || BROAD_PROJECT_CODE_SCOPE_RE.test(prompt)
     || CONDITIONAL_REPAIR_RE.test(prompt)
+    || BUG_FIX_IMPLEMENTATION_RE.test(prompt)
     || EXPLICIT_SOURCE_IMPLEMENTATION_DELIVERY_RE.test(prompt)
   );
   const sourceChange = (explicitSourceMutation || standaloneCodeGeneration)

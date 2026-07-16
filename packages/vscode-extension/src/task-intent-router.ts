@@ -73,7 +73,7 @@ export interface TaskIntentRoute {
 
 const REVIEW_RE = /(?:审查|评审|review|code\s+review|PR\b|pull\s+request)/i;
 const FAILURE_RE = /(?:日志|失败|报错|重试|回归|QualityGate|replay|error|failed)/i;
-const EXTERNAL_EFFECT_RE = /(?:发布|上线|部署|安装插件|安装扩展|提交(?:当前)?(?:修改|变更)?|推送(?:当前)?(?:分支)?|安装\s*(?:依赖|npm\s*包|包)|release|deploy|publish|install\s+extension|git\s+commit|commit\s+(?:changes?|current)|git\s+push|push\s+(?:current\s+)?branch|npm\s+(?:install|i|add)|pnpm\s+add|yarn\s+add|pip\s+install)/i;
+const EXTERNAL_EFFECT_RE = /(?:发布|上线|部署|安装插件|安装扩展|提交(?:当前)?(?:修改|变更)?|推送(?:当前)?(?:分支)?|拉取(?:最新)?代码|安装\s*(?:依赖|npm\s*包|包)|release|deploy|publish|install\s+extension|git\s+(?:commit|push|pull|fetch|merge|rebase)|commit\s+(?:changes?|current)|push\s+(?:current\s+)?branch|npm\s+(?:install|i|add|ci)|pnpm\s+(?:install|i|add)|yarn\s+(?:install|add)|pip\s+install)/i;
 const EXTERNAL_EFFECT_QUESTION_RE = /(?:如何|怎么|怎样|为什么|什么是|介绍|说明|方案|计划|how\s+to|what\s+is|why|plan|design|approach)/i;
 const BROAD_SCOPE_RE = /(整个|全部|全局|项目|仓库|系统|架构|多入口|跨平台|跨模块|模块化|runtime|workflow|provider|权限|状态机)/i;
 const COMPLEX_ACTION_RE = /(重构|改造|拆分|迁移|重写|优化架构|革命性|架构设计|refactor|re-architect|architecture)/i;

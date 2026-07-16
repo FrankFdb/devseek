@@ -80,6 +80,35 @@ export function buildPreExecutionInteraction(input: PreExecutionInteractionInput
     };
   }
 
+  if (input.intent.blockers.includes('semantic-clarification-needed')) {
+    return {
+      id: makeInteractionId('clarify', userText),
+      kind: 'clarify',
+      title: '需要先澄清任务意图',
+      body: '我还不能可靠判断用户要的是回答、计划、修改、运行还是外部操作。请先补充目标、范围或验收标准。',
+      details: [
+        `识别到的模式：${input.intent.mode}`,
+        `原因：${input.intent.reason}`,
+        ...semanticIntentDetails(input.intent),
+      ],
+      options: [
+        {
+          id: 'clarify',
+          label: '我来补充',
+          description: '补充目标、文件范围、是否允许写入或验证方式后再执行。',
+        },
+        {
+          id: 'plan',
+          label: '先给计划',
+          description: '让 DevSeek 先列出计划和需要确认的问题。',
+          prompt: buildPlanPrompt(input.prompt),
+          forceNoAgent: true,
+          intentConfirmed: true,
+        },
+      ],
+    };
+  }
+
   if (input.workflow.requiresPlanReview) {
     return {
       id: makeInteractionId('plan-review', userText),
@@ -179,6 +208,12 @@ function buildAmbiguityDetails(text: string, intent: ChatIntentDecision): string
     details.push('没有明确程序类型、技术栈或验收标准。');
   }
   return details;
+}
+
+function semanticIntentDetails(intent: ChatIntentDecision): string[] {
+  return intent.signals
+    .filter(signal => signal.startsWith('semantic-task:') || signal.startsWith('semantic-mutation:'))
+    .map(signal => signal.replace(/^semantic-task:/, '模型任务类型：').replace(/^semantic-mutation:/, '模型变更类型：'));
 }
 
 function buildPlanPrompt(prompt: string): string {

@@ -41,6 +41,7 @@ import { runClosedLoopRepair } from './app/closed-loop-repair-runner';
 import { runLocalExecutionChatIfPossible } from './local-execution-chat-runner';
 import { TerminalPermissionCoordinator } from './app/terminal-permission-coordinator';
 import { ChatRouteController } from './app/chat-controller';
+import { resolveSemanticRouteDecision } from './app/semantic-route-service';
 import { ChatSessionTurnService } from './app/chat-session-turn-service';
 import { migrateLegacyDeepseekConfiguration } from './app/config-migration-service';
 import { buildPreExecutionInteraction } from './app/interaction-service';
@@ -444,15 +445,7 @@ async function runChat(
     webview.postMessage({ type: 'contextFiles', files: toContextDisplayLabels(lastConversationFiles) });
   }
 
-  // P4: Auto-discover files from directory path mentioned in prompt.
-  // When the user writes e.g. "分析 tars/.../pump_sprayer 目录下代码" without
-  // attaching @file, we resolve the directory and enumerate source files so they
-  // can be content-injected into the prompt. This avoids:
-  //   (a) the need for manual @file attachment, and
-  //   (b) the browser-upload latency of the DeepSeek web UI file panel.
-  // Skip auto-discovery when the user is asking to CREATE/WRITE a new file —
-  // loading existing unrelated files as context only confuses the LLM and
-  // clutters the DeepSeek web upload list.
+  // Auto-discover directory context for read/analysis prompts only.
   const isWriteRequest = /(编写|创建|新建|写一个|写个|generate\s*a|create\s*a|write\s*a)/i.test(prompt);
   let autoDiscoveredNote = '';
   let autoDiscoveredFiles: string[] = [];
@@ -490,15 +483,21 @@ async function runChat(
   if (!suppressUserMessage) {
     webview.postMessage({ type: 'userMessage', text: userDisplay, prompt, images });
   }
-  const routeDecision = chatRouteController.decide({
+  const agentEnabled = vscode.workspace.getConfiguration('devseek').get<boolean>('agentEnabled', true);
+  const routeDecision = await resolveSemanticRouteDecision({
+    controller: chatRouteController,
     userDisplay,
     prompt,
     files: effectiveFiles,
-    agentEnabled: vscode.workspace.getConfiguration('devseek').get<boolean>('agentEnabled', true),
+    agentEnabled,
     forceNoAgent,
     intentConfirmed,
+    mode,
+    signal: chatSignal,
     lookupLearnedIntent: extContext ? (text) => lookupLearnedIntent(text, extContext!) : undefined,
+    recordProgress: recordRealPluginHarnessProgress,
   });
+  if (chatSignal.aborted) return;
   const { intentRoutingText, intent, toolPolicy, workflow } = routeDecision;
   recordRealPluginHarnessProgress('run-chat-workflow-selected', {
     intentKind: intent.kind,

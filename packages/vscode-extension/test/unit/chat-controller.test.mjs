@@ -278,6 +278,124 @@ test('ChatRouteController: destructive workflow waits for visible confirmation',
   assert.equal(confirmed.workflow.kind, 'edit-agent');
 });
 
+test('ChatRouteController: provider semantic intent can upgrade ambiguous local chat into edit workflow', () => {
+  const controller = new ChatRouteController();
+  const prompt = '做一个 hello everyday 小程序';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: [],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'edit',
+      taskKind: 'standalone-program',
+      confidence: 0.94,
+      mutation: 'create-file',
+      targetPaths: [],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: '用户要求创建一个可运行程序',
+    },
+  });
+
+  assert.equal(decision.intent.mode, 'edit');
+  assert.equal(decision.workflow.kind, 'edit-agent');
+  assert.ok(decision.intent.signals.includes('semantic-intent-provider'));
+  assert.ok(decision.intent.signals.includes('semantic-intent-overrode-local'));
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), true);
+});
+
+test('ChatRouteController: explicit no-change boundary cannot be escalated by semantic edit intent', () => {
+  const controller = new ChatRouteController();
+  const prompt = '请分析 src/main.ts 的问题，直接回答，不要修改任何文件';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: ['/workspace/src/main.ts'],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'edit',
+      taskKind: 'existing-project-edit',
+      confidence: 0.96,
+      mutation: 'modify-source',
+      targetPaths: ['/workspace/src/main.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: false,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: '模型误判成修改源码',
+    },
+  });
+
+  assert.notEqual(decision.intent.mode, 'edit');
+  assert.equal(decision.intent.blockers.includes('explicit-no-change'), true);
+  assert.equal(decision.workflow.kind, 'inspect-agent');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+});
+
+test('ChatRouteController: semantic external-effect intent requires confirmation', () => {
+  const controller = new ChatRouteController();
+  const prompt = '提交当前修改并推送到远端';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: ['/workspace/src/main.ts'],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'run',
+      taskKind: 'external-effect',
+      confidence: 0.93,
+      mutation: 'external-effect',
+      targetPaths: [],
+      requiresWorkspace: true,
+      requiresTerminal: true,
+      requiresExternalEffect: true,
+      requiresClarification: false,
+      reason: '用户要求 git 提交推送',
+    },
+  });
+
+  assert.equal(decision.intent.requiresConfirmation, true);
+  assert.equal(decision.workflow.kind, 'confirmation-required');
+});
+
+test('ChatRouteController: contradictory semantic no-mutation edit is governed down to inspect', () => {
+  const controller = new ChatRouteController();
+  const prompt = '看看 src/main.ts 里有没有明显问题，不要改';
+  const decision = controller.decide({
+    userDisplay: prompt,
+    prompt,
+    files: ['/workspace/src/main.ts'],
+    agentEnabled: true,
+    semanticIntent: {
+      version: 'devseek.semantic-intent/v1',
+      source: 'test',
+      mode: 'edit',
+      taskKind: 'read-only-analysis',
+      confidence: 0.91,
+      mutation: 'none',
+      targetPaths: ['/workspace/src/main.ts'],
+      requiresWorkspace: true,
+      requiresTerminal: false,
+      requiresExternalEffect: false,
+      requiresClarification: false,
+      reason: '自然语言明确不允许修改',
+    },
+  });
+
+  assert.equal(decision.intent.mode, 'inspect');
+  assert.equal(decision.workflow.kind, 'inspect-agent');
+  assert.equal(decision.toolPolicy.allowedToolKinds.includes('edit'), false);
+});
+
 test('getIntentRoutingText: strips only attachment badge lines', () => {
   assert.equal(getIntentRoutingText('📎 `a.ts`\n\nello', 'fallback'), 'ello');
   assert.equal(getIntentRoutingText('', 'fallback'), 'fallback');
