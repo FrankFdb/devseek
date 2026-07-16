@@ -315,7 +315,7 @@ function resolveControlledScenario(id) {
         'controlled-hello.cpp': cppProgramContent,
       },
       expectedChangedPaths: ['controlled-hello.cpp'],
-      expectedMutatedUserFiles: ['controlled-hello', 'controlled-hello.cpp'],
+      expectedMutatedUserFiles: ['build/devseek/deepseek_auto_exec', 'controlled-hello', 'controlled-hello.cpp'],
     },
     'existing-js-fix': {
       id: 'existing-js-fix',
