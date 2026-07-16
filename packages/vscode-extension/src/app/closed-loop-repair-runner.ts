@@ -9,6 +9,7 @@ import {
 import { AgenticRepairService } from './agentic-repair-service';
 import { askRepairExhaustedAction, requestManualFixGuidance } from './repair-exhaustion-interaction';
 import type { ValidationCommandRunner } from '../workspace/validation-service';
+import { extendRepairRoundBudget, normalizeRepairRoundBudget } from './bounded-repair-policy';
 
 export interface ClosedLoopRepairRouteChatOptions {
   prompt: string;
@@ -37,7 +38,7 @@ export interface RunClosedLoopRepairInput {
 
 export async function runClosedLoopRepair(input: RunClosedLoopRepairInput): Promise<void> {
   const config = vscode.workspace.getConfiguration('devseek');
-  let maxRounds = Math.max(0, Math.min(6, config.get<number>('autoFixRounds', 6)));
+  let maxRounds = normalizeRepairRoundBudget(config.get<number>('autoFixRounds', 6));
   let current = input.initialApply;
   let priorRepairRejection = '';
   const repairService = new AgenticRepairService(input.initialApply);
@@ -171,7 +172,7 @@ export async function runClosedLoopRepair(input: RunClosedLoopRepairInput): Prom
       if (validationNow && !validationNow.ok) {
         const action = await askRepairExhaustedAction('自动修复达到上限', `已执行 ${maxRounds} 轮自动修复，仍未通过验证。`);
         if (action === 'continue') {
-          maxRounds += 3;
+          maxRounds = extendRepairRoundBudget(maxRounds);
           await input.reporter({
             phase: 'repair',
             state: 'started',

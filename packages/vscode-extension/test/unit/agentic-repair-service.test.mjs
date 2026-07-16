@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -90,6 +91,14 @@ test('AgenticRepairService: repeated unchanged failures escalate once then stop'
   assert.match(first.rejection, /优先修复验证失败涉及文件/);
   assert.equal(second.kind, 'stop-no-progress');
   assert.match(second.detail, /已停止继续自动修复/);
+});
+
+test('AgenticRepairService: repair progress thresholds are delegated to bounded repair policy', () => {
+  const source = readFileSync(path.join(rootDir, 'src/app/agentic-repair-service.ts'), 'utf8');
+
+  assert.match(source, /decideBoundedRepairProgress/);
+  assert.doesNotMatch(source, /stagnantFailureRounds\s*>=\s*2/);
+  assert.doesNotMatch(source, /stagnantFailureRounds\s*>=\s*1\s*&&\s*repeatedRepairAttempt/);
 });
 
 test('AgenticRepairService: repeated same patch plus same failure stops immediately', () => {

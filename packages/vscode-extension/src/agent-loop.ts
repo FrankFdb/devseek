@@ -108,6 +108,7 @@ import { WorkspaceEditService, type WorkspaceTextFileBaseline } from './workspac
 import { buildTaskShapeGuidancePrompt } from './agent/task-shape';
 import { routeTaskIntent } from './task-intent-router';
 import { VerificationPlanner, shouldRunCppValidation } from './app/verification-planner';
+import { normalizeRepairRoundBudget } from './app/bounded-repair-policy';
 import { ValidationService } from './workspace/validation-service';
 import type { ExecutionMode } from './intent/intent-types';
 import { ArtifactGroundingCollector } from './agent/artifact-grounding-lifecycle';
@@ -1490,7 +1491,7 @@ interface ValidationOutcome {
 
 function getAgentAutoFixRounds(): number {
   const configured = vscode.workspace.getConfiguration('devseek').get<number>('autoFixRounds', 6);
-  return Math.max(0, Math.min(6, configured));
+  return normalizeRepairRoundBudget(configured);
 }
 
 function selectValidationRepairTarget(validation: ValidationOutcome, modifiedPaths: string[]): string | undefined {

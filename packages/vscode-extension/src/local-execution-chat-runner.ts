@@ -32,6 +32,7 @@ import type { AppliedChangeRecord, ApplyWorkflowStatus } from './workspace-appli
 import { askRepairExhaustedAction, requestManualFixGuidance } from './app/repair-exhaustion-interaction';
 import { AgentDisplayPresenter } from './app/agent-display-presenter';
 import type { TerminalPermissionCoordinator } from './app/terminal-permission-coordinator';
+import { extendRepairRoundBudget, normalizeRepairRoundBudget } from './app/bounded-repair-policy';
 
 export interface LocalExecutionRouteChatOptions {
   prompt: string;
@@ -94,7 +95,7 @@ export async function runLocalExecutionChatIfPossible(
     detail: buildLocalExecutionWorkflowDetail(localPlan),
   });
 
-  let maxRounds = Math.max(0, Math.min(6, input.config.get<number>('autoFixRounds', 6)));
+  let maxRounds = normalizeRepairRoundBudget(input.config.get<number>('autoFixRounds', 6));
   const adverseTerminalOperationIds: string[] = [];
   for (let round = 0; round <= maxRounds; round += 1) {
     if (round > 0) {
@@ -298,7 +299,7 @@ export async function runLocalExecutionChatIfPossible(
     if (round >= maxRounds) {
       const shouldContinue = await handleRepairExhausted(input, maxRounds, localResult.command, localResult.output);
       if (shouldContinue) {
-        maxRounds += 3;
+        maxRounds = extendRepairRoundBudget(maxRounds);
         continue;
       }
       return { handled: true, status: 'failed' };
@@ -329,11 +330,12 @@ async function handleRepairExhausted(
 ): Promise<boolean> {
   const action = await askRepairExhaustedAction('本地执行闭环达到上限', `已执行 ${maxRounds} 轮，仍未通过本地命令。`);
   if (action === 'continue') {
+    const extendedRounds = extendRepairRoundBudget(maxRounds);
     await input.workflowReporter({
       phase: 'repair',
       state: 'started',
       title: '用户选择继续修复',
-      detail: `修复上限已扩展到 ${maxRounds + 3} 轮。`,
+      detail: `修复上限已扩展到 ${extendedRounds} 轮。`,
     });
     return true;
   }

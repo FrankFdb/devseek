@@ -1,4 +1,8 @@
 import type { ApplyWorkflowResult } from '../workspace-applier';
+import {
+  decideBoundedRepairProgress,
+  decideClosedLoopRepairability,
+} from './bounded-repair-policy';
 
 export type RepairValidationEvidence = NonNullable<ApplyWorkflowResult['validation']>;
 
@@ -85,23 +89,30 @@ export class AgenticRepairService {
       this.lastFailureSignature = nextFailureSignature;
     }
 
-    if (this.stagnantFailureRounds >= 2 || (this.stagnantFailureRounds >= 1 && repeatedRepairAttempt)) {
+    const progressDecision = decideBoundedRepairProgress({
+      validationFailed: true,
+      canContinue,
+      repeatedRepairAttempt,
+      stagnantFailureRounds: this.stagnantFailureRounds,
+    });
+
+    if (progressDecision.kind === 'stop-no-progress') {
       return {
         kind: 'stop-no-progress',
         title: '自动修正无进展，已停止重复修复',
         detail: buildNoProgressRepairDetail(result, validation, repeatedRepairAttempt),
-        repeatedRepairAttempt,
-        stagnantFailureRounds: this.stagnantFailureRounds,
+        repeatedRepairAttempt: progressDecision.repeatedRepairAttempt,
+        stagnantFailureRounds: progressDecision.stagnantFailureRounds,
       };
     }
 
-    if (canContinue && (this.stagnantFailureRounds >= 1 || repeatedRepairAttempt)) {
+    if (progressDecision.kind === 'retry-with-root-cause') {
       return {
         kind: 'retry-with-root-cause',
         title: '检测到修复无进展，要求重新定位根因',
         rejection: buildNoProgressRepairRejection(result, validation, repeatedRepairAttempt),
-        repeatedRepairAttempt,
-        stagnantFailureRounds: this.stagnantFailureRounds,
+        repeatedRepairAttempt: progressDecision.repeatedRepairAttempt,
+        stagnantFailureRounds: progressDecision.stagnantFailureRounds,
       };
     }
 
@@ -203,15 +214,7 @@ export function responseClaimsStatusOk(text: string): boolean {
 }
 
 export function shouldRunClosedLoopRepair(result: ApplyWorkflowResult): boolean {
-  const validation = result.validation;
-  const qualityGate = result.qualityGate;
-  if (!validation) return false;
-  return result.applied === true
-    && validation.ran === true
-    && validation.status === 'failed'
-    && validation.ok === false
-    && Boolean(validation.command)
-    && qualityGate?.status !== 'blocked';
+  return decideClosedLoopRepairability(result).repairable;
 }
 
 function buildNoProgressRepairRejection(

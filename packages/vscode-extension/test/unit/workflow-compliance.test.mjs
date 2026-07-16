@@ -299,13 +299,16 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
   assertContains(closedLoopRunner, 'new AgenticRepairService(input.initialApply)', 'closed-loop repair must delegate repair state to AgenticRepairService');
   assertContains(closedLoopRunner, 'repairService.buildRepairPrompt', 'extension must not own repair prompt construction');
   assertContains(closedLoopRunner, 'repairService.evaluateAppliedRepair', 'extension must not own repair progress state machine');
+  const repairPolicy = src('src/app/bounded-repair-policy.ts');
   assertContains(repairService, 'responseClaimsStatusOk', 'closed-loop repair must detect model self-claimed STATUS OK');
   assertContains(repairService, '禁止只输出 STATUS: OK', 'model STATUS OK must not override failed local validation');
   assertContains(repairService, '本地验证状态为 FAILED', 'repair prompt must make failed local validation authoritative');
   assertContains(repairService, '禁止只输出 STATUS: OK', 'repair prompt must forbid OK-only responses after failed validation');
   assertContains(repairService, 'buildValidationFailureSignature', 'closed-loop repair must fingerprint validation failures');
+  assertContains(repairService, 'decideBoundedRepairProgress', 'repair state must delegate no-progress policy decisions');
+  assertContains(repairPolicy, 'function decideBoundedRepairProgress', 'bounded repair policy must own no-progress thresholds');
   assertContains(repairService, 'stagnantFailureRounds', 'closed-loop repair must detect repeated no-progress failures');
-  assertContains(repairService, '自动修正无进展，已停止重复修复', 'closed-loop repair must stop instead of looping forever on unchanged errors');
+  assertContains(repairPolicy, 'stagnantFailureRounds >= 2', 'bounded repair policy must stop instead of looping forever on unchanged errors');
   assertContains(repairService, '验证失败涉及文件', 'repair prompt must include failure files extracted from validation output');
   assert.doesNotMatch(extension, /function buildRepairPrompt\(/, 'extension must not define repair prompt business logic');
   assert.doesNotMatch(extension, /function buildValidationFailureSignature\(/, 'extension must not define repair failure fingerprinting');
@@ -316,10 +319,12 @@ test('§8.3 File edits: blocked QualityGate does not enter closed-loop repair', 
   const viewProvider = src('src/ui/deepseek-view-provider.ts');
   const repairCallSites = `${extension}\n${viewProvider}`;
   const repairService = src('src/app/agentic-repair-service.ts');
+  const repairPolicy = src('src/app/bounded-repair-policy.ts');
   assertContains(repairService, 'function shouldRunClosedLoopRepair', 'closed-loop repair must have an explicit app-service gate');
-  assertContains(repairService, "validation.status === 'failed'", 'only failed command evidence is repairable');
-  assertContains(repairService, 'validation.ran === true', 'blocked or skipped validation must not be repairable');
-  assertContains(repairService, "qualityGate?.status !== 'blocked'", 'QualityGate blocked must stop automatic repair');
+  assertContains(repairService, 'decideClosedLoopRepairability', 'closed-loop repair gate must delegate repairability policy decisions');
+  assertContains(repairPolicy, "validation.status !== 'failed'", 'only failed command evidence is repairable');
+  assertContains(repairPolicy, 'validation.ran !== true', 'blocked or skipped validation must not be repairable');
+  assertContains(repairPolicy, "qualityGate?.status === 'blocked'", 'QualityGate blocked must stop automatic repair');
   assert.doesNotMatch(extension, /function shouldRunClosedLoopRepair\(/, 'extension must not own closed-loop repair gate logic');
   assert.doesNotMatch(viewProvider, /function shouldRunClosedLoopRepair\(/, 'view provider must not own closed-loop repair gate logic');
   assert.match(
