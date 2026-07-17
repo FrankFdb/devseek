@@ -30,6 +30,10 @@ import {
   MARKDOWN_DOCUMENT_DELIVERABLE_TASK_DESC,
   markdownDocumentFilenameForPrompt,
 } from './agent/deliverable-document';
+import {
+  isUnsafeSecretHarvestingImplementationRequest,
+  SECRET_HARVESTING_REFUSAL_TASK_DESC,
+} from './intent/safety-intent';
 
 // ----------------------------------------------------------------
 // Public types
@@ -1464,6 +1468,17 @@ export async function decomposeTask(
   onProgress(attachedFiles.length > 0 ? `正在分析任务（共 ${attachedFiles.length} 个文件）…` : '正在分析任务…');
   const contextActiveEditorFile = sanitizeActiveEditorContextPath(activeEditorFile);
 
+  if (isUnsafeSecretHarvestingImplementationRequest(userPrompt)) {
+    const tasks = buildSafetyRefusalRespondTasks();
+    onProgress('已识别不合规凭据收集请求，生成安全拒绝回复…');
+    return {
+      tasks,
+      raw: JSON.stringify({ tasks }),
+      ok: true,
+      prose: '已识别不合规凭据收集请求，跳过模型规划、工具执行和文件写入。',
+    };
+  }
+
   if (shouldUseLocalMarkdownDocumentFastPath(userPrompt)) {
     const tasks = buildLocalMarkdownDocumentDeliverableTasks(userPrompt, attachedFiles, contextActiveEditorFile);
     const documentTaskCount = tasks.filter(isMarkdownDocumentCreateTask).length;
@@ -1520,4 +1535,15 @@ export async function decomposeTask(
 
 function shouldUseLocalMarkdownDocumentFastPath(userPrompt: string): boolean {
   return isMarkdownDocumentOnlyDeliverableRequest(userPrompt);
+}
+
+function buildSafetyRefusalRespondTasks(): AgentTask[] {
+  return [{
+    id: 't1',
+    file: '',
+    action: 'respond',
+    desc: SECRET_HARVESTING_REFUSAL_TASK_DESC,
+    targetKind: 'agent-session',
+    visibleTarget: '安全边界',
+  }];
 }

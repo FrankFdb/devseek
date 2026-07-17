@@ -1,10 +1,18 @@
 import type { AgentTask } from '../agent-task-decomposer';
+import {
+  buildUnsafeSecretHarvestingRefusalMessage,
+  isUnsafeSecretHarvestingImplementationRequest,
+  SECRET_HARVESTING_REFUSAL_TASK_DESC,
+} from '../intent/safety-intent';
 import type { McpToolRef } from '../mcp/client';
 import type { TaskIntentRoute } from '../task-intent-router';
 import { buildEngineeringGuidelinesPrompt } from './engineering-guidelines';
 import { buildFullFileWriteToolPrompt, buildReplaceInFileToolPrompt } from './tool-protocol-prompt';
 
 export function buildLocalRespondTaskMessage(task: AgentTask, userPrompt: string): string {
+  if (task.desc === SECRET_HARVESTING_REFUSAL_TASK_DESC || isUnsafeSecretHarvestingImplementationRequest(userPrompt)) {
+    return buildUnsafeSecretHarvestingRefusalMessage();
+  }
   if (task.targetKind === 'provider-response') {
     return [
       '已安全阻断上一次损坏响应。',
