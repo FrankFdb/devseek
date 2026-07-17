@@ -1,4 +1,5 @@
 export * from './agent-application-service';
+export * from './agent-command-surface-projection';
 export * from './agent-kernel-service';
 export * from './agent-runtime-ledger';
 export * from './agent-display-presenter';

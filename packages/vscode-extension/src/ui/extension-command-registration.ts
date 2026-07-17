@@ -18,6 +18,10 @@ import {
 import { getActiveProvider } from '../llm/provider-router';
 import type { DeepSeekViewProvider } from './deepseek-view-provider';
 import { addResourceToChat } from '../app/chat-resource-actions';
+import {
+  createAgentCommandSurfaceProjection,
+  type AgentCommandSurfaceProjector,
+} from '../app/agent-command-surface-projection';
 import { settleRunContextDirect } from '../app/agent-run-settlement';
 import { MemoryService } from '../app/memory-service';
 import { createDevSeekRunContext } from '../app/run-context';
@@ -48,21 +52,43 @@ export function registerExtensionCommands(
   context: vscode.ExtensionContext,
   deps: ExtensionCommandRegistrationDeps,
 ): void {
-  registerChatRelayCommand(context, deps);
-  registerVisibleCommands(context, deps);
-  registerInlineChatCommand(context, deps);
+  const commandProjector = createCommandSurfaceProjector(deps);
+  registerChatRelayCommand(context, commandProjector);
+  registerVisibleCommands(context, deps, commandProjector);
+  registerInlineChatCommand(context, deps, commandProjector);
   registerInlineCompletionProvider(context, deps.routeChat);
+}
+
+function createCommandSurfaceProjector(
+  deps: ExtensionCommandRegistrationDeps,
+): AgentCommandSurfaceProjector {
+  return createAgentCommandSurfaceProjection({
+    isProviderAvailable: async () => getActiveProvider().available(),
+    pushChatPanel: deps.pushChatPanel,
+    focusView: () => deps.viewProvider.focus(),
+    onProviderUnavailable: async () => {
+      await vscode.window.showErrorMessage('DeepSeek NetAI: LLM Provider 不可用，请检查 ⚙ 设置');
+    },
+    onInvalidRequest: async () => {
+      await vscode.window.showErrorMessage('DevSeek: 命令请求不完整，未发送到聊天面板。');
+    },
+  });
 }
 
 function registerChatRelayCommand(
   context: vscode.ExtensionContext,
-  deps: ExtensionCommandRegistrationDeps,
+  commandProjector: AgentCommandSurfaceProjector,
 ): void {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       '_deepseek.askChat',
       (userDisplay: string, prompt: string, newSession: boolean) => {
-        deps.pushChatPanel(userDisplay, prompt, newSession);
+        return commandProjector.projectToChat({
+          source: '_deepseek.askChat',
+          userDisplay,
+          prompt,
+          newSession,
+        });
       },
     ),
   );
@@ -71,15 +97,16 @@ function registerChatRelayCommand(
 function registerVisibleCommands(
   context: vscode.ExtensionContext,
   deps: ExtensionCommandRegistrationDeps,
+  commandProjector: AgentCommandSurfaceProjector,
 ): void {
   const commands: [string, () => Promise<void>][] = [
-    ['devseek.explain', explainCode],
-    ['devseek.fix', fixBug],
-    ['devseek.refactor', refactorCode],
-    ['devseek.genTest', genTest],
+    ['devseek.explain', async () => explainCode(commandProjector)],
+    ['devseek.fix', async () => fixBug(commandProjector)],
+    ['devseek.refactor', async () => refactorCode(commandProjector)],
+    ['devseek.genTest', async () => genTest(commandProjector)],
     ['devseek.runTests', async () => runTests(deps.terminalPermissionCoordinator)],
-    ['devseek.genDoc', genDoc],
-    ['devseek.ask', askQuestion],
+    ['devseek.genDoc', async () => genDoc(commandProjector)],
+    ['devseek.ask', async () => askQuestion(commandProjector)],
     ['devseek.generateCommit', async () => generateCommitMessage(deps.routeChat)],
     ['devseek.applyDiff', async () => applyDiff(deps.routeChat)],
     ['devseek.openChat', async () => { deps.viewProvider.focus(); }],
@@ -87,7 +114,7 @@ function registerVisibleCommands(
       await vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
     }],
     ['devseek.runTerminalCommand', async () => {
-      await runTerminalCommand(deps);
+      await runTerminalCommand(deps, commandProjector);
     }],
     ['devseek.showMemoryFiles', openMemoryFile],
   ];
@@ -103,7 +130,10 @@ function registerVisibleCommands(
   );
 }
 
-async function runTerminalCommand(deps: ExtensionCommandRegistrationDeps): Promise<void> {
+async function runTerminalCommand(
+  deps: ExtensionCommandRegistrationDeps,
+  commandProjector: AgentCommandSurfaceProjector,
+): Promise<void> {
   const command = await vscode.window.showInputBox({
     prompt: '输入要执行的 Shell 命令',
     placeHolder: 'e.g. npm run build',
@@ -120,12 +150,12 @@ async function runTerminalCommand(deps: ExtensionCommandRegistrationDeps): Promi
     userConfirmed: true,
     presentation: 'captured',
   });
-  await deps.pushChatPanel(
-    `> ${command}`,
-    `请分析以下命令输出并给出建议：\n\n${result.output}`,
-    false,
-  );
-  deps.viewProvider.focus();
+  await commandProjector.projectToChat({
+    source: 'devseek.runTerminalCommand',
+    userDisplay: `> ${command}`,
+    prompt: `请分析以下命令输出并给出建议：\n\n${result.output}`,
+    focus: true,
+  });
 }
 
 async function openMemoryFile(): Promise<void> {
@@ -143,15 +173,19 @@ async function openMemoryFile(): Promise<void> {
 function registerInlineChatCommand(
   context: vscode.ExtensionContext,
   deps: ExtensionCommandRegistrationDeps,
+  commandProjector: AgentCommandSurfaceProjector,
 ): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('devseek.inlineChat', async () => {
-      await runInlineChat(deps);
+      await runInlineChat(deps, commandProjector);
     }),
   );
 }
 
-async function runInlineChat(deps: ExtensionCommandRegistrationDeps): Promise<void> {
+async function runInlineChat(
+  deps: ExtensionCommandRegistrationDeps,
+  commandProjector: AgentCommandSurfaceProjector,
+): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     vscode.window.showWarningMessage('DeepSeek: 请先打开一个文件');
@@ -178,7 +212,14 @@ async function runInlineChat(deps: ExtensionCommandRegistrationDeps): Promise<vo
       cancellable: false,
     },
     async () => {
-      await applyInlineChatResult({ deps, editor, instruction, prompt, filename: ctx.filename });
+      await applyInlineChatResult({
+        deps,
+        commandProjector,
+        editor,
+        instruction,
+        prompt,
+        filename: ctx.filename,
+      });
     },
   );
 }
@@ -237,6 +278,7 @@ function mapSlashInstruction(instruction: string): string {
 
 async function applyInlineChatResult(args: {
   deps: ExtensionCommandRegistrationDeps;
+  commandProjector: AgentCommandSurfaceProjector;
   editor: vscode.TextEditor;
   instruction: string;
   prompt: string;
@@ -299,7 +341,15 @@ async function applyInlineChatResult(args: {
       return;
     }
 
-    await args.deps.pushChatPanel(`⚡ **${args.instruction}** · \`${args.filename}\``, args.prompt, false);
+    const projection = await args.commandProjector.projectToChat({
+      source: 'devseek.inlineChat',
+      userDisplay: `⚡ **${args.instruction}** · \`${args.filename}\``,
+      prompt: args.prompt,
+    });
+    if (!projection.projected) {
+      settleRunContextDirect(runContext, 'failed', { reason: `chat-projection-${projection.reason}` });
+      return;
+    }
     const settlement = settleRunContextDirect(runContext, 'completed', { reason: 'forwarded-to-chat-panel' });
     if (!settlement.completed) {
       throw new Error('内容已转发到聊天面板，但运行证据结算失败；本轮不能标记完成。');

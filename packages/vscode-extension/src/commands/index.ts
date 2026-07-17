@@ -5,6 +5,7 @@ import { buildContext, buildPrompt, buildCommitPrompt, getDiagnosticsContext } f
 import { getActiveProvider } from '../llm/provider-router';
 import { settleRunContextDirect } from '../app/agent-run-settlement';
 import { createDevSeekRunContext } from '../app/run-context';
+import type { AgentCommandSurfaceProjector } from '../app/agent-command-surface-projection';
 import type { TerminalPermissionCoordinator } from '../app/terminal-permission-coordinator';
 
 export type CommandRouteChat = (opts: {
@@ -68,29 +69,29 @@ function detectTestFramework(language: string, workspaceRoot?: string): { name: 
   return defaults[language] ?? { name: language + ' test', runCmd: '' };
 }
 
-// 把请求路由到聊天面板（支持所有 provider，不依赖 bridge）
-async function dispatch(userDisplay: string, prompt: string): Promise<void> {
-  const provider = getActiveProvider();
-  const avail = await provider.available();
-  if (!avail) {
-    vscode.window.showErrorMessage('DeepSeek NetAI: LLM Provider 不可用，请检查 ⚙ 设置');
-    return;
-  }
-  await vscode.commands.executeCommand('_deepseek.askChat', userDisplay, prompt, false);
+function dispatch(
+  projector: AgentCommandSurfaceProjector,
+  source: string,
+  userDisplay: string,
+  prompt: string,
+): Promise<void> {
+  return projector.projectToChat({ source, userDisplay, prompt, newSession: false }).then(() => undefined);
 }
 
-export async function explainCode(): Promise<void> {
+export async function explainCode(projector: AgentCommandSurfaceProjector): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) { vscode.window.showWarningMessage('DeepSeek: 请先打开一个文件'); return; }
   if (editor.selection.isEmpty) { vscode.window.showWarningMessage('DeepSeek: 请先选中要解释的代码'); return; }
   const ctx = buildContext(editor);
   await dispatch(
+    projector,
+    'devseek.explain',
     `🔍 **解释代码** · \`${ctx.filename}\`\n\n${codePreview(ctx.code, ctx.language)}`,
     buildPrompt(ctx, '请详细解释上面的代码，包括功能、逻辑流程和关键点。'),
   );
 }
 
-export async function fixBug(): Promise<void> {
+export async function fixBug(projector: AgentCommandSurfaceProjector): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) { vscode.window.showWarningMessage('DeepSeek: 请先打开一个文件'); return; }
   const ctx = buildContext(editor);
@@ -101,23 +102,27 @@ export async function fixBug(): Promise<void> {
     ? `存在如下诊断错误：\n${ctx.diagnostics}\n\n请分析根本原因，给出完整修复后代码。`
     : '请分析代码中可能存在的 Bug，给出完整修复后代码。';
   await dispatch(
+    projector,
+    'devseek.fix',
     `🐛 **修复 Bug** · \`${ctx.filename}\`${diagSection}\n\n${codePreview(ctx.code, ctx.language)}`,
     buildPrompt(ctx, instruction),
   );
 }
 
-export async function refactorCode(): Promise<void> {
+export async function refactorCode(projector: AgentCommandSurfaceProjector): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) { vscode.window.showWarningMessage('DeepSeek: 请先打开一个文件'); return; }
   if (editor.selection.isEmpty) { vscode.window.showWarningMessage('DeepSeek: 请先选中要重构的代码'); return; }
   const ctx = buildContext(editor);
   await dispatch(
+    projector,
+    'devseek.refactor',
     `♻️ **重构代码** · \`${ctx.filename}\`\n\n${codePreview(ctx.code, ctx.language)}`,
     buildPrompt(ctx, '请重构上面的代码，提升可读性、可维护性和性能。要求：说明每处修改原因，返回完整重构后代码。'),
   );
 }
 
-export async function genTest(): Promise<void> {
+export async function genTest(projector: AgentCommandSurfaceProjector): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) { vscode.window.showWarningMessage('DeepSeek: 请先打开一个文件'); return; }
   if (editor.selection.isEmpty) { vscode.window.showWarningMessage('DeepSeek: 请先选中要测试的代码'); return; }
@@ -140,23 +145,27 @@ export async function genTest(): Promise<void> {
     `5. 最后一行单独说明运行命令：\`${fw.runCmd || fw.name + ' <test-file>'}\``;
 
   await dispatch(
+    projector,
+    'devseek.genTest',
     `🧪 **生成测试** · \`${ctx.filename}\` · ${fw.name}\n\n${testFileHint}\n\n${codePreview(ctx.code, ctx.language)}`,
     buildPrompt(ctx, instruction),
   );
 }
 
-export async function genDoc(): Promise<void> {
+export async function genDoc(projector: AgentCommandSurfaceProjector): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) { vscode.window.showWarningMessage('DeepSeek: 请先打开一个文件'); return; }
   if (editor.selection.isEmpty) { vscode.window.showWarningMessage('DeepSeek: 请先选中要生成文档的代码'); return; }
   const ctx = buildContext(editor);
   await dispatch(
+    projector,
+    'devseek.genDoc',
     `📝 **生成文档** · \`${ctx.filename}\`\n\n${codePreview(ctx.code, ctx.language)}`,
     buildPrompt(ctx, `请为上面的代码生成规范的文档注释（${ctx.language} 对应风格），不要修改代码本身。`),
   );
 }
 
-export async function askQuestion(): Promise<void> {
+export async function askQuestion(projector: AgentCommandSurfaceProjector): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) { vscode.window.showWarningMessage('DeepSeek: 请先打开一个文件'); return; }
   const question = await vscode.window.showInputBox({
@@ -168,6 +177,8 @@ export async function askQuestion(): Promise<void> {
   const codeSection = !editor.selection.isEmpty ? `\n\n${codePreview(ctx.code, ctx.language)}` : '';
   const instruction = !editor.selection.isEmpty ? `关于上面的代码：${question}` : question;
   await dispatch(
+    projector,
+    'devseek.ask',
     `❓ **${question}** · \`${ctx.filename}\`${codeSection}`,
     buildPrompt(ctx, instruction),
   );
