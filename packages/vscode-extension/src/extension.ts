@@ -4,9 +4,7 @@ import { chat, relogin, readWorkspaceFile, ensureBridgeRunning, setBridgeExtensi
 import { createProviderStatusBar, getActiveProvider, getActiveProviderType, getProviderConfigService, promptUpdateApiKey } from './llm/provider-router';
 import { type ChatMessage } from './llm/types';
 import { getProjectRules, invalidateProjectRulesCache, getProjectMemorySync, assembleProjectRulesAndMemoryContext } from './project-rules';
-import {
-  getDiagnosticsContext,
-} from './context-builder';
+import { getDiagnosticsContext } from './context-builder';
 import {
   applyGeneratedArtifactsWithPrompt,
   looksLikeTargetScopedSourceResponse,
@@ -75,6 +73,7 @@ import { buildProviderRecoveryCheckpointTasks, buildProviderRecoveryDisplay, Pro
 import { resolveProviderStatusResponse } from './app/provider-status-service';
 import { PendingEditCoordinator } from './pending-edit-coordinator';
 import { recordTrackedChatHistory as recordTrackedChatHistoryState } from './app/chat-history-tracker';
+import { createDirectVisibleResponsePublisher } from './app/direct-visible-response-service';
 import {
   AGENT_CODE_FILE_RE,
   buildAgenticSessionContextFromState,
@@ -321,16 +320,24 @@ async function runChat(
     userDisplay,
     userExplicitlyAttachedFiles,
   });
+  const directVisibleResponsePublisher = createDirectVisibleResponsePublisher({
+    postMessage: message => webview.postMessage(message),
+    postDelta: message => postWebviewMessage(webview, message),
+    recordHistory: recordTrackedChatHistory,
+  });
 
   if (isProjectInitRequest(userDisplay) || isProjectInitRequest(prompt)) {
-    if (newSession) webview.postMessage({ type: 'newSessionStarted' });
-    if (!suppressUserMessage) webview.postMessage({ type: 'userMessage', text: userDisplay, prompt, images });
-    webview.postMessage({ type: 'startResponse', prompt, expectGeneratedArtifacts: false, agentMode: false });
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     const text = root ? renderProjectInitDraftMarkdown(new ProjectInitService().generateDraft({ workspaceRoot: root })) : '请先打开一个工作区，再使用 `/init` 生成 DevSeek 项目指令草稿。';
-    postWebviewMessage(webview, { type: 'delta', text });
-    webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
-    webview.postMessage({ type: 'endResponse' });
+    directVisibleResponsePublisher.publish({
+      userDisplay,
+      userMessagePrompt: prompt,
+      responsePrompt: prompt,
+      responseText: text,
+      images,
+      newSession,
+      suppressUserMessage,
+    });
     if (activeChatAbortController === abortCtrl) activeChatAbortController = null;
     return;
   }
@@ -358,31 +365,15 @@ async function runChat(
   });
   if (providerStatusResponse) {
     recordRealPluginHarnessProgress('run-chat-return-provider-status');
-    if (newSession) {
-      webview.postMessage({ type: 'newSessionStarted' });
-    }
-    if (!suppressUserMessage) {
-      webview.postMessage({ type: 'userMessage', text: userDisplay, prompt, images });
-    }
-    webview.postMessage({
-      type: 'startResponse',
-      prompt: initialRouteDecision.intentRoutingText,
-      expectGeneratedArtifacts: false,
-      agentMode: false,
-    });
-    postWebviewMessage(webview, { type: 'delta', text: providerStatusResponse });
-    webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
-    webview.postMessage({ type: 'endResponse' });
-    recordTrackedChatHistory({
-      prompt: initialRouteDecision.intentRoutingText,
-      displayPrompt: userDisplay,
-      newSession,
-      mode,
-      files: effectiveFiles,
+    directVisibleResponsePublisher.publish({
+      userDisplay,
+      userMessagePrompt: prompt,
+      responsePrompt: initialRouteDecision.intentRoutingText,
+      responseText: providerStatusResponse,
       images,
-      trackHistory: true,
-      signal: chatSignal,
-    }, providerStatusResponse);
+      newSession,
+      suppressUserMessage,
+    });
     if (extContext) recordIntentOutcome(initialRouteDecision.intentRoutingText, 'chat', activeSessionId, extContext);
     if (activeChatAbortController === abortCtrl) {
       activeChatAbortController = null;
@@ -393,21 +384,16 @@ async function runChat(
 
   if (initialRouteDecision.intent.mode === 'smalltalk') {
     recordRealPluginHarnessProgress('run-chat-return-smalltalk');
-    if (newSession) {
-      webview.postMessage({ type: 'newSessionStarted' });
-    }
-    if (!suppressUserMessage) {
-      webview.postMessage({ type: 'userMessage', text: userDisplay, prompt, images });
-    }
-    webview.postMessage({
-      type: 'startResponse',
-      prompt: initialRouteDecision.intentRoutingText,
-      expectGeneratedArtifacts: false,
-      agentMode: false,
+    const reply = buildSmalltalkReply(initialRouteDecision.intentRoutingText);
+    directVisibleResponsePublisher.publish({
+      userDisplay,
+      userMessagePrompt: prompt,
+      responsePrompt: initialRouteDecision.intentRoutingText,
+      responseText: reply,
+      images,
+      newSession,
+      suppressUserMessage,
     });
-    postWebviewMessage(webview, { type: 'delta', text: buildSmalltalkReply(initialRouteDecision.intentRoutingText) });
-    webview.postMessage({ type: 'responseMeta', hasGeneratedArtifacts: false, generatedPaths: [] });
-    webview.postMessage({ type: 'endResponse' });
     if (extContext) recordIntentOutcome(initialRouteDecision.intentRoutingText, 'chat', activeSessionId, extContext);
     if (activeChatAbortController === abortCtrl) {
       activeChatAbortController = null;

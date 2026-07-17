@@ -1278,12 +1278,15 @@ test('R1-A2: TaskIntentRouter is the canonical task-family owner for downstream 
 
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
+  const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');
   const nonAgentGuard = src('src/app/non-agent-response-guard.ts');
   assert.match(
     ext,
-    /const initialRouteDecision = chatRouteController\.decide[\s\S]*?if \(initialRouteDecision\.intent\.mode === 'smalltalk'\)[\s\S]*?webview\.postMessage\(\{ type: 'endResponse' \}\);[\s\S]*?return;[\s\S]*?const _storedSummary/,
+    /const initialRouteDecision = chatRouteController\.decide[\s\S]*?if \(initialRouteDecision\.intent\.mode === 'smalltalk'\)[\s\S]*?directVisibleResponsePublisher\.publish\(\{[\s\S]*?responseText:\s*reply,[\s\S]*?\}\);[\s\S]*?return;[\s\S]*?const _storedSummary/,
     'smalltalk must return before restored session summary/history is injected',
   );
+  assertContains(directVisibleResponseService, "deps.postMessage({ type: 'endResponse' })", 'direct response service must own direct-return endResponse delivery');
+  assertContains(directVisibleResponseService, 'displayPrompt: input.userDisplay', 'direct response history must persist visible user prompt');
   assertContains(ext, "const canApplyArtifacts = intent.kind === 'code-change'", 'artifact parsing must be gated by code-change intent');
   assert.match(
     ext,

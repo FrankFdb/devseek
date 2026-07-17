@@ -166,6 +166,45 @@ test('Agentic history: synthesizes a result summary when the model did not provi
   assert.match(text, /QualityGate 通过/);
 });
 
+test('Agentic history: visible summary stays useful while raw command evidence is folded', () => {
+  const command = "g++ '/workspace/demo/hello.cpp' -o '/workspace/demo/build/hello' && '/workspace/demo/build/hello'";
+  const text = buildAgenticHistoryText({
+    userPrompt: '写一个 C++ 程序，打印下午好',
+    roundCount: 1,
+    completed: true,
+    todos: [
+      { id: 1, title: '创建 C++ 源文件', status: 'completed' },
+      { id: 2, title: '编译运行并验证输出', status: 'completed' },
+    ],
+    writtenFiles: [
+      {
+        path: '/workspace/demo/hello.cpp',
+        basename: 'hello.cpp',
+        linesAdded: 6,
+        linesRemoved: 0,
+        action: 'create',
+      },
+    ],
+    terminalEvidence: [
+      { command, kind: 'compile-run', ok: true, exitCode: 0 },
+    ],
+    qualityGate: {
+      status: 'pass',
+      summary: 'QualityGate 通过：compile-run 证据已通过。',
+      evidenceRefs: ['terminal:ok:compile-run:exitCode=0:g++ hello.cpp'],
+    },
+    workspaceRoot: '/workspace/demo',
+  });
+
+  const [visible, details = ''] = text.split('<details class="agent-history-details">');
+  assert.match(visible, /已完成 2\/2 个任务/);
+  assert.match(visible, /创建 1 个文件：hello\.cpp/);
+  assert.match(visible, /QualityGate 通过/);
+  assert.doesNotMatch(visible, /g\+\+/);
+  assert.match(details, /验证\/终端证据/);
+  assert.match(details, /g\+\+/);
+});
+
 test('Agentic history: visual manual review evidence is a blocked QualityGate, not a failed one', () => {
   const terminalEvidence = [
     {
