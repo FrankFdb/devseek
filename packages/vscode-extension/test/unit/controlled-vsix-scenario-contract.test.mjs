@@ -17,6 +17,11 @@ const REQUIRED_SCENARIOS = [
   'latest-requirement',
 ];
 
+const REQUIRED_SUITES = [
+  { id: 'basic-surface', scenarioCount: 3 },
+  { id: 'journey-core', scenarioCount: 6 },
+];
+
 for (const scenario of REQUIRED_SCENARIOS) {
   test(`controlled VSIX scenario prompt contract is bound: ${scenario}`, () => {
     const result = spawnSync(process.execPath, [
@@ -36,6 +41,29 @@ for (const scenario of REQUIRED_SCENARIOS) {
     assert.equal(report.ok, true, scenario);
     assert.equal(report.contractVersion, 'devseek.controlled-prompt-binding/v1', scenario);
     assert.equal(report.errors.length, 0, scenario);
+  });
+}
+
+for (const suite of REQUIRED_SUITES) {
+  test(`controlled VSIX suite prompt contract is bound: ${suite.id}`, () => {
+    const result = spawnSync(process.execPath, [
+      harnessPath,
+      '--suite',
+      suite.id,
+      '--prompt-contract-self-test',
+    ], {
+      cwd: extensionRoot,
+      encoding: 'utf8',
+      timeout: 30_000,
+      maxBuffer: 2 * 1024 * 1024,
+    });
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.ok, true, suite.id);
+    assert.equal(report.contractVersion, 'devseek.controlled-prompt-binding/v1', suite.id);
+    assert.equal(report.scenarioCount, suite.scenarioCount, suite.id);
+    assert.equal(report.errors.length, 0, suite.id);
   });
 }
 

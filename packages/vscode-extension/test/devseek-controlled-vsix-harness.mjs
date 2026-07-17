@@ -29,7 +29,12 @@ const codeBin = argValue('--code') || process.env.VSCODE_BIN || 'code';
 const timeoutMs = positiveInteger(argValue('--timeout-ms') || process.env.DEVSEEK_CONTROLLED_VSIX_TIMEOUT_MS, 180_000);
 const keepTmp = hasFlag('--keep') || process.env.DEVSEEK_CONTROLLED_VSIX_KEEP === '1';
 const keepWindow = hasFlag('--keep-window') || process.env.DEVSEEK_CONTROLLED_VSIX_KEEP_WINDOW === '1';
-const scenario = resolveControlledScenario(argValue('--case') || process.env.DEVSEEK_CONTROLLED_VSIX_CASE || 'normal');
+const scenarioSuiteId = argValue('--suite') || process.env.DEVSEEK_CONTROLLED_VSIX_SUITE || '';
+const selectedScenarios = resolveControlledScenarioSelection({
+  caseId: argValue('--case') || process.env.DEVSEEK_CONTROLLED_VSIX_CASE || '',
+  suiteId: scenarioSuiteId,
+});
+const scenario = selectedScenarios[0];
 const targetRelativePath = scenario.targetRelativePath;
 const targetContent = scenario.targetContent;
 const prompt = scenario.prompt;
@@ -46,7 +51,7 @@ let finalReport;
 let promptContractSelfTest;
 
 if (hasFlag('--prompt-contract-self-test')) {
-  const selfTestReport = runPromptContractSelfTest(prompt);
+  const selfTestReport = runPromptContractSelfTestForScenarios(selectedScenarios);
   const output = JSON.stringify(selfTestReport, null, 2);
   if (selfTestReport.ok) console.log(output);
   else console.error(output);
@@ -54,7 +59,7 @@ if (hasFlag('--prompt-contract-self-test')) {
 }
 
 try {
-  promptContractSelfTest = runPromptContractSelfTest(prompt);
+  promptContractSelfTest = runPromptContractSelfTestForScenarios(selectedScenarios);
   if (!promptContractSelfTest.ok) {
     throw new Error(`Controlled prompt-contract self-test failed: ${promptContractSelfTest.errors.join('; ')}`);
   }
@@ -95,11 +100,10 @@ try {
     token: bridgeToken,
     workspaceDir,
     runtimeIdentity: expectedIdentity,
-    scenario,
-    expectedPrompt: prompt,
+    scenarios: selectedScenarios,
     promptContractSelfTest,
   });
-  writeWorkspaceFixture({ workspaceDir, bridgeToken, port: fakeBridge.port, scenario });
+  writeWorkspaceFixture({ workspaceDir, bridgeToken, port: fakeBridge.port, scenarios: selectedScenarios });
   writeDriverExtension({
     driverDir,
     driverReportPath,
@@ -108,10 +112,7 @@ try {
     extensionsDir,
     expectedExtensionPath: installed.extensionPath,
     expectedIdentity,
-    scenario,
-    prompt,
-    targetRelativePath,
-    targetContent,
+    scenarios: selectedScenarios,
     timeoutMs,
     port: fakeBridge.port,
     keepWindow,
@@ -128,8 +129,10 @@ try {
     keepWindow,
   });
   const deterministicFastPath = driverReport?.ok === true && fakeBridge.state.chatRequests.length === 0;
-  const bridgeReport = summarizeControlledBridge(fakeBridge.state, { providerExpected: !deterministicFastPath });
-  const evidence = inspectControlledRunLogEvidence(driverReport, scenario);
+  const providerExpected = selectedScenarios.some(candidate => candidate.providerPlan !== 'write-read-complete')
+    || !deterministicFastPath;
+  const bridgeReport = summarizeControlledBridge(fakeBridge.state, { providerExpected });
+  const evidence = inspectControlledRunLogEvidenceForSelection(driverReport, selectedScenarios);
 
   const errors = [];
   if (!driverReport.ok) errors.push(...(driverReport.errors || ['VS Code driver failed']));
@@ -158,9 +161,10 @@ try {
       ],
     },
     scenario: {
-      id: scenario.id,
-      kind: scenario.kind,
-      prompt,
+      id: selectedScenarios.length === 1 ? scenario.id : `suite:${scenarioSuiteId || 'custom'}`,
+      kind: selectedScenarios.length === 1 ? scenario.kind : 'same-window-multi-session-suite',
+      prompt: selectedScenarios.length === 1 ? prompt : selectedScenarios.map(candidate => candidate.prompt).join('\n---\n'),
+      cases: selectedScenarios.map(candidate => ({ id: candidate.id, kind: candidate.kind, prompt: candidate.prompt })),
     },
     artifact: {
       vsixPath,
@@ -172,6 +176,7 @@ try {
     },
     driver: driverReport,
     deterministicFastPath,
+    sameWindowMultiSession: selectedScenarios.length > 1,
     bridge: bridgeReport,
     evidence,
     errors,
@@ -232,7 +237,26 @@ function positiveInteger(value, fallback) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function resolveControlledScenario(id) {
+function resolveControlledScenarioSelection({ caseId, suiteId }) {
+  if (suiteId) {
+    return resolveControlledScenarioSuite(suiteId);
+  }
+  return [resolveControlledScenario(caseId || 'normal')];
+}
+
+function resolveControlledScenarioSuite(id) {
+  const suites = {
+    'basic-surface': ['normal', 'exception', 'boundary'],
+    'journey-core': ['normal', 'exception', 'boundary', 'cpp-program', 'existing-js-fix', 'latest-requirement'],
+  };
+  const scenarioIds = suites[String(id || '').trim()];
+  if (!scenarioIds) {
+    throw new Error(`Unknown controlled VSIX suite: ${id}. Expected one of: ${Object.keys(suites).join(', ')}`);
+  }
+  return scenarioIds.map(resolveControlledScenario);
+}
+
+function controlledScenarioCatalog() {
   const cppProgramContent = [
     '#include <iostream>',
     '',
@@ -259,7 +283,7 @@ function resolveControlledScenario(id) {
     '',
   ].join('\n');
   const latestRequirementContent = 'FINAL_REQUIREMENT_OK\n';
-  const scenarios = {
+  return {
     normal: {
       id: 'normal',
       kind: 'normal-write-read-qualitygate',
@@ -358,6 +382,10 @@ function resolveControlledScenario(id) {
       forbiddenFiles: ['INITIAL_REQUIREMENT', 'initial-requirement.txt'],
     },
   };
+}
+
+function resolveControlledScenario(id) {
+  const scenarios = controlledScenarioCatalog();
   const scenario = scenarios[String(id || '').trim()];
   if (!scenario) {
     throw new Error(`Unknown controlled VSIX case: ${id}. Expected one of: ${Object.keys(scenarios).join(', ')}`);
@@ -470,7 +498,7 @@ function findInstalledExtension(extensionsDir, expectedId) {
   throw new Error(`Installed extension ${expectedId} was not found below ${extensionsDir}`);
 }
 
-function writeWorkspaceFixture({ workspaceDir, bridgeToken, port, scenario }) {
+function writeWorkspaceFixture({ workspaceDir, bridgeToken, port, scenarios }) {
   const settingsDir = path.join(workspaceDir, '.vscode');
   const devseekDir = path.join(workspaceDir, '.devseek');
   fs.mkdirSync(settingsDir, { recursive: true });
@@ -486,7 +514,16 @@ function writeWorkspaceFixture({ workspaceDir, bridgeToken, port, scenario }) {
     'devseek.traceLevel': 'debug',
     'devseek.editAutoAcceptDelay': 0,
   }, null, 2), 'utf8');
-  for (const [relativePath, content] of Object.entries(scenario.seedFiles || {})) {
+  const seedFiles = {};
+  for (const scenario of scenarios) {
+    for (const [relativePath, content] of Object.entries(scenario.seedFiles || {})) {
+      if (seedFiles[relativePath] !== undefined && seedFiles[relativePath] !== content) {
+        throw new Error(`Controlled suite seed file conflict at ${relativePath}`);
+      }
+      seedFiles[relativePath] = content;
+    }
+  }
+  for (const [relativePath, content] of Object.entries(seedFiles)) {
     const absolutePath = path.join(workspaceDir, relativePath);
     fs.mkdirSync(path.dirname(absolutePath), { recursive: true });
     fs.writeFileSync(absolutePath, content, 'utf8');
@@ -763,7 +800,57 @@ function runPromptContractSelfTest(expectedPrompt) {
   };
 }
 
-async function startControlledBridge({ token, workspaceDir, runtimeIdentity, scenario, expectedPrompt, promptContractSelfTest }) {
+function runPromptContractSelfTestForScenarios(scenarios) {
+  const reports = scenarios.map(candidate => ({
+    scenario: candidate.id,
+    ...runPromptContractSelfTest(candidate.prompt),
+  }));
+  const errors = reports.flatMap(report => report.errors.map(error => `${report.scenario}: ${error}`));
+  return {
+    ok: errors.length === 0,
+    contractVersion: 'devseek.controlled-prompt-binding/v1',
+    scenarioCount: scenarios.length,
+    scenarios: reports,
+    cases: reports.flatMap(report => report.cases.map(testCase => ({
+      ...testCase,
+      scenario: report.scenario,
+    }))),
+    errors,
+  };
+}
+
+function bindControlledScenarioPrompt({ promptText, runId, scenarios, priorRequests }) {
+  const attempts = scenarios.map(candidate => {
+    const scenarioPriorRequests = priorRequests.filter(request => request.scenarioId === candidate.id);
+    const ordinal = scenarioPriorRequests.length + 1;
+    return {
+      scenario: candidate,
+      ordinal,
+      promptContract: bindControlledPromptContract({
+        promptText,
+        ordinal,
+        expectedPrompt: candidate.prompt,
+        runId,
+        priorRequests: scenarioPriorRequests,
+      }),
+    };
+  });
+  const bound = attempts.find(attempt => attempt.promptContract.bound);
+  if (bound) return bound;
+  return attempts[0] || {
+    scenario: undefined,
+    ordinal: priorRequests.length + 1,
+    promptContract: {
+      contractVersion: 'devseek.controlled-prompt-binding/v1',
+      expected: {},
+      observed: {},
+      bound: false,
+      reason: 'no controlled scenario is configured',
+    },
+  };
+}
+
+async function startControlledBridge({ token, workspaceDir, runtimeIdentity, scenarios, promptContractSelfTest }) {
   const { attachBridgeRunEvidence } = require(bridgeEvidencePath);
   const state = {
     chatRequests: [],
@@ -807,14 +894,15 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           return sendJson(response, 400, { error: 'WORKSPACE_ROOT_MISMATCH' });
         }
         const promptText = String(body.prompt || '');
-        const ordinal = state.chatRequests.length + 1;
-        const promptContract = bindControlledPromptContract({
+        const scenarioBinding = bindControlledScenarioPrompt({
           promptText,
-          ordinal,
-          expectedPrompt,
           runId,
+          scenarios,
           priorRequests: state.chatRequests,
         });
+        const activeScenario = scenarioBinding.scenario;
+        const ordinal = scenarioBinding.ordinal;
+        const promptContract = scenarioBinding.promptContract;
         const evidence = attachBridgeRunEvidence({
           workspaceRoot: traceWorkspaceRoot,
           runId,
@@ -832,6 +920,8 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
         });
         const requestRecord = {
           ordinal,
+          globalOrdinal: state.chatRequests.length + 1,
+          scenarioId: activeScenario?.id || '',
           runId,
           operationId,
           stream: body.stream !== false,
@@ -846,7 +936,7 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           promptContract,
         };
         state.chatRequests.push(requestRecord);
-        if (!promptContract.bound) {
+        if (!activeScenario || !promptContract.bound) {
           state.rejectedRequests.push(requestRecord);
           evidence.record('provider.failed', {
             provider: 'controlled-fixture',
@@ -863,7 +953,7 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
             reason: promptContract.reason,
           });
         }
-        if (scenario.providerPlan === 'provider-error') {
+        if (activeScenario.providerPlan === 'provider-error') {
           state.providerInvocationCount += 1;
           evidence.record('provider.failed', {
             provider: 'controlled-fixture',
@@ -879,7 +969,7 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           });
         }
         state.providerInvocationCount += 1;
-        const providerText = controlledProviderResponse({ ordinal, workspaceDir, scenario });
+        const providerText = controlledProviderResponse({ ordinal, workspaceDir, scenario: activeScenario });
         evidence.record('provider.completed', {
           provider: 'controlled-fixture',
           layer: 'deterministic-fake-provider',
@@ -1091,10 +1181,7 @@ function writeDriverExtension(options) {
     extensionsDir,
     expectedExtensionPath,
     expectedIdentity,
-    scenario,
-    prompt: driverPrompt,
-    targetRelativePath: targetPath,
-    targetContent: expectedContent,
+    scenarios,
     timeoutMs: driverTimeoutMs,
     port,
     keepWindow,
@@ -1120,14 +1207,10 @@ const workspaceDir = __WORKSPACE_DIR__;
 const extensionsDir = __EXTENSIONS_DIR__;
 const expectedExtensionPath = __EXPECTED_EXTENSION_PATH__;
 const expectedIdentity = __EXPECTED_IDENTITY__;
-const scenario = __SCENARIO__;
-const prompt = __PROMPT__;
-const targetRelativePath = __TARGET_RELATIVE_PATH__;
-const targetContent = __TARGET_CONTENT__;
+const scenarios = __SCENARIOS__;
 const timeoutMs = __TIMEOUT_MS__;
 const port = __PORT__;
 const keepWindow = __KEEP_WINDOW__;
-let initialUserFiles = null;
 
 function delay(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function normalize(value) { return path.resolve(value).replace(/\\/g, '/'); }
@@ -1139,9 +1222,10 @@ function progress(stage, extra = {}) {
   fs.appendFileSync(progressPath, JSON.stringify({ ts: new Date().toISOString(), stage, ...extra }) + '\n', 'utf8');
 }
 function parseJsonLine(line) { try { return JSON.parse(line); } catch { return null; } }
-function collectRunLogs() {
+function collectRunLogs(excludePaths = []) {
   const directory = path.join(workspaceDir, '.devseek', 'runs');
   if (!fs.existsSync(directory)) return { logs: [], terminal: null };
+  const excluded = new Set(excludePaths);
   const logs = fs.readdirSync(directory)
     .filter(name => name.endsWith('.log'))
     .map(name => {
@@ -1158,8 +1242,11 @@ function collectRunLogs() {
           data: terminalEvent.data || {},
         } : null,
       };
-    });
-  return { logs, terminal: logs.map(log => log.terminal).find(Boolean) || null };
+    })
+    .filter(log => !excluded.has(log.path))
+    .sort((left, right) => left.path.localeCompare(right.path));
+  const terminalLogs = logs.filter(log => log.terminal);
+  return { logs, terminal: terminalLogs.at(-1)?.terminal || null };
 }
 async function waitForCommand(command, waitMs) {
   const deadline = Date.now() + waitMs;
@@ -1234,11 +1321,11 @@ function sortedStrings(values) {
 function arraysEqual(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
 }
-function expectedFilesForScenario() {
+function expectedFilesForScenario(scenario) {
   const configured = scenario.expectedFiles && typeof scenario.expectedFiles === 'object'
     ? scenario.expectedFiles
     : {};
-  return Object.keys(configured).length > 0 ? configured : { [targetRelativePath]: targetContent };
+  return Object.keys(configured).length > 0 ? configured : { [scenario.targetRelativePath]: scenario.targetContent };
 }
 function readExpectedFile(relativePath, expectedContent) {
   const absolutePath = path.join(workspaceDir, relativePath);
@@ -1258,18 +1345,20 @@ function normalizeChangedPaths(data) {
     return relative.replace(/\\/g, '/').replace(/^\.\//, '');
   }) : [];
 }
-function evaluate() {
+function evaluate(scenario, initialUserFiles, baselineRunLogPaths) {
+  const targetRelativePath = scenario.targetRelativePath;
+  const targetContent = scenario.targetContent;
   const target = path.join(workspaceDir, targetRelativePath);
   const artifactExists = fs.existsSync(target) && fs.statSync(target).isFile();
   const actualContent = artifactExists ? fs.readFileSync(target, 'utf8') : '';
-  const runLogs = collectRunLogs();
+  const runLogs = collectRunLogs(baselineRunLogPaths);
   const terminal = runLogs.terminal;
   const data = terminal?.data || {};
   const changedPaths = normalizeChangedPaths(data);
   const userChangedPaths = changedPaths.filter(value => !isInternalPath(value));
   const currentUserFiles = collectUserFiles();
   const mutatedUserFiles = changedUserFiles(initialUserFiles || {}, currentUserFiles);
-  const expectedFiles = expectedFilesForScenario();
+  const expectedFiles = expectedFilesForScenario(scenario);
   const fileExpectations = Object.entries(expectedFiles).map(([relativePath, content]) => readExpectedFile(relativePath, content));
   const exactFilesOk = fileExpectations.every(file => file.exists && file.exactContent);
   const defaultExpectedChangedPaths = scenario.expected === 'completed-write' ? [targetRelativePath] : [];
@@ -1348,6 +1437,66 @@ function evaluate() {
   };
 }
 
+async function runScenario(activeScenario, caseIndex, totalCases) {
+  const caseReport = {
+    ok: false,
+    scenario: activeScenario.id,
+    kind: activeScenario.kind,
+    route: 'webview-message',
+    approval: 'controlled-intent-confirmed',
+    naturalUi: false,
+    commandName: '_devseek.harnessSubmitChatMessage',
+    commandInjected: false,
+    commandCompleted: false,
+    identity: null,
+    artifact: null,
+    runLogs: { logs: [], terminal: null },
+    errors: [],
+  };
+  let baselineRunLogPaths = [];
+  let initialUserFiles = {};
+  try {
+    progress('case-started', { scenario: activeScenario.id, caseIndex, totalCases });
+    baselineRunLogPaths = collectRunLogs().logs.map(log => log.path);
+    initialUserFiles = collectUserFiles();
+    let commandError = '';
+    void vscode.commands.executeCommand(caseReport.commandName, activeScenario.prompt, activeScenario.prompt, true, 'fast')
+      .then(() => { caseReport.commandCompleted = true; progress('case-command-completed', { scenario: activeScenario.id }); })
+      .catch(error => {
+        commandError = String(error?.stack || error?.message || error);
+        progress('case-command-failed', { scenario: activeScenario.id, error: commandError });
+      });
+    caseReport.commandInjected = true;
+    progress('case-command-injected', { scenario: activeScenario.id, caseIndex, totalCases });
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const evaluation = evaluate(activeScenario, initialUserFiles, baselineRunLogPaths);
+      caseReport.artifact = evaluation.artifact;
+      caseReport.runLogs = evaluation.runLogs;
+      if (commandError) throw new Error(commandError);
+      if (evaluation.ok) {
+        const completionDeadline = Date.now() + 5000;
+        while (!caseReport.commandCompleted && Date.now() < completionDeadline) await delay(100);
+        caseReport.ok = true;
+        break;
+      }
+      if (evaluation.runLogs.terminal?.event === 'agent-run-failed') break;
+      await delay(500);
+    }
+    if (!caseReport.ok) {
+      caseReport.errors.push('Exact-VSIX run did not satisfy the expected controlled case outcome: ' + activeScenario.id);
+    }
+  } catch (error) {
+    caseReport.errors.push(String(error?.stack || error?.message || error));
+  } finally {
+    const evaluation = evaluate(activeScenario, initialUserFiles, baselineRunLogPaths);
+    caseReport.artifact = evaluation.artifact;
+    caseReport.runLogs = evaluation.runLogs;
+    progress('case-finished', { scenario: activeScenario.id, ok: caseReport.ok });
+  }
+  return caseReport;
+}
+
 async function activate() {
   const report = {
     ok: false,
@@ -1357,6 +1506,9 @@ async function activate() {
     commandName: '_devseek.harnessSubmitChatMessage',
     commandInjected: false,
     commandCompleted: false,
+    sameWindowMultiSession: scenarios.length > 1,
+    caseCount: scenarios.length,
+    cases: [],
     identity: null,
     artifact: null,
     runLogs: { logs: [], terminal: null },
@@ -1379,35 +1531,23 @@ async function activate() {
     await vscode.commands.executeCommand('devseek.openChat').catch(() => {});
     if (!await waitForCommand(report.commandName, 60000)) throw new Error('DevSeek controlled inbound command was not registered within 60s');
     await delay(750);
-    initialUserFiles = collectUserFiles();
-    let commandError = '';
-    void vscode.commands.executeCommand(report.commandName, prompt, prompt, true, 'fast')
-      .then(() => { report.commandCompleted = true; progress('command-completed'); })
-      .catch(error => { commandError = String(error?.stack || error?.message || error); progress('command-failed', { error: commandError }); });
-    report.commandInjected = true;
-    progress('command-injected');
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      const evaluation = evaluate();
-      report.artifact = evaluation.artifact;
-      report.runLogs = evaluation.runLogs;
-      if (commandError) throw new Error(commandError);
-      if (evaluation.ok) {
-        const completionDeadline = Date.now() + 5000;
-        while (!report.commandCompleted && Date.now() < completionDeadline) await delay(100);
-        report.ok = true;
+    for (let index = 0; index < scenarios.length; index += 1) {
+      const caseReport = await runScenario(scenarios[index], index + 1, scenarios.length);
+      report.cases.push(caseReport);
+      report.commandInjected = report.commandInjected || caseReport.commandInjected;
+      report.commandCompleted = report.commandCompleted || caseReport.commandCompleted;
+      report.artifact = caseReport.artifact;
+      report.runLogs = caseReport.runLogs;
+      if (!caseReport.ok) {
+        report.errors.push(...caseReport.errors.map(error => '[' + caseReport.scenario + '] ' + error));
         break;
       }
-      if (evaluation.runLogs.terminal?.event === 'agent-run-failed') break;
       await delay(500);
     }
-    if (!report.ok) report.errors.push('Exact-VSIX run did not satisfy the expected controlled case outcome: ' + scenario.id);
+    report.ok = report.cases.length === scenarios.length && report.cases.every(candidate => candidate.ok);
   } catch (error) {
     report.errors.push(String(error?.stack || error?.message || error));
   } finally {
-    const evaluation = evaluate();
-    report.artifact = evaluation.artifact;
-    report.runLogs = evaluation.runLogs;
     progress('write-report', { ok: report.ok });
     writeReport(report);
     await delay(300);
@@ -1425,10 +1565,7 @@ module.exports = { activate };
     .replace('__EXTENSIONS_DIR__', JSON.stringify(extensionsDir))
     .replace('__EXPECTED_EXTENSION_PATH__', JSON.stringify(expectedExtensionPath))
     .replace('__EXPECTED_IDENTITY__', JSON.stringify(expectedIdentity))
-    .replace('__SCENARIO__', JSON.stringify(scenario))
-    .replace('__PROMPT__', JSON.stringify(driverPrompt))
-    .replace('__TARGET_RELATIVE_PATH__', JSON.stringify(targetPath))
-    .replace('__TARGET_CONTENT__', JSON.stringify(expectedContent))
+    .replace('__SCENARIOS__', JSON.stringify(scenarios))
     .replace('__TIMEOUT_MS__', JSON.stringify(driverTimeoutMs))
     .replace('__PORT__', JSON.stringify(port))
     .replace('__KEEP_WINDOW__', JSON.stringify(keepWindow));
@@ -1518,22 +1655,6 @@ function waitForChildExit(child, waitMs) {
   });
 }
 
-function isControlledDeterministicFastPath(driverReport) {
-  const data = driverReport?.runLogs?.terminal?.data || {};
-  const userChangedPaths = Array.isArray(driverReport?.artifact?.userChangedPaths)
-    ? driverReport.artifact.userChangedPaths
-    : [];
-  return driverReport?.ok === true
-    && driverReport?.artifact?.exists === true
-    && driverReport?.artifact?.exactContent === true
-    && driverReport?.runLogs?.terminal?.event === 'agent-run-completed'
-    && data.status === 'completed'
-    && Number(data.tasksApplied || 0) > 0
-    && Number(data.tasksFailed || 0) === 0
-    && userChangedPaths.length === 1
-    && userChangedPaths[0] === targetRelativePath;
-}
-
 function summarizeControlledBridge(state, { providerExpected = true } = {}) {
   const errors = [...state.errors];
   const acceptedRequestCount = state.chatRequests.filter(request => request.bound === true).length;
@@ -1592,6 +1713,37 @@ function sortedStrings(values) {
 
 function arraysEqual(left, right) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function inspectControlledRunLogEvidenceForSelection(driverReport, scenarios) {
+  if (scenarios.length === 1) {
+    return inspectControlledRunLogEvidence(driverReport, scenarios[0]);
+  }
+  const caseReports = Array.isArray(driverReport?.cases) ? driverReport.cases : [];
+  const cases = scenarios.map(scenario => {
+    const caseReport = caseReports.find(candidate => candidate?.scenario === scenario.id) || null;
+    const evidence = inspectControlledRunLogEvidence(caseReport, scenario);
+    return {
+      ...evidence,
+      scenario: scenario.id,
+      driverCasePresent: Boolean(caseReport),
+      errors: [
+        ...(!caseReport ? [`Missing driver case report for ${scenario.id}`] : []),
+        ...evidence.errors,
+      ],
+    };
+  });
+  const errors = cases.flatMap(candidate => candidate.errors.map(error => `${candidate.scenario}: ${error}`));
+  return {
+    ok: errors.length === 0,
+    mode: 'controlled-run-log-suite',
+    scenario: 'same-window-multi-session-suite',
+    caseCount: scenarios.length,
+    integrityScope: 'product-run-diagnostics',
+    qualificationEligible: false,
+    cases,
+    errors,
+  };
 }
 
 function inspectControlledRunLogEvidence(driverReport, scenario) {
