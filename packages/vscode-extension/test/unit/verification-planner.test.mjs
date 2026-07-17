@@ -277,6 +277,50 @@ test('VerificationPlanner: standalone C++ task respects explicit no-run constrai
   assert.doesNotMatch(plan.command, /deepseek_auto_exec/);
 });
 
+test('VerificationPlanner: standalone Python CLI with stdin oracle plans syntax and runtime validation', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['tools/log_summary.py'],
+    requestPrompt: '我在真实项目里需要一个小 Python 命令行工具 tools/log_summary.py。要求从 stdin 读取日志，统计 ERROR/WARN 数量并输出 ERROR=1 WARN=1；请实现并自测。',
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'compile-run');
+  assert.equal(plan.reason, 'python-syntax-and-run-validation');
+  assert.match(plan.command, /python -c/);
+  assert.match(plan.command, /tools\/log_summary\.py/);
+  assert.match(plan.command, /printf '%s\\n' 'INFO start' 'WARN slow' 'ERROR fail'/);
+  assert.match(plan.command, /grep -q 'ERROR=1 WARN=1'/);
+});
+
+test('VerificationPlanner: standalone Python print program plans runtime validation', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['hello.py'],
+    requestPrompt: '写一个 Python 程序，打印 hello everyday',
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'compile-run');
+  assert.equal(plan.reason, 'python-syntax-and-run-validation');
+  assert.match(plan.command, /hello\.py/);
+  assert.match(plan.command, /PYTHONDONTWRITEBYTECODE=1 python '\/repo\/hello\.py' < \/dev\/null/);
+});
+
+test('VerificationPlanner: standalone Python task respects explicit no-run constraint', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['hello.py'],
+    requestPrompt: '写一个 Python 程序，打印 hello everyday，但不要运行。',
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'file-check');
+  assert.equal(plan.reason, 'python-syntax-check');
+  assert.match(plan.command, /python -c/);
+  assert.doesNotMatch(plan.command, /PYTHONDONTWRITEBYTECODE=1 python/);
+});
+
 test('VerificationPlanner: blocks C++ validation when generated local include closure is incomplete', () => {
   const projectDir = path.join('/repo', 'generated', 'warranty');
   const files = new Set([

@@ -241,6 +241,24 @@ export class VerificationPlanner {
       });
     }
 
+    const pythonFiles = changedPaths.filter(isPythonValidationPath);
+    if (pythonFiles.length > 0 && pythonFiles.length === changedPaths.length) {
+      const runPython = shouldRunStandalonePythonValidation(pythonFiles, input.requestPrompt || '');
+      return commandPlan({
+        command: buildPythonValidationCommand(pythonFiles, rootFsPath, runPython, input.requestPrompt || ''),
+        cwd: rootFsPath,
+        timeoutMs: runPython ? CPP_RUN_VALIDATION_TIMEOUT_MS : FILE_CHECK_VALIDATION_TIMEOUT_MS,
+        mode: runPython ? 'compile-run' : 'file-check',
+        reason: runPython ? 'python-syntax-and-run-validation' : 'python-syntax-check',
+        risks: runPython
+          ? ['仅对隔离 Python CLI/工具执行本地语法与运行验证；不代表项目级集成测试已覆盖。']
+          : ['Python 语法检查只验证文件可编译，不执行运行时逻辑。'],
+        alternativeChecks: runPython
+          ? []
+          : ['如果需要证明运行时输出，请在请求中明确指定运行/自测方式，或补充项目级测试命令。'],
+      });
+    }
+
     const javaScriptFiles = changedPaths.filter(isJavaScriptValidationPath);
     if (javaScriptFiles.length > 0 && javaScriptFiles.length === changedPaths.length) {
       const runJavaScript = shouldRunStandaloneJavaScriptValidation(javaScriptFiles, input.requestPrompt || '');
@@ -414,6 +432,10 @@ function isJavaScriptValidationPath(relPath: string): boolean {
   return /\.(?:js|mjs|cjs)$/i.test(relPath.replace(/\\/g, '/'));
 }
 
+function isPythonValidationPath(relPath: string): boolean {
+  return /\.py$/i.test(relPath.replace(/\\/g, '/'));
+}
+
 function isCppRelatedValidationPath(relPath: string): boolean {
   const normalized = relPath.replace(/\\/g, '/');
   return /\.(cpp|cc|cxx|c|h|hpp)$/i.test(normalized)
@@ -443,6 +465,77 @@ function buildJavaScriptValidationCommand(changedPaths: string[], rootFsPath: st
         : `test -s ${quoted} && node --check ${quoted}`;
     })
     .join(' && ');
+}
+
+function shouldRunStandalonePythonValidation(changedPaths: string[], prompt: string): boolean {
+  if (hasExplicitNoRuntimeValidationConstraint(prompt)) return false;
+  const intentText = commandEvidenceIntentText(prompt);
+  if (!/(?:自测|测试|验证|运行|执行|启动|打印|输出|run|execute|test|verify|cli|命令行)/i.test(intentText)) {
+    return false;
+  }
+  return changedPaths.length > 0 && changedPaths.every((relPath) =>
+    isIsolatedPythonRuntimePath(relPath) || isPromptedStandalonePythonPath(relPath, intentText));
+}
+
+function hasExplicitNoRuntimeValidationConstraint(prompt: string): boolean {
+  return /(?:不(?:要|用|需|需要|必|得|准|能)?|禁止|别|勿|请勿|未)\s*[^，,。；;\n]*(?:运行|执行|启动|测试|验证|自测|调试)[^，,。；;\n]*/i.test(prompt)
+    || /(?:do\s+not|don't|never|no\s+need\s+to|without)\s+[^,.;\n]*(?:run|execute|start|test|verify|debug)[^,.;\n]*/i.test(prompt);
+}
+
+function isIsolatedPythonRuntimePath(relPath: string): boolean {
+  const normalized = relPath.replace(/\\/g, '/');
+  const basename = nodePath.posix.basename(normalized);
+  return normalized.startsWith('.devseek-')
+    || /^(?:tools|scripts|bin|cli)\//i.test(normalized)
+    || /(?:^|[_-])(?:probe|verify|verification|validation|validate|test|check|cli|tool|script)(?:[_-]|\.)/i.test(basename);
+}
+
+function isPromptedStandalonePythonPath(relPath: string, intentText: string): boolean {
+  const normalized = relPath.replace(/\\/g, '/');
+  return !normalized.includes('/')
+    && /(?:程序|脚本|工具|命令行|cli|program|script|tool)/i.test(intentText);
+}
+
+function buildPythonValidationCommand(
+  changedPaths: string[],
+  rootFsPath: string,
+  runPython: boolean,
+  prompt: string,
+): string {
+  return [...new Set(changedPaths.filter(isPythonValidationPath))]
+    .slice(0, 8)
+    .map((relPath) => {
+      const scriptPath = nodePath.isAbsolute(relPath) ? relPath : nodePath.join(rootFsPath, relPath);
+      const quoted = shellQuote(scriptPath);
+      const syntaxCheck = [
+        `test -s ${quoted}`,
+        `python -c ${shellQuote('import pathlib,sys; compile(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"), sys.argv[1], "exec")')} ${quoted}`,
+      ].join(' && ');
+      if (!runPython) return syntaxCheck;
+      return joinValidationCommands([
+        syntaxCheck,
+        buildPythonRuntimeValidationCommand(scriptPath, prompt),
+      ]);
+    })
+    .join(' && ');
+}
+
+function buildPythonRuntimeValidationCommand(scriptPath: string, prompt: string): string {
+  const quoted = shellQuote(scriptPath);
+  if (shouldUseLogSummaryStdinOracle(prompt)) {
+    const stdinLines = ['INFO start', 'WARN slow', 'ERROR fail']
+      .map((line) => shellQuote(line))
+      .join(' ');
+    return `printf '%s\\n' ${stdinLines} | PYTHONDONTWRITEBYTECODE=1 python ${quoted} | grep -q ${shellQuote('ERROR=1 WARN=1')}`;
+  }
+  return `PYTHONDONTWRITEBYTECODE=1 python ${quoted} < /dev/null`;
+}
+
+function shouldUseLogSummaryStdinOracle(prompt: string): boolean {
+  const text = String(prompt || '');
+  return /(?:stdin|标准输入|日志|log)/i.test(text)
+    && /ERROR\s*=?\s*1/i.test(text)
+    && /WARN\s*=?\s*1/i.test(text);
 }
 
 function commandEvidenceIntentText(text: string): string {

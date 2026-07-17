@@ -303,6 +303,33 @@ test('completion evidence: g++ compile plus executable run is compile-run eviden
   assert.equal(classifyTerminalEvidenceCommand(command), 'compile-run');
 });
 
+test('completion evidence: Python CLI pipeline counts as runtime evidence', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-evidence-python-'));
+  try {
+    const target = path.join(root, 'tools', 'log_summary.py');
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, 'import sys\nprint("ERROR=1 WARN=1")\n');
+    const prompt = '我在真实项目里需要一个小 Python 命令行工具 tools/log_summary.py。要求从 stdin 读取日志，统计 ERROR/WARN 数量并输出 ERROR=1 WARN=1；请实现并自测。';
+    const command = "printf 'INFO start\\nWARN slow\\nERROR fail\\n' | python tools/log_summary.py | grep -q 'ERROR=1 WARN=1'";
+    const kind = classifyTerminalEvidenceCommand(command);
+
+    assert.equal(kind, 'run');
+    assert.deepEqual(
+      getMissingCompletionEvidence(
+        prompt,
+        [],
+        [{ path: target, basename: 'log_summary.py', linesAdded: 2, linesRemoved: 0, action: 'create' }],
+        [{ command, kind, ok: true, exitCode: 0 }],
+        [],
+        root,
+      ),
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('completion evidence: common Chinese implementation wording requires code evidence', () => {
   assert.equal(requiresCodeArtifactForEvidence('写一个排序算法并放到 code 目录'), true);
 });
