@@ -89,14 +89,21 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
   assert.match(simpleFileTask, /advanceLinearAgentTodo/, 'simple file todo progress must use the task state machine boundary');
   assert.match(simpleFileTask, /failLinearAgentTodo/, 'simple file todo failures must use the task state machine boundary');
   assert.match(agentLoop, /selectTaskWrittenFileEvidence/, 'agent-loop must treat create_file/write_file results as task write evidence');
-  assert.match(agentLoop, /recordTaskToolWrites\(loopRes\.writtenFiles\)/, 'tool-loop written files must be recorded before task settlement');
+  assert.match(agentLoop, /recordTaskToolWrites\(loopResult\.writtenFiles\)/, 'tool-loop written files must be recorded before task settlement');
   assert.match(agentLoop, /completeFromTaskToolWrite\(loopRes\.taskComplete\)/, 'matching tool writes must complete the current mutating task');
   assert.match(agentLoop, /onTodoUpdate:\s*undefined/, 'nested editor tool loops must not publish model todos directly');
   assert.match(agentLoop, /executeFakeToolsForLoop\(tools,\s*taskToolCallbacks,/, 'editor tool loops must use the todo-suppressed callback boundary');
   assert.match(agentLoop, /new ToolReadEvidenceRecorder\(workspaceRoot\.fsPath, callbacks\.traceRunId\)/, 'one recorder must span every task and repair round in a run');
-  assert.equal((agentLoop.match(/collectToolReadEvidence\(taskReadEvidence, await executeFakeToolsForLoop/g) ?? []).length, 3, 'analyze, editor, and retry tool rounds must all retain read evidence');
+  assert.match(agentLoop, /collectToolReadEvidence\(taskReadEvidence,\s*result\)/, 'the shared tool-result sink must retain read evidence');
+  assert.equal((agentLoop.match(/recordTaskToolResult\(await executeFakeToolsForLoop/g) ?? []).length, 3, 'analyze, editor, and retry tool rounds must all retain terminal evidence through one owner');
   assert.match(agentLoop, /const taskGrounding = artifactGrounding\.captureTask\(writeAuthority\.currentPrompt, result\)/, 'two-phase task evidence must use the latest authorized prompt at top-level settlement');
   assert.match(agentLoop, /buildTaskSettlementFailureStatus/, 'ledger settlement failures must override optimistic task status');
+  assert.match(agentLoop, /buildTaskSettlementCompletionStatus/, 'ledger settlement completions must be emitted by the same owner as failures');
+  assert.match(
+    agentLoop,
+    /taskSettlement\.completed[\s\S]{0,900}buildTaskSettlementCompletionStatus/,
+    'task settlement must publish the only terminal completed status after evidence judgment',
+  );
   assert.match(agentLoop, /function isPythonValidationFile/, 'Python writes must enter the same final validation target set as JS and C++ writes');
   assert.match(agentLoop, /shouldDeferRecoverableTaskValidationFailure/, 'recoverable write-task validation failures must be deferred to final QualityGate settlement');
   assert.match(agentLoop, /terminalEvidence:\s*\[\]/, 'deferred terminal failures must not prematurely mark a recoverable write task as failed');
@@ -192,6 +199,11 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
     agentLoop,
     /finalNoToolRecovery[\s\S]{0,900}state:\s*'completed'/,
     'read-only analyze tasks must publish completed status only after ledger settlement',
+  );
+  assert.doesNotMatch(
+    agentLoop,
+    /state:\s*applied\s*\?\s*'completed'\s*:\s*'failed'/,
+    'full-file fallback must not publish pre-ledger terminal task state',
   );
   assert.doesNotMatch(
     agentLoop,

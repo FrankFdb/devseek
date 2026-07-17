@@ -1,6 +1,7 @@
 export {
   advanceLinearAgentTodo,
   appendQualityGateTodo,
+  buildTaskSettlementCompletionStatus,
   buildTaskSettlementFailureStatus,
   completeAgentTodos,
   createAgentTaskTodoLedger,

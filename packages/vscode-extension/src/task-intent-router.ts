@@ -1,5 +1,6 @@
 import { parseSimpleFileWriteRequest, type SimpleFileWriteRequest } from './agent/simple-file-intent';
 import { classifyIntent } from './intent/intent-classifier';
+import { isUnsafeSecretHarvestingImplementationRequest } from './intent/safety-intent';
 import type { ExecutionMode, IntentClassification, ToolKind } from './intent/intent-types';
 import {
   buildTaskSemanticContract,
@@ -12,6 +13,7 @@ export type TaskIntentFamily =
   | 'smalltalk'
   | 'qa'
   | 'read-only-advisory'
+  | 'safety-refusal'
   | 'review'
   | 'simple-file'
   | 'file-artifact'
@@ -88,17 +90,28 @@ export function routeTaskIntent(promptText: string): TaskIntentRoute {
     ? undefined
     : parseSimpleFileWriteRequest(prompt);
   const family = resolveTaskIntentFamily(prompt, classification, semanticContract, simpleFile);
+  const safetyRefusal = family === 'safety-refusal';
   const agentTaskShape = resolveAgentTaskShape(prompt, family, semanticContract);
   const chatKind = isCodeChangeRoute(family, classification.mode) ? 'code-change' : 'chat';
-  const fileCheckRequired = family === 'simple-file'
-    || shouldValidateNonCodeFilesForContract(semanticContract);
-  const runtimeRequired = !semanticContract.validation.runProhibited
+  const effectiveMutation: TaskIntentRoute['mutation'] = safetyRefusal
+    ? {
+      requested: false,
+      prohibited: true,
+      sourceChange: false,
+      fileArtifact: false,
+      targets: [],
+    }
+    : { ...semanticContract.mutation };
+  const fileCheckRequired = !safetyRefusal && (family === 'simple-file'
+    || shouldValidateNonCodeFilesForContract(semanticContract));
+  const runtimeRequired = !safetyRefusal
+    && !semanticContract.validation.runProhibited
     && shouldRunCppValidationForContract(semanticContract);
-  const commandEvidenceRequired = runtimeRequired
+  const commandEvidenceRequired = !safetyRefusal && (runtimeRequired
     || semanticContract.validation.compileRequested
     || semanticContract.validation.testRequested
     || family === 'terminal-validation'
-    || (fileCheckRequired && semanticContract.validation.requested);
+    || (fileCheckRequired && semanticContract.validation.requested));
 
   return {
     version: 'devseek.task-intent-route/v1',
@@ -110,19 +123,19 @@ export function routeTaskIntent(promptText: string): TaskIntentRoute {
     semanticContract,
     classification,
     simpleFile,
-    mutation: { ...semanticContract.mutation },
+    mutation: effectiveMutation,
     validation: {
-      requested: semanticContract.validation.requested,
-      compileRequested: semanticContract.validation.compileRequested,
-      runRequested: semanticContract.validation.runRequested,
-      testRequested: semanticContract.validation.testRequested,
+      requested: safetyRefusal ? false : semanticContract.validation.requested,
+      compileRequested: safetyRefusal ? false : semanticContract.validation.compileRequested,
+      runRequested: safetyRefusal ? false : semanticContract.validation.runRequested,
+      testRequested: safetyRefusal ? false : semanticContract.validation.testRequested,
       runProhibited: semanticContract.validation.runProhibited,
-      stdoutRequested: semanticContract.validation.stdoutRequested,
+      stdoutRequested: safetyRefusal ? false : semanticContract.validation.stdoutRequested,
       fileCheckRequired,
       runtimeRequired,
       commandEvidenceRequired,
     },
-    quality: { ...semanticContract.quality },
+    quality: safetyRefusal ? { ...semanticContract.quality, formalProjectRequired: false } : { ...semanticContract.quality },
     signals: unique([
       ...classification.signals,
       ...semanticContract.signals,
@@ -130,7 +143,10 @@ export function routeTaskIntent(promptText: string): TaskIntentRoute {
       ...buildFamilyAliasSignals(family),
       `${family}-route`,
     ]),
-    blockers: unique(classification.blockers),
+    blockers: unique([
+      ...classification.blockers,
+      ...(safetyRefusal ? ['unsafe-secret-harvesting-request'] : []),
+    ]),
     reason: `${family}:${classification.reason}`,
     requiresConfirmation: classification.requiresConfirmation,
     allowedToolKinds: [...classification.allowedToolKinds],
@@ -152,6 +168,7 @@ function resolveTaskIntentFamily(
   simpleFile: SimpleFileWriteRequest | undefined,
 ): TaskIntentFamily {
   if (!prompt) return 'smalltalk';
+  if (isUnsafeSecretHarvestingImplementationRequest(prompt)) return 'safety-refusal';
   if (classification.mode === 'destructive' || semanticContract.kind === 'destructive') return 'destructive';
   if (simpleFile) return 'simple-file';
   if (EXTERNAL_EFFECT_RE.test(prompt) && !EXTERNAL_EFFECT_QUESTION_RE.test(prompt)) return 'release-external-effect';
@@ -181,6 +198,7 @@ function resolveAgentTaskShape(
   family: TaskIntentFamily,
   semanticContract: TaskSemanticContract,
 ): RoutedAgentTaskShape {
+  if (family === 'safety-refusal') return 'read-only-analysis';
   if (FAILURE_RE.test(prompt)) {
     return 'validation-repair';
   }
@@ -226,7 +244,7 @@ function buildRouteMetaSignals(prompt: string): string[] {
 }
 
 function buildFamilyAliasSignals(family: TaskIntentFamily): string[] {
-  if (family === 'read-only-advisory' || family === 'review') return ['read-only-route'];
+  if (family === 'read-only-advisory' || family === 'safety-refusal' || family === 'review') return ['read-only-route'];
   if (family === 'standalone-program') return ['standalone-program-route'];
   if (family === 'existing-project-edit') return ['existing-project-route'];
   return [];

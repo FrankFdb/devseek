@@ -379,6 +379,7 @@ function stripGenericEvidenceTodoLines(text: string): string {
 }
 
 function isExplicitlyReadOnlyRequestFromRoute(route: TaskIntentRoute, intentText: string): boolean {
+  if (route.family === 'safety-refusal') return true;
   const semanticContract = route.semanticContract;
   const advisoryOnly = isAdvisoryPlanningRequest(intentText)
     && (!isDirectImplementationRequest(intentText) || isDeferredImplementationRequest(intentText));

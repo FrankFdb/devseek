@@ -88,6 +88,7 @@ import {
   analyzeTerminalEvidence,
   buildAgentMetaOnlyToolFeedback,
   executeFakeToolsForLoop,
+  type ToolLoopResult,
 } from './agent/tool-loop';
 import {
   isExistingDirectory,
@@ -96,6 +97,7 @@ import {
 } from './agent/deterministic-analyze-execution';
 import { selectTaskWrittenFileEvidence } from './agent/task-write-evidence';
 import {
+  buildTaskSettlementCompletionStatus,
   buildTaskSettlementFailureStatus,
   createAgentTaskTodoLedger,
   isReadOnlyAgentTaskAction,
@@ -748,6 +750,13 @@ async function executeTask(
     let exhaustedWithPendingTools = false;
     let noToolRecoveryAttempts = 0;
     let lastAnalyzeRoundText = '';
+    const recordTaskToolResult = (result: ToolLoopResult): ToolLoopResult => {
+      const loopResult = collectToolReadEvidence(taskReadEvidence, result);
+      if (loopResult.terminalEvidence?.length) {
+        taskTerminalEvidence.push(...loopResult.terminalEvidence);
+      }
+      return loopResult;
+    };
     // G-analy-display: Route streaming text into the Working box analysis body (Copilot
     // inline style). Using \x00AFILE:basename\x00 prefix ensures content appears per-task
     // directly inside each Working box, regardless of whether the AI produces streaming
@@ -781,7 +790,7 @@ async function executeTask(
         lastAnalyzeRoundText = text;
         execMessages.push({ role: 'assistant', content: text }, ...postProviderSteers);
         // Pass analyzeWorkdir so run_terminal defaults to task directory when AI omits workdir.
-        const loopRes = collectToolReadEvidence(taskReadEvidence, await executeFakeToolsForLoop(tools, taskToolCallbacks, analyzeWorkdir, {
+        const loopRes = recordTaskToolResult(await executeFakeToolsForLoop(tools, taskToolCallbacks, analyzeWorkdir, {
           currentTaskIndex: taskIndex,
           taskTotal: allTasks.length,
           deferDoneStatus: true,
@@ -789,9 +798,6 @@ async function executeTask(
           workspaceRoot: workspaceRoot.fsPath,
           readEvidenceRecorder,
         }));
-        if (loopRes.terminalEvidence?.length) {
-          taskTerminalEvidence.push(...loopRes.terminalEvidence);
-        }
         const terminalReview = findLatestManualReviewTerminalEvidence(taskTerminalEvidence);
         if (terminalReview) {
           const detail = terminalReview.detail || '图形或交互式程序已启动，运行效果需要人工确认。';
@@ -1096,6 +1102,15 @@ async function executeTask(
     if (writtenFiles?.length) taskWrittenFiles.push(...writtenFiles);
   };
 
+  const recordTaskToolResult = (result: ToolLoopResult): ToolLoopResult => {
+    const loopResult = collectToolReadEvidence(taskReadEvidence, result);
+    if (loopResult.terminalEvidence?.length) {
+      taskTerminalEvidence.push(...loopResult.terminalEvidence);
+    }
+    recordTaskToolWrites(loopResult.writtenFiles);
+    return loopResult;
+  };
+
   const completeFromTaskToolWrite = async (taskComplete = false): Promise<TaskExecutionResult | undefined> => {
     const writtenFiles = selectTaskWrittenFileEvidence(task, taskWrittenFiles, workspaceRoot.fsPath);
     const evidence = writtenFiles[0];
@@ -1106,22 +1121,6 @@ async function executeTask(
       contentCache.set(evidence.path, freshContent);
       if (task.absPath) contentCache.set(task.absPath, freshContent);
     }
-
-    await callbacks.onAgentStatus({
-      type: 'agentStatus',
-      phase: 'execute',
-      taskId: task.id,
-      taskFile: basename,
-      taskAction: task.action,
-      taskDesc: task.desc,
-      taskIndex,
-      taskTotal: allTasks.length,
-      state: 'completed',
-      title: task.desc || basename,
-      detail: `${nodePath.basename(evidence.path)} · 已通过工具写入`,
-      linesAdded: evidence.linesAdded,
-      linesRemoved: evidence.linesRemoved,
-    });
 
     return withTaskTerminalEvidence({
       applied: true,
@@ -1146,7 +1145,7 @@ async function executeTask(
       taskMessages.push({ role: 'assistant', content: text }, ...postProviderSteers);
       raw = text;
 
-      const loopRes = collectToolReadEvidence(taskReadEvidence, await executeFakeToolsForLoop(tools, taskToolCallbacks, editorWorkdir, {
+      const loopRes = recordTaskToolResult(await executeFakeToolsForLoop(tools, taskToolCallbacks, editorWorkdir, {
         currentTaskIndex: taskIndex,
         taskTotal: allTasks.length,
         deferDoneStatus: true,
@@ -1154,10 +1153,6 @@ async function executeTask(
         workspaceRoot: workspaceRoot.fsPath,
         readEvidenceRecorder,
       }));
-      if (loopRes.terminalEvidence?.length) {
-        taskTerminalEvidence.push(...loopRes.terminalEvidence);
-      }
-      recordTaskToolWrites(loopRes.writtenFiles);
       const writeToolCompletion = await completeFromTaskToolWrite(loopRes.taskComplete);
       if (writeToolCompletion) return writeToolCompletion;
       if (loopRes.taskComplete) {
@@ -1280,17 +1275,6 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
         });
         const srDiff = roughLineDiff(currentContent, srResult.result);
         const writtenFiles = [buildWrittenFileEvidence(task.absPath, task.action, srDiff.added, srDiff.removed)];
-        await callbacks.onAgentStatus({
-          type: 'agentStatus',
-          phase: 'execute',
-          taskId: task.id, taskFile: basename, taskAction: task.action,
-          taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
-          state: 'completed',
-          title: task.desc || basename,
-          detail: `${basename} · ${srResult.applied} 处改动`,
-          linesAdded: srDiff.added,
-          linesRemoved: srDiff.removed,
-        });
         return withTaskTerminalEvidence({
           applied: true,
           path: task.absPath,
@@ -1415,7 +1399,7 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
       const { text: rText, tools: rTools } = await chatViaProvider(retryPrompt, mode, undefined, history, callbacks.signal, false, callbacks.traceRunId, callbacks.traceWorkspaceRoot, callbacks.traceEvidenceParticipantToken, callbacks.onTraceEvidenceError);
       writeAuthority.drainAfterProvider();
       retryRaw = rText;
-      collectToolReadEvidence(taskReadEvidence, await executeFakeToolsForLoop(rTools, taskToolCallbacks, editorWorkdir, {
+      recordTaskToolResult(await executeFakeToolsForLoop(rTools, taskToolCallbacks, editorWorkdir, {
         currentTaskIndex: taskIndex,
         taskTotal: allTasks.length,
         deferDoneStatus: true,
@@ -1461,19 +1445,6 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
       fullFileDiff,
     )
     : [];
-
-  // P18: full-file fallback path never sent a terminal task status.
-  // SEARCH/REPLACE path returns early after sending its own 'completed'/'failed';
-  // only this code path reaches here, so we emit terminal status unconditionally.
-  await callbacks.onAgentStatus({
-    type: 'agentStatus',
-    phase: 'execute',
-    taskId: task.id, taskFile: basename, taskAction: task.action,
-    taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
-    state: applied ? 'completed' : 'failed',
-    title: task.desc || (applied ? `${basename} — 已修改` : `${basename} — 未能应用`),
-    ...(fullFileDiff ? { linesAdded: fullFileDiff.added, linesRemoved: fullFileDiff.removed } : {}),
-  });
 
   return withTaskTerminalEvidence({
     applied,
@@ -1999,20 +1970,13 @@ export async function runAgentLoop(
           content: `任务 ${i + 1}/${tasks.length} 验证失败：${getAgentTaskDisplayTarget(task)}（${task.desc}）`,
         });
       }
-    } else if (taskSettlement.completed && isReadOnlyAction(task.action)) {
-      const target = getAgentTaskDisplayTarget(task);
-      await callbacks.onAgentStatus({
-        type: 'agentStatus',
-        phase: 'execute',
-        taskId: task.id,
-        taskFile: target,
-        taskAction: task.action,
-        taskDesc: task.desc,
-        taskIndex: i + 1,
-        taskTotal: tasks.length,
-        state: 'completed',
-        title: task.desc || target,
-      });
+    } else if (taskSettlement.completed) {
+      await callbacks.onAgentStatus(buildTaskSettlementCompletionStatus(
+        task,
+        i + 1,
+        tasks.length,
+        taskSettlementInput,
+      ));
     }
 
     if (callbacks.onTodoUpdate && tasks.length > 0) {

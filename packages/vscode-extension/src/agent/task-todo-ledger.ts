@@ -109,6 +109,38 @@ export function buildTaskSettlementFailureStatus(
   };
 }
 
+export function buildTaskSettlementCompletionStatus(
+  task: AgentTask,
+  taskIndex: number,
+  taskTotal: number,
+  result: { writtenFiles?: WrittenFileEvidence[]; workspaceRoot?: string },
+): AgentStatusEvent {
+  const target = getTaskDisplayTarget(task);
+  const writtenFiles = coalesceWrittenFileEvidence(result.writtenFiles ?? [], result.workspaceRoot);
+  const changedBasenames = writtenFiles
+    .map(file => nodePath.basename(file.path || file.basename))
+    .filter(Boolean);
+  const linesAdded = sumOptional(writtenFiles.map(file => file.linesAdded));
+  const linesRemoved = sumOptional(writtenFiles.map(file => file.linesRemoved));
+  return {
+    type: 'agentStatus',
+    phase: 'execute',
+    taskId: task.id,
+    taskFile: target,
+    taskAction: task.action,
+    taskDesc: task.desc,
+    taskIndex,
+    taskTotal,
+    state: 'completed',
+    title: summarizeAgentTodoTitle(task.desc || target, target),
+    ...(changedBasenames.length > 0
+      ? { detail: `${changedBasenames.join('、')} · 已通过任务结算` }
+      : {}),
+    ...(linesAdded !== undefined ? { linesAdded } : {}),
+    ...(linesRemoved !== undefined ? { linesRemoved } : {}),
+  };
+}
+
 export function createAgentTaskTodoLedger(
   tasks: AgentTask[],
   startFromIndex = 0,
@@ -726,6 +758,13 @@ function runtimeProviderTextForTask(evidence: TaskEvidence, validationPassed: bo
 function countWrittenTaskEvidence(evidence: TaskEvidence): number {
   if (evidence.writtenFiles?.length) return evidence.writtenFiles.length;
   return evidence.applied && evidence.path ? 1 : 0;
+}
+
+function sumOptional(values: Array<number | undefined>): number | undefined {
+  const present = values.filter((value): value is number => typeof value === 'number');
+  return present.length > 0
+    ? present.reduce((sum, value) => sum + value, 0)
+    : undefined;
 }
 
 function hasSuccessfulFinalTerminalEvidence(evidence: TerminalEvidence[] | undefined): boolean {
