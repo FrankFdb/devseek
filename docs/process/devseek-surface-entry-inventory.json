@@ -19,7 +19,7 @@
     },
     "extensionCommands": {
       "path": "packages/vscode-extension/src/ui/extension-command-registration.ts",
-      "source_sha256": "b37abb01233870fc31d72f0d1540f4a59e84569fe8e7ef925781a2d3aea08154"
+      "source_sha256": "251cb2bc5d2d063f98f4222e882462633448664ad32c1e1d0f45567f69101d3b"
     },
     "providerRouter": {
       "path": "packages/vscode-extension/src/llm/provider-router.ts",
@@ -47,7 +47,7 @@
     },
     "cliIndex": {
       "path": "packages/cli/src/index.ts",
-      "source_sha256": "490e9dde22a22a0874bd0c703a67979af1f49449fca57ddfbc58917e650ae084"
+      "source_sha256": "ab8c4325313ee515152e19ecc22f39a4847e430ee3adb9fe8f68f6e28f1b6df5"
     },
     "cliSurfaceAdapter": {
       "path": "packages/cli/src/cli-surface-adapter.ts",
@@ -1389,5 +1389,5 @@
     "declared_adapter_pending_cutover": 17,
     "undeclared_legacy_owner_reachability": 0
   },
-  "inventory_sha256": "032773e526cab18568c0db0149b75eab6bc8bbf6bcfd44a89b5b52e53fd56f72"
+  "inventory_sha256": "b84dc6c6d5875b53a60beb1caa40366a4dbcd541f19988c9f48963540a2a566a"
 }

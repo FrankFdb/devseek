@@ -68,6 +68,32 @@ test('CLI JSONL mode emits parseable AgentEvent lines', () => {
   assert.equal(events.at(-1).response, 'mock: phase10 cli jsonl smoke');
 });
 
+test('CLI JSONL mode keeps stdout strict and settles evidence as jsonl surface', async () => {
+  await withTempCwdAsync(async (cwd) => {
+    const result = await runCli([bin, 'exec', '--jsonl', '--mock', 'jsonl surface settlement smoke'], {
+      cwd,
+      timeout: 5000,
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stderr.trim(), '');
+    const lines = result.stdout.trim().split(/\r?\n/);
+    assert.ok(lines.length >= 3);
+    const events = lines.map((line, index) => {
+      assert.doesNotMatch(line, /^DevSeek\b/, `stdout line ${index + 1} must be JSONL, not diagnostics`);
+      return JSON.parse(line);
+    });
+    assert.equal(events.every(event => event.surface === 'jsonl' || !('surface' in event)), true);
+
+    const records = readProductEvidenceRecords(cwd);
+    const evidenceEvents = records.filter(record => record.record_kind === 'event').map(record => record.event);
+    assert.equal(evidenceEvents.every(event => event.surface === 'jsonl'), true);
+    assert.equal(evidenceEvents.find(event => event.type === 'run.opened')?.payload.owner_surface, 'jsonl');
+    assert.equal(evidenceEvents.find(event => event.type === 'run.settled')?.payload.details.surface, 'jsonl');
+    assert.equal(records.at(-1).record_kind, 'seal');
+  });
+});
+
 test('CLI text mode prints provider response', () => {
   const stdout = withTempCwd((cwd) => {
     return execFileSync(process.execPath, [bin, 'exec', '--mock', 'phase10 cli text smoke'], {

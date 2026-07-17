@@ -25,6 +25,8 @@ interface CliOptions {
   mock: boolean;
 }
 
+type CliRunSurfaceKind = 'cli' | 'jsonl';
+
 const VERSION = '1.0.0';
 
 async function main(argv: readonly string[]): Promise<number> {
@@ -159,6 +161,7 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
 }
 
 interface CliEvidenceContext {
+  readonly surface: CliRunSurfaceKind;
   readonly session?: ProductRunEvidenceSession;
   readonly participantToken: string;
   degraded: boolean;
@@ -170,17 +173,18 @@ function openCliRunEvidence(
   runId: string,
   prompt: string,
 ): CliEvidenceContext {
+  const surface = resolveCliRunSurfaceKind(options);
   const ownerToken = createProductRunEvidenceAuthorityToken();
   const participantToken = createProductRunEvidenceAuthorityToken();
   try {
     const session = ProductRunEvidenceSession.forWorkspace({
       workspaceRoot: options.cwd,
       runId,
-      surface: options.jsonl ? 'jsonl' : 'cli',
+      surface,
       authority: { role: 'owner', token: ownerToken, participantToken },
       openIfMissing: true,
       openPayload: {
-        owner_surface: options.jsonl ? 'jsonl' : 'cli',
+        owner_surface: surface,
         cwd: summarizeTraceText(options.cwd),
       },
     });
@@ -189,11 +193,15 @@ function openCliRunEvidence(
       idempotencyKey: productRunEvidenceIdempotencyKey('cli-command-accepted', { runId }),
       payload: { prompt: summarizeTraceText(prompt) },
     });
-    return { session, participantToken, degraded: false, degradationRecorded: false };
+    return { surface, session, participantToken, degraded: false, degradationRecorded: false };
   } catch (error) {
     console.error(`DevSeek evidence warning: ${formatCliError(error)}`);
-    return { participantToken, degraded: true, degradationRecorded: false };
+    return { surface, participantToken, degraded: true, degradationRecorded: false };
   }
+}
+
+function resolveCliRunSurfaceKind(options: Pick<CliOptions, 'jsonl'>): CliRunSurfaceKind {
+  return options.jsonl ? 'jsonl' : 'cli';
 }
 
 function recordCliEvidence(
@@ -292,7 +300,7 @@ function settleCliEvidence(
     evidence.session.settleAndSeal({
       status,
       idempotencyKey: productRunEvidenceIdempotencyKey('cli-run-settled', { runId }),
-      payload: { surface: 'cli' },
+      payload: { surface: evidence.surface },
     });
   } catch (error) {
     markCliEvidenceDegraded(evidence, error);
