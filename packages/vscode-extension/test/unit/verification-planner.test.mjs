@@ -169,6 +169,41 @@ test('VerificationPlanner: ordinary JavaScript artifacts stay syntax-only even w
   assert.doesNotMatch(plan.command, /&& node '\/repo\/src\/app\.js'/);
 });
 
+test('VerificationPlanner: Python log summary text oracle uses python3 stdin validation', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['tools/log_summary.py'],
+    requestPrompt: '实现 tools/log_summary.py，从 stdin 读取日志并统计 ERROR/WARN，输出 ERROR=1 WARN=1，请自测。',
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'compile-run');
+  assert.equal(plan.reason, 'python-syntax-and-run-validation');
+  assert.match(plan.command, /PYTHONDONTWRITEBYTECODE=1 python3/);
+  assert.match(plan.command, /grep -q 'ERROR=1 WARN=1'/);
+  assert.doesNotMatch(plan.command, /\bpython tools\/log_summary\.py\b/);
+});
+
+test('VerificationPlanner: Python log summary JSON follow-up overrides prior text oracle', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['tools/log_summary.py'],
+    requestPrompt: [
+      '继续刚才的工具：下游系统现在只接受一行 JSON。',
+      '请把 tools/log_summary.py 的输出改成 JSON 对象，保留从 stdin 读取日志的行为。',
+      '上一轮输出格式是 ERROR=1 WARN=1。',
+    ].join(''),
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'compile-run');
+  assert.equal(plan.reason, 'python-syntax-and-run-validation');
+  assert.match(plan.command, /PYTHONDONTWRITEBYTECODE=1 python3/);
+  assert.match(plan.command, /'WARN retry'/);
+  assert.match(plan.command, /grep -q '\{"ERROR": 1, "WARN": 2\}'/);
+  assert.doesNotMatch(plan.command, /grep -q 'ERROR=1 WARN=1'/);
+});
+
 test('VerificationPlanner: CMakeLists-only C++ project changes still plan CMake validation', () => {
   const files = new Set([
     path.join('/repo', 'code', 'shape_manager'),

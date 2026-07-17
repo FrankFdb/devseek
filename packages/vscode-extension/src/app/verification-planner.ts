@@ -521,6 +521,12 @@ function buildPythonValidationCommand(
 }
 
 function buildPythonRuntimeValidationCommand(quotedScriptPath: string, prompt: string): string {
+  if (shouldUseLogSummaryJsonStdinOracle(prompt)) {
+    const stdinLines = ['INFO start', 'WARN slow', 'ERROR fail', 'WARN retry']
+      .map((line) => shellQuote(line))
+      .join(' ');
+    return `printf '%s\\n' ${stdinLines} | PYTHONDONTWRITEBYTECODE=1 python3 ${quotedScriptPath} | grep -q ${shellQuote('{"ERROR": 1, "WARN": 2}')}`;
+  }
   if (shouldUseLogSummaryStdinOracle(prompt)) {
     const stdinLines = ['INFO start', 'WARN slow', 'ERROR fail']
       .map((line) => shellQuote(line))
@@ -530,8 +536,14 @@ function buildPythonRuntimeValidationCommand(quotedScriptPath: string, prompt: s
   return `PYTHONDONTWRITEBYTECODE=1 python3 ${quotedScriptPath} < /dev/null`;
 }
 
+function shouldUseLogSummaryJsonStdinOracle(prompt: string): boolean {
+  const text = commandEvidenceIntentText(prompt);
+  return /(?:stdin|标准输入|日志|log)/i.test(text)
+    && /(?:json|JSON|JSON\s*对象|JSON\s*输出|一行\s*JSON)/i.test(text);
+}
+
 function shouldUseLogSummaryStdinOracle(prompt: string): boolean {
-  const text = String(prompt || '');
+  const text = commandEvidenceIntentText(prompt);
   return /(?:stdin|标准输入|日志|log)/i.test(text)
     && /ERROR\s*=?\s*1/i.test(text)
     && /WARN\s*=?\s*1/i.test(text);

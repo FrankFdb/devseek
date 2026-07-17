@@ -313,6 +313,7 @@ export class TerminalPermissionCoordinator {
           presentation: 'captured',
           executionProfile: 'validation',
         });
+        recordTerminalValidationLifecycle(input, invocation, result);
         return {
           ran: result.executed,
           ok: result.outcome === 'committed',
@@ -663,6 +664,78 @@ export class TerminalPermissionCoordinator {
       this.activeCommandRecoveryByRun.set(runId, recovery);
     }
     return { ...input, recoveryOperationId: recovery.operationId };
+  }
+}
+
+function recordTerminalValidationLifecycle(
+  input: ValidationCommandAuthorityInput,
+  invocation: Parameters<ValidationCommandRunner>[0],
+  result: TerminalCommandExecutionResult,
+): void {
+  const operationId = result.operationId;
+  if (!operationId) return;
+  const terminalState = result.outcome === 'committed' ? 'completed' : 'failed';
+  const gateTerminalType = result.outcome === 'committed' ? 'quality_gate.passed' : 'quality_gate.failed';
+  const gateTerminalStatus = result.outcome === 'committed' ? 'passed' : 'failed';
+  const details = {
+    command: summarizeTraceText(invocation.command),
+    cwd: invocation.cwd,
+    exit_code: result.exitCode ?? null,
+    output: summarizeTraceText(result.executionOutput ?? result.output),
+  };
+  recordTerminalValidationEvidence(input, operationId, 'verification.started', {
+    ...details,
+    status: 'started',
+  });
+  recordTerminalValidationEvidence(input, operationId, terminalState === 'completed'
+    ? 'verification.completed'
+    : 'verification.failed', {
+    ...details,
+    status: terminalState,
+  });
+  recordTerminalValidationEvidence(input, operationId, 'quality_gate.started', {
+    ...details,
+    status: 'started',
+  });
+  recordTerminalValidationEvidence(input, operationId, gateTerminalType, {
+    ...details,
+    status: gateTerminalStatus,
+  });
+}
+
+function recordTerminalValidationEvidence(
+  input: ValidationCommandAuthorityInput,
+  operationId: string,
+  type: 'verification.started'
+    | 'verification.completed'
+    | 'verification.failed'
+    | 'quality_gate.started'
+    | 'quality_gate.passed'
+    | 'quality_gate.failed',
+  details: Record<string, RunEvidenceJson>,
+): void {
+  try {
+    const session = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot: input.workspaceRoot,
+      runId: input.traceRunId,
+      surface: 'vscode-terminal',
+      authority: { role: 'participant', token: input.traceEvidenceParticipantToken },
+    });
+    session.record({
+      type,
+      idempotencyKey: productRunEvidenceIdempotencyKey(`vscode-terminal-${type}`, {
+        runId: input.traceRunId,
+        operationId,
+      }),
+      payload: {
+        operation_id: operationId,
+        boundary: 'vscode-terminal-validation-runner',
+        trust: PRODUCT_RUNTIME_OBSERVATION_TRUST,
+        ...details,
+      },
+    });
+  } catch (error) {
+    reportTerminalEvidenceError(input, error);
   }
 }
 

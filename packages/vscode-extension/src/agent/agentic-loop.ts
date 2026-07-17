@@ -816,6 +816,22 @@ export async function runAgenticLoop(
         allWrittenFiles.push(...artifactApply.writtenFiles);
         progressEpoch++;
         resetProviderRecoveryAttemptsAfterProgress();
+        const artifactStatusFile = artifactApply.writtenFiles[0];
+        await callbacks.onAgentStatus({
+          type: 'agentStatus',
+          phase: 'execute',
+          state: 'completed',
+          taskId: 'agentic-artifact',
+          taskFile: artifactStatusFile?.basename || 'generated artifact',
+          taskAction: artifactStatusFile?.action === 'create' ? 'create' : 'modify',
+          taskIndex: 1,
+          taskTotal: 1,
+          title: '已落地模型输出文件',
+          detail: artifactApply.writtenFiles
+            .map(file => `${file.basename} (+${file.linesAdded} -${file.linesRemoved})`)
+            .join('、'),
+          editedFiles: artifactApply.writtenFiles,
+        });
         const autoValidation = await runAgentAutoValidationForWrites(
           allWrittenFiles.slice(autoValidatedWriteCount),
           workspaceRoot,

@@ -698,33 +698,159 @@ function lastFlattenedPromptSegment(promptText) {
   return separatorIndex >= 0 ? promptText.slice(separatorIndex + 2) : promptText;
 }
 
-function bindControlledPromptContract({ promptText, ordinal, expectedPrompt, runId, priorRequests }) {
+function isControlledArchitectPrompt(promptText) {
+  const text = String(promptText || '');
+  return text.includes('任务规划器（Architect 角色）')
+    && text.includes('【用户需求】')
+    && text.includes('【输出格式（严格 JSON，无 markdown 包裹）】');
+}
+
+function isControlledEditorPrompt(promptText) {
+  const text = String(promptText || '');
+  return text.includes('编程智能体（Editor 角色）')
+    && text.includes('【原始用户需求】');
+}
+
+function isControlledRepairPrompt(promptText) {
+  const text = String(promptText || '');
+  return text.includes('你是编程智能体。任务：')
+    && text.includes('上次应用失败：')
+    && text.includes('目标文件（必须只输出这个路径）：')
+    && text.includes('请输出修改后的完整文件内容');
+}
+
+function extractArchitectUserPrompt(promptText) {
+  const text = String(promptText || '');
+  const marker = /(?:^|\n)【用户需求】\n/;
+  const markerMatch = marker.exec(text);
+  if (!markerMatch) return '';
+  const body = text.slice(markerMatch.index + markerMatch[0].length);
+  const boundaryCandidates = [
+    '\n\n【同一会话续作上下文】',
+    '\n\n【最近相关文件】',
+    '\n\n【文件清单】',
+    '\n\n【工作目录约束',
+    '\n\n【只读规划/分析约束',
+    '\n\n【Markdown 文档交付物约束',
+    '\n\n【执行阶段可用工具',
+    '\n\n【输出格式（严格 JSON，无 markdown 包裹）】',
+  ]
+    .map(boundary => body.indexOf(boundary))
+    .filter(index => index >= 0);
+  const endIndex = boundaryCandidates.length > 0 ? Math.min(...boundaryCandidates) : body.length;
+  return body.slice(0, endIndex).trim();
+}
+
+function extractEditorOriginalUserPrompt(promptText) {
+  const text = String(promptText || '');
+  const marker = /(?:^|\n)【原始用户需求】\n/;
+  const markerMatch = marker.exec(text);
+  if (!markerMatch) return '';
+  const body = text.slice(markerMatch.index + markerMatch[0].length);
+  const boundaryCandidates = [
+    '\n\n【同一会话续作上下文】',
+    '\n\n【当前子任务】',
+    '\n\n【任务】',
+    '\n\n【可用工具】',
+    '\n\n【工作区根目录】',
+    '\n\n【执行阶段可用工具',
+    '\n\n[工具协议]',
+  ]
+    .map(boundary => body.indexOf(boundary))
+    .filter(index => index >= 0);
+  const endIndex = boundaryCandidates.length > 0 ? Math.min(...boundaryCandidates) : body.length;
+  return body.slice(0, endIndex).trim();
+}
+
+function extractControlledCurrentUserPrompt(promptText) {
+  if (isControlledArchitectPrompt(promptText)) return extractArchitectUserPrompt(promptText);
+  if (isControlledEditorPrompt(promptText)) return extractEditorOriginalUserPrompt(promptText);
+  return lastFlattenedPromptSegment(promptText).trim();
+}
+
+function extractRepairTargetRelativePath(promptText) {
+  const match = /(?:^|\n)目标文件（必须只输出这个路径）：([^\n]+)/.exec(String(promptText || ''));
+  return match ? match[1].trim() : '';
+}
+
+function bindControlledArchitectPromptContract({ promptText, expectedPrompt, runId }) {
+  const text = String(promptText || '');
+  const observedUserPrompt = extractArchitectUserPrompt(text);
+  const conditions = [
+    ['run correlation is present', Boolean(runId)],
+    ['transport is an Architect planner prompt', isControlledArchitectPrompt(text)],
+    ['prompt is non-empty', text.length > 0],
+    ['Architect user demand equals the expected text', observedUserPrompt === expectedPrompt],
+    ['expected user intent is present in the planner prompt', countExactOccurrences(text, expectedPrompt) >= 1],
+  ];
+  const failed = conditions.find(([, passed]) => !passed);
+  return {
+    contractVersion: 'devseek.controlled-prompt-binding/v1',
+    expected: {
+      kind: 'architect-plan',
+      userPrompt: expectedPrompt,
+      userPromptLength: expectedPrompt.length,
+      userPromptSha256: sha256Text(expectedPrompt),
+    },
+    observed: {
+      mode: 'architect-plan',
+      promptLength: text.length,
+      promptSha256: sha256Text(text),
+      userPrompt: observedUserPrompt,
+      userPromptLength: observedUserPrompt.length,
+      userPromptSha256: sha256Text(observedUserPrompt),
+      expectedUserPromptOccurrences: countExactOccurrences(text, expectedPrompt),
+    },
+    bound: !failed,
+    reason: failed ? failed[0] : 'Architect planner request is bound to the current user demand.',
+  };
+}
+
+function bindControlledPromptContract({
+  promptText,
+  ordinal,
+  expectedPrompt,
+  expectedTargetRelativePath = '',
+  runId,
+  priorRequests,
+}) {
   const text = String(promptText || '');
   const expectedUserSha256 = sha256Text(expectedPrompt);
   const feedbackRounds = promptFeedbackRounds(text);
   const expectedPromptOccurrences = countExactOccurrences(text, expectedPrompt);
+  const observedUserPrompt = extractControlledCurrentUserPrompt(text);
+  const currentDemandBound = observedUserPrompt === expectedPrompt;
+  const repairTargetRelativePath = extractRepairTargetRelativePath(text);
   const fullPromptHasInitialIntent = expectedPromptOccurrences > 0;
   const mode = text.startsWith(incrementalPromptPrefix)
     ? 'incremental'
-    : fullPromptHasInitialIntent ? 'full' : 'unknown';
+    : isControlledEditorPrompt(text) ? 'editor-scoped'
+      : isControlledRepairPrompt(text) ? 'repair-scoped'
+      : fullPromptHasInitialIntent ? 'full' : 'unknown';
   const baseObserved = {
     mode,
     promptLength: text.length,
     promptSha256: sha256Text(text),
     feedbackRounds,
     expectedUserPromptOccurrences: expectedPromptOccurrences,
+    repairTargetRelativePath,
   };
 
   if (ordinal === 1) {
-    const observedUserPrompt = lastFlattenedPromptSegment(text);
+    const fullInitialPromptBound = mode === 'full'
+      && text.endsWith(`\n\n${expectedPrompt}`)
+      && currentDemandBound
+      && expectedPromptOccurrences === 1;
+    const editorInitialPromptBound = mode === 'editor-scoped'
+      && currentDemandBound
+      && expectedPromptOccurrences >= 1;
     const conditions = [
       ['first request has no prior attempts', priorRequests.length === 0],
       ['run correlation is present', Boolean(runId)],
-      ['transport is a full flattened prompt', mode === 'full'],
+      ['transport is a full flattened prompt or Editor scoped prompt', mode === 'full' || mode === 'editor-scoped'],
       ['prompt is non-empty', text.length > 0],
-      ['prompt ends at the exact expected user intent', text.endsWith(`\n\n${expectedPrompt}`)],
-      ['extracted user intent equals the expected text', observedUserPrompt === expectedPrompt],
-      ['expected user intent occurs exactly once', expectedPromptOccurrences === 1],
+      ['extracted current user intent equals the expected text', currentDemandBound],
+      ['current user intent is bound without trailing replacement text', fullInitialPromptBound || editorInitialPromptBound],
       ['first request contains no tool-feedback round', feedbackRounds.length === 0],
     ];
     const failed = conditions.find(([, passed]) => !passed);
@@ -765,29 +891,43 @@ function bindControlledPromptContract({ promptText, ordinal, expectedPrompt, run
   const hasFeedbackBody = lastMarkerIndex >= 0
     && text.slice(lastMarkerIndex + lastMarker.length).trim().length > 0;
   const fullIntentBoundary = `\n\n${expectedPrompt}\n\n[助手]\n`;
-  const initialIntentBound = mode === 'incremental'
+  const initialIntentBound = mode === 'repair-scoped'
+    ? priorRequests[0]?.promptContract?.bound === true
+    : mode === 'incremental'
     ? priorRequests[0]?.promptContract?.bound === true
     : text.includes(fullIntentBoundary)
       && expectedPromptOccurrences === 1;
+  const repairTargetBound = mode === 'repair-scoped'
+    && Boolean(expectedTargetRelativePath)
+    && repairTargetRelativePath === expectedTargetRelativePath;
+  const continuationConditions = mode === 'repair-scoped'
+    ? [
+      ['repair prompt target file is bound to the expected scenario file', repairTargetBound],
+      ['repair prompt carries the previous failure context', text.includes('上次应用失败：')],
+    ]
+    : [
+      [`tool-feedback rounds are continuous through Round ${expectedFeedbackRound}`, roundsBound],
+      [`Round ${expectedFeedbackRound} contains non-empty tool feedback`, hasFeedbackBody],
+    ];
   const conditions = [
     ['all prior request attempts are present and bound', priorChainBound],
     ['runId matches the bound initial request', sameRun],
-    ['transport is full or the exact incremental-session form', mode === 'full' || mode === 'incremental'],
+    ['transport is full, incremental-session, or scoped repair form', mode === 'full' || mode === 'incremental' || mode === 'repair-scoped'],
     ['initial user intent remains bound', initialIntentBound],
-    [`tool-feedback rounds are continuous through Round ${expectedFeedbackRound}`, roundsBound],
-    [`Round ${expectedFeedbackRound} contains non-empty tool feedback`, hasFeedbackBody],
+    ...continuationConditions,
   ];
   const failed = conditions.find(([, passed]) => !passed);
   return {
     contractVersion: 'devseek.controlled-prompt-binding/v1',
     expected: {
       ordinal,
-      kind: 'tool-feedback',
-      modes: ['full', 'incremental'],
+      kind: mode === 'repair-scoped' ? 'repair-retry' : 'tool-feedback',
+      modes: ['full', 'incremental', 'repair-scoped'],
       runId: expectedRunId,
       priorBoundRequests: ordinal - 1,
       feedbackRound: expectedFeedbackRound,
       feedbackMarker: lastMarker,
+      repairTargetRelativePath: expectedTargetRelativePath,
       userPromptLength: expectedPrompt.length,
       userPromptSha256: expectedUserSha256,
     },
@@ -802,7 +942,11 @@ function bindControlledPromptContract({ promptText, ordinal, expectedPrompt, run
       initialIntentBound,
     },
     bound: !failed,
-    reason: failed ? failed[0] : `Continuous tool-feedback Round ${expectedFeedbackRound} is bound to the initial intent.`,
+    reason: failed
+      ? failed[0]
+      : mode === 'repair-scoped'
+        ? 'Scoped repair request is bound to the current run and target file.'
+        : `Continuous tool-feedback Round ${expectedFeedbackRound} is bound to the initial intent.`,
   };
 }
 
@@ -810,6 +954,47 @@ function runPromptContractSelfTest(expectedPrompt) {
   const runId = 'prompt-contract-self-test-run';
   const validInitialText = `[指令]\nself-test system contract\n\n${expectedPrompt}`;
   const validProductInitialText = `你是一个拥有完整工具访问权限的编程智能体。\n\n[工具协议]\n必须使用受控工具。\n\n${expectedPrompt}`;
+  const replacedUserIntent = `self-test replaced user intent ${sha256Text(expectedPrompt).slice(0, 12)}`;
+  const validPlannerText = [
+    '你是一个顶级编程智能体的任务规划器（Architect 角色）。',
+    '请严格只为下方【用户需求】制定计划。',
+    '',
+    '【用户需求】',
+    expectedPrompt,
+    '',
+    '【输出格式（严格 JSON，无 markdown 包裹）】',
+    '{"tasks":[]}',
+  ].join('\n');
+  const validEditorText = [
+    '你是一个专业的编程智能体（Editor 角色），正在执行多文件任务中的一个子任务。',
+    '',
+    '【原始用户需求】',
+    expectedPrompt,
+    '',
+    '【同一会话续作上下文】',
+    `上一轮用户目标：${replacedUserIntent}`,
+    '',
+    '【当前子任务】',
+    '{"id":"t1","file":"target.txt","action":"modify","desc":"self-test"}',
+    '',
+    '[工具协议]',
+    '必须使用受控工具。',
+  ].join('\n');
+  const replacedEditorText = [
+    '你是一个专业的编程智能体（Editor 角色），正在执行多文件任务中的一个子任务。',
+    '',
+    '【原始用户需求】',
+    replacedUserIntent,
+    '',
+    '【同一会话续作上下文】',
+    `上一轮用户目标：${expectedPrompt}`,
+    '',
+    '【当前子任务】',
+    '{"id":"t1","file":"target.txt","action":"modify","desc":"self-test"}',
+    '',
+    '[工具协议]',
+    '必须使用受控工具。',
+  ].join('\n');
   const validInitial = bindControlledPromptContract({
     promptText: validInitialText,
     ordinal: 1,
@@ -822,16 +1007,69 @@ function runPromptContractSelfTest(expectedPrompt) {
     bound: validInitial.bound,
     promptContract: validInitial,
   }];
-  const replacedUserIntent = `self-test replaced user intent ${sha256Text(expectedPrompt).slice(0, 12)}`;
   const validRoundTwoText = `${incrementalPromptPrefix}[助手]\n[DevSeek 已执行工具请求摘要]\n\n[工具结果 Round 1]\nself-test tool result`;
   const validFullRoundTwoText = `${validInitialText}\n\n[助手]\n[DevSeek 已执行工具请求摘要]\n\n[工具结果 Round 1]\nself-test tool result`;
+  const validRepairText = [
+    '你是编程智能体。任务：修复目标文件并自测',
+    '上次应用失败：未检测到可应用的目标文件变更：target.txt',
+    '目标文件（必须只输出这个路径）：target.txt',
+    '文件 target.txt 当前内容：',
+    '```text',
+    'old content',
+    '```',
+    '请输出修改后的完整文件内容，格式如下（不要省略任何行）：',
+    'target.txt',
+    '```text',
+    '// 完整内容',
+    '```',
+  ].join('\n');
   const cases = [
     { name: 'exact-initial-intent', expectedBound: true, binding: validInitial },
+    {
+      name: 'architect-current-user-demand',
+      expectedBound: true,
+      binding: bindControlledArchitectPromptContract({
+        promptText: validPlannerText,
+        expectedPrompt,
+        runId,
+      }),
+    },
+    {
+      name: 'architect-replaced-user-demand',
+      expectedBound: false,
+      binding: bindControlledArchitectPromptContract({
+        promptText: validPlannerText.replace(expectedPrompt, replacedUserIntent),
+        expectedPrompt,
+        runId,
+      }),
+    },
     {
       name: 'product-flattened-initial-intent',
       expectedBound: true,
       binding: bindControlledPromptContract({
         promptText: validProductInitialText,
+        ordinal: 1,
+        expectedPrompt,
+        runId,
+        priorRequests: [],
+      }),
+    },
+    {
+      name: 'editor-current-user-demand-with-history',
+      expectedBound: true,
+      binding: bindControlledPromptContract({
+        promptText: validEditorText,
+        ordinal: 1,
+        expectedPrompt,
+        runId,
+        priorRequests: [],
+      }),
+    },
+    {
+      name: 'editor-history-does-not-steal-current-demand',
+      expectedBound: false,
+      binding: bindControlledPromptContract({
+        promptText: replacedEditorText,
         ordinal: 1,
         expectedPrompt,
         runId,
@@ -888,6 +1126,30 @@ function runPromptContractSelfTest(expectedPrompt) {
         promptText: validFullRoundTwoText,
         ordinal: 2,
         expectedPrompt,
+        runId,
+        priorRequests: validPrior,
+      }),
+    },
+    {
+      name: 'scoped-repair-round-two',
+      expectedBound: true,
+      binding: bindControlledPromptContract({
+        promptText: validRepairText,
+        ordinal: 2,
+        expectedPrompt,
+        expectedTargetRelativePath: 'target.txt',
+        runId,
+        priorRequests: validPrior,
+      }),
+    },
+    {
+      name: 'scoped-repair-wrong-target',
+      expectedBound: false,
+      binding: bindControlledPromptContract({
+        promptText: validRepairText.replaceAll('target.txt', 'other.txt'),
+        ordinal: 2,
+        expectedPrompt,
+        expectedTargetRelativePath: 'target.txt',
         runId,
         priorRequests: validPrior,
       }),
@@ -964,19 +1226,34 @@ function runPromptContractSelfTestForScenarios(scenarios, suiteOptions = resolve
 }
 
 function bindControlledScenarioPrompt({ promptText, runId, scenarios, priorRequests }) {
-  const attempts = scenarios.map(candidate => {
-    const scenarioPriorRequests = priorRequests.filter(request => request.scenarioId === candidate.id);
+  const currentUserPrompt = extractControlledCurrentUserPrompt(promptText);
+  const currentScenarioCandidates = currentUserPrompt
+    ? scenarios.filter(candidate => candidate.prompt === currentUserPrompt)
+    : [];
+  const candidateScenarios = currentScenarioCandidates.length > 0
+    ? currentScenarioCandidates
+    : scenarios;
+  const attempts = candidateScenarios.map(candidate => {
+    const scenarioPriorRequests = priorRequests.filter(request => (
+      request.scenarioId === candidate.id
+      && request.requestKind !== 'architect-plan'
+    ));
     const ordinal = scenarioPriorRequests.length + 1;
+    const promptContract = bindControlledPromptContract({
+      promptText,
+      ordinal,
+      expectedPrompt: candidate.prompt,
+      expectedTargetRelativePath: candidate.targetRelativePath,
+      runId,
+      priorRequests: scenarioPriorRequests,
+    });
     return {
       scenario: candidate,
+      requestKind: promptContract.observed?.mode === 'repair-scoped'
+        ? 'agent-repair'
+        : 'agent-execution',
       ordinal,
-      promptContract: bindControlledPromptContract({
-        promptText,
-        ordinal,
-        expectedPrompt: candidate.prompt,
-        runId,
-        priorRequests: scenarioPriorRequests,
-      }),
+      promptContract,
     };
   });
   const bound = attempts.find(attempt => attempt.promptContract.bound);
@@ -992,6 +1269,40 @@ function bindControlledScenarioPrompt({ promptText, runId, scenarios, priorReque
       reason: 'no controlled scenario is configured',
     },
   };
+}
+
+function bindControlledArchitectScenarioPrompt({ promptText, runId, scenarios }) {
+  const attempts = scenarios.map(candidate => ({
+    scenario: candidate,
+    requestKind: 'architect-plan',
+    ordinal: 1,
+    promptContract: bindControlledArchitectPromptContract({
+      promptText,
+      expectedPrompt: candidate.prompt,
+      runId,
+    }),
+  }));
+  const bound = attempts.find(attempt => attempt.promptContract.bound);
+  if (bound) return bound;
+  return attempts[0] || {
+    scenario: undefined,
+    requestKind: 'architect-plan',
+    ordinal: 1,
+    promptContract: {
+      contractVersion: 'devseek.controlled-prompt-binding/v1',
+      expected: {},
+      observed: {},
+      bound: false,
+      reason: 'no controlled scenario is configured',
+    },
+  };
+}
+
+function bindControlledProviderPrompt({ promptText, runId, scenarios, priorRequests }) {
+  if (isControlledArchitectPrompt(promptText)) {
+    return bindControlledArchitectScenarioPrompt({ promptText, runId, scenarios });
+  }
+  return bindControlledScenarioPrompt({ promptText, runId, scenarios, priorRequests });
 }
 
 async function startControlledBridge({ token, workspaceDir, runtimeIdentity, scenarios, promptContractSelfTest }) {
@@ -1038,7 +1349,7 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           return sendJson(response, 400, { error: 'WORKSPACE_ROOT_MISMATCH' });
         }
         const promptText = String(body.prompt || '');
-        const scenarioBinding = bindControlledScenarioPrompt({
+        const scenarioBinding = bindControlledProviderPrompt({
           promptText,
           runId,
           scenarios,
@@ -1063,6 +1374,7 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           prompt_contract_reason: promptContract.reason,
         });
         const requestRecord = {
+          requestKind: scenarioBinding.requestKind,
           ordinal,
           globalOrdinal: state.chatRequests.length + 1,
           scenarioId: activeScenario?.id || '',
@@ -1113,7 +1425,14 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           });
         }
         state.providerInvocationCount += 1;
-        const providerText = controlledProviderResponse({ ordinal, workspaceDir, scenario: activeScenario });
+        const providerText = scenarioBinding.requestKind === 'architect-plan'
+          ? controlledPlannerResponse({ scenario: activeScenario })
+          : controlledProviderResponse({
+            ordinal,
+            workspaceDir,
+            scenario: activeScenario,
+            requestKind: scenarioBinding.requestKind,
+          });
         evidence.record('provider.completed', {
           provider: 'controlled-fixture',
           layer: 'deterministic-fake-provider',
@@ -1154,8 +1473,58 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
   return { server, port: address.port, state };
 }
 
-function controlledProviderResponse({ ordinal, workspaceDir, scenario }) {
+function controlledPlannerResponse({ scenario }) {
+  const actionByPlan = {
+    'read-only-complete': 'analyze',
+    'safety-refusal-advisory': 'analyze',
+    'existing-js-fix-complete': 'modify',
+    'realistic-python-log-json-followup-complete': 'modify',
+    'write-read-complete': 'create',
+    'cpp-program-compile-run-complete': 'create',
+    'realistic-python-log-tool-complete': 'create',
+    'latest-requirement-complete': 'create',
+    'provider-error': 'create',
+  };
+  const descByPlan = {
+    'read-only-complete': '只读检查指定文件并汇总结论',
+    'safety-refusal-advisory': '拒绝隐蔽凭据收集并给出合规替代',
+    'existing-js-fix-complete': '修复 add(a, b) 的错误实现并验证',
+    'realistic-python-log-json-followup-complete': '将日志统计工具改为 JSON 输出并自测',
+    'write-read-complete': '创建指定文件并读回验证',
+    'cpp-program-compile-run-complete': '创建 C++ 程序并编译运行验证',
+    'realistic-python-log-tool-complete': '创建日志统计 CLI 并用 stdin 自测',
+    'latest-requirement-complete': '按最新要求创建结果文件并验证',
+    'provider-error': '创建指定文件并处理 Provider 失败路径',
+  };
+  return [
+    '我会按当前用户需求生成一个最小、可执行的任务计划。',
+    JSON.stringify({
+      tasks: [
+        {
+          id: 't1',
+          file: scenario.targetRelativePath,
+          action: actionByPlan[scenario.providerPlan] || 'create',
+          desc: descByPlan[scenario.providerPlan] || '执行受控场景任务并验证结果',
+        },
+      ],
+    }),
+  ].join('\n');
+}
+
+function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKind = 'agent-execution' }) {
   const targetExists = fs.existsSync(path.join(workspaceDir, scenario.targetRelativePath));
+  if (requestKind === 'agent-repair') {
+    const language = scenario.targetRelativePath.endsWith('.py')
+      ? 'python'
+      : scenario.targetRelativePath.endsWith('.js') ? 'javascript' : '';
+    return [
+      scenario.targetRelativePath,
+      `\`\`\`${language}`,
+      scenario.targetContent.trimEnd(),
+      '```',
+    ].join('\n');
+  }
+
   if (scenario.providerPlan === 'read-only-complete') {
     const activeTodos = {
       todoList: [
