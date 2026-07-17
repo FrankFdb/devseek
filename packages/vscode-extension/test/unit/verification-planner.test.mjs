@@ -287,8 +287,7 @@ test('VerificationPlanner: standalone Python CLI with stdin oracle plans syntax 
   assert.equal(plan.kind, 'command');
   assert.equal(plan.mode, 'compile-run');
   assert.equal(plan.reason, 'python-syntax-and-run-validation');
-  assert.match(plan.command, /pybin=\$\(command -v python3 \|\| command -v python\)/);
-  assert.match(plan.command, /"\$pybin" -c/);
+  assert.match(plan.command, /PYTHONDONTWRITEBYTECODE=1 python3 -c/);
   assert.match(plan.command, /tools\/log_summary\.py/);
   assert.match(plan.command, /printf '%s\\n' 'INFO start' 'WARN slow' 'ERROR fail'/);
   assert.match(plan.command, /grep -q 'ERROR=1 WARN=1'/);
@@ -305,7 +304,7 @@ test('VerificationPlanner: standalone Python print program plans runtime validat
   assert.equal(plan.mode, 'compile-run');
   assert.equal(plan.reason, 'python-syntax-and-run-validation');
   assert.match(plan.command, /hello\.py/);
-  assert.match(plan.command, /PYTHONDONTWRITEBYTECODE=1 "\$pybin" '\/repo\/hello\.py' < \/dev\/null/);
+  assert.match(plan.command, /PYTHONDONTWRITEBYTECODE=1 python3 '\/repo\/hello\.py' < \/dev\/null/);
 });
 
 test('VerificationPlanner: standalone Python task respects explicit no-run constraint', () => {
@@ -318,8 +317,8 @@ test('VerificationPlanner: standalone Python task respects explicit no-run const
   assert.equal(plan.kind, 'command');
   assert.equal(plan.mode, 'file-check');
   assert.equal(plan.reason, 'python-syntax-check');
-  assert.match(plan.command, /"\$pybin" -c/);
-  assert.doesNotMatch(plan.command, /PYTHONDONTWRITEBYTECODE=1 "\$pybin"/);
+  assert.match(plan.command, /PYTHONDONTWRITEBYTECODE=1 python3 -c/);
+  assert.doesNotMatch(plan.command, /< \/dev\/null/);
 });
 
 test('VerificationPlanner: blocks C++ validation when generated local include closure is incomplete', () => {

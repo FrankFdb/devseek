@@ -508,10 +508,8 @@ function buildPythonValidationCommand(
       const scriptPath = nodePath.isAbsolute(relPath) ? relPath : nodePath.join(rootFsPath, relPath);
       const quoted = shellQuote(scriptPath);
       const syntaxCheck = [
-        'pybin=$(command -v python3 || command -v python)',
-        'test -n "$pybin"',
         `test -s ${quoted}`,
-        `"$pybin" -c ${shellQuote('import pathlib,sys; compile(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"), sys.argv[1], "exec")')} ${quoted}`,
+        `PYTHONDONTWRITEBYTECODE=1 python3 -c ${shellQuote('import pathlib,sys; compile(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"), sys.argv[1], "exec")')} ${quoted}`,
       ].join(' && ');
       if (!runPython) return syntaxCheck;
       return joinValidationCommands([
@@ -527,9 +525,9 @@ function buildPythonRuntimeValidationCommand(quotedScriptPath: string, prompt: s
     const stdinLines = ['INFO start', 'WARN slow', 'ERROR fail']
       .map((line) => shellQuote(line))
       .join(' ');
-    return `printf '%s\\n' ${stdinLines} | PYTHONDONTWRITEBYTECODE=1 "$pybin" ${quotedScriptPath} | grep -q ${shellQuote('ERROR=1 WARN=1')}`;
+    return `printf '%s\\n' ${stdinLines} | PYTHONDONTWRITEBYTECODE=1 python3 ${quotedScriptPath} | grep -q ${shellQuote('ERROR=1 WARN=1')}`;
   }
-  return `PYTHONDONTWRITEBYTECODE=1 "$pybin" ${quotedScriptPath} < /dev/null`;
+  return `PYTHONDONTWRITEBYTECODE=1 python3 ${quotedScriptPath} < /dev/null`;
 }
 
 function shouldUseLogSummaryStdinOracle(prompt: string): boolean {

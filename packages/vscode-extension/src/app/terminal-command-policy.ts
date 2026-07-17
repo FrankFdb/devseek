@@ -22,7 +22,7 @@ export interface TerminalCommandPermissionDecision {
 
 const READ_ONLY_COMMANDS = new Set([
   'awk', 'basename', 'cat', 'cd', 'cut', 'dirname', 'df', 'du', 'echo',
-  'file', 'find', 'grep', 'head', 'la', 'll', 'ls', 'pwd', 'realpath',
+  'file', 'find', 'grep', 'head', 'la', 'll', 'ls', 'printf', 'pwd', 'realpath',
   'rg', 'sed', 'sort', 'stat', 'tail', 'test', 'tr', 'true', 'uniq', 'wc', '[',
 ]);
 
@@ -260,6 +260,7 @@ function isValidationSegment(rawSegment: string, workspaceRoot?: string, workdir
     return /\b(?:test|run\s+(?:test|build|compile|lint|typecheck))\b/i.test(segment) && !hasValidationWrapperSideEffect(segment);
   }
   if (command === 'node') return /\bnode\s+(?:--test\b|(?:\.\/)?test\/|[\w./-]+\.test\.(?:mjs|cjs|js))\b/i.test(segment);
+  if (/^python3?$/.test(command)) return isPythonValidationSegment(segment, workspaceRoot, workdir);
   if (['pytest', 'ctest'].includes(command)) return true;
   if (command === 'go') return /\bgo\s+test\b/i.test(segment);
   if (command === 'cargo') return /\bcargo\s+test\b/i.test(segment);
@@ -268,6 +269,82 @@ function isValidationSegment(rawSegment: string, workspaceRoot?: string, workdir
   if (isCppCompilerCommand(command)) return isCppCompilerValidationSegment(segment);
   if (isWorkspaceExecutableValidationSegment(token, workspaceRoot, workdir)) return true;
   return false;
+}
+
+function isPythonValidationSegment(segment: string, workspaceRoot?: string, workdir?: string): boolean {
+  const words = splitShellWords(stripLeadingAssignments(segment));
+  if (words.length < 2) return false;
+  const args = words.slice(1);
+  const moduleIndex = args.indexOf('-m');
+  if (moduleIndex >= 0) {
+    const moduleName = args[moduleIndex + 1] || '';
+    if (/^(?:pytest|unittest)$/.test(moduleName)) return true;
+    if (moduleName === 'py_compile') {
+      return args.slice(moduleIndex + 2).some(arg => isWorkspacePythonPath(arg, workspaceRoot, workdir));
+    }
+    return false;
+  }
+  const commandText = stripLeadingAssignments(segment);
+  const codeIndex = args.indexOf('-c');
+  if (codeIndex >= 0) {
+    const code = args[codeIndex + 1] || '';
+    const target = args.slice(codeIndex + 2).find(arg => /\.py$/i.test(cleanToken(arg)));
+    return /\bcompile\s*\(/.test(code)
+      && /\bread_text\s*\(/.test(code)
+      && !!target
+      && isWorkspacePythonPath(target, workspaceRoot, workdir);
+  }
+  if (/^\s*python3?\s+-/.test(commandText)) return false;
+  const script = args.find(arg => /\.py$/i.test(cleanToken(arg)));
+  return !!script && isWorkspacePythonPath(script, workspaceRoot, workdir);
+}
+
+function isWorkspacePythonPath(rawPath: string, workspaceRoot?: string, workdir?: string): boolean {
+  const cleaned = cleanToken(rawPath);
+  if (!cleaned || !/\.py$/i.test(cleaned)) return false;
+  if (!workspaceRoot) return !nodePath.isAbsolute(cleaned);
+  const baseDir = workdir && nodePath.isAbsolute(workdir) ? workdir : workspaceRoot;
+  const resolved = nodePath.isAbsolute(cleaned) ? cleaned : nodePath.resolve(baseDir, cleaned);
+  return isInsideWorkspace(resolved, workspaceRoot);
+}
+
+function splitShellWords(segment: string): string[] {
+  const words: string[] = [];
+  let current = '';
+  let quote = '';
+  for (let index = 0; index < segment.length; index++) {
+    const ch = segment[index];
+    const next = segment[index + 1] ?? '';
+    if (ch === '\\') {
+      if (next) {
+        current += next;
+        index += 1;
+      }
+      continue;
+    }
+    if (quote) {
+      if (ch === quote) {
+        quote = '';
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (current) {
+        words.push(current);
+        current = '';
+      }
+      continue;
+    }
+    current += ch;
+  }
+  if (current) words.push(current);
+  return words;
 }
 
 function isCppCompilerCommand(command: string): boolean {

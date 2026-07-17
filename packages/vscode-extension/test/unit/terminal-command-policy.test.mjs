@@ -140,6 +140,28 @@ test('TerminalCommandPolicy: normal inspection and validation commands remain cl
   assert.equal(decideTerminalCommandPermission({ command: 'npm test', workspaceRoot }).risk, 'validation');
 });
 
+test('TerminalCommandPolicy: Python syntax and workspace script runs are validation commands', () => {
+  const command = [
+    "test -s '/workspace/devseek/tools/log_summary.py'",
+    "PYTHONDONTWRITEBYTECODE=1 python3 -c 'import pathlib,sys; compile(pathlib.Path(sys.argv[1]).read_text(encoding=\"utf-8\"), sys.argv[1], \"exec\")' '/workspace/devseek/tools/log_summary.py'",
+    "printf '%s\\n' 'INFO start' 'WARN slow' 'ERROR fail' | PYTHONDONTWRITEBYTECODE=1 python3 '/workspace/devseek/tools/log_summary.py' | grep -q 'ERROR=1 WARN=1'",
+  ].join(' && ');
+  const decision = decideTerminalCommandPermission({ command, workspaceRoot });
+
+  assert.equal(decision.risk, 'validation');
+  assert.equal(decision.reason, 'validation-command');
+});
+
+test('TerminalCommandPolicy: arbitrary Python snippets remain outside validation', () => {
+  const decision = decideTerminalCommandPermission({
+    command: "python3 -c 'import os; os.system(\"echo hi\")'",
+    workspaceRoot,
+  });
+
+  assert.equal(decision.risk, 'unknown');
+  assert.equal(decision.requiresConfirmation, true);
+});
+
 test('TerminalCommandPolicy: git branch only allows explicit inspection forms', () => {
   for (const command of [
     'git branch',
