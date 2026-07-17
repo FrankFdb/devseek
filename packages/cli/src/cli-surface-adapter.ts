@@ -1,3 +1,4 @@
+import { once } from 'events';
 import {
   CLI_SURFACE_CAPABILITIES,
   JSONL_SURFACE_CAPABILITIES,
@@ -34,6 +35,8 @@ export class CliSurfaceAdapter implements SurfaceAdapter {
   private readonly stdout: NodeJS.WritableStream;
   private readonly stderr: NodeJS.WritableStream;
   private readonly progressDelayMs: number;
+  private writeQueue: Promise<void> = Promise.resolve();
+  private writeError: unknown;
 
   constructor(private readonly options: CliSurfaceAdapterOptions = {}) {
     this.kind = options.jsonl ? 'jsonl' : 'cli';
@@ -54,9 +57,18 @@ export class CliSurfaceAdapter implements SurfaceAdapter {
     });
   }
 
-  renderEvent(event: AgentEvent): void {
+  renderEvent(event: AgentEvent): Promise<void> {
+    return this.enqueueWrite(() => this.renderEventNow(event));
+  }
+
+  async flush(): Promise<void> {
+    await this.writeQueue;
+    if (this.writeError) throw this.writeError;
+  }
+
+  private async renderEventNow(event: AgentEvent): Promise<void> {
     if (this.options.jsonl) {
-      this.stdout.write(`${JSON.stringify(event)}\n`);
+      await this.writeStdout(`${JSON.stringify(event)}\n`);
       return;
     }
 
@@ -67,25 +79,25 @@ export class CliSurfaceAdapter implements SurfaceAdapter {
     } else if (event.type === 'chat.delta') {
       this.clearProviderWaitNotice();
       this.sawDelta = true;
-      this.stdout.write(event.delta);
+      await this.writeStdout(event.delta);
     } else if (event.type === 'chat.completed') {
       this.clearProviderWaitNotice();
       if (!this.sawDelta) {
-        this.stdout.write(`${event.response}\n`);
+        await this.writeStdout(`${event.response}\n`);
       } else {
-        this.stdout.write('\n');
+        await this.writeStdout('\n');
       }
       this.sawDelta = false;
     } else if (event.type === 'error') {
       this.clearProviderWaitNotice();
-      this.stderr.write(`DevSeek error: ${event.message}\n`);
+      await this.writeStderr(`DevSeek error: ${event.message}\n`);
     }
   }
 
   private scheduleProviderWaitNotice(): void {
     this.clearProviderWaitNotice();
     this.waitTimer = setTimeout(() => {
-      this.stderr.write('DevSeek: waiting for Bridge provider response...\n');
+      void this.enqueueWrite(() => this.writeStderr('DevSeek: waiting for Bridge provider response...\n'));
     }, Math.max(0, this.progressDelayMs));
   }
 
@@ -94,5 +106,26 @@ export class CliSurfaceAdapter implements SurfaceAdapter {
       clearTimeout(this.waitTimer);
       this.waitTimer = undefined;
     }
+  }
+
+  private enqueueWrite(operation: () => Promise<void>): Promise<void> {
+    const write = this.writeQueue.then(operation);
+    this.writeQueue = write.catch(error => {
+      this.writeError = this.writeError ?? error;
+    });
+    return write;
+  }
+
+  private writeStdout(text: string): Promise<void> {
+    return this.writeStream(this.stdout, text);
+  }
+
+  private writeStderr(text: string): Promise<void> {
+    return this.writeStream(this.stderr, text);
+  }
+
+  private async writeStream(stream: NodeJS.WritableStream, text: string): Promise<void> {
+    if (stream.write(text)) return;
+    await once(stream, 'drain');
   }
 }

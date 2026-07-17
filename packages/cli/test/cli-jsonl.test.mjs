@@ -51,6 +51,16 @@ function readCliErrorMessage(stderr) {
   return match[1];
 }
 
+test('CLI JSONL renderer owns stdout backpressure before process settlement', () => {
+  const adapterSource = readFileSync(path.join(cliRoot, 'src/cli-surface-adapter.ts'), 'utf8');
+  const indexSource = readFileSync(path.join(cliRoot, 'src/index.ts'), 'utf8');
+
+  assert.match(adapterSource, /renderEvent\(event: AgentEvent\): Promise<void>/);
+  assert.match(adapterSource, /writeQueue/);
+  assert.match(adapterSource, /once\([^)]*['"]drain['"]/s);
+  assert.match(indexSource, /await surface\.flush\(\)/);
+});
+
 test('CLI JSONL mode emits parseable AgentEvent lines', () => {
   const stdout = withTempCwd((cwd) => {
     return execFileSync(process.execPath, [bin, 'exec', '--jsonl', '--mock', 'phase10 cli jsonl smoke'], {

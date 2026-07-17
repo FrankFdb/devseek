@@ -47,11 +47,11 @@
     },
     "cliIndex": {
       "path": "packages/cli/src/index.ts",
-      "source_sha256": "ad673a6f831c6cf8765fee5da7cbdec96c9e1782b434643b242ee7f3d840a7b5"
+      "source_sha256": "c79005bac5645a4d0847dce3144dc24df863cc870a34ce61718c6c417c5207b5"
     },
     "cliSurfaceAdapter": {
       "path": "packages/cli/src/cli-surface-adapter.ts",
-      "source_sha256": "035ca769aebabad9c671060400814f65cb58ed488b2ce185cea5e64b9ce8a7cd"
+      "source_sha256": "d0714cb51b571e4191b097687e6377e08a49264dad88f23bd4bb3ff94b408a50"
     },
     "bridgeServer": {
       "path": "packages/bridge/src/server.ts",
@@ -1389,5 +1389,5 @@
     "declared_adapter_pending_cutover": 8,
     "undeclared_legacy_owner_reachability": 0
   },
-  "inventory_sha256": "ba31021f08ba93536905c2cfe1bd7b532325e67dd8e4b3d5e0979208049ed54a"
+  "inventory_sha256": "f70c3c791ec5a0e496635fc3ac7ea79116b871ee0ae65af5014bf7162215b17b"
 }

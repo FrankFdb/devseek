@@ -150,12 +150,19 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
       runId,
       usesBridge: !options.mock,
     });
+    await surface.flush();
     await appendHistory(options.cwd, prompt);
     settleCliEvidence(evidence, runId, 'completed');
     return 0;
   } catch (error) {
+    let terminalError = error;
+    try {
+      await surface.flush();
+    } catch (flushError) {
+      terminalError = flushError;
+    }
     settleCliEvidence(evidence, runId, 'failed');
-    console.error(`DevSeek CLI error: ${formatCliError(error)}`);
+    console.error(`DevSeek CLI error: ${formatCliError(terminalError)}`);
     return 1;
   }
 }
