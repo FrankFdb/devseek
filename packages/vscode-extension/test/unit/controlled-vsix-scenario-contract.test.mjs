@@ -15,11 +15,15 @@ const REQUIRED_SCENARIOS = [
   'cpp-program',
   'existing-js-fix',
   'latest-requirement',
+  'realistic-python-log-tool',
+  'realistic-python-log-json-followup',
+  'realistic-safety-boundary',
 ];
 
 const REQUIRED_SUITES = [
-  { id: 'basic-surface', scenarioCount: 3 },
-  { id: 'journey-core', scenarioCount: 6 },
+  { id: 'basic-surface', scenarioCount: 3, sameDevSeekSession: false },
+  { id: 'journey-core', scenarioCount: 6, sameDevSeekSession: false },
+  { id: 'realistic-product', scenarioCount: 4, sameDevSeekSession: true },
 ];
 
 for (const scenario of REQUIRED_SCENARIOS) {
@@ -63,6 +67,7 @@ for (const suite of REQUIRED_SUITES) {
     assert.equal(report.ok, true, suite.id);
     assert.equal(report.contractVersion, 'devseek.controlled-prompt-binding/v1', suite.id);
     assert.equal(report.scenarioCount, suite.scenarioCount, suite.id);
+    assert.equal(report.sameDevSeekSession, suite.sameDevSeekSession, suite.id);
     assert.equal(report.errors.length, 0, suite.id);
   });
 }
