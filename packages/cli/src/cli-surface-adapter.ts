@@ -11,6 +11,8 @@ import {
   type SurfaceChatInput,
 } from '@devseek-netai/shared';
 
+export type CliSurfaceKind = Extract<AgentSurfaceKind, 'cli' | 'jsonl'>;
+
 export interface CliSurfaceAdapterOptions {
   jsonl?: boolean;
   stdout?: NodeJS.WritableStream;
@@ -19,7 +21,7 @@ export interface CliSurfaceAdapterOptions {
 }
 
 export class CliSurfaceAdapter implements SurfaceAdapter {
-  readonly kind: AgentSurfaceKind;
+  readonly kind: CliSurfaceKind;
   readonly capabilities: SurfaceCapabilities;
   readonly platform = detectPlatformProfile({
     platform: process.platform,

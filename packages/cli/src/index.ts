@@ -15,7 +15,7 @@ import {
   type LLMProvider,
 } from '@devseek-netai/shared';
 import { bridgeChat as callBridgeChat } from './bridge-client';
-import { CliSurfaceAdapter } from './cli-surface-adapter';
+import { CliSurfaceAdapter, type CliSurfaceKind } from './cli-surface-adapter';
 
 interface CliOptions {
   command: 'exec' | 'interactive' | 'help' | 'version';
@@ -585,7 +585,7 @@ async function runCodingLoop(input: CodingLoopInput): Promise<void> {
           ...recoveryCorrelation,
         },
       }, sideEffectOperationId);
-      emitSyntheticEvent(input.renderEvent, {
+      emitSyntheticEvent(input.surface.kind, input.renderEvent, {
         type: 'fileChanges.proposed',
         files,
       });
@@ -658,12 +658,12 @@ async function runCodingLoop(input: CodingLoopInput): Promise<void> {
         }),
         payload: { attempt: executionAttempt, passed: validation.passed },
       }, verificationOperationId);
-      emitSyntheticEvent(input.renderEvent, {
+      emitSyntheticEvent(input.surface.kind, input.renderEvent, {
         type: 'validation.completed',
         passed: validation.passed,
         evidenceRefs: validation.evidenceRefs,
       });
-      emitSyntheticEvent(input.renderEvent, {
+      emitSyntheticEvent(input.surface.kind, input.renderEvent, {
         type: 'qualityGate.completed',
         passed: validation.passed,
         evidenceRefs: validation.evidenceRefs,
@@ -1559,12 +1559,16 @@ async function runProjectVerifier(cwd: string, files: readonly string[]): Promis
   };
 }
 
-function emitSyntheticEvent(renderEvent: (event: AgentEvent) => void, event: Record<string, unknown> & { type: AgentEvent['type'] }): void {
+function emitSyntheticEvent(
+  surface: CliSurfaceKind,
+  renderEvent: (event: AgentEvent) => void,
+  event: Record<string, unknown> & { type: AgentEvent['type'] },
+): void {
   renderEvent({
     ...event,
     eventId: `cli-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     timestamp: Date.now(),
-    surface: 'cli',
+    surface,
   } as AgentEvent);
 }
 

@@ -190,6 +190,10 @@ test('CLI applies loose file tool JSON and emits coding evidence events', async 
       assert.ok(eventTypes.includes('fileChanges.proposed'));
       assert.ok(eventTypes.includes('validation.completed'));
       assert.ok(eventTypes.includes('qualityGate.completed'));
+      assert.equal(events.every(event => event.surface === 'jsonl' || !('surface' in event)), true);
+      for (const type of ['fileChanges.proposed', 'validation.completed', 'qualityGate.completed']) {
+        assert.equal(events.find(event => event.type === type)?.surface, 'jsonl');
+      }
       assert.equal(events.find(event => event.type === 'validation.completed')?.passed, true);
       assert.equal(events.find(event => event.type === 'qualityGate.completed')?.passed, true);
     });
