@@ -721,7 +721,7 @@ export async function executeFakeToolsForLoop(
           parts.push(msg);
           continue;
         }
-        const capabilityResolution = resolveTerminalCommandCapabilities({ command });
+        const capabilityResolution = resolveTerminalCommandCapabilities({ command, workspaceRoot, workdir });
         if (capabilityResolution.blocked) {
           const reason = capabilityResolution.reason ?? 'missing-runtime-capability';
           const msg = [

@@ -422,11 +422,12 @@ test('ToolLoop terminal guard allows workspace-local C++ compile-run validation'
 
 test('ToolLoop resolves unavailable python runtime to python3 before executing validation', async () => {
   const projectRoot = mkdtempSync(path.join(tmpdir(), 'devseek-tool-loop-python-runtime-'));
+  const toolsDir = path.join(projectRoot, 'tools');
   const fakeBin = path.join(projectRoot, 'bin');
   const originalPath = process.env.PATH;
   try {
-    mkdirSync(path.join(projectRoot, 'tools'), { recursive: true });
-    writeFileSync(path.join(projectRoot, 'tools/log_summary.py'), 'print("ok")\n');
+    mkdirSync(toolsDir, { recursive: true });
+    writeFileSync(path.join(toolsDir, 'log_summary.py'), 'print("ok")\n');
     mkdirSync(fakeBin, { recursive: true });
     writeFileSync(path.join(fakeBin, 'python3'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     process.env.PATH = fakeBin;
@@ -443,13 +444,14 @@ test('ToolLoop resolves unavailable python runtime to python3 before executing v
         onToolActivity: () => {},
         onAgentStatus: async () => {},
       },
-      projectRoot,
+      toolsDir,
       { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: projectRoot },
     );
 
-    assert.match(executedCommand, /\|\s*python3 tools\/log_summary\.py\s*\|/);
+    assert.match(executedCommand, new RegExp(`\\|\\s*python3 '${path.join(projectRoot, 'tools/log_summary.py').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'\\s*\\|`));
     assert.doesNotMatch(executedCommand, /\|\s*python tools\/log_summary\.py\s*\|/);
     assert.match(result.feedbackForAI, /已将验证命令中的 python 解析为 python3/);
+    assert.match(result.feedbackForAI, /已将工作区相对 Python 脚本路径解析为绝对路径/);
     assert.deepEqual(result.terminalCommands, [executedCommand]);
     assert.equal(result.toolFailures?.length ?? 0, 0);
   } finally {

@@ -45,6 +45,32 @@ test('EnvironmentCapabilityResolver rewrites missing python to available python3
   }
 });
 
+test('EnvironmentCapabilityResolver anchors workspace-relative python scripts from nested workdirs', () => {
+  const workspaceRoot = path.join(tmpdir(), `devseek-capability-${process.pid}-workspace`);
+  const binDir = path.join(workspaceRoot, 'bin');
+  const toolsDir = path.join(workspaceRoot, 'tools');
+  try {
+    mkdirSync(toolsDir, { recursive: true });
+    writeFileSync(path.join(toolsDir, 'log_summary.py'), 'print("ok")\n');
+    makeExecutable(binDir, 'python3');
+    const scriptPath = path.join(workspaceRoot, 'tools/log_summary.py');
+    const result = resolveTerminalCommandCapabilities({
+      command: "printf 'x\\n' | python tools/log_summary.py | grep -q ok",
+      envPath: binDir,
+      workspaceRoot,
+      workdir: toolsDir,
+    });
+
+    assert.equal(result.blocked, false);
+    assert.equal(result.changed, true);
+    assert.equal(result.command, `printf 'x\\n' | python3 '${scriptPath}' | grep -q ok`);
+    assert.match(result.notes.join('\n'), /python3/);
+    assert.match(result.notes.join('\n'), /绝对路径/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('EnvironmentCapabilityResolver keeps python when python exists', () => {
   const binDir = path.join(tmpdir(), `devseek-capability-${process.pid}-python`);
   try {
