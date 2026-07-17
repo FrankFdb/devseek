@@ -22,9 +22,7 @@ import {
   createAgentCommandSurfaceProjection,
   type AgentCommandSurfaceProjector,
 } from '../app/agent-command-surface-projection';
-import { settleRunContextDirect } from '../app/agent-run-settlement';
 import { MemoryService } from '../app/memory-service';
-import { createDevSeekRunContext } from '../app/run-context';
 import type { TerminalPermissionCoordinator } from '../app/terminal-permission-coordinator';
 
 interface ExtensionCommandRegistrationDeps {
@@ -107,8 +105,8 @@ function registerVisibleCommands(
     ['devseek.runTests', async () => runTests(deps.terminalPermissionCoordinator)],
     ['devseek.genDoc', async () => genDoc(commandProjector)],
     ['devseek.ask', async () => askQuestion(commandProjector)],
-    ['devseek.generateCommit', async () => generateCommitMessage(deps.routeChat)],
-    ['devseek.applyDiff', async () => applyDiff(deps.routeChat)],
+    ['devseek.generateCommit', async () => generateCommitMessage(commandProjector)],
+    ['devseek.applyDiff', async () => applyDiff(commandProjector)],
     ['devseek.openChat', async () => { deps.viewProvider.focus(); }],
     ['devseek.triggerCompletion', async () => {
       await vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
@@ -196,13 +194,6 @@ async function runInlineChat(
   if (!rawInstruction) return;
 
   const instruction = mapSlashInstruction(rawInstruction);
-  const inlineProvider = getActiveProvider();
-  const inlineAvailable = await inlineProvider.available();
-  if (!inlineAvailable) {
-    vscode.window.showErrorMessage('DeepSeek NetAI: LLM Provider 不可用，请检查设置（⚙ 状态栏）');
-    return;
-  }
-
   const ctx = buildContext(editor);
   const prompt = buildInlineChatPrompt(instruction, ctx.code, ctx.language, ctx.relPath);
   await vscode.window.withProgress(
@@ -212,13 +203,11 @@ async function runInlineChat(
       cancellable: false,
     },
     async () => {
-      await applyInlineChatResult({
-        deps,
-        commandProjector,
-        editor,
-        instruction,
+      await commandProjector.projectToChat({
+        source: 'devseek.inlineChat',
+        userDisplay: `⚡ **${instruction}** · \`${ctx.filename}\``,
         prompt,
-        filename: ctx.filename,
+        focus: true,
       });
     },
   );
@@ -274,90 +263,6 @@ function mapSlashInstruction(instruction: string): string {
     }
   }
   return instruction;
-}
-
-async function applyInlineChatResult(args: {
-  deps: ExtensionCommandRegistrationDeps;
-  commandProjector: AgentCommandSurfaceProjector;
-  editor: vscode.TextEditor;
-  instruction: string;
-  prompt: string;
-  filename: string;
-}): Promise<void> {
-  let runContext: ReturnType<typeof createDevSeekRunContext> | undefined;
-  try {
-    const workspaceRoot = vscode.workspace.getWorkspaceFolder(args.editor.document.uri)?.uri.fsPath
-      ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-      ?? process.cwd();
-    runContext = createDevSeekRunContext({
-      workspaceRoot,
-      source: 'vscode-extension.inline-chat',
-      userPrompt: args.prompt,
-      traceLevel: vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', 'debug'),
-    });
-    const result = await args.deps.routeChat({
-      prompt: args.prompt,
-      stream: false,
-      traceRunId: runContext.runId,
-      traceWorkspaceRoot: runContext.workspaceRoot,
-      traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
-      onTraceEvidenceError: error => runContext?.markEvidenceDegraded(error),
-    });
-    const codeMatch = result.match(/```[^\n]*\n([\s\S]*?)```/);
-    const newCode = codeMatch ? codeMatch[1].trimEnd() : result.trim();
-    if (!newCode) {
-      settleRunContextDirect(runContext, 'failed', { reason: 'empty-provider-response' });
-      vscode.window.showWarningMessage('DeepSeek: 未收到有效代码');
-      return;
-    }
-
-    if (!args.editor.selection.isEmpty) {
-      const originalContent = args.editor.document.getText();
-      const relPath = vscode.workspace.asRelativePath(args.editor.document.uri, false);
-      const task = {
-        type: 'agentStatus' as const,
-        phase: 'execute' as const,
-        taskId: 'inline-chat-editor-edit',
-        taskFile: relPath,
-        taskAction: 'modify' as const,
-        title: `应用 ${args.filename} 行内修改`,
-      };
-      runContext.recordAgentStatus({ ...task, state: 'started' });
-      const applied = await args.editor.edit(edit => edit.replace(args.editor.selection, newCode));
-      runContext.recordAgentStatus({ ...task, state: applied ? 'completed' : 'failed' });
-      if (!applied) throw new Error('VS Code 拒绝应用行内编辑');
-      await args.deps.viewProvider.registerInlineChatEdit({
-        path: relPath,
-        oldContent: originalContent,
-        newContent: args.editor.document.getText(),
-        existed: true,
-      });
-      const settlement = settleRunContextDirect(runContext, 'completed', { changedPaths: [relPath] });
-      if (settlement.completed) {
-        vscode.window.showInformationMessage('✅ DeepSeek 行内修改已应用（侧边栏可对比 / 撤销）');
-      } else {
-        vscode.window.showErrorMessage('DeepSeek: 行内修改已写入，但运行证据结算失败；本轮不能标记完成。');
-      }
-      return;
-    }
-
-    const projection = await args.commandProjector.projectToChat({
-      source: 'devseek.inlineChat',
-      userDisplay: `⚡ **${args.instruction}** · \`${args.filename}\``,
-      prompt: args.prompt,
-    });
-    if (!projection.projected) {
-      settleRunContextDirect(runContext, 'failed', { reason: `chat-projection-${projection.reason}` });
-      return;
-    }
-    const settlement = settleRunContextDirect(runContext, 'completed', { reason: 'forwarded-to-chat-panel' });
-    if (!settlement.completed) {
-      throw new Error('内容已转发到聊天面板，但运行证据结算失败；本轮不能标记完成。');
-    }
-  } catch (error) {
-    if (runContext) settleRunContextDirect(runContext, 'failed', { reason: 'inline-chat-error' });
-    vscode.window.showErrorMessage(`DeepSeek Inline Chat: ${(error as Error).message}`);
-  }
 }
 
 function registerInlineCompletionProvider(

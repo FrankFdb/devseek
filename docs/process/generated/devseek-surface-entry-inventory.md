@@ -1,7 +1,7 @@
 # DevSeek Surface Entry Inventory
 
 - inventory_id: `DEVSEEK-R1-D1A-SURFACE-ENTRY-INVENTORY/v1`
-- inventory_sha256: `b84dc6c6d5875b53a60beb1caa40366a4dbcd541f19988c9f48963540a2a566a`
+- inventory_sha256: `21d43050f096ab3eb5a8aa432a541f2981841e91f80dbb43997fd09fd73f86a8`
 - qualification_effect: `NONE`
 - claims_permitted: `false`
 - asserts_gate_pass: `false`
@@ -23,7 +23,7 @@
 | cli_entrypoints | 7 |
 | bridge_endpoints | 10 |
 | unknown_entries | 0 |
-| declared_adapter_pending_cutover | 17 |
+| declared_adapter_pending_cutover | 8 |
 | undeclared_legacy_owner_reachability | 0 |
 
 ## Entries
@@ -56,17 +56,17 @@
 | `vscode-command/_devseek.harnessRunChat` | vscode | command | test-only | `packages/vscode-extension/src/ui/real-plugin-harness.ts` | covered | test-only-controlled-surface |
 | `vscode-command/_devseek.harnessSubmitChatMessage` | vscode | command | test-only | `packages/vscode-extension/src/ui/real-plugin-harness.ts` | covered | test-only-controlled-surface |
 | `vscode-command/devseek.addFileToChat` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | ContextRef |
-| `vscode-command/devseek.applyDiff` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-command-adapter-pending-D2A |
-| `vscode-command/devseek.ask` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-chat-command-adapter-pending-D2A |
-| `vscode-command/devseek.explain` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-chat-command-adapter-pending-D2A |
-| `vscode-command/devseek.fix` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-chat-command-adapter-pending-D2A |
-| `vscode-command/devseek.genDoc` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-chat-command-adapter-pending-D2A |
-| `vscode-command/devseek.generateCommit` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-command-adapter-pending-D2A |
-| `vscode-command/devseek.genTest` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-chat-command-adapter-pending-D2A |
-| `vscode-command/devseek.inlineChat` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-chat-command-adapter-pending-D2A |
+| `vscode-command/devseek.applyDiff` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
+| `vscode-command/devseek.ask` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
+| `vscode-command/devseek.explain` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
+| `vscode-command/devseek.fix` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
+| `vscode-command/devseek.genDoc` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
+| `vscode-command/devseek.generateCommit` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
+| `vscode-command/devseek.genTest` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
+| `vscode-command/devseek.inlineChat` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
 | `vscode-command/devseek.keepOrUndoActive` | vscode | command | hidden-statusbar | `packages/vscode-extension/src/pending-edit-coordinator.ts` | covered | pending-edit-action |
 | `vscode-command/devseek.openChat` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | surface-ui-action |
-| `vscode-command/devseek.refactor` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-chat-command-adapter-pending-D2A |
+| `vscode-command/devseek.refactor` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
 | `vscode-command/devseek.runTerminalCommand` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-command-adapter-pending-D2A |
 | `vscode-command/devseek.runTests` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-chat-command-adapter-pending-D2A |
 | `vscode-command/devseek.showMemoryFiles` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-chat-command-adapter-pending-D2A |

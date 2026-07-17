@@ -42,9 +42,24 @@ test('surface entry inventory is source-bound and covers every current entry den
     cli_entrypoints: 7,
     bridge_endpoints: 10,
     unknown_entries: 0,
-    declared_adapter_pending_cutover: 17,
+    declared_adapter_pending_cutover: 8,
     undeclared_legacy_owner_reachability: 0,
   });
+  for (const commandId of [
+    'devseek.applyDiff',
+    'devseek.ask',
+    'devseek.explain',
+    'devseek.fix',
+    'devseek.genDoc',
+    'devseek.generateCommit',
+    'devseek.genTest',
+    'devseek.inlineChat',
+    'devseek.refactor',
+  ]) {
+    const entry = actual.entries.find(item => item.entry_id === `vscode-command/${commandId}`);
+    assert.ok(entry, `${commandId} must be inventoried`);
+    assert.equal(entry.kernel_contract_projection, 'AgentCommand/Event');
+  }
   assert.equal(actual.bypass_guards.generic_webview_command_disabled, true);
   assert.equal(actual.bypass_guards.unknown_entry_fail_closed, true);
 

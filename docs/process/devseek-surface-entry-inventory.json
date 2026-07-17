@@ -19,7 +19,7 @@
     },
     "extensionCommands": {
       "path": "packages/vscode-extension/src/ui/extension-command-registration.ts",
-      "source_sha256": "251cb2bc5d2d063f98f4222e882462633448664ad32c1e1d0f45567f69101d3b"
+      "source_sha256": "ffc7d15611c8243543fd940604423f979fb8d9c50c2d52031089c2d55e9f0f63"
     },
     "providerRouter": {
       "path": "packages/vscode-extension/src/llm/provider-router.ts",
@@ -67,11 +67,11 @@
     },
     "inventoryLibSource": {
       "path": "scripts/lib/devseek-surface-entry-inventory.mjs",
-      "source_sha256": "13f9a9132b8a78f58a10ba1be0ae729cbd8df994be6ef60278b45ea4f9e462d8"
+      "source_sha256": "5e28e133644b3e76e08ba6dee5f1d648027fd1f149297e9cff14ea0da9eafb82"
     },
     "oracleSource": {
       "path": "scripts/test/devseek-surface-entry-inventory.test.mjs",
-      "source_sha256": "c1e926dbf98efc40859f99f77b402b86aca4df43b2260acba689e85d6f9f86d8"
+      "source_sha256": "21abf9f9e1c529095cda77bca5cb65a07a7a9c777bd79122f7a8b05feaa11bbe"
     },
     "rootPackageJson": {
       "path": "package.json",
@@ -520,7 +520,7 @@
       "protocol_declared": null,
       "handler_declared": null,
       "owner": "ExtensionCommandRegistration",
-      "kernel_contract_projection": "declared-command-adapter-pending-D2A",
+      "kernel_contract_projection": "AgentCommand/Event",
       "coverage_status": "covered"
     },
     {
@@ -535,7 +535,7 @@
       "protocol_declared": null,
       "handler_declared": null,
       "owner": "ExtensionCommandRegistration",
-      "kernel_contract_projection": "declared-chat-command-adapter-pending-D2A",
+      "kernel_contract_projection": "AgentCommand/Event",
       "coverage_status": "covered"
     },
     {
@@ -550,7 +550,7 @@
       "protocol_declared": null,
       "handler_declared": null,
       "owner": "ExtensionCommandRegistration",
-      "kernel_contract_projection": "declared-chat-command-adapter-pending-D2A",
+      "kernel_contract_projection": "AgentCommand/Event",
       "coverage_status": "covered"
     },
     {
@@ -565,7 +565,7 @@
       "protocol_declared": null,
       "handler_declared": null,
       "owner": "ExtensionCommandRegistration",
-      "kernel_contract_projection": "declared-chat-command-adapter-pending-D2A",
+      "kernel_contract_projection": "AgentCommand/Event",
       "coverage_status": "covered"
     },
     {
@@ -580,7 +580,7 @@
       "protocol_declared": null,
       "handler_declared": null,
       "owner": "ExtensionCommandRegistration",
-      "kernel_contract_projection": "declared-chat-command-adapter-pending-D2A",
+      "kernel_contract_projection": "AgentCommand/Event",
       "coverage_status": "covered"
     },
     {
@@ -595,7 +595,7 @@
       "protocol_declared": null,
       "handler_declared": null,
       "owner": "ExtensionCommandRegistration",
-      "kernel_contract_projection": "declared-command-adapter-pending-D2A",
+      "kernel_contract_projection": "AgentCommand/Event",
       "coverage_status": "covered"
     },
     {
@@ -610,7 +610,7 @@
       "protocol_declared": null,
       "handler_declared": null,
       "owner": "ExtensionCommandRegistration",
-      "kernel_contract_projection": "declared-chat-command-adapter-pending-D2A",
+      "kernel_contract_projection": "AgentCommand/Event",
       "coverage_status": "covered"
     },
     {
@@ -625,7 +625,7 @@
       "protocol_declared": null,
       "handler_declared": null,
       "owner": "InlineChatCommand",
-      "kernel_contract_projection": "declared-chat-command-adapter-pending-D2A",
+      "kernel_contract_projection": "AgentCommand/Event",
       "coverage_status": "covered"
     },
     {
@@ -670,7 +670,7 @@
       "protocol_declared": null,
       "handler_declared": null,
       "owner": "ExtensionCommandRegistration",
-      "kernel_contract_projection": "declared-chat-command-adapter-pending-D2A",
+      "kernel_contract_projection": "AgentCommand/Event",
       "coverage_status": "covered"
     },
     {
@@ -1386,8 +1386,8 @@
     "cli_entrypoints": 7,
     "bridge_endpoints": 10,
     "unknown_entries": 0,
-    "declared_adapter_pending_cutover": 17,
+    "declared_adapter_pending_cutover": 8,
     "undeclared_legacy_owner_reachability": 0
   },
-  "inventory_sha256": "b84dc6c6d5875b53a60beb1caa40366a4dbcd541f19988c9f48963540a2a566a"
+  "inventory_sha256": "21d43050f096ab3eb5a8aa432a541f2981841e91f80dbb43997fd09fd73f86a8"
 }

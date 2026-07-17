@@ -183,9 +183,12 @@ test('Mutation guard: durable settlement controls every completed success projec
   assert.match(evidenceRouter, /settleRunContextDirect\(ownedContext, 'completed'[\s\S]*?\.completed/);
 
   assert.match(terminalCoordinator, /const settlementStatus = this\.completeRunContext\([\s\S]*?return \{ \.\.\.result, settlementStatus,/);
-  assert.match(commands, /const settlement = settleRunContextDirect\(runContext, msg \? 'completed' : 'failed'/);
-  assert.match(commands, /if \(msg && settlement\.completed\)/);
-  assert.match(commandRegistration, /const settlement = settleRunContextDirect\(runContext, 'completed'[\s\S]*?settlement\.completed/);
+  assert.doesNotMatch(commands, /settleRunContextDirect|createDevSeekRunContext|routeChat\s*\(|editor\.edit\s*\(/);
+  assert.match(commands, /generateCommitMessage\(projector: AgentCommandSurfaceProjector\)/);
+  assert.match(commands, /applyDiff\(projector: AgentCommandSurfaceProjector\)/);
+  assert.match(commandRegistration, /generateCommitMessage\(commandProjector\)/);
+  assert.match(commandRegistration, /applyDiff\(commandProjector\)/);
+  assert.doesNotMatch(commandRegistration, /applyInlineChatResult|inline-chat-editor-edit|editor\.edit\s*\(/);
   assert.match(pendingEdit, /settleRunContextDirect\(runContext, 'completed', \{ mutationKind: 'pending-edit-undo' \}\)\.completed/);
   assert.equal((viewProvider.match(/const settlementStatus = this\.deps\.terminalPermissionCoordinator\.completeRunContext/g) ?? []).length, 2);
   assert.equal((viewProvider.match(/requestedStatus === 'completed' && settlementStatus !== 'completed'/g) ?? []).length, 2);

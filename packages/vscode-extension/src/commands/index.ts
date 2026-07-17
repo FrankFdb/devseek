@@ -2,20 +2,8 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { buildContext, buildPrompt, buildCommitPrompt, getDiagnosticsContext } from '../context-builder';
-import { getActiveProvider } from '../llm/provider-router';
-import { settleRunContextDirect } from '../app/agent-run-settlement';
-import { createDevSeekRunContext } from '../app/run-context';
 import type { AgentCommandSurfaceProjector } from '../app/agent-command-surface-projection';
 import type { TerminalPermissionCoordinator } from '../app/terminal-permission-coordinator';
-
-export type CommandRouteChat = (opts: {
-  prompt: string;
-  stream?: boolean;
-  traceRunId?: string;
-  traceWorkspaceRoot?: string;
-  traceEvidenceParticipantToken?: string;
-  onTraceEvidenceError?: (error: unknown) => void;
-}) => Promise<string>;
 
 // 代码预览（最多 maxLines 行）
 function codePreview(code: string, language: string, maxLines = 15): string {
@@ -186,10 +174,9 @@ export async function askQuestion(projector: AgentCommandSurfaceProjector): Prom
 
 /**
  * EX-70: 生成 Git 提交信息
- * 读取 git diff --cached，发给 LLM（当前活跃 Provider），结果填入 SCM inputBox
- * P2-6: 改用 LLMProvider 抽象层，支持 API / Ollama 等所有 provider
+ * 读取 git diff --cached，交给统一聊天/Agent surface 处理。
  */
-export async function generateCommitMessage(routeChat: CommandRouteChat): Promise<void> {
+export async function generateCommitMessage(projector: AgentCommandSurfaceProjector): Promise<void> {
   const gitExtension = vscode.extensions.getExtension('vscode.git');
   if (!gitExtension) {
     vscode.window.showErrorMessage('DeepSeek: 未找到 VS Code Git 扩展');
@@ -202,50 +189,24 @@ export async function generateCommitMessage(routeChat: CommandRouteChat): Promis
     vscode.window.showWarningMessage('DeepSeek: 没有找到 Git 仓库');
     return;
   }
-  const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-    ?? process.cwd();
-  const runContext = createDevSeekRunContext({
-    workspaceRoot,
-    source: 'vscode-extension.generate-commit-message',
-    userPrompt: 'Generate a Git commit message from the staged diff',
-    traceLevel: vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', 'debug'),
-  });
 
   await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'DeepSeek: 生成提交信息...', cancellable: false },
+    { location: vscode.ProgressLocation.Notification, title: 'DevSeek: 准备提交信息上下文...', cancellable: false },
     async () => {
       try {
         const diff = await repo.diff(true);
         if (!diff || diff.trim().length === 0) {
-          settleRunContextDirect(runContext, 'cancelled', { reason: 'no-staged-diff' });
           vscode.window.showWarningMessage('DeepSeek: 没有暂存的改动（请先 git add）');
           return;
         }
-
-        const prompt = buildCommitPrompt(diff);
-        const provider = getActiveProvider();
-        const result = await routeChat({
-          prompt,
-          stream: false,
-          traceRunId: runContext.runId,
-          traceWorkspaceRoot: runContext.workspaceRoot,
-          traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
-          onTraceEvidenceError: error => runContext.markEvidenceDegraded(error),
-        });
-
-        const msg = result.trim().replace(/^```[^\n]*\n?/, '').replace(/```$/, '').trim();
-        const settlement = settleRunContextDirect(runContext, msg ? 'completed' : 'failed', {
-          reason: msg ? 'commit-message-generated' : 'empty-provider-response',
-        });
-        if (msg && settlement.completed) {
-          repo.inputBox.value = msg;
-          vscode.window.showInformationMessage(`✅ DeepSeek [${provider.displayName}] 已生成提交信息`);
-        } else if (msg) {
-          vscode.window.showErrorMessage('DeepSeek: 提交信息已生成，但运行证据结算失败，未写入 SCM 输入框。');
-        }
-      } catch (e) {
-        settleRunContextDirect(runContext, 'failed', { reason: 'generate-commit-message-error' });
-        vscode.window.showErrorMessage(`DeepSeek: 生成提交信息失败 — ${(e as Error).message}`);
+        await dispatch(
+          projector,
+          'devseek.generateCommit',
+          `🧾 **生成 Git 提交信息** · staged diff ${diff.length} chars`,
+          buildCommitPrompt(diff),
+        );
+      } catch (error) {
+        vscode.window.showErrorMessage(`DeepSeek: 读取暂存 diff 失败 — ${(error as Error).message}`);
       }
     },
   );
@@ -254,7 +215,7 @@ export async function generateCommitMessage(routeChat: CommandRouteChat): Promis
 /**
  * EX-16: Diff 视图 — 将 AI 返回的代码以 diff 形式展示，用户确认后替换选中区域
  */
-export async function applyDiff(routeChat: CommandRouteChat): Promise<void> {
+export async function applyDiff(projector: AgentCommandSurfaceProjector): Promise<void> {
   const editor = vscode.window.activeTextEditor;
   if (!editor) { vscode.window.showWarningMessage('DeepSeek: 请先打开一个文件'); return; }
   if (editor.selection.isEmpty) { vscode.window.showWarningMessage('DeepSeek: 请先选中要修改的代码'); return; }
@@ -266,101 +227,11 @@ export async function applyDiff(routeChat: CommandRouteChat): Promise<void> {
   });
   if (!instruction) return;
 
-  const provider = getActiveProvider();
-  const avail = await provider.available();
-  if (!avail) {
-    vscode.window.showErrorMessage('DeepSeek NetAI: LLM Provider 不可用，请检查 ⚙ 设置');
-    return;
-  }
-  const workspaceRoot = vscode.workspace.getWorkspaceFolder(editor.document.uri)?.uri.fsPath
-    ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
-    ?? process.cwd();
-  const runContext = createDevSeekRunContext({
-    workspaceRoot,
-    source: 'vscode-extension.apply-diff',
-    userPrompt: instruction,
-    traceLevel: vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', 'debug'),
-  });
-
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'DeepSeek: 生成代码修改...', cancellable: false },
-    async (progress) => {
-      try {
-        progress.report({ message: '请求 DeepSeek...' });
-        const { buildInlineChatPrompt } = await import('../context-builder');
-        const prompt = buildInlineChatPrompt(instruction, ctx.code, ctx.language, ctx.relPath);
-        const result = await routeChat({
-          prompt,
-          stream: false,
-          traceRunId: runContext.runId,
-          traceWorkspaceRoot: runContext.workspaceRoot,
-          traceEvidenceParticipantToken: runContext.evidenceParticipantToken,
-          onTraceEvidenceError: error => runContext.markEvidenceDegraded(error),
-        });
-
-        // 提取代码块内容（去掉 ```lang ... ``` 包裹）
-        const codeMatch = result.match(/```[^\n]*\n([\s\S]*?)```/);
-        const newCode = codeMatch ? codeMatch[1].trimEnd() : result.trim();
-
-        if (!newCode) {
-          settleRunContextDirect(runContext, 'failed', { reason: 'empty-provider-response' });
-          vscode.window.showWarningMessage('DeepSeek: 未收到有效代码');
-          return;
-        }
-
-        // 创建临时文件展示 diff
-        const originalUri = editor.document.uri;
-        const modifiedContent = editor.document.getText(
-          new vscode.Range(0, 0, editor.document.lineCount, 0),
-        ).replace(ctx.code, newCode);
-
-        const tmpUri = vscode.Uri.parse(
-          `untitled:${originalUri.fsPath.replace(/\.\w+$/, '')}-deepseek-preview${originalUri.fsPath.match(/\.\w+$/)?.[0] ?? ''}`,
-        );
-        await vscode.workspace.openTextDocument({ content: modifiedContent, language: ctx.language });
-
-        // 使用 diff editor 展示
-        await vscode.commands.executeCommand(
-          'vscode.diff',
-          originalUri,
-          tmpUri,
-          `DeepSeek 修改预览：${ctx.filename}`,
-          { preview: true },
-        );
-
-        // 提供快速应用按钮
-        const choice = await vscode.window.showInformationMessage(
-          'DeepSeek 代码修改预览已打开，是否直接应用到选中区域？',
-          '✅ 应用修改',
-          '❌ 放弃',
-        );
-        if (choice === '✅ 应用修改') {
-          const task = {
-            type: 'agentStatus' as const,
-            phase: 'execute' as const,
-            taskId: 'apply-diff-editor-edit',
-            taskFile: ctx.relPath,
-            taskAction: 'modify' as const,
-            title: `应用 ${ctx.filename} 修改`,
-          };
-          runContext.recordAgentStatus({ ...task, state: 'started' });
-          const applied = await editor.edit(eb => eb.replace(editor.selection, newCode));
-          runContext.recordAgentStatus({ ...task, state: applied ? 'completed' : 'failed' });
-          if (!applied) throw new Error('VS Code 拒绝应用编辑');
-          const settlement = settleRunContextDirect(runContext, 'completed', { changedPaths: [ctx.relPath] });
-          if (settlement.completed) {
-            vscode.window.showInformationMessage('✅ 代码已应用');
-          } else {
-            vscode.window.showErrorMessage('DeepSeek: 代码已写入，但运行证据结算失败；本轮不能标记完成。');
-          }
-        } else {
-          settleRunContextDirect(runContext, 'cancelled', { reason: 'user-declined-diff' });
-        }
-      } catch (e) {
-        settleRunContextDirect(runContext, 'failed', { reason: 'apply-diff-error' });
-        vscode.window.showErrorMessage(`DeepSeek: 修改失败 — ${(e as Error).message}`);
-      }
-    },
+  await dispatch(
+    projector,
+    'devseek.applyDiff',
+    `🧩 **修改选中代码** · \`${ctx.filename}\`\n\n${codePreview(ctx.code, ctx.language)}`,
+    buildPrompt(ctx, `请根据用户指令修改上面的代码：${instruction}`),
   );
 }
 

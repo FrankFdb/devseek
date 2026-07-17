@@ -93,6 +93,18 @@ const KNOWN_BRIDGE_ENDPOINTS = new Map([
   ['GET /index/search', { surface: 'bridge-context-index', scope: 'local-public', projection: 'context-ref-search' }],
 ]);
 
+const VSCODE_AGENT_COMMAND_CUTOVER = new Set([
+  'devseek.applyDiff',
+  'devseek.ask',
+  'devseek.explain',
+  'devseek.fix',
+  'devseek.genDoc',
+  'devseek.generateCommit',
+  'devseek.genTest',
+  'devseek.inlineChat',
+  'devseek.refactor',
+]);
+
 export function collectSurfaceEntryInventorySources(repoRoot, readText, readJson) {
   const sourceContents = {};
   for (const sourcePath of Object.values(SOURCE_PATHS)) {
@@ -621,6 +633,7 @@ function commandProjection(commandId) {
   if (commandId.startsWith('_devseek.harness')) return 'test-only-controlled-surface';
   if (commandId.startsWith('_devseek.diff') || commandId === 'devseek.keepOrUndoActive') return 'pending-edit-action';
   if (commandId === '_deepseek.askChat') return 'chat-relay-internal';
+  if (VSCODE_AGENT_COMMAND_CUTOVER.has(commandId)) return 'AgentCommand/Event';
   if (commandId === 'devseek.addFileToChat') return 'ContextRef';
   if (commandId === 'devseek.openChat' || commandId === 'devseek.triggerCompletion') return 'surface-ui-action';
   if (commandId === 'devseek.switchProvider') return 'provider-config-action';

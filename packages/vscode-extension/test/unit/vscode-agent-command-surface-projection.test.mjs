@@ -66,3 +66,43 @@ test('public code commands inject projector instead of depending on hidden comma
     'hidden relay must stay a compatibility shim over the projection owner',
   );
 });
+
+test('R1-D2A VS Code code commands do not own provider or editor mutation runtime', () => {
+  const commands = source('src/commands/index.ts');
+  const registration = source('src/ui/extension-command-registration.ts');
+
+  assert.doesNotMatch(
+    commands,
+    /export type CommandRouteChat/,
+    'public VS Code code commands must not expose a second provider routing contract',
+  );
+  assert.doesNotMatch(
+    commands,
+    /routeChat\s*\(/,
+    'public VS Code code commands must project AgentCommand requests instead of calling the provider directly',
+  );
+  assert.doesNotMatch(
+    commands,
+    /editor\.edit\s*\(/,
+    'public VS Code code commands must not mutate editor text outside the Agent/Mutation authority',
+  );
+  assert.doesNotMatch(
+    registration,
+    /applyInlineChatResult[\s\S]*?routeChat\s*\(/,
+    'inline chat must not keep a direct provider fallback after VS Code atomic cutover',
+  );
+  assert.doesNotMatch(
+    registration,
+    /applyInlineChatResult[\s\S]*?editor\.edit\s*\(/,
+    'inline chat must not apply direct editor edits after VS Code atomic cutover',
+  );
+  for (const command of ['generateCommitMessage', 'applyDiff']) {
+    assert.match(
+      commands,
+      new RegExp(`export async function ${command}\\(projector: AgentCommandSurfaceProjector\\)`),
+      `${command} must consume the shared command projection owner`,
+    );
+  }
+  assert.match(registration, /generateCommitMessage\(commandProjector\)/);
+  assert.match(registration, /applyDiff\(commandProjector\)/);
+});
