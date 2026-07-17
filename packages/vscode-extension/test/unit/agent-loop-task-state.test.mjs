@@ -161,6 +161,11 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
     /taskComplete:\s*false,\s*failedReason:\s*response/,
     'nonrecoverable provider recovery responses must feed failure evidence into the task ledger',
   );
+  assert.match(
+    agentLoop,
+    /recordLocalAgentResponsePayload\(callbacks,\s*response\)/,
+    'local respond tasks must persist their user-visible answer into the run log payload stream',
+  );
   assert.match(agentLoop, /analyzeRaw\s*=\s*delta\.slice\(7\)/, 'analyze RESET deltas must update evidence, not only UI text');
   assert.match(agentLoop, /raw:\s*analyzeRaw\s*\|\|\s*lastAnalyzeRoundText/, 'analyze settlement must fall back to the last complete provider response');
   assert.match(agenticLoop, /settleAgentRuntimeState/, 'agentic loop final settlement must route through the runtime state machine');

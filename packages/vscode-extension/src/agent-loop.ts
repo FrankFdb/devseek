@@ -44,6 +44,7 @@
 import * as nodePath from 'path';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
+import { createDevSeekTraceLogger } from '@devseek-netai/shared';
 import { ChatMessage } from './llm/types';
 import { AgentTask, getAgentTaskDisplayTarget, readFileContentSafe, readFileContentFull } from './agent-task-decomposer';
 import { fenceLangForFile, roughLineDiff } from './utils';
@@ -612,6 +613,7 @@ async function executeTask(
   if (task.action === 'respond') {
     const response = buildLocalRespondTaskMessage(task, writeAuthority.currentPrompt);
     const nonRecoverableProviderRecovery = isNonRecoverableProviderRecoveryRespondTask(task);
+    recordLocalAgentResponsePayload(callbacks, response);
     callbacks.onDelta(response);
     await callbacks.onAgentStatus({
       type: 'agentStatus',
@@ -1461,6 +1463,22 @@ function isNonRecoverableProviderRecoveryRespondTask(task: AgentTask): boolean {
   return task.action === 'respond'
     && task.targetKind === 'agent-session'
     && /(?:无法从可信任务事实恢复|已停止执行)/.test(task.desc || '');
+}
+
+function recordLocalAgentResponsePayload(callbacks: AgentLoopCallbacks, response: string): void {
+  const traceRunId = callbacks.traceRunId?.trim();
+  const traceWorkspaceRoot = callbacks.traceWorkspaceRoot?.trim();
+  if (!traceRunId || !traceWorkspaceRoot || !response.trim()) return;
+  try {
+    createDevSeekTraceLogger({
+      workspaceRoot: traceWorkspaceRoot,
+      source: 'vscode-extension.agent',
+      runId: traceRunId,
+      level: 'debug',
+    }).payload('provider', 'extension.response.raw', response);
+  } catch (error) {
+    callbacks.onTraceEvidenceError?.(error);
+  }
 }
 
 // ----------------------------------------------------------------
