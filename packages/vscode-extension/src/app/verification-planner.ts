@@ -525,15 +525,27 @@ function buildPythonRuntimeValidationCommand(quotedScriptPath: string, prompt: s
     const stdinLines = ['INFO start', 'WARN slow', 'ERROR fail', 'WARN retry']
       .map((line) => shellQuote(line))
       .join(' ');
-    return `printf '%s\\n' ${stdinLines} | PYTHONDONTWRITEBYTECODE=1 python3 ${quotedScriptPath} | grep -q ${shellQuote('{"ERROR": 1, "WARN": 2}')}`;
+    return buildObservableStdinOracleCommand(stdinLines, quotedScriptPath, '{"ERROR": 1, "WARN": 2}');
   }
   if (shouldUseLogSummaryStdinOracle(prompt)) {
     const stdinLines = ['INFO start', 'WARN slow', 'ERROR fail']
       .map((line) => shellQuote(line))
       .join(' ');
-    return `printf '%s\\n' ${stdinLines} | PYTHONDONTWRITEBYTECODE=1 python3 ${quotedScriptPath} | grep -q ${shellQuote('ERROR=1 WARN=1')}`;
+    return buildObservableStdinOracleCommand(stdinLines, quotedScriptPath, 'ERROR=1 WARN=1');
   }
   return `PYTHONDONTWRITEBYTECODE=1 python3 ${quotedScriptPath} < /dev/null`;
+}
+
+function buildObservableStdinOracleCommand(
+  quotedStdinLines: string,
+  quotedScriptPath: string,
+  expectedOutputLine: string,
+): string {
+  return [
+    `printf '%s\\n' ${quotedStdinLines}`,
+    `PYTHONDONTWRITEBYTECODE=1 python3 ${quotedScriptPath}`,
+    `grep -Fx -- ${shellQuote(expectedOutputLine)}`,
+  ].join(' | ');
 }
 
 function shouldUseLogSummaryJsonStdinOracle(prompt: string): boolean {

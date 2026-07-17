@@ -97,6 +97,9 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
   assert.equal((agentLoop.match(/collectToolReadEvidence\(taskReadEvidence, await executeFakeToolsForLoop/g) ?? []).length, 3, 'analyze, editor, and retry tool rounds must all retain read evidence');
   assert.match(agentLoop, /const taskGrounding = artifactGrounding\.captureTask\(writeAuthority\.currentPrompt, result\)/, 'two-phase task evidence must use the latest authorized prompt at top-level settlement');
   assert.match(agentLoop, /buildTaskSettlementFailureStatus/, 'ledger settlement failures must override optimistic task status');
+  assert.match(agentLoop, /function isPythonValidationFile/, 'Python writes must enter the same final validation target set as JS and C++ writes');
+  assert.match(agentLoop, /shouldDeferRecoverableTaskValidationFailure/, 'recoverable write-task validation failures must be deferred to final QualityGate settlement');
+  assert.match(agentLoop, /terminalEvidence:\s*\[\]/, 'deferred terminal failures must not prematurely mark a recoverable write task as failed');
   assert.match(agentLoop, /applyGeneratedArtifactPathWithPrompt/, 'editor fallback must apply only the current task target file');
   assert.match(agentLoop, /async function executeTask\([\s\S]*?changedPaths: string\[\]/, 'executeTask must receive changedPaths explicitly instead of closing over an undefined outer variable');
   assert.match(agentLoop, /executeTask\([\s\S]*?tasks,\s*changedPaths,\s*writeAuthority/, 'runAgentLoop must pass changedPaths and live authority into task execution');

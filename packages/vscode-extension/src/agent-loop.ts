@@ -139,8 +139,26 @@ function isJavaScriptValidationFile(filename: string): boolean {
   return ['.js', '.mjs', '.cjs'].includes(nodePath.extname(filename).toLowerCase());
 }
 
+function isPythonValidationFile(filename: string): boolean {
+  return nodePath.extname(filename).toLowerCase() === '.py';
+}
+
 function isLegacyAutoValidationFile(filename: string): boolean {
-  return isCompilableFile(filename) || isJavaScriptValidationFile(filename);
+  return isCompilableFile(filename) || isJavaScriptValidationFile(filename) || isPythonValidationFile(filename);
+}
+
+function shouldDeferRecoverableTaskValidationFailure(input: {
+  action: AgentTask['action'];
+  applied?: boolean;
+  failedReason?: string;
+  writtenFiles?: WrittenFileEvidence[];
+  terminalEvidence?: TerminalEvidence[];
+}): boolean {
+  if (isReadOnlyAgentTaskAction(input.action) || !input.applied || input.failedReason) return false;
+  const writtenFiles = input.writtenFiles ?? [];
+  if (writtenFiles.length === 0) return false;
+  if (!findBlockingTerminalFailureEvidence(input.terminalEvidence)) return false;
+  return writtenFiles.some(file => isLegacyAutoValidationFile(file.path || file.basename));
 }
 
 const AGENT_LOOP_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
@@ -1965,7 +1983,10 @@ export async function runAgentLoop(
       });
     }
 
-    const taskSettlement = taskTodoLedger.settleTask(i, taskSettlementInput);
+    const shouldDeferTaskValidationFailure = shouldDeferRecoverableTaskValidationFailure(taskSettlementInput);
+    const taskSettlement = taskTodoLedger.settleTask(i, shouldDeferTaskValidationFailure
+      ? { ...taskSettlementInput, terminalEvidence: [] }
+      : taskSettlementInput);
     if (taskSettlement.failed) {
       tasksFailed += 1;
       await callbacks.onAgentStatus(buildTaskSettlementFailureStatus(task, i + 1, tasks.length, {

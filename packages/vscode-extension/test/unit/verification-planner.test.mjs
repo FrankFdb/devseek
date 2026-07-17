@@ -180,7 +180,8 @@ test('VerificationPlanner: Python log summary text oracle uses python3 stdin val
   assert.equal(plan.mode, 'compile-run');
   assert.equal(plan.reason, 'python-syntax-and-run-validation');
   assert.match(plan.command, /PYTHONDONTWRITEBYTECODE=1 python3/);
-  assert.match(plan.command, /grep -q 'ERROR=1 WARN=1'/);
+  assert.match(plan.command, /grep -Fx -- 'ERROR=1 WARN=1'/);
+  assert.doesNotMatch(plan.command, /grep -q/);
   assert.doesNotMatch(plan.command, /\bpython tools\/log_summary\.py\b/);
 });
 
@@ -200,7 +201,7 @@ test('VerificationPlanner: Python log summary JSON follow-up overrides prior tex
   assert.equal(plan.reason, 'python-syntax-and-run-validation');
   assert.match(plan.command, /PYTHONDONTWRITEBYTECODE=1 python3/);
   assert.match(plan.command, /'WARN retry'/);
-  assert.match(plan.command, /grep -q '\{"ERROR": 1, "WARN": 2\}'/);
+  assert.match(plan.command, /grep -Fx -- '\{"ERROR": 1, "WARN": 2\}'/);
   assert.doesNotMatch(plan.command, /grep -q 'ERROR=1 WARN=1'/);
 });
 
@@ -325,7 +326,8 @@ test('VerificationPlanner: standalone Python CLI with stdin oracle plans syntax 
   assert.match(plan.command, /PYTHONDONTWRITEBYTECODE=1 python3 -c/);
   assert.match(plan.command, /tools\/log_summary\.py/);
   assert.match(plan.command, /printf '%s\\n' 'INFO start' 'WARN slow' 'ERROR fail'/);
-  assert.match(plan.command, /grep -q 'ERROR=1 WARN=1'/);
+  assert.match(plan.command, /grep -Fx -- 'ERROR=1 WARN=1'/);
+  assert.doesNotMatch(plan.command, /grep -q/);
 });
 
 test('VerificationPlanner: standalone Python print program plans runtime validation', () => {

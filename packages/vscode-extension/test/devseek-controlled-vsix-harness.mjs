@@ -1828,7 +1828,10 @@ function collectRunLogs(excludePaths = []) {
       const events = fs.readFileSync(absolutePath, 'utf8').split(/\r?\n/).filter(Boolean).map(parseJsonLine).filter(Boolean);
       const terminalEvent = events.find(event => event.event === 'agent-run-completed' || event.event === 'agent-run-failed');
       const responseText = events
-        .filter(event => event.event === 'payload-recorded' && event.data?.name === 'extension.response.raw')
+        .filter(event => event.event === 'payload-recorded' && (
+          event.data?.name === 'extension.response.raw'
+          || event.data?.name === 'terminal.output'
+        ))
         .map(event => String(event.data?.content || ''))
         .join('\n')
         .slice(-5000);

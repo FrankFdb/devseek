@@ -304,6 +304,54 @@ test('Agentic history: later successful terminal evidence does not overwrite fai
   assert.doesNotMatch(text, /QualityGate 通过/);
 });
 
+test('Agentic history: recovered runtime validation clears prior command failure', () => {
+  const terminalEvidence = [
+    {
+      command: "printf 'INFO start\\nWARN slow\\nERROR fail\\nWARN retry\\n' | python tools/log_summary.py | grep -q '{\"ERROR\": 1, \"WARN\": 2}'",
+      kind: 'compile-run',
+      ok: false,
+      exitCode: 1,
+      detail: 'old quiet oracle failed',
+    },
+    {
+      command: "test -s tools/log_summary.py && PYTHONDONTWRITEBYTECODE=1 python3 -c 'compile(open(\"tools/log_summary.py\").read(), \"tools/log_summary.py\", \"exec\")' && printf '%s\\n' 'INFO start' 'WARN slow' 'ERROR fail' 'WARN retry' | PYTHONDONTWRITEBYTECODE=1 python3 tools/log_summary.py | grep -Fx -- '{\"ERROR\": 1, \"WARN\": 2}'",
+      kind: 'compile-run',
+      ok: true,
+      exitCode: 0,
+      detail: '{"ERROR": 1, "WARN": 2}',
+    },
+  ];
+  const writtenFiles = [
+    {
+      path: '/workspace/devseek/tools/log_summary.py',
+      basename: 'log_summary.py',
+      linesAdded: 2,
+      linesRemoved: 1,
+      action: 'modify',
+    },
+  ];
+  const qualityGate = buildAgenticQualityGateForHistory({
+    writtenFiles,
+    terminalEvidence,
+  });
+  const text = buildAgenticHistoryText({
+    userPrompt: '把 tools/log_summary.py 改为 JSON 输出并自测',
+    roundCount: 2,
+    completed: true,
+    todos: [{ id: 1, title: '将日志统计工具改为 JSON 输出并自测', status: 'completed' }],
+    writtenFiles,
+    terminalEvidence,
+    qualityGate,
+    workspaceRoot: '/workspace/devseek',
+  });
+
+  assert.equal(qualityGate.status, 'pass');
+  assert.match(text, /QualityGate 通过/);
+  assert.match(text, /&quot;ERROR&quot;: 1, &quot;WARN&quot;: 2/);
+  assert.doesNotMatch(text, /失败诊断/);
+  assert.doesNotMatch(text, /QualityGate 未通过/);
+});
+
 test('Agent history: restored summary can preserve failed task progress and evidence', () => {
   const text = buildAgenticHistoryText({
     label: 'Agent',

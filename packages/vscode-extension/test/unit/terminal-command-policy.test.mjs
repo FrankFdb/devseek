@@ -144,7 +144,7 @@ test('TerminalCommandPolicy: Python syntax and workspace script runs are validat
   const command = [
     "test -s '/workspace/devseek/tools/log_summary.py'",
     "PYTHONDONTWRITEBYTECODE=1 python3 -c 'import pathlib,sys; compile(pathlib.Path(sys.argv[1]).read_text(encoding=\"utf-8\"), sys.argv[1], \"exec\")' '/workspace/devseek/tools/log_summary.py'",
-    "printf '%s\\n' 'INFO start' 'WARN slow' 'ERROR fail' | PYTHONDONTWRITEBYTECODE=1 python3 '/workspace/devseek/tools/log_summary.py' | grep -q 'ERROR=1 WARN=1'",
+    "printf '%s\\n' 'INFO start' 'WARN slow' 'ERROR fail' | PYTHONDONTWRITEBYTECODE=1 python3 '/workspace/devseek/tools/log_summary.py' | grep -Fx -- 'ERROR=1 WARN=1'",
   ].join(' && ');
   const decision = decideTerminalCommandPermission({ command, workspaceRoot });
 

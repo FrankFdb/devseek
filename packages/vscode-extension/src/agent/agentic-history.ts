@@ -1,5 +1,10 @@
 import * as nodePath from 'path';
-import { coalesceWrittenFileEvidence, type TerminalEvidence, type WrittenFileEvidence } from './completion-evidence';
+import {
+  coalesceWrittenFileEvidence,
+  findBlockingTerminalFailureEvidence,
+  type TerminalEvidence,
+  type WrittenFileEvidence,
+} from './completion-evidence';
 import {
   buildTerminalFailureDiagnosis,
   type FailureDiagnosis,
@@ -112,7 +117,8 @@ function renderTerminalEvidence(evidence: TerminalEvidence[]): string {
       const kind = item.kind || 'other';
       const code = item.exitCode === null || item.exitCode === undefined ? '' : `, code ${item.exitCode}`;
       const command = truncate(item.command || '', MAX_COMMAND_CHARS);
-      return `<li><code>${escapeHtml(state)}</code> ${escapeHtml(kind)}${escapeHtml(code)}: <code>${escapeHtml(command)}</code></li>`;
+      const detail = item.detail ? ` <span>${escapeHtml(truncate(item.detail, 180))}</span>` : '';
+      return `<li><code>${escapeHtml(state)}</code> ${escapeHtml(kind)}${escapeHtml(code)}: <code>${escapeHtml(command)}</code>${detail}</li>`;
     })
     .join('');
   return items ? `<p><strong>验证/终端证据：</strong></p><ul>${items}</ul>` : '';
@@ -171,7 +177,7 @@ export function buildAgenticQualityGateForHistory(input: {
     };
   }
 
-  const failedTerminal = [...input.terminalEvidence].reverse().find(e => !e.ok);
+  const failedTerminal = findBlockingTerminalFailureEvidence(input.terminalEvidence);
   if (failedTerminal) {
     const evidenceRef = terminalEvidenceRef(failedTerminal);
     return {
