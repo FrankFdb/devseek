@@ -420,6 +420,92 @@ test('RunContext: deterministic simple-file execution closes its side-effect bef
   }
 });
 
+test('RunContext: late task settlement failure after committed mutation is not a second side effect', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const runId = 'run-context-late-task-failure-after-terminal-proof';
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '修改 tools/log_summary.py 并用终端验证 JSON 输出。',
+      traceLevel: 'debug',
+    });
+    const participant = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId,
+      surface: 'run-context-terminal-quality-test',
+      authority: { role: 'participant', token: context.evidenceParticipantToken },
+    });
+    const recordParticipantProof = (type, operationId, status) => participant.record({
+      type,
+      idempotencyKey: productRunEvidenceIdempotencyKey(`late-task-terminal-proof:${type}`, {
+        runId,
+        operationId,
+      }),
+      payload: {
+        trust: 'product-runtime-observation',
+        operation_id: operationId,
+        status,
+      },
+    });
+    const task = {
+      type: 'agentStatus',
+      phase: 'execute',
+      taskId: 't1',
+      taskFile: 'log_summary.py',
+      taskAction: 'modify',
+      taskIndex: 1,
+      taskTotal: 1,
+      title: '将日志统计工具改为 JSON 输出并自测',
+    };
+    context.recordAgentStatus({ ...task, state: 'started' });
+    context.recordAgentStatus({ ...task, state: 'completed', linesAdded: 2, linesRemoved: 1 });
+
+    const verificationOperationId = 'terminal-json-validation';
+    recordParticipantProof('verification.started', verificationOperationId, 'started');
+    recordParticipantProof('verification.completed', verificationOperationId, 'completed');
+    recordParticipantProof('quality_gate.started', verificationOperationId, 'started');
+    recordParticipantProof('quality_gate.passed', verificationOperationId, 'passed');
+
+    context.recordAgentStatus({
+      ...task,
+      state: 'failed',
+      detail: '验证命令失败，不能标记完成。\n命令: old failing command\nexitCode: 1',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'done',
+      state: 'completed',
+      taskTotal: 1,
+      title: '全部 1 个任务已完成',
+      editedFiles: [{
+        path: 'tools/log_summary.py',
+        basename: 'log_summary.py',
+        linesAdded: 2,
+        linesRemoved: 1,
+        action: 'modify',
+      }],
+    });
+
+    assert.equal(context.complete('completed', {
+      tasksTotal: 1,
+      tasksApplied: 1,
+      tasksFailed: 0,
+      changedPaths: ['tools/log_summary.py'],
+    }), 'completed');
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read(runId);
+    assert.equal(events.some(event => event.type === 'agent.status' && event.payload.status === 'failed'), true);
+    assert.equal(events.some(event => event.type === 'side_effect.failed'), false);
+    assert.equal(events.some(event => event.type === 'quality_gate.passed'), true);
+    assert.equal(events.find(event => event.type === 'run.settled')?.payload.status, 'completed');
+    assert.equal(ledger.verify(runId).status, 'valid-sealed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('RunContext: repaired mutation uses a new attempt and resolves the failed side effect only after validation', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   try {

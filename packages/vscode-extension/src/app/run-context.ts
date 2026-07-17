@@ -80,6 +80,8 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   private readonly sideEffectOperations = new Set<string>();
   private readonly activeSideEffectOperations = new Map<string, string>();
   private readonly pendingAdverseOperationIds = new Set<string>();
+  private readonly pendingAdverseOperationIdsByKey = new Map<string, Set<string>>();
+  private readonly committedSideEffectOperationIdsByKey = new Map<string, string>();
   private hasSideEffectEvidence = false;
   private settlementStatus?: RunContextStatus;
 
@@ -295,6 +297,9 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     if (status.phase === 'execute' && isMutatingTaskAction(status.taskAction)) {
       const operationKey = sideEffectOperationKey(status);
       let operationId = this.activeSideEffectOperations.get(operationKey);
+      if ((status.state === 'started' || status.state === 'completed') && !this.currentRecovery) {
+        this.beginImplicitRecoveryForOperationKey(operationKey, summary);
+      }
       const recoveryDetails: Record<string, import('@devseek-netai/shared').RunEvidenceJson> = this.currentRecovery
         ? { recovery_operation_id: this.currentRecovery.operationId }
         : {};
@@ -305,15 +310,26 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
         operationId ??= this.beginSideEffectOperation(operationKey, status);
         if (!this.sideEffectOperations.has(operationId)) this.recordSideEffectStart(operationId, summary, recoveryDetails);
         this.recordOperationEvent('side_effect.committed', operationId, 'committed', summary, recoveryDetails);
+        this.committedSideEffectOperationIdsByKey.set(operationKey, operationId);
         this.activeSideEffectOperations.delete(operationKey);
       } else if (status.state === 'failed' || status.state === 'skipped') {
+        if (!operationId && this.committedSideEffectOperationIdsByKey.has(operationKey)) {
+          this.trace.info('run-context', 'late-task-settlement-failure-ignored', {
+            taskId: status.taskId,
+            taskFile: status.taskFile,
+            taskAction: status.taskAction,
+            reason: 'same-task-side-effect-already-committed',
+          });
+          this.hasSideEffectEvidence = true;
+          return;
+        }
         operationId ??= this.beginSideEffectOperation(operationKey, status);
         if (!this.sideEffectOperations.has(operationId)) {
           this.recordOperationEvent('side_effect.requested', operationId, 'requested', summary, recoveryDetails);
           this.sideEffectOperations.add(operationId);
         }
         this.recordOperationEvent('side_effect.failed', operationId, 'failed', summary, recoveryDetails);
-        this.pendingAdverseOperationIds.add(operationId);
+        this.addPendingAdverseOperation(operationId, operationKey);
         this.activeSideEffectOperations.delete(operationKey);
       }
       this.hasSideEffectEvidence = true;
@@ -367,7 +383,24 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   }
 
   private passedQualityGateCount(): number {
-    return [...this.qualityGateStates.values()].filter(state => state === 'passed').length;
+    const operationIds = new Set(
+      [...this.qualityGateStates.entries()]
+        .filter(([, state]) => state === 'passed')
+        .map(([operationId]) => operationId),
+    );
+    if (this.evidence) {
+      try {
+        for (const event of this.evidence.readEvents()) {
+          if (event.type !== 'quality_gate.passed') continue;
+          const payload = evidencePayloadObject(event.payload);
+          const operationId = typeof payload?.operation_id === 'string' ? payload.operation_id.trim() : '';
+          if (operationId) operationIds.add(operationId);
+        }
+      } catch (error) {
+        this.markEvidenceDegraded(error);
+      }
+    }
+    return operationIds.size;
   }
 
   private pendingQualityGateCount(): number {
@@ -437,7 +470,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     } else {
       this.recordOperationEvent('verification.failed', operationId, 'failed', summary);
       this.verificationStates.set(operationId, 'failed');
-      this.pendingAdverseOperationIds.add(operationId);
+      this.addPendingAdverseOperation(operationId);
     }
     if (this.currentLegacyValidationOperationId === operationId) {
       this.currentLegacyValidationOperationId = undefined;
@@ -499,7 +532,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       summary,
     );
     this.qualityGateStates.set(operationId, terminal);
-    this.pendingAdverseOperationIds.add(operationId);
+    this.addPendingAdverseOperation(operationId);
     if (this.currentRecovery) {
       this.recordOperationEvent('recovery.failed', this.currentRecovery.operationId, 'failed', summary);
       this.currentRecovery = undefined;
@@ -588,7 +621,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
         resolves_operation_ids: recovery.targetOperationIds,
         verification_operation_id: verificationOperationId,
       });
-      recovery.targetOperationIds.forEach(operationId => this.pendingAdverseOperationIds.delete(operationId));
+      recovery.targetOperationIds.forEach(operationId => this.deletePendingAdverseOperation(operationId));
       this.currentRecovery = undefined;
     } catch (error) {
       this.markEvidenceDegraded(error);
@@ -610,6 +643,38 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     this.sideEffectOperations.add(operationId);
   }
 
+  private beginImplicitRecoveryForOperationKey(
+    operationKey: string,
+    summary: { length: number; sha256: string },
+  ): void {
+    const targetOperationIds = [...(this.pendingAdverseOperationIdsByKey.get(operationKey) ?? [])]
+      .filter(operationId => this.pendingAdverseOperationIds.has(operationId));
+    if (targetOperationIds.length === 0) return;
+    this.recoverySequence += 1;
+    const operationId = `vscode-recovery-${this.recoverySequence}`;
+    this.currentRecovery = { operationId, targetOperationIds };
+    this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
+      target_operation_ids: targetOperationIds,
+      recovery_trigger: 'same-task-mutation-retry',
+    });
+  }
+
+  private addPendingAdverseOperation(operationId: string, operationKey?: string): void {
+    this.pendingAdverseOperationIds.add(operationId);
+    if (!operationKey) return;
+    const operations = this.pendingAdverseOperationIdsByKey.get(operationKey) ?? new Set<string>();
+    operations.add(operationId);
+    this.pendingAdverseOperationIdsByKey.set(operationKey, operations);
+  }
+
+  private deletePendingAdverseOperation(operationId: string): void {
+    this.pendingAdverseOperationIds.delete(operationId);
+    for (const [operationKey, operationIds] of this.pendingAdverseOperationIdsByKey) {
+      operationIds.delete(operationId);
+      if (operationIds.size === 0) this.pendingAdverseOperationIdsByKey.delete(operationKey);
+    }
+  }
+
   private beginSideEffectOperation(operationKey: string, status: AgentStatusEvent): string {
     this.sideEffectSequence += 1;
     const operationId = `${sideEffectOperationBaseId(this.runId, status)}-attempt-${this.sideEffectSequence}`.slice(0, 512);
@@ -623,21 +688,21 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       this.recordOperationEvent('side_effect.indeterminate', operationId, 'indeterminate', summary, this.currentRecovery
         ? { recovery_operation_id: this.currentRecovery.operationId }
         : {});
-      this.pendingAdverseOperationIds.add(operationId);
+      this.addPendingAdverseOperation(operationId);
     }
     this.activeSideEffectOperations.clear();
     for (const [operationId, state] of this.verificationStates) {
       if (state !== 'started') continue;
       this.recordOperationEvent('verification.failed', operationId, 'failed', summary);
       this.verificationStates.set(operationId, 'failed');
-      this.pendingAdverseOperationIds.add(operationId);
+      this.addPendingAdverseOperation(operationId);
     }
     this.currentLegacyValidationOperationId = undefined;
     for (const [operationId, state] of this.qualityGateStates) {
       if (state !== 'started') continue;
       this.recordOperationEvent('quality_gate.failed', operationId, 'failed', summary);
       this.qualityGateStates.set(operationId, 'failed');
-      this.pendingAdverseOperationIds.add(operationId);
+      this.addPendingAdverseOperation(operationId);
     }
     if (this.currentRecovery) {
       this.recordOperationEvent('recovery.failed', this.currentRecovery.operationId, 'failed', summary);
