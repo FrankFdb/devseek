@@ -449,6 +449,9 @@ function controlledScenarioCatalog() {
       kind: 'journey-realistic-program-create-validate',
       targetRelativePath: 'tools/log_summary.py',
       targetContent: pythonLogTextContent,
+      seedFiles: {
+        'tools/.keep': '',
+      },
       prompt: [
         '我在真实项目里需要一个小 Python 命令行工具 tools/log_summary.py。',
         '它从 stdin 读取日志文本，统计包含 ERROR 和 WARN 的行数，输出格式先用 ERROR=<n> WARN=<n>。',
@@ -1727,7 +1730,10 @@ async function runScenario(activeScenario, caseIndex, totalCases) {
         caseReport.ok = true;
         break;
       }
-      if (evaluation.runLogs.terminal?.event === 'agent-run-failed') break;
+      if (evaluation.runLogs.terminal?.event === 'agent-run-failed'
+        || ['failed', 'blocked'].includes(String(evaluation.runLogs.terminal?.data?.status || ''))) {
+        break;
+      }
       await delay(500);
     }
     if (!caseReport.ok) {
