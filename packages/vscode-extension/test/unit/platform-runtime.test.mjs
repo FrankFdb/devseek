@@ -72,7 +72,7 @@ test('SurfaceAdapter creates chat command and reports capability gaps', () => {
   const command = surface.createChatRequestCommand({
     surface: 'jsonl',
     capabilities: surface.JSONL_SURFACE_CAPABILITIES,
-    platform: runtime.detectPlatformProfile({ platform: 'linux', env: {} }),
+    platform: runtime.detectPlatformProfile({ platform: 'linux', shellPath: '/bin/bash', env: {} }),
     prompt: 'phase10',
   });
   const gaps = surface.summarizeSurfaceCapabilityGaps(surface.JSONL_SURFACE_CAPABILITIES, {
@@ -86,4 +86,53 @@ test('SurfaceAdapter creates chat command and reports capability gaps', () => {
   assert.equal(command.surface, 'jsonl');
   assert.equal(command.request.prompt, 'phase10');
   assert.deepEqual(gaps, ['hunk-review', 'inline-selection', 'terminal-embedding', 'diagnostics']);
+});
+
+test('PlatformRuntimeAdapter profiles OS, shell, path, and storage applicability independently', () => {
+  const profile = runtime.detectPlatformProfile({
+    platform: 'linux',
+    shellPath: '/bin/bash',
+    env: { DEVCONTAINER: '1' },
+  });
+  const applicability = runtime.evaluatePlatformRuntimeProfile(profile);
+
+  assert.equal(applicability.supported, true);
+  assert.deepEqual(
+    applicability.adapterProfiles.map(adapter => adapter.kind),
+    ['os', 'shell', 'path', 'storage'],
+  );
+  assert.equal(applicability.adapterProfiles.every(adapter => adapter.status === 'supported'), true);
+});
+
+test('PlatformRuntimeAdapter fails closed for unknown OS or shell before command creation', () => {
+  const unknownOs = runtime.detectPlatformProfile({
+    platform: 'sunos',
+    shellPath: '/bin/bash',
+    env: {},
+  });
+  const unknownShell = runtime.detectPlatformProfile({
+    platform: 'linux',
+    shellPath: '/opt/custom-shell',
+    env: {},
+  });
+
+  assert.equal(unknownOs.os, 'unknown');
+  assert.equal(unknownShell.shell, 'unknown');
+  assert.throws(
+    () => runtime.createPlatformRuntimeAdapter(unknownOs),
+    /Unsupported platform runtime profile: os=unknown/,
+  );
+  assert.throws(
+    () => runtime.createPlatformRuntimeAdapter(unknownShell),
+    /Unsupported platform runtime profile: shell=unknown/,
+  );
+  assert.throws(
+    () => surface.createChatRequestCommand({
+      surface: 'vscode',
+      capabilities: surface.VSCODE_SURFACE_CAPABILITIES,
+      platform: unknownOs,
+      prompt: 'must not be accepted',
+    }),
+    /Unsupported platform runtime profile: os=unknown/,
+  );
 });

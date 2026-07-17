@@ -7,6 +7,7 @@ import type {
   PlatformProfile,
   SurfaceCapabilities,
 } from './agent-protocol';
+import { assertPlatformRuntimeProfileSupported } from './platform-runtime';
 
 export interface SurfaceAdapter {
   readonly kind: AgentSurfaceKind;
@@ -63,6 +64,7 @@ export function createChatRequestCommand(args: {
   request?: Partial<AgentChatRequest>;
   now?: () => number;
 }): ChatRequestCommand {
+  assertPlatformRuntimeProfileSupported(args.platform);
   return {
     type: 'chat.request',
     commandId: args.commandId ?? `cmd-${(args.now ?? Date.now)().toString(36)}`,

@@ -1774,9 +1774,12 @@ test('Architecture: Phase 10 application service owns Provider chat routing prot
   assertContains(runtime, 'interface PlatformRuntimeAdapter', 'Platform runtime adapter must exist');
   assertContains(runtime, 'class PosixShellAdapter', 'POSIX shell adapter must exist');
   assertContains(runtime, 'class PowerShellAdapter', 'PowerShell adapter must exist');
+  assertContains(runtime, 'evaluatePlatformRuntimeProfile', 'Platform runtime must expose adapter profile applicability');
+  assertContains(runtime, 'assertPlatformRuntimeProfileSupported(profile)', 'Runtime adapter creation must fail closed on unsupported platform profiles');
   assertContains(profiles, 'cli-jsonl', 'Build profile must cover CLI JSONL');
   assertContains(vscodeSurface, 'class VSCodeSurfaceAdapter', 'VS Code surface adapter must exist');
   assertContains(vscodeSurface, 'toChatCommand', 'VS Code surface must translate UI input to AgentCommand');
+  assertContains(surface, 'assertPlatformRuntimeProfileSupported(args.platform)', 'Surface command creation must fail closed on unsupported platform profiles');
   assertContains(sessionTurn, 'class ChatSessionTurnService', 'session turn lifecycle must be an app service');
   assertContains(extension, 'getChatSessionTurnService(webview).beginTurn', 'runChat must delegate session turn state to app service');
   assertContains(appIndex, "export * from './agent-application-service';", 'application service must be exported through app boundary');

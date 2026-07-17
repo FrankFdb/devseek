@@ -37,6 +37,31 @@ export interface PlatformRuntimeAdapter {
   readonly shell: ShellAdapter;
 }
 
+export type PlatformAdapterProfileKind = 'os' | 'shell' | 'path' | 'storage';
+export type PlatformAdapterProfileStatus = 'supported' | 'unsupported';
+
+export interface PlatformAdapterProfile {
+  readonly kind: PlatformAdapterProfileKind;
+  readonly profile: string;
+  readonly status: PlatformAdapterProfileStatus;
+  readonly reason?: string;
+}
+
+export interface PlatformRuntimeProfileEvaluation {
+  readonly supported: boolean;
+  readonly adapterProfiles: readonly PlatformAdapterProfile[];
+  readonly unsupported: readonly PlatformAdapterProfile[];
+}
+
+export class PlatformRuntimeProfileError extends Error {
+  readonly code = 'UNSUPPORTED_PLATFORM_PROFILE';
+
+  constructor(readonly evaluation: PlatformRuntimeProfileEvaluation) {
+    super(`Unsupported platform runtime profile: ${formatUnsupportedAdapters(evaluation.unsupported)}`);
+    this.name = 'PlatformRuntimeProfileError';
+  }
+}
+
 export function detectPlatformProfile(input: PlatformRuntimeInput = {}): PlatformProfile {
   const platform = normalizePlatform(input.platform);
   const shell = detectShell(input.shellPath ?? input.env?.SHELL ?? input.env?.ComSpec);
@@ -52,7 +77,36 @@ export function detectPlatformProfile(input: PlatformRuntimeInput = {}): Platfor
   };
 }
 
+export function evaluatePlatformRuntimeProfile(profile: PlatformProfile): PlatformRuntimeProfileEvaluation {
+  const adapterProfiles: PlatformAdapterProfile[] = [
+    profile.os === 'unknown'
+      ? unsupportedProfile('os', profile.os, 'unknown-os')
+      : supportedProfile('os', profile.os),
+    profile.shell === 'unknown'
+      ? unsupportedProfile('shell', profile.shell, 'unknown-shell')
+      : supportedProfile('shell', profile.shell),
+    evaluatePathProfile(profile),
+    profile.workspaceKind === 'unknown'
+      ? unsupportedProfile('storage', profile.workspaceKind, 'unknown-workspace-kind')
+      : supportedProfile('storage', profile.workspaceKind),
+  ];
+  const unsupported = adapterProfiles.filter(adapter => adapter.status === 'unsupported');
+  return {
+    supported: unsupported.length === 0,
+    adapterProfiles,
+    unsupported,
+  };
+}
+
+export function assertPlatformRuntimeProfileSupported(profile: PlatformProfile): void {
+  const evaluation = evaluatePlatformRuntimeProfile(profile);
+  if (!evaluation.supported) {
+    throw new PlatformRuntimeProfileError(evaluation);
+  }
+}
+
 export function createPlatformRuntimeAdapter(profile: PlatformProfile): PlatformRuntimeAdapter {
+  assertPlatformRuntimeProfileSupported(profile);
   return {
     profile,
     path: profile.pathStyle === 'windows' ? new WindowsPathAdapter() : new PosixPathAdapter(),
@@ -62,6 +116,40 @@ export function createPlatformRuntimeAdapter(profile: PlatformProfile): Platform
         ? new CmdShellAdapter()
         : new PosixShellAdapter(),
   };
+}
+
+function supportedProfile(
+  kind: PlatformAdapterProfileKind,
+  profile: string,
+): PlatformAdapterProfile {
+  return { kind, profile, status: 'supported' };
+}
+
+function unsupportedProfile(
+  kind: PlatformAdapterProfileKind,
+  profile: string,
+  reason: string,
+): PlatformAdapterProfile {
+  return { kind, profile, status: 'unsupported', reason };
+}
+
+function evaluatePathProfile(profile: PlatformProfile): PlatformAdapterProfile {
+  if (profile.os === 'win32' && profile.workspaceKind !== 'wsl' && profile.pathStyle !== 'windows') {
+    return unsupportedProfile('path', profile.pathStyle, 'win32-local-requires-windows-paths');
+  }
+  if (profile.os !== 'unknown' && profile.os !== 'win32' && profile.pathStyle !== 'posix') {
+    return unsupportedProfile('path', profile.pathStyle, `${profile.os}-requires-posix-paths`);
+  }
+  if (profile.os === 'win32' && profile.workspaceKind === 'wsl' && profile.pathStyle !== 'posix') {
+    return unsupportedProfile('path', profile.pathStyle, 'wsl-requires-posix-paths');
+  }
+  return supportedProfile('path', profile.pathStyle);
+}
+
+function formatUnsupportedAdapters(unsupported: readonly PlatformAdapterProfile[]): string {
+  return unsupported
+    .map(adapter => `${adapter.kind}=${adapter.profile}`)
+    .join(', ');
 }
 
 export class PosixPathAdapter implements PathAdapter {
