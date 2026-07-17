@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-surface-entry-inventory.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "inventory_id",
+    "inventory_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "sources",
+    "owner",
+    "package_manifest",
+    "entries",
+    "bypass_guards",
+    "counts",
+    "inventory_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.surface-entry-inventory/v1" },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "inventory_id": { "const": "DEVSEEK-R1-D1A-SURFACE-ENTRY-INVENTORY/v1" },
+    "inventory_version": { "type": "integer", "minimum": 1 },
+    "source_status": { "const": "verified" },
+    "integrity_scope": { "const": "local-surface-entry-inventory-conformance" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "sources": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/sourceRef" },
+      "minProperties": 1
+    },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "required_component_paths", "package_scripts"],
+      "properties": {
+        "task_id": { "const": "R1-D1A-SURFACE-ENTRY-INVENTORY" },
+        "required_component_paths": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "present"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "present": { "type": "boolean" }
+            }
+          }
+        },
+        "package_scripts": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["generate", "verify"],
+          "properties": {
+            "generate": { "type": "boolean" },
+            "verify": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "package_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extension_id", "command_count", "view_count", "view_container_count"],
+      "properties": {
+        "extension_id": { "type": "string", "minLength": 1 },
+        "command_count": { "type": "integer", "minimum": 0 },
+        "view_count": { "type": "integer", "minimum": 0 },
+        "view_container_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/entry" }
+    },
+    "bypass_guards": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unknown_entry_fail_closed",
+        "generic_webview_command_disabled",
+        "manifest_runtime_drift_present",
+        "webview_protocol_handler_drift_present",
+        "undeclared_legacy_owner_reachability_present",
+        "inventory_asserts_gate_pass"
+      ],
+      "properties": {
+        "unknown_entry_fail_closed": { "type": "boolean" },
+        "generic_webview_command_disabled": { "type": "boolean" },
+        "manifest_runtime_drift_present": { "type": "boolean" },
+        "webview_protocol_handler_drift_present": { "type": "boolean" },
+        "undeclared_legacy_owner_reachability_present": { "type": "boolean" },
+        "inventory_asserts_gate_pass": { "const": false }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_entries",
+        "vscode_manifest_commands",
+        "vscode_runtime_commands",
+        "vscode_manifest_commands_missing_runtime",
+        "vscode_public_runtime_without_manifest",
+        "webview_protocol_entries",
+        "webview_handler_entries",
+        "webview_protocol_missing_handler",
+        "webview_handler_missing_protocol",
+        "attachment_entries",
+        "cli_entrypoints",
+        "bridge_endpoints",
+        "unknown_entries",
+        "declared_adapter_pending_cutover",
+        "undeclared_legacy_owner_reachability"
+      ],
+      "properties": {
+        "total_entries": { "type": "integer", "minimum": 0 },
+        "vscode_manifest_commands": { "type": "integer", "minimum": 0 },
+        "vscode_runtime_commands": { "type": "integer", "minimum": 0 },
+        "vscode_manifest_commands_missing_runtime": { "type": "integer", "minimum": 0 },
+        "vscode_public_runtime_without_manifest": { "type": "integer", "minimum": 0 },
+        "webview_protocol_entries": { "type": "integer", "minimum": 0 },
+        "webview_handler_entries": { "type": "integer", "minimum": 0 },
+        "webview_protocol_missing_handler": { "type": "integer", "minimum": 0 },
+        "webview_handler_missing_protocol": { "type": "integer", "minimum": 0 },
+        "attachment_entries": { "type": "integer", "minimum": 0 },
+        "cli_entrypoints": { "type": "integer", "minimum": 0 },
+        "bridge_endpoints": { "type": "integer", "minimum": 0 },
+        "unknown_entries": { "type": "integer", "minimum": 0 },
+        "declared_adapter_pending_cutover": { "type": "integer", "minimum": 0 },
+        "undeclared_legacy_owner_reachability": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "inventory_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  },
+  "$defs": {
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "source_sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "source_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry_id",
+        "surface",
+        "kind",
+        "scope",
+        "source_ref",
+        "entrypoint",
+        "manifest_declared",
+        "runtime_registered",
+        "protocol_declared",
+        "handler_declared",
+        "owner",
+        "kernel_contract_projection",
+        "coverage_status"
+      ],
+      "properties": {
+        "entry_id": { "type": "string", "minLength": 1 },
+        "surface": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "minLength": 1 },
+        "source_ref": { "type": "string", "minLength": 1 },
+        "entrypoint": { "type": "string", "minLength": 1 },
+        "manifest_declared": { "type": ["boolean", "null"] },
+        "runtime_registered": { "type": ["boolean", "null"] },
+        "protocol_declared": { "type": ["boolean", "null"] },
+        "handler_declared": { "type": ["boolean", "null"] },
+        "owner": { "type": "string", "minLength": 1 },
+        "kernel_contract_projection": { "type": "string", "minLength": 1 },
+        "coverage_status": {
+          "enum": [
+            "covered",
+            "missing-source",
+            "missing-runtime",
+            "missing-manifest",
+            "missing-handler",
+            "missing-protocol",
+            "unknown-entry"
+          ]
+        }
+      }
+    }
+  }
+}
