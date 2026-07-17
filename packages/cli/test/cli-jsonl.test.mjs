@@ -104,6 +104,31 @@ test('CLI JSONL mode keeps stdout strict and settles evidence as jsonl surface',
   });
 });
 
+test('CLI JSONL resume replays the last prompt without stdout diagnostics', async () => {
+  await withTempCwdAsync(async (cwd) => {
+    const first = await runCli([bin, 'exec', '--jsonl', '--mock', 'jsonl resume original prompt'], {
+      cwd,
+      timeout: 5000,
+    });
+    assert.equal(first.status, 0, first.stderr);
+
+    const resumed = await runCli([bin, 'exec', '--jsonl', '--mock', '--resume'], {
+      cwd,
+      timeout: 5000,
+    });
+
+    assert.equal(resumed.status, 0, resumed.stderr);
+    assert.equal(resumed.stderr.trim(), '');
+    const events = resumed.stdout.trim().split(/\r?\n/).map((line, index) => {
+      assert.doesNotMatch(line, /^DevSeek\b/, `stdout line ${index + 1} must be JSONL, not diagnostics`);
+      return JSON.parse(line);
+    });
+    assert.equal(events.find(event => event.type === 'chat.started')?.prompt, 'jsonl resume original prompt');
+    assert.equal(events.find(event => event.type === 'chat.completed')?.response, 'mock: jsonl resume original prompt');
+    assert.equal(events.every(event => event.surface === 'jsonl' || !('surface' in event)), true);
+  });
+});
+
 test('CLI text mode prints provider response', () => {
   const stdout = withTempCwd((cwd) => {
     return execFileSync(process.execPath, [bin, 'exec', '--mock', 'phase10 cli text smoke'], {

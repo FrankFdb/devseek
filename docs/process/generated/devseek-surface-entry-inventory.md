@@ -1,7 +1,7 @@
 # DevSeek Surface Entry Inventory
 
 - inventory_id: `DEVSEEK-R1-D1A-SURFACE-ENTRY-INVENTORY/v1`
-- inventory_sha256: `8bd18a735ad08220879fdc35309bfbc623024cc7a2ec00afa590cf498caf110f`
+- inventory_sha256: `fbd1e7fdf270d2bc7530bb2a3d81235d6780c6d5027d86fca873448fffc094e9`
 - qualification_effect: `NONE`
 - claims_permitted: `false`
 - asserts_gate_pass: `false`
@@ -10,7 +10,7 @@
 
 | Metric | Count |
 | --- | ---: |
-| total_entries | 83 |
+| total_entries | 84 |
 | vscode_manifest_commands | 16 |
 | vscode_runtime_commands | 22 |
 | vscode_manifest_commands_missing_runtime | 0 |
@@ -20,7 +20,7 @@
 | webview_protocol_missing_handler | 0 |
 | webview_handler_missing_protocol | 0 |
 | attachment_entries | 5 |
-| cli_entrypoints | 7 |
+| cli_entrypoints | 8 |
 | bridge_endpoints | 10 |
 | unknown_entries | 0 |
 | declared_adapter_pending_cutover | 8 |
@@ -49,6 +49,7 @@
 | `cli/interactive` | cli | cli-entrypoint | cli-interactive | `packages/cli/src/index.ts` | covered | AgentCommand/Event |
 | `cli/jsonl-exec` | cli | cli-entrypoint | jsonl | `packages/cli/src/index.ts` | covered | AgentEvent JSONL |
 | `cli/mock-exec` | cli | cli-entrypoint | cli-test | `packages/cli/src/index.ts` | covered | local-mock-provider |
+| `cli/resume-exec` | cli | cli-entrypoint | cli-resume | `packages/cli/src/index.ts` | covered | AgentCommand/Event |
 | `cli/version` | cli | cli-entrypoint | cli-version | `packages/cli/src/index.ts` | covered | version-text |
 | `vscode-command/_deepseek.askChat` | vscode | command | internal | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | chat-relay-internal |
 | `vscode-command/_devseek.diffKeepHunk` | vscode | command | internal | `packages/vscode-extension/src/pending-edit-coordinator.ts` | covered | pending-edit-action |

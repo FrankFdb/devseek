@@ -413,10 +413,18 @@ function buildCliEntries(sources) {
   const cliSource = sources.sourceContents[SOURCE_PATHS.cliIndex] ?? '';
   const surfaceSource = sources.sourceContents[SOURCE_PATHS.cliSurfaceAdapter] ?? '';
   const packageJson = sources.cliPackageJson;
+  const execObserved = cliSource.includes("arg === 'exec'")
+    && cliSource.includes('const prompt = options.resume ? await readLastPrompt(options.cwd) : options.prompt')
+    && cliSource.includes('return runPrompt(options, prompt)');
+  const resumeObserved = cliSource.includes("arg === '--resume'")
+    && cliSource.includes('options.resume = true')
+    && cliSource.includes('readLastPrompt(options.cwd)')
+    && cliSource.includes('return runPrompt(options, prompt)');
   return [
     cliEntry('cli/interactive', 'interactive', cliSource.includes("command: 'interactive'") && cliSource.includes('runInteractive(options)'), 'cli-interactive', 'AgentCommand/Event'),
-    cliEntry('cli/exec', 'exec', cliSource.includes("arg === 'exec'") && cliSource.includes('return runPrompt(options, options.prompt)'), 'cli-exec', 'AgentCommand/Event'),
+    cliEntry('cli/exec', 'exec', execObserved, 'cli-exec', 'AgentCommand/Event'),
     cliEntry('cli/jsonl-exec', 'exec --jsonl', cliSource.includes("arg === '--jsonl'") && surfaceSource.includes("this.kind = options.jsonl ? 'jsonl' : 'cli'"), 'jsonl', 'AgentEvent JSONL'),
+    cliEntry('cli/resume-exec', 'exec --resume', resumeObserved, 'cli-resume', 'AgentCommand/Event'),
     cliEntry('cli/help', '--help', cliSource.includes("arg === '--help'") && cliSource.includes('printHelp()'), 'cli-help', 'help-text'),
     cliEntry('cli/version', '--version', cliSource.includes("arg === '--version'") && cliSource.includes('console.log(VERSION)'), 'cli-version', 'version-text'),
     cliEntry('cli/mock-exec', 'exec --mock', cliSource.includes("arg === '--mock'") && cliSource.includes('DEVSEEK_CLI_MOCK'), 'cli-test', 'local-mock-provider'),

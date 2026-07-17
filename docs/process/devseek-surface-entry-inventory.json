@@ -47,7 +47,7 @@
     },
     "cliIndex": {
       "path": "packages/cli/src/index.ts",
-      "source_sha256": "c1ff8761a074829c74d77e88b06e5dd40987ac0df7c21f978c6a9297e36056b5"
+      "source_sha256": "9dd33deee873de956c1d802d1f7d4ea41632d016f220a080f61ae96835554852"
     },
     "cliSurfaceAdapter": {
       "path": "packages/cli/src/cli-surface-adapter.ts",
@@ -67,11 +67,11 @@
     },
     "inventoryLibSource": {
       "path": "scripts/lib/devseek-surface-entry-inventory.mjs",
-      "source_sha256": "5e28e133644b3e76e08ba6dee5f1d648027fd1f149297e9cff14ea0da9eafb82"
+      "source_sha256": "b60eeccf61aa63397d1df82d300c7a834010e993a8d0802fb2ec923fd1df5491"
     },
     "oracleSource": {
       "path": "scripts/test/devseek-surface-entry-inventory.test.mjs",
-      "source_sha256": "21abf9f9e1c529095cda77bca5cb65a07a7a9c777bd79122f7a8b05feaa11bbe"
+      "source_sha256": "ac7f7c150f12c117086bc03f0382c117f9f598e1dcaed15ac33fdca6a7549d2c"
     },
     "rootPackageJson": {
       "path": "package.json",
@@ -401,6 +401,21 @@
       "handler_declared": true,
       "owner": "CliSurfaceAdapter",
       "kernel_contract_projection": "local-mock-provider",
+      "coverage_status": "covered"
+    },
+    {
+      "entry_id": "cli/resume-exec",
+      "surface": "cli",
+      "kind": "cli-entrypoint",
+      "scope": "cli-resume",
+      "source_ref": "packages/cli/src/index.ts",
+      "entrypoint": "exec --resume",
+      "manifest_declared": null,
+      "runtime_registered": true,
+      "protocol_declared": null,
+      "handler_declared": true,
+      "owner": "CliSurfaceAdapter",
+      "kernel_contract_projection": "AgentCommand/Event",
       "coverage_status": "covered"
     },
     {
@@ -1373,7 +1388,7 @@
     "inventory_asserts_gate_pass": false
   },
   "counts": {
-    "total_entries": 83,
+    "total_entries": 84,
     "vscode_manifest_commands": 16,
     "vscode_runtime_commands": 22,
     "vscode_manifest_commands_missing_runtime": 0,
@@ -1383,11 +1398,11 @@
     "webview_protocol_missing_handler": 0,
     "webview_handler_missing_protocol": 0,
     "attachment_entries": 5,
-    "cli_entrypoints": 7,
+    "cli_entrypoints": 8,
     "bridge_endpoints": 10,
     "unknown_entries": 0,
     "declared_adapter_pending_cutover": 8,
     "undeclared_legacy_owner_reachability": 0
   },
-  "inventory_sha256": "8bd18a735ad08220879fdc35309bfbc623024cc7a2ec00afa590cf498caf110f"
+  "inventory_sha256": "fbd1e7fdf270d2bc7530bb2a3d81235d6780c6d5027d86fca873448fffc094e9"
 }

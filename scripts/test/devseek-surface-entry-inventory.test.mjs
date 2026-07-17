@@ -29,7 +29,7 @@ test('surface entry inventory is source-bound and covers every current entry den
   assert.equal(actual.claims_permitted, false);
   assert.equal(actual.asserts_gate_pass, false);
   assert.deepEqual(actual.counts, {
-    total_entries: 83,
+    total_entries: 84,
     vscode_manifest_commands: 16,
     vscode_runtime_commands: 22,
     vscode_manifest_commands_missing_runtime: 0,
@@ -39,12 +39,17 @@ test('surface entry inventory is source-bound and covers every current entry den
     webview_protocol_missing_handler: 0,
     webview_handler_missing_protocol: 0,
     attachment_entries: 5,
-    cli_entrypoints: 7,
+    cli_entrypoints: 8,
     bridge_endpoints: 10,
     unknown_entries: 0,
     declared_adapter_pending_cutover: 8,
     undeclared_legacy_owner_reachability: 0,
   });
+  const resumeEntry = actual.entries.find(item => item.entry_id === 'cli/resume-exec');
+  assert.ok(resumeEntry, 'CLI resume must be inventoried as a declared surface entrypoint');
+  assert.equal(resumeEntry.coverage_status, 'covered');
+  assert.equal(resumeEntry.owner, 'CliSurfaceAdapter');
+  assert.equal(resumeEntry.kernel_contract_projection, 'AgentCommand/Event');
   for (const commandId of [
     'devseek.applyDiff',
     'devseek.ask',
@@ -123,10 +128,10 @@ test('surface inventory checker command validates current inventory and generate
   assert.equal(result.ok, true, JSON.stringify(result.errors, null, 2));
   assert.deepEqual(result.summary, {
     inventory_sha256: expected.inventory_sha256,
-    entries: 83,
+    entries: 84,
     vscode_commands: 22,
     webview_inbound: 41,
-    cli_entrypoints: 7,
+    cli_entrypoints: 8,
     bridge_endpoints: 10,
     attachment_entries: 5,
     unknown_entries: 0,

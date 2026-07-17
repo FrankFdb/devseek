@@ -23,6 +23,7 @@ interface CliOptions {
   cwd: string;
   jsonl: boolean;
   mock: boolean;
+  resume: boolean;
 }
 
 type CliRunSurfaceKind = 'cli' | 'jsonl';
@@ -41,11 +42,12 @@ async function main(argv: readonly string[]): Promise<number> {
   }
 
   if (options.command === 'exec') {
-    if (!options.prompt) {
+    const prompt = options.resume ? await readLastPrompt(options.cwd) : options.prompt;
+    if (!prompt) {
       console.error('Missing prompt. Use: devseek exec [--jsonl] <prompt>');
       return 2;
     }
-    return runPrompt(options, options.prompt);
+    return runPrompt(options, prompt);
   }
 
   return runInteractive(options);
@@ -57,6 +59,7 @@ function parseArgs(argv: readonly string[]): CliOptions {
     cwd: process.cwd(),
     jsonl: false,
     mock: process.env.DEVSEEK_CLI_MOCK === '1',
+    resume: false,
   };
   const promptParts: string[] = [];
 
@@ -69,6 +72,9 @@ function parseArgs(argv: readonly string[]): CliOptions {
       options.jsonl = true;
     } else if (arg === '--mock') {
       options.mock = true;
+    } else if (arg === '--resume') {
+      options.command = 'exec';
+      options.resume = true;
     } else if (arg === '--cwd') {
       options.cwd = resolve(argv[++index] ?? process.cwd());
     } else if (arg === '--help' || arg === '-h') {
@@ -1642,7 +1648,7 @@ async function runInteractive(options: CliOptions): Promise<number> {
         continue;
       }
       if (prompt === ':resume') {
-        const last = (await readHistory(options.cwd)).trim().split(/\r?\n/).filter(Boolean).at(-1);
+        const last = await readLastPrompt(options.cwd);
         if (!last) {
           console.log('No prompt history yet.');
           continue;
@@ -1700,6 +1706,10 @@ async function readHistory(cwd: string): Promise<string> {
   }
 }
 
+async function readLastPrompt(cwd: string): Promise<string | undefined> {
+  return (await readHistory(cwd)).trim().split(/\r?\n/).filter(Boolean).at(-1);
+}
+
 function printHelp(): void {
   console.log(`DevSeek CLI
 
@@ -1711,6 +1721,7 @@ Commands:
   exec        Run one prompt and exit.
   --jsonl     Emit one AgentEvent JSON object per line.
   --mock      Use deterministic local provider for tests and smoke checks.
+  --resume    Resume the last CLI prompt from .devseek/cli-history.jsonl.
 `);
 }
 
