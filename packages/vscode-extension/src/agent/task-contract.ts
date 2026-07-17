@@ -221,11 +221,21 @@ function classifyPathOccurrenceMutation(
     return { requested: false, prohibited: true, mentioned: true, actionIndex: occurrence.index };
   }
   if (localActions.length === 0) {
+    const readOnly = explicitRole?.kind === 'read' || localReads.length > 0;
+    const standaloneTarget = classifyStandaloneRequirementPathMutation(
+      prompt,
+      occurrence,
+      start,
+      end,
+      actions,
+      readOnly,
+    );
+    if (standaloneTarget) return { ...standaloneTarget, mentioned: true };
     return {
       requested: false,
       prohibited: false,
       mentioned: true,
-      readOnly: explicitRole?.kind === 'read' || localReads.length > 0,
+      readOnly,
     };
   }
   const distance = (action: MutationActionSpan): number => (
@@ -254,6 +264,46 @@ function classifyPathOccurrenceMutation(
   return nearest.prohibited
     ? { requested: false, prohibited: true, mentioned: true, actionIndex: nearest.index }
     : { requested: true, prohibited: false, mentioned: true, actionIndex: nearest.index };
+}
+
+function classifyStandaloneRequirementPathMutation(
+  prompt: string,
+  occurrence: PathOccurrence,
+  clauseStart: number,
+  clauseEnd: number,
+  actions: MutationActionSpan[],
+  readOnly: boolean,
+): TargetMutationDecision | undefined {
+  if (readOnly || !isLikelySourceWriteTarget(occurrence.path, prompt) || !hasStandaloneCodeGenerationIntent(prompt)) {
+    return undefined;
+  }
+  const before = prompt.slice(clauseStart, occurrence.index);
+  const after = prompt.slice(occurrence.index + occurrence.path.length, clauseEnd);
+  const requirementTarget = /(?:需要|要|想要|希望|want|need|would\s+like)[^，,。；;\n]{0,80}(?:工具|程序|脚本|命令行|CLI|tool|program|script|command[- ]?line)/i.test(before)
+    || /(?:工具|程序|脚本|命令行|CLI|tool|program|script|command[- ]?line)[^，,。；;\n]{0,32}(?:文件|路径|file|path)?\s*$/i.test(before)
+    || /^\s*(?:作为|as)\s+(?:一个|an?\s+)?(?:工具|程序|脚本|命令行|CLI|tool|program|script|command[- ]?line)/i.test(after);
+  if (!requirementTarget) return undefined;
+  const laterAction = actions.find(action => action.index > occurrence.index && !action.prohibited);
+  const actionIndex = laterAction?.index ?? findStandaloneFollowupActionIndex(
+    prompt,
+    occurrence.index + occurrence.path.length,
+  );
+  if (actionIndex === undefined) return undefined;
+  return { requested: true, prohibited: false, actionIndex };
+}
+
+function findStandaloneFollowupActionIndex(prompt: string, fromIndex: number): number | undefined {
+  const searchablePrompt = maskPathOccurrences(prompt, extractPathOccurrences(prompt));
+  const followupRe = /(?:请|please)?\s*(?:实现|创建|新建|编写|写入|生成|新增|添加|制作|构建|落地|\b(?:create|write|generate|implement|add|build|produce)\b)/gi;
+  for (const match of searchablePrompt.slice(fromIndex).matchAll(followupRe)) {
+    const index = fromIndex + (match.index ?? 0);
+    const { start, end } = findClauseBounds(searchablePrompt, index);
+    if (hasNegatedWritePrefix(searchablePrompt.slice(start, index))) continue;
+    const clause = searchablePrompt.slice(start, end);
+    if (hasResponseSink(clause)) continue;
+    return index;
+  }
+  return undefined;
 }
 
 function collectReadActionSpans(searchablePrompt: string): MutationActionSpan[] {

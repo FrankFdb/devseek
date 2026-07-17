@@ -722,4 +722,40 @@ test('AgentFileWritePolicy: repair prompts allow the named source file and block
   assert.equal(extra.reason, 'artifact-other-file-write-prohibited');
 });
 
+test('AgentFileWritePolicy: explicit nested standalone source target survives no-other-file constraint', () => {
+  const requestPrompt = [
+    '我在真实项目里需要一个小 Python 命令行工具 tools/log_summary.py。',
+    '它从 stdin 读取日志文本，统计包含 ERROR 和 WARN 的行数，输出格式先用 ERROR=<n> WARN=<n>。',
+    '请实现最小版本并用 python 命令自测；不要引入依赖，不要改其他文件。',
+  ].join('');
+  const allowed = decideAgentFileWrite({
+    absPath: '/workspace/project/tools/log_summary.py',
+    workspaceRoot: '/workspace/project',
+    autopilotMode: true,
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      taskAction: 'create',
+      displayName: 'tools/log_summary.py',
+      requestPrompt,
+    },
+  });
+  assert.equal(allowed.action, 'allow');
+
+  const extra = decideAgentFileWrite({
+    absPath: '/workspace/project/tools/other.py',
+    workspaceRoot: '/workspace/project',
+    autopilotMode: true,
+    context: {
+      purpose: 'tool-write',
+      userRequested: false,
+      taskAction: 'create',
+      displayName: 'tools/other.py',
+      requestPrompt,
+    },
+  });
+  assert.equal(extra.action, 'deny');
+  assert.equal(extra.reason, 'artifact-other-file-write-prohibited');
+});
+
 console.log('\nAgent file write policy tests passed.\n');

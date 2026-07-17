@@ -678,6 +678,24 @@ test('file-write authorization recognizes broad, target, exclusive, and latest p
   assert.equal(authorize('Do not modify existing source. Correction: update src/main.ts.', 'src/main.ts').allowed, true);
 });
 
+test('explicit nested standalone source path remains allowed under no-other-file constraint', () => {
+  const root = '/workspace/project';
+  const prompt = [
+    '我在真实项目里需要一个小 Python 命令行工具 tools/log_summary.py。',
+    '它从 stdin 读取日志文本，统计包含 ERROR 和 WARN 的行数，输出格式先用 ERROR=<n> WARN=<n>。',
+    '请实现最小版本并用 python 命令自测；不要引入依赖，不要改其他文件。',
+  ].join('');
+  const authorize = target => authorizeAgentFileWriteContract({
+    promptText: prompt,
+    targetPath: path.join(root, target),
+    workspaceRoot: root,
+  });
+
+  assert.equal(authorize('tools/log_summary.py').allowed, true);
+  assert.equal(authorize('tools/other.py').reason, 'artifact-other-file-write-prohibited');
+  assert.equal(authorize('src/log_summary.py').reason, 'artifact-other-file-write-prohibited');
+});
+
 test('implicit Markdown authority never overrides target scope, read-only intent, or prohibitions', () => {
   const authorize = (promptText, target) => authorizeAgentFileWriteContract({
     promptText,
