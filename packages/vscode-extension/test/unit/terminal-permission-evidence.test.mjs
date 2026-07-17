@@ -437,6 +437,76 @@ test('Terminal evidence: a failed command is resolved only after an observable r
   assert.equal(owner.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed, true);
 });
 
+test('Terminal evidence: captured validation command can resolve a prior failed command', async t => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-evidence-'));
+  t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));
+  const runId = 'terminal-recovery-during-validation';
+  const { owner, participantToken } = openRun(workspaceRoot, runId);
+  const coordinator = new TerminalPermissionCoordinator();
+  const commonInput = {
+    webview: { postMessage() { return true; } },
+    workdir: workspaceRoot,
+    workspaceRoot,
+    mode: 'run',
+    toolPolicy: allowTerminalPolicy,
+    traceRunId: runId,
+    traceEvidenceParticipantToken: participantToken,
+    userConfirmed: true,
+  };
+  const participant = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId,
+    surface: 'terminal-evidence-test-validation',
+    authority: { role: 'participant', token: participantToken },
+  });
+  const record = (type, operationId, status) => participant.record({
+    type,
+    idempotencyKey: productRunEvidenceIdempotencyKey(`terminal-validation-recovery-${type}`, { runId, operationId }),
+    payload: {
+      operation_id: operationId,
+      status,
+      trust: 'product-runtime-observation',
+    },
+  });
+
+  const failed = await coordinator.runCommandWithPermissionDetailed({
+    ...commonInput,
+    command: 'false',
+  });
+  assert.equal(failed.outcome, 'failed');
+  const validationOperationId = 'auto-validation-python';
+  record('verification.started', validationOperationId, 'started');
+  const validation = await coordinator.runCommandWithPermissionDetailed({
+    ...commonInput,
+    command: 'echo auto-validation-ok',
+    policyPreauthorized: true,
+    executionProfile: 'validation',
+  });
+  assert.equal(validation.outcome, 'committed');
+  record('verification.completed', validationOperationId, 'completed');
+  record('quality_gate.started', validationOperationId, 'started');
+  record('quality_gate.passed', validationOperationId, 'passed');
+
+  assert.equal(coordinator.resolveCommandFailuresAfterQualityGate({
+    workspaceRoot,
+    runId,
+    traceEvidenceParticipantToken: participantToken,
+  }), true);
+
+  const events = owner.readEvents();
+  const failedIndex = events.findIndex(event => event.type === 'side_effect.failed');
+  const validationCommandIndex = events.findIndex(event => (
+    event.type === 'side_effect.committed'
+    && event.payload.recovery_operation_id
+  ));
+  const verificationStartIndex = events.findIndex(event => event.type === 'verification.started');
+  const recoveryCompletedIndex = events.findIndex(event => event.type === 'recovery.completed');
+  assert.ok(failedIndex >= 0 && verificationStartIndex >= 0 && validationCommandIndex >= 0 && recoveryCompletedIndex >= 0);
+  assert.ok(verificationStartIndex < validationCommandIndex);
+  assert.ok(events.findIndex(event => event.type === 'quality_gate.passed') < recoveryCompletedIndex);
+  assert.equal(owner.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed, true);
+});
+
 test('Terminal evidence: tagging only a stale command commit cannot prove recovery', t => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-evidence-'));
   t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));

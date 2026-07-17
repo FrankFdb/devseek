@@ -820,7 +820,13 @@ function hasStrictRecoveryProof(
     && evidencePayloadObject(event.payload)?.operation_id === verificationOperationId
   ));
   if (!verificationStarted) return false;
-  const hasOrderedMutation = events.some(commit => {
+  const verification = events.find(event => (
+    event.type === 'verification.completed'
+    && event.sequence > verificationStarted.sequence
+    && evidencePayloadObject(event.payload)?.operation_id === verificationOperationId
+  ));
+  if (!verification) return false;
+  const hasOrderedRecoveryCommand = events.some(commit => {
     const commitPayload = evidencePayloadObject(commit.payload);
     if (
       commit.type !== 'side_effect.committed'
@@ -842,15 +848,15 @@ function hasStrictRecoveryProof(
       && requested.sequence < authorized.sequence
       && authorized.sequence < started.sequence
       && started.sequence < commit.sequence
-      && commit.sequence < verificationStarted.sequence;
+      && (
+        commit.sequence < verificationStarted.sequence
+        || (
+          verificationStarted.sequence < detected.sequence
+          && commit.sequence < verification.sequence
+        )
+      );
   });
-  if (!hasOrderedMutation) return false;
-  const verification = events.find(event => (
-    event.type === 'verification.completed'
-    && event.sequence > verificationStarted.sequence
-    && evidencePayloadObject(event.payload)?.operation_id === verificationOperationId
-  ));
-  if (!verification) return false;
+  if (!hasOrderedRecoveryCommand) return false;
   const gateStarted = events.find(event => (
     event.type === 'quality_gate.started'
     && event.sequence > verification.sequence

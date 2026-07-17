@@ -41,6 +41,17 @@ test('agent working state: validate started does not create standalone card', ()
   );
 });
 
+test('agent working state: validation and terminal phases do not duplicate generic progress', () => {
+  assert.match(
+    webview,
+    /function shouldUsePresentedAgentProgress\(msg\)[\s\S]*?phase === 'validate'[\s\S]*?phase === 'quality'[\s\S]*?phase === 'done'[\s\S]*?phase === 'error'[\s\S]*?return false;/,
+  );
+  assert.match(
+    webview,
+    /if \(shouldUsePresentedAgentProgress\(msg\)\) applyPresentedAgentProgress\(msg\);/,
+  );
+});
+
 test('agent working state: end and error finalize active working containers', () => {
   assert.match(
     webview,

@@ -617,6 +617,53 @@ test('bounded recovery can explicitly resolve an adverse terminal and permit com
   );
 });
 
+test('bounded recovery can be proven by a captured validation command', t => {
+  const workspaceRoot = tempWorkspace(t);
+  const authority = authoritySet();
+  const session = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId: 'bounded-validation-recovery-success',
+    surface: 'vscode',
+    authority: authority.ownerOpen,
+    openIfMissing: true,
+  });
+  const recoveryOperationId = 'recovery:1';
+  const validationCommandOperationId = 'validation-terminal:1';
+  const verificationOperationId = 'auto-validation:1';
+  const correlatedSideEffect = status => observed(status, {
+    operation_id: validationCommandOperationId,
+    recovery_operation_id: recoveryOperationId,
+  });
+  for (const [index, [type, payload]] of [
+    ['side_effect.requested', observed('requested', { operation_id: 'terminal:python' })],
+    ['side_effect.failed', observed('failed', { operation_id: 'terminal:python' })],
+    ['verification.started', observed('started', { operation_id: verificationOperationId })],
+    ['recovery.detected', observed('detected', { operation_id: recoveryOperationId })],
+    ['side_effect.requested', correlatedSideEffect('requested')],
+    ['side_effect.authorized', correlatedSideEffect('authorized')],
+    ['side_effect.started', correlatedSideEffect('started')],
+    ['side_effect.committed', correlatedSideEffect('committed')],
+    ['verification.completed', observed('completed', { operation_id: verificationOperationId })],
+    ['quality_gate.started', observed('started', { operation_id: verificationOperationId })],
+    ['quality_gate.passed', observed('passed', { operation_id: verificationOperationId })],
+  ].entries()) {
+    session.record({ type, idempotencyKey: `validation-recovery:proof:${index}`, payload });
+  }
+  session.record({
+    type: 'recovery.completed',
+    idempotencyKey: 'validation-recovery:completed',
+    payload: observed('completed', {
+      operation_id: recoveryOperationId,
+      resolves_operation_ids: ['terminal:python'],
+      verification_operation_id: verificationOperationId,
+    }),
+  });
+  assert.equal(
+    session.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed,
+    true,
+  );
+});
+
 test('recovery completion requires one fully correlated post-detection mutation and ordered verification gate', t => {
   const workspaceRoot = tempWorkspace(t);
   const correlated = (status, operationId = 'repair-write:1', recoveryOperationId = 'recovery:1') => observed(status, {

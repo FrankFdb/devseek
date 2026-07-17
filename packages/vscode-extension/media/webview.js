@@ -2576,11 +2576,20 @@ function scrollAgentProgressToBottom() {
   scrollToBottom(true);
 }
 
+function shouldUsePresentedAgentProgress(msg) {
+  var phase = String((msg && msg.phase) || '');
+  // Validation, QualityGate and terminal phases already have dedicated result
+  // surfaces. Routing them through the generic progress digest creates repeated
+  // cards such as "自动验证通过" followed by the same validation stage again.
+  if (phase === 'validate' || phase === 'quality' || phase === 'done' || phase === 'error') return false;
+  return true;
+}
+
 function addAgentStatus(msg) {
   // P5: isAgentMode is now set synchronously in the startResponse handler.
   // Keep this as a fallback for backward compatibility.
   if (msg.phase === 'plan' && !isAgentMode) isAgentMode = true;
-  applyPresentedAgentProgress(msg);
+  if (shouldUsePresentedAgentProgress(msg)) applyPresentedAgentProgress(msg);
 
   // Agent mode uses the interactive aut-container as the single visible progress
   // surface. Do not also write to the global working-area, or the feedback area

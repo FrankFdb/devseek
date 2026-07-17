@@ -287,6 +287,9 @@ function reduceRecovery(
   if (qualityGate?.terminal !== 'quality_gate.passed' || qualityGate.terminalSequence === undefined) {
     semanticFailure(`Recovery ${operationId} requires a matching passed quality gate`);
   }
+  if (verification.startedSequence === undefined) {
+    semanticFailure(`Recovery ${operationId} requires a matching started verification`);
+  }
   const orderedRecoveryMutation = [...sideEffects.values()].find(sideEffect => (
     sideEffect.terminal === 'side_effect.committed'
     && sideEffect.requestedRecoveryOperationId === operationId
@@ -297,16 +300,20 @@ function reduceRecovery(
     && sideEffect.authorizedSequence !== undefined
     && sideEffect.startedSequence !== undefined
     && sideEffect.terminalSequence !== undefined
-    && verification.startedSequence !== undefined
     && detectionSequence < sideEffect.requestedSequence
     && sideEffect.requestedSequence < sideEffect.authorizedSequence
     && sideEffect.authorizedSequence < sideEffect.startedSequence
     && sideEffect.startedSequence < sideEffect.terminalSequence
-    && sideEffect.terminalSequence < verification.startedSequence
+    && (
+      sideEffect.terminalSequence < verification.startedSequence!
+      || (
+        verification.startedSequence! < detectionSequence
+        && sideEffect.terminalSequence < verification.terminalSequence!
+      )
+    )
   ));
   if (
     !orderedRecoveryMutation
-    || verification.startedSequence === undefined
     || qualityGate.startedSequence === undefined
     || verification.startedSequence >= verification.terminalSequence
     || verification.terminalSequence >= qualityGate.startedSequence
