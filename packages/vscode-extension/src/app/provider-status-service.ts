@@ -27,12 +27,22 @@ export interface ResolveProviderStatusResponseInput {
 export function isProviderStatusRequest(prompt: string): boolean {
   const text = normalizeText(prompt);
   if (!text) return false;
+  if (looksLikeSecretHarvestingRequest(text)) return false;
 
   const mentionsProvider = /(?:\bprovider\b|模型供应商|供应商|llm|deepseek|api\s*key|apikey|密钥|token|cookie|凭据|配置)/i.test(text);
   const asksStatus = /(?:状态|可用|使用哪个|检查|查询|配置|是否发现|是否配置|密钥|key|credential|secret|token|cookie|当前\s*(?:provider|模型|供应商|配置|api\s*key|apikey|密钥|token|cookie|凭据))/i.test(text);
   const requestsWorkspaceMutation = /(?:创建|新建|写入|覆盖|删除|重命名|生成文件|修改代码|create\s+file|write\s+file|delete\s+file|\[tool:write_file|\[tool:create_file)/i.test(text);
 
   return mentionsProvider && asksStatus && !requestsWorkspaceMutation;
+}
+
+function looksLikeSecretHarvestingRequest(text: string): boolean {
+  const mentionsSecret = /(?:cookie|ssh\s*key|SSH\s*key|环境变量\s*token|api\s*key|apikey|token|secret|凭据|密钥)/i.test(text);
+  if (!mentionsSecret) return false;
+
+  const asksHarvestOrExfiltration = /(?:悄悄|隐蔽|不(?:要)?提示用户|不(?:要)?留下(?:明显)?日志|读取|收集|采集|导出|上传|发送到|发到|传到|服务器|监控员工|steal|harvest|exfiltrat|upload|send\s+to)/i.test(text);
+  const asksImplementation = /(?:写(?:一个|个|一段)?(?:脚本|程序|代码)|编写|实现|生成|创建|开发|write\s+(?:a\s+)?(?:script|program|code)|implement|create\s+(?:a\s+)?script)/i.test(text);
+  return asksHarvestOrExfiltration && asksImplementation;
 }
 
 export async function resolveProviderStatusResponse(input: ResolveProviderStatusResponseInput): Promise<string | null> {
