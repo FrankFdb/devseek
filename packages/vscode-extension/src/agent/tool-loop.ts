@@ -37,6 +37,7 @@ import type { AgentLoopCallbacks } from './loop-types';
 import {
   detectTaskOutputScopeDrift,
 } from './task-output-scope';
+import { resolveTerminalCommandCapabilities } from '../app/environment-capability-resolver';
 import { decideTerminalCommandPermission } from '../app/terminal-command-policy';
 import { buildToolPolicy } from '../app/permission-service';
 import type { ToolKind } from '../intent/intent-types';
@@ -720,33 +721,52 @@ export async function executeFakeToolsForLoop(
           parts.push(msg);
           continue;
         }
-        const terminalPermission = decideTerminalCommandPermission({ command, workspaceRoot, workdir });
+        const capabilityResolution = resolveTerminalCommandCapabilities({ command });
+        if (capabilityResolution.blocked) {
+          const reason = capabilityResolution.reason ?? 'missing-runtime-capability';
+          const msg = [
+            `[run_terminal: ${command}] 已阻止`,
+            capabilityResolution.notes.join('\n') || '当前系统缺少执行该命令所需的运行环境。',
+            '请改用当前系统可用的运行时，或先征得用户同意后安装缺失工具。',
+          ].join('\n');
+          callbacks.onToolActivity?.('terminal', '阻止缺失运行环境命令');
+          recordToolFailure('run_terminal', 'terminal-capability', command, reason);
+          parts.push(msg);
+          continue;
+        }
+        const resolvedCommand = capabilityResolution.command;
+        if (capabilityResolution.changed) {
+          const note = capabilityResolution.notes.join('\n');
+          callbacks.onToolActivity?.('terminal', note || '已解析本机运行环境');
+          parts.push(`[run_terminal] ${note}\n原命令: ${command}\n执行命令: ${resolvedCommand}`);
+        }
+        const terminalPermission = decideTerminalCommandPermission({ command: resolvedCommand, workspaceRoot, workdir });
         if (terminalPermission.risk !== 'read-only' && terminalPermission.risk !== 'validation') {
           const reason = `终端命令未通过只读/验证分类：${terminalPermission.reason}`;
           callbacks.onToolActivity?.('terminal', `阻止未分类终端命令: ${terminalPermission.risk}`);
-          recordToolFailure('run_terminal', 'terminal-guard', command, reason);
-          parts.push(`[run_terminal: ${command}] 已阻止\n${reason}\n请改用结构化文件工具；run_terminal 仅允许只读查询和已分类验证命令。`);
+          recordToolFailure('run_terminal', 'terminal-guard', resolvedCommand, reason);
+          parts.push(`[run_terminal: ${resolvedCommand}] 已阻止\n${reason}\n请改用结构化文件工具；run_terminal 仅允许只读查询和已分类验证命令。`);
           continue;
         }
-        callbacks.onToolActivity?.('terminal', command);
+        callbacks.onToolActivity?.('terminal', resolvedCommand);
         try {
-          const output = await callbacks.onTerminalCommand(command, workdir);
+          const output = await callbacks.onTerminalCommand(resolvedCommand, workdir);
           const evidenceWorkdir = workdir ?? defaultWorkdir ?? workspaceRoot;
-          const evidenceResult = analyzeTerminalEvidence(command, output, evidenceWorkdir);
+          const evidenceResult = analyzeTerminalEvidence(resolvedCommand, output, evidenceWorkdir);
           evidenceRefs.push(readEvidenceRecorder.recordTerminalOutput(
-            command,
+            resolvedCommand,
             output,
             evidenceWorkdir,
             evidenceResult.evidence.exitCode,
           ));
           if (evidenceResult.ran) {
-            terminalCommands.push(command);
+            terminalCommands.push(resolvedCommand);
           }
-          if (evidenceResult.evidence.kind !== 'other' || isReadOnlyTerminalEvidenceCommand(command)) {
+          if (evidenceResult.evidence.kind !== 'other' || isReadOnlyTerminalEvidenceCommand(resolvedCommand)) {
             terminalEvidence.push(evidenceResult.evidence);
           }
           // Silent: output goes to AI context only (shown in Working box via terminalRanNotice)
-          parts.push(`[run_terminal: ${command}]\n${output}`);
+          parts.push(`[run_terminal: ${resolvedCommand}]\n${output}`);
           if (evidenceResult.evidence.kind !== 'other' && !evidenceResult.evidence.ok) {
             parts.push(
               `[terminal_evidence]\n` +
@@ -757,7 +777,7 @@ export async function executeFakeToolsForLoop(
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
-          parts.push(`[run_terminal: ${command}] 错误: ${msg}`);
+          parts.push(`[run_terminal: ${resolvedCommand}] 错误: ${msg}`);
         }
       }
     } else if (tool.name === 'read_file' && callbacks.onReadFile) {

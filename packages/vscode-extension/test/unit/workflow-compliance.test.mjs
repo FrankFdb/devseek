@@ -1158,13 +1158,13 @@ test('Agentic evidence: read-only terminal checks are retained as completion evi
   const agentLoop = src('src/agent/tool-loop.ts');
   assertContains(
     agentLoop,
-    'isReadOnlyTerminalEvidenceCommand(command)',
-    'tool loop must keep read-only terminal evidence instead of dropping kind=other commands',
+    'isReadOnlyTerminalEvidenceCommand(resolvedCommand)',
+    'tool loop must keep read-only terminal evidence for the capability-resolved command instead of dropping kind=other commands',
   );
   assert.match(
     agentLoop,
-    /evidenceResult\.evidence\.kind !== 'other' \|\| isReadOnlyTerminalEvidenceCommand\(command\)/,
-    'run_terminal evidence collection must retain read-only other-kind commands',
+    /evidenceResult\.evidence\.kind !== 'other' \|\| isReadOnlyTerminalEvidenceCommand\(resolvedCommand\)/,
+    'run_terminal evidence collection must retain read-only other-kind commands after capability resolution',
   );
 });
 

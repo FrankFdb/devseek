@@ -420,6 +420,44 @@ test('ToolLoop terminal guard allows workspace-local C++ compile-run validation'
   }
 });
 
+test('ToolLoop resolves unavailable python runtime to python3 before executing validation', async () => {
+  const projectRoot = mkdtempSync(path.join(tmpdir(), 'devseek-tool-loop-python-runtime-'));
+  const fakeBin = path.join(projectRoot, 'bin');
+  const originalPath = process.env.PATH;
+  try {
+    mkdirSync(path.join(projectRoot, 'tools'), { recursive: true });
+    writeFileSync(path.join(projectRoot, 'tools/log_summary.py'), 'print("ok")\n');
+    mkdirSync(fakeBin, { recursive: true });
+    writeFileSync(path.join(fakeBin, 'python3'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    process.env.PATH = fakeBin;
+
+    let executedCommand = '';
+    const command = "printf 'INFO start\\nWARN slow\\nERROR fail\\nWARN retry\\n' | python tools/log_summary.py | grep -q '{\"ERROR\": 1, \"WARN\": 2}'";
+    const result = await executeFakeToolsForLoop(
+      [{ name: 'run_terminal', input: { command } }],
+      {
+        onTerminalCommand: async (cmd) => {
+          executedCommand = cmd;
+          return '[终端命令] ' + cmd + '\n[退出码] 0\n[stdout]\n';
+        },
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      projectRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: projectRoot },
+    );
+
+    assert.match(executedCommand, /\|\s*python3 tools\/log_summary\.py\s*\|/);
+    assert.doesNotMatch(executedCommand, /\|\s*python tools\/log_summary\.py\s*\|/);
+    assert.match(result.feedbackForAI, /已将验证命令中的 python 解析为 python3/);
+    assert.deepEqual(result.terminalCommands, [executedCommand]);
+    assert.equal(result.toolFailures?.length ?? 0, 0);
+  } finally {
+    process.env.PATH = originalPath;
+    rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
 test('ToolLoop records terminal raw output as immutable EvidenceRef before settlement', async () => {
   const projectRoot = mkdtempSync(path.join(tmpdir(), 'devseek-tool-loop-terminal-evidence-'));
   try {
