@@ -53,6 +53,18 @@ export async function bridgeChat(cwd: string, request: BridgeAgentChatRequest): 
   return payload.content ?? '';
 }
 
+export async function bridgeCancel(cwd: string): Promise<void> {
+  const port = Number(process.env.DEVSEEK_BRIDGE_PORT ?? DEFAULT_BRIDGE_PORT);
+  const token = await readOrCreateBridgeToken(cwd);
+  await fetch(`http://127.0.0.1:${port}/cancel`, {
+    method: 'POST',
+    headers: {
+      'X-DevSeek-Token': token,
+    },
+    signal: AbortSignal.timeout(3000),
+  });
+}
+
 async function readBridgeStream(response: Response, request: BridgeAgentChatRequest): Promise<string> {
   if (!response.body) {
     throw new Error('Bridge stream response did not include a body');

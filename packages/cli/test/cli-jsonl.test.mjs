@@ -736,6 +736,58 @@ test('CLI verifies the Bridge failed boundary without degrading the original pro
   }, () => ({ statusCode: 503, error: 'test bridge failed' }));
 });
 
+test('CLI JSONL SIGTERM cancels transport and settles evidence as cancelled', async () => {
+  await withTestBridge(async ({ port, seenBodies }) => {
+    await withTempCwdAsync(async (cwd) => {
+      const child = spawn(process.execPath, [bin, 'exec', '--jsonl', 'cancel bridge request smoke'], {
+        cwd,
+        env: {
+          ...process.env,
+          DEVSEEK_BRIDGE_PORT: String(port),
+          DEVSEEK_CLI_PROGRESS_DELAY_MS: '1',
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.setEncoding('utf8');
+      child.stderr.setEncoding('utf8');
+      child.stdout.on('data', chunk => { stdout += chunk; });
+      child.stderr.on('data', chunk => { stderr += chunk; });
+      const close = new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          child.kill('SIGKILL');
+          reject(new Error(`cancel test timed out. stdout=${stdout} stderr=${stderr}`));
+        }, 5000);
+        child.on('error', error => {
+          clearTimeout(timer);
+          reject(error);
+        });
+        child.on('close', (status, signal) => {
+          clearTimeout(timer);
+          resolve({ status, signal });
+        });
+      });
+
+      await waitFor(() => seenBodies.length === 1);
+      child.kill('SIGTERM');
+      const result = await close;
+
+      assert.deepEqual(result, { status: 143, signal: null });
+      assert.match(stderr, /DevSeek CLI error:/);
+      const stdoutEvents = stdout.trim().split(/\r?\n/).map(line => JSON.parse(line));
+      const errorEvent = stdoutEvents.find(event => event.type === 'error');
+      assert.equal(errorEvent?.surface, 'jsonl');
+      assert.equal(errorEvent?.severity, 'error');
+      const records = readProductEvidenceRecords(cwd);
+      const evidenceEvents = records.filter(record => record.record_kind === 'event').map(record => record.event);
+      assert.equal(evidenceEvents.at(-1)?.type, 'run.settled');
+      assert.equal(evidenceEvents.at(-1)?.payload.status, 'cancelled');
+      assert.equal(records.at(-1).record_kind, 'seal');
+    });
+  }, () => ({ content: 'late bridge response', delayMs: 4000 }));
+});
+
 test('CLI bridge failures report diagnostics and degrade when the server boundary is absent', async () => {
   const port = await getUnusedPort();
   await withTempCwdAsync(async (cwd) => {
@@ -942,6 +994,24 @@ function runCli(args, options) {
   });
 }
 
+function waitFor(predicate, timeout = 2000) {
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + timeout;
+    const tick = () => {
+      if (predicate()) {
+        resolve();
+        return;
+      }
+      if (Date.now() > deadline) {
+        reject(new Error('waitFor timed out'));
+        return;
+      }
+      setTimeout(tick, 10);
+    };
+    tick();
+  });
+}
+
 async function withTestBridge(fn, responder = () => ({ content: 'delayed bridge response', delayMs: 80 }), expectedToken) {
   const seenBodies = [];
   const seenHeaders = [];
@@ -995,9 +1065,23 @@ async function withTestBridge(fn, responder = () => ({ content: 'delayed bridge 
           res.end(JSON.stringify({ error: response.error ?? 'test bridge failure' }));
           return;
         }
-        recordEvidence('provider.completed');
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ content: response.content }));
+        let finishTimer;
+        let finished = false;
+        res.on('close', () => {
+          if (finishTimer) clearTimeout(finishTimer);
+          if (!finished) recordEvidence('provider.failed');
+        });
+        const finish = () => {
+          finished = true;
+          recordEvidence('provider.completed');
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ content: response.content }));
+        };
+        if (response.delayMs) {
+          finishTimer = setTimeout(finish, response.delayMs);
+        } else {
+          finish();
+        }
         return;
       }
 

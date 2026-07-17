@@ -14,7 +14,7 @@ import {
   type AgentEvent,
   type LLMProvider,
 } from '@devseek-netai/shared';
-import { bridgeChat as callBridgeChat } from './bridge-client';
+import { bridgeCancel as callBridgeCancel, bridgeChat as callBridgeChat } from './bridge-client';
 import { CliSurfaceAdapter, type CliSurfaceKind } from './cli-surface-adapter';
 
 interface CliOptions {
@@ -88,6 +88,9 @@ function parseArgs(argv: readonly string[]): CliOptions {
 async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
   const surface = new CliSurfaceAdapter({ jsonl: options.jsonl });
   const renderEvent = (event: AgentEvent) => surface.renderEvent(event);
+  const cancellation = createCliCancellationController(() => {
+    if (!options.mock) void callBridgeCancel(options.cwd).catch(() => {});
+  });
   const runId = createProductRunEvidenceId();
   const evidence = openCliRunEvidence(options, runId, prompt);
   const initialProviderOperationId = 'cli-provider-1';
@@ -111,6 +114,7 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
       traceWorkspaceRoot: options.cwd,
       traceOperationId: initialProviderOperationId,
       traceEvidenceParticipantToken: evidence.participantToken,
+      signal: cancellation.signal,
     },
   });
 
@@ -129,7 +133,9 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
         idempotencyKey: productRunEvidenceIdempotencyKey('cli-provider-failed', { runId, attempt: 1 }),
         payload: { provider: options.mock ? 'local-api' : 'bridge', attempt: 1, error: summarizeTraceText(formatCliError(error)) },
       }, initialProviderOperationId, 'cli-provider-client');
-      if (!options.mock) assertCliBridgeEvidenceComplete(evidence, initialProviderOperationId, 'failed');
+      if (!options.mock && !cancellation.cancelled) {
+        assertCliBridgeEvidenceComplete(evidence, initialProviderOperationId, 'failed');
+      }
       throw error;
     }
     const response = extractCompletedResponse(events);
@@ -149,6 +155,7 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
       evidence,
       runId,
       usesBridge: !options.mock,
+      signal: cancellation.signal,
     });
     await surface.flush();
     await appendHistory(options.cwd, prompt);
@@ -161,10 +168,19 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
     } catch (flushError) {
       terminalError = flushError;
     }
-    settleCliEvidence(evidence, runId, 'failed');
+    settleCliEvidence(evidence, runId, cancellation.cancelled ? 'cancelled' : 'failed');
     console.error(`DevSeek CLI error: ${formatCliError(terminalError)}`);
-    return 1;
+    return cancellation.cancelled ? cancellation.exitCode : 1;
+  } finally {
+    cancellation.dispose();
   }
+}
+
+interface CliCancellationController {
+  readonly signal: AbortSignal;
+  readonly cancelled: boolean;
+  readonly exitCode: number;
+  dispose(): void;
 }
 
 interface CliEvidenceContext {
@@ -209,6 +225,35 @@ function openCliRunEvidence(
 
 function resolveCliRunSurfaceKind(options: Pick<CliOptions, 'jsonl'>): CliRunSurfaceKind {
   return options.jsonl ? 'jsonl' : 'cli';
+}
+
+function createCliCancellationController(onCancel?: () => void): CliCancellationController {
+  const controller = new AbortController();
+  let signalName: NodeJS.Signals | undefined;
+  const cancel = (name: NodeJS.Signals) => {
+    signalName = signalName ?? name;
+    if (!controller.signal.aborted) {
+      onCancel?.();
+      controller.abort(new Error(`DevSeek CLI cancelled by ${name}`));
+    }
+  };
+  const onSigint = () => cancel('SIGINT');
+  const onSigterm = () => cancel('SIGTERM');
+  process.once('SIGINT', onSigint);
+  process.once('SIGTERM', onSigterm);
+  return {
+    signal: controller.signal,
+    get cancelled() {
+      return controller.signal.aborted && signalName !== undefined;
+    },
+    get exitCode() {
+      return signalName === 'SIGTERM' ? 143 : 130;
+    },
+    dispose() {
+      process.off('SIGINT', onSigint);
+      process.off('SIGTERM', onSigterm);
+    },
+  };
 }
 
 function recordCliEvidence(
@@ -296,7 +341,7 @@ function assertCliBridgeEvidenceComplete(
 function settleCliEvidence(
   evidence: CliEvidenceContext,
   runId: string,
-  status: 'completed' | 'failed',
+  status: 'completed' | 'failed' | 'cancelled',
 ): void {
   if (!evidence.session) return;
   if (status === 'completed' && evidence.degraded) {
@@ -467,6 +512,7 @@ interface CodingLoopInput {
   evidence: CliEvidenceContext;
   runId: string;
   usesBridge: boolean;
+  signal: AbortSignal;
 }
 
 interface FileToolCall {
@@ -713,6 +759,7 @@ async function runCodingLoop(input: CodingLoopInput): Promise<void> {
           traceWorkspaceRoot: input.cwd,
           traceOperationId: repairProviderOperationId,
           traceEvidenceParticipantToken: input.evidence.participantToken,
+          signal: input.signal,
         },
       });
       recordCliOperationEvidence(input.evidence, {
@@ -736,7 +783,7 @@ async function runCodingLoop(input: CodingLoopInput): Promise<void> {
           }),
           payload: { provider: 'repair', attempt: providerAttempt, error: summarizeTraceText(formatCliError(error)) },
         }, repairProviderOperationId, 'cli-provider-client');
-        if (input.usesBridge) {
+        if (input.usesBridge && !input.signal.aborted) {
           assertCliBridgeEvidenceComplete(input.evidence, repairProviderOperationId, 'failed');
         }
         throw error;

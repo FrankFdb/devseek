@@ -47,7 +47,7 @@
     },
     "cliIndex": {
       "path": "packages/cli/src/index.ts",
-      "source_sha256": "c79005bac5645a4d0847dce3144dc24df863cc870a34ce61718c6c417c5207b5"
+      "source_sha256": "c1ff8761a074829c74d77e88b06e5dd40987ac0df7c21f978c6a9297e36056b5"
     },
     "cliSurfaceAdapter": {
       "path": "packages/cli/src/cli-surface-adapter.ts",
@@ -1389,5 +1389,5 @@
     "declared_adapter_pending_cutover": 8,
     "undeclared_legacy_owner_reachability": 0
   },
-  "inventory_sha256": "f70c3c791ec5a0e496635fc3ac7ea79116b871ee0ae65af5014bf7162215b17b"
+  "inventory_sha256": "8bd18a735ad08220879fdc35309bfbc623024cc7a2ec00afa590cf498caf110f"
 }
