@@ -247,6 +247,55 @@ test('RunContext: records agent status events for failure diagnosis', () => {
   }
 });
 
+test('RunContext: agent status evidence identity tolerates omitted optional fields', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-status-undefined-optionals',
+      userPrompt: '只拒绝不合规请求，不修改文件',
+      traceLevel: 'debug',
+    });
+    assert.doesNotThrow(() => context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'done',
+      state: 'completed',
+      taskId: undefined,
+      taskFile: undefined,
+      taskAction: undefined,
+      taskDesc: undefined,
+      taskIndex: undefined,
+      taskTotal: 1,
+      title: '全部 1 个任务已完成',
+      detail: undefined,
+      linesAdded: undefined,
+      linesRemoved: undefined,
+      planningText: undefined,
+      planningDetail: undefined,
+      editedFiles: undefined,
+    }));
+    const settled = context.complete('completed', { tasksTotal: 1, tasksFailed: 0 });
+
+    const entries = readJsonl(path.join(
+      workspaceRoot,
+      '.devseek',
+      'runs',
+      'run-context-status-undefined-optionals.log',
+    ));
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const evidenceEvents = ledger.read('run-context-status-undefined-optionals');
+    const completed = entries.find(entry => entry.event === 'agent-run-completed');
+
+    assert.equal(settled, 'completed');
+    assert.equal(completed.data.status, 'completed');
+    assert.equal(evidenceEvents.some(event => event.type === 'agent.status'), true);
+    assert.equal(evidenceEvents.some(event => event.type === 'evidence.degraded'), false);
+    assert.equal(ledger.verify('run-context-status-undefined-optionals').status, 'valid-sealed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('RunContext: projects mutation, verification, gate, tool and checkpoint facts into one sealed ledger', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   try {

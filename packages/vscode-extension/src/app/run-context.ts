@@ -7,6 +7,7 @@ import {
   summarizeTraceText,
   type DevSeekTraceLogger,
   type DevSeekTraceLevel,
+  type RunEvidenceJson,
 } from '@devseek-netai/shared';
 import { requiresFileChangeEvidence } from '../agent/completion-evidence';
 import type { AgentStatusEvent } from '../agent/events';
@@ -133,7 +134,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       type: 'agent.status',
       idempotencyKey: productRunEvidenceIdempotencyKey('vscode-agent-status', {
         runId: this.runId,
-        status,
+        status: agentStatusEvidenceIdentity(status),
       }),
       payload: {
         trust: 'product-runtime-observation',
@@ -921,5 +922,39 @@ function summarizeAgentStatusForTrace(status: AgentStatusEvent): Record<string, 
     planningText: status.planningText,
     planningDetail: status.planningDetail ? summarizeTraceText(status.planningDetail) : undefined,
     editedFiles: status.editedFiles,
+  };
+}
+
+function agentStatusEvidenceIdentity(status: AgentStatusEvent): { [key: string]: RunEvidenceJson } {
+  return {
+    type: status.type,
+    phase: status.phase,
+    state: status.state,
+    evidenceOperationId: status.evidenceOperationId ?? null,
+    taskId: status.taskId ?? null,
+    taskFile: status.taskFile ?? null,
+    taskAction: status.taskAction ?? null,
+    taskDesc: status.taskDesc ?? null,
+    taskIndex: status.taskIndex ?? null,
+    taskTotal: status.taskTotal ?? null,
+    title: status.title,
+    detail: status.detail ?? null,
+    linesAdded: status.linesAdded ?? null,
+    linesRemoved: status.linesRemoved ?? null,
+    planningText: status.planningText ?? null,
+    planningDetail: status.planningDetail ? summarizeTraceText(status.planningDetail) : null,
+    editedFiles: status.editedFiles
+      ? status.editedFiles.map(file => ({
+          path: file.path,
+          basename: file.basename,
+          action: file.action,
+          linesAdded: file.linesAdded ?? null,
+          linesRemoved: file.linesRemoved ?? null,
+        }))
+      : null,
+    progressStage: status.progressStage ?? null,
+    progressTitle: status.progressTitle ?? null,
+    progressDetail: status.progressDetail ?? null,
+    progressState: status.progressState ?? null,
   };
 }
