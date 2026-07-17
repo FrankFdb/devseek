@@ -5,6 +5,7 @@ import {
   type AgentChatRequest,
   type AgentCommand,
   type AgentEvent,
+  type AgentSurfaceKind,
   type BridgeAgentChatRequest,
   type CapabilityFreeAgentChatRequest,
   type ChatCompletedEvent,
@@ -51,7 +52,7 @@ export class AgentApplicationService {
       case 'permission.decision':
       case 'task.resume':
       case 'task.cancel':
-        return [this.errorEvent(command.commandId, `Unsupported command: ${command.type}`, 'UnsupportedCommand')];
+        return [this.errorEvent(command.commandId, `Unsupported command: ${command.type}`, 'UnsupportedCommand', command.surface)];
     }
   }
 
@@ -192,6 +193,7 @@ export class AgentApplicationService {
         command.commandId,
         capabilitySafeErrorMessage(safeError),
         'AgentExecutionFailed',
+        command.surface,
       );
       events.push(event);
       this.emit(event);
@@ -273,12 +275,18 @@ export class AgentApplicationService {
     } as AgentEvent);
   }
 
-  private errorEvent(commandId: string | undefined, message: string, errorType: string): AgentEvent {
+  private errorEvent(
+    commandId: string | undefined,
+    message: string,
+    errorType: string,
+    surface?: AgentSurfaceKind,
+  ): AgentEvent {
     return {
       type: 'error',
       eventId: this.newId(),
       commandId,
       timestamp: this.now(),
+      ...(surface ? { surface } : {}),
       severity: 'error',
       errorType,
       message,

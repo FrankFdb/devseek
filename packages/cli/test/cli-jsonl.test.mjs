@@ -714,6 +714,11 @@ test('CLI verifies the Bridge failed boundary without degrading the original pro
 
       assert.equal(result.status, 1);
       assert.match(result.stderr, /Bridge HTTP 503/);
+      assert.doesNotMatch(result.stdout, /DevSeek CLI error:/);
+      const stdoutEvents = result.stdout.trim().split(/\r?\n/).map(line => JSON.parse(line));
+      const errorEvent = stdoutEvents.find(event => event.type === 'error');
+      assert.equal(errorEvent?.surface, 'jsonl');
+      assert.equal(errorEvent?.severity, 'error');
       const records = readProductEvidenceRecords(cwd);
       const events = records.filter(record => record.record_kind === 'event').map(record => record.event);
       assert.deepEqual(
