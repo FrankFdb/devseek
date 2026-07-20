@@ -1384,6 +1384,10 @@ test('R2-03E: WorktreeConflictService owns dirty worktree and generated owner de
   assertContains(worktreeConflict, "'generated-boundary-owner-mismatch'", 'handwritten edits must not reverse-write generated boundaries');
   assertContains(worktreeConflict, "'handwritten-owner-mismatch'", 'generated output must not reverse-write handwritten source');
   assertContains(worktreeConflict, 'statusEvidence', 'decisions must preserve the git status evidence line');
+  assertContains(worktreeConflict, 'evaluateGitDeliveryEffect', 'git delivery effect decisions must stay in the worktree conflict owner');
+  assertContains(worktreeConflict, "'push-requires-explicit-authorization'", 'push must require explicit authorization');
+  assertContains(worktreeConflict, "'ci-failure-blocks-delivery'", 'failed CI must block git delivery');
+  assertContains(worktreeConflict, "'dirty-or-staged-worktree-requires-approval'", 'git delivery must expose dirty and staged worktree boundaries');
 });
 
 test('R2-06C: WorktreeConflictService owns generated compatibility migration cleanup', () => {

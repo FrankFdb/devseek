@@ -8,8 +8,13 @@ const GENERATED_COMPAT_MIGRATION_PROTOCOL = {
   version: 'devseek.generated-compat-migration/v1',
 } as const;
 
+const GIT_DELIVERY_PROTOCOL = {
+  version: 'devseek.git-delivery/v1',
+} as const;
+
 export const WORKTREE_CONFLICT_PROTOCOL_VERSION = WORKTREE_CONFLICT_PROTOCOL.version;
 export const GENERATED_COMPAT_MIGRATION_PROTOCOL_VERSION = GENERATED_COMPAT_MIGRATION_PROTOCOL.version;
+export const GIT_DELIVERY_PROTOCOL_VERSION = GIT_DELIVERY_PROTOCOL.version;
 
 export type WorktreeState =
   | 'clean'
@@ -25,6 +30,9 @@ export type WorktreeWriteDecisionKind = 'allow' | 'needs-user-approval' | 'block
 export type WorktreeTargetOwner = 'handwritten' | 'generated' | 'unknown';
 export type WorktreeProposedOwner = 'handwritten-source' | 'generated-output' | 'unknown';
 export type GeneratedCompatMigrationDecisionKind = 'allow' | 'blocked';
+export type GitDeliveryEffectKind = 'commit' | 'push' | 'pull-request' | 'ci';
+export type GitDeliveryDecisionKind = 'allow' | 'needs-user-approval' | 'block';
+export type GitDeliveryCiStatus = 'passed' | 'failed' | 'not-run' | 'unknown';
 
 export type WorktreeWriteReason =
   | 'clean-owner-aligned-write'
@@ -48,6 +56,16 @@ export type GeneratedCompatMigrationReason =
   | 'long-term-fallback-flag'
   | 'legacy-owner-revival-risk'
   | 'migration-evidence-missing';
+
+export type GitDeliveryReason =
+  | 'clean-authorized-git-delivery'
+  | 'commit-requires-explicit-authorization'
+  | 'push-requires-explicit-authorization'
+  | 'pull-request-requires-explicit-authorization'
+  | 'ci-requires-explicit-authorization'
+  | 'dirty-or-staged-worktree-requires-approval'
+  | 'conflicted-worktree-state'
+  | 'ci-failure-blocks-delivery';
 
 export interface WorktreeStatusEntry {
   relPath: string;
@@ -129,6 +147,55 @@ export interface GeneratedCompatMigrationReport {
   reasons: GeneratedCompatMigrationReason[];
 }
 
+export interface GitDeliveryCiInput {
+  status?: GitDeliveryCiStatus;
+  evidenceRef?: string;
+  url?: string;
+}
+
+export interface GitDeliveryDirtyWorktreeApproval {
+  evidenceRef: string;
+}
+
+export interface GitDeliveryEffectInput {
+  effect: GitDeliveryEffectKind;
+  statusEntries: readonly WorktreeStatusEntry[];
+  authorizedEffects?: readonly GitDeliveryEffectKind[];
+  dirtyWorktreeApproval?: GitDeliveryDirtyWorktreeApproval;
+  ci?: GitDeliveryCiInput;
+}
+
+export interface GitDeliveryWorktreeSummary {
+  dirtyPaths: string[];
+  stagedPaths: string[];
+  untrackedPaths: string[];
+  deletedPaths: string[];
+  conflictedPaths: string[];
+}
+
+export interface GitDeliveryCiRecord {
+  status: GitDeliveryCiStatus;
+  evidenceRefs: string[];
+  url: string;
+}
+
+export interface GitDeliveryAuthorizationRecord {
+  required: boolean;
+  granted: boolean;
+  evidenceRefs: string[];
+}
+
+export interface GitDeliveryEffectDecision {
+  version: typeof GIT_DELIVERY_PROTOCOL.version;
+  effect: GitDeliveryEffectKind;
+  decision: GitDeliveryDecisionKind;
+  reason: GitDeliveryReason;
+  statusEvidence: string;
+  worktree: GitDeliveryWorktreeSummary;
+  authorization: GitDeliveryAuthorizationRecord;
+  ci: GitDeliveryCiRecord;
+}
+
 export class WorktreeConflictService {
   private readonly workspaceRoot: string;
   private readonly generatedBoundaries: readonly string[];
@@ -189,12 +256,116 @@ export class WorktreeConflictService {
     }
     return { ...base, decision: 'allow', reason: 'clean-owner-aligned-write' };
   }
+
+  evaluateGitDeliveryEffect(input: GitDeliveryEffectInput): GitDeliveryEffectDecision {
+    const effect = normalizeGitDeliveryEffect(input.effect);
+    const worktree = summarizeGitDeliveryWorktree(input.statusEntries);
+    const ci = normalizeGitDeliveryCi(input.ci);
+    const authorization = normalizeGitDeliveryAuthorization(
+      effect,
+      input.authorizedEffects,
+      input.dirtyWorktreeApproval,
+    );
+    const statusEvidence = input.statusEntries.map(entry => entry.raw).filter(Boolean).join('\n') || 'clean';
+    const decide = (
+      decision: GitDeliveryDecisionKind,
+      reason: GitDeliveryReason,
+    ): GitDeliveryEffectDecision => ({
+      version: GIT_DELIVERY_PROTOCOL.version,
+      effect,
+      decision,
+      reason,
+      statusEvidence,
+      worktree,
+      authorization,
+      ci,
+    });
+
+    if (worktree.conflictedPaths.length > 0) {
+      return decide('block', 'conflicted-worktree-state');
+    }
+    if (ci.status === 'failed') {
+      return decide('block', 'ci-failure-blocks-delivery');
+    }
+    if (authorization.required && !authorization.granted) {
+      return decide('needs-user-approval', `${effect}-requires-explicit-authorization` as GitDeliveryReason);
+    }
+    if (hasUnapprovedWorktreeBoundary(worktree) && !authorization.evidenceRefs.length) {
+      return decide('needs-user-approval', 'dirty-or-staged-worktree-requires-approval');
+    }
+    return decide('allow', 'clean-authorized-git-delivery');
+  }
 }
 
 export function parseGitStatusPorcelain(raw: string): WorktreeStatusEntry[] {
   const text = String(raw || '');
   if (!text.trim()) return [];
   return text.includes('\0') ? parsePorcelainZ(text) : parsePorcelainLines(text);
+}
+
+function normalizeGitDeliveryEffect(value: GitDeliveryEffectKind): GitDeliveryEffectKind {
+  return value === 'commit' || value === 'push' || value === 'pull-request' || value === 'ci'
+    ? value
+    : 'commit';
+}
+
+function normalizeGitDeliveryCi(input: GitDeliveryCiInput | undefined): GitDeliveryCiRecord {
+  const status = normalizeGitDeliveryCiStatus(input?.status);
+  const evidenceRef = normalizeText(input?.evidenceRef);
+  return {
+    status,
+    evidenceRefs: evidenceRef ? [evidenceRef] : [],
+    url: normalizeText(input?.url),
+  };
+}
+
+function normalizeGitDeliveryCiStatus(value: GitDeliveryCiStatus | undefined): GitDeliveryCiStatus {
+  return value === 'passed' || value === 'failed' || value === 'not-run' || value === 'unknown'
+    ? value
+    : 'unknown';
+}
+
+function normalizeGitDeliveryAuthorization(
+  effect: GitDeliveryEffectKind,
+  authorizedEffects: readonly GitDeliveryEffectKind[] | undefined,
+  dirtyWorktreeApproval: GitDeliveryDirtyWorktreeApproval | undefined,
+): GitDeliveryAuthorizationRecord {
+  const authorized = new Set((authorizedEffects ?? []).map(normalizeGitDeliveryEffect));
+  const evidenceRef = normalizeText(dirtyWorktreeApproval?.evidenceRef);
+  return {
+    required: true,
+    granted: authorized.has(effect),
+    evidenceRefs: evidenceRef ? [evidenceRef] : [],
+  };
+}
+
+function summarizeGitDeliveryWorktree(
+  entries: readonly WorktreeStatusEntry[],
+): GitDeliveryWorktreeSummary {
+  return {
+    dirtyPaths: uniqueText(entries
+      .filter(entry => entry.state === 'dirty' || entry.state === 'staged-and-dirty')
+      .map(entry => entry.relPath)),
+    stagedPaths: uniqueText(entries
+      .filter(entry => entry.state === 'staged' || entry.state === 'staged-and-dirty' || entry.state === 'renamed')
+      .map(entry => entry.relPath)),
+    untrackedPaths: uniqueText(entries
+      .filter(entry => entry.state === 'untracked')
+      .map(entry => entry.relPath)),
+    deletedPaths: uniqueText(entries
+      .filter(entry => entry.state === 'deleted')
+      .map(entry => entry.relPath)),
+    conflictedPaths: uniqueText(entries
+      .filter(entry => entry.state === 'conflicted')
+      .map(entry => entry.relPath)),
+  };
+}
+
+function hasUnapprovedWorktreeBoundary(worktree: GitDeliveryWorktreeSummary): boolean {
+  return worktree.dirtyPaths.length > 0
+    || worktree.stagedPaths.length > 0
+    || worktree.untrackedPaths.length > 0
+    || worktree.deletedPaths.length > 0;
 }
 
 export function validateGeneratedCompatMigration(
@@ -403,6 +574,10 @@ function normalizeRelPath(value: string): string {
 
 function normalizeText(value: unknown): string {
   return String(value ?? '').trim();
+}
+
+function uniqueText(values: readonly string[]): string[] {
+  return [...new Set(values.map(value => normalizeText(value)).filter(Boolean))];
 }
 
 function isOutsideWorkspace(relPath: string): boolean {

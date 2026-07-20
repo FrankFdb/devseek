@@ -132,6 +132,71 @@ test('WorktreeConflictService: clean handwritten source edits are allowed with e
   assert.equal(decision.targetRelPath, 'src/app.ts');
 });
 
+test('R2-09D WorktreeConflictService: git delivery blocks failed CI and unauthorized push', () => {
+  const service = new WorktreeConflictService({ workspaceRoot });
+  const failedCi = service.evaluateGitDeliveryEffect({
+    effect: 'push',
+    statusEntries: [],
+    authorizedEffects: ['push'],
+    ci: {
+      status: 'failed',
+      evidenceRef: 'ci:failed:build-42',
+      url: 'https://ci.example/build/42',
+    },
+  });
+  const unauthorizedPush = service.evaluateGitDeliveryEffect({
+    effect: 'push',
+    statusEntries: [],
+    ci: {
+      status: 'passed',
+      evidenceRef: 'ci:passed:build-43',
+    },
+  });
+
+  assert.equal(failedCi.version, 'devseek.git-delivery/v1');
+  assert.equal(failedCi.decision, 'block');
+  assert.equal(failedCi.reason, 'ci-failure-blocks-delivery');
+  assert.deepEqual(failedCi.ci.evidenceRefs, ['ci:failed:build-42']);
+  assert.equal(unauthorizedPush.decision, 'needs-user-approval');
+  assert.equal(unauthorizedPush.reason, 'push-requires-explicit-authorization');
+  assert.equal(unauthorizedPush.authorization.required, true);
+});
+
+test('R2-09D WorktreeConflictService: git delivery exposes dirty and staged boundaries', () => {
+  const service = new WorktreeConflictService({ workspaceRoot });
+  const blocked = service.evaluateGitDeliveryEffect({
+    effect: 'commit',
+    authorizedEffects: ['commit'],
+    statusEntries: parseGitStatusPorcelain(' M src/dirty.ts\nM  src/staged.ts\n?? src/new.ts\n'),
+    ci: {
+      status: 'passed',
+      evidenceRef: 'ci:passed:build-44',
+    },
+  });
+  const approved = service.evaluateGitDeliveryEffect({
+    effect: 'commit',
+    authorizedEffects: ['commit'],
+    statusEntries: parseGitStatusPorcelain(' M src/dirty.ts\nM  src/staged.ts\n'),
+    dirtyWorktreeApproval: {
+      evidenceRef: 'user:approved-dirty-staged-boundary',
+    },
+    ci: {
+      status: 'passed',
+      evidenceRef: 'ci:passed:build-45',
+    },
+  });
+
+  assert.equal(blocked.decision, 'needs-user-approval');
+  assert.equal(blocked.reason, 'dirty-or-staged-worktree-requires-approval');
+  assert.deepEqual(blocked.worktree.dirtyPaths, ['src/dirty.ts']);
+  assert.deepEqual(blocked.worktree.stagedPaths, ['src/staged.ts']);
+  assert.deepEqual(blocked.worktree.untrackedPaths, ['src/new.ts']);
+  assert.match(blocked.statusEvidence, /src\/dirty\.ts/);
+  assert.equal(approved.decision, 'allow');
+  assert.equal(approved.reason, 'clean-authorized-git-delivery');
+  assert.deepEqual(approved.authorization.evidenceRefs, ['user:approved-dirty-staged-boundary']);
+});
+
 test('WorktreeConflictService: generated compatibility migrations allow single-owner cleanup with evidence', () => {
   const report = validateGeneratedCompatMigration({
     migrationId: 'r2-06c-license-owner',
