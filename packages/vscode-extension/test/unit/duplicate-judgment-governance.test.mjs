@@ -26,6 +26,7 @@ const {
   ARCHITECTURE_DECISION_PROTOCOL_VERSION,
   validateArchitectureDecisionImpactClosure,
   validateArchitectureDecisionLifecycle,
+  validateArchitecturePlanRevisionGuard,
 } = createRequire(import.meta.url)(bundlePath);
 
 function readExtensionFile(relPath) {
@@ -196,6 +197,54 @@ test('R2-05B architecture impact plans fail closed on partial impact and unverif
   assert.ok(report.reasons.includes('missing-delete-plan'));
   assert.ok(report.reasons.includes('rollback-evidence-missing'));
   assert.ok(report.reasons.includes('missing-acceptance-mapping'));
+});
+
+test('R2-05C plan revisions bind new evidence to implementation changes and static guards', () => {
+  const report = validateArchitecturePlanRevisionGuard({
+    basePlanId: 'plan-r2-05b',
+    revisionId: 'plan-r2-05c',
+    revisionRationale: 'new source evidence changes the integration target',
+    newEvidenceIds: ['ev-source-new', 'ev-import-check'],
+    implementationChanges: [
+      { target: 'src/app/integration-owner.ts', evidenceIds: ['ev-source-new'] },
+    ],
+    dependencyChecks: [
+      { from: 'src/app/integration-owner.ts', to: 'src/agent/task-state-machine.ts', status: 'allowed', evidenceId: 'ev-import-check' },
+    ],
+    importReachabilityChecks: [
+      { from: 'src/extension.ts', to: 'src/app/integration-owner.ts', reachable: true, evidenceId: 'ev-import-check' },
+    ],
+  });
+
+  assert.equal(report.version, ARCHITECTURE_DECISION_PROTOCOL_VERSION);
+  assert.equal(report.decision, 'allow');
+  assert.deepEqual(report.reasons, []);
+  assert.equal(report.implementationChanges[0].target, 'src/app/integration-owner.ts');
+});
+
+test('R2-05C plan revisions fail closed on unmapped evidence and dependency reachability violations', () => {
+  const report = validateArchitecturePlanRevisionGuard({
+    basePlanId: 'plan-r2-05b',
+    newEvidenceIds: ['ev-source-new'],
+    implementationChanges: [
+      { target: 'src/extension.ts', evidenceIds: ['ev-unknown'] },
+      { target: 'src/app/owner.ts', evidenceIds: [] },
+    ],
+    dependencyChecks: [
+      { from: 'src/extension.ts', to: 'src/agent/task-state-machine.ts', status: 'violation', evidenceId: 'ev-dep' },
+    ],
+    importReachabilityChecks: [
+      { from: 'src/extension.ts', to: 'src/app/owner.ts', reachable: false },
+    ],
+  });
+
+  assert.equal(report.decision, 'blocked');
+  assert.ok(report.reasons.includes('missing-plan-revision'));
+  assert.ok(report.reasons.includes('missing-revision-rationale'));
+  assert.ok(report.reasons.includes('unmapped-evidence-change'));
+  assert.ok(report.reasons.includes('dependency-direction-violation'));
+  assert.ok(report.reasons.includes('import-reachability-violation'));
+  assert.ok(report.reasons.includes('revision-guard-evidence-missing'));
 });
 
 test('ARCH-16 tool alias search_content is owned by ToolRegistry and generated manifest only', () => {

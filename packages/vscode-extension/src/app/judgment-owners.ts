@@ -149,6 +149,59 @@ export interface ArchitectureDecisionImpactClosureReport {
   acceptanceMapping: ArchitectureAcceptanceMapping[];
 }
 
+export type ArchitecturePlanRevisionReason =
+  | 'missing-base-plan'
+  | 'missing-plan-revision'
+  | 'missing-revision-rationale'
+  | 'missing-new-evidence'
+  | 'missing-implementation-change'
+  | 'unmapped-evidence-change'
+  | 'dependency-direction-violation'
+  | 'import-reachability-violation'
+  | 'revision-guard-evidence-missing';
+
+export interface ArchitectureImplementationChange {
+  target: string;
+  evidenceIds: string[];
+}
+
+export interface ArchitectureDependencyCheck {
+  from: string;
+  to: string;
+  status: 'allowed' | 'violation';
+  evidenceId?: string;
+}
+
+export interface ArchitectureImportReachabilityCheck {
+  from: string;
+  to: string;
+  reachable: boolean;
+  evidenceId?: string;
+}
+
+export interface ArchitecturePlanRevisionGuardInput {
+  basePlanId?: string;
+  revisionId?: string;
+  revisionRationale?: string;
+  newEvidenceIds?: string[];
+  implementationChanges?: ArchitectureImplementationChange[];
+  dependencyChecks?: ArchitectureDependencyCheck[];
+  importReachabilityChecks?: ArchitectureImportReachabilityCheck[];
+}
+
+export interface ArchitecturePlanRevisionGuardReport {
+  version: typeof ARCHITECTURE_DECISION_PROTOCOL_VERSION;
+  decision: ArchitectureDecisionLifecycleDecision;
+  reasons: ArchitecturePlanRevisionReason[];
+  basePlanId: string;
+  revisionId: string;
+  revisionRationale: string;
+  newEvidenceIds: string[];
+  implementationChanges: ArchitectureImplementationChange[];
+  dependencyChecks: ArchitectureDependencyCheck[];
+  importReachabilityChecks: ArchitectureImportReachabilityCheck[];
+}
+
 export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
   {
     id: 'architecture-decision',
@@ -161,6 +214,7 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
       'ArchitectureImpactSet',
       'validateArchitectureDecisionLifecycle',
       'validateArchitectureDecisionImpactClosure',
+      'validateArchitecturePlanRevisionGuard',
     ],
     supportingModules: [
       'src/app/index.ts',
@@ -530,6 +584,58 @@ export function validateArchitectureDecisionImpactClosure(
   };
 }
 
+export function validateArchitecturePlanRevisionGuard(
+  input: ArchitecturePlanRevisionGuardInput,
+): ArchitecturePlanRevisionGuardReport {
+  const reasons = new Set<ArchitecturePlanRevisionReason>();
+  const basePlanId = normalizeDecisionText(input.basePlanId);
+  const revisionId = normalizeDecisionText(input.revisionId);
+  const revisionRationale = normalizeDecisionText(input.revisionRationale);
+  const newEvidenceIds = normalizeDecisionTextList(input.newEvidenceIds);
+  const implementationChanges = normalizeImplementationChanges(input.implementationChanges);
+  const dependencyChecks = normalizeDependencyChecks(input.dependencyChecks);
+  const importReachabilityChecks = normalizeImportReachabilityChecks(input.importReachabilityChecks);
+  const evidence = new Set(newEvidenceIds);
+
+  if (!basePlanId) reasons.add('missing-base-plan');
+  if (!revisionId) reasons.add('missing-plan-revision');
+  if (!revisionRationale) reasons.add('missing-revision-rationale');
+  if (newEvidenceIds.length === 0) reasons.add('missing-new-evidence');
+  if (implementationChanges.length === 0) reasons.add('missing-implementation-change');
+  if (implementationChanges.some(change => (
+    change.evidenceIds.length === 0 || change.evidenceIds.some(evidenceId => !evidence.has(evidenceId))
+  ))) {
+    reasons.add('unmapped-evidence-change');
+  }
+  if (dependencyChecks.some(check => check.status === 'violation')) {
+    reasons.add('dependency-direction-violation');
+  }
+  if (importReachabilityChecks.some(check => !check.reachable)) {
+    reasons.add('import-reachability-violation');
+  }
+  if (
+    dependencyChecks.length === 0
+    || importReachabilityChecks.length === 0
+    || dependencyChecks.some(check => !check.evidenceId)
+    || importReachabilityChecks.some(check => !check.evidenceId)
+  ) {
+    reasons.add('revision-guard-evidence-missing');
+  }
+
+  return {
+    version: ARCHITECTURE_DECISION_PROTOCOL_VERSION,
+    decision: reasons.size === 0 ? 'allow' : 'blocked',
+    reasons: [...reasons],
+    basePlanId,
+    revisionId,
+    revisionRationale,
+    newEvidenceIds,
+    implementationChanges,
+    dependencyChecks,
+    importReachabilityChecks,
+  };
+}
+
 function normalizeDecisionText(value: string | undefined): string {
   return String(value || '').trim();
 }
@@ -654,4 +760,35 @@ function normalizeAcceptanceMapping(
     reasons.add('acceptance-evidence-missing');
   }
   return mappings;
+}
+
+function normalizeImplementationChanges(
+  input: readonly ArchitectureImplementationChange[] | undefined,
+): ArchitectureImplementationChange[] {
+  return (input || []).map(change => ({
+    target: normalizeDecisionText(change.target),
+    evidenceIds: normalizeDecisionTextList(change.evidenceIds),
+  })).filter(change => change.target);
+}
+
+function normalizeDependencyChecks(
+  input: readonly ArchitectureDependencyCheck[] | undefined,
+): ArchitectureDependencyCheck[] {
+  return (input || []).map(check => ({
+    from: normalizeDecisionText(check.from),
+    to: normalizeDecisionText(check.to),
+    status: check.status === 'violation' ? 'violation' as const : 'allowed' as const,
+    evidenceId: normalizeDecisionText(check.evidenceId) || undefined,
+  })).filter(check => check.from && check.to);
+}
+
+function normalizeImportReachabilityChecks(
+  input: readonly ArchitectureImportReachabilityCheck[] | undefined,
+): ArchitectureImportReachabilityCheck[] {
+  return (input || []).map(check => ({
+    from: normalizeDecisionText(check.from),
+    to: normalizeDecisionText(check.to),
+    reachable: check.reachable === true,
+    evidenceId: normalizeDecisionText(check.evidenceId) || undefined,
+  })).filter(check => check.from && check.to);
 }

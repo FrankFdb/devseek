@@ -1476,6 +1476,21 @@ test('R2-05B: Architecture decisions own impact, migration, rollback, and accept
   assertContains(owners, "'rollback-evidence-missing'", 'rollback plans must be evidence-bound');
 });
 
+test('R2-05C: Architecture decisions guard plan revisions against unbound new evidence', () => {
+  const owners = src('src/app/judgment-owners.ts');
+
+  assertContains(owners, 'validateArchitecturePlanRevisionGuard', 'plan revision guard must stay with the architecture decision owner');
+  assertContains(owners, 'ArchitecturePlanRevisionGuardInput', 'plan revision input must be typed');
+  assertContains(owners, 'newEvidenceIds', 'new evidence must be declared before it can change implementation');
+  assertContains(owners, 'implementationChanges', 'implementation changes must cite revision evidence');
+  assertContains(owners, 'dependencyChecks', 'dependency direction checks must be part of plan revision');
+  assertContains(owners, 'importReachabilityChecks', 'import reachability checks must be part of plan revision');
+  assertContains(owners, "'missing-plan-revision'", 'missing plan revision must block implementation changes');
+  assertContains(owners, "'unmapped-evidence-change'", 'new implementation changes must map to new evidence');
+  assertContains(owners, "'dependency-direction-violation'", 'dependency direction violations must block');
+  assertContains(owners, "'import-reachability-violation'", 'import reachability violations must block');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');
