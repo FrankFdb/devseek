@@ -59,7 +59,7 @@
     },
     "schemaSource": {
       "path": "docs/process/devseek-surface-entry-inventory.schema.json",
-      "source_sha256": "772e1d8981bdb688d165be0560fecf724ab23b7980c0c5764ff3f7f2349e5094"
+      "source_sha256": "0229d5dcaa13be8159208aa603cd855ee43e290915f80bf219616ffef94b1ce9"
     },
     "checkerSource": {
       "path": "scripts/devseek-surface-entry-inventory-check.mjs",
@@ -67,11 +67,11 @@
     },
     "inventoryLibSource": {
       "path": "scripts/lib/devseek-surface-entry-inventory.mjs",
-      "source_sha256": "e8f8a2201baaaa9165353f7ad1b1f92faadf8a88e6daab3f830880e33e8611fd"
+      "source_sha256": "cb781253f974ade7cc9b02020a4bfd0a3f41787b865f7d81ca9005e74ccf7062"
     },
     "oracleSource": {
       "path": "scripts/test/devseek-surface-entry-inventory.test.mjs",
-      "source_sha256": "fdf58342269046632b45a5559aaaf2c61824f475dff7abfb5feb35341886b95d"
+      "source_sha256": "0543b6bde2dffa0a755af67c4dd37608bb5329620c15d69d8b1e0200f7e906aa"
     },
     "rootPackageJson": {
       "path": "package.json",
@@ -1381,6 +1381,7 @@
   ],
   "bypass_guards": {
     "unknown_entry_fail_closed": true,
+    "surface_entry_ids_unique": true,
     "generic_webview_command_disabled": true,
     "legacy_surface_projection_fallbacks_removed": true,
     "manifest_command_declaration_unique": true,
@@ -1406,6 +1407,7 @@
     "cli_entrypoints": 8,
     "bridge_endpoints": 10,
     "unknown_entries": 0,
+    "duplicate_surface_entry_ids": 0,
     "declared_adapter_pending_cutover": 0,
     "undeclared_legacy_owner_reachability": 0,
     "duplicate_manifest_command_declarations": 0,
@@ -1413,5 +1415,5 @@
     "duplicate_webview_protocol_declarations": 0,
     "duplicate_webview_handler_registrations": 0
   },
-  "inventory_sha256": "4dbfbdb26ffc279de27e549ab887b5bd1af74283a10f35efbfb555d476666fb8"
+  "inventory_sha256": "9b9ca89f1cd7e6cbba68df0da610aecb73c25a36e08bd7bc9855f5d3802a3380"
 }

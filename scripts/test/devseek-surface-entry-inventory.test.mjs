@@ -42,6 +42,7 @@ test('surface entry inventory is source-bound and covers every current entry den
     cli_entrypoints: 8,
     bridge_endpoints: 10,
     unknown_entries: 0,
+    duplicate_surface_entry_ids: 0,
     declared_adapter_pending_cutover: 0,
     undeclared_legacy_owner_reachability: 0,
     duplicate_manifest_command_declarations: 0,
@@ -88,6 +89,7 @@ test('surface entry inventory is source-bound and covers every current entry den
     assert.equal(entry.kernel_contract_projection, 'generated-artifact-action');
   }
   assert.equal(actual.bypass_guards.generic_webview_command_disabled, true);
+  assert.equal(actual.bypass_guards.surface_entry_ids_unique, true);
   assert.equal(actual.bypass_guards.legacy_surface_projection_fallbacks_removed, true);
   assert.equal(actual.bypass_guards.manifest_command_declaration_unique, true);
   assert.equal(actual.bypass_guards.runtime_command_registration_unique, true);
@@ -221,6 +223,17 @@ test('R1-D2D surface inventory fails closed on duplicate webview protocol declar
   assert.equal(mutatedInventory.counts.duplicate_webview_protocol_declarations, 1);
   assert.equal(mutatedInventory.bypass_guards.webview_protocol_declaration_unique, false);
   assertHasError(mutatedInventory, mutatedSources, 'webview:duplicate-protocol-chat');
+});
+
+test('R1-D2D surface inventory fails closed on duplicate surface entry ids', () => {
+  const mutatedSources = cloneSources();
+  mutatedSources.sourceContents['packages/bridge/src/server.ts'] +=
+    "\napp.get('/ping', (_req, res) => res.json({ ok: true }));\n";
+
+  const mutatedInventory = buildSurfaceEntryInventory(mutatedSources);
+  assert.equal(mutatedInventory.counts.duplicate_surface_entry_ids, 1);
+  assert.equal(mutatedInventory.bypass_guards.surface_entry_ids_unique, false);
+  assertHasError(mutatedInventory, mutatedSources, 'entries:duplicate-id-bridge/get-:ping');
 });
 
 test('surface inventory checker command validates current inventory and generated view', async () => {

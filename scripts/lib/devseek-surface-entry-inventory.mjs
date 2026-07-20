@@ -190,6 +190,16 @@ export function validateSurfaceEntryInventory(inventory, sources) {
   }
   const counts = inventory.counts ?? {};
   if (counts.unknown_entries !== 0) errors.push(`entries:unknown-${counts.unknown_entries}`);
+  if (counts.duplicate_surface_entry_ids !== 0) {
+    const duplicateIds = duplicateEntryIds(inventory.entries ?? []);
+    if (duplicateIds.length === 0) {
+      errors.push(`entries:duplicate-id-${counts.duplicate_surface_entry_ids}`);
+    } else {
+      for (const entryId of duplicateIds) {
+        errors.push(`entries:duplicate-id-${entryId}`);
+      }
+    }
+  }
   if (counts.declared_adapter_pending_cutover !== 0) {
     errors.push(`legacy:declared-pending-d2-${counts.declared_adapter_pending_cutover}`);
   }
@@ -269,6 +279,9 @@ export function validateSurfaceEntryInventory(inventory, sources) {
   }
   if (guards.unknown_entry_fail_closed !== true) {
     errors.push('bypass:unknown-entry-not-fail-closed');
+  }
+  if (guards.surface_entry_ids_unique !== true) {
+    errors.push('bypass:surface-entry-ids-not-unique');
   }
   if (guards.inventory_asserts_gate_pass === true) {
     errors.push('bypass:inventory-asserts-gate-pass');
@@ -552,6 +565,7 @@ function buildBypassGuards(sources, entries) {
   const inventoryLib = sources.sourceContents[SOURCE_PATHS.inventoryLibSource] ?? '';
   return {
     unknown_entry_fail_closed: entries.every(entry => entry.coverage_status !== 'unknown-entry'),
+    surface_entry_ids_unique: duplicateEntryIds(entries).length === 0,
     generic_webview_command_disabled: provider.includes('Generic inbound VS Code commands are disabled; use a typed product action.'),
     legacy_surface_projection_fallbacks_removed: !hasLegacySurfaceProjectionFallbacks(inventoryLib),
     manifest_command_declaration_unique: duplicateManifestCommandIds(sources.packageJson).length === 0,
@@ -599,6 +613,7 @@ function buildCounts(entries, sources) {
       || entry.coverage_status === 'missing-source'
       || entry.kernel_contract_projection.startsWith('unknown-')
     )).length,
+    duplicate_surface_entry_ids: duplicateEntryIds(entries).length,
     declared_adapter_pending_cutover: entries.filter(entry => entry.kernel_contract_projection.includes('pending-D2')).length,
     undeclared_legacy_owner_reachability: entries.filter(entry => entry.kernel_contract_projection === 'legacy-owner-bypass').length,
     duplicate_manifest_command_declarations: duplicateManifestCommandIds(sources.packageJson).length,
@@ -639,6 +654,18 @@ function collectRuntimeCommandRegistrationRecords(sourceContents) {
     }
   }
   return records;
+}
+
+function duplicateEntryIds(entries) {
+  const counts = new Map();
+  for (const entry of entries ?? []) {
+    if (!entry?.entry_id) continue;
+    counts.set(entry.entry_id, (counts.get(entry.entry_id) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([entryId]) => entryId)
+    .sort();
 }
 
 function duplicateRuntimeCommandIds(sourceContents) {

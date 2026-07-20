@@ -1,7 +1,7 @@
 # DevSeek Surface Entry Inventory
 
 - inventory_id: `DEVSEEK-R1-D1A-SURFACE-ENTRY-INVENTORY/v1`
-- inventory_sha256: `4dbfbdb26ffc279de27e549ab887b5bd1af74283a10f35efbfb555d476666fb8`
+- inventory_sha256: `9b9ca89f1cd7e6cbba68df0da610aecb73c25a36e08bd7bc9855f5d3802a3380`
 - qualification_effect: `NONE`
 - claims_permitted: `false`
 - asserts_gate_pass: `false`
@@ -23,6 +23,7 @@
 | cli_entrypoints | 8 |
 | bridge_endpoints | 10 |
 | unknown_entries | 0 |
+| duplicate_surface_entry_ids | 0 |
 | declared_adapter_pending_cutover | 0 |
 | undeclared_legacy_owner_reachability | 0 |
 | duplicate_manifest_command_declarations | 0 |
