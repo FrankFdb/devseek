@@ -1319,6 +1319,18 @@ test('R2-01C: ClarificationRisk owns high-impact questions and contract merge', 
   assertDoesNotContain(clarification, 'routeTaskIntent(', 'clarification risk must not bypass lineage with a second route owner');
 });
 
+test('R2-03A: ProjectInstructionService owns scoped rules, conflicts, and init safety', () => {
+  const instructions = src('src/app/project-instruction-service.ts');
+  assertContains(instructions, "kind: 'missing-instructions'", 'instruction discovery must report missing project rules');
+  assertContains(instructions, "kind: 'scoped-conflict'", 'instruction discovery must report scoped rule conflicts');
+  assertContains(instructions, 'winningRelPath', 'scoped conflicts must identify the nearest winning rule');
+  assertContains(instructions, 'collectInstructionDirs(root, targetPaths)', 'instruction scope must follow target path ancestry');
+
+  const init = src('src/app/project-init-service.ts');
+  assertContains(init, 'targetRelPath: RULES_REL_PATH', '/init draft must target the canonical DevSeek rules path');
+  assertDoesNotContain(init, 'writeFileSync', '/init draft service must not write project rules automatically');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -105,6 +105,44 @@ test('ProjectInstructionService: skips scoped AGENTS.md that contains misplaced 
     assert.deepEqual(result.sources.map(source => source.relPath), ['AGENTS.md']);
     assert.match(result.content, /Use repo-wide rules/);
     assert.doesNotMatch(result.content, /ConsoleRenderer::drawPixel/);
+  });
+});
+
+test('ProjectInstructionService: reports missing instructions and recommends init draft without writing', () => {
+  withTempWorkspace((workspace) => {
+    const result = new ProjectInstructionService().discover({ workspaceRoots: [workspace] });
+    const missing = result.diagnostics.find(item => item.kind === 'missing-instructions');
+
+    assert.deepEqual(result.sources, []);
+    assert.equal(missing.severity, 'info');
+    assert.equal(missing.recommendedInitTargetRelPath, '.devseek/rules.md');
+    assert.equal(existsSync(path.join(workspace, '.devseek/rules.md')), false);
+  });
+});
+
+test('ProjectInstructionService: reports scoped command conflicts with nearest rule as winner', () => {
+  withTempWorkspace((workspace) => {
+    const target = write(workspace, 'packages/app/src/main.ts', 'console.log("ok");');
+    write(workspace, 'AGENTS.md', [
+      '# Root rules',
+      '- Always run `npm test` before finishing.',
+    ].join('\n'));
+    write(workspace, 'packages/app/AGENTS.md', [
+      '# Package rules',
+      '- Do not run `npm test` for this package.',
+      '- Run `npm run test:app` instead.',
+    ].join('\n'));
+
+    const result = new ProjectInstructionService().discover({
+      workspaceRoots: [workspace],
+      targetPaths: [target],
+    });
+    const conflict = result.diagnostics.find(item => item.kind === 'scoped-conflict');
+
+    assert.equal(conflict.severity, 'warning');
+    assert.equal(conflict.ruleKey, 'command:npm test');
+    assert.deepEqual(conflict.sources, ['AGENTS.md', 'packages/app/AGENTS.md']);
+    assert.equal(conflict.winningRelPath, 'packages/app/AGENTS.md');
   });
 });
 
