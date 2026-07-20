@@ -1342,6 +1342,22 @@ test('R2-03B: RepositoryMapService owns repo EvidenceRef graph and scan safety',
   assertContains(repositoryMap, "kind: 'large-tree-truncated'", 'repository map must bound large-tree scans');
 });
 
+test('R2-03C: EnvironmentProfileService owns runtime and dependency policy decisions', () => {
+  const environmentProfile = src('src/app/environment-profile-service.ts');
+  const capabilityResolver = src('src/app/environment-capability-resolver.ts');
+
+  assertContains(environmentProfile, "version: 'devseek.environment-profile/v1'", 'environment profile must expose a versioned contract');
+  assertContains(environmentProfile, 'interface EnvironmentProfile', 'environment profile owner must expose EnvironmentProfile');
+  assertContains(environmentProfile, 'interface LanguageRuntime', 'environment profile owner must expose LanguageRuntime');
+  assertContains(environmentProfile, 'interface DependencyPolicy', 'environment profile owner must expose DependencyPolicy');
+  assertContains(environmentProfile, "kind: 'missing-runtime'", 'environment profile must own missing runtime diagnostics');
+  assertContains(environmentProfile, "'offline-dependency-install-blocked'", 'dependency policy must block offline dependency mutation');
+  assertContains(environmentProfile, "'dependency-mutation-requires-approval'", 'dependency policy must require approval for dependency mutation');
+  assertContains(environmentProfile, 'commandCandidates: []', 'environment profile must not guess build/test commands from manifests');
+  assertContains(capabilityResolver, 'buildEnvironmentProfile', 'terminal capability resolver must consume the profile owner');
+  assertDoesNotContain(capabilityResolver, 'hasExecutableInPath', 'terminal capability resolver must not duplicate PATH runtime ownership');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');
