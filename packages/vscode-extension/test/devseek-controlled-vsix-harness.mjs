@@ -73,11 +73,7 @@ try {
   const vsixSha256 = sha256File(vsixPath);
   const packaged = readVsixPackage(vsixPath);
   const expectedIdentity = normalizeExtensionIdentity(packaged, 'VSIX package.json');
-  if (!sourceHead.startsWith(expectedIdentity.devseekBuild.gitCommit)) {
-    throw new Error(
-      `VSIX gitCommit ${expectedIdentity.devseekBuild.gitCommit} does not match current HEAD ${sourceHead}`,
-    );
-  }
+  const sourceCompatibility = assertVsixSourceCompatibility(expectedIdentity.devseekBuild.gitCommit);
 
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-controlled-vsix-'));
   const workspaceDir = path.join(tmpRoot, 'workspace');
@@ -179,6 +175,7 @@ try {
       vsixPath,
       sha256: vsixSha256,
       sourceHead,
+      sourceCompatibility,
       packaged: expectedIdentity,
       installed: installedIdentity,
       installedExtensionPath: installed.extensionPath,
@@ -264,6 +261,10 @@ function resolveControlledScenarioSuite(id) {
       'existing-js-fix',
       'realistic-safety-boundary',
     ],
+    'r2-07e-stream-protocol': [
+      'stream-truncated-no-mutation',
+      'stream-request-mismatch-no-mutation',
+    ],
   };
   const scenarioIds = suites[String(id || '').trim()];
   if (!scenarioIds) {
@@ -285,6 +286,10 @@ function resolveControlledScenarioSuiteOptions(id) {
     'realistic-product': {
       kind: 'same-window-realistic-product-journey',
       sameDevSeekSession: true,
+    },
+    'r2-07e-stream-protocol': {
+      kind: 'same-window-stream-protocol-fault-suite',
+      sameDevSeekSession: false,
     },
   };
   return suiteOptions[String(id || '').trim()] || {
@@ -346,6 +351,26 @@ function controlledScenarioCatalog() {
     '',
   ].join('\n');
   const safeBaselineContent = 'SAFE_WORKSPACE_BASELINE\n';
+  const streamTruncatedProbeContent = [
+    'import sys',
+    '',
+    'def main():',
+    '    sys.stdout.write("STREAM_TRUNCATED_SHOULD_NOT_WRITE\\n")',
+    '',
+    'if __name__ == "__main__":',
+    '    main()',
+    '',
+  ].join('\n');
+  const streamMismatchProbeContent = [
+    'import sys',
+    '',
+    'def main():',
+    '    sys.stdout.write("STREAM_MISMATCH_SHOULD_NOT_WRITE\\n")',
+    '',
+    'if __name__ == "__main__":',
+    '    main()',
+    '',
+  ].join('\n');
   return {
     normal: {
       id: 'normal',
@@ -524,6 +549,44 @@ function controlledScenarioCatalog() {
         '合规日志审计',
       ],
     },
+    'stream-truncated-no-mutation': {
+      id: 'stream-truncated-no-mutation',
+      kind: 'r2-07e-stream-truncated-fail-closed',
+      targetRelativePath: 'tools/stream_truncated_probe.py',
+      targetContent: streamTruncatedProbeContent,
+      prompt: [
+        '请实现一个 Python CLI：tools/stream_truncated_probe.py。',
+        '运行 python tools/stream_truncated_probe.py 时必须输出 STREAM_TRUNCATED_SHOULD_NOT_WRITE。',
+        '请用 python 命令自测输出后结束任务，不要引入依赖，不要修改其他文件。',
+      ].join(''),
+      providerPlan: 'stream-corrupting-python-cli-complete',
+      streamFault: 'truncated-before-done',
+      expected: 'failed-no-mutation',
+      verifyCommand: "python tools/stream_truncated_probe.py | grep -q 'STREAM_TRUNCATED_SHOULD_NOT_WRITE'",
+      forbiddenFiles: ['tools/stream_truncated_probe.py'],
+      requiredRunLogSubstrings: [
+        'RESPONSE_CORRUPTED:stream-truncated',
+      ],
+    },
+    'stream-request-mismatch-no-mutation': {
+      id: 'stream-request-mismatch-no-mutation',
+      kind: 'r2-07e-stream-request-mismatch-fail-closed',
+      targetRelativePath: 'tools/stream_mismatch_probe.py',
+      targetContent: streamMismatchProbeContent,
+      prompt: [
+        '请实现一个 Python CLI：tools/stream_mismatch_probe.py。',
+        '运行 python tools/stream_mismatch_probe.py 时必须输出 STREAM_MISMATCH_SHOULD_NOT_WRITE。',
+        '请用 python 命令自测输出后结束任务，不要引入依赖，不要修改其他文件。',
+      ].join(''),
+      providerPlan: 'stream-corrupting-python-cli-complete',
+      streamFault: 'request-mismatch',
+      expected: 'failed-no-mutation',
+      verifyCommand: "python tools/stream_mismatch_probe.py | grep -q 'STREAM_MISMATCH_SHOULD_NOT_WRITE'",
+      forbiddenFiles: ['tools/stream_mismatch_probe.py'],
+      requiredRunLogSubstrings: [
+        'RESPONSE_CORRUPTED:stream-correlation-mismatch',
+      ],
+    },
   };
 }
 
@@ -556,13 +619,78 @@ function resolveVsixPath() {
 }
 
 function gitHead() {
-  const result = cp.spawnSync('git', ['rev-parse', 'HEAD'], {
+  return gitCommitFor('HEAD');
+}
+
+function gitCommitFor(revision) {
+  const result = cp.spawnSync('git', ['rev-parse', revision], {
     cwd: repoRoot,
     encoding: 'utf8',
     timeout: 10_000,
   });
-  if (result.status !== 0) throw new Error(`Unable to read git HEAD: ${result.stderr || result.stdout}`);
+  if (result.status !== 0) throw new Error(`Unable to resolve git revision ${revision}: ${result.stderr || result.stdout}`);
   return result.stdout.trim();
+}
+
+function gitOutputLines(args) {
+  const result = cp.spawnSync('git', ['-c', 'core.quotePath=false', ...args], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    timeout: 10_000,
+  });
+  if (result.status !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr || result.stdout}`);
+  return result.stdout.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+}
+
+function gitIsAncestor(ancestor, descendant) {
+  const result = cp.spawnSync('git', ['merge-base', '--is-ancestor', ancestor, descendant], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    timeout: 10_000,
+  });
+  return result.status === 0;
+}
+
+function isAllowedUnpackagedNonRuntimePath(relativePath) {
+  const normalized = String(relativePath || '').replace(/\\/g, '/');
+  return normalized.startsWith('docs/')
+    || normalized.startsWith('packages/vscode-extension/test/')
+    || normalized.startsWith('scripts/test/');
+}
+
+function assertVsixSourceCompatibility(artifactGitCommit) {
+  const artifactSourceCommit = gitCommitFor(`${artifactGitCommit}^{commit}`);
+  const sourceHead = gitHead();
+  const dirtyTrackedPaths = Array.from(new Set([
+    ...gitOutputLines(['diff', '--name-only']),
+    ...gitOutputLines(['diff', '--cached', '--name-only']),
+  ])).sort();
+  const dirtyRuntimePaths = dirtyTrackedPaths.filter(pathName => !isAllowedUnpackagedNonRuntimePath(pathName));
+  if (dirtyRuntimePaths.length > 0) {
+    throw new Error(`VSIX source check found unpackaged runtime changes: ${dirtyRuntimePaths.join(', ')}`);
+  }
+  if (sourceHead === artifactSourceCommit) {
+    return {
+      mode: 'exact-head',
+      artifactSourceCommit,
+      sourceHead,
+      unpackagedNonRuntimePaths: dirtyTrackedPaths,
+    };
+  }
+  if (!gitIsAncestor(artifactSourceCommit, sourceHead)) {
+    throw new Error(`VSIX gitCommit ${artifactGitCommit} is not an ancestor of current HEAD ${sourceHead}`);
+  }
+  const committedPaths = gitOutputLines(['diff', '--name-only', `${artifactSourceCommit}..${sourceHead}`]);
+  const committedRuntimePaths = committedPaths.filter(pathName => !isAllowedUnpackagedNonRuntimePath(pathName));
+  if (committedRuntimePaths.length > 0) {
+    throw new Error(`VSIX gitCommit ${artifactGitCommit} is missing runtime source changes: ${committedRuntimePaths.join(', ')}`);
+  }
+  return {
+    mode: 'ancestor-with-nonruntime-only',
+    artifactSourceCommit,
+    sourceHead,
+    unpackagedNonRuntimePaths: Array.from(new Set([...committedPaths, ...dirtyTrackedPaths])).sort(),
+  };
 }
 
 function sha256File(filePath) {
@@ -1447,22 +1575,48 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
             'Cache-Control': 'no-cache',
             Connection: 'close',
           });
-          response.write(`data: ${JSON.stringify({
+          const frame = (fields) => ({
             protocolVersion: 'devseek.deepseek-web-stream/v1',
             requestId: operationId,
+            ...fields,
+          });
+          const writeFrame = (fields) => {
+            response.write(`data: ${JSON.stringify(frame(fields))}\n\n`);
+          };
+          requestRecord.streamFault = activeScenario.streamFault || '';
+          if (activeScenario.streamFault === 'truncated-before-done') {
+            writeFrame({
+              sequence: 1,
+              event: 'delta',
+              delta: providerText,
+              done: false,
+            });
+            response.end();
+            return;
+          }
+          if (activeScenario.streamFault === 'request-mismatch') {
+            writeFrame({
+              requestId: `${operationId}-wrong-stream`,
+              sequence: 1,
+              event: 'delta',
+              delta: providerText,
+              done: false,
+            });
+            response.end();
+            return;
+          }
+          writeFrame({
             sequence: 1,
             event: 'delta',
             delta: providerText,
             done: false,
-          })}\n\n`);
-          response.end(`data: ${JSON.stringify({
-            protocolVersion: 'devseek.deepseek-web-stream/v1',
-            requestId: operationId,
+          });
+          response.end(`data: ${JSON.stringify(frame({
             sequence: 2,
             event: 'done',
             delta: '',
             done: true,
-          })}\n\n`);
+          }))}\n\n`);
           return;
         }
         return sendJson(response, 200, { content: providerText });
@@ -1498,6 +1652,7 @@ function controlledPlannerResponse({ scenario }) {
     'realistic-python-log-tool-complete': 'create',
     'latest-requirement-complete': 'create',
     'provider-error': 'create',
+    'stream-corrupting-python-cli-complete': 'create',
   };
   const descByPlan = {
     'read-only-complete': '只读检查指定文件并汇总结论',
@@ -1509,6 +1664,7 @@ function controlledPlannerResponse({ scenario }) {
     'realistic-python-log-tool-complete': '创建日志统计 CLI 并用 stdin 自测',
     'latest-requirement-complete': '按最新要求创建结果文件并验证',
     'provider-error': '创建指定文件并处理 Provider 失败路径',
+    'stream-corrupting-python-cli-complete': '创建 Python CLI 并由 stream 协议故障测试 fail-closed',
   };
   return [
     '我会按当前用户需求生成一个最小、可执行的任务计划。',
@@ -1727,6 +1883,32 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
     return ['我会以最新用户要求为准，忽略已经被覆盖的旧要求。', ...calls].join('\n');
   }
 
+  if (scenario.providerPlan === 'stream-corrupting-python-cli-complete') {
+    const activeTodos = {
+      todoList: [
+        { id: 1, title: '实现 Python CLI', status: 'in-progress' },
+        { id: 2, title: '用 python 命令自测输出', status: 'not-started' },
+      ],
+    };
+    const completedTodos = {
+      todoList: [
+        { id: 1, title: '实现 Python CLI', status: 'completed' },
+        { id: 2, title: '用 python 命令自测输出', status: 'completed' },
+      ],
+    };
+    const calls = [`[TOOL:manage_todo_list ${JSON.stringify(activeTodos)}]`];
+    if (!targetExists || ordinal === 1) {
+      calls.push(`[TOOL:create_file ${JSON.stringify({ path: scenario.targetRelativePath, content: scenario.targetContent })}]`);
+    }
+    calls.push(`[TOOL:run_terminal ${JSON.stringify({ command: scenario.verifyCommand })}]`);
+    calls.push(`[TOOL:read_file ${JSON.stringify({ path: scenario.targetRelativePath })}]`);
+    calls.push(`[TOOL:manage_todo_list ${JSON.stringify(completedTodos)}]`);
+    calls.push(`[TOOL:task_complete ${JSON.stringify({
+      summary: `已创建 ${scenario.targetRelativePath}，并用 python 命令自测输出符合预期。`,
+    })}]`);
+    return ['我会实现受控 Python CLI，并用真实终端命令验证输出。', ...calls].join('\n');
+  }
+
   const activeTodos = {
     todoList: [
       { id: 1, title: '创建受控仿真文件', status: 'in-progress' },
@@ -1847,6 +2029,10 @@ function collectRunLogs(excludePaths = []) {
           || event.data?.name === 'terminal.output'
         ))
         .map(event => String(event.data?.content || ''))
+        .concat(events.map(event => JSON.stringify({
+          event: event.event || '',
+          data: event.data || {},
+        })))
         .join('\n')
         .slice(-5000);
       return {
@@ -2033,6 +2219,8 @@ function evaluate(scenario, initialUserFiles, baselineRunLogPaths) {
       && userChangedPaths.length === 0
       && mutatedUserFiles.length === 0
       && !outsidePathExists
+      && forbiddenFileHits.length === 0
+      && missingRunLogSubstrings.length === 0
     : scenario.expected === 'completed-workflow'
       ? completedWorkflowOk
       : scenario.expected === 'completed-advisory-no-mutation'
@@ -2424,6 +2612,9 @@ function inspectControlledRunLogEvidence(driverReport, scenario) {
     if (userChangedPaths.length !== 0) errors.push(`Exception case reported user changed paths: ${JSON.stringify(userChangedPaths)}`);
     if (mutatedUserFiles.length !== 0) errors.push(`Exception case mutated user files: ${JSON.stringify(mutatedUserFiles)}`);
     if (driverReport?.artifact?.outsidePathExists) errors.push(`Exception case created outside path: ${driverReport.artifact.outsidePath}`);
+    if (missingRunLogSubstrings.length > 0) {
+      errors.push(`Exception run log is missing expected failure text: ${JSON.stringify(missingRunLogSubstrings)}`);
+    }
   } else if (scenario.expected === 'completed-workflow') {
     if (terminal?.event !== 'agent-run-completed') errors.push(`Run log terminal event is ${terminal?.event || '(missing)'}`);
     if (data.status !== 'completed') errors.push(`Run log terminal status is ${data.status || '(missing)'}`);

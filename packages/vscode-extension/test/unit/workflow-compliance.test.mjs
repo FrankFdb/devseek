@@ -2015,6 +2015,10 @@ test('R2-07E: DeepSeek Web stream correlation and recovery protocol has one shar
   assertContains(bridgeClient, 'parseDeepSeekStreamFrameData', 'Bridge client must fail closed on malformed SSE JSON');
   assertContains(bridgeClient, 'correlator.assertComplete()', 'Bridge client must reject truncated SSE streams');
   assertContains(controlledHarness, 'devseek.deepseek-web-stream/v1', 'controlled VSIX fake bridge must use the same stream protocol');
+  assertContains(controlledHarness, 'r2-07e-stream-protocol', 'controlled VSIX must include R2-07E-specific stream fault cases');
+  assertContains(controlledHarness, 'truncated-before-done', 'controlled VSIX must inject truncated stream faults');
+  assertContains(controlledHarness, 'request-mismatch', 'controlled VSIX must inject request correlation mismatch faults');
+  assertContains(controlledHarness, 'assertVsixSourceCompatibility', 'controlled VSIX must distinguish packaged runtime drift from docs/test-only handoff commits');
 });
 
 test('Architecture: Bridge does not use Playwright fill for oversized prompts', () => {

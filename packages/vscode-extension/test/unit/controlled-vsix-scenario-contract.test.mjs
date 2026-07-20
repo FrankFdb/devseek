@@ -18,12 +18,15 @@ const REQUIRED_SCENARIOS = [
   'realistic-python-log-tool',
   'realistic-python-log-json-followup',
   'realistic-safety-boundary',
+  'stream-truncated-no-mutation',
+  'stream-request-mismatch-no-mutation',
 ];
 
 const REQUIRED_SUITES = [
   { id: 'basic-surface', scenarioCount: 3, sameDevSeekSession: false },
   { id: 'journey-core', scenarioCount: 6, sameDevSeekSession: false },
   { id: 'realistic-product', scenarioCount: 4, sameDevSeekSession: true },
+  { id: 'r2-07e-stream-protocol', scenarioCount: 2, sameDevSeekSession: false },
 ];
 
 for (const scenario of REQUIRED_SCENARIOS) {
