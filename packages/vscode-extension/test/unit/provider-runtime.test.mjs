@@ -23,6 +23,7 @@ function bundle(entry, name) {
 
 const {
   ProviderConfigService,
+  negotiateProviderCapabilities,
   sanitizeProviderConfigSnapshot,
 } = bundle('src/llm/provider-config-service.ts', 'provider-config-service');
 const { LLMProviderRuntime } = bundle('src/llm/provider-runtime.ts', 'provider-runtime');
@@ -45,6 +46,36 @@ test('ProviderConfigService: no configured provider defaults to DeepSeek Web bri
   assert.equal(snapshot.activeProvider, 'bridge');
   assert.equal(snapshot.providers.bridge.displayName, 'DeepSeek 网页');
   assert.ok(snapshot.providers.bridge.capabilities.includes('text-tools'));
+});
+
+test('ProviderConfigService: API, OpenAI-compatible, local, and VS Code LM adapters expose redacted secret refs', () => {
+  const snapshot = new ProviderConfigService(config({
+    apiKey: 'sk-r2-07a-deepseek',
+    openaiCompatApiKey: 'sk-r2-07a-openai',
+    localApiApiKey: 'sk-r2-07a-local',
+  })).getSnapshot();
+  const persisted = JSON.stringify(sanitizeProviderConfigSnapshot(snapshot));
+
+  assert.equal(snapshot.providers['deepseek-api'].secretRef, 'devseek.apiKey');
+  assert.equal(snapshot.providers['deepseek-api'].secretConfigured, true);
+  assert.equal(snapshot.providers['openai-compat'].secretRef, 'devseek.openaiCompatApiKey');
+  assert.equal(snapshot.providers['openai-compat'].secretConfigured, true);
+  assert.equal(snapshot.providers['local-api'].secretRef, 'devseek.localApiApiKey');
+  assert.equal(snapshot.providers['local-api'].secretConfigured, true);
+  assert.equal(snapshot.providers['vscode-lm'].secretRef, undefined);
+  assert.equal(persisted.includes('sk-r2-07a-deepseek'), false);
+  assert.equal(persisted.includes('sk-r2-07a-openai'), false);
+  assert.equal(persisted.includes('sk-r2-07a-local'), false);
+});
+
+test('ProviderConfigService: unknown capability negotiation fails closed', () => {
+  const negotiation = negotiateProviderCapabilities(['text', 'workspace-admin']);
+
+  assert.equal(negotiation.version, 'devseek.provider-config-adapter/v1');
+  assert.equal(negotiation.decision, 'blocked');
+  assert.equal(negotiation.reason, 'unknown-capability');
+  assert.deepEqual(negotiation.requiredCapabilities, ['text']);
+  assert.deepEqual(negotiation.unsupportedCapabilities, ['workspace-admin']);
 });
 
 test('Provider status request is answered from local redacted configuration', () => {
@@ -116,6 +147,25 @@ test('Provider runtime: API provider can switch model without changing workflow 
   assert.equal(route.primary.model, 'deepseek-reasoner');
   assert.equal(route.workflow.workflowId, 'wf-8');
   assert.equal(JSON.stringify(snapshot).includes('sk-secret-phase8'), false);
+});
+
+test('Provider runtime: unknown required capabilities cannot fall back to the Bridge provider', () => {
+  const snapshot = new ProviderConfigService(config({
+    provider: 'deepseek-api',
+    apiKey: 'sk-r2-07a-runtime',
+  })).getSnapshot();
+
+  const route = new LLMProviderRuntime(snapshot).selectProvider({
+    workflowId: 'wf-unknown-capability',
+    requiredCapabilities: ['text', 'workspace-admin'],
+  });
+
+  assert.equal(route.decision, 'blocked');
+  assert.equal(route.blockedReason, 'unknown-capability');
+  assert.deepEqual(route.unsupportedCapabilities, ['workspace-admin']);
+  assert.deepEqual(route.candidates, []);
+  assert.equal(route.primary, undefined);
+  assert.equal(JSON.stringify(route).includes('sk-r2-07a-runtime'), false);
 });
 
 test('Provider events: DeepSeek Web text tool parsing normalizes to ToolCall', () => {

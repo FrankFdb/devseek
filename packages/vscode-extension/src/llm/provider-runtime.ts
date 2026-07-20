@@ -1,6 +1,12 @@
 import type { ToolCall } from '../agent/tool-call-normalizer';
 import type { LLMProviderCapability, LLMProviderHealth, LLMProviderType } from './types';
-import type { LLMProviderConfig, ProviderConfigSnapshot } from './provider-config-service';
+import {
+  negotiateProviderCapabilities,
+  type LLMProviderConfig,
+  type ProviderCapabilityNegotiation,
+  type ProviderCapabilityNegotiationReason,
+  type ProviderConfigSnapshot,
+} from './provider-config-service';
 
 export interface ProviderWorkflowContext {
   workflowId?: string;
@@ -8,14 +14,20 @@ export interface ProviderWorkflowContext {
   reviewLedgerId?: string;
   idempotencyLedgerId?: string;
   preferredProvider?: LLMProviderType;
-  requiredCapabilities?: LLMProviderCapability[];
+  requiredCapabilities?: readonly string[];
 }
+
+export type ProviderRouteDecisionKind = 'allow' | 'blocked';
 
 export interface ProviderRoutePlan {
   workflow: ProviderWorkflowContext;
-  primary: LLMProviderConfig;
+  decision: ProviderRouteDecisionKind;
+  primary?: LLMProviderConfig;
   fallbacks: LLMProviderConfig[];
   candidates: LLMProviderConfig[];
+  capabilityNegotiation: ProviderCapabilityNegotiation;
+  unsupportedCapabilities: string[];
+  blockedReason?: ProviderCapabilityNegotiationReason;
 }
 
 export interface ProviderOperationFact {
@@ -41,7 +53,21 @@ export class LLMProviderRuntime {
   ) {}
 
   selectProvider(context: ProviderWorkflowContext = {}): ProviderRoutePlan {
-    const requiredCapabilities = context.requiredCapabilities ?? ['text'];
+    const capabilityNegotiation = negotiateProviderCapabilities(context.requiredCapabilities);
+    const requiredCapabilities = capabilityNegotiation.requiredCapabilities;
+    if (capabilityNegotiation.decision === 'blocked') {
+      return {
+        workflow: { ...context, requiredCapabilities },
+        decision: 'blocked',
+        primary: undefined,
+        fallbacks: [],
+        candidates: [],
+        capabilityNegotiation,
+        unsupportedCapabilities: capabilityNegotiation.unsupportedCapabilities,
+        blockedReason: capabilityNegotiation.reason,
+      };
+    }
+
     const preferred = context.preferredProvider ?? this.snapshot.activeProvider;
     const orderedTypes = uniqueProviderTypes([preferred, ...this.snapshot.fallbackOrder]);
     const candidates = orderedTypes
@@ -52,9 +78,12 @@ export class LLMProviderRuntime {
     const primary = candidates[0] ?? this.snapshot.providers.bridge;
     return {
       workflow: { ...context, requiredCapabilities },
+      decision: 'allow',
       primary,
       fallbacks: candidates.filter(provider => provider.type !== primary.type),
       candidates,
+      capabilityNegotiation,
+      unsupportedCapabilities: [],
     };
   }
 

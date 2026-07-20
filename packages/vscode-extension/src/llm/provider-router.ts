@@ -38,7 +38,12 @@ export function selectProviderRoute(context: ProviderWorkflowContext = {}) {
 }
 
 function _createProvider(): LLMProvider {
-  switch (selectProviderRoute().primary.type) {
+  const route = selectProviderRoute();
+  if (route.decision === 'blocked' || !route.primary) {
+    throw new Error(`Provider route blocked: ${route.blockedReason ?? 'capability negotiation failed'}`);
+  }
+
+  switch (route.primary.type) {
     case 'deepseek-api':   return new DeepSeekApiProvider();
     case 'openai-compat':  return new OpenAICompatProvider();
     case 'local-api':      return new LocalApiProvider();

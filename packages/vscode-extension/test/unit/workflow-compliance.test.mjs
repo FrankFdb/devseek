@@ -1400,6 +1400,22 @@ test('R2-06C: WorktreeConflictService owns generated compatibility migration cle
   assertContains(worktreeConflict, "'legacy-owner-revival-risk'", 'legacy owner revival risk must fail closed');
 });
 
+test('R2-07A: ProviderConfigService owns secret refs and capability negotiation', () => {
+  const providerConfig = src('src/llm/provider-config-service.ts');
+  const providerRuntime = src('src/llm/provider-runtime.ts');
+
+  assertContains(providerConfig, "PROVIDER_CONFIG_ADAPTER_PROTOCOL_VERSION = 'devseek.provider-config-adapter/v1'", 'provider config adapter must expose a versioned contract');
+  assertContains(providerConfig, 'negotiateProviderCapabilities', 'capability negotiation must stay with the provider config owner');
+  assertContains(providerConfig, 'SUPPORTED_PROVIDER_CAPABILITIES', 'provider capabilities must be allowlisted centrally');
+  assertContains(providerConfig, "secretRef: 'devseek.apiKey'", 'DeepSeek API must expose only a secretRef in config snapshots');
+  assertContains(providerConfig, "secretRef: 'devseek.openaiCompatApiKey'", 'OpenAI-compatible API must expose only a secretRef in config snapshots');
+  assertContains(providerConfig, "secretRef: 'devseek.localApiApiKey'", 'local API must expose only a secretRef in config snapshots');
+  assertContains(providerConfig, "'unknown-capability'", 'unknown capabilities must be explicit fail-closed reasons');
+  assertContains(providerRuntime, 'capabilityNegotiation', 'runtime routing must consume the provider config negotiation report');
+  assertContains(providerRuntime, "decision: 'blocked'", 'runtime routing must block unknown capability negotiation');
+  assertContains(providerRuntime, 'primary: undefined', 'blocked provider routes must not fall back to Bridge');
+});
+
 test('R2-03F: ContextAssemblyService owns preview, context budget, usage budget, and omission reports', () => {
   const contextAssembly = src('src/app/context-assembly-service.ts');
 

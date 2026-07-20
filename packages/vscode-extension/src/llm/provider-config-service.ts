@@ -22,6 +22,7 @@ export interface ProviderConfigSnapshot {
 }
 
 export const DEFAULT_PROVIDER_TYPE: LLMProviderType = 'bridge';
+export const PROVIDER_CONFIG_ADAPTER_PROTOCOL_VERSION = 'devseek.provider-config-adapter/v1';
 
 export const SUPPORTED_PROVIDER_TYPES: readonly LLMProviderType[] = [
   'bridge',
@@ -30,6 +31,28 @@ export const SUPPORTED_PROVIDER_TYPES: readonly LLMProviderType[] = [
   'local-api',
   'vscode-lm',
 ];
+
+export const SUPPORTED_PROVIDER_CAPABILITIES: readonly LLMProviderCapability[] = [
+  'text',
+  'vision',
+  'streaming',
+  'text-tools',
+  'native-tools',
+  'web',
+  'local',
+  'vscode-lm',
+];
+
+export type ProviderCapabilityNegotiationDecisionKind = 'allow' | 'blocked';
+export type ProviderCapabilityNegotiationReason = 'unknown-capability';
+
+export interface ProviderCapabilityNegotiation {
+  version: typeof PROVIDER_CONFIG_ADAPTER_PROTOCOL_VERSION;
+  decision: ProviderCapabilityNegotiationDecisionKind;
+  requiredCapabilities: LLMProviderCapability[];
+  unsupportedCapabilities: string[];
+  reason?: ProviderCapabilityNegotiationReason;
+}
 
 const PROVIDER_CONFIG_KEYS = [
   'provider',
@@ -142,9 +165,43 @@ export function sanitizeProviderConfigSnapshot(snapshot: ProviderConfigSnapshot)
   };
 }
 
+export function negotiateProviderCapabilities(
+  requiredCapabilities?: readonly string[],
+): ProviderCapabilityNegotiation {
+  const requested = requiredCapabilities?.length ? requiredCapabilities : ['text'];
+  const supported: LLMProviderCapability[] = [];
+  const unsupported: string[] = [];
+
+  for (const value of requested) {
+    const candidate = cleanString(String(value));
+    if (!candidate) continue;
+    const capability = normalizeProviderCapability(candidate);
+    if (capability) {
+      if (!supported.includes(capability)) supported.push(capability);
+    } else if (!unsupported.includes(candidate)) {
+      unsupported.push(candidate);
+    }
+  }
+
+  if (supported.length === 0 && unsupported.length === 0) supported.push('text');
+
+  return {
+    version: PROVIDER_CONFIG_ADAPTER_PROTOCOL_VERSION,
+    decision: unsupported.length ? 'blocked' : 'allow',
+    requiredCapabilities: supported,
+    unsupportedCapabilities: unsupported,
+    ...(unsupported.length ? { reason: 'unknown-capability' as const } : {}),
+  };
+}
+
 export function normalizeProviderType(value: string | undefined | null, fallback: LLMProviderType | null): LLMProviderType | null {
   const candidate = String(value ?? '').trim() as LLMProviderType;
   return (SUPPORTED_PROVIDER_TYPES as readonly string[]).includes(candidate) ? candidate : fallback;
+}
+
+export function normalizeProviderCapability(value: string | undefined | null): LLMProviderCapability | null {
+  const candidate = cleanString(String(value ?? '')) as LLMProviderCapability;
+  return (SUPPORTED_PROVIDER_CAPABILITIES as readonly string[]).includes(candidate) ? candidate : null;
 }
 
 function uniqueProviders(values: LLMProviderType[]): LLMProviderType[] {
