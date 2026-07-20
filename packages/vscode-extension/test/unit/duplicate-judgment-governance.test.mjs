@@ -24,6 +24,7 @@ execSync(
 
 const {
   ARCHITECTURE_DECISION_PROTOCOL_VERSION,
+  validateArchitectureDecisionImpactClosure,
   validateArchitectureDecisionLifecycle,
 } = createRequire(import.meta.url)(bundlePath);
 
@@ -148,6 +149,53 @@ test('R2-05A architecture decisions veto parallel owners, Surface rules, and dua
   assert.ok(report.reasons.includes('parallel-owner'));
   assert.ok(report.reasons.includes('surface-business-rule'));
   assert.ok(report.reasons.includes('dual-write-owner'));
+});
+
+test('R2-05B architecture impact plans require migration, delete, rollback, and acceptance mapping', () => {
+  const report = validateArchitectureDecisionImpactClosure({
+    id: 'adr-r2-05b',
+    impactSet: {
+      callers: { items: [{ id: 'caller-extension', target: 'src/extension.ts', evidenceId: 'ev-caller' }] },
+      generated: { notApplicableReason: 'no generated files touched', evidenceId: 'ev-generated-na' },
+      schemas: { items: [{ id: 'schema-command', target: 'package.json contributes.commands', evidenceId: 'ev-schema' }] },
+      releases: { notApplicableReason: 'no Extension/Bridge runtime release required', evidenceId: 'ev-release-na' },
+    },
+    migrationPlan: { steps: [{ target: 'src/app/old-owner.ts', action: 'delegate-to-judgment-owner', evidenceId: 'ev-migrate' }] },
+    deletePlan: { steps: [{ target: 'src/app/parallel-owner.ts', action: 'delete', evidenceId: 'ev-delete' }] },
+    rollbackPlan: { steps: [{ target: 'src/app/old-owner.ts', action: 'restore-baseline', evidenceId: 'ev-rollback' }] },
+    acceptanceMapping: [{ acceptanceId: 'A1', impactIds: ['caller-extension'], verification: 'npm test', evidenceId: 'ev-accept' }],
+  });
+
+  assert.equal(report.version, ARCHITECTURE_DECISION_PROTOCOL_VERSION);
+  assert.equal(report.decision, 'allow');
+  assert.deepEqual(report.reasons, []);
+  assert.equal(report.impactSet.callers.items[0].target, 'src/extension.ts');
+});
+
+test('R2-05B architecture impact plans fail closed on partial impact and unverified rollback', () => {
+  const report = validateArchitectureDecisionImpactClosure({
+    id: 'adr-r2-05b-partial',
+    impactSet: {
+      callers: { items: [{ id: 'caller-extension', target: 'src/extension.ts' }] },
+      generated: {},
+      schemas: {},
+      releases: {},
+    },
+    migrationPlan: { steps: [] },
+    deletePlan: {},
+    rollbackPlan: { steps: [{ target: 'src/app/old-owner.ts', action: 'restore-baseline' }] },
+    acceptanceMapping: [],
+  });
+
+  assert.equal(report.decision, 'blocked');
+  assert.ok(report.reasons.includes('impact-evidence-missing'));
+  assert.ok(report.reasons.includes('missing-generated-impact'));
+  assert.ok(report.reasons.includes('missing-schema-impact'));
+  assert.ok(report.reasons.includes('missing-release-impact'));
+  assert.ok(report.reasons.includes('missing-migration-plan'));
+  assert.ok(report.reasons.includes('missing-delete-plan'));
+  assert.ok(report.reasons.includes('rollback-evidence-missing'));
+  assert.ok(report.reasons.includes('missing-acceptance-mapping'));
 });
 
 test('ARCH-16 tool alias search_content is owned by ToolRegistry and generated manifest only', () => {

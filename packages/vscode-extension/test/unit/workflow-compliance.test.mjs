@@ -1460,6 +1460,22 @@ test('R2-05A: Judgment owners own Architecture Decision lifecycle governance', (
   assertContains(owners, "id: 'architecture-decision'", 'architecture decision governance must be registered as an owner domain');
 });
 
+test('R2-05B: Architecture decisions own impact, migration, rollback, and acceptance closure', () => {
+  const owners = src('src/app/judgment-owners.ts');
+
+  assertContains(owners, 'validateArchitectureDecisionImpactClosure', 'architecture impact closure must stay with the architecture decision owner');
+  assertContains(owners, 'ArchitectureImpactSet', 'architecture decisions must carry an ImpactSet');
+  assertContains(owners, 'migrationPlan', 'architecture decisions must carry migration steps or explicit N/A evidence');
+  assertContains(owners, 'deletePlan', 'architecture decisions must carry delete steps or explicit N/A evidence');
+  assertContains(owners, 'rollbackPlan', 'architecture decisions must carry rollback steps or explicit N/A evidence');
+  assertContains(owners, 'acceptanceMapping', 'architecture decisions must map impacts to acceptance verification');
+  assertContains(owners, "'missing-caller-impact'", 'caller impacts must be explicit');
+  assertContains(owners, "'missing-generated-impact'", 'generated impacts must be explicit');
+  assertContains(owners, "'missing-schema-impact'", 'schema impacts must be explicit');
+  assertContains(owners, "'missing-release-impact'", 'release impacts must be explicit');
+  assertContains(owners, "'rollback-evidence-missing'", 'rollback plans must be evidence-bound');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');

@@ -74,6 +74,81 @@ export interface ArchitectureDecisionLifecycleReport {
   writeEffects: ArchitectureDecisionWriteEffect[];
 }
 
+export type ArchitectureDecisionImpactReason =
+  | 'missing-caller-impact'
+  | 'missing-generated-impact'
+  | 'missing-schema-impact'
+  | 'missing-release-impact'
+  | 'impact-evidence-missing'
+  | 'missing-migration-plan'
+  | 'migration-evidence-missing'
+  | 'missing-delete-plan'
+  | 'delete-evidence-missing'
+  | 'missing-rollback-plan'
+  | 'rollback-evidence-missing'
+  | 'missing-acceptance-mapping'
+  | 'acceptance-evidence-missing';
+
+export interface ArchitectureImpactItem {
+  id: string;
+  target: string;
+  ownerModule?: string;
+  evidenceId?: string;
+}
+
+export interface ArchitectureImpactBucket {
+  items?: ArchitectureImpactItem[];
+  notApplicableReason?: string;
+  evidenceId?: string;
+}
+
+export interface ArchitectureImpactSet {
+  callers: ArchitectureImpactBucket;
+  generated: ArchitectureImpactBucket;
+  schemas: ArchitectureImpactBucket;
+  releases: ArchitectureImpactBucket;
+}
+
+export interface ArchitecturePlanStep {
+  target: string;
+  action: string;
+  evidenceId?: string;
+}
+
+export interface ArchitecturePlanSection {
+  steps?: ArchitecturePlanStep[];
+  notApplicableReason?: string;
+  evidenceId?: string;
+}
+
+export interface ArchitectureAcceptanceMapping {
+  acceptanceId: string;
+  impactIds: string[];
+  verification: string;
+  evidenceId?: string;
+}
+
+export interface ArchitectureDecisionImpactClosureInput {
+  id: string;
+  impactSet?: Partial<ArchitectureImpactSet>;
+  migrationPlan?: ArchitecturePlanSection;
+  deletePlan?: ArchitecturePlanSection;
+  rollbackPlan?: ArchitecturePlanSection;
+  acceptanceMapping?: ArchitectureAcceptanceMapping[];
+}
+
+export interface ArchitectureDecisionImpactClosureReport {
+  version: typeof ARCHITECTURE_DECISION_PROTOCOL_VERSION;
+  id: string;
+  decision: ArchitectureDecisionLifecycleDecision;
+  reasons: ArchitectureDecisionImpactReason[];
+  impactSet: ArchitectureImpactSet;
+  migrationPlan: ArchitecturePlanSection;
+  deletePlan: ArchitecturePlanSection;
+  rollbackPlan: ArchitecturePlanSection;
+  acceptanceMapping: ArchitectureAcceptanceMapping[];
+}
+
 export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
   {
     id: 'architecture-decision',
@@ -83,7 +158,9 @@ export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
     canonicalSymbols: [
       'ARCHITECTURE_DECISION_PROTOCOL_VERSION',
       'ArchitectureDecisionState',
+      'ArchitectureImpactSet',
       'validateArchitectureDecisionLifecycle',
+      'validateArchitectureDecisionImpactClosure',
     ],
     supportingModules: [
       'src/app/index.ts',
@@ -410,6 +487,49 @@ export function validateArchitectureDecisionLifecycle(
   };
 }
 
+export function validateArchitectureDecisionImpactClosure(
+  input: ArchitectureDecisionImpactClosureInput,
+): ArchitectureDecisionImpactClosureReport {
+  const reasons = new Set<ArchitectureDecisionImpactReason>();
+  const impactSet: ArchitectureImpactSet = {
+    callers: normalizeImpactBucket(input.impactSet?.callers, reasons, 'missing-caller-impact'),
+    generated: normalizeImpactBucket(input.impactSet?.generated, reasons, 'missing-generated-impact'),
+    schemas: normalizeImpactBucket(input.impactSet?.schemas, reasons, 'missing-schema-impact'),
+    releases: normalizeImpactBucket(input.impactSet?.releases, reasons, 'missing-release-impact'),
+  };
+  const migrationPlan = normalizePlanSection(
+    input.migrationPlan,
+    reasons,
+    'missing-migration-plan',
+    'migration-evidence-missing',
+  );
+  const deletePlan = normalizePlanSection(
+    input.deletePlan,
+    reasons,
+    'missing-delete-plan',
+    'delete-evidence-missing',
+  );
+  const rollbackPlan = normalizePlanSection(
+    input.rollbackPlan,
+    reasons,
+    'missing-rollback-plan',
+    'rollback-evidence-missing',
+  );
+  const acceptanceMapping = normalizeAcceptanceMapping(input.acceptanceMapping, reasons);
+
+  return {
+    version: ARCHITECTURE_DECISION_PROTOCOL_VERSION,
+    id: normalizeDecisionText(input.id),
+    decision: reasons.size === 0 ? 'allow' : 'blocked',
+    reasons: [...reasons],
+    impactSet,
+    migrationPlan,
+    deletePlan,
+    rollbackPlan,
+    acceptanceMapping,
+  };
+}
+
 function normalizeDecisionText(value: string | undefined): string {
   return String(value || '').trim();
 }
@@ -463,4 +583,75 @@ function hasDualWriteOwner(effects: readonly ArchitectureDecisionWriteEffect[]):
     ownersByTarget.get(effect.target)!.add(effect.ownerModule);
   }
   return [...ownersByTarget.values()].some(owners => owners.size > 1);
+}
+
+function normalizeImpactBucket(
+  input: ArchitectureImpactBucket | undefined,
+  reasons: Set<ArchitectureDecisionImpactReason>,
+  missingReason: ArchitectureDecisionImpactReason,
+): ArchitectureImpactBucket {
+  const items = (input?.items || [])
+    .map(item => ({
+      id: normalizeDecisionText(item.id),
+      target: normalizeDecisionText(item.target),
+      ownerModule: normalizeDecisionText(item.ownerModule) || undefined,
+      evidenceId: normalizeDecisionText(item.evidenceId) || undefined,
+    }))
+    .filter(item => item.id && item.target);
+  const notApplicableReason = normalizeDecisionText(input?.notApplicableReason);
+  const evidenceId = normalizeDecisionText(input?.evidenceId);
+
+  if (items.length === 0 && !notApplicableReason) reasons.add(missingReason);
+  if (items.some(item => !item.evidenceId) || (items.length === 0 && notApplicableReason && !evidenceId)) {
+    reasons.add('impact-evidence-missing');
+  }
+  return {
+    items,
+    notApplicableReason: notApplicableReason || undefined,
+    evidenceId: evidenceId || undefined,
+  };
+}
+
+function normalizePlanSection(
+  input: ArchitecturePlanSection | undefined,
+  reasons: Set<ArchitectureDecisionImpactReason>,
+  missingReason: ArchitectureDecisionImpactReason,
+  evidenceReason: ArchitectureDecisionImpactReason,
+): ArchitecturePlanSection {
+  const steps = (input?.steps || [])
+    .map(step => ({
+      target: normalizeDecisionText(step.target),
+      action: normalizeDecisionText(step.action),
+      evidenceId: normalizeDecisionText(step.evidenceId) || undefined,
+    }))
+    .filter(step => step.target && step.action);
+  const notApplicableReason = normalizeDecisionText(input?.notApplicableReason);
+  const evidenceId = normalizeDecisionText(input?.evidenceId);
+
+  if (steps.length === 0 && !notApplicableReason) reasons.add(missingReason);
+  if (steps.some(step => !step.evidenceId) || (steps.length === 0 && notApplicableReason && !evidenceId)) {
+    reasons.add(evidenceReason);
+  }
+  return {
+    steps,
+    notApplicableReason: notApplicableReason || undefined,
+    evidenceId: evidenceId || undefined,
+  };
+}
+
+function normalizeAcceptanceMapping(
+  input: readonly ArchitectureAcceptanceMapping[] | undefined,
+  reasons: Set<ArchitectureDecisionImpactReason>,
+): ArchitectureAcceptanceMapping[] {
+  const mappings = (input || []).map(mapping => ({
+    acceptanceId: normalizeDecisionText(mapping.acceptanceId),
+    impactIds: normalizeDecisionTextList(mapping.impactIds),
+    verification: normalizeDecisionText(mapping.verification),
+    evidenceId: normalizeDecisionText(mapping.evidenceId) || undefined,
+  })).filter(mapping => mapping.acceptanceId);
+  if (mappings.length === 0) reasons.add('missing-acceptance-mapping');
+  if (mappings.some(mapping => mapping.impactIds.length === 0 || !mapping.verification || !mapping.evidenceId)) {
+    reasons.add('acceptance-evidence-missing');
+  }
+  return mappings;
 }
