@@ -1,7 +1,7 @@
 # DevSeek Surface Entry Inventory
 
 - inventory_id: `DEVSEEK-R1-D1A-SURFACE-ENTRY-INVENTORY/v1`
-- inventory_sha256: `b0cce1367baa2722d63110a5543f7037f6eac4b0fc513d93e1221731d388352f`
+- inventory_sha256: `4dbfbdb26ffc279de27e549ab887b5bd1af74283a10f35efbfb555d476666fb8`
 - qualification_effect: `NONE`
 - claims_permitted: `false`
 - asserts_gate_pass: `false`
@@ -27,6 +27,7 @@
 | undeclared_legacy_owner_reachability | 0 |
 | duplicate_manifest_command_declarations | 0 |
 | duplicate_runtime_command_registrations | 0 |
+| duplicate_webview_protocol_declarations | 0 |
 | duplicate_webview_handler_registrations | 0 |
 
 ## Entries

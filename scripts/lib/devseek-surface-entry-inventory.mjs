@@ -228,6 +228,16 @@ export function validateSurfaceEntryInventory(inventory, sources) {
       }
     }
   }
+  if (counts.duplicate_webview_protocol_declarations !== 0) {
+    const duplicateTypes = duplicateWebviewProtocolTypes(sources.sourceContents);
+    if (duplicateTypes.length === 0) {
+      errors.push(`webview:duplicate-protocol-${counts.duplicate_webview_protocol_declarations}`);
+    } else {
+      for (const type of duplicateTypes) {
+        errors.push(`webview:duplicate-protocol-${type}`);
+      }
+    }
+  }
   if (counts.duplicate_webview_handler_registrations !== 0) {
     const duplicateTypes = duplicateWebviewHandlerTypes(sources.sourceContents);
     if (duplicateTypes.length === 0) {
@@ -250,6 +260,9 @@ export function validateSurfaceEntryInventory(inventory, sources) {
   }
   if (guards.runtime_command_registration_unique !== true) {
     errors.push('bypass:runtime-command-registration-not-unique');
+  }
+  if (guards.webview_protocol_declaration_unique !== true) {
+    errors.push('bypass:webview-protocol-declaration-not-unique');
   }
   if (guards.webview_handler_registration_unique !== true) {
     errors.push('bypass:webview-handler-registration-not-unique');
@@ -543,6 +556,7 @@ function buildBypassGuards(sources, entries) {
     legacy_surface_projection_fallbacks_removed: !hasLegacySurfaceProjectionFallbacks(inventoryLib),
     manifest_command_declaration_unique: duplicateManifestCommandIds(sources.packageJson).length === 0,
     runtime_command_registration_unique: duplicateRuntimeCommandIds(sources.sourceContents).length === 0,
+    webview_protocol_declaration_unique: duplicateWebviewProtocolTypes(sources.sourceContents).length === 0,
     webview_handler_registration_unique: duplicateWebviewHandlerTypes(sources.sourceContents).length === 0,
     manifest_runtime_drift_present: entries.some(entry => (
       entry.kind === 'command'
@@ -589,6 +603,7 @@ function buildCounts(entries, sources) {
     undeclared_legacy_owner_reachability: entries.filter(entry => entry.kernel_contract_projection === 'legacy-owner-bypass').length,
     duplicate_manifest_command_declarations: duplicateManifestCommandIds(sources.packageJson).length,
     duplicate_runtime_command_registrations: duplicateRuntimeCommandIds(sources.sourceContents).length,
+    duplicate_webview_protocol_declarations: duplicateWebviewProtocolTypes(sources.sourceContents).length,
     duplicate_webview_handler_registrations: duplicateWebviewHandlerTypes(sources.sourceContents).length,
   };
 }
@@ -665,18 +680,34 @@ function extractVisibleCommandTupleIds(source) {
 }
 
 function extractWebviewInboundTypes(source) {
-  const types = new Set();
+  return [...new Set(collectWebviewProtocolTypeRecords(source))].sort();
+}
+
+function collectWebviewProtocolTypeRecords(source) {
+  const types = [];
   const taskStart = source.indexOf('export const WEBVIEW_TASK_HISTORY_COMMANDS');
   const taskEnd = taskStart >= 0 ? source.indexOf('] as const', taskStart) : -1;
   if (taskStart >= 0 && taskEnd >= 0) {
-    for (const match of source.slice(taskStart, taskEnd).matchAll(/'([^']+)'/gu)) types.add(match[1]);
+    for (const match of source.slice(taskStart, taskEnd).matchAll(/'([^']+)'/gu)) types.push(match[1]);
   }
   const unionStart = source.indexOf('export type WebviewInboundType =');
   const unionEnd = unionStart >= 0 ? source.indexOf('export interface WebviewInboundMessage', unionStart) : -1;
   if (unionStart >= 0 && unionEnd >= 0) {
-    for (const match of source.slice(unionStart, unionEnd).matchAll(/'([^']+)'/gu)) types.add(match[1]);
+    for (const match of source.slice(unionStart, unionEnd).matchAll(/'([^']+)'/gu)) types.push(match[1]);
   }
-  return [...types].sort();
+  return types;
+}
+
+function duplicateWebviewProtocolTypes(sourceContents) {
+  const source = sourceContents[SOURCE_PATHS.webviewProtocol] ?? '';
+  const counts = new Map();
+  for (const type of collectWebviewProtocolTypeRecords(source)) {
+    counts.set(type, (counts.get(type) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([type]) => type)
+    .sort();
 }
 
 function extractWebviewHandlerCases(source) {

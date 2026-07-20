@@ -100,6 +100,7 @@
         "legacy_surface_projection_fallbacks_removed",
         "manifest_command_declaration_unique",
         "runtime_command_registration_unique",
+        "webview_protocol_declaration_unique",
         "webview_handler_registration_unique",
         "manifest_runtime_drift_present",
         "webview_protocol_handler_drift_present",
@@ -112,6 +113,7 @@
         "legacy_surface_projection_fallbacks_removed": { "type": "boolean" },
         "manifest_command_declaration_unique": { "type": "boolean" },
         "runtime_command_registration_unique": { "type": "boolean" },
+        "webview_protocol_declaration_unique": { "type": "boolean" },
         "webview_handler_registration_unique": { "type": "boolean" },
         "manifest_runtime_drift_present": { "type": "boolean" },
         "webview_protocol_handler_drift_present": { "type": "boolean" },
@@ -140,6 +142,7 @@
         "undeclared_legacy_owner_reachability",
         "duplicate_manifest_command_declarations",
         "duplicate_runtime_command_registrations",
+        "duplicate_webview_protocol_declarations",
         "duplicate_webview_handler_registrations"
       ],
       "properties": {
@@ -160,6 +163,7 @@
         "undeclared_legacy_owner_reachability": { "type": "integer", "minimum": 0 },
         "duplicate_manifest_command_declarations": { "type": "integer", "minimum": 0 },
         "duplicate_runtime_command_registrations": { "type": "integer", "minimum": 0 },
+        "duplicate_webview_protocol_declarations": { "type": "integer", "minimum": 0 },
         "duplicate_webview_handler_registrations": { "type": "integer", "minimum": 0 }
       }
     },

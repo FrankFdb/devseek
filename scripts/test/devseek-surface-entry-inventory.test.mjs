@@ -46,6 +46,7 @@ test('surface entry inventory is source-bound and covers every current entry den
     undeclared_legacy_owner_reachability: 0,
     duplicate_manifest_command_declarations: 0,
     duplicate_runtime_command_registrations: 0,
+    duplicate_webview_protocol_declarations: 0,
     duplicate_webview_handler_registrations: 0,
   });
   const resumeEntry = actual.entries.find(item => item.entry_id === 'cli/resume-exec');
@@ -90,6 +91,7 @@ test('surface entry inventory is source-bound and covers every current entry den
   assert.equal(actual.bypass_guards.legacy_surface_projection_fallbacks_removed, true);
   assert.equal(actual.bypass_guards.manifest_command_declaration_unique, true);
   assert.equal(actual.bypass_guards.runtime_command_registration_unique, true);
+  assert.equal(actual.bypass_guards.webview_protocol_declaration_unique, true);
   assert.equal(actual.bypass_guards.webview_handler_registration_unique, true);
   assert.equal(actual.bypass_guards.unknown_entry_fail_closed, true);
 
@@ -207,6 +209,18 @@ test('R1-D2D surface inventory fails closed on duplicate webview handler registr
   assert.equal(mutatedInventory.counts.duplicate_webview_handler_registrations, 1);
   assert.equal(mutatedInventory.bypass_guards.webview_handler_registration_unique, false);
   assertHasError(mutatedInventory, mutatedSources, 'webview:duplicate-handler-chat');
+});
+
+test('R1-D2D surface inventory fails closed on duplicate webview protocol declarations', () => {
+  const mutatedSources = cloneSources();
+  mutatedSources.sourceContents['packages/vscode-extension/src/ui/webview-protocol.ts'] =
+    mutatedSources.sourceContents['packages/vscode-extension/src/ui/webview-protocol.ts']
+      .replace("| 'chat' | 'cancel'", "| 'chat' | 'chat' | 'cancel'");
+
+  const mutatedInventory = buildSurfaceEntryInventory(mutatedSources);
+  assert.equal(mutatedInventory.counts.duplicate_webview_protocol_declarations, 1);
+  assert.equal(mutatedInventory.bypass_guards.webview_protocol_declaration_unique, false);
+  assertHasError(mutatedInventory, mutatedSources, 'webview:duplicate-protocol-chat');
 });
 
 test('surface inventory checker command validates current inventory and generated view', async () => {
