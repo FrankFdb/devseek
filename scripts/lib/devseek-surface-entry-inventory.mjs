@@ -208,6 +208,16 @@ export function validateSurfaceEntryInventory(inventory, sources) {
   if (counts.undeclared_legacy_owner_reachability !== 0) {
     errors.push(`legacy:undeclared-reachability-${counts.undeclared_legacy_owner_reachability}`);
   }
+  if (counts.duplicate_manifest_command_declarations !== 0) {
+    const duplicateIds = duplicateManifestCommandIds(sources.packageJson);
+    if (duplicateIds.length === 0) {
+      errors.push(`manifest-command:duplicate-declaration-${counts.duplicate_manifest_command_declarations}`);
+    } else {
+      for (const commandId of duplicateIds) {
+        errors.push(`manifest-command:duplicate-declaration-${commandId}`);
+      }
+    }
+  }
   if (counts.duplicate_runtime_command_registrations !== 0) {
     const duplicateIds = duplicateRuntimeCommandIds(sources.sourceContents);
     if (duplicateIds.length === 0) {
@@ -234,6 +244,9 @@ export function validateSurfaceEntryInventory(inventory, sources) {
   }
   if (guards.legacy_surface_projection_fallbacks_removed !== true) {
     errors.push('bypass:legacy-surface-projection-fallbacks-present');
+  }
+  if (guards.manifest_command_declaration_unique !== true) {
+    errors.push('bypass:manifest-command-declaration-not-unique');
   }
   if (guards.runtime_command_registration_unique !== true) {
     errors.push('bypass:runtime-command-registration-not-unique');
@@ -528,6 +541,7 @@ function buildBypassGuards(sources, entries) {
     unknown_entry_fail_closed: entries.every(entry => entry.coverage_status !== 'unknown-entry'),
     generic_webview_command_disabled: provider.includes('Generic inbound VS Code commands are disabled; use a typed product action.'),
     legacy_surface_projection_fallbacks_removed: !hasLegacySurfaceProjectionFallbacks(inventoryLib),
+    manifest_command_declaration_unique: duplicateManifestCommandIds(sources.packageJson).length === 0,
     runtime_command_registration_unique: duplicateRuntimeCommandIds(sources.sourceContents).length === 0,
     webview_handler_registration_unique: duplicateWebviewHandlerTypes(sources.sourceContents).length === 0,
     manifest_runtime_drift_present: entries.some(entry => (
@@ -573,6 +587,7 @@ function buildCounts(entries, sources) {
     )).length,
     declared_adapter_pending_cutover: entries.filter(entry => entry.kernel_contract_projection.includes('pending-D2')).length,
     undeclared_legacy_owner_reachability: entries.filter(entry => entry.kernel_contract_projection === 'legacy-owner-bypass').length,
+    duplicate_manifest_command_declarations: duplicateManifestCommandIds(sources.packageJson).length,
     duplicate_runtime_command_registrations: duplicateRuntimeCommandIds(sources.sourceContents).length,
     duplicate_webview_handler_registrations: duplicateWebviewHandlerTypes(sources.sourceContents).length,
   };
@@ -615,6 +630,17 @@ function duplicateRuntimeCommandIds(sourceContents) {
   const counts = new Map();
   for (const record of collectRuntimeCommandRegistrationRecords(sourceContents)) {
     counts.set(record.commandId, (counts.get(record.commandId) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([commandId]) => commandId)
+    .sort();
+}
+
+function duplicateManifestCommandIds(packageJson) {
+  const counts = new Map();
+  for (const commandId of manifestCommands(packageJson)) {
+    counts.set(commandId, (counts.get(commandId) ?? 0) + 1);
   }
   return [...counts.entries()]
     .filter(([, count]) => count > 1)

@@ -44,6 +44,7 @@ test('surface entry inventory is source-bound and covers every current entry den
     unknown_entries: 0,
     declared_adapter_pending_cutover: 0,
     undeclared_legacy_owner_reachability: 0,
+    duplicate_manifest_command_declarations: 0,
     duplicate_runtime_command_registrations: 0,
     duplicate_webview_handler_registrations: 0,
   });
@@ -87,6 +88,7 @@ test('surface entry inventory is source-bound and covers every current entry den
   }
   assert.equal(actual.bypass_guards.generic_webview_command_disabled, true);
   assert.equal(actual.bypass_guards.legacy_surface_projection_fallbacks_removed, true);
+  assert.equal(actual.bypass_guards.manifest_command_declaration_unique, true);
   assert.equal(actual.bypass_guards.runtime_command_registration_unique, true);
   assert.equal(actual.bypass_guards.webview_handler_registration_unique, true);
   assert.equal(actual.bypass_guards.unknown_entry_fail_closed, true);
@@ -178,6 +180,22 @@ test('R1-D* surface inventory fails closed on duplicate runtime command registra
   assert.equal(mutatedInventory.counts.duplicate_runtime_command_registrations, 1);
   assert.equal(mutatedInventory.bypass_guards.runtime_command_registration_unique, false);
   assertHasError(mutatedInventory, mutatedSources, 'runtime-command:duplicate-registration-devseek.explain');
+});
+
+test('R1-D2D surface inventory fails closed on duplicate manifest command declarations', () => {
+  const mutatedSources = cloneSources();
+  mutatedSources.packageJson.contributes.commands.push({
+    command: 'devseek.explain',
+    title: 'DevSeek: duplicate explain',
+    category: 'DevSeek',
+  });
+  mutatedSources.sourceContents['packages/vscode-extension/package.json'] =
+    `${JSON.stringify(mutatedSources.packageJson, null, 2)}\n`;
+
+  const mutatedInventory = buildSurfaceEntryInventory(mutatedSources);
+  assert.equal(mutatedInventory.counts.duplicate_manifest_command_declarations, 1);
+  assert.equal(mutatedInventory.bypass_guards.manifest_command_declaration_unique, false);
+  assertHasError(mutatedInventory, mutatedSources, 'manifest-command:duplicate-declaration-devseek.explain');
 });
 
 test('R1-D2D surface inventory fails closed on duplicate webview handler registrations', () => {

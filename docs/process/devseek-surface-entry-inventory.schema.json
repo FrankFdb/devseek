@@ -98,6 +98,7 @@
         "unknown_entry_fail_closed",
         "generic_webview_command_disabled",
         "legacy_surface_projection_fallbacks_removed",
+        "manifest_command_declaration_unique",
         "runtime_command_registration_unique",
         "webview_handler_registration_unique",
         "manifest_runtime_drift_present",
@@ -109,6 +110,7 @@
         "unknown_entry_fail_closed": { "type": "boolean" },
         "generic_webview_command_disabled": { "type": "boolean" },
         "legacy_surface_projection_fallbacks_removed": { "type": "boolean" },
+        "manifest_command_declaration_unique": { "type": "boolean" },
         "runtime_command_registration_unique": { "type": "boolean" },
         "webview_handler_registration_unique": { "type": "boolean" },
         "manifest_runtime_drift_present": { "type": "boolean" },
@@ -136,6 +138,7 @@
         "unknown_entries",
         "declared_adapter_pending_cutover",
         "undeclared_legacy_owner_reachability",
+        "duplicate_manifest_command_declarations",
         "duplicate_runtime_command_registrations",
         "duplicate_webview_handler_registrations"
       ],
@@ -155,6 +158,7 @@
         "unknown_entries": { "type": "integer", "minimum": 0 },
         "declared_adapter_pending_cutover": { "type": "integer", "minimum": 0 },
         "undeclared_legacy_owner_reachability": { "type": "integer", "minimum": 0 },
+        "duplicate_manifest_command_declarations": { "type": "integer", "minimum": 0 },
         "duplicate_runtime_command_registrations": { "type": "integer", "minimum": 0 },
         "duplicate_webview_handler_registrations": { "type": "integer", "minimum": 0 }
       }
