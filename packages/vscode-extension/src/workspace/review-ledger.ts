@@ -90,12 +90,91 @@ export interface IndependentReviewRecord {
   requiredActions: string[];
 }
 
+export type DeliveryManifestStatus = 'ready' | 'blocked';
+export type DeliveryManifestCheckStatus = 'passed' | 'failed' | 'blocked' | 'not-run';
+export type DeliveryManifestAcceptanceStatus = 'satisfied' | 'not-run' | 'refused' | 'blocked';
+
+export interface DeliveryManifestVerificationInput {
+  evidenceRef: string;
+  command?: string;
+  status?: DeliveryManifestCheckStatus;
+  summary?: string;
+}
+
+export interface DeliveryManifestVerificationRecord {
+  evidenceRef: string;
+  command: string;
+  status: DeliveryManifestCheckStatus;
+  summary: string;
+}
+
+export interface DeliveryManifestNotRunInput {
+  scope: string;
+  reason: string;
+  evidenceRef?: string;
+}
+
+export interface DeliveryManifestNotRunRecord {
+  scope: string;
+  reason: string;
+  evidenceRef: string;
+}
+
+export interface DeliveryManifestAcceptanceInput {
+  id: string;
+  summary: string;
+  status: DeliveryManifestAcceptanceStatus;
+  evidenceRefs?: string[];
+  refusalReason?: string;
+  risks?: string[];
+  followUps?: string[];
+}
+
+export interface DeliveryManifestAcceptanceRecord {
+  id: string;
+  summary: string;
+  status: DeliveryManifestAcceptanceStatus;
+  evidenceRefs: string[];
+  refusalReason?: string;
+  risks: string[];
+  followUps: string[];
+}
+
+export interface DeliveryManifestInput {
+  completionClaimed?: boolean;
+  changedPaths?: string[];
+  verified?: DeliveryManifestVerificationInput[];
+  notRun?: DeliveryManifestNotRunInput[];
+  risks?: string[];
+  followUps?: string[];
+  acceptances?: DeliveryManifestAcceptanceInput[];
+  requiredActions?: string[];
+}
+
+export interface DeliveryManifestRecord {
+  version: 'devseek.delivery-manifest/v1';
+  status: DeliveryManifestStatus;
+  completionClaimed: boolean;
+  falseCompletionRisk: boolean;
+  changed: {
+    total: number;
+    paths: string[];
+  };
+  verified: DeliveryManifestVerificationRecord[];
+  notRun: DeliveryManifestNotRunRecord[];
+  risks: string[];
+  followUps: string[];
+  acceptances: DeliveryManifestAcceptanceRecord[];
+  requiredActions: string[];
+}
+
 export interface ReviewLedgerSnapshot {
   files: ChangeSetSummary;
   symbols: ChangeSetSymbolSummary;
   validation: ReviewValidationRecord;
   qualityGate: ReviewQualityGateRecord;
   independentReview: IndependentReviewRecord;
+  deliveryManifest: DeliveryManifestRecord;
   unfinishedItems: string[];
 }
 
@@ -104,6 +183,7 @@ export class ReviewLedger {
   private validation: ReviewValidationRecord = makeSkippedValidation('not-run');
   private qualityGate: ReviewQualityGateRecord = makeQualityGateNotEvaluated();
   private independentReview: IndependentReviewRecord = makeIndependentReviewNotRecorded();
+  private deliveryManifest: DeliveryManifestRecord = makeDeliveryManifestNotRecorded();
   private unfinishedItems: string[] = [];
 
   recordChangeSet(changeSet: ChangeSet): void {
@@ -128,6 +208,12 @@ export class ReviewLedger {
       : normalizeIndependentReviewRecord(review);
   }
 
+  recordDeliveryManifest(manifest: DeliveryManifestInput | DeliveryManifestRecord): void {
+    this.deliveryManifest = isDeliveryManifestRecord(manifest)
+      ? cloneDeliveryManifestRecord(manifest)
+      : normalizeDeliveryManifest(manifest);
+  }
+
   addUnfinishedItem(item: string): void {
     const trimmed = item.trim();
     if (trimmed) this.unfinishedItems.push(trimmed);
@@ -140,6 +226,7 @@ export class ReviewLedger {
       validation: this.validation,
       qualityGate: this.qualityGate,
       independentReview: cloneIndependentReviewRecord(this.independentReview),
+      deliveryManifest: cloneDeliveryManifestRecord(this.deliveryManifest),
       unfinishedItems: [...this.unfinishedItems],
     };
   }
@@ -263,6 +350,49 @@ export function normalizeIndependentReviewRecord(input: IndependentReviewInput):
   };
 }
 
+export function normalizeDeliveryManifest(input: DeliveryManifestInput): DeliveryManifestRecord {
+  const changedPaths = uniqueStrings(input.changedPaths ?? []);
+  const verified = normalizeDeliveryManifestVerifications(input.verified ?? []);
+  const notRun = normalizeDeliveryManifestNotRun(input.notRun ?? []);
+  const acceptances = normalizeDeliveryManifestAcceptances(input.acceptances ?? []);
+  const requiredActions = uniqueStrings([
+    ...deliveryManifestRequiredActions(acceptances, verified, notRun),
+    ...(input.requiredActions ?? []),
+  ]);
+  const ready = requiredActions.length === 0
+    && acceptances.length > 0
+    && acceptances.every(acceptance => acceptance.status === 'satisfied');
+  const completionClaimed = input.completionClaimed === true;
+  const falseCompletionRisk = completionClaimed && !ready;
+  const risks = uniqueStrings([
+    ...(input.risks ?? []),
+    ...acceptances.flatMap(acceptance => acceptance.risks),
+    ...(falseCompletionRisk
+      ? ['False completion risk: completion was claimed before every acceptance had evidence or refusal.']
+      : []),
+  ]);
+
+  return {
+    version: 'devseek.delivery-manifest/v1',
+    status: ready ? 'ready' : 'blocked',
+    completionClaimed,
+    falseCompletionRisk,
+    changed: {
+      total: changedPaths.length,
+      paths: changedPaths,
+    },
+    verified,
+    notRun,
+    risks,
+    followUps: uniqueStrings([
+      ...(input.followUps ?? []),
+      ...acceptances.flatMap(acceptance => acceptance.followUps),
+    ]),
+    acceptances,
+    requiredActions,
+  };
+}
+
 function makeQualityGateNotEvaluated(): ReviewQualityGateRecord {
   return {
     status: 'blocked',
@@ -286,8 +416,19 @@ function makeIndependentReviewNotRecorded(): IndependentReviewRecord {
   });
 }
 
+function makeDeliveryManifestNotRecorded(): DeliveryManifestRecord {
+  return normalizeDeliveryManifest({
+    completionClaimed: false,
+    risks: ['尚未记录交付清单，不能证明 changed/verified/not-run/risk/follow-up 完整。'],
+  });
+}
+
 function isIndependentReviewRecord(value: IndependentReviewInput | IndependentReviewRecord): value is IndependentReviewRecord {
   return (value as IndependentReviewRecord).version === 'devseek.independent-review/v1';
+}
+
+function isDeliveryManifestRecord(value: DeliveryManifestInput | DeliveryManifestRecord): value is DeliveryManifestRecord {
+  return (value as DeliveryManifestRecord).version === 'devseek.delivery-manifest/v1';
 }
 
 function cloneIndependentReviewRecord(record: IndependentReviewRecord): IndependentReviewRecord {
@@ -307,6 +448,117 @@ function cloneIndependentReviewRecord(record: IndependentReviewRecord): Independ
     risks: [...record.risks],
     requiredActions: [...record.requiredActions],
   };
+}
+
+function cloneDeliveryManifestRecord(record: DeliveryManifestRecord): DeliveryManifestRecord {
+  return {
+    ...record,
+    changed: {
+      total: record.changed.total,
+      paths: [...record.changed.paths],
+    },
+    verified: record.verified.map(item => ({ ...item })),
+    notRun: record.notRun.map(item => ({ ...item })),
+    risks: [...record.risks],
+    followUps: [...record.followUps],
+    acceptances: record.acceptances.map(acceptance => ({
+      ...acceptance,
+      evidenceRefs: [...acceptance.evidenceRefs],
+      risks: [...acceptance.risks],
+      followUps: [...acceptance.followUps],
+    })),
+    requiredActions: [...record.requiredActions],
+  };
+}
+
+function normalizeDeliveryManifestVerifications(
+  items: DeliveryManifestVerificationInput[],
+): DeliveryManifestVerificationRecord[] {
+  return items.map((item): DeliveryManifestVerificationRecord => {
+    const status = normalizeDeliveryManifestCheckStatus(item.status);
+    return {
+      evidenceRef: normalizeId(item.evidenceRef),
+      command: String(item.command || '').trim(),
+      status,
+      summary: String(item.summary || `Verification ${status}`).trim(),
+    };
+  });
+}
+
+function normalizeDeliveryManifestNotRun(items: DeliveryManifestNotRunInput[]): DeliveryManifestNotRunRecord[] {
+  return items.map((item): DeliveryManifestNotRunRecord => ({
+    scope: normalizeId(item.scope),
+    reason: String(item.reason || '').trim(),
+    evidenceRef: normalizeId(item.evidenceRef || ''),
+  }));
+}
+
+function normalizeDeliveryManifestAcceptances(
+  items: DeliveryManifestAcceptanceInput[],
+): DeliveryManifestAcceptanceRecord[] {
+  return items.map((item, index): DeliveryManifestAcceptanceRecord => {
+    const refusalReason = String(item.refusalReason || '').trim();
+    return {
+      id: normalizeId(item.id) || `acceptance-${index + 1}`,
+      summary: String(item.summary || '').trim(),
+      status: normalizeDeliveryManifestAcceptanceStatus(item.status),
+      evidenceRefs: uniqueStrings(item.evidenceRefs ?? []),
+      ...(refusalReason ? { refusalReason } : {}),
+      risks: uniqueStrings(item.risks ?? []),
+      followUps: uniqueStrings(item.followUps ?? []),
+    };
+  });
+}
+
+function deliveryManifestRequiredActions(
+  acceptances: DeliveryManifestAcceptanceRecord[],
+  verified: DeliveryManifestVerificationRecord[],
+  notRun: DeliveryManifestNotRunRecord[],
+): string[] {
+  const actions: string[] = [];
+  if (acceptances.length === 0) {
+    actions.push('Record delivery acceptances with evidence or refusal.');
+  }
+  for (const acceptance of acceptances) {
+    if (!acceptance.summary) {
+      actions.push(`Summarize delivery acceptance ${acceptance.id}.`);
+    }
+    if (acceptance.status === 'satisfied' && acceptance.evidenceRefs.length === 0) {
+      actions.push('Bind every acceptance to evidence or refusal before claiming delivery complete.');
+    }
+    if (acceptance.status !== 'satisfied') {
+      if (!acceptance.refusalReason) {
+        actions.push('Bind every acceptance to evidence or refusal before claiming delivery complete.');
+      }
+      actions.push(`Resolve delivery acceptance ${acceptance.id} before delivery can be ready.`);
+    }
+  }
+  if (verified.length === 0 && notRun.length === 0) {
+    actions.push('Record verified checks or not-run rationale before delivery.');
+  }
+  if (verified.some(item => !item.evidenceRef)) {
+    actions.push('Record evidenceRef for each verified delivery check.');
+  }
+  if (notRun.some(item => !item.scope || !item.reason)) {
+    actions.push('Record scope and reason for each not-run delivery check.');
+  }
+  return actions;
+}
+
+function normalizeDeliveryManifestCheckStatus(
+  value: DeliveryManifestCheckStatus | undefined,
+): DeliveryManifestCheckStatus {
+  return value === 'passed' || value === 'failed' || value === 'blocked' || value === 'not-run'
+    ? value
+    : 'passed';
+}
+
+function normalizeDeliveryManifestAcceptanceStatus(
+  value: DeliveryManifestAcceptanceStatus,
+): DeliveryManifestAcceptanceStatus {
+  return value === 'satisfied' || value === 'not-run' || value === 'refused' || value === 'blocked'
+    ? value
+    : 'blocked';
 }
 
 function normalizeId(value: string): string {

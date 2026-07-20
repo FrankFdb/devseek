@@ -1833,6 +1833,10 @@ test('Architecture: Workspace review ledger owns apply result summary', () => {
   assertContains(reviewLedger, 'qualityGate', 'ReviewLedger must record QualityGate results');
   assertContains(reviewLedger, 'independentReview', 'ReviewLedger snapshots must include independent review status');
   assertContains(reviewLedger, 'normalizeIndependentReviewRecord', 'ReviewLedger must own independent review normalization');
+  assertContains(reviewLedger, 'deliveryManifest', 'ReviewLedger snapshots must include delivery manifest status');
+  assertContains(reviewLedger, 'normalizeDeliveryManifest', 'ReviewLedger must own delivery manifest normalization');
+  assertContains(reviewLedger, 'falseCompletionRisk', 'DeliveryManifest must block false completion claims');
+  assertContains(reviewLedger, 'evidence or refusal', 'DeliveryManifest must require acceptance evidence or refusal');
   assertContains(reviewLedger, 'reviewer-matches-writer', 'independent review must reject writer self-review');
   assertContains(reviewLedger, 'reviewer-matches-completion-judge', 'independent review must reject completion-judge self-review');
   assertContains(reviewLedger, 'P0=0/P1=0 required', 'independent review must require P0/P1 zero before pass');

@@ -21,6 +21,7 @@ const {
   createChangeSet,
   createChangeSetFromActions,
   extractFailureFilePaths,
+  normalizeDeliveryManifest,
   normalizeIndependentReviewRecord,
   normalizeValidationRecord,
 } = req(bundlePath);
@@ -324,6 +325,76 @@ test('R2-09A ReviewLedger: P0 or P1 findings block independent review completion
   const ledger = new ReviewLedger();
   ledger.recordIndependentReview(passed);
   assert.equal(ledger.snapshot().independentReview.status, 'passed');
+});
+
+test('R2-09C ReviewLedger: delivery manifest blocks completion claims without acceptance evidence or refusal', () => {
+  const manifest = normalizeDeliveryManifest({
+    completionClaimed: true,
+    changedPaths: ['src/app.ts'],
+    verified: [{
+      evidenceRef: 'validation:passed:npm test',
+      command: 'npm test',
+      status: 'passed',
+    }],
+    acceptances: [{
+      id: 'acc-runtime',
+      summary: 'Runtime behavior is validated.',
+      status: 'satisfied',
+    }],
+  });
+
+  assert.equal(manifest.version, 'devseek.delivery-manifest/v1');
+  assert.equal(manifest.status, 'blocked');
+  assert.equal(manifest.falseCompletionRisk, true);
+  assert.deepEqual(manifest.acceptances.map(acceptance => acceptance.id), ['acc-runtime']);
+  assert.match(manifest.requiredActions.join('\n'), /evidence or refusal/i);
+
+  const defaultLedger = new ReviewLedger();
+  assert.equal(defaultLedger.snapshot().deliveryManifest.status, 'blocked');
+});
+
+test('R2-09C ReviewLedger: delivery manifest records changed, verified, not-run, risks and follow-ups', () => {
+  const ledger = new ReviewLedger();
+  ledger.recordDeliveryManifest({
+    completionClaimed: true,
+    changedPaths: ['src/app.ts', 'test/app.test.ts', 'src/app.ts'],
+    verified: [{
+      evidenceRef: 'validation:passed:npm test',
+      command: 'npm test',
+      status: 'passed',
+    }],
+    notRun: [{
+      scope: 'controlled-vsix',
+      reason: 'deterministic ledger-only change; release smoke covers VSIX later',
+      evidenceRef: 'validation:not-run:controlled-vsix',
+    }],
+    risks: ['Manual UI behavior remains release-smoke only.'],
+    followUps: ['R2-09D-GIT-CI-PR'],
+    acceptances: [
+      {
+        id: 'acc-changed',
+        summary: 'Changed files are listed.',
+        status: 'satisfied',
+        evidenceRefs: ['diff:src/app.ts', 'diff:test/app.test.ts'],
+      },
+      {
+        id: 'acc-verified',
+        summary: 'Focused and full tests passed.',
+        status: 'satisfied',
+        evidenceRefs: ['validation:passed:npm test'],
+      },
+    ],
+  });
+
+  const manifest = ledger.snapshot().deliveryManifest;
+  assert.equal(manifest.status, 'ready');
+  assert.equal(manifest.falseCompletionRisk, false);
+  assert.deepEqual(manifest.changed.paths, ['src/app.ts', 'test/app.test.ts']);
+  assert.deepEqual(manifest.verified.map(item => item.evidenceRef), ['validation:passed:npm test']);
+  assert.deepEqual(manifest.notRun.map(item => item.evidenceRef), ['validation:not-run:controlled-vsix']);
+  assert.deepEqual(manifest.risks, ['Manual UI behavior remains release-smoke only.']);
+  assert.deepEqual(manifest.followUps, ['R2-09D-GIT-CI-PR']);
+  assert.deepEqual(manifest.requiredActions, []);
 });
 
 console.log('\nWorkspace review ledger tests passed.\n');
