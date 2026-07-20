@@ -21,6 +21,7 @@ const {
   computePendingHunks,
   PendingEditService,
   renderPendingContentFromHunks,
+  summarizePendingEditHunkResolutions,
 } = req(bundlePath);
 
 test('PendingEditService: stores and removes records by id', () => {
@@ -87,6 +88,24 @@ test('PendingEditService: pending hunk keeps record unresolved', () => {
   assert.equal(allHunksResolved({ hunks }), true);
   hunks[0].resolution = 'pending';
   assert.equal(allHunksResolved({ hunks }), false);
+});
+
+test('R2-09B PendingEditService: summarizes final hunk decisions for receipt projection', () => {
+  const hunks = computePendingHunks('r4', 'a\nb\nc\nd', 'A\nb\nC\nd');
+  hunks[0].resolution = 'undone';
+
+  const summary = summarizePendingEditHunkResolutions({ hunks }, 'kept');
+
+  assert.deepEqual(summary.map(hunk => ({
+    id: hunk.id,
+    index: hunk.index,
+    resolution: hunk.resolution,
+    oldLineCount: hunk.oldLineCount,
+    newLineCount: hunk.newLineCount,
+  })), [
+    { id: 'r4-h1', index: 1, resolution: 'undone', oldLineCount: 1, newLineCount: 1 },
+    { id: 'r4-h2', index: 2, resolution: 'kept', oldLineCount: 1, newLineCount: 1 },
+  ]);
 });
 
 console.log('\nPending edit service tests passed.\n');

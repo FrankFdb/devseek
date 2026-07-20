@@ -34,6 +34,7 @@ import {
   getGitDiff,
 } from '../app/context-discovery-service';
 import { settleRunContextDirect } from '../app/agent-run-settlement';
+import { createDevSeekRunContext } from '../app/run-context';
 import { getProblemsContext } from '../context-builder';
 import { VSCodeSurfaceAdapter } from './vscode-surface-adapter';
 import { ProductMutationCoordinator } from '../app/product-mutation-coordinator';
@@ -262,7 +263,7 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         break;
       case 'keepPendingHunk':
         if (msg.editId || msg.path) {
-          this.deps.pendingEditCoordinator.keepHunkWithNotice(wv, msg.editId, msg.path, msg.hunkId);
+          await this.deps.pendingEditCoordinator.keepHunkWithNotice(wv, msg.editId, msg.path, msg.hunkId);
         }
         break;
       case 'undoPendingHunk':
@@ -272,7 +273,7 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         break;
       case 'keepPendingEdit':
         if (msg.editId || msg.path) {
-          this.deps.pendingEditCoordinator.keepEditWithNotice(wv, msg.editId, msg.path);
+          await this.deps.pendingEditCoordinator.keepEditWithNotice(wv, msg.editId, msg.path);
         }
         break;
       case 'undoPendingEdit':
@@ -281,7 +282,7 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         }
         break;
       case 'keepAllPendingEdits':
-        this.deps.pendingEditCoordinator.keepAllWithNotice(wv);
+        await this.deps.pendingEditCoordinator.keepAllWithNotice(wv);
         break;
       case 'undoAllPendingEdits':
         await this.deps.pendingEditCoordinator.undoAllWithNotice(wv);

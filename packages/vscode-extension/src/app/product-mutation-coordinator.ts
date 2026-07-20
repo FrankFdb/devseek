@@ -15,7 +15,7 @@ export interface ProductMutationAuthorizationDecision {
 }
 
 export interface ProductMutationRequest<T> {
-  kind: 'workspace-directory' | 'vscode-command' | 'pending-edit-undo' | 'mcp-tool';
+  kind: 'workspace-directory' | 'vscode-command' | 'pending-edit-undo' | 'pending-edit-resolution' | 'mcp-tool';
   label: string;
   authorize: () => ProductMutationAuthorizationDecision | Promise<ProductMutationAuthorizationDecision>;
   invoke: () => T | Promise<T>;

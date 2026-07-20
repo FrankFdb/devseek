@@ -7,7 +7,9 @@ import { settleRunContextDirect } from './app/agent-run-settlement';
 import { ProductMutationCoordinator, ProductMutationIndeterminateError } from './app/product-mutation-coordinator';
 import { createDevSeekRunContext } from './app/run-context';
 import {
+  buildPendingEditResolutionProof,
   buildPendingEditUndoProof,
+  type PendingEditResolutionScope,
   type PendingEditUndoPostcondition,
   type PendingEditUndoTransaction,
 } from './app/pending-edit-undo-receipt';
@@ -16,6 +18,8 @@ import {
   computePendingHunks,
   PendingEditService,
   renderPendingContentFromHunks,
+  summarizePendingEditHunkResolution,
+  summarizePendingEditHunkResolutions,
   type PendingEditHunk,
 } from './app/pending-edit-service';
 import type { AppliedChangeRecord } from './workspace-applier';
@@ -23,7 +27,7 @@ import { resolveWorkspaceFileUri } from './workspace-roots';
 import { DiffDecorationManager, type DiffRecordInfo } from './diff-decorator';
 import { closePendingEditDiffTabAsync, DeepSeekOriginalContentProvider } from './ui/pending-edit-diff';
 import { openWorkspacePathInEditor, revealEditorLine } from './ui/generated-artifact-ui';
-import { WorkspaceEditService } from './workspace/edit-service';
+import { WorkspaceEditService, type WorkspaceTextFileCommitToken } from './workspace/edit-service';
 
 export interface PendingEditRecord {
   id: string;
@@ -32,6 +36,7 @@ export interface PendingEditRecord {
   oldContent: string;
   newContent: string;
   hunks: PendingEditHunk[];
+  sourceCommitToken?: WorkspaceTextFileCommitToken;
   createdAt: number;
 }
 
@@ -70,7 +75,7 @@ export class PendingEditCoordinator {
     this.diffDecoManager.setResolveCallback(async (editId, hunkId, action) => {
       const wv = this.options.getActiveWebview();
       if (action === 'keep') {
-        this.keepHunk(editId, undefined, hunkId);
+        await this.keepHunk(editId, undefined, hunkId);
       } else {
         await this.undoHunk(editId, undefined, hunkId);
       }
@@ -150,6 +155,7 @@ export class PendingEditCoordinator {
       existing.existed = existing.existed || change.existed;
       existing.newContent = change.newContent;
       existing.hunks = computePendingHunks(existing.id, existing.oldContent, change.newContent);
+      existing.sourceCommitToken = change.commitToken ?? existing.sourceCommitToken;
       existing.createdAt = Date.now();
       this.pendingEdits.set(existing.id, existing);
       recordToShow = existing;
@@ -162,6 +168,7 @@ export class PendingEditCoordinator {
         oldContent: change.oldContent,
         newContent: change.newContent,
         hunks: computePendingHunks(id, change.oldContent, change.newContent),
+        sourceCommitToken: change.commitToken,
         createdAt: Date.now(),
       };
       this.pendingEdits.set(id, newRecord);
@@ -185,9 +192,9 @@ export class PendingEditCoordinator {
     }
   }
 
-  keepHunkWithNotice(webview: vscode.Webview, editId?: string, path?: string, hunkId?: string): void {
+  async keepHunkWithNotice(webview: vscode.Webview, editId?: string, path?: string, hunkId?: string): Promise<void> {
     const { record, hunk } = this.resolveHunk(editId, path, hunkId);
-    this.keepHunk(editId, path, hunkId);
+    await this.keepHunk(editId, path, hunkId);
     this.post(webview);
     if (record && hunk) {
       this.postNotice(webview, {
@@ -215,9 +222,9 @@ export class PendingEditCoordinator {
     }
   }
 
-  keepEditWithNotice(webview: vscode.Webview, editId?: string, path?: string): void {
+  async keepEditWithNotice(webview: vscode.Webview, editId?: string, path?: string): Promise<void> {
     const record = this.resolveRecord(editId, path);
-    this.keepEdit(editId, path);
+    await this.keepEdit(editId, path);
     this.post(webview);
     if (record) {
       this.postNotice(webview, {
@@ -245,12 +252,10 @@ export class PendingEditCoordinator {
     }
   }
 
-  keepAllWithNotice(webview: vscode.Webview): void {
+  async keepAllWithNotice(webview: vscode.Webview): Promise<void> {
     this.cancelAutoAccept();
     const count = this.pendingEdits.size;
-    for (const record of this.pendingEdits.values()) closePendingEditDiffTabAsync(record);
-    this.pendingEdits.clear();
-    this.diffDecoManager?.deactivateAll();
+    await this.keepAll();
     this.post(webview);
     if (count > 0) {
       this.postNotice(webview, {
@@ -282,7 +287,7 @@ export class PendingEditCoordinator {
     if (!isAutopilot || this.pendingEdits.size === 0) return false;
     const decision = decideAgentAutopilotAccept(result, this.pendingEdits.size);
     if (decision.accept) {
-      this.acceptAll(webview, '[自动驾驶] 已自动接受全部文件改动。');
+      void this.acceptAll(webview, '[自动驾驶] 已自动接受全部文件改动。');
     } else if (decision.notice) {
       this.postAutoAcceptBlockedNotice(webview, decision.notice);
     }
@@ -301,7 +306,7 @@ export class PendingEditCoordinator {
     this.autoAcceptTimer = setTimeout(() => {
       this.autoAcceptTimer = undefined;
       if (this.pendingEdits.size === 0) return;
-      this.acceptAll(webview, `已自动接受全部 AI 修改 (${this.pendingEdits.size} 个文件)。`);
+      void this.acceptAll(webview, `已自动接受全部 AI 修改 (${this.pendingEdits.size} 个文件)。`);
     }, delaySec * 1000);
   }
 
@@ -312,9 +317,11 @@ export class PendingEditCoordinator {
     }
   }
 
-  private keepHunk(editId?: string, path?: string, hunkId?: string): void {
+  private async keepHunk(editId?: string, path?: string, hunkId?: string): Promise<void> {
     const { record, hunk } = this.resolveHunk(editId, path, hunkId);
     if (!record || !hunk) return;
+    if (hunk.resolution !== 'pending') return;
+    await this.recordPendingEditKeepResolution(record, 'keep pending edit hunk', 'hunk', hunk);
     hunk.resolution = 'kept';
     this.settleHunkRecord(record);
   }
@@ -322,10 +329,11 @@ export class PendingEditCoordinator {
   private async undoHunk(editId?: string, path?: string, hunkId?: string): Promise<void> {
     const { record, hunk } = this.resolveHunk(editId, path, hunkId);
     if (!record || !hunk) return;
+    if (hunk.resolution !== 'pending') return;
     const previousResolution = hunk.resolution;
     hunk.resolution = 'undone';
     try {
-      await this.applyRecordSnapshot(record);
+      await this.applyRecordSnapshot(record, 'hunk', hunk);
     } catch (error) {
       hunk.resolution = previousResolution;
       throw error;
@@ -333,11 +341,13 @@ export class PendingEditCoordinator {
     this.settleHunkRecord(record);
   }
 
-  private keepEdit(editId?: string, path?: string): void {
+  private async keepEdit(editId?: string, path?: string): Promise<void> {
     const id = this.resolveId(editId, path);
     if (!id) return;
     const record = this.pendingEdits.get(id);
     if (record) {
+      await this.recordPendingEditKeepResolution(record, 'keep pending edit file', 'file');
+      markPendingHunks(record, 'kept');
       closePendingEditDiffTabAsync(record);
       this.diffDecoManager?.deactivate(id);
       void this.showDocument(record.path);
@@ -350,7 +360,7 @@ export class PendingEditCoordinator {
     if (!id) return;
     const record = this.pendingEdits.get(id);
     if (!record) return;
-    await this.restoreRecord(record);
+    await this.restoreRecord(record, 'file');
     closePendingEditDiffTabAsync(record);
     this.diffDecoManager?.deactivate(id);
     this.pendingEdits.delete(id);
@@ -358,25 +368,42 @@ export class PendingEditCoordinator {
 
   private async undoAll(): Promise<void> {
     const records = Array.from(this.pendingEdits.values()).sort((a, b) => b.createdAt - a.createdAt);
+    const allRecordIds = records.map(record => record.id);
     for (const record of records) {
-      await this.restoreRecord(record);
+      await this.restoreRecord(record, 'all', allRecordIds);
       closePendingEditDiffTabAsync(record);
       this.pendingEdits.delete(record.id);
       this.diffDecoManager?.deactivate(record.id);
     }
   }
 
-  private acceptAll(webview: vscode.Webview, detail: string): void {
+  private async keepAll(): Promise<void> {
+    const records = Array.from(this.pendingEdits.values()).sort((a, b) => b.createdAt - a.createdAt);
+    const allRecordIds = records.map(record => record.id);
+    for (const record of records) {
+      await this.recordPendingEditKeepResolution(record, 'keep all pending edits', 'all', undefined, allRecordIds);
+      markPendingHunks(record, 'kept');
+      closePendingEditDiffTabAsync(record);
+      this.pendingEdits.delete(record.id);
+      this.diffDecoManager?.deactivate(record.id);
+    }
+    this.diffDecoManager?.deactivateAll();
+  }
+
+  private async acceptAll(webview: vscode.Webview, detail: string): Promise<void> {
     if (this.pendingEdits.size === 0) return;
-    for (const record of this.pendingEdits.values()) closePendingEditDiffTabAsync(record);
-    this.pendingEdits.clear();
-    this.post(webview);
-    this.postNotice(webview, {
-      action: 'keep',
-      scope: 'all',
-      detail,
-      queueTotal: 0,
-    });
+    try {
+      await this.keepAll();
+      this.post(webview);
+      this.postNotice(webview, {
+        action: 'keep',
+        scope: 'all',
+        detail,
+        queueTotal: 0,
+      });
+    } catch (error) {
+      vscode.window.showErrorMessage(`DeepSeek: 保留修改失败，证据未完成：${error instanceof Error ? error.message : String(error)}`);
+    }
   }
 
   private settleHunkRecord(record: PendingEditRecord): void {
@@ -389,14 +416,18 @@ export class PendingEditCoordinator {
     }
   }
 
-  private async applyRecordSnapshot(record: PendingEditRecord): Promise<void> {
+  private async applyRecordSnapshot(
+    record: PendingEditRecord,
+    scope: PendingEditResolutionScope,
+    selectedHunk?: PendingEditHunk,
+  ): Promise<void> {
     const { target, workspaceRoot } = this.resolveMutationTarget(record);
     const content = renderPendingContentFromHunks(record);
     if (!record.existed && content.length === 0) {
       await this.runPendingEditMutation(record, 'undo pending edit by deleting the generated file', async (editService) => {
         const result = editService.deleteTextFile(target.fsPath, workspaceRoot);
         return { operation: 'delete-created-file', targetPath: target.fsPath, result };
-      }, () => !fs.existsSync(target.fsPath), content.length, 'absent');
+      }, () => !fs.existsSync(target.fsPath), content.length, 'absent', scope, selectedHunk);
       return;
     }
     await this.runPendingEditMutation(record, 'undo pending edit hunk by restoring the selected snapshot', async (editService) => {
@@ -404,10 +435,14 @@ export class PendingEditCoordinator {
       const proposal = editService.proposeTextFileWrite(target.fsPath, content);
       const result = editService.commitTextFileProposal(proposal, baseline);
       return { operation: 'restore-text-file', targetPath: target.fsPath, result };
-    }, () => readTextFileEquals(target.fsPath, content), content.length, 'content-readback');
+    }, () => readTextFileEquals(target.fsPath, content), content.length, 'content-readback', scope, selectedHunk);
   }
 
-  private async restoreRecord(record: PendingEditRecord): Promise<void> {
+  private async restoreRecord(
+    record: PendingEditRecord,
+    scope: PendingEditResolutionScope,
+    allRecordIds?: string[],
+  ): Promise<void> {
     const { target, workspaceRoot } = this.resolveMutationTarget(record);
     if (record.existed) {
       await this.runPendingEditMutation(record, 'undo pending edit by restoring the original file', async (editService) => {
@@ -415,13 +450,65 @@ export class PendingEditCoordinator {
         const proposal = editService.proposeTextFileWrite(target.fsPath, record.oldContent);
         const result = editService.commitTextFileProposal(proposal, baseline);
         return { operation: 'restore-text-file', targetPath: target.fsPath, result };
-      }, () => readTextFileEquals(target.fsPath, record.oldContent), record.oldContent.length, 'content-readback');
+      }, () => readTextFileEquals(target.fsPath, record.oldContent), record.oldContent.length, 'content-readback', scope, undefined, allRecordIds);
       return;
     }
     await this.runPendingEditMutation(record, 'undo pending edit by deleting the generated file', async (editService) => {
       const result = editService.deleteTextFile(target.fsPath, workspaceRoot);
       return { operation: 'delete-created-file', targetPath: target.fsPath, result };
-    }, () => !fs.existsSync(target.fsPath), 0, 'absent');
+    }, () => !fs.existsSync(target.fsPath), 0, 'absent', scope, undefined, allRecordIds);
+  }
+
+  private async recordPendingEditKeepResolution(
+    record: PendingEditRecord,
+    label: string,
+    scope: PendingEditResolutionScope,
+    selectedHunk?: PendingEditHunk,
+    allRecordIds?: string[],
+  ): Promise<void> {
+    const { target, workspaceRoot } = this.resolveMutationTarget(record);
+    const expectedContent = renderPendingContentFromHunks(record);
+    const selectedHunkSummary = selectedHunk
+      ? summarizePendingEditHunkResolution(selectedHunk, undefined, 'kept')
+      : undefined;
+    const runContext = createDevSeekRunContext({
+      workspaceRoot,
+      source: 'vscode-extension.pending-edit',
+      userPrompt: label,
+      mode: 'pending-edit-user-action',
+    });
+    const mutation = new ProductMutationCoordinator(runContext, 'vscode-pending-edit');
+    try {
+      await mutation.run({
+        kind: 'pending-edit-resolution',
+        label,
+        authorize: () => ({ allowed: true, source: 'explicit-user-action' }),
+        invoke: () => ({ targetPath: target.fsPath }),
+        completionEvidence: {
+          kind: 'invocation-receipt',
+          proof: value => buildPendingEditResolutionProof({
+            action: 'keep',
+            recordId: record.id,
+            recordPath: record.path,
+            scope,
+            selectedHunk: selectedHunkSummary,
+            resolvedHunks: scope === 'hunk'
+              ? (selectedHunkSummary ? [selectedHunkSummary] : undefined)
+              : summarizePendingEditHunkResolutions(record, 'kept'),
+            allRecordIds,
+            targetPath: value.targetPath,
+            expectedContentLength: expectedContent.length,
+            sourceCommitToken: record.sourceCommitToken,
+          }),
+        },
+      });
+      if (!settleRunContextDirect(runContext, 'completed', { mutationKind: 'pending-edit-resolution' }).completed) {
+        throw new ProductMutationIndeterminateError('Pending edit keep receipt could not be sealed as completed');
+      }
+    } catch (error) {
+      settleRunContextDirect(runContext, 'failed', { mutationKind: 'pending-edit-resolution' });
+      throw error;
+    }
   }
 
   private resolveMutationTarget(record: PendingEditRecord): { target: vscode.Uri; workspaceRoot: string } {
@@ -439,6 +526,9 @@ export class PendingEditCoordinator {
     verify: () => boolean | Promise<boolean>,
     expectedContentLength: number,
     postcondition: PendingEditUndoPostcondition,
+    scope: PendingEditResolutionScope,
+    selectedHunk?: PendingEditHunk,
+    allRecordIds?: string[],
   ): Promise<void> {
     const { workspaceRoot } = this.resolveMutationTarget(record);
     const runContext = createDevSeekRunContext({
@@ -461,9 +551,18 @@ export class PendingEditCoordinator {
           proof: value => buildPendingEditUndoProof({
             recordId: record.id,
             recordPath: record.path,
+            scope,
+            selectedHunk: selectedHunk
+              ? summarizePendingEditHunkResolution(selectedHunk)
+              : undefined,
+            resolvedHunks: scope === 'hunk'
+              ? undefined
+              : summarizePendingEditHunkResolutions(record, undefined, 'undone'),
+            allRecordIds,
             expectedContentLength,
             postcondition,
             transaction: value,
+            sourceCommitToken: record.sourceCommitToken,
           }),
         },
       });
@@ -516,7 +615,7 @@ export class PendingEditCoordinator {
     if (!choice) return;
     const activeWebview = this.options.getActiveWebview();
     if (choice.value === 'keep') {
-      this.keepEdit(record.id);
+      await this.keepEdit(record.id);
       if (activeWebview) {
         this.post(activeWebview);
         activeWebview.postMessage({ type: 'pendingAction', action: 'keep', path: relPath });
@@ -643,6 +742,12 @@ function readTextFileEquals(absPath: string, expected: string): boolean {
     return fs.readFileSync(absPath, 'utf8') === expected;
   } catch {
     return false;
+  }
+}
+
+function markPendingHunks(record: PendingEditRecord, resolution: 'kept' | 'undone'): void {
+  for (const hunk of record.hunks) {
+    if (hunk.resolution === 'pending') hunk.resolution = resolution;
   }
 }
 

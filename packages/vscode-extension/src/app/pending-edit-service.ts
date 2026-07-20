@@ -7,6 +7,7 @@ export interface PendingEditRecordLike {
 }
 
 export type PendingEditHunkResolution = 'pending' | 'kept' | 'undone';
+export type PendingEditFinalHunkResolution = Exclude<PendingEditHunkResolution, 'pending'>;
 
 export interface PendingEditHunk {
   id: string;
@@ -19,6 +20,19 @@ export interface PendingEditHunk {
   oldLines: string[];
   newLines: string[];
   resolution: PendingEditHunkResolution;
+}
+
+export interface PendingEditHunkResolutionSummary {
+  id: string;
+  index: number;
+  title: string;
+  resolution: PendingEditHunkResolution;
+  oldStart: number;
+  oldEnd: number;
+  newStart: number;
+  newEnd: number;
+  oldLineCount: number;
+  newLineCount: number;
 }
 
 interface DiffOp {
@@ -143,6 +157,35 @@ export function renderPendingContentFromHunks(record: Pick<PendingEditRecordLike
 
 export function allHunksResolved(record: Pick<PendingEditRecordLike, 'hunks'>): boolean {
   return (record.hunks?.length ?? 0) > 0 && (record.hunks ?? []).every((hunk) => hunk.resolution !== 'pending');
+}
+
+export function summarizePendingEditHunkResolution(
+  hunk: PendingEditHunk,
+  pendingResolution?: PendingEditFinalHunkResolution,
+  resolutionOverride?: PendingEditFinalHunkResolution,
+): PendingEditHunkResolutionSummary {
+  return {
+    id: hunk.id,
+    index: hunk.index,
+    title: hunk.title,
+    resolution: resolutionOverride ?? (hunk.resolution === 'pending' && pendingResolution ? pendingResolution : hunk.resolution),
+    oldStart: hunk.oldStart,
+    oldEnd: hunk.oldEnd,
+    newStart: hunk.newStart,
+    newEnd: hunk.newEnd,
+    oldLineCount: hunk.oldLines.length,
+    newLineCount: hunk.newLines.length,
+  };
+}
+
+export function summarizePendingEditHunkResolutions(
+  record: Pick<PendingEditRecordLike, 'hunks'>,
+  pendingResolution?: PendingEditFinalHunkResolution,
+  resolutionOverride?: PendingEditFinalHunkResolution,
+): PendingEditHunkResolutionSummary[] {
+  return [...(record.hunks ?? [])]
+    .sort((a, b) => a.index - b.index || a.id.localeCompare(b.id))
+    .map((hunk) => summarizePendingEditHunkResolution(hunk, pendingResolution, resolutionOverride));
 }
 
 function lcsDiffOps(oldLines: string[], newLines: string[]): DiffOp[] {

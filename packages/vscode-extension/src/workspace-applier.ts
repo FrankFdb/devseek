@@ -66,6 +66,7 @@ export interface AppliedChangeRecord {
   existed: boolean;
   oldContent: string;
   newContent: string;
+  commitToken?: WorkspaceTextFileCommitToken;
 }
 
 type ApplyWorkflowReporter = (status: ApplyWorkflowStatus) => void | Thenable<void>;
@@ -446,7 +447,7 @@ async function applyPreparedChanges(
       title: 'QualityGate 阻塞',
       detail: renderQualityGateDetail(qualityGate),
     });
-    await reportAppliedChanges(prepared, onAppliedChange);
+    await reportAppliedChanges(prepared, commitTokens, onAppliedChange);
     return {
       applied: true,
       changeCount: summary.total,
@@ -528,7 +529,7 @@ async function applyPreparedChanges(
   } else if (qualityGate.status === 'blocked') {
     ledger.addUnfinishedItem('QualityGate 阻塞：需要补充验证或用户确认风险');
   }
-  await reportAppliedChanges(prepared, onAppliedChange);
+  await reportAppliedChanges(prepared, commitTokens, onAppliedChange);
 
   return {
     applied: true,
@@ -565,15 +566,17 @@ function createChangeSetFromPrepared(prepared: PreparedChange[]) {
 
 async function reportAppliedChanges(
   prepared: PreparedChange[],
+  commitTokens: WorkspaceTextFileCommitToken[],
   onAppliedChange?: AppliedChangeReporter,
 ): Promise<void> {
   if (!onAppliedChange) return;
-  for (const change of prepared) {
+  for (const [index, change] of prepared.entries()) {
     await onAppliedChange({
       path: change.relPath,
       existed: change.exists,
       oldContent: change.oldContent,
       newContent: change.newContent,
+      ...(commitTokens[index] ? { commitToken: commitTokens[index] } : {}),
     });
   }
 }

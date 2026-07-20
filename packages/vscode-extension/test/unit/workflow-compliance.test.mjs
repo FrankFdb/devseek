@@ -1622,13 +1622,22 @@ test('Architecture: SessionService owns session metadata operations', () => {
 test('Architecture: PendingEditService owns pending edit record map', () => {
   const service = src('src/app/pending-edit-service.ts');
   const coordinator = src('src/pending-edit-coordinator.ts');
+  const receipt = src('src/app/pending-edit-undo-receipt.ts');
+  const viewProvider = src('src/ui/deepseek-view-provider.ts');
   assertContains(service, 'class PendingEditService', 'pending edit service class must exist');
   assertContains(service, 'findLatestByPath', 'pending edit service must expose path lookup');
   assertContains(service, 'computePendingHunks', 'pending edit service must own hunk computation');
   assertContains(service, 'renderPendingContentFromHunks', 'pending edit service must own hunk rendering');
   assertContains(service, 'allHunksResolved', 'pending edit service must own hunk resolution checks');
+  assertContains(service, 'summarizePendingEditHunkResolutions', 'pending edit service must own hunk resolution summaries');
+  assertContains(receipt, 'buildPendingEditResolutionProof', 'pending edit receipt owner must build keep/undo resolution receipts');
+  assertContains(receipt, 'source_commit_token', 'keep receipts must bind original apply commit tokens');
+  assertContains(receipt, 'resolution_fingerprint', 'pending edit receipts must bind the selected scope and hunk decisions');
+  assertContains(coordinator, 'recordPendingEditKeepResolution', 'pending edit coordinator must record keep decisions through the receipt owner');
+  assertContains(coordinator, 'sourceCommitToken', 'pending edit records must retain source commit-token evidence');
   assertContains(coordinator, 'new PendingEditService<PendingEditRecord>()', 'pending edit coordinator must use PendingEditService');
   assert.doesNotMatch(coordinator, /function\s+(computePendingHunks|renderPendingContentFromHunks|allHunksResolved|lcsDiffOps)\b/, 'pending edit coordinator must not define pending edit hunk algorithms');
+  assert.doesNotMatch(viewProvider, /source_commit_token|commit_token|resolution_fingerprint/, 'webview command handler must not synthesize pending edit receipt facts');
   assert.doesNotMatch(coordinator, /interface\s+DiffOp\b/, 'pending edit coordinator must not own pending edit diff internals');
 });
 
