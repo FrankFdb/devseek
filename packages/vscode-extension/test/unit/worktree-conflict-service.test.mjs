@@ -23,6 +23,7 @@ const req = createRequire(import.meta.url);
 const {
   WorktreeConflictService,
   parseGitStatusPorcelain,
+  validateGeneratedCompatMigration,
 } = req(bundlePath);
 
 const workspaceRoot = '/workspace/project';
@@ -129,4 +130,72 @@ test('WorktreeConflictService: clean handwritten source edits are allowed with e
   assert.equal(decision.reason, 'clean-owner-aligned-write');
   assert.equal(decision.worktreeState, 'clean');
   assert.equal(decision.targetRelPath, 'src/app.ts');
+});
+
+test('WorktreeConflictService: generated compatibility migrations allow single-owner cleanup with evidence', () => {
+  const report = validateGeneratedCompatMigration({
+    migrationId: 'r2-06c-license-owner',
+    generatedBoundaries: ['src/generated/'],
+    handwrittenOwners: ['src/app/license-service.ts'],
+    compatibilityChecks: [
+      { target: 'src/app/license-api.ts', action: 'api-compatible', evidenceId: 'compat-api' },
+    ],
+    deleteSteps: [
+      { target: 'src/legacy/license-owner.ts', action: 'delete old owner', evidenceId: 'delete-old-owner' },
+    ],
+    rollbackSteps: [
+      { target: 'src/app/license-service.ts', action: 'restore from tagged owner', evidenceId: 'rollback-plan' },
+    ],
+    fallbackFlags: [
+      {
+        name: 'DEVSEEK_LEGACY_LICENSE_OWNER',
+        lifetime: 'temporary',
+        expiresWithMigration: true,
+        evidenceId: 'fallback-sunset',
+      },
+    ],
+    legacyOwnerReferences: [
+      { target: 'src/legacy/license-owner.ts', revivalGuard: true, evidenceId: 'revival-guard' },
+    ],
+  });
+
+  assert.equal(report.version, 'devseek.generated-compat-migration/v1');
+  assert.equal(report.decision, 'allow');
+  assert.deepEqual(report.reasons, []);
+  assert.equal(report.hasLongTermFallback, false);
+  assert.equal(report.hasLegacyOwnerRevivalRisk, false);
+});
+
+test('WorktreeConflictService: generated compatibility migrations block missing evidence and old-owner revival risk', () => {
+  const report = validateGeneratedCompatMigration({
+    generatedBoundaries: [],
+    handwrittenOwners: [],
+    compatibilityChecks: [],
+    deleteSteps: [],
+    rollbackSteps: [
+      { target: 'src/app/license-service.ts', action: 'restore old behavior' },
+    ],
+    fallbackFlags: [
+      {
+        name: 'DEVSEEK_LEGACY_LICENSE_OWNER',
+        lifetime: 'permanent',
+        expiresWithMigration: false,
+      },
+    ],
+    legacyOwnerReferences: [
+      { target: 'src/legacy/license-owner.ts', revivalGuard: false },
+    ],
+  });
+
+  assert.equal(report.decision, 'blocked');
+  assert.equal(report.hasLongTermFallback, true);
+  assert.equal(report.hasLegacyOwnerRevivalRisk, true);
+  assert.ok(report.reasons.includes('missing-migration-id'));
+  assert.ok(report.reasons.includes('missing-generated-boundary'));
+  assert.ok(report.reasons.includes('missing-handwritten-owner'));
+  assert.ok(report.reasons.includes('missing-compatibility-check'));
+  assert.ok(report.reasons.includes('missing-delete-step'));
+  assert.ok(report.reasons.includes('migration-evidence-missing'));
+  assert.ok(report.reasons.includes('long-term-fallback-flag'));
+  assert.ok(report.reasons.includes('legacy-owner-revival-risk'));
 });

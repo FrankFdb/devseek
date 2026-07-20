@@ -1386,6 +1386,20 @@ test('R2-03E: WorktreeConflictService owns dirty worktree and generated owner de
   assertContains(worktreeConflict, 'statusEvidence', 'decisions must preserve the git status evidence line');
 });
 
+test('R2-06C: WorktreeConflictService owns generated compatibility migration cleanup', () => {
+  const worktreeConflict = src('src/app/worktree-conflict-service.ts');
+
+  assertContains(worktreeConflict, 'validateGeneratedCompatMigration', 'generated compatibility migration checks must stay with the worktree owner');
+  assertContains(worktreeConflict, 'GeneratedCompatMigrationInput', 'migration inputs must be part of the worktree owner contract');
+  assertContains(worktreeConflict, 'compatibilityChecks', 'API compatibility must be explicit before migrating generated/handwritten ownership');
+  assertContains(worktreeConflict, 'deleteSteps', 'old owner deletion must be explicit before settlement');
+  assertContains(worktreeConflict, 'rollbackSteps', 'rollback steps must be explicit before settlement');
+  assertContains(worktreeConflict, 'fallbackFlags', 'compat flags must be visible to prevent long-term runtime fallback');
+  assertContains(worktreeConflict, 'legacyOwnerReferences', 'old owner references must be guarded against revival');
+  assertContains(worktreeConflict, "'long-term-fallback-flag'", 'long-term fallback flags must fail closed');
+  assertContains(worktreeConflict, "'legacy-owner-revival-risk'", 'legacy owner revival risk must fail closed');
+});
+
 test('R2-03F: ContextAssemblyService owns preview, context budget, usage budget, and omission reports', () => {
   const contextAssembly = src('src/app/context-assembly-service.ts');
 

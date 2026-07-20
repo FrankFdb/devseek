@@ -4,7 +4,12 @@ const WORKTREE_CONFLICT_PROTOCOL = {
   version: 'devseek.worktree-conflict/v1',
 } as const;
 
+const GENERATED_COMPAT_MIGRATION_PROTOCOL = {
+  version: 'devseek.generated-compat-migration/v1',
+} as const;
+
 export const WORKTREE_CONFLICT_PROTOCOL_VERSION = WORKTREE_CONFLICT_PROTOCOL.version;
+export const GENERATED_COMPAT_MIGRATION_PROTOCOL_VERSION = GENERATED_COMPAT_MIGRATION_PROTOCOL.version;
 
 export type WorktreeState =
   | 'clean'
@@ -19,6 +24,7 @@ export type WorktreeState =
 export type WorktreeWriteDecisionKind = 'allow' | 'needs-user-approval' | 'block';
 export type WorktreeTargetOwner = 'handwritten' | 'generated' | 'unknown';
 export type WorktreeProposedOwner = 'handwritten-source' | 'generated-output' | 'unknown';
+export type GeneratedCompatMigrationDecisionKind = 'allow' | 'blocked';
 
 export type WorktreeWriteReason =
   | 'clean-owner-aligned-write'
@@ -31,6 +37,17 @@ export type WorktreeWriteReason =
   | 'generated-boundary-owner-mismatch'
   | 'handwritten-owner-mismatch'
   | 'target-outside-workspace';
+
+export type GeneratedCompatMigrationReason =
+  | 'missing-migration-id'
+  | 'missing-generated-boundary'
+  | 'missing-handwritten-owner'
+  | 'missing-compatibility-check'
+  | 'missing-delete-step'
+  | 'missing-rollback-step'
+  | 'long-term-fallback-flag'
+  | 'legacy-owner-revival-risk'
+  | 'migration-evidence-missing';
 
 export interface WorktreeStatusEntry {
   relPath: string;
@@ -64,6 +81,52 @@ export interface WorktreeWriteDecision {
   statusEvidence: string;
   decision: WorktreeWriteDecisionKind;
   reason: WorktreeWriteReason;
+}
+
+export interface GeneratedCompatMigrationStep {
+  target: string;
+  action: string;
+  evidenceId?: string;
+}
+
+export interface GeneratedCompatMigrationFallbackFlag {
+  name: string;
+  lifetime?: 'temporary' | 'permanent' | 'unknown' | string;
+  expiresWithMigration?: boolean;
+  evidenceId?: string;
+}
+
+export interface GeneratedCompatMigrationLegacyOwnerReference {
+  target: string;
+  revivalGuard?: boolean;
+  evidenceId?: string;
+}
+
+export interface GeneratedCompatMigrationInput {
+  migrationId?: string;
+  generatedBoundaries?: readonly string[];
+  handwrittenOwners?: readonly string[];
+  compatibilityChecks?: readonly GeneratedCompatMigrationStep[];
+  deleteSteps?: readonly GeneratedCompatMigrationStep[];
+  rollbackSteps?: readonly GeneratedCompatMigrationStep[];
+  fallbackFlags?: readonly GeneratedCompatMigrationFallbackFlag[];
+  legacyOwnerReferences?: readonly GeneratedCompatMigrationLegacyOwnerReference[];
+}
+
+export interface GeneratedCompatMigrationReport {
+  version: typeof GENERATED_COMPAT_MIGRATION_PROTOCOL.version;
+  migrationId: string;
+  generatedBoundaries: string[];
+  handwrittenOwners: string[];
+  compatibilityChecks: GeneratedCompatMigrationStep[];
+  deleteSteps: GeneratedCompatMigrationStep[];
+  rollbackSteps: GeneratedCompatMigrationStep[];
+  fallbackFlags: GeneratedCompatMigrationFallbackFlag[];
+  legacyOwnerReferences: GeneratedCompatMigrationLegacyOwnerReference[];
+  hasLongTermFallback: boolean;
+  hasLegacyOwnerRevivalRisk: boolean;
+  decision: GeneratedCompatMigrationDecisionKind;
+  reasons: GeneratedCompatMigrationReason[];
 }
 
 export class WorktreeConflictService {
@@ -132,6 +195,114 @@ export function parseGitStatusPorcelain(raw: string): WorktreeStatusEntry[] {
   const text = String(raw || '');
   if (!text.trim()) return [];
   return text.includes('\0') ? parsePorcelainZ(text) : parsePorcelainLines(text);
+}
+
+export function validateGeneratedCompatMigration(
+  input: GeneratedCompatMigrationInput,
+): GeneratedCompatMigrationReport {
+  const migrationId = normalizeText(input.migrationId);
+  const generatedBoundaries = normalizePathList(input.generatedBoundaries, 'generated-boundary');
+  const handwrittenOwners = normalizePathList(input.handwrittenOwners, 'path');
+  const compatibilityChecks = normalizeMigrationSteps(input.compatibilityChecks);
+  const deleteSteps = normalizeMigrationSteps(input.deleteSteps);
+  const rollbackSteps = normalizeMigrationSteps(input.rollbackSteps);
+  const fallbackFlags = normalizeFallbackFlags(input.fallbackFlags);
+  const legacyOwnerReferences = normalizeLegacyOwnerReferences(input.legacyOwnerReferences);
+  const reasons: GeneratedCompatMigrationReason[] = [];
+
+  if (!migrationId) addReason(reasons, 'missing-migration-id');
+  if (generatedBoundaries.length === 0) addReason(reasons, 'missing-generated-boundary');
+  if (handwrittenOwners.length === 0) addReason(reasons, 'missing-handwritten-owner');
+  if (compatibilityChecks.length === 0) addReason(reasons, 'missing-compatibility-check');
+  if (deleteSteps.length === 0) addReason(reasons, 'missing-delete-step');
+  if (rollbackSteps.length === 0) addReason(reasons, 'missing-rollback-step');
+
+  const hasLongTermFallback = fallbackFlags.some(flag =>
+    normalizeText(flag.lifetime) !== 'temporary' || flag.expiresWithMigration !== true);
+  if (hasLongTermFallback) addReason(reasons, 'long-term-fallback-flag');
+
+  const hasLegacyOwnerRevivalRisk = legacyOwnerReferences.some(reference => reference.revivalGuard !== true);
+  if (hasLegacyOwnerRevivalRisk) addReason(reasons, 'legacy-owner-revival-risk');
+
+  if (
+    hasMissingMigrationStepEvidence(compatibilityChecks)
+    || hasMissingMigrationStepEvidence(deleteSteps)
+    || hasMissingMigrationStepEvidence(rollbackSteps)
+    || fallbackFlags.some(flag => !normalizeText(flag.evidenceId))
+    || legacyOwnerReferences.some(reference => !normalizeText(reference.evidenceId))
+  ) {
+    addReason(reasons, 'migration-evidence-missing');
+  }
+
+  return {
+    version: GENERATED_COMPAT_MIGRATION_PROTOCOL.version,
+    migrationId,
+    generatedBoundaries,
+    handwrittenOwners,
+    compatibilityChecks,
+    deleteSteps,
+    rollbackSteps,
+    fallbackFlags,
+    legacyOwnerReferences,
+    hasLongTermFallback,
+    hasLegacyOwnerRevivalRisk,
+    decision: reasons.length === 0 ? 'allow' : 'blocked',
+    reasons,
+  };
+}
+
+function normalizeMigrationSteps(
+  steps: readonly GeneratedCompatMigrationStep[] | undefined,
+): GeneratedCompatMigrationStep[] {
+  return (steps ?? []).map(step => ({
+    target: normalizeRelPath(step.target),
+    action: normalizeText(step.action),
+    ...(normalizeText(step.evidenceId) ? { evidenceId: normalizeText(step.evidenceId) } : {}),
+  }));
+}
+
+function normalizeFallbackFlags(
+  flags: readonly GeneratedCompatMigrationFallbackFlag[] | undefined,
+): GeneratedCompatMigrationFallbackFlag[] {
+  return (flags ?? []).map(flag => ({
+    name: normalizeText(flag.name),
+    ...(normalizeText(flag.lifetime) ? { lifetime: normalizeText(flag.lifetime) } : {}),
+    expiresWithMigration: flag.expiresWithMigration === true,
+    ...(normalizeText(flag.evidenceId) ? { evidenceId: normalizeText(flag.evidenceId) } : {}),
+  }));
+}
+
+function normalizeLegacyOwnerReferences(
+  references: readonly GeneratedCompatMigrationLegacyOwnerReference[] | undefined,
+): GeneratedCompatMigrationLegacyOwnerReference[] {
+  return (references ?? []).map(reference => ({
+    target: normalizeRelPath(reference.target),
+    revivalGuard: reference.revivalGuard === true,
+    ...(normalizeText(reference.evidenceId) ? { evidenceId: normalizeText(reference.evidenceId) } : {}),
+  }));
+}
+
+function normalizePathList(
+  values: readonly string[] | undefined,
+  kind: 'generated-boundary' | 'path',
+): string[] {
+  return [...new Set((values ?? [])
+    .map(value => kind === 'generated-boundary'
+      ? normalizeGeneratedBoundary(value).relPath
+      : normalizeRelPath(value))
+    .filter(Boolean))];
+}
+
+function hasMissingMigrationStepEvidence(steps: readonly GeneratedCompatMigrationStep[]): boolean {
+  return steps.some(step =>
+    !normalizeText(step.target) || !normalizeText(step.action) || !normalizeText(step.evidenceId));
+}
+
+function addReason(
+  reasons: GeneratedCompatMigrationReason[],
+  reason: GeneratedCompatMigrationReason,
+): void {
+  if (!reasons.includes(reason)) reasons.push(reason);
 }
 
 function parsePorcelainLines(raw: string): WorktreeStatusEntry[] {
@@ -228,6 +399,10 @@ function toRelPath(root: string, absPath: string): string {
 
 function normalizeRelPath(value: string): string {
   return String(value || '').replace(/\\/g, '/').replace(/^\.?\//, '');
+}
+
+function normalizeText(value: unknown): string {
+  return String(value ?? '').trim();
 }
 
 function isOutsideWorkspace(relPath: string): boolean {
