@@ -36,6 +36,17 @@ test('current candidate identity binds source, VSIX, stable install, and runtime
   assert.equal(actual.artifact_identity.exact_match, true);
   assert.equal(actual.stable_install_identity.exact_match_artifact, true);
   assert.equal(actual.active_runtime_identity.exact_match_stable_install, true);
+  assert.equal(actual.release_state.version, 'devseek.release-state/v1');
+  assert.equal(actual.release_state.deploy.status, 'installed-local');
+  assert.equal(actual.release_state.deploy.production_deploy_authorized, false);
+  assert.equal(actual.release_state.smoke.status, 'passed');
+  assert.equal(actual.release_state.observe.status, 'passed');
+  assert.equal(actual.release_state.rollback.status, 'available');
+  assert.notEqual(
+    actual.release_state.rollback.target_artifact.sha256,
+    actual.release_state.current_artifact.sha256,
+  );
+  assert.equal(actual.release_state.mixed_kernel.detected, false);
   assert.equal(actual.observation_authority.caller_identity_trusted, false);
   assert.equal(actual.observation_authority.caller_identity_effect, 'IGNORED');
   assert.equal(actual.no_secret_observation.environment_variables, false);
@@ -48,6 +59,21 @@ test('current candidate identity binds source, VSIX, stable install, and runtime
 
   const validation = validateCurrentCandidateIdentity(actual, buildOptions);
   assert.equal(validation.ok, true, JSON.stringify(validation.errors, null, 2));
+});
+
+test('R2-09E release state machine rejects missing rollback and mixed kernel delivery', () => {
+  const missingRollback = structuredClone(expected);
+  missingRollback.release_state.rollback = {
+    status: 'not-available',
+    target_artifact: null,
+    evidenceRefs: [],
+    reason: 'no previous artifact',
+  };
+  assertHasIdentityError(missingRollback, 'release_state.rollback.status:must-be-available');
+
+  const mixedKernel = structuredClone(expected);
+  mixedKernel.release_state.mixed_kernel.detected = true;
+  assertHasIdentityError(mixedKernel, 'release_state.mixed_kernel.detected:must-be-false');
 });
 
 test('generated current candidate identity view is source-bound', () => {

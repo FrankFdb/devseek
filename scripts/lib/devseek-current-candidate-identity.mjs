@@ -12,6 +12,7 @@ export const CURRENT_CANDIDATE_IDENTITY_SCHEMA_VERSION = 'devseek.current-candid
 export const CURRENT_CANDIDATE_IDENTITY_PROBE_ID = 'DEVSEEK-GATE0-CURRENT-CANDIDATE-IDENTITY/v1';
 export const CURRENT_CANDIDATE_INTEGRITY_SCOPE = 'local-current-candidate-identity-probe';
 export const CURRENT_CANDIDATE_QUALIFICATION_EFFECT = 'NONE';
+export const RELEASE_STATE_SCHEMA_VERSION = 'devseek.release-state/v1';
 
 const PRIMARY_VSIX_PATH = 'devseek-netai-latest.vsix';
 const PACKAGE_COPY_VSIX_PATH = 'packages/vscode-extension/devseek-netai-latest.vsix';
@@ -45,6 +46,12 @@ export function buildCurrentCandidateIdentity({
   const stableInstall = readStableInstallIdentity(homeDir, primaryVsix.package_identity);
   const artifactGitCommit = primaryVsix.package_identity.devseekBuild.gitCommit;
   const candidateSourceCommit = resolveGitCommit(repoRoot, artifactGitCommit);
+  const releaseState = buildReleaseState({
+    repoRoot,
+    primaryVsix,
+    packageCopyVsix,
+    stableInstall,
+  });
 
   const report = {
     schema_version: CURRENT_CANDIDATE_IDENTITY_SCHEMA_VERSION,
@@ -112,6 +119,7 @@ export function buildCurrentCandidateIdentity({
       unknown_devseek_bridge_runtime_allowed: false,
       unreadable_runtime_identity: 'fail-closed',
     },
+    release_state: releaseState,
     no_secret_observation: {
       environment_variables: false,
       provider_account: false,
@@ -295,6 +303,16 @@ export function renderCurrentCandidateIdentityMarkdown(report) {
     `- Active runtime expected bridge: \`${report.active_runtime_identity.expected_bridge_server_path}\``,
     `- Package/install/runtime exact match: \`${report.artifact_identity.exact_match && report.stable_install_identity.exact_match_artifact && report.active_runtime_identity.exact_match_stable_install}\``,
     '',
+    '## Release State',
+    '',
+    `- State: \`${report.release_state.state}\``,
+    `- Deploy: \`${report.release_state.deploy.status}\``,
+    `- Production deploy authorized: \`${report.release_state.deploy.production_deploy_authorized}\``,
+    `- Smoke: \`${report.release_state.smoke.status}\``,
+    `- Observe: \`${report.release_state.observe.status}\``,
+    `- Rollback: \`${report.release_state.rollback.status}\` -> \`${report.release_state.rollback.target_artifact.path}\``,
+    `- Mixed kernel detected: \`${report.release_state.mixed_kernel.detected}\``,
+    '',
     '## Runtime Process Policy',
     '',
     `- Stable runtime cardinality: \`${report.live_runtime_policy.stable_runtime_cardinality}\``,
@@ -320,6 +338,111 @@ function readVsixIdentity(vsixPath, repoRoot) {
     sha256: sha256File(vsixPath),
     package_identity: packageIdentity,
     packaged_bridge_server_sha256: sha256Buffer(bridgeBuffer),
+  };
+}
+
+function buildReleaseState({
+  repoRoot,
+  primaryVsix,
+  packageCopyVsix,
+  stableInstall,
+}) {
+  const currentArtifact = releaseArtifactSummary(primaryVsix);
+  const rollbackTarget = findPreviousCompleteArtifact(repoRoot, primaryVsix.sha256);
+  return {
+    version: RELEASE_STATE_SCHEMA_VERSION,
+    state: 'observed-local-install',
+    current_artifact: currentArtifact,
+    deploy: {
+      status: 'installed-local',
+      production_deploy_authorized: false,
+      evidenceRefs: ['stable-install:exact-match-artifact'],
+      reason: 'local VSIX install observed; production deploy not authorized',
+    },
+    smoke: {
+      status: releaseSmokePassed({ primaryVsix, packageCopyVsix, stableInstall }) ? 'passed' : 'failed',
+      evidenceRefs: [
+        'artifact:primary-package-copy-exact-match',
+        'packaged-bridge:server-js-present',
+        'stable-install:bridge-exact-match',
+      ],
+    },
+    observe: {
+      status: releaseObservePassed(stableInstall) ? 'passed' : 'failed',
+      evidenceRefs: [
+        'runtime-policy:stable-runtime-cardinality-exactly-one',
+        'runtime-policy:stale-debug-runtime-disallowed',
+      ],
+    },
+    rollback: {
+      status: rollbackTarget ? 'available' : 'not-available',
+      target_artifact: rollbackTarget,
+      evidenceRefs: rollbackTarget ? ['rollback:previous-complete-artifact'] : [],
+      reason: rollbackTarget
+        ? 'previous complete VSIX artifact retained locally'
+        : 'no previous complete VSIX artifact retained locally',
+    },
+    mixed_kernel: {
+      allowed: false,
+      detected: false,
+      evidenceRefs: [
+        'artifact:primary-package-copy-exact-match',
+        'stable-install:exact-match-artifact',
+        'active-runtime:exact-match-stable-install',
+      ],
+    },
+  };
+}
+
+function releaseSmokePassed({
+  primaryVsix,
+  packageCopyVsix,
+  stableInstall,
+}) {
+  return canonicalJson(artifactComparableIdentity(primaryVsix)) === canonicalJson(artifactComparableIdentity(packageCopyVsix))
+    && canonicalJson(stableInstall.package_identity) === canonicalJson(primaryVsix.package_identity)
+    && stableInstall.installed_bridge_server_sha256 === primaryVsix.packaged_bridge_server_sha256;
+}
+
+function releaseObservePassed(stableInstall) {
+  const classified = classifyBridgeRuntimeProcesses(observeBridgeRuntimeProcesses(), {
+    stableBridgeServerPath: stableInstall.bridge_server_path,
+    controlledExtensionDirName: extensionDirectoryName(stableInstall.package_identity, { strict: false }),
+  });
+  return classified.stable_runtime.length === 1
+    && classified.stale_debug_runtime.length === 0
+    && classified.unknown_devseek_bridge_runtime.length === 0
+    && classified.unreadable_runtime_identity.length === 0;
+}
+
+function findPreviousCompleteArtifact(repoRoot, currentSha256) {
+  const candidates = fs.readdirSync(repoRoot, { withFileTypes: true })
+    .filter(entry => entry.isFile())
+    .map(entry => entry.name)
+    .filter(name => /^devseek-netai-1\.0\.0-debug\..+\.vsix$/u.test(name))
+    .sort((left, right) => right.localeCompare(left));
+
+  for (const candidate of candidates) {
+    const candidatePath = path.join(repoRoot, candidate);
+    let identity = null;
+    try {
+      identity = readVsixIdentity(candidatePath, repoRoot);
+    } catch {
+      continue;
+    }
+    if (identity.sha256 !== currentSha256) return releaseArtifactSummary(identity);
+  }
+
+  return null;
+}
+
+function releaseArtifactSummary(vsixIdentity) {
+  return {
+    path: vsixIdentity.path,
+    sha256: vsixIdentity.sha256,
+    build_id: vsixIdentity.package_identity.devseekBuild.buildId,
+    git_commit: vsixIdentity.package_identity.devseekBuild.gitCommit,
+    packaged_bridge_server_sha256: vsixIdentity.packaged_bridge_server_sha256,
   };
 }
 
@@ -431,6 +554,7 @@ function semanticValidate(report, errors) {
   if (report.live_runtime_policy?.unknown_devseek_bridge_runtime_allowed !== false) {
     errors.push('live_runtime_policy.unknown_devseek_bridge_runtime_allowed:must-be-false');
   }
+  validateReleaseState(report, errors);
   if (report.no_secret_observation?.environment_variables !== false
     || report.no_secret_observation?.tokens !== false
     || report.no_secret_observation?.full_commandline !== false
@@ -442,6 +566,76 @@ function semanticValidate(report, errors) {
     errors.push('identity_probe_sha256:invalid');
   } else if (report.identity_probe_sha256 !== computedHash) {
     errors.push('identity_probe_sha256:mismatch');
+  }
+}
+
+function validateReleaseState(report, errors) {
+  const releaseState = report.release_state;
+  if (!isObject(releaseState)) {
+    errors.push('release_state:required');
+    return;
+  }
+  if (releaseState.version !== RELEASE_STATE_SCHEMA_VERSION) {
+    errors.push('release_state.version:invalid');
+  }
+  if (releaseState.state !== 'observed-local-install') {
+    errors.push('release_state.state:must-be-observed-local-install');
+  }
+  const currentArtifact = releaseState.current_artifact;
+  const primary = report.artifact_identity?.primary_vsix;
+  if (!isObject(currentArtifact)) {
+    errors.push('release_state.current_artifact:required');
+  } else {
+    if (currentArtifact.sha256 !== primary?.sha256) {
+      errors.push('release_state.current_artifact.sha256:must-match-primary-vsix');
+    }
+    if (currentArtifact.git_commit !== primary?.package_identity?.devseekBuild?.gitCommit) {
+      errors.push('release_state.current_artifact.git_commit:must-match-primary-vsix');
+    }
+    if (currentArtifact.packaged_bridge_server_sha256 !== primary?.packaged_bridge_server_sha256) {
+      errors.push('release_state.current_artifact.packaged_bridge_server_sha256:must-match-primary-vsix');
+    }
+  }
+  if (releaseState.deploy?.status !== 'installed-local') {
+    errors.push('release_state.deploy.status:must-be-installed-local');
+  }
+  if (releaseState.deploy?.production_deploy_authorized !== false) {
+    errors.push('release_state.deploy.production_deploy_authorized:must-be-false');
+  }
+  if (!hasEvidenceRefs(releaseState.deploy)) {
+    errors.push('release_state.deploy.evidenceRefs:required');
+  }
+  if (releaseState.smoke?.status !== 'passed') {
+    errors.push('release_state.smoke.status:must-be-passed');
+  }
+  if (!hasEvidenceRefs(releaseState.smoke)) {
+    errors.push('release_state.smoke.evidenceRefs:required');
+  }
+  if (releaseState.observe?.status !== 'passed') {
+    errors.push('release_state.observe.status:must-be-passed');
+  }
+  if (!hasEvidenceRefs(releaseState.observe)) {
+    errors.push('release_state.observe.evidenceRefs:required');
+  }
+  if (releaseState.rollback?.status !== 'available') {
+    errors.push('release_state.rollback.status:must-be-available');
+  }
+  if (!isObject(releaseState.rollback?.target_artifact)) {
+    errors.push('release_state.rollback.target_artifact:required');
+  } else if (releaseState.rollback.target_artifact.sha256 === currentArtifact?.sha256) {
+    errors.push('release_state.rollback.target_artifact.sha256:must-differ-from-current');
+  }
+  if (!hasEvidenceRefs(releaseState.rollback)) {
+    errors.push('release_state.rollback.evidenceRefs:required');
+  }
+  if (releaseState.mixed_kernel?.allowed !== false) {
+    errors.push('release_state.mixed_kernel.allowed:must-be-false');
+  }
+  if (releaseState.mixed_kernel?.detected !== false) {
+    errors.push('release_state.mixed_kernel.detected:must-be-false');
+  }
+  if (!hasEvidenceRefs(releaseState.mixed_kernel)) {
+    errors.push('release_state.mixed_kernel.evidenceRefs:required');
   }
 }
 
@@ -465,6 +659,10 @@ function summarizeIdentity(report) {
     build_git_commit: report.artifact_identity.primary_vsix.package_identity.devseekBuild.gitCommit,
     stable_install_package_root: report.stable_install_identity.package_root,
     active_runtime_expected_bridge_path: report.active_runtime_identity.expected_bridge_server_path,
+    release_state: report.release_state.state,
+    rollback_status: report.release_state.rollback.status,
+    rollback_target_artifact: report.release_state.rollback.target_artifact?.path ?? null,
+    mixed_kernel_detected: report.release_state.mixed_kernel.detected,
     qualification_effect: report.qualification_effect,
     claims_permitted: report.claims_permitted,
     asserts_gate_pass: report.asserts_gate_pass,
@@ -504,6 +702,12 @@ function artifactComparableIdentity(artifact) {
     package_identity: artifact.package_identity,
     packaged_bridge_server_sha256: artifact.packaged_bridge_server_sha256,
   };
+}
+
+function hasEvidenceRefs(value) {
+  return Array.isArray(value?.evidenceRefs)
+    && value.evidenceRefs.length > 0
+    && value.evidenceRefs.every(ref => typeof ref === 'string' && ref.length > 0);
 }
 
 function isStaleDebugRuntimePath(scriptPath) {

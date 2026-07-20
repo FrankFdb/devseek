@@ -27,6 +27,16 @@
 - Active runtime expected bridge: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260720.t192037.g87cb317/bridge/server.js`
 - Package/install/runtime exact match: `true`
 
+## Release State
+
+- State: `observed-local-install`
+- Deploy: `installed-local`
+- Production deploy authorized: `false`
+- Smoke: `passed`
+- Observe: `passed`
+- Rollback: `available` -> `devseek-netai-1.0.0-debug.20260720.t190910.g887bb24.vsix`
+- Mixed kernel detected: `false`
+
 ## Runtime Process Policy
 
 - Stable runtime cardinality: `exactly-one`
@@ -37,4 +47,4 @@
 
 ## Probe Identity
 
-- Identity probe SHA-256: `53da759eaaa670f31f8f22f7cc8e5a094c9ae80f4e89cdbf004f303819ed8e43`
+- Identity probe SHA-256: `ecc14834b1a4aab6cb05e9b68746ead2cd6ac30b269ac1a27ae4de12a27c4aa8`

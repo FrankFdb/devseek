@@ -21,6 +21,7 @@
     "stable_install_identity",
     "active_runtime_identity",
     "live_runtime_policy",
+    "release_state",
     "no_secret_observation",
     "counts",
     "identity_probe_sha256"
@@ -42,6 +43,7 @@
     "stable_install_identity": { "$ref": "#/$defs/stableInstallIdentity" },
     "active_runtime_identity": { "$ref": "#/$defs/activeRuntimeIdentity" },
     "live_runtime_policy": { "$ref": "#/$defs/liveRuntimePolicy" },
+    "release_state": { "$ref": "#/$defs/releaseState" },
     "no_secret_observation": { "$ref": "#/$defs/noSecretObservation" },
     "counts": { "$ref": "#/$defs/counts" },
     "identity_probe_sha256": { "$ref": "#/$defs/sha256" }
@@ -62,6 +64,11 @@
     "nonEmpty": {
       "type": "string",
       "minLength": 1
+    },
+    "evidenceRefs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/nonEmpty" },
+      "minItems": 1
     },
     "integrity": {
       "type": "object",
@@ -236,6 +243,99 @@
         "stale_debug_runtime_allowed": { "const": false },
         "unknown_devseek_bridge_runtime_allowed": { "const": false },
         "unreadable_runtime_identity": { "const": "fail-closed" }
+      }
+    },
+    "releaseState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "state",
+        "current_artifact",
+        "deploy",
+        "smoke",
+        "observe",
+        "rollback",
+        "mixed_kernel"
+      ],
+      "properties": {
+        "version": { "const": "devseek.release-state/v1" },
+        "state": { "const": "observed-local-install" },
+        "current_artifact": { "$ref": "#/$defs/releaseArtifact" },
+        "deploy": { "$ref": "#/$defs/releaseDeployStep" },
+        "smoke": { "$ref": "#/$defs/releaseCheckStep" },
+        "observe": { "$ref": "#/$defs/releaseCheckStep" },
+        "rollback": { "$ref": "#/$defs/releaseRollbackStep" },
+        "mixed_kernel": { "$ref": "#/$defs/mixedKernel" }
+      }
+    },
+    "releaseArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "build_id",
+        "git_commit",
+        "packaged_bridge_server_sha256"
+      ],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "build_id": { "$ref": "#/$defs/nonEmpty" },
+        "git_commit": { "$ref": "#/$defs/commit" },
+        "packaged_bridge_server_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "releaseDeployStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "production_deploy_authorized",
+        "evidenceRefs",
+        "reason"
+      ],
+      "properties": {
+        "status": { "const": "installed-local" },
+        "production_deploy_authorized": { "const": false },
+        "evidenceRefs": { "$ref": "#/$defs/evidenceRefs" },
+        "reason": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "releaseCheckStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "evidenceRefs"],
+      "properties": {
+        "status": { "const": "passed" },
+        "evidenceRefs": { "$ref": "#/$defs/evidenceRefs" }
+      }
+    },
+    "releaseRollbackStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "target_artifact",
+        "evidenceRefs",
+        "reason"
+      ],
+      "properties": {
+        "status": { "const": "available" },
+        "target_artifact": { "$ref": "#/$defs/releaseArtifact" },
+        "evidenceRefs": { "$ref": "#/$defs/evidenceRefs" },
+        "reason": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "mixedKernel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed", "detected", "evidenceRefs"],
+      "properties": {
+        "allowed": { "const": false },
+        "detected": { "const": false },
+        "evidenceRefs": { "$ref": "#/$defs/evidenceRefs" }
       }
     },
     "noSecretObservation": {
