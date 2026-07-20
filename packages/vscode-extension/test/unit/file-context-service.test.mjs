@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -32,6 +32,13 @@ function numberedLines(count) {
   return Array.from({ length: count }, (_, index) => `int line_${index + 1} = ${index + 1};`).join('\n');
 }
 
+function duplicateSymbolFixture(totalLines = 320) {
+  const lines = Array.from({ length: totalLines }, (_, index) => `const filler_${index + 1} = ${index + 1};`);
+  lines[19] = 'function render() { return "first"; }';
+  lines[259] = 'function render() { return "second"; }';
+  return lines.join('\n');
+}
+
 test('FileContextService: returns a moderate code file fully with explicit metadata', async () => {
   const dir = tempProject();
   try {
@@ -40,7 +47,12 @@ test('FileContextService: returns a moderate code file fully with explicit metad
 
     const result = await service.readFileForAi('main.cpp', { workDir: dir });
 
+    assert.match(result, /version=devseek\.file-context\/v1/);
+    assert.match(result, /complete=true/);
     assert.match(result, /truncated=false/);
+    assert.match(result, /omittedLines=0/);
+    assert.match(result, /sourceIntegrity=full/);
+    assert.match(result, /generatedFile=false/);
     assert.match(result, /reason=full-file/);
     assert.match(result, /returnedLines=1-501\/501/);
     assert.match(result, /int line_501 = 501;/);
@@ -57,7 +69,10 @@ test('FileContextService: previews oversized files and tells the model how to co
 
     const result = await service.readFileForAi('large.cpp', { workDir: dir });
 
+    assert.match(result, /complete=false/);
     assert.match(result, /truncated=true/);
+    assert.match(result, /omittedLines=2261/);
+    assert.match(result, /sourceIntegrity=preview/);
     assert.match(result, /reason=file-too-large-preview/);
     assert.match(result, /returnedLines=1-240\/2501/);
     assert.match(result, /next=use read_file with startLine\/endLine/);
@@ -75,13 +90,65 @@ test('FileContextService: supports targeted range reads for large files', async 
 
     const result = await service.readFileForAi('large.cpp', { workDir: dir, startLine: 300, endLine: 320 });
 
+    assert.match(result, /complete=false/);
     assert.match(result, /truncated=true/);
+    assert.match(result, /omittedLines=2480/);
+    assert.match(result, /sourceIntegrity=range/);
     assert.match(result, /reason=requested-range/);
     assert.match(result, /returnedLines=300-320\/2501/);
     assert.match(result, /int line_300 = 300;/);
     assert.match(result, /int line_320 = 320;/);
     assert.doesNotMatch(result, /int line_299 = 299;/);
     assert.doesNotMatch(result, /int line_321 = 321;/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('FileContextService: marks generated large files as incomplete generated previews', async () => {
+  const dir = tempProject();
+  try {
+    const distDir = path.join(dir, 'dist');
+    writeFileSync(path.join(dir, 'README.md'), 'source project\n', 'utf8');
+    mkdirSync(distDir, { recursive: true });
+    const generated = [
+      '// AUTO-GENERATED FILE - DO NOT EDIT',
+      ...Array.from({ length: 319 }, (_, index) => `function bundle_${index + 1}() { return ${index + 1}; }`),
+    ].join('\n');
+    writeFileSync(path.join(distDir, 'bundle.js'), generated, 'utf8');
+    const service = new FileContextService({ workspaceRoot: dir, maxFullLines: 200 });
+
+    const result = await service.readFileForAi('dist/bundle.js', { workDir: dir });
+
+    assert.match(result, /generatedFile=true/);
+    assert.match(result, /generatedReason=.*path-boundary/);
+    assert.match(result, /generatedReason=.*content-marker/);
+    assert.match(result, /complete=false/);
+    assert.match(result, /sourceIntegrity=generated-preview/);
+    assert.match(result, /omittedLines=80/);
+    assert.match(result, /returnedLines=1-240\/320/);
+    assert.match(result, /next=use read_file with startLine\/endLine/);
+    assert.doesNotMatch(result, /function bundle_240\(\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('FileContextService: emits line-scoped symbol outline for same-name symbols outside the returned range', async () => {
+  const dir = tempProject();
+  try {
+    writeFileSync(path.join(dir, 'large.js'), duplicateSymbolFixture(), 'utf8');
+    const service = new FileContextService({ workspaceRoot: dir, maxFullLines: 200 });
+
+    const result = await service.readFileForAi('large.js', { workDir: dir });
+
+    assert.match(result, /symbolOutlineCount=2/);
+    assert.match(result, /symbolOutline=function render line=20 duplicateIndex=1 inReturnedRange=true/);
+    assert.match(result, /symbolOutline=function render line=260 duplicateIndex=2 inReturnedRange=false/);
+    assert.match(result, /sameNameSymbolGroups=render:2/);
+    assert.match(result, /function render\(\) \{ return "first"; \}/);
+    assert.doesNotMatch(result, /function render\(\) \{ return "second"; \}/);
+    assert.match(result, /complete=false/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -1358,6 +1358,20 @@ test('R2-03C: EnvironmentProfileService owns runtime and dependency policy decis
   assertDoesNotContain(capabilityResolver, 'hasExecutableInPath', 'terminal capability resolver must not duplicate PATH runtime ownership');
 });
 
+test('R2-03D: FileContextService owns large-file range, generated, and symbol provenance', () => {
+  const fileContext = src('src/workspace/file-context-service.ts');
+
+  assertContains(fileContext, "FILE_CONTEXT_PROTOCOL_VERSION = 'devseek.file-context/v1'", 'file context must expose a versioned contract');
+  assertContains(fileContext, 'sourceIntegrity', 'file context must label whether returned code is full, range, preview, or generated preview');
+  assertContains(fileContext, 'complete=', 'file context envelope must make incompleteness machine-visible');
+  assertContains(fileContext, 'omittedLines', 'file context envelope must quantify omitted lines');
+  assertContains(fileContext, 'generatedFile', 'file context owner must mark generated boundaries');
+  assertContains(fileContext, 'detectGeneratedFile', 'generated boundary detection must stay in the file context owner');
+  assertContains(fileContext, 'symbolOutline', 'file context owner must emit a symbol outline for unseen regions');
+  assertContains(fileContext, 'sameNameSymbolGroups', 'same-name symbols must be disambiguated by line provenance');
+  assertContains(fileContext, 'inReturnedRange', 'symbol outline must reveal whether a symbol body is actually present');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');
