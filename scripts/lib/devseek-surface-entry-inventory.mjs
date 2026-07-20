@@ -190,6 +190,9 @@ export function validateSurfaceEntryInventory(inventory, sources) {
   }
   const counts = inventory.counts ?? {};
   if (counts.unknown_entries !== 0) errors.push(`entries:unknown-${counts.unknown_entries}`);
+  if (counts.declared_adapter_pending_cutover !== 0) {
+    errors.push(`legacy:declared-pending-d2-${counts.declared_adapter_pending_cutover}`);
+  }
   if (counts.vscode_manifest_commands_missing_runtime !== 0) {
     errors.push(`vscode:manifest-missing-runtime-${counts.vscode_manifest_commands_missing_runtime}`);
   }
@@ -208,6 +211,9 @@ export function validateSurfaceEntryInventory(inventory, sources) {
   const guards = inventory.bypass_guards ?? {};
   if (guards.generic_webview_command_disabled !== true) {
     errors.push('bypass:generic-webview-command-not-disabled');
+  }
+  if (guards.legacy_surface_projection_fallbacks_removed !== true) {
+    errors.push('bypass:legacy-surface-projection-fallbacks-present');
   }
   if (guards.unknown_entry_fail_closed !== true) {
     errors.push('bypass:unknown-entry-not-fail-closed');
@@ -491,9 +497,11 @@ function buildBridgeEntries(sources) {
 
 function buildBypassGuards(sources, entries) {
   const provider = sources.sourceContents[SOURCE_PATHS.deepseekViewProvider] ?? '';
+  const inventoryLib = sources.sourceContents[SOURCE_PATHS.inventoryLibSource] ?? '';
   return {
     unknown_entry_fail_closed: entries.every(entry => entry.coverage_status !== 'unknown-entry'),
     generic_webview_command_disabled: provider.includes('Generic inbound VS Code commands are disabled; use a typed product action.'),
+    legacy_surface_projection_fallbacks_removed: !hasLegacySurfaceProjectionFallbacks(inventoryLib),
     manifest_runtime_drift_present: entries.some(entry => (
       entry.kind === 'command'
       && entry.manifest_declared === true
@@ -530,7 +538,11 @@ function buildCounts(entries, sources) {
     attachment_entries: entries.filter(entry => entry.kind.startsWith('attachment') || entry.surface.includes('attachment')).length,
     cli_entrypoints: entries.filter(entry => entry.surface === 'cli').length,
     bridge_endpoints: entries.filter(entry => entry.surface.startsWith('bridge')).length,
-    unknown_entries: entries.filter(entry => entry.coverage_status === 'unknown-entry' || entry.coverage_status === 'missing-source').length,
+    unknown_entries: entries.filter(entry => (
+      entry.coverage_status === 'unknown-entry'
+      || entry.coverage_status === 'missing-source'
+      || entry.kernel_contract_projection.startsWith('unknown-')
+    )).length,
     declared_adapter_pending_cutover: entries.filter(entry => entry.kernel_contract_projection.includes('pending-D2')).length,
     undeclared_legacy_owner_reachability: entries.filter(entry => entry.kernel_contract_projection === 'legacy-owner-bypass').length,
   };
@@ -648,11 +660,12 @@ function commandProjection(commandId) {
   if (commandId === 'devseek.addFileToChat' || commandId === 'devseek.showMemoryFiles') return 'ContextRef';
   if (commandId === 'devseek.openChat' || commandId === 'devseek.triggerCompletion') return 'surface-ui-action';
   if (commandId === 'devseek.switchProvider') return 'provider-config-action';
-  if (commandId === 'devseek.generateCommit' || commandId === 'devseek.applyDiff') {
-    return 'declared-command-adapter-pending-D2A';
-  }
-  if (commandId.startsWith('devseek.')) return 'declared-chat-command-adapter-pending-D2A';
+  if (commandId.startsWith('devseek.')) return 'unknown-agent-command-surface';
   return 'internal-adapter';
+}
+
+function hasLegacySurfaceProjectionFallbacks(source) {
+  return /return\s+['"][^'"]*pending-D2[^'"]*['"]/u.test(source);
 }
 
 function commandCoverageStatus({ commandId, runtimeRegistered, manifestDeclared, scope }) {

@@ -97,6 +97,7 @@
       "required": [
         "unknown_entry_fail_closed",
         "generic_webview_command_disabled",
+        "legacy_surface_projection_fallbacks_removed",
         "manifest_runtime_drift_present",
         "webview_protocol_handler_drift_present",
         "undeclared_legacy_owner_reachability_present",
@@ -105,6 +106,7 @@
       "properties": {
         "unknown_entry_fail_closed": { "type": "boolean" },
         "generic_webview_command_disabled": { "type": "boolean" },
+        "legacy_surface_projection_fallbacks_removed": { "type": "boolean" },
         "manifest_runtime_drift_present": { "type": "boolean" },
         "webview_protocol_handler_drift_present": { "type": "boolean" },
         "undeclared_legacy_owner_reachability_present": { "type": "boolean" },

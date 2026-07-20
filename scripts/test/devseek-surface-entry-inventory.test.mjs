@@ -84,6 +84,7 @@ test('surface entry inventory is source-bound and covers every current entry den
     assert.equal(entry.kernel_contract_projection, 'generated-artifact-action');
   }
   assert.equal(actual.bypass_guards.generic_webview_command_disabled, true);
+  assert.equal(actual.bypass_guards.legacy_surface_projection_fallbacks_removed, true);
   assert.equal(actual.bypass_guards.unknown_entry_fail_closed, true);
 
   const validation = validateSurfaceEntryInventory(actual, sources);
@@ -134,6 +135,34 @@ test('surface inventory fails closed when generic webview command bypass is reop
       .replace('Generic inbound VS Code commands are disabled; use a typed product action.', 'generic command allowed');
   const mutatedInventory = buildSurfaceEntryInventory(mutatedSources);
   assertHasError(mutatedInventory, mutatedSources, 'bypass:generic-webview-command-not-disabled');
+});
+
+test('R1-D2D surface inventory fails closed instead of using legacy pending-D2 command fallbacks', () => {
+  const inventoryLib = readText('scripts/lib/devseek-surface-entry-inventory.mjs');
+  assert.doesNotMatch(
+    inventoryLib,
+    /return\s+['"][^'"]*pending-D2[^'"]*['"]/,
+    'D2D must physically remove pending-D2 fallback return paths',
+  );
+
+  const mutatedSources = cloneSources();
+  mutatedSources.packageJson.contributes.commands.push({
+    command: 'devseek.experimentalLegacy',
+    title: 'Experimental Legacy',
+  });
+  mutatedSources.sourceContents['packages/vscode-extension/src/ui/extension-command-registration.ts'] =
+    mutatedSources.sourceContents['packages/vscode-extension/src/ui/extension-command-registration.ts']
+      .replace(
+        "['devseek.openChat', async () => { deps.viewProvider.focus(); }],",
+        "['devseek.experimentalLegacy', async () => {}],\n    ['devseek.openChat', async () => { deps.viewProvider.focus(); }],",
+      );
+
+  const mutatedInventory = buildSurfaceEntryInventory(mutatedSources);
+  const entry = mutatedInventory.entries.find(item => item.entry_id === 'vscode-command/devseek.experimentalLegacy');
+  assert.ok(entry, 'mutated public command must be inventoried');
+  assert.equal(entry.kernel_contract_projection, 'unknown-agent-command-surface');
+  assert.equal(mutatedInventory.counts.declared_adapter_pending_cutover, 0);
+  assertHasError(mutatedInventory, mutatedSources, 'entries:unknown-1');
 });
 
 test('surface inventory checker command validates current inventory and generated view', async () => {
