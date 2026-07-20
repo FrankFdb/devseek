@@ -218,6 +218,16 @@ export function validateSurfaceEntryInventory(inventory, sources) {
       }
     }
   }
+  if (counts.duplicate_webview_handler_registrations !== 0) {
+    const duplicateTypes = duplicateWebviewHandlerTypes(sources.sourceContents);
+    if (duplicateTypes.length === 0) {
+      errors.push(`webview:duplicate-handler-${counts.duplicate_webview_handler_registrations}`);
+    } else {
+      for (const type of duplicateTypes) {
+        errors.push(`webview:duplicate-handler-${type}`);
+      }
+    }
+  }
   const guards = inventory.bypass_guards ?? {};
   if (guards.generic_webview_command_disabled !== true) {
     errors.push('bypass:generic-webview-command-not-disabled');
@@ -227,6 +237,9 @@ export function validateSurfaceEntryInventory(inventory, sources) {
   }
   if (guards.runtime_command_registration_unique !== true) {
     errors.push('bypass:runtime-command-registration-not-unique');
+  }
+  if (guards.webview_handler_registration_unique !== true) {
+    errors.push('bypass:webview-handler-registration-not-unique');
   }
   if (guards.unknown_entry_fail_closed !== true) {
     errors.push('bypass:unknown-entry-not-fail-closed');
@@ -516,6 +529,7 @@ function buildBypassGuards(sources, entries) {
     generic_webview_command_disabled: provider.includes('Generic inbound VS Code commands are disabled; use a typed product action.'),
     legacy_surface_projection_fallbacks_removed: !hasLegacySurfaceProjectionFallbacks(inventoryLib),
     runtime_command_registration_unique: duplicateRuntimeCommandIds(sources.sourceContents).length === 0,
+    webview_handler_registration_unique: duplicateWebviewHandlerTypes(sources.sourceContents).length === 0,
     manifest_runtime_drift_present: entries.some(entry => (
       entry.kind === 'command'
       && entry.manifest_declared === true
@@ -560,6 +574,7 @@ function buildCounts(entries, sources) {
     declared_adapter_pending_cutover: entries.filter(entry => entry.kernel_contract_projection.includes('pending-D2')).length,
     undeclared_legacy_owner_reachability: entries.filter(entry => entry.kernel_contract_projection === 'legacy-owner-bypass').length,
     duplicate_runtime_command_registrations: duplicateRuntimeCommandIds(sources.sourceContents).length,
+    duplicate_webview_handler_registrations: duplicateWebviewHandlerTypes(sources.sourceContents).length,
   };
 }
 
@@ -640,6 +655,19 @@ function extractWebviewInboundTypes(source) {
 
 function extractWebviewHandlerCases(source) {
   return [...new Set([...source.matchAll(/case '([^']+)'/gu)].map(match => match[1]))].sort();
+}
+
+function duplicateWebviewHandlerTypes(sourceContents) {
+  const source = sourceContents[SOURCE_PATHS.deepseekViewProvider] ?? '';
+  const counts = new Map();
+  for (const match of source.matchAll(/case '([^']+)'/gu)) {
+    const type = match[1];
+    counts.set(type, (counts.get(type) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([type]) => type)
+    .sort();
 }
 
 function extractBridgeEndpoints(source) {

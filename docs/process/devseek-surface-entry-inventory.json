@@ -59,7 +59,7 @@
     },
     "schemaSource": {
       "path": "docs/process/devseek-surface-entry-inventory.schema.json",
-      "source_sha256": "5c3b6ac0ea6cdc92d0a35f42a0c9a1ddeb1ecba8341ea75e697012037e5d8938"
+      "source_sha256": "a90eb3f5200ab14d03bf2c8b86fe6c8772d6bae1fe0e5fc39a3cf0d7af4909f6"
     },
     "checkerSource": {
       "path": "scripts/devseek-surface-entry-inventory-check.mjs",
@@ -67,11 +67,11 @@
     },
     "inventoryLibSource": {
       "path": "scripts/lib/devseek-surface-entry-inventory.mjs",
-      "source_sha256": "d8433f1a9b24012bdc2f3bddbb789e76e9f1da1176036d14cb766bb05c39c330"
+      "source_sha256": "8b52a06f7a6fd13adc4f1e882436698f3e8558025ab4200831242a7765c15534"
     },
     "oracleSource": {
       "path": "scripts/test/devseek-surface-entry-inventory.test.mjs",
-      "source_sha256": "5b8fd5f04b559f296b006b6e63ec8997ec811253f2baf6b4c5856355f32687b3"
+      "source_sha256": "eb1f112ad127539118dd9c85708731306eaa7f7270b7676a3911d0e71a1fad86"
     },
     "rootPackageJson": {
       "path": "package.json",
@@ -1384,6 +1384,7 @@
     "generic_webview_command_disabled": true,
     "legacy_surface_projection_fallbacks_removed": true,
     "runtime_command_registration_unique": true,
+    "webview_handler_registration_unique": true,
     "manifest_runtime_drift_present": false,
     "webview_protocol_handler_drift_present": false,
     "undeclared_legacy_owner_reachability_present": false,
@@ -1405,7 +1406,8 @@
     "unknown_entries": 0,
     "declared_adapter_pending_cutover": 0,
     "undeclared_legacy_owner_reachability": 0,
-    "duplicate_runtime_command_registrations": 0
+    "duplicate_runtime_command_registrations": 0,
+    "duplicate_webview_handler_registrations": 0
   },
-  "inventory_sha256": "e91585665f419d60efa8f9191aac6af40a8f30d18f42157044c2d492c359aa56"
+  "inventory_sha256": "64a9c68957213546d2104f5873438fa15fb6ee5f9b07cea40c1823ddb082d3bc"
 }

@@ -45,6 +45,7 @@ test('surface entry inventory is source-bound and covers every current entry den
     declared_adapter_pending_cutover: 0,
     undeclared_legacy_owner_reachability: 0,
     duplicate_runtime_command_registrations: 0,
+    duplicate_webview_handler_registrations: 0,
   });
   const resumeEntry = actual.entries.find(item => item.entry_id === 'cli/resume-exec');
   assert.ok(resumeEntry, 'CLI resume must be inventoried as a declared surface entrypoint');
@@ -87,6 +88,7 @@ test('surface entry inventory is source-bound and covers every current entry den
   assert.equal(actual.bypass_guards.generic_webview_command_disabled, true);
   assert.equal(actual.bypass_guards.legacy_surface_projection_fallbacks_removed, true);
   assert.equal(actual.bypass_guards.runtime_command_registration_unique, true);
+  assert.equal(actual.bypass_guards.webview_handler_registration_unique, true);
   assert.equal(actual.bypass_guards.unknown_entry_fail_closed, true);
 
   const validation = validateSurfaceEntryInventory(actual, sources);
@@ -176,6 +178,17 @@ test('R1-D* surface inventory fails closed on duplicate runtime command registra
   assert.equal(mutatedInventory.counts.duplicate_runtime_command_registrations, 1);
   assert.equal(mutatedInventory.bypass_guards.runtime_command_registration_unique, false);
   assertHasError(mutatedInventory, mutatedSources, 'runtime-command:duplicate-registration-devseek.explain');
+});
+
+test('R1-D2D surface inventory fails closed on duplicate webview handler registrations', () => {
+  const mutatedSources = cloneSources();
+  mutatedSources.sourceContents['packages/vscode-extension/src/ui/deepseek-view-provider.ts'] +=
+    "\ncase 'chat':\n  break;\n";
+
+  const mutatedInventory = buildSurfaceEntryInventory(mutatedSources);
+  assert.equal(mutatedInventory.counts.duplicate_webview_handler_registrations, 1);
+  assert.equal(mutatedInventory.bypass_guards.webview_handler_registration_unique, false);
+  assertHasError(mutatedInventory, mutatedSources, 'webview:duplicate-handler-chat');
 });
 
 test('surface inventory checker command validates current inventory and generated view', async () => {
