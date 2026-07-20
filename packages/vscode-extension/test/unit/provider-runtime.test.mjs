@@ -265,6 +265,134 @@ test('Provider runtime: fallback inherits workflow facts and does not replay des
   assert.match(fallback.replayBlockedReason, /destructive|workspace-mutating/);
 });
 
+test('Provider runtime: fallback continuity builds a fresh request copy for provider switch', () => {
+  const snapshot = new ProviderConfigService(config({
+    provider: 'deepseek-api',
+    providerFallbackOrder: ['openai-compat', 'bridge'],
+  })).getSnapshot();
+  const runtime = new LLMProviderRuntime(snapshot, {
+    'deepseek-api': { status: 'available' },
+    'openai-compat': { status: 'available' },
+  });
+  const route = runtime.selectProvider({
+    workflowId: 'wf-r2-07c',
+    checkpointId: 'cp-r2-07c',
+    reviewLedgerId: 'review-r2-07c',
+    idempotencyLedgerId: 'idem-r2-07c',
+  });
+  const request = {
+    messages: [
+      { role: 'system', content: 'system context' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'current prompt' },
+          { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+        ],
+      },
+    ],
+    files: ['src/input.ts'],
+    stream: true,
+    model: 'deepseek-chat',
+    mode: 'fast',
+    timeoutMs: 120000,
+    traceRunId: 'wf-r2-07c',
+    traceWorkspaceRoot: '/workspace/devseek',
+    traceOperationId: 'op-provider-round-1',
+    onDelta() {},
+    onUsage() {},
+    signal: new AbortController().signal,
+    evidenceCapability: { role: 'participant', token: 'bridge-secret-token' },
+  };
+
+  const fallback = runtime.buildFallbackPlan(route, 'deepseek-api', [], { request });
+  request.messages[1].content[0].text = 'mutated after fallback';
+  request.files.push('mutated.txt');
+  fallback.nextRequest.messages[0].content = 'mutated fallback copy';
+
+  assert.equal(fallback.version, 'devseek.provider-fallback-continuity/v1');
+  assert.equal(fallback.continuity.providerSwitch.from, 'deepseek-api');
+  assert.equal(fallback.continuity.providerSwitch.to, 'openai-compat');
+  assert.equal(fallback.continuity.workflow.workflowId, 'wf-r2-07c');
+  assert.equal(fallback.nextRequest.provider, 'openai-compat');
+  assert.equal(fallback.nextRequest.traceRunId, 'wf-r2-07c');
+  assert.equal(fallback.nextRequest.traceOperationId, 'op-provider-round-1');
+  assert.equal(fallback.nextRequest.messages[1].content[0].text, 'current prompt');
+  assert.deepEqual(fallback.nextRequest.files, ['src/input.ts']);
+  assert.equal(request.messages[0].content, 'system context');
+  assert.equal('onDelta' in fallback.nextRequest, false);
+  assert.equal('onUsage' in fallback.nextRequest, false);
+  assert.equal('signal' in fallback.nextRequest, false);
+  assert.equal('evidenceCapability' in fallback.nextRequest, false);
+});
+
+test('Provider runtime: partial stream and committed effects are audited without replay', () => {
+  const snapshot = new ProviderConfigService(config({
+    provider: 'deepseek-api',
+    providerFallbackOrder: ['openai-compat', 'bridge'],
+  })).getSnapshot();
+  const runtime = new LLMProviderRuntime(snapshot, {
+    'deepseek-api': { status: 'available' },
+    'openai-compat': { status: 'available' },
+  });
+  const route = runtime.selectProvider({
+    workflowId: 'wf-partial',
+    checkpointId: 'cp-partial',
+    reviewLedgerId: 'review-partial',
+    idempotencyLedgerId: 'idem-partial',
+  });
+  const [writeCall, readCall] = llmEventsToToolCalls([
+    {
+      type: 'tool-call',
+      provider: 'deepseek-api',
+      call: { id: 'tool-write-1', function: { name: 'write_file', arguments: '{"path":"a.txt","content":"x"}' } },
+    },
+    {
+      type: 'tool-call',
+      provider: 'deepseek-api',
+      call: { id: 'tool-read-1', function: { name: 'read_file', arguments: '{"path":"a.txt"}' } },
+    },
+  ]);
+
+  const fallback = runtime.buildFallbackPlan(
+    route,
+    'deepseek-api',
+    [
+      {
+        operationId: 'op-write-1',
+        effectId: 'effect-write-1',
+        effectState: 'committed',
+        toolCalls: [writeCall],
+      },
+      {
+        operationId: 'op-read-1',
+        effectId: 'effect-read-1',
+        effectState: 'planned',
+        toolCalls: [readCall],
+      },
+    ],
+    {
+      stream: {
+        state: 'partial',
+        providerRequestId: 'provider-request-1',
+        receivedChunks: 2,
+        receivedBytes: 42,
+      },
+    },
+  );
+
+  assert.equal(fallback.allowToolReplay, false);
+  assert.match(fallback.replayBlockedReason, /committed side effect|workspace-mutating/);
+  assert.deepEqual(fallback.continuity.operationIds, ['op-write-1', 'op-read-1']);
+  assert.deepEqual(fallback.continuity.toolCallIds, ['tool-write-1', 'tool-read-1']);
+  assert.deepEqual(fallback.continuity.committedEffectIds, ['effect-write-1']);
+  assert.deepEqual(fallback.continuity.replayBlockedEffectIds, ['effect-write-1']);
+  assert.equal(fallback.continuity.stream.state, 'partial');
+  assert.equal(fallback.continuity.stream.providerRequestId, 'provider-request-1');
+  assert.equal(fallback.continuity.stream.partialOutputReplay, 'blocked');
+  assert.equal('receivedText' in fallback.continuity.stream, false);
+});
+
 test('Provider runtime: API keys, cookies and tokens are redacted from persisted facts/log text', () => {
   const snapshot = new ProviderConfigService(config({
     provider: 'local-api',
