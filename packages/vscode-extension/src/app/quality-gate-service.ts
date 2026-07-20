@@ -3,9 +3,12 @@ import {
   type FailureDiagnosis,
 } from './failure-diagnosis';
 import {
+  findUnresolvedVerificationHistoryVeto,
   normalizeVerificationResult,
   shouldEmitTerminalEvidenceForVerification,
   verificationResultIsCompletionCandidate,
+  type VerificationHistoryEntry,
+  type VerificationHistoryVeto,
   type VerificationResultStatus,
 } from './verification-result-authority';
 
@@ -49,6 +52,7 @@ export interface QualityGateContractAcceptance {
 export interface QualityGateInput {
   changedPaths: string[];
   validation?: QualityGateValidationEvidence | null;
+  validationHistory?: VerificationHistoryEntry[];
   contractAcceptance?: QualityGateContractAcceptance;
   acceptedRisk?: QualityGateRiskAcceptance;
   adverseEvidenceCount?: number;
@@ -86,6 +90,11 @@ export class QualityGateService {
         alternativeChecks: [],
         requiredActions: ['先通过恢复/重新验证解除不利证据后再结算。'],
       };
+    }
+
+    const historyVeto = findUnresolvedVerificationHistoryVeto(input.validationHistory);
+    if (historyVeto) {
+      return this.historyVetoDecision(input, historyVeto);
     }
 
     const validation = input.validation;
@@ -134,15 +143,15 @@ export class QualityGateService {
     }
 
     const evidenceRef = validationEvidenceRef('failed', validation);
-  return {
-    version: 'devseek.quality-gate-decision/v1',
-    authority: 'QualityGateService',
-    status: 'fail',
-    summary: `QualityGate 未通过：自动验证失败（exitCode=${validation.exitCode ?? 'null'}）。`,
-    evidenceRefs: [evidenceRef],
-    verificationStatus: verification.status,
-    contractAcceptanceStatus: input.contractAcceptance?.status ?? 'accepted',
-    failureDiagnosis: buildValidationFailureDiagnosis({
+    return {
+      version: 'devseek.quality-gate-decision/v1',
+      authority: 'QualityGateService',
+      status: 'fail',
+      summary: `QualityGate 未通过：自动验证失败（exitCode=${validation.exitCode ?? 'null'}）。`,
+      evidenceRefs: [evidenceRef],
+      verificationStatus: verification.status,
+      contractAcceptanceStatus: input.contractAcceptance?.status ?? 'accepted',
+      failureDiagnosis: buildValidationFailureDiagnosis({
         status: 'failed',
         changedPaths: input.changedPaths,
         command: validation.command,
@@ -159,6 +168,46 @@ export class QualityGateService {
       alternativeChecks: validation.alternativeChecks || [],
       requiredActions: [
         '修复自动验证失败后重新运行 QualityGate。',
+      ],
+      ...(input.acceptedRisk ? { acceptedRisk: input.acceptedRisk } : {}),
+    };
+  }
+
+  private historyVetoDecision(
+    input: QualityGateInput,
+    veto: VerificationHistoryVeto,
+  ): QualityGateDecision {
+    const failed = veto.status === 'failed';
+    const evidenceRefs = veto.evidenceRefs.length
+      ? veto.evidenceRefs
+      : [`validation:history:${veto.status}`];
+    const evidenceRef = evidenceRefs[0];
+    return {
+      version: 'devseek.quality-gate-decision/v1',
+      authority: 'QualityGateService',
+      status: failed ? 'fail' : 'blocked',
+      summary: failed
+        ? `QualityGate 未通过：历史验证仍未解除（${veto.status}）。`
+        : `QualityGate 阻塞：历史验证仍未解除（${veto.status}）。`,
+      evidenceRefs,
+      verificationStatus: veto.status,
+      contractAcceptanceStatus: input.contractAcceptance?.status ?? 'accepted',
+      failureDiagnosis: buildValidationFailureDiagnosis({
+        status: failed ? 'failed' : 'blocked',
+        changedPaths: input.changedPaths,
+        command: veto.command,
+        exitCode: veto.exitCode,
+        output: veto.risks.join('\n'),
+        reason: veto.reason,
+        mode: veto.mode,
+        evidenceRef,
+      }),
+      risks: veto.risks.length > 0
+        ? veto.risks
+        : ['历史验证存在未解除的不利证据，不能把任务标记为完成。'],
+      alternativeChecks: veto.alternativeChecks,
+      requiredActions: [
+        '先解除验证历史中的不利证据，并用 resolvedByEvidenceRef 指向新的确定性验证证据。',
       ],
       ...(input.acceptedRisk ? { acceptedRisk: input.acceptedRisk } : {}),
     };

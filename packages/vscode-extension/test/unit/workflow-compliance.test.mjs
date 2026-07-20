@@ -2051,6 +2051,19 @@ test('R2-08A: Verification planner owns focused, full, and release build-plan se
   assertDoesNotContain(validationService, 'debug-vsix-package', 'ValidationService must not duplicate release build-plan ownership');
 });
 
+test('R2-08B: verification history vetoes prevent green reruns from erasing unresolved facts', () => {
+  const authority = src('src/app/verification-result-authority.ts');
+  const qualityGate = src('src/app/quality-gate-service.ts');
+
+  assertContains(authority, 'findUnresolvedVerificationHistoryVeto', 'verification authority must own history veto normalization');
+  assertContains(authority, 'resolvedByEvidenceRef', 'history facts must require explicit resolution evidence');
+  assertContains(authority, 'terminalEvidenceEligible: false', 'history vetoes must not emit fake terminal completion evidence');
+  assertContains(authority, 'completionCandidate: false', 'history vetoes must never become completion candidates');
+  assertContains(qualityGate, 'validationHistory', 'QualityGate must receive prior validation history');
+  assertContains(qualityGate, 'findUnresolvedVerificationHistoryVeto(input.validationHistory)', 'QualityGate must consume the authority history veto');
+  assertContains(qualityGate, 'historyVetoDecision', 'QualityGate must settle unresolved history through one decision path');
+});
+
 test('Architecture: Bridge does not use Playwright fill for oversized prompts', () => {
   const agent = src('../bridge/src/deepseek-agent.ts');
   assertContains(agent, 'effectivePrompt.length > 30_000', 'bridge must classify oversized prompt input');

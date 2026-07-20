@@ -17,6 +17,7 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const {
+  findUnresolvedVerificationHistoryVeto,
   normalizeVerificationResult,
   shouldEmitTerminalEvidenceForVerification,
 } = req(bundlePath);
@@ -110,4 +111,67 @@ test('VerificationResultAuthority: only passed and deterministic failed command 
     risks: [],
     alternativeChecks: [],
   })), true);
+});
+
+test('VerificationResultAuthority: a later passing rerun cannot erase unresolved manual or flaky history', () => {
+  const veto = findUnresolvedVerificationHistoryVeto([
+    {
+      ran: true,
+      ok: false,
+      status: 'failed',
+      command: 'npm test',
+      exitCode: 124,
+      output: 'test timed out; possible flaky timeout',
+      reason: 'timeout',
+      evidenceRef: 'validation:flaky:npm test',
+    },
+    {
+      ran: false,
+      ok: false,
+      status: 'failed',
+      command: 'python visual_check.py',
+      exitCode: null,
+      output: 'manual observation required',
+      reason: 'manual-observation-required',
+      evidenceRef: 'validation:manual:visual-check',
+    },
+    {
+      ran: true,
+      ok: true,
+      status: 'passed',
+      command: 'npm test',
+      exitCode: 0,
+      output: 'ok',
+      evidenceRef: 'validation:passed:npm test',
+    },
+  ]);
+
+  assert.equal(veto?.status, 'flaky');
+  assert.equal(veto?.completionCandidate, false);
+  assert.equal(veto?.terminalEvidenceEligible, false);
+  assert.deepEqual(veto?.evidenceRefs, ['validation:flaky:npm test']);
+  assert.match(veto?.reason || '', /unresolved-verification-history/);
+
+  assert.equal(findUnresolvedVerificationHistoryVeto([
+    {
+      ran: true,
+      ok: false,
+      status: 'failed',
+      command: 'npm test',
+      exitCode: 124,
+      output: 'test timed out; possible flaky timeout',
+      reason: 'timeout',
+      evidenceRef: 'validation:flaky:npm test',
+      resolvedByEvidenceRef: 'validation:passed:npm test',
+    },
+    {
+      ran: true,
+      ok: true,
+      status: 'passed',
+      command: 'npm test',
+      exitCode: 0,
+      output: 'ok',
+      evidenceRef: 'validation:passed:npm test',
+    },
+  ]), undefined);
 });

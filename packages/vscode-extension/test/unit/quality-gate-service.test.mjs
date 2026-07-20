@@ -276,4 +276,52 @@ test('QualityGateService: manual, not-run and flaky verification outcomes are ex
   assert.equal(flaky.verificationStatus, 'flaky');
 });
 
+test('QualityGateService: current passing validation cannot settle unresolved flaky or manual history', () => {
+  const service = new QualityGateService();
+  const decision = service.evaluate({
+    changedPaths: ['src/app.ts'],
+    validation: {
+      ran: true,
+      ok: true,
+      status: 'passed',
+      command: 'npm test',
+      exitCode: 0,
+      output: 'ok',
+      cwd: '/repo',
+      mode: 'test',
+      reason: 'rerun-after-failure',
+      risks: [],
+      alternativeChecks: [],
+    },
+    validationHistory: [
+      {
+        ran: true,
+        ok: false,
+        status: 'failed',
+        command: 'npm test',
+        exitCode: 124,
+        output: 'test timed out; possible flaky timeout',
+        reason: 'timeout',
+        evidenceRef: 'validation:flaky:npm test',
+      },
+      {
+        ran: false,
+        ok: false,
+        status: 'failed',
+        command: 'python visual_check.py',
+        exitCode: null,
+        output: 'manual observation required',
+        reason: 'manual-observation-required',
+        evidenceRef: 'validation:manual:visual-check',
+      },
+    ],
+  });
+
+  assert.equal(decision.status, 'blocked');
+  assert.equal(decision.verificationStatus, 'flaky');
+  assert.deepEqual(decision.evidenceRefs, ['validation:flaky:npm test']);
+  assert.match(decision.summary, /历史验证/);
+  assert.match(decision.requiredActions.join('\n'), /解除|验证历史/);
+});
+
 console.log('\nQuality gate service tests passed.\n');

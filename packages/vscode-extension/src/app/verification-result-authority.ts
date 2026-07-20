@@ -31,8 +31,28 @@ export interface VerificationRawResult {
   reason?: string;
   mode?: string;
   output?: string;
+  cwd?: string;
   risks?: string[];
   alternativeChecks?: string[];
+}
+
+export interface VerificationHistoryEntry extends VerificationRawResult {
+  evidenceRef?: string;
+  resolvedByEvidenceRef?: string;
+}
+
+export interface VerificationHistoryVeto {
+  version: 'devseek.verification-history-veto/v1';
+  status: Exclude<VerificationResultStatus, 'passed'>;
+  reason: string;
+  command: string;
+  exitCode: number | null;
+  mode?: string;
+  evidenceRefs: string[];
+  risks: string[];
+  alternativeChecks: string[];
+  completionCandidate: false;
+  terminalEvidenceEligible: false;
 }
 
 export function normalizeVerificationResult(
@@ -104,7 +124,7 @@ export function normalizeVerificationResult(
     };
   }
 
-  if (looksFlaky(signalText, result.exitCode)) {
+  if (looksFlaky(signalText, result.exitCode ?? null)) {
     return {
       ...authorityBase,
       status: 'flaky',
@@ -138,6 +158,35 @@ export function verificationResultIsCompletionCandidate(result: VerificationAuth
   return result.status === 'passed';
 }
 
+export function findUnresolvedVerificationHistoryVeto(
+  history: readonly VerificationHistoryEntry[] | null | undefined,
+): VerificationHistoryVeto | undefined {
+  const entries = (history ?? []).filter(Boolean);
+  for (const entry of entries) {
+    const verification = normalizeVerificationResult(entry);
+    if (verificationResultIsCompletionCandidate(verification)) continue;
+    if (verificationHistoryEntryIsResolved(entry, entries)) continue;
+
+    const reasonTail = verification.reason || verification.command || verification.status;
+    return {
+      version: 'devseek.verification-history-veto/v1',
+      status: verification.status as Exclude<VerificationResultStatus, 'passed'>,
+      reason: `unresolved-verification-history:${verification.status}:${reasonTail}`,
+      command: verification.command,
+      exitCode: verification.exitCode,
+      ...(verification.mode ? { mode: verification.mode } : {}),
+      evidenceRefs: [verificationHistoryEvidenceRef(entry, verification)],
+      risks: verificationHistoryRisks(verification),
+      alternativeChecks: verification.alternativeChecks.length > 0
+        ? verification.alternativeChecks
+        : ['找到并记录解除该历史验证事实的确定性验证证据。'],
+      completionCandidate: false,
+      terminalEvidenceEligible: false,
+    };
+  }
+  return undefined;
+}
+
 function normalizeText(value: string | undefined): string | undefined {
   const normalized = String(value ?? '').trim();
   return normalized || undefined;
@@ -151,4 +200,42 @@ function looksManualRequired(text: string): boolean {
 function looksFlaky(text: string, exitCode: number | null): boolean {
   return exitCode === 124
     || /(flaky|intermittent|timed?\s*out|timeout|超时|偶发|不稳定)/.test(text);
+}
+
+function verificationHistoryEntryIsResolved(
+  entry: VerificationHistoryEntry,
+  history: readonly VerificationHistoryEntry[],
+): boolean {
+  const resolvedByEvidenceRef = normalizeText(entry.resolvedByEvidenceRef);
+  if (!resolvedByEvidenceRef) return false;
+  return history.some(candidate => {
+    if (normalizeText(candidate.evidenceRef) !== resolvedByEvidenceRef) return false;
+    return verificationResultIsCompletionCandidate(normalizeVerificationResult(candidate));
+  });
+}
+
+function verificationHistoryEvidenceRef(
+  entry: VerificationHistoryEntry,
+  verification: VerificationAuthorityResult,
+): string {
+  const explicitRef = normalizeText(entry.evidenceRef);
+  if (explicitRef) return explicitRef;
+  const kind = shouldEmitTerminalEvidenceForVerification(verification)
+    ? verification.status
+    : 'blocked';
+  return `validation:${kind}:${verification.command || verification.reason || verification.status}`;
+}
+
+function verificationHistoryRisks(verification: VerificationAuthorityResult): string[] {
+  if (verification.risks.length > 0) return verification.risks;
+  if (verification.status === 'failed') {
+    return ['历史验证存在未解除失败，不能被后续绿色结果覆盖。'];
+  }
+  if (verification.status === 'flaky') {
+    return ['历史验证疑似不稳定，不能用单次绿色重跑覆盖。'];
+  }
+  if (verification.status === 'manual-required') {
+    return ['历史验证仍需要人工确认，不能用自动重跑覆盖。'];
+  }
+  return ['历史验证存在未解除阻塞，不能把任务标记为完成。'];
 }
