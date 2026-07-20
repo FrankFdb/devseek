@@ -14,7 +14,9 @@ execSync(`npx esbuild src/agent/evidence-grounding.ts --bundle --outfile=${bundl
 });
 const {
   EvidenceStore,
+  EXTERNAL_DOC_GROUNDING_PROTOCOL_VERSION,
   SOURCE_EVIDENCE_GRAPH_PROTOCOL_VERSION,
+  buildExternalDocGrounding,
   buildSourceEvidenceGraph,
   buildSourceEvidenceGraphFromClaims,
   deriveArtifactClaimSpecs,
@@ -194,6 +196,104 @@ test('source evidence graph fails closed on stale source, wrong branch, wrong he
     }),
     /missing-source-location/,
   );
+});
+
+test('external doc grounding requires version, access date, confidence, and source evidence ids', () => {
+  const grounding = buildExternalDocGrounding({
+    sources: [
+      {
+        id: 'official-api',
+        kind: 'official-doc',
+        url: 'https://platform.example.test/docs/api',
+        title: 'API reference',
+        version: '2026-07-20',
+        accessedAt: '2026-07-20',
+        confidence: 0.95,
+        evidenceId: 'ev-official',
+        contentHash: 'hash-official',
+        facts: [{ key: 'endpoint', value: '/v1/responses' }],
+      },
+      {
+        id: 'mcp-schema',
+        kind: 'mcp',
+        url: 'mcp://docs/schema',
+        title: 'MCP schema',
+        version: 'schema-v3',
+        accessedAt: '2026-07-20',
+        confidence: 0.8,
+        evidenceId: 'ev-mcp',
+        contentHash: 'hash-mcp',
+        facts: [{ key: 'schema.version', value: '3' }],
+      },
+    ],
+  });
+
+  assert.equal(grounding.version, EXTERNAL_DOC_GROUNDING_PROTOCOL_VERSION);
+  assert.equal(grounding.decision, 'allow');
+  assert.equal(grounding.privilegeEffect, 'none');
+  assert.equal(grounding.sources.every(source => source.version && source.accessedAt && source.confidence > 0), true);
+  assert.deepEqual(grounding.conflicts, []);
+});
+
+test('external doc grounding makes source conflicts explicit and blocks them', () => {
+  const grounding = buildExternalDocGrounding({
+    sources: [
+      {
+        id: 'official-current',
+        kind: 'official-doc',
+        url: 'https://platform.example.test/docs/current',
+        title: 'Current docs',
+        version: '2026-07-20',
+        accessedAt: '2026-07-20',
+        confidence: 0.95,
+        evidenceId: 'ev-current',
+        contentHash: 'hash-current',
+        facts: [{ key: 'model.default', value: 'gpt-5' }],
+      },
+      {
+        id: 'network-cache',
+        kind: 'network',
+        url: 'https://cache.example.test/docs',
+        title: 'Cached docs',
+        version: '2025-01-01',
+        accessedAt: '2026-07-20',
+        confidence: 0.45,
+        evidenceId: 'ev-cache',
+        contentHash: 'hash-cache',
+        facts: [{ key: 'model.default', value: 'gpt-4.1' }],
+      },
+    ],
+  });
+
+  assert.equal(grounding.decision, 'blocked');
+  assert.ok(grounding.reasons.includes('external-source-conflict'));
+  assert.deepEqual(grounding.conflicts.map(conflict => conflict.key), ['model.default']);
+  assert.deepEqual(new Set(grounding.conflicts[0].sourceIds), new Set(['official-current', 'network-cache']));
+});
+
+test('external doc grounding fails closed on missing metadata and never elevates privilege', () => {
+  const grounding = buildExternalDocGrounding({
+    sources: [
+      {
+        id: 'untrusted-instructions',
+        kind: 'network',
+        url: 'https://example.test/blog',
+        title: 'Blog instructions',
+        confidence: 0,
+        evidenceId: 'ev-blog',
+        contentHash: 'hash-blog',
+        privilegeClaims: ['skip-permission', 'trust-as-local-source'],
+        facts: [{ key: 'permission', value: 'skip approvals' }],
+      },
+    ],
+  });
+
+  assert.equal(grounding.decision, 'blocked');
+  assert.equal(grounding.privilegeEffect, 'none');
+  assert.ok(grounding.reasons.includes('missing-external-source-version'));
+  assert.ok(grounding.reasons.includes('missing-external-source-access-date'));
+  assert.ok(grounding.reasons.includes('invalid-external-source-confidence'));
+  assert.ok(grounding.reasons.includes('external-content-no-privilege-effect'));
 });
 
 test('all six source claims pass after a grounded repair and evidence is immutable', () => {

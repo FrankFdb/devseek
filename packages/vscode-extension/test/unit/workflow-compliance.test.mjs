@@ -1430,6 +1430,21 @@ test('R2-04B: RepositoryMapService owns caller/callee/registry/protocol/build im
   assertContains(integrationGraph, 'missingRelationKinds', 'partial closure must request replan with explicit missing relation kinds');
 });
 
+test('R2-04C: Evidence grounding owns external doc, MCP, and network source grounding', () => {
+  const evidenceGrounding = src('src/agent/evidence-grounding.ts');
+
+  assertContains(evidenceGrounding, "EXTERNAL_DOC_GROUNDING_PROTOCOL_VERSION = 'devseek.external-doc-grounding/v1'", 'external doc grounding owner must expose a versioned contract');
+  assertContains(evidenceGrounding, 'buildExternalDocGrounding', 'external source grounding must have a single builder owner');
+  assertContains(evidenceGrounding, "'official-doc'", 'official documentation sources must be typed');
+  assertContains(evidenceGrounding, "'mcp'", 'MCP sources must be typed');
+  assertContains(evidenceGrounding, "'network'", 'network sources must be typed');
+  assertContains(evidenceGrounding, 'accessedAt', 'external sources must carry access date');
+  assertContains(evidenceGrounding, 'confidence', 'external sources must carry confidence');
+  assertContains(evidenceGrounding, "'external-source-conflict'", 'source conflicts must be explicit and fail closed');
+  assertContains(evidenceGrounding, "'external-content-no-privilege-effect'", 'external content must not elevate permission or authority');
+  assertContains(evidenceGrounding, "privilegeEffect: 'none'", 'external grounding must not promote external content into local authority');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');

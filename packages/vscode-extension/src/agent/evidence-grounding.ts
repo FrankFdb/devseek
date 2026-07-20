@@ -111,6 +111,70 @@ export interface SourceEvidenceGraphValidation {
   staleFacts: SourceEvidenceStaleFact[];
 }
 
+export const EXTERNAL_DOC_GROUNDING_PROTOCOL_VERSION = 'devseek.external-doc-grounding/v1';
+
+export type ExternalDocSourceKind = 'official-doc' | 'mcp' | 'network';
+export type ExternalDocGroundingDecision = 'allow' | 'blocked';
+export type ExternalDocGroundingReason =
+  | 'missing-external-source-version'
+  | 'missing-external-source-access-date'
+  | 'invalid-external-source-confidence'
+  | 'missing-external-source-evidence'
+  | 'external-source-conflict'
+  | 'external-content-no-privilege-effect';
+
+export interface ExternalDocFactInput {
+  key: string;
+  value: string;
+}
+
+export interface ExternalDocSourceInput {
+  id: string;
+  kind: ExternalDocSourceKind;
+  url?: string;
+  title?: string;
+  version?: string;
+  accessedAt?: string;
+  confidence?: number;
+  evidenceId?: string;
+  contentHash?: string;
+  facts?: ExternalDocFactInput[];
+  privilegeClaims?: string[];
+}
+
+export interface ExternalDocSource extends ExternalDocSourceInput {
+  id: string;
+  kind: ExternalDocSourceKind;
+  version: string;
+  accessedAt: string;
+  confidence: number;
+  evidenceId: string;
+  contentHash: string;
+  facts: ExternalDocFactInput[];
+}
+
+export interface ExternalDocFact {
+  key: string;
+  value: string;
+  sourceIds: string[];
+}
+
+export interface ExternalDocConflict {
+  key: string;
+  values: string[];
+  sourceIds: string[];
+}
+
+export interface ExternalDocGrounding {
+  version: typeof EXTERNAL_DOC_GROUNDING_PROTOCOL_VERSION;
+  decision: ExternalDocGroundingDecision;
+  privilegeEffect: 'none';
+  reasons: ExternalDocGroundingReason[];
+  sources: ExternalDocSource[];
+  facts: ExternalDocFact[];
+  conflicts: ExternalDocConflict[];
+}
+
 export type ArtifactClaimValidator = 'exact' | 'numeric';
 
 export interface ArtifactClaimSpec {
@@ -372,6 +436,95 @@ export function validateSourceEvidenceGraph(input: {
     reasons: [...reasons],
     staleFacts,
   };
+}
+
+export function buildExternalDocGrounding(input: {
+  sources: ExternalDocSourceInput[];
+}): ExternalDocGrounding {
+  const reasons = new Set<ExternalDocGroundingReason>();
+  const sources = input.sources.map(source => normalizeExternalDocSource(source, reasons));
+  const factsByKey = new Map<string, Map<string, Set<string>>>();
+
+  for (const source of sources) {
+    if ((source.privilegeClaims || []).length > 0) reasons.add('external-content-no-privilege-effect');
+    for (const fact of source.facts) {
+      const key = String(fact.key || '').trim();
+      const value = String(fact.value || '').trim();
+      if (!key) continue;
+      if (!factsByKey.has(key)) factsByKey.set(key, new Map());
+      const values = factsByKey.get(key)!;
+      if (!values.has(value)) values.set(value, new Set());
+      values.get(value)!.add(source.id);
+    }
+  }
+
+  const facts: ExternalDocFact[] = [];
+  const conflicts: ExternalDocConflict[] = [];
+  for (const [key, values] of factsByKey) {
+    if (values.size > 1) {
+      reasons.add('external-source-conflict');
+      conflicts.push({
+        key,
+        values: [...values.keys()],
+        sourceIds: uniqueStrings([...values.values()].flatMap(sourceIds => [...sourceIds])),
+      });
+      continue;
+    }
+    const [value, sourceIds] = [...values.entries()][0];
+    facts.push({ key, value, sourceIds: [...sourceIds] });
+  }
+
+  return {
+    version: EXTERNAL_DOC_GROUNDING_PROTOCOL_VERSION,
+    decision: reasons.size > 0 ? 'blocked' : 'allow',
+    privilegeEffect: 'none',
+    reasons: [...reasons],
+    sources,
+    facts,
+    conflicts,
+  };
+}
+
+function normalizeExternalDocSource(
+  input: ExternalDocSourceInput,
+  reasons: Set<ExternalDocGroundingReason>,
+): ExternalDocSource {
+  const id = String(input.id || '').trim();
+  const version = String(input.version || '').trim();
+  const accessedAt = String(input.accessedAt || '').trim();
+  const evidenceId = String(input.evidenceId || '').trim();
+  const contentHash = String(input.contentHash || '').trim();
+  const confidence = typeof input.confidence === 'number' && Number.isFinite(input.confidence)
+    ? input.confidence
+    : 0;
+
+  if (!version) reasons.add('missing-external-source-version');
+  if (!accessedAt) reasons.add('missing-external-source-access-date');
+  if (confidence <= 0 || confidence > 1) reasons.add('invalid-external-source-confidence');
+  if (!evidenceId || !contentHash) reasons.add('missing-external-source-evidence');
+
+  const normalized: ExternalDocSource = {
+    ...input,
+    id: id || `external-${sha256(JSON.stringify(input)).slice(0, 12)}`,
+    kind: input.kind,
+    version,
+    accessedAt,
+    confidence,
+    evidenceId,
+    contentHash,
+    facts: (input.facts || [])
+      .map(fact => ({
+        key: String(fact.key || '').trim(),
+        value: String(fact.value || '').trim(),
+      }))
+      .filter(fact => fact.key),
+    privilegeClaims: input.privilegeClaims ? [...input.privilegeClaims] : undefined,
+  };
+  return Object.freeze(normalized);
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values)];
 }
 
 /** The exact artifact value is the source initializer, not a numeric rewrite. */
