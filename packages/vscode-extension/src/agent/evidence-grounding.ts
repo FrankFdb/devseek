@@ -39,6 +39,78 @@ export interface EvidenceRef {
   content?: string;
 }
 
+export const SOURCE_EVIDENCE_GRAPH_PROTOCOL_VERSION = 'devseek.source-evidence-graph/v1';
+
+export interface SourceEvidenceSnapshot {
+  workspaceRoot: string;
+  branch: string;
+  headCommit: string;
+  worktreeStatusHash?: string;
+  capturedAt?: string;
+}
+
+export type SourceEvidenceFactKind = 'requirement' | 'design' | 'symbol' | 'artifact-claim';
+
+export interface SourceEvidenceFactInput {
+  factId?: string;
+  kind: SourceEvidenceFactKind;
+  label: string;
+  symbol?: string;
+  claimId?: string;
+  evidenceId?: string;
+  captureSequence?: number;
+  sourcePath?: string;
+  lineStart?: number;
+  lineEnd?: number;
+  contentHash?: string;
+}
+
+export interface SourceEvidenceFact {
+  factId: string;
+  kind: SourceEvidenceFactKind;
+  label: string;
+  symbol?: string;
+  claimId?: string;
+  evidenceId: string;
+  captureSequence: number;
+  sourcePath: string;
+  lineStart: number;
+  lineEnd: number;
+  contentHash: string;
+  snapshot: SourceEvidenceSnapshot;
+}
+
+export interface SourceEvidenceGraph {
+  version: typeof SOURCE_EVIDENCE_GRAPH_PROTOCOL_VERSION;
+  graphId: string;
+  snapshot: SourceEvidenceSnapshot;
+  facts: SourceEvidenceFact[];
+}
+
+export type SourceEvidenceGraphStaleReason =
+  | 'graph-version-mismatch'
+  | 'wrong-workspace-root'
+  | 'wrong-branch'
+  | 'wrong-head'
+  | 'worktree-status-drift'
+  | 'missing-current-source'
+  | 'source-hash-drift'
+  | 'stale-symbol-location';
+
+export interface SourceEvidenceStaleFact {
+  factId: string;
+  sourcePath: string;
+  symbol?: string;
+  reasons: SourceEvidenceGraphStaleReason[];
+}
+
+export interface SourceEvidenceGraphValidation {
+  ok: boolean;
+  graphId: string;
+  reasons: SourceEvidenceGraphStaleReason[];
+  staleFacts: SourceEvidenceStaleFact[];
+}
+
 export type ArtifactClaimValidator = 'exact' | 'numeric';
 
 export interface ArtifactClaimSpec {
@@ -198,6 +270,108 @@ export class EvidenceStore {
   all(): EvidenceRef[] {
     return [...this.refs.values()];
   }
+}
+
+export function buildSourceEvidenceGraph(input: {
+  snapshot: SourceEvidenceSnapshot;
+  facts: SourceEvidenceFactInput[];
+}): SourceEvidenceGraph {
+  const snapshot = normalizeSourceEvidenceSnapshot(input.snapshot);
+  const facts = input.facts.map(fact => normalizeSourceEvidenceFact(fact, snapshot));
+  const graphId = `seg-${sha256(JSON.stringify({
+    version: SOURCE_EVIDENCE_GRAPH_PROTOCOL_VERSION,
+    snapshot: sourceEvidenceSnapshotIdentity(snapshot),
+    facts: facts.map(fact => ({
+      kind: fact.kind,
+      label: fact.label,
+      symbol: fact.symbol,
+      claimId: fact.claimId,
+      evidenceId: fact.evidenceId,
+      captureSequence: fact.captureSequence,
+      sourcePath: fact.sourcePath,
+      lineStart: fact.lineStart,
+      lineEnd: fact.lineEnd,
+      contentHash: fact.contentHash,
+    })),
+  })).slice(0, 24)}`;
+  return Object.freeze({
+    version: SOURCE_EVIDENCE_GRAPH_PROTOCOL_VERSION,
+    graphId,
+    snapshot,
+    facts,
+  });
+}
+
+export function buildSourceEvidenceGraphFromClaims(input: {
+  snapshot: SourceEvidenceSnapshot;
+  claims: ArtifactClaimSpec[];
+}): SourceEvidenceGraph {
+  return buildSourceEvidenceGraph({
+    snapshot: input.snapshot,
+    facts: input.claims.map(claim => ({
+      factId: claim.claimId,
+      kind: 'artifact-claim',
+      label: claim.symbol,
+      symbol: claim.symbol,
+      claimId: claim.claimId,
+      evidenceId: claim.evidenceId,
+      captureSequence: claim.evidenceSequence,
+      sourcePath: claim.sourcePath,
+      lineStart: claim.sourceLine,
+      lineEnd: claim.sourceLine,
+      contentHash: claim.sourceHash,
+    })),
+  });
+}
+
+export function validateSourceEvidenceGraph(input: {
+  graph: SourceEvidenceGraph;
+  snapshot: SourceEvidenceSnapshot;
+  readSource: (sourcePath: string, fact: SourceEvidenceFact) => string | undefined;
+}): SourceEvidenceGraphValidation {
+  const reasons = new Set<SourceEvidenceGraphStaleReason>();
+  const staleFacts: SourceEvidenceStaleFact[] = [];
+  const graph = input.graph;
+  const currentSnapshot = normalizeSourceEvidenceSnapshot(input.snapshot);
+
+  if (graph.version !== SOURCE_EVIDENCE_GRAPH_PROTOCOL_VERSION) reasons.add('graph-version-mismatch');
+  if (normalizeSnapshotPath(graph.snapshot.workspaceRoot) !== currentSnapshot.workspaceRoot) reasons.add('wrong-workspace-root');
+  if (graph.snapshot.branch !== currentSnapshot.branch) reasons.add('wrong-branch');
+  if (graph.snapshot.headCommit !== currentSnapshot.headCommit) reasons.add('wrong-head');
+  if (graph.snapshot.worktreeStatusHash !== undefined
+      && currentSnapshot.worktreeStatusHash !== undefined
+      && graph.snapshot.worktreeStatusHash !== currentSnapshot.worktreeStatusHash) {
+    reasons.add('worktree-status-drift');
+  }
+
+  for (const fact of graph.facts) {
+    const factReasons: SourceEvidenceGraphStaleReason[] = [];
+    const currentSource = input.readSource(fact.sourcePath, fact);
+    if (typeof currentSource !== 'string') {
+      factReasons.push('missing-current-source');
+    } else {
+      if (sha256(currentSource) !== fact.contentHash) factReasons.push('source-hash-drift');
+      if (fact.symbol && !sourceSymbolLocationMatches(currentSource, fact.symbol, fact.lineStart, fact.lineEnd)) {
+        factReasons.push('stale-symbol-location');
+      }
+    }
+    if (factReasons.length > 0) {
+      for (const reason of factReasons) reasons.add(reason);
+      staleFacts.push({
+        factId: fact.factId,
+        sourcePath: fact.sourcePath,
+        symbol: fact.symbol,
+        reasons: factReasons,
+      });
+    }
+  }
+
+  return {
+    ok: reasons.size === 0 && staleFacts.length === 0,
+    graphId: graph.graphId,
+    reasons: [...reasons],
+    staleFacts,
+  };
 }
 
 /** The exact artifact value is the source initializer, not a numeric rewrite. */
@@ -1167,6 +1341,88 @@ function stripMarkdown(value: string): string {
     return trimmed;
   }
   return trimmed.slice(opening.length, -closing.length).trim();
+}
+
+function normalizeSourceEvidenceSnapshot(snapshot: SourceEvidenceSnapshot): SourceEvidenceSnapshot {
+  const workspaceRoot = normalizeSnapshotPath(snapshot.workspaceRoot);
+  const branch = String(snapshot.branch || '').trim();
+  const headCommit = String(snapshot.headCommit || '').trim();
+  if (!workspaceRoot || !branch || !headCommit) {
+    throw new Error('missing-source-snapshot: workspaceRoot, branch, and headCommit are required');
+  }
+  return Object.freeze({
+    workspaceRoot,
+    branch,
+    headCommit,
+    worktreeStatusHash: snapshot.worktreeStatusHash,
+    capturedAt: snapshot.capturedAt,
+  });
+}
+
+function normalizeSnapshotPath(value: string): string {
+  return nodePath.resolve(String(value || ''));
+}
+
+function normalizeSourceEvidenceFact(
+  input: SourceEvidenceFactInput,
+  snapshot: SourceEvidenceSnapshot,
+): SourceEvidenceFact {
+  const sourcePath = String(input.sourcePath || '').trim();
+  const lineStart = input.lineStart ?? 0;
+  const lineEnd = input.lineEnd ?? lineStart;
+  if (!sourcePath || lineStart < 1 || lineEnd < lineStart) {
+    throw new Error(`missing-source-location: ${input.label || input.factId || 'unlabeled fact'}`);
+  }
+  if (!input.evidenceId || !input.contentHash || input.captureSequence === undefined) {
+    throw new Error(`missing-source-evidence-binding: ${input.label || sourcePath}`);
+  }
+  const factId = input.factId || `fact-${sha256(JSON.stringify({
+    kind: input.kind,
+    label: input.label,
+    symbol: input.symbol,
+    evidenceId: input.evidenceId,
+    captureSequence: input.captureSequence,
+    sourcePath,
+    lineStart,
+    lineEnd,
+    contentHash: input.contentHash,
+    snapshot: sourceEvidenceSnapshotIdentity(snapshot),
+  })).slice(0, 20)}`;
+  return Object.freeze({
+    factId,
+    kind: input.kind,
+    label: input.label,
+    symbol: input.symbol,
+    claimId: input.claimId,
+    evidenceId: input.evidenceId,
+    captureSequence: input.captureSequence,
+    sourcePath,
+    lineStart,
+    lineEnd,
+    contentHash: input.contentHash,
+    snapshot,
+  });
+}
+
+function sourceEvidenceSnapshotIdentity(snapshot: SourceEvidenceSnapshot): Record<string, string | undefined> {
+  return {
+    workspaceRoot: snapshot.workspaceRoot,
+    branch: snapshot.branch,
+    headCommit: snapshot.headCommit,
+    worktreeStatusHash: snapshot.worktreeStatusHash,
+  };
+}
+
+function sourceSymbolLocationMatches(content: string, symbol: string, lineStart: number, lineEnd: number): boolean {
+  try {
+    return parseConstantDefinitions(content).some(definition => (
+      definition.symbol === symbol
+      && definition.line >= lineStart
+      && definition.line <= lineEnd
+    ));
+  } catch {
+    return false;
+  }
 }
 
 function countLines(content: string): number {

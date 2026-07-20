@@ -1400,6 +1400,21 @@ test('R2-03F: ContextAssemblyService owns preview, context budget, usage budget,
   assertContains(contextAssembly, 'criticalIncludedChars', 'critical evidence usage must be tracked separately');
 });
 
+test('R2-04A: Evidence grounding owns source evidence graph snapshot and stale fact invalidation', () => {
+  const evidenceGrounding = src('src/agent/evidence-grounding.ts');
+
+  assertContains(evidenceGrounding, "SOURCE_EVIDENCE_GRAPH_PROTOCOL_VERSION = 'devseek.source-evidence-graph/v1'", 'source evidence graph owner must expose a versioned contract');
+  assertContains(evidenceGrounding, 'SourceEvidenceGraph', 'requirements and design facts must be represented as a graph');
+  assertContains(evidenceGrounding, 'SourceEvidenceSnapshot', 'facts must carry repository branch/head snapshot');
+  assertContains(evidenceGrounding, 'buildSourceEvidenceGraphFromClaims', 'artifact claims must be projectable into the source evidence graph');
+  assertContains(evidenceGrounding, 'validateSourceEvidenceGraph', 'graph validation must be owned by evidence grounding');
+  assertContains(evidenceGrounding, "'wrong-branch'", 'wrong branch facts must fail closed');
+  assertContains(evidenceGrounding, "'wrong-head'", 'outdated head snapshots must fail closed');
+  assertContains(evidenceGrounding, "'source-hash-drift'", 'changed source content must invalidate facts');
+  assertContains(evidenceGrounding, "'stale-symbol-location'", 'stale symbol line provenance must invalidate facts');
+  assertContains(evidenceGrounding, 'missing-source-location', 'key facts without source location must be rejected');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');

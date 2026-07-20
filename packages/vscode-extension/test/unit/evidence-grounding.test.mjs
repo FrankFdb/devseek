@@ -14,9 +14,13 @@ execSync(`npx esbuild src/agent/evidence-grounding.ts --bundle --outfile=${bundl
 });
 const {
   EvidenceStore,
+  SOURCE_EVIDENCE_GRAPH_PROTOCOL_VERSION,
+  buildSourceEvidenceGraph,
+  buildSourceEvidenceGraphFromClaims,
   deriveArtifactClaimSpecs,
   formatArtifactClaimSpecsForPrompt,
   formatClaimVerificationFeedback,
+  validateSourceEvidenceGraph,
   verifyArtifactClaims,
 } = createRequire(import.meta.url)(bundlePath);
 const fixtureDir = path.join(rootDir, 'test/fixtures/runtime-replay/20260711-131537');
@@ -71,6 +75,125 @@ test('host-derived claim prompt facts preserve artifact spelling and JSON escapi
   assert.equal(facts.find(fact => fact.symbol === 'kTunnelMaxTotalLen').artifactValue, '64 * 1024');
   assert.equal(facts.find(fact => fact.symbol === 'kTunnelMaxTotalLen').normalizedValue, 65536);
   assert.equal(facts.every(fact => fact.evidenceId === sourceRef.evidenceId), true);
+});
+
+test('source evidence graph binds every fact to source location and repository snapshot', () => {
+  const sourcePath = '/repo/config.hpp';
+  const source = 'inline constexpr int kPort = 3721;\n';
+  const store = new EvidenceStore('/repo', 'source-graph-basic');
+  const sourceRef = store.recordFileRead({ path: sourcePath, content: source });
+  const [spec] = deriveArtifactClaimSpecs([{ symbol: 'kPort', sourcePath }], [sourceRef]);
+
+  const graph = buildSourceEvidenceGraphFromClaims({
+    snapshot: {
+      workspaceRoot: '/repo',
+      branch: 'main',
+      headCommit: 'abc123',
+      worktreeStatusHash: 'clean',
+    },
+    claims: [spec],
+  });
+
+  assert.equal(graph.version, SOURCE_EVIDENCE_GRAPH_PROTOCOL_VERSION);
+  assert.equal(graph.snapshot.branch, 'main');
+  assert.equal(graph.snapshot.headCommit, 'abc123');
+  assert.equal(graph.facts.length, 1);
+  assert.equal(graph.facts[0].sourcePath, sourcePath);
+  assert.equal(graph.facts[0].lineStart, 1);
+  assert.equal(graph.facts[0].lineEnd, 1);
+  assert.equal(graph.facts[0].contentHash, sourceRef.contentHash);
+  assert.equal(graph.facts[0].snapshot.headCommit, 'abc123');
+  assert.equal(graph.facts[0].evidenceId, sourceRef.evidenceId);
+
+  const valid = validateSourceEvidenceGraph({
+    graph,
+    snapshot: graph.snapshot,
+    readSource: () => source,
+  });
+  assert.equal(valid.ok, true, valid.reasons.join('\n'));
+  assert.deepEqual(valid.staleFacts, []);
+});
+
+test('source evidence graph fails closed on stale source, wrong branch, wrong head, and stale symbol line', () => {
+  const sourcePath = '/repo/config.hpp';
+  const source = 'inline constexpr int kPort = 3721;\n';
+  const store = new EvidenceStore('/repo', 'source-graph-drift');
+  const sourceRef = store.recordFileRead({ path: sourcePath, content: source });
+  const [spec] = deriveArtifactClaimSpecs([{ symbol: 'kPort', sourcePath }], [sourceRef]);
+  const graph = buildSourceEvidenceGraphFromClaims({
+    snapshot: {
+      workspaceRoot: '/repo',
+      branch: 'main',
+      headCommit: 'abc123',
+      worktreeStatusHash: 'clean',
+    },
+    claims: [spec],
+  });
+
+  const wrongBranch = validateSourceEvidenceGraph({
+    graph,
+    snapshot: { ...graph.snapshot, branch: 'feature' },
+    readSource: () => source,
+  });
+  assert.equal(wrongBranch.ok, false);
+  assert.ok(wrongBranch.reasons.includes('wrong-branch'));
+
+  const wrongHead = validateSourceEvidenceGraph({
+    graph,
+    snapshot: { ...graph.snapshot, headCommit: 'def456' },
+    readSource: () => source,
+  });
+  assert.equal(wrongHead.ok, false);
+  assert.ok(wrongHead.reasons.includes('wrong-head'));
+
+  const changedSource = validateSourceEvidenceGraph({
+    graph,
+    snapshot: graph.snapshot,
+    readSource: () => 'inline constexpr int kPort = 9999;\n',
+  });
+  assert.equal(changedSource.ok, false);
+  assert.ok(changedSource.reasons.includes('source-hash-drift'));
+  assert.equal(changedSource.staleFacts[0].factId, graph.facts[0].factId);
+
+  const staleLineGraph = buildSourceEvidenceGraph({
+    snapshot: graph.snapshot,
+    facts: [{
+      factId: 'fact-stale-line',
+      kind: 'design',
+      label: 'kPort design fact',
+      symbol: 'kPort',
+      evidenceId: sourceRef.evidenceId,
+      sourcePath,
+      lineStart: 2,
+      lineEnd: 2,
+      contentHash: sourceRef.contentHash,
+      captureSequence: sourceRef.captureSequence,
+    }],
+  });
+  const staleLine = validateSourceEvidenceGraph({
+    graph: staleLineGraph,
+    snapshot: staleLineGraph.snapshot,
+    readSource: () => source,
+  });
+  assert.equal(staleLine.ok, false);
+  assert.ok(staleLine.reasons.includes('stale-symbol-location'));
+
+  assert.throws(
+    () => buildSourceEvidenceGraph({
+      snapshot: { workspaceRoot: '/repo', branch: 'main', headCommit: 'abc123' },
+      facts: [{
+        kind: 'requirement',
+        label: 'unbound fact',
+        evidenceId: sourceRef.evidenceId,
+        sourcePath,
+        lineStart: 0,
+        lineEnd: 0,
+        contentHash: sourceRef.contentHash,
+        captureSequence: sourceRef.captureSequence,
+      }],
+    }),
+    /missing-source-location/,
+  );
 });
 
 test('all six source claims pass after a grounded repair and evidence is immutable', () => {
