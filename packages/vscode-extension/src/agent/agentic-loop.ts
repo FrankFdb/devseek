@@ -106,7 +106,6 @@ import { ToolFailureRecoveryLedger } from './tool-failure-recovery';
 import { QualityGateStagnationLedger } from './quality-gate-stagnation';
 import { buildFullFileWriteToolPrompt, buildReplaceInFileToolPrompt } from './tool-protocol-prompt';
 import { tryRunGroundedMarkdownAgenticTask } from './grounded-markdown-agentic-task';
-
 const AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
 const AGENTIC_TASK_PROMPT_CHAR_BUDGET = 34_000;
 const AGENTIC_TOOL_FEEDBACK_CHAR_BUDGET = 8_000;
@@ -114,7 +113,6 @@ const AGENTIC_ASSISTANT_HISTORY_CHAR_BUDGET = 6_000;
 const AGENTIC_USER_HISTORY_CHAR_BUDGET = 8_000;
 const AGENTIC_RECENT_MESSAGE_KEEP_COUNT = 5;
 const AGENTIC_PROVIDER_RECOVERY_MAX_ATTEMPTS = 3;
-
 function getAgenticBlockingTerminalFailure(
   userPrompt: string,
   todos: TodoItem[],
@@ -124,15 +122,12 @@ function getAgenticBlockingTerminalFailure(
   return getBlockingTerminalFailure(userPrompt, todos, writtenFiles, terminalEvidence)
     ?? findBlockingTerminalFailureEvidence(terminalEvidence);
 }
-
 function agenticMessageContentLength(content: ChatMessage['content']): number {
   return typeof content === 'string' ? content.length : JSON.stringify(content).length;
 }
-
 function totalAgenticMessageChars(messages: ChatMessage[]): number {
   return messages.reduce((sum, message) => sum + agenticMessageContentLength(message.content), 0);
 }
-
 function truncateAgenticHistoryText(text: string, maxChars: number, label: string): string {
   if (text.length <= maxChars) return text;
   const omitted = text.length - maxChars;
@@ -146,13 +141,11 @@ function truncateAgenticHistoryText(text: string, maxChars: number, label: strin
     text.slice(Math.max(0, text.length - tailChars)).trimStart(),
   ].join('\n');
 }
-
 function isAgenticToolFeedback(content: string): boolean {
   return /^\s*\[工具结果 Round \d+\]/.test(content)
     || /^\s*【系统反馈】/.test(content)
     || /^\s*\[DevSeek 上下文压缩]/.test(content);
 }
-
 function agenticMessageBudgetFor(message: ChatMessage, index: number): number {
   if (typeof message.content !== 'string') return Number.POSITIVE_INFINITY;
   if (index === 0) return AGENTIC_TASK_PROMPT_CHAR_BUDGET;
@@ -160,7 +153,6 @@ function agenticMessageBudgetFor(message: ChatMessage, index: number): number {
   if (message.role === 'assistant') return AGENTIC_ASSISTANT_HISTORY_CHAR_BUDGET;
   return AGENTIC_USER_HISTORY_CHAR_BUDGET;
 }
-
 function compactAgenticMessageHistory(messages: ChatMessage[]): number {
   replaceAllAssistantToolHistory(messages);
   for (let index = 0; index < messages.length; index += 1) {
@@ -173,10 +165,8 @@ function compactAgenticMessageHistory(messages: ChatMessage[]): number {
       index === 0 ? '任务上下文' : message.role === 'assistant' ? '模型历史回复' : '工具反馈/用户补充',
     );
   }
-
   let total = totalAgenticMessageChars(messages);
   if (total <= AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET) return total;
-
   if (messages.length > AGENTIC_RECENT_MESSAGE_KEEP_COUNT + 1) {
     const head = messages[0];
     const tail = messages.slice(-AGENTIC_RECENT_MESSAGE_KEEP_COUNT);
@@ -187,28 +177,22 @@ function compactAgenticMessageHistory(messages: ChatMessage[]): number {
     }, ...tail);
     total = totalAgenticMessageChars(messages);
   }
-
   if (total <= AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET) return total;
-
   for (let index = 1; index < messages.length - 1; index += 1) {
     const message = messages[index];
     if (typeof message.content !== 'string') continue;
     message.content = truncateAgenticHistoryText(message.content, 2_500, '早期轮次历史');
   }
-
   return totalAgenticMessageChars(messages);
 }
-
 function extractPlanningTodoItems(text: string): TodoItem[] {
   const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
-
   const startIndex = lines.findIndex((line) => /(规划任务|任务规划|任务清单|待办清单|计划任务|规划如下|计划如下|todos?|tasks?)(：|:)?$/i.test(line));
   if (startIndex < 0) return [];
   const sourceLines = lines.slice(startIndex + 1);
-
   const items: string[] = [];
   for (const rawLine of sourceLines) {
     if (!/^\s*(?:[-*•]|\d+[.)、])\s+/.test(rawLine)) {

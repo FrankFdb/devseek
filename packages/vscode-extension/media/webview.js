@@ -98,12 +98,10 @@ let analysisRenderBody = null;
 let analysisLastRenderTs = 0;
 let statusPollTimer = null;
 let workingResetTimer = null;
-
 injectWorkingAreaStyles();
 injectPendingEditsStyles();
 injectAnalyzeCardStyles();
 injectVisionStyles();
-
 function ensureWorkingAreaAttached() {
   if (!messagesEl || !workingEl) return;
   if (workingEl.parentNode !== messagesEl) {
@@ -114,19 +112,13 @@ function ensureWorkingAreaAttached() {
     messagesEl.appendChild(workingEl);
   }
 }
-
 // Input suggestion helpers live in webview-input-suggestions.js.
-
 // Working copy strategy helpers live in webview-working-copy.js.
-
 vscode.postMessage({ type: 'ready' });
-
 setTimeout(function() {
   settleReadyProgress();
 }, 5000);
-
 // Stream rendering and status polling helpers live in webview-stream-status.js.
-
 pollStatus();
 scheduleStatusPoll(false);
 document.addEventListener('visibilitychange', function() {
@@ -137,7 +129,6 @@ window.addEventListener('beforeunload', function() {
   clearStreamRenderTimer();
   clearAnalysisRenderTimer();
 });
-
 // ---- 状态栏：切换 Provider 按钮 ----
 const switchProviderBtn = document.getElementById('switch-provider-btn');
 if (switchProviderBtn) {

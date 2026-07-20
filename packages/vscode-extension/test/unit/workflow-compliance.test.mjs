@@ -1284,6 +1284,19 @@ test('R1-A2: TaskIntentRouter is the canonical task-family owner for downstream 
   assertDoesNotContain(completion, 'buildTaskSemanticContract(intentText)', 'completion evidence must not rebuild semantic contracts from raw prompt');
 });
 
+test('R2-01A: OrientationDecision owns pre-execution mode/risk/confidence evidence', () => {
+  const orientation = src('src/intent/orientation-decision.ts');
+  assertContains(orientation, "version: 'devseek.orientation-decision/v1'", 'orientation decision must expose a versioned contract');
+  assertContains(orientation, 'routeTaskIntent(prompt)', 'orientation decision must consume the canonical task route');
+  assertContains(orientation, 'orientation-ambiguous-intent', 'orientation decision must guard mixed action alternatives');
+  assertContains(orientation, 'orientation-target-path-not-found:', 'orientation decision must guard context-proven missing paths');
+  assertContains(orientation, 'orientation-external-effect-authorization-required', 'orientation decision must guard unconfirmed external effects');
+
+  const chatController = src('src/app/chat-controller.ts');
+  assertDoesNotContain(chatController, 'OrientationDecision', 'chat controller must not become a second orientation owner');
+  assertDoesNotContain(chatController, 'orientation-target-path-not-found', 'chat controller must not own path-existence orientation');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');
