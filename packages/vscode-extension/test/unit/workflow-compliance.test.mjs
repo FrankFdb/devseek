@@ -2035,6 +2035,22 @@ test('R2-07F: DeepSeek connector evidence is redacted and replay is explicitly n
   assertContains(server, 'summarizeTraceText(content)', 'Bridge server must record response summaries, not raw response text');
 });
 
+test('R2-08A: Verification planner owns focused, full, and release build-plan selection', () => {
+  const planner = src('src/app/verification-planner.ts');
+  const validationService = src('src/workspace/validation-service.ts');
+
+  assertContains(planner, 'VerificationBuildPlanStep', 'verification plan must expose structured build-plan steps');
+  assertContains(planner, 'buildDevSeekPackageVerificationPlan', 'DevSeek package validation must live in the existing planner owner');
+  assertContains(planner, 'vscode-extension-unit', 'extension source changes must include affected package unit tests');
+  assertContains(planner, 'bridge-unit', 'Bridge source changes must include affected package unit tests');
+  assertContains(planner, 'devseek-lint', 'missing lint command must be explicit instead of silently passing');
+  assertContains(planner, 'debug-vsix-package', 'release package follow-up must be represented in the plan');
+  assertContains(planner, 'packaged-bridge', 'packaged Bridge runtime verification must be represented in the plan');
+  assertContains(planner, 'controlled-vsix-realistic-product', 'exact-VSIX runtime/e2e follow-up must be represented in the plan');
+  assertContains(validationService, 'planWorkspaceChanges', 'ValidationService must consume the planner, not build commands locally');
+  assertDoesNotContain(validationService, 'debug-vsix-package', 'ValidationService must not duplicate release build-plan ownership');
+});
+
 test('Architecture: Bridge does not use Playwright fill for oversized prompts', () => {
   const agent = src('../bridge/src/deepseek-agent.ts');
   assertContains(agent, 'effectivePrompt.length > 30_000', 'bridge must classify oversized prompt input');

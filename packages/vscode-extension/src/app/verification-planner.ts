@@ -13,6 +13,38 @@ import {
 } from '../task-intent-router';
 
 export type ValidationMode = 'compile-only' | 'compile-link' | 'compile-run' | 'cmake' | 'file-check' | 'not-available';
+export type VerificationBuildPlanStage =
+  | 'focused'
+  | 'affected-package'
+  | 'architecture'
+  | 'generated-artifacts'
+  | 'full'
+  | 'release'
+  | 'runtime';
+export type VerificationBuildPlanRole =
+  | 'typecheck'
+  | 'compile'
+  | 'lint'
+  | 'unit'
+  | 'file-check'
+  | 'architecture'
+  | 'generated-artifacts'
+  | 'package'
+  | 'runtime'
+  | 'e2e';
+export type VerificationBuildPlanStepStatus = 'available' | 'missing';
+
+export interface VerificationBuildPlanStep {
+  id: string;
+  stage: VerificationBuildPlanStage;
+  role: VerificationBuildPlanRole;
+  status: VerificationBuildPlanStepStatus;
+  command: string;
+  cwd: string;
+  required: boolean;
+  autoRun: boolean;
+  reason: string;
+}
 
 export interface VerificationPlannerFs {
   existsSync: (path: string) => boolean;
@@ -38,6 +70,7 @@ export interface VerificationCommandPlan {
   timeoutMs: number;
   risks: string[];
   alternativeChecks: string[];
+  buildPlan: VerificationBuildPlanStep[];
 }
 
 export interface VerificationBlockedPlan {
@@ -49,6 +82,7 @@ export interface VerificationBlockedPlan {
   timeoutMs: 0;
   risks: string[];
   alternativeChecks: string[];
+  buildPlan: VerificationBuildPlanStep[];
 }
 
 export type VerificationPlan = VerificationCommandPlan | VerificationBlockedPlan;
@@ -103,39 +137,8 @@ export class VerificationPlanner {
       ]);
     }
 
-    const hasBridge = changedPaths.some((path) => path.startsWith('packages/bridge/'));
-    if (hasBridge) {
-      return commandPlan({
-        command: 'npm run build',
-        cwd: nodePath.join(rootFsPath, 'packages', 'bridge'),
-        timeoutMs: PROJECT_BUILD_VALIDATION_TIMEOUT_MS,
-        mode: 'compile-only',
-        reason: 'bridge-change',
-      });
-    }
-
-    const extensionPaths = changedPaths.filter((path) => path.startsWith('packages/vscode-extension/'));
-    if (extensionPaths.length > 0) {
-      const extensionTsPaths = extensionPaths
-        .map((path) => path.slice('packages/vscode-extension/'.length))
-        .filter((path) => /\.(ts|tsx)$/i.test(path));
-      if (extensionTsPaths.length > 0) {
-        return commandPlan({
-          command: `${buildExtensionTypeCheckCommand(extensionTsPaths)} && npm run compile`,
-          cwd: nodePath.join(rootFsPath, 'packages', 'vscode-extension'),
-          timeoutMs: PROJECT_BUILD_VALIDATION_TIMEOUT_MS,
-          mode: 'compile-only',
-          reason: 'extension-ts-semantic-check',
-        });
-      }
-      return commandPlan({
-        command: 'npm run compile',
-        cwd: nodePath.join(rootFsPath, 'packages', 'vscode-extension'),
-        timeoutMs: PROJECT_BUILD_VALIDATION_TIMEOUT_MS,
-        mode: 'compile-only',
-        reason: 'extension-change',
-      });
-    }
+    const devSeekPlan = buildDevSeekPackageVerificationPlan(changedPaths, rootFsPath);
+    if (devSeekPlan) return devSeekPlan;
 
     const shellScripts = changedPaths.filter(isShellScriptValidationPath);
     const cppRelated = changedPaths.filter(isCppRelatedValidationPath);
@@ -359,14 +362,286 @@ export function buildExtensionTypeCheckCommand(packageRelativePaths: string[]): 
   return `npx tsc ${EXTENSION_TS_TYPECHECK_FLAGS} ${targets}`.trim();
 }
 
+interface DevSeekPackageChange {
+  id: 'shared' | 'bridge' | 'cli' | 'vscode-extension';
+  relRoot: string;
+  cwd: string;
+  changedPaths: string[];
+}
+
+const DEVSEEK_PACKAGE_ORDER: Array<Omit<DevSeekPackageChange, 'cwd' | 'changedPaths'>> = [
+  { id: 'shared', relRoot: 'packages/shared' },
+  { id: 'bridge', relRoot: 'packages/bridge' },
+  { id: 'cli', relRoot: 'packages/cli' },
+  { id: 'vscode-extension', relRoot: 'packages/vscode-extension' },
+];
+
+function buildDevSeekPackageVerificationPlan(
+  changedPaths: string[],
+  rootFsPath: string,
+): VerificationPlan | undefined {
+  const packageChanges = collectDevSeekPackageChanges(changedPaths, rootFsPath);
+  if (packageChanges.length === 0) return undefined;
+
+  const buildPlan: VerificationBuildPlanStep[] = [];
+  for (const packageChange of packageChanges) {
+    buildPlan.push(...buildDevSeekPackageAutoRunSteps(packageChange));
+  }
+  buildPlan.push(...buildDevSeekRepositoryFollowUpSteps(rootFsPath));
+
+  const autoRunSteps = buildPlan.filter((step) => step.status === 'available' && step.autoRun && step.command);
+  if (autoRunSteps.length === 0) {
+    return blockedPlan('devseek-package-verification-command-missing', rootFsPath, [
+      'DevSeek package 变更没有可执行的 build/test 命令，不能证明源码变更。',
+    ]);
+  }
+  const cwd = commonStepCwd(autoRunSteps) ?? rootFsPath;
+  return commandPlan({
+    command: buildAutoRunCommand(autoRunSteps, cwd),
+    cwd,
+    timeoutMs: timeoutForBuildPlan(autoRunSteps),
+    mode: autoRunSteps.some((step) => step.role === 'unit' || step.role === 'e2e' || step.role === 'runtime')
+      ? 'compile-run'
+      : 'compile-only',
+    reason: reasonForDevSeekPackagePlan(packageChanges),
+    risks: risksForBuildPlan(buildPlan),
+    alternativeChecks: alternativesForBuildPlan(buildPlan),
+    buildPlan,
+  });
+}
+
+function collectDevSeekPackageChanges(changedPaths: string[], rootFsPath: string): DevSeekPackageChange[] {
+  return DEVSEEK_PACKAGE_ORDER
+    .map((entry) => {
+      const prefix = `${entry.relRoot}/`;
+      const packagePaths = changedPaths.filter((path) => normalizeValidationPath(path).startsWith(prefix));
+      if (packagePaths.length === 0) return undefined;
+      return {
+        ...entry,
+        cwd: nodePath.join(rootFsPath, ...entry.relRoot.split('/')),
+        changedPaths: packagePaths,
+      };
+    })
+    .filter((entry): entry is DevSeekPackageChange => entry !== undefined);
+}
+
+function buildDevSeekPackageAutoRunSteps(packageChange: DevSeekPackageChange): VerificationBuildPlanStep[] {
+  if (packageChange.id === 'shared') {
+    return [
+      availableBuildStep('shared-build', 'focused', 'compile', 'npm run build', packageChange.cwd, true, 'shared-build'),
+      availableBuildStep('shared-unit', 'affected-package', 'unit', 'npm test', packageChange.cwd, true, 'shared-unit'),
+    ];
+  }
+  if (packageChange.id === 'bridge') {
+    return [
+      availableBuildStep('bridge-build', 'focused', 'compile', 'npm run build', packageChange.cwd, true, 'bridge-build'),
+      availableBuildStep('bridge-unit', 'affected-package', 'unit', 'npm test', packageChange.cwd, true, 'bridge-unit'),
+    ];
+  }
+  if (packageChange.id === 'cli') {
+    return [
+      availableBuildStep('cli-typecheck', 'focused', 'typecheck', 'npm run typecheck', packageChange.cwd, true, 'cli-typecheck'),
+      availableBuildStep('cli-build', 'focused', 'compile', 'npm run build', packageChange.cwd, true, 'cli-build'),
+      availableBuildStep('cli-unit', 'affected-package', 'unit', 'npm test', packageChange.cwd, true, 'cli-unit'),
+    ];
+  }
+
+  const packageRelativePaths = packageChange.changedPaths
+    .map((path) => normalizeValidationPath(path).slice(`${packageChange.relRoot}/`.length))
+    .filter((path) => /\.(ts|tsx)$/i.test(path));
+  const steps: VerificationBuildPlanStep[] = [];
+  if (packageRelativePaths.length > 0) {
+    steps.push(availableBuildStep(
+      'vscode-extension-typecheck',
+      'focused',
+      'typecheck',
+      buildExtensionTypeCheckCommand(packageRelativePaths),
+      packageChange.cwd,
+      true,
+      'extension-ts-semantic-check',
+    ));
+  }
+  steps.push(
+    availableBuildStep(
+      'vscode-extension-compile',
+      'focused',
+      'compile',
+      'npm run compile',
+      packageChange.cwd,
+      true,
+      'extension-compile',
+    ),
+    availableBuildStep(
+      'vscode-extension-unit',
+      'affected-package',
+      'unit',
+      'npm test',
+      packageChange.cwd,
+      true,
+      'extension-unit',
+    ),
+  );
+  return steps;
+}
+
+function buildDevSeekRepositoryFollowUpSteps(rootFsPath: string): VerificationBuildPlanStep[] {
+  return [
+    missingBuildStep('devseek-lint', 'focused', 'lint', rootFsPath, false, 'no-lint-script-registered'),
+    availableBuildStep(
+      'architecture-drift',
+      'architecture',
+      'architecture',
+      'npm run verify:architecture-drift',
+      rootFsPath,
+      false,
+      'architecture-drift',
+    ),
+    availableBuildStep(
+      'generated-artifacts',
+      'generated-artifacts',
+      'generated-artifacts',
+      'npm run verify:artifacts',
+      rootFsPath,
+      false,
+      'generated-artifacts',
+    ),
+    availableBuildStep('phase12', 'full', 'unit', 'npm run verify:phase12', rootFsPath, false, 'phase12'),
+    availableBuildStep(
+      'debug-vsix-package',
+      'release',
+      'package',
+      'npm run extension:package:debug',
+      rootFsPath,
+      false,
+      'debug-vsix-package',
+    ),
+    availableBuildStep(
+      'packaged-bridge',
+      'release',
+      'runtime',
+      'npm run verify:packaged-bridge',
+      rootFsPath,
+      false,
+      'packaged-bridge',
+    ),
+    availableBuildStep(
+      'controlled-vsix-realistic-product',
+      'runtime',
+      'e2e',
+      'npm run test:controlled-vsix --workspace=packages/vscode-extension -- --suite realistic-product --keep --keep-window --timeout-ms 240000',
+      rootFsPath,
+      false,
+      'controlled-vsix-realistic-product',
+    ),
+  ];
+}
+
+function availableBuildStep(
+  id: string,
+  stage: VerificationBuildPlanStage,
+  role: VerificationBuildPlanRole,
+  command: string,
+  cwd: string,
+  autoRun: boolean,
+  reason: string,
+): VerificationBuildPlanStep {
+  return {
+    id,
+    stage,
+    role,
+    status: 'available',
+    command,
+    cwd,
+    required: true,
+    autoRun,
+    reason,
+  };
+}
+
+function missingBuildStep(
+  id: string,
+  stage: VerificationBuildPlanStage,
+  role: VerificationBuildPlanRole,
+  cwd: string,
+  required: boolean,
+  reason: string,
+): VerificationBuildPlanStep {
+  return {
+    id,
+    stage,
+    role,
+    status: 'missing',
+    command: '',
+    cwd,
+    required,
+    autoRun: false,
+    reason,
+  };
+}
+
+function commonStepCwd(steps: VerificationBuildPlanStep[]): string | undefined {
+  const first = steps[0]?.cwd;
+  if (!first) return undefined;
+  return steps.every((step) => step.cwd === first) ? first : undefined;
+}
+
+function buildAutoRunCommand(autoRunSteps: VerificationBuildPlanStep[], cwd: string): string {
+  return joinValidationCommands(autoRunSteps.map((step) => {
+    if (step.cwd === cwd) return step.command;
+    return `(cd ${shellQuote(step.cwd)} && ${step.command})`;
+  }));
+}
+
+function timeoutForBuildPlan(autoRunSteps: VerificationBuildPlanStep[]): number {
+  return Math.max(PROJECT_BUILD_VALIDATION_TIMEOUT_MS, autoRunSteps.length * 30_000);
+}
+
+function reasonForDevSeekPackagePlan(packageChanges: DevSeekPackageChange[]): string {
+  if (packageChanges.length > 1) return 'devseek-multi-package-build-plan';
+  const only = packageChanges[0];
+  if (only.id === 'bridge') return 'bridge-build-and-unit';
+  if (only.id === 'shared') return 'shared-build-and-unit';
+  if (only.id === 'cli') return 'cli-typecheck-build-and-unit';
+  const hasTypeScript = only.changedPaths.some((path) => /\.(ts|tsx)$/i.test(path));
+  return hasTypeScript ? 'extension-ts-semantic-check' : 'extension-build-and-unit';
+}
+
+function risksForBuildPlan(buildPlan: VerificationBuildPlanStep[]): string[] {
+  const risks = buildPlan
+    .filter((step) => step.status === 'missing' && step.required)
+    .map((step) => `缺少必需验证命令 ${step.role}: ${step.reason}`);
+  if (buildPlan.some((step) => step.status === 'missing' && !step.required)) {
+    risks.push('当前仓库没有注册 lint 命令；不能把 lint 覆盖外推为已验证。');
+  }
+  if (buildPlan.some((step) => step.required && !step.autoRun)) {
+    risks.push('自动验证只运行 focused/affected package steps；release、runtime 或 exact-VSIX 结论需要执行 buildPlan 中的非自动步骤。');
+  }
+  return risks;
+}
+
+function alternativesForBuildPlan(buildPlan: VerificationBuildPlanStep[]): string[] {
+  return buildPlan
+    .filter((step) => step.required && !step.autoRun && step.status === 'available')
+    .map((step) => `需要发布或 runtime 结论时执行：${step.command}`);
+}
+
 function commandPlan(
-  input: Omit<VerificationCommandPlan, 'kind' | 'risks' | 'alternativeChecks'>
-    & Partial<Pick<VerificationCommandPlan, 'risks' | 'alternativeChecks'>>,
+  input: Omit<VerificationCommandPlan, 'kind' | 'risks' | 'alternativeChecks' | 'buildPlan'>
+    & Partial<Pick<VerificationCommandPlan, 'risks' | 'alternativeChecks' | 'buildPlan'>>,
 ): VerificationCommandPlan {
   return {
     kind: 'command',
     risks: input.risks ?? [],
     alternativeChecks: input.alternativeChecks ?? [],
+    buildPlan: input.buildPlan ?? [availableBuildStep(
+      `primary-${input.reason}`,
+      'focused',
+      roleForValidationMode(input.mode),
+      input.command,
+      input.cwd,
+      true,
+      input.reason,
+    )],
     ...input,
   };
 }
@@ -388,7 +663,14 @@ function blockedPlan(reason: string, cwd: string, risks: string[], alternativeCh
       '人工检查变更文件内容是否符合用户请求。',
       '在项目规则中补充可自动运行的 build/test/lint 命令后重试。',
     ],
+    buildPlan: [],
   };
+}
+
+function roleForValidationMode(mode: Exclude<ValidationMode, 'not-available'>): VerificationBuildPlanRole {
+  if (mode === 'file-check') return 'file-check';
+  if (mode === 'compile-run') return 'runtime';
+  return 'compile';
 }
 
 function formatCppDependencyClosureIssues(issues: CppDependencyClosureIssue[]): string[] {

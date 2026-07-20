@@ -55,7 +55,7 @@ test('ValidationService: selects extension TypeScript semantic check before comp
   assert.equal(invocations[0].timeoutMs, PROJECT_BUILD_VALIDATION_TIMEOUT_MS);
 });
 
-test('ValidationService: selects bridge build before extension compile when bridge changed', async () => {
+test('ValidationService: DevSeek multi-package changes run affected build and unit steps', async () => {
   const invocations = [];
   const service = new ValidationService({ commandRunner: makeRunner(invocations) });
 
@@ -64,8 +64,26 @@ test('ValidationService: selects bridge build before extension compile when brid
     changedPaths: ['packages/bridge/src/server.ts', 'packages/vscode-extension/src/extension.ts'],
   });
 
-  assert.equal(result.command, 'npm run build');
-  assert.equal(result.cwd, path.join('/repo', 'packages', 'bridge'));
+  assert.match(result.command, /packages\/bridge/);
+  assert.match(result.command, /npm run build/);
+  assert.match(result.command, /npm test/);
+  assert.match(result.command, /packages\/vscode-extension/);
+  assert.match(result.command, /npx tsc --noEmit/);
+  assert.equal(result.reason, 'devseek-multi-package-build-plan');
+  assert.equal(result.cwd, '/repo');
+  assert.equal(invocations.length, 1);
+  assert.deepEqual(
+    result.plan.buildPlan
+      .filter((step) => step.autoRun)
+      .map((step) => step.id),
+    [
+      'bridge-build',
+      'bridge-unit',
+      'vscode-extension-typecheck',
+      'vscode-extension-compile',
+      'vscode-extension-unit',
+    ],
+  );
 });
 
 test('ValidationService: returns blocked evidence for paths without automatic validation target', async () => {

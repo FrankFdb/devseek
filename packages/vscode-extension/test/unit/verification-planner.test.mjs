@@ -41,6 +41,54 @@ test('VerificationPlanner: extension TypeScript entry changes plan semantic chec
   assert.equal(plan.reason, 'extension-ts-semantic-check');
 });
 
+test('VerificationPlanner: DevSeek extension source changes expose focused, full, and release build-plan gates', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['packages/vscode-extension/src/agent/auto-validation.ts'],
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.match(plan.command, /npx tsc --noEmit/);
+  assert.match(plan.command, /npm run compile/);
+  assert.match(plan.command, /npm test/);
+  assert.deepEqual(
+    plan.buildPlan.map((step) => [step.id, step.role, step.stage, step.status, step.autoRun]),
+    [
+      ['vscode-extension-typecheck', 'typecheck', 'focused', 'available', true],
+      ['vscode-extension-compile', 'compile', 'focused', 'available', true],
+      ['vscode-extension-unit', 'unit', 'affected-package', 'available', true],
+      ['devseek-lint', 'lint', 'focused', 'missing', false],
+      ['architecture-drift', 'architecture', 'architecture', 'available', false],
+      ['generated-artifacts', 'generated-artifacts', 'generated-artifacts', 'available', false],
+      ['phase12', 'unit', 'full', 'available', false],
+      ['debug-vsix-package', 'package', 'release', 'available', false],
+      ['packaged-bridge', 'runtime', 'release', 'available', false],
+      ['controlled-vsix-realistic-product', 'e2e', 'runtime', 'available', false],
+    ],
+  );
+});
+
+test('VerificationPlanner: DevSeek bridge changes cannot stop at compile-only build evidence', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['packages/bridge/src/run-evidence.ts'],
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'compile-run');
+  assert.equal(plan.reason, 'bridge-build-and-unit');
+  assert.match(plan.command, /npm run build/);
+  assert.match(plan.command, /npm test/);
+  assert.deepEqual(
+    plan.buildPlan.slice(0, 2).map((step) => [step.id, step.role, step.stage, step.status, step.autoRun]),
+    [
+      ['bridge-build', 'compile', 'focused', 'available', true],
+      ['bridge-unit', 'unit', 'affected-package', 'available', true],
+    ],
+  );
+  assert.ok(plan.buildPlan.some((step) => step.id === 'packaged-bridge' && step.role === 'runtime'));
+});
+
 test('VerificationPlanner: extension TypeScript files get targeted semantic check before bundle compile', () => {
   const plan = new VerificationPlanner().planWorkspaceChanges({
     rootFsPath: '/repo',
