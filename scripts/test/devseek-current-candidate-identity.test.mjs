@@ -111,12 +111,13 @@ test('runtime fails closed when package, install, or active runtime identity dri
 
 test('live runtime classifier separates stable, isolated, stale debug, unknown, and unreadable processes', () => {
   const stable = expected.active_runtime_identity.expected_bridge_server_path;
+  const extensionDir = path.basename(expected.stable_install_identity.package_root);
   const classified = classifyBridgeRuntimeProcesses([
     { pid: 1, executable_path: '/usr/bin/node', script_path: stable },
     {
       pid: 2,
       executable_path: '/usr/bin/node',
-      script_path: '/tmp/devseek-controlled-vsix-abc/extensions/devseek-netai.devseek-netai-1.0.0/bridge/server.js',
+      script_path: `/tmp/devseek-controlled-vsix-abc/extensions/${extensionDir}/bridge/server.js`,
     },
     {
       pid: 3,
@@ -129,7 +130,7 @@ test('live runtime classifier separates stable, isolated, stale debug, unknown, 
       script_path: '/opt/devseek-netai.devseek-netai-1.0.0/bridge/server.js',
     },
     { pid: 5, executable_path: '/usr/bin/node', script_path: null },
-  ], { stableBridgeServerPath: stable });
+  ], { stableBridgeServerPath: stable, controlledExtensionDirName: extensionDir });
 
   assert.equal(classified.stable_runtime.length, 1);
   assert.equal(classified.isolated_controlled_vsix_runtime.length, 1);
@@ -140,7 +141,8 @@ test('live runtime classifier separates stable, isolated, stale debug, unknown, 
 
 test('live runtime validation allows isolated harness but rejects stale debug and unreadable identities', () => {
   const stable = expected.active_runtime_identity.expected_bridge_server_path;
-  const isolated = '/tmp/devseek-controlled-vsix-abc/extensions/devseek-netai.devseek-netai-1.0.0/bridge/server.js';
+  const extensionDir = path.basename(expected.stable_install_identity.package_root);
+  const isolated = `/tmp/devseek-controlled-vsix-abc/extensions/${extensionDir}/bridge/server.js`;
 
   const allowed = validateLiveRuntimeProcesses(expected, [
     { pid: 1, executable_path: '/usr/bin/node', script_path: stable },
@@ -170,6 +172,19 @@ test('live runtime validation allows isolated harness but rejects stale debug an
   ]);
   assert.equal(missingExecutable.ok, false);
   assert.ok(missingExecutable.errors.some(error => error.includes('unreadable-runtime-identity-1')));
+});
+
+test('live runtime validation rejects controlled VSIX paths that do not match the DevSeek extension layout', () => {
+  const stable = expected.active_runtime_identity.expected_bridge_server_path;
+  const spoofedControlledPath = '/tmp/devseek-controlled-vsix-abc/extensions/other.publisher-1.0.0/bridge/server.js';
+
+  const result = validateLiveRuntimeProcesses(expected, [
+    { pid: 1, executable_path: '/usr/bin/node', script_path: stable },
+    { pid: 2, executable_path: '/usr/bin/node', script_path: spoofedControlledPath },
+  ]);
+
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(error => error.includes('unknown-devseek-bridge-runtime-1')));
 });
 
 test('checker command validates current candidate identity and live runtime process policy', async () => {

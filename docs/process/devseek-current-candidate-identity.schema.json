@@ -201,8 +201,9 @@
     "packageIdentity": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "version", "devseekBuild"],
+      "required": ["publisher", "name", "version", "devseekBuild"],
       "properties": {
+        "publisher": { "const": "devseek-netai" },
         "name": { "const": "devseek-netai" },
         "version": { "$ref": "#/$defs/nonEmpty" },
         "devseekBuild": {

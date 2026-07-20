@@ -15,7 +15,6 @@ export const CURRENT_CANDIDATE_QUALIFICATION_EFFECT = 'NONE';
 
 const PRIMARY_VSIX_PATH = 'devseek-netai-latest.vsix';
 const PACKAGE_COPY_VSIX_PATH = 'packages/vscode-extension/devseek-netai-latest.vsix';
-const STABLE_EXTENSION_ID = 'devseek-netai.devseek-netai-1.0.0';
 const BRIDGE_ENTRY = 'extension/bridge/server.js';
 const PACKAGE_ENTRY = 'extension/package.json';
 
@@ -43,7 +42,7 @@ export function buildCurrentCandidateIdentity({
 
   const primaryVsix = readVsixIdentity(path.join(repoRoot, PRIMARY_VSIX_PATH), repoRoot);
   const packageCopyVsix = readVsixIdentity(path.join(repoRoot, PACKAGE_COPY_VSIX_PATH), repoRoot);
-  const stableInstall = readStableInstallIdentity(homeDir);
+  const stableInstall = readStableInstallIdentity(homeDir, primaryVsix.package_identity);
   const artifactGitCommit = primaryVsix.package_identity.devseekBuild.gitCommit;
   const candidateSourceCommit = resolveGitCommit(repoRoot, artifactGitCommit);
 
@@ -204,6 +203,7 @@ export function observeBridgeRuntimeProcesses({ procRoot = '/proc' } = {}) {
 
 export function classifyBridgeRuntimeProcesses(processes, {
   stableBridgeServerPath,
+  controlledExtensionDirName,
 } = {}) {
   const normalizedStablePath = stableBridgeServerPath ? path.normalize(stableBridgeServerPath) : null;
   const summary = {
@@ -221,10 +221,10 @@ export function classifyBridgeRuntimeProcesses(processes, {
       summary.unreadable_runtime_identity.push(safeProcess);
     } else if (scriptPath === normalizedStablePath) {
       summary.stable_runtime.push(safeProcess);
+    } else if (isControlledVsixRuntimePath(scriptPath, controlledExtensionDirName)) {
+      summary.isolated_controlled_vsix_runtime.push(safeProcess);
     } else if (isStaleDebugRuntimePath(scriptPath)) {
       summary.stale_debug_runtime.push(safeProcess);
-    } else if (scriptPath.includes(`${path.sep}devseek-controlled-vsix-`)) {
-      summary.isolated_controlled_vsix_runtime.push(safeProcess);
     } else if (scriptPath.includes(`${path.sep}devseek-netai.devseek-netai-`) && scriptPath.endsWith(`${path.sep}bridge${path.sep}server.js`)) {
       summary.unknown_devseek_bridge_runtime.push(safeProcess);
     } else {
@@ -237,7 +237,13 @@ export function classifyBridgeRuntimeProcesses(processes, {
 
 export function validateLiveRuntimeProcesses(report, processes = observeBridgeRuntimeProcesses()) {
   const stableBridgeServerPath = report?.active_runtime_identity?.expected_bridge_server_path;
-  const classified = classifyBridgeRuntimeProcesses(processes, { stableBridgeServerPath });
+  const controlledExtensionDirName = extensionDirectoryName(report?.active_runtime_identity?.expected_package_identity, {
+    strict: false,
+  });
+  const classified = classifyBridgeRuntimeProcesses(processes, {
+    stableBridgeServerPath,
+    controlledExtensionDirName,
+  });
   const errors = [];
   if (classified.stable_runtime.length !== 1) {
     errors.push(`active_runtime:stable-runtime-cardinality-expected-1-got-${classified.stable_runtime.length}`);
@@ -329,8 +335,8 @@ function readVsixEntry(vsixPath, entryPath) {
   return result.stdout;
 }
 
-function readStableInstallIdentity(homeDir) {
-  const packageRoot = path.join(homeDir, '.vscode', 'extensions', STABLE_EXTENSION_ID);
+function readStableInstallIdentity(homeDir, expectedPackageIdentity) {
+  const packageRoot = path.join(homeDir, '.vscode', 'extensions', extensionDirectoryName(expectedPackageIdentity));
   const packageJsonPath = path.join(packageRoot, 'package.json');
   const bridgeServerPath = path.join(packageRoot, 'bridge', 'server.js');
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
@@ -346,6 +352,7 @@ function readStableInstallIdentity(homeDir) {
 function packageIdentityFromPackageJson(packageJson) {
   const devseekBuild = packageJson?.devseekBuild ?? {};
   const identity = {
+    publisher: requiredString(packageJson?.publisher, 'package.publisher'),
     name: requiredString(packageJson?.name, 'package.name'),
     version: requiredString(packageJson?.version, 'package.version'),
     devseekBuild: {
@@ -502,6 +509,25 @@ function artifactComparableIdentity(artifact) {
 function isStaleDebugRuntimePath(scriptPath) {
   return scriptPath.includes(`${path.sep}devseek-netai-1.0.0-debug.`)
     || scriptPath.includes(`${path.sep}devseek-netai.devseek-netai-1.0.0-debug.`);
+}
+
+function isControlledVsixRuntimePath(scriptPath, controlledExtensionDirName) {
+  if (!controlledExtensionDirName) return false;
+  return scriptPath.includes(`${path.sep}devseek-controlled-vsix-`)
+    && scriptPath.endsWith(`${path.sep}extensions${path.sep}${controlledExtensionDirName}${path.sep}bridge${path.sep}server.js`);
+}
+
+function extensionDirectoryName(packageIdentity, { strict = true } = {}) {
+  const publisher = packageIdentity?.publisher;
+  const name = packageIdentity?.name;
+  const version = packageIdentity?.version;
+  if ([publisher, name, version].some(value => typeof value !== 'string' || value.length === 0)) {
+    if (!strict) return null;
+    requiredString(publisher, 'package.publisher');
+    requiredString(name, 'package.name');
+    requiredString(version, 'package.version');
+  }
+  return `${publisher}.${name}-${version}`;
 }
 
 function requiredString(value, field) {

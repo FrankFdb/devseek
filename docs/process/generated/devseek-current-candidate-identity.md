@@ -10,21 +10,21 @@
 
 ## Source
 
-- Artifact git commit: `17e50ea`
-- Candidate source commit: `17e50ead463fe5ea2132f6c2f65c729372cbc721`
+- Artifact git commit: `2779520`
+- Candidate source commit: `27795208b78af41cee2acf8d78a47a6c1791bd23`
 
 ## VSIX Artifacts
 
 | Artifact | SHA-256 | Build | Git commit | Bridge SHA-256 |
 | --- | --- | --- | --- | --- |
-| primary: `devseek-netai-latest.vsix` | `60d235b9d625863eb72727130312145279663bcc00d1f5587a953df4a4d84f7a` | `20260715-t155747` | `17e50ea` | `0f3d75494142fd338231bd5186d6f653f2124dda3fc41ab522032a3870ff770a` |
-| package-copy: `packages/vscode-extension/devseek-netai-latest.vsix` | `60d235b9d625863eb72727130312145279663bcc00d1f5587a953df4a4d84f7a` | `20260715-t155747` | `17e50ea` | `0f3d75494142fd338231bd5186d6f653f2124dda3fc41ab522032a3870ff770a` |
+| primary: `devseek-netai-latest.vsix` | `38d06d6c1720f9e6324fb2c50bd0eda3b59b93976eb5c4c259a965c73299c392` | `20260720-t092649` | `2779520` | `ca1918392234078c692387e913900773cc0181d246e66e1437ca103f2c91f231` |
+| package-copy: `packages/vscode-extension/devseek-netai-latest.vsix` | `38d06d6c1720f9e6324fb2c50bd0eda3b59b93976eb5c4c259a965c73299c392` | `20260720-t092649` | `2779520` | `ca1918392234078c692387e913900773cc0181d246e66e1437ca103f2c91f231` |
 
 ## Stable Install And Runtime
 
-- Stable package root: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0`
-- Stable bridge path: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0/bridge/server.js`
-- Active runtime expected bridge: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0/bridge/server.js`
+- Stable package root: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260720.t092649.g2779520`
+- Stable bridge path: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260720.t092649.g2779520/bridge/server.js`
+- Active runtime expected bridge: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260720.t092649.g2779520/bridge/server.js`
 - Package/install/runtime exact match: `true`
 
 ## Runtime Process Policy
@@ -37,4 +37,4 @@
 
 ## Probe Identity
 
-- Identity probe SHA-256: `016d77e13b6d5969f55eac7150435f5a326898a0597a7f8f5d591b0bc57783e2`
+- Identity probe SHA-256: `44850ab75e66214e135b4e8b2957b5a724ee5de4d843188f4944ea53d9c5cf83`
