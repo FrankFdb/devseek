@@ -20,6 +20,7 @@ const REQUIRED_SCENARIOS = [
   'realistic-safety-boundary',
   'stream-truncated-no-mutation',
   'stream-request-mismatch-no-mutation',
+  'connector-evidence-redaction-replay',
 ];
 
 const REQUIRED_SUITES = [
@@ -27,6 +28,7 @@ const REQUIRED_SUITES = [
   { id: 'journey-core', scenarioCount: 6, sameDevSeekSession: false },
   { id: 'realistic-product', scenarioCount: 4, sameDevSeekSession: true },
   { id: 'r2-07e-stream-protocol', scenarioCount: 2, sameDevSeekSession: false },
+  { id: 'r2-07f-connector-security', scenarioCount: 1, sameDevSeekSession: false },
 ];
 
 for (const scenario of REQUIRED_SCENARIOS) {

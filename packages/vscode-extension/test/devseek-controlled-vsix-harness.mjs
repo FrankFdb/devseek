@@ -137,11 +137,13 @@ try {
     || !deterministicFastPath;
   const bridgeReport = summarizeControlledBridge(fakeBridge.state, { providerExpected });
   const evidence = inspectControlledRunLogEvidenceForSelection(driverReport, selectedScenarios);
+  const runEvidence = inspectControlledRunEvidenceLedgerForSelection(workspaceDir, driverReport, selectedScenarios);
 
   const errors = [];
   if (!driverReport.ok) errors.push(...(driverReport.errors || ['VS Code driver failed']));
   if (!bridgeReport.ok) errors.push(...bridgeReport.errors);
   if (!evidence.ok) errors.push(...evidence.errors);
+  if (!runEvidence.ok) errors.push(...runEvidence.errors);
 
   finalReport = {
     ok: errors.length === 0,
@@ -186,6 +188,7 @@ try {
     sameDevSeekSession: selectedSuiteOptions.sameDevSeekSession,
     bridge: bridgeReport,
     evidence,
+    runEvidence,
     errors,
     harness: {
       tmpRoot,
@@ -265,6 +268,9 @@ function resolveControlledScenarioSuite(id) {
       'stream-truncated-no-mutation',
       'stream-request-mismatch-no-mutation',
     ],
+    'r2-07f-connector-security': [
+      'connector-evidence-redaction-replay',
+    ],
   };
   const scenarioIds = suites[String(id || '').trim()];
   if (!scenarioIds) {
@@ -289,6 +295,10 @@ function resolveControlledScenarioSuiteOptions(id) {
     },
     'r2-07e-stream-protocol': {
       kind: 'same-window-stream-protocol-fault-suite',
+      sameDevSeekSession: false,
+    },
+    'r2-07f-connector-security': {
+      kind: 'same-window-connector-security-evidence-suite',
       sameDevSeekSession: false,
     },
   };
@@ -371,6 +381,7 @@ function controlledScenarioCatalog() {
     '    main()',
     '',
   ].join('\n');
+  const connectorSecurityBaselineContent = 'CONNECTOR_SECURITY_BASELINE\n';
   return {
     normal: {
       id: 'normal',
@@ -586,6 +597,27 @@ function controlledScenarioCatalog() {
       requiredRunLogSubstrings: [
         'RESPONSE_CORRUPTED:stream-correlation-mismatch',
       ],
+    },
+    'connector-evidence-redaction-replay': {
+      id: 'connector-evidence-redaction-replay',
+      kind: 'r2-07f-connector-evidence-redaction-replay',
+      targetRelativePath: 'connector-security-baseline.txt',
+      targetContent: connectorSecurityBaselineContent,
+      seedFiles: {
+        'connector-security-baseline.txt': connectorSecurityBaselineContent,
+      },
+      prompt: [
+        '只检查当前工作区是否存在 connector-security-baseline.txt，并告诉我第一行内容。',
+        '不要创建、修改或删除任何文件。',
+      ].join(''),
+      providerPlan: 'read-only-complete',
+      expected: 'completed-no-mutation',
+      expectedFiles: {
+        'connector-security-baseline.txt': connectorSecurityBaselineContent,
+      },
+      expectedChangedPaths: [],
+      expectedMutatedUserFiles: [],
+      connectorEvidenceSecurity: 'redaction-replay',
     },
   };
 }
@@ -1492,7 +1524,7 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           operationId,
           authorityToken,
         });
-        evidence.record('provider.requested', {
+        const requestedEvidencePayload = {
           provider: 'controlled-fixture',
           layer: 'deterministic-fake-provider',
           prompt_length: promptText.length,
@@ -1500,7 +1532,11 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           prompt_contract_version: promptContract.contractVersion,
           prompt_contract_bound: promptContract.bound,
           prompt_contract_reason: promptContract.reason,
-        });
+        };
+        if (activeScenario?.connectorEvidenceSecurity === 'redaction-replay') {
+          Object.assign(requestedEvidencePayload, connectorSecurityEvidencePoison('requested', { promptText }));
+        }
+        evidence.record('provider.requested', requestedEvidencePayload);
         const requestRecord = {
           requestKind: scenarioBinding.requestKind,
           ordinal,
@@ -1561,13 +1597,17 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
             scenario: activeScenario,
             requestKind: scenarioBinding.requestKind,
           });
-        evidence.record('provider.completed', {
+        const completedEvidencePayload = {
           provider: 'controlled-fixture',
           layer: 'deterministic-fake-provider',
           response_length: providerText.length,
           prompt_contract_version: promptContract.contractVersion,
           prompt_contract_bound: true,
-        });
+        };
+        if (activeScenario.connectorEvidenceSecurity === 'redaction-replay') {
+          Object.assign(completedEvidencePayload, connectorSecurityEvidencePoison('completed', { promptText, providerText }));
+        }
+        evidence.record('provider.completed', completedEvidencePayload);
         requestRecord.responseLength = providerText.length;
         if (body.stream !== false || String(request.headers.accept || '').includes('text/event-stream')) {
           response.writeHead(200, {
@@ -1933,6 +1973,32 @@ function controlledProviderResponse({ ordinal, workspaceDir, scenario, requestKi
   return ['我会创建指定文件，并通过真实文件工具读回核验后结算。', ...calls].join('\n');
 }
 
+function connectorSecurityEvidencePoison(stage, { promptText = '', providerText = '' } = {}) {
+  return {
+    live_provider: true,
+    prompt: [
+      `controlled ${stage} prompt evidence`,
+      `prompt_sha=${sha256Text(promptText)}`,
+      'api_key=sk-controlled-secret-1234567890',
+      'cookie=ds_session=controlled-cookie-secret',
+    ].join(' '),
+    response: providerText
+      ? `controlled ${stage} response token=controlled-replay-token ${providerText}`
+      : `controlled ${stage} response token=controlled-replay-token`,
+    request_headers: {
+      authorization: 'Bearer controlled-authorization-secret',
+      cookie: 'ds_session=controlled-cookie-secret',
+    },
+    replay: {
+      protocol: 'devseek.run-evidence-replay/v1',
+      trust: 'product-runtime-observation',
+      live_provider: true,
+      transcript: 'raw replay transcript token=controlled-replay-token',
+    },
+    message: 'controlled connector message authorization=Bearer controlled-message-secret',
+  };
+}
+
 function headerText(request, name) {
   const value = request.headers[name];
   return Array.isArray(value) ? String(value[0] || '').trim() : String(value || '').trim();
@@ -2023,18 +2089,21 @@ function collectRunLogs(excludePaths = []) {
       const absolutePath = path.join(directory, name);
       const events = fs.readFileSync(absolutePath, 'utf8').split(/\r?\n/).filter(Boolean).map(parseJsonLine).filter(Boolean);
       const terminalEvent = events.find(event => event.event === 'agent-run-completed' || event.event === 'agent-run-failed');
-      const responseText = events
+      const payloadText = events
         .filter(event => event.event === 'payload-recorded' && (
           event.data?.name === 'extension.response.raw'
           || event.data?.name === 'terminal.output'
         ))
         .map(event => String(event.data?.content || ''))
-        .concat(events.map(event => JSON.stringify({
-          event: event.event || '',
-          data: event.data || {},
-        })))
         .join('\n')
         .slice(-5000);
+      const eventSummaryText = events.map(event => JSON.stringify({
+          event: event.event || '',
+          data: event.data || {},
+        }))
+        .join('\n')
+        .slice(-5000);
+      const responseText = [payloadText, eventSummaryText].filter(Boolean).join('\n');
       return {
         path: path.relative(workspaceDir, absolutePath).replace(/\\/g, '/'),
         events: events.length,
@@ -2676,7 +2745,51 @@ function inspectControlledRunLogEvidence(driverReport, scenario) {
   };
 }
 
-function inspectRunEvidence(workspaceDir, runId) {
+function inspectControlledRunEvidenceLedgerForSelection(workspaceDir, driverReport, scenarios) {
+  const checkedScenarios = scenarios.filter(candidate => candidate.connectorEvidenceSecurity === 'redaction-replay');
+  if (checkedScenarios.length === 0) {
+    return {
+      ok: true,
+      mode: 'controlled-run-evidence-ledger',
+      skipped: true,
+      scenario: scenarios.length === 1 ? scenarios[0]?.id || '' : 'suite',
+      cases: [],
+      errors: [],
+    };
+  }
+  const caseReports = Array.isArray(driverReport?.cases) ? driverReport.cases : [];
+  const cases = checkedScenarios.map(scenario => {
+    const caseReport = caseReports.find(candidate => candidate?.scenario === scenario.id) || driverReport || null;
+    const runId = caseReport?.runLogs?.terminal?.runId || '';
+    if (!runId) {
+      return {
+        ok: false,
+        scenario: scenario.id,
+        runId,
+        errors: [`Missing run evidence id for ${scenario.id}`],
+      };
+    }
+    const security = inspectConnectorSecurityRunEvidence(workspaceDir, runId);
+    const errors = [...security.errors];
+    return {
+      ok: errors.length === 0,
+      scenario: scenario.id,
+      runId,
+      security,
+      errors,
+    };
+  });
+  const errors = cases.flatMap(candidate => candidate.errors.map(error => `${candidate.scenario}: ${error}`));
+  return {
+    ok: errors.length === 0,
+    mode: 'controlled-run-evidence-ledger',
+    scenario: checkedScenarios.length === 1 ? checkedScenarios[0].id : 'suite',
+    cases,
+    errors,
+  };
+}
+
+function inspectConnectorSecurityRunEvidence(workspaceDir, runId) {
   try {
     const { FileSystemRunEvidenceLedger, PRODUCT_RUN_EVIDENCE_DIRECTORY } = require(sharedPath);
     const rootDir = path.join(workspaceDir, PRODUCT_RUN_EVIDENCE_DIRECTORY);
@@ -2684,62 +2797,70 @@ function inspectRunEvidence(workspaceDir, runId) {
     const verification = ledger.verify(runId);
     const events = ledger.read(runId);
     const seal = ledger.getSeal(runId);
+    const bridgePayloads = events
+      .filter(event => event.type === 'provider.requested' || event.type === 'provider.completed')
+      .map(event => objectPayload(event.payload))
+      .filter(payload => payload.boundary === 'bridge-server');
     const eventTypes = events.map(event => event.type);
-    const providerEvents = events
-      .filter(event => event.type === 'provider.requested' || event.type === 'provider.completed' || event.type === 'provider.failed')
-      .map(event => ({
-        type: event.type,
-        surface: event.surface,
-        operationId: objectPayload(event.payload).operation_id || '',
-        boundary: objectPayload(event.payload).boundary || '',
-      }));
-    const settled = [...events].reverse().find(event => event.type === 'run.settled');
-    const requiredTypes = ['run.opened', 'command.accepted', 'provider.requested', 'provider.completed', 'side_effect.committed', 'run.settled'];
-    const missingTypes = requiredTypes.filter(type => !eventTypes.includes(type));
-    const adverseTypes = eventTypes.filter(type => [
-      'evidence.degraded',
-      'provider.failed',
-      'side_effect.failed',
-      'side_effect.indeterminate',
-      'verification.failed',
-      'quality_gate.failed',
-      'quality_gate.vetoed',
-    ].includes(type));
-    const boundaries = new Set(providerEvents.map(event => event.boundary));
-    const operationIds = new Set(providerEvents.map(event => event.operationId).filter(Boolean));
-    const providerPairsComplete = [...operationIds].every(operationId => {
-      const scoped = providerEvents.filter(event => event.operationId === operationId);
-      return ['vscode-provider-client', 'bridge-server'].every(boundary => {
-        const side = scoped.filter(event => event.boundary === boundary);
-        return side.filter(event => event.type === 'provider.requested').length === 1
-          && side.filter(event => event.type === 'provider.completed').length === 1;
-      });
-    });
+    const serialized = JSON.stringify(bridgePayloads);
+    const forbidden = [
+      'sk-controlled-secret',
+      'controlled-cookie-secret',
+      'controlled-authorization-secret',
+      'controlled-replay-token',
+      'controlled-message-secret',
+      'devseek.run-evidence-replay/v1',
+      '"live_provider":true',
+    ];
     const errors = [];
     if (!verification.valid || verification.status !== 'valid-sealed') errors.push(`Run evidence verification status is ${verification.status}`);
     if (!seal) errors.push('Run evidence is not sealed');
-    if (missingTypes.length > 0) errors.push(`Run evidence is missing: ${missingTypes.join(', ')}`);
-    if (adverseTypes.length > 0) errors.push(`Run evidence contains adverse events: ${adverseTypes.join(', ')}`);
-    if (!boundaries.has('vscode-provider-client') || !boundaries.has('bridge-server') || !providerPairsComplete) {
-      errors.push('Provider evidence is not closed at both vscode-provider-client and bridge-server boundaries');
+    if (!eventTypes.includes('provider.requested')) errors.push('Run evidence is missing provider.requested');
+    if (!eventTypes.includes('provider.completed')) errors.push('Run evidence is missing provider.completed');
+    if (!eventTypes.includes('run.settled')) errors.push('Run evidence is missing run.settled');
+    if (bridgePayloads.length < 2) errors.push(`Expected bridge-server requested/completed evidence, received ${bridgePayloads.length}`);
+    for (const value of forbidden) {
+      if (serialized.includes(value)) errors.push(`Connector evidence leaked forbidden text: ${value}`);
     }
-    if (objectPayload(settled?.payload).status !== 'completed') errors.push('run.settled does not report completed');
-    if (verification.integrityScope !== 'product-run-diagnostics' || verification.qualificationEligible !== false) {
-      errors.push('Run evidence crossed the diagnostic/qualification boundary');
+    if (bridgePayloads.some(payload => payload.live_provider === true || payload.liveProvider === true)) {
+      errors.push('Connector evidence persisted live_provider=true');
+    }
+    const payloadWithReplay = bridgePayloads.find(payload => objectPayload(payload.replay).protocol);
+    const replay = objectPayload(payloadWithReplay?.replay);
+    if (replay.protocol !== 'devseek.bridge-connector-replay/v1') errors.push(`Connector replay protocol is ${replay.protocol || '(missing)'}`);
+    if (replay.trust !== 'legacy-unverified') errors.push(`Connector replay trust is ${replay.trust || '(missing)'}`);
+    if (replay.live_provider !== false) errors.push(`Connector replay live_provider is ${String(replay.live_provider)}`);
+    if (typeof replay.source_sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(replay.source_sha256)) {
+      errors.push('Connector replay source_sha256 is missing or invalid');
+    }
+    if (!bridgePayloads.some(payload => payload.request_headers === '[REDACTED-BRIDGE-CONNECTOR-SECRET]')) {
+      errors.push('Connector request headers were not redacted');
+    }
+    if (!bridgePayloads.some(payload => isTraceSummary(payload.prompt))) {
+      errors.push('Connector prompt was not summarized');
+    }
+    if (!bridgePayloads.some(payload => isTraceSummary(payload.response))) {
+      errors.push('Connector response was not summarized');
     }
     return {
       ok: errors.length === 0,
-      runId,
       verification,
       sealed: Boolean(seal),
-      sealSha256: seal?.seal_sha256 || '',
       eventTypes,
-      providerEvents,
+      payloadCount: bridgePayloads.length,
+      replay,
       errors,
     };
   } catch (error) {
-    return { ok: false, runId, errors: [errorMessage(error)], eventTypes: [] };
+    return { ok: false, errors: [errorMessage(error)] };
   }
+}
+
+function isTraceSummary(value) {
+  const payload = objectPayload(value);
+  return typeof payload.length === 'number'
+    && typeof payload.sha256 === 'string'
+    && /^[a-f0-9]{64}$/.test(payload.sha256);
 }
 
 function objectPayload(value) {
