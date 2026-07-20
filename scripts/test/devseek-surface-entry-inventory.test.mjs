@@ -42,7 +42,7 @@ test('surface entry inventory is source-bound and covers every current entry den
     cli_entrypoints: 8,
     bridge_endpoints: 10,
     unknown_entries: 0,
-    declared_adapter_pending_cutover: 8,
+    declared_adapter_pending_cutover: 0,
     undeclared_legacy_owner_reachability: 0,
   });
   const resumeEntry = actual.entries.find(item => item.entry_id === 'cli/resume-exec');
@@ -60,10 +60,28 @@ test('surface entry inventory is source-bound and covers every current entry den
     'devseek.genTest',
     'devseek.inlineChat',
     'devseek.refactor',
+    'devseek.runTerminalCommand',
+    'devseek.runTests',
   ]) {
     const entry = actual.entries.find(item => item.entry_id === `vscode-command/${commandId}`);
     assert.ok(entry, `${commandId} must be inventoried`);
     assert.equal(entry.kernel_contract_projection, 'AgentCommand/Event');
+  }
+  const memoryEntry = actual.entries.find(item => item.entry_id === 'vscode-command/devseek.showMemoryFiles');
+  assert.ok(memoryEntry, 'devseek.showMemoryFiles must be inventoried');
+  assert.equal(memoryEntry.owner, 'MemoryContextRef');
+  assert.equal(memoryEntry.kernel_contract_projection, 'ContextRef');
+  for (const messageType of [
+    'previewGeneratedFiles',
+    'applyGeneratedFiles',
+    'openGeneratedPath',
+    'previewGeneratedPath',
+    'applyGeneratedPath',
+  ]) {
+    const entry = actual.entries.find(item => item.entry_id === `vscode-webview/${messageType}`);
+    assert.ok(entry, `${messageType} must be inventoried`);
+    assert.equal(entry.owner, 'GeneratedArtifactSurfaceController');
+    assert.equal(entry.kernel_contract_projection, 'generated-artifact-action');
   }
   assert.equal(actual.bypass_guards.generic_webview_command_disabled, true);
   assert.equal(actual.bypass_guards.unknown_entry_fail_closed, true);

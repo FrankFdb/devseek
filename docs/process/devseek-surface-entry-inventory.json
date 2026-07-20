@@ -19,7 +19,7 @@
     },
     "extensionCommands": {
       "path": "packages/vscode-extension/src/ui/extension-command-registration.ts",
-      "source_sha256": "ffc7d15611c8243543fd940604423f979fb8d9c50c2d52031089c2d55e9f0f63"
+      "source_sha256": "707d9e00ab720d4492d6cde3ccdcaed923ed7a380a5a9953bd5606bf2d1296eb"
     },
     "providerRouter": {
       "path": "packages/vscode-extension/src/llm/provider-router.ts",
@@ -39,7 +39,7 @@
     },
     "deepseekViewProvider": {
       "path": "packages/vscode-extension/src/ui/deepseek-view-provider.ts",
-      "source_sha256": "fc93bfc47bea3a0aeef0f4fcda07e92349a298a91c942b750250a4a72350f93f"
+      "source_sha256": "b44070869f5eedfce9b6abaee1fa80eee05abf232cd11c84a3e00440b6328fb5"
     },
     "cliPackageJson": {
       "path": "packages/cli/package.json",
@@ -67,11 +67,11 @@
     },
     "inventoryLibSource": {
       "path": "scripts/lib/devseek-surface-entry-inventory.mjs",
-      "source_sha256": "b60eeccf61aa63397d1df82d300c7a834010e993a8d0802fb2ec923fd1df5491"
+      "source_sha256": "c2939556d475f72867f5a5f52824f9bcb951501dcee9b4474235ab0c35688564"
     },
     "oracleSource": {
       "path": "scripts/test/devseek-surface-entry-inventory.test.mjs",
-      "source_sha256": "ac7f7c150f12c117086bc03f0382c117f9f598e1dcaed15ac33fdca6a7549d2c"
+      "source_sha256": "35b89ea96eed68bc13aaeb13cd9ab2b8cb1f199e1f2a32a01ae3f13edecab0df"
     },
     "rootPackageJson": {
       "path": "package.json",
@@ -700,7 +700,7 @@
       "protocol_declared": null,
       "handler_declared": null,
       "owner": "ExtensionCommandRegistration",
-      "kernel_contract_projection": "declared-command-adapter-pending-D2A",
+      "kernel_contract_projection": "AgentCommand/Event",
       "coverage_status": "covered"
     },
     {
@@ -715,7 +715,7 @@
       "protocol_declared": null,
       "handler_declared": null,
       "owner": "ExtensionCommandRegistration",
-      "kernel_contract_projection": "declared-chat-command-adapter-pending-D2A",
+      "kernel_contract_projection": "AgentCommand/Event",
       "coverage_status": "covered"
     },
     {
@@ -729,8 +729,8 @@
       "runtime_registered": true,
       "protocol_declared": null,
       "handler_declared": null,
-      "owner": "ExtensionCommandRegistration",
-      "kernel_contract_projection": "declared-chat-command-adapter-pending-D2A",
+      "owner": "MemoryContextRef",
+      "kernel_contract_projection": "ContextRef",
       "coverage_status": "covered"
     },
     {
@@ -804,8 +804,8 @@
       "runtime_registered": true,
       "protocol_declared": true,
       "handler_declared": true,
-      "owner": "DeepSeekViewProvider",
-      "kernel_contract_projection": "generated-artifact-action-pending-D2A",
+      "owner": "GeneratedArtifactSurfaceController",
+      "kernel_contract_projection": "generated-artifact-action",
       "coverage_status": "covered"
     },
     {
@@ -819,8 +819,8 @@
       "runtime_registered": true,
       "protocol_declared": true,
       "handler_declared": true,
-      "owner": "DeepSeekViewProvider",
-      "kernel_contract_projection": "generated-artifact-action-pending-D2A",
+      "owner": "GeneratedArtifactSurfaceController",
+      "kernel_contract_projection": "generated-artifact-action",
       "coverage_status": "covered"
     },
     {
@@ -1119,8 +1119,8 @@
       "runtime_registered": true,
       "protocol_declared": true,
       "handler_declared": true,
-      "owner": "DeepSeekViewProvider",
-      "kernel_contract_projection": "generated-artifact-action-pending-D2A",
+      "owner": "GeneratedArtifactSurfaceController",
+      "kernel_contract_projection": "generated-artifact-action",
       "coverage_status": "covered"
     },
     {
@@ -1164,8 +1164,8 @@
       "runtime_registered": true,
       "protocol_declared": true,
       "handler_declared": true,
-      "owner": "DeepSeekViewProvider",
-      "kernel_contract_projection": "generated-artifact-action-pending-D2A",
+      "owner": "GeneratedArtifactSurfaceController",
+      "kernel_contract_projection": "generated-artifact-action",
       "coverage_status": "covered"
     },
     {
@@ -1179,8 +1179,8 @@
       "runtime_registered": true,
       "protocol_declared": true,
       "handler_declared": true,
-      "owner": "DeepSeekViewProvider",
-      "kernel_contract_projection": "generated-artifact-action-pending-D2A",
+      "owner": "GeneratedArtifactSurfaceController",
+      "kernel_contract_projection": "generated-artifact-action",
       "coverage_status": "covered"
     },
     {
@@ -1401,8 +1401,8 @@
     "cli_entrypoints": 8,
     "bridge_endpoints": 10,
     "unknown_entries": 0,
-    "declared_adapter_pending_cutover": 8,
+    "declared_adapter_pending_cutover": 0,
     "undeclared_legacy_owner_reachability": 0
   },
-  "inventory_sha256": "fbd1e7fdf270d2bc7530bb2a3d81235d6780c6d5027d86fca873448fffc094e9"
+  "inventory_sha256": "1c658cbf7298dd7f2644a7d77c82563dfe4a54c02939c3330f32694cdde86054"
 }

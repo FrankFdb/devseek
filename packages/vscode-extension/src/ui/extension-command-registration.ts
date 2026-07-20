@@ -102,7 +102,7 @@ function registerVisibleCommands(
     ['devseek.fix', async () => fixBug(commandProjector)],
     ['devseek.refactor', async () => refactorCode(commandProjector)],
     ['devseek.genTest', async () => genTest(commandProjector)],
-    ['devseek.runTests', async () => runTests(deps.terminalPermissionCoordinator)],
+    ['devseek.runTests', async () => runTests(commandProjector)],
     ['devseek.genDoc', async () => genDoc(commandProjector)],
     ['devseek.ask', async () => askQuestion(commandProjector)],
     ['devseek.generateCommit', async () => generateCommitMessage(commandProjector)],
@@ -112,9 +112,9 @@ function registerVisibleCommands(
       await vscode.commands.executeCommand('editor.action.inlineSuggest.trigger');
     }],
     ['devseek.runTerminalCommand', async () => {
-      await runTerminalCommand(deps, commandProjector);
+      await runTerminalCommand(commandProjector);
     }],
-    ['devseek.showMemoryFiles', openMemoryFile],
+    ['devseek.showMemoryFiles', async () => addMemoryFileToChat(deps.viewProvider)],
   ];
 
   for (const [id, command] of commands) {
@@ -128,10 +128,7 @@ function registerVisibleCommands(
   );
 }
 
-async function runTerminalCommand(
-  deps: ExtensionCommandRegistrationDeps,
-  commandProjector: AgentCommandSurfaceProjector,
-): Promise<void> {
+async function runTerminalCommand(commandProjector: AgentCommandSurfaceProjector): Promise<void> {
   const command = await vscode.window.showInputBox({
     prompt: '输入要执行的 Shell 命令',
     placeHolder: 'e.g. npm run build',
@@ -139,24 +136,20 @@ async function runTerminalCommand(
   if (!command) return;
 
   const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
-  const result = await deps.terminalPermissionCoordinator.runOwnedCommandWithPermission({
-    command,
-    workdir: workspaceRoot,
-    workspaceRoot,
-    mode: 'run',
-    source: 'vscode-extension.run-terminal-command',
-    userConfirmed: true,
-    presentation: 'captured',
-  });
   await commandProjector.projectToChat({
     source: 'devseek.runTerminalCommand',
     userDisplay: `> ${command}`,
-    prompt: `请分析以下命令输出并给出建议：\n\n${result.output}`,
+    prompt: [
+      '请运行以下 Shell 命令，并基于终端证据分析结果、风险和下一步建议。',
+      '',
+      `工作区：${workspaceRoot}`,
+      `命令：${command}`,
+    ].join('\n'),
     focus: true,
   });
 }
 
-async function openMemoryFile(): Promise<void> {
+async function addMemoryFileToChat(target: DeepSeekViewProvider): Promise<void> {
   const wsPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!wsPath) {
     vscode.window.showWarningMessage('DevSeek: 请先打开一个工作区');
@@ -164,8 +157,8 @@ async function openMemoryFile(): Promise<void> {
   }
 
   const memPath = new MemoryService({ workspaceRoot: wsPath }).ensureLegacyMemoryFile();
-  const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(memPath));
-  await vscode.window.showTextDocument(doc);
+  target.addToChat('memory.md', '', memPath);
+  target.focus();
 }
 
 function registerInlineChatCommand(

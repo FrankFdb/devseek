@@ -3,7 +3,6 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { buildContext, buildPrompt, buildCommitPrompt, getDiagnosticsContext } from '../context-builder';
 import type { AgentCommandSurfaceProjector } from '../app/agent-command-surface-projection';
-import type { TerminalPermissionCoordinator } from '../app/terminal-permission-coordinator';
 
 // 代码预览（最多 maxLines 行）
 function codePreview(code: string, language: string, maxLines = 15): string {
@@ -236,9 +235,9 @@ export async function applyDiff(projector: AgentCommandSurfaceProjector): Promis
 }
 
 /**
- * P3-4: 在集成终端运行检测到的测试框架命令
+ * P3-4: 将检测到的测试框架命令投影给 Agent，由 terminal authority 执行。
  */
-export async function runTests(terminalPermissionCoordinator: TerminalPermissionCoordinator): Promise<void> {
+export async function runTests(projector: AgentCommandSurfaceProjector): Promise<void> {
   const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   const editor = vscode.window.activeTextEditor;
   const language = editor ? buildContext(editor).language : 'typescript';
@@ -257,15 +256,15 @@ export async function runTests(terminalPermissionCoordinator: TerminalPermission
   });
   if (!cmd) return;
 
-  await terminalPermissionCoordinator.runOwnedCommandWithPermission({
-    command: cmd,
-    workdir: wsRoot,
-    workspaceRoot: wsRoot ?? process.cwd(),
-    mode: 'run',
-    source: 'vscode-extension.run-tests',
-    userConfirmed: true,
-    presentation: 'visible',
-    terminalName: 'DeepSeek Tests',
-    reuseTerminal: true,
-  });
+  await dispatch(
+    projector,
+    'devseek.runTests',
+    `🧪 **运行测试** · ${fw.name}\n\n\`${cmd}\``,
+    [
+      '请运行以下测试命令，并基于终端证据总结结果。',
+      '',
+      `工作区：${wsRoot ?? process.cwd()}`,
+      `测试命令：${cmd}`,
+    ].join('\n'),
+  );
 }

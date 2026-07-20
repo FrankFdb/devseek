@@ -1,7 +1,7 @@
 # DevSeek Surface Entry Inventory
 
 - inventory_id: `DEVSEEK-R1-D1A-SURFACE-ENTRY-INVENTORY/v1`
-- inventory_sha256: `fbd1e7fdf270d2bc7530bb2a3d81235d6780c6d5027d86fca873448fffc094e9`
+- inventory_sha256: `1c658cbf7298dd7f2644a7d77c82563dfe4a54c02939c3330f32694cdde86054`
 - qualification_effect: `NONE`
 - claims_permitted: `false`
 - asserts_gate_pass: `false`
@@ -23,7 +23,7 @@
 | cli_entrypoints | 8 |
 | bridge_endpoints | 10 |
 | unknown_entries | 0 |
-| declared_adapter_pending_cutover | 8 |
+| declared_adapter_pending_cutover | 0 |
 | undeclared_legacy_owner_reachability | 0 |
 
 ## Entries
@@ -68,15 +68,15 @@
 | `vscode-command/devseek.keepOrUndoActive` | vscode | command | hidden-statusbar | `packages/vscode-extension/src/pending-edit-coordinator.ts` | covered | pending-edit-action |
 | `vscode-command/devseek.openChat` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | surface-ui-action |
 | `vscode-command/devseek.refactor` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
-| `vscode-command/devseek.runTerminalCommand` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-command-adapter-pending-D2A |
-| `vscode-command/devseek.runTests` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-chat-command-adapter-pending-D2A |
-| `vscode-command/devseek.showMemoryFiles` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | declared-chat-command-adapter-pending-D2A |
+| `vscode-command/devseek.runTerminalCommand` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
+| `vscode-command/devseek.runTests` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
+| `vscode-command/devseek.showMemoryFiles` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | ContextRef |
 | `vscode-command/devseek.switchProvider` | vscode | command | public | `packages/vscode-extension/src/llm/provider-router.ts` | covered | provider-config-action |
 | `vscode-command/devseek.triggerCompletion` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | surface-ui-action |
 | `vscode-webview/agentSteer` | vscode-webview | webview-inbound-message | public | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | AgentSteer |
 | `vscode-webview/agentToggle` | vscode-webview | webview-inbound-message | public | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | typed-webview-action |
-| `vscode-webview/applyGeneratedFiles` | vscode-webview | webview-inbound-message | ui-action | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | generated-artifact-action-pending-D2A |
-| `vscode-webview/applyGeneratedPath` | vscode-webview | webview-inbound-message | ui-action | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | generated-artifact-action-pending-D2A |
+| `vscode-webview/applyGeneratedFiles` | vscode-webview | webview-inbound-message | ui-action | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | generated-artifact-action |
+| `vscode-webview/applyGeneratedPath` | vscode-webview | webview-inbound-message | ui-action | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | generated-artifact-action |
 | `vscode-webview/archiveTask` | vscode-webview | webview-inbound-message | ui-action | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | task-history-action |
 | `vscode-webview/cancel` | vscode-webview | webview-inbound-message | public | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | typed-webview-action |
 | `vscode-webview/chat` | vscode-webview | webview-inbound-message | public | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | AgentCommand/Event |
@@ -96,11 +96,11 @@
 | `vscode-webview/listSessions` | vscode-webview | webview-inbound-message | public | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | typed-webview-action |
 | `vscode-webview/listTasks` | vscode-webview | webview-inbound-message | ui-action | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | task-history-action |
 | `vscode-webview/loadSession` | vscode-webview | webview-inbound-message | public | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | typed-webview-action |
-| `vscode-webview/openGeneratedPath` | vscode-webview | webview-inbound-message | ui-action | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | generated-artifact-action-pending-D2A |
+| `vscode-webview/openGeneratedPath` | vscode-webview | webview-inbound-message | ui-action | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | generated-artifact-action |
 | `vscode-webview/openPendingEdit` | vscode-webview | webview-inbound-message | ui-action | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | pending-edit-action |
 | `vscode-webview/openTask` | vscode-webview | webview-inbound-message | ui-action | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | task-history-action |
-| `vscode-webview/previewGeneratedFiles` | vscode-webview | webview-inbound-message | ui-action | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | generated-artifact-action-pending-D2A |
-| `vscode-webview/previewGeneratedPath` | vscode-webview | webview-inbound-message | ui-action | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | generated-artifact-action-pending-D2A |
+| `vscode-webview/previewGeneratedFiles` | vscode-webview | webview-inbound-message | ui-action | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | generated-artifact-action |
+| `vscode-webview/previewGeneratedPath` | vscode-webview | webview-inbound-message | ui-action | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | generated-artifact-action |
 | `vscode-webview/ready` | vscode-webview | webview-inbound-message | ui-read | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | typed-webview-action |
 | `vscode-webview/relogin` | vscode-webview | webview-inbound-message | public | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | typed-webview-action |
 | `vscode-webview/resolveFile` | vscode-webview | webview-inbound-message | ui-read | `packages/vscode-extension/src/ui/deepseek-view-provider.ts` | covered | typed-webview-action |

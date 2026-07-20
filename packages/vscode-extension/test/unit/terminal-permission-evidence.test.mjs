@@ -168,8 +168,22 @@ test('Terminal evidence: active UI command entry points cannot bypass the owned 
     const source = readFileSync(path.join(rootDir, relativePath), 'utf8');
     assert.doesNotMatch(source, /\.sendText\s*\(/, `${relativePath} must not send ungoverned terminal text`);
     assert.doesNotMatch(source, /(?:await\s+)?runCommand\s*\(/, `${relativePath} must not call terminal tools directly`);
-    assert.match(source, /runOwnedCommandWithPermission\s*\(/, `${relativePath} must use the owned boundary`);
   }
+  assert.doesNotMatch(
+    readFileSync(path.join(rootDir, 'src/commands/index.ts'), 'utf8'),
+    /runOwnedCommandWithPermission\s*\(/,
+    'D2C command helpers must project AgentCommand instead of owning terminal effects',
+  );
+  assert.doesNotMatch(
+    readFileSync(path.join(rootDir, 'src/ui/extension-command-registration.ts'), 'utf8'),
+    /runOwnedCommandWithPermission\s*\(/,
+    'D2C command registration must not own terminal effects',
+  );
+  assert.match(
+    readFileSync(path.join(rootDir, 'src/ui/deepseek-view-provider.ts'), 'utf8'),
+    /runOwnedCommandWithPermission\s*\(/,
+    'visible webview terminal action must use the owned boundary',
+  );
 
   const localRunner = readFileSync(path.join(rootDir, 'src/local-execution-chat-runner.ts'), 'utf8');
   const localRepair = readFileSync(path.join(rootDir, 'src/local-execution-repair.ts'), 'utf8');
@@ -201,6 +215,7 @@ test('Terminal evidence: validation execution has one injected authority and no 
   const closedLoop = source('src/app/closed-loop-repair-runner.ts');
   const extension = source('src/extension.ts');
   const viewProvider = source('src/ui/deepseek-view-provider.ts');
+  const generatedArtifacts = source('src/ui/generated-artifact-surface-controller.ts');
   const localRepair = source('src/local-execution-repair.ts');
   const deterministicExecution = source('src/agent/deterministic-analyze-execution.ts');
   const executionPlanner = source('src/execution-planner.ts');
@@ -220,7 +235,8 @@ test('Terminal evidence: validation execution has one injected authority and no 
   assert.match(workspaceApplier, /commandRunner:\s*validationCommandRunner/);
   assert.match(closedLoop, /validationCommandRunner:\s*input\.validationCommandRunner/);
   assert.equal((extension.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 3);
-  assert.equal((viewProvider.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 2);
+  assert.doesNotMatch(viewProvider, /createValidationCommandRunner\s*\(\{/);
+  assert.equal((generatedArtifacts.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 2);
   assert.equal((localRepair.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 1);
 
   assert.doesNotMatch(deterministicExecution, /\brunLocalExecution\s*\(/);

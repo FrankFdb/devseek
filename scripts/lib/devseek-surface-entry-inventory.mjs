@@ -103,6 +103,8 @@ const VSCODE_AGENT_COMMAND_CUTOVER = new Set([
   'devseek.genTest',
   'devseek.inlineChat',
   'devseek.refactor',
+  'devseek.runTerminalCommand',
+  'devseek.runTests',
 ]);
 
 export function collectSurfaceEntryInventorySources(repoRoot, readText, readJson) {
@@ -327,7 +329,7 @@ function buildWebviewEntries(sources) {
       runtime_registered: true,
       protocol_declared: protocolDeclared,
       handler_declared: handlerDeclared,
-      owner: 'DeepSeekViewProvider',
+      owner: webviewOwner(type),
       kernel_contract_projection: webviewProjection(type),
       coverage_status: !known
         ? 'unknown-entry'
@@ -631,6 +633,7 @@ function commandOwner(commandId) {
   if (commandId.startsWith('_devseek.diff') || commandId === 'devseek.keepOrUndoActive') return 'PendingEditCoordinator';
   if (commandId === 'devseek.switchProvider') return 'ProviderStatusBar';
   if (commandId === 'devseek.addFileToChat') return 'AttachmentContextRef';
+  if (commandId === 'devseek.showMemoryFiles') return 'MemoryContextRef';
   if (commandId === 'devseek.inlineChat') return 'InlineChatCommand';
   if (commandId === 'devseek.openChat') return 'ChatViewSurface';
   if (commandId === '_deepseek.askChat') return 'ChatRelayCommand';
@@ -642,10 +645,10 @@ function commandProjection(commandId) {
   if (commandId.startsWith('_devseek.diff') || commandId === 'devseek.keepOrUndoActive') return 'pending-edit-action';
   if (commandId === '_deepseek.askChat') return 'chat-relay-internal';
   if (VSCODE_AGENT_COMMAND_CUTOVER.has(commandId)) return 'AgentCommand/Event';
-  if (commandId === 'devseek.addFileToChat') return 'ContextRef';
+  if (commandId === 'devseek.addFileToChat' || commandId === 'devseek.showMemoryFiles') return 'ContextRef';
   if (commandId === 'devseek.openChat' || commandId === 'devseek.triggerCompletion') return 'surface-ui-action';
   if (commandId === 'devseek.switchProvider') return 'provider-config-action';
-  if (commandId === 'devseek.generateCommit' || commandId === 'devseek.applyDiff' || commandId === 'devseek.runTerminalCommand') {
+  if (commandId === 'devseek.generateCommit' || commandId === 'devseek.applyDiff') {
     return 'declared-command-adapter-pending-D2A';
   }
   if (commandId.startsWith('devseek.')) return 'declared-chat-command-adapter-pending-D2A';
@@ -674,10 +677,15 @@ function webviewProjection(type) {
   if (type === 'agentSteer') return 'AgentSteer';
   if (type === 'runCommand') return 'disabled-generic-command';
   if (type.includes('Pending')) return 'pending-edit-action';
-  if (type.includes('Generated')) return 'generated-artifact-action-pending-D2A';
+  if (type.includes('Generated')) return 'generated-artifact-action';
   if (['listTasks', 'openTask', 'continueTask', 'archiveTask', 'deleteTask', 'exportTask'].includes(type)) return 'task-history-action';
   if (['resumeAgentCheckpoint', 'dismissAgentCheckpoint'].includes(type)) return 'checkpoint-action';
   return 'typed-webview-action';
+}
+
+function webviewOwner(type) {
+  if (type.includes('Generated')) return 'GeneratedArtifactSurfaceController';
+  return 'DeepSeekViewProvider';
 }
 
 function sha256Text(text) {

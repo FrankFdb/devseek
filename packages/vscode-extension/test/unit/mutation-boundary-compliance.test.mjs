@@ -147,6 +147,7 @@ test('Mutation guard: durable settlement controls every completed success projec
   const commands = source('src/commands/index.ts');
   const commandRegistration = source('src/ui/extension-command-registration.ts');
   const viewProvider = source('src/ui/deepseek-view-provider.ts');
+  const generatedArtifacts = source('src/ui/generated-artifact-surface-controller.ts');
   const agentKernel = source('src/app/agent-kernel-service.ts');
   const agentSettlement = source('src/app/agent-run-settlement.ts');
   const evidenceRouter = source('src/app/evidence-aware-chat-router.ts');
@@ -190,8 +191,9 @@ test('Mutation guard: durable settlement controls every completed success projec
   assert.match(commandRegistration, /applyDiff\(commandProjector\)/);
   assert.doesNotMatch(commandRegistration, /applyInlineChatResult|inline-chat-editor-edit|editor\.edit\s*\(/);
   assert.match(pendingEdit, /settleRunContextDirect\(runContext, 'completed', \{ mutationKind: 'pending-edit-undo' \}\)\.completed/);
-  assert.equal((viewProvider.match(/const settlementStatus = this\.deps\.terminalPermissionCoordinator\.completeRunContext/g) ?? []).length, 2);
-  assert.equal((viewProvider.match(/requestedStatus === 'completed' && settlementStatus !== 'completed'/g) ?? []).length, 2);
+  assert.doesNotMatch(viewProvider, /completeRunContext\(runContext/);
+  assert.equal((generatedArtifacts.match(/const settlementStatus = this\.deps\.terminalPermissionCoordinator\.completeRunContext\(runContext/g) ?? []).length, 2);
+  assert.equal((generatedArtifacts.match(/requestedStatus === 'completed' && settlementStatus !== 'completed'/g) ?? []).length, 2);
 
   const directRunCompletionOwners = sources
     .filter(file => /\b[A-Za-z_$][\w$]*Context\??\.complete\s*\(/.test(file.source))

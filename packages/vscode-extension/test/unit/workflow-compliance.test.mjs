@@ -279,6 +279,7 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
   const extension = src('src/extension.ts');
   const closedLoopRunner = src('src/app/closed-loop-repair-runner.ts');
   const viewProvider = src('src/ui/deepseek-view-provider.ts');
+  const generatedArtifacts = src('src/ui/generated-artifact-surface-controller.ts');
   const discovery = src('src/app/context-discovery-service.ts');
   assert.match(
     extension,
@@ -286,9 +287,14 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
     'automatic code-generation apply must keep failed files so runClosedLoopRepair can iterate',
   );
   assert.match(
-    viewProvider,
+    generatedArtifacts,
     /applyGeneratedArtifactsWithPrompt\([\s\S]*?\{ rollbackOnValidationFailure: false, validationCommandRunner \}/,
     'webview apply must keep validation-failed files for pending edit review',
+  );
+  assert.doesNotMatch(
+    viewProvider,
+    /applyGeneratedArtifactsWithPrompt/,
+    'webview provider must dispatch generated artifact apply instead of owning it',
   );
   assert.match(
     closedLoopRunner,
@@ -317,7 +323,8 @@ test('§8.3 File edits: closed-loop validation failure keeps files for repair', 
 test('§8.3 File edits: blocked QualityGate does not enter closed-loop repair', () => {
   const extension = src('src/extension.ts');
   const viewProvider = src('src/ui/deepseek-view-provider.ts');
-  const repairCallSites = `${extension}\n${viewProvider}`;
+  const generatedArtifacts = src('src/ui/generated-artifact-surface-controller.ts');
+  const repairCallSites = `${extension}\n${generatedArtifacts}`;
   const repairService = src('src/app/agentic-repair-service.ts');
   const repairPolicy = src('src/app/bounded-repair-policy.ts');
   assertContains(repairService, 'function shouldRunClosedLoopRepair', 'closed-loop repair must have an explicit app-service gate');
@@ -327,6 +334,7 @@ test('§8.3 File edits: blocked QualityGate does not enter closed-loop repair', 
   assertContains(repairPolicy, "qualityGate?.status === 'blocked'", 'QualityGate blocked must stop automatic repair');
   assert.doesNotMatch(extension, /function shouldRunClosedLoopRepair\(/, 'extension must not own closed-loop repair gate logic');
   assert.doesNotMatch(viewProvider, /function shouldRunClosedLoopRepair\(/, 'view provider must not own closed-loop repair gate logic');
+  assert.doesNotMatch(viewProvider, /shouldRunClosedLoopRepair\(finalResult\)/, 'view provider must dispatch generated artifact repair gates');
   assert.match(
     repairCallSites,
     /if \(shouldRunClosedLoopRepair\(finalResult\)\)/,

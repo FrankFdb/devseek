@@ -106,3 +106,65 @@ test('R1-D2A VS Code code commands do not own provider or editor mutation runtim
   assert.match(registration, /generateCommitMessage\(commandProjector\)/);
   assert.match(registration, /applyDiff\(commandProjector\)/);
 });
+
+test('R1-D2C auxiliary VS Code commands only form AgentCommand or ContextRef', () => {
+  const commands = source('src/commands/index.ts');
+  const registration = source('src/ui/extension-command-registration.ts');
+
+  assert.match(
+    commands,
+    /export async function runTests\(projector: AgentCommandSurfaceProjector\)/,
+    'runTests must project an AgentCommand instead of owning terminal execution',
+  );
+  assert.doesNotMatch(
+    commands,
+    /runOwnedCommandWithPermission\s*\(/,
+    'command helper implementations must not execute terminal effects directly',
+  );
+  assert.doesNotMatch(
+    registration,
+    /terminalPermissionCoordinator\.runOwnedCommandWithPermission\s*\(/,
+    'registered VS Code command paths must not execute terminal effects directly',
+  );
+  assert.match(registration, /runTests\(commandProjector\)/);
+  assert.match(registration, /runTerminalCommand\(commandProjector\)/);
+  assert.doesNotMatch(
+    registration,
+    /showTextDocument\s*\(/,
+    'showMemoryFiles must form a memory ContextRef instead of opening files as its own UI owner',
+  );
+  assert.match(registration, /addMemoryFileToChat\(deps\.viewProvider\)/);
+});
+
+test('R1-D2C generated artifact webview actions dispatch to one surface owner', () => {
+  const viewProvider = source('src/ui/deepseek-view-provider.ts');
+  const controller = source('src/ui/generated-artifact-surface-controller.ts');
+
+  assert.match(viewProvider, /new GeneratedArtifactSurfaceController\(/);
+  for (const [messageType, handler] of [
+    ['previewGeneratedFiles', 'previewFiles'],
+    ['applyGeneratedFiles', 'applyFiles'],
+    ['openGeneratedPath', 'openPath'],
+    ['previewGeneratedPath', 'previewPath'],
+    ['applyGeneratedPath', 'applyPath'],
+  ]) {
+    assert.match(
+      viewProvider,
+      new RegExp(`case '${messageType}':[\\s\\S]*?this\\.generatedArtifactActions\\.${handler}\\(`),
+      `${messageType} must dispatch to the generated artifact surface owner`,
+    );
+  }
+  assert.doesNotMatch(
+    viewProvider,
+    /previewGeneratedArtifactsWithPrompt|applyGeneratedArtifactsWithPrompt|openWorkspacePathInEditor|recoverApplyFailureIfPossible|runClosedLoopRepair/,
+    'webview provider must not own generated artifact preview/apply/recovery runtime',
+  );
+  assert.doesNotMatch(
+    viewProvider,
+    /private async handleApplyGenerated/,
+    'webview provider must not keep generated artifact apply handlers after D2C cutover',
+  );
+  assert.match(controller, /export class GeneratedArtifactSurfaceController/);
+  assert.match(controller, /applyGeneratedArtifactsWithPrompt/);
+  assert.match(controller, /completeRunContext\(runContext/);
+});
