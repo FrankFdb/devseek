@@ -1308,6 +1308,17 @@ test('R2-01B: IntentRevisionLineage owns cross-turn correction and committed-eff
   assertDoesNotContain(lineage, "status = 'committed'", 'revision lineage must not mutate effect receipts');
 });
 
+test('R2-01C: ClarificationRisk owns high-impact questions and contract merge', () => {
+  const clarification = src('src/intent/clarification-risk.ts');
+  assertContains(clarification, "version: 'devseek.clarification-risk/v1'", 'clarification risk must expose a versioned contract');
+  assertContains(clarification, 'buildIntentRevisionLineage({', 'clarification risk must consume IntentRevisionLineage');
+  assertContains(clarification, 'clarification-answer-required', 'unanswered high-impact ambiguity must block execution');
+  assertContains(clarification, 'low-risk-clarification-skipped', 'low-risk tasks must not ask redundant questions');
+  assertContains(clarification, 'clarification-answer-merged', 'answers must be merged before execution');
+  assertContains(clarification, 'task-contract-merged', 'merged answers must produce the effective TaskContract');
+  assertDoesNotContain(clarification, 'routeTaskIntent(', 'clarification risk must not bypass lineage with a second route owner');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');
