@@ -7,12 +7,25 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(__dirname, '../../');
+const bundlePath = path.join(extensionRoot, 'test/unit/judgment-owners.bundle.cjs');
+
+execSync(
+  `npx esbuild src/app/judgment-owners.ts --bundle --outfile=${bundlePath} --format=cjs --platform=node`,
+  { cwd: extensionRoot, stdio: 'pipe' },
+);
+
+const {
+  ARCHITECTURE_DECISION_PROTOCOL_VERSION,
+  validateArchitectureDecisionLifecycle,
+} = createRequire(import.meta.url)(bundlePath);
 
 function readExtensionFile(relPath) {
   return readFileSync(path.join(extensionRoot, relPath), 'utf8');
@@ -62,6 +75,7 @@ function decisionFilesContaining(pattern) {
 test('ARCH-16 owner registry covers every duplicate-judgment domain', () => {
   const registry = readExtensionFile('src/app/judgment-owners.ts');
   const required = [
+    ['architecture-decision', 'src/app/judgment-owners.ts'],
     ['tool-protocol', 'src/agent/tool-registry.ts'],
     ['response-integrity', 'src/llm/providers/web-reliability.ts'],
     ['execution-outcome', 'src/execution-outcome-classifier.ts'],
@@ -86,6 +100,54 @@ test('ARCH-16 owner registry covers every duplicate-judgment domain', () => {
 test('ARCH-16 app boundary exports the duplicate-judgment owner registry', () => {
   const appIndex = readExtensionFile('src/app/index.ts');
   assert.ok(appIndex.includes("export * from './judgment-owners';"));
+});
+
+test('R2-05A architecture decisions require owner, lifecycle, failure model, ports, and non-goals', () => {
+  const report = validateArchitectureDecisionLifecycle({
+    id: 'adr-r2-05a',
+    ownerModule: 'src/app/judgment-owners.ts',
+    state: 'accepted',
+    failureModes: ['parallel-owner', 'surface-business-rule', 'dual-write-owner'],
+    ports: ['DesignAuthority->ImplementationPlanner'],
+    nonGoals: ['Surface-owned business rules'],
+    ownerClaims: [{ domain: 'task-state', ownerModule: 'src/agent/task-state-machine.ts' }],
+    writeEffects: [{ target: 'architecture-decision-record', ownerModule: 'src/app/judgment-owners.ts' }],
+  });
+
+  assert.equal(report.version, ARCHITECTURE_DECISION_PROTOCOL_VERSION);
+  assert.equal(report.decision, 'allow');
+  assert.deepEqual(report.reasons, []);
+  assert.equal(report.ownerModule, 'src/app/judgment-owners.ts');
+  assert.equal(report.state, 'accepted');
+});
+
+test('R2-05A architecture decisions veto parallel owners, Surface rules, and dual writes', () => {
+  const report = validateArchitectureDecisionLifecycle({
+    id: 'adr-r2-05a-bad',
+    ownerModule: '',
+    state: 'accepted',
+    failureModes: [],
+    ports: [],
+    nonGoals: [],
+    ownerClaims: [
+      { domain: 'task-state', ownerModule: 'src/agent/task-state-machine.ts' },
+      { domain: 'task-state', ownerModule: 'src/agent/agentic-loop.ts' },
+    ],
+    surfaceBusinessRules: ['extension.ts decides task completion'],
+    writeEffects: [
+      { target: 'task-settlement', ownerModule: 'src/app/agent-run-settlement.ts' },
+      { target: 'task-settlement', ownerModule: 'src/extension.ts' },
+    ],
+  });
+
+  assert.equal(report.decision, 'blocked');
+  assert.ok(report.reasons.includes('missing-owner'));
+  assert.ok(report.reasons.includes('missing-failure-model'));
+  assert.ok(report.reasons.includes('missing-port'));
+  assert.ok(report.reasons.includes('missing-non-goal'));
+  assert.ok(report.reasons.includes('parallel-owner'));
+  assert.ok(report.reasons.includes('surface-business-rule'));
+  assert.ok(report.reasons.includes('dual-write-owner'));
 });
 
 test('ARCH-16 tool alias search_content is owned by ToolRegistry and generated manifest only', () => {

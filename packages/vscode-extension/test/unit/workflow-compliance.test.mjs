@@ -1445,6 +1445,21 @@ test('R2-04C: Evidence grounding owns external doc, MCP, and network source grou
   assertContains(evidenceGrounding, "privilegeEffect: 'none'", 'external grounding must not promote external content into local authority');
 });
 
+test('R2-05A: Judgment owners own Architecture Decision lifecycle governance', () => {
+  const owners = src('src/app/judgment-owners.ts');
+
+  assertContains(owners, "ARCHITECTURE_DECISION_PROTOCOL_VERSION = 'devseek.architecture-decision/v1'", 'architecture decisions must expose a versioned contract');
+  assertContains(owners, 'validateArchitectureDecisionLifecycle', 'architecture decision lifecycle must have one validator owner');
+  assertContains(owners, 'ArchitectureDecisionState', 'ADR lifecycle state must be typed');
+  assertContains(owners, 'failureModes', 'ADR must carry a failure model');
+  assertContains(owners, 'ports', 'ADR must declare affected ports');
+  assertContains(owners, 'nonGoals', 'ADR must declare non-goals');
+  assertContains(owners, "'parallel-owner'", 'parallel owners must veto architecture decisions');
+  assertContains(owners, "'surface-business-rule'", 'Surface-owned business rules must veto architecture decisions');
+  assertContains(owners, "'dual-write-owner'", 'dual write owners must veto architecture decisions');
+  assertContains(owners, "id: 'architecture-decision'", 'architecture decision governance must be registered as an owner domain');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');

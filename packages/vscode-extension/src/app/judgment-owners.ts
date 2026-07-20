@@ -1,5 +1,5 @@
 /**
- * ARCH-16 duplicate-judgment governance inventory.
+ * ARCH-16 duplicate-judgment and architecture-decision governance inventory.
  *
  * This module is intentionally data-only. It documents the single owner for
  * each high-risk decision class so fixes do not add a second interpretation in
@@ -23,7 +23,77 @@ export interface JudgmentOwnerRecord {
   guardedTerms: string[];
 }
 
+export const ARCHITECTURE_DECISION_PROTOCOL_VERSION = 'devseek.architecture-decision/v1';
+
+export type ArchitectureDecisionState = 'proposed' | 'accepted' | 'superseded' | 'rejected';
+export type ArchitectureDecisionLifecycleDecision = 'allow' | 'blocked';
+export type ArchitectureDecisionLifecycleReason =
+  | 'missing-owner'
+  | 'missing-lifecycle-state'
+  | 'missing-failure-model'
+  | 'missing-port'
+  | 'missing-non-goal'
+  | 'parallel-owner'
+  | 'surface-business-rule'
+  | 'dual-write-owner';
+
+export interface ArchitectureDecisionOwnerClaim {
+  domain: string;
+  ownerModule: string;
+}
+
+export interface ArchitectureDecisionWriteEffect {
+  target: string;
+  ownerModule: string;
+}
+
+export interface ArchitectureDecisionLifecycleInput {
+  id: string;
+  ownerModule?: string;
+  state?: ArchitectureDecisionState;
+  failureModes?: string[];
+  ports?: string[];
+  nonGoals?: string[];
+  ownerClaims?: ArchitectureDecisionOwnerClaim[];
+  surfaceBusinessRules?: string[];
+  writeEffects?: ArchitectureDecisionWriteEffect[];
+}
+
+export interface ArchitectureDecisionLifecycleReport {
+  version: typeof ARCHITECTURE_DECISION_PROTOCOL_VERSION;
+  id: string;
+  decision: ArchitectureDecisionLifecycleDecision;
+  reasons: ArchitectureDecisionLifecycleReason[];
+  ownerModule: string;
+  state?: ArchitectureDecisionState;
+  failureModes: string[];
+  ports: string[];
+  nonGoals: string[];
+  ownerClaims: ArchitectureDecisionOwnerClaim[];
+  surfaceBusinessRules: string[];
+  writeEffects: ArchitectureDecisionWriteEffect[];
+}
+
 export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
+  {
+    id: 'architecture-decision',
+    phase: 2,
+    ownerModule: 'src/app/judgment-owners.ts',
+    status: 'owner-established',
+    canonicalSymbols: [
+      'ARCHITECTURE_DECISION_PROTOCOL_VERSION',
+      'ArchitectureDecisionState',
+      'validateArchitectureDecisionLifecycle',
+    ],
+    supportingModules: [
+      'src/app/index.ts',
+    ],
+    contractTests: [
+      'test/unit/duplicate-judgment-governance.test.mjs',
+      'test/unit/workflow-compliance.test.mjs',
+    ],
+    guardedTerms: ['parallel-owner', 'surface-business-rule', 'dual-write-owner'],
+  },
   {
     id: 'tool-protocol',
     phase: 1,
@@ -300,4 +370,97 @@ export function listJudgmentOwnerRecords(): readonly JudgmentOwnerRecord[] {
 
 export function findJudgmentOwnerRecord(id: string): JudgmentOwnerRecord | undefined {
   return JUDGMENT_OWNER_RECORDS.find(record => record.id === id);
+}
+
+export function validateArchitectureDecisionLifecycle(
+  input: ArchitectureDecisionLifecycleInput,
+): ArchitectureDecisionLifecycleReport {
+  const reasons = new Set<ArchitectureDecisionLifecycleReason>();
+  const ownerModule = normalizeDecisionText(input.ownerModule);
+  const state = normalizeArchitectureDecisionState(input.state);
+  const failureModes = normalizeDecisionTextList(input.failureModes);
+  const ports = normalizeDecisionTextList(input.ports);
+  const nonGoals = normalizeDecisionTextList(input.nonGoals);
+  const ownerClaims = normalizeOwnerClaims(input.ownerClaims);
+  const surfaceBusinessRules = normalizeDecisionTextList(input.surfaceBusinessRules);
+  const writeEffects = normalizeWriteEffects(input.writeEffects);
+
+  if (!ownerModule) reasons.add('missing-owner');
+  if (!state) reasons.add('missing-lifecycle-state');
+  if (failureModes.length === 0) reasons.add('missing-failure-model');
+  if (ports.length === 0) reasons.add('missing-port');
+  if (nonGoals.length === 0) reasons.add('missing-non-goal');
+  if (hasParallelOwner(ownerClaims)) reasons.add('parallel-owner');
+  if (surfaceBusinessRules.length > 0) reasons.add('surface-business-rule');
+  if (hasDualWriteOwner(writeEffects)) reasons.add('dual-write-owner');
+
+  return {
+    version: ARCHITECTURE_DECISION_PROTOCOL_VERSION,
+    id: normalizeDecisionText(input.id),
+    decision: reasons.size === 0 ? 'allow' : 'blocked',
+    reasons: [...reasons],
+    ownerModule,
+    state,
+    failureModes,
+    ports,
+    nonGoals,
+    ownerClaims,
+    surfaceBusinessRules,
+    writeEffects,
+  };
+}
+
+function normalizeDecisionText(value: string | undefined): string {
+  return String(value || '').trim();
+}
+
+function normalizeDecisionTextList(values: readonly string[] | undefined): string[] {
+  return [...new Set((values || []).map(value => normalizeDecisionText(value)).filter(Boolean))];
+}
+
+function normalizeOwnerClaims(
+  values: readonly ArchitectureDecisionOwnerClaim[] | undefined,
+): ArchitectureDecisionOwnerClaim[] {
+  return (values || []).map(value => ({
+    domain: normalizeDecisionText(value.domain),
+    ownerModule: normalizeDecisionText(value.ownerModule),
+  })).filter(value => value.domain && value.ownerModule);
+}
+
+function normalizeWriteEffects(
+  values: readonly ArchitectureDecisionWriteEffect[] | undefined,
+): ArchitectureDecisionWriteEffect[] {
+  return (values || []).map(value => ({
+    target: normalizeDecisionText(value.target),
+    ownerModule: normalizeDecisionText(value.ownerModule),
+  })).filter(value => value.target && value.ownerModule);
+}
+
+function normalizeArchitectureDecisionState(
+  state: ArchitectureDecisionState | undefined,
+): ArchitectureDecisionState | undefined {
+  return ['proposed', 'accepted', 'superseded', 'rejected'].includes(String(state))
+    ? state
+    : undefined;
+}
+
+function hasParallelOwner(claims: readonly ArchitectureDecisionOwnerClaim[]): boolean {
+  const ownersByDomain = new Map<string, Set<string>>();
+  for (const claim of claims) {
+    if (!ownersByDomain.has(claim.domain)) ownersByDomain.set(claim.domain, new Set());
+    ownersByDomain.get(claim.domain)!.add(claim.ownerModule);
+
+    const canonicalOwner = findJudgmentOwnerRecord(claim.domain)?.ownerModule;
+    if (canonicalOwner && canonicalOwner !== claim.ownerModule) return true;
+  }
+  return [...ownersByDomain.values()].some(owners => owners.size > 1);
+}
+
+function hasDualWriteOwner(effects: readonly ArchitectureDecisionWriteEffect[]): boolean {
+  const ownersByTarget = new Map<string, Set<string>>();
+  for (const effect of effects) {
+    if (!ownersByTarget.has(effect.target)) ownersByTarget.set(effect.target, new Set());
+    ownersByTarget.get(effect.target)!.add(effect.ownerModule);
+  }
+  return [...ownersByTarget.values()].some(owners => owners.size > 1);
 }

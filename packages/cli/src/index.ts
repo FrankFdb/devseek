@@ -174,6 +174,9 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
     } catch (flushError) {
       terminalError = flushError;
     }
+    if (cancellation.cancelled && !options.mock) {
+      await waitForCliBridgeProviderTerminals(evidence);
+    }
     settleCliEvidence(evidence, runId, cancellation.cancelled ? 'cancelled' : 'failed');
     console.error(`DevSeek CLI error: ${formatCliError(terminalError)}`);
     return cancellation.cancelled ? cancellation.exitCode : 1;
@@ -342,6 +345,42 @@ function assertCliBridgeEvidenceComplete(
   } catch (error) {
     markCliEvidenceDegraded(evidence, error);
   }
+}
+
+async function waitForCliBridgeProviderTerminals(
+  evidence: CliEvidenceContext,
+  timeoutMs = 500,
+): Promise<void> {
+  if (!evidence.session) return;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    try {
+      if (findPendingCliBridgeProviderOperations(evidence).length === 0) return;
+    } catch (error) {
+      markCliEvidenceDegraded(evidence, error);
+      return;
+    }
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+}
+
+function findPendingCliBridgeProviderOperations(evidence: CliEvidenceContext): string[] {
+  if (!evidence.session) return [];
+  const states = new Map<string, { requested: boolean; terminal: boolean }>();
+  for (const event of evidence.session.readEvents()) {
+    if (!event.type.startsWith('provider.')) continue;
+    if (!event.payload || typeof event.payload !== 'object' || Array.isArray(event.payload)) continue;
+    if (event.payload.boundary !== 'bridge-server') continue;
+    const operationId = String(event.payload.operation_id || '').trim();
+    if (!operationId) continue;
+    const state = states.get(operationId) ?? { requested: false, terminal: false };
+    if (event.type === 'provider.requested') state.requested = true;
+    if (event.type === 'provider.completed' || event.type === 'provider.failed') state.terminal = true;
+    states.set(operationId, state);
+  }
+  return [...states.entries()]
+    .filter(([, state]) => state.requested && !state.terminal)
+    .map(([operationId]) => operationId);
 }
 
 function settleCliEvidence(
