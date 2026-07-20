@@ -493,7 +493,7 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
       wv.postMessage({
         type: 'statusUpdate',
         online: bridgeStatus !== null,
-        loggedIn: bridgeStatus?.browserReady ?? false,
+        loggedIn: bridgeStatus?.loggedInLikely ?? false,
         providerMode: 'bridge',
       });
     } catch {

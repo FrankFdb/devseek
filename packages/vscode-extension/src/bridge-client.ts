@@ -33,6 +33,24 @@ interface BridgeStatusResponse extends DevSeekRuntimeBuildInfo {
   idle: boolean;
   queueLength: number;
   browserReady: boolean;
+  loggedInLikely: boolean;
+  reason?: string;
+  pageKind?: string;
+  session?: {
+    hasBrowser: boolean;
+    hasContext: boolean;
+    hasPage: boolean;
+    browserConnected?: boolean;
+    pageClosed?: boolean;
+    url?: string;
+  };
+  domFingerprint?: {
+    protocolVersion: string;
+    pageKind: string;
+    selectorCounts: Record<string, number>;
+    missingRequired: string[];
+    evidenceRefs: string[];
+  };
 }
 
 export function setBridgeExtensionRoot(fsPath: string): void {

@@ -11,7 +11,7 @@ import { extractDeepSeekResponse, isLoginUrl } from './response-extractor';
 import { getStorageStatePath, loadCookies, saveCookies } from './session';
 import { BrowserSession } from './browser-session';
 import { ConversationDriver } from './conversation-driver';
-import { checkBridgeHealth } from './bridge-health-check';
+import { checkBridgeHealth, type BridgeHealth } from './bridge-health-check';
 import {
   clickContinueGenerationButton,
   CONTINUE_GENERATION_APPEAR_WAIT_MS,
@@ -222,6 +222,14 @@ export class DeepSeekAgent {
     console.log('[agent] Already logged in.');
   }
 
+  async getHealth(): Promise<BridgeHealth> {
+    const session = this.browserSession.snapshot();
+    if (!session.hasPage) return checkBridgeHealth(session);
+    try { return checkBridgeHealth(session, await this.conversationDriver.captureSnapshot(this.requirePage())); } catch {
+      return checkBridgeHealth(session, { assistantMessages: [], loggedInIndicatorCount: 0, selectorCounts: {}, url: session.url });
+    }
+  }
+
   /** 打开可见浏览器让用户手动登录，登录成功后保存 cookie 并关闭浏览器 */
   async loginWithVisibleBrowser(): Promise<void> {
     await this.close();
@@ -235,16 +243,9 @@ export class DeepSeekAgent {
     let confirmed = false;
     while (Date.now() < deadline) {
       await page.waitForTimeout(1000);
-      const url = page.url();
-      // 如果在登录页，继续等待
-      if (isLoginUrl(url)) continue;
-      // 检测聊天输入框（登录后才有）
-      const chatInput = await findElement(page, SELECTORS.chatInput);
-      if (!chatInput) continue;
-      // 多等 2 秒确认页面稳定且 Cookie 已全部写入
+      if (!(await this.getHealth()).loggedInLikely) continue;
       await page.waitForTimeout(2000);
-      // 再次检查 URL 没有跳转
-      if (isLoginUrl(page.url())) continue;
+      if (!(await this.getHealth()).loggedInLikely) continue;
       confirmed = true;
       break;
     }
@@ -256,7 +257,6 @@ export class DeepSeekAgent {
 
     if (this.context) await saveCookies(this.context);
     console.log('[agent] Login successful, cookies saved. Keeping browser open for chat use.');
-    // 不关闭浏览器！保持 session 存活用于后续聊天
     if (process.env.DEVSEEK_BRIDGE_KEEP_VISIBLE === '1') {
       console.log('[agent] Keeping visible browser window open for live harness observation.');
     } else {
@@ -330,11 +330,11 @@ export class DeepSeekAgent {
       await page.waitForTimeout(3000);
     }
     const snapshot = await this.conversationDriver.captureSnapshot(page);
-    const health = checkBridgeHealth(this.browserSession.snapshot(), snapshot.loggedInIndicatorCount);
+    const health = checkBridgeHealth(this.browserSession.snapshot(), snapshot);
     const url = snapshot.url || page.url();
     console.log('[agent] checkLoginState URL:', url);
-    if (!health.browserReady || isLoginUrl(url)) {
-      console.log('[agent] Detected login redirect, not logged in.');
+    if (!health.loggedInLikely) {
+      console.log('[agent] DeepSeek connector health failed:', health.reason);
       return false;
     }
     try {

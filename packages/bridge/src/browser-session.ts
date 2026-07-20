@@ -4,6 +4,8 @@ export interface BrowserSessionSnapshot {
   hasBrowser: boolean;
   hasContext: boolean;
   hasPage: boolean;
+  browserConnected?: boolean;
+  pageClosed?: boolean;
   url?: string;
 }
 
@@ -21,12 +23,17 @@ export class BrowserSession {
   }
 
   snapshot(): BrowserSessionSnapshot {
+    const browser = this.getBrowser();
+    const context = this.getContext();
     const page = this.getPage();
+    const pageClosed = page?.isClosed() ?? false;
     return {
-      hasBrowser: Boolean(this.getBrowser()),
-      hasContext: Boolean(this.getContext()),
-      hasPage: Boolean(page),
-      url: page?.url(),
+      hasBrowser: Boolean(browser),
+      hasContext: Boolean(context),
+      hasPage: Boolean(page) && !pageClosed,
+      browserConnected: browser?.isConnected() ?? Boolean(browser),
+      pageClosed,
+      url: page && !pageClosed ? page.url() : undefined,
     };
   }
 }

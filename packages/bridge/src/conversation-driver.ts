@@ -6,6 +6,13 @@ import {
   extractDeepSeekResponse,
 } from './response-extractor';
 
+const FINGERPRINT_SELECTOR_GROUPS = [
+  'loggedInIndicator',
+  'chatInput',
+  'sendButton',
+  'assistantMessage',
+] as const;
+
 export class ConversationDriver {
   constructor(private readonly selectors = DEEPSEEK_DOM_SELECTORS) {}
 
@@ -15,10 +22,12 @@ export class ConversationDriver {
 
   async captureSnapshot(page: Page): Promise<DeepSeekResponseSnapshot> {
     const assistantMessages = await collectTexts(page, this.selectors.assistantMessage);
-    const loggedInIndicatorCount = await countAny(page, this.selectors.loggedInIndicator);
+    const selectorCounts = await countSelectorGroups(page, this.selectors, FINGERPRINT_SELECTOR_GROUPS);
+    const loggedInIndicatorCount = selectorCounts.loggedInIndicator ?? 0;
     return {
       assistantMessages,
       loggedInIndicatorCount,
+      selectorCounts,
       url: page.url(),
     };
   }
@@ -47,4 +56,16 @@ async function countAny(page: Page, selectors: readonly string[]): Promise<numbe
     }
   }
   return 0;
+}
+
+async function countSelectorGroups(
+  page: Page,
+  selectors: typeof DEEPSEEK_DOM_SELECTORS,
+  groups: readonly (keyof typeof DEEPSEEK_DOM_SELECTORS)[],
+): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  for (const group of groups) {
+    counts[group] = await countAny(page, selectors[group]);
+  }
+  return counts;
 }

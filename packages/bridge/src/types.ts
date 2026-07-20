@@ -1,4 +1,6 @@
 // bridge 本地类型定义（与 packages/shared/src/index.ts 保持同步）
+import type { BrowserSessionSnapshot } from './browser-session';
+import type { DeepSeekDomFingerprint, DeepSeekPageKind } from './bridge-health-check';
 
 export interface ChatRequest {
   prompt: string;
@@ -31,6 +33,11 @@ export interface StatusResponse {
   idle: boolean;
   queueLength: number;
   browserReady: boolean;
+  loggedInLikely: boolean;
+  reason?: string;
+  pageKind?: DeepSeekPageKind;
+  session?: BrowserSessionSnapshot;
+  domFingerprint?: DeepSeekDomFingerprint;
   appVersion?: string;
   buildChannel?: string;
   buildId?: string;

@@ -20,7 +20,10 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { checkBridgeHealth } = req(bundlePath);
+const {
+  checkBridgeHealth,
+  DEEPSEEK_WEB_CONNECTOR_HEALTH_PROTOCOL_VERSION,
+} = req(bundlePath);
 
 test('BridgeHealthCheck: not ready without browser session', () => {
   const health = checkBridgeHealth({ hasBrowser: false, hasContext: false, hasPage: false }, 0);
@@ -41,6 +44,56 @@ test('BridgeHealthCheck: reports logged-in indicator', () => {
   assert.equal(health.browserReady, true);
   assert.equal(health.loggedInLikely, true);
   assert.equal(health.reason, 'logged-in-indicator-present');
+});
+
+test('BridgeHealthCheck: reports versioned DOM fingerprint for a ready chat page', () => {
+  const health = checkBridgeHealth(
+    { hasBrowser: true, hasContext: true, hasPage: true, url: 'https://chat.deepseek.com/' },
+    {
+      url: 'https://chat.deepseek.com/',
+      loggedInIndicatorCount: 1,
+      selectorCounts: {
+        loggedInIndicator: 1,
+        chatInput: 1,
+        sendButton: 1,
+        assistantMessage: 2,
+      },
+    },
+  );
+
+  assert.equal(health.protocolVersion, DEEPSEEK_WEB_CONNECTOR_HEALTH_PROTOCOL_VERSION);
+  assert.equal(health.browserReady, true);
+  assert.equal(health.loggedInLikely, true);
+  assert.equal(health.reason, 'deepseek-dom-ready');
+  assert.equal(health.pageKind, 'chat');
+  assert.deepEqual(health.domFingerprint.missingRequired, []);
+  assert.equal(health.domFingerprint.selectorCounts.chatInput, 1);
+  assert.equal(health.domFingerprint.selectorCounts.sendButton, 1);
+  assert.equal('rawText' in health.domFingerprint, false);
+});
+
+test('BridgeHealthCheck: fails closed with diagnostic DOM fingerprint when chat page drifts', () => {
+  const health = checkBridgeHealth(
+    { hasBrowser: true, hasContext: true, hasPage: true, url: 'https://chat.deepseek.com/' },
+    {
+      url: 'https://chat.deepseek.com/',
+      loggedInIndicatorCount: 1,
+      selectorCounts: {
+        loggedInIndicator: 1,
+        chatInput: 1,
+        sendButton: 0,
+        assistantMessage: 2,
+      },
+    },
+  );
+
+  assert.equal(health.protocolVersion, DEEPSEEK_WEB_CONNECTOR_HEALTH_PROTOCOL_VERSION);
+  assert.equal(health.browserReady, true);
+  assert.equal(health.loggedInLikely, false);
+  assert.equal(health.reason, 'deepseek-dom-send-button-missing');
+  assert.equal(health.pageKind, 'chat');
+  assert.deepEqual(health.domFingerprint.missingRequired, ['sendButton']);
+  assert.ok(health.domFingerprint.evidenceRefs.includes('deepseek-dom:missing:sendButton'));
 });
 
 console.log('\nBridge health check tests passed.\n');

@@ -10,7 +10,7 @@ import {
   describeProviderOutputIntegrity,
   isProviderOutputFatal,
 } from '../../agent/provider-output-integrity';
-import { ResponseIntegrityChecker } from './web-reliability';
+import { BridgeHealthMonitor, ResponseIntegrityChecker } from './web-reliability';
 import {
   prepareBridgePromptForSession,
   recordBridgePromptSessionResponse,
@@ -22,7 +22,11 @@ export class BridgeProvider implements LLMProvider {
   readonly capabilities = ['text', 'vision', 'streaming', 'text-tools', 'web'] as const;
 
   async available(): Promise<boolean> {
-    try { return (await bridgeClient.status()) !== null; } catch { return false; }
+    try {
+      return new BridgeHealthMonitor().evaluate(await bridgeClient.status()).canSendPrompt;
+    } catch {
+      return false;
+    }
   }
 
   async chat(opts: LLMChatOptions): Promise<string> {

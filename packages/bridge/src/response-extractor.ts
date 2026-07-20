@@ -2,6 +2,7 @@ export interface DeepSeekResponseSnapshot {
   assistantMessages: string[];
   errorTexts?: string[];
   loggedInIndicatorCount?: number;
+  selectorCounts?: Record<string, number>;
   url?: string;
 }
 

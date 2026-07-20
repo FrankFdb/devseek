@@ -1962,6 +1962,39 @@ test('Architecture: Bridge has session, driver, and health-check boundaries', ()
   assertContains(contract, 'BridgeHealthCheck: reports logged-in indicator', 'bridge health check must have contract test');
 });
 
+test('R2-07D: DeepSeek Web connector owns auth/session/page/DOM fingerprint health', () => {
+  const session = src('../bridge/src/browser-session.ts');
+  const driver = src('../bridge/src/conversation-driver.ts');
+  const health = src('../bridge/src/bridge-health-check.ts');
+  const agent = src('../bridge/src/deepseek-agent.ts');
+  const server = src('../bridge/src/server.ts');
+  const bridgeTypes = src('../bridge/src/types.ts');
+  const bridgeClient = src('src/bridge-client.ts');
+  const bridgeProvider = src('src/llm/providers/bridge.ts');
+  const uiProvider = src('src/ui/deepseek-view-provider.ts');
+  const contract = src('../bridge/test/bridge-health-check.test.mjs');
+
+  assertContains(health, 'DEEPSEEK_WEB_CONNECTOR_HEALTH_PROTOCOL_VERSION', 'Bridge health must expose a versioned DeepSeek Web connector protocol');
+  assertContains(health, 'DeepSeekDomFingerprint', 'Bridge health must expose DOM fingerprint diagnostics');
+  assertContains(health, 'deepseek-dom-send-button-missing', 'Bridge health must classify chat DOM drift');
+  assertContains(health, 'missingRequired', 'Bridge health must report missing required DOM groups');
+  assertContains(driver, 'selectorCounts', 'ConversationDriver must capture selector counts for fingerprinting');
+  assertContains(session, 'BrowserSessionSnapshot', 'Browser session snapshot remains the session health input');
+  assertContains(agent, 'getHealth', 'DeepSeekAgent must expose connector health without requiring Core DOM access');
+  assertContains(server, 'await agent.getHealth()', '/status must use connector health from DeepSeekAgent');
+  assertContains(bridgeTypes, 'loggedInLikely', 'StatusResponse must expose loggedInLikely');
+  assertContains(bridgeTypes, 'domFingerprint', 'StatusResponse must expose DOM fingerprint diagnostics');
+  assertContains(bridgeClient, 'loggedInLikely', 'Bridge client status type must carry loggedInLikely');
+  assertContains(bridgeProvider, 'BridgeHealthMonitor', 'BridgeProvider availability must use the shared health evaluator');
+  assertContains(uiProvider, 'bridgeStatus?.loggedInLikely', 'UI status must not treat browserReady as login');
+  assertContains(contract, 'fails closed with diagnostic DOM fingerprint when chat page drifts', 'R2-07D must have a drift oracle');
+
+  assertDoesNotContain(bridgeProvider, 'DEEPSEEK_DOM_SELECTORS', 'Extension provider must not import DeepSeek DOM selectors');
+  assertDoesNotContain(bridgeProvider, 'document.querySelector', 'Extension provider must not inspect DOM');
+  assertDoesNotContain(bridgeProvider, 'playwright', 'Extension provider must not depend on Playwright');
+  assertDoesNotContain(bridgeClient, 'textarea#chat-input', 'Bridge client must not duplicate DeepSeek DOM selectors');
+});
+
 test('Architecture: Bridge does not use Playwright fill for oversized prompts', () => {
   const agent = src('../bridge/src/deepseek-agent.ts');
   assertContains(agent, 'effectivePrompt.length > 30_000', 'bridge must classify oversized prompt input');

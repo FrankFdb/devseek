@@ -225,11 +225,17 @@ app.get('/ping', (_req: Request, res: Response) => {
 // ----------------------------------------------------------------
 // GET /status
 // ----------------------------------------------------------------
-app.get('/status', (_req: Request, res: Response) => {
+app.get('/status', async (_req: Request, res: Response) => {
+  const health = await agent.getHealth();
   const body: StatusResponse = {
     idle: queue.isIdle,
     queueLength: queue.length,
-    browserReady: agentInitialized,
+    browserReady: health.browserReady,
+    loggedInLikely: health.loggedInLikely,
+    reason: health.reason,
+    pageKind: health.pageKind,
+    session: health.session,
+    domFingerprint: health.domFingerprint,
     appVersion: process.env.DEVSEEK_VERSION || undefined,
     buildChannel: process.env.DEVSEEK_BUILD_CHANNEL || undefined,
     buildId: process.env.DEVSEEK_BUILD_ID || undefined,
