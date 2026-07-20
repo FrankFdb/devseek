@@ -1297,6 +1297,17 @@ test('R2-01A: OrientationDecision owns pre-execution mode/risk/confidence eviden
   assertDoesNotContain(chatController, 'orientation-target-path-not-found', 'chat controller must not own path-existence orientation');
 });
 
+test('R2-01B: IntentRevisionLineage owns cross-turn correction and committed-effect preservation', () => {
+  const lineage = src('src/intent/intent-revision-lineage.ts');
+  assertContains(lineage, "version: 'devseek.intent-revision-lineage/v1'", 'revision lineage must expose a versioned contract');
+  assertContains(lineage, 'buildOrientationDecision({', 'revision lineage must consume OrientationDecision');
+  assertContains(lineage, 'committed-effect-preserved', 'revision lineage must preserve committed effects');
+  assertContains(lineage, 'rewrittenCommittedEffectIds: []', 'revision lineage must not rewrite committed effects');
+  assertContains(lineage, 'lineage-permission-widening-requires-confirmation', 'revision lineage must block silent permission widening');
+  assertDoesNotContain(lineage, 'routeTaskIntent(', 'revision lineage must not bypass OrientationDecision with a second route owner');
+  assertDoesNotContain(lineage, "status = 'committed'", 'revision lineage must not mutate effect receipts');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');

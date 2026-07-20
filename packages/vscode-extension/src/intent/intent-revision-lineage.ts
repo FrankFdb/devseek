@@ -1,0 +1,355 @@
+import {
+  buildOrientationDecision,
+  type OrientationDecision,
+  type OrientationDecisionInput,
+  type OrientationEvidence,
+  type OrientationRisk,
+} from './orientation-decision';
+
+export type IntentRevisionChangeKind =
+  | 'initial'
+  | 'correction'
+  | 'negation'
+  | 'scope-reduction'
+  | 'steer';
+
+export type IntentRevisionStatus = 'active' | 'superseded' | 'sealed' | 'needs-confirmation' | 'blocked';
+
+export interface IntentRevisionEffectReceipt {
+  id: string;
+  revisionId?: string;
+  kind: 'file-write' | 'terminal' | 'external-effect' | 'delete' | 'other';
+  target?: string;
+  status: 'committed' | 'pending' | 'failed';
+}
+
+export interface IntentRevisionEvidence {
+  kind:
+    | 'orientation-decision'
+    | 'revision-created'
+    | 'correction-detected'
+    | 'negation-detected'
+    | 'scope-reduction-detected'
+    | 'steer-detected'
+    | 'committed-effect-preserved'
+    | 'permission-widening-detected';
+  source: 'lineage' | 'orientation' | 'prompt' | 'effect';
+  value: string;
+}
+
+export interface IntentRevision {
+  id: string;
+  parentId?: string;
+  prompt: string;
+  status: IntentRevisionStatus;
+  changeKinds: IntentRevisionChangeKind[];
+  orientation: OrientationDecision;
+  scope: {
+    targets: string[];
+    prohibitedTargets: string[];
+  };
+  permission: {
+    risk: OrientationRisk;
+    widening: boolean;
+    requiresConfirmation: boolean;
+  };
+  blockers: string[];
+  evidence: IntentRevisionEvidence[];
+}
+
+export interface IntentRevisionLineageInput extends Omit<OrientationDecisionInput, 'route'> {
+  previous?: IntentRevisionLineage;
+  committedEffects?: IntentRevisionEffectReceipt[];
+}
+
+export interface IntentRevisionLineage {
+  version: 'devseek.intent-revision-lineage/v1';
+  revisionCount: number;
+  revisions: IntentRevision[];
+  effectiveRevisionId: string;
+  effectiveRevision: IntentRevision;
+  committedEffects: IntentRevisionEffectReceipt[];
+  preservedCommittedEffectIds: string[];
+  rewrittenCommittedEffectIds: string[];
+  blockers: string[];
+  evidence: IntentRevisionEvidence[];
+  allowedToExecute: boolean;
+}
+
+const CORRECTION_RE = /(?:更正|纠正|改为|改成|改口|现在(?:改|只)|最终(?:要求|轮)|instead|rather\s+than|change\s+(?:it\s+)?to)/i;
+const SCOPE_REDUCTION_RE = /(?:缩小范围|收缩范围|只(?:改|修改|处理|修复|创建|生成|写)|仅(?:改|修改|处理|修复|创建|生成|写)|only\s+(?:change|modify|fix|touch|write|create))/i;
+const STEER_RE = /(?:继续|接着|下一步|后续|按这个方向|steer|continue|resume|follow\s+up)/i;
+const NEGATION_RE = /(?:不要|不得|禁止|别|不允许|不要碰|不要触碰|无需|无须|do\s+not|don't|must\s+not|never|without)/i;
+const PATH_RE = /(?:^|[^A-Za-z0-9_.@+~/-])((?:(?:\.{0,2}\/)?[\w.@+~-]+(?:\/[\w.@+~-]+)+|[\w.@+~-]+\.(?:cxx|cpp|cc|c|hxx|hpp|hh|h|tsx|ts|jsx|js|mjs|cjs|py|json|ya?ml|toml|xml|txt|log|csv|ini|conf|cfg|proto|graphql|sh|bash|zsh|ps1|sql|cmake|gradle|markdown|md)))(?=$|[^A-Za-z0-9_.@+~/-])/gi;
+
+export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): IntentRevisionLineage {
+  const prompt = String(input.prompt || '').trim();
+  const previous = input.previous;
+  const previousRevisions = previous ? clonePreviousRevisions(previous) : [];
+  const previousEffective = previous?.effectiveRevision;
+  const committedEffects = mergeCommittedEffects(previous?.committedEffects ?? [], input.committedEffects ?? []);
+  const preservedCommittedEffectIds = committedEffects
+    .filter(effect => effect.status === 'committed')
+    .map(effect => effect.id);
+
+  const orientation = buildOrientationDecision({
+    prompt,
+    knownPaths: input.knownPaths,
+    authorizedExternalEffects: input.authorizedExternalEffects,
+  });
+  const prohibitedTargets = extractProhibitedTargets(prompt);
+  const targets = extractRevisionTargets(orientation, prohibitedTargets);
+  const changeKinds = classifyChangeKinds(prompt, previous !== undefined, prohibitedTargets);
+  const permissionWidening = isPermissionWidening(previousEffective?.permission.risk, orientation.risk, orientation);
+  const blockers = [
+    ...orientation.blockers,
+    ...(permissionWidening && orientation.requiresConfirmation
+      ? ['lineage-permission-widening-requires-confirmation']
+      : []),
+  ];
+  const status = resolveRevisionStatus(orientation, blockers);
+  const revision: IntentRevision = {
+    id: `rev-${previousRevisions.length + 1}`,
+    parentId: previousEffective?.id,
+    prompt,
+    status,
+    changeKinds,
+    orientation,
+    scope: { targets, prohibitedTargets },
+    permission: {
+      risk: orientation.risk,
+      widening: permissionWidening,
+      requiresConfirmation: orientation.requiresConfirmation,
+    },
+    blockers,
+    evidence: buildRevisionEvidence({
+      orientation,
+      changeKinds,
+      permissionWidening,
+    }),
+  };
+
+  const effectiveRevisions = previousRevisions.map(item => {
+    if (item.id !== previousEffective?.id) return item;
+    return {
+      ...item,
+      status: isRevisionCommitted(item.id, committedEffects) ? 'sealed' as IntentRevisionStatus : 'superseded' as IntentRevisionStatus,
+    };
+  });
+  const revisions = [...effectiveRevisions, revision];
+  const evidence = [
+    ...revision.evidence,
+    ...preservedCommittedEffectIds.map((id): IntentRevisionEvidence => {
+      const effect = committedEffects.find(item => item.id === id);
+      return {
+        kind: 'committed-effect-preserved',
+        source: 'effect',
+        value: `${id}:${effect?.target ?? effect?.kind ?? 'effect'}`,
+      };
+    }),
+  ];
+
+  return {
+    version: 'devseek.intent-revision-lineage/v1',
+    revisionCount: revisions.length,
+    revisions,
+    effectiveRevisionId: revision.id,
+    effectiveRevision: revision,
+    committedEffects,
+    preservedCommittedEffectIds,
+    rewrittenCommittedEffectIds: [],
+    blockers: [...new Set(blockers)],
+    evidence,
+    allowedToExecute: status === 'active',
+  };
+}
+
+function clonePreviousRevisions(previous: IntentRevisionLineage): IntentRevision[] {
+  return previous.revisions.map(revision => ({
+    ...revision,
+    changeKinds: [...revision.changeKinds],
+    scope: {
+      targets: [...revision.scope.targets],
+      prohibitedTargets: [...revision.scope.prohibitedTargets],
+    },
+    permission: { ...revision.permission },
+    blockers: [...revision.blockers],
+    evidence: [...revision.evidence],
+  }));
+}
+
+function mergeCommittedEffects(
+  previous: IntentRevisionEffectReceipt[],
+  current: IntentRevisionEffectReceipt[],
+): IntentRevisionEffectReceipt[] {
+  const byId = new Map<string, IntentRevisionEffectReceipt>();
+  for (const effect of [...previous, ...current]) {
+    if (!effect.id) continue;
+    byId.set(effect.id, { ...effect });
+  }
+  return [...byId.values()];
+}
+
+function classifyChangeKinds(
+  prompt: string,
+  hasPrevious: boolean,
+  prohibitedTargets: string[],
+): IntentRevisionChangeKind[] {
+  const kinds: IntentRevisionChangeKind[] = [];
+  if (!hasPrevious) kinds.push('initial');
+  if (CORRECTION_RE.test(prompt)) kinds.push('correction');
+  if (NEGATION_RE.test(prompt) || prohibitedTargets.length > 0) kinds.push('negation');
+  if (SCOPE_REDUCTION_RE.test(prompt)) kinds.push('scope-reduction');
+  if (hasPrevious && STEER_RE.test(prompt)) kinds.push('steer');
+  if (kinds.length === 0) kinds.push(hasPrevious ? 'steer' : 'initial');
+  return [...new Set(kinds)];
+}
+
+function extractRevisionTargets(
+  orientation: OrientationDecision,
+  prohibitedTargets: string[],
+): string[] {
+  const prohibited = new Set(prohibitedTargets.map(normalizePathToken));
+  const candidates = [
+    ...orientation.route.mutation.targets,
+    ...orientation.route.semanticContract.mutation.targets,
+    ...extractPositiveScopeTargets(orientation.prompt),
+  ];
+  return uniquePaths(candidates)
+    .filter(target => !prohibited.has(normalizePathToken(target)));
+}
+
+function extractPositiveScopeTargets(prompt: string): string[] {
+  const targets: string[] = [];
+  for (const clause of prompt.split(/[，,。；;\n]/)) {
+    if (!SCOPE_REDUCTION_RE.test(clause) && !CORRECTION_RE.test(clause)) continue;
+    if (NEGATION_RE.test(clause) && !/(?:改为|改成|change\s+(?:it\s+)?to)/i.test(clause)) continue;
+    for (const target of collectPaths(clause)) {
+      targets.push(target);
+    }
+  }
+  return uniquePaths(targets);
+}
+
+function extractProhibitedTargets(prompt: string): string[] {
+  const targets: string[] = [];
+  for (const clause of prompt.split(/[，,。；;\n]/)) {
+    if (!NEGATION_RE.test(clause)) continue;
+    for (const target of collectPaths(clause)) {
+      targets.push(target);
+    }
+  }
+  return uniquePaths(targets);
+}
+
+function collectPaths(text: string): string[] {
+  const paths: string[] = [];
+  PATH_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = PATH_RE.exec(text)) !== null) {
+    paths.push(stripTrailingPunctuation(match[1]));
+  }
+  return paths;
+}
+
+function uniquePaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const path of paths) {
+    const value = stripTrailingPunctuation(path);
+    if (!value) continue;
+    const key = normalizePathToken(value);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(value);
+  }
+  return result;
+}
+
+function stripTrailingPunctuation(value: string): string {
+  return value.trim().replace(/[.,;:!?，。；：！？）)\]]+$/g, '');
+}
+
+function normalizePathToken(value: string): string {
+  return stripTrailingPunctuation(value)
+    .replace(/\\/g, '/')
+    .replace(/^\.\//, '')
+    .replace(/\/+$/, '');
+}
+
+function isPermissionWidening(
+  previousRisk: OrientationRisk | undefined,
+  currentRisk: OrientationRisk,
+  orientation: OrientationDecision,
+): boolean {
+  if (!previousRisk) return false;
+  const previousRank = riskRank(previousRisk);
+  const currentRank = riskRank(currentRisk);
+  return currentRank > previousRank
+    && (currentRisk === 'high' || currentRisk === 'destructive' || orientation.requiresConfirmation);
+}
+
+function riskRank(risk: OrientationRisk): number {
+  switch (risk) {
+    case 'low': return 1;
+    case 'medium': return 2;
+    case 'high': return 3;
+    case 'destructive': return 4;
+    default: return 0;
+  }
+}
+
+function resolveRevisionStatus(
+  orientation: OrientationDecision,
+  blockers: string[],
+): IntentRevisionStatus {
+  if (orientation.status === 'blocked') return 'blocked';
+  if (orientation.status === 'needs-confirmation' || blockers.includes('lineage-permission-widening-requires-confirmation')) {
+    return 'needs-confirmation';
+  }
+  if (orientation.status === 'needs-clarification') return 'blocked';
+  return 'active';
+}
+
+function buildRevisionEvidence(input: {
+  orientation: OrientationDecision;
+  changeKinds: IntentRevisionChangeKind[];
+  permissionWidening: boolean;
+}): IntentRevisionEvidence[] {
+  const evidence: IntentRevisionEvidence[] = [{
+    kind: 'orientation-decision',
+    source: 'orientation',
+    value: `${input.orientation.status}:${input.orientation.family}:${input.orientation.risk}`,
+  }, {
+    kind: 'revision-created',
+    source: 'lineage',
+    value: input.changeKinds.join('+'),
+  }];
+  for (const kind of input.changeKinds) {
+    if (kind === 'correction') evidence.push({ kind: 'correction-detected', source: 'prompt', value: kind });
+    if (kind === 'negation') evidence.push({ kind: 'negation-detected', source: 'prompt', value: kind });
+    if (kind === 'scope-reduction') evidence.push({ kind: 'scope-reduction-detected', source: 'prompt', value: kind });
+    if (kind === 'steer') evidence.push({ kind: 'steer-detected', source: 'prompt', value: kind });
+  }
+  if (input.permissionWidening) {
+    evidence.push({ kind: 'permission-widening-detected', source: 'lineage', value: input.orientation.risk });
+  }
+  return evidence;
+}
+
+function isRevisionCommitted(
+  revisionId: string,
+  committedEffects: IntentRevisionEffectReceipt[],
+): boolean {
+  return committedEffects.some(effect => effect.revisionId === revisionId && effect.status === 'committed');
+}
+
+export function orientationEvidenceToRevisionEvidence(
+  evidence: OrientationEvidence[],
+): IntentRevisionEvidence[] {
+  return evidence.map(item => ({
+    kind: 'orientation-decision',
+    source: 'orientation',
+    value: `${item.kind}:${item.value}`,
+  }));
+}
