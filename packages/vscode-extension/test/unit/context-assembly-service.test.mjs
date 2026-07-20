@@ -40,10 +40,61 @@ test('ContextAssemblyService: reports truncation and omitted sources under budge
     { id: 'late', kind: 'diagnostics', label: 'Diagnostics', content: 'later', priority: 2 },
   ], { maxChars: 70 });
 
+  assert.equal(result.budget.version, 'devseek.context-budget/v1');
+  assert.equal(result.budget.decision, 'replan');
+  assert.equal(result.budget.replanRequired, true);
   assert.ok(result.budget.truncatedSources.includes('large'));
   assert.ok(result.budget.omittedSources.includes('late'));
+  assert.ok(result.budget.omissionReport.some(item => item.id === 'large' && item.reason === 'preview-truncated-for-budget'));
+  assert.ok(result.budget.omissionReport.some(item => item.id === 'late' && item.reason === 'context-budget-exhausted'));
+  assert.ok(result.budget.usageBudget.omittedChars > 0);
   assert.equal(result.sources.find(source => source.id === 'large')?.truncated, true);
   assert.equal(result.sources.find(source => source.id === 'late')?.omitted, true);
+});
+
+test('ContextAssemblyService: critical evidence blocks instead of being truncated or omitted', () => {
+  const result = new ContextAssemblyService().assemble('base', [
+    {
+      id: 'terminal-failure',
+      kind: 'diagnostics',
+      label: 'Terminal Failure',
+      content: 'CRITICAL_TERMINAL_EVIDENCE '.repeat(8),
+      priority: 100,
+      critical: true,
+    },
+  ], { maxChars: 80 });
+
+  const source = result.sources.find(item => item.id === 'terminal-failure');
+  assert.equal(result.budget.decision, 'blocked');
+  assert.equal(result.budget.replanRequired, true);
+  assert.deepEqual(result.budget.blockedSources, ['terminal-failure']);
+  assert.equal(source?.critical, true);
+  assert.equal(source?.truncated, false);
+  assert.equal(source?.omitted, true);
+  assert.equal(source?.sourceIntegrity, 'omitted');
+  assert.equal(source?.omissionReason, 'critical-evidence-exceeds-budget');
+  assert.doesNotMatch(result.prompt, /CRITICAL_TERMINAL_EVIDENCE/);
+});
+
+test('ContextAssemblyService: critical evidence is included before lower-priority previews', () => {
+  const result = new ContextAssemblyService().assemble('base', [
+    { id: 'preview', kind: 'attachment', label: 'Preview', content: 'p'.repeat(200), priority: 1 },
+    {
+      id: 'critical-read',
+      kind: 'diagnostics',
+      label: 'Critical Read',
+      content: 'MUST_KEEP_SOURCE_EVIDENCE',
+      priority: 100,
+      critical: true,
+    },
+  ], { maxChars: 130 });
+
+  assert.ok(result.prompt.includes('MUST_KEEP_SOURCE_EVIDENCE'));
+  assert.equal(result.budget.includedSources[0], 'critical-read');
+  assert.equal(result.sources.find(source => source.id === 'critical-read')?.sourceIntegrity, 'full');
+  assert.equal(result.sources.find(source => source.id === 'preview')?.sourceIntegrity, 'preview');
+  assert.equal(result.budget.decision, 'replan');
+  assert.equal(result.budget.usageBudget.criticalIncludedChars, 'MUST_KEEP_SOURCE_EVIDENCE'.length);
 });
 
 console.log('\nContext assembly service tests passed.\n');

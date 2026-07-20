@@ -1386,6 +1386,20 @@ test('R2-03E: WorktreeConflictService owns dirty worktree and generated owner de
   assertContains(worktreeConflict, 'statusEvidence', 'decisions must preserve the git status evidence line');
 });
 
+test('R2-03F: ContextAssemblyService owns preview, context budget, usage budget, and omission reports', () => {
+  const contextAssembly = src('src/app/context-assembly-service.ts');
+
+  assertContains(contextAssembly, "CONTEXT_BUDGET_PROTOCOL_VERSION = 'devseek.context-budget/v1'", 'context budget owner must expose a versioned contract');
+  assertContains(contextAssembly, 'usageBudget', 'context assembly must report usage budget consumption');
+  assertContains(contextAssembly, 'omissionReport', 'context assembly must report omitted/truncated sources');
+  assertContains(contextAssembly, "'critical-evidence-exceeds-budget'", 'critical evidence must block instead of being sacrificed');
+  assertContains(contextAssembly, "'preview-truncated-for-budget'", 'preview truncation must be explicit');
+  assertContains(contextAssembly, "'context-budget-exhausted'", 'omitted sources must preserve exhaustion reason');
+  assertContains(contextAssembly, "decision = 'blocked'", 'over-budget critical evidence must be blocked');
+  assertContains(contextAssembly, "decision = 'replan'", 'noncritical omissions must request replanning');
+  assertContains(contextAssembly, 'criticalIncludedChars', 'critical evidence usage must be tracked separately');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');
