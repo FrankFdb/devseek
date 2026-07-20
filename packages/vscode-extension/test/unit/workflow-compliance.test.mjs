@@ -2021,6 +2021,20 @@ test('R2-07E: DeepSeek Web stream correlation and recovery protocol has one shar
   assertContains(controlledHarness, 'assertVsixSourceCompatibility', 'controlled VSIX must distinguish packaged runtime drift from docs/test-only handoff commits');
 });
 
+test('R2-07F: DeepSeek connector evidence is redacted and replay is explicitly non-live', () => {
+  const bridgeEvidence = src('../bridge/src/run-evidence.ts');
+  const server = src('../bridge/src/server.ts');
+
+  assertContains(bridgeEvidence, 'BRIDGE_CONNECTOR_REPLAY_PROTOCOL', 'Bridge connector replay evidence must have an explicit non-live protocol');
+  assertContains(bridgeEvidence, 'BRIDGE_CONNECTOR_REDACTED_SECRET', 'Bridge connector evidence must redact token/cookie/authorization/API-key material');
+  assertContains(bridgeEvidence, 'normalizeBridgeConnectorEvidencePayload', 'Bridge evidence participant must normalize connector payloads before persistence');
+  assertContains(bridgeEvidence, 'summarizeBridgeConnectorReplay', 'Bridge replay payloads must be summarized instead of persisted as live provider facts');
+  assertContains(bridgeEvidence, 'RUN_EVIDENCE_LEGACY_TRUST', 'Bridge connector replay summaries must be legacy/unverified, not runtime trust');
+  assertContains(bridgeEvidence, 'classifyBridgeConnectorErrorCategory', 'Bridge connector failures must carry an error category');
+  assertContains(server, 'summarizeTraceText(prompt)', 'Bridge server must record prompt summaries, not raw prompt text');
+  assertContains(server, 'summarizeTraceText(content)', 'Bridge server must record response summaries, not raw response text');
+});
+
 test('Architecture: Bridge does not use Playwright fill for oversized prompts', () => {
   const agent = src('../bridge/src/deepseek-agent.ts');
   assertContains(agent, 'effectivePrompt.length > 30_000', 'bridge must classify oversized prompt input');
