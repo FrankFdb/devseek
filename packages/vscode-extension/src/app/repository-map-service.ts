@@ -51,6 +51,78 @@ export interface RepositoryMap {
   diagnostics: RepositoryMapDiagnostic[];
 }
 
+export const INTEGRATION_CALL_GRAPH_PROTOCOL_VERSION = 'devseek.integration-call-graph/v1';
+
+export type IntegrationNodeKind = 'source' | 'entrypoint' | 'registry' | 'protocol' | 'build-target' | 'test-target';
+export type IntegrationRelationKind = 'caller' | 'callee' | 'registry' | 'protocol' | 'build-target';
+export type IntegrationDecision = 'allow' | 'replan' | 'blocked';
+export type IntegrationGraphReason =
+  | 'unknown-changed-node'
+  | 'missing-edge-endpoint'
+  | 'missing-edge-evidence'
+  | 'missing-caller'
+  | 'missing-callee'
+  | 'missing-registry'
+  | 'missing-protocol'
+  | 'missing-build-target'
+  | 'isolated-demo-main-risk';
+
+export interface IntegrationGraphNode {
+  id: string;
+  kind: IntegrationNodeKind;
+  path?: string;
+  symbol?: string;
+}
+
+export interface IntegrationGraphEdge {
+  id?: string;
+  from: string;
+  to: string;
+  kind: IntegrationRelationKind;
+  evidenceId?: string;
+  sourcePath?: string;
+}
+
+export interface IntegrationGraphResolvedEdge extends IntegrationGraphEdge {
+  id: string;
+  from: string;
+  to: string;
+  kind: IntegrationRelationKind;
+}
+
+export interface IntegrationImpactClosure {
+  nodeIds: string[];
+  edgeIds: string[];
+  relationKinds: IntegrationRelationKind[];
+}
+
+export interface IntegrationCallGraph {
+  version: typeof INTEGRATION_CALL_GRAPH_PROTOCOL_VERSION;
+  decision: IntegrationDecision;
+  reasons: IntegrationGraphReason[];
+  changedNodeIds: string[];
+  nodes: IntegrationGraphNode[];
+  edges: IntegrationGraphResolvedEdge[];
+  impactClosure: IntegrationImpactClosure;
+  missingRelationKinds: IntegrationRelationKind[];
+}
+
+export interface BuildIntegrationCallGraphInput {
+  formalProject?: boolean;
+  changedNodeIds: string[];
+  nodes: IntegrationGraphNode[];
+  edges: IntegrationGraphEdge[];
+  requiredRelationKinds?: IntegrationRelationKind[];
+}
+
+const DEFAULT_REQUIRED_RELATION_KINDS: IntegrationRelationKind[] = [
+  'caller',
+  'callee',
+  'registry',
+  'protocol',
+  'build-target',
+];
+
 interface ScanState {
   rootAbsPath: string;
   rootRealPath: string;
@@ -125,6 +197,34 @@ export function buildRepositoryMap(input: RepositoryMapInput): RepositoryMap {
     roots,
     evidence,
     diagnostics,
+  };
+}
+
+export function buildIntegrationCallGraph(input: BuildIntegrationCallGraphInput): IntegrationCallGraph {
+  const requiredRelationKinds = input.requiredRelationKinds ?? DEFAULT_REQUIRED_RELATION_KINDS;
+  const reasons = new Set<IntegrationGraphReason>();
+  const nodes = normalizeIntegrationNodes(input.nodes);
+  const nodeById = new Map(nodes.map(node => [node.id, node]));
+  const changedNodeIds = unique(input.changedNodeIds.map(id => String(id || '').trim()).filter(Boolean));
+  const edges = normalizeIntegrationEdges(input.edges, nodeById, reasons);
+  const impactClosure = computeImpactClosure(changedNodeIds, edges, nodeById, reasons);
+  const foundRelations = new Set(impactClosure.relationKinds);
+  const missingRelationKinds = requiredRelationKinds.filter(kind => !foundRelations.has(kind));
+
+  for (const kind of missingRelationKinds) reasons.add(missingRelationReason(kind));
+  if (input.formalProject && hasIsolatedDemoMainRisk(changedNodeIds, nodeById, impactClosure)) {
+    reasons.add('isolated-demo-main-risk');
+  }
+
+  return {
+    version: INTEGRATION_CALL_GRAPH_PROTOCOL_VERSION,
+    decision: chooseIntegrationDecision(reasons, missingRelationKinds),
+    reasons: [...reasons],
+    changedNodeIds,
+    nodes,
+    edges,
+    impactClosure,
+    missingRelationKinds,
   };
 }
 
@@ -418,6 +518,107 @@ function normalizeRelPath(value: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function normalizeIntegrationNodes(nodes: IntegrationGraphNode[]): IntegrationGraphNode[] {
+  const seen = new Set<string>();
+  const result: IntegrationGraphNode[] = [];
+  for (const node of nodes) {
+    const id = String(node.id || '').trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    result.push({ id, kind: node.kind, path: node.path, symbol: node.symbol });
+  }
+  return result;
+}
+
+function normalizeIntegrationEdges(
+  edges: IntegrationGraphEdge[],
+  nodeById: Map<string, IntegrationGraphNode>,
+  reasons: Set<IntegrationGraphReason>,
+): IntegrationGraphResolvedEdge[] {
+  const result: IntegrationGraphResolvedEdge[] = [];
+  for (const [index, edge] of edges.entries()) {
+    const from = String(edge.from || '').trim();
+    const to = String(edge.to || '').trim();
+    if (!nodeById.has(from) || !nodeById.has(to)) {
+      reasons.add('missing-edge-endpoint');
+      continue;
+    }
+    if (!edge.evidenceId) reasons.add('missing-edge-evidence');
+    result.push({ ...edge, id: edge.id || `edge-${index + 1}`, from, to, kind: edge.kind });
+  }
+  return result;
+}
+
+function computeImpactClosure(
+  changedNodeIds: string[],
+  edges: IntegrationGraphResolvedEdge[],
+  nodeById: Map<string, IntegrationGraphNode>,
+  reasons: Set<IntegrationGraphReason>,
+): IntegrationImpactClosure {
+  const nodeIds = new Set<string>();
+  const edgeIds = new Set<string>();
+  const relationKinds = new Set<IntegrationRelationKind>();
+  const queue: string[] = [];
+  for (const id of changedNodeIds) {
+    if (!nodeById.has(id)) {
+      reasons.add('unknown-changed-node');
+      continue;
+    }
+    nodeIds.add(id);
+    queue.push(id);
+  }
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const edge of edges) {
+      if (edge.from !== current && edge.to !== current) continue;
+      edgeIds.add(edge.id);
+      relationKinds.add(edge.kind);
+      const next = edge.from === current ? edge.to : edge.from;
+      if (!nodeIds.has(next)) {
+        nodeIds.add(next);
+        queue.push(next);
+      }
+    }
+  }
+  return { nodeIds: [...nodeIds], edgeIds: [...edgeIds], relationKinds: [...relationKinds] };
+}
+
+function chooseIntegrationDecision(
+  reasons: Set<IntegrationGraphReason>,
+  missingRelationKinds: IntegrationRelationKind[],
+): IntegrationDecision {
+  if (reasons.has('isolated-demo-main-risk') || reasons.has('unknown-changed-node')) return 'blocked';
+  return missingRelationKinds.length > 0 || reasons.size > 0 ? 'replan' : 'allow';
+}
+
+function missingRelationReason(kind: IntegrationRelationKind): IntegrationGraphReason {
+  switch (kind) {
+    case 'caller': return 'missing-caller';
+    case 'callee': return 'missing-callee';
+    case 'registry': return 'missing-registry';
+    case 'protocol': return 'missing-protocol';
+    case 'build-target': return 'missing-build-target';
+  }
+}
+
+function hasIsolatedDemoMainRisk(
+  changedNodeIds: string[],
+  nodeById: Map<string, IntegrationGraphNode>,
+  impactClosure: IntegrationImpactClosure,
+): boolean {
+  if (impactClosure.edgeIds.length > 0) return false;
+  return changedNodeIds.some(id => {
+    const node = nodeById.get(id);
+    return Boolean(node && (isDemoOrMainPath(node.path) || node.symbol === 'main'));
+  });
+}
+
+function isDemoOrMainPath(path: string | undefined): boolean {
+  const normalized = String(path || '').replace(/\\/g, '/');
+  return /(^|\/)(?:demo|demos|sample|samples|example|examples)\//i.test(normalized)
+    || /(^|\/)main\.[A-Za-z0-9]+$/i.test(normalized);
 }
 
 function unique(values: string[]): string[] {

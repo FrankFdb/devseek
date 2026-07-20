@@ -24,7 +24,11 @@ execSync(
   { cwd: rootDir, stdio: 'pipe' },
 );
 
-const { buildRepositoryMap } = createRequire(import.meta.url)(bundlePath);
+const {
+  INTEGRATION_CALL_GRAPH_PROTOCOL_VERSION,
+  buildIntegrationCallGraph,
+  buildRepositoryMap,
+} = createRequire(import.meta.url)(bundlePath);
 
 function withTempWorkspace(fn) {
   const dir = mkdtempSync(path.join(tmpdir(), 'devseek-repo-map-'));
@@ -114,6 +118,74 @@ test('RepositoryMapService: large trees are truncated with evidence instead of b
     assert.ok(map.evidence.some(item => item.kind === 'root' && item.absPath === workspace));
     assert.ok(map.evidence.some(item => item.kind === 'scan-policy' && item.value === 'maxEntriesPerRoot:8'));
   });
+});
+
+test('RepositoryMapService: computes integration caller, callee, registry, protocol, and build closure', () => {
+  const graph = buildIntegrationCallGraph({
+    formalProject: true,
+    changedNodeIds: ['impl'],
+    nodes: [
+      { id: 'impl', kind: 'source', path: 'src/license-service.ts', symbol: 'LicenseService' },
+      { id: 'caller', kind: 'source', path: 'src/routes/license-route.ts', symbol: 'handleLicense' },
+      { id: 'callee', kind: 'source', path: 'src/protocol/license-codec.ts', symbol: 'encodeLicense' },
+      { id: 'registry', kind: 'registry', path: 'src/registry.ts', symbol: 'license.handlers' },
+      { id: 'protocol', kind: 'protocol', path: 'proto/license.proto', symbol: 'LicenseRequest' },
+      { id: 'build', kind: 'build-target', path: 'package.json', symbol: 'build:license' },
+    ],
+    edges: [
+      { from: 'caller', to: 'impl', kind: 'caller', evidenceId: 'ev-caller' },
+      { from: 'impl', to: 'callee', kind: 'callee', evidenceId: 'ev-callee' },
+      { from: 'registry', to: 'impl', kind: 'registry', evidenceId: 'ev-registry' },
+      { from: 'impl', to: 'protocol', kind: 'protocol', evidenceId: 'ev-protocol' },
+      { from: 'build', to: 'impl', kind: 'build-target', evidenceId: 'ev-build' },
+    ],
+  });
+
+  assert.equal(graph.version, INTEGRATION_CALL_GRAPH_PROTOCOL_VERSION);
+  assert.equal(graph.decision, 'allow');
+  assert.deepEqual(graph.missingRelationKinds, []);
+  assert.deepEqual(new Set(graph.impactClosure.nodeIds), new Set(['impl', 'caller', 'callee', 'registry', 'protocol', 'build']));
+  assert.deepEqual(new Set(graph.impactClosure.relationKinds), new Set(['caller', 'callee', 'registry', 'protocol', 'build-target']));
+  assert.equal(graph.impactClosure.edgeIds.length, 5);
+});
+
+test('RepositoryMapService: formal project isolated demo/main changes are blocked', () => {
+  const graph = buildIntegrationCallGraph({
+    formalProject: true,
+    changedNodeIds: ['demo'],
+    nodes: [
+      { id: 'demo', kind: 'source', path: 'demo/main.ts', symbol: 'main' },
+    ],
+    edges: [],
+  });
+
+  assert.equal(graph.decision, 'blocked');
+  assert.ok(graph.reasons.includes('isolated-demo-main-risk'));
+  assert.ok(graph.reasons.includes('missing-caller'));
+  assert.ok(graph.reasons.includes('missing-callee'));
+  assert.ok(graph.reasons.includes('missing-registry'));
+  assert.ok(graph.reasons.includes('missing-protocol'));
+  assert.ok(graph.reasons.includes('missing-build-target'));
+  assert.deepEqual(graph.impactClosure.nodeIds, ['demo']);
+});
+
+test('RepositoryMapService: partial integration closure requests replan with explicit missing relation kinds', () => {
+  const graph = buildIntegrationCallGraph({
+    formalProject: true,
+    changedNodeIds: ['impl'],
+    nodes: [
+      { id: 'impl', kind: 'source', path: 'src/license-service.ts', symbol: 'LicenseService' },
+      { id: 'caller', kind: 'source', path: 'src/routes/license-route.ts', symbol: 'handleLicense' },
+    ],
+    edges: [
+      { from: 'caller', to: 'impl', kind: 'caller', evidenceId: 'ev-caller' },
+    ],
+  });
+
+  assert.equal(graph.decision, 'replan');
+  assert.deepEqual(graph.missingRelationKinds, ['callee', 'registry', 'protocol', 'build-target']);
+  assert.ok(graph.reasons.includes('missing-build-target'));
+  assert.deepEqual(new Set(graph.impactClosure.nodeIds), new Set(['impl', 'caller']));
 });
 
 console.log('\nRepository map service tests passed.\n');

@@ -1415,6 +1415,21 @@ test('R2-04A: Evidence grounding owns source evidence graph snapshot and stale f
   assertContains(evidenceGrounding, 'missing-source-location', 'key facts without source location must be rejected');
 });
 
+test('R2-04B: RepositoryMapService owns caller/callee/registry/protocol/build impact closure', () => {
+  const integrationGraph = src('src/app/repository-map-service.ts');
+
+  assertContains(integrationGraph, "INTEGRATION_CALL_GRAPH_PROTOCOL_VERSION = 'devseek.integration-call-graph/v1'", 'integration graph owner must expose a versioned contract');
+  assertContains(integrationGraph, 'buildIntegrationCallGraph', 'integration impact closure must have a single builder owner');
+  assertContains(integrationGraph, 'impactClosure', 'caller/callee impact closure must be machine-visible');
+  assertContains(integrationGraph, "'caller'", 'caller edges must be tracked');
+  assertContains(integrationGraph, "'callee'", 'callee edges must be tracked');
+  assertContains(integrationGraph, "'registry'", 'registry participation must be tracked');
+  assertContains(integrationGraph, "'protocol'", 'protocol participation must be tracked');
+  assertContains(integrationGraph, "'build-target'", 'build target participation must be tracked');
+  assertContains(integrationGraph, "'isolated-demo-main-risk'", 'formal projects must not be satisfied by isolated demo/main edits');
+  assertContains(integrationGraph, 'missingRelationKinds', 'partial closure must request replan with explicit missing relation kinds');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');
