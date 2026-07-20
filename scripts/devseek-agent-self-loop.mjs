@@ -414,10 +414,15 @@ async function localRepairCompileErrorCase(runtime) {
 }
 
 function staticAgentGuardCase() {
-  const code = readFileSync(path.join(repoRoot, 'packages/vscode-extension/src/agent-loop.ts'), 'utf8');
-  assert.match(code, /detectShellFileWriteCommand/);
-  assert.match(code, /缺少 path\/filePath/);
-  assert.doesNotMatch(code, /改用 run_terminal 通过 printf 或 cat 命令写入文件/);
+  const writeGuard = readFileSync(path.join(repoRoot, 'packages/vscode-extension/src/agent/write-guard.ts'), 'utf8');
+  const toolLoop = readFileSync(path.join(repoRoot, 'packages/vscode-extension/src/agent/tool-loop.ts'), 'utf8');
+  const legacyAgentLoop = readFileSync(path.join(repoRoot, 'packages/vscode-extension/src/agent-loop.ts'), 'utf8');
+  assert.match(writeGuard, /function detectShellFileWriteCommand/);
+  assert.match(toolLoop, /detectShellFileWriteCommand\(command\)/);
+  assert.match(toolLoop, /请不要改用 run_terminal 写文件/);
+  assert.match(toolLoop, /缺少 path\/filePath/);
+  assert.doesNotMatch(toolLoop, /改用 run_terminal 通过 printf 或 cat 命令写入文件/);
+  assert.doesNotMatch(legacyAgentLoop, /detectShellFileWriteCommand/);
   addCase('static:agent guard rails for file tools and terminal writes', 'passed');
 }
 
