@@ -56,6 +56,8 @@ export const INTEGRATION_CALL_GRAPH_PROTOCOL_VERSION = 'devseek.integration-call
 export type IntegrationNodeKind = 'source' | 'entrypoint' | 'registry' | 'protocol' | 'build-target' | 'test-target';
 export type IntegrationRelationKind = 'caller' | 'callee' | 'registry' | 'protocol' | 'build-target';
 export type IntegrationDecision = 'allow' | 'replan' | 'blocked';
+export type ImplementationRouteKind = 'main-flow' | 'harness-bypass' | 'demo-bypass' | 'sample-bypass' | 'compat-fallback';
+export type SiblingClosureStatus = 'covered' | 'not-applicable' | 'missing';
 export type IntegrationGraphReason =
   | 'unknown-changed-node'
   | 'missing-edge-endpoint'
@@ -65,7 +67,11 @@ export type IntegrationGraphReason =
   | 'missing-registry'
   | 'missing-protocol'
   | 'missing-build-target'
-  | 'isolated-demo-main-risk';
+  | 'isolated-demo-main-risk'
+  | 'implementation-bypass-risk'
+  | 'implementation-route-evidence-missing'
+  | 'missing-sibling-closure'
+  | 'sibling-closure-evidence-missing';
 
 export interface IntegrationGraphNode {
   id: string;
@@ -96,6 +102,21 @@ export interface IntegrationImpactClosure {
   relationKinds: IntegrationRelationKind[];
 }
 
+export interface ImplementationRoute {
+  kind: ImplementationRouteKind;
+  nodeIds: string[];
+  evidenceId?: string;
+}
+
+export interface SiblingClosure {
+  id: string;
+  defectClass: string;
+  changedNodeIds: string[];
+  siblingNodeIds: string[];
+  status: SiblingClosureStatus;
+  evidenceId?: string;
+}
+
 export interface IntegrationCallGraph {
   version: typeof INTEGRATION_CALL_GRAPH_PROTOCOL_VERSION;
   decision: IntegrationDecision;
@@ -105,6 +126,8 @@ export interface IntegrationCallGraph {
   edges: IntegrationGraphResolvedEdge[];
   impactClosure: IntegrationImpactClosure;
   missingRelationKinds: IntegrationRelationKind[];
+  implementationRoutes: ImplementationRoute[];
+  siblingClosures: SiblingClosure[];
 }
 
 export interface BuildIntegrationCallGraphInput {
@@ -113,6 +136,8 @@ export interface BuildIntegrationCallGraphInput {
   nodes: IntegrationGraphNode[];
   edges: IntegrationGraphEdge[];
   requiredRelationKinds?: IntegrationRelationKind[];
+  implementationRoutes?: ImplementationRoute[];
+  siblingClosures?: SiblingClosure[];
 }
 
 const DEFAULT_REQUIRED_RELATION_KINDS: IntegrationRelationKind[] = [
@@ -208,12 +233,17 @@ export function buildIntegrationCallGraph(input: BuildIntegrationCallGraphInput)
   const changedNodeIds = unique(input.changedNodeIds.map(id => String(id || '').trim()).filter(Boolean));
   const edges = normalizeIntegrationEdges(input.edges, nodeById, reasons);
   const impactClosure = computeImpactClosure(changedNodeIds, edges, nodeById, reasons);
+  const implementationRoutes = normalizeImplementationRoutes(input.implementationRoutes ?? [], nodeById, reasons);
+  const siblingClosures = normalizeSiblingClosures(input.siblingClosures ?? [], nodeById, reasons);
   const foundRelations = new Set(impactClosure.relationKinds);
   const missingRelationKinds = requiredRelationKinds.filter(kind => !foundRelations.has(kind));
 
   for (const kind of missingRelationKinds) reasons.add(missingRelationReason(kind));
   if (input.formalProject && hasIsolatedDemoMainRisk(changedNodeIds, nodeById, impactClosure)) {
     reasons.add('isolated-demo-main-risk');
+  }
+  if (input.formalProject && hasImplementationBypassRisk(changedNodeIds, nodeById, implementationRoutes)) {
+    reasons.add('implementation-bypass-risk');
   }
 
   return {
@@ -225,6 +255,8 @@ export function buildIntegrationCallGraph(input: BuildIntegrationCallGraphInput)
     edges,
     impactClosure,
     missingRelationKinds,
+    implementationRoutes,
+    siblingClosures,
   };
 }
 
@@ -551,6 +583,45 @@ function normalizeIntegrationEdges(
   return result;
 }
 
+function normalizeImplementationRoutes(
+  routes: ImplementationRoute[],
+  nodeById: Map<string, IntegrationGraphNode>,
+  reasons: Set<IntegrationGraphReason>,
+): ImplementationRoute[] {
+  return routes.map(route => {
+    const nodeIds = unique((route.nodeIds ?? []).map(id => String(id || '').trim()).filter(Boolean));
+    if (nodeIds.some(id => !nodeById.has(id))) reasons.add('missing-edge-endpoint');
+    if (!route.evidenceId) reasons.add('implementation-route-evidence-missing');
+    return {
+      kind: route.kind,
+      nodeIds,
+      evidenceId: route.evidenceId,
+    };
+  }).filter(route => route.nodeIds.length > 0);
+}
+
+function normalizeSiblingClosures(
+  closures: SiblingClosure[],
+  nodeById: Map<string, IntegrationGraphNode>,
+  reasons: Set<IntegrationGraphReason>,
+): SiblingClosure[] {
+  return closures.map(closure => {
+    const changedNodeIds = unique((closure.changedNodeIds ?? []).map(id => String(id || '').trim()).filter(Boolean));
+    const siblingNodeIds = unique((closure.siblingNodeIds ?? []).map(id => String(id || '').trim()).filter(Boolean));
+    if ([...changedNodeIds, ...siblingNodeIds].some(id => !nodeById.has(id))) reasons.add('missing-edge-endpoint');
+    if (closure.status === 'missing' || siblingNodeIds.length === 0) reasons.add('missing-sibling-closure');
+    if (!closure.evidenceId) reasons.add('sibling-closure-evidence-missing');
+    return {
+      id: String(closure.id || '').trim(),
+      defectClass: String(closure.defectClass || '').trim(),
+      changedNodeIds,
+      siblingNodeIds,
+      status: closure.status,
+      evidenceId: closure.evidenceId,
+    };
+  }).filter(closure => !!closure.id || changedNodeIdsOrSiblingsExist(closure));
+}
+
 function computeImpactClosure(
   changedNodeIds: string[],
   edges: IntegrationGraphResolvedEdge[],
@@ -589,7 +660,11 @@ function chooseIntegrationDecision(
   reasons: Set<IntegrationGraphReason>,
   missingRelationKinds: IntegrationRelationKind[],
 ): IntegrationDecision {
-  if (reasons.has('isolated-demo-main-risk') || reasons.has('unknown-changed-node')) return 'blocked';
+  if (
+    reasons.has('isolated-demo-main-risk')
+    || reasons.has('implementation-bypass-risk')
+    || reasons.has('unknown-changed-node')
+  ) return 'blocked';
   return missingRelationKinds.length > 0 || reasons.size > 0 ? 'replan' : 'allow';
 }
 
@@ -615,10 +690,33 @@ function hasIsolatedDemoMainRisk(
   });
 }
 
+function hasImplementationBypassRisk(
+  changedNodeIds: string[],
+  nodeById: Map<string, IntegrationGraphNode>,
+  routes: ImplementationRoute[],
+): boolean {
+  if (routes.some(route => route.kind !== 'main-flow')) return true;
+  if (routes.length > 0) return false;
+  return changedNodeIds.some(id => {
+    const node = nodeById.get(id);
+    return Boolean(node && isBypassOnlyPath(node.path));
+  });
+}
+
+function changedNodeIdsOrSiblingsExist(closure: SiblingClosure): boolean {
+  return closure.changedNodeIds.length > 0 || closure.siblingNodeIds.length > 0;
+}
+
 function isDemoOrMainPath(path: string | undefined): boolean {
   const normalized = String(path || '').replace(/\\/g, '/');
   return /(^|\/)(?:demo|demos|sample|samples|example|examples)\//i.test(normalized)
     || /(^|\/)main\.[A-Za-z0-9]+$/i.test(normalized);
+}
+
+function isBypassOnlyPath(path: string | undefined): boolean {
+  const normalized = String(path || '').replace(/\\/g, '/');
+  return /(^|\/)(?:demo|demos|sample|samples|example|examples|harness|fixtures?)\//i.test(normalized)
+    || /(^|\/)test(?:s)?\//i.test(normalized);
 }
 
 function unique(values: string[]): string[] {

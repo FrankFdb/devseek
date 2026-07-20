@@ -1430,6 +1430,19 @@ test('R2-04B: RepositoryMapService owns caller/callee/registry/protocol/build im
   assertContains(integrationGraph, 'missingRelationKinds', 'partial closure must request replan with explicit missing relation kinds');
 });
 
+test('R2-06B: RepositoryMapService owns minimal integrated implementation closure', () => {
+  const integrationGraph = src('src/app/repository-map-service.ts');
+
+  assertContains(integrationGraph, 'ImplementationRoute', 'implementation routes must be part of the integration graph owner');
+  assertContains(integrationGraph, 'SiblingClosure', 'same-defect sibling closure must be part of the integration graph owner');
+  assertContains(integrationGraph, 'implementationRoutes', 'main-flow routes must be visible before implementation settles');
+  assertContains(integrationGraph, 'siblingClosures', 'sibling closure must be visible before implementation settles');
+  assertContains(integrationGraph, "'main-flow'", 'main flow changes must be distinguished from bypasses');
+  assertContains(integrationGraph, "'harness-bypass'", 'harness-only implementation bypasses must be classified');
+  assertContains(integrationGraph, "'implementation-bypass-risk'", 'sample/harness bypasses must fail closed');
+  assertContains(integrationGraph, "'missing-sibling-closure'", 'same-defect sibling gaps must force replan');
+});
+
 test('R2-04C: Evidence grounding owns external doc, MCP, and network source grounding', () => {
   const evidenceGrounding = src('src/agent/evidence-grounding.ts');
 

@@ -188,4 +188,85 @@ test('RepositoryMapService: partial integration closure requests replan with exp
   assert.deepEqual(new Set(graph.impactClosure.nodeIds), new Set(['impl', 'caller']));
 });
 
+test('R2-06B Integration graph allows minimal main-flow implementation with sibling closure', () => {
+  const graph = buildIntegrationCallGraph({
+    formalProject: true,
+    changedNodeIds: ['impl'],
+    nodes: [
+      { id: 'impl', kind: 'source', path: 'src/app/license-service.ts', symbol: 'LicenseService' },
+      { id: 'caller', kind: 'source', path: 'src/app/license-route.ts', symbol: 'handleLicense' },
+      { id: 'callee', kind: 'source', path: 'src/app/license-codec.ts', symbol: 'encodeLicense' },
+      { id: 'registry', kind: 'registry', path: 'src/app/registry.ts', symbol: 'license.handlers' },
+      { id: 'protocol', kind: 'protocol', path: 'proto/license.proto', symbol: 'LicenseRequest' },
+      { id: 'build', kind: 'build-target', path: 'package.json', symbol: 'build' },
+      { id: 'cli-sibling', kind: 'source', path: 'packages/cli/src/license.ts', symbol: 'LicenseService' },
+    ],
+    edges: [
+      { from: 'caller', to: 'impl', kind: 'caller', evidenceId: 'ev-caller' },
+      { from: 'impl', to: 'callee', kind: 'callee', evidenceId: 'ev-callee' },
+      { from: 'registry', to: 'impl', kind: 'registry', evidenceId: 'ev-registry' },
+      { from: 'impl', to: 'protocol', kind: 'protocol', evidenceId: 'ev-protocol' },
+      { from: 'build', to: 'impl', kind: 'build-target', evidenceId: 'ev-build' },
+    ],
+    implementationRoutes: [
+      { kind: 'main-flow', nodeIds: ['impl', 'caller'], evidenceId: 'ev-main-flow' },
+    ],
+    siblingClosures: [
+      {
+        id: 'same-license-service-contract',
+        defectClass: 'license-service-contract',
+        changedNodeIds: ['impl'],
+        siblingNodeIds: ['cli-sibling'],
+        status: 'covered',
+        evidenceId: 'ev-sibling-closure',
+      },
+    ],
+  });
+
+  assert.equal(graph.decision, 'allow');
+  assert.deepEqual(graph.reasons, []);
+  assert.equal(graph.implementationRoutes[0].kind, 'main-flow');
+  assert.equal(graph.siblingClosures[0].status, 'covered');
+});
+
+test('R2-06B Integration graph blocks harness bypasses and replans missing sibling closure', () => {
+  const graph = buildIntegrationCallGraph({
+    formalProject: true,
+    changedNodeIds: ['harness'],
+    nodes: [
+      { id: 'harness', kind: 'source', path: 'test/harness/license-service.ts', symbol: 'LicenseServiceHarness' },
+      { id: 'impl', kind: 'source', path: 'src/app/license-service.ts', symbol: 'LicenseService' },
+      { id: 'caller', kind: 'source', path: 'src/app/license-route.ts', symbol: 'handleLicense' },
+      { id: 'callee', kind: 'source', path: 'src/app/license-codec.ts', symbol: 'encodeLicense' },
+      { id: 'registry', kind: 'registry', path: 'src/app/registry.ts', symbol: 'license.handlers' },
+      { id: 'protocol', kind: 'protocol', path: 'proto/license.proto', symbol: 'LicenseRequest' },
+      { id: 'build', kind: 'build-target', path: 'package.json', symbol: 'build' },
+    ],
+    edges: [
+      { from: 'caller', to: 'harness', kind: 'caller', evidenceId: 'ev-caller' },
+      { from: 'harness', to: 'callee', kind: 'callee', evidenceId: 'ev-callee' },
+      { from: 'registry', to: 'harness', kind: 'registry', evidenceId: 'ev-registry' },
+      { from: 'harness', to: 'protocol', kind: 'protocol', evidenceId: 'ev-protocol' },
+      { from: 'build', to: 'harness', kind: 'build-target', evidenceId: 'ev-build' },
+    ],
+    implementationRoutes: [
+      { kind: 'harness-bypass', nodeIds: ['harness'], evidenceId: 'ev-harness' },
+    ],
+    siblingClosures: [
+      {
+        id: 'same-license-service-contract',
+        defectClass: 'license-service-contract',
+        changedNodeIds: ['harness'],
+        siblingNodeIds: ['impl'],
+        status: 'missing',
+      },
+    ],
+  });
+
+  assert.equal(graph.decision, 'blocked');
+  assert.ok(graph.reasons.includes('implementation-bypass-risk'));
+  assert.ok(graph.reasons.includes('missing-sibling-closure'));
+  assert.ok(graph.reasons.includes('sibling-closure-evidence-missing'));
+});
+
 console.log('\nRepository map service tests passed.\n');
