@@ -1,10 +1,14 @@
 import express, { Request, Response, NextFunction } from 'express';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as nodePath from 'path';
 import {
   assertRunEvidencePersistedSecretBoundary,
+  classifyDeepSeekStreamErrorMessage,
   createDevSeekTraceLogger,
+  createDeepSeekStreamFrame,
   DevSeekCapabilityTextStreamGuard,
+  deepSeekStreamBackoffMs,
   redactDevSeekAuthorityCapabilities,
   summarizeTraceText,
   type DevSeekTraceLogger,
@@ -83,6 +87,11 @@ function createRequestTrace(req: Request): DevSeekTraceLogger {
     buildId: process.env.DEVSEEK_BUILD_ID || undefined,
     gitCommit: process.env.DEVSEEK_GIT_COMMIT || undefined,
   });
+}
+
+function createBridgeRequestId(req: Request, kind: 'chat' | 'cancel'): string {
+  const operationId = String(req.header(TRACE_OPERATION_ID_HEADER) || '').trim();
+  return operationId || `bridge-${kind}-${crypto.randomUUID()}`;
 }
 
 function resolveTraceWorkspaceRoot(req: Request): string {
@@ -247,7 +256,10 @@ app.get('/status', async (_req: Request, res: Response) => {
 // ----------------------------------------------------------------
 // POST /cancel
 // ----------------------------------------------------------------
-app.post('/cancel', (_req: Request, res: Response) => {
+app.post('/cancel', (req: Request, res: Response) => {
+  const trace = createRequestTrace(req);
+  const operationId = createBridgeRequestId(req, 'cancel');
+  trace.info('bridge-server', 'cancel-requested', { operationId });
   agent.cancel();
   const body: CancelResponse = { ok: true };
   res.json(body);
@@ -317,6 +329,7 @@ app.post('/preattach', async (req: Request, res: Response) => {
 app.post('/chat', async (req: Request, res: Response) => {
   const body = req.body as ChatRequest;
   const trace = createRequestTrace(req);
+  const streamRequestId = createBridgeRequestId(req, 'chat');
 
   let prompt: string;
   try {
@@ -335,6 +348,7 @@ app.post('/chat', async (req: Request, res: Response) => {
   const useStream = body.stream !== false; // 默认 true
   const evidence = createRequestEvidence(req, trace);
   trace.info('bridge-server', 'chat-request-start', {
+    operationId: streamRequestId,
     stream: useStream,
     newSession: body.newSession,
     timeoutMs: body.timeoutMs,
@@ -344,6 +358,7 @@ app.post('/chat', async (req: Request, res: Response) => {
   });
   recordBridgeEvidence(evidence, trace, 'provider.requested', {
     provider: 'deepseek-web',
+    operation_id: streamRequestId,
     stream: useStream,
     mode: body.mode ?? null,
     prompt: summarizeTraceText(prompt),
@@ -377,8 +392,22 @@ app.post('/chat', async (req: Request, res: Response) => {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
-    const sendEvent = (data: object) => {
-      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    let streamSequence = 1;
+    const sendEvent = (data: {
+      event: 'delta' | 'done' | 'error' | 'cancelled' | 'retry';
+      delta?: string;
+      done?: boolean;
+      error?: string;
+      errorCategory?: ReturnType<typeof classifyDeepSeekStreamErrorMessage>;
+      retryAfterMs?: number;
+    }) => {
+      const frame = createDeepSeekStreamFrame({
+        requestId: streamRequestId,
+        sequence: streamSequence,
+        ...data,
+      });
+      streamSequence += 1;
+      res.write(`data: ${JSON.stringify(frame)}\n\n`);
     };
     const responseGuard = new DevSeekCapabilityTextStreamGuard();
 
@@ -392,35 +421,55 @@ app.post('/chat', async (req: Request, res: Response) => {
           trace: trace.child('deepseek-web'),
           onDelta: (delta) => {
             const released = responseGuard.push(delta);
-            if (released) sendEvent({ delta: released, done: false });
+            if (released) sendEvent({ event: 'delta', delta: released, done: false });
           },
         }), 'response');
         const trailingDelta = responseGuard.finish();
-        if (trailingDelta) sendEvent({ delta: trailingDelta, done: false });
+        if (trailingDelta) sendEvent({ event: 'delta', delta: trailingDelta, done: false });
         trace.info('bridge-server', 'chat-request-complete', { response: summarizeTraceText(content) });
         recordBridgeEvidence(evidence, trace, 'provider.completed', {
           provider: 'deepseek-web',
+          operation_id: streamRequestId,
           response: summarizeTraceText(content),
         });
       });
-      sendEvent({ delta: '', done: true });
+      sendEvent({ event: 'done', delta: '', done: true });
     } catch (e) {
       const msg = safeBridgeErrorMessage(e);
+      const errorCategory = classifyDeepSeekStreamErrorMessage(msg);
+      const retryAfterMs = deepSeekStreamBackoffMs(errorCategory);
       trace.error('bridge-server', 'chat-request-failed', { message: msg });
       recordBridgeEvidence(evidence, trace, 'provider.failed', {
         provider: 'deepseek-web',
+        operation_id: streamRequestId,
         phase: 'generation',
+        category: errorCategory,
+        retry_after_ms: retryAfterMs ?? null,
         error: summarizeTraceText(msg),
       });
       // 浏览器被关闭 → 清理状态，下次请求会重新 headless init（cookies 仍有效则自动恢复，否则提示重新登录）
-      if (msg?.includes('closed') || msg?.includes('Target page') || msg?.includes('browser')) {
+      if (errorCategory === 'browser-session-lost' || errorCategory === 'login-required') {
         agentInitialized = false;
         agent.close().catch(() => {});
-        sendEvent({ delta: '', done: true, error: 'LOGIN_REQUIRED' });
-      } else if (msg !== 'Cancelled') {
-        sendEvent({ delta: '', done: true, error: msg });
+        sendEvent({
+          event: 'error',
+          delta: '',
+          done: true,
+          error: 'LOGIN_REQUIRED',
+          errorCategory: 'login-required',
+          retryAfterMs,
+        });
+      } else if (errorCategory === 'cancelled') {
+        sendEvent({ event: 'cancelled', delta: '', done: true, errorCategory });
       } else {
-        sendEvent({ delta: '', done: true });
+        sendEvent({
+          event: 'error',
+          delta: '',
+          done: true,
+          error: msg,
+          errorCategory,
+          retryAfterMs,
+        });
       }
     }
 
@@ -441,6 +490,7 @@ app.post('/chat', async (req: Request, res: Response) => {
       trace.info('bridge-server', 'chat-request-complete', { response: summarizeTraceText(safeContent) });
       recordBridgeEvidence(evidence, trace, 'provider.completed', {
         provider: 'deepseek-web',
+        operation_id: streamRequestId,
         response: summarizeTraceText(safeContent),
       });
       const response: ChatResponse = { content: safeContent };
@@ -450,6 +500,7 @@ app.post('/chat', async (req: Request, res: Response) => {
       trace.error('bridge-server', 'chat-request-failed', { message: msg });
       recordBridgeEvidence(evidence, trace, 'provider.failed', {
         provider: 'deepseek-web',
+        operation_id: streamRequestId,
         phase: 'generation',
         error: summarizeTraceText(msg),
       });

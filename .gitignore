@@ -40,6 +40,7 @@ docs/testing/phase0-12-verification-reports/
 probe_mermaid*.js
 packages/vscode-extension/test/unit/*.bundle.cjs
 packages/bridge/test/*.bundle.cjs
+packages/shared/test/*.bundle.cjs
 
 # Local tool/editor state
 .agents/

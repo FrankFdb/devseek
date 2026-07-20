@@ -1995,6 +1995,28 @@ test('R2-07D: DeepSeek Web connector owns auth/session/page/DOM fingerprint heal
   assertDoesNotContain(bridgeClient, 'textarea#chat-input', 'Bridge client must not duplicate DeepSeek DOM selectors');
 });
 
+test('R2-07E: DeepSeek Web stream correlation and recovery protocol has one shared owner', () => {
+  const streamProtocol = src('../shared/src/bridge-stream-protocol.ts');
+  const server = src('../bridge/src/server.ts');
+  const bridgeClient = src('src/bridge-client.ts');
+  const controlledHarness = src('test/devseek-controlled-vsix-harness.mjs');
+
+  assertContains(streamProtocol, 'DEEPSEEK_WEB_STREAM_PROTOCOL_VERSION', 'DeepSeek Web stream protocol must be versioned');
+  assertContains(streamProtocol, 'class BridgeStreamCorrelator', 'stream request/sequence/dedup settlement must have one shared owner');
+  assertContains(streamProtocol, 'stream-correlation-mismatch', 'wrong stream must fail closed before output is applied');
+  assertContains(streamProtocol, 'stream-truncated', 'EOF without done must not settle provider output');
+  assertContains(streamProtocol, 'stream-duplicate-replay', 'duplicate replay frames must have zero output effect');
+  assertContains(streamProtocol, 'deepSeekStreamBackoffMs', 'rate-limit/reconnect backoff must be part of the protocol contract');
+  assertContains(server, 'createDeepSeekStreamFrame', 'Bridge server must sign every SSE frame with the shared protocol');
+  assertContains(server, 'streamRequestId', 'Bridge server must bind SSE frames to the request operation id');
+  assertContains(server, 'streamSequence', 'Bridge server must emit monotonic stream sequence numbers');
+  assertContains(server, 'cancel-requested', 'Bridge cancel must be traceable by operation id');
+  assertContains(bridgeClient, 'BridgeStreamCorrelator', 'Bridge client must validate request/stream correlation');
+  assertContains(bridgeClient, 'parseDeepSeekStreamFrameData', 'Bridge client must fail closed on malformed SSE JSON');
+  assertContains(bridgeClient, 'correlator.assertComplete()', 'Bridge client must reject truncated SSE streams');
+  assertContains(controlledHarness, 'devseek.deepseek-web-stream/v1', 'controlled VSIX fake bridge must use the same stream protocol');
+});
+
 test('Architecture: Bridge does not use Playwright fill for oversized prompts', () => {
   const agent = src('../bridge/src/deepseek-agent.ts');
   assertContains(agent, 'effectivePrompt.length > 30_000', 'bridge must classify oversized prompt input');

@@ -5,7 +5,9 @@ import * as fs from 'fs';
 import * as crypto from 'crypto';
 import * as os from 'os';
 import {
+  BridgeStreamCorrelator,
   createDevSeekTraceLogger,
+  parseDeepSeekStreamFrameData,
   summarizeTraceText,
   type DevSeekTraceLogger,
 } from '@devseek-netai/shared';
@@ -116,6 +118,10 @@ function createBridgeClientTraceLogger(runId?: string, workspaceRoot?: string): 
   });
 }
 
+function createBridgeOperationId(kind: 'chat' | 'cancel'): string {
+  return `bridge-${kind}-${crypto.randomUUID()}`;
+}
+
 function traceHeaders(
   trace: DevSeekTraceLogger,
   extra?: Record<string, string>,
@@ -213,7 +219,14 @@ export async function status(): Promise<BridgeStatusResponse | null> {
 
 /** 取消当前请求 */
 export async function cancel(): Promise<void> {
-  await fetch(`${baseUrl()}/cancel`, { method: 'POST', headers: authHeaders(), signal: AbortSignal.timeout(3000) }).catch(() => {});
+  const trace = createBridgeClientTraceLogger();
+  const operationId = createBridgeOperationId('cancel');
+  trace.info('bridge-client', 'cancel-requested', { operationId });
+  await fetch(`${baseUrl()}/cancel`, {
+    method: 'POST',
+    headers: traceHeaders(trace, undefined, undefined, operationId),
+    signal: AbortSignal.timeout(3000),
+  }).catch(() => {});
 }
 
 /** 关闭正在运行的 Bridge（用于重启前调用） */
@@ -421,6 +434,7 @@ export async function chat(opts: ChatOptions): Promise<string> {
   const config = vscode.workspace.getConfiguration('devseek');
   const useStream = opts.stream !== false;
   const trace = createBridgeClientTraceLogger(opts.traceRunId, opts.traceWorkspaceRoot);
+  const operationId = opts.traceOperationId?.trim() || createBridgeOperationId('chat');
 
   const body = JSON.stringify({
     prompt: opts.prompt,
@@ -432,6 +446,7 @@ export async function chat(opts: ChatOptions): Promise<string> {
   });
 
   trace.info('bridge-client', 'chat-request-start', {
+    operationId,
     stream: useStream,
     newSession: opts.newSession ?? config.get<boolean>('newSessionPerRequest', false),
     timeoutMs: opts.timeoutMs ?? config.get<number>('requestTimeoutMs', 120000),
@@ -454,7 +469,7 @@ export async function chat(opts: ChatOptions): Promise<string> {
       opts.onDelta ?? (() => {}),
       trace,
       opts.traceWorkspaceRoot,
-      opts.traceOperationId,
+      operationId,
       opts.traceEvidenceParticipantToken,
     );
   }
@@ -466,7 +481,7 @@ export async function chat(opts: ChatOptions): Promise<string> {
         trace,
         { 'Content-Type': 'application/json' },
         opts.traceWorkspaceRoot,
-        opts.traceOperationId,
+        operationId,
         opts.traceEvidenceParticipantToken,
       ),
       body,
@@ -539,8 +554,24 @@ async function chatStream(
   if (!reader) throw new Error('No response body');
 
   const decoder = new TextDecoder();
+  const correlator = new BridgeStreamCorrelator(traceOperationId || createBridgeOperationId('chat'));
   let buffer = '';
-  let fullText = '';
+
+  const consumeSseLine = (line: string): void => {
+    if (!line.startsWith('data: ')) return;
+    const data = line.slice(6).trim();
+    if (!data) return;
+    const frame = parseDeepSeekStreamFrameData(data);
+    const observed = correlator.observe(frame);
+    if (observed.duplicate) {
+      trace.debug('bridge-client', 'stream-duplicate-replay', {
+        operationId: frame.requestId,
+        sequence: frame.sequence,
+      });
+      return;
+    }
+    if (observed.safeToApply) onDelta(observed.delta);
+  };
 
   try {
     while (true) {
@@ -552,30 +583,11 @@ async function chatStream(
       buffer = lines.pop() ?? '';
 
       for (const line of lines) {
-        if (!line.startsWith('data: ')) continue;
-        const data = line.slice(6).trim();
-        if (!data) continue;
-        try {
-          const parsed = JSON.parse(data) as { delta?: string; done?: boolean; error?: string };
-          if (parsed.error) {
-            if (parsed.error === 'LOGIN_REQUIRED') throw new Error('LOGIN_REQUIRED');
-            throw new Error(parsed.error);
-          }
-          if (parsed.delta) {
-            if (parsed.delta.startsWith('\x00RESET\x00')) {
-              // 全量替换信号：清空已积累内容，重新开始
-              fullText = parsed.delta.slice(7);
-              onDelta('\x00RESET\x00' + fullText);
-            } else {
-              fullText += parsed.delta;
-              onDelta(parsed.delta);
-            }
-          }
-        } catch (e) {
-          if ((e as Error).message && !(e instanceof SyntaxError)) throw e;
-        }
+        consumeSseLine(line);
       }
     }
+    if (buffer.trim()) consumeSseLine(buffer.trimEnd());
+    correlator.assertComplete();
   } catch (error) {
     const message = (error as Error).message || String(error);
     trace.error('bridge-client', 'chat-request-failed', { message });
@@ -585,6 +597,7 @@ async function chatStream(
     throw error;
   }
 
+  const fullText = correlator.fullText;
   const responsePayloadId = trace.payload('provider', 'extension.response.raw', fullText);
   trace.debug('bridge-client', 'response-payload-recorded', { payloadId: responsePayloadId });
   assertProviderReturnedContent(fullText);

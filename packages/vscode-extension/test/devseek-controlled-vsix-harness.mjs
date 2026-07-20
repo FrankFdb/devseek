@@ -1447,8 +1447,22 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
             'Cache-Control': 'no-cache',
             Connection: 'close',
           });
-          response.write(`data: ${JSON.stringify({ delta: providerText, done: false })}\n\n`);
-          response.end(`data: ${JSON.stringify({ delta: '', done: true })}\n\n`);
+          response.write(`data: ${JSON.stringify({
+            protocolVersion: 'devseek.deepseek-web-stream/v1',
+            requestId: operationId,
+            sequence: 1,
+            event: 'delta',
+            delta: providerText,
+            done: false,
+          })}\n\n`);
+          response.end(`data: ${JSON.stringify({
+            protocolVersion: 'devseek.deepseek-web-stream/v1',
+            requestId: operationId,
+            sequence: 2,
+            event: 'done',
+            delta: '',
+            done: true,
+          })}\n\n`);
           return;
         }
         return sendJson(response, 200, { content: providerText });

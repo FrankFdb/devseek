@@ -966,6 +966,7 @@ async function withFakeBridge(responder, fn) {
       const body = raw ? JSON.parse(raw) : {};
       seenBodies.push(body);
       const response = responder(body);
+      const requestId = String(req.headers['x-devseek-operation-id'] || 'fake-bridge-chat');
       if (body.stream === false) {
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ content: response.content }));
@@ -976,8 +977,22 @@ async function withFakeBridge(responder, fn) {
         'Cache-Control': 'no-cache',
         Connection: 'keep-alive',
       });
-      res.write(`data: ${JSON.stringify({ delta: `\u0000RESET\u0000${response.content}`, done: false })}\n\n`);
-      res.write(`data: ${JSON.stringify({ delta: '', done: true })}\n\n`);
+      res.write(`data: ${JSON.stringify({
+        protocolVersion: 'devseek.deepseek-web-stream/v1',
+        requestId,
+        sequence: 1,
+        event: 'delta',
+        delta: `\u0000RESET\u0000${response.content}`,
+        done: false,
+      })}\n\n`);
+      res.write(`data: ${JSON.stringify({
+        protocolVersion: 'devseek.deepseek-web-stream/v1',
+        requestId,
+        sequence: 2,
+        event: 'done',
+        delta: '',
+        done: true,
+      })}\n\n`);
       res.end();
     });
   });

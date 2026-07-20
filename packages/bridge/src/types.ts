@@ -14,9 +14,16 @@ export interface ChatRequest {
 }
 
 export interface StreamDelta {
+  protocolVersion?: string;
+  requestId?: string;
+  sequence?: number;
+  event?: 'delta' | 'done' | 'error' | 'cancelled' | 'retry';
   delta: string;
   done: boolean;
   error?: string;
+  errorCategory?: 'login-required' | 'rate-limited' | 'cancelled' | 'browser-session-lost' | 'provider-error';
+  attempt?: number;
+  retryAfterMs?: number;
 }
 
 export interface ChatResponse {
