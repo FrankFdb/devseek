@@ -1,6 +1,6 @@
-import { ChangeSet, ChangeSetSummary } from './change-set';
+import { ChangeSet, ChangeSetSummary, ChangeSetSymbolSummary } from './change-set';
 
-export { ChangeSet, createChangeSet } from './change-set';
+export { ChangeSet, createChangeSet, createChangeSetFromActions } from './change-set';
 
 export interface ReviewValidationInput {
   ran: boolean;
@@ -53,6 +53,7 @@ export interface ReviewQualityGateRecord {
 
 export interface ReviewLedgerSnapshot {
   files: ChangeSetSummary;
+  symbols: ChangeSetSymbolSummary;
   validation: ReviewValidationRecord;
   qualityGate: ReviewQualityGateRecord;
   unfinishedItems: string[];
@@ -88,6 +89,7 @@ export class ReviewLedger {
   snapshot(): ReviewLedgerSnapshot {
     return {
       files: this.changeSet.summary(),
+      symbols: this.changeSet.symbolSummary(),
       validation: this.validation,
       qualityGate: this.qualityGate,
       unfinishedItems: [...this.unfinishedItems],

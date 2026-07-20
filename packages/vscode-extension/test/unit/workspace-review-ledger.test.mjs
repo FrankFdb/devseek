@@ -19,6 +19,7 @@ const req = createRequire(import.meta.url);
 const {
   ReviewLedger,
   createChangeSet,
+  createChangeSetFromActions,
   extractFailureFilePaths,
   normalizeValidationRecord,
 } = req(bundlePath);
@@ -42,6 +43,115 @@ test('ChangeSet: classifies creates, overwrites, and patches', () => {
     ['src/existing.ts', 'overwrite'],
     ['src/fix.ts', 'patch'],
   ]);
+});
+
+test('R2-06A ChangeSet derives symbol intent from planned ChangeActions', () => {
+  const oldContent = [
+    'export function settleTask(state: string) {',
+    '  return state;',
+    '}',
+    '',
+  ].join('\n');
+  const newContent = [
+    'export function settleTask(state: string) {',
+    "  return state === 'done' ? 'settled' : state;",
+    '}',
+    '',
+  ].join('\n');
+
+  const changeSet = createChangeSetFromActions([
+    {
+      action: {
+        type: 'overwrite-file',
+        path: 'src/app/task-settlement.ts',
+        confidence: 'high',
+        reason: 'changeplan-r2-06a',
+        language: 'typescript',
+        content: newContent,
+      },
+      existed: true,
+      oldContent,
+      newContent,
+      evidenceIds: ['ev-changeplan-r2-06a'],
+    },
+  ], {
+    revisionId: 'plan-r2-06a',
+    paths: ['src/app/task-settlement.ts'],
+    symbols: [{ path: 'src/app/task-settlement.ts', name: 'settleTask', kind: 'function' }],
+  });
+
+  assert.equal(changeSet.requiresPlanRevision(), false);
+  assert.equal(changeSet.changes[0].scope, 'symbol');
+  assert.deepEqual(changeSet.changes[0].plan, {
+    revisionId: 'plan-r2-06a',
+    actionType: 'overwrite-file',
+    confidence: 'high',
+    reason: 'changeplan-r2-06a',
+    evidenceIds: ['ev-changeplan-r2-06a'],
+    scopeStatus: 'in-plan',
+    revisionRequired: false,
+  });
+  assert.deepEqual(changeSet.symbolSummary(), {
+    total: 1,
+    added: 0,
+    modified: 1,
+    removed: 0,
+    changedSymbols: [{
+      path: 'src/app/task-settlement.ts',
+      name: 'settleTask',
+      kind: 'function',
+      changeType: 'modified',
+      evidenceIds: ['ev-changeplan-r2-06a'],
+    }],
+    revisionRequiredPaths: [],
+  });
+});
+
+test('R2-06A ChangeSet marks unplanned symbol changes as requiring a plan revision', () => {
+  const oldContent = [
+    'export function settleTask(state: string) {',
+    '  return state;',
+    '}',
+    '',
+  ].join('\n');
+  const newContent = [
+    'export function settleTask(state: string) {',
+    "  return state === 'done' ? 'settled' : state;",
+    '}',
+    '',
+    'export class ParallelSettlementOwner {}',
+    '',
+  ].join('\n');
+
+  const changeSet = createChangeSetFromActions([
+    {
+      action: {
+        type: 'overwrite-file',
+        path: 'src/app/task-settlement.ts',
+        confidence: 'high',
+        reason: 'changeplan-r2-06a',
+        language: 'typescript',
+        content: newContent,
+      },
+      existed: true,
+      oldContent,
+      newContent,
+      evidenceIds: ['ev-changeplan-r2-06a'],
+    },
+  ], {
+    revisionId: 'plan-r2-06a',
+    paths: ['src/app/task-settlement.ts'],
+    symbols: [{ path: 'src/app/task-settlement.ts', name: 'settleTask', kind: 'function' }],
+  });
+
+  assert.equal(changeSet.requiresPlanRevision(), true);
+  assert.equal(changeSet.changes[0].plan.scopeStatus, 'out-of-plan');
+  assert.deepEqual(changeSet.symbolSummary().revisionRequiredPaths, ['src/app/task-settlement.ts']);
+  assert.ok(changeSet.symbolSummary().changedSymbols.some(symbol => (
+    symbol.name === 'ParallelSettlementOwner'
+    && symbol.kind === 'class'
+    && symbol.changeType === 'added'
+  )));
 });
 
 test('ReviewLedger: records files, validation evidence, and unfinished items', () => {
@@ -72,6 +182,8 @@ test('ReviewLedger: records files, validation evidence, and unfinished items', (
 
   const snapshot = ledger.snapshot();
   assert.deepEqual(snapshot.files.changedPaths, ['src/app.ts']);
+  assert.equal(snapshot.symbols.total, 1);
+  assert.equal(snapshot.symbols.modified, 1);
   assert.equal(snapshot.validation.ran, true);
   assert.equal(snapshot.validation.ok, false);
   assert.equal(snapshot.validation.command, 'npm test');

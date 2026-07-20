@@ -1738,10 +1738,16 @@ test('Architecture: Workspace review ledger owns apply result summary', () => {
   const reviewLedger = src('src/workspace/review-ledger.ts');
   const applier = src('src/workspace-applier.ts');
   assertContains(changeSet, 'class ChangeSet', 'workspace ChangeSet must exist');
+  assertContains(changeSet, 'createChangeSetFromActions', 'ChangeSet must derive file/symbol scope from ChangePlan actions');
+  assertContains(changeSet, 'WorkspaceSymbolChange', 'ChangeSet must expose symbol-level changes');
+  assertContains(changeSet, 'requiresPlanRevision', 'out-of-plan ChangeSet symbols must require plan revision');
+  assertContains(changeSet, 'symbolSummary', 'ChangeSet must summarize symbol-level impact');
   assertContains(reviewLedger, 'class ReviewLedger', 'workspace ReviewLedger must exist');
+  assertContains(reviewLedger, 'symbols: this.changeSet.symbolSummary()', 'ReviewLedger snapshots must include symbol impact');
   assertContains(reviewLedger, 'failureFiles', 'ReviewLedger must record validation failure files');
   assertContains(reviewLedger, 'qualityGate', 'ReviewLedger must record QualityGate results');
   assertContains(applier, 'new ReviewLedger()', 'workspace applier must construct review ledger');
+  assertContains(applier, 'createChangeSetFromActions', 'workspace applier must reuse ChangeSet action derivation');
   assertContains(applier, 'review?: ReviewLedgerSnapshot', 'apply workflow result must expose review snapshot');
   assertContains(applier, 'review: ledger.snapshot()', 'workspace applier must return ledger snapshots');
 });

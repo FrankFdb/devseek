@@ -17,7 +17,7 @@ import {
   resolveGeneratedArtifactPathForPrompt as resolveGeneratedArtifactPathInWorkspaceForPrompt,
   isGeneratedArtifactAllowedForPrompt,
 } from './workspace/path-resolver';
-import { createChangeSet } from './workspace/change-set';
+import { createChangeSetFromActions } from './workspace/change-set';
 import {
   WorkspaceEditService,
   type WorkspaceTextFileBaseline,
@@ -552,12 +552,14 @@ function normalizePreparedSourceTransportEscapes(prepared: PreparedChange[]): Pr
 }
 
 function createChangeSetFromPrepared(prepared: PreparedChange[]) {
-  return createChangeSet(prepared.map(change => ({
-    path: change.relPath,
+  return createChangeSetFromActions(prepared.map(change => ({
+    action: {
+      ...change.action,
+      path: change.relPath,
+    },
     existed: change.exists,
     oldContent: change.oldContent,
     newContent: change.newContent,
-    actionType: change.action.type,
   })));
 }
 
