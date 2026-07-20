@@ -1822,6 +1822,11 @@ test('Architecture: Workspace review ledger owns apply result summary', () => {
   assertContains(reviewLedger, 'symbols: this.changeSet.symbolSummary()', 'ReviewLedger snapshots must include symbol impact');
   assertContains(reviewLedger, 'failureFiles', 'ReviewLedger must record validation failure files');
   assertContains(reviewLedger, 'qualityGate', 'ReviewLedger must record QualityGate results');
+  assertContains(reviewLedger, 'independentReview', 'ReviewLedger snapshots must include independent review status');
+  assertContains(reviewLedger, 'normalizeIndependentReviewRecord', 'ReviewLedger must own independent review normalization');
+  assertContains(reviewLedger, 'reviewer-matches-writer', 'independent review must reject writer self-review');
+  assertContains(reviewLedger, 'reviewer-matches-completion-judge', 'independent review must reject completion-judge self-review');
+  assertContains(reviewLedger, 'P0=0/P1=0 required', 'independent review must require P0/P1 zero before pass');
   assertContains(applier, 'new ReviewLedger()', 'workspace applier must construct review ledger');
   assertContains(applier, 'createChangeSetFromActions', 'workspace applier must reuse ChangeSet action derivation');
   assertContains(applier, 'review?: ReviewLedgerSnapshot', 'apply workflow result must expose review snapshot');

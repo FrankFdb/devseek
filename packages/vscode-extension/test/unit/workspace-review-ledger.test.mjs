@@ -21,6 +21,7 @@ const {
   createChangeSet,
   createChangeSetFromActions,
   extractFailureFilePaths,
+  normalizeIndependentReviewRecord,
   normalizeValidationRecord,
 } = req(bundlePath);
 
@@ -191,6 +192,8 @@ test('ReviewLedger: records files, validation evidence, and unfinished items', (
   assert.deepEqual(snapshot.validation.failureFiles, ['src/app.ts']);
   assert.equal(snapshot.qualityGate.status, 'fail');
   assert.deepEqual(snapshot.qualityGate.evidenceRefs, ['validation:failed:npm test']);
+  assert.equal(snapshot.independentReview.status, 'blocked');
+  assert.match(snapshot.independentReview.summary, /Independent review blocked/);
   assert.deepEqual(snapshot.unfinishedItems, ['修复 TypeScript 编译错误']);
 });
 
@@ -252,6 +255,75 @@ test('ReviewLedger: failure file extraction prefers changed paths', () => {
     }, ['src/app.ts']).failureFiles,
     [],
   );
+});
+
+test('R2-09A ReviewLedger: independent review rejects writer or completion judge self-review', () => {
+  const selfReview = normalizeIndependentReviewRecord({
+    reviewerId: 'agent-writer',
+    writerId: 'agent-writer',
+    completionJudgeId: 'quality-gate',
+    contextRefs: ['contract:task', 'diff:changeset', 'validation:npm test'],
+    findings: [],
+  });
+  const judgeReview = normalizeIndependentReviewRecord({
+    reviewerId: 'quality-gate',
+    writerId: 'agent-writer',
+    completionJudgeId: 'quality-gate',
+    contextRefs: ['contract:task', 'diff:changeset', 'validation:npm test'],
+    findings: [],
+  });
+
+  assert.equal(selfReview.status, 'blocked');
+  assert.equal(judgeReview.status, 'blocked');
+  assert.deepEqual(selfReview.independence.roles, {
+    reviewerId: 'agent-writer',
+    writerId: 'agent-writer',
+    completionJudgeId: 'quality-gate',
+  });
+  assert.ok(selfReview.risks.some(risk => /reviewer.*writer/i.test(risk)));
+  assert.ok(judgeReview.risks.some(risk => /completion judge/i.test(risk)));
+});
+
+test('R2-09A ReviewLedger: P0 or P1 findings block independent review completion', () => {
+  const blocked = normalizeIndependentReviewRecord({
+    reviewerId: 'agent-reviewer',
+    writerId: 'agent-writer',
+    completionJudgeId: 'quality-gate',
+    contextRefs: ['contract:task', 'diff:changeset', 'validation:npm test', 'risk:manifest'],
+    findings: [
+      {
+        id: 'finding-p1-missing-test',
+        severity: 'P1',
+        summary: 'Changed validation semantics without a targeted oracle.',
+        evidenceRefs: ['diff:quality-gate-service', 'validation:npm test'],
+      },
+    ],
+  });
+  const passed = normalizeIndependentReviewRecord({
+    reviewerId: 'agent-reviewer',
+    writerId: 'agent-writer',
+    completionJudgeId: 'quality-gate',
+    contextRefs: ['contract:task', 'diff:changeset', 'validation:npm test', 'risk:manifest'],
+    findings: [
+      {
+        id: 'finding-p2-follow-up',
+        severity: 'P2',
+        summary: 'Consider adding a broader smoke case later.',
+        evidenceRefs: ['risk:manifest'],
+      },
+    ],
+  });
+
+  assert.equal(blocked.status, 'blocked');
+  assert.equal(blocked.findingCounts.P0, 0);
+  assert.equal(blocked.findingCounts.P1, 1);
+  assert.match(blocked.summary, /P0=0\/P1=0/);
+  assert.equal(passed.status, 'passed');
+  assert.deepEqual(passed.findingCounts, { P0: 0, P1: 0, P2: 1, P3: 0 });
+
+  const ledger = new ReviewLedger();
+  ledger.recordIndependentReview(passed);
+  assert.equal(ledger.snapshot().independentReview.status, 'passed');
 });
 
 console.log('\nWorkspace review ledger tests passed.\n');
