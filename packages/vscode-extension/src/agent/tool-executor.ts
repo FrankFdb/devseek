@@ -3,7 +3,7 @@ import { decideToolPermission } from '../app/permission-service';
 import type { ToolKind } from '../intent/intent-types';
 import type { FakeTool } from './fake-tool-parser';
 import type { ToolCall } from './tool-call-normalizer';
-import { normalizeToolCall, toolCallToFakeTool } from './tool-call-normalizer';
+import { normalizeToolCall, toolCallToFakeTool, toolCallToRejectedResult } from './tool-call-normalizer';
 import {
   type AgentToolDefinition,
   type AgentToolActivity,
@@ -53,7 +53,9 @@ export class AgentToolExecutor {
     const call = isNormalizedToolCall(tool) ? tool : normalizeToolCall(tool, 'fake-tool');
     const definition = call.definition ?? getToolDefinition(call.name);
     const normalizedTool = toolCallToFakeTool(call);
-    const permission = definition
+    const permission = call.rejectionReason
+      ? { action: 'deny' as const, reason: `tool-call-rejected:${call.rejectionReason}` }
+      : definition
       ? policy
         ? decideToolPermission(policy, {
           kind: call.kind,
@@ -83,6 +85,9 @@ export class AgentToolExecutor {
   }
 
   validateInput(plan: AgentToolExecutionPlan): ToolInputValidationResult {
+    if (plan.call.rejectionReason) {
+      return { ok: false, error: `工具调用已拒绝: ${plan.call.rejectionReason}` };
+    }
     if (!plan.registered || !plan.definition) {
       return { ok: false, error: `未注册工具: ${plan.call.name || 'unknown'}` };
     }
@@ -94,6 +99,12 @@ export class AgentToolExecutor {
   }
 
   toResult(plan: AgentToolExecutionPlan, result: ToolResultInput = {}): ToolResult {
+    if (plan.call.rejectionReason) {
+      return {
+        ...toolCallToRejectedResult(plan.call),
+        permission: plan.permission,
+      };
+    }
     const ok = result.ok ?? !result.error;
     return {
       ok,

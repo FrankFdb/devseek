@@ -20,7 +20,12 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { normalizeToolCall, toolCallToFakeTool } = req(bundlePath);
+const {
+  TOOL_CALL_NORMALIZATION_PROTOCOL_VERSION,
+  normalizeToolCall,
+  normalizeToolCallEnvelope,
+  toolCallToFakeTool,
+} = req(bundlePath);
 
 function comparable(call) {
   return {
@@ -29,6 +34,7 @@ function comparable(call) {
     registered: call.registered,
     kind: call.kind,
     risk: call.risk,
+    executable: call.executable,
   };
 }
 
@@ -57,6 +63,53 @@ test('ToolCallNormalizer: unknown native tools stay visible but unregistered', (
   assert.equal(call.registered, false);
   assert.equal(call.kind, 'plan');
   assert.equal(call.risk, 'high');
+  assert.equal(call.executable, false);
+  assert.equal(call.rejectionReason, 'unknown-tool');
+});
+
+test('ToolCallNormalizer: malformed native JSON is rejected before permission or effects', () => {
+  const envelope = normalizeToolCallEnvelope({
+    id: 'call_bad_json',
+    function: {
+      name: 'write_file',
+      arguments: '{"path":"src/app.ts",',
+    },
+  }, 'native');
+
+  assert.equal(envelope.version, TOOL_CALL_NORMALIZATION_PROTOCOL_VERSION);
+  assert.equal(envelope.decision, 'rejected');
+  assert.equal(envelope.reason, 'malformed-tool-arguments');
+  assert.equal(envelope.call.name, 'write_file');
+  assert.equal(envelope.call.registered, true);
+  assert.equal(envelope.call.executable, false);
+  assert.deepEqual(envelope.call.input, {});
+  assert.equal(envelope.result.ok, false);
+  assert.equal(envelope.result.toolName, 'write_file');
+  assert.equal(envelope.result.error, 'malformed-tool-arguments');
+  assert.deepEqual(envelope.result.evidence, []);
+});
+
+test('ToolCallNormalizer: partial and unknown native tool calls get a rejected envelope', () => {
+  const partial = normalizeToolCallEnvelope({
+    function: {
+      arguments: '{}',
+    },
+  }, 'native');
+  const unknown = normalizeToolCallEnvelope({
+    function: {
+      name: 'unknown_magic',
+      arguments: '{}',
+    },
+  }, 'native');
+
+  assert.equal(partial.decision, 'rejected');
+  assert.equal(partial.reason, 'partial-tool-call');
+  assert.equal(partial.call.executable, false);
+  assert.equal(partial.call.registered, false);
+  assert.equal(unknown.decision, 'rejected');
+  assert.equal(unknown.reason, 'unknown-tool');
+  assert.equal(unknown.call.executable, false);
+  assert.equal(unknown.call.registered, false);
 });
 
 test('ToolCallNormalizer: native aliases normalize to canonical tools', () => {

@@ -1,5 +1,10 @@
 import { parseFakeToolCalls } from '../agent/fake-tool-parser';
-import { normalizeToolCall, type NativeToolCall, type ToolCall } from '../agent/tool-call-normalizer';
+import {
+  normalizeToolCallEnvelope,
+  type NativeToolCall,
+  type ToolCall,
+  type ToolCallNormalizationEnvelope,
+} from '../agent/tool-call-normalizer';
 import type { LLMProviderType, TokenUsage } from './types';
 
 export type LLMEvent =
@@ -10,19 +15,23 @@ export type LLMEvent =
   | { type: 'error'; provider: LLMProviderType; message: string; recoverable?: boolean; workflowId?: string };
 
 export function llmEventsToToolCalls(events: readonly LLMEvent[]): ToolCall[] {
-  const calls: ToolCall[] = [];
+  return llmEventsToToolCallEnvelopes(events).map((envelope) => envelope.call);
+}
+
+export function llmEventsToToolCallEnvelopes(events: readonly LLMEvent[]): ToolCallNormalizationEnvelope[] {
+  const envelopes: ToolCallNormalizationEnvelope[] = [];
   for (const event of events) {
     if (event.type === 'tool-call') {
-      calls.push(normalizeToolCall(event.call, 'native'));
+      envelopes.push(normalizeToolCallEnvelope(event.call, 'native'));
       continue;
     }
     if (event.type === 'message') {
       for (const fakeTool of parseFakeToolCalls(event.content)) {
-        calls.push(normalizeToolCall(fakeTool, 'fake-tool'));
+        envelopes.push(normalizeToolCallEnvelope(fakeTool, 'fake-tool'));
       }
     }
   }
-  return calls;
+  return envelopes;
 }
 
 export function redactProviderSecrets(text: string): string {

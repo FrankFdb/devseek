@@ -1416,6 +1416,24 @@ test('R2-07A: ProviderConfigService owns secret refs and capability negotiation'
   assertContains(providerRuntime, 'primary: undefined', 'blocked provider routes must not fall back to Bridge');
 });
 
+test('R2-07B: ToolCallNormalizer owns tool call/result envelopes and fail-closed native dialects', () => {
+  const normalizer = src('src/agent/tool-call-normalizer.ts');
+  const executor = src('src/agent/tool-executor.ts');
+  const providerEvents = src('src/llm/provider-events.ts');
+
+  assertContains(normalizer, "TOOL_CALL_NORMALIZATION_PROTOCOL_VERSION = 'devseek.tool-call-normalization/v1'", 'tool call normalization owner must expose a versioned contract');
+  assertContains(normalizer, 'ToolCallNormalizationEnvelope', 'tool call/result envelope must be part of the normalizer owner contract');
+  assertContains(normalizer, 'normalizeToolCallEnvelope', 'normalizer must expose the single tool-call envelope builder');
+  assertContains(normalizer, 'toolCallToRejectedResult', 'normalizer must own rejected result envelope creation');
+  assertContains(normalizer, "'malformed-tool-arguments'", 'malformed native JSON must fail closed in the normalizer');
+  assertContains(normalizer, "'partial-tool-call'", 'partial native tool calls must fail closed in the normalizer');
+  assertContains(normalizer, "'unknown-tool'", 'unknown native tools must fail closed in the normalizer');
+  assertContains(executor, 'call.rejectionReason', 'executor must consume normalizer rejection before permission/effect');
+  assertContains(executor, 'tool-call-rejected', 'executor denial reason must preserve the normalizer rejection');
+  assertContains(providerEvents, 'llmEventsToToolCallEnvelopes', 'provider event conversion must expose normalized envelopes for native/text dialects');
+  assertContains(providerEvents, 'normalizeToolCallEnvelope', 'provider event conversion must delegate normalization to the normalizer owner');
+});
+
 test('R2-03F: ContextAssemblyService owns preview, context budget, usage budget, and omission reports', () => {
   const contextAssembly = src('src/app/context-assembly-service.ts');
 

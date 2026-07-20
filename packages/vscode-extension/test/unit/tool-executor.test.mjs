@@ -12,15 +12,22 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const bundlePath = path.join(rootDir, 'test/unit/tool-executor.bundle.cjs');
+const normalizerBundlePath = path.join(rootDir, 'test/unit/tool-call-normalizer.executor-test.bundle.cjs');
 
 execSync(
   `npx esbuild src/agent/tool-executor.ts --bundle ` +
   `--outfile=${bundlePath} --format=cjs --platform=node --external:vscode`,
   { cwd: rootDir, stdio: 'pipe' },
 );
+execSync(
+  `npx esbuild src/agent/tool-call-normalizer.ts --bundle ` +
+  `--outfile=${normalizerBundlePath} --format=cjs --platform=node --external:vscode`,
+  { cwd: rootDir, stdio: 'pipe' },
+);
 
 const req = createRequire(import.meta.url);
 const { AgentToolExecutor, classifyToolKind } = req(bundlePath);
+const { normalizeToolCallEnvelope } = req(normalizerBundlePath);
 
 test('AgentToolExecutor: classifies mutating and terminal tools', () => {
   assert.equal(classifyToolKind('create_file'), 'edit');
@@ -69,7 +76,41 @@ test('AgentToolExecutor: rejects unregistered tools before execution', () => {
 
   assert.equal(plan.registered, false);
   assert.equal(plan.permission.action, 'deny');
-  assert.equal(plan.permission.reason, 'tool-not-registered:unknown_magic');
+  assert.equal(plan.permission.reason, 'tool-call-rejected:unknown-tool');
+});
+
+test('AgentToolExecutor: consumes normalizer rejection before permission and effects', () => {
+  const executor = new AgentToolExecutor();
+  const envelope = normalizeToolCallEnvelope({
+    function: {
+      name: 'write_file',
+      arguments: '{"path":',
+    },
+  }, 'native');
+  const plan = executor.plan(
+    envelope.call,
+    {
+      mode: 'edit',
+      allowedToolKinds: ['read', 'search', 'diagnostics', 'network', 'plan', 'memory', 'edit', 'terminal'],
+      requireConfirmationKinds: [],
+      deniedToolKinds: [],
+      requireUserConfirmation: false,
+    },
+  );
+  const validation = executor.validateInput(plan);
+  const result = executor.toResult(plan, { output: 'should-not-surface', evidence: [{ kind: 'edit', label: 'x', evidenceId: 'ev-x' }] });
+
+  assert.equal(plan.registered, true);
+  assert.equal(plan.call.executable, false);
+  assert.equal(plan.permission.action, 'deny');
+  assert.equal(plan.permission.reason, 'tool-call-rejected:malformed-tool-arguments');
+  assert.equal(validation.ok, false);
+  assert.match(validation.error, /malformed-tool-arguments/);
+  assert.equal(result.ok, false);
+  assert.equal(result.toolName, 'write_file');
+  assert.equal(result.error, 'malformed-tool-arguments');
+  assert.equal(result.output, undefined);
+  assert.deepEqual(result.evidence, []);
 });
 
 test('AgentToolExecutor: validates required schema fields', () => {

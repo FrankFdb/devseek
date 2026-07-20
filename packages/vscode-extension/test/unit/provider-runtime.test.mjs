@@ -27,7 +27,11 @@ const {
   sanitizeProviderConfigSnapshot,
 } = bundle('src/llm/provider-config-service.ts', 'provider-config-service');
 const { LLMProviderRuntime } = bundle('src/llm/provider-runtime.ts', 'provider-runtime');
-const { llmEventsToToolCalls, redactProviderSecrets } = bundle('src/llm/provider-events.ts', 'provider-events');
+const {
+  llmEventsToToolCallEnvelopes,
+  llmEventsToToolCalls,
+  redactProviderSecrets,
+} = bundle('src/llm/provider-events.ts', 'provider-events');
 const {
   buildProviderStatusResponse,
   isProviderStatusRequest,
@@ -200,6 +204,34 @@ test('Provider events: API native tool calling normalizes to the same ToolCall c
   assert.equal(calls[0].source, 'native');
   assert.equal(calls[0].kind, 'edit');
   assert.equal(calls[0].registered, true);
+});
+
+test('Provider events: malformed and unknown native calls surface rejected envelopes', () => {
+  const envelopes = llmEventsToToolCallEnvelopes([
+    {
+      type: 'tool-call',
+      provider: 'openai-compat',
+      call: { function: { name: 'write_file', arguments: '{"path":' } },
+    },
+    {
+      type: 'tool-call',
+      provider: 'openai-compat',
+      call: { function: { name: 'unknown_magic', arguments: '{}' } },
+    },
+  ]);
+
+  assert.equal(envelopes.length, 2);
+  assert.deepEqual(envelopes.map((envelope) => envelope.decision), ['rejected', 'rejected']);
+  assert.deepEqual(envelopes.map((envelope) => envelope.reason), ['malformed-tool-arguments', 'unknown-tool']);
+  assert.equal(envelopes[0].call.registered, true);
+  assert.equal(envelopes[0].call.executable, false);
+  assert.equal(envelopes[0].result.ok, false);
+  assert.deepEqual(envelopes[0].result.evidence, []);
+  assert.equal(llmEventsToToolCalls([{
+    type: 'tool-call',
+    provider: 'openai-compat',
+    call: { function: { name: 'unknown_magic', arguments: '{}' } },
+  }])[0].rejectionReason, 'unknown-tool');
 });
 
 test('Provider runtime: fallback inherits workflow facts and does not replay destructive tools', () => {
