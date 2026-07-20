@@ -1372,6 +1372,20 @@ test('R2-03D: FileContextService owns large-file range, generated, and symbol pr
   assertContains(fileContext, 'inReturnedRange', 'symbol outline must reveal whether a symbol body is actually present');
 });
 
+test('R2-03E: WorktreeConflictService owns dirty worktree and generated owner decisions', () => {
+  const worktreeConflict = src('src/app/worktree-conflict-service.ts');
+
+  assertContains(worktreeConflict, "version: 'devseek.worktree-conflict/v1'", 'worktree conflict owner must expose a versioned contract');
+  assertContains(worktreeConflict, 'parseGitStatusPorcelain', 'git porcelain parsing must stay in the worktree conflict owner');
+  assertContains(worktreeConflict, 'worktreeState', 'dirty/staged/untracked state must be machine-visible');
+  assertContains(worktreeConflict, "'dirty-user-changes-require-approval'", 'dirty user changes must not be silently overwritten');
+  assertContains(worktreeConflict, "'staged-user-changes-require-approval'", 'staged user changes must not be silently overwritten');
+  assertContains(worktreeConflict, "'untracked-target-requires-approval'", 'untracked targets must be observable before overwrite');
+  assertContains(worktreeConflict, "'generated-boundary-owner-mismatch'", 'handwritten edits must not reverse-write generated boundaries');
+  assertContains(worktreeConflict, "'handwritten-owner-mismatch'", 'generated output must not reverse-write handwritten source');
+  assertContains(worktreeConflict, 'statusEvidence', 'decisions must preserve the git status evidence line');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');
