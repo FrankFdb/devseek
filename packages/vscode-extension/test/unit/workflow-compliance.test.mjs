@@ -1331,6 +1331,17 @@ test('R2-03A: ProjectInstructionService owns scoped rules, conflicts, and init s
   assertDoesNotContain(init, 'writeFileSync', '/init draft service must not write project rules automatically');
 });
 
+test('R2-03B: RepositoryMapService owns repo EvidenceRef graph and scan safety', () => {
+  const repositoryMap = src('src/app/repository-map-service.ts');
+  assertContains(repositoryMap, "version: 'devseek.repository-map/v1'", 'repository map must expose a versioned contract');
+  assertContains(repositoryMap, "kind: 'package-manifest'", 'repository map must emit package manifest evidence');
+  assertContains(repositoryMap, "kind: 'build-command'", 'repository map must emit build command evidence');
+  assertContains(repositoryMap, "kind: 'generated-boundary'", 'repository map must emit generated boundary evidence');
+  assertContains(repositoryMap, "securityEffect: 'performance-skip-not-security-deny'", 'ignored paths must not become safety deny rules');
+  assertContains(repositoryMap, "kind: 'symlink-escape'", 'repository map must detect symlink/path escapes');
+  assertContains(repositoryMap, "kind: 'large-tree-truncated'", 'repository map must bound large-tree scans');
+});
+
 test('Architecture: smalltalk cannot inherit restored session context or apply artifacts', () => {
   const ext = src('src/extension.ts');
   const directVisibleResponseService = src('src/app/direct-visible-response-service.ts');
