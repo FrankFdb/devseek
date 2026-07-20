@@ -208,12 +208,25 @@ export function validateSurfaceEntryInventory(inventory, sources) {
   if (counts.undeclared_legacy_owner_reachability !== 0) {
     errors.push(`legacy:undeclared-reachability-${counts.undeclared_legacy_owner_reachability}`);
   }
+  if (counts.duplicate_runtime_command_registrations !== 0) {
+    const duplicateIds = duplicateRuntimeCommandIds(sources.sourceContents);
+    if (duplicateIds.length === 0) {
+      errors.push(`runtime-command:duplicate-registration-${counts.duplicate_runtime_command_registrations}`);
+    } else {
+      for (const commandId of duplicateIds) {
+        errors.push(`runtime-command:duplicate-registration-${commandId}`);
+      }
+    }
+  }
   const guards = inventory.bypass_guards ?? {};
   if (guards.generic_webview_command_disabled !== true) {
     errors.push('bypass:generic-webview-command-not-disabled');
   }
   if (guards.legacy_surface_projection_fallbacks_removed !== true) {
     errors.push('bypass:legacy-surface-projection-fallbacks-present');
+  }
+  if (guards.runtime_command_registration_unique !== true) {
+    errors.push('bypass:runtime-command-registration-not-unique');
   }
   if (guards.unknown_entry_fail_closed !== true) {
     errors.push('bypass:unknown-entry-not-fail-closed');
@@ -502,6 +515,7 @@ function buildBypassGuards(sources, entries) {
     unknown_entry_fail_closed: entries.every(entry => entry.coverage_status !== 'unknown-entry'),
     generic_webview_command_disabled: provider.includes('Generic inbound VS Code commands are disabled; use a typed product action.'),
     legacy_surface_projection_fallbacks_removed: !hasLegacySurfaceProjectionFallbacks(inventoryLib),
+    runtime_command_registration_unique: duplicateRuntimeCommandIds(sources.sourceContents).length === 0,
     manifest_runtime_drift_present: entries.some(entry => (
       entry.kind === 'command'
       && entry.manifest_declared === true
@@ -545,28 +559,52 @@ function buildCounts(entries, sources) {
     )).length,
     declared_adapter_pending_cutover: entries.filter(entry => entry.kernel_contract_projection.includes('pending-D2')).length,
     undeclared_legacy_owner_reachability: entries.filter(entry => entry.kernel_contract_projection === 'legacy-owner-bypass').length,
+    duplicate_runtime_command_registrations: duplicateRuntimeCommandIds(sources.sourceContents).length,
   };
 }
 
 function collectRuntimeCommands(sourceContents) {
   const commandMap = new Map();
-  const commandSources = [
+  for (const record of collectRuntimeCommandRegistrationRecords(sourceContents)) {
+    commandMap.set(record.commandId, { source_ref: record.source_ref });
+  }
+  return commandMap;
+}
+
+function runtimeCommandSourcePaths() {
+  return [
     SOURCE_PATHS.extensionCommands,
     SOURCE_PATHS.providerRouter,
     SOURCE_PATHS.pendingEditCoordinator,
     SOURCE_PATHS.realPluginHarness,
   ];
-  for (const sourcePath of commandSources) {
+}
+
+function collectRuntimeCommandRegistrationRecords(sourceContents) {
+  const records = [];
+  for (const sourcePath of runtimeCommandSourcePaths()) {
     const source = sourceContents[sourcePath] ?? '';
-    const commandIds = new Set(extractDirectRegisterCommandIds(source));
-    if (sourcePath === SOURCE_PATHS.extensionCommands) {
-      for (const id of extractVisibleCommandTupleIds(source)) commandIds.add(id);
+    for (const commandId of extractDirectRegisterCommandIds(source)) {
+      records.push({ commandId, source_ref: sourcePath, registration_kind: 'direct-registerCommand' });
     }
-    for (const id of commandIds) {
-      commandMap.set(id, { source_ref: sourcePath });
+    if (sourcePath === SOURCE_PATHS.extensionCommands) {
+      for (const commandId of extractVisibleCommandTupleIds(source)) {
+        records.push({ commandId, source_ref: sourcePath, registration_kind: 'visible-command-tuple' });
+      }
     }
   }
-  return commandMap;
+  return records;
+}
+
+function duplicateRuntimeCommandIds(sourceContents) {
+  const counts = new Map();
+  for (const record of collectRuntimeCommandRegistrationRecords(sourceContents)) {
+    counts.set(record.commandId, (counts.get(record.commandId) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([commandId]) => commandId)
+    .sort();
 }
 
 function extractDirectRegisterCommandIds(source) {
