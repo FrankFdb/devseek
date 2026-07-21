@@ -85,6 +85,28 @@ test('ToolLoop work-tool classifier keeps meta tools separate from real work', (
   assert.equal(isAgentWorkToolName('run_terminal'), true);
 });
 
+test('R3-05A ToolLoop memory_write emits an approval-required structured proposal', async () => {
+  let proposal;
+  const result = await executeFakeToolsForLoop(
+    [{ name: 'memory_write', input: { content: '本仓库默认使用 npm test 做回归验证。' } }],
+    {
+      onMemoryWrite: async (nextProposal) => {
+        proposal = nextProposal;
+        throw new Error('持久记忆写入需要用户审批');
+      },
+      onAgentStatus: async () => {},
+    },
+    '/tmp/project',
+    { currentTaskIndex: 1, taskTotal: 1, workspaceRoot: '/tmp/project' },
+  );
+
+  assert.equal(proposal.type, 'verified-experience');
+  assert.equal(proposal.scope, 'repository');
+  assert.equal(proposal.source.kind, 'agent');
+  assert.equal(proposal.requiresUserApproval, true);
+  assert.match(result.feedbackForAI, /用户审批/);
+});
+
 test('ToolLoop fails closed when an execution policy is missing', async () => {
   let terminalCalled = false;
   const result = await executeFakeToolsWithoutFixturePolicy(

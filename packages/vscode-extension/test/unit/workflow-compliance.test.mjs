@@ -2219,6 +2219,30 @@ test('R3-04: Context compaction fidelity, redaction, and stale-memory receipts l
   assertContains(agentHistoryCompactionTests, 'ttl=expired', 'R3-04 oracle must cover stale-memory rejection');
 });
 
+test('R3-05A: MemoryService owns scope, provenance, and persistent-write approval', () => {
+  const memoryTypes = src('src/memory/types.ts');
+  const memoryService = src('src/app/memory-service.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
+  const memoryTests = src('test/unit/memory-service.test.mjs');
+  const toolLoopTests = src('test/unit/agent-tool-loop-terminal-guard.test.mjs');
+
+  assertContains(memoryTypes, 'MemoryClassification', 'memory schema must expose explicit instruction/workspace/task/preference/ephemeral classification');
+  for (const classification of ["'instruction'", "'workspace'", "'task'", "'preference'", "'ephemeral'"]) {
+    assertContains(memoryTypes, classification, `memory classification must include ${classification}`);
+  }
+  assertContains(memoryTypes, 'MemoryProvenance', 'memory records/proposals must carry provenance');
+  assertContains(memoryTypes, 'externalContent', 'memory provenance must mark external content');
+  assertContains(memoryTypes, 'approvalState', 'memory provenance must carry approval state');
+  assertContains(memoryService, 'classifyMemoryWriteProposal', 'MemoryService must own memory scope classification');
+  assertContains(memoryService, 'requiresPersistentMemoryApproval', 'MemoryService must own persistent memory approval policy');
+  assertContains(memoryService, 'approveWriteProposal', 'MemoryService must expose an auditable approval transition');
+  assertContains(memoryService, 'external content cannot become privileged memory', 'MemoryService must prevent external content privilege escalation');
+  assertContains(toolLoop, 'requiresUserApproval: true', 'tool-loop memory_write proposals must be approval-required before persistence');
+  assertDoesNotContain(toolLoop, 'requiresUserApproval: false', 'tool-loop must not declare provider memory writes as pre-approved');
+  assertContains(memoryTests, 'R3-05A MemoryService', 'R3-05A must have MemoryService failure-first oracle coverage');
+  assertContains(toolLoopTests, 'R3-05A ToolLoop memory_write', 'R3-05A must have tool-loop simulated-user oracle coverage');
+});
+
 test('Architecture: Phase 10 application service owns Provider chat routing protocol', () => {
   const service = src('../shared/src/agent-application-service.ts');
   const protocol = src('../shared/src/agent-protocol.ts');

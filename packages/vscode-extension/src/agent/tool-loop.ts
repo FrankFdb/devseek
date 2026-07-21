@@ -927,7 +927,7 @@ export async function executeFakeToolsForLoop(
       if (content) {
         try {
           await callbacks.onMemoryWrite({
-            type: 'verified-experience', scope: 'repository', content, source: { kind: 'agent' }, reason: 'Agent memory_write tool', tags: ['agent'], requiresUserApproval: false,
+            type: 'verified-experience', scope: 'repository', content, source: { kind: 'agent' }, reason: 'Agent memory_write tool', tags: ['agent'], requiresUserApproval: true,
           });
           parts.push(`[memory_write] 已写入记忆：${content.slice(0, 80)}`);
           callbacks.onToolActivity?.('memory', `记忆已保存: ${content.slice(0, 60)}`);
