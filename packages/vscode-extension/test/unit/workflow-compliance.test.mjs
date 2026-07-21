@@ -669,6 +669,27 @@ test('R3-05F: TaskHistory lifecycle, redacted export, retention, and resume gati
   assertContains(webviewTests, 'R3-05F TaskHistoryUiService', 'R3-05F must have UI lifecycle oracle');
 });
 
+test('R3-06A: Subagent contract isolates child context, permission, budget, and evidence-only output', () => {
+  const appIndex = src('src/app/index.ts');
+  const subagent = src('src/app/subagent-contract-service.ts');
+  const tests = src('test/unit/subagent-contract-service.test.mjs');
+
+  assertContains(appIndex, "export * from './subagent-contract-service';", 'R3-06A SubagentContractService must be exported');
+  assertContains(subagent, 'SUBAGENT_CONTRACT_PROTOCOL', 'Subagent contract must expose a versioned protocol marker');
+  assertContains(subagent, 'SUBAGENT_CHILD_OUTPUT_PROTOCOL', 'Subagent output must expose a versioned protocol marker');
+  assertContains(subagent, 'SubagentContractService', 'Subagent contract owner service must exist');
+  assertContains(subagent, 'settlementAuthority', 'Subagent contract must bind settlement authority to parent Kernel');
+  assertContains(subagent, 'parent-kernel', 'Subagent terminal settlement must remain parent-owned');
+  assertContains(subagent, 'terminalClaimsAllowed: false', 'Subagent output contract must reject terminal claims');
+  assertContains(subagent, 'directEffectsAllowed: false', 'Subagent output contract must reject direct effects');
+  assertContains(subagent, 'SensitiveMemoryGuard', 'Subagent inputs and outputs must use secret redaction');
+  assertContains(subagent, 'PermissionKernel', 'Subagent tool permission must reuse the central permission kernel');
+  assertContains(subagent, 'child-terminal-claim-rejected', 'Subagent outputs must flag terminal claims');
+  assertContains(subagent, 'child-direct-effect-rejected', 'Subagent outputs must flag direct effects');
+  assertContains(subagent, 'rawContent', 'Subagent context isolation must strip raw context content');
+  assertContains(tests, 'R3-06A SubagentContractService', 'R3-06A must have subagent failure-first oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
