@@ -305,11 +305,20 @@ export interface ExtensionProfileSlotExecutionInput {
   slotId: string;
   attemptId: string;
   status: Exclude<ExtensionProfileSlotExecutionStatus, 'blocked'>;
+  childReceipt?: ExtensionProfileSlotChildReceipt;
   effectRefs?: readonly string[];
   receiptRefs?: readonly string[];
   failureRefs?: readonly string[];
   vetoes?: readonly string[];
   previousReceipts?: readonly ExtensionProfileSlotExecutionReceipt[];
+}
+
+export interface ExtensionProfileSlotChildReceipt {
+  protocol?: string;
+  evidenceRefs?: readonly string[];
+  violations?: readonly string[];
+  blockedReasons?: readonly string[];
+  vetoes?: readonly string[];
 }
 
 export interface ExtensionProfileSlotExecutionReceipt {
@@ -330,6 +339,10 @@ export interface ExtensionProfileSlotExecutionReceipt {
   replacesPriorAttempt: false;
   priorAttemptPolicy: 'append-only-no-replacement';
   oracleRef: string;
+  childReceiptRequired: boolean;
+  childProtocol: string;
+  childEvidenceRefs: readonly string[];
+  childViolations: readonly string[];
   effectRefs: readonly string[];
   receiptRefs: readonly string[];
   failureRefs: readonly string[];
@@ -826,6 +839,23 @@ export class ExtensionProfilePlanService {
     const slotId = String(input.slotId ?? '').trim();
     const attemptId = String(input.attemptId ?? '').trim();
     const slot = findExtensionProfileSlot(plan, slotId);
+    const childReceipt = input.childReceipt;
+    const childProtocol = String(childReceipt?.protocol ?? '').trim();
+    const childEvidenceRefs = uniqueStrings(childReceipt?.evidenceRefs ?? []);
+    const childViolations = uniqueStrings([
+      ...(childReceipt?.violations ?? []),
+      ...(childReceipt?.blockedReasons ?? []),
+      ...(childReceipt?.vetoes ?? []),
+    ]);
+    const childReceiptRequired = input.status === 'passed';
+    const expectedChildProtocol = EXPECTED_EXTENSION_PROFILE_SCHEMAS[plan.kind];
+    const childReceiptVetoes = childReceiptRequired
+      ? uniqueStrings([
+        ...(childReceipt ? [] : [`slot-child-receipt-missing-veto:${slotId}`]),
+        ...(childReceipt && childProtocol !== expectedChildProtocol ? [`slot-child-protocol-mismatch-veto:${slotId}`] : []),
+        ...(childViolations.length > 0 ? [`slot-child-receipt-not-clean-veto:${slotId}`] : []),
+      ])
+      : [];
     const previousAttemptIds = uniqueStrings(
       (input.previousReceipts ?? [])
         .filter(receipt => receipt.slotId === slotId)
@@ -836,6 +866,7 @@ export class ExtensionProfilePlanService {
       ...(attemptId ? [] : [`slot-missing-attempt-veto:${slotId}`]),
       ...(slot ? [] : [`slot-not-in-profile-veto:${slotId}`]),
       ...(previousAttemptIds.length === 0 ? [] : [`slot-replacement-veto:${slotId}`]),
+      ...childReceiptVetoes,
       ...(input.vetoes ?? []),
     ]);
     const status: ExtensionProfileSlotExecutionStatus = vetoes.length > 0 ? 'blocked' : input.status;
@@ -862,6 +893,10 @@ export class ExtensionProfilePlanService {
       replacesPriorAttempt: false,
       priorAttemptPolicy: 'append-only-no-replacement',
       oracleRef,
+      childReceiptRequired,
+      childProtocol,
+      childEvidenceRefs,
+      childViolations,
       effectRefs,
       receiptRefs,
       failureRefs,
@@ -873,6 +908,8 @@ export class ExtensionProfilePlanService {
         ...effectRefs,
         ...receiptRefs,
         ...failureRefs,
+        ...childEvidenceRefs,
+        ...childViolations,
         ...vetoes,
       ]),
     };

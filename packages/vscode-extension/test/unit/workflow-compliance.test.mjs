@@ -894,6 +894,19 @@ test('R3-07S-skill-TASK-001: Extension profile planner records append-only skill
   assertContains(sharedTests, 'R3-07S-skill-TASK-001 ExtensionProfilePlanService', 'R3-07S-skill-TASK-001 must have slot execution failure-first oracle');
 });
 
+test('R3-07S-skill-TASK-002: passed skill slot execution must bind child receipt protocol', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'childReceipt', 'R3-07S-skill-TASK-002 must accept a child receipt at the profile owner boundary');
+  assertContains(sharedEnhancements, 'childReceiptRequired', 'R3-07S-skill-TASK-002 must expose that passed slots require child evidence');
+  assertContains(sharedEnhancements, 'childProtocol', 'R3-07S-skill-TASK-002 must record the child receipt protocol');
+  assertContains(sharedEnhancements, 'childEvidenceRefs', 'R3-07S-skill-TASK-002 must carry child evidence into the slot receipt');
+  assertContains(sharedEnhancements, 'slot-child-receipt-missing-veto', 'R3-07S-skill-TASK-002 must veto passed slots with no child receipt');
+  assertContains(sharedEnhancements, 'slot-child-protocol-mismatch-veto', 'R3-07S-skill-TASK-002 must veto wrong child protocols');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-002 ExtensionProfilePlanService', 'R3-07S-skill-TASK-002 must have child receipt failure-first oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

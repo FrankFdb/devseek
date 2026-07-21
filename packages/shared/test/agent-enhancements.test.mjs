@@ -339,6 +339,16 @@ test('R3-07F-subagent ExtensionProfilePlanService binds subagent profile plans t
 
 test('R3-07S-skill-TASK-001 ExtensionProfilePlanService records one append-only skill slot receipt', () => {
   const service = new ExtensionProfilePlanService();
+  const skillReceipt = new SkillDiscoveryService().planExecution({
+    prompt: 'please use the react skill',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: 'description: Build React views\ntriggers: react\ntool_kinds: read',
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
   const plan = service.createProfilePlan({
     kind: 'skill',
     candidateCommit: '8fd61a3830cff653c6f0d21d554341f85a2b419a',
@@ -350,6 +360,7 @@ test('R3-07S-skill-TASK-001 ExtensionProfilePlanService records one append-only 
     slotId: 'R3-07S-skill-TASK-001',
     attemptId: 'skill-task-001-attempt-001',
     status: 'passed',
+    childReceipt: skillReceipt,
     effectRefs: ['skill-discovery:read:SKILL.md'],
     receiptRefs: ['skill-execution:receipt:task-001'],
   });
@@ -398,6 +409,75 @@ test('R3-07S-skill-TASK-001 ExtensionProfilePlanService records one append-only 
   });
   assert.equal(unknown.status, 'blocked');
   assert.ok(unknown.vetoes.includes('slot-not-in-profile-veto:R3-07S-skill-TASK-999'));
+});
+
+test('R3-07S-skill-TASK-002 ExtensionProfilePlanService binds passed slot execution to skill child receipt', () => {
+  const service = new ExtensionProfilePlanService();
+  const skillReceipt = new SkillDiscoveryService().planExecution({
+    prompt: 'please use the react skill',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: [
+          '# React UI',
+          '',
+          'description: Build React views',
+          'triggers: react, component',
+          'tool_kinds: read',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: 'aa53ad8dbd71983481fd379a6f251f66a5e9b386',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-002',
+    attemptId: 'skill-task-002-attempt-001',
+    status: 'passed',
+    childReceipt: skillReceipt,
+    effectRefs: ['skill-discovery:read:skills/react/SKILL.md'],
+    receiptRefs: ['skill-execution:receipt:task-002'],
+  });
+
+  assert.equal(receipt.status, 'passed');
+  assert.equal(receipt.slotId, 'R3-07S-skill-TASK-002');
+  assert.equal(receipt.childReceiptRequired, true);
+  assert.equal(receipt.childProtocol, SKILL_EXECUTION_PROTOCOL);
+  assert.deepEqual(receipt.childEvidenceRefs, skillReceipt.evidenceRefs);
+  assert.ok(receipt.evidenceRefs.includes(skillReceipt.evidenceRefs[0]));
+
+  const missingChild = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-002',
+    attemptId: 'skill-task-002-attempt-missing-child',
+    status: 'passed',
+    effectRefs: ['skill-discovery:should-not-commit'],
+    receiptRefs: ['skill-execution:should-not-commit'],
+  });
+  assert.equal(missingChild.status, 'blocked');
+  assert.ok(missingChild.vetoes.includes('slot-child-receipt-missing-veto:R3-07S-skill-TASK-002'));
+  assert.deepEqual(missingChild.effectRefs, []);
+  assert.deepEqual(missingChild.receiptRefs, []);
+
+  const wrongProtocol = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-002',
+    attemptId: 'skill-task-002-attempt-wrong-protocol',
+    status: 'passed',
+    childReceipt: {
+      protocol: 'devseek.hook-policy/v1',
+      evidenceRefs: ['hook-policy:should-not-qualify-skill-slot'],
+    },
+  });
+  assert.equal(wrongProtocol.status, 'blocked');
+  assert.ok(wrongProtocol.vetoes.includes('slot-child-protocol-mismatch-veto:R3-07S-skill-TASK-002'));
+  assert.equal(wrongProtocol.childProtocol, 'devseek.hook-policy/v1');
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
