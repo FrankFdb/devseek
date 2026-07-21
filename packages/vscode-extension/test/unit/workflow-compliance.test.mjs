@@ -938,6 +938,16 @@ test('R3-07S-skill-TASK-005: failed slots must be failure-only evidence', () => 
   assertContains(sharedTests, 'R3-07S-skill-TASK-005 ExtensionProfilePlanService', 'R3-07S-skill-TASK-005 must have failure-only slot oracle');
 });
 
+test('R3-07S-skill-TASK-006: vetoed slots must remain distinct from blocked input', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'slot-veto-evidence-missing-veto', 'R3-07S-skill-TASK-006 must veto missing veto evidence');
+  assertContains(sharedEnhancements, "input.status === 'vetoed' ? inputVetoes : blockingVetoes", 'R3-07S-skill-TASK-006 must preserve legitimate vetoed status evidence');
+  assertContains(sharedEnhancements, "blockingVetoes.length > 0 ? 'blocked' : input.status", 'R3-07S-skill-TASK-006 must block only invalid slot receipts');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-006 ExtensionProfilePlanService', 'R3-07S-skill-TASK-006 must have vetoed-vs-blocked oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

@@ -864,6 +864,7 @@ export class ExtensionProfilePlanService {
       ])
       : [];
     const failureRefs = uniqueStrings(input.failureRefs ?? []);
+    const inputVetoes = uniqueStrings(input.vetoes ?? []);
     const previousAttemptIds = uniqueStrings(
       (input.previousReceipts ?? [])
         .filter(receipt => (
@@ -874,16 +875,19 @@ export class ExtensionProfilePlanService {
         ))
         .map(receipt => receipt.attemptId),
     );
-    const vetoes = uniqueStrings([
+    const blockingVetoes = uniqueStrings([
       ...(plan.status === 'signed' ? [] : [`slot-plan-not-signed-veto:${plan.profileId}`]),
       ...(attemptId ? [] : [`slot-missing-attempt-veto:${slotId}`]),
       ...(slot ? [] : [`slot-not-in-profile-veto:${slotId}`]),
       ...(previousAttemptIds.length === 0 ? [] : [`slot-replacement-veto:${slotId}`]),
       ...(input.status === 'failed' && failureRefs.length === 0 ? [`slot-failure-evidence-missing-veto:${slotId}`] : []),
+      ...(input.status === 'vetoed' && inputVetoes.length === 0 ? [`slot-veto-evidence-missing-veto:${slotId}`] : []),
       ...childReceiptVetoes,
-      ...(input.vetoes ?? []),
+      ...(input.status === 'vetoed' ? [] : inputVetoes),
     ]);
-    const status: ExtensionProfileSlotExecutionStatus = vetoes.length > 0 ? 'blocked' : input.status;
+    const status: ExtensionProfileSlotExecutionStatus = blockingVetoes.length > 0 ? 'blocked' : input.status;
+    const terminalVetoes = input.status === 'vetoed' ? inputVetoes : blockingVetoes;
+    const vetoes = status === 'blocked' ? blockingVetoes : terminalVetoes;
     const effectRefs = status === 'passed' ? uniqueStrings(input.effectRefs ?? []) : [];
     const receiptRefs = status === 'passed' ? uniqueStrings(input.receiptRefs ?? []) : [];
     const oracleRef = slot?.oracleRef ?? '';

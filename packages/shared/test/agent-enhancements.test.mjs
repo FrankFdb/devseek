@@ -645,6 +645,54 @@ test('R3-07S-skill-TASK-005 ExtensionProfilePlanService keeps failed slots failu
   assert.deepEqual(missingFailureEvidence.receiptRefs, []);
 });
 
+test('R3-07S-skill-TASK-006 ExtensionProfilePlanService keeps vetoed slots distinct from blocked input', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '4444444444444444444444444444444444444444',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+
+  const vetoed = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-006',
+    attemptId: 'skill-task-006-vetoed',
+    status: 'vetoed',
+    vetoes: ['skill-policy:veto:task-006'],
+    effectRefs: ['skill-discovery:should-not-commit-on-veto'],
+    receiptRefs: ['skill-execution:should-not-commit-on-veto'],
+  });
+  assert.equal(vetoed.status, 'vetoed');
+  assert.deepEqual(vetoed.vetoes, ['skill-policy:veto:task-006']);
+  assert.deepEqual(vetoed.effectRefs, []);
+  assert.deepEqual(vetoed.receiptRefs, []);
+  assert.ok(vetoed.evidenceRefs.includes('skill-policy:veto:task-006'));
+  assert.ok(!vetoed.evidenceRefs.includes('skill-discovery:should-not-commit-on-veto'));
+
+  const missingVetoEvidence = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-006',
+    attemptId: 'skill-task-006-missing-veto-evidence',
+    status: 'vetoed',
+    effectRefs: ['skill-discovery:should-not-commit-missing-veto'],
+    receiptRefs: ['skill-execution:should-not-commit-missing-veto'],
+  });
+  assert.equal(missingVetoEvidence.status, 'blocked');
+  assert.ok(missingVetoEvidence.vetoes.includes('slot-veto-evidence-missing-veto:R3-07S-skill-TASK-006'));
+  assert.deepEqual(missingVetoEvidence.effectRefs, []);
+  assert.deepEqual(missingVetoEvidence.receiptRefs, []);
+
+  const passedWithVeto = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-006',
+    attemptId: 'skill-task-006-passed-with-veto',
+    status: 'passed',
+    vetoes: ['skill-policy:unexpected-veto-on-pass'],
+  });
+  assert.equal(passedWithVeto.status, 'blocked');
+  assert.ok(passedWithVeto.vetoes.includes('skill-policy:unexpected-veto-on-pass'));
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({
