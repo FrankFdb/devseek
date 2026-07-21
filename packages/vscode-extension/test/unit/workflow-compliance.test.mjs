@@ -1230,6 +1230,16 @@ test('R3-07S-skill-PERMISSION-FAULT-014: commented Skill metadata cannot provide
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-014 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-014 must have commented metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-015: generic inferred helper trigger words cannot load skills', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, "'helper'", 'R3-07S-skill-PERMISSION-FAULT-015 must filter generic helper trigger inference');
+  assertContains(sharedEnhancements, "'generic'", 'R3-07S-skill-PERMISSION-FAULT-015 must filter generic description trigger inference');
+  assertContains(sharedEnhancements, "'reference'", 'R3-07S-skill-PERMISSION-FAULT-015 must filter generic reference trigger inference');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-015 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-015 must have generic helper inferred trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

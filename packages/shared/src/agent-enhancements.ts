@@ -1762,7 +1762,16 @@ function matchesGlob(glob: string, file: string): boolean {
   return regex.test(name) || regex.test(file);
 }
 
-const SKILL_INFERRED_TRIGGER_STOP_WORDS = new Set(['skill', 'skills', 'md']);
+const SKILL_INFERRED_TRIGGER_STOP_WORDS = new Set([
+  'skill',
+  'skills',
+  'md',
+  'generic',
+  'helper',
+  'helpers',
+  'reference',
+  'references',
+]);
 
 function inferTriggers(path: string, description: string): string[] {
   const words = `${path} ${description}`.toLowerCase().match(/[a-z0-9_-]{3,}/g) ?? [];
