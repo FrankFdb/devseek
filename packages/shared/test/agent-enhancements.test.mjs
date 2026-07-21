@@ -1307,6 +1307,41 @@ test('R3-07S-skill-TASK-018 ExtensionProfilePlanService signs slot execution rec
   assert.notEqual(changedAttempt.slotExecutionSignature, receipt.slotExecutionSignature);
 });
 
+test('R3-07S-skill-TASK-019 ExtensionProfilePlanService quarantines unauthentic plan identity on blocked receipts', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: 'fefefefefefefefefefefefefefefefefefefefe',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const forgedPlan = {
+    ...plan,
+    profileId: 'caller-forged-profile',
+    kind: 'plugin',
+    candidateCommit: 'caller-forged-candidate',
+    schemaVersion: 'caller-forged-schema',
+    planSignature: 'caller-forged-signature',
+    evidenceRefs: ['extension-profile-plan:caller-forged-profile:caller-forged-signature'],
+  };
+
+  const receipt = service.recordSlotExecution({
+    plan: forgedPlan,
+    slotId: 'R3-07S-skill-TASK-019',
+    attemptId: 'skill-task-019-forged-plan',
+    status: 'failed',
+    failureRefs: ['skill-failure:task-019-input'],
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(receipt.profileId, 'R3-07F-unauthenticated-PROFILE-PLAN');
+  assert.equal(receipt.kind, 'skill');
+  assert.equal(receipt.candidateCommit, '');
+  assert.equal(receipt.schemaVersion, '');
+  assert.ok(receipt.vetoes.includes('slot-plan-origin-mismatch-veto:caller-forged-profile'));
+  assert.ok(!receipt.evidenceRefs.includes('extension-profile-plan:caller-forged-profile:caller-forged-signature'));
+  assert.ok(receipt.evidenceRefs.some(ref => /^extension-profile-slot-execution:R3-07S-skill-TASK-019:/.test(ref)));
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({

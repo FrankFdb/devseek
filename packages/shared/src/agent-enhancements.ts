@@ -364,6 +364,13 @@ export interface ExtensionProfileSlotExecutionReceipt {
   evidenceRefs: readonly string[];
 }
 
+type ExtensionProfilePlanProjection = Pick<
+  ExtensionProfilePlanReceipt,
+  'profileId' | 'kind' | 'candidateCommit' | 'schemaVersion' | 'planSignature'
+> & {
+  evidenceRefs: readonly string[];
+};
+
 export interface GitPrSummaryInput {
   changedFiles: readonly string[];
   validationPassed: boolean;
@@ -918,7 +925,8 @@ export class ExtensionProfilePlanService {
     const inputStatus = requestedStatus ?? 'blocked';
     const planAuthenticityVetoes = extensionProfilePlanAuthenticityVetoes(plan, this.ownedProfilePlans.has(plan));
     const planAuthentic = planAuthenticityVetoes.length === 0;
-    const planEvidenceRefs = planAuthentic ? uniqueStrings(plan.evidenceRefs ?? []) : [];
+    const profileProjection = createExtensionProfilePlanProjection(plan, planAuthentic);
+    const planEvidenceRefs = profileProjection.evidenceRefs;
     const slot = planAuthentic ? findExtensionProfileSlot(plan, slotId) : undefined;
     const childReceipt = input.childReceipt;
     const childProtocol = String(childReceipt?.protocol ?? '').trim();
@@ -931,7 +939,7 @@ export class ExtensionProfilePlanService {
     ]);
     const childReceiptRequired = inputStatus === 'passed';
     const childEvidenceRequired = childReceiptRequired;
-    const expectedChildProtocol = EXPECTED_EXTENSION_PROFILE_SCHEMAS[plan.kind];
+    const expectedChildProtocol = EXPECTED_EXTENSION_PROFILE_SCHEMAS[profileProjection.kind];
     const childAuthenticityVetoes = childReceiptRequired && childReceipt && expectedChildProtocol === SKILL_EXECUTION_PROTOCOL
       ? skillExecutionReceiptAuthenticityVetoes(childReceipt, slotId)
       : [];
@@ -950,7 +958,7 @@ export class ExtensionProfilePlanService {
     const oracleRef = slot?.oracleRef ?? '';
     const inputVetoRefs = inputVetoes.length > 0
       ? createExtensionProfileSlotVetoRefs({
-        plan,
+        plan: profileProjection,
         slot,
         slotId,
         attemptId,
@@ -963,9 +971,9 @@ export class ExtensionProfilePlanService {
         .filter(receipt => this.ownedSlotExecutionReceipts.has(receipt))
         .filter(receipt => (
           receipt.slotId === slotId
-          && receipt.profileId === plan.profileId
-          && receipt.candidateCommit === plan.candidateCommit
-          && receipt.schemaVersion === plan.schemaVersion
+          && receipt.profileId === profileProjection.profileId
+          && receipt.candidateCommit === profileProjection.candidateCommit
+          && receipt.schemaVersion === profileProjection.schemaVersion
         ))
         .map(receipt => receipt.attemptId),
     );
@@ -987,7 +995,7 @@ export class ExtensionProfilePlanService {
     const childEvidenceRefsForReceipt = status === 'passed' ? childEvidenceRefs : [];
     const effectRefs = status === 'passed'
       ? createExtensionProfileSlotEffectRefs({
-        plan,
+        plan: profileProjection,
         slot,
         slotId,
         attemptId,
@@ -998,7 +1006,7 @@ export class ExtensionProfilePlanService {
       : [];
     const receiptRefs = status === 'passed'
       ? createExtensionProfileSlotReceiptRefs({
-        plan,
+        plan: profileProjection,
         slot,
         slotId,
         attemptId,
@@ -1011,7 +1019,7 @@ export class ExtensionProfilePlanService {
     const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : [];
     const failureRefsForReceipt = status === 'failed'
       ? createExtensionProfileSlotFailureRefs({
-        plan,
+        plan: profileProjection,
         slot,
         slotId,
         attemptId,
@@ -1021,7 +1029,7 @@ export class ExtensionProfilePlanService {
       : [];
     const vetoEvidenceRefs = status === 'vetoed' || status === 'blocked' ? vetoes : [];
     const slotExecutionSignature = createExtensionProfileSlotExecutionSignature({
-      plan,
+      plan: profileProjection,
       slot,
       slotId,
       attemptId,
@@ -1044,16 +1052,16 @@ export class ExtensionProfilePlanService {
     const receipt: ExtensionProfileSlotExecutionReceipt = {
       protocol: EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL,
       profileProtocol: EXTENSION_PROFILE_PLAN_PROTOCOL,
-      profileId: plan.profileId,
-      kind: plan.kind,
+      profileId: profileProjection.profileId,
+      kind: profileProjection.kind,
       slotId,
       slotKind: slot?.slotKind ?? 'task',
       index: slot?.index ?? 0,
       status,
       singleOwner: 'ExtensionProfilePlanService',
       settlementAuthority: 'parent-kernel',
-      candidateCommit: plan.candidateCommit,
-      schemaVersion: plan.schemaVersion,
+      candidateCommit: profileProjection.candidateCommit,
+      schemaVersion: profileProjection.schemaVersion,
       attemptId,
       previousAttemptIds,
       replacesPriorAttempt: false,
@@ -1088,6 +1096,30 @@ export class ExtensionProfilePlanService {
   }
 }
 
+function createExtensionProfilePlanProjection(
+  plan: ExtensionProfilePlanReceipt,
+  authentic: boolean,
+): ExtensionProfilePlanProjection {
+  if (authentic) {
+    return {
+      profileId: plan.profileId,
+      kind: plan.kind,
+      candidateCommit: plan.candidateCommit,
+      schemaVersion: plan.schemaVersion,
+      planSignature: plan.planSignature,
+      evidenceRefs: uniqueStrings(plan.evidenceRefs ?? []),
+    };
+  }
+  return {
+    profileId: 'R3-07F-unauthenticated-PROFILE-PLAN',
+    kind: 'skill',
+    candidateCommit: '',
+    schemaVersion: '',
+    planSignature: '',
+    evidenceRefs: [],
+  };
+}
+
 function freezeExtensionProfileSlotExecutionReceipt(
   receipt: ExtensionProfileSlotExecutionReceipt,
 ): ExtensionProfileSlotExecutionReceipt {
@@ -1104,7 +1136,7 @@ function freezeExtensionProfileSlotExecutionReceipt(
 }
 
 function createExtensionProfileSlotExecutionSignature(input: {
-  plan: ExtensionProfilePlanReceipt;
+  plan: ExtensionProfilePlanProjection;
   slot: ExtensionProfileSlot | undefined;
   slotId: string;
   attemptId: string;
@@ -1152,7 +1184,7 @@ function createExtensionProfileSlotExecutionSignature(input: {
 }
 
 type ExtensionProfileSlotSuccessRefInput = {
-  plan: ExtensionProfilePlanReceipt;
+  plan: ExtensionProfilePlanProjection;
   slot: ExtensionProfileSlot | undefined;
   slotId: string;
   attemptId: string;
@@ -1179,7 +1211,7 @@ function createExtensionProfileSlotReceiptRefs(input: ExtensionProfileSlotSucces
 }
 
 function createExtensionProfileSlotFailureRefs(input: {
-  plan: ExtensionProfilePlanReceipt;
+  plan: ExtensionProfilePlanProjection;
   slot: ExtensionProfileSlot | undefined;
   slotId: string;
   attemptId: string;
@@ -1192,7 +1224,7 @@ function createExtensionProfileSlotFailureRefs(input: {
 }
 
 function createExtensionProfileSlotVetoRefs(input: {
-  plan: ExtensionProfilePlanReceipt;
+  plan: ExtensionProfilePlanProjection;
   slot: ExtensionProfileSlot | undefined;
   slotId: string;
   attemptId: string;
@@ -1208,7 +1240,7 @@ function createExtensionProfileSlotOwnedRefs(
   kind: 'effect' | 'receipt' | 'failure' | 'veto',
   prefix: string,
   input: {
-    plan: ExtensionProfilePlanReceipt;
+    plan: ExtensionProfilePlanProjection;
     slot: ExtensionProfileSlot | undefined;
     slotId: string;
     attemptId: string;

@@ -922,9 +922,9 @@ test('R3-07S-skill-TASK-004: replacement attempts must be scoped to signed plan 
   const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
   const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
 
-  assertContains(sharedEnhancements, 'receipt.profileId === plan.profileId', 'R3-07S-skill-TASK-004 must scope prior attempts by profile identity');
-  assertContains(sharedEnhancements, 'receipt.candidateCommit === plan.candidateCommit', 'R3-07S-skill-TASK-004 must scope prior attempts by candidate commit');
-  assertContains(sharedEnhancements, 'receipt.schemaVersion === plan.schemaVersion', 'R3-07S-skill-TASK-004 must scope prior attempts by schema version');
+  assertContains(sharedEnhancements, 'receipt.profileId === profileProjection.profileId', 'R3-07S-skill-TASK-004 must scope prior attempts by profile identity');
+  assertContains(sharedEnhancements, 'receipt.candidateCommit === profileProjection.candidateCommit', 'R3-07S-skill-TASK-004 must scope prior attempts by candidate commit');
+  assertContains(sharedEnhancements, 'receipt.schemaVersion === profileProjection.schemaVersion', 'R3-07S-skill-TASK-004 must scope prior attempts by schema version');
   assertContains(sharedTests, 'R3-07S-skill-TASK-004 ExtensionProfilePlanService', 'R3-07S-skill-TASK-004 must have signed-plan prior attempt oracle');
 });
 
@@ -996,7 +996,7 @@ test('R3-07S-skill-TASK-011: slot execution must verify profile plan authenticit
   assertContains(sharedEnhancements, 'slot-plan-owner-mismatch-veto', 'R3-07S-skill-TASK-011 must veto non-owner profile plan receipts');
   assertContains(sharedEnhancements, 'slot-plan-origin-mismatch-veto', 'R3-07S-skill-TASK-011 must reject cloned profile plans that were not signed by this owner');
   assertContains(sharedEnhancements, 'const planAuthentic = planAuthenticityVetoes.length === 0', 'R3-07S-skill-TASK-011 must compute a single plan authenticity gate');
-  assertContains(sharedEnhancements, 'const planEvidenceRefs = planAuthentic ? uniqueStrings(plan.evidenceRefs ?? []) : []', 'R3-07S-skill-TASK-011 must not project forged plan evidence');
+  assertContains(sharedEnhancements, 'const planEvidenceRefs = profileProjection.evidenceRefs', 'R3-07S-skill-TASK-011 must not project forged plan evidence');
   assertContains(sharedEnhancements, 'const slot = planAuthentic ? findExtensionProfileSlot(plan, slotId) : undefined', 'R3-07S-skill-TASK-011 must not project forged plan slot evidence');
   assertContains(sharedTests, 'R3-07S-skill-TASK-011 ExtensionProfilePlanService', 'R3-07S-skill-TASK-011 must have forged-plan oracle');
 });
@@ -1075,6 +1075,16 @@ test('R3-07S-skill-TASK-018: slot execution receipts must be owner-signed eviden
   assertContains(sharedEnhancements, 'createExtensionProfileSlotExecutionSignature', 'R3-07S-skill-TASK-018 must derive slot execution signatures inside the profile owner');
   assertContains(sharedEnhancements, 'extension-profile-slot-execution', 'R3-07S-skill-TASK-018 must project an owner-scoped slot execution evidence ref');
   assertContains(sharedTests, 'R3-07S-skill-TASK-018 ExtensionProfilePlanService', 'R3-07S-skill-TASK-018 must have slot execution signature oracle');
+});
+
+test('R3-07S-skill-TASK-019: unauthentic profile plan identity must be quarantined on blocked receipts', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'createExtensionProfilePlanProjection', 'R3-07S-skill-TASK-019 must derive receipt identity through the profile owner');
+  assertContains(sharedEnhancements, 'R3-07F-unauthenticated-PROFILE-PLAN', 'R3-07S-skill-TASK-019 must use a canonical unauthenticated profile identity');
+  assertContains(sharedEnhancements, 'profileProjection.profileId', 'R3-07S-skill-TASK-019 must not project caller plan profileId directly');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-019 ExtensionProfilePlanService', 'R3-07S-skill-TASK-019 must have forged-plan identity quarantine oracle');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
