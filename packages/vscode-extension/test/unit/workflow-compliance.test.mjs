@@ -1298,6 +1298,14 @@ test('R3-07S-skill-PERMISSION-FAULT-022: inline HTML comments cannot provide Ski
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-022 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-022 must have inline HTML comment metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-023: top-level example headings cannot provide Skill metadata', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, '#{1,}\\s+', 'R3-07S-skill-PERMISSION-FAULT-023 must treat top-level example headings as body metadata boundaries');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-023 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-023 must have top-level example heading metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
