@@ -837,8 +837,9 @@ export class ExtensionProfilePlanService {
       violations,
       evidenceRefs: [`extension-profile-plan:${profileId}:${planSignature}`],
     };
-    this.ownedProfilePlans.add(plan);
-    return plan;
+    const frozenPlan = freezeExtensionProfilePlan(plan);
+    this.ownedProfilePlans.add(frozenPlan);
+    return frozenPlan;
   }
 
   recordSlotExecution(input: ExtensionProfileSlotExecutionInput): ExtensionProfileSlotExecutionReceipt {
@@ -949,6 +950,24 @@ export class ExtensionProfilePlanService {
   }
 }
 
+function freezeExtensionProfilePlan(plan: ExtensionProfilePlanReceipt): ExtensionProfilePlanReceipt {
+  for (const slot of plan.taskSlots) {
+    Object.freeze(slot);
+  }
+  for (const slot of plan.permissionFaultSlots) {
+    Object.freeze(slot);
+  }
+  Object.freeze(plan.taskSlots);
+  Object.freeze(plan.permissionFaultSlots);
+  Object.freeze(plan.slotIds);
+  Object.freeze(plan.oracleCatalog.oracleRefs);
+  Object.freeze(plan.oracleCatalog.counts);
+  Object.freeze(plan.oracleCatalog);
+  Object.freeze(plan.violations);
+  Object.freeze(plan.evidenceRefs);
+  return Object.freeze(plan);
+}
+
 function createExtensionProfilePlanSignature(input: {
   profileId: string;
   kind: ExtensionProfileKind;
@@ -1002,6 +1021,7 @@ function extensionProfilePlanAuthenticityVetoes(plan: ExtensionProfilePlanReceip
     ...(plan.aggregateExecutionAllowed === false ? [] : [`slot-plan-aggregate-execution-veto:${profileId}`]),
     ...(planSignature === expectedSignature ? [] : [`slot-plan-signature-mismatch-veto:${profileId}`]),
     ...(evidenceRefs.includes(expectedEvidenceRef) ? [] : [`slot-plan-evidence-missing-veto:${profileId}`]),
+    ...(evidenceRefs.some(ref => ref !== expectedEvidenceRef) ? [`slot-plan-evidence-extra-veto:${profileId}`] : []),
   ]);
 }
 

@@ -1001,6 +1001,17 @@ test('R3-07S-skill-TASK-011: slot execution must verify profile plan authenticit
   assertContains(sharedTests, 'R3-07S-skill-TASK-011 ExtensionProfilePlanService', 'R3-07S-skill-TASK-011 must have forged-plan oracle');
 });
 
+test('R3-07S-skill-TASK-012: signed profile plans must be immutable evidence objects', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'freezeExtensionProfilePlan', 'R3-07S-skill-TASK-012 must freeze signed plan receipts in the existing owner');
+  assertContains(sharedEnhancements, 'Object.freeze(plan.evidenceRefs)', 'R3-07S-skill-TASK-012 must freeze plan evidence refs');
+  assertContains(sharedEnhancements, 'Object.freeze(plan.taskSlots)', 'R3-07S-skill-TASK-012 must freeze task slot containers');
+  assertContains(sharedEnhancements, 'slot-plan-evidence-extra-veto', 'R3-07S-skill-TASK-012 must reject extra plan evidence refs');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-012 ExtensionProfilePlanService', 'R3-07S-skill-TASK-012 must have mutable-plan oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

@@ -976,6 +976,74 @@ test('R3-07S-skill-TASK-011 ExtensionProfilePlanService rejects forged signed pr
   assert.ok(!clonedReceipt.evidenceRefs.includes('skill-receipt:cloned-plan-should-not-project'));
 });
 
+test('R3-07S-skill-TASK-012 ExtensionProfilePlanService freezes signed profile plan evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const skillReceipt = new SkillDiscoveryService().planExecution({
+    prompt: 'please use the react skill',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: 'description: Build React views\ntriggers: react\ntool_kinds: read',
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '9999999999999999999999999999999999999999',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const forgedPlanEvidenceRef = 'forged-plan:evidence:mutable-should-not-project';
+
+  let mutationBlocked = false;
+  try {
+    plan.evidenceRefs.push(forgedPlanEvidenceRef);
+  } catch {
+    mutationBlocked = true;
+  }
+
+  if (!mutationBlocked) {
+    const mutableReceipt = service.recordSlotExecution({
+      plan,
+      slotId: 'R3-07S-skill-TASK-012',
+      attemptId: 'skill-task-012-mutable-plan',
+      status: 'passed',
+      childReceipt: skillReceipt,
+      effectRefs: ['skill-effect:mutable-plan-should-not-project'],
+      receiptRefs: ['skill-receipt:mutable-plan-should-not-project'],
+    });
+
+    assert.equal(mutableReceipt.status, 'blocked');
+    assert.ok(mutableReceipt.vetoes.includes('slot-plan-evidence-extra-veto:R3-07F-skill-PROFILE-PLAN'));
+    assert.ok(!mutableReceipt.evidenceRefs.includes(forgedPlanEvidenceRef));
+  }
+
+  assert.equal(Object.isFrozen(plan), true);
+  assert.equal(Object.isFrozen(plan.evidenceRefs), true);
+  assert.equal(Object.isFrozen(plan.taskSlots), true);
+  assert.equal(Object.isFrozen(plan.taskSlots[0]), true);
+
+  const extraEvidencePlan = {
+    ...plan,
+    evidenceRefs: [...plan.evidenceRefs, forgedPlanEvidenceRef],
+  };
+  const extraEvidenceReceipt = service.recordSlotExecution({
+    plan: extraEvidencePlan,
+    slotId: 'R3-07S-skill-TASK-012',
+    attemptId: 'skill-task-012-extra-evidence-plan',
+    status: 'passed',
+    childReceipt: skillReceipt,
+    effectRefs: ['skill-effect:extra-evidence-should-not-project'],
+    receiptRefs: ['skill-receipt:extra-evidence-should-not-project'],
+  });
+
+  assert.equal(extraEvidenceReceipt.status, 'blocked');
+  assert.ok(extraEvidenceReceipt.vetoes.includes('slot-plan-evidence-extra-veto:R3-07F-skill-PROFILE-PLAN'));
+  assert.ok(!extraEvidenceReceipt.evidenceRefs.includes(forgedPlanEvidenceRef));
+  assert.ok(!extraEvidenceReceipt.evidenceRefs.includes('skill-effect:extra-evidence-should-not-project'));
+  assert.ok(!extraEvidenceReceipt.evidenceRefs.includes('skill-receipt:extra-evidence-should-not-project'));
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({
