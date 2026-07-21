@@ -1861,9 +1861,13 @@ function splitSkillTriggerTokens(value: string): string[] {
   return value.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [];
 }
 
+function hasSkillTriggerLetter(word: string): boolean {
+  return /[a-z]/u.test(word);
+}
+
 function inferTriggers(path: string, description: string): string[] {
   const words = splitSkillTriggerTokens(`${path} ${description}`);
-  return [...new Set(words.filter(word => !SKILL_INFERRED_TRIGGER_STOP_WORDS.has(word)))].slice(0, 8);
+  return [...new Set(words.filter(word => hasSkillTriggerLetter(word) && !SKILL_INFERRED_TRIGGER_STOP_WORDS.has(word)))].slice(0, 8);
 }
 
 function parseSkillInputSchema(lines: readonly string[], skillPath: string): {

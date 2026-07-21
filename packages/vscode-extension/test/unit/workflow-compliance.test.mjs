@@ -1323,6 +1323,14 @@ test('R3-07S-skill-PERMISSION-FAULT-025: compound artifact identifiers cannot in
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-025 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-025 must have compound artifact inferred trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-026: numeric-only tokens cannot infer Skill triggers', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'hasSkillTriggerLetter', 'R3-07S-skill-PERMISSION-FAULT-026 must require letters in inferred trigger tokens');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-026 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-026 must have numeric inferred trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

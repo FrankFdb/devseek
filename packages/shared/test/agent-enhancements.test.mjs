@@ -1715,6 +1715,24 @@ function createCompoundArtifactInferredTriggerDeniedEditSkillReceipt() {
   });
 }
 
+function createNumericInferredTriggerDeniedEditSkillReceipt() {
+  return new SkillDiscoveryService().planExecution({
+    prompt: 'please edit 2026 config',
+    candidates: [
+      {
+        path: 'skills/2026/SKILL.md',
+        content: [
+          '# Reference',
+          '',
+          'description: 2026 release helper',
+          'tool_kinds: read',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read', 'edit'],
+  });
+}
+
 function createInlineHtmlCommentMetadataDeniedEditSkillReceipt() {
   return createReferenceDeniedEditSkillReceipt([
     '# Reference',
@@ -2396,6 +2414,33 @@ test('R3-07S-skill-PERMISSION-FAULT-025 ExtensionProfilePlanService rejects comp
   assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
   assert.deepEqual(childReceipt.evidenceRefs, []);
   assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-025'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-026 ExtensionProfilePlanService rejects numeric inferred trigger permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '2626262626262626262626262626262626262626',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createNumericInferredTriggerDeniedEditSkillReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-026',
+    attemptId: 'skill-permission-fault-026-numeric-inferred-trigger',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(childReceipt.loadedSkills.length, 0);
+  assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
+  assert.deepEqual(childReceipt.evidenceRefs, []);
+  assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-026'));
   assert.deepEqual(receipt.permissionFaultRefs, []);
   assert.deepEqual(receipt.effectRefs, []);
   assert.deepEqual(receipt.receiptRefs, []);
