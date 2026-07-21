@@ -10,21 +10,21 @@
 
 ## Source
 
-- Artifact git commit: `726be94`
-- Candidate source commit: `726be94a772a76ac91b404298d55373f26043df9`
+- Artifact git commit: `c7bbce6`
+- Candidate source commit: `c7bbce6d924ddc58e52b03cbf36f77e39df3f7c1`
 
 ## VSIX Artifacts
 
 | Artifact | SHA-256 | Build | Git commit | Bridge SHA-256 |
 | --- | --- | --- | --- | --- |
-| primary: `devseek-netai-latest.vsix` | `22fe194d2b4fe256123506208deb596e26a838eb81e63c347cca610ac893262f` | `20260721-t140920` | `726be94` | `2b242257140c963bad1c370ffafca2a1805f5b0d0757dbc7b43d49ce885db945` |
-| package-copy: `packages/vscode-extension/devseek-netai-latest.vsix` | `22fe194d2b4fe256123506208deb596e26a838eb81e63c347cca610ac893262f` | `20260721-t140920` | `726be94` | `2b242257140c963bad1c370ffafca2a1805f5b0d0757dbc7b43d49ce885db945` |
+| primary: `devseek-netai-latest.vsix` | `4ae14f4306407575a905b39457ffd01fa67d39f80891c6b1d799a70fb839f421` | `20260721-t141902` | `c7bbce6` | `2b242257140c963bad1c370ffafca2a1805f5b0d0757dbc7b43d49ce885db945` |
+| package-copy: `packages/vscode-extension/devseek-netai-latest.vsix` | `4ae14f4306407575a905b39457ffd01fa67d39f80891c6b1d799a70fb839f421` | `20260721-t141902` | `c7bbce6` | `2b242257140c963bad1c370ffafca2a1805f5b0d0757dbc7b43d49ce885db945` |
 
 ## Stable Install And Runtime
 
-- Stable package root: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t140920.g726be94`
-- Stable bridge path: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t140920.g726be94/bridge/server.js`
-- Active runtime expected bridge: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t140920.g726be94/bridge/server.js`
+- Stable package root: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t141902.gc7bbce6`
+- Stable bridge path: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t141902.gc7bbce6/bridge/server.js`
+- Active runtime expected bridge: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t141902.gc7bbce6/bridge/server.js`
 - Package/install/runtime exact match: `true`
 
 ## Release State
@@ -34,7 +34,7 @@
 - Production deploy authorized: `false`
 - Smoke: `passed`
 - Observe: `passed`
-- Rollback: `available` -> `devseek-netai-1.0.0-debug.20260721.t135951.gd2aa385.vsix`
+- Rollback: `available` -> `devseek-netai-1.0.0-debug.20260721.t140920.g726be94.vsix`
 - Mixed kernel detected: `false`
 
 ## Runtime Process Policy
@@ -47,4 +47,4 @@
 
 ## Probe Identity
 
-- Identity probe SHA-256: `30a3aded3a89e93b2263130e4d4ec9159274278c55ca8cf60462812620e725f8`
+- Identity probe SHA-256: `f473d88dee9666a53ee66ba418c04a518d8b0011cb6b3ae1ed3fc15b6bdc8fa3`
