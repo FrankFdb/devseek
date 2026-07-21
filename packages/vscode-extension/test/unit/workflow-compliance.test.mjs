@@ -1347,6 +1347,14 @@ test('R3-07S-skill-PERMISSION-FAULT-028: spaced Markdown thematic breaks stop Sk
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-028 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-028 must have spaced horizontal-rule metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-029: subsequent top-level Markdown headings stop Skill metadata parsing', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'isSkillMetadataTitleHeading', 'R3-07S-skill-PERMISSION-FAULT-029 must keep top-level heading title/body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-029 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-029 must have top-level heading body metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

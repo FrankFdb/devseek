@@ -674,9 +674,15 @@ function freezeSkillExecutionReceipt(receipt: SkillExecutionReceipt): SkillExecu
 
 const SKILL_METADATA_BODY_SECTION_MARKER = /^(?:(?:#{1,}\s+(?:examples?|samples?|usage|notes?)\b(?:\s*:)?(?:\s.*)?)|#{2,}\s+|(?:(?:examples?|samples?|usage|notes?)\b|for\s+(?:example|instance)\b|e\.g\.)(?:\s*:)?(?:\s.*)?)$/iu;
 const SKILL_METADATA_BODY_SEPARATOR = /^(?:-{3,}|\*{3,}|_{3,})$/u;
+const SKILL_METADATA_MARKDOWN_HEADING = /^#{1,6}\s+\S/u;
+const SKILL_METADATA_TITLE_HEADING = /^#\s+\S/u;
 
 function isSkillMetadataBodySeparator(value: string): boolean {
   return SKILL_METADATA_BODY_SEPARATOR.test(value.replace(/\s+/gu, ''));
+}
+
+function isSkillMetadataTitleHeading(value: string): boolean {
+  return SKILL_METADATA_TITLE_HEADING.test(value);
 }
 
 function skillMetadataLines(content: string): string[] {
@@ -693,6 +699,8 @@ function skillMetadataLines(content: string): string[] {
   let insideHtmlComment = false;
   let insideBodySection = false;
   let frontmatterClosed = false;
+  let acceptedTitleHeading = false;
+  let sawMetadataContent = false;
   const metadataLines: string[] = [];
   for (const [index, line] of lines.entries()) {
     const trimmed = line.trim();
@@ -737,12 +745,23 @@ function skillMetadataLines(content: string): string[] {
       insideBodySection = true;
       continue;
     }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_HEADING.test(metadataTrimmed)) {
+      if (isSkillMetadataTitleHeading(metadataTrimmed) && !acceptedTitleHeading && !sawMetadataContent) {
+        acceptedTitleHeading = true;
+        metadataLines.push(metadataLine);
+        sawMetadataContent = true;
+        continue;
+      }
+      insideBodySection = true;
+      continue;
+    }
     if (!isFrontmatterMetadataLine && SKILL_METADATA_BODY_SECTION_MARKER.test(metadataTrimmed)) {
       insideBodySection = true;
       continue;
     }
     if (!isFrontmatterMetadataLine && insideBodySection) continue;
     metadataLines.push(metadataLine);
+    if (metadataTrimmed) sawMetadataContent = true;
   }
   return metadataLines;
 }
