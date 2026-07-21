@@ -1306,6 +1306,15 @@ test('R3-07S-skill-PERMISSION-FAULT-023: top-level example headings cannot provi
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-023 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-023 must have top-level example heading metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-024: generic artifact nouns cannot infer Skill triggers', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, "'component'", 'R3-07S-skill-PERMISSION-FAULT-024 must filter generic component inferred triggers');
+  assertContains(sharedEnhancements, "'configuration'", 'R3-07S-skill-PERMISSION-FAULT-024 must filter generic configuration inferred triggers');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-024 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-024 must have generic artifact inferred trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
