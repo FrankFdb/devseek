@@ -2496,6 +2496,29 @@ test('R3-02 Checkpoint resume: TaskCheckpointStore owns receipt-gated replay pro
   );
 });
 
+test('R3-03 Steering: IntentRevisionLineage owns TaskContract revision and uncommitted replan', () => {
+  const lineage = src('src/intent/intent-revision-lineage.ts');
+  const agenticLoop = src('src/agent/agentic-loop.ts');
+  const writeAuthority = src('src/agent/write-authority.ts');
+  const userSteer = src('src/agent/user-steer.ts');
+  const lineageTests = src('test/unit/intent-revision-lineage.test.mjs');
+  const taskStateTests = src('test/unit/agent-loop-task-state.test.mjs');
+
+  assertContains(lineage, "version: 'devseek.intent-revision-lineage/v1'", 'R3-03 must keep lineage as the revision owner');
+  assertContains(lineage, 'devseek.task-contract-revision/v1', 'R3-03 must expose a versioned TaskContract revision');
+  assertContains(lineage, 'buildTaskContract(', 'R3-03 must derive steer revisions from the canonical TaskContract owner');
+  assertContains(lineage, 'blockedReplayEffectIds', 'R3-03 must block replay of committed effects');
+  assertContains(lineage, 'replanUncommittedTasksForContractRevision', 'R3-03 must keep deterministic uncommitted-work replanning');
+  assertContains(writeAuthority, 'buildIntentRevisionLineage', 'write authority must consume the lineage owner for in-flight steers');
+  assertContains(writeAuthority, 'committedEffects', 'write authority must seal committed effects into steer revisions');
+  assertContains(writeAuthority, 'taskContractRevision', 'write authority must publish the current steer revision receipt');
+  assertContains(writeAuthority, 'writeRevoked', 'write authority must expose steer write-revocation facts');
+  assertContains(agenticLoop, 'writeAuthority.writeRevoked', 'agentic loop must settle revoked-write tool rounds instead of retrying');
+  assertContains(userSteer, 'consumeUserSteerTexts', 'user steer parsing must expose raw steer text for contract revision');
+  assertContains(lineageTests, 'R3-03 IntentRevisionLineage: steer creates TaskContract revision', 'R3-03 must keep the lineage oracle');
+  assertContains(taskStateTests, 'R3-03 shared write authority publishes steer TaskContract revision receipts', 'R3-03 must keep the runtime steer oracle');
+});
+
 test('Extension apply gate: unfenced target-scoped source can enter applier', () => {
   const code = src('src/extension.ts');
   assertContains(code, 'looksLikeTargetScopedSourceResponse', 'plain source fallback helper must be imported');

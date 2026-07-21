@@ -995,7 +995,6 @@ export async function runAgenticLoop(
       ? tools.filter((_, toolIndex) => !blockedRepeatedToolIndexes.has(toolIndex))
       : tools;
 
-    // Execute tools — full callbacks so file creation/edits register as pending edits
     const loopRes = await executeFakeToolsForLoop(
       toolsToExecute,
       writeAuthority.callbacks,
@@ -1011,6 +1010,7 @@ export async function runAgenticLoop(
         readEvidencePaths: [...allReadEvidencePaths],
       },
     );
+    if (writeAuthority.writeRevoked && loopRes.workToolCallsMade) { failedReason = '用户实时补充已撤销写入授权，任务已停止。'; break; }
     if (loopRes.toolCallsMade) {
       replaceLatestAssistantToolHistory(messages);
     }

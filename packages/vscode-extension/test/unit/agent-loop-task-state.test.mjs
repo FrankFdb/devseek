@@ -254,6 +254,7 @@ test(`shared write authority applies a ${timing} revocation before a legacy muta
   });
 
   assert.equal(allowed, false);
+  assert.equal(authority.writeRevoked, true);
   assert.match(authority.currentPrompt, /不要创建任何文件/);
   assert.match(policyPrompt, /不要创建任何文件/);
   assert.doesNotMatch(policyPrompt, /stale prompt/);
@@ -296,6 +297,39 @@ test('shared write authority feeds a wrapped live revocation into the real file-
   assert.match(decision?.reason ?? '', /prohibited/);
   assert.match(authority.currentPrompt, /【用户实时补充\/纠偏】/);
   assert.match(authority.currentPrompt, /停止写入/);
+});
+
+test('R3-03 shared write authority publishes steer TaskContract revision receipts', () => {
+  const steer = '继续，但不要再改 old.txt，改为只创建 new.txt。';
+  let polls = 0;
+  const authority = createWriteAuthority('请创建 old.txt。', {
+    onDelta: () => {},
+    onWorkflowStatus: () => {},
+    onAgentStatus: () => {},
+    onAppliedChange: () => {},
+    onResponseMeta: () => {},
+    onValidationCommand: async () => ({ ok: true, output: '' }),
+    onUserSteer: () => (++polls === 1 ? [steer] : []),
+  }, {
+    committedEffects: () => [{
+      id: 'effect-old-write',
+      revisionId: 'rev-1',
+      kind: 'file-write',
+      target: 'old.txt',
+      status: 'committed',
+    }],
+  });
+
+  const messages = authority.drainAfterProvider();
+
+  assert.equal(messages.length, 1);
+  assert.match(messages[0].content, /devseek\.task-contract-revision\/v1/);
+  assert.match(messages[0].content, /effect-old-write/);
+  assert.match(messages[0].content, /new\.txt/);
+  assert.doesNotMatch(messages[0].content, /继续未提交任务：old\.txt/);
+  assert.equal(authority.taskContractRevision.version, 'devseek.task-contract-revision/v1');
+  assert.deepEqual(authority.taskContractRevision.blockedReplayEffectIds, ['effect-old-write']);
+  assert.ok(authority.taskContractRevision.pendingTaskHints.some(item => item.includes('new.txt')));
 });
 
 test('two-phase agent history is evidence based, not extension-level thin summary', () => {

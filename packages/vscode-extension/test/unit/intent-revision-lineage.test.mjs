@@ -22,7 +22,10 @@ execSync(
   { cwd: rootDir, stdio: 'pipe' },
 );
 
-const { buildIntentRevisionLineage } = createRequire(import.meta.url)(bundlePath);
+const {
+  buildIntentRevisionLineage,
+  replanUncommittedTasksForContractRevision,
+} = createRequire(import.meta.url)(bundlePath);
 
 test('IntentRevisionLineage: correction supersedes an uncommitted old target', () => {
   const first = buildIntentRevisionLineage({
@@ -84,6 +87,42 @@ test('IntentRevisionLineage: committed effects are preserved instead of rewritte
   assert.ok(second.evidence.some(item => item.kind === 'committed-effect-preserved' && item.value === 'effect-old-write:old.txt'));
   assert.deepEqual(second.effectiveRevision.scope.targets, ['new.txt']);
   assert.deepEqual(second.effectiveRevision.scope.prohibitedTargets, ['old.txt']);
+});
+
+test('R3-03 IntentRevisionLineage: steer creates TaskContract revision and replans only uncommitted work', () => {
+  const first = buildIntentRevisionLineage({
+    prompt: '请创建 old.txt 和 stale.txt，文件内容必须精确。',
+  });
+  const second = buildIntentRevisionLineage({
+    previous: first,
+    committedEffects: [{
+      id: 'effect-old-write',
+      revisionId: first.effectiveRevisionId,
+      kind: 'file-write',
+      target: 'old.txt',
+      status: 'committed',
+    }],
+    prompt: '继续，但不要再改 old.txt，改为只创建 new.txt。',
+  });
+
+  assert.equal(second.taskContractRevision.version, 'devseek.task-contract-revision/v1');
+  assert.equal(second.taskContractRevision.revisionId, second.effectiveRevisionId);
+  assert.deepEqual(second.taskContractRevision.preservedCommittedEffectIds, ['effect-old-write']);
+  assert.deepEqual(second.taskContractRevision.rewrittenCommittedEffectIds, []);
+  assert.ok(second.taskContractRevision.blockedReplayEffectIds.includes('effect-old-write'));
+  assert.ok(second.taskContractRevision.pendingTaskHints.some(item => item.includes('new.txt')));
+  assert.ok(!second.taskContractRevision.pendingTaskHints.some(item => item.includes('old.txt')));
+
+  const replanned = replanUncommittedTasksForContractRevision([
+    { id: 1, title: 'Create old.txt', status: 'completed' },
+    { id: 2, title: 'Rewrite old.txt again', status: 'not-started' },
+    { id: 3, title: 'Create stale.txt', status: 'in-progress' },
+  ], second.taskContractRevision);
+
+  assert.deepEqual(replanned.find(item => item.id === 1)?.status, 'completed');
+  assert.equal(replanned.some(item => item.status !== 'completed' && item.title.includes('old.txt')), false);
+  assert.equal(replanned.some(item => item.status !== 'completed' && item.title.includes('stale.txt')), false);
+  assert.equal(replanned.some(item => item.title.includes('new.txt')), true);
 });
 
 test('IntentRevisionLineage: new revision cannot silently widen to external effects', () => {

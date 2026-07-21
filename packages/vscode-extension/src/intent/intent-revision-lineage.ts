@@ -5,6 +5,7 @@ import {
   type OrientationEvidence,
   type OrientationRisk,
 } from './orientation-decision';
+import { buildTaskContract, type TaskContract } from '../agent/task-contract';
 
 export type IntentRevisionChangeKind =
   | 'initial'
@@ -57,6 +58,30 @@ export interface IntentRevision {
   evidence: IntentRevisionEvidence[];
 }
 
+export interface IntentTaskContractRevision {
+  version: 'devseek.task-contract-revision/v1';
+  revisionId: string;
+  parentRevisionId?: string;
+  taskContract: TaskContract;
+  pendingTargets: string[];
+  prohibitedTargets: string[];
+  pendingTaskHints: string[];
+  committedEffectIds: string[];
+  committedEffectTargets: string[];
+  preservedCommittedEffectIds: string[];
+  rewrittenCommittedEffectIds: string[];
+  blockedReplayEffectIds: string[];
+  permissionWidening: boolean;
+  allowedToExecute: boolean;
+  blockers: string[];
+}
+
+export interface ReplannableTaskItem {
+  id?: string | number;
+  title: string;
+  status: string;
+}
+
 export interface IntentRevisionLineageInput extends Omit<OrientationDecisionInput, 'route'> {
   previous?: IntentRevisionLineage;
   committedEffects?: IntentRevisionEffectReceipt[];
@@ -71,6 +96,7 @@ export interface IntentRevisionLineage {
   committedEffects: IntentRevisionEffectReceipt[];
   preservedCommittedEffectIds: string[];
   rewrittenCommittedEffectIds: string[];
+  taskContractRevision: IntentTaskContractRevision;
   blockers: string[];
   evidence: IntentRevisionEvidence[];
   allowedToExecute: boolean;
@@ -148,6 +174,16 @@ export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): I
       };
     }),
   ];
+  const allowedToExecute = status === 'active';
+  const taskContractRevision = buildIntentTaskContractRevision({
+    revision,
+    taskContract: buildTaskContract(prompt),
+    committedEffects,
+    preservedCommittedEffectIds,
+    rewrittenCommittedEffectIds: [],
+    blockers,
+    allowedToExecute,
+  });
 
   return {
     version: 'devseek.intent-revision-lineage/v1',
@@ -158,10 +194,86 @@ export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): I
     committedEffects,
     preservedCommittedEffectIds,
     rewrittenCommittedEffectIds: [],
+    taskContractRevision,
     blockers: [...new Set(blockers)],
     evidence,
-    allowedToExecute: status === 'active',
+    allowedToExecute,
   };
+}
+
+export function replanUncommittedTasksForContractRevision<T extends ReplannableTaskItem>(
+  tasks: readonly T[],
+  revision: IntentTaskContractRevision,
+): T[] {
+  const blockedTargets = new Set([
+    ...revision.committedEffectTargets,
+    ...revision.prohibitedTargets,
+  ].map(normalizePathToken).filter(Boolean));
+  const pendingTargets = new Set(revision.pendingTargets.map(normalizePathToken).filter(Boolean));
+  const replanned = tasks.filter(task => {
+    if (isCommittedTaskStatus(task.status)) return true;
+    const taskTargets = collectPaths(task.title).map(normalizePathToken).filter(Boolean);
+    if (taskTargets.some(target => blockedTargets.has(target))) return false;
+    return pendingTargets.size === 0
+      || taskTargets.length === 0
+      || taskTargets.some(target => pendingTargets.has(target));
+  });
+  const existing = new Set(replanned.flatMap(task => collectPaths(task.title)).map(normalizePathToken));
+  for (const target of revision.pendingTargets) {
+    const normalized = normalizePathToken(target);
+    if (!normalized || blockedTargets.has(normalized) || existing.has(normalized)) continue;
+    replanned.push({
+      id: `revision-${revision.revisionId}-${replanned.length + 1}`,
+      title: `继续未提交任务：${target}`,
+      status: 'not-started',
+    } as T);
+    existing.add(normalized);
+  }
+  return replanned;
+}
+
+function buildIntentTaskContractRevision(input: {
+  revision: IntentRevision;
+  taskContract: TaskContract;
+  committedEffects: IntentRevisionEffectReceipt[];
+  preservedCommittedEffectIds: string[];
+  rewrittenCommittedEffectIds: string[];
+  blockers: string[];
+  allowedToExecute: boolean;
+}): IntentTaskContractRevision {
+  const committedEffects = input.committedEffects.filter(effect => effect.status === 'committed');
+  const committedEffectTargets = uniquePaths(
+    committedEffects.map(effect => effect.target || '').filter(Boolean),
+  );
+  const blockedTargets = new Set([
+    ...committedEffectTargets,
+    ...input.revision.scope.prohibitedTargets,
+  ].map(normalizePathToken).filter(Boolean));
+  const pendingTargets = uniquePaths([
+    ...input.taskContract.deliverableTargets,
+    ...input.revision.scope.targets,
+  ]).filter(target => !blockedTargets.has(normalizePathToken(target)));
+  return {
+    version: 'devseek.task-contract-revision/v1',
+    revisionId: input.revision.id,
+    parentRevisionId: input.revision.parentId,
+    taskContract: input.taskContract,
+    pendingTargets,
+    prohibitedTargets: [...input.revision.scope.prohibitedTargets],
+    pendingTaskHints: pendingTargets.map(target => `继续未提交任务：${target}`),
+    committedEffectIds: committedEffects.map(effect => effect.id),
+    committedEffectTargets,
+    preservedCommittedEffectIds: [...input.preservedCommittedEffectIds],
+    rewrittenCommittedEffectIds: [...input.rewrittenCommittedEffectIds],
+    blockedReplayEffectIds: committedEffects.map(effect => effect.id),
+    permissionWidening: input.revision.permission.widening,
+    allowedToExecute: input.allowedToExecute,
+    blockers: [...new Set(input.blockers)],
+  };
+}
+
+function isCommittedTaskStatus(status: string): boolean {
+  return /^(?:completed|done|success|succeeded)$/i.test(status.trim());
 }
 
 function clonePreviousRevisions(previous: IntentRevisionLineage): IntentRevision[] {
