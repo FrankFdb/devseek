@@ -1339,6 +1339,14 @@ test('R3-07S-skill-PERMISSION-FAULT-027: Markdown horizontal rules stop Skill me
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-027 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-027 must have horizontal-rule metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-028: spaced Markdown thematic breaks stop Skill metadata parsing', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'isSkillMetadataBodySeparator', 'R3-07S-skill-PERMISSION-FAULT-028 must normalize spaced thematic break body separators');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-028 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-028 must have spaced horizontal-rule metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
