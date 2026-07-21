@@ -690,6 +690,27 @@ test('R3-06A: Subagent contract isolates child context, permission, budget, and 
   assertContains(tests, 'R3-06A SubagentContractService', 'R3-06A must have subagent failure-first oracle');
 });
 
+test('R3-06B: Subagent parallel merge, orphan rejection, and cancellation stay parent Kernel-owned', () => {
+  const subagent = src('src/app/subagent-contract-service.ts');
+  const tests = src('test/unit/subagent-contract-service.test.mjs');
+
+  assertContains(subagent, 'SUBAGENT_PARALLEL_MERGE_PROTOCOL', 'Subagent merge must expose a versioned protocol marker');
+  assertContains(subagent, 'SUBAGENT_CANCEL_RECEIPT_PROTOCOL', 'Subagent cancel must expose a versioned receipt protocol');
+  assertContains(subagent, 'mergeChildResults', 'Subagent contract owner must merge child results');
+  assertContains(subagent, 'cancelParallelRun', 'Subagent contract owner must emit cancel receipts');
+  assertContains(subagent, 'acceptChildResultAfterCancel', 'Subagent contract owner must reject child results after cancel');
+  assertContains(subagent, 'parentKernelMergeDecision', 'Subagent merge result must carry parent Kernel merge decision');
+  assertContains(subagent, 'parallel-write-conflict', 'Subagent merge must flag parallel write conflicts');
+  assertContains(subagent, 'orphan-child-result-rejected', 'Subagent merge must reject orphan child results');
+  assertContains(subagent, 'child-result-after-cancel-rejected', 'Subagent cancel must reject post-cancel child actions');
+  assertContains(subagent, 'postCancelEffectsAllowed: false', 'Subagent cancel receipt must freeze new effects');
+  assertContains(subagent, 'acceptedProposals', 'Subagent merge must distinguish accepted proposals');
+  assertContains(subagent, 'rejectedProposals', 'Subagent merge must distinguish rejected proposals');
+  assertContains(subagent, 'settlementAuthority', 'Subagent merge/cancel must bind settlement authority');
+  assertContains(subagent, 'parent-kernel', 'Subagent merge/cancel must remain parent Kernel-owned');
+  assertContains(tests, 'R3-06B SubagentContractService', 'R3-06B must have subagent merge/cancel failure-first oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
