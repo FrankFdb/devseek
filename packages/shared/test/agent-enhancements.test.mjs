@@ -216,6 +216,32 @@ test('R3-07F-skill ExtensionProfilePlanService signs immutable skill denominator
   assert.ok(blocked.violations.includes('profile-plan-missing-schema-version'));
 });
 
+test('R3-07F-hook ExtensionProfilePlanService binds hook profile plans to hook policy schema', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'hook',
+    candidateCommit: 'd2aa385940c77597572cc8b78d341f691d21ff16',
+    schemaVersion: 'devseek.hook-policy/v1',
+  });
+
+  assert.equal(plan.profileId, 'R3-07F-hook-PROFILE-PLAN');
+  assert.equal(plan.kind, 'hook');
+  assert.equal(plan.status, 'signed');
+  assert.equal(plan.taskSlots.length, 20);
+  assert.equal(plan.permissionFaultSlots.length, 100);
+  assert.equal(plan.taskSlots[0].slotId, 'R3-07S-hook-TASK-001');
+  assert.equal(plan.permissionFaultSlots[99].slotId, 'R3-07S-hook-PERMISSION-FAULT-100');
+  assert.ok(plan.taskSlots.every(slot => slot.schemaVersion === 'devseek.hook-policy/v1'));
+
+  const wrongSchema = service.createProfilePlan({
+    kind: 'hook',
+    candidateCommit: 'd2aa385940c77597572cc8b78d341f691d21ff16',
+    schemaVersion: 'devseek.skill-execution/v1',
+  });
+  assert.equal(wrongSchema.status, 'blocked');
+  assert.ok(wrongSchema.violations.includes('profile-plan-schema-kind-mismatch:hook'));
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({

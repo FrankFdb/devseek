@@ -835,6 +835,17 @@ test('R3-07F-skill: Extension profile planner signs one immutable skill plan wit
   assertContains(sharedTests, 'R3-07F-skill ExtensionProfilePlanService', 'R3-07F-skill must have profile-plan failure-first oracle');
 });
 
+test('R3-07F-hook: Extension profile planner binds hook plans to hook policy schema', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'EXPECTED_EXTENSION_PROFILE_SCHEMAS', 'Extension profile planner must carry expected schema per kind');
+  assertContains(sharedEnhancements, 'hook: HOOK_POLICY_PROTOCOL', 'Hook profile plans must bind to hook policy schema');
+  assertContains(sharedEnhancements, 'profile-plan-schema-kind-mismatch', 'Kind/schema mismatches must be blocked');
+  assertContains(sharedEnhancements, 'R3-07S-${input.kind}', 'Hook profile plan must generate concrete R3-07S hook slot IDs through the shared kind template');
+  assertContains(sharedTests, 'R3-07F-hook ExtensionProfilePlanService', 'R3-07F-hook must have profile-plan failure-first oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

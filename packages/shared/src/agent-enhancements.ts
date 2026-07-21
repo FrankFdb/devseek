@@ -315,6 +315,13 @@ const SKILL_ALLOWED_TOOL_KINDS: readonly SkillToolKind[] = ['read', 'search', 'd
 const EXTENSION_PROFILE_KINDS: readonly ExtensionProfileKind[] = ['skill', 'hook', 'mcp', 'plugin', 'subagent'];
 const EXTENSION_PROFILE_TASK_SLOT_COUNT = 20;
 const EXTENSION_PROFILE_PERMISSION_FAULT_SLOT_COUNT = 100;
+const EXPECTED_EXTENSION_PROFILE_SCHEMAS: Readonly<Record<ExtensionProfileKind, string>> = {
+  skill: SKILL_EXECUTION_PROTOCOL,
+  hook: HOOK_POLICY_PROTOCOL,
+  mcp: MCP_TRUST_PROTOCOL,
+  plugin: PLUGIN_SUPPLY_CHAIN_PROTOCOL,
+  subagent: 'devseek.subagent-contract/v1',
+};
 const ALL_SKILL_TOOL_KINDS: readonly SkillToolKind[] = [
   'read',
   'search',
@@ -705,10 +712,12 @@ export class ExtensionProfilePlanService {
     const candidateCommit = String(input.candidateCommit ?? '').trim();
     const schemaVersion = String(input.schemaVersion ?? '').trim();
     const oracleVersion = String(input.oracleVersion ?? `${EXTENSION_PROFILE_PLAN_PROTOCOL}:oracle/v1`).trim();
+    const expectedSchemaVersion = EXPECTED_EXTENSION_PROFILE_SCHEMAS[kind];
     const violations = uniqueStrings([
       ...(!candidateCommit ? ['profile-plan-missing-candidate-commit'] : []),
       ...(!schemaVersion ? ['profile-plan-missing-schema-version'] : []),
       ...(!isExtensionProfileKind(requestedKind) ? ['profile-plan-invalid-kind'] : []),
+      ...(schemaVersion && schemaVersion !== expectedSchemaVersion ? [`profile-plan-schema-kind-mismatch:${kind}`] : []),
     ]);
     const taskSlots = createExtensionProfileSlots({
       kind,
