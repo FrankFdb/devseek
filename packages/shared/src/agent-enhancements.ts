@@ -502,7 +502,9 @@ export class SkillDiscoveryService {
   planExecution(input: SkillExecutionPlanInput): SkillExecutionReceipt {
     const discovered = this.discover(input.candidates);
     const selected = this.selectForExecution(input.prompt, discovered);
-    const requestedToolKinds = uniqueStrings(input.requestedToolKinds ?? []) as SkillToolKind[];
+    const requestedToolKindValues = parseSkillToolKindValues(input.requestedToolKinds ?? []);
+    const requestedToolKinds = requestedToolKindValues.toolKinds;
+    const invalidRequestedToolKinds = requestedToolKindValues.invalidToolKinds;
     const loadedSkills: SkillExecutionSkill[] = selected.map(({ skill, selectedByTrigger }) => ({
       name: skill.name,
       path: skill.path,
@@ -522,6 +524,7 @@ export class SkillDiscoveryService {
           : []
       )),
       ...selected.flatMap(item => item.skill.parseIssues ?? []),
+      ...invalidRequestedToolKinds.map(kind => `skill-tool-kind-invalid:${kind}`),
       ...permissionDecisions
         .filter(decision => decision.action === 'deny')
         .map(decision => decision.reason),
@@ -1426,7 +1429,9 @@ function skillPermissionFaultViolations(childReceipt: ExtensionProfileSlotChildR
 
 function requestedSkillPermissionFaultViolations(childReceipt: ExtensionProfileSlotChildReceipt): string[] {
   const receipt = childReceipt as Partial<SkillExecutionReceipt>;
-  const requestedToolKinds = new Set(Array.isArray(receipt.requestedToolKinds) ? receipt.requestedToolKinds as readonly SkillToolKind[] : []);
+  const requestedToolKinds = new Set(Array.isArray(receipt.requestedToolKinds)
+    ? parseSkillToolKindValues(receipt.requestedToolKinds).toolKinds
+    : []);
   const permissionDecisions = Array.isArray(receipt.permissionDecisions)
     ? receipt.permissionDecisions as readonly SkillPermissionDecision[]
     : [];
@@ -1743,6 +1748,16 @@ function parseSkillToolKinds(lines: readonly string[]): SkillToolKind[] {
     .flatMap(toSkillToolKind);
 }
 
+function parseSkillToolKindValues(values: readonly unknown[]): { toolKinds: SkillToolKind[]; invalidToolKinds: string[] } {
+  const normalizedValues = uniqueStrings(values
+    .map(value => String(value).trim().toLowerCase())
+    .filter(Boolean));
+  const toolKinds = uniqueStrings(normalizedValues.flatMap(toSkillToolKind)) as SkillToolKind[];
+  const validToolKinds = new Set<string>(toolKinds);
+  const invalidToolKinds = normalizedValues.filter(value => !validToolKinds.has(value));
+  return { toolKinds, invalidToolKinds };
+}
+
 function toSkillToolKind(value: string): SkillToolKind[] {
   return (ALL_SKILL_TOOL_KINDS as readonly string[]).includes(value) ? [value as SkillToolKind] : [];
 }
@@ -1758,10 +1773,10 @@ function planSkillPermissions(
   loadedSkills: readonly SkillExecutionSkill[],
   requestedToolKinds: readonly SkillToolKind[],
 ): SkillPermissionDecision[] {
-  const plannedKinds = uniqueStrings([
+  const plannedKinds = parseSkillToolKindValues([
     ...requestedToolKinds,
     ...loadedSkills.flatMap(skill => skill.declaredToolKinds),
-  ]) as SkillToolKind[];
+  ]).toolKinds;
   return plannedKinds.map((kind) => {
     if (SKILL_ALLOWED_TOOL_KINDS.includes(kind)) {
       return { kind, action: 'allow', reason: `skill-tool-kind-allowed:${kind}` };

@@ -1454,6 +1454,25 @@ function createDeclaredOnlyDeniedEditSkillReceipt() {
   });
 }
 
+function createUnknownRequestedToolSkillReceipt() {
+  return new SkillDiscoveryService().planExecution({
+    prompt: 'please use react to inspect the component with sudo access',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: [
+          '# React',
+          '',
+          'description: React components',
+          'triggers: react',
+          'tool_kinds: read',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read', 'sudo'],
+  });
+}
+
 test('R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService accepts expected skill permission denial as slot evidence', () => {
   const service = new ExtensionProfilePlanService();
   const plan = service.createProfilePlan({
@@ -1586,6 +1605,33 @@ test('R3-07S-skill-PERMISSION-FAULT-005 ExtensionProfilePlanService rejects unre
 
   assert.equal(receipt.status, 'blocked');
   assert.ok(receipt.vetoes.includes('slot-child-permission-fault-unrequested-veto:R3-07S-skill-PERMISSION-FAULT-005'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-006 ExtensionProfilePlanService rejects unknown requested tool permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '6121824303642485460667284900214263840420',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createUnknownRequestedToolSkillReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-006',
+    attemptId: 'skill-permission-fault-006-unknown-requested-tool',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.deepEqual(childReceipt.requestedToolKinds, ['read']);
+  assert.ok(childReceipt.violations.includes('skill-tool-kind-invalid:sudo'));
+  assert.equal(childReceipt.violations.includes('skill-tool-kind-denied:sudo'), false);
+  assert.ok(receipt.vetoes.includes('slot-child-receipt-not-clean-veto:R3-07S-skill-PERMISSION-FAULT-006'));
   assert.deepEqual(receipt.permissionFaultRefs, []);
   assert.deepEqual(receipt.effectRefs, []);
   assert.deepEqual(receipt.receiptRefs, []);

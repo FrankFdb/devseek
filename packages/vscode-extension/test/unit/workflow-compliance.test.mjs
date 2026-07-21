@@ -1145,6 +1145,16 @@ test('R3-07S-skill-PERMISSION-FAULT-005: permission/fault denial must be request
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-005 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-005 must have unrequested-denial oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-006: unknown requested skill tools cannot become permission/fault evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'parseSkillToolKindValues', 'R3-07S-skill-PERMISSION-FAULT-006 must parse runtime requested tool kinds before permission planning');
+  assertContains(sharedEnhancements, 'skill-tool-kind-invalid', 'R3-07S-skill-PERMISSION-FAULT-006 must expose invalid requested skill tools as dirty child evidence');
+  assertContains(sharedEnhancements, 'invalidRequestedToolKinds', 'R3-07S-skill-PERMISSION-FAULT-006 must keep invalid requested tool ownership in SkillDiscoveryService');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-006 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-006 must have unknown requested tool oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
