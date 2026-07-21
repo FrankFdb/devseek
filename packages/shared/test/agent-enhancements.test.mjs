@@ -204,3 +204,72 @@ test('McpPermissionService inherits permission domains and GitPrAssistantService
   assert.match(summary.body, /Evidence: shared:test/);
   assert.equal(summary.checklist.some(item => item.includes('AgentCommand / AgentEvent')), true);
 });
+
+test('R3-07C McpPermissionService binds trust, risk, and capability to parent effect authority', () => {
+  const service = new McpPermissionService();
+  const receipt = service.evaluateTrust({
+    callerPermissionDomains: ['inspect'],
+    trustedServers: [
+      {
+        server: 'github',
+        signature: 'sig:github:v1',
+        permissionDomains: ['inspect', 'network'],
+      },
+      {
+        server: 'box',
+        signature: 'sig:box:v1',
+        permissionDomains: ['inspect'],
+        revoked: true,
+      },
+    ],
+    tools: [
+      {
+        server: 'github',
+        name: 'listIssues',
+        risk: 'read',
+        serverSignature: 'sig:github:v1',
+        capabilityToken: 'secret-read-token',
+      },
+      {
+        server: 'unknown',
+        name: 'writeFile',
+        risk: 'write',
+      },
+      {
+        server: 'github',
+        name: 'createPullRequest',
+        risk: 'network',
+        serverSignature: 'sig:github:v1',
+        capabilityToken: 'secret-network-token',
+      },
+      {
+        server: 'github',
+        name: 'deleteRepository',
+        risk: 'destructive',
+        serverSignature: 'bad-signature',
+      },
+      {
+        server: 'box',
+        name: 'uploadFile',
+        risk: 'write',
+        serverSignature: 'sig:box:v1',
+      },
+    ],
+  });
+
+  assert.equal(receipt.protocol, 'devseek.mcp-trust/v1');
+  assert.equal(receipt.settlementAuthority, 'parent-kernel');
+  assert.equal(receipt.effectAuthority, 'B4-effect-authority');
+  assert.equal(receipt.capabilityEscapesAllowed, false);
+  assert.equal(receipt.decisions.find(decision => decision.tool === 'github.listIssues')?.action, 'allow');
+  assert.equal(receipt.decisions.find(decision => decision.tool === 'unknown.writeFile')?.action, 'veto');
+  assert.equal(receipt.decisions.find(decision => decision.tool === 'github.createPullRequest')?.action, 'veto');
+  assert.equal(receipt.decisions.find(decision => decision.tool === 'github.deleteRepository')?.action, 'veto');
+  assert.equal(receipt.decisions.find(decision => decision.tool === 'box.uploadFile')?.action, 'veto');
+  assert.ok(receipt.vetoes.includes('mcp-unknown-mutable-veto:unknown.writeFile'));
+  assert.ok(receipt.vetoes.includes('mcp-permission-escape-veto:github.createPullRequest'));
+  assert.ok(receipt.vetoes.includes('mcp-unsigned-server-veto:github.deleteRepository'));
+  assert.ok(receipt.vetoes.includes('mcp-revoked-server-veto:box.uploadFile'));
+  assert.ok(receipt.evidenceRefs.some(ref => ref.startsWith('mcp-capability:github.createPullRequest:')));
+  assert.doesNotMatch(JSON.stringify(receipt), /secret-read-token|secret-network-token/);
+});

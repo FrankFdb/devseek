@@ -749,6 +749,25 @@ test('R3-07B: Hook policy/evidence receipts are versioned, visible, and non-writ
   assertContains(sharedTests, 'R3-07B HookPlanner', 'R3-07B must have hook policy failure-first oracle');
 });
 
+test('R3-07C: MCP trust and permission reuse B4 Effect authority without capability escape', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'MCP_TRUST_PROTOCOL', 'MCP trust must expose a versioned protocol marker');
+  assertContains(sharedEnhancements, 'McpTrustReceipt', 'MCP trust must produce a receipt');
+  assertContains(sharedEnhancements, 'evaluateTrust', 'McpPermissionService must own trust evaluation');
+  assertContains(sharedEnhancements, 'B4_EFFECT_AUTHORITY', 'MCP permission must reuse B4 Effect authority');
+  assertContains(sharedEnhancements, "settlementAuthority: 'parent-kernel'", 'MCP trust must remain parent Kernel-owned');
+  assertContains(sharedEnhancements, 'capabilityEscapesAllowed: false', 'MCP capabilities must not escape the permission boundary');
+  assertContains(sharedEnhancements, 'mcp-unknown-mutable-veto', 'Unknown mutable MCP tools must be vetoed');
+  assertContains(sharedEnhancements, 'mcp-unsigned-server-veto', 'Unsigned MCP servers must be vetoed');
+  assertContains(sharedEnhancements, 'mcp-permission-escape-veto', 'MCP permission escape must be vetoed');
+  assertContains(sharedEnhancements, 'mcp-revoked-server-veto', 'Revoked MCP servers must be vetoed');
+  assertContains(sharedEnhancements, 'capabilityRefs', 'MCP capability references must be detached evidence');
+  assertContains(sharedEnhancements, 'evidenceRefs', 'MCP trust must be evidence-backed');
+  assertContains(sharedTests, 'R3-07C McpPermissionService', 'R3-07C must have MCP trust failure-first oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ export type HookEffectKind = 'read' | 'write' | 'network' | 'terminal';
 export type HookExecutionStatus = 'passed' | 'failed' | 'bypassed' | 'not-run';
 export type SubagentKind = 'reviewer' | 'test-writer' | 'diagnostics' | 'migration-planner';
 export type McpRiskLevel = 'read' | 'write' | 'network' | 'destructive';
+export type McpTrustAction = 'allow' | 'approval-required' | 'veto';
 export type SkillToolKind =
   | 'read'
   | 'search'
@@ -18,6 +19,8 @@ export type SkillPermissionAction = 'allow' | 'deny';
 
 export const HOOK_POLICY_PROTOCOL = 'devseek.hook-policy/v1';
 export const SKILL_EXECUTION_PROTOCOL = 'devseek.skill-execution/v1';
+export const MCP_TRUST_PROTOCOL = 'devseek.mcp-trust/v1';
+export const B4_EFFECT_AUTHORITY = 'B4-effect-authority';
 
 export interface HookDefinition {
   id: string;
@@ -146,6 +149,8 @@ export interface McpToolDescriptor {
   name: string;
   description?: string;
   risk: McpRiskLevel;
+  serverSignature?: string;
+  capabilityToken?: string;
 }
 
 export interface McpPermissionDecision {
@@ -153,6 +158,39 @@ export interface McpPermissionDecision {
   requiresApproval: boolean;
   inheritedPermissionDomain: string;
   reasons: readonly string[];
+}
+
+export interface McpTrustedServer {
+  server: string;
+  signature: string;
+  permissionDomains: readonly string[];
+  revoked?: boolean;
+}
+
+export interface McpTrustInput {
+  tools: readonly McpToolDescriptor[];
+  trustedServers: readonly McpTrustedServer[];
+  callerPermissionDomains?: readonly string[];
+}
+
+export interface McpTrustDecision extends McpPermissionDecision {
+  risk: McpRiskLevel;
+  action: McpTrustAction;
+  trustedServer: boolean;
+  serverSigned: boolean;
+  capabilityRefs: readonly string[];
+  evidenceRefs: readonly string[];
+}
+
+export interface McpTrustReceipt {
+  protocol: typeof MCP_TRUST_PROTOCOL;
+  settlementAuthority: 'parent-kernel';
+  effectAuthority: typeof B4_EFFECT_AUTHORITY;
+  capabilityEscapesAllowed: false;
+  decisions: readonly McpTrustDecision[];
+  vetoes: readonly string[];
+  violations: readonly string[];
+  evidenceRefs: readonly string[];
 }
 
 export interface GitPrSummaryInput {
@@ -407,6 +445,93 @@ export class McpPermissionService {
       reasons: tool.risk === 'read' ? [] : [`mcp-${tool.risk}-tool`],
     };
   }
+
+  evaluateTrust(input: McpTrustInput): McpTrustReceipt {
+    const trustedServers = new Map(input.trustedServers.map(server => [server.server, server]));
+    const callerDomains = new Set(input.callerPermissionDomains ?? []);
+    const decisions = input.tools.map((tool): McpTrustDecision => {
+      const base = this.decide(tool);
+      const trustedServer = trustedServers.get(tool.server);
+      const signatureMatches = Boolean(
+        trustedServer
+        && tool.serverSignature
+        && tool.serverSignature === trustedServer.signature,
+      );
+      const vetoes = mcpToolVetoes({
+        tool,
+        trustedServer,
+        signatureMatches,
+        inheritedPermissionDomain: base.inheritedPermissionDomain,
+        callerDomains,
+      });
+      const capabilityRefs = tool.capabilityToken ? [mcpCapabilityRef(tool)] : [];
+      const evidenceRefs = uniqueStrings([
+        mcpToolEvidenceRef(tool, signatureMatches),
+        ...capabilityRefs,
+      ]);
+      return {
+        ...base,
+        risk: tool.risk,
+        action: vetoes.length > 0 ? 'veto' : base.requiresApproval ? 'approval-required' : 'allow',
+        trustedServer: Boolean(trustedServer && !trustedServer.revoked),
+        serverSigned: signatureMatches,
+        capabilityRefs,
+        evidenceRefs,
+        reasons: uniqueStrings([...base.reasons, ...vetoes]),
+      };
+    });
+    const vetoes = uniqueStrings(decisions.flatMap(decision => decision.reasons.filter(reason => reason.endsWith(`:${decision.tool}`))));
+    return {
+      protocol: MCP_TRUST_PROTOCOL,
+      settlementAuthority: 'parent-kernel',
+      effectAuthority: B4_EFFECT_AUTHORITY,
+      capabilityEscapesAllowed: false,
+      decisions,
+      vetoes,
+      violations: vetoes,
+      evidenceRefs: uniqueStrings(decisions.flatMap(decision => decision.evidenceRefs)),
+    };
+  }
+}
+
+function mcpToolVetoes(input: {
+  tool: McpToolDescriptor;
+  trustedServer: McpTrustedServer | undefined;
+  signatureMatches: boolean;
+  inheritedPermissionDomain: string;
+  callerDomains: ReadonlySet<string>;
+}): string[] {
+  const { tool, trustedServer, signatureMatches, inheritedPermissionDomain, callerDomains } = input;
+  const toolId = mcpToolId(tool);
+  const mutable = tool.risk !== 'read';
+  const reasons: string[] = [];
+  if (trustedServer?.revoked) {
+    reasons.push(`mcp-revoked-server-veto:${toolId}`);
+  } else if (mutable && !trustedServer) {
+    reasons.push(`mcp-unknown-mutable-veto:${toolId}`);
+  } else if (mutable && !signatureMatches) {
+    reasons.push(`mcp-unsigned-server-veto:${toolId}`);
+  }
+  if (mutable && callerDomains.size > 0 && !callerDomains.has(inheritedPermissionDomain)) {
+    reasons.push(`mcp-permission-escape-veto:${toolId}`);
+  }
+  return reasons;
+}
+
+function mcpToolId(tool: McpToolDescriptor): string {
+  return `${tool.server}.${tool.name}`;
+}
+
+function mcpToolEvidenceRef(tool: McpToolDescriptor, signatureMatches: boolean): string {
+  return `mcp-tool:${mcpToolId(tool)}:${stableTextDigest([
+    tool.risk,
+    signatureMatches ? 'signed' : 'unsigned',
+    tool.description ?? '',
+  ].join('\n'))}`;
+}
+
+function mcpCapabilityRef(tool: McpToolDescriptor): string {
+  return `mcp-capability:${mcpToolId(tool)}:${stableTextDigest(tool.capabilityToken ?? '')}`;
 }
 
 export class GitPrAssistantService {
