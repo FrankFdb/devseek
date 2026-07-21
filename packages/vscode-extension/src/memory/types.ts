@@ -6,6 +6,9 @@ export type MemoryLifecycleAction =
   | 'write'
   | 'dedupe-update'
   | 'conflict-supersede'
+  | 'secret-redacted'
+  | 'legacy-secret-redacted'
+  | 'legacy-import-invalidated'
   | 'expire'
   | 'disable'
   | 'revoke'
@@ -82,6 +85,8 @@ export interface MemoryLifecycleReceipt {
   at: number;
   contentHash?: string;
   recordSnapshotHash?: string;
+  sensitiveMatches?: string[];
+  redactionCount?: number;
 }
 
 export interface MemoryLifecycleResult {

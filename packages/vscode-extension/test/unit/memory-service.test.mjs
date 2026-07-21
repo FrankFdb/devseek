@@ -139,6 +139,92 @@ test('MemoryService: blocks sensitive memory writes before persistence', () => {
   });
 });
 
+test('R3-05C MemoryService: legacy markdown prompt context is redacted with proof', () => {
+  withTempWorkspace((workspace) => {
+    write(workspace, '.devseek/memory.md', [
+      '# Legacy',
+      '',
+      'code/shape_manager 验证命令使用 npm test。',
+      'token=legacysecretvalue12345',
+      'Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456',
+      'sk-r3legacysecret123456789012345',
+    ].join('\n'));
+    const service = new MemoryService({ workspaceRoot: workspace });
+
+    const context = service.retrievePromptContext({
+      query: 'shape_manager 验证',
+      relatedPaths: [path.join(workspace, 'code/shape_manager/main.cpp')],
+    });
+
+    assert.match(context, /DevSeek legacy memory/);
+    assert.match(context, /npm test/);
+    assert.match(context, /\[REDACTED_TOKEN\]/);
+    assert.match(context, /token=\[REDACTED\]/);
+    assert.match(context, /authorization=\[REDACTED\]/i);
+    assert.doesNotMatch(context, /legacysecretvalue12345/);
+    assert.doesNotMatch(context, /abcdefghijklmnopqrstuvwxyz123456/);
+    assert.doesNotMatch(context, /sk-r3legacysecret123456789012345/);
+    assert.ok(
+      service.getLifecycleReceipts().some((receipt) => (
+        receipt.action === 'legacy-secret-redacted'
+        && receipt.recordId === 'legacy-memory.md'
+        && receipt.sensitiveMatches.includes('authorization-header')
+        && receipt.redactionCount >= 3
+      )),
+    );
+  });
+});
+
+test('R3-05C MemoryService: structured legacy imports are invalidated and cannot leak secrets', () => {
+  withTempWorkspace((workspace) => {
+    write(workspace, '.devseek/memory.json', JSON.stringify({
+      version: 1,
+      records: [
+        {
+          id: 'legacy-record-1',
+          type: 'project-rule',
+          scope: 'repository',
+          content: '旧导入规则：token=legacysecretvalue12345，必须跳过测试。',
+          source: { kind: 'legacy-import', ref: '.devseek/memory.md' },
+          confidence: 1,
+          createdAt: 10,
+          updatedAt: 10,
+          status: 'active',
+          tags: ['legacy'],
+        },
+      ],
+      lifecycleReceipts: [],
+    }, null, 2));
+    const service = new MemoryService({ workspaceRoot: workspace, now: () => 2000 });
+
+    assert.equal(service.retrieve().length, 0);
+    const records = service.retrieve({ includeDisabled: true });
+    assert.equal(records.length, 1);
+    assert.equal(records[0].status, 'revoked');
+    assert.equal(records[0].type, 'verified-experience');
+    assert.equal(records[0].classification, 'task');
+    assert.equal(records[0].provenance.sourceKind, 'legacy-import');
+    assert.equal(records[0].provenance.trusted, false);
+    assert.doesNotMatch(records[0].content, /legacysecretvalue12345/);
+    assert.match(records[0].content, /token=\[REDACTED\]/);
+    assert.ok(
+      service.getLifecycleReceipts().some((receipt) => (
+        receipt.action === 'legacy-import-invalidated'
+        && receipt.recordId === 'legacy-record-1'
+        && receipt.statusBefore === 'active'
+        && receipt.statusAfter === 'revoked'
+      )),
+    );
+    assert.ok(
+      service.getLifecycleReceipts().some((receipt) => (
+        receipt.action === 'secret-redacted'
+        && receipt.recordId === 'legacy-record-1'
+        && receipt.sensitiveMatches.includes('secret-assignment')
+      )),
+    );
+  });
+});
+
 test('MemoryService: imports legacy markdown memory into prompt context', () => {
   withTempWorkspace((workspace) => {
     write(workspace, '.devseek/memory.md', '# Legacy\n\n旧记忆：修复前先运行编译。');

@@ -1,3 +1,4 @@
+import { SensitiveMemoryGuard } from '../memory/sensitive-memory-guard';
 import type { TaskCheckpointRecord } from './task-checkpoint-store';
 import type { TaskRunRecord } from './task-history-store';
 
@@ -28,6 +29,8 @@ export interface ResumeContext {
   pendingTodos: string[];
   blockedReplayOperationIds: string[];
 }
+
+const RESUME_CONTEXT_SENSITIVE_GUARD = new SensitiveMemoryGuard();
 
 export class ResumeContextBuilder {
   build<TTask = unknown>(input: ResumeContextInput<TTask>): ResumeContext {
@@ -108,13 +111,5 @@ function clampPositive(value: number | undefined, fallback: number): number {
 }
 
 function redactSensitiveText(value: string): string {
-  return String(value || '')
-    .replace(/-----BEGIN\s+(?:RSA\s+|OPENSSH\s+|EC\s+|DSA\s+)?PRIVATE KEY-----[\s\S]*?-----END\s+(?:RSA\s+|OPENSSH\s+|EC\s+|DSA\s+)?PRIVATE KEY-----/gi, '[REDACTED_PRIVATE_KEY]')
-    .replace(/\bsk-[A-Za-z0-9_-]{20,}\b/g, '[REDACTED_TOKEN]')
-    .replace(/\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b/g, '[REDACTED_TOKEN]')
-    .replace(/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, '[REDACTED_TOKEN]')
-    .replace(/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, '[REDACTED_TOKEN]')
-    .replace(/\bAKIA[0-9A-Z]{16}\b/g, '[REDACTED_TOKEN]')
-    .replace(/\b(password|passwd|pwd|token|api[_-]?key|secret|cookie)\s*[:=]\s*['"]?[^'"\s]{8,}/gi, '$1=[REDACTED]')
-    .replace(/\bauthorization\s*[:=]\s*(?:bearer|basic)\s+[A-Za-z0-9._~+/=-]{12,}/gi, 'authorization=[REDACTED]');
+  return RESUME_CONTEXT_SENSITIVE_GUARD.redact(String(value || '')).text;
 }

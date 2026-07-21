@@ -2267,6 +2267,27 @@ test('R3-05B: MemoryService owns memory conflict, TTL, revocation, and deletion 
   assertContains(memoryTests, 'R3-05B MemoryService: conflict supersede and revoke/delete receipts are provable', 'R3-05B must cover conflict and revocation/delete proof');
 });
 
+test('R3-05C: MemoryService owns memory secret redaction and legacy import invalidation', () => {
+  const memoryTypes = src('src/memory/types.ts');
+  const sensitiveGuard = src('src/memory/sensitive-memory-guard.ts');
+  const memoryService = src('src/app/memory-service.ts');
+  const memoryTests = src('test/unit/memory-service.test.mjs');
+
+  for (const action of ["'secret-redacted'", "'legacy-secret-redacted'", "'legacy-import-invalidated'"]) {
+    assertContains(memoryTypes, action, `memory lifecycle actions must include ${action}`);
+  }
+  assertContains(memoryTypes, 'sensitiveMatches', 'memory lifecycle receipts must expose sensitive match labels');
+  assertContains(memoryTypes, 'redactionCount', 'memory lifecycle receipts must expose redaction count');
+  assertContains(sensitiveGuard, 'redact(content: string)', 'SensitiveMemoryGuard must expose a reusable redaction API');
+  assertContains(sensitiveGuard, '[REDACTED_TOKEN]', 'SensitiveMemoryGuard must redact token-shaped secrets');
+  assertContains(memoryService, 'sanitizeSensitiveMemoryRecords', 'MemoryService must sanitize persisted records before retrieval/prompt projection');
+  assertContains(memoryService, 'sanitizeLegacyMemoryMarkdownForPrompt', 'MemoryService must redact legacy markdown before prompt injection');
+  assertContains(memoryService, 'invalidateLegacyImportedMemoryRecords', 'MemoryService must invalidate untrusted structured legacy imports');
+  assertContains(memoryService, 'legacy memory is untrusted', 'MemoryService must document the legacy trust downgrade');
+  assertContains(memoryTests, 'R3-05C MemoryService: legacy markdown prompt context is redacted with proof', 'R3-05C must cover legacy markdown redaction');
+  assertContains(memoryTests, 'R3-05C MemoryService: structured legacy imports are invalidated and cannot leak secrets', 'R3-05C must cover structured legacy invalidation');
+});
+
 test('Architecture: Phase 10 application service owns Provider chat routing protocol', () => {
   const service = src('../shared/src/agent-application-service.ts');
   const protocol = src('../shared/src/agent-protocol.ts');

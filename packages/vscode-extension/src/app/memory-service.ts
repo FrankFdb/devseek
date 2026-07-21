@@ -60,6 +60,8 @@ export class MemoryService {
   }
 
   retrieve(query: MemoryQuery = {}): MemoryRecord[] {
+    this.sanitizeSensitiveMemoryRecords();
+    this.invalidateLegacyImportedMemoryRecords();
     this.refreshExpiredMemoryRecords();
     const scopes = query.scopes ? new Set(query.scopes) : null;
     const types = query.types ? new Set(query.types) : null;
@@ -222,7 +224,9 @@ export class MemoryService {
       ? activeRecords.map((record) => renderStructuredMemoryPromptLine(record)).join('\n')
       : '';
     const legacyRaw = this.store.readLegacyMarkdown(hasAnchors ? Math.max(maxChars, FILTERED_LEGACY_SCAN_CHARS) : maxChars);
-    const legacy = legacyRaw ? filterLegacyMemoryMarkdownByContext(legacyRaw, anchors) : null;
+    const legacy = legacyRaw
+      ? this.sanitizeLegacyMemoryMarkdownForPrompt(filterLegacyMemoryMarkdownByContext(legacyRaw, anchors))
+      : null;
     const combined = [
       structured ? `[DevSeek structured memory]\n${structured}` : '',
       legacy ? `[DevSeek legacy memory]\n${legacy}` : '',
@@ -263,8 +267,95 @@ export class MemoryService {
     for (const receipt of receipts) this.store.appendLifecycleReceipt(receipt);
   }
 
+  private appendLifecycleReceiptOnce(receipt: MemoryLifecycleReceipt): void {
+    const exists = this.store.readLifecycleReceipts().some((existing) => (
+      existing.action === receipt.action
+      && existing.recordId === receipt.recordId
+      && existing.contentHash === receipt.contentHash
+    ));
+    if (!exists) this.store.appendLifecycleReceipt(receipt);
+  }
+
   private readNormalizedMemoryRecords(): MemoryRecord[] {
     return this.store.readAll().map(record => normalizeStoredMemoryRecord(record));
+  }
+
+  private sanitizeSensitiveMemoryRecords(now = this.now()): void {
+    const records = this.readNormalizedMemoryRecords();
+    const receipts: MemoryLifecycleReceipt[] = [];
+    const next = records.map((record) => {
+      const redaction = this.guard.redact(record.content);
+      if (!redaction.redacted) return record;
+      const sanitized: MemoryRecord = {
+        ...record,
+        content: redaction.text,
+        updatedAt: now,
+        tags: mergeMemoryTags(record.tags, ['sensitive-redacted']),
+      };
+      receipts.push(this.createLifecycleReceipt({
+        action: 'secret-redacted',
+        recordId: record.id,
+        statusBefore: record.status,
+        statusAfter: sanitized.status,
+        reason: 'memory secret redacted before projection',
+        at: now,
+        contentHash: hashText(sanitized.content),
+        recordSnapshotHash: hashMemoryRecordSnapshot(record),
+        sensitiveMatches: redaction.matches,
+        redactionCount: redaction.redactionCount,
+      }));
+      return sanitized;
+    });
+    if (receipts.length === 0) return;
+    this.store.writeAll(next);
+    this.appendLifecycleReceipts(receipts);
+  }
+
+  private sanitizeLegacyMemoryMarkdownForPrompt(markdown: string): string | null {
+    const content = String(markdown || '').trim();
+    if (!content) return null;
+    const redaction = this.guard.redact(content);
+    if (redaction.redacted) {
+      this.appendLifecycleReceiptOnce(this.createLifecycleReceipt({
+        action: 'legacy-secret-redacted',
+        recordId: 'legacy-memory.md',
+        reason: 'legacy memory is untrusted; secrets redacted before prompt projection',
+        at: this.now(),
+        contentHash: hashText(content),
+        recordSnapshotHash: hashText(redaction.text),
+        sensitiveMatches: redaction.matches,
+        redactionCount: redaction.redactionCount,
+      }));
+    }
+    return redaction.text;
+  }
+
+  private invalidateLegacyImportedMemoryRecords(now = this.now()): void {
+    const records = this.readNormalizedMemoryRecords();
+    const receipts: MemoryLifecycleReceipt[] = [];
+    const next = records.map((record) => {
+      if (!isLegacyImportedMemoryRecord(record) || record.status === 'revoked') return record;
+      const revoked: MemoryRecord = {
+        ...record,
+        status: 'revoked',
+        updatedAt: now,
+        tags: mergeMemoryTags(record.tags, ['legacy-import-invalidated']),
+      };
+      receipts.push(this.createLifecycleReceipt({
+        action: 'legacy-import-invalidated',
+        recordId: record.id,
+        statusBefore: record.status,
+        statusAfter: 'revoked',
+        reason: 'legacy memory is untrusted; structured import invalidated',
+        at: now,
+        contentHash: hashText(record.content),
+        recordSnapshotHash: hashMemoryRecordSnapshot(record),
+      }));
+      return revoked;
+    });
+    if (receipts.length === 0) return;
+    this.store.writeAll(next);
+    this.appendLifecycleReceipts(receipts);
   }
 
   private refreshExpiredMemoryRecords(now = this.now()): void {
@@ -554,6 +645,10 @@ function isTrustedMemorySource(source: MemorySource): boolean {
 
 function isExternalMemorySource(source: MemorySource): boolean {
   return source.kind === 'external' || source.kind === 'legacy-import';
+}
+
+function isLegacyImportedMemoryRecord(record: MemoryRecord): boolean {
+  return record.source?.kind === 'legacy-import' || record.provenance?.sourceKind === 'legacy-import';
 }
 
 function isActiveMemoryRecord(record: MemoryRecord): boolean {
