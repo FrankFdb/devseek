@@ -1,6 +1,15 @@
 export type MemoryScope = 'session' | 'task' | 'workspace' | 'repository' | 'user';
 
-export type MemoryStatus = 'pending' | 'active' | 'disabled' | 'expired';
+export type MemoryStatus = 'pending' | 'active' | 'disabled' | 'expired' | 'revoked';
+
+export type MemoryLifecycleAction =
+  | 'write'
+  | 'dedupe-update'
+  | 'conflict-supersede'
+  | 'expire'
+  | 'disable'
+  | 'revoke'
+  | 'delete';
 
 export type MemoryClassification =
   | 'instruction'
@@ -61,6 +70,25 @@ export interface MemoryRecord {
   tags: string[];
 }
 
+export interface MemoryLifecycleReceipt {
+  id: string;
+  action: MemoryLifecycleAction;
+  recordId: string;
+  previousRecordId?: string;
+  statusBefore?: MemoryStatus;
+  statusAfter?: MemoryStatus;
+  reason: string;
+  actor?: string;
+  at: number;
+  contentHash?: string;
+  recordSnapshotHash?: string;
+}
+
+export interface MemoryLifecycleResult {
+  changed: boolean;
+  receipt?: MemoryLifecycleReceipt;
+}
+
 export interface MemoryQuery {
   scopes?: MemoryScope[];
   types?: MemoryType[];
@@ -78,6 +106,7 @@ export interface MemoryWriteProposal {
   provenance?: MemoryProvenance;
   reason: string;
   tags?: string[];
+  ttl?: number;
   requiresUserApproval: boolean;
 }
 

@@ -1,12 +1,17 @@
+import { createHash } from 'crypto';
 import { MemoryStore } from '../memory/memory-store';
 import { SensitiveMemoryGuard } from '../memory/sensitive-memory-guard';
 import type {
   MemoryClassification,
+  MemoryLifecycleAction,
+  MemoryLifecycleReceipt,
+  MemoryLifecycleResult,
   MemoryProvenance,
   MemoryQuery,
   MemoryRecord,
   MemoryScope,
   MemorySource,
+  MemoryStatus,
   MemoryType,
   MemoryWriteProposal,
 } from '../memory/types';
@@ -25,6 +30,7 @@ export interface MemoryServiceDeps {
   workspaceRoot: string;
   store?: MemoryStore;
   guard?: SensitiveMemoryGuard;
+  now?: () => number;
 }
 
 export interface MemoryPromptContextOptions {
@@ -44,21 +50,23 @@ export class MemoryService {
   private readonly store: MemoryStore;
   private readonly guard: SensitiveMemoryGuard;
   private readonly workspaceRoot: string;
+  private readonly now: () => number;
 
   constructor(deps: MemoryServiceDeps) {
     this.workspaceRoot = deps.workspaceRoot;
     this.store = deps.store ?? new MemoryStore(deps.workspaceRoot);
     this.guard = deps.guard ?? new SensitiveMemoryGuard();
+    this.now = deps.now ?? Date.now;
   }
 
   retrieve(query: MemoryQuery = {}): MemoryRecord[] {
+    this.refreshExpiredMemoryRecords();
     const scopes = query.scopes ? new Set(query.scopes) : null;
     const types = query.types ? new Set(query.types) : null;
     const tags = query.tags ? new Set(query.tags) : null;
     const limit = query.limit ?? DEFAULT_MEMORY_LIMIT;
 
-    return this.store.readAll()
-      .map(record => normalizeStoredMemoryRecord(record))
+    return this.readNormalizedMemoryRecords()
       .filter((record) => query.includeDisabled || record.status === 'active')
       .filter((record) => !scopes || scopes.has(record.scope))
       .filter((record) => !types || types.has(record.type))
@@ -71,10 +79,13 @@ export class MemoryService {
     return normalizeMemoryWriteProposal({
       type: input.type,
       scope: input.scope,
+      classification: input.classification,
       content: input.content,
       source: input.source,
+      provenance: input.provenance,
       reason: input.reason,
       tags: input.tags,
+      ttl: input.ttl,
       requiresUserApproval: input.requiresUserApproval,
     });
   }
@@ -88,7 +99,7 @@ export class MemoryService {
         approvalState: 'approved',
         approvalRef: approval.approvalRef,
         approvedBy: approval.approvedBy,
-        approvedAt: approval.approvedAt ?? Date.now(),
+        approvedAt: approval.approvedAt ?? this.now(),
       },
     };
   }
@@ -106,8 +117,10 @@ export class MemoryService {
       throw new Error('持久记忆写入需要用户审批');
     }
 
-    const now = Date.now();
-    return this.store.append({
+    const now = this.now();
+    this.refreshExpiredMemoryRecords(now);
+    const records = this.readNormalizedMemoryRecords();
+    const record: MemoryRecord = {
       id: this.createId(now),
       type: normalized.type,
       scope: normalized.scope,
@@ -119,9 +132,28 @@ export class MemoryService {
       confidence: confidenceForMemorySource(normalized.source, normalized.provenance),
       createdAt: now,
       updatedAt: now,
+      ...(normalized.ttl ? { ttl: normalized.ttl } : {}),
       status: 'active',
       tags: normalized.tags ?? [],
-    });
+    };
+    const deduped = this.dedupeMemoryRecord(records, record, normalized.reason, now);
+    if (deduped) return deduped;
+
+    const superseded = this.supersedeConflictingMemoryRecords(records, record, normalized.reason, now);
+    this.store.writeAll([...superseded.records, record]);
+    this.appendLifecycleReceipts([
+      ...superseded.receipts,
+      this.createLifecycleReceipt({
+        action: 'write',
+        recordId: record.id,
+        statusAfter: 'active',
+        reason: normalized.reason,
+        at: now,
+        contentHash: hashText(record.content),
+        recordSnapshotHash: hashMemoryRecordSnapshot(record),
+      }),
+    ]);
+    return record;
   }
 
   appendAgentMemory(content: string): MemoryRecord {
@@ -135,12 +167,36 @@ export class MemoryService {
     }));
   }
 
-  disable(id: string): boolean {
-    return this.store.disable(id);
+  disable(id: string, reason = 'manual-disable'): MemoryLifecycleResult {
+    return this.transitionMemoryRecordStatus(id, 'disabled', 'disable', reason);
   }
 
-  delete(id: string): boolean {
-    return this.store.delete(id);
+  revoke(id: string, reason = 'manual-revoke'): MemoryLifecycleResult {
+    return this.transitionMemoryRecordStatus(id, 'revoked', 'revoke', reason);
+  }
+
+  delete(id: string, reason = 'manual-delete'): MemoryLifecycleResult {
+    this.refreshExpiredMemoryRecords();
+    const now = this.now();
+    const records = this.readNormalizedMemoryRecords();
+    const target = records.find((record) => record.id === id);
+    if (!target) return { changed: false };
+    this.store.writeAll(records.filter((record) => record.id !== id));
+    const receipt = this.createLifecycleReceipt({
+      action: 'delete',
+      recordId: target.id,
+      statusBefore: target.status,
+      reason,
+      at: now,
+      contentHash: hashText(target.content),
+      recordSnapshotHash: hashMemoryRecordSnapshot(target),
+    });
+    this.appendLifecycleReceipts([receipt]);
+    return { changed: true, receipt };
+  }
+
+  getLifecycleReceipts(): MemoryLifecycleReceipt[] {
+    return this.store.readLifecycleReceipts();
   }
 
   retrievePromptContext(options: MemoryPromptContextOptions | number = {}): string | null {
@@ -185,6 +241,160 @@ export class MemoryService {
 
   private createId(now: number): string {
     return `mem_${now}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  private createLifecycleReceipt(input: Omit<MemoryLifecycleReceipt, 'id'>): MemoryLifecycleReceipt {
+    const stableKey = [
+      input.action,
+      input.recordId,
+      input.previousRecordId ?? '',
+      input.statusBefore ?? '',
+      input.statusAfter ?? '',
+      input.reason,
+      input.at,
+    ].join('\n');
+    return {
+      id: `mem_life_${input.at}_${hashText(stableKey).slice(0, 10)}`,
+      ...input,
+    };
+  }
+
+  private appendLifecycleReceipts(receipts: MemoryLifecycleReceipt[]): void {
+    for (const receipt of receipts) this.store.appendLifecycleReceipt(receipt);
+  }
+
+  private readNormalizedMemoryRecords(): MemoryRecord[] {
+    return this.store.readAll().map(record => normalizeStoredMemoryRecord(record));
+  }
+
+  private refreshExpiredMemoryRecords(now = this.now()): void {
+    const records = this.readNormalizedMemoryRecords();
+    const receipts: MemoryLifecycleReceipt[] = [];
+    const next = records.map((record) => {
+      if (!isActiveMemoryRecord(record) || !isMemoryRecordExpired(record, now)) return record;
+      const expired: MemoryRecord = { ...record, status: 'expired', updatedAt: now };
+      receipts.push(this.createLifecycleReceipt({
+        action: 'expire',
+        recordId: record.id,
+        statusBefore: record.status,
+        statusAfter: 'expired',
+        reason: 'memory ttl expired',
+        at: now,
+        contentHash: hashText(record.content),
+        recordSnapshotHash: hashMemoryRecordSnapshot(record),
+      }));
+      return expired;
+    });
+    if (receipts.length === 0) return;
+    this.store.writeAll(next);
+    this.appendLifecycleReceipts(receipts);
+  }
+
+  private dedupeMemoryRecord(
+    records: MemoryRecord[],
+    incoming: MemoryRecord,
+    reason: string,
+    now: number,
+  ): MemoryRecord | null {
+    const incomingContentKey = normalizeMemoryContentKey(incoming.content);
+    const index = records.findIndex((record) => (
+      isActiveMemoryRecord(record)
+      && hasSameMemoryIdentity(record, incoming)
+      && normalizeMemoryContentKey(record.content) === incomingContentKey
+    ));
+    if (index < 0) return null;
+
+    const existing = records[index];
+    const updated: MemoryRecord = {
+      ...existing,
+      source: incoming.source,
+      provenance: incoming.provenance,
+      requiresUserApproval: incoming.requiresUserApproval,
+      confidence: Math.max(existing.confidence, incoming.confidence),
+      updatedAt: now,
+      ...(incoming.ttl ? { ttl: incoming.ttl } : {}),
+      tags: mergeMemoryTags(existing.tags, incoming.tags),
+    };
+    const next = records.slice();
+    next[index] = updated;
+    this.store.writeAll(next);
+    this.appendLifecycleReceipts([this.createLifecycleReceipt({
+      action: 'dedupe-update',
+      recordId: existing.id,
+      statusBefore: existing.status,
+      statusAfter: updated.status,
+      reason,
+      at: now,
+      contentHash: hashText(updated.content),
+      recordSnapshotHash: hashMemoryRecordSnapshot(updated),
+    })]);
+    return updated;
+  }
+
+  private supersedeConflictingMemoryRecords(
+    records: MemoryRecord[],
+    incoming: MemoryRecord,
+    reason: string,
+    now: number,
+  ): { records: MemoryRecord[]; receipts: MemoryLifecycleReceipt[] } {
+    const incomingKeys = memoryConflictKeys(incoming);
+    if (incomingKeys.length === 0) return { records, receipts: [] };
+    const incomingKeySet = new Set(incomingKeys);
+    const receipts: MemoryLifecycleReceipt[] = [];
+    const next = records.map((record) => {
+      if (
+        !isActiveMemoryRecord(record)
+        || !hasSameMemoryIdentity(record, incoming)
+        || normalizeMemoryContentKey(record.content) === normalizeMemoryContentKey(incoming.content)
+        || !memoryConflictKeys(record).some((key) => incomingKeySet.has(key))
+      ) {
+        return record;
+      }
+      const disabled: MemoryRecord = { ...record, status: 'disabled', updatedAt: now };
+      receipts.push(this.createLifecycleReceipt({
+        action: 'conflict-supersede',
+        recordId: incoming.id,
+        previousRecordId: record.id,
+        statusBefore: record.status,
+        statusAfter: 'disabled',
+        reason,
+        at: now,
+        contentHash: hashText(incoming.content),
+        recordSnapshotHash: hashMemoryRecordSnapshot(record),
+      }));
+      return disabled;
+    });
+    return { records: next, receipts };
+  }
+
+  private transitionMemoryRecordStatus(
+    id: string,
+    status: Extract<MemoryStatus, 'disabled' | 'revoked'>,
+    action: Extract<MemoryLifecycleAction, 'disable' | 'revoke'>,
+    reason: string,
+  ): MemoryLifecycleResult {
+    this.refreshExpiredMemoryRecords();
+    const now = this.now();
+    const records = this.readNormalizedMemoryRecords();
+    const index = records.findIndex((record) => record.id === id);
+    if (index < 0 || records[index].status === status) return { changed: false };
+    const target = records[index];
+    const updated: MemoryRecord = { ...target, status, updatedAt: now };
+    const next = records.slice();
+    next[index] = updated;
+    this.store.writeAll(next);
+    const receipt = this.createLifecycleReceipt({
+      action,
+      recordId: id,
+      statusBefore: target.status,
+      statusAfter: status,
+      reason,
+      at: now,
+      contentHash: hashText(target.content),
+      recordSnapshotHash: hashMemoryRecordSnapshot(target),
+    });
+    this.appendLifecycleReceipts([receipt]);
+    return { changed: true, receipt };
   }
 }
 
@@ -259,6 +469,7 @@ function normalizeMemoryWriteProposal(input: Partial<MemoryWriteProposal> & { co
     provenance,
     reason: input.reason ?? 'Memory write proposal',
     tags: input.tags ?? ['agent'],
+    ttl: sanitizeMemoryTtl(input.ttl),
     requiresUserApproval: approvalRequired,
   };
 }
@@ -299,7 +510,7 @@ function normalizeStoredMemoryRecord(record: MemoryRecord): MemoryRecord {
   const classified = classifyMemoryWriteProposal({ ...record, source });
   const requiresApproval = record.requiresUserApproval
     ?? requiresPersistentMemoryApproval({ ...classified, source });
-  return {
+  const normalized: MemoryRecord = {
     ...record,
     type: classified.type,
     scope: classified.scope,
@@ -312,6 +523,13 @@ function normalizeStoredMemoryRecord(record: MemoryRecord): MemoryRecord {
     ),
     requiresUserApproval: requiresApproval,
   };
+  const ttl = sanitizeMemoryTtl(record.ttl);
+  if (ttl === undefined) {
+    delete (normalized as Partial<MemoryRecord>).ttl;
+  } else {
+    normalized.ttl = ttl;
+  }
+  return normalized;
 }
 
 function renderStructuredMemoryPromptLine(record: MemoryRecord): string {
@@ -336,6 +554,56 @@ function isTrustedMemorySource(source: MemorySource): boolean {
 
 function isExternalMemorySource(source: MemorySource): boolean {
   return source.kind === 'external' || source.kind === 'legacy-import';
+}
+
+function isActiveMemoryRecord(record: MemoryRecord): boolean {
+  return record.status === 'active';
+}
+
+function isMemoryRecordExpired(record: MemoryRecord, now: number): boolean {
+  return typeof record.ttl === 'number' && record.ttl > 0 && record.createdAt + record.ttl <= now;
+}
+
+function hasSameMemoryIdentity(left: MemoryRecord, right: MemoryRecord): boolean {
+  return (
+    left.type === right.type
+    && left.scope === right.scope
+    && left.classification === right.classification
+  );
+}
+
+function normalizeMemoryContentKey(content: string): string {
+  return String(content || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function memoryConflictKeys(record: Pick<MemoryRecord, 'tags'>): string[] {
+  const keys = new Set<string>();
+  for (const tag of record.tags ?? []) {
+    const normalized = String(tag || '').trim().toLowerCase();
+    if (/^(command|preference|subject|key|conflict):/.test(normalized)) {
+      keys.add(normalized);
+    }
+  }
+  return [...keys];
+}
+
+function mergeMemoryTags(left: string[], right: string[]): string[] {
+  return [...new Set([...left, ...right].filter(Boolean))];
+}
+
+function sanitizeMemoryTtl(value: unknown): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  const ttl = Number(value);
+  if (!Number.isFinite(ttl) || ttl <= 0) return undefined;
+  return Math.floor(ttl);
+}
+
+function hashText(text: string): string {
+  return createHash('sha256').update(text).digest('hex');
+}
+
+function hashMemoryRecordSnapshot(record: MemoryRecord): string {
+  return hashText(JSON.stringify(record));
 }
 
 function stripInjectedSessionContextForMemoryAnchors(query: string): string {

@@ -1,13 +1,14 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
-import type { MemoryRecord } from './types';
+import type { MemoryLifecycleReceipt, MemoryRecord } from './types';
 
 export const STRUCTURED_MEMORY_REL_PATH = '.devseek/memory.json';
 export const LEGACY_MEMORY_REL_PATH = '.devseek/memory.md';
 
-interface MemoryStoreDocument {
+export interface MemoryStoreDocument {
   version: 1;
   records: MemoryRecord[];
+  lifecycleReceipts: MemoryLifecycleReceipt[];
 }
 
 export class MemoryStore {
@@ -22,51 +23,53 @@ export class MemoryStore {
   }
 
   readAll(): MemoryRecord[] {
-    const filePath = this.getStructuredMemoryPath();
-    if (!fs.existsSync(filePath)) return [];
-    try {
-      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Partial<MemoryStoreDocument> | MemoryRecord[];
-      if (Array.isArray(parsed)) return this.normalizeRecords(parsed);
-      return this.normalizeRecords(Array.isArray(parsed.records) ? parsed.records : []);
-    } catch {
-      return [];
-    }
+    return this.readDocument().records;
   }
 
   writeAll(records: MemoryRecord[]): void {
+    const document = this.readDocument();
+    this.writeDocument({
+      version: 1,
+      records,
+      lifecycleReceipts: document.lifecycleReceipts,
+    });
+  }
+
+  readLifecycleReceipts(): MemoryLifecycleReceipt[] {
+    return this.readDocument().lifecycleReceipts;
+  }
+
+  appendLifecycleReceipt(receipt: MemoryLifecycleReceipt): MemoryLifecycleReceipt {
+    const document = this.readDocument();
+    document.lifecycleReceipts.push(receipt);
+    this.writeDocument(document);
+    return receipt;
+  }
+
+  private readDocument(): MemoryStoreDocument {
+    const filePath = this.getStructuredMemoryPath();
+    if (!fs.existsSync(filePath)) {
+      return { version: 1, records: [], lifecycleReceipts: [] };
+    }
+    try {
+      const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Partial<MemoryStoreDocument> | MemoryRecord[];
+      if (Array.isArray(parsed)) {
+        return { version: 1, records: this.normalizeRecords(parsed), lifecycleReceipts: [] };
+      }
+      return {
+        version: 1,
+        records: this.normalizeRecords(Array.isArray(parsed.records) ? parsed.records : []),
+        lifecycleReceipts: this.normalizeLifecycleReceipts(parsed.lifecycleReceipts),
+      };
+    } catch {
+      return { version: 1, records: [], lifecycleReceipts: [] };
+    }
+  }
+
+  private writeDocument(document: MemoryStoreDocument): void {
     const filePath = this.getStructuredMemoryPath();
     fs.mkdirSync(nodePath.dirname(filePath), { recursive: true });
-    const payload: MemoryStoreDocument = { version: 1, records };
-    fs.writeFileSync(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-  }
-
-  append(record: MemoryRecord): MemoryRecord {
-    const records = this.readAll();
-    records.push(record);
-    this.writeAll(records);
-    return record;
-  }
-
-  disable(id: string): boolean {
-    const records = this.readAll();
-    let changed = false;
-    const now = Date.now();
-    for (const record of records) {
-      if (record.id !== id || record.status === 'disabled') continue;
-      record.status = 'disabled';
-      record.updatedAt = now;
-      changed = true;
-    }
-    if (changed) this.writeAll(records);
-    return changed;
-  }
-
-  delete(id: string): boolean {
-    const records = this.readAll();
-    const next = records.filter((record) => record.id !== id);
-    if (next.length === records.length) return false;
-    this.writeAll(next);
-    return true;
+    fs.writeFileSync(filePath, `${JSON.stringify(document, null, 2)}\n`, 'utf8');
   }
 
   readLegacyMarkdown(maxChars = 3000): string | null {
@@ -95,5 +98,13 @@ export class MemoryStore {
 
   private normalizeRecords(records: MemoryRecord[]): MemoryRecord[] {
     return records.filter((record) => Boolean(record?.id && record.content && record.status));
+  }
+
+  private normalizeLifecycleReceipts(receipts: unknown): MemoryLifecycleReceipt[] {
+    if (!Array.isArray(receipts)) return [];
+    return receipts.filter((receipt): receipt is MemoryLifecycleReceipt => {
+      const candidate = receipt as Partial<MemoryLifecycleReceipt>;
+      return Boolean(candidate?.id && candidate.action && candidate.recordId && candidate.reason && candidate.at);
+    });
   }
 }

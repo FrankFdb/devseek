@@ -2243,6 +2243,30 @@ test('R3-05A: MemoryService owns scope, provenance, and persistent-write approva
   assertContains(toolLoopTests, 'R3-05A ToolLoop memory_write', 'R3-05A must have tool-loop simulated-user oracle coverage');
 });
 
+test('R3-05B: MemoryService owns memory conflict, TTL, revocation, and deletion proof', () => {
+  const memoryTypes = src('src/memory/types.ts');
+  const memoryStore = src('src/memory/memory-store.ts');
+  const memoryService = src('src/app/memory-service.ts');
+  const memoryTests = src('test/unit/memory-service.test.mjs');
+
+  assertContains(memoryTypes, 'MemoryLifecycleAction', 'memory schema must expose lifecycle action taxonomy');
+  assertContains(memoryTypes, 'MemoryLifecycleReceipt', 'memory schema must persist auditable lifecycle receipts');
+  for (const action of ["'dedupe-update'", "'conflict-supersede'", "'expire'", "'disable'", "'revoke'", "'delete'"]) {
+    assertContains(memoryTypes, action, `memory lifecycle actions must include ${action}`);
+  }
+  assertContains(memoryTypes, "'revoked'", 'memory status must represent revoked records before deletion');
+  assertContains(memoryStore, 'lifecycleReceipts', 'MemoryStore must preserve lifecycle receipts in the structured document');
+  assertContains(memoryStore, 'readLifecycleReceipts', 'MemoryStore must read lifecycle receipts');
+  assertContains(memoryStore, 'appendLifecycleReceipt', 'MemoryStore must append lifecycle receipts without dropping records');
+  assertContains(memoryService, 'refreshExpiredMemoryRecords', 'MemoryService must be the unique TTL expiry owner');
+  assertContains(memoryService, 'dedupeMemoryRecord', 'MemoryService must be the unique dedupe owner');
+  assertContains(memoryService, 'supersedeConflictingMemoryRecords', 'MemoryService must be the unique conflict owner');
+  assertContains(memoryService, 'getLifecycleReceipts', 'MemoryService must expose lifecycle proof');
+  assertContains(memoryService, 'revoke(', 'MemoryService must expose revoke semantics');
+  assertContains(memoryTests, 'R3-05B MemoryService: TTL expiry and dedupe leave lifecycle receipts', 'R3-05B must cover TTL and dedupe with failure-first oracle');
+  assertContains(memoryTests, 'R3-05B MemoryService: conflict supersede and revoke/delete receipts are provable', 'R3-05B must cover conflict and revocation/delete proof');
+});
+
 test('Architecture: Phase 10 application service owns Provider chat routing protocol', () => {
   const service = src('../shared/src/agent-application-service.ts');
   const protocol = src('../shared/src/agent-protocol.ts');

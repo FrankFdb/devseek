@@ -226,16 +226,137 @@ test('MemoryService: ignores injected session history while choosing memory anch
   });
 });
 
+test('R3-05B MemoryService: TTL expiry and dedupe leave lifecycle receipts', () => {
+  withTempWorkspace((workspace) => {
+    let now = 1000;
+    const service = new MemoryService({ workspaceRoot: workspace, now: () => now });
+    const proposal = service.proposeWrite({
+      content: '本仓库默认使用 npm test 做回归验证。',
+      reason: 'Verified command convention',
+      tags: ['command:verify'],
+      ttl: 50,
+    });
+    const first = service.acceptWriteProposal(service.approveWriteProposal(proposal, {
+      approvedBy: 'unit-test-user',
+      approvalRef: 'r3-05b:ttl-dedupe:first',
+      approvedAt: now,
+    }));
+
+    now = 1010;
+    const duplicate = service.acceptWriteProposal(service.approveWriteProposal(service.proposeWrite({
+      content: '本仓库默认使用 npm test 做回归验证。',
+      reason: 'Duplicate command convention',
+      tags: ['command:verify', 'test'],
+      ttl: 50,
+    }), {
+      approvedBy: 'unit-test-user',
+      approvalRef: 'r3-05b:ttl-dedupe:duplicate',
+      approvedAt: now,
+    }));
+
+    assert.equal(duplicate.id, first.id);
+    assert.equal(service.retrieve({ includeDisabled: true }).length, 1);
+    assert.deepEqual(service.retrieve({ includeDisabled: true })[0].tags.sort(), ['command:verify', 'test']);
+    assert.ok(
+      service.getLifecycleReceipts().some((receipt) => (
+        receipt.action === 'dedupe-update'
+        && receipt.recordId === first.id
+        && receipt.statusBefore === 'active'
+        && receipt.statusAfter === 'active'
+      )),
+    );
+
+    now = 1061;
+    assert.equal(service.retrieve().length, 0);
+    const expired = service.retrieve({ includeDisabled: true });
+    assert.equal(expired.length, 1);
+    assert.equal(expired[0].status, 'expired');
+    assert.ok(
+      service.getLifecycleReceipts().some((receipt) => (
+        receipt.action === 'expire'
+        && receipt.recordId === first.id
+        && receipt.statusBefore === 'active'
+        && receipt.statusAfter === 'expired'
+      )),
+    );
+  });
+});
+
+test('R3-05B MemoryService: conflict supersede and revoke/delete receipts are provable', () => {
+  withTempWorkspace((workspace) => {
+    let now = 2000;
+    const service = new MemoryService({ workspaceRoot: workspace, now: () => now });
+    const first = service.acceptWriteProposal(service.approveWriteProposal(service.proposeWrite({
+      content: '验证命令使用 npm test。',
+      reason: 'Original verified command',
+      tags: ['command:verify'],
+    }), {
+      approvedBy: 'unit-test-user',
+      approvalRef: 'r3-05b:conflict:first',
+      approvedAt: now,
+    }));
+
+    now = 2010;
+    const second = service.acceptWriteProposal(service.approveWriteProposal(service.proposeWrite({
+      content: '验证命令使用 npm run verify:phase12。',
+      reason: 'Updated verified command',
+      tags: ['command:verify'],
+    }), {
+      approvedBy: 'unit-test-user',
+      approvalRef: 'r3-05b:conflict:second',
+      approvedAt: now,
+    }));
+
+    assert.notEqual(second.id, first.id);
+    assert.deepEqual(service.retrieve().map((record) => record.id), [second.id]);
+    const records = service.retrieve({ includeDisabled: true, limit: 10 });
+    assert.equal(records.find((record) => record.id === first.id).status, 'disabled');
+    assert.equal(records.find((record) => record.id === second.id).status, 'active');
+    assert.ok(
+      service.getLifecycleReceipts().some((receipt) => (
+        receipt.action === 'conflict-supersede'
+        && receipt.recordId === second.id
+        && receipt.previousRecordId === first.id
+      )),
+    );
+
+    now = 2020;
+    const revoked = service.revoke(second.id, 'user revoked stale command');
+    assert.equal(revoked.changed, true);
+    assert.equal(revoked.receipt.action, 'revoke');
+    assert.equal(service.retrieve().length, 0);
+    assert.equal(service.retrieve({ includeDisabled: true })[0].status, 'revoked');
+
+    now = 2030;
+    const deleted = service.delete(second.id, 'user deleted revoked command');
+    assert.equal(deleted.changed, true);
+    assert.equal(deleted.receipt.action, 'delete');
+    assert.match(deleted.receipt.recordSnapshotHash, /^[a-f0-9]{64}$/);
+    assert.equal(service.retrieve({ includeDisabled: true }).some((record) => record.id === second.id), false);
+    assert.ok(
+      service.getLifecycleReceipts().some((receipt) => (
+        receipt.action === 'delete'
+        && receipt.recordId === second.id
+        && /^[a-f0-9]{64}$/.test(receipt.recordSnapshotHash)
+      )),
+    );
+  });
+});
+
 test('MemoryService: supports disable and delete lifecycle operations', () => {
   withTempWorkspace((workspace) => {
     const service = new MemoryService({ workspaceRoot: workspace });
     const record = service.appendAgentMemory('优先使用 rg 做代码搜索。');
 
-    assert.equal(service.disable(record.id), true);
+    const disabled = service.disable(record.id, 'unit test disable');
+    assert.equal(disabled.changed, true);
+    assert.equal(disabled.receipt.action, 'disable');
     assert.equal(service.retrieve().length, 0);
     assert.equal(service.retrieve({ includeDisabled: true })[0].status, 'disabled');
 
-    assert.equal(service.delete(record.id), true);
+    const deleted = service.delete(record.id, 'unit test delete');
+    assert.equal(deleted.changed, true);
+    assert.equal(deleted.receipt.action, 'delete');
     assert.equal(service.retrieve({ includeDisabled: true }).length, 0);
   });
 });
