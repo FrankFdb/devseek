@@ -675,31 +675,36 @@ function freezeSkillExecutionReceipt(receipt: SkillExecutionReceipt): SkillExecu
 const SKILL_METADATA_BODY_SECTION_MARKER = /^(?:#{2,}\s+|(?:(?:examples?|samples?|usage|notes?)\b|for\s+(?:example|instance)\b|e\.g\.)(?:\s*:)?(?:\s.*)?$)/iu;
 
 function skillMetadataLines(content: string): string[] {
+  const lines = String(content).split(/\r?\n/);
+  const firstNonBlankLine = lines.findIndex(line => line.trim() !== '');
+  const frontmatterStartLine = firstNonBlankLine >= 0 && lines[firstNonBlankLine]?.trim() === '---'
+    ? firstNonBlankLine
+    : -1;
+  const frontmatterEndLine = frontmatterStartLine >= 0
+    ? lines.findIndex((line, index) => index > frontmatterStartLine && /^(?:---|\.\.\.)$/u.test(line.trim()))
+    : -1;
   let insideFence = false;
   let insideFrontmatter = false;
   let insideHtmlComment = false;
   let insideBodySection = false;
   let frontmatterClosed = false;
-  let sawFirstNonBlankLine = false;
-  return String(content).split(/\r?\n/).filter((line) => {
+  return lines.filter((line, index) => {
     const trimmed = line.trim();
-    if (!sawFirstNonBlankLine) {
-      if (trimmed === '') return false;
-      sawFirstNonBlankLine = true;
-      if (trimmed === '---') {
-        insideFrontmatter = true;
+    if (frontmatterStartLine >= 0) {
+      if (index < frontmatterStartLine) return false;
+      if (index === frontmatterStartLine) {
+        insideFrontmatter = frontmatterEndLine > frontmatterStartLine;
         return false;
       }
-    }
-    if (insideFrontmatter) {
-      if (/^(?:---|\.\.\.)$/u.test(trimmed)) {
+      if (frontmatterEndLine <= frontmatterStartLine) return false;
+      if (insideFrontmatter) {
+        if (index < frontmatterEndLine) return true;
         insideFrontmatter = false;
         frontmatterClosed = true;
         return false;
       }
-      return true;
+      if (frontmatterClosed) return false;
     }
-    if (frontmatterClosed) return false;
     if (/^(?:```|~~~)/u.test(trimmed)) {
       insideFence = !insideFence;
       return false;

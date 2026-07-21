@@ -1273,6 +1273,14 @@ test('R3-07S-skill-PERMISSION-FAULT-019: closed frontmatter body cannot provide 
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-019 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-019 must have closed frontmatter metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-020: unclosed frontmatter cannot provide permission evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'frontmatterEndLine', 'R3-07S-skill-PERMISSION-FAULT-020 must require a closed frontmatter boundary');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-020 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-020 must have unclosed frontmatter metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
