@@ -983,7 +983,7 @@ test('R3-07S-skill-TASK-010: terminal evidence fields must match final status', 
 
   assertContains(sharedEnhancements, "const childEvidenceRefsForReceipt = status === 'passed' ? childEvidenceRefs : []", 'R3-07S-skill-TASK-010 must keep structured child evidence pass-only');
   assertContains(sharedEnhancements, "const failureRefsForReceipt = status === 'failed'", 'R3-07S-skill-TASK-010 must keep structured failure refs failure-only');
-  assertContains(sharedEnhancements, 'const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : expectedSkillPermissionFaultViolations', 'R3-07S-skill-TASK-010 must expose only child violations that explain a child-receipt block or an expected permission/fault denial');
+  assertContains(sharedEnhancements, 'const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : requestedPermissionFaultViolations', 'R3-07S-skill-TASK-010 must expose only child violations that explain a child-receipt block or a requested permission/fault denial');
   assertContains(sharedTests, 'R3-07S-skill-TASK-010 ExtensionProfilePlanService', 'R3-07S-skill-TASK-010 must have terminal-field oracle');
 });
 
@@ -1133,6 +1133,16 @@ test('R3-07S-skill-PERMISSION-FAULT-004: permission/fault evidence refs stay par
   assertContains(sharedEnhancements, 'projectedChildEvidenceRefs', 'R3-07S-skill-PERMISSION-FAULT-004 must route child evidence projection through the profile owner');
   assertContains(sharedEnhancements, "status === 'passed' && !isPermissionFaultSlot", 'R3-07S-skill-PERMISSION-FAULT-004 must avoid direct child evidence projection for permission/fault slots');
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-004 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-004 must have parent-owned evidence oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-005: permission/fault denial must be requested by the task', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'requestedToolKinds', 'R3-07S-skill-PERMISSION-FAULT-005 must preserve requested skill tools in the child receipt');
+  assertContains(sharedEnhancements, 'requestedSkillPermissionFaultViolations', 'R3-07S-skill-PERMISSION-FAULT-005 must derive requested permission/fault evidence in the profile owner');
+  assertContains(sharedEnhancements, 'slot-child-permission-fault-unrequested-veto', 'R3-07S-skill-PERMISSION-FAULT-005 must veto declaration-only permission denial evidence');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-005 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-005 must have unrequested-denial oracle');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

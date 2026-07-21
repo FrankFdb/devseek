@@ -147,6 +147,7 @@ export interface SkillExecutionReceipt {
   immutable: true;
   receiptSignature: string;
   canCompleteTask: false;
+  requestedToolKinds: readonly SkillToolKind[];
   loadedSkills: readonly SkillExecutionSkill[];
   permissionDecisions: readonly SkillPermissionDecision[];
   blockedReasons: readonly string[];
@@ -501,6 +502,7 @@ export class SkillDiscoveryService {
   planExecution(input: SkillExecutionPlanInput): SkillExecutionReceipt {
     const discovered = this.discover(input.candidates);
     const selected = this.selectForExecution(input.prompt, discovered);
+    const requestedToolKinds = uniqueStrings(input.requestedToolKinds ?? []) as SkillToolKind[];
     const loadedSkills: SkillExecutionSkill[] = selected.map(({ skill, selectedByTrigger }) => ({
       name: skill.name,
       path: skill.path,
@@ -512,7 +514,7 @@ export class SkillDiscoveryService {
       completionClaimsAllowed: false,
       evidenceRefs: [skill.evidenceRef ?? skillEvidenceRef(skill.path, skill.description)],
     }));
-    const permissionDecisions = planSkillPermissions(loadedSkills, input.requestedToolKinds ?? []);
+    const permissionDecisions = planSkillPermissions(loadedSkills, requestedToolKinds);
     const violations = uniqueStrings([
       ...loadedSkills.flatMap(skill => (
         selected.find(item => item.skill.path === skill.path)?.skill.completionClaimRequested
@@ -528,6 +530,7 @@ export class SkillDiscoveryService {
     const evidenceRefs = uniqueStrings(loadedSkills.flatMap(skill => skill.evidenceRefs));
     const unmatchedSkillCount = Math.max(discovered.length - loadedSkills.length, 0);
     const receiptSignature = createSkillExecutionReceiptSignature({
+      requestedToolKinds,
       loadedSkills,
       permissionDecisions,
       blockedReasons,
@@ -542,6 +545,7 @@ export class SkillDiscoveryService {
       immutable: true,
       receiptSignature,
       canCompleteTask: false,
+      requestedToolKinds,
       loadedSkills,
       permissionDecisions,
       blockedReasons,
@@ -592,6 +596,7 @@ export class SkillDiscoveryService {
 }
 
 function createSkillExecutionReceiptSignature(input: {
+  requestedToolKinds: readonly SkillToolKind[];
   loadedSkills: readonly SkillExecutionSkill[];
   permissionDecisions: readonly SkillPermissionDecision[];
   blockedReasons: readonly string[];
@@ -604,6 +609,7 @@ function createSkillExecutionReceiptSignature(input: {
     settlementAuthority: 'parent-kernel',
     singleOwner: 'SkillDiscoveryService',
     canCompleteTask: false,
+    requestedToolKinds: input.requestedToolKinds,
     loadedSkills: input.loadedSkills,
     permissionDecisions: input.permissionDecisions,
     blockedReasons: input.blockedReasons,
@@ -625,6 +631,7 @@ function freezeSkillExecutionReceipt(receipt: SkillExecutionReceipt): SkillExecu
     Object.freeze(decision);
   }
   Object.freeze(receipt.loadedSkills);
+  Object.freeze(receipt.requestedToolKinds);
   Object.freeze(receipt.permissionDecisions);
   Object.freeze(receipt.blockedReasons);
   Object.freeze(receipt.violations);
@@ -951,15 +958,18 @@ export class ExtensionProfilePlanService {
     const expectedSkillPermissionFaultViolations = childReceiptRequired && childReceipt && isPermissionFaultSlot && expectedChildProtocol === SKILL_EXECUTION_PROTOCOL
       ? skillPermissionFaultViolations(childReceipt)
       : [];
+    const requestedPermissionFaultViolations = childReceiptRequired && childReceipt && isPermissionFaultSlot && expectedChildProtocol === SKILL_EXECUTION_PROTOCOL
+      ? requestedSkillPermissionFaultViolations(childReceipt)
+      : [];
     const unexpectedChildViolations = isPermissionFaultSlot
       ? childViolations.filter(violation => !expectedSkillPermissionFaultViolations.includes(violation))
       : childViolations;
-    const permissionFaultEvidenceKey = expectedSkillPermissionFaultViolations.length > 0
+    const permissionFaultEvidenceKey = requestedPermissionFaultViolations.length > 0
       ? createExtensionProfilePermissionFaultEvidenceKey({
         plan: profileProjection,
         childProtocol,
         childEvidenceRefs,
-        childViolations: expectedSkillPermissionFaultViolations,
+        childViolations: requestedPermissionFaultViolations,
       })
       : '';
     const childReceiptVetoes = childReceiptRequired
@@ -970,6 +980,7 @@ export class ExtensionProfilePlanService {
         ...(childReceipt && childSettlementAuthority !== 'parent-kernel' ? [`slot-child-settlement-authority-veto:${slotId}`] : []),
         ...(unexpectedChildViolations.length > 0 ? [`slot-child-receipt-not-clean-veto:${slotId}`] : []),
         ...(childReceipt && isPermissionFaultSlot && expectedSkillPermissionFaultViolations.length === 0 ? [`slot-child-permission-fault-missing-veto:${slotId}`] : []),
+        ...(childReceipt && isPermissionFaultSlot && expectedSkillPermissionFaultViolations.length > requestedPermissionFaultViolations.length ? [`slot-child-permission-fault-unrequested-veto:${slotId}`] : []),
         ...(childReceipt && isPermissionFaultSlot && expectedSkillPermissionFaultViolations.length > 1 ? [`slot-child-permission-fault-ambiguous-veto:${slotId}`] : []),
         ...(permissionFaultEvidenceKey && this.settledPermissionFaultEvidenceKeys.has(permissionFaultEvidenceKey) ? [`slot-permission-fault-evidence-reuse-veto:${slotId}`] : []),
         ...childAuthenticityVetoes,
@@ -1028,7 +1039,7 @@ export class ExtensionProfilePlanService {
         attemptId,
         childProtocol,
         childEvidenceRefs: childEvidenceRefsForReceipt,
-        childViolations: expectedSkillPermissionFaultViolations,
+        childViolations: requestedPermissionFaultViolations,
         oracleRef,
       })
       : [];
@@ -1055,7 +1066,7 @@ export class ExtensionProfilePlanService {
         effectRefs,
       })
       : [];
-    const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : expectedSkillPermissionFaultViolations;
+    const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : requestedPermissionFaultViolations;
     const failureRefsForReceipt = status === 'failed'
       ? createExtensionProfileSlotFailureRefs({
         plan: profileProjection,
@@ -1369,6 +1380,7 @@ function skillExecutionReceiptAuthenticityVetoes(
   slotId: string,
 ): string[] {
   const receipt = childReceipt as Partial<SkillExecutionReceipt>;
+  const requestedToolKinds = Array.isArray(receipt.requestedToolKinds) ? receipt.requestedToolKinds as readonly SkillToolKind[] : [];
   const loadedSkills = Array.isArray(receipt.loadedSkills) ? receipt.loadedSkills as readonly SkillExecutionSkill[] : [];
   const permissionDecisions = Array.isArray(receipt.permissionDecisions)
     ? receipt.permissionDecisions as readonly SkillPermissionDecision[]
@@ -1379,6 +1391,7 @@ function skillExecutionReceiptAuthenticityVetoes(
   const unmatchedSkillCount = Number.isFinite(receipt.unmatchedSkillCount) ? Number(receipt.unmatchedSkillCount) : 0;
   const receiptSignature = String(receipt.receiptSignature ?? '').trim();
   const expectedSignature = createSkillExecutionReceiptSignature({
+    requestedToolKinds,
     loadedSkills,
     permissionDecisions,
     blockedReasons,
@@ -1405,6 +1418,22 @@ function skillPermissionFaultViolations(childReceipt: ExtensionProfileSlotChildR
   const deniedReasons = uniqueStrings(
     permissionDecisions
       .filter(decision => decision.action === 'deny')
+      .map(decision => decision.reason)
+      .filter(Boolean),
+  );
+  return deniedReasons.filter(reason => childViolations.includes(reason));
+}
+
+function requestedSkillPermissionFaultViolations(childReceipt: ExtensionProfileSlotChildReceipt): string[] {
+  const receipt = childReceipt as Partial<SkillExecutionReceipt>;
+  const requestedToolKinds = new Set(Array.isArray(receipt.requestedToolKinds) ? receipt.requestedToolKinds as readonly SkillToolKind[] : []);
+  const permissionDecisions = Array.isArray(receipt.permissionDecisions)
+    ? receipt.permissionDecisions as readonly SkillPermissionDecision[]
+    : [];
+  const childViolations = uniqueStrings(receipt.violations ?? []);
+  const deniedReasons = uniqueStrings(
+    permissionDecisions
+      .filter(decision => decision.action === 'deny' && requestedToolKinds.has(decision.kind))
       .map(decision => decision.reason)
       .filter(Boolean),
   );

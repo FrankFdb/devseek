@@ -1435,6 +1435,25 @@ function createDeniedEditAndTerminalSkillReceipt() {
   });
 }
 
+function createDeclaredOnlyDeniedEditSkillReceipt() {
+  return new SkillDiscoveryService().planExecution({
+    prompt: 'please use react to inspect the component',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: [
+          '# React',
+          '',
+          'description: React components',
+          'triggers: react',
+          'tool_kinds: read, edit',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
+}
+
 test('R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService accepts expected skill permission denial as slot evidence', () => {
   const service = new ExtensionProfilePlanService();
   const plan = service.createProfilePlan({
@@ -1543,6 +1562,31 @@ test('R3-07S-skill-PERMISSION-FAULT-004 ExtensionProfilePlanService keeps permis
   assert.match(receipt.permissionFaultRefs[0], /^extension-profile-slot-permission-fault:R3-07S-skill-PERMISSION-FAULT-004:/);
   assert.ok(receipt.evidenceRefs.includes(receipt.permissionFaultRefs[0]));
   assert.equal(receipt.evidenceRefs.some(ref => ref.startsWith('skill:')), false);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-005 ExtensionProfilePlanService rejects unrequested permission fault denial evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '5101520253035404550556065707580859095100',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createDeclaredOnlyDeniedEditSkillReceipt();
+  assert.ok(childReceipt.violations.includes('skill-tool-kind-denied:edit'));
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-005',
+    attemptId: 'skill-permission-fault-005-unrequested-denial',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.ok(receipt.vetoes.includes('slot-child-permission-fault-unrequested-veto:R3-07S-skill-PERMISSION-FAULT-005'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
   assert.deepEqual(receipt.effectRefs, []);
   assert.deepEqual(receipt.receiptRefs, []);
 });
