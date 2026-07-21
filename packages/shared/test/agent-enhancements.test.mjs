@@ -381,15 +381,21 @@ test('R3-07S-skill-TASK-001 ExtensionProfilePlanService records one append-only 
   assert.match(receipt.receiptRefs[0], /^extension-profile-slot-receipt:R3-07S-skill-TASK-001:/);
   assert.ok(receipt.evidenceRefs.includes(plan.taskSlots[0].oracleRef));
 
-  const failed = service.recordSlotExecution({
-    plan,
+  const replacementService = new ExtensionProfilePlanService();
+  const replacementPlan = replacementService.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '8fd61a3830cff653c6f0d21d554341f85a2b419a',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const failed = replacementService.recordSlotExecution({
+    plan: replacementPlan,
     slotId: 'R3-07S-skill-TASK-001',
     attemptId: 'skill-task-001-attempt-failed',
     status: 'failed',
     failureRefs: ['skill-execution:failure:task-001'],
   });
-  const replacement = service.recordSlotExecution({
-    plan,
+  const replacement = replacementService.recordSlotExecution({
+    plan: replacementPlan,
     slotId: 'R3-07S-skill-TASK-001',
     attemptId: 'skill-task-001-attempt-replacement',
     status: 'passed',
@@ -755,8 +761,14 @@ test('R3-07S-skill-TASK-007 ExtensionProfilePlanService quarantines child eviden
   assert.ok(!blocked.evidenceRefs.includes('skill-effect:should-not-project-blocked'));
   assert.ok(!blocked.evidenceRefs.includes('skill-receipt:should-not-project-blocked'));
 
-  const vetoed = service.recordSlotExecution({
-    plan,
+  const vetoService = new ExtensionProfilePlanService();
+  const vetoPlan = vetoService.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '5555555555555555555555555555555555555555',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const vetoed = vetoService.recordSlotExecution({
+    plan: vetoPlan,
     slotId: 'R3-07S-skill-TASK-007',
     attemptId: 'skill-task-007-vetoed',
     status: 'vetoed',
@@ -865,8 +877,14 @@ test('R3-07S-skill-TASK-010 ExtensionProfilePlanService scopes terminal evidence
   assert.deepEqual(passed.failureRefs, []);
   assert.ok(!passed.evidenceRefs.includes('skill-failure:should-not-project-green'));
 
-  const failed = service.recordSlotExecution({
-    plan,
+  const failedService = new ExtensionProfilePlanService();
+  const failedPlan = failedService.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '8888888888888888888888888888888888888888',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const failed = failedService.recordSlotExecution({
+    plan: failedPlan,
     slotId: 'R3-07S-skill-TASK-010',
     attemptId: 'skill-task-010-failed',
     status: 'failed',
@@ -889,8 +907,14 @@ test('R3-07S-skill-TASK-010 ExtensionProfilePlanService scopes terminal evidence
   assert.ok(!failed.evidenceRefs.includes('skill-child:evidence:should-not-project-failed'));
   assert.ok(!failed.evidenceRefs.includes('skill-child:violation:should-not-project-failed'));
 
-  const blockedByChild = service.recordSlotExecution({
-    plan,
+  const blockedService = new ExtensionProfilePlanService();
+  const blockedPlan = blockedService.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '8888888888888888888888888888888888888888',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const blockedByChild = blockedService.recordSlotExecution({
+    plan: blockedPlan,
     slotId: 'R3-07S-skill-TASK-010',
     attemptId: 'skill-task-010-blocked-child',
     status: 'passed',
@@ -1340,6 +1364,37 @@ test('R3-07S-skill-TASK-019 ExtensionProfilePlanService quarantines unauthentic 
   assert.ok(receipt.vetoes.includes('slot-plan-origin-mismatch-veto:caller-forged-profile'));
   assert.ok(!receipt.evidenceRefs.includes('extension-profile-plan:caller-forged-profile:caller-forged-signature'));
   assert.ok(receipt.evidenceRefs.some(ref => /^extension-profile-slot-execution:R3-07S-skill-TASK-019:/.test(ref)));
+});
+
+test('R3-07S-skill-TASK-020 ExtensionProfilePlanService remembers owner-issued slot attempts without caller replay', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '0123456789abcdef0123456789abcdef01234567',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+
+  const first = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-020',
+    attemptId: 'skill-task-020-first',
+    status: 'failed',
+    failureRefs: ['skill-failure:task-020-first'],
+  });
+  assert.equal(first.status, 'failed');
+
+  const replacementWithoutCallerReplay = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-020',
+    attemptId: 'skill-task-020-replacement-without-caller-replay',
+    status: 'failed',
+    failureRefs: ['skill-failure:task-020-replacement'],
+  });
+
+  assert.equal(replacementWithoutCallerReplay.status, 'blocked');
+  assert.deepEqual(replacementWithoutCallerReplay.previousAttemptIds, ['skill-task-020-first']);
+  assert.ok(replacementWithoutCallerReplay.vetoes.includes('slot-replacement-veto:R3-07S-skill-TASK-020'));
+  assert.deepEqual(replacementWithoutCallerReplay.failureRefs, []);
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {

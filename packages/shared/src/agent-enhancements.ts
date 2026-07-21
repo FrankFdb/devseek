@@ -840,6 +840,7 @@ export class PluginSupplyChainService {
 export class ExtensionProfilePlanService {
   private readonly ownedProfilePlans = new WeakSet<ExtensionProfilePlanReceipt>();
   private readonly ownedSlotExecutionReceipts = new WeakSet<ExtensionProfileSlotExecutionReceipt>();
+  private readonly settledSlotExecutionReceipts: ExtensionProfileSlotExecutionReceipt[] = [];
 
   createProfilePlan(input: ExtensionProfilePlanInput): ExtensionProfilePlanReceipt {
     const requestedKind = String(input.kind ?? '').trim() as ExtensionProfileKind;
@@ -967,8 +968,12 @@ export class ExtensionProfilePlanService {
       })
       : [];
     const previousAttemptIds = uniqueStrings(
-      (planAuthentic ? input.previousReceipts ?? [] : [])
+      (planAuthentic ? [
+        ...this.settledSlotExecutionReceipts,
+        ...(input.previousReceipts ?? []),
+      ] : [])
         .filter(receipt => this.ownedSlotExecutionReceipts.has(receipt))
+        .filter(receipt => receipt.status !== 'blocked')
         .filter(receipt => (
           receipt.slotId === slotId
           && receipt.profileId === profileProjection.profileId
@@ -1092,6 +1097,9 @@ export class ExtensionProfilePlanService {
     };
     const frozenReceipt = freezeExtensionProfileSlotExecutionReceipt(receipt);
     this.ownedSlotExecutionReceipts.add(frozenReceipt);
+    if (frozenReceipt.status !== 'blocked') {
+      this.settledSlotExecutionReceipts.push(frozenReceipt);
+    }
     return frozenReceipt;
   }
 }

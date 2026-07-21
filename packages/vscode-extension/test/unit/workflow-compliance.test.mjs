@@ -1087,6 +1087,16 @@ test('R3-07S-skill-TASK-019: unauthentic profile plan identity must be quarantin
   assertContains(sharedTests, 'R3-07S-skill-TASK-019 ExtensionProfilePlanService', 'R3-07S-skill-TASK-019 must have forged-plan identity quarantine oracle');
 });
 
+test('R3-07S-skill-TASK-020: slot replacement must use owner-issued attempt ledger without caller replay', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'settledSlotExecutionReceipts', 'R3-07S-skill-TASK-020 must keep settled slot attempts in the profile owner');
+  assertContains(sharedEnhancements, '...this.settledSlotExecutionReceipts', 'R3-07S-skill-TASK-020 must include owner-issued attempts without caller replay');
+  assertContains(sharedEnhancements, "frozenReceipt.status !== 'blocked'", 'R3-07S-skill-TASK-020 must not let blocked attempts consume a slot');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-020 ExtensionProfilePlanService', 'R3-07S-skill-TASK-020 must have owner-ledger replacement oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
