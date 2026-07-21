@@ -580,7 +580,7 @@ export class SkillDiscoveryService {
   }
 
   private parse(candidate: SkillCandidate): SkillDescriptor {
-    const lines = candidate.content.split(/\r?\n/);
+    const lines = skillMetadataLines(candidate.content);
     const heading = lines.find(line => /^#\s+/.test(line))?.replace(/^#\s+/, '').trim();
     const description = lines.find(line => /^description\s*:/i.test(line))?.replace(/^description\s*:\s*/i, '').trim()
       ?? lines.find(line => line.trim() && !line.startsWith('#'))?.trim()
@@ -670,6 +670,18 @@ function freezeSkillExecutionReceipt(receipt: SkillExecutionReceipt): SkillExecu
   Object.freeze(receipt.violations);
   Object.freeze(receipt.evidenceRefs);
   return Object.freeze(receipt);
+}
+
+function skillMetadataLines(content: string): string[] {
+  let insideFence = false;
+  return String(content).split(/\r?\n/).filter((line) => {
+    const trimmed = line.trim();
+    if (/^(?:```|~~~)/u.test(trimmed)) {
+      insideFence = !insideFence;
+      return false;
+    }
+    return !insideFence;
+  });
 }
 
 export class SubagentRegistry {

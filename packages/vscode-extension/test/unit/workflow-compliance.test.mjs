@@ -1212,6 +1212,15 @@ test('R3-07S-skill-PERMISSION-FAULT-012: Skill discovery requires exact SKILL.md
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-012 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-012 must have suffix-confused Skill path oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-013: fenced Skill examples cannot provide permission metadata', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'skillMetadataLines', 'R3-07S-skill-PERMISSION-FAULT-013 must route Skill metadata parsing through fence-aware lines');
+  assertContains(sharedEnhancements, 'insideFence', 'R3-07S-skill-PERMISSION-FAULT-013 must track fenced blocks while parsing Skill metadata');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-013 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-013 must have fenced metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
