@@ -983,7 +983,7 @@ test('R3-07S-skill-TASK-010: terminal evidence fields must match final status', 
 
   assertContains(sharedEnhancements, "const childEvidenceRefsForReceipt = status === 'passed' ? childEvidenceRefs : []", 'R3-07S-skill-TASK-010 must keep structured child evidence pass-only');
   assertContains(sharedEnhancements, "const failureRefsForReceipt = status === 'failed'", 'R3-07S-skill-TASK-010 must keep structured failure refs failure-only');
-  assertContains(sharedEnhancements, 'const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : []', 'R3-07S-skill-TASK-010 must expose only child violations that explain a child-receipt block');
+  assertContains(sharedEnhancements, 'const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : expectedSkillPermissionFaultViolations', 'R3-07S-skill-TASK-010 must expose only child violations that explain a child-receipt block or an expected permission/fault denial');
   assertContains(sharedTests, 'R3-07S-skill-TASK-010 ExtensionProfilePlanService', 'R3-07S-skill-TASK-010 must have terminal-field oracle');
 });
 
@@ -1095,6 +1095,16 @@ test('R3-07S-skill-TASK-020: slot replacement must use owner-issued attempt ledg
   assertContains(sharedEnhancements, '...this.settledSlotExecutionReceipts', 'R3-07S-skill-TASK-020 must include owner-issued attempts without caller replay');
   assertContains(sharedEnhancements, "frozenReceipt.status !== 'blocked'", 'R3-07S-skill-TASK-020 must not let blocked attempts consume a slot');
   assertContains(sharedTests, 'R3-07S-skill-TASK-020 ExtensionProfilePlanService', 'R3-07S-skill-TASK-020 must have owner-ledger replacement oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-001: permission/fault slots must own expected skill denial evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'extension-profile-slot-permission-fault', 'R3-07S-skill-PERMISSION-FAULT-001 must project owner-scoped permission/fault evidence');
+  assertContains(sharedEnhancements, 'createExtensionProfileSlotPermissionFaultRefs', 'R3-07S-skill-PERMISSION-FAULT-001 must derive permission/fault refs in the profile owner');
+  assertContains(sharedEnhancements, 'expectedSkillPermissionFaultViolations', 'R3-07S-skill-PERMISSION-FAULT-001 must distinguish expected skill denial from dirty child receipt');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-001 must have expected permission denial oracle');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -34,6 +34,7 @@ const EXTENSION_PROFILE_SLOT_EFFECT_REF_PREFIX = 'extension-profile-slot-effect'
 const EXTENSION_PROFILE_SLOT_RECEIPT_REF_PREFIX = 'extension-profile-slot-receipt';
 const EXTENSION_PROFILE_SLOT_FAILURE_REF_PREFIX = 'extension-profile-slot-failure';
 const EXTENSION_PROFILE_SLOT_VETO_REF_PREFIX = 'extension-profile-slot-veto';
+const EXTENSION_PROFILE_SLOT_PERMISSION_FAULT_REF_PREFIX = 'extension-profile-slot-permission-fault';
 const EXTENSION_PROFILE_SLOT_EXECUTION_REF_PREFIX = 'extension-profile-slot-execution';
 export const B4_EFFECT_AUTHORITY = 'B4-effect-authority';
 
@@ -358,6 +359,7 @@ export interface ExtensionProfileSlotExecutionReceipt {
   childViolations: readonly string[];
   effectRefs: readonly string[];
   receiptRefs: readonly string[];
+  permissionFaultRefs: readonly string[];
   failureRefs: readonly string[];
   vetoes: readonly string[];
   violations: readonly string[];
@@ -941,16 +943,24 @@ export class ExtensionProfilePlanService {
     const childReceiptRequired = inputStatus === 'passed';
     const childEvidenceRequired = childReceiptRequired;
     const expectedChildProtocol = EXPECTED_EXTENSION_PROFILE_SCHEMAS[profileProjection.kind];
+    const isPermissionFaultSlot = slot?.slotKind === 'permission-fault';
     const childAuthenticityVetoes = childReceiptRequired && childReceipt && expectedChildProtocol === SKILL_EXECUTION_PROTOCOL
       ? skillExecutionReceiptAuthenticityVetoes(childReceipt, slotId)
       : [];
+    const expectedSkillPermissionFaultViolations = childReceiptRequired && childReceipt && isPermissionFaultSlot && expectedChildProtocol === SKILL_EXECUTION_PROTOCOL
+      ? skillPermissionFaultViolations(childReceipt)
+      : [];
+    const unexpectedChildViolations = isPermissionFaultSlot
+      ? childViolations.filter(violation => !expectedSkillPermissionFaultViolations.includes(violation))
+      : childViolations;
     const childReceiptVetoes = childReceiptRequired
       ? uniqueStrings([
         ...(childReceipt ? [] : [`slot-child-receipt-missing-veto:${slotId}`]),
         ...(childReceipt && childProtocol !== expectedChildProtocol ? [`slot-child-protocol-mismatch-veto:${slotId}`] : []),
         ...(childReceipt && childEvidenceRefs.length === 0 ? [`slot-child-evidence-missing-veto:${slotId}`] : []),
         ...(childReceipt && childSettlementAuthority !== 'parent-kernel' ? [`slot-child-settlement-authority-veto:${slotId}`] : []),
-        ...(childViolations.length > 0 ? [`slot-child-receipt-not-clean-veto:${slotId}`] : []),
+        ...(unexpectedChildViolations.length > 0 ? [`slot-child-receipt-not-clean-veto:${slotId}`] : []),
+        ...(childReceipt && isPermissionFaultSlot && expectedSkillPermissionFaultViolations.length === 0 ? [`slot-child-permission-fault-missing-veto:${slotId}`] : []),
         ...childAuthenticityVetoes,
       ])
       : [];
@@ -998,7 +1008,19 @@ export class ExtensionProfilePlanService {
     const terminalVetoes = inputStatus === 'vetoed' ? inputVetoRefs : blockingVetoes;
     const vetoes = status === 'blocked' ? blockingVetoes : terminalVetoes;
     const childEvidenceRefsForReceipt = status === 'passed' ? childEvidenceRefs : [];
-    const effectRefs = status === 'passed'
+    const permissionFaultRefs = status === 'passed' && isPermissionFaultSlot
+      ? createExtensionProfileSlotPermissionFaultRefs({
+        plan: profileProjection,
+        slot,
+        slotId,
+        attemptId,
+        childProtocol,
+        childEvidenceRefs: childEvidenceRefsForReceipt,
+        childViolations: expectedSkillPermissionFaultViolations,
+        oracleRef,
+      })
+      : [];
+    const effectRefs = status === 'passed' && !isPermissionFaultSlot
       ? createExtensionProfileSlotEffectRefs({
         plan: profileProjection,
         slot,
@@ -1009,7 +1031,7 @@ export class ExtensionProfilePlanService {
         oracleRef,
       })
       : [];
-    const receiptRefs = status === 'passed'
+    const receiptRefs = status === 'passed' && !isPermissionFaultSlot
       ? createExtensionProfileSlotReceiptRefs({
         plan: profileProjection,
         slot,
@@ -1021,7 +1043,7 @@ export class ExtensionProfilePlanService {
         effectRefs,
       })
       : [];
-    const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : [];
+    const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : expectedSkillPermissionFaultViolations;
     const failureRefsForReceipt = status === 'failed'
       ? createExtensionProfileSlotFailureRefs({
         plan: profileProjection,
@@ -1049,6 +1071,7 @@ export class ExtensionProfilePlanService {
       childViolations: childViolationsForReceipt,
       effectRefs,
       receiptRefs,
+      permissionFaultRefs,
       failureRefs: failureRefsForReceipt,
       vetoes,
     });
@@ -1081,6 +1104,7 @@ export class ExtensionProfilePlanService {
       childViolations: childViolationsForReceipt,
       effectRefs,
       receiptRefs,
+      permissionFaultRefs,
       failureRefs: failureRefsForReceipt,
       vetoes,
       violations: vetoes,
@@ -1089,6 +1113,7 @@ export class ExtensionProfilePlanService {
         oracleRef,
         ...effectRefs,
         ...receiptRefs,
+        ...permissionFaultRefs,
         ...failureRefsForReceipt,
         ...childEvidenceRefsForReceipt,
         ...vetoEvidenceRefs,
@@ -1136,6 +1161,7 @@ function freezeExtensionProfileSlotExecutionReceipt(
   Object.freeze(receipt.childViolations);
   Object.freeze(receipt.effectRefs);
   Object.freeze(receipt.receiptRefs);
+  Object.freeze(receipt.permissionFaultRefs);
   Object.freeze(receipt.failureRefs);
   Object.freeze(receipt.vetoes);
   Object.freeze(receipt.violations);
@@ -1159,6 +1185,7 @@ function createExtensionProfileSlotExecutionSignature(input: {
   childViolations: readonly string[];
   effectRefs: readonly string[];
   receiptRefs: readonly string[];
+  permissionFaultRefs: readonly string[];
   failureRefs: readonly string[];
   vetoes: readonly string[];
 }): string {
@@ -1186,6 +1213,7 @@ function createExtensionProfileSlotExecutionSignature(input: {
     childViolations: input.childViolations,
     effectRefs: input.effectRefs,
     receiptRefs: input.receiptRefs,
+    permissionFaultRefs: input.permissionFaultRefs,
     failureRefs: input.failureRefs,
     vetoes: input.vetoes,
   }));
@@ -1218,6 +1246,16 @@ function createExtensionProfileSlotReceiptRefs(input: ExtensionProfileSlotSucces
   });
 }
 
+function createExtensionProfileSlotPermissionFaultRefs(input: ExtensionProfileSlotSuccessRefInput & {
+  childViolations: readonly string[];
+}): string[] {
+  return createExtensionProfileSlotOwnedRefs('permission-fault', EXTENSION_PROFILE_SLOT_PERMISSION_FAULT_REF_PREFIX, input, {
+    childProtocol: input.childProtocol,
+    childEvidenceRefs: input.childEvidenceRefs,
+    childViolations: input.childViolations,
+  });
+}
+
 function createExtensionProfileSlotFailureRefs(input: {
   plan: ExtensionProfilePlanProjection;
   slot: ExtensionProfileSlot | undefined;
@@ -1245,7 +1283,7 @@ function createExtensionProfileSlotVetoRefs(input: {
 }
 
 function createExtensionProfileSlotOwnedRefs(
-  kind: 'effect' | 'receipt' | 'failure' | 'veto',
+  kind: 'effect' | 'receipt' | 'permission-fault' | 'failure' | 'veto',
   prefix: string,
   input: {
     plan: ExtensionProfilePlanProjection;
@@ -1322,6 +1360,21 @@ function skillExecutionReceiptAuthenticityVetoes(
     ...(receipt.canCompleteTask === false ? [] : [`slot-child-completion-claim-veto:${slotId}`]),
     ...(receiptSignature === expectedSignature ? [] : [`slot-child-signature-mismatch-veto:${slotId}`]),
   ]);
+}
+
+function skillPermissionFaultViolations(childReceipt: ExtensionProfileSlotChildReceipt): string[] {
+  const receipt = childReceipt as Partial<SkillExecutionReceipt>;
+  const permissionDecisions = Array.isArray(receipt.permissionDecisions)
+    ? receipt.permissionDecisions as readonly SkillPermissionDecision[]
+    : [];
+  const childViolations = uniqueStrings(receipt.violations ?? []);
+  const deniedReasons = uniqueStrings(
+    permissionDecisions
+      .filter(decision => decision.action === 'deny')
+      .map(decision => decision.reason)
+      .filter(Boolean),
+  );
+  return deniedReasons.filter(reason => childViolations.includes(reason));
 }
 
 function createExtensionProfilePlanSignature(input: {

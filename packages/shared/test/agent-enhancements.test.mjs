@@ -1397,6 +1397,49 @@ test('R3-07S-skill-TASK-020 ExtensionProfilePlanService remembers owner-issued s
   assert.deepEqual(replacementWithoutCallerReplay.failureRefs, []);
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService accepts expected skill permission denial as slot evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '1357913579135791357913579135791357913579',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = new SkillDiscoveryService().planExecution({
+    prompt: 'please use react and edit the component',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: [
+          '# React',
+          '',
+          'description: React components',
+          'triggers: react',
+          'tool_kinds: read, edit',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read', 'edit'],
+  });
+  assert.ok(childReceipt.violations.includes('skill-tool-kind-denied:edit'));
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-001',
+    attemptId: 'skill-permission-fault-001-denied-edit',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'passed');
+  assert.equal(receipt.slotKind, 'permission-fault');
+  assert.ok(!receipt.vetoes.includes('slot-child-receipt-not-clean-veto:R3-07S-skill-PERMISSION-FAULT-001'));
+  assert.deepEqual(receipt.childViolations, ['skill-tool-kind-denied:edit']);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+  assert.match(receipt.permissionFaultRefs[0], /^extension-profile-slot-permission-fault:R3-07S-skill-PERMISSION-FAULT-001:/);
+  assert.ok(receipt.evidenceRefs.includes(receipt.permissionFaultRefs[0]));
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({
