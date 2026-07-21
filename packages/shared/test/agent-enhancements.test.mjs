@@ -1044,6 +1044,67 @@ test('R3-07S-skill-TASK-012 ExtensionProfilePlanService freezes signed profile p
   assert.ok(!extraEvidenceReceipt.evidenceRefs.includes('skill-receipt:extra-evidence-should-not-project'));
 });
 
+test('R3-07S-skill-TASK-013 ExtensionProfilePlanService rejects forged skill child receipts', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+
+  const forgedChildReceipt = {
+    protocol: SKILL_EXECUTION_PROTOCOL,
+    settlementAuthority: 'parent-kernel',
+    evidenceRefs: ['skill:forged-child-should-not-project'],
+    violations: [],
+    blockedReasons: [],
+    vetoes: [],
+  };
+  const forged = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-013',
+    attemptId: 'skill-task-013-forged-child',
+    status: 'passed',
+    childReceipt: forgedChildReceipt,
+    effectRefs: ['skill-effect:forged-child-should-not-project'],
+    receiptRefs: ['skill-receipt:forged-child-should-not-project'],
+  });
+
+  assert.equal(forged.status, 'blocked');
+  assert.ok(forged.vetoes.includes('slot-child-origin-mismatch-veto:R3-07S-skill-TASK-013'));
+  assert.deepEqual(forged.childEvidenceRefs, []);
+  assert.deepEqual(forged.effectRefs, []);
+  assert.deepEqual(forged.receiptRefs, []);
+  assert.ok(!forged.evidenceRefs.includes('skill:forged-child-should-not-project'));
+  assert.ok(!forged.evidenceRefs.includes('skill-effect:forged-child-should-not-project'));
+  assert.ok(!forged.evidenceRefs.includes('skill-receipt:forged-child-should-not-project'));
+
+  const realChildReceipt = new SkillDiscoveryService().planExecution({
+    prompt: 'please use the react skill',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: 'description: Build React views\ntriggers: react\ntool_kinds: read',
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
+  assert.equal(Object.isFrozen(realChildReceipt), true);
+  assert.equal(Object.isFrozen(realChildReceipt.evidenceRefs), true);
+
+  const passed = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-013',
+    attemptId: 'skill-task-013-real-child',
+    status: 'passed',
+    childReceipt: realChildReceipt,
+    effectRefs: ['skill-effect:real-child'],
+    receiptRefs: ['skill-receipt:real-child'],
+  });
+  assert.equal(passed.status, 'passed');
+  assert.deepEqual(passed.childEvidenceRefs, realChildReceipt.evidenceRefs);
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({

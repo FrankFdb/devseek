@@ -137,6 +137,9 @@ export interface SkillExecutionSkill {
 export interface SkillExecutionReceipt {
   protocol: typeof SKILL_EXECUTION_PROTOCOL;
   settlementAuthority: 'parent-kernel';
+  singleOwner: 'SkillDiscoveryService';
+  immutable: true;
+  receiptSignature: string;
   canCompleteTask: false;
   loadedSkills: readonly SkillExecutionSkill[];
   permissionDecisions: readonly SkillPermissionDecision[];
@@ -145,6 +148,8 @@ export interface SkillExecutionReceipt {
   evidenceRefs: readonly string[];
   unmatchedSkillCount: number;
 }
+
+const ownedSkillExecutionReceipts = new WeakSet<SkillExecutionReceipt>();
 
 export interface SubagentDescriptor {
   kind: SubagentKind;
@@ -506,17 +511,34 @@ export class SkillDiscoveryService {
         .filter(decision => decision.action === 'deny')
         .map(decision => decision.reason),
     ]);
-    return {
+    const blockedReasons = loadedSkills.length === 0 && discovered.length > 0 ? ['unmatched-skill-not-loaded'] : [];
+    const evidenceRefs = uniqueStrings(loadedSkills.flatMap(skill => skill.evidenceRefs));
+    const unmatchedSkillCount = Math.max(discovered.length - loadedSkills.length, 0);
+    const receiptSignature = createSkillExecutionReceiptSignature({
+      loadedSkills,
+      permissionDecisions,
+      blockedReasons,
+      violations,
+      evidenceRefs,
+      unmatchedSkillCount,
+    });
+    const receipt: SkillExecutionReceipt = {
       protocol: SKILL_EXECUTION_PROTOCOL,
       settlementAuthority: 'parent-kernel',
+      singleOwner: 'SkillDiscoveryService',
+      immutable: true,
+      receiptSignature,
       canCompleteTask: false,
       loadedSkills,
       permissionDecisions,
-      blockedReasons: loadedSkills.length === 0 && discovered.length > 0 ? ['unmatched-skill-not-loaded'] : [],
+      blockedReasons,
       violations,
-      evidenceRefs: uniqueStrings(loadedSkills.flatMap(skill => skill.evidenceRefs)),
-      unmatchedSkillCount: Math.max(discovered.length - loadedSkills.length, 0),
+      evidenceRefs,
+      unmatchedSkillCount,
     };
+    const frozenReceipt = freezeSkillExecutionReceipt(receipt);
+    ownedSkillExecutionReceipts.add(frozenReceipt);
+    return frozenReceipt;
   }
 
   private parse(candidate: SkillCandidate): SkillDescriptor {
@@ -554,6 +576,47 @@ export class SkillDiscoveryService {
       return selectedByTrigger ? [{ skill, selectedByTrigger }] : [];
     });
   }
+}
+
+function createSkillExecutionReceiptSignature(input: {
+  loadedSkills: readonly SkillExecutionSkill[];
+  permissionDecisions: readonly SkillPermissionDecision[];
+  blockedReasons: readonly string[];
+  violations: readonly string[];
+  evidenceRefs: readonly string[];
+  unmatchedSkillCount: number;
+}): string {
+  return stableTextDigest(JSON.stringify({
+    protocol: SKILL_EXECUTION_PROTOCOL,
+    settlementAuthority: 'parent-kernel',
+    singleOwner: 'SkillDiscoveryService',
+    canCompleteTask: false,
+    loadedSkills: input.loadedSkills,
+    permissionDecisions: input.permissionDecisions,
+    blockedReasons: input.blockedReasons,
+    violations: input.violations,
+    evidenceRefs: input.evidenceRefs,
+    unmatchedSkillCount: input.unmatchedSkillCount,
+  }));
+}
+
+function freezeSkillExecutionReceipt(receipt: SkillExecutionReceipt): SkillExecutionReceipt {
+  for (const skill of receipt.loadedSkills) {
+    Object.freeze(skill.triggers);
+    Object.freeze(skill.inputSchema);
+    Object.freeze(skill.declaredToolKinds);
+    Object.freeze(skill.evidenceRefs);
+    Object.freeze(skill);
+  }
+  for (const decision of receipt.permissionDecisions) {
+    Object.freeze(decision);
+  }
+  Object.freeze(receipt.loadedSkills);
+  Object.freeze(receipt.permissionDecisions);
+  Object.freeze(receipt.blockedReasons);
+  Object.freeze(receipt.violations);
+  Object.freeze(receipt.evidenceRefs);
+  return Object.freeze(receipt);
 }
 
 export class SubagentRegistry {
@@ -864,6 +927,9 @@ export class ExtensionProfilePlanService {
     const childReceiptRequired = inputStatus === 'passed';
     const childEvidenceRequired = childReceiptRequired;
     const expectedChildProtocol = EXPECTED_EXTENSION_PROFILE_SCHEMAS[plan.kind];
+    const childAuthenticityVetoes = childReceiptRequired && childReceipt && expectedChildProtocol === SKILL_EXECUTION_PROTOCOL
+      ? skillExecutionReceiptAuthenticityVetoes(childReceipt, slotId)
+      : [];
     const childReceiptVetoes = childReceiptRequired
       ? uniqueStrings([
         ...(childReceipt ? [] : [`slot-child-receipt-missing-veto:${slotId}`]),
@@ -871,6 +937,7 @@ export class ExtensionProfilePlanService {
         ...(childReceipt && childEvidenceRefs.length === 0 ? [`slot-child-evidence-missing-veto:${slotId}`] : []),
         ...(childReceipt && childSettlementAuthority !== 'parent-kernel' ? [`slot-child-settlement-authority-veto:${slotId}`] : []),
         ...(childViolations.length > 0 ? [`slot-child-receipt-not-clean-veto:${slotId}`] : []),
+        ...childAuthenticityVetoes,
       ])
       : [];
     const failureRefs = uniqueStrings(input.failureRefs ?? []);
@@ -966,6 +1033,38 @@ function freezeExtensionProfilePlan(plan: ExtensionProfilePlanReceipt): Extensio
   Object.freeze(plan.violations);
   Object.freeze(plan.evidenceRefs);
   return Object.freeze(plan);
+}
+
+function skillExecutionReceiptAuthenticityVetoes(
+  childReceipt: ExtensionProfileSlotChildReceipt,
+  slotId: string,
+): string[] {
+  const receipt = childReceipt as Partial<SkillExecutionReceipt>;
+  const loadedSkills = Array.isArray(receipt.loadedSkills) ? receipt.loadedSkills as readonly SkillExecutionSkill[] : [];
+  const permissionDecisions = Array.isArray(receipt.permissionDecisions)
+    ? receipt.permissionDecisions as readonly SkillPermissionDecision[]
+    : [];
+  const blockedReasons = uniqueStrings(receipt.blockedReasons ?? []);
+  const violations = uniqueStrings(receipt.violations ?? []);
+  const evidenceRefs = uniqueStrings(receipt.evidenceRefs ?? []);
+  const unmatchedSkillCount = Number.isFinite(receipt.unmatchedSkillCount) ? Number(receipt.unmatchedSkillCount) : 0;
+  const receiptSignature = String(receipt.receiptSignature ?? '').trim();
+  const expectedSignature = createSkillExecutionReceiptSignature({
+    loadedSkills,
+    permissionDecisions,
+    blockedReasons,
+    violations,
+    evidenceRefs,
+    unmatchedSkillCount,
+  });
+
+  return uniqueStrings([
+    ...(receipt.singleOwner === 'SkillDiscoveryService' ? [] : [`slot-child-owner-mismatch-veto:${slotId}`]),
+    ...(ownedSkillExecutionReceipts.has(receipt as SkillExecutionReceipt) ? [] : [`slot-child-origin-mismatch-veto:${slotId}`]),
+    ...(receipt.immutable === true ? [] : [`slot-child-mutability-veto:${slotId}`]),
+    ...(receipt.canCompleteTask === false ? [] : [`slot-child-completion-claim-veto:${slotId}`]),
+    ...(receiptSignature === expectedSignature ? [] : [`slot-child-signature-mismatch-veto:${slotId}`]),
+  ]);
 }
 
 function createExtensionProfilePlanSignature(input: {

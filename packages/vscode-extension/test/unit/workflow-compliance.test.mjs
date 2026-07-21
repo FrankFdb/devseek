@@ -1012,6 +1012,17 @@ test('R3-07S-skill-TASK-012: signed profile plans must be immutable evidence obj
   assertContains(sharedTests, 'R3-07S-skill-TASK-012 ExtensionProfilePlanService', 'R3-07S-skill-TASK-012 must have mutable-plan oracle');
 });
 
+test('R3-07S-skill-TASK-013: skill child receipts must be owner-authentic', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'ownedSkillExecutionReceipts', 'R3-07S-skill-TASK-013 must register child receipts in the existing skill owner');
+  assertContains(sharedEnhancements, "singleOwner: 'SkillDiscoveryService'", 'R3-07S-skill-TASK-013 must mark SkillDiscoveryService as child receipt owner');
+  assertContains(sharedEnhancements, 'skillExecutionReceiptAuthenticityVetoes', 'R3-07S-skill-TASK-013 must verify skill child receipt authenticity');
+  assertContains(sharedEnhancements, 'slot-child-origin-mismatch-veto', 'R3-07S-skill-TASK-013 must reject forged child receipts');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-013 ExtensionProfilePlanService', 'R3-07S-skill-TASK-013 must have forged-child oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
