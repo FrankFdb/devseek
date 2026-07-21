@@ -1249,6 +1249,14 @@ test('R3-07S-skill-PERMISSION-FAULT-016: example Skill metadata cannot provide p
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-016 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-016 must have example metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-017: natural-language example metadata cannot provide permission evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'for\\s+(?:example|instance)', 'R3-07S-skill-PERMISSION-FAULT-017 must filter natural-language example markers');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-017 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-017 must have natural-language example metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

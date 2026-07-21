@@ -672,7 +672,7 @@ function freezeSkillExecutionReceipt(receipt: SkillExecutionReceipt): SkillExecu
   return Object.freeze(receipt);
 }
 
-const SKILL_METADATA_BODY_SECTION_MARKER = /^(?:#{2,}\s+|(?:examples?|samples?|usage|notes?)\b.*:)/iu;
+const SKILL_METADATA_BODY_SECTION_MARKER = /^(?:#{2,}\s+|(?:(?:examples?|samples?|usage|notes?)\b|for\s+(?:example|instance)\b|e\.g\.).*:)/iu;
 
 function skillMetadataLines(content: string): string[] {
   let insideFence = false;
