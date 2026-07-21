@@ -2455,6 +2455,47 @@ test('§8.4 Checkpoint: resume UI must reload a fresh scoped checkpoint before e
   );
 });
 
+test('R3-02 Checkpoint resume: TaskCheckpointStore owns receipt-gated replay protection', () => {
+  const checkpointStore = src('src/app/task-checkpoint-store.ts');
+  const extension = src('src/extension.ts');
+  const checkpointTests = src('test/unit/task-checkpoint-store.test.mjs');
+
+  assertContains(
+    checkpointStore,
+    'TASK_CHECKPOINT_RESUME_PROTOCOL',
+    'checkpoint resume must expose a versioned protocol marker',
+  );
+  assertContains(checkpointStore, 'checkpointEpoch', 'checkpoint resume must bind a monotonic epoch');
+  assertContains(checkpointStore, 'taskFingerprint', 'checkpoint resume must bind task/prompt/index facts');
+  assertContains(checkpointStore, 'resumeReceipt', 'checkpoint resume must carry a receipt');
+  assertContains(checkpointStore, 'activeResumeReceipt', 'checkpoint metadata must tombstone cleared receipts');
+  assertContains(
+    checkpointStore,
+    'checkpointResumeReceiptIsValid',
+    'checkpoint loads must fail closed through the store receipt validator',
+  );
+  assertContains(
+    extension,
+    'loadFreshAgentCheckpoint',
+    'extension resume must continue using the fresh scoped checkpoint owner',
+  );
+  assertDoesNotContain(
+    extension,
+    'workspaceState.update(CHECKPOINT_KEY',
+    'extension must not bypass TaskCheckpointStore for checkpoint writes',
+  );
+  assertContains(
+    checkpointTests,
+    'R3-02 TaskCheckpointStore: stale ABA resume receipt cannot revive after clear',
+    'R3-02 must keep the stale ABA resume oracle',
+  );
+  assertContains(
+    checkpointTests,
+    'R3-02 TaskCheckpointStore: tampered checkpoint cannot replay committed prefix',
+    'R3-02 must keep the replay-prefix tamper oracle',
+  );
+});
+
 test('Extension apply gate: unfenced target-scoped source can enter applier', () => {
   const code = src('src/extension.ts');
   assertContains(code, 'looksLikeTargetScopedSourceResponse', 'plain source fallback helper must be imported');

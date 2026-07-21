@@ -1,7 +1,11 @@
+import { stableSha256 } from './stable-hash';
+
 export interface TaskCheckpointStorage {
   get<T>(key: string): T | undefined;
   update(key: string, value: unknown): PromiseLike<void> | Promise<void> | void;
 }
+
+export const TASK_CHECKPOINT_RESUME_PROTOCOL = 'devseek.checkpoint-resume/v1';
 
 export interface TaskCheckpointRecord<TTask = unknown> {
   userPrompt: string;
@@ -15,6 +19,10 @@ export interface TaskCheckpointRecord<TTask = unknown> {
   sessionId: string;
   recoveryKind?: string;
   pauseReason?: string;
+  checkpointProtocol?: typeof TASK_CHECKPOINT_RESUME_PROTOCOL;
+  checkpointEpoch?: number;
+  taskFingerprint?: string;
+  resumeReceipt?: string;
 }
 
 export interface FreshCheckpointResult<TTask = unknown> {
@@ -29,15 +37,28 @@ export interface TaskCheckpointScope {
 
 export const DEFAULT_TASK_CHECKPOINT_KEY = 'devseek.agentTaskCheckpoint';
 
+interface TaskCheckpointMeta {
+  checkpointProtocol: typeof TASK_CHECKPOINT_RESUME_PROTOCOL;
+  checkpointEpoch: number;
+  activeResumeReceipt: string | null;
+  clearedAt?: number;
+}
+
 export class TaskCheckpointStore<TTask = unknown> {
+  private readonly metaKey: string;
+
   constructor(
     private readonly storage: TaskCheckpointStorage,
     private readonly key = DEFAULT_TASK_CHECKPOINT_KEY,
-  ) {}
+  ) {
+    this.metaKey = `${key}.meta`;
+  }
 
   load(): TaskCheckpointRecord<TTask> | undefined {
     const record = this.storage.get<TaskCheckpointRecord<TTask>>(this.key);
-    return record ? normalizeCheckpointRecord(record) : undefined;
+    if (!record) return undefined;
+    const checkpoint = normalizeCheckpointRecord(record);
+    return checkpointResumeReceiptIsValid(checkpoint, this.loadMeta()) ? checkpoint : undefined;
   }
 
   loadScoped(scope?: TaskCheckpointScope): TaskCheckpointRecord<TTask> | undefined {
@@ -47,10 +68,23 @@ export class TaskCheckpointStore<TTask = unknown> {
   }
 
   async save(record: TaskCheckpointRecord<TTask>): Promise<void> {
-    await this.storage.update(this.key, normalizeCheckpointRecord(record));
+    const checkpointEpoch = this.nextCheckpointEpoch();
+    const checkpoint = sealCheckpointRecord(normalizeCheckpointRecord(record), checkpointEpoch);
+    await this.storage.update(this.key, checkpoint);
+    await this.storage.update(this.metaKey, {
+      checkpointProtocol: TASK_CHECKPOINT_RESUME_PROTOCOL,
+      checkpointEpoch,
+      activeResumeReceipt: checkpoint.resumeReceipt,
+    } satisfies TaskCheckpointMeta);
   }
 
   async clear(): Promise<void> {
+    await this.storage.update(this.metaKey, {
+      checkpointProtocol: TASK_CHECKPOINT_RESUME_PROTOCOL,
+      checkpointEpoch: this.nextCheckpointEpoch(),
+      activeResumeReceipt: null,
+      clearedAt: Date.now(),
+    } satisfies TaskCheckpointMeta);
     await this.storage.update(this.key, undefined);
   }
 
@@ -59,8 +93,13 @@ export class TaskCheckpointStore<TTask = unknown> {
     now = Date.now(),
     scope?: TaskCheckpointScope,
   ): Promise<FreshCheckpointResult<TTask> | undefined> {
-    const checkpoint = this.load();
-    if (!checkpoint) return undefined;
+    const raw = this.storage.get<TaskCheckpointRecord<TTask>>(this.key);
+    if (!raw) return undefined;
+    const checkpoint = normalizeCheckpointRecord(raw);
+    if (!checkpointResumeReceiptIsValid(checkpoint, this.loadMeta())) {
+      await this.clear();
+      return undefined;
+    }
     if (!checkpoint.savedAt || checkpoint.savedAt <= now - maxAgeMs) {
       await this.clear();
       return undefined;
@@ -75,12 +114,29 @@ export class TaskCheckpointStore<TTask = unknown> {
     }
     return { checkpoint, stale: false };
   }
+
+  private loadMeta(): TaskCheckpointMeta | undefined {
+    const meta = this.storage.get<TaskCheckpointMeta>(this.metaKey);
+    if (!meta || meta.checkpointProtocol !== TASK_CHECKPOINT_RESUME_PROTOCOL) return undefined;
+    return {
+      checkpointProtocol: TASK_CHECKPOINT_RESUME_PROTOCOL,
+      checkpointEpoch: normalizeCheckpointEpoch(meta.checkpointEpoch),
+      activeResumeReceipt: typeof meta.activeResumeReceipt === 'string' && meta.activeResumeReceipt
+        ? meta.activeResumeReceipt
+        : null,
+      ...(Number.isFinite(meta.clearedAt) ? { clearedAt: Number(meta.clearedAt) } : {}),
+    };
+  }
+
+  private nextCheckpointEpoch(): number {
+    return normalizeCheckpointEpoch(this.storage.get<TaskCheckpointMeta>(this.metaKey)?.checkpointEpoch) + 1;
+  }
 }
 
 function normalizeCheckpointRecord<TTask>(record: TaskCheckpointRecord<TTask>): TaskCheckpointRecord<TTask> {
   const total = Array.isArray(record.allTasks) ? record.allTasks.length : 0;
   const startFromIndex = clampInteger(record.startFromIndex, 0, total);
-  const completedCount = clampInteger(record.completedCount, 0, total);
+  const completedCount = clampInteger(record.completedCount, 0, startFromIndex);
   return {
     ...record,
     allTasks: Array.isArray(record.allTasks) ? record.allTasks : [],
@@ -89,6 +145,18 @@ function normalizeCheckpointRecord<TTask>(record: TaskCheckpointRecord<TTask>): 
     savedAt: Number(record.savedAt) || Date.now(),
     sessionId: String(record.sessionId || ''),
     wsRootFsPath: normalizeFsPath(record.wsRootFsPath),
+    ...(record.checkpointProtocol === TASK_CHECKPOINT_RESUME_PROTOCOL
+      ? { checkpointProtocol: TASK_CHECKPOINT_RESUME_PROTOCOL }
+      : {}),
+    ...(Number.isFinite(record.checkpointEpoch)
+      ? { checkpointEpoch: normalizeCheckpointEpoch(record.checkpointEpoch) }
+      : {}),
+    ...(typeof record.taskFingerprint === 'string' && record.taskFingerprint
+      ? { taskFingerprint: record.taskFingerprint }
+      : {}),
+    ...(typeof record.resumeReceipt === 'string' && record.resumeReceipt
+      ? { resumeReceipt: record.resumeReceipt }
+      : {}),
   };
 }
 
@@ -108,4 +176,62 @@ function checkpointMatchesScope<TTask>(checkpoint: TaskCheckpointRecord<TTask>, 
 
 function normalizeFsPath(value: string | undefined): string {
   return String(value || '').trim().replace(/[/\\]+$/g, '');
+}
+
+function sealCheckpointRecord<TTask>(
+  record: TaskCheckpointRecord<TTask>,
+  checkpointEpoch: number,
+): TaskCheckpointRecord<TTask> {
+  const epoch = normalizeCheckpointEpoch(checkpointEpoch);
+  const taskFingerprint = buildCheckpointTaskFingerprint(record);
+  return {
+    ...record,
+    checkpointProtocol: TASK_CHECKPOINT_RESUME_PROTOCOL,
+    checkpointEpoch: epoch,
+    taskFingerprint,
+    resumeReceipt: buildCheckpointResumeReceipt(epoch, taskFingerprint),
+  };
+}
+
+function checkpointResumeReceiptIsValid<TTask>(
+  checkpoint: TaskCheckpointRecord<TTask>,
+  meta: TaskCheckpointMeta | undefined,
+): boolean {
+  if (!meta || meta.checkpointProtocol !== TASK_CHECKPOINT_RESUME_PROTOCOL) return false;
+  if (checkpoint.checkpointProtocol !== TASK_CHECKPOINT_RESUME_PROTOCOL) return false;
+  const checkpointEpoch = normalizeCheckpointEpoch(checkpoint.checkpointEpoch);
+  if (checkpointEpoch <= 0 || checkpointEpoch !== meta.checkpointEpoch) return false;
+  const activeResumeReceipt = String(meta.activeResumeReceipt || '').trim();
+  if (!activeResumeReceipt || checkpoint.resumeReceipt !== activeResumeReceipt) return false;
+  const taskFingerprint = buildCheckpointTaskFingerprint(checkpoint);
+  if (checkpoint.taskFingerprint !== taskFingerprint) return false;
+  return checkpoint.resumeReceipt === buildCheckpointResumeReceipt(checkpointEpoch, taskFingerprint);
+}
+
+function buildCheckpointTaskFingerprint<TTask>(checkpoint: TaskCheckpointRecord<TTask>): string {
+  return stableSha256({
+    allTasks: checkpoint.allTasks,
+    completedCount: checkpoint.completedCount,
+    displayPrompt: checkpoint.displayPrompt,
+    mode: checkpoint.mode ?? null,
+    pauseReason: checkpoint.pauseReason ?? null,
+    recoveryKind: checkpoint.recoveryKind ?? null,
+    savedAt: checkpoint.savedAt,
+    sessionId: checkpoint.sessionId,
+    startFromIndex: checkpoint.startFromIndex,
+    userPrompt: checkpoint.userPrompt,
+    wsRootFsPath: normalizeFsPath(checkpoint.wsRootFsPath),
+  });
+}
+
+function buildCheckpointResumeReceipt(checkpointEpoch: number, taskFingerprint: string): string {
+  return stableSha256({
+    checkpointEpoch: normalizeCheckpointEpoch(checkpointEpoch),
+    checkpointProtocol: TASK_CHECKPOINT_RESUME_PROTOCOL,
+    taskFingerprint,
+  });
+}
+
+function normalizeCheckpointEpoch(value: unknown): number {
+  return clampInteger(Number(value), 0, Number.MAX_SAFE_INTEGER - 1);
 }

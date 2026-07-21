@@ -1,4 +1,3 @@
-import * as crypto from 'crypto';
 import {
   IdempotencyGuard,
   type OperationRecord,
@@ -14,8 +13,10 @@ import {
   type TaskRunRecord,
   type TaskRunStatus,
 } from './task-history-store';
+import { stableHash } from './stable-hash';
 
 export { TaskCheckpointStore, TaskHistoryStore };
+export { stableHash } from './stable-hash';
 
 export interface AgentRuntimeLedgerDeps<TTask = unknown> {
   historyStore: TaskHistoryStore;
@@ -108,28 +109,8 @@ export function makeOperationId(workflowId: string, kind: string, input: unknown
   return `${workflowId}:${kind}:${stableHash(input)}`;
 }
 
-export function stableHash(input: unknown): string {
-  return crypto.createHash('sha256')
-    .update(stableStringify(input))
-    .digest('hex')
-    .slice(0, 16);
-}
-
 function checkpointRef(sessionId: string, startFromIndex: number, savedAt: number): string {
   return `checkpoint:${sessionId}:${startFromIndex}:${savedAt}`;
-}
-
-function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(stableStringify).join(',')}]`;
-  }
-  if (value && typeof value === 'object') {
-    return `{${Object.entries(value as Record<string, unknown>)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value);
 }
 
 function unique(values: readonly string[] | undefined): string[] {

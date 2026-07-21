@@ -16,7 +16,7 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { TaskCheckpointStore } = req(bundlePath);
+const { DEFAULT_TASK_CHECKPOINT_KEY, TaskCheckpointStore } = req(bundlePath);
 
 class MemoryStorage {
   data = new Map();
@@ -118,6 +118,51 @@ test('TaskCheckpointStore: loadFresh clears completed checkpoint', async () => {
   await store.save(checkpoint({ savedAt: 900, startFromIndex: 2, completedCount: 2 }));
 
   const fresh = await store.loadFresh(200, 1_000);
+
+  assert.equal(fresh, undefined);
+  assert.equal(store.load(), undefined);
+});
+
+test('R3-02 TaskCheckpointStore: stale ABA resume receipt cannot revive after clear', async () => {
+  const storage = new MemoryStorage();
+  const store = new TaskCheckpointStore(storage);
+  await store.save(checkpoint({ savedAt: 900 }));
+  const staleRawCheckpoint = storage.get(DEFAULT_TASK_CHECKPOINT_KEY);
+
+  await store.clear();
+  storage.update(DEFAULT_TASK_CHECKPOINT_KEY, staleRawCheckpoint);
+
+  const fresh = await store.loadFresh(200, 1_000, {
+    wsRootFsPath: '/repo',
+    sessionId: 's1',
+  });
+
+  assert.equal(fresh, undefined);
+  assert.equal(store.load(), undefined);
+});
+
+test('R3-02 TaskCheckpointStore: tampered checkpoint cannot replay committed prefix', async () => {
+  const storage = new MemoryStorage();
+  const store = new TaskCheckpointStore(storage);
+  await store.save(checkpoint({
+    savedAt: 900,
+    allTasks: [{ title: 'committed' }, { title: 'pending' }],
+    startFromIndex: 1,
+    completedCount: 1,
+  }));
+  const signedCheckpoint = storage.get(DEFAULT_TASK_CHECKPOINT_KEY);
+
+  storage.update(DEFAULT_TASK_CHECKPOINT_KEY, {
+    ...signedCheckpoint,
+    allTasks: [{ title: 'committed' }, { title: 'pending' }, { title: 'injected' }],
+    startFromIndex: 0,
+    completedCount: 0,
+  });
+
+  const fresh = await store.loadFresh(200, 1_000, {
+    wsRootFsPath: '/repo',
+    sessionId: 's1',
+  });
 
   assert.equal(fresh, undefined);
   assert.equal(store.load(), undefined);
