@@ -593,6 +593,7 @@ export class SkillDiscoveryService {
     const schema = parseSkillInputSchema(lines, candidate.path);
     const declaredToolKindValues = parseSkillToolKinds(lines);
     const invalidDeclaredToolKinds = declaredToolKindValues.invalidToolKinds;
+    const pathParseIssues = skillPathParseIssues(candidate.path);
     return {
       name: heading || candidate.path.split('/').slice(-2, -1)[0] || 'skill',
       path: candidate.path,
@@ -602,6 +603,7 @@ export class SkillDiscoveryService {
       declaredToolKinds: declaredToolKindValues.toolKinds,
       completionClaimRequested: parseCompletionClaimRequested(lines),
       parseIssues: uniqueStrings([
+        ...pathParseIssues,
         ...(schema.issue ? [schema.issue] : []),
         ...invalidDeclaredToolKinds.map(kind => `skill-tool-kind-invalid:${kind}`),
       ]),
@@ -1767,6 +1769,18 @@ function parseSkillToolKinds(lines: readonly string[]): { toolKinds: SkillToolKi
     .filter(line => /^(?:tool_kinds|toolKinds|tools)\s*:/i.test(line))
     .flatMap(line => line.replace(/^(?:tool_kinds|toolKinds|tools)\s*:\s*/i, '').split(','))
     .map(value => value.trim().toLowerCase()));
+}
+
+function skillPathParseIssues(path: string): string[] {
+  const value = String(path);
+  const rawPath = value.trim();
+  const segments = rawPath.split(/[\\/]/u);
+  const hasNoncanonicalSyntax = value !== rawPath
+    || rawPath.startsWith('/')
+    || rawPath.includes('\\')
+    || segments.some(segment => segment === '' || segment === '.' || segment === '..');
+  if (!hasNoncanonicalSyntax) return [];
+  return [`skill-path-noncanonical:${rawPath}`];
 }
 
 function parseSkillToolKindValues(values: readonly unknown[]): { toolKinds: SkillToolKind[]; invalidToolKinds: string[] } {

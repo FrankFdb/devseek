@@ -1184,6 +1184,15 @@ test('R3-07S-skill-PERMISSION-FAULT-009: duplicate skill paths keep child receip
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-009 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-009 must have duplicate path oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-010: noncanonical skill paths keep child receipts dirty', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'skillPathParseIssues', 'R3-07S-skill-PERMISSION-FAULT-010 must keep path metadata validation in SkillDiscoveryService');
+  assertContains(sharedEnhancements, 'skill-path-noncanonical', 'R3-07S-skill-PERMISSION-FAULT-010 must expose noncanonical Skill paths as dirty child evidence');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-010 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-010 must have noncanonical path oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

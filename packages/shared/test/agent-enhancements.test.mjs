@@ -1540,6 +1540,25 @@ function createDuplicatePathDeniedEditSkillReceipt() {
   });
 }
 
+function createNoncanonicalPathDeniedEditSkillReceipt() {
+  return new SkillDiscoveryService().planExecution({
+    prompt: 'please use react and edit the component',
+    candidates: [
+      {
+        path: 'skills/react/../react/SKILL.md',
+        content: [
+          '# React',
+          '',
+          'description: React components',
+          'triggers: react',
+          'tool_kinds: read',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read', 'edit'],
+  });
+}
+
 test('R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService accepts expected skill permission denial as slot evidence', () => {
   const service = new ExtensionProfilePlanService();
   const plan = service.createProfilePlan({
@@ -1779,6 +1798,33 @@ test('R3-07S-skill-PERMISSION-FAULT-009 ExtensionProfilePlanService rejects dupl
   assert.ok(childReceipt.violations.includes('skill-path-collision:skills/react/SKILL.md'));
   assert.ok(childReceipt.violations.includes('skill-tool-kind-denied:edit'));
   assert.ok(receipt.vetoes.includes('slot-child-receipt-not-clean-veto:R3-07S-skill-PERMISSION-FAULT-009'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-010 ExtensionProfilePlanService rejects noncanonical skill path permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '1029384756657483920110293847566574839201',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createNoncanonicalPathDeniedEditSkillReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-010',
+    attemptId: 'skill-permission-fault-010-noncanonical-skill-path',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(childReceipt.loadedSkills.length, 1);
+  assert.ok(childReceipt.violations.includes('skill-path-noncanonical:skills/react/../react/SKILL.md'));
+  assert.ok(childReceipt.violations.includes('skill-tool-kind-denied:edit'));
+  assert.ok(receipt.vetoes.includes('slot-child-receipt-not-clean-veto:R3-07S-skill-PERMISSION-FAULT-010'));
   assert.deepEqual(receipt.permissionFaultRefs, []);
   assert.deepEqual(receipt.effectRefs, []);
   assert.deepEqual(receipt.receiptRefs, []);
