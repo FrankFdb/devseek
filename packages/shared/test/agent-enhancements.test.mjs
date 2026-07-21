@@ -1416,6 +1416,25 @@ function createDeniedEditSkillReceipt() {
   });
 }
 
+function createDeniedEditAndTerminalSkillReceipt() {
+  return new SkillDiscoveryService().planExecution({
+    prompt: 'please use react, edit the component, and run terminal validation',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: [
+          '# React',
+          '',
+          'description: React components',
+          'triggers: react',
+          'tool_kinds: read',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read', 'edit', 'terminal'],
+  });
+}
+
 test('R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService accepts expected skill permission denial as slot evidence', () => {
   const service = new ExtensionProfilePlanService();
   const plan = service.createProfilePlan({
@@ -1474,6 +1493,32 @@ test('R3-07S-skill-PERMISSION-FAULT-002 ExtensionProfilePlanService rejects reus
   assert.ok(reused.vetoes.includes('slot-permission-fault-evidence-reuse-veto:R3-07S-skill-PERMISSION-FAULT-002'));
   assert.deepEqual(reused.permissionFaultRefs, []);
   assert.deepEqual(reused.effectRefs, []);
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-003 ExtensionProfilePlanService rejects ambiguous multi-denial permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '3691215182124273033363942454851545759606',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createDeniedEditAndTerminalSkillReceipt();
+  assert.ok(childReceipt.violations.includes('skill-tool-kind-denied:edit'));
+  assert.ok(childReceipt.violations.includes('skill-tool-kind-denied:terminal'));
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-003',
+    attemptId: 'skill-permission-fault-003-ambiguous-denial',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.ok(receipt.vetoes.includes('slot-child-permission-fault-ambiguous-veto:R3-07S-skill-PERMISSION-FAULT-003'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {

@@ -1117,6 +1117,15 @@ test('R3-07S-skill-PERMISSION-FAULT-002: permission/fault evidence cannot be reu
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-002 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-002 must have evidence reuse oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-003: permission/fault evidence must describe one denial', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'slot-child-permission-fault-ambiguous-veto', 'R3-07S-skill-PERMISSION-FAULT-003 must veto ambiguous multi-denial permission/fault evidence');
+  assertContains(sharedEnhancements, 'expectedSkillPermissionFaultViolations.length > 1', 'R3-07S-skill-PERMISSION-FAULT-003 must detect multi-denial evidence in the profile owner');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-003 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-003 must have ambiguous denial oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

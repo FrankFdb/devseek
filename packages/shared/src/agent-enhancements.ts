@@ -970,6 +970,7 @@ export class ExtensionProfilePlanService {
         ...(childReceipt && childSettlementAuthority !== 'parent-kernel' ? [`slot-child-settlement-authority-veto:${slotId}`] : []),
         ...(unexpectedChildViolations.length > 0 ? [`slot-child-receipt-not-clean-veto:${slotId}`] : []),
         ...(childReceipt && isPermissionFaultSlot && expectedSkillPermissionFaultViolations.length === 0 ? [`slot-child-permission-fault-missing-veto:${slotId}`] : []),
+        ...(childReceipt && isPermissionFaultSlot && expectedSkillPermissionFaultViolations.length > 1 ? [`slot-child-permission-fault-ambiguous-veto:${slotId}`] : []),
         ...(permissionFaultEvidenceKey && this.settledPermissionFaultEvidenceKeys.has(permissionFaultEvidenceKey) ? [`slot-permission-fault-evidence-reuse-veto:${slotId}`] : []),
         ...childAuthenticityVetoes,
       ])
