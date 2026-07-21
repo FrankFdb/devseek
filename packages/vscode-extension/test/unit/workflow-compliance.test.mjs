@@ -2200,6 +2200,25 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   );
 });
 
+test('R3-04: Context compaction fidelity, redaction, and stale-memory receipts live in one owner', () => {
+  const agentHistoryCompaction = src('src/agent/agent-history-compaction.ts');
+  const agentHistoryCompactionTests = src('test/unit/agent-history-compaction.test.mjs');
+
+  assertContains(agentHistoryCompaction, 'CONTEXT_COMPACTION_RECEIPT_PROTOCOL', 'context compaction must publish a versioned receipt protocol');
+  assertContains(agentHistoryCompaction, 'devseek.context-compaction/v1', 'context compaction receipts must use a stable protocol id');
+  assertContains(agentHistoryCompaction, 'compactAgentMessageHistoryWithFidelity', 'history compaction owner must own fidelity-preserving long-context compaction');
+  assertContains(agentHistoryCompaction, 'extractCompactionFacts', 'history compaction owner must extract durable constraints and decisions');
+  assertContains(agentHistoryCompaction, 'redactSecretsInText', 'history compaction owner must redact secrets before summaries re-enter prompts');
+  assertContains(agentHistoryCompaction, 'staleMemoryRejectedCount', 'context compaction receipts must account for stale-memory rejection');
+  assertContains(agentHistoryCompaction, 'preservedConstraints', 'context compaction receipts must preserve key constraints');
+  assertContains(agentHistoryCompaction, 'preservedDecisions', 'context compaction receipts must preserve key decisions');
+  assertContains(agentHistoryCompaction, 'replaceAllAssistantToolHistory(messages)', 'long-context compaction must absorb existing tool-history compaction');
+  assertContains(agentHistoryCompactionTests, 'R3-04 Context compaction', 'R3-04 must have failure-first unit oracle coverage');
+  assertContains(agentHistoryCompactionTests, 'for (let pass = 1; pass <= 3; pass += 1)', 'R3-04 oracle must prove at least three compaction passes');
+  assertContains(agentHistoryCompactionTests, 'live-secret-token', 'R3-04 oracle must cover command secret redaction');
+  assertContains(agentHistoryCompactionTests, 'ttl=expired', 'R3-04 oracle must cover stale-memory rejection');
+});
+
 test('Architecture: Phase 10 application service owns Provider chat routing protocol', () => {
   const service = src('../shared/src/agent-application-service.ts');
   const protocol = src('../shared/src/agent-protocol.ts');

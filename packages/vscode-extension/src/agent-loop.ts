@@ -121,6 +121,7 @@ import {
   ToolReadEvidenceRecorder,
   withToolReadEvidence,
 } from './agent/tool-read-evidence';
+import { compactAgentMessageHistoryWithFidelity } from './agent/agent-history-compaction';
 // buildAgenticHistoryText composition lives behind buildAgentLoopResult's history boundary.
 
 // ----------------------------------------------------------------
@@ -225,37 +226,16 @@ function compactAgentLoopMessageHistory(messages: ChatMessage[]): void {
     return;
   }
 
-  const protectedMessages = messages.filter(message =>
-    typeof message.content === 'string' && isAgentLoopTaskPrompt(message.content),
-  ).slice(-1);
-  const recentMessages = messages.slice(-AGENT_LOOP_RECENT_MESSAGE_KEEP_COUNT);
-  const compacted: ChatMessage[] = [];
-  const seen = new Set<ChatMessage>();
-  const push = (message: ChatMessage | undefined) => {
-    if (!message || seen.has(message)) return;
-    seen.add(message);
-    compacted.push(message);
-  };
-
-  if (protectedMessages.length === 0 || messages[0].role === 'system') {
-    push(messages[0]);
-  }
-  for (const message of protectedMessages) push(message);
-  for (const message of recentMessages) push(message);
-
-  const droppedCount = messages.length - compacted.length;
-  const summary: ChatMessage = {
-    role: 'user',
-    content: `[DevSeek 上下文压缩]\n已省略 ${Math.max(0, droppedCount)} 条较早轮次消息，保留当前任务提示和最近证据，避免 Provider prompt 过大导致桥接卡死或填充超时。`,
-  };
-  compacted.splice(Math.min(1, compacted.length), 0, summary);
-  messages.splice(0, messages.length, ...compacted);
+  compactAgentMessageHistoryWithFidelity(messages, {
+    maxMessages: AGENT_LOOP_RECENT_MESSAGE_KEEP_COUNT + 2,
+    isProtectedMessage: message => typeof message.content === 'string' && isAgentLoopTaskPrompt(message.content),
+  });
 
   for (let index = 0; index < messages.length; index += 1) {
     if (totalAgentLoopMessageChars(messages) <= AGENT_LOOP_MESSAGE_TOTAL_CHAR_BUDGET) break;
     const message = messages[index];
     if (typeof message.content !== 'string') continue;
-    if (isAgentLoopTaskPrompt(message.content) || message.content.startsWith('[DevSeek 上下文压缩]')) continue;
+    if (isAgentLoopTaskPrompt(message.content) || message.content.startsWith('[DevSeek 上下文压缩')) continue;
     messages[index] = {
       ...message,
       content: truncateAgentLoopHistoryText(message.content, 4_000, '较早轮次上下文'),

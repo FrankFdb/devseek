@@ -99,6 +99,7 @@ import {
 } from './task-output-scope';
 import {
   applyProviderRecoveryHistory,
+  compactAgentMessageHistoryWithFidelity,
   replaceAllAssistantToolHistory,
   replaceLatestAssistantToolHistory,
 } from './agent-history-compaction';
@@ -144,7 +145,7 @@ function truncateAgenticHistoryText(text: string, maxChars: number, label: strin
 function isAgenticToolFeedback(content: string): boolean {
   return /^\s*\[工具结果 Round \d+\]/.test(content)
     || /^\s*【系统反馈】/.test(content)
-    || /^\s*\[DevSeek 上下文压缩]/.test(content);
+    || /^\s*\[DevSeek 上下文压缩(?:事实)?]/.test(content);
 }
 function agenticMessageBudgetFor(message: ChatMessage, index: number): number {
   if (typeof message.content !== 'string') return Number.POSITIVE_INFINITY;
@@ -168,13 +169,7 @@ function compactAgenticMessageHistory(messages: ChatMessage[]): number {
   let total = totalAgenticMessageChars(messages);
   if (total <= AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET) return total;
   if (messages.length > AGENTIC_RECENT_MESSAGE_KEEP_COUNT + 1) {
-    const head = messages[0];
-    const tail = messages.slice(-AGENTIC_RECENT_MESSAGE_KEEP_COUNT);
-    const omitted = messages.length - 1 - tail.length;
-    messages.splice(0, messages.length, head, {
-      role: 'user',
-      content: `[DevSeek 上下文压缩] 已省略 ${omitted} 条早期 Agentic 往返，保留任务原文和最近 ${tail.length} 条消息；请基于最新工具证据继续。`,
-    }, ...tail);
+    compactAgentMessageHistoryWithFidelity(messages, { maxMessages: AGENTIC_RECENT_MESSAGE_KEEP_COUNT + 2 });
     total = totalAgenticMessageChars(messages);
   }
   if (total <= AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET) return total;

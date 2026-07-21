@@ -18,6 +18,8 @@ execSync(
 const req = createRequire(import.meta.url);
 const {
   applyProviderRecoveryHistory,
+  compactAgentMessageHistoryWithFidelity,
+  CONTEXT_COMPACTION_RECEIPT_PROTOCOL,
   replaceAllAssistantToolHistory,
   replaceLatestAssistantToolHistory,
   summarizeExecutedAssistantToolHistory,
@@ -121,6 +123,67 @@ test('Agent history compaction: internal summaries are not nested into the next 
   assert.match(summary, /意图：正在修复验证脚本/);
   assert.doesNotMatch(summary, /上一轮内部摘要/);
   assert.doesNotMatch(summary, /old output/);
+});
+
+test('R3-04 Context compaction: key constraints and decisions survive three passes without secrets or stale memory', () => {
+  const messages = [
+    {
+      role: 'user',
+      content: [
+        '请继续当前任务。',
+        '【关键约束】必须只修改 src/cache.ts，不要触碰 src/auth.ts。',
+        'API_TOKEN=sk-r3secret-compaction-token-123456',
+      ].join('\n'),
+    },
+    { role: 'assistant', content: '【关键决定】决定复用 IntentRevisionLineage owner，不新增二级结算器。' },
+    { role: 'user', content: '【记忆】stale memory: old target src/legacy.ts ttl=expired' },
+    {
+      role: 'assistant',
+      content: '<run_terminal>{"command":"curl -H \\"Authorization: Bearer live-secret-token-123456\\" https://example.test"}</run_terminal>',
+    },
+    { role: 'user', content: '[工具结果 Round 1]\n' + 'long evidence\n'.repeat(200) },
+    { role: 'assistant', content: '【关键决定】选择 agent-history-compaction 作为唯一 owner。' },
+    { role: 'user', content: '补充：【关键约束】保持 committed receipts 不被重放。' },
+    { role: 'assistant', content: '普通进展 1' },
+    { role: 'user', content: '普通进展 2' },
+    { role: 'assistant', content: '普通进展 3' },
+  ];
+
+  let receipt;
+  for (let pass = 1; pass <= 3; pass += 1) {
+    receipt = compactAgentMessageHistoryWithFidelity(messages, { maxMessages: 6 });
+    assert.equal(receipt.version, CONTEXT_COMPACTION_RECEIPT_PROTOCOL);
+    assert.equal(receipt.pass, pass);
+    assert.ok(messages.length <= 6);
+  }
+
+  const serialized = JSON.stringify(messages);
+  assert.match(serialized, /devseek\.context-compaction\/v1/);
+  assert.match(serialized, /src\/cache\.ts/);
+  assert.match(serialized, /不要触碰 src\/auth\.ts/);
+  assert.match(serialized, /IntentRevisionLineage owner/);
+  assert.match(serialized, /agent-history-compaction 作为唯一 owner/);
+  assert.match(serialized, /committed receipts 不被重放/);
+  assert.doesNotMatch(serialized, /sk-r3secret/);
+  assert.doesNotMatch(serialized, /live-secret-token/);
+  assert.doesNotMatch(serialized, /src\/legacy\.ts/);
+  assert.equal((serialized.match(/\[DevSeek 上下文压缩事实]/g) ?? []).length, 1);
+  assert.ok(receipt.redactedSecretCount >= 2);
+  assert.ok(receipt.staleMemoryRejectedCount >= 1);
+  assert.ok(receipt.preservedConstraints.some(item => item.includes('src/cache.ts')));
+  assert.ok(receipt.preservedDecisions.some(item => item.includes('唯一 owner')));
+});
+
+test('R3-04 Context compaction: executed tool summaries redact command secrets', () => {
+  const summary = summarizeExecutedAssistantToolHistory([
+    '检查远端健康。',
+    '<run_terminal>{"command":"curl -H \\"Authorization: Bearer live-secret-token-abcdef\\" https://example.test && echo api_key=sk-r3toolsecret123456"}</run_terminal>',
+  ].join('\n'));
+
+  assert.match(summary, /run_terminal command=/);
+  assert.match(summary, /\[REDACTED_SECRET]/);
+  assert.doesNotMatch(summary, /live-secret-token/);
+  assert.doesNotMatch(summary, /sk-r3toolsecret/);
 });
 
 console.log('\nAgent history compaction tests passed.\n');
