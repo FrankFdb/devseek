@@ -1315,6 +1315,14 @@ test('R3-07S-skill-PERMISSION-FAULT-024: generic artifact nouns cannot infer Ski
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-024 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-024 must have generic artifact inferred trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-025: compound artifact identifiers cannot infer Skill triggers', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'splitSkillTriggerTokens', 'R3-07S-skill-PERMISSION-FAULT-025 must split inferred trigger tokens at identifier separators');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-025 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-025 must have compound artifact inferred trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
