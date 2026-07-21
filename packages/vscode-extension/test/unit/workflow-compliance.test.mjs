@@ -1363,6 +1363,14 @@ test('R3-07S-skill-PERMISSION-FAULT-030: tips body labels stop Skill metadata pa
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-030 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-030 must have tips body metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-031: details HTML blocks stop Skill metadata parsing', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_BLOCK_MARKER', 'R3-07S-skill-PERMISSION-FAULT-031 must treat details HTML body blocks as metadata boundaries');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-031 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-031 must have details body metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
