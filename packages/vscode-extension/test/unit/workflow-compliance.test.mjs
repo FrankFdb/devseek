@@ -729,6 +729,26 @@ test('R3-07A: Skill discovery/execution is progressive, schema-bound, and parent
   assertContains(sharedTests, 'R3-07A SkillDiscoveryService', 'R3-07A must have skill execution failure-first oracle');
 });
 
+test('R3-07B: Hook policy/evidence receipts are versioned, visible, and non-writer', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'HOOK_POLICY_PROTOCOL', 'Hook policy must expose a versioned protocol marker');
+  assertContains(sharedEnhancements, 'HookPolicyReceipt', 'Hook policy must produce a receipt');
+  assertContains(sharedEnhancements, 'planPolicy', 'HookPlanner must own hook policy planning');
+  assertContains(sharedEnhancements, 'policyKind', 'Hook policy must distinguish veto/warning/evidence');
+  assertContains(sharedEnhancements, 'policyVersion', 'Hook policy must carry policy version provenance');
+  assertContains(sharedEnhancements, "settlementAuthority: 'parent-kernel'", 'Hook policy must remain parent Kernel-owned');
+  assertContains(sharedEnhancements, 'trustRoot: false', 'Hooks must not become a trust root');
+  assertContains(sharedEnhancements, 'directWriteAllowed: false', 'Hooks must not be direct writers');
+  assertContains(sharedEnhancements, 'hook-failure-visible', 'Hook failures must stay visible');
+  assertContains(sharedEnhancements, 'hook-bypass-visible', 'Hook bypass must stay visible');
+  assertContains(sharedEnhancements, 'hook-direct-writer-denied', 'Direct hook writers must be denied');
+  assertContains(sharedEnhancements, 'evidenceRefs', 'Hook policy must be evidence-backed');
+  assertContains(sharedEnhancements, 'vetoes', 'Hook veto results must be surfaced');
+  assertContains(sharedTests, 'R3-07B HookPlanner', 'R3-07B must have hook policy failure-first oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

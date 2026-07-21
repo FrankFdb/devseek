@@ -19,6 +19,76 @@ test('HookPlanner selects deterministic hooks and blocks sensitive writes', () =
   assert.deepEqual(beforeEdit.blockedReasons, ['sensitive-file:.env']);
 });
 
+test('R3-07B HookPlanner creates parent-owned policy evidence and exposes failure and bypass', () => {
+  const planner = new HookPlanner();
+  const receipt = planner.planPolicy({
+    stage: 'beforeValidate',
+    changedFiles: ['src/app.ts'],
+    hooks: [
+      {
+        id: 'quality-veto',
+        stage: 'beforeValidate',
+        command: 'npm test',
+        fileGlobs: ['*.ts'],
+        description: 'Required quality check.',
+        policy: 'veto',
+        effect: 'read',
+        policyVersion: 'quality/v1',
+      },
+      {
+        id: 'style-warning',
+        stage: 'beforeValidate',
+        command: 'npm run lint',
+        fileGlobs: ['*.ts'],
+        description: 'Advisory lint check.',
+        policy: 'warning',
+        effect: 'read',
+      },
+      {
+        id: 'rewrite-source',
+        stage: 'beforeValidate',
+        command: 'node rewrite-source.js',
+        fileGlobs: ['*.ts'],
+        description: 'Attempts to rewrite source directly.',
+        policy: 'evidence',
+        effect: 'write',
+      },
+    ],
+    executions: [
+      {
+        hookId: 'quality-veto',
+        status: 'failed',
+        exitCode: 1,
+        evidenceRef: 'terminal:hook-quality-veto:failed',
+      },
+      {
+        hookId: 'style-warning',
+        status: 'bypassed',
+        reason: 'disabled by test profile',
+      },
+    ],
+  });
+
+  assert.equal(receipt.protocol, 'devseek.hook-policy/v1');
+  assert.equal(receipt.settlementAuthority, 'parent-kernel');
+  assert.equal(receipt.trustRoot, false);
+  assert.equal(receipt.directWriterAllowed, false);
+  assert.deepEqual(receipt.selectedHooks.map(hook => hook.id), ['quality-veto', 'style-warning', 'rewrite-source']);
+  assert.equal(receipt.selectedHooks.find(hook => hook.id === 'quality-veto')?.policyKind, 'veto');
+  assert.equal(receipt.selectedHooks.find(hook => hook.id === 'quality-veto')?.policyVersion, 'quality/v1');
+  assert.equal(receipt.selectedHooks.find(hook => hook.id === 'rewrite-source')?.allowedToRun, false);
+  assert.equal(receipt.selectedHooks.find(hook => hook.id === 'rewrite-source')?.directWriteAllowed, false);
+  assert.ok(receipt.vetoes.includes('hook-failure-visible:quality-veto'));
+  assert.ok(receipt.violations.includes('hook-bypass-visible:style-warning'));
+  assert.ok(receipt.violations.includes('hook-direct-writer-denied:rewrite-source'));
+  assert.ok(receipt.evidenceRefs.includes('terminal:hook-quality-veto:failed'));
+  assert.ok(receipt.evidenceRefs.some(ref => ref.startsWith('hook-bypass:style-warning:')));
+
+  const sensitive = planner.planPolicy({ stage: 'beforeEdit', changedFiles: ['.env'] });
+  assert.deepEqual(sensitive.selectedHooks, []);
+  assert.ok(sensitive.vetoes.includes('sensitive-file:.env'));
+});
+
 test('SkillDiscoveryService parses and selects skills by trigger', () => {
   const service = new SkillDiscoveryService();
   const skills = service.discover([

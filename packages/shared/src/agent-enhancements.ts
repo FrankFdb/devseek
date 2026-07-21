@@ -1,4 +1,7 @@
 export type HookStage = 'beforeEdit' | 'afterEdit' | 'beforeValidate' | 'afterValidate';
+export type HookPolicyKind = 'veto' | 'warning' | 'evidence';
+export type HookEffectKind = 'read' | 'write' | 'network' | 'terminal';
+export type HookExecutionStatus = 'passed' | 'failed' | 'bypassed' | 'not-run';
 export type SubagentKind = 'reviewer' | 'test-writer' | 'diagnostics' | 'migration-planner';
 export type McpRiskLevel = 'read' | 'write' | 'network' | 'destructive';
 export type SkillToolKind =
@@ -13,6 +16,7 @@ export type SkillToolKind =
   | 'mcp';
 export type SkillPermissionAction = 'allow' | 'deny';
 
+export const HOOK_POLICY_PROTOCOL = 'devseek.hook-policy/v1';
 export const SKILL_EXECUTION_PROTOCOL = 'devseek.skill-execution/v1';
 
 export interface HookDefinition {
@@ -21,6 +25,9 @@ export interface HookDefinition {
   command: string;
   fileGlobs?: readonly string[];
   requiresApproval?: boolean;
+  policy?: HookPolicyKind;
+  policyVersion?: string;
+  effect?: HookEffectKind;
   description: string;
 }
 
@@ -28,6 +35,49 @@ export interface HookPlan {
   stage: HookStage;
   hooks: readonly HookDefinition[];
   blockedReasons: readonly string[];
+}
+
+export interface HookPolicyPlanInput {
+  stage: HookStage;
+  changedFiles: readonly string[];
+  hooks?: readonly HookDefinition[];
+  executions?: readonly HookExecutionRecord[];
+}
+
+export interface HookExecutionRecord {
+  hookId: string;
+  status: HookExecutionStatus;
+  exitCode?: number;
+  reason?: string;
+  evidenceRef?: string;
+}
+
+export interface HookPolicyHook {
+  id: string;
+  stage: HookStage;
+  command: string;
+  description: string;
+  policyKind: HookPolicyKind;
+  policyVersion: string;
+  allowedToRun: boolean;
+  directWriteAllowed: false;
+  evidenceRefs: readonly string[];
+}
+
+export interface HookPolicyReceipt {
+  protocol: typeof HOOK_POLICY_PROTOCOL;
+  stage: HookStage;
+  settlementAuthority: 'parent-kernel';
+  trustRoot: false;
+  directWriterAllowed: false;
+  selectedHooks: readonly HookPolicyHook[];
+  blockedReasons: readonly string[];
+  violations: readonly string[];
+  vetoes: readonly string[];
+  warnings: readonly string[];
+  hookFailures: readonly string[];
+  bypassedHooks: readonly string[];
+  evidenceRefs: readonly string[];
 }
 
 export interface SkillCandidate {
@@ -141,6 +191,69 @@ export class HookPlanner {
       stage,
       hooks: blockedReasons.length > 0 ? [] : hooks.filter(hook => hook.stage === stage && matchesAnyFile(hook, changedFiles)),
       blockedReasons,
+    };
+  }
+
+  planPolicy(input: HookPolicyPlanInput): HookPolicyReceipt {
+    const hookPlan = this.plan(input.stage, input.changedFiles, input.hooks ?? defaultHooks());
+    const selectedHooks = hookPlan.hooks.map((hook): HookPolicyHook => {
+      const directWriter = isDirectWriterHook(hook);
+      return {
+        id: hook.id,
+        stage: hook.stage,
+        command: hook.command,
+        description: hook.description,
+        policyKind: hook.policy ?? 'evidence',
+        policyVersion: hook.policyVersion ?? HOOK_POLICY_PROTOCOL,
+        allowedToRun: !directWriter,
+        directWriteAllowed: false,
+        evidenceRefs: [hookEvidenceRef(hook)],
+      };
+    });
+    const selectedById = new Map(selectedHooks.map(hook => [hook.id, hook]));
+    const directWriterViolations = selectedHooks
+      .filter(hook => !hook.allowedToRun)
+      .map(hook => `hook-direct-writer-denied:${hook.id}`);
+    const executionViolations = (input.executions ?? []).flatMap((execution) => {
+      if (!selectedById.has(execution.hookId)) return [`hook-result-without-selected-hook:${execution.hookId}`];
+      if (execution.status === 'failed') return [`hook-failure-visible:${execution.hookId}`];
+      if (execution.status === 'bypassed') return [`hook-bypass-visible:${execution.hookId}`];
+      return [];
+    });
+    const hookFailures = (input.executions ?? [])
+      .filter(execution => execution.status === 'failed')
+      .map(execution => `hook-failure-visible:${execution.hookId}`);
+    const bypassedHooks = (input.executions ?? [])
+      .filter(execution => execution.status === 'bypassed')
+      .map(execution => `hook-bypass-visible:${execution.hookId}`);
+    const vetoes = uniqueStrings([
+      ...hookPlan.blockedReasons,
+      ...directWriterViolations,
+      ...hookFailures.filter(failure => selectedById.get(failure.replace(/^hook-failure-visible:/, ''))?.policyKind === 'veto'),
+      ...bypassedHooks.filter(bypass => selectedById.get(bypass.replace(/^hook-bypass-visible:/, ''))?.policyKind === 'veto'),
+    ]);
+    const warnings = uniqueStrings([
+      ...hookFailures.filter(failure => selectedById.get(failure.replace(/^hook-failure-visible:/, ''))?.policyKind === 'warning'),
+      ...bypassedHooks.filter(bypass => selectedById.get(bypass.replace(/^hook-bypass-visible:/, ''))?.policyKind === 'warning'),
+    ]);
+    const executionEvidenceRefs = (input.executions ?? []).map(hookExecutionEvidenceRef);
+    return {
+      protocol: HOOK_POLICY_PROTOCOL,
+      stage: input.stage,
+      settlementAuthority: 'parent-kernel',
+      trustRoot: false,
+      directWriterAllowed: false,
+      selectedHooks,
+      blockedReasons: uniqueStrings([...hookPlan.blockedReasons, ...directWriterViolations]),
+      violations: uniqueStrings([...directWriterViolations, ...executionViolations]),
+      vetoes,
+      warnings,
+      hookFailures: uniqueStrings(hookFailures),
+      bypassedHooks: uniqueStrings(bypassedHooks),
+      evidenceRefs: uniqueStrings([
+        ...selectedHooks.flatMap(hook => hook.evidenceRefs),
+        ...executionEvidenceRefs,
+      ]),
     };
   }
 }
@@ -315,6 +428,36 @@ export class GitPrAssistantService {
       ],
     };
   }
+}
+
+function isDirectWriterHook(hook: HookDefinition): boolean {
+  if (hook.effect === 'write') return true;
+  if (hook.effect) return false;
+  return /\b(?:format|fix|write|rewrite)\b|--write|--fix/i.test(hook.command);
+}
+
+function hookEvidenceRef(hook: HookDefinition): string {
+  return `hook:${hook.id}:${stableTextDigest([
+    hook.stage,
+    hook.command,
+    hook.policy ?? 'evidence',
+    hook.policyVersion ?? HOOK_POLICY_PROTOCOL,
+    hook.effect ?? 'unspecified',
+  ].join('\n'))}`;
+}
+
+function hookExecutionEvidenceRef(execution: HookExecutionRecord): string {
+  if (execution.evidenceRef) return execution.evidenceRef;
+  const prefix = execution.status === 'bypassed'
+    ? 'hook-bypass'
+    : execution.status === 'failed'
+      ? 'hook-failure'
+      : `hook-${execution.status}`;
+  return `${prefix}:${execution.hookId}:${stableTextDigest([
+    execution.status,
+    execution.exitCode === undefined ? '' : String(execution.exitCode),
+    execution.reason ?? '',
+  ].join('\n'))}`;
 }
 
 function defaultHooks(): HookDefinition[] {
