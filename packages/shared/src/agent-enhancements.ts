@@ -5,6 +5,7 @@ export type HookExecutionStatus = 'passed' | 'failed' | 'bypassed' | 'not-run';
 export type SubagentKind = 'reviewer' | 'test-writer' | 'diagnostics' | 'migration-planner';
 export type McpRiskLevel = 'read' | 'write' | 'network' | 'destructive';
 export type McpTrustAction = 'allow' | 'approval-required' | 'veto';
+export type PluginSupplyChainAction = 'allow' | 'veto';
 export type SkillToolKind =
   | 'read'
   | 'search'
@@ -20,6 +21,7 @@ export type SkillPermissionAction = 'allow' | 'deny';
 export const HOOK_POLICY_PROTOCOL = 'devseek.hook-policy/v1';
 export const SKILL_EXECUTION_PROTOCOL = 'devseek.skill-execution/v1';
 export const MCP_TRUST_PROTOCOL = 'devseek.mcp-trust/v1';
+export const PLUGIN_SUPPLY_CHAIN_PROTOCOL = 'devseek.plugin-supply-chain/v1';
 export const B4_EFFECT_AUTHORITY = 'B4-effect-authority';
 
 export interface HookDefinition {
@@ -188,6 +190,56 @@ export interface McpTrustReceipt {
   effectAuthority: typeof B4_EFFECT_AUTHORITY;
   capabilityEscapesAllowed: false;
   decisions: readonly McpTrustDecision[];
+  vetoes: readonly string[];
+  violations: readonly string[];
+  evidenceRefs: readonly string[];
+}
+
+export interface PluginManifestDescriptor {
+  id: string;
+  version: string;
+  manifestDigest: string;
+  signature?: string;
+  dependencies?: readonly string[];
+  updateFromVersion?: string;
+}
+
+export interface PluginRevocationRecord {
+  id: string;
+  version?: string;
+}
+
+export interface PluginSupplyChainInput {
+  manifests: readonly PluginManifestDescriptor[];
+  approvedManifests: readonly PluginManifestDescriptor[];
+  minimumVersions?: Readonly<Record<string, string>>;
+  revokedPlugins?: readonly PluginRevocationRecord[];
+  allowedDependencies?: Readonly<Record<string, readonly string[]>>;
+}
+
+export interface PluginSupplyChainDecision {
+  plugin: string;
+  action: PluginSupplyChainAction;
+  signatureVerified: boolean;
+  versionStatus: 'current' | 'stale';
+  dependencyClosure: readonly string[];
+  revocationStatus: 'active' | 'revoked';
+  updateChain: {
+    fromVersion?: string;
+    toVersion: string;
+    allowed: boolean;
+  };
+  manifestEvidenceRefs: readonly string[];
+  vetoes: readonly string[];
+  evidenceRefs: readonly string[];
+}
+
+export interface PluginSupplyChainReceipt {
+  protocol: typeof PLUGIN_SUPPLY_CHAIN_PROTOCOL;
+  settlementAuthority: 'parent-kernel';
+  effectAuthority: typeof B4_EFFECT_AUTHORITY;
+  singleOwner: 'PluginSupplyChainService';
+  decisions: readonly PluginSupplyChainDecision[];
   vetoes: readonly string[];
   violations: readonly string[];
   evidenceRefs: readonly string[];
@@ -532,6 +584,127 @@ function mcpToolEvidenceRef(tool: McpToolDescriptor, signatureMatches: boolean):
 
 function mcpCapabilityRef(tool: McpToolDescriptor): string {
   return `mcp-capability:${mcpToolId(tool)}:${stableTextDigest(tool.capabilityToken ?? '')}`;
+}
+
+export class PluginSupplyChainService {
+  evaluate(input: PluginSupplyChainInput): PluginSupplyChainReceipt {
+    const approved = new Map(input.approvedManifests.map(manifest => [pluginManifestId(manifest), manifest]));
+    const decisions = input.manifests.map((manifest): PluginSupplyChainDecision => {
+      const plugin = pluginManifestId(manifest);
+      const approvedManifest = approved.get(plugin);
+      const signatureVerified = Boolean(
+        manifest.signature
+        && approvedManifest
+        && manifest.signature === approvedManifest.signature
+        && manifest.manifestDigest === approvedManifest.manifestDigest,
+      );
+      const versionStatus = isPluginVersionStale(manifest, input.minimumVersions ?? {}) ? 'stale' : 'current';
+      const revocationStatus = isPluginRevoked(manifest, input.revokedPlugins ?? []) ? 'revoked' : 'active';
+      const dependencyClosure = manifest.dependencies ?? [];
+      const updateAllowed = !manifest.updateFromVersion || compareVersions(manifest.updateFromVersion, manifest.version) <= 0;
+      const vetoes = pluginVetoes({
+        manifest,
+        signatureVerified,
+        versionStatus,
+        revocationStatus,
+        dependencyClosure,
+        allowedDependencies: input.allowedDependencies ?? {},
+        updateAllowed,
+      });
+      const manifestEvidenceRefs = [pluginManifestEvidenceRef(manifest)];
+      return {
+        plugin,
+        action: vetoes.length > 0 ? 'veto' : 'allow',
+        signatureVerified,
+        versionStatus,
+        dependencyClosure,
+        revocationStatus,
+        updateChain: {
+          fromVersion: manifest.updateFromVersion,
+          toVersion: manifest.version,
+          allowed: updateAllowed,
+        },
+        manifestEvidenceRefs,
+        vetoes,
+        evidenceRefs: manifestEvidenceRefs,
+      };
+    });
+    const vetoes = uniqueStrings(decisions.flatMap(decision => decision.vetoes));
+    return {
+      protocol: PLUGIN_SUPPLY_CHAIN_PROTOCOL,
+      settlementAuthority: 'parent-kernel',
+      effectAuthority: B4_EFFECT_AUTHORITY,
+      singleOwner: 'PluginSupplyChainService',
+      decisions,
+      vetoes,
+      violations: vetoes,
+      evidenceRefs: uniqueStrings(decisions.flatMap(decision => decision.evidenceRefs)),
+    };
+  }
+}
+
+function pluginVetoes(input: {
+  manifest: PluginManifestDescriptor;
+  signatureVerified: boolean;
+  versionStatus: 'current' | 'stale';
+  revocationStatus: 'active' | 'revoked';
+  dependencyClosure: readonly string[];
+  allowedDependencies: Readonly<Record<string, readonly string[]>>;
+  updateAllowed: boolean;
+}): string[] {
+  const { manifest, signatureVerified, versionStatus, revocationStatus, dependencyClosure, allowedDependencies, updateAllowed } = input;
+  const plugin = pluginManifestId(manifest);
+  const vetoes: string[] = [];
+  if (!manifest.signature) vetoes.push(`plugin-unsigned-veto:${plugin}`);
+  else if (!signatureVerified) vetoes.push(`plugin-tampered-veto:${plugin}`);
+  if (versionStatus === 'stale') vetoes.push(`plugin-stale-version-veto:${plugin}`);
+  if (revocationStatus === 'revoked') vetoes.push(`plugin-revoked-veto:${plugin}`);
+  const allowed = new Set(allowedDependencies[manifest.id] ?? []);
+  for (const dependency of dependencyClosure) {
+    if (!allowed.has(dependency)) vetoes.push(`plugin-dependency-veto:${plugin}->${dependency}`);
+  }
+  if (!updateAllowed) vetoes.push(`plugin-downgrade-update-veto:${plugin}`);
+  return uniqueStrings(vetoes);
+}
+
+function pluginManifestId(manifest: Pick<PluginManifestDescriptor, 'id' | 'version'>): string {
+  return `${manifest.id}@${manifest.version}`;
+}
+
+function isPluginVersionStale(
+  manifest: PluginManifestDescriptor,
+  minimumVersions: Readonly<Record<string, string>>,
+): boolean {
+  const minimum = minimumVersions[manifest.id];
+  return Boolean(minimum && compareVersions(manifest.version, minimum) < 0);
+}
+
+function isPluginRevoked(manifest: PluginManifestDescriptor, revoked: readonly PluginRevocationRecord[]): boolean {
+  return revoked.some(record => record.id === manifest.id && (!record.version || record.version === manifest.version));
+}
+
+function pluginManifestEvidenceRef(manifest: PluginManifestDescriptor): string {
+  return `plugin-manifest:${pluginManifestId(manifest)}:${stableTextDigest([
+    manifest.manifestDigest,
+    manifest.signature ?? 'unsigned',
+    ...(manifest.dependencies ?? []),
+    manifest.updateFromVersion ?? '',
+  ].join('\n'))}`;
+}
+
+function compareVersions(left: string, right: string): number {
+  const leftParts = versionParts(left);
+  const rightParts = versionParts(right);
+  const length = Math.max(leftParts.length, rightParts.length);
+  for (let index = 0; index < length; index += 1) {
+    const delta = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
+    if (delta !== 0) return delta > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+function versionParts(version: string): number[] {
+  return version.split(/[.-]/).map(part => Number.parseInt(part, 10)).map(part => Number.isFinite(part) ? part : 0);
 }
 
 export class GitPrAssistantService {

@@ -4,6 +4,7 @@ import {
   GitPrAssistantService,
   HookPlanner,
   McpPermissionService,
+  PluginSupplyChainService,
   SkillDiscoveryService,
   SubagentRegistry,
 } from '../dist/index.js';
@@ -272,4 +273,94 @@ test('R3-07C McpPermissionService binds trust, risk, and capability to parent ef
   assert.ok(receipt.vetoes.includes('mcp-revoked-server-veto:box.uploadFile'));
   assert.ok(receipt.evidenceRefs.some(ref => ref.startsWith('mcp-capability:github.createPullRequest:')));
   assert.doesNotMatch(JSON.stringify(receipt), /secret-read-token|secret-network-token/);
+});
+
+test('R3-07D PluginSupplyChainService rejects unsigned tampered stale revoked and unsafe plugin updates', () => {
+  const service = new PluginSupplyChainService();
+  const receipt = service.evaluate({
+    approvedManifests: [
+      { id: 'signed-plugin', version: '1.2.0', manifestDigest: 'sha256:signed', signature: 'sig:signed' },
+      { id: 'tampered-plugin', version: '2.0.0', manifestDigest: 'sha256:expected', signature: 'sig:tampered' },
+      { id: 'stale-plugin', version: '0.9.0', manifestDigest: 'sha256:stale', signature: 'sig:stale' },
+      { id: 'revoked-plugin', version: '1.0.0', manifestDigest: 'sha256:revoked', signature: 'sig:revoked' },
+      { id: 'dep-plugin', version: '1.0.0', manifestDigest: 'sha256:dep', signature: 'sig:dep' },
+      { id: 'downgrade-plugin', version: '1.0.0', manifestDigest: 'sha256:downgrade', signature: 'sig:downgrade' },
+    ],
+    minimumVersions: {
+      'stale-plugin': '1.0.0',
+    },
+    revokedPlugins: [
+      { id: 'revoked-plugin', version: '1.0.0' },
+    ],
+    allowedDependencies: {
+      'signed-plugin': ['safe-dep@1.0.0'],
+      'dep-plugin': ['safe-dep@1.0.0'],
+    },
+    manifests: [
+      {
+        id: 'signed-plugin',
+        version: '1.2.0',
+        manifestDigest: 'sha256:signed',
+        signature: 'sig:signed',
+        dependencies: ['safe-dep@1.0.0'],
+        updateFromVersion: '1.1.0',
+      },
+      {
+        id: 'unsigned-plugin',
+        version: '1.0.0',
+        manifestDigest: 'sha256:unsigned',
+      },
+      {
+        id: 'tampered-plugin',
+        version: '2.0.0',
+        manifestDigest: 'sha256:actual',
+        signature: 'sig:tampered',
+      },
+      {
+        id: 'stale-plugin',
+        version: '0.9.0',
+        manifestDigest: 'sha256:stale',
+        signature: 'sig:stale',
+      },
+      {
+        id: 'revoked-plugin',
+        version: '1.0.0',
+        manifestDigest: 'sha256:revoked',
+        signature: 'sig:revoked',
+      },
+      {
+        id: 'dep-plugin',
+        version: '1.0.0',
+        manifestDigest: 'sha256:dep',
+        signature: 'sig:dep',
+        dependencies: ['unknown-dep@1.0.0'],
+      },
+      {
+        id: 'downgrade-plugin',
+        version: '1.0.0',
+        manifestDigest: 'sha256:downgrade',
+        signature: 'sig:downgrade',
+        updateFromVersion: '2.0.0',
+      },
+    ],
+  });
+
+  assert.equal(receipt.protocol, 'devseek.plugin-supply-chain/v1');
+  assert.equal(receipt.settlementAuthority, 'parent-kernel');
+  assert.equal(receipt.effectAuthority, 'B4-effect-authority');
+  assert.equal(receipt.singleOwner, 'PluginSupplyChainService');
+  assert.equal(receipt.decisions.find(decision => decision.plugin === 'signed-plugin@1.2.0')?.action, 'allow');
+  assert.equal(receipt.decisions.find(decision => decision.plugin === 'unsigned-plugin@1.0.0')?.action, 'veto');
+  assert.equal(receipt.decisions.find(decision => decision.plugin === 'tampered-plugin@2.0.0')?.action, 'veto');
+  assert.equal(receipt.decisions.find(decision => decision.plugin === 'stale-plugin@0.9.0')?.action, 'veto');
+  assert.equal(receipt.decisions.find(decision => decision.plugin === 'revoked-plugin@1.0.0')?.action, 'veto');
+  assert.equal(receipt.decisions.find(decision => decision.plugin === 'dep-plugin@1.0.0')?.action, 'veto');
+  assert.equal(receipt.decisions.find(decision => decision.plugin === 'downgrade-plugin@1.0.0')?.action, 'veto');
+  assert.ok(receipt.vetoes.includes('plugin-unsigned-veto:unsigned-plugin@1.0.0'));
+  assert.ok(receipt.vetoes.includes('plugin-tampered-veto:tampered-plugin@2.0.0'));
+  assert.ok(receipt.vetoes.includes('plugin-stale-version-veto:stale-plugin@0.9.0'));
+  assert.ok(receipt.vetoes.includes('plugin-revoked-veto:revoked-plugin@1.0.0'));
+  assert.ok(receipt.vetoes.includes('plugin-dependency-veto:dep-plugin@1.0.0->unknown-dep@1.0.0'));
+  assert.ok(receipt.vetoes.includes('plugin-downgrade-update-veto:downgrade-plugin@1.0.0'));
+  assert.ok(receipt.evidenceRefs.some(ref => ref.startsWith('plugin-manifest:signed-plugin@1.2.0:')));
 });

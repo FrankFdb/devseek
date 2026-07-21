@@ -768,6 +768,29 @@ test('R3-07C: MCP trust and permission reuse B4 Effect authority without capabil
   assertContains(sharedTests, 'R3-07C McpPermissionService', 'R3-07C must have MCP trust failure-first oracle');
 });
 
+test('R3-07D: Plugin supply-chain policy rejects unsigned, tampered, stale, and revoked plugins', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'PLUGIN_SUPPLY_CHAIN_PROTOCOL', 'Plugin supply-chain must expose a versioned protocol marker');
+  assertContains(sharedEnhancements, 'PluginSupplyChainReceipt', 'Plugin supply-chain must produce a receipt');
+  assertContains(sharedEnhancements, 'PluginSupplyChainService', 'Plugin supply-chain must have one explicit owner');
+  assertContains(sharedEnhancements, "settlementAuthority: 'parent-kernel'", 'Plugin supply-chain must remain parent Kernel-owned');
+  assertContains(sharedEnhancements, 'B4_EFFECT_AUTHORITY', 'Plugin supply-chain effects must reuse B4 Effect authority');
+  assertContains(sharedEnhancements, 'manifestEvidenceRefs', 'Plugin manifest evidence must be retained');
+  assertContains(sharedEnhancements, 'signatureVerified', 'Plugin signature verification must be explicit');
+  assertContains(sharedEnhancements, 'dependencyClosure', 'Plugin dependency closure must be explicit');
+  assertContains(sharedEnhancements, 'revocationStatus', 'Plugin revocation status must be explicit');
+  assertContains(sharedEnhancements, 'updateChain', 'Plugin update chain must be explicit');
+  assertContains(sharedEnhancements, 'plugin-unsigned-veto', 'Unsigned plugins must be vetoed');
+  assertContains(sharedEnhancements, 'plugin-tampered-veto', 'Tampered plugins must be vetoed');
+  assertContains(sharedEnhancements, 'plugin-stale-version-veto', 'Stale plugins must be vetoed');
+  assertContains(sharedEnhancements, 'plugin-revoked-veto', 'Revoked plugins must be vetoed');
+  assertContains(sharedEnhancements, 'plugin-dependency-veto', 'Unsafe plugin dependencies must be vetoed');
+  assertContains(sharedEnhancements, 'plugin-downgrade-update-veto', 'Unsafe plugin downgrade updates must be vetoed');
+  assertContains(sharedTests, 'R3-07D PluginSupplyChainService', 'R3-07D must have plugin supply-chain failure-first oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
