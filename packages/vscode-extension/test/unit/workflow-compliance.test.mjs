@@ -857,6 +857,18 @@ test('R3-07F-mcp: Extension profile planner binds MCP plans to MCP trust schema'
   assertContains(sharedTests, 'R3-07F-mcp ExtensionProfilePlanService', 'R3-07F-mcp must have profile-plan failure-first oracle');
 });
 
+test('R3-07F-plugin: Extension profile planner binds plugin plans to supply-chain schema', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'plugin: PLUGIN_SUPPLY_CHAIN_PROTOCOL', 'Plugin profile plans must bind to plugin supply-chain schema');
+  assertContains(sharedEnhancements, 'denominatorExecutionAllowed: false', 'Plugin profile plan must not execute its denominator');
+  assertContains(sharedEnhancements, 'slotExecutionAllowed: false', 'Plugin profile plan must not execute slots');
+  assertContains(sharedEnhancements, 'aggregateExecutionAllowed: false', 'Plugin profile plan must not aggregate slots');
+  assertContains(sharedEnhancements, 'profile-plan-schema-kind-mismatch', 'Plugin kind/schema mismatches must be blocked');
+  assertContains(sharedTests, 'R3-07F-plugin ExtensionProfilePlanService', 'R3-07F-plugin must have profile-plan failure-first oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

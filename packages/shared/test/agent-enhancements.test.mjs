@@ -277,6 +277,36 @@ test('R3-07F-mcp ExtensionProfilePlanService binds MCP profile plans to trust sc
   assert.notEqual(invalidKind.profileId, 'R3-07F-mcp-PROFILE-PLAN');
 });
 
+test('R3-07F-plugin ExtensionProfilePlanService binds plugin profile plans to supply-chain schema', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'plugin',
+    candidateCommit: 'c7bbce6d924ddc58e52b03cbf36f77e39df3f7c1',
+    schemaVersion: 'devseek.plugin-supply-chain/v1',
+  });
+
+  assert.equal(plan.profileId, 'R3-07F-plugin-PROFILE-PLAN');
+  assert.equal(plan.kind, 'plugin');
+  assert.equal(plan.status, 'signed');
+  assert.equal(plan.denominatorExecutionAllowed, false);
+  assert.equal(plan.slotExecutionAllowed, false);
+  assert.equal(plan.aggregateExecutionAllowed, false);
+  assert.equal(plan.taskSlots.length, 20);
+  assert.equal(plan.permissionFaultSlots.length, 100);
+  assert.equal(plan.taskSlots[0].slotId, 'R3-07S-plugin-TASK-001');
+  assert.equal(plan.permissionFaultSlots[99].slotId, 'R3-07S-plugin-PERMISSION-FAULT-100');
+  assert.ok(plan.slotIds.every(slotId => slotId.startsWith('R3-07S-plugin-')));
+  assert.ok(plan.oracleCatalog.oracleRefs.every(ref => ref.includes(':plugin:')));
+
+  const wrongSchema = service.createProfilePlan({
+    kind: 'plugin',
+    candidateCommit: 'c7bbce6d924ddc58e52b03cbf36f77e39df3f7c1',
+    schemaVersion: 'devseek.mcp-trust/v1',
+  });
+  assert.equal(wrongSchema.status, 'blocked');
+  assert.ok(wrongSchema.violations.includes('profile-plan-schema-kind-mismatch:plugin'));
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({
