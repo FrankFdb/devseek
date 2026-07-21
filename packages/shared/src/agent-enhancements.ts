@@ -672,7 +672,7 @@ function freezeSkillExecutionReceipt(receipt: SkillExecutionReceipt): SkillExecu
   return Object.freeze(receipt);
 }
 
-const SKILL_METADATA_BODY_SECTION_MARKER = /^(?:(?:#{1,}\s+(?:examples?|samples?|usage|notes?)\b(?:\s*:)?(?:\s.*)?)|#{2,}\s+|(?:(?:examples?|samples?|usage|notes?)\b|for\s+(?:example|instance)\b|e\.g\.)(?:\s*:)?(?:\s.*)?)$/iu;
+const SKILL_METADATA_BODY_SECTION_MARKER = /^(?:(?:#{1,}\s+(?:examples?|samples?|usage|notes?|tips?)\b(?:\s*:)?(?:\s.*)?)|#{2,}\s+|(?:(?:examples?|samples?|usage|notes?|tips?)\b|for\s+(?:example|instance)\b|e\.g\.)(?:\s*:)?(?:\s.*)?)$/iu;
 const SKILL_METADATA_BODY_SEPARATOR = /^(?:-{3,}|\*{3,}|_{3,})$/u;
 const SKILL_METADATA_MARKDOWN_HEADING = /^#{1,6}\s+\S/u;
 const SKILL_METADATA_TITLE_HEADING = /^#\s+\S/u;

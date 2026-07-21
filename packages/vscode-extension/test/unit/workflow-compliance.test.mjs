@@ -1355,6 +1355,14 @@ test('R3-07S-skill-PERMISSION-FAULT-029: subsequent top-level Markdown headings 
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-029 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-029 must have top-level heading body metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-030: tips body labels stop Skill metadata parsing', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'tips?', 'R3-07S-skill-PERMISSION-FAULT-030 must treat tips body labels as metadata boundaries');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-030 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-030 must have tips body metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
