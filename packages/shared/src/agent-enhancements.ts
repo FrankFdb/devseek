@@ -30,6 +30,8 @@ export const PLUGIN_SUPPLY_CHAIN_PROTOCOL = 'devseek.plugin-supply-chain/v1';
 export const SUBAGENT_CONTRACT_PROTOCOL = 'devseek.subagent-contract/v1';
 export const EXTENSION_PROFILE_PLAN_PROTOCOL = 'devseek.extension-profile-plan/v1';
 export const EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL = 'devseek.extension-profile-slot-execution/v1';
+const EXTENSION_PROFILE_SLOT_EFFECT_REF_PREFIX = 'extension-profile-slot-effect';
+const EXTENSION_PROFILE_SLOT_RECEIPT_REF_PREFIX = 'extension-profile-slot-receipt';
 export const B4_EFFECT_AUTHORITY = 'B4-effect-authority';
 
 export interface HookDefinition {
@@ -312,8 +314,6 @@ export interface ExtensionProfileSlotExecutionInput {
   attemptId: string;
   status: Exclude<ExtensionProfileSlotExecutionStatus, 'blocked'>;
   childReceipt?: ExtensionProfileSlotChildReceipt;
-  effectRefs?: readonly string[];
-  receiptRefs?: readonly string[];
   failureRefs?: readonly string[];
   vetoes?: readonly string[];
   previousReceipts?: readonly ExtensionProfileSlotExecutionReceipt[];
@@ -967,13 +967,34 @@ export class ExtensionProfilePlanService {
     const status: ExtensionProfileSlotExecutionStatus = blockingVetoes.length > 0 ? 'blocked' : inputStatus;
     const terminalVetoes = inputStatus === 'vetoed' ? inputVetoes : blockingVetoes;
     const vetoes = status === 'blocked' ? blockingVetoes : terminalVetoes;
-    const effectRefs = status === 'passed' ? uniqueStrings(input.effectRefs ?? []) : [];
-    const receiptRefs = status === 'passed' ? uniqueStrings(input.receiptRefs ?? []) : [];
     const childEvidenceRefsForReceipt = status === 'passed' ? childEvidenceRefs : [];
+    const oracleRef = slot?.oracleRef ?? '';
+    const effectRefs = status === 'passed'
+      ? createExtensionProfileSlotEffectRefs({
+        plan,
+        slot,
+        slotId,
+        attemptId,
+        childProtocol,
+        childEvidenceRefs: childEvidenceRefsForReceipt,
+        oracleRef,
+      })
+      : [];
+    const receiptRefs = status === 'passed'
+      ? createExtensionProfileSlotReceiptRefs({
+        plan,
+        slot,
+        slotId,
+        attemptId,
+        childProtocol,
+        childEvidenceRefs: childEvidenceRefsForReceipt,
+        oracleRef,
+        effectRefs,
+      })
+      : [];
     const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : [];
     const failureRefsForReceipt = status === 'failed' ? failureRefs : [];
     const vetoEvidenceRefs = status === 'vetoed' || status === 'blocked' ? vetoes : [];
-    const oracleRef = slot?.oracleRef ?? '';
 
     return {
       protocol: EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL,
@@ -1015,6 +1036,54 @@ export class ExtensionProfilePlanService {
       ]),
     };
   }
+}
+
+type ExtensionProfileSlotSuccessRefInput = {
+  plan: ExtensionProfilePlanReceipt;
+  slot: ExtensionProfileSlot | undefined;
+  slotId: string;
+  attemptId: string;
+  childProtocol: string;
+  childEvidenceRefs: readonly string[];
+  oracleRef: string;
+};
+
+function createExtensionProfileSlotEffectRefs(input: ExtensionProfileSlotSuccessRefInput): string[] {
+  return createExtensionProfileSlotSuccessRefs('effect', input);
+}
+
+function createExtensionProfileSlotReceiptRefs(input: ExtensionProfileSlotSuccessRefInput & {
+  effectRefs: readonly string[];
+}): string[] {
+  return createExtensionProfileSlotSuccessRefs('receipt', input, { effectRefs: input.effectRefs });
+}
+
+function createExtensionProfileSlotSuccessRefs(
+  kind: 'effect' | 'receipt',
+  input: ExtensionProfileSlotSuccessRefInput,
+  extra: Record<string, unknown> = {},
+): string[] {
+  const slotId = input.slot?.slotId ?? input.slotId;
+  const prefix = kind === 'effect'
+    ? EXTENSION_PROFILE_SLOT_EFFECT_REF_PREFIX
+    : EXTENSION_PROFILE_SLOT_RECEIPT_REF_PREFIX;
+  const digest = stableTextDigest(JSON.stringify({
+    protocol: EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL,
+    [`${kind}Authority`]: 'ExtensionProfilePlanService',
+    profileId: input.plan.profileId,
+    kind: input.plan.kind,
+    candidateCommit: input.plan.candidateCommit,
+    schemaVersion: input.plan.schemaVersion,
+    slotId,
+    slotKind: input.slot?.slotKind ?? 'task',
+    index: input.slot?.index ?? 0,
+    attemptId: input.attemptId,
+    oracleRef: input.oracleRef,
+    childProtocol: input.childProtocol,
+    childEvidenceRefs: input.childEvidenceRefs,
+    ...extra,
+  }));
+  return [`${prefix}:${slotId}:${digest}`];
 }
 
 function freezeExtensionProfilePlan(plan: ExtensionProfilePlanReceipt): ExtensionProfilePlanReceipt {

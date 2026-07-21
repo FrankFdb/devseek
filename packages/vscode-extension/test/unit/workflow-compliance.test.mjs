@@ -933,8 +933,8 @@ test('R3-07S-skill-TASK-005: failed slots must be failure-only evidence', () => 
   const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
 
   assertContains(sharedEnhancements, 'slot-failure-evidence-missing-veto', 'R3-07S-skill-TASK-005 must veto failed slots without failure evidence');
-  assertContains(sharedEnhancements, "status === 'passed' ? uniqueStrings(input.effectRefs ?? []) : []", 'R3-07S-skill-TASK-005 must keep effect refs pass-only');
-  assertContains(sharedEnhancements, "status === 'passed' ? uniqueStrings(input.receiptRefs ?? []) : []", 'R3-07S-skill-TASK-005 must keep receipt refs pass-only');
+  assertContains(sharedEnhancements, "const effectRefs = status === 'passed'", 'R3-07S-skill-TASK-005 must keep effect refs pass-only');
+  assertContains(sharedEnhancements, "const receiptRefs = status === 'passed'", 'R3-07S-skill-TASK-005 must keep receipt refs pass-only');
   assertContains(sharedTests, 'R3-07S-skill-TASK-005 ExtensionProfilePlanService', 'R3-07S-skill-TASK-005 must have failure-only slot oracle');
 });
 
@@ -1021,6 +1021,19 @@ test('R3-07S-skill-TASK-013: skill child receipts must be owner-authentic', () =
   assertContains(sharedEnhancements, 'skillExecutionReceiptAuthenticityVetoes', 'R3-07S-skill-TASK-013 must verify skill child receipt authenticity');
   assertContains(sharedEnhancements, 'slot-child-origin-mismatch-veto', 'R3-07S-skill-TASK-013 must reject forged child receipts');
   assertContains(sharedTests, 'R3-07S-skill-TASK-013 ExtensionProfilePlanService', 'R3-07S-skill-TASK-013 must have forged-child oracle');
+});
+
+test('R3-07S-skill-TASK-014: passed slot success refs must be owner-derived', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'createExtensionProfileSlotEffectRefs', 'R3-07S-skill-TASK-014 must derive effect refs inside the slot owner');
+  assertContains(sharedEnhancements, 'createExtensionProfileSlotReceiptRefs', 'R3-07S-skill-TASK-014 must derive receipt refs inside the slot owner');
+  assertContains(sharedEnhancements, 'extension-profile-slot-effect', 'R3-07S-skill-TASK-014 must use owner-scoped effect evidence refs');
+  assertContains(sharedEnhancements, 'extension-profile-slot-receipt', 'R3-07S-skill-TASK-014 must use owner-scoped receipt evidence refs');
+  assertDoesNotContain(sharedEnhancements, 'uniqueStrings(input.effectRefs ?? [])', 'R3-07S-skill-TASK-014 must not trust caller effect refs');
+  assertDoesNotContain(sharedEnhancements, 'uniqueStrings(input.receiptRefs ?? [])', 'R3-07S-skill-TASK-014 must not trust caller receipt refs');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-014 ExtensionProfilePlanService', 'R3-07S-skill-TASK-014 must have caller-success-ref oracle');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -375,8 +375,10 @@ test('R3-07S-skill-TASK-001 ExtensionProfilePlanService records one append-only 
   assert.equal(receipt.replacesPriorAttempt, false);
   assert.equal(receipt.priorAttemptPolicy, 'append-only-no-replacement');
   assert.equal(receipt.oracleRef, plan.taskSlots[0].oracleRef);
-  assert.deepEqual(receipt.effectRefs, ['skill-discovery:read:SKILL.md']);
-  assert.deepEqual(receipt.receiptRefs, ['skill-execution:receipt:task-001']);
+  assert.equal(receipt.effectRefs.length, 1);
+  assert.match(receipt.effectRefs[0], /^extension-profile-slot-effect:R3-07S-skill-TASK-001:/);
+  assert.equal(receipt.receiptRefs.length, 1);
+  assert.match(receipt.receiptRefs[0], /^extension-profile-slot-receipt:R3-07S-skill-TASK-001:/);
   assert.ok(receipt.evidenceRefs.includes(plan.taskSlots[0].oracleRef));
 
   const failed = service.recordSlotExecution({
@@ -1103,6 +1105,47 @@ test('R3-07S-skill-TASK-013 ExtensionProfilePlanService rejects forged skill chi
   });
   assert.equal(passed.status, 'passed');
   assert.deepEqual(passed.childEvidenceRefs, realChildReceipt.evidenceRefs);
+});
+
+test('R3-07S-skill-TASK-014 ExtensionProfilePlanService derives passed slot success refs', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: 'abababababababababababababababababababab',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const realChildReceipt = new SkillDiscoveryService().planExecution({
+    prompt: 'please use the react skill',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: 'description: Build React views\ntriggers: react\ntool_kinds: read',
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-014',
+    attemptId: 'skill-task-014-real-child',
+    status: 'passed',
+    childReceipt: realChildReceipt,
+    effectRefs: ['skill-effect:caller-forged-success-ref'],
+    receiptRefs: ['skill-receipt:caller-forged-success-ref'],
+  });
+
+  assert.equal(receipt.status, 'passed');
+  assert.equal(receipt.effectRefs.length, 1);
+  assert.match(receipt.effectRefs[0], /^extension-profile-slot-effect:R3-07S-skill-TASK-014:/);
+  assert.equal(receipt.receiptRefs.length, 1);
+  assert.match(receipt.receiptRefs[0], /^extension-profile-slot-receipt:R3-07S-skill-TASK-014:/);
+  assert.ok(!receipt.effectRefs.includes('skill-effect:caller-forged-success-ref'));
+  assert.ok(!receipt.receiptRefs.includes('skill-receipt:caller-forged-success-ref'));
+  assert.ok(!receipt.evidenceRefs.includes('skill-effect:caller-forged-success-ref'));
+  assert.ok(!receipt.evidenceRefs.includes('skill-receipt:caller-forged-success-ref'));
+  assert.ok(receipt.evidenceRefs.includes(receipt.effectRefs[0]));
+  assert.ok(receipt.evidenceRefs.includes(receipt.receiptRefs[0]));
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
