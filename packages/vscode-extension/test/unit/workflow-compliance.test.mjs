@@ -1107,6 +1107,16 @@ test('R3-07S-skill-PERMISSION-FAULT-001: permission/fault slots must own expecte
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-001 must have expected permission denial oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-002: permission/fault evidence cannot be reused across slots', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'settledPermissionFaultEvidenceKeys', 'R3-07S-skill-PERMISSION-FAULT-002 must keep permission/fault evidence reuse state in the profile owner');
+  assertContains(sharedEnhancements, 'createExtensionProfilePermissionFaultEvidenceKey', 'R3-07S-skill-PERMISSION-FAULT-002 must derive reusable evidence identity inside the profile owner');
+  assertContains(sharedEnhancements, 'slot-permission-fault-evidence-reuse-veto', 'R3-07S-skill-PERMISSION-FAULT-002 must veto reused permission/fault evidence across slots');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-002 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-002 must have evidence reuse oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

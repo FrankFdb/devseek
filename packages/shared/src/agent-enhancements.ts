@@ -843,6 +843,7 @@ export class ExtensionProfilePlanService {
   private readonly ownedProfilePlans = new WeakSet<ExtensionProfilePlanReceipt>();
   private readonly ownedSlotExecutionReceipts = new WeakSet<ExtensionProfileSlotExecutionReceipt>();
   private readonly settledSlotExecutionReceipts: ExtensionProfileSlotExecutionReceipt[] = [];
+  private readonly settledPermissionFaultEvidenceKeys = new Set<string>();
 
   createProfilePlan(input: ExtensionProfilePlanInput): ExtensionProfilePlanReceipt {
     const requestedKind = String(input.kind ?? '').trim() as ExtensionProfileKind;
@@ -953,6 +954,14 @@ export class ExtensionProfilePlanService {
     const unexpectedChildViolations = isPermissionFaultSlot
       ? childViolations.filter(violation => !expectedSkillPermissionFaultViolations.includes(violation))
       : childViolations;
+    const permissionFaultEvidenceKey = expectedSkillPermissionFaultViolations.length > 0
+      ? createExtensionProfilePermissionFaultEvidenceKey({
+        plan: profileProjection,
+        childProtocol,
+        childEvidenceRefs,
+        childViolations: expectedSkillPermissionFaultViolations,
+      })
+      : '';
     const childReceiptVetoes = childReceiptRequired
       ? uniqueStrings([
         ...(childReceipt ? [] : [`slot-child-receipt-missing-veto:${slotId}`]),
@@ -961,6 +970,7 @@ export class ExtensionProfilePlanService {
         ...(childReceipt && childSettlementAuthority !== 'parent-kernel' ? [`slot-child-settlement-authority-veto:${slotId}`] : []),
         ...(unexpectedChildViolations.length > 0 ? [`slot-child-receipt-not-clean-veto:${slotId}`] : []),
         ...(childReceipt && isPermissionFaultSlot && expectedSkillPermissionFaultViolations.length === 0 ? [`slot-child-permission-fault-missing-veto:${slotId}`] : []),
+        ...(permissionFaultEvidenceKey && this.settledPermissionFaultEvidenceKeys.has(permissionFaultEvidenceKey) ? [`slot-permission-fault-evidence-reuse-veto:${slotId}`] : []),
         ...childAuthenticityVetoes,
       ])
       : [];
@@ -1125,6 +1135,9 @@ export class ExtensionProfilePlanService {
     if (frozenReceipt.status !== 'blocked') {
       this.settledSlotExecutionReceipts.push(frozenReceipt);
     }
+    if (frozenReceipt.status === 'passed' && frozenReceipt.slotKind === 'permission-fault' && permissionFaultEvidenceKey) {
+      this.settledPermissionFaultEvidenceKeys.add(permissionFaultEvidenceKey);
+    }
     return frozenReceipt;
   }
 }
@@ -1254,6 +1267,25 @@ function createExtensionProfileSlotPermissionFaultRefs(input: ExtensionProfileSl
     childEvidenceRefs: input.childEvidenceRefs,
     childViolations: input.childViolations,
   });
+}
+
+function createExtensionProfilePermissionFaultEvidenceKey(input: {
+  plan: ExtensionProfilePlanProjection;
+  childProtocol: string;
+  childEvidenceRefs: readonly string[];
+  childViolations: readonly string[];
+}): string {
+  return stableTextDigest(JSON.stringify({
+    protocol: EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL,
+    evidenceKeyAuthority: 'ExtensionProfilePlanService',
+    profileId: input.plan.profileId,
+    kind: input.plan.kind,
+    candidateCommit: input.plan.candidateCommit,
+    schemaVersion: input.plan.schemaVersion,
+    childProtocol: input.childProtocol,
+    childEvidenceRefs: input.childEvidenceRefs,
+    childViolations: input.childViolations,
+  }));
 }
 
 function createExtensionProfileSlotFailureRefs(input: {

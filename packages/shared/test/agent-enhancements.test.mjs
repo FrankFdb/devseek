@@ -1397,14 +1397,8 @@ test('R3-07S-skill-TASK-020 ExtensionProfilePlanService remembers owner-issued s
   assert.deepEqual(replacementWithoutCallerReplay.failureRefs, []);
 });
 
-test('R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService accepts expected skill permission denial as slot evidence', () => {
-  const service = new ExtensionProfilePlanService();
-  const plan = service.createProfilePlan({
-    kind: 'skill',
-    candidateCommit: '1357913579135791357913579135791357913579',
-    schemaVersion: SKILL_EXECUTION_PROTOCOL,
-  });
-  const childReceipt = new SkillDiscoveryService().planExecution({
+function createDeniedEditSkillReceipt() {
+  return new SkillDiscoveryService().planExecution({
     prompt: 'please use react and edit the component',
     candidates: [
       {
@@ -1420,6 +1414,16 @@ test('R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService accepts expe
     ],
     requestedToolKinds: ['read', 'edit'],
   });
+}
+
+test('R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService accepts expected skill permission denial as slot evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '1357913579135791357913579135791357913579',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createDeniedEditSkillReceipt();
   assert.ok(childReceipt.violations.includes('skill-tool-kind-denied:edit'));
 
   const receipt = service.recordSlotExecution({
@@ -1438,6 +1442,38 @@ test('R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService accepts expe
   assert.deepEqual(receipt.receiptRefs, []);
   assert.match(receipt.permissionFaultRefs[0], /^extension-profile-slot-permission-fault:R3-07S-skill-PERMISSION-FAULT-001:/);
   assert.ok(receipt.evidenceRefs.includes(receipt.permissionFaultRefs[0]));
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-002 ExtensionProfilePlanService rejects reused permission fault evidence across slots', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '2468024680246802468024680246802468024680',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createDeniedEditSkillReceipt();
+
+  const first = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-001',
+    attemptId: 'skill-permission-fault-002-first-denied-edit',
+    status: 'passed',
+    childReceipt,
+  });
+  assert.equal(first.status, 'passed');
+
+  const reused = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-002',
+    attemptId: 'skill-permission-fault-002-reused-denied-edit',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(reused.status, 'blocked');
+  assert.ok(reused.vetoes.includes('slot-permission-fault-evidence-reuse-veto:R3-07S-skill-PERMISSION-FAULT-002'));
+  assert.deepEqual(reused.permissionFaultRefs, []);
+  assert.deepEqual(reused.effectRefs, []);
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
