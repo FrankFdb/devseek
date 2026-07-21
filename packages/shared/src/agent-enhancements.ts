@@ -1,6 +1,19 @@
 export type HookStage = 'beforeEdit' | 'afterEdit' | 'beforeValidate' | 'afterValidate';
 export type SubagentKind = 'reviewer' | 'test-writer' | 'diagnostics' | 'migration-planner';
 export type McpRiskLevel = 'read' | 'write' | 'network' | 'destructive';
+export type SkillToolKind =
+  | 'read'
+  | 'search'
+  | 'diagnostics'
+  | 'plan'
+  | 'memory'
+  | 'edit'
+  | 'terminal'
+  | 'network'
+  | 'mcp';
+export type SkillPermissionAction = 'allow' | 'deny';
+
+export const SKILL_EXECUTION_PROTOCOL = 'devseek.skill-execution/v1';
 
 export interface HookDefinition {
   id: string;
@@ -27,6 +40,47 @@ export interface SkillDescriptor {
   path: string;
   description: string;
   triggers: readonly string[];
+  inputSchema?: Record<string, unknown>;
+  declaredToolKinds?: readonly SkillToolKind[];
+  completionClaimRequested?: boolean;
+  parseIssues?: readonly string[];
+  evidenceRef?: string;
+}
+
+export interface SkillExecutionPlanInput {
+  prompt: string;
+  candidates: readonly SkillCandidate[];
+  requestedToolKinds?: readonly SkillToolKind[];
+}
+
+export interface SkillPermissionDecision {
+  kind: SkillToolKind;
+  action: SkillPermissionAction;
+  reason: string;
+}
+
+export interface SkillExecutionSkill {
+  name: string;
+  path: string;
+  description: string;
+  triggers: readonly string[];
+  selectedByTrigger: string;
+  inputSchema: Record<string, unknown>;
+  declaredToolKinds: readonly SkillToolKind[];
+  completionClaimsAllowed: false;
+  evidenceRefs: readonly string[];
+}
+
+export interface SkillExecutionReceipt {
+  protocol: typeof SKILL_EXECUTION_PROTOCOL;
+  settlementAuthority: 'parent-kernel';
+  canCompleteTask: false;
+  loadedSkills: readonly SkillExecutionSkill[];
+  permissionDecisions: readonly SkillPermissionDecision[];
+  blockedReasons: readonly string[];
+  violations: readonly string[];
+  evidenceRefs: readonly string[];
+  unmatchedSkillCount: number;
 }
 
 export interface SubagentDescriptor {
@@ -65,6 +119,18 @@ export interface GitPrSummary {
 }
 
 const SENSITIVE_HOOK_DENY_PATTERNS = ['.env', '*.pem', '*.key', '*secret*'] as const;
+const SKILL_ALLOWED_TOOL_KINDS: readonly SkillToolKind[] = ['read', 'search', 'diagnostics', 'plan'];
+const ALL_SKILL_TOOL_KINDS: readonly SkillToolKind[] = [
+  'read',
+  'search',
+  'diagnostics',
+  'plan',
+  'memory',
+  'edit',
+  'terminal',
+  'network',
+  'mcp',
+];
 
 export class HookPlanner {
   plan(stage: HookStage, changedFiles: readonly string[], hooks: readonly HookDefinition[] = defaultHooks()): HookPlan {
@@ -91,6 +157,45 @@ export class SkillDiscoveryService {
     return skills.filter(skill => skill.triggers.some(trigger => normalized.includes(trigger.toLowerCase())));
   }
 
+  planExecution(input: SkillExecutionPlanInput): SkillExecutionReceipt {
+    const discovered = this.discover(input.candidates);
+    const selected = this.selectForExecution(input.prompt, discovered);
+    const loadedSkills: SkillExecutionSkill[] = selected.map(({ skill, selectedByTrigger }) => ({
+      name: skill.name,
+      path: skill.path,
+      description: skill.description,
+      triggers: skill.triggers,
+      selectedByTrigger,
+      inputSchema: skill.inputSchema ?? defaultSkillInputSchema(),
+      declaredToolKinds: skill.declaredToolKinds ?? [],
+      completionClaimsAllowed: false,
+      evidenceRefs: [skill.evidenceRef ?? skillEvidenceRef(skill.path, skill.description)],
+    }));
+    const permissionDecisions = planSkillPermissions(loadedSkills, input.requestedToolKinds ?? []);
+    const violations = uniqueStrings([
+      ...loadedSkills.flatMap(skill => (
+        selected.find(item => item.skill.path === skill.path)?.skill.completionClaimRequested
+          ? ['skill-completion-claim-rejected']
+          : []
+      )),
+      ...selected.flatMap(item => item.skill.parseIssues ?? []),
+      ...permissionDecisions
+        .filter(decision => decision.action === 'deny')
+        .map(decision => decision.reason),
+    ]);
+    return {
+      protocol: SKILL_EXECUTION_PROTOCOL,
+      settlementAuthority: 'parent-kernel',
+      canCompleteTask: false,
+      loadedSkills,
+      permissionDecisions,
+      blockedReasons: loadedSkills.length === 0 && discovered.length > 0 ? ['unmatched-skill-not-loaded'] : [],
+      violations,
+      evidenceRefs: uniqueStrings(loadedSkills.flatMap(skill => skill.evidenceRefs)),
+      unmatchedSkillCount: Math.max(discovered.length - loadedSkills.length, 0),
+    };
+  }
+
   private parse(candidate: SkillCandidate): SkillDescriptor {
     const lines = candidate.content.split(/\r?\n/);
     const heading = lines.find(line => /^#\s+/.test(line))?.replace(/^#\s+/, '').trim();
@@ -102,12 +207,29 @@ export class SkillDiscoveryService {
       .flatMap(line => line.replace(/^triggers\s*:\s*/i, '').split(','))
       .map(trigger => trigger.trim())
       .filter(Boolean);
+    const schema = parseSkillInputSchema(lines, candidate.path);
     return {
       name: heading || candidate.path.split('/').slice(-2, -1)[0] || 'skill',
       path: candidate.path,
       description,
       triggers: triggers.length > 0 ? triggers : inferTriggers(candidate.path, description),
+      inputSchema: schema.inputSchema,
+      declaredToolKinds: parseSkillToolKinds(lines),
+      completionClaimRequested: parseCompletionClaimRequested(lines),
+      parseIssues: schema.issue ? [schema.issue] : [],
+      evidenceRef: skillEvidenceRef(candidate.path, candidate.content),
     };
+  }
+
+  private selectForExecution(prompt: string, skills: readonly SkillDescriptor[]): Array<{
+    skill: SkillDescriptor;
+    selectedByTrigger: string;
+  }> {
+    const normalized = prompt.toLowerCase();
+    return skills.flatMap((skill) => {
+      const selectedByTrigger = skill.triggers.find(trigger => normalized.includes(trigger.toLowerCase()));
+      return selectedByTrigger ? [{ skill, selectedByTrigger }] : [];
+    });
   }
 }
 
@@ -238,6 +360,83 @@ function matchesGlob(glob: string, file: string): boolean {
 function inferTriggers(path: string, description: string): string[] {
   const words = `${path} ${description}`.toLowerCase().match(/[a-z0-9_-]{3,}/g) ?? [];
   return [...new Set(words)].slice(0, 8);
+}
+
+function parseSkillInputSchema(lines: readonly string[], skillPath: string): {
+  inputSchema: Record<string, unknown>;
+  issue?: string;
+} {
+  const schemaLine = lines.find(line => /^(?:input_schema|inputSchema|schema)\s*:/i.test(line));
+  if (!schemaLine) return { inputSchema: defaultSkillInputSchema() };
+  const rawSchema = schemaLine.replace(/^(?:input_schema|inputSchema|schema)\s*:\s*/i, '').trim();
+  try {
+    const parsed = JSON.parse(rawSchema);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return { inputSchema: parsed as Record<string, unknown> };
+    }
+  } catch {
+    // Fall through to a fail-closed schema issue below.
+  }
+  return {
+    inputSchema: defaultSkillInputSchema(),
+    issue: `skill-schema-invalid:${skillPath}`,
+  };
+}
+
+function defaultSkillInputSchema(): Record<string, unknown> {
+  return { type: 'object', additionalProperties: true };
+}
+
+function parseSkillToolKinds(lines: readonly string[]): SkillToolKind[] {
+  return uniqueStrings(lines
+    .filter(line => /^(?:tool_kinds|toolKinds|tools)\s*:/i.test(line))
+    .flatMap(line => line.replace(/^(?:tool_kinds|toolKinds|tools)\s*:\s*/i, '').split(','))
+    .map(value => value.trim().toLowerCase()))
+    .flatMap(toSkillToolKind);
+}
+
+function toSkillToolKind(value: string): SkillToolKind[] {
+  return (ALL_SKILL_TOOL_KINDS as readonly string[]).includes(value) ? [value as SkillToolKind] : [];
+}
+
+function parseCompletionClaimRequested(lines: readonly string[]): boolean {
+  const line = lines.find(value => /^(?:can_complete|canComplete|completion_claims|completionClaims)\s*:/i.test(value));
+  if (!line) return false;
+  const value = line.replace(/^(?:can_complete|canComplete|completion_claims|completionClaims)\s*:\s*/i, '').trim().toLowerCase();
+  return value === 'true' || value === 'yes' || value === 'allowed' || value === 'allow';
+}
+
+function planSkillPermissions(
+  loadedSkills: readonly SkillExecutionSkill[],
+  requestedToolKinds: readonly SkillToolKind[],
+): SkillPermissionDecision[] {
+  const plannedKinds = uniqueStrings([
+    ...requestedToolKinds,
+    ...loadedSkills.flatMap(skill => skill.declaredToolKinds),
+  ]) as SkillToolKind[];
+  return plannedKinds.map((kind) => {
+    if (SKILL_ALLOWED_TOOL_KINDS.includes(kind)) {
+      return { kind, action: 'allow', reason: `skill-tool-kind-allowed:${kind}` };
+    }
+    return { kind, action: 'deny', reason: `skill-tool-kind-denied:${kind}` };
+  });
+}
+
+function skillEvidenceRef(path: string, content: string): string {
+  return `skill:${path}:${stableTextDigest(content)}`;
+}
+
+function stableTextDigest(content: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < content.length; index += 1) {
+    hash ^= content.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values.map(value => String(value || '').trim()).filter(Boolean))];
 }
 
 function summarizeScope(files: readonly string[]): string {

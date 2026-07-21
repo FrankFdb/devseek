@@ -711,6 +711,24 @@ test('R3-06B: Subagent parallel merge, orphan rejection, and cancellation stay p
   assertContains(tests, 'R3-06B SubagentContractService', 'R3-06B must have subagent merge/cancel failure-first oracle');
 });
 
+test('R3-07A: Skill discovery/execution is progressive, schema-bound, and parent Kernel-permissioned', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_EXECUTION_PROTOCOL', 'Skill execution must expose a versioned protocol marker');
+  assertContains(sharedEnhancements, 'SkillExecutionReceipt', 'Skill execution must produce a receipt');
+  assertContains(sharedEnhancements, 'planExecution', 'SkillDiscoveryService must plan skill execution');
+  assertContains(sharedEnhancements, 'inputSchema', 'Skill execution must carry a parsed input schema');
+  assertContains(sharedEnhancements, 'selectedByTrigger', 'Skill execution must expose trigger provenance');
+  assertContains(sharedEnhancements, "settlementAuthority: 'parent-kernel'", 'Skill execution must remain parent Kernel-owned');
+  assertContains(sharedEnhancements, 'completionClaimsAllowed: false', 'Skills must not be able to claim task completion');
+  assertContains(sharedEnhancements, 'skill-completion-claim-rejected', 'Skill completion claims must be rejected');
+  assertContains(sharedEnhancements, 'skill-tool-kind-denied', 'Skill mutable/unsafe tool declarations must be denied');
+  assertContains(sharedEnhancements, 'unmatched-skill-not-loaded', 'Unmatched skills must not be loaded');
+  assertContains(sharedEnhancements, 'evidenceRefs', 'Skill execution must be evidence-backed');
+  assertContains(sharedTests, 'R3-07A SkillDiscoveryService', 'R3-07A must have skill execution failure-first oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
