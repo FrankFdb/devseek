@@ -1379,6 +1379,14 @@ test('R3-07S-skill-PERMISSION-FAULT-032: table HTML blocks stop Skill metadata p
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-032 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-032 must have table body metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-033: pre HTML blocks stop Skill metadata parsing', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'details|table|pre', 'R3-07S-skill-PERMISSION-FAULT-033 must treat pre HTML body blocks as metadata boundaries');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-033 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-033 must have pre body metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
