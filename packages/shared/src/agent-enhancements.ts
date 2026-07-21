@@ -676,10 +676,30 @@ const SKILL_METADATA_BODY_SECTION_MARKER = /^(?:#{2,}\s+|(?:(?:examples?|samples
 
 function skillMetadataLines(content: string): string[] {
   let insideFence = false;
+  let insideFrontmatter = false;
   let insideHtmlComment = false;
   let insideBodySection = false;
+  let frontmatterClosed = false;
+  let sawFirstNonBlankLine = false;
   return String(content).split(/\r?\n/).filter((line) => {
     const trimmed = line.trim();
+    if (!sawFirstNonBlankLine) {
+      if (trimmed === '') return false;
+      sawFirstNonBlankLine = true;
+      if (trimmed === '---') {
+        insideFrontmatter = true;
+        return false;
+      }
+    }
+    if (insideFrontmatter) {
+      if (/^(?:---|\.\.\.)$/u.test(trimmed)) {
+        insideFrontmatter = false;
+        frontmatterClosed = true;
+        return false;
+      }
+      return true;
+    }
+    if (frontmatterClosed) return false;
     if (/^(?:```|~~~)/u.test(trimmed)) {
       insideFence = !insideFence;
       return false;

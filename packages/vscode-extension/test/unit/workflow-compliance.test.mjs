@@ -1265,6 +1265,14 @@ test('R3-07S-skill-PERMISSION-FAULT-018: bare example headings cannot provide pe
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-018 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-018 must have bare heading metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-019: closed frontmatter body cannot provide permission evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'insideFrontmatter', 'R3-07S-skill-PERMISSION-FAULT-019 must keep frontmatter body filtering in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-019 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-019 must have closed frontmatter metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

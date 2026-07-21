@@ -1596,87 +1596,76 @@ function createSuffixConfusedSkillPathDeniedEditReceipt() {
   });
 }
 
-function createFencedMetadataDeniedEditSkillReceipt() {
+function createReferenceDeniedEditSkillReceipt(contentLines, prompt = 'please use react and edit the component') {
   return new SkillDiscoveryService().planExecution({
-    prompt: 'please use react and edit the component',
+    prompt,
     candidates: [
       {
         path: 'skills/reference/SKILL.md',
-        content: [
-          '# Reference',
-          '',
-          'description: Generic helper',
-          '',
-          '```yaml',
-          'triggers: react',
-          'tool_kinds: read',
-          '```',
-        ].join('\n'),
+        content: contentLines.join('\n'),
       },
     ],
     requestedToolKinds: ['read', 'edit'],
   });
+}
+
+function createFencedMetadataDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    'description: Generic helper',
+    '',
+    '```yaml',
+    'triggers: react',
+    'tool_kinds: read',
+    '```',
+  ]);
 }
 
 function createCommentedMetadataDeniedEditSkillReceipt() {
-  return new SkillDiscoveryService().planExecution({
-    prompt: 'please use react and edit the component',
-    candidates: [
-      {
-        path: 'skills/reference/SKILL.md',
-        content: [
-          '# Reference',
-          '',
-          'description: Generic helper',
-          '',
-          '<!--',
-          'triggers: react',
-          'tool_kinds: read',
-          '-->',
-        ].join('\n'),
-      },
-    ],
-    requestedToolKinds: ['read', 'edit'],
-  });
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    'description: Generic helper',
+    '',
+    '<!--',
+    'triggers: react',
+    'tool_kinds: read',
+    '-->',
+  ]);
 }
 
 function createGenericHelperInferredTriggerDeniedEditSkillReceipt() {
-  return new SkillDiscoveryService().planExecution({
-    prompt: 'please edit the helper configuration',
-    candidates: [
-      {
-        path: 'skills/reference/SKILL.md',
-        content: [
-          '# Reference',
-          '',
-          'description: Generic helper',
-          'tool_kinds: read',
-        ].join('\n'),
-      },
-    ],
-    requestedToolKinds: ['read', 'edit'],
-  });
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    'description: Generic helper',
+    'tool_kinds: read',
+  ], 'please edit the helper configuration');
 }
 
 function createBodySectionMetadataDeniedEditSkillReceipt(sectionMarker) {
-  return new SkillDiscoveryService().planExecution({
-    prompt: 'please use react and edit the component',
-    candidates: [
-      {
-        path: 'skills/reference/SKILL.md',
-        content: [
-          '# Reference',
-          '',
-          'description: Generic helper',
-          '',
-          sectionMarker,
-          'triggers: react',
-          'tool_kinds: read',
-        ].join('\n'),
-      },
-    ],
-    requestedToolKinds: ['read', 'edit'],
-  });
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    'description: Generic helper',
+    '',
+    sectionMarker,
+    'triggers: react',
+    'tool_kinds: read',
+  ]);
+}
+
+function createClosedFrontmatterBodyMetadataDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '---',
+    'description: Generic helper',
+    '---',
+    '# Reference',
+    '',
+    'triggers: react',
+    'tool_kinds: read',
+  ]);
 }
 
 test('R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService accepts expected skill permission denial as slot evidence', () => {
@@ -2159,6 +2148,33 @@ test('R3-07S-skill-PERMISSION-FAULT-018 ExtensionProfilePlanService rejects bare
   assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
   assert.deepEqual(childReceipt.evidenceRefs, []);
   assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-018'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-019 ExtensionProfilePlanService rejects closed frontmatter body skill metadata permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '1919191919191919191919191919191919191919',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createClosedFrontmatterBodyMetadataDeniedEditSkillReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-019',
+    attemptId: 'skill-permission-fault-019-closed-frontmatter-body-skill-metadata',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(childReceipt.loadedSkills.length, 0);
+  assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
+  assert.deepEqual(childReceipt.evidenceRefs, []);
+  assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-019'));
   assert.deepEqual(receipt.permissionFaultRefs, []);
   assert.deepEqual(receipt.effectRefs, []);
   assert.deepEqual(receipt.receiptRefs, []);
