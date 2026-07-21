@@ -1331,6 +1331,14 @@ test('R3-07S-skill-PERMISSION-FAULT-026: numeric-only tokens cannot infer Skill 
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-026 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-026 must have numeric inferred trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-027: Markdown horizontal rules stop Skill metadata parsing', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_SEPARATOR', 'R3-07S-skill-PERMISSION-FAULT-027 must keep horizontal-rule body filtering in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-027 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-027 must have horizontal-rule metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

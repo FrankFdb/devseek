@@ -1656,6 +1656,18 @@ function createBodySectionMetadataDeniedEditSkillReceipt(sectionMarker) {
   ]);
 }
 
+function createHorizontalRuleBodyMetadataDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    'description: Generic helper',
+    '',
+    '---',
+    'triggers: react',
+    'tool_kinds: read',
+  ]);
+}
+
 function createClosedFrontmatterBodyMetadataDeniedEditSkillReceipt() {
   return createReferenceDeniedEditSkillReceipt([
     '---',
@@ -2441,6 +2453,33 @@ test('R3-07S-skill-PERMISSION-FAULT-026 ExtensionProfilePlanService rejects nume
   assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
   assert.deepEqual(childReceipt.evidenceRefs, []);
   assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-026'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-027 ExtensionProfilePlanService rejects horizontal-rule body skill metadata permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '2727272727272727272727272727272727272727',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createHorizontalRuleBodyMetadataDeniedEditSkillReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-027',
+    attemptId: 'skill-permission-fault-027-horizontal-rule-body-skill-metadata',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(childReceipt.loadedSkills.length, 0);
+  assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
+  assert.deepEqual(childReceipt.evidenceRefs, []);
+  assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-027'));
   assert.deepEqual(receipt.permissionFaultRefs, []);
   assert.deepEqual(receipt.effectRefs, []);
   assert.deepEqual(receipt.receiptRefs, []);

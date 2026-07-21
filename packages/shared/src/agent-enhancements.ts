@@ -673,6 +673,7 @@ function freezeSkillExecutionReceipt(receipt: SkillExecutionReceipt): SkillExecu
 }
 
 const SKILL_METADATA_BODY_SECTION_MARKER = /^(?:(?:#{1,}\s+(?:examples?|samples?|usage|notes?)\b(?:\s*:)?(?:\s.*)?)|#{2,}\s+|(?:(?:examples?|samples?|usage|notes?)\b|for\s+(?:example|instance)\b|e\.g\.)(?:\s*:)?(?:\s.*)?)$/iu;
+const SKILL_METADATA_BODY_SEPARATOR = /^(?:-{3,}|\*{3,}|_{3,})$/u;
 
 function skillMetadataLines(content: string): string[] {
   const lines = String(content).split(/\r?\n/);
@@ -728,6 +729,10 @@ function skillMetadataLines(content: string): string[] {
       if (!metadataLine.trim()) continue;
     }
     const metadataTrimmed = metadataLine.trim();
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_BODY_SEPARATOR.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
     if (!isFrontmatterMetadataLine && SKILL_METADATA_BODY_SECTION_MARKER.test(metadataTrimmed)) {
       insideBodySection = true;
       continue;
