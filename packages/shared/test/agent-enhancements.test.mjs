@@ -787,6 +787,31 @@ test('R3-07S-skill-TASK-008 ExtensionProfilePlanService rejects invalid runtime 
   assert.ok(!invalidStatus.evidenceRefs.includes('skill-failure:invalid-status-should-not-project'));
 });
 
+test('R3-07S-skill-TASK-009 ExtensionProfilePlanService rejects caller-supplied blocked status', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '7777777777777777777777777777777777777777',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+
+  const blockedInput = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-009',
+    attemptId: 'skill-task-009-blocked-input',
+    status: 'blocked',
+    effectRefs: ['skill-effect:blocked-input-should-not-project'],
+    receiptRefs: ['skill-receipt:blocked-input-should-not-project'],
+  });
+  assert.equal(blockedInput.status, 'blocked');
+  assert.ok(blockedInput.vetoes.includes('slot-invalid-status-veto:R3-07S-skill-TASK-009'));
+  assert.ok(blockedInput.evidenceRefs.includes('slot-invalid-status-veto:R3-07S-skill-TASK-009'));
+  assert.deepEqual(blockedInput.effectRefs, []);
+  assert.deepEqual(blockedInput.receiptRefs, []);
+  assert.ok(!blockedInput.evidenceRefs.includes('skill-effect:blocked-input-should-not-project'));
+  assert.ok(!blockedInput.evidenceRefs.includes('skill-receipt:blocked-input-should-not-project'));
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({

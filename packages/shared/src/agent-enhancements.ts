@@ -10,7 +10,7 @@ export type ExtensionProfileKind = 'skill' | 'hook' | 'mcp' | 'plugin' | 'subage
 export type ExtensionProfilePlanStatus = 'signed' | 'blocked';
 export type ExtensionProfileSlotKind = 'task' | 'permission-fault';
 export type ExtensionProfileSlotExecutionStatus = 'passed' | 'failed' | 'vetoed' | 'blocked';
-const EXTENSION_PROFILE_SLOT_EXECUTION_STATUSES: readonly ExtensionProfileSlotExecutionStatus[] = ['passed', 'failed', 'vetoed', 'blocked'];
+const EXTENSION_PROFILE_SLOT_EXECUTION_INPUT_STATUSES: readonly Exclude<ExtensionProfileSlotExecutionStatus, 'blocked'>[] = ['passed', 'failed', 'vetoed'];
 export type SkillToolKind =
   | 'read'
   | 'search'
@@ -945,10 +945,10 @@ function toExtensionProfileKind(kind: ExtensionProfileKind): ExtensionProfileKin
   return isExtensionProfileKind(kind) ? kind : 'skill';
 }
 
-function toExtensionProfileSlotExecutionStatus(status: unknown): ExtensionProfileSlotExecutionStatus | undefined {
+function toExtensionProfileSlotExecutionStatus(status: unknown): Exclude<ExtensionProfileSlotExecutionStatus, 'blocked'> | undefined {
   const normalizedStatus = String(status ?? '').trim();
-  return (EXTENSION_PROFILE_SLOT_EXECUTION_STATUSES as readonly string[]).includes(normalizedStatus)
-    ? normalizedStatus as ExtensionProfileSlotExecutionStatus
+  return (EXTENSION_PROFILE_SLOT_EXECUTION_INPUT_STATUSES as readonly string[]).includes(normalizedStatus)
+    ? normalizedStatus as Exclude<ExtensionProfileSlotExecutionStatus, 'blocked'>
     : undefined;
 }
 

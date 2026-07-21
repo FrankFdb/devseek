@@ -968,6 +968,15 @@ test('R3-07S-skill-TASK-008: slot status must be normalized at runtime', () => {
   assertContains(sharedTests, 'R3-07S-skill-TASK-008 ExtensionProfilePlanService', 'R3-07S-skill-TASK-008 must have invalid status oracle');
 });
 
+test('R3-07S-skill-TASK-009: blocked is not caller-supplied terminal input', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'EXTENSION_PROFILE_SLOT_EXECUTION_INPUT_STATUSES', 'R3-07S-skill-TASK-009 must separate caller input statuses from receipt statuses');
+  assertContains(sharedEnhancements, "['passed', 'failed', 'vetoed']", 'R3-07S-skill-TASK-009 must exclude blocked from caller input statuses');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-009 ExtensionProfilePlanService', 'R3-07S-skill-TASK-009 must have blocked-input oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
