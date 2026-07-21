@@ -7,6 +7,7 @@ import {
   McpPermissionService,
   PluginSupplyChainService,
   SkillDiscoveryService,
+  SKILL_EXECUTION_PROTOCOL,
   SUBAGENT_CONTRACT_PROTOCOL,
   SubagentRegistry,
 } from '../dist/index.js';
@@ -334,6 +335,69 @@ test('R3-07F-subagent ExtensionProfilePlanService binds subagent profile plans t
   });
   assert.equal(wrongSchema.status, 'blocked');
   assert.ok(wrongSchema.violations.includes('profile-plan-schema-kind-mismatch:subagent'));
+});
+
+test('R3-07S-skill-TASK-001 ExtensionProfilePlanService records one append-only skill slot receipt', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '8fd61a3830cff653c6f0d21d554341f85a2b419a',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-001',
+    attemptId: 'skill-task-001-attempt-001',
+    status: 'passed',
+    effectRefs: ['skill-discovery:read:SKILL.md'],
+    receiptRefs: ['skill-execution:receipt:task-001'],
+  });
+
+  assert.equal(receipt.protocol, 'devseek.extension-profile-slot-execution/v1');
+  assert.equal(receipt.singleOwner, 'ExtensionProfilePlanService');
+  assert.equal(receipt.profileId, 'R3-07F-skill-PROFILE-PLAN');
+  assert.equal(receipt.slotId, 'R3-07S-skill-TASK-001');
+  assert.equal(receipt.slotKind, 'task');
+  assert.equal(receipt.index, 1);
+  assert.equal(receipt.status, 'passed');
+  assert.equal(receipt.replacesPriorAttempt, false);
+  assert.equal(receipt.priorAttemptPolicy, 'append-only-no-replacement');
+  assert.equal(receipt.oracleRef, plan.taskSlots[0].oracleRef);
+  assert.deepEqual(receipt.effectRefs, ['skill-discovery:read:SKILL.md']);
+  assert.deepEqual(receipt.receiptRefs, ['skill-execution:receipt:task-001']);
+  assert.ok(receipt.evidenceRefs.includes(plan.taskSlots[0].oracleRef));
+
+  const failed = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-001',
+    attemptId: 'skill-task-001-attempt-failed',
+    status: 'failed',
+    failureRefs: ['skill-execution:failure:task-001'],
+  });
+  const replacement = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-001',
+    attemptId: 'skill-task-001-attempt-replacement',
+    status: 'passed',
+    effectRefs: ['skill-discovery:replacement-effect'],
+    receiptRefs: ['skill-execution:replacement-receipt'],
+    previousReceipts: [failed],
+  });
+  assert.equal(replacement.status, 'blocked');
+  assert.ok(replacement.vetoes.includes('slot-replacement-veto:R3-07S-skill-TASK-001'));
+  assert.deepEqual(replacement.previousAttemptIds, ['skill-task-001-attempt-failed']);
+  assert.deepEqual(replacement.effectRefs, []);
+  assert.deepEqual(replacement.receiptRefs, []);
+
+  const unknown = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-999',
+    attemptId: 'skill-task-999-attempt-001',
+    status: 'passed',
+  });
+  assert.equal(unknown.status, 'blocked');
+  assert.ok(unknown.vetoes.includes('slot-not-in-profile-veto:R3-07S-skill-TASK-999'));
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {

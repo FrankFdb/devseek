@@ -880,6 +880,20 @@ test('R3-07F-subagent: Extension profile planner binds subagent plans to subagen
   assertContains(sharedTests, 'R3-07F-subagent ExtensionProfilePlanService', 'R3-07F-subagent must have profile-plan failure-first oracle');
 });
 
+test('R3-07S-skill-TASK-001: Extension profile planner records append-only skill slot execution', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL', 'R3-07S slot execution must expose a versioned protocol marker');
+  assertContains(sharedEnhancements, 'ExtensionProfileSlotExecutionReceipt', 'R3-07S slot execution must produce a receipt');
+  assertContains(sharedEnhancements, 'recordSlotExecution', 'R3-07S slot execution must stay on the profile plan owner');
+  assertContains(sharedEnhancements, "singleOwner: 'ExtensionProfilePlanService'", 'R3-07S slot execution must not add a second owner');
+  assertContains(sharedEnhancements, "priorAttemptPolicy: 'append-only-no-replacement'", 'R3-07S failed attempts must remain append-only');
+  assertContains(sharedEnhancements, 'slot-replacement-veto', 'R3-07S must veto replacement attempts');
+  assertContains(sharedEnhancements, 'slot-not-in-profile-veto', 'R3-07S must veto slots not signed by the profile plan');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-001 ExtensionProfilePlanService', 'R3-07S-skill-TASK-001 must have slot execution failure-first oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

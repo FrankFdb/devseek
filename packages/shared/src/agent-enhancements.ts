@@ -9,6 +9,7 @@ export type PluginSupplyChainAction = 'allow' | 'veto';
 export type ExtensionProfileKind = 'skill' | 'hook' | 'mcp' | 'plugin' | 'subagent';
 export type ExtensionProfilePlanStatus = 'signed' | 'blocked';
 export type ExtensionProfileSlotKind = 'task' | 'permission-fault';
+export type ExtensionProfileSlotExecutionStatus = 'passed' | 'failed' | 'vetoed' | 'blocked';
 export type SkillToolKind =
   | 'read'
   | 'search'
@@ -27,6 +28,7 @@ export const MCP_TRUST_PROTOCOL = 'devseek.mcp-trust/v1';
 export const PLUGIN_SUPPLY_CHAIN_PROTOCOL = 'devseek.plugin-supply-chain/v1';
 export const SUBAGENT_CONTRACT_PROTOCOL = 'devseek.subagent-contract/v1';
 export const EXTENSION_PROFILE_PLAN_PROTOCOL = 'devseek.extension-profile-plan/v1';
+export const EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL = 'devseek.extension-profile-slot-execution/v1';
 export const B4_EFFECT_AUTHORITY = 'B4-effect-authority';
 
 export interface HookDefinition {
@@ -294,6 +296,44 @@ export interface ExtensionProfilePlanReceipt {
   slotExecutionAllowed: false;
   aggregateExecutionAllowed: false;
   planSignature: string;
+  violations: readonly string[];
+  evidenceRefs: readonly string[];
+}
+
+export interface ExtensionProfileSlotExecutionInput {
+  plan: ExtensionProfilePlanReceipt;
+  slotId: string;
+  attemptId: string;
+  status: Exclude<ExtensionProfileSlotExecutionStatus, 'blocked'>;
+  effectRefs?: readonly string[];
+  receiptRefs?: readonly string[];
+  failureRefs?: readonly string[];
+  vetoes?: readonly string[];
+  previousReceipts?: readonly ExtensionProfileSlotExecutionReceipt[];
+}
+
+export interface ExtensionProfileSlotExecutionReceipt {
+  protocol: typeof EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL;
+  profileProtocol: typeof EXTENSION_PROFILE_PLAN_PROTOCOL;
+  profileId: string;
+  kind: ExtensionProfileKind;
+  slotId: string;
+  slotKind: ExtensionProfileSlotKind;
+  index: number;
+  status: ExtensionProfileSlotExecutionStatus;
+  singleOwner: 'ExtensionProfilePlanService';
+  settlementAuthority: 'parent-kernel';
+  candidateCommit: string;
+  schemaVersion: string;
+  attemptId: string;
+  previousAttemptIds: readonly string[];
+  replacesPriorAttempt: false;
+  priorAttemptPolicy: 'append-only-no-replacement';
+  oracleRef: string;
+  effectRefs: readonly string[];
+  receiptRefs: readonly string[];
+  failureRefs: readonly string[];
+  vetoes: readonly string[];
   violations: readonly string[];
   evidenceRefs: readonly string[];
 }
@@ -780,10 +820,74 @@ export class ExtensionProfilePlanService {
       evidenceRefs: [`extension-profile-plan:${profileId}:${planSignature}`],
     };
   }
+
+  recordSlotExecution(input: ExtensionProfileSlotExecutionInput): ExtensionProfileSlotExecutionReceipt {
+    const plan = input.plan;
+    const slotId = String(input.slotId ?? '').trim();
+    const attemptId = String(input.attemptId ?? '').trim();
+    const slot = findExtensionProfileSlot(plan, slotId);
+    const previousAttemptIds = uniqueStrings(
+      (input.previousReceipts ?? [])
+        .filter(receipt => receipt.slotId === slotId)
+        .map(receipt => receipt.attemptId),
+    );
+    const vetoes = uniqueStrings([
+      ...(plan.status === 'signed' ? [] : [`slot-plan-not-signed-veto:${plan.profileId}`]),
+      ...(attemptId ? [] : [`slot-missing-attempt-veto:${slotId}`]),
+      ...(slot ? [] : [`slot-not-in-profile-veto:${slotId}`]),
+      ...(previousAttemptIds.length === 0 ? [] : [`slot-replacement-veto:${slotId}`]),
+      ...(input.vetoes ?? []),
+    ]);
+    const status: ExtensionProfileSlotExecutionStatus = vetoes.length > 0 ? 'blocked' : input.status;
+    const effectRefs = status === 'blocked' ? [] : uniqueStrings(input.effectRefs ?? []);
+    const receiptRefs = status === 'blocked' ? [] : uniqueStrings(input.receiptRefs ?? []);
+    const failureRefs = uniqueStrings(input.failureRefs ?? []);
+    const oracleRef = slot?.oracleRef ?? '';
+
+    return {
+      protocol: EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL,
+      profileProtocol: EXTENSION_PROFILE_PLAN_PROTOCOL,
+      profileId: plan.profileId,
+      kind: plan.kind,
+      slotId,
+      slotKind: slot?.slotKind ?? 'task',
+      index: slot?.index ?? 0,
+      status,
+      singleOwner: 'ExtensionProfilePlanService',
+      settlementAuthority: 'parent-kernel',
+      candidateCommit: plan.candidateCommit,
+      schemaVersion: plan.schemaVersion,
+      attemptId,
+      previousAttemptIds,
+      replacesPriorAttempt: false,
+      priorAttemptPolicy: 'append-only-no-replacement',
+      oracleRef,
+      effectRefs,
+      receiptRefs,
+      failureRefs,
+      vetoes,
+      violations: vetoes,
+      evidenceRefs: uniqueStrings([
+        ...plan.evidenceRefs,
+        oracleRef,
+        ...effectRefs,
+        ...receiptRefs,
+        ...failureRefs,
+        ...vetoes,
+      ]),
+    };
+  }
 }
 
 function toExtensionProfileKind(kind: ExtensionProfileKind): ExtensionProfileKind {
   return isExtensionProfileKind(kind) ? kind : 'skill';
+}
+
+function findExtensionProfileSlot(
+  plan: ExtensionProfilePlanReceipt,
+  slotId: string,
+): ExtensionProfileSlot | undefined {
+  return [...plan.taskSlots, ...plan.permissionFaultSlots].find(slot => slot.slotId === slotId);
 }
 
 function isExtensionProfileKind(kind: string): kind is ExtensionProfileKind {
