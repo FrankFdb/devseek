@@ -987,6 +987,20 @@ test('R3-07S-skill-TASK-010: terminal evidence fields must match final status', 
   assertContains(sharedTests, 'R3-07S-skill-TASK-010 ExtensionProfilePlanService', 'R3-07S-skill-TASK-010 must have terminal-field oracle');
 });
 
+test('R3-07S-skill-TASK-011: slot execution must verify profile plan authenticity', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'extensionProfilePlanAuthenticityVetoes', 'R3-07S-skill-TASK-011 must keep profile plan authenticity in the slot settlement owner');
+  assertContains(sharedEnhancements, 'slot-plan-signature-mismatch-veto', 'R3-07S-skill-TASK-011 must veto forged profile plan signatures');
+  assertContains(sharedEnhancements, 'slot-plan-owner-mismatch-veto', 'R3-07S-skill-TASK-011 must veto non-owner profile plan receipts');
+  assertContains(sharedEnhancements, 'slot-plan-origin-mismatch-veto', 'R3-07S-skill-TASK-011 must reject cloned profile plans that were not signed by this owner');
+  assertContains(sharedEnhancements, 'const planAuthentic = planAuthenticityVetoes.length === 0', 'R3-07S-skill-TASK-011 must compute a single plan authenticity gate');
+  assertContains(sharedEnhancements, 'const planEvidenceRefs = planAuthentic ? uniqueStrings(plan.evidenceRefs ?? []) : []', 'R3-07S-skill-TASK-011 must not project forged plan evidence');
+  assertContains(sharedEnhancements, 'const slot = planAuthentic ? findExtensionProfileSlot(plan, slotId) : undefined', 'R3-07S-skill-TASK-011 must not project forged plan slot evidence');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-011 ExtensionProfilePlanService', 'R3-07S-skill-TASK-011 must have forged-plan oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

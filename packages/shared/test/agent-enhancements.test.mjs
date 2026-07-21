@@ -893,6 +893,89 @@ test('R3-07S-skill-TASK-010 ExtensionProfilePlanService scopes terminal evidence
   assert.ok(!blockedByChild.evidenceRefs.includes('skill-child:evidence:should-not-project-blocked'));
 });
 
+test('R3-07S-skill-TASK-011 ExtensionProfilePlanService rejects forged signed profile plans', () => {
+  const service = new ExtensionProfilePlanService();
+  const skillReceipt = new SkillDiscoveryService().planExecution({
+    prompt: 'please use the react skill',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: 'description: Build React views\ntriggers: react\ntool_kinds: read',
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '9999999999999999999999999999999999999999',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const forgedPlan = {
+    ...plan,
+    protocol: 'devseek.forged-profile-plan/v1',
+    singleOwner: 'CallerSuppliedPlan',
+    settlementAuthority: 'child-kernel',
+    immutable: false,
+    slotExecutionAllowed: true,
+    planSignature: 'forged-plan-signature',
+    evidenceRefs: ['forged-plan:evidence:should-not-project'],
+  };
+
+  const forgedReceipt = service.recordSlotExecution({
+    plan: forgedPlan,
+    slotId: 'R3-07S-skill-TASK-011',
+    attemptId: 'skill-task-011-forged-plan',
+    status: 'passed',
+    childReceipt: skillReceipt,
+    effectRefs: ['skill-effect:forged-plan-should-not-project'],
+    receiptRefs: ['skill-receipt:forged-plan-should-not-project'],
+  });
+
+  assert.equal(forgedReceipt.status, 'blocked');
+  assert.ok(forgedReceipt.vetoes.includes('slot-plan-protocol-mismatch-veto:R3-07F-skill-PROFILE-PLAN'));
+  assert.ok(forgedReceipt.vetoes.includes('slot-plan-owner-mismatch-veto:R3-07F-skill-PROFILE-PLAN'));
+  assert.ok(forgedReceipt.vetoes.includes('slot-plan-signature-mismatch-veto:R3-07F-skill-PROFILE-PLAN'));
+  assert.ok(forgedReceipt.vetoes.includes('slot-plan-slot-execution-veto:R3-07F-skill-PROFILE-PLAN'));
+  assert.deepEqual(forgedReceipt.effectRefs, []);
+  assert.deepEqual(forgedReceipt.receiptRefs, []);
+  assert.ok(forgedReceipt.evidenceRefs.includes('slot-plan-signature-mismatch-veto:R3-07F-skill-PROFILE-PLAN'));
+  assert.ok(!forgedReceipt.evidenceRefs.includes('forged-plan:evidence:should-not-project'));
+  assert.ok(!forgedReceipt.evidenceRefs.includes('skill-effect:forged-plan-should-not-project'));
+  assert.ok(!forgedReceipt.evidenceRefs.includes('skill-receipt:forged-plan-should-not-project'));
+
+  const clonedSignedPlan = {
+    ...plan,
+    taskSlots: [...plan.taskSlots],
+    permissionFaultSlots: [...plan.permissionFaultSlots],
+    slotIds: [...plan.slotIds],
+    oracleCatalog: {
+      version: plan.oracleCatalog.version,
+      counts: { ...plan.oracleCatalog.counts },
+      oracleRefs: [...plan.oracleCatalog.oracleRefs],
+    },
+    violations: [...plan.violations],
+    evidenceRefs: [...plan.evidenceRefs],
+  };
+  const clonedReceipt = service.recordSlotExecution({
+    plan: clonedSignedPlan,
+    slotId: 'R3-07S-skill-TASK-011',
+    attemptId: 'skill-task-011-cloned-plan',
+    status: 'passed',
+    childReceipt: skillReceipt,
+    effectRefs: ['skill-effect:cloned-plan-should-not-project'],
+    receiptRefs: ['skill-receipt:cloned-plan-should-not-project'],
+  });
+
+  assert.equal(clonedReceipt.status, 'blocked');
+  assert.ok(clonedReceipt.vetoes.includes('slot-plan-origin-mismatch-veto:R3-07F-skill-PROFILE-PLAN'));
+  assert.deepEqual(clonedReceipt.effectRefs, []);
+  assert.deepEqual(clonedReceipt.receiptRefs, []);
+  assert.ok(clonedReceipt.evidenceRefs.includes('slot-plan-origin-mismatch-veto:R3-07F-skill-PROFILE-PLAN'));
+  assert.ok(!clonedReceipt.evidenceRefs.includes(plan.evidenceRefs[0]));
+  assert.ok(!clonedReceipt.evidenceRefs.includes('skill-effect:cloned-plan-should-not-project'));
+  assert.ok(!clonedReceipt.evidenceRefs.includes('skill-receipt:cloned-plan-should-not-project'));
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({

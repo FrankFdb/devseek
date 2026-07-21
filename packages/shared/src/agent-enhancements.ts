@@ -764,6 +764,8 @@ export class PluginSupplyChainService {
 }
 
 export class ExtensionProfilePlanService {
+  private readonly ownedProfilePlans = new WeakSet<ExtensionProfilePlanReceipt>();
+
   createProfilePlan(input: ExtensionProfilePlanInput): ExtensionProfilePlanReceipt {
     const requestedKind = String(input.kind ?? '').trim() as ExtensionProfileKind;
     const kind = toExtensionProfileKind(requestedKind);
@@ -796,8 +798,7 @@ export class ExtensionProfilePlanService {
     const slotIds = [...taskSlots, ...permissionFaultSlots].map(slot => slot.slotId);
     const oracleRefs = [...taskSlots, ...permissionFaultSlots].map(slot => slot.oracleRef);
     const profileId = `R3-07F-${kind}-PROFILE-PLAN`;
-    const planSignature = stableTextDigest(JSON.stringify({
-      protocol: EXTENSION_PROFILE_PLAN_PROTOCOL,
+    const planSignature = createExtensionProfilePlanSignature({
       profileId,
       kind,
       candidateCommit,
@@ -806,9 +807,9 @@ export class ExtensionProfilePlanService {
       permissionFaultSlots,
       oracleVersion,
       violations,
-    }));
+    });
 
-    return {
+    const plan: ExtensionProfilePlanReceipt = {
       protocol: EXTENSION_PROFILE_PLAN_PROTOCOL,
       profileId,
       kind,
@@ -836,6 +837,8 @@ export class ExtensionProfilePlanService {
       violations,
       evidenceRefs: [`extension-profile-plan:${profileId}:${planSignature}`],
     };
+    this.ownedProfilePlans.add(plan);
+    return plan;
   }
 
   recordSlotExecution(input: ExtensionProfileSlotExecutionInput): ExtensionProfileSlotExecutionReceipt {
@@ -844,7 +847,10 @@ export class ExtensionProfilePlanService {
     const attemptId = String(input.attemptId ?? '').trim();
     const requestedStatus = toExtensionProfileSlotExecutionStatus(input.status);
     const inputStatus = requestedStatus ?? 'blocked';
-    const slot = findExtensionProfileSlot(plan, slotId);
+    const planAuthenticityVetoes = extensionProfilePlanAuthenticityVetoes(plan, this.ownedProfilePlans.has(plan));
+    const planAuthentic = planAuthenticityVetoes.length === 0;
+    const planEvidenceRefs = planAuthentic ? uniqueStrings(plan.evidenceRefs ?? []) : [];
+    const slot = planAuthentic ? findExtensionProfileSlot(plan, slotId) : undefined;
     const childReceipt = input.childReceipt;
     const childProtocol = String(childReceipt?.protocol ?? '').trim();
     const childSettlementAuthority = String(childReceipt?.settlementAuthority ?? '').trim();
@@ -869,7 +875,7 @@ export class ExtensionProfilePlanService {
     const failureRefs = uniqueStrings(input.failureRefs ?? []);
     const inputVetoes = uniqueStrings(input.vetoes ?? []);
     const previousAttemptIds = uniqueStrings(
-      (input.previousReceipts ?? [])
+      (planAuthentic ? input.previousReceipts ?? [] : [])
         .filter(receipt => (
           receipt.slotId === slotId
           && receipt.profileId === plan.profileId
@@ -880,6 +886,7 @@ export class ExtensionProfilePlanService {
     );
     const blockingVetoes = uniqueStrings([
       ...(plan.status === 'signed' ? [] : [`slot-plan-not-signed-veto:${plan.profileId}`]),
+      ...planAuthenticityVetoes,
       ...(requestedStatus ? [] : [`slot-invalid-status-veto:${slotId}`]),
       ...(attemptId ? [] : [`slot-missing-attempt-veto:${slotId}`]),
       ...(slot ? [] : [`slot-not-in-profile-veto:${slotId}`]),
@@ -930,7 +937,7 @@ export class ExtensionProfilePlanService {
       vetoes,
       violations: vetoes,
       evidenceRefs: uniqueStrings([
-        ...plan.evidenceRefs,
+        ...planEvidenceRefs,
         oracleRef,
         ...effectRefs,
         ...receiptRefs,
@@ -940,6 +947,62 @@ export class ExtensionProfilePlanService {
       ]),
     };
   }
+}
+
+function createExtensionProfilePlanSignature(input: {
+  profileId: string;
+  kind: ExtensionProfileKind;
+  candidateCommit: string;
+  schemaVersion: string;
+  taskSlots: readonly ExtensionProfileSlot[];
+  permissionFaultSlots: readonly ExtensionProfileSlot[];
+  oracleVersion: string;
+  violations: readonly string[];
+}): string {
+  return stableTextDigest(JSON.stringify({
+    protocol: EXTENSION_PROFILE_PLAN_PROTOCOL,
+    profileId: input.profileId,
+    kind: input.kind,
+    candidateCommit: input.candidateCommit,
+    schemaVersion: input.schemaVersion,
+    taskSlots: input.taskSlots,
+    permissionFaultSlots: input.permissionFaultSlots,
+    oracleVersion: input.oracleVersion,
+    violations: input.violations,
+  }));
+}
+
+function extensionProfilePlanAuthenticityVetoes(plan: ExtensionProfilePlanReceipt, ownedByService: boolean): string[] {
+  const profileId = String(plan.profileId ?? '').trim();
+  const taskSlots = Array.isArray(plan.taskSlots) ? plan.taskSlots : [];
+  const permissionFaultSlots = Array.isArray(plan.permissionFaultSlots) ? plan.permissionFaultSlots : [];
+  const oracleVersion = String(plan.oracleCatalog?.version ?? '').trim();
+  const planSignature = String(plan.planSignature ?? '').trim();
+  const expectedSignature = createExtensionProfilePlanSignature({
+    profileId,
+    kind: plan.kind,
+    candidateCommit: String(plan.candidateCommit ?? '').trim(),
+    schemaVersion: String(plan.schemaVersion ?? '').trim(),
+    taskSlots,
+    permissionFaultSlots,
+    oracleVersion,
+    violations: uniqueStrings(plan.violations ?? []),
+  });
+  const expectedEvidenceRef = `extension-profile-plan:${profileId}:${planSignature}`;
+  const evidenceRefs = uniqueStrings(plan.evidenceRefs ?? []);
+
+  return uniqueStrings([
+    ...(plan.protocol === EXTENSION_PROFILE_PLAN_PROTOCOL ? [] : [`slot-plan-protocol-mismatch-veto:${profileId}`]),
+    ...(plan.singleOwner === 'ExtensionProfilePlanService' ? [] : [`slot-plan-owner-mismatch-veto:${profileId}`]),
+    ...(ownedByService ? [] : [`slot-plan-origin-mismatch-veto:${profileId}`]),
+    ...(plan.settlementAuthority === 'parent-kernel' ? [] : [`slot-plan-settlement-authority-veto:${profileId}`]),
+    ...(plan.immutable === true ? [] : [`slot-plan-mutability-veto:${profileId}`]),
+    ...(plan.denominatorExecutionAllowed === false ? [] : [`slot-plan-denominator-execution-veto:${profileId}`]),
+    ...(plan.slotExecutionAllowed === false ? [] : [`slot-plan-slot-execution-veto:${profileId}`]),
+    ...(plan.aggregateExecutionAllowed === false ? [] : [`slot-plan-aggregate-execution-veto:${profileId}`]),
+    ...(planSignature === expectedSignature ? [] : [`slot-plan-signature-mismatch-veto:${profileId}`]),
+    ...(evidenceRefs.includes(expectedEvidenceRef) ? [] : [`slot-plan-evidence-missing-veto:${profileId}`]),
+  ]);
 }
 
 function toExtensionProfileKind(kind: ExtensionProfileKind): ExtensionProfileKind {
