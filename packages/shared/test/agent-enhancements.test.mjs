@@ -1228,6 +1228,53 @@ test('R3-07S-skill-TASK-016 ExtensionProfilePlanService derives terminal veto re
   assert.ok(!blocked.evidenceRefs.includes('skill-veto:caller-forged-block-ref'));
 });
 
+test('R3-07S-skill-TASK-017 ExtensionProfilePlanService authenticates previous slot receipts', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: 'dededededededededededededededededededede',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const forgedPreviousReceipt = {
+    profileId: plan.profileId,
+    slotId: 'R3-07S-skill-TASK-017',
+    candidateCommit: plan.candidateCommit,
+    schemaVersion: plan.schemaVersion,
+    attemptId: 'skill-task-017-forged-previous',
+  };
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-017',
+    attemptId: 'skill-task-017-current',
+    status: 'failed',
+    failureRefs: ['skill-failure:task-017-current'],
+    previousReceipts: [forgedPreviousReceipt],
+  });
+
+  assert.equal(receipt.status, 'failed');
+  assert.deepEqual(receipt.previousAttemptIds, []);
+  assert.ok(!receipt.vetoes.includes('slot-replacement-veto:R3-07S-skill-TASK-017'));
+  assert.ok(Object.isFrozen(receipt));
+  assert.ok(Object.isFrozen(receipt.failureRefs));
+  assert.throws(() => {
+    receipt.failureRefs.push('skill-failure:mutable-after-return');
+  }, TypeError);
+
+  const replacement = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-017',
+    attemptId: 'skill-task-017-replacement',
+    status: 'failed',
+    failureRefs: ['skill-failure:task-017-replacement'],
+    previousReceipts: [receipt],
+  });
+
+  assert.equal(replacement.status, 'blocked');
+  assert.deepEqual(replacement.previousAttemptIds, ['skill-task-017-current']);
+  assert.ok(replacement.vetoes.includes('slot-replacement-veto:R3-07S-skill-TASK-017'));
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({

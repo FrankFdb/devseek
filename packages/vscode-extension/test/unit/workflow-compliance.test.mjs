@@ -1057,6 +1057,16 @@ test('R3-07S-skill-TASK-016: terminal veto refs must be owner-derived', () => {
   assertContains(sharedTests, 'R3-07S-skill-TASK-016 ExtensionProfilePlanService', 'R3-07S-skill-TASK-016 must have caller-veto-ref oracle');
 });
 
+test('R3-07S-skill-TASK-017: previous slot receipts must be owner-authentic and immutable', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'ownedSlotExecutionReceipts', 'R3-07S-skill-TASK-017 must register slot receipts in the existing profile owner');
+  assertContains(sharedEnhancements, 'freezeExtensionProfileSlotExecutionReceipt', 'R3-07S-skill-TASK-017 must freeze owner-issued slot receipts');
+  assertContains(sharedEnhancements, 'this.ownedSlotExecutionReceipts.has(receipt)', 'R3-07S-skill-TASK-017 must ignore caller-forged previous receipts');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-017 ExtensionProfilePlanService', 'R3-07S-skill-TASK-017 must have forged previous-receipt oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

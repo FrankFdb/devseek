@@ -830,6 +830,7 @@ export class PluginSupplyChainService {
 
 export class ExtensionProfilePlanService {
   private readonly ownedProfilePlans = new WeakSet<ExtensionProfilePlanReceipt>();
+  private readonly ownedSlotExecutionReceipts = new WeakSet<ExtensionProfileSlotExecutionReceipt>();
 
   createProfilePlan(input: ExtensionProfilePlanInput): ExtensionProfilePlanReceipt {
     const requestedKind = String(input.kind ?? '').trim() as ExtensionProfileKind;
@@ -957,6 +958,7 @@ export class ExtensionProfilePlanService {
       : [];
     const previousAttemptIds = uniqueStrings(
       (planAuthentic ? input.previousReceipts ?? [] : [])
+        .filter(receipt => this.ownedSlotExecutionReceipts.has(receipt))
         .filter(receipt => (
           receipt.slotId === slotId
           && receipt.profileId === plan.profileId
@@ -1017,7 +1019,7 @@ export class ExtensionProfilePlanService {
       : [];
     const vetoEvidenceRefs = status === 'vetoed' || status === 'blocked' ? vetoes : [];
 
-    return {
+    const receipt: ExtensionProfileSlotExecutionReceipt = {
       protocol: EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL,
       profileProtocol: EXTENSION_PROFILE_PLAN_PROTOCOL,
       profileId: plan.profileId,
@@ -1056,7 +1058,25 @@ export class ExtensionProfilePlanService {
         ...vetoEvidenceRefs,
       ]),
     };
+    const frozenReceipt = freezeExtensionProfileSlotExecutionReceipt(receipt);
+    this.ownedSlotExecutionReceipts.add(frozenReceipt);
+    return frozenReceipt;
   }
+}
+
+function freezeExtensionProfileSlotExecutionReceipt(
+  receipt: ExtensionProfileSlotExecutionReceipt,
+): ExtensionProfileSlotExecutionReceipt {
+  Object.freeze(receipt.previousAttemptIds);
+  Object.freeze(receipt.childEvidenceRefs);
+  Object.freeze(receipt.childViolations);
+  Object.freeze(receipt.effectRefs);
+  Object.freeze(receipt.receiptRefs);
+  Object.freeze(receipt.failureRefs);
+  Object.freeze(receipt.vetoes);
+  Object.freeze(receipt.violations);
+  Object.freeze(receipt.evidenceRefs);
+  return Object.freeze(receipt);
 }
 
 type ExtensionProfileSlotSuccessRefInput = {
