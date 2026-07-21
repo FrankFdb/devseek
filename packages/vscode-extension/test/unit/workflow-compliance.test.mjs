@@ -1281,6 +1281,15 @@ test('R3-07S-skill-PERMISSION-FAULT-020: unclosed frontmatter cannot provide per
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-020 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-020 must have unclosed frontmatter metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-021: generic action words cannot infer Skill triggers', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, "'edits'", 'R3-07S-skill-PERMISSION-FAULT-021 must filter generic edit action trigger inference');
+  assertContains(sharedEnhancements, "'executes'", 'R3-07S-skill-PERMISSION-FAULT-021 must filter generic execute action trigger inference');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-021 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-021 must have generic action inferred trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

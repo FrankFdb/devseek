@@ -1679,6 +1679,15 @@ function createUnclosedFrontmatterMetadataDeniedEditSkillReceipt() {
   ]);
 }
 
+function createGenericActionInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    'description: Generic helper for edit run test tasks',
+    'tool_kinds: read',
+  ]);
+}
+
 test('R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService accepts expected skill permission denial as slot evidence', () => {
   const service = new ExtensionProfilePlanService();
   const plan = service.createProfilePlan({
@@ -2213,6 +2222,33 @@ test('R3-07S-skill-PERMISSION-FAULT-020 ExtensionProfilePlanService rejects uncl
   assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
   assert.deepEqual(childReceipt.evidenceRefs, []);
   assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-020'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-021 ExtensionProfilePlanService rejects generic action inferred trigger permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '2121212121212121212121212121212121212121',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createGenericActionInferredTriggerDeniedEditSkillReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-021',
+    attemptId: 'skill-permission-fault-021-generic-action-inferred-trigger',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(childReceipt.loadedSkills.length, 0);
+  assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
+  assert.deepEqual(childReceipt.evidenceRefs, []);
+  assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-021'));
   assert.deepEqual(receipt.permissionFaultRefs, []);
   assert.deepEqual(receipt.effectRefs, []);
   assert.deepEqual(receipt.receiptRefs, []);
