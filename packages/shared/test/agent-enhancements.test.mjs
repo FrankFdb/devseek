@@ -693,6 +693,67 @@ test('R3-07S-skill-TASK-006 ExtensionProfilePlanService keeps vetoed slots disti
   assert.ok(passedWithVeto.vetoes.includes('skill-policy:unexpected-veto-on-pass'));
 });
 
+test('R3-07S-skill-TASK-007 ExtensionProfilePlanService quarantines child evidence for non-passed slots', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '5555555555555555555555555555555555555555',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const dirtyChildReceipt = {
+    protocol: SKILL_EXECUTION_PROTOCOL,
+    settlementAuthority: 'parent-kernel',
+    evidenceRefs: ['skill-child:evidence:should-not-project'],
+    violations: ['skill-child:violation:should-not-project'],
+    vetoes: ['skill-child:veto:should-not-project'],
+  };
+
+  const failed = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-007',
+    attemptId: 'skill-task-007-failed',
+    status: 'failed',
+    childReceipt: dirtyChildReceipt,
+    failureRefs: ['skill-execution:failure:task-007'],
+  });
+  assert.equal(failed.status, 'failed');
+  assert.deepEqual(failed.childEvidenceRefs, ['skill-child:evidence:should-not-project']);
+  assert.ok(failed.evidenceRefs.includes('skill-execution:failure:task-007'));
+  assert.ok(!failed.evidenceRefs.includes('skill-child:evidence:should-not-project'));
+  assert.ok(!failed.evidenceRefs.includes('skill-child:violation:should-not-project'));
+  assert.ok(!failed.evidenceRefs.includes('skill-child:veto:should-not-project'));
+
+  const blocked = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-007',
+    attemptId: 'skill-task-007-blocked',
+    status: 'passed',
+    childReceipt: dirtyChildReceipt,
+    effectRefs: ['skill-effect:should-not-project-blocked'],
+    receiptRefs: ['skill-receipt:should-not-project-blocked'],
+  });
+  assert.equal(blocked.status, 'blocked');
+  assert.ok(blocked.vetoes.includes('slot-child-receipt-not-clean-veto:R3-07S-skill-TASK-007'));
+  assert.ok(blocked.evidenceRefs.includes('slot-child-receipt-not-clean-veto:R3-07S-skill-TASK-007'));
+  assert.ok(!blocked.evidenceRefs.includes('skill-child:evidence:should-not-project'));
+  assert.ok(!blocked.evidenceRefs.includes('skill-child:violation:should-not-project'));
+  assert.ok(!blocked.evidenceRefs.includes('skill-child:veto:should-not-project'));
+  assert.ok(!blocked.evidenceRefs.includes('skill-effect:should-not-project-blocked'));
+  assert.ok(!blocked.evidenceRefs.includes('skill-receipt:should-not-project-blocked'));
+
+  const vetoed = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-007',
+    attemptId: 'skill-task-007-vetoed',
+    status: 'vetoed',
+    childReceipt: dirtyChildReceipt,
+    vetoes: ['skill-policy:veto:task-007'],
+  });
+  assert.equal(vetoed.status, 'vetoed');
+  assert.ok(vetoed.evidenceRefs.includes('skill-policy:veto:task-007'));
+  assert.ok(!vetoed.evidenceRefs.includes('skill-child:evidence:should-not-project'));
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({

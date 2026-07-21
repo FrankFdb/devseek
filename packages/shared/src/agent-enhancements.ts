@@ -890,6 +890,9 @@ export class ExtensionProfilePlanService {
     const vetoes = status === 'blocked' ? blockingVetoes : terminalVetoes;
     const effectRefs = status === 'passed' ? uniqueStrings(input.effectRefs ?? []) : [];
     const receiptRefs = status === 'passed' ? uniqueStrings(input.receiptRefs ?? []) : [];
+    const childEvidenceRefsForEvidence = status === 'passed' ? childEvidenceRefs : [];
+    const failureEvidenceRefs = status === 'failed' ? failureRefs : [];
+    const vetoEvidenceRefs = status === 'vetoed' || status === 'blocked' ? vetoes : [];
     const oracleRef = slot?.oracleRef ?? '';
 
     return {
@@ -926,10 +929,9 @@ export class ExtensionProfilePlanService {
         oracleRef,
         ...effectRefs,
         ...receiptRefs,
-        ...failureRefs,
-        ...childEvidenceRefs,
-        ...childViolations,
-        ...vetoes,
+        ...failureEvidenceRefs,
+        ...childEvidenceRefsForEvidence,
+        ...vetoEvidenceRefs,
       ]),
     };
   }

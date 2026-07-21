@@ -948,6 +948,16 @@ test('R3-07S-skill-TASK-006: vetoed slots must remain distinct from blocked inpu
   assertContains(sharedTests, 'R3-07S-skill-TASK-006 ExtensionProfilePlanService', 'R3-07S-skill-TASK-006 must have vetoed-vs-blocked oracle');
 });
 
+test('R3-07S-skill-TASK-007: non-passed slots must not project child evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, "const childEvidenceRefsForEvidence = status === 'passed' ? childEvidenceRefs : []", 'R3-07S-skill-TASK-007 must keep child evidence pass-only');
+  assertContains(sharedEnhancements, "const failureEvidenceRefs = status === 'failed' ? failureRefs : []", 'R3-07S-skill-TASK-007 must keep failure evidence failure-only');
+  assertContains(sharedEnhancements, "const vetoEvidenceRefs = status === 'vetoed' || status === 'blocked' ? vetoes : []", 'R3-07S-skill-TASK-007 must keep veto evidence veto-or-blocked only');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-007 ExtensionProfilePlanService', 'R3-07S-skill-TASK-007 must have non-passed child evidence oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
