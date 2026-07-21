@@ -1658,7 +1658,7 @@ function createGenericHelperInferredTriggerDeniedEditSkillReceipt() {
   });
 }
 
-function createExampleMetadataDeniedEditSkillReceipt() {
+function createBodySectionMetadataDeniedEditSkillReceipt(sectionMarker) {
   return new SkillDiscoveryService().planExecution({
     prompt: 'please use react and edit the component',
     candidates: [
@@ -1669,28 +1669,7 @@ function createExampleMetadataDeniedEditSkillReceipt() {
           '',
           'description: Generic helper',
           '',
-          'Example:',
-          'triggers: react',
-          'tool_kinds: read',
-        ].join('\n'),
-      },
-    ],
-    requestedToolKinds: ['read', 'edit'],
-  });
-}
-
-function createForExampleMetadataDeniedEditSkillReceipt() {
-  return new SkillDiscoveryService().planExecution({
-    prompt: 'please use react and edit the component',
-    candidates: [
-      {
-        path: 'skills/reference/SKILL.md',
-        content: [
-          '# Reference',
-          '',
-          'description: Generic helper',
-          '',
-          'For example:',
+          sectionMarker,
           'triggers: react',
           'tool_kinds: read',
         ].join('\n'),
@@ -2111,7 +2090,7 @@ test('R3-07S-skill-PERMISSION-FAULT-016 ExtensionProfilePlanService rejects exam
     candidateCommit: '1616161616161616161616161616161616161616',
     schemaVersion: SKILL_EXECUTION_PROTOCOL,
   });
-  const childReceipt = createExampleMetadataDeniedEditSkillReceipt();
+  const childReceipt = createBodySectionMetadataDeniedEditSkillReceipt('Example:');
 
   const receipt = service.recordSlotExecution({
     plan,
@@ -2138,7 +2117,7 @@ test('R3-07S-skill-PERMISSION-FAULT-017 ExtensionProfilePlanService rejects natu
     candidateCommit: '1717171717171717171717171717171717171717',
     schemaVersion: SKILL_EXECUTION_PROTOCOL,
   });
-  const childReceipt = createForExampleMetadataDeniedEditSkillReceipt();
+  const childReceipt = createBodySectionMetadataDeniedEditSkillReceipt('For example:');
 
   const receipt = service.recordSlotExecution({
     plan,
@@ -2153,6 +2132,33 @@ test('R3-07S-skill-PERMISSION-FAULT-017 ExtensionProfilePlanService rejects natu
   assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
   assert.deepEqual(childReceipt.evidenceRefs, []);
   assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-017'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-018 ExtensionProfilePlanService rejects bare example heading skill metadata permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '1818181818181818181818181818181818181818',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createBodySectionMetadataDeniedEditSkillReceipt('Examples');
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-018',
+    attemptId: 'skill-permission-fault-018-bare-example-heading-skill-metadata',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(childReceipt.loadedSkills.length, 0);
+  assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
+  assert.deepEqual(childReceipt.evidenceRefs, []);
+  assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-018'));
   assert.deepEqual(receipt.permissionFaultRefs, []);
   assert.deepEqual(receipt.effectRefs, []);
   assert.deepEqual(receipt.receiptRefs, []);

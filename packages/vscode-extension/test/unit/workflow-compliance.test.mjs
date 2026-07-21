@@ -1257,6 +1257,14 @@ test('R3-07S-skill-PERMISSION-FAULT-017: natural-language example metadata canno
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-017 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-017 must have natural-language example metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-018: bare example headings cannot provide permission evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, '(?:\\s*:)?', 'R3-07S-skill-PERMISSION-FAULT-018 must treat bare body section headings as metadata boundaries');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-018 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-018 must have bare heading metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
