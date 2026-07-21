@@ -1,9 +1,12 @@
 import {
+  exportTaskHistoryRecordRedacted,
   TaskHistoryProjectionService,
   type TaskHistoryProjectionDetail,
 } from './task-history-projection-service';
 import {
   TaskHistoryStore,
+  type TaskHistoryContinueResult,
+  type TaskHistoryLifecycleReceipt,
   type TaskHistoryStorage,
   type TaskRunRecord,
   type TaskRunTimelineItem,
@@ -26,6 +29,10 @@ export interface TaskHistoryUiCommand {
 export interface TaskHistoryProjectionPort {
   list(): TaskRunRecord[];
   get(id: string): TaskHistoryProjectionDetail | undefined;
+  archive?(id: string): Promise<{ task?: TaskRunRecord; lifecycleReceipt?: TaskHistoryLifecycleReceipt }>;
+  delete?(id: string): Promise<{ task?: TaskRunRecord; lifecycleReceipt?: TaskHistoryLifecycleReceipt }>;
+  exportRecord?(id: string): Promise<string | undefined>;
+  requestContinue?(id: string): Promise<TaskHistoryContinueResult>;
 }
 
 export interface TaskHistoryUiServiceOptions {
@@ -36,10 +43,10 @@ export interface TaskHistoryUiServiceOptions {
 export type TaskHistoryUiResponse =
   | { type: 'taskHistoryList'; tasks: TaskRunRecord[] }
   | { type: 'taskHistoryDetail'; task?: TaskRunRecord; id?: string; timeline?: TaskRunTimelineItem[] }
-  | { type: 'taskHistoryContinueRequested'; task?: TaskRunRecord; id: string; checkpointRef?: string }
-  | { type: 'taskHistoryArchived'; task?: TaskRunRecord; id: string }
-  | { type: 'taskHistoryDeleted'; id: string }
-  | { type: 'taskHistoryExported'; id: string; data?: string };
+  | { type: 'taskHistoryContinueRequested'; task?: TaskRunRecord; id: string; checkpointRef?: string; resumeStatus?: TaskHistoryContinueResult['status']; blockedReason?: string; lifecycleReceipt?: TaskHistoryLifecycleReceipt }
+  | { type: 'taskHistoryArchived'; task?: TaskRunRecord; id: string; lifecycleReceipt?: TaskHistoryLifecycleReceipt }
+  | { type: 'taskHistoryDeleted'; id: string; lifecycleReceipt?: TaskHistoryLifecycleReceipt }
+  | { type: 'taskHistoryExported'; id: string; data?: string; lifecycleReceipt?: TaskHistoryLifecycleReceipt };
 
 export class TaskHistoryUiService {
   private readonly store: TaskHistoryStore;
@@ -65,18 +72,15 @@ export class TaskHistoryUiService {
       case 'openTask':
         return [this.detail(command.id)];
       case 'continueTask': {
-        const task = this.getTask(command.id);
-        return [{ type: 'taskHistoryContinueRequested', id: command.id ?? '', task, checkpointRef: task?.checkpointRef }];
+        return [await this.requestContinue(command.id)];
       }
       case 'archiveTask': {
-        const task = command.id ? await this.store.archive(command.id) : undefined;
-        return [{ type: 'taskHistoryArchived', id: command.id ?? '', task }, this.list()];
+        return [await this.archiveTask(command.id), this.list()];
       }
       case 'deleteTask':
-        if (command.id) await this.store.delete(command.id);
-        return [{ type: 'taskHistoryDeleted', id: command.id ?? '' }, this.list()];
+        return [await this.deleteTask(command.id), this.list()];
       case 'exportTask':
-        return [{ type: 'taskHistoryExported', id: command.id ?? '', data: command.id ? this.exportTask(command.id) : undefined }];
+        return [{ type: 'taskHistoryExported', id: command.id ?? '', data: command.id ? await this.exportTask(command.id) : undefined }];
       default:
         return [];
     }
@@ -100,8 +104,49 @@ export class TaskHistoryUiService {
     return this.projectionService?.get(id)?.task ?? this.store.get(id);
   }
 
-  private exportTask(id: string): string | undefined {
-    const projected = this.projectionService?.get(id);
-    return projected ? JSON.stringify(projected, null, 2) : this.store.exportRecord(id);
+  private async requestContinue(id?: string): Promise<TaskHistoryUiResponse> {
+    if (!id) return { type: 'taskHistoryContinueRequested', id: '' };
+    if (this.projectionService?.get(id) && this.projectionService.requestContinue) {
+      const result = await this.projectionService.requestContinue(id);
+      return {
+        type: 'taskHistoryContinueRequested',
+        id,
+        task: result.task,
+        checkpointRef: result.checkpointRef,
+        resumeStatus: result.status,
+        blockedReason: result.blockedReason,
+        lifecycleReceipt: result.lifecycleReceipt,
+      };
+    }
+    const task = this.getTask(id);
+    return { type: 'taskHistoryContinueRequested', id, task, checkpointRef: task?.checkpointRef };
+  }
+
+  private async archiveTask(id?: string): Promise<TaskHistoryUiResponse> {
+    if (!id) return { type: 'taskHistoryArchived', id: '' };
+    if (this.projectionService?.get(id) && this.projectionService.archive) {
+      const result = await this.projectionService.archive(id);
+      return { type: 'taskHistoryArchived', id, task: result.task, lifecycleReceipt: result.lifecycleReceipt };
+    }
+    const task = await this.store.archive(id);
+    return { type: 'taskHistoryArchived', id, task };
+  }
+
+  private async deleteTask(id?: string): Promise<TaskHistoryUiResponse> {
+    if (!id) return { type: 'taskHistoryDeleted', id: '' };
+    if (this.projectionService?.get(id) && this.projectionService.delete) {
+      const result = await this.projectionService.delete(id);
+      return { type: 'taskHistoryDeleted', id, lifecycleReceipt: result.lifecycleReceipt };
+    }
+    await this.store.delete(id);
+    return { type: 'taskHistoryDeleted', id };
+  }
+
+  private async exportTask(id: string): Promise<string | undefined> {
+    if (this.projectionService?.get(id) && this.projectionService.exportRecord) {
+      return this.projectionService.exportRecord(id);
+    }
+    const record = this.store.get(id);
+    return record ? exportTaskHistoryRecordRedacted({ source: 'legacy-store', task: record }) : undefined;
   }
 }

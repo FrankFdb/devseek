@@ -36,6 +36,29 @@ function withTempWorkspace(fn) {
   }
 }
 
+async function withTempWorkspaceAsync(fn) {
+  const dir = mkdtempSync(path.join(tmpdir(), 'devseek-task-history-projection-'));
+  try {
+    return await fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function memoryStore(initial = {}) {
+  const data = new Map(Object.entries(initial));
+  return {
+    data,
+    get(key, defaultValue) {
+      return data.has(key) ? data.get(key) : defaultValue;
+    },
+    update(key, value) {
+      if (value === undefined) data.delete(key);
+      else data.set(key, value);
+    },
+  };
+}
+
 function createEvidenceRun(workspaceRoot, input) {
   const ownerToken = createProductRunEvidenceAuthorityToken();
   const participantToken = createProductRunEvidenceAuthorityToken();
@@ -86,7 +109,7 @@ function createEvidenceRun(workspaceRoot, input) {
         status: 'created',
         first_unfinished_index: 1,
         remaining_count: 2,
-        reason: 'provider interrupted after partial work',
+        reason: input.checkpointReason || 'provider interrupted after partial work',
       },
     });
   }
@@ -150,6 +173,85 @@ test('R3-05E TaskHistoryProjectionService: projects list, detail, and timeline f
     assert.ok(failed.timeline.some(item => item.type === 'checkpoint.created' && item.status === 'created'));
     assert.ok(failed.timeline.some(item => item.type === 'run.settled' && item.status === 'failed'));
     assert.notEqual(service.get('run-completed').task.id, failed.task.id);
+  });
+});
+
+test('R3-05F TaskHistoryProjectionService: lifecycle receipts preserve evidence, redact export, and gate cross-window resume', async () => {
+  await withTempWorkspaceAsync(async (workspace) => {
+    createEvidenceRun(workspace, {
+      runId: 'run-sensitive',
+      sessionId: 'session-sensitive',
+      status: 'failed',
+      startedAt: '2026-07-21T04:00:00.000Z',
+      statusAt: '2026-07-21T04:00:05.000Z',
+      checkpointAt: '2026-07-21T04:00:10.000Z',
+      settledAt: '2026-07-21T04:00:20.000Z',
+      promptSha256: 'a'.repeat(64),
+      summarySha256: 'b'.repeat(64),
+      checkpointReason: 'provider interrupted with token=supersecretvalue12345',
+    });
+
+    const storage = memoryStore();
+    const service = new TaskHistoryProjectionService({
+      workspaceRoot: workspace,
+      storage,
+      now: () => 10_000,
+      checkpointMaxAgeMs: 100,
+      retentionMs: 1_000,
+    });
+
+    const archived = await service.archive('run-sensitive');
+    assert.equal(archived.lifecycleReceipt.action, 'archive');
+    assert.equal(archived.task.status, 'archived');
+    assert.equal(service.get('run-sensitive').task.status, 'archived');
+
+    const exported = await service.exportRecord('run-sensitive');
+    assert.match(exported, /devseek\.task-history-export\/v1/);
+    assert.match(exported, /\[REDACTED\]/);
+    assert.doesNotMatch(exported, /supersecretvalue12345/);
+    assert.match(exported, /"retentionUntil"/);
+    assert.match(exported, /"lifecycleReceipts"/);
+
+    const deleted = await service.delete('run-sensitive');
+    assert.equal(deleted.lifecycleReceipt.action, 'delete');
+    assert.match(deleted.lifecycleReceipt.reason, /evidence-retained/);
+    assert.deepEqual(service.list().map(record => record.id), []);
+    assert.equal(service.get('run-sensitive').task.id, 'run-sensitive');
+
+    const blocked = await service.requestContinue('run-sensitive', { now: 20_000 });
+    assert.equal(blocked.status, 'blocked');
+    assert.equal(blocked.blockedReason, 'checkpoint-unavailable-or-expired');
+
+    const freshCheckpoint = {
+      userPrompt: 'resume with authorization: Bearer abcdefgh1234567890',
+      displayPrompt: 'resume with authorization: Bearer abcdefgh1234567890',
+      wsRootFsPath: workspace,
+      allTasks: [{ title: 'remaining' }],
+      startFromIndex: 0,
+      completedCount: 0,
+      savedAt: 9_950,
+      sessionId: 'session-sensitive',
+      checkpointProtocol: 'devseek.checkpoint-resume/v1',
+      checkpointEpoch: 1,
+      taskFingerprint: 'fingerprint',
+      resumeReceipt: 'receipt',
+    };
+    const freshService = new TaskHistoryProjectionService({
+      workspaceRoot: workspace,
+      storage: memoryStore(),
+      now: () => 10_000,
+      checkpointMaxAgeMs: 100,
+      checkpointStore: {
+        loadScoped: () => freshCheckpoint,
+        loadFresh: async () => ({ checkpoint: freshCheckpoint, stale: false }),
+      },
+    });
+
+    const resumed = await freshService.requestContinue('run-sensitive');
+    const resumedAgain = await freshService.requestContinue('run-sensitive');
+    assert.equal(resumed.status, 'resumable');
+    assert.match(resumed.checkpointRef, /^checkpoint:session-sensitive:/);
+    assert.equal(resumed.lifecycleReceipt.id, resumedAgain.lifecycleReceipt.id);
   });
 });
 

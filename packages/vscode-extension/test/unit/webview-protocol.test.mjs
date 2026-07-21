@@ -279,4 +279,49 @@ test('R3-05E TaskHistoryUiService: list, open, and continue project Run Evidence
   assert.equal(continued.checkpointRef, 'run-evidence-checkpoint:evidence-run:3');
 });
 
+test('R3-05F TaskHistoryUiService: lifecycle commands delegate to projection owner with receipts and blocked resume reasons', async () => {
+  const projectedTask = taskRecord('evidence-run', {
+    status: 'recoverable',
+    checkpointRef: 'run-evidence-checkpoint:evidence-run:3',
+    evidenceRefs: ['run-evidence:1:abc'],
+  });
+  const lifecycleReceipt = {
+    id: 'receipt-1',
+    taskId: 'evidence-run',
+    action: 'continue',
+    status: 'blocked',
+    reason: 'checkpoint-version-incompatible',
+    source: 'run-evidence',
+    sourceRef: 'run-evidence:evidence-run:abc',
+    evidenceRefs: ['run-evidence:1:abc'],
+    createdAt: 10,
+    idempotencyKey: 'continue:evidence-run',
+  };
+  const projectionService = {
+    list: () => [projectedTask],
+    get: (id) => id === 'evidence-run' ? { task: projectedTask, timeline: [] } : undefined,
+    archive: async () => ({ task: { ...projectedTask, status: 'archived' }, lifecycleReceipt: { ...lifecycleReceipt, action: 'archive', status: 'applied', reason: 'archived' } }),
+    delete: async () => ({ task: projectedTask, lifecycleReceipt: { ...lifecycleReceipt, action: 'delete', status: 'applied', reason: 'ui-delete-tombstone-evidence-retained' } }),
+    exportRecord: async () => '{"protocol":"devseek.task-history-export/v1","redaction":{"redacted":true}}',
+    requestContinue: async () => ({ status: 'blocked', task: projectedTask, checkpointRef: undefined, blockedReason: 'checkpoint-version-incompatible', lifecycleReceipt }),
+  };
+  const store = memoryStore({ 'devseek.taskHistory': [taskRecord('legacy-only', { status: 'completed' })] });
+  const service = new taskHistory.TaskHistoryUiService(store, { projectionService });
+
+  const continued = (await service.handle({ type: 'continueTask', id: 'evidence-run' }))[0];
+  assert.equal(continued.resumeStatus, 'blocked');
+  assert.equal(continued.blockedReason, 'checkpoint-version-incompatible');
+  assert.equal(continued.lifecycleReceipt.reason, 'checkpoint-version-incompatible');
+
+  const archived = (await service.handle({ type: 'archiveTask', id: 'evidence-run' }))[0];
+  assert.equal(archived.task.status, 'archived');
+  assert.equal(archived.lifecycleReceipt.action, 'archive');
+
+  const deleted = (await service.handle({ type: 'deleteTask', id: 'evidence-run' }))[0];
+  assert.match(deleted.lifecycleReceipt.reason, /evidence-retained/);
+
+  const exported = (await service.handle({ type: 'exportTask', id: 'evidence-run' }))[0];
+  assert.match(exported.data, /task-history-export/);
+});
+
 console.log('\nWebView protocol tests passed.\n');

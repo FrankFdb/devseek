@@ -638,6 +638,37 @@ test('R3-05E: TaskHistory projection is generated from Run Evidence and checkpoi
   assertContains(webviewTests, 'R3-05E TaskHistoryUiService', 'R3-05E must have UI projection oracle');
 });
 
+test('R3-05F: TaskHistory lifecycle, redacted export, retention, and resume gating stay in projection owner', () => {
+  const projection = src('src/app/task-history-projection-service.ts');
+  const uiService = src('src/app/task-history-ui-service.ts');
+  const protocol = src('src/ui/webview-protocol.ts');
+  const store = src('src/app/task-history-store.ts');
+  const projectionTests = src('test/unit/task-history-projection-service.test.mjs');
+  const webviewTests = src('test/unit/webview-protocol.test.mjs');
+
+  assertContains(projection, 'TASK_HISTORY_LIFECYCLE_PROTOCOL', 'TaskHistory lifecycle must expose a versioned protocol marker');
+  assertContains(projection, 'TASK_HISTORY_EXPORT_PROTOCOL', 'TaskHistory export must expose a versioned protocol marker');
+  assertContains(projection, 'DEFAULT_TASK_HISTORY_LIFECYCLE_KEY', 'TaskHistory lifecycle receipts must have one storage key');
+  assertContains(projection, 'SensitiveMemoryGuard', 'TaskHistory export must reuse central sensitive redaction');
+  assertContains(projection, 'archive(id', 'TaskHistory projection owner must implement archive lifecycle');
+  assertContains(projection, 'delete(id', 'TaskHistory projection owner must implement delete lifecycle');
+  assertContains(projection, 'exportRecord(id', 'TaskHistory projection owner must implement redacted export');
+  assertContains(projection, 'requestContinue(id', 'TaskHistory projection owner must gate cross-window continue');
+  assertContains(projection, 'retentionUntil', 'TaskHistory lifecycle receipts must expose retention');
+  assertContains(projection, 'checkpoint-version-incompatible', 'TaskHistory continue must honestly block incompatible checkpoints');
+  assertContains(projection, 'checkpoint-unavailable-or-expired', 'TaskHistory continue must honestly block stale or missing checkpoints');
+  assertContains(projection, 'lifecycleReceipts', 'TaskHistory projection detail/export must carry lifecycle receipts');
+  assertContains(uiService, 'archiveTask(command.id)', 'TaskHistory UI archive must delegate to projection-aware lifecycle owner');
+  assertContains(uiService, 'deleteTask(command.id)', 'TaskHistory UI delete must delegate to projection-aware lifecycle owner');
+  assertContains(uiService, 'exportTask(command.id)', 'TaskHistory UI export must delegate to projection-aware redacted export');
+  assertContains(uiService, 'requestContinue', 'TaskHistory UI continue must use projection resume gating');
+  assertContains(protocol, 'lifecycleReceipt?: TaskHistoryLifecycleReceipt', 'TaskHistory protocol must carry lifecycle receipts');
+  assertContains(protocol, 'blockedReason?: string', 'TaskHistory protocol must carry blocked resume reason');
+  assertContains(store, 'TaskHistoryLifecycleReceipt', 'TaskHistory store types must model lifecycle receipts for both projection and legacy fallback');
+  assertContains(projectionTests, 'R3-05F TaskHistoryProjectionService', 'R3-05F must have lifecycle failure-first oracle');
+  assertContains(webviewTests, 'R3-05F TaskHistoryUiService', 'R3-05F must have UI lifecycle oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

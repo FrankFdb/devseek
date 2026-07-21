@@ -24,6 +24,32 @@ export interface TaskRunTimelineItem {
   summary: string;
 }
 
+export type TaskHistoryLifecycleAction = 'archive' | 'delete' | 'export' | 'continue';
+export type TaskHistoryLifecycleStatus = 'applied' | 'blocked' | 'observed';
+
+export interface TaskHistoryLifecycleReceipt {
+  id: string;
+  taskId: string;
+  action: TaskHistoryLifecycleAction;
+  status: TaskHistoryLifecycleStatus;
+  reason: string;
+  source: 'run-evidence' | 'legacy-store';
+  sourceRef?: string;
+  evidenceRefs: string[];
+  retentionUntil?: number;
+  createdAt: number;
+  idempotencyKey: string;
+  redactionCount?: number;
+}
+
+export interface TaskHistoryContinueResult {
+  status: 'resumable' | 'blocked';
+  task?: TaskRunRecord;
+  checkpointRef?: string;
+  blockedReason?: string;
+  lifecycleReceipt?: TaskHistoryLifecycleReceipt;
+}
+
 export interface TaskRunRecord {
   id: string;
   sessionId?: string;
