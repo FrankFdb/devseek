@@ -490,7 +490,7 @@ export class HookPlanner {
 export class SkillDiscoveryService {
   discover(candidates: readonly SkillCandidate[]): SkillDescriptor[] {
     const parsedSkills = candidates
-      .filter(candidate => candidate.path.endsWith('SKILL.md'))
+      .filter(candidate => isSkillDefinitionPath(candidate.path))
       .map(candidate => this.parse(candidate));
     const pathCounts = new Map<string, number>();
     for (const skill of parsedSkills) {
@@ -620,6 +620,12 @@ export class SkillDiscoveryService {
       return selectedByTrigger ? [{ skill, selectedByTrigger }] : [];
     });
   }
+}
+
+function isSkillDefinitionPath(path: string): boolean {
+  const normalizedPath = String(path).replace(/\\/gu, '/');
+  const name = normalizedPath.split('/').pop() ?? '';
+  return name === 'SKILL.md';
 }
 
 function createSkillExecutionReceiptSignature(input: {

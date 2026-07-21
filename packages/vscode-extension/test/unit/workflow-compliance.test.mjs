@@ -1203,6 +1203,15 @@ test('R3-07S-skill-PERMISSION-FAULT-011: generic inferred trigger words cannot l
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-011 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-011 must have generic inferred trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-012: Skill discovery requires exact SKILL.md basename', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'isSkillDefinitionPath', 'R3-07S-skill-PERMISSION-FAULT-012 must keep exact Skill file detection in SkillDiscoveryService');
+  assertContains(sharedEnhancements, "name === 'SKILL.md'", 'R3-07S-skill-PERMISSION-FAULT-012 must reject suffix-confused NOTSKILL.md paths');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-012 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-012 must have suffix-confused Skill path oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

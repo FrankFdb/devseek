@@ -1577,6 +1577,25 @@ function createGenericInferredTriggerDeniedEditSkillReceipt() {
   });
 }
 
+function createSuffixConfusedSkillPathDeniedEditReceipt() {
+  return new SkillDiscoveryService().planExecution({
+    prompt: 'please use react and edit the component',
+    candidates: [
+      {
+        path: 'skills/react/NOTSKILL.md',
+        content: [
+          '# Not A Skill',
+          '',
+          'description: React components',
+          'triggers: react',
+          'tool_kinds: read',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read', 'edit'],
+  });
+}
+
 test('R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService accepts expected skill permission denial as slot evidence', () => {
   const service = new ExtensionProfilePlanService();
   const plan = service.createProfilePlan({
@@ -1869,6 +1888,32 @@ test('R3-07S-skill-PERMISSION-FAULT-011 ExtensionProfilePlanService rejects gene
   assert.equal(childReceipt.loadedSkills.length, 0);
   assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
   assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-011'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-012 ExtensionProfilePlanService rejects suffix-confused skill file permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '1212121212121212121212121212121212121212',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createSuffixConfusedSkillPathDeniedEditReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-012',
+    attemptId: 'skill-permission-fault-012-suffix-confused-skill-file',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(childReceipt.loadedSkills.length, 0);
+  assert.deepEqual(childReceipt.evidenceRefs, []);
+  assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-012'));
   assert.deepEqual(receipt.permissionFaultRefs, []);
   assert.deepEqual(receipt.effectRefs, []);
   assert.deepEqual(receipt.receiptRefs, []);
