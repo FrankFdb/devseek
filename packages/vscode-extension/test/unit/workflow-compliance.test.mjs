@@ -1290,6 +1290,14 @@ test('R3-07S-skill-PERMISSION-FAULT-021: generic action words cannot infer Skill
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-021 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-021 must have generic action inferred trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-022: inline HTML comments cannot provide Skill metadata', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, "trimmed.indexOf('<!--')", 'R3-07S-skill-PERMISSION-FAULT-022 must detect inline HTML comment openings');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-022 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-022 must have inline HTML comment metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

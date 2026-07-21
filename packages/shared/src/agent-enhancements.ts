@@ -688,43 +688,54 @@ function skillMetadataLines(content: string): string[] {
   let insideHtmlComment = false;
   let insideBodySection = false;
   let frontmatterClosed = false;
-  return lines.filter((line, index) => {
+  const metadataLines: string[] = [];
+  for (const [index, line] of lines.entries()) {
     const trimmed = line.trim();
+    let isFrontmatterMetadataLine = false;
     if (frontmatterStartLine >= 0) {
-      if (index < frontmatterStartLine) return false;
+      if (index < frontmatterStartLine) continue;
       if (index === frontmatterStartLine) {
         insideFrontmatter = frontmatterEndLine > frontmatterStartLine;
-        return false;
+        continue;
       }
-      if (frontmatterEndLine <= frontmatterStartLine) return false;
+      if (frontmatterEndLine <= frontmatterStartLine) continue;
       if (insideFrontmatter) {
-        if (index < frontmatterEndLine) return true;
-        insideFrontmatter = false;
-        frontmatterClosed = true;
-        return false;
+        if (index < frontmatterEndLine) {
+          isFrontmatterMetadataLine = true;
+        } else {
+          insideFrontmatter = false;
+          frontmatterClosed = true;
+          continue;
+        }
       }
-      if (frontmatterClosed) return false;
+      if (frontmatterClosed) continue;
     }
-    if (/^(?:```|~~~)/u.test(trimmed)) {
+    if (!isFrontmatterMetadataLine && /^(?:```|~~~)/u.test(trimmed)) {
       insideFence = !insideFence;
-      return false;
+      continue;
     }
-    if (insideFence) return false;
+    if (!isFrontmatterMetadataLine && insideFence) continue;
     if (insideHtmlComment) {
       insideHtmlComment = !trimmed.includes('-->');
-      return false;
+      continue;
     }
-    if (trimmed.startsWith('<!--')) {
+    const htmlCommentStart = trimmed.indexOf('<!--');
+    let metadataLine = line;
+    if (htmlCommentStart >= 0) {
+      const rawHtmlCommentStart = line.indexOf('<!--');
       insideHtmlComment = !trimmed.includes('-->');
-      return false;
+      metadataLine = rawHtmlCommentStart >= 0 ? line.slice(0, rawHtmlCommentStart).trimEnd() : '';
+      if (!metadataLine.trim()) continue;
     }
-    if (SKILL_METADATA_BODY_SECTION_MARKER.test(trimmed)) {
+    const metadataTrimmed = metadataLine.trim();
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_BODY_SECTION_MARKER.test(metadataTrimmed)) {
       insideBodySection = true;
-      return false;
+      continue;
     }
-    if (insideBodySection) return false;
-    return true;
-  });
+    if (!isFrontmatterMetadataLine && insideBodySection) continue;
+    metadataLines.push(metadataLine);
+  }
+  return metadataLines;
 }
 
 export class SubagentRegistry {
