@@ -94,6 +94,21 @@
         "category": "DevSeek"
       },
       {
+        "command": "devseek.manageMemory",
+        "title": "DevSeek: 管理 Agent 记忆",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.disableMemory",
+        "title": "DevSeek: 禁用 Agent 记忆",
+        "category": "DevSeek"
+      },
+      {
+        "command": "devseek.deleteMemory",
+        "title": "DevSeek: 删除 Agent 记忆",
+        "category": "DevSeek"
+      },
+      {
         "command": "devseek.addFileToChat",
         "title": "Add to DS Chat",
         "category": "DevSeek",

@@ -6,6 +6,7 @@ import type {
   MemoryLifecycleAction,
   MemoryLifecycleReceipt,
   MemoryLifecycleResult,
+  MemoryManagementEntry,
   MemoryProvenance,
   MemoryQuery,
   MemoryRecord,
@@ -23,6 +24,7 @@ import {
 } from './context-relevance';
 
 const DEFAULT_MEMORY_LIMIT = 20;
+const DEFAULT_MEMORY_MANAGEMENT_LIMIT = 100;
 const DEFAULT_CONTEXT_CHARS = 3000;
 const FILTERED_LEGACY_SCAN_CHARS = 12000;
 
@@ -197,6 +199,38 @@ export class MemoryService {
     return { changed: true, receipt };
   }
 
+  listManagementEntries(query: MemoryQuery = {}): MemoryManagementEntry[] {
+    const receiptsByRecord = this.countLifecycleReceiptsByRecord();
+    return this.retrieve({
+      ...query,
+      includeDisabled: true,
+      limit: query.limit ?? DEFAULT_MEMORY_MANAGEMENT_LIMIT,
+    }).map((record) => this.projectMemoryManagementEntry(
+      record,
+      receiptsByRecord.get(record.id) ?? 0,
+    ));
+  }
+
+  viewManagementEntry(id: string): MemoryManagementEntry | undefined {
+    this.sanitizeSensitiveMemoryRecords();
+    this.invalidateLegacyImportedMemoryRecords();
+    this.refreshExpiredMemoryRecords();
+    const record = this.readNormalizedMemoryRecords().find((candidate) => candidate.id === id);
+    if (!record) return undefined;
+    return this.projectMemoryManagementEntry(
+      record,
+      this.countLifecycleReceiptsByRecord().get(record.id) ?? 0,
+    );
+  }
+
+  disableFromManagementSurface(id: string): MemoryLifecycleResult {
+    return this.disable(id, 'memory-management-surface:disable');
+  }
+
+  deleteFromManagementSurface(id: string): MemoryLifecycleResult {
+    return this.delete(id, 'memory-management-surface:delete');
+  }
+
   getLifecycleReceipts(): MemoryLifecycleReceipt[] {
     return this.store.readLifecycleReceipts();
   }
@@ -278,6 +312,63 @@ export class MemoryService {
 
   private readNormalizedMemoryRecords(): MemoryRecord[] {
     return this.store.readAll().map(record => normalizeStoredMemoryRecord(record));
+  }
+
+  private countLifecycleReceiptsByRecord(): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const receipt of this.store.readLifecycleReceipts()) {
+      counts.set(receipt.recordId, (counts.get(receipt.recordId) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  private projectMemoryManagementEntry(
+    record: MemoryRecord,
+    lifecycleReceiptCount: number,
+  ): MemoryManagementEntry {
+    const sourceKind = record.provenance?.sourceKind ?? record.source.kind;
+    const approvalState = record.provenance?.approvalState ?? 'not-required';
+    const trusted = record.provenance?.trusted ?? isTrustedMemorySource(record.source);
+    const contentPreview = collapseMemoryPreview(record.content, 180);
+    const label = `${record.type} (${record.status})`;
+    const description = [
+      record.scope,
+      record.classification,
+      `source=${sourceKind}`,
+      `approval=${approvalState}`,
+    ].join(' | ');
+    const detail = [
+      contentPreview,
+      record.tags.length > 0 ? `tags=${record.tags.join(', ')}` : '',
+      `receipts=${lifecycleReceiptCount}`,
+    ].filter(Boolean).join(' | ');
+    const accessibleLabel = [
+      `Memory ${record.id}`,
+      `status ${record.status}`,
+      `type ${record.type}`,
+      `scope ${record.scope}`,
+      `classification ${record.classification}`,
+      `source ${sourceKind}`,
+      `approval ${approvalState}`,
+      trusted ? 'trusted' : 'untrusted',
+      contentPreview,
+    ].join('; ');
+    return {
+      id: record.id,
+      label,
+      description,
+      detail,
+      status: record.status,
+      type: record.type,
+      scope: record.scope,
+      classification: record.classification,
+      sourceKind,
+      approvalState,
+      trusted,
+      contentPreview,
+      lifecycleReceiptCount,
+      accessibleLabel,
+    };
   }
 
   private sanitizeSensitiveMemoryRecords(now = this.now()): void {
@@ -669,6 +760,12 @@ function hasSameMemoryIdentity(left: MemoryRecord, right: MemoryRecord): boolean
 
 function normalizeMemoryContentKey(content: string): string {
   return String(content || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function collapseMemoryPreview(content: string, maxChars: number): string {
+  const normalized = String(content || '').trim().replace(/\s+/g, ' ');
+  if (normalized.length <= maxChars) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxChars - 1))}...`;
 }
 
 function memoryConflictKeys(record: Pick<MemoryRecord, 'tags'>): string[] {

@@ -429,6 +429,43 @@ test('R3-05B MemoryService: conflict supersede and revoke/delete receipts are pr
   });
 });
 
+test('R3-05D MemoryService: management surface projects facts and lifecycle actions', () => {
+  withTempWorkspace((workspace) => {
+    const service = new MemoryService({ workspaceRoot: workspace, now: () => 3000 });
+    const record = service.appendAgentMemory('优先使用 rg 做代码搜索。');
+
+    const entries = service.listManagementEntries({ limit: 10 });
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0].id, record.id);
+    assert.equal(entries[0].status, 'active');
+    assert.equal(entries[0].type, 'verified-experience');
+    assert.equal(entries[0].scope, 'repository');
+    assert.equal(entries[0].classification, 'workspace');
+    assert.equal(entries[0].sourceKind, 'agent');
+    assert.equal(entries[0].approvalState, 'approved');
+    assert.equal(entries[0].trusted, false);
+    assert.match(entries[0].label, /verified-experience/);
+    assert.match(entries[0].description, /repository/);
+    assert.match(entries[0].detail, /优先使用 rg/);
+    assert.match(entries[0].contentPreview, /优先使用 rg/);
+    assert.match(entries[0].accessibleLabel, /active/);
+    assert.match(entries[0].accessibleLabel, /agent/);
+    assert.equal(service.viewManagementEntry(record.id).id, record.id);
+
+    const disabled = service.disableFromManagementSurface(record.id);
+    assert.equal(disabled.changed, true);
+    assert.equal(disabled.receipt.action, 'disable');
+    assert.match(disabled.receipt.reason, /memory-management-surface:disable/);
+    assert.equal(service.viewManagementEntry(record.id).status, 'disabled');
+
+    const deleted = service.deleteFromManagementSurface(record.id);
+    assert.equal(deleted.changed, true);
+    assert.equal(deleted.receipt.action, 'delete');
+    assert.match(deleted.receipt.reason, /memory-management-surface:delete/);
+    assert.equal(service.viewManagementEntry(record.id), undefined);
+  });
+});
+
 test('MemoryService: supports disable and delete lifecycle operations', () => {
   withTempWorkspace((workspace) => {
     const service = new MemoryService({ workspaceRoot: workspace });

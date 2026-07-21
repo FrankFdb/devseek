@@ -23,6 +23,7 @@ import {
   type AgentCommandSurfaceProjector,
 } from '../app/agent-command-surface-projection';
 import { MemoryService } from '../app/memory-service';
+import type { MemoryManagementEntry } from '../memory/types';
 import type { TerminalPermissionCoordinator } from '../app/terminal-permission-coordinator';
 
 interface ExtensionCommandRegistrationDeps {
@@ -44,6 +45,12 @@ interface ExtensionCommandRegistrationDeps {
 interface CompletionState {
   debounceTimer?: ReturnType<typeof setTimeout>;
   cache: Map<string, vscode.InlineCompletionItem[]>;
+}
+
+type MemoryManagementAction = 'view' | 'disable' | 'delete';
+
+interface MemoryQuickPickItem extends vscode.QuickPickItem {
+  entry: MemoryManagementEntry;
 }
 
 export function registerExtensionCommands(
@@ -115,6 +122,9 @@ function registerVisibleCommands(
       await runTerminalCommand(commandProjector);
     }],
     ['devseek.showMemoryFiles', async () => addMemoryFileToChat(deps.viewProvider)],
+    ['devseek.manageMemory', async () => showMemoryManagementSurface('view')],
+    ['devseek.disableMemory', async () => showMemoryManagementSurface('disable')],
+    ['devseek.deleteMemory', async () => showMemoryManagementSurface('delete')],
   ];
 
   for (const [id, command] of commands) {
@@ -159,6 +169,119 @@ async function addMemoryFileToChat(target: DeepSeekViewProvider): Promise<void> 
   const memPath = new MemoryService({ workspaceRoot: wsPath }).ensureLegacyMemoryFile();
   target.addToChat('memory.md', '', memPath);
   target.focus();
+}
+
+async function showMemoryManagementSurface(action: MemoryManagementAction): Promise<void> {
+  const service = createMemoryServiceForActiveWorkspace();
+  if (!service) return;
+  const picked = await pickMemoryManagementEntry(service, action);
+  if (!picked) return;
+  await runMemoryManagementAction(service, picked, action);
+}
+
+function createMemoryServiceForActiveWorkspace(): MemoryService | null {
+  const wsPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!wsPath) {
+    void vscode.window.showWarningMessage('DevSeek: 请先打开一个工作区');
+    return null;
+  }
+  return new MemoryService({ workspaceRoot: wsPath });
+}
+
+async function pickMemoryManagementEntry(
+  service: MemoryService,
+  action: MemoryManagementAction,
+): Promise<MemoryManagementEntry | undefined> {
+  const entries = service.listManagementEntries({ limit: 100 });
+  if (entries.length === 0) {
+    await vscode.window.showInformationMessage('DevSeek: 当前没有可管理的 Agent 记忆');
+    return undefined;
+  }
+  const items = entries.map(toMemoryQuickPickItem);
+  const picked = await vscode.window.showQuickPick(items, {
+    title: memoryManagementTitle(action),
+    placeHolder: '选择一条 Agent 记忆',
+    matchOnDescription: true,
+    matchOnDetail: true,
+  });
+  return picked?.entry;
+}
+
+function toMemoryQuickPickItem(entry: MemoryManagementEntry): MemoryQuickPickItem {
+  return {
+    label: `$(database) ${entry.label}`,
+    description: entry.description,
+    detail: entry.accessibleLabel,
+    entry,
+  };
+}
+
+function memoryManagementTitle(action: MemoryManagementAction): string {
+  if (action === 'disable') return 'DevSeek: 禁用 Agent 记忆';
+  if (action === 'delete') return 'DevSeek: 删除 Agent 记忆';
+  return 'DevSeek: 管理 Agent 记忆';
+}
+
+async function runMemoryManagementAction(
+  service: MemoryService,
+  entry: MemoryManagementEntry,
+  action: MemoryManagementAction,
+): Promise<void> {
+  if (action === 'view') {
+    await showMemoryManagementEntryDetails(service, entry.id);
+    return;
+  }
+  if (action === 'delete') {
+    const confirmed = await vscode.window.showWarningMessage(
+      `DevSeek: 删除 Agent 记忆 ${entry.id}？`,
+      { modal: true },
+      '删除',
+    );
+    if (confirmed !== '删除') return;
+    const result = service.deleteFromManagementSurface(entry.id);
+    await showMemoryLifecycleResult('删除', result.changed);
+    return;
+  }
+  const result = service.disableFromManagementSurface(entry.id);
+  await showMemoryLifecycleResult('禁用', result.changed);
+}
+
+async function showMemoryManagementEntryDetails(
+  service: MemoryService,
+  id: string,
+): Promise<void> {
+  const entry = service.viewManagementEntry(id);
+  if (!entry) {
+    await vscode.window.showWarningMessage('DevSeek: 这条 Agent 记忆已不存在');
+    return;
+  }
+  const choice = await vscode.window.showInformationMessage(
+    entry.accessibleLabel,
+    '禁用',
+    '删除',
+  );
+  if (choice === '禁用') {
+    const result = service.disableFromManagementSurface(entry.id);
+    await showMemoryLifecycleResult('禁用', result.changed);
+  } else if (choice === '删除') {
+    const confirmed = await vscode.window.showWarningMessage(
+      `DevSeek: 删除 Agent 记忆 ${entry.id}？`,
+      { modal: true },
+      '删除',
+    );
+    if (confirmed === '删除') {
+      const result = service.deleteFromManagementSurface(entry.id);
+      await showMemoryLifecycleResult('删除', result.changed);
+    }
+  }
+}
+
+async function showMemoryLifecycleResult(label: string, changed: boolean): Promise<void> {
+  if (changed) {
+    await vscode.window.showInformationMessage(`DevSeek: Agent 记忆已${label}`);
+  } else {
+    await vscode.window.showWarningMessage(`DevSeek: Agent 记忆未发生${label}`);
+  }
 }
 
 function registerInlineChatCommand(

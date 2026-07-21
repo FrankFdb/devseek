@@ -586,6 +586,33 @@ test('§8.6 Memory: showMemoryFiles command in package.json', () => {
   assertContains(pkg, 'devseek.showMemoryFiles', '§8.6 command declared in package.json');
 });
 
+test('R3-05D: Memory management surface commands are projections over MemoryService', () => {
+  const pkg = src('package.json');
+  const surface = src('src/ui/extension-command-registration.ts');
+  const memoryService = src('src/app/memory-service.ts');
+  const memoryTypes = src('src/memory/types.ts');
+  const memoryTests = src('test/unit/memory-service.test.mjs');
+
+  for (const command of ['devseek.manageMemory', 'devseek.disableMemory', 'devseek.deleteMemory']) {
+    assertContains(pkg, command, `R3-05D package.json must declare ${command}`);
+    assertContains(surface, command, `R3-05D VS Code surface must register ${command}`);
+  }
+  assertContains(memoryTypes, 'MemoryManagementEntry', 'R3-05D memory schema must expose management projection entries');
+  assertContains(memoryService, 'listManagementEntries', 'MemoryService must own management listing projection');
+  assertContains(memoryService, 'viewManagementEntry', 'MemoryService must own management detail projection');
+  assertContains(memoryService, 'disableFromManagementSurface', 'MemoryService must own surface disable transition');
+  assertContains(memoryService, 'deleteFromManagementSurface', 'MemoryService must own surface delete transition');
+  assertContains(memoryService, 'projectMemoryManagementEntry', 'MemoryService must project records for UI accessibility');
+  assertContains(surface, 'MemoryManagementAction', 'VS Code surface must model keyboard-command actions without owning state');
+  assertContains(surface, 'showQuickPick', 'VS Code surface must be command-palette and keyboard reachable');
+  assertContains(surface, 'listManagementEntries', 'VS Code surface must list through MemoryService');
+  assertContains(surface, 'viewManagementEntry', 'VS Code surface must view through MemoryService');
+  assertContains(surface, 'disableFromManagementSurface', 'VS Code surface must disable through MemoryService');
+  assertContains(surface, 'deleteFromManagementSurface', 'VS Code surface must delete through MemoryService');
+  assertDoesNotContain(surface, 'MemoryStore', 'VS Code surface must not import or directly mutate MemoryStore');
+  assertContains(memoryTests, 'R3-05D MemoryService: management surface projects facts and lifecycle actions', 'R3-05D must have failure-first MemoryService oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

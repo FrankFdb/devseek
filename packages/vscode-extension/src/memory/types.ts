@@ -73,6 +73,23 @@ export interface MemoryRecord {
   tags: string[];
 }
 
+export interface MemoryManagementEntry {
+  id: string;
+  label: string;
+  description: string;
+  detail: string;
+  status: MemoryStatus;
+  type: MemoryType;
+  scope: MemoryScope;
+  classification: MemoryClassification;
+  sourceKind: MemorySourceKind;
+  approvalState: MemoryApprovalState;
+  trusted: boolean;
+  contentPreview: string;
+  lifecycleReceiptCount: number;
+  accessibleLabel: string;
+}
+
 export interface MemoryLifecycleReceipt {
   id: string;
   action: MemoryLifecycleAction;
