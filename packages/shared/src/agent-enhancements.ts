@@ -672,9 +672,12 @@ function freezeSkillExecutionReceipt(receipt: SkillExecutionReceipt): SkillExecu
   return Object.freeze(receipt);
 }
 
+const SKILL_METADATA_BODY_SECTION_MARKER = /^(?:#{2,}\s+|(?:examples?|samples?|usage|notes?)\b.*:)/iu;
+
 function skillMetadataLines(content: string): string[] {
   let insideFence = false;
   let insideHtmlComment = false;
+  let insideBodySection = false;
   return String(content).split(/\r?\n/).filter((line) => {
     const trimmed = line.trim();
     if (/^(?:```|~~~)/u.test(trimmed)) {
@@ -690,6 +693,11 @@ function skillMetadataLines(content: string): string[] {
       insideHtmlComment = !trimmed.includes('-->');
       return false;
     }
+    if (SKILL_METADATA_BODY_SECTION_MARKER.test(trimmed)) {
+      insideBodySection = true;
+      return false;
+    }
+    if (insideBodySection) return false;
     return true;
   });
 }

@@ -1240,6 +1240,15 @@ test('R3-07S-skill-PERMISSION-FAULT-015: generic inferred helper trigger words c
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-015 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-015 must have generic helper inferred trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-016: example Skill metadata cannot provide permission evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_SECTION_MARKER', 'R3-07S-skill-PERMISSION-FAULT-016 must filter body/example metadata in the existing Skill parser owner');
+  assertContains(sharedEnhancements, 'insideBodySection', 'R3-07S-skill-PERMISSION-FAULT-016 must keep body-section state inside skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-016 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-016 must have example metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
