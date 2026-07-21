@@ -573,15 +573,20 @@ export class SkillDiscoveryService {
       .map(trigger => trigger.trim())
       .filter(Boolean);
     const schema = parseSkillInputSchema(lines, candidate.path);
+    const declaredToolKindValues = parseSkillToolKinds(lines);
+    const invalidDeclaredToolKinds = declaredToolKindValues.invalidToolKinds;
     return {
       name: heading || candidate.path.split('/').slice(-2, -1)[0] || 'skill',
       path: candidate.path,
       description,
       triggers: triggers.length > 0 ? triggers : inferTriggers(candidate.path, description),
       inputSchema: schema.inputSchema,
-      declaredToolKinds: parseSkillToolKinds(lines),
+      declaredToolKinds: declaredToolKindValues.toolKinds,
       completionClaimRequested: parseCompletionClaimRequested(lines),
-      parseIssues: schema.issue ? [schema.issue] : [],
+      parseIssues: uniqueStrings([
+        ...(schema.issue ? [schema.issue] : []),
+        ...invalidDeclaredToolKinds.map(kind => `skill-tool-kind-invalid:${kind}`),
+      ]),
       evidenceRef: skillEvidenceRef(candidate.path, candidate.content),
     };
   }
@@ -1740,12 +1745,11 @@ function defaultSkillInputSchema(): Record<string, unknown> {
   return { type: 'object', additionalProperties: true };
 }
 
-function parseSkillToolKinds(lines: readonly string[]): SkillToolKind[] {
-  return uniqueStrings(lines
+function parseSkillToolKinds(lines: readonly string[]): { toolKinds: SkillToolKind[]; invalidToolKinds: string[] } {
+  return parseSkillToolKindValues(lines
     .filter(line => /^(?:tool_kinds|toolKinds|tools)\s*:/i.test(line))
     .flatMap(line => line.replace(/^(?:tool_kinds|toolKinds|tools)\s*:\s*/i, '').split(','))
-    .map(value => value.trim().toLowerCase()))
-    .flatMap(toSkillToolKind);
+    .map(value => value.trim().toLowerCase()));
 }
 
 function parseSkillToolKindValues(values: readonly unknown[]): { toolKinds: SkillToolKind[]; invalidToolKinds: string[] } {
