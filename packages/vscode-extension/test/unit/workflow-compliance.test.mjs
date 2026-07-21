@@ -846,6 +846,17 @@ test('R3-07F-hook: Extension profile planner binds hook plans to hook policy sch
   assertContains(sharedTests, 'R3-07F-hook ExtensionProfilePlanService', 'R3-07F-hook must have profile-plan failure-first oracle');
 });
 
+test('R3-07F-mcp: Extension profile planner binds MCP plans to MCP trust schema', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'mcp: MCP_TRUST_PROTOCOL', 'MCP profile plans must bind to MCP trust schema');
+  assertContains(sharedEnhancements, 'profile-plan-invalid-kind', 'Invalid profile kinds must be blocked');
+  assertContains(sharedEnhancements, 'profile-plan-schema-kind-mismatch', 'MCP kind/schema mismatches must be blocked');
+  assertContains(sharedEnhancements, 'R3-07S-${input.kind}', 'MCP profile plan must generate concrete R3-07S MCP slot IDs through the shared kind template');
+  assertContains(sharedTests, 'R3-07F-mcp ExtensionProfilePlanService', 'R3-07F-mcp must have profile-plan failure-first oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

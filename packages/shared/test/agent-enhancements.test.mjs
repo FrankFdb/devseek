@@ -242,6 +242,41 @@ test('R3-07F-hook ExtensionProfilePlanService binds hook profile plans to hook p
   assert.ok(wrongSchema.violations.includes('profile-plan-schema-kind-mismatch:hook'));
 });
 
+test('R3-07F-mcp ExtensionProfilePlanService binds MCP profile plans to trust schema', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'mcp',
+    candidateCommit: '726be94a772a76ac91b404298d55373f26043df9',
+    schemaVersion: 'devseek.mcp-trust/v1',
+  });
+
+  assert.equal(plan.profileId, 'R3-07F-mcp-PROFILE-PLAN');
+  assert.equal(plan.kind, 'mcp');
+  assert.equal(plan.status, 'signed');
+  assert.equal(plan.taskSlots.length, 20);
+  assert.equal(plan.permissionFaultSlots.length, 100);
+  assert.equal(plan.taskSlots[0].slotId, 'R3-07S-mcp-TASK-001');
+  assert.equal(plan.permissionFaultSlots[99].slotId, 'R3-07S-mcp-PERMISSION-FAULT-100');
+  assert.ok(plan.permissionFaultSlots.every(slot => slot.schemaVersion === 'devseek.mcp-trust/v1'));
+
+  const wrongSchema = service.createProfilePlan({
+    kind: 'mcp',
+    candidateCommit: '726be94a772a76ac91b404298d55373f26043df9',
+    schemaVersion: 'devseek.plugin-supply-chain/v1',
+  });
+  assert.equal(wrongSchema.status, 'blocked');
+  assert.ok(wrongSchema.violations.includes('profile-plan-schema-kind-mismatch:mcp'));
+
+  const invalidKind = service.createProfilePlan({
+    kind: 'mcp-unsafe',
+    candidateCommit: '726be94a772a76ac91b404298d55373f26043df9',
+    schemaVersion: 'devseek.mcp-trust/v1',
+  });
+  assert.equal(invalidKind.status, 'blocked');
+  assert.ok(invalidKind.violations.includes('profile-plan-invalid-kind'));
+  assert.notEqual(invalidKind.profileId, 'R3-07F-mcp-PROFILE-PLAN');
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({
