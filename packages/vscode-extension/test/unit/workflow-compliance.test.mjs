@@ -952,8 +952,8 @@ test('R3-07S-skill-TASK-007: non-passed slots must not project child evidence', 
   const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
   const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
 
-  assertContains(sharedEnhancements, "const childEvidenceRefsForEvidence = status === 'passed' ? childEvidenceRefs : []", 'R3-07S-skill-TASK-007 must keep child evidence pass-only');
-  assertContains(sharedEnhancements, "const failureEvidenceRefs = status === 'failed' ? failureRefs : []", 'R3-07S-skill-TASK-007 must keep failure evidence failure-only');
+  assertContains(sharedEnhancements, "const childEvidenceRefsForReceipt = status === 'passed' ? childEvidenceRefs : []", 'R3-07S-skill-TASK-007 must keep child evidence pass-only');
+  assertContains(sharedEnhancements, "const failureRefsForReceipt = status === 'failed' ? failureRefs : []", 'R3-07S-skill-TASK-007 must keep failure evidence failure-only');
   assertContains(sharedEnhancements, "const vetoEvidenceRefs = status === 'vetoed' || status === 'blocked' ? vetoes : []", 'R3-07S-skill-TASK-007 must keep veto evidence veto-or-blocked only');
   assertContains(sharedTests, 'R3-07S-skill-TASK-007 ExtensionProfilePlanService', 'R3-07S-skill-TASK-007 must have non-passed child evidence oracle');
 });
@@ -975,6 +975,16 @@ test('R3-07S-skill-TASK-009: blocked is not caller-supplied terminal input', () 
   assertContains(sharedEnhancements, 'EXTENSION_PROFILE_SLOT_EXECUTION_INPUT_STATUSES', 'R3-07S-skill-TASK-009 must separate caller input statuses from receipt statuses');
   assertContains(sharedEnhancements, "['passed', 'failed', 'vetoed']", 'R3-07S-skill-TASK-009 must exclude blocked from caller input statuses');
   assertContains(sharedTests, 'R3-07S-skill-TASK-009 ExtensionProfilePlanService', 'R3-07S-skill-TASK-009 must have blocked-input oracle');
+});
+
+test('R3-07S-skill-TASK-010: terminal evidence fields must match final status', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, "const childEvidenceRefsForReceipt = status === 'passed' ? childEvidenceRefs : []", 'R3-07S-skill-TASK-010 must keep structured child evidence pass-only');
+  assertContains(sharedEnhancements, "const failureRefsForReceipt = status === 'failed' ? failureRefs : []", 'R3-07S-skill-TASK-010 must keep structured failure refs failure-only');
+  assertContains(sharedEnhancements, 'const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : []', 'R3-07S-skill-TASK-010 must expose only child violations that explain a child-receipt block');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-010 ExtensionProfilePlanService', 'R3-07S-skill-TASK-010 must have terminal-field oracle');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

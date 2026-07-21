@@ -894,8 +894,9 @@ export class ExtensionProfilePlanService {
     const vetoes = status === 'blocked' ? blockingVetoes : terminalVetoes;
     const effectRefs = status === 'passed' ? uniqueStrings(input.effectRefs ?? []) : [];
     const receiptRefs = status === 'passed' ? uniqueStrings(input.receiptRefs ?? []) : [];
-    const childEvidenceRefsForEvidence = status === 'passed' ? childEvidenceRefs : [];
-    const failureEvidenceRefs = status === 'failed' ? failureRefs : [];
+    const childEvidenceRefsForReceipt = status === 'passed' ? childEvidenceRefs : [];
+    const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : [];
+    const failureRefsForReceipt = status === 'failed' ? failureRefs : [];
     const vetoEvidenceRefs = status === 'vetoed' || status === 'blocked' ? vetoes : [];
     const oracleRef = slot?.oracleRef ?? '';
 
@@ -921,11 +922,11 @@ export class ExtensionProfilePlanService {
       childProtocol,
       childSettlementAuthority,
       childEvidenceRequired,
-      childEvidenceRefs,
-      childViolations,
+      childEvidenceRefs: childEvidenceRefsForReceipt,
+      childViolations: childViolationsForReceipt,
       effectRefs,
       receiptRefs,
-      failureRefs,
+      failureRefs: failureRefsForReceipt,
       vetoes,
       violations: vetoes,
       evidenceRefs: uniqueStrings([
@@ -933,8 +934,8 @@ export class ExtensionProfilePlanService {
         oracleRef,
         ...effectRefs,
         ...receiptRefs,
-        ...failureEvidenceRefs,
-        ...childEvidenceRefsForEvidence,
+        ...failureRefsForReceipt,
+        ...childEvidenceRefsForReceipt,
         ...vetoEvidenceRefs,
       ]),
     };

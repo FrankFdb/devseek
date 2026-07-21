@@ -717,7 +717,8 @@ test('R3-07S-skill-TASK-007 ExtensionProfilePlanService quarantines child eviden
     failureRefs: ['skill-execution:failure:task-007'],
   });
   assert.equal(failed.status, 'failed');
-  assert.deepEqual(failed.childEvidenceRefs, ['skill-child:evidence:should-not-project']);
+  assert.deepEqual(failed.childEvidenceRefs, []);
+  assert.deepEqual(failed.childViolations, []);
   assert.ok(failed.evidenceRefs.includes('skill-execution:failure:task-007'));
   assert.ok(!failed.evidenceRefs.includes('skill-child:evidence:should-not-project'));
   assert.ok(!failed.evidenceRefs.includes('skill-child:violation:should-not-project'));
@@ -734,6 +735,9 @@ test('R3-07S-skill-TASK-007 ExtensionProfilePlanService quarantines child eviden
   });
   assert.equal(blocked.status, 'blocked');
   assert.ok(blocked.vetoes.includes('slot-child-receipt-not-clean-veto:R3-07S-skill-TASK-007'));
+  assert.deepEqual(blocked.childEvidenceRefs, []);
+  assert.ok(blocked.childViolations.includes('skill-child:violation:should-not-project'));
+  assert.ok(blocked.childViolations.includes('skill-child:veto:should-not-project'));
   assert.ok(blocked.evidenceRefs.includes('slot-child-receipt-not-clean-veto:R3-07S-skill-TASK-007'));
   assert.ok(!blocked.evidenceRefs.includes('skill-child:evidence:should-not-project'));
   assert.ok(!blocked.evidenceRefs.includes('skill-child:violation:should-not-project'));
@@ -750,6 +754,8 @@ test('R3-07S-skill-TASK-007 ExtensionProfilePlanService quarantines child eviden
     vetoes: ['skill-policy:veto:task-007'],
   });
   assert.equal(vetoed.status, 'vetoed');
+  assert.deepEqual(vetoed.childEvidenceRefs, []);
+  assert.deepEqual(vetoed.childViolations, []);
   assert.ok(vetoed.evidenceRefs.includes('skill-policy:veto:task-007'));
   assert.ok(!vetoed.evidenceRefs.includes('skill-child:evidence:should-not-project'));
 });
@@ -810,6 +816,81 @@ test('R3-07S-skill-TASK-009 ExtensionProfilePlanService rejects caller-supplied 
   assert.deepEqual(blockedInput.receiptRefs, []);
   assert.ok(!blockedInput.evidenceRefs.includes('skill-effect:blocked-input-should-not-project'));
   assert.ok(!blockedInput.evidenceRefs.includes('skill-receipt:blocked-input-should-not-project'));
+});
+
+test('R3-07S-skill-TASK-010 ExtensionProfilePlanService scopes terminal evidence fields to final status', () => {
+  const service = new ExtensionProfilePlanService();
+  const skillReceipt = new SkillDiscoveryService().planExecution({
+    prompt: 'please use the react skill',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: 'description: Build React views\ntriggers: react\ntool_kinds: read',
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '8888888888888888888888888888888888888888',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+
+  const passed = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-010',
+    attemptId: 'skill-task-010-passed',
+    status: 'passed',
+    childReceipt: skillReceipt,
+    effectRefs: ['skill-effect:task-010'],
+    receiptRefs: ['skill-receipt:task-010'],
+    failureRefs: ['skill-failure:should-not-project-green'],
+  });
+  assert.equal(passed.status, 'passed');
+  assert.deepEqual(passed.failureRefs, []);
+  assert.ok(!passed.evidenceRefs.includes('skill-failure:should-not-project-green'));
+
+  const failed = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-010',
+    attemptId: 'skill-task-010-failed',
+    status: 'failed',
+    childReceipt: {
+      protocol: SKILL_EXECUTION_PROTOCOL,
+      settlementAuthority: 'parent-kernel',
+      evidenceRefs: ['skill-child:evidence:should-not-project-failed'],
+      violations: ['skill-child:violation:should-not-project-failed'],
+    },
+    effectRefs: ['skill-effect:should-not-project-failed'],
+    receiptRefs: ['skill-receipt:should-not-project-failed'],
+    failureRefs: ['skill-failure:task-010'],
+  });
+  assert.equal(failed.status, 'failed');
+  assert.deepEqual(failed.childEvidenceRefs, []);
+  assert.deepEqual(failed.childViolations, []);
+  assert.deepEqual(failed.failureRefs, ['skill-failure:task-010']);
+  assert.ok(!failed.evidenceRefs.includes('skill-child:evidence:should-not-project-failed'));
+  assert.ok(!failed.evidenceRefs.includes('skill-child:violation:should-not-project-failed'));
+
+  const blockedByChild = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-010',
+    attemptId: 'skill-task-010-blocked-child',
+    status: 'passed',
+    childReceipt: {
+      protocol: SKILL_EXECUTION_PROTOCOL,
+      settlementAuthority: 'parent-kernel',
+      evidenceRefs: ['skill-child:evidence:should-not-project-blocked'],
+      vetoes: ['skill-child:veto:task-010'],
+    },
+    effectRefs: ['skill-effect:should-not-project-blocked'],
+    receiptRefs: ['skill-receipt:should-not-project-blocked'],
+  });
+  assert.equal(blockedByChild.status, 'blocked');
+  assert.deepEqual(blockedByChild.childEvidenceRefs, []);
+  assert.ok(blockedByChild.childViolations.includes('skill-child:veto:task-010'));
+  assert.ok(blockedByChild.vetoes.includes('slot-child-receipt-not-clean-veto:R3-07S-skill-TASK-010'));
+  assert.ok(!blockedByChild.evidenceRefs.includes('skill-child:evidence:should-not-project-blocked'));
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
