@@ -754,6 +754,39 @@ test('R3-07S-skill-TASK-007 ExtensionProfilePlanService quarantines child eviden
   assert.ok(!vetoed.evidenceRefs.includes('skill-child:evidence:should-not-project'));
 });
 
+test('R3-07S-skill-TASK-008 ExtensionProfilePlanService rejects invalid runtime slot status', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '6666666666666666666666666666666666666666',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+
+  const invalidStatus = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-008',
+    attemptId: 'skill-task-008-invalid-status',
+    status: 'complete',
+    childReceipt: {
+      protocol: SKILL_EXECUTION_PROTOCOL,
+      settlementAuthority: 'parent-kernel',
+      evidenceRefs: ['skill-child:evidence:invalid-status-should-not-project'],
+    },
+    effectRefs: ['skill-effect:invalid-status-should-not-project'],
+    receiptRefs: ['skill-receipt:invalid-status-should-not-project'],
+    failureRefs: ['skill-failure:invalid-status-should-not-project'],
+    vetoes: ['skill-policy:invalid-status-extra-veto'],
+  });
+  assert.equal(invalidStatus.status, 'blocked');
+  assert.ok(invalidStatus.vetoes.includes('slot-invalid-status-veto:R3-07S-skill-TASK-008'));
+  assert.ok(invalidStatus.vetoes.includes('skill-policy:invalid-status-extra-veto'));
+  assert.ok(invalidStatus.evidenceRefs.includes('slot-invalid-status-veto:R3-07S-skill-TASK-008'));
+  assert.ok(!invalidStatus.evidenceRefs.includes('skill-child:evidence:invalid-status-should-not-project'));
+  assert.ok(!invalidStatus.evidenceRefs.includes('skill-effect:invalid-status-should-not-project'));
+  assert.ok(!invalidStatus.evidenceRefs.includes('skill-receipt:invalid-status-should-not-project'));
+  assert.ok(!invalidStatus.evidenceRefs.includes('skill-failure:invalid-status-should-not-project'));
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({

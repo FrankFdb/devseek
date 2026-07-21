@@ -10,6 +10,7 @@ export type ExtensionProfileKind = 'skill' | 'hook' | 'mcp' | 'plugin' | 'subage
 export type ExtensionProfilePlanStatus = 'signed' | 'blocked';
 export type ExtensionProfileSlotKind = 'task' | 'permission-fault';
 export type ExtensionProfileSlotExecutionStatus = 'passed' | 'failed' | 'vetoed' | 'blocked';
+const EXTENSION_PROFILE_SLOT_EXECUTION_STATUSES: readonly ExtensionProfileSlotExecutionStatus[] = ['passed', 'failed', 'vetoed', 'blocked'];
 export type SkillToolKind =
   | 'read'
   | 'search'
@@ -841,6 +842,8 @@ export class ExtensionProfilePlanService {
     const plan = input.plan;
     const slotId = String(input.slotId ?? '').trim();
     const attemptId = String(input.attemptId ?? '').trim();
+    const requestedStatus = toExtensionProfileSlotExecutionStatus(input.status);
+    const inputStatus = requestedStatus ?? 'blocked';
     const slot = findExtensionProfileSlot(plan, slotId);
     const childReceipt = input.childReceipt;
     const childProtocol = String(childReceipt?.protocol ?? '').trim();
@@ -851,7 +854,7 @@ export class ExtensionProfilePlanService {
       ...(childReceipt?.blockedReasons ?? []),
       ...(childReceipt?.vetoes ?? []),
     ]);
-    const childReceiptRequired = input.status === 'passed';
+    const childReceiptRequired = inputStatus === 'passed';
     const childEvidenceRequired = childReceiptRequired;
     const expectedChildProtocol = EXPECTED_EXTENSION_PROFILE_SCHEMAS[plan.kind];
     const childReceiptVetoes = childReceiptRequired
@@ -877,16 +880,17 @@ export class ExtensionProfilePlanService {
     );
     const blockingVetoes = uniqueStrings([
       ...(plan.status === 'signed' ? [] : [`slot-plan-not-signed-veto:${plan.profileId}`]),
+      ...(requestedStatus ? [] : [`slot-invalid-status-veto:${slotId}`]),
       ...(attemptId ? [] : [`slot-missing-attempt-veto:${slotId}`]),
       ...(slot ? [] : [`slot-not-in-profile-veto:${slotId}`]),
       ...(previousAttemptIds.length === 0 ? [] : [`slot-replacement-veto:${slotId}`]),
-      ...(input.status === 'failed' && failureRefs.length === 0 ? [`slot-failure-evidence-missing-veto:${slotId}`] : []),
-      ...(input.status === 'vetoed' && inputVetoes.length === 0 ? [`slot-veto-evidence-missing-veto:${slotId}`] : []),
+      ...(inputStatus === 'failed' && failureRefs.length === 0 ? [`slot-failure-evidence-missing-veto:${slotId}`] : []),
+      ...(inputStatus === 'vetoed' && inputVetoes.length === 0 ? [`slot-veto-evidence-missing-veto:${slotId}`] : []),
       ...childReceiptVetoes,
-      ...(input.status === 'vetoed' ? [] : inputVetoes),
+      ...(inputStatus === 'vetoed' ? [] : inputVetoes),
     ]);
-    const status: ExtensionProfileSlotExecutionStatus = blockingVetoes.length > 0 ? 'blocked' : input.status;
-    const terminalVetoes = input.status === 'vetoed' ? inputVetoes : blockingVetoes;
+    const status: ExtensionProfileSlotExecutionStatus = blockingVetoes.length > 0 ? 'blocked' : inputStatus;
+    const terminalVetoes = inputStatus === 'vetoed' ? inputVetoes : blockingVetoes;
     const vetoes = status === 'blocked' ? blockingVetoes : terminalVetoes;
     const effectRefs = status === 'passed' ? uniqueStrings(input.effectRefs ?? []) : [];
     const receiptRefs = status === 'passed' ? uniqueStrings(input.receiptRefs ?? []) : [];
@@ -939,6 +943,13 @@ export class ExtensionProfilePlanService {
 
 function toExtensionProfileKind(kind: ExtensionProfileKind): ExtensionProfileKind {
   return isExtensionProfileKind(kind) ? kind : 'skill';
+}
+
+function toExtensionProfileSlotExecutionStatus(status: unknown): ExtensionProfileSlotExecutionStatus | undefined {
+  const normalizedStatus = String(status ?? '').trim();
+  return (EXTENSION_PROFILE_SLOT_EXECUTION_STATUSES as readonly string[]).includes(normalizedStatus)
+    ? normalizedStatus as ExtensionProfileSlotExecutionStatus
+    : undefined;
 }
 
 function findExtensionProfileSlot(

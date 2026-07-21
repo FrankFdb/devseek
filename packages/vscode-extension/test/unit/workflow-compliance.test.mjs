@@ -943,8 +943,8 @@ test('R3-07S-skill-TASK-006: vetoed slots must remain distinct from blocked inpu
   const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
 
   assertContains(sharedEnhancements, 'slot-veto-evidence-missing-veto', 'R3-07S-skill-TASK-006 must veto missing veto evidence');
-  assertContains(sharedEnhancements, "input.status === 'vetoed' ? inputVetoes : blockingVetoes", 'R3-07S-skill-TASK-006 must preserve legitimate vetoed status evidence');
-  assertContains(sharedEnhancements, "blockingVetoes.length > 0 ? 'blocked' : input.status", 'R3-07S-skill-TASK-006 must block only invalid slot receipts');
+  assertContains(sharedEnhancements, "inputStatus === 'vetoed' ? inputVetoes : blockingVetoes", 'R3-07S-skill-TASK-006 must preserve legitimate vetoed status evidence');
+  assertContains(sharedEnhancements, "blockingVetoes.length > 0 ? 'blocked' : inputStatus", 'R3-07S-skill-TASK-006 must block only invalid slot receipts');
   assertContains(sharedTests, 'R3-07S-skill-TASK-006 ExtensionProfilePlanService', 'R3-07S-skill-TASK-006 must have vetoed-vs-blocked oracle');
 });
 
@@ -956,6 +956,16 @@ test('R3-07S-skill-TASK-007: non-passed slots must not project child evidence', 
   assertContains(sharedEnhancements, "const failureEvidenceRefs = status === 'failed' ? failureRefs : []", 'R3-07S-skill-TASK-007 must keep failure evidence failure-only');
   assertContains(sharedEnhancements, "const vetoEvidenceRefs = status === 'vetoed' || status === 'blocked' ? vetoes : []", 'R3-07S-skill-TASK-007 must keep veto evidence veto-or-blocked only');
   assertContains(sharedTests, 'R3-07S-skill-TASK-007 ExtensionProfilePlanService', 'R3-07S-skill-TASK-007 must have non-passed child evidence oracle');
+});
+
+test('R3-07S-skill-TASK-008: slot status must be normalized at runtime', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'toExtensionProfileSlotExecutionStatus', 'R3-07S-skill-TASK-008 must normalize runtime slot status');
+  assertContains(sharedEnhancements, 'slot-invalid-status-veto', 'R3-07S-skill-TASK-008 must veto invalid runtime slot status');
+  assertContains(sharedEnhancements, "const inputStatus = requestedStatus ?? 'blocked'", 'R3-07S-skill-TASK-008 must fail closed on invalid status');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-008 ExtensionProfilePlanService', 'R3-07S-skill-TASK-008 must have invalid status oracle');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
