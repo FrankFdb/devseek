@@ -12,9 +12,14 @@ const GIT_DELIVERY_PROTOCOL = {
   version: 'devseek.git-delivery/v1',
 } as const;
 
+const WORKTREE_ISOLATION_PROTOCOL = {
+  version: 'devseek.worktree-isolation/v1',
+} as const;
+
 export const WORKTREE_CONFLICT_PROTOCOL_VERSION = WORKTREE_CONFLICT_PROTOCOL.version;
 export const GENERATED_COMPAT_MIGRATION_PROTOCOL_VERSION = GENERATED_COMPAT_MIGRATION_PROTOCOL.version;
 export const GIT_DELIVERY_PROTOCOL_VERSION = GIT_DELIVERY_PROTOCOL.version;
+export const WORKTREE_ISOLATION_PROTOCOL_VERSION = WORKTREE_ISOLATION_PROTOCOL.version;
 
 export type WorktreeState =
   | 'clean'
@@ -33,6 +38,7 @@ export type GeneratedCompatMigrationDecisionKind = 'allow' | 'blocked';
 export type GitDeliveryEffectKind = 'commit' | 'push' | 'pull-request' | 'ci';
 export type GitDeliveryDecisionKind = 'allow' | 'needs-user-approval' | 'block';
 export type GitDeliveryCiStatus = 'passed' | 'failed' | 'not-run' | 'unknown';
+export type WorktreeIsolationDecisionKind = 'allow' | 'block';
 
 export type WorktreeWriteReason =
   | 'clean-owner-aligned-write'
@@ -196,6 +202,60 @@ export interface GitDeliveryEffectDecision {
   ci: GitDeliveryCiRecord;
 }
 
+export interface WorktreeIsolationInput {
+  parentRunId: string;
+  subtaskId: string;
+  parentWorktreeRoot?: string;
+  childWorktreeRoot: string;
+  baselineCommit?: string;
+  baselineStatusEntries: readonly WorktreeStatusEntry[];
+  childEffectAbsPaths?: readonly string[];
+  mergeTargetAbsPaths?: readonly string[];
+  mergeEvidenceRefs?: readonly string[];
+  cleanupPaths?: readonly string[];
+  cleanupEvidenceRefs?: readonly string[];
+}
+
+export interface WorktreeIsolationBaseline extends GitDeliveryWorktreeSummary {
+  commit: string;
+  statusEvidence: string;
+}
+
+export interface WorktreeIsolationChildEffects {
+  relPaths: string[];
+  crossWorktreePaths: string[];
+}
+
+export interface WorktreeIsolationMerge {
+  targetRelPaths: string[];
+  blockedTargetRelPaths: string[];
+  evidenceRefs: string[];
+}
+
+export interface WorktreeIsolationCleanup {
+  relPaths: string[];
+  blockedRelPaths: string[];
+  evidenceRefs: string[];
+}
+
+export interface WorktreeIsolationReceipt {
+  version: typeof WORKTREE_ISOLATION_PROTOCOL.version;
+  parentRunId: string;
+  subtaskId: string;
+  parentWorktreeRoot: string;
+  childWorktreeRoot: string;
+  singleOwner: 'WorktreeConflictService';
+  settlementAuthority: 'parent-kernel';
+  mutationAuthority: 'Mutation/Evidence';
+  baseline: WorktreeIsolationBaseline;
+  childEffects: WorktreeIsolationChildEffects;
+  merge: WorktreeIsolationMerge;
+  cleanup: WorktreeIsolationCleanup;
+  decision: WorktreeIsolationDecisionKind;
+  vetoes: string[];
+  evidenceRefs: string[];
+}
+
 export class WorktreeConflictService {
   private readonly workspaceRoot: string;
   private readonly generatedBoundaries: readonly string[];
@@ -294,6 +354,100 @@ export class WorktreeConflictService {
       return decide('needs-user-approval', 'dirty-or-staged-worktree-requires-approval');
     }
     return decide('allow', 'clean-authorized-git-delivery');
+  }
+
+  evaluateWorktreeIsolation(input: WorktreeIsolationInput): WorktreeIsolationReceipt {
+    const parentRunId = normalizeText(input.parentRunId);
+    const subtaskId = normalizeText(input.subtaskId);
+    const parentWorktreeRoot = nodePath.resolve(input.parentWorktreeRoot ?? this.workspaceRoot);
+    const childWorktreeRoot = nodePath.resolve(input.childWorktreeRoot);
+    const baselineCommit = normalizeText(input.baselineCommit);
+    const statusEvidence = input.baselineStatusEntries.map(entry => entry.raw).filter(Boolean).join('\n') || 'clean';
+    const baseline = {
+      commit: baselineCommit,
+      statusEvidence,
+      ...summarizeGitDeliveryWorktree(input.baselineStatusEntries),
+    };
+    const statusByRelPath = new Map(input.baselineStatusEntries.map(entry => [entry.relPath, entry]));
+    const mergeEvidenceRefs = uniqueText(input.mergeEvidenceRefs ?? []);
+    const cleanupEvidenceRefs = uniqueText(input.cleanupEvidenceRefs ?? []);
+    const vetoes: string[] = [];
+
+    if (!baselineCommit) vetoes.push('worktree-missing-baseline-veto');
+
+    const childEffectAbsPaths = (input.childEffectAbsPaths ?? []).map(value => nodePath.resolve(value));
+    const crossWorktreePaths = uniqueText(childEffectAbsPaths
+      .filter(absPath => !isPathInsideRoot(childWorktreeRoot, absPath))
+      .map(absPath => describeWorktreePath(absPath, parentWorktreeRoot, childWorktreeRoot)));
+    for (const relPath of crossWorktreePaths) {
+      vetoes.push(`worktree-cross-effect-veto:${relPath}`);
+    }
+
+    const mergeTargetAbsPaths = (input.mergeTargetAbsPaths ?? []).map(value => nodePath.resolve(value));
+    const blockedMergeTargets: string[] = [];
+    for (const absPath of mergeTargetAbsPaths) {
+      const relPath = describeWorktreePath(absPath, parentWorktreeRoot, childWorktreeRoot);
+      if (!isPathInsideRoot(parentWorktreeRoot, absPath) || isPathInsideRoot(childWorktreeRoot, absPath)) {
+        blockedMergeTargets.push(relPath);
+        vetoes.push(`worktree-cross-merge-target-veto:${relPath}`);
+        continue;
+      }
+      const parentRelPath = toRelPath(parentWorktreeRoot, absPath);
+      const entry = statusByRelPath.get(parentRelPath);
+      if (entry && entry.state !== 'clean') {
+        blockedMergeTargets.push(parentRelPath);
+        vetoes.push(`worktree-user-dirty-preserved-veto:${parentRelPath}`);
+      }
+    }
+    if (mergeTargetAbsPaths.length > 0 && mergeEvidenceRefs.length === 0) {
+      vetoes.push('worktree-missing-merge-evidence-veto');
+    }
+
+    const cleanupAbsPaths = (input.cleanupPaths ?? []).map(value => nodePath.resolve(value));
+    const blockedCleanupPaths = uniqueText(cleanupAbsPaths
+      .filter(absPath => !isPathInsideRoot(childWorktreeRoot, absPath))
+      .map(absPath => describeWorktreePath(absPath, parentWorktreeRoot, childWorktreeRoot)));
+    for (const relPath of blockedCleanupPaths) {
+      vetoes.push(`worktree-cleanup-outside-child-veto:${relPath}`);
+    }
+    if (cleanupAbsPaths.length > 0 && cleanupEvidenceRefs.length === 0) {
+      vetoes.push('worktree-missing-cleanup-evidence-veto');
+    }
+
+    const evidenceRefs = uniqueText([
+      `worktree-baseline:${parentRunId}:${subtaskId}:${baselineCommit || 'missing'}:${stableEvidenceToken(statusEvidence)}`,
+      ...mergeEvidenceRefs,
+      ...cleanupEvidenceRefs,
+    ]);
+
+    return {
+      version: WORKTREE_ISOLATION_PROTOCOL.version,
+      parentRunId,
+      subtaskId,
+      parentWorktreeRoot,
+      childWorktreeRoot,
+      singleOwner: 'WorktreeConflictService',
+      settlementAuthority: 'parent-kernel',
+      mutationAuthority: 'Mutation/Evidence',
+      baseline,
+      childEffects: {
+        relPaths: uniqueText(childEffectAbsPaths.map(absPath => toRelPath(childWorktreeRoot, absPath))),
+        crossWorktreePaths,
+      },
+      merge: {
+        targetRelPaths: uniqueText(mergeTargetAbsPaths.map(absPath => describeWorktreePath(absPath, parentWorktreeRoot, childWorktreeRoot))),
+        blockedTargetRelPaths: uniqueText(blockedMergeTargets),
+        evidenceRefs: mergeEvidenceRefs,
+      },
+      cleanup: {
+        relPaths: uniqueText(cleanupAbsPaths.map(absPath => toRelPath(childWorktreeRoot, absPath))),
+        blockedRelPaths: blockedCleanupPaths,
+        evidenceRefs: cleanupEvidenceRefs,
+      },
+      decision: vetoes.length === 0 ? 'allow' : 'block',
+      vetoes: uniqueText(vetoes),
+      evidenceRefs,
+    };
   }
 }
 
@@ -578,6 +732,27 @@ function normalizeText(value: unknown): string {
 
 function uniqueText(values: readonly string[]): string[] {
   return [...new Set(values.map(value => normalizeText(value)).filter(Boolean))];
+}
+
+function isPathInsideRoot(root: string, absPath: string): boolean {
+  const relPath = nodePath.relative(root, absPath);
+  return relPath === '' || (!relPath.startsWith('..') && !nodePath.isAbsolute(relPath));
+}
+
+function describeWorktreePath(absPath: string, parentRoot: string, childRoot: string): string {
+  if (isPathInsideRoot(parentRoot, absPath) && !isPathInsideRoot(childRoot, absPath)) {
+    return toRelPath(parentRoot, absPath);
+  }
+  return toRelPath(childRoot, absPath);
+}
+
+function stableEvidenceToken(value: string): string {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
 function isOutsideWorkspace(relPath: string): boolean {

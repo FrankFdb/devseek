@@ -24,6 +24,7 @@ const {
   WorktreeConflictService,
   parseGitStatusPorcelain,
   validateGeneratedCompatMigration,
+  WORKTREE_ISOLATION_PROTOCOL_VERSION,
 } = req(bundlePath);
 
 const workspaceRoot = '/workspace/project';
@@ -195,6 +196,48 @@ test('R2-09D WorktreeConflictService: git delivery exposes dirty and staged boun
   assert.equal(approved.decision, 'allow');
   assert.equal(approved.reason, 'clean-authorized-git-delivery');
   assert.deepEqual(approved.authorization.evidenceRefs, ['user:approved-dirty-staged-boundary']);
+});
+
+test('R3-07E WorktreeConflictService: isolated subtask worktrees preserve user dirty state and reject cross-worktree effects', () => {
+  const service = new WorktreeConflictService({ workspaceRoot });
+
+  const receipt = service.evaluateWorktreeIsolation({
+    parentRunId: 'run-r3-07e',
+    subtaskId: 'child-a',
+    parentWorktreeRoot: '/workspace/project',
+    childWorktreeRoot: '/workspace/project/.devseek/worktrees/child-a',
+    baselineCommit: 'abc123',
+    baselineStatusEntries: parseGitStatusPorcelain(' M src/user-owned.ts\n?? notes/local.md\n'),
+    childEffectAbsPaths: [
+      '/workspace/project/.devseek/worktrees/child-a/src/feature.ts',
+      '/workspace/project/src/escaped-effect.ts',
+    ],
+    mergeTargetAbsPaths: [
+      '/workspace/project/src/feature.ts',
+      '/workspace/project/src/user-owned.ts',
+    ],
+    mergeEvidenceRefs: ['mutation:merge:child-a'],
+    cleanupPaths: [
+      '/workspace/project/.devseek/worktrees/child-a',
+      '/workspace/project/src',
+    ],
+    cleanupEvidenceRefs: ['evidence:cleanup:child-a'],
+  });
+
+  assert.equal(WORKTREE_ISOLATION_PROTOCOL_VERSION, 'devseek.worktree-isolation/v1');
+  assert.equal(receipt.version, WORKTREE_ISOLATION_PROTOCOL_VERSION);
+  assert.equal(receipt.singleOwner, 'WorktreeConflictService');
+  assert.equal(receipt.settlementAuthority, 'parent-kernel');
+  assert.equal(receipt.mutationAuthority, 'Mutation/Evidence');
+  assert.equal(receipt.decision, 'block');
+  assert.deepEqual(receipt.baseline.dirtyPaths, ['src/user-owned.ts']);
+  assert.deepEqual(receipt.baseline.untrackedPaths, ['notes/local.md']);
+  assert.ok(receipt.vetoes.includes('worktree-cross-effect-veto:src/escaped-effect.ts'));
+  assert.ok(receipt.vetoes.includes('worktree-user-dirty-preserved-veto:src/user-owned.ts'));
+  assert.ok(receipt.vetoes.includes('worktree-cleanup-outside-child-veto:src'));
+  assert.ok(receipt.merge.evidenceRefs.includes('mutation:merge:child-a'));
+  assert.ok(receipt.cleanup.evidenceRefs.includes('evidence:cleanup:child-a'));
+  assert.ok(receipt.evidenceRefs.some(ref => ref.startsWith('worktree-baseline:run-r3-07e:child-a:abc123:')));
 });
 
 test('WorktreeConflictService: generated compatibility migrations allow single-owner cleanup with evidence', () => {

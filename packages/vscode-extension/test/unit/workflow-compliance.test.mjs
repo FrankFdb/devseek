@@ -791,6 +791,27 @@ test('R3-07D: Plugin supply-chain policy rejects unsigned, tampered, stale, and 
   assertContains(sharedTests, 'R3-07D PluginSupplyChainService', 'R3-07D must have plugin supply-chain failure-first oracle');
 });
 
+test('R3-07E: Worktree isolation receipts preserve dirty user state and reject cross-worktree effects', () => {
+  const worktreeService = src('src/app/worktree-conflict-service.ts');
+  const worktreeTests = src('test/unit/worktree-conflict-service.test.mjs');
+
+  assertContains(worktreeService, 'WORKTREE_ISOLATION_PROTOCOL', 'Worktree isolation must expose a versioned protocol marker');
+  assertContains(worktreeService, 'WORKTREE_ISOLATION_PROTOCOL_VERSION', 'Worktree isolation protocol must be exported');
+  assertContains(worktreeService, 'WorktreeIsolationReceipt', 'Worktree isolation must produce a receipt');
+  assertContains(worktreeService, 'evaluateWorktreeIsolation', 'WorktreeConflictService must own worktree isolation');
+  assertContains(worktreeService, "singleOwner: 'WorktreeConflictService'", 'Worktree isolation must keep one owner');
+  assertContains(worktreeService, "settlementAuthority: 'parent-kernel'", 'Worktree isolation must remain parent Kernel-owned');
+  assertContains(worktreeService, "mutationAuthority: 'Mutation/Evidence'", 'Worktree isolation must route merge and cleanup through Mutation/Evidence');
+  assertContains(worktreeService, 'baselineStatusEntries', 'Worktree isolation must capture the parent baseline status');
+  assertContains(worktreeService, 'childEffectAbsPaths', 'Child effects must be constrained to the child worktree');
+  assertContains(worktreeService, 'mergeTargetAbsPaths', 'Merge targets must be separately checked against parent baseline');
+  assertContains(worktreeService, 'cleanupPaths', 'Cleanup paths must be constrained to the child worktree');
+  assertContains(worktreeService, 'worktree-cross-effect-veto', 'Cross-worktree child effects must be vetoed');
+  assertContains(worktreeService, 'worktree-user-dirty-preserved-veto', 'Dirty user files must be preserved during merge');
+  assertContains(worktreeService, 'worktree-cleanup-outside-child-veto', 'Cleanup must not escape the child worktree');
+  assertContains(worktreeTests, 'R3-07E WorktreeConflictService', 'R3-07E must have worktree isolation failure-first oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
