@@ -1395,6 +1395,14 @@ test('R3-07S-skill-PERMISSION-FAULT-034: common HTML container blocks stop Skill
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-034 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-034 must have div body metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-035: plain body paragraphs stop Skill metadata parsing', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'isSkillMetadataHeaderLine', 'R3-07S-skill-PERMISSION-FAULT-035 must keep plain paragraph boundary ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-035 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-035 must have plain paragraph metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

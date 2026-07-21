@@ -1759,6 +1759,18 @@ function createDivBodyMetadataDeniedEditSkillReceipt() {
   ]);
 }
 
+function createPlainParagraphBodyMetadataDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    'description: Generic helper',
+    '',
+    'Use this section to show examples for component edits.',
+    'triggers: react',
+    'tool_kinds: read',
+  ]);
+}
+
 function createClosedFrontmatterBodyMetadataDeniedEditSkillReceipt() {
   return createReferenceDeniedEditSkillReceipt([
     '---',
@@ -2760,6 +2772,33 @@ test('R3-07S-skill-PERMISSION-FAULT-034 ExtensionProfilePlanService rejects div 
   assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
   assert.deepEqual(childReceipt.evidenceRefs, []);
   assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-034'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-035 ExtensionProfilePlanService rejects plain paragraph body skill metadata permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '3535353535353535353535353535353535353535',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createPlainParagraphBodyMetadataDeniedEditSkillReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-035',
+    attemptId: 'skill-permission-fault-035-plain-paragraph-body-skill-metadata',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(childReceipt.loadedSkills.length, 0);
+  assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
+  assert.deepEqual(childReceipt.evidenceRefs, []);
+  assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-035'));
   assert.deepEqual(receipt.permissionFaultRefs, []);
   assert.deepEqual(receipt.effectRefs, []);
   assert.deepEqual(receipt.receiptRefs, []);

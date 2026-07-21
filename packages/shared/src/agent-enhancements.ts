@@ -677,6 +677,7 @@ const SKILL_METADATA_BODY_SEPARATOR = /^(?:-{3,}|\*{3,}|_{3,})$/u;
 const SKILL_METADATA_BODY_HTML_BLOCK_MARKER = /^<(?:details|table|pre|div|section|article|aside|ul|ol|li|figure|figcaption|blockquote|p|code)\b[^>]*>?$/iu;
 const SKILL_METADATA_MARKDOWN_HEADING = /^#{1,6}\s+\S/u;
 const SKILL_METADATA_TITLE_HEADING = /^#\s+\S/u;
+const SKILL_METADATA_HEADER_LINE = /^(?:description|triggers|input_schema|inputSchema|schema|tool_kinds|toolKinds|tools|can_complete|canComplete|completion_claims|completionClaims)\s*:/iu;
 
 function isSkillMetadataBodySeparator(value: string): boolean {
   return SKILL_METADATA_BODY_SEPARATOR.test(value.replace(/\s+/gu, ''));
@@ -684,6 +685,10 @@ function isSkillMetadataBodySeparator(value: string): boolean {
 
 function isSkillMetadataTitleHeading(value: string): boolean {
   return SKILL_METADATA_TITLE_HEADING.test(value);
+}
+
+function isSkillMetadataHeaderLine(value: string): boolean {
+  return SKILL_METADATA_HEADER_LINE.test(value);
 }
 
 function skillMetadataLines(content: string): string[] {
@@ -702,6 +707,7 @@ function skillMetadataLines(content: string): string[] {
   let frontmatterClosed = false;
   let acceptedTitleHeading = false;
   let sawMetadataContent = false;
+  let sawStructuredMetadata = false;
   const metadataLines: string[] = [];
   for (const [index, line] of lines.entries()) {
     const trimmed = line.trim();
@@ -765,7 +771,13 @@ function skillMetadataLines(content: string): string[] {
       continue;
     }
     if (!isFrontmatterMetadataLine && insideBodySection) continue;
+    const isHeaderLine = isSkillMetadataHeaderLine(metadataTrimmed);
+    if (!isFrontmatterMetadataLine && metadataTrimmed && !isHeaderLine && sawStructuredMetadata) {
+      insideBodySection = true;
+      continue;
+    }
     metadataLines.push(metadataLine);
+    if (isHeaderLine) sawStructuredMetadata = true;
     if (metadataTrimmed) sawMetadataContent = true;
   }
   return metadataLines;
