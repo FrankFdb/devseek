@@ -32,6 +32,7 @@ export const EXTENSION_PROFILE_PLAN_PROTOCOL = 'devseek.extension-profile-plan/v
 export const EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL = 'devseek.extension-profile-slot-execution/v1';
 const EXTENSION_PROFILE_SLOT_EFFECT_REF_PREFIX = 'extension-profile-slot-effect';
 const EXTENSION_PROFILE_SLOT_RECEIPT_REF_PREFIX = 'extension-profile-slot-receipt';
+const EXTENSION_PROFILE_SLOT_FAILURE_REF_PREFIX = 'extension-profile-slot-failure';
 export const B4_EFFECT_AUTHORITY = 'B4-effect-authority';
 
 export interface HookDefinition {
@@ -940,7 +941,7 @@ export class ExtensionProfilePlanService {
         ...childAuthenticityVetoes,
       ])
       : [];
-    const failureRefs = uniqueStrings(input.failureRefs ?? []);
+    const inputFailureRefs = uniqueStrings(input.failureRefs ?? []);
     const inputVetoes = uniqueStrings(input.vetoes ?? []);
     const previousAttemptIds = uniqueStrings(
       (planAuthentic ? input.previousReceipts ?? [] : [])
@@ -959,7 +960,7 @@ export class ExtensionProfilePlanService {
       ...(attemptId ? [] : [`slot-missing-attempt-veto:${slotId}`]),
       ...(slot ? [] : [`slot-not-in-profile-veto:${slotId}`]),
       ...(previousAttemptIds.length === 0 ? [] : [`slot-replacement-veto:${slotId}`]),
-      ...(inputStatus === 'failed' && failureRefs.length === 0 ? [`slot-failure-evidence-missing-veto:${slotId}`] : []),
+      ...(inputStatus === 'failed' && inputFailureRefs.length === 0 ? [`slot-failure-evidence-missing-veto:${slotId}`] : []),
       ...(inputStatus === 'vetoed' && inputVetoes.length === 0 ? [`slot-veto-evidence-missing-veto:${slotId}`] : []),
       ...childReceiptVetoes,
       ...(inputStatus === 'vetoed' ? [] : inputVetoes),
@@ -993,7 +994,16 @@ export class ExtensionProfilePlanService {
       })
       : [];
     const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : [];
-    const failureRefsForReceipt = status === 'failed' ? failureRefs : [];
+    const failureRefsForReceipt = status === 'failed'
+      ? createExtensionProfileSlotFailureRefs({
+        plan,
+        slot,
+        slotId,
+        attemptId,
+        oracleRef,
+        inputFailureRefs,
+      })
+      : [];
     const vetoEvidenceRefs = status === 'vetoed' || status === 'blocked' ? vetoes : [];
 
     return {
@@ -1049,24 +1059,48 @@ type ExtensionProfileSlotSuccessRefInput = {
 };
 
 function createExtensionProfileSlotEffectRefs(input: ExtensionProfileSlotSuccessRefInput): string[] {
-  return createExtensionProfileSlotSuccessRefs('effect', input);
+  return createExtensionProfileSlotOwnedRefs('effect', EXTENSION_PROFILE_SLOT_EFFECT_REF_PREFIX, input, {
+    childProtocol: input.childProtocol,
+    childEvidenceRefs: input.childEvidenceRefs,
+  });
 }
 
 function createExtensionProfileSlotReceiptRefs(input: ExtensionProfileSlotSuccessRefInput & {
   effectRefs: readonly string[];
 }): string[] {
-  return createExtensionProfileSlotSuccessRefs('receipt', input, { effectRefs: input.effectRefs });
+  return createExtensionProfileSlotOwnedRefs('receipt', EXTENSION_PROFILE_SLOT_RECEIPT_REF_PREFIX, input, {
+    childProtocol: input.childProtocol,
+    childEvidenceRefs: input.childEvidenceRefs,
+    effectRefs: input.effectRefs,
+  });
 }
 
-function createExtensionProfileSlotSuccessRefs(
-  kind: 'effect' | 'receipt',
-  input: ExtensionProfileSlotSuccessRefInput,
+function createExtensionProfileSlotFailureRefs(input: {
+  plan: ExtensionProfilePlanReceipt;
+  slot: ExtensionProfileSlot | undefined;
+  slotId: string;
+  attemptId: string;
+  oracleRef: string;
+  inputFailureRefs: readonly string[];
+}): string[] {
+  return createExtensionProfileSlotOwnedRefs('failure', EXTENSION_PROFILE_SLOT_FAILURE_REF_PREFIX, input, {
+    inputFailureRefs: input.inputFailureRefs,
+  });
+}
+
+function createExtensionProfileSlotOwnedRefs(
+  kind: 'effect' | 'receipt' | 'failure',
+  prefix: string,
+  input: {
+    plan: ExtensionProfilePlanReceipt;
+    slot: ExtensionProfileSlot | undefined;
+    slotId: string;
+    attemptId: string;
+    oracleRef: string;
+  },
   extra: Record<string, unknown> = {},
 ): string[] {
   const slotId = input.slot?.slotId ?? input.slotId;
-  const prefix = kind === 'effect'
-    ? EXTENSION_PROFILE_SLOT_EFFECT_REF_PREFIX
-    : EXTENSION_PROFILE_SLOT_RECEIPT_REF_PREFIX;
   const digest = stableTextDigest(JSON.stringify({
     protocol: EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL,
     [`${kind}Authority`]: 'ExtensionProfilePlanService',
@@ -1079,8 +1113,6 @@ function createExtensionProfileSlotSuccessRefs(
     index: input.slot?.index ?? 0,
     attemptId: input.attemptId,
     oracleRef: input.oracleRef,
-    childProtocol: input.childProtocol,
-    childEvidenceRefs: input.childEvidenceRefs,
     ...extra,
   }));
   return [`${prefix}:${slotId}:${digest}`];

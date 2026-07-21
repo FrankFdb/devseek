@@ -626,10 +626,12 @@ test('R3-07S-skill-TASK-005 ExtensionProfilePlanService keeps failed slots failu
     receiptRefs: ['skill-execution:should-not-commit-on-failure'],
   });
   assert.equal(failed.status, 'failed');
-  assert.deepEqual(failed.failureRefs, ['skill-execution:failure:task-005']);
+  assert.equal(failed.failureRefs.length, 1);
+  assert.match(failed.failureRefs[0], /^extension-profile-slot-failure:R3-07S-skill-TASK-005:/);
   assert.deepEqual(failed.effectRefs, []);
   assert.deepEqual(failed.receiptRefs, []);
-  assert.ok(failed.evidenceRefs.includes('skill-execution:failure:task-005'));
+  assert.ok(failed.evidenceRefs.includes(failed.failureRefs[0]));
+  assert.ok(!failed.evidenceRefs.includes('skill-execution:failure:task-005'));
   assert.ok(!failed.evidenceRefs.includes('skill-discovery:should-not-commit-on-failure'));
   assert.ok(!failed.evidenceRefs.includes('skill-execution:should-not-commit-on-failure'));
 
@@ -721,7 +723,10 @@ test('R3-07S-skill-TASK-007 ExtensionProfilePlanService quarantines child eviden
   assert.equal(failed.status, 'failed');
   assert.deepEqual(failed.childEvidenceRefs, []);
   assert.deepEqual(failed.childViolations, []);
-  assert.ok(failed.evidenceRefs.includes('skill-execution:failure:task-007'));
+  assert.equal(failed.failureRefs.length, 1);
+  assert.match(failed.failureRefs[0], /^extension-profile-slot-failure:R3-07S-skill-TASK-007:/);
+  assert.ok(failed.evidenceRefs.includes(failed.failureRefs[0]));
+  assert.ok(!failed.evidenceRefs.includes('skill-execution:failure:task-007'));
   assert.ok(!failed.evidenceRefs.includes('skill-child:evidence:should-not-project'));
   assert.ok(!failed.evidenceRefs.includes('skill-child:violation:should-not-project'));
   assert.ok(!failed.evidenceRefs.includes('skill-child:veto:should-not-project'));
@@ -870,7 +875,9 @@ test('R3-07S-skill-TASK-010 ExtensionProfilePlanService scopes terminal evidence
   assert.equal(failed.status, 'failed');
   assert.deepEqual(failed.childEvidenceRefs, []);
   assert.deepEqual(failed.childViolations, []);
-  assert.deepEqual(failed.failureRefs, ['skill-failure:task-010']);
+  assert.equal(failed.failureRefs.length, 1);
+  assert.match(failed.failureRefs[0], /^extension-profile-slot-failure:R3-07S-skill-TASK-010:/);
+  assert.ok(!failed.evidenceRefs.includes('skill-failure:task-010'));
   assert.ok(!failed.evidenceRefs.includes('skill-child:evidence:should-not-project-failed'));
   assert.ok(!failed.evidenceRefs.includes('skill-child:violation:should-not-project-failed'));
 
@@ -1146,6 +1153,30 @@ test('R3-07S-skill-TASK-014 ExtensionProfilePlanService derives passed slot succ
   assert.ok(!receipt.evidenceRefs.includes('skill-receipt:caller-forged-success-ref'));
   assert.ok(receipt.evidenceRefs.includes(receipt.effectRefs[0]));
   assert.ok(receipt.evidenceRefs.includes(receipt.receiptRefs[0]));
+});
+
+test('R3-07S-skill-TASK-015 ExtensionProfilePlanService derives failed slot failure refs', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: 'bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-015',
+    attemptId: 'skill-task-015-failed',
+    status: 'failed',
+    failureRefs: ['skill-failure:caller-forged-failure-ref'],
+  });
+
+  assert.equal(receipt.status, 'failed');
+  assert.equal(receipt.failureRefs.length, 1);
+  assert.match(receipt.failureRefs[0], /^extension-profile-slot-failure:R3-07S-skill-TASK-015:/);
+  assert.ok(!receipt.failureRefs.includes('skill-failure:caller-forged-failure-ref'));
+  assert.ok(!receipt.evidenceRefs.includes('skill-failure:caller-forged-failure-ref'));
+  assert.ok(receipt.evidenceRefs.includes(receipt.failureRefs[0]));
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {

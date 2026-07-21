@@ -953,7 +953,7 @@ test('R3-07S-skill-TASK-007: non-passed slots must not project child evidence', 
   const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
 
   assertContains(sharedEnhancements, "const childEvidenceRefsForReceipt = status === 'passed' ? childEvidenceRefs : []", 'R3-07S-skill-TASK-007 must keep child evidence pass-only');
-  assertContains(sharedEnhancements, "const failureRefsForReceipt = status === 'failed' ? failureRefs : []", 'R3-07S-skill-TASK-007 must keep failure evidence failure-only');
+  assertContains(sharedEnhancements, "const failureRefsForReceipt = status === 'failed'", 'R3-07S-skill-TASK-007 must keep failure evidence failure-only');
   assertContains(sharedEnhancements, "const vetoEvidenceRefs = status === 'vetoed' || status === 'blocked' ? vetoes : []", 'R3-07S-skill-TASK-007 must keep veto evidence veto-or-blocked only');
   assertContains(sharedTests, 'R3-07S-skill-TASK-007 ExtensionProfilePlanService', 'R3-07S-skill-TASK-007 must have non-passed child evidence oracle');
 });
@@ -982,7 +982,7 @@ test('R3-07S-skill-TASK-010: terminal evidence fields must match final status', 
   const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
 
   assertContains(sharedEnhancements, "const childEvidenceRefsForReceipt = status === 'passed' ? childEvidenceRefs : []", 'R3-07S-skill-TASK-010 must keep structured child evidence pass-only');
-  assertContains(sharedEnhancements, "const failureRefsForReceipt = status === 'failed' ? failureRefs : []", 'R3-07S-skill-TASK-010 must keep structured failure refs failure-only');
+  assertContains(sharedEnhancements, "const failureRefsForReceipt = status === 'failed'", 'R3-07S-skill-TASK-010 must keep structured failure refs failure-only');
   assertContains(sharedEnhancements, 'const childViolationsForReceipt = childReceiptVetoes.length > 0 ? childViolations : []', 'R3-07S-skill-TASK-010 must expose only child violations that explain a child-receipt block');
   assertContains(sharedTests, 'R3-07S-skill-TASK-010 ExtensionProfilePlanService', 'R3-07S-skill-TASK-010 must have terminal-field oracle');
 });
@@ -1034,6 +1034,16 @@ test('R3-07S-skill-TASK-014: passed slot success refs must be owner-derived', ()
   assertDoesNotContain(sharedEnhancements, 'uniqueStrings(input.effectRefs ?? [])', 'R3-07S-skill-TASK-014 must not trust caller effect refs');
   assertDoesNotContain(sharedEnhancements, 'uniqueStrings(input.receiptRefs ?? [])', 'R3-07S-skill-TASK-014 must not trust caller receipt refs');
   assertContains(sharedTests, 'R3-07S-skill-TASK-014 ExtensionProfilePlanService', 'R3-07S-skill-TASK-014 must have caller-success-ref oracle');
+});
+
+test('R3-07S-skill-TASK-015: failed slot failure refs must be owner-derived', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'createExtensionProfileSlotFailureRefs', 'R3-07S-skill-TASK-015 must derive failure refs inside the slot owner');
+  assertContains(sharedEnhancements, 'extension-profile-slot-failure', 'R3-07S-skill-TASK-015 must use owner-scoped failure evidence refs');
+  assertDoesNotContain(sharedEnhancements, "const failureRefsForReceipt = status === 'failed' ? failureRefs : []", 'R3-07S-skill-TASK-015 must not trust caller failure refs');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-015 ExtensionProfilePlanService', 'R3-07S-skill-TASK-015 must have caller-failure-ref oracle');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
