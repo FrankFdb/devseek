@@ -29,7 +29,11 @@ import {
   type AutoValidationResult,
   type ValidationCommandRunner,
 } from './workspace/validation-service';
-import { QualityGateService, type QualityGateDecision } from './app/quality-gate-service';
+import { QualityGateService, type QualityGateContractAcceptance, type QualityGateDecision } from './app/quality-gate-service';
+import {
+  buildRequirementContract,
+  evaluateRequirementContractAcceptance,
+} from './agent/requirement-contract';
 import { shouldBlockProjectInstructionFileWrite } from './workspace/instruction-file-safety';
 import { findGeneratedSourceSanityIssue, repairGeneratedSourceTransportEscapes } from './workspace/source-sanity';
 import { createWorkspaceFilePathTokenRegExp } from './workspace/path-patterns';
@@ -207,6 +211,7 @@ async function applyPreparedChanges(
   const ledger = new ReviewLedger();
   const workspaceEditService = new WorkspaceEditService();
   const qualityGateService = new QualityGateService();
+  const contractAcceptance = buildRequirementQualityGateAcceptance(requestPrompt);
   ledger.recordChangeSet(changeSet);
   const summary = changeSet.summary();
   if (!autoApply) {
@@ -428,6 +433,7 @@ async function applyPreparedChanges(
     const qualityGate = qualityGateService.evaluate({
       changedPaths: changeSet.changedPaths,
       validation: validation ?? null,
+      contractAcceptance,
     });
     ledger.recordQualityGate(qualityGate);
     ledger.addUnfinishedItem('QualityGate 阻塞：缺少自动验证证据');
@@ -470,6 +476,7 @@ async function applyPreparedChanges(
   const qualityGate = qualityGateService.evaluate({
     changedPaths: changeSet.changedPaths,
     validation,
+    contractAcceptance,
   });
   ledger.recordQualityGate(qualityGate);
   await reportWorkflow(reporter, {
@@ -1237,6 +1244,14 @@ function renderQualityGateDetail(qualityGate: QualityGateDecision): string {
     qualityGate.alternativeChecks.length > 0 ? `替代检查:\n${qualityGate.alternativeChecks.map((check) => `- ${check}`).join('\n')}` : '',
     qualityGate.requiredActions.length > 0 ? `后续动作:\n${qualityGate.requiredActions.map((action) => `- ${action}`).join('\n')}` : '',
   ].filter(Boolean).join('\n');
+}
+
+function buildRequirementQualityGateAcceptance(
+  requestPrompt?: string,
+): QualityGateContractAcceptance | undefined {
+  const promptText = requestPrompt?.trim();
+  if (!promptText) return undefined;
+  return evaluateRequirementContractAcceptance(buildRequirementContract({ promptText }));
 }
 
 function getWorkspaceRoot(requestPrompt?: string, preferredAbsolutePaths?: string[]): vscode.Uri | undefined {

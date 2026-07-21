@@ -27,6 +27,10 @@ import {
   type VerificationAuthorityResult,
   type VerificationResultStatus,
 } from '../app/verification-result-authority';
+import {
+  buildRequirementContract,
+  evaluateRequirementContractAcceptance,
+} from './requirement-contract';
 
 export interface AgentAutoValidationCallbacks {
   onAgentStatus: (status: AgentStatusEvent) => void | Promise<void>;
@@ -67,6 +71,15 @@ function nextAutoValidationOperationId(changedPaths: readonly string[]): string 
 function qualityGateStatusToAgentState(
   status: NonNullable<AgentAutoValidationResult['qualityGate']>['status'],
 ): AgentStatusEvent['state'] {
+  if (status === 'pass') return 'completed';
+  if (status === 'blocked') return 'skipped';
+  return 'failed';
+}
+
+function qualityGateStatusToValidationState(
+  status: NonNullable<AgentAutoValidationResult['qualityGate']>['status'] | undefined,
+): AgentStatusEvent['state'] {
+  if (!status) return 'skipped';
   if (status === 'pass') return 'completed';
   if (status === 'blocked') return 'skipped';
   return 'failed';
@@ -322,7 +335,7 @@ function evaluateFormalProjectSourceQuality(
   };
 }
 
-function combineFormalProjectQualityResults(
+function combineAgentQualityResults(
   results: Array<AgentAutoValidationResult | undefined>,
 ): AgentAutoValidationResult | undefined {
   const present = results.filter((result): result is AgentAutoValidationResult => !!result);
@@ -438,6 +451,34 @@ function buildAutoValidationQualityGate(
   };
 }
 
+function evaluateRequirementContractQuality(userPrompt: string): AgentAutoValidationResult | undefined {
+  const promptText = userPrompt.trim();
+  if (!promptText) return undefined;
+  const acceptance = evaluateRequirementContractAcceptance(buildRequirementContract({ promptText }));
+  if (acceptance.status === 'accepted') return undefined;
+  const status = acceptance.status === 'adverse' ? 'fail' : 'blocked';
+  const reason = acceptance.reason || acceptance.status;
+  return {
+    feedbackForAI: [
+      '[requirement_contract]',
+      `status=${acceptance.status}`,
+      `reason=${reason}`,
+      acceptance.risks?.length ? `risks:\n${acceptance.risks.map(risk => `- ${risk}`).join('\n')}` : '',
+      acceptance.requiredActions?.length ? `requiredActions:\n${acceptance.requiredActions.map(action => `- ${action}`).join('\n')}` : '',
+    ].filter(Boolean).join('\n'),
+    qualityGate: {
+      status,
+      summary: status === 'fail'
+        ? `QualityGate 未通过：${reason}。`
+        : `QualityGate 阻塞：${reason}。`,
+      risks: acceptance.risks ?? [],
+      evidenceRefs: acceptance.evidenceRefs ?? [`contract:${acceptance.status}:${reason}`],
+      alternativeChecks: acceptance.alternativeChecks ?? [],
+      requiredActions: acceptance.requiredActions ?? ['补齐可执行 acceptance 证据后重新验证。'],
+    },
+  };
+}
+
 export async function runAgentAutoValidationForWrites(
   writtenFiles: WrittenFileEvidence[],
   workspaceRootFsPath: string,
@@ -469,7 +510,7 @@ export async function runAgentAutoValidationForWrites(
       requestPrompt: userPrompt,
       cppValidationPolicy,
     });
-    const formalProjectQuality = combineFormalProjectQualityResults([
+    const formalProjectQuality = combineAgentQualityResults([
       evaluateFormalProjectMarkdownQuality(
         qualityWrittenFiles,
         workspaceRootFsPath,
@@ -481,35 +522,44 @@ export async function runAgentAutoValidationForWrites(
         userPrompt,
       ),
     ]);
+    const requirementQuality = evaluateRequirementContractQuality(userPrompt);
+    const policyQuality = combineAgentQualityResults([formalProjectQuality, requirementQuality]);
+    const policyQualityTitle = formalProjectQuality
+      ? '正式项目质量门禁未通过'
+      : requirementQuality
+        ? '需求质量门禁未通过'
+        : undefined;
     if (!result) {
       await callbacks.onAgentStatus({
         type: 'agentStatus',
         phase: 'validate',
-        state: formalProjectQuality ? 'failed' : 'skipped',
+        state: qualityGateStatusToValidationState(policyQuality?.qualityGate?.status),
         evidenceOperationId,
-        title: formalProjectQuality ? '正式项目质量门禁未通过' : '未识别到自动验证目标',
-        detail: [changedPaths.join('\n'), formalProjectQuality?.feedbackForAI].filter(Boolean).join('\n\n').slice(0, 1200),
+        title: policyQualityTitle ?? '未识别到自动验证目标',
+        detail: [changedPaths.join('\n'), policyQuality?.feedbackForAI].filter(Boolean).join('\n\n').slice(0, 1200),
       });
-      if (formalProjectQuality?.qualityGate) {
-        await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, formalProjectQuality.qualityGate);
+      if (policyQuality?.qualityGate) {
+        await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, policyQuality.qualityGate);
       }
-      return formalProjectQuality ?? {};
+      return policyQuality ?? {};
     }
-  const verification = normalizeVerificationResult(result);
-  if (!shouldEmitTerminalEvidenceForVerification(verification)) {
+    const verification = normalizeVerificationResult(result);
+    if (!shouldEmitTerminalEvidenceForVerification(verification)) {
       const feedbackForAI = formatBlockedAutoValidationFeedback(result);
-      const qualityGate = formalProjectQuality?.qualityGate ?? buildAutoValidationQualityGate(result, changedPaths);
+      const qualityGate = policyQuality?.qualityGate ?? buildAutoValidationQualityGate(result, changedPaths);
       await callbacks.onAgentStatus({
         type: 'agentStatus',
         phase: 'validate',
-        state: formalProjectQuality ? 'failed' : 'skipped',
+        state: policyQuality
+          ? qualityGateStatusToValidationState(policyQuality.qualityGate?.status)
+          : 'skipped',
         evidenceOperationId,
-        title: formalProjectQuality ? '正式项目质量门禁未通过' : '自动验证阻塞',
-        detail: [feedbackForAI, formalProjectQuality?.feedbackForAI].filter(Boolean).join('\n\n').slice(0, 1200),
+        title: policyQualityTitle ?? '自动验证阻塞',
+        detail: [feedbackForAI, policyQuality?.feedbackForAI].filter(Boolean).join('\n\n').slice(0, 1200),
       });
       await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, qualityGate);
       return {
-        feedbackForAI: [feedbackForAI, formalProjectQuality?.feedbackForAI].filter(Boolean).join('\n\n'),
+        feedbackForAI: [feedbackForAI, policyQuality?.feedbackForAI].filter(Boolean).join('\n\n'),
         qualityGate,
       };
     }
@@ -518,21 +568,21 @@ export async function runAgentAutoValidationForWrites(
     const repairBlockedReason = !result.ok && isExplicitContentWriteRequest(userPrompt)
       ? buildExactContentRepairBlockedReason(result)
       : undefined;
-    const finalFeedbackForAI = [feedbackForAI, repairBlockedReason, formalProjectQuality?.feedbackForAI]
+    const finalFeedbackForAI = [feedbackForAI, repairBlockedReason, policyQuality?.feedbackForAI]
       .filter(Boolean)
       .join('\n\n');
-    const finalQualityGate = formalProjectQuality?.qualityGate ?? buildAutoValidationQualityGate(result, changedPaths);
-    const validationPassed = verificationResultIsCompletionCandidate(verification) && !formalProjectQuality;
+    const finalQualityGate = policyQuality?.qualityGate ?? buildAutoValidationQualityGate(result, changedPaths);
+    const validationPassed = verificationResultIsCompletionCandidate(verification) && !policyQuality;
     const evidence = validationResultToTerminalEvidence(result);
     await callbacks.onAgentStatus({
       type: 'agentStatus',
       phase: 'validate',
-      state: validationPassed ? 'completed' : 'failed',
+      state: validationPassed ? 'completed' : qualityGateStatusToValidationState(finalQualityGate.status),
       evidenceOperationId,
       title: validationPassed
         ? '自动验证通过'
-        : formalProjectQuality
-          ? '正式项目质量门禁未通过'
+        : policyQuality
+          ? policyQualityTitle ?? '需求质量门禁未通过'
           : '自动验证失败',
       detail: finalFeedbackForAI.slice(0, 1200),
     });

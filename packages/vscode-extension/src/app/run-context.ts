@@ -11,6 +11,11 @@ import {
 } from '@devseek-netai/shared';
 import { requiresFileChangeEvidence } from '../agent/completion-evidence';
 import type { AgentStatusEvent } from '../agent/events';
+import {
+  buildRequirementContract,
+  validateRequirementContract,
+  type RequirementContract,
+} from '../agent/requirement-contract';
 import { buildTaskContract, hasSourceClaimArtifactContract, type TaskContract } from '../agent/task-contract';
 import { buildRunSettlementSealBinding, type RunSettlementBuildIdentity } from './run-settlement-seal-binding';
 import { decideSettlementState, type SettlementTerminalStatus } from './settlement-state';
@@ -22,6 +27,7 @@ export interface DevSeekRunContextOptions {
   source?: string;
   userPrompt: string;
   taskContract?: TaskContract;
+  requirementContract?: RequirementContract;
   sessionId?: string;
   mode?: string;
   traceLevel?: DevSeekTraceLevel | string;
@@ -63,6 +69,9 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   readonly evidenceParticipantToken = createProductRunEvidenceAuthorityToken();
   private readonly evidenceOwnerToken = createProductRunEvidenceAuthorityToken();
   private readonly taskContractFingerprint: string;
+  private readonly requirementContractFingerprint: string;
+  private readonly requirementContractAccepted: boolean;
+  private readonly requirementContractErrors: string[];
   private readonly requiresSourceClaimArtifactVerification: boolean;
   private readonly buildIdentity: RunSettlementBuildIdentity;
   private readonly evidence?: ProductRunEvidenceSession;
@@ -92,7 +101,15 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     this.sessionId = options.sessionId;
     this.mode = options.mode;
     const taskContract = options.taskContract ?? buildTaskContract(options.userPrompt);
+    const requirementContract = options.requirementContract ?? buildRequirementContract({
+      promptText: options.userPrompt,
+      taskContract,
+    });
+    const requirementValidation = validateRequirementContract(requirementContract);
     this.taskContractFingerprint = fingerprintTaskContract(taskContract);
+    this.requirementContractFingerprint = fingerprintRequirementContract(requirementContract);
+    this.requirementContractAccepted = requirementValidation.ok;
+    this.requirementContractErrors = requirementValidation.errors.slice(0, 12);
     this.requiresSourceClaimArtifactVerification = hasSourceClaimArtifactContract(taskContract)
       && requiresFileChangeEvidence(options.userPrompt);
     this.buildIdentity = {
@@ -118,6 +135,10 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       mode: options.mode,
       prompt: promptSummary,
       taskContractFingerprint: this.taskContractFingerprint,
+      requirementContractFingerprint: this.requirementContractFingerprint,
+      requirementContractAccepted: this.requirementContractAccepted,
+      requirementContractErrorCount: this.requirementContractErrors.length,
+      requirementContractErrors: this.requirementContractErrors,
       requiresSourceClaimArtifactVerification: this.requiresSourceClaimArtifactVerification,
     });
     this.evidence = this.openEvidenceSession(options, promptSummary);
@@ -246,6 +267,9 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
           idempotencyKey: productRunEvidenceIdempotencyKey('vscode-run-settled', { runId: this.runId }),
           payload: {
             task_contract_fingerprint: this.taskContractFingerprint,
+            requirement_contract_fingerprint: this.requirementContractFingerprint,
+            requirement_contract_accepted: this.requirementContractAccepted,
+            requirement_contract_error_count: this.requirementContractErrors.length,
             requires_source_claim_artifact_verification: this.requiresSourceClaimArtifactVerification,
             settlement_binding: this.buildSettlementBinding(),
             completion_summary: summarizeTraceText(safeCompletionSummary(completionData)),
@@ -882,6 +906,35 @@ function fingerprintTaskContract(contract: TaskContract): string {
       requireArtifactReadback: contract.verificationContract.requireArtifactReadback,
       maxWrittenFiles: contract.verificationContract.maxWrittenFiles,
     },
+  };
+  return summarizeTraceText(JSON.stringify(normalized)).sha256;
+}
+
+function fingerprintRequirementContract(contract: RequirementContract): string {
+  const normalized = {
+    version: contract.version,
+    deliverables: contract.deliverables.map(deliverable => ({
+      kind: deliverable.kind,
+      target: deliverable.target ? summarizeTraceText(deliverable.target).sha256 : null,
+      acceptanceRefCount: deliverable.acceptanceRefs.length,
+    })),
+    constraints: [...contract.constraints].sort(),
+    nonGoals: [...contract.nonGoals].sort(),
+    acceptanceCriteria: contract.acceptanceCriteria.map(acceptance => ({
+      status: acceptance.status,
+      verifier: acceptance.verifier,
+      scopeCount: acceptance.scope.length,
+      evidenceRefCount: acceptance.evidenceRefs.length,
+      applicability: acceptance.applicability.status,
+    })),
+    externalBoundaries: contract.externalBoundaries.map(boundary => ({
+      kind: boundary.kind,
+      name: summarizeTraceText(boundary.name).sha256,
+      hasValue: Boolean(boundary.value),
+      hasSourceRef: Boolean(boundary.sourceRef),
+      hasAccessedAt: Boolean(boundary.accessedAt),
+      status: boundary.status,
+    })),
   };
   return summarizeTraceText(JSON.stringify(normalized)).sha256;
 }

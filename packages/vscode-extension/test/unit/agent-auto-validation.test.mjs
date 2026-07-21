@@ -68,6 +68,52 @@ test('Agent auto validation: successful project validation becomes completion ev
   assert.deepEqual(activities, [{ kind: 'terminal', label: '自动验证: npm run compile' }]);
 });
 
+test('Agent auto validation: passing verifier cannot settle a weak requirement oracle', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-weak-requirement-'));
+  const target = path.join(root, 'report.md');
+  try {
+    writeFileSync(target, '# Report\n');
+    const statuses = [];
+    const validationService = {
+      validateWorkspaceChanges: async () => ({
+        ran: true,
+        ok: true,
+        status: 'passed',
+        command: 'test -f report.md',
+        exitCode: 0,
+        output: 'ok',
+        cwd: root,
+        mode: 'file-check',
+        reason: 'file-artifact-check',
+        risks: [],
+        alternativeChecks: [],
+      }),
+    };
+
+    const result = await runAgentAutoValidationForWrites(
+      [{ path: target, basename: 'report.md', linesAdded: 1, linesRemoved: 0, action: 'create' }],
+      root,
+      '生成一个看起来专业的报告。',
+      makeCallbacks(statuses, []),
+      'conservative',
+      { validationService },
+    );
+
+    assert.equal(result.evidence.ok, true);
+    assert.equal(result.qualityGate.status, 'blocked');
+    assert.match(result.qualityGate.summary, /acceptance-not-bound-to-executable-oracle/);
+    assert.match(result.feedbackForAI, /requirement_contract/);
+    assert.deepEqual(statuses.map(status => `${status.phase}:${status.state}`), [
+      'validate:started',
+      'validate:skipped',
+      'quality:started',
+      'quality:skipped',
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Agent auto validation: failed validation blocks completion evidence', async () => {
   const validationService = {
     validateWorkspaceChanges: async () => ({

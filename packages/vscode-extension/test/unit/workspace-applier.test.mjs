@@ -256,6 +256,50 @@ test('workspace-applier: a later-file conflict rolls back earlier atomic commits
   }
 });
 
+test('workspace-applier: passing file check cannot override missing external attribution', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-applier-external-requirement-'));
+  try {
+    fakeWorkspace.workspaceFolders = [{ uri: Uri.file(root), name: 'root', index: 0 }];
+    const statuses = [];
+    const result = await applyGeneratedArtifactsWithPrompt(
+      [
+        'api-report.txt',
+        '```text',
+        '# Report',
+        '```',
+      ].join('\n'),
+      '按最新 OpenAI API 版本创建 api-report.txt，完成后验证 api-report.txt 文件存在。',
+      (status) => statuses.push(status),
+      true,
+      undefined,
+      undefined,
+      {
+        validationCommandRunner: async (invocation) => ({
+          ran: true,
+          ok: true,
+          command: invocation.command,
+          exitCode: 0,
+          stdout: 'ok',
+          stderr: '',
+          output: 'ok',
+          cwd: invocation.cwd,
+        }),
+      },
+    );
+
+    assert.equal(result.applied, true);
+    assert.equal(result.validation.ok, true);
+    assert.equal(result.qualityGate.status, 'blocked');
+    assert.equal(result.qualityGate.contractAcceptanceStatus, 'pending');
+    assert.match(result.qualityGate.summary, /external-boundary-attribution-required/);
+    assert.ok(statuses.some((status) => (
+      status.phase === 'quality' && status.state === 'failed' && /QualityGate 阻塞/.test(status.title)
+    )));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('workspace-applier: blocks project instruction file writes unless explicitly requested', async () => {
   const { root, projectDir } = createShapeManagerWorkspace();
   try {

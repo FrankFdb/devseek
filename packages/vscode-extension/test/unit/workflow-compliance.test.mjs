@@ -2363,6 +2363,25 @@ test('Architecture: ARCH-17 agent runs are created through RunContext', () => {
   assertDoesNotContain(extension, 'createDevSeekRunId', 'agent entry must not create bare run ids outside RunContext');
 });
 
+test('Architecture: R2-02 requirement contract owns acceptance and external-boundary semantics', () => {
+  const requirementContract = src('src/agent/requirement-contract.ts');
+  const agentKernel = src('src/app/agent-kernel-service.ts');
+  const runContext = src('src/app/run-context.ts');
+  const workspaceApplier = src('src/workspace-applier.ts');
+  const autoValidation = src('src/agent/auto-validation.ts');
+
+  assertContains(requirementContract, 'devseek.requirement-contract/v1', 'RequirementContract must expose a versioned schema');
+  assertContains(requirementContract, 'buildTaskContract(', 'RequirementContract must absorb the existing TaskContract owner');
+  assertContains(requirementContract, 'acceptanceCriteria', 'RequirementContract must own deliverable acceptance mapping');
+  assertContains(requirementContract, 'externalBoundaries', 'RequirementContract must own external boundary attribution');
+  assertContains(requirementContract, 'weak-oracle', 'RequirementContract must model weak acceptance oracles');
+  assertContains(requirementContract, 'external-source-required', 'RequirementContract must model missing external-source evidence');
+  assertContains(agentKernel, 'requirementContract', 'Kernel runs must carry the RequirementContract');
+  assertContains(runContext, 'requirementContractFingerprint', 'RunContext evidence must fingerprint the RequirementContract');
+  assertContains(workspaceApplier, 'evaluateRequirementContractAcceptance(', 'workspace apply QualityGate must consume RequirementContract acceptance');
+  assertContains(autoValidation, 'evaluateRequirementContractQuality(', 'agent auto-validation must consume RequirementContract acceptance');
+});
+
 test('Architecture: run traces and bridge lifecycle are build-aware', () => {
   const bridgeClient = src('src/bridge-client.ts');
   const bridgeServer = src('../bridge/src/server.ts');
