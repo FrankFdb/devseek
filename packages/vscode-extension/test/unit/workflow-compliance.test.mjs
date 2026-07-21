@@ -869,6 +869,17 @@ test('R3-07F-plugin: Extension profile planner binds plugin plans to supply-chai
   assertContains(sharedTests, 'R3-07F-plugin ExtensionProfilePlanService', 'R3-07F-plugin must have profile-plan failure-first oracle');
 });
 
+test('R3-07F-subagent: Extension profile planner binds subagent plans to subagent contract schema', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SUBAGENT_CONTRACT_PROTOCOL', 'Subagent profile plans must expose a shared subagent contract protocol marker');
+  assertContains(sharedEnhancements, 'subagent: SUBAGENT_CONTRACT_PROTOCOL', 'Subagent profile plans must bind to the subagent contract schema constant');
+  assertContains(sharedEnhancements, 'profile-plan-schema-kind-mismatch', 'Subagent kind/schema mismatches must be blocked');
+  assertContains(sharedEnhancements, 'R3-07S-${input.kind}', 'Subagent profile plan must generate concrete R3-07S subagent slot IDs through the shared kind template');
+  assertContains(sharedTests, 'R3-07F-subagent ExtensionProfilePlanService', 'R3-07F-subagent must have profile-plan failure-first oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

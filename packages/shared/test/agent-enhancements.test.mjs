@@ -7,6 +7,7 @@ import {
   McpPermissionService,
   PluginSupplyChainService,
   SkillDiscoveryService,
+  SUBAGENT_CONTRACT_PROTOCOL,
   SubagentRegistry,
 } from '../dist/index.js';
 
@@ -305,6 +306,34 @@ test('R3-07F-plugin ExtensionProfilePlanService binds plugin profile plans to su
   });
   assert.equal(wrongSchema.status, 'blocked');
   assert.ok(wrongSchema.violations.includes('profile-plan-schema-kind-mismatch:plugin'));
+});
+
+test('R3-07F-subagent ExtensionProfilePlanService binds subagent profile plans to contract schema', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'subagent',
+    candidateCommit: '509bcf6ab009ad8c318fe9334842a62267d4b6c7',
+    schemaVersion: SUBAGENT_CONTRACT_PROTOCOL,
+  });
+
+  assert.equal(SUBAGENT_CONTRACT_PROTOCOL, 'devseek.subagent-contract/v1');
+  assert.equal(plan.profileId, 'R3-07F-subagent-PROFILE-PLAN');
+  assert.equal(plan.kind, 'subagent');
+  assert.equal(plan.status, 'signed');
+  assert.equal(plan.taskSlots.length, 20);
+  assert.equal(plan.permissionFaultSlots.length, 100);
+  assert.equal(plan.taskSlots[0].slotId, 'R3-07S-subagent-TASK-001');
+  assert.equal(plan.permissionFaultSlots[99].slotId, 'R3-07S-subagent-PERMISSION-FAULT-100');
+  assert.ok(plan.taskSlots.every(slot => slot.schemaVersion === SUBAGENT_CONTRACT_PROTOCOL));
+  assert.ok(plan.permissionFaultSlots.every(slot => slot.schemaVersion === SUBAGENT_CONTRACT_PROTOCOL));
+
+  const wrongSchema = service.createProfilePlan({
+    kind: 'subagent',
+    candidateCommit: '509bcf6ab009ad8c318fe9334842a62267d4b6c7',
+    schemaVersion: 'devseek.skill-execution/v1',
+  });
+  assert.equal(wrongSchema.status, 'blocked');
+  assert.ok(wrongSchema.violations.includes('profile-plan-schema-kind-mismatch:subagent'));
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {

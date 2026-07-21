@@ -25,6 +25,7 @@ export const HOOK_POLICY_PROTOCOL = 'devseek.hook-policy/v1';
 export const SKILL_EXECUTION_PROTOCOL = 'devseek.skill-execution/v1';
 export const MCP_TRUST_PROTOCOL = 'devseek.mcp-trust/v1';
 export const PLUGIN_SUPPLY_CHAIN_PROTOCOL = 'devseek.plugin-supply-chain/v1';
+export const SUBAGENT_CONTRACT_PROTOCOL = 'devseek.subagent-contract/v1';
 export const EXTENSION_PROFILE_PLAN_PROTOCOL = 'devseek.extension-profile-plan/v1';
 export const B4_EFFECT_AUTHORITY = 'B4-effect-authority';
 
@@ -320,7 +321,7 @@ const EXPECTED_EXTENSION_PROFILE_SCHEMAS: Readonly<Record<ExtensionProfileKind, 
   hook: HOOK_POLICY_PROTOCOL,
   mcp: MCP_TRUST_PROTOCOL,
   plugin: PLUGIN_SUPPLY_CHAIN_PROTOCOL,
-  subagent: 'devseek.subagent-contract/v1',
+  subagent: SUBAGENT_CONTRACT_PROTOCOL,
 };
 const ALL_SKILL_TOOL_KINDS: readonly SkillToolKind[] = [
   'read',
