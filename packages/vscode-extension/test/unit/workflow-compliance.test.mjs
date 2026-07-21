@@ -812,6 +812,29 @@ test('R3-07E: Worktree isolation receipts preserve dirty user state and reject c
   assertContains(worktreeTests, 'R3-07E WorktreeConflictService', 'R3-07E must have worktree isolation failure-first oracle');
 });
 
+test('R3-07F-skill: Extension profile planner signs one immutable skill plan without executing denominator', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'EXTENSION_PROFILE_PLAN_PROTOCOL', 'Extension profile plans must expose a versioned protocol marker');
+  assertContains(sharedEnhancements, 'ExtensionProfilePlanService', 'Extension profile plan signing must have one explicit owner');
+  assertContains(sharedEnhancements, 'ExtensionProfilePlanReceipt', 'Extension profile plans must produce a receipt');
+  assertContains(sharedEnhancements, 'createProfilePlan', 'Extension profile planner must create profile plans');
+  assertContains(sharedEnhancements, "singleOwner: 'ExtensionProfilePlanService'", 'Extension profile plans must keep one owner');
+  assertContains(sharedEnhancements, "settlementAuthority: 'parent-kernel'", 'Extension profile plans must remain parent Kernel-owned');
+  assertContains(sharedEnhancements, 'taskSlots', 'Profile plan must freeze 20 task slots');
+  assertContains(sharedEnhancements, 'permissionFaultSlots', 'Profile plan must freeze 100 permission/fault slots');
+  assertContains(sharedEnhancements, 'oracleCatalog', 'Profile plan must bind oracle refs');
+  assertContains(sharedEnhancements, 'denominatorExecutionAllowed: false', 'R3-07F must not execute the denominator');
+  assertContains(sharedEnhancements, 'slotExecutionAllowed: false', 'R3-07F must not execute a slot');
+  assertContains(sharedEnhancements, 'aggregateExecutionAllowed: false', 'R3-07F must not aggregate slots');
+  assertContains(sharedEnhancements, 'planSignature', 'Profile plan must be signed');
+  assertContains(sharedEnhancements, 'R3-07S', 'Profile plan must generate concrete R3-07S slot IDs');
+  assertContains(sharedEnhancements, 'candidateCommit', 'Profile plan must bind candidate identity');
+  assertContains(sharedEnhancements, 'schemaVersion', 'Profile plan must bind schema identity');
+  assertContains(sharedTests, 'R3-07F-skill ExtensionProfilePlanService', 'R3-07F-skill must have profile-plan failure-first oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  ExtensionProfilePlanService,
   GitPrAssistantService,
   HookPlanner,
   McpPermissionService,
@@ -168,6 +169,51 @@ test('R3-07A SkillDiscoveryService plans progressive skill execution without com
   assert.equal(noMatch.loadedSkills.length, 0);
   assert.ok(noMatch.blockedReasons.includes('unmatched-skill-not-loaded'));
   assert.doesNotMatch(JSON.stringify(noMatch), /still-not-loaded/);
+});
+
+test('R3-07F-skill ExtensionProfilePlanService signs immutable skill denominator plan without executing slots', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: 'a3c6cbaf44b77083e5fadb7ded32ee451e2d85c4',
+    schemaVersion: 'devseek.skill-execution/v1',
+  });
+
+  assert.equal(plan.protocol, 'devseek.extension-profile-plan/v1');
+  assert.equal(plan.profileId, 'R3-07F-skill-PROFILE-PLAN');
+  assert.equal(plan.kind, 'skill');
+  assert.equal(plan.singleOwner, 'ExtensionProfilePlanService');
+  assert.equal(plan.settlementAuthority, 'parent-kernel');
+  assert.equal(plan.status, 'signed');
+  assert.equal(plan.immutable, true);
+  assert.equal(plan.denominatorExecutionAllowed, false);
+  assert.equal(plan.slotExecutionAllowed, false);
+  assert.equal(plan.aggregateExecutionAllowed, false);
+  assert.equal(plan.taskSlots.length, 20);
+  assert.equal(plan.permissionFaultSlots.length, 100);
+  assert.equal(new Set(plan.slotIds).size, 120);
+  assert.equal(plan.taskSlots[0].slotId, 'R3-07S-skill-TASK-001');
+  assert.equal(plan.permissionFaultSlots[99].slotId, 'R3-07S-skill-PERMISSION-FAULT-100');
+  assert.ok(plan.taskSlots.every(slot => slot.candidateCommit === plan.candidateCommit));
+  assert.ok(plan.taskSlots.every(slot => slot.schemaVersion === plan.schemaVersion));
+  assert.ok(plan.permissionFaultSlots.every(slot => slot.oracleRef.startsWith('oracle:skill:permission-fault:')));
+  assert.deepEqual(plan.oracleCatalog.counts, { task: 20, permissionFault: 100 });
+
+  const changedCandidate = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    schemaVersion: 'devseek.skill-execution/v1',
+  });
+  assert.notEqual(changedCandidate.planSignature, plan.planSignature);
+
+  const blocked = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '',
+    schemaVersion: '',
+  });
+  assert.equal(blocked.status, 'blocked');
+  assert.ok(blocked.violations.includes('profile-plan-missing-candidate-commit'));
+  assert.ok(blocked.violations.includes('profile-plan-missing-schema-version'));
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {

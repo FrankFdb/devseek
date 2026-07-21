@@ -6,6 +6,9 @@ export type SubagentKind = 'reviewer' | 'test-writer' | 'diagnostics' | 'migrati
 export type McpRiskLevel = 'read' | 'write' | 'network' | 'destructive';
 export type McpTrustAction = 'allow' | 'approval-required' | 'veto';
 export type PluginSupplyChainAction = 'allow' | 'veto';
+export type ExtensionProfileKind = 'skill' | 'hook' | 'mcp' | 'plugin' | 'subagent';
+export type ExtensionProfilePlanStatus = 'signed' | 'blocked';
+export type ExtensionProfileSlotKind = 'task' | 'permission-fault';
 export type SkillToolKind =
   | 'read'
   | 'search'
@@ -22,6 +25,7 @@ export const HOOK_POLICY_PROTOCOL = 'devseek.hook-policy/v1';
 export const SKILL_EXECUTION_PROTOCOL = 'devseek.skill-execution/v1';
 export const MCP_TRUST_PROTOCOL = 'devseek.mcp-trust/v1';
 export const PLUGIN_SUPPLY_CHAIN_PROTOCOL = 'devseek.plugin-supply-chain/v1';
+export const EXTENSION_PROFILE_PLAN_PROTOCOL = 'devseek.extension-profile-plan/v1';
 export const B4_EFFECT_AUTHORITY = 'B4-effect-authority';
 
 export interface HookDefinition {
@@ -245,6 +249,54 @@ export interface PluginSupplyChainReceipt {
   evidenceRefs: readonly string[];
 }
 
+export interface ExtensionProfilePlanInput {
+  kind: ExtensionProfileKind;
+  candidateCommit: string;
+  schemaVersion: string;
+  oracleVersion?: string;
+}
+
+export interface ExtensionProfileSlot {
+  slotId: string;
+  slotKind: ExtensionProfileSlotKind;
+  index: number;
+  kind: ExtensionProfileKind;
+  candidateCommit: string;
+  schemaVersion: string;
+  oracleRef: string;
+}
+
+export interface ExtensionProfileOracleCatalog {
+  version: string;
+  counts: {
+    task: number;
+    permissionFault: number;
+  };
+  oracleRefs: readonly string[];
+}
+
+export interface ExtensionProfilePlanReceipt {
+  protocol: typeof EXTENSION_PROFILE_PLAN_PROTOCOL;
+  profileId: string;
+  kind: ExtensionProfileKind;
+  status: ExtensionProfilePlanStatus;
+  singleOwner: 'ExtensionProfilePlanService';
+  settlementAuthority: 'parent-kernel';
+  immutable: true;
+  candidateCommit: string;
+  schemaVersion: string;
+  taskSlots: readonly ExtensionProfileSlot[];
+  permissionFaultSlots: readonly ExtensionProfileSlot[];
+  slotIds: readonly string[];
+  oracleCatalog: ExtensionProfileOracleCatalog;
+  denominatorExecutionAllowed: false;
+  slotExecutionAllowed: false;
+  aggregateExecutionAllowed: false;
+  planSignature: string;
+  violations: readonly string[];
+  evidenceRefs: readonly string[];
+}
+
 export interface GitPrSummaryInput {
   changedFiles: readonly string[];
   validationPassed: boolean;
@@ -260,6 +312,9 @@ export interface GitPrSummary {
 
 const SENSITIVE_HOOK_DENY_PATTERNS = ['.env', '*.pem', '*.key', '*secret*'] as const;
 const SKILL_ALLOWED_TOOL_KINDS: readonly SkillToolKind[] = ['read', 'search', 'diagnostics', 'plan'];
+const EXTENSION_PROFILE_KINDS: readonly ExtensionProfileKind[] = ['skill', 'hook', 'mcp', 'plugin', 'subagent'];
+const EXTENSION_PROFILE_TASK_SLOT_COUNT = 20;
+const EXTENSION_PROFILE_PERMISSION_FAULT_SLOT_COUNT = 100;
 const ALL_SKILL_TOOL_KINDS: readonly SkillToolKind[] = [
   'read',
   'search',
@@ -641,6 +696,119 @@ export class PluginSupplyChainService {
       evidenceRefs: uniqueStrings(decisions.flatMap(decision => decision.evidenceRefs)),
     };
   }
+}
+
+export class ExtensionProfilePlanService {
+  createProfilePlan(input: ExtensionProfilePlanInput): ExtensionProfilePlanReceipt {
+    const requestedKind = String(input.kind ?? '').trim() as ExtensionProfileKind;
+    const kind = toExtensionProfileKind(requestedKind);
+    const candidateCommit = String(input.candidateCommit ?? '').trim();
+    const schemaVersion = String(input.schemaVersion ?? '').trim();
+    const oracleVersion = String(input.oracleVersion ?? `${EXTENSION_PROFILE_PLAN_PROTOCOL}:oracle/v1`).trim();
+    const violations = uniqueStrings([
+      ...(!candidateCommit ? ['profile-plan-missing-candidate-commit'] : []),
+      ...(!schemaVersion ? ['profile-plan-missing-schema-version'] : []),
+      ...(!isExtensionProfileKind(requestedKind) ? ['profile-plan-invalid-kind'] : []),
+    ]);
+    const taskSlots = createExtensionProfileSlots({
+      kind,
+      slotKind: 'task',
+      count: EXTENSION_PROFILE_TASK_SLOT_COUNT,
+      candidateCommit,
+      schemaVersion,
+      oracleVersion,
+    });
+    const permissionFaultSlots = createExtensionProfileSlots({
+      kind,
+      slotKind: 'permission-fault',
+      count: EXTENSION_PROFILE_PERMISSION_FAULT_SLOT_COUNT,
+      candidateCommit,
+      schemaVersion,
+      oracleVersion,
+    });
+    const slotIds = [...taskSlots, ...permissionFaultSlots].map(slot => slot.slotId);
+    const oracleRefs = [...taskSlots, ...permissionFaultSlots].map(slot => slot.oracleRef);
+    const profileId = `R3-07F-${kind}-PROFILE-PLAN`;
+    const planSignature = stableTextDigest(JSON.stringify({
+      protocol: EXTENSION_PROFILE_PLAN_PROTOCOL,
+      profileId,
+      kind,
+      candidateCommit,
+      schemaVersion,
+      taskSlots,
+      permissionFaultSlots,
+      oracleVersion,
+      violations,
+    }));
+
+    return {
+      protocol: EXTENSION_PROFILE_PLAN_PROTOCOL,
+      profileId,
+      kind,
+      status: violations.length === 0 ? 'signed' : 'blocked',
+      singleOwner: 'ExtensionProfilePlanService',
+      settlementAuthority: 'parent-kernel',
+      immutable: true,
+      candidateCommit,
+      schemaVersion,
+      taskSlots,
+      permissionFaultSlots,
+      slotIds,
+      oracleCatalog: {
+        version: oracleVersion,
+        counts: {
+          task: taskSlots.length,
+          permissionFault: permissionFaultSlots.length,
+        },
+        oracleRefs,
+      },
+      denominatorExecutionAllowed: false,
+      slotExecutionAllowed: false,
+      aggregateExecutionAllowed: false,
+      planSignature,
+      violations,
+      evidenceRefs: [`extension-profile-plan:${profileId}:${planSignature}`],
+    };
+  }
+}
+
+function toExtensionProfileKind(kind: ExtensionProfileKind): ExtensionProfileKind {
+  return isExtensionProfileKind(kind) ? kind : 'skill';
+}
+
+function isExtensionProfileKind(kind: string): kind is ExtensionProfileKind {
+  return (EXTENSION_PROFILE_KINDS as readonly string[]).includes(kind);
+}
+
+function createExtensionProfileSlots(input: {
+  kind: ExtensionProfileKind;
+  slotKind: ExtensionProfileSlotKind;
+  count: number;
+  candidateCommit: string;
+  schemaVersion: string;
+  oracleVersion: string;
+}): ExtensionProfileSlot[] {
+  return Array.from({ length: input.count }, (_, index) => {
+    const slotIndex = index + 1;
+    const slotLabel = input.slotKind === 'task' ? 'TASK' : 'PERMISSION-FAULT';
+    const slotId = `R3-07S-${input.kind}-${slotLabel}-${String(slotIndex).padStart(3, '0')}`;
+    const oracleRef = [
+      'oracle',
+      input.kind,
+      input.slotKind,
+      String(slotIndex).padStart(3, '0'),
+      stableTextDigest(`${input.oracleVersion}\n${input.candidateCommit}\n${input.schemaVersion}\n${slotId}`),
+    ].join(':');
+    return {
+      slotId,
+      slotKind: input.slotKind,
+      index: slotIndex,
+      kind: input.kind,
+      candidateCommit: input.candidateCommit,
+      schemaVersion: input.schemaVersion,
+      oracleRef,
+    };
+  });
 }
 
 function pluginVetoes(input: {
