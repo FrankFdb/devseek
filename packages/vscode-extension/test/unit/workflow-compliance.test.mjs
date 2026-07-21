@@ -928,6 +928,16 @@ test('R3-07S-skill-TASK-004: replacement attempts must be scoped to signed plan 
   assertContains(sharedTests, 'R3-07S-skill-TASK-004 ExtensionProfilePlanService', 'R3-07S-skill-TASK-004 must have signed-plan prior attempt oracle');
 });
 
+test('R3-07S-skill-TASK-005: failed slots must be failure-only evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'slot-failure-evidence-missing-veto', 'R3-07S-skill-TASK-005 must veto failed slots without failure evidence');
+  assertContains(sharedEnhancements, "status === 'passed' ? uniqueStrings(input.effectRefs ?? []) : []", 'R3-07S-skill-TASK-005 must keep effect refs pass-only');
+  assertContains(sharedEnhancements, "status === 'passed' ? uniqueStrings(input.receiptRefs ?? []) : []", 'R3-07S-skill-TASK-005 must keep receipt refs pass-only');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-005 ExtensionProfilePlanService', 'R3-07S-skill-TASK-005 must have failure-only slot oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

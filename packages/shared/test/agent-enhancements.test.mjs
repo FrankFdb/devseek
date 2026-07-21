@@ -606,6 +606,45 @@ test('R3-07S-skill-TASK-004 ExtensionProfilePlanService scopes replacement attem
   assert.ok(replacement.vetoes.includes('slot-replacement-veto:R3-07S-skill-TASK-004'));
 });
 
+test('R3-07S-skill-TASK-005 ExtensionProfilePlanService keeps failed slots failure-only', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '3333333333333333333333333333333333333333',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+
+  const failed = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-005',
+    attemptId: 'skill-task-005-failed',
+    status: 'failed',
+    failureRefs: ['skill-execution:failure:task-005'],
+    effectRefs: ['skill-discovery:should-not-commit-on-failure'],
+    receiptRefs: ['skill-execution:should-not-commit-on-failure'],
+  });
+  assert.equal(failed.status, 'failed');
+  assert.deepEqual(failed.failureRefs, ['skill-execution:failure:task-005']);
+  assert.deepEqual(failed.effectRefs, []);
+  assert.deepEqual(failed.receiptRefs, []);
+  assert.ok(failed.evidenceRefs.includes('skill-execution:failure:task-005'));
+  assert.ok(!failed.evidenceRefs.includes('skill-discovery:should-not-commit-on-failure'));
+  assert.ok(!failed.evidenceRefs.includes('skill-execution:should-not-commit-on-failure'));
+
+  const missingFailureEvidence = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-005',
+    attemptId: 'skill-task-005-missing-failure-evidence',
+    status: 'failed',
+    effectRefs: ['skill-discovery:should-not-commit-missing-failure'],
+    receiptRefs: ['skill-execution:should-not-commit-missing-failure'],
+  });
+  assert.equal(missingFailureEvidence.status, 'blocked');
+  assert.ok(missingFailureEvidence.vetoes.includes('slot-failure-evidence-missing-veto:R3-07S-skill-TASK-005'));
+  assert.deepEqual(missingFailureEvidence.effectRefs, []);
+  assert.deepEqual(missingFailureEvidence.receiptRefs, []);
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({

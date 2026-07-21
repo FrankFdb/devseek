@@ -863,6 +863,7 @@ export class ExtensionProfilePlanService {
         ...(childViolations.length > 0 ? [`slot-child-receipt-not-clean-veto:${slotId}`] : []),
       ])
       : [];
+    const failureRefs = uniqueStrings(input.failureRefs ?? []);
     const previousAttemptIds = uniqueStrings(
       (input.previousReceipts ?? [])
         .filter(receipt => (
@@ -878,13 +879,13 @@ export class ExtensionProfilePlanService {
       ...(attemptId ? [] : [`slot-missing-attempt-veto:${slotId}`]),
       ...(slot ? [] : [`slot-not-in-profile-veto:${slotId}`]),
       ...(previousAttemptIds.length === 0 ? [] : [`slot-replacement-veto:${slotId}`]),
+      ...(input.status === 'failed' && failureRefs.length === 0 ? [`slot-failure-evidence-missing-veto:${slotId}`] : []),
       ...childReceiptVetoes,
       ...(input.vetoes ?? []),
     ]);
     const status: ExtensionProfileSlotExecutionStatus = vetoes.length > 0 ? 'blocked' : input.status;
-    const effectRefs = status === 'blocked' ? [] : uniqueStrings(input.effectRefs ?? []);
-    const receiptRefs = status === 'blocked' ? [] : uniqueStrings(input.receiptRefs ?? []);
-    const failureRefs = uniqueStrings(input.failureRefs ?? []);
+    const effectRefs = status === 'passed' ? uniqueStrings(input.effectRefs ?? []) : [];
+    const receiptRefs = status === 'passed' ? uniqueStrings(input.receiptRefs ?? []) : [];
     const oracleRef = slot?.oracleRef ?? '';
 
     return {
