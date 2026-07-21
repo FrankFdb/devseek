@@ -1221,6 +1221,15 @@ test('R3-07S-skill-PERMISSION-FAULT-013: fenced Skill examples cannot provide pe
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-013 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-013 must have fenced metadata oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-014: commented Skill metadata cannot provide permission evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'insideHtmlComment', 'R3-07S-skill-PERMISSION-FAULT-014 must track HTML comments while parsing Skill metadata');
+  assertContains(sharedEnhancements, '<!--', 'R3-07S-skill-PERMISSION-FAULT-014 must recognize HTML comment metadata boundaries');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-014 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-014 must have commented metadata oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

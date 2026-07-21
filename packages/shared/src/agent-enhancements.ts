@@ -674,13 +674,23 @@ function freezeSkillExecutionReceipt(receipt: SkillExecutionReceipt): SkillExecu
 
 function skillMetadataLines(content: string): string[] {
   let insideFence = false;
+  let insideHtmlComment = false;
   return String(content).split(/\r?\n/).filter((line) => {
     const trimmed = line.trim();
     if (/^(?:```|~~~)/u.test(trimmed)) {
       insideFence = !insideFence;
       return false;
     }
-    return !insideFence;
+    if (insideFence) return false;
+    if (insideHtmlComment) {
+      insideHtmlComment = !trimmed.includes('-->');
+      return false;
+    }
+    if (trimmed.startsWith('<!--')) {
+      insideHtmlComment = !trimmed.includes('-->');
+      return false;
+    }
+    return true;
   });
 }
 
