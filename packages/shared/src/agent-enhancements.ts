@@ -865,7 +865,12 @@ export class ExtensionProfilePlanService {
       : [];
     const previousAttemptIds = uniqueStrings(
       (input.previousReceipts ?? [])
-        .filter(receipt => receipt.slotId === slotId)
+        .filter(receipt => (
+          receipt.slotId === slotId
+          && receipt.profileId === plan.profileId
+          && receipt.candidateCommit === plan.candidateCommit
+          && receipt.schemaVersion === plan.schemaVersion
+        ))
         .map(receipt => receipt.attemptId),
     );
     const vetoes = uniqueStrings([

@@ -545,6 +545,67 @@ test('R3-07S-skill-TASK-003 ExtensionProfilePlanService rejects child receipts w
   assert.equal(wrongAuthority.childSettlementAuthority, 'child-agent');
 });
 
+test('R3-07S-skill-TASK-004 ExtensionProfilePlanService scopes replacement attempts to signed plan identity', () => {
+  const service = new ExtensionProfilePlanService();
+  const skillReceipt = new SkillDiscoveryService().planExecution({
+    prompt: 'please use the react skill',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: 'description: Build React views\ntriggers: react\ntool_kinds: read',
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
+  const oldPlan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '1111111111111111111111111111111111111111',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const currentPlan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '2222222222222222222222222222222222222222',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const oldReceipt = service.recordSlotExecution({
+    plan: oldPlan,
+    slotId: 'R3-07S-skill-TASK-004',
+    attemptId: 'skill-task-004-old-candidate',
+    status: 'passed',
+    childReceipt: skillReceipt,
+    effectRefs: ['skill-discovery:old-candidate'],
+    receiptRefs: ['skill-execution:old-candidate'],
+  });
+  assert.equal(oldReceipt.status, 'passed');
+
+  const receipt = service.recordSlotExecution({
+    plan: currentPlan,
+    slotId: 'R3-07S-skill-TASK-004',
+    attemptId: 'skill-task-004-current-candidate',
+    status: 'passed',
+    childReceipt: skillReceipt,
+    previousReceipts: [oldReceipt],
+    effectRefs: ['skill-discovery:current-candidate'],
+    receiptRefs: ['skill-execution:current-candidate'],
+  });
+  assert.equal(receipt.status, 'passed');
+  assert.deepEqual(receipt.previousAttemptIds, []);
+  assert.equal(receipt.candidateCommit, currentPlan.candidateCommit);
+  assert.ok(!receipt.vetoes.includes('slot-replacement-veto:R3-07S-skill-TASK-004'));
+
+  const replacement = service.recordSlotExecution({
+    plan: currentPlan,
+    slotId: 'R3-07S-skill-TASK-004',
+    attemptId: 'skill-task-004-replacement',
+    status: 'passed',
+    childReceipt: skillReceipt,
+    previousReceipts: [receipt],
+  });
+  assert.equal(replacement.status, 'blocked');
+  assert.deepEqual(replacement.previousAttemptIds, ['skill-task-004-current-candidate']);
+  assert.ok(replacement.vetoes.includes('slot-replacement-veto:R3-07S-skill-TASK-004'));
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({

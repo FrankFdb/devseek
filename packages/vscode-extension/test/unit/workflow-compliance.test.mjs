@@ -918,6 +918,16 @@ test('R3-07S-skill-TASK-003: child receipts must carry evidence and parent autho
   assertContains(sharedTests, 'R3-07S-skill-TASK-003 ExtensionProfilePlanService', 'R3-07S-skill-TASK-003 must have child authority/evidence oracle');
 });
 
+test('R3-07S-skill-TASK-004: replacement attempts must be scoped to signed plan identity', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'receipt.profileId === plan.profileId', 'R3-07S-skill-TASK-004 must scope prior attempts by profile identity');
+  assertContains(sharedEnhancements, 'receipt.candidateCommit === plan.candidateCommit', 'R3-07S-skill-TASK-004 must scope prior attempts by candidate commit');
+  assertContains(sharedEnhancements, 'receipt.schemaVersion === plan.schemaVersion', 'R3-07S-skill-TASK-004 must scope prior attempts by schema version');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-004 ExtensionProfilePlanService', 'R3-07S-skill-TASK-004 must have signed-plan prior attempt oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
