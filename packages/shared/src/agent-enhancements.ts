@@ -34,6 +34,7 @@ const EXTENSION_PROFILE_SLOT_EFFECT_REF_PREFIX = 'extension-profile-slot-effect'
 const EXTENSION_PROFILE_SLOT_RECEIPT_REF_PREFIX = 'extension-profile-slot-receipt';
 const EXTENSION_PROFILE_SLOT_FAILURE_REF_PREFIX = 'extension-profile-slot-failure';
 const EXTENSION_PROFILE_SLOT_VETO_REF_PREFIX = 'extension-profile-slot-veto';
+const EXTENSION_PROFILE_SLOT_EXECUTION_REF_PREFIX = 'extension-profile-slot-execution';
 export const B4_EFFECT_AUTHORITY = 'B4-effect-authority';
 
 export interface HookDefinition {
@@ -347,6 +348,7 @@ export interface ExtensionProfileSlotExecutionReceipt {
   previousAttemptIds: readonly string[];
   replacesPriorAttempt: false;
   priorAttemptPolicy: 'append-only-no-replacement';
+  slotExecutionSignature: string;
   oracleRef: string;
   childReceiptRequired: boolean;
   childProtocol: string;
@@ -1018,6 +1020,26 @@ export class ExtensionProfilePlanService {
       })
       : [];
     const vetoEvidenceRefs = status === 'vetoed' || status === 'blocked' ? vetoes : [];
+    const slotExecutionSignature = createExtensionProfileSlotExecutionSignature({
+      plan,
+      slot,
+      slotId,
+      attemptId,
+      status,
+      previousAttemptIds,
+      oracleRef,
+      childReceiptRequired,
+      childProtocol,
+      childSettlementAuthority,
+      childEvidenceRequired,
+      childEvidenceRefs: childEvidenceRefsForReceipt,
+      childViolations: childViolationsForReceipt,
+      effectRefs,
+      receiptRefs,
+      failureRefs: failureRefsForReceipt,
+      vetoes,
+    });
+    const slotExecutionEvidenceRef = `${EXTENSION_PROFILE_SLOT_EXECUTION_REF_PREFIX}:${slotId}:${slotExecutionSignature}`;
 
     const receipt: ExtensionProfileSlotExecutionReceipt = {
       protocol: EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL,
@@ -1036,6 +1058,7 @@ export class ExtensionProfilePlanService {
       previousAttemptIds,
       replacesPriorAttempt: false,
       priorAttemptPolicy: 'append-only-no-replacement',
+      slotExecutionSignature,
       oracleRef,
       childReceiptRequired,
       childProtocol,
@@ -1056,6 +1079,7 @@ export class ExtensionProfilePlanService {
         ...failureRefsForReceipt,
         ...childEvidenceRefsForReceipt,
         ...vetoEvidenceRefs,
+        slotExecutionEvidenceRef,
       ]),
     };
     const frozenReceipt = freezeExtensionProfileSlotExecutionReceipt(receipt);
@@ -1077,6 +1101,54 @@ function freezeExtensionProfileSlotExecutionReceipt(
   Object.freeze(receipt.violations);
   Object.freeze(receipt.evidenceRefs);
   return Object.freeze(receipt);
+}
+
+function createExtensionProfileSlotExecutionSignature(input: {
+  plan: ExtensionProfilePlanReceipt;
+  slot: ExtensionProfileSlot | undefined;
+  slotId: string;
+  attemptId: string;
+  status: ExtensionProfileSlotExecutionStatus;
+  previousAttemptIds: readonly string[];
+  oracleRef: string;
+  childReceiptRequired: boolean;
+  childProtocol: string;
+  childSettlementAuthority: string;
+  childEvidenceRequired: boolean;
+  childEvidenceRefs: readonly string[];
+  childViolations: readonly string[];
+  effectRefs: readonly string[];
+  receiptRefs: readonly string[];
+  failureRefs: readonly string[];
+  vetoes: readonly string[];
+}): string {
+  const slotId = input.slot?.slotId ?? input.slotId;
+  return stableTextDigest(JSON.stringify({
+    protocol: EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL,
+    signatureAuthority: 'ExtensionProfilePlanService',
+    profileId: input.plan.profileId,
+    kind: input.plan.kind,
+    planSignature: input.plan.planSignature,
+    candidateCommit: input.plan.candidateCommit,
+    schemaVersion: input.plan.schemaVersion,
+    slotId,
+    slotKind: input.slot?.slotKind ?? 'task',
+    index: input.slot?.index ?? 0,
+    attemptId: input.attemptId,
+    status: input.status,
+    previousAttemptIds: input.previousAttemptIds,
+    oracleRef: input.oracleRef,
+    childReceiptRequired: input.childReceiptRequired,
+    childProtocol: input.childProtocol,
+    childSettlementAuthority: input.childSettlementAuthority,
+    childEvidenceRequired: input.childEvidenceRequired,
+    childEvidenceRefs: input.childEvidenceRefs,
+    childViolations: input.childViolations,
+    effectRefs: input.effectRefs,
+    receiptRefs: input.receiptRefs,
+    failureRefs: input.failureRefs,
+    vetoes: input.vetoes,
+  }));
 }
 
 type ExtensionProfileSlotSuccessRefInput = {

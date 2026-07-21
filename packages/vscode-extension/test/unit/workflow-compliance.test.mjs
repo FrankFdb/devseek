@@ -1067,6 +1067,16 @@ test('R3-07S-skill-TASK-017: previous slot receipts must be owner-authentic and 
   assertContains(sharedTests, 'R3-07S-skill-TASK-017 ExtensionProfilePlanService', 'R3-07S-skill-TASK-017 must have forged previous-receipt oracle');
 });
 
+test('R3-07S-skill-TASK-018: slot execution receipts must be owner-signed evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'slotExecutionSignature', 'R3-07S-skill-TASK-018 must expose a slot execution signature');
+  assertContains(sharedEnhancements, 'createExtensionProfileSlotExecutionSignature', 'R3-07S-skill-TASK-018 must derive slot execution signatures inside the profile owner');
+  assertContains(sharedEnhancements, 'extension-profile-slot-execution', 'R3-07S-skill-TASK-018 must project an owner-scoped slot execution evidence ref');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-018 ExtensionProfilePlanService', 'R3-07S-skill-TASK-018 must have slot execution signature oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

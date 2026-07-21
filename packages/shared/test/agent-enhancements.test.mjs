@@ -1275,6 +1275,38 @@ test('R3-07S-skill-TASK-017 ExtensionProfilePlanService authenticates previous s
   assert.ok(replacement.vetoes.includes('slot-replacement-veto:R3-07S-skill-TASK-017'));
 });
 
+test('R3-07S-skill-TASK-018 ExtensionProfilePlanService signs slot execution receipts', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: 'efefefefefefefefefefefefefefefefefefefef',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-018',
+    attemptId: 'skill-task-018-current',
+    status: 'failed',
+    failureRefs: ['skill-failure:task-018-current'],
+  });
+
+  assert.match(receipt.slotExecutionSignature, /^[0-9a-f]{8}$/);
+  assert.ok(receipt.evidenceRefs.includes(
+    `extension-profile-slot-execution:R3-07S-skill-TASK-018:${receipt.slotExecutionSignature}`,
+  ));
+
+  const changedAttempt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-018',
+    attemptId: 'skill-task-018-changed',
+    status: 'failed',
+    failureRefs: ['skill-failure:task-018-current'],
+  });
+
+  assert.notEqual(changedAttempt.slotExecutionSignature, receipt.slotExecutionSignature);
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({
