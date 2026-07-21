@@ -495,8 +495,7 @@ export class SkillDiscoveryService {
   }
 
   select(prompt: string, skills: readonly SkillDescriptor[]): SkillDescriptor[] {
-    const normalized = prompt.toLowerCase();
-    return skills.filter(skill => skill.triggers.some(trigger => normalized.includes(trigger.toLowerCase())));
+    return skills.filter(skill => skill.triggers.some(trigger => skillTriggerMatchesPrompt(prompt, trigger)));
   }
 
   planExecution(input: SkillExecutionPlanInput): SkillExecutionReceipt {
@@ -595,9 +594,8 @@ export class SkillDiscoveryService {
     skill: SkillDescriptor;
     selectedByTrigger: string;
   }> {
-    const normalized = prompt.toLowerCase();
     return skills.flatMap((skill) => {
-      const selectedByTrigger = skill.triggers.find(trigger => normalized.includes(trigger.toLowerCase()));
+      const selectedByTrigger = skill.triggers.find(trigger => skillTriggerMatchesPrompt(prompt, trigger));
       return selectedByTrigger ? [{ skill, selectedByTrigger }] : [];
     });
   }
@@ -1760,6 +1758,21 @@ function parseSkillToolKindValues(values: readonly unknown[]): { toolKinds: Skil
   const validToolKinds = new Set<string>(toolKinds);
   const invalidToolKinds = normalizedValues.filter(value => !validToolKinds.has(value));
   return { toolKinds, invalidToolKinds };
+}
+
+function skillTriggerMatchesPrompt(prompt: string, trigger: string): boolean {
+  const normalizedPrompt = String(prompt).toLowerCase();
+  const normalizedTrigger = String(trigger).trim().toLowerCase();
+  if (!normalizedTrigger) return false;
+  if (!/^[\x00-\x7F]+$/u.test(normalizedTrigger)) {
+    return normalizedPrompt.includes(normalizedTrigger);
+  }
+  const escapedTrigger = escapeRegExp(normalizedTrigger).replace(/\s+/gu, '\\s+');
+  return new RegExp(`(?:^|[^A-Za-z0-9_])${escapedTrigger}(?=$|[^A-Za-z0-9_])`, 'u').test(normalizedPrompt);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 function toSkillToolKind(value: string): SkillToolKind[] {

@@ -1165,6 +1165,16 @@ test('R3-07S-skill-PERMISSION-FAULT-007: invalid declared skill tools keep child
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-007 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-007 must have invalid declared tool oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-008: skill trigger selection must be token bounded', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'skillTriggerMatchesPrompt', 'R3-07S-skill-PERMISSION-FAULT-008 must keep trigger matching in SkillDiscoveryService');
+  assertContains(sharedEnhancements, '[^A-Za-z0-9_]', 'R3-07S-skill-PERMISSION-FAULT-008 must use token-bounded ASCII trigger matching');
+  assertContains(sharedEnhancements, 'escapeRegExp', 'R3-07S-skill-PERMISSION-FAULT-008 must escape skill trigger metadata before matching');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-008 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-008 must have substring trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
