@@ -1193,6 +1193,16 @@ test('R3-07S-skill-PERMISSION-FAULT-010: noncanonical skill paths keep child rec
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-010 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-010 must have noncanonical path oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-011: generic inferred trigger words cannot load skills', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_INFERRED_TRIGGER_STOP_WORDS', 'R3-07S-skill-PERMISSION-FAULT-011 must keep generic inferred trigger filtering in SkillDiscoveryService');
+  assertContains(sharedEnhancements, "'skill'", 'R3-07S-skill-PERMISSION-FAULT-011 must filter generic singular skill trigger inference');
+  assertContains(sharedEnhancements, "'skills'", 'R3-07S-skill-PERMISSION-FAULT-011 must filter generic plural skills trigger inference');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-011 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-011 must have generic inferred trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

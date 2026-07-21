@@ -1734,9 +1734,11 @@ function matchesGlob(glob: string, file: string): boolean {
   return regex.test(name) || regex.test(file);
 }
 
+const SKILL_INFERRED_TRIGGER_STOP_WORDS = new Set(['skill', 'skills', 'md']);
+
 function inferTriggers(path: string, description: string): string[] {
   const words = `${path} ${description}`.toLowerCase().match(/[a-z0-9_-]{3,}/g) ?? [];
-  return [...new Set(words)].slice(0, 8);
+  return [...new Set(words.filter(word => !SKILL_INFERRED_TRIGGER_STOP_WORDS.has(word)))].slice(0, 8);
 }
 
 function parseSkillInputSchema(lines: readonly string[], skillPath: string): {
