@@ -22,83 +22,83 @@
     "secret_observation": "FORBIDDEN"
   },
   "source_identity": {
-    "artifact_git_commit": "9b70912",
-    "candidate_source_commit": "9b70912cc5034972f18d5d9c04a4f958925a0c91",
+    "artifact_git_commit": "d1f83c0",
+    "candidate_source_commit": "d1f83c07d9e17f5382b1d8d02bd9f58a4aa84411",
     "commit_resolution": "git rev-parse <artifact_git_commit>^{commit}",
     "commit_resolvable": true
   },
   "artifact_identity": {
     "primary_vsix": {
       "path": "devseek-netai-latest.vsix",
-      "sha256": "340900e5170fa90eb67192ec424449fd06a6e10252debd3a17444e262a0ddb4a",
+      "sha256": "72d7adeae5fda1629299ecfe7e6b4d0a7f74d82704c6a89ced86dad1d41d5f50",
       "package_identity": {
         "publisher": "devseek-netai",
         "name": "devseek-netai",
-        "version": "1.0.0-debug.20260721.t162837.g9b70912",
+        "version": "1.0.0-debug.20260721.t163543.gd1f83c0",
         "devseekBuild": {
           "baseVersion": "1.0.0",
           "channel": "debug",
-          "buildId": "20260721-t162837",
-          "gitCommit": "9b70912",
-          "packagedAt": "2026-07-21T08:28:37.468Z"
+          "buildId": "20260721-t163543",
+          "gitCommit": "d1f83c0",
+          "packagedAt": "2026-07-21T08:35:43.938Z"
         }
       },
-      "packaged_bridge_server_sha256": "541fce95822c1767ad6ba998cda646ddffb581bd711fbc1eaec0ad9febe24107"
+      "packaged_bridge_server_sha256": "5ee77ac9d04abd938a6f9f0a2b677c41512fb8a6404c83ce79c79bc7328d3986"
     },
     "package_copy_vsix": {
       "path": "packages/vscode-extension/devseek-netai-latest.vsix",
-      "sha256": "340900e5170fa90eb67192ec424449fd06a6e10252debd3a17444e262a0ddb4a",
+      "sha256": "72d7adeae5fda1629299ecfe7e6b4d0a7f74d82704c6a89ced86dad1d41d5f50",
       "package_identity": {
         "publisher": "devseek-netai",
         "name": "devseek-netai",
-        "version": "1.0.0-debug.20260721.t162837.g9b70912",
+        "version": "1.0.0-debug.20260721.t163543.gd1f83c0",
         "devseekBuild": {
           "baseVersion": "1.0.0",
           "channel": "debug",
-          "buildId": "20260721-t162837",
-          "gitCommit": "9b70912",
-          "packagedAt": "2026-07-21T08:28:37.468Z"
+          "buildId": "20260721-t163543",
+          "gitCommit": "d1f83c0",
+          "packagedAt": "2026-07-21T08:35:43.938Z"
         }
       },
-      "packaged_bridge_server_sha256": "541fce95822c1767ad6ba998cda646ddffb581bd711fbc1eaec0ad9febe24107"
+      "packaged_bridge_server_sha256": "5ee77ac9d04abd938a6f9f0a2b677c41512fb8a6404c83ce79c79bc7328d3986"
     },
     "exact_match": true
   },
   "stable_install_identity": {
-    "package_root": "/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t162837.g9b70912",
-    "package_json_path": "/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t162837.g9b70912/package.json",
-    "bridge_server_path": "/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t162837.g9b70912/bridge/server.js",
+    "package_root": "/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t163543.gd1f83c0",
+    "package_json_path": "/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t163543.gd1f83c0/package.json",
+    "bridge_server_path": "/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t163543.gd1f83c0/bridge/server.js",
     "package_identity": {
       "publisher": "devseek-netai",
       "name": "devseek-netai",
-      "version": "1.0.0-debug.20260721.t162837.g9b70912",
+      "version": "1.0.0-debug.20260721.t163543.gd1f83c0",
       "devseekBuild": {
         "baseVersion": "1.0.0",
         "channel": "debug",
-        "buildId": "20260721-t162837",
-        "gitCommit": "9b70912",
-        "packagedAt": "2026-07-21T08:28:37.468Z"
+        "buildId": "20260721-t163543",
+        "gitCommit": "d1f83c0",
+        "packagedAt": "2026-07-21T08:35:43.938Z"
       }
     },
-    "installed_bridge_server_sha256": "541fce95822c1767ad6ba998cda646ddffb581bd711fbc1eaec0ad9febe24107",
+    "installed_bridge_server_sha256": "5ee77ac9d04abd938a6f9f0a2b677c41512fb8a6404c83ce79c79bc7328d3986",
     "exact_match_artifact": true
   },
   "active_runtime_identity": {
-    "expected_package_root": "/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t162837.g9b70912",
-    "expected_bridge_server_path": "/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t162837.g9b70912/bridge/server.js",
+    "expected_package_root": "/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t163543.gd1f83c0",
+    "expected_bridge_server_path": "/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260721.t163543.gd1f83c0/bridge/server.js",
     "expected_package_identity": {
       "publisher": "devseek-netai",
       "name": "devseek-netai",
-      "version": "1.0.0-debug.20260721.t162837.g9b70912",
+      "version": "1.0.0-debug.20260721.t163543.gd1f83c0",
       "devseekBuild": {
         "baseVersion": "1.0.0",
         "channel": "debug",
-        "buildId": "20260721-t162837",
-        "gitCommit": "9b70912",
-        "packagedAt": "2026-07-21T08:28:37.468Z"
+        "buildId": "20260721-t163543",
+        "gitCommit": "d1f83c0",
+        "packagedAt": "2026-07-21T08:35:43.938Z"
       }
     },
-    "expected_bridge_server_sha256": "541fce95822c1767ad6ba998cda646ddffb581bd711fbc1eaec0ad9febe24107",
+    "expected_bridge_server_sha256": "5ee77ac9d04abd938a6f9f0a2b677c41512fb8a6404c83ce79c79bc7328d3986",
     "exact_match_stable_install": true,
     "live_process_required": true
   },
@@ -114,10 +114,10 @@
     "state": "observed-local-install",
     "current_artifact": {
       "path": "devseek-netai-latest.vsix",
-      "sha256": "340900e5170fa90eb67192ec424449fd06a6e10252debd3a17444e262a0ddb4a",
-      "build_id": "20260721-t162837",
-      "git_commit": "9b70912",
-      "packaged_bridge_server_sha256": "541fce95822c1767ad6ba998cda646ddffb581bd711fbc1eaec0ad9febe24107"
+      "sha256": "72d7adeae5fda1629299ecfe7e6b4d0a7f74d82704c6a89ced86dad1d41d5f50",
+      "build_id": "20260721-t163543",
+      "git_commit": "d1f83c0",
+      "packaged_bridge_server_sha256": "5ee77ac9d04abd938a6f9f0a2b677c41512fb8a6404c83ce79c79bc7328d3986"
     },
     "deploy": {
       "status": "installed-local",
@@ -145,11 +145,11 @@
     "rollback": {
       "status": "available",
       "target_artifact": {
-        "path": "devseek-netai-1.0.0-debug.20260721.t162006.gf660c40.vsix",
-        "sha256": "ee914870c8e5eb6f3abbe221945caf17915d449d95c6f4f93f8a4632b3bd8e3d",
-        "build_id": "20260721-t162006",
-        "git_commit": "f660c40",
-        "packaged_bridge_server_sha256": "d4a0a93af7f54417b768b7d3a1ebc1ea0178d370ab46c7c6e70dcb567e6b0ab4"
+        "path": "devseek-netai-1.0.0-debug.20260721.t162837.g9b70912.vsix",
+        "sha256": "340900e5170fa90eb67192ec424449fd06a6e10252debd3a17444e262a0ddb4a",
+        "build_id": "20260721-t162837",
+        "git_commit": "9b70912",
+        "packaged_bridge_server_sha256": "541fce95822c1767ad6ba998cda646ddffb581bd711fbc1eaec0ad9febe24107"
       },
       "evidenceRefs": [
         "rollback:previous-complete-artifact"
@@ -184,5 +184,5 @@
     "active_runtime_identities": 1,
     "qualification_claims": 0
   },
-  "identity_probe_sha256": "1db498edc4a9b1d390d26594886f262c412b4a035fb9d2cbd738f894867b0c0e"
+  "identity_probe_sha256": "4feac09356f48ad8a9e4c46e8242fe7eb0c861982aa24ce1ea0ebe82a526e868"
 }
