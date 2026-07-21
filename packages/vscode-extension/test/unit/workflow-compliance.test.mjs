@@ -1126,6 +1126,15 @@ test('R3-07S-skill-PERMISSION-FAULT-003: permission/fault evidence must describe
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-003 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-003 must have ambiguous denial oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-004: permission/fault evidence refs stay parent-owned', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'projectedChildEvidenceRefs', 'R3-07S-skill-PERMISSION-FAULT-004 must route child evidence projection through the profile owner');
+  assertContains(sharedEnhancements, "status === 'passed' && !isPermissionFaultSlot", 'R3-07S-skill-PERMISSION-FAULT-004 must avoid direct child evidence projection for permission/fault slots');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-004 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-004 must have parent-owned evidence oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

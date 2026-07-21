@@ -1019,6 +1019,7 @@ export class ExtensionProfilePlanService {
     const terminalVetoes = inputStatus === 'vetoed' ? inputVetoRefs : blockingVetoes;
     const vetoes = status === 'blocked' ? blockingVetoes : terminalVetoes;
     const childEvidenceRefsForReceipt = status === 'passed' ? childEvidenceRefs : [];
+    const projectedChildEvidenceRefs = status === 'passed' && !isPermissionFaultSlot ? childEvidenceRefsForReceipt : [];
     const permissionFaultRefs = status === 'passed' && isPermissionFaultSlot
       ? createExtensionProfileSlotPermissionFaultRefs({
         plan: profileProjection,
@@ -1126,7 +1127,7 @@ export class ExtensionProfilePlanService {
         ...receiptRefs,
         ...permissionFaultRefs,
         ...failureRefsForReceipt,
-        ...childEvidenceRefsForReceipt,
+        ...projectedChildEvidenceRefs,
         ...vetoEvidenceRefs,
         slotExecutionEvidenceRef,
       ]),

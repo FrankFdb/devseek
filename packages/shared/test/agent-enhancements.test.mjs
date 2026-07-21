@@ -1521,6 +1521,32 @@ test('R3-07S-skill-PERMISSION-FAULT-003 ExtensionProfilePlanService rejects ambi
   assert.deepEqual(receipt.receiptRefs, []);
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-004 ExtensionProfilePlanService keeps permission fault evidence parent-owned', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '4812162024283236404448525660646872768084',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createDeniedEditSkillReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-004',
+    attemptId: 'skill-permission-fault-004-parent-owned-evidence',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'passed');
+  assert.ok(receipt.childEvidenceRefs.some(ref => ref.startsWith('skill:')));
+  assert.match(receipt.permissionFaultRefs[0], /^extension-profile-slot-permission-fault:R3-07S-skill-PERMISSION-FAULT-004:/);
+  assert.ok(receipt.evidenceRefs.includes(receipt.permissionFaultRefs[0]));
+  assert.equal(receipt.evidenceRefs.some(ref => ref.startsWith('skill:')), false);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({
