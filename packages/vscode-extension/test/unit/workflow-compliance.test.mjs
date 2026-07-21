@@ -1175,6 +1175,15 @@ test('R3-07S-skill-PERMISSION-FAULT-008: skill trigger selection must be token b
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-008 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-008 must have substring trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-009: duplicate skill paths keep child receipts dirty', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'duplicateSkillPaths', 'R3-07S-skill-PERMISSION-FAULT-009 must keep duplicate skill path detection in SkillDiscoveryService');
+  assertContains(sharedEnhancements, 'skill-path-collision', 'R3-07S-skill-PERMISSION-FAULT-009 must expose duplicate skill path metadata as dirty child evidence');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-009 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-009 must have duplicate path oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

@@ -489,9 +489,28 @@ export class HookPlanner {
 
 export class SkillDiscoveryService {
   discover(candidates: readonly SkillCandidate[]): SkillDescriptor[] {
-    return candidates
+    const parsedSkills = candidates
       .filter(candidate => candidate.path.endsWith('SKILL.md'))
       .map(candidate => this.parse(candidate));
+    const pathCounts = new Map<string, number>();
+    for (const skill of parsedSkills) {
+      pathCounts.set(skill.path, (pathCounts.get(skill.path) ?? 0) + 1);
+    }
+    const duplicateSkillPaths = new Set(
+      [...pathCounts.entries()]
+        .filter(([, count]) => count > 1)
+        .map(([path]) => path),
+    );
+    if (duplicateSkillPaths.size === 0) return parsedSkills;
+    return parsedSkills.map(skill => duplicateSkillPaths.has(skill.path)
+      ? {
+        ...skill,
+        parseIssues: uniqueStrings([
+          ...(skill.parseIssues ?? []),
+          `skill-path-collision:${skill.path}`,
+        ]),
+      }
+      : skill);
   }
 
   select(prompt: string, skills: readonly SkillDescriptor[]): SkillDescriptor[] {

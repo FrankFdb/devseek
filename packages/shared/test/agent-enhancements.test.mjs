@@ -1511,6 +1511,35 @@ function createSubstringTriggerDeniedEditSkillReceipt() {
   });
 }
 
+function createDuplicatePathDeniedEditSkillReceipt() {
+  return new SkillDiscoveryService().planExecution({
+    prompt: 'please use react and edit the component',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: [
+          '# React',
+          '',
+          'description: React components',
+          'triggers: react',
+          'tool_kinds: read',
+        ].join('\n'),
+      },
+      {
+        path: 'skills/react/SKILL.md',
+        content: [
+          '# React Duplicate',
+          '',
+          'description: React components copy',
+          'triggers: react',
+          'tool_kinds: read',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read', 'edit'],
+  });
+}
+
 test('R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService accepts expected skill permission denial as slot evidence', () => {
   const service = new ExtensionProfilePlanService();
   const plan = service.createProfilePlan({
@@ -1723,6 +1752,33 @@ test('R3-07S-skill-PERMISSION-FAULT-008 ExtensionProfilePlanService rejects subs
   assert.equal(childReceipt.loadedSkills.length, 0);
   assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
   assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-008'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-009 ExtensionProfilePlanService rejects duplicate skill path permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '9182736455463728190019283746554637281900',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createDuplicatePathDeniedEditSkillReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-009',
+    attemptId: 'skill-permission-fault-009-duplicate-skill-path',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(childReceipt.loadedSkills.length, 2);
+  assert.ok(childReceipt.violations.includes('skill-path-collision:skills/react/SKILL.md'));
+  assert.ok(childReceipt.violations.includes('skill-tool-kind-denied:edit'));
+  assert.ok(receipt.vetoes.includes('slot-child-receipt-not-clean-veto:R3-07S-skill-PERMISSION-FAULT-009'));
   assert.deepEqual(receipt.permissionFaultRefs, []);
   assert.deepEqual(receipt.effectRefs, []);
   assert.deepEqual(receipt.receiptRefs, []);
