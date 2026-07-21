@@ -943,7 +943,7 @@ test('R3-07S-skill-TASK-006: vetoed slots must remain distinct from blocked inpu
   const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
 
   assertContains(sharedEnhancements, 'slot-veto-evidence-missing-veto', 'R3-07S-skill-TASK-006 must veto missing veto evidence');
-  assertContains(sharedEnhancements, "inputStatus === 'vetoed' ? inputVetoes : blockingVetoes", 'R3-07S-skill-TASK-006 must preserve legitimate vetoed status evidence');
+  assertContains(sharedEnhancements, "inputStatus === 'vetoed' ? inputVetoRefs : blockingVetoes", 'R3-07S-skill-TASK-006 must preserve owner-derived vetoed status evidence');
   assertContains(sharedEnhancements, "blockingVetoes.length > 0 ? 'blocked' : inputStatus", 'R3-07S-skill-TASK-006 must block only invalid slot receipts');
   assertContains(sharedTests, 'R3-07S-skill-TASK-006 ExtensionProfilePlanService', 'R3-07S-skill-TASK-006 must have vetoed-vs-blocked oracle');
 });
@@ -1044,6 +1044,17 @@ test('R3-07S-skill-TASK-015: failed slot failure refs must be owner-derived', ()
   assertContains(sharedEnhancements, 'extension-profile-slot-failure', 'R3-07S-skill-TASK-015 must use owner-scoped failure evidence refs');
   assertDoesNotContain(sharedEnhancements, "const failureRefsForReceipt = status === 'failed' ? failureRefs : []", 'R3-07S-skill-TASK-015 must not trust caller failure refs');
   assertContains(sharedTests, 'R3-07S-skill-TASK-015 ExtensionProfilePlanService', 'R3-07S-skill-TASK-015 must have caller-failure-ref oracle');
+});
+
+test('R3-07S-skill-TASK-016: terminal veto refs must be owner-derived', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'createExtensionProfileSlotVetoRefs', 'R3-07S-skill-TASK-016 must derive veto refs inside the slot owner');
+  assertContains(sharedEnhancements, 'extension-profile-slot-veto', 'R3-07S-skill-TASK-016 must use owner-scoped veto evidence refs');
+  assertDoesNotContain(sharedEnhancements, "const terminalVetoes = inputStatus === 'vetoed' ? inputVetoes : blockingVetoes", 'R3-07S-skill-TASK-016 must not trust caller terminal veto refs');
+  assertDoesNotContain(sharedEnhancements, "...(inputStatus === 'vetoed' ? [] : inputVetoes)", 'R3-07S-skill-TASK-016 must not trust caller blocking veto refs');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-016 ExtensionProfilePlanService', 'R3-07S-skill-TASK-016 must have caller-veto-ref oracle');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

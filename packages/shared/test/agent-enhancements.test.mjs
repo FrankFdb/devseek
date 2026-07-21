@@ -667,10 +667,12 @@ test('R3-07S-skill-TASK-006 ExtensionProfilePlanService keeps vetoed slots disti
     receiptRefs: ['skill-execution:should-not-commit-on-veto'],
   });
   assert.equal(vetoed.status, 'vetoed');
-  assert.deepEqual(vetoed.vetoes, ['skill-policy:veto:task-006']);
+  assert.equal(vetoed.vetoes.length, 1);
+  assert.match(vetoed.vetoes[0], /^extension-profile-slot-veto:R3-07S-skill-TASK-006:/);
   assert.deepEqual(vetoed.effectRefs, []);
   assert.deepEqual(vetoed.receiptRefs, []);
-  assert.ok(vetoed.evidenceRefs.includes('skill-policy:veto:task-006'));
+  assert.ok(vetoed.evidenceRefs.includes(vetoed.vetoes[0]));
+  assert.ok(!vetoed.evidenceRefs.includes('skill-policy:veto:task-006'));
   assert.ok(!vetoed.evidenceRefs.includes('skill-discovery:should-not-commit-on-veto'));
 
   const missingVetoEvidence = service.recordSlotExecution({
@@ -694,7 +696,8 @@ test('R3-07S-skill-TASK-006 ExtensionProfilePlanService keeps vetoed slots disti
     vetoes: ['skill-policy:unexpected-veto-on-pass'],
   });
   assert.equal(passedWithVeto.status, 'blocked');
-  assert.ok(passedWithVeto.vetoes.includes('skill-policy:unexpected-veto-on-pass'));
+  assert.ok(passedWithVeto.vetoes.some(ref => /^extension-profile-slot-veto:R3-07S-skill-TASK-006:/.test(ref)));
+  assert.ok(!passedWithVeto.vetoes.includes('skill-policy:unexpected-veto-on-pass'));
 });
 
 test('R3-07S-skill-TASK-007 ExtensionProfilePlanService quarantines child evidence for non-passed slots', () => {
@@ -763,7 +766,10 @@ test('R3-07S-skill-TASK-007 ExtensionProfilePlanService quarantines child eviden
   assert.equal(vetoed.status, 'vetoed');
   assert.deepEqual(vetoed.childEvidenceRefs, []);
   assert.deepEqual(vetoed.childViolations, []);
-  assert.ok(vetoed.evidenceRefs.includes('skill-policy:veto:task-007'));
+  assert.equal(vetoed.vetoes.length, 1);
+  assert.match(vetoed.vetoes[0], /^extension-profile-slot-veto:R3-07S-skill-TASK-007:/);
+  assert.ok(vetoed.evidenceRefs.includes(vetoed.vetoes[0]));
+  assert.ok(!vetoed.evidenceRefs.includes('skill-policy:veto:task-007'));
   assert.ok(!vetoed.evidenceRefs.includes('skill-child:evidence:should-not-project'));
 });
 
@@ -792,8 +798,10 @@ test('R3-07S-skill-TASK-008 ExtensionProfilePlanService rejects invalid runtime 
   });
   assert.equal(invalidStatus.status, 'blocked');
   assert.ok(invalidStatus.vetoes.includes('slot-invalid-status-veto:R3-07S-skill-TASK-008'));
-  assert.ok(invalidStatus.vetoes.includes('skill-policy:invalid-status-extra-veto'));
+  assert.ok(invalidStatus.vetoes.some(ref => /^extension-profile-slot-veto:R3-07S-skill-TASK-008:/.test(ref)));
+  assert.ok(!invalidStatus.vetoes.includes('skill-policy:invalid-status-extra-veto'));
   assert.ok(invalidStatus.evidenceRefs.includes('slot-invalid-status-veto:R3-07S-skill-TASK-008'));
+  assert.ok(!invalidStatus.evidenceRefs.includes('skill-policy:invalid-status-extra-veto'));
   assert.ok(!invalidStatus.evidenceRefs.includes('skill-child:evidence:invalid-status-should-not-project'));
   assert.ok(!invalidStatus.evidenceRefs.includes('skill-effect:invalid-status-should-not-project'));
   assert.ok(!invalidStatus.evidenceRefs.includes('skill-receipt:invalid-status-should-not-project'));
@@ -1177,6 +1185,47 @@ test('R3-07S-skill-TASK-015 ExtensionProfilePlanService derives failed slot fail
   assert.ok(!receipt.failureRefs.includes('skill-failure:caller-forged-failure-ref'));
   assert.ok(!receipt.evidenceRefs.includes('skill-failure:caller-forged-failure-ref'));
   assert.ok(receipt.evidenceRefs.includes(receipt.failureRefs[0]));
+});
+
+test('R3-07S-skill-TASK-016 ExtensionProfilePlanService derives terminal veto refs', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: 'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+
+  const vetoed = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-016',
+    attemptId: 'skill-task-016-vetoed',
+    status: 'vetoed',
+    vetoes: ['skill-veto:caller-forged-veto-ref'],
+  });
+
+  assert.equal(vetoed.status, 'vetoed');
+  assert.equal(vetoed.vetoes.length, 1);
+  assert.match(vetoed.vetoes[0], /^extension-profile-slot-veto:R3-07S-skill-TASK-016:/);
+  assert.deepEqual(vetoed.violations, vetoed.vetoes);
+  assert.ok(!vetoed.vetoes.includes('skill-veto:caller-forged-veto-ref'));
+  assert.ok(!vetoed.violations.includes('skill-veto:caller-forged-veto-ref'));
+  assert.ok(!vetoed.evidenceRefs.includes('skill-veto:caller-forged-veto-ref'));
+  assert.ok(vetoed.evidenceRefs.includes(vetoed.vetoes[0]));
+
+  const blocked = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-016',
+    attemptId: 'skill-task-016-blocked-by-caller-veto',
+    status: 'failed',
+    failureRefs: ['skill-failure:task-016-real-input'],
+    vetoes: ['skill-veto:caller-forged-block-ref'],
+  });
+
+  assert.equal(blocked.status, 'blocked');
+  assert.ok(blocked.vetoes.some(ref => /^extension-profile-slot-veto:R3-07S-skill-TASK-016:/.test(ref)));
+  assert.ok(!blocked.vetoes.includes('skill-veto:caller-forged-block-ref'));
+  assert.ok(!blocked.violations.includes('skill-veto:caller-forged-block-ref'));
+  assert.ok(!blocked.evidenceRefs.includes('skill-veto:caller-forged-block-ref'));
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
