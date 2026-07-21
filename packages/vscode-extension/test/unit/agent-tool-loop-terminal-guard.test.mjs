@@ -973,4 +973,49 @@ test('ToolLoop repairs C++ string newline transport pollution before writing sou
   }
 });
 
+test('R3-01 ToolLoop skips all work tools after user cancellation', async () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cancel-tool-loop-'));
+  try {
+    const target = path.join(workspaceRoot, 'src', 'main.ts');
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, 'export const value = 1;\n');
+    let appliedChanges = 0;
+    let terminalCalls = 0;
+    const controller = new AbortController();
+    controller.abort();
+
+    const result = await executeFakeToolsForLoop(
+      [
+        { name: 'run_terminal', input: { command: 'node -e "console.log(1)"' } },
+        { name: 'write_file', input: { path: 'src/main.ts', content: 'export const value = 2;\n' } },
+        { name: 'delete_file', input: { path: 'src/main.ts' } },
+      ],
+      {
+        signal: controller.signal,
+        onTerminalCommand: async () => {
+          terminalCalls += 1;
+          return 'should-not-run';
+        },
+        onAppliedChange: async () => {
+          appliedChanges += 1;
+        },
+        onBeforeFileWrite: async () => true,
+        onToolActivity: () => {},
+        onAgentStatus: async () => {},
+      },
+      workspaceRoot,
+      { currentTaskIndex: 1, taskTotal: 1, workspaceRoot },
+    );
+
+    assert.equal(result.toolCallsMade, false);
+    assert.equal(result.workToolCallsMade, false);
+    assert.equal(appliedChanges, 0);
+    assert.equal(terminalCalls, 0);
+    assert.equal(readFileSync(target, 'utf8'), 'export const value = 1;\n');
+    assert.match(result.feedbackForAI, /cancelled|取消/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 console.log('\nAgent tool-loop terminal guard tests passed.\n');

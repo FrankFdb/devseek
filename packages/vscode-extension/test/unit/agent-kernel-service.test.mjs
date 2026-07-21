@@ -101,6 +101,46 @@ test('AgentKernelService: failed settlement stays behind the kernel run boundary
   }
 });
 
+test('R3-01 AgentKernelService: cancelRun routes through the terminal settlement boundary', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-agent-kernel-cancel-'));
+  const calls = [];
+  const terminalPermissions = {
+    completeRunContext(runContext, requestedStatus, data) {
+      calls.push({ runId: runContext.runId, requestedStatus, data });
+      assert.equal(requestedStatus, 'cancelled');
+      return runContext.cancel(data);
+    },
+  };
+
+  try {
+    const kernelRun = new AgentKernelService(terminalPermissions).startRun({
+      workspaceRoot,
+      runId: 'kernel-cancel-run',
+      userPrompt: '修改 src/main.ts',
+      traceLevel: 'debug',
+    });
+    kernelRun.runContext.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      state: 'started',
+      taskId: 'write-main',
+      taskFile: 'main.ts',
+      taskAction: 'modify',
+      title: '修改 main.ts',
+    });
+
+    assert.equal(kernelRun.cancelRun({ reason: 'user-cancelled', source: 'unit-kernel' }), 'cancelled');
+
+    const entries = readJsonl(path.join(workspaceRoot, '.devseek', 'runs', 'kernel-cancel-run.log'));
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].data.reason, 'user-cancelled');
+    assert.equal(entries.some(entry => entry.event === 'cancel-requested'), true);
+    assert.equal(entries.find(entry => entry.event === 'agent-run-completed').data.status, 'cancelled');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('AgentKernelService: extension Surface does not own agent completion decisions', () => {
   const extension = readFileSync(path.join(rootDir, 'src/extension.ts'), 'utf8');
   const kernelService = readFileSync(path.join(rootDir, 'src/app/agent-kernel-service.ts'), 'utf8');
@@ -109,6 +149,7 @@ test('AgentKernelService: extension Surface does not own agent completion decisi
   assert.match(extension, /agentKernelService\.startRun\(/);
   assert.match(extension, /agentKernelRun\.settleAgentLoopResult/);
   assert.match(extension, /agentKernelRun\.failRun/);
+  assert.match(extension, /activeAgentKernelRun\?\.cancelRun|cancelActiveAgentRun/);
   assert.doesNotMatch(extension, /from '\.\/app\/agent-run-settlement'/);
   assert.doesNotMatch(extension, /terminalPermissionCoordinator\.completeRunContext\(agentRunContext/);
   assert.match(kernelService, /buildTaskContract\(input\.userPrompt\)/);

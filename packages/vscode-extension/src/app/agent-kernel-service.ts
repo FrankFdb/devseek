@@ -26,6 +26,7 @@ export interface AgentKernelRun {
   readonly requirementContract: RequirementContract;
   readonly contextRefs: readonly KernelContextRef[];
   settleAgentLoopResult(result: AgentLoopResult, changedPaths?: readonly string[]): AgentRunSettlement;
+  cancelRun(data?: Record<string, unknown>): RunContextStatus;
   failRun(data?: Record<string, unknown>): RunContextStatus;
 }
 
@@ -71,5 +72,9 @@ class DefaultAgentKernelRun implements AgentKernelRun {
 
   failRun(data: Record<string, unknown> = {}): RunContextStatus {
     return this.terminalPermissions.completeRunContext(this.runContext, 'failed', data);
+  }
+
+  cancelRun(data: Record<string, unknown> = {}): RunContextStatus {
+    return this.terminalPermissions.completeRunContext(this.runContext, 'cancelled', data);
   }
 }

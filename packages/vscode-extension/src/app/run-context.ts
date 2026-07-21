@@ -52,6 +52,8 @@ export interface DevSeekRunContext {
   recordToolActivity(kind: string, label: string): void;
   recordCheckpoint(firstUnfinishedIndex: number | null, remainingCount: number, reason: string): void;
   markEvidenceDegraded(error: unknown): void;
+  /** Cancels the run through the same durable settlement owner used by completion/failure. */
+  cancel(data?: Record<string, unknown>): RunContextStatus;
   /** Returns the durable settlement status; requested completion may fail closed. */
   complete(status: RunContextStatus, data?: Record<string, unknown>): RunContextStatus;
 }
@@ -149,6 +151,13 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   }
 
   recordAgentStatus(status: AgentStatusEvent): void {
+    if (this.settlementStatus) {
+      this.trace.info('run-context', 'post-terminal-agent-status-ignored', {
+        terminalStatus: this.settlementStatus,
+        status: summarizeAgentStatusForTrace(status),
+      });
+      return;
+    }
     this.trace.info('agent-status', 'agent-status', summarizeAgentStatusForTrace(status));
     const statusSummary = summarizeTraceText(safeCompletionSummary(summarizeAgentStatusForTrace(status)));
     this.recordEvidence({
@@ -170,6 +179,13 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   }
 
   recordToolActivity(kind: string, label: string): void {
+    if (this.settlementStatus) {
+      this.trace.info('run-context', 'post-terminal-tool-activity-ignored', {
+        terminalStatus: this.settlementStatus,
+        activity: summarizeTraceText(`${kind}\n${label}`),
+      });
+      return;
+    }
     const activity = summarizeTraceText(`${kind}\n${label}`);
     this.recordEvidence({
       type: 'tool.activity',
@@ -189,6 +205,15 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
 
   recordCheckpoint(firstUnfinishedIndex: number | null, remainingCount: number, reason: string): void {
     if (firstUnfinishedIndex === null || remainingCount <= 0) return;
+    if (this.settlementStatus) {
+      this.trace.info('run-context', 'post-terminal-checkpoint-ignored', {
+        terminalStatus: this.settlementStatus,
+        firstUnfinishedIndex,
+        remainingCount,
+        reason,
+      });
+      return;
+    }
     this.recordEvidence({
       type: 'checkpoint.created',
       idempotencyKey: productRunEvidenceIdempotencyKey('vscode-checkpoint-created', {
@@ -232,6 +257,12 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     } catch (appendError) {
       this.trace.error('run-evidence', 'degradation-marker-failed', summarizeEvidenceError(appendError));
     }
+  }
+
+  cancel(data: Record<string, unknown> = {}): RunContextStatus {
+    const completionData = normalizeCancellationData(data);
+    if (!this.settlementStatus) this.recordCancellation(completionData);
+    return this.complete('cancelled', completionData);
   }
 
   complete(status: RunContextStatus, data: Record<string, unknown> = {}): RunContextStatus {
@@ -313,6 +344,29 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       requiresSourceClaimArtifactVerification: this.requiresSourceClaimArtifactVerification,
     });
     return effectiveStatus;
+  }
+
+  private recordCancellation(data: Record<string, unknown>): void {
+    const summary = summarizeTraceText(safeCompletionSummary(data));
+    this.trace.info('run-context', 'cancel-requested', {
+      reason: typeof data.reason === 'string' ? data.reason : 'user-cancelled',
+      source: typeof data.source === 'string' ? data.source : 'unknown',
+      summary,
+    });
+    this.recordEvidence({
+      type: 'agent.status',
+      idempotencyKey: productRunEvidenceIdempotencyKey('vscode-run-cancel-requested', {
+        runId: this.runId,
+        reason: typeof data.reason === 'string' ? data.reason : 'user-cancelled',
+        source: typeof data.source === 'string' ? data.source : 'unknown',
+      }),
+      payload: {
+        trust: 'product-runtime-observation',
+        status: 'cancelled',
+        phase: 'done',
+        summary,
+      },
+    });
   }
 
   private recordLifecycleFromAgentStatus(
@@ -871,6 +925,21 @@ function safeCompletionSummary(data: Record<string, unknown>): string {
   } catch {
     return '[unserializable-completion-summary]';
   }
+}
+
+function normalizeCancellationData(data: Record<string, unknown>): Record<string, unknown> {
+  const reason = typeof data.reason === 'string' && data.reason.trim()
+    ? data.reason.trim()
+    : 'user-cancelled';
+  const source = typeof data.source === 'string' && data.source.trim()
+    ? data.source.trim()
+    : 'unknown';
+  return {
+    ...data,
+    reason,
+    source,
+    cancel_protocol: 'devseek.run-cancel/v1',
+  };
 }
 
 function summarizeEvidenceError(error: unknown): { name: string; code: string | null; message: string } {

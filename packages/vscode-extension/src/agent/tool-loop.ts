@@ -415,10 +415,18 @@ export async function executeFakeToolsForLoop(
   const evidenceRefs: EvidenceRef[] = [];
   const toolFailures: ToolFailureEvidence[] = [];
   const replaceMissSnapshots = new Set<string>();
+  let cancellationFeedbackEmitted = false;
   let deferredCompletedTodoItems: TodoItem[] | undefined;
   let lastTodoItems: TodoItem[] | undefined;
   let summaryEmitted = false;
   const createFileFailCounts = new Map<string, number>();
+  const cancellationRequested = (): boolean => callbacks.signal?.aborted === true;
+  const recordCancellationFeedback = (toolName?: string, rawPath?: string): void => {
+    if (cancellationFeedbackEmitted) return;
+    cancellationFeedbackEmitted = true;
+    const target = toolName ? `${toolName}${rawPath ? `: ${rawPath}` : ''}` : 'tool-loop';
+    parts.push(`[cancelled: ${target}] 用户已取消，未执行后续工具。`);
+  };
   const recordToolFailure = (
     toolName: string,
     kind: ToolFailureEvidence['kind'],
@@ -437,6 +445,10 @@ export async function executeFakeToolsForLoop(
     rawPath: string,
     content: string,
   ): Promise<boolean> => {
+    if (cancellationRequested()) {
+      recordCancellationFeedback(toolName, rawPath);
+      return false;
+    }
     if (!callbacks.onAppliedChange) {
       parts.push(`[${toolName}] 错误: 当前运行环境没有注册文件写入执行器，未写入任何文件。`);
       return false;
@@ -516,6 +528,10 @@ export async function executeFakeToolsForLoop(
           parts.push(`[${toolName}: ${rawPath}] 跳过（写入权限策略阻止）`);
           return false;
         }
+      }
+      if (cancellationRequested()) {
+        recordCancellationFeedback(toolName, rawPath);
+        return false;
       }
       let writeResult;
       try {
@@ -605,6 +621,14 @@ export async function executeFakeToolsForLoop(
   });
 
   for (let toolIndex = 0; toolIndex < tools.length; toolIndex++) {
+    if (cancellationRequested()) {
+      recordCancellationFeedback();
+      trace?.debug('tool-loop', 'execute-cancelled-before-tool', {
+        toolIndex,
+        remainingToolCount: tools.length - toolIndex,
+      });
+      break;
+    }
     const toolPlan = agentToolExecutor.plan(
       tools[toolIndex],
       buildToolPolicy(callbacks.executionMode ?? 'inspect'),
@@ -968,6 +992,10 @@ export async function executeFakeToolsForLoop(
             continue;
           }
         }
+        if (cancellationRequested()) {
+          recordCancellationFeedback('delete_file', rawPath);
+          continue;
+        }
         const deleteResult = workspaceEditService.deleteTextFile(absPath, workspaceRoot);
         if (!deleteResult.deleted) {
           const reason = '目标在授权后已不存在，删除未形成提交证据。请重新 list_dir/read_file 确认当前路径。';
@@ -1111,6 +1139,10 @@ export async function executeFakeToolsForLoop(
             const reason = `写入权限策略阻止：${absPath}`;
             recordToolFailure('create_directory', 'write', dirPath, reason);
             parts.push(`[create_directory: ${dirPath}] 跳过（写入权限策略阻止）`);
+            continue;
+          }
+          if (cancellationRequested()) {
+            recordCancellationFeedback('create_directory', dirPath);
             continue;
           }
           const result = await callbacks.onCreateDirectory(absPath, { policyPreauthorized: true });

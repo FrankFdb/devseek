@@ -296,7 +296,9 @@ export class TerminalPermissionCoordinator {
         requestedStatus,
       };
     }
-    status = runContext.complete(status, completionData);
+    status = status === 'cancelled'
+      ? runContext.cancel(completionData)
+      : runContext.complete(status, completionData);
     this.forgetRun(runContext.runId);
     return status;
   }

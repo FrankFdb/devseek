@@ -46,7 +46,7 @@ import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { MemoryService } from './app/memory-service';
 import { AgentDisplayPresenter } from './app/agent-display-presenter';
-import { AgentKernelService } from './app/agent-kernel-service';
+import { AgentKernelService, type AgentKernelRun } from './app/agent-kernel-service';
 import { createDevSeekRunContext, type DevSeekRunContext, type RunContextStatus } from './app/run-context';
 import { createAgentCheckpointCallback } from './app/agent-checkpoint-callback';
 import { guardNonAgentResponse } from './app/non-agent-response-guard';
@@ -128,6 +128,8 @@ let lastAgentChangedPaths: string[] = [];
 let nonBridgeChatHistory: ChatMessage[] = [];
 /** 当前正在执行的 chat 请求的 AbortController（停止按钮使用） */
 let activeChatAbortController: AbortController | null = null;
+/** 当前活跃 Agent Kernel run；取消/新请求只通过 Kernel/RunContext 结算。 */
+let activeAgentKernelRun: AgentKernelRun | null = null;
 /** 用户在 Agent 运行中输入的补充/纠偏，会在下一轮模型调用前注入。 */
 const activeAgentSteerQueue: string[] = [];
 // ── Session memory (L1a/L1b + L2) ─────────────────────────────────────────
@@ -155,6 +157,17 @@ const evidenceAwareChatRouter = new EvidenceAwareChatRouter({
   getSessionId: () => activeSessionId,
   getTraceLevel: () => vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', 'debug'),
 });
+
+function cancelActiveAgentRun(data: Record<string, unknown> = {}): RunContextStatus | undefined {
+  const run = activeAgentKernelRun;
+  if (!run) return undefined;
+  activeAgentKernelRun = null;
+  return run.cancelRun(data);
+}
+
+function clearActiveAgentKernelRun(run: AgentKernelRun): void {
+  if (activeAgentKernelRun === run) activeAgentKernelRun = null;
+}
 
 function createFileContextService(workspaceRoot?: string): FileContextService {
   return new FileContextService({
@@ -306,6 +319,7 @@ async function runChat(
   }
 
   // 为本次请求创建独立 AbortController，停止按钮可随时中断
+  cancelActiveAgentRun({ reason: 'superseded-by-new-run', source: 'run-chat-start' });
   activeChatAbortController?.abort();
   activeAgentSteerQueue.length = 0;
   const abortCtrl = new AbortController();
@@ -641,6 +655,7 @@ async function runChat(
         uri: file,
       })),
     });
+    activeAgentKernelRun = agentKernelRun;
     agentRunContext = agentKernelRun.runContext;
     workflowRunContext = agentRunContext;
     const agentTraceRunId = agentRunContext.runId;
@@ -846,6 +861,7 @@ async function runChat(
           pendingEditCoordinator.scheduleAutoAccept(webview, agResult, agAutopilotHandled);
         }
         webview.postMessage({ type: 'endResponse' });
+        clearActiveAgentKernelRun(agentKernelRun);
         return;
       }
 
@@ -1287,6 +1303,7 @@ async function runChat(
       pendingEditCoordinator.scheduleAutoAccept(webview, autoAcceptResult, loopAutopilotHandled);
     }
     webview.postMessage({ type: 'endResponse' });
+    clearActiveAgentKernelRun(agentKernelRun);
     return;
   }
   }
@@ -1970,6 +1987,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     setLastConversationFiles: (files) => { lastConversationFiles = files; },
     getActiveChatAbortController: () => activeChatAbortController,
     setActiveChatAbortController: (controller) => { activeChatAbortController = controller; },
+    cancelActiveAgentRun,
     pushAgentSteer: (text) => { activeAgentSteerQueue.push(text); },
     getActiveSessionPayload: () => {
       if (!activeSessionId) return undefined;

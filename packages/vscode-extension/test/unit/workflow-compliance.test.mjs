@@ -2043,6 +2043,36 @@ test('R2-07E: DeepSeek Web stream correlation and recovery protocol has one shar
   assertContains(controlledHarness, 'assertVsixSourceCompatibility', 'controlled VSIX must distinguish packaged runtime drift from docs/test-only handoff commits');
 });
 
+test('R3-01: cancellation is Kernel/RunContext-owned and blocks post-cancel effects', () => {
+  const runContext = src('src/app/run-context.ts');
+  const agentKernel = src('src/app/agent-kernel-service.ts');
+  const terminalCoordinator = src('src/app/terminal-permission-coordinator.ts');
+  const extension = src('src/extension.ts');
+  const uiProvider = src('src/ui/deepseek-view-provider.ts');
+  const toolLoop = src('src/agent/tool-loop.ts');
+  const runContextTest = src('test/unit/run-context.test.mjs');
+  const toolLoopTest = src('test/unit/agent-tool-loop-terminal-guard.test.mjs');
+
+  assertContains(runContext, 'cancel(data', 'RunContext must expose a durable cancel owner');
+  assertContains(runContext, "this.complete('cancelled'", 'RunContext cancel must reuse the durable settlement path');
+  assertContains(runContext, 'cancel-requested', 'RunContext cancel must record an explicit cancellation receipt');
+  assertContains(runContext, 'post-terminal-agent-status-ignored', 'RunContext must ignore late lifecycle events after terminal settlement');
+  assertContains(runContext, 'devseek.run-cancel/v1', 'RunContext cancel payload must carry a versioned protocol');
+  assertContains(agentKernel, 'cancelRun(data', 'Agent Kernel run must expose the cancellation boundary');
+  assertContains(terminalCoordinator, "status === 'cancelled'", 'Terminal coordinator must route cancelled runs through RunContext.cancel');
+  assertContains(extension, 'activeAgentKernelRun', 'Extension must keep the active Kernel run for user cancellation');
+  assertContains(extension, 'cancelActiveAgentRun', 'Extension must delegate cancellation to the active Kernel run');
+  assertContains(extension, "reason: 'superseded-by-new-run'", 'A new chat request must settle the superseded agent run as cancelled');
+  assertContains(uiProvider, 'cancelActiveAgentRun({ reason:', 'Webview cancel must delegate to Kernel/RunContext owner');
+  assertContains(toolLoop, 'cancellationRequested', 'Tool loop must check AbortSignal before dispatching work tools');
+  assertContains(toolLoop, 'execute-cancelled-before-tool', 'Tool loop cancellation must be traceable');
+  assertContains(runContextTest, 'R3-01 RunContext: cancel owns settlement and ignores post-cancel effects', 'R3-01 requires a RunContext cancellation oracle');
+  assertContains(toolLoopTest, 'R3-01 ToolLoop skips all work tools after user cancellation', 'R3-01 requires a tool-loop cancellation oracle');
+
+  assertDoesNotContain(uiProvider, "complete('cancelled'", 'UI surface must not directly settle run contexts');
+  assertDoesNotContain(uiProvider, '.cancel({ reason:', 'UI surface must not directly cancel run contexts');
+});
+
 test('R2-07F: DeepSeek connector evidence is redacted and replay is explicitly non-live', () => {
   const bridgeEvidence = src('../bridge/src/run-evidence.ts');
   const server = src('../bridge/src/server.ts');

@@ -82,6 +82,7 @@ export interface DeepSeekViewProviderDeps {
   setLastConversationFiles: (files: string[]) => void;
   getActiveChatAbortController: () => AbortController | null;
   setActiveChatAbortController: (controller: AbortController | null) => void;
+  cancelActiveAgentRun: (data?: Record<string, unknown>) => void;
   pushAgentSteer: (text: string) => void;
   getActiveSessionPayload: () => WebviewOutboundMessage | undefined;
   loadFreshAgentCheckpoint: (maxAgeMs: number) => Promise<AgentTaskCheckpoint | undefined>;
@@ -288,6 +289,7 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         await this.deps.pendingEditCoordinator.undoAllWithNotice(wv);
         break;
       case 'cancel':
+        this.deps.cancelActiveAgentRun({ reason: 'user-cancelled', source: 'vscode-webview-cancel' });
         this.deps.getActiveChatAbortController()?.abort();
         this.deps.setActiveChatAbortController(null);
         this.deps.setLastConversationFiles([]);

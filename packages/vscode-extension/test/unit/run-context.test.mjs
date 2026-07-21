@@ -829,6 +829,58 @@ test('RunContext: failed settlement closes an in-flight mutation as indeterminat
   }
 });
 
+test('R3-01 RunContext: cancel owns settlement and ignores post-cancel effects', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId: 'run-context-cancel-owner',
+      userPrompt: '修改 src/main.ts',
+      traceLevel: 'debug',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      state: 'started',
+      taskId: 'write-main',
+      taskFile: 'main.ts',
+      taskAction: 'modify',
+      title: '修改 main.ts',
+    });
+
+    const first = context.cancel({ reason: 'user-cancelled', source: 'surface-stop' });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      state: 'completed',
+      taskId: 'write-main',
+      taskFile: 'main.ts',
+      taskAction: 'modify',
+      title: '修改 main.ts',
+    });
+    const second = context.complete('completed', { reason: 'late-loop-completion' });
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read('run-context-cancel-owner');
+    const entries = readJsonl(path.join(workspaceRoot, '.devseek', 'runs', 'run-context-cancel-owner.log'));
+    const settled = events.filter(event => event.type === 'run.settled');
+
+    assert.equal(first, 'cancelled');
+    assert.equal(second, 'cancelled');
+    assert.equal(settled.length, 1);
+    assert.equal(settled[0].payload.status, 'cancelled');
+    assert.equal(events.filter(event => event.type === 'side_effect.indeterminate').length, 1);
+    assert.equal(events.filter(event => event.type === 'side_effect.committed').length, 0);
+    assert.equal(events.some(event => event.type === 'evidence.degraded'), false);
+    assert.equal(entries.filter(entry => entry.event === 'agent-run-completed').length, 1);
+    assert.equal(entries.find(entry => entry.event === 'agent-run-completed').data.status, 'cancelled');
+    assert.equal(entries.some(entry => entry.event === 'post-terminal-agent-status-ignored'), true);
+    assert.equal(ledger.verify('run-context-cancel-owner').status, 'valid-sealed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('RunContext: evidence degradation converts completion into one durable failed seal', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   try {
