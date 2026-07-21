@@ -315,6 +315,7 @@ export interface ExtensionProfileSlotExecutionInput {
 
 export interface ExtensionProfileSlotChildReceipt {
   protocol?: string;
+  settlementAuthority?: string;
   evidenceRefs?: readonly string[];
   violations?: readonly string[];
   blockedReasons?: readonly string[];
@@ -341,6 +342,8 @@ export interface ExtensionProfileSlotExecutionReceipt {
   oracleRef: string;
   childReceiptRequired: boolean;
   childProtocol: string;
+  childSettlementAuthority: string;
+  childEvidenceRequired: boolean;
   childEvidenceRefs: readonly string[];
   childViolations: readonly string[];
   effectRefs: readonly string[];
@@ -841,6 +844,7 @@ export class ExtensionProfilePlanService {
     const slot = findExtensionProfileSlot(plan, slotId);
     const childReceipt = input.childReceipt;
     const childProtocol = String(childReceipt?.protocol ?? '').trim();
+    const childSettlementAuthority = String(childReceipt?.settlementAuthority ?? '').trim();
     const childEvidenceRefs = uniqueStrings(childReceipt?.evidenceRefs ?? []);
     const childViolations = uniqueStrings([
       ...(childReceipt?.violations ?? []),
@@ -848,11 +852,14 @@ export class ExtensionProfilePlanService {
       ...(childReceipt?.vetoes ?? []),
     ]);
     const childReceiptRequired = input.status === 'passed';
+    const childEvidenceRequired = childReceiptRequired;
     const expectedChildProtocol = EXPECTED_EXTENSION_PROFILE_SCHEMAS[plan.kind];
     const childReceiptVetoes = childReceiptRequired
       ? uniqueStrings([
         ...(childReceipt ? [] : [`slot-child-receipt-missing-veto:${slotId}`]),
         ...(childReceipt && childProtocol !== expectedChildProtocol ? [`slot-child-protocol-mismatch-veto:${slotId}`] : []),
+        ...(childReceipt && childEvidenceRefs.length === 0 ? [`slot-child-evidence-missing-veto:${slotId}`] : []),
+        ...(childReceipt && childSettlementAuthority !== 'parent-kernel' ? [`slot-child-settlement-authority-veto:${slotId}`] : []),
         ...(childViolations.length > 0 ? [`slot-child-receipt-not-clean-veto:${slotId}`] : []),
       ])
       : [];
@@ -895,6 +902,8 @@ export class ExtensionProfilePlanService {
       oracleRef,
       childReceiptRequired,
       childProtocol,
+      childSettlementAuthority,
+      childEvidenceRequired,
       childEvidenceRefs,
       childViolations,
       effectRefs,

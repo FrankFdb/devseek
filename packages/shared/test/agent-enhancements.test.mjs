@@ -480,6 +480,71 @@ test('R3-07S-skill-TASK-002 ExtensionProfilePlanService binds passed slot execut
   assert.equal(wrongProtocol.childProtocol, 'devseek.hook-policy/v1');
 });
 
+test('R3-07S-skill-TASK-003 ExtensionProfilePlanService rejects child receipts without evidence or parent authority', () => {
+  const service = new ExtensionProfilePlanService();
+  const skillReceipt = new SkillDiscoveryService().planExecution({
+    prompt: 'please use the react skill',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: 'description: Build React views\ntriggers: react\ntool_kinds: read',
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: 'a063a5c5afed15f8bfea9468ad199688e6814828',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-003',
+    attemptId: 'skill-task-003-attempt-001',
+    status: 'passed',
+    childReceipt: skillReceipt,
+    effectRefs: ['skill-discovery:read:skills/react/SKILL.md'],
+    receiptRefs: ['skill-execution:receipt:task-003'],
+  });
+  assert.equal(receipt.status, 'passed');
+  assert.equal(receipt.childSettlementAuthority, 'parent-kernel');
+  assert.equal(receipt.childEvidenceRequired, true);
+
+  const noEvidence = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-003',
+    attemptId: 'skill-task-003-attempt-no-evidence',
+    status: 'passed',
+    childReceipt: {
+      protocol: SKILL_EXECUTION_PROTOCOL,
+      settlementAuthority: 'parent-kernel',
+      evidenceRefs: [],
+    },
+    effectRefs: ['skill-discovery:should-not-commit'],
+    receiptRefs: ['skill-execution:should-not-commit'],
+  });
+  assert.equal(noEvidence.status, 'blocked');
+  assert.ok(noEvidence.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-TASK-003'));
+  assert.deepEqual(noEvidence.effectRefs, []);
+  assert.deepEqual(noEvidence.receiptRefs, []);
+
+  const wrongAuthority = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-003',
+    attemptId: 'skill-task-003-attempt-wrong-authority',
+    status: 'passed',
+    childReceipt: {
+      protocol: SKILL_EXECUTION_PROTOCOL,
+      settlementAuthority: 'child-agent',
+      evidenceRefs: ['skill:forged-child-authority'],
+    },
+  });
+  assert.equal(wrongAuthority.status, 'blocked');
+  assert.ok(wrongAuthority.vetoes.includes('slot-child-settlement-authority-veto:R3-07S-skill-TASK-003'));
+  assert.equal(wrongAuthority.childSettlementAuthority, 'child-agent');
+});
+
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
   const registry = new SubagentRegistry();
   const selected = registry.select({

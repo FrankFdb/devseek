@@ -907,6 +907,17 @@ test('R3-07S-skill-TASK-002: passed skill slot execution must bind child receipt
   assertContains(sharedTests, 'R3-07S-skill-TASK-002 ExtensionProfilePlanService', 'R3-07S-skill-TASK-002 must have child receipt failure-first oracle');
 });
 
+test('R3-07S-skill-TASK-003: child receipts must carry evidence and parent authority', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'childSettlementAuthority', 'R3-07S-skill-TASK-003 must record child settlement authority');
+  assertContains(sharedEnhancements, 'childEvidenceRequired', 'R3-07S-skill-TASK-003 must expose child evidence requirement');
+  assertContains(sharedEnhancements, 'slot-child-evidence-missing-veto', 'R3-07S-skill-TASK-003 must veto child receipts without evidence');
+  assertContains(sharedEnhancements, 'slot-child-settlement-authority-veto', 'R3-07S-skill-TASK-003 must veto non-parent child authority');
+  assertContains(sharedTests, 'R3-07S-skill-TASK-003 ExtensionProfilePlanService', 'R3-07S-skill-TASK-003 must have child authority/evidence oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
