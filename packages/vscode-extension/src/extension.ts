@@ -1939,7 +1939,7 @@ async function loadSessionIntoWebview(wv: vscode.Webview, id: string): Promise<v
 
 async function handleTaskHistoryUiMessage(wv: vscode.Webview, msg: WebviewMessage): Promise<void> {
   if (!extContext) return;
-  const service = new TaskHistoryUiService(extContext.workspaceState);
+  const service = new TaskHistoryUiService(extContext.workspaceState, { workspaceRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd() });
   for (const response of await service.handle(msg)) {
     postWebviewMessage(wv, response);
   }

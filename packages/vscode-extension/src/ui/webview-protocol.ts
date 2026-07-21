@@ -1,7 +1,7 @@
 import type { ApplyWorkflowStatus } from '../workspace-applier';
 import type { AgentStatusEvent, AgentToolActivityEvent } from '../agent/events';
 import type { ChatMessage } from '../llm/types';
-import type { TaskRunRecord } from '../app/task-history-store';
+import type { TaskRunRecord, TaskRunTimelineItem } from '../app/task-history-store';
 export type { AgentEditedFileEvent, AgentEvent, AgentStatusEvent, AgentToolActivityEvent } from '../agent/events';
 
 export type ChatProviderMode = 'fast' | 'r1';
@@ -47,7 +47,7 @@ export interface AgentCheckpointAvailableMessage {
 
 export type TaskHistoryOutboundMessage =
   | { type: 'taskHistoryList'; tasks: TaskRunRecord[] }
-  | { type: 'taskHistoryDetail'; task?: TaskRunRecord; id?: string }
+  | { type: 'taskHistoryDetail'; task?: TaskRunRecord; id?: string; timeline?: TaskRunTimelineItem[] }
   | { type: 'taskHistoryContinueRequested'; task?: TaskRunRecord; id: string; checkpointRef?: string }
   | { type: 'taskHistoryArchived'; task?: TaskRunRecord; id: string }
   | { type: 'taskHistoryDeleted'; id: string }

@@ -257,4 +257,26 @@ test('TaskHistoryUiService: list, open, continue, archive, delete and export are
   assert.deepEqual(deleteResponses[1].tasks.map(task => task.id), ['b']);
 });
 
+test('R3-05E TaskHistoryUiService: list, open, and continue project Run Evidence facts before legacy store', async () => {
+  const projectedTask = taskRecord('evidence-run', {
+    status: 'failed',
+    checkpointRef: 'run-evidence-checkpoint:evidence-run:3',
+    evidenceRefs: ['run-evidence:1:abc'],
+  });
+  const timeline = [{ id: 'event-1', type: 'run.settled', status: 'failed', evidenceRef: 'run-evidence:1:abc', occurredAt: 10, summary: 'failed' }];
+  const projectionService = {
+    list: () => [projectedTask],
+    get: (id) => id === 'evidence-run' ? { task: projectedTask, timeline } : undefined,
+  };
+  const store = memoryStore({ 'devseek.taskHistory': [taskRecord('legacy-only', { status: 'completed' })] });
+  const service = new taskHistory.TaskHistoryUiService(store, { projectionService });
+
+  assert.deepEqual((await service.handle({ type: 'listTasks' }))[0].tasks.map(task => task.id), ['evidence-run']);
+  const detail = (await service.handle({ type: 'openTask', id: 'evidence-run' }))[0];
+  assert.equal(detail.task.id, 'evidence-run');
+  assert.equal(detail.timeline[0].type, 'run.settled');
+  const continued = (await service.handle({ type: 'continueTask', id: 'evidence-run' }))[0];
+  assert.equal(continued.checkpointRef, 'run-evidence-checkpoint:evidence-run:3');
+});
+
 console.log('\nWebView protocol tests passed.\n');

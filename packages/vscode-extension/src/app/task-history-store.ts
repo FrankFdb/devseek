@@ -15,6 +15,15 @@ export interface TaskRunProviderInfo {
   model?: string;
 }
 
+export interface TaskRunTimelineItem {
+  id: string;
+  type: string;
+  status?: string;
+  evidenceRef: string;
+  occurredAt: number;
+  summary: string;
+}
+
 export interface TaskRunRecord {
   id: string;
   sessionId?: string;
@@ -35,6 +44,9 @@ export interface TaskRunRecord {
   checkpointRef?: string;
   pauseReason?: string;
   evidenceRefs: string[];
+  historySource?: 'run-evidence' | 'legacy-store';
+  historySourceRef?: string;
+  timeline?: TaskRunTimelineItem[];
   createdAt: number;
   updatedAt: number;
 }

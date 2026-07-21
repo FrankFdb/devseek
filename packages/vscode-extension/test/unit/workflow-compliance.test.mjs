@@ -613,6 +613,31 @@ test('R3-05D: Memory management surface commands are projections over MemoryServ
   assertContains(memoryTests, 'R3-05D MemoryService: management surface projects facts and lifecycle actions', 'R3-05D must have failure-first MemoryService oracle');
 });
 
+test('R3-05E: TaskHistory projection is generated from Run Evidence and checkpoint facts', () => {
+  const appIndex = src('src/app/index.ts');
+  const projection = src('src/app/task-history-projection-service.ts');
+  const uiService = src('src/app/task-history-ui-service.ts');
+  const protocol = src('src/ui/webview-protocol.ts');
+  const extension = src('src/extension.ts');
+  const projectionTests = src('test/unit/task-history-projection-service.test.mjs');
+  const webviewTests = src('test/unit/webview-protocol.test.mjs');
+
+  assertContains(appIndex, "export * from './task-history-projection-service';", 'R3-05E projection owner must be exported');
+  assertContains(projection, 'TASK_HISTORY_PROJECTION_PROTOCOL', 'TaskHistory projection must expose a versioned protocol marker');
+  assertContains(projection, 'FileSystemRunEvidenceLedger', 'TaskHistory projection must read the Run Evidence ledger');
+  assertContains(projection, 'productRunEvidenceRoot', 'TaskHistory projection must use the product evidence root');
+  assertContains(projection, 'readSnapshot', 'TaskHistory projection must replay validated evidence snapshots');
+  assertContains(projection, 'checkpoint.created', 'TaskHistory projection must include checkpoint facts');
+  assertContains(projection, 'run.settled', 'TaskHistory projection must include settlement facts');
+  assertContains(projection, 'TaskRunTimelineItem', 'TaskHistory projection must expose timeline entries');
+  assertContains(uiService, 'TaskHistoryProjectionService', 'TaskHistory UI must delegate list/detail to projection owner');
+  assertContains(uiService, 'projectionService', 'TaskHistory UI must accept projection service injection for deterministic tests');
+  assertContains(protocol, 'timeline?: TaskRunTimelineItem[]', 'TaskHistory detail protocol must carry evidence timeline');
+  assertContains(extension, 'workspaceRoot', 'extension must pass workspace root into TaskHistory projection');
+  assertContains(projectionTests, 'R3-05E TaskHistoryProjectionService', 'R3-05E must have projection failure-first oracle');
+  assertContains(webviewTests, 'R3-05E TaskHistoryUiService', 'R3-05E must have UI projection oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

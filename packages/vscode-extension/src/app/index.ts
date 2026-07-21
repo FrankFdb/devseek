@@ -32,6 +32,7 @@ export * from './run-context';
 export * from './product-mutation-coordinator';
 export * from './task-checkpoint-store';
 export * from './task-history-store';
+export * from './task-history-projection-service';
 export * from './task-history-ui-service';
 export * from './legacy-run-evidence-migration';
 export * from './task-ledger';
