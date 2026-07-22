@@ -408,9 +408,10 @@ function createR3SkillAggregateFixture(root, scenarioSpec) {
     .map(snippet => `- ${snippet}`)
     .join('\n');
   const defaultPrompt = [
-    `请执行 ${scenarioSpec.promptTitle} 的真实用户仿真审计。`,
+    `请对 ${scenarioSpec.promptTitle} 做只读分析，并通过 Markdown 文档交付审计报告。`,
     `请阅读 ${path.join(docsDir, 'skill-denominator-plan.md')} 和 ${path.join(sourceDir, 'extension-profile-plan-service-contract.ts')}。`,
-    `请将本次仿真测试报告写入 ${requestedOutputDoc}。`,
+    `请将本次审计报告写入 ${requestedOutputDoc}。`,
+    '不要修改任何源码，不要运行编译或测试命令；当前任务只需要生成这一份 Markdown 审计报告。',
     '',
     '报告必须解释：',
     '- 为什么 aggregate 只能读取已有 signed plan 和 owned slot receipts，不能在 aggregate 阶段执行 slot。',

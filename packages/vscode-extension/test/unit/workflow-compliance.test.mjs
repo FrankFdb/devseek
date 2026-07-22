@@ -2278,6 +2278,7 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   const profile = src('test/harness/real-plugin-quality-profile.mjs');
   assertContains(profile, 'buildRealPluginScenarioSpec', 'real harness must expose named scenario contracts');
   assertContains(profile, 'r3-07g-skill-aggregate', 'R3-07G must have a dedicated real-plugin scenario');
+  assertContains(profile, 'read-only-markdown-deliverable', 'R3-07G scenario must stay on a read-only Markdown deliverable route');
   assertContains(profile, 'r3-07g-skill-aggregate-denominator.md', 'R3-07G scenario must write a distinct artifact');
   assertContains(profile, '20 task slots', 'R3-07G artifact gate must assert the task denominator');
   assertContains(profile, '100 permission-fault slots', 'R3-07G artifact gate must assert the permission-fault denominator');
