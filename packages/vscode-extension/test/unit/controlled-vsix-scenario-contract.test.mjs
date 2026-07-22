@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,6 +31,14 @@ const REQUIRED_SUITES = [
   { id: 'r2-07e-stream-protocol', scenarioCount: 2, sameDevSeekSession: false },
   { id: 'r2-07f-connector-security', scenarioCount: 1, sameDevSeekSession: false },
 ];
+
+test('controlled VSIX harness selects product run terminal instead of pending-edit resolution noise', () => {
+  const source = readFileSync(harnessPath, 'utf8');
+
+  assert.match(source, /function isProductRunTerminalEvent\(/, 'controlled VSIX harness must classify product run terminal events');
+  assert.match(source, /mutationKind\s*!==\s*'pending-edit-resolution'/, 'pending-edit resolution runs must not replace the case terminal run');
+  assert.doesNotMatch(source, /terminalLogs\.at\(-1\)/, 'terminal selection must not blindly use the last terminal log');
+});
 
 for (const scenario of REQUIRED_SCENARIOS) {
   test(`controlled VSIX scenario prompt contract is bound: ${scenario}`, () => {

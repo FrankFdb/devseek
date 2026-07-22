@@ -2079,6 +2079,15 @@ function progress(stage, extra = {}) {
   fs.appendFileSync(progressPath, JSON.stringify({ ts: new Date().toISOString(), stage, ...extra }) + '\n', 'utf8');
 }
 function parseJsonLine(line) { try { return JSON.parse(line); } catch { return null; } }
+function isProductRunTerminalEvent(terminal) {
+  const data = terminal && typeof terminal === 'object' ? terminal.data || {} : {};
+  return data.mutationKind !== 'pending-edit-resolution';
+}
+function selectProductRunTerminalLog(logs) {
+  const terminalLogs = logs.filter(log => log.terminal);
+  const productTerminalLogs = terminalLogs.filter(log => isProductRunTerminalEvent(log.terminal));
+  return productTerminalLogs.at(-1) || terminalLogs[terminalLogs.length - 1] || null;
+}
 function collectRunLogs(excludePaths = []) {
   const directory = path.join(workspaceDir, '.devseek', 'runs');
   if (!fs.existsSync(directory)) return { logs: [], terminal: null };
@@ -2118,8 +2127,7 @@ function collectRunLogs(excludePaths = []) {
     })
     .filter(log => !excluded.has(log.path))
     .sort((left, right) => left.path.localeCompare(right.path));
-  const terminalLogs = logs.filter(log => log.terminal);
-  return { logs, terminal: terminalLogs.at(-1)?.terminal || null };
+  return { logs, terminal: selectProductRunTerminalLog(logs)?.terminal || null };
 }
 async function waitForCommand(command, waitMs) {
   const deadline = Date.now() + waitMs;
@@ -2644,9 +2652,14 @@ function inspectControlledRunLogEvidenceForSelection(driverReport, scenarios) {
   };
 }
 
+function isProductRunTerminalEvent(terminal) {
+  const data = terminal && typeof terminal === 'object' ? terminal.data || {} : {};
+  return data.mutationKind !== 'pending-edit-resolution';
+}
+
 function inspectControlledRunLogEvidence(driverReport, scenario) {
   const logs = Array.isArray(driverReport?.runLogs?.logs) ? driverReport.runLogs.logs : [];
-  const terminalLogs = logs.filter(log => log.terminal);
+  const terminalLogs = logs.filter(log => log.terminal && isProductRunTerminalEvent(log.terminal));
   const terminal = driverReport?.runLogs?.terminal || null;
   const data = terminal?.data || {};
   const userChangedPaths = Array.isArray(driverReport?.artifact?.userChangedPaths)
