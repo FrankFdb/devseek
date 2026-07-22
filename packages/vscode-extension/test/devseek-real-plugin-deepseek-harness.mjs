@@ -8,6 +8,7 @@
  * Run from repository root:
  *   npm run test:real-plugin-deepseek --workspace=packages/vscode-extension -- --run
  *   npm run test:real-plugin-deepseek --workspace=packages/vscode-extension -- --run --relogin --headed --keep-window
+ *   `--headed --keep-window` keeps user-visible VS Code and DeepSeek pages open for inspection.
  */
 
 import cp from 'node:child_process';
@@ -46,6 +47,9 @@ const relogin = hasFlag('--relogin') || process.env.DEVSEEK_REAL_PLUGIN_RELOGIN 
 const headed = hasFlag('--headed') || process.env.DEVSEEK_REAL_PLUGIN_HEADED === '1' || relogin;
 const keepTmp = hasFlag('--keep') || process.env.DEVSEEK_REAL_PLUGIN_KEEP === '1';
 const keepWindow = hasFlag('--keep-window') || process.env.DEVSEEK_REAL_PLUGIN_KEEP_WINDOW === '1';
+const keepDeepSeekPage = hasFlag('--keep-deepseek-page')
+  || process.env.DEVSEEK_REAL_PLUGIN_KEEP_DEEPSEEK_PAGE === '1'
+  || (headed && keepWindow);
 const autopilot = !hasFlag('--no-autopilot') && process.env.DEVSEEK_REAL_PLUGIN_AUTOPILOT !== '0';
 const promptFromArg = getArgValue('--prompt');
 const scenario = getArgValue('--scenario') || process.env.DEVSEEK_REAL_PLUGIN_SCENARIO || 'formal-simulation';
@@ -134,6 +138,7 @@ report.harness = {
   relogin,
   headed,
   keepWindow,
+  keepDeepSeekPage,
   autopilot,
   pluginPort,
   scenario,
@@ -152,9 +157,9 @@ report.harness = {
   loginReport,
 };
 
-const cleanup = !keepTmp && report.ok;
+const cleanup = !keepTmp && !keepWindow && !keepDeepSeekPage && report.ok;
 if (cleanup) {
-  report.harness.cleanup = 'temporary directory retained only when --keep is passed';
+  report.harness.cleanup = 'temporary directory removed after successful non-visible run';
 } else {
   report.harness.cleanup = 'temporary directory retained for inspection';
 }
@@ -462,9 +467,11 @@ async function prepareDeepSeekLogin() {
   const logFd = fs.openSync(logPath, 'a');
   const child = cp.spawn('node', [bridgeServerPath], {
     cwd: path.dirname(bridgeServerPath),
+    detached: keepDeepSeekPage,
     env: {
       ...process.env,
       HEADLESS: headed ? 'false' : 'true',
+      DEVSEEK_BRIDGE_KEEP_VISIBLE: keepDeepSeekPage ? '1' : '',
       WORKSPACE_ROOT: loginWorkspace,
       BRIDGE_PORT: String(port),
       DEVSEEK_BRIDGE_TOKEN: token,
@@ -480,10 +487,14 @@ async function prepareDeepSeekLogin() {
       headers: { 'X-DevSeek-Token': token },
     });
     await waitForBrowserReady(baseUrl, token, 320000);
-    return { ok: true, port, logPath, reloginResponse };
+    return { ok: true, port, logPath, pid: child.pid, keepVisible: keepDeepSeekPage, reloginResponse };
   } finally {
-    await shutdownBridge(baseUrl, token);
-    if (child.exitCode === null) child.kill('SIGTERM');
+    if (keepDeepSeekPage) {
+      child.unref();
+    } else {
+      await shutdownBridge(baseUrl, token);
+      if (child.exitCode === null) child.kill('SIGTERM');
+    }
     fs.closeSync(logFd);
   }
 }

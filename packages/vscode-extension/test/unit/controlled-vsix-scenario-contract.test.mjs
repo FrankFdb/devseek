@@ -57,6 +57,18 @@ test('real plugin VSIX harness selects product run terminal instead of pending-e
   assert.doesNotMatch(source, /logs\.find\(\(log\) => log\.terminal\)\?\.absolutePath/, 'replay selection must not blindly use the first terminal log');
 });
 
+test('real plugin VSIX harness keeps visible DeepSeek pages for user inspection', () => {
+  const source = readFileSync(realPluginHarnessPath, 'utf8');
+
+  assert.match(source, /const keepDeepSeekPage =/, 'real plugin harness must expose a keep-visible DeepSeek page guard');
+  assert.match(source, /\|\| \(headed && keepWindow\)/, 'headed keep-window runs must preserve the DeepSeek page by default');
+  assert.match(source, /const cleanup = !keepTmp && !keepWindow && !keepDeepSeekPage && report\.ok/, 'kept visible windows must retain the temporary inspection workspace');
+  assert.match(source, /detached: keepDeepSeekPage/, 'relogin bridge/browser must remain detached when kept for inspection');
+  assert.match(source, /DEVSEEK_BRIDGE_KEEP_VISIBLE: keepDeepSeekPage \? '1' : ''/, 'DeepSeek bridge must receive the visible-page retention flag');
+  assert.match(source, /keepVisible: keepDeepSeekPage/, 'login report must disclose whether the DeepSeek page was intentionally kept');
+  assert.match(source, /if \(keepDeepSeekPage\) \{\s*child\.unref\(\);/s, 'kept relogin browser must not be killed during cleanup');
+});
+
 for (const scenario of REQUIRED_SCENARIOS) {
   test(`controlled VSIX scenario prompt contract is bound: ${scenario}`, () => {
     const result = spawnSync(process.execPath, [
