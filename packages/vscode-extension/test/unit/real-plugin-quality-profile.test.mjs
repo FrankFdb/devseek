@@ -35,7 +35,7 @@ test('R3-07G real plugin scenario binds aggregate denominator artifact acceptanc
   assert.equal(profile.minimumMarkdownBytes, 900);
   assert.equal(profile.requireFormalProjectQuality, false);
   assert.equal(spec.id, 'r3-07g-skill-aggregate');
-  assert.equal(spec.deliveryMode, 'read-only-markdown-deliverable');
+  assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
   assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-07g-skill-aggregate-denominator.md');
   assert.match(spec.promptTitle, /R3-07G-skill-AGGREGATE/);
   assert.deepEqual(spec.requiredArtifactSnippets, [

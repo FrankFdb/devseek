@@ -4,7 +4,7 @@ const R3_07G_SKILL_AGGREGATE_SPEC = Object.freeze({
   minimumMarkdownBytes: 900,
   requireFormalProjectQuality: false,
   promptTitle: 'R3-07G-skill-AGGREGATE denominator aggregation audit',
-  deliveryMode: 'read-only-markdown-deliverable',
+  deliveryMode: 'markdown-file-deliverable',
   requestedOutputDocRel: 'docs/r3-iteration/r3-07g-skill-aggregate-denominator.md',
   expectedArtifactRel: 'docs/r3-iteration/r3-07g-skill-aggregate-denominator.md',
   requiredArtifactSnippets: Object.freeze([
