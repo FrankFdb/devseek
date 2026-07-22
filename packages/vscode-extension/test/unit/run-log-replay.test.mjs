@@ -93,6 +93,15 @@ test('run log replay treats login-required provider event as a terminal request 
     {
       ts: '2026-07-22T02:00:00.000Z',
       level: 'info',
+      source: 'bridge-client',
+      phase: 'provider',
+      event: 'chat-request-start',
+      runId: 'login-required-terminal',
+      data: { operationId: 'provider-login-required-1' },
+    },
+    {
+      ts: '2026-07-22T02:00:00.100Z',
+      level: 'info',
       source: 'bridge-server',
       phase: 'provider',
       event: 'chat-request-start',
@@ -106,7 +115,7 @@ test('run log replay treats login-required provider event as a terminal request 
       phase: 'provider',
       event: 'chat-request-login-required',
       runId: 'login-required-terminal',
-      data: { operationId: 'provider-login-required-1' },
+      data: {},
     },
   ]);
 
@@ -143,6 +152,74 @@ test('run log replay accepts passed validation detail that quotes recovered prov
   try {
     const report = replayRunLog(logPath);
     assert.equal(report.issues.some(issue => issue.kind === 'failure-status-reported-completed'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay accepts completion bound to automatic validation evidenceOperationId', () => {
+  const verificationId = 'auto-validation-1-docs/report.md';
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-22T02:00:00.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-started',
+      runId: 'automatic-validation-completion',
+      data: { requiresSourceClaimArtifactVerification: false },
+    },
+    {
+      ts: '2026-07-22T02:00:01.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'automatic-validation-completion',
+      data: {
+        phase: 'validate',
+        state: 'completed',
+        evidenceOperationId: verificationId,
+        title: '自动验证通过',
+        detail: '[verification_result: passed]',
+      },
+    },
+    {
+      ts: '2026-07-22T02:00:02.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'automatic-validation-completion',
+      data: {
+        phase: 'quality',
+        state: 'completed',
+        evidenceOperationId: verificationId,
+        title: '自动验证 QualityGate 通过',
+      },
+    },
+    {
+      ts: '2026-07-22T02:00:03.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-completed',
+      runId: 'automatic-validation-completion',
+      data: {
+        status: 'completed',
+        tasksApplied: 1,
+        tasksFailed: 0,
+        changedPaths: ['docs/report.md'],
+        verificationIds: [verificationId],
+        requiresSourceClaimArtifactVerification: false,
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    assert.equal(report.issues.some(issue => /VerificationResult/.test(issue.message)), false);
+    assert.equal(report.issues.some(issue => issue.kind === 'artifact-verification-completion-mismatch'), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

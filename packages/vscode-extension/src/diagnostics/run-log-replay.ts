@@ -170,6 +170,8 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
   let chatRequestStarts = 0;
   let chatRequestCompletions = 0;
   let chatRequestFailures = 0;
+  const chatRequestStartedOperationIds = new Set<string>();
+  const chatRequestTerminalOperationIds = new Set<string>();
   let workspaceMutationRequested = false;
   let latestExtensionResponse: { line: number; content: string; parsedToolCount: number } | undefined;
   let activeReadOnlyTask: { key: string; title: string; action: string } | undefined;
@@ -188,6 +190,8 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
   const artifactVerifications: RunLogReplayArtifactVerification[] = [];
   const latestArtifactVerificationByPath = new Map<string, RunLogReplayArtifactVerification>();
   const artifactVerificationById = new Map<string, RunLogReplayArtifactVerification>();
+  const completedRuntimeVerificationIds = new Set<string>();
+  const passedRuntimeQualityGateIds = new Set<string>();
 
   for (const event of events) {
     if (event.parseError) {
@@ -279,6 +283,7 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       const taskDesc = stringValue(data?.taskDesc) ?? '';
       const title = stringValue(data?.title) ?? '';
       const detail = stringValue(data?.detail) ?? '';
+      const evidenceOperationId = stringValue(data?.evidenceOperationId)?.trim();
       if (phase === 'validate' && state === 'failed') {
         pendingValidationFailure = {
           line: event.line,
@@ -286,6 +291,9 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
         };
       } else if (phase === 'validate' && state === 'completed') {
         pendingValidationFailure = undefined;
+        if (evidenceOperationId) completedRuntimeVerificationIds.add(evidenceOperationId);
+      } else if (phase === 'quality' && state === 'completed' && evidenceOperationId) {
+        passedRuntimeQualityGateIds.add(evidenceOperationId);
       }
       if (
         state === 'completed'
@@ -355,16 +363,16 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       }
     }
     if (entry.event === 'chat-request-start') {
-      chatRequestStarts += 1;
+      if (recordChatRequestOperation(data, chatRequestStartedOperationIds)) chatRequestStarts += 1;
     }
     if (entry.event === 'chat-request-complete') {
-      chatRequestCompletions += 1;
+      if (recordChatRequestOperation(data, chatRequestTerminalOperationIds)) chatRequestCompletions += 1;
     }
     if (entry.event === 'chat-request-failed') {
-      chatRequestFailures += 1;
+      if (recordChatRequestOperation(data, chatRequestTerminalOperationIds)) chatRequestFailures += 1;
     }
     if (entry.event === 'chat-request-login-required') {
-      chatRequestFailures += 1;
+      if (recordChatRequestOperation(data, chatRequestTerminalOperationIds)) chatRequestFailures += 1;
     }
 
     if (entry.event === 'payload-recorded') {
@@ -633,7 +641,12 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       });
     }
     const completionVerificationIdSet = new Set(successfulCompletionVerificationIds);
-    const unknownCompletionIds = successfulCompletionVerificationIds.filter(id => !artifactVerificationById.has(id));
+    const runtimeVerificationIdSet = new Set(
+      [...completedRuntimeVerificationIds].filter(id => passedRuntimeQualityGateIds.has(id)),
+    );
+    const unknownCompletionIds = successfulCompletionVerificationIds.filter(id => (
+      !artifactVerificationById.has(id) && !runtimeVerificationIdSet.has(id)
+    ));
     if (unknownCompletionIds.length > 0) {
       issues.push({
         kind: 'artifact-verification-completion-mismatch',
@@ -1166,6 +1179,14 @@ function isMarkdownDeliverableStatus(
 
 function isExplicitPassedVerificationStatus(phase: string | undefined, detail: string): boolean {
   return phase === 'validate' && /\[verification_result:\s*passed\]/i.test(detail);
+}
+
+function recordChatRequestOperation(data: Record<string, unknown> | undefined, seenOperationIds: Set<string>): boolean {
+  const operationId = stringValue(data?.operationId)?.trim();
+  if (!operationId) return true;
+  if (seenOperationIds.has(operationId)) return false;
+  seenOperationIds.add(operationId);
+  return true;
 }
 
 function firstMatch(value: string, pattern: RegExp): string | undefined {
