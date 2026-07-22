@@ -2007,6 +2007,51 @@ function createMarkdownMdxFragmentBodyInferredTriggerDeniedEditSkillReceipt() {
   ]);
 }
 
+function createMarkdownBackslashEscapedEmphasisBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '\\*\\*react\\*\\*',
+    'tool_kinds: read',
+  ]);
+}
+
+function createMarkdownBackslashEscapedHeadingBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '\\# React reference',
+    'tool_kinds: read',
+  ]);
+}
+
+function createMarkdownBackslashEscapedBlockquoteBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '\\> react note',
+    'tool_kinds: read',
+  ]);
+}
+
+function createMarkdownBackslashEscapedLinkBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '\\[react\\]\\(https://example.test\\)',
+    'tool_kinds: read',
+  ]);
+}
+
+function createMarkdownBackslashEscapedTableBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '\\| react \\|',
+    'tool_kinds: read',
+  ]);
+}
+
 function createNonAsciiSubstringTriggerDeniedEditSkillReceipt() {
   return new SkillDiscoveryService().planExecution({
     prompt: '请修改深度学习组件',
@@ -4029,6 +4074,46 @@ function assertMarkdownBodyInferredTriggerPermissionFaultRefusal(testCase) {
     candidateCommit: '6262626262626262626262626262626262626262',
     childReceipt: createMarkdownMdxFragmentBodyInferredTriggerDeniedEditSkillReceipt,
     explicitBodyLine: '<>react component example</>',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-063 ExtensionProfilePlanService rejects Markdown backslash escaped emphasis body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-063',
+    attemptId: 'skill-permission-fault-063-markdown-backslash-escaped-emphasis-body-inferred-trigger',
+    candidateCommit: '6363636363636363636363636363636363636363',
+    childReceipt: createMarkdownBackslashEscapedEmphasisBodyInferredTriggerDeniedEditSkillReceipt,
+    explicitBodyLine: '\\*\\*react\\*\\*',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-064 ExtensionProfilePlanService rejects Markdown backslash escaped heading body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-064',
+    attemptId: 'skill-permission-fault-064-markdown-backslash-escaped-heading-body-inferred-trigger',
+    candidateCommit: '6464646464646464646464646464646464646464',
+    childReceipt: createMarkdownBackslashEscapedHeadingBodyInferredTriggerDeniedEditSkillReceipt,
+    explicitBodyLine: '\\# React reference',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-065 ExtensionProfilePlanService rejects Markdown backslash escaped blockquote body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-065',
+    attemptId: 'skill-permission-fault-065-markdown-backslash-escaped-blockquote-body-inferred-trigger',
+    candidateCommit: '6565656565656565656565656565656565656565',
+    childReceipt: createMarkdownBackslashEscapedBlockquoteBodyInferredTriggerDeniedEditSkillReceipt,
+    explicitBodyLine: '\\> react note',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-066 ExtensionProfilePlanService rejects Markdown backslash escaped link body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-066',
+    attemptId: 'skill-permission-fault-066-markdown-backslash-escaped-link-body-inferred-trigger',
+    candidateCommit: '6666666666666666666666666666666666666666',
+    childReceipt: createMarkdownBackslashEscapedLinkBodyInferredTriggerDeniedEditSkillReceipt,
+    explicitBodyLine: '\\[react\\]\\(https://example.test\\)',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-067 ExtensionProfilePlanService rejects Markdown backslash escaped table body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-067',
+    attemptId: 'skill-permission-fault-067-markdown-backslash-escaped-table-body-inferred-trigger',
+    candidateCommit: '6767676767676767676767676767676767676767',
+    childReceipt: createMarkdownBackslashEscapedTableBodyInferredTriggerDeniedEditSkillReceipt,
+    explicitBodyLine: '\\| react \\|',
   },
 ].forEach((testCase) => {
   test(testCase.testName, () => {

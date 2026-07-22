@@ -1623,6 +1623,46 @@ test('R3-07S-skill-PERMISSION-FAULT-062: Markdown MDX fragment bodies cannot inf
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-062 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-062 must have Markdown MDX fragment inferred-trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-063: Markdown backslash escaped emphasis bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_PUNCTUATION_MARKER', 'R3-07S-skill-PERMISSION-FAULT-063 must keep Markdown backslash escaped punctuation body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-063 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-063 must have Markdown backslash escaped emphasis inferred-trigger oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-064: Markdown backslash escaped heading bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_PUNCTUATION_MARKER', 'R3-07S-skill-PERMISSION-FAULT-064 must keep Markdown backslash escaped punctuation body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-064 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-064 must have Markdown backslash escaped heading inferred-trigger oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-065: Markdown backslash escaped blockquote bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_PUNCTUATION_MARKER', 'R3-07S-skill-PERMISSION-FAULT-065 must keep Markdown backslash escaped punctuation body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-065 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-065 must have Markdown backslash escaped blockquote inferred-trigger oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-066: Markdown backslash escaped link bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_PUNCTUATION_MARKER', 'R3-07S-skill-PERMISSION-FAULT-066 must keep Markdown backslash escaped punctuation body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-066 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-066 must have Markdown backslash escaped link inferred-trigger oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-067: Markdown backslash escaped table bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_PUNCTUATION_MARKER', 'R3-07S-skill-PERMISSION-FAULT-067 must keep Markdown backslash escaped punctuation body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-067 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-067 must have Markdown backslash escaped table inferred-trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

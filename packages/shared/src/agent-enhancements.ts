@@ -691,6 +691,7 @@ const SKILL_METADATA_MARKDOWN_ESCAPED_AUTOLINK_MARKER = /^(?:&lt;|&#60;|&#x3c;)(
 const SKILL_METADATA_MARKDOWN_ESCAPED_HTML_MARKER = /^(?:&lt;|&#60;|&#x3c;)\s*\/?[a-z][a-z0-9-]*(?:\s|(?:&gt;|&#62;|&#x3e;)|$)/iu;
 const SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_AUTOLINK_MARKER = /^\\<(?:[a-z][a-z0-9+.-]{1,31}:[^\s<>\\]*|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})\\?>$/iu;
 const SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_HTML_MARKER = /^\\<\s*\/?[a-z][a-z0-9-]*(?:\s|\\?>|>|$)/iu;
+const SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_PUNCTUATION_MARKER = /^\\[\\`*_{}\[\]()#+\-.!>|]/u;
 const SKILL_METADATA_MARKDOWN_CONTAINER_DIRECTIVE_MARKER = /^:::+\s*\S/u;
 const SKILL_METADATA_MARKDOWN_ADMONITION_MARKER = /^!!!\s+\S/u;
 const SKILL_METADATA_MARKDOWN_MATH_BLOCK_MARKER = /^\${2,}(?:\s+\S.*)?$/u;
@@ -849,6 +850,10 @@ function skillMetadataLines(content: string): string[] {
       continue;
     }
     if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_HTML_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_PUNCTUATION_MARKER.test(metadataTrimmed)) {
       insideBodySection = true;
       continue;
     }
