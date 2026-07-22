@@ -1375,7 +1375,7 @@ test('R3-07S-skill-PERMISSION-FAULT-032: table HTML blocks stop Skill metadata p
   const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
   const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
 
-  assertContains(sharedEnhancements, 'details|table', 'R3-07S-skill-PERMISSION-FAULT-032 must treat table HTML body blocks as metadata boundaries');
+  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER', 'R3-07S-skill-PERMISSION-FAULT-032 must treat table HTML body blocks through the shared HTML tag boundary owner');
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-032 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-032 must have table body metadata oracle');
 });
 
@@ -1383,7 +1383,7 @@ test('R3-07S-skill-PERMISSION-FAULT-033: pre HTML blocks stop Skill metadata par
   const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
   const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
 
-  assertContains(sharedEnhancements, 'details|table|pre', 'R3-07S-skill-PERMISSION-FAULT-033 must treat pre HTML body blocks as metadata boundaries');
+  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER', 'R3-07S-skill-PERMISSION-FAULT-033 must treat pre HTML body blocks through the shared HTML tag boundary owner');
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-033 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-033 must have pre body metadata oracle');
 });
 
@@ -1391,7 +1391,7 @@ test('R3-07S-skill-PERMISSION-FAULT-034: common HTML container blocks stop Skill
   const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
   const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
 
-  assertContains(sharedEnhancements, 'details|table|pre|div|section|article|aside|ul|ol', 'R3-07S-skill-PERMISSION-FAULT-034 must treat common HTML container body blocks as metadata boundaries');
+  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER', 'R3-07S-skill-PERMISSION-FAULT-034 must treat common HTML container body blocks through the shared HTML tag boundary owner');
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-034 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-034 must have div body metadata oracle');
 });
 
@@ -1475,7 +1475,7 @@ test('R3-07S-skill-PERMISSION-FAULT-044: inline HTML table-child bodies cannot i
   const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
   const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
 
-  assertContains(sharedEnhancements, 'summary|tr|td|th', 'R3-07S-skill-PERMISSION-FAULT-044 must absorb common HTML child body tags into the existing marker');
+  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER', 'R3-07S-skill-PERMISSION-FAULT-044 must treat HTML child body tags through the shared HTML tag boundary owner');
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-044 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-044 must have inline HTML table-child inferred-trigger oracle');
 });
 
@@ -1491,8 +1491,16 @@ test('R3-07S-skill-PERMISSION-FAULT-046: inline HTML media bodies cannot infer S
   const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
   const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
 
-  assertContains(sharedEnhancements, 'summary|tr|td|th|img|picture|source|video|audio|canvas|svg', 'R3-07S-skill-PERMISSION-FAULT-046 must absorb common HTML media body tags into the existing marker');
+  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER', 'R3-07S-skill-PERMISSION-FAULT-046 must treat HTML media body tags through the shared HTML tag boundary owner');
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-046 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-046 must have inline HTML media inferred-trigger oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-047: inline HTML control bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER', 'R3-07S-skill-PERMISSION-FAULT-047 must consolidate HTML tag body ownership instead of growing tag allowlists');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-047 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-047 must have inline HTML control inferred-trigger oracle');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
