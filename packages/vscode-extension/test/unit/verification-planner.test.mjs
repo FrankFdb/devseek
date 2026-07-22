@@ -118,6 +118,24 @@ test('VerificationPlanner: requested markdown validation uses file checks, not c
   assert.doesNotMatch(plan.command, /\bgcc\b|\bg\+\+\b|\bclang\b|\bnode\b|\bnpm\b/);
 });
 
+test('VerificationPlanner: formal simulation Markdown deliverables get file checks without extra validation wording', () => {
+  const plan = new VerificationPlanner().planWorkspaceChanges({
+    rootFsPath: '/repo',
+    changedPaths: ['src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice-simulation-1.md'],
+    requestPrompt: [
+      '原来实现的吊运维保功能：设计文档+代码。',
+      '请分析最新维保提醒需求，给出新需求的实现对策建议，并从主控需要实现功能角度给出 task。',
+      '请将仿真测试结果输出到 /repo/src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice-simulation.md，文件名需要保留 simulation 标识。',
+    ].join('\n'),
+  });
+
+  assert.equal(plan.kind, 'command');
+  assert.equal(plan.mode, 'file-check');
+  assert.equal(plan.reason, 'non-code-file-validation');
+  assert.match(plan.command, /test -f 'src\/oam\/src\/lifting\/zc_maintenance\/docs\/warranty-maintenance-advice-simulation-1\.md'/);
+  assert.doesNotMatch(plan.command, /\bgcc\b|\bg\+\+\b|\bclang\b|\bnode\b|\bnpm\b/);
+});
+
 test('VerificationPlanner: explicit unknown text file writes use file checks, not blocked QualityGate', () => {
   const plan = new VerificationPlanner().planWorkspaceChanges({
     rootFsPath: '/repo',

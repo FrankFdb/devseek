@@ -179,6 +179,10 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
   assert.match(agentLoop, /isJavaScriptValidationFile/, 'legacy agent loop must recognize JavaScript probe files as local validation targets');
   assert.match(agentLoop, /changedPaths\.filter\(p\s*=>\s*isLegacyAutoValidationFile\(p\)\)/, 'legacy agent loop must route JS probe validation through the shared validation boundary');
   assert.match(agentLoop, /validateWorkspaceChanges\(\{\s*changedPaths:\s*workspaceRelativeValidationTargets/, 'legacy agent loop must pass JS validation targets to ValidationService');
+  assert.match(agentLoop, /runAgentAutoValidationForWrites/, 'legacy agent loop must run shared auto-validation for non-legacy write evidence');
+  assert.match(agentLoop, /const autoValidationWrittenFiles = editedFileRecords\.filter\(shouldRunGeneralAutoValidationForFile\)/, 'legacy agent loop must validate Markdown and other non-legacy writes from written-file evidence');
+  assert.match(agentLoop, /emitLegacyValidationQualityGateStatus/, 'legacy compile\/run validation must publish QualityGate evidence before settlement');
+  assert.match(agentLoop, /changedPaths\.push\(toWorkspaceRelativeChangedPath\(file\.path,\s*workspaceRoot\)\)/, 'agent-run changedPaths must be workspace-relative settlement evidence');
   assert.doesNotMatch(
     agentLoop,
     /return\s*\{\s*tasksTotal:\s*tasks\.length,\s*tasksApplied,\s*tasksFailed:\s*tasksFailed\s*\+\s*1,\s*changedPaths\s*\}/,

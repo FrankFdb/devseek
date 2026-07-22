@@ -105,6 +105,7 @@ import {
 } from './agent/task-state-machine';
 import { enforceAgentTaskExecutionPolicy } from './agent/task-execution-policy';
 import { tryRunSimpleFileTask } from './agent/simple-file-task';
+import { runAgentAutoValidationForWrites, type AgentAutoValidationResult } from './agent/auto-validation';
 import { shouldRequestManualReviewForRun } from './agent/manual-review-validation';
 import { decideAgentRuntimeTurn } from './agent/agent-runtime-turn-policy';
 import { WorkspaceEditService, type WorkspaceTextFileBaseline } from './workspace/edit-service';
@@ -149,6 +150,10 @@ function isPythonValidationFile(filename: string): boolean {
 
 function isLegacyAutoValidationFile(filename: string): boolean {
   return isCompilableFile(filename) || isJavaScriptValidationFile(filename) || isPythonValidationFile(filename);
+}
+
+function shouldRunGeneralAutoValidationForFile(file: WrittenFileEvidence): boolean {
+  return !isLegacyAutoValidationFile(file.path) && !isLegacyAutoValidationFile(file.basename);
 }
 
 function shouldDeferRecoverableTaskValidationFailure(input: {
@@ -1476,9 +1481,90 @@ interface ValidationOutcome {
   reviewReason?: string;
 }
 
+function autoValidationResultToValidationOutcome(result: AgentAutoValidationResult): ValidationOutcome | undefined {
+  const qualityGate = result.qualityGate;
+  const evidence = result.evidence;
+  if (!qualityGate && !evidence && !result.feedbackForAI && !result.repairBlockedReason) return undefined;
+  const ok = qualityGate ? qualityGate.status === 'pass' : evidence ? evidence.ok : false;
+  const detail = [
+    evidence?.detail,
+    result.repairBlockedReason,
+    result.feedbackForAI,
+    qualityGate?.summary,
+  ].filter(Boolean).join('\n').slice(0, 1200);
+  return {
+    ran: Boolean(evidence?.command),
+    ok,
+    command: evidence?.command,
+    detail,
+    exitCode: evidence?.exitCode,
+    reason: ok
+      ? 'auto-validation-passed'
+      : qualityGate?.status === 'blocked'
+        ? 'quality-gate-blocked'
+        : qualityGate?.status === 'fail'
+          ? 'quality-gate-failed'
+          : result.repairBlockedReason || 'auto-validation-failed',
+  };
+}
+
+function combineFinalValidationOutcomes(
+  nonLegacyOutcome: ValidationOutcome | undefined,
+  legacyOutcome: ValidationOutcome | undefined,
+): ValidationOutcome | undefined {
+  const outcomes = [nonLegacyOutcome, legacyOutcome].filter((outcome): outcome is ValidationOutcome => Boolean(outcome));
+  if (outcomes.length === 0) return undefined;
+  const failed = outcomes.find(outcome => !outcome.ok);
+  if (failed) return failed;
+  const manualReview = outcomes.find(outcome => outcome.reviewRequired);
+  if (manualReview) return manualReview;
+  return outcomes.find(outcome => outcome.ran) ?? outcomes[0];
+}
+
+async function emitLegacyValidationQualityGateStatus(
+  callbacks: AgentLoopCallbacks,
+  evidenceOperationId: string,
+  outcome: ValidationOutcome,
+): Promise<void> {
+  const state = outcome.ok ? 'completed' : outcome.ran === false ? 'skipped' : 'failed';
+  const summary = outcome.ok
+    ? `QualityGate 通过：${outcome.command || outcome.reason || 'legacy validation'} 已通过。`
+    : state === 'skipped'
+      ? `QualityGate 阻塞：${outcome.reason || 'validation-blocked'}。`
+      : `QualityGate 未通过：${outcome.reason || 'validation-failed'}。`;
+  await callbacks.onAgentStatus({
+    type: 'agentStatus',
+    phase: 'quality',
+    state: 'started',
+    evidenceOperationId,
+    title: '评估 legacy 自动验证 QualityGate',
+    detail: summary,
+  });
+  await callbacks.onAgentStatus({
+    type: 'agentStatus',
+    phase: 'quality',
+    state,
+    evidenceOperationId,
+    title: outcome.ok
+      ? 'legacy 自动验证 QualityGate 通过'
+      : state === 'skipped'
+        ? 'legacy 自动验证 QualityGate 阻塞'
+        : 'legacy 自动验证 QualityGate 未通过',
+    detail: summary,
+  });
+}
+
 function getAgentAutoFixRounds(): number {
   const configured = vscode.workspace.getConfiguration('devseek').get<number>('autoFixRounds', 6);
   return normalizeRepairRoundBudget(configured);
+}
+
+let legacyValidationOperationSequence = 0;
+
+function nextLegacyValidationOperationId(changedPaths: readonly string[]): string {
+  legacyValidationOperationSequence += 1;
+  const scope = changedPaths.join('|').replace(/[^0-9A-Za-z._/-]+/g, '-').slice(0, 160) || 'workspace';
+  return `legacy-validation-${legacyValidationOperationSequence}-${scope}`.slice(0, 512);
 }
 
 function selectValidationRepairTarget(validation: ValidationOutcome, modifiedPaths: string[]): string | undefined {
@@ -1552,6 +1638,14 @@ async function runValidation(
     const absPath = nodePath.isAbsolute(filePath) ? filePath : nodePath.join(workspaceRootFsPath, filePath);
     return nodePath.relative(workspaceRootFsPath, absPath).replace(/\\/g, '/');
   });
+  const compileEvidenceOperationId = nextLegacyValidationOperationId(workspaceRelativeValidationTargets);
+  const finishValidationOutcome = async (
+    evidenceOperationId: string,
+    outcome: ValidationOutcome,
+  ): Promise<ValidationOutcome> => {
+    await emitLegacyValidationQualityGateStatus(callbacks, evidenceOperationId, outcome);
+    return outcome;
+  };
   const hasCppTargets = validationTargets.some(p => isCompilableFile(p));
   const effectiveWantRun = wantRun || (hasCppTargets && shouldRunCppValidation(userPrompt));
 
@@ -1559,6 +1653,7 @@ async function runValidation(
     type: 'agentStatus',
     phase: 'validate',
     state: 'started',
+    evidenceOperationId: compileEvidenceOperationId,
     title: effectiveWantRun && hasCppTargets ? '正在编译并运行' : '正在执行自动验证',
     detail: `验证 ${validationTargets.length} 个本地变更文件`,
   });
@@ -1579,10 +1674,11 @@ async function runValidation(
       type: 'agentStatus',
       phase: 'validate',
       state: 'failed',
+      evidenceOperationId: compileEvidenceOperationId,
       title: '未找到可执行验证计划',
       detail: '未识别到可自动验证的本地变更文件。',
     });
-    return { ran: false, ok: false, reason: 'no-validation-plan' };
+    return finishValidationOutcome(compileEvidenceOperationId, { ran: false, ok: false, reason: 'no-validation-plan' });
   }
   if (compileResult.command) callbacks.onToolActivity?.('terminal', `自动验证: ${compileResult.command}`);
 
@@ -1590,6 +1686,7 @@ async function runValidation(
     type: 'agentStatus',
     phase: 'validate',
     state: compileResult.ok ? 'completed' : 'failed',
+    evidenceOperationId: compileEvidenceOperationId,
     title: compileResult.ok
       ? '自动验证通过 ✓'
       : compileResult.status === 'blocked' ? '自动验证被质量门禁阻止' : '自动验证失败',
@@ -1598,27 +1695,20 @@ async function runValidation(
       : compileResult.output.slice(0, 400),
   });
   if (!compileResult.ok) {
-    return {
+    return finishValidationOutcome(compileEvidenceOperationId, {
       ran: compileResult.ran,
       ok: false,
       command: compileResult.command,
       detail: compileResult.output.slice(0, 1200),
       exitCode: compileResult.exitCode,
       reason: compileResult.reason || (compileResult.status === 'blocked' ? 'validation-blocked' : 'compile-failed'),
-    };
+    });
   }
 
   let runCommandForEvidence: string | undefined;
   if (effectiveWantRun && hasCppTargets && !callbacks.onTerminalCommand) {
     const detail = '当前入口没有可用终端执行能力，已完成编译，但运行效果需要人工确认。';
-    await callbacks.onAgentStatus({
-      type: 'agentStatus',
-      phase: 'validate',
-      state: 'completed',
-      title: '运行验证等待人工确认',
-      detail,
-    });
-    return {
+    return finishValidationOutcome(compileEvidenceOperationId, {
       ran: true,
       ok: true,
       command: compileResult.command,
@@ -1627,11 +1717,12 @@ async function runValidation(
       exitCode: 0,
       reviewRequired: true,
       reviewReason: detail,
-    };
+    });
   }
 
   // If compilation succeeded and user wants to run — execute in terminal
   if (effectiveWantRun && hasCppTargets && callbacks.onTerminalCommand) {
+    const runEvidenceOperationId = nextLegacyValidationOperationId([...workspaceRelativeValidationTargets, 'run']);
     const runPlan = new VerificationPlanner().planWorkspaceChanges({
       changedPaths: workspaceRelativeValidationTargets,
       rootFsPath: workspaceRootFsPath,
@@ -1644,11 +1735,20 @@ async function runValidation(
       await callbacks.onAgentStatus({
         type: 'agentStatus',
         phase: 'validate',
+        state: 'started',
+        evidenceOperationId: runEvidenceOperationId,
+        title: '正在规划运行验证',
+        detail: detail.slice(0, 1200),
+      });
+      await callbacks.onAgentStatus({
+        type: 'agentStatus',
+        phase: 'validate',
         state: 'failed',
+        evidenceOperationId: runEvidenceOperationId,
         title: '无法生成运行验证计划',
         detail: detail.slice(0, 1200),
       });
-      return { ran: false, ok: false, command: compileResult.command, detail, reason: runPlan.reason };
+      return finishValidationOutcome(runEvidenceOperationId, { ran: false, ok: false, command: compileResult.command, detail, reason: runPlan.reason });
     }
     const runCmd = runPlan.command;
     runCommandForEvidence = runCmd;
@@ -1657,6 +1757,7 @@ async function runValidation(
         type: 'agentStatus',
         phase: 'validate',
         state: 'started',
+        evidenceOperationId: runEvidenceOperationId,
         title: '正在执行程序',
         detail: `终端运行: ${runCmd}`,
       });
@@ -1690,6 +1791,7 @@ async function runValidation(
             type: 'agentStatus',
             phase: 'validate',
             state: 'completed',
+            evidenceOperationId: runEvidenceOperationId,
             title: '程序已启动，等待人工确认',
             detail: manualReview.detail,
           });
@@ -1697,7 +1799,7 @@ async function runValidation(
             role: 'assistant',
             content: `运行验证需要人工确认：${manualReview.detail}`,
           });
-          return {
+          return finishValidationOutcome(runEvidenceOperationId, {
             ran: true,
             ok: true,
             command: runCmd,
@@ -1706,28 +1808,30 @@ async function runValidation(
             exitCode: evidence.evidence.exitCode,
             reviewRequired: true,
             reviewReason: manualReview.detail,
-          };
+          });
         }
         await callbacks.onAgentStatus({
           type: 'agentStatus',
           phase: 'validate',
           state: 'failed',
+          evidenceOperationId: runEvidenceOperationId,
           title: '执行失败',
           detail: detail.slice(0, 1200),
         });
-        return {
+        return finishValidationOutcome(runEvidenceOperationId, {
           ran: true,
           ok: false,
           command: runCmd,
           detail,
           exitCode: evidence.evidence.exitCode,
           reason: evidence.evidence.kind === 'compile-run' ? 'compile-run-failed' : 'run-failed',
-        };
+        });
       }
       await callbacks.onAgentStatus({
         type: 'agentStatus',
         phase: 'validate',
         state: 'completed',
+        evidenceOperationId: runEvidenceOperationId,
         title: '运行验证完成 ✓',
         detail: truncated.slice(0, 400),
       });
@@ -1737,27 +1841,28 @@ async function runValidation(
         type: 'agentStatus',
         phase: 'validate',
         state: 'failed',
+        evidenceOperationId: runEvidenceOperationId,
         title: '执行失败',
         detail,
       });
-      return {
+      return finishValidationOutcome(runEvidenceOperationId, {
         ran: true,
         ok: false,
         command: runCmd,
         detail,
         exitCode: null,
         reason: 'run-failed',
-      };
+      });
     }
   }
 
-  return {
+  return finishValidationOutcome(compileEvidenceOperationId, {
     ran: true,
     ok: true,
     command: runCommandForEvidence ?? compileResult.command,
     exitCode: 0,
     reason: runCommandForEvidence ? 'compile-and-run-passed' : compileResult.reason || 'validation-passed',
-  };
+  });
 }
 
 // ----------------------------------------------------------------
@@ -2005,16 +2110,37 @@ export async function runAgentLoop(
     }
   }
 
-  // Compile validation must be evidence-backed. Planned task targets may point at
-  // old files even when the model artifact was not applied, which would turn a
-  // stale build into false completion evidence.
+  // Validation must be evidence-backed. Planned task targets may point at old
+  // files even when the model artifact was not applied, which would turn stale
+  // checks into false completion evidence.
   sessionHistory.push(...writeAuthority.takePendingAndDrain());
+  let nonLegacyValidationOutcome: ValidationOutcome | undefined;
+  const autoValidationWrittenFiles = editedFileRecords.filter(shouldRunGeneralAutoValidationForFile);
+  if (autoValidationWrittenFiles.length > 0) {
+    const autoValidation = await runAgentAutoValidationForWrites(
+      autoValidationWrittenFiles,
+      workspaceRoot.fsPath,
+      writeAuthority.currentPrompt,
+      callbacks,
+      'conservative',
+      { qualityWrittenFiles: editedFileRecords },
+    );
+    if (autoValidation.evidence) allTerminalEvidence.push(autoValidation.evidence);
+    if (autoValidation.feedbackForAI) {
+      sessionHistory.push({
+        role: 'assistant',
+        content: `自动验证反馈：\n${autoValidation.feedbackForAI.slice(0, 2000)}`,
+      });
+    }
+    nonLegacyValidationOutcome = autoValidationResultToValidationOutcome(autoValidation);
+  }
+
   const modifiedPaths = uniquePaths(
     editedFileRecords
       .filter(file => isCompilableFile(file.path))
       .map(file => nodePath.isAbsolute(file.path) ? file.path : nodePath.join(workspaceRoot.fsPath, file.path)),
   );
-  let validationOutcome: ValidationOutcome | undefined;
+  let legacyValidationOutcome: ValidationOutcome | undefined;
   if (modifiedPaths.length > 0) {
     // Derive wantRun from both the user's explicit request and task plan.
     // If the user asked to run/execute, validation must include runtime failures
@@ -2022,15 +2148,15 @@ export async function runAgentLoop(
     const wantRun = tasks.some(
       t => t.action === 'analyze' && /run_terminal|运行程序|执行程序|compile.*run|build.*run/i.test(t.desc)
     ) || requiresRuntimeValidation(writeAuthority.currentPrompt);
-    validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, writeAuthority.currentPrompt, sessionHistory);
-    appendValidationEvidence(allTerminalEvidence, validationOutcome);
+    legacyValidationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, writeAuthority.currentPrompt, sessionHistory);
+    appendValidationEvidence(allTerminalEvidence, legacyValidationOutcome);
 
     const maxRepairRounds = getAgentAutoFixRounds();
     for (let repairRound = 1;
-      validationOutcome && !validationOutcome.ok && repairRound <= maxRepairRounds && !callbacks.signal?.aborted;
+      legacyValidationOutcome && !legacyValidationOutcome.ok && repairRound <= maxRepairRounds && !callbacks.signal?.aborted;
       repairRound += 1) {
       sessionHistory.push(...writeAuthority.takePendingAndDrain());
-      const repairTarget = selectValidationRepairTarget(validationOutcome, modifiedPaths);
+      const repairTarget = selectValidationRepairTarget(legacyValidationOutcome, modifiedPaths);
       if (!repairTarget) break;
 
       await callbacks.onAgentStatus({
@@ -2038,7 +2164,7 @@ export async function runAgentLoop(
         phase: 'repair',
         state: 'started',
         title: `第 ${repairRound} 轮自动修复验证失败`,
-        detail: `命令: ${validationOutcome.command ?? 'unknown'}\n${(validationOutcome.detail ?? '').slice(0, 1200)}`,
+        detail: `命令: ${legacyValidationOutcome.command ?? 'unknown'}\n${(legacyValidationOutcome.detail ?? '').slice(0, 1200)}`,
         taskTotal: tasks.length,
       });
 
@@ -2049,10 +2175,10 @@ export async function runAgentLoop(
         ));
       }
 
-      const repairTask = makeValidationRepairTask(repairTarget, workspaceRoot, validationOutcome, repairRound);
+      const repairTask = makeValidationRepairTask(repairTarget, workspaceRoot, legacyValidationOutcome, repairRound);
       const repairContext = buildValidationRepairContext(
         analysisContext,
-        validationOutcome,
+        legacyValidationOutcome,
         repairRound,
         maxRepairRounds,
         modifiedPaths,
@@ -2133,10 +2259,11 @@ export async function runAgentLoop(
       }
 
       sessionHistory.push(...writeAuthority.takePendingAndDrain());
-      validationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, writeAuthority.currentPrompt, sessionHistory);
-      appendValidationEvidence(allTerminalEvidence, validationOutcome);
+      legacyValidationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, writeAuthority.currentPrompt, sessionHistory);
+      appendValidationEvidence(allTerminalEvidence, legacyValidationOutcome);
     }
   }
+  const validationOutcome = combineFinalValidationOutcomes(nonLegacyValidationOutcome, legacyValidationOutcome);
   const validationFailed = validationOutcome ? !validationOutcome.ok : false;
   const manualReviewTerminal = findLatestManualReviewTerminalEvidence(allTerminalEvidence);
   const manualReviewReason = validationOutcome?.reviewRequired
@@ -2339,7 +2466,7 @@ function appendAgentLoopWrittenFiles(
   for (const file of writtenFiles) {
     const key = normalizePathForSet(file.path, workspaceRoot);
     if (!existingPaths.has(key)) {
-      changedPaths.push(file.path);
+      changedPaths.push(toWorkspaceRelativeChangedPath(file.path, workspaceRoot));
       existingPaths.add(key);
     }
   }
@@ -2368,4 +2495,12 @@ function countByValue(values: string[]): Map<string, number> {
 
 function normalizePathForSet(filePath: string, workspaceRoot: string): string {
   return nodePath.normalize(nodePath.isAbsolute(filePath) ? filePath : nodePath.join(workspaceRoot, filePath));
+}
+
+function toWorkspaceRelativeChangedPath(filePath: string, workspaceRoot: string): string {
+  const absPath = nodePath.isAbsolute(filePath) ? filePath : nodePath.join(workspaceRoot, filePath);
+  const relPath = nodePath.relative(workspaceRoot, absPath).replace(/\\/g, '/');
+  return relPath && !relPath.startsWith('..') && !nodePath.isAbsolute(relPath)
+    ? relPath
+    : filePath.replace(/\\/g, '/');
 }

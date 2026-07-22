@@ -2733,11 +2733,20 @@ test('Architecture: verification result authority normalizes runner facts before
 
 test('Architecture: agent final validation uses written-file evidence, not planned targets', () => {
   const agentLoop = src('src/agent-loop.ts');
-  const modifiedPathsBlock = agentLoop.match(/const modifiedPaths = uniquePaths\([\s\S]*?\n\s*\);\n\s*let validationOutcome/);
+  const autoValidationBlock = agentLoop.match(/const autoValidationWrittenFiles = editedFileRecords\.filter\([\s\S]*?\);\n\s*if \(autoValidationWrittenFiles\.length > 0\)/);
+  const modifiedPathsBlock = agentLoop.match(/const modifiedPaths = uniquePaths\([\s\S]*?\n\s*\);\n\s*let legacyValidationOutcome/);
 
+  assert.ok(autoValidationBlock, 'agent-loop must compute auto-validation paths from written files in one visible block');
   assert.ok(modifiedPathsBlock, 'agent-loop must compute modifiedPaths for validation in one visible block');
-  assertContains(agentLoop, 'Compile validation must be evidence-backed', 'agent-loop must document evidence-backed validation');
+  assertContains(agentLoop, 'Validation must be evidence-backed', 'agent-loop must document evidence-backed validation');
+  assertContains(agentLoop, 'runAgentAutoValidationForWrites', 'final validation must use shared written-file auto-validation');
+  assertContains(autoValidationBlock[0], 'editedFileRecords', 'auto-validation must be anchored to files actually written this run');
   assertContains(modifiedPathsBlock[0], 'editedFileRecords', 'final validation must be anchored to files actually written this run');
+  assert.doesNotMatch(
+    autoValidationBlock[0],
+    /\btasks\b/,
+    'auto-validation must not inspect planned task targets when no file was written',
+  );
   assert.doesNotMatch(
     modifiedPathsBlock[0],
     /\btasks\b/,
