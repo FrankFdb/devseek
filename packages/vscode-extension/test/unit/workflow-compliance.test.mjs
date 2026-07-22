@@ -1503,6 +1503,14 @@ test('R3-07S-skill-PERMISSION-FAULT-047: inline HTML control bodies cannot infer
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-047 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-047 must have inline HTML control inferred-trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-048: Markdown setext heading bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_SETEXT_UNDERLINE_MARKER', 'R3-07S-skill-PERMISSION-FAULT-048 must keep Markdown setext body heading ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-048 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-048 must have Markdown setext inferred-trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

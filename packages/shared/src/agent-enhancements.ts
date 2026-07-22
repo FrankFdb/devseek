@@ -674,6 +674,7 @@ function freezeSkillExecutionReceipt(receipt: SkillExecutionReceipt): SkillExecu
 
 const SKILL_METADATA_BODY_SECTION_MARKER = /^(?:(?:#{1,}\s+(?:examples?|samples?|usage|notes?|tips?)\b(?:\s*:)?(?:\s.*)?)|#{2,}\s+|(?:(?:examples?|samples?|usage|notes?|tips?)\b|for\s+(?:example|instance)\b|e\.g\.)(?:\s*:)?(?:\s.*)?)$/iu;
 const SKILL_METADATA_BODY_SEPARATOR = /^(?:-{3,}|\*{3,}|_{3,})$/u;
+const SKILL_METADATA_MARKDOWN_SETEXT_UNDERLINE_MARKER = /^(?:=+|-+)\s*$/u;
 const SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER = '[a-z][a-z0-9-]*';
 const SKILL_METADATA_BODY_HTML_BLOCK_MARKER = new RegExp(`^</?${SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER}\\b[^>]*(?:>.*)?$`, 'iu');
 const SKILL_METADATA_MARKDOWN_BLOCKQUOTE_MARKER = /^>/u;
@@ -754,6 +755,18 @@ function skillMetadataLines(content: string): string[] {
       if (!metadataLine.trim()) continue;
     }
     const metadataTrimmed = metadataLine.trim();
+    const nextTrimmed = lines[index + 1]?.trim() ?? '';
+    const isHeaderLine = isSkillMetadataHeaderLine(metadataTrimmed);
+    if (
+      !isFrontmatterMetadataLine
+      && acceptedTitleHeading
+      && metadataTrimmed
+      && !isHeaderLine
+      && SKILL_METADATA_MARKDOWN_SETEXT_UNDERLINE_MARKER.test(nextTrimmed)
+    ) {
+      insideBodySection = true;
+      continue;
+    }
     if (!isFrontmatterMetadataLine && isSkillMetadataBodySeparator(metadataTrimmed)) {
       insideBodySection = true;
       continue;
@@ -797,7 +810,6 @@ function skillMetadataLines(content: string): string[] {
       continue;
     }
     if (!isFrontmatterMetadataLine && insideBodySection) continue;
-    const isHeaderLine = isSkillMetadataHeaderLine(metadataTrimmed);
     if (!isFrontmatterMetadataLine && metadataTrimmed && !isHeaderLine && sawStructuredMetadata) {
       insideBodySection = true;
       continue;
