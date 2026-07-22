@@ -1926,6 +1926,42 @@ function createMarkdownBareUrlBodyInferredTriggerDeniedEditSkillReceipt() {
   ]);
 }
 
+function createMarkdownEscapedHtmlBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '&lt;button data-kind="react"&gt;Edit component&lt;/button&gt;',
+    'tool_kinds: read',
+  ]);
+}
+
+function createMarkdownEscapedAutolinkBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '&lt;https://react.dev/reference&gt;',
+    'tool_kinds: read',
+  ]);
+}
+
+function createMarkdownBackslashEscapedHtmlBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '\\<button data-kind="react"\\>Edit component\\</button\\>',
+    'tool_kinds: read',
+  ]);
+}
+
+function createMarkdownBackslashEscapedAutolinkBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '\\<https://react.dev/reference\\>',
+    'tool_kinds: read',
+  ]);
+}
+
 function createNonAsciiSubstringTriggerDeniedEditSkillReceipt() {
   return new SkillDiscoveryService().planExecution({
     prompt: '请修改深度学习组件',
@@ -3826,6 +3862,93 @@ test('R3-07S-skill-PERMISSION-FAULT-053 ExtensionProfilePlanService rejects Mark
   });
   assert.equal(explicitMetadataBeforeBareUrlReceipt.loadedSkills.length, 1);
   assert.equal(explicitMetadataBeforeBareUrlReceipt.loadedSkills[0]?.selectedByTrigger, 'react');
+});
+
+function assertMarkdownBodyInferredTriggerPermissionFaultRefusal(testCase) {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: testCase.candidateCommit,
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = testCase.childReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: testCase.slotId,
+    attemptId: testCase.attemptId,
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(childReceipt.loadedSkills.length, 0);
+  assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
+  assert.deepEqual(childReceipt.evidenceRefs, []);
+  assert.ok(receipt.vetoes.includes(`slot-child-evidence-missing-veto:${testCase.slotId}`));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+
+  const explicitMetadataBeforeBodyReceipt = new SkillDiscoveryService().planExecution({
+    prompt: 'please use react and inspect the component',
+    candidates: [
+      {
+        path: 'skills/reference/SKILL.md',
+        content: [
+          '# Reference',
+          '',
+          'description: React reference',
+          'triggers: react',
+          'tool_kinds: read',
+          '',
+          testCase.explicitBodyLine,
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
+  assert.equal(explicitMetadataBeforeBodyReceipt.loadedSkills.length, 1);
+  assert.equal(explicitMetadataBeforeBodyReceipt.loadedSkills[0]?.selectedByTrigger, 'react');
+}
+
+[
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-054 ExtensionProfilePlanService rejects Markdown escaped HTML body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-054',
+    attemptId: 'skill-permission-fault-054-markdown-escaped-html-body-inferred-trigger',
+    candidateCommit: '5454545454545454545454545454545454545454',
+    childReceipt: createMarkdownEscapedHtmlBodyInferredTriggerDeniedEditSkillReceipt,
+    explicitBodyLine: '&lt;button data-kind="react"&gt;Edit component&lt;/button&gt;',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-055 ExtensionProfilePlanService rejects Markdown escaped autolink body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-055',
+    attemptId: 'skill-permission-fault-055-markdown-escaped-autolink-body-inferred-trigger',
+    candidateCommit: '5555555555555555555555555555555555555555',
+    childReceipt: createMarkdownEscapedAutolinkBodyInferredTriggerDeniedEditSkillReceipt,
+    explicitBodyLine: '&lt;https://react.dev/reference&gt;',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-056 ExtensionProfilePlanService rejects Markdown backslash escaped HTML body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-056',
+    attemptId: 'skill-permission-fault-056-markdown-backslash-escaped-html-body-inferred-trigger',
+    candidateCommit: '5656565656565656565656565656565656565656',
+    childReceipt: createMarkdownBackslashEscapedHtmlBodyInferredTriggerDeniedEditSkillReceipt,
+    explicitBodyLine: '\\<button data-kind="react"\\>Edit component\\</button\\>',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-057 ExtensionProfilePlanService rejects Markdown backslash escaped autolink body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-057',
+    attemptId: 'skill-permission-fault-057-markdown-backslash-escaped-autolink-body-inferred-trigger',
+    candidateCommit: '5757575757575757575757575757575757575757',
+    childReceipt: createMarkdownBackslashEscapedAutolinkBodyInferredTriggerDeniedEditSkillReceipt,
+    explicitBodyLine: '\\<https://react.dev/reference\\>',
+  },
+].forEach((testCase) => {
+  test(testCase.testName, () => {
+    assertMarkdownBodyInferredTriggerPermissionFaultRefusal(testCase);
+  });
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {

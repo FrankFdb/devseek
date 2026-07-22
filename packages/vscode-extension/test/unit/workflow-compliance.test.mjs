@@ -1551,6 +1551,38 @@ test('R3-07S-skill-PERMISSION-FAULT-053: Markdown bare URL bodies cannot infer S
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-053 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-053 must have Markdown bare URL inferred-trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-054: Markdown escaped HTML bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_ESCAPED_HTML_MARKER', 'R3-07S-skill-PERMISSION-FAULT-054 must keep Markdown escaped HTML body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-054 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-054 must have Markdown escaped HTML inferred-trigger oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-055: Markdown escaped autolink bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_ESCAPED_AUTOLINK_MARKER', 'R3-07S-skill-PERMISSION-FAULT-055 must keep Markdown escaped autolink body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-055 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-055 must have Markdown escaped autolink inferred-trigger oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-056: Markdown backslash escaped HTML bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_HTML_MARKER', 'R3-07S-skill-PERMISSION-FAULT-056 must keep Markdown backslash escaped HTML body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-056 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-056 must have Markdown backslash escaped HTML inferred-trigger oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-057: Markdown backslash escaped autolink bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_AUTOLINK_MARKER', 'R3-07S-skill-PERMISSION-FAULT-057 must keep Markdown backslash escaped autolink body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-057 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-057 must have Markdown backslash escaped autolink inferred-trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
