@@ -1438,6 +1438,14 @@ test('R3-07S-skill-PERMISSION-FAULT-039: inferred Skill path triggers require a 
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-039 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-039 must have compound path inferred-trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-040: Markdown list bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_LIST_MARKER', 'R3-07S-skill-PERMISSION-FAULT-040 must keep Markdown list body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-040 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-040 must have Markdown list inferred-trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
