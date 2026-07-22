@@ -2387,16 +2387,29 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(profile, 'windows-native-no-wsl', 'R3-08E artifact gate must assert native interop separation');
   assertContains(profile, 'wsl-interop', 'R3-08E artifact gate must assert WSL interop coverage');
   assertContains(profile, 'wsl-interop-missing', 'R3-08E artifact gate must assert WSL interop fault evidence');
+  assertContains(profile, 'r3-08f-macos-conformance', 'R3-08F must add a fresh macOS conformance real-plugin scenario');
+  assertContains(profile, 'r3-08f-macos-conformance.md', 'R3-08F scenario must write a distinct artifact');
+  assertContains(profile, 'evaluateMacOSPlatformConformance', 'R3-08F artifact gate must assert the platform-runtime owner');
+  assertContains(profile, 'macos-darwin', 'R3-08F artifact gate must assert Darwin OS coverage');
+  assertContains(profile, 'macos-posix-shell', 'R3-08F artifact gate must assert POSIX shell coverage');
+  assertContains(profile, 'macos-posix-path', 'R3-08F artifact gate must assert POSIX path coverage');
+  assertContains(profile, 'macos-keychain', 'R3-08F artifact gate must assert keychain coverage');
+  assertContains(profile, 'macos-browser-bridge', 'R3-08F artifact gate must assert browser bridge coverage');
+  assertContains(profile, 'macos-runtime', 'R3-08F artifact gate must assert runtime coverage');
+  assertContains(profile, 'r3-08f-macos-environment-deferred', 'R3-08F artifact gate must assert deferred non-macOS evidence');
+  assertContains(profile, 'macos-browser-bridge-evidence-deferred', 'R3-08F artifact gate must assert browser evidence deferral');
   assertContains(harness, 'createR3KindAggregateFixture', 'real harness must share the R3 kind aggregate fixture instead of duplicating skill/hook setup');
   assertContains(harness, 'createR3RequiredKindsAggregateFixture', 'real harness must add the R3-07H required-kinds fixture');
   assertContains(harness, 'createR3VSCodeCollaborationFixture', 'real harness must add the R3-08A VS Code collaboration fixture');
   assertContains(harness, 'createR3AccessibilityFixture', 'real harness must add the R3-08C accessibility fixture');
   assertContains(harness, 'createR3LinuxConformanceFixture', 'real harness must add the R3-08D Linux conformance fixture');
   assertContains(harness, 'createR3WindowsWslConformanceFixture', 'real harness must add the R3-08E Windows/WSL conformance fixture');
+  assertContains(harness, 'createR3MacOSConformanceFixture', 'real harness must add the R3-08F macOS conformance fixture');
   assertContains(harness, 'webview-accessibility-surface-contract.ts', 'R3-08C fixture must expose an accessibility contract instead of only prompt text');
   assertContains(harness, 'vscode-surface-adapter-collaboration-contract.ts', 'R3-08A fixture must expose a source contract instead of only prompt text');
   assertContains(harness, 'linux-platform-conformance-contract.ts', 'R3-08D fixture must expose a platform conformance contract instead of only prompt text');
   assertContains(harness, 'windows-wsl-platform-conformance-contract.ts', 'R3-08E fixture must expose a Windows/WSL conformance contract instead of only prompt text');
+  assertContains(harness, 'macos-platform-conformance-contract.ts', 'R3-08F fixture must expose a macOS conformance contract instead of only prompt text');
   assertContains(harness, 'R3_KIND_AGGREGATE_FIXTURE_DETAILS', 'real harness must keep R3 kind fixture data table-driven');
   assert.ok(
     harness.indexOf('const R3_KIND_AGGREGATE_FIXTURE_DETAILS') < harness.indexOf('const fixture = usesExistingWorkspace'),

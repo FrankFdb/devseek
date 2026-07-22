@@ -39,6 +39,7 @@ export interface PlatformRuntimeAdapter {
 
 export type PlatformAdapterProfileKind = 'os' | 'shell' | 'path' | 'storage';
 export type PlatformAdapterProfileStatus = 'supported' | 'unsupported';
+export type PlatformConformanceStatus = PlatformAdapterProfileStatus | 'deferred';
 
 export interface PlatformAdapterProfile {
   readonly kind: PlatformAdapterProfileKind;
@@ -110,6 +111,39 @@ export interface WindowsWslPlatformConformanceReport {
   readonly unsupported: readonly WindowsWslPlatformConformanceCheck[];
 }
 
+export type MacOSPlatformConformanceCheckKind =
+  | 'os'
+  | 'shell'
+  | 'path'
+  | 'keychain'
+  | 'browser'
+  | 'runtime';
+
+export interface MacOSPlatformConformanceInput extends PlatformRuntimeInput {
+  readonly profile?: PlatformProfile;
+  readonly workspaceRoot?: string;
+  readonly keychainAvailable?: boolean;
+  readonly browserBridgeAvailable?: boolean;
+  readonly runtimeAvailable?: boolean;
+  readonly runtimePath?: string;
+}
+
+export interface MacOSPlatformConformanceCheck {
+  readonly kind: MacOSPlatformConformanceCheckKind;
+  readonly profile: string;
+  readonly status: PlatformConformanceStatus;
+  readonly reason?: string;
+}
+
+export interface MacOSPlatformConformanceReport {
+  readonly id: 'R3-08F-MACOS-CONFORMANCE';
+  readonly profile: PlatformProfile;
+  readonly supported: boolean;
+  readonly checks: readonly MacOSPlatformConformanceCheck[];
+  readonly unsupported: readonly MacOSPlatformConformanceCheck[];
+  readonly deferred: readonly MacOSPlatformConformanceCheck[];
+}
+
 const LINUX_LOCAL_XDG_PROFILE = 'linux-local-xdg';
 const LINUX_CONTAINER_XDG_PROFILE = 'linux-container-xdg';
 const WINDOWS_NATIVE_PATH_PROFILE = 'windows-native-path';
@@ -118,6 +152,12 @@ const WINDOWS_CRLF_PROFILE = 'windows-crlf';
 const WSL_LF_PROFILE = 'wsl-lf';
 const WINDOWS_NATIVE_INTEROP_PROFILE = 'windows-native-no-wsl';
 const WSL_INTEROP_PROFILE = 'wsl-interop';
+const MACOS_DARWIN_PROFILE = 'macos-darwin';
+const MACOS_POSIX_SHELL_PROFILE = 'macos-posix-shell';
+const MACOS_POSIX_PATH_PROFILE = 'macos-posix-path';
+const MACOS_KEYCHAIN_PROFILE = 'macos-keychain';
+const MACOS_BROWSER_BRIDGE_PROFILE = 'macos-browser-bridge';
+const MACOS_RUNTIME_PROFILE = 'macos-runtime';
 
 export class PlatformRuntimeProfileError extends Error {
   readonly code = 'UNSUPPORTED_PLATFORM_PROFILE';
@@ -209,6 +249,32 @@ export function evaluateWindowsWslPlatformConformance(
   };
 }
 
+export function evaluateMacOSPlatformConformance(
+  input: MacOSPlatformConformanceInput = {},
+): MacOSPlatformConformanceReport {
+  const profile = input.profile ?? detectPlatformProfile(input);
+  const checks: MacOSPlatformConformanceCheck[] = profile.os === 'darwin'
+    ? [
+      evaluateMacOSOsConformance(profile),
+      evaluateMacOSShellConformance(profile),
+      evaluateMacOSPathConformance(profile, input.workspaceRoot),
+      evaluateMacOSKeychainConformance(input),
+      evaluateMacOSBrowserConformance(input),
+      evaluateMacOSRuntimeConformance(input),
+    ]
+    : createDeferredMacOSEnvironmentChecks();
+  const unsupported = checks.filter(check => check.status === 'unsupported');
+  const deferred = checks.filter(check => check.status === 'deferred');
+  return {
+    id: 'R3-08F-MACOS-CONFORMANCE',
+    profile,
+    supported: unsupported.length === 0 && deferred.length === 0,
+    checks,
+    unsupported,
+    deferred,
+  };
+}
+
 export function assertPlatformRuntimeProfileSupported(profile: PlatformProfile): void {
   const evaluation = evaluatePlatformRuntimeProfile(profile);
   if (!evaluation.supported) {
@@ -272,6 +338,29 @@ function unsupportedWindowsWslProfile(
   reason: string,
 ): WindowsWslPlatformConformanceCheck {
   return { kind, profile, status: 'unsupported', reason };
+}
+
+function supportedMacOSProfile(
+  kind: MacOSPlatformConformanceCheckKind,
+  profile: string,
+): MacOSPlatformConformanceCheck {
+  return { kind, profile, status: 'supported' };
+}
+
+function unsupportedMacOSProfile(
+  kind: MacOSPlatformConformanceCheckKind,
+  profile: string,
+  reason: string,
+): MacOSPlatformConformanceCheck {
+  return { kind, profile, status: 'unsupported', reason };
+}
+
+function deferredMacOSProfile(
+  kind: MacOSPlatformConformanceCheckKind,
+  profile: string,
+  reason: string,
+): MacOSPlatformConformanceCheck {
+  return { kind, profile, status: 'deferred', reason };
 }
 
 function evaluatePathProfile(profile: PlatformProfile): PlatformAdapterProfile {
@@ -443,6 +532,87 @@ function evaluateWindowsWslInteropConformance(
     return unsupportedWindowsWslProfile('interop', 'windows-native-interop', 'windows-native-wsl-env-present');
   }
   return supportedWindowsWslProfile('interop', WINDOWS_NATIVE_INTEROP_PROFILE);
+}
+
+function createDeferredMacOSEnvironmentChecks(): MacOSPlatformConformanceCheck[] {
+  const reason = 'r3-08f-macos-environment-deferred';
+  return [
+    deferredMacOSProfile('os', MACOS_DARWIN_PROFILE, reason),
+    deferredMacOSProfile('shell', MACOS_POSIX_SHELL_PROFILE, reason),
+    deferredMacOSProfile('path', MACOS_POSIX_PATH_PROFILE, reason),
+    deferredMacOSProfile('keychain', MACOS_KEYCHAIN_PROFILE, reason),
+    deferredMacOSProfile('browser', MACOS_BROWSER_BRIDGE_PROFILE, reason),
+    deferredMacOSProfile('runtime', MACOS_RUNTIME_PROFILE, reason),
+  ];
+}
+
+function evaluateMacOSOsConformance(profile: PlatformProfile): MacOSPlatformConformanceCheck {
+  if (profile.os === 'darwin') return supportedMacOSProfile('os', MACOS_DARWIN_PROFILE);
+  return deferredMacOSProfile('os', MACOS_DARWIN_PROFILE, 'r3-08f-macos-environment-deferred');
+}
+
+function evaluateMacOSShellConformance(profile: PlatformProfile): MacOSPlatformConformanceCheck {
+  if (profile.shell === 'posix') return supportedMacOSProfile('shell', MACOS_POSIX_SHELL_PROFILE);
+  return unsupportedMacOSProfile('shell', profile.shell, 'macos-requires-posix-shell');
+}
+
+function evaluateMacOSPathConformance(
+  profile: PlatformProfile,
+  workspaceRoot: string | undefined,
+): MacOSPlatformConformanceCheck {
+  if (profile.pathStyle === 'posix' && (!workspaceRoot || isPosixAbsolutePath(workspaceRoot))) {
+    return supportedMacOSProfile('path', MACOS_POSIX_PATH_PROFILE);
+  }
+  return unsupportedMacOSProfile('path', profile.pathStyle, 'macos-requires-posix-paths');
+}
+
+function evaluateMacOSKeychainConformance(
+  input: MacOSPlatformConformanceInput,
+): MacOSPlatformConformanceCheck {
+  const env = input.env ?? {};
+  if (input.keychainAvailable === true || env.DEVSEEK_MACOS_KEYCHAIN === '1') {
+    return supportedMacOSProfile('keychain', MACOS_KEYCHAIN_PROFILE);
+  }
+  if (input.keychainAvailable === false || env.DEVSEEK_MACOS_KEYCHAIN === '0') {
+    return unsupportedMacOSProfile('keychain', MACOS_KEYCHAIN_PROFILE, 'macos-keychain-unavailable');
+  }
+  return deferredMacOSProfile('keychain', MACOS_KEYCHAIN_PROFILE, 'macos-keychain-evidence-deferred');
+}
+
+function evaluateMacOSBrowserConformance(
+  input: MacOSPlatformConformanceInput,
+): MacOSPlatformConformanceCheck {
+  const env = input.env ?? {};
+  if (
+    input.browserBridgeAvailable === true
+    || env.DEVSEEK_MACOS_BROWSER_BRIDGE === '1'
+    || env.DEVSEEK_BROWSER_BRIDGE_URL
+    || env.DEVSEEK_BRIDGE_URL
+    || env.DEVSEEK_DEEPSEEK_BRIDGE_URL
+  ) {
+    return supportedMacOSProfile('browser', MACOS_BROWSER_BRIDGE_PROFILE);
+  }
+  if (input.browserBridgeAvailable === false || env.DEVSEEK_MACOS_BROWSER_BRIDGE === '0') {
+    return unsupportedMacOSProfile('browser', MACOS_BROWSER_BRIDGE_PROFILE, 'macos-browser-bridge-unavailable');
+  }
+  return deferredMacOSProfile('browser', MACOS_BROWSER_BRIDGE_PROFILE, 'macos-browser-bridge-evidence-deferred');
+}
+
+function evaluateMacOSRuntimeConformance(
+  input: MacOSPlatformConformanceInput,
+): MacOSPlatformConformanceCheck {
+  const env = input.env ?? {};
+  const runtimePath = input.runtimePath ?? env.DEVSEEK_MACOS_RUNTIME_PATH;
+  if (runtimePath && !isPosixAbsolutePath(runtimePath)) {
+    return unsupportedMacOSProfile('runtime', MACOS_RUNTIME_PROFILE, 'macos-runtime-requires-posix-path');
+  }
+  if (input.runtimeAvailable === true || env.DEVSEEK_MACOS_RUNTIME === '1' || runtimePath) {
+    return supportedMacOSProfile('runtime', MACOS_RUNTIME_PROFILE);
+  }
+  if (input.runtimeAvailable === false || env.DEVSEEK_MACOS_RUNTIME === '0') {
+    return unsupportedMacOSProfile('runtime', MACOS_RUNTIME_PROFILE, 'macos-runtime-unavailable');
+  }
+  return deferredMacOSProfile('runtime', MACOS_RUNTIME_PROFILE, 'macos-runtime-evidence-deferred');
 }
 
 function isPosixAbsolutePath(value: string): boolean {

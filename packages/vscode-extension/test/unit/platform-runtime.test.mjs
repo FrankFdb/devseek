@@ -359,3 +359,132 @@ test('R3-08E-WINDOWS-WSL-CONFORMANCE reports path line-ending permission interop
   assert.equal(shellFault.supported, false);
   assert.equal(windowsWslCheck(shellFault, 'shell').reason, 'windows-native-requires-powershell-or-cmd');
 });
+
+function macOSCheck(report, kind) {
+  const check = report.checks.find(item => item.kind === kind);
+  assert.ok(check, `missing macOS conformance check: ${kind}`);
+  return check;
+}
+
+test('R3-08F-MACOS-CONFORMANCE defers non-macOS evidence and profiles macOS independently', () => {
+  const linux = runtime.evaluateMacOSPlatformConformance({
+    platform: 'linux',
+    shellPath: '/bin/bash',
+    env: {
+      HOME: '/home/dev',
+      DISPLAY: ':1',
+    },
+    workspaceRoot: '/home/dev/work/devseek',
+    keychainAvailable: true,
+    browserBridgeAvailable: true,
+    runtimeAvailable: true,
+  });
+  const macos = runtime.evaluateMacOSPlatformConformance({
+    platform: 'darwin',
+    shellPath: '/bin/zsh',
+    env: {
+      HOME: '/Users/dev',
+      DEVSEEK_MACOS_KEYCHAIN: '1',
+      DEVSEEK_MACOS_BROWSER_BRIDGE: '1',
+    },
+    workspaceRoot: '/Users/dev/work/devseek',
+    keychainAvailable: true,
+    browserBridgeAvailable: true,
+    runtimeAvailable: true,
+    runtimePath: '/Applications/DevSeek.app/Contents/MacOS/devseek-bridge',
+  });
+
+  assert.equal(linux.id, 'R3-08F-MACOS-CONFORMANCE');
+  assert.equal(linux.supported, false);
+  assert.deepEqual(
+    linux.checks.map(check => check.kind),
+    ['os', 'shell', 'path', 'keychain', 'browser', 'runtime'],
+  );
+  assert.deepEqual(
+    linux.deferred.map(check => check.kind),
+    ['os', 'shell', 'path', 'keychain', 'browser', 'runtime'],
+  );
+  assert.equal(macOSCheck(linux, 'os').reason, 'r3-08f-macos-environment-deferred');
+
+  assert.equal(macos.supported, true);
+  assert.deepEqual(
+    macos.checks.map(check => check.kind),
+    ['os', 'shell', 'path', 'keychain', 'browser', 'runtime'],
+  );
+  assert.equal(macOSCheck(macos, 'os').profile, 'macos-darwin');
+  assert.equal(macOSCheck(macos, 'shell').profile, 'macos-posix-shell');
+  assert.equal(macOSCheck(macos, 'path').profile, 'macos-posix-path');
+  assert.equal(macOSCheck(macos, 'keychain').profile, 'macos-keychain');
+  assert.equal(macOSCheck(macos, 'browser').profile, 'macos-browser-bridge');
+  assert.equal(macOSCheck(macos, 'runtime').profile, 'macos-runtime');
+  assert.deepEqual(macos.unsupported, []);
+  assert.deepEqual(macos.deferred, []);
+});
+
+test('R3-08F-MACOS-CONFORMANCE reports macOS shell path keychain browser and runtime faults separately', () => {
+  const shellFault = runtime.evaluateMacOSPlatformConformance({
+    platform: 'darwin',
+    shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    env: { HOME: '/Users/dev' },
+    workspaceRoot: '/Users/dev/work/devseek',
+    keychainAvailable: true,
+    browserBridgeAvailable: true,
+    runtimeAvailable: true,
+  });
+  const pathFault = runtime.evaluateMacOSPlatformConformance({
+    profile: {
+      os: 'darwin',
+      shell: 'posix',
+      pathStyle: 'windows',
+      lineEnding: 'lf',
+      caseSensitive: false,
+      workspaceKind: 'local',
+    },
+    workspaceRoot: 'C:\\Users\\dev\\work\\devseek',
+    keychainAvailable: true,
+    browserBridgeAvailable: true,
+    runtimeAvailable: true,
+  });
+  const keychainFault = runtime.evaluateMacOSPlatformConformance({
+    platform: 'darwin',
+    shellPath: '/bin/zsh',
+    env: { HOME: '/Users/dev' },
+    workspaceRoot: '/Users/dev/work/devseek',
+    keychainAvailable: false,
+    browserBridgeAvailable: true,
+    runtimeAvailable: true,
+  });
+  const browserDeferred = runtime.evaluateMacOSPlatformConformance({
+    platform: 'darwin',
+    shellPath: '/bin/zsh',
+    env: { HOME: '/Users/dev', DEVSEEK_MACOS_KEYCHAIN: '1' },
+    workspaceRoot: '/Users/dev/work/devseek',
+    keychainAvailable: true,
+    runtimeAvailable: true,
+  });
+  const runtimeFault = runtime.evaluateMacOSPlatformConformance({
+    platform: 'darwin',
+    shellPath: '/bin/zsh',
+    env: {
+      HOME: '/Users/dev',
+      DEVSEEK_MACOS_KEYCHAIN: '1',
+      DEVSEEK_MACOS_BROWSER_BRIDGE: '1',
+    },
+    workspaceRoot: '/Users/dev/work/devseek',
+    keychainAvailable: true,
+    browserBridgeAvailable: true,
+    runtimeAvailable: false,
+  });
+
+  assert.equal(shellFault.supported, false);
+  assert.equal(macOSCheck(shellFault, 'shell').reason, 'macos-requires-posix-shell');
+  assert.equal(pathFault.supported, false);
+  assert.equal(macOSCheck(pathFault, 'path').reason, 'macos-requires-posix-paths');
+  assert.equal(keychainFault.supported, false);
+  assert.equal(macOSCheck(keychainFault, 'keychain').reason, 'macos-keychain-unavailable');
+  assert.equal(browserDeferred.supported, false);
+  assert.equal(macOSCheck(browserDeferred, 'browser').status, 'deferred');
+  assert.equal(macOSCheck(browserDeferred, 'browser').reason, 'macos-browser-bridge-evidence-deferred');
+  assert.equal(runtimeFault.supported, false);
+  assert.equal(macOSCheck(runtimeFault, 'runtime').reason, 'macos-runtime-unavailable');
+});

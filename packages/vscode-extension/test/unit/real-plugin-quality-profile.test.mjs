@@ -369,3 +369,40 @@ test('R3-08E Windows and WSL conformance real plugin scenario adds split platfor
     assert.ok(spec.requiredArtifactSnippets.includes(snippet), `R3-08E must require ${snippet}`);
   }
 });
+
+test('R3-08F macOS conformance real plugin scenario adds deferred platform coverage', () => {
+  const profile = buildRealPluginQualityProfile('r3-08f-macos-conformance');
+  const spec = buildRealPluginScenarioSpec('r3-08f-macos-conformance');
+
+  assert.equal(profile.kind, 'iteration');
+  assert.equal(profile.requireFormalProjectQuality, false);
+  assert.equal(spec.id, 'r3-08f-macos-conformance');
+  assert.equal(spec.changedSurface, 'macos-platform-runtime-conformance');
+  assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
+  assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-08f-macos-conformance.md');
+  assert.match(spec.promptTitle, /R3-08F-MACOS-CONFORMANCE/);
+  assert.deepEqual(spec.semanticAcceptance, [
+    'macOS shell/path/keychain/browser/runtime',
+    'deferred-not-pass',
+    'keychain-browser-runtime-evidence',
+    'path-shell-fault-sequence',
+  ]);
+  for (const snippet of [
+    'R3-08F-MACOS-CONFORMANCE',
+    'evaluateMacOSPlatformConformance',
+    'macos-darwin',
+    'macos-posix-shell',
+    'macos-posix-path',
+    'macos-keychain',
+    'macos-browser-bridge',
+    'macos-runtime',
+    'r3-08f-macos-environment-deferred',
+    'macos-keychain-evidence-deferred',
+    'macos-browser-bridge-evidence-deferred',
+    'macos-runtime-unavailable',
+    'macOS shell/path/keychain/browser/runtime',
+    'not fixed line-count smoke',
+  ]) {
+    assert.ok(spec.requiredArtifactSnippets.includes(snippet), `R3-08F must require ${snippet}`);
+  }
+});

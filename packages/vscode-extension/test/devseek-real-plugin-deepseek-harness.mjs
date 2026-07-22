@@ -363,6 +363,9 @@ function defaultPrompt(root, fixture) {
 
 function createFixtureWorkspace(root, options = {}) {
   const scenarioSpec = buildRealPluginScenarioSpec(options.scenario);
+  if (scenarioSpec.id === 'r3-08f-macos-conformance') {
+    return createR3MacOSConformanceFixture(root, scenarioSpec);
+  }
   if (scenarioSpec.id === 'r3-08e-windows-wsl-conformance') {
     return createR3WindowsWslConformanceFixture(root, scenarioSpec);
   }
@@ -899,6 +902,84 @@ function createR3WindowsWslConformanceFixture(root, scenarioSpec) {
     '- 为什么 windows-native-requires-windows-paths、wsl-requires-posix-paths、windows-native-requires-crlf、wsl-interop-missing 是不同 fault sequence。',
     '- 为什么本轮 R3-08E 不能继承 Linux R3-08D、旧 warranty/Markdown case 或固定文件行数通过。',
     '- 生成文件要包含 Windows native/WSL 覆盖结论、风险、验证建议和用户可检查的证据路径。',
+    '',
+    '报告必须逐字包含以下验收锚点：',
+    anchorLines,
+  ].join('\n');
+
+  return {
+    requestedOutputDoc,
+    expectedArtifactRel: scenarioSpec.expectedArtifactRel,
+    scenarioSpec,
+    defaultPrompt,
+  };
+}
+
+function createR3MacOSConformanceFixture(root, scenarioSpec) {
+  const docsDir = path.join(root, 'docs/r3-iteration');
+  const sourceDir = path.join(root, 'src/macos-platform-conformance');
+  const requestedOutputDoc = path.join(root, scenarioSpec.requestedOutputDocRel);
+  const matrixPath = path.join(docsDir, 'macos-platform-conformance-matrix.md');
+  const contractPath = path.join(sourceDir, 'macos-platform-conformance-contract.ts');
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(path.dirname(requestedOutputDoc), { recursive: true });
+
+  writeText(path.join(root, 'README.md'), [
+    '# DevSeek R3-08F macOS conformance fixture',
+    '',
+    'This workspace is created by the visible real-plugin harness for the current R3 iteration.',
+  ].join('\n'));
+  writeText(matrixPath, [
+    '# R3-08F macOS Platform Conformance Matrix',
+    '',
+    '- Leaf: R3-08F-MACOS-CONFORMANCE.',
+    '- Non-macOS local environment policy: evaluateMacOSPlatformConformance must return supported=false with deferred checks, including r3-08f-macos-environment-deferred, and this must not be counted as pass.',
+    '- Simulated macOS profile: platform=darwin, shell=/bin/zsh, workspaceRoot=/Users/dev/work/devseek, pathStyle=posix, keychainAvailable=true, browserBridgeAvailable=true, runtimePath=/Applications/DevSeek.app/Contents/MacOS/devseek-bridge.',
+    '- Required checks: os, shell, path, keychain, browser, runtime.',
+    '- Acceptance profiles: macos-darwin, macos-posix-shell, macos-posix-path, macos-keychain, macos-browser-bridge, macos-runtime.',
+    '- Fault and deferred sequence: macos-requires-posix-shell, macos-requires-posix-paths, macos-keychain-evidence-deferred, macos-browser-bridge-evidence-deferred, macos-runtime-unavailable.',
+    '- Linux R3-08D evidence and Windows/WSL R3-08E evidence cannot be reused to qualify macOS.',
+    '- Fixed old warranty Markdown and fixed line-count output cannot settle this leaf.',
+  ].join('\n'));
+  writeText(contractPath, [
+    'export const r3Leaf = "R3-08F-MACOS-CONFORMANCE";',
+    'export const owner = "evaluateMacOSPlatformConformance";',
+    'export const changedSurface = "macos-platform-runtime-conformance";',
+    'export const requiredChecks = ["os", "shell", "path", "keychain", "browser", "runtime"] as const;',
+    'export const osProfile = "macos-darwin";',
+    'export const shellProfile = "macos-posix-shell";',
+    'export const pathProfile = "macos-posix-path";',
+    'export const keychainProfile = "macos-keychain";',
+    'export const browserProfile = "macos-browser-bridge";',
+    'export const runtimeProfile = "macos-runtime";',
+    'export const environmentDeferred = "r3-08f-macos-environment-deferred";',
+    'export const keychainDeferred = "macos-keychain-evidence-deferred";',
+    'export const browserDeferred = "macos-browser-bridge-evidence-deferred";',
+    'export const runtimeFault = "macos-runtime-unavailable";',
+    'export const profileScope = "macOS shell/path/keychain/browser/runtime";',
+    'export const deferredConclusion = "deferred-not-pass";',
+    'export const evidenceScope = "keychain-browser-runtime-evidence";',
+    'export const faultScope = "path-shell-fault-sequence";',
+    'export const staleCaseRejected = "not fixed line-count smoke";',
+  ].join('\n'));
+
+  const anchorLines = scenarioSpec.requiredArtifactSnippets
+    .map(snippet => `- ${snippet}`)
+    .join('\n');
+  const defaultPrompt = [
+    `请基于 ${matrixPath} 和 ${contractPath} 创建 Markdown 审计报告。`,
+    `请把报告保存到 ${requestedOutputDoc}。`,
+    `报告主题是 ${scenarioSpec.promptTitle}。`,
+    '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+    '',
+    '报告必须解释：',
+    '- 为什么 R3-08F 必须把 macOS 的 shell/path/keychain/browser/runtime 作为独立 profile/check，而不是继承 Linux 或 Windows/WSL 的结论。',
+    '- 为什么当前非 macOS 本地环境只能给出 r3-08f-macos-environment-deferred，并且 deferred-not-pass 不能作为通过结算。',
+    '- 为什么 macos-keychain、macos-browser-bridge、macos-runtime 必须有明确 evidence，缺失时使用 evidence-deferred 或 runtime fault。',
+    '- 为什么 macos-requires-posix-shell 和 macos-requires-posix-paths 是独立 fault sequence。',
+    '- 为什么本轮 R3-08F 不能继承 R3-08D/R3-08E、旧 warranty/Markdown case 或固定文件行数通过。',
+    '- 生成文件要包含 macOS shell/path/keychain/browser/runtime 覆盖结论、风险、验证建议和用户可检查的证据路径。',
     '',
     '报告必须逐字包含以下验收锚点：',
     anchorLines,
