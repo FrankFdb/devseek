@@ -31,6 +31,7 @@ export const RUN_EVIDENCE_EVENT_TYPES = [
   'run.opened',
   'run.recovered',
   'run.settled',
+  'run.metrics',
   'command.accepted',
   'agent.status',
   'tool.activity',
@@ -60,6 +61,8 @@ export const RUN_EVIDENCE_EVENT_TYPES = [
 ] as const;
 
 export type RunEvidenceEventType = typeof RUN_EVIDENCE_EVENT_TYPES[number];
+export const RUN_METRICS_SCHEMA = 'devseek.run-metrics/v1' as const;
+export const RUN_METRICS_UNKNOWN = 'unknown' as const;
 export type RunEvidenceJson =
   | null
   | boolean
@@ -579,6 +582,10 @@ export function assertRunEvidenceEventObservationContract(
     requireRunEvidenceBoundedText(payload.reason, `${at} reason`, 'RUN_SEMANTIC_INVALID');
     return;
   }
+  if (type === 'run.metrics') {
+    assertRunMetricsPayloadContract(payload, at);
+    return;
+  }
   if (type === 'legacy.imported') {
     if (!hasExactKeys(payload, [
       'correlation_id',
@@ -616,6 +623,103 @@ export function assertRunEvidenceEventObservationContract(
   const expectedStatus = type.slice(type.indexOf('.') + 1);
   if (payload.status !== expectedStatus) observationFailure(`${at} must declare status=${expectedStatus}`);
   if (payload.trust !== RUN_EVIDENCE_RUNTIME_TRUST) observationFailure(`${at} has invalid trust`);
+}
+
+function assertRunMetricsPayloadContract(
+  payload: { [key: string]: RunEvidenceJson },
+  at: string,
+): void {
+  if (!hasExactKeys(payload, [
+    'correlation_id',
+    'trust',
+    'schema',
+    'token',
+    'tool',
+    'latency_ms',
+    'retry',
+    'cost',
+    'evidence_size',
+  ])) observationFailure(`${at} has missing or additional properties`);
+  if (payload.schema !== RUN_METRICS_SCHEMA) observationFailure(`${at} has invalid schema`);
+  if (payload.trust !== RUN_EVIDENCE_RUNTIME_TRUST) observationFailure(`${at} has invalid trust`);
+  requireRunEvidenceBoundedText(payload.correlation_id, `${at} correlation_id`, 'RUN_SEMANTIC_INVALID');
+  assertMetricNumberGroup(payload.token, `${at}.token`, ['input', 'output', 'total'], true);
+  assertMetricNumberGroup(payload.tool, `${at}.tool`, ['calls', 'successes', 'failures'], true);
+  assertMetricNumberGroup(payload.latency_ms, `${at}.latency_ms`, ['provider', 'tool', 'total'], false);
+  assertMetricNumberGroup(payload.retry, `${at}.retry`, ['provider', 'tool', 'total'], true);
+  assertMetricCost(payload.cost, `${at}.cost`);
+  assertMetricNumberGroup(payload.evidence_size, `${at}.evidence_size`, ['refs', 'bytes'], true);
+  assertRunMetricsContainsNoContent(payload, at);
+}
+
+function assertMetricNumberGroup(
+  value: RunEvidenceJson,
+  at: string,
+  keys: readonly string[],
+  integer: boolean,
+): void {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    observationFailure(`${at} requires an object`);
+  }
+  const group = value as Record<string, RunEvidenceJson>;
+  if (!hasExactKeys(group, keys)) observationFailure(`${at} has missing or additional properties`);
+  for (const key of keys) {
+    assertMetricNumber(group[key], `${at}.${key}`, integer);
+  }
+}
+
+function assertMetricCost(value: RunEvidenceJson, at: string): void {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    observationFailure(`${at} requires an object`);
+  }
+  const cost = value as Record<string, RunEvidenceJson>;
+  if (!hasExactKeys(cost, ['currency', 'amount_micros'])) {
+    observationFailure(`${at} has missing or additional properties`);
+  }
+  if (cost.currency !== RUN_METRICS_UNKNOWN) {
+    if (typeof cost.currency !== 'string' || !/^[A-Z]{3}$/.test(cost.currency)) {
+      observationFailure(`${at}.currency must be ISO-4217 text or unknown`);
+    }
+  }
+  assertMetricNumber(cost.amount_micros, `${at}.amount_micros`, true);
+}
+
+function assertMetricNumber(value: RunEvidenceJson, at: string, integer: boolean): void {
+  if (value === RUN_METRICS_UNKNOWN) return;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    observationFailure(`${at} must be a non-negative number or unknown`);
+  }
+  if (integer && !Number.isSafeInteger(value)) {
+    observationFailure(`${at} must be a non-negative integer or unknown`);
+  }
+}
+
+function assertRunMetricsContainsNoContent(value: RunEvidenceJson, path: string): void {
+  if (!value || typeof value !== 'object') return;
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertRunMetricsContainsNoContent(item, `${path}[${index}]`));
+    return;
+  }
+  for (const [key, nested] of Object.entries(value)) {
+    const normalized = key.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    if (
+      normalized === 'content'
+      || normalized === 'contents'
+      || normalized === 'prompt'
+      || normalized === 'message'
+      || normalized === 'messages'
+      || normalized === 'secret'
+      || normalized === 'apikey'
+      || normalized === 'password'
+      || normalized === 'authorization'
+      || normalized === 'cookie'
+      || normalized === 'raw'
+      || normalized === 'text'
+    ) {
+      observationFailure(`${path} cannot carry content or secret field ${key}`);
+    }
+    assertRunMetricsContainsNoContent(nested, `${path}.${key}`);
+  }
 }
 
 function isRunEvidenceLifecycleObservation(type: RunEvidenceEventType): boolean {

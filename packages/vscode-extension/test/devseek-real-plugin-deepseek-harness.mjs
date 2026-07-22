@@ -363,6 +363,9 @@ function defaultPrompt(root, fixture) {
 
 function createFixtureWorkspace(root, options = {}) {
   const scenarioSpec = buildRealPluginScenarioSpec(options.scenario);
+  if (scenarioSpec.id === 'r3-09a-run-metrics-schema') {
+    return createR3RunMetricsSchemaFixture(root, scenarioSpec);
+  }
   if (scenarioSpec.id === 'r3-08f-macos-conformance') {
     return createR3MacOSConformanceFixture(root, scenarioSpec);
   }
@@ -980,6 +983,79 @@ function createR3MacOSConformanceFixture(root, scenarioSpec) {
     '- 为什么 macos-requires-posix-shell 和 macos-requires-posix-paths 是独立 fault sequence。',
     '- 为什么本轮 R3-08F 不能继承 R3-08D/R3-08E、旧 warranty/Markdown case 或固定文件行数通过。',
     '- 生成文件要包含 macOS shell/path/keychain/browser/runtime 覆盖结论、风险、验证建议和用户可检查的证据路径。',
+    '',
+    '报告必须逐字包含以下验收锚点：',
+    anchorLines,
+  ].join('\n');
+
+  return {
+    requestedOutputDoc,
+    expectedArtifactRel: scenarioSpec.expectedArtifactRel,
+    scenarioSpec,
+    defaultPrompt,
+  };
+}
+
+function createR3RunMetricsSchemaFixture(root, scenarioSpec) {
+  const docsDir = path.join(root, 'docs/r3-iteration');
+  const sourceDir = path.join(root, 'src/run-evidence-metrics');
+  const requestedOutputDoc = path.join(root, scenarioSpec.requestedOutputDocRel);
+  const matrixPath = path.join(docsDir, 'run-metrics-schema-matrix.md');
+  const contractPath = path.join(sourceDir, 'run-metrics-schema-contract.ts');
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(path.dirname(requestedOutputDoc), { recursive: true });
+
+  writeText(path.join(root, 'README.md'), [
+    '# DevSeek R3-09A run metrics schema fixture',
+    '',
+    'This workspace is created by the visible real-plugin harness for the current R3 iteration.',
+  ].join('\n'));
+  writeText(matrixPath, [
+    '# R3-09A Run Metrics Schema Matrix',
+    '',
+    '- Leaf: R3-09A-RUN-METRICS-SCHEMA.',
+    '- Owner boundary: ProductRunEvidenceSession.recordRunMetrics writes one append-only run.metrics event into the product run evidence ledger.',
+    '- Schema: devseek.run-metrics/v1.',
+    '- Required metrics denominator: token/tool/latency/retry/cost/evidence-size.',
+    '- Missing numeric metrics must be explicit unknown-not-omitted values, never absent fields.',
+    '- Durable payload keys: token, tool, latency_ms, retry, cost, evidence_size.',
+    '- Cost uses cost.amount_micros and currency; evidence-size uses evidence_size.refs and evidence_size.bytes.',
+    '- Metrics are content-secret-free: raw prompts, messages, responses, file contents, cookies, auth headers, API keys, and secrets are forbidden.',
+    '- Fixed old warranty Markdown and fixed line-count output cannot settle this leaf.',
+  ].join('\n'));
+  writeText(contractPath, [
+    'export const r3Leaf = "R3-09A-RUN-METRICS-SCHEMA";',
+    'export const owner = "ProductRunEvidenceSession.recordRunMetrics";',
+    'export const changedSurface = "run-evidence-metrics-schema";',
+    'export const eventType = "run.metrics";',
+    'export const schema = "devseek.run-metrics/v1";',
+    'export const denominator = "token/tool/latency/retry/cost/evidence-size";',
+    'export const appendOnly = "append-only evidence";',
+    'export const missingPolicy = "unknown-not-omitted";',
+    'export const secrecyPolicy = "content-secret-free";',
+    'export const payloadKeys = ["token", "tool", "latency_ms", "retry", "cost", "evidence_size"] as const;',
+    'export const costAmount = "cost.amount_micros";',
+    'export const evidenceSize = "evidence_size";',
+    'export const staleCaseRejected = "not fixed line-count smoke";',
+  ].join('\n'));
+
+  const anchorLines = scenarioSpec.requiredArtifactSnippets
+    .map(snippet => `- ${snippet}`)
+    .join('\n');
+  const defaultPrompt = [
+    `请基于 ${matrixPath} 和 ${contractPath} 创建 Markdown 审计报告。`,
+    `请把报告保存到 ${requestedOutputDoc}。`,
+    `报告主题是 ${scenarioSpec.promptTitle}。`,
+    '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+    '',
+    '报告必须解释：',
+    '- 为什么 R3-09A 必须通过 ProductRunEvidenceSession.recordRunMetrics 写入 append-only evidence，而不是另建 telemetry/service。',
+    '- 为什么 run.metrics 必须使用 devseek.run-metrics/v1 schema，并覆盖 token/tool/latency/retry/cost/evidence-size。',
+    '- 为什么缺失值必须使用 unknown-not-omitted，不能省略字段或用 0 冒充未知。',
+    '- 为什么 metrics 必须 content-secret-free，不能持久化 prompt、messages、responses、文件内容、cookie、auth header、API key 或 secret。',
+    '- 为什么固定旧 case、固定文件行数、旧 warranty Markdown 或只看 release smoke 不能结算本轮。',
+    '- 生成文件要包含 schema 结论、风险、验证建议和用户可检查的证据路径。',
     '',
     '报告必须逐字包含以下验收锚点：',
     anchorLines,

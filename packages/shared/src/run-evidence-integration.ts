@@ -14,6 +14,8 @@ import {
   RUN_EVIDENCE_AUTHORITY_TOKEN_BYTES,
   RUN_EVIDENCE_AUTHORITY_TOKEN_PREFIX,
   RUN_EVIDENCE_LEGACY_TRUST,
+  RUN_METRICS_SCHEMA,
+  RUN_METRICS_UNKNOWN,
   RUN_EVIDENCE_RUNTIME_TRUST,
   RUN_EVIDENCE_TEXT_MAX_LENGTH,
   type RunEvidenceAppendResult,
@@ -71,6 +73,41 @@ export interface LegacyEvidenceImportInput {
   recordCount: number;
   projection: RunEvidenceJson;
   importedAt?: string | Date;
+}
+
+type ProductRunMetricValue = number | typeof RUN_METRICS_UNKNOWN;
+
+export interface ProductRunMetricsInput {
+  idempotencyKey?: string;
+  occurredAt?: string | Date;
+  token?: {
+    input?: ProductRunMetricValue;
+    output?: ProductRunMetricValue;
+    total?: ProductRunMetricValue;
+  };
+  tool?: {
+    calls?: ProductRunMetricValue;
+    successes?: ProductRunMetricValue;
+    failures?: ProductRunMetricValue;
+  };
+  latencyMs?: {
+    provider?: ProductRunMetricValue;
+    tool?: ProductRunMetricValue;
+    total?: ProductRunMetricValue;
+  };
+  retry?: {
+    provider?: ProductRunMetricValue;
+    tool?: ProductRunMetricValue;
+    total?: ProductRunMetricValue;
+  };
+  cost?: {
+    currency?: string | typeof RUN_METRICS_UNKNOWN;
+    amountMicros?: ProductRunMetricValue;
+  };
+  evidenceSize?: {
+    refs?: ProductRunMetricValue;
+    bytes?: ProductRunMetricValue;
+  };
 }
 
 /**
@@ -176,6 +213,24 @@ export class ProductRunEvidenceSession {
       }
     }
     throw new RunEvidenceLedgerError('APPEND_CONFLICT', 'Run evidence append retry budget was exhausted');
+  }
+
+  recordRunMetrics(input: ProductRunMetricsInput = {}): RunEvidenceAppendResult {
+    const value = snapshotRunEvidenceInputObject(input, 'Product run metrics input must be an object');
+    const payload = normalizeProductRunMetricsPayload(value);
+    const idempotencyKey = value.idempotencyKey === undefined
+      ? productRunEvidenceIdempotencyKey('run-metrics', {
+          runId: this.runId,
+          payload,
+          eventCount: this.ledger.read(this.runId).length,
+        })
+      : requireContractText(value.idempotencyKey, 'idempotencyKey');
+    return this.record({
+      type: 'run.metrics',
+      idempotencyKey,
+      occurredAt: value.occurredAt as string | Date | undefined,
+      payload,
+    });
   }
 
   importLegacy(input: LegacyEvidenceImportInput): RunEvidenceAppendResult {
@@ -420,6 +475,85 @@ function normalizeAttemptCount(value: unknown): number {
     throw new RunEvidenceLedgerError('INVALID_INPUT', 'maxAppendAttempts must be an integer from 1 to 1000');
   }
   return value;
+}
+
+function normalizeProductRunMetricsPayload(input: Record<string, unknown>): RunEvidenceJson {
+  assertAllowedMetricKeys(input, [
+    'idempotencyKey',
+    'occurredAt',
+    'token',
+    'tool',
+    'latencyMs',
+    'retry',
+    'cost',
+    'evidenceSize',
+  ], 'run metrics');
+  return {
+    schema: RUN_METRICS_SCHEMA,
+    trust: PRODUCT_RUNTIME_OBSERVATION_TRUST,
+    token: normalizeMetricNumberGroup(input.token, 'token', ['input', 'output', 'total'], true),
+    tool: normalizeMetricNumberGroup(input.tool, 'tool', ['calls', 'successes', 'failures'], true),
+    latency_ms: normalizeMetricNumberGroup(input.latencyMs, 'latencyMs', ['provider', 'tool', 'total'], false),
+    retry: normalizeMetricNumberGroup(input.retry, 'retry', ['provider', 'tool', 'total'], true),
+    cost: normalizeMetricCost(input.cost),
+    evidence_size: normalizeMetricNumberGroup(input.evidenceSize, 'evidenceSize', ['refs', 'bytes'], true),
+  };
+}
+
+function normalizeMetricNumberGroup(
+  value: unknown,
+  name: string,
+  keys: readonly string[],
+  integer: boolean,
+): Record<string, ProductRunMetricValue> {
+  const group = value === undefined
+    ? {}
+    : snapshotRunEvidenceInputObject(value, `${name} metrics must be an object`);
+  assertAllowedMetricKeys(group, keys, name);
+  return Object.fromEntries(keys.map(key => [
+    key,
+    normalizeMetricNumber(group[key], `${name}.${key}`, integer),
+  ]));
+}
+
+function normalizeMetricCost(value: unknown): { currency: string; amount_micros: ProductRunMetricValue } {
+  const cost = value === undefined
+    ? {}
+    : snapshotRunEvidenceInputObject(value, 'cost metrics must be an object');
+  assertAllowedMetricKeys(cost, ['currency', 'amountMicros'], 'cost');
+  const currency = cost.currency === undefined || cost.currency === RUN_METRICS_UNKNOWN
+    ? RUN_METRICS_UNKNOWN
+    : requireContractText(cost.currency, 'cost.currency').toUpperCase();
+  if (currency !== RUN_METRICS_UNKNOWN && !/^[A-Z]{3}$/.test(currency)) {
+    throw new RunEvidenceLedgerError('INVALID_INPUT', 'cost.currency must be ISO-4217 text or unknown');
+  }
+  return {
+    currency,
+    amount_micros: normalizeMetricNumber(cost.amountMicros, 'cost.amountMicros', true),
+  };
+}
+
+function normalizeMetricNumber(value: unknown, name: string, integer: boolean): ProductRunMetricValue {
+  if (value === undefined || value === RUN_METRICS_UNKNOWN) return RUN_METRICS_UNKNOWN;
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new RunEvidenceLedgerError('INVALID_INPUT', `${name} must be a non-negative number or unknown`);
+  }
+  if (integer && !Number.isSafeInteger(value)) {
+    throw new RunEvidenceLedgerError('INVALID_INPUT', `${name} must be a non-negative integer or unknown`);
+  }
+  return value;
+}
+
+function assertAllowedMetricKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+  context: string,
+): void {
+  const allowedSet = new Set(allowed);
+  for (const key of Object.keys(value)) {
+    if (allowedSet.has(key)) continue;
+    throw new RunEvidenceLedgerError('INVALID_INPUT', `run metrics cannot carry ${key} in ${context}`);
+  }
 }
 
 function requireText(value: unknown, name: string): string {

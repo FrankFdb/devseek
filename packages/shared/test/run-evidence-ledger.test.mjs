@@ -178,6 +178,19 @@ function taxonomySequence(type, index) {
 }
 
 function contractPayload(type, index = 0) {
+  if (type === 'run.metrics') {
+    return {
+      schema: 'devseek.run-metrics/v1',
+      trust: 'product-runtime-observation',
+      correlation_id: 'taxonomy-run',
+      token: { input: index, output: 'unknown', total: index },
+      tool: { calls: index, successes: index, failures: 0 },
+      latency_ms: { provider: index * 10, tool: 'unknown', total: index * 20 },
+      retry: { provider: 0, tool: 0, total: 0 },
+      cost: { currency: 'unknown', amount_micros: 'unknown' },
+      evidence_size: { refs: index, bytes: index * 100 },
+    };
+  }
   if (type === 'evidence.degraded') {
     return { status: 'degraded', trust: 'product-runtime-observation', reason: `degraded:${index}` };
   }

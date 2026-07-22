@@ -406,3 +406,37 @@ test('R3-08F macOS conformance real plugin scenario adds deferred platform cover
     assert.ok(spec.requiredArtifactSnippets.includes(snippet), `R3-08F must require ${snippet}`);
   }
 });
+
+test('R3-09A run metrics schema real plugin scenario adds append-only metrics coverage', () => {
+  const profile = buildRealPluginQualityProfile('r3-09a-run-metrics-schema');
+  const spec = buildRealPluginScenarioSpec('r3-09a-run-metrics-schema');
+
+  assert.equal(profile.kind, 'iteration');
+  assert.equal(profile.requireFormalProjectQuality, false);
+  assert.equal(spec.id, 'r3-09a-run-metrics-schema');
+  assert.equal(spec.changedSurface, 'run-evidence-metrics-schema');
+  assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
+  assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-09a-run-metrics-schema.md');
+  assert.match(spec.promptTitle, /R3-09A-RUN-METRICS-SCHEMA/);
+  assert.deepEqual(spec.semanticAcceptance, [
+    'append-only evidence',
+    'token/tool/latency/retry/cost/evidence-size',
+    'unknown-not-omitted',
+    'content-secret-free',
+  ]);
+  for (const snippet of [
+    'R3-09A-RUN-METRICS-SCHEMA',
+    'ProductRunEvidenceSession.recordRunMetrics',
+    'run.metrics',
+    'devseek.run-metrics/v1',
+    'token/tool/latency/retry/cost/evidence-size',
+    'append-only evidence',
+    'unknown-not-omitted',
+    'content-secret-free',
+    'evidence_size',
+    'cost.amount_micros',
+    'not fixed line-count smoke',
+  ]) {
+    assert.ok(spec.requiredArtifactSnippets.includes(snippet), `R3-09A must require ${snippet}`);
+  }
+});

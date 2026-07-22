@@ -330,6 +330,42 @@ const R3_08F_MACOS_CONFORMANCE_SPEC = Object.freeze({
   rejectFixedLineCountOnly: true,
 });
 
+const R3_09A_RUN_METRICS_SCHEMA_SPEC = Object.freeze({
+  id: 'r3-09a-run-metrics-schema',
+  kind: 'iteration',
+  minimumMarkdownBytes: 1250,
+  minimumMarkdownLines: 32,
+  minimumMarkdownHeadings: 5,
+  requireFormalProjectQuality: false,
+  promptTitle: 'R3-09A-RUN-METRICS-SCHEMA append-only observability metrics audit',
+  deliveryMode: 'markdown-file-deliverable',
+  requestedOutputDocRel: 'docs/r3-iteration/r3-09a-run-metrics-schema.md',
+  expectedArtifactRel: 'docs/r3-iteration/r3-09a-run-metrics-schema.md',
+  requiredArtifactSnippets: Object.freeze([
+    'R3-09A-RUN-METRICS-SCHEMA',
+    'ProductRunEvidenceSession.recordRunMetrics',
+    'run.metrics',
+    'devseek.run-metrics/v1',
+    'token/tool/latency/retry/cost/evidence-size',
+    'append-only evidence',
+    'unknown-not-omitted',
+    'content-secret-free',
+    'evidence_size',
+    'cost.amount_micros',
+    ...FRESH_R3_CASE_REJECTION,
+  ]),
+  forbiddenArtifactSnippets: R3_07G_STALE_DOMAIN_SNIPPETS,
+  changedSurface: 'run-evidence-metrics-schema',
+  freshCaseMarker: 'R3-09A-RUN-METRICS-SCHEMA',
+  semanticAcceptance: Object.freeze([
+    'append-only evidence',
+    'token/tool/latency/retry/cost/evidence-size',
+    'unknown-not-omitted',
+    'content-secret-free',
+  ]),
+  rejectFixedLineCountOnly: true,
+});
+
 function createR3KindAggregateSpec(input) {
   const profileKind = input.profileKind;
   const marker = `R3-07G-${profileKind}-AGGREGATE`;
@@ -430,6 +466,7 @@ export function listRealPluginIterationScenarioSpecs() {
     R3_08D_LINUX_CONFORMANCE_SPEC,
     R3_08E_WINDOWS_WSL_CONFORMANCE_SPEC,
     R3_08F_MACOS_CONFORMANCE_SPEC,
+    R3_09A_RUN_METRICS_SCHEMA_SPEC,
   ].map((spec) => buildRealPluginScenarioSpec(spec.id));
 }
 
@@ -442,6 +479,7 @@ export function parseRequiredArtifactSnippets(value) {
 
 function lookupScenarioSpec(value) {
   const scenario = normalizeScenario(value);
+  if (scenario === R3_09A_RUN_METRICS_SCHEMA_SPEC.id) return R3_09A_RUN_METRICS_SCHEMA_SPEC;
   if (scenario === R3_08F_MACOS_CONFORMANCE_SPEC.id) return R3_08F_MACOS_CONFORMANCE_SPEC;
   if (scenario === R3_08E_WINDOWS_WSL_CONFORMANCE_SPEC.id) return R3_08E_WINDOWS_WSL_CONFORMANCE_SPEC;
   if (scenario === R3_08D_LINUX_CONFORMANCE_SPEC.id) return R3_08D_LINUX_CONFORMANCE_SPEC;

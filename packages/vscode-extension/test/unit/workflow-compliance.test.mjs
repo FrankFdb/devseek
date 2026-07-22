@@ -2398,6 +2398,14 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(profile, 'macos-runtime', 'R3-08F artifact gate must assert runtime coverage');
   assertContains(profile, 'r3-08f-macos-environment-deferred', 'R3-08F artifact gate must assert deferred non-macOS evidence');
   assertContains(profile, 'macos-browser-bridge-evidence-deferred', 'R3-08F artifact gate must assert browser evidence deferral');
+  assertContains(profile, 'r3-09a-run-metrics-schema', 'R3-09A must add a fresh run metrics schema real-plugin scenario');
+  assertContains(profile, 'r3-09a-run-metrics-schema.md', 'R3-09A scenario must write a distinct artifact');
+  assertContains(profile, 'ProductRunEvidenceSession.recordRunMetrics', 'R3-09A artifact gate must assert the run evidence session owner');
+  assertContains(profile, 'run.metrics', 'R3-09A artifact gate must assert the append-only metrics event');
+  assertContains(profile, 'devseek.run-metrics/v1', 'R3-09A artifact gate must assert the metrics schema protocol');
+  assertContains(profile, 'token/tool/latency/retry/cost/evidence-size', 'R3-09A artifact gate must assert the full metrics denominator');
+  assertContains(profile, 'unknown-not-omitted', 'R3-09A artifact gate must assert explicit unknown metrics');
+  assertContains(profile, 'content-secret-free', 'R3-09A artifact gate must assert no contents or secrets in metrics');
   assertContains(harness, 'createR3KindAggregateFixture', 'real harness must share the R3 kind aggregate fixture instead of duplicating skill/hook setup');
   assertContains(harness, 'createR3RequiredKindsAggregateFixture', 'real harness must add the R3-07H required-kinds fixture');
   assertContains(harness, 'createR3VSCodeCollaborationFixture', 'real harness must add the R3-08A VS Code collaboration fixture');
@@ -2405,11 +2413,13 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(harness, 'createR3LinuxConformanceFixture', 'real harness must add the R3-08D Linux conformance fixture');
   assertContains(harness, 'createR3WindowsWslConformanceFixture', 'real harness must add the R3-08E Windows/WSL conformance fixture');
   assertContains(harness, 'createR3MacOSConformanceFixture', 'real harness must add the R3-08F macOS conformance fixture');
+  assertContains(harness, 'createR3RunMetricsSchemaFixture', 'real harness must add the R3-09A run metrics schema fixture');
   assertContains(harness, 'webview-accessibility-surface-contract.ts', 'R3-08C fixture must expose an accessibility contract instead of only prompt text');
   assertContains(harness, 'vscode-surface-adapter-collaboration-contract.ts', 'R3-08A fixture must expose a source contract instead of only prompt text');
   assertContains(harness, 'linux-platform-conformance-contract.ts', 'R3-08D fixture must expose a platform conformance contract instead of only prompt text');
   assertContains(harness, 'windows-wsl-platform-conformance-contract.ts', 'R3-08E fixture must expose a Windows/WSL conformance contract instead of only prompt text');
   assertContains(harness, 'macos-platform-conformance-contract.ts', 'R3-08F fixture must expose a macOS conformance contract instead of only prompt text');
+  assertContains(harness, 'run-metrics-schema-contract.ts', 'R3-09A fixture must expose a run metrics schema contract instead of only prompt text');
   assertContains(harness, 'R3_KIND_AGGREGATE_FIXTURE_DETAILS', 'real harness must keep R3 kind fixture data table-driven');
   assert.ok(
     harness.indexOf('const R3_KIND_AGGREGATE_FIXTURE_DETAILS') < harness.indexOf('const fixture = usesExistingWorkspace'),

@@ -570,6 +570,101 @@ test('evidence.degraded requires a trusted reason and vetoes completed settlemen
   );
 });
 
+test('R3-09A-RUN-METRICS-SCHEMA records append-only metrics with explicit unknowns', t => {
+  const workspaceRoot = tempWorkspace(t);
+  const authority = authoritySet();
+  const session = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId: 'r3-09a-run-metrics',
+    surface: 'vscode',
+    authority: authority.ownerOpen,
+    openIfMissing: true,
+  });
+
+  const first = session.recordRunMetrics({
+    token: { input: 120, total: 190 },
+    tool: { calls: 3, successes: 2, failures: 1 },
+    latencyMs: { provider: 512, total: 900 },
+    retry: { provider: 1, total: 1 },
+    cost: { currency: 'USD' },
+    evidenceSize: { refs: 4, bytes: 2048 },
+  });
+  const second = session.recordRunMetrics({
+    idempotencyKey: 'metrics:second',
+    token: { input: 121, output: 70, total: 191 },
+    tool: { calls: 4, successes: 4, failures: 0 },
+    latencyMs: { provider: 600, tool: 40, total: 1000 },
+    retry: { provider: 0, tool: 0, total: 0 },
+    cost: { amountMicros: 17 },
+    evidenceSize: { refs: 5, bytes: 4096 },
+  });
+
+  assert.equal(first.event.type, 'run.metrics');
+  assert.equal(first.event.sequence, 2);
+  assert.equal(second.event.sequence, 3);
+  assert.deepEqual(session.readEvents().map(event => event.type), ['run.opened', 'run.metrics', 'run.metrics']);
+  assert.equal(first.event.payload.schema, 'devseek.run-metrics/v1');
+  assert.equal(first.event.payload.trust, PRODUCT_RUNTIME_OBSERVATION_TRUST);
+  assert.deepEqual(first.event.payload.token, { input: 120, output: 'unknown', total: 190 });
+  assert.deepEqual(first.event.payload.latency_ms, { provider: 512, tool: 'unknown', total: 900 });
+  assert.deepEqual(first.event.payload.cost, { currency: 'USD', amount_micros: 'unknown' });
+  assert.deepEqual(first.event.payload.evidence_size, { refs: 4, bytes: 2048 });
+  assert.equal(JSON.stringify(first.event.payload).includes('prompt'), false);
+  assert.equal(JSON.stringify(first.event.payload).includes('content'), false);
+  assert.equal(session.verify().valid, true);
+});
+
+test('R3-09A-RUN-METRICS-SCHEMA rejects contents secrets and incomplete raw metrics payloads', t => {
+  const workspaceRoot = tempWorkspace(t);
+  const authority = authoritySet();
+  const session = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId: 'r3-09a-run-metrics-rejects-content',
+    surface: 'vscode',
+    authority: authority.ownerOpen,
+    openIfMissing: true,
+  });
+
+  assert.throws(
+    () => session.recordRunMetrics({
+      prompt: 'copy this raw user prompt into metrics',
+      token: { input: 1 },
+    }),
+    error => error?.code === 'INVALID_INPUT' && /run metrics cannot carry prompt/.test(error.message),
+  );
+  assert.throws(
+    () => session.record({
+      type: 'run.metrics',
+      idempotencyKey: 'metrics:raw:missing-dimensions',
+      payload: {
+        schema: 'devseek.run-metrics/v1',
+        trust: PRODUCT_RUNTIME_OBSERVATION_TRUST,
+        token: { input: 1, output: 'unknown', total: 1 },
+      },
+    }),
+    error => error?.code === 'RUN_SEMANTIC_INVALID',
+  );
+  assert.throws(
+    () => session.record({
+      type: 'run.metrics',
+      idempotencyKey: 'metrics:raw:content-leak',
+      payload: {
+        schema: 'devseek.run-metrics/v1',
+        trust: PRODUCT_RUNTIME_OBSERVATION_TRUST,
+        token: { input: 1, output: 'unknown', total: 1 },
+        tool: { calls: 'unknown', successes: 'unknown', failures: 'unknown' },
+        latency_ms: { provider: 'unknown', tool: 'unknown', total: 'unknown' },
+        retry: { provider: 'unknown', tool: 'unknown', total: 'unknown' },
+        cost: { currency: 'unknown', amount_micros: 'unknown' },
+        evidence_size: { refs: 'unknown', bytes: 'unknown' },
+        content: 'raw assistant response',
+      },
+    }),
+    error => error?.code === 'RUN_SEMANTIC_INVALID',
+  );
+  assert.deepEqual(session.readEvents().map(event => event.type), ['run.opened']);
+});
+
 test('bounded recovery can explicitly resolve an adverse terminal and permit completed settlement', t => {
   const workspaceRoot = tempWorkspace(t);
   const authority = authoritySet();
