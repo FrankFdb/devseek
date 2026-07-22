@@ -1170,7 +1170,7 @@ test('R3-07S-skill-PERMISSION-FAULT-008: skill trigger selection must be token b
   const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
 
   assertContains(sharedEnhancements, 'skillTriggerMatchesPrompt', 'R3-07S-skill-PERMISSION-FAULT-008 must keep trigger matching in SkillDiscoveryService');
-  assertContains(sharedEnhancements, '[^A-Za-z0-9_]', 'R3-07S-skill-PERMISSION-FAULT-008 must use token-bounded ASCII trigger matching');
+  assertContains(sharedEnhancements, 'SKILL_TRIGGER_WORD_BOUNDARY_PATTERN', 'R3-07S-skill-PERMISSION-FAULT-008 must use token-bounded trigger matching');
   assertContains(sharedEnhancements, 'escapeRegExp', 'R3-07S-skill-PERMISSION-FAULT-008 must escape skill trigger metadata before matching');
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-008 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-008 must have substring trigger oracle');
 });
@@ -1401,6 +1401,15 @@ test('R3-07S-skill-PERMISSION-FAULT-035: plain body paragraphs stop Skill metada
 
   assertContains(sharedEnhancements, 'isSkillMetadataHeaderLine', 'R3-07S-skill-PERMISSION-FAULT-035 must keep plain paragraph boundary ownership in skillMetadataLines');
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-035 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-035 must have plain paragraph metadata oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-036: non-ASCII triggers require token boundaries', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_TRIGGER_WORD_BOUNDARY_PATTERN', 'R3-07S-skill-PERMISSION-FAULT-036 must keep Unicode trigger boundary ownership in SkillDiscoveryService');
+  assertContains(sharedEnhancements, '\\\\p{L}\\\\p{N}_', 'R3-07S-skill-PERMISSION-FAULT-036 must not match non-ASCII triggers by raw substring includes');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-036 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-036 must have non-ASCII substring trigger oracle');
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

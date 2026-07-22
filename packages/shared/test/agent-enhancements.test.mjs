@@ -1771,6 +1771,25 @@ function createPlainParagraphBodyMetadataDeniedEditSkillReceipt() {
   ]);
 }
 
+function createNonAsciiSubstringTriggerDeniedEditSkillReceipt() {
+  return new SkillDiscoveryService().planExecution({
+    prompt: '请修改深度学习组件',
+    candidates: [
+      {
+        path: 'skills/reference/SKILL.md',
+        content: [
+          '# Reference',
+          '',
+          'description: Generic helper',
+          'triggers: 深度',
+          'tool_kinds: read',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read', 'edit'],
+  });
+}
+
 function createClosedFrontmatterBodyMetadataDeniedEditSkillReceipt() {
   return createReferenceDeniedEditSkillReceipt([
     '---',
@@ -2802,6 +2821,51 @@ test('R3-07S-skill-PERMISSION-FAULT-035 ExtensionProfilePlanService rejects plai
   assert.deepEqual(receipt.permissionFaultRefs, []);
   assert.deepEqual(receipt.effectRefs, []);
   assert.deepEqual(receipt.receiptRefs, []);
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-036 ExtensionProfilePlanService rejects non-ASCII substring trigger permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '3636363636363636363636363636363636363636',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createNonAsciiSubstringTriggerDeniedEditSkillReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-036',
+    attemptId: 'skill-permission-fault-036-non-ascii-substring-trigger',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(childReceipt.loadedSkills.length, 0);
+  assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
+  assert.deepEqual(childReceipt.evidenceRefs, []);
+  assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-036'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+
+  const exactTriggerReceipt = new SkillDiscoveryService().planExecution({
+    prompt: '请使用 深度 技能检查组件',
+    candidates: [
+      {
+        path: 'skills/reference/SKILL.md',
+        content: [
+          '# Reference',
+          '',
+          'description: Generic helper',
+          'triggers: 深度',
+          'tool_kinds: read',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
+  assert.equal(exactTriggerReceipt.loadedSkills.length, 1);
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {

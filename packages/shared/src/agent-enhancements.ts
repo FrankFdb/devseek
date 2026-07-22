@@ -1901,6 +1901,7 @@ const SKILL_INFERRED_TRIGGER_STOP_WORDS = new Set([
   'write',
   'writes',
 ]);
+const SKILL_TRIGGER_WORD_BOUNDARY_PATTERN = '\\p{L}\\p{N}_';
 
 function splitSkillTriggerTokens(value: string): string[] {
   return value.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [];
@@ -1973,11 +1974,11 @@ function skillTriggerMatchesPrompt(prompt: string, trigger: string): boolean {
   const normalizedPrompt = String(prompt).toLowerCase();
   const normalizedTrigger = String(trigger).trim().toLowerCase();
   if (!normalizedTrigger) return false;
-  if (!/^[\x00-\x7F]+$/u.test(normalizedTrigger)) {
-    return normalizedPrompt.includes(normalizedTrigger);
-  }
   const escapedTrigger = escapeRegExp(normalizedTrigger).replace(/\s+/gu, '\\s+');
-  return new RegExp(`(?:^|[^A-Za-z0-9_])${escapedTrigger}(?=$|[^A-Za-z0-9_])`, 'u').test(normalizedPrompt);
+  return new RegExp(
+    `(?:^|[^${SKILL_TRIGGER_WORD_BOUNDARY_PATTERN}])${escapedTrigger}(?=$|[^${SKILL_TRIGGER_WORD_BOUNDARY_PATTERN}])`,
+    'u',
+  ).test(normalizedPrompt);
 }
 
 function escapeRegExp(value: string): string {
