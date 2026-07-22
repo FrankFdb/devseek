@@ -1543,6 +1543,14 @@ test('R3-07S-skill-PERMISSION-FAULT-052: Markdown emphasis bodies cannot infer S
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-052 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-052 must have Markdown emphasis inferred-trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-053: Markdown bare URL bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BARE_URL_MARKER', 'R3-07S-skill-PERMISSION-FAULT-053 must keep Markdown bare URL body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-053 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-053 must have Markdown bare URL inferred-trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

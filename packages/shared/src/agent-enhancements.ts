@@ -686,6 +686,7 @@ const SKILL_METADATA_MARKDOWN_LIST_MARKER = /^(?:[-*+]|\d+[.)])\s+\S/u;
 const SKILL_METADATA_MARKDOWN_TABLE_ROW_MARKER = /^\|.*\|$/u;
 const SKILL_METADATA_MARKDOWN_LINK_MARKER = /^!?\[[^\]\r\n]+\](?:(?:\([^)]+\))|(?:\[[^\]\r\n]*\])|(?::\s*\S))/u;
 const SKILL_METADATA_MARKDOWN_AUTOLINK_MARKER = /^<(?:[a-z][a-z0-9+.-]{1,31}:[^\s<>]*|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})>$/iu;
+const SKILL_METADATA_MARKDOWN_BARE_URL_MARKER = /^(?:(?:https?|ftp):\/\/|www\.)\S+$/iu;
 const SKILL_METADATA_MARKDOWN_HEADING = /^#{1,6}\s+\S/u;
 const SKILL_METADATA_TITLE_HEADING = /^#\s+\S/u;
 const SKILL_METADATA_HEADER_LINE = /^(?:description|triggers|input_schema|inputSchema|schema|tool_kinds|toolKinds|tools|can_complete|canComplete|completion_claims|completionClaims)\s*:/iu;
@@ -795,6 +796,10 @@ function skillMetadataLines(content: string): string[] {
       continue;
     }
     if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_AUTOLINK_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_BARE_URL_MARKER.test(metadataTrimmed)) {
       insideBodySection = true;
       continue;
     }
