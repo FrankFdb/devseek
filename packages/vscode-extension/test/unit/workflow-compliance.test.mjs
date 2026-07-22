@@ -1519,6 +1519,14 @@ test('R3-07S-skill-PERMISSION-FAULT-049: Markdown definition list bodies cannot 
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-049 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-049 must have Markdown definition-list inferred-trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-050: Markdown indented code bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_INDENTED_CODE_MARKER', 'R3-07S-skill-PERMISSION-FAULT-050 must keep Markdown indented-code body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-050 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-050 must have Markdown indented-code inferred-trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
