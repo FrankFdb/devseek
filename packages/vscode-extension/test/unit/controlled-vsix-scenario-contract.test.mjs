@@ -43,8 +43,14 @@ test('controlled VSIX harness selects product run terminal instead of pending-ed
 
 test('real plugin VSIX harness selects product run terminal instead of pending-edit resolution noise', () => {
   const source = readFileSync(realPluginHarnessPath, 'utf8');
+  const selectHelperMatches = source.match(/function selectProductRunLog\(logs\)/g) || [];
+  const helperIndex = source.indexOf('function selectProductRunLog(logs)');
+  const driverWriterIndex = source.indexOf('function writeDriverExtension()');
 
   assert.match(source, /function isProductRunTerminalEvent\(/, 'real plugin harness must classify product run terminal events in the driver');
+  assert.equal(selectHelperMatches.length, 1, 'real plugin harness must keep one source owner for product-run selection');
+  assert.ok(helperIndex >= 0 && helperIndex < driverWriterIndex, 'product-run selection helper must be callable by outer replay reporting');
+  assert.match(source, /\$\{productRunLogSelectionSource\(\)\}/, 'real plugin driver must inject the shared product-run selection helper');
   assert.match(source, /const selected = selectProductRunLog\(logs\)\?\.absolutePath/, 'real plugin harness replay must reuse the product-run selection helper');
   assert.doesNotMatch(source, /selectProductRunLogForReplay/, 'real plugin harness must not fork replay-only terminal selection');
   assert.match(source, /mutationKind\s*!==\s*'pending-edit-resolution'/, 'pending-edit resolution runs must not replace the real plugin terminal run');

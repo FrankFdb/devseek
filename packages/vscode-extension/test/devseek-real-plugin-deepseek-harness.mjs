@@ -226,6 +226,27 @@ function failEarly(message) {
   process.exit(2);
 }
 
+function isProductRunTerminalEvent(terminal) {
+  const data = terminal && terminal.data ? terminal.data : {};
+  return Boolean(terminal)
+    && (terminal.event === 'agent-run-completed' || terminal.event === 'agent-run-failed')
+    && data.mutationKind !== 'pending-edit-resolution'
+    && data.mutationKind !== 'pending-edit-undo';
+}
+
+function selectProductRunLog(logs) {
+  return logs.find((log) => isProductRunTerminalEvent(log.terminal))
+    || logs.find((log) => log.terminal)
+    || null;
+}
+
+function productRunLogSelectionSource() {
+  return [
+    isProductRunTerminalEvent.toString(),
+    selectProductRunLog.toString(),
+  ].join('\n\n');
+}
+
 function defaultPrompt(root, fixture) {
   return [
     '原来实现的吊运维保功能：设计文档+代码',
@@ -1037,19 +1058,7 @@ function parseRunLogStartedAtMs(name) {
   ).getTime();
 }
 
-function isProductRunTerminalEvent(terminal) {
-  const data = terminal && terminal.data ? terminal.data : {};
-  return Boolean(terminal)
-    && (terminal.event === 'agent-run-completed' || terminal.event === 'agent-run-failed')
-    && data.mutationKind !== 'pending-edit-resolution'
-    && data.mutationKind !== 'pending-edit-undo';
-}
-
-function selectProductRunLog(logs) {
-  return logs.find((log) => isProductRunTerminalEvent(log.terminal))
-    || logs.find((log) => log.terminal)
-    || null;
-}
+${productRunLogSelectionSource()}
 
 function collectRunLogs(startedAtMs) {
   const runDir = path.join(workspaceDir, '.devseek', 'runs');
