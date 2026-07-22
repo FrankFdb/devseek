@@ -136,3 +136,104 @@ test('PlatformRuntimeAdapter fails closed for unknown OS or shell before command
     /Unsupported platform runtime profile: os=unknown/,
   );
 });
+
+function linuxCheck(report, kind) {
+  const check = report.checks.find(item => item.kind === kind);
+  assert.ok(check, `missing Linux conformance check: ${kind}`);
+  return check;
+}
+
+test('R3-08D-LINUX-CONFORMANCE profiles native and container shell path storage browser bridge independently', () => {
+  const native = runtime.evaluateLinuxPlatformConformance({
+    platform: 'linux',
+    shellPath: '/usr/bin/bash',
+    env: {
+      HOME: '/home/dev',
+      XDG_RUNTIME_DIR: '/run/user/1000',
+      DISPLAY: ':1',
+    },
+    workspaceRoot: '/home/dev/work/devseek',
+    bridgeExecutableMode: 0o755,
+  });
+  const container = runtime.evaluateLinuxPlatformConformance({
+    platform: 'linux',
+    shellPath: '/bin/sh',
+    env: {
+      HOME: '/home/node',
+      DEVCONTAINER: '1',
+      DEVSEEK_BROWSER_BRIDGE_URL: 'http://127.0.0.1:3721',
+    },
+    workspaceRoot: '/workspaces/devseek',
+    canExecuteBridge: true,
+  });
+
+  assert.equal(native.id, 'R3-08D-LINUX-CONFORMANCE');
+  assert.equal(native.supported, true);
+  assert.deepEqual(
+    native.checks.map(check => check.kind),
+    ['os', 'shell', 'path', 'storage', 'browser-bridge', 'permissions'],
+  );
+  assert.equal(linuxCheck(native, 'storage').profile, 'linux-local-xdg');
+  assert.equal(linuxCheck(native, 'browser-bridge').profile, 'display-server');
+  assert.equal(linuxCheck(native, 'permissions').profile, 'bridge-executable');
+
+  assert.equal(container.supported, true);
+  assert.equal(container.profile.workspaceKind, 'container');
+  assert.equal(linuxCheck(container, 'storage').profile, 'linux-container-xdg');
+  assert.equal(linuxCheck(container, 'browser-bridge').profile, 'external-bridge-url');
+});
+
+test('R3-08D-LINUX-CONFORMANCE reports path storage browser permission and shell fault sequence separately', () => {
+  const pathFault = runtime.evaluateLinuxPlatformConformance({
+    profile: {
+      os: 'linux',
+      shell: 'posix',
+      pathStyle: 'windows',
+      lineEnding: 'crlf',
+      caseSensitive: false,
+      workspaceKind: 'local',
+    },
+    env: { HOME: '/home/dev', DISPLAY: ':1' },
+    workspaceRoot: 'C:\\devseek',
+    canExecuteBridge: true,
+  });
+  const storageFault = runtime.evaluateLinuxPlatformConformance({
+    platform: 'linux',
+    shellPath: '/bin/bash',
+    env: { DISPLAY: ':1' },
+    workspaceRoot: '/home/dev/devseek',
+    canExecuteBridge: true,
+  });
+  const browserFault = runtime.evaluateLinuxPlatformConformance({
+    platform: 'linux',
+    shellPath: '/bin/bash',
+    env: { HOME: '/home/dev' },
+    workspaceRoot: '/home/dev/devseek',
+    canExecuteBridge: true,
+  });
+  const permissionFault = runtime.evaluateLinuxPlatformConformance({
+    platform: 'linux',
+    shellPath: '/bin/bash',
+    env: { HOME: '/home/dev', DISPLAY: ':1' },
+    workspaceRoot: '/home/dev/devseek',
+    bridgeExecutableMode: 0o644,
+  });
+  const shellFault = runtime.evaluateLinuxPlatformConformance({
+    platform: 'linux',
+    shellPath: '/opt/custom-shell',
+    env: { HOME: '/home/dev', DISPLAY: ':1' },
+    workspaceRoot: '/home/dev/devseek',
+    canExecuteBridge: true,
+  });
+
+  assert.equal(pathFault.supported, false);
+  assert.equal(linuxCheck(pathFault, 'path').reason, 'linux-requires-posix-lf-case-sensitive-paths');
+  assert.equal(storageFault.supported, false);
+  assert.equal(linuxCheck(storageFault, 'storage').reason, 'linux-storage-home-missing');
+  assert.equal(browserFault.supported, false);
+  assert.equal(linuxCheck(browserFault, 'browser-bridge').reason, 'linux-browser-bridge-unreachable');
+  assert.equal(permissionFault.supported, false);
+  assert.equal(linuxCheck(permissionFault, 'permissions').reason, 'bridge-executable-not-executable');
+  assert.equal(shellFault.supported, false);
+  assert.equal(linuxCheck(shellFault, 'shell').reason, 'linux-requires-posix-shell');
+});

@@ -363,6 +363,9 @@ function defaultPrompt(root, fixture) {
 
 function createFixtureWorkspace(root, options = {}) {
   const scenarioSpec = buildRealPluginScenarioSpec(options.scenario);
+  if (scenarioSpec.id === 'r3-08d-linux-conformance') {
+    return createR3LinuxConformanceFixture(root, scenarioSpec);
+  }
   if (scenarioSpec.id === 'r3-08c-accessibility') {
     return createR3AccessibilityFixture(root, scenarioSpec);
   }
@@ -747,6 +750,78 @@ function createR3AccessibilityFixture(root, scenarioSpec) {
     '- 为什么 aria-label、aria-expanded、aria-pressed、tabindex="0" 与焦点路径必须覆盖真实用户操作，而不是只看 DOM fixture 或固定行数。',
     '- 为什么本次 R3-08C 必须用 accessibility 专属 case 验收，不能继承旧 warranty/Markdown 或 R3-08A collaboration case。',
     '- 生成文件要包含 checklist 100% 覆盖情况、风险、验证建议和用户可检查的证据路径。',
+    '',
+    '报告必须逐字包含以下验收锚点：',
+    anchorLines,
+  ].join('\n');
+
+  return {
+    requestedOutputDoc,
+    expectedArtifactRel: scenarioSpec.expectedArtifactRel,
+    scenarioSpec,
+    defaultPrompt,
+  };
+}
+
+function createR3LinuxConformanceFixture(root, scenarioSpec) {
+  const docsDir = path.join(root, 'docs/r3-iteration');
+  const sourceDir = path.join(root, 'src/linux-platform-conformance');
+  const requestedOutputDoc = path.join(root, scenarioSpec.requestedOutputDocRel);
+  const matrixPath = path.join(docsDir, 'linux-platform-conformance-matrix.md');
+  const contractPath = path.join(sourceDir, 'linux-platform-conformance-contract.ts');
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(path.dirname(requestedOutputDoc), { recursive: true });
+
+  writeText(path.join(root, 'README.md'), [
+    '# DevSeek R3-08D Linux conformance fixture',
+    '',
+    'This workspace is created by the visible real-plugin harness for the current R3 iteration.',
+  ].join('\n'));
+  writeText(matrixPath, [
+    '# R3-08D Linux Platform Conformance Matrix',
+    '',
+    '- Leaf: R3-08D-LINUX-CONFORMANCE.',
+    '- Native Linux profile: HOME=/home/dev, DISPLAY=:1, XDG_RUNTIME_DIR=/run/user/1000, workspaceRoot=/home/dev/work/devseek, bridgeExecutableMode=0755.',
+    '- Container Linux profile: DEVCONTAINER=1, HOME=/home/node, DEVSEEK_BROWSER_BRIDGE_URL=http://127.0.0.1:3721, workspaceRoot=/workspaces/devseek, canExecuteBridge=true.',
+    '- Required checks: os, shell, path, storage, browser-bridge, permissions.',
+    '- Storage acceptance: linux-local-xdg and linux-container-xdg must be independent from shell/path acceptance.',
+    '- Browser bridge acceptance: display-server and external-bridge-url must be separate from login success.',
+    '- Fault sequence: linux-browser-bridge-unreachable, bridge-executable-not-executable, and linux-requires-posix-lf-case-sensitive-paths must fail independently.',
+    '- Fixed old warranty Markdown and fixed line-count output cannot settle this leaf.',
+  ].join('\n'));
+  writeText(contractPath, [
+    'export const r3Leaf = "R3-08D-LINUX-CONFORMANCE";',
+    'export const owner = "evaluateLinuxPlatformConformance";',
+    'export const changedSurface = "linux-platform-runtime-conformance";',
+    'export const requiredChecks = ["os", "shell", "path", "storage", "browser-bridge", "permissions"] as const;',
+    'export const nativeStorageProfile = "linux-local-xdg";',
+    'export const containerStorageProfile = "linux-container-xdg";',
+    'export const nativeBrowserBridge = "display-server";',
+    'export const containerBrowserBridge = "external-bridge-url";',
+    'export const browserFault = "linux-browser-bridge-unreachable";',
+    'export const permissionFault = "bridge-executable-not-executable";',
+    'export const pathFault = "linux-requires-posix-lf-case-sensitive-paths";',
+    'export const profileScope = "native/container";',
+    'export const staleCaseRejected = "not fixed line-count smoke";',
+  ].join('\n'));
+
+  const anchorLines = scenarioSpec.requiredArtifactSnippets
+    .map(snippet => `- ${snippet}`)
+    .join('\n');
+  const defaultPrompt = [
+    `请基于 ${matrixPath} 和 ${contractPath} 创建 Markdown 审计报告。`,
+    `请把报告保存到 ${requestedOutputDoc}。`,
+    `报告主题是 ${scenarioSpec.promptTitle}。`,
+    '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+    '',
+    '报告必须解释：',
+    '- 为什么 R3-08D 必须把 Linux native/container 作为独立 platform profile，而不是从通用 POSIX shell 测试外推。',
+    '- 为什么 shell/path/storage/browser bridge/permissions 必须分别形成 conformance check，任一失败都不能被其他绿色 check 盖掉。',
+    '- 为什么 browser bridge 的 display-server 与 external-bridge-url 只是可达性前置，不等同于 DeepSeek 登录或真实 Provider 资格。',
+    '- 为什么 linux-browser-bridge-unreachable、bridge-executable-not-executable、linux-requires-posix-lf-case-sensitive-paths 是不同 fault sequence。',
+    '- 为什么本轮 R3-08D 不能继承旧 warranty/Markdown case 或固定文件行数通过。',
+    '- 生成文件要包含 native/container 覆盖结论、风险、验证建议和用户可检查的证据路径。',
     '',
     '报告必须逐字包含以下验收锚点：',
     anchorLines,

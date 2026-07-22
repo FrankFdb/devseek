@@ -2367,12 +2367,24 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(profile, 'screen-reader-live-status', 'R3-08C artifact gate must assert screen-reader status coverage');
   assertContains(profile, 'focusable-action-surfaces', 'R3-08C artifact gate must assert focusable action surfaces');
   assertContains(profile, 'status-not-color-only', 'R3-08C artifact gate must assert non-color-only status');
+  assertContains(profile, 'r3-08d-linux-conformance', 'R3-08D must add a fresh Linux conformance real-plugin scenario');
+  assertContains(profile, 'r3-08d-linux-conformance.md', 'R3-08D scenario must write a distinct artifact');
+  assertContains(profile, 'evaluateLinuxPlatformConformance', 'R3-08D artifact gate must assert the platform-runtime owner');
+  assertContains(profile, 'linux-local-xdg', 'R3-08D artifact gate must assert native Linux storage coverage');
+  assertContains(profile, 'linux-container-xdg', 'R3-08D artifact gate must assert container Linux storage coverage');
+  assertContains(profile, 'display-server', 'R3-08D artifact gate must assert native browser bridge reachability');
+  assertContains(profile, 'external-bridge-url', 'R3-08D artifact gate must assert container browser bridge reachability');
+  assertContains(profile, 'linux-browser-bridge-unreachable', 'R3-08D artifact gate must assert browser bridge fault evidence');
+  assertContains(profile, 'bridge-executable-not-executable', 'R3-08D artifact gate must assert bridge permission fault evidence');
+  assertContains(profile, 'linux-requires-posix-lf-case-sensitive-paths', 'R3-08D artifact gate must assert Linux path fault evidence');
   assertContains(harness, 'createR3KindAggregateFixture', 'real harness must share the R3 kind aggregate fixture instead of duplicating skill/hook setup');
   assertContains(harness, 'createR3RequiredKindsAggregateFixture', 'real harness must add the R3-07H required-kinds fixture');
   assertContains(harness, 'createR3VSCodeCollaborationFixture', 'real harness must add the R3-08A VS Code collaboration fixture');
   assertContains(harness, 'createR3AccessibilityFixture', 'real harness must add the R3-08C accessibility fixture');
+  assertContains(harness, 'createR3LinuxConformanceFixture', 'real harness must add the R3-08D Linux conformance fixture');
   assertContains(harness, 'webview-accessibility-surface-contract.ts', 'R3-08C fixture must expose an accessibility contract instead of only prompt text');
   assertContains(harness, 'vscode-surface-adapter-collaboration-contract.ts', 'R3-08A fixture must expose a source contract instead of only prompt text');
+  assertContains(harness, 'linux-platform-conformance-contract.ts', 'R3-08D fixture must expose a platform conformance contract instead of only prompt text');
   assertContains(harness, 'R3_KIND_AGGREGATE_FIXTURE_DETAILS', 'real harness must keep R3 kind fixture data table-driven');
   assert.ok(
     harness.indexOf('const R3_KIND_AGGREGATE_FIXTURE_DETAILS') < harness.indexOf('const fixture = usesExistingWorkspace'),
@@ -2490,6 +2502,25 @@ test('R3-08C-ACCESSIBILITY: WebView surfaces expose keyboard and screen-reader s
   assertContains(accessibilityTest, 'R3-08C WebView accessibility surfaces expose keyboard, focus, and screen-reader status', 'R3-08C must keep a failure-first accessibility oracle');
   assertContains(accessibilityTest, 'tabindex="0"', 'R3-08C oracle must guard keyboard focusability');
   assertContains(accessibilityTest, 'aria-label', 'R3-08C oracle must guard screen-reader labels');
+});
+
+test('R3-08D-LINUX-CONFORMANCE: platform runtime exposes independent Linux conformance gates', () => {
+  const platformRuntime = src('../shared/src/platform-runtime.ts');
+  const platformRuntimeTest = src('test/unit/platform-runtime.test.mjs');
+
+  assertContains(platformRuntime, 'evaluateLinuxPlatformConformance', 'R3-08D must keep the conformance evaluator in the platform-runtime owner');
+  assertContains(platformRuntime, 'R3-08D-LINUX-CONFORMANCE', 'R3-08D report must expose the exact leaf id');
+  assertContains(platformRuntime, "'browser-bridge'", 'R3-08D must include browser bridge as an independent check');
+  assertContains(platformRuntime, "'permissions'", 'R3-08D must include bridge executable permissions as an independent check');
+  assertContains(platformRuntime, 'linux-local-xdg', 'R3-08D must recognize native Linux XDG storage');
+  assertContains(platformRuntime, 'linux-container-xdg', 'R3-08D must recognize container Linux XDG storage');
+  assertContains(platformRuntime, 'linux-browser-bridge-unreachable', 'R3-08D must fail closed when browser bridge reachability is absent');
+  assertContains(platformRuntime, 'bridge-executable-not-executable', 'R3-08D must fail closed when Bridge executable permission is absent');
+  assertContains(platformRuntime, 'linux-requires-posix-lf-case-sensitive-paths', 'R3-08D must reject Windows/CRLF/case-insensitive Linux path profiles');
+  assertContains(platformRuntime, 'DEVSEEK_BROWSER_BRIDGE_URL', 'R3-08D container browser bridge must have an external bridge signal');
+
+  assertContains(platformRuntimeTest, 'profiles native and container shell path storage browser bridge independently', 'R3-08D must keep a native/container green oracle');
+  assertContains(platformRuntimeTest, 'reports path storage browser permission and shell fault sequence separately', 'R3-08D must keep a fault-sequence oracle');
 });
 
 test('Real DeepSeek harness: headed user-window runs can be retained for inspection', () => {

@@ -53,6 +53,37 @@ export interface PlatformRuntimeProfileEvaluation {
   readonly unsupported: readonly PlatformAdapterProfile[];
 }
 
+export type LinuxPlatformConformanceCheckKind =
+  | PlatformAdapterProfileKind
+  | 'browser-bridge'
+  | 'permissions';
+
+export interface LinuxPlatformConformanceInput extends PlatformRuntimeInput {
+  readonly profile?: PlatformProfile;
+  readonly workspaceRoot?: string;
+  readonly storageRoot?: string;
+  readonly bridgeExecutableMode?: number;
+  readonly canExecuteBridge?: boolean;
+}
+
+export interface LinuxPlatformConformanceCheck {
+  readonly kind: LinuxPlatformConformanceCheckKind;
+  readonly profile: string;
+  readonly status: PlatformAdapterProfileStatus;
+  readonly reason?: string;
+}
+
+export interface LinuxPlatformConformanceReport {
+  readonly id: 'R3-08D-LINUX-CONFORMANCE';
+  readonly profile: PlatformProfile;
+  readonly supported: boolean;
+  readonly checks: readonly LinuxPlatformConformanceCheck[];
+  readonly unsupported: readonly LinuxPlatformConformanceCheck[];
+}
+
+const LINUX_LOCAL_XDG_PROFILE = 'linux-local-xdg';
+const LINUX_CONTAINER_XDG_PROFILE = 'linux-container-xdg';
+
 export class PlatformRuntimeProfileError extends Error {
   readonly code = 'UNSUPPORTED_PLATFORM_PROFILE';
 
@@ -98,6 +129,28 @@ export function evaluatePlatformRuntimeProfile(profile: PlatformProfile): Platfo
   };
 }
 
+export function evaluateLinuxPlatformConformance(
+  input: LinuxPlatformConformanceInput = {},
+): LinuxPlatformConformanceReport {
+  const profile = input.profile ?? detectPlatformProfile(input);
+  const checks: LinuxPlatformConformanceCheck[] = [
+    evaluateLinuxOsConformance(profile),
+    evaluateLinuxShellConformance(profile),
+    evaluateLinuxPathConformance(profile, input.workspaceRoot),
+    evaluateLinuxStorageConformance(profile, input),
+    evaluateLinuxBrowserBridgeConformance(input),
+    evaluateLinuxBridgePermissionConformance(input),
+  ];
+  const unsupported = checks.filter(check => check.status === 'unsupported');
+  return {
+    id: 'R3-08D-LINUX-CONFORMANCE',
+    profile,
+    supported: unsupported.length === 0,
+    checks,
+    unsupported,
+  };
+}
+
 export function assertPlatformRuntimeProfileSupported(profile: PlatformProfile): void {
   const evaluation = evaluatePlatformRuntimeProfile(profile);
   if (!evaluation.supported) {
@@ -133,6 +186,21 @@ function unsupportedProfile(
   return { kind, profile, status: 'unsupported', reason };
 }
 
+function supportedLinuxProfile(
+  kind: LinuxPlatformConformanceCheckKind,
+  profile: string,
+): LinuxPlatformConformanceCheck {
+  return { kind, profile, status: 'supported' };
+}
+
+function unsupportedLinuxProfile(
+  kind: LinuxPlatformConformanceCheckKind,
+  profile: string,
+  reason: string,
+): LinuxPlatformConformanceCheck {
+  return { kind, profile, status: 'unsupported', reason };
+}
+
 function evaluatePathProfile(profile: PlatformProfile): PlatformAdapterProfile {
   if (profile.os === 'win32' && profile.workspaceKind !== 'wsl' && profile.pathStyle !== 'windows') {
     return unsupportedProfile('path', profile.pathStyle, 'win32-local-requires-windows-paths');
@@ -144,6 +212,95 @@ function evaluatePathProfile(profile: PlatformProfile): PlatformAdapterProfile {
     return unsupportedProfile('path', profile.pathStyle, 'wsl-requires-posix-paths');
   }
   return supportedProfile('path', profile.pathStyle);
+}
+
+function evaluateLinuxOsConformance(profile: PlatformProfile): LinuxPlatformConformanceCheck {
+  if (profile.os === 'linux') return supportedLinuxProfile('os', profile.os);
+  return unsupportedLinuxProfile('os', profile.os, 'r3-08d-linux-only');
+}
+
+function evaluateLinuxShellConformance(profile: PlatformProfile): LinuxPlatformConformanceCheck {
+  if (profile.shell === 'posix') return supportedLinuxProfile('shell', profile.shell);
+  return unsupportedLinuxProfile('shell', profile.shell, 'linux-requires-posix-shell');
+}
+
+function evaluateLinuxPathConformance(
+  profile: PlatformProfile,
+  workspaceRoot: string | undefined,
+): LinuxPlatformConformanceCheck {
+  const workspaceRootOk = !workspaceRoot || isPosixAbsolutePath(workspaceRoot);
+  if (
+    profile.pathStyle === 'posix'
+    && profile.lineEnding === 'lf'
+    && profile.caseSensitive
+    && workspaceRootOk
+  ) {
+    return supportedLinuxProfile('path', 'linux-posix-lf-case-sensitive');
+  }
+  return unsupportedLinuxProfile('path', profile.pathStyle, 'linux-requires-posix-lf-case-sensitive-paths');
+}
+
+function evaluateLinuxStorageConformance(
+  profile: PlatformProfile,
+  input: LinuxPlatformConformanceInput,
+): LinuxPlatformConformanceCheck {
+  const env = input.env ?? {};
+  if (profile.workspaceKind !== 'local' && profile.workspaceKind !== 'container') {
+    return unsupportedLinuxProfile('storage', profile.workspaceKind, 'linux-storage-workspace-kind-deferred');
+  }
+  const home = env.HOME;
+  if (!home || !isPosixAbsolutePath(home)) {
+    return unsupportedLinuxProfile('storage', 'linux-storage', 'linux-storage-home-missing');
+  }
+  const storageRoot = input.storageRoot
+    ?? env.XDG_STATE_HOME
+    ?? env.XDG_CONFIG_HOME
+    ?? `${home}/.config/devseek`;
+  if (!isPosixAbsolutePath(storageRoot)) {
+    return unsupportedLinuxProfile('storage', 'linux-storage', 'linux-storage-root-not-posix-absolute');
+  }
+  return supportedLinuxProfile(
+    'storage',
+    profile.workspaceKind === 'container' ? LINUX_CONTAINER_XDG_PROFILE : LINUX_LOCAL_XDG_PROFILE,
+  );
+}
+
+function evaluateLinuxBrowserBridgeConformance(
+  input: LinuxPlatformConformanceInput,
+): LinuxPlatformConformanceCheck {
+  const env = input.env ?? {};
+  if (
+    env.DEVSEEK_BROWSER_BRIDGE_URL
+    || env.DEVSEEK_BRIDGE_URL
+    || env.DEVSEEK_DEEPSEEK_BRIDGE_URL
+    || env.DEVSEEK_BRIDGE_PORT
+  ) {
+    return supportedLinuxProfile('browser-bridge', 'external-bridge-url');
+  }
+  if (env.DISPLAY || env.WAYLAND_DISPLAY) {
+    return supportedLinuxProfile('browser-bridge', 'display-server');
+  }
+  return unsupportedLinuxProfile('browser-bridge', 'linux-browser-bridge', 'linux-browser-bridge-unreachable');
+}
+
+function evaluateLinuxBridgePermissionConformance(
+  input: LinuxPlatformConformanceInput,
+): LinuxPlatformConformanceCheck {
+  if (input.canExecuteBridge === true) return supportedLinuxProfile('permissions', 'bridge-executable');
+  if (input.canExecuteBridge === false) {
+    return unsupportedLinuxProfile('permissions', 'bridge-executable', 'bridge-executable-not-executable');
+  }
+  if (typeof input.bridgeExecutableMode === 'number' && Number.isFinite(input.bridgeExecutableMode)) {
+    if ((input.bridgeExecutableMode & 0o111) !== 0) {
+      return supportedLinuxProfile('permissions', 'bridge-executable');
+    }
+    return unsupportedLinuxProfile('permissions', 'bridge-executable', 'bridge-executable-not-executable');
+  }
+  return unsupportedLinuxProfile('permissions', 'bridge-executable', 'bridge-executable-permission-unknown');
+}
+
+function isPosixAbsolutePath(value: string): boolean {
+  return value.startsWith('/') && !value.includes('\\') && !/^[a-zA-Z]:/.test(value);
 }
 
 function formatUnsupportedAdapters(unsupported: readonly PlatformAdapterProfile[]): string {

@@ -218,6 +218,42 @@ const R3_08C_ACCESSIBILITY_SPEC = Object.freeze({
   rejectFixedLineCountOnly: true,
 });
 
+const R3_08D_LINUX_CONFORMANCE_SPEC = Object.freeze({
+  id: 'r3-08d-linux-conformance',
+  kind: 'iteration',
+  minimumMarkdownBytes: 1200,
+  minimumMarkdownLines: 30,
+  minimumMarkdownHeadings: 5,
+  requireFormalProjectQuality: false,
+  promptTitle: 'R3-08D-LINUX-CONFORMANCE native/container platform profile audit',
+  deliveryMode: 'markdown-file-deliverable',
+  requestedOutputDocRel: 'docs/r3-iteration/r3-08d-linux-conformance.md',
+  expectedArtifactRel: 'docs/r3-iteration/r3-08d-linux-conformance.md',
+  requiredArtifactSnippets: Object.freeze([
+    'R3-08D-LINUX-CONFORMANCE',
+    'evaluateLinuxPlatformConformance',
+    'linux-local-xdg',
+    'linux-container-xdg',
+    'display-server',
+    'external-bridge-url',
+    'linux-browser-bridge-unreachable',
+    'bridge-executable-not-executable',
+    'linux-requires-posix-lf-case-sensitive-paths',
+    'native/container',
+    ...FRESH_R3_CASE_REJECTION,
+  ]),
+  forbiddenArtifactSnippets: R3_07G_STALE_DOMAIN_SNIPPETS,
+  changedSurface: 'linux-platform-runtime-conformance',
+  freshCaseMarker: 'R3-08D-LINUX-CONFORMANCE',
+  semanticAcceptance: Object.freeze([
+    'native/container',
+    'shell-path-storage-browser-bridge',
+    'permission-fault-sequence',
+    'path-fault-sequence',
+  ]),
+  rejectFixedLineCountOnly: true,
+});
+
 function createR3KindAggregateSpec(input) {
   const profileKind = input.profileKind;
   const marker = `R3-07G-${profileKind}-AGGREGATE`;
@@ -315,6 +351,7 @@ export function listRealPluginIterationScenarioSpecs() {
     R3_07H_REQUIRED_KINDS_AGGREGATE_SPEC,
     R3_08A_VSCODE_COLLABORATION_SPEC,
     R3_08C_ACCESSIBILITY_SPEC,
+    R3_08D_LINUX_CONFORMANCE_SPEC,
   ].map((spec) => buildRealPluginScenarioSpec(spec.id));
 }
 
@@ -327,6 +364,7 @@ export function parseRequiredArtifactSnippets(value) {
 
 function lookupScenarioSpec(value) {
   const scenario = normalizeScenario(value);
+  if (scenario === R3_08D_LINUX_CONFORMANCE_SPEC.id) return R3_08D_LINUX_CONFORMANCE_SPEC;
   if (scenario === R3_08C_ACCESSIBILITY_SPEC.id) return R3_08C_ACCESSIBILITY_SPEC;
   if (scenario === R3_08A_VSCODE_COLLABORATION_SPEC.id) return R3_08A_VSCODE_COLLABORATION_SPEC;
   if (scenario === R3_07H_REQUIRED_KINDS_AGGREGATE_SPEC.id) return R3_07H_REQUIRED_KINDS_AGGREGATE_SPEC;

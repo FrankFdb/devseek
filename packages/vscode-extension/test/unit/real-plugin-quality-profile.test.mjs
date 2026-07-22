@@ -300,3 +300,37 @@ test('R3-08C accessibility real plugin scenario adds keyboard and screen-reader 
     assert.ok(spec.requiredArtifactSnippets.includes(snippet), `R3-08C must require ${snippet}`);
   }
 });
+
+test('R3-08D Linux conformance real plugin scenario adds native and container platform coverage', () => {
+  const profile = buildRealPluginQualityProfile('r3-08d-linux-conformance');
+  const spec = buildRealPluginScenarioSpec('r3-08d-linux-conformance');
+
+  assert.equal(profile.kind, 'iteration');
+  assert.equal(profile.requireFormalProjectQuality, false);
+  assert.equal(spec.id, 'r3-08d-linux-conformance');
+  assert.equal(spec.changedSurface, 'linux-platform-runtime-conformance');
+  assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
+  assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-08d-linux-conformance.md');
+  assert.match(spec.promptTitle, /R3-08D-LINUX-CONFORMANCE/);
+  assert.deepEqual(spec.semanticAcceptance, [
+    'native/container',
+    'shell-path-storage-browser-bridge',
+    'permission-fault-sequence',
+    'path-fault-sequence',
+  ]);
+  for (const snippet of [
+    'R3-08D-LINUX-CONFORMANCE',
+    'evaluateLinuxPlatformConformance',
+    'linux-local-xdg',
+    'linux-container-xdg',
+    'display-server',
+    'external-bridge-url',
+    'linux-browser-bridge-unreachable',
+    'bridge-executable-not-executable',
+    'linux-requires-posix-lf-case-sensitive-paths',
+    'native/container',
+    'not fixed line-count smoke',
+  ]) {
+    assert.ok(spec.requiredArtifactSnippets.includes(snippet), `R3-08D must require ${snippet}`);
+  }
+});
