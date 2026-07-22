@@ -517,6 +517,11 @@ function isRequestedMarkdownDedupeTarget(targetPath: string, requestedTargetPath
   return index >= 1 && index <= 50;
 }
 
+function isRequestedFileMutationTarget(targetPath: string, requestedTargets: Set<string>): boolean {
+  if (requestedTargets.has(targetPath)) return true;
+  return [...requestedTargets].some(requested => isRequestedMarkdownDedupeTarget(targetPath, requested));
+}
+
 export interface ArtifactWriteIntentClassification {
   requested: boolean;
   prohibited: boolean;
@@ -633,8 +638,7 @@ export function authorizeMarkdownArtifactWrite(input: {
   const allowedTargets = new Set(requestedTargets.flatMap(requested => (
     [resolveRequestedFileTarget(requested, input.workspaceRoot)]
   )));
-  const targetAllowed = allowedTargets.has(target)
-    || [...allowedTargets].some(requested => isRequestedMarkdownDedupeTarget(target, requested));
+  const targetAllowed = isRequestedFileMutationTarget(target, allowedTargets);
   if (allowedTargets.size > 0 && !targetAllowed) {
     return {
       allowed: false,
@@ -729,7 +733,7 @@ export function authorizeAgentFileWriteContract(input: {
   }
   const requestedFileTargets = collectRequestedFileMutationTargets(promptText, input.workspaceRoot);
   if (requestedFileTargets.size > 0
-    && !requestedFileTargets.has(target)
+    && !isRequestedFileMutationTarget(target, requestedFileTargets)
     && !targetExcepted
     && !input.allowScopedSourceArtifact
     && !input.allowImplicitPrimaryArtifact) {

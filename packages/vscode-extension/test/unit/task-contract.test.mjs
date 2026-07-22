@@ -563,6 +563,17 @@ test('file-write authorization covers neutral, prohibited, exclusive, and correc
   assert.equal(decide('只创建 report.md。', `${root}/extra.txt`).reason, 'artifact-other-file-write-prohibited');
   assert.equal(decide('不要创建 report.md；更正：请创建 report.md。', `${root}/report.md`).allowed, true);
   assert.equal(decide('请创建 report.md；更正：不要创建 report.md。', `${root}/report.md`).allowed, false);
+
+  const dedupePrompt = `请将仿真测试结果输出到 ${root}/docs/warranty-maintenance-advice-simulation.md，文件名需要保留 simulation 标识。`;
+  assert.equal(decide(dedupePrompt, `${root}/docs/warranty-maintenance-advice-simulation-1.md`).allowed, true);
+  assert.equal(
+    decide(dedupePrompt, `${root}/other/warranty-maintenance-advice-simulation-1.md`).reason,
+    'markdown-artifact-target-not-requested',
+  );
+  assert.equal(
+    decide(dedupePrompt, `${root}/docs/warranty-maintenance-advice-notes-1.md`).reason,
+    'markdown-artifact-target-not-requested',
+  );
 });
 
 test('file-write authorization treats standalone programming requests as bounded source artifacts', () => {
