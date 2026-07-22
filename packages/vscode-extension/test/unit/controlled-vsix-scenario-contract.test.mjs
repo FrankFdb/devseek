@@ -45,7 +45,8 @@ test('real plugin VSIX harness selects product run terminal instead of pending-e
   const source = readFileSync(realPluginHarnessPath, 'utf8');
 
   assert.match(source, /function isProductRunTerminalEvent\(/, 'real plugin harness must classify product run terminal events in the driver');
-  assert.match(source, /function selectProductRunLogForReplay\(/, 'real plugin harness replay must use the same product-run selection');
+  assert.match(source, /const selected = selectProductRunLog\(logs\)\?\.absolutePath/, 'real plugin harness replay must reuse the product-run selection helper');
+  assert.doesNotMatch(source, /selectProductRunLogForReplay/, 'real plugin harness must not fork replay-only terminal selection');
   assert.match(source, /mutationKind\s*!==\s*'pending-edit-resolution'/, 'pending-edit resolution runs must not replace the real plugin terminal run');
   assert.doesNotMatch(source, /logs\.find\(\(log\) => log\.terminal\)\?\.absolutePath/, 'replay selection must not blindly use the first terminal log');
 });
