@@ -104,7 +104,7 @@ const USER_INPUT_CASES = [
   {
     name: 'report-from-source-read-input',
     prompt: '读取 src/a.ts 并生成 report.md，总结主要函数。',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'existing-project' },
+    route: { family: 'file-artifact', chatKind: 'code-change', mode: 'edit', shape: 'general' },
     workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
     validation: { runtimeRequired: false, fileCheckRequired: true, formalProjectRequired: false },
     mutation: { requested: true, sourceChange: false, fileArtifact: true, targets: ['report.md'] },
@@ -128,7 +128,7 @@ const USER_INPUT_CASES = [
   {
     name: 'summarize-source-to-doc-output',
     prompt: '读取 src/a.ts 并总结到 docs/a-summary.md',
-    route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'existing-project' },
+    route: { family: 'file-artifact', chatKind: 'code-change', mode: 'edit', shape: 'general' },
     workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
     validation: { runtimeRequired: false, fileCheckRequired: true, formalProjectRequired: false },
     mutation: { requested: true, sourceChange: false, fileArtifact: true, targets: ['docs/a-summary.md'] },

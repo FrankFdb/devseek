@@ -2,6 +2,8 @@ const R3_07G_SKILL_AGGREGATE_SPEC = Object.freeze({
   id: 'r3-07g-skill-aggregate',
   kind: 'iteration',
   minimumMarkdownBytes: 900,
+  minimumMarkdownLines: 18,
+  minimumMarkdownHeadings: 4,
   requireFormalProjectQuality: false,
   promptTitle: 'R3-07G-skill-AGGREGATE denominator aggregation audit',
   deliveryMode: 'markdown-file-deliverable',
@@ -16,6 +18,13 @@ const R3_07G_SKILL_AGGREGATE_SPEC = Object.freeze({
     'aggregateExecutionAllowed: false',
     'slotExecutionAllowed: false',
   ]),
+  forbiddenArtifactSnippets: Object.freeze([
+    'warranty',
+    'UAV 吊运维保',
+    '维保提醒',
+    'maintenance_threshold_engine',
+    'uav-warranty-reminder',
+  ]),
 });
 
 export function buildRealPluginQualityProfile(scenario) {
@@ -24,6 +33,8 @@ export function buildRealPluginQualityProfile(scenario) {
     return {
       kind: spec.kind,
       minimumMarkdownBytes: spec.minimumMarkdownBytes,
+      minimumMarkdownLines: spec.minimumMarkdownLines,
+      minimumMarkdownHeadings: spec.minimumMarkdownHeadings,
       requireFormalProjectQuality: spec.requireFormalProjectQuality,
     };
   }
@@ -31,6 +42,8 @@ export function buildRealPluginQualityProfile(scenario) {
   return {
     kind,
     minimumMarkdownBytes: kind === 'canary' ? 120 : kind === 'medium' ? 300 : 500,
+    minimumMarkdownLines: kind === 'canary' ? 2 : 8,
+    minimumMarkdownHeadings: kind === 'canary' ? 1 : 2,
     requireFormalProjectQuality: kind !== 'canary',
   };
 }
@@ -44,18 +57,22 @@ export function buildRealPluginScenarioSpec(scenario) {
       requestedOutputDocRel: '',
       expectedArtifactRel: '',
       requiredArtifactSnippets: [],
+      forbiddenArtifactSnippets: [],
     };
   }
   return {
     id: spec.id,
     kind: spec.kind,
     minimumMarkdownBytes: spec.minimumMarkdownBytes,
+    minimumMarkdownLines: spec.minimumMarkdownLines,
+    minimumMarkdownHeadings: spec.minimumMarkdownHeadings,
     requireFormalProjectQuality: spec.requireFormalProjectQuality,
     promptTitle: spec.promptTitle,
     deliveryMode: spec.deliveryMode,
     requestedOutputDocRel: spec.requestedOutputDocRel,
     expectedArtifactRel: spec.expectedArtifactRel,
     requiredArtifactSnippets: [...spec.requiredArtifactSnippets],
+    forbiddenArtifactSnippets: [...spec.forbiddenArtifactSnippets],
   };
 }
 

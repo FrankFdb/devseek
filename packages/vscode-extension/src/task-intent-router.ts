@@ -178,6 +178,7 @@ function resolveTaskIntentFamily(
   if (classification.mode === 'smalltalk') return 'smalltalk';
   if (classification.mode === 'qa') return 'qa';
   if (classification.mode === 'run' || semanticContract.kind === 'validation') return 'terminal-validation';
+  if (isStandaloneFileArtifactRoute(semanticContract)) return 'file-artifact';
   if (semanticContract.scope === 'existing-project' || semanticContract.kind === 'existing-project-code') {
     return 'existing-project-edit';
   }
@@ -191,6 +192,13 @@ function resolveTaskIntentFamily(
       : 'general-edit';
   }
   return semanticContract.mutation.prohibited ? 'read-only-advisory' : 'ambiguous';
+}
+
+function isStandaloneFileArtifactRoute(semanticContract: TaskSemanticContract): boolean {
+  return semanticContract.kind === 'file-artifact'
+    && semanticContract.mutation.fileArtifact
+    && !semanticContract.mutation.sourceChange
+    && !semanticContract.quality.formalProjectRequired;
 }
 
 function resolveAgentTaskShape(

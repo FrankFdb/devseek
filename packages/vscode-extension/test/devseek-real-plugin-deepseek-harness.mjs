@@ -62,6 +62,9 @@ const requiredArtifactSnippets = [...new Set([
     getArgValue('--artifact-must-contain') || process.env.DEVSEEK_REAL_PLUGIN_ARTIFACT_MUST_CONTAIN,
   ),
 ])];
+const forbiddenArtifactSnippets = [...new Set([
+  ...(scenarioSpec.forbiddenArtifactSnippets || []),
+])];
 const harnessMode = normalizeHarnessMode(getArgValue('--mode') || process.env.DEVSEEK_REAL_PLUGIN_MODE || 'fast');
 const workspaceDirArg = getArgValue('--workspace-dir') || process.env.DEVSEEK_REAL_PLUGIN_WORKSPACE_DIR || '';
 const outputDocArg = getArgValue('--output-doc') || process.env.DEVSEEK_REAL_PLUGIN_OUTPUT_DOC || '';
@@ -150,6 +153,7 @@ report.harness = {
   scenarioSpec: fixture.scenarioSpec || scenarioSpec,
   qualityProfile,
   requiredArtifactSnippets,
+  forbiddenArtifactSnippets,
   harnessMode,
   expectedArtifact,
   expectedArtifacts,
@@ -691,6 +695,7 @@ const scenario = __SCENARIO__;
 const harnessMode = __HARNESS_MODE__;
 const qualityProfile = __QUALITY_PROFILE__;
 const requiredArtifactSnippets = __REQUIRED_ARTIFACT_SNIPPETS__;
+const forbiddenArtifactSnippets = __FORBIDDEN_ARTIFACT_SNIPPETS__;
 const expectedArtifact = __EXPECTED_ARTIFACT__;
 const expectedArtifacts = __EXPECTED_ARTIFACTS__;
 const expectedCodeArtifacts = __EXPECTED_CODE_ARTIFACTS__;
@@ -1088,18 +1093,43 @@ function changedMarkdownArtifacts(before) {
     if (!/\.(?:md|markdown)$/i.test(filePath)) return;
     const relative = rel(workspaceDir, filePath);
     const content = fs.readFileSync(filePath, 'utf8');
+    const lines = content.split(/\r?\n/);
+    const nonEmptyLineCount = lines.filter(line => line.trim()).length;
+    const headingCount = lines.filter((line) => /^#{1,6}\s+\S/.test(line.trim())).length;
     const requiredContentMatches = requiredArtifactSnippets.map((snippet) => ({
       snippet,
       present: content.includes(snippet),
     }));
+    const forbiddenContentMatches = forbiddenArtifactSnippets.map((snippet) => ({
+      snippet,
+      present: content.includes(snippet),
+    }));
+    const shapeQuality = {
+      minimumMarkdownLines: Number(qualityProfile.minimumMarkdownLines || 0),
+      minimumMarkdownHeadings: Number(qualityProfile.minimumMarkdownHeadings || 0),
+      lineCount: lines.length,
+      nonEmptyLineCount,
+      headingCount,
+      lineCountOk: nonEmptyLineCount >= Number(qualityProfile.minimumMarkdownLines || 0),
+      headingCountOk: headingCount >= Number(qualityProfile.minimumMarkdownHeadings || 0),
+      forbiddenContentOk: forbiddenContentMatches.every((item) => !item.present),
+    };
     const current = {
       path: relative,
       absolutePath: filePath,
       size: Buffer.byteLength(content),
       hash: hashText(content),
       preview: content.slice(0, 600),
+      lineCount: lines.length,
+      nonEmptyLineCount,
+      headingCount,
       requiredContentMatches,
-      requiredContentOk: requiredContentMatches.every((item) => item.present),
+      forbiddenContentMatches,
+      shapeQuality,
+      requiredContentOk: requiredContentMatches.every((item) => item.present)
+        && shapeQuality.lineCountOk
+        && shapeQuality.headingCountOk
+        && shapeQuality.forbiddenContentOk,
       markdownQuality: assessMarkdownQuality(content),
       formalProjectQuality: assessFormalProjectQuality(content, prompt),
     };
@@ -1466,6 +1496,7 @@ module.exports = { activate };
     .replace('__HARNESS_MODE__', JSON.stringify(harnessMode))
     .replace('__QUALITY_PROFILE__', JSON.stringify(qualityProfile))
     .replace('__REQUIRED_ARTIFACT_SNIPPETS__', JSON.stringify(requiredArtifactSnippets))
+    .replace('__FORBIDDEN_ARTIFACT_SNIPPETS__', JSON.stringify(forbiddenArtifactSnippets))
     .replace('__EXPECTED_ARTIFACT__', JSON.stringify(expectedArtifact))
     .replace('__EXPECTED_ARTIFACTS__', JSON.stringify(expectedArtifacts))
     .replace('__EXPECTED_CODE_ARTIFACTS__', JSON.stringify(expectedCodeArtifacts))

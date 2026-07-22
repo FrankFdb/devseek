@@ -33,6 +33,8 @@ test('R3-07G real plugin scenario binds aggregate denominator artifact acceptanc
 
   assert.equal(profile.kind, 'iteration');
   assert.equal(profile.minimumMarkdownBytes, 900);
+  assert.equal(profile.minimumMarkdownLines, 18);
+  assert.equal(profile.minimumMarkdownHeadings, 4);
   assert.equal(profile.requireFormalProjectQuality, false);
   assert.equal(spec.id, 'r3-07g-skill-aggregate');
   assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
@@ -46,5 +48,12 @@ test('R3-07G real plugin scenario binds aggregate denominator artifact acceptanc
     'missing/failed/vetoed/blocked/duplicate/foreign',
     'aggregateExecutionAllowed: false',
     'slotExecutionAllowed: false',
+  ]);
+  assert.deepEqual(spec.forbiddenArtifactSnippets, [
+    'warranty',
+    'UAV 吊运维保',
+    '维保提醒',
+    'maintenance_threshold_engine',
+    'uav-warranty-reminder',
   ]);
 });

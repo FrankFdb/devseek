@@ -2283,7 +2283,12 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(profile, '20 task slots', 'R3-07G artifact gate must assert the task denominator');
   assertContains(profile, '100 permission-fault slots', 'R3-07G artifact gate must assert the permission-fault denominator');
   assertContains(profile, 'missing/failed/vetoed/blocked/duplicate/foreign', 'R3-07G artifact gate must assert aggregate veto classes');
+  assertContains(profile, 'minimumMarkdownLines', 'R3-07G artifact gate must check scenario-specific document shape');
+  assertContains(profile, 'forbiddenArtifactSnippets', 'R3-07G artifact gate must reject stale benchmark-domain artifacts');
+  assertContains(profile, 'uav-warranty-reminder', 'R3-07G artifact gate must reject the old warranty simulation artifact family');
   assertContains(harness, 'scenarioSpec.requiredArtifactSnippets', 'real harness must combine scenario-specific content gates');
+  assertContains(harness, 'forbiddenArtifactSnippets', 'real harness must enforce scenario-specific forbidden content gates');
+  assertContains(harness, 'shapeQuality', 'real harness must enforce scenario-specific Markdown shape gates');
   assertContains(harness, 'fixture.scenarioSpec', 'driver report must disclose the scenario contract used');
 });
 
