@@ -1908,6 +1908,15 @@ function createMarkdownInlineCodeBodyInferredTriggerDeniedEditSkillReceipt() {
   ]);
 }
 
+function createMarkdownEmphasisBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '**react**',
+    'tool_kinds: read',
+  ]);
+}
+
 function createNonAsciiSubstringTriggerDeniedEditSkillReceipt() {
   return new SkillDiscoveryService().planExecution({
     prompt: '请修改深度学习组件',
@@ -3712,6 +3721,54 @@ test('R3-07S-skill-PERMISSION-FAULT-051 ExtensionProfilePlanService rejects Mark
   });
   assert.equal(explicitMetadataBeforeInlineCodeReceipt.loadedSkills.length, 1);
   assert.equal(explicitMetadataBeforeInlineCodeReceipt.loadedSkills[0]?.selectedByTrigger, 'react');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-052 ExtensionProfilePlanService rejects Markdown emphasis body inferred trigger permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '5252525252525252525252525252525252525252',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createMarkdownEmphasisBodyInferredTriggerDeniedEditSkillReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-052',
+    attemptId: 'skill-permission-fault-052-markdown-emphasis-body-inferred-trigger',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(childReceipt.loadedSkills.length, 0);
+  assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
+  assert.deepEqual(childReceipt.evidenceRefs, []);
+  assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-052'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+
+  const explicitMetadataBeforeEmphasisReceipt = new SkillDiscoveryService().planExecution({
+    prompt: 'please use react and inspect the component',
+    candidates: [
+      {
+        path: 'skills/reference/SKILL.md',
+        content: [
+          '# Reference',
+          '',
+          'description: React reference',
+          'triggers: react',
+          'tool_kinds: read',
+          '',
+          '**react edit example**',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
+  assert.equal(explicitMetadataBeforeEmphasisReceipt.loadedSkills.length, 1);
+  assert.equal(explicitMetadataBeforeEmphasisReceipt.loadedSkills[0]?.selectedByTrigger, 'react');
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {
