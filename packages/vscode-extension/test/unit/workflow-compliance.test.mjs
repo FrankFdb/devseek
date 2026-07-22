@@ -1454,6 +1454,14 @@ test('R3-07S-skill-PERMISSION-FAULT-041: Markdown table bodies cannot infer Skil
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-041 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-041 must have Markdown table inferred-trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-042: Markdown link bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_LINK_MARKER', 'R3-07S-skill-PERMISSION-FAULT-042 must keep Markdown link body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-042 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-042 must have Markdown link inferred-trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
