@@ -363,6 +363,9 @@ function defaultPrompt(root, fixture) {
 
 function createFixtureWorkspace(root, options = {}) {
   const scenarioSpec = buildRealPluginScenarioSpec(options.scenario);
+  if (scenarioSpec.id === 'r3-08a-vscode-collaboration') {
+    return createR3VSCodeCollaborationFixture(root, scenarioSpec);
+  }
   if (scenarioSpec.id === 'r3-07h-required-kinds-aggregate') {
     return createR3RequiredKindsAggregateFixture(root, scenarioSpec);
   }
@@ -596,6 +599,79 @@ function createR3RequiredKindsAggregateFixture(root, scenarioSpec) {
     '- 为什么一种 kind 不能替代另一种 kind。',
     '- 为什么 missing、duplicate、foreign、blocked、wrong-candidate 任一类 07G claim 都必须阻断 required-kinds 结算。',
     '- 为什么 aggregateExecutionAllowed: false 与 slotExecutionAllowed: false 必须保留为可审计证据。',
+    '- 生成文件要包含本次测试结论、风险、验证建议和用户可检查的证据路径。',
+    '',
+    '报告必须逐字包含以下验收锚点：',
+    anchorLines,
+  ].join('\n');
+
+  return {
+    requestedOutputDoc,
+    expectedArtifactRel: scenarioSpec.expectedArtifactRel,
+    scenarioSpec,
+    defaultPrompt,
+  };
+}
+
+function createR3VSCodeCollaborationFixture(root, scenarioSpec) {
+  const docsDir = path.join(root, 'docs/r3-iteration');
+  const sourceDir = path.join(root, 'src/vscode-surface');
+  const requestedOutputDoc = path.join(root, scenarioSpec.requestedOutputDocRel);
+  const planPath = path.join(docsDir, 'vscode-collaboration-surface-plan.md');
+  const contractPath = path.join(sourceDir, 'vscode-surface-adapter-collaboration-contract.ts');
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(path.dirname(requestedOutputDoc), { recursive: true });
+
+  writeText(path.join(root, 'README.md'), [
+    '# DevSeek R3-08A VS Code collaboration fixture',
+    '',
+    'This workspace is created by the visible real-plugin harness for the current R3 iteration.',
+  ].join('\n'));
+  writeText(planPath, [
+    '# R3-08A VS Code User Collaboration Plan',
+    '',
+    '- Leaf: R3-08A-VSCODE-USER-COLLABORATION.',
+    '- Owner: VSCodeSurfaceAdapter implements SurfaceAdapter.renderEvent for VS Code projection.',
+    '- Required proof: each core AgentEvent produces a user-visible WebView message with the same trace/event identity.',
+    '- Core collaboration events: provider.status, permission.requested, fileChanges.proposed, validation.completed, qualityGate.completed, checkpoint.available.',
+    '- Trace fields: surfaceTrace.eventId, surfaceTrace.commandId, surfaceTrace.taskId, surfaceTrace.sourceEventType, surfaceTrace.timestamp.',
+    '- Checkpoint projection must reach agentCheckpointAvailable.',
+    '- The acceptance proof must not only use a DOM fixture; it must also cover the adapter event projection contract.',
+  ].join('\n'));
+  writeText(contractPath, [
+    'export const r3Leaf = "R3-08A-VSCODE-USER-COLLABORATION";',
+    'export const surfaceOwner = "VSCodeSurfaceAdapter";',
+    'export const renderEntryPoint = "SurfaceAdapter.renderEvent";',
+    'export const traceField = "surfaceTrace";',
+    'export const traceIdentityFields = ["eventId", "commandId", "taskId"] as const;',
+    'export const requiredCoreEvents = [',
+    '  "provider.status",',
+    '  "permission.requested",',
+    '  "fileChanges.proposed",',
+    '  "validation.completed",',
+    '  "qualityGate.completed",',
+    '  "checkpoint.available",',
+    '] as const;',
+    'export const checkpointMessageType = "agentCheckpointAvailable";',
+    'export const sameTraceEventRule = "same trace/event";',
+    'export const domFixtureOnlyRejected = "not only DOM fixture";',
+  ].join('\n'));
+
+  const anchorLines = scenarioSpec.requiredArtifactSnippets
+    .map(snippet => `- ${snippet}`)
+    .join('\n');
+  const defaultPrompt = [
+    `请基于 ${planPath} 和 ${contractPath} 创建 Markdown 审计报告。`,
+    `请把报告保存到 ${requestedOutputDoc}。`,
+    `报告主题是 ${scenarioSpec.promptTitle}。`,
+    '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+    '',
+    '报告必须解释：',
+    '- 为什么 VS Code 协作进度、权限请求、文件变更、验证、质量门禁、checkpoint 必须由 VSCodeSurfaceAdapter 投影为用户可见消息。',
+    '- 为什么每条 WebView 消息必须保留 surfaceTrace，并且 eventId、commandId、taskId 与源 AgentEvent 是 same trace/event。',
+    '- 为什么 checkpoint.available 必须投影到 agentCheckpointAvailable，避免恢复入口只停留在内部事件。',
+    '- 为什么本轮验收不能只依赖 DOM fixture 或固定旧 case，必须覆盖 SurfaceAdapter.renderEvent 的事件投影契约。',
     '- 生成文件要包含本次测试结论、风险、验证建议和用户可检查的证据路径。',
     '',
     '报告必须逐字包含以下验收锚点：',

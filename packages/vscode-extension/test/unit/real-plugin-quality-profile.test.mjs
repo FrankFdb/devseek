@@ -199,3 +199,37 @@ test('R3-07H required-kinds real plugin scenario adds a fresh visible case', () 
   ]);
   assert.ok(spec.forbiddenArtifactSnippets.includes('uav-warranty-reminder'));
 });
+
+test('R3-08A VS Code collaboration real plugin scenario adds a fresh visible case', () => {
+  const profile = buildRealPluginQualityProfile('r3-08a-vscode-collaboration');
+  const spec = buildRealPluginScenarioSpec('r3-08a-vscode-collaboration');
+
+  assert.equal(profile.kind, 'iteration');
+  assert.equal(profile.minimumMarkdownBytes, 1100);
+  assert.equal(profile.minimumMarkdownLines, 26);
+  assert.equal(profile.minimumMarkdownHeadings, 5);
+  assert.equal(profile.requireFormalProjectQuality, false);
+  assert.equal(spec.id, 'r3-08a-vscode-collaboration');
+  assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
+  assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-08a-vscode-collaboration.md');
+  assert.match(spec.promptTitle, /R3-08A-VSCODE-USER-COLLABORATION/);
+  assert.deepEqual(spec.requiredArtifactSnippets, [
+    'R3-08A-VSCODE-USER-COLLABORATION',
+    'VSCodeSurfaceAdapter',
+    'SurfaceAdapter.renderEvent',
+    'same trace/event',
+    'surfaceTrace',
+    'eventId',
+    'commandId',
+    'taskId',
+    'provider.status',
+    'permission.requested',
+    'fileChanges.proposed',
+    'validation.completed',
+    'qualityGate.completed',
+    'checkpoint.available',
+    'agentCheckpointAvailable',
+    'not only DOM fixture',
+  ]);
+  assert.ok(spec.forbiddenArtifactSnippets.includes('uav-warranty-reminder'));
+});

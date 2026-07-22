@@ -11,6 +11,7 @@ import {
   type SurfaceCapabilities,
 } from '@devseek-netai/shared';
 import { postWebviewMessage } from './webview-event-adapter';
+import type { WebviewOutboundMessage } from './webview-protocol';
 
 export class VSCodeSurfaceAdapter implements SurfaceAdapter {
   readonly kind = 'vscode' as const;
@@ -42,10 +43,124 @@ export class VSCodeSurfaceAdapter implements SurfaceAdapter {
   renderEvent(event: AgentEvent): void {
     const webview = this.getWebview();
     if (!webview) return;
-    if (event.type === 'chat.delta') {
-      postWebviewMessage(webview, { type: 'delta', text: event.delta });
-    } else if (event.type === 'error') {
-      postWebviewMessage(webview, { type: 'error', text: event.message });
-    }
+    postWebviewMessage(webview, toVSCodeSurfaceMessage(event));
   }
+}
+
+function toVSCodeSurfaceMessage(event: AgentEvent): WebviewOutboundMessage {
+  return withSurfaceTrace(toVSCodeSurfaceMessageWithoutTrace(event), event);
+}
+
+function toVSCodeSurfaceMessageWithoutTrace(event: AgentEvent): WebviewOutboundMessage {
+  switch (event.type) {
+    case 'chat.started':
+      return { type: 'startResponse', prompt: event.prompt, agentMode: true };
+    case 'chat.delta':
+      return { type: 'delta', text: event.delta };
+    case 'chat.completed':
+      return { type: 'endResponse' };
+    case 'provider.selected':
+      return {
+        type: 'agentStatus',
+        phase: 'plan',
+        state: 'completed',
+        title: `Provider selected: ${event.providerType}`,
+        progressStage: 'planning',
+        progressState: 'completed',
+      };
+    case 'provider.status':
+      return {
+        type: 'agentStatus',
+        phase: 'execute',
+        state: event.status === 'completed' ? 'completed' : 'started',
+        title: event.message || `Provider ${event.providerType}: ${event.status}`,
+        detail: `provider=${event.providerType}; status=${event.status}`,
+        progressStage: event.status === 'waiting' ? 'context' : 'implementation',
+        progressState: event.status === 'completed' ? 'completed' : 'started',
+      };
+    case 'provider.recovery':
+      return {
+        type: 'agentNotice',
+        kind: event.recovered ? 'info' : 'warn',
+        text: `Provider recovery ${event.recovered ? 'succeeded' : 'blocked'}: ${event.reason}`,
+      };
+    case 'permission.requested':
+      return {
+        type: 'agentNotice',
+        kind: 'warn',
+        text: `Permission requested: ${event.action}${event.target ? ` (${event.target})` : ''}`,
+      };
+    case 'fileChanges.proposed':
+      return {
+        type: 'agentStatus',
+        phase: 'execute',
+        state: 'started',
+        title: '文件变更待审阅',
+        detail: event.files.join('\n'),
+        progressStage: 'implementation',
+        progressState: 'started',
+        editedFiles: event.files.map(file => ({
+          path: file,
+          basename: basenameFromPath(file),
+          action: 'proposed',
+        })),
+      };
+    case 'validation.completed':
+      return {
+        type: 'agentStatus',
+        phase: 'validate',
+        state: event.passed ? 'completed' : 'failed',
+        title: event.passed ? '验证通过' : '验证失败',
+        detail: event.evidenceRefs.join('\n'),
+        progressStage: 'validation',
+        progressState: event.passed ? 'completed' : 'failed',
+      };
+    case 'qualityGate.completed':
+      return {
+        type: 'agentStatus',
+        phase: 'quality',
+        state: event.passed ? 'completed' : 'failed',
+        title: event.passed ? 'QualityGate 通过' : 'QualityGate 阻塞',
+        detail: event.evidenceRefs.join('\n'),
+        progressStage: 'validation',
+        progressState: event.passed ? 'completed' : 'failed',
+      };
+    case 'taskHistory.updated':
+      return {
+        type: 'agentNotice',
+        kind: 'info',
+        text: `Task history updated: ${event.taskId}`,
+      };
+    case 'checkpoint.available':
+      return {
+        type: 'agentCheckpointAvailable',
+        resumeTaskIndex: 0,
+        totalTasks: 0,
+        userPrompt: `checkpoint:${event.checkpointId}`,
+        savedAt: event.timestamp,
+        recoveryKind: 'surface-event',
+        pauseReason: 'checkpoint.available',
+      };
+    case 'error':
+      return { type: 'error', text: event.message };
+  }
+}
+
+function withSurfaceTrace(message: WebviewOutboundMessage, event: AgentEvent): WebviewOutboundMessage {
+  return {
+    ...message,
+    surfaceTrace: {
+      eventId: event.eventId,
+      commandId: event.commandId,
+      taskId: event.taskId,
+      surface: event.surface,
+      timestamp: event.timestamp,
+      sourceEventType: event.type,
+    },
+  };
+}
+
+function basenameFromPath(filePath: string): string {
+  const parts = String(filePath || '').split(/[\\/]/).filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : String(filePath || '');
 }

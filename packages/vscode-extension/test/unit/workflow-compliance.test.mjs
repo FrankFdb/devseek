@@ -2342,8 +2342,24 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(profile, 'required-kinds-blocked-veto', 'R3-07H artifact gate must assert blocked-kind veto evidence');
   assertContains(profile, 'wrong-candidate', 'R3-07H artifact gate must assert wrong-candidate rejection');
   assertContains(profile, 'one kind cannot substitute another', 'R3-07H artifact gate must assert cross-kind substitution rejection');
+  assertContains(profile, 'r3-08a-vscode-collaboration', 'R3-08A must add a fresh VS Code collaboration real-plugin scenario');
+  assertContains(profile, 'r3-08a-vscode-collaboration.md', 'R3-08A scenario must write a distinct artifact');
+  assertContains(profile, 'VSCodeSurfaceAdapter', 'R3-08A artifact gate must assert the VS Code surface owner');
+  assertContains(profile, 'SurfaceAdapter.renderEvent', 'R3-08A artifact gate must assert the renderEvent contract');
+  assertContains(profile, 'same trace/event', 'R3-08A artifact gate must assert trace identity');
+  assertContains(profile, 'surfaceTrace', 'R3-08A artifact gate must require user-visible trace metadata');
+  assertContains(profile, 'provider.status', 'R3-08A artifact gate must assert provider progress projection');
+  assertContains(profile, 'permission.requested', 'R3-08A artifact gate must assert permission projection');
+  assertContains(profile, 'fileChanges.proposed', 'R3-08A artifact gate must assert diff/file-change projection');
+  assertContains(profile, 'validation.completed', 'R3-08A artifact gate must assert validation projection');
+  assertContains(profile, 'qualityGate.completed', 'R3-08A artifact gate must assert quality gate projection');
+  assertContains(profile, 'checkpoint.available', 'R3-08A artifact gate must assert checkpoint projection');
+  assertContains(profile, 'agentCheckpointAvailable', 'R3-08A artifact gate must assert resume UI projection');
+  assertContains(profile, 'not only DOM fixture', 'R3-08A artifact gate must reject fixed DOM-only acceptance');
   assertContains(harness, 'createR3KindAggregateFixture', 'real harness must share the R3 kind aggregate fixture instead of duplicating skill/hook setup');
   assertContains(harness, 'createR3RequiredKindsAggregateFixture', 'real harness must add the R3-07H required-kinds fixture');
+  assertContains(harness, 'createR3VSCodeCollaborationFixture', 'real harness must add the R3-08A VS Code collaboration fixture');
+  assertContains(harness, 'vscode-surface-adapter-collaboration-contract.ts', 'R3-08A fixture must expose a source contract instead of only prompt text');
   assertContains(harness, 'R3_KIND_AGGREGATE_FIXTURE_DETAILS', 'real harness must keep R3 kind fixture data table-driven');
   assert.ok(
     harness.indexOf('const R3_KIND_AGGREGATE_FIXTURE_DETAILS') < harness.indexOf('const fixture = usesExistingWorkspace'),
@@ -2373,6 +2389,41 @@ test('R3-07H-required-kinds-AGGREGATE: required kind claims must settle in the e
   assertContains(sharedTests, 'R3-07H-required-kinds-AGGREGATE', 'R3-07H must have failure-first shared oracles');
   assertContains(sharedTests, 'createCompleteRequiredKindAggregateReceipts', 'R3-07H tests must construct complete required-kind receipts');
   assertContains(sharedTests, 'wrong-candidate', 'R3-07H tests must cover wrong-candidate kind claims');
+});
+
+test('R3-08A-VSCODE-USER-COLLABORATION: VS Code surface adapter projects core events visibly', () => {
+  const adapter = src('src/ui/vscode-surface-adapter.ts');
+  const adapterTest = src('test/unit/vscode-surface-adapter.test.mjs');
+
+  assertContains(adapter, 'toVSCodeSurfaceMessage(event)', 'R3-08A must keep one adapter-owned projection entry point');
+  assertContains(adapter, 'withSurfaceTrace', 'R3-08A must attach trace metadata in the adapter owner');
+  assertContains(adapter, 'surfaceTrace', 'R3-08A messages must carry user-visible trace metadata');
+  assertContains(adapter, 'sourceEventType: event.type', 'R3-08A trace metadata must preserve the source AgentEvent type');
+  for (const eventType of [
+    'chat.started',
+    'chat.completed',
+    'provider.selected',
+    'provider.status',
+    'provider.recovery',
+    'permission.requested',
+    'fileChanges.proposed',
+    'validation.completed',
+    'qualityGate.completed',
+    'taskHistory.updated',
+    'checkpoint.available',
+    'error',
+  ]) {
+    assertContains(adapter, eventType, `R3-08A adapter must project ${eventType}`);
+  }
+  assertContains(adapter, 'agentCheckpointAvailable', 'R3-08A checkpoint events must reach the resume UI message');
+  assertContains(adapter, 'editedFiles', 'R3-08A file change events must expose diff/file review hints');
+  assertContains(adapter, 'postWebviewMessage(webview, toVSCodeSurfaceMessage(event))', 'R3-08A renderEvent must use the single projection boundary');
+
+  assertContains(adapterTest, 'R3-08A VSCodeSurfaceAdapter projects every collaboration event with same trace metadata', 'R3-08A must have a failure-first adapter oracle');
+  assertContains(adapterTest, 'new VSCodeSurfaceAdapter', 'R3-08A oracle must exercise the adapter directly');
+  assertContains(adapterTest, 'fileChanges.proposed', 'R3-08A oracle must cover file-change projection');
+  assertContains(adapterTest, 'surfaceTrace.eventId', 'R3-08A oracle must verify trace identity');
+  assertContains(adapterTest, 'agentCheckpointAvailable', 'R3-08A oracle must cover checkpoint projection');
 });
 
 test('Real DeepSeek harness: headed user-window runs can be retained for inspection', () => {

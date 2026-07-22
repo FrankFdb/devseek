@@ -126,6 +126,38 @@ const R3_07H_REQUIRED_KINDS_AGGREGATE_SPEC = Object.freeze({
   forbiddenArtifactSnippets: R3_07G_STALE_DOMAIN_SNIPPETS,
 });
 
+const R3_08A_VSCODE_COLLABORATION_SPEC = Object.freeze({
+  id: 'r3-08a-vscode-collaboration',
+  kind: 'iteration',
+  minimumMarkdownBytes: 1100,
+  minimumMarkdownLines: 26,
+  minimumMarkdownHeadings: 5,
+  requireFormalProjectQuality: false,
+  promptTitle: 'R3-08A-VSCODE-USER-COLLABORATION surface event projection audit',
+  deliveryMode: 'markdown-file-deliverable',
+  requestedOutputDocRel: 'docs/r3-iteration/r3-08a-vscode-collaboration.md',
+  expectedArtifactRel: 'docs/r3-iteration/r3-08a-vscode-collaboration.md',
+  requiredArtifactSnippets: Object.freeze([
+    'R3-08A-VSCODE-USER-COLLABORATION',
+    'VSCodeSurfaceAdapter',
+    'SurfaceAdapter.renderEvent',
+    'same trace/event',
+    'surfaceTrace',
+    'eventId',
+    'commandId',
+    'taskId',
+    'provider.status',
+    'permission.requested',
+    'fileChanges.proposed',
+    'validation.completed',
+    'qualityGate.completed',
+    'checkpoint.available',
+    'agentCheckpointAvailable',
+    'not only DOM fixture',
+  ]),
+  forbiddenArtifactSnippets: R3_07G_STALE_DOMAIN_SNIPPETS,
+});
+
 function createR3KindAggregateSpec(input) {
   const profileKind = input.profileKind;
   return Object.freeze({
@@ -204,6 +236,7 @@ export function parseRequiredArtifactSnippets(value) {
 
 function lookupScenarioSpec(value) {
   const scenario = normalizeScenario(value);
+  if (scenario === R3_08A_VSCODE_COLLABORATION_SPEC.id) return R3_08A_VSCODE_COLLABORATION_SPEC;
   if (scenario === R3_07H_REQUIRED_KINDS_AGGREGATE_SPEC.id) return R3_07H_REQUIRED_KINDS_AGGREGATE_SPEC;
   return R3_07G_AGGREGATE_SPEC_BY_ID.get(scenario) ?? null;
 }
