@@ -1487,6 +1487,14 @@ test('R3-07S-skill-PERMISSION-FAULT-045: Markdown autolink bodies cannot infer S
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-045 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-045 must have Markdown autolink inferred-trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-046: inline HTML media bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'summary|tr|td|th|img|picture|source|video|audio|canvas|svg', 'R3-07S-skill-PERMISSION-FAULT-046 must absorb common HTML media body tags into the existing marker');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-046 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-046 must have inline HTML media inferred-trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
