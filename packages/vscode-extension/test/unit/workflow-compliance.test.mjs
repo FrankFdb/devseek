@@ -2310,6 +2310,7 @@ test('Real DeepSeek harness: quality gates are scenario-driven and task-specific
 test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visible cases', () => {
   const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
   const profile = src('test/harness/real-plugin-quality-profile.mjs');
+  const repairPolicy = src('src/app/bounded-repair-policy.ts');
   assertContains(profile, 'buildRealPluginScenarioSpec', 'real harness must expose named scenario contracts');
   assertContains(profile, 'listRealPluginIterationScenarioSpecs', 'R3 visible simulations must be enumerable for freshness checks');
   assertContains(profile, 'freshCaseMarker', 'R3 scenarios must carry a unique fresh-case marker');
@@ -2406,6 +2407,17 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(profile, 'token/tool/latency/retry/cost/evidence-size', 'R3-09A artifact gate must assert the full metrics denominator');
   assertContains(profile, 'unknown-not-omitted', 'R3-09A artifact gate must assert explicit unknown metrics');
   assertContains(profile, 'content-secret-free', 'R3-09A artifact gate must assert no contents or secrets in metrics');
+  assertContains(profile, 'r3-09b-budget-policy-decision', 'R3-09B must add a fresh budget policy real-plugin scenario');
+  assertContains(profile, 'r3-09b-budget-policy-decision.md', 'R3-09B scenario must write a distinct artifact');
+  assertContains(profile, 'decideRunBudgetPolicy', 'R3-09B artifact gate must assert the budget policy owner');
+  assertContains(profile, 'devseek.run-budget-policy/v1', 'R3-09B artifact gate must assert the policy protocol');
+  assertContains(profile, 'allow/replan/blocked', 'R3-09B artifact gate must assert the decision triad');
+  assertContains(profile, 'safety-and-acceptance-protected', 'R3-09B artifact gate must assert safety and acceptance protection');
+  assertContains(profile, 'no-progress-budget-exhausted', 'R3-09B artifact gate must assert bounded no-progress exhaustion');
+  assertContains(repairPolicy, 'RUN_BUDGET_POLICY_PROTOCOL', 'R3-09B must define the budget policy protocol in the existing repair policy owner');
+  assertContains(repairPolicy, 'function decideRunBudgetPolicy', 'R3-09B budget decisions must be owned by bounded-repair-policy');
+  assertContains(repairPolicy, 'RUN_BUDGET_REQUIRED_PHASES', 'R3-09B must protect required safety and acceptance phases');
+  assertContains(repairPolicy, 'required-budget-exceeded-blocked', 'R3-09B must block rather than skip exhausted required phases');
   assertContains(harness, 'createR3KindAggregateFixture', 'real harness must share the R3 kind aggregate fixture instead of duplicating skill/hook setup');
   assertContains(harness, 'createR3RequiredKindsAggregateFixture', 'real harness must add the R3-07H required-kinds fixture');
   assertContains(harness, 'createR3VSCodeCollaborationFixture', 'real harness must add the R3-08A VS Code collaboration fixture');
@@ -2414,12 +2426,14 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(harness, 'createR3WindowsWslConformanceFixture', 'real harness must add the R3-08E Windows/WSL conformance fixture');
   assertContains(harness, 'createR3MacOSConformanceFixture', 'real harness must add the R3-08F macOS conformance fixture');
   assertContains(harness, 'createR3RunMetricsSchemaFixture', 'real harness must add the R3-09A run metrics schema fixture');
+  assertContains(harness, 'createR3BudgetPolicyDecisionFixture', 'real harness must add the R3-09B budget policy fixture');
   assertContains(harness, 'webview-accessibility-surface-contract.ts', 'R3-08C fixture must expose an accessibility contract instead of only prompt text');
   assertContains(harness, 'vscode-surface-adapter-collaboration-contract.ts', 'R3-08A fixture must expose a source contract instead of only prompt text');
   assertContains(harness, 'linux-platform-conformance-contract.ts', 'R3-08D fixture must expose a platform conformance contract instead of only prompt text');
   assertContains(harness, 'windows-wsl-platform-conformance-contract.ts', 'R3-08E fixture must expose a Windows/WSL conformance contract instead of only prompt text');
   assertContains(harness, 'macos-platform-conformance-contract.ts', 'R3-08F fixture must expose a macOS conformance contract instead of only prompt text');
   assertContains(harness, 'run-metrics-schema-contract.ts', 'R3-09A fixture must expose a run metrics schema contract instead of only prompt text');
+  assertContains(harness, 'budget-policy-decision-contract.ts', 'R3-09B fixture must expose a budget policy contract instead of only prompt text');
   assertContains(harness, 'R3_KIND_AGGREGATE_FIXTURE_DETAILS', 'real harness must keep R3 kind fixture data table-driven');
   assert.ok(
     harness.indexOf('const R3_KIND_AGGREGATE_FIXTURE_DETAILS') < harness.indexOf('const fixture = usesExistingWorkspace'),

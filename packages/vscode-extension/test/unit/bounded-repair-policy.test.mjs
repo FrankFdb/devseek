@@ -19,6 +19,7 @@ const req = createRequire(import.meta.url);
 const {
   decideBoundedRepairProgress,
   decideClosedLoopRepairability,
+  decideRunBudgetPolicy,
   extendRepairRoundBudget,
   normalizeRepairRoundBudget,
 } = req(bundlePath);
@@ -106,4 +107,70 @@ test('BoundedRepairPolicy: repairability requires failed runnable validation and
     ...repairable,
     validation: { ran: true, ok: true, status: 'passed', command: 'npm test' },
   }).reason, 'validation-not-failed');
+});
+
+test('R3-09B BudgetPolicy: optional over-budget work replans without skipping safety or acceptance', () => {
+  const decision = decideRunBudgetPolicy({
+    phases: [
+      { phase: 'provider', allocated: 10, used: 14, required: false },
+      { phase: 'safety', allocated: 2, used: 1, required: true },
+      { phase: 'validation', allocated: 8, used: 3, required: true },
+      { phase: 'quality-gate', allocated: 4, used: 1, required: true },
+    ],
+    stagnantRounds: 0,
+  });
+
+  assert.equal(decision.protocol, 'devseek.run-budget-policy/v1');
+  assert.equal(decision.authority, 'bounded-repair-policy');
+  assert.equal(decision.decision, 'replan');
+  assert.equal(decision.reason, 'optional-budget-exceeded-replan');
+  assert.deepEqual(decision.overBudgetPhases, ['provider']);
+  assert.deepEqual(decision.blockedRequiredPhases, []);
+  assert.deepEqual(decision.skippedRequiredPhases, []);
+  assert.equal(decision.safetyAndAcceptanceProtected, true);
+  assert.equal(decision.replanRequired, true);
+});
+
+test('R3-09B BudgetPolicy: safety and acceptance budget exhaustion blocks instead of silent skip', () => {
+  const validationOverBudget = decideRunBudgetPolicy({
+    phases: [
+      { phase: 'provider', allocated: 10, used: 10, required: false },
+      { phase: 'safety', allocated: 2, used: 1, required: true },
+      { phase: 'validation', allocated: 3, used: 5, required: true },
+      { phase: 'quality-gate', allocated: 2, used: 1, required: true },
+    ],
+  });
+  assert.equal(validationOverBudget.decision, 'blocked');
+  assert.equal(validationOverBudget.reason, 'required-budget-exceeded-blocked');
+  assert.deepEqual(validationOverBudget.blockedRequiredPhases, ['validation']);
+  assert.deepEqual(validationOverBudget.skippedRequiredPhases, ['validation']);
+
+  const missingSafety = decideRunBudgetPolicy({
+    phases: [
+      { phase: 'provider', allocated: 6, used: 2, required: false },
+      { phase: 'validation', allocated: 4, used: 1, required: true },
+      { phase: 'quality-gate', allocated: 4, used: 1, required: true },
+    ],
+  });
+  assert.equal(missingSafety.decision, 'blocked');
+  assert.equal(missingSafety.reason, 'required-budget-missing-blocked');
+  assert.deepEqual(missingSafety.blockedRequiredPhases, ['safety']);
+  assert.deepEqual(missingSafety.skippedRequiredPhases, ['safety']);
+});
+
+test('R3-09B BudgetPolicy: no-progress loops are bounded by policy', () => {
+  const decision = decideRunBudgetPolicy({
+    phases: [
+      { phase: 'safety', allocated: 2, used: 1, required: true },
+      { phase: 'validation', allocated: 8, used: 3, required: true },
+      { phase: 'quality-gate', allocated: 4, used: 1, required: true },
+    ],
+    stagnantRounds: 2,
+    maxStagnantRounds: 2,
+  });
+
+  assert.equal(decision.decision, 'blocked');
+  assert.equal(decision.reason, 'no-progress-budget-exhausted');
+  assert.equal(decision.noProgressBounded, true);
+  assert.equal(decision.maxStagnantRounds, 2);
 });

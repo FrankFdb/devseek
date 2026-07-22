@@ -366,6 +366,42 @@ const R3_09A_RUN_METRICS_SCHEMA_SPEC = Object.freeze({
   rejectFixedLineCountOnly: true,
 });
 
+const R3_09B_BUDGET_POLICY_DECISION_SPEC = Object.freeze({
+  id: 'r3-09b-budget-policy-decision',
+  kind: 'iteration',
+  minimumMarkdownBytes: 1250,
+  minimumMarkdownLines: 32,
+  minimumMarkdownHeadings: 5,
+  requireFormalProjectQuality: false,
+  promptTitle: 'R3-09B-BUDGET-POLICY-DECISION bounded budget policy audit',
+  deliveryMode: 'markdown-file-deliverable',
+  requestedOutputDocRel: 'docs/r3-iteration/r3-09b-budget-policy-decision.md',
+  expectedArtifactRel: 'docs/r3-iteration/r3-09b-budget-policy-decision.md',
+  requiredArtifactSnippets: Object.freeze([
+    'R3-09B-BUDGET-POLICY-DECISION',
+    'decideRunBudgetPolicy',
+    'devseek.run-budget-policy/v1',
+    'bounded-repair-policy',
+    'allow/replan/blocked',
+    'safety-and-acceptance-protected',
+    'optional-budget-exceeded-replan',
+    'required-budget-exceeded-blocked',
+    'required-budget-missing-blocked',
+    'no-progress-budget-exhausted',
+    ...FRESH_R3_CASE_REJECTION,
+  ]),
+  forbiddenArtifactSnippets: R3_07G_STALE_DOMAIN_SNIPPETS,
+  changedSurface: 'run-budget-policy-decision',
+  freshCaseMarker: 'R3-09B-BUDGET-POLICY-DECISION',
+  semanticAcceptance: Object.freeze([
+    'budget-policy-owner',
+    'allow/replan/blocked',
+    'safety-and-acceptance-protected',
+    'no-progress-bounded',
+  ]),
+  rejectFixedLineCountOnly: true,
+});
+
 function createR3KindAggregateSpec(input) {
   const profileKind = input.profileKind;
   const marker = `R3-07G-${profileKind}-AGGREGATE`;
@@ -467,6 +503,7 @@ export function listRealPluginIterationScenarioSpecs() {
     R3_08E_WINDOWS_WSL_CONFORMANCE_SPEC,
     R3_08F_MACOS_CONFORMANCE_SPEC,
     R3_09A_RUN_METRICS_SCHEMA_SPEC,
+    R3_09B_BUDGET_POLICY_DECISION_SPEC,
   ].map((spec) => buildRealPluginScenarioSpec(spec.id));
 }
 
@@ -479,6 +516,7 @@ export function parseRequiredArtifactSnippets(value) {
 
 function lookupScenarioSpec(value) {
   const scenario = normalizeScenario(value);
+  if (scenario === R3_09B_BUDGET_POLICY_DECISION_SPEC.id) return R3_09B_BUDGET_POLICY_DECISION_SPEC;
   if (scenario === R3_09A_RUN_METRICS_SCHEMA_SPEC.id) return R3_09A_RUN_METRICS_SCHEMA_SPEC;
   if (scenario === R3_08F_MACOS_CONFORMANCE_SPEC.id) return R3_08F_MACOS_CONFORMANCE_SPEC;
   if (scenario === R3_08E_WINDOWS_WSL_CONFORMANCE_SPEC.id) return R3_08E_WINDOWS_WSL_CONFORMANCE_SPEC;

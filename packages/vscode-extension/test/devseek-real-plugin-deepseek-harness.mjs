@@ -363,6 +363,9 @@ function defaultPrompt(root, fixture) {
 
 function createFixtureWorkspace(root, options = {}) {
   const scenarioSpec = buildRealPluginScenarioSpec(options.scenario);
+  if (scenarioSpec.id === 'r3-09b-budget-policy-decision') {
+    return createR3BudgetPolicyDecisionFixture(root, scenarioSpec);
+  }
   if (scenarioSpec.id === 'r3-09a-run-metrics-schema') {
     return createR3RunMetricsSchemaFixture(root, scenarioSpec);
   }
@@ -1056,6 +1059,83 @@ function createR3RunMetricsSchemaFixture(root, scenarioSpec) {
     '- 为什么 metrics 必须 content-secret-free，不能持久化 prompt、messages、responses、文件内容、cookie、auth header、API key 或 secret。',
     '- 为什么固定旧 case、固定文件行数、旧 warranty Markdown 或只看 release smoke 不能结算本轮。',
     '- 生成文件要包含 schema 结论、风险、验证建议和用户可检查的证据路径。',
+    '',
+    '报告必须逐字包含以下验收锚点：',
+    anchorLines,
+  ].join('\n');
+
+  return {
+    requestedOutputDoc,
+    expectedArtifactRel: scenarioSpec.expectedArtifactRel,
+    scenarioSpec,
+    defaultPrompt,
+  };
+}
+
+function createR3BudgetPolicyDecisionFixture(root, scenarioSpec) {
+  const docsDir = path.join(root, 'docs/r3-iteration');
+  const sourceDir = path.join(root, 'src/budget-policy');
+  const requestedOutputDoc = path.join(root, scenarioSpec.requestedOutputDocRel);
+  const matrixPath = path.join(docsDir, 'budget-policy-decision-matrix.md');
+  const contractPath = path.join(sourceDir, 'budget-policy-decision-contract.ts');
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(path.dirname(requestedOutputDoc), { recursive: true });
+
+  writeText(path.join(root, 'README.md'), [
+    '# DevSeek R3-09B budget policy fixture',
+    '',
+    'This workspace is created by the visible real-plugin harness for the current R3 iteration.',
+  ].join('\n'));
+  writeText(matrixPath, [
+    '# R3-09B Budget Policy Decision Matrix',
+    '',
+    '- Leaf: R3-09B-BUDGET-POLICY-DECISION.',
+    '- Owner boundary: decideRunBudgetPolicy in bounded-repair-policy owns the budget strategy decision.',
+    '- Protocol: devseek.run-budget-policy/v1.',
+    '- Decision triad: allow/replan/blocked.',
+    '- Optional provider/tool budget exhaustion must return optional-budget-exceeded-replan, not silently continue.',
+    '- Safety, validation, and quality-gate are required acceptance phases and are safety-and-acceptance-protected.',
+    '- Required phase budget exhaustion must return required-budget-exceeded-blocked.',
+    '- Missing required safety or acceptance phases must return required-budget-missing-blocked.',
+    '- Stagnant no-progress loops must return no-progress-budget-exhausted after the bounded threshold.',
+    '- Fixed old warranty Markdown, fixed line-count output, and R3-09A metrics evidence cannot settle this leaf.',
+  ].join('\n'));
+  writeText(contractPath, [
+    'export const r3Leaf = "R3-09B-BUDGET-POLICY-DECISION";',
+    'export const owner = "decideRunBudgetPolicy";',
+    'export const changedSurface = "run-budget-policy-decision";',
+    'export const protocol = "devseek.run-budget-policy/v1";',
+    'export const ownerFile = "bounded-repair-policy";',
+    'export const decisionTriad = "allow/replan/blocked";',
+    'export const requiredProtection = "safety-and-acceptance-protected";',
+    'export const optionalOverBudget = "optional-budget-exceeded-replan";',
+    'export const requiredOverBudget = "required-budget-exceeded-blocked";',
+    'export const requiredMissing = "required-budget-missing-blocked";',
+    'export const noProgress = "no-progress-budget-exhausted";',
+    'export const bounded = "no-progress-bounded";',
+    'export const semanticOwner = "budget-policy-owner";',
+    'export const staleCaseRejected = "not fixed line-count smoke";',
+  ].join('\n'));
+
+  const anchorLines = scenarioSpec.requiredArtifactSnippets
+    .map(snippet => `- ${snippet}`)
+    .join('\n');
+  const defaultPrompt = [
+    `请基于 ${matrixPath} 和 ${contractPath} 创建 Markdown 审计报告。`,
+    `请把报告保存到 ${requestedOutputDoc}。`,
+    `报告主题是 ${scenarioSpec.promptTitle}。`,
+    '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+    '',
+    '报告必须解释：',
+    '- 为什么 R3-09B 必须由 bounded-repair-policy 的 decideRunBudgetPolicy 作预算策略裁决，而不是 Provider、Surface 或新 telemetry/service 临时决定。',
+    '- 为什么预算结果必须显式落在 allow/replan/blocked，而不是靠自然语言继续或静默停止。',
+    '- 为什么 provider/tool 等可选阶段超预算应触发 optional-budget-exceeded-replan。',
+    '- 为什么 safety、validation、quality-gate 是 safety-and-acceptance-protected，不能因成本或 token 超限被跳过。',
+    '- 为什么 required-budget-exceeded-blocked 和 required-budget-missing-blocked 必须阻断，而不是伪装为成功交付。',
+    '- 为什么 no-progress-budget-exhausted 必须给无进展循环设置有界停止。',
+    '- 为什么固定旧 case、固定文件行数、R3-09A metrics artifact 或只看 release smoke 不能结算本轮。',
+    '- 生成文件要包含策略结论、风险、验证建议和用户可检查的证据路径。',
     '',
     '报告必须逐字包含以下验收锚点：',
     anchorLines,

@@ -440,3 +440,37 @@ test('R3-09A run metrics schema real plugin scenario adds append-only metrics co
     assert.ok(spec.requiredArtifactSnippets.includes(snippet), `R3-09A must require ${snippet}`);
   }
 });
+
+test('R3-09B budget policy decision real plugin scenario adds bounded budget coverage', () => {
+  const profile = buildRealPluginQualityProfile('r3-09b-budget-policy-decision');
+  const spec = buildRealPluginScenarioSpec('r3-09b-budget-policy-decision');
+
+  assert.equal(profile.kind, 'iteration');
+  assert.equal(profile.requireFormalProjectQuality, false);
+  assert.equal(spec.id, 'r3-09b-budget-policy-decision');
+  assert.equal(spec.changedSurface, 'run-budget-policy-decision');
+  assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
+  assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-09b-budget-policy-decision.md');
+  assert.match(spec.promptTitle, /R3-09B-BUDGET-POLICY-DECISION/);
+  assert.deepEqual(spec.semanticAcceptance, [
+    'budget-policy-owner',
+    'allow/replan/blocked',
+    'safety-and-acceptance-protected',
+    'no-progress-bounded',
+  ]);
+  for (const snippet of [
+    'R3-09B-BUDGET-POLICY-DECISION',
+    'decideRunBudgetPolicy',
+    'devseek.run-budget-policy/v1',
+    'bounded-repair-policy',
+    'allow/replan/blocked',
+    'safety-and-acceptance-protected',
+    'optional-budget-exceeded-replan',
+    'required-budget-exceeded-blocked',
+    'required-budget-missing-blocked',
+    'no-progress-budget-exhausted',
+    'not fixed line-count smoke',
+  ]) {
+    assert.ok(spec.requiredArtifactSnippets.includes(snippet), `R3-09B must require ${snippet}`);
+  }
+});
