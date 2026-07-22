@@ -81,8 +81,43 @@ export interface LinuxPlatformConformanceReport {
   readonly unsupported: readonly LinuxPlatformConformanceCheck[];
 }
 
+export type WindowsWslPlatformConformanceCheckKind =
+  | PlatformAdapterProfileKind
+  | 'line-ending'
+  | 'permissions'
+  | 'interop';
+
+export interface WindowsWslPlatformConformanceInput extends PlatformRuntimeInput {
+  readonly profile?: PlatformProfile;
+  readonly workspaceRoot?: string;
+  readonly bridgeExecutablePath?: string;
+  readonly canExecuteBridge?: boolean;
+  readonly wslInteropAvailable?: boolean;
+}
+
+export interface WindowsWslPlatformConformanceCheck {
+  readonly kind: WindowsWslPlatformConformanceCheckKind;
+  readonly profile: string;
+  readonly status: PlatformAdapterProfileStatus;
+  readonly reason?: string;
+}
+
+export interface WindowsWslPlatformConformanceReport {
+  readonly id: 'R3-08E-WINDOWS-WSL-CONFORMANCE';
+  readonly profile: PlatformProfile;
+  readonly supported: boolean;
+  readonly checks: readonly WindowsWslPlatformConformanceCheck[];
+  readonly unsupported: readonly WindowsWslPlatformConformanceCheck[];
+}
+
 const LINUX_LOCAL_XDG_PROFILE = 'linux-local-xdg';
 const LINUX_CONTAINER_XDG_PROFILE = 'linux-container-xdg';
+const WINDOWS_NATIVE_PATH_PROFILE = 'windows-native-path';
+const WSL_POSIX_PATH_PROFILE = 'wsl-posix-path';
+const WINDOWS_CRLF_PROFILE = 'windows-crlf';
+const WSL_LF_PROFILE = 'wsl-lf';
+const WINDOWS_NATIVE_INTEROP_PROFILE = 'windows-native-no-wsl';
+const WSL_INTEROP_PROFILE = 'wsl-interop';
 
 export class PlatformRuntimeProfileError extends Error {
   readonly code = 'UNSUPPORTED_PLATFORM_PROFILE';
@@ -98,12 +133,13 @@ export function detectPlatformProfile(input: PlatformRuntimeInput = {}): Platfor
   const shell = detectShell(input.shellPath ?? input.env?.SHELL ?? input.env?.ComSpec);
   const workspaceKind = input.workspaceKind ?? detectWorkspaceKind(input.env ?? {});
   const pathStyle = platform === 'win32' && workspaceKind !== 'wsl' ? 'windows' : 'posix';
+  const isWsl = platform === 'win32' && workspaceKind === 'wsl';
   return {
     os: platform,
     shell,
     pathStyle,
-    lineEnding: input.lineEnding ?? (platform === 'win32' ? 'crlf' : 'lf'),
-    caseSensitive: input.caseSensitive ?? !(platform === 'win32' || platform === 'darwin'),
+    lineEnding: input.lineEnding ?? (isWsl ? 'lf' : platform === 'win32' ? 'crlf' : 'lf'),
+    caseSensitive: input.caseSensitive ?? (isWsl ? true : !(platform === 'win32' || platform === 'darwin')),
     workspaceKind,
   };
 }
@@ -144,6 +180,28 @@ export function evaluateLinuxPlatformConformance(
   const unsupported = checks.filter(check => check.status === 'unsupported');
   return {
     id: 'R3-08D-LINUX-CONFORMANCE',
+    profile,
+    supported: unsupported.length === 0,
+    checks,
+    unsupported,
+  };
+}
+
+export function evaluateWindowsWslPlatformConformance(
+  input: WindowsWslPlatformConformanceInput = {},
+): WindowsWslPlatformConformanceReport {
+  const profile = input.profile ?? detectPlatformProfile(input);
+  const checks: WindowsWslPlatformConformanceCheck[] = [
+    evaluateWindowsWslOsConformance(profile),
+    evaluateWindowsWslShellConformance(profile),
+    evaluateWindowsWslPathConformance(profile, input.workspaceRoot),
+    evaluateWindowsWslLineEndingConformance(profile),
+    evaluateWindowsWslBridgePermissionConformance(input),
+    evaluateWindowsWslInteropConformance(profile, input),
+  ];
+  const unsupported = checks.filter(check => check.status === 'unsupported');
+  return {
+    id: 'R3-08E-WINDOWS-WSL-CONFORMANCE',
     profile,
     supported: unsupported.length === 0,
     checks,
@@ -198,6 +256,21 @@ function unsupportedLinuxProfile(
   profile: string,
   reason: string,
 ): LinuxPlatformConformanceCheck {
+  return { kind, profile, status: 'unsupported', reason };
+}
+
+function supportedWindowsWslProfile(
+  kind: WindowsWslPlatformConformanceCheckKind,
+  profile: string,
+): WindowsWslPlatformConformanceCheck {
+  return { kind, profile, status: 'supported' };
+}
+
+function unsupportedWindowsWslProfile(
+  kind: WindowsWslPlatformConformanceCheckKind,
+  profile: string,
+  reason: string,
+): WindowsWslPlatformConformanceCheck {
   return { kind, profile, status: 'unsupported', reason };
 }
 
@@ -299,8 +372,85 @@ function evaluateLinuxBridgePermissionConformance(
   return unsupportedLinuxProfile('permissions', 'bridge-executable', 'bridge-executable-permission-unknown');
 }
 
+function evaluateWindowsWslOsConformance(
+  profile: PlatformProfile,
+): WindowsWslPlatformConformanceCheck {
+  if (profile.os === 'win32') return supportedWindowsWslProfile('os', profile.os);
+  return unsupportedWindowsWslProfile('os', profile.os, 'r3-08e-windows-wsl-only');
+}
+
+function evaluateWindowsWslShellConformance(
+  profile: PlatformProfile,
+): WindowsWslPlatformConformanceCheck {
+  if (profile.workspaceKind === 'wsl') {
+    if (profile.shell === 'posix') return supportedWindowsWslProfile('shell', 'wsl-posix');
+    return unsupportedWindowsWslProfile('shell', profile.shell, 'wsl-requires-posix-shell');
+  }
+  if (profile.shell === 'powershell') return supportedWindowsWslProfile('shell', 'windows-powershell');
+  if (profile.shell === 'cmd') return supportedWindowsWslProfile('shell', 'windows-cmd');
+  return unsupportedWindowsWslProfile('shell', profile.shell, 'windows-native-requires-powershell-or-cmd');
+}
+
+function evaluateWindowsWslPathConformance(
+  profile: PlatformProfile,
+  workspaceRoot: string | undefined,
+): WindowsWslPlatformConformanceCheck {
+  if (profile.workspaceKind === 'wsl') {
+    if (profile.pathStyle === 'posix' && (!workspaceRoot || isPosixAbsolutePath(workspaceRoot))) {
+      return supportedWindowsWslProfile('path', WSL_POSIX_PATH_PROFILE);
+    }
+    return unsupportedWindowsWslProfile('path', profile.pathStyle, 'wsl-requires-posix-paths');
+  }
+  if (profile.pathStyle === 'windows' && (!workspaceRoot || isWindowsAbsolutePath(workspaceRoot))) {
+    return supportedWindowsWslProfile('path', WINDOWS_NATIVE_PATH_PROFILE);
+  }
+  return unsupportedWindowsWslProfile('path', profile.pathStyle, 'windows-native-requires-windows-paths');
+}
+
+function evaluateWindowsWslLineEndingConformance(
+  profile: PlatformProfile,
+): WindowsWslPlatformConformanceCheck {
+  if (profile.workspaceKind === 'wsl') {
+    if (profile.lineEnding === 'lf') return supportedWindowsWslProfile('line-ending', WSL_LF_PROFILE);
+    return unsupportedWindowsWslProfile('line-ending', profile.lineEnding, 'wsl-requires-lf');
+  }
+  if (profile.lineEnding === 'crlf') return supportedWindowsWslProfile('line-ending', WINDOWS_CRLF_PROFILE);
+  return unsupportedWindowsWslProfile('line-ending', profile.lineEnding, 'windows-native-requires-crlf');
+}
+
+function evaluateWindowsWslBridgePermissionConformance(
+  input: WindowsWslPlatformConformanceInput,
+): WindowsWslPlatformConformanceCheck {
+  if (input.canExecuteBridge === true) return supportedWindowsWslProfile('permissions', 'bridge-executable');
+  if (input.canExecuteBridge === false) {
+    return unsupportedWindowsWslProfile('permissions', 'bridge-executable', 'bridge-executable-not-executable');
+  }
+  return unsupportedWindowsWslProfile('permissions', 'bridge-executable', 'bridge-executable-permission-unknown');
+}
+
+function evaluateWindowsWslInteropConformance(
+  profile: PlatformProfile,
+  input: WindowsWslPlatformConformanceInput,
+): WindowsWslPlatformConformanceCheck {
+  const env = input.env ?? {};
+  if (profile.workspaceKind === 'wsl') {
+    if (input.wslInteropAvailable === true || Boolean(env.WSL_INTEROP)) {
+      return supportedWindowsWslProfile('interop', WSL_INTEROP_PROFILE);
+    }
+    return unsupportedWindowsWslProfile('interop', 'wsl-interop', 'wsl-interop-missing');
+  }
+  if (env.WSL_DISTRO_NAME || env.WSL_INTEROP || input.wslInteropAvailable === true) {
+    return unsupportedWindowsWslProfile('interop', 'windows-native-interop', 'windows-native-wsl-env-present');
+  }
+  return supportedWindowsWslProfile('interop', WINDOWS_NATIVE_INTEROP_PROFILE);
+}
+
 function isPosixAbsolutePath(value: string): boolean {
   return value.startsWith('/') && !value.includes('\\') && !/^[a-zA-Z]:/.test(value);
+}
+
+function isWindowsAbsolutePath(value: string): boolean {
+  return /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('\\\\');
 }
 
 function formatUnsupportedAdapters(unsupported: readonly PlatformAdapterProfile[]): string {

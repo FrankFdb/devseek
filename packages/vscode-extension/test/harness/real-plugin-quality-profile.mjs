@@ -254,6 +254,43 @@ const R3_08D_LINUX_CONFORMANCE_SPEC = Object.freeze({
   rejectFixedLineCountOnly: true,
 });
 
+const R3_08E_WINDOWS_WSL_CONFORMANCE_SPEC = Object.freeze({
+  id: 'r3-08e-windows-wsl-conformance',
+  kind: 'iteration',
+  minimumMarkdownBytes: 1250,
+  minimumMarkdownLines: 32,
+  minimumMarkdownHeadings: 5,
+  requireFormalProjectQuality: false,
+  promptTitle: 'R3-08E-WINDOWS-WSL-CONFORMANCE native and WSL platform profile audit',
+  deliveryMode: 'markdown-file-deliverable',
+  requestedOutputDocRel: 'docs/r3-iteration/r3-08e-windows-wsl-conformance.md',
+  expectedArtifactRel: 'docs/r3-iteration/r3-08e-windows-wsl-conformance.md',
+  requiredArtifactSnippets: Object.freeze([
+    'R3-08E-WINDOWS-WSL-CONFORMANCE',
+    'evaluateWindowsWslPlatformConformance',
+    'windows-native-path',
+    'wsl-posix-path',
+    'windows-crlf',
+    'wsl-lf',
+    'windows-native-no-wsl',
+    'wsl-interop',
+    'windows-native-requires-windows-paths',
+    'wsl-interop-missing',
+    'Windows native/WSL',
+    ...FRESH_R3_CASE_REJECTION,
+  ]),
+  forbiddenArtifactSnippets: R3_07G_STALE_DOMAIN_SNIPPETS,
+  changedSurface: 'windows-wsl-platform-runtime-conformance',
+  freshCaseMarker: 'R3-08E-WINDOWS-WSL-CONFORMANCE',
+  semanticAcceptance: Object.freeze([
+    'Windows native/WSL',
+    'path-shell-line-ending',
+    'permission-fault-sequence',
+    'interop-fault-sequence',
+  ]),
+  rejectFixedLineCountOnly: true,
+});
+
 function createR3KindAggregateSpec(input) {
   const profileKind = input.profileKind;
   const marker = `R3-07G-${profileKind}-AGGREGATE`;
@@ -352,6 +389,7 @@ export function listRealPluginIterationScenarioSpecs() {
     R3_08A_VSCODE_COLLABORATION_SPEC,
     R3_08C_ACCESSIBILITY_SPEC,
     R3_08D_LINUX_CONFORMANCE_SPEC,
+    R3_08E_WINDOWS_WSL_CONFORMANCE_SPEC,
   ].map((spec) => buildRealPluginScenarioSpec(spec.id));
 }
 
@@ -364,6 +402,7 @@ export function parseRequiredArtifactSnippets(value) {
 
 function lookupScenarioSpec(value) {
   const scenario = normalizeScenario(value);
+  if (scenario === R3_08E_WINDOWS_WSL_CONFORMANCE_SPEC.id) return R3_08E_WINDOWS_WSL_CONFORMANCE_SPEC;
   if (scenario === R3_08D_LINUX_CONFORMANCE_SPEC.id) return R3_08D_LINUX_CONFORMANCE_SPEC;
   if (scenario === R3_08C_ACCESSIBILITY_SPEC.id) return R3_08C_ACCESSIBILITY_SPEC;
   if (scenario === R3_08A_VSCODE_COLLABORATION_SPEC.id) return R3_08A_VSCODE_COLLABORATION_SPEC;

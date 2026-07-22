@@ -334,3 +334,38 @@ test('R3-08D Linux conformance real plugin scenario adds native and container pl
     assert.ok(spec.requiredArtifactSnippets.includes(snippet), `R3-08D must require ${snippet}`);
   }
 });
+
+test('R3-08E Windows and WSL conformance real plugin scenario adds split platform coverage', () => {
+  const profile = buildRealPluginQualityProfile('r3-08e-windows-wsl-conformance');
+  const spec = buildRealPluginScenarioSpec('r3-08e-windows-wsl-conformance');
+
+  assert.equal(profile.kind, 'iteration');
+  assert.equal(profile.requireFormalProjectQuality, false);
+  assert.equal(spec.id, 'r3-08e-windows-wsl-conformance');
+  assert.equal(spec.changedSurface, 'windows-wsl-platform-runtime-conformance');
+  assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
+  assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-08e-windows-wsl-conformance.md');
+  assert.match(spec.promptTitle, /R3-08E-WINDOWS-WSL-CONFORMANCE/);
+  assert.deepEqual(spec.semanticAcceptance, [
+    'Windows native/WSL',
+    'path-shell-line-ending',
+    'permission-fault-sequence',
+    'interop-fault-sequence',
+  ]);
+  for (const snippet of [
+    'R3-08E-WINDOWS-WSL-CONFORMANCE',
+    'evaluateWindowsWslPlatformConformance',
+    'windows-native-path',
+    'wsl-posix-path',
+    'windows-crlf',
+    'wsl-lf',
+    'windows-native-no-wsl',
+    'wsl-interop',
+    'windows-native-requires-windows-paths',
+    'wsl-interop-missing',
+    'Windows native/WSL',
+    'not fixed line-count smoke',
+  ]) {
+    assert.ok(spec.requiredArtifactSnippets.includes(snippet), `R3-08E must require ${snippet}`);
+  }
+});

@@ -237,3 +237,125 @@ test('R3-08D-LINUX-CONFORMANCE reports path storage browser permission and shell
   assert.equal(shellFault.supported, false);
   assert.equal(linuxCheck(shellFault, 'shell').reason, 'linux-requires-posix-shell');
 });
+
+function windowsWslCheck(report, kind) {
+  const check = report.checks.find(item => item.kind === kind);
+  assert.ok(check, `missing Windows/WSL conformance check: ${kind}`);
+  return check;
+}
+
+test('R3-08E-WINDOWS-WSL-CONFORMANCE profiles Windows native and WSL independently', () => {
+  const native = runtime.evaluateWindowsWslPlatformConformance({
+    platform: 'win32',
+    shellPath: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe',
+    env: {
+      USERPROFILE: 'C:\\Users\\dev',
+      LOCALAPPDATA: 'C:\\Users\\dev\\AppData\\Local',
+    },
+    workspaceRoot: 'C:\\Users\\dev\\work\\devseek',
+    bridgeExecutablePath: 'C:\\Users\\dev\\.vscode\\extensions\\devseek\\bridge\\server.cmd',
+    canExecuteBridge: true,
+  });
+  const wsl = runtime.evaluateWindowsWslPlatformConformance({
+    platform: 'win32',
+    shellPath: '/bin/bash',
+    env: {
+      HOME: '/home/dev',
+      WSL_DISTRO_NAME: 'Ubuntu',
+      WSL_INTEROP: '/run/WSL/123_interop',
+    },
+    workspaceRoot: '/home/dev/work/devseek',
+    bridgeExecutablePath: '/home/dev/.vscode-server/extensions/devseek/bridge/server.js',
+    canExecuteBridge: true,
+  });
+
+  assert.equal(native.id, 'R3-08E-WINDOWS-WSL-CONFORMANCE');
+  assert.equal(native.supported, true);
+  assert.deepEqual(
+    native.checks.map(check => check.kind),
+    ['os', 'shell', 'path', 'line-ending', 'permissions', 'interop'],
+  );
+  assert.equal(native.profile.workspaceKind, 'local');
+  assert.equal(windowsWslCheck(native, 'shell').profile, 'windows-powershell');
+  assert.equal(windowsWslCheck(native, 'path').profile, 'windows-native-path');
+  assert.equal(windowsWslCheck(native, 'line-ending').profile, 'windows-crlf');
+  assert.equal(windowsWslCheck(native, 'interop').profile, 'windows-native-no-wsl');
+
+  assert.equal(wsl.supported, true);
+  assert.equal(wsl.profile.workspaceKind, 'wsl');
+  assert.equal(windowsWslCheck(wsl, 'shell').profile, 'wsl-posix');
+  assert.equal(windowsWslCheck(wsl, 'path').profile, 'wsl-posix-path');
+  assert.equal(windowsWslCheck(wsl, 'line-ending').profile, 'wsl-lf');
+  assert.equal(windowsWslCheck(wsl, 'interop').profile, 'wsl-interop');
+});
+
+test('R3-08E-WINDOWS-WSL-CONFORMANCE reports path line-ending permission interop and shell faults separately', () => {
+  const nativePathFault = runtime.evaluateWindowsWslPlatformConformance({
+    profile: {
+      os: 'win32',
+      shell: 'powershell',
+      pathStyle: 'posix',
+      lineEnding: 'crlf',
+      caseSensitive: false,
+      workspaceKind: 'local',
+    },
+    workspaceRoot: '/mnt/c/devseek',
+    canExecuteBridge: true,
+  });
+  const wslPathFault = runtime.evaluateWindowsWslPlatformConformance({
+    profile: {
+      os: 'win32',
+      shell: 'posix',
+      pathStyle: 'windows',
+      lineEnding: 'lf',
+      caseSensitive: true,
+      workspaceKind: 'wsl',
+    },
+    env: { WSL_DISTRO_NAME: 'Ubuntu', WSL_INTEROP: '/run/WSL/123_interop' },
+    workspaceRoot: 'C:\\Users\\dev\\work\\devseek',
+    canExecuteBridge: true,
+  });
+  const lineEndingFault = runtime.evaluateWindowsWslPlatformConformance({
+    platform: 'win32',
+    shellPath: 'C:\\Windows\\System32\\cmd.exe',
+    lineEnding: 'lf',
+    env: { USERPROFILE: 'C:\\Users\\dev' },
+    workspaceRoot: 'C:\\Users\\dev\\work\\devseek',
+    canExecuteBridge: true,
+  });
+  const interopFault = runtime.evaluateWindowsWslPlatformConformance({
+    platform: 'win32',
+    shellPath: '/bin/bash',
+    env: { HOME: '/home/dev', WSL_DISTRO_NAME: 'Ubuntu' },
+    workspaceRoot: '/home/dev/work/devseek',
+    canExecuteBridge: true,
+  });
+  const permissionFault = runtime.evaluateWindowsWslPlatformConformance({
+    platform: 'win32',
+    shellPath: 'C:\\Windows\\System32\\cmd.exe',
+    env: { USERPROFILE: 'C:\\Users\\dev' },
+    workspaceRoot: 'C:\\Users\\dev\\work\\devseek',
+    bridgeExecutablePath: 'C:\\Users\\dev\\.vscode\\extensions\\devseek\\bridge\\server.cmd',
+    canExecuteBridge: false,
+  });
+  const shellFault = runtime.evaluateWindowsWslPlatformConformance({
+    platform: 'win32',
+    shellPath: '/bin/bash',
+    env: { HOME: '/home/dev' },
+    workspaceRoot: 'C:\\Users\\dev\\work\\devseek',
+    canExecuteBridge: true,
+  });
+
+  assert.equal(nativePathFault.supported, false);
+  assert.equal(windowsWslCheck(nativePathFault, 'path').reason, 'windows-native-requires-windows-paths');
+  assert.equal(wslPathFault.supported, false);
+  assert.equal(windowsWslCheck(wslPathFault, 'path').reason, 'wsl-requires-posix-paths');
+  assert.equal(lineEndingFault.supported, false);
+  assert.equal(windowsWslCheck(lineEndingFault, 'line-ending').reason, 'windows-native-requires-crlf');
+  assert.equal(interopFault.supported, false);
+  assert.equal(windowsWslCheck(interopFault, 'interop').reason, 'wsl-interop-missing');
+  assert.equal(permissionFault.supported, false);
+  assert.equal(windowsWslCheck(permissionFault, 'permissions').reason, 'bridge-executable-not-executable');
+  assert.equal(shellFault.supported, false);
+  assert.equal(windowsWslCheck(shellFault, 'shell').reason, 'windows-native-requires-powershell-or-cmd');
+});

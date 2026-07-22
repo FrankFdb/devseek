@@ -363,6 +363,9 @@ function defaultPrompt(root, fixture) {
 
 function createFixtureWorkspace(root, options = {}) {
   const scenarioSpec = buildRealPluginScenarioSpec(options.scenario);
+  if (scenarioSpec.id === 'r3-08e-windows-wsl-conformance') {
+    return createR3WindowsWslConformanceFixture(root, scenarioSpec);
+  }
   if (scenarioSpec.id === 'r3-08d-linux-conformance') {
     return createR3LinuxConformanceFixture(root, scenarioSpec);
   }
@@ -822,6 +825,80 @@ function createR3LinuxConformanceFixture(root, scenarioSpec) {
     '- 为什么 linux-browser-bridge-unreachable、bridge-executable-not-executable、linux-requires-posix-lf-case-sensitive-paths 是不同 fault sequence。',
     '- 为什么本轮 R3-08D 不能继承旧 warranty/Markdown case 或固定文件行数通过。',
     '- 生成文件要包含 native/container 覆盖结论、风险、验证建议和用户可检查的证据路径。',
+    '',
+    '报告必须逐字包含以下验收锚点：',
+    anchorLines,
+  ].join('\n');
+
+  return {
+    requestedOutputDoc,
+    expectedArtifactRel: scenarioSpec.expectedArtifactRel,
+    scenarioSpec,
+    defaultPrompt,
+  };
+}
+
+function createR3WindowsWslConformanceFixture(root, scenarioSpec) {
+  const docsDir = path.join(root, 'docs/r3-iteration');
+  const sourceDir = path.join(root, 'src/windows-wsl-platform-conformance');
+  const requestedOutputDoc = path.join(root, scenarioSpec.requestedOutputDocRel);
+  const matrixPath = path.join(docsDir, 'windows-wsl-platform-conformance-matrix.md');
+  const contractPath = path.join(sourceDir, 'windows-wsl-platform-conformance-contract.ts');
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(path.dirname(requestedOutputDoc), { recursive: true });
+
+  writeText(path.join(root, 'README.md'), [
+    '# DevSeek R3-08E Windows and WSL conformance fixture',
+    '',
+    'This workspace is created by the visible real-plugin harness for the current R3 iteration.',
+  ].join('\n'));
+  writeText(matrixPath, [
+    '# R3-08E Windows Native / WSL Platform Conformance Matrix',
+    '',
+    '- Leaf: R3-08E-WINDOWS-WSL-CONFORMANCE.',
+    '- Windows native profile: platform=win32, shell=powershell/cmd, workspaceRoot=C:\\Users\\dev\\work\\devseek, lineEnding=crlf, pathStyle=windows.',
+    '- WSL profile: platform=win32, workspaceKind=wsl, shell=/bin/bash, workspaceRoot=/home/dev/work/devseek, lineEnding=lf, pathStyle=posix, WSL_INTEROP=/run/WSL/123_interop.',
+    '- Required checks: os, shell, path, line-ending, permissions, interop.',
+    '- Native acceptance: windows-native-path, windows-crlf, windows-native-no-wsl.',
+    '- WSL acceptance: wsl-posix-path, wsl-lf, wsl-interop.',
+    '- Fault sequence: windows-native-requires-windows-paths, wsl-requires-posix-paths, windows-native-requires-crlf, wsl-interop-missing, bridge-executable-not-executable.',
+    '- Linux R3-08D evidence cannot be reused to qualify Windows native or WSL.',
+    '- Fixed old warranty Markdown and fixed line-count output cannot settle this leaf.',
+  ].join('\n'));
+  writeText(contractPath, [
+    'export const r3Leaf = "R3-08E-WINDOWS-WSL-CONFORMANCE";',
+    'export const owner = "evaluateWindowsWslPlatformConformance";',
+    'export const changedSurface = "windows-wsl-platform-runtime-conformance";',
+    'export const requiredChecks = ["os", "shell", "path", "line-ending", "permissions", "interop"] as const;',
+    'export const nativePathProfile = "windows-native-path";',
+    'export const wslPathProfile = "wsl-posix-path";',
+    'export const nativeLineEnding = "windows-crlf";',
+    'export const wslLineEnding = "wsl-lf";',
+    'export const nativeInterop = "windows-native-no-wsl";',
+    'export const wslInterop = "wsl-interop";',
+    'export const nativePathFault = "windows-native-requires-windows-paths";',
+    'export const wslInteropFault = "wsl-interop-missing";',
+    'export const profileScope = "Windows native/WSL";',
+    'export const staleCaseRejected = "not fixed line-count smoke";',
+  ].join('\n'));
+
+  const anchorLines = scenarioSpec.requiredArtifactSnippets
+    .map(snippet => `- ${snippet}`)
+    .join('\n');
+  const defaultPrompt = [
+    `请基于 ${matrixPath} 和 ${contractPath} 创建 Markdown 审计报告。`,
+    `请把报告保存到 ${requestedOutputDoc}。`,
+    `报告主题是 ${scenarioSpec.promptTitle}。`,
+    '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+    '',
+    '报告必须解释：',
+    '- 为什么 R3-08E 必须把 Windows native 与 WSL 作为两个 applicability/profile，不能互相替代。',
+    '- 为什么 path、shell、line-ending、Bridge executable permission、WSL interop 必须分别形成 conformance check。',
+    '- 为什么 Windows native 需要 windows-native-path/windows-crlf/windows-native-no-wsl，而 WSL 需要 wsl-posix-path/wsl-lf/wsl-interop。',
+    '- 为什么 windows-native-requires-windows-paths、wsl-requires-posix-paths、windows-native-requires-crlf、wsl-interop-missing 是不同 fault sequence。',
+    '- 为什么本轮 R3-08E 不能继承 Linux R3-08D、旧 warranty/Markdown case 或固定文件行数通过。',
+    '- 生成文件要包含 Windows native/WSL 覆盖结论、风险、验证建议和用户可检查的证据路径。',
     '',
     '报告必须逐字包含以下验收锚点：',
     anchorLines,

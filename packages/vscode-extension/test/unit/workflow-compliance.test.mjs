@@ -2377,14 +2377,26 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(profile, 'linux-browser-bridge-unreachable', 'R3-08D artifact gate must assert browser bridge fault evidence');
   assertContains(profile, 'bridge-executable-not-executable', 'R3-08D artifact gate must assert bridge permission fault evidence');
   assertContains(profile, 'linux-requires-posix-lf-case-sensitive-paths', 'R3-08D artifact gate must assert Linux path fault evidence');
+  assertContains(profile, 'r3-08e-windows-wsl-conformance', 'R3-08E must add a fresh Windows/WSL conformance real-plugin scenario');
+  assertContains(profile, 'r3-08e-windows-wsl-conformance.md', 'R3-08E scenario must write a distinct artifact');
+  assertContains(profile, 'evaluateWindowsWslPlatformConformance', 'R3-08E artifact gate must assert the platform-runtime owner');
+  assertContains(profile, 'windows-native-path', 'R3-08E artifact gate must assert Windows native path coverage');
+  assertContains(profile, 'wsl-posix-path', 'R3-08E artifact gate must assert WSL POSIX path coverage');
+  assertContains(profile, 'windows-crlf', 'R3-08E artifact gate must assert Windows native line-ending coverage');
+  assertContains(profile, 'wsl-lf', 'R3-08E artifact gate must assert WSL line-ending coverage');
+  assertContains(profile, 'windows-native-no-wsl', 'R3-08E artifact gate must assert native interop separation');
+  assertContains(profile, 'wsl-interop', 'R3-08E artifact gate must assert WSL interop coverage');
+  assertContains(profile, 'wsl-interop-missing', 'R3-08E artifact gate must assert WSL interop fault evidence');
   assertContains(harness, 'createR3KindAggregateFixture', 'real harness must share the R3 kind aggregate fixture instead of duplicating skill/hook setup');
   assertContains(harness, 'createR3RequiredKindsAggregateFixture', 'real harness must add the R3-07H required-kinds fixture');
   assertContains(harness, 'createR3VSCodeCollaborationFixture', 'real harness must add the R3-08A VS Code collaboration fixture');
   assertContains(harness, 'createR3AccessibilityFixture', 'real harness must add the R3-08C accessibility fixture');
   assertContains(harness, 'createR3LinuxConformanceFixture', 'real harness must add the R3-08D Linux conformance fixture');
+  assertContains(harness, 'createR3WindowsWslConformanceFixture', 'real harness must add the R3-08E Windows/WSL conformance fixture');
   assertContains(harness, 'webview-accessibility-surface-contract.ts', 'R3-08C fixture must expose an accessibility contract instead of only prompt text');
   assertContains(harness, 'vscode-surface-adapter-collaboration-contract.ts', 'R3-08A fixture must expose a source contract instead of only prompt text');
   assertContains(harness, 'linux-platform-conformance-contract.ts', 'R3-08D fixture must expose a platform conformance contract instead of only prompt text');
+  assertContains(harness, 'windows-wsl-platform-conformance-contract.ts', 'R3-08E fixture must expose a Windows/WSL conformance contract instead of only prompt text');
   assertContains(harness, 'R3_KIND_AGGREGATE_FIXTURE_DETAILS', 'real harness must keep R3 kind fixture data table-driven');
   assert.ok(
     harness.indexOf('const R3_KIND_AGGREGATE_FIXTURE_DETAILS') < harness.indexOf('const fixture = usesExistingWorkspace'),
@@ -2521,6 +2533,27 @@ test('R3-08D-LINUX-CONFORMANCE: platform runtime exposes independent Linux confo
 
   assertContains(platformRuntimeTest, 'profiles native and container shell path storage browser bridge independently', 'R3-08D must keep a native/container green oracle');
   assertContains(platformRuntimeTest, 'reports path storage browser permission and shell fault sequence separately', 'R3-08D must keep a fault-sequence oracle');
+});
+
+test('R3-08E-WINDOWS-WSL-CONFORMANCE: platform runtime splits Windows native and WSL gates', () => {
+  const platformRuntime = src('../shared/src/platform-runtime.ts');
+  const platformRuntimeTest = src('test/unit/platform-runtime.test.mjs');
+
+  assertContains(platformRuntime, 'evaluateWindowsWslPlatformConformance', 'R3-08E must keep the conformance evaluator in the platform-runtime owner');
+  assertContains(platformRuntime, 'R3-08E-WINDOWS-WSL-CONFORMANCE', 'R3-08E report must expose the exact leaf id');
+  assertContains(platformRuntime, "'line-ending'", 'R3-08E must include line-ending as an independent check');
+  assertContains(platformRuntime, "'interop'", 'R3-08E must include Windows/WSL interop as an independent check');
+  assertContains(platformRuntime, 'windows-native-path', 'R3-08E must recognize Windows native path profile');
+  assertContains(platformRuntime, 'wsl-posix-path', 'R3-08E must recognize WSL POSIX path profile');
+  assertContains(platformRuntime, 'windows-crlf', 'R3-08E must recognize Windows CRLF profile');
+  assertContains(platformRuntime, 'wsl-lf', 'R3-08E must recognize WSL LF profile');
+  assertContains(platformRuntime, 'windows-native-no-wsl', 'R3-08E must keep native Windows interop separate');
+  assertContains(platformRuntime, 'wsl-interop', 'R3-08E must require WSL interop evidence');
+  assertContains(platformRuntime, 'windows-native-requires-windows-paths', 'R3-08E must fail closed on native path mismatch');
+  assertContains(platformRuntime, 'wsl-interop-missing', 'R3-08E must fail closed when WSL interop is absent');
+
+  assertContains(platformRuntimeTest, 'profiles Windows native and WSL independently', 'R3-08E must keep a native/WSL green oracle');
+  assertContains(platformRuntimeTest, 'reports path line-ending permission interop and shell faults separately', 'R3-08E must keep a fault-sequence oracle');
 });
 
 test('Real DeepSeek harness: headed user-window runs can be retained for inspection', () => {
