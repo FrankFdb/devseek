@@ -63,10 +63,25 @@ export function selectArtifactGroundingResultFields(
 
 /** Produces the replay-bound completion fields shared by both top-level routes. */
 export function buildArtifactVerificationCompletionMetadata(
-  result: Pick<AgentLoopResult, 'verificationResults'> | undefined,
+  result: Pick<AgentLoopResult, 'verificationIds' | 'verificationResults'> | undefined,
 ): { verificationIds: string[]; artifactVerificationOk?: boolean } {
   const verificationResults = result?.verificationResults;
-  const verificationIds = verificationResults?.map(item => item.verificationId) ?? [];
+  const verificationIds = uniqueVerificationIds([
+    ...(result?.verificationIds ?? []),
+    ...(verificationResults?.map(item => item.verificationId) ?? []),
+  ]);
   if (!verificationResults?.length) return { verificationIds };
   return { verificationIds, artifactVerificationOk: verificationResults.at(-1)?.ok === true };
+}
+
+function uniqueVerificationIds(values: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const value of values) {
+    const id = value.trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return ids;
 }

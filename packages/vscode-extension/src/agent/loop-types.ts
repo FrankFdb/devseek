@@ -190,6 +190,7 @@ export interface AgentLoopResult {
   /** Collapsible, user-visible summary persisted into restored chat history. */
   historyText?: string;
   /** Immutable host evidence and claim verdicts retained through top-level settlement/replay. */
+  verificationIds?: string[];
   evidenceRefs?: EvidenceRef[];
   artifactClaims?: ArtifactClaim[];
   verificationResults?: VerificationResult[];

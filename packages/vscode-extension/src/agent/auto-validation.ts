@@ -41,6 +41,7 @@ export interface AgentAutoValidationCallbacks {
 }
 
 export interface AgentAutoValidationResult {
+  evidenceOperationId?: string;
   evidence?: TerminalEvidence;
   feedbackForAI?: string;
   repairBlockedReason?: string;
@@ -541,7 +542,7 @@ export async function runAgentAutoValidationForWrites(
       if (policyQuality?.qualityGate) {
         await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, policyQuality.qualityGate);
       }
-      return policyQuality ?? {};
+      return { evidenceOperationId, ...(policyQuality ?? {}) };
     }
     const verification = normalizeVerificationResult(result);
     if (!shouldEmitTerminalEvidenceForVerification(verification)) {
@@ -559,6 +560,7 @@ export async function runAgentAutoValidationForWrites(
       });
       await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, qualityGate);
       return {
+        evidenceOperationId,
         feedbackForAI: [feedbackForAI, policyQuality?.feedbackForAI].filter(Boolean).join('\n\n'),
         qualityGate,
       };
@@ -588,6 +590,7 @@ export async function runAgentAutoValidationForWrites(
     });
     await emitAutoValidationQualityGateStatus(callbacks, evidenceOperationId, finalQualityGate);
     return {
+      evidenceOperationId,
       ...(evidence ? { evidence } : {}),
       feedbackForAI: finalFeedbackForAI,
       repairBlockedReason,
@@ -604,6 +607,7 @@ export async function runAgentAutoValidationForWrites(
       detail: message,
     });
     return {
+      evidenceOperationId,
       evidence: {
         command: 'automatic workspace validation',
         kind: 'other',

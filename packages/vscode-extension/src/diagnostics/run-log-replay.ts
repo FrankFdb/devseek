@@ -287,7 +287,11 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       } else if (phase === 'validate' && state === 'completed') {
         pendingValidationFailure = undefined;
       }
-      if (state === 'completed' && /(失败|failed|error|fetch failed|HTTP 5\d\d)/i.test(`${title}\n${detail}`)) {
+      if (
+        state === 'completed'
+        && !isExplicitPassedVerificationStatus(phase, detail)
+        && /(失败|failed|error|fetch failed|HTTP 5\d\d)/i.test(`${title}\n${detail}`)
+      ) {
         issues.push({
           kind: 'failure-status-reported-completed',
           severity: 'error',
@@ -357,6 +361,9 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
       chatRequestCompletions += 1;
     }
     if (entry.event === 'chat-request-failed') {
+      chatRequestFailures += 1;
+    }
+    if (entry.event === 'chat-request-login-required') {
       chatRequestFailures += 1;
     }
 
@@ -1155,6 +1162,10 @@ function isMarkdownDeliverableStatus(
   const text = [taskFile, taskDesc, title, detail].join('\n');
   return /\.(?:md|markdown)\b/i.test(text)
     || /(?:Markdown|md\s*文档|Markdown\s*建议文档|文档交付|建议文档)/i.test(text);
+}
+
+function isExplicitPassedVerificationStatus(phase: string | undefined, detail: string): boolean {
+  return phase === 'validate' && /\[verification_result:\s*passed\]/i.test(detail);
 }
 
 function firstMatch(value: string, pattern: RegExp): string | undefined {

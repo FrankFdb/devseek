@@ -665,6 +665,115 @@ test('RunContext: provider response recovery resolves participant provider failu
   }
 });
 
+test('RunContext: local file fallback resolves provider failures after task already started', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  const runId = 'run-context-provider-fallback-local-file';
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '创建 Markdown 建议文档 docs/warranty-maintenance-advice-simulation.md',
+      traceLevel: 'debug',
+    });
+    const task = {
+      type: 'agentStatus',
+      phase: 'execute',
+      taskId: 'write-markdown',
+      taskFile: 'docs/warranty-maintenance-advice-simulation.md',
+      taskAction: 'create',
+      title: '创建 Markdown 建议文档',
+    };
+    context.recordAgentStatus({ ...task, state: 'started' });
+
+    const provider = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId,
+      surface: 'vscode-provider',
+      authority: {
+        role: 'participant',
+        token: context.evidenceParticipantToken,
+      },
+    });
+    for (const boundary of ['bridge-server', 'vscode-provider-client']) {
+      for (const type of ['provider.requested', 'provider.failed']) {
+        provider.record({
+          type,
+          idempotencyKey: productRunEvidenceIdempotencyKey(`provider-fallback:${boundary}:${type}`, {
+            operationId: 'provider:login-required',
+          }),
+          payload: observed(type.slice('provider.'.length), {
+            operation_id: 'provider:login-required',
+            boundary,
+          }),
+        });
+      }
+    }
+
+    context.recordAgentStatus({ ...task, state: 'completed' });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'validate', state: 'started',
+      title: '自动验证写入结果', evidenceOperationId: 'verify-provider-fallback',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'validate', state: 'completed',
+      title: '自动验证通过', evidenceOperationId: 'verify-provider-fallback',
+      detail: '[verification_result: passed]\nProvider 调用失败：LOGIN_REQUIRED，但本地文件已通过验证。',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'quality', state: 'started',
+      title: '评估自动验证 QualityGate', evidenceOperationId: 'verify-provider-fallback',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus', phase: 'quality', state: 'completed',
+      title: '自动验证 QualityGate 通过', evidenceOperationId: 'verify-provider-fallback',
+    });
+
+    assert.equal(context.complete('completed', {
+      tasksTotal: 1,
+      tasksApplied: 1,
+      tasksFailed: 0,
+      changedPaths: ['docs/warranty-maintenance-advice-simulation.md'],
+    }), 'completed');
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read(runId);
+    const providerFailures = events.filter(event => event.type === 'provider.failed');
+    const recovery = events.find(event => event.type === 'recovery.completed');
+    const recoveryRequest = events.find(event => (
+      event.type === 'side_effect.requested'
+      && event.payload.recovery_operation_id === recovery?.payload.operation_id
+    ));
+    const recoveryCommit = events.find(event => (
+      event.type === 'side_effect.committed'
+      && event.payload.recovery_operation_id === recovery?.payload.operation_id
+    ));
+    const originalRequest = events.find(event => (
+      event.type === 'side_effect.requested'
+      && event.payload.operation_id !== recoveryRequest?.payload.operation_id
+    ));
+    assert.equal(providerFailures.length, 2);
+    assert.equal(recovery.payload.resolves_operation_ids.includes('provider:login-required'), true);
+    assert.equal(recovery.payload.verification_operation_id, 'verify-provider-fallback');
+    assert.ok(providerFailures.every(event => event.sequence < recoveryRequest.sequence));
+    assert.ok(recoveryRequest.sequence < recoveryCommit.sequence);
+    assert.ok(recoveryCommit.sequence < recovery.sequence);
+    assert.equal(originalRequest.payload.recovery_operation_id, undefined);
+    assert.equal(ledger.verify(runId).status, 'valid-sealed');
+
+    const entries = readJsonl(path.join(workspaceRoot, '.devseek', 'runs', `${runId}.log`));
+    const validationStatus = entries.find(entry => (
+      entry.event === 'agent-status'
+      && entry.data?.phase === 'validate'
+      && entry.data?.state === 'completed'
+    ));
+    const completed = entries.find(entry => entry.event === 'agent-run-completed');
+    assert.equal(validationStatus.data.evidenceOperationId, 'verify-provider-fallback');
+    assert.equal(completed.data.status, 'completed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('RunContext: recovery without a correlated retry mutation fails closed', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   try {

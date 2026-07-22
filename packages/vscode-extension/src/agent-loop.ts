@@ -1473,6 +1473,7 @@ function recordLocalAgentResponsePayload(callbacks: AgentLoopCallbacks, response
 interface ValidationOutcome {
   ran: boolean;
   ok: boolean;
+  evidenceOperationId?: string;
   command?: string;
   detail?: string;
   reason?: string;
@@ -1495,6 +1496,7 @@ function autoValidationResultToValidationOutcome(result: AgentAutoValidationResu
   return {
     ran: Boolean(evidence?.command),
     ok,
+    evidenceOperationId: result.evidenceOperationId,
     command: evidence?.command,
     detail,
     exitCode: evidence?.exitCode,
@@ -1644,7 +1646,7 @@ async function runValidation(
     outcome: ValidationOutcome,
   ): Promise<ValidationOutcome> => {
     await emitLegacyValidationQualityGateStatus(callbacks, evidenceOperationId, outcome);
-    return outcome;
+    return { ...outcome, evidenceOperationId };
   };
   const hasCppTargets = validationTargets.some(p => isCompilableFile(p));
   const effectiveWantRun = wantRun || (hasCppTargets && shouldRunCppValidation(userPrompt));
@@ -1940,6 +1942,7 @@ export async function runAgentLoop(
   // Accumulate analysis text from read-only tasks to return as analysisText (for findings injection)
   const analysisTexts: string[] = [];
   const allTerminalEvidence: TerminalEvidence[] = [];
+  const verificationIds: string[] = [];
   const artifactGrounding = new ArtifactGroundingCollector(callbacks, workspaceRoot.fsPath);
   const readEvidenceRecorder = new ToolReadEvidenceRecorder(workspaceRoot.fsPath, callbacks.traceRunId);
   // Each task starts from a clean DeepSeek web conversation. The current task
@@ -2125,6 +2128,7 @@ export async function runAgentLoop(
       'conservative',
       { qualityWrittenFiles: editedFileRecords },
     );
+    if (autoValidation.evidenceOperationId) verificationIds.push(autoValidation.evidenceOperationId);
     if (autoValidation.evidence) allTerminalEvidence.push(autoValidation.evidence);
     if (autoValidation.feedbackForAI) {
       sessionHistory.push({
@@ -2149,6 +2153,7 @@ export async function runAgentLoop(
       t => t.action === 'analyze' && /run_terminal|运行程序|执行程序|compile.*run|build.*run/i.test(t.desc)
     ) || requiresRuntimeValidation(writeAuthority.currentPrompt);
     legacyValidationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, writeAuthority.currentPrompt, sessionHistory);
+    if (legacyValidationOutcome.evidenceOperationId) verificationIds.push(legacyValidationOutcome.evidenceOperationId);
     appendValidationEvidence(allTerminalEvidence, legacyValidationOutcome);
 
     const maxRepairRounds = getAgentAutoFixRounds();
@@ -2224,6 +2229,7 @@ export async function runAgentLoop(
           terminalEvidence: allTerminalEvidence,
           workspaceRoot: workspaceRoot.fsPath,
           failedReason,
+          verificationIds: uniqueStringValues(verificationIds),
           analysisTexts,
           ...artifactGrounding.resultFields(),
         });
@@ -2260,6 +2266,7 @@ export async function runAgentLoop(
 
       sessionHistory.push(...writeAuthority.takePendingAndDrain());
       legacyValidationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, writeAuthority.currentPrompt, sessionHistory);
+      if (legacyValidationOutcome.evidenceOperationId) verificationIds.push(legacyValidationOutcome.evidenceOperationId);
       appendValidationEvidence(allTerminalEvidence, legacyValidationOutcome);
     }
   }
@@ -2332,6 +2339,7 @@ export async function runAgentLoop(
     terminalEvidence: allTerminalEvidence,
     workspaceRoot: workspaceRoot.fsPath,
     failedReason: historyFailedReason,
+    verificationIds: uniqueStringValues(verificationIds),
     summary: finalFailed === 0
       ? manualReviewReason
         ? `全部 ${tasks.length} 个任务已执行，运行效果等待人工确认。`
@@ -2483,6 +2491,18 @@ function summarizeWrittenFileBasenames(writtenFiles: WrittenFileEvidence[]): str
 
 function uniquePaths(paths: string[]): string[] {
   return [...new Set(paths.filter(Boolean).map(pathValue => nodePath.normalize(pathValue)))];
+}
+
+function uniqueStringValues(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
 }
 
 function countByValue(values: string[]): Map<string, number> {

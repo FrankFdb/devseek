@@ -65,6 +65,8 @@ test('Agent auto validation: successful project validation becomes completion ev
     'quality:completed',
   ]);
   assert.equal(new Set(statuses.map(status => status.evidenceOperationId)).size, 1);
+  assert.equal(result.evidenceOperationId, statuses[0].evidenceOperationId);
+  assert.match(result.evidenceOperationId, /^auto-validation-\d+-packages\/vscode-extension\/src\/agent-loop\.ts$/);
   assert.deepEqual(activities, [{ kind: 'terminal', label: '自动验证: npm run compile' }]);
 });
 

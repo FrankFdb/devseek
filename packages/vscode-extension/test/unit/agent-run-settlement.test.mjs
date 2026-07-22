@@ -110,6 +110,31 @@ test('agent run settlement keeps explicit artifact verification verdicts', () =>
   assert.equal(completionData.artifactVerificationOk, true);
 });
 
+test('agent run settlement preserves automatic validation verification ids', () => {
+  let completionData;
+  const terminalPermissions = {
+    completeRunContext(_runContext, requestedStatus, data) {
+      completionData = data;
+      assert.doesNotThrow(() => assertStrictJsonData(data));
+      return requestedStatus;
+    },
+  };
+
+  settleAgentLoopResult(terminalPermissions, { runId: 'run-3' }, {
+    tasksTotal: 1,
+    tasksApplied: 1,
+    tasksFailed: 0,
+    changedPaths: ['report.md'],
+    verificationIds: ['auto-validation-1-report.md', 'auto-validation-1-report.md'],
+    verificationResults: [
+      { verificationId: 'artifact-vr-1', ok: true, claims: [] },
+    ],
+  });
+
+  assert.deepEqual(completionData.verificationIds, ['auto-validation-1-report.md', 'artifact-vr-1']);
+  assert.equal(completionData.artifactVerificationOk, true);
+});
+
 function assertStrictJsonData(value, seen = new Set()) {
   assert.notEqual(value, undefined, 'strict JSON data must not contain undefined');
   assert.notEqual(typeof value, 'function', 'strict JSON data must not contain functions');

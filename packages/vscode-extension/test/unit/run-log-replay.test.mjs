@@ -88,6 +88,66 @@ function sha256File(filePath) {
   return createHash('sha256').update(readFileSync(filePath)).digest('hex');
 }
 
+test('run log replay treats login-required provider event as a terminal request failure', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-22T02:00:00.000Z',
+      level: 'info',
+      source: 'bridge-server',
+      phase: 'provider',
+      event: 'chat-request-start',
+      runId: 'login-required-terminal',
+      data: { operationId: 'provider-login-required-1' },
+    },
+    {
+      ts: '2026-07-22T02:00:01.000Z',
+      level: 'info',
+      source: 'bridge-server',
+      phase: 'provider',
+      event: 'chat-request-login-required',
+      runId: 'login-required-terminal',
+      data: { operationId: 'provider-login-required-1' },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    assert.equal(report.issues.some(issue => issue.kind === 'incomplete-provider-request'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay accepts passed validation detail that quotes recovered provider failure text', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-22T02:00:00.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'agent-status',
+      event: 'agent-status',
+      runId: 'passed-validation-quotes-provider-failure',
+      data: {
+        phase: 'validate',
+        state: 'completed',
+        title: '自动验证通过',
+        detail: [
+          '[verification_result: passed]',
+          '[auto_validation: test -f docs/warranty-maintenance-advice-simulation.md]',
+          'Provider 调用失败：LOGIN_REQUIRED，但本地 Markdown 文件已生成并通过验证。',
+        ].join('\n'),
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    assert.equal(report.issues.some(issue => issue.kind === 'failure-status-reported-completed'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay detects path drift, legacy build dirs, protocol contamination and missing convergence', () => {
   const { dir, logPath } = writeLog([
     {

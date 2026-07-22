@@ -31,6 +31,7 @@ export interface AgentLoopResultInput extends ArtifactGroundingResultFields {
   summary?: string;
   manualReviewReason?: string;
   analysisTexts?: string[];
+  verificationIds?: string[];
 }
 
 export function buildAgentLoopResult(input: AgentLoopResultInput): AgentLoopResult {
@@ -71,6 +72,7 @@ export function buildAgentLoopResult(input: AgentLoopResultInput): AgentLoopResu
       manualReviewReason: input.manualReviewReason,
     } : {}),
     ...(input.analysisTexts?.length ? { analysisText: input.analysisTexts.join('\n\n') } : {}),
+    ...(input.verificationIds?.length ? { verificationIds: input.verificationIds } : {}),
     ...selectArtifactGroundingResultFields(input),
     historyText,
   };

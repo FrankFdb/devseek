@@ -86,6 +86,8 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   private currentRecovery?: {
     operationId: string;
     targetOperationIds: string[];
+    sideEffectOperationId?: string;
+    sideEffectCommitted?: boolean;
   };
   private readonly verificationStates = new Map<string, 'started' | 'completed' | 'failed'>();
   private readonly qualityGateStates = new Map<string, 'started' | 'passed' | 'failed' | 'vetoed'>();
@@ -379,13 +381,18 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       if ((status.state === 'started' || status.state === 'completed') && !this.currentRecovery) {
         this.beginImplicitRecoveryForOperationKey(operationKey, summary);
       }
+      if ((status.state === 'started' || status.state === 'completed') && !this.currentRecovery) {
+        this.beginImplicitProviderFallbackRecovery(status, summary);
+      }
       const recoveryDetails: Record<string, import('@devseek-netai/shared').RunEvidenceJson> = this.currentRecovery
+        && !this.currentRecovery.sideEffectOperationId
         ? { recovery_operation_id: this.currentRecovery.operationId }
         : {};
       if (status.state === 'started') {
         operationId ??= this.beginSideEffectOperation(operationKey, status);
         this.recordSideEffectStart(operationId, summary, recoveryDetails);
       } else if (status.state === 'completed') {
+        this.commitImplicitRecoverySideEffect(summary);
         operationId ??= this.beginSideEffectOperation(operationKey, status);
         if (!this.sideEffectOperations.has(operationId)) this.recordSideEffectStart(operationId, summary, recoveryDetails);
         this.recordOperationEvent('side_effect.committed', operationId, 'committed', summary, recoveryDetails);
@@ -520,6 +527,7 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
   ): void {
     let operationId = status.evidenceOperationId?.trim();
     if (status.state === 'started') {
+      this.commitImplicitRecoverySideEffect(summary);
       if (!operationId) {
         if (this.currentLegacyValidationOperationId) {
           this.markEvidenceDegraded(new Error('A verification was started before the prior verification terminated'));
@@ -736,6 +744,72 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
       target_operation_ids: targetOperationIds,
       recovery_trigger: 'same-task-mutation-retry',
     });
+  }
+
+  private beginImplicitProviderFallbackRecovery(
+    status: AgentStatusEvent,
+    summary: { length: number; sha256: string },
+  ): void {
+    const targetOperationIds = this.collectRecoverableProviderFailureOperationIds();
+    if (targetOperationIds.length === 0) return;
+    this.recoverySequence += 1;
+    const operationId = `vscode-recovery-${this.recoverySequence}`;
+    const sideEffectOperationId = `${sideEffectOperationBaseId(this.runId, status)}-provider-fallback-${this.recoverySequence}`.slice(0, 512);
+    this.currentRecovery = {
+      operationId,
+      targetOperationIds,
+      sideEffectOperationId,
+      sideEffectCommitted: false,
+    };
+    const recoveryDetails = {
+      recovery_operation_id: operationId,
+      recovery_trigger: 'provider-fallback-local-write',
+    };
+    this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
+      target_operation_ids: targetOperationIds,
+      recovery_trigger: 'provider-fallback-local-write',
+    });
+    this.recordSideEffectStart(sideEffectOperationId, summary, recoveryDetails);
+    this.hasSideEffectEvidence = true;
+  }
+
+  private commitImplicitRecoverySideEffect(summary: { length: number; sha256: string }): void {
+    const recovery = this.currentRecovery;
+    if (!recovery?.sideEffectOperationId || recovery.sideEffectCommitted) return;
+    this.recordOperationEvent('side_effect.committed', recovery.sideEffectOperationId, 'committed', summary, {
+      recovery_operation_id: recovery.operationId,
+      recovery_trigger: 'provider-fallback-local-write',
+    });
+    recovery.sideEffectCommitted = true;
+  }
+
+  private collectRecoverableProviderFailureOperationIds(): string[] {
+    if (!this.evidence) return [];
+    try {
+      const resolved = new Set<string>();
+      const events = this.evidence.readEvents();
+      for (const event of events) {
+        if (event.type !== 'recovery.completed') continue;
+        const payload = evidencePayloadObject(event.payload);
+        const resolvedIds = Array.isArray(payload?.resolves_operation_ids)
+          ? payload.resolves_operation_ids
+          : [];
+        for (const value of resolvedIds) {
+          if (typeof value === 'string' && value.trim()) resolved.add(value.trim());
+        }
+      }
+      const operationIds = new Set<string>();
+      for (const event of events) {
+        if (event.type !== 'provider.failed') continue;
+        const payload = evidencePayloadObject(event.payload);
+        const operationId = typeof payload?.operation_id === 'string' ? payload.operation_id.trim() : '';
+        if (operationId && !resolved.has(operationId)) operationIds.add(operationId);
+      }
+      return [...operationIds];
+    } catch (error) {
+      this.markEvidenceDegraded(error);
+      return [];
+    }
   }
 
   private addPendingAdverseOperation(operationId: string, operationKey?: string): void {
@@ -1031,6 +1105,7 @@ function summarizeAgentStatusForTrace(status: AgentStatusEvent): Record<string, 
   return {
     phase: status.phase,
     state: status.state,
+    evidenceOperationId: status.evidenceOperationId,
     taskId: status.taskId,
     taskFile: status.taskFile,
     taskAction: status.taskAction,
