@@ -20,6 +20,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   buildRealPluginQualityProfile,
+  buildRealPluginScenarioSpec,
   parseRequiredArtifactSnippets,
 } from './harness/real-plugin-quality-profile.mjs';
 
@@ -53,10 +54,14 @@ const keepDeepSeekPage = hasFlag('--keep-deepseek-page')
 const autopilot = !hasFlag('--no-autopilot') && process.env.DEVSEEK_REAL_PLUGIN_AUTOPILOT !== '0';
 const promptFromArg = getArgValue('--prompt');
 const scenario = getArgValue('--scenario') || process.env.DEVSEEK_REAL_PLUGIN_SCENARIO || 'formal-simulation';
+const scenarioSpec = buildRealPluginScenarioSpec(scenario);
 const qualityProfile = buildRealPluginQualityProfile(scenario);
-const requiredArtifactSnippets = parseRequiredArtifactSnippets(
-  getArgValue('--artifact-must-contain') || process.env.DEVSEEK_REAL_PLUGIN_ARTIFACT_MUST_CONTAIN,
-);
+const requiredArtifactSnippets = [...new Set([
+  ...scenarioSpec.requiredArtifactSnippets,
+  ...parseRequiredArtifactSnippets(
+    getArgValue('--artifact-must-contain') || process.env.DEVSEEK_REAL_PLUGIN_ARTIFACT_MUST_CONTAIN,
+  ),
+])];
 const harnessMode = normalizeHarnessMode(getArgValue('--mode') || process.env.DEVSEEK_REAL_PLUGIN_MODE || 'fast');
 const workspaceDirArg = getArgValue('--workspace-dir') || process.env.DEVSEEK_REAL_PLUGIN_WORKSPACE_DIR || '';
 const outputDocArg = getArgValue('--output-doc') || process.env.DEVSEEK_REAL_PLUGIN_OUTPUT_DOC || '';
@@ -142,6 +147,7 @@ report.harness = {
   autopilot,
   pluginPort,
   scenario,
+  scenarioSpec: fixture.scenarioSpec || scenarioSpec,
   qualityProfile,
   requiredArtifactSnippets,
   harnessMode,
@@ -253,6 +259,7 @@ function productRunLogSelectionSource() {
 }
 
 function defaultPrompt(root, fixture) {
+  if (fixture?.defaultPrompt) return fixture.defaultPrompt;
   return [
     '原来实现的吊运维保功能：设计文档+代码',
     `等${path.join(root, 'src/oam/src/lifting/maintenance')} 下面是最新的维保提醒的需求：`,
@@ -264,6 +271,11 @@ function defaultPrompt(root, fixture) {
 }
 
 function createFixtureWorkspace(root, options = {}) {
+  const scenarioSpec = buildRealPluginScenarioSpec(options.scenario);
+  if (scenarioSpec.id === 'r3-07g-skill-aggregate') {
+    return createR3SkillAggregateFixture(root, scenarioSpec);
+  }
+
   const maintenanceDir = path.join(root, 'src/oam/src/lifting/maintenance');
   const docsDir = path.join(root, 'src/oam/src/lifting/zc_maintenance/docs');
   const requestedOutputDoc = path.join(docsDir, 'warranty-maintenance-advice-simulation.md');
@@ -358,6 +370,63 @@ function createFixtureWorkspace(root, options = {}) {
     expectedArtifactRel: options.scenario === 'formal-simulation'
       ? expectedArtifactRel
       : 'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice.md',
+  };
+}
+
+function createR3SkillAggregateFixture(root, scenarioSpec) {
+  const docsDir = path.join(root, 'docs/r3-iteration');
+  const sourceDir = path.join(root, 'src/devseek-profile');
+  const requestedOutputDoc = path.join(root, scenarioSpec.requestedOutputDocRel);
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(path.dirname(requestedOutputDoc), { recursive: true });
+
+  writeText(path.join(root, 'README.md'), [
+    '# DevSeek R3-07G aggregate fixture',
+    '',
+    'This workspace is created by the visible real-plugin harness for the current R3 iteration.',
+  ].join('\n'));
+  writeText(path.join(docsDir, 'skill-denominator-plan.md'), [
+    '# R3-07G Skill Denominator Plan',
+    '',
+    '- Profile kind: skill',
+    '- Required denominator: 20 task slots and 100 permission-fault slots.',
+    '- Parent owner: ExtensionProfilePlanService.',
+    '- Aggregate settlement is read-only and must not execute child slots.',
+    '- Blocking classes: missing/failed/vetoed/blocked/duplicate/foreign.',
+  ].join('\n'));
+  writeText(path.join(sourceDir, 'extension-profile-plan-service-contract.ts'), [
+    'export const EXTENSION_PROFILE_KIND_AGGREGATE_PROTOCOL = "devseek.extension-profile-kind-aggregate/v1";',
+    'export const aggregateExecutionAllowed = false;',
+    'export const slotExecutionAllowed = false;',
+    'export const skillTaskSlotCount = 20;',
+    'export const skillPermissionFaultSlotCount = 100;',
+    'export const aggregateOwner = "ExtensionProfilePlanService";',
+  ].join('\n'));
+
+  const anchorLines = scenarioSpec.requiredArtifactSnippets
+    .map(snippet => `- ${snippet}`)
+    .join('\n');
+  const defaultPrompt = [
+    `请执行 ${scenarioSpec.promptTitle} 的真实用户仿真审计。`,
+    `请阅读 ${path.join(docsDir, 'skill-denominator-plan.md')} 和 ${path.join(sourceDir, 'extension-profile-plan-service-contract.ts')}。`,
+    `请将本次仿真测试报告写入 ${requestedOutputDoc}。`,
+    '',
+    '报告必须解释：',
+    '- 为什么 aggregate 只能读取已有 signed plan 和 owned slot receipts，不能在 aggregate 阶段执行 slot。',
+    '- 为什么完整通过需要 20 task slots 与 100 permission-fault slots 全部有唯一 parent-owned passed receipt。',
+    '- 为什么 missing/failed/vetoed/blocked/duplicate/foreign 任一类 receipt 都必须阻断结算。',
+    '- 生成文件要包含本次测试结论、风险、验证建议和用户可检查的证据路径。',
+    '',
+    '报告必须逐字包含以下验收锚点：',
+    anchorLines,
+  ].join('\n');
+
+  return {
+    requestedOutputDoc,
+    expectedArtifactRel: scenarioSpec.expectedArtifactRel,
+    scenarioSpec,
+    defaultPrompt,
   };
 }
 

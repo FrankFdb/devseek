@@ -1397,6 +1397,205 @@ test('R3-07S-skill-TASK-020 ExtensionProfilePlanService remembers owner-issued s
   assert.deepEqual(replacementWithoutCallerReplay.failureRefs, []);
 });
 
+test('R3-07G-skill-AGGREGATE ExtensionProfilePlanService blocks incomplete skill denominator without executing slots', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: 'dddddddddddddddddddddddddddddddddddddddd',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const taskReceipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-TASK-001',
+    attemptId: 'r3-07g-skill-task-001',
+    status: 'passed',
+    childReceipt: createSkillTaskChildReceipt('aggregate-task-001'),
+    effectRefs: ['caller-effect:aggregate-task-001'],
+    receiptRefs: ['caller-receipt:aggregate-task-001'],
+  });
+  assert.equal(taskReceipt.status, 'passed');
+
+  const aggregate = service.aggregateKindProfile({ plan, receipts: [taskReceipt] });
+
+  assert.equal(aggregate.protocol, 'devseek.extension-profile-kind-aggregate/v1');
+  assert.equal(aggregate.profileId, 'R3-07F-skill-PROFILE-PLAN');
+  assert.equal(aggregate.kind, 'skill');
+  assert.equal(aggregate.status, 'blocked');
+  assert.equal(aggregate.singleOwner, 'ExtensionProfilePlanService');
+  assert.equal(aggregate.settlementAuthority, 'parent-kernel');
+  assert.equal(aggregate.aggregateExecutionAllowed, false);
+  assert.equal(aggregate.slotExecutionAllowed, false);
+  assert.equal(aggregate.requiredTaskSlotCount, 20);
+  assert.equal(aggregate.requiredPermissionFaultSlotCount, 100);
+  assert.equal(aggregate.passedTaskSlotCount, 1);
+  assert.equal(aggregate.passedPermissionFaultSlotCount, 0);
+  assert.equal(aggregate.missingSlotIds.length, 119);
+  assert.ok(aggregate.missingSlotIds.includes('R3-07S-skill-TASK-002'));
+  assert.ok(aggregate.missingSlotIds.includes('R3-07S-skill-PERMISSION-FAULT-100'));
+  assert.ok(aggregate.vetoes.includes('aggregate-missing-slots-veto:R3-07F-skill-PROFILE-PLAN:119'));
+  assert.ok(aggregate.evidenceRefs.includes(plan.evidenceRefs[0]));
+  assert.ok(aggregate.evidenceRefs.some(ref => /^extension-profile-kind-aggregate:R3-07F-skill-PROFILE-PLAN:/.test(ref)));
+});
+
+test('R3-07G-skill-AGGREGATE ExtensionProfilePlanService passes only a complete owned skill denominator', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const receipts = createCompleteSkillDenominatorReceipts(service, plan);
+
+  const aggregate = service.aggregateKindProfile({ plan, receipts });
+
+  assert.equal(receipts.length, 120);
+  assert.equal(aggregate.status, 'passed');
+  assert.equal(aggregate.passedTaskSlotCount, 20);
+  assert.equal(aggregate.passedPermissionFaultSlotCount, 100);
+  assert.deepEqual(aggregate.missingSlotIds, []);
+  assert.deepEqual(aggregate.failedSlotIds, []);
+  assert.deepEqual(aggregate.vetoedSlotIds, []);
+  assert.deepEqual(aggregate.blockedSlotIds, []);
+  assert.deepEqual(aggregate.duplicateSlotIds, []);
+  assert.deepEqual(aggregate.foreignSlotIds, []);
+  assert.deepEqual(aggregate.vetoes, []);
+  assert.ok(Object.isFrozen(aggregate));
+  assert.ok(Object.isFrozen(aggregate.evidenceRefs));
+  assert.ok(aggregate.evidenceRefs.some(ref => /^extension-profile-slot-execution:R3-07S-skill-TASK-020:/.test(ref)));
+  assert.ok(aggregate.evidenceRefs.some(ref => /^extension-profile-slot-execution:R3-07S-skill-PERMISSION-FAULT-100:/.test(ref)));
+});
+
+test('R3-07G-skill-AGGREGATE ExtensionProfilePlanService rejects duplicate foreign and failed skill slot receipts', () => {
+  const duplicateService = new ExtensionProfilePlanService();
+  const duplicatePlan = duplicateService.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: 'ffffffffffffffffffffffffffffffffffffffff',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const duplicateReceipts = createCompleteSkillDenominatorReceipts(duplicateService, duplicatePlan);
+  const duplicateAggregate = duplicateService.aggregateKindProfile({
+    plan: duplicatePlan,
+    receipts: [...duplicateReceipts, duplicateReceipts[0]],
+  });
+  assert.equal(duplicateAggregate.status, 'blocked');
+  assert.deepEqual(duplicateAggregate.duplicateSlotIds, ['R3-07S-skill-TASK-001']);
+  assert.ok(duplicateAggregate.vetoes.includes('aggregate-duplicate-slots-veto:R3-07F-skill-PROFILE-PLAN:1'));
+
+  const ownerService = new ExtensionProfilePlanService();
+  const ownerPlan = ownerService.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '1212121212121212121212121212121212121212',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const foreignService = new ExtensionProfilePlanService();
+  const foreignPlan = foreignService.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '1212121212121212121212121212121212121212',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const foreignReceipt = foreignService.recordSlotExecution({
+    plan: foreignPlan,
+    slotId: 'R3-07S-skill-TASK-001',
+    attemptId: 'r3-07g-foreign-task-001',
+    status: 'passed',
+    childReceipt: createSkillTaskChildReceipt('foreign-task-001'),
+    effectRefs: ['caller-effect:foreign-task-001'],
+    receiptRefs: ['caller-receipt:foreign-task-001'],
+  });
+  const foreignAggregate = ownerService.aggregateKindProfile({ plan: ownerPlan, receipts: [foreignReceipt] });
+  assert.equal(foreignAggregate.status, 'blocked');
+  assert.deepEqual(foreignAggregate.foreignSlotIds, ['R3-07S-skill-TASK-001']);
+  assert.ok(foreignAggregate.vetoes.includes('aggregate-foreign-receipts-veto:R3-07F-skill-PROFILE-PLAN:1'));
+  assert.ok(foreignAggregate.missingSlotIds.includes('R3-07S-skill-TASK-001'));
+
+  const failedService = new ExtensionProfilePlanService();
+  const failedPlan = failedService.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '3434343434343434343434343434343434343434',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const failedReceipt = failedService.recordSlotExecution({
+    plan: failedPlan,
+    slotId: 'R3-07S-skill-TASK-001',
+    attemptId: 'r3-07g-failed-task-001',
+    status: 'failed',
+    failureRefs: ['skill-failure:r3-07g-task-001'],
+  });
+  const failedAggregate = failedService.aggregateKindProfile({ plan: failedPlan, receipts: [failedReceipt] });
+  assert.equal(failedAggregate.status, 'blocked');
+  assert.deepEqual(failedAggregate.failedSlotIds, ['R3-07S-skill-TASK-001']);
+  assert.ok(failedAggregate.vetoes.includes('aggregate-failed-slots-veto:R3-07F-skill-PROFILE-PLAN:1'));
+});
+
+function createSkillTaskChildReceipt(trigger) {
+  return new SkillDiscoveryService().planExecution({
+    prompt: `please use ${trigger}`,
+    candidates: [
+      {
+        path: `skills/${trigger}/SKILL.md`,
+        content: [
+          `# ${trigger}`,
+          '',
+          `description: ${trigger} task helper`,
+          `triggers: ${trigger}`,
+          'tool_kinds: read',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
+}
+
+function createSkillPermissionFaultChildReceipt(trigger) {
+  return new SkillDiscoveryService().planExecution({
+    prompt: `please use ${trigger} and edit the component`,
+    candidates: [
+      {
+        path: `skills/${trigger}/SKILL.md`,
+        content: [
+          `# ${trigger}`,
+          '',
+          `description: ${trigger} permission fault helper`,
+          `triggers: ${trigger}`,
+          'tool_kinds: read',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read', 'edit'],
+  });
+}
+
+function createCompleteSkillDenominatorReceipts(service, plan) {
+  const receipts = [];
+  for (const slot of plan.taskSlots) {
+    const trigger = `r3-07g-task-${String(slot.index).padStart(3, '0')}`;
+    const receipt = service.recordSlotExecution({
+      plan,
+      slotId: slot.slotId,
+      attemptId: `${trigger}-attempt`,
+      status: 'passed',
+      childReceipt: createSkillTaskChildReceipt(trigger),
+      effectRefs: [`caller-effect:${trigger}`],
+      receiptRefs: [`caller-receipt:${trigger}`],
+    });
+    assert.equal(receipt.status, 'passed');
+    receipts.push(receipt);
+  }
+  for (const slot of plan.permissionFaultSlots) {
+    const trigger = `r3-07g-pf-${String(slot.index).padStart(3, '0')}`;
+    const receipt = service.recordSlotExecution({
+      plan,
+      slotId: slot.slotId,
+      attemptId: `${trigger}-attempt`,
+      status: 'passed',
+      childReceipt: createSkillPermissionFaultChildReceipt(trigger),
+    });
+    assert.equal(receipt.status, 'passed');
+    receipts.push(receipt);
+  }
+  return receipts;
+}
+
 function createDeniedEditSkillReceipt() {
   return new SkillDiscoveryService().planExecution({
     prompt: 'please use react and edit the component',

@@ -1707,6 +1707,20 @@ test('R3-07S-skill-PERMISSION-FAULT-067: Markdown backslash escaped table bodies
   });
 });
 
+test('R3-07G-skill-AGGREGATE: skill denominator aggregation is read-only and parent-owned', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'EXTENSION_PROFILE_KIND_AGGREGATE_PROTOCOL', 'R3-07G-skill aggregate must have an explicit aggregate receipt protocol');
+  assertContains(sharedEnhancements, 'ExtensionProfileKindAggregateReceipt', 'R3-07G-skill aggregate must have a typed receipt');
+  assertContains(sharedEnhancements, 'aggregateKindProfile', 'ExtensionProfilePlanService must own kind aggregation');
+  assertContains(sharedEnhancements, 'aggregateExecutionAllowed: false', 'R3-07G aggregate must remain read-only and cannot execute missing slots');
+  assertContains(sharedEnhancements, 'ownedSlotExecutionReceipts.has(receipt)', 'R3-07G aggregate must reject caller-forged or foreign slot receipts');
+  assertContains(sharedTests, 'R3-07G-skill-AGGREGATE ExtensionProfilePlanService blocks incomplete skill denominator', 'R3-07G-skill aggregate must have an incomplete denominator oracle');
+  assertContains(sharedTests, 'R3-07G-skill-AGGREGATE ExtensionProfilePlanService passes only a complete owned skill denominator', 'R3-07G-skill aggregate must have a complete denominator oracle');
+  assertContains(sharedTests, 'R3-07G-skill-AGGREGATE ExtensionProfilePlanService rejects duplicate foreign and failed skill slot receipts', 'R3-07G-skill aggregate must have duplicate/foreign/failed receipt oracles');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2257,6 +2271,19 @@ test('Real DeepSeek harness: quality gates are scenario-driven and task-specific
   assertContains(harness, 'requiredArtifactSnippets', 'real harness must support task-specific artifact facts');
   assertContains(harness, 'requiredContentOk', 'artifact acceptance must check the requested task facts');
   assertDoesNotContain(harness, 'containsMaintenanceAnalysis', 'generic harness must not hard-code the maintenance benchmark domain');
+});
+
+test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visible cases', () => {
+  const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
+  const profile = src('test/harness/real-plugin-quality-profile.mjs');
+  assertContains(profile, 'buildRealPluginScenarioSpec', 'real harness must expose named scenario contracts');
+  assertContains(profile, 'r3-07g-skill-aggregate', 'R3-07G must have a dedicated real-plugin scenario');
+  assertContains(profile, 'r3-07g-skill-aggregate-denominator.md', 'R3-07G scenario must write a distinct artifact');
+  assertContains(profile, '20 task slots', 'R3-07G artifact gate must assert the task denominator');
+  assertContains(profile, '100 permission-fault slots', 'R3-07G artifact gate must assert the permission-fault denominator');
+  assertContains(profile, 'missing/failed/vetoed/blocked/duplicate/foreign', 'R3-07G artifact gate must assert aggregate veto classes');
+  assertContains(harness, 'scenarioSpec.requiredArtifactSnippets', 'real harness must combine scenario-specific content gates');
+  assertContains(harness, 'fixture.scenarioSpec', 'driver report must disclose the scenario contract used');
 });
 
 test('Real DeepSeek harness: headed user-window runs can be retained for inspection', () => {

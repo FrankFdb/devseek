@@ -30,12 +30,14 @@ export const PLUGIN_SUPPLY_CHAIN_PROTOCOL = 'devseek.plugin-supply-chain/v1';
 export const SUBAGENT_CONTRACT_PROTOCOL = 'devseek.subagent-contract/v1';
 export const EXTENSION_PROFILE_PLAN_PROTOCOL = 'devseek.extension-profile-plan/v1';
 export const EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL = 'devseek.extension-profile-slot-execution/v1';
+export const EXTENSION_PROFILE_KIND_AGGREGATE_PROTOCOL = 'devseek.extension-profile-kind-aggregate/v1';
 const EXTENSION_PROFILE_SLOT_EFFECT_REF_PREFIX = 'extension-profile-slot-effect';
 const EXTENSION_PROFILE_SLOT_RECEIPT_REF_PREFIX = 'extension-profile-slot-receipt';
 const EXTENSION_PROFILE_SLOT_FAILURE_REF_PREFIX = 'extension-profile-slot-failure';
 const EXTENSION_PROFILE_SLOT_VETO_REF_PREFIX = 'extension-profile-slot-veto';
 const EXTENSION_PROFILE_SLOT_PERMISSION_FAULT_REF_PREFIX = 'extension-profile-slot-permission-fault';
 const EXTENSION_PROFILE_SLOT_EXECUTION_REF_PREFIX = 'extension-profile-slot-execution';
+const EXTENSION_PROFILE_KIND_AGGREGATE_REF_PREFIX = 'extension-profile-kind-aggregate';
 export const B4_EFFECT_AUTHORITY = 'B4-effect-authority';
 
 export interface HookDefinition {
@@ -362,6 +364,41 @@ export interface ExtensionProfileSlotExecutionReceipt {
   receiptRefs: readonly string[];
   permissionFaultRefs: readonly string[];
   failureRefs: readonly string[];
+  vetoes: readonly string[];
+  violations: readonly string[];
+  evidenceRefs: readonly string[];
+}
+
+export interface ExtensionProfileKindAggregateInput {
+  plan: ExtensionProfilePlanReceipt;
+  receipts?: readonly ExtensionProfileSlotExecutionReceipt[];
+}
+
+export interface ExtensionProfileKindAggregateReceipt {
+  protocol: typeof EXTENSION_PROFILE_KIND_AGGREGATE_PROTOCOL;
+  profileProtocol: typeof EXTENSION_PROFILE_PLAN_PROTOCOL;
+  profileId: string;
+  kind: ExtensionProfileKind;
+  status: 'passed' | 'blocked';
+  singleOwner: 'ExtensionProfilePlanService';
+  settlementAuthority: 'parent-kernel';
+  immutable: true;
+  candidateCommit: string;
+  schemaVersion: string;
+  planSignature: string;
+  requiredTaskSlotCount: number;
+  requiredPermissionFaultSlotCount: number;
+  passedTaskSlotCount: number;
+  passedPermissionFaultSlotCount: number;
+  missingSlotIds: readonly string[];
+  failedSlotIds: readonly string[];
+  vetoedSlotIds: readonly string[];
+  blockedSlotIds: readonly string[];
+  duplicateSlotIds: readonly string[];
+  foreignSlotIds: readonly string[];
+  aggregateExecutionAllowed: false;
+  slotExecutionAllowed: false;
+  aggregateSignature: string;
   vetoes: readonly string[];
   violations: readonly string[];
   evidenceRefs: readonly string[];
@@ -1504,6 +1541,146 @@ export class ExtensionProfilePlanService {
     }
     return frozenReceipt;
   }
+
+  aggregateKindProfile(input: ExtensionProfileKindAggregateInput): ExtensionProfileKindAggregateReceipt {
+    const plan = input.plan;
+    const planAuthenticityVetoes = extensionProfilePlanAuthenticityVetoes(plan, this.ownedProfilePlans.has(plan));
+    const planAuthentic = planAuthenticityVetoes.length === 0;
+    const profileProjection = createExtensionProfilePlanProjection(plan, planAuthentic);
+    const requiredTaskSlots = planAuthentic ? [...plan.taskSlots] : [];
+    const requiredPermissionFaultSlots = planAuthentic ? [...plan.permissionFaultSlots] : [];
+    const requiredSlots = [...requiredTaskSlots, ...requiredPermissionFaultSlots];
+    const requiredBySlotId = new Map(requiredSlots.map(slot => [slot.slotId, slot]));
+    const providedReceipts = input.receipts ? [...input.receipts] : [...this.settledSlotExecutionReceipts];
+    const receiptsBySlotId = new Map<string, ExtensionProfileSlotExecutionReceipt[]>();
+    const foreignSlotIds: string[] = [];
+
+    for (const receipt of providedReceipts) {
+      const slotId = String(receipt?.slotId ?? '').trim() || 'unknown';
+      const requiredSlot = requiredBySlotId.get(slotId);
+      const ownedReceipt = this.ownedSlotExecutionReceipts.has(receipt);
+      const receiptMatchesPlan = (
+        receipt?.protocol === EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL
+        && receipt?.profileProtocol === EXTENSION_PROFILE_PLAN_PROTOCOL
+        && receipt?.profileId === profileProjection.profileId
+        && receipt?.kind === profileProjection.kind
+        && receipt?.candidateCommit === profileProjection.candidateCommit
+        && receipt?.schemaVersion === profileProjection.schemaVersion
+        && receipt?.slotKind === requiredSlot?.slotKind
+        && receipt?.index === requiredSlot?.index
+        && receipt?.oracleRef === requiredSlot?.oracleRef
+      );
+      if (!ownedReceipt || !requiredSlot || !receiptMatchesPlan) {
+        foreignSlotIds.push(slotId);
+        continue;
+      }
+      const slotReceipts = receiptsBySlotId.get(slotId) ?? [];
+      slotReceipts.push(receipt);
+      receiptsBySlotId.set(slotId, slotReceipts);
+    }
+
+    const duplicateSlotIds = uniqueStrings(
+      Array.from(receiptsBySlotId.entries())
+        .filter(([, receipts]) => receipts.length > 1)
+        .map(([slotId]) => slotId),
+    );
+    const missingSlotIds: string[] = [];
+    const failedSlotIds: string[] = [];
+    const vetoedSlotIds: string[] = [];
+    const blockedSlotIds: string[] = [];
+    let passedTaskSlotCount = 0;
+    let passedPermissionFaultSlotCount = 0;
+    const slotExecutionEvidenceRefs: string[] = [];
+
+    for (const slot of requiredSlots) {
+      const slotReceipts = receiptsBySlotId.get(slot.slotId) ?? [];
+      if (slotReceipts.length === 0) {
+        missingSlotIds.push(slot.slotId);
+        continue;
+      }
+      if (slotReceipts.length > 1) continue;
+      const [receipt] = slotReceipts;
+      slotExecutionEvidenceRefs.push(...extensionProfileSlotExecutionEvidenceRefs(receipt));
+      if (receipt.status === 'passed') {
+        if (slot.slotKind === 'task') {
+          passedTaskSlotCount += 1;
+        } else {
+          passedPermissionFaultSlotCount += 1;
+        }
+      } else if (receipt.status === 'failed') {
+        failedSlotIds.push(slot.slotId);
+      } else if (receipt.status === 'vetoed') {
+        vetoedSlotIds.push(slot.slotId);
+      } else {
+        blockedSlotIds.push(slot.slotId);
+      }
+    }
+
+    const uniqueForeignSlotIds = uniqueStrings(foreignSlotIds);
+    const vetoes = uniqueStrings([
+      ...(plan.status === 'signed' ? [] : [`aggregate-plan-not-signed-veto:${plan.profileId}`]),
+      ...planAuthenticityVetoes,
+      ...(uniqueForeignSlotIds.length > 0 ? [`aggregate-foreign-receipts-veto:${profileProjection.profileId}:${uniqueForeignSlotIds.length}`] : []),
+      ...(duplicateSlotIds.length > 0 ? [`aggregate-duplicate-slots-veto:${profileProjection.profileId}:${duplicateSlotIds.length}`] : []),
+      ...(missingSlotIds.length > 0 ? [`aggregate-missing-slots-veto:${profileProjection.profileId}:${missingSlotIds.length}`] : []),
+      ...(failedSlotIds.length > 0 ? [`aggregate-failed-slots-veto:${profileProjection.profileId}:${failedSlotIds.length}`] : []),
+      ...(vetoedSlotIds.length > 0 ? [`aggregate-vetoed-slots-veto:${profileProjection.profileId}:${vetoedSlotIds.length}`] : []),
+      ...(blockedSlotIds.length > 0 ? [`aggregate-blocked-slots-veto:${profileProjection.profileId}:${blockedSlotIds.length}`] : []),
+    ]);
+    const status: 'passed' | 'blocked' = vetoes.length === 0 ? 'passed' : 'blocked';
+    const aggregateSignature = createExtensionProfileKindAggregateSignature({
+      plan: profileProjection,
+      status,
+      requiredTaskSlotCount: requiredTaskSlots.length,
+      requiredPermissionFaultSlotCount: requiredPermissionFaultSlots.length,
+      passedTaskSlotCount,
+      passedPermissionFaultSlotCount,
+      missingSlotIds,
+      failedSlotIds,
+      vetoedSlotIds,
+      blockedSlotIds,
+      duplicateSlotIds,
+      foreignSlotIds: uniqueForeignSlotIds,
+      vetoes,
+      slotExecutionEvidenceRefs,
+    });
+    const aggregateEvidenceRef = `${EXTENSION_PROFILE_KIND_AGGREGATE_REF_PREFIX}:${profileProjection.profileId}:${aggregateSignature}`;
+    const receipt: ExtensionProfileKindAggregateReceipt = {
+      protocol: EXTENSION_PROFILE_KIND_AGGREGATE_PROTOCOL,
+      profileProtocol: EXTENSION_PROFILE_PLAN_PROTOCOL,
+      profileId: profileProjection.profileId,
+      kind: profileProjection.kind,
+      status,
+      singleOwner: 'ExtensionProfilePlanService',
+      settlementAuthority: 'parent-kernel',
+      immutable: true,
+      candidateCommit: profileProjection.candidateCommit,
+      schemaVersion: profileProjection.schemaVersion,
+      planSignature: profileProjection.planSignature,
+      requiredTaskSlotCount: requiredTaskSlots.length,
+      requiredPermissionFaultSlotCount: requiredPermissionFaultSlots.length,
+      passedTaskSlotCount,
+      passedPermissionFaultSlotCount,
+      missingSlotIds,
+      failedSlotIds,
+      vetoedSlotIds,
+      blockedSlotIds,
+      duplicateSlotIds,
+      foreignSlotIds: uniqueForeignSlotIds,
+      aggregateExecutionAllowed: false,
+      slotExecutionAllowed: false,
+      aggregateSignature,
+      vetoes,
+      violations: vetoes,
+      evidenceRefs: uniqueStrings([
+        ...profileProjection.evidenceRefs,
+        ...slotExecutionEvidenceRefs,
+        ...(status === 'blocked' ? vetoes : []),
+        aggregateEvidenceRef,
+      ]),
+    };
+    return freezeExtensionProfileKindAggregateReceipt(receipt);
+  }
 }
 
 function createExtensionProfilePlanProjection(
@@ -1544,6 +1721,69 @@ function freezeExtensionProfileSlotExecutionReceipt(
   Object.freeze(receipt.violations);
   Object.freeze(receipt.evidenceRefs);
   return Object.freeze(receipt);
+}
+
+function freezeExtensionProfileKindAggregateReceipt(
+  receipt: ExtensionProfileKindAggregateReceipt,
+): ExtensionProfileKindAggregateReceipt {
+  Object.freeze(receipt.missingSlotIds);
+  Object.freeze(receipt.failedSlotIds);
+  Object.freeze(receipt.vetoedSlotIds);
+  Object.freeze(receipt.blockedSlotIds);
+  Object.freeze(receipt.duplicateSlotIds);
+  Object.freeze(receipt.foreignSlotIds);
+  Object.freeze(receipt.vetoes);
+  Object.freeze(receipt.violations);
+  Object.freeze(receipt.evidenceRefs);
+  return Object.freeze(receipt);
+}
+
+function extensionProfileSlotExecutionEvidenceRefs(receipt: ExtensionProfileSlotExecutionReceipt): string[] {
+  const ownedRefs = uniqueStrings(receipt.evidenceRefs)
+    .filter(ref => ref.startsWith(`${EXTENSION_PROFILE_SLOT_EXECUTION_REF_PREFIX}:${receipt.slotId}:`));
+  return ownedRefs.length > 0
+    ? ownedRefs
+    : [`${EXTENSION_PROFILE_SLOT_EXECUTION_REF_PREFIX}:${receipt.slotId}:${receipt.slotExecutionSignature}`];
+}
+
+function createExtensionProfileKindAggregateSignature(input: {
+  plan: ExtensionProfilePlanProjection;
+  status: 'passed' | 'blocked';
+  requiredTaskSlotCount: number;
+  requiredPermissionFaultSlotCount: number;
+  passedTaskSlotCount: number;
+  passedPermissionFaultSlotCount: number;
+  missingSlotIds: readonly string[];
+  failedSlotIds: readonly string[];
+  vetoedSlotIds: readonly string[];
+  blockedSlotIds: readonly string[];
+  duplicateSlotIds: readonly string[];
+  foreignSlotIds: readonly string[];
+  vetoes: readonly string[];
+  slotExecutionEvidenceRefs: readonly string[];
+}): string {
+  return stableTextDigest(JSON.stringify({
+    protocol: EXTENSION_PROFILE_KIND_AGGREGATE_PROTOCOL,
+    signatureAuthority: 'ExtensionProfilePlanService',
+    profileId: input.plan.profileId,
+    kind: input.plan.kind,
+    planSignature: input.plan.planSignature,
+    candidateCommit: input.plan.candidateCommit,
+    schemaVersion: input.plan.schemaVersion,
+    status: input.status,
+    requiredTaskSlotCount: input.requiredTaskSlotCount,
+    requiredPermissionFaultSlotCount: input.requiredPermissionFaultSlotCount,
+    passedTaskSlotCount: input.passedTaskSlotCount,
+    passedPermissionFaultSlotCount: input.passedPermissionFaultSlotCount,
+    missingSlotIds: input.missingSlotIds,
+    failedSlotIds: input.failedSlotIds,
+    vetoedSlotIds: input.vetoedSlotIds,
+    blockedSlotIds: input.blockedSlotIds,
+    duplicateSlotIds: input.duplicateSlotIds,
+    foreignSlotIds: input.foreignSlotIds,
+    vetoes: input.vetoes,
+    slotExecutionEvidenceRefs: input.slotExecutionEvidenceRefs,
+  }));
 }
 
 function createExtensionProfileSlotExecutionSignature(input: {
