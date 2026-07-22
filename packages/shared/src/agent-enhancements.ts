@@ -679,12 +679,16 @@ const SKILL_METADATA_MARKDOWN_DEFINITION_LIST_DETAIL_MARKER = /^:\s+\S/u;
 const SKILL_METADATA_MARKDOWN_INDENTED_CODE_MARKER = /^(?: {4,}|\t)\S/u;
 const SKILL_METADATA_MARKDOWN_INLINE_CODE_MARKER = /^`+[^`\r\n]+`+(?:\s.*)?$/u;
 const SKILL_METADATA_MARKDOWN_EMPHASIS_MARKER = /^(?:\*\*[^*\r\n][^\r\n]*?\*\*|__[^_\r\n][^\r\n]*?__|\*[^*\s\r\n][^*\r\n]*\*|_[^_\s\r\n][^_\r\n]*_|~~[^~\r\n][^~\r\n]*~~)(?:\s.*)?$/u;
+const SKILL_METADATA_MARKDOWN_INLINE_DECORATION_MARKER = /^(?:==[^=\r\n][^\r\n]*==|\^[^^\r\n][^\r\n]*\^|~[^~\r\n][^\r\n]*~)(?:\s.*)?$/u;
 const SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER = '[a-z][a-z0-9-]*';
 const SKILL_METADATA_BODY_HTML_BLOCK_MARKER = new RegExp(`^</?${SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER}\\b[^>]*(?:>.*)?$`, 'iu');
+const SKILL_METADATA_MARKDOWN_HTML_SPECIAL_MARKER = /^<(?:![^>\r\n]*|\?[^>\r\n]*\??)(?:>|$)/u;
+const SKILL_METADATA_MARKDOWN_ANGLE_TEMPLATE_MARKER = /^<%=?[^>\r\n]*%>$/u;
 const SKILL_METADATA_MARKDOWN_BLOCKQUOTE_MARKER = /^>/u;
 const SKILL_METADATA_MARKDOWN_LIST_MARKER = /^(?:[-*+]|\d+[.)])\s+\S/u;
 const SKILL_METADATA_MARKDOWN_TABLE_ROW_MARKER = /^\|.*\|$/u;
 const SKILL_METADATA_MARKDOWN_LINK_MARKER = /^!?\[[^\]\r\n]+\](?:(?:\([^)]+\))|(?:\[[^\]\r\n]*\])|(?::\s*\S))/u;
+const SKILL_METADATA_MARKDOWN_REFERENCE_DEFINITION_MARKER = /^(?:!?\[[^\]\r\n]+\]|\*\[[^\]\r\n]+\]):(?:\s.*)?$/u;
 const SKILL_METADATA_MARKDOWN_SHORTCUT_REFERENCE_MARKER = /^!?\[[^\]\r\n]+\](?:\s.*)?$/u;
 const SKILL_METADATA_MARKDOWN_WIKILINK_MARKER = /^!?\[\[[^\]\r\n]+\]\](?:\s.*)?$/u;
 const SKILL_METADATA_MARKDOWN_AUTOLINK_MARKER = /^<(?:[a-z][a-z0-9+.-]{1,31}:[^\s<>]*|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})>$/iu;
@@ -697,11 +701,20 @@ const SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_HTML_MARKER = /^\\<\s*\/?[a-z][a
 const SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_PUNCTUATION_MARKER = /^\\[\\`*_{}\[\]()#+\-.!>|]/u;
 const SKILL_METADATA_MARKDOWN_CONTAINER_DIRECTIVE_MARKER = /^:::+\s*\S/u;
 const SKILL_METADATA_MARKDOWN_ADMONITION_MARKER = /^!!!\s+\S/u;
+const SKILL_METADATA_MARKDOWN_COMPACT_ADMONITION_MARKER = /^!!!\S/u;
 const SKILL_METADATA_MARKDOWN_MATH_BLOCK_MARKER = /^\${2,}(?:\s+\S.*)?$/u;
+const SKILL_METADATA_MARKDOWN_COMPACT_MATH_MARKER = /^\${2,}\S.*$/u;
 const SKILL_METADATA_MARKDOWN_MDX_COMMENT_MARKER = /^\{\s*\/\*/u;
+const SKILL_METADATA_MARKDOWN_BRACE_TEMPLATE_MARKER = /^\{\{\{?[^}\r\n]+\}\}\}?(?:\s.*)?$/u;
 const SKILL_METADATA_MARKDOWN_MDX_EXPRESSION_MARKER = /^\{[^}\r\n]+\}(?:\s.*)?$/u;
 const SKILL_METADATA_MARKDOWN_MDX_ESM_MARKER = /^(?:import|export)\s+\S/u;
 const SKILL_METADATA_MARKDOWN_MDX_FRAGMENT_MARKER = /^<>\s*\S/u;
+const SKILL_METADATA_MARKDOWN_YAML_DIRECTIVE_MARKER = /^%[a-z][a-z0-9-]*(?:\s+\S.*)?$/iu;
+const SKILL_METADATA_MARKDOWN_EMOJI_SHORTCODE_MARKER = /^:[a-z0-9_+-]+:(?:\s.*)?$/iu;
+const SKILL_METADATA_MARKDOWN_UNKNOWN_LABEL_MARKER = /^[a-z][a-z0-9._/-]*:\s*$/iu;
+const SKILL_METADATA_MARKDOWN_AT_MENTION_MARKER = /^@[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)?(?:\s.*)?$/iu;
+const SKILL_METADATA_MARKDOWN_LEADING_ENTITY_MARKER = /^&(?:[a-z][a-z0-9]+|#\d+|#x[0-9a-f]+);(?:\s.*)?$/iu;
+const SKILL_METADATA_MARKDOWN_FULLWIDTH_REFERENCE_MARKER = /^!?［(?:［[^］\r\n]+］|[^］\r\n]+)］(?:：|\s.*)?$/u;
 const SKILL_METADATA_MARKDOWN_HEADING = /^#{1,6}\s+\S/u;
 const SKILL_METADATA_TITLE_HEADING = /^#\s+\S/u;
 const SKILL_METADATA_HEADER_LINE = /^(?:description|triggers|input_schema|inputSchema|schema|tool_kinds|toolKinds|tools|can_complete|canComplete|completion_claims|completionClaims)\s*:/iu;
@@ -789,6 +802,10 @@ function skillMetadataLines(content: string): string[] {
       insideBodySection = true;
       continue;
     }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_INLINE_DECORATION_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
     if (
       !isFrontmatterMetadataLine
       && acceptedTitleHeading
@@ -818,11 +835,23 @@ function skillMetadataLines(content: string): string[] {
       insideBodySection = true;
       continue;
     }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_COMPACT_ADMONITION_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
     if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_MATH_BLOCK_MARKER.test(metadataTrimmed)) {
       insideBodySection = true;
       continue;
     }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_COMPACT_MATH_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
     if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_MDX_COMMENT_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_BRACE_TEMPLATE_MARKER.test(metadataTrimmed)) {
       insideBodySection = true;
       continue;
     }
@@ -838,6 +867,26 @@ function skillMetadataLines(content: string): string[] {
       insideBodySection = true;
       continue;
     }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_YAML_DIRECTIVE_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_EMOJI_SHORTCODE_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && !isHeaderLine && SKILL_METADATA_MARKDOWN_UNKNOWN_LABEL_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_AT_MENTION_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_LEADING_ENTITY_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
     if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_AUTOLINK_MARKER.test(metadataTrimmed)) {
       insideBodySection = true;
       continue;
@@ -847,6 +896,14 @@ function skillMetadataLines(content: string): string[] {
       continue;
     }
     if (!isFrontmatterMetadataLine && SKILL_METADATA_BODY_HTML_BLOCK_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_HTML_SPECIAL_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_ANGLE_TEMPLATE_MARKER.test(metadataTrimmed)) {
       insideBodySection = true;
       continue;
     }
@@ -886,7 +943,15 @@ function skillMetadataLines(content: string): string[] {
       insideBodySection = true;
       continue;
     }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_REFERENCE_DEFINITION_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
     if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_WIKILINK_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_FULLWIDTH_REFERENCE_MARKER.test(metadataTrimmed)) {
       insideBodySection = true;
       continue;
     }
