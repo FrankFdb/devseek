@@ -677,6 +677,7 @@ const SKILL_METADATA_BODY_SEPARATOR = /^(?:-{3,}|\*{3,}|_{3,})$/u;
 const SKILL_METADATA_MARKDOWN_SETEXT_UNDERLINE_MARKER = /^(?:=+|-+)\s*$/u;
 const SKILL_METADATA_MARKDOWN_DEFINITION_LIST_DETAIL_MARKER = /^:\s+\S/u;
 const SKILL_METADATA_MARKDOWN_INDENTED_CODE_MARKER = /^(?: {4,}|\t)\S/u;
+const SKILL_METADATA_MARKDOWN_INLINE_CODE_MARKER = /^`+[^`\r\n]+`+(?:\s.*)?$/u;
 const SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER = '[a-z][a-z0-9-]*';
 const SKILL_METADATA_BODY_HTML_BLOCK_MARKER = new RegExp(`^</?${SKILL_METADATA_BODY_HTML_TAG_NAME_MARKER}\\b[^>]*(?:>.*)?$`, 'iu');
 const SKILL_METADATA_MARKDOWN_BLOCKQUOTE_MARKER = /^>/u;
@@ -760,6 +761,10 @@ function skillMetadataLines(content: string): string[] {
     const nextTrimmed = lines[index + 1]?.trim() ?? '';
     const isHeaderLine = isSkillMetadataHeaderLine(metadataTrimmed);
     if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_INDENTED_CODE_MARKER.test(metadataLine)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_INLINE_CODE_MARKER.test(metadataTrimmed)) {
       insideBodySection = true;
       continue;
     }
