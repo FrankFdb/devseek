@@ -560,8 +560,8 @@ async function prepareDeepSeekLogin() {
       method: 'POST',
       headers: { 'X-DevSeek-Token': token },
     });
-    await waitForBrowserReady(baseUrl, token, 320000);
-    return { ok: true, port, logPath, pid: child.pid, keepVisible: keepDeepSeekPage, reloginResponse };
+    const loginStatus = await waitForDeepSeekLoginReady(baseUrl, token, 320000);
+    return { ok: true, port, logPath, pid: child.pid, keepVisible: keepDeepSeekPage, reloginResponse, loginStatus };
   } finally {
     if (keepDeepSeekPage) {
       child.unref();
@@ -609,14 +609,14 @@ async function waitForBridge(baseUrl, token) {
   throw new Error(`Bridge 未就绪：${last}`);
 }
 
-async function waitForBrowserReady(baseUrl, token, waitMs) {
+async function waitForDeepSeekLoginReady(baseUrl, token, waitMs) {
   const deadline = Date.now() + waitMs;
   let lastStatus = null;
   while (Date.now() < deadline) {
     const res = await fetch(`${baseUrl}/status`, { headers: { 'X-DevSeek-Token': token } });
     if (res.ok) {
       lastStatus = await res.json();
-      if (lastStatus.browserReady) return lastStatus;
+      if (lastStatus.browserReady && lastStatus.loggedInLikely) return lastStatus;
     }
     await delay(1000);
   }

@@ -2303,6 +2303,13 @@ test('Real DeepSeek harness: headed user-window runs can be retained for inspect
   assertContains(harness, "if (child.exitCode === null && !keepWindow) child.kill('SIGTERM');", 'retained user-window runs must not be killed after report capture');
 });
 
+test('Real DeepSeek harness: visible relogin waits for authenticated page state', () => {
+  const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
+  assertContains(harness, 'waitForDeepSeekLoginReady', 'relogin harness must wait on a DeepSeek login readiness boundary');
+  assertContains(harness, 'lastStatus.browserReady && lastStatus.loggedInLikely', 'visible relogin must not treat an opened browser as an authenticated session');
+  assertContains(harness, 'loginStatus', 'relogin report must disclose the authenticated status evidence used before running the scenario');
+});
+
 test('Agentic free-explore: follow-up turns keep same-session context', () => {
   const ext = src('src/extension.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
