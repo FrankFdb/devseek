@@ -1511,6 +1511,14 @@ test('R3-07S-skill-PERMISSION-FAULT-048: Markdown setext heading bodies cannot i
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-048 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-048 must have Markdown setext inferred-trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-049: Markdown definition list bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_DEFINITION_LIST_DETAIL_MARKER', 'R3-07S-skill-PERMISSION-FAULT-049 must keep Markdown definition-list body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-049 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-049 must have Markdown definition-list inferred-trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
