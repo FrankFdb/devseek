@@ -1121,6 +1121,7 @@ export class ExtensionProfilePlanService {
         ...(childReceipt ? [] : [`slot-child-receipt-missing-veto:${slotId}`]),
         ...(childReceipt && childProtocol !== expectedChildProtocol ? [`slot-child-protocol-mismatch-veto:${slotId}`] : []),
         ...(childReceipt && childEvidenceRefs.length === 0 ? [`slot-child-evidence-missing-veto:${slotId}`] : []),
+        ...(childReceipt && isPermissionFaultSlot && childEvidenceRefs.length > 1 ? [`slot-child-permission-fault-evidence-ambiguous-veto:${slotId}`] : []),
         ...(childReceipt && childSettlementAuthority !== 'parent-kernel' ? [`slot-child-settlement-authority-veto:${slotId}`] : []),
         ...(unexpectedChildViolations.length > 0 ? [`slot-child-receipt-not-clean-veto:${slotId}`] : []),
         ...(childReceipt && isPermissionFaultSlot && expectedSkillPermissionFaultViolations.length === 0 ? [`slot-child-permission-fault-missing-veto:${slotId}`] : []),

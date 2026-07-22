@@ -1790,6 +1790,35 @@ function createNonAsciiSubstringTriggerDeniedEditSkillReceipt() {
   });
 }
 
+function createMultiSkillSameDenialDeniedEditSkillReceipt() {
+  return new SkillDiscoveryService().planExecution({
+    prompt: 'please edit the react component',
+    candidates: [
+      {
+        path: 'skills/react/SKILL.md',
+        content: [
+          '# React',
+          '',
+          'description: React helper',
+          'triggers: react',
+          'tool_kinds: read',
+        ].join('\n'),
+      },
+      {
+        path: 'skills/component/SKILL.md',
+        content: [
+          '# Component',
+          '',
+          'description: Component helper',
+          'triggers: component',
+          'tool_kinds: read',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read', 'edit'],
+  });
+}
+
 function createClosedFrontmatterBodyMetadataDeniedEditSkillReceipt() {
   return createReferenceDeniedEditSkillReceipt([
     '---',
@@ -2866,6 +2895,34 @@ test('R3-07S-skill-PERMISSION-FAULT-036 ExtensionProfilePlanService rejects non-
     requestedToolKinds: ['read'],
   });
   assert.equal(exactTriggerReceipt.loadedSkills.length, 1);
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-037 ExtensionProfilePlanService rejects multi-skill same-denial permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '3737373737373737373737373737373737373737',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createMultiSkillSameDenialDeniedEditSkillReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-037',
+    attemptId: 'skill-permission-fault-037-multi-skill-same-denial',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(childReceipt.loadedSkills.length, 2);
+  assert.equal(childReceipt.evidenceRefs.length, 2);
+  assert.ok(childReceipt.violations.includes('skill-tool-kind-denied:edit'));
+  assert.ok(receipt.vetoes.includes('slot-child-permission-fault-evidence-ambiguous-veto:R3-07S-skill-PERMISSION-FAULT-037'));
+  assert.deepEqual(receipt.childEvidenceRefs, []);
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {

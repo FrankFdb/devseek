@@ -1412,6 +1412,15 @@ test('R3-07S-skill-PERMISSION-FAULT-036: non-ASCII triggers require token bounda
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-036 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-036 must have non-ASCII substring trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-037: permission fault evidence must name one skill evidence source', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'slot-child-permission-fault-evidence-ambiguous-veto', 'R3-07S-skill-PERMISSION-FAULT-037 must veto multi-skill permission/fault child evidence');
+  assertContains(sharedEnhancements, 'childEvidenceRefs.length > 1', 'R3-07S-skill-PERMISSION-FAULT-037 must keep single evidence-source ownership in ExtensionProfilePlanService');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-037 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-037 must have multi-skill same-denial oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
