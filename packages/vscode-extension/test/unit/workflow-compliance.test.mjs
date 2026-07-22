@@ -1973,6 +1973,17 @@ test('Real DeepSeek harness: quality gates are scenario-driven and task-specific
   assertDoesNotContain(harness, 'containsMaintenanceAnalysis', 'generic harness must not hard-code the maintenance benchmark domain');
 });
 
+test('Real DeepSeek harness: headed user-window runs can be retained for inspection', () => {
+  const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
+  assertContains(harness, "const keepWindow = hasFlag('--keep-window')", 'real harness must expose an explicit keep-window flag');
+  assertContains(harness, 'const keepWindow = __KEEP_WINDOW__', 'driver extension must receive the keep-window policy');
+  assertContains(harness, 'if (!keepWindow) {\n      await vscode.commands.executeCommand(\'workbench.action.closeWindow\')', 'driver extension must not close retained user-window runs');
+  assertContains(harness, 'detached: keepWindow', 'outer VS Code process must detach retained user-window runs');
+  assertContains(harness, 'if (keepWindow) child.unref();', 'retained user-window runs must not keep the harness process attached');
+  assertContains(harness, 'if (!keepWindow) await waitForChildExit(child, 10000);', 'retained user-window reports must return without waiting for window close');
+  assertContains(harness, "if (child.exitCode === null && !keepWindow) child.kill('SIGTERM');", 'retained user-window runs must not be killed after report capture');
+});
+
 test('Agentic free-explore: follow-up turns keep same-session context', () => {
   const ext = src('src/extension.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');

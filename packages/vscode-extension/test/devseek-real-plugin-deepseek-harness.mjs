@@ -7,7 +7,7 @@
  *
  * Run from repository root:
  *   npm run test:real-plugin-deepseek --workspace=packages/vscode-extension -- --run
- *   npm run test:real-plugin-deepseek --workspace=packages/vscode-extension -- --run --relogin --headed
+ *   npm run test:real-plugin-deepseek --workspace=packages/vscode-extension -- --run --relogin --headed --keep-window
  */
 
 import cp from 'node:child_process';
@@ -45,6 +45,7 @@ const timeoutMs = Number(getArgValue('--timeout-ms') || process.env.DEVSEEK_REAL
 const relogin = hasFlag('--relogin') || process.env.DEVSEEK_REAL_PLUGIN_RELOGIN === '1';
 const headed = hasFlag('--headed') || process.env.DEVSEEK_REAL_PLUGIN_HEADED === '1' || relogin;
 const keepTmp = hasFlag('--keep') || process.env.DEVSEEK_REAL_PLUGIN_KEEP === '1';
+const keepWindow = hasFlag('--keep-window') || process.env.DEVSEEK_REAL_PLUGIN_KEEP_WINDOW === '1';
 const autopilot = !hasFlag('--no-autopilot') && process.env.DEVSEEK_REAL_PLUGIN_AUTOPILOT !== '0';
 const promptFromArg = getArgValue('--prompt');
 const scenario = getArgValue('--scenario') || process.env.DEVSEEK_REAL_PLUGIN_SCENARIO || 'formal-simulation';
@@ -132,6 +133,7 @@ report.harness = {
   codeBin,
   relogin,
   headed,
+  keepWindow,
   autopilot,
   pluginPort,
   scenario,
@@ -582,6 +584,7 @@ const prompt = __PROMPT__;
 const timeoutMs = __TIMEOUT_MS__;
 const pluginPort = __PLUGIN_PORT__;
 const autopilot = __AUTOPILOT__;
+const keepWindow = __KEEP_WINDOW__;
 const scenario = __SCENARIO__;
 const harnessMode = __HARNESS_MODE__;
 const qualityProfile = __QUALITY_PROFILE__;
@@ -1339,7 +1342,9 @@ async function activate() {
     writeReport(baseReport);
   } finally {
     await delay(500);
-    await vscode.commands.executeCommand('workbench.action.closeWindow').catch(() => {});
+    if (!keepWindow) {
+      await vscode.commands.executeCommand('workbench.action.closeWindow').catch(() => {});
+    }
   }
 }
 
@@ -1352,6 +1357,7 @@ module.exports = { activate };
     .replace('__TIMEOUT_MS__', JSON.stringify(timeoutMs))
     .replace('__PLUGIN_PORT__', JSON.stringify(pluginPort))
     .replace('__AUTOPILOT__', JSON.stringify(autopilot))
+    .replace('__KEEP_WINDOW__', JSON.stringify(keepWindow))
     .replace('__SCENARIO__', JSON.stringify(scenario))
     .replace('__HARNESS_MODE__', JSON.stringify(harnessMode))
     .replace('__QUALITY_PROFILE__', JSON.stringify(qualityProfile))
@@ -1427,6 +1433,7 @@ async function runVsCodeDriver() {
     workspaceDir,
   ], {
     cwd: repoRoot,
+    detached: keepWindow,
     env: {
       ...process.env,
       DEVSEEK_REAL_PLUGIN_DEEPSEEK: '1',
@@ -1436,6 +1443,7 @@ async function runVsCodeDriver() {
     },
     stdio: ['ignore', logFd, logFd],
   });
+  if (keepWindow) child.unref();
 
   let exited = false;
   let exitCode = null;
@@ -1448,7 +1456,7 @@ async function runVsCodeDriver() {
   try {
     while (Date.now() < deadline) {
       if (fs.existsSync(reportPath)) {
-        await waitForChildExit(child, 10000);
+        if (!keepWindow) await waitForChildExit(child, 10000);
         return JSON.parse(fs.readFileSync(reportPath, 'utf8'));
       }
       if (exited) {
@@ -1469,7 +1477,7 @@ async function runVsCodeDriver() {
       progress: readProgressTail(),
     };
   } finally {
-    if (child.exitCode === null) child.kill('SIGTERM');
+    if (child.exitCode === null && !keepWindow) child.kill('SIGTERM');
     fs.closeSync(logFd);
   }
 }

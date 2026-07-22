@@ -411,6 +411,23 @@ test('Markdown write authorization enforces prohibitions and explicit target sco
     workspaceRoot: '/workspace',
   }).reason, 'markdown-artifact-target-not-requested');
 
+  const dedupePrompt = '请将仿真测试结果输出到 /workspace/docs/warranty-maintenance-advice-simulation.md，文件名需要保留 simulation 标识。';
+  assert.equal(authorizeMarkdownArtifactWrite({
+    promptText: dedupePrompt,
+    targetPath: '/workspace/docs/warranty-maintenance-advice-simulation-1.md',
+    workspaceRoot: '/workspace',
+  }).allowed, true);
+  assert.equal(authorizeMarkdownArtifactWrite({
+    promptText: dedupePrompt,
+    targetPath: '/workspace/other/warranty-maintenance-advice-simulation-1.md',
+    workspaceRoot: '/workspace',
+  }).reason, 'markdown-artifact-target-not-requested');
+  assert.equal(authorizeMarkdownArtifactWrite({
+    promptText: dedupePrompt,
+    targetPath: '/workspace/docs/warranty-maintenance-advice-notes-1.md',
+    workspaceRoot: '/workspace',
+  }).reason, 'markdown-artifact-target-not-requested');
+
   assert.equal(authorizeMarkdownArtifactWrite({
     promptText: '请创建 Markdown 报告，不要修改正式源码文件。',
     targetPath: '/workspace/report.md',

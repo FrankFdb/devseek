@@ -505,6 +505,18 @@ function buildTargetMentionLiterals(targetPath: string, workspaceRoot?: string):
   return [...literals].filter(Boolean).sort((a, b) => b.length - a.length);
 }
 
+function isRequestedMarkdownDedupeTarget(targetPath: string, requestedTargetPath: string): boolean {
+  const target = nodePath.parse(nodePath.normalize(targetPath));
+  const requested = nodePath.parse(nodePath.normalize(requestedTargetPath));
+  if (nodePath.normalize(target.dir) !== nodePath.normalize(requested.dir)) return false;
+  if (!/\.(?:md|markdown)$/i.test(target.ext) || target.ext.toLowerCase() !== requested.ext.toLowerCase()) return false;
+  if (!target.name.startsWith(`${requested.name}-`)) return false;
+  const suffix = target.name.slice(requested.name.length + 1);
+  if (!/^[1-9]\d*$/.test(suffix)) return false;
+  const index = Number(suffix);
+  return index >= 1 && index <= 50;
+}
+
 export interface ArtifactWriteIntentClassification {
   requested: boolean;
   prohibited: boolean;
@@ -621,7 +633,9 @@ export function authorizeMarkdownArtifactWrite(input: {
   const allowedTargets = new Set(requestedTargets.flatMap(requested => (
     [resolveRequestedFileTarget(requested, input.workspaceRoot)]
   )));
-  if (allowedTargets.size > 0 && !allowedTargets.has(target)) {
+  const targetAllowed = allowedTargets.has(target)
+    || [...allowedTargets].some(requested => isRequestedMarkdownDedupeTarget(target, requested));
+  if (allowedTargets.size > 0 && !targetAllowed) {
     return {
       allowed: false,
       reason: 'markdown-artifact-target-not-requested',
