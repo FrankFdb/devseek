@@ -1583,6 +1583,46 @@ test('R3-07S-skill-PERMISSION-FAULT-057: Markdown backslash escaped autolink bod
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-057 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-057 must have Markdown backslash escaped autolink inferred-trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-058: Markdown container directive bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_CONTAINER_DIRECTIVE_MARKER', 'R3-07S-skill-PERMISSION-FAULT-058 must keep Markdown container directive body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-058 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-058 must have Markdown container directive inferred-trigger oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-059: Markdown admonition bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_ADMONITION_MARKER', 'R3-07S-skill-PERMISSION-FAULT-059 must keep Markdown admonition body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-059 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-059 must have Markdown admonition inferred-trigger oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-060: Markdown math block bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_MATH_BLOCK_MARKER', 'R3-07S-skill-PERMISSION-FAULT-060 must keep Markdown math block body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-060 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-060 must have Markdown math block inferred-trigger oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-061: Markdown MDX comment bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_MDX_COMMENT_MARKER', 'R3-07S-skill-PERMISSION-FAULT-061 must keep Markdown MDX comment body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-061 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-061 must have Markdown MDX comment inferred-trigger oracle');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-062: Markdown MDX fragment bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_MDX_FRAGMENT_MARKER', 'R3-07S-skill-PERMISSION-FAULT-062 must keep Markdown MDX fragment body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-062 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-062 must have Markdown MDX fragment inferred-trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

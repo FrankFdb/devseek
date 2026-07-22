@@ -1962,6 +1962,51 @@ function createMarkdownBackslashEscapedAutolinkBodyInferredTriggerDeniedEditSkil
   ]);
 }
 
+function createMarkdownContainerDirectiveBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '::: react-note',
+    'tool_kinds: read',
+  ]);
+}
+
+function createMarkdownAdmonitionBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '!!! note "react component example"',
+    'tool_kinds: read',
+  ]);
+}
+
+function createMarkdownMathBlockBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '$$ react_component $$',
+    'tool_kinds: read',
+  ]);
+}
+
+function createMarkdownMdxCommentBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '{/* react component example */}',
+    'tool_kinds: read',
+  ]);
+}
+
+function createMarkdownMdxFragmentBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '<>react component example</>',
+    'tool_kinds: read',
+  ]);
+}
+
 function createNonAsciiSubstringTriggerDeniedEditSkillReceipt() {
   return new SkillDiscoveryService().planExecution({
     prompt: '请修改深度学习组件',
@@ -3944,6 +3989,46 @@ function assertMarkdownBodyInferredTriggerPermissionFaultRefusal(testCase) {
     candidateCommit: '5757575757575757575757575757575757575757',
     childReceipt: createMarkdownBackslashEscapedAutolinkBodyInferredTriggerDeniedEditSkillReceipt,
     explicitBodyLine: '\\<https://react.dev/reference\\>',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-058 ExtensionProfilePlanService rejects Markdown container directive body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-058',
+    attemptId: 'skill-permission-fault-058-markdown-container-directive-body-inferred-trigger',
+    candidateCommit: '5858585858585858585858585858585858585858',
+    childReceipt: createMarkdownContainerDirectiveBodyInferredTriggerDeniedEditSkillReceipt,
+    explicitBodyLine: '::: react-note',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-059 ExtensionProfilePlanService rejects Markdown admonition body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-059',
+    attemptId: 'skill-permission-fault-059-markdown-admonition-body-inferred-trigger',
+    candidateCommit: '5959595959595959595959595959595959595959',
+    childReceipt: createMarkdownAdmonitionBodyInferredTriggerDeniedEditSkillReceipt,
+    explicitBodyLine: '!!! note "react component example"',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-060 ExtensionProfilePlanService rejects Markdown math block body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-060',
+    attemptId: 'skill-permission-fault-060-markdown-math-block-body-inferred-trigger',
+    candidateCommit: '6060606060606060606060606060606060606060',
+    childReceipt: createMarkdownMathBlockBodyInferredTriggerDeniedEditSkillReceipt,
+    explicitBodyLine: '$$ react_component $$',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-061 ExtensionProfilePlanService rejects Markdown MDX comment body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-061',
+    attemptId: 'skill-permission-fault-061-markdown-mdx-comment-body-inferred-trigger',
+    candidateCommit: '6161616161616161616161616161616161616161',
+    childReceipt: createMarkdownMdxCommentBodyInferredTriggerDeniedEditSkillReceipt,
+    explicitBodyLine: '{/* react component example */}',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-062 ExtensionProfilePlanService rejects Markdown MDX fragment body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-062',
+    attemptId: 'skill-permission-fault-062-markdown-mdx-fragment-body-inferred-trigger',
+    candidateCommit: '6262626262626262626262626262626262626262',
+    childReceipt: createMarkdownMdxFragmentBodyInferredTriggerDeniedEditSkillReceipt,
+    explicitBodyLine: '<>react component example</>',
   },
 ].forEach((testCase) => {
   test(testCase.testName, () => {

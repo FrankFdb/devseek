@@ -691,6 +691,11 @@ const SKILL_METADATA_MARKDOWN_ESCAPED_AUTOLINK_MARKER = /^(?:&lt;|&#60;|&#x3c;)(
 const SKILL_METADATA_MARKDOWN_ESCAPED_HTML_MARKER = /^(?:&lt;|&#60;|&#x3c;)\s*\/?[a-z][a-z0-9-]*(?:\s|(?:&gt;|&#62;|&#x3e;)|$)/iu;
 const SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_AUTOLINK_MARKER = /^\\<(?:[a-z][a-z0-9+.-]{1,31}:[^\s<>\\]*|[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,})\\?>$/iu;
 const SKILL_METADATA_MARKDOWN_BACKSLASH_ESCAPED_HTML_MARKER = /^\\<\s*\/?[a-z][a-z0-9-]*(?:\s|\\?>|>|$)/iu;
+const SKILL_METADATA_MARKDOWN_CONTAINER_DIRECTIVE_MARKER = /^:::+\s*\S/u;
+const SKILL_METADATA_MARKDOWN_ADMONITION_MARKER = /^!!!\s+\S/u;
+const SKILL_METADATA_MARKDOWN_MATH_BLOCK_MARKER = /^\${2,}(?:\s+\S.*)?$/u;
+const SKILL_METADATA_MARKDOWN_MDX_COMMENT_MARKER = /^\{\s*\/\*/u;
+const SKILL_METADATA_MARKDOWN_MDX_FRAGMENT_MARKER = /^<>\s*\S/u;
 const SKILL_METADATA_MARKDOWN_HEADING = /^#{1,6}\s+\S/u;
 const SKILL_METADATA_TITLE_HEADING = /^#\s+\S/u;
 const SKILL_METADATA_HEADER_LINE = /^(?:description|triggers|input_schema|inputSchema|schema|tool_kinds|toolKinds|tools|can_complete|canComplete|completion_claims|completionClaims)\s*:/iu;
@@ -796,6 +801,26 @@ function skillMetadataLines(content: string): string[] {
       continue;
     }
     if (!isFrontmatterMetadataLine && isSkillMetadataBodySeparator(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_CONTAINER_DIRECTIVE_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_ADMONITION_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_MATH_BLOCK_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_MDX_COMMENT_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_MDX_FRAGMENT_MARKER.test(metadataTrimmed)) {
       insideBodySection = true;
       continue;
     }
