@@ -677,6 +677,7 @@ const SKILL_METADATA_BODY_SEPARATOR = /^(?:-{3,}|\*{3,}|_{3,})$/u;
 const SKILL_METADATA_BODY_HTML_BLOCK_MARKER = /^<(?:details|table|pre|div|section|article|aside|ul|ol|li|figure|figcaption|blockquote|p|code)\b[^>]*>?$/iu;
 const SKILL_METADATA_MARKDOWN_BLOCKQUOTE_MARKER = /^>/u;
 const SKILL_METADATA_MARKDOWN_LIST_MARKER = /^(?:[-*+]|\d+[.)])\s+\S/u;
+const SKILL_METADATA_MARKDOWN_TABLE_ROW_MARKER = /^\|.*\|$/u;
 const SKILL_METADATA_MARKDOWN_HEADING = /^#{1,6}\s+\S/u;
 const SKILL_METADATA_TITLE_HEADING = /^#\s+\S/u;
 const SKILL_METADATA_HEADER_LINE = /^(?:description|triggers|input_schema|inputSchema|schema|tool_kinds|toolKinds|tools|can_complete|canComplete|completion_claims|completionClaims)\s*:/iu;
@@ -763,6 +764,10 @@ function skillMetadataLines(content: string): string[] {
       continue;
     }
     if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_LIST_MARKER.test(metadataTrimmed)) {
+      insideBodySection = true;
+      continue;
+    }
+    if (!isFrontmatterMetadataLine && SKILL_METADATA_MARKDOWN_TABLE_ROW_MARKER.test(metadataTrimmed)) {
       insideBodySection = true;
       continue;
     }
