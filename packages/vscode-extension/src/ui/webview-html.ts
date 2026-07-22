@@ -61,6 +61,23 @@ body {
 #messages {
   background: var(--vscode-sideBar-background);
 }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+button:focus-visible,
+[role="button"]:focus-visible,
+textarea:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
 .turn.enter { animation: turnIn .18s ease-out; }
 @keyframes turnIn {
   from { opacity: 0; transform: translateY(6px); }
@@ -535,49 +552,50 @@ body {
 </style>
 </head>
 <body style="position:relative;">
-<div id="toolbar">
-  <button id="sessions-btn" title="历史对话"><i class="codicon codicon-history"></i> 历史对话</button>
-  <button id="new-session-btn" title="开启新 AI 对话">+ 新对话</button>
-  <button id="clear-btn" title="清空界面消息">清空</button>
+<div id="a11y-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true">连接中...</div>
+<div id="toolbar" role="toolbar" aria-label="DevSeek 对话工具栏">
+  <button id="sessions-btn" title="历史对话" aria-label="打开历史对话"><i class="codicon codicon-history"></i> 历史对话</button>
+  <button id="new-session-btn" title="开启新 AI 对话" aria-label="开启新 AI 对话">+ 新对话</button>
+  <button id="clear-btn" title="清空界面消息" aria-label="清空界面消息">清空</button>
 </div>
 <div id="content-area">
-<div id="sessions-panel">
+<div id="sessions-panel" role="dialog" aria-label="历史对话" aria-modal="false">
   <div id="sessions-panel-header">
     <span>历史对话</span>
-    <button id="sessions-close-btn" title="关闭" style="margin-left:auto">×</button>
+    <button id="sessions-close-btn" title="关闭" aria-label="关闭历史对话" style="margin-left:auto">×</button>
   </div>
-  <div id="sessions-list"></div>
+  <div id="sessions-list" role="list"></div>
   <div id="sessions-panel-footer">
-    <button id="sessions-new-btn">+ 新建对话</button>
+    <button id="sessions-new-btn" aria-label="新建对话">+ 新建对话</button>
   </div>
 </div>
-<div id="ready-progress"><div class="bar"></div></div>
-<div id="messages"></div>
-<button id="jump-latest" title="跳到最新消息">⬇ 新内容</button>
+<div id="ready-progress" role="progressbar" aria-label="DevSeek 正在连接"><div class="bar"></div></div>
+<div id="messages" role="log" aria-live="polite" aria-relevant="additions text" aria-label="DevSeek 对话消息"></div>
+<button id="jump-latest" title="跳到最新消息" aria-label="跳到最新消息">⬇ 新内容</button>
 <div id="input-area">
-  <div id="suggest-popup"></div>
-  <div id="file-badges"></div>
-  <div id="context-files-row"></div>
-  <div id="agent-queue-indicator"></div>
+  <div id="suggest-popup" role="listbox" aria-label="输入建议"></div>
+  <div id="file-badges" role="status" aria-live="polite" aria-label="已附加文件"></div>
+  <div id="context-files-row" role="status" aria-live="polite" aria-label="上下文文件"></div>
+  <div id="agent-queue-indicator" role="status" aria-live="polite" aria-label="排队消息"></div>
   <div id="input-row">
-    <textarea id="input" rows="1" placeholder="问 DevSeek...  / 命令  @文件  #problems"></textarea>
-    <button id="send-btn" title="发送 (Enter)">&#x27a4;</button>
+    <textarea id="input" rows="1" placeholder="问 DevSeek...  / 命令  @文件  #problems" aria-label="输入给 DevSeek 的消息" aria-describedby="input-hint"></textarea>
+    <button id="send-btn" title="发送 (Enter)" aria-label="发送消息">&#x27a4;</button>
   </div>
   <div id="input-hint">Shift+Enter 换行 &middot; ⏹ 停止生成 &middot; / 命令 &middot; @文件 &middot; #problems</div>
 </div>
 </div>
-<div id="status-bar">
-  <span class="s-dot s-pending" id="s-dot"></span>
+<div id="status-bar" role="status" aria-live="polite" aria-label="DevSeek 连接状态">
+  <span class="s-dot s-pending" id="s-dot" aria-hidden="true"></span>
   <span id="status-text">连接中...</span>
-  <button id="login-btn" style="display:none">🔑 登录</button>
-  <button id="switch-provider-btn" title="切换 LLM Provider / 设置">&#9881;</button>
+  <button id="login-btn" style="display:none" aria-label="登录 DeepSeek">🔑 登录</button>
+  <button id="switch-provider-btn" title="切换 LLM Provider / 设置" aria-label="切换 LLM Provider 或打开设置">&#9881;</button>
   <span class="s-spacer"></span>
-  <div id="mode-switcher">
-    <button class="mode-btn active" data-mode="fast">⚡ 快速</button>
-    <button class="mode-btn" data-mode="r1">🧠 专家 R1</button>
+  <div id="mode-switcher" role="group" aria-label="回复模式">
+    <button class="mode-btn active" data-mode="fast" aria-pressed="true">⚡ 快速</button>
+    <button class="mode-btn" data-mode="r1" aria-pressed="false">🧠 专家 R1</button>
   </div>
-  <button id="agent-toggle-btn" title="Agent 模式：开启时自动解析意图和执行多轮编辑，关闭时强制走普通对话">🤖 Agent</button>
-  <button id="autopilot-btn" title="自动驾驶：开启后 Agent 完成时自动接受所有文件改动">🤖 自动</button>
+  <button id="agent-toggle-btn" title="Agent 模式：开启时自动解析意图和执行多轮编辑，关闭时强制走普通对话" aria-pressed="true">🤖 Agent</button>
+  <button id="autopilot-btn" title="自动驾驶：开启后 Agent 完成时自动接受所有文件改动" aria-pressed="false">🤖 自动</button>
 </div>
 <script nonce="${nonce}" src="${mermaidUri}"></script>
 <script nonce="${nonce}">/*MARKED_PLACEHOLDER*/</script>

@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   buildRealPluginQualityProfile,
   buildRealPluginScenarioSpec,
+  listRealPluginIterationScenarioSpecs,
   parseRequiredArtifactSnippets,
 } from '../harness/real-plugin-quality-profile.mjs';
 
@@ -48,6 +49,7 @@ test('R3-07G real plugin scenario binds aggregate denominator artifact acceptanc
     'missing/failed/vetoed/blocked/duplicate/foreign',
     'aggregateExecutionAllowed: false',
     'slotExecutionAllowed: false',
+    'not fixed line-count smoke',
   ]);
   assert.deepEqual(spec.forbiddenArtifactSnippets, [
     'warranty',
@@ -85,6 +87,7 @@ test('R3-07G hook real plugin scenario binds hook-specific aggregate artifact ac
     'skill receipts cannot qualify hook slots',
     'aggregateExecutionAllowed: false',
     'slotExecutionAllowed: false',
+    'not fixed line-count smoke',
   ]);
   assert.deepEqual(spec.forbiddenArtifactSnippets, [
     'warranty',
@@ -196,6 +199,7 @@ test('R3-07H required-kinds real plugin scenario adds a fresh visible case', () 
     'one kind cannot substitute another',
     'aggregateExecutionAllowed: false',
     'slotExecutionAllowed: false',
+    'not fixed line-count smoke',
   ]);
   assert.ok(spec.forbiddenArtifactSnippets.includes('uav-warranty-reminder'));
 });
@@ -230,6 +234,69 @@ test('R3-08A VS Code collaboration real plugin scenario adds a fresh visible cas
     'checkpoint.available',
     'agentCheckpointAvailable',
     'not only DOM fixture',
+    'not fixed line-count smoke',
   ]);
   assert.ok(spec.forbiddenArtifactSnippets.includes('uav-warranty-reminder'));
+});
+
+test('R3 iteration visible scenarios are fresh semantic cases, not fixed line-count smoke', () => {
+  const specs = listRealPluginIterationScenarioSpecs();
+  const r3Specs = specs.filter((spec) => /^r3-/i.test(spec.id));
+
+  assert.ok(r3Specs.length >= 8, 'R3 iteration harness must carry every visible R3 leaf as a scenario');
+  assert.deepEqual(new Set(r3Specs.map((spec) => spec.id)).size, r3Specs.length, 'scenario ids must be unique');
+  assert.deepEqual(
+    new Set(r3Specs.map((spec) => spec.expectedArtifactRel)).size,
+    r3Specs.length,
+    'expected artifact paths must be unique per R3 leaf',
+  );
+  assert.deepEqual(
+    new Set(r3Specs.map((spec) => spec.freshCaseMarker)).size,
+    r3Specs.length,
+    'fresh case markers must be unique per R3 leaf',
+  );
+
+  for (const spec of r3Specs) {
+    assert.equal(spec.kind, 'iteration', `${spec.id} must be an iteration profile`);
+    assert.ok(spec.changedSurface, `${spec.id} must name the changed surface being tested`);
+    assert.ok(spec.semanticAcceptance && spec.semanticAcceptance.length >= 4, `${spec.id} must define semantic acceptance anchors`);
+    assert.ok(spec.rejectFixedLineCountOnly, `${spec.id} must reject fixed line-count-only settlement`);
+    assert.ok(spec.requiredArtifactSnippets.includes(spec.freshCaseMarker), `${spec.id} must require its fresh marker in the artifact`);
+    assert.ok(spec.requiredArtifactSnippets.length > Number(spec.minimumMarkdownHeadings || 0), `${spec.id} must require semantic anchors beyond heading counts`);
+    assert.ok(spec.forbiddenArtifactSnippets.includes('uav-warranty-reminder'), `${spec.id} must reject stale warranty case bleed-through`);
+  }
+});
+
+test('R3-08C accessibility real plugin scenario adds keyboard and screen-reader coverage', () => {
+  const profile = buildRealPluginQualityProfile('r3-08c-accessibility');
+  const spec = buildRealPluginScenarioSpec('r3-08c-accessibility');
+
+  assert.equal(profile.kind, 'iteration');
+  assert.equal(profile.requireFormalProjectQuality, false);
+  assert.equal(spec.id, 'r3-08c-accessibility');
+  assert.equal(spec.changedSurface, 'vscode-webview-accessibility');
+  assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
+  assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-08c-accessibility.md');
+  assert.match(spec.promptTitle, /R3-08C-ACCESSIBILITY/);
+  assert.deepEqual(spec.semanticAcceptance, [
+    'keyboard-navigation',
+    'screen-reader-live-status',
+    'focusable-action-surfaces',
+    'status-not-color-only',
+  ]);
+  for (const snippet of [
+    'R3-08C-ACCESSIBILITY',
+    'keyboard-navigation',
+    'screen-reader-live-status',
+    'focusable-action-surfaces',
+    'status-not-color-only',
+    'aria-live',
+    'aria-label',
+    'role="status"',
+    'tabindex="0"',
+    'Enter/Space',
+    'not fixed line-count smoke',
+  ]) {
+    assert.ok(spec.requiredArtifactSnippets.includes(snippet), `R3-08C must require ${snippet}`);
+  }
 });

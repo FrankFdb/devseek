@@ -6,6 +6,10 @@ const R3_07G_STALE_DOMAIN_SNIPPETS = Object.freeze([
   'uav-warranty-reminder',
 ]);
 
+const FRESH_R3_CASE_REJECTION = Object.freeze([
+  'not fixed line-count smoke',
+]);
+
 const R3_07G_AGGREGATE_SPECS = Object.freeze([
   createR3KindAggregateSpec({
     profileKind: 'skill',
@@ -122,8 +126,18 @@ const R3_07H_REQUIRED_KINDS_AGGREGATE_SPEC = Object.freeze({
     'one kind cannot substitute another',
     'aggregateExecutionAllowed: false',
     'slotExecutionAllowed: false',
+    ...FRESH_R3_CASE_REJECTION,
   ]),
   forbiddenArtifactSnippets: R3_07G_STALE_DOMAIN_SNIPPETS,
+  changedSurface: 'extension-profile-required-kinds-aggregate',
+  freshCaseMarker: 'R3-07H-required-kinds-AGGREGATE',
+  semanticAcceptance: Object.freeze([
+    'aggregateRequiredKinds',
+    'required-kinds-missing-veto',
+    'required-kinds-duplicate-veto',
+    'one kind cannot substitute another',
+  ]),
+  rejectFixedLineCountOnly: true,
 });
 
 const R3_08A_VSCODE_COLLABORATION_SPEC = Object.freeze({
@@ -154,12 +168,59 @@ const R3_08A_VSCODE_COLLABORATION_SPEC = Object.freeze({
     'checkpoint.available',
     'agentCheckpointAvailable',
     'not only DOM fixture',
+    ...FRESH_R3_CASE_REJECTION,
   ]),
   forbiddenArtifactSnippets: R3_07G_STALE_DOMAIN_SNIPPETS,
+  changedSurface: 'vscode-surface-adapter-collaboration',
+  freshCaseMarker: 'R3-08A-VSCODE-USER-COLLABORATION',
+  semanticAcceptance: Object.freeze([
+    'surfaceTrace',
+    'same trace/event',
+    'agentCheckpointAvailable',
+    'not only DOM fixture',
+  ]),
+  rejectFixedLineCountOnly: true,
+});
+
+const R3_08C_ACCESSIBILITY_SPEC = Object.freeze({
+  id: 'r3-08c-accessibility',
+  kind: 'iteration',
+  minimumMarkdownBytes: 1150,
+  minimumMarkdownLines: 28,
+  minimumMarkdownHeadings: 5,
+  requireFormalProjectQuality: false,
+  promptTitle: 'R3-08C-ACCESSIBILITY keyboard and screen-reader surface audit',
+  deliveryMode: 'markdown-file-deliverable',
+  requestedOutputDocRel: 'docs/r3-iteration/r3-08c-accessibility.md',
+  expectedArtifactRel: 'docs/r3-iteration/r3-08c-accessibility.md',
+  requiredArtifactSnippets: Object.freeze([
+    'R3-08C-ACCESSIBILITY',
+    'keyboard-navigation',
+    'screen-reader-live-status',
+    'focusable-action-surfaces',
+    'status-not-color-only',
+    'aria-live',
+    'aria-label',
+    'role="status"',
+    'tabindex="0"',
+    'Enter/Space',
+    ...FRESH_R3_CASE_REJECTION,
+  ]),
+  forbiddenArtifactSnippets: R3_07G_STALE_DOMAIN_SNIPPETS,
+  changedSurface: 'vscode-webview-accessibility',
+  freshCaseMarker: 'R3-08C-ACCESSIBILITY',
+  semanticAcceptance: Object.freeze([
+    'keyboard-navigation',
+    'screen-reader-live-status',
+    'focusable-action-surfaces',
+    'status-not-color-only',
+  ]),
+  rejectFixedLineCountOnly: true,
 });
 
 function createR3KindAggregateSpec(input) {
   const profileKind = input.profileKind;
+  const marker = `R3-07G-${profileKind}-AGGREGATE`;
   return Object.freeze({
     id: `r3-07g-${profileKind}-aggregate`,
     kind: 'iteration',
@@ -172,8 +233,21 @@ function createR3KindAggregateSpec(input) {
     deliveryMode: 'markdown-file-deliverable',
     requestedOutputDocRel: `docs/r3-iteration/r3-07g-${profileKind}-aggregate-denominator.md`,
     expectedArtifactRel: `docs/r3-iteration/r3-07g-${profileKind}-aggregate-denominator.md`,
-    requiredArtifactSnippets: Object.freeze(input.requiredArtifactSnippets),
+    requiredArtifactSnippets: Object.freeze([
+      ...input.requiredArtifactSnippets,
+      ...FRESH_R3_CASE_REJECTION,
+    ]),
     forbiddenArtifactSnippets: R3_07G_STALE_DOMAIN_SNIPPETS,
+    changedSurface: `extension-profile-${profileKind}-aggregate`,
+    freshCaseMarker: marker,
+    semanticAcceptance: Object.freeze([
+      'ExtensionProfilePlanService',
+      '20 task slots',
+      '100 permission-fault slots',
+      'aggregateExecutionAllowed: false',
+      'slotExecutionAllowed: false',
+    ]),
+    rejectFixedLineCountOnly: true,
   });
 }
 
@@ -208,6 +282,10 @@ export function buildRealPluginScenarioSpec(scenario) {
       expectedArtifactRel: '',
       requiredArtifactSnippets: [],
       forbiddenArtifactSnippets: [],
+      changedSurface: '',
+      freshCaseMarker: '',
+      semanticAcceptance: [],
+      rejectFixedLineCountOnly: false,
     };
   }
   return {
@@ -224,7 +302,20 @@ export function buildRealPluginScenarioSpec(scenario) {
     expectedArtifactRel: spec.expectedArtifactRel,
     requiredArtifactSnippets: [...spec.requiredArtifactSnippets],
     forbiddenArtifactSnippets: [...spec.forbiddenArtifactSnippets],
+    changedSurface: spec.changedSurface || '',
+    freshCaseMarker: spec.freshCaseMarker || '',
+    semanticAcceptance: [...(spec.semanticAcceptance || [])],
+    rejectFixedLineCountOnly: spec.rejectFixedLineCountOnly === true,
   };
+}
+
+export function listRealPluginIterationScenarioSpecs() {
+  return [
+    ...R3_07G_AGGREGATE_SPECS,
+    R3_07H_REQUIRED_KINDS_AGGREGATE_SPEC,
+    R3_08A_VSCODE_COLLABORATION_SPEC,
+    R3_08C_ACCESSIBILITY_SPEC,
+  ].map((spec) => buildRealPluginScenarioSpec(spec.id));
 }
 
 export function parseRequiredArtifactSnippets(value) {
@@ -236,6 +327,7 @@ export function parseRequiredArtifactSnippets(value) {
 
 function lookupScenarioSpec(value) {
   const scenario = normalizeScenario(value);
+  if (scenario === R3_08C_ACCESSIBILITY_SPEC.id) return R3_08C_ACCESSIBILITY_SPEC;
   if (scenario === R3_08A_VSCODE_COLLABORATION_SPEC.id) return R3_08A_VSCODE_COLLABORATION_SPEC;
   if (scenario === R3_07H_REQUIRED_KINDS_AGGREGATE_SPEC.id) return R3_07H_REQUIRED_KINDS_AGGREGATE_SPEC;
   return R3_07G_AGGREGATE_SPEC_BY_ID.get(scenario) ?? null;

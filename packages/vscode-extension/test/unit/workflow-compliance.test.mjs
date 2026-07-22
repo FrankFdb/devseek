@@ -2311,6 +2311,11 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
   const profile = src('test/harness/real-plugin-quality-profile.mjs');
   assertContains(profile, 'buildRealPluginScenarioSpec', 'real harness must expose named scenario contracts');
+  assertContains(profile, 'listRealPluginIterationScenarioSpecs', 'R3 visible simulations must be enumerable for freshness checks');
+  assertContains(profile, 'freshCaseMarker', 'R3 scenarios must carry a unique fresh-case marker');
+  assertContains(profile, 'semanticAcceptance', 'R3 scenarios must name semantic acceptance anchors');
+  assertContains(profile, 'rejectFixedLineCountOnly', 'R3 scenarios must reject fixed line-count-only settlement');
+  assertContains(profile, 'not fixed line-count smoke', 'R3 scenarios must reject stale fixed-shape smoke settlement');
   assertContains(profile, 'id: `r3-07g-${profileKind}-aggregate`', 'R3-07G named scenarios must use kind-specific ids');
   assertContains(profile, "profileKind: 'skill'", 'R3-07G must have a dedicated skill real-plugin scenario');
   assertContains(profile, "profileKind: 'hook'", 'R3-07G hook iteration must have a fresh dedicated real-plugin scenario');
@@ -2356,9 +2361,17 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(profile, 'checkpoint.available', 'R3-08A artifact gate must assert checkpoint projection');
   assertContains(profile, 'agentCheckpointAvailable', 'R3-08A artifact gate must assert resume UI projection');
   assertContains(profile, 'not only DOM fixture', 'R3-08A artifact gate must reject fixed DOM-only acceptance');
+  assertContains(profile, 'r3-08c-accessibility', 'R3-08C must add a fresh accessibility real-plugin scenario');
+  assertContains(profile, 'r3-08c-accessibility.md', 'R3-08C scenario must write a distinct artifact');
+  assertContains(profile, 'keyboard-navigation', 'R3-08C artifact gate must assert keyboard coverage');
+  assertContains(profile, 'screen-reader-live-status', 'R3-08C artifact gate must assert screen-reader status coverage');
+  assertContains(profile, 'focusable-action-surfaces', 'R3-08C artifact gate must assert focusable action surfaces');
+  assertContains(profile, 'status-not-color-only', 'R3-08C artifact gate must assert non-color-only status');
   assertContains(harness, 'createR3KindAggregateFixture', 'real harness must share the R3 kind aggregate fixture instead of duplicating skill/hook setup');
   assertContains(harness, 'createR3RequiredKindsAggregateFixture', 'real harness must add the R3-07H required-kinds fixture');
   assertContains(harness, 'createR3VSCodeCollaborationFixture', 'real harness must add the R3-08A VS Code collaboration fixture');
+  assertContains(harness, 'createR3AccessibilityFixture', 'real harness must add the R3-08C accessibility fixture');
+  assertContains(harness, 'webview-accessibility-surface-contract.ts', 'R3-08C fixture must expose an accessibility contract instead of only prompt text');
   assertContains(harness, 'vscode-surface-adapter-collaboration-contract.ts', 'R3-08A fixture must expose a source contract instead of only prompt text');
   assertContains(harness, 'R3_KIND_AGGREGATE_FIXTURE_DETAILS', 'real harness must keep R3 kind fixture data table-driven');
   assert.ok(
@@ -2451,6 +2464,32 @@ test('R3-08B-CLI-JSONL-USER-COLLABORATION: CLI surfaces expose lifecycle schema 
   assertContains(cliJsonlTest, 'R3-08B CLI text mode exposes collaboration lifecycle status on stderr', 'R3-08B must cover text mode lifecycle visibility');
   assertContains(cliJsonlTest, "signal: 'SIGTERM'", 'R3-08B cancel oracle must assert signal identity');
   assertContains(cliJsonlTest, 'exitCode: 143', 'R3-08B cancel oracle must assert terminal exit code');
+});
+
+test('R3-08C-ACCESSIBILITY: WebView surfaces expose keyboard and screen-reader state', () => {
+  const html = src('src/ui/webview-html.ts');
+  const webview = src('media/webview.js');
+  const accessibilityTest = src('test/unit/webview-accessibility.test.mjs');
+
+  assertContains(html, 'id="a11y-status"', 'R3-08C must add a screen-reader status region');
+  assertContains(html, 'role="log"', 'R3-08C message stream must expose log semantics');
+  assertContains(html, 'aria-live="polite"', 'R3-08C status/log surfaces must announce changes');
+  assertContains(html, 'aria-pressed', 'R3-08C toggles must expose pressed state');
+  assertContains(html, 'aria-describedby="input-hint"', 'R3-08C prompt input must expose its keyboard hint');
+
+  assertContains(webview, 'function setA11yStatus', 'R3-08C status updates must mirror to aria-live');
+  assertContains(webview, 'function activateOnEnterOrSpace', 'R3-08C clickable rows must support keyboard activation');
+  assertContains(webview, "workingEl.setAttribute('role', 'status')", 'R3-08C working area must expose status semantics');
+  assertContains(webview, "todosWidgetEl.setAttribute('role', 'region')", 'R3-08C todo surface must be a named region');
+  assertContains(webview, "fileChangesWidgetEl.setAttribute('role', 'region')", 'R3-08C file-change surface must be a named region');
+  assertContains(webview, 'role="listitem" aria-label="', 'R3-08C todo item state must be text, not color only');
+  assertContains(webview, 'role="button" tabindex="0"', 'R3-08C file-change rows must be focusable buttons');
+  assertContains(webview, 'activateOnEnterOrSpace(row, function()', 'R3-08C file-change rows must activate with Enter/Space');
+  assertContains(webview, "card.setAttribute('role', 'status')", 'R3-08C workflow cards must expose status semantics');
+
+  assertContains(accessibilityTest, 'R3-08C WebView accessibility surfaces expose keyboard, focus, and screen-reader status', 'R3-08C must keep a failure-first accessibility oracle');
+  assertContains(accessibilityTest, 'tabindex="0"', 'R3-08C oracle must guard keyboard focusability');
+  assertContains(accessibilityTest, 'aria-label', 'R3-08C oracle must guard screen-reader labels');
 });
 
 test('Real DeepSeek harness: headed user-window runs can be retained for inspection', () => {

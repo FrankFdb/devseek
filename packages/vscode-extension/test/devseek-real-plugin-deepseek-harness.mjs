@@ -363,6 +363,9 @@ function defaultPrompt(root, fixture) {
 
 function createFixtureWorkspace(root, options = {}) {
   const scenarioSpec = buildRealPluginScenarioSpec(options.scenario);
+  if (scenarioSpec.id === 'r3-08c-accessibility') {
+    return createR3AccessibilityFixture(root, scenarioSpec);
+  }
   if (scenarioSpec.id === 'r3-08a-vscode-collaboration') {
     return createR3VSCodeCollaborationFixture(root, scenarioSpec);
   }
@@ -673,6 +676,77 @@ function createR3VSCodeCollaborationFixture(root, scenarioSpec) {
     '- 为什么 checkpoint.available 必须投影到 agentCheckpointAvailable，避免恢复入口只停留在内部事件。',
     '- 为什么本轮验收不能只依赖 DOM fixture 或固定旧 case，必须覆盖 SurfaceAdapter.renderEvent 的事件投影契约。',
     '- 生成文件要包含本次测试结论、风险、验证建议和用户可检查的证据路径。',
+    '',
+    '报告必须逐字包含以下验收锚点：',
+    anchorLines,
+  ].join('\n');
+
+  return {
+    requestedOutputDoc,
+    expectedArtifactRel: scenarioSpec.expectedArtifactRel,
+    scenarioSpec,
+    defaultPrompt,
+  };
+}
+
+function createR3AccessibilityFixture(root, scenarioSpec) {
+  const docsDir = path.join(root, 'docs/r3-iteration');
+  const sourceDir = path.join(root, 'src/vscode-webview-accessibility');
+  const requestedOutputDoc = path.join(root, scenarioSpec.requestedOutputDocRel);
+  const checklistPath = path.join(docsDir, 'webview-accessibility-checklist.md');
+  const contractPath = path.join(sourceDir, 'webview-accessibility-surface-contract.ts');
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(path.dirname(requestedOutputDoc), { recursive: true });
+
+  writeText(path.join(root, 'README.md'), [
+    '# DevSeek R3-08C accessibility fixture',
+    '',
+    'This workspace is created by the visible real-plugin harness for the current R3 iteration.',
+  ].join('\n'));
+  writeText(checklistPath, [
+    '# R3-08C WebView Accessibility Checklist',
+    '',
+    '- Leaf: R3-08C-ACCESSIBILITY.',
+    '- Required checklist: keyboard-navigation, screen-reader-live-status, focusable-action-surfaces, status-not-color-only.',
+    '- Keyboard: interactive non-button rows must be reachable with tabindex="0" and support Enter/Space.',
+    '- Screen reader: status changes must update a role="status" aria-live region with aria-atomic="true".',
+    '- Focus: action surfaces for changed files and generated workflow statuses must expose aria-label text.',
+    '- Status: success/failure/progress must be conveyed by text and labels, not color classes alone.',
+    '- Fixed old warranty Markdown and fixed line-count output cannot settle this leaf.',
+  ].join('\n'));
+  writeText(contractPath, [
+    'export const r3Leaf = "R3-08C-ACCESSIBILITY";',
+    'export const changedSurface = "vscode-webview-accessibility";',
+    'export const requiredChecklist = [',
+    '  "keyboard-navigation",',
+    '  "screen-reader-live-status",',
+    '  "focusable-action-surfaces",',
+    '  "status-not-color-only",',
+    '] as const;',
+    'export const statusLiveRegion = \'role="status"\';',
+    'export const screenReaderStatus = "aria-live";',
+    'export const actionSurfaceLabel = "aria-label";',
+    'export const keyboardReachability = \'tabindex="0"\';',
+    'export const activationKeys = "Enter/Space";',
+    'export const staleCaseRejected = "not fixed line-count smoke";',
+  ].join('\n'));
+
+  const anchorLines = scenarioSpec.requiredArtifactSnippets
+    .map(snippet => `- ${snippet}`)
+    .join('\n');
+  const defaultPrompt = [
+    `请基于 ${checklistPath} 和 ${contractPath} 创建 Markdown 审计报告。`,
+    `请把报告保存到 ${requestedOutputDoc}。`,
+    `报告主题是 ${scenarioSpec.promptTitle}。`,
+    '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+    '',
+    '报告必须解释：',
+    '- 为什么 WebView 的状态不能只靠颜色、图标或类名表达，必须有可朗读文本和 role="status" live region。',
+    '- 为什么文件变更行、折叠明细、队列/跳转等可点击 surface 需要键盘可达，并支持 Enter/Space。',
+    '- 为什么 aria-label、aria-expanded、aria-pressed、tabindex="0" 与焦点路径必须覆盖真实用户操作，而不是只看 DOM fixture 或固定行数。',
+    '- 为什么本次 R3-08C 必须用 accessibility 专属 case 验收，不能继承旧 warranty/Markdown 或 R3-08A collaboration case。',
+    '- 生成文件要包含 checklist 100% 覆盖情况、风险、验证建议和用户可检查的证据路径。',
     '',
     '报告必须逐字包含以下验收锚点：',
     anchorLines,

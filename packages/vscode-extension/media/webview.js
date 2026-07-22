@@ -5,6 +5,7 @@ const sendBtn    = document.getElementById('send-btn');
 const suggestEl  = document.getElementById('suggest-popup');
 const sDotEl     = document.getElementById('s-dot');
 const statusTextEl = document.getElementById('status-text');
+const a11yStatusEl = document.getElementById('a11y-status');
 const loginBtn   = document.getElementById('login-btn');
 const fileBadgesEl = document.getElementById('file-badges');
 const readyProgressEl = document.getElementById('ready-progress');
@@ -16,6 +17,10 @@ const sessionsListEl  = document.getElementById('sessions-list');
 var sessionsPanelOpen = false;
 const workingEl = document.createElement('div');
 workingEl.id = 'working-area';
+workingEl.setAttribute('role', 'status');
+workingEl.setAttribute('aria-live', 'polite');
+workingEl.setAttribute('aria-atomic', 'true');
+workingEl.setAttribute('aria-label', 'DevSeek 正在处理');
 if (messagesEl) {
   messagesEl.appendChild(workingEl);
 }
@@ -28,6 +33,8 @@ if (inputAreaEl && inputAreaEl.parentNode) {
 const todosWidgetEl = document.createElement('div');
 todosWidgetEl.id = 'agent-todos-widget';
 todosWidgetEl.style.display = 'none';
+todosWidgetEl.setAttribute('role', 'region');
+todosWidgetEl.setAttribute('aria-label', 'DevSeek Todos');
 if (inputAreaEl && inputAreaEl.parentNode) {
   inputAreaEl.parentNode.insertBefore(todosWidgetEl, inputAreaEl);
 }
@@ -35,6 +42,8 @@ if (inputAreaEl && inputAreaEl.parentNode) {
 const fileChangesWidgetEl = document.createElement('div');
 fileChangesWidgetEl.id = 'agent-file-changes-widget';
 fileChangesWidgetEl.style.display = 'none';
+fileChangesWidgetEl.setAttribute('role', 'region');
+fileChangesWidgetEl.setAttribute('aria-label', 'DevSeek 文件变更');
 if (inputAreaEl && inputAreaEl.parentNode) {
   inputAreaEl.parentNode.insertBefore(fileChangesWidgetEl, inputAreaEl);
   // Copilot input-area order: Todos widget first, then file changes/review widget,
@@ -98,6 +107,36 @@ let analysisRenderBody = null;
 let analysisLastRenderTs = 0;
 let statusPollTimer = null;
 let workingResetTimer = null;
+
+function setA11yStatus(text) {
+  if (!a11yStatusEl) return;
+  a11yStatusEl.textContent = String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+function activateOnEnterOrSpace(element, handler) {
+  if (!element || typeof handler !== 'function') return;
+  element.addEventListener('keydown', function(event) {
+    if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+    event.preventDefault();
+    handler(event);
+  });
+}
+
+function setTogglePressed(element, value) {
+  if (element) element.setAttribute('aria-pressed', value ? 'true' : 'false');
+}
+
+function setConnectionStatus(dotClass, text, options) {
+  if (sDotEl) sDotEl.className = dotClass;
+  if (statusTextEl) statusTextEl.textContent = text;
+  setA11yStatus('DevSeek 状态：' + text);
+  if (loginBtn && options) {
+    loginBtn.style.display = options.showLogin ? '' : 'none';
+    if (options.loginText) loginBtn.textContent = options.loginText;
+    if (typeof options.loginDisabled === 'boolean') loginBtn.disabled = options.loginDisabled;
+  }
+}
+
 injectWorkingAreaStyles();
 injectPendingEditsStyles();
 injectAnalyzeCardStyles();
@@ -155,8 +194,13 @@ document.querySelectorAll('.mode-btn').forEach(function(btn) {
   btn.addEventListener('click', function() {
     const mode = btn.getAttribute('data-mode');
     currentMode = mode;
-    document.querySelectorAll('.mode-btn').forEach(function(b) { b.classList.remove('active'); });
+    document.querySelectorAll('.mode-btn').forEach(function(b) {
+      b.classList.remove('active');
+      setTogglePressed(b, false);
+    });
     btn.classList.add('active');
+    setTogglePressed(btn, true);
+    setA11yStatus('回复模式已切换为 ' + btn.textContent.trim());
     vscode.postMessage({ type: 'setMode', mode: mode });
   });
 });
@@ -167,9 +211,11 @@ if (autopilotBtn) {
   autopilotBtn.addEventListener('click', function() {
     autopilotMode = !autopilotMode;
     autopilotBtn.classList.toggle('active', autopilotMode);
+    setTogglePressed(autopilotBtn, autopilotMode);
     autopilotBtn.title = autopilotMode
       ? '自动驾驶：开启 — Agent 完成时自动接受所有文件改动（点击关闭）'
       : '自动驾驶：关闭 — Agent 完成时显示 Keep/Undo 确认（点击开启）';
+    setA11yStatus(autopilotMode ? '自动驾驶已开启' : '自动驾驶已关闭');
     vscode.postMessage({ type: 'setAutopilot', autopilot: autopilotMode });
   });
 }
@@ -178,15 +224,18 @@ if (autopilotBtn) {
 const agentToggleBtn = document.getElementById('agent-toggle-btn');
 if (agentToggleBtn) {
   agentToggleBtn.classList.toggle('active', agentEnabled);
+  setTogglePressed(agentToggleBtn, agentEnabled);
   agentToggleBtn.title = agentEnabled
     ? 'Agent 模式：开启 — 自动分析意图并执行多轮编辑（点击关闭，走普通对话）'
     : 'Agent 模式：关闭 — 强制普通对话，不触发多轮编辑（点击开启）';
   agentToggleBtn.addEventListener('click', function() {
     agentEnabled = !agentEnabled;
     agentToggleBtn.classList.toggle('active', agentEnabled);
+    setTogglePressed(agentToggleBtn, agentEnabled);
     agentToggleBtn.title = agentEnabled
       ? 'Agent 模式：开启 — 自动分析意图并执行多轮编辑（点击关闭，走普通对话）'
       : 'Agent 模式：关闭 — 强制普通对话，不触发多轮编辑（点击开启）';
+    setA11yStatus(agentEnabled ? 'Agent 模式已开启' : 'Agent 模式已关闭');
     vscode.postMessage({ type: 'agentToggle', enabled: agentEnabled });
   });
 }
@@ -544,10 +593,12 @@ function renderQueueIndicator() {
   var preview = queuedAgentMsg.displayText.slice(0, 60) + (queuedAgentMsg.displayText.length > 60 ? '…' : '');
   var _safePreview = preview.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   el.style.display = 'flex';
+  el.setAttribute('aria-label', '已排队：' + _safePreview);
   el.innerHTML = '<span class="aqi-icon">📤</span>'
     + '<span class="aqi-text">已排队：' + _safePreview + '</span>'
-    + '<button class="aqi-steer" title="中断当前任务，立即发送排队消息">⏩ 中断发送</button>'
-    + '<button class="aqi-cancel" title="取消排队">×</button>';
+    + '<button class="aqi-steer" title="中断当前任务，立即发送排队消息" aria-label="中断当前任务并立即发送排队消息">⏩ 中断发送</button>'
+    + '<button class="aqi-cancel" title="取消排队" aria-label="取消排队消息">×</button>';
+  setA11yStatus('消息已排队：' + preview);
   el.querySelector('.aqi-steer').addEventListener('click', function() {
     if (!queuedAgentMsg) return;
     var q = queuedAgentMsg;
@@ -1944,6 +1995,10 @@ function handleTodoUpdate(items) {
       : it.status === 'in-progress' ? 'state-started'
       : it.status === 'failed' ? 'state-failed'
       : 'state-pending';
+    var stateLabel = it.status === 'completed' ? '已完成'
+      : it.status === 'in-progress' ? '进行中'
+      : it.status === 'failed' ? '失败'
+      : '未开始';
     // State icon (left)
     var stateIcon = it.status === 'completed'
       ? '<i class="codicon codicon-pass"></i>'
@@ -1970,8 +2025,8 @@ function handleTodoUpdate(items) {
     // Truncate secondary desc for display
     primaryText = compactAgentTaskLabel(primaryText, secondaryText || '任务', 54) || primaryText;
     var shortDesc = secondaryText && secondaryText.length > 48 ? secondaryText.slice(0, 46) + '…' : secondaryText;
-    var tooltip = escapeHtml(it.fullDesc || fullPrimaryText || secondaryText || primaryText);
-    return '<div class="agent-todo-item ' + stateClass + '" title="' + tooltip + '">'
+    var tooltip = escapeHtml(stateLabel + '：' + (it.fullDesc || fullPrimaryText || secondaryText || primaryText || '任务'));
+    return '<div class="agent-todo-item ' + stateClass + '" role="listitem" aria-label="' + tooltip + '" title="' + tooltip + '">'
       + '<span class="agent-todo-icon">' + stateIcon + '</span>'
       + (action ? '<i class="codicon ' + actionIcon + ' agent-todo-action-icon"></i>' : '')
       + '<span class="agent-todo-body">'
@@ -1981,14 +2036,16 @@ function handleTodoUpdate(items) {
       + '</div>';
   }).join('');
   var detailsOpen = items.length <= 8 ? ' open' : '';
+  todosWidgetEl.setAttribute('aria-label', header + '，' + doneCount + ' 个已完成，' + inProgCount + ' 个进行中');
   todosWidgetEl.innerHTML = '<details class="agent-todos-details"' + detailsOpen + '>'
     + '<summary class="agent-todos-summary">'
     + '<span class="agent-todos-title">' + header + '</span>'
-    + '<button class="agent-todos-close" title="关闭">\u00d7</button>'
+    + '<button class="agent-todos-close" title="关闭" aria-label="关闭 Todos">\u00d7</button>'
     + '</summary>'
-    + '<div class="agent-todos-list">' + listHtml + '</div>'
+    + '<div class="agent-todos-list" role="list">' + listHtml + '</div>'
     + '</details>';
   todosWidgetEl.style.display = '';
+  setA11yStatus(header + ' 已更新');
 
   // Sync the Working-area header only while a todo is actively in progress.
   // Do NOT switch the active Working box to "已完成 N/N" from todo updates alone:
@@ -2063,7 +2120,9 @@ function renderFileChangesWidget(editedFiles) {
       ? '<span class="afc-row-stat"><span class="afc-added">+' + (f.linesAdded || 0) + '</span> <span class="afc-removed">-' + (f.linesRemoved || 0) + '</span></span>'
       : '';
     var dirName = f.path ? f.path.replace(/\\/g, '/').replace(/\/[^\/]+$/, '') : '';
-    return '<div class="afc-row" data-idx="' + idx + '" title="' + escapeHtml(f.path || f.basename) + ' — 点击在编辑器中查看差异">'
+    var targetPath = escapeHtml(f.path || f.basename || '文件');
+    var rowLabel = '打开 ' + targetPath + ' 的差异，新增 ' + (f.linesAdded || 0) + ' 行，删除 ' + (f.linesRemoved || 0) + ' 行';
+    return '<div class="afc-row" role="button" tabindex="0" aria-label="' + rowLabel + '" data-idx="' + idx + '" title="' + targetPath + ' — 点击在编辑器中查看差异">'
       + '<i class="codicon ' + iconClass + ' afc-row-icon"></i>'
       + '<span class="afc-row-body">'
       + '<span class="afc-row-name">' + escapeHtml(f.basename) + '</span>'
@@ -2075,14 +2134,15 @@ function renderFileChangesWidget(editedFiles) {
   var nFiles = editedFiles.length;
   var nLabel = nFiles + ' 个文件已修改';
   var chevronClass = 'afc-chevron' + (fileChangesListExpanded ? ' expanded' : '');
+  fileChangesWidgetEl.setAttribute('aria-label', nLabel);
   fileChangesWidgetEl.innerHTML =
     '<div class="afc-header">'
-    + '<button class="afc-toggle" data-afc-toggle="1">'
+    + '<button class="afc-toggle" data-afc-toggle="1" aria-expanded="' + (fileChangesListExpanded ? 'true' : 'false') + '" aria-label="' + (fileChangesListExpanded ? '折叠文件变更列表' : '展开文件变更列表') + '">'
     + '<span class="' + chevronClass + '">▶</span>'
     + '<span class="afc-title">' + nLabel + '</span>'
     + statHtml
     + '</button>'
-    + '<button class="afc-close" title="关闭">\u00d7</button>'
+    + '<button class="afc-close" title="关闭" aria-label="关闭文件变更列表">\u00d7</button>'
     + '</div>'
     + (fileChangesListExpanded ? '<div class="afc-list">' + listHtml + '</div>'
       + '<div class="afc-hint">\u70b9\u51fb\u6587\u4ef6\u53ef\u5728\u7f16\u8f91\u5668\u4e2d\u67e5\u770b\u5dee\u5f02</div>' : '');
@@ -2098,8 +2158,12 @@ function renderFileChangesWidget(editedFiles) {
   var rows = fileChangesWidgetEl.querySelectorAll('.afc-row');
   for (var ri = 0; ri < rows.length; ri++) {
     (function(row, fileInfo) {
-      row.addEventListener('click', function() {
+      var openFileChange = function() {
         vscode.postMessage({ type: 'openPendingEdit', path: fileInfo.path || fileInfo.basename });
+      };
+      row.addEventListener('click', openFileChange);
+      activateOnEnterOrSpace(row, function() {
+        openFileChange();
       });
     })(rows[ri], editedFiles[parseInt(rows[ri].getAttribute('data-idx'), 10)]);
   }
@@ -2108,8 +2172,10 @@ function renderFileChangesWidget(editedFiles) {
     closeBtn.addEventListener('click', function() {
       fileChangesWidgetEl.style.display = 'none';
       fileChangesListExpanded = false;
+      setA11yStatus('文件变更列表已关闭');
     });
   }
+  setA11yStatus(nLabel);
 }
 
 /**
@@ -4408,6 +4474,8 @@ function renderWorkingArea() {
 
   // Copilot 风格：只显示当前最新一步，紧凑单行卡片，不堆叠历史
   var latest = entries[entries.length - 1];
+  var latestLabel = (latest.title || '处理中') + (latest.detail ? '，' + latest.detail : '');
+  workingEl.setAttribute('aria-label', 'DevSeek 正在处理：' + latestLabel);
   workingEl.classList.add('show');
   workingEl.innerHTML = '<div class="working-card compact">'
     + '<span class="working-dot"></span>'
@@ -4416,6 +4484,7 @@ function renderWorkingArea() {
     + (latest.detail ? '<div class="wi-detail">' + escapeHtml(latest.detail) + '</div>' : '')
     + '</div>'
     + '</div>';
+  setA11yStatus('DevSeek 正在处理：' + latestLabel);
 }
 
 function summarizeFinishedWorkingBrief() {
@@ -4462,6 +4531,8 @@ function extractRepairRound(title) {
 
 function renderWorkflowCard(card, msg) {
   card.className = 'workflow-card state-' + (msg.state || 'completed');
+  card.setAttribute('role', 'status');
+  card.setAttribute('aria-live', 'polite');
   card.innerHTML = '';
 
   var phaseLabel = workflowPhaseLabel(msg.phase, 'card');
@@ -4475,6 +4546,10 @@ function renderWorkflowCard(card, msg) {
         : msg.state === 'failed'
           ? (isBlocked ? '阻塞' : '失败')
           : '跳过';
+  var accessibleLabel = phaseLabel + ' ' + stateLabel + '：' + (msg.title || '');
+  if (msg.detail) accessibleLabel += '，' + msg.detail;
+  card.setAttribute('aria-label', accessibleLabel);
+  setA11yStatus(accessibleLabel);
 
   var head = document.createElement('div');
   head.className = 'wf-head';
@@ -5263,30 +5338,24 @@ window.addEventListener('message', function(event) {
     if (msg.providerMode && msg.providerMode !== 'bridge') {
       // 非 bridge provider（deepseek-api / openai-compat）：显示可用状态不需要登录
       if (msg.online) {
-        sDotEl.className = 's-dot s-online';
-        statusTextEl.textContent = msg.providerLabel || '已就绪';
-        loginBtn.style.display = 'none';
+        setConnectionStatus('s-dot s-online', msg.providerLabel || '已就绪', { showLogin: false });
       } else {
-        sDotEl.className = 's-dot s-offline';
-        statusTextEl.textContent = 'API 不可用（请检查设置）';
-        loginBtn.style.display = 'none';
+        setConnectionStatus('s-dot s-offline', 'API 不可用（请检查设置）', { showLogin: false });
       }
     } else if (!msg.online) {
-      sDotEl.className = 's-dot s-offline';
-      statusTextEl.textContent = 'Bridge 未运行';
-      loginBtn.style.display = '';
-      loginBtn.disabled = false;
-      loginBtn.textContent = '🔑 登录';
+      setConnectionStatus('s-dot s-offline', 'Bridge 未运行', {
+        showLogin: true,
+        loginDisabled: false,
+        loginText: '🔑 登录',
+      });
     } else if (!msg.loggedIn) {
-      sDotEl.className = 's-dot s-offline';
-      statusTextEl.textContent = '未登录';
-      loginBtn.style.display = '';
-      loginBtn.disabled = false;
-      loginBtn.textContent = '🔑 登录';
+      setConnectionStatus('s-dot s-offline', '未登录', {
+        showLogin: true,
+        loginDisabled: false,
+        loginText: '🔑 登录',
+      });
     } else {
-      sDotEl.className = 's-dot s-online';
-      statusTextEl.textContent = '已登录';
-      loginBtn.style.display = 'none';
+      setConnectionStatus('s-dot s-online', '已登录', { showLogin: false });
     }
   } else if (msg.type === 'pendingEdits') {
     pendingEdits = Array.isArray(msg.items) ? msg.items : [];
@@ -5309,6 +5378,7 @@ window.addEventListener('message', function(event) {
       const apBtn = document.getElementById('autopilot-btn');
       if (apBtn) {
         apBtn.classList.toggle('active', autopilotMode);
+        setTogglePressed(apBtn, autopilotMode);
         apBtn.title = autopilotMode
           ? '自动驾驶：开启 — Agent 完成时自动接受所有文件改动（点击关闭）'
           : '自动驾驶：关闭 — Agent 完成时显示 Keep/Undo 确认（点击开启）';
@@ -5318,6 +5388,7 @@ window.addEventListener('message', function(event) {
       agentEnabled = !!msg.agentEnabled;
       if (agentToggleBtn) {
         agentToggleBtn.classList.toggle('active', agentEnabled);
+        setTogglePressed(agentToggleBtn, agentEnabled);
         agentToggleBtn.title = agentEnabled
           ? 'Agent 模式：开启 — 自动分析意图并执行多轮编辑（点击关闭，走普通对话）'
           : 'Agent 模式：关闭 — 强制普通对话，不触发多轮编辑（点击开启）';
