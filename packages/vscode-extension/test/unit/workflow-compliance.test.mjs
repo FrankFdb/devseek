@@ -1421,6 +1421,14 @@ test('R3-07S-skill-PERMISSION-FAULT-037: permission fault evidence must name one
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-037 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-037 must have multi-skill same-denial oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-038: Markdown blockquote body cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_MARKDOWN_BLOCKQUOTE_MARKER', 'R3-07S-skill-PERMISSION-FAULT-038 must keep Markdown blockquote body ownership in skillMetadataLines');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-038 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-038 must have Markdown blockquote inferred-trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
