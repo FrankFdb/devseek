@@ -1834,6 +1834,15 @@ function createInlineHtmlBodyInferredTriggerDeniedEditSkillReceipt() {
   ]);
 }
 
+function createInlineHtmlTableChildBodyInferredTriggerDeniedEditSkillReceipt() {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    '<tr><td>Use react when demonstrating component edits.</td></tr>',
+    'tool_kinds: read',
+  ]);
+}
+
 function createNonAsciiSubstringTriggerDeniedEditSkillReceipt() {
   return new SkillDiscoveryService().planExecution({
     prompt: '请修改深度学习组件',
@@ -3252,6 +3261,54 @@ test('R3-07S-skill-PERMISSION-FAULT-043 ExtensionProfilePlanService rejects inli
   });
   assert.equal(explicitMetadataBeforeInlineHtmlReceipt.loadedSkills.length, 1);
   assert.equal(explicitMetadataBeforeInlineHtmlReceipt.loadedSkills[0]?.selectedByTrigger, 'react');
+});
+
+test('R3-07S-skill-PERMISSION-FAULT-044 ExtensionProfilePlanService rejects inline HTML table-child body inferred trigger permission fault evidence', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '4444444444444444444444444444444444444444',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const childReceipt = createInlineHtmlTableChildBodyInferredTriggerDeniedEditSkillReceipt();
+
+  const receipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-044',
+    attemptId: 'skill-permission-fault-044-inline-html-table-child-body-inferred-trigger',
+    status: 'passed',
+    childReceipt,
+  });
+
+  assert.equal(receipt.status, 'blocked');
+  assert.equal(childReceipt.loadedSkills.length, 0);
+  assert.ok(childReceipt.blockedReasons.includes('unmatched-skill-not-loaded'));
+  assert.deepEqual(childReceipt.evidenceRefs, []);
+  assert.ok(receipt.vetoes.includes('slot-child-evidence-missing-veto:R3-07S-skill-PERMISSION-FAULT-044'));
+  assert.deepEqual(receipt.permissionFaultRefs, []);
+  assert.deepEqual(receipt.effectRefs, []);
+  assert.deepEqual(receipt.receiptRefs, []);
+
+  const explicitMetadataBeforeTableChildReceipt = new SkillDiscoveryService().planExecution({
+    prompt: 'please use react and inspect the component',
+    candidates: [
+      {
+        path: 'skills/reference/SKILL.md',
+        content: [
+          '# Reference',
+          '',
+          'description: React reference',
+          'triggers: react',
+          'tool_kinds: read',
+          '',
+          '<tr><td>React edit example appears below.</td></tr>',
+        ].join('\n'),
+      },
+    ],
+    requestedToolKinds: ['read'],
+  });
+  assert.equal(explicitMetadataBeforeTableChildReceipt.loadedSkills.length, 1);
+  assert.equal(explicitMetadataBeforeTableChildReceipt.loadedSkills[0]?.selectedByTrigger, 'react');
 });
 
 test('SubagentRegistry selects review, diagnostics, tests, and migration contracts', () => {

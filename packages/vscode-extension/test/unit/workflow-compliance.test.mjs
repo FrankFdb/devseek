@@ -1471,6 +1471,14 @@ test('R3-07S-skill-PERMISSION-FAULT-043: inline HTML bodies cannot infer Skill t
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-043 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-043 must have inline HTML inferred-trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-044: inline HTML table-child bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'summary|tr|td|th', 'R3-07S-skill-PERMISSION-FAULT-044 must absorb common HTML child body tags into the existing marker');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-044 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-044 must have inline HTML table-child inferred-trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
