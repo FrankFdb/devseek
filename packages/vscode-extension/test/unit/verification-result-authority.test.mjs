@@ -113,6 +113,29 @@ test('VerificationResultAuthority: only passed and deterministic failed command 
   })), true);
 });
 
+test('VerificationResultAuthority: passed file-check output text cannot be downgraded to manual-required', () => {
+  const result = normalizeVerificationResult({
+    ran: true,
+    ok: true,
+    status: 'passed',
+    command: "test -f 'docs/warranty-maintenance-advice-simulation-1.md' && wc -c 'docs/warranty-maintenance-advice-simulation-1.md'",
+    exitCode: 0,
+    output: [
+      '9426 docs/warranty-maintenance-advice-simulation-1.md',
+      '# 维保提醒需求分析与实现建议',
+      '当前不准备使用原来的逻辑，后续 UI 输出仍需要人工确认。',
+    ].join('\n'),
+    cwd: '/repo',
+    mode: 'file-check',
+    reason: 'non-code-file-validation',
+    risks: [],
+    alternativeChecks: [],
+  });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(shouldEmitTerminalEvidenceForVerification(result), true);
+});
+
 test('VerificationResultAuthority: a later passing rerun cannot erase unresolved manual or flaky history', () => {
   const veto = findUnresolvedVerificationHistoryVeto([
     {

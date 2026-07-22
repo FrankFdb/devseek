@@ -93,6 +93,14 @@ export function normalizeVerificationResult(
   };
   const signalText = `${reason ?? ''}\n${command}\n${output}`.toLowerCase();
 
+  if (isDeterministicPassedVerification(result)) {
+    return {
+      ...authorityBase,
+      status: 'passed',
+      ok: true,
+    };
+  }
+
   if (looksManualRequired(signalText)) {
     return {
       ...authorityBase,
@@ -195,6 +203,14 @@ function normalizeText(value: string | undefined): string | undefined {
 function looksManualRequired(text: string): boolean {
   return /(manual|human|visual|interactive|人工|手动|目视|观察|确认)/.test(text)
     && /(required|review|confirm|人工|手动|目视|观察|确认)/.test(text);
+}
+
+function isDeterministicPassedVerification(result: VerificationRawResult): boolean {
+  return result.ran === true
+    && result.ok === true
+    && result.status === 'passed'
+    && result.command !== undefined
+    && result.exitCode === 0;
 }
 
 function looksFlaky(text: string, exitCode: number | null): boolean {
