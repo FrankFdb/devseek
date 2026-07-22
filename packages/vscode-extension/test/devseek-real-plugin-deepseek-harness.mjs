@@ -363,6 +363,9 @@ function defaultPrompt(root, fixture) {
 
 function createFixtureWorkspace(root, options = {}) {
   const scenarioSpec = buildRealPluginScenarioSpec(options.scenario);
+  if (scenarioSpec.id === 'r3-07h-required-kinds-aggregate') {
+    return createR3RequiredKindsAggregateFixture(root, scenarioSpec);
+  }
   if (
     scenarioSpec.profileKind
     && scenarioSpec.id.startsWith('r3-07g-')
@@ -522,6 +525,77 @@ function createR3KindAggregateFixture(root, scenarioSpec) {
     '- 为什么完整通过需要 20 task slots 与 100 permission-fault slots 全部有唯一 parent-owned passed receipt。',
     '- 为什么 missing/failed/vetoed/blocked/duplicate/foreign 任一类 receipt 都必须阻断结算。',
     ...detail.promptLines,
+    '- 生成文件要包含本次测试结论、风险、验证建议和用户可检查的证据路径。',
+    '',
+    '报告必须逐字包含以下验收锚点：',
+    anchorLines,
+  ].join('\n');
+
+  return {
+    requestedOutputDoc,
+    expectedArtifactRel: scenarioSpec.expectedArtifactRel,
+    scenarioSpec,
+    defaultPrompt,
+  };
+}
+
+function createR3RequiredKindsAggregateFixture(root, scenarioSpec) {
+  const docsDir = path.join(root, 'docs/r3-iteration');
+  const sourceDir = path.join(root, 'src/devseek-profile');
+  const requestedOutputDoc = path.join(root, scenarioSpec.requestedOutputDocRel);
+  const planPath = path.join(docsDir, 'required-kinds-aggregate-plan.md');
+  const contractPath = path.join(sourceDir, 'required-kinds-extension-profile-plan-service-contract.ts');
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(path.dirname(requestedOutputDoc), { recursive: true });
+
+  writeText(path.join(root, 'README.md'), [
+    '# DevSeek R3-07H required-kinds fixture',
+    '',
+    'This workspace is created by the visible real-plugin harness for the current R3 iteration.',
+  ].join('\n'));
+  writeText(planPath, [
+    '# R3-07H Required Kinds Aggregate Plan',
+    '',
+    '- Required kinds: skill, hook, mcp, plugin, subagent.',
+    '- Parent owner: ExtensionProfilePlanService.',
+    '- Required input: five passed 07G claim receipts.',
+    '- Aggregate settlement is read-only and must not execute child slots.',
+    '- One kind cannot substitute another.',
+    '- Blocking classes: missing, duplicate, foreign, blocked, wrong-candidate.',
+    '- Veto evidence includes required-kinds-missing-veto, required-kinds-duplicate-veto, required-kinds-foreign-veto, and required-kinds-blocked-veto.',
+  ].join('\n'));
+  writeText(contractPath, [
+    'export const EXTENSION_PROFILE_REQUIRED_KINDS_AGGREGATE_PROTOCOL = "devseek.extension-profile-required-kinds-aggregate/v1";',
+    'export const aggregateOwner = "ExtensionProfilePlanService";',
+    'export const aggregateRequiredKinds = "aggregateRequiredKinds";',
+    'export const requiredKinds = ["skill", "hook", "mcp", "plugin", "subagent"] as const;',
+    'export const requiredClaim = "07G claim";',
+    'export const aggregateExecutionAllowed = false;',
+    'export const slotExecutionAllowed = false;',
+    'export const missingVeto = "required-kinds-missing-veto";',
+    'export const duplicateVeto = "required-kinds-duplicate-veto";',
+    'export const foreignVeto = "required-kinds-foreign-veto";',
+    'export const blockedVeto = "required-kinds-blocked-veto";',
+    'export const wrongCandidateClass = "wrong-candidate";',
+    'export const substitutionRule = "one kind cannot substitute another";',
+  ].join('\n'));
+
+  const anchorLines = scenarioSpec.requiredArtifactSnippets
+    .map(snippet => `- ${snippet}`)
+    .join('\n');
+  const defaultPrompt = [
+    `请基于 ${planPath} 和 ${contractPath} 创建 Markdown 审计报告。`,
+    `请把报告保存到 ${requestedOutputDoc}。`,
+    `报告主题是 ${scenarioSpec.promptTitle}。`,
+    '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+    '',
+    '报告必须解释：',
+    '- 为什么 R3-07H 只能聚合已有 07G claim receipts，不能执行新的 task slot 或 permission/fault slot。',
+    '- 为什么 skill、hook、mcp、plugin、subagent 五类 kind 都必须各自有唯一 owner-issued passed aggregate。',
+    '- 为什么一种 kind 不能替代另一种 kind。',
+    '- 为什么 missing、duplicate、foreign、blocked、wrong-candidate 任一类 07G claim 都必须阻断 required-kinds 结算。',
+    '- 为什么 aggregateExecutionAllowed: false 与 slotExecutionAllowed: false 必须保留为可审计证据。',
     '- 生成文件要包含本次测试结论、风险、验证建议和用户可检查的证据路径。',
     '',
     '报告必须逐字包含以下验收锚点：',

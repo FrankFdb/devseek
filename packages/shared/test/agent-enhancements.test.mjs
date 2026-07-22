@@ -1843,6 +1843,119 @@ test('R3-07G-hook-AGGREGATE ExtensionProfilePlanService rejects duplicate foreig
   });
 });
 
+test('R3-07H-required-kinds-AGGREGATE ExtensionProfilePlanService blocks missing required kind aggregates', () => {
+  const service = new ExtensionProfilePlanService();
+  const candidateCommit = 'd4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4';
+  const skillAggregate = createCompleteKindAggregateReceipt(service, 'skill', candidateCommit);
+
+  const aggregate = service.aggregateRequiredKinds({
+    candidateCommit,
+    aggregates: [skillAggregate],
+  });
+
+  assert.equal(aggregate.protocol, 'devseek.extension-profile-required-kinds-aggregate/v1');
+  assert.equal(aggregate.status, 'blocked');
+  assert.equal(aggregate.singleOwner, 'ExtensionProfilePlanService');
+  assert.equal(aggregate.settlementAuthority, 'parent-kernel');
+  assert.equal(aggregate.immutable, true);
+  assert.equal(aggregate.candidateCommit, candidateCommit);
+  assert.deepEqual(aggregate.requiredKinds, ['skill', 'hook', 'mcp', 'plugin', 'subagent']);
+  assert.deepEqual(aggregate.passedKinds, ['skill']);
+  assert.deepEqual(aggregate.missingKinds, ['hook', 'mcp', 'plugin', 'subagent']);
+  assert.deepEqual(aggregate.blockedKinds, []);
+  assert.deepEqual(aggregate.duplicateKinds, []);
+  assert.deepEqual(aggregate.foreignKinds, []);
+  assert.equal(aggregate.aggregateExecutionAllowed, false);
+  assert.equal(aggregate.slotExecutionAllowed, false);
+  assert.ok(aggregate.vetoes.includes(`required-kinds-missing-veto:${candidateCommit}:4`));
+  assert.ok(aggregate.evidenceRefs.some(ref => /^extension-profile-kind-aggregate:R3-07F-skill-PROFILE-PLAN:/.test(ref)));
+  assert.ok(aggregate.evidenceRefs.some(ref => /^extension-profile-required-kinds-aggregate:/.test(ref)));
+});
+
+test('R3-07H-required-kinds-AGGREGATE ExtensionProfilePlanService passes only all required owned kind aggregates', () => {
+  const service = new ExtensionProfilePlanService();
+  const candidateCommit = 'e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5';
+  const kindAggregates = createCompleteRequiredKindAggregateReceipts(service, candidateCommit);
+
+  const aggregate = service.aggregateRequiredKinds({
+    candidateCommit,
+    aggregates: kindAggregates,
+  });
+
+  assert.equal(kindAggregates.length, 5);
+  assert.equal(aggregate.status, 'passed');
+  assert.deepEqual(aggregate.requiredKinds, ['skill', 'hook', 'mcp', 'plugin', 'subagent']);
+  assert.deepEqual(aggregate.passedKinds, ['skill', 'hook', 'mcp', 'plugin', 'subagent']);
+  assert.deepEqual(aggregate.missingKinds, []);
+  assert.deepEqual(aggregate.blockedKinds, []);
+  assert.deepEqual(aggregate.duplicateKinds, []);
+  assert.deepEqual(aggregate.foreignKinds, []);
+  assert.deepEqual(aggregate.vetoes, []);
+  assert.ok(Object.isFrozen(aggregate));
+  assert.ok(Object.isFrozen(aggregate.requiredKinds));
+  assert.ok(Object.isFrozen(aggregate.passedKinds));
+  for (const kind of aggregate.requiredKinds) {
+    assert.ok(aggregate.evidenceRefs.some(ref => new RegExp(`^extension-profile-kind-aggregate:R3-07F-${kind}-PROFILE-PLAN:`).test(ref)));
+  }
+});
+
+test('R3-07H-required-kinds-AGGREGATE ExtensionProfilePlanService rejects duplicate foreign blocked and wrong-candidate kind claims', () => {
+  const candidateCommit = 'f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6';
+
+  const duplicateService = new ExtensionProfilePlanService();
+  const duplicateAggregates = createCompleteRequiredKindAggregateReceipts(duplicateService, candidateCommit);
+  const duplicateAggregate = duplicateService.aggregateRequiredKinds({
+    candidateCommit,
+    aggregates: [...duplicateAggregates, duplicateAggregates[0]],
+  });
+  assert.equal(duplicateAggregate.status, 'blocked');
+  assert.deepEqual(duplicateAggregate.duplicateKinds, ['skill']);
+  assert.ok(duplicateAggregate.vetoes.includes(`required-kinds-duplicate-veto:${candidateCommit}:1`));
+
+  const foreignOwnerService = new ExtensionProfilePlanService();
+  const foreignSourceService = new ExtensionProfilePlanService();
+  const foreignSkillAggregate = createCompleteKindAggregateReceipt(foreignSourceService, 'skill', candidateCommit);
+  const ownWithoutSkill = ['hook', 'mcp', 'plugin', 'subagent']
+    .map(kind => createCompleteKindAggregateReceipt(foreignOwnerService, kind, candidateCommit));
+  const foreignAggregate = foreignOwnerService.aggregateRequiredKinds({
+    candidateCommit,
+    aggregates: [foreignSkillAggregate, ...ownWithoutSkill],
+  });
+  assert.equal(foreignAggregate.status, 'blocked');
+  assert.deepEqual(foreignAggregate.foreignKinds, ['skill']);
+  assert.deepEqual(foreignAggregate.missingKinds, ['skill']);
+  assert.ok(foreignAggregate.vetoes.includes(`required-kinds-foreign-veto:${candidateCommit}:1`));
+
+  const blockedService = new ExtensionProfilePlanService();
+  const blockedAggregates = ['skill', 'hook', 'plugin', 'subagent']
+    .map(kind => createCompleteKindAggregateReceipt(blockedService, kind, candidateCommit));
+  const blockedMcpAggregate = createBlockedKindAggregateReceipt(blockedService, 'mcp', candidateCommit);
+  const blockedRequiredAggregate = blockedService.aggregateRequiredKinds({
+    candidateCommit,
+    aggregates: [...blockedAggregates, blockedMcpAggregate],
+  });
+  assert.equal(blockedRequiredAggregate.status, 'blocked');
+  assert.deepEqual(blockedRequiredAggregate.blockedKinds, ['mcp']);
+  assert.ok(blockedRequiredAggregate.vetoes.includes(`required-kinds-blocked-veto:${candidateCommit}:1`));
+
+  const wrongCandidateService = new ExtensionProfilePlanService();
+  const wrongCandidateAggregates = createCompleteRequiredKindAggregateReceipts(wrongCandidateService, candidateCommit)
+    .filter(aggregate => aggregate.kind !== 'plugin');
+  const wrongCandidatePluginAggregate = createCompleteKindAggregateReceipt(
+    wrongCandidateService,
+    'plugin',
+    'abcdefabcdefabcdefabcdefabcdefabcdefabcd',
+  );
+  const wrongCandidateAggregate = wrongCandidateService.aggregateRequiredKinds({
+    candidateCommit,
+    aggregates: [...wrongCandidateAggregates, wrongCandidatePluginAggregate],
+  });
+  assert.equal(wrongCandidateAggregate.status, 'blocked');
+  assert.deepEqual(wrongCandidateAggregate.foreignKinds, ['plugin']);
+  assert.deepEqual(wrongCandidateAggregate.missingKinds, ['plugin']);
+  assert.ok(wrongCandidateAggregate.vetoes.includes(`required-kinds-foreign-veto:${candidateCommit}:1`));
+});
+
 function createSkillTaskChildReceipt(trigger) {
   return new SkillDiscoveryService().planExecution({
     prompt: `please use ${trigger}`,
@@ -2010,6 +2123,78 @@ function createCompleteExtensionKindDenominatorReceipts(input) {
     receipts.push(receipt);
   }
   return receipts;
+}
+
+function createCompleteRequiredKindAggregateReceipts(service, candidateCommit) {
+  return ['skill', 'hook', 'mcp', 'plugin', 'subagent']
+    .map(kind => createCompleteKindAggregateReceipt(service, kind, candidateCommit));
+}
+
+function createCompleteKindAggregateReceipt(service, kind, candidateCommit) {
+  const plan = service.createProfilePlan({
+    kind,
+    candidateCommit,
+    schemaVersion: extensionProfileSchemaVersionForKind(kind),
+  });
+  const receipts = createCompleteKindDenominatorReceiptsForAggregate(service, plan, kind);
+  const aggregate = service.aggregateKindProfile({ plan, receipts });
+  assert.equal(aggregate.status, 'passed');
+  return aggregate;
+}
+
+function createBlockedKindAggregateReceipt(service, kind, candidateCommit) {
+  const plan = service.createProfilePlan({
+    kind,
+    candidateCommit,
+    schemaVersion: extensionProfileSchemaVersionForKind(kind),
+  });
+  const failedReceipt = service.recordSlotExecution({
+    plan,
+    slotId: `R3-07S-${kind}-TASK-001`,
+    attemptId: `r3-07h-${kind}-failed-task-001-attempt`,
+    status: 'failed',
+    failureRefs: [`${kind}-failure:r3-07h-task-001`],
+  });
+  assert.equal(failedReceipt.status, 'failed');
+  const aggregate = service.aggregateKindProfile({ plan, receipts: [failedReceipt] });
+  assert.equal(aggregate.status, 'blocked');
+  return aggregate;
+}
+
+function createCompleteKindDenominatorReceiptsForAggregate(service, plan, kind) {
+  if (kind === 'skill') return createCompleteSkillDenominatorReceipts(service, plan);
+  if (kind === 'hook') return createCompleteHookDenominatorReceipts(service, plan);
+  return createCompleteExtensionKindDenominatorReceipts({
+    service,
+    plan,
+    kind,
+    taskChildReceipt: childId => extensionProfileTaskChildReceiptForKind(kind, childId),
+    permissionFaultChildReceipt: childId => extensionProfilePermissionFaultChildReceiptForKind(kind, childId),
+  });
+}
+
+function extensionProfileTaskChildReceiptForKind(kind, childId) {
+  if (kind === 'skill') return createSkillTaskChildReceipt(childId);
+  if (kind === 'hook') return createHookTaskChildReceipt(childId);
+  if (kind === 'mcp') return createMcpTaskChildReceipt(childId);
+  if (kind === 'plugin') return createPluginTaskChildReceipt(childId);
+  return createSubagentTaskChildReceipt(childId);
+}
+
+function extensionProfilePermissionFaultChildReceiptForKind(kind, childId) {
+  if (kind === 'skill') return createSkillPermissionFaultChildReceipt(childId);
+  if (kind === 'hook') return createHookPermissionFaultChildReceipt(childId);
+  if (kind === 'mcp') return createMcpPermissionFaultChildReceipt(childId);
+  if (kind === 'plugin') return createPluginPermissionFaultChildReceipt(childId);
+  return createSubagentPermissionFaultChildReceipt(childId);
+}
+
+function extensionProfileSchemaVersionForKind(kind) {
+  if (kind === 'skill') return SKILL_EXECUTION_PROTOCOL;
+  if (kind === 'hook') return HOOK_POLICY_PROTOCOL;
+  if (kind === 'mcp') return MCP_TRUST_PROTOCOL;
+  if (kind === 'plugin') return PLUGIN_SUPPLY_CHAIN_PROTOCOL;
+  return SUBAGENT_CONTRACT_PROTOCOL;
 }
 
 function createMcpTaskChildReceipt(toolName) {

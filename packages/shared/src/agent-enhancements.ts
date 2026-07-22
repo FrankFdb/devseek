@@ -31,6 +31,7 @@ export const SUBAGENT_CONTRACT_PROTOCOL = 'devseek.subagent-contract/v1';
 export const EXTENSION_PROFILE_PLAN_PROTOCOL = 'devseek.extension-profile-plan/v1';
 export const EXTENSION_PROFILE_SLOT_EXECUTION_PROTOCOL = 'devseek.extension-profile-slot-execution/v1';
 export const EXTENSION_PROFILE_KIND_AGGREGATE_PROTOCOL = 'devseek.extension-profile-kind-aggregate/v1';
+export const EXTENSION_PROFILE_REQUIRED_KINDS_AGGREGATE_PROTOCOL = 'devseek.extension-profile-required-kinds-aggregate/v1';
 const EXTENSION_PROFILE_SLOT_EFFECT_REF_PREFIX = 'extension-profile-slot-effect';
 const EXTENSION_PROFILE_SLOT_RECEIPT_REF_PREFIX = 'extension-profile-slot-receipt';
 const EXTENSION_PROFILE_SLOT_FAILURE_REF_PREFIX = 'extension-profile-slot-failure';
@@ -38,6 +39,7 @@ const EXTENSION_PROFILE_SLOT_VETO_REF_PREFIX = 'extension-profile-slot-veto';
 const EXTENSION_PROFILE_SLOT_PERMISSION_FAULT_REF_PREFIX = 'extension-profile-slot-permission-fault';
 const EXTENSION_PROFILE_SLOT_EXECUTION_REF_PREFIX = 'extension-profile-slot-execution';
 const EXTENSION_PROFILE_KIND_AGGREGATE_REF_PREFIX = 'extension-profile-kind-aggregate';
+const EXTENSION_PROFILE_REQUIRED_KINDS_AGGREGATE_REF_PREFIX = 'extension-profile-required-kinds-aggregate';
 export const B4_EFFECT_AUTHORITY = 'B4-effect-authority';
 
 export interface HookDefinition {
@@ -374,6 +376,12 @@ export interface ExtensionProfileKindAggregateInput {
   receipts?: readonly ExtensionProfileSlotExecutionReceipt[];
 }
 
+export interface ExtensionProfileRequiredKindsAggregateInput {
+  candidateCommit: string;
+  requiredKinds?: readonly ExtensionProfileKind[];
+  aggregates?: readonly ExtensionProfileKindAggregateReceipt[];
+}
+
 export interface ExtensionProfileKindAggregateReceipt {
   protocol: typeof EXTENSION_PROFILE_KIND_AGGREGATE_PROTOCOL;
   profileProtocol: typeof EXTENSION_PROFILE_PLAN_PROTOCOL;
@@ -396,6 +404,29 @@ export interface ExtensionProfileKindAggregateReceipt {
   blockedSlotIds: readonly string[];
   duplicateSlotIds: readonly string[];
   foreignSlotIds: readonly string[];
+  aggregateExecutionAllowed: false;
+  slotExecutionAllowed: false;
+  aggregateSignature: string;
+  vetoes: readonly string[];
+  violations: readonly string[];
+  evidenceRefs: readonly string[];
+}
+
+export interface ExtensionProfileRequiredKindsAggregateReceipt {
+  protocol: typeof EXTENSION_PROFILE_REQUIRED_KINDS_AGGREGATE_PROTOCOL;
+  status: 'passed' | 'blocked';
+  singleOwner: 'ExtensionProfilePlanService';
+  settlementAuthority: 'parent-kernel';
+  immutable: true;
+  candidateCommit: string;
+  requiredKindCount: number;
+  requiredKinds: readonly ExtensionProfileKind[];
+  passedKinds: readonly ExtensionProfileKind[];
+  missingKinds: readonly ExtensionProfileKind[];
+  blockedKinds: readonly ExtensionProfileKind[];
+  duplicateKinds: readonly ExtensionProfileKind[];
+  foreignKinds: readonly string[];
+  invalidRequiredKinds: readonly string[];
   aggregateExecutionAllowed: false;
   slotExecutionAllowed: false;
   aggregateSignature: string;
@@ -1236,7 +1267,9 @@ export class PluginSupplyChainService {
 export class ExtensionProfilePlanService {
   private readonly ownedProfilePlans = new WeakSet<ExtensionProfilePlanReceipt>();
   private readonly ownedSlotExecutionReceipts = new WeakSet<ExtensionProfileSlotExecutionReceipt>();
+  private readonly ownedKindAggregateReceipts = new WeakSet<ExtensionProfileKindAggregateReceipt>();
   private readonly settledSlotExecutionReceipts: ExtensionProfileSlotExecutionReceipt[] = [];
+  private readonly settledKindAggregateReceipts: ExtensionProfileKindAggregateReceipt[] = [];
   private readonly settledPermissionFaultEvidenceKeys = new Set<string>();
 
   createProfilePlan(input: ExtensionProfilePlanInput): ExtensionProfilePlanReceipt {
@@ -1679,7 +1712,134 @@ export class ExtensionProfilePlanService {
         aggregateEvidenceRef,
       ]),
     };
-    return freezeExtensionProfileKindAggregateReceipt(receipt);
+    const frozenReceipt = freezeExtensionProfileKindAggregateReceipt(receipt);
+    this.ownedKindAggregateReceipts.add(frozenReceipt);
+    this.settledKindAggregateReceipts.push(frozenReceipt);
+    return frozenReceipt;
+  }
+
+  aggregateRequiredKinds(input: ExtensionProfileRequiredKindsAggregateInput): ExtensionProfileRequiredKindsAggregateReceipt {
+    const candidateCommit = String(input.candidateCommit ?? '').trim();
+    const requestedKindValues = (
+      Array.isArray(input.requiredKinds) && input.requiredKinds.length > 0
+        ? input.requiredKinds
+        : EXTENSION_PROFILE_KINDS
+    ).map(kind => String(kind ?? '').trim());
+    const invalidRequiredKinds = uniqueStrings(requestedKindValues.filter(kind => !isExtensionProfileKind(kind)));
+    const requiredKinds = uniqueStrings(
+      requestedKindValues.filter(isExtensionProfileKind),
+    ) as ExtensionProfileKind[];
+    const requiredKindSet = new Set(requiredKinds);
+    const providedAggregates = input.aggregates ? [...input.aggregates] : [...this.settledKindAggregateReceipts];
+    const aggregatesByKind = new Map<ExtensionProfileKind, ExtensionProfileKindAggregateReceipt[]>();
+    const foreignKinds: string[] = [];
+    const kindAggregateEvidenceRefs: string[] = [];
+
+    for (const aggregate of providedAggregates) {
+      const aggregateKindValue = String(aggregate?.kind ?? '').trim();
+      const aggregateKind = isExtensionProfileKind(aggregateKindValue) ? aggregateKindValue : undefined;
+      const kindLabel = aggregateKind ?? (aggregateKindValue || 'unknown');
+      const aggregateProfileId = aggregateKind ? `R3-07F-${aggregateKind}-PROFILE-PLAN` : '';
+      const aggregateMatchesCandidate = (
+        aggregateKind
+        && aggregate?.protocol === EXTENSION_PROFILE_KIND_AGGREGATE_PROTOCOL
+        && aggregate?.profileProtocol === EXTENSION_PROFILE_PLAN_PROTOCOL
+        && aggregate?.profileId === aggregateProfileId
+        && aggregate?.candidateCommit === candidateCommit
+        && aggregate?.schemaVersion === EXPECTED_EXTENSION_PROFILE_SCHEMAS[aggregateKind]
+        && aggregate?.singleOwner === 'ExtensionProfilePlanService'
+        && aggregate?.settlementAuthority === 'parent-kernel'
+        && aggregate?.immutable === true
+        && aggregate?.aggregateExecutionAllowed === false
+        && aggregate?.slotExecutionAllowed === false
+        && requiredKindSet.has(aggregateKind)
+      );
+      if (!aggregateMatchesCandidate || !this.ownedKindAggregateReceipts.has(aggregate)) {
+        foreignKinds.push(kindLabel);
+        continue;
+      }
+      kindAggregateEvidenceRefs.push(...extensionProfileKindAggregateEvidenceRefs(aggregate));
+      const kindAggregates = aggregatesByKind.get(aggregateKind) ?? [];
+      kindAggregates.push(aggregate);
+      aggregatesByKind.set(aggregateKind, kindAggregates);
+    }
+
+    const duplicateKinds = uniqueStrings(
+      Array.from(aggregatesByKind.entries())
+        .filter(([, aggregates]) => aggregates.length > 1)
+        .map(([kind]) => kind),
+    ) as ExtensionProfileKind[];
+    const passedKinds: ExtensionProfileKind[] = [];
+    const missingKinds: ExtensionProfileKind[] = [];
+    const blockedKinds: ExtensionProfileKind[] = [];
+
+    for (const kind of requiredKinds) {
+      const kindAggregates = aggregatesByKind.get(kind) ?? [];
+      if (kindAggregates.length === 0) {
+        missingKinds.push(kind);
+        continue;
+      }
+      if (kindAggregates.length > 1) continue;
+      const [aggregate] = kindAggregates;
+      if (aggregate.status === 'passed') {
+        passedKinds.push(kind);
+      } else {
+        blockedKinds.push(kind);
+      }
+    }
+
+    const uniqueForeignKinds = uniqueStrings(foreignKinds);
+    const vetoes = uniqueStrings([
+      ...(candidateCommit ? [] : ['required-kinds-missing-candidate-commit-veto']),
+      ...(requiredKinds.length > 0 ? [] : ['required-kinds-empty-veto']),
+      ...(invalidRequiredKinds.length > 0 ? [`required-kinds-invalid-kind-veto:${invalidRequiredKinds.length}`] : []),
+      ...(uniqueForeignKinds.length > 0 ? [`required-kinds-foreign-veto:${candidateCommit}:${uniqueForeignKinds.length}`] : []),
+      ...(duplicateKinds.length > 0 ? [`required-kinds-duplicate-veto:${candidateCommit}:${duplicateKinds.length}`] : []),
+      ...(missingKinds.length > 0 ? [`required-kinds-missing-veto:${candidateCommit}:${missingKinds.length}`] : []),
+      ...(blockedKinds.length > 0 ? [`required-kinds-blocked-veto:${candidateCommit}:${blockedKinds.length}`] : []),
+    ]);
+    const status: 'passed' | 'blocked' = vetoes.length === 0 ? 'passed' : 'blocked';
+    const aggregateSignature = createExtensionProfileRequiredKindsAggregateSignature({
+      candidateCommit,
+      status,
+      requiredKinds,
+      passedKinds,
+      missingKinds,
+      blockedKinds,
+      duplicateKinds,
+      foreignKinds: uniqueForeignKinds,
+      invalidRequiredKinds,
+      vetoes,
+      kindAggregateEvidenceRefs,
+    });
+    const aggregateEvidenceRef = `${EXTENSION_PROFILE_REQUIRED_KINDS_AGGREGATE_REF_PREFIX}:${aggregateSignature}`;
+    const receipt: ExtensionProfileRequiredKindsAggregateReceipt = {
+      protocol: EXTENSION_PROFILE_REQUIRED_KINDS_AGGREGATE_PROTOCOL,
+      status,
+      singleOwner: 'ExtensionProfilePlanService',
+      settlementAuthority: 'parent-kernel',
+      immutable: true,
+      candidateCommit,
+      requiredKindCount: requiredKinds.length,
+      requiredKinds,
+      passedKinds,
+      missingKinds,
+      blockedKinds,
+      duplicateKinds,
+      foreignKinds: uniqueForeignKinds,
+      invalidRequiredKinds,
+      aggregateExecutionAllowed: false,
+      slotExecutionAllowed: false,
+      aggregateSignature,
+      vetoes,
+      violations: vetoes,
+      evidenceRefs: uniqueStrings([
+        ...kindAggregateEvidenceRefs,
+        ...(status === 'blocked' ? vetoes : []),
+        aggregateEvidenceRef,
+      ]),
+    };
+    return freezeExtensionProfileRequiredKindsAggregateReceipt(receipt);
   }
 }
 
@@ -1738,12 +1898,36 @@ function freezeExtensionProfileKindAggregateReceipt(
   return Object.freeze(receipt);
 }
 
+function freezeExtensionProfileRequiredKindsAggregateReceipt(
+  receipt: ExtensionProfileRequiredKindsAggregateReceipt,
+): ExtensionProfileRequiredKindsAggregateReceipt {
+  Object.freeze(receipt.requiredKinds);
+  Object.freeze(receipt.passedKinds);
+  Object.freeze(receipt.missingKinds);
+  Object.freeze(receipt.blockedKinds);
+  Object.freeze(receipt.duplicateKinds);
+  Object.freeze(receipt.foreignKinds);
+  Object.freeze(receipt.invalidRequiredKinds);
+  Object.freeze(receipt.vetoes);
+  Object.freeze(receipt.violations);
+  Object.freeze(receipt.evidenceRefs);
+  return Object.freeze(receipt);
+}
+
 function extensionProfileSlotExecutionEvidenceRefs(receipt: ExtensionProfileSlotExecutionReceipt): string[] {
   const ownedRefs = uniqueStrings(receipt.evidenceRefs)
     .filter(ref => ref.startsWith(`${EXTENSION_PROFILE_SLOT_EXECUTION_REF_PREFIX}:${receipt.slotId}:`));
   return ownedRefs.length > 0
     ? ownedRefs
     : [`${EXTENSION_PROFILE_SLOT_EXECUTION_REF_PREFIX}:${receipt.slotId}:${receipt.slotExecutionSignature}`];
+}
+
+function extensionProfileKindAggregateEvidenceRefs(receipt: ExtensionProfileKindAggregateReceipt): string[] {
+  const ownedRefs = uniqueStrings(receipt.evidenceRefs)
+    .filter(ref => ref.startsWith(`${EXTENSION_PROFILE_KIND_AGGREGATE_REF_PREFIX}:${receipt.profileId}:`));
+  return ownedRefs.length > 0
+    ? ownedRefs
+    : [`${EXTENSION_PROFILE_KIND_AGGREGATE_REF_PREFIX}:${receipt.profileId}:${receipt.aggregateSignature}`];
 }
 
 function createExtensionProfileKindAggregateSignature(input: {
@@ -1783,6 +1967,36 @@ function createExtensionProfileKindAggregateSignature(input: {
     foreignSlotIds: input.foreignSlotIds,
     vetoes: input.vetoes,
     slotExecutionEvidenceRefs: input.slotExecutionEvidenceRefs,
+  }));
+}
+
+function createExtensionProfileRequiredKindsAggregateSignature(input: {
+  candidateCommit: string;
+  status: 'passed' | 'blocked';
+  requiredKinds: readonly ExtensionProfileKind[];
+  passedKinds: readonly ExtensionProfileKind[];
+  missingKinds: readonly ExtensionProfileKind[];
+  blockedKinds: readonly ExtensionProfileKind[];
+  duplicateKinds: readonly ExtensionProfileKind[];
+  foreignKinds: readonly string[];
+  invalidRequiredKinds: readonly string[];
+  vetoes: readonly string[];
+  kindAggregateEvidenceRefs: readonly string[];
+}): string {
+  return stableTextDigest(JSON.stringify({
+    protocol: EXTENSION_PROFILE_REQUIRED_KINDS_AGGREGATE_PROTOCOL,
+    signatureAuthority: 'ExtensionProfilePlanService',
+    candidateCommit: input.candidateCommit,
+    status: input.status,
+    requiredKinds: input.requiredKinds,
+    passedKinds: input.passedKinds,
+    missingKinds: input.missingKinds,
+    blockedKinds: input.blockedKinds,
+    duplicateKinds: input.duplicateKinds,
+    foreignKinds: input.foreignKinds,
+    invalidRequiredKinds: input.invalidRequiredKinds,
+    vetoes: input.vetoes,
+    kindAggregateEvidenceRefs: input.kindAggregateEvidenceRefs,
   }));
 }
 

@@ -164,3 +164,38 @@ test('R3-07G hook real plugin scenario binds hook-specific aggregate artifact ac
     assert.ok(spec.forbiddenArtifactSnippets.includes('uav-warranty-reminder'));
   });
 });
+
+test('R3-07H required-kinds real plugin scenario adds a fresh visible case', () => {
+  const profile = buildRealPluginQualityProfile('r3-07h-required-kinds-aggregate');
+  const spec = buildRealPluginScenarioSpec('r3-07h-required-kinds-aggregate');
+
+  assert.equal(profile.kind, 'iteration');
+  assert.equal(profile.minimumMarkdownBytes, 1000);
+  assert.equal(profile.minimumMarkdownLines, 24);
+  assert.equal(profile.minimumMarkdownHeadings, 5);
+  assert.equal(profile.requireFormalProjectQuality, false);
+  assert.equal(spec.id, 'r3-07h-required-kinds-aggregate');
+  assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
+  assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-07h-required-kinds-aggregate.md');
+  assert.match(spec.promptTitle, /R3-07H-required-kinds-AGGREGATE/);
+  assert.deepEqual(spec.requiredArtifactSnippets, [
+    'R3-07H-required-kinds-AGGREGATE',
+    'ExtensionProfilePlanService',
+    'aggregateRequiredKinds',
+    '07G claim',
+    'skill',
+    'hook',
+    'mcp',
+    'plugin',
+    'subagent',
+    'required-kinds-missing-veto',
+    'required-kinds-duplicate-veto',
+    'required-kinds-foreign-veto',
+    'required-kinds-blocked-veto',
+    'wrong-candidate',
+    'one kind cannot substitute another',
+    'aggregateExecutionAllowed: false',
+    'slotExecutionAllowed: false',
+  ]);
+  assert.ok(spec.forbiddenArtifactSnippets.includes('uav-warranty-reminder'));
+});

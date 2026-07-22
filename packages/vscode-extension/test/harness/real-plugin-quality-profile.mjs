@@ -93,6 +93,39 @@ const R3_07G_AGGREGATE_SPECS = Object.freeze([
 
 const R3_07G_AGGREGATE_SPEC_BY_ID = new Map(R3_07G_AGGREGATE_SPECS.map(spec => [spec.id, spec]));
 
+const R3_07H_REQUIRED_KINDS_AGGREGATE_SPEC = Object.freeze({
+  id: 'r3-07h-required-kinds-aggregate',
+  kind: 'iteration',
+  minimumMarkdownBytes: 1000,
+  minimumMarkdownLines: 24,
+  minimumMarkdownHeadings: 5,
+  requireFormalProjectQuality: false,
+  promptTitle: 'R3-07H-required-kinds-AGGREGATE required kind claims audit',
+  deliveryMode: 'markdown-file-deliverable',
+  requestedOutputDocRel: 'docs/r3-iteration/r3-07h-required-kinds-aggregate.md',
+  expectedArtifactRel: 'docs/r3-iteration/r3-07h-required-kinds-aggregate.md',
+  requiredArtifactSnippets: Object.freeze([
+    'R3-07H-required-kinds-AGGREGATE',
+    'ExtensionProfilePlanService',
+    'aggregateRequiredKinds',
+    '07G claim',
+    'skill',
+    'hook',
+    'mcp',
+    'plugin',
+    'subagent',
+    'required-kinds-missing-veto',
+    'required-kinds-duplicate-veto',
+    'required-kinds-foreign-veto',
+    'required-kinds-blocked-veto',
+    'wrong-candidate',
+    'one kind cannot substitute another',
+    'aggregateExecutionAllowed: false',
+    'slotExecutionAllowed: false',
+  ]),
+  forbiddenArtifactSnippets: R3_07G_STALE_DOMAIN_SNIPPETS,
+});
+
 function createR3KindAggregateSpec(input) {
   const profileKind = input.profileKind;
   return Object.freeze({
@@ -171,6 +204,7 @@ export function parseRequiredArtifactSnippets(value) {
 
 function lookupScenarioSpec(value) {
   const scenario = normalizeScenario(value);
+  if (scenario === R3_07H_REQUIRED_KINDS_AGGREGATE_SPEC.id) return R3_07H_REQUIRED_KINDS_AGGREGATE_SPEC;
   return R3_07G_AGGREGATE_SPEC_BY_ID.get(scenario) ?? null;
 }
 

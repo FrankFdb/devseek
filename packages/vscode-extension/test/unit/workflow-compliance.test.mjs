@@ -2333,7 +2333,17 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(profile, 'minimumMarkdownLines', 'R3-07G artifact gate must check scenario-specific document shape');
   assertContains(profile, 'forbiddenArtifactSnippets', 'R3-07G artifact gate must reject stale benchmark-domain artifacts');
   assertContains(profile, 'uav-warranty-reminder', 'R3-07G artifact gate must reject the old warranty simulation artifact family');
+  assertContains(profile, 'r3-07h-required-kinds-aggregate', 'R3-07H must add a fresh required-kinds real-plugin scenario');
+  assertContains(profile, 'r3-07h-required-kinds-aggregate.md', 'R3-07H scenario must write a distinct artifact');
+  assertContains(profile, 'aggregateRequiredKinds', 'R3-07H artifact gate must assert the new aggregate owner entry point');
+  assertContains(profile, 'required-kinds-missing-veto', 'R3-07H artifact gate must assert missing-kind veto evidence');
+  assertContains(profile, 'required-kinds-duplicate-veto', 'R3-07H artifact gate must assert duplicate-kind veto evidence');
+  assertContains(profile, 'required-kinds-foreign-veto', 'R3-07H artifact gate must assert foreign-kind veto evidence');
+  assertContains(profile, 'required-kinds-blocked-veto', 'R3-07H artifact gate must assert blocked-kind veto evidence');
+  assertContains(profile, 'wrong-candidate', 'R3-07H artifact gate must assert wrong-candidate rejection');
+  assertContains(profile, 'one kind cannot substitute another', 'R3-07H artifact gate must assert cross-kind substitution rejection');
   assertContains(harness, 'createR3KindAggregateFixture', 'real harness must share the R3 kind aggregate fixture instead of duplicating skill/hook setup');
+  assertContains(harness, 'createR3RequiredKindsAggregateFixture', 'real harness must add the R3-07H required-kinds fixture');
   assertContains(harness, 'R3_KIND_AGGREGATE_FIXTURE_DETAILS', 'real harness must keep R3 kind fixture data table-driven');
   assert.ok(
     harness.indexOf('const R3_KIND_AGGREGATE_FIXTURE_DETAILS') < harness.indexOf('const fixture = usesExistingWorkspace'),
@@ -2343,6 +2353,26 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(harness, 'forbiddenArtifactSnippets', 'real harness must enforce scenario-specific forbidden content gates');
   assertContains(harness, 'shapeQuality', 'real harness must enforce scenario-specific Markdown shape gates');
   assertContains(harness, 'fixture.scenarioSpec', 'driver report must disclose the scenario contract used');
+});
+
+test('R3-07H-required-kinds-AGGREGATE: required kind claims must settle in the existing profile owner', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'EXTENSION_PROFILE_REQUIRED_KINDS_AGGREGATE_PROTOCOL', 'R3-07H must define a required-kinds aggregate protocol');
+  assertContains(sharedEnhancements, 'ExtensionProfileRequiredKindsAggregateReceipt', 'R3-07H must expose a required-kinds aggregate receipt');
+  assertContains(sharedEnhancements, 'aggregateRequiredKinds', 'R3-07H must settle in ExtensionProfilePlanService');
+  assertContains(sharedEnhancements, 'ownedKindAggregateReceipts.has', 'R3-07H must accept only kind aggregates owned by the same service');
+  assertContains(sharedEnhancements, 'settledKindAggregateReceipts', 'R3-07H must reuse the owner ledger instead of replaying caller claims');
+  assertContains(sharedEnhancements, 'aggregateExecutionAllowed: false', 'R3-07H aggregate must not execute aggregate children');
+  assertContains(sharedEnhancements, 'slotExecutionAllowed: false', 'R3-07H aggregate must not execute slots');
+  assertContains(sharedEnhancements, 'required-kinds-missing-veto', 'R3-07H must veto missing required kind claims');
+  assertContains(sharedEnhancements, 'required-kinds-duplicate-veto', 'R3-07H must veto duplicate required kind claims');
+  assertContains(sharedEnhancements, 'required-kinds-foreign-veto', 'R3-07H must veto foreign or wrong-candidate kind claims');
+  assertContains(sharedEnhancements, 'required-kinds-blocked-veto', 'R3-07H must veto blocked kind claims');
+  assertContains(sharedTests, 'R3-07H-required-kinds-AGGREGATE', 'R3-07H must have failure-first shared oracles');
+  assertContains(sharedTests, 'createCompleteRequiredKindAggregateReceipts', 'R3-07H tests must construct complete required-kind receipts');
+  assertContains(sharedTests, 'wrong-candidate', 'R3-07H tests must cover wrong-candidate kind claims');
 });
 
 test('Real DeepSeek harness: headed user-window runs can be retained for inspection', () => {
