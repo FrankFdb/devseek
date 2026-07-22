@@ -1429,6 +1429,15 @@ test('R3-07S-skill-PERMISSION-FAULT-038: Markdown blockquote body cannot infer S
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-038 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-038 must have Markdown blockquote inferred-trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-039: inferred Skill path triggers require a single canonical segment', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_INFERRED_TRIGGER_PATH_SEGMENT_PATTERN', 'R3-07S-skill-PERMISSION-FAULT-039 must keep inferred path trigger ownership in SkillDiscoveryService');
+  assertContains(sharedEnhancements, 'inferredSkillPathTriggerSource', 'R3-07S-skill-PERMISSION-FAULT-039 must not infer triggers from compound Skill directory names');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-039 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-039 must have compound path inferred-trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

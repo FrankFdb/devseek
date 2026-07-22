@@ -1907,6 +1907,7 @@ const SKILL_INFERRED_TRIGGER_STOP_WORDS = new Set([
   'write',
   'writes',
 ]);
+const SKILL_INFERRED_TRIGGER_PATH_SEGMENT_PATTERN = /^[a-z][a-z0-9]*$/u;
 const SKILL_TRIGGER_WORD_BOUNDARY_PATTERN = '\\p{L}\\p{N}_';
 
 function splitSkillTriggerTokens(value: string): string[] {
@@ -1917,8 +1918,15 @@ function hasSkillTriggerLetter(word: string): boolean {
   return /[a-z]/u.test(word);
 }
 
+function inferredSkillPathTriggerSource(path: string): string {
+  const segments = String(path).trim().split(/[\\/]/u).filter(Boolean);
+  const fileName = segments[segments.length - 1]?.toLowerCase() ?? '';
+  const skillDirectory = fileName === 'skill.md' ? (segments[segments.length - 2] ?? '').toLowerCase() : '';
+  return SKILL_INFERRED_TRIGGER_PATH_SEGMENT_PATTERN.test(skillDirectory) ? skillDirectory : '';
+}
+
 function inferTriggers(path: string, description: string): string[] {
-  const words = splitSkillTriggerTokens(`${path} ${description}`);
+  const words = splitSkillTriggerTokens(`${inferredSkillPathTriggerSource(path)} ${description}`);
   return [...new Set(words.filter(word => hasSkillTriggerLetter(word) && !SKILL_INFERRED_TRIGGER_STOP_WORDS.has(word)))].slice(0, 8);
 }
 
