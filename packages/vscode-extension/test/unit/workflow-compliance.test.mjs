@@ -1663,6 +1663,26 @@ test('R3-07S-skill-PERMISSION-FAULT-067: Markdown backslash escaped table bodies
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-067 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-067 must have Markdown backslash escaped table inferred-trigger oracle');
 });
 
+[
+  ['068', 'Markdown shortcut link bodies', 'SKILL_METADATA_MARKDOWN_SHORTCUT_REFERENCE_MARKER', 'Markdown shortcut link'],
+  ['069', 'Markdown shortcut image bodies', 'SKILL_METADATA_MARKDOWN_SHORTCUT_REFERENCE_MARKER', 'Markdown shortcut image'],
+  ['070', 'Markdown footnote reference bodies', 'SKILL_METADATA_MARKDOWN_SHORTCUT_REFERENCE_MARKER', 'Markdown footnote reference'],
+  ['071', 'Markdown wikilink bodies', 'SKILL_METADATA_MARKDOWN_WIKILINK_MARKER', 'Markdown wikilink'],
+  ['072', 'Markdown MDX expression bodies', 'SKILL_METADATA_MARKDOWN_MDX_EXPRESSION_MARKER', 'Markdown MDX expression'],
+  ['073', 'Markdown MDX export bodies', 'SKILL_METADATA_MARKDOWN_MDX_ESM_MARKER', 'Markdown MDX export'],
+  ['074', 'Markdown MDX import bodies', 'SKILL_METADATA_MARKDOWN_MDX_ESM_MARKER', 'Markdown MDX import'],
+  ['075', 'Markdown numeric escaped bracket reference bodies', 'SKILL_METADATA_MARKDOWN_ESCAPED_BRACKET_REFERENCE_MARKER', 'Markdown numeric escaped bracket reference'],
+  ['076', 'Markdown named escaped bracket reference bodies', 'SKILL_METADATA_MARKDOWN_ESCAPED_BRACKET_REFERENCE_MARKER', 'Markdown named escaped bracket reference'],
+].forEach(([id, bodyKind, ownerMarker, oracleKind]) => {
+  test(`R3-07S-skill-PERMISSION-FAULT-${id}: ${bodyKind} cannot infer Skill trigger evidence`, () => {
+    const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+    const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+    assertContains(sharedEnhancements, ownerMarker, `R3-07S-skill-PERMISSION-FAULT-${id} must keep ${oracleKind} body ownership in skillMetadataLines`);
+    assertContains(sharedTests, `R3-07S-skill-PERMISSION-FAULT-${id} ExtensionProfilePlanService`, `R3-07S-skill-PERMISSION-FAULT-${id} must have ${oracleKind} inferred-trigger oracle`);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────

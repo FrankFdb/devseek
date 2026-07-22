@@ -2052,6 +2052,15 @@ function createMarkdownBackslashEscapedTableBodyInferredTriggerDeniedEditSkillRe
   ]);
 }
 
+function createMarkdownBodyInferredTriggerDeniedEditSkillReceipt(bodyLine) {
+  return createReferenceDeniedEditSkillReceipt([
+    '# Reference',
+    '',
+    bodyLine,
+    'tool_kinds: read',
+  ]);
+}
+
 function createNonAsciiSubstringTriggerDeniedEditSkillReceipt() {
   return new SkillDiscoveryService().planExecution({
     prompt: '请修改深度学习组件',
@@ -4114,6 +4123,78 @@ function assertMarkdownBodyInferredTriggerPermissionFaultRefusal(testCase) {
     candidateCommit: '6767676767676767676767676767676767676767',
     childReceipt: createMarkdownBackslashEscapedTableBodyInferredTriggerDeniedEditSkillReceipt,
     explicitBodyLine: '\\| react \\|',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-068 ExtensionProfilePlanService rejects Markdown shortcut link body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-068',
+    attemptId: 'skill-permission-fault-068-markdown-shortcut-link-body-inferred-trigger',
+    candidateCommit: '6868686868686868686868686868686868686868',
+    childReceipt: () => createMarkdownBodyInferredTriggerDeniedEditSkillReceipt('[react]'),
+    explicitBodyLine: '[react]',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-069 ExtensionProfilePlanService rejects Markdown shortcut image body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-069',
+    attemptId: 'skill-permission-fault-069-markdown-shortcut-image-body-inferred-trigger',
+    candidateCommit: '6969696969696969696969696969696969696969',
+    childReceipt: () => createMarkdownBodyInferredTriggerDeniedEditSkillReceipt('![react]'),
+    explicitBodyLine: '![react]',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-070 ExtensionProfilePlanService rejects Markdown footnote reference body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-070',
+    attemptId: 'skill-permission-fault-070-markdown-footnote-reference-body-inferred-trigger',
+    candidateCommit: '7070707070707070707070707070707070707070',
+    childReceipt: () => createMarkdownBodyInferredTriggerDeniedEditSkillReceipt('[^react]'),
+    explicitBodyLine: '[^react]',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-071 ExtensionProfilePlanService rejects Markdown wikilink body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-071',
+    attemptId: 'skill-permission-fault-071-markdown-wikilink-body-inferred-trigger',
+    candidateCommit: '7171717171717171717171717171717171717171',
+    childReceipt: () => createMarkdownBodyInferredTriggerDeniedEditSkillReceipt('[[react]]'),
+    explicitBodyLine: '[[react]]',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-072 ExtensionProfilePlanService rejects Markdown MDX expression body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-072',
+    attemptId: 'skill-permission-fault-072-markdown-mdx-expression-body-inferred-trigger',
+    candidateCommit: '7272727272727272727272727272727272727272',
+    childReceipt: () => createMarkdownBodyInferredTriggerDeniedEditSkillReceipt('{react}'),
+    explicitBodyLine: '{react}',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-073 ExtensionProfilePlanService rejects Markdown MDX export body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-073',
+    attemptId: 'skill-permission-fault-073-markdown-mdx-export-body-inferred-trigger',
+    candidateCommit: '7373737373737373737373737373737373737373',
+    childReceipt: () => createMarkdownBodyInferredTriggerDeniedEditSkillReceipt('export const react = true'),
+    explicitBodyLine: 'export const react = true',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-074 ExtensionProfilePlanService rejects Markdown MDX import body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-074',
+    attemptId: 'skill-permission-fault-074-markdown-mdx-import-body-inferred-trigger',
+    candidateCommit: '7474747474747474747474747474747474747474',
+    childReceipt: () => createMarkdownBodyInferredTriggerDeniedEditSkillReceipt('import React from "react"'),
+    explicitBodyLine: 'import React from "react"',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-075 ExtensionProfilePlanService rejects Markdown numeric escaped bracket reference body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-075',
+    attemptId: 'skill-permission-fault-075-markdown-numeric-escaped-bracket-reference-body-inferred-trigger',
+    candidateCommit: '7575757575757575757575757575757575757575',
+    childReceipt: () => createMarkdownBodyInferredTriggerDeniedEditSkillReceipt('&#91;react&#93;'),
+    explicitBodyLine: '&#91;react&#93;',
+  },
+  {
+    testName: 'R3-07S-skill-PERMISSION-FAULT-076 ExtensionProfilePlanService rejects Markdown named escaped bracket reference body inferred trigger permission fault evidence',
+    slotId: 'R3-07S-skill-PERMISSION-FAULT-076',
+    attemptId: 'skill-permission-fault-076-markdown-named-escaped-bracket-reference-body-inferred-trigger',
+    candidateCommit: '7676767676767676767676767676767676767676',
+    childReceipt: () => createMarkdownBodyInferredTriggerDeniedEditSkillReceipt('&lbrack;react&rbrack;'),
+    explicitBodyLine: '&lbrack;react&rbrack;',
   },
 ].forEach((testCase) => {
   test(testCase.testName, () => {
