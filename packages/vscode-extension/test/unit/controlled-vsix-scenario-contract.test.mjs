@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(__dirname, '../..');
 const harnessPath = path.join(extensionRoot, 'test/devseek-controlled-vsix-harness.mjs');
+const realPluginHarnessPath = path.join(extensionRoot, 'test/devseek-real-plugin-deepseek-harness.mjs');
 
 const REQUIRED_SCENARIOS = [
   'normal',
@@ -38,6 +39,15 @@ test('controlled VSIX harness selects product run terminal instead of pending-ed
   assert.match(source, /function isProductRunTerminalEvent\(/, 'controlled VSIX harness must classify product run terminal events');
   assert.match(source, /mutationKind\s*!==\s*'pending-edit-resolution'/, 'pending-edit resolution runs must not replace the case terminal run');
   assert.doesNotMatch(source, /terminalLogs\.at\(-1\)/, 'terminal selection must not blindly use the last terminal log');
+});
+
+test('real plugin VSIX harness selects product run terminal instead of pending-edit resolution noise', () => {
+  const source = readFileSync(realPluginHarnessPath, 'utf8');
+
+  assert.match(source, /function isProductRunTerminalEvent\(/, 'real plugin harness must classify product run terminal events in the driver');
+  assert.match(source, /function selectProductRunLogForReplay\(/, 'real plugin harness replay must use the same product-run selection');
+  assert.match(source, /mutationKind\s*!==\s*'pending-edit-resolution'/, 'pending-edit resolution runs must not replace the real plugin terminal run');
+  assert.doesNotMatch(source, /logs\.find\(\(log\) => log\.terminal\)\?\.absolutePath/, 'replay selection must not blindly use the first terminal log');
 });
 
 for (const scenario of REQUIRED_SCENARIOS) {

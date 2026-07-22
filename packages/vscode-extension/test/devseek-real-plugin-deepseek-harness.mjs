@@ -1037,6 +1037,20 @@ function parseRunLogStartedAtMs(name) {
   ).getTime();
 }
 
+function isProductRunTerminalEvent(terminal) {
+  const data = terminal && terminal.data ? terminal.data : {};
+  return Boolean(terminal)
+    && (terminal.event === 'agent-run-completed' || terminal.event === 'agent-run-failed')
+    && data.mutationKind !== 'pending-edit-resolution'
+    && data.mutationKind !== 'pending-edit-undo';
+}
+
+function selectProductRunLog(logs) {
+  return logs.find((log) => isProductRunTerminalEvent(log.terminal))
+    || logs.find((log) => log.terminal)
+    || null;
+}
+
 function collectRunLogs(startedAtMs) {
   const runDir = path.join(workspaceDir, '.devseek', 'runs');
   const logs = [];
@@ -1072,7 +1086,7 @@ function collectRunLogs(startedAtMs) {
     });
   }
   logs.sort((a, b) => (b.runStartedAtMs - a.runStartedAtMs) || (b.mtimeMs - a.mtimeMs) || (b.size - a.size));
-  const terminal = logs.map((log) => log.terminal).find(Boolean) || null;
+  const terminal = selectProductRunLog(logs)?.terminal || null;
   return { logs, terminal };
 }
 
@@ -1381,7 +1395,7 @@ function attachReplayReport(report) {
     return;
   }
 
-  const selected = logs.find((log) => log.terminal)?.absolutePath || logs[0]?.absolutePath;
+  const selected = selectProductRunLogForReplay(logs)?.absolutePath || logs[0]?.absolutePath;
   if (!selected || !fs.existsSync(selected)) {
     report.replay = { ok: false, skipped: true, reason: 'selected run log missing', selected };
     report.ok = false;
@@ -1409,6 +1423,20 @@ function attachReplayReport(report) {
     report.ok = false;
     report.errors = [...(report.errors || []), '真实插件链路生成的运行日志未通过 Runtime Replay。'];
   }
+}
+
+function isProductRunTerminalForReplay(terminal) {
+  const data = terminal && terminal.data ? terminal.data : {};
+  return Boolean(terminal)
+    && (terminal.event === 'agent-run-completed' || terminal.event === 'agent-run-failed')
+    && data.mutationKind !== 'pending-edit-resolution'
+    && data.mutationKind !== 'pending-edit-undo';
+}
+
+function selectProductRunLogForReplay(logs) {
+  return logs.find((log) => isProductRunTerminalForReplay(log.terminal))
+    || logs.find((log) => log.terminal)
+    || null;
 }
 
 function safeParseJson(text) {
