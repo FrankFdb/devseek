@@ -51,6 +51,10 @@ function readCliErrorMessage(stderr) {
   return match[1];
 }
 
+function parseJsonl(stdout) {
+  return stdout.trim().split(/\r?\n/).filter(Boolean).map(line => JSON.parse(line));
+}
+
 test('CLI JSONL renderer owns stdout backpressure before process settlement', () => {
   const adapterSource = readFileSync(path.join(cliRoot, 'src/cli-surface-adapter.ts'), 'utf8');
   const indexSource = readFileSync(path.join(cliRoot, 'src/index.ts'), 'utf8');
@@ -61,6 +65,38 @@ test('CLI JSONL renderer owns stdout backpressure before process settlement', ()
   assert.match(indexSource, /await surface\.flush\(\)/);
 });
 
+test('R3-08B CLI JSONL emits machine-readable collaboration lifecycle schema', async () => {
+  await withTempCwdAsync(async (cwd) => {
+    const result = await runCli([bin, 'exec', '--jsonl', '--mock', 'r3-08b jsonl lifecycle smoke'], {
+      cwd,
+      timeout: 5000,
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const lines = parseJsonl(result.stdout);
+    const lifecycle = lines.filter(line => line.schema === 'devseek.cli-jsonl-collaboration/v1');
+    assert.deepEqual(lifecycle.map(line => line.type), ['cli.run.started', 'cli.run.completed']);
+    assert.equal(lifecycle[0].surface, 'jsonl');
+    assert.equal(lifecycle[0].status, 'running');
+    assert.equal(lifecycle[1].status, 'completed');
+    assert.equal(lifecycle[1].exitCode, 0);
+    assert.match(lifecycle[0].runId, /^\d{8}-\d{6}/);
+    assert.equal(lifecycle[0].commandId, lifecycle[1].commandId);
+    assert.deepEqual(lifecycle[1].backpressure, {
+      owner: 'CliSurfaceAdapter',
+      queue: 'writeQueue',
+      drainEvent: 'drain',
+      renderEventAwaited: true,
+      flushRequiredBeforeSettlement: true,
+    });
+    assert.deepEqual(lifecycle[1].cancel, {
+      requested: false,
+      signal: null,
+      exitCode: null,
+    });
+  });
+});
+
 test('CLI JSONL mode emits parseable AgentEvent lines', () => {
   const stdout = withTempCwd((cwd) => {
     return execFileSync(process.execPath, [bin, 'exec', '--jsonl', '--mock', 'phase10 cli jsonl smoke'], {
@@ -69,7 +105,7 @@ test('CLI JSONL mode emits parseable AgentEvent lines', () => {
     });
   });
 
-  const events = stdout.trim().split(/\r?\n/).map(line => JSON.parse(line));
+  const events = parseJsonl(stdout).filter(event => event.schema !== 'devseek.cli-jsonl-collaboration/v1');
   assert.deepEqual(events.map(event => event.type), [
     'chat.started',
     'provider.selected',
@@ -138,6 +174,24 @@ test('CLI text mode prints provider response', () => {
   });
 
   assert.match(stdout, /mock: phase10 cli text smoke/);
+});
+
+test('R3-08B CLI text mode exposes collaboration lifecycle status on stderr', async () => {
+  await withTempCwdAsync(async (cwd) => {
+    const result = await runCli([bin, 'exec', '--mock', 'r3-08b text lifecycle smoke'], {
+      cwd,
+      env: {
+        ...process.env,
+        DEVSEEK_CLI_COLLABORATION_STATUS: '1',
+      },
+      timeout: 5000,
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /mock: r3-08b text lifecycle smoke/);
+    assert.match(result.stderr, /DevSeek CLI: run started \(\d{8}-\d{6}/);
+    assert.match(result.stderr, /DevSeek CLI: run completed \(exit=0\)/);
+  });
 });
 
 test('CLI bridge text mode streams SSE, propagates one run identity, and seals product evidence', async () => {
@@ -800,10 +854,19 @@ test('CLI JSONL SIGTERM cancels transport and settles evidence as cancelled', as
 
       assert.deepEqual(result, { status: 143, signal: null });
       assert.match(stderr, /DevSeek CLI error:/);
-      const stdoutEvents = stdout.trim().split(/\r?\n/).map(line => JSON.parse(line));
+      const stdoutEvents = parseJsonl(stdout);
       const errorEvent = stdoutEvents.find(event => event.type === 'error');
       assert.equal(errorEvent?.surface, 'jsonl');
       assert.equal(errorEvent?.severity, 'error');
+      const lifecycle = stdoutEvents.filter(event => event.schema === 'devseek.cli-jsonl-collaboration/v1');
+      assert.deepEqual(lifecycle.map(event => event.type), ['cli.run.started', 'cli.run.cancelled']);
+      assert.equal(lifecycle.at(-1)?.status, 'cancelled');
+      assert.equal(lifecycle.at(-1)?.exitCode, 143);
+      assert.deepEqual(lifecycle.at(-1)?.cancel, {
+        requested: true,
+        signal: 'SIGTERM',
+        exitCode: 143,
+      });
       const records = readProductEvidenceRecords(cwd);
       const evidenceEvents = records.filter(record => record.record_kind === 'event').map(record => record.event);
       assert.equal(evidenceEvents.at(-1)?.type, 'run.settled');

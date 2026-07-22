@@ -2426,6 +2426,33 @@ test('R3-08A-VSCODE-USER-COLLABORATION: VS Code surface adapter projects core ev
   assertContains(adapterTest, 'agentCheckpointAvailable', 'R3-08A oracle must cover checkpoint projection');
 });
 
+test('R3-08B-CLI-JSONL-USER-COLLABORATION: CLI surfaces expose lifecycle schema and terminal status', () => {
+  const cliSurface = src('../cli/src/cli-surface-adapter.ts');
+  const cliIndex = src('../cli/src/index.ts');
+  const cliJsonlTest = src('../cli/test/cli-jsonl.test.mjs');
+
+  assertContains(cliSurface, 'CLI_JSONL_COLLABORATION_SCHEMA', 'R3-08B must define a CLI JSONL collaboration schema');
+  assertContains(cliSurface, 'devseek.cli-jsonl-collaboration/v1', 'R3-08B schema must be versioned');
+  assertContains(cliSurface, 'renderLifecycleEvent', 'R3-08B lifecycle rendering must stay in CliSurfaceAdapter');
+  assertContains(cliSurface, "queue: 'writeQueue'", 'R3-08B lifecycle events must disclose backpressure ownership');
+  assertContains(cliSurface, "drainEvent: 'drain'", 'R3-08B lifecycle events must disclose drain backpressure semantics');
+  assertContains(cliSurface, 'flushRequiredBeforeSettlement: true', 'R3-08B lifecycle events must require flush before settlement');
+  assertContains(cliSurface, 'DevSeek CLI: run started', 'R3-08B text mode must expose user-visible lifecycle status');
+  assertContains(cliSurface, 'DEVSEEK_CLI_COLLABORATION_STATUS', 'R3-08B text lifecycle status must be explicitly reachable in non-TTY tests');
+
+  assertContains(cliIndex, "await renderLifecycle('running')", 'R3-08B CLI must emit run start before provider work');
+  assertContains(cliIndex, "await renderLifecycle('completed', 0)", 'R3-08B CLI must emit successful terminal exit status');
+  assertContains(cliIndex, "await renderLifecycle(cancellation.cancelled ? 'cancelled' : 'failed', exitCode)", 'R3-08B CLI must emit failed/cancelled terminal exit status');
+  assertContains(cliIndex, 'signalName', 'R3-08B cancel lifecycle must include SIGINT/SIGTERM identity');
+  assertContains(cliIndex, 'await surface.flush()', 'R3-08B CLI must flush lifecycle and AgentEvent writes before process exit');
+
+  assertContains(cliJsonlTest, 'R3-08B CLI JSONL emits machine-readable collaboration lifecycle schema', 'R3-08B must have a failure-first JSONL lifecycle oracle');
+  assertContains(cliJsonlTest, 'devseek.cli-jsonl-collaboration/v1', 'R3-08B oracle must assert the schema line');
+  assertContains(cliJsonlTest, 'R3-08B CLI text mode exposes collaboration lifecycle status on stderr', 'R3-08B must cover text mode lifecycle visibility');
+  assertContains(cliJsonlTest, "signal: 'SIGTERM'", 'R3-08B cancel oracle must assert signal identity');
+  assertContains(cliJsonlTest, 'exitCode: 143', 'R3-08B cancel oracle must assert terminal exit code');
+});
+
 test('Real DeepSeek harness: headed user-window runs can be retained for inspection', () => {
   const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
   assertContains(harness, "const keepWindow = hasFlag('--keep-window')", 'real harness must expose an explicit keep-window flag');

@@ -15,7 +15,7 @@ import {
   type LLMProvider,
 } from '@devseek-netai/shared';
 import { bridgeCancel as callBridgeCancel, bridgeChat as callBridgeChat } from './bridge-client';
-import { CliSurfaceAdapter, type CliSurfaceKind } from './cli-surface-adapter';
+import { CliSurfaceAdapter, createCliRunLifecycleEvent, type CliRunLifecycleStatus, type CliSurfaceKind } from './cli-surface-adapter';
 
 interface CliOptions {
   command: 'exec' | 'interactive' | 'help' | 'version';
@@ -123,8 +123,19 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
       signal: cancellation.signal,
     },
   });
+  const renderLifecycle = (status: CliRunLifecycleStatus, exitCode?: number) => surface.renderLifecycleEvent(
+    createCliRunLifecycleEvent({
+      surface: surface.kind,
+      runId,
+      commandId: command.commandId,
+      status,
+      exitCode: exitCode ?? null,
+      cancelSignal: cancellation.signalName,
+    }),
+  );
 
   try {
+    await renderLifecycle('running');
     recordCliOperationEvidence(evidence, {
       type: 'provider.requested',
       idempotencyKey: productRunEvidenceIdempotencyKey('cli-provider-requested', { runId, attempt: 1 }),
@@ -165,6 +176,8 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
     });
     await surface.flush();
     await appendHistory(options.cwd, prompt);
+    await renderLifecycle('completed', 0);
+    await surface.flush();
     settleCliEvidence(evidence, runId, 'completed');
     return 0;
   } catch (error) {
@@ -177,9 +190,16 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
     if (cancellation.cancelled && !options.mock) {
       await waitForCliBridgeProviderTerminals(evidence);
     }
+    const exitCode = cancellation.cancelled ? cancellation.exitCode : 1;
+    try {
+      await renderLifecycle(cancellation.cancelled ? 'cancelled' : 'failed', exitCode);
+      await surface.flush();
+    } catch (flushError) {
+      terminalError = flushError;
+    }
     settleCliEvidence(evidence, runId, cancellation.cancelled ? 'cancelled' : 'failed');
     console.error(`DevSeek CLI error: ${formatCliError(terminalError)}`);
-    return cancellation.cancelled ? cancellation.exitCode : 1;
+    return exitCode;
   } finally {
     cancellation.dispose();
   }
@@ -189,6 +209,7 @@ interface CliCancellationController {
   readonly signal: AbortSignal;
   readonly cancelled: boolean;
   readonly exitCode: number;
+  readonly signalName: NodeJS.Signals | undefined;
   dispose(): void;
 }
 
@@ -257,6 +278,9 @@ function createCliCancellationController(onCancel?: () => void): CliCancellation
     },
     get exitCode() {
       return signalName === 'SIGTERM' ? 143 : 130;
+    },
+    get signalName() {
+      return signalName;
     },
     dispose() {
       process.off('SIGINT', onSigint);

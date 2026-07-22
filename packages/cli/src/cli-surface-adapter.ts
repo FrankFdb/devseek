@@ -21,6 +21,33 @@ export interface CliSurfaceAdapterOptions {
   progressDelayMs?: number;
 }
 
+export const CLI_JSONL_COLLABORATION_SCHEMA = 'devseek.cli-jsonl-collaboration/v1';
+
+export type CliRunLifecycleStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface CliRunLifecycleEvent {
+  type: 'cli.run.started' | 'cli.run.completed' | 'cli.run.failed' | 'cli.run.cancelled';
+  schema: typeof CLI_JSONL_COLLABORATION_SCHEMA;
+  surface: CliSurfaceKind;
+  timestamp: number;
+  runId: string;
+  commandId: string;
+  status: CliRunLifecycleStatus;
+  exitCode: number | null;
+  backpressure: {
+    owner: 'CliSurfaceAdapter';
+    queue: 'writeQueue';
+    drainEvent: 'drain';
+    renderEventAwaited: true;
+    flushRequiredBeforeSettlement: true;
+  };
+  cancel: {
+    requested: boolean;
+    signal: NodeJS.Signals | null;
+    exitCode: number | null;
+  };
+}
+
 export class CliSurfaceAdapter implements SurfaceAdapter {
   readonly kind: CliSurfaceKind;
   readonly capabilities: SurfaceCapabilities;
@@ -61,9 +88,26 @@ export class CliSurfaceAdapter implements SurfaceAdapter {
     return this.enqueueWrite(() => this.renderEventNow(event));
   }
 
+  renderLifecycleEvent(event: CliRunLifecycleEvent): Promise<void> {
+    return this.enqueueWrite(() => this.renderLifecycleEventNow(event));
+  }
+
   async flush(): Promise<void> {
     await this.writeQueue;
     if (this.writeError) throw this.writeError;
+  }
+
+  private async renderLifecycleEventNow(event: CliRunLifecycleEvent): Promise<void> {
+    if (this.options.jsonl) {
+      await this.writeStdout(`${JSON.stringify(event)}\n`);
+      return;
+    }
+    if (!this.shouldRenderTextLifecycle()) return;
+    if (event.type === 'cli.run.started') {
+      await this.writeStderr(`DevSeek CLI: run started (${event.runId})\n`);
+      return;
+    }
+    await this.writeStderr(`DevSeek CLI: run ${event.status} (exit=${event.exitCode ?? 'unknown'})\n`);
   }
 
   private async renderEventNow(event: AgentEvent): Promise<void> {
@@ -108,6 +152,11 @@ export class CliSurfaceAdapter implements SurfaceAdapter {
     }
   }
 
+  private shouldRenderTextLifecycle(): boolean {
+    return process.env.DEVSEEK_CLI_COLLABORATION_STATUS === '1'
+      || Boolean((this.stderr as { isTTY?: boolean }).isTTY);
+  }
+
   private enqueueWrite(operation: () => Promise<void>): Promise<void> {
     const write = this.writeQueue.then(operation);
     this.writeQueue = write.catch(error => {
@@ -128,4 +177,45 @@ export class CliSurfaceAdapter implements SurfaceAdapter {
     if (stream.write(text)) return;
     await once(stream, 'drain');
   }
+}
+
+export function createCliRunLifecycleEvent(args: {
+  surface: CliSurfaceKind;
+  runId: string;
+  commandId: string;
+  status: CliRunLifecycleStatus;
+  exitCode?: number | null;
+  cancelSignal?: NodeJS.Signals;
+  now?: () => number;
+}): CliRunLifecycleEvent {
+  const cancelRequested = args.status === 'cancelled' || Boolean(args.cancelSignal);
+  return {
+    type: lifecycleTypeForStatus(args.status),
+    schema: CLI_JSONL_COLLABORATION_SCHEMA,
+    surface: args.surface,
+    timestamp: (args.now ?? Date.now)(),
+    runId: args.runId,
+    commandId: args.commandId,
+    status: args.status,
+    exitCode: args.exitCode ?? null,
+    backpressure: {
+      owner: 'CliSurfaceAdapter',
+      queue: 'writeQueue',
+      drainEvent: 'drain',
+      renderEventAwaited: true,
+      flushRequiredBeforeSettlement: true,
+    },
+    cancel: {
+      requested: cancelRequested,
+      signal: args.cancelSignal ?? null,
+      exitCode: cancelRequested ? args.exitCode ?? null : null,
+    },
+  };
+}
+
+function lifecycleTypeForStatus(status: CliRunLifecycleStatus): CliRunLifecycleEvent['type'] {
+  if (status === 'running') return 'cli.run.started';
+  if (status === 'completed') return 'cli.run.completed';
+  if (status === 'cancelled') return 'cli.run.cancelled';
+  return 'cli.run.failed';
 }
