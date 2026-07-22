@@ -94,3 +94,73 @@ test('R3-07G hook real plugin scenario binds hook-specific aggregate artifact ac
     'uav-warranty-reminder',
   ]);
 });
+
+[
+  {
+    scenario: 'r3-07g-mcp-aggregate',
+    profileKind: 'mcp',
+    artifactRel: 'docs/r3-iteration/r3-07g-mcp-aggregate-denominator.md',
+    requiredSnippets: [
+      'R3-07G-mcp-AGGREGATE',
+      'McpPermissionService',
+      'MCP_TRUST_PROTOCOL',
+      'mcp-unknown-mutable-veto',
+      'mcp-unsigned-server-veto',
+      'mcp-permission-escape-veto',
+      'skill receipts cannot qualify mcp slots',
+    ],
+  },
+  {
+    scenario: 'r3-07g-plugin-aggregate',
+    profileKind: 'plugin',
+    artifactRel: 'docs/r3-iteration/r3-07g-plugin-aggregate-denominator.md',
+    requiredSnippets: [
+      'R3-07G-plugin-AGGREGATE',
+      'PluginSupplyChainService',
+      'PLUGIN_SUPPLY_CHAIN_PROTOCOL',
+      'plugin-unsigned-veto',
+      'plugin-tampered-veto',
+      'plugin-dependency-veto',
+      'skill receipts cannot qualify plugin slots',
+    ],
+  },
+  {
+    scenario: 'r3-07g-subagent-aggregate',
+    profileKind: 'subagent',
+    artifactRel: 'docs/r3-iteration/r3-07g-subagent-aggregate-denominator.md',
+    requiredSnippets: [
+      'R3-07G-subagent-AGGREGATE',
+      'SUBAGENT_CONTRACT_PROTOCOL',
+      'Subagent contract',
+      'child-direct-effect-rejected',
+      'child-terminal-claim-rejected',
+      'skill receipts cannot qualify subagent slots',
+    ],
+  },
+].forEach(({ scenario, profileKind, artifactRel, requiredSnippets }) => {
+  test(`R3-07G ${profileKind} real plugin scenario adds a fresh visible case`, () => {
+    const profile = buildRealPluginQualityProfile(scenario);
+    const spec = buildRealPluginScenarioSpec(scenario);
+
+    assert.equal(profile.kind, 'iteration');
+    assert.equal(profile.minimumMarkdownBytes, 950);
+    assert.equal(profile.minimumMarkdownLines, 22);
+    assert.equal(profile.minimumMarkdownHeadings, 5);
+    assert.equal(profile.requireFormalProjectQuality, false);
+    assert.equal(spec.profileKind, profileKind);
+    assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
+    assert.equal(spec.expectedArtifactRel, artifactRel);
+    assert.match(spec.promptTitle, new RegExp(`R3-07G-${profileKind}-AGGREGATE`));
+    for (const snippet of [
+      'ExtensionProfilePlanService',
+      '20 task slots',
+      '100 permission-fault slots',
+      'aggregateExecutionAllowed: false',
+      'slotExecutionAllowed: false',
+      ...requiredSnippets,
+    ]) {
+      assert.ok(spec.requiredArtifactSnippets.includes(snippet), `${scenario} must require ${snippet}`);
+    }
+    assert.ok(spec.forbiddenArtifactSnippets.includes('uav-warranty-reminder'));
+  });
+});

@@ -1737,6 +1737,24 @@ test('R3-07G-hook-AGGREGATE: hook denominator aggregation is kind-specific and p
   assertContains(sharedTests, 'skill-cannot-qualify-hook', 'R3-07G-hook aggregate must prove skill receipts cannot qualify hook slots');
 });
 
+test('R3-07G remaining kind aggregates: mcp plugin and subagent use kind-owned permission faults', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  [
+    ['mcp', 'mcpPermissionFaultViolations', "violation.startsWith('mcp-unknown-mutable-veto:')", 'skill-cannot-qualify-mcp'],
+    ['plugin', 'pluginPermissionFaultViolations', "violation.startsWith('plugin-unsigned-veto:')", 'skill-cannot-qualify-plugin'],
+    ['subagent', 'subagentPermissionFaultViolations', "violation === 'child-direct-effect-rejected'", 'skill-cannot-qualify-subagent'],
+  ].forEach(([kind, owner, faultMarker, foreignMarker]) => {
+    assertContains(sharedEnhancements, owner, `R3-07G-${kind} aggregate must have a kind-specific permission/fault owner`);
+    assertContains(sharedEnhancements, faultMarker, `R3-07G-${kind} aggregate must accept its own fault evidence`);
+    assertContains(sharedTests, `kind: '${kind}'`, `R3-07G-${kind} aggregate must be registered in the denominator oracle table`);
+    assertContains(sharedTests, 'aggregates only complete owned ${spec.kind} receipts', `R3-07G-${kind} aggregate must have a complete/incomplete denominator oracle`);
+    assertContains(sharedTests, 'rejects duplicate foreign wrong-protocol and failed ${spec.kind} receipts', `R3-07G-${kind} aggregate must reject duplicate, foreign, wrong-protocol, and failed receipts`);
+    assertContains(sharedTests, foreignMarker, `R3-07G-${kind} aggregate must prove skill receipts cannot qualify ${kind} slots`);
+  });
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2293,20 +2311,34 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
   const profile = src('test/harness/real-plugin-quality-profile.mjs');
   assertContains(profile, 'buildRealPluginScenarioSpec', 'real harness must expose named scenario contracts');
-  assertContains(profile, 'r3-07g-skill-aggregate', 'R3-07G must have a dedicated real-plugin scenario');
-  assertContains(profile, 'r3-07g-hook-aggregate', 'R3-07G hook iteration must have a fresh dedicated real-plugin scenario');
+  assertContains(profile, 'id: `r3-07g-${profileKind}-aggregate`', 'R3-07G named scenarios must use kind-specific ids');
+  assertContains(profile, "profileKind: 'skill'", 'R3-07G must have a dedicated skill real-plugin scenario');
+  assertContains(profile, "profileKind: 'hook'", 'R3-07G hook iteration must have a fresh dedicated real-plugin scenario');
+  assertContains(profile, "profileKind: 'mcp'", 'R3-07G mcp iteration must have a fresh dedicated real-plugin scenario');
+  assertContains(profile, "profileKind: 'plugin'", 'R3-07G plugin iteration must have a fresh dedicated real-plugin scenario');
+  assertContains(profile, "profileKind: 'subagent'", 'R3-07G subagent iteration must have a fresh dedicated real-plugin scenario');
   assertContains(profile, 'markdown-file-deliverable', 'R3-07G scenario must stay on a Markdown file deliverable route');
-  assertContains(profile, 'r3-07g-skill-aggregate-denominator.md', 'R3-07G scenario must write a distinct artifact');
-  assertContains(profile, 'r3-07g-hook-aggregate-denominator.md', 'R3-07G hook scenario must write a distinct artifact');
+  assertContains(profile, 'r3-07g-${profileKind}-aggregate-denominator.md', 'R3-07G scenarios must write distinct kind-specific artifacts');
   assertContains(profile, '20 task slots', 'R3-07G artifact gate must assert the task denominator');
   assertContains(profile, '100 permission-fault slots', 'R3-07G artifact gate must assert the permission-fault denominator');
   assertContains(profile, 'hook-direct-writer-denied', 'R3-07G hook artifact gate must assert hook permission/fault evidence');
   assertContains(profile, 'skill receipts cannot qualify hook slots', 'R3-07G hook artifact gate must reject cross-kind settlement');
+  assertContains(profile, 'mcp-unknown-mutable-veto', 'R3-07G mcp artifact gate must assert mcp permission/fault evidence');
+  assertContains(profile, 'plugin-unsigned-veto', 'R3-07G plugin artifact gate must assert plugin permission/fault evidence');
+  assertContains(profile, 'child-direct-effect-rejected', 'R3-07G subagent artifact gate must assert subagent permission/fault evidence');
+  assertContains(profile, 'skill receipts cannot qualify mcp slots', 'R3-07G mcp artifact gate must reject cross-kind settlement');
+  assertContains(profile, 'skill receipts cannot qualify plugin slots', 'R3-07G plugin artifact gate must reject cross-kind settlement');
+  assertContains(profile, 'skill receipts cannot qualify subagent slots', 'R3-07G subagent artifact gate must reject cross-kind settlement');
   assertContains(profile, 'missing/failed/vetoed/blocked/duplicate/foreign', 'R3-07G artifact gate must assert aggregate veto classes');
   assertContains(profile, 'minimumMarkdownLines', 'R3-07G artifact gate must check scenario-specific document shape');
   assertContains(profile, 'forbiddenArtifactSnippets', 'R3-07G artifact gate must reject stale benchmark-domain artifacts');
   assertContains(profile, 'uav-warranty-reminder', 'R3-07G artifact gate must reject the old warranty simulation artifact family');
   assertContains(harness, 'createR3KindAggregateFixture', 'real harness must share the R3 kind aggregate fixture instead of duplicating skill/hook setup');
+  assertContains(harness, 'R3_KIND_AGGREGATE_FIXTURE_DETAILS', 'real harness must keep R3 kind fixture data table-driven');
+  assert.ok(
+    harness.indexOf('const R3_KIND_AGGREGATE_FIXTURE_DETAILS') < harness.indexOf('const fixture = usesExistingWorkspace'),
+    'R3 kind fixture details must initialize before top-level workspace creation',
+  );
   assertContains(harness, 'scenarioSpec.requiredArtifactSnippets', 'real harness must combine scenario-specific content gates');
   assertContains(harness, 'forbiddenArtifactSnippets', 'real harness must enforce scenario-specific forbidden content gates');
   assertContains(harness, 'shapeQuality', 'real harness must enforce scenario-specific Markdown shape gates');

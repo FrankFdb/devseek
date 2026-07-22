@@ -5,7 +5,9 @@ import {
   GitPrAssistantService,
   HookPlanner,
   HOOK_POLICY_PROTOCOL,
+  MCP_TRUST_PROTOCOL,
   McpPermissionService,
+  PLUGIN_SUPPLY_CHAIN_PROTOCOL,
   PluginSupplyChainService,
   SkillDiscoveryService,
   SKILL_EXECUTION_PROTOCOL,
@@ -1671,6 +1673,176 @@ test('R3-07G-hook-AGGREGATE ExtensionProfilePlanService rejects duplicate foreig
   assert.ok(failedAggregate.vetoes.includes('aggregate-failed-slots-veto:R3-07F-hook-PROFILE-PLAN:1'));
 });
 
+[
+  {
+    kind: 'mcp',
+    schemaVersion: MCP_TRUST_PROTOCOL,
+    candidateCommit: 'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',
+    taskChildReceipt: createMcpTaskChildReceipt,
+    permissionFaultChildReceipt: createMcpPermissionFaultChildReceipt,
+    expectedFaultEvidence: 'mcp-unknown-mutable-veto',
+    foreignSkillMarker: 'skill-cannot-qualify-mcp',
+  },
+  {
+    kind: 'plugin',
+    schemaVersion: PLUGIN_SUPPLY_CHAIN_PROTOCOL,
+    candidateCommit: 'b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2',
+    taskChildReceipt: createPluginTaskChildReceipt,
+    permissionFaultChildReceipt: createPluginPermissionFaultChildReceipt,
+    expectedFaultEvidence: 'plugin-unsigned-veto',
+    foreignSkillMarker: 'skill-cannot-qualify-plugin',
+  },
+  {
+    kind: 'subagent',
+    schemaVersion: SUBAGENT_CONTRACT_PROTOCOL,
+    candidateCommit: 'c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3',
+    taskChildReceipt: createSubagentTaskChildReceipt,
+    permissionFaultChildReceipt: createSubagentPermissionFaultChildReceipt,
+    expectedFaultEvidence: 'child-direct-effect-rejected',
+    foreignSkillMarker: 'skill-cannot-qualify-subagent',
+  },
+].forEach((spec) => {
+  test(`R3-07G-${spec.kind}-AGGREGATE ExtensionProfilePlanService aggregates only complete owned ${spec.kind} receipts`, () => {
+    const incompleteService = new ExtensionProfilePlanService();
+    const incompletePlan = incompleteService.createProfilePlan({
+      kind: spec.kind,
+      candidateCommit: spec.candidateCommit,
+      schemaVersion: spec.schemaVersion,
+    });
+    const taskReceipt = incompleteService.recordSlotExecution({
+      plan: incompletePlan,
+      slotId: `R3-07S-${spec.kind}-TASK-001`,
+      attemptId: `r3-07g-${spec.kind}-task-001`,
+      status: 'passed',
+      childReceipt: spec.taskChildReceipt(`aggregate-${spec.kind}-task-001`),
+    });
+    assert.equal(taskReceipt.status, 'passed');
+    const incompleteAggregate = incompleteService.aggregateKindProfile({ plan: incompletePlan, receipts: [taskReceipt] });
+    assert.equal(incompleteAggregate.status, 'blocked');
+    assert.equal(incompleteAggregate.kind, spec.kind);
+    assert.equal(incompleteAggregate.aggregateExecutionAllowed, false);
+    assert.equal(incompleteAggregate.slotExecutionAllowed, false);
+    assert.equal(incompleteAggregate.requiredTaskSlotCount, 20);
+    assert.equal(incompleteAggregate.requiredPermissionFaultSlotCount, 100);
+    assert.equal(incompleteAggregate.missingSlotIds.length, 119);
+    assert.ok(incompleteAggregate.vetoes.includes(`aggregate-missing-slots-veto:R3-07F-${spec.kind}-PROFILE-PLAN:119`));
+
+    const completeService = new ExtensionProfilePlanService();
+    const completePlan = completeService.createProfilePlan({
+      kind: spec.kind,
+      candidateCommit: spec.candidateCommit,
+      schemaVersion: spec.schemaVersion,
+    });
+    const completeReceipts = createCompleteExtensionKindDenominatorReceipts({
+      service: completeService,
+      plan: completePlan,
+      kind: spec.kind,
+      taskChildReceipt: spec.taskChildReceipt,
+      permissionFaultChildReceipt: spec.permissionFaultChildReceipt,
+    });
+    const completeAggregate = completeService.aggregateKindProfile({ plan: completePlan, receipts: completeReceipts });
+    assert.equal(completeReceipts.length, 120);
+    assert.equal(completeAggregate.status, 'passed');
+    assert.equal(completeAggregate.passedTaskSlotCount, 20);
+    assert.equal(completeAggregate.passedPermissionFaultSlotCount, 100);
+    assert.deepEqual(completeAggregate.missingSlotIds, []);
+    assert.deepEqual(completeAggregate.vetoes, []);
+    assert.ok(
+      completeReceipts
+        .find(receipt => receipt.slotId === `R3-07S-${spec.kind}-PERMISSION-FAULT-100`)
+        ?.permissionFaultRefs.some(ref => ref.includes(`R3-07S-${spec.kind}-PERMISSION-FAULT-100`)),
+    );
+  });
+
+  test(`R3-07G-${spec.kind}-AGGREGATE ExtensionProfilePlanService rejects duplicate foreign wrong-protocol and failed ${spec.kind} receipts`, () => {
+    const duplicateService = new ExtensionProfilePlanService();
+    const duplicatePlan = duplicateService.createProfilePlan({
+      kind: spec.kind,
+      candidateCommit: spec.candidateCommit,
+      schemaVersion: spec.schemaVersion,
+    });
+    const duplicateReceipts = createCompleteExtensionKindDenominatorReceipts({
+      service: duplicateService,
+      plan: duplicatePlan,
+      kind: spec.kind,
+      taskChildReceipt: spec.taskChildReceipt,
+      permissionFaultChildReceipt: spec.permissionFaultChildReceipt,
+    });
+    const duplicateAggregate = duplicateService.aggregateKindProfile({
+      plan: duplicatePlan,
+      receipts: [...duplicateReceipts, duplicateReceipts[0]],
+    });
+    assert.equal(duplicateAggregate.status, 'blocked');
+    assert.deepEqual(duplicateAggregate.duplicateSlotIds, [`R3-07S-${spec.kind}-TASK-001`]);
+    assert.ok(duplicateAggregate.vetoes.includes(`aggregate-duplicate-slots-veto:R3-07F-${spec.kind}-PROFILE-PLAN:1`));
+
+    const ownerService = new ExtensionProfilePlanService();
+    const kindPlan = ownerService.createProfilePlan({
+      kind: spec.kind,
+      candidateCommit: spec.candidateCommit,
+      schemaVersion: spec.schemaVersion,
+    });
+    const skillPlan = ownerService.createProfilePlan({
+      kind: 'skill',
+      candidateCommit: spec.candidateCommit,
+      schemaVersion: SKILL_EXECUTION_PROTOCOL,
+    });
+    const skillReceipt = ownerService.recordSlotExecution({
+      plan: skillPlan,
+      slotId: 'R3-07S-skill-TASK-001',
+      attemptId: `r3-07g-${spec.foreignSkillMarker}-task-001`,
+      status: 'passed',
+      childReceipt: createSkillTaskChildReceipt(spec.foreignSkillMarker),
+    });
+    const foreignAggregate = ownerService.aggregateKindProfile({ plan: kindPlan, receipts: [skillReceipt] });
+    assert.equal(foreignAggregate.status, 'blocked');
+    assert.deepEqual(foreignAggregate.foreignSlotIds, ['R3-07S-skill-TASK-001']);
+    assert.ok(foreignAggregate.vetoes.includes(`aggregate-foreign-receipts-veto:R3-07F-${spec.kind}-PROFILE-PLAN:1`));
+    assert.ok(foreignAggregate.missingSlotIds.includes(`R3-07S-${spec.kind}-TASK-001`));
+
+    const wrongProtocolService = new ExtensionProfilePlanService();
+    const wrongProtocolPlan = wrongProtocolService.createProfilePlan({
+      kind: spec.kind,
+      candidateCommit: spec.candidateCommit,
+      schemaVersion: spec.schemaVersion,
+    });
+    const wrongProtocolReceipt = wrongProtocolService.recordSlotExecution({
+      plan: wrongProtocolPlan,
+      slotId: `R3-07S-${spec.kind}-TASK-001`,
+      attemptId: `r3-07g-${spec.kind}-task-001-wrong-protocol`,
+      status: 'passed',
+      childReceipt: createSkillTaskChildReceipt(`wrong-protocol-${spec.kind}-child`),
+    });
+    assert.equal(wrongProtocolReceipt.status, 'blocked');
+    const wrongProtocolAggregate = wrongProtocolService.aggregateKindProfile({
+      plan: wrongProtocolPlan,
+      receipts: [wrongProtocolReceipt],
+    });
+    assert.equal(wrongProtocolAggregate.status, 'blocked');
+    assert.deepEqual(wrongProtocolAggregate.blockedSlotIds, [`R3-07S-${spec.kind}-TASK-001`]);
+    assert.ok(wrongProtocolAggregate.vetoes.includes(`aggregate-blocked-slots-veto:R3-07F-${spec.kind}-PROFILE-PLAN:1`));
+
+    const failedService = new ExtensionProfilePlanService();
+    const failedPlan = failedService.createProfilePlan({
+      kind: spec.kind,
+      candidateCommit: spec.candidateCommit,
+      schemaVersion: spec.schemaVersion,
+    });
+    const failedReceipt = failedService.recordSlotExecution({
+      plan: failedPlan,
+      slotId: `R3-07S-${spec.kind}-TASK-001`,
+      attemptId: `r3-07g-${spec.kind}-failed-task-001`,
+      status: 'failed',
+      failureRefs: [`${spec.kind}-failure:r3-07g-task-001`],
+    });
+    const failedAggregate = failedService.aggregateKindProfile({ plan: failedPlan, receipts: [failedReceipt] });
+    assert.equal(failedAggregate.status, 'blocked');
+    assert.deepEqual(failedAggregate.failedSlotIds, [`R3-07S-${spec.kind}-TASK-001`]);
+    assert.ok(failedAggregate.vetoes.includes(`aggregate-failed-slots-veto:R3-07F-${spec.kind}-PROFILE-PLAN:1`));
+    assert.ok(spec.permissionFaultChildReceipt(`aggregate-${spec.kind}-pf-visible`).violations.some(violation => violation.includes(spec.expectedFaultEvidence)));
+  });
+});
+
 function createSkillTaskChildReceipt(trigger) {
   return new SkillDiscoveryService().planExecution({
     prompt: `please use ${trigger}`,
@@ -1809,6 +1981,115 @@ function createCompleteHookDenominatorReceipts(service, plan) {
     receipts.push(receipt);
   }
   return receipts;
+}
+
+function createCompleteExtensionKindDenominatorReceipts(input) {
+  const receipts = [];
+  for (const slot of input.plan.taskSlots) {
+    const childId = `r3-07g-${input.kind}-task-${String(slot.index).padStart(3, '0')}`;
+    const receipt = input.service.recordSlotExecution({
+      plan: input.plan,
+      slotId: slot.slotId,
+      attemptId: `${childId}-attempt`,
+      status: 'passed',
+      childReceipt: input.taskChildReceipt(childId),
+    });
+    assert.equal(receipt.status, 'passed');
+    receipts.push(receipt);
+  }
+  for (const slot of input.plan.permissionFaultSlots) {
+    const childId = `r3-07g-${input.kind}-pf-${String(slot.index).padStart(3, '0')}`;
+    const receipt = input.service.recordSlotExecution({
+      plan: input.plan,
+      slotId: slot.slotId,
+      attemptId: `${childId}-attempt`,
+      status: 'passed',
+      childReceipt: input.permissionFaultChildReceipt(childId),
+    });
+    assert.equal(receipt.status, 'passed');
+    receipts.push(receipt);
+  }
+  return receipts;
+}
+
+function createMcpTaskChildReceipt(toolName) {
+  return new McpPermissionService().evaluateTrust({
+    tools: [
+      {
+        server: 'trusted',
+        name: toolName,
+        risk: 'read',
+        serverSignature: 'trusted-signature',
+        capabilityToken: `cap-${toolName}`,
+      },
+    ],
+    trustedServers: [
+      {
+        server: 'trusted',
+        signature: 'trusted-signature',
+        permissionDomains: ['inspect'],
+      },
+    ],
+    callerPermissionDomains: ['inspect'],
+  });
+}
+
+function createMcpPermissionFaultChildReceipt(toolName) {
+  return new McpPermissionService().evaluateTrust({
+    tools: [
+      {
+        server: 'unknown',
+        name: toolName,
+        risk: 'write',
+      },
+    ],
+    trustedServers: [],
+  });
+}
+
+function createPluginTaskChildReceipt(pluginId) {
+  const manifest = {
+    id: pluginId,
+    version: '1.0.0',
+    manifestDigest: `digest-${pluginId}`,
+    signature: `signature-${pluginId}`,
+  };
+  return new PluginSupplyChainService().evaluate({
+    manifests: [manifest],
+    approvedManifests: [manifest],
+    minimumVersions: { [pluginId]: '1.0.0' },
+  });
+}
+
+function createPluginPermissionFaultChildReceipt(pluginId) {
+  return new PluginSupplyChainService().evaluate({
+    manifests: [
+      {
+        id: pluginId,
+        version: '1.0.0',
+        manifestDigest: `digest-${pluginId}`,
+      },
+    ],
+    approvedManifests: [],
+  });
+}
+
+function createSubagentTaskChildReceipt(childId) {
+  return {
+    protocol: SUBAGENT_CONTRACT_PROTOCOL,
+    settlementAuthority: 'parent-kernel',
+    evidenceRefs: [`subagent-contract:${childId}`],
+    violations: [],
+  };
+}
+
+function createSubagentPermissionFaultChildReceipt(childId) {
+  return {
+    protocol: SUBAGENT_CONTRACT_PROTOCOL,
+    settlementAuthority: 'parent-kernel',
+    evidenceRefs: [`subagent-child-output:${childId}`],
+    violations: ['child-direct-effect-rejected'],
+  };
 }
 
 function createDeniedEditSkillReceipt() {

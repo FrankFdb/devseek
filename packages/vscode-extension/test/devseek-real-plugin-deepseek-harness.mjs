@@ -80,6 +80,93 @@ if (!fs.existsSync(bridgeServerPath)) {
   failEarly(`Bridge server 不存在：${bridgeServerPath}。请先构建 bridge。`);
 }
 
+const R3_KIND_AGGREGATE_FIXTURE_DETAILS = Object.freeze({
+  skill: Object.freeze({
+    schemaVersion: 'devseek.skill-execution/v1',
+    denominatorLines: Object.freeze([
+      '- Skill permission/fault evidence comes from SkillDiscoveryService permission denials.',
+    ]),
+    contractLines: Object.freeze([
+      'export const skillPermissionFaultOwner = "skillPermissionFaultViolations";',
+    ]),
+    promptLines: Object.freeze([
+      '- 为什么 Skill permission/fault slot 必须来自 SkillDiscoveryService permission denial 证据。',
+    ]),
+  }),
+  hook: Object.freeze({
+    schemaVersion: 'devseek.hook-policy/v1',
+    denominatorLines: Object.freeze([
+      '- Hook permission/fault evidence comes from HookPlanner and HookPolicy receipts.',
+      '- Accepted hook fault evidence includes hook-direct-writer-denied, hook-failure-visible, hook-bypass-visible, and sensitive-file.',
+      '- Skill receipts cannot qualify hook slots.',
+    ]),
+    contractLines: Object.freeze([
+      'export const hookPlanner = "HookPlanner";',
+      'export const hookPolicy = "HookPolicy";',
+      'export const hookPermissionFaultOwner = "hookPermissionFaultViolations";',
+      'export const wrongKindReceiptsRejected = "skill receipts cannot qualify hook slots";',
+    ]),
+    promptLines: Object.freeze([
+      '- 为什么 Hook permission/fault slot 必须来自 HookPolicy 证据，且 skill receipts cannot qualify hook slots。',
+      '- 为什么 hook-direct-writer-denied、hook-failure-visible、hook-bypass-visible 需要保留为可审计证据。',
+    ]),
+  }),
+  mcp: Object.freeze({
+    schemaVersion: 'devseek.mcp-trust/v1',
+    denominatorLines: Object.freeze([
+      '- MCP permission/fault evidence comes from McpPermissionService and MCP_TRUST_PROTOCOL receipts.',
+      '- Accepted MCP fault evidence includes mcp-unknown-mutable-veto, mcp-unsigned-server-veto, and mcp-permission-escape-veto.',
+      '- Skill receipts cannot qualify mcp slots.',
+    ]),
+    contractLines: Object.freeze([
+      'export const mcpPermissionService = "McpPermissionService";',
+      'export const mcpProtocolConstant = "MCP_TRUST_PROTOCOL";',
+      'export const mcpPermissionFaultOwner = "mcpPermissionFaultViolations";',
+      'export const wrongKindReceiptsRejected = "skill receipts cannot qualify mcp slots";',
+    ]),
+    promptLines: Object.freeze([
+      '- 为什么 MCP permission/fault slot 必须来自 MCP_TRUST_PROTOCOL 证据，且 skill receipts cannot qualify mcp slots。',
+      '- 为什么 mcp-unknown-mutable-veto、mcp-unsigned-server-veto、mcp-permission-escape-veto 需要保留为可审计证据。',
+    ]),
+  }),
+  plugin: Object.freeze({
+    schemaVersion: 'devseek.plugin-supply-chain/v1',
+    denominatorLines: Object.freeze([
+      '- Plugin permission/fault evidence comes from PluginSupplyChainService and PLUGIN_SUPPLY_CHAIN_PROTOCOL receipts.',
+      '- Accepted plugin fault evidence includes plugin-unsigned-veto, plugin-tampered-veto, and plugin-dependency-veto.',
+      '- Skill receipts cannot qualify plugin slots.',
+    ]),
+    contractLines: Object.freeze([
+      'export const pluginSupplyChainService = "PluginSupplyChainService";',
+      'export const pluginProtocolConstant = "PLUGIN_SUPPLY_CHAIN_PROTOCOL";',
+      'export const pluginPermissionFaultOwner = "pluginPermissionFaultViolations";',
+      'export const wrongKindReceiptsRejected = "skill receipts cannot qualify plugin slots";',
+    ]),
+    promptLines: Object.freeze([
+      '- 为什么 Plugin permission/fault slot 必须来自 PLUGIN_SUPPLY_CHAIN_PROTOCOL 证据，且 skill receipts cannot qualify plugin slots。',
+      '- 为什么 plugin-unsigned-veto、plugin-tampered-veto、plugin-dependency-veto 需要保留为可审计证据。',
+    ]),
+  }),
+  subagent: Object.freeze({
+    schemaVersion: 'devseek.subagent-contract/v1',
+    denominatorLines: Object.freeze([
+      '- Subagent contract permission/fault evidence comes from SUBAGENT_CONTRACT_PROTOCOL receipts.',
+      '- Accepted subagent fault evidence includes child-direct-effect-rejected and child-terminal-claim-rejected.',
+      '- Skill receipts cannot qualify subagent slots.',
+    ]),
+    contractLines: Object.freeze([
+      'export const subagentContractProtocolConstant = "SUBAGENT_CONTRACT_PROTOCOL";',
+      'export const subagentPermissionFaultOwner = "subagentPermissionFaultViolations";',
+      'export const subagentContractEvidence = "Subagent contract";',
+      'export const wrongKindReceiptsRejected = "skill receipts cannot qualify subagent slots";',
+    ]),
+    promptLines: Object.freeze([
+      '- 为什么 Subagent contract permission/fault slot 必须来自 SUBAGENT_CONTRACT_PROTOCOL 证据，且 skill receipts cannot qualify subagent slots。',
+      '- 为什么 child-direct-effect-rejected、child-terminal-claim-rejected 需要保留为可审计证据。',
+    ]),
+  }),
+});
+
 const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-real-plugin-deepseek-'));
 const usesExistingWorkspace = Boolean(workspaceDirArg);
 const workspaceDir = usesExistingWorkspace ? path.resolve(workspaceDirArg) : path.join(tmpRoot, 'workspace');
@@ -276,7 +363,11 @@ function defaultPrompt(root, fixture) {
 
 function createFixtureWorkspace(root, options = {}) {
   const scenarioSpec = buildRealPluginScenarioSpec(options.scenario);
-  if (scenarioSpec.id === 'r3-07g-skill-aggregate' || scenarioSpec.id === 'r3-07g-hook-aggregate') {
+  if (
+    scenarioSpec.profileKind
+    && scenarioSpec.id.startsWith('r3-07g-')
+    && scenarioSpec.id.endsWith('-aggregate')
+  ) {
     return createR3KindAggregateFixture(root, scenarioSpec);
   }
 
@@ -382,8 +473,8 @@ function createR3KindAggregateFixture(root, scenarioSpec) {
   const sourceDir = path.join(root, 'src/devseek-profile');
   const requestedOutputDoc = path.join(root, scenarioSpec.requestedOutputDocRel);
   const profileKind = scenarioSpec.profileKind || 'skill';
+  const detail = R3_KIND_AGGREGATE_FIXTURE_DETAILS[profileKind] ?? R3_KIND_AGGREGATE_FIXTURE_DETAILS.skill;
   const displayKind = profileKind.charAt(0).toUpperCase() + profileKind.slice(1);
-  const schemaVersion = profileKind === 'hook' ? 'devseek.hook-policy/v1' : 'devseek.skill-execution/v1';
   const denominatorPlanPath = path.join(docsDir, `${profileKind}-denominator-plan.md`);
   const contractPath = path.join(sourceDir, `${profileKind}-extension-profile-plan-service-contract.ts`);
   fs.mkdirSync(docsDir, { recursive: true });
@@ -403,31 +494,18 @@ function createR3KindAggregateFixture(root, scenarioSpec) {
     '- Parent owner: ExtensionProfilePlanService.',
     '- Aggregate settlement is read-only and must not execute child slots.',
     '- Blocking classes: missing/failed/vetoed/blocked/duplicate/foreign.',
-    ...(profileKind === 'hook'
-      ? [
-        '- Hook permission/fault evidence comes from HookPolicy receipts.',
-        '- Accepted hook fault evidence includes hook-direct-writer-denied, hook-failure-visible, hook-bypass-visible, and sensitive-file.',
-        '- Skill receipts cannot qualify hook slots.',
-      ]
-      : [
-        '- Skill permission/fault evidence comes from SkillDiscoveryService permission denials.',
-      ]),
+    ...detail.denominatorLines,
   ].join('\n'));
   writeText(contractPath, [
     'export const EXTENSION_PROFILE_KIND_AGGREGATE_PROTOCOL = "devseek.extension-profile-kind-aggregate/v1";',
     `export const profileKind = "${profileKind}";`,
-    `export const schemaVersion = "${schemaVersion}";`,
+    `export const schemaVersion = "${detail.schemaVersion}";`,
     'export const aggregateExecutionAllowed = false;',
     'export const slotExecutionAllowed = false;',
     `export const ${profileKind}TaskSlotCount = 20;`,
     `export const ${profileKind}PermissionFaultSlotCount = 100;`,
     'export const aggregateOwner = "ExtensionProfilePlanService";',
-    ...(profileKind === 'hook'
-      ? [
-        'export const hookPermissionFaultOwner = "hookPermissionFaultViolations";',
-        'export const wrongKindReceiptsRejected = "skill receipts cannot qualify hook slots";',
-      ]
-      : []),
+    ...detail.contractLines,
   ].join('\n'));
 
   const anchorLines = scenarioSpec.requiredArtifactSnippets
@@ -443,12 +521,7 @@ function createR3KindAggregateFixture(root, scenarioSpec) {
     '- 为什么 aggregate 只能读取已有 signed plan 和 owned slot receipts，不能在 aggregate 阶段执行 slot。',
     '- 为什么完整通过需要 20 task slots 与 100 permission-fault slots 全部有唯一 parent-owned passed receipt。',
     '- 为什么 missing/failed/vetoed/blocked/duplicate/foreign 任一类 receipt 都必须阻断结算。',
-    ...(profileKind === 'hook'
-      ? [
-        '- 为什么 Hook permission/fault slot 必须来自 HookPolicy 证据，且 skill receipts cannot qualify hook slots。',
-        '- 为什么 hook-direct-writer-denied、hook-failure-visible、hook-bypass-visible 需要保留为可审计证据。',
-      ]
-      : []),
+    ...detail.promptLines,
     '- 生成文件要包含本次测试结论、风险、验证建议和用户可检查的证据路径。',
     '',
     '报告必须逐字包含以下验收锚点：',

@@ -2021,6 +2021,9 @@ function extensionProfilePermissionFaultViolations(
 ): string[] {
   if (kind === 'skill') return skillPermissionFaultViolations(childReceipt);
   if (kind === 'hook') return hookPermissionFaultViolations(childReceipt);
+  if (kind === 'mcp') return mcpPermissionFaultViolations(childReceipt);
+  if (kind === 'plugin') return pluginPermissionFaultViolations(childReceipt);
+  if (kind === 'subagent') return subagentPermissionFaultViolations(childReceipt);
   return [];
 }
 
@@ -2030,6 +2033,9 @@ function requestedExtensionProfilePermissionFaultViolations(
 ): string[] {
   if (kind === 'skill') return requestedSkillPermissionFaultViolations(childReceipt);
   if (kind === 'hook') return hookPermissionFaultViolations(childReceipt);
+  if (kind === 'mcp') return mcpPermissionFaultViolations(childReceipt);
+  if (kind === 'plugin') return pluginPermissionFaultViolations(childReceipt);
+  if (kind === 'subagent') return subagentPermissionFaultViolations(childReceipt);
   return [];
 }
 
@@ -2049,6 +2055,65 @@ function isHookPermissionFaultViolation(violation: string): boolean {
     || violation.startsWith('hook-failure-visible:')
     || violation.startsWith('hook-bypass-visible:')
     || violation.startsWith('sensitive-file:')
+  );
+}
+
+function mcpPermissionFaultViolations(childReceipt: ExtensionProfileSlotChildReceipt): string[] {
+  const receipt = childReceipt as Partial<McpTrustReceipt>;
+  const childViolations = uniqueStrings([
+    ...(receipt.violations ?? []),
+    ...(receipt.vetoes ?? []),
+  ]);
+  return childViolations.filter(isMcpPermissionFaultViolation);
+}
+
+function isMcpPermissionFaultViolation(violation: string): boolean {
+  return (
+    violation.startsWith('mcp-revoked-server-veto:')
+    || violation.startsWith('mcp-unknown-mutable-veto:')
+    || violation.startsWith('mcp-unsigned-server-veto:')
+    || violation.startsWith('mcp-permission-escape-veto:')
+  );
+}
+
+function pluginPermissionFaultViolations(childReceipt: ExtensionProfileSlotChildReceipt): string[] {
+  const receipt = childReceipt as Partial<PluginSupplyChainReceipt>;
+  const childViolations = uniqueStrings([
+    ...(receipt.violations ?? []),
+    ...(receipt.vetoes ?? []),
+  ]);
+  return childViolations.filter(isPluginPermissionFaultViolation);
+}
+
+function isPluginPermissionFaultViolation(violation: string): boolean {
+  return (
+    violation.startsWith('plugin-unsigned-veto:')
+    || violation.startsWith('plugin-tampered-veto:')
+    || violation.startsWith('plugin-stale-version-veto:')
+    || violation.startsWith('plugin-revoked-veto:')
+    || violation.startsWith('plugin-dependency-veto:')
+    || violation.startsWith('plugin-downgrade-update-veto:')
+  );
+}
+
+function subagentPermissionFaultViolations(childReceipt: ExtensionProfileSlotChildReceipt): string[] {
+  const childViolations = uniqueStrings([
+    ...(childReceipt.violations ?? []),
+    ...(childReceipt.blockedReasons ?? []),
+    ...(childReceipt.vetoes ?? []),
+  ]);
+  return childViolations.filter(isSubagentPermissionFaultViolation);
+}
+
+function isSubagentPermissionFaultViolation(violation: string): boolean {
+  return (
+    violation === 'child-terminal-claim-rejected'
+    || violation === 'child-direct-effect-rejected'
+    || violation === 'child-result-after-cancel-rejected'
+    || violation === 'parallel-write-conflict'
+    || violation === 'orphan-child-result-rejected'
+    || violation === 'child-output-violation-rejected'
+    || violation.startsWith('subagent-')
   );
 }
 
