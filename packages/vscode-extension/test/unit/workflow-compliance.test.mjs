@@ -1462,6 +1462,15 @@ test('R3-07S-skill-PERMISSION-FAULT-042: Markdown link bodies cannot infer Skill
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-042 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-042 must have Markdown link inferred-trigger oracle');
 });
 
+test('R3-07S-skill-PERMISSION-FAULT-043: inline HTML bodies cannot infer Skill trigger evidence', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'SKILL_METADATA_BODY_HTML_BLOCK_MARKER', 'R3-07S-skill-PERMISSION-FAULT-043 must keep HTML body ownership in skillMetadataLines');
+  assertContains(sharedEnhancements, '(?:>.*)?', 'R3-07S-skill-PERMISSION-FAULT-043 must treat inline HTML body content as metadata boundary');
+  assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-043 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-043 must have inline HTML inferred-trigger oracle');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
