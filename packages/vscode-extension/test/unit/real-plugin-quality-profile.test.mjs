@@ -57,3 +57,40 @@ test('R3-07G real plugin scenario binds aggregate denominator artifact acceptanc
     'uav-warranty-reminder',
   ]);
 });
+
+test('R3-07G hook real plugin scenario binds hook-specific aggregate artifact acceptance', () => {
+  const profile = buildRealPluginQualityProfile('r3-07g-hook-aggregate');
+  const spec = buildRealPluginScenarioSpec('r3-07g-hook-aggregate');
+
+  assert.equal(profile.kind, 'iteration');
+  assert.equal(profile.minimumMarkdownBytes, 950);
+  assert.equal(profile.minimumMarkdownLines, 22);
+  assert.equal(profile.minimumMarkdownHeadings, 5);
+  assert.equal(profile.requireFormalProjectQuality, false);
+  assert.equal(spec.id, 'r3-07g-hook-aggregate');
+  assert.equal(spec.profileKind, 'hook');
+  assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
+  assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-07g-hook-aggregate-denominator.md');
+  assert.match(spec.promptTitle, /R3-07G-hook-AGGREGATE/);
+  assert.deepEqual(spec.requiredArtifactSnippets, [
+    'R3-07G-hook-AGGREGATE',
+    'ExtensionProfilePlanService',
+    'HookPlanner',
+    'HookPolicy',
+    '20 task slots',
+    '100 permission-fault slots',
+    'hook-direct-writer-denied',
+    'hook-failure-visible',
+    'hook-bypass-visible',
+    'skill receipts cannot qualify hook slots',
+    'aggregateExecutionAllowed: false',
+    'slotExecutionAllowed: false',
+  ]);
+  assert.deepEqual(spec.forbiddenArtifactSnippets, [
+    'warranty',
+    'UAV 吊运维保',
+    '维保提醒',
+    'maintenance_threshold_engine',
+    'uav-warranty-reminder',
+  ]);
+});

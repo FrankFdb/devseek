@@ -276,8 +276,8 @@ function defaultPrompt(root, fixture) {
 
 function createFixtureWorkspace(root, options = {}) {
   const scenarioSpec = buildRealPluginScenarioSpec(options.scenario);
-  if (scenarioSpec.id === 'r3-07g-skill-aggregate') {
-    return createR3SkillAggregateFixture(root, scenarioSpec);
+  if (scenarioSpec.id === 'r3-07g-skill-aggregate' || scenarioSpec.id === 'r3-07g-hook-aggregate') {
+    return createR3KindAggregateFixture(root, scenarioSpec);
   }
 
   const maintenanceDir = path.join(root, 'src/oam/src/lifting/maintenance');
@@ -377,10 +377,15 @@ function createFixtureWorkspace(root, options = {}) {
   };
 }
 
-function createR3SkillAggregateFixture(root, scenarioSpec) {
+function createR3KindAggregateFixture(root, scenarioSpec) {
   const docsDir = path.join(root, 'docs/r3-iteration');
   const sourceDir = path.join(root, 'src/devseek-profile');
   const requestedOutputDoc = path.join(root, scenarioSpec.requestedOutputDocRel);
+  const profileKind = scenarioSpec.profileKind || 'skill';
+  const displayKind = profileKind.charAt(0).toUpperCase() + profileKind.slice(1);
+  const schemaVersion = profileKind === 'hook' ? 'devseek.hook-policy/v1' : 'devseek.skill-execution/v1';
+  const denominatorPlanPath = path.join(docsDir, `${profileKind}-denominator-plan.md`);
+  const contractPath = path.join(sourceDir, `${profileKind}-extension-profile-plan-service-contract.ts`);
   fs.mkdirSync(docsDir, { recursive: true });
   fs.mkdirSync(sourceDir, { recursive: true });
   fs.mkdirSync(path.dirname(requestedOutputDoc), { recursive: true });
@@ -390,29 +395,46 @@ function createR3SkillAggregateFixture(root, scenarioSpec) {
     '',
     'This workspace is created by the visible real-plugin harness for the current R3 iteration.',
   ].join('\n'));
-  writeText(path.join(docsDir, 'skill-denominator-plan.md'), [
-    '# R3-07G Skill Denominator Plan',
+  writeText(denominatorPlanPath, [
+    `# R3-07G ${displayKind} Denominator Plan`,
     '',
-    '- Profile kind: skill',
+    `- Profile kind: ${profileKind}`,
     '- Required denominator: 20 task slots and 100 permission-fault slots.',
     '- Parent owner: ExtensionProfilePlanService.',
     '- Aggregate settlement is read-only and must not execute child slots.',
     '- Blocking classes: missing/failed/vetoed/blocked/duplicate/foreign.',
+    ...(profileKind === 'hook'
+      ? [
+        '- Hook permission/fault evidence comes from HookPolicy receipts.',
+        '- Accepted hook fault evidence includes hook-direct-writer-denied, hook-failure-visible, hook-bypass-visible, and sensitive-file.',
+        '- Skill receipts cannot qualify hook slots.',
+      ]
+      : [
+        '- Skill permission/fault evidence comes from SkillDiscoveryService permission denials.',
+      ]),
   ].join('\n'));
-  writeText(path.join(sourceDir, 'extension-profile-plan-service-contract.ts'), [
+  writeText(contractPath, [
     'export const EXTENSION_PROFILE_KIND_AGGREGATE_PROTOCOL = "devseek.extension-profile-kind-aggregate/v1";',
+    `export const profileKind = "${profileKind}";`,
+    `export const schemaVersion = "${schemaVersion}";`,
     'export const aggregateExecutionAllowed = false;',
     'export const slotExecutionAllowed = false;',
-    'export const skillTaskSlotCount = 20;',
-    'export const skillPermissionFaultSlotCount = 100;',
+    `export const ${profileKind}TaskSlotCount = 20;`,
+    `export const ${profileKind}PermissionFaultSlotCount = 100;`,
     'export const aggregateOwner = "ExtensionProfilePlanService";',
+    ...(profileKind === 'hook'
+      ? [
+        'export const hookPermissionFaultOwner = "hookPermissionFaultViolations";',
+        'export const wrongKindReceiptsRejected = "skill receipts cannot qualify hook slots";',
+      ]
+      : []),
   ].join('\n'));
 
   const anchorLines = scenarioSpec.requiredArtifactSnippets
     .map(snippet => `- ${snippet}`)
     .join('\n');
   const defaultPrompt = [
-    `请基于 ${path.join(docsDir, 'skill-denominator-plan.md')} 和 ${path.join(sourceDir, 'extension-profile-plan-service-contract.ts')} 创建 Markdown 审计报告。`,
+    `请基于 ${denominatorPlanPath} 和 ${contractPath} 创建 Markdown 审计报告。`,
     `请把报告保存到 ${requestedOutputDoc}。`,
     `报告主题是 ${scenarioSpec.promptTitle}。`,
     '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
@@ -421,6 +443,12 @@ function createR3SkillAggregateFixture(root, scenarioSpec) {
     '- 为什么 aggregate 只能读取已有 signed plan 和 owned slot receipts，不能在 aggregate 阶段执行 slot。',
     '- 为什么完整通过需要 20 task slots 与 100 permission-fault slots 全部有唯一 parent-owned passed receipt。',
     '- 为什么 missing/failed/vetoed/blocked/duplicate/foreign 任一类 receipt 都必须阻断结算。',
+    ...(profileKind === 'hook'
+      ? [
+        '- 为什么 Hook permission/fault slot 必须来自 HookPolicy 证据，且 skill receipts cannot qualify hook slots。',
+        '- 为什么 hook-direct-writer-denied、hook-failure-visible、hook-bypass-visible 需要保留为可审计证据。',
+      ]
+      : []),
     '- 生成文件要包含本次测试结论、风险、验证建议和用户可检查的证据路径。',
     '',
     '报告必须逐字包含以下验收锚点：',

@@ -1342,14 +1342,14 @@ export class ExtensionProfilePlanService {
     const childAuthenticityVetoes = childReceiptRequired && childReceipt && expectedChildProtocol === SKILL_EXECUTION_PROTOCOL
       ? skillExecutionReceiptAuthenticityVetoes(childReceipt, slotId)
       : [];
-    const expectedSkillPermissionFaultViolations = childReceiptRequired && childReceipt && isPermissionFaultSlot && expectedChildProtocol === SKILL_EXECUTION_PROTOCOL
-      ? skillPermissionFaultViolations(childReceipt)
+    const expectedPermissionFaultViolations = childReceiptRequired && childReceipt && isPermissionFaultSlot
+      ? extensionProfilePermissionFaultViolations(profileProjection.kind, childReceipt)
       : [];
-    const requestedPermissionFaultViolations = childReceiptRequired && childReceipt && isPermissionFaultSlot && expectedChildProtocol === SKILL_EXECUTION_PROTOCOL
-      ? requestedSkillPermissionFaultViolations(childReceipt)
+    const requestedPermissionFaultViolations = childReceiptRequired && childReceipt && isPermissionFaultSlot
+      ? requestedExtensionProfilePermissionFaultViolations(profileProjection.kind, childReceipt)
       : [];
     const unexpectedChildViolations = isPermissionFaultSlot
-      ? childViolations.filter(violation => !expectedSkillPermissionFaultViolations.includes(violation))
+      ? childViolations.filter(violation => !expectedPermissionFaultViolations.includes(violation))
       : childViolations;
     const permissionFaultEvidenceKey = requestedPermissionFaultViolations.length > 0
       ? createExtensionProfilePermissionFaultEvidenceKey({
@@ -1367,9 +1367,9 @@ export class ExtensionProfilePlanService {
         ...(childReceipt && isPermissionFaultSlot && childEvidenceRefs.length > 1 ? [`slot-child-permission-fault-evidence-ambiguous-veto:${slotId}`] : []),
         ...(childReceipt && childSettlementAuthority !== 'parent-kernel' ? [`slot-child-settlement-authority-veto:${slotId}`] : []),
         ...(unexpectedChildViolations.length > 0 ? [`slot-child-receipt-not-clean-veto:${slotId}`] : []),
-        ...(childReceipt && isPermissionFaultSlot && expectedSkillPermissionFaultViolations.length === 0 ? [`slot-child-permission-fault-missing-veto:${slotId}`] : []),
-        ...(childReceipt && isPermissionFaultSlot && expectedSkillPermissionFaultViolations.length > requestedPermissionFaultViolations.length ? [`slot-child-permission-fault-unrequested-veto:${slotId}`] : []),
-        ...(childReceipt && isPermissionFaultSlot && expectedSkillPermissionFaultViolations.length > 1 ? [`slot-child-permission-fault-ambiguous-veto:${slotId}`] : []),
+        ...(childReceipt && isPermissionFaultSlot && expectedPermissionFaultViolations.length === 0 ? [`slot-child-permission-fault-missing-veto:${slotId}`] : []),
+        ...(childReceipt && isPermissionFaultSlot && expectedPermissionFaultViolations.length > requestedPermissionFaultViolations.length ? [`slot-child-permission-fault-unrequested-veto:${slotId}`] : []),
+        ...(childReceipt && isPermissionFaultSlot && expectedPermissionFaultViolations.length > 1 ? [`slot-child-permission-fault-ambiguous-veto:${slotId}`] : []),
         ...(permissionFaultEvidenceKey && this.settledPermissionFaultEvidenceKeys.has(permissionFaultEvidenceKey) ? [`slot-permission-fault-evidence-reuse-veto:${slotId}`] : []),
         ...childAuthenticityVetoes,
       ])
@@ -2013,6 +2013,43 @@ function skillPermissionFaultViolations(childReceipt: ExtensionProfileSlotChildR
       .filter(Boolean),
   );
   return deniedReasons.filter(reason => childViolations.includes(reason));
+}
+
+function extensionProfilePermissionFaultViolations(
+  kind: ExtensionProfileKind,
+  childReceipt: ExtensionProfileSlotChildReceipt,
+): string[] {
+  if (kind === 'skill') return skillPermissionFaultViolations(childReceipt);
+  if (kind === 'hook') return hookPermissionFaultViolations(childReceipt);
+  return [];
+}
+
+function requestedExtensionProfilePermissionFaultViolations(
+  kind: ExtensionProfileKind,
+  childReceipt: ExtensionProfileSlotChildReceipt,
+): string[] {
+  if (kind === 'skill') return requestedSkillPermissionFaultViolations(childReceipt);
+  if (kind === 'hook') return hookPermissionFaultViolations(childReceipt);
+  return [];
+}
+
+function hookPermissionFaultViolations(childReceipt: ExtensionProfileSlotChildReceipt): string[] {
+  const receipt = childReceipt as Partial<HookPolicyReceipt>;
+  const childViolations = uniqueStrings([
+    ...(receipt.violations ?? []),
+    ...(receipt.blockedReasons ?? []),
+    ...(receipt.vetoes ?? []),
+  ]);
+  return childViolations.filter(isHookPermissionFaultViolation);
+}
+
+function isHookPermissionFaultViolation(violation: string): boolean {
+  return (
+    violation.startsWith('hook-direct-writer-denied:')
+    || violation.startsWith('hook-failure-visible:')
+    || violation.startsWith('hook-bypass-visible:')
+    || violation.startsWith('sensitive-file:')
+  );
 }
 
 function requestedSkillPermissionFaultViolations(childReceipt: ExtensionProfileSlotChildReceipt): string[] {

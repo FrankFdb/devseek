@@ -4,6 +4,7 @@ import {
   ExtensionProfilePlanService,
   GitPrAssistantService,
   HookPlanner,
+  HOOK_POLICY_PROTOCOL,
   McpPermissionService,
   PluginSupplyChainService,
   SkillDiscoveryService,
@@ -1527,6 +1528,149 @@ test('R3-07G-skill-AGGREGATE ExtensionProfilePlanService rejects duplicate forei
   assert.ok(failedAggregate.vetoes.includes('aggregate-failed-slots-veto:R3-07F-skill-PROFILE-PLAN:1'));
 });
 
+test('R3-07G-hook-AGGREGATE ExtensionProfilePlanService blocks incomplete hook denominator without executing slots', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'hook',
+    candidateCommit: '4545454545454545454545454545454545454545',
+    schemaVersion: HOOK_POLICY_PROTOCOL,
+  });
+  const taskReceipt = service.recordSlotExecution({
+    plan,
+    slotId: 'R3-07S-hook-TASK-001',
+    attemptId: 'r3-07g-hook-task-001',
+    status: 'passed',
+    childReceipt: createHookTaskChildReceipt('aggregate-hook-task-001'),
+  });
+  assert.equal(taskReceipt.status, 'passed');
+
+  const aggregate = service.aggregateKindProfile({ plan, receipts: [taskReceipt] });
+
+  assert.equal(aggregate.protocol, 'devseek.extension-profile-kind-aggregate/v1');
+  assert.equal(aggregate.profileId, 'R3-07F-hook-PROFILE-PLAN');
+  assert.equal(aggregate.kind, 'hook');
+  assert.equal(aggregate.status, 'blocked');
+  assert.equal(aggregate.aggregateExecutionAllowed, false);
+  assert.equal(aggregate.slotExecutionAllowed, false);
+  assert.equal(aggregate.requiredTaskSlotCount, 20);
+  assert.equal(aggregate.requiredPermissionFaultSlotCount, 100);
+  assert.equal(aggregate.passedTaskSlotCount, 1);
+  assert.equal(aggregate.passedPermissionFaultSlotCount, 0);
+  assert.equal(aggregate.missingSlotIds.length, 119);
+  assert.ok(aggregate.missingSlotIds.includes('R3-07S-hook-TASK-002'));
+  assert.ok(aggregate.missingSlotIds.includes('R3-07S-hook-PERMISSION-FAULT-100'));
+  assert.ok(aggregate.vetoes.includes('aggregate-missing-slots-veto:R3-07F-hook-PROFILE-PLAN:119'));
+});
+
+test('R3-07G-hook-AGGREGATE ExtensionProfilePlanService passes only a complete owned hook denominator', () => {
+  const service = new ExtensionProfilePlanService();
+  const plan = service.createProfilePlan({
+    kind: 'hook',
+    candidateCommit: '5656565656565656565656565656565656565656',
+    schemaVersion: HOOK_POLICY_PROTOCOL,
+  });
+  const receipts = createCompleteHookDenominatorReceipts(service, plan);
+
+  const aggregate = service.aggregateKindProfile({ plan, receipts });
+
+  assert.equal(receipts.length, 120);
+  assert.equal(aggregate.status, 'passed');
+  assert.equal(aggregate.passedTaskSlotCount, 20);
+  assert.equal(aggregate.passedPermissionFaultSlotCount, 100);
+  assert.deepEqual(aggregate.missingSlotIds, []);
+  assert.deepEqual(aggregate.failedSlotIds, []);
+  assert.deepEqual(aggregate.vetoedSlotIds, []);
+  assert.deepEqual(aggregate.blockedSlotIds, []);
+  assert.deepEqual(aggregate.duplicateSlotIds, []);
+  assert.deepEqual(aggregate.foreignSlotIds, []);
+  assert.deepEqual(aggregate.vetoes, []);
+  assert.ok(Object.isFrozen(aggregate));
+  assert.ok(Object.isFrozen(aggregate.evidenceRefs));
+  assert.ok(aggregate.evidenceRefs.some(ref => /^extension-profile-slot-execution:R3-07S-hook-TASK-020:/.test(ref)));
+  assert.ok(aggregate.evidenceRefs.some(ref => /^extension-profile-slot-execution:R3-07S-hook-PERMISSION-FAULT-100:/.test(ref)));
+});
+
+test('R3-07G-hook-AGGREGATE ExtensionProfilePlanService rejects duplicate foreign wrong-protocol and failed hook slot receipts', () => {
+  const duplicateService = new ExtensionProfilePlanService();
+  const duplicatePlan = duplicateService.createProfilePlan({
+    kind: 'hook',
+    candidateCommit: '6767676767676767676767676767676767676767',
+    schemaVersion: HOOK_POLICY_PROTOCOL,
+  });
+  const duplicateReceipts = createCompleteHookDenominatorReceipts(duplicateService, duplicatePlan);
+  const duplicateAggregate = duplicateService.aggregateKindProfile({
+    plan: duplicatePlan,
+    receipts: [...duplicateReceipts, duplicateReceipts[0]],
+  });
+  assert.equal(duplicateAggregate.status, 'blocked');
+  assert.deepEqual(duplicateAggregate.duplicateSlotIds, ['R3-07S-hook-TASK-001']);
+  assert.ok(duplicateAggregate.vetoes.includes('aggregate-duplicate-slots-veto:R3-07F-hook-PROFILE-PLAN:1'));
+
+  const ownerService = new ExtensionProfilePlanService();
+  const hookPlan = ownerService.createProfilePlan({
+    kind: 'hook',
+    candidateCommit: '7878787878787878787878787878787878787878',
+    schemaVersion: HOOK_POLICY_PROTOCOL,
+  });
+  const skillPlan = ownerService.createProfilePlan({
+    kind: 'skill',
+    candidateCommit: '7878787878787878787878787878787878787878',
+    schemaVersion: SKILL_EXECUTION_PROTOCOL,
+  });
+  const skillReceipt = ownerService.recordSlotExecution({
+    plan: skillPlan,
+    slotId: 'R3-07S-skill-TASK-001',
+    attemptId: 'r3-07g-skill-cannot-qualify-hook-task-001',
+    status: 'passed',
+    childReceipt: createSkillTaskChildReceipt('skill-cannot-qualify-hook'),
+  });
+  const foreignAggregate = ownerService.aggregateKindProfile({ plan: hookPlan, receipts: [skillReceipt] });
+  assert.equal(foreignAggregate.status, 'blocked');
+  assert.deepEqual(foreignAggregate.foreignSlotIds, ['R3-07S-skill-TASK-001']);
+  assert.ok(foreignAggregate.vetoes.includes('aggregate-foreign-receipts-veto:R3-07F-hook-PROFILE-PLAN:1'));
+  assert.ok(foreignAggregate.missingSlotIds.includes('R3-07S-hook-TASK-001'));
+
+  const wrongProtocolService = new ExtensionProfilePlanService();
+  const wrongProtocolPlan = wrongProtocolService.createProfilePlan({
+    kind: 'hook',
+    candidateCommit: '8989898989898989898989898989898989898989',
+    schemaVersion: HOOK_POLICY_PROTOCOL,
+  });
+  const wrongProtocolReceipt = wrongProtocolService.recordSlotExecution({
+    plan: wrongProtocolPlan,
+    slotId: 'R3-07S-hook-TASK-001',
+    attemptId: 'r3-07g-hook-task-001-wrong-protocol',
+    status: 'passed',
+    childReceipt: createSkillTaskChildReceipt('wrong-protocol-hook-child'),
+  });
+  assert.equal(wrongProtocolReceipt.status, 'blocked');
+  const wrongProtocolAggregate = wrongProtocolService.aggregateKindProfile({
+    plan: wrongProtocolPlan,
+    receipts: [wrongProtocolReceipt],
+  });
+  assert.equal(wrongProtocolAggregate.status, 'blocked');
+  assert.deepEqual(wrongProtocolAggregate.blockedSlotIds, ['R3-07S-hook-TASK-001']);
+  assert.ok(wrongProtocolAggregate.vetoes.includes('aggregate-blocked-slots-veto:R3-07F-hook-PROFILE-PLAN:1'));
+
+  const failedService = new ExtensionProfilePlanService();
+  const failedPlan = failedService.createProfilePlan({
+    kind: 'hook',
+    candidateCommit: '9090909090909090909090909090909090909090',
+    schemaVersion: HOOK_POLICY_PROTOCOL,
+  });
+  const failedReceipt = failedService.recordSlotExecution({
+    plan: failedPlan,
+    slotId: 'R3-07S-hook-TASK-001',
+    attemptId: 'r3-07g-hook-failed-task-001',
+    status: 'failed',
+    failureRefs: ['hook-failure:r3-07g-task-001'],
+  });
+  const failedAggregate = failedService.aggregateKindProfile({ plan: failedPlan, receipts: [failedReceipt] });
+  assert.equal(failedAggregate.status, 'blocked');
+  assert.deepEqual(failedAggregate.failedSlotIds, ['R3-07S-hook-TASK-001']);
+  assert.ok(failedAggregate.vetoes.includes('aggregate-failed-slots-veto:R3-07F-hook-PROFILE-PLAN:1'));
+});
+
 function createSkillTaskChildReceipt(trigger) {
   return new SkillDiscoveryService().planExecution({
     prompt: `please use ${trigger}`,
@@ -1589,6 +1733,77 @@ function createCompleteSkillDenominatorReceipts(service, plan) {
       attemptId: `${trigger}-attempt`,
       status: 'passed',
       childReceipt: createSkillPermissionFaultChildReceipt(trigger),
+    });
+    assert.equal(receipt.status, 'passed');
+    receipts.push(receipt);
+  }
+  return receipts;
+}
+
+function createHookTaskChildReceipt(hookId) {
+  return new HookPlanner().planPolicy({
+    stage: 'beforeValidate',
+    changedFiles: [`src/${hookId}.ts`],
+    hooks: [
+      {
+        id: hookId,
+        stage: 'beforeValidate',
+        command: `npm run check:${hookId}`,
+        fileGlobs: ['*.ts'],
+        description: 'Read-only hook evidence for the aggregate task denominator.',
+        policy: 'evidence',
+        effect: 'read',
+      },
+    ],
+    executions: [
+      {
+        hookId,
+        status: 'passed',
+      },
+    ],
+  });
+}
+
+function createHookPermissionFaultChildReceipt(hookId) {
+  return new HookPlanner().planPolicy({
+    stage: 'beforeValidate',
+    changedFiles: [`src/${hookId}.ts`],
+    hooks: [
+      {
+        id: hookId,
+        stage: 'beforeValidate',
+        command: `node rewrite-${hookId}.js`,
+        fileGlobs: ['*.ts'],
+        description: 'Attempts a direct source rewrite and must remain parent-veto evidence.',
+        policy: 'veto',
+        effect: 'write',
+      },
+    ],
+  });
+}
+
+function createCompleteHookDenominatorReceipts(service, plan) {
+  const receipts = [];
+  for (const slot of plan.taskSlots) {
+    const hookId = `r3-07g-hook-task-${String(slot.index).padStart(3, '0')}`;
+    const receipt = service.recordSlotExecution({
+      plan,
+      slotId: slot.slotId,
+      attemptId: `${hookId}-attempt`,
+      status: 'passed',
+      childReceipt: createHookTaskChildReceipt(hookId),
+    });
+    assert.equal(receipt.status, 'passed');
+    receipts.push(receipt);
+  }
+  for (const slot of plan.permissionFaultSlots) {
+    const hookId = `r3-07g-hook-pf-${String(slot.index).padStart(3, '0')}`;
+    const receipt = service.recordSlotExecution({
+      plan,
+      slotId: slot.slotId,
+      attemptId: `${hookId}-attempt`,
+      status: 'passed',
+      childReceipt: createHookPermissionFaultChildReceipt(hookId),
     });
     assert.equal(receipt.status, 'passed');
     receipts.push(receipt);

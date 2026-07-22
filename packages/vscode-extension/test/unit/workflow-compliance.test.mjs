@@ -1103,7 +1103,8 @@ test('R3-07S-skill-PERMISSION-FAULT-001: permission/fault slots must own expecte
 
   assertContains(sharedEnhancements, 'extension-profile-slot-permission-fault', 'R3-07S-skill-PERMISSION-FAULT-001 must project owner-scoped permission/fault evidence');
   assertContains(sharedEnhancements, 'createExtensionProfileSlotPermissionFaultRefs', 'R3-07S-skill-PERMISSION-FAULT-001 must derive permission/fault refs in the profile owner');
-  assertContains(sharedEnhancements, 'expectedSkillPermissionFaultViolations', 'R3-07S-skill-PERMISSION-FAULT-001 must distinguish expected skill denial from dirty child receipt');
+  assertContains(sharedEnhancements, 'expectedPermissionFaultViolations', 'R3-07S-skill-PERMISSION-FAULT-001 must distinguish expected permission/fault evidence from dirty child receipt');
+  assertContains(sharedEnhancements, 'skillPermissionFaultViolations', 'R3-07S-skill-PERMISSION-FAULT-001 must preserve skill-specific denial evidence under the kind-aware owner');
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-001 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-001 must have expected permission denial oracle');
 });
 
@@ -1122,7 +1123,7 @@ test('R3-07S-skill-PERMISSION-FAULT-003: permission/fault evidence must describe
   const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
 
   assertContains(sharedEnhancements, 'slot-child-permission-fault-ambiguous-veto', 'R3-07S-skill-PERMISSION-FAULT-003 must veto ambiguous multi-denial permission/fault evidence');
-  assertContains(sharedEnhancements, 'expectedSkillPermissionFaultViolations.length > 1', 'R3-07S-skill-PERMISSION-FAULT-003 must detect multi-denial evidence in the profile owner');
+  assertContains(sharedEnhancements, 'expectedPermissionFaultViolations.length > 1', 'R3-07S-skill-PERMISSION-FAULT-003 must detect multi-denial evidence in the profile owner');
   assertContains(sharedTests, 'R3-07S-skill-PERMISSION-FAULT-003 ExtensionProfilePlanService', 'R3-07S-skill-PERMISSION-FAULT-003 must have ambiguous denial oracle');
 });
 
@@ -1721,6 +1722,21 @@ test('R3-07G-skill-AGGREGATE: skill denominator aggregation is read-only and par
   assertContains(sharedTests, 'R3-07G-skill-AGGREGATE ExtensionProfilePlanService rejects duplicate foreign and failed skill slot receipts', 'R3-07G-skill aggregate must have duplicate/foreign/failed receipt oracles');
 });
 
+test('R3-07G-hook-AGGREGATE: hook denominator aggregation is kind-specific and parent-owned', () => {
+  const sharedEnhancements = src('../shared/src/agent-enhancements.ts');
+  const sharedTests = src('../shared/test/agent-enhancements.test.mjs');
+
+  assertContains(sharedEnhancements, 'extensionProfilePermissionFaultViolations', 'R3-07G-hook aggregate must use kind-aware permission/fault settlement');
+  assertContains(sharedEnhancements, 'hookPermissionFaultViolations', 'Hook permission/fault slots must be owned by HookPolicy evidence');
+  assertContains(sharedEnhancements, "violation.startsWith('hook-direct-writer-denied:')", 'Hook direct-writer refusal must qualify only as hook permission/fault evidence');
+  assertContains(sharedEnhancements, "violation.startsWith('hook-failure-visible:')", 'Hook failure visibility must qualify only as hook permission/fault evidence');
+  assertContains(sharedEnhancements, "violation.startsWith('hook-bypass-visible:')", 'Hook bypass visibility must qualify only as hook permission/fault evidence');
+  assertContains(sharedTests, 'R3-07G-hook-AGGREGATE ExtensionProfilePlanService blocks incomplete hook denominator', 'R3-07G-hook aggregate must have an incomplete denominator oracle');
+  assertContains(sharedTests, 'R3-07G-hook-AGGREGATE ExtensionProfilePlanService passes only a complete owned hook denominator', 'R3-07G-hook aggregate must have a complete denominator oracle');
+  assertContains(sharedTests, 'R3-07G-hook-AGGREGATE ExtensionProfilePlanService rejects duplicate foreign wrong-protocol and failed hook slot receipts', 'R3-07G-hook aggregate must reject duplicate, wrong-kind, wrong-protocol, and failed receipts');
+  assertContains(sharedTests, 'skill-cannot-qualify-hook', 'R3-07G-hook aggregate must prove skill receipts cannot qualify hook slots');
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // §九: Vision / image input
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2278,14 +2294,19 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   const profile = src('test/harness/real-plugin-quality-profile.mjs');
   assertContains(profile, 'buildRealPluginScenarioSpec', 'real harness must expose named scenario contracts');
   assertContains(profile, 'r3-07g-skill-aggregate', 'R3-07G must have a dedicated real-plugin scenario');
+  assertContains(profile, 'r3-07g-hook-aggregate', 'R3-07G hook iteration must have a fresh dedicated real-plugin scenario');
   assertContains(profile, 'markdown-file-deliverable', 'R3-07G scenario must stay on a Markdown file deliverable route');
   assertContains(profile, 'r3-07g-skill-aggregate-denominator.md', 'R3-07G scenario must write a distinct artifact');
+  assertContains(profile, 'r3-07g-hook-aggregate-denominator.md', 'R3-07G hook scenario must write a distinct artifact');
   assertContains(profile, '20 task slots', 'R3-07G artifact gate must assert the task denominator');
   assertContains(profile, '100 permission-fault slots', 'R3-07G artifact gate must assert the permission-fault denominator');
+  assertContains(profile, 'hook-direct-writer-denied', 'R3-07G hook artifact gate must assert hook permission/fault evidence');
+  assertContains(profile, 'skill receipts cannot qualify hook slots', 'R3-07G hook artifact gate must reject cross-kind settlement');
   assertContains(profile, 'missing/failed/vetoed/blocked/duplicate/foreign', 'R3-07G artifact gate must assert aggregate veto classes');
   assertContains(profile, 'minimumMarkdownLines', 'R3-07G artifact gate must check scenario-specific document shape');
   assertContains(profile, 'forbiddenArtifactSnippets', 'R3-07G artifact gate must reject stale benchmark-domain artifacts');
   assertContains(profile, 'uav-warranty-reminder', 'R3-07G artifact gate must reject the old warranty simulation artifact family');
+  assertContains(harness, 'createR3KindAggregateFixture', 'real harness must share the R3 kind aggregate fixture instead of duplicating skill/hook setup');
   assertContains(harness, 'scenarioSpec.requiredArtifactSnippets', 'real harness must combine scenario-specific content gates');
   assertContains(harness, 'forbiddenArtifactSnippets', 'real harness must enforce scenario-specific forbidden content gates');
   assertContains(harness, 'shapeQuality', 'real harness must enforce scenario-specific Markdown shape gates');
