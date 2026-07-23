@@ -116,6 +116,82 @@ test('Agent auto validation: passing verifier cannot settle a weak requirement o
   }
 });
 
+test('Agent auto validation: scoped source-backed Markdown audit skips formal project gate', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-scoped-audit-'));
+  try {
+    const docsDir = path.join(root, 'docs/r3-iteration');
+    const srcDir = path.join(root, 'src/deepseek-web-health');
+    mkdirSync(docsDir, { recursive: true });
+    mkdirSync(srcDir, { recursive: true });
+    const matrix = path.join(docsDir, 'deepseek-login-ready-state-matrix.md');
+    const contract = path.join(srcDir, 'deepseek-login-ready-state-contract.ts');
+    const target = path.join(docsDir, 'r3-live-deepseek-login-ready-state.md');
+    writeFileSync(matrix, '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE\n');
+    writeFileSync(contract, 'export const owner = "BridgeHealthCheck";\n');
+    writeFileSync(target, [
+      '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE 审计报告',
+      '',
+      '## 源项目事实矩阵',
+      '',
+      '| 事实项 | 证据来源 | 证据值 |',
+      '|--------|----------|--------|',
+      '| Leaf | `deepseek-login-ready-state-matrix.md:1` | `R3-LIVE-DEEPSEEK-LOGIN-READY-STATE` |',
+      '| Owner | `deepseek-login-ready-state-contract.ts:1` | `BridgeHealthCheck` |',
+      '',
+      '## 验收锚点',
+      '',
+      '- `R3-LIVE-DEEPSEEK-LOGIN-READY-STATE`',
+      '- `BridgeHealthCheck`',
+      '- `plugin-opened DeepSeek page`',
+    ].join('\n'));
+
+    const statuses = [];
+    const validationService = {
+      validateWorkspaceChanges: async () => ({
+        ran: true,
+        ok: true,
+        status: 'passed',
+        command: "test -f 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md'",
+        exitCode: 0,
+        output: 'ok',
+        cwd: root,
+        mode: 'file-check',
+        reason: 'non-code-file-validation',
+        risks: [],
+        alternativeChecks: [],
+      }),
+    };
+    const prompt = [
+      `请基于 ${matrix} 和 ${contract} 创建 Markdown 审计报告。`,
+      `请把报告保存到 ${target}。`,
+      '报告主题是 R3-LIVE-DEEPSEEK-LOGIN-READY-STATE plugin-opened DeepSeek login readiness audit。',
+      '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+      '报告必须包含以下验收锚点：',
+      '- R3-LIVE-DEEPSEEK-LOGIN-READY-STATE',
+      '- BridgeHealthCheck',
+      '- plugin-opened DeepSeek page',
+    ].join('\n');
+
+    const result = await runAgentAutoValidationForWrites(
+      [{ path: target, basename: 'r3-live-deepseek-login-ready-state.md', linesAdded: 14, linesRemoved: 0, action: 'create' }],
+      root,
+      prompt,
+      makeCallbacks(statuses, []),
+      'conservative',
+      { validationService },
+    );
+
+    assert.equal(result.evidence.ok, true);
+    assert.doesNotMatch(result.feedbackForAI || '', /formal_project_markdown_quality|正式项目 Markdown 质量门禁/);
+    assert.equal(
+      statuses.some(status => status.state === 'failed' && /正式项目质量门禁未通过/.test(status.title)),
+      false,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Agent auto validation: failed validation blocks completion evidence', async () => {
   const validationService = {
     validateWorkspaceChanges: async () => ({

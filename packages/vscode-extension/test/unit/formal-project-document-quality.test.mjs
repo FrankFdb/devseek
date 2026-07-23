@@ -28,6 +28,36 @@ const prompt = [
   '完成遥控器和主控的交互接口设计，主控逻辑实现设计，并添加代码实现和自闭环验证。',
 ].join('\n');
 
+test('formal project quality: scoped source-backed Markdown audit is not a formal project document', () => {
+  const auditPrompt = [
+    '请基于 /tmp/workspace/docs/r3-iteration/deepseek-login-ready-state-matrix.md 和 /tmp/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts 创建 Markdown 审计报告。',
+    '请把报告保存到 /tmp/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md。',
+    '报告主题是 R3-LIVE-DEEPSEEK-LOGIN-READY-STATE plugin-opened DeepSeek login readiness audit。',
+    '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+    '报告正文请使用与本测试 case 相同的中文撰写；技术标识符、协议名、文件路径和验收锚点保持原文。',
+  ].join('\n');
+  const doc = [
+    '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE 审计报告',
+    '',
+    '## 源项目事实矩阵',
+    '',
+    '| 事实项 | 证据来源 | 证据值 |',
+    '|--------|----------|--------|',
+    '| Leaf | `deepseek-login-ready-state-matrix.md:1` | `R3-LIVE-DEEPSEEK-LOGIN-READY-STATE` |',
+    '| Owner | `deepseek-login-ready-state-contract.ts:2` | `BridgeHealthCheck` |',
+    '',
+    '## 结论',
+    '',
+    '`plugin-opened DeepSeek page` 和 `chatInput evidence` 只用于本轮静态审计。',
+  ].join('\n');
+
+  const quality = assessFormalProjectDocumentQuality(doc, auditPrompt);
+
+  assert.equal(quality.required, false);
+  assert.equal(quality.ok, true);
+  assert.deepEqual(quality.reasons, []);
+});
+
 test('formal project quality: generic reference document is rejected', () => {
   const doc = [
     '# 无人机维保提醒接口设计',

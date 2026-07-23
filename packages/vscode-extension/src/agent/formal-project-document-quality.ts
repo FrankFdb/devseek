@@ -1,4 +1,4 @@
-import { buildTaskContract, hasQualityObligation } from './task-contract';
+import { buildTaskContract, hasQualityObligation, type TaskContract } from './task-contract';
 import {
   buildTaskSemanticContract,
   requiresFormalProjectQuality,
@@ -57,6 +57,10 @@ const PROJECT_COMMUNICATION_ENTRY_RE = /(?:uart\d+_(?:tx|rx)_main\.(?:c|cc|cpp|h
 const COMMUNICATION_TRANSPORT_SIGNAL_RE = /(?:TunnelTransport|tunnel_transport|license_tunnel_transport|分片传输|分片组装|MAVLINK_MSG_TUNNEL|payload_type|HDStringPublisher|HDStringSubscriber|Publisher|Subscriber|topic|sessionId|payloadLen|totalLen|crc32|route|路由|调度|uart\d+)/gi;
 const UART_OR_EQUIVALENT_COMMUNICATION_ENTRY_RE = /(?:uart\d*[_-]?(?:tx|rx)(?:_main)?|(?:tx|rx)_main|串口(?:发送|接收|收发)?入口|全项目搜索.{0,80}(?:uart|_tx_main|_rx_main)|(?:未找到|不存在|无需).{0,80}(?:uart|_tx_main|_rx_main).{0,80}(?:证据|原因|等价通道))/i;
 const UNRESOLVED_PROJECT_FACT_RE = /(?:(?:待确认|待分配|待定|建议范围|后续确认|TODO|TBD|FIXME).{0,100}(?:注入点|命令号|command|MAV_CMD|topic|通道|通讯|通信|接口|schema|字段|文件|函数|类|路径|集成点)|(?:注入点|命令号|command|MAV_CMD|topic|通道|通讯|通信|接口|schema|字段|文件|函数|类|路径|集成点).{0,100}(?:待确认|待分配|待定|建议范围|后续确认|TODO|TBD|FIXME))/i;
+const SCOPED_MARKDOWN_AUDIT_RE = /(?:审计|审核|核对|检查|audit|report|报告|调查|分析)/i;
+const SINGLE_MARKDOWN_DELIVERABLE_RE = /(?:只允许|仅允许|只能|只(?:创建|生成|写入|保存)|仅(?:创建|生成|写入|保存)|only)[^，,。；;\n]{0,80}(?:一份|一个|1\s*个|one|single)[^，,。；;\n]{0,80}(?:Markdown|md|\.md|文档|报告|文件)/i;
+const SOURCE_CHANGE_PROHIBITED_RE = /(?:不要|禁止|不允许|不得)[^，,。；;\n]{0,40}(?:修改|改动|触碰|新增|创建|写入|修复|重构)[^，,。；;\n]{0,24}(?:源码|代码|source|code)|(?:do not|don't|must not|should not|never)[^,.;\n]{0,60}(?:modify|change|touch|add|write|fix|repair|refactor)[^,.;\n]{0,30}(?:source|code)/i;
+const COMMAND_VALIDATION_PROHIBITED_RE = /(?:不要|禁止|不允许|不得|无需|无须)[^，,。；;\n]{0,40}(?:运行|执行|编译|测试|构建)[^，,。；;\n]{0,24}(?:命令|测试|编译|构建)?|(?:do not|don't|must not|should not|never)[^,.;\n]{0,60}(?:run|execute|compile|test|build)/i;
 
 export function normalizeFormalProjectMarkdown(text: string): FormalProjectMarkdownNormalization {
   const lines = String(text || '').split(/\r?\n/);
@@ -91,6 +95,27 @@ export function normalizeFormalProjectMarkdown(text: string): FormalProjectMarkd
   };
 }
 
+function isMarkdownDeliverableTarget(target: string): boolean {
+  return /\.(?:md|markdown)$/i.test(target.trim());
+}
+
+function isScopedSourceBackedMarkdownAudit(prompt: string, contract: TaskContract): boolean {
+  const hasSingleMarkdownTarget = contract.deliverableTargets.length === 1
+    && isMarkdownDeliverableTarget(contract.deliverableTargets[0] ?? '');
+  const hasEngineeringDeliveryObligation = contract.deliverables.includes('source-change')
+    || hasQualityObligation(contract, 'interface-contract')
+    || hasQualityObligation(contract, 'modification-plan')
+    || hasQualityObligation(contract, 'project-communication-chain')
+    || hasQualityObligation(contract, 'validation');
+
+  return hasSingleMarkdownTarget
+    && SCOPED_MARKDOWN_AUDIT_RE.test(prompt)
+    && SINGLE_MARKDOWN_DELIVERABLE_RE.test(prompt)
+    && SOURCE_CHANGE_PROHIBITED_RE.test(prompt)
+    && COMMAND_VALIDATION_PROHIBITED_RE.test(prompt)
+    && !hasEngineeringDeliveryObligation;
+}
+
 export function assessFormalProjectDocumentQuality(
   text: string,
   promptText = '',
@@ -106,7 +131,8 @@ export function assessFormalProjectDocumentQuality(
   const requiresModificationPlan = hasQualityObligation(contract, 'modification-plan');
   const requiresSourceEvidence = hasQualityObligation(contract, 'source-evidence');
   const requiresProtocolFacts = hasQualityObligation(contract, 'protocol-facts');
-  const required = requiresFormalProjectQuality(semanticContract);
+  const scopedMarkdownAudit = isScopedSourceBackedMarkdownAudit(prompt, contract);
+  const required = requiresFormalProjectQuality(semanticContract) && !scopedMarkdownAudit;
   const sourceReferenceCount = countMatches(content, SOURCE_REFERENCE_RE);
   const numericFactCount = countMatches(stripLikelyLineCountRows(content), NUMERIC_FACT_RE);
   const protocolSignalCount = countMatches(content, PROTOCOL_SIGNAL_RE);
