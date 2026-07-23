@@ -2414,6 +2414,12 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(profile, 'allow/replan/blocked', 'R3-09B artifact gate must assert the decision triad');
   assertContains(profile, 'safety-and-acceptance-protected', 'R3-09B artifact gate must assert safety and acceptance protection');
   assertContains(profile, 'no-progress-budget-exhausted', 'R3-09B artifact gate must assert bounded no-progress exhaustion');
+  assertContains(profile, 'r3-live-deepseek-login-ready-state', 'R3 live provider must add a fresh DeepSeek login-ready real-plugin scenario');
+  assertContains(profile, 'r3-live-deepseek-login-ready-state.md', 'R3 live login-ready scenario must write a distinct artifact');
+  assertContains(profile, 'plugin-opened DeepSeek page', 'R3 live login-ready artifact gate must assert the plugin-opened user path');
+  assertContains(profile, 'chatInput evidence', 'R3 live login-ready artifact gate must assert chat input evidence');
+  assertContains(profile, 'login-state-not-send-button', 'R3 live login-ready artifact gate must separate login state from send button readiness');
+  assertContains(profile, 'send button selector drift is not LOGIN_REQUIRED', 'R3 live login-ready artifact gate must reject relogin misclassification');
   assertContains(repairPolicy, 'RUN_BUDGET_POLICY_PROTOCOL', 'R3-09B must define the budget policy protocol in the existing repair policy owner');
   assertContains(repairPolicy, 'function decideRunBudgetPolicy', 'R3-09B budget decisions must be owned by bounded-repair-policy');
   assertContains(repairPolicy, 'RUN_BUDGET_REQUIRED_PHASES', 'R3-09B must protect required safety and acceptance phases');
@@ -2427,6 +2433,7 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(harness, 'createR3MacOSConformanceFixture', 'real harness must add the R3-08F macOS conformance fixture');
   assertContains(harness, 'createR3RunMetricsSchemaFixture', 'real harness must add the R3-09A run metrics schema fixture');
   assertContains(harness, 'createR3BudgetPolicyDecisionFixture', 'real harness must add the R3-09B budget policy fixture');
+  assertContains(harness, 'createR3LiveDeepSeekLoginReadyStateFixture', 'real harness must add the R3 live DeepSeek login-ready fixture');
   assertContains(harness, 'webview-accessibility-surface-contract.ts', 'R3-08C fixture must expose an accessibility contract instead of only prompt text');
   assertContains(harness, 'vscode-surface-adapter-collaboration-contract.ts', 'R3-08A fixture must expose a source contract instead of only prompt text');
   assertContains(harness, 'linux-platform-conformance-contract.ts', 'R3-08D fixture must expose a platform conformance contract instead of only prompt text');
@@ -2434,6 +2441,7 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(harness, 'macos-platform-conformance-contract.ts', 'R3-08F fixture must expose a macOS conformance contract instead of only prompt text');
   assertContains(harness, 'run-metrics-schema-contract.ts', 'R3-09A fixture must expose a run metrics schema contract instead of only prompt text');
   assertContains(harness, 'budget-policy-decision-contract.ts', 'R3-09B fixture must expose a budget policy contract instead of only prompt text');
+  assertContains(harness, 'deepseek-login-ready-state-contract.ts', 'R3 live login-ready fixture must expose a DeepSeek health contract instead of only prompt text');
   assertContains(harness, 'R3_KIND_AGGREGATE_FIXTURE_DETAILS', 'real harness must keep R3 kind fixture data table-driven');
   assert.ok(
     harness.indexOf('const R3_KIND_AGGREGATE_FIXTURE_DETAILS') < harness.indexOf('const fixture = usesExistingWorkspace'),
@@ -3491,7 +3499,7 @@ test('R2-07D: DeepSeek Web connector owns auth/session/page/DOM fingerprint heal
   assertContains(bridgeClient, 'loggedInLikely', 'Bridge client status type must carry loggedInLikely');
   assertContains(bridgeProvider, 'BridgeHealthMonitor', 'BridgeProvider availability must use the shared health evaluator');
   assertContains(uiProvider, 'bridgeStatus?.loggedInLikely', 'UI status must not treat browserReady as login');
-  assertContains(contract, 'fails closed with diagnostic DOM fingerprint when chat page drifts', 'R2-07D must have a drift oracle');
+  assertContains(contract, 'keeps plugin-opened login state when only the send button selector drifts', 'R2-07D must have a plugin-opened login drift oracle');
 
   assertDoesNotContain(bridgeProvider, 'DEEPSEEK_DOM_SELECTORS', 'Extension provider must not import DeepSeek DOM selectors');
   assertDoesNotContain(bridgeProvider, 'document.querySelector', 'Extension provider must not inspect DOM');

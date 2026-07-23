@@ -363,6 +363,9 @@ function defaultPrompt(root, fixture) {
 
 function createFixtureWorkspace(root, options = {}) {
   const scenarioSpec = buildRealPluginScenarioSpec(options.scenario);
+  if (scenarioSpec.id === 'r3-live-deepseek-login-ready-state') {
+    return createR3LiveDeepSeekLoginReadyStateFixture(root, scenarioSpec);
+  }
   if (scenarioSpec.id === 'r3-09b-budget-policy-decision') {
     return createR3BudgetPolicyDecisionFixture(root, scenarioSpec);
   }
@@ -1136,6 +1139,77 @@ function createR3BudgetPolicyDecisionFixture(root, scenarioSpec) {
     '- 为什么 no-progress-budget-exhausted 必须给无进展循环设置有界停止。',
     '- 为什么固定旧 case、固定文件行数、R3-09A metrics artifact 或只看 release smoke 不能结算本轮。',
     '- 生成文件要包含策略结论、风险、验证建议和用户可检查的证据路径。',
+    '',
+    '报告必须逐字包含以下验收锚点：',
+    anchorLines,
+  ].join('\n');
+
+  return {
+    requestedOutputDoc,
+    expectedArtifactRel: scenarioSpec.expectedArtifactRel,
+    scenarioSpec,
+    defaultPrompt,
+  };
+}
+
+function createR3LiveDeepSeekLoginReadyStateFixture(root, scenarioSpec) {
+  const docsDir = path.join(root, 'docs/r3-iteration');
+  const sourceDir = path.join(root, 'src/deepseek-web-health');
+  const requestedOutputDoc = path.join(root, scenarioSpec.requestedOutputDocRel);
+  const matrixPath = path.join(docsDir, 'deepseek-login-ready-state-matrix.md');
+  const contractPath = path.join(sourceDir, 'deepseek-login-ready-state-contract.ts');
+  fs.mkdirSync(docsDir, { recursive: true });
+  fs.mkdirSync(sourceDir, { recursive: true });
+  fs.mkdirSync(path.dirname(requestedOutputDoc), { recursive: true });
+
+  writeText(path.join(root, 'README.md'), [
+    '# DevSeek R3 live DeepSeek login-ready fixture',
+    '',
+    'This workspace is created by the visible real-plugin harness for the current R3 live-provider iteration.',
+  ].join('\n'));
+  writeText(matrixPath, [
+    '# R3 Live DeepSeek Login Ready State Matrix',
+    '',
+    '- Leaf: R3-LIVE-DEEPSEEK-LOGIN-READY-STATE.',
+    '- Owner boundary: BridgeHealthCheck owns DeepSeek Web connector login and readiness classification.',
+    '- Protocol: devseek.deepseek-web-connector-health/v1.',
+    '- User path: the plugin-opened DeepSeek page is the observed session.',
+    '- Login evidence: loggedInLikely must stay true when loggedInIndicator and chatInput evidence are present.',
+    '- Selector drift evidence: deepseek-dom-send-button-missing remains a diagnostic readiness reason.',
+    '- Settlement rule: send button selector drift is not LOGIN_REQUIRED.',
+    '- Safety rule: chatInput evidence is required; missing chatInput still blocks login.',
+    '- Fixed old warranty Markdown, fixed line-count output, and R3-09B budget artifacts cannot settle this live-provider case.',
+  ].join('\n'));
+  writeText(contractPath, [
+    'export const r3Leaf = "R3-LIVE-DEEPSEEK-LOGIN-READY-STATE";',
+    'export const owner = "BridgeHealthCheck";',
+    'export const changedSurface = "deepseek-web-login-ready-health";',
+    'export const protocol = "devseek.deepseek-web-connector-health/v1";',
+    'export const userPath = "plugin-opened DeepSeek page";',
+    'export const loginSignal = "loggedInLikely";',
+    'export const requiredInputEvidence = "chatInput evidence";',
+    'export const selectorDrift = "deepseek-dom-send-button-missing";',
+    'export const loginBoundary = "login-state-not-send-button";',
+    'export const notLoginRequired = "send button selector drift is not LOGIN_REQUIRED";',
+    'export const staleCaseRejected = "not fixed line-count smoke";',
+  ].join('\n'));
+
+  const anchorLines = scenarioSpec.requiredArtifactSnippets
+    .map(snippet => `- ${snippet}`)
+    .join('\n');
+  const defaultPrompt = [
+    `请基于 ${matrixPath} 和 ${contractPath} 创建 Markdown 审计报告。`,
+    `请把报告保存到 ${requestedOutputDoc}。`,
+    `报告主题是 ${scenarioSpec.promptTitle}。`,
+    '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+    '',
+    '报告必须解释：',
+    '- 为什么通过插件按钮打开的 DeepSeek 页面就是当前 bridge 会话的用户路径，不能把它误认为另一个浏览器登录。',
+    '- 为什么 loggedInIndicator 与 chatInput evidence 已存在时，loggedInLikely 必须为 true。',
+    '- 为什么 deepseek-dom-send-button-missing 只能说明发送按钮 selector/ready 状态漂移，不能被结算成 LOGIN_REQUIRED。',
+    '- 为什么 chatInput evidence 缺失仍然必须阻断登录，避免把未知页面误报为已登录。',
+    '- 为什么本轮验收不能复用旧 Markdown、固定行数、R3-09B budget artifact 或只看窗口已打开。',
+    '- 生成文件要包含登录/ready 边界结论、风险、验证建议和用户可检查的证据路径。',
     '',
     '报告必须逐字包含以下验收锚点：',
     anchorLines,

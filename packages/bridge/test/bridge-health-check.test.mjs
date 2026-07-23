@@ -72,7 +72,7 @@ test('BridgeHealthCheck: reports versioned DOM fingerprint for a ready chat page
   assert.equal('rawText' in health.domFingerprint, false);
 });
 
-test('BridgeHealthCheck: fails closed with diagnostic DOM fingerprint when chat page drifts', () => {
+test('BridgeHealthCheck: keeps plugin-opened login state when only the send button selector drifts', () => {
   const health = checkBridgeHealth(
     { hasBrowser: true, hasContext: true, hasPage: true, url: 'https://chat.deepseek.com/' },
     {
@@ -89,11 +89,32 @@ test('BridgeHealthCheck: fails closed with diagnostic DOM fingerprint when chat 
 
   assert.equal(health.protocolVersion, DEEPSEEK_WEB_CONNECTOR_HEALTH_PROTOCOL_VERSION);
   assert.equal(health.browserReady, true);
-  assert.equal(health.loggedInLikely, false);
+  assert.equal(health.loggedInLikely, true);
   assert.equal(health.reason, 'deepseek-dom-send-button-missing');
   assert.equal(health.pageKind, 'chat');
   assert.deepEqual(health.domFingerprint.missingRequired, ['sendButton']);
   assert.ok(health.domFingerprint.evidenceRefs.includes('deepseek-dom:missing:sendButton'));
+});
+
+test('BridgeHealthCheck: still blocks login when chat input evidence is missing', () => {
+  const health = checkBridgeHealth(
+    { hasBrowser: true, hasContext: true, hasPage: true, url: 'https://chat.deepseek.com/' },
+    {
+      url: 'https://chat.deepseek.com/',
+      loggedInIndicatorCount: 1,
+      selectorCounts: {
+        loggedInIndicator: 1,
+        chatInput: 0,
+        sendButton: 1,
+        assistantMessage: 0,
+      },
+    },
+  );
+
+  assert.equal(health.browserReady, true);
+  assert.equal(health.loggedInLikely, false);
+  assert.equal(health.reason, 'deepseek-dom-chat-input-missing');
+  assert.deepEqual(health.domFingerprint.missingRequired, ['chatInput']);
 });
 
 console.log('\nBridge health check tests passed.\n');

@@ -152,4 +152,17 @@ test('BridgeHealthMonitor: login indicator absence blocks prompt sending', () =>
   assert.equal(decision.canSendPrompt, false);
 });
 
+test('BridgeHealthMonitor: send button selector drift does not request relogin', () => {
+  const decision = new BridgeHealthMonitor().evaluate({
+    browserReady: true,
+    loggedInLikely: true,
+    reason: 'deepseek-dom-send-button-missing',
+    queueLength: 0,
+  });
+
+  assert.equal(decision.status, 'ok');
+  assert.equal(decision.canSendPrompt, true);
+  assert.equal(decision.reason, 'deepseek-dom-send-button-missing');
+});
+
 console.log('\nWeb reliability tests passed.\n');

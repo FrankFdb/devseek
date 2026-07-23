@@ -402,6 +402,41 @@ const R3_09B_BUDGET_POLICY_DECISION_SPEC = Object.freeze({
   rejectFixedLineCountOnly: true,
 });
 
+const R3_LIVE_DEEPSEEK_LOGIN_READY_STATE_SPEC = Object.freeze({
+  id: 'r3-live-deepseek-login-ready-state',
+  kind: 'iteration',
+  minimumMarkdownBytes: 1150,
+  minimumMarkdownLines: 28,
+  minimumMarkdownHeadings: 5,
+  requireFormalProjectQuality: false,
+  promptTitle: 'R3-LIVE-DEEPSEEK-LOGIN-READY-STATE plugin-opened DeepSeek login readiness audit',
+  deliveryMode: 'markdown-file-deliverable',
+  requestedOutputDocRel: 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md',
+  expectedArtifactRel: 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md',
+  requiredArtifactSnippets: Object.freeze([
+    'R3-LIVE-DEEPSEEK-LOGIN-READY-STATE',
+    'BridgeHealthCheck',
+    'devseek.deepseek-web-connector-health/v1',
+    'loggedInLikely',
+    'plugin-opened DeepSeek page',
+    'chatInput evidence',
+    'deepseek-dom-send-button-missing',
+    'login-state-not-send-button',
+    'send button selector drift is not LOGIN_REQUIRED',
+    ...FRESH_R3_CASE_REJECTION,
+  ]),
+  forbiddenArtifactSnippets: R3_07G_STALE_DOMAIN_SNIPPETS,
+  changedSurface: 'deepseek-web-login-ready-health',
+  freshCaseMarker: 'R3-LIVE-DEEPSEEK-LOGIN-READY-STATE',
+  semanticAcceptance: Object.freeze([
+    'plugin-opened DeepSeek page',
+    'chatInput evidence',
+    'login-state-not-send-button',
+    'send button selector drift is not LOGIN_REQUIRED',
+  ]),
+  rejectFixedLineCountOnly: true,
+});
+
 function createR3KindAggregateSpec(input) {
   const profileKind = input.profileKind;
   const marker = `R3-07G-${profileKind}-AGGREGATE`;
@@ -504,6 +539,7 @@ export function listRealPluginIterationScenarioSpecs() {
     R3_08F_MACOS_CONFORMANCE_SPEC,
     R3_09A_RUN_METRICS_SCHEMA_SPEC,
     R3_09B_BUDGET_POLICY_DECISION_SPEC,
+    R3_LIVE_DEEPSEEK_LOGIN_READY_STATE_SPEC,
   ].map((spec) => buildRealPluginScenarioSpec(spec.id));
 }
 
@@ -516,6 +552,7 @@ export function parseRequiredArtifactSnippets(value) {
 
 function lookupScenarioSpec(value) {
   const scenario = normalizeScenario(value);
+  if (scenario === R3_LIVE_DEEPSEEK_LOGIN_READY_STATE_SPEC.id) return R3_LIVE_DEEPSEEK_LOGIN_READY_STATE_SPEC;
   if (scenario === R3_09B_BUDGET_POLICY_DECISION_SPEC.id) return R3_09B_BUDGET_POLICY_DECISION_SPEC;
   if (scenario === R3_09A_RUN_METRICS_SCHEMA_SPEC.id) return R3_09A_RUN_METRICS_SCHEMA_SPEC;
   if (scenario === R3_08F_MACOS_CONFORMANCE_SPEC.id) return R3_08F_MACOS_CONFORMANCE_SPEC;

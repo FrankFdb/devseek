@@ -60,9 +60,12 @@ function checkBridgeHealth(snapshot, pageSnapshotOrLoggedInIndicatorCount = 0) {
   if ((pageSnapshot.loggedInIndicatorCount ?? 0) <= 0) {
     return health(snapshot, domFingerprint, true, false, "logged-in-indicator-missing");
   }
+  if (domFingerprint.missingRequired.includes("chatInput")) {
+    return health(snapshot, domFingerprint, true, false, deepSeekDomMissingReason("chatInput"));
+  }
   if (domFingerprint.missingRequired.length > 0) {
     const missing = domFingerprint.missingRequired[0];
-    return health(snapshot, domFingerprint, true, false, deepSeekDomMissingReason(missing));
+    return health(snapshot, domFingerprint, true, true, deepSeekDomMissingReason(missing));
   }
   return health(snapshot, domFingerprint, true, true, "deepseek-dom-ready");
 }

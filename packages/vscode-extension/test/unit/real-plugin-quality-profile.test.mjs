@@ -474,3 +474,36 @@ test('R3-09B budget policy decision real plugin scenario adds bounded budget cov
     assert.ok(spec.requiredArtifactSnippets.includes(snippet), `R3-09B must require ${snippet}`);
   }
 });
+
+test('R3 live DeepSeek login-ready real plugin scenario covers plugin-opened session drift', () => {
+  const profile = buildRealPluginQualityProfile('r3-live-deepseek-login-ready-state');
+  const spec = buildRealPluginScenarioSpec('r3-live-deepseek-login-ready-state');
+
+  assert.equal(profile.kind, 'iteration');
+  assert.equal(profile.requireFormalProjectQuality, false);
+  assert.equal(spec.id, 'r3-live-deepseek-login-ready-state');
+  assert.equal(spec.changedSurface, 'deepseek-web-login-ready-health');
+  assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
+  assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md');
+  assert.match(spec.promptTitle, /R3-LIVE-DEEPSEEK-LOGIN-READY-STATE/);
+  assert.deepEqual(spec.semanticAcceptance, [
+    'plugin-opened DeepSeek page',
+    'chatInput evidence',
+    'login-state-not-send-button',
+    'send button selector drift is not LOGIN_REQUIRED',
+  ]);
+  for (const snippet of [
+    'R3-LIVE-DEEPSEEK-LOGIN-READY-STATE',
+    'BridgeHealthCheck',
+    'devseek.deepseek-web-connector-health/v1',
+    'loggedInLikely',
+    'plugin-opened DeepSeek page',
+    'chatInput evidence',
+    'deepseek-dom-send-button-missing',
+    'login-state-not-send-button',
+    'send button selector drift is not LOGIN_REQUIRED',
+    'not fixed line-count smoke',
+  ]) {
+    assert.ok(spec.requiredArtifactSnippets.includes(snippet), `R3 live login-ready must require ${snippet}`);
+  }
+});
