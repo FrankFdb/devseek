@@ -1062,6 +1062,53 @@ test('FakeToolParser: parses R3 live DeepSeek function-style create_file artifac
   assert.equal(stripToolCallBlocks(text), '好的，我已经读取了必需的两个源文件。现在生成并写入报告文件。');
 });
 
+test('FakeToolParser: parses R3 live DeepSeek named-parameter tool_call envelopes', () => {
+  const content = [
+    '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE 审计报告',
+    '',
+    'BridgeHealthCheck',
+    'devseek.deepseek-web-connector-health/v1',
+    'loggedInLikely',
+    'plugin-opened DeepSeek page',
+    'chatInput evidence',
+    'deepseek-dom-send-button-missing',
+    'login-state-not-send-button',
+    'send button selector drift is not LOGIN_REQUIRED',
+    'not fixed line-count smoke',
+  ].join('\n');
+  const text = [
+    '我已读取到两份源文件。现在创建审计报告文件。',
+    '<tool_call><name>manage_todo_list</name><parameter>{"todoList":[{"id":1,"title":"读取源文件内容","status":"completed"},{"id":2,"title":"创建审计报告 Markdown 文件","status":"in-progress"}]}</parameter></tool_call>',
+    `<tool_call><name>create_file</name><parameter>{"path":"/tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md","content":${JSON.stringify(content)}}</parameter></tool_call>`,
+  ].join('');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), false);
+  assert.deepEqual(tools.map(tool => tool.name), ['manage_todo_list', 'create_file']);
+  assert.equal(tools[0].input.todoList[1].status, 'in-progress');
+  assert.equal(tools[1].input.path, '/tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md');
+  assert.equal(tools[1].input.content, content);
+  assert.equal(stripToolCallBlocks(text), '我已读取到两份源文件。现在创建审计报告文件。');
+});
+
+test('FakeToolParser: parses R3 live DeepSeek named read_file path envelopes', () => {
+  const text = [
+    '让我先读取两份源文件。',
+    '<tool_call><name>read_file</name><path>/tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/deepseek-login-ready-state-matrix.md</path></tool_call>',
+    '<tool_call><name>read_file</name><path>/tmp/devseek-real-plugin-deepseek/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts</path></tool_call>',
+  ].join('');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), false);
+  assert.deepEqual(tools.map(tool => tool.name), ['read_file', 'read_file']);
+  assert.equal(tools[0].input.path, '/tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/deepseek-login-ready-state-matrix.md');
+  assert.equal(tools[1].input.path, '/tmp/devseek-real-plugin-deepseek/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts');
+  assert.equal(stripToolCallBlocks(text), '让我先读取两份源文件。');
+});
+
 test('FakeToolParser: unwraps R3 live bracket create_file content CDATA parameter shell', () => {
   const content = [
     '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE Audit Report',

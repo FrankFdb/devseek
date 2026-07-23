@@ -168,6 +168,32 @@ test('ResponseIntegrityChecker: accepts complete DeepSeek TOOL_call inline-name 
   assert.equal(result.safeToExecute, true);
 });
 
+test('ResponseIntegrityChecker: accepts complete DeepSeek named-parameter tool_call envelopes', () => {
+  const checker = new ResponseIntegrityChecker();
+  const content = [
+    '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE 审计报告',
+    'BridgeHealthCheck',
+    'devseek.deepseek-web-connector-health/v1',
+    'loggedInLikely',
+    'plugin-opened DeepSeek page',
+    'chatInput evidence',
+    'deepseek-dom-send-button-missing',
+    'login-state-not-send-button',
+    'send button selector drift is not LOGIN_REQUIRED',
+    'not fixed line-count smoke',
+  ].join('\n');
+  const text = [
+    '我已读取到两份源文件。现在创建审计报告文件。',
+    '<tool_call><name>manage_todo_list</name><parameter>{"todoList":[{"id":1,"title":"读取源文件内容","status":"completed"},{"id":2,"title":"创建审计报告 Markdown 文件","status":"in-progress"}]}</parameter></tool_call>',
+    `<tool_call><name>create_file</name><parameter>{"path":"/tmp/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md","content":${JSON.stringify(content)}}</parameter></tool_call>`,
+  ].join('');
+
+  const result = checker.check(text);
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.safeToExecute, true);
+});
+
 test('ResponseIntegrityChecker: blocks unfinished DeepSeek TOOL_call inline-name envelopes', () => {
   const checker = new ResponseIntegrityChecker();
   const result = checker.check('<TOOL_call>read_file {"path":"/tmp/a.md"}');

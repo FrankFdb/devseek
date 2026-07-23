@@ -653,6 +653,43 @@ function parseMalformedFunctionEnvelopeTool(body: string): FakeTool | null {
   return { name: named.name, input: normalizeToolInput(named.name, input) };
 }
 
+function parseNamedParameterToolCallEnvelopeBody(rawBody: string): FakeTool | null {
+  const body = stripJsonFence(decodeXmlishText(rawBody)).trim();
+  const nameMatch = /<\s*name\b[^<>]*>([\s\S]*?)<\/\s*name\s*>/i.exec(body);
+  if (!nameMatch) return null;
+
+  const name = normalizeAgentToolName(decodeXmlishText(nameMatch[1] || '').trim());
+  if (!isRegisteredFakeToolName(name)) return null;
+
+  const bodyWithoutName = `${body.slice(0, nameMatch.index)}${body.slice(nameMatch.index + nameMatch[0].length)}`;
+  const parameterMatch = /<\s*parameters?\b[^<>]*>([\s\S]*?)<\/\s*parameters?\s*>/i.exec(bodyWithoutName);
+  let input: Record<string, unknown> | null = null;
+
+  if (parameterMatch) {
+    const parameterBody = stripJsonFence(decodeXmlishText(parameterMatch[1] || '')).trim();
+    if (!parameterBody) {
+      input = {};
+    } else {
+      input = parseToolArgumentsRecord(name, parameterBody);
+      if (!input && parameterBody.startsWith('<')) {
+        const nested = parseXmlToolParameterBody(parameterBody);
+        if (Object.keys(nested).length > 0) input = nested;
+      }
+      if (!input) {
+        const scalarKey = primaryScalarInputKeyForTool(name);
+        if (scalarKey && !/[<>]/.test(parameterBody)) {
+          input = { [scalarKey]: parseDsmlParameterValue(parameterBody) };
+        }
+      }
+    }
+  } else {
+    const nested = parseXmlToolParameterBody(bodyWithoutName);
+    if (Object.keys(nested).length > 0) input = nested;
+  }
+
+  return input ? { name, input: normalizeToolInput(name, input) } : null;
+}
+
 function parseToolCallEnvelopeCalls(text: string): FakeTool[] {
   const tools: Array<{ index: number; tool: FakeTool }> = [];
   let match: RegExpExecArray | null;
@@ -670,6 +707,11 @@ function parseToolCallEnvelopeCalls(text: string): FakeTool[] {
     const blockRe = makeToolCallEnvelopeBlockRegex();
     while ((match = blockRe.exec(text)) !== null) {
       const body = stripJsonFence(decodeXmlishText(match[1] || ''));
+      const namedParameterTool = parseNamedParameterToolCallEnvelopeBody(body);
+      if (namedParameterTool) {
+        tools.push({ index: match.index, tool: namedParameterTool });
+        continue;
+      }
       const named = parseGenericToolEnvelopeBody(body);
       if (named) {
         tools.push({ index: match.index, tool: named });

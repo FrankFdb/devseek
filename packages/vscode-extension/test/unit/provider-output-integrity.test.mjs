@@ -97,6 +97,31 @@ test('provider output integrity: keeps complete DeepSeek create_file tools ahead
   assert.equal(result.toolCallCount, 1);
 });
 
+test('provider output integrity: classifies R3 live DeepSeek named-parameter tool_call envelopes', () => {
+  const content = [
+    '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE 审计报告',
+    '',
+    'BridgeHealthCheck',
+    'devseek.deepseek-web-connector-health/v1',
+    'loggedInLikely',
+    'plugin-opened DeepSeek page',
+    'chatInput evidence',
+    'deepseek-dom-send-button-missing',
+    'login-state-not-send-button',
+    'send button selector drift is not LOGIN_REQUIRED',
+    'not fixed line-count smoke',
+  ].join('\n');
+  const result = classifyProviderOutputIntegrity([
+    '我已读取到两份源文件。现在创建审计报告文件。',
+    '<tool_call><name>manage_todo_list</name><parameter>{"todoList":[{"id":1,"title":"读取源文件内容","status":"completed"},{"id":2,"title":"创建审计报告 Markdown 文件","status":"in-progress"}]}</parameter></tool_call>',
+    `<tool_call><name>create_file</name><parameter>{"path":"/tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md","content":${JSON.stringify(content)}}</parameter></tool_call>`,
+  ].join(''));
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 2);
+});
+
 test('provider output integrity: treats OpenAI-style tool arrays with login-named paths as tools', () => {
   const result = classifyProviderOutputIntegrity([
     '让我先读取相关的源文件以获取完整信息。',
