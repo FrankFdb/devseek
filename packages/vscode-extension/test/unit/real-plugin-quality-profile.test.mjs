@@ -501,6 +501,7 @@ test('R3 live DeepSeek login-ready real plugin scenario covers plugin-opened ses
   assert.equal(spec.changedSurface, 'deepseek-web-login-ready-health');
   assert.equal(spec.deliveryMode, 'markdown-file-deliverable');
   assert.equal(spec.expectedArtifactRel, 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md');
+  assert.equal(spec.expectedReportLanguage, 'zh-CN');
   assert.match(spec.promptTitle, /R3-LIVE-DEEPSEEK-LOGIN-READY-STATE/);
   assert.deepEqual(spec.semanticAcceptance, [
     'plugin-opened DeepSeek page',

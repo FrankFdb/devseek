@@ -1218,6 +1218,7 @@ function createR3LiveDeepSeekLoginReadyStateFixture(root, scenarioSpec) {
     `请把报告保存到 ${requestedOutputDoc}。`,
     `报告主题是 ${scenarioSpec.promptTitle}。`,
     '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+    '报告正文请使用与本测试 case 相同的中文撰写；技术标识符、协议名、文件路径和验收锚点保持原文。',
     '',
     '报告必须解释：',
     '- 为什么通过插件按钮打开的 DeepSeek 页面就是当前 bridge 会话的用户路径，不能把它误认为另一个浏览器登录。',
@@ -1498,6 +1499,7 @@ const keepWindow = __KEEP_WINDOW__;
 const scenario = __SCENARIO__;
 const harnessMode = __HARNESS_MODE__;
 const qualityProfile = __QUALITY_PROFILE__;
+const expectedReportLanguage = __EXPECTED_REPORT_LANGUAGE__;
 const requiredArtifactSnippets = __REQUIRED_ARTIFACT_SNIPPETS__;
 const forbiddenArtifactSnippets = __FORBIDDEN_ARTIFACT_SNIPPETS__;
 const expectedArtifact = __EXPECTED_ARTIFACT__;
@@ -1603,6 +1605,41 @@ function assessMarkdownQuality(content) {
       gluedMetadataLineCount > 0 ? 'glued-metadata-lines' : '',
       rawChineseSectionCount > 0 ? 'raw-chinese-section-headings' : '',
       hasCopyControls ? 'provider-copy-controls' : '',
+    ].filter(Boolean),
+  };
+}
+
+function assessReportLanguageQuality(content, language) {
+  const expected = String(language || '').trim();
+  if (!expected) return { required: false, ok: true, language: '', reasons: [] };
+  const text = String(content || '');
+  if (expected !== 'zh-CN') {
+    return {
+      required: true,
+      ok: true,
+      language: expected,
+      reasons: [],
+      note: 'unsupported-language-check-skipped',
+    };
+  }
+
+  const lines = text.split(/\r?\n/);
+  const chineseCharCount = (text.match(/[\u3400-\u9fff]/g) || []).length;
+  const chineseSentenceLineCount = lines.filter((line) => ((line.match(/[\u3400-\u9fff]/g) || []).length >= 6)).length;
+  const minChineseChars = 120;
+  const minChineseSentenceLines = 6;
+  const ok = chineseCharCount >= minChineseChars && chineseSentenceLineCount >= minChineseSentenceLines;
+  return {
+    required: true,
+    ok,
+    language: expected,
+    chineseCharCount,
+    chineseSentenceLineCount,
+    minChineseChars,
+    minChineseSentenceLines,
+    reasons: [
+      chineseCharCount < minChineseChars ? 'insufficient-chinese-content' : '',
+      chineseSentenceLineCount < minChineseSentenceLines ? 'insufficient-chinese-report-lines' : '',
     ].filter(Boolean),
   };
 }
@@ -1908,6 +1945,7 @@ function changedMarkdownArtifacts(before) {
       snippet,
       present: content.includes(snippet),
     }));
+    const reportLanguageQuality = assessReportLanguageQuality(content, expectedReportLanguage);
     const shapeQuality = {
       minimumMarkdownLines: Number(qualityProfile.minimumMarkdownLines || 0),
       minimumMarkdownHeadings: Number(qualityProfile.minimumMarkdownHeadings || 0),
@@ -1933,8 +1971,10 @@ function changedMarkdownArtifacts(before) {
       requiredContentOk: requiredContentMatches.every((item) => item.present)
         && shapeQuality.lineCountOk
         && shapeQuality.headingCountOk
-        && shapeQuality.forbiddenContentOk,
+        && shapeQuality.forbiddenContentOk
+        && reportLanguageQuality.ok,
       markdownQuality: assessMarkdownQuality(content),
+      reportLanguageQuality,
       formalProjectQuality: assessFormalProjectQuality(content, prompt),
     };
     const previous = before.get(relative);
@@ -2310,6 +2350,7 @@ module.exports = { activate };
     .replace('__SCENARIO__', JSON.stringify(scenario))
     .replace('__HARNESS_MODE__', JSON.stringify(harnessMode))
     .replace('__QUALITY_PROFILE__', JSON.stringify(qualityProfile))
+    .replace('__EXPECTED_REPORT_LANGUAGE__', JSON.stringify(scenarioSpec.expectedReportLanguage || ''))
     .replace('__REQUIRED_ARTIFACT_SNIPPETS__', JSON.stringify(requiredArtifactSnippets))
     .replace('__FORBIDDEN_ARTIFACT_SNIPPETS__', JSON.stringify(forbiddenArtifactSnippets))
     .replace('__EXPECTED_ARTIFACT__', JSON.stringify(expectedArtifact))

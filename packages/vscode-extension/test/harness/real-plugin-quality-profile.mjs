@@ -416,6 +416,7 @@ const R3_LIVE_DEEPSEEK_LOGIN_READY_STATE_SPEC = Object.freeze({
   deliveryMode: 'markdown-file-deliverable',
   requestedOutputDocRel: 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md',
   expectedArtifactRel: 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md',
+  expectedReportLanguage: 'zh-CN',
   requiredArtifactSnippets: Object.freeze([
     'R3-LIVE-DEEPSEEK-LOGIN-READY-STATE',
     'BridgeHealthCheck',
@@ -522,6 +523,7 @@ export function buildRealPluginScenarioSpec(scenario) {
     deliveryMode: spec.deliveryMode,
     requestedOutputDocRel: spec.requestedOutputDocRel,
     expectedArtifactRel: spec.expectedArtifactRel,
+    expectedReportLanguage: spec.expectedReportLanguage || '',
     requiredArtifactSnippets: [...spec.requiredArtifactSnippets],
     forbiddenArtifactSnippets: [...spec.forbiddenArtifactSnippets],
     changedSurface: spec.changedSurface || '',

@@ -2315,6 +2315,7 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(profile, 'listRealPluginIterationScenarioSpecs', 'R3 visible simulations must be enumerable for freshness checks');
   assertContains(profile, 'freshCaseMarker', 'R3 scenarios must carry a unique fresh-case marker');
   assertContains(profile, 'semanticAcceptance', 'R3 scenarios must name semantic acceptance anchors');
+  assertContains(profile, 'expectedReportLanguage', 'Chinese R3 live cases must declare report language expectations in the scenario contract');
   assertContains(profile, 'rejectFixedLineCountOnly', 'R3 scenarios must reject fixed line-count-only settlement');
   assertContains(profile, 'not fixed line-count smoke', 'R3 scenarios must reject stale fixed-shape smoke settlement');
   assertContains(profile, 'id: `r3-07g-${profileKind}-aggregate`', 'R3-07G named scenarios must use kind-specific ids');
@@ -2450,6 +2451,8 @@ test('Real DeepSeek harness: R3 iteration scenarios must add task-specific visib
   assertContains(harness, 'scenarioSpec.requiredArtifactSnippets', 'real harness must combine scenario-specific content gates');
   assertContains(harness, 'forbiddenArtifactSnippets', 'real harness must enforce scenario-specific forbidden content gates');
   assertContains(harness, 'shapeQuality', 'real harness must enforce scenario-specific Markdown shape gates');
+  assertContains(harness, 'assessReportLanguageQuality', 'real harness must enforce scenario-specific report language without product hardcoding');
+  assertContains(harness, '报告正文请使用与本测试 case 相同的中文撰写', 'Chinese live case prompt must ask for Chinese report text in the test fixture');
   assertContains(harness, 'fixture.scenarioSpec', 'driver report must disclose the scenario contract used');
 });
 
