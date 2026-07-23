@@ -4,11 +4,22 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(__dirname, '../..');
 const harnessPath = path.join(extensionRoot, 'test/devseek-controlled-vsix-harness.mjs');
 const realPluginHarnessPath = path.join(extensionRoot, 'test/devseek-real-plugin-deepseek-harness.mjs');
+
+function evaluateHarnessFunctions(source, startMarker, endMarker, names) {
+  const start = source.indexOf(startMarker);
+  const end = source.indexOf(endMarker);
+  assert.ok(start >= 0, `missing ${startMarker}`);
+  assert.ok(end > start, `missing ${endMarker}`);
+  const context = {};
+  vm.runInNewContext(`${source.slice(start, end)}\nresult = { ${names.join(', ')} };`, context);
+  return context.result;
+}
 
 const REQUIRED_SCENARIOS = [
   'normal',
@@ -53,8 +64,71 @@ test('real plugin VSIX harness selects product run terminal instead of pending-e
   assert.match(source, /\$\{productRunLogSelectionSource\(\)\}/, 'real plugin driver must inject the shared product-run selection helper');
   assert.match(source, /const selected = selectProductRunLog\(logs\)\?\.absolutePath/, 'real plugin harness replay must reuse the product-run selection helper');
   assert.doesNotMatch(source, /selectProductRunLogForReplay/, 'real plugin harness must not fork replay-only terminal selection');
+  assert.match(source, /function productRunLogScore\(log\)/, 'real plugin harness must score product-like logs before replay fallback');
   assert.match(source, /mutationKind\s*!==\s*'pending-edit-resolution'/, 'pending-edit resolution runs must not replace the real plugin terminal run');
   assert.doesNotMatch(source, /logs\.find\(\(log\) => log\.terminal\)\?\.absolutePath/, 'replay selection must not blindly use the first terminal log');
+});
+
+test('real plugin VSIX harness chooses the agent run log over bridge status probes', () => {
+  const source = readFileSync(realPluginHarnessPath, 'utf8');
+  const { selectProductRunLog } = evaluateHarnessFunctions(
+    source,
+    'function isProductRunTerminalEvent',
+    'function productRunLogSelectionSource',
+    ['isProductRunTerminalEvent', 'productRunLogScore', 'selectProductRunLog'],
+  );
+
+  const selected = selectProductRunLog([
+    {
+      path: '.devseek/runs/20260723-134636.log',
+      absolutePath: '/workspace/.devseek/runs/20260723-134636.log',
+      runStartedAtMs: new Date(2026, 6, 23, 13, 46, 36).getTime(),
+      mtimeMs: new Date(2026, 6, 23, 13, 46, 36).getTime(),
+      size: 1522,
+      events: 5,
+      lastEvent: 'bridge-status-ready',
+      terminal: null,
+      hasAgentRunStarted: false,
+      hasAgentStatus: false,
+      providerEventCount: 0,
+      toolExecutionCount: 0,
+    },
+    {
+      path: '.devseek/runs/20260723-054636511-0b4ed653468767da.log',
+      absolutePath: '/workspace/.devseek/runs/20260723-054636511-0b4ed653468767da.log',
+      runStartedAtMs: Date.UTC(2026, 6, 23, 5, 46, 36, 511),
+      mtimeMs: new Date(2026, 6, 23, 13, 50, 35).getTime(),
+      size: 328257,
+      events: 357,
+      lastEvent: 'execute-complete',
+      terminal: null,
+      hasAgentRunStarted: true,
+      hasAgentStatus: true,
+      providerEventCount: 58,
+      toolExecutionCount: 18,
+    },
+  ]);
+
+  assert.equal(selected?.path, '.devseek/runs/20260723-054636511-0b4ed653468767da.log');
+});
+
+test('real plugin VSIX harness parses product and bridge run-log timestamps', () => {
+  const source = readFileSync(realPluginHarnessPath, 'utf8');
+  const { parseRunLogStartedAtMs } = evaluateHarnessFunctions(
+    source,
+    'function parseRunLogStartedAtMs',
+    '${productRunLogSelectionSource()}',
+    ['parseRunLogStartedAtMs'],
+  );
+
+  assert.equal(
+    parseRunLogStartedAtMs('20260723-054636511-0b4ed653468767da.log'),
+    Date.UTC(2026, 6, 23, 5, 46, 36, 511),
+  );
+  assert.equal(
+    parseRunLogStartedAtMs('20260723-134636.log'),
+    new Date(2026, 6, 23, 13, 46, 36).getTime(),
+  );
 });
 
 test('real plugin VSIX harness keeps visible DeepSeek pages for user inspection', () => {

@@ -4,6 +4,7 @@ import {
   hasStandaloneCodeGenerationIntent,
   type TaskContract,
 } from './agent/task-contract';
+import { stripAgentProceduralExecutionPhrases } from './intent/agent-procedure-text';
 
 export type TaskSemanticScope = 'none' | 'standalone' | 'existing-project' | 'unknown';
 
@@ -116,11 +117,12 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     && !prohibited;
   const mutationRequested = (sourceChange || fileArtifact || taskContract.deliverableTargets.length > 0)
     && !prohibited;
-  const validationText = maskTaskTargetPaths(prompt, taskContract.inputs);
+  const validationPrompt = stripAgentProceduralExecutionPhrases(prompt);
+  const validationText = maskTaskTargetPaths(validationPrompt, taskContract.inputs);
   const validationRequested = !artifactPathQuery
     && !destructiveIntent
     && (VALIDATION_RE.test(validationText) || taskContract.deliverables.includes('verification-result'));
-  const positiveValidationText = maskTaskTargetPaths(prompt.replace(NO_RUN_CLAUSE_RE, ' '), taskContract.inputs);
+  const positiveValidationText = maskTaskTargetPaths(validationPrompt.replace(NO_RUN_CLAUSE_RE, ' '), taskContract.inputs);
   const compileRequested = !artifactPathQuery && COMPILE_RE.test(positiveValidationText);
   const stdoutRequested = !artifactPathQuery && STDOUT_RE.test(validationText) && !OUTPUT_ARTIFACT_RE.test(validationText);
   const runProhibited = !artifactPathQuery && NO_RUN_RE.test(validationText);

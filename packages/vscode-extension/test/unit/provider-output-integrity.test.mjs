@@ -36,6 +36,17 @@ test('provider output integrity: classifies executable tool calls before settlem
   assert.equal(result.toolCallCount, 1);
 });
 
+test('provider output integrity: quote-damaged manage_todo_list is a recoverable control tool call', () => {
+  const result = classifyProviderOutputIntegrity([
+    '当前任务已实际完成，但 Todo 状态需要校正。',
+    '[TOOL:manage_todo_list] {"todoList":"[{"id":1,"title":"创建审计报告 Markdown 文件","status":"completed"},{"id":2,"title":"验证报告文件已写入且包含所有验收锚点","status":"completed"}]"}',
+  ].join('\n\n'));
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 1);
+});
+
 test('provider output integrity: treats LOGIN_REQUIRED inside a requested report artifact as content', () => {
   const content = [
     '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE Audit Report',

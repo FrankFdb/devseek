@@ -41,6 +41,21 @@ test('FakeToolParser: parses bracket tool calls', () => {
   assert.deepEqual(tools[0].input, { path: 'src/index.ts' });
 });
 
+test('FakeToolParser: recovers quote-damaged manage_todo_list control calls', () => {
+  const text = [
+    'Todo 状态需要校正。',
+    '[TOOL:manage_todo_list] {"todoList":"[{"id":1,"title":"创建审计报告 Markdown 文件","status":"completed"},{"id":2,"title":"验证报告文件已写入且包含所有验收锚点","status":"completed"}]"}',
+  ].join('\n\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'manage_todo_list');
+  assert.equal(Array.isArray(tools[0].input.todoList), true);
+  assert.equal(tools[0].input.todoList.length, 2);
+  assert.equal(tools[0].input.todoList[0].status, 'completed');
+  assert.equal(stripToolCallBlocks(text), 'Todo 状态需要校正。');
+});
+
 test('FakeToolParser: ignores tool calls after provider-authored tool results', () => {
   const text = [
     '我先读取文件。',

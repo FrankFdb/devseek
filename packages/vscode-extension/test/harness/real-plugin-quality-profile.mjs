@@ -1,9 +1,12 @@
 const R3_07G_STALE_DOMAIN_SNIPPETS = Object.freeze([
-  'warranty',
   'UAV 吊运维保',
   '维保提醒',
   'maintenance_threshold_engine',
   'uav-warranty-reminder',
+  'uav_warranty_reminder',
+  'warranty reminder',
+  'warranty_types',
+  'test_warranty',
 ]);
 
 const FRESH_R3_CASE_REJECTION = Object.freeze([

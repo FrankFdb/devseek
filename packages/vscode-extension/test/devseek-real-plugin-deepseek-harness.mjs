@@ -336,15 +336,31 @@ function isProductRunTerminalEvent(terminal) {
     && data.mutationKind !== 'pending-edit-undo';
 }
 
+function productRunLogScore(log) {
+  if (!log) return 0;
+  if (isProductRunTerminalEvent(log.terminal)) return 4;
+  if (log.terminal) return 3;
+  if (log.hasAgentRunStarted) return 2;
+  if (log.hasAgentStatus || log.providerEventCount || log.toolExecutionCount) return 1;
+  if (/^bridge-status-/i.test(String(log.lastEvent || ''))) return 0;
+  return 0;
+}
+
 function selectProductRunLog(logs) {
-  return logs.find((log) => isProductRunTerminalEvent(log.terminal))
-    || logs.find((log) => log.terminal)
-    || null;
+  const ranked = logs
+    .map((log) => ({ log, score: productRunLogScore(log) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => (b.score - a.score)
+      || ((b.log.runStartedAtMs || 0) - (a.log.runStartedAtMs || 0))
+      || ((b.log.mtimeMs || 0) - (a.log.mtimeMs || 0))
+      || ((b.log.size || 0) - (a.log.size || 0)));
+  return ranked[0]?.log || null;
 }
 
 function productRunLogSelectionSource() {
   return [
     isProductRunTerminalEvent.toString(),
+    productRunLogScore.toString(),
     selectProductRunLog.toString(),
   ].join('\n\n');
 }
@@ -1944,17 +1960,21 @@ function parseJsonLine(line) {
 }
 
 function parseRunLogStartedAtMs(name) {
-  const match = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.log$/.exec(String(name || ''));
+  const match = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(\d{3})?(?:-([^.]+))?\.log$/.exec(String(name || ''));
   if (!match) return 0;
-  const [, year, month, day, hour, minute, second] = match;
-  return new Date(
+  const [, year, month, day, hour, minute, second, millisecond, suffix] = match;
+  const parts = [
     Number(year),
     Number(month) - 1,
     Number(day),
     Number(hour),
     Number(minute),
     Number(second),
-  ).getTime();
+    Number(millisecond || 0),
+  ];
+  return (millisecond || suffix)
+    ? Date.UTC(...parts)
+    : new Date(...parts).getTime();
 }
 
 ${productRunLogSelectionSource()}
@@ -1978,6 +1998,9 @@ function collectRunLogs(startedAtMs) {
       .map(parseJsonLine)
       .filter(Boolean);
     const terminal = events.find((event) => event.event === 'agent-run-completed' || event.event === 'agent-run-failed');
+    const providerEventCount = events.filter((event) => event.tag === 'provider' || event.phase === 'payload').length;
+    const toolExecutionCount = events.filter((event) => event.phase === 'tool-loop'
+      && (event.event === 'execute-start' || event.event === 'execute-complete')).length;
     logs.push({
       path: rel(workspaceDir, full),
       absolutePath: full,
@@ -1986,6 +2009,10 @@ function collectRunLogs(startedAtMs) {
       size: stat.size,
       events: events.length,
       lastEvent: events.length ? events[events.length - 1].event : '',
+      hasAgentRunStarted: events.some((event) => event.event === 'agent-run-started'),
+      hasAgentStatus: events.some((event) => event.event === 'agent-status'),
+      providerEventCount,
+      toolExecutionCount,
       terminal: terminal ? { event: terminal.event, data: terminal.data || {} } : null,
       providerFailures: events
         .filter((event) => /failed|corrupt|truncated|LOGIN_REQUIRED|HTTP/i.test(String(event.event) + ' ' + JSON.stringify(event.data || {})))

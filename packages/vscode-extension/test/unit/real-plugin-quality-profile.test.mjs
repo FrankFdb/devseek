@@ -52,11 +52,14 @@ test('R3-07G real plugin scenario binds aggregate denominator artifact acceptanc
     'not fixed line-count smoke',
   ]);
   assert.deepEqual(spec.forbiddenArtifactSnippets, [
-    'warranty',
     'UAV 吊运维保',
     '维保提醒',
     'maintenance_threshold_engine',
     'uav-warranty-reminder',
+    'uav_warranty_reminder',
+    'warranty reminder',
+    'warranty_types',
+    'test_warranty',
   ]);
 });
 
@@ -90,12 +93,25 @@ test('R3-07G hook real plugin scenario binds hook-specific aggregate artifact ac
     'not fixed line-count smoke',
   ]);
   assert.deepEqual(spec.forbiddenArtifactSnippets, [
-    'warranty',
     'UAV 吊运维保',
     '维保提醒',
     'maintenance_threshold_engine',
     'uav-warranty-reminder',
+    'uav_warranty_reminder',
+    'warranty reminder',
+    'warranty_types',
+    'test_warranty',
   ]);
+});
+
+test('R3 live login-ready artifact gate allows warranty as historical meta wording only', () => {
+  const spec = buildRealPluginScenarioSpec('r3-live-deepseek-login-ready-state');
+  const allowedMetaText = 'Old warranty Markdown is historical context and cannot satisfy this login-ready audit.';
+  const staleDomainText = 'uav-warranty-reminder uses maintenance_threshold_engine and warranty_types from the old case.';
+
+  assert.equal(spec.forbiddenArtifactSnippets.includes('warranty'), false);
+  assert.equal(spec.forbiddenArtifactSnippets.some((snippet) => allowedMetaText.includes(snippet)), false);
+  assert.equal(spec.forbiddenArtifactSnippets.some((snippet) => staleDomainText.includes(snippet)), true);
 });
 
 [

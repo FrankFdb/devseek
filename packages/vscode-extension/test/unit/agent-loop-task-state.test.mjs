@@ -777,6 +777,48 @@ test('task todo ledger: task_complete alone cannot complete read-only analysis',
   assert.equal(settled.todos[0].status, 'failed');
 });
 
+test('task todo ledger: recovery flow wording does not require program run evidence for existing Markdown deliverable', () => {
+  const tempRoot = mkdtempSync(path.join(tmpdir(), 'devseek-r3-recovery-'));
+  const reportPath = path.join(tempRoot, 'r3-live-deepseek-login-ready-state.md');
+  writeFileSync(reportPath, '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE\n\nBridgeHealthCheck evidence.\n');
+  try {
+    const ledger = createAgentTaskTodoLedger([
+      task('1', 'Agent 任务', 'explore', '重新探索工作区并恢复执行原始请求'),
+    ]);
+
+    ledger.startTask(0);
+    const settled = ledger.settleTask(0, {
+      action: 'explore',
+      raw: `结论：已读回并确认 ${reportPath} 包含 R3-LIVE-DEEPSEEK-LOGIN-READY-STATE 和 evidence，Markdown 交付物已存在。`,
+      taskComplete: true,
+      workspaceRoot: tempRoot,
+    });
+
+    assert.equal(settled.completed, true);
+    assert.equal(settled.failed, false);
+    assert.equal(settled.todos[0].status, 'completed');
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('task todo ledger: actual script execution request still requires run evidence', () => {
+  const ledger = createAgentTaskTodoLedger([
+    task('1', 'scripts/check-login-ready.sh', 'analyze', '执行脚本并确认输出'),
+  ]);
+
+  ledger.startTask(0);
+  const settled = ledger.settleTask(0, {
+    action: 'analyze',
+    raw: '结论：脚本输出正常。',
+    taskComplete: true,
+  });
+
+  assert.equal(settled.completed, false);
+  assert.equal(settled.failed, true);
+  assert.equal(settled.todos[0].status, 'failed');
+});
+
 test('task todo ledger: read-only completion cannot claim an md document without write evidence', () => {
   const ledger = createAgentTaskTodoLedger([
     task('1', 'src/oam/src/lifting', 'analyze', '分析需求、现有实现和主控职责，输出对策检讨与任务建议'),

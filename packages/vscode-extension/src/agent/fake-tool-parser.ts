@@ -1118,12 +1118,30 @@ function findLooseFileWriteObjectEnd(text: string, name: string, jsonStart: numb
   return -1;
 }
 
+function findLooseManageTodoListObjectEnd(text: string, name: string, jsonStart: number): number {
+  if (normalizeAgentToolName(name) !== 'manage_todo_list' || text[jsonStart] !== '{') return -1;
+  const todoKey = /"todoList"\s*:\s*"?/gi;
+  todoKey.lastIndex = jsonStart;
+  const match = todoKey.exec(text);
+  if (!match) return -1;
+  const arrayStart = text.indexOf('[', todoKey.lastIndex);
+  if (arrayStart < 0) return -1;
+  const arrayEnd = findJsonArrayEnd(text, arrayStart);
+  if (arrayEnd < 0) return -1;
+  let i = arrayEnd + 1;
+  while (i < text.length && /[ \t\r\n]/.test(text[i])) i++;
+  if (text[i] === '"') i++;
+  while (i < text.length && /[ \t\r\n]/.test(text[i])) i++;
+  return text[i] === '}' ? i : -1;
+}
+
 function findToolInputObjectEnd(text: string, name: string, jsonStart: number): number {
   const strictEnd = findJsonObjectEnd(text, jsonStart);
   if (strictEnd < 0) {
     return Math.max(
       findLooseFileWriteObjectEnd(text, name, jsonStart),
       findLooseReplaceObjectEnd(text, name, jsonStart),
+      findLooseManageTodoListObjectEnd(text, name, jsonStart),
     );
   }
   try {
@@ -1133,6 +1151,7 @@ function findToolInputObjectEnd(text: string, name: string, jsonStart: number): 
     const looseEnd = Math.max(
       findLooseFileWriteObjectEnd(text, name, jsonStart),
       findLooseReplaceObjectEnd(text, name, jsonStart),
+      findLooseManageTodoListObjectEnd(text, name, jsonStart),
     );
     return looseEnd > strictEnd ? looseEnd : strictEnd;
   }
@@ -1211,9 +1230,26 @@ function parseLooseReplaceInFileToolInput(name: string, jsonText: string): Recor
 
 function parseLooseToolInput(name: string, jsonText: string): Record<string, unknown> | null {
   return parseJsonWithRepairedInvalidEscapes(jsonText)
+    ?? parseLooseManageTodoListToolInput(name, jsonText)
     ?? parseLooseFileWriteToolInput(name, jsonText)
     ?? parseLooseReplaceInFileToolInput(name, jsonText)
     ?? parseLooseRunTerminalToolInput(name, jsonText);
+}
+
+function parseLooseManageTodoListToolInput(name: string, jsonText: string): Record<string, unknown> | null {
+  if (normalizeAgentToolName(name) !== 'manage_todo_list') return null;
+  const key = /"todoList"\s*:\s*"?/i.exec(jsonText);
+  if (!key) return null;
+  const arrayStart = jsonText.indexOf('[', key.index + key[0].length);
+  if (arrayStart < 0) return null;
+  const arrayEnd = findJsonArrayEnd(jsonText, arrayStart);
+  if (arrayEnd < 0) return null;
+  try {
+    const parsed = JSON.parse(jsonText.slice(arrayStart, arrayEnd + 1)) as unknown;
+    return Array.isArray(parsed) ? { todoList: parsed } : null;
+  } catch {
+    return null;
+  }
 }
 
 function jsonArrayToFakeTools(value: unknown): FakeTool[] {

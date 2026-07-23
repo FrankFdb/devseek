@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import { stripAgentProceduralExecutionPhrases } from '../intent/agent-procedure-text';
 import {
   isAdvisoryPlanningRequest,
   isDeferredImplementationRequest,
@@ -307,7 +308,7 @@ type CompletionEvidenceSemanticView = {
 };
 
 function buildCompletionEvidenceSemanticView(text: string): CompletionEvidenceSemanticView {
-  const intentText = stripGenericEvidenceTodoLines(String(text || ''));
+  const intentText = stripAgentProceduralExecutionPhrases(stripGenericEvidenceTodoLines(String(text || '')));
   const route = routeTaskIntent(intentText);
   const contract = route.semanticContract;
   const readOnly = isExplicitlyReadOnlyRequestFromRoute(route, intentText);
@@ -468,7 +469,7 @@ export function isFileContentTerminalEvidenceCommand(command: string): boolean {
 }
 
 function commandEvidenceIntentText(text: string): string {
-  return String(text || '')
+  return stripAgentProceduralExecutionPhrases(text)
     .replace(/(?:不(?:要|用|需|需要|必|得|准|能)?|禁止|别|勿|请勿|未)\s*[^，,。；;\n]*(?:编译|运行|执行|启动|测试|验证|调试|安装|联网|网络)[^，,。；;\n]*/gi, ' ')
     .replace(/(?:do\s+not|don't|never|no\s+need\s+to|without)\s+[^,.;\n]*(?:compile|build|run|execute|start|test|verify|debug|install|network)[^,.;\n]*/gi, ' ');
 }
