@@ -307,6 +307,35 @@ test('shared write authority feeds a wrapped live revocation into the real file-
   assert.match(authority.currentPrompt, /停止写入/);
 });
 
+test('shared write authority keeps scoped Markdown deliverable writes authorized when source edits are forbidden', async () => {
+  const prompt = [
+    '请创建 /workspace/docs/r3-live-deepseek-login-ready-state.md Markdown 审计报告。',
+    '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要创建其他文件。',
+  ].join('\n');
+  let decision;
+  const authority = createWriteAuthority(prompt, {
+    onBeforeFileWrite: async (absPath, context) => {
+      decision = decideAgentFileWrite({
+        absPath,
+        workspaceRoot: '/workspace',
+        autopilotMode: true,
+        context,
+      });
+      return decision.action === 'allow';
+    },
+  });
+
+  const allowed = await authority.callbacks.onBeforeFileWrite('/workspace/docs/r3-live-deepseek-login-ready-state.md', {
+    purpose: 'tool-write',
+    userRequested: false,
+    requestPrompt: 'stale prompt',
+  });
+
+  assert.equal(authority.writeRevoked, false);
+  assert.equal(allowed, true);
+  assert.equal(decision?.action, 'allow');
+});
+
 test('agentic write revocation only blocks mutating tool attempts, not read-only exploration', () => {
   assert.equal(isWriteRevokedToolAttempt({ name: 'read_file' }), false);
   assert.equal(isWriteRevokedToolAttempt({ name: 'list_dir' }), false);

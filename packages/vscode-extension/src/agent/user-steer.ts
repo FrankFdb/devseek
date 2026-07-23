@@ -13,7 +13,18 @@ export function consumeUserSteerTexts(callbacks: AgentLoopCallbacks): string[] {
 }
 
 export function userSteerRevokesWrites(text: string): boolean {
-  return /(?:停止写入|停止(?:创建|修改|改写)|不要创建任何文件|不要(?:再)?(?:创建|修改|改写|写入)|禁止(?:创建|修改|改写|写入)|do\s+not\s+(?:create|modify|write)|stop\s+(?:writing|editing))/i.test(text);
+  const normalized = String(text || '');
+  if (/(?:停止写入|不要创建任何文件|不要(?:再)?(?:修改|改写|写入)(?:任何)?文件|禁止(?:创建|修改|改写|写入)(?:任何)?文件|stop\s+(?:writing|editing))/i.test(normalized)) {
+    return true;
+  }
+  const broadRevoke = /(?:停止(?:创建|修改|改写)|不要(?:再)?(?:创建|修改|改写|写入)|禁止(?:创建|修改|改写|写入)|do\s+not\s+(?:create|modify|write))/ig;
+  for (const match of normalized.matchAll(broadRevoke)) {
+    const tail = normalized.slice(match.index, match.index + 48);
+    if (!/(?:源码|源代码|正式源码|既有文件|其他文件|其他用户文件|别的文件|无关文件|source\s+(?:code|files?)|other\s+files?)/i.test(tail)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function buildUserSteerMessage(text: string, options: UserSteerMessageOptions = {}): ChatMessage {
