@@ -3,10 +3,10 @@ export function looksLikeProviderLoginGate(text: string): boolean {
   if (!normalized) return false;
   if (looksLikeProviderLoginRequiredSentinel(normalized)) return true;
   if (looksLikeHtmlSurface(normalized)) {
-    return /(?:请先?登录|重新登录|登录(?:已)?失效|会话(?:已)?过期|登录后继续|sign\s*in|log\s*in|login required|session expired|authentication required|not authenticated)/i.test(stripHtml(normalized));
+    return /(?:请先?登录|重新登录|登录(?:已)?失效|会话(?:已)?过期|登录后继续|sign[-\s]+in|log[-\s]+in|login required|session expired|authentication required|not authenticated|\blogin\b)/i.test(stripHtml(normalized));
   }
   if (!looksLikeProviderControlText(normalized)) return false;
-  return /(?:请先?登录|重新登录|登录(?:已)?失效|会话(?:已)?过期|登录后继续|sign\s*in|log\s*in|login required|session expired|authentication required|not authenticated)/i.test(normalized);
+  return /(?:请先?登录|重新登录|登录(?:已)?失效|会话(?:已)?过期|登录后继续|sign[-\s]+in|log[-\s]+in|login required|session expired|authentication required|not authenticated)/i.test(normalized);
 }
 
 export function looksLikeProviderVerificationGate(text: string): boolean {

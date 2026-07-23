@@ -36,14 +36,6 @@ export function classifyProviderOutputIntegrity(text: string | undefined): Provi
     return buildProviderIntegrity('empty', 0, false, 'provider returned an empty response');
   }
 
-  if (looksLikeProviderLoginGate(trimmed) || looksLikeProviderVerificationGate(trimmed)) {
-    return buildProviderIntegrity('login_required', countProviderToolCalls(trimmed), false, 'provider returned a login or captcha page');
-  }
-
-  if (looksLikeProviderErrorSurface(trimmed)) {
-    return buildProviderIntegrity('error_page', countProviderToolCalls(trimmed), false, 'provider returned an error page');
-  }
-
   if (TRUNCATED_RE.test(trimmed) || looksLikeTruncatedToolProtocol(trimmed)) {
     return buildProviderIntegrity('truncated', countProviderToolCalls(trimmed), false, 'provider response appears truncated');
   }
@@ -51,6 +43,14 @@ export function classifyProviderOutputIntegrity(text: string | undefined): Provi
   const toolCallCount = countProviderToolCalls(trimmed);
   if (toolCallCount > 0) {
     return buildProviderIntegrity('tool_call', toolCallCount, false, 'provider requested tool execution');
+  }
+
+  if (looksLikeProviderLoginGate(trimmed) || looksLikeProviderVerificationGate(trimmed)) {
+    return buildProviderIntegrity('login_required', 0, false, 'provider returned a login or captcha page');
+  }
+
+  if (looksLikeProviderErrorSurface(trimmed)) {
+    return buildProviderIntegrity('error_page', 0, false, 'provider returned an error page');
   }
 
   const hasAnswerEvidence = hasReadOnlyAnswerEvidence(trimmed) || looksLikeConcreteAnswer(trimmed);

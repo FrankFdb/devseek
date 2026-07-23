@@ -59,6 +59,33 @@ test('provider output integrity: treats LOGIN_REQUIRED inside a requested report
   assert.equal(result.toolCallCount, 1);
 });
 
+test('provider output integrity: treats OpenAI-style tool arrays with login-named paths as tools', () => {
+  const result = classifyProviderOutputIntegrity([
+    '让我先读取相关的源文件以获取完整信息。',
+    '',
+    '```',
+    '[',
+    '  {',
+    '    "name": "read_file",',
+    '    "arguments": {',
+    '      "path": "/tmp/workspace/docs/r3-iteration/deepseek-login-ready-state-matrix.md"',
+    '    }',
+    '  },',
+    '  {',
+    '    "name": "read_file",',
+    '    "arguments": {',
+    '      "path": "/tmp/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts"',
+    '    }',
+    '  }',
+    ']',
+    '```',
+  ].join('\n'));
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 2);
+});
+
 test('provider output integrity: accepts a complete quote-damaged replace call as an executable tool request', () => {
   const result = classifyProviderOutputIntegrity(String.raw`我立即修复头文件。
 <TOOL_CALL>[TOOL:replace_in_file] {"path":"/tmp/project/worker.hpp","old_str":"#include <string>\n\n#include "worker_types.hpp"","new_str":"#include <string>\n#include <unordered_map>\n\n#include "worker_types.hpp""}</TOOL_CALL>`);
