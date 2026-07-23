@@ -97,6 +97,7 @@ import {
   tryExecuteDeterministicAnalyzeExecution,
 } from './agent/deterministic-analyze-execution';
 import { selectTaskWrittenFileEvidence } from './agent/task-write-evidence';
+import { buildAnalyzeToolWriteSettlement } from './agent/analyze-tool-write-settlement';
 import {
   buildTaskSettlementCompletionStatus,
   buildTaskSettlementFailureStatus,
@@ -733,15 +734,47 @@ async function executeTask(
       { role: 'user', content: analyzePrompt },
     ];
     const taskTerminalEvidence: TerminalEvidence[] = [];
+    const taskWrittenFiles: WrittenFileEvidence[] = [];
     const analyzeConvergenceGuard = createTaskConvergenceGuard();
     let exhaustedWithPendingTools = false;
     let noToolRecoveryAttempts = 0;
     let lastAnalyzeRoundText = '';
+    const recordTaskToolWrites = (writtenFiles?: WrittenFileEvidence[]) => {
+      if (writtenFiles?.length) taskWrittenFiles.push(...writtenFiles);
+    };
+    const completeFromAnalyzeToolWrite = async (reason?: string): Promise<TaskExecutionResult | undefined> => {
+      const settlement = buildAnalyzeToolWriteSettlement({
+        task,
+        promptText: writeAuthority.currentPrompt,
+        writtenFiles: taskWrittenFiles,
+        workspaceRoot: workspaceRoot.fsPath,
+        rawText: analyzeRaw || lastAnalyzeRoundText,
+        reason,
+      });
+      if (!settlement) return undefined;
+
+      const freshContent = readFileContentFull(settlement.evidence.path);
+      if (freshContent) {
+        contentCache.set(settlement.evidence.path, freshContent);
+        if (task.absPath) contentCache.set(task.absPath, freshContent);
+      }
+
+      return withTaskTerminalEvidence({
+        applied: true,
+        path: settlement.evidence.path,
+        raw: settlement.raw,
+        linesAdded: settlement.evidence.linesAdded,
+        linesRemoved: settlement.evidence.linesRemoved,
+        writtenFiles: settlement.writtenFiles,
+        taskComplete: true,
+      }, taskTerminalEvidence);
+    };
     const recordTaskToolResult = (result: ToolLoopResult): ToolLoopResult => {
       const loopResult = collectToolReadEvidence(taskReadEvidence, result);
       if (loopResult.terminalEvidence?.length) {
         taskTerminalEvidence.push(...loopResult.terminalEvidence);
       }
+      recordTaskToolWrites(loopResult.writtenFiles);
       return loopResult;
     };
     // G-analy-display: Route streaming text into the Working box analysis body (Copilot
@@ -823,6 +856,8 @@ async function executeTask(
             });
             continue;
           }
+          const writeToolCompletion = await completeFromAnalyzeToolWrite();
+          if (writeToolCompletion) return writeToolCompletion;
           return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw || text, taskComplete: true }, taskTerminalEvidence);
         }
         if (!loopRes.toolCallsMade) {
@@ -867,6 +902,7 @@ async function executeTask(
           tools: tools.map(tool => normalizeToolCall(tool, 'fake-tool')),
           feedbackForAI: feedbackForNextRound,
           rawText: text,
+          writtenFiles: loopRes.writtenFiles,
           terminalEvidence: loopRes.terminalEvidence,
         });
         if (convergence.kind === 'blocked') {
@@ -890,6 +926,20 @@ async function executeTask(
     } catch (e) {
       const netErr = isNetworkError(e);
       const failedReason = (e as Error).message;
+      const writeToolCompletion = netErr
+        ? await completeFromAnalyzeToolWrite(failedReason)
+        : undefined;
+      if (writeToolCompletion) {
+        await callbacks.onAgentStatus({
+          type: 'agentStatus', phase: 'execute',
+          taskId: task.id, taskFile: basename, taskAction: task.action,
+          taskDesc: task.desc, taskIndex, taskTotal: allTasks.length,
+          state: 'completed',
+          title: '已根据本地写盘证据完成任务',
+          detail: `Provider 后续确认请求失败：${failedReason}\n已保留写入证据：${summarizeWrittenFileBasenames(writeToolCompletion.writtenFiles || [])}`,
+        });
+        return writeToolCompletion;
+      }
       await callbacks.onAgentStatus({
         type: 'agentStatus', phase: 'execute',
         taskId: task.id, taskFile: basename, taskAction: task.action,
@@ -961,6 +1011,9 @@ async function executeTask(
           : finalNoToolRecovery.failedReason,
       }, taskTerminalEvidence);
     }
+
+    const writeToolCompletion = await completeFromAnalyzeToolWrite();
+    if (writeToolCompletion) return writeToolCompletion;
 
     return withTaskTerminalEvidence({ applied: false, raw: analyzeRaw || lastAnalyzeRoundText }, taskTerminalEvidence);
   }

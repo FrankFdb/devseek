@@ -22,16 +22,29 @@ export function selectTaskWrittenFileEvidence(
 ): WrittenFileEvidence[] {
   if (!isMutatingTaskAction(task.action) || writtenFiles.length === 0) return [];
 
+  const scoped = selectTaskScopedWrittenFileEvidence(task, writtenFiles, workspaceRoot);
+  if (scoped.length > 0) return scoped;
+
+  const coalesced = coalesceWrittenFileEvidence(writtenFiles, workspaceRoot);
+  const target = buildTaskWriteTarget(task, workspaceRoot);
+
+  return target.hasSpecificTarget ? [] : coalesced;
+}
+
+export function selectTaskScopedWrittenFileEvidence(
+  task: Pick<AgentTask, 'file' | 'absPath' | 'visibleTarget' | 'desc'>,
+  writtenFiles: WrittenFileEvidence[],
+  workspaceRoot?: string,
+): WrittenFileEvidence[] {
+  if (writtenFiles.length === 0) return [];
+
   const coalesced = coalesceWrittenFileEvidence(writtenFiles, workspaceRoot);
   const target = buildTaskWriteTarget(task, workspaceRoot);
   const matched = coalesced.filter((evidence) => matchesWriteTarget(evidence, target, workspaceRoot));
   if (matched.length > 0) return matched;
 
   const fileTokens = extractTaskFileTokens(task.file, task.visibleTarget, task.desc);
-  const tokenMatched = coalesced.filter((evidence) => taskFileTokensMatchWrittenEvidence(fileTokens, evidence, workspaceRoot));
-  if (tokenMatched.length > 0) return tokenMatched;
-
-  return target.hasSpecificTarget ? [] : coalesced;
+  return coalesced.filter((evidence) => taskFileTokensMatchWrittenEvidence(fileTokens, evidence, workspaceRoot));
 }
 
 function isMutatingTaskAction(action: AgentTaskAction): boolean {

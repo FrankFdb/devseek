@@ -26,10 +26,13 @@ const simpleFileTask = readFileSync(path.join(rootDir, 'src/agent/simple-file-ta
 const bridgeProvider = readFileSync(path.join(rootDir, 'src/llm/providers/bridge.ts'), 'utf8');
 const replayDiagnostics = readFileSync(path.join(rootDir, 'src/diagnostics/run-log-replay.ts'), 'utf8');
 const taskTodoLedger = readFileSync(path.join(rootDir, 'src/agent/task-todo-ledger.ts'), 'utf8');
+const taskWriteEvidenceSource = readFileSync(path.join(rootDir, 'src/agent/task-write-evidence.ts'), 'utf8');
+const analyzeToolWriteSettlementSource = readFileSync(path.join(rootDir, 'src/agent/analyze-tool-write-settlement.ts'), 'utf8');
 const bundlePath = path.join(rootDir, 'test/unit/task-state-machine.bundle.cjs');
 const groundingBundlePath = path.join(rootDir, 'test/unit/task-state-grounding.bundle.cjs');
 const writeAuthorityBundlePath = path.join(rootDir, 'test/unit/write-authority.bundle.cjs');
 const fileWritePolicyBundlePath = path.join(rootDir, 'test/unit/task-state-file-write-policy.bundle.cjs');
+const taskWriteEvidenceBundlePath = path.join(rootDir, 'test/unit/task-write-evidence.bundle.cjs');
 
 execSync(
   `npx esbuild src/agent/task-state-machine.ts --bundle ` +
@@ -49,6 +52,11 @@ execSync(
 execSync(
   `npx esbuild src/app/agent-file-write-policy.ts --bundle ` +
   `--outfile=${fileWritePolicyBundlePath} --format=cjs --platform=node --external:vscode`,
+  { cwd: rootDir, stdio: 'pipe' },
+);
+execSync(
+  `npx esbuild src/agent/task-write-evidence.ts --bundle ` +
+  `--outfile=${taskWriteEvidenceBundlePath} --format=cjs --platform=node`,
   { cwd: rootDir, stdio: 'pipe' },
 );
 
@@ -74,6 +82,10 @@ const {
   isWriteRevokedToolAttempt,
 } = req(writeAuthorityBundlePath);
 const { decideAgentFileWrite } = req(fileWritePolicyBundlePath);
+const {
+  selectTaskScopedWrittenFileEvidence,
+  selectTaskWrittenFileEvidence,
+} = req(taskWriteEvidenceBundlePath);
 
 test('two-phase agent todos are delegated to the task state machine boundary', () => {
   assert.match(agentLoop, /from '\.\/agent\/task-state-machine'/, 'agent-loop must use the task state machine boundary');
@@ -93,8 +105,14 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
   assert.match(simpleFileTask, /advanceLinearAgentTodo/, 'simple file todo progress must use the task state machine boundary');
   assert.match(simpleFileTask, /failLinearAgentTodo/, 'simple file todo failures must use the task state machine boundary');
   assert.match(agentLoop, /selectTaskWrittenFileEvidence/, 'agent-loop must treat create_file/write_file results as task write evidence');
+  assert.match(agentLoop, /buildAnalyzeToolWriteSettlement/, 'analyze/explore deliverable writes must settle through the shared write evidence boundary');
+  assert.match(analyzeToolWriteSettlementSource, /selectTaskScopedWrittenFileEvidence/, 'analyze/explore deliverable writes must preserve scoped write evidence');
+  assert.match(taskWriteEvidenceSource, /export function selectTaskScopedWrittenFileEvidence/, 'scoped write selection must be a shared task evidence boundary');
   assert.match(agentLoop, /recordTaskToolWrites\(loopResult\.writtenFiles\)/, 'tool-loop written files must be recorded before task settlement');
   assert.match(agentLoop, /completeFromTaskToolWrite\(loopRes\.taskComplete\)/, 'matching tool writes must complete the current mutating task');
+  assert.match(analyzeToolWriteSettlementSource, /requiresFileChangeEvidence\(intentText\)/, 'read-only tool writes must settle only for file-deliverable requests');
+  assert.match(agentLoop, /completeFromAnalyzeToolWrite\(failedReason\)/, 'post-write provider network failures must settle from local write evidence');
+  assert.match(agentLoop, /title:\s*'已根据本地写盘证据完成任务'/, 'post-write network recovery must publish a local evidence completion state');
   assert.match(agentLoop, /onTodoUpdate:\s*undefined/, 'nested editor tool loops must not publish model todos directly');
   assert.match(agentLoop, /executeFakeToolsForLoop\(tools,\s*taskToolCallbacks,/, 'editor tool loops must use the todo-suppressed callback boundary');
   assert.match(agentLoop, /new ToolReadEvidenceRecorder\(workspaceRoot\.fsPath, callbacks\.traceRunId\)/, 'one recorder must span every task and repair round in a run');
@@ -238,6 +256,38 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
     /status:\s*'failed'\s+as\s+const/,
     'simple-file-task must not hand-roll failed todo transitions',
   );
+});
+
+test('R3 explore Markdown deliverable writes stay scoped without weakening mutating task evidence', () => {
+  const tempRoot = mkdtempSync(path.join(tmpdir(), 'devseek-r3-explore-write-evidence-'));
+  const reportPath = path.join(tempRoot, 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md');
+  const writtenFiles = [writeEvidence(reportPath, 'create')];
+  const exploreTask = {
+    id: 'r3-live-deepseek-login-ready-state',
+    action: 'explore',
+    file: 'workspace',
+    absPath: '',
+    desc: [
+      '请读取 deepseek-login-ready-state-matrix.md 和 deepseek-login-ready-state-contract.ts。',
+      '请生成 docs/r3-iteration/r3-live-deepseek-login-ready-state.md 审计报告。',
+      '报告必须包含登录/ready 边界结论、风险、验证建议和用户可检查的证据路径。',
+    ].join('\n'),
+  };
+
+  try {
+    assert.deepEqual(
+      selectTaskWrittenFileEvidence(exploreTask, writtenFiles, tempRoot),
+      [],
+      'the original mutating selector must not reclassify explore as create/modify/delete',
+    );
+
+    const scoped = selectTaskScopedWrittenFileEvidence(exploreTask, writtenFiles, tempRoot);
+    assert.equal(scoped.length, 1);
+    assert.equal(scoped[0].path, reportPath);
+    assert.equal(scoped[0].basename, 'r3-live-deepseek-login-ready-state.md');
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 for (const [timing, revokePoll] of [['provider-in-flight', 2], ['write-boundary', 3]]) {
