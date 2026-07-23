@@ -68,7 +68,11 @@ const {
   deriveArtifactClaimSpecs,
   verifyArtifactClaims,
 } = req(groundingBundlePath);
-const { createWriteAuthority } = req(writeAuthorityBundlePath);
+const {
+  createWriteAuthority,
+  hasWriteRevokedToolAttempt,
+  isWriteRevokedToolAttempt,
+} = req(writeAuthorityBundlePath);
 const { decideAgentFileWrite } = req(fileWritePolicyBundlePath);
 
 test('two-phase agent todos are delegated to the task state machine boundary', () => {
@@ -301,6 +305,27 @@ test('shared write authority feeds a wrapped live revocation into the real file-
   assert.match(decision?.reason ?? '', /prohibited/);
   assert.match(authority.currentPrompt, /【用户实时补充\/纠偏】/);
   assert.match(authority.currentPrompt, /停止写入/);
+});
+
+test('agentic write revocation only blocks mutating tool attempts, not read-only exploration', () => {
+  assert.equal(isWriteRevokedToolAttempt({ name: 'read_file' }), false);
+  assert.equal(isWriteRevokedToolAttempt({ name: 'list_dir' }), false);
+  assert.equal(isWriteRevokedToolAttempt({ name: 'grep_search' }), false);
+  assert.equal(hasWriteRevokedToolAttempt([
+    { name: 'read_file' },
+    { name: 'list_dir' },
+  ]), false);
+
+  assert.equal(isWriteRevokedToolAttempt({ name: 'create_file' }), true);
+  assert.equal(isWriteRevokedToolAttempt({ name: 'write_file' }), true);
+  assert.equal(isWriteRevokedToolAttempt({ name: 'replace_in_file' }), true);
+  assert.equal(isWriteRevokedToolAttempt({ name: 'delete_file' }), true);
+  assert.equal(isWriteRevokedToolAttempt({ name: 'run_terminal' }), true);
+  assert.equal(isWriteRevokedToolAttempt({ name: 'mcp__fs__write_file' }), true);
+  assert.equal(hasWriteRevokedToolAttempt([
+    { name: 'read_file' },
+    { name: 'create_file' },
+  ]), true);
 });
 
 test('R3-03 shared write authority publishes steer TaskContract revision receipts', () => {

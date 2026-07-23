@@ -59,7 +59,7 @@ import { shouldRequestManualReviewForRun } from './manual-review-validation';
 import type { AgentLoopCallbacks, AgentLoopResult } from './loop-types';
 import type { EvidenceRef } from './tool-executor';
 import { chatWithMessages } from './loop-chat';
-import { createWriteAuthority } from './write-authority';
+import { createWriteAuthority, hasWriteRevokedToolAttempt } from './write-authority';
 import {
   analyzeTerminalEvidence,
   describeAgentToolActivity,
@@ -1005,7 +1005,7 @@ export async function runAgenticLoop(
         readEvidencePaths: [...allReadEvidencePaths],
       },
     );
-    if (writeAuthority.writeRevoked && loopRes.workToolCallsMade) { failedReason = '用户实时补充已撤销写入授权，任务已停止。'; break; }
+    if (writeAuthority.writeRevoked && hasWriteRevokedToolAttempt(toolsToExecute)) { failedReason = '用户实时补充已撤销写入授权，任务已停止。'; break; }
     if (loopRes.toolCallsMade) {
       replaceLatestAssistantToolHistory(messages);
     }

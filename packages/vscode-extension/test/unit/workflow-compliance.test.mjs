@@ -4091,7 +4091,9 @@ test('R3-03 Steering: IntentRevisionLineage owns TaskContract revision and uncom
   assertContains(writeAuthority, 'committedEffects', 'write authority must seal committed effects into steer revisions');
   assertContains(writeAuthority, 'taskContractRevision', 'write authority must publish the current steer revision receipt');
   assertContains(writeAuthority, 'writeRevoked', 'write authority must expose steer write-revocation facts');
-  assertContains(agenticLoop, 'writeAuthority.writeRevoked', 'agentic loop must settle revoked-write tool rounds instead of retrying');
+  assertContains(writeAuthority, 'isWriteRevokedToolAttempt', 'write authority must distinguish mutating tools from read-only exploration');
+  assertContains(agenticLoop, 'hasWriteRevokedToolAttempt', 'agentic loop must settle only revoked mutating tool attempts');
+  assertDoesNotContain(agenticLoop, 'writeAuthority.writeRevoked && loopRes.workToolCallsMade', 'read-only exploration must not be misclassified as revoked writes');
   assertContains(userSteer, 'consumeUserSteerTexts', 'user steer parsing must expose raw steer text for contract revision');
   assertContains(lineageTests, 'R3-03 IntentRevisionLineage: steer creates TaskContract revision', 'R3-03 must keep the lineage oracle');
   assertContains(taskStateTests, 'R3-03 shared write authority publishes steer TaskContract revision receipts', 'R3-03 must keep the runtime steer oracle');

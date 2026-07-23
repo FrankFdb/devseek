@@ -20,6 +20,25 @@ export interface WriteAuthorityOptions {
   committedEffects?: () => IntentRevisionEffectReceipt[];
 }
 
+const WRITE_REVOKED_MUTATION_TOOL_NAMES = new Set([
+  'create_file',
+  'write_file',
+  'replace_file',
+  'replace_in_file',
+  'delete_file',
+  'run_terminal',
+  'run_vscode_command',
+]);
+
+export function isWriteRevokedToolAttempt(tool: { name?: unknown }): boolean {
+  const name = typeof tool.name === 'string' ? tool.name : '';
+  return WRITE_REVOKED_MUTATION_TOOL_NAMES.has(name) || /^mcp__/.test(name);
+}
+
+export function hasWriteRevokedToolAttempt(tools: readonly { name?: unknown }[]): boolean {
+  return tools.some(isWriteRevokedToolAttempt);
+}
+
 /** Keeps file-write authorization aligned with user steers received in flight. */
 export function createWriteAuthority(
   initialPrompt: string,
