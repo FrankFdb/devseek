@@ -72,6 +72,33 @@ test('Diagnostic logger never persists embedded DevSeek authority capabilities',
   }
 });
 
+test('Diagnostic logger preserves payload content for replay while bounding ordinary strings', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-trace-payload-'));
+  const longText = `${'A'.repeat(8100)}TAIL`;
+  try {
+    const logger = createDevSeekTraceLogger({
+      workspaceRoot,
+      source: 'unit-test',
+      runId: 'long-payload',
+      level: 'debug',
+    });
+
+    logger.info('provider', 'long-status', { detail: longText });
+    logger.payload('provider', 'extension.response.raw', longText);
+
+    const entries = readFileSync(logger.logPath, 'utf8').trim().split('\n').map(line => JSON.parse(line));
+    const status = entries.find(event => event.event === 'long-status');
+    const payload = entries.find(event => event.event === 'payload-recorded');
+    assert.match(status.data.detail, /\.\.\.\[truncated:\d+\]$/);
+    assert.equal(status.data.detail.length < longText.length, true);
+    assert.equal(payload.data.length, longText.length);
+    assert.equal(payload.data.content, longText);
+    assert.equal(payload.data.content.endsWith('TAIL'), true);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('Diagnostic logger normalizes trace levels', () => {
   assert.equal(resolveDevSeekTraceLevel('trace'), 'trace');
   assert.equal(resolveDevSeekTraceLevel('bad', 'info'), 'info');

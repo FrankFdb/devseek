@@ -480,6 +480,73 @@ test('run log replay accepts the real Chinese malformed search recovery sequence
   }
 });
 
+test('run log replay accepts full long R3 DeepSeek create_file response without truncation issues', () => {
+  const content = [
+    '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE Audit Report',
+    '',
+    'BridgeHealthCheck',
+    'devseek.deepseek-web-connector-health/v1',
+    'loggedInLikely',
+    'plugin-opened DeepSeek page',
+    'chatInput evidence',
+    'deepseek-dom-send-button-missing',
+    'login-state-not-send-button',
+    'send button selector drift is not LOGIN_REQUIRED',
+    'not fixed line-count smoke',
+    'A'.repeat(8200),
+  ].join('\n');
+  const providerResponse = [
+    '[TOOL:manage_todo_list] {"todoList":"[{"id":"1","title":"读取源文档","status":"completed"}]"}',
+    `[TOOL:create_file] {"path":"/tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md","content":${JSON.stringify(`<content><![CDATA[${content}]]></content>`)}}`,
+  ].join('');
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-23T07:13:00.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'r3-long-create-file',
+      data: {
+        name: 'extension.response.raw',
+        length: providerResponse.length,
+        content: providerResponse,
+      },
+    },
+    {
+      ts: '2026-07-23T07:13:00.100Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-start',
+      runId: 'r3-long-create-file',
+      data: { toolCount: 2, tools: ['manage_todo_list', 'create_file'] },
+    },
+    {
+      ts: '2026-07-23T07:13:00.200Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-complete',
+      runId: 'r3-long-create-file',
+      data: { toolCallsMade: true, workToolCallsMade: true },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(report.providerResponses, 1);
+    assert.equal(report.toolExecutions, 1);
+    assert.equal(kinds.has('provider-truncated-response'), false);
+    assert.equal(kinds.has('malformed-tool-block'), false);
+    assert.equal(kinds.has('provider-tool-request-not-executed'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay accepts the real quote-damaged replace_in_file response as executable', () => {
   const { dir, logPath } = writeLog([
     {

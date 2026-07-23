@@ -56,6 +56,11 @@ const TRACE_LEVELS: Record<DevSeekTraceLevel, number> = {
 const REDACTED = '[REDACTED]';
 const SENSITIVE_KEY_RE = /(?:token|cookie|authorization|password|secret|api[_-]?key|session|credential)/i;
 const TRACE_SEQ_BY_RUN = new Map<string, number>();
+const MAX_TRACE_STRING_LENGTH = 8000;
+
+interface TraceSanitizeOptions {
+  preservePayloadContent?: boolean;
+}
 
 export function resolveDevSeekTraceLevel(
   value: string | undefined,
@@ -261,7 +266,9 @@ export class DevSeekTraceLogger {
       source: entry.source ?? this.source,
       runId: entry.runId ?? this.runId,
     };
-    const secretFree = sanitizeTraceData(normalized) as DevSeekTraceEvent;
+    const secretFree = sanitizeTraceData(normalized, '', [], {
+      preservePayloadContent: normalized.event === 'payload-recorded',
+    }) as DevSeekTraceEvent;
     fs.appendFileSync(this.logPath, `${JSON.stringify(secretFree)}\n`, 'utf8');
   }
 
@@ -301,19 +308,27 @@ function resolveBuildInfo(options: DevSeekTraceLoggerOptions): DevSeekBuildInfo 
   };
 }
 
-function sanitizeTraceData(value: unknown, key = ''): unknown {
+function sanitizeTraceData(
+  value: unknown,
+  key = '',
+  path: string[] = [],
+  options: TraceSanitizeOptions = {},
+): unknown {
   if (value === null || value === undefined) return value;
   if (SENSITIVE_KEY_RE.test(key)) return REDACTED;
   if (typeof value === 'string') {
     const redacted = redactDevSeekAuthorityCapabilities(value);
-    return redacted.length > 8000 ? `${redacted.slice(0, 8000)}...[truncated:${redacted.length}]` : redacted;
+    if (options.preservePayloadContent && path.join('.') === 'data.content') return redacted;
+    return redacted.length > MAX_TRACE_STRING_LENGTH
+      ? `${redacted.slice(0, MAX_TRACE_STRING_LENGTH)}...[truncated:${redacted.length}]`
+      : redacted;
   }
   if (typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map(item => sanitizeTraceData(item));
+  if (Array.isArray(value)) return value.map((item, index) => sanitizeTraceData(item, key, path.concat(String(index)), options));
   const out: Record<string, unknown> = {};
   for (const [entryKey, entryValue] of Object.entries(value as Record<string, unknown>)) {
     const safeKey = redactDevSeekAuthorityCapabilities(entryKey);
-    out[safeKey] = sanitizeTraceData(entryValue, safeKey);
+    out[safeKey] = sanitizeTraceData(entryValue, safeKey, path.concat(safeKey), options);
   }
   return out;
 }

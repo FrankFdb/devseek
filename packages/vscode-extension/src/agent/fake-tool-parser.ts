@@ -214,12 +214,26 @@ function isShellTranscriptName(name: string): boolean {
 }
 
 function normalizeToolInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
-  return normalizeAgentToolInput(toolName, input);
+  return unwrapNestedFileWriteContentEnvelope(
+    normalizeAgentToolName(toolName),
+    normalizeAgentToolInput(toolName, input),
+  );
 }
 
 function normalizeFakeTool(tool: FakeTool): FakeTool {
   const name = normalizeAgentToolName(tool.name);
   return { name, input: normalizeToolInput(name, tool.input) };
+}
+
+function unwrapNestedFileWriteContentEnvelope(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
+  if (!LOOSE_FILE_WRITE_TOOL_NAMES.has(toolName) || typeof input.content !== 'string') return input;
+  const unwrapped = unwrapStandaloneCdataParameterEnvelope(input.content);
+  return unwrapped === undefined ? input : { ...input, content: unwrapped };
+}
+
+function unwrapStandaloneCdataParameterEnvelope(value: string): string | undefined {
+  const match = /^\s*<\s*(content|contents|text|body|fileContent|file_content|source|code|newContent|new_content)\b[^>]*>\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*<\/\s*\1\s*>\s*$/i.exec(value);
+  return match ? match[2] : undefined;
 }
 
 function looksLikeNonShellTranscriptLine(line: string): boolean {

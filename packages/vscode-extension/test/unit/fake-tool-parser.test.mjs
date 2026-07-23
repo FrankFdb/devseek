@@ -995,6 +995,36 @@ test('FakeToolParser: parses R3 live DeepSeek function-style create_file artifac
   assert.equal(stripToolCallBlocks(text), '好的，我已经读取了必需的两个源文件。现在生成并写入报告文件。');
 });
 
+test('FakeToolParser: unwraps R3 live bracket create_file content CDATA parameter shell', () => {
+  const content = [
+    '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE Audit Report',
+    '',
+    'BridgeHealthCheck',
+    'devseek.deepseek-web-connector-health/v1',
+    'loggedInLikely',
+    'plugin-opened DeepSeek page',
+    'chatInput evidence',
+    'deepseek-dom-send-button-missing',
+    'login-state-not-send-button',
+    'send button selector drift is not LOGIN_REQUIRED',
+    'not fixed line-count smoke',
+  ].join('\n');
+  const text = [
+    '[TOOL:manage_todo_list] {"todoList":"[{"id":"1","title":"读取源文档","status":"completed"}]"}',
+    `[TOOL:create_file] {"path":"/tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md","content":${JSON.stringify(`<content><![CDATA[${content}]]></content>`)}}`,
+  ].join('');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 2);
+  assert.deepEqual(tools.map(tool => tool.name), ['manage_todo_list', 'create_file']);
+  assert.equal(tools[0].input.todoList[0].status, 'completed');
+  assert.equal(tools[1].input.path, '/tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md');
+  assert.equal(tools[1].input.content, content);
+  assert.equal(tools[1].input.content.startsWith('<content><![CDATA['), false);
+  assert.equal(tools[1].input.content.endsWith(']]></content>'), false);
+});
+
 test('FakeToolParser: detects the first tool call start for streaming UI', () => {
   const text = '先说明一下\n{"tool":"write_file","path":"code/hello.cpp","content":"int main(){}"}';
   assert.equal(findFirstToolCallStart(text), text.indexOf('{'));
