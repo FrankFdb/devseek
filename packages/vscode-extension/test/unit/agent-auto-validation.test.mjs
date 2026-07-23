@@ -420,6 +420,80 @@ test('Agent auto validation: Markdown literal acceptance anchors block completio
   }
 });
 
+test('Agent auto validation: anchor style guidance does not make explanation bullets literal', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-md-anchor-guidance-'));
+  try {
+    const docsDir = path.join(root, 'docs/r3-iteration');
+    mkdirSync(docsDir, { recursive: true });
+    const target = path.join(docsDir, 'r3-live-deepseek-login-ready-state.md');
+    writeFileSync(target, [
+      '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE 审计报告',
+      '',
+      'BridgeHealthCheck',
+      'devseek.deepseek-web-connector-health/v1',
+      'loggedInLikely',
+      'plugin-opened DeepSeek page',
+      'chatInput evidence',
+      'deepseek-dom-send-button-missing',
+      'login-state-not-send-button',
+      'send button selector drift is not LOGIN_REQUIRED',
+      'not fixed line-count smoke',
+      '',
+      '本轮验收不能复用旧 Markdown、固定行数、R3-09B budget artifact 或仅凭窗口已打开判定。',
+    ].join('\n'));
+    const validationService = {
+      validateWorkspaceChanges: async () => ({
+        ran: true,
+        ok: true,
+        command: "test -f 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md'",
+        exitCode: 0,
+        output: 'ok',
+        cwd: root,
+        mode: 'file-check',
+        reason: 'non-code-file-validation',
+        risks: [],
+        alternativeChecks: [],
+      }),
+    };
+    const statuses = [];
+    const prompt = [
+      '请创建 Markdown 审计报告。',
+      '报告正文请使用与本测试 case 相同的中文撰写；技术标识符、协议名、文件路径和验收锚点保持原文。',
+      '',
+      '报告必须解释：',
+      '- 为什么本轮验收不能复用旧 Markdown、固定行数、R3-09B budget artifact 或只看窗口已打开。',
+      '',
+      '报告必须逐字包含以下验收锚点：',
+      '- R3-LIVE-DEEPSEEK-LOGIN-READY-STATE',
+      '- BridgeHealthCheck',
+      '- devseek.deepseek-web-connector-health/v1',
+      '- loggedInLikely',
+      '- plugin-opened DeepSeek page',
+      '- chatInput evidence',
+      '- deepseek-dom-send-button-missing',
+      '- login-state-not-send-button',
+      '- send button selector drift is not LOGIN_REQUIRED',
+      '- not fixed line-count smoke',
+    ].join('\n');
+
+    const result = await runAgentAutoValidationForWrites(
+      [{ path: target, basename: 'r3-live-deepseek-login-ready-state.md', linesAdded: 13, linesRemoved: 0, action: 'create' }],
+      root,
+      prompt,
+      makeCallbacks(statuses, []),
+      'conservative',
+      { validationService },
+    );
+
+    assert.equal(result.evidence.ok, true);
+    assert.equal(result.qualityGate.status, 'pass');
+    assert.doesNotMatch(result.feedbackForAI || '', /markdown_required_literal_anchors/);
+    assert.equal(statuses.some(status => status.title === 'Markdown 验收锚点未通过' && status.state === 'failed'), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Agent auto validation: cumulative formal Markdown quality is not lost after later source writes', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-cumulative-formal-quality-'));
   try {

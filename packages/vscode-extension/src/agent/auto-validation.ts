@@ -302,7 +302,7 @@ function extractRequiredLiteralAnchors(userPrompt: string): string[] {
   let collecting = false;
   for (const line of lines) {
     const trimmed = line.trim();
-    if (!collecting && /(?:必须|务必|must|required)[^\n]{0,24}(?:逐字|verbatim|exact)[^\n]{0,24}(?:包含|include|contain)|(?:验收锚点|required\s+(?:anchor|snippet))/i.test(trimmed)) {
+    if (!collecting && beginsRequiredLiteralAnchorList(trimmed)) {
       collecting = true;
       continue;
     }
@@ -316,6 +316,12 @@ function extractRequiredLiteralAnchors(userPrompt: string): string[] {
     if (value && value.length <= 220 && !anchors.includes(value)) anchors.push(value);
   }
   return anchors;
+}
+
+function beginsRequiredLiteralAnchorList(line: string): boolean {
+  return /(?:必须|务必|must|required)[^\n]{0,24}(?:逐字|verbatim|exact)[^\n]{0,24}(?:包含|include|contain)/i.test(line)
+    || /(?:以下|如下|下列|following|these)[^\n]{0,24}(?:验收锚点|required\s+(?:anchor|snippet))/i.test(line)
+    || /(?:验收锚点|required\s+(?:anchor|snippet))[^\n]{0,16}[:：]\s*$/i.test(line);
 }
 
 function cleanRequiredLiteralAnchor(value: string): string {
