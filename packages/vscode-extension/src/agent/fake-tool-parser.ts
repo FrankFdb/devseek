@@ -1149,6 +1149,19 @@ function findLooseManageTodoListObjectEnd(text: string, name: string, jsonStart:
   return text[i] === '}' ? i : -1;
 }
 
+function findLooseTaskCompleteObjectEnd(text: string, name: string, jsonStart: number): number {
+  if (normalizeAgentToolName(name) !== 'task_complete' || text[jsonStart] !== '{') return -1;
+  const summaryValueStart = findLooseJsonStringFieldValueStart(text, jsonStart, ['summary']);
+  if (summaryValueStart < 0) return -1;
+
+  for (let i = summaryValueStart; i < text.length; i++) {
+    if (text[i] !== '"' || isEscapedQuote(text, i, summaryValueStart)) continue;
+    const close = findLooseObjectCloseAfterString(text, i + 1);
+    if (close >= 0) return close;
+  }
+  return -1;
+}
+
 function findToolInputObjectEnd(text: string, name: string, jsonStart: number): number {
   const strictEnd = findJsonObjectEnd(text, jsonStart);
   if (strictEnd < 0) {
@@ -1156,6 +1169,7 @@ function findToolInputObjectEnd(text: string, name: string, jsonStart: number): 
       findLooseFileWriteObjectEnd(text, name, jsonStart),
       findLooseReplaceObjectEnd(text, name, jsonStart),
       findLooseManageTodoListObjectEnd(text, name, jsonStart),
+      findLooseTaskCompleteObjectEnd(text, name, jsonStart),
     );
   }
   try {
@@ -1166,6 +1180,7 @@ function findToolInputObjectEnd(text: string, name: string, jsonStart: number): 
       findLooseFileWriteObjectEnd(text, name, jsonStart),
       findLooseReplaceObjectEnd(text, name, jsonStart),
       findLooseManageTodoListObjectEnd(text, name, jsonStart),
+      findLooseTaskCompleteObjectEnd(text, name, jsonStart),
     );
     return looseEnd > strictEnd ? looseEnd : strictEnd;
   }
@@ -1242,12 +1257,20 @@ function parseLooseReplaceInFileToolInput(name: string, jsonText: string): Recor
   return input;
 }
 
+function parseLooseTaskCompleteToolInput(name: string, jsonText: string): Record<string, unknown> | null {
+  if (normalizeAgentToolName(name) !== 'task_complete') return null;
+  const summary = extractLooseJsonStringField(jsonText, 'summary');
+  if (typeof summary !== 'string' || !summary.trim()) return null;
+  return { summary };
+}
+
 function parseLooseToolInput(name: string, jsonText: string): Record<string, unknown> | null {
   return parseJsonWithRepairedInvalidEscapes(jsonText)
     ?? parseLooseManageTodoListToolInput(name, jsonText)
     ?? parseLooseFileWriteToolInput(name, jsonText)
     ?? parseLooseReplaceInFileToolInput(name, jsonText)
-    ?? parseLooseRunTerminalToolInput(name, jsonText);
+    ?? parseLooseRunTerminalToolInput(name, jsonText)
+    ?? parseLooseTaskCompleteToolInput(name, jsonText);
 }
 
 function parseLooseManageTodoListToolInput(name: string, jsonText: string): Record<string, unknown> | null {

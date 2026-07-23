@@ -30,6 +30,7 @@ const req = createRequire(import.meta.url);
 const {
   containsFakeToolCallProtocol,
   findFirstToolCallStart,
+  hasIncompleteFakeToolCallProtocol,
   parseFakeToolCalls,
   stripToolCallBlocks,
 } = req(bundlePath);
@@ -54,6 +55,29 @@ test('FakeToolParser: recovers quote-damaged manage_todo_list control calls', ()
   assert.equal(tools[0].input.todoList.length, 2);
   assert.equal(tools[0].input.todoList[0].status, 'completed');
   assert.equal(stripToolCallBlocks(text), 'Todo 状态需要校正。');
+});
+
+test('FakeToolParser: recovers quote-damaged Chinese task_complete calls', () => {
+  const text = [
+    '我理解。task_complete 需要 summary 必填参数。现在补全调用。',
+    '[调用 task_complete] {"summary": "审计报告已完成并验证通过。',
+    '1. "为什么通过插件按钮打开的 DeepSeek 页面就是当前 bridge 会话的用户路径，不能把它误认为另一个浏览器登录。"',
+    '2. "send button selector drift is not LOGIN_REQUIRED""}',
+    '',
+    '本回答由 AI 生成，内容仅供参考，请仔细甄别。',
+  ].join('\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), false);
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'task_complete');
+  assert.match(String(tools[0].input.summary), /插件按钮打开的 DeepSeek 页面/);
+  assert.match(String(tools[0].input.summary), /send button selector drift is not LOGIN_REQUIRED/);
+  const stripped = stripToolCallBlocks(text);
+  assert.match(stripped, /现在补全调用/);
+  assert.match(stripped, /本回答由 AI 生成/);
+  assert.doesNotMatch(stripped, /\[调用 task_complete\]|\{"summary"/);
 });
 
 test('FakeToolParser: ignores tool calls after provider-authored tool results', () => {

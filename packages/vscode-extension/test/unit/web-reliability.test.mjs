@@ -31,6 +31,15 @@ const maintenanceAnalysisWithBusinessVerificationCode = [
   '[TOOL:task_complete {"summary":"完成吊运维保功能重做分析，包含生成验证码、管理后台校验和任务拆解建议。"}]',
 ].join('\n\n');
 
+const quoteDamagedChineseTaskComplete = [
+  '我理解。task_complete 需要 summary 必填参数。现在补全调用。',
+  '[调用 task_complete] {"summary": "审计报告已完成并验证通过。',
+  '1. "为什么通过插件按钮打开的 DeepSeek 页面就是当前 bridge 会话的用户路径，不能把它误认为另一个浏览器登录。"',
+  '2. "send button selector drift is not LOGIN_REQUIRED""}',
+  '',
+  '本回答由 AI 生成，内容仅供参考，请仔细甄别。',
+].join('\n');
+
 test('ResponseIntegrityChecker: passes complete responses', () => {
   const result = new ResponseIntegrityChecker().check('```ts\nexport const ok = 1;\n```');
 
@@ -136,6 +145,22 @@ test('ResponseIntegrityChecker: allows recoverable malformed file tool blocks', 
 
   assert.equal(result.safeToExecute, true);
   assert.equal(result.status, 'ok');
+});
+
+test('ResponseIntegrityChecker: allows recoverable malformed Chinese task completion calls', () => {
+  const checker = new ResponseIntegrityChecker();
+  const result = checker.check(quoteDamagedChineseTaskComplete);
+
+  assert.equal(result.safeToExecute, true);
+  assert.equal(result.status, 'ok');
+});
+
+test('ResponseIntegrityChecker: still blocks unfinished Chinese task completion calls', () => {
+  const checker = new ResponseIntegrityChecker();
+  const result = checker.check('[调用 task_complete] {"summary": "审计报告已完成');
+
+  assert.equal(result.safeToExecute, false);
+  assert.equal(result.status, 'incomplete-tool-block');
 });
 
 test('StreamWatchdog: reports stalled stream after idle threshold', () => {

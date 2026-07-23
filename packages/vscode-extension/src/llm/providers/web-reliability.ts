@@ -199,7 +199,10 @@ function hasIncompleteToolBlock(text: string): boolean {
       toolRe.lastIndex = strictEnd + 1;
       continue;
     }
-    const looseEnd = findLooseFileWriteObjectEndAt(text, name, jsonStart);
+    const looseEnd = Math.max(
+      findLooseFileWriteObjectEndAt(text, name, jsonStart),
+      findLooseTaskCompleteObjectEndAt(text, name, jsonStart),
+    );
     if (looseEnd >= 0) {
       toolRe.lastIndex = looseEnd + 1;
       continue;
@@ -376,6 +379,19 @@ function findLooseFileWriteObjectEndAt(text: string, name: string, jsonStart: nu
 
   for (let i = contentValueStart; i < text.length; i++) {
     if (text[i] !== '"' || isEscapedQuote(text, i, contentValueStart)) continue;
+    const close = findLooseObjectCloseAfterString(text, i + 1);
+    if (close >= 0) return close;
+  }
+  return -1;
+}
+
+function findLooseTaskCompleteObjectEndAt(text: string, name: string, jsonStart: number): number {
+  if (name !== 'task_complete' || text[jsonStart] !== '{') return -1;
+  const summaryValueStart = findLooseJsonStringFieldValueStart(text, jsonStart, ['summary']);
+  if (summaryValueStart < 0) return -1;
+
+  for (let i = summaryValueStart; i < text.length; i++) {
+    if (text[i] !== '"' || isEscapedQuote(text, i, summaryValueStart)) continue;
     const close = findLooseObjectCloseAfterString(text, i + 1);
     if (close >= 0) return close;
   }
