@@ -86,13 +86,18 @@ test('provider failure settlement completes scoped Markdown deliverable before s
       `请基于 ${matrix} 和 ${contract} 创建 Markdown 审计报告。`,
       `请把报告保存到 ${report}。`,
       '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+      '报告正文请使用与本测试 case 相同的中文撰写；技术标识符、协议名、文件路径和验收锚点保持原文。',
     ].join('\n');
     const result = settleProviderFailureFromCompletedEvidence({
       promptRequiresTools: true,
       sawWorkTool: true,
       aborted: false,
       userPrompt: prompt,
-      todos: [{ title: '生成审计报告并保存到指定路径' }],
+      todos: [
+        { title: '项目调查：事实矩阵、通讯链路和集成锚点' },
+        { title: '设计交付：接口文档、原代码修改清单和实现边界' },
+        { title: '验证：编译/测试/静态审计与 QualityGate 自闭环' },
+      ],
       writtenFiles: [{ path: report, basename: path.basename(report), linesAdded: 3, linesRemoved: 0, action: 'create' }],
       terminalEvidence: [{
         command: "test -f 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md' && wc -c 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md' && sed -n '1,80p' 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md'",

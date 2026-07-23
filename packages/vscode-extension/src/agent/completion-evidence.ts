@@ -346,11 +346,7 @@ function buildCompletionEvidenceSemanticView(text: string): CompletionEvidenceSe
   const readOnly = isExplicitlyReadOnlyRequestFromRoute(route, intentText);
   const commandIntentText = commandEvidenceIntentText(intentText);
   const artifactIntent = classifyArtifactWriteIntent(intentText);
-  const scopedNonCodeDeliverableOnly = isScopedNoChangeWithDeliverableWriteRequest(intentText)
-    && route.mutation.fileArtifact
-    && !route.mutation.sourceChange
-    && contract.taskContract.deliverableTargets.length > 0
-    && contract.taskContract.deliverableTargets.every(target => !isCodeArtifactPath(target));
+  const scopedNonCodeDeliverableOnly = isScopedNonCodeDeliverableOnlyIntent(intentText, route);
 
   const legacyFileChange = (FILE_CHANGE_RE.test(intentText) || artifactIntent.requested)
     && (CODE_TARGET_RE.test(intentText) || FILE_PATH_TARGET_RE.test(intentText));
@@ -364,16 +360,16 @@ function buildCompletionEvidenceSemanticView(text: string): CompletionEvidenceSe
     && !scopedNonCodeDeliverableOnly
     && (routedCodeArtifact || contract.mutation.sourceChange || legacyCodeArtifact);
   const fileChange = !readOnly && (route.mutation.requested || semanticFileChange || legacyFileChange);
-  const runEvidence = !readOnly && (
+  const runEvidence = !readOnly && !scopedNonCodeDeliverableOnly && (
     route.validation.runRequested
     || shouldRequireRuntimeValidationForRoute(route)
     || RUN_EVIDENCE_RE.test(commandIntentText)
   );
-  const testEvidence = !readOnly && (
+  const testEvidence = !readOnly && !scopedNonCodeDeliverableOnly && (
     route.validation.testRequested
     || TEST_EVIDENCE_RE.test(commandIntentText)
   );
-  const runtimeValidation = !readOnly && (
+  const runtimeValidation = !readOnly && !scopedNonCodeDeliverableOnly && (
     runEvidence
     || testEvidence
     || RUNTIME_VALIDATION_RE.test(commandIntentText)
@@ -401,6 +397,17 @@ function buildCompletionEvidenceSemanticView(text: string): CompletionEvidenceSe
     runtimeValidation,
     fileCheckEvidence,
   };
+}
+
+function isScopedNonCodeDeliverableOnlyIntent(text: string, existingRoute?: TaskIntentRoute): boolean {
+  const intentText = stripAgentProceduralExecutionPhrases(stripGenericEvidenceTodoLines(String(text || '')));
+  const route = existingRoute ?? routeTaskIntent(intentText);
+  const contract = route.semanticContract;
+  return isScopedNoChangeWithDeliverableWriteRequest(intentText)
+    && route.mutation.fileArtifact
+    && !route.mutation.sourceChange
+    && contract.taskContract.deliverableTargets.length > 0
+    && contract.taskContract.deliverableTargets.every(target => !isCodeArtifactPath(target));
 }
 
 export function isExplicitlyReadOnlyRequest(text: string): boolean {
@@ -674,8 +681,11 @@ export function getMissingCompletionEvidence(
   workspaceRoot?: string,
   verificationResults: VerificationResult[] = [],
 ): string[] {
-  const text = buildEvidenceText(userPrompt, todos);
   const userIntentText = buildUserIntentEvidenceText(userPrompt);
+  const scopedOriginalUserPromptOnly = isScopedNonCodeDeliverableOnlyIntent(userIntentText);
+  const text = scopedOriginalUserPromptOnly
+    ? userIntentText
+    : buildEvidenceText(userPrompt, todos);
   const evidenceIntentText = isExplicitlyReadOnlyRequest(userIntentText) ? userIntentText : text;
   const existingWrittenFiles = coalesceWrittenFileEvidence(writtenFiles, workspaceRoot)
     .filter(f => writtenEvidenceExists(f, workspaceRoot));
@@ -740,7 +750,9 @@ export function getMissingCompletionEvidence(
     missing.push('成功的编译/测试/语法验证命令结果');
   }
 
-  const formalProjectPrompt = `${userPrompt}\n${todos.map(t => t.title).join('\n')}`;
+  const formalProjectPrompt = scopedOriginalUserPromptOnly
+    ? userPrompt
+    : `${userPrompt}\n${todos.map(t => t.title).join('\n')}`;
   const missingDeliverables = existingWrittenFiles.length > 0
     ? getMissingRequiredDeliverables(userPrompt, existingWrittenFiles, workspaceRoot)
     : [];

@@ -114,6 +114,7 @@ test('completion evidence: scoped Markdown deliverable with source-edit prohibit
       `请把报告保存到 ${report}。`,
       '报告主题是 R3-LIVE-DEEPSEEK-LOGIN-READY-STATE plugin-opened DeepSeek login readiness audit。',
       '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+      '报告正文请使用与本测试 case 相同的中文撰写；技术标识符、协议名、文件路径和验收锚点保持原文。',
       '报告必须解释 loggedInIndicator 与 chatInput evidence 已存在时 loggedInLikely 必须为 true。',
     ].join('\n');
     const written = [{ path: report, basename: path.basename(report), linesAdded: 3, linesRemoved: 0, action: 'create' }];
@@ -123,11 +124,17 @@ test('completion evidence: scoped Markdown deliverable with source-edit prohibit
       ok: true,
       exitCode: 0,
     }];
+    const pollutedFormalTodos = [
+      { title: '项目调查：事实矩阵、通讯链路和集成锚点' },
+      { title: '设计交付：接口文档、原代码修改清单和实现边界' },
+      { title: '验证：编译/测试/静态审计与 QualityGate 自闭环' },
+    ];
 
     assert.equal(requiresFileChangeEvidence(livePrompt), true);
     assert.equal(requiresCodeArtifactForEvidence(livePrompt), false);
     assert.equal(requiresRuntimeValidation(livePrompt), false);
     assert.deepEqual(getMissingCompletionEvidence(livePrompt, [], written, terminal, [matrix, contract], root), []);
+    assert.deepEqual(getMissingCompletionEvidence(livePrompt, pollutedFormalTodos, written, terminal, [matrix, contract], root), []);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

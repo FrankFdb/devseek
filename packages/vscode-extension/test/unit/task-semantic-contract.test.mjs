@@ -52,6 +52,26 @@ test('TaskSemanticContract: scoped other-file prohibition does not erase explici
   assert.ok(contract.signals.includes('file-check-requested'));
 });
 
+test('TaskSemanticContract: R3 login-ready audit style guidance is not formal-project quality', () => {
+  const contract = buildTaskSemanticContract([
+    '请基于 /tmp/workspace/docs/r3-iteration/deepseek-login-ready-state-matrix.md 和 /tmp/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts 创建 Markdown 审计报告。',
+    '请把报告保存到 /tmp/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md。',
+    '报告主题是 R3-LIVE-DEEPSEEK-LOGIN-READY-STATE plugin-opened DeepSeek login readiness audit。',
+    '本次只允许创建这一份 Markdown 文件；不要修改任何源码，不要运行编译或测试命令。',
+    '报告正文请使用与本测试 case 相同的中文撰写；技术标识符、协议名、文件路径和验收锚点保持原文。',
+  ].join('\n'));
+
+  assert.equal(contract.kind, 'file-artifact');
+  assert.equal(contract.mutation.fileArtifact, true);
+  assert.equal(contract.mutation.sourceChange, false);
+  assert.equal(contract.validation.runRequested, false);
+  assert.equal(contract.validation.testRequested, false);
+  assert.equal(contract.quality.formalProjectRequired, false);
+  assert.equal(requiresFormalProjectQuality(contract), false);
+  assert.ok(contract.signals.includes('scoped-formal-source-prohibition'));
+  assert.ok(!contract.signals.includes('formal-project-quality-required'));
+});
+
 test('TaskSemanticContract: formal project implementation still activates project quality gate', () => {
   const contract = buildTaskSemanticContract([
     '参考 /repo/src/oam/src/license 模块的通讯方式',
