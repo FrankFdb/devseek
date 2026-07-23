@@ -31,7 +31,7 @@ const REGISTERED_TOOL_NAMES_PATTERN = listAgentToolNames(true)
   .sort((a, b) => b.length - a.length)
   .join('|');
 const MODEL_TOOL_NAME_PATTERN = `(?:${REGISTERED_TOOL_NAMES_PATTERN}|mcp__[A-Za-z0-9_]+)`;
-const XML_MODEL_TOOL_NAME_PATTERN = `(?:TOOL_)?${MODEL_TOOL_NAME_PATTERN}`;
+const XML_MODEL_TOOL_NAME_PATTERN = `(?:TOOL[:_])?${MODEL_TOOL_NAME_PATTERN}`;
 const BRACKET_TOOL_PAYLOAD_RE = new RegExp(`\\[TOOL:${MODEL_TOOL_NAME_PATTERN}(?:\\s*\\]|\\s+)\\s*\\{`, 'i');
 const JSON_TOOL_NAME_RE = new RegExp(`"(?:tool|name|function|type)"\\s*:\\s*"${MODEL_TOOL_NAME_PATTERN}"`, 'i');
 const TOOL_INPUT_FIELD_RE = /"(?:arguments|input|parameters|path|filePath|command|todoList|summary|content)"\s*:/i;

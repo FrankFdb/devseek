@@ -169,7 +169,7 @@ function makeXmlToolTagRegex(): RegExp {
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join('|');
-  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL_)?(?:${names}|mcp__[A-Za-z0-9_]+))\\b([^<>]*?)\\/\\s*(?:>|&gt;)`, 'gi');
+  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL[:_])?(?:${names}|mcp__[A-Za-z0-9_]+))\\b([^<>]*?)\\/\\s*(?:>|&gt;)`, 'gi');
 }
 
 function makeXmlToolPairRegex(): RegExp {
@@ -177,7 +177,7 @@ function makeXmlToolPairRegex(): RegExp {
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join('|');
-  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL_)?(?:${names}|mcp__[A-Za-z0-9_]+))\\b[^<>]*?(?:>|&gt;)([\\s\\S]*?)(?:<\\/|&lt;\\/)\\s*\\1\\s*(?:>|&gt;)`, 'gi');
+  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL[:_])?(?:${names}|mcp__[A-Za-z0-9_]+))\\b[^<>]*?(?:>|&gt;)([\\s\\S]*?)(?:<\\/|&lt;\\/)\\s*\\1\\s*(?:>|&gt;)`, 'gi');
 }
 
 function makeXmlToolOpenJsonRegex(): RegExp {
@@ -185,7 +185,7 @@ function makeXmlToolOpenJsonRegex(): RegExp {
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join('|');
-  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL_)?(?:${names}|mcp__[A-Za-z0-9_]+))\\b[^<>]*?(?:>|&gt;)\\s*\\{`, 'gi');
+  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL[:_])?(?:${names}|mcp__[A-Za-z0-9_]+))\\b[^<>]*?(?:>|&gt;)\\s*\\{`, 'gi');
 }
 
 function makeXmlToolTagTailRegex(flags = 'i'): RegExp {
@@ -193,7 +193,7 @@ function makeXmlToolTagTailRegex(flags = 'i'): RegExp {
     .sort((a, b) => b.length - a.length)
     .map(escapeRegExp)
     .join('|');
-  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL_)?(?:${names}|mcp__[A-Za-z0-9_]+))\\b[\\s\\S]*$`, flags);
+  return new RegExp(`(?:<|&lt;)\\s*((?:TOOL[:_])?(?:${names}|mcp__[A-Za-z0-9_]+))\\b[\\s\\S]*$`, flags);
 }
 
 function isRegisteredFakeToolName(name: string): boolean {
@@ -202,7 +202,7 @@ function isRegisteredFakeToolName(name: string): boolean {
 
 function normalizeXmlToolTagName(name: string): string {
   const decoded = decodeXmlishText(name || '').trim();
-  return normalizeAgentToolName(decoded.replace(/^TOOL_/i, ''));
+  return normalizeAgentToolName(decoded.replace(/^TOOL[:_]/i, ''));
 }
 
 function isRegisteredXmlToolTagName(name: string): boolean {

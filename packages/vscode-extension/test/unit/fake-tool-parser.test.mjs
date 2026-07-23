@@ -494,6 +494,20 @@ test('FakeToolParser: parses DeepSeek prefixed XML tool tags with JSON bodies', 
   assert.equal(stripToolCallBlocks(text), '我需要先查看相关目录和需求文档。');
 });
 
+test('FakeToolParser: parses DeepSeek colon-prefixed XML tool tags with nested parameters', () => {
+  const text = [
+    '继续读取源文件。',
+    '<TOOL:read_file><path>/tmp/devseek-real-plugin-deepseek/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts</path></TOOL:read_file>',
+  ].join('\n\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.deepEqual(tools.map(tool => tool.name), ['read_file']);
+  assert.equal(tools[0].input.path, '/tmp/devseek-real-plugin-deepseek/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts');
+  assert.equal(findFirstToolCallStart(text), text.indexOf('<TOOL:read_file>'));
+  assert.equal(stripToolCallBlocks(text), '继续读取源文件。');
+});
+
 test('FakeToolParser: parses DeepSeek prefixed XML open tags with complete JSON payloads', () => {
   const text = [
     '我直接基于已有证据完成验证并结束任务。',

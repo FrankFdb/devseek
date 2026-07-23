@@ -58,6 +58,10 @@ test('ResponseIntegrityChecker: blocks truncated markdown and tool blocks', () =
 
   assert.equal(checker.check('```ts\nexport const broken = ').status, 'unclosed-markdown-fence');
   assert.equal(checker.check('[TOOL:write_file {"path":"a.ts","content":"x"').status, 'incomplete-tool-block');
+  assert.equal(
+    checker.check('<TOOL:read_file><path>/tmp/workspace/src/contract.ts</path>').status,
+    'incomplete-tool-block',
+  );
 });
 
 test('ResponseIntegrityChecker: does not treat complete DevSeek tool protocol as invalid provider JSON', () => {
@@ -65,6 +69,10 @@ test('ResponseIntegrityChecker: does not treat complete DevSeek tool protocol as
 
   assert.equal(
     checker.check('[TOOL:list_dir {"path":"/workspace/code/shape_manager"}]').safeToExecute,
+    true,
+  );
+  assert.equal(
+    checker.check('<TOOL:read_file><path>/tmp/workspace/src/contract.ts</path></TOOL:read_file>').safeToExecute,
     true,
   );
   assert.equal(
