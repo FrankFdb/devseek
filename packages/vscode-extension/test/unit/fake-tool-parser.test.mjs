@@ -198,6 +198,35 @@ test('FakeToolParser: parses and strips DeepSeek DSML tool transcript format', (
   assert.equal(stripToolCallBlocks(text), '好的，我先查看当前代码。');
 });
 
+test('FakeToolParser: parses DeepSeek TOOL_call envelopes with inline tool names', () => {
+  const matrix = '/tmp/workspace/docs/r3-iteration/deepseek-login-ready-state-matrix.md';
+  const contract = '/tmp/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts';
+  const text = [
+    '我先读取两个源文件。',
+    `<TOOL_call>read_file {"path":"${matrix}"}</TOOL_call><TOOL_call>read_file {"path":"${contract}","startLine":1,"endLine":0}</TOOL_call>`,
+  ].join('\n\n');
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), false);
+  assert.deepEqual(tools.map((tool) => tool.name), ['read_file', 'read_file']);
+  assert.equal(tools[0].input.path, matrix);
+  assert.equal(tools[1].input.path, contract);
+  assert.equal(tools[1].input.startLine, 1);
+  assert.equal(tools[1].input.endLine, 0);
+  assert.equal(findFirstToolCallStart(text), text.indexOf('<TOOL_call>'));
+  assert.equal(stripToolCallBlocks(text), '我先读取两个源文件。');
+});
+
+test('FakeToolParser: blocks incomplete DeepSeek TOOL_call inline-name envelopes', () => {
+  const text = '<TOOL_call>read_file {"path":"/tmp/a.md"}';
+
+  assert.equal(parseFakeToolCalls(text).length, 0);
+  assert.equal(containsFakeToolCallProtocol(text), true);
+  assert.equal(hasIncompleteFakeToolCallProtocol(text), true);
+  assert.equal(stripToolCallBlocks(`我先读取。${text}`), '我先读取。');
+});
+
 test('FakeToolParser: parses escaped DeepSeek DSML tool transcript format', () => {
   const text = [
     '我先看看当前代码结构，然后给你实现。',

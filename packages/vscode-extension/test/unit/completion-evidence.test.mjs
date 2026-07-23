@@ -743,6 +743,45 @@ test('completion evidence: read-only file summaries are not write claims', () =>
   assert.deepEqual(getUnsupportedSummaryFileClaims(summary, [], '/workspace'), []);
 });
 
+test('completion evidence: based-on source files are not treated as written deliverables', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-source-refs-'));
+  try {
+    const report = path.join(root, 'docs', 'r3-iteration', 'r3-live-deepseek-login-ready-state.md');
+    mkdirSync(path.dirname(report), { recursive: true });
+    writeFileSync(report, '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE 审计报告\n');
+    const summary = [
+      '完成 R3-LIVE-DEEPSEEK-LOGIN-READY-STATE 审计报告生成。',
+      `创建的文件：\`${report}\` (265 行)。`,
+      '根据用户提供的 deepseek-login-ready-state-matrix.md 和 deepseek-login-ready-state-contract.ts 两个源文件，生成可审计的 Markdown 报告。',
+    ].join('\n');
+    const writtenFiles = [{
+      path: report,
+      basename: 'r3-live-deepseek-login-ready-state.md',
+      linesAdded: 265,
+      linesRemoved: 0,
+      action: 'create',
+    }];
+
+    assert.deepEqual(extractClaimedSummaryFiles(summary), [report]);
+    assert.deepEqual(getUnsupportedSummaryFileClaims(summary, writtenFiles, root), []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('completion evidence: based-on source phrase still requires evidence for named output files', () => {
+  const summary = '已完成：基于 deepseek-login-ready-state-contract.ts 生成 r3-live-deepseek-login-ready-state.md。';
+
+  assert.deepEqual(
+    extractClaimedSummaryFiles(summary),
+    ['r3-live-deepseek-login-ready-state.md'],
+  );
+  assert.deepEqual(
+    getUnsupportedSummaryFileClaims(summary, [], '/workspace'),
+    ['r3-live-deepseek-login-ready-state.md'],
+  );
+});
+
 test('completion evidence: code edit requires successful validation evidence', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-completion-evidence-'));
   try {

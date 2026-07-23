@@ -105,6 +105,8 @@ const SUMMARY_FILE_CLAIM_NEGATED_POSITIVE_RE = new RegExp(
 const SUMMARY_FILE_TRANSFER_RE = /(?:复制|拷贝|重命名|改名|移动|迁移|替换|copy|copied|duplicate|duplicated|rename|renamed|move|moved|replace|replaced)/i;
 const SUMMARY_FILE_TRANSFER_SOURCE_MARKER_RE = /(?:将|把|从|复制|拷贝|重命名|改名|移动|迁移|\bfrom\b|\bcopy(?:ing|ied)?\b|\bcopied\b|\bduplicate(?:d)?\b|\brename(?:d)?\b|\bmove(?:d)?\b|\breplace(?:d)?\b)\s*$/i;
 const SUMMARY_FILE_TRANSFER_DEST_CONNECTOR_RE = /^\s*(?:复制为|拷贝为|复制到|拷贝到|重命名为|改名为|移动到|迁移到|替换为|作为|为|到|\bto\b|\bas\b|\binto\b|\bwith\b)/i;
+const SUMMARY_FILE_SOURCE_REFERENCE_RE = /(?:根据|基于|依据|参考|参照|来自|源自|读取|读过|用户提供的|\bbased\s+on\b|\baccording\s+to\b|\busing\b|\bread\b|\bfrom\b)/i;
+const SUMMARY_FILE_SOURCE_GROUP_AFTER_RE = /(?:源文件|输入文件|来源文件|source\s+files?|input\s+files?)/i;
 const GENERIC_EVIDENCE_TODO_TITLES = new Set([
   '创建/更新文件',
   '编译/运行并验证结果',
@@ -201,6 +203,35 @@ function summaryClaimIsPositive(sentence: string, tokenStartInSentence: number):
     || SUMMARY_FILE_CLAIM_POSITIVE_RE.test(nearbyAfter);
 }
 
+function findLastRegexMatchEnd(pattern: RegExp, text: string): number {
+  const flags = pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`;
+  const re = new RegExp(pattern.source, flags);
+  let end = -1;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(text)) !== null) {
+    end = match.index + match[0].length;
+    if (match[0].length === 0) re.lastIndex++;
+  }
+  return end;
+}
+
+function summaryFileClaimIsSourceReference(
+  sentence: string,
+  tokenStartInSentence: number,
+  tokenEndInSentence: number,
+): boolean {
+  const beforeToken = sentence.slice(0, tokenStartInSentence);
+  const sourceMarkerEnd = findLastRegexMatchEnd(SUMMARY_FILE_SOURCE_REFERENCE_RE, beforeToken);
+  if (sourceMarkerEnd < 0) return false;
+
+  const betweenSourceAndToken = beforeToken.slice(sourceMarkerEnd);
+  if (SUMMARY_FILE_CLAIM_POSITIVE_RE.test(betweenSourceAndToken)) return false;
+
+  const afterToken = sentence.slice(tokenEndInSentence, Math.min(sentence.length, tokenEndInSentence + 120));
+  return SUMMARY_FILE_SOURCE_GROUP_AFTER_RE.test(afterToken)
+    || SUMMARY_FILE_CLAIM_POSITIVE_RE.test(afterToken);
+}
+
 function summaryFileClaimIsTransferSource(
   sentence: string,
   tokenStartInSentence: number,
@@ -238,6 +269,7 @@ function collectClaimedSummaryFiles(text: string, pattern: RegExp, claimed: Set<
     const tokenStartInSentence = sentenceStart >= 0 ? tokenStart - sentenceStart : 0;
     const tokenEndInSentence = tokenStartInSentence + token.length;
     if (!summaryClaimIsPositive(sentence, tokenStartInSentence)) continue;
+    if (summaryFileClaimIsSourceReference(sentence, tokenStartInSentence, tokenEndInSentence)) continue;
     if (summaryFileClaimIsTransferSource(sentence, tokenStartInSentence, tokenEndInSentence)) continue;
     claimed.add(rawPath);
   }

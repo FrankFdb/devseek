@@ -126,6 +126,27 @@ test('ResponseIntegrityChecker: shared tool protocol samples are safe only when 
   }
 });
 
+test('ResponseIntegrityChecker: accepts complete DeepSeek TOOL_call inline-name envelopes', () => {
+  const checker = new ResponseIntegrityChecker();
+  const text = [
+    '我先读取两个源文件。',
+    '<TOOL_call>read_file {"path":"/tmp/workspace/docs/r3-iteration/deepseek-login-ready-state-matrix.md"}</TOOL_call><TOOL_call>read_file {"path":"/tmp/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts","startLine":1,"endLine":0}</TOOL_call>',
+  ].join('\n\n');
+
+  const result = checker.check(text);
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.safeToExecute, true);
+});
+
+test('ResponseIntegrityChecker: blocks unfinished DeepSeek TOOL_call inline-name envelopes', () => {
+  const checker = new ResponseIntegrityChecker();
+  const result = checker.check('<TOOL_call>read_file {"path":"/tmp/a.md"}');
+
+  assert.equal(result.status, 'incomplete-tool-block');
+  assert.equal(result.safeToExecute, false);
+});
+
 test('ResponseIntegrityChecker: blocks unfinished assistant action cues', () => {
   const checker = new ResponseIntegrityChecker();
   const response = '编译失败了，因为字符串字面量中有换行符。我需要在字符串中使用 \\\\n 而不是直接换行。让我修复这个问题：';

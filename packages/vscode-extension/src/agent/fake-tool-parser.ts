@@ -670,6 +670,11 @@ function parseToolCallEnvelopeCalls(text: string): FakeTool[] {
     const blockRe = makeToolCallEnvelopeBlockRegex();
     while ((match = blockRe.exec(text)) !== null) {
       const body = stripJsonFence(decodeXmlishText(match[1] || ''));
+      const named = parseGenericToolEnvelopeBody(body);
+      if (named) {
+        tools.push({ index: match.index, tool: named });
+        continue;
+      }
       if (!body.startsWith('{')) continue;
       try {
         const parsed = JSON.parse(body) as unknown;
