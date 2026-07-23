@@ -951,6 +951,35 @@ test('FakeToolParser: a restarted response keeps only the final full-file write'
   assert.equal(tools[0].input.content, '# Design\ncomplete\nend');
 });
 
+test('FakeToolParser: parses R3 live DeepSeek function-style create_file artifact write', () => {
+  const content = [
+    '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE Audit Report',
+    '',
+    'BridgeHealthCheck',
+    'devseek.deepseek-web-connector-health/v1',
+    'loggedInLikely',
+    'plugin-opened DeepSeek page',
+    'chatInput evidence',
+    'deepseek-dom-send-button-missing',
+    'login-state-not-send-button',
+    'send button selector drift is not LOGIN_REQUIRED',
+    'not fixed line-count smoke',
+  ].join('\n');
+  const text = [
+    '好的，我已经读取了必需的两个源文件。现在生成并写入报告文件。',
+    `create_file({"path":"/tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md","content":${JSON.stringify(content)}})`,
+  ].join('');
+
+  const tools = parseFakeToolCalls(text);
+
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, 'create_file');
+  assert.equal(tools[0].input.path, '/tmp/devseek-real-plugin-deepseek/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md');
+  assert.match(tools[0].input.content, /R3-LIVE-DEEPSEEK-LOGIN-READY-STATE/);
+  assert.match(tools[0].input.content, /not fixed line-count smoke/);
+  assert.equal(stripToolCallBlocks(text), '好的，我已经读取了必需的两个源文件。现在生成并写入报告文件。');
+});
+
 test('FakeToolParser: detects the first tool call start for streaming UI', () => {
   const text = '先说明一下\n{"tool":"write_file","path":"code/hello.cpp","content":"int main(){}"}';
   assert.equal(findFirstToolCallStart(text), text.indexOf('{'));

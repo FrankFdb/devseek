@@ -1,3 +1,5 @@
+import { DEEPSEEK_WEB_STREAM_RESET_PREFIX } from './bridge-stream-protocol';
+
 export const DEVSEEK_AUTHORITY_CAPABILITY_PREFIX = 'devseek-ra1_' as const;
 export const DEVSEEK_AUTHORITY_CAPABILITY_BYTES = 32 as const;
 
@@ -49,6 +51,9 @@ export class DevSeekCapabilityTextStreamGuard {
     if (typeof value !== 'string') {
       this.rejected = true;
       throw new DevSeekCapabilityBoundaryError('External stream chunks must be primitive text');
+    }
+    if (value.startsWith(DEEPSEEK_WEB_STREAM_RESET_PREFIX)) {
+      this.pending = '';
     }
     const combined = this.pending + value;
     if (containsDevSeekAuthorityCapability(combined)) {
