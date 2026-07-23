@@ -289,6 +289,61 @@ test('Agent auto validation: markdown file checks become read/check evidence, no
   assert.match(result.feedbackForAI, /non-code-file-validation/);
 });
 
+test('Agent auto validation: Markdown literal acceptance anchors block completion when missing', async () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-md-literal-anchors-'));
+  try {
+    const docsDir = path.join(root, 'docs/r3-iteration');
+    mkdirSync(docsDir, { recursive: true });
+    const target = path.join(docsDir, 'r3-live-deepseek-login-ready-state.md');
+    writeFileSync(target, [
+      '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE Audit Report',
+      '',
+      'BridgeHealthCheck',
+      'send button selector drift is not LOGIN_REQUIRED',
+    ].join('\n'));
+    const validationService = {
+      validateWorkspaceChanges: async () => ({
+        ran: true,
+        ok: true,
+        command: "test -f 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md'",
+        exitCode: 0,
+        output: 'ok',
+        cwd: root,
+        mode: 'file-check',
+        reason: 'non-code-file-validation',
+        risks: [],
+        alternativeChecks: [],
+      }),
+    };
+    const statuses = [];
+    const prompt = [
+      '请创建 Markdown 审计报告。',
+      '报告必须逐字包含以下验收锚点：',
+      '- R3-LIVE-DEEPSEEK-LOGIN-READY-STATE',
+      '- BridgeHealthCheck',
+      '- login-state-not-send-button',
+      '- send button selector drift is not LOGIN_REQUIRED',
+    ].join('\n');
+
+    const result = await runAgentAutoValidationForWrites(
+      [{ path: target, basename: 'r3-live-deepseek-login-ready-state.md', linesAdded: 4, linesRemoved: 0, action: 'create' }],
+      root,
+      prompt,
+      makeCallbacks(statuses, []),
+      'conservative',
+      { validationService },
+    );
+
+    assert.equal(result.evidence.ok, true);
+    assert.equal(result.qualityGate.status, 'fail');
+    assert.match(result.feedbackForAI, /markdown_required_literal_anchors/);
+    assert.match(result.feedbackForAI, /login-state-not-send-button/);
+    assert.equal(statuses.some(status => status.title === 'Markdown 验收锚点未通过' && status.state === 'failed'), true);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Agent auto validation: cumulative formal Markdown quality is not lost after later source writes', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-cumulative-formal-quality-'));
   try {

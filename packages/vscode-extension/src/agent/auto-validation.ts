@@ -296,6 +296,68 @@ function evaluateFormalProjectMarkdownQuality(
   };
 }
 
+function extractRequiredLiteralAnchors(userPrompt: string): string[] {
+  const lines = (userPrompt || '').split(/\r?\n/);
+  const anchors: string[] = [];
+  let collecting = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!collecting && /(?:必须|务必|must|required)[^\n]{0,24}(?:逐字|verbatim|exact)[^\n]{0,24}(?:包含|include|contain)|(?:验收锚点|required\s+(?:anchor|snippet))/i.test(trimmed)) {
+      collecting = true;
+      continue;
+    }
+    if (!collecting) continue;
+    const bullet = /^(?:[-*+]|\d+[.)、])\s+(.+?)\s*$/.exec(trimmed);
+    if (!bullet) {
+      if (trimmed && anchors.length > 0) break;
+      continue;
+    }
+    const value = cleanRequiredLiteralAnchor(bullet[1]);
+    if (value && value.length <= 220 && !anchors.includes(value)) anchors.push(value);
+  }
+  return anchors;
+}
+
+function cleanRequiredLiteralAnchor(value: string): string {
+  return value
+    .trim()
+    .replace(/^`([\s\S]*?)`$/, '$1')
+    .replace(/^["“”']([\s\S]*?)["“”']$/, '$1')
+    .trim();
+}
+
+function evaluateMarkdownRequiredLiteralQuality(
+  writtenFiles: WrittenFileEvidence[],
+  workspaceRootFsPath: string,
+  userPrompt: string,
+): AgentAutoValidationResult | undefined {
+  const anchors = extractRequiredLiteralAnchors(userPrompt);
+  if (anchors.length === 0) return undefined;
+  const markdown = readWrittenMarkdownFilesForQuality(writtenFiles, workspaceRootFsPath);
+  if (markdown.paths.length === 0) return undefined;
+  const missing = anchors.filter(anchor => !markdown.content.includes(anchor));
+  if (missing.length === 0) return undefined;
+
+  const summary = `Markdown 逐字验收锚点未通过：缺少 ${missing.join('、')}。`;
+  return {
+    feedbackForAI: [
+      '[markdown_required_literal_anchors]',
+      `files=${markdown.paths.join(', ')}`,
+      `missing_required_anchors=${missing.join(' | ')}`,
+      summary,
+      '请继续用 read_file 确认目标 Markdown，并用 create_file/write_file/replace_in_file 修正文档；缺失锚点必须逐字出现，不能只用语义改写替代。',
+      '完成摘要只能引用修正后的真实文件内容，不能把缺失逐字锚点的草稿标记完成。',
+    ].join('\n'),
+    qualityGate: {
+      status: 'fail',
+      summary,
+      risks: missing.map(anchor => `缺少逐字锚点: ${anchor}`),
+      evidenceRefs: markdown.paths.map(path => `file:${path}`),
+      requiredActions: ['补齐缺失的逐字验收锚点后重新运行自动验证。'],
+    },
+  };
+}
+
 function evaluateFormalProjectSourceQuality(
   writtenFiles: WrittenFileEvidence[],
   workspaceRootFsPath: string,
@@ -523,13 +585,20 @@ export async function runAgentAutoValidationForWrites(
         userPrompt,
       ),
     ]);
+    const markdownLiteralQuality = evaluateMarkdownRequiredLiteralQuality(
+      qualityWrittenFiles,
+      workspaceRootFsPath,
+      userPrompt,
+    );
     const requirementQuality = evaluateRequirementContractQuality(userPrompt);
-    const policyQuality = combineAgentQualityResults([formalProjectQuality, requirementQuality]);
+    const policyQuality = combineAgentQualityResults([formalProjectQuality, markdownLiteralQuality, requirementQuality]);
     const policyQualityTitle = formalProjectQuality
       ? '正式项目质量门禁未通过'
-      : requirementQuality
-        ? '需求质量门禁未通过'
-        : undefined;
+      : markdownLiteralQuality
+        ? 'Markdown 验收锚点未通过'
+        : requirementQuality
+          ? '需求质量门禁未通过'
+          : undefined;
     if (!result) {
       await callbacks.onAgentStatus({
         type: 'agentStatus',
