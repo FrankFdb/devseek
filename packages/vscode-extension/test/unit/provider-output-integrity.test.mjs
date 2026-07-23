@@ -70,6 +70,33 @@ test('provider output integrity: treats LOGIN_REQUIRED inside a requested report
   assert.equal(result.toolCallCount, 1);
 });
 
+test('provider output integrity: keeps complete DeepSeek create_file tools ahead of uneven fences', () => {
+  const fence = '```';
+  const content = [
+    '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE 审计报告',
+    '',
+    'BridgeHealthCheck',
+    'devseek.deepseek-web-connector-health/v1',
+    'loggedInLikely',
+    'plugin-opened DeepSeek page',
+    'chatInput evidence',
+    'deepseek-dom-send-button-missing',
+    'login-state-not-send-button',
+    'send button selector drift is not LOGIN_REQUIRED',
+    'not fixed line-count smoke',
+  ].join('\n');
+  const result = classifyProviderOutputIntegrity([
+    '收到。我将重新创建报告文件。',
+    fence,
+    `[TOOL:create_file {"path":"/tmp/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md","content":${JSON.stringify(content)}}${fence}`,
+    fence,
+  ].join('\n'));
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 1);
+});
+
 test('provider output integrity: treats OpenAI-style tool arrays with login-named paths as tools', () => {
   const result = classifyProviderOutputIntegrity([
     '让我先读取相关的源文件以获取完整信息。',

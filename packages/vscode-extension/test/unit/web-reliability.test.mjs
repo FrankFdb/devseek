@@ -94,6 +94,35 @@ test('ResponseIntegrityChecker: does not treat complete DevSeek tool protocol as
   );
 });
 
+test('ResponseIntegrityChecker: accepts complete DeepSeek create_file tools wrapped in uneven fences', () => {
+  const checker = new ResponseIntegrityChecker();
+  const fence = '```';
+  const report = [
+    '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE 审计报告',
+    '',
+    'BridgeHealthCheck',
+    'devseek.deepseek-web-connector-health/v1',
+    'loggedInLikely',
+    'plugin-opened DeepSeek page',
+    'chatInput evidence',
+    'deepseek-dom-send-button-missing',
+    'login-state-not-send-button',
+    'send button selector drift is not LOGIN_REQUIRED',
+    'not fixed line-count smoke',
+  ].join('\n');
+  const response = [
+    '文件未写入成功。我需要重新创建，并确保内容完整。',
+    fence,
+    `[TOOL:create_file {"path":"/tmp/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md","content":${JSON.stringify(report)}}${fence}`,
+    fence,
+  ].join('\n');
+
+  const result = checker.check(response);
+
+  assert.equal(result.status, 'ok');
+  assert.equal(result.safeToExecute, true);
+});
+
 test('ResponseIntegrityChecker: recognizes Markdown-bold Calling tool protocol', () => {
   const checker = new ResponseIntegrityChecker();
   const response = [

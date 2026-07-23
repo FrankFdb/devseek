@@ -1,5 +1,5 @@
 import { listAgentToolNames } from '../../agent/tool-registry';
-import { hasIncompleteFakeToolCallProtocol } from '../../agent/fake-tool-parser';
+import { hasIncompleteFakeToolCallProtocol, parseFakeToolCalls } from '../../agent/fake-tool-parser';
 import {
   looksLikeProviderLoginGate,
   looksLikeProviderRateLimitGate,
@@ -56,7 +56,8 @@ export class ResponseIntegrityChecker {
     if (looksLikeProviderVerificationGate(trimmed) || looksLikeProviderRateLimitGate(trimmed)) {
       return result('rate-limited', 'Provider is rate limited or waiting for verification.', false);
     }
-    if (hasUnclosedMarkdownFence(trimmed)) {
+    const hasExecutableToolProtocol = hasCompleteExecutableToolProtocol(trimmed);
+    if (hasUnclosedMarkdownFence(trimmed) && !hasExecutableToolProtocol) {
       return result('unclosed-markdown-fence', 'Markdown code fence is not closed; response may be truncated.', false);
     }
     if (hasIncompleteToolBlock(trimmed)) {
@@ -183,6 +184,11 @@ function health(status: BridgeHealthDecision['status'], reason: string, canSendP
 function hasUnclosedMarkdownFence(text: string): boolean {
   const matches = text.match(/```/g);
   return Boolean(matches && matches.length % 2 === 1);
+}
+
+function hasCompleteExecutableToolProtocol(text: string): boolean {
+  if (!looksLikeToolProtocolPayload(text)) return false;
+  return parseFakeToolCalls(text).length > 0;
 }
 
 function hasIncompleteToolBlock(text: string): boolean {

@@ -36,11 +36,11 @@ export function classifyProviderOutputIntegrity(text: string | undefined): Provi
     return buildProviderIntegrity('empty', 0, false, 'provider returned an empty response');
   }
 
-  if (TRUNCATED_RE.test(trimmed) || looksLikeTruncatedToolProtocol(trimmed)) {
-    return buildProviderIntegrity('truncated', countProviderToolCalls(trimmed), false, 'provider response appears truncated');
+  const toolCallCount = countProviderToolCalls(trimmed);
+  if (TRUNCATED_RE.test(trimmed) || looksLikeTruncatedToolProtocol(trimmed, toolCallCount)) {
+    return buildProviderIntegrity('truncated', toolCallCount, false, 'provider response appears truncated');
   }
 
-  const toolCallCount = countProviderToolCalls(trimmed);
   if (toolCallCount > 0) {
     return buildProviderIntegrity('tool_call', toolCallCount, false, 'provider requested tool execution');
   }
@@ -121,7 +121,7 @@ function looksLikeConcreteAnswer(text: string): boolean {
   return CONCRETE_CONCLUSION_RE.test(text);
 }
 
-function looksLikeTruncatedToolProtocol(text: string): boolean {
+function looksLikeTruncatedToolProtocol(text: string, toolCallCount = countProviderToolCalls(text)): boolean {
   const isolated = isolateModelToolRequestText(text).text;
   if (hasIncompleteFakeToolCallProtocol(isolated)) return true;
   const bracketStart = text.lastIndexOf('[TOOL:');
@@ -131,5 +131,8 @@ function looksLikeTruncatedToolProtocol(text: string): boolean {
     if (!/\}\s*\]?\s*$/.test(tail)) return true;
   }
   const fencedStart = text.lastIndexOf('```');
-  return fencedStart >= 0 && (text.match(/```/g)?.length ?? 0) % 2 === 1 && fencedStart > text.length - 400;
+  return toolCallCount === 0
+    && fencedStart >= 0
+    && (text.match(/```/g)?.length ?? 0) % 2 === 1
+    && fencedStart > text.length - 400;
 }
