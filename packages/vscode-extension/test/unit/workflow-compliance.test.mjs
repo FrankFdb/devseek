@@ -2299,6 +2299,14 @@ test('Real DeepSeek harness: run log evidence is bound to current run', () => {
   assertDoesNotContain(harness, 'logs.sort((a, b) => b.size - a.size)', 'real harness must not rank stale logs by size');
 });
 
+test('Real DeepSeek harness: timeout reports are marked as report-time snapshots', () => {
+  const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
+  assertContains(harness, "let pollExitReason = 'timeout'", 'real harness must keep timeout as an explicit poll exit reason');
+  assertContains(harness, "pollTimedOut: pollExitReason === 'timeout'", 'real harness report must expose a machine-readable timeout bit');
+  assertContains(harness, "reportScope: pollExitReason === 'timeout' ? 'report-time-snapshot' : 'terminal-or-success-snapshot'", 'timeout reports must declare snapshot scope');
+  assertContains(harness, '此 report.json 只代表报告写入时刻的快照', 'timeout failures must explain that post-report product evidence needs separate review');
+});
+
 test('Real DeepSeek harness: quality gates are scenario-driven and task-specific', () => {
   const harness = src('test/devseek-real-plugin-deepseek-harness.mjs');
   assertContains(harness, 'buildRealPluginQualityProfile', 'real harness must select canary/medium/formal quality profiles');

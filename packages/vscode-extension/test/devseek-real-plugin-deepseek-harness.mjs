@@ -2232,6 +2232,7 @@ async function activate() {
     commandInjected: false,
     commandName: '',
     commandCompleted: false,
+    reportTiming: {},
     errors: [],
     artifacts: [],
     runLogs: { logs: [], terminal: null },
@@ -2282,11 +2283,13 @@ async function activate() {
     logProgress('poll-started');
 
     const deadline = Date.now() + timeoutMs;
+    let pollExitReason = 'timeout';
     while (Date.now() < deadline) {
       const evaluation = evaluate(before, startedAtMs, expectedCodeBefore, expectedCodeDirBefore);
       Object.assign(baseReport, evaluation);
       if (commandError) {
         baseReport.errors.push(commandError);
+        pollExitReason = 'command-error';
         break;
       }
       if (commandCompletedAt > 0
@@ -2294,18 +2297,42 @@ async function activate() {
         && evaluation.runLogs.logs.length === 0
         && evaluation.artifacts.length === 0) {
         baseReport.errors.push('DevSeek harness command completed without creating run log, Bridge request, or Markdown artifact.');
+        pollExitReason = 'command-completed-without-evidence';
         break;
       }
-      if (evaluation.ok) break;
+      if (evaluation.ok) {
+        pollExitReason = 'success';
+        break;
+      }
       const terminal = evaluation.runLogs.terminal;
-      if (terminal && terminal.event === 'agent-run-completed') break;
-      if (terminal && terminal.event === 'agent-run-failed') break;
+      if (terminal && terminal.event === 'agent-run-completed') {
+        pollExitReason = 'terminal-completed';
+        break;
+      }
+      if (terminal && terminal.event === 'agent-run-failed') {
+        pollExitReason = 'terminal-failed';
+        break;
+      }
       await delay(3000);
     }
 
     const finalEvaluation = evaluate(before, startedAtMs, expectedCodeBefore, expectedCodeDirBefore);
     Object.assign(baseReport, finalEvaluation);
+    const reportFinalizedAtMs = Date.now();
+    baseReport.reportTiming = {
+      timeoutMs,
+      pollExitReason,
+      pollTimedOut: pollExitReason === 'timeout',
+      startedAt: new Date(startedAtMs).toISOString(),
+      deadlineAt: new Date(deadline).toISOString(),
+      reportFinalizedAt: new Date(reportFinalizedAtMs).toISOString(),
+      commandCompletedAt: commandCompletedAt ? new Date(commandCompletedAt).toISOString() : null,
+      reportScope: pollExitReason === 'timeout' ? 'report-time-snapshot' : 'terminal-or-success-snapshot',
+    };
     if (!baseReport.ok) {
+      if (baseReport.reportTiming.pollTimedOut) {
+        baseReport.errors.push('报告轮询达到 timeout-ms；此 report.json 只代表报告写入时刻的快照，后续 Provider、run log、changedPaths 或生成文件若继续变化，必须另行复核。');
+      }
       if (baseReport.checks?.formalProjectQualityOk === false) {
         baseReport.errors.push('正式项目文档质量不达标：' + (baseReport.checks.formalProjectQuality.reasons || []).join(', '));
       }

@@ -443,7 +443,11 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
           target_operation_ids: targetOperationIds,
         });
       } else if (status.state === 'started') {
-        this.markEvidenceDegraded(new Error('A recovery attempt was started while another recovery is pending'));
+        this.trace.info('run-context', 'duplicate-recovery-start-ignored', {
+          currentRecoveryOperationId: this.currentRecovery.operationId,
+          targetOperationIds,
+          reason: 'recovery-already-pending',
+        });
       }
       if ((status.state === 'failed' || status.state === 'skipped') && this.currentRecovery) {
         this.recordOperationEvent('recovery.failed', this.currentRecovery.operationId, 'failed', summary);

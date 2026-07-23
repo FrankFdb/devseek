@@ -665,6 +665,85 @@ test('RunContext: provider response recovery resolves participant provider failu
   }
 });
 
+test('RunContext: duplicate provider recovery starts do not degrade a proven retry', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  const runId = 'run-context-provider-recovery-duplicate-start';
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '生成 R3-LIVE-DEEPSEEK-LOGIN-READY-STATE 中文审计报告',
+      traceLevel: 'debug',
+    });
+    const provider = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId,
+      surface: 'vscode-provider',
+      authority: {
+        role: 'participant',
+        token: context.evidenceParticipantToken,
+      },
+    });
+    for (const type of ['provider.requested', 'provider.failed']) {
+      provider.record({
+        type,
+        idempotencyKey: productRunEvidenceIdempotencyKey(`provider-recovery-duplicate:${type}`, {
+          operationId: 'provider:truncated-response',
+        }),
+        payload: observed(type.slice('provider.'.length), {
+          operation_id: 'provider:truncated-response',
+          boundary: 'vscode-provider-client',
+        }),
+      });
+    }
+
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'repair', state: 'started', title: 'Provider 响应被截断，正在安全续跑 1/3' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'repair', state: 'started', title: 'Provider 响应被截断，正在安全续跑 2/3' });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      state: 'started',
+      taskId: 'agentic',
+      taskFile: 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md',
+      taskAction: 'create',
+      title: '生成 R3 中文审计报告',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      state: 'completed',
+      taskId: 'agentic',
+      taskFile: 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md',
+      taskAction: 'create',
+      title: '生成 R3 中文审计报告',
+    });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'validate', state: 'started', title: '自动验证写入结果', evidenceOperationId: 'verify-provider-recovery-duplicate' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'validate', state: 'completed', title: '自动验证通过', evidenceOperationId: 'verify-provider-recovery-duplicate' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'quality', state: 'started', title: '评估自动验证 QualityGate', evidenceOperationId: 'verify-provider-recovery-duplicate' });
+    context.recordAgentStatus({ type: 'agentStatus', phase: 'quality', state: 'completed', title: '自动验证 QualityGate 通过', evidenceOperationId: 'verify-provider-recovery-duplicate' });
+
+    assert.equal(context.complete('completed', {
+      tasksTotal: 1,
+      tasksApplied: 1,
+      tasksFailed: 0,
+      changedPaths: ['docs/r3-iteration/r3-live-deepseek-login-ready-state.md'],
+    }), 'completed');
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read(runId);
+    assert.equal(events.filter(event => event.type === 'recovery.detected').length, 1);
+    assert.equal(events.filter(event => event.type === 'recovery.completed').length, 1);
+    assert.equal(events.some(event => event.type === 'evidence.degraded'), false);
+    assert.equal(events.find(event => event.type === 'run.settled')?.payload.status, 'completed');
+    assert.equal(ledger.verify(runId).status, 'valid-sealed');
+
+    const entries = readJsonl(path.join(workspaceRoot, '.devseek', 'runs', `${runId}.log`));
+    assert.equal(entries.some(entry => entry.event === 'duplicate-recovery-start-ignored'), true);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('RunContext: local file fallback resolves provider failures after task already started', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   const runId = 'run-context-provider-fallback-local-file';
