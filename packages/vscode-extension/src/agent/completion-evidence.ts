@@ -313,16 +313,24 @@ function buildCompletionEvidenceSemanticView(text: string): CompletionEvidenceSe
   const contract = route.semanticContract;
   const readOnly = isExplicitlyReadOnlyRequestFromRoute(route, intentText);
   const commandIntentText = commandEvidenceIntentText(intentText);
+  const artifactIntent = classifyArtifactWriteIntent(intentText);
+  const scopedNonCodeDeliverableOnly = isScopedNoChangeWithDeliverableWriteRequest(intentText)
+    && route.mutation.fileArtifact
+    && !route.mutation.sourceChange
+    && contract.taskContract.deliverableTargets.length > 0
+    && contract.taskContract.deliverableTargets.every(target => !isCodeArtifactPath(target));
 
-  const legacyFileChange = (FILE_CHANGE_RE.test(intentText) || classifyArtifactWriteIntent(intentText).requested)
+  const legacyFileChange = (FILE_CHANGE_RE.test(intentText) || artifactIntent.requested)
     && (CODE_TARGET_RE.test(intentText) || FILE_PATH_TARGET_RE.test(intentText));
-  const legacyCodeArtifact = FILE_CHANGE_RE.test(intentText) && CODE_TARGET_RE.test(intentText);
+  const legacyCodeArtifact = !scopedNonCodeDeliverableOnly && FILE_CHANGE_RE.test(intentText) && CODE_TARGET_RE.test(intentText);
   const routedCodeArtifact = route.family === 'standalone-program'
     || route.family === 'existing-project-edit'
     || (route.family === 'general-edit' && contract.mutation.sourceChange);
   const semanticFileChange = route.mutation.requested
     && (route.mutation.sourceChange || route.mutation.fileArtifact || route.mutation.targets.length > 0);
-  const codeArtifact = !readOnly && (routedCodeArtifact || contract.mutation.sourceChange || legacyCodeArtifact);
+  const codeArtifact = !readOnly
+    && !scopedNonCodeDeliverableOnly
+    && (routedCodeArtifact || contract.mutation.sourceChange || legacyCodeArtifact);
   const fileChange = !readOnly && (route.mutation.requested || semanticFileChange || legacyFileChange);
   const runEvidence = !readOnly && (
     route.validation.runRequested
