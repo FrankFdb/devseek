@@ -1,7 +1,7 @@
 export function looksLikeProviderLoginGate(text: string): boolean {
   const normalized = normalizeSurfaceText(text);
   if (!normalized) return false;
-  if (/\bLOGIN_REQUIRED\b/i.test(normalized)) return true;
+  if (looksLikeProviderLoginRequiredSentinel(normalized)) return true;
   if (looksLikeHtmlSurface(normalized)) {
     return /(?:请先?登录|重新登录|登录(?:已)?失效|会话(?:已)?过期|登录后继续|sign\s*in|log\s*in|login required|session expired|authentication required|not authenticated)/i.test(stripHtml(normalized));
   }
@@ -41,6 +41,36 @@ export function looksLikeProviderErrorSurface(text: string): boolean {
 
 function normalizeSurfaceText(text: string): string {
   return String(text || '').replace(/\u00a0/g, ' ').trim();
+}
+
+function looksLikeProviderLoginRequiredSentinel(text: string): boolean {
+  const compact = text.trim();
+  if (/^(?:error\s*:\s*)?LOGIN_REQUIRED$/i.test(compact)) return true;
+  if (/^RESPONSE_CORRUPTED\s*:\s*login-required$/i.test(compact)) return true;
+  if (compact.length <= 240 && /^(?:error|failed|failure|provider\s+failed)\b[\s\S]*\bLOGIN_REQUIRED\b/i.test(compact)) {
+    return true;
+  }
+  if (compact.length <= 1000 && /^[{[]/.test(compact)) {
+    try {
+      const parsed = JSON.parse(compact);
+      return containsLoginRequiredControlValue(parsed);
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+function containsLoginRequiredControlValue(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) {
+    return value.some((item) => containsLoginRequiredControlValue(item));
+  }
+  const record = value as Record<string, unknown>;
+  return record.error === 'LOGIN_REQUIRED'
+    || record.code === 'LOGIN_REQUIRED'
+    || record.reason === 'LOGIN_REQUIRED'
+    || record.errorCategory === 'login-required';
 }
 
 function looksLikeProviderControlText(text: string): boolean {

@@ -36,6 +36,29 @@ test('provider output integrity: classifies executable tool calls before settlem
   assert.equal(result.toolCallCount, 1);
 });
 
+test('provider output integrity: treats LOGIN_REQUIRED inside a requested report artifact as content', () => {
+  const content = [
+    '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE Audit Report',
+    '',
+    'BridgeHealthCheck',
+    'devseek.deepseek-web-connector-health/v1',
+    'loggedInLikely',
+    'plugin-opened DeepSeek page',
+    'chatInput evidence',
+    'deepseek-dom-send-button-missing',
+    'login-state-not-send-button',
+    'send button selector drift is not LOGIN_REQUIRED',
+    'not fixed line-count smoke',
+  ].join('\n');
+  const result = classifyProviderOutputIntegrity(
+    `现在生成报告：create_file({"path":"/tmp/workspace/docs/r3-iteration/r3-live-deepseek-login-ready-state.md","content":${JSON.stringify(content)}})`,
+  );
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 1);
+});
+
 test('provider output integrity: accepts a complete quote-damaged replace call as an executable tool request', () => {
   const result = classifyProviderOutputIntegrity(String.raw`我立即修复头文件。
 <TOOL_CALL>[TOOL:replace_in_file] {"path":"/tmp/project/worker.hpp","old_str":"#include <string>\n\n#include "worker_types.hpp"","new_str":"#include <string>\n#include <unordered_map>\n\n#include "worker_types.hpp""}</TOOL_CALL>`);
@@ -167,6 +190,8 @@ test('provider output integrity: rejects short enough-information transition bef
 
 test('provider output integrity: classifies provider failure surfaces', () => {
   assert.equal(classifyProviderOutputIntegrity('').kind, 'empty');
+  assert.equal(classifyProviderOutputIntegrity('LOGIN_REQUIRED').kind, 'login_required');
+  assert.equal(classifyProviderOutputIntegrity('{"error":"LOGIN_REQUIRED"}').kind, 'login_required');
   assert.equal(classifyProviderOutputIntegrity('<html><title>Login</title>请先登录</html>').kind, 'login_required');
   assert.equal(classifyProviderOutputIntegrity('请输入验证码完成安全验证').kind, 'login_required');
   assert.equal(classifyProviderOutputIntegrity('<html><body>502 Bad Gateway</body></html>').kind, 'error_page');
