@@ -1,0 +1,320 @@
+{
+  "schema_version": "devseek.r4-real-provider-failure-taxonomy/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "taxonomy_id": "R4-REAL-PROVIDER-FAILURE-TAXONOMY/v1",
+  "taxonomy_version": 1,
+  "source_status": "generated-failure-taxonomy-only",
+  "integrity_scope": "local-r4-real-provider-failure-taxonomy",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "observation_authority": {
+    "semantic_authority": "R4RealProviderFailureTaxonomy",
+    "writes_product_state": false,
+    "provider_actions": "FORBIDDEN",
+    "live_holdout_actions": "FORBIDDEN",
+    "runtime_process_observation": "FORBIDDEN",
+    "install_or_window_actions": "FORBIDDEN",
+    "secret_observation": "FORBIDDEN"
+  },
+  "source_bindings": {
+    "live_user_way_holdout_matrix": {
+      "path": "docs/process/devseek-r4-live-user-way-holdout-matrix.json",
+      "source_sha256": "000a82523ebeb1047518c7ca32f232d1416cfccf8ec6418599428b642ed783cf",
+      "matrix_sha256": "083cfc5a922afe1e571f3d46bc099c0343ff49224c8ae6ae0e461a11d420f38e",
+      "live_runs_authorized": 0
+    },
+    "live_qualification_request_packet": {
+      "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
+      "source_sha256": "92e2868a57c050c3c23561327d932656b662f1196e9f323a5901deb054a32296",
+      "packet_sha256": "2cec877865500676f03f94075f73288aa811a98a8ad18f1297b16d8344860b3c",
+      "blocked_requests": 5
+    },
+    "doc_process_identity_reconciliation": {
+      "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
+      "source_sha256": "abd9ec026b3786071d977082a3628e40ac9d6ff5277cbd773839de80268a6fc5",
+      "reconciliation_sha256": "0cb8162dfab7ac768e26bf8e2f6d4cb702d4a9a41b00de7f7bfc76f47c4622d3",
+      "current_candidate_identity_status": "deferred-unusable-until-clean-runtime"
+    },
+    "r3_live_receipts_doc": {
+      "path": "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md",
+      "source_sha256": "e4136d792f6c3402ab82b174ed0f8a893bbb2b6613643d1776dd13f44c8a7bb3"
+    },
+    "real_plugin_harness": {
+      "path": "packages/vscode-extension/test/devseek-real-plugin-deepseek-harness.mjs",
+      "source_sha256": "38743a611c09ffafe41552e701a0d06bfafe6c12080ff7d6bf30f50f1342b7f0"
+    }
+  },
+  "rerun_policy": {
+    "repeat_same_red_loop_allowed_without_analysis": false,
+    "required_evidence_before_rerun": [
+      "report.json",
+      "run-log",
+      "changedPaths",
+      "terminal-settlement",
+      "provider-classification",
+      "generated-artifact-quality"
+    ],
+    "classify_before_code_change": true,
+    "classify_before_harness_change": true,
+    "classify_before_external_blocker": true,
+    "generated_artifact_quality_required": true
+  },
+  "categories": [
+    {
+      "category_id": "LOGIN_SESSION_STATE_AMBIGUOUS",
+      "title": "Login/session state ambiguity",
+      "trigger_signals": [
+        "LOGIN_REQUIRED",
+        "unknown-page",
+        "bridge-session-user-path-mismatch",
+        "chat-input-missing"
+      ],
+      "default_next_action": "classify-login-state-before-rerun",
+      "required_evidence_before_rerun": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "rerun_allowed_without_analysis": false,
+      "local_fix_may_be_required": true,
+      "external_blocker_may_be_recorded": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "category_id": "SELECTOR_OR_DOM_DRIFT",
+      "title": "Selector or DOM drift",
+      "trigger_signals": [
+        "send-button-missing",
+        "chat-input-selector-drift",
+        "dom-contract-anchor-missing"
+      ],
+      "default_next_action": "update-selector-diagnostics-or-contract",
+      "required_evidence_before_rerun": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "rerun_allowed_without_analysis": false,
+      "local_fix_may_be_required": true,
+      "external_blocker_may_be_recorded": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "category_id": "RESPONSE_CORRUPTED_OR_TRUNCATED",
+      "title": "Provider response corrupted or truncated",
+      "trigger_signals": [
+        "RESPONSE_CORRUPTED",
+        "incomplete-tool-block",
+        "cdata-truncation",
+        "partial-tool-json"
+      ],
+      "default_next_action": "repair-parser-or-recovery-before-rerun",
+      "required_evidence_before_rerun": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "rerun_allowed_without_analysis": false,
+      "local_fix_may_be_required": true,
+      "external_blocker_may_be_recorded": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "category_id": "TOOL_PROTOCOL_DRIFT",
+      "title": "Tool protocol drift",
+      "trigger_signals": [
+        "named-tool_call-envelope",
+        "fenced-tool-write",
+        "manage_todo_list-json-malformed"
+      ],
+      "default_next_action": "tighten-tool-normalization-and-replay-oracle",
+      "required_evidence_before_rerun": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "rerun_allowed_without_analysis": false,
+      "local_fix_may_be_required": true,
+      "external_blocker_may_be_recorded": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "category_id": "SAFETY_INTERSTITIAL_OR_TOOL_BLOCK",
+      "title": "Safety interstitial or tool execution block",
+      "trigger_signals": [
+        "safety-retry-button",
+        "tool-execution-blocked",
+        "provider-tool-call-interrupted"
+      ],
+      "default_next_action": "record-user-safety-decision-and-resume-analysis",
+      "required_evidence_before_rerun": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "rerun_allowed_without_analysis": false,
+      "local_fix_may_be_required": true,
+      "external_blocker_may_be_recorded": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "category_id": "RECOVERY_REENTRANCY_OR_LOOPING",
+      "title": "Recovery reentrancy or repeated recovery start",
+      "trigger_signals": [
+        "duplicate-recovery-start",
+        "recovery-start-after-proven-retry",
+        "looping-recovery"
+      ],
+      "default_next_action": "guard-recovery-reentrancy-with-run-context-evidence",
+      "required_evidence_before_rerun": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "rerun_allowed_without_analysis": false,
+      "local_fix_may_be_required": true,
+      "external_blocker_may_be_recorded": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "category_id": "RECOVERED_WRITE_FINAL_SETTLEMENT",
+      "title": "Recovered write final settlement",
+      "trigger_signals": [
+        "recovery.completed-without-settled-completed",
+        "post-write-provider-failure",
+        "quality-gate-after-recovery"
+      ],
+      "default_next_action": "inspect-run-settlement-and-quality-gate-before-rerun",
+      "required_evidence_before_rerun": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "rerun_allowed_without_analysis": false,
+      "local_fix_may_be_required": true,
+      "external_blocker_may_be_recorded": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "category_id": "REQUIRED_DELIVERABLE_OR_SOURCE_PATH_DRIFT",
+      "title": "Required deliverable or source path drift",
+      "trigger_signals": [
+        "input-source-path-classified-as-output",
+        "required-deliverable-mismatch",
+        "changedPaths-missing-target"
+      ],
+      "default_next_action": "fix-deliverable-contract-or-path-source-classifier",
+      "required_evidence_before_rerun": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "rerun_allowed_without_analysis": false,
+      "local_fix_may_be_required": true,
+      "external_blocker_may_be_recorded": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "category_id": "ARTIFACT_QUALITY_OR_DOMAIN_STALE",
+      "title": "Artifact quality or stale-domain leakage",
+      "trigger_signals": [
+        "stale-domain-anchor",
+        "quality-forbidden-scope",
+        "missing-literal-anchor",
+        "generic-warranty-false-positive"
+      ],
+      "default_next_action": "review-generated-artifact-quality-before-retry",
+      "required_evidence_before_rerun": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "rerun_allowed_without_analysis": false,
+      "local_fix_may_be_required": true,
+      "external_blocker_may_be_recorded": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "category_id": "HARNESS_REPORT_TIMEOUT_OR_LOG_SELECTION",
+      "title": "Harness timeout or run-log selection drift",
+      "trigger_signals": [
+        "report-time-timeout",
+        "wrong-run-log-selected",
+        "bridge-status-log-selected",
+        "pollExitReason-timeout"
+      ],
+      "default_next_action": "fix-harness-report-binding-or-timeout-diagnostics",
+      "required_evidence_before_rerun": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "rerun_allowed_without_analysis": false,
+      "local_fix_may_be_required": true,
+      "external_blocker_may_be_recorded": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    }
+  ],
+  "counts": {
+    "categories": 10,
+    "required_evidence_items": 6,
+    "categories_allowing_rerun_without_analysis": 0,
+    "qualification_claims": 0
+  },
+  "taxonomy_sha256": "9db65a53f787a39b5b27cf7c927f263eca2cb495e077a83f8bbb8244d8fed216"
+}
