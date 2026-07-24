@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-r4-doc-process-identity-reconciliation-v1.json",
+  "title": "DevSeek R4 Doc Process Identity Reconciliation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "reconciliation_id",
+    "reconciliation_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "observation_authority",
+    "source_boundaries",
+    "identity_artifacts",
+    "handoff_documents",
+    "conclusions",
+    "counts",
+    "reconciliation_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.r4-doc-process-identity-reconciliation/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "reconciliation_id": { "const": "R4-DOC-PROCESS-IDENTITY-RECONCILIATION/v1" },
+    "reconciliation_version": { "const": 1 },
+    "source_status": { "const": "verified-local-doc-process-boundary" },
+    "integrity_scope": { "const": "local-r4-doc-process-identity-reconciliation" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "observation_authority": { "$ref": "#/$defs/observationAuthority" },
+    "source_boundaries": { "$ref": "#/$defs/sourceBoundaries" },
+    "identity_artifacts": { "$ref": "#/$defs/identityArtifacts" },
+    "handoff_documents": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/handoffDocument" }
+    },
+    "conclusions": { "$ref": "#/$defs/conclusions" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "reconciliation_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "fullCommit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{7,64}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "observationAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantic_authority",
+        "writes_product_state",
+        "provider_actions",
+        "live_holdout_actions",
+        "runtime_process_observation",
+        "install_or_window_actions",
+        "secret_observation"
+      ],
+      "properties": {
+        "semantic_authority": { "const": "R4DocProcessIdentityReconciliation" },
+        "writes_product_state": { "const": false },
+        "provider_actions": { "const": "FORBIDDEN" },
+        "live_holdout_actions": { "const": "FORBIDDEN" },
+        "runtime_process_observation": { "const": "FORBIDDEN" },
+        "install_or_window_actions": { "const": "FORBIDDEN" },
+        "secret_observation": { "const": "FORBIDDEN" }
+      }
+    },
+    "sourceBoundaries": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product_implementation_commit",
+        "artifact_source_commit",
+        "handoff_doc_commit",
+        "release_candidate_manifest_path",
+        "release_candidate_manifest_commit",
+        "release_candidate_manifest_sha256",
+        "identity_reconciliation_commit_bound"
+      ],
+      "properties": {
+        "product_implementation_commit": { "$ref": "#/$defs/fullCommit" },
+        "artifact_source_commit": { "$ref": "#/$defs/fullCommit" },
+        "handoff_doc_commit": { "$ref": "#/$defs/fullCommit" },
+        "release_candidate_manifest_path": { "const": "docs/process/devseek-r4-release-candidate-manifest.json" },
+        "release_candidate_manifest_commit": { "$ref": "#/$defs/fullCommit" },
+        "release_candidate_manifest_sha256": { "$ref": "#/$defs/sha256" },
+        "identity_reconciliation_commit_bound": { "const": false }
+      }
+    },
+    "identityArtifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tracked_current_candidate_identity",
+        "archived_failed_observe_identity",
+        "release_candidate_identity",
+        "tracked_current_matches_release_candidate",
+        "archived_failed_matches_release_candidate"
+      ],
+      "properties": {
+        "tracked_current_candidate_identity": { "$ref": "#/$defs/identityArtifact" },
+        "archived_failed_observe_identity": { "$ref": "#/$defs/identityArtifact" },
+        "release_candidate_identity": { "$ref": "#/$defs/releaseCandidateIdentity" },
+        "tracked_current_matches_release_candidate": { "const": false },
+        "archived_failed_matches_release_candidate": { "const": false }
+      }
+    },
+    "identityArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "generated_view_path",
+        "status",
+        "archive_status",
+        "file_sha256",
+        "generated_view_sha256",
+        "artifact_git_commit",
+        "candidate_source_commit",
+        "vsix_sha256",
+        "build_id",
+        "observe_status",
+        "identity_probe_sha256",
+        "usable_for_qualification",
+        "qualification_effect"
+      ],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "generated_view_path": { "$ref": "#/$defs/nonEmpty" },
+        "status": {
+          "enum": ["tracked-stale-deferred", "archived-failed-observe"]
+        },
+        "archive_status": {
+          "enum": ["not-archived", "archived"]
+        },
+        "file_sha256": { "$ref": "#/$defs/sha256" },
+        "generated_view_sha256": { "$ref": "#/$defs/sha256" },
+        "artifact_git_commit": { "$ref": "#/$defs/commit" },
+        "candidate_source_commit": { "$ref": "#/$defs/fullCommit" },
+        "vsix_sha256": { "$ref": "#/$defs/sha256" },
+        "build_id": { "$ref": "#/$defs/nonEmpty" },
+        "observe_status": { "enum": ["failed", "passed"] },
+        "identity_probe_sha256": { "$ref": "#/$defs/sha256" },
+        "usable_for_qualification": { "const": false },
+        "qualification_effect": { "const": "NONE" }
+      }
+    },
+    "releaseCandidateIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "status",
+        "artifact_source_commit",
+        "vsix_sha256",
+        "manifest_sha256",
+        "usable_for_qualification",
+        "qualification_effect"
+      ],
+      "properties": {
+        "path": { "const": "docs/process/devseek-r4-release-candidate-manifest.json" },
+        "status": { "const": "current-local-release-smoke-reference" },
+        "artifact_source_commit": { "$ref": "#/$defs/fullCommit" },
+        "vsix_sha256": { "$ref": "#/$defs/sha256" },
+        "manifest_sha256": { "$ref": "#/$defs/sha256" },
+        "usable_for_qualification": { "const": false },
+        "qualification_effect": { "const": "NONE" }
+      }
+    },
+    "handoffDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "status",
+        "file_sha256",
+        "required_anchors_total",
+        "required_anchors_present",
+        "anchors"
+      ],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "status": { "const": "archived-in-place" },
+        "file_sha256": { "$ref": "#/$defs/sha256" },
+        "required_anchors_total": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "required_anchors_present": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "anchors": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/anchorStatus" }
+        }
+      }
+    },
+    "anchorStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchor", "present"],
+      "properties": {
+        "anchor": { "$ref": "#/$defs/nonEmpty" },
+        "present": { "const": true }
+      }
+    },
+    "conclusions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "current_candidate_identity_status",
+        "failed_identity_snapshot_status",
+        "handoff_drift_status",
+        "authority_to_refresh_current_candidate_identity",
+        "release_candidate_manifest_remains_source_of_local_release_smoke",
+        "claims_empty",
+        "gate0_status",
+        "r1_qualification_status"
+      ],
+      "properties": {
+        "current_candidate_identity_status": { "const": "deferred-unusable-until-clean-runtime" },
+        "failed_identity_snapshot_status": { "const": "archived-not-current" },
+        "handoff_drift_status": { "const": "archived-in-place" },
+        "authority_to_refresh_current_candidate_identity": { "const": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME" },
+        "release_candidate_manifest_remains_source_of_local_release_smoke": { "const": true },
+        "claims_empty": { "const": true },
+        "gate0_status": { "const": "NOT_PASSED" },
+        "r1_qualification_status": { "const": "NOT_STARTED" }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity_artifacts_reconciled",
+        "archived_failed_identity_snapshots",
+        "handoff_documents_reconciled",
+        "tracked_current_identity_usable_for_qualification",
+        "qualification_claims"
+      ],
+      "properties": {
+        "identity_artifacts_reconciled": { "const": 3 },
+        "archived_failed_identity_snapshots": { "const": 1 },
+        "handoff_documents_reconciled": { "const": 2 },
+        "tracked_current_identity_usable_for_qualification": { "const": 0 },
+        "qualification_claims": { "const": 0 }
+      }
+    }
+  }
+}

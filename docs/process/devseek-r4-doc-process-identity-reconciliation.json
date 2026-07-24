@@ -1,0 +1,152 @@
+{
+  "schema_version": "devseek.r4-doc-process-identity-reconciliation/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "reconciliation_id": "R4-DOC-PROCESS-IDENTITY-RECONCILIATION/v1",
+  "reconciliation_version": 1,
+  "source_status": "verified-local-doc-process-boundary",
+  "integrity_scope": "local-r4-doc-process-identity-reconciliation",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "observation_authority": {
+    "semantic_authority": "R4DocProcessIdentityReconciliation",
+    "writes_product_state": false,
+    "provider_actions": "FORBIDDEN",
+    "live_holdout_actions": "FORBIDDEN",
+    "runtime_process_observation": "FORBIDDEN",
+    "install_or_window_actions": "FORBIDDEN",
+    "secret_observation": "FORBIDDEN"
+  },
+  "source_boundaries": {
+    "product_implementation_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
+    "artifact_source_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
+    "handoff_doc_commit": "02cb792b4fe86df523c7f88eb106f13394e6f3fd",
+    "release_candidate_manifest_path": "docs/process/devseek-r4-release-candidate-manifest.json",
+    "release_candidate_manifest_commit": "33bd4e9685e0577b92806938919a8370ab49caa6",
+    "release_candidate_manifest_sha256": "e99ea94658683aff63f52d8b9c8992e6c90501e441571757d068d29da6c151e4",
+    "identity_reconciliation_commit_bound": false
+  },
+  "identity_artifacts": {
+    "tracked_current_candidate_identity": {
+      "path": "docs/process/devseek-current-candidate-identity.json",
+      "generated_view_path": "docs/process/generated/devseek-current-candidate-identity.md",
+      "status": "tracked-stale-deferred",
+      "archive_status": "not-archived",
+      "file_sha256": "d920a6e5fadbed1cae9080ec0daebbfc33e9a60738ff776bfe4e9d6764bd60d6",
+      "generated_view_sha256": "3c298f066996c5b6f86e946f948c460bff13d07c561e8c40a0bd0bea45a32087",
+      "artifact_git_commit": "00449c6",
+      "candidate_source_commit": "00449c6c26c16ed65350b4ef4431ec183174a0d8",
+      "vsix_sha256": "06932cc2c69f351538cf1f2d01339aac635fd80ba237db93a22f6775cb76bce6",
+      "build_id": "20260722-t205802",
+      "observe_status": "failed",
+      "identity_probe_sha256": "a016dfcf98e025a58712d796a39ca2a40f510c37383ee3be3cc51576875b28d6",
+      "usable_for_qualification": false,
+      "qualification_effect": "NONE"
+    },
+    "archived_failed_observe_identity": {
+      "path": "docs/process/archive/devseek-current-candidate-identity-failed-observe-20260723-t185546.json",
+      "generated_view_path": "docs/process/archive/devseek-current-candidate-identity-failed-observe-20260723-t185546.md",
+      "status": "archived-failed-observe",
+      "archive_status": "archived",
+      "file_sha256": "65df00d817a88c285b5a26b7f741bd7cc7b2df4b75e88eb05bd4bd55f1933014",
+      "generated_view_sha256": "1b59467451ace952605240038b19b9c9e26193a4d96892761f121ac8a026e4e1",
+      "artifact_git_commit": "6b09d67",
+      "candidate_source_commit": "6b09d670b93a656d76213df9dbb4a45a6e4fe3d7",
+      "vsix_sha256": "49a0479c8c436dac7a5eb6e5b68c71e42b30e3e8dae05973b65f864c9813c086",
+      "build_id": "20260723-t185546",
+      "observe_status": "failed",
+      "identity_probe_sha256": "ecaac0d6a84083a40a9aae7b09ba83aaa374acb2d94e0d1a23f7389e5a056116",
+      "usable_for_qualification": false,
+      "qualification_effect": "NONE"
+    },
+    "release_candidate_identity": {
+      "path": "docs/process/devseek-r4-release-candidate-manifest.json",
+      "status": "current-local-release-smoke-reference",
+      "artifact_source_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
+      "vsix_sha256": "027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d",
+      "manifest_sha256": "e99ea94658683aff63f52d8b9c8992e6c90501e441571757d068d29da6c151e4",
+      "usable_for_qualification": false,
+      "qualification_effect": "NONE"
+    },
+    "tracked_current_matches_release_candidate": false,
+    "archived_failed_matches_release_candidate": false
+  },
+  "handoff_documents": [
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md",
+      "status": "archived-in-place",
+      "file_sha256": "e4136d792f6c3402ab82b174ed0f8a893bbb2b6613643d1776dd13f44c8a7bb3",
+      "required_anchors_total": 7,
+      "required_anchors_present": 7,
+      "anchors": [
+        {
+          "anchor": "### 7.8 2026-07-23 当前窗口性能退化与 R3 live-provider 接续点",
+          "present": true
+        },
+        {
+          "anchor": "### 7.9 2026-07-23 R3 scoped write-authority 修复、release 与 fresh live 新 blocker 回执",
+          "present": true
+        },
+        {
+          "anchor": "### 7.10 2026-07-23 R3 live recovery blockers 修复、输入源交付误判修复与当前剩余项",
+          "present": true
+        },
+        {
+          "anchor": "### 7.11 2026-07-23 fresh fe2d895 headed live rerun 失败分析与当前 R3 剩余项",
+          "present": true
+        },
+        {
+          "anchor": "### 7.12 2026-07-23 3510aac headed live 安全继续后结果复核与本地修复",
+          "present": true
+        },
+        {
+          "anchor": "### 7.13 2026-07-23 6d3e064 headed live 缺逐字锚点失败与 QualityGate 修复",
+          "present": true
+        },
+        {
+          "anchor": "### 7.14 2026-07-23 2100acc package、controlled VSIX 与 fresh headed live PASS 回执",
+          "present": true
+        }
+      ]
+    },
+    {
+      "path": "docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md",
+      "status": "archived-in-place",
+      "file_sha256": "03be21a6cd04bd3b29f614e5669b5fe417c40ff7e9a2a8a0c0278d7e371e47a6",
+      "required_anchors_total": 2,
+      "required_anchors_present": 2,
+      "anchors": [
+        {
+          "anchor": "## 6. 2026-07-23 R3 慢窗口接续提示",
+          "present": true
+        },
+        {
+          "anchor": "terminal_state=READY_FOR_USER_CONFIRMATION",
+          "present": true
+        }
+      ]
+    }
+  ],
+  "conclusions": {
+    "current_candidate_identity_status": "deferred-unusable-until-clean-runtime",
+    "failed_identity_snapshot_status": "archived-not-current",
+    "handoff_drift_status": "archived-in-place",
+    "authority_to_refresh_current_candidate_identity": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
+    "release_candidate_manifest_remains_source_of_local_release_smoke": true,
+    "claims_empty": true,
+    "gate0_status": "NOT_PASSED",
+    "r1_qualification_status": "NOT_STARTED"
+  },
+  "counts": {
+    "identity_artifacts_reconciled": 3,
+    "archived_failed_identity_snapshots": 1,
+    "handoff_documents_reconciled": 2,
+    "tracked_current_identity_usable_for_qualification": 0,
+    "qualification_claims": 0
+  },
+  "reconciliation_sha256": "0cb8162dfab7ac768e26bf8e2f6d4cb702d4a9a41b00de7f7bfc76f47c4622d3"
+}
