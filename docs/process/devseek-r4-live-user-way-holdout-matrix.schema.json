@@ -1,0 +1,224 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-r4-live-user-way-holdout-matrix-v1.json",
+  "title": "DevSeek R4 Live User-Way Holdout Matrix v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "matrix_id",
+    "matrix_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "observation_authority",
+    "source_bindings",
+    "matrix_policy",
+    "cases",
+    "counts",
+    "matrix_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.r4-live-user-way-holdout-matrix/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "matrix_id": { "const": "R4-LIVE-USER-WAY-HOLDOUT-MATRIX/v1" },
+    "matrix_version": { "const": 1 },
+    "source_status": { "const": "generated-holdout-matrix-only" },
+    "integrity_scope": { "const": "local-r4-live-user-way-holdout-matrix" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "observation_authority": { "$ref": "#/$defs/observationAuthority" },
+    "source_bindings": { "$ref": "#/$defs/sourceBindings" },
+    "matrix_policy": { "$ref": "#/$defs/matrixPolicy" },
+    "cases": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": { "$ref": "#/$defs/holdoutCase" }
+    },
+    "counts": { "$ref": "#/$defs/counts" },
+    "matrix_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "observationAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantic_authority",
+        "writes_product_state",
+        "provider_actions",
+        "live_holdout_actions",
+        "runtime_process_observation",
+        "install_or_window_actions",
+        "secret_observation"
+      ],
+      "properties": {
+        "semantic_authority": { "const": "R4LiveUserWayHoldoutMatrix" },
+        "writes_product_state": { "const": false },
+        "provider_actions": { "const": "FORBIDDEN" },
+        "live_holdout_actions": { "const": "FORBIDDEN" },
+        "runtime_process_observation": { "const": "FORBIDDEN" },
+        "install_or_window_actions": { "const": "FORBIDDEN" },
+        "secret_observation": { "const": "FORBIDDEN" }
+      }
+    },
+    "sourceBindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "live_qualification_request_packet",
+        "real_plugin_harness",
+        "controlled_scenario_contract_oracle"
+      ],
+      "properties": {
+        "live_qualification_request_packet": { "$ref": "#/$defs/sourceBinding" },
+        "real_plugin_harness": { "$ref": "#/$defs/sourceBinding" },
+        "controlled_scenario_contract_oracle": { "$ref": "#/$defs/sourceBinding" }
+      }
+    },
+    "sourceBinding": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["path", "source_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "matrixPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider",
+        "execution_mode",
+        "keep_window",
+        "keep_deepseek_page",
+        "live_runs_authorized",
+        "user_authorization_required_before_run",
+        "clean_runtime_identity_required_before_run",
+        "scenario_language_source",
+        "product_fixed_language_allowed",
+        "repeat_red_loop_without_analysis_allowed",
+        "failure_analysis_required"
+      ],
+      "properties": {
+        "provider": { "const": "deepseek-web" },
+        "execution_mode": { "const": "headed" },
+        "keep_window": { "const": true },
+        "keep_deepseek_page": { "const": true },
+        "live_runs_authorized": { "const": 0 },
+        "user_authorization_required_before_run": { "const": true },
+        "clean_runtime_identity_required_before_run": { "const": true },
+        "scenario_language_source": { "const": "scenario-contract" },
+        "product_fixed_language_allowed": { "const": false },
+        "repeat_red_loop_without_analysis_allowed": { "const": false },
+        "failure_analysis_required": {
+          "type": "array",
+          "minItems": 6,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        }
+      }
+    },
+    "holdoutCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "locale",
+        "prompt_language",
+        "expected_artifact_language",
+        "task_family",
+        "contract_summary",
+        "acceptance_focus",
+        "provider",
+        "execution_mode",
+        "keep_window",
+        "keep_deepseek_page",
+        "user_authorization_required",
+        "clean_runtime_identity_required",
+        "scenario_language_source",
+        "product_fixed_language_allowed",
+        "terminal_state",
+        "command_template",
+        "failure_analysis_required",
+        "qualification_effect",
+        "claims_permitted",
+        "asserts_gate_pass"
+      ],
+      "properties": {
+        "case_id": { "$ref": "#/$defs/nonEmpty" },
+        "locale": { "enum": ["zh-CN", "en-US"] },
+        "prompt_language": { "$ref": "#/$defs/nonEmpty" },
+        "expected_artifact_language": { "enum": ["zh-CN", "en-US"] },
+        "task_family": { "$ref": "#/$defs/nonEmpty" },
+        "contract_summary": { "$ref": "#/$defs/nonEmpty" },
+        "acceptance_focus": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "provider": { "const": "deepseek-web" },
+        "execution_mode": { "const": "headed" },
+        "keep_window": { "const": true },
+        "keep_deepseek_page": { "const": true },
+        "user_authorization_required": { "const": true },
+        "clean_runtime_identity_required": { "const": true },
+        "scenario_language_source": { "const": "scenario-contract" },
+        "product_fixed_language_allowed": { "const": false },
+        "terminal_state": { "const": "BLOCKED_NOT_AUTHORIZED" },
+        "command_template": { "$ref": "#/$defs/nonEmpty" },
+        "failure_analysis_required": {
+          "type": "array",
+          "minItems": 6,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "qualification_effect": { "const": "NONE" },
+        "claims_permitted": { "const": false },
+        "asserts_gate_pass": { "const": false }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cases",
+        "locales",
+        "blocked_cases",
+        "live_runs_authorized",
+        "product_fixed_language_cases",
+        "qualification_claims"
+      ],
+      "properties": {
+        "cases": { "const": 5 },
+        "locales": { "const": 2 },
+        "blocked_cases": { "const": 5 },
+        "live_runs_authorized": { "const": 0 },
+        "product_fixed_language_cases": { "const": 0 },
+        "qualification_claims": { "const": 0 }
+      }
+    }
+  }
+}

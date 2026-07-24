@@ -1,0 +1,247 @@
+{
+  "schema_version": "devseek.r4-live-user-way-holdout-matrix/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "matrix_id": "R4-LIVE-USER-WAY-HOLDOUT-MATRIX/v1",
+  "matrix_version": 1,
+  "source_status": "generated-holdout-matrix-only",
+  "integrity_scope": "local-r4-live-user-way-holdout-matrix",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "observation_authority": {
+    "semantic_authority": "R4LiveUserWayHoldoutMatrix",
+    "writes_product_state": false,
+    "provider_actions": "FORBIDDEN",
+    "live_holdout_actions": "FORBIDDEN",
+    "runtime_process_observation": "FORBIDDEN",
+    "install_or_window_actions": "FORBIDDEN",
+    "secret_observation": "FORBIDDEN"
+  },
+  "source_bindings": {
+    "live_qualification_request_packet": {
+      "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
+      "source_sha256": "92e2868a57c050c3c23561327d932656b662f1196e9f323a5901deb054a32296",
+      "packet_sha256": "2cec877865500676f03f94075f73288aa811a98a8ad18f1297b16d8344860b3c",
+      "live_runs_authorized": 0,
+      "request_terminal_state": "ALL_BLOCKED"
+    },
+    "real_plugin_harness": {
+      "path": "packages/vscode-extension/test/devseek-real-plugin-deepseek-harness.mjs",
+      "source_sha256": "38743a611c09ffafe41552e701a0d06bfafe6c12080ff7d6bf30f50f1342b7f0"
+    },
+    "controlled_scenario_contract_oracle": {
+      "path": "packages/vscode-extension/test/unit/controlled-vsix-scenario-contract.test.mjs",
+      "source_sha256": "a0982f1fda235c8412e9c12d5d78908d09f4c1eebd312bcdbc07989a57800a18"
+    }
+  },
+  "matrix_policy": {
+    "provider": "deepseek-web",
+    "execution_mode": "headed",
+    "keep_window": true,
+    "keep_deepseek_page": true,
+    "live_runs_authorized": 0,
+    "user_authorization_required_before_run": true,
+    "clean_runtime_identity_required_before_run": true,
+    "scenario_language_source": "scenario-contract",
+    "product_fixed_language_allowed": false,
+    "repeat_red_loop_without_analysis_allowed": false,
+    "failure_analysis_required": [
+      "report.json",
+      "run-log",
+      "changedPaths",
+      "terminal-settlement",
+      "provider-classification",
+      "generated-artifact-quality"
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "R4-HOLDOUT-ZH-DEEPSEEK-LOGIN-READY-AUDIT",
+      "locale": "zh-CN",
+      "prompt_language": "zh-CN",
+      "expected_artifact_language": "zh-CN",
+      "task_family": "deepseek-login-ready-state-audit",
+      "contract_summary": "中文输入要求生成 DeepSeek 登录就绪状态审计报告，输出必须保持中文。",
+      "acceptance_focus": [
+        "login-ready-state-classification",
+        "bridge-session-boundary",
+        "selector-drift-diagnostics",
+        "markdown-audit-report-quality"
+      ],
+      "provider": "deepseek-web",
+      "execution_mode": "headed",
+      "keep_window": true,
+      "keep_deepseek_page": true,
+      "user_authorization_required": true,
+      "clean_runtime_identity_required": true,
+      "scenario_language_source": "scenario-contract",
+      "product_fixed_language_allowed": false,
+      "terminal_state": "BLOCKED_NOT_AUTHORIZED",
+      "command_template": "npm run test:real-plugin-deepseek --workspace=packages/vscode-extension -- --run --headed --keep-window --keep-deepseek-page --scenario <scenario-id> --timeout-ms 240000",
+      "failure_analysis_required": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "case_id": "R4-HOLDOUT-EN-DEEPSEEK-LOGIN-READY-AUDIT",
+      "locale": "en-US",
+      "prompt_language": "en-US",
+      "expected_artifact_language": "en-US",
+      "task_family": "deepseek-login-ready-state-audit",
+      "contract_summary": "English input asks for the same DeepSeek login-ready audit; output must remain English.",
+      "acceptance_focus": [
+        "login-ready-state-classification",
+        "bridge-session-boundary",
+        "selector-drift-diagnostics",
+        "markdown-audit-report-quality"
+      ],
+      "provider": "deepseek-web",
+      "execution_mode": "headed",
+      "keep_window": true,
+      "keep_deepseek_page": true,
+      "user_authorization_required": true,
+      "clean_runtime_identity_required": true,
+      "scenario_language_source": "scenario-contract",
+      "product_fixed_language_allowed": false,
+      "terminal_state": "BLOCKED_NOT_AUTHORIZED",
+      "command_template": "npm run test:real-plugin-deepseek --workspace=packages/vscode-extension -- --run --headed --keep-window --keep-deepseek-page --scenario <scenario-id> --timeout-ms 240000",
+      "failure_analysis_required": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "case_id": "R4-HOLDOUT-ZH-SCOPED-SOURCE-WRITE-AUTHORITY",
+      "locale": "zh-CN",
+      "prompt_language": "zh-CN",
+      "expected_artifact_language": "zh-CN",
+      "task_family": "scoped-source-write-authority",
+      "contract_summary": "中文任务禁止修改源码但允许指定 Markdown 交付物；输出和报告保持中文。",
+      "acceptance_focus": [
+        "scoped-write-authority",
+        "source-edit-revocation-not-global-write-revocation",
+        "single-markdown-deliverable",
+        "terminal-settlement-completed"
+      ],
+      "provider": "deepseek-web",
+      "execution_mode": "headed",
+      "keep_window": true,
+      "keep_deepseek_page": true,
+      "user_authorization_required": true,
+      "clean_runtime_identity_required": true,
+      "scenario_language_source": "scenario-contract",
+      "product_fixed_language_allowed": false,
+      "terminal_state": "BLOCKED_NOT_AUTHORIZED",
+      "command_template": "npm run test:real-plugin-deepseek --workspace=packages/vscode-extension -- --run --headed --keep-window --keep-deepseek-page --scenario <scenario-id> --timeout-ms 240000",
+      "failure_analysis_required": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "case_id": "R4-HOLDOUT-EN-SCOPED-SOURCE-WRITE-AUTHORITY",
+      "locale": "en-US",
+      "prompt_language": "en-US",
+      "expected_artifact_language": "en-US",
+      "task_family": "scoped-source-write-authority",
+      "contract_summary": "English task forbids source edits but permits the requested Markdown deliverable; output remains English.",
+      "acceptance_focus": [
+        "scoped-write-authority",
+        "source-edit-revocation-not-global-write-revocation",
+        "single-markdown-deliverable",
+        "terminal-settlement-completed"
+      ],
+      "provider": "deepseek-web",
+      "execution_mode": "headed",
+      "keep_window": true,
+      "keep_deepseek_page": true,
+      "user_authorization_required": true,
+      "clean_runtime_identity_required": true,
+      "scenario_language_source": "scenario-contract",
+      "product_fixed_language_allowed": false,
+      "terminal_state": "BLOCKED_NOT_AUTHORIZED",
+      "command_template": "npm run test:real-plugin-deepseek --workspace=packages/vscode-extension -- --run --headed --keep-window --keep-deepseek-page --scenario <scenario-id> --timeout-ms 240000",
+      "failure_analysis_required": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "case_id": "R4-HOLDOUT-ZH-MIXED-PATH-INPUT-OUTPUT-CONTRACT",
+      "locale": "zh-CN",
+      "prompt_language": "zh-CN-with-English-identifiers",
+      "expected_artifact_language": "zh-CN",
+      "task_family": "required-deliverable-input-output-contract",
+      "contract_summary": "中文 prompt 可包含英文路径、selector 和代码标识符；输出语言仍由 scenario contract 指定为中文。",
+      "acceptance_focus": [
+        "input-source-path-not-output-target",
+        "required-deliverable-target-only",
+        "scenario-language-over-product-default",
+        "artifact-quality-by-contract"
+      ],
+      "provider": "deepseek-web",
+      "execution_mode": "headed",
+      "keep_window": true,
+      "keep_deepseek_page": true,
+      "user_authorization_required": true,
+      "clean_runtime_identity_required": true,
+      "scenario_language_source": "scenario-contract",
+      "product_fixed_language_allowed": false,
+      "terminal_state": "BLOCKED_NOT_AUTHORIZED",
+      "command_template": "npm run test:real-plugin-deepseek --workspace=packages/vscode-extension -- --run --headed --keep-window --keep-deepseek-page --scenario <scenario-id> --timeout-ms 240000",
+      "failure_analysis_required": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    }
+  ],
+  "counts": {
+    "cases": 5,
+    "locales": 2,
+    "blocked_cases": 5,
+    "live_runs_authorized": 0,
+    "product_fixed_language_cases": 0,
+    "qualification_claims": 0
+  },
+  "matrix_sha256": "083cfc5a922afe1e571f3d46bc099c0343ff49224c8ae6ae0e461a11d420f38e"
+}
