@@ -44,6 +44,8 @@
     "verify:profile-executor-contracts": "node --test scripts/test/devseek-profile-executor-contracts.test.mjs && node scripts/devseek-profile-executor-contracts-check.mjs",
     "generate:current-candidate-identity": "node scripts/devseek-current-candidate-identity-check.mjs --write",
     "verify:current-candidate-identity": "node --test scripts/test/devseek-current-candidate-identity.test.mjs && node scripts/devseek-current-candidate-identity-check.mjs",
+    "generate:r4-release-candidate-manifest": "node scripts/devseek-r4-release-candidate-manifest-check.mjs --write",
+    "verify:r4-release-candidate-manifest": "node --test scripts/test/devseek-r4-release-candidate-manifest.test.mjs && node scripts/devseek-r4-release-candidate-manifest-check.mjs",
     "generate:c0-ledger-wiring": "node scripts/devseek-c0-ledger-wiring-check.mjs --write",
     "verify:c0-ledger-wiring": "node --test scripts/test/devseek-c0-ledger-wiring.test.mjs && node scripts/devseek-c0-ledger-wiring-check.mjs",
     "generate:c0-preregistration-wiring": "node scripts/devseek-c0-preregistration-wiring-check.mjs --write",

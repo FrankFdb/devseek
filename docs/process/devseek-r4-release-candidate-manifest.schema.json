@@ -1,0 +1,279 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-r4-release-candidate-manifest-v1.json",
+  "title": "DevSeek R4 Release Candidate Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "manifest_id",
+    "manifest_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "observation_authority",
+    "source_identity",
+    "artifact_identity",
+    "verification_receipts",
+    "current_identity_probe_boundary",
+    "r4_leaf_context",
+    "counts",
+    "manifest_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.r4-release-candidate-manifest/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "manifest_id": { "const": "R4-RELEASE-CANDIDATE-MANIFEST/v1" },
+    "manifest_version": { "const": 1 },
+    "source_status": { "const": "verified-local-artifact-and-recorded-smoke" },
+    "integrity_scope": { "const": "local-r4-release-candidate-manifest" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "observation_authority": { "$ref": "#/$defs/observationAuthority" },
+    "source_identity": { "$ref": "#/$defs/sourceIdentity" },
+    "artifact_identity": { "$ref": "#/$defs/artifactIdentity" },
+    "verification_receipts": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": { "$ref": "#/$defs/verificationReceipt" }
+    },
+    "current_identity_probe_boundary": { "$ref": "#/$defs/currentIdentityProbeBoundary" },
+    "r4_leaf_context": { "$ref": "#/$defs/r4LeafContext" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "manifest_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{7,64}$"
+    },
+    "fullCommit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "observationAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantic_authority",
+        "writes_product_state",
+        "provider_actions",
+        "live_holdout_actions",
+        "runtime_process_observation",
+        "install_or_window_actions",
+        "secret_observation"
+      ],
+      "properties": {
+        "semantic_authority": { "const": "R4ReleaseCandidateManifest" },
+        "writes_product_state": { "const": false },
+        "provider_actions": { "const": "FORBIDDEN" },
+        "live_holdout_actions": { "const": "FORBIDDEN" },
+        "runtime_process_observation": { "const": "FORBIDDEN" },
+        "install_or_window_actions": { "const": "FORBIDDEN" },
+        "secret_observation": { "const": "FORBIDDEN" }
+      }
+    },
+    "sourceIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_source_commit",
+        "artifact_source_short",
+        "artifact_source_resolution",
+        "handoff_doc_path",
+        "handoff_doc_commit",
+        "handoff_doc_short",
+        "handoff_doc_commit_resolution",
+        "artifact_source_differs_from_handoff"
+      ],
+      "properties": {
+        "artifact_source_commit": { "$ref": "#/$defs/fullCommit" },
+        "artifact_source_short": { "$ref": "#/$defs/commit" },
+        "artifact_source_resolution": { "const": "git rev-parse <vsix.devseekBuild.gitCommit>^{commit}" },
+        "handoff_doc_path": { "const": "docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md" },
+        "handoff_doc_commit": { "$ref": "#/$defs/fullCommit" },
+        "handoff_doc_short": { "$ref": "#/$defs/commit" },
+        "handoff_doc_commit_resolution": { "const": "git log -1 --format=%H -- <handoff_doc_path>" },
+        "artifact_source_differs_from_handoff": { "const": true }
+      }
+    },
+    "artifactIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary_vsix", "package_copy_vsix", "exact_match"],
+      "properties": {
+        "primary_vsix": { "$ref": "#/$defs/primaryVsixIdentity" },
+        "package_copy_vsix": { "$ref": "#/$defs/packageCopyVsixIdentity" },
+        "exact_match": { "const": true }
+      }
+    },
+    "primaryVsixIdentity": {
+      "allOf": [
+        { "$ref": "#/$defs/vsixIdentity" },
+        {
+          "type": "object",
+          "properties": {
+            "path": { "const": "devseek-netai-latest.vsix" }
+          }
+        }
+      ]
+    },
+    "packageCopyVsixIdentity": {
+      "allOf": [
+        { "$ref": "#/$defs/vsixIdentity" },
+        {
+          "type": "object",
+          "properties": {
+            "path": { "const": "packages/vscode-extension/devseek-netai-latest.vsix" }
+          }
+        }
+      ]
+    },
+    "vsixIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "package_identity",
+        "packaged_bridge_server_sha256"
+      ],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "package_identity": { "$ref": "#/$defs/packageIdentity" },
+        "packaged_bridge_server_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "packageIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publisher", "name", "version", "devseekBuild"],
+      "properties": {
+        "publisher": { "const": "devseek-netai" },
+        "name": { "const": "devseek-netai" },
+        "version": { "$ref": "#/$defs/nonEmpty" },
+        "devseekBuild": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["baseVersion", "channel", "buildId", "gitCommit", "packagedAt"],
+          "properties": {
+            "baseVersion": { "$ref": "#/$defs/nonEmpty" },
+            "channel": { "enum": ["debug", "release"] },
+            "buildId": { "$ref": "#/$defs/nonEmpty" },
+            "gitCommit": { "$ref": "#/$defs/commit" },
+            "packagedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        }
+      }
+    },
+    "verificationReceipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "receipt_id",
+        "receipt_kind",
+        "status",
+        "command",
+        "evidence",
+        "source_ref",
+        "source_commit",
+        "qualification_effect"
+      ],
+      "properties": {
+        "receipt_id": { "$ref": "#/$defs/nonEmpty" },
+        "receipt_kind": {
+          "enum": [
+            "recorded-local-test",
+            "recorded-local-smoke",
+            "recorded-local-install",
+            "recorded-controlled-harness"
+          ]
+        },
+        "status": { "const": "recorded-passed" },
+        "command": { "$ref": "#/$defs/nonEmpty" },
+        "evidence": { "$ref": "#/$defs/nonEmpty" },
+        "source_ref": { "const": "docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md#3-本轮实现回执" },
+        "source_commit": { "$ref": "#/$defs/fullCommit" },
+        "qualification_effect": { "const": "NONE" }
+      }
+    },
+    "currentIdentityProbeBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "status", "authority_to_refresh", "reason"],
+      "properties": {
+        "path": { "const": "docs/process/devseek-current-candidate-identity.json" },
+        "status": { "const": "deferred-not-refreshed" },
+        "authority_to_refresh": { "const": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME" },
+        "reason": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "r4LeafContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["current_leaf", "closure_effect", "remaining_leaves"],
+      "properties": {
+        "current_leaf": { "const": "R4-RELEASE-CANDIDATE-MANIFEST" },
+        "closure_effect": { "$ref": "#/$defs/nonEmpty" },
+        "remaining_leaves": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": {
+            "enum": [
+              "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
+              "R4-LIVE-QUALIFICATION-REQUEST-PACKET",
+              "R4-LIVE-USER-WAY-HOLDOUT-MATRIX",
+              "R4-DOC-PROCESS-IDENTITY-RECONCILIATION",
+              "R4-REAL-PROVIDER-FAILURE-TAXONOMY"
+            ]
+          }
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "vsix_artifacts",
+        "verification_receipts",
+        "remaining_r4_leaves",
+        "qualification_claims"
+      ],
+      "properties": {
+        "vsix_artifacts": { "const": 2 },
+        "verification_receipts": { "const": 6 },
+        "remaining_r4_leaves": { "const": 5 },
+        "qualification_claims": { "const": 0 }
+      }
+    }
+  }
+}
