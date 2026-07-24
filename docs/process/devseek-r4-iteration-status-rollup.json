@@ -1,0 +1,163 @@
+{
+  "schema_version": "devseek.r4-iteration-status-rollup/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "rollup_id": "R4-ITERATION-STATUS-ROLLUP/v1",
+  "rollup_version": 1,
+  "source_status": "generated-local-status-only",
+  "integrity_scope": "local-r4-iteration-status-rollup",
+  "does_not_add_r4_leaf": true,
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "observation_authority": {
+    "semantic_authority": "R4IterationStatusRollup",
+    "writes_product_state": false,
+    "provider_actions": "FORBIDDEN",
+    "live_holdout_actions": "FORBIDDEN",
+    "runtime_process_observation": "FORBIDDEN",
+    "install_or_window_actions": "FORBIDDEN",
+    "secret_observation": "FORBIDDEN"
+  },
+  "source_bindings": {
+    "r3_handoff_next_phase": {
+      "path": "docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md",
+      "source_sha256": "5069955d5c44135e2810bea66c556d73cc7c3ac46dc1aff400b6aeb0ca61bb04",
+      "handoff_doc_commit": "02cb792b4fe86df523c7f88eb106f13394e6f3fd"
+    },
+    "release_candidate_manifest": {
+      "path": "docs/process/devseek-r4-release-candidate-manifest.json",
+      "source_sha256": "fe0d5a74792785a640df50be50012702a46077bebe0d8036647ed27e42182f87",
+      "manifest_sha256": "e99ea94658683aff63f52d8b9c8992e6c90501e441571757d068d29da6c151e4",
+      "artifact_source_commit": "a034e5e050c044460fb07705639d9d41e6b193c0"
+    },
+    "doc_process_identity_reconciliation": {
+      "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
+      "source_sha256": "abd9ec026b3786071d977082a3628e40ac9d6ff5277cbd773839de80268a6fc5",
+      "reconciliation_sha256": "0cb8162dfab7ac768e26bf8e2f6d4cb702d4a9a41b00de7f7bfc76f47c4622d3",
+      "current_candidate_identity_status": "deferred-unusable-until-clean-runtime"
+    },
+    "live_qualification_request_packet": {
+      "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
+      "source_sha256": "92e2868a57c050c3c23561327d932656b662f1196e9f323a5901deb054a32296",
+      "packet_sha256": "2cec877865500676f03f94075f73288aa811a98a8ad18f1297b16d8344860b3c",
+      "blocked_requests": 5
+    },
+    "live_user_way_holdout_matrix": {
+      "path": "docs/process/devseek-r4-live-user-way-holdout-matrix.json",
+      "source_sha256": "000a82523ebeb1047518c7ca32f232d1416cfccf8ec6418599428b642ed783cf",
+      "matrix_sha256": "083cfc5a922afe1e571f3d46bc099c0343ff49224c8ae6ae0e461a11d420f38e",
+      "live_runs_authorized": 0
+    },
+    "real_provider_failure_taxonomy": {
+      "path": "docs/process/devseek-r4-real-provider-failure-taxonomy.json",
+      "source_sha256": "8a8f761acfb83d2e89643c4f7cdfc7103fc1f39f7bc32d48a233e7b3c272ee89",
+      "taxonomy_sha256": "9db65a53f787a39b5b27cf7c927f263eca2cb495e077a83f8bbb8244d8fed216",
+      "categories": 10
+    }
+  },
+  "r4_scope": {
+    "product_implementation_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
+    "handoff_doc_commit": "02cb792b4fe86df523c7f88eb106f13394e6f3fd",
+    "total_leaf_count": 6,
+    "local_process_artifacts_complete_except_clean_runtime": true,
+    "clean_runtime_leaf_terminal_state": "BLOCKED",
+    "current_candidate_identity_status": "deferred-unusable-until-clean-runtime",
+    "gate0_status": "NOT_PASSED",
+    "r1_qualification_status": "NOT_STARTED",
+    "release_candidate_vsix_sha256": "027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d",
+    "scenario_language_source": "scenario-contract"
+  },
+  "clean_runtime_boundary": {
+    "leaf_id": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
+    "may_close_existing_vscode_or_deepseek_pages": false,
+    "may_run_live_provider_test": false,
+    "may_install_or_replace_extension": false,
+    "may_refresh_current_candidate_identity_without_authorization": false,
+    "acceptable_next_authority": [
+      "explicit-user-clean-runtime-window-action-authorization",
+      "external-clean-candidate-identity-receipt"
+    ],
+    "blocked_until_authority": true
+  },
+  "leaves": [
+    {
+      "leaf_id": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
+      "terminal_state": "BLOCKED",
+      "implementation_commit": null,
+      "artifact_path": "docs/process/devseek-current-candidate-identity.json",
+      "blocker_reason": "existing-vscode-and-deepseek-pages-must-not-be-closed-or-reused-without-explicit-clean-runtime-authorization",
+      "next_required_authority": "explicit-user-authorization-for-clean-runtime-isolation-or-external-clean-identity-receipt",
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "leaf_id": "R4-RELEASE-CANDIDATE-MANIFEST",
+      "terminal_state": "COMPLETED",
+      "implementation_commit": "33bd4e9685e0577b92806938919a8370ab49caa6",
+      "artifact_path": "docs/process/devseek-r4-release-candidate-manifest.json",
+      "blocker_reason": null,
+      "next_required_authority": null,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "leaf_id": "R4-DOC-PROCESS-IDENTITY-RECONCILIATION",
+      "terminal_state": "COMPLETED",
+      "implementation_commit": "7a5c1acfa2745d411bb3c6ac97088ef5c87efade",
+      "artifact_path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
+      "blocker_reason": null,
+      "next_required_authority": null,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "leaf_id": "R4-LIVE-QUALIFICATION-REQUEST-PACKET",
+      "terminal_state": "COMPLETED",
+      "implementation_commit": "8da611877948d53854000b7258721b6d43dc8e81",
+      "artifact_path": "docs/process/devseek-r4-live-qualification-request-packet.json",
+      "blocker_reason": null,
+      "next_required_authority": null,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "leaf_id": "R4-LIVE-USER-WAY-HOLDOUT-MATRIX",
+      "terminal_state": "COMPLETED",
+      "implementation_commit": "49a380f1bb193a69a945791f8cf97c7ceac7b1b8",
+      "artifact_path": "docs/process/devseek-r4-live-user-way-holdout-matrix.json",
+      "blocker_reason": null,
+      "next_required_authority": null,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "leaf_id": "R4-REAL-PROVIDER-FAILURE-TAXONOMY",
+      "terminal_state": "COMPLETED",
+      "implementation_commit": "e547c6db75712ed2dd649fa7192a40e9382a5028",
+      "artifact_path": "docs/process/devseek-r4-real-provider-failure-taxonomy.json",
+      "blocker_reason": null,
+      "next_required_authority": null,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    }
+  ],
+  "counts": {
+    "r4_total_leaves": 6,
+    "completed_leaves": 5,
+    "blocked_leaves": 1,
+    "remaining_window_sensitive_leaves": 1,
+    "live_runs_authorized": 0,
+    "qualification_claims": 0
+  },
+  "rollup_sha256": "c376e9f564547b38495ab688f8eff1805afb22144b3ad1c0edbe9639b5103cd6"
+}

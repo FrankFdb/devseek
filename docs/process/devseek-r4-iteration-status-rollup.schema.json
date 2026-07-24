@@ -1,0 +1,241 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-r4-iteration-status-rollup-v1.json",
+  "title": "DevSeek R4 Iteration Status Rollup v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "rollup_id",
+    "rollup_version",
+    "source_status",
+    "integrity_scope",
+    "does_not_add_r4_leaf",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "observation_authority",
+    "source_bindings",
+    "r4_scope",
+    "clean_runtime_boundary",
+    "leaves",
+    "counts",
+    "rollup_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.r4-iteration-status-rollup/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "rollup_id": { "const": "R4-ITERATION-STATUS-ROLLUP/v1" },
+    "rollup_version": { "const": 1 },
+    "source_status": { "const": "generated-local-status-only" },
+    "integrity_scope": { "const": "local-r4-iteration-status-rollup" },
+    "does_not_add_r4_leaf": { "const": true },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "observation_authority": { "$ref": "#/$defs/observationAuthority" },
+    "source_bindings": { "$ref": "#/$defs/sourceBindings" },
+    "r4_scope": { "$ref": "#/$defs/r4Scope" },
+    "clean_runtime_boundary": { "$ref": "#/$defs/cleanRuntimeBoundary" },
+    "leaves": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": { "$ref": "#/$defs/leaf" }
+    },
+    "counts": { "$ref": "#/$defs/counts" },
+    "rollup_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "observationAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantic_authority",
+        "writes_product_state",
+        "provider_actions",
+        "live_holdout_actions",
+        "runtime_process_observation",
+        "install_or_window_actions",
+        "secret_observation"
+      ],
+      "properties": {
+        "semantic_authority": { "const": "R4IterationStatusRollup" },
+        "writes_product_state": { "const": false },
+        "provider_actions": { "const": "FORBIDDEN" },
+        "live_holdout_actions": { "const": "FORBIDDEN" },
+        "runtime_process_observation": { "const": "FORBIDDEN" },
+        "install_or_window_actions": { "const": "FORBIDDEN" },
+        "secret_observation": { "const": "FORBIDDEN" }
+      }
+    },
+    "sourceBindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "r3_handoff_next_phase",
+        "release_candidate_manifest",
+        "doc_process_identity_reconciliation",
+        "live_qualification_request_packet",
+        "live_user_way_holdout_matrix",
+        "real_provider_failure_taxonomy"
+      ],
+      "properties": {
+        "r3_handoff_next_phase": { "$ref": "#/$defs/sourceBinding" },
+        "release_candidate_manifest": { "$ref": "#/$defs/sourceBinding" },
+        "doc_process_identity_reconciliation": { "$ref": "#/$defs/sourceBinding" },
+        "live_qualification_request_packet": { "$ref": "#/$defs/sourceBinding" },
+        "live_user_way_holdout_matrix": { "$ref": "#/$defs/sourceBinding" },
+        "real_provider_failure_taxonomy": { "$ref": "#/$defs/sourceBinding" }
+      }
+    },
+    "sourceBinding": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["path", "source_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "r4Scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product_implementation_commit",
+        "handoff_doc_commit",
+        "total_leaf_count",
+        "local_process_artifacts_complete_except_clean_runtime",
+        "clean_runtime_leaf_terminal_state",
+        "current_candidate_identity_status",
+        "gate0_status",
+        "r1_qualification_status",
+        "release_candidate_vsix_sha256",
+        "scenario_language_source"
+      ],
+      "properties": {
+        "product_implementation_commit": { "$ref": "#/$defs/commit" },
+        "handoff_doc_commit": { "$ref": "#/$defs/commit" },
+        "total_leaf_count": { "const": 6 },
+        "local_process_artifacts_complete_except_clean_runtime": { "const": true },
+        "clean_runtime_leaf_terminal_state": { "const": "BLOCKED" },
+        "current_candidate_identity_status": { "const": "deferred-unusable-until-clean-runtime" },
+        "gate0_status": { "const": "NOT_PASSED" },
+        "r1_qualification_status": { "const": "NOT_STARTED" },
+        "release_candidate_vsix_sha256": { "$ref": "#/$defs/sha256" },
+        "scenario_language_source": { "const": "scenario-contract" }
+      }
+    },
+    "cleanRuntimeBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "leaf_id",
+        "may_close_existing_vscode_or_deepseek_pages",
+        "may_run_live_provider_test",
+        "may_install_or_replace_extension",
+        "may_refresh_current_candidate_identity_without_authorization",
+        "acceptable_next_authority",
+        "blocked_until_authority"
+      ],
+      "properties": {
+        "leaf_id": { "const": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME" },
+        "may_close_existing_vscode_or_deepseek_pages": { "const": false },
+        "may_run_live_provider_test": { "const": false },
+        "may_install_or_replace_extension": { "const": false },
+        "may_refresh_current_candidate_identity_without_authorization": { "const": false },
+        "acceptable_next_authority": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "blocked_until_authority": { "const": true }
+      }
+    },
+    "leaf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "leaf_id",
+        "terminal_state",
+        "implementation_commit",
+        "artifact_path",
+        "blocker_reason",
+        "next_required_authority",
+        "qualification_effect",
+        "claims_permitted",
+        "asserts_gate_pass"
+      ],
+      "properties": {
+        "leaf_id": { "$ref": "#/$defs/nonEmpty" },
+        "terminal_state": { "enum": ["COMPLETED", "BLOCKED"] },
+        "implementation_commit": {
+          "anyOf": [
+            { "$ref": "#/$defs/commit" },
+            { "type": "null" }
+          ]
+        },
+        "artifact_path": { "$ref": "#/$defs/nonEmpty" },
+        "blocker_reason": {
+          "anyOf": [
+            { "$ref": "#/$defs/nonEmpty" },
+            { "type": "null" }
+          ]
+        },
+        "next_required_authority": {
+          "anyOf": [
+            { "$ref": "#/$defs/nonEmpty" },
+            { "type": "null" }
+          ]
+        },
+        "qualification_effect": { "const": "NONE" },
+        "claims_permitted": { "const": false },
+        "asserts_gate_pass": { "const": false }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "r4_total_leaves",
+        "completed_leaves",
+        "blocked_leaves",
+        "remaining_window_sensitive_leaves",
+        "live_runs_authorized",
+        "qualification_claims"
+      ],
+      "properties": {
+        "r4_total_leaves": { "const": 6 },
+        "completed_leaves": { "const": 5 },
+        "blocked_leaves": { "const": 1 },
+        "remaining_window_sensitive_leaves": { "const": 1 },
+        "live_runs_authorized": { "const": 0 },
+        "qualification_claims": { "const": 0 }
+      }
+    }
+  }
+}
