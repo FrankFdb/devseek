@@ -1,0 +1,184 @@
+{
+  "schema_version": "devseek.r4-live-qualification-request-packet/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "packet_id": "R4-LIVE-QUALIFICATION-REQUEST-PACKET/v1",
+  "packet_version": 1,
+  "source_status": "generated-request-only",
+  "integrity_scope": "local-r4-live-qualification-request-packet",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "observation_authority": {
+    "semantic_authority": "R4LiveQualificationRequestPacket",
+    "writes_product_state": false,
+    "provider_actions": "FORBIDDEN",
+    "live_holdout_actions": "FORBIDDEN",
+    "runtime_process_observation": "FORBIDDEN",
+    "install_or_window_actions": "FORBIDDEN",
+    "secret_observation": "FORBIDDEN"
+  },
+  "source_bindings": {
+    "release_candidate_manifest": {
+      "path": "docs/process/devseek-r4-release-candidate-manifest.json",
+      "source_sha256": "fe0d5a74792785a640df50be50012702a46077bebe0d8036647ed27e42182f87",
+      "manifest_sha256": "e99ea94658683aff63f52d8b9c8992e6c90501e441571757d068d29da6c151e4",
+      "artifact_source_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
+      "vsix_sha256": "027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d"
+    },
+    "doc_process_identity_reconciliation": {
+      "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
+      "source_sha256": "abd9ec026b3786071d977082a3628e40ac9d6ff5277cbd773839de80268a6fc5",
+      "reconciliation_sha256": "0cb8162dfab7ac768e26bf8e2f6d4cb702d4a9a41b00de7f7bfc76f47c4622d3",
+      "current_candidate_identity_status": "deferred-unusable-until-clean-runtime"
+    },
+    "external_authority_requests": {
+      "path": "docs/process/devseek-external-authority-requests.json",
+      "source_sha256": "fbf35c45dd56b59c8ea5f3c185ef8eb9d426d90cf253bc68e0ca42126ed56c9e",
+      "request_set_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-REQUESTS/v1",
+      "external_authority_blockers": 6
+    },
+    "external_authority_adapter": {
+      "path": "docs/process/devseek-external-authority-adapter.json",
+      "source_sha256": "9e6a25887e262e3d638f65a3af25bf00c904a1004b985f1347193139e8d8ebcd",
+      "adapter_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-ADAPTER/v1",
+      "source_status": "unconfigured",
+      "trust_roots": 0
+    },
+    "gate0_decision": {
+      "path": "docs/process/devseek-gate0-decision-report.json",
+      "source_sha256": "e0b19ecea8ace2d2d9ee0dce86693061425e87a058b2122f0f02653af7609a2f",
+      "decision_id": "DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1",
+      "status": "NOT_PASSED",
+      "observed_claims": 0
+    },
+    "milestone_profiles": {
+      "path": "docs/process/devseek-milestone-profiles.json",
+      "source_sha256": "f1e4cc06825f62dfbf57a50995c9c3a5e6c604d6296de04c98bf56c0b8800b61",
+      "r1_profile_id": "R1-MINIMAL-SEAM/v1",
+      "r1_profile_sha256": "27c90f86cab61156766e18b36bcb368842e424d25c5fae2de2534fcdd1753ad9",
+      "gate0_claim_profile_sha256": "23f9e5cbee8e7bb7e3a3cb6977c641cf0f05d3281d1b503270c97eb216d7f0af"
+    },
+    "qualification_profiles": {
+      "path": "docs/process/devseek-qualification-profiles.json",
+      "source_sha256": "1504f7b069f2fc41159433a7937eef9e3c19386111946f351f9703442d65a4bf",
+      "local_protocol_profile_id": "GATE0-G0B-LOCAL-PROTOCOL-CONFORMANCE/v1",
+      "qualification_eligible": false
+    },
+    "qualification_runner_inventory": {
+      "path": "docs/process/devseek-qualification-runner-inventory.json",
+      "source_sha256": "d63eecb1952844f0c07314aeedcf0701220a51a787c2bc91e4362d85582eb786",
+      "qualification_enabled_entries": 1,
+      "production_qualification_enabled_entries": 0
+    }
+  },
+  "candidate_scope": {
+    "release_candidate_manifest_sha256": "e99ea94658683aff63f52d8b9c8992e6c90501e441571757d068d29da6c151e4",
+    "artifact_source_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
+    "vsix_sha256": "027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d",
+    "current_candidate_identity_status": "deferred-unusable-until-clean-runtime",
+    "clean_runtime_identity_required": true,
+    "clean_runtime_identity_authority": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
+    "repository_current_identity_may_substitute": false
+  },
+  "qualification_boundary": {
+    "gate0_status": "NOT_PASSED",
+    "r1_qualification_status": "NOT_STARTED",
+    "external_authority_blockers": 6,
+    "external_authority_trust_anchored": false,
+    "claims_empty": true,
+    "repository_may_decide": false,
+    "local_smoke_may_substitute": false,
+    "live_run_may_substitute": false,
+    "markdown_may_approve": false
+  },
+  "live_terms": {
+    "provider": "deepseek-web",
+    "execution_mode": "headed",
+    "keep_window": true,
+    "keep_deepseek_page": true,
+    "user_auth_required_before_live_run": true,
+    "close_or_reuse_existing_windows_without_user": false,
+    "secret_capture_allowed": false,
+    "repeat_red_loop_policy": "analyze-report-log-paths-terminal-provider-quality-before-rerun",
+    "scenario_language_policy": "language-comes-from-scenario-contract-not-product-default"
+  },
+  "requests": [
+    {
+      "request_id": "R4-LIVE-AUTH-01-USER-WINDOW-AUTHORIZATION/request-v1",
+      "atomic_id": "R4-LIVE-AUTH-01-USER-WINDOW-AUTHORIZATION",
+      "decision_owner": "human-user",
+      "requested_decision": "Authorize a headed user-way DeepSeek live qualification attempt with keep-window and keep-deepseek-page terms.",
+      "blocker_reason": "explicit-user-live-qualification-authorization-not-provided",
+      "terminal_state": "BLOCKED",
+      "required_before_qualification": true,
+      "repository_may_decide": false,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "request_id": "R4-LIVE-AUTH-02-CLEAN-RUNTIME-CANDIDATE/request-v1",
+      "atomic_id": "R4-LIVE-AUTH-02-CLEAN-RUNTIME-CANDIDATE",
+      "decision_owner": "human-user-and-runtime-owner",
+      "requested_decision": "Authorize clean runtime identity refresh or isolation for exactly-one stable DevSeek bridge runtime.",
+      "blocker_reason": "clean-runtime-identity-authorization-not-provided",
+      "terminal_state": "BLOCKED",
+      "required_before_qualification": true,
+      "repository_may_decide": false,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "request_id": "R4-LIVE-AUTH-03-HOLDOUT-PROFILE/request-v1",
+      "atomic_id": "R4-LIVE-AUTH-03-HOLDOUT-PROFILE",
+      "decision_owner": "qualification-profile-owner",
+      "requested_decision": "Approve the DeepSeek headed user-way holdout profile, scenario language policy, retry budget, and failure taxonomy.",
+      "blocker_reason": "protected-live-holdout-profile-not-approved",
+      "terminal_state": "BLOCKED",
+      "required_before_qualification": true,
+      "repository_may_decide": false,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "request_id": "R4-LIVE-AUTH-04-TRUSTED-EVIDENCE/request-v1",
+      "atomic_id": "R4-LIVE-AUTH-04-TRUSTED-EVIDENCE",
+      "decision_owner": "external-evidence-authority",
+      "requested_decision": "Provide trusted evidence manifest, nonrollback time, retention lock, and externally anchored stream head.",
+      "blocker_reason": "trusted-live-evidence-manifest-not-provided",
+      "terminal_state": "BLOCKED",
+      "required_before_qualification": true,
+      "repository_may_decide": false,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "request_id": "R4-LIVE-AUTH-05-QUALIFICATION-IMPORT/request-v1",
+      "atomic_id": "R4-LIVE-AUTH-05-QUALIFICATION-IMPORT",
+      "decision_owner": "independent-qualification-import-authority",
+      "requested_decision": "Approve external import of live evidence into Gate0/R1 qualification after all protected prerequisites are satisfied.",
+      "blocker_reason": "independent-qualification-import-decision-not-provided",
+      "terminal_state": "BLOCKED",
+      "required_before_qualification": true,
+      "repository_may_decide": false,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    }
+  ],
+  "counts": {
+    "requests": 5,
+    "blocked_requests": 5,
+    "approved_requests": 0,
+    "live_runs_authorized": 0,
+    "qualification_claims": 0
+  },
+  "packet_sha256": "2cec877865500676f03f94075f73288aa811a98a8ad18f1297b16d8344860b3c"
+}
