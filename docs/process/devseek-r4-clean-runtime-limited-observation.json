@@ -1,0 +1,125 @@
+{
+  "schema_version": "devseek.r4-clean-runtime-limited-observation/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "observation_id": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME-LIMITED-OBSERVATION/v1",
+  "observation_version": 1,
+  "source_status": "generated-limited-runtime-observation-only",
+  "integrity_scope": "local-r4-clean-runtime-limited-observation",
+  "current_leaf": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
+  "terminal_state": "BLOCKED",
+  "clean_runtime_identity_established": false,
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "observation_authority": {
+    "semantic_authority": "R4CleanRuntimeLimitedObservation",
+    "writes_product_state": false,
+    "runtime_process_observation": "LIMITED_READ_ONLY",
+    "provider_actions": "FORBIDDEN",
+    "live_holdout_actions": "FORBIDDEN",
+    "install_or_window_actions": "FORBIDDEN",
+    "secret_observation": "FORBIDDEN"
+  },
+  "source_bindings": {
+    "authorization_guide": {
+      "path": "docs/process/devseek-r4-authorization-and-permission-guide.md",
+      "source_sha256": "44b38edcb2a1587ab487e823e849d868f3a8a5ecd8670132566ffc750ccb24de"
+    },
+    "tracked_current_candidate_identity": {
+      "path": "docs/process/devseek-current-candidate-identity.json",
+      "source_sha256": "d920a6e5fadbed1cae9080ec0daebbfc33e9a60738ff776bfe4e9d6764bd60d6",
+      "tracked_identity_probe_sha256": "a016dfcf98e025a58712d796a39ca2a40f510c37383ee3be3cc51576875b28d6",
+      "tracked_artifact_git_commit": "00449c6",
+      "tracked_observe_status": "failed"
+    },
+    "release_candidate_manifest": {
+      "path": "docs/process/devseek-r4-release-candidate-manifest.json",
+      "source_sha256": "fe0d5a74792785a640df50be50012702a46077bebe0d8036647ed27e42182f87",
+      "manifest_sha256": "e99ea94658683aff63f52d8b9c8992e6c90501e441571757d068d29da6c151e4",
+      "artifact_source_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
+      "vsix_sha256": "027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d"
+    },
+    "doc_process_identity_reconciliation": {
+      "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
+      "source_sha256": "abd9ec026b3786071d977082a3628e40ac9d6ff5277cbd773839de80268a6fc5",
+      "reconciliation_sha256": "0cb8162dfab7ac768e26bf8e2f6d4cb702d4a9a41b00de7f7bfc76f47c4622d3",
+      "current_candidate_identity_status": "deferred-unusable-until-clean-runtime"
+    },
+    "live_qualification_request_packet": {
+      "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
+      "source_sha256": "92e2868a57c050c3c23561327d932656b662f1196e9f323a5901deb054a32296",
+      "packet_sha256": "2cec877865500676f03f94075f73288aa811a98a8ad18f1297b16d8344860b3c",
+      "live_runs_authorized": 0
+    },
+    "r4_iteration_status_rollup": {
+      "path": "docs/process/devseek-r4-iteration-status-rollup.json",
+      "source_sha256": "e2957973273c2cd8cda9dfa9c577eca2a3f0ebf9d1d1bc6ab7baf6f2c6e580a2",
+      "rollup_sha256": "c376e9f564547b38495ab688f8eff1805afb22144b3ad1c0edbe9639b5103cd6",
+      "clean_runtime_leaf_terminal_state": "BLOCKED"
+    },
+    "current_candidate_identity_checker": {
+      "path": "scripts/devseek-current-candidate-identity-check.mjs",
+      "source_sha256": "b9f09e1903e1d9993e3f4593f952051e4eeba6f2ec269f39371fcd7d9eff8a32"
+    }
+  },
+  "expected_candidate_identity": {
+    "identity_probe_sha256": "cdb72e091a52472fdc1be9b6e17046f24be8fdf4f6d990f7cf3b9779905ab2e6",
+    "artifact_git_commit": "a034e5e",
+    "candidate_source_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
+    "vsix_sha256": "027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d",
+    "build_id": "20260723-t193110",
+    "build_git_commit": "a034e5e",
+    "stable_install_package_root": "/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e",
+    "expected_bridge_server_path": "/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e/bridge/server.js",
+    "package_install_runtime_exact_match": true,
+    "matches_release_candidate_manifest": true
+  },
+  "tracked_registry_comparison": {
+    "tracked_identity_probe_sha256": "a016dfcf98e025a58712d796a39ca2a40f510c37383ee3be3cc51576875b28d6",
+    "tracked_artifact_git_commit": "00449c6",
+    "tracked_candidate_source_commit": "00449c6c26c16ed65350b4ef4431ec183174a0d8",
+    "tracked_vsix_sha256": "06932cc2c69f351538cf1f2d01339aac635fd80ba237db93a22f6775cb76bce6",
+    "tracked_observe_status": "failed",
+    "tracked_matches_expected_identity": false
+  },
+  "live_runtime_observation": {
+    "stable_runtime_count": 0,
+    "isolated_controlled_vsix_runtime_count": 0,
+    "stale_debug_runtime_count": 0,
+    "unknown_devseek_bridge_runtime_count": 0,
+    "unreadable_runtime_identity_count": 0,
+    "stable_runtime": [],
+    "isolated_controlled_vsix_runtime": [],
+    "stale_debug_runtime": [],
+    "unknown_devseek_bridge_runtime": [],
+    "live_runtime_policy_ok": false,
+    "live_runtime_errors": [
+      "active_runtime:stable-runtime-cardinality-expected-1-got-0"
+    ],
+    "full_commandline_recorded": false,
+    "environment_variables_recorded": false,
+    "secrets_recorded": false,
+    "provider_account_observed": false,
+    "network_or_live_holdout_observed": false
+  },
+  "blockers": [
+    "current-candidate-identity-registry-stale-or-not-refreshed",
+    "active_runtime:stable-runtime-cardinality-expected-1-got-0",
+    "clean-runtime-requires-window-action-authorization-or-external-clean-candidate-identity-receipt"
+  ],
+  "next_required_authority": [
+    "explicit-user-window-action-authorization-for-extension-activation-or-runtime-isolation",
+    "or-external-clean-candidate-identity-receipt"
+  ],
+  "counts": {
+    "blockers": 3,
+    "stable_runtime_count": 0,
+    "live_runs_authorized": 0,
+    "qualification_claims": 0
+  },
+  "observation_sha256": "844b123e7f20ec64726cbf330bbc3f9417ac0eb1e143ce1f08b7a402c4bddbf0"
+}

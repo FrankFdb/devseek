@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-r4-clean-runtime-limited-observation-v1.json",
+  "title": "DevSeek R4 Clean Runtime Limited Observation v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "observation_id",
+    "observation_version",
+    "source_status",
+    "integrity_scope",
+    "current_leaf",
+    "terminal_state",
+    "clean_runtime_identity_established",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "observation_authority",
+    "source_bindings",
+    "expected_candidate_identity",
+    "tracked_registry_comparison",
+    "live_runtime_observation",
+    "blockers",
+    "next_required_authority",
+    "counts",
+    "observation_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.r4-clean-runtime-limited-observation/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "observation_id": { "const": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME-LIMITED-OBSERVATION/v1" },
+    "observation_version": { "const": 1 },
+    "source_status": { "const": "generated-limited-runtime-observation-only" },
+    "integrity_scope": { "const": "local-r4-clean-runtime-limited-observation" },
+    "current_leaf": { "const": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME" },
+    "terminal_state": { "enum": ["COMPLETED", "BLOCKED"] },
+    "clean_runtime_identity_established": { "type": "boolean" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "observation_authority": { "$ref": "#/$defs/observationAuthority" },
+    "source_bindings": { "$ref": "#/$defs/sourceBindings" },
+    "expected_candidate_identity": { "$ref": "#/$defs/expectedCandidateIdentity" },
+    "tracked_registry_comparison": { "$ref": "#/$defs/trackedRegistryComparison" },
+    "live_runtime_observation": { "$ref": "#/$defs/liveRuntimeObservation" },
+    "blockers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/nonEmpty" }
+    },
+    "next_required_authority": {
+      "type": "array",
+      "minItems": 2,
+      "items": { "$ref": "#/$defs/nonEmpty" }
+    },
+    "counts": { "$ref": "#/$defs/counts" },
+    "observation_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "commit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "observationAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantic_authority",
+        "writes_product_state",
+        "runtime_process_observation",
+        "provider_actions",
+        "live_holdout_actions",
+        "install_or_window_actions",
+        "secret_observation"
+      ],
+      "properties": {
+        "semantic_authority": { "const": "R4CleanRuntimeLimitedObservation" },
+        "writes_product_state": { "const": false },
+        "runtime_process_observation": { "const": "LIMITED_READ_ONLY" },
+        "provider_actions": { "const": "FORBIDDEN" },
+        "live_holdout_actions": { "const": "FORBIDDEN" },
+        "install_or_window_actions": { "const": "FORBIDDEN" },
+        "secret_observation": { "const": "FORBIDDEN" }
+      }
+    },
+    "sourceBindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorization_guide",
+        "tracked_current_candidate_identity",
+        "release_candidate_manifest",
+        "doc_process_identity_reconciliation",
+        "live_qualification_request_packet",
+        "r4_iteration_status_rollup",
+        "current_candidate_identity_checker"
+      ],
+      "properties": {
+        "authorization_guide": { "$ref": "#/$defs/sourceBinding" },
+        "tracked_current_candidate_identity": { "$ref": "#/$defs/sourceBinding" },
+        "release_candidate_manifest": { "$ref": "#/$defs/sourceBinding" },
+        "doc_process_identity_reconciliation": { "$ref": "#/$defs/sourceBinding" },
+        "live_qualification_request_packet": { "$ref": "#/$defs/sourceBinding" },
+        "r4_iteration_status_rollup": { "$ref": "#/$defs/sourceBinding" },
+        "current_candidate_identity_checker": { "$ref": "#/$defs/sourceBinding" }
+      }
+    },
+    "sourceBinding": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["path", "source_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "expectedCandidateIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "identity_probe_sha256",
+        "artifact_git_commit",
+        "candidate_source_commit",
+        "vsix_sha256",
+        "build_id",
+        "build_git_commit",
+        "stable_install_package_root",
+        "expected_bridge_server_path",
+        "package_install_runtime_exact_match",
+        "matches_release_candidate_manifest"
+      ],
+      "properties": {
+        "identity_probe_sha256": { "$ref": "#/$defs/sha256" },
+        "artifact_git_commit": { "$ref": "#/$defs/nonEmpty" },
+        "candidate_source_commit": { "$ref": "#/$defs/commit" },
+        "vsix_sha256": { "$ref": "#/$defs/sha256" },
+        "build_id": { "$ref": "#/$defs/nonEmpty" },
+        "build_git_commit": { "$ref": "#/$defs/nonEmpty" },
+        "stable_install_package_root": { "$ref": "#/$defs/nonEmpty" },
+        "expected_bridge_server_path": { "$ref": "#/$defs/nonEmpty" },
+        "package_install_runtime_exact_match": { "const": true },
+        "matches_release_candidate_manifest": { "const": true }
+      }
+    },
+    "trackedRegistryComparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "tracked_identity_probe_sha256",
+        "tracked_artifact_git_commit",
+        "tracked_candidate_source_commit",
+        "tracked_vsix_sha256",
+        "tracked_observe_status",
+        "tracked_matches_expected_identity"
+      ],
+      "properties": {
+        "tracked_identity_probe_sha256": { "$ref": "#/$defs/sha256" },
+        "tracked_artifact_git_commit": { "$ref": "#/$defs/nonEmpty" },
+        "tracked_candidate_source_commit": { "$ref": "#/$defs/commit" },
+        "tracked_vsix_sha256": { "$ref": "#/$defs/sha256" },
+        "tracked_observe_status": { "$ref": "#/$defs/nonEmpty" },
+        "tracked_matches_expected_identity": { "type": "boolean" }
+      }
+    },
+    "runtimeProcess": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pid", "executable_path", "script_path"],
+      "properties": {
+        "pid": { "type": "integer", "minimum": 1 },
+        "executable_path": {
+          "anyOf": [
+            { "$ref": "#/$defs/nonEmpty" },
+            { "type": "null" }
+          ]
+        },
+        "script_path": {
+          "anyOf": [
+            { "$ref": "#/$defs/nonEmpty" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "liveRuntimeObservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stable_runtime_count",
+        "isolated_controlled_vsix_runtime_count",
+        "stale_debug_runtime_count",
+        "unknown_devseek_bridge_runtime_count",
+        "unreadable_runtime_identity_count",
+        "stable_runtime",
+        "isolated_controlled_vsix_runtime",
+        "stale_debug_runtime",
+        "unknown_devseek_bridge_runtime",
+        "live_runtime_policy_ok",
+        "live_runtime_errors",
+        "full_commandline_recorded",
+        "environment_variables_recorded",
+        "secrets_recorded",
+        "provider_account_observed",
+        "network_or_live_holdout_observed"
+      ],
+      "properties": {
+        "stable_runtime_count": { "type": "integer", "minimum": 0 },
+        "isolated_controlled_vsix_runtime_count": { "type": "integer", "minimum": 0 },
+        "stale_debug_runtime_count": { "type": "integer", "minimum": 0 },
+        "unknown_devseek_bridge_runtime_count": { "type": "integer", "minimum": 0 },
+        "unreadable_runtime_identity_count": { "type": "integer", "minimum": 0 },
+        "stable_runtime": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/runtimeProcess" }
+        },
+        "isolated_controlled_vsix_runtime": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/runtimeProcess" }
+        },
+        "stale_debug_runtime": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/runtimeProcess" }
+        },
+        "unknown_devseek_bridge_runtime": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/runtimeProcess" }
+        },
+        "live_runtime_policy_ok": { "type": "boolean" },
+        "live_runtime_errors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "full_commandline_recorded": { "const": false },
+        "environment_variables_recorded": { "const": false },
+        "secrets_recorded": { "const": false },
+        "provider_account_observed": { "const": false },
+        "network_or_live_holdout_observed": { "const": false }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blockers",
+        "stable_runtime_count",
+        "live_runs_authorized",
+        "qualification_claims"
+      ],
+      "properties": {
+        "blockers": { "type": "integer", "minimum": 0 },
+        "stable_runtime_count": { "type": "integer", "minimum": 0 },
+        "live_runs_authorized": { "const": 0 },
+        "qualification_claims": { "const": 0 }
+      }
+    }
+  }
+}
