@@ -112,6 +112,31 @@ test('real plugin VSIX harness chooses the agent run log over bridge status prob
   assert.equal(selected?.path, '.devseek/runs/20260723-054636511-0b4ed653468767da.log');
 });
 
+test('real plugin VSIX harness timeout reports are report-time snapshots, not bridge status verdicts', () => {
+  const source = readFileSync(realPluginHarnessPath, 'utf8');
+
+  assert.match(
+    source,
+    /const finalEvaluation = evaluate\(before,\s*startedAtMs,\s*expectedCodeBefore,\s*expectedCodeDirBefore\);\s*Object\.assign\(baseReport,\s*finalEvaluation\);/,
+    'timeout reports must re-evaluate the workspace and run logs at report finalization time',
+  );
+  assert.match(
+    source,
+    /reportScope:\s*pollExitReason === 'timeout' \? 'report-time-snapshot' : 'terminal-or-success-snapshot'/,
+    'timeout reports must mark their scope as a report-time snapshot',
+  );
+  assert.match(
+    source,
+    /报告轮询达到 timeout-ms；此 report\.json 只代表报告写入时刻的快照/,
+    'timeout reports must warn that later Provider, run log, changedPaths or generated files require re-checking',
+  );
+  assert.doesNotMatch(
+    source,
+    /pollExitReason === 'timeout'[\s\S]{0,600}(?:bridge-status-ready|bridge status|Bridge status)/i,
+    'timeout settlement must not be derived from stale Bridge status probes',
+  );
+});
+
 test('real plugin VSIX harness parses product and bridge run-log timestamps', () => {
   const source = readFileSync(realPluginHarnessPath, 'utf8');
   const { parseRunLogStartedAtMs } = evaluateHarnessFunctions(

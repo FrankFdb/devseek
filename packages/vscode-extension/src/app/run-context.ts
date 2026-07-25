@@ -7,6 +7,7 @@ import {
   summarizeTraceText,
   type DevSeekTraceLogger,
   type DevSeekTraceLevel,
+  type RunEvidenceEvent,
   type RunEvidenceJson,
 } from '@devseek-netai/shared';
 import { requiresFileChangeEvidence } from '../agent/completion-evidence';
@@ -61,6 +62,9 @@ export interface DevSeekRunContext {
 export function createDevSeekRunContext(options: DevSeekRunContextOptions): DevSeekRunContext {
   return new DefaultDevSeekRunContext(options);
 }
+
+const VERIFIED_LOCAL_PROVIDER_FAILURE_TRIGGER = 'provider-failure-after-verified-local-result' as const;
+const VERIFIED_LOCAL_PROVIDER_FAILURE_RESOLUTION = 'provider-failure-superseded-by-verified-local-result' as const;
 
 class DefaultDevSeekRunContext implements DevSeekRunContext {
   readonly runId: string;
@@ -274,6 +278,9 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
         existingTerminalStatus: this.settlementStatus,
         data,
       }).status;
+    }
+    if (status === 'completed') {
+      this.completeLateProviderFailuresFromVerifiedLocalResult(data);
     }
     let settlement = decideSettlementState({
       requestedStatus: status,
@@ -816,6 +823,48 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     }
   }
 
+  private completeLateProviderFailuresFromVerifiedLocalResult(data: Record<string, unknown>): void {
+    if (!this.evidence || this.currentRecovery) return;
+    try {
+      const events = this.evidence.readEvents();
+      const verifiedLocalResult = findLatestVerifiedLocalResult(events);
+      if (!verifiedLocalResult) return;
+      const resolved = collectResolvedOperationIds(events);
+      const unresolvedProviderFailuresByOperation = new Map<string, RunEvidenceEvent[]>();
+      for (const event of events) {
+        if (event.type !== 'provider.failed') continue;
+        const operationId = evidenceOperationId(event);
+        if (!operationId || resolved.has(operationId)) continue;
+        const failures = unresolvedProviderFailuresByOperation.get(operationId) ?? [];
+        failures.push(event);
+        unresolvedProviderFailuresByOperation.set(operationId, failures);
+      }
+      const targetOperationIds = [...unresolvedProviderFailuresByOperation.entries()]
+        .filter(([, failures]) => (
+          failures.length > 0
+          && failures.every(event => event.sequence > verifiedLocalResult.qualityGatePassedSequence)
+        ))
+        .map(([operationId]) => operationId);
+      if (targetOperationIds.length === 0) return;
+      this.recoverySequence += 1;
+      const operationId = `vscode-recovery-${this.recoverySequence}`;
+      const summary = summarizeTraceText(safeCompletionSummary(data));
+      this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
+        target_operation_ids: targetOperationIds,
+        recovery_trigger: VERIFIED_LOCAL_PROVIDER_FAILURE_TRIGGER,
+      });
+      this.recordOperationEvent('recovery.completed', operationId, 'completed', summary, {
+        resolves_operation_ids: targetOperationIds,
+        verification_operation_id: verifiedLocalResult.verificationOperationId,
+        recovery_trigger: VERIFIED_LOCAL_PROVIDER_FAILURE_TRIGGER,
+        recovery_resolution: VERIFIED_LOCAL_PROVIDER_FAILURE_RESOLUTION,
+      });
+      targetOperationIds.forEach(targetOperationId => this.deletePendingAdverseOperation(targetOperationId));
+    } catch (error) {
+      this.markEvidenceDegraded(error);
+    }
+  }
+
   private addPendingAdverseOperation(operationId: string, operationKey?: string): void {
     this.pendingAdverseOperationIds.add(operationId);
     if (!operationKey) return;
@@ -977,6 +1026,71 @@ function evidencePayloadObject(
   return payload !== null && typeof payload === 'object' && !Array.isArray(payload)
     ? payload
     : undefined;
+}
+
+function evidenceOperationId(event: RunEvidenceEvent): string | undefined {
+  const payload = evidencePayloadObject(event.payload);
+  const operationId = typeof payload?.operation_id === 'string' ? payload.operation_id.trim() : '';
+  return operationId || undefined;
+}
+
+function collectResolvedOperationIds(events: readonly RunEvidenceEvent[]): Set<string> {
+  const resolved = new Set<string>();
+  for (const event of events) {
+    if (event.type !== 'recovery.completed') continue;
+    const payload = evidencePayloadObject(event.payload);
+    const resolvedIds = Array.isArray(payload?.resolves_operation_ids)
+      ? payload.resolves_operation_ids
+      : [];
+    for (const value of resolvedIds) {
+      if (typeof value === 'string' && value.trim()) resolved.add(value.trim());
+    }
+  }
+  return resolved;
+}
+
+function findLatestVerifiedLocalResult(events: readonly RunEvidenceEvent[]): {
+  verificationOperationId: string;
+  qualityGatePassedSequence: number;
+} | undefined {
+  let latest: { verificationOperationId: string; qualityGatePassedSequence: number } | undefined;
+  for (const gatePassed of events) {
+    if (gatePassed.type !== 'quality_gate.passed') continue;
+    const verificationOperationId = evidenceOperationId(gatePassed);
+    if (!verificationOperationId) continue;
+    const verificationStarted = findEvidenceOperationEvent(events, 'verification.started', verificationOperationId);
+    const verificationCompleted = findEvidenceOperationEvent(events, 'verification.completed', verificationOperationId);
+    const gateStarted = findEvidenceOperationEvent(events, 'quality_gate.started', verificationOperationId);
+    if (!verificationStarted || !verificationCompleted || !gateStarted) continue;
+    const hasCommittedLocalEffect = events.some(event => (
+      event.type === 'side_effect.committed'
+      && evidenceOperationId(event) !== undefined
+      && event.sequence < verificationStarted.sequence
+    ));
+    if (!hasCommittedLocalEffect) continue;
+    if (
+      verificationStarted.sequence >= verificationCompleted.sequence
+      || verificationCompleted.sequence >= gateStarted.sequence
+      || gateStarted.sequence >= gatePassed.sequence
+    ) {
+      continue;
+    }
+    if (!latest || gatePassed.sequence > latest.qualityGatePassedSequence) {
+      latest = {
+        verificationOperationId,
+        qualityGatePassedSequence: gatePassed.sequence,
+      };
+    }
+  }
+  return latest;
+}
+
+function findEvidenceOperationEvent(
+  events: readonly RunEvidenceEvent[],
+  type: RunEvidenceEvent['type'],
+  operationId: string,
+): RunEvidenceEvent | undefined {
+  return events.find(event => event.type === type && evidenceOperationId(event) === operationId);
 }
 
 function sideEffectOperationKey(status: AgentStatusEvent): string {

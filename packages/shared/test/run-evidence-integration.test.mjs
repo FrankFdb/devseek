@@ -848,6 +848,124 @@ test('recovery completion requires one fully correlated post-detection mutation 
   }
 });
 
+test('late provider failure can be superseded only by an already verified local result', t => {
+  const workspaceRoot = tempWorkspace(t);
+  const authority = authoritySet();
+  const session = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId: 'late-provider-superseded-by-verified-local-result',
+    surface: 'vscode',
+    authority: authority.ownerOpen,
+    openIfMissing: true,
+  });
+  for (const [index, [type, payload]] of [
+    ['side_effect.requested', observed('requested', { operation_id: 'local-write:1' })],
+    ['side_effect.authorized', observed('authorized', { operation_id: 'local-write:1' })],
+    ['side_effect.started', observed('started', { operation_id: 'local-write:1' })],
+    ['side_effect.committed', observed('committed', { operation_id: 'local-write:1' })],
+    ['verification.started', observed('started', { operation_id: 'verify-local:1' })],
+    ['verification.completed', observed('completed', { operation_id: 'verify-local:1' })],
+    ['quality_gate.started', observed('started', { operation_id: 'verify-local:1' })],
+    ['quality_gate.passed', observed('passed', { operation_id: 'verify-local:1' })],
+    ['provider.requested', observed('requested', { operation_id: 'provider:late', boundary: 'bridge-server' })],
+    ['provider.failed', observed('failed', { operation_id: 'provider:late', boundary: 'bridge-server' })],
+    ['recovery.detected', observed('detected', {
+      operation_id: 'recovery:late-provider',
+      target_operation_ids: ['provider:late'],
+      recovery_trigger: 'provider-failure-after-verified-local-result',
+    })],
+    ['recovery.completed', observed('completed', {
+      operation_id: 'recovery:late-provider',
+      resolves_operation_ids: ['provider:late'],
+      verification_operation_id: 'verify-local:1',
+      recovery_trigger: 'provider-failure-after-verified-local-result',
+      recovery_resolution: 'provider-failure-superseded-by-verified-local-result',
+    })],
+  ].entries()) {
+    session.record({ type, idempotencyKey: `late-provider-supersession:${index}`, payload });
+  }
+  assert.equal(
+    session.settleAndSeal({ status: 'completed', idempotencyKey: 'settlement' }).head.sealed,
+    true,
+  );
+});
+
+test('late provider supersession cannot resolve pre-verification provider or side-effect failures', t => {
+  const workspaceRoot = tempWorkspace(t);
+  const verifiedLocalResult = [
+    ['side_effect.requested', observed('requested', { operation_id: 'local-write:1' })],
+    ['side_effect.authorized', observed('authorized', { operation_id: 'local-write:1' })],
+    ['side_effect.started', observed('started', { operation_id: 'local-write:1' })],
+    ['side_effect.committed', observed('committed', { operation_id: 'local-write:1' })],
+    ['verification.started', observed('started', { operation_id: 'verify-local:1' })],
+    ['verification.completed', observed('completed', { operation_id: 'verify-local:1' })],
+    ['quality_gate.started', observed('started', { operation_id: 'verify-local:1' })],
+    ['quality_gate.passed', observed('passed', { operation_id: 'verify-local:1' })],
+  ];
+  const attacks = [
+    {
+      runId: 'provider-before-verification-supersession-rejected',
+      prefix: [
+        ['provider.requested', observed('requested', { operation_id: 'provider:early' })],
+        ['provider.failed', observed('failed', { operation_id: 'provider:early' })],
+        ...verifiedLocalResult,
+        ['recovery.detected', observed('detected', {
+          operation_id: 'recovery:late-provider',
+          target_operation_ids: ['provider:early'],
+          recovery_trigger: 'provider-failure-after-verified-local-result',
+        })],
+      ],
+      resolvesOperationId: 'provider:early',
+    },
+    {
+      runId: 'side-effect-supersession-rejected',
+      prefix: [
+        ...verifiedLocalResult,
+        ['side_effect.requested', observed('requested', { operation_id: 'side-effect:late' })],
+        ['side_effect.failed', observed('failed', { operation_id: 'side-effect:late' })],
+        ['recovery.detected', observed('detected', {
+          operation_id: 'recovery:late-provider',
+          target_operation_ids: ['side-effect:late'],
+          recovery_trigger: 'provider-failure-after-verified-local-result',
+        })],
+      ],
+      resolvesOperationId: 'side-effect:late',
+    },
+  ];
+
+  for (const attack of attacks) {
+    const authority = authoritySet();
+    const session = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId: attack.runId,
+      surface: 'strict-supersession-attack-test',
+      authority: authority.ownerOpen,
+      openIfMissing: true,
+    });
+    for (const [index, [type, payload]] of attack.prefix.entries()) {
+      session.record({ type, idempotencyKey: `${attack.runId}:prefix:${index}`, payload });
+    }
+    const before = session.head();
+    assert.throws(
+      () => session.record({
+        type: 'recovery.completed',
+        idempotencyKey: `${attack.runId}:recovery:completed`,
+        payload: observed('completed', {
+          operation_id: 'recovery:late-provider',
+          resolves_operation_ids: [attack.resolvesOperationId],
+          verification_operation_id: 'verify-local:1',
+          recovery_trigger: 'provider-failure-after-verified-local-result',
+          recovery_resolution: 'provider-failure-superseded-by-verified-local-result',
+        }),
+      }),
+      error => error?.code === 'RUN_SEMANTIC_INVALID'
+        && /correlated requested < authorized < started < committed < verification < quality gate/.test(error.message),
+    );
+    assert.deepEqual(session.head(), before);
+    assert.equal(session.readEvents().some(event => event.type === 'recovery.completed'), false);
+  }
+});
+
 test('recovery cannot resolve pending, unknown, duplicate, or undetected operations', t => {
   const workspaceRoot = tempWorkspace(t);
   const attacks = [

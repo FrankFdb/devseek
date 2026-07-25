@@ -42,6 +42,9 @@ interface RecoveryState {
   terminal?: 'recovery.completed' | 'recovery.failed';
 }
 
+const VERIFIED_LOCAL_PROVIDER_FAILURE_TRIGGER = 'provider-failure-after-verified-local-result' as const;
+const VERIFIED_LOCAL_PROVIDER_FAILURE_RESOLUTION = 'provider-failure-superseded-by-verified-local-result' as const;
+
 export interface RunEvidencePrefixState {
   settled: boolean;
   settlementStatus?: 'completed' | 'failed' | 'cancelled';
@@ -290,6 +293,13 @@ function reduceRecovery(
   if (verification.startedSequence === undefined) {
     semanticFailure(`Recovery ${operationId} requires a matching started verification`);
   }
+  const verificationStartedSequence = verification.startedSequence;
+  const verificationTerminalSequence = verification.terminalSequence;
+  const qualityGateStartedSequence = qualityGate.startedSequence;
+  const qualityGateTerminalSequence = qualityGate.terminalSequence;
+  if (qualityGateStartedSequence === undefined) {
+    semanticFailure(`Recovery ${operationId} requires a matching started quality gate`);
+  }
   const orderedRecoveryMutation = [...sideEffects.values()].find(sideEffect => (
     sideEffect.terminal === 'side_effect.committed'
     && sideEffect.requestedRecoveryOperationId === operationId
@@ -305,20 +315,29 @@ function reduceRecovery(
     && sideEffect.authorizedSequence < sideEffect.startedSequence
     && sideEffect.startedSequence < sideEffect.terminalSequence
     && (
-      sideEffect.terminalSequence < verification.startedSequence!
+      sideEffect.terminalSequence < verificationStartedSequence
       || (
-        verification.startedSequence! < detectionSequence
-        && sideEffect.terminalSequence < verification.terminalSequence!
+        verificationStartedSequence < detectionSequence
+        && sideEffect.terminalSequence < verificationTerminalSequence
       )
     )
   ));
+  const orderedVerificationGate = verificationStartedSequence < verificationTerminalSequence
+    && verificationTerminalSequence < qualityGateStartedSequence
+    && qualityGateStartedSequence < qualityGateTerminalSequence
+    && qualityGateTerminalSequence < event.sequence;
+  const providerFailureSupersession = hasProviderFailureSupersessionProof({
+    payload,
+    resolvedOperationIds,
+    adverse,
+    sideEffects,
+    detectionSequence,
+    verificationStartedSequence,
+    qualityGateTerminalSequence,
+  });
   if (
-    !orderedRecoveryMutation
-    || qualityGate.startedSequence === undefined
-    || verification.startedSequence >= verification.terminalSequence
-    || verification.terminalSequence >= qualityGate.startedSequence
-    || qualityGate.startedSequence >= qualityGate.terminalSequence
-    || qualityGate.terminalSequence >= event.sequence
+    !orderedVerificationGate
+    || (!orderedRecoveryMutation && !providerFailureSupersession)
   ) {
     semanticFailure(
       `Recovery ${operationId} requires detected < correlated requested < authorized < started < committed < verification < quality gate < completed`,
@@ -338,6 +357,39 @@ function reduceRecovery(
     }
     for (const terminal of matching) terminal.resolvedBy = operationId;
   }
+}
+
+function hasProviderFailureSupersessionProof(input: {
+  payload: { [key: string]: RunEvidenceJson };
+  resolvedOperationIds: readonly string[];
+  adverse: readonly AdverseTerminal[];
+  sideEffects: ReadonlyMap<string, OperationState>;
+  detectionSequence: number;
+  verificationStartedSequence: number;
+  qualityGateTerminalSequence: number;
+}): boolean {
+  if (input.payload.recovery_trigger !== VERIFIED_LOCAL_PROVIDER_FAILURE_TRIGGER) return false;
+  if (input.payload.recovery_resolution !== VERIFIED_LOCAL_PROVIDER_FAILURE_RESOLUTION) return false;
+  const verifiedLocalCommit = [...input.sideEffects.values()].some(sideEffect => (
+    sideEffect.terminal === 'side_effect.committed'
+    && sideEffect.terminalSequence !== undefined
+    && sideEffect.terminalSequence < input.verificationStartedSequence
+  ));
+  if (!verifiedLocalCommit) return false;
+  for (const resolvedOperationId of input.resolvedOperationIds) {
+    const matching = input.adverse.filter(item => (
+      item.resolutionOperationId === resolvedOperationId && item.resolvedBy === undefined
+    ));
+    if (matching.length === 0) return false;
+    if (matching.some(terminal => (
+      terminal.type !== 'provider.failed'
+      || terminal.sequence <= input.qualityGateTerminalSequence
+      || terminal.sequence >= input.detectionSequence
+    ))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function assertSettlementClosure(

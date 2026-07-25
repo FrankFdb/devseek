@@ -853,6 +853,110 @@ test('RunContext: local file fallback resolves provider failures after task alre
   }
 });
 
+test('RunContext: post-verification provider failure cannot overturn recovered local write completion', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
+  const runId = 'run-context-post-recovery-provider-failure';
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '创建 docs/r3-iteration/recovered-write.md，读回验证后完成。',
+      traceLevel: 'debug',
+    });
+    const provider = ProductRunEvidenceSession.forWorkspace({
+      workspaceRoot,
+      runId,
+      surface: 'vscode-provider',
+      authority: {
+        role: 'participant',
+        token: context.evidenceParticipantToken,
+      },
+    });
+    const recordProvider = (type, operationId, boundary) => provider.record({
+      type,
+      idempotencyKey: productRunEvidenceIdempotencyKey(`post-recovery-provider:${type}`, {
+        operationId,
+        boundary,
+      }),
+      payload: observed(type.slice('provider.'.length), {
+        operation_id: operationId,
+        boundary,
+      }),
+    });
+    for (const type of ['provider.requested', 'provider.failed']) {
+      recordProvider(type, 'provider:initial-fetch-failed', 'vscode-provider-client');
+    }
+
+    const task = {
+      type: 'agentStatus',
+      phase: 'execute',
+      taskId: 'write-report',
+      taskFile: 'docs/r3-iteration/recovered-write.md',
+      taskAction: 'create',
+      title: '创建 recovered-write.md',
+    };
+    context.recordAgentStatus({ ...task, state: 'started' });
+    context.recordAgentStatus({ ...task, state: 'completed' });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'validate',
+      state: 'started',
+      title: '读回验证 recovered-write.md',
+      evidenceOperationId: 'verify-recovered-write-readback',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'validate',
+      state: 'completed',
+      title: '读回验证通过',
+      evidenceOperationId: 'verify-recovered-write-readback',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'quality',
+      state: 'started',
+      title: '评估 recovered write QualityGate',
+      evidenceOperationId: 'verify-recovered-write-readback',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'quality',
+      state: 'completed',
+      title: 'recovered write QualityGate 通过',
+      evidenceOperationId: 'verify-recovered-write-readback',
+    });
+
+    for (const type of ['provider.requested', 'provider.failed']) {
+      recordProvider(type, 'provider:late-fetch-failed', 'bridge-server');
+    }
+
+    assert.equal(context.complete('completed', {
+      tasksTotal: 1,
+      tasksApplied: 1,
+      tasksFailed: 0,
+      changedPaths: ['docs/r3-iteration/recovered-write.md'],
+    }), 'completed');
+
+    const ledger = new FileSystemRunEvidenceLedger({ rootDir: productRunEvidenceRoot(workspaceRoot) });
+    const events = ledger.read(runId);
+    const recoveries = events.filter(event => event.type === 'recovery.completed');
+    const [initialRecovery, lateRecovery] = recoveries;
+    assert.equal(recoveries.length, 2);
+    assert.equal(initialRecovery.payload.resolves_operation_ids.includes('provider:initial-fetch-failed'), true);
+    assert.equal(initialRecovery.payload.resolves_operation_ids.includes('provider:late-fetch-failed'), false);
+    assert.equal(initialRecovery.payload.verification_operation_id, 'verify-recovered-write-readback');
+    assert.deepEqual(lateRecovery.payload.resolves_operation_ids, ['provider:late-fetch-failed']);
+    assert.equal(lateRecovery.payload.verification_operation_id, 'verify-recovered-write-readback');
+    assert.equal(lateRecovery.payload.recovery_trigger, 'provider-failure-after-verified-local-result');
+    assert.equal(lateRecovery.payload.recovery_resolution, 'provider-failure-superseded-by-verified-local-result');
+    assert.equal(events.find(event => event.type === 'run.settled')?.payload.status, 'completed');
+    assert.equal(events.some(event => event.type === 'evidence.degraded'), false);
+    assert.equal(ledger.verify(runId).status, 'valid-sealed');
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
 test('RunContext: recovery without a correlated retry mutation fails closed', () => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-context-'));
   try {
