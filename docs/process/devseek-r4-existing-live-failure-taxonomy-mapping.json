@@ -1,0 +1,382 @@
+{
+  "schema_version": "devseek.r4-existing-live-failure-taxonomy-mapping/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "mapping_id": "R4-EXISTING-LIVE-FAILURE-TAXONOMY-MAPPING/v1",
+  "mapping_version": 1,
+  "source_status": "generated-existing-live-failure-taxonomy-mapping-only",
+  "integrity_scope": "local-r4-existing-live-failure-taxonomy-mapping",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "observation_authority": {
+    "semantic_authority": "R4ExistingLiveFailureTaxonomyMapping",
+    "writes_product_state": false,
+    "provider_actions": "FORBIDDEN",
+    "live_holdout_actions": "FORBIDDEN",
+    "runtime_process_observation": "FORBIDDEN",
+    "install_or_window_actions": "FORBIDDEN",
+    "secret_observation": "FORBIDDEN"
+  },
+  "source_bindings": {
+    "failure_taxonomy": {
+      "path": "docs/process/devseek-r4-real-provider-failure-taxonomy.json",
+      "source_sha256": "8a8f761acfb83d2e89643c4f7cdfc7103fc1f39f7bc32d48a233e7b3c272ee89",
+      "taxonomy_sha256": "9db65a53f787a39b5b27cf7c927f263eca2cb495e077a83f8bbb8244d8fed216",
+      "categories": 10
+    },
+    "post_r4_nonpermission_iteration_plan": {
+      "path": "docs/process/devseek-post-r4-nonpermission-iteration-plan.md",
+      "source_sha256": "51623b1c2267f8d3f6fcb09b800396e5da12ea083dad5c5ed98f331b8b735555"
+    },
+    "report_20260722T105032Z": {
+      "path": "artifacts/agent-self-loop/2026-07-22T10-50-32-582Z/report.json",
+      "source_sha256": "e561b87ecaec153a5296bbf0b1c2d95cbbd3ebe3a8a3abad594ed2c7e361a361"
+    },
+    "report_20260722T113416Z": {
+      "path": "artifacts/agent-self-loop/2026-07-22T11-34-16-309Z/report.json",
+      "source_sha256": "8f248b6aed7d15e67ea94075bf527b8d335dd137b2b8698044d7e304c47678f8"
+    },
+    "archived_manual_tests": {
+      "path": "docs/archive/reports/phase0-12-overall-audit-sources/local/docs/testing/vscode-phase-manual-test-cases.md",
+      "source_sha256": "ef21e55f469a33b9ffc61411bc127112dd854275d3e77877d76617c54333f1ce"
+    },
+    "top_agent_change_gate": {
+      "path": "docs/process/TOP_AGENT_CHANGE_GATE.md",
+      "source_sha256": "75bfb58990fede62a43102899d5a0464bb56722d217992714547feea05321254"
+    }
+  },
+  "mapping_policy": {
+    "only_existing_evidence_consumed": true,
+    "live_runs_executed": 0,
+    "provider_actions_performed": false,
+    "install_or_window_actions_performed": false,
+    "repeat_same_red_loop_allowed_without_analysis": false,
+    "screenshot_or_chat_alone_complete_evidence_allowed": false,
+    "required_evidence_before_rerun": [
+      "report.json",
+      "run-log",
+      "changedPaths",
+      "terminal-settlement",
+      "provider-classification",
+      "generated-artifact-quality"
+    ]
+  },
+  "failures": [
+    {
+      "failure_id": "R4-LIVE-FAILURE-LOGIN-20260722T105032Z",
+      "source_type": "report-json",
+      "source_path": "artifacts/agent-self-loop/2026-07-22T10-50-32-582Z/report.json",
+      "evidence_origin": "machine-report-json",
+      "taxonomy_categories": [
+        "LOGIN_SESSION_STATE_AMBIGUOUS"
+      ],
+      "trigger_signals": [
+        "LOGIN_REQUIRED"
+      ],
+      "observed_failure_summary": "agent-self-loop 本地 case 已执行到真实 DeepSeek 前置点，随后因 LOGIN_REQUIRED 停止；缺少 run log、changedPaths、terminal settlement 与 artifact quality 证据。",
+      "context_evidence_paths": [],
+      "evidence_items": [
+        {
+          "item": "report.json",
+          "status": "PRESENT",
+          "path": "artifacts/agent-self-loop/2026-07-22T10-50-32-582Z/report.json",
+          "notes": "agent-self-loop report.json 可读取。"
+        },
+        {
+          "item": "run-log",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "changedPaths",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "terminal-settlement",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "provider-classification",
+          "status": "DERIVED_FROM_REPORT_ERROR",
+          "path": "artifacts/agent-self-loop/2026-07-22T10-50-32-582Z/report.json",
+          "notes": "provider classification derived locally from report.error=login_required"
+        },
+        {
+          "item": "generated-artifact-quality",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        }
+      ],
+      "present_required_evidence": [
+        "report.json",
+        "provider-classification"
+      ],
+      "missing_required_evidence": [
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "generated-artifact-quality"
+      ],
+      "complete_required_evidence": false,
+      "terminal_state": "BLOCKED_NEEDS_EVIDENCE",
+      "rerun_allowed_without_analysis": false,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false,
+      "report_facts": {
+        "ok": false,
+        "headed_deepseek": false,
+        "local_cases_passed": 8,
+        "case_catalog_entries": 11,
+        "provider_classification": "login_required",
+        "error_preview": "Error: LOGIN_REQUIRED at streamBridgeChat (file:///home/ff/work/devseek_netai/scripts/devseek-agent-self-loop.mjs:529:33) at process.processTicksAndRejections (node:internal/process/task_queues:103:5) at async realDeepS..."
+      }
+    },
+    {
+      "failure_id": "R4-LIVE-FAILURE-LOGIN-20260722T113416Z",
+      "source_type": "report-json",
+      "source_path": "artifacts/agent-self-loop/2026-07-22T11-34-16-309Z/report.json",
+      "evidence_origin": "machine-report-json",
+      "taxonomy_categories": [
+        "LOGIN_SESSION_STATE_AMBIGUOUS"
+      ],
+      "trigger_signals": [
+        "LOGIN_REQUIRED"
+      ],
+      "observed_failure_summary": "agent-self-loop 本地 case 已执行到真实 DeepSeek 前置点，随后因 LOGIN_REQUIRED 停止；缺少 run log、changedPaths、terminal settlement 与 artifact quality 证据。",
+      "context_evidence_paths": [],
+      "evidence_items": [
+        {
+          "item": "report.json",
+          "status": "PRESENT",
+          "path": "artifacts/agent-self-loop/2026-07-22T11-34-16-309Z/report.json",
+          "notes": "agent-self-loop report.json 可读取。"
+        },
+        {
+          "item": "run-log",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "changedPaths",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "terminal-settlement",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "provider-classification",
+          "status": "DERIVED_FROM_REPORT_ERROR",
+          "path": "artifacts/agent-self-loop/2026-07-22T11-34-16-309Z/report.json",
+          "notes": "provider classification derived locally from report.error=login_required"
+        },
+        {
+          "item": "generated-artifact-quality",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        }
+      ],
+      "present_required_evidence": [
+        "report.json",
+        "provider-classification"
+      ],
+      "missing_required_evidence": [
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "generated-artifact-quality"
+      ],
+      "complete_required_evidence": false,
+      "terminal_state": "BLOCKED_NEEDS_EVIDENCE",
+      "rerun_allowed_without_analysis": false,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false,
+      "report_facts": {
+        "ok": false,
+        "headed_deepseek": false,
+        "local_cases_passed": 8,
+        "case_catalog_entries": 11,
+        "provider_classification": "login_required",
+        "error_preview": "Error: LOGIN_REQUIRED at streamBridgeChat (file:///home/ff/work/devseek_netai/scripts/devseek-agent-self-loop.mjs:529:33) at process.processTicksAndRejections (node:internal/process/task_queues:103:5) at async realDeepS..."
+      }
+    },
+    {
+      "failure_id": "R4-LIVE-FAILURE-ARCHIVE-P9-RESPONSE-CORRUPTED-SAFETY",
+      "source_type": "archived-manual-note",
+      "source_path": "docs/archive/reports/phase0-12-overall-audit-sources/local/docs/testing/vscode-phase-manual-test-cases.md",
+      "evidence_origin": "historical-manual-case-note",
+      "taxonomy_categories": [
+        "SAFETY_INTERSTITIAL_OR_TOOL_BLOCK",
+        "RESPONSE_CORRUPTED_OR_TRUNCATED"
+      ],
+      "trigger_signals": [
+        "RESPONSE_CORRUPTED",
+        "incomplete-tool-block",
+        "safety-retry-button"
+      ],
+      "observed_failure_summary": "归档 P9-04 要求 ResponseCorrupted 安全重试只能生成安全响应，不能执行半截工具目标。",
+      "context_evidence_paths": [
+        "docs/archive/reports/phase0-12-overall-audit-sources/local/docs/testing/vscode-phase-manual-test-cases.md",
+        "docs/process/TOP_AGENT_CHANGE_GATE.md"
+      ],
+      "evidence_items": [
+        {
+          "item": "report.json",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "run-log",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "changedPaths",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "terminal-settlement",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "provider-classification",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "generated-artifact-quality",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        }
+      ],
+      "present_required_evidence": [],
+      "missing_required_evidence": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "complete_required_evidence": false,
+      "terminal_state": "BLOCKED_NEEDS_EVIDENCE",
+      "rerun_allowed_without_analysis": false,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false,
+      "report_facts": null
+    },
+    {
+      "failure_id": "R4-LIVE-FAILURE-CURRENT-USER-SCREENSHOT-RESPONSE-CORRUPTED",
+      "source_type": "conversation-fact-summary",
+      "source_path": "docs/process/devseek-post-r4-nonpermission-iteration-plan.md",
+      "evidence_origin": "user-screenshot-fact-summarized-in-plan",
+      "taxonomy_categories": [
+        "SAFETY_INTERSTITIAL_OR_TOOL_BLOCK",
+        "RESPONSE_CORRUPTED_OR_TRUNCATED"
+      ],
+      "trigger_signals": [
+        "RESPONSE_CORRUPTED",
+        "incomplete-tool-block",
+        "tool-execution-blocked",
+        "safety-retry-button"
+      ],
+      "observed_failure_summary": "用户截图确认安全执行按钮/安全重试与 RESPONSE_CORRUPTED: incomplete-tool-block 同时出现；截图或聊天描述不能单独构成完整证据。",
+      "context_evidence_paths": [
+        "docs/process/devseek-post-r4-nonpermission-iteration-plan.md"
+      ],
+      "evidence_items": [
+        {
+          "item": "report.json",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "run-log",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "changedPaths",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "terminal-settlement",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "provider-classification",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        },
+        {
+          "item": "generated-artifact-quality",
+          "status": "MISSING",
+          "path": null,
+          "notes": "existing evidence set does not contain this required item"
+        }
+      ],
+      "present_required_evidence": [],
+      "missing_required_evidence": [
+        "report.json",
+        "run-log",
+        "changedPaths",
+        "terminal-settlement",
+        "provider-classification",
+        "generated-artifact-quality"
+      ],
+      "complete_required_evidence": false,
+      "terminal_state": "BLOCKED_NEEDS_EVIDENCE",
+      "rerun_allowed_without_analysis": false,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false,
+      "report_facts": null
+    }
+  ],
+  "counts": {
+    "failures": 4,
+    "report_json_failures": 2,
+    "archive_doc_failures": 1,
+    "conversation_fact_failures": 1,
+    "failures_with_complete_required_evidence": 0,
+    "blocked_needs_evidence": 4,
+    "rerun_allowed_without_analysis": 0,
+    "live_runs_executed": 0,
+    "qualification_claims": 0
+  },
+  "mapping_sha256": "afc2d11d97bd9fde8494f3f3169b52c4ab232927c93b15886ec538d2bbc6a033"
+}

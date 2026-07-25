@@ -6,10 +6,10 @@
 
 - generator: `devseek-doc-governance/v1`
 - active selector sha256: `869219726bd2b5e23a4b03ec7d9b6ea58fb02efb4903ca6672de2bbac7cb0332`
-- legacy inventory sha256: `91bece15aaa5d623fc7a08c87f9004c45be67c5cd10c196e09ca4d0c08beb339`
-- governed documents: `52`
+- legacy inventory sha256: `2327cd8aa27ae51114b2d0fd7471134591ff71e1776b807bc271b999f1494fe8`
+- governed documents: `53`
 - active baselines: `3`
-- legacy documents: `49`
+- legacy documents: `50`
 - asserts Gate 0 pass: `false`
 
 ## Active Baselines
@@ -25,7 +25,7 @@
 | Decision | Count |
 | --- | ---: |
 | active | 3 |
-| keep | 43 |
+| keep | 44 |
 | revise | 0 |
 | supersede | 2 |
 | archive | 0 |
@@ -83,4 +83,5 @@
 | `docs/top-agent-convergence-audit-20260711/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md` | handoff | historical | keep | handoff-entry | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md` | handoff | historical | keep | supporting-ref | `docs/architecture/01-顶级编程智能体总体架构设计.md` |
 | `docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md` | handoff | historical | keep | handoff-entry | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md` | handoff | historical | keep | handoff-entry | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/README.md` | handoff | historical | keep | supporting-ref | `docs/requirements/02-顶级编程智能体需求基线.md` |

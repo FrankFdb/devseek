@@ -1,0 +1,249 @@
+{
+  "schema_version": "devseek.r4-scenario-language-replay-corpus/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "corpus_id": "R4-SCENARIO-LANGUAGE-REPLAY-CORPUS/v1",
+  "corpus_version": 1,
+  "source_status": "generated-scenario-language-replay-corpus-only",
+  "integrity_scope": "local-r4-scenario-language-replay-corpus",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "observation_authority": {
+    "semantic_authority": "R4ScenarioLanguageReplayCorpus",
+    "writes_product_state": false,
+    "provider_actions": "FORBIDDEN",
+    "live_holdout_actions": "FORBIDDEN",
+    "runtime_process_observation": "FORBIDDEN",
+    "install_or_window_actions": "FORBIDDEN",
+    "secret_observation": "FORBIDDEN"
+  },
+  "source_bindings": {
+    "live_user_way_holdout_matrix": {
+      "path": "docs/process/devseek-r4-live-user-way-holdout-matrix.json",
+      "source_sha256": "000a82523ebeb1047518c7ca32f232d1416cfccf8ec6418599428b642ed783cf",
+      "matrix_sha256": "083cfc5a922afe1e571f3d46bc099c0343ff49224c8ae6ae0e461a11d420f38e",
+      "scenario_language_source": "scenario-contract",
+      "product_fixed_language_allowed": false
+    },
+    "post_r4_nonpermission_iteration_plan": {
+      "path": "docs/process/devseek-post-r4-nonpermission-iteration-plan.md",
+      "source_sha256": "51623b1c2267f8d3f6fcb09b800396e5da12ea083dad5c5ed98f331b8b735555"
+    },
+    "controlled_scenario_contract_oracle": {
+      "path": "packages/vscode-extension/test/unit/controlled-vsix-scenario-contract.test.mjs",
+      "source_sha256": "a0982f1fda235c8412e9c12d5d78908d09f4c1eebd312bcdbc07989a57800a18"
+    }
+  },
+  "replay_policy": {
+    "local_replay_only": true,
+    "provider_actions_performed": false,
+    "live_runs_authorized": 0,
+    "scenario_language_source": "scenario-contract",
+    "product_fixed_language_allowed": false,
+    "product_fixed_language_default_added": false,
+    "language_source_priority": [
+      "scenario-contract",
+      "user-prompt-locale",
+      "technical-identifier-preservation"
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "R4-HOLDOUT-ZH-DEEPSEEK-LOGIN-READY-AUDIT",
+      "source_matrix_case_id": "R4-HOLDOUT-ZH-DEEPSEEK-LOGIN-READY-AUDIT",
+      "task_family": "deepseek-login-ready-state-audit",
+      "locale": "zh-CN",
+      "prompt_language": "zh-CN",
+      "expected_artifact_language": "zh-CN",
+      "scenario_language_source": "scenario-contract",
+      "product_fixed_language_allowed": false,
+      "artifact_kind": "markdown-audit-report",
+      "deliverable_path": "docs/r3-iteration/r4-holdout-zh-login-ready-audit.md",
+      "sample_artifact_text": "# DeepSeek 登录就绪状态审计报告\n\n结论：插件打开的 DeepSeek 页面属于当前 Bridge 会话路径，不能仅因发送按钮 selector 漂移判定未登录。\n证据：保留 `BridgeHealthCheck`、`chatInput evidence` 与 `deepseek-dom-send-button-missing`，把缺失发送按钮记录为 DOM 诊断。\n建议：继续收集登录状态、终端结算和交付物质量证据，再决定是否重跑。",
+      "required_identifiers": [],
+      "language_checks": [
+        {
+          "check_id": "zh-body-has-cjk",
+          "ok": true,
+          "evidence": "sample artifact contains Chinese body text"
+        },
+        {
+          "check_id": "no-product-fixed-language-default",
+          "ok": true,
+          "evidence": "language comes from scenario contract, not product default"
+        }
+      ],
+      "local_replay_status": "PASSED",
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "case_id": "R4-HOLDOUT-EN-DEEPSEEK-LOGIN-READY-AUDIT",
+      "source_matrix_case_id": "R4-HOLDOUT-EN-DEEPSEEK-LOGIN-READY-AUDIT",
+      "task_family": "deepseek-login-ready-state-audit",
+      "locale": "en-US",
+      "prompt_language": "en-US",
+      "expected_artifact_language": "en-US",
+      "scenario_language_source": "scenario-contract",
+      "product_fixed_language_allowed": false,
+      "artifact_kind": "markdown-audit-report",
+      "deliverable_path": "docs/r3-iteration/r4-holdout-en-login-ready-audit.md",
+      "sample_artifact_text": "# DeepSeek Login-ready State Audit Report\n\nConclusion: the page opened by the plugin belongs to the current Bridge session path, and send-button selector drift is not enough to classify the session as LOGIN_REQUIRED.\nEvidence: keep `BridgeHealthCheck`, `chatInput evidence`, and `deepseek-dom-send-button-missing` as diagnostic anchors.\nRecommendation: collect login state, terminal settlement, and artifact quality evidence before any rerun.",
+      "required_identifiers": [],
+      "language_checks": [
+        {
+          "check_id": "en-body-has-no-cjk",
+          "ok": true,
+          "evidence": "sample artifact contains no CJK text"
+        },
+        {
+          "check_id": "en-body-has-english-answer-markers",
+          "ok": true,
+          "evidence": "sample artifact uses English report markers"
+        },
+        {
+          "check_id": "no-product-fixed-language-default",
+          "ok": true,
+          "evidence": "language comes from scenario contract, not product default"
+        }
+      ],
+      "local_replay_status": "PASSED",
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "case_id": "R4-HOLDOUT-ZH-SCOPED-SOURCE-WRITE-AUTHORITY",
+      "source_matrix_case_id": "R4-HOLDOUT-ZH-SCOPED-SOURCE-WRITE-AUTHORITY",
+      "task_family": "scoped-source-write-authority",
+      "locale": "zh-CN",
+      "prompt_language": "zh-CN",
+      "expected_artifact_language": "zh-CN",
+      "scenario_language_source": "scenario-contract",
+      "product_fixed_language_allowed": false,
+      "artifact_kind": "single-markdown-deliverable",
+      "deliverable_path": "docs/r3-iteration/r4-holdout-zh-scoped-write-authority.md",
+      "sample_artifact_text": "# 限定写入权限审计报告\n\n结论：用户撤销源码修改权限，不等于撤销指定 Markdown 交付物写入权限。\n证据：当前任务只允许创建审计报告，源码路径必须保持只读。\n建议：执行层应区分 source-edit revocation 与 deliverable write authority。",
+      "required_identifiers": [],
+      "language_checks": [
+        {
+          "check_id": "zh-body-has-cjk",
+          "ok": true,
+          "evidence": "sample artifact contains Chinese body text"
+        },
+        {
+          "check_id": "no-product-fixed-language-default",
+          "ok": true,
+          "evidence": "language comes from scenario contract, not product default"
+        }
+      ],
+      "local_replay_status": "PASSED",
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "case_id": "R4-HOLDOUT-EN-SCOPED-SOURCE-WRITE-AUTHORITY",
+      "source_matrix_case_id": "R4-HOLDOUT-EN-SCOPED-SOURCE-WRITE-AUTHORITY",
+      "task_family": "scoped-source-write-authority",
+      "locale": "en-US",
+      "prompt_language": "en-US",
+      "expected_artifact_language": "en-US",
+      "scenario_language_source": "scenario-contract",
+      "product_fixed_language_allowed": false,
+      "artifact_kind": "single-markdown-deliverable",
+      "deliverable_path": "docs/r3-iteration/r4-holdout-en-scoped-write-authority.md",
+      "sample_artifact_text": "# Scoped Source Write Authority Report\n\nConclusion: revoking source edit authority does not revoke the explicitly requested Markdown deliverable write.\nEvidence: source paths remain read-only while the requested report path is the only writable target.\nRecommendation: keep source-edit revocation separate from deliverable write authority in task settlement.",
+      "required_identifiers": [],
+      "language_checks": [
+        {
+          "check_id": "en-body-has-no-cjk",
+          "ok": true,
+          "evidence": "sample artifact contains no CJK text"
+        },
+        {
+          "check_id": "en-body-has-english-answer-markers",
+          "ok": true,
+          "evidence": "sample artifact uses English report markers"
+        },
+        {
+          "check_id": "no-product-fixed-language-default",
+          "ok": true,
+          "evidence": "language comes from scenario contract, not product default"
+        }
+      ],
+      "local_replay_status": "PASSED",
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "case_id": "R4-HOLDOUT-ZH-MIXED-PATH-INPUT-OUTPUT-CONTRACT",
+      "source_matrix_case_id": "R4-HOLDOUT-ZH-MIXED-PATH-INPUT-OUTPUT-CONTRACT",
+      "task_family": "required-deliverable-input-output-contract",
+      "locale": "zh-CN",
+      "prompt_language": "zh-CN-with-English-identifiers",
+      "expected_artifact_language": "zh-CN",
+      "scenario_language_source": "scenario-contract",
+      "product_fixed_language_allowed": false,
+      "artifact_kind": "mixed-path-input-output-contract",
+      "deliverable_path": "docs/r3-iteration/r4-holdout-zh-mixed-path-contract.md",
+      "sample_artifact_text": "# 输入输出合同审计报告\n\n结论：`/tmp/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts` 是输入源路径，不是输出目标。\n证据：正文保持中文，同时原样保留 `BridgeHealthCheck`、`deepseek-dom-send-button-missing` 与 `loggedInLikely` 等技术标识。\n建议：只写指定 Markdown 报告，不能把源路径当成交付物路径。",
+      "required_identifiers": [
+        "BridgeHealthCheck",
+        "deepseek-dom-send-button-missing",
+        "/tmp/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts"
+      ],
+      "language_checks": [
+        {
+          "check_id": "zh-body-has-cjk",
+          "ok": true,
+          "evidence": "sample artifact contains Chinese body text"
+        },
+        {
+          "check_id": "preserve-identifier:BridgeHealthCheck",
+          "ok": true,
+          "evidence": "BridgeHealthCheck"
+        },
+        {
+          "check_id": "preserve-identifier:deepseek-dom-send-button-missing",
+          "ok": true,
+          "evidence": "deepseek-dom-send-button-missing"
+        },
+        {
+          "check_id": "preserve-identifier:/tmp/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts",
+          "ok": true,
+          "evidence": "/tmp/workspace/src/deepseek-web-health/deepseek-login-ready-state-contract.ts"
+        },
+        {
+          "check_id": "no-product-fixed-language-default",
+          "ok": true,
+          "evidence": "language comes from scenario contract, not product default"
+        }
+      ],
+      "local_replay_status": "PASSED",
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    }
+  ],
+  "counts": {
+    "cases": 5,
+    "zh_cases": 3,
+    "en_cases": 2,
+    "mixed_identifier_cases": 1,
+    "markdown_audit_report_cases": 2,
+    "single_markdown_deliverable_cases": 2,
+    "mixed_path_contract_cases": 1,
+    "product_fixed_language_cases": 0,
+    "language_contract_failures": 0,
+    "live_runs_authorized": 0,
+    "qualification_claims": 0
+  },
+  "corpus_sha256": "a263127206610cef909e511fc678c743d6151ee0398cdc995d5a63e2585cac1e"
+}

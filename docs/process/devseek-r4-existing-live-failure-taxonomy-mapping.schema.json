@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-r4-existing-live-failure-taxonomy-mapping-v1.json",
+  "title": "DevSeek R4 Existing Live Failure Taxonomy Mapping v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "mapping_id",
+    "mapping_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "observation_authority",
+    "source_bindings",
+    "mapping_policy",
+    "failures",
+    "counts",
+    "mapping_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.r4-existing-live-failure-taxonomy-mapping/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "mapping_id": { "const": "R4-EXISTING-LIVE-FAILURE-TAXONOMY-MAPPING/v1" },
+    "mapping_version": { "const": 1 },
+    "source_status": { "const": "generated-existing-live-failure-taxonomy-mapping-only" },
+    "integrity_scope": { "const": "local-r4-existing-live-failure-taxonomy-mapping" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "observation_authority": { "$ref": "#/$defs/observationAuthority" },
+    "source_bindings": { "$ref": "#/$defs/sourceBindings" },
+    "mapping_policy": { "$ref": "#/$defs/mappingPolicy" },
+    "failures": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": { "$ref": "#/$defs/failure" }
+    },
+    "counts": { "$ref": "#/$defs/counts" },
+    "mapping_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "observationAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantic_authority",
+        "writes_product_state",
+        "provider_actions",
+        "live_holdout_actions",
+        "runtime_process_observation",
+        "install_or_window_actions",
+        "secret_observation"
+      ],
+      "properties": {
+        "semantic_authority": { "const": "R4ExistingLiveFailureTaxonomyMapping" },
+        "writes_product_state": { "const": false },
+        "provider_actions": { "const": "FORBIDDEN" },
+        "live_holdout_actions": { "const": "FORBIDDEN" },
+        "runtime_process_observation": { "const": "FORBIDDEN" },
+        "install_or_window_actions": { "const": "FORBIDDEN" },
+        "secret_observation": { "const": "FORBIDDEN" }
+      }
+    },
+    "sourceBindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failure_taxonomy",
+        "post_r4_nonpermission_iteration_plan",
+        "report_20260722T105032Z",
+        "report_20260722T113416Z",
+        "archived_manual_tests",
+        "top_agent_change_gate"
+      ],
+      "properties": {
+        "failure_taxonomy": { "$ref": "#/$defs/sourceBinding" },
+        "post_r4_nonpermission_iteration_plan": { "$ref": "#/$defs/sourceBinding" },
+        "report_20260722T105032Z": { "$ref": "#/$defs/sourceBinding" },
+        "report_20260722T113416Z": { "$ref": "#/$defs/sourceBinding" },
+        "archived_manual_tests": { "$ref": "#/$defs/sourceBinding" },
+        "top_agent_change_gate": { "$ref": "#/$defs/sourceBinding" }
+      }
+    },
+    "sourceBinding": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["path", "source_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "mappingPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "only_existing_evidence_consumed",
+        "live_runs_executed",
+        "provider_actions_performed",
+        "install_or_window_actions_performed",
+        "repeat_same_red_loop_allowed_without_analysis",
+        "screenshot_or_chat_alone_complete_evidence_allowed",
+        "required_evidence_before_rerun"
+      ],
+      "properties": {
+        "only_existing_evidence_consumed": { "const": true },
+        "live_runs_executed": { "const": 0 },
+        "provider_actions_performed": { "const": false },
+        "install_or_window_actions_performed": { "const": false },
+        "repeat_same_red_loop_allowed_without_analysis": { "const": false },
+        "screenshot_or_chat_alone_complete_evidence_allowed": { "const": false },
+        "required_evidence_before_rerun": {
+          "type": "array",
+          "minItems": 6,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        }
+      }
+    },
+    "failure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failure_id",
+        "source_type",
+        "source_path",
+        "evidence_origin",
+        "taxonomy_categories",
+        "trigger_signals",
+        "observed_failure_summary",
+        "context_evidence_paths",
+        "evidence_items",
+        "present_required_evidence",
+        "missing_required_evidence",
+        "complete_required_evidence",
+        "terminal_state",
+        "rerun_allowed_without_analysis",
+        "qualification_effect",
+        "claims_permitted",
+        "asserts_gate_pass",
+        "report_facts"
+      ],
+      "properties": {
+        "failure_id": { "$ref": "#/$defs/nonEmpty" },
+        "source_type": { "enum": ["report-json", "archived-manual-note", "conversation-fact-summary"] },
+        "source_path": { "$ref": "#/$defs/nonEmpty" },
+        "evidence_origin": { "$ref": "#/$defs/nonEmpty" },
+        "taxonomy_categories": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "trigger_signals": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "observed_failure_summary": { "$ref": "#/$defs/nonEmpty" },
+        "context_evidence_paths": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "evidence_items": {
+          "type": "array",
+          "minItems": 6,
+          "items": { "$ref": "#/$defs/evidenceItem" }
+        },
+        "present_required_evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "missing_required_evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "complete_required_evidence": { "const": false },
+        "terminal_state": { "const": "BLOCKED_NEEDS_EVIDENCE" },
+        "rerun_allowed_without_analysis": { "const": false },
+        "qualification_effect": { "const": "NONE" },
+        "claims_permitted": { "const": false },
+        "asserts_gate_pass": { "const": false },
+        "report_facts": {
+          "anyOf": [
+            { "type": "object", "additionalProperties": true },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "evidenceItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item", "status", "path", "notes"],
+      "properties": {
+        "item": { "$ref": "#/$defs/nonEmpty" },
+        "status": { "enum": ["PRESENT", "DERIVED_FROM_REPORT_ERROR", "MISSING"] },
+        "path": {
+          "anyOf": [
+            { "$ref": "#/$defs/nonEmpty" },
+            { "type": "null" }
+          ]
+        },
+        "notes": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "failures",
+        "report_json_failures",
+        "archive_doc_failures",
+        "conversation_fact_failures",
+        "failures_with_complete_required_evidence",
+        "blocked_needs_evidence",
+        "rerun_allowed_without_analysis",
+        "live_runs_executed",
+        "qualification_claims"
+      ],
+      "properties": {
+        "failures": { "const": 4 },
+        "report_json_failures": { "const": 2 },
+        "archive_doc_failures": { "const": 1 },
+        "conversation_fact_failures": { "const": 1 },
+        "failures_with_complete_required_evidence": { "const": 0 },
+        "blocked_needs_evidence": { "const": 4 },
+        "rerun_allowed_without_analysis": { "const": 0 },
+        "live_runs_executed": { "const": 0 },
+        "qualification_claims": { "const": 0 }
+      }
+    }
+  }
+}

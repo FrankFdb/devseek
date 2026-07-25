@@ -84,6 +84,15 @@ export const TOOL_PROTOCOL_SAMPLES = [
     expectedToolNames: ['run_terminal'],
   },
   {
+    id: 'named-json-tool-call-envelope',
+    text: [
+      'I will inspect the implementation.',
+      '<tool_call>{"name":"read_file","arguments":{"path":"/tmp/project/main.cpp"}}</tool_call>',
+    ].join('\n'),
+    expectedVisible: 'I will inspect the implementation.',
+    expectedToolNames: ['read_file'],
+  },
+  {
     id: 'deepseek-malformed-replace-envelope',
     text: String.raw`I will repair the missing include.
 <TOOL_CALL>[TOOL:replace_in_file] {"path":"/tmp/project/worker.hpp","old_str":"#include <string>\n\n#include "worker_types.hpp"","new_str":"#include <string>\n#include <unordered_map>\n\n#include "worker_types.hpp""}</TOOL_CALL>`,
@@ -159,6 +168,17 @@ export const TOOL_PROTOCOL_SAMPLES = [
     ].join('\n'),
     expectedVisible: 'I will create the implementation files.',
     expectedToolNames: ['write_file', 'write_file'],
+  },
+  {
+    id: 'deepseek-fenced-single-artifact-write',
+    text: [
+      'I will write the report.',
+      '```json',
+      '{"path":"/tmp/project/docs/report.md","content":"# Report\\n"}',
+      '```',
+    ].join('\n'),
+    expectedVisible: 'I will write the report.',
+    expectedToolNames: ['write_file'],
   },
   {
     id: 'deepseek-nameless-read-command-array',

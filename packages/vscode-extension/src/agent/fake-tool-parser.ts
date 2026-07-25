@@ -1354,7 +1354,8 @@ function jsonValueContainsToolPayload(value: unknown): boolean {
     return jsonArrayToFakeTools(value).length > 0;
   }
   return Boolean(value && typeof value === 'object' && !Array.isArray(value)
-    && jsonObjectToFakeTool(value as Record<string, unknown>));
+    && (jsonObjectToFakeTool(value as Record<string, unknown>)
+      ?? jsonObjectToImplicitArrayFakeTool(value as Record<string, unknown>)));
 }
 
 function firstStringObjectField(
@@ -1401,6 +1402,21 @@ function looksLikeDirectoryPathValue(value: string): boolean {
   if (normalized.endsWith('/')) return true;
   const base = normalized.split('/').filter(Boolean).pop() || '';
   return !/\.[A-Za-z0-9]+$/.test(base);
+}
+
+function hasUnclosedToolCallEnvelopePrefixBeforeJson(text: string, jsonStart: number): boolean {
+  const prefix = text.slice(0, jsonStart);
+  const openRe = /(?:<|&lt;)\s*tool_call\b[^>]*(?:>|&gt;)/gi;
+  const closeRe = /(?:<\/|&lt;\/)\s*tool_call\s*(?:>|&gt;)/gi;
+  let lastOpen = -1;
+  let match: RegExpExecArray | null;
+  while ((match = openRe.exec(prefix)) !== null) lastOpen = match.index;
+  if (lastOpen < 0) return false;
+
+  let lastClose = -1;
+  while ((match = closeRe.exec(prefix)) !== null) lastClose = match.index;
+  if (lastClose > lastOpen) return false;
+  return !closeRe.test(text.slice(jsonStart));
 }
 
 function parseJsonArrayToolCalls(text: string): FakeTool[] {
@@ -1683,6 +1699,10 @@ function findJsonToolPayloadStart(text: string): number {
   while (searchAt < text.length) {
     const start = findNextJsonStart(text, searchAt);
     if (start < 0) break;
+    if (hasUnclosedToolCallEnvelopePrefixBeforeJson(text, start)) {
+      searchAt = start + 1;
+      continue;
+    }
     const end = text[start] === '[' ? findJsonArrayEnd(text, start) : findJsonObjectEnd(text, start);
     if (end < 0) {
       const tail = text.slice(start);
@@ -1700,13 +1720,14 @@ function findJsonToolPayloadStart(text: string): number {
 }
 
 function parseJsonObjectToolCalls(text: string): FakeTool[] {
-  const start = text.indexOf('{');
-  if (start < 0) return [];
+  const start = findNextJsonStart(text, 0);
+  if (start < 0 || text[start] !== '{') return [];
+  if (hasUnclosedToolCallEnvelopePrefixBeforeJson(text, start)) return [];
   const end = findJsonObjectEnd(text, start);
   if (end < 0) return [];
   try {
     const obj = JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>;
-    const toolObj = jsonObjectToFakeTool(obj);
+    const toolObj = jsonObjectToFakeTool(obj) ?? jsonObjectToImplicitArrayFakeTool(obj);
     if (toolObj) return [toolObj];
     if (Array.isArray(obj.todoList)) return [{ name: 'manage_todo_list', input: { todoList: obj.todoList } }];
     if (typeof obj.summary === 'string' && /(?:完成|结束|complete|done)/i.test(text) && !hasShellTranscriptMarker(text)) {

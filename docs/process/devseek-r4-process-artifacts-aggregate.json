@@ -62,6 +62,22 @@
       "generated_view_sha256": "45bf9a8fd3f5d993597a3eba8f21b0383ee415786c73732a48b6ac2e466e2be0",
       "generated_view_status": "MATCHED"
     },
+    "r4_existing_live_failure_taxonomy_mapping": {
+      "artifact_id": "R4-EXISTING-LIVE-FAILURE-TAXONOMY-MAPPING",
+      "path": "docs/process/devseek-r4-existing-live-failure-taxonomy-mapping.json",
+      "source_sha256": "590d83c3be80ed78faba1864e5e2ccf18a05455f65cb4061651e41209aea8489",
+      "generated_view_path": "docs/process/generated/devseek-r4-existing-live-failure-taxonomy-mapping.md",
+      "generated_view_sha256": "9b6d59b3c10489ff2d19e8a17bb440ec06f7b0936489ea6b10a9abb588e20d06",
+      "generated_view_status": "MATCHED"
+    },
+    "r4_scenario_language_replay_corpus": {
+      "artifact_id": "R4-SCENARIO-LANGUAGE-REPLAY-CORPUS",
+      "path": "docs/process/devseek-r4-scenario-language-replay-corpus.json",
+      "source_sha256": "5c7c55883595924c8720b297ba0274b1403b5b7c0b632265bb7afe42da4bcfa7",
+      "generated_view_path": "docs/process/generated/devseek-r4-scenario-language-replay-corpus.md",
+      "generated_view_sha256": "ab4ac08bb2d43e1fc5f70e15ee0e2a8ad719c05c3660554702ddc47ee339a000",
+      "generated_view_status": "MATCHED"
+    },
     "r4_iteration_status_rollup": {
       "artifact_id": "R4-ITERATION-STATUS-ROLLUP",
       "path": "docs/process/devseek-r4-iteration-status-rollup.json",
@@ -209,6 +225,46 @@
       "artifact_errors": []
     },
     {
+      "artifact_id": "R4-EXISTING-LIVE-FAILURE-TAXONOMY-MAPPING",
+      "source_kind": "generated-json",
+      "primary_path": "docs/process/devseek-r4-existing-live-failure-taxonomy-mapping.json",
+      "source_sha256": "590d83c3be80ed78faba1864e5e2ccf18a05455f65cb4061651e41209aea8489",
+      "schema_version": "devseek.r4-existing-live-failure-taxonomy-mapping/v1",
+      "identity_hash_field": "mapping_sha256",
+      "identity_hash_value": "afc2d11d97bd9fde8494f3f3169b52c4ab232927c93b15886ec538d2bbc6a033",
+      "generated_view_path": "docs/process/generated/devseek-r4-existing-live-failure-taxonomy-mapping.md",
+      "generated_view_sha256": "9b6d59b3c10489ff2d19e8a17bb440ec06f7b0936489ea6b10a9abb588e20d06",
+      "generated_view_status": "MATCHED",
+      "qualification_eligible": false,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false,
+      "live_runs_authorized": 0,
+      "approved_live_requests": 0,
+      "no_claims_boundary_ok": true,
+      "artifact_errors": []
+    },
+    {
+      "artifact_id": "R4-SCENARIO-LANGUAGE-REPLAY-CORPUS",
+      "source_kind": "generated-json",
+      "primary_path": "docs/process/devseek-r4-scenario-language-replay-corpus.json",
+      "source_sha256": "5c7c55883595924c8720b297ba0274b1403b5b7c0b632265bb7afe42da4bcfa7",
+      "schema_version": "devseek.r4-scenario-language-replay-corpus/v1",
+      "identity_hash_field": "corpus_sha256",
+      "identity_hash_value": "a263127206610cef909e511fc678c743d6151ee0398cdc995d5a63e2585cac1e",
+      "generated_view_path": "docs/process/generated/devseek-r4-scenario-language-replay-corpus.md",
+      "generated_view_sha256": "ab4ac08bb2d43e1fc5f70e15ee0e2a8ad719c05c3660554702ddc47ee339a000",
+      "generated_view_status": "MATCHED",
+      "qualification_eligible": false,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false,
+      "live_runs_authorized": 0,
+      "approved_live_requests": 0,
+      "no_claims_boundary_ok": true,
+      "artifact_errors": []
+    },
+    {
       "artifact_id": "R4-ITERATION-STATUS-ROLLUP",
       "source_kind": "generated-json",
       "primary_path": "docs/process/devseek-r4-iteration-status-rollup.json",
@@ -290,11 +346,11 @@
     }
   ],
   "counts": {
-    "total_artifacts": 9,
-    "generated_json_artifacts": 7,
+    "total_artifacts": 11,
+    "generated_json_artifacts": 9,
     "manual_markdown_artifacts": 2,
-    "generated_views_expected": 7,
-    "generated_views_matched": 7,
+    "generated_views_expected": 9,
+    "generated_views_matched": 9,
     "generated_views_missing": 0,
     "generated_views_stale": 0,
     "qualification_claim_violations": 0,
@@ -303,5 +359,5 @@
     "gate_assertions": 0,
     "artifact_errors": 0
   },
-  "aggregate_sha256": "d727bc3d96cae1b9158143baa04855e4f40262560e42a9e1b47adbbd0b096a9c"
+  "aggregate_sha256": "d03cc42e6db375bef5d533f687dc6920a672619b274292aca08e75bbe0970cb1"
 }

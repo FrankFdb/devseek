@@ -1772,6 +1772,116 @@ test('run log replay classifies provider integrity failures and old bridge runti
   }
 });
 
+test('run log replay detects fenced provider write requests that were not executed', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-25T02:10:00.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'np05-protocol-tool-request-not-executed',
+      data: {
+        name: 'extension.response.raw',
+        content: [
+          'I will write the report.',
+          '```json',
+          '{"path":"/tmp/app/docs/protocol.md","content":"# Protocol replay\\n"}',
+          '```',
+        ].join('\n'),
+      },
+    },
+    {
+      ts: '2026-07-25T02:10:01.000Z',
+      level: 'debug',
+      source: 'vscode-extension.tool-loop',
+      phase: 'tool-loop',
+      event: 'execute-complete',
+      runId: 'np05-protocol-tool-request-not-executed',
+      data: {
+        taskComplete: false,
+        toolCallsMade: false,
+        feedbackLength: 0,
+        readFileCount: 0,
+        terminalCommandCount: 0,
+      },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const issue = report.issues.find(item => item.kind === 'provider-tool-request-not-executed');
+
+    assert.equal(report.providerResponses, 1);
+    assert.equal(issue?.severity, 'error');
+    assert.match(issue?.message ?? '', /1 个可解析工具调用/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay keeps safety-interstitial corrupted responses sticky after a later answer', () => {
+  const { dir, logPath } = writeLog([
+    {
+      ts: '2026-07-25T02:20:00.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-started',
+      runId: 'np05-corrupted-sticky',
+      data: { appVersion: '1.0.0-debug.test', gitCommit: 'abc123' },
+    },
+    {
+      ts: '2026-07-25T02:20:01.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'np05-corrupted-sticky',
+      data: {
+        name: 'extension.response.raw',
+        content: [
+          '上次 Agent 输出被安全阻断（刚才）。',
+          'RESPONSE_CORRUPTED: incomplete-tool-block',
+          '[TOOL:write_file {"path":"/tmp/app/docs/interrupted.md","content":"# interrupted',
+        ].join('\n'),
+      },
+    },
+    {
+      ts: '2026-07-25T02:20:02.000Z',
+      level: 'debug',
+      source: 'vscode-extension',
+      phase: 'payload',
+      event: 'payload-recorded',
+      runId: 'np05-corrupted-sticky',
+      data: {
+        name: 'extension.response.raw',
+        content: '结论：安全重试必须只生成安全响应，不能执行损坏或未验证的工具内容。依据：上一轮 Provider 输出已标记 RESPONSE_CORRUPTED。建议：保留失败事实并重新收集完整证据。',
+      },
+    },
+    {
+      ts: '2026-07-25T02:20:03.000Z',
+      level: 'info',
+      source: 'vscode-extension.agent',
+      phase: 'run-context',
+      event: 'agent-run-completed',
+      runId: 'np05-corrupted-sticky',
+      data: { status: 'completed', tasksTotal: 1, tasksApplied: 0, tasksFailed: 0, changedPaths: [] },
+    },
+  ]);
+
+  try {
+    const report = replayRunLog(logPath);
+    const kinds = new Set(report.issues.map(issue => issue.kind));
+
+    assert.equal(report.providerResponses, 2);
+    assert.equal(kinds.has('provider-truncated-response'), true);
+    assert.equal(kinds.has('missing-agent-run-completion'), false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('run log replay treats offline bridge startup and successful restart as current runtime', () => {
   const { dir, logPath } = writeLog([
     {

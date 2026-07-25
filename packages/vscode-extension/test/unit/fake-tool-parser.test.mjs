@@ -1271,6 +1271,20 @@ test('FakeToolParser: shared protocol fixture parses and strips every complete d
   }
 });
 
+test('FakeToolParser: keeps documented single-object artifact examples inert when they include report metadata', () => {
+  const text = [
+    '# Artifact report',
+    '```json',
+    '{"path":"/tmp/project/docs/report.md","content":"# Report\\n","description":"documentation example"}',
+    '```',
+    '该对象只是报告中的格式示例，不是可执行工具请求。',
+  ].join('\n');
+
+  assert.equal(parseFakeToolCalls(text).length, 0);
+  assert.equal(containsFakeToolCallProtocol(text), false);
+  assert.equal(stripToolCallBlocks(text), text);
+});
+
 test('FakeToolParser: shared protocol fixture hides incomplete streaming tails', () => {
   for (const sample of TOOL_PROTOCOL_STREAMING_TAIL_SAMPLES) {
     assert.deepEqual(

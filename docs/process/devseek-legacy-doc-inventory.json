@@ -395,6 +395,13 @@
       "rationale": "Retained as derived startup instruction; 15 and 14 keep authority for handoff and task issuance."
     },
     {
+      "path": "docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md",
+      "source_group": "handoff",
+      "decision": "keep",
+      "relationship": "handoff-entry",
+      "rationale": "Retained as R3 closure and R4 seed handoff; machine status remains source-bound in docs/process and it does not assert qualification."
+    },
+    {
       "path": "docs/top-agent-convergence-audit-20260711/README.md",
       "source_group": "handoff",
       "decision": "keep",
@@ -405,5 +412,5 @@
       "rationale": "G0-01 selector marks this as supporting REQ-02 audit entry and applicability boundary."
     }
   ],
-  "inventory_sha256": "91bece15aaa5d623fc7a08c87f9004c45be67c5cd10c196e09ca4d0c08beb339"
+  "inventory_sha256": "2327cd8aa27ae51114b2d0fd7471134591ff71e1776b807bc271b999f1494fe8"
 }

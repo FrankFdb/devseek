@@ -539,6 +539,10 @@ function jsonArrayIsWebviewToolPayload(value) {
   });
 }
 
+function jsonObjectIsWebviewToolPayload(value) {
+  return !!(jsonObjectToWebviewTool(value) || jsonObjectToImplicitWebviewArrayTool(value));
+}
+
 function stripJsonToolPayloadsFromText(text) {
   if (!text) return '';
   var result = text.replace(/```(?:json|JSON)?\s*\n([\s\S]*?)```/g, function(full, inner) {
@@ -549,7 +553,7 @@ function stripJsonToolPayloadsFromText(text) {
       if (Array.isArray(parsed)) {
         return jsonArrayIsWebviewToolPayload(parsed) ? '' : full;
       }
-      return jsonObjectToWebviewTool(parsed) ? '' : full;
+      return jsonObjectIsWebviewToolPayload(parsed) ? '' : full;
     } catch (_) {
       return /"tool"\s*:\s*"[A-Za-z_]\w*"/.test(trimmed) ? '' : full;
     }
@@ -577,7 +581,7 @@ function stripJsonToolPayloadsFromText(text) {
       var parsed = JSON.parse(candidate);
       shouldStrip = isArray
         ? jsonArrayIsWebviewToolPayload(parsed)
-        : !!jsonObjectToWebviewTool(parsed);
+        : jsonObjectIsWebviewToolPayload(parsed);
     } catch (_) {
       shouldStrip = !isArray && /"tool"\s*:\s*"[A-Za-z_]\w*"/.test(candidate);
     }

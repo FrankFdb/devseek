@@ -26,11 +26,11 @@ test('R4 process artifacts aggregate source-binds all local R4 process artifacts
 
   assert.equal(canonicalJson(actual), canonicalJson(expected));
   assert.deepEqual(actual.counts, {
-    total_artifacts: 9,
-    generated_json_artifacts: 7,
+    total_artifacts: 11,
+    generated_json_artifacts: 9,
     manual_markdown_artifacts: 2,
-    generated_views_expected: 7,
-    generated_views_matched: 7,
+    generated_views_expected: 9,
+    generated_views_matched: 9,
     generated_views_missing: 0,
     generated_views_stale: 0,
     qualification_claim_violations: 0,
@@ -57,6 +57,14 @@ test('R4 process artifacts aggregate source-binds all local R4 process artifacts
   assert.equal(
     actual.source_bindings.r4_clean_runtime_limited_observation.path,
     'docs/process/devseek-r4-clean-runtime-limited-observation.json',
+  );
+  assert.equal(
+    actual.source_bindings.r4_existing_live_failure_taxonomy_mapping.path,
+    'docs/process/devseek-r4-existing-live-failure-taxonomy-mapping.json',
+  );
+  assert.equal(
+    actual.source_bindings.r4_scenario_language_replay_corpus.path,
+    'docs/process/devseek-r4-scenario-language-replay-corpus.json',
   );
   assert.equal(
     actual.source_bindings.r4_authorization_and_permission_guide.path,
@@ -137,10 +145,10 @@ test('checker command validates R4 process artifacts aggregate and generated vie
   assert.equal(result.ok, true, JSON.stringify(result.errors, null, 2));
   assert.deepEqual(result.summary, {
     aggregate_sha256: expected.aggregate_sha256,
-    total_artifacts: 9,
-    generated_json_artifacts: 7,
+    total_artifacts: 11,
+    generated_json_artifacts: 9,
     manual_markdown_artifacts: 2,
-    generated_views_matched: 7,
+    generated_views_matched: 9,
     generated_views_stale: 0,
     generated_views_missing: 0,
     qualification_claim_violations: 0,

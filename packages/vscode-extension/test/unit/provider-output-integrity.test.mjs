@@ -188,6 +188,19 @@ test('provider output integrity: classifies DeepSeek nameless artifact arrays as
   assert.equal(result.toolCallCount, 2);
 });
 
+test('provider output integrity: classifies fenced single artifact writes as tool calls', () => {
+  const result = classifyProviderOutputIntegrity([
+    '现在写入唯一交付物。',
+    '```json',
+    '{"path":"/tmp/app/docs/audit.md","content":"# Audit\\n"}',
+    '```',
+  ].join('\n'));
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 1);
+});
+
 test('provider output integrity: does not execute ambiguous artifact-report JSON', () => {
   const result = classifyProviderOutputIntegrity([
     '# Artifact report',
@@ -195,6 +208,20 @@ test('provider output integrity: does not execute ambiguous artifact-report JSON
     '[{"path":"/tmp/app/example.cpp","content":"int example;","description":"documentation example"}]',
     '```',
     '结论：该数组只是文档中的输出格式示例，不是需要执行的工具请求。',
+  ].join('\n'));
+
+  assert.equal(result.kind, 'complete_answer');
+  assert.equal(result.okForSettlement, true);
+  assert.equal(result.toolCallCount, 0);
+});
+
+test('provider output integrity: treats documented single-object artifact examples as answer text', () => {
+  const result = classifyProviderOutputIntegrity([
+    '# Artifact report',
+    '```json',
+    '{"path":"/tmp/app/example.md","content":"# Example\\n","description":"documentation example"}',
+    '```',
+    '结论：该对象只是文档中的输出格式示例，不是需要执行的工具请求。',
   ].join('\n'));
 
   assert.equal(result.kind, 'complete_answer');
@@ -212,6 +239,17 @@ test('provider output integrity: classifies real generic TOOL envelopes before s
   assert.equal(result.kind, 'tool_call');
   assert.equal(result.okForSettlement, false);
   assert.equal(result.toolCallCount, 2);
+});
+
+test('provider output integrity: classifies named JSON tool_call envelopes before settlement', () => {
+  const result = classifyProviderOutputIntegrity([
+    'I will inspect the implementation first.',
+    '<tool_call>{"name":"read_file","arguments":{"path":"/tmp/app/main.cpp"}}</tool_call>',
+  ].join('\n'));
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 1);
 });
 
 test('provider output integrity: rejects incomplete generic TOOL envelopes as truncated', () => {
@@ -250,6 +288,28 @@ test('provider output integrity: accepts complete tool call followed by provider
 test('provider output integrity: classifies malformed DeepSeek function envelopes as executable tool calls', () => {
   const result = classifyProviderOutputIntegrity(
     '<TOOL_CALL>{"id":"2","type":"function","function":{"name":"list_dir","arguments":"{"path":"/home/ff/uav/tars/huida_uav/src/oam/src/license"}"}}</TOOL_CALL>',
+  );
+
+  assert.equal(result.kind, 'tool_call');
+  assert.equal(result.okForSettlement, false);
+  assert.equal(result.toolCallCount, 1);
+});
+
+test('provider output integrity: rejects safety-interstitial interrupted tool blocks as truncated', () => {
+  const result = classifyProviderOutputIntegrity([
+    '上次 Agent 输出被安全阻断（刚才）。',
+    '等待重新生成安全响应。',
+    'RESPONSE_CORRUPTED: incomplete-tool-block',
+    '[TOOL:write_file {"path":"/tmp/app/docs/interrupted.md","content":"# interrupted',
+  ].join('\n'));
+
+  assert.equal(result.kind, 'truncated');
+  assert.equal(result.okForSettlement, false);
+});
+
+test('provider output integrity: keeps malformed but recoverable write JSON in the tool channel', () => {
+  const result = classifyProviderOutputIntegrity(
+    '[TOOL:write_file] {"path":"/tmp/app/docs/replay.md","content":"line with "quoted" value"}',
   );
 
   assert.equal(result.kind, 'tool_call');

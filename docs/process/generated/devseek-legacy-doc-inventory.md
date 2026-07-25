@@ -8,12 +8,12 @@
 - schema: `devseek.legacy-doc-inventory/v1`
 - scope: `top-agent-convergence`
 - asserts Gate 0 pass: `false`
-- inventory sha256: `91bece15aaa5d623fc7a08c87f9004c45be67c5cd10c196e09ca4d0c08beb339`
+- inventory sha256: `2327cd8aa27ae51114b2d0fd7471134591ff71e1776b807bc271b999f1494fe8`
 - active selector: `docs/process/devseek-active-baseline-selector.json`
 - active selector sha256: `869219726bd2b5e23a4b03ec7d9b6ea58fb02efb4903ca6672de2bbac7cb0332`
-- governed markdown documents: `52`
+- governed markdown documents: `53`
 - active baselines excluded from legacy inventory: `3`
-- inventory entries: `49/49`
+- inventory entries: `50/50`
 - missing coverage: `0`
 - unexpected coverage: `0`
 - unresolved decisions: `0`
@@ -31,7 +31,7 @@
 
 | Decision | Count |
 | --- | ---: |
-| keep | 43 |
+| keep | 44 |
 | revise | 0 |
 | supersede | 2 |
 | archive | 0 |
@@ -89,6 +89,7 @@
 | `docs/top-agent-convergence-audit-20260711/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md` | handoff | keep | handoff-entry | - | Retained as historical integration report; dynamic identity must be recalculated, not inherited. |
 | `docs/top-agent-convergence-audit-20260711/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md` | handoff | keep | supporting-ref | ARCH-01-TOP-AGENT-ARCHITECTURE-BASELINE | G0-01 selector marks this as supporting ARCH-01 no-resurrection routing. |
 | `docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md` | handoff | keep | handoff-entry | - | Retained as derived startup instruction; 15 and 14 keep authority for handoff and task issuance. |
+| `docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md` | handoff | keep | handoff-entry | - | Retained as R3 closure and R4 seed handoff; machine status remains source-bound in docs/process and it does not assert qualification. |
 | `docs/top-agent-convergence-audit-20260711/README.md` | handoff | keep | supporting-ref | REQ-02-TOP-AGENT-REQUIREMENT-BASELINE | G0-01 selector marks this as supporting REQ-02 audit entry and applicability boundary. |
 
 This generated view is informational only. The machine source is `docs/process/devseek-legacy-doc-inventory.json`.

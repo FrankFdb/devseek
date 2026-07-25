@@ -1,0 +1,233 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-r4-scenario-language-replay-corpus-v1.json",
+  "title": "DevSeek R4 Scenario Language Replay Corpus v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "corpus_id",
+    "corpus_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "observation_authority",
+    "source_bindings",
+    "replay_policy",
+    "cases",
+    "counts",
+    "corpus_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.r4-scenario-language-replay-corpus/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "corpus_id": { "const": "R4-SCENARIO-LANGUAGE-REPLAY-CORPUS/v1" },
+    "corpus_version": { "const": 1 },
+    "source_status": { "const": "generated-scenario-language-replay-corpus-only" },
+    "integrity_scope": { "const": "local-r4-scenario-language-replay-corpus" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "observation_authority": { "$ref": "#/$defs/observationAuthority" },
+    "source_bindings": { "$ref": "#/$defs/sourceBindings" },
+    "replay_policy": { "$ref": "#/$defs/replayPolicy" },
+    "cases": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": { "$ref": "#/$defs/replayCase" }
+    },
+    "counts": { "$ref": "#/$defs/counts" },
+    "corpus_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "observationAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantic_authority",
+        "writes_product_state",
+        "provider_actions",
+        "live_holdout_actions",
+        "runtime_process_observation",
+        "install_or_window_actions",
+        "secret_observation"
+      ],
+      "properties": {
+        "semantic_authority": { "const": "R4ScenarioLanguageReplayCorpus" },
+        "writes_product_state": { "const": false },
+        "provider_actions": { "const": "FORBIDDEN" },
+        "live_holdout_actions": { "const": "FORBIDDEN" },
+        "runtime_process_observation": { "const": "FORBIDDEN" },
+        "install_or_window_actions": { "const": "FORBIDDEN" },
+        "secret_observation": { "const": "FORBIDDEN" }
+      }
+    },
+    "sourceBindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "live_user_way_holdout_matrix",
+        "post_r4_nonpermission_iteration_plan",
+        "controlled_scenario_contract_oracle"
+      ],
+      "properties": {
+        "live_user_way_holdout_matrix": { "$ref": "#/$defs/sourceBinding" },
+        "post_r4_nonpermission_iteration_plan": { "$ref": "#/$defs/sourceBinding" },
+        "controlled_scenario_contract_oracle": { "$ref": "#/$defs/sourceBinding" }
+      }
+    },
+    "sourceBinding": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["path", "source_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "replayPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "local_replay_only",
+        "provider_actions_performed",
+        "live_runs_authorized",
+        "scenario_language_source",
+        "product_fixed_language_allowed",
+        "product_fixed_language_default_added",
+        "language_source_priority"
+      ],
+      "properties": {
+        "local_replay_only": { "const": true },
+        "provider_actions_performed": { "const": false },
+        "live_runs_authorized": { "const": 0 },
+        "scenario_language_source": { "const": "scenario-contract" },
+        "product_fixed_language_allowed": { "const": false },
+        "product_fixed_language_default_added": { "const": false },
+        "language_source_priority": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        }
+      }
+    },
+    "replayCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "source_matrix_case_id",
+        "task_family",
+        "locale",
+        "prompt_language",
+        "expected_artifact_language",
+        "scenario_language_source",
+        "product_fixed_language_allowed",
+        "artifact_kind",
+        "deliverable_path",
+        "sample_artifact_text",
+        "required_identifiers",
+        "language_checks",
+        "local_replay_status",
+        "qualification_effect",
+        "claims_permitted",
+        "asserts_gate_pass"
+      ],
+      "properties": {
+        "case_id": { "$ref": "#/$defs/nonEmpty" },
+        "source_matrix_case_id": { "$ref": "#/$defs/nonEmpty" },
+        "task_family": { "$ref": "#/$defs/nonEmpty" },
+        "locale": { "enum": ["zh-CN", "en-US"] },
+        "prompt_language": { "$ref": "#/$defs/nonEmpty" },
+        "expected_artifact_language": { "enum": ["zh-CN", "en-US"] },
+        "scenario_language_source": { "const": "scenario-contract" },
+        "product_fixed_language_allowed": { "const": false },
+        "artifact_kind": {
+          "enum": [
+            "markdown-audit-report",
+            "single-markdown-deliverable",
+            "mixed-path-input-output-contract"
+          ]
+        },
+        "deliverable_path": { "$ref": "#/$defs/nonEmpty" },
+        "sample_artifact_text": { "$ref": "#/$defs/nonEmpty" },
+        "required_identifiers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "language_checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/languageCheck" }
+        },
+        "local_replay_status": { "const": "PASSED" },
+        "qualification_effect": { "const": "NONE" },
+        "claims_permitted": { "const": false },
+        "asserts_gate_pass": { "const": false }
+      }
+    },
+    "languageCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check_id", "ok", "evidence"],
+      "properties": {
+        "check_id": { "$ref": "#/$defs/nonEmpty" },
+        "ok": { "const": true },
+        "evidence": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cases",
+        "zh_cases",
+        "en_cases",
+        "mixed_identifier_cases",
+        "markdown_audit_report_cases",
+        "single_markdown_deliverable_cases",
+        "mixed_path_contract_cases",
+        "product_fixed_language_cases",
+        "language_contract_failures",
+        "live_runs_authorized",
+        "qualification_claims"
+      ],
+      "properties": {
+        "cases": { "const": 5 },
+        "zh_cases": { "const": 3 },
+        "en_cases": { "const": 2 },
+        "mixed_identifier_cases": { "const": 1 },
+        "markdown_audit_report_cases": { "const": 2 },
+        "single_markdown_deliverable_cases": { "const": 2 },
+        "mixed_path_contract_cases": { "const": 1 },
+        "product_fixed_language_cases": { "const": 0 },
+        "language_contract_failures": { "const": 0 },
+        "live_runs_authorized": { "const": 0 },
+        "qualification_claims": { "const": 0 }
+      }
+    }
+  }
+}

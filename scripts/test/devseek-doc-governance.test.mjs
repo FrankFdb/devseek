@@ -19,9 +19,9 @@ const model = loadDocGovernanceModel(repoRoot);
 
 test('document governance model is bound to the active selector and legacy inventory', () => {
   assert.equal(model.ok, true, JSON.stringify(model.errors, null, 2));
-  assert.equal(model.summary.governed_document_count, 52);
+  assert.equal(model.summary.governed_document_count, 53);
   assert.equal(model.summary.active_baseline_count, 3);
-  assert.equal(model.summary.legacy_document_count, 49);
+  assert.equal(model.summary.legacy_document_count, 50);
   assert.equal(model.summary.asserts_gate_pass, false);
 
   for (const record of model.records) {
@@ -40,8 +40,8 @@ test('document governance generated status view is source-bound', () => {
 
   const validation = validateDocGovernance(repoRoot);
   assert.equal(validation.ok, true, JSON.stringify(validation.errors, null, 2));
-  assert.equal(validation.summary.frontmatter_count, 52);
-  assert.equal(validation.summary.legacy_banner_count, 49);
+  assert.equal(validation.summary.frontmatter_count, 53);
+  assert.equal(validation.summary.legacy_banner_count, 50);
   assert.equal(validation.summary.readme_status_count, 1);
 });
 

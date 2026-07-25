@@ -9,11 +9,13 @@ import {
 } from './devseek-capability-ledger.mjs';
 import { renderR4CleanRuntimeLimitedObservationMarkdown } from './devseek-r4-clean-runtime-limited-observation.mjs';
 import { renderR4DocProcessIdentityReconciliationMarkdown } from './devseek-r4-doc-process-identity-reconciliation.mjs';
+import { renderR4ExistingLiveFailureTaxonomyMappingMarkdown } from './devseek-r4-existing-live-failure-taxonomy-mapping.mjs';
 import { renderR4IterationStatusRollupMarkdown } from './devseek-r4-iteration-status-rollup.mjs';
 import { renderR4LiveQualificationRequestPacketMarkdown } from './devseek-r4-live-qualification-request-packet.mjs';
 import { renderR4LiveUserWayHoldoutMatrixMarkdown } from './devseek-r4-live-user-way-holdout-matrix.mjs';
 import { renderR4RealProviderFailureTaxonomyMarkdown } from './devseek-r4-real-provider-failure-taxonomy.mjs';
 import { renderR4ReleaseCandidateManifestMarkdown } from './devseek-r4-release-candidate-manifest.mjs';
+import { renderR4ScenarioLanguageReplayCorpusMarkdown } from './devseek-r4-scenario-language-replay-corpus.mjs';
 
 export const R4_PROCESS_ARTIFACTS_AGGREGATE_SCHEMA_VERSION = 'devseek.r4-process-artifacts-aggregate/v1';
 export const R4_PROCESS_ARTIFACTS_AGGREGATE_ID = 'R4-PROCESS-ARTIFACTS-AGGREGATE/v1';
@@ -59,6 +61,22 @@ const ARTIFACT_SPECS = Object.freeze([
     generated_view_path: 'docs/process/generated/devseek-r4-real-provider-failure-taxonomy.md',
     identity_hash_field: 'taxonomy_sha256',
     renderMarkdown: renderR4RealProviderFailureTaxonomyMarkdown,
+  },
+  {
+    artifact_id: 'R4-EXISTING-LIVE-FAILURE-TAXONOMY-MAPPING',
+    source_kind: 'generated-json',
+    primary_path: 'docs/process/devseek-r4-existing-live-failure-taxonomy-mapping.json',
+    generated_view_path: 'docs/process/generated/devseek-r4-existing-live-failure-taxonomy-mapping.md',
+    identity_hash_field: 'mapping_sha256',
+    renderMarkdown: renderR4ExistingLiveFailureTaxonomyMappingMarkdown,
+  },
+  {
+    artifact_id: 'R4-SCENARIO-LANGUAGE-REPLAY-CORPUS',
+    source_kind: 'generated-json',
+    primary_path: 'docs/process/devseek-r4-scenario-language-replay-corpus.json',
+    generated_view_path: 'docs/process/generated/devseek-r4-scenario-language-replay-corpus.md',
+    identity_hash_field: 'corpus_sha256',
+    renderMarkdown: renderR4ScenarioLanguageReplayCorpusMarkdown,
   },
   {
     artifact_id: 'R4-ITERATION-STATUS-ROLLUP',
