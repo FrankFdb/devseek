@@ -36,6 +36,9 @@ test('R4 iteration status rollup counts six original leaves without adding a new
   });
   assert.equal(actual.r4_scope.local_process_artifacts_complete_except_clean_runtime, true);
   assert.equal(actual.r4_scope.clean_runtime_leaf_terminal_state, 'BLOCKED');
+  assert.equal(actual.r4_scope.clean_runtime_limited_observation_terminal_state, 'BLOCKED');
+  assert.match(actual.r4_scope.clean_runtime_limited_observation_sha256, /^[a-f0-9]{64}$/u);
+  assert.equal(actual.r4_scope.clean_runtime_stable_runtime_count, 0);
   assert.equal(actual.r4_scope.current_candidate_identity_status, 'deferred-unusable-until-clean-runtime');
   assert.equal(actual.r4_scope.gate0_status, 'NOT_PASSED');
   assert.equal(actual.r4_scope.r1_qualification_status, 'NOT_STARTED');
@@ -43,6 +46,20 @@ test('R4 iteration status rollup counts six original leaves without adding a new
   assert.equal(actual.qualification_effect, 'NONE');
   assert.equal(actual.claims_permitted, false);
   assert.equal(actual.asserts_gate_pass, false);
+  assert.equal(actual.source_bindings.authorization_guide.path, 'docs/process/devseek-r4-authorization-and-permission-guide.md');
+  assert.equal(
+    actual.source_bindings.clean_runtime_limited_observation.path,
+    'docs/process/devseek-r4-clean-runtime-limited-observation.json',
+  );
+  assert.equal(actual.source_bindings.clean_runtime_limited_observation.terminal_state, 'BLOCKED');
+  assert.equal(actual.source_bindings.clean_runtime_limited_observation.clean_runtime_identity_established, false);
+  assert.equal(actual.source_bindings.clean_runtime_limited_observation.stable_runtime_count, 0);
+  assert.equal(
+    actual.clean_runtime_boundary.latest_limited_observation_path,
+    'docs/process/devseek-r4-clean-runtime-limited-observation.json',
+  );
+  assert.equal(actual.clean_runtime_boundary.latest_limited_observation_terminal_state, 'BLOCKED');
+  assert.equal(actual.clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established, false);
 
   const cleanRuntime = actual.leaves.find(leaf => leaf.leaf_id === 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME');
   assert.equal(cleanRuntime.terminal_state, 'BLOCKED');
@@ -65,6 +82,7 @@ test('generated R4 iteration status view is source-bound and Chinese-readable', 
   assert.match(actualView, /## R4 叶子状态/u);
   assert.match(actualView, /## Clean Runtime 边界/u);
   assert.match(actualView, /## 资格边界/u);
+  assert.match(actualView, /## 追加来源绑定/u);
 });
 
 test('schema rejects claim promotion, live authorization, and leaf-count drift', () => {
@@ -84,6 +102,13 @@ test('schema rejects claim promotion, live authorization, and leaf-count drift',
   leafCountDrift.counts.r4_total_leaves = 7;
   assert.equal(validate(leafCountDrift), false);
   assert.ok(validate.errors.some(error => error.instancePath === '/counts/r4_total_leaves'));
+
+  const cleanRuntimeEstablished = structuredClone(expected);
+  cleanRuntimeEstablished.clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established = true;
+  assert.equal(validate(cleanRuntimeEstablished), false);
+  assert.ok(validate.errors.some(error => (
+    error.instancePath === '/clean_runtime_boundary/latest_limited_observation_clean_runtime_identity_established'
+  )));
 });
 
 test('runtime validation fails closed on clean-runtime completion, window action expansion, or stale counts', () => {
@@ -107,6 +132,22 @@ test('runtime validation fails closed on clean-runtime completion, window action
   staleCounts.counts.completed_leaves = 6;
   staleCounts.rollup_sha256 = '0'.repeat(64);
   assertHasRollupError(staleCounts, 'counts.completed_leaves:must-be-5');
+
+  const cleanRuntimeObservationCompleted = structuredClone(expected);
+  cleanRuntimeObservationCompleted.r4_scope.clean_runtime_limited_observation_terminal_state = 'COMPLETED';
+  cleanRuntimeObservationCompleted.rollup_sha256 = '0'.repeat(64);
+  assertHasRollupError(
+    cleanRuntimeObservationCompleted,
+    'r4_scope.clean_runtime_limited_observation_terminal_state:must-be-BLOCKED',
+  );
+
+  const cleanRuntimeIdentityEstablished = structuredClone(expected);
+  cleanRuntimeIdentityEstablished.clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established = true;
+  cleanRuntimeIdentityEstablished.rollup_sha256 = '0'.repeat(64);
+  assertHasRollupError(
+    cleanRuntimeIdentityEstablished,
+    'clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established:must-be-false',
+  );
 });
 
 test('checker command validates R4 iteration status rollup and generated view', async () => {
@@ -123,6 +164,9 @@ test('checker command validates R4 iteration status rollup and generated view', 
     completed_leaves: 5,
     blocked_leaves: 1,
     clean_runtime_leaf_terminal_state: 'BLOCKED',
+    clean_runtime_limited_observation_terminal_state: 'BLOCKED',
+    clean_runtime_identity_established: false,
+    clean_runtime_stable_runtime_count: 0,
     live_runs_authorized: 0,
     gate0_status: 'NOT_PASSED',
     r1_qualification_status: 'NOT_STARTED',

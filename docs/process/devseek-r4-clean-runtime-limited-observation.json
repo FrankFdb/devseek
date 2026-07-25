@@ -55,15 +55,17 @@
       "packet_sha256": "2cec877865500676f03f94075f73288aa811a98a8ad18f1297b16d8344860b3c",
       "live_runs_authorized": 0
     },
-    "r4_iteration_status_rollup": {
-      "path": "docs/process/devseek-r4-iteration-status-rollup.json",
-      "source_sha256": "e2957973273c2cd8cda9dfa9c577eca2a3f0ebf9d1d1bc6ab7baf6f2c6e580a2",
-      "rollup_sha256": "c376e9f564547b38495ab688f8eff1805afb22144b3ad1c0edbe9639b5103cd6",
-      "clean_runtime_leaf_terminal_state": "BLOCKED"
-    },
     "current_candidate_identity_checker": {
       "path": "scripts/devseek-current-candidate-identity-check.mjs",
       "source_sha256": "b9f09e1903e1d9993e3f4593f952051e4eeba6f2ec269f39371fcd7d9eff8a32"
+    }
+  },
+  "context_references": {
+    "r4_iteration_status_rollup": {
+      "path": "docs/process/devseek-r4-iteration-status-rollup.json",
+      "binding_mode": "context-reference-not-hash-input",
+      "reason": "avoid-recursive-hash-cycle-because-rollup-binds-this-observation",
+      "expected_clean_runtime_leaf_terminal_state": "BLOCKED"
     }
   },
   "expected_candidate_identity": {
@@ -121,5 +123,5 @@
     "live_runs_authorized": 0,
     "qualification_claims": 0
   },
-  "observation_sha256": "844b123e7f20ec64726cbf330bbc3f9417ac0eb1e143ce1f08b7a402c4bddbf0"
+  "observation_sha256": "350e17fbda700aa09c7f2c284d9fd2e6700b88d1d8e937b494c3d07e3439d546"
 }

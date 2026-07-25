@@ -18,6 +18,8 @@ const DOC_RECONCILIATION = 'docs/process/devseek-r4-doc-process-identity-reconci
 const LIVE_REQUEST_PACKET = 'docs/process/devseek-r4-live-qualification-request-packet.json';
 const HOLDOUT_MATRIX = 'docs/process/devseek-r4-live-user-way-holdout-matrix.json';
 const FAILURE_TAXONOMY = 'docs/process/devseek-r4-real-provider-failure-taxonomy.json';
+const AUTHORIZATION_GUIDE = 'docs/process/devseek-r4-authorization-and-permission-guide.md';
+const CLEAN_RUNTIME_OBSERVATION = 'docs/process/devseek-r4-clean-runtime-limited-observation.json';
 
 const PRODUCT_IMPLEMENTATION_COMMIT = 'a034e5e050c044460fb07705639d9d41e6b193c0';
 const HANDOFF_DOC_COMMIT = '02cb792b4fe86df523c7f88eb106f13394e6f3fd';
@@ -85,6 +87,7 @@ export function buildR4IterationStatusRollup({ repoRoot } = {}) {
   const liveRequestPacket = readJson(path.join(repoRoot, LIVE_REQUEST_PACKET));
   const holdoutMatrix = readJson(path.join(repoRoot, HOLDOUT_MATRIX));
   const failureTaxonomy = readJson(path.join(repoRoot, FAILURE_TAXONOMY));
+  const cleanRuntimeObservation = readJson(path.join(repoRoot, CLEAN_RUNTIME_OBSERVATION));
 
   const leaves = LEAFS.map(leaf => ({
     ...leaf,
@@ -140,6 +143,13 @@ export function buildR4IterationStatusRollup({ repoRoot } = {}) {
         taxonomy_sha256: failureTaxonomy.taxonomy_sha256,
         categories: failureTaxonomy.counts.categories,
       }),
+      authorization_guide: sourceBinding(repoRoot, AUTHORIZATION_GUIDE),
+      clean_runtime_limited_observation: sourceBinding(repoRoot, CLEAN_RUNTIME_OBSERVATION, {
+        observation_sha256: cleanRuntimeObservation.observation_sha256,
+        terminal_state: cleanRuntimeObservation.terminal_state,
+        clean_runtime_identity_established: cleanRuntimeObservation.clean_runtime_identity_established,
+        stable_runtime_count: cleanRuntimeObservation.live_runtime_observation.stable_runtime_count,
+      }),
     },
     r4_scope: {
       product_implementation_commit: PRODUCT_IMPLEMENTATION_COMMIT,
@@ -147,6 +157,9 @@ export function buildR4IterationStatusRollup({ repoRoot } = {}) {
       total_leaf_count: LEAFS.length,
       local_process_artifacts_complete_except_clean_runtime: true,
       clean_runtime_leaf_terminal_state: 'BLOCKED',
+      clean_runtime_limited_observation_terminal_state: cleanRuntimeObservation.terminal_state,
+      clean_runtime_limited_observation_sha256: cleanRuntimeObservation.observation_sha256,
+      clean_runtime_stable_runtime_count: cleanRuntimeObservation.live_runtime_observation.stable_runtime_count,
       current_candidate_identity_status: docReconciliation.conclusions.current_candidate_identity_status,
       gate0_status: liveRequestPacket.qualification_boundary.gate0_status,
       r1_qualification_status: liveRequestPacket.qualification_boundary.r1_qualification_status,
@@ -163,6 +176,9 @@ export function buildR4IterationStatusRollup({ repoRoot } = {}) {
         'explicit-user-clean-runtime-window-action-authorization',
         'external-clean-candidate-identity-receipt',
       ],
+      latest_limited_observation_path: CLEAN_RUNTIME_OBSERVATION,
+      latest_limited_observation_terminal_state: cleanRuntimeObservation.terminal_state,
+      latest_limited_observation_clean_runtime_identity_established: cleanRuntimeObservation.clean_runtime_identity_established,
       blocked_until_authority: true,
     },
     leaves,
@@ -241,6 +257,10 @@ export function renderR4IterationStatusRollupMarkdown(rollup) {
     '',
     `- Current candidate identity: \`${rollup.r4_scope.current_candidate_identity_status}\``,
     `- Clean runtime terminal state: \`${rollup.r4_scope.clean_runtime_leaf_terminal_state}\``,
+    `- Latest limited observation: \`${rollup.clean_runtime_boundary.latest_limited_observation_path}\``,
+    `- Latest limited observation terminal state: \`${rollup.clean_runtime_boundary.latest_limited_observation_terminal_state}\``,
+    `- Clean runtime identity established: \`${rollup.clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established}\``,
+    `- Stable runtime count: \`${rollup.r4_scope.clean_runtime_stable_runtime_count}\``,
     `- May close existing VS Code or DeepSeek pages: \`${rollup.clean_runtime_boundary.may_close_existing_vscode_or_deepseek_pages}\``,
     `- May run live Provider test: \`${rollup.clean_runtime_boundary.may_run_live_provider_test}\``,
     `- Blocked until authority: \`${rollup.clean_runtime_boundary.blocked_until_authority}\``,
@@ -252,6 +272,12 @@ export function renderR4IterationStatusRollupMarkdown(rollup) {
     `- Live runs authorized: \`${rollup.counts.live_runs_authorized}\``,
     `- Qualification claims: \`${rollup.counts.qualification_claims}\``,
     `- Scenario language source: \`${rollup.r4_scope.scenario_language_source}\``,
+    '',
+    '## 追加来源绑定',
+    '',
+    `- Authorization guide: \`${rollup.source_bindings.authorization_guide.path}\``,
+    `- Clean runtime limited observation: \`${rollup.source_bindings.clean_runtime_limited_observation.path}\``,
+    `- Clean runtime observation SHA-256: \`${rollup.r4_scope.clean_runtime_limited_observation_sha256}\``,
     '',
     '## Rollup Identity',
     '',
@@ -268,6 +294,9 @@ export function summarizeR4IterationStatusRollup(rollup) {
     completed_leaves: rollup.counts.completed_leaves,
     blocked_leaves: rollup.counts.blocked_leaves,
     clean_runtime_leaf_terminal_state: rollup.r4_scope.clean_runtime_leaf_terminal_state,
+    clean_runtime_limited_observation_terminal_state: rollup.r4_scope.clean_runtime_limited_observation_terminal_state,
+    clean_runtime_identity_established: rollup.clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established,
+    clean_runtime_stable_runtime_count: rollup.r4_scope.clean_runtime_stable_runtime_count,
     live_runs_authorized: rollup.counts.live_runs_authorized,
     gate0_status: rollup.r4_scope.gate0_status,
     r1_qualification_status: rollup.r4_scope.r1_qualification_status,
@@ -305,6 +334,15 @@ function semanticValidate(rollup, errors) {
   }
   if (rollup.r4_scope?.clean_runtime_leaf_terminal_state !== 'BLOCKED') {
     errors.push('r4_scope.clean_runtime_leaf_terminal_state:must-be-BLOCKED');
+  }
+  if (rollup.r4_scope?.clean_runtime_limited_observation_terminal_state !== 'BLOCKED') {
+    errors.push('r4_scope.clean_runtime_limited_observation_terminal_state:must-be-BLOCKED');
+  }
+  if (!/^[a-f0-9]{64}$/u.test(rollup.r4_scope?.clean_runtime_limited_observation_sha256 ?? '')) {
+    errors.push('r4_scope.clean_runtime_limited_observation_sha256:invalid');
+  }
+  if (rollup.r4_scope?.clean_runtime_stable_runtime_count !== 0) {
+    errors.push('r4_scope.clean_runtime_stable_runtime_count:must-be-0');
   }
   if (rollup.r4_scope?.current_candidate_identity_status !== 'deferred-unusable-until-clean-runtime') {
     errors.push('r4_scope.current_candidate_identity_status:invalid');
@@ -346,6 +384,15 @@ function validateCleanRuntimeBoundary(boundary, errors) {
   }
   if (boundary?.blocked_until_authority !== true) {
     errors.push('clean_runtime_boundary.blocked_until_authority:must-be-true');
+  }
+  if (boundary?.latest_limited_observation_path !== CLEAN_RUNTIME_OBSERVATION) {
+    errors.push('clean_runtime_boundary.latest_limited_observation_path:invalid');
+  }
+  if (boundary?.latest_limited_observation_terminal_state !== 'BLOCKED') {
+    errors.push('clean_runtime_boundary.latest_limited_observation_terminal_state:must-be-BLOCKED');
+  }
+  if (boundary?.latest_limited_observation_clean_runtime_identity_established !== false) {
+    errors.push('clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established:must-be-false');
   }
   for (const authority of [
     'explicit-user-clean-runtime-window-action-authorization',

@@ -39,6 +39,13 @@ test('R4 clean runtime limited observation records a fresh blocked identity boun
   assert.equal(actual.qualification_effect, 'NONE');
   assert.equal(actual.claims_permitted, false);
   assert.equal(actual.asserts_gate_pass, false);
+  assert.equal(actual.source_bindings.r4_iteration_status_rollup, undefined);
+  assert.deepEqual(actual.context_references.r4_iteration_status_rollup, {
+    path: 'docs/process/devseek-r4-iteration-status-rollup.json',
+    binding_mode: 'context-reference-not-hash-input',
+    reason: 'avoid-recursive-hash-cycle-because-rollup-binds-this-observation',
+    expected_clean_runtime_leaf_terminal_state: 'BLOCKED',
+  });
 
   const validation = validateR4CleanRuntimeLimitedObservation(actual, { repoRoot });
   assert.equal(validation.ok, true, JSON.stringify(validation.errors, null, 2));
@@ -54,6 +61,7 @@ test('generated R4 clean runtime observation view is source-bound and Chinese-re
   assert.equal(actualView, renderR4CleanRuntimeLimitedObservationMarkdown(actualRegistry));
   assert.match(actualView, /## 摘要/u);
   assert.match(actualView, /## 授权边界/u);
+  assert.match(actualView, /## 上下文引用/u);
   assert.match(actualView, /## Runtime 观察/u);
   assert.match(actualView, /## 下一授权/u);
 });
@@ -75,6 +83,14 @@ test('schema rejects claim promotion, window authority expansion, and live run a
   liveAuthorized.counts.live_runs_authorized = 1;
   assert.equal(validate(liveAuthorized), false);
   assert.ok(validate.errors.some(error => error.instancePath === '/counts/live_runs_authorized'));
+
+  const hashCycle = structuredClone(expected);
+  hashCycle.source_bindings.r4_iteration_status_rollup = {
+    path: 'docs/process/devseek-r4-iteration-status-rollup.json',
+    source_sha256: '0'.repeat(64),
+  };
+  assert.equal(validate(hashCycle), false);
+  assert.ok(validate.errors.some(error => error.instancePath === '/source_bindings'));
 });
 
 test('runtime validation fails closed on false completion, secret capture, or stale counts', () => {
@@ -92,6 +108,14 @@ test('runtime validation fails closed on false completion, secret capture, or st
   staleCounts.counts.blockers += 1;
   staleCounts.observation_sha256 = '0'.repeat(64);
   assertHasObservationError(staleCounts, 'counts.blockers:invalid');
+
+  const contextPromoted = structuredClone(expected);
+  contextPromoted.context_references.r4_iteration_status_rollup.expected_clean_runtime_leaf_terminal_state = 'COMPLETED';
+  contextPromoted.observation_sha256 = '0'.repeat(64);
+  assertHasObservationError(
+    contextPromoted,
+    'context_references.r4_iteration_status_rollup.expected_clean_runtime_leaf_terminal_state:must-be-BLOCKED',
+  );
 });
 
 test('checker command validates R4 clean runtime limited observation and generated view', async () => {

@@ -102,7 +102,9 @@
         "doc_process_identity_reconciliation",
         "live_qualification_request_packet",
         "live_user_way_holdout_matrix",
-        "real_provider_failure_taxonomy"
+        "real_provider_failure_taxonomy",
+        "authorization_guide",
+        "clean_runtime_limited_observation"
       ],
       "properties": {
         "r3_handoff_next_phase": { "$ref": "#/$defs/sourceBinding" },
@@ -110,7 +112,9 @@
         "doc_process_identity_reconciliation": { "$ref": "#/$defs/sourceBinding" },
         "live_qualification_request_packet": { "$ref": "#/$defs/sourceBinding" },
         "live_user_way_holdout_matrix": { "$ref": "#/$defs/sourceBinding" },
-        "real_provider_failure_taxonomy": { "$ref": "#/$defs/sourceBinding" }
+        "real_provider_failure_taxonomy": { "$ref": "#/$defs/sourceBinding" },
+        "authorization_guide": { "$ref": "#/$defs/sourceBinding" },
+        "clean_runtime_limited_observation": { "$ref": "#/$defs/sourceBinding" }
       }
     },
     "sourceBinding": {
@@ -131,6 +135,9 @@
         "total_leaf_count",
         "local_process_artifacts_complete_except_clean_runtime",
         "clean_runtime_leaf_terminal_state",
+        "clean_runtime_limited_observation_terminal_state",
+        "clean_runtime_limited_observation_sha256",
+        "clean_runtime_stable_runtime_count",
         "current_candidate_identity_status",
         "gate0_status",
         "r1_qualification_status",
@@ -143,6 +150,9 @@
         "total_leaf_count": { "const": 6 },
         "local_process_artifacts_complete_except_clean_runtime": { "const": true },
         "clean_runtime_leaf_terminal_state": { "const": "BLOCKED" },
+        "clean_runtime_limited_observation_terminal_state": { "const": "BLOCKED" },
+        "clean_runtime_limited_observation_sha256": { "$ref": "#/$defs/sha256" },
+        "clean_runtime_stable_runtime_count": { "const": 0 },
         "current_candidate_identity_status": { "const": "deferred-unusable-until-clean-runtime" },
         "gate0_status": { "const": "NOT_PASSED" },
         "r1_qualification_status": { "const": "NOT_STARTED" },
@@ -160,6 +170,9 @@
         "may_install_or_replace_extension",
         "may_refresh_current_candidate_identity_without_authorization",
         "acceptable_next_authority",
+        "latest_limited_observation_path",
+        "latest_limited_observation_terminal_state",
+        "latest_limited_observation_clean_runtime_identity_established",
         "blocked_until_authority"
       ],
       "properties": {
@@ -173,6 +186,9 @@
           "minItems": 2,
           "items": { "$ref": "#/$defs/nonEmpty" }
         },
+        "latest_limited_observation_path": { "const": "docs/process/devseek-r4-clean-runtime-limited-observation.json" },
+        "latest_limited_observation_terminal_state": { "const": "BLOCKED" },
+        "latest_limited_observation_clean_runtime_identity_established": { "const": false },
         "blocked_until_authority": { "const": true }
       }
     },

@@ -37,7 +37,6 @@ export function buildR4CleanRuntimeLimitedObservation({ repoRoot, homeDir } = {}
   const releaseManifest = readJson(path.join(repoRoot, RELEASE_MANIFEST));
   const docReconciliation = readJson(path.join(repoRoot, DOC_RECONCILIATION));
   const liveRequestPacket = readJson(path.join(repoRoot, LIVE_REQUEST_PACKET));
-  const r4Rollup = readJson(path.join(repoRoot, R4_ROLLUP));
   const expectedIdentity = buildCurrentCandidateIdentity({ repoRoot, homeDir });
   const liveRuntimeResult = validateLiveRuntimeProcesses(expectedIdentity, observeBridgeRuntimeProcesses());
   const trackedIdentityMatchesExpected = canonicalJson(trackedIdentity) === canonicalJson(expectedIdentity);
@@ -96,11 +95,15 @@ export function buildR4CleanRuntimeLimitedObservation({ repoRoot, homeDir } = {}
         packet_sha256: liveRequestPacket.packet_sha256,
         live_runs_authorized: liveRequestPacket.counts.live_runs_authorized,
       }),
-      r4_iteration_status_rollup: sourceBinding(repoRoot, R4_ROLLUP, {
-        rollup_sha256: r4Rollup.rollup_sha256,
-        clean_runtime_leaf_terminal_state: r4Rollup.r4_scope.clean_runtime_leaf_terminal_state,
-      }),
       current_candidate_identity_checker: sourceBinding(repoRoot, CURRENT_IDENTITY_SCRIPT),
+    },
+    context_references: {
+      r4_iteration_status_rollup: {
+        path: R4_ROLLUP,
+        binding_mode: 'context-reference-not-hash-input',
+        reason: 'avoid-recursive-hash-cycle-because-rollup-binds-this-observation',
+        expected_clean_runtime_leaf_terminal_state: 'BLOCKED',
+      },
     },
     expected_candidate_identity: {
       identity_probe_sha256: currentCandidateIdentityHash(expectedIdentity),
@@ -212,6 +215,11 @@ export function renderR4CleanRuntimeLimitedObservationMarkdown(report) {
     `- Install/window actions: \`${report.observation_authority.install_or_window_actions}\``,
     `- Secret observation: \`${report.observation_authority.secret_observation}\``,
     '',
+    '## 上下文引用',
+    '',
+    `- R4 rollup: \`${report.context_references.r4_iteration_status_rollup.path}\``,
+    `- Binding mode: \`${report.context_references.r4_iteration_status_rollup.binding_mode}\``,
+    '',
     '## 候选身份',
     '',
     `- Expected candidate source commit: \`${report.expected_candidate_identity.candidate_source_commit}\``,
@@ -310,6 +318,15 @@ function semanticValidate(report, errors) {
     if (report.observation_authority?.[field] !== 'FORBIDDEN') {
       errors.push(`observation_authority.${field}:must-be-FORBIDDEN`);
     }
+  }
+  if (report.context_references?.r4_iteration_status_rollup?.path !== R4_ROLLUP) {
+    errors.push('context_references.r4_iteration_status_rollup.path:invalid');
+  }
+  if (report.context_references?.r4_iteration_status_rollup?.binding_mode !== 'context-reference-not-hash-input') {
+    errors.push('context_references.r4_iteration_status_rollup.binding_mode:invalid');
+  }
+  if (report.context_references?.r4_iteration_status_rollup?.expected_clean_runtime_leaf_terminal_state !== 'BLOCKED') {
+    errors.push('context_references.r4_iteration_status_rollup.expected_clean_runtime_leaf_terminal_state:must-be-BLOCKED');
   }
   if (report.clean_runtime_identity_established === true && report.terminal_state !== 'COMPLETED') {
     errors.push('terminal_state:must-be-COMPLETED-when-clean-runtime-established');

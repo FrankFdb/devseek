@@ -57,6 +57,18 @@
       "source_sha256": "8a8f761acfb83d2e89643c4f7cdfc7103fc1f39f7bc32d48a233e7b3c272ee89",
       "taxonomy_sha256": "9db65a53f787a39b5b27cf7c927f263eca2cb495e077a83f8bbb8244d8fed216",
       "categories": 10
+    },
+    "authorization_guide": {
+      "path": "docs/process/devseek-r4-authorization-and-permission-guide.md",
+      "source_sha256": "44b38edcb2a1587ab487e823e849d868f3a8a5ecd8670132566ffc750ccb24de"
+    },
+    "clean_runtime_limited_observation": {
+      "path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
+      "source_sha256": "408e05a0b9c64bc45f8cfb1f9eb7e4974ce7383a5e29b680e06ff815123393c2",
+      "observation_sha256": "350e17fbda700aa09c7f2c284d9fd2e6700b88d1d8e937b494c3d07e3439d546",
+      "terminal_state": "BLOCKED",
+      "clean_runtime_identity_established": false,
+      "stable_runtime_count": 0
     }
   },
   "r4_scope": {
@@ -65,6 +77,9 @@
     "total_leaf_count": 6,
     "local_process_artifacts_complete_except_clean_runtime": true,
     "clean_runtime_leaf_terminal_state": "BLOCKED",
+    "clean_runtime_limited_observation_terminal_state": "BLOCKED",
+    "clean_runtime_limited_observation_sha256": "350e17fbda700aa09c7f2c284d9fd2e6700b88d1d8e937b494c3d07e3439d546",
+    "clean_runtime_stable_runtime_count": 0,
     "current_candidate_identity_status": "deferred-unusable-until-clean-runtime",
     "gate0_status": "NOT_PASSED",
     "r1_qualification_status": "NOT_STARTED",
@@ -81,6 +96,9 @@
       "explicit-user-clean-runtime-window-action-authorization",
       "external-clean-candidate-identity-receipt"
     ],
+    "latest_limited_observation_path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
+    "latest_limited_observation_terminal_state": "BLOCKED",
+    "latest_limited_observation_clean_runtime_identity_established": false,
     "blocked_until_authority": true
   },
   "leaves": [
@@ -159,5 +177,5 @@
     "live_runs_authorized": 0,
     "qualification_claims": 0
   },
-  "rollup_sha256": "c376e9f564547b38495ab688f8eff1805afb22144b3ad1c0edbe9639b5103cd6"
+  "rollup_sha256": "bf40ed43477c9ea020cd91f13930f0783f2978ac49d099274f8967117e66e302"
 }

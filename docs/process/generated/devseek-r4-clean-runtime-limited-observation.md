@@ -18,6 +18,11 @@
 - Install/window actions: `FORBIDDEN`
 - Secret observation: `FORBIDDEN`
 
+## 上下文引用
+
+- R4 rollup: `docs/process/devseek-r4-iteration-status-rollup.json`
+- Binding mode: `context-reference-not-hash-input`
+
 ## 候选身份
 
 - Expected candidate source commit: `a034e5e050c044460fb07705639d9d41e6b193c0`
@@ -53,4 +58,4 @@
 
 ## Observation Identity
 
-- Observation SHA-256: `844b123e7f20ec64726cbf330bbc3f9417ac0eb1e143ce1f08b7a402c4bddbf0`
+- Observation SHA-256: `350e17fbda700aa09c7f2c284d9fd2e6700b88d1d8e937b494c3d07e3439d546`

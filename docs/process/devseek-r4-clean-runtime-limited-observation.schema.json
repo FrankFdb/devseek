@@ -20,6 +20,7 @@
     "asserts_gate_pass",
     "observation_authority",
     "source_bindings",
+    "context_references",
     "expected_candidate_identity",
     "tracked_registry_comparison",
     "live_runtime_observation",
@@ -44,6 +45,7 @@
     "asserts_gate_pass": { "const": false },
     "observation_authority": { "$ref": "#/$defs/observationAuthority" },
     "source_bindings": { "$ref": "#/$defs/sourceBindings" },
+    "context_references": { "$ref": "#/$defs/contextReferences" },
     "expected_candidate_identity": { "$ref": "#/$defs/expectedCandidateIdentity" },
     "tracked_registry_comparison": { "$ref": "#/$defs/trackedRegistryComparison" },
     "live_runtime_observation": { "$ref": "#/$defs/liveRuntimeObservation" },
@@ -112,7 +114,6 @@
         "release_candidate_manifest",
         "doc_process_identity_reconciliation",
         "live_qualification_request_packet",
-        "r4_iteration_status_rollup",
         "current_candidate_identity_checker"
       ],
       "properties": {
@@ -121,8 +122,30 @@
         "release_candidate_manifest": { "$ref": "#/$defs/sourceBinding" },
         "doc_process_identity_reconciliation": { "$ref": "#/$defs/sourceBinding" },
         "live_qualification_request_packet": { "$ref": "#/$defs/sourceBinding" },
-        "r4_iteration_status_rollup": { "$ref": "#/$defs/sourceBinding" },
         "current_candidate_identity_checker": { "$ref": "#/$defs/sourceBinding" }
+      }
+    },
+    "contextReferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["r4_iteration_status_rollup"],
+      "properties": {
+        "r4_iteration_status_rollup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "binding_mode",
+            "reason",
+            "expected_clean_runtime_leaf_terminal_state"
+          ],
+          "properties": {
+            "path": { "const": "docs/process/devseek-r4-iteration-status-rollup.json" },
+            "binding_mode": { "const": "context-reference-not-hash-input" },
+            "reason": { "const": "avoid-recursive-hash-cycle-because-rollup-binds-this-observation" },
+            "expected_clean_runtime_leaf_terminal_state": { "const": "BLOCKED" }
+          }
+        }
       }
     },
     "sourceBinding": {
