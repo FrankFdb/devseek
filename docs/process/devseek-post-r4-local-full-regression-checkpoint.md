@@ -76,3 +76,41 @@ claims_permitted=false
 live_provider_qualification=NOT_RUN
 ```
 
+## 6. Architecture drift blocker closure receipt
+
+本节为 2026-07-25 后续修复回执，不改写第 3～5 节在 `10b023205205468f3344111e10cfc49a3001edfb` 上记录的原始失败事实。
+
+| 字段 | 值 |
+| --- | --- |
+| Closure time | `2026-07-25T15:43:31+08:00` |
+| Closure HEAD | `751ef64f257894331529a394aab826c594f0f729` |
+| Closure commit | `751ef64 Fix architecture drift budgets` |
+| Qualification effect | `NONE` |
+| Claims permitted | `false` |
+| Live Provider | `NOT_RUN` |
+
+本轮修复将 architecture drift 的职责抽取到独立边界，并下移 frozen ceiling：
+
+- `packages/vscode-extension/src/agent/agent-loop-written-files.ts` 接管 Agent Loop written-file evidence 与 `changedPaths` 聚合。
+- `packages/vscode-extension/src/agent/fake-tool-json-utils.ts` 接管 DeepSeek Web loose JSON tool recovery helper。
+- `packages/vscode-extension/media/webview-generated-content.js` 接管 WebView generated artifact body rendering。
+- `docs/process/devseek-architecture-budgets.json` 记录新的 frozen ceiling 与新增边界。
+
+Closure 验证：
+
+| 命令 | 结果 | 关键证据 |
+| --- | --- | --- |
+| `npm run compile --workspace=packages/vscode-extension` | `PASS` | `dist/extension.js` bundle 成功生成 |
+| `node packages/vscode-extension/test/unit/agent-loop-task-state.test.mjs` | `PASS` | `39/39` |
+| `npm run verify:architecture-drift` | `PASS` | `ok=true`、`violations=[]` |
+| `npm test --workspace=packages/vscode-extension` | `PASS` | `Suites: 151 ✔ 151 passed ✖ 0 failed` |
+| `git diff --check` | `PASS` | 无 whitespace error |
+
+当前 NP-09 architecture blocker closure 状态：
+
+```text
+terminal_state=ARCHITECTURE_DRIFT_BLOCKER_CLOSED_LOCALLY
+qualification_effect=NONE
+claims_permitted=false
+live_provider_qualification=NOT_RUN
+```

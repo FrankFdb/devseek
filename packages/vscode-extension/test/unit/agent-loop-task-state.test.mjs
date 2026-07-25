@@ -28,6 +28,7 @@ const replayDiagnostics = readFileSync(path.join(rootDir, 'src/diagnostics/run-l
 const taskTodoLedger = readFileSync(path.join(rootDir, 'src/agent/task-todo-ledger.ts'), 'utf8');
 const taskWriteEvidenceSource = readFileSync(path.join(rootDir, 'src/agent/task-write-evidence.ts'), 'utf8');
 const analyzeToolWriteSettlementSource = readFileSync(path.join(rootDir, 'src/agent/analyze-tool-write-settlement.ts'), 'utf8');
+const agentLoopWrittenFilesSource = readFileSync(path.join(rootDir, 'src/agent/agent-loop-written-files.ts'), 'utf8');
 const bundlePath = path.join(rootDir, 'test/unit/task-state-machine.bundle.cjs');
 const groundingBundlePath = path.join(rootDir, 'test/unit/task-state-grounding.bundle.cjs');
 const writeAuthorityBundlePath = path.join(rootDir, 'test/unit/write-authority.bundle.cjs');
@@ -204,7 +205,8 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
   assert.match(agentLoop, /runAgentAutoValidationForWrites/, 'legacy agent loop must run shared auto-validation for non-legacy write evidence');
   assert.match(agentLoop, /const autoValidationWrittenFiles = editedFileRecords\.filter\(shouldRunGeneralAutoValidationForFile\)/, 'legacy agent loop must validate Markdown and other non-legacy writes from written-file evidence');
   assert.match(agentLoop, /emitLegacyValidationQualityGateStatus/, 'legacy compile\/run validation must publish QualityGate evidence before settlement');
-  assert.match(agentLoop, /changedPaths\.push\(toWorkspaceRelativeChangedPath\(file\.path,\s*workspaceRoot\)\)/, 'agent-run changedPaths must be workspace-relative settlement evidence');
+  assert.match(agentLoop, /appendAgentLoopWrittenFiles\(changedPaths,\s*editedFileRecords,\s*resultWrittenFiles,\s*workspaceRoot\.fsPath\)/, 'agent loop must settle changedPaths through the shared written-file boundary');
+  assert.match(agentLoopWrittenFilesSource, /changedPaths\.push\(toWorkspaceRelativeChangedPath\(file\.path,\s*workspaceRoot\)\)/, 'agent-run changedPaths must be workspace-relative settlement evidence');
   assert.doesNotMatch(
     agentLoop,
     /return\s*\{\s*tasksTotal:\s*tasks\.length,\s*tasksApplied,\s*tasksFailed:\s*tasksFailed\s*\+\s*1,\s*changedPaths\s*\}/,

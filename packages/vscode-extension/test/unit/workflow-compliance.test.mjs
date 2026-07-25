@@ -2058,9 +2058,11 @@ test('Agent loop: file tools and validation use ground-truth outcomes', () => {
 
 test('Agent parser: malformed file tool JSON is recovered for code payloads', () => {
   const parser = src('src/agent/fake-tool-parser.ts');
-  assertContains(parser, 'parseLooseFileWriteToolInput', 'file-write parser must recover tool JSON with unescaped source-code quotes');
-  assertContains(parser, 'LOOSE_FILE_WRITE_TOOL_NAMES', 'loose parsing must stay scoped to file-write tools');
-  assertContains(parser, 'fileContent', 'loose file-write parsing must accept DeepSeek/Copilot content aliases');
+  const jsonUtils = src('src/agent/fake-tool-json-utils.ts');
+  assertContains(parser, 'createFakeToolJsonUtils', 'parser must delegate loose JSON recovery through its JSON utility boundary');
+  assertContains(jsonUtils, 'parseLooseFileWriteToolInput', 'file-write parser must recover tool JSON with unescaped source-code quotes');
+  assertContains(jsonUtils, 'LOOSE_FILE_WRITE_TOOL_NAMES', 'loose parsing must stay scoped to file-write tools');
+  assertContains(jsonUtils, 'fileContent', 'loose file-write parsing must accept DeepSeek/Copilot content aliases');
 });
 
 test('Local execution failures escalate into Agent repair instead of browser upload repair', () => {
@@ -2275,6 +2277,7 @@ test('Architecture: webview runtime manifest owns script loading order', () => {
       'webview-working-copy.js',
       'webview-agent-activity.js',
       'webview-generated-rules.js',
+      'webview-generated-content.js',
       'webview-input-suggestions.js',
       'webview-stream-status.js',
       'webview-sessions.js',

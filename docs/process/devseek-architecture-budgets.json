@@ -8,9 +8,14 @@
       "boundary": "VS Code composition root and Surface Adapter"
     },
     "packages/vscode-extension/src/agent-loop.ts": {
-      "maxLines": 2548,
+      "maxLines": 2471,
       "targetLines": 1024,
       "boundary": "legacy two-stage Agent compatibility adapter"
+    },
+    "packages/vscode-extension/src/agent/agent-loop-written-files.ts": {
+      "maxLines": 119,
+      "targetLines": 512,
+      "boundary": "Agent Loop written file evidence and changed-path aggregation"
     },
     "packages/vscode-extension/src/agent/agentic-loop.ts": {
       "maxLines": 1416,
@@ -23,9 +28,14 @@
       "boundary": "normalized ToolCall execution"
     },
     "packages/vscode-extension/src/agent/fake-tool-parser.ts": {
-      "maxLines": 2107,
+      "maxLines": 1835,
       "targetLines": 1024,
       "boundary": "DeepSeek Web text-tool compatibility adapter"
+    },
+    "packages/vscode-extension/src/agent/fake-tool-json-utils.ts": {
+      "maxLines": 455,
+      "targetLines": 512,
+      "boundary": "DeepSeek Web loose JSON tool recovery helpers"
     },
     "packages/bridge/src/deepseek-agent.ts": {
       "maxLines": 1725,
@@ -33,9 +43,14 @@
       "boundary": "DeepSeek browser driver orchestration"
     },
     "packages/vscode-extension/media/webview.js": {
-      "maxLines": 5531,
+      "maxLines": 5375,
       "targetLines": 2048,
       "boundary": "VS Code WebView Surface rendering"
+    },
+    "packages/vscode-extension/media/webview-generated-content.js": {
+      "maxLines": 228,
+      "targetLines": 512,
+      "boundary": "VS Code WebView generated artifact body rendering"
     }
   }
 }
