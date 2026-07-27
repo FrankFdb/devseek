@@ -163,7 +163,7 @@
       "properties": {
         "r4_original_leaf_count": { "const": 6 },
         "process_artifacts_complete_except_clean_runtime": { "const": true },
-        "clean_runtime_terminal_state": { "const": "BLOCKED" },
+        "clean_runtime_terminal_state": { "enum": ["COMPLETED", "BLOCKED"] },
         "qualification_effect": { "const": "NONE" },
         "claims_permitted": { "const": false },
         "asserts_gate_pass": { "const": false },

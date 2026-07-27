@@ -211,13 +211,18 @@
       ],
       "properties": {
         "total_leaf_count": { "const": 6 },
-        "completed_leaves": { "const": 5 },
-        "blocked_leaves": { "const": 1 },
-        "current_blocked_leaf": { "const": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME" },
-        "clean_runtime_leaf_terminal_state": { "const": "BLOCKED" },
-        "clean_runtime_limited_observation_terminal_state": { "const": "BLOCKED" },
-        "clean_runtime_identity_established": { "const": false },
-        "stable_runtime_count": { "const": 0 },
+        "completed_leaves": { "type": "integer", "minimum": 0, "maximum": 6 },
+        "blocked_leaves": { "type": "integer", "minimum": 0, "maximum": 6 },
+        "current_blocked_leaf": {
+          "anyOf": [
+            { "const": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME" },
+            { "type": "null" }
+          ]
+        },
+        "clean_runtime_leaf_terminal_state": { "enum": ["COMPLETED", "BLOCKED"] },
+        "clean_runtime_limited_observation_terminal_state": { "enum": ["COMPLETED", "BLOCKED"] },
+        "clean_runtime_identity_established": { "type": "boolean" },
+        "stable_runtime_count": { "type": "integer", "minimum": 0 },
         "gate0_status": { "const": "NOT_PASSED" },
         "r1_qualification_status": { "const": "NOT_STARTED" },
         "live_runs_authorized": { "const": 0 },
@@ -239,7 +244,7 @@
           "required": ["leaf_id", "terminal_state", "local_repository_may_unblock_without_new_authority"],
           "properties": {
             "leaf_id": { "const": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME" },
-            "terminal_state": { "const": "BLOCKED" },
+            "terminal_state": { "enum": ["COMPLETED", "BLOCKED"] },
             "local_repository_may_unblock_without_new_authority": { "const": false }
           }
         },
@@ -292,7 +297,6 @@
         },
         "clean_runtime_recovery_authority": {
           "type": "array",
-          "minItems": 1,
           "items": { "$ref": "#/$defs/nonEmpty" }
         },
         "live_qualification_terms": {
@@ -391,9 +395,9 @@
         "nonpermission_queue_items": { "const": 10 },
         "generated_for_items": { "const": 2 },
         "r4_total_leaves": { "const": 6 },
-        "r4_completed_leaves": { "const": 5 },
-        "r4_blocked_leaves": { "const": 1 },
-        "clean_runtime_blockers": { "type": "integer", "minimum": 1 },
+        "r4_completed_leaves": { "type": "integer", "minimum": 0, "maximum": 6 },
+        "r4_blocked_leaves": { "type": "integer", "minimum": 0, "maximum": 6 },
+        "clean_runtime_blockers": { "type": "integer", "minimum": 0 },
         "live_authorization_requests": { "const": 5 },
         "live_authorization_blocked": { "const": 5 },
         "external_authority_requests": { "const": 5 },

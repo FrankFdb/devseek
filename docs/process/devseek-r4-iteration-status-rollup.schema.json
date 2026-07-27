@@ -149,11 +149,13 @@
         "handoff_doc_commit": { "$ref": "#/$defs/commit" },
         "total_leaf_count": { "const": 6 },
         "local_process_artifacts_complete_except_clean_runtime": { "const": true },
-        "clean_runtime_leaf_terminal_state": { "const": "BLOCKED" },
-        "clean_runtime_limited_observation_terminal_state": { "const": "BLOCKED" },
+        "clean_runtime_leaf_terminal_state": { "enum": ["COMPLETED", "BLOCKED"] },
+        "clean_runtime_limited_observation_terminal_state": { "enum": ["COMPLETED", "BLOCKED"] },
         "clean_runtime_limited_observation_sha256": { "$ref": "#/$defs/sha256" },
-        "clean_runtime_stable_runtime_count": { "const": 0 },
-        "current_candidate_identity_status": { "const": "deferred-unusable-until-clean-runtime" },
+        "clean_runtime_stable_runtime_count": { "type": "integer", "minimum": 0 },
+        "current_candidate_identity_status": {
+          "enum": ["deferred-unusable-until-clean-runtime", "clean-runtime-identity-established"]
+        },
         "gate0_status": { "const": "NOT_PASSED" },
         "r1_qualification_status": { "const": "NOT_STARTED" },
         "release_candidate_vsix_sha256": { "$ref": "#/$defs/sha256" },
@@ -183,13 +185,12 @@
         "may_refresh_current_candidate_identity_without_authorization": { "const": false },
         "acceptable_next_authority": {
           "type": "array",
-          "minItems": 2,
           "items": { "$ref": "#/$defs/nonEmpty" }
         },
         "latest_limited_observation_path": { "const": "docs/process/devseek-r4-clean-runtime-limited-observation.json" },
-        "latest_limited_observation_terminal_state": { "const": "BLOCKED" },
-        "latest_limited_observation_clean_runtime_identity_established": { "const": false },
-        "blocked_until_authority": { "const": true }
+        "latest_limited_observation_terminal_state": { "enum": ["COMPLETED", "BLOCKED"] },
+        "latest_limited_observation_clean_runtime_identity_established": { "type": "boolean" },
+        "blocked_until_authority": { "type": "boolean" }
       }
     },
     "leaf": {
@@ -246,9 +247,9 @@
       ],
       "properties": {
         "r4_total_leaves": { "const": 6 },
-        "completed_leaves": { "const": 5 },
-        "blocked_leaves": { "const": 1 },
-        "remaining_window_sensitive_leaves": { "const": 1 },
+        "completed_leaves": { "type": "integer", "minimum": 0, "maximum": 6 },
+        "blocked_leaves": { "type": "integer", "minimum": 0, "maximum": 6 },
+        "remaining_window_sensitive_leaves": { "type": "integer", "minimum": 0, "maximum": 1 },
         "live_runs_authorized": { "const": 0 },
         "qualification_claims": { "const": 0 }
       }

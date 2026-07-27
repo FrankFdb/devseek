@@ -131,7 +131,7 @@
         "tracked_current_candidate_identity": { "$ref": "#/$defs/identityArtifact" },
         "archived_failed_observe_identity": { "$ref": "#/$defs/identityArtifact" },
         "release_candidate_identity": { "$ref": "#/$defs/releaseCandidateIdentity" },
-        "tracked_current_matches_release_candidate": { "const": false },
+        "tracked_current_matches_release_candidate": { "type": "boolean" },
         "archived_failed_matches_release_candidate": { "const": false }
       }
     },
@@ -158,7 +158,7 @@
         "path": { "$ref": "#/$defs/nonEmpty" },
         "generated_view_path": { "$ref": "#/$defs/nonEmpty" },
         "status": {
-          "enum": ["tracked-stale-deferred", "archived-failed-observe"]
+          "enum": ["tracked-stale-deferred", "tracked-current-clean-runtime", "archived-failed-observe"]
         },
         "archive_status": {
           "enum": ["not-archived", "archived"]
@@ -250,10 +250,17 @@
         "r1_qualification_status"
       ],
       "properties": {
-        "current_candidate_identity_status": { "const": "deferred-unusable-until-clean-runtime" },
+        "current_candidate_identity_status": {
+          "enum": ["deferred-unusable-until-clean-runtime", "clean-runtime-identity-established"]
+        },
         "failed_identity_snapshot_status": { "const": "archived-not-current" },
         "handoff_drift_status": { "const": "archived-in-place" },
-        "authority_to_refresh_current_candidate_identity": { "const": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME" },
+        "authority_to_refresh_current_candidate_identity": {
+          "enum": [
+            "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
+            "not-required-current-identity-already-release-candidate"
+          ]
+        },
         "release_candidate_manifest_remains_source_of_local_release_smoke": { "const": true },
         "claims_empty": { "const": true },
         "gate0_status": { "const": "NOT_PASSED" },

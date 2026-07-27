@@ -21,7 +21,7 @@ const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const expected = buildR4DocProcessIdentityReconciliation({ repoRoot });
 
-test('R4 doc process identity reconciliation separates implementation, artifact, handoff, and stale identity facts', () => {
+test('R4 doc process identity reconciliation separates implementation, artifact, handoff, and current identity facts', () => {
   const actual = readJson('docs/process/devseek-r4-doc-process-identity-reconciliation.json');
 
   assert.equal(canonicalJson(actual), canonicalJson(expected));
@@ -35,12 +35,21 @@ test('R4 doc process identity reconciliation separates implementation, artifact,
   assert.equal(actual.source_boundaries.product_implementation_commit, 'a034e5e050c044460fb07705639d9d41e6b193c0');
   assert.equal(actual.source_boundaries.artifact_source_commit, 'a034e5e050c044460fb07705639d9d41e6b193c0');
   assert.equal(actual.source_boundaries.handoff_doc_commit, '02cb792b4fe86df523c7f88eb106f13394e6f3fd');
-  assert.equal(actual.identity_artifacts.tracked_current_candidate_identity.artifact_git_commit, '00449c6');
+  assert.equal(
+    actual.identity_artifacts.tracked_current_candidate_identity.artifact_git_commit,
+    expected.identity_artifacts.tracked_current_candidate_identity.artifact_git_commit,
+  );
   assert.equal(actual.identity_artifacts.archived_failed_observe_identity.artifact_git_commit, '6b09d67');
   assert.equal(actual.identity_artifacts.release_candidate_identity.artifact_source_commit, 'a034e5e050c044460fb07705639d9d41e6b193c0');
-  assert.equal(actual.identity_artifacts.tracked_current_matches_release_candidate, false);
+  assert.equal(
+    actual.identity_artifacts.tracked_current_matches_release_candidate,
+    expected.identity_artifacts.tracked_current_matches_release_candidate,
+  );
   assert.equal(actual.identity_artifacts.archived_failed_matches_release_candidate, false);
-  assert.equal(actual.conclusions.current_candidate_identity_status, 'deferred-unusable-until-clean-runtime');
+  assert.equal(
+    actual.conclusions.current_candidate_identity_status,
+    expected.conclusions.current_candidate_identity_status,
+  );
   assert.equal(actual.qualification_effect, 'NONE');
   assert.equal(actual.claims_permitted, false);
   assert.equal(actual.asserts_gate_pass, false);
@@ -82,13 +91,16 @@ test('schema rejects claim promotion and live/runtime authority expansion', () =
   assert.ok(validate.errors.some(error => error.instancePath === '/observation_authority/runtime_process_observation'));
 });
 
-test('runtime validation fails closed on identity promotion, archive mismatch, or missing handoff anchors', () => {
-  const matchedCurrent = structuredClone(expected);
-  matchedCurrent.identity_artifacts.tracked_current_matches_release_candidate = true;
-  matchedCurrent.reconciliation_sha256 = '0'.repeat(64);
+test('runtime validation fails closed on identity status drift, archive mismatch, or missing handoff anchors', () => {
+  const statusDrift = structuredClone(expected);
+  statusDrift.identity_artifacts.tracked_current_candidate_identity.status =
+    expected.identity_artifacts.tracked_current_matches_release_candidate
+      ? 'tracked-stale-deferred'
+      : 'tracked-current-clean-runtime';
+  statusDrift.reconciliation_sha256 = '0'.repeat(64);
   assertHasReconciliationError(
-    matchedCurrent,
-    'identity_artifacts.tracked_current_matches_release_candidate:must-be-false',
+    statusDrift,
+    'identity_artifacts.tracked_current_candidate_identity.status:invalid',
   );
 
   const archivedUsable = structuredClone(expected);
@@ -116,10 +128,10 @@ test('checker command validates R4 doc process identity reconciliation and gener
     artifact_source_commit: 'a034e5e050c044460fb07705639d9d41e6b193c0',
     handoff_doc_commit: '02cb792b4fe86df523c7f88eb106f13394e6f3fd',
     release_candidate_manifest_commit: expected.source_boundaries.release_candidate_manifest_commit,
-    tracked_current_identity_artifact: '00449c6',
+    tracked_current_identity_artifact: expected.identity_artifacts.tracked_current_candidate_identity.artifact_git_commit,
     archived_failed_identity_artifact: '6b09d67',
     release_candidate_artifact: 'a034e5e050c044460fb07705639d9d41e6b193c0',
-    tracked_current_matches_release_candidate: false,
+    tracked_current_matches_release_candidate: expected.identity_artifacts.tracked_current_matches_release_candidate,
     archived_failed_matches_release_candidate: false,
     handoff_documents_reconciled: 2,
     qualification_effect: 'NONE',

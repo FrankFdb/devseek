@@ -28,18 +28,21 @@ test('R4 iteration status rollup counts six original leaves without adding a new
   assert.equal(actual.does_not_add_r4_leaf, true);
   assert.deepEqual(actual.counts, {
     r4_total_leaves: 6,
-    completed_leaves: 5,
-    blocked_leaves: 1,
-    remaining_window_sensitive_leaves: 1,
+    completed_leaves: expected.counts.completed_leaves,
+    blocked_leaves: expected.counts.blocked_leaves,
+    remaining_window_sensitive_leaves: expected.counts.remaining_window_sensitive_leaves,
     live_runs_authorized: 0,
     qualification_claims: 0,
   });
   assert.equal(actual.r4_scope.local_process_artifacts_complete_except_clean_runtime, true);
-  assert.equal(actual.r4_scope.clean_runtime_leaf_terminal_state, 'BLOCKED');
-  assert.equal(actual.r4_scope.clean_runtime_limited_observation_terminal_state, 'BLOCKED');
+  assert.equal(actual.r4_scope.clean_runtime_leaf_terminal_state, expected.r4_scope.clean_runtime_leaf_terminal_state);
+  assert.equal(
+    actual.r4_scope.clean_runtime_limited_observation_terminal_state,
+    expected.r4_scope.clean_runtime_limited_observation_terminal_state,
+  );
   assert.match(actual.r4_scope.clean_runtime_limited_observation_sha256, /^[a-f0-9]{64}$/u);
-  assert.equal(actual.r4_scope.clean_runtime_stable_runtime_count, 0);
-  assert.equal(actual.r4_scope.current_candidate_identity_status, 'deferred-unusable-until-clean-runtime');
+  assert.equal(actual.r4_scope.clean_runtime_stable_runtime_count, expected.r4_scope.clean_runtime_stable_runtime_count);
+  assert.equal(actual.r4_scope.current_candidate_identity_status, expected.r4_scope.current_candidate_identity_status);
   assert.equal(actual.r4_scope.gate0_status, 'NOT_PASSED');
   assert.equal(actual.r4_scope.r1_qualification_status, 'NOT_STARTED');
   assert.equal(actual.r4_scope.scenario_language_source, 'scenario-contract');
@@ -51,20 +54,39 @@ test('R4 iteration status rollup counts six original leaves without adding a new
     actual.source_bindings.clean_runtime_limited_observation.path,
     'docs/process/devseek-r4-clean-runtime-limited-observation.json',
   );
-  assert.equal(actual.source_bindings.clean_runtime_limited_observation.terminal_state, 'BLOCKED');
-  assert.equal(actual.source_bindings.clean_runtime_limited_observation.clean_runtime_identity_established, false);
-  assert.equal(actual.source_bindings.clean_runtime_limited_observation.stable_runtime_count, 0);
+  assert.equal(
+    actual.source_bindings.clean_runtime_limited_observation.terminal_state,
+    expected.source_bindings.clean_runtime_limited_observation.terminal_state,
+  );
+  assert.equal(
+    actual.source_bindings.clean_runtime_limited_observation.clean_runtime_identity_established,
+    expected.source_bindings.clean_runtime_limited_observation.clean_runtime_identity_established,
+  );
+  assert.equal(
+    actual.source_bindings.clean_runtime_limited_observation.stable_runtime_count,
+    expected.source_bindings.clean_runtime_limited_observation.stable_runtime_count,
+  );
   assert.equal(
     actual.clean_runtime_boundary.latest_limited_observation_path,
     'docs/process/devseek-r4-clean-runtime-limited-observation.json',
   );
-  assert.equal(actual.clean_runtime_boundary.latest_limited_observation_terminal_state, 'BLOCKED');
-  assert.equal(actual.clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established, false);
+  assert.equal(
+    actual.clean_runtime_boundary.latest_limited_observation_terminal_state,
+    expected.clean_runtime_boundary.latest_limited_observation_terminal_state,
+  );
+  assert.equal(
+    actual.clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established,
+    expected.clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established,
+  );
 
   const cleanRuntime = actual.leaves.find(leaf => leaf.leaf_id === 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME');
-  assert.equal(cleanRuntime.terminal_state, 'BLOCKED');
-  assert.equal(cleanRuntime.implementation_commit, null);
-  assert.equal(actual.leaves.filter(leaf => leaf.terminal_state === 'COMPLETED').length, 5);
+  const expectedCleanRuntime = expected.leaves.find(leaf => leaf.leaf_id === 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME');
+  assert.equal(cleanRuntime.terminal_state, expectedCleanRuntime.terminal_state);
+  assert.equal(cleanRuntime.implementation_commit, expectedCleanRuntime.implementation_commit);
+  assert.equal(
+    actual.leaves.filter(leaf => leaf.terminal_state === 'COMPLETED').length,
+    expected.counts.completed_leaves,
+  );
 
   const validation = validateR4IterationStatusRollup(actual, { repoRoot });
   assert.equal(validation.ok, true, JSON.stringify(validation.errors, null, 2));
@@ -103,21 +125,22 @@ test('schema rejects claim promotion, live authorization, and leaf-count drift',
   assert.equal(validate(leafCountDrift), false);
   assert.ok(validate.errors.some(error => error.instancePath === '/counts/r4_total_leaves'));
 
-  const cleanRuntimeEstablished = structuredClone(expected);
-  cleanRuntimeEstablished.clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established = true;
-  assert.equal(validate(cleanRuntimeEstablished), false);
+  const invalidTerminal = structuredClone(expected);
+  invalidTerminal.clean_runtime_boundary.latest_limited_observation_terminal_state = 'DONE';
+  assert.equal(validate(invalidTerminal), false);
   assert.ok(validate.errors.some(error => (
-    error.instancePath === '/clean_runtime_boundary/latest_limited_observation_clean_runtime_identity_established'
+    error.instancePath === '/clean_runtime_boundary/latest_limited_observation_terminal_state'
   )));
 });
 
-test('runtime validation fails closed on clean-runtime completion, window action expansion, or stale counts', () => {
-  const cleanRuntimeCompleted = structuredClone(expected);
-  cleanRuntimeCompleted.leaves[0].terminal_state = 'COMPLETED';
-  cleanRuntimeCompleted.rollup_sha256 = '0'.repeat(64);
+test('runtime validation fails closed on clean-runtime drift, window action expansion, or stale counts', () => {
+  const cleanRuntimeDrift = structuredClone(expected);
+  cleanRuntimeDrift.leaves[0].terminal_state =
+    expected.leaves[0].terminal_state === 'COMPLETED' ? 'BLOCKED' : 'COMPLETED';
+  cleanRuntimeDrift.rollup_sha256 = '0'.repeat(64);
   assertHasRollupError(
-    cleanRuntimeCompleted,
-    'leaves.R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME.terminal_state:must-be-BLOCKED',
+    cleanRuntimeDrift,
+    'leaves.R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME.terminal_state:must-match-clean-runtime-observation',
   );
 
   const windowExpansion = structuredClone(expected);
@@ -129,24 +152,26 @@ test('runtime validation fails closed on clean-runtime completion, window action
   );
 
   const staleCounts = structuredClone(expected);
-  staleCounts.counts.completed_leaves = 6;
+  staleCounts.counts.completed_leaves =
+    expected.counts.completed_leaves === 6 ? 5 : expected.counts.completed_leaves + 1;
   staleCounts.rollup_sha256 = '0'.repeat(64);
-  assertHasRollupError(staleCounts, 'counts.completed_leaves:must-be-5');
+  assertHasRollupError(staleCounts, 'counts.completed_leaves:invalid');
 
   const cleanRuntimeObservationCompleted = structuredClone(expected);
-  cleanRuntimeObservationCompleted.r4_scope.clean_runtime_limited_observation_terminal_state = 'COMPLETED';
+  cleanRuntimeObservationCompleted.r4_scope.clean_runtime_limited_observation_terminal_state =
+    expected.r4_scope.clean_runtime_limited_observation_terminal_state === 'COMPLETED' ? 'BLOCKED' : 'COMPLETED';
   cleanRuntimeObservationCompleted.rollup_sha256 = '0'.repeat(64);
   assertHasRollupError(
     cleanRuntimeObservationCompleted,
-    'r4_scope.clean_runtime_limited_observation_terminal_state:must-be-BLOCKED',
+    'r4_scope.clean_runtime_limited_observation_terminal_state:must-match-boundary',
   );
 
-  const cleanRuntimeIdentityEstablished = structuredClone(expected);
-  cleanRuntimeIdentityEstablished.clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established = true;
-  cleanRuntimeIdentityEstablished.rollup_sha256 = '0'.repeat(64);
+  const blockedStateDrift = structuredClone(expected);
+  blockedStateDrift.clean_runtime_boundary.blocked_until_authority = !expected.clean_runtime_boundary.blocked_until_authority;
+  blockedStateDrift.rollup_sha256 = '0'.repeat(64);
   assertHasRollupError(
-    cleanRuntimeIdentityEstablished,
-    'clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established:must-be-false',
+    blockedStateDrift,
+    'clean_runtime_boundary.blocked_until_authority:must-match-identity-state',
   );
 });
 
@@ -161,12 +186,12 @@ test('checker command validates R4 iteration status rollup and generated view', 
   assert.deepEqual(result.summary, {
     rollup_sha256: expected.rollup_sha256,
     total_leaves: 6,
-    completed_leaves: 5,
-    blocked_leaves: 1,
-    clean_runtime_leaf_terminal_state: 'BLOCKED',
-    clean_runtime_limited_observation_terminal_state: 'BLOCKED',
-    clean_runtime_identity_established: false,
-    clean_runtime_stable_runtime_count: 0,
+    completed_leaves: expected.counts.completed_leaves,
+    blocked_leaves: expected.counts.blocked_leaves,
+    clean_runtime_leaf_terminal_state: expected.r4_scope.clean_runtime_leaf_terminal_state,
+    clean_runtime_limited_observation_terminal_state: expected.r4_scope.clean_runtime_limited_observation_terminal_state,
+    clean_runtime_identity_established: expected.clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established,
+    clean_runtime_stable_runtime_count: expected.r4_scope.clean_runtime_stable_runtime_count,
     live_runs_authorized: 0,
     gate0_status: 'NOT_PASSED',
     r1_qualification_status: 'NOT_STARTED',

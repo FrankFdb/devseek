@@ -293,7 +293,9 @@ export function buildPostR4CompactIndex({ repoRoot = process.cwd(), sources = nu
       total_leaf_count: rollup.r4_scope?.total_leaf_count ?? null,
       completed_leaves: rollup.counts?.completed_leaves ?? null,
       blocked_leaves: rollup.counts?.blocked_leaves ?? null,
-      current_blocked_leaf: 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME',
+      current_blocked_leaf: rollup.counts?.blocked_leaves > 0
+        ? 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME'
+        : null,
       clean_runtime_leaf_terminal_state: rollup.r4_scope?.clean_runtime_leaf_terminal_state ?? null,
       clean_runtime_limited_observation_terminal_state:
         rollup.r4_scope?.clean_runtime_limited_observation_terminal_state ?? null,
@@ -553,11 +555,27 @@ function semanticValidate(index, errors) {
   if (index.source_bindings?.phase_gate_source?.required_gate_present !== true) {
     errors.push('source_bindings.phase_gate_source.required_gate_present:must-be-true');
   }
-  if (index.r4_current_state?.clean_runtime_leaf_terminal_state !== 'BLOCKED') {
-    errors.push('r4_current_state.clean_runtime_leaf_terminal_state:must-be-BLOCKED');
+  const cleanRuntimeBranch = index.suspended_authorization_branches?.clean_runtime;
+  const cleanRuntimeTerminalState = cleanRuntimeBranch?.terminal_state;
+  const cleanRuntimeIdentityEstablished = cleanRuntimeBranch?.clean_runtime_identity_established === true;
+  if (!['COMPLETED', 'BLOCKED'].includes(index.r4_current_state?.clean_runtime_leaf_terminal_state)) {
+    errors.push('r4_current_state.clean_runtime_leaf_terminal_state:invalid');
   }
-  if (index.r4_current_state?.stable_runtime_count !== 0) {
-    errors.push('r4_current_state.stable_runtime_count:must-be-0');
+  if (index.r4_current_state?.clean_runtime_leaf_terminal_state !== cleanRuntimeTerminalState) {
+    errors.push('r4_current_state.clean_runtime_leaf_terminal_state:must-match-clean-runtime-branch');
+  }
+  if (index.r4_current_state?.clean_runtime_limited_observation_terminal_state !== cleanRuntimeTerminalState) {
+    errors.push('r4_current_state.clean_runtime_limited_observation_terminal_state:must-match-clean-runtime-branch');
+  }
+  if (index.r4_current_state?.clean_runtime_identity_established !== cleanRuntimeIdentityEstablished) {
+    errors.push('r4_current_state.clean_runtime_identity_established:must-match-clean-runtime-branch');
+  }
+  if (!Number.isInteger(index.r4_current_state?.stable_runtime_count)
+    || index.r4_current_state.stable_runtime_count < 0) {
+    errors.push('r4_current_state.stable_runtime_count:invalid');
+  }
+  if (cleanRuntimeIdentityEstablished && index.r4_current_state?.stable_runtime_count !== 1) {
+    errors.push('r4_current_state.stable_runtime_count:must-be-1-when-clean-runtime-established');
   }
   if (index.r4_current_state?.gate0_status !== 'NOT_PASSED') {
     errors.push('r4_current_state.gate0_status:must-be-NOT_PASSED');
@@ -565,11 +583,18 @@ function semanticValidate(index, errors) {
   if (index.r4_current_state?.r1_qualification_status !== 'NOT_STARTED') {
     errors.push('r4_current_state.r1_qualification_status:must-be-NOT_STARTED');
   }
-  if (index.suspended_authorization_branches?.clean_runtime?.terminal_state !== 'BLOCKED') {
-    errors.push('suspended_authorization_branches.clean_runtime.terminal_state:must-be-BLOCKED');
+  const expectedCleanRuntimeTerminalState = cleanRuntimeIdentityEstablished ? 'COMPLETED' : 'BLOCKED';
+  if (cleanRuntimeTerminalState !== expectedCleanRuntimeTerminalState) {
+    errors.push('suspended_authorization_branches.clean_runtime.terminal_state:must-match-identity-state');
   }
-  if (index.suspended_authorization_branches?.clean_runtime?.local_repository_may_unblock_without_new_authority !== false) {
+  if (cleanRuntimeBranch?.local_repository_may_unblock_without_new_authority !== false) {
     errors.push('suspended_authorization_branches.clean_runtime.local_repository_may_unblock_without_new_authority:must-be-false');
+  }
+  const expectedCurrentBlockedLeaf = index.r4_current_state?.blocked_leaves > 0
+    ? 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME'
+    : null;
+  if (index.r4_current_state?.current_blocked_leaf !== expectedCurrentBlockedLeaf) {
+    errors.push('r4_current_state.current_blocked_leaf:invalid');
   }
   assertAllBlocked(
     index.suspended_authorization_branches?.r4_live_authorization_requests,
@@ -583,6 +608,15 @@ function semanticValidate(index, errors) {
   );
   if (index.counts?.nonpermission_queue_items !== 10) {
     errors.push('counts.nonpermission_queue_items:must-be-10');
+  }
+  if (index.counts?.r4_completed_leaves !== index.r4_current_state?.completed_leaves) {
+    errors.push('counts.r4_completed_leaves:invalid');
+  }
+  if (index.counts?.r4_blocked_leaves !== index.r4_current_state?.blocked_leaves) {
+    errors.push('counts.r4_blocked_leaves:invalid');
+  }
+  if (index.counts?.clean_runtime_blockers !== (cleanRuntimeBranch?.blockers ?? []).length) {
+    errors.push('counts.clean_runtime_blockers:invalid');
   }
   if (index.counts?.live_authorization_requests !== 5 || index.counts?.live_authorization_blocked !== 5) {
     errors.push('counts.live_authorization:must-be-5-blocked-of-5');

@@ -33,6 +33,10 @@ test('R4 live qualification request packet blocks qualification until explicit l
     qualification_claims: 0,
   });
   assert.equal(actual.candidate_scope.artifact_source_commit, 'a034e5e050c044460fb07705639d9d41e6b193c0');
+  assert.equal(
+    actual.candidate_scope.current_candidate_identity_status,
+    expected.candidate_scope.current_candidate_identity_status,
+  );
   assert.equal(actual.candidate_scope.clean_runtime_identity_required, true);
   assert.equal(actual.candidate_scope.repository_current_identity_may_substitute, false);
   assert.equal(actual.qualification_boundary.gate0_status, 'NOT_PASSED');
@@ -116,7 +120,7 @@ test('checker command validates R4 live qualification request packet and generat
     packet_sha256: expected.packet_sha256,
     artifact_source_commit: 'a034e5e050c044460fb07705639d9d41e6b193c0',
     vsix_sha256: expected.candidate_scope.vsix_sha256,
-    current_candidate_identity_status: 'deferred-unusable-until-clean-runtime',
+    current_candidate_identity_status: expected.candidate_scope.current_candidate_identity_status,
     gate0_status: 'NOT_PASSED',
     r1_qualification_status: 'NOT_STARTED',
     external_authority_blockers: 6,

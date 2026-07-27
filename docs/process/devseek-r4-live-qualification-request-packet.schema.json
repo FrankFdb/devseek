@@ -142,7 +142,9 @@
         "release_candidate_manifest_sha256": { "$ref": "#/$defs/sha256" },
         "artifact_source_commit": { "$ref": "#/$defs/fullCommit" },
         "vsix_sha256": { "$ref": "#/$defs/sha256" },
-        "current_candidate_identity_status": { "const": "deferred-unusable-until-clean-runtime" },
+        "current_candidate_identity_status": {
+          "enum": ["deferred-unusable-until-clean-runtime", "clean-runtime-identity-established"]
+        },
         "clean_runtime_identity_required": { "const": true },
         "clean_runtime_identity_authority": { "const": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME" },
         "repository_current_identity_may_substitute": { "const": false }

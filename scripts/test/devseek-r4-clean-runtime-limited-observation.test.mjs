@@ -21,7 +21,7 @@ const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const expected = buildR4CleanRuntimeLimitedObservation({ repoRoot });
 
-test('R4 clean runtime limited observation records a fresh blocked identity boundary without qualification effect', () => {
+test('R4 clean runtime limited observation records the current identity boundary without qualification effect', () => {
   const actual = readJson('docs/process/devseek-r4-clean-runtime-limited-observation.json');
 
   assert.equal(canonicalJson(actual), canonicalJson(expected));
@@ -30,7 +30,10 @@ test('R4 clean runtime limited observation records a fresh blocked identity boun
   assert.equal(actual.clean_runtime_identity_established, expected.clean_runtime_identity_established);
   assert.equal(actual.expected_candidate_identity.candidate_source_commit, 'a034e5e050c044460fb07705639d9d41e6b193c0');
   assert.equal(actual.expected_candidate_identity.matches_release_candidate_manifest, true);
-  assert.equal(actual.tracked_registry_comparison.tracked_matches_expected_identity, false);
+  assert.equal(
+    actual.tracked_registry_comparison.tracked_matches_expected_identity,
+    expected.tracked_registry_comparison.tracked_matches_expected_identity,
+  );
   assert.equal(actual.live_runtime_observation.stable_runtime_count, expected.live_runtime_observation.stable_runtime_count);
   assert.equal(actual.live_runtime_observation.full_commandline_recorded, false);
   assert.equal(actual.live_runtime_observation.environment_variables_recorded, false);
@@ -44,7 +47,7 @@ test('R4 clean runtime limited observation records a fresh blocked identity boun
     path: 'docs/process/devseek-r4-iteration-status-rollup.json',
     binding_mode: 'context-reference-not-hash-input',
     reason: 'avoid-recursive-hash-cycle-because-rollup-binds-this-observation',
-    expected_clean_runtime_leaf_terminal_state: 'BLOCKED',
+    expected_clean_runtime_leaf_terminal_state: expected.terminal_state,
   });
 
   const validation = validateR4CleanRuntimeLimitedObservation(actual, { repoRoot });
@@ -94,10 +97,15 @@ test('schema rejects claim promotion, window authority expansion, and live run a
 });
 
 test('runtime validation fails closed on false completion, secret capture, or stale counts', () => {
-  const falseCompletion = structuredClone(expected);
-  falseCompletion.terminal_state = 'COMPLETED';
-  falseCompletion.observation_sha256 = '0'.repeat(64);
-  assertHasObservationError(falseCompletion, 'terminal_state:must-be-BLOCKED-when-clean-runtime-not-established');
+  const terminalDrift = structuredClone(expected);
+  terminalDrift.terminal_state = expected.clean_runtime_identity_established ? 'BLOCKED' : 'COMPLETED';
+  terminalDrift.observation_sha256 = '0'.repeat(64);
+  assertHasObservationError(
+    terminalDrift,
+    expected.clean_runtime_identity_established
+      ? 'terminal_state:must-be-COMPLETED-when-clean-runtime-established'
+      : 'terminal_state:must-be-BLOCKED-when-clean-runtime-not-established',
+  );
 
   const secretCapture = structuredClone(expected);
   secretCapture.live_runtime_observation.secrets_recorded = true;
@@ -110,11 +118,12 @@ test('runtime validation fails closed on false completion, secret capture, or st
   assertHasObservationError(staleCounts, 'counts.blockers:invalid');
 
   const contextPromoted = structuredClone(expected);
-  contextPromoted.context_references.r4_iteration_status_rollup.expected_clean_runtime_leaf_terminal_state = 'COMPLETED';
+  contextPromoted.context_references.r4_iteration_status_rollup.expected_clean_runtime_leaf_terminal_state =
+    expected.terminal_state === 'COMPLETED' ? 'BLOCKED' : 'COMPLETED';
   contextPromoted.observation_sha256 = '0'.repeat(64);
   assertHasObservationError(
     contextPromoted,
-    'context_references.r4_iteration_status_rollup.expected_clean_runtime_leaf_terminal_state:must-be-BLOCKED',
+    'context_references.r4_iteration_status_rollup.expected_clean_runtime_leaf_terminal_state:must-match-terminal-state',
   );
 });
 
@@ -132,7 +141,7 @@ test('checker command validates R4 clean runtime limited observation and generat
     clean_runtime_identity_established: expected.clean_runtime_identity_established,
     expected_candidate_source_commit: 'a034e5e050c044460fb07705639d9d41e6b193c0',
     expected_vsix_sha256: expected.expected_candidate_identity.vsix_sha256,
-    tracked_matches_expected_identity: false,
+    tracked_matches_expected_identity: expected.tracked_registry_comparison.tracked_matches_expected_identity,
     stable_runtime_count: expected.live_runtime_observation.stable_runtime_count,
     blockers: expected.counts.blockers,
     live_runs_authorized: 0,

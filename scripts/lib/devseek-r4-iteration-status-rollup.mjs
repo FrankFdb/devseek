@@ -23,10 +23,11 @@ const CLEAN_RUNTIME_OBSERVATION = 'docs/process/devseek-r4-clean-runtime-limited
 
 const PRODUCT_IMPLEMENTATION_COMMIT = 'a034e5e050c044460fb07705639d9d41e6b193c0';
 const HANDOFF_DOC_COMMIT = '02cb792b4fe86df523c7f88eb106f13394e6f3fd';
+const CLEAN_RUNTIME_LEAF_ID = 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME';
 
 const LEAFS = Object.freeze([
   {
-    leaf_id: 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME',
+    leaf_id: CLEAN_RUNTIME_LEAF_ID,
     terminal_state: 'BLOCKED',
     implementation_commit: null,
     artifact_path: 'docs/process/devseek-current-candidate-identity.json',
@@ -90,13 +91,17 @@ export function buildR4IterationStatusRollup({ repoRoot } = {}) {
   const cleanRuntimeObservation = readJson(path.join(repoRoot, CLEAN_RUNTIME_OBSERVATION));
 
   const leaves = LEAFS.map(leaf => ({
-    ...leaf,
+    ...(leaf.leaf_id === CLEAN_RUNTIME_LEAF_ID
+      ? buildCleanRuntimeLeaf(cleanRuntimeObservation)
+      : leaf),
     qualification_effect: 'NONE',
     claims_permitted: false,
     asserts_gate_pass: false,
   }));
   const completedLeaves = leaves.filter(leaf => leaf.terminal_state === 'COMPLETED').length;
   const blockedLeaves = leaves.filter(leaf => leaf.terminal_state === 'BLOCKED').length;
+  const cleanRuntimeBlockedUntilAuthority = cleanRuntimeObservation.clean_runtime_identity_established !== true;
+  const remainingWindowSensitiveLeaves = cleanRuntimeBlockedUntilAuthority ? 1 : 0;
 
   const rollup = {
     schema_version: R4_ITERATION_STATUS_ROLLUP_SCHEMA_VERSION,
@@ -156,7 +161,7 @@ export function buildR4IterationStatusRollup({ repoRoot } = {}) {
       handoff_doc_commit: HANDOFF_DOC_COMMIT,
       total_leaf_count: LEAFS.length,
       local_process_artifacts_complete_except_clean_runtime: true,
-      clean_runtime_leaf_terminal_state: 'BLOCKED',
+      clean_runtime_leaf_terminal_state: cleanRuntimeObservation.terminal_state,
       clean_runtime_limited_observation_terminal_state: cleanRuntimeObservation.terminal_state,
       clean_runtime_limited_observation_sha256: cleanRuntimeObservation.observation_sha256,
       clean_runtime_stable_runtime_count: cleanRuntimeObservation.live_runtime_observation.stable_runtime_count,
@@ -172,21 +177,23 @@ export function buildR4IterationStatusRollup({ repoRoot } = {}) {
       may_run_live_provider_test: false,
       may_install_or_replace_extension: false,
       may_refresh_current_candidate_identity_without_authorization: false,
-      acceptable_next_authority: [
-        'explicit-user-clean-runtime-window-action-authorization',
-        'external-clean-candidate-identity-receipt',
-      ],
+      acceptable_next_authority: cleanRuntimeBlockedUntilAuthority
+        ? [
+          'explicit-user-clean-runtime-window-action-authorization',
+          'external-clean-candidate-identity-receipt',
+        ]
+        : [],
       latest_limited_observation_path: CLEAN_RUNTIME_OBSERVATION,
       latest_limited_observation_terminal_state: cleanRuntimeObservation.terminal_state,
       latest_limited_observation_clean_runtime_identity_established: cleanRuntimeObservation.clean_runtime_identity_established,
-      blocked_until_authority: true,
+      blocked_until_authority: cleanRuntimeBlockedUntilAuthority,
     },
     leaves,
     counts: {
       r4_total_leaves: LEAFS.length,
       completed_leaves: completedLeaves,
       blocked_leaves: blockedLeaves,
-      remaining_window_sensitive_leaves: 1,
+      remaining_window_sensitive_leaves: remainingWindowSensitiveLeaves,
       live_runs_authorized: 0,
       qualification_claims: 0,
     },
@@ -306,6 +313,25 @@ export function summarizeR4IterationStatusRollup(rollup) {
   };
 }
 
+function buildCleanRuntimeLeaf(cleanRuntimeObservation) {
+  const completed = cleanRuntimeObservation.terminal_state === 'COMPLETED'
+    && cleanRuntimeObservation.clean_runtime_identity_established === true;
+  return {
+    leaf_id: CLEAN_RUNTIME_LEAF_ID,
+    terminal_state: cleanRuntimeObservation.terminal_state,
+    implementation_commit: completed
+      ? cleanRuntimeObservation.expected_candidate_identity.candidate_source_commit
+      : null,
+    artifact_path: 'docs/process/devseek-current-candidate-identity.json',
+    blocker_reason: completed
+      ? null
+      : 'existing-vscode-and-deepseek-pages-must-not-be-closed-or-reused-without-explicit-clean-runtime-authorization',
+    next_required_authority: completed
+      ? null
+      : 'explicit-user-authorization-for-clean-runtime-isolation-or-external-clean-identity-receipt',
+  };
+}
+
 function semanticValidate(rollup, errors) {
   if (rollup.schema_version !== R4_ITERATION_STATUS_ROLLUP_SCHEMA_VERSION) errors.push('schema_version:invalid');
   if (rollup.rollup_id !== R4_ITERATION_STATUS_ROLLUP_ID) errors.push('rollup_id:invalid');
@@ -332,19 +358,32 @@ function semanticValidate(rollup, errors) {
   if (rollup.r4_scope?.local_process_artifacts_complete_except_clean_runtime !== true) {
     errors.push('r4_scope.local_process_artifacts_complete_except_clean_runtime:must-be-true');
   }
-  if (rollup.r4_scope?.clean_runtime_leaf_terminal_state !== 'BLOCKED') {
-    errors.push('r4_scope.clean_runtime_leaf_terminal_state:must-be-BLOCKED');
+  const cleanRuntimeTerminalState = rollup.clean_runtime_boundary?.latest_limited_observation_terminal_state;
+  const cleanRuntimeIdentityEstablished =
+    rollup.clean_runtime_boundary?.latest_limited_observation_clean_runtime_identity_established === true;
+  if (!['COMPLETED', 'BLOCKED'].includes(rollup.r4_scope?.clean_runtime_leaf_terminal_state)) {
+    errors.push('r4_scope.clean_runtime_leaf_terminal_state:invalid');
   }
-  if (rollup.r4_scope?.clean_runtime_limited_observation_terminal_state !== 'BLOCKED') {
-    errors.push('r4_scope.clean_runtime_limited_observation_terminal_state:must-be-BLOCKED');
+  if (rollup.r4_scope?.clean_runtime_leaf_terminal_state !== cleanRuntimeTerminalState) {
+    errors.push('r4_scope.clean_runtime_leaf_terminal_state:must-match-clean-runtime-observation');
+  }
+  if (rollup.r4_scope?.clean_runtime_limited_observation_terminal_state !== cleanRuntimeTerminalState) {
+    errors.push('r4_scope.clean_runtime_limited_observation_terminal_state:must-match-boundary');
   }
   if (!/^[a-f0-9]{64}$/u.test(rollup.r4_scope?.clean_runtime_limited_observation_sha256 ?? '')) {
     errors.push('r4_scope.clean_runtime_limited_observation_sha256:invalid');
   }
-  if (rollup.r4_scope?.clean_runtime_stable_runtime_count !== 0) {
-    errors.push('r4_scope.clean_runtime_stable_runtime_count:must-be-0');
+  if (!Number.isInteger(rollup.r4_scope?.clean_runtime_stable_runtime_count)
+    || rollup.r4_scope.clean_runtime_stable_runtime_count < 0) {
+    errors.push('r4_scope.clean_runtime_stable_runtime_count:invalid');
   }
-  if (rollup.r4_scope?.current_candidate_identity_status !== 'deferred-unusable-until-clean-runtime') {
+  if (cleanRuntimeIdentityEstablished && rollup.r4_scope?.clean_runtime_stable_runtime_count !== 1) {
+    errors.push('r4_scope.clean_runtime_stable_runtime_count:must-be-1-when-clean-runtime-established');
+  }
+  if (![
+    'deferred-unusable-until-clean-runtime',
+    'clean-runtime-identity-established',
+  ].includes(rollup.r4_scope?.current_candidate_identity_status)) {
     errors.push('r4_scope.current_candidate_identity_status:invalid');
   }
   if (rollup.r4_scope?.gate0_status !== 'NOT_PASSED') errors.push('r4_scope.gate0_status:must-be-NOT_PASSED');
@@ -353,12 +392,15 @@ function semanticValidate(rollup, errors) {
     errors.push('r4_scope.scenario_language_source:must-be-scenario-contract');
   }
   validateCleanRuntimeBoundary(rollup.clean_runtime_boundary, errors);
-  validateLeaves(rollup.leaves, errors);
+  validateLeaves(rollup.leaves, rollup.clean_runtime_boundary, errors);
   if (rollup.counts?.r4_total_leaves !== LEAFS.length) errors.push('counts.r4_total_leaves:invalid');
-  if (rollup.counts?.completed_leaves !== 5) errors.push('counts.completed_leaves:must-be-5');
-  if (rollup.counts?.blocked_leaves !== 1) errors.push('counts.blocked_leaves:must-be-1');
-  if (rollup.counts?.remaining_window_sensitive_leaves !== 1) {
-    errors.push('counts.remaining_window_sensitive_leaves:must-be-1');
+  const completedLeaves = (rollup.leaves ?? []).filter(leaf => leaf.terminal_state === 'COMPLETED').length;
+  const blockedLeaves = (rollup.leaves ?? []).filter(leaf => leaf.terminal_state === 'BLOCKED').length;
+  if (rollup.counts?.completed_leaves !== completedLeaves) errors.push('counts.completed_leaves:invalid');
+  if (rollup.counts?.blocked_leaves !== blockedLeaves) errors.push('counts.blocked_leaves:invalid');
+  const expectedRemainingWindowSensitiveLeaves = rollup.clean_runtime_boundary?.blocked_until_authority === true ? 1 : 0;
+  if (rollup.counts?.remaining_window_sensitive_leaves !== expectedRemainingWindowSensitiveLeaves) {
+    errors.push('counts.remaining_window_sensitive_leaves:invalid');
   }
   if (rollup.counts?.live_runs_authorized !== 0) errors.push('counts.live_runs_authorized:must-be-0');
   if (rollup.counts?.qualification_claims !== 0) errors.push('counts.qualification_claims:must-be-0');
@@ -371,7 +413,7 @@ function semanticValidate(rollup, errors) {
 }
 
 function validateCleanRuntimeBoundary(boundary, errors) {
-  if (boundary?.leaf_id !== 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME') {
+  if (boundary?.leaf_id !== CLEAN_RUNTIME_LEAF_ID) {
     errors.push('clean_runtime_boundary.leaf_id:invalid');
   }
   for (const field of [
@@ -382,29 +424,34 @@ function validateCleanRuntimeBoundary(boundary, errors) {
   ]) {
     if (boundary?.[field] !== false) errors.push(`clean_runtime_boundary.${field}:must-be-false`);
   }
-  if (boundary?.blocked_until_authority !== true) {
-    errors.push('clean_runtime_boundary.blocked_until_authority:must-be-true');
-  }
   if (boundary?.latest_limited_observation_path !== CLEAN_RUNTIME_OBSERVATION) {
     errors.push('clean_runtime_boundary.latest_limited_observation_path:invalid');
   }
-  if (boundary?.latest_limited_observation_terminal_state !== 'BLOCKED') {
-    errors.push('clean_runtime_boundary.latest_limited_observation_terminal_state:must-be-BLOCKED');
+  const cleanRuntimeIdentityEstablished =
+    boundary?.latest_limited_observation_clean_runtime_identity_established === true;
+  const expectedTerminalState = cleanRuntimeIdentityEstablished ? 'COMPLETED' : 'BLOCKED';
+  if (boundary?.latest_limited_observation_terminal_state !== expectedTerminalState) {
+    errors.push('clean_runtime_boundary.latest_limited_observation_terminal_state:must-match-identity-state');
   }
-  if (boundary?.latest_limited_observation_clean_runtime_identity_established !== false) {
-    errors.push('clean_runtime_boundary.latest_limited_observation_clean_runtime_identity_established:must-be-false');
+  const expectedBlockedUntilAuthority = !cleanRuntimeIdentityEstablished;
+  if (boundary?.blocked_until_authority !== expectedBlockedUntilAuthority) {
+    errors.push('clean_runtime_boundary.blocked_until_authority:must-match-identity-state');
   }
-  for (const authority of [
-    'explicit-user-clean-runtime-window-action-authorization',
-    'external-clean-candidate-identity-receipt',
-  ]) {
-    if (!boundary?.acceptable_next_authority?.includes(authority)) {
-      errors.push(`clean_runtime_boundary.acceptable_next_authority:missing-${authority}`);
+  if (expectedBlockedUntilAuthority) {
+    for (const authority of [
+      'explicit-user-clean-runtime-window-action-authorization',
+      'external-clean-candidate-identity-receipt',
+    ]) {
+      if (!boundary?.acceptable_next_authority?.includes(authority)) {
+        errors.push(`clean_runtime_boundary.acceptable_next_authority:missing-${authority}`);
+      }
     }
+  } else if ((boundary?.acceptable_next_authority ?? []).length !== 0) {
+    errors.push('clean_runtime_boundary.acceptable_next_authority:must-be-empty-when-unblocked');
   }
 }
 
-function validateLeaves(leaves, errors) {
+function validateLeaves(leaves, cleanRuntimeBoundary, errors) {
   const leafById = new Map();
   for (const leaf of leaves ?? []) {
     if (leafById.has(leaf.leaf_id)) errors.push(`leaves.${leaf.leaf_id}:duplicate`);
@@ -419,6 +466,10 @@ function validateLeaves(leaves, errors) {
       errors.push(`leaves:missing-${expectedLeaf.leaf_id}`);
       continue;
     }
+    if (expectedLeaf.leaf_id === CLEAN_RUNTIME_LEAF_ID) {
+      validateCleanRuntimeLeaf(actual, cleanRuntimeBoundary, errors);
+      continue;
+    }
     if (actual.terminal_state !== expectedLeaf.terminal_state) {
       errors.push(`leaves.${expectedLeaf.leaf_id}.terminal_state:must-be-${expectedLeaf.terminal_state}`);
     }
@@ -426,6 +477,36 @@ function validateLeaves(leaves, errors) {
       errors.push(`leaves.${expectedLeaf.leaf_id}.implementation_commit:invalid`);
     }
   }
+}
+
+function validateCleanRuntimeLeaf(leaf, cleanRuntimeBoundary, errors) {
+  const expectedTerminalState = cleanRuntimeBoundary?.latest_limited_observation_terminal_state;
+  if (leaf.terminal_state !== expectedTerminalState) {
+    errors.push(`leaves.${CLEAN_RUNTIME_LEAF_ID}.terminal_state:must-match-clean-runtime-observation`);
+  }
+  if (leaf.terminal_state === 'COMPLETED') {
+    if (leaf.implementation_commit !== PRODUCT_IMPLEMENTATION_COMMIT) {
+      errors.push(`leaves.${CLEAN_RUNTIME_LEAF_ID}.implementation_commit:invalid`);
+    }
+    if (leaf.blocker_reason !== null) errors.push(`leaves.${CLEAN_RUNTIME_LEAF_ID}.blocker_reason:must-be-null`);
+    if (leaf.next_required_authority !== null) {
+      errors.push(`leaves.${CLEAN_RUNTIME_LEAF_ID}.next_required_authority:must-be-null`);
+    }
+    return;
+  }
+  if (leaf.terminal_state === 'BLOCKED') {
+    if (leaf.implementation_commit !== null) {
+      errors.push(`leaves.${CLEAN_RUNTIME_LEAF_ID}.implementation_commit:must-be-null`);
+    }
+    if (typeof leaf.blocker_reason !== 'string' || leaf.blocker_reason.length === 0) {
+      errors.push(`leaves.${CLEAN_RUNTIME_LEAF_ID}.blocker_reason:required-when-blocked`);
+    }
+    if (typeof leaf.next_required_authority !== 'string' || leaf.next_required_authority.length === 0) {
+      errors.push(`leaves.${CLEAN_RUNTIME_LEAF_ID}.next_required_authority:required-when-blocked`);
+    }
+    return;
+  }
+  errors.push(`leaves.${CLEAN_RUNTIME_LEAF_ID}.terminal_state:invalid`);
 }
 
 function sourceBinding(repoRoot, relativePath, extra = {}) {

@@ -12,7 +12,7 @@
 
 - Artifact source commit: `a034e5e050c044460fb07705639d9d41e6b193c0`
 - VSIX SHA-256: `027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d`
-- Current candidate identity: `deferred-unusable-until-clean-runtime`
+- Current candidate identity: `clean-runtime-identity-established`
 - Clean runtime identity required: `true`
 - Gate0: `NOT_PASSED`
 - R1 qualification: `NOT_STARTED`
@@ -42,14 +42,14 @@
 | Source | SHA-256 |
 | --- | --- |
 | `release_candidate_manifest: docs/process/devseek-r4-release-candidate-manifest.json` | `fe0d5a74792785a640df50be50012702a46077bebe0d8036647ed27e42182f87` |
-| `doc_process_identity_reconciliation: docs/process/devseek-r4-doc-process-identity-reconciliation.json` | `abd9ec026b3786071d977082a3628e40ac9d6ff5277cbd773839de80268a6fc5` |
-| `external_authority_requests: docs/process/devseek-external-authority-requests.json` | `3bfcefe0054676b3b214936b262c677dfa3c511c243aa647ce0634bd15e0f8a2` |
-| `external_authority_adapter: docs/process/devseek-external-authority-adapter.json` | `337f8feb228961023b90c98246e9c5cb857313f5cfb4a4366859ac5b2fc98b8d` |
-| `gate0_decision: docs/process/devseek-gate0-decision-report.json` | `f85a159a3e77a14f50abda26a6478c9e10949e61e34488266162efed98855b0e` |
+| `doc_process_identity_reconciliation: docs/process/devseek-r4-doc-process-identity-reconciliation.json` | `0c611270778e0cf8f851e381a08c6344546a457fce2ec131e4bb978589c2fc6d` |
+| `external_authority_requests: docs/process/devseek-external-authority-requests.json` | `2fe209d338bc1ef9e4eda8ca7e04d847fb7cf6943089a6fb686b960c2d7d482c` |
+| `external_authority_adapter: docs/process/devseek-external-authority-adapter.json` | `01af27ecc332681df0aa4bd5842fd95b1f5467bfc92da06aa10a6043e751fc1c` |
+| `gate0_decision: docs/process/devseek-gate0-decision-report.json` | `5eb780082e768611f7bfde25790a2ad41b802c5926c62e3c91b04cd3350082ad` |
 | `milestone_profiles: docs/process/devseek-milestone-profiles.json` | `f1e4cc06825f62dfbf57a50995c9c3a5e6c604d6296de04c98bf56c0b8800b61` |
 | `qualification_profiles: docs/process/devseek-qualification-profiles.json` | `1504f7b069f2fc41159433a7937eef9e3c19386111946f351f9703442d65a4bf` |
 | `qualification_runner_inventory: docs/process/devseek-qualification-runner-inventory.json` | `d63eecb1952844f0c07314aeedcf0701220a51a787c2bc91e4362d85582eb786` |
 
 ## Packet Identity
 
-- Packet SHA-256: `b9184d82ddbffa854bf3ca6c61eed27b338e53eb14baac570e2b411ccb753a2c`
+- Packet SHA-256: `e83c0f536ecfc7b0704b2186fe9a9f81ea7f7642b6ebd0b5d38c8b88db47b37c`

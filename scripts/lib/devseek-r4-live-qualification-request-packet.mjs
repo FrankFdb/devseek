@@ -316,6 +316,12 @@ function semanticValidate(packet, errors) {
     }
   }
   if (packet.candidate_scope?.clean_runtime_identity_required !== true) errors.push('candidate_scope.clean_runtime_identity_required:must-be-true');
+  if (![
+    'deferred-unusable-until-clean-runtime',
+    'clean-runtime-identity-established',
+  ].includes(packet.candidate_scope?.current_candidate_identity_status)) {
+    errors.push('candidate_scope.current_candidate_identity_status:invalid');
+  }
   if (packet.candidate_scope?.repository_current_identity_may_substitute !== false) errors.push('candidate_scope.repository_current_identity_may_substitute:must-be-false');
   if (packet.qualification_boundary?.gate0_status !== 'NOT_PASSED') errors.push('qualification_boundary.gate0_status:must-be-NOT_PASSED');
   if (packet.qualification_boundary?.r1_qualification_status !== 'NOT_STARTED') errors.push('qualification_boundary.r1_qualification_status:must-be-NOT_STARTED');

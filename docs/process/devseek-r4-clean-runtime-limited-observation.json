@@ -9,8 +9,8 @@
   "source_status": "generated-limited-runtime-observation-only",
   "integrity_scope": "local-r4-clean-runtime-limited-observation",
   "current_leaf": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
-  "terminal_state": "BLOCKED",
-  "clean_runtime_identity_established": false,
+  "terminal_state": "COMPLETED",
+  "clean_runtime_identity_established": true,
   "qualification_eligible": false,
   "qualification_effect": "NONE",
   "claims_permitted": false,
@@ -27,14 +27,14 @@
   "source_bindings": {
     "authorization_guide": {
       "path": "docs/process/devseek-r4-authorization-and-permission-guide.md",
-      "source_sha256": "44b38edcb2a1587ab487e823e849d868f3a8a5ecd8670132566ffc750ccb24de"
+      "source_sha256": "826240c4a2cfcae0c6fb1068ed199b1ffed99d64857fd8053d70e3790f40ada5"
     },
     "tracked_current_candidate_identity": {
       "path": "docs/process/devseek-current-candidate-identity.json",
-      "source_sha256": "d920a6e5fadbed1cae9080ec0daebbfc33e9a60738ff776bfe4e9d6764bd60d6",
-      "tracked_identity_probe_sha256": "a016dfcf98e025a58712d796a39ca2a40f510c37383ee3be3cc51576875b28d6",
-      "tracked_artifact_git_commit": "00449c6",
-      "tracked_observe_status": "failed"
+      "source_sha256": "664e1596abd46024b573dfba17e52b48fe43321ffd3e5b382b64540a766b679f",
+      "tracked_identity_probe_sha256": "9da58054cdc31803c96881c81283b75218e2b8dd369b13ec271d396f95bce3b1",
+      "tracked_artifact_git_commit": "a034e5e",
+      "tracked_observe_status": "passed"
     },
     "release_candidate_manifest": {
       "path": "docs/process/devseek-r4-release-candidate-manifest.json",
@@ -45,14 +45,14 @@
     },
     "doc_process_identity_reconciliation": {
       "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
-      "source_sha256": "abd9ec026b3786071d977082a3628e40ac9d6ff5277cbd773839de80268a6fc5",
-      "reconciliation_sha256": "0cb8162dfab7ac768e26bf8e2f6d4cb702d4a9a41b00de7f7bfc76f47c4622d3",
-      "current_candidate_identity_status": "deferred-unusable-until-clean-runtime"
+      "source_sha256": "0c611270778e0cf8f851e381a08c6344546a457fce2ec131e4bb978589c2fc6d",
+      "reconciliation_sha256": "0062308b89bd93c1eff593cae812d942f96ff2bb4a7b70e183030414610e9599",
+      "current_candidate_identity_status": "clean-runtime-identity-established"
     },
     "live_qualification_request_packet": {
       "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
-      "source_sha256": "d983b5261d5a88bb1adcb9540408de185d33db98f4a16bf45ff5a0cf6889acc2",
-      "packet_sha256": "b9184d82ddbffa854bf3ca6c61eed27b338e53eb14baac570e2b411ccb753a2c",
+      "source_sha256": "2b7bc6e3aecb20f7b2303c9a13a5d19eb1d943e28f55cf4aef52e9c30492dfc6",
+      "packet_sha256": "e83c0f536ecfc7b0704b2186fe9a9f81ea7f7642b6ebd0b5d38c8b88db47b37c",
       "live_runs_authorized": 0
     },
     "current_candidate_identity_checker": {
@@ -65,11 +65,11 @@
       "path": "docs/process/devseek-r4-iteration-status-rollup.json",
       "binding_mode": "context-reference-not-hash-input",
       "reason": "avoid-recursive-hash-cycle-because-rollup-binds-this-observation",
-      "expected_clean_runtime_leaf_terminal_state": "BLOCKED"
+      "expected_clean_runtime_leaf_terminal_state": "COMPLETED"
     }
   },
   "expected_candidate_identity": {
-    "identity_probe_sha256": "cdb72e091a52472fdc1be9b6e17046f24be8fdf4f6d990f7cf3b9779905ab2e6",
+    "identity_probe_sha256": "9da58054cdc31803c96881c81283b75218e2b8dd369b13ec271d396f95bce3b1",
     "artifact_git_commit": "a034e5e",
     "candidate_source_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
     "vsix_sha256": "027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d",
@@ -81,47 +81,44 @@
     "matches_release_candidate_manifest": true
   },
   "tracked_registry_comparison": {
-    "tracked_identity_probe_sha256": "a016dfcf98e025a58712d796a39ca2a40f510c37383ee3be3cc51576875b28d6",
-    "tracked_artifact_git_commit": "00449c6",
-    "tracked_candidate_source_commit": "00449c6c26c16ed65350b4ef4431ec183174a0d8",
-    "tracked_vsix_sha256": "06932cc2c69f351538cf1f2d01339aac635fd80ba237db93a22f6775cb76bce6",
-    "tracked_observe_status": "failed",
-    "tracked_matches_expected_identity": false
+    "tracked_identity_probe_sha256": "9da58054cdc31803c96881c81283b75218e2b8dd369b13ec271d396f95bce3b1",
+    "tracked_artifact_git_commit": "a034e5e",
+    "tracked_candidate_source_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
+    "tracked_vsix_sha256": "027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d",
+    "tracked_observe_status": "passed",
+    "tracked_matches_expected_identity": true
   },
   "live_runtime_observation": {
-    "stable_runtime_count": 0,
+    "stable_runtime_count": 1,
     "isolated_controlled_vsix_runtime_count": 0,
     "stale_debug_runtime_count": 0,
     "unknown_devseek_bridge_runtime_count": 0,
     "unreadable_runtime_identity_count": 0,
-    "stable_runtime": [],
+    "stable_runtime": [
+      {
+        "pid": 811109,
+        "executable_path": "/usr/bin/node",
+        "script_path": "/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e/bridge/server.js"
+      }
+    ],
     "isolated_controlled_vsix_runtime": [],
     "stale_debug_runtime": [],
     "unknown_devseek_bridge_runtime": [],
-    "live_runtime_policy_ok": false,
-    "live_runtime_errors": [
-      "active_runtime:stable-runtime-cardinality-expected-1-got-0"
-    ],
+    "live_runtime_policy_ok": true,
+    "live_runtime_errors": [],
     "full_commandline_recorded": false,
     "environment_variables_recorded": false,
     "secrets_recorded": false,
     "provider_account_observed": false,
     "network_or_live_holdout_observed": false
   },
-  "blockers": [
-    "current-candidate-identity-registry-stale-or-not-refreshed",
-    "active_runtime:stable-runtime-cardinality-expected-1-got-0",
-    "clean-runtime-requires-window-action-authorization-or-external-clean-candidate-identity-receipt"
-  ],
-  "next_required_authority": [
-    "explicit-user-window-action-authorization-for-extension-activation-or-runtime-isolation",
-    "or-external-clean-candidate-identity-receipt"
-  ],
+  "blockers": [],
+  "next_required_authority": [],
   "counts": {
-    "blockers": 3,
-    "stable_runtime_count": 0,
+    "blockers": 0,
+    "stable_runtime_count": 1,
     "live_runs_authorized": 0,
     "qualification_claims": 0
   },
-  "observation_sha256": "82163108dfa9479a41feb46d584d1b989cd4127e9f6efe7898956189fff7e5be"
+  "observation_sha256": "f1aa92bd3a06487bf52c61aa44389f3e4a3dd51a87500c53d385bc5c53333006"
 }

@@ -17,19 +17,19 @@
       "path": "docs/process/devseek-gate0-decision-report.json",
       "schema_version": "devseek.gate0-decision/v1",
       "decision_id": "DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1",
-      "source_sha256": "9475afcdccb6c21ac4e6bc70c486f54b39cbd3b9aa8501b58558e363249e550e"
+      "source_sha256": "f1f292e1211b33b0b5eca974923347f03f517d24a6a88b8c47f6e7722d1d4113"
     },
     "external_authority_adapter": {
       "path": "docs/process/devseek-external-authority-adapter.json",
       "schema_version": "devseek.external-authority-adapter/v1",
       "adapter_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-ADAPTER/v1",
-      "source_sha256": "beb9ef6b31c70ce06b7b773413b382fb1b904af17a5c416dd108f3f9336c8561"
+      "source_sha256": "4ff7dfed6201797ffffba0479d2e245ebf0775a400d72ff14895eb9b73a4bae8"
     },
     "c0_wiring_reconciliation": {
       "path": "docs/process/devseek-c0-wiring-reconciliation.json",
       "schema_version": "devseek.c0-wiring-reconciliation/v1",
       "reconciliation_id": "DEVSEEK-GATE0-C0-WIRING-RECONCILIATION/v1",
-      "source_sha256": "c6a9218ea21dd39ae2a0b6e4393d8072421ff0746c6598321b43daca6ea1b403"
+      "source_sha256": "210d63b8f779e886775104adf3734ecbd737b04b447ac434200a25c552ff20e9"
     },
     "package_scripts": {
       "path": "package.json",
@@ -39,7 +39,7 @@
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "fcd5d3534b8aab36f37fd5be8360281767cba5c1f6789eeec1ccfc4cb7c1ed5d",
+      "source_sha256": "46999697802ec4ee0f56245cf53b211ff6f6b75e05e7e530dee060011eca6524",
       "required_gate": "external-authority-request-packets",
       "required_gate_present": true
     },
@@ -117,19 +117,19 @@
         {
           "input_id": "gate0-decision-report",
           "path": "docs/process/devseek-gate0-decision-report.json",
-          "sha256": "9475afcdccb6c21ac4e6bc70c486f54b39cbd3b9aa8501b58558e363249e550e",
+          "sha256": "f1f292e1211b33b0b5eca974923347f03f517d24a6a88b8c47f6e7722d1d4113",
           "purpose": "current Gate 0 machine decision and blocker counts"
         },
         {
           "input_id": "external-authority-adapter",
           "path": "docs/process/devseek-external-authority-adapter.json",
-          "sha256": "beb9ef6b31c70ce06b7b773413b382fb1b904af17a5c416dd108f3f9336c8561",
+          "sha256": "4ff7dfed6201797ffffba0479d2e245ebf0775a400d72ff14895eb9b73a4bae8",
           "purpose": "fail-closed external authority import adapter"
         },
         {
           "input_id": "c0-wiring-reconciliation",
           "path": "docs/process/devseek-c0-wiring-reconciliation.json",
-          "sha256": "c6a9218ea21dd39ae2a0b6e4393d8072421ff0746c6598321b43daca6ea1b403",
+          "sha256": "210d63b8f779e886775104adf3734ecbd737b04b447ac434200a25c552ff20e9",
           "purpose": "local C0 wiring and decision reconciliation"
         },
         {
@@ -205,19 +205,19 @@
         {
           "input_id": "gate0-decision-report",
           "path": "docs/process/devseek-gate0-decision-report.json",
-          "sha256": "9475afcdccb6c21ac4e6bc70c486f54b39cbd3b9aa8501b58558e363249e550e",
+          "sha256": "f1f292e1211b33b0b5eca974923347f03f517d24a6a88b8c47f6e7722d1d4113",
           "purpose": "current Gate 0 machine decision and blocker counts"
         },
         {
           "input_id": "external-authority-adapter",
           "path": "docs/process/devseek-external-authority-adapter.json",
-          "sha256": "beb9ef6b31c70ce06b7b773413b382fb1b904af17a5c416dd108f3f9336c8561",
+          "sha256": "4ff7dfed6201797ffffba0479d2e245ebf0775a400d72ff14895eb9b73a4bae8",
           "purpose": "fail-closed external authority import adapter"
         },
         {
           "input_id": "c0-wiring-reconciliation",
           "path": "docs/process/devseek-c0-wiring-reconciliation.json",
-          "sha256": "c6a9218ea21dd39ae2a0b6e4393d8072421ff0746c6598321b43daca6ea1b403",
+          "sha256": "210d63b8f779e886775104adf3734ecbd737b04b447ac434200a25c552ff20e9",
           "purpose": "local C0 wiring and decision reconciliation"
         },
         {
@@ -293,19 +293,19 @@
         {
           "input_id": "gate0-decision-report",
           "path": "docs/process/devseek-gate0-decision-report.json",
-          "sha256": "9475afcdccb6c21ac4e6bc70c486f54b39cbd3b9aa8501b58558e363249e550e",
+          "sha256": "f1f292e1211b33b0b5eca974923347f03f517d24a6a88b8c47f6e7722d1d4113",
           "purpose": "current Gate 0 machine decision and blocker counts"
         },
         {
           "input_id": "external-authority-adapter",
           "path": "docs/process/devseek-external-authority-adapter.json",
-          "sha256": "beb9ef6b31c70ce06b7b773413b382fb1b904af17a5c416dd108f3f9336c8561",
+          "sha256": "4ff7dfed6201797ffffba0479d2e245ebf0775a400d72ff14895eb9b73a4bae8",
           "purpose": "fail-closed external authority import adapter"
         },
         {
           "input_id": "c0-wiring-reconciliation",
           "path": "docs/process/devseek-c0-wiring-reconciliation.json",
-          "sha256": "c6a9218ea21dd39ae2a0b6e4393d8072421ff0746c6598321b43daca6ea1b403",
+          "sha256": "210d63b8f779e886775104adf3734ecbd737b04b447ac434200a25c552ff20e9",
           "purpose": "local C0 wiring and decision reconciliation"
         },
         {
@@ -381,19 +381,19 @@
         {
           "input_id": "gate0-decision-report",
           "path": "docs/process/devseek-gate0-decision-report.json",
-          "sha256": "9475afcdccb6c21ac4e6bc70c486f54b39cbd3b9aa8501b58558e363249e550e",
+          "sha256": "f1f292e1211b33b0b5eca974923347f03f517d24a6a88b8c47f6e7722d1d4113",
           "purpose": "current Gate 0 machine decision and blocker counts"
         },
         {
           "input_id": "external-authority-adapter",
           "path": "docs/process/devseek-external-authority-adapter.json",
-          "sha256": "beb9ef6b31c70ce06b7b773413b382fb1b904af17a5c416dd108f3f9336c8561",
+          "sha256": "4ff7dfed6201797ffffba0479d2e245ebf0775a400d72ff14895eb9b73a4bae8",
           "purpose": "fail-closed external authority import adapter"
         },
         {
           "input_id": "c0-wiring-reconciliation",
           "path": "docs/process/devseek-c0-wiring-reconciliation.json",
-          "sha256": "c6a9218ea21dd39ae2a0b6e4393d8072421ff0746c6598321b43daca6ea1b403",
+          "sha256": "210d63b8f779e886775104adf3734ecbd737b04b447ac434200a25c552ff20e9",
           "purpose": "local C0 wiring and decision reconciliation"
         },
         {
@@ -469,19 +469,19 @@
         {
           "input_id": "gate0-decision-report",
           "path": "docs/process/devseek-gate0-decision-report.json",
-          "sha256": "9475afcdccb6c21ac4e6bc70c486f54b39cbd3b9aa8501b58558e363249e550e",
+          "sha256": "f1f292e1211b33b0b5eca974923347f03f517d24a6a88b8c47f6e7722d1d4113",
           "purpose": "current Gate 0 machine decision and blocker counts"
         },
         {
           "input_id": "external-authority-adapter",
           "path": "docs/process/devseek-external-authority-adapter.json",
-          "sha256": "beb9ef6b31c70ce06b7b773413b382fb1b904af17a5c416dd108f3f9336c8561",
+          "sha256": "4ff7dfed6201797ffffba0479d2e245ebf0775a400d72ff14895eb9b73a4bae8",
           "purpose": "fail-closed external authority import adapter"
         },
         {
           "input_id": "c0-wiring-reconciliation",
           "path": "docs/process/devseek-c0-wiring-reconciliation.json",
-          "sha256": "c6a9218ea21dd39ae2a0b6e4393d8072421ff0746c6598321b43daca6ea1b403",
+          "sha256": "210d63b8f779e886775104adf3734ecbd737b04b447ac434200a25c552ff20e9",
           "purpose": "local C0 wiring and decision reconciliation"
         },
         {
@@ -559,5 +559,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "request_set_sha256": "6107f6545cc8d33573aa3eec77b064cab63c9834402a62c384bcf3629fcc0116"
+  "request_set_sha256": "e65721307cc11b047c3453a9f230874e6bfd80bd80c76bfac53a89e4826b3e96"
 }

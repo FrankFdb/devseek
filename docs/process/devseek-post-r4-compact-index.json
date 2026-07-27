@@ -41,37 +41,37 @@
     },
     "r4_iteration_status_rollup": {
       "path": "docs/process/devseek-r4-iteration-status-rollup.json",
-      "source_sha256": "3ed1c412d12044a465c99a325c48ad60d9e4ae337785161c749d1518aaf95281",
-      "rollup_sha256": "b1927e2377f0ae2fd6596c7427dbb04ccfec111baabd09a0f264c30302f18e41",
-      "clean_runtime_leaf_terminal_state": "BLOCKED"
+      "source_sha256": "3fe16cd47822064dc3d2d88c368d18161bb78834692a0ffd52ddca42b38c911b",
+      "rollup_sha256": "abd12eec6402e54993a19d2918eb976d027bf5e80682870cc1032c0061a85cb1",
+      "clean_runtime_leaf_terminal_state": "COMPLETED"
     },
     "r4_authorization_and_permission_guide": {
       "path": "docs/process/devseek-r4-authorization-and-permission-guide.md",
-      "source_sha256": "44b38edcb2a1587ab487e823e849d868f3a8a5ecd8670132566ffc750ccb24de"
+      "source_sha256": "826240c4a2cfcae0c6fb1068ed199b1ffed99d64857fd8053d70e3790f40ada5"
     },
     "r4_clean_runtime_limited_observation": {
       "path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
-      "source_sha256": "12c66f11486a601d366f512dc53eec2684b6052887d64fa5d2f5b0c6cb3cf7fa",
-      "observation_sha256": "82163108dfa9479a41feb46d584d1b989cd4127e9f6efe7898956189fff7e5be",
-      "terminal_state": "BLOCKED",
-      "stable_runtime_count": 0
+      "source_sha256": "005084a18681dc69df73e10fb5922024ed31fc3df1c34ba9d5858439556e6ada",
+      "observation_sha256": "f1aa92bd3a06487bf52c61aa44389f3e4a3dd51a87500c53d385bc5c53333006",
+      "terminal_state": "COMPLETED",
+      "stable_runtime_count": 1
     },
     "r4_process_artifacts_aggregate": {
       "path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
-      "source_sha256": "ff4d781be374830eb4fede9838fb1b29f4cd57ac47e6819f0b3915dac24373b4",
-      "aggregate_sha256": "edf1cc723f79f39820e9f60bca9dee73c8c61c88a6c3465e571b39a4edab5dbb",
+      "source_sha256": "d686a2ed09b97f8769d434944e58a006a702c2b6ead70bd1b8b07f4ef1d1122e",
+      "aggregate_sha256": "ff50ad672151325b59de0bbbe0d17f6b2da7cb803cd428c204d99414a6247a89",
       "artifact_errors": 0
     },
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
-      "source_sha256": "60316cb8f9dbd0df820117a34c3ec2584ab3392c42697ad24b7ad105fb0ff836",
-      "request_set_sha256": "6107f6545cc8d33573aa3eec77b064cab63c9834402a62c384bcf3629fcc0116",
+      "source_sha256": "2fe209d338bc1ef9e4eda8ca7e04d847fb7cf6943089a6fb686b960c2d7d482c",
+      "request_set_sha256": "e65721307cc11b047c3453a9f230874e6bfd80bd80c76bfac53a89e4826b3e96",
       "blocked_requests": 5
     },
     "r4_live_qualification_request_packet": {
       "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
-      "source_sha256": "d983b5261d5a88bb1adcb9540408de185d33db98f4a16bf45ff5a0cf6889acc2",
-      "packet_sha256": "b9184d82ddbffa854bf3ca6c61eed27b338e53eb14baac570e2b411ccb753a2c",
+      "source_sha256": "2b7bc6e3aecb20f7b2303c9a13a5d19eb1d943e28f55cf4aef52e9c30492dfc6",
+      "packet_sha256": "e83c0f536ecfc7b0704b2186fe9a9f81ea7f7642b6ebd0b5d38c8b88db47b37c",
       "blocked_requests": 5
     },
     "package_scripts": {
@@ -82,7 +82,7 @@
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "fcd5d3534b8aab36f37fd5be8360281767cba5c1f6789eeec1ccfc4cb7c1ed5d",
+      "source_sha256": "46999697802ec4ee0f56245cf53b211ff6f6b75e05e7e530dee060011eca6524",
       "required_gate": "post-r4-compact-index-governance",
       "required_gate_present": true
     },
@@ -92,7 +92,7 @@
     },
     "oracle_source": {
       "path": "scripts/test/devseek-post-r4-compact-index.test.mjs",
-      "source_sha256": "64ce22475779696cda008488bba779361c35ae495f037ea81e2378879f23e629"
+      "source_sha256": "99a1c45689aadfff4e70ddf5b8da2c4ff931f882261663286c53bd307ca09b82"
     }
   },
   "current_authorities": [
@@ -159,13 +159,13 @@
   ],
   "r4_current_state": {
     "total_leaf_count": 6,
-    "completed_leaves": 5,
-    "blocked_leaves": 1,
-    "current_blocked_leaf": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
-    "clean_runtime_leaf_terminal_state": "BLOCKED",
-    "clean_runtime_limited_observation_terminal_state": "BLOCKED",
-    "clean_runtime_identity_established": false,
-    "stable_runtime_count": 0,
+    "completed_leaves": 6,
+    "blocked_leaves": 0,
+    "current_blocked_leaf": null,
+    "clean_runtime_leaf_terminal_state": "COMPLETED",
+    "clean_runtime_limited_observation_terminal_state": "COMPLETED",
+    "clean_runtime_identity_established": true,
+    "stable_runtime_count": 1,
     "gate0_status": "NOT_PASSED",
     "r1_qualification_status": "NOT_STARTED",
     "live_runs_authorized": 0,
@@ -174,17 +174,10 @@
   "suspended_authorization_branches": {
     "clean_runtime": {
       "leaf_id": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
-      "terminal_state": "BLOCKED",
-      "clean_runtime_identity_established": false,
-      "blockers": [
-        "current-candidate-identity-registry-stale-or-not-refreshed",
-        "active_runtime:stable-runtime-cardinality-expected-1-got-0",
-        "clean-runtime-requires-window-action-authorization-or-external-clean-candidate-identity-receipt"
-      ],
-      "next_required_authority": [
-        "explicit-user-window-action-authorization-for-extension-activation-or-runtime-isolation",
-        "or-external-clean-candidate-identity-receipt"
-      ],
+      "terminal_state": "COMPLETED",
+      "clean_runtime_identity_established": true,
+      "blockers": [],
+      "next_required_authority": [],
       "local_repository_may_unblock_without_new_authority": false
     },
     "r4_live_authorization_requests": [
@@ -285,10 +278,7 @@
       "live-provider-action",
       "external-authority-import"
     ],
-    "clean_runtime_recovery_authority": [
-      "explicit-user-clean-runtime-window-action-authorization",
-      "external-clean-candidate-identity-receipt"
-    ],
+    "clean_runtime_recovery_authority": [],
     "live_qualification_terms": {
       "provider": "deepseek-web",
       "execution_mode": "headed",
@@ -423,9 +413,9 @@
     "nonpermission_queue_items": 10,
     "generated_for_items": 2,
     "r4_total_leaves": 6,
-    "r4_completed_leaves": 5,
-    "r4_blocked_leaves": 1,
-    "clean_runtime_blockers": 3,
+    "r4_completed_leaves": 6,
+    "r4_blocked_leaves": 0,
+    "clean_runtime_blockers": 0,
     "live_authorization_requests": 5,
     "live_authorization_blocked": 5,
     "external_authority_requests": 5,
@@ -435,5 +425,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "index_sha256": "5e8e6c0c86de343bbec3f92771adf837597265681ae76290edc968f2e3bc584b"
+  "index_sha256": "4cafeb6edbef421938f7418ba854fe18acdde68c521a853a545668d6d763d21b"
 }

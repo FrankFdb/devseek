@@ -7,8 +7,8 @@
 - Qualification effect: `NONE`
 - Claims permitted: `false`
 - Gate assertion: `false`
-- R4 leaves: `5/6` completed, `1` blocked
-- Clean runtime: `BLOCKED`, stable runtime count `0`
+- R4 leaves: `6/6` completed, `0` blocked
+- Clean runtime: `COMPLETED`, stable runtime count `1`
 - Live authorization requests: `5/5` blocked
 - External authority requests: `5/5` blocked
 
@@ -27,7 +27,7 @@
 
 ## R4 当前状态
 
-- Current blocked leaf: `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME`
+- Current blocked leaf: `null`
 - Gate0: `NOT_PASSED`
 - R1 qualification: `NOT_STARTED`
 - Live runs authorized: `0`
@@ -35,8 +35,8 @@
 
 ## 挂起授权支线
 
-- Clean runtime terminal state: `BLOCKED`
-- Clean runtime blockers: `3`
+- Clean runtime terminal state: `COMPLETED`
+- Clean runtime blockers: `0`
 
 | R4 live request | Owner | State |
 | --- | --- | --- |
@@ -81,17 +81,17 @@
 - `top_agent_quality_principles_16`: `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` -> `7b3449224d14360b67a114589c27086d476cec07b8f951cb7088761347d8a290`
 - `r3_closeout_next_phase_20`: `docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md` -> `842c2725379c64ade18425ac1854bc14e971db55f2afc29328e705a0c7b52351`
 - `post_r4_nonpermission_plan`: `docs/process/devseek-post-r4-nonpermission-iteration-plan.md` -> `51623b1c2267f8d3f6fcb09b800396e5da12ea083dad5c5ed98f331b8b735555`
-- `r4_iteration_status_rollup`: `docs/process/devseek-r4-iteration-status-rollup.json` -> `3ed1c412d12044a465c99a325c48ad60d9e4ae337785161c749d1518aaf95281`
-- `r4_authorization_and_permission_guide`: `docs/process/devseek-r4-authorization-and-permission-guide.md` -> `44b38edcb2a1587ab487e823e849d868f3a8a5ecd8670132566ffc750ccb24de`
-- `r4_clean_runtime_limited_observation`: `docs/process/devseek-r4-clean-runtime-limited-observation.json` -> `12c66f11486a601d366f512dc53eec2684b6052887d64fa5d2f5b0c6cb3cf7fa`
-- `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `ff4d781be374830eb4fede9838fb1b29f4cd57ac47e6819f0b3915dac24373b4`
-- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `60316cb8f9dbd0df820117a34c3ec2584ab3392c42697ad24b7ad105fb0ff836`
-- `r4_live_qualification_request_packet`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `d983b5261d5a88bb1adcb9540408de185d33db98f4a16bf45ff5a0cf6889acc2`
+- `r4_iteration_status_rollup`: `docs/process/devseek-r4-iteration-status-rollup.json` -> `3fe16cd47822064dc3d2d88c368d18161bb78834692a0ffd52ddca42b38c911b`
+- `r4_authorization_and_permission_guide`: `docs/process/devseek-r4-authorization-and-permission-guide.md` -> `826240c4a2cfcae0c6fb1068ed199b1ffed99d64857fd8053d70e3790f40ada5`
+- `r4_clean_runtime_limited_observation`: `docs/process/devseek-r4-clean-runtime-limited-observation.json` -> `005084a18681dc69df73e10fb5922024ed31fc3df1c34ba9d5858439556e6ada`
+- `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `d686a2ed09b97f8769d434944e58a006a702c2b6ead70bd1b8b07f4ef1d1122e`
+- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `2fe209d338bc1ef9e4eda8ca7e04d847fb7cf6943089a6fb686b960c2d7d482c`
+- `r4_live_qualification_request_packet`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `2b7bc6e3aecb20f7b2303c9a13a5d19eb1d943e28f55cf4aef52e9c30492dfc6`
 - `package_scripts`: `package.json` -> `0c48c818f839625c2974fb22aa8277db0ab1a3e2dfcde9544d804f8f63837640`
-- `phase_gate_source`: `scripts/devseek-phase0-12-verify.mjs` -> `fcd5d3534b8aab36f37fd5be8360281767cba5c1f6789eeec1ccfc4cb7c1ed5d`
+- `phase_gate_source`: `scripts/devseek-phase0-12-verify.mjs` -> `46999697802ec4ee0f56245cf53b211ff6f6b75e05e7e530dee060011eca6524`
 - `checker_source`: `scripts/devseek-post-r4-compact-index-check.mjs` -> `1842d2a17af0d91a5bfd8bbb2ca042acf52b45c88c0e89872589e5300a1ce9d1`
-- `oracle_source`: `scripts/test/devseek-post-r4-compact-index.test.mjs` -> `64ce22475779696cda008488bba779361c35ae495f037ea81e2378879f23e629`
+- `oracle_source`: `scripts/test/devseek-post-r4-compact-index.test.mjs` -> `99a1c45689aadfff4e70ddf5b8da2c4ff931f882261663286c53bd307ca09b82`
 
 ## Index Identity
 
-- Index SHA-256: `5e8e6c0c86de343bbec3f92771adf837597265681ae76290edc968f2e3bc584b`
+- Index SHA-256: `4cafeb6edbef421938f7418ba854fe18acdde68c521a853a545668d6d763d21b`

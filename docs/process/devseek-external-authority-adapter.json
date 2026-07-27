@@ -80,7 +80,7 @@
       },
       {
         "path": "scripts/devseek-phase0-12-verify.mjs",
-        "source_sha256": "fcd5d3534b8aab36f37fd5be8360281767cba5c1f6789eeec1ccfc4cb7c1ed5d"
+        "source_sha256": "46999697802ec4ee0f56245cf53b211ff6f6b75e05e7e530dee060011eca6524"
       },
       {
         "path": "scripts/lib/devseek-external-authority-adapter.mjs",
@@ -277,5 +277,5 @@
     "failure_oracles_covered": 7,
     "bypasses": 0
   },
-  "adapter_sha256": "beb9ef6b31c70ce06b7b773413b382fb1b904af17a5c416dd108f3f9336c8561"
+  "adapter_sha256": "4ff7dfed6201797ffffba0479d2e245ebf0775a400d72ff14895eb9b73a4bae8"
 }

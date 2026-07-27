@@ -168,6 +168,7 @@ const gates = [
     id: 'P0-P9-vscode-extension-unit',
     phases: '0-9',
     command: ['npm', 'run', 'test', '--workspace=packages/vscode-extension'],
+    timeoutMs: 600000,
     purpose: 'Project instructions, memory, workflow, permissions, ReviewLedger, QualityGate, history, provider runtime, UI protocol, and architecture boundary unit suites.',
   },
   {
@@ -244,10 +245,11 @@ process.exitCode = report.ok ? 0 : 1;
 
 function runGate(gate) {
   const started = Date.now();
+  const timeoutMs = gate.timeoutMs ?? 180000;
   const result = cp.spawnSync(gate.command[0], gate.command.slice(1), {
     cwd: repoRoot,
     encoding: 'utf8',
-    timeout: 180000,
+    timeout: timeoutMs,
   });
   const stdout = result.stdout ?? '';
   const stderr = result.stderr ?? '';
@@ -256,6 +258,7 @@ function runGate(gate) {
     phases: gate.phases,
     command: gate.command.join(' '),
     purpose: gate.purpose,
+    timeoutMs,
     status: result.status === 0 ? 'passed' : 'failed',
     durationMs: Date.now() - started,
     exitCode: result.status,

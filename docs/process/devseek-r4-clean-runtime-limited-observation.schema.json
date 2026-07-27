@@ -55,7 +55,6 @@
     },
     "next_required_authority": {
       "type": "array",
-      "minItems": 2,
       "items": { "$ref": "#/$defs/nonEmpty" }
     },
     "counts": { "$ref": "#/$defs/counts" },
@@ -143,7 +142,7 @@
             "path": { "const": "docs/process/devseek-r4-iteration-status-rollup.json" },
             "binding_mode": { "const": "context-reference-not-hash-input" },
             "reason": { "const": "avoid-recursive-hash-cycle-because-rollup-binds-this-observation" },
-            "expected_clean_runtime_leaf_terminal_state": { "const": "BLOCKED" }
+            "expected_clean_runtime_leaf_terminal_state": { "enum": ["COMPLETED", "BLOCKED"] }
           }
         }
       }

@@ -40,7 +40,10 @@ test('R4 process artifacts aggregate source-binds all local R4 process artifacts
     artifact_errors: 0,
   });
   assert.equal(actual.aggregate_scope.r4_original_leaf_count, 6);
-  assert.equal(actual.aggregate_scope.clean_runtime_terminal_state, 'BLOCKED');
+  assert.equal(
+    actual.aggregate_scope.clean_runtime_terminal_state,
+    expected.aggregate_scope.clean_runtime_terminal_state,
+  );
   assert.equal(actual.aggregate_scope.gate0_status, 'NOT_PASSED');
   assert.equal(actual.aggregate_scope.r1_qualification_status, 'NOT_STARTED');
   assert.equal(actual.aggregate_scope.live_or_provider_actions_performed, false);

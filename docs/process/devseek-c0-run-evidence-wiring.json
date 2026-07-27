@@ -61,7 +61,7 @@
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "fcd5d3534b8aab36f37fd5be8360281767cba5c1f6789eeec1ccfc4cb7c1ed5d"
+      "source_sha256": "46999697802ec4ee0f56245cf53b211ff6f6b75e05e7e530dee060011eca6524"
     },
     "checker_source": {
       "path": "scripts/devseek-c0-run-evidence-wiring-check.mjs",
@@ -295,5 +295,5 @@
     "bypasses": 0,
     "qualification_claims": 0
   },
-  "wiring_sha256": "f038e89df9cf273afdbee52a08b303b97ac68f5f25513d7f23816d191825346b"
+  "wiring_sha256": "16d972e650e0492b38b84879c0ae263c858dbc8eed3d978116613c4496bfee3f"
 }

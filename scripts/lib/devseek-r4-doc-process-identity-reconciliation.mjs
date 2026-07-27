@@ -72,6 +72,19 @@ export function buildR4DocProcessIdentityReconciliation({ repoRoot } = {}) {
       requiredAnchors: DOC19_ANCHORS,
     }),
   ];
+  const trackedCurrentMatchesReleaseCandidate = identityMatchesReleaseCandidate(
+    trackedCurrentIdentity,
+    releaseManifest,
+  );
+  trackedCurrentIdentity.status = trackedCurrentMatchesReleaseCandidate
+    ? 'tracked-current-clean-runtime'
+    : 'tracked-stale-deferred';
+  const currentCandidateIdentityStatus = trackedCurrentMatchesReleaseCandidate
+    ? 'clean-runtime-identity-established'
+    : 'deferred-unusable-until-clean-runtime';
+  const authorityToRefreshCurrentCandidateIdentity = trackedCurrentMatchesReleaseCandidate
+    ? 'not-required-current-identity-already-release-candidate'
+    : 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME';
 
   const report = {
     schema_version: R4_DOC_PROCESS_IDENTITY_RECONCILIATION_SCHEMA_VERSION,
@@ -114,17 +127,16 @@ export function buildR4DocProcessIdentityReconciliation({ repoRoot } = {}) {
         usable_for_qualification: false,
         qualification_effect: releaseManifest.qualification_effect,
       },
-      tracked_current_matches_release_candidate: trackedCurrentIdentity.artifact_git_commit === releaseManifest.source_identity.artifact_source_short
-        && trackedCurrentIdentity.vsix_sha256 === releaseManifest.artifact_identity.primary_vsix.sha256,
+      tracked_current_matches_release_candidate: trackedCurrentMatchesReleaseCandidate,
       archived_failed_matches_release_candidate: archivedFailedIdentity.artifact_git_commit === releaseManifest.source_identity.artifact_source_short
         && archivedFailedIdentity.vsix_sha256 === releaseManifest.artifact_identity.primary_vsix.sha256,
     },
     handoff_documents: handoffDocuments,
     conclusions: {
-      current_candidate_identity_status: 'deferred-unusable-until-clean-runtime',
+      current_candidate_identity_status: currentCandidateIdentityStatus,
       failed_identity_snapshot_status: 'archived-not-current',
       handoff_drift_status: 'archived-in-place',
-      authority_to_refresh_current_candidate_identity: 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME',
+      authority_to_refresh_current_candidate_identity: authorityToRefreshCurrentCandidateIdentity,
       release_candidate_manifest_remains_source_of_local_release_smoke: true,
       claims_empty: true,
       gate0_status: 'NOT_PASSED',
@@ -325,14 +337,18 @@ function semanticValidate(report, errors) {
   const tracked = report.identity_artifacts?.tracked_current_candidate_identity;
   const archived = report.identity_artifacts?.archived_failed_observe_identity;
   const release = report.identity_artifacts?.release_candidate_identity;
-  if (tracked?.status !== 'tracked-stale-deferred') errors.push('identity_artifacts.tracked_current_candidate_identity.status:invalid');
+  const trackedMatchesReleaseCandidate = report.identity_artifacts?.tracked_current_matches_release_candidate === true;
+  const expectedTrackedStatus = trackedMatchesReleaseCandidate
+    ? 'tracked-current-clean-runtime'
+    : 'tracked-stale-deferred';
+  if (tracked?.status !== expectedTrackedStatus) errors.push('identity_artifacts.tracked_current_candidate_identity.status:invalid');
   if (archived?.status !== 'archived-failed-observe') errors.push('identity_artifacts.archived_failed_observe_identity.status:invalid');
   if (release?.status !== 'current-local-release-smoke-reference') errors.push('identity_artifacts.release_candidate_identity.status:invalid');
   if (tracked?.usable_for_qualification !== false || archived?.usable_for_qualification !== false || release?.usable_for_qualification !== false) {
     errors.push('identity_artifacts.usable_for_qualification:must-all-be-false');
   }
-  if (report.identity_artifacts?.tracked_current_matches_release_candidate !== false) {
-    errors.push('identity_artifacts.tracked_current_matches_release_candidate:must-be-false');
+  if (typeof report.identity_artifacts?.tracked_current_matches_release_candidate !== 'boolean') {
+    errors.push('identity_artifacts.tracked_current_matches_release_candidate:must-be-boolean');
   }
   if (report.identity_artifacts?.archived_failed_matches_release_candidate !== false) {
     errors.push('identity_artifacts.archived_failed_matches_release_candidate:must-be-false');
@@ -342,10 +358,16 @@ function semanticValidate(report, errors) {
       errors.push(`handoff_documents.${doc.path}:missing-anchors`);
     }
   }
-  if (report.conclusions?.current_candidate_identity_status !== 'deferred-unusable-until-clean-runtime') {
+  const expectedCurrentCandidateStatus = trackedMatchesReleaseCandidate
+    ? 'clean-runtime-identity-established'
+    : 'deferred-unusable-until-clean-runtime';
+  if (report.conclusions?.current_candidate_identity_status !== expectedCurrentCandidateStatus) {
     errors.push('conclusions.current_candidate_identity_status:invalid');
   }
-  if (report.conclusions?.authority_to_refresh_current_candidate_identity !== 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME') {
+  const expectedRefreshAuthority = trackedMatchesReleaseCandidate
+    ? 'not-required-current-identity-already-release-candidate'
+    : 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME';
+  if (report.conclusions?.authority_to_refresh_current_candidate_identity !== expectedRefreshAuthority) {
     errors.push('conclusions.authority_to_refresh_current_candidate_identity:invalid');
   }
   if (report.conclusions?.claims_empty !== true) errors.push('conclusions.claims_empty:must-be-true');
@@ -360,6 +382,13 @@ function semanticValidate(report, errors) {
   } else if (report.reconciliation_sha256 !== computedHash) {
     errors.push('reconciliation_sha256:mismatch');
   }
+}
+
+function identityMatchesReleaseCandidate(identity, releaseManifest) {
+  return identity.candidate_source_commit === releaseManifest.source_identity.artifact_source_commit
+    && identity.artifact_git_commit === releaseManifest.source_identity.artifact_source_short
+    && identity.vsix_sha256 === releaseManifest.artifact_identity.primary_vsix.sha256
+    && identity.observe_status === 'passed';
 }
 
 function identityRow(label, identity) {

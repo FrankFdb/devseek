@@ -102,7 +102,7 @@ export function buildR4CleanRuntimeLimitedObservation({ repoRoot, homeDir } = {}
         path: R4_ROLLUP,
         binding_mode: 'context-reference-not-hash-input',
         reason: 'avoid-recursive-hash-cycle-because-rollup-binds-this-observation',
-        expected_clean_runtime_leaf_terminal_state: 'BLOCKED',
+        expected_clean_runtime_leaf_terminal_state: terminalState,
       },
     },
     expected_candidate_identity: {
@@ -146,10 +146,12 @@ export function buildR4CleanRuntimeLimitedObservation({ repoRoot, homeDir } = {}
       network_or_live_holdout_observed: false,
     },
     blockers,
-    next_required_authority: [
-      'explicit-user-window-action-authorization-for-extension-activation-or-runtime-isolation',
-      'or-external-clean-candidate-identity-receipt',
-    ],
+    next_required_authority: cleanRuntimeIdentityEstablished
+      ? []
+      : [
+        'explicit-user-window-action-authorization-for-extension-activation-or-runtime-isolation',
+        'or-external-clean-candidate-identity-receipt',
+      ],
     counts: {
       blockers: blockers.length,
       stable_runtime_count: liveRuntimeResult.summary.stable_runtime_count,
@@ -325,8 +327,8 @@ function semanticValidate(report, errors) {
   if (report.context_references?.r4_iteration_status_rollup?.binding_mode !== 'context-reference-not-hash-input') {
     errors.push('context_references.r4_iteration_status_rollup.binding_mode:invalid');
   }
-  if (report.context_references?.r4_iteration_status_rollup?.expected_clean_runtime_leaf_terminal_state !== 'BLOCKED') {
-    errors.push('context_references.r4_iteration_status_rollup.expected_clean_runtime_leaf_terminal_state:must-be-BLOCKED');
+  if (report.context_references?.r4_iteration_status_rollup?.expected_clean_runtime_leaf_terminal_state !== report.terminal_state) {
+    errors.push('context_references.r4_iteration_status_rollup.expected_clean_runtime_leaf_terminal_state:must-match-terminal-state');
   }
   if (report.clean_runtime_identity_established === true && report.terminal_state !== 'COMPLETED') {
     errors.push('terminal_state:must-be-COMPLETED-when-clean-runtime-established');
@@ -339,6 +341,12 @@ function semanticValidate(report, errors) {
   }
   if (report.terminal_state === 'COMPLETED' && (report.blockers ?? []).length !== 0) {
     errors.push('blockers:must-be-empty-when-completed');
+  }
+  if (report.terminal_state === 'BLOCKED' && (report.next_required_authority ?? []).length === 0) {
+    errors.push('next_required_authority:required-when-blocked');
+  }
+  if (report.terminal_state === 'COMPLETED' && (report.next_required_authority ?? []).length !== 0) {
+    errors.push('next_required_authority:must-be-empty-when-completed');
   }
   if (report.expected_candidate_identity?.matches_release_candidate_manifest !== true) {
     errors.push('expected_candidate_identity.matches_release_candidate_manifest:must-be-true');

@@ -20,6 +20,7 @@ import { renderR4ScenarioLanguageReplayCorpusMarkdown } from './devseek-r4-scena
 export const R4_PROCESS_ARTIFACTS_AGGREGATE_SCHEMA_VERSION = 'devseek.r4-process-artifacts-aggregate/v1';
 export const R4_PROCESS_ARTIFACTS_AGGREGATE_ID = 'R4-PROCESS-ARTIFACTS-AGGREGATE/v1';
 export const R4_PROCESS_ARTIFACTS_AGGREGATE_SCOPE = 'local-r4-process-artifacts-aggregate';
+const CLEAN_RUNTIME_OBSERVATION = 'docs/process/devseek-r4-clean-runtime-limited-observation.json';
 
 const ARTIFACT_SPECS = Object.freeze([
   {
@@ -135,6 +136,7 @@ export function buildR4ProcessArtifactsAggregate({ repoRoot } = {}) {
   if (!repoRoot) throw new Error('repoRoot is required');
 
   const artifacts = ARTIFACT_SPECS.map(spec => inspectArtifact(repoRoot, spec));
+  const cleanRuntimeObservation = readJson(path.join(repoRoot, CLEAN_RUNTIME_OBSERVATION));
   const aggregate = {
     schema_version: R4_PROCESS_ARTIFACTS_AGGREGATE_SCHEMA_VERSION,
     integrity: SUPPORTED_INTEGRITY,
@@ -169,7 +171,7 @@ export function buildR4ProcessArtifactsAggregate({ repoRoot } = {}) {
     aggregate_scope: {
       r4_original_leaf_count: 6,
       process_artifacts_complete_except_clean_runtime: true,
-      clean_runtime_terminal_state: 'BLOCKED',
+      clean_runtime_terminal_state: cleanRuntimeObservation.terminal_state,
       qualification_effect: 'NONE',
       claims_permitted: false,
       asserts_gate_pass: false,
@@ -432,8 +434,8 @@ function validateAggregateScope(scope, errors) {
   if (scope?.process_artifacts_complete_except_clean_runtime !== true) {
     errors.push('aggregate_scope.process_artifacts_complete_except_clean_runtime:must-be-true');
   }
-  if (scope?.clean_runtime_terminal_state !== 'BLOCKED') {
-    errors.push('aggregate_scope.clean_runtime_terminal_state:must-be-BLOCKED');
+  if (!['COMPLETED', 'BLOCKED'].includes(scope?.clean_runtime_terminal_state)) {
+    errors.push('aggregate_scope.clean_runtime_terminal_state:invalid');
   }
   if (scope?.qualification_effect !== 'NONE') errors.push('aggregate_scope.qualification_effect:must-be-NONE');
   if (scope?.claims_permitted !== false) errors.push('aggregate_scope.claims_permitted:must-be-false');

@@ -32,9 +32,15 @@ test('Post-R4 compact index is source-bound and non-qualifying', () => {
   assert.equal(actual.qualification_effect, 'NONE');
   assert.equal(actual.claims_permitted, false);
   assert.equal(actual.asserts_gate_pass, false);
-  assert.equal(actual.r4_current_state.clean_runtime_leaf_terminal_state, 'BLOCKED');
-  assert.equal(actual.r4_current_state.clean_runtime_limited_observation_terminal_state, 'BLOCKED');
-  assert.equal(actual.r4_current_state.stable_runtime_count, 0);
+  assert.equal(
+    actual.r4_current_state.clean_runtime_leaf_terminal_state,
+    expected.r4_current_state.clean_runtime_leaf_terminal_state,
+  );
+  assert.equal(
+    actual.r4_current_state.clean_runtime_limited_observation_terminal_state,
+    expected.r4_current_state.clean_runtime_limited_observation_terminal_state,
+  );
+  assert.equal(actual.r4_current_state.stable_runtime_count, expected.r4_current_state.stable_runtime_count);
   assert.equal(actual.r4_current_state.gate0_status, 'NOT_PASSED');
   assert.equal(actual.r4_current_state.r1_qualification_status, 'NOT_STARTED');
   assert.equal(actual.counts.live_runs_authorized, 0);
@@ -52,7 +58,10 @@ test('Post-R4 compact index is source-bound and non-qualifying', () => {
 test('Post-R4 compact index captures suspended authorization branches without local unblock', () => {
   const actual = readJson('docs/process/devseek-post-r4-compact-index.json');
 
-  assert.equal(actual.suspended_authorization_branches.clean_runtime.terminal_state, 'BLOCKED');
+  assert.equal(
+    actual.suspended_authorization_branches.clean_runtime.terminal_state,
+    expected.suspended_authorization_branches.clean_runtime.terminal_state,
+  );
   assert.equal(
     actual.suspended_authorization_branches.clean_runtime.local_repository_may_unblock_without_new_authority,
     false,
@@ -124,12 +133,13 @@ test('Post-R4 compact index runtime validation fails closed on source, script, o
   sourceBindingDrift.index_sha256 = '0'.repeat(64);
   assertHasIndexError(sourceBindingDrift, 'source_bindings:missing-docs/process/devseek-r4-iteration-status-rollup.json');
 
-  const unblockedCleanRuntime = structuredClone(expected);
-  unblockedCleanRuntime.r4_current_state.clean_runtime_leaf_terminal_state = 'COMPLETED';
-  unblockedCleanRuntime.index_sha256 = '0'.repeat(64);
+  const cleanRuntimeDrift = structuredClone(expected);
+  cleanRuntimeDrift.r4_current_state.clean_runtime_leaf_terminal_state =
+    expected.r4_current_state.clean_runtime_leaf_terminal_state === 'COMPLETED' ? 'BLOCKED' : 'COMPLETED';
+  cleanRuntimeDrift.index_sha256 = '0'.repeat(64);
   assertHasIndexError(
-    unblockedCleanRuntime,
-    'r4_current_state.clean_runtime_leaf_terminal_state:must-be-BLOCKED',
+    cleanRuntimeDrift,
+    'r4_current_state.clean_runtime_leaf_terminal_state:must-match-clean-runtime-branch',
   );
 
   const noScriptSources = loadPostR4CompactIndexSources(repoRoot, {
@@ -163,9 +173,9 @@ test('Post-R4 compact index checker command validates the generated index', asyn
     historical_support_documents: 3,
     nonpermission_queue_items: 10,
     r4_total_leaves: 6,
-    r4_completed_leaves: 5,
-    r4_blocked_leaves: 1,
-    clean_runtime_state: 'BLOCKED',
+    r4_completed_leaves: expected.counts.r4_completed_leaves,
+    r4_blocked_leaves: expected.counts.r4_blocked_leaves,
+    clean_runtime_state: expected.r4_current_state.clean_runtime_leaf_terminal_state,
     live_authorization_blocked: 5,
     external_authority_blocked: 5,
     live_runs_authorized: 0,
