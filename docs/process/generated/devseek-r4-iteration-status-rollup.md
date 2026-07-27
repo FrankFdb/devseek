@@ -49,8 +49,8 @@
 
 - Authorization guide: `docs/process/devseek-r4-authorization-and-permission-guide.md`
 - Clean runtime limited observation: `docs/process/devseek-r4-clean-runtime-limited-observation.json`
-- Clean runtime observation SHA-256: `350e17fbda700aa09c7f2c284d9fd2e6700b88d1d8e937b494c3d07e3439d546`
+- Clean runtime observation SHA-256: `82163108dfa9479a41feb46d584d1b989cd4127e9f6efe7898956189fff7e5be`
 
 ## Rollup Identity
 
-- Rollup SHA-256: `bf40ed43477c9ea020cd91f13930f0783f2978ac49d099274f8967117e66e302`
+- Rollup SHA-256: `b1927e2377f0ae2fd6596c7427dbb04ccfec111baabd09a0f264c30302f18e41`

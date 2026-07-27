@@ -1,0 +1,337 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-external-authority-readiness-audit-v1.json",
+  "title": "DevSeek External Authority Readiness Audit v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "audit_id",
+    "audit_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "observation_authority",
+    "source_bindings",
+    "audit_scope",
+    "readiness_boundary",
+    "request_audits",
+    "terminal_state_preservation",
+    "counts",
+    "audit_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.external-authority-readiness-audit/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "audit_id": { "const": "DEVSEEK-EXTERNAL-AUTHORITY-READINESS-AUDIT/v1" },
+    "audit_version": { "const": 1 },
+    "source_status": { "const": "generated-readiness-audit-only" },
+    "integrity_scope": { "const": "local-external-authority-readiness-audit" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "observation_authority": { "$ref": "#/$defs/observationAuthority" },
+    "source_bindings": { "$ref": "#/$defs/sourceBindings" },
+    "audit_scope": { "$ref": "#/$defs/auditScope" },
+    "readiness_boundary": { "$ref": "#/$defs/readinessBoundary" },
+    "request_audits": {
+      "type": "array",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": { "$ref": "#/$defs/requestAudit" }
+    },
+    "terminal_state_preservation": { "$ref": "#/$defs/terminalStatePreservation" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "audit_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["path", "source_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "observationAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantic_authority",
+        "writes_product_state",
+        "provider_actions",
+        "live_holdout_actions",
+        "runtime_process_observation",
+        "install_or_window_actions",
+        "secret_observation",
+        "request_terminal_state_writes",
+        "qualification_ledger_writes"
+      ],
+      "properties": {
+        "semantic_authority": { "const": "ExternalAuthorityReadinessAudit" },
+        "writes_product_state": { "const": false },
+        "provider_actions": { "const": "FORBIDDEN" },
+        "live_holdout_actions": { "const": "FORBIDDEN" },
+        "runtime_process_observation": { "const": "FORBIDDEN" },
+        "install_or_window_actions": { "const": "FORBIDDEN" },
+        "secret_observation": { "const": "FORBIDDEN" },
+        "request_terminal_state_writes": { "const": "FORBIDDEN" },
+        "qualification_ledger_writes": { "const": "FORBIDDEN" }
+      }
+    },
+    "sourceBindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "external_authority_requests",
+        "r4_live_qualification_request_packet",
+        "r4_live_user_way_holdout_matrix",
+        "r4_real_provider_failure_taxonomy",
+        "r4_authorization_and_permission_guide",
+        "r4_process_artifacts_aggregate",
+        "gate0_decision",
+        "package_scripts",
+        "phase_gate_source",
+        "checker_source",
+        "oracle_source"
+      ],
+      "properties": {
+        "external_authority_requests": { "$ref": "#/$defs/sourceRef" },
+        "r4_live_qualification_request_packet": { "$ref": "#/$defs/sourceRef" },
+        "r4_live_user_way_holdout_matrix": { "$ref": "#/$defs/sourceRef" },
+        "r4_real_provider_failure_taxonomy": { "$ref": "#/$defs/sourceRef" },
+        "r4_authorization_and_permission_guide": { "$ref": "#/$defs/sourceRef" },
+        "r4_process_artifacts_aggregate": { "$ref": "#/$defs/sourceRef" },
+        "gate0_decision": { "$ref": "#/$defs/sourceRef" },
+        "package_scripts": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "required": ["required_script", "required_script_present"],
+              "properties": {
+                "required_script": { "const": "verify:external-authority-readiness-audit" },
+                "required_script_present": { "const": true }
+              }
+            }
+          ]
+        },
+        "phase_gate_source": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "required": ["required_gate", "required_gate_present"],
+              "properties": {
+                "required_gate": { "const": "external-authority-readiness-audit" },
+                "required_gate_present": { "const": true }
+              }
+            }
+          ]
+        },
+        "checker_source": { "$ref": "#/$defs/sourceRef" },
+        "oracle_source": { "$ref": "#/$defs/sourceRef" }
+      }
+    },
+    "auditScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "families",
+        "request_terminal_states_changed",
+        "request_terminal_state_writes",
+        "qualification_ledger_writes",
+        "local_repository_may_unblock",
+        "provider_or_window_actions_performed",
+        "live_rerun_performed"
+      ],
+      "properties": {
+        "families": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "Gate0ExternalAuthorityRequest",
+              "R4LiveQualificationAuthorization"
+            ]
+          }
+        },
+        "request_terminal_states_changed": { "const": false },
+        "request_terminal_state_writes": { "const": false },
+        "qualification_ledger_writes": { "const": false },
+        "local_repository_may_unblock": { "const": false },
+        "provider_or_window_actions_performed": { "const": false },
+        "live_rerun_performed": { "const": false }
+      }
+    },
+    "readinessBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gate0_status",
+        "gate0_gate_passed",
+        "gate0_external_authority_blockers",
+        "external_authority_trust_anchored",
+        "r4_live_authorization_blocked",
+        "holdout_cases_blocked",
+        "live_runs_authorized",
+        "approved_live_requests",
+        "qualification_claims",
+        "process_artifact_errors",
+        "local_repository_may_approve_requests",
+        "markdown_may_change_terminal_state"
+      ],
+      "properties": {
+        "gate0_status": { "const": "NOT_PASSED" },
+        "gate0_gate_passed": { "const": false },
+        "gate0_external_authority_blockers": { "const": 6 },
+        "external_authority_trust_anchored": { "const": false },
+        "r4_live_authorization_blocked": { "const": 5 },
+        "holdout_cases_blocked": { "const": 5 },
+        "live_runs_authorized": { "const": 0 },
+        "approved_live_requests": { "const": 0 },
+        "qualification_claims": { "const": 0 },
+        "process_artifact_errors": { "const": 0 },
+        "local_repository_may_approve_requests": { "const": false },
+        "markdown_may_change_terminal_state": { "const": false }
+      }
+    },
+    "requestAudit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_family",
+        "request_id",
+        "atomic_id",
+        "decision_owner",
+        "requested_decision",
+        "terminal_state",
+        "source_blocker_reason",
+        "readiness_status",
+        "blocker_precision",
+        "blocker_evidence_fields",
+        "local_repository_may_unblock",
+        "next_authorization_action",
+        "terminal_state_preserved",
+        "qualification_effect",
+        "claims_permitted",
+        "asserts_gate_pass"
+      ],
+      "properties": {
+        "request_family": {
+          "enum": ["Gate0ExternalAuthorityRequest", "R4LiveQualificationAuthorization"]
+        },
+        "request_id": { "$ref": "#/$defs/nonEmpty" },
+        "atomic_id": { "$ref": "#/$defs/nonEmpty" },
+        "decision_owner": { "$ref": "#/$defs/nonEmpty" },
+        "requested_decision": { "$ref": "#/$defs/nonEmpty" },
+        "terminal_state": { "const": "BLOCKED" },
+        "source_blocker_reason": { "$ref": "#/$defs/nonEmpty" },
+        "readiness_status": { "$ref": "#/$defs/nonEmpty" },
+        "blocker_precision": { "const": "PRECISE" },
+        "blocker_evidence_fields": {
+          "type": "array",
+          "minItems": 5,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "local_repository_may_unblock": { "const": false },
+        "next_authorization_action": { "$ref": "#/$defs/nonEmpty" },
+        "terminal_state_preserved": { "const": true },
+        "qualification_effect": { "const": "NONE" },
+        "claims_permitted": { "const": false },
+        "asserts_gate_pass": { "const": false }
+      }
+    },
+    "terminalStatePreservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["external_request_states", "live_request_states"],
+      "properties": {
+        "external_request_states": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": { "$ref": "#/$defs/preservedState" }
+        },
+        "live_request_states": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": { "$ref": "#/$defs/preservedState" }
+        }
+      }
+    },
+    "preservedState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["atomic_id", "source_terminal_state", "audit_terminal_state", "preserved"],
+      "properties": {
+        "atomic_id": { "$ref": "#/$defs/nonEmpty" },
+        "source_terminal_state": { "const": "BLOCKED" },
+        "audit_terminal_state": { "const": "BLOCKED" },
+        "preserved": { "const": true }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request_audits",
+        "gate0_external_request_audits",
+        "r4_live_request_audits",
+        "blocked_requests",
+        "approved_requests",
+        "local_unblockable_requests",
+        "executable_recovery_statements",
+        "blocker_precision_ok",
+        "terminal_states_preserved",
+        "live_runs_authorized",
+        "qualification_claims",
+        "gate_pass_assertions",
+        "ledger_writes",
+        "provider_actions_performed"
+      ],
+      "properties": {
+        "request_audits": { "const": 10 },
+        "gate0_external_request_audits": { "const": 5 },
+        "r4_live_request_audits": { "const": 5 },
+        "blocked_requests": { "const": 10 },
+        "approved_requests": { "const": 0 },
+        "local_unblockable_requests": { "const": 0 },
+        "executable_recovery_statements": { "const": 10 },
+        "blocker_precision_ok": { "const": 10 },
+        "terminal_states_preserved": { "const": 10 },
+        "live_runs_authorized": { "const": 0 },
+        "qualification_claims": { "const": 0 },
+        "gate_pass_assertions": { "const": 0 },
+        "ledger_writes": { "const": 0 },
+        "provider_actions_performed": { "const": 0 }
+      }
+    }
+  }
+}

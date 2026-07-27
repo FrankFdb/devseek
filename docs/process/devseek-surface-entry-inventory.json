@@ -15,19 +15,19 @@
   "sources": {
     "packageJson": {
       "path": "packages/vscode-extension/package.json",
-      "source_sha256": "a20cda3df1d8140db6006996d367091480a17817a69e94a0b9e73468deb81030"
+      "source_sha256": "545be8c90166dc2a936ff3036c9f272a6d3f90ac2771641b38edf7b5e23f2d97"
     },
     "extensionCommands": {
       "path": "packages/vscode-extension/src/ui/extension-command-registration.ts",
-      "source_sha256": "707d9e00ab720d4492d6cde3ccdcaed923ed7a380a5a9953bd5606bf2d1296eb"
+      "source_sha256": "728731ff1c773adcfec4f18b78e7de37f2d11c4673be0cdd719c2265f1e4f05a"
     },
     "providerRouter": {
       "path": "packages/vscode-extension/src/llm/provider-router.ts",
-      "source_sha256": "8f873062edabb442dca3a170a2500801a73fc814395bcd4a42c60cb8924872a0"
+      "source_sha256": "09e512cc9bc178b4b3e24284e4c7db186ad3a43d01970cde97719197514c553f"
     },
     "pendingEditCoordinator": {
       "path": "packages/vscode-extension/src/pending-edit-coordinator.ts",
-      "source_sha256": "25e7f2f0b5cbc1d57b2c46c6c2cfed46a93d8d8c025df1783c0df672a809c379"
+      "source_sha256": "c07d85a926cfae649a7a842f40181d11c842e195a358da8881fd9a02ea22c63c"
     },
     "realPluginHarness": {
       "path": "packages/vscode-extension/src/ui/real-plugin-harness.ts",
@@ -35,11 +35,11 @@
     },
     "webviewProtocol": {
       "path": "packages/vscode-extension/src/ui/webview-protocol.ts",
-      "source_sha256": "c293736b190552429ccf6acfb8aa3457e0d35f8a2ef1faf670937a0ed3464ed5"
+      "source_sha256": "5cc2d1e0585e5d4e28f01f629d8e724f428f0a0a8f20eea2d6ffeb25fb26fe43"
     },
     "deepseekViewProvider": {
       "path": "packages/vscode-extension/src/ui/deepseek-view-provider.ts",
-      "source_sha256": "b44070869f5eedfce9b6abaee1fa80eee05abf232cd11c84a3e00440b6328fb5"
+      "source_sha256": "f1b97855a34e4a1f228521e18f572a064f67d8d13c66ff8036f00044dfd7ecfa"
     },
     "cliPackageJson": {
       "path": "packages/cli/package.json",
@@ -47,15 +47,15 @@
     },
     "cliIndex": {
       "path": "packages/cli/src/index.ts",
-      "source_sha256": "9dd33deee873de956c1d802d1f7d4ea41632d016f220a080f61ae96835554852"
+      "source_sha256": "ef266a06da74b8a97181f49737452b547ce447adcf49368c83036a1c20f2aef5"
     },
     "cliSurfaceAdapter": {
       "path": "packages/cli/src/cli-surface-adapter.ts",
-      "source_sha256": "d0714cb51b571e4191b097687e6377e08a49264dad88f23bd4bb3ff94b408a50"
+      "source_sha256": "bfe3a03759d4622a0ffb5d0b3747a2896dfc9cebd3eeee1a2d384106b334283b"
     },
     "bridgeServer": {
       "path": "packages/bridge/src/server.ts",
-      "source_sha256": "4fe8dbea30599e6107e73a077c7e37b6728c56c3e5ffb442fc7c6035bbad9115"
+      "source_sha256": "bd9b293558d0fd902ee0a48655021637509696892ce7f276a1b5cad0bcabfb15"
     },
     "schemaSource": {
       "path": "docs/process/devseek-surface-entry-inventory.schema.json",
@@ -67,15 +67,15 @@
     },
     "inventoryLibSource": {
       "path": "scripts/lib/devseek-surface-entry-inventory.mjs",
-      "source_sha256": "cb781253f974ade7cc9b02020a4bfd0a3f41787b865f7d81ca9005e74ccf7062"
+      "source_sha256": "7deba48c54ae55337bddf5cdfb8ee6a9f918b296c032bad0f408fbc39d04e361"
     },
     "oracleSource": {
       "path": "scripts/test/devseek-surface-entry-inventory.test.mjs",
-      "source_sha256": "0543b6bde2dffa0a755af67c4dd37608bb5329620c15d69d8b1e0200f7e906aa"
+      "source_sha256": "e3842737ad8566173beb3cc56e3768f3c9b0d879beab727c2d15b0ae38e436ee"
     },
     "rootPackageJson": {
       "path": "package.json",
-      "source_sha256": "763837c7a7c8481c7d9d0b77554453510ac4957560914c9f0c4e5b21740ee039"
+      "source_sha256": "0c48c818f839625c2974fb22aa8277db0ab1a3e2dfcde9544d804f8f63837640"
     }
   },
   "owner": {
@@ -113,7 +113,7 @@
   },
   "package_manifest": {
     "extension_id": "devseek-netai.devseek-netai",
-    "command_count": 16,
+    "command_count": 19,
     "view_count": 1,
     "view_container_count": 1
   },
@@ -554,6 +554,36 @@
       "coverage_status": "covered"
     },
     {
+      "entry_id": "vscode-command/devseek.deleteMemory",
+      "surface": "vscode",
+      "kind": "command",
+      "scope": "public",
+      "source_ref": "packages/vscode-extension/src/ui/extension-command-registration.ts",
+      "entrypoint": "devseek.deleteMemory",
+      "manifest_declared": true,
+      "runtime_registered": true,
+      "protocol_declared": null,
+      "handler_declared": null,
+      "owner": "MemoryContextRef",
+      "kernel_contract_projection": "ContextRef",
+      "coverage_status": "covered"
+    },
+    {
+      "entry_id": "vscode-command/devseek.disableMemory",
+      "surface": "vscode",
+      "kind": "command",
+      "scope": "public",
+      "source_ref": "packages/vscode-extension/src/ui/extension-command-registration.ts",
+      "entrypoint": "devseek.disableMemory",
+      "manifest_declared": true,
+      "runtime_registered": true,
+      "protocol_declared": null,
+      "handler_declared": null,
+      "owner": "MemoryContextRef",
+      "kernel_contract_projection": "ContextRef",
+      "coverage_status": "covered"
+    },
+    {
       "entry_id": "vscode-command/devseek.explain",
       "surface": "vscode",
       "kind": "command",
@@ -656,6 +686,21 @@
       "handler_declared": null,
       "owner": "PendingEditCoordinator",
       "kernel_contract_projection": "pending-edit-action",
+      "coverage_status": "covered"
+    },
+    {
+      "entry_id": "vscode-command/devseek.manageMemory",
+      "surface": "vscode",
+      "kind": "command",
+      "scope": "public",
+      "source_ref": "packages/vscode-extension/src/ui/extension-command-registration.ts",
+      "entrypoint": "devseek.manageMemory",
+      "manifest_declared": true,
+      "runtime_registered": true,
+      "protocol_declared": null,
+      "handler_declared": null,
+      "owner": "MemoryContextRef",
+      "kernel_contract_projection": "ContextRef",
       "coverage_status": "covered"
     },
     {
@@ -1394,9 +1439,9 @@
     "inventory_asserts_gate_pass": false
   },
   "counts": {
-    "total_entries": 84,
-    "vscode_manifest_commands": 16,
-    "vscode_runtime_commands": 22,
+    "total_entries": 87,
+    "vscode_manifest_commands": 19,
+    "vscode_runtime_commands": 25,
     "vscode_manifest_commands_missing_runtime": 0,
     "vscode_public_runtime_without_manifest": 0,
     "webview_protocol_entries": 41,
@@ -1415,5 +1460,5 @@
     "duplicate_webview_protocol_declarations": 0,
     "duplicate_webview_handler_registrations": 0
   },
-  "inventory_sha256": "9b9ca89f1cd7e6cbba68df0da610aecb73c25a36e08bd7bc9855f5d3802a3380"
+  "inventory_sha256": "1c00e3f03464c6424d563a1a5949485e1b61a832f5da4774754aaa76cf33d25b"
 }

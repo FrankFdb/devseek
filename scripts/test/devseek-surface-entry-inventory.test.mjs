@@ -29,9 +29,9 @@ test('surface entry inventory is source-bound and covers every current entry den
   assert.equal(actual.claims_permitted, false);
   assert.equal(actual.asserts_gate_pass, false);
   assert.deepEqual(actual.counts, {
-    total_entries: 84,
-    vscode_manifest_commands: 16,
-    vscode_runtime_commands: 22,
+    total_entries: 87,
+    vscode_manifest_commands: 19,
+    vscode_runtime_commands: 25,
     vscode_manifest_commands_missing_runtime: 0,
     vscode_public_runtime_without_manifest: 0,
     webview_protocol_entries: 41,
@@ -76,6 +76,16 @@ test('surface entry inventory is source-bound and covers every current entry den
   assert.ok(memoryEntry, 'devseek.showMemoryFiles must be inventoried');
   assert.equal(memoryEntry.owner, 'MemoryContextRef');
   assert.equal(memoryEntry.kernel_contract_projection, 'ContextRef');
+  for (const commandId of [
+    'devseek.manageMemory',
+    'devseek.disableMemory',
+    'devseek.deleteMemory',
+  ]) {
+    const entry = actual.entries.find(item => item.entry_id === `vscode-command/${commandId}`);
+    assert.ok(entry, `${commandId} must be inventoried`);
+    assert.equal(entry.owner, 'MemoryContextRef');
+    assert.equal(entry.kernel_contract_projection, 'ContextRef');
+  }
   for (const messageType of [
     'previewGeneratedFiles',
     'applyGeneratedFiles',
@@ -246,8 +256,8 @@ test('surface inventory checker command validates current inventory and generate
   assert.equal(result.ok, true, JSON.stringify(result.errors, null, 2));
   assert.deepEqual(result.summary, {
     inventory_sha256: expected.inventory_sha256,
-    entries: 84,
-    vscode_commands: 22,
+    entries: 87,
+    vscode_commands: 25,
     webview_inbound: 41,
     cli_entrypoints: 8,
     bridge_endpoints: 10,

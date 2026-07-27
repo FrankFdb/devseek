@@ -1,0 +1,447 @@
+{
+  "schema_version": "devseek.external-authority-readiness-audit/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "audit_id": "DEVSEEK-EXTERNAL-AUTHORITY-READINESS-AUDIT/v1",
+  "audit_version": 1,
+  "source_status": "generated-readiness-audit-only",
+  "integrity_scope": "local-external-authority-readiness-audit",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "observation_authority": {
+    "semantic_authority": "ExternalAuthorityReadinessAudit",
+    "writes_product_state": false,
+    "provider_actions": "FORBIDDEN",
+    "live_holdout_actions": "FORBIDDEN",
+    "runtime_process_observation": "FORBIDDEN",
+    "install_or_window_actions": "FORBIDDEN",
+    "secret_observation": "FORBIDDEN",
+    "request_terminal_state_writes": "FORBIDDEN",
+    "qualification_ledger_writes": "FORBIDDEN"
+  },
+  "source_bindings": {
+    "external_authority_requests": {
+      "path": "docs/process/devseek-external-authority-requests.json",
+      "source_sha256": "3bfcefe0054676b3b214936b262c677dfa3c511c243aa647ce0634bd15e0f8a2",
+      "request_set_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-REQUESTS/v1",
+      "request_set_sha256": "309b65cc91b13bd3db9d546c1d4b89b4a061176e9c92e388cfb6ab39e6613231",
+      "blocked_requests": 5
+    },
+    "r4_live_qualification_request_packet": {
+      "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
+      "source_sha256": "d983b5261d5a88bb1adcb9540408de185d33db98f4a16bf45ff5a0cf6889acc2",
+      "packet_id": "R4-LIVE-QUALIFICATION-REQUEST-PACKET/v1",
+      "packet_sha256": "b9184d82ddbffa854bf3ca6c61eed27b338e53eb14baac570e2b411ccb753a2c",
+      "blocked_requests": 5
+    },
+    "r4_live_user_way_holdout_matrix": {
+      "path": "docs/process/devseek-r4-live-user-way-holdout-matrix.json",
+      "source_sha256": "000a82523ebeb1047518c7ca32f232d1416cfccf8ec6418599428b642ed783cf",
+      "matrix_sha256": "083cfc5a922afe1e571f3d46bc099c0343ff49224c8ae6ae0e461a11d420f38e",
+      "blocked_cases": 5
+    },
+    "r4_real_provider_failure_taxonomy": {
+      "path": "docs/process/devseek-r4-real-provider-failure-taxonomy.json",
+      "source_sha256": "8a8f761acfb83d2e89643c4f7cdfc7103fc1f39f7bc32d48a233e7b3c272ee89",
+      "taxonomy_sha256": "9db65a53f787a39b5b27cf7c927f263eca2cb495e077a83f8bbb8244d8fed216",
+      "categories": 10
+    },
+    "r4_authorization_and_permission_guide": {
+      "path": "docs/process/devseek-r4-authorization-and-permission-guide.md",
+      "source_sha256": "44b38edcb2a1587ab487e823e849d868f3a8a5ecd8670132566ffc750ccb24de"
+    },
+    "r4_process_artifacts_aggregate": {
+      "path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
+      "source_sha256": "ff4d781be374830eb4fede9838fb1b29f4cd57ac47e6819f0b3915dac24373b4",
+      "aggregate_sha256": "edf1cc723f79f39820e9f60bca9dee73c8c61c88a6c3465e571b39a4edab5dbb",
+      "artifact_errors": 0
+    },
+    "gate0_decision": {
+      "path": "docs/process/devseek-gate0-decision-report.json",
+      "source_sha256": "f85a159a3e77a14f50abda26a6478c9e10949e61e34488266162efed98855b0e",
+      "decision_id": "DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1",
+      "qualification_status": "NOT_PASSED",
+      "external_authority_blockers": 6
+    },
+    "package_scripts": {
+      "path": "package.json",
+      "source_sha256": "0c48c818f839625c2974fb22aa8277db0ab1a3e2dfcde9544d804f8f63837640",
+      "required_script": "verify:external-authority-readiness-audit",
+      "required_script_present": true
+    },
+    "phase_gate_source": {
+      "path": "scripts/devseek-phase0-12-verify.mjs",
+      "source_sha256": "fcd5d3534b8aab36f37fd5be8360281767cba5c1f6789eeec1ccfc4cb7c1ed5d",
+      "required_gate": "external-authority-readiness-audit",
+      "required_gate_present": true
+    },
+    "checker_source": {
+      "path": "scripts/devseek-external-authority-readiness-audit-check.mjs",
+      "source_sha256": "07bcdf406f21ca21f930a1b84b9a06d24f2a2e94ebb34dd1e61ce76f7a7e6944"
+    },
+    "oracle_source": {
+      "path": "scripts/test/devseek-external-authority-readiness-audit.test.mjs",
+      "source_sha256": "2d356a6fe285af4fdc72493e39f88f201b98a9d92a2a27d189d8f4fd1d5af1a5"
+    }
+  },
+  "audit_scope": {
+    "families": [
+      "Gate0ExternalAuthorityRequest",
+      "R4LiveQualificationAuthorization"
+    ],
+    "request_terminal_states_changed": false,
+    "request_terminal_state_writes": false,
+    "qualification_ledger_writes": false,
+    "local_repository_may_unblock": false,
+    "provider_or_window_actions_performed": false,
+    "live_rerun_performed": false
+  },
+  "readiness_boundary": {
+    "gate0_status": "NOT_PASSED",
+    "gate0_gate_passed": false,
+    "gate0_external_authority_blockers": 6,
+    "external_authority_trust_anchored": false,
+    "r4_live_authorization_blocked": 5,
+    "holdout_cases_blocked": 5,
+    "live_runs_authorized": 0,
+    "approved_live_requests": 0,
+    "qualification_claims": 0,
+    "process_artifact_errors": 0,
+    "local_repository_may_approve_requests": false,
+    "markdown_may_change_terminal_state": false
+  },
+  "request_audits": [
+    {
+      "request_family": "Gate0ExternalAuthorityRequest",
+      "request_id": "EXT-01-SOURCE-REGISTRY-BINDING/request-v1",
+      "atomic_id": "EXT-01-SOURCE-REGISTRY-BINDING",
+      "decision_owner": "registry-owner",
+      "requested_decision": "Approve profile and evidence registry digests, versions, and revocation policy for Gate 0 protected qualification.",
+      "terminal_state": "BLOCKED",
+      "source_blocker_reason": "external-decision-artifact-not-provided",
+      "readiness_status": "BLOCKED_AWAITING_EXTERNAL_AUTHORITY",
+      "blocker_precision": "PRECISE",
+      "blocker_evidence_fields": [
+        "requested_decision_and_scope",
+        "required_input_digests",
+        "required_artifact_schema_and_signature_purpose",
+        "trusted_root_or_registry_reference",
+        "repository_import_port_and_fail_closed_verifier",
+        "redaction_and_secret_non_observation"
+      ],
+      "local_repository_may_unblock": false,
+      "next_authorization_action": "Obtain an approved external authority artifact for EXT-01-SOURCE-REGISTRY-BINDING from registry-owner, then import it only through the fail-closed external authority adapter.",
+      "terminal_state_preserved": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "request_family": "Gate0ExternalAuthorityRequest",
+      "request_id": "EXT-02-INDEPENDENT-ATTESTATION/request-v1",
+      "atomic_id": "EXT-02-INDEPENDENT-ATTESTATION",
+      "decision_owner": "independent-attestation-security-authority",
+      "requested_decision": "Issue verifiable external authority attestation and trusted root for Gate 0 protected qualification.",
+      "terminal_state": "BLOCKED",
+      "source_blocker_reason": "external-decision-artifact-not-provided",
+      "readiness_status": "BLOCKED_AWAITING_EXTERNAL_AUTHORITY",
+      "blocker_precision": "PRECISE",
+      "blocker_evidence_fields": [
+        "requested_decision_and_scope",
+        "required_input_digests",
+        "required_artifact_schema_and_signature_purpose",
+        "trusted_root_or_registry_reference",
+        "repository_import_port_and_fail_closed_verifier",
+        "redaction_and_secret_non_observation"
+      ],
+      "local_repository_may_unblock": false,
+      "next_authorization_action": "Obtain an approved external authority artifact for EXT-02-INDEPENDENT-ATTESTATION from independent-attestation-security-authority, then import it only through the fail-closed external authority adapter.",
+      "terminal_state_preserved": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "request_family": "Gate0ExternalAuthorityRequest",
+      "request_id": "EXT-03-PROTECTED-PROFILE-POLICY/request-v1",
+      "atomic_id": "EXT-03-PROTECTED-PROFILE-POLICY",
+      "decision_owner": "qualification-policy-owner",
+      "requested_decision": "Approve protected profile, aggregator allowlist, and exact claim rules for Gate 0.",
+      "terminal_state": "BLOCKED",
+      "source_blocker_reason": "external-decision-artifact-not-provided",
+      "readiness_status": "BLOCKED_AWAITING_EXTERNAL_AUTHORITY",
+      "blocker_precision": "PRECISE",
+      "blocker_evidence_fields": [
+        "requested_decision_and_scope",
+        "required_input_digests",
+        "required_artifact_schema_and_signature_purpose",
+        "trusted_root_or_registry_reference",
+        "repository_import_port_and_fail_closed_verifier",
+        "redaction_and_secret_non_observation"
+      ],
+      "local_repository_may_unblock": false,
+      "next_authorization_action": "Obtain an approved external authority artifact for EXT-03-PROTECTED-PROFILE-POLICY from qualification-policy-owner, then import it only through the fail-closed external authority adapter.",
+      "terminal_state_preserved": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "request_family": "Gate0ExternalAuthorityRequest",
+      "request_id": "EXT-04-ROLES-KEYS/request-v1",
+      "atomic_id": "EXT-04-ROLES-KEYS",
+      "decision_owner": "organizational-identity-key-management-authority",
+      "requested_decision": "Approve active non-test plan, runner, watchdog, oracle, adjudicator, and aggregator role identities and keys.",
+      "terminal_state": "BLOCKED",
+      "source_blocker_reason": "external-decision-artifact-not-provided",
+      "readiness_status": "BLOCKED_AWAITING_EXTERNAL_AUTHORITY",
+      "blocker_precision": "PRECISE",
+      "blocker_evidence_fields": [
+        "requested_decision_and_scope",
+        "required_input_digests",
+        "required_artifact_schema_and_signature_purpose",
+        "trusted_root_or_registry_reference",
+        "repository_import_port_and_fail_closed_verifier",
+        "redaction_and_secret_non_observation"
+      ],
+      "local_repository_may_unblock": false,
+      "next_authorization_action": "Obtain an approved external authority artifact for EXT-04-ROLES-KEYS from organizational-identity-key-management-authority, then import it only through the fail-closed external authority adapter.",
+      "terminal_state_preserved": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "request_family": "Gate0ExternalAuthorityRequest",
+      "request_id": "EXT-05-RETENTION-TIME/request-v1",
+      "atomic_id": "EXT-05-RETENTION-TIME",
+      "decision_owner": "external-storage-time-authority",
+      "requested_decision": "Approve WORM or retention lock storage, external stream anchor, and trusted non-rollback time receipts.",
+      "terminal_state": "BLOCKED",
+      "source_blocker_reason": "external-decision-artifact-not-provided",
+      "readiness_status": "BLOCKED_AWAITING_EXTERNAL_AUTHORITY",
+      "blocker_precision": "PRECISE",
+      "blocker_evidence_fields": [
+        "requested_decision_and_scope",
+        "required_input_digests",
+        "required_artifact_schema_and_signature_purpose",
+        "trusted_root_or_registry_reference",
+        "repository_import_port_and_fail_closed_verifier",
+        "redaction_and_secret_non_observation"
+      ],
+      "local_repository_may_unblock": false,
+      "next_authorization_action": "Obtain an approved external authority artifact for EXT-05-RETENTION-TIME from external-storage-time-authority, then import it only through the fail-closed external authority adapter.",
+      "terminal_state_preserved": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "request_family": "R4LiveQualificationAuthorization",
+      "request_id": "R4-LIVE-AUTH-01-USER-WINDOW-AUTHORIZATION/request-v1",
+      "atomic_id": "R4-LIVE-AUTH-01-USER-WINDOW-AUTHORIZATION",
+      "decision_owner": "human-user",
+      "requested_decision": "Authorize a headed user-way DeepSeek live qualification attempt with keep-window and keep-deepseek-page terms.",
+      "terminal_state": "BLOCKED",
+      "source_blocker_reason": "explicit-user-live-qualification-authorization-not-provided",
+      "readiness_status": "BLOCKED_AWAITING_USER_AUTHORIZATION",
+      "blocker_precision": "PRECISE",
+      "blocker_evidence_fields": [
+        "requested_decision",
+        "blocker_reason",
+        "decision_owner",
+        "required_before_qualification",
+        "repository_may_decide"
+      ],
+      "local_repository_may_unblock": false,
+      "next_authorization_action": "User must explicitly authorize one headed DeepSeek live qualification attempt with keep-window and keep-deepseek-page terms.",
+      "terminal_state_preserved": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "request_family": "R4LiveQualificationAuthorization",
+      "request_id": "R4-LIVE-AUTH-02-CLEAN-RUNTIME-CANDIDATE/request-v1",
+      "atomic_id": "R4-LIVE-AUTH-02-CLEAN-RUNTIME-CANDIDATE",
+      "decision_owner": "human-user-and-runtime-owner",
+      "requested_decision": "Authorize clean runtime identity refresh or isolation for exactly-one stable DevSeek bridge runtime.",
+      "terminal_state": "BLOCKED",
+      "source_blocker_reason": "clean-runtime-identity-authorization-not-provided",
+      "readiness_status": "BLOCKED_AWAITING_RUNTIME_OWNER_AUTHORIZATION",
+      "blocker_precision": "PRECISE",
+      "blocker_evidence_fields": [
+        "requested_decision",
+        "blocker_reason",
+        "decision_owner",
+        "required_before_qualification",
+        "repository_may_decide"
+      ],
+      "local_repository_may_unblock": false,
+      "next_authorization_action": "User and runtime owner must authorize clean runtime identity refresh, isolation, or provide an external clean candidate identity receipt.",
+      "terminal_state_preserved": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "request_family": "R4LiveQualificationAuthorization",
+      "request_id": "R4-LIVE-AUTH-03-HOLDOUT-PROFILE/request-v1",
+      "atomic_id": "R4-LIVE-AUTH-03-HOLDOUT-PROFILE",
+      "decision_owner": "qualification-profile-owner",
+      "requested_decision": "Approve the DeepSeek headed user-way holdout profile, scenario language policy, retry budget, and failure taxonomy.",
+      "terminal_state": "BLOCKED",
+      "source_blocker_reason": "protected-live-holdout-profile-not-approved",
+      "readiness_status": "BLOCKED_AWAITING_PROFILE_OWNER",
+      "blocker_precision": "PRECISE",
+      "blocker_evidence_fields": [
+        "requested_decision",
+        "blocker_reason",
+        "decision_owner",
+        "required_before_qualification",
+        "repository_may_decide"
+      ],
+      "local_repository_may_unblock": false,
+      "next_authorization_action": "Qualification profile owner must approve the headed user-way holdout profile, scenario language policy, retry budget, and failure taxonomy.",
+      "terminal_state_preserved": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "request_family": "R4LiveQualificationAuthorization",
+      "request_id": "R4-LIVE-AUTH-04-TRUSTED-EVIDENCE/request-v1",
+      "atomic_id": "R4-LIVE-AUTH-04-TRUSTED-EVIDENCE",
+      "decision_owner": "external-evidence-authority",
+      "requested_decision": "Provide trusted evidence manifest, nonrollback time, retention lock, and externally anchored stream head.",
+      "terminal_state": "BLOCKED",
+      "source_blocker_reason": "trusted-live-evidence-manifest-not-provided",
+      "readiness_status": "BLOCKED_AWAITING_EXTERNAL_EVIDENCE_AUTHORITY",
+      "blocker_precision": "PRECISE",
+      "blocker_evidence_fields": [
+        "requested_decision",
+        "blocker_reason",
+        "decision_owner",
+        "required_before_qualification",
+        "repository_may_decide"
+      ],
+      "local_repository_may_unblock": false,
+      "next_authorization_action": "External evidence authority must provide trusted manifest, nonrollback time, retention lock, and externally anchored stream head.",
+      "terminal_state_preserved": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    },
+    {
+      "request_family": "R4LiveQualificationAuthorization",
+      "request_id": "R4-LIVE-AUTH-05-QUALIFICATION-IMPORT/request-v1",
+      "atomic_id": "R4-LIVE-AUTH-05-QUALIFICATION-IMPORT",
+      "decision_owner": "independent-qualification-import-authority",
+      "requested_decision": "Approve external import of live evidence into Gate0/R1 qualification after all protected prerequisites are satisfied.",
+      "terminal_state": "BLOCKED",
+      "source_blocker_reason": "independent-qualification-import-decision-not-provided",
+      "readiness_status": "BLOCKED_AWAITING_QUALIFICATION_IMPORT_AUTHORITY",
+      "blocker_precision": "PRECISE",
+      "blocker_evidence_fields": [
+        "requested_decision",
+        "blocker_reason",
+        "decision_owner",
+        "required_before_qualification",
+        "repository_may_decide"
+      ],
+      "local_repository_may_unblock": false,
+      "next_authorization_action": "Independent qualification import authority must approve importing trusted live evidence into Gate0/R1 only after all protected prerequisites pass.",
+      "terminal_state_preserved": true,
+      "qualification_effect": "NONE",
+      "claims_permitted": false,
+      "asserts_gate_pass": false
+    }
+  ],
+  "terminal_state_preservation": {
+    "external_request_states": [
+      {
+        "atomic_id": "EXT-01-SOURCE-REGISTRY-BINDING",
+        "source_terminal_state": "BLOCKED",
+        "audit_terminal_state": "BLOCKED",
+        "preserved": true
+      },
+      {
+        "atomic_id": "EXT-02-INDEPENDENT-ATTESTATION",
+        "source_terminal_state": "BLOCKED",
+        "audit_terminal_state": "BLOCKED",
+        "preserved": true
+      },
+      {
+        "atomic_id": "EXT-03-PROTECTED-PROFILE-POLICY",
+        "source_terminal_state": "BLOCKED",
+        "audit_terminal_state": "BLOCKED",
+        "preserved": true
+      },
+      {
+        "atomic_id": "EXT-04-ROLES-KEYS",
+        "source_terminal_state": "BLOCKED",
+        "audit_terminal_state": "BLOCKED",
+        "preserved": true
+      },
+      {
+        "atomic_id": "EXT-05-RETENTION-TIME",
+        "source_terminal_state": "BLOCKED",
+        "audit_terminal_state": "BLOCKED",
+        "preserved": true
+      }
+    ],
+    "live_request_states": [
+      {
+        "atomic_id": "R4-LIVE-AUTH-01-USER-WINDOW-AUTHORIZATION",
+        "source_terminal_state": "BLOCKED",
+        "audit_terminal_state": "BLOCKED",
+        "preserved": true
+      },
+      {
+        "atomic_id": "R4-LIVE-AUTH-02-CLEAN-RUNTIME-CANDIDATE",
+        "source_terminal_state": "BLOCKED",
+        "audit_terminal_state": "BLOCKED",
+        "preserved": true
+      },
+      {
+        "atomic_id": "R4-LIVE-AUTH-03-HOLDOUT-PROFILE",
+        "source_terminal_state": "BLOCKED",
+        "audit_terminal_state": "BLOCKED",
+        "preserved": true
+      },
+      {
+        "atomic_id": "R4-LIVE-AUTH-04-TRUSTED-EVIDENCE",
+        "source_terminal_state": "BLOCKED",
+        "audit_terminal_state": "BLOCKED",
+        "preserved": true
+      },
+      {
+        "atomic_id": "R4-LIVE-AUTH-05-QUALIFICATION-IMPORT",
+        "source_terminal_state": "BLOCKED",
+        "audit_terminal_state": "BLOCKED",
+        "preserved": true
+      }
+    ]
+  },
+  "counts": {
+    "request_audits": 10,
+    "gate0_external_request_audits": 5,
+    "r4_live_request_audits": 5,
+    "blocked_requests": 10,
+    "approved_requests": 0,
+    "local_unblockable_requests": 0,
+    "executable_recovery_statements": 10,
+    "blocker_precision_ok": 10,
+    "terminal_states_preserved": 10,
+    "live_runs_authorized": 0,
+    "qualification_claims": 0,
+    "gate_pass_assertions": 0,
+    "ledger_writes": 0,
+    "provider_actions_performed": 0
+  },
+  "audit_sha256": "20cb21c35e21f39d397e2c180e90a91bf6dbe291bb7572e15392fcabcaaaf0e0"
+}

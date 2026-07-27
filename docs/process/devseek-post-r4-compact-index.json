@@ -1,0 +1,439 @@
+{
+  "schema_version": "devseek.post-r4-compact-index/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "index_id": "POST-R4-COMPACT-INDEX/v1",
+  "index_version": 1,
+  "source_status": "generated-source-bound-compact-index",
+  "integrity_scope": "local-post-r4-doc-process-compact-index",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "observation_authority": {
+    "semantic_authority": "PostR4CompactIndex",
+    "writes_product_state": false,
+    "provider_actions": "FORBIDDEN",
+    "live_holdout_actions": "FORBIDDEN",
+    "runtime_process_observation": "FORBIDDEN",
+    "install_or_window_actions": "FORBIDDEN",
+    "secret_observation": "FORBIDDEN",
+    "qualification_ledger_writes": "FORBIDDEN"
+  },
+  "source_bindings": {
+    "top_agent_followup_plan_14": {
+      "path": "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md",
+      "source_sha256": "e4136d792f6c3402ab82b174ed0f8a893bbb2b6613643d1776dd13f44c8a7bb3"
+    },
+    "top_agent_quality_principles_16": {
+      "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
+      "source_sha256": "7b3449224d14360b67a114589c27086d476cec07b8f951cb7088761347d8a290"
+    },
+    "r3_closeout_next_phase_20": {
+      "path": "docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md",
+      "source_sha256": "842c2725379c64ade18425ac1854bc14e971db55f2afc29328e705a0c7b52351"
+    },
+    "post_r4_nonpermission_plan": {
+      "path": "docs/process/devseek-post-r4-nonpermission-iteration-plan.md",
+      "source_sha256": "51623b1c2267f8d3f6fcb09b800396e5da12ea083dad5c5ed98f331b8b735555"
+    },
+    "r4_iteration_status_rollup": {
+      "path": "docs/process/devseek-r4-iteration-status-rollup.json",
+      "source_sha256": "3ed1c412d12044a465c99a325c48ad60d9e4ae337785161c749d1518aaf95281",
+      "rollup_sha256": "b1927e2377f0ae2fd6596c7427dbb04ccfec111baabd09a0f264c30302f18e41",
+      "clean_runtime_leaf_terminal_state": "BLOCKED"
+    },
+    "r4_authorization_and_permission_guide": {
+      "path": "docs/process/devseek-r4-authorization-and-permission-guide.md",
+      "source_sha256": "44b38edcb2a1587ab487e823e849d868f3a8a5ecd8670132566ffc750ccb24de"
+    },
+    "r4_clean_runtime_limited_observation": {
+      "path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
+      "source_sha256": "12c66f11486a601d366f512dc53eec2684b6052887d64fa5d2f5b0c6cb3cf7fa",
+      "observation_sha256": "82163108dfa9479a41feb46d584d1b989cd4127e9f6efe7898956189fff7e5be",
+      "terminal_state": "BLOCKED",
+      "stable_runtime_count": 0
+    },
+    "r4_process_artifacts_aggregate": {
+      "path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
+      "source_sha256": "ff4d781be374830eb4fede9838fb1b29f4cd57ac47e6819f0b3915dac24373b4",
+      "aggregate_sha256": "edf1cc723f79f39820e9f60bca9dee73c8c61c88a6c3465e571b39a4edab5dbb",
+      "artifact_errors": 0
+    },
+    "external_authority_requests": {
+      "path": "docs/process/devseek-external-authority-requests.json",
+      "source_sha256": "3bfcefe0054676b3b214936b262c677dfa3c511c243aa647ce0634bd15e0f8a2",
+      "request_set_sha256": "309b65cc91b13bd3db9d546c1d4b89b4a061176e9c92e388cfb6ab39e6613231",
+      "blocked_requests": 5
+    },
+    "r4_live_qualification_request_packet": {
+      "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
+      "source_sha256": "d983b5261d5a88bb1adcb9540408de185d33db98f4a16bf45ff5a0cf6889acc2",
+      "packet_sha256": "b9184d82ddbffa854bf3ca6c61eed27b338e53eb14baac570e2b411ccb753a2c",
+      "blocked_requests": 5
+    },
+    "package_scripts": {
+      "path": "package.json",
+      "source_sha256": "0c48c818f839625c2974fb22aa8277db0ab1a3e2dfcde9544d804f8f63837640",
+      "required_script": "verify:post-r4-compact-index",
+      "required_script_present": true
+    },
+    "phase_gate_source": {
+      "path": "scripts/devseek-phase0-12-verify.mjs",
+      "source_sha256": "fcd5d3534b8aab36f37fd5be8360281767cba5c1f6789eeec1ccfc4cb7c1ed5d",
+      "required_gate": "post-r4-compact-index-governance",
+      "required_gate_present": true
+    },
+    "checker_source": {
+      "path": "scripts/devseek-post-r4-compact-index-check.mjs",
+      "source_sha256": "1842d2a17af0d91a5bfd8bbb2ca042acf52b45c88c0e89872589e5300a1ce9d1"
+    },
+    "oracle_source": {
+      "path": "scripts/test/devseek-post-r4-compact-index.test.mjs",
+      "source_sha256": "64ce22475779696cda008488bba779361c35ae495f037ea81e2378879f23e629"
+    }
+  },
+  "current_authorities": [
+    {
+      "authority": "repo-read",
+      "current_state": "AUTHORIZED",
+      "allowed_summary": "read git, docs/process, source, tests, and generated local artifacts"
+    },
+    {
+      "authority": "repo-write",
+      "current_state": "AUTHORIZED_SCOPED",
+      "allowed_summary": "write local docs/process artifacts, schemas, checkers, and non-live tests"
+    },
+    {
+      "authority": "local-verification",
+      "current_state": "AUTHORIZED_SCOPED",
+      "allowed_summary": "run local schema/checker/node tests and non-live verification commands"
+    },
+    {
+      "authority": "runtime-identity-observation",
+      "current_state": "AUTHORIZED_LIMITED",
+      "allowed_summary": "read-only local runtime identity observation without window, install, Provider, or secret actions"
+    },
+    {
+      "authority": "existing-window-action",
+      "current_state": "NOT_AUTHORIZED",
+      "allowed_summary": "no close, focus, reuse, refresh, or other VS Code/DeepSeek window action"
+    },
+    {
+      "authority": "vsix-install-package-action",
+      "current_state": "NOT_AUTHORIZED",
+      "allowed_summary": "no package-install, uninstall, replacement, or VSIX activation action"
+    },
+    {
+      "authority": "live-provider-action",
+      "current_state": "NOT_AUTHORIZED",
+      "allowed_summary": "no headed live Provider prompt, send, safety retry, or Provider page interaction"
+    },
+    {
+      "authority": "external-authority-import",
+      "current_state": "NOT_AUTHORIZED",
+      "allowed_summary": "no Gate0/R1 qualification import, claim update, or qualification ledger write"
+    }
+  ],
+  "historical_support_documents": [
+    {
+      "document_id": "legacy-followup-plan-14",
+      "path": "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md",
+      "role": "historical-unfinished-work-and-followup-plan",
+      "source_sha256": "e4136d792f6c3402ab82b174ed0f8a893bbb2b6613643d1776dd13f44c8a7bb3"
+    },
+    {
+      "document_id": "quality-principles-16",
+      "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
+      "role": "iteration-principles-quality-standards-and-skills-plan",
+      "source_sha256": "7b3449224d14360b67a114589c27086d476cec07b8f951cb7088761347d8a290"
+    },
+    {
+      "document_id": "r3-handoff-20",
+      "path": "docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md",
+      "role": "r3-closeout-and-next-phase-handoff",
+      "source_sha256": "842c2725379c64ade18425ac1854bc14e971db55f2afc29328e705a0c7b52351"
+    }
+  ],
+  "r4_current_state": {
+    "total_leaf_count": 6,
+    "completed_leaves": 5,
+    "blocked_leaves": 1,
+    "current_blocked_leaf": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
+    "clean_runtime_leaf_terminal_state": "BLOCKED",
+    "clean_runtime_limited_observation_terminal_state": "BLOCKED",
+    "clean_runtime_identity_established": false,
+    "stable_runtime_count": 0,
+    "gate0_status": "NOT_PASSED",
+    "r1_qualification_status": "NOT_STARTED",
+    "live_runs_authorized": 0,
+    "qualification_claims": 0
+  },
+  "suspended_authorization_branches": {
+    "clean_runtime": {
+      "leaf_id": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
+      "terminal_state": "BLOCKED",
+      "clean_runtime_identity_established": false,
+      "blockers": [
+        "current-candidate-identity-registry-stale-or-not-refreshed",
+        "active_runtime:stable-runtime-cardinality-expected-1-got-0",
+        "clean-runtime-requires-window-action-authorization-or-external-clean-candidate-identity-receipt"
+      ],
+      "next_required_authority": [
+        "explicit-user-window-action-authorization-for-extension-activation-or-runtime-isolation",
+        "or-external-clean-candidate-identity-receipt"
+      ],
+      "local_repository_may_unblock_without_new_authority": false
+    },
+    "r4_live_authorization_requests": [
+      {
+        "atomic_id": "R4-LIVE-AUTH-01-USER-WINDOW-AUTHORIZATION",
+        "decision_owner": "human-user",
+        "terminal_state": "BLOCKED",
+        "blocker_reason": "explicit-user-live-qualification-authorization-not-provided",
+        "repository_may_decide": false,
+        "qualification_effect": "NONE"
+      },
+      {
+        "atomic_id": "R4-LIVE-AUTH-02-CLEAN-RUNTIME-CANDIDATE",
+        "decision_owner": "human-user-and-runtime-owner",
+        "terminal_state": "BLOCKED",
+        "blocker_reason": "clean-runtime-identity-authorization-not-provided",
+        "repository_may_decide": false,
+        "qualification_effect": "NONE"
+      },
+      {
+        "atomic_id": "R4-LIVE-AUTH-03-HOLDOUT-PROFILE",
+        "decision_owner": "qualification-profile-owner",
+        "terminal_state": "BLOCKED",
+        "blocker_reason": "protected-live-holdout-profile-not-approved",
+        "repository_may_decide": false,
+        "qualification_effect": "NONE"
+      },
+      {
+        "atomic_id": "R4-LIVE-AUTH-04-TRUSTED-EVIDENCE",
+        "decision_owner": "external-evidence-authority",
+        "terminal_state": "BLOCKED",
+        "blocker_reason": "trusted-live-evidence-manifest-not-provided",
+        "repository_may_decide": false,
+        "qualification_effect": "NONE"
+      },
+      {
+        "atomic_id": "R4-LIVE-AUTH-05-QUALIFICATION-IMPORT",
+        "decision_owner": "independent-qualification-import-authority",
+        "terminal_state": "BLOCKED",
+        "blocker_reason": "independent-qualification-import-decision-not-provided",
+        "repository_may_decide": false,
+        "qualification_effect": "NONE"
+      }
+    ],
+    "gate0_external_authority_requests": [
+      {
+        "atomic_id": "EXT-01-SOURCE-REGISTRY-BINDING",
+        "independent_decision_owner": "registry-owner",
+        "terminal_state": "BLOCKED",
+        "requested_decision": "Approve profile and evidence registry digests, versions, and revocation policy for Gate 0 protected qualification.",
+        "repository_may_decide": false,
+        "qualification_effect": "NONE"
+      },
+      {
+        "atomic_id": "EXT-02-INDEPENDENT-ATTESTATION",
+        "independent_decision_owner": "independent-attestation-security-authority",
+        "terminal_state": "BLOCKED",
+        "requested_decision": "Issue verifiable external authority attestation and trusted root for Gate 0 protected qualification.",
+        "repository_may_decide": false,
+        "qualification_effect": "NONE"
+      },
+      {
+        "atomic_id": "EXT-03-PROTECTED-PROFILE-POLICY",
+        "independent_decision_owner": "qualification-policy-owner",
+        "terminal_state": "BLOCKED",
+        "requested_decision": "Approve protected profile, aggregator allowlist, and exact claim rules for Gate 0.",
+        "repository_may_decide": false,
+        "qualification_effect": "NONE"
+      },
+      {
+        "atomic_id": "EXT-04-ROLES-KEYS",
+        "independent_decision_owner": "organizational-identity-key-management-authority",
+        "terminal_state": "BLOCKED",
+        "requested_decision": "Approve active non-test plan, runner, watchdog, oracle, adjudicator, and aggregator role identities and keys.",
+        "repository_may_decide": false,
+        "qualification_effect": "NONE"
+      },
+      {
+        "atomic_id": "EXT-05-RETENTION-TIME",
+        "independent_decision_owner": "external-storage-time-authority",
+        "terminal_state": "BLOCKED",
+        "requested_decision": "Approve WORM or retention lock storage, external stream anchor, and trusted non-rollback time receipts.",
+        "repository_may_decide": false,
+        "qualification_effect": "NONE"
+      }
+    ]
+  },
+  "permission_recovery_boundary": {
+    "current_allowed_authorities": [
+      "repo-read",
+      "repo-write",
+      "local-verification",
+      "runtime-identity-observation"
+    ],
+    "currently_not_authorized": [
+      "existing-window-action",
+      "vsix-install-package-action",
+      "live-provider-action",
+      "external-authority-import"
+    ],
+    "clean_runtime_recovery_authority": [
+      "explicit-user-clean-runtime-window-action-authorization",
+      "external-clean-candidate-identity-receipt"
+    ],
+    "live_qualification_terms": {
+      "provider": "deepseek-web",
+      "execution_mode": "headed",
+      "keep_window": true,
+      "keep_deepseek_page": true,
+      "repeat_red_loop_policy": "analyze-report-log-paths-terminal-provider-quality-before-rerun",
+      "scenario_language_policy": "language-comes-from-scenario-contract-not-product-default"
+    },
+    "authorization_phrase_source": "docs/process/devseek-r4-authorization-and-permission-guide.md#6-建议的授权用语",
+    "repository_may_change_gate0_or_r1": false
+  },
+  "nonpermission_queue_index": {
+    "source_path": "docs/process/devseek-post-r4-nonpermission-iteration-plan.md",
+    "source_status": "source-declared-queue-not-a-qualification-ledger",
+    "items": [
+      {
+        "item_id": "NP-01",
+        "title": "R4 状态 rollup source-binding refresh",
+        "source_heading": "### NP-01 R4 状态 rollup source-binding refresh",
+        "local_status_observation": {
+          "status_kind": "source-bound-local-process-artifact",
+          "evidence_path": "docs/process/devseek-r4-iteration-status-rollup.json",
+          "note": "R4 rollup binds authorization guide and clean runtime limited observation while keeping clean runtime BLOCKED."
+        }
+      },
+      {
+        "item_id": "NP-02",
+        "title": "R4 process verifier aggregate",
+        "source_heading": "### NP-02 R4 process verifier aggregate",
+        "local_status_observation": {
+          "status_kind": "source-bound-local-process-artifact",
+          "evidence_path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
+          "note": "R4 process artifact aggregate checks generated views and no-qualification boundaries."
+        }
+      },
+      {
+        "item_id": "NP-03",
+        "title": "Existing live failure receipt taxonomy mapping",
+        "source_heading": "### NP-03 Existing live failure receipt taxonomy mapping",
+        "local_status_observation": {
+          "status_kind": "source-bound-local-process-artifact",
+          "evidence_path": "docs/process/devseek-r4-existing-live-failure-taxonomy-mapping.json",
+          "note": "Existing live failure evidence is mapped without rerunning the red live loop."
+        }
+      },
+      {
+        "item_id": "NP-04",
+        "title": "Scenario language contract replay corpus",
+        "source_heading": "### NP-04 Scenario language contract replay corpus",
+        "local_status_observation": {
+          "status_kind": "source-bound-local-process-artifact",
+          "evidence_path": "docs/process/devseek-r4-scenario-language-replay-corpus.json",
+          "note": "Scenario language remains a scenario contract instead of a fixed product default."
+        }
+      },
+      {
+        "item_id": "NP-05",
+        "title": "Provider protocol replay hardening",
+        "source_heading": "### NP-05 Provider protocol replay hardening",
+        "local_status_observation": {
+          "status_kind": "local-replay-hardening-track",
+          "evidence_path": null,
+          "note": "Provider protocol failures stay on deterministic replay paths, not live Provider reruns."
+        }
+      },
+      {
+        "item_id": "NP-06",
+        "title": "Terminal settlement and recovered-write regression pack",
+        "source_heading": "### NP-06 Terminal settlement and recovered-write regression pack",
+        "local_status_observation": {
+          "status_kind": "local-regression-pack-track",
+          "evidence_path": null,
+          "note": "Recovered-write and terminal-settlement behavior remains product-side regression work only."
+        }
+      },
+      {
+        "item_id": "NP-07",
+        "title": "Artifact quality local oracle expansion",
+        "source_heading": "### NP-07 Artifact quality local oracle expansion",
+        "local_status_observation": {
+          "status_kind": "local-oracle-expansion-track",
+          "evidence_path": null,
+          "note": "Artifact quality checks remain local oracles and cannot become qualification claims."
+        }
+      },
+      {
+        "item_id": "NP-08",
+        "title": "Doc/process governance compact index",
+        "source_heading": "### NP-08 Doc/process governance compact index",
+        "local_status_observation": {
+          "status_kind": "this-generated-index",
+          "evidence_path": "docs/process/devseek-post-r4-compact-index.json",
+          "note": "This compact index gives a short source-bound view over long-chain post-R4 process state."
+        }
+      },
+      {
+        "item_id": "NP-09",
+        "title": "Local full regression checkpoint",
+        "source_heading": "### NP-09 Local full regression checkpoint",
+        "local_status_observation": {
+          "status_kind": "verification-checkpoint-track",
+          "evidence_path": null,
+          "note": "Local full regression checkpoint is a future non-live health check, not a live or install gate."
+        }
+      },
+      {
+        "item_id": "NP-10",
+        "title": "External authority packet readiness audit",
+        "source_heading": "### NP-10 External authority packet readiness audit",
+        "local_status_observation": {
+          "status_kind": "companion-readiness-audit-track",
+          "evidence_path": "docs/process/devseek-external-authority-readiness-audit.json",
+          "note": "Companion audit checks request readiness without changing terminal states."
+        }
+      }
+    ],
+    "generated_for_items": [
+      {
+        "item_id": "NP-08",
+        "output_json_path": "docs/process/devseek-post-r4-compact-index.json",
+        "generated_view_path": "docs/process/generated/devseek-post-r4-compact-index.md"
+      },
+      {
+        "item_id": "post-r4-permission-holdout-index",
+        "output_json_path": "docs/process/devseek-post-r4-compact-index.json",
+        "generated_view_path": "docs/process/generated/devseek-post-r4-compact-index.md"
+      }
+    ]
+  },
+  "counts": {
+    "historical_support_documents": 3,
+    "nonpermission_queue_items": 10,
+    "generated_for_items": 2,
+    "r4_total_leaves": 6,
+    "r4_completed_leaves": 5,
+    "r4_blocked_leaves": 1,
+    "clean_runtime_blockers": 3,
+    "live_authorization_requests": 5,
+    "live_authorization_blocked": 5,
+    "external_authority_requests": 5,
+    "external_authority_blocked": 5,
+    "live_runs_authorized": 0,
+    "qualification_claims": 0,
+    "gate_pass_assertions": 0,
+    "bypasses": 0
+  },
+  "index_sha256": "3f7582c672bc9303db5c1a433a25cbf6a4dde349cbc16294c0a48947eef5cc90"
+}

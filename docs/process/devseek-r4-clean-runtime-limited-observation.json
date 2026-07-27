@@ -51,8 +51,8 @@
     },
     "live_qualification_request_packet": {
       "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
-      "source_sha256": "92e2868a57c050c3c23561327d932656b662f1196e9f323a5901deb054a32296",
-      "packet_sha256": "2cec877865500676f03f94075f73288aa811a98a8ad18f1297b16d8344860b3c",
+      "source_sha256": "d983b5261d5a88bb1adcb9540408de185d33db98f4a16bf45ff5a0cf6889acc2",
+      "packet_sha256": "b9184d82ddbffa854bf3ca6c61eed27b338e53eb14baac570e2b411ccb753a2c",
       "live_runs_authorized": 0
     },
     "current_candidate_identity_checker": {
@@ -123,5 +123,5 @@
     "live_runs_authorized": 0,
     "qualification_claims": 0
   },
-  "observation_sha256": "350e17fbda700aa09c7f2c284d9fd2e6700b88d1d8e937b494c3d07e3439d546"
+  "observation_sha256": "82163108dfa9479a41feb46d584d1b989cd4127e9f6efe7898956189fff7e5be"
 }

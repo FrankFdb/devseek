@@ -1,0 +1,408 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-post-r4-compact-index-v1.json",
+  "title": "DevSeek Post-R4 Compact Index v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "index_id",
+    "index_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "observation_authority",
+    "source_bindings",
+    "current_authorities",
+    "historical_support_documents",
+    "r4_current_state",
+    "suspended_authorization_branches",
+    "permission_recovery_boundary",
+    "nonpermission_queue_index",
+    "counts",
+    "index_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.post-r4-compact-index/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "index_id": { "const": "POST-R4-COMPACT-INDEX/v1" },
+    "index_version": { "const": 1 },
+    "source_status": { "const": "generated-source-bound-compact-index" },
+    "integrity_scope": { "const": "local-post-r4-doc-process-compact-index" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "observation_authority": { "$ref": "#/$defs/observationAuthority" },
+    "source_bindings": { "$ref": "#/$defs/sourceBindings" },
+    "current_authorities": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 8,
+      "items": { "$ref": "#/$defs/currentAuthority" }
+    },
+    "historical_support_documents": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/historicalDocument" }
+    },
+    "r4_current_state": { "$ref": "#/$defs/r4CurrentState" },
+    "suspended_authorization_branches": { "$ref": "#/$defs/suspendedBranches" },
+    "permission_recovery_boundary": { "$ref": "#/$defs/permissionRecoveryBoundary" },
+    "nonpermission_queue_index": { "$ref": "#/$defs/nonpermissionQueueIndex" },
+    "counts": { "$ref": "#/$defs/counts" },
+    "index_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["path", "source_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "observationAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantic_authority",
+        "writes_product_state",
+        "provider_actions",
+        "live_holdout_actions",
+        "runtime_process_observation",
+        "install_or_window_actions",
+        "secret_observation",
+        "qualification_ledger_writes"
+      ],
+      "properties": {
+        "semantic_authority": { "const": "PostR4CompactIndex" },
+        "writes_product_state": { "const": false },
+        "provider_actions": { "const": "FORBIDDEN" },
+        "live_holdout_actions": { "const": "FORBIDDEN" },
+        "runtime_process_observation": { "const": "FORBIDDEN" },
+        "install_or_window_actions": { "const": "FORBIDDEN" },
+        "secret_observation": { "const": "FORBIDDEN" },
+        "qualification_ledger_writes": { "const": "FORBIDDEN" }
+      }
+    },
+    "sourceBindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "top_agent_followup_plan_14",
+        "top_agent_quality_principles_16",
+        "r3_closeout_next_phase_20",
+        "post_r4_nonpermission_plan",
+        "r4_iteration_status_rollup",
+        "r4_authorization_and_permission_guide",
+        "r4_clean_runtime_limited_observation",
+        "r4_process_artifacts_aggregate",
+        "external_authority_requests",
+        "r4_live_qualification_request_packet",
+        "package_scripts",
+        "phase_gate_source",
+        "checker_source",
+        "oracle_source"
+      ],
+      "properties": {
+        "top_agent_followup_plan_14": { "$ref": "#/$defs/sourceRef" },
+        "top_agent_quality_principles_16": { "$ref": "#/$defs/sourceRef" },
+        "r3_closeout_next_phase_20": { "$ref": "#/$defs/sourceRef" },
+        "post_r4_nonpermission_plan": { "$ref": "#/$defs/sourceRef" },
+        "r4_iteration_status_rollup": { "$ref": "#/$defs/sourceRef" },
+        "r4_authorization_and_permission_guide": { "$ref": "#/$defs/sourceRef" },
+        "r4_clean_runtime_limited_observation": { "$ref": "#/$defs/sourceRef" },
+        "r4_process_artifacts_aggregate": { "$ref": "#/$defs/sourceRef" },
+        "external_authority_requests": { "$ref": "#/$defs/sourceRef" },
+        "r4_live_qualification_request_packet": { "$ref": "#/$defs/sourceRef" },
+        "package_scripts": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "required": ["required_script", "required_script_present"],
+              "properties": {
+                "required_script": { "const": "verify:post-r4-compact-index" },
+                "required_script_present": { "const": true }
+              }
+            }
+          ]
+        },
+        "phase_gate_source": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "required": ["required_gate", "required_gate_present"],
+              "properties": {
+                "required_gate": { "const": "post-r4-compact-index-governance" },
+                "required_gate_present": { "const": true }
+              }
+            }
+          ]
+        },
+        "checker_source": { "$ref": "#/$defs/sourceRef" },
+        "oracle_source": { "$ref": "#/$defs/sourceRef" }
+      }
+    },
+    "currentAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authority", "current_state", "allowed_summary"],
+      "properties": {
+        "authority": { "$ref": "#/$defs/nonEmpty" },
+        "current_state": {
+          "enum": ["AUTHORIZED", "AUTHORIZED_SCOPED", "AUTHORIZED_LIMITED", "NOT_AUTHORIZED"]
+        },
+        "allowed_summary": { "$ref": "#/$defs/nonEmpty" }
+      }
+    },
+    "historicalDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["document_id", "path", "role", "source_sha256"],
+      "properties": {
+        "document_id": { "$ref": "#/$defs/nonEmpty" },
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "role": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "r4CurrentState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_leaf_count",
+        "completed_leaves",
+        "blocked_leaves",
+        "current_blocked_leaf",
+        "clean_runtime_leaf_terminal_state",
+        "clean_runtime_limited_observation_terminal_state",
+        "clean_runtime_identity_established",
+        "stable_runtime_count",
+        "gate0_status",
+        "r1_qualification_status",
+        "live_runs_authorized",
+        "qualification_claims"
+      ],
+      "properties": {
+        "total_leaf_count": { "const": 6 },
+        "completed_leaves": { "const": 5 },
+        "blocked_leaves": { "const": 1 },
+        "current_blocked_leaf": { "const": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME" },
+        "clean_runtime_leaf_terminal_state": { "const": "BLOCKED" },
+        "clean_runtime_limited_observation_terminal_state": { "const": "BLOCKED" },
+        "clean_runtime_identity_established": { "const": false },
+        "stable_runtime_count": { "const": 0 },
+        "gate0_status": { "const": "NOT_PASSED" },
+        "r1_qualification_status": { "const": "NOT_STARTED" },
+        "live_runs_authorized": { "const": 0 },
+        "qualification_claims": { "const": 0 }
+      }
+    },
+    "suspendedBranches": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "clean_runtime",
+        "r4_live_authorization_requests",
+        "gate0_external_authority_requests"
+      ],
+      "properties": {
+        "clean_runtime": {
+          "type": "object",
+          "additionalProperties": true,
+          "required": ["leaf_id", "terminal_state", "local_repository_may_unblock_without_new_authority"],
+          "properties": {
+            "leaf_id": { "const": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME" },
+            "terminal_state": { "const": "BLOCKED" },
+            "local_repository_may_unblock_without_new_authority": { "const": false }
+          }
+        },
+        "r4_live_authorization_requests": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": { "$ref": "#/$defs/blockedRequest" }
+        },
+        "gate0_external_authority_requests": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "items": { "$ref": "#/$defs/blockedRequest" }
+        }
+      }
+    },
+    "blockedRequest": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["atomic_id", "terminal_state", "repository_may_decide", "qualification_effect"],
+      "properties": {
+        "atomic_id": { "$ref": "#/$defs/nonEmpty" },
+        "terminal_state": { "const": "BLOCKED" },
+        "repository_may_decide": { "const": false },
+        "qualification_effect": { "const": "NONE" }
+      }
+    },
+    "permissionRecoveryBoundary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "current_allowed_authorities",
+        "currently_not_authorized",
+        "clean_runtime_recovery_authority",
+        "live_qualification_terms",
+        "authorization_phrase_source",
+        "repository_may_change_gate0_or_r1"
+      ],
+      "properties": {
+        "current_allowed_authorities": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "currently_not_authorized": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "clean_runtime_recovery_authority": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/nonEmpty" }
+        },
+        "live_qualification_terms": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "authorization_phrase_source": { "$ref": "#/$defs/nonEmpty" },
+        "repository_may_change_gate0_or_r1": { "const": false }
+      }
+    },
+    "nonpermissionQueueIndex": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_path", "source_status", "items", "generated_for_items"],
+      "properties": {
+        "source_path": { "const": "docs/process/devseek-post-r4-nonpermission-iteration-plan.md" },
+        "source_status": { "const": "source-declared-queue-not-a-qualification-ledger" },
+        "items": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "items": { "$ref": "#/$defs/nonpermissionItem" }
+        },
+        "generated_for_items": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["item_id", "output_json_path", "generated_view_path"],
+            "properties": {
+              "item_id": { "$ref": "#/$defs/nonEmpty" },
+              "output_json_path": { "const": "docs/process/devseek-post-r4-compact-index.json" },
+              "generated_view_path": { "const": "docs/process/generated/devseek-post-r4-compact-index.md" }
+            }
+          }
+        }
+      }
+    },
+    "nonpermissionItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["item_id", "title", "source_heading", "local_status_observation"],
+      "properties": {
+        "item_id": {
+          "type": "string",
+          "pattern": "^NP-[0-9]{2}$"
+        },
+        "title": { "$ref": "#/$defs/nonEmpty" },
+        "source_heading": { "$ref": "#/$defs/nonEmpty" },
+        "local_status_observation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status_kind", "evidence_path", "note"],
+          "properties": {
+            "status_kind": { "$ref": "#/$defs/nonEmpty" },
+            "evidence_path": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "note": { "$ref": "#/$defs/nonEmpty" }
+          }
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "historical_support_documents",
+        "nonpermission_queue_items",
+        "generated_for_items",
+        "r4_total_leaves",
+        "r4_completed_leaves",
+        "r4_blocked_leaves",
+        "clean_runtime_blockers",
+        "live_authorization_requests",
+        "live_authorization_blocked",
+        "external_authority_requests",
+        "external_authority_blocked",
+        "live_runs_authorized",
+        "qualification_claims",
+        "gate_pass_assertions",
+        "bypasses"
+      ],
+      "properties": {
+        "historical_support_documents": { "const": 3 },
+        "nonpermission_queue_items": { "const": 10 },
+        "generated_for_items": { "const": 2 },
+        "r4_total_leaves": { "const": 6 },
+        "r4_completed_leaves": { "const": 5 },
+        "r4_blocked_leaves": { "const": 1 },
+        "clean_runtime_blockers": { "type": "integer", "minimum": 1 },
+        "live_authorization_requests": { "const": 5 },
+        "live_authorization_blocked": { "const": 5 },
+        "external_authority_requests": { "const": 5 },
+        "external_authority_blocked": { "const": 5 },
+        "live_runs_authorized": { "const": 0 },
+        "qualification_claims": { "const": 0 },
+        "gate_pass_assertions": { "const": 0 },
+        "bypasses": { "const": 0 }
+      }
+    }
+  }
+}

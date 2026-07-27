@@ -58,4 +58,4 @@
 
 ## Wiring Identity
 
-- Wiring SHA-256: `d20c993ca7a16f8ae459db7642d10d167b74a5eb3b79cc18d5e8203aa4acce57`
+- Wiring SHA-256: `21427f80b24abb50a5f3773f9b25b9c47efd5fd82e113b4483ed51bae44dbcf4`

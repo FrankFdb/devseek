@@ -107,6 +107,13 @@ const VSCODE_AGENT_COMMAND_CUTOVER = new Set([
   'devseek.runTests',
 ]);
 
+const VSCODE_MEMORY_COMMANDS = new Set([
+  'devseek.showMemoryFiles',
+  'devseek.manageMemory',
+  'devseek.disableMemory',
+  'devseek.deleteMemory',
+]);
+
 export function collectSurfaceEntryInventorySources(repoRoot, readText, readJson) {
   const sourceContents = {};
   for (const sourcePath of Object.values(SOURCE_PATHS)) {
@@ -795,7 +802,7 @@ function commandOwner(commandId) {
   if (commandId.startsWith('_devseek.diff') || commandId === 'devseek.keepOrUndoActive') return 'PendingEditCoordinator';
   if (commandId === 'devseek.switchProvider') return 'ProviderStatusBar';
   if (commandId === 'devseek.addFileToChat') return 'AttachmentContextRef';
-  if (commandId === 'devseek.showMemoryFiles') return 'MemoryContextRef';
+  if (VSCODE_MEMORY_COMMANDS.has(commandId)) return 'MemoryContextRef';
   if (commandId === 'devseek.inlineChat') return 'InlineChatCommand';
   if (commandId === 'devseek.openChat') return 'ChatViewSurface';
   if (commandId === '_deepseek.askChat') return 'ChatRelayCommand';
@@ -807,7 +814,7 @@ function commandProjection(commandId) {
   if (commandId.startsWith('_devseek.diff') || commandId === 'devseek.keepOrUndoActive') return 'pending-edit-action';
   if (commandId === '_deepseek.askChat') return 'chat-relay-internal';
   if (VSCODE_AGENT_COMMAND_CUTOVER.has(commandId)) return 'AgentCommand/Event';
-  if (commandId === 'devseek.addFileToChat' || commandId === 'devseek.showMemoryFiles') return 'ContextRef';
+  if (commandId === 'devseek.addFileToChat' || VSCODE_MEMORY_COMMANDS.has(commandId)) return 'ContextRef';
   if (commandId === 'devseek.openChat' || commandId === 'devseek.triggerCompletion') return 'surface-ui-action';
   if (commandId === 'devseek.switchProvider') return 'provider-config-action';
   if (commandId.startsWith('devseek.')) return 'unknown-agent-command-surface';

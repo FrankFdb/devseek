@@ -51,6 +51,12 @@ const gates = [
     purpose: 'Fail closed when governed document front matter, legacy banners, README status, or generated document-governance status drift from the machine selector and inventory sources.',
   },
   {
+    id: 'post-r4-compact-index-governance',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:post-r4-compact-index'],
+    purpose: 'Fail closed when the Post-R4 compact index loses source bindings, promotes local process state into qualification claims, or hides blocked clean-runtime/live/external-authority branches.',
+  },
+  {
     id: 'profile-denominator-registry-governance',
     phases: '0-12',
     command: ['npm', 'run', 'verify:profile-denominator-registry'],
@@ -115,6 +121,12 @@ const gates = [
     phases: '0-12',
     command: ['npm', 'run', 'verify:external-authority-requests'],
     purpose: 'Fail closed when EXT-01 through EXT-05 request packets are missing, locally approved, claim-capable, unbound from Gate0 inputs, or lack import/secret/redaction boundaries.',
+  },
+  {
+    id: 'external-authority-readiness-audit',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:external-authority-readiness-audit'],
+    purpose: 'Fail closed when EXT/R4 authorization packets lose precise blockers, executable recovery actions, terminal-state preservation, or non-qualification boundaries.',
   },
   {
     id: 'qualification-protocol-conformance',
@@ -348,6 +360,7 @@ function nextActionFor(gate) {
   const actions = {
     'architecture-drift-budget': 'Move the new responsibility into the owning service/adapter, lower the frozen ceiling after extraction, then rerun verify:architecture-drift.',
     'capability-ledger-governance': 'Fix the machine ledger, typed dependency, scoped claim target, or generated manifest at its semantic authority, then rerun verify:capability-ledger.',
+    'post-r4-compact-index-governance': 'Restore the source-bound Post-R4 compact index, keep clean runtime/live/external-authority branches BLOCKED, preserve claims=0 and Gate0 NOT_PASSED, then rerun verify:post-r4-compact-index.',
     'c0-ledger-wiring-conformance': 'Restore the single capability ledger owner, direct reader coverage, Phase reachability, and wired-state evidence before rerunning verify:c0-ledger-wiring.',
     'c0-preregistration-wiring-conformance': 'Restore production declaration coverage, single runner-root preregistration through plan/session/slot/authorization/receipt, and zero-dispatch receipt oracles before rerunning verify:c0-preregistration-wiring.',
     'c0-run-evidence-wiring-conformance': 'Restore exact product Run Evidence to qualification attempt/candidate/operation/anchor binding, preserve original oracle failures, and rerun verify:c0-run-evidence-wiring.',
@@ -355,6 +368,7 @@ function nextActionFor(gate) {
     'external-authority-adapter-contract': 'Restore fail-closed external authority adapter schema, ordinary-object/boolean rejection, revocation/time/provenance guards, and non-qualifying Gate0 binding before rerunning verify:external-authority-adapter.',
     'c0-wiring-reconciliation-conformance': 'Restore C0 report hash/source/generated-view reconciliation, Gate0 NOT_PASSED source binding, claims=0, repo blockers=0, external blockers=6, package scripts, and Phase coverage before rerunning verify:c0-wiring-reconciliation.',
     'external-authority-request-packets': 'Restore EXT-01 through EXT-05 ExternalAuthorityRequest packets, keep terminal_state=BLOCKED without external artifacts, preserve claims=0/Gate0 NOT_PASSED, and rerun verify:external-authority-requests.',
+    'external-authority-readiness-audit': 'Restore the EXT/R4 readiness audit source bindings, precise blockers, executable next authorization actions, terminal_state preservation, and no-ledger-write boundary before rerunning verify:external-authority-readiness-audit.',
     'profile-executor-contract-conformance': 'Restore one unique executor contract and independent oracle for each Gate 0 denominator slot semantic, keep execution behind the single runner root, and rerun verify:profile-executor-contracts.',
     'current-candidate-identity-probe': 'Restore the read-only source, VSIX, stable install, and active runtime identity binding; retire stale debug runtime only with fresh authorization, then rerun verify:current-candidate-identity.',
     'qualification-runner-wiring': 'Restore the single guarded runner composition root, remove or disable bypass entry points, and rerun verify:qualification-runner; local runner conformance must remain non-qualifying without protected authority.',

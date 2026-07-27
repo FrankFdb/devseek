@@ -1,7 +1,7 @@
 # DevSeek Surface Entry Inventory
 
 - inventory_id: `DEVSEEK-R1-D1A-SURFACE-ENTRY-INVENTORY/v1`
-- inventory_sha256: `9b9ca89f1cd7e6cbba68df0da610aecb73c25a36e08bd7bc9855f5d3802a3380`
+- inventory_sha256: `1c00e3f03464c6424d563a1a5949485e1b61a832f5da4774754aaa76cf33d25b`
 - qualification_effect: `NONE`
 - claims_permitted: `false`
 - asserts_gate_pass: `false`
@@ -10,9 +10,9 @@
 
 | Metric | Count |
 | --- | ---: |
-| total_entries | 84 |
-| vscode_manifest_commands | 16 |
-| vscode_runtime_commands | 22 |
+| total_entries | 87 |
+| vscode_manifest_commands | 19 |
+| vscode_runtime_commands | 25 |
 | vscode_manifest_commands_missing_runtime | 0 |
 | vscode_public_runtime_without_manifest | 0 |
 | webview_protocol_entries | 41 |
@@ -64,6 +64,8 @@
 | `vscode-command/devseek.addFileToChat` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | ContextRef |
 | `vscode-command/devseek.applyDiff` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
 | `vscode-command/devseek.ask` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
+| `vscode-command/devseek.deleteMemory` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | ContextRef |
+| `vscode-command/devseek.disableMemory` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | ContextRef |
 | `vscode-command/devseek.explain` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
 | `vscode-command/devseek.fix` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
 | `vscode-command/devseek.genDoc` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
@@ -71,6 +73,7 @@
 | `vscode-command/devseek.genTest` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
 | `vscode-command/devseek.inlineChat` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
 | `vscode-command/devseek.keepOrUndoActive` | vscode | command | hidden-statusbar | `packages/vscode-extension/src/pending-edit-coordinator.ts` | covered | pending-edit-action |
+| `vscode-command/devseek.manageMemory` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | ContextRef |
 | `vscode-command/devseek.openChat` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | surface-ui-action |
 | `vscode-command/devseek.refactor` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |
 | `vscode-command/devseek.runTerminalCommand` | vscode | command | public | `packages/vscode-extension/src/ui/extension-command-registration.ts` | covered | AgentCommand/Event |

@@ -21,11 +21,11 @@
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "840019523ef7d6126dbf3356c6b68b27b69989fbf094cca0d191da976afbcf13"
+      "source_sha256": "0c48c818f839625c2974fb22aa8277db0ab1a3e2dfcde9544d804f8f63837640"
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "8f8eb6533fb3d1ceef17d2398b682ad68eed104a8c454d6904c99b9ae49059f4"
+      "source_sha256": "fcd5d3534b8aab36f37fd5be8360281767cba5c1f6789eeec1ccfc4cb7c1ed5d"
     },
     "checker_source": {
       "path": "scripts/devseek-c0-wiring-reconciliation-check.mjs",
@@ -43,8 +43,8 @@
       "schema_version": "devseek.c0-ledger-wiring/v1",
       "expected_schema_version": "devseek.c0-ledger-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "62158845e63b8acc239b8064a5456c14d4f8d0d2d3a764b5b0cdaca5db1aba34",
-      "computed_sha256": "62158845e63b8acc239b8064a5456c14d4f8d0d2d3a764b5b0cdaca5db1aba34",
+      "reported_sha256": "e600236b1fa71392e7deabef29000b86164e049c086fa7d3fc909b2ad9e48085",
+      "computed_sha256": "e600236b1fa71392e7deabef29000b86164e049c086fa7d3fc909b2ad9e48085",
       "hash_status": "matched",
       "package_script": "verify:c0-ledger-wiring",
       "package_script_present": true,
@@ -55,7 +55,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-ledger-wiring.md",
         "status": "current",
-        "source_sha256": "b00b14cf0bcb8efe0500fca82b0678298646706426676af1845b50105bf7cd6b"
+        "source_sha256": "53909b9a029daa4e8b0d09d84ddf9fb58500b81bc579181b4bf2ffe3dcda2213"
       }
     },
     {
@@ -64,8 +64,8 @@
       "schema_version": "devseek.c0-preregistration-wiring/v1",
       "expected_schema_version": "devseek.c0-preregistration-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "d20c993ca7a16f8ae459db7642d10d167b74a5eb3b79cc18d5e8203aa4acce57",
-      "computed_sha256": "d20c993ca7a16f8ae459db7642d10d167b74a5eb3b79cc18d5e8203aa4acce57",
+      "reported_sha256": "21427f80b24abb50a5f3773f9b25b9c47efd5fd82e113b4483ed51bae44dbcf4",
+      "computed_sha256": "21427f80b24abb50a5f3773f9b25b9c47efd5fd82e113b4483ed51bae44dbcf4",
       "hash_status": "matched",
       "package_script": "verify:c0-preregistration-wiring",
       "package_script_present": true,
@@ -76,7 +76,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-preregistration-wiring.md",
         "status": "current",
-        "source_sha256": "2e8581ce6cc24325ea622a11dd8a3b1b45126e8e86bb3b4e43a1781d91bd18f3"
+        "source_sha256": "e8050baac8d9f6fde761087aa0944f49a23a46ab8bc9183d1ce90dd9a9126435"
       }
     },
     {
@@ -85,8 +85,8 @@
       "schema_version": "devseek.c0-run-evidence-wiring/v1",
       "expected_schema_version": "devseek.c0-run-evidence-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "5b57af1f7a778faea62be627bd67dcd9a3ae5219df92d86d7ab3cc46621b5b16",
-      "computed_sha256": "5b57af1f7a778faea62be627bd67dcd9a3ae5219df92d86d7ab3cc46621b5b16",
+      "reported_sha256": "78942da95c38d613939217b85d086f70784ed1136bd11cf3dd42950b94d907a1",
+      "computed_sha256": "78942da95c38d613939217b85d086f70784ed1136bd11cf3dd42950b94d907a1",
       "hash_status": "matched",
       "package_script": "verify:c0-run-evidence-wiring",
       "package_script_present": true,
@@ -97,7 +97,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-run-evidence-wiring.md",
         "status": "current",
-        "source_sha256": "278d03200ca1814c05e1dd1c2d87cd43ae9fcc8404f7413ed563bb7b653da386"
+        "source_sha256": "d6ad4dbba19832b14684280f7e836736053d91635ce9e95080a5184084846ce3"
       }
     },
     {
@@ -106,8 +106,8 @@
       "schema_version": "devseek.c0-manifest-aggregator-wiring/v1",
       "expected_schema_version": "devseek.c0-manifest-aggregator-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "674b4f92534180d0f07bb0425af48e475e88e1e80e624d3d43ec5c3f083378df",
-      "computed_sha256": "674b4f92534180d0f07bb0425af48e475e88e1e80e624d3d43ec5c3f083378df",
+      "reported_sha256": "93314a18d488d159569bd18a54abad8c7ef77d756e6dc038985933b091320a50",
+      "computed_sha256": "93314a18d488d159569bd18a54abad8c7ef77d756e6dc038985933b091320a50",
       "hash_status": "matched",
       "package_script": "verify:c0-manifest-aggregator-wiring",
       "package_script_present": true,
@@ -118,7 +118,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-manifest-aggregator-wiring.md",
         "status": "current",
-        "source_sha256": "e4088f93abb14b6940131fd931ee4e63d4e7214f56efe7199db60490ebcbecc1"
+        "source_sha256": "5aba9b830bb7b7416d233bbe67c96b5b97585a0b1119148d82d63c7239db0c7b"
       }
     },
     {
@@ -127,8 +127,8 @@
       "schema_version": "devseek.external-authority-adapter/v1",
       "expected_schema_version": "devseek.external-authority-adapter/v1",
       "hash_field": "adapter_sha256",
-      "reported_sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
-      "computed_sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
+      "reported_sha256": "beb9ef6b31c70ce06b7b773413b382fb1b904af17a5c416dd108f3f9336c8561",
+      "computed_sha256": "beb9ef6b31c70ce06b7b773413b382fb1b904af17a5c416dd108f3f9336c8561",
       "hash_status": "matched",
       "package_script": "verify:external-authority-adapter",
       "package_script_present": true,
@@ -139,7 +139,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-external-authority-adapter.md",
         "status": "current",
-        "source_sha256": "c0d05decf88a65cef41613f6ab803a084e3c7f8377c4b7001477b8a6a8d55351"
+        "source_sha256": "5b023c28157708fab763b2df4384f8515738862c98da251ea895a02d273dd77e"
       }
     },
     {
@@ -148,8 +148,8 @@
       "schema_version": "devseek.gate0-decision/v1",
       "expected_schema_version": "devseek.gate0-decision/v1",
       "hash_field": "decision_sha256",
-      "reported_sha256": "7bb96380cc6f55c8b5a1b3cc00f166741ef770f9cbd719fa266f851421ab3dc1",
-      "computed_sha256": "7bb96380cc6f55c8b5a1b3cc00f166741ef770f9cbd719fa266f851421ab3dc1",
+      "reported_sha256": "9475afcdccb6c21ac4e6bc70c486f54b39cbd3b9aa8501b58558e363249e550e",
+      "computed_sha256": "9475afcdccb6c21ac4e6bc70c486f54b39cbd3b9aa8501b58558e363249e550e",
       "hash_status": "matched",
       "package_script": "verify:gate0-decision",
       "package_script_present": true,
@@ -186,8 +186,8 @@
       },
       {
         "binding_id": "gate0-external-authority-adapter-source",
-        "observed_sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
-        "expected_sha256": "b9b10c2a47183fdef2a2dcedb13523149f0f6b0acbf4ec9bc2a2539d8c662801",
+        "observed_sha256": "beb9ef6b31c70ce06b7b773413b382fb1b904af17a5c416dd108f3f9336c8561",
+        "expected_sha256": "beb9ef6b31c70ce06b7b773413b382fb1b904af17a5c416dd108f3f9336c8561",
         "status": "matched"
       }
     ],
@@ -213,5 +213,5 @@
     "observed_claims": 0,
     "bypasses": 0
   },
-  "reconciliation_sha256": "039d7f2b9e89bc97332a9716bbfe7d9aedaf30563e09d84195f85cfd4b131558"
+  "reconciliation_sha256": "10199d4243e4334838b0fa239f759aefc8e912de5f023e850554b3ebd8190a06"
 }

@@ -25,7 +25,7 @@
   "source_bindings": {
     "r3_handoff_next_phase": {
       "path": "docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md",
-      "source_sha256": "5069955d5c44135e2810bea66c556d73cc7c3ac46dc1aff400b6aeb0ca61bb04",
+      "source_sha256": "842c2725379c64ade18425ac1854bc14e971db55f2afc29328e705a0c7b52351",
       "handoff_doc_commit": "02cb792b4fe86df523c7f88eb106f13394e6f3fd"
     },
     "release_candidate_manifest": {
@@ -42,8 +42,8 @@
     },
     "live_qualification_request_packet": {
       "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
-      "source_sha256": "92e2868a57c050c3c23561327d932656b662f1196e9f323a5901deb054a32296",
-      "packet_sha256": "2cec877865500676f03f94075f73288aa811a98a8ad18f1297b16d8344860b3c",
+      "source_sha256": "d983b5261d5a88bb1adcb9540408de185d33db98f4a16bf45ff5a0cf6889acc2",
+      "packet_sha256": "b9184d82ddbffa854bf3ca6c61eed27b338e53eb14baac570e2b411ccb753a2c",
       "blocked_requests": 5
     },
     "live_user_way_holdout_matrix": {
@@ -64,8 +64,8 @@
     },
     "clean_runtime_limited_observation": {
       "path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
-      "source_sha256": "408e05a0b9c64bc45f8cfb1f9eb7e4974ce7383a5e29b680e06ff815123393c2",
-      "observation_sha256": "350e17fbda700aa09c7f2c284d9fd2e6700b88d1d8e937b494c3d07e3439d546",
+      "source_sha256": "12c66f11486a601d366f512dc53eec2684b6052887d64fa5d2f5b0c6cb3cf7fa",
+      "observation_sha256": "82163108dfa9479a41feb46d584d1b989cd4127e9f6efe7898956189fff7e5be",
       "terminal_state": "BLOCKED",
       "clean_runtime_identity_established": false,
       "stable_runtime_count": 0
@@ -78,7 +78,7 @@
     "local_process_artifacts_complete_except_clean_runtime": true,
     "clean_runtime_leaf_terminal_state": "BLOCKED",
     "clean_runtime_limited_observation_terminal_state": "BLOCKED",
-    "clean_runtime_limited_observation_sha256": "350e17fbda700aa09c7f2c284d9fd2e6700b88d1d8e937b494c3d07e3439d546",
+    "clean_runtime_limited_observation_sha256": "82163108dfa9479a41feb46d584d1b989cd4127e9f6efe7898956189fff7e5be",
     "clean_runtime_stable_runtime_count": 0,
     "current_candidate_identity_status": "deferred-unusable-until-clean-runtime",
     "gate0_status": "NOT_PASSED",
@@ -177,5 +177,5 @@
     "live_runs_authorized": 0,
     "qualification_claims": 0
   },
-  "rollup_sha256": "bf40ed43477c9ea020cd91f13930f0783f2978ac49d099274f8967117e66e302"
+  "rollup_sha256": "b1927e2377f0ae2fd6596c7427dbb04ccfec111baabd09a0f264c30302f18e41"
 }

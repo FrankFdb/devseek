@@ -40,16 +40,16 @@
 
 - `R4-RELEASE-CANDIDATE-MANIFEST`: `docs/process/devseek-r4-release-candidate-manifest.json` -> `fe0d5a74792785a640df50be50012702a46077bebe0d8036647ed27e42182f87`
 - `R4-DOC-PROCESS-IDENTITY-RECONCILIATION`: `docs/process/devseek-r4-doc-process-identity-reconciliation.json` -> `abd9ec026b3786071d977082a3628e40ac9d6ff5277cbd773839de80268a6fc5`
-- `R4-LIVE-QUALIFICATION-REQUEST-PACKET`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `92e2868a57c050c3c23561327d932656b662f1196e9f323a5901deb054a32296`
+- `R4-LIVE-QUALIFICATION-REQUEST-PACKET`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `d983b5261d5a88bb1adcb9540408de185d33db98f4a16bf45ff5a0cf6889acc2`
 - `R4-LIVE-USER-WAY-HOLDOUT-MATRIX`: `docs/process/devseek-r4-live-user-way-holdout-matrix.json` -> `000a82523ebeb1047518c7ca32f232d1416cfccf8ec6418599428b642ed783cf`
 - `R4-REAL-PROVIDER-FAILURE-TAXONOMY`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `8a8f761acfb83d2e89643c4f7cdfc7103fc1f39f7bc32d48a233e7b3c272ee89`
 - `R4-EXISTING-LIVE-FAILURE-TAXONOMY-MAPPING`: `docs/process/devseek-r4-existing-live-failure-taxonomy-mapping.json` -> `590d83c3be80ed78faba1864e5e2ccf18a05455f65cb4061651e41209aea8489`
 - `R4-SCENARIO-LANGUAGE-REPLAY-CORPUS`: `docs/process/devseek-r4-scenario-language-replay-corpus.json` -> `5c7c55883595924c8720b297ba0274b1403b5b7c0b632265bb7afe42da4bcfa7`
-- `R4-ITERATION-STATUS-ROLLUP`: `docs/process/devseek-r4-iteration-status-rollup.json` -> `b9823c850d0492bad655784309f6462c1cc56b333cd13ea837e6fba4dcd6a6e3`
-- `R4-CLEAN-RUNTIME-LIMITED-OBSERVATION`: `docs/process/devseek-r4-clean-runtime-limited-observation.json` -> `408e05a0b9c64bc45f8cfb1f9eb7e4974ce7383a5e29b680e06ff815123393c2`
+- `R4-ITERATION-STATUS-ROLLUP`: `docs/process/devseek-r4-iteration-status-rollup.json` -> `3ed1c412d12044a465c99a325c48ad60d9e4ae337785161c749d1518aaf95281`
+- `R4-CLEAN-RUNTIME-LIMITED-OBSERVATION`: `docs/process/devseek-r4-clean-runtime-limited-observation.json` -> `12c66f11486a601d366f512dc53eec2684b6052887d64fa5d2f5b0c6cb3cf7fa`
 - `R4-AUTHORIZATION-AND-PERMISSION-GUIDE`: `docs/process/devseek-r4-authorization-and-permission-guide.md` -> `44b38edcb2a1587ab487e823e849d868f3a8a5ecd8670132566ffc750ccb24de`
 - `POST-R4-NONPERMISSION-ITERATION-PLAN`: `docs/process/devseek-post-r4-nonpermission-iteration-plan.md` -> `51623b1c2267f8d3f6fcb09b800396e5da12ea083dad5c5ed98f331b8b735555`
 
 ## Aggregate Identity
 
-- Aggregate SHA-256: `d03cc42e6db375bef5d533f687dc6920a672619b274292aca08e75bbe0970cb1`
+- Aggregate SHA-256: `edf1cc723f79f39820e9f60bca9dee73c8c61c88a6c3465e571b39a4edab5dbb`
