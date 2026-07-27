@@ -160,13 +160,22 @@ async function cliJsonlMockCase() {
   });
   assert.equal(result.status, 0, result.stderr);
   const events = parseJsonl(result.stdout);
-  assert.deepEqual(events.map(event => event.type), [
+  const eventTypes = events.map(event => event.type);
+  assert.deepEqual(eventTypes, [
+    'cli.run.started',
     'chat.started',
     'provider.selected',
     'chat.completed',
+    'cli.run.completed',
   ]);
-  assert.equal(events.at(-1).response, 'mock: L1 cli jsonl mock programming baseline');
-  return { eventTypes: events.map(event => event.type) };
+  assert.equal(events[0].status, 'running');
+  assert.equal(events.at(-1).status, 'completed');
+  assert.equal(events.at(-1).exitCode, 0);
+  assert.equal(events[0].runId, events.at(-1).runId);
+  assert.equal(events[0].commandId, events.at(-1).commandId);
+  const completed = events.find(event => event.type === 'chat.completed');
+  assert.equal(completed?.response, 'mock: L1 cli jsonl mock programming baseline');
+  return { eventTypes };
 }
 
 async function cliFakeBridgeSseCase() {

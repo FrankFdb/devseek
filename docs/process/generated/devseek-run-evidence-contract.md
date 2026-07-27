@@ -8,7 +8,7 @@
 
 | Envelope | Protocol / public shape | Schema SHA-256 |
 |---|---|---|
-| Event | `devseek.run-evidence-event/v1` | `bdcd7f71cf64f0321fedec26433aa44a7ca8088551a986c2b1735fd3b51b337f` |
+| Event | `devseek.run-evidence-event/v1` | `252932fa46c494b79cb5bd96ab67230a241b89186c176c76118fab24420c7919` |
 | Receipt | `devseek.run-evidence-receipt/v1` | `a2a5b119a0ff1dec779154624398e6784041aa0be25558da519b9fa6e02ea2b2` |
 | Immutable record | `devseek.run-evidence-record/v1` | `302af384fc78f0f9d8fb7c75e78b30da3b775af44fbfffcf832152f0b02e0ccb` |
 | Seal | `devseek.run-evidence-seal/v1` | `7a5ab964ededf31b701daabc921f7690afc163a1aa71b553cdafa8992d6bd206` |
@@ -20,6 +20,7 @@
 - `run.opened`
 - `run.recovered`
 - `run.settled`
+- `run.metrics`
 - `command.accepted`
 - `agent.status`
 - `tool.activity`

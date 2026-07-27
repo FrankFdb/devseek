@@ -3,7 +3,7 @@
 > Generated from local machine sources. Do not hand edit.
 
 - Wiring ID: `DEVSEEK-GATE0-C0-MANIFEST-AGGREGATOR-WIRING/v1`
-- Wiring SHA-256: `93314a18d488d159569bd18a54abad8c7ef77d756e6dc038985933b091320a50`
+- Wiring SHA-256: `8e2cdd0284781c32e75fb1a09ebe523666eadd881aba75a945b4d14ea9def31b`
 - Capability ledger SHA-256: `08bb2cc53b13c32807373db73cb80cda97a745cc4941aa919bbac4e76f5c45d5`
 - Aggregator owner: `C0-QUALIFICATION-AGGREGATOR` / `wired`
 - Manifest owner: `C0-QUALIFICATION-EVIDENCE-MANIFEST` / `wired`

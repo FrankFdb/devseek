@@ -55,7 +55,7 @@
     },
     "run_evidence_wiring_source": {
       "path": "docs/process/devseek-c0-run-evidence-wiring.json",
-      "source_sha256": "76b36398697df22174a76e0a82c6259d00be32348f178123752387651d5d5a85"
+      "source_sha256": "408d8b711ae57d9607edab93eeb9e809cebaa39e295a2b7daee7da4f3527b3c4"
     },
     "qualification_evidence_manifest_source": {
       "path": "scripts/lib/devseek-qualification-evidence-manifest.mjs",
@@ -413,5 +413,5 @@
     "bypasses": 0,
     "qualification_claims": 0
   },
-  "wiring_sha256": "93314a18d488d159569bd18a54abad8c7ef77d756e6dc038985933b091320a50"
+  "wiring_sha256": "8e2cdd0284781c32e75fb1a09ebe523666eadd881aba75a945b4d14ea9def31b"
 }

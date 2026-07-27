@@ -616,6 +616,7 @@ test('R3-05D: Memory management surface commands are projections over MemoryServ
 test('R3-05E: TaskHistory projection is generated from Run Evidence and checkpoint facts', () => {
   const appIndex = src('src/app/index.ts');
   const projection = src('src/app/task-history-projection-service.ts');
+  const sharedIntegration = src('../shared/src/run-evidence-integration.ts');
   const uiService = src('src/app/task-history-ui-service.ts');
   const protocol = src('src/ui/webview-protocol.ts');
   const extension = src('src/extension.ts');
@@ -624,8 +625,10 @@ test('R3-05E: TaskHistory projection is generated from Run Evidence and checkpoi
 
   assertContains(appIndex, "export * from './task-history-projection-service';", 'R3-05E projection owner must be exported');
   assertContains(projection, 'TASK_HISTORY_PROJECTION_PROTOCOL', 'TaskHistory projection must expose a versioned protocol marker');
-  assertContains(projection, 'FileSystemRunEvidenceLedger', 'TaskHistory projection must read the Run Evidence ledger');
-  assertContains(projection, 'productRunEvidenceRoot', 'TaskHistory projection must use the product evidence root');
+  assertContains(projection, 'ProductRunEvidenceReaderPort', 'TaskHistory projection must depend on the shared Run Evidence reader port');
+  assertContains(projection, 'ProductRunEvidenceWorkspaceReader', 'TaskHistory projection must use the shared workspace Run Evidence reader');
+  assertContains(sharedIntegration, 'FileSystemRunEvidenceLedger', 'Shared integration must own the filesystem Run Evidence ledger boundary');
+  assertContains(sharedIntegration, 'productRunEvidenceRoot', 'Shared integration must use the product evidence root');
   assertContains(projection, 'readSnapshot', 'TaskHistory projection must replay validated evidence snapshots');
   assertContains(projection, 'checkpoint.created', 'TaskHistory projection must include checkpoint facts');
   assertContains(projection, 'run.settled', 'TaskHistory projection must include settlement facts');

@@ -32,6 +32,7 @@
         "run.opened",
         "run.recovered",
         "run.settled",
+        "run.metrics",
         "command.accepted",
         "agent.status",
         "tool.activity",

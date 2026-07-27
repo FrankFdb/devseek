@@ -25,7 +25,7 @@
     },
     "run_evidence_event_schema": {
       "path": "docs/process/devseek-run-evidence-event.schema.json",
-      "source_sha256": "bdcd7f71cf64f0321fedec26433aa44a7ca8088551a986c2b1735fd3b51b337f"
+      "source_sha256": "252932fa46c494b79cb5bd96ab67230a241b89186c176c76118fab24420c7919"
     },
     "run_evidence_snapshot_schema": {
       "path": "docs/process/devseek-run-evidence-snapshot.schema.json",
@@ -295,5 +295,5 @@
     "bypasses": 0,
     "qualification_claims": 0
   },
-  "wiring_sha256": "78942da95c38d613939217b85d086f70784ed1136bd11cf3dd42950b94d907a1"
+  "wiring_sha256": "f038e89df9cf273afdbee52a08b303b97ac68f5f25513d7f23816d191825346b"
 }

@@ -1,4 +1,5 @@
 import * as crypto from 'crypto';
+import * as fs from 'fs';
 import * as nodePath from 'path';
 
 import {
@@ -29,6 +30,7 @@ import {
   type RunEvidenceExpectedAnchor,
   type RunEvidenceRecoveryReport,
   type RunEvidenceSealResult,
+  type RunEvidenceSnapshot,
   type RunEvidenceVerificationReport,
   sha256RunEvidence,
 } from './run-evidence-ledger';
@@ -57,6 +59,16 @@ export interface ProductRunEvidenceSessionOptions {
 export interface ProductRunEvidenceWorkspaceOptions
   extends Omit<ProductRunEvidenceSessionOptions, 'ledger'> {
   workspaceRoot: string;
+}
+
+export interface ProductRunEvidenceWorkspaceReaderOptions {
+  workspaceRoot: string;
+}
+
+export interface ProductRunEvidenceReaderPort {
+  discoverRunIds(): readonly string[];
+  verify(runId: string): RunEvidenceVerificationReport;
+  readSnapshot(runId: string): RunEvidenceSnapshot;
 }
 
 export interface ProductRunEvidenceRecordInput {
@@ -108,6 +120,47 @@ export interface ProductRunMetricsInput {
     refs?: ProductRunMetricValue;
     bytes?: ProductRunMetricValue;
   };
+}
+
+export class ProductRunEvidenceWorkspaceReader implements ProductRunEvidenceReaderPort {
+  private readonly rootDir: string;
+  private readonly ledger: RunEvidenceLedgerPort;
+
+  constructor(options: ProductRunEvidenceWorkspaceReaderOptions) {
+    const input = snapshotRunEvidenceInputObject(options, 'Product run evidence reader options must be an object');
+    this.rootDir = productRunEvidenceRoot(input.workspaceRoot);
+    this.ledger = new FileSystemRunEvidenceLedger({ rootDir: this.rootDir });
+  }
+
+  static forWorkspace(options: ProductRunEvidenceWorkspaceReaderOptions): ProductRunEvidenceWorkspaceReader {
+    return new ProductRunEvidenceWorkspaceReader(options);
+  }
+
+  discoverRunIds(): readonly string[] {
+    if (!fs.existsSync(this.rootDir)) return [];
+    const runIds = new Set<string>();
+    let buckets: fs.Dirent[];
+    try {
+      buckets = fs.readdirSync(this.rootDir, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+    for (const bucket of buckets) {
+      if (!bucket.isDirectory()) continue;
+      const recordsDir = nodePath.join(this.rootDir, bucket.name, 'records');
+      const runId = discoverRunEvidenceRunIdFromRecords(recordsDir);
+      if (runId) runIds.add(runId);
+    }
+    return [...runIds].sort();
+  }
+
+  verify(runId: string): RunEvidenceVerificationReport {
+    return this.ledger.verify(runId);
+  }
+
+  readSnapshot(runId: string): RunEvidenceSnapshot {
+    return this.ledger.readSnapshot(runId);
+  }
 }
 
 /**
@@ -406,6 +459,41 @@ export function createProductRunEvidenceAuthorityToken(): string {
 
 export function productRunEvidenceRoot(workspaceRoot: unknown): string {
   return nodePath.join(nodePath.resolve(requireText(workspaceRoot, 'workspaceRoot')), PRODUCT_RUN_EVIDENCE_DIRECTORY);
+}
+
+function discoverRunEvidenceRunIdFromRecords(recordsDir: string): string | undefined {
+  let names: string[];
+  try {
+    names = fs.readdirSync(recordsDir)
+      .filter(name => /^\d{20}\.json$/.test(name))
+      .sort();
+  } catch {
+    return undefined;
+  }
+  for (const name of names) {
+    const runId = runEvidenceRunIdFromRecord(nodePath.join(recordsDir, name));
+    if (runId) return runId;
+  }
+  return undefined;
+}
+
+function runEvidenceRunIdFromRecord(filePath: string): string | undefined {
+  try {
+    const stat = fs.lstatSync(filePath);
+    if (!stat.isFile()) return undefined;
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined;
+    const record = parsed as Record<string, unknown>;
+    return runEvidenceRunIdFromRecordMember(record.event) ?? runEvidenceRunIdFromRecordMember(record.seal);
+  } catch {
+    return undefined;
+  }
+}
+
+function runEvidenceRunIdFromRecordMember(value: unknown): string | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const runId = (value as Record<string, unknown>).run_id;
+  return typeof runId === 'string' && runId.trim() ? runId : undefined;
 }
 
 function assertRecordObservationEnvelope(type: RunEvidenceEventType, payload: RunEvidenceJson): void {

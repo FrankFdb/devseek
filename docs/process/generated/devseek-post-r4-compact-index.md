@@ -85,7 +85,7 @@
 - `r4_authorization_and_permission_guide`: `docs/process/devseek-r4-authorization-and-permission-guide.md` -> `44b38edcb2a1587ab487e823e849d868f3a8a5ecd8670132566ffc750ccb24de`
 - `r4_clean_runtime_limited_observation`: `docs/process/devseek-r4-clean-runtime-limited-observation.json` -> `12c66f11486a601d366f512dc53eec2684b6052887d64fa5d2f5b0c6cb3cf7fa`
 - `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `ff4d781be374830eb4fede9838fb1b29f4cd57ac47e6819f0b3915dac24373b4`
-- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `3bfcefe0054676b3b214936b262c677dfa3c511c243aa647ce0634bd15e0f8a2`
+- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `60316cb8f9dbd0df820117a34c3ec2584ab3392c42697ad24b7ad105fb0ff836`
 - `r4_live_qualification_request_packet`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `d983b5261d5a88bb1adcb9540408de185d33db98f4a16bf45ff5a0cf6889acc2`
 - `package_scripts`: `package.json` -> `0c48c818f839625c2974fb22aa8277db0ab1a3e2dfcde9544d804f8f63837640`
 - `phase_gate_source`: `scripts/devseek-phase0-12-verify.mjs` -> `fcd5d3534b8aab36f37fd5be8360281767cba5c1f6789eeec1ccfc4cb7c1ed5d`
@@ -94,4 +94,4 @@
 
 ## Index Identity
 
-- Index SHA-256: `3f7582c672bc9303db5c1a433a25cbf6a4dde349cbc16294c0a48947eef5cc90`
+- Index SHA-256: `5e8e6c0c86de343bbec3f92771adf837597265681ae76290edc968f2e3bc584b`

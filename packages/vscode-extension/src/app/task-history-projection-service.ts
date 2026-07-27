@@ -1,8 +1,7 @@
-import * as fs from 'fs';
 import * as nodePath from 'path';
 import {
-  FileSystemRunEvidenceLedger,
-  productRunEvidenceRoot,
+  ProductRunEvidenceWorkspaceReader,
+  type ProductRunEvidenceReaderPort,
   type RunEvidenceEvent,
   type RunEvidenceJson,
   type RunEvidenceSnapshot,
@@ -48,7 +47,7 @@ export interface TaskHistoryProjectionServiceDeps<TTask = unknown> {
   workspaceRoot: string;
   storage?: TaskCheckpointStorage;
   checkpointStore?: TaskCheckpointStore<TTask>;
-  ledger?: FileSystemRunEvidenceLedger;
+  evidenceReader?: ProductRunEvidenceReaderPort;
   maxRecords?: number;
   lifecycleKey?: string;
   retentionMs?: number;
@@ -101,8 +100,7 @@ export function exportTaskHistoryRecordRedacted(input: {
 
 export class TaskHistoryProjectionService<TTask = unknown> {
   private readonly workspaceRoot: string;
-  private readonly evidenceRoot: string;
-  private readonly ledger: FileSystemRunEvidenceLedger;
+  private readonly evidenceReader: ProductRunEvidenceReaderPort;
   private readonly checkpointStore?: TaskCheckpointStore<TTask>;
   private readonly storage?: TaskCheckpointStorage;
   private readonly maxRecords: number;
@@ -114,8 +112,9 @@ export class TaskHistoryProjectionService<TTask = unknown> {
 
   constructor(deps: TaskHistoryProjectionServiceDeps<TTask>) {
     this.workspaceRoot = nodePath.resolve(String(deps.workspaceRoot || process.cwd()));
-    this.evidenceRoot = productRunEvidenceRoot(this.workspaceRoot);
-    this.ledger = deps.ledger ?? new FileSystemRunEvidenceLedger({ rootDir: this.evidenceRoot });
+    this.evidenceReader = deps.evidenceReader ?? ProductRunEvidenceWorkspaceReader.forWorkspace({
+      workspaceRoot: this.workspaceRoot,
+    });
     this.storage = deps.storage;
     this.checkpointStore = deps.checkpointStore ?? (
       deps.storage ? new TaskCheckpointStore<TTask>(deps.storage) : undefined
@@ -215,9 +214,9 @@ export class TaskHistoryProjectionService<TTask = unknown> {
     const details: TaskHistoryProjectionDetail[] = [];
     for (const runId of this.discoverRunIds()) {
       try {
-        const verification = this.ledger.verify(runId);
+        const verification = this.evidenceReader.verify(runId);
         if (!verification.valid) continue;
-        const snapshot = this.ledger.readSnapshot(runId);
+        const snapshot = this.evidenceReader.readSnapshot(runId);
         details.push(this.projectSnapshot(snapshot, verification));
       } catch {
         // Invalid or torn evidence is not silently converted into history UI facts.
@@ -227,21 +226,7 @@ export class TaskHistoryProjectionService<TTask = unknown> {
   }
 
   private discoverRunIds(): string[] {
-    if (!fs.existsSync(this.evidenceRoot)) return [];
-    const runIds = new Set<string>();
-    let buckets: fs.Dirent[];
-    try {
-      buckets = fs.readdirSync(this.evidenceRoot, { withFileTypes: true });
-    } catch {
-      return [];
-    }
-    for (const bucket of buckets) {
-      if (!bucket.isDirectory()) continue;
-      const recordsDir = nodePath.join(this.evidenceRoot, bucket.name, 'records');
-      const runId = discoverRunIdFromRecords(recordsDir);
-      if (runId) runIds.add(runId);
-    }
-    return [...runIds].sort();
+    return [...this.evidenceReader.discoverRunIds()];
   }
 
   private projectSnapshot(
@@ -417,36 +402,6 @@ export class TaskHistoryProjectionService<TTask = unknown> {
       return { ...task, status: 'archived', updatedAt: Math.max(task.updatedAt, maxReceiptTime(lifecycleReceipts)) };
     }
     return task;
-  }
-}
-
-function discoverRunIdFromRecords(recordsDir: string): string | undefined {
-  let names: string[];
-  try {
-    names = fs.readdirSync(recordsDir)
-      .filter(name => /^\d{20}\.json$/.test(name))
-      .sort();
-  } catch {
-    return undefined;
-  }
-  for (const name of names) {
-    const runId = runIdFromRecord(nodePath.join(recordsDir, name));
-    if (runId) return runId;
-  }
-  return undefined;
-}
-
-function runIdFromRecord(filePath: string): string | undefined {
-  try {
-    const stat = fs.lstatSync(filePath);
-    if (!stat.isFile()) return undefined;
-    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as unknown;
-    const record = objectValue(parsed);
-    const event = objectValue(record.event);
-    const seal = objectValue(record.seal);
-    return stringValue(event.run_id) ?? stringValue(seal.run_id);
-  } catch {
-    return undefined;
   }
 }
 

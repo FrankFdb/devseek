@@ -85,8 +85,8 @@
       "schema_version": "devseek.c0-run-evidence-wiring/v1",
       "expected_schema_version": "devseek.c0-run-evidence-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "78942da95c38d613939217b85d086f70784ed1136bd11cf3dd42950b94d907a1",
-      "computed_sha256": "78942da95c38d613939217b85d086f70784ed1136bd11cf3dd42950b94d907a1",
+      "reported_sha256": "f038e89df9cf273afdbee52a08b303b97ac68f5f25513d7f23816d191825346b",
+      "computed_sha256": "f038e89df9cf273afdbee52a08b303b97ac68f5f25513d7f23816d191825346b",
       "hash_status": "matched",
       "package_script": "verify:c0-run-evidence-wiring",
       "package_script_present": true,
@@ -97,7 +97,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-run-evidence-wiring.md",
         "status": "current",
-        "source_sha256": "d6ad4dbba19832b14684280f7e836736053d91635ce9e95080a5184084846ce3"
+        "source_sha256": "11cc6db31b14e8577750fe9ae84ae805a29689e372dff96449a22a954ff221dd"
       }
     },
     {
@@ -106,8 +106,8 @@
       "schema_version": "devseek.c0-manifest-aggregator-wiring/v1",
       "expected_schema_version": "devseek.c0-manifest-aggregator-wiring/v1",
       "hash_field": "wiring_sha256",
-      "reported_sha256": "93314a18d488d159569bd18a54abad8c7ef77d756e6dc038985933b091320a50",
-      "computed_sha256": "93314a18d488d159569bd18a54abad8c7ef77d756e6dc038985933b091320a50",
+      "reported_sha256": "8e2cdd0284781c32e75fb1a09ebe523666eadd881aba75a945b4d14ea9def31b",
+      "computed_sha256": "8e2cdd0284781c32e75fb1a09ebe523666eadd881aba75a945b4d14ea9def31b",
       "hash_status": "matched",
       "package_script": "verify:c0-manifest-aggregator-wiring",
       "package_script_present": true,
@@ -118,7 +118,7 @@
       "generated_view": {
         "path": "docs/process/generated/devseek-c0-manifest-aggregator-wiring.md",
         "status": "current",
-        "source_sha256": "5aba9b830bb7b7416d233bbe67c96b5b97585a0b1119148d82d63c7239db0c7b"
+        "source_sha256": "9f6cbb8918cb926e9fd2d80f26d8e011c93eb615e0a08ab801899a4c5b461b78"
       }
     },
     {
@@ -213,5 +213,5 @@
     "observed_claims": 0,
     "bypasses": 0
   },
-  "reconciliation_sha256": "10199d4243e4334838b0fa239f759aefc8e912de5f023e850554b3ebd8190a06"
+  "reconciliation_sha256": "c6a9218ea21dd39ae2a0b6e4393d8072421ff0746c6598321b43daca6ea1b403"
 }
