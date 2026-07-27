@@ -69,6 +69,17 @@ test('real plugin VSIX harness selects product run terminal instead of pending-e
   assert.doesNotMatch(source, /logs\.find\(\(log\) => log\.terminal\)\?\.absolutePath/, 'replay selection must not blindly use the first terminal log');
 });
 
+test('real plugin VSIX harness reports generated artifact quality details', () => {
+  const source = readFileSync(realPluginHarnessPath, 'utf8');
+
+  assert.match(source, /function changedMarkdownArtifacts\(before\)/, 'real plugin harness must inspect generated Markdown artifacts');
+  assert.match(source, /requiredContentMatches/, 'report artifacts must expose required snippet matches');
+  assert.match(source, /forbiddenContentMatches/, 'report artifacts must expose stale-domain forbidden snippet matches');
+  assert.match(source, /reportLanguageQuality/, 'report artifacts must expose language quality checks');
+  assert.match(source, /stageArtifactQuality/, 'report checks must include generated artifact stage quality');
+  assert.match(source, /阶段成果物质量不达标/, 'failed generated artifact quality must be surfaced in report errors');
+});
+
 test('real plugin VSIX harness chooses the agent run log over bridge status probes', () => {
   const source = readFileSync(realPluginHarnessPath, 'utf8');
   const { selectProductRunLog } = evaluateHarnessFunctions(

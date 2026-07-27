@@ -31,6 +31,10 @@ import {
   buildRequirementContract,
   evaluateRequirementContractAcceptance,
 } from './requirement-contract';
+import {
+  evaluateArtifactQualityOracle,
+  readWrittenMarkdownFilesForQuality,
+} from './artifact-quality-oracle';
 
 export interface AgentAutoValidationCallbacks {
   onAgentStatus: (status: AgentStatusEvent) => void | Promise<void>;
@@ -197,34 +201,6 @@ const FORMAL_PROJECT_SOURCE_REASON_LABELS: Record<string, string> = {
   'validation-references-missing-artifact': '验证脚本仍引用已删除或缺失的本轮产物',
 };
 
-function readWrittenMarkdownFilesForQuality(
-  writtenFiles: WrittenFileEvidence[],
-  workspaceRootFsPath: string,
-): { paths: string[]; content: string } {
-  const root = nodePath.resolve(workspaceRootFsPath);
-  const seen = new Set<string>();
-  const paths: string[] = [];
-  const parts: string[] = [];
-  for (const file of writtenFiles) {
-    if (!/\.md$/i.test(file.path) && !/\.md$/i.test(file.basename)) continue;
-    const absPath = nodePath.resolve(nodePath.isAbsolute(file.path) ? file.path : nodePath.join(root, file.path));
-    if (!isInsideWorkspacePath(absPath, root)) continue;
-    try {
-      if (!fs.existsSync(absPath) || fs.statSync(absPath).isDirectory()) continue;
-      const content = fs.readFileSync(absPath, 'utf8');
-      const relPath = nodePath.relative(root, absPath).replace(/\\/g, '/');
-      if (seen.has(relPath)) continue;
-      seen.add(relPath);
-      paths.push(relPath);
-      parts.push(content);
-    } catch {
-      // Ignore transient read failures here; the normal file-check validation
-      // still records the lower-level write/read problem.
-    }
-  }
-  return { paths, content: parts.join('\n\n') };
-}
-
 function readWrittenSourceFilesForQuality(
   writtenFiles: WrittenFileEvidence[],
   workspaceRootFsPath: string,
@@ -292,74 +268,6 @@ function evaluateFormalProjectMarkdownQuality(
       requiredActions: [
         '补齐源项目事实矩阵、通讯链路、接口示例和原有代码修改清单后重新验证。',
       ],
-    },
-  };
-}
-
-function extractRequiredLiteralAnchors(userPrompt: string): string[] {
-  const lines = (userPrompt || '').split(/\r?\n/);
-  const anchors: string[] = [];
-  let collecting = false;
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!collecting && beginsRequiredLiteralAnchorList(trimmed)) {
-      collecting = true;
-      continue;
-    }
-    if (!collecting) continue;
-    const bullet = /^(?:[-*+]|\d+[.)、])\s+(.+?)\s*$/.exec(trimmed);
-    if (!bullet) {
-      if (trimmed && anchors.length > 0) break;
-      continue;
-    }
-    const value = cleanRequiredLiteralAnchor(bullet[1]);
-    if (value && value.length <= 220 && !anchors.includes(value)) anchors.push(value);
-  }
-  return anchors;
-}
-
-function beginsRequiredLiteralAnchorList(line: string): boolean {
-  return /(?:必须|务必|must|required)[^\n]{0,24}(?:逐字|verbatim|exact)[^\n]{0,24}(?:包含|include|contain)/i.test(line)
-    || /(?:以下|如下|下列|following|these)[^\n]{0,24}(?:验收锚点|required\s+(?:anchor|snippet))/i.test(line)
-    || /(?:验收锚点|required\s+(?:anchor|snippet))[^\n]{0,16}[:：]\s*$/i.test(line);
-}
-
-function cleanRequiredLiteralAnchor(value: string): string {
-  return value
-    .trim()
-    .replace(/^`([\s\S]*?)`$/, '$1')
-    .replace(/^["“”']([\s\S]*?)["“”']$/, '$1')
-    .trim();
-}
-
-function evaluateMarkdownRequiredLiteralQuality(
-  writtenFiles: WrittenFileEvidence[],
-  workspaceRootFsPath: string,
-  userPrompt: string,
-): AgentAutoValidationResult | undefined {
-  const anchors = extractRequiredLiteralAnchors(userPrompt);
-  if (anchors.length === 0) return undefined;
-  const markdown = readWrittenMarkdownFilesForQuality(writtenFiles, workspaceRootFsPath);
-  if (markdown.paths.length === 0) return undefined;
-  const missing = anchors.filter(anchor => !markdown.content.includes(anchor));
-  if (missing.length === 0) return undefined;
-
-  const summary = `Markdown 逐字验收锚点未通过：缺少 ${missing.join('、')}。`;
-  return {
-    feedbackForAI: [
-      '[markdown_required_literal_anchors]',
-      `files=${markdown.paths.join(', ')}`,
-      `missing_required_anchors=${missing.join(' | ')}`,
-      summary,
-      '请继续用 read_file 确认目标 Markdown，并用 create_file/write_file/replace_in_file 修正文档；缺失锚点必须逐字出现，不能只用语义改写替代。',
-      '完成摘要只能引用修正后的真实文件内容，不能把缺失逐字锚点的草稿标记完成。',
-    ].join('\n'),
-    qualityGate: {
-      status: 'fail',
-      summary,
-      risks: missing.map(anchor => `缺少逐字锚点: ${anchor}`),
-      evidenceRefs: markdown.paths.map(path => `file:${path}`),
-      requiredActions: ['补齐缺失的逐字验收锚点后重新运行自动验证。'],
     },
   };
 }
@@ -591,17 +499,17 @@ export async function runAgentAutoValidationForWrites(
         userPrompt,
       ),
     ]);
-    const markdownLiteralQuality = evaluateMarkdownRequiredLiteralQuality(
+    const artifactQuality = evaluateArtifactQualityOracle(
       qualityWrittenFiles,
       workspaceRootFsPath,
       userPrompt,
     );
     const requirementQuality = evaluateRequirementContractQuality(userPrompt);
-    const policyQuality = combineAgentQualityResults([formalProjectQuality, markdownLiteralQuality, requirementQuality]);
+    const policyQuality = combineAgentQualityResults([formalProjectQuality, artifactQuality, requirementQuality]);
     const policyQualityTitle = formalProjectQuality
       ? '正式项目质量门禁未通过'
-      : markdownLiteralQuality
-        ? 'Markdown 验收锚点未通过'
+      : artifactQuality
+        ? '生成文件质量门禁未通过'
         : requirementQuality
           ? '需求质量门禁未通过'
           : undefined;

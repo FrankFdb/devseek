@@ -412,9 +412,9 @@ test('Agent auto validation: Markdown literal acceptance anchors block completio
 
     assert.equal(result.evidence.ok, true);
     assert.equal(result.qualityGate.status, 'fail');
-    assert.match(result.feedbackForAI, /markdown_required_literal_anchors/);
+    assert.match(result.feedbackForAI, /artifact_quality:missing-literal-anchor/);
     assert.match(result.feedbackForAI, /login-state-not-send-button/);
-    assert.equal(statuses.some(status => status.title === 'Markdown 验收锚点未通过' && status.state === 'failed'), true);
+    assert.equal(statuses.some(status => status.title === '生成文件质量门禁未通过' && status.state === 'failed'), true);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -487,8 +487,8 @@ test('Agent auto validation: anchor style guidance does not make explanation bul
 
     assert.equal(result.evidence.ok, true);
     assert.equal(result.qualityGate.status, 'pass');
-    assert.doesNotMatch(result.feedbackForAI || '', /markdown_required_literal_anchors/);
-    assert.equal(statuses.some(status => status.title === 'Markdown 验收锚点未通过' && status.state === 'failed'), false);
+    assert.doesNotMatch(result.feedbackForAI || '', /artifact_quality:missing-literal-anchor/);
+    assert.equal(statuses.some(status => status.title === '生成文件质量门禁未通过' && status.state === 'failed'), false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
