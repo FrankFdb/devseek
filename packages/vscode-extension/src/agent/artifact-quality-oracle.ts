@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as nodePath from 'path';
 import type { WrittenFileEvidence } from './completion-evidence';
 import {
+  extractRequiredDeliverables,
   getMissingRequiredDeliverables,
   type RequiredDeliverable,
 } from './required-deliverable-contract';
@@ -12,7 +13,8 @@ export type ArtifactQualityIssueCode =
   | 'stale-domain-anchor'
   | 'required-deliverable-mismatch'
   | 'generic-warranty-false-positive'
-  | 'artifact-language-mismatch';
+  | 'artifact-language-mismatch'
+  | 'source-grounding-missing';
 
 export interface WrittenMarkdownQualityInput {
   paths: string[];
@@ -62,6 +64,18 @@ const GENERIC_WARRANTY_PHRASES = Object.freeze([
   'regular inspection',
   'warranty recommendation',
   'preventive maintenance',
+]);
+
+const GENERIC_SOURCE_BACKED_REPORT_PHRASES = Object.freeze([
+  '已完成审计',
+  '已完成分析',
+  '整理了关键风险',
+  '验证结果已汇总',
+  '边界已经确认',
+  'completed the audit',
+  'completed the analysis',
+  'summarized the risks',
+  'verification results are summarized',
 ]);
 
 const PROCESS_DOMAIN_RE = /(?:DevSeek|DeepSeek|VSIX|Provider|plugin|R[34](?:[-_\s]|$)|convergence|收敛|权限|编程智能体|质量门禁|agent)/i;
@@ -127,6 +141,9 @@ export function evaluateArtifactQualityOracle(
 
     const genericWarrantyIssue = evaluateGenericWarrantyFalsePositiveIssue(markdown, userPrompt);
     if (genericWarrantyIssue) issues.push(genericWarrantyIssue);
+
+    const sourceGroundingIssue = evaluateSourceGroundingIssue(markdown, userPrompt);
+    if (sourceGroundingIssue) issues.push(sourceGroundingIssue);
 
     const languageIssue = evaluateArtifactLanguageIssue(markdown, userPrompt);
     if (languageIssue) issues.push(languageIssue);
@@ -220,7 +237,7 @@ function evaluateGenericWarrantyFalsePositiveIssue(
   const anchors = extractSourceBackedPromptAnchors(userPrompt);
   if (anchors.length === 0) return undefined;
   const content = markdown.content;
-  if (anchors.some(anchor => content.includes(anchor))) return undefined;
+  if (hasAnyPromptAnchor(content, anchors)) return undefined;
   const genericMatches = GENERIC_WARRANTY_PHRASES.filter(phrase => new RegExp(escapeRegExp(phrase), 'i').test(content));
   if (genericMatches.length < 2) return undefined;
   return {
@@ -236,6 +253,34 @@ function evaluateGenericWarrantyFalsePositiveIssue(
       `expected_source_anchors=${anchors.join(' | ')}`,
       `generic_phrases=${genericMatches.join(' | ')}`,
     ],
+  };
+}
+
+function evaluateSourceGroundingIssue(
+  markdown: WrittenMarkdownQualityInput,
+  userPrompt: string,
+): ArtifactQualityIssue | undefined {
+  if (!SOURCE_BACKED_RE.test(userPrompt)) return undefined;
+  const sourceAnchors = extractSourceBackedPromptAnchors(
+    userPrompt,
+    extractRequiredDeliverables(userPrompt).map(deliverable => deliverable.path),
+  );
+  if (sourceAnchors.length === 0 || hasAnyPromptAnchor(markdown.content, sourceAnchors)) return undefined;
+  const genericMatches = GENERIC_SOURCE_BACKED_REPORT_PHRASES
+    .filter(phrase => new RegExp(escapeRegExp(phrase), 'i').test(markdown.content));
+  if (genericMatches.length === 0 && markdown.content.length >= 700) return undefined;
+  return {
+    code: 'source-grounding-missing',
+    summary: '源材料驱动的交付物缺少可核对的输入源锚点',
+    risks: [
+      `输入源锚点未落盘: ${sourceAnchors.slice(0, 8).join('、')}`,
+      genericMatches.length
+        ? `泛化审计措辞命中: ${genericMatches.join('、')}`
+        : '短 Markdown 交付物没有引用任何输入源文件、stem 或关键代码锚点',
+    ],
+    evidenceRefs: markdown.paths.map(path => `file:${path}`),
+    requiredActions: ['重新读取输入源材料，并在交付物中写入可核对的源文件名、stem、接口名、常量或路径锚点。'],
+    details: [`expected_source_anchors=${sourceAnchors.join(' | ')}`],
   };
 }
 
@@ -306,13 +351,15 @@ function isHistoricalMetaContext(context: string): boolean {
   return /(?:historical|stale|forbidden|not accepted|cannot satisfy|cannot settle|old case|fixed old|历史|旧\s*case|旧用例|旧产物|禁止|不得|不能作为|不作为|不能结算|反例|只作为背景)/i.test(context);
 }
 
-function extractSourceBackedPromptAnchors(prompt: string): string[] {
+function extractSourceBackedPromptAnchors(prompt: string, excludedPaths: readonly string[] = []): string[] {
   const anchors = new Set<string>();
+  const excluded = buildExcludedPathAnchors(excludedPaths);
   FILE_TOKEN_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = FILE_TOKEN_RE.exec(prompt)) !== null) {
     const normalized = match[0].replace(/\\/g, '/');
     const basename = nodePath.basename(normalized);
+    if (excluded.has(normalizePathForAnchor(normalized)) || excluded.has(basename.toLocaleLowerCase())) continue;
     if (basename && basename.length >= 4) anchors.add(basename);
     const stem = basename.replace(/\.(?:md|markdown|ts|js|cpp|hpp|h|py|json|ya?ml|txt)$/i, '');
     if (stem.length >= 8) anchors.add(stem);
@@ -321,6 +368,29 @@ function extractSourceBackedPromptAnchors(prompt: string): string[] {
     if (codeToken.length >= 6) anchors.add(codeToken);
   }
   return [...anchors].slice(0, 24);
+}
+
+function buildExcludedPathAnchors(paths: readonly string[]): Set<string> {
+  const excluded = new Set<string>();
+  for (const filePath of paths) {
+    const normalized = normalizePathForAnchor(filePath);
+    const basename = nodePath.basename(normalized);
+    if (normalized) excluded.add(normalized);
+    if (basename) {
+      excluded.add(basename.toLocaleLowerCase());
+      excluded.add(basename.replace(/\.(?:md|markdown|ts|js|cpp|hpp|h|py|json|ya?ml|txt)$/i, '').toLocaleLowerCase());
+    }
+  }
+  return excluded;
+}
+
+function normalizePathForAnchor(filePath: string): string {
+  return String(filePath || '').replace(/\\/g, '/').replace(/\/{2,}/g, '/').toLocaleLowerCase();
+}
+
+function hasAnyPromptAnchor(content: string, anchors: readonly string[]): boolean {
+  const lower = content.toLocaleLowerCase();
+  return anchors.some(anchor => lower.includes(anchor.toLocaleLowerCase()));
 }
 
 function promptWithoutFileTokens(prompt: string): string {

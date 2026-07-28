@@ -170,6 +170,52 @@ test('artifact quality oracle: generic warranty advice cannot replace source-bac
   });
 });
 
+test('artifact quality oracle: generic source-backed report cannot pass by naming only the output target', () => {
+  withTempWorkspace('devseek-artifact-source-generic-', (root) => {
+    const report = writeArtifact(root, 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md', [
+      '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE',
+      '',
+      '已完成审计，整理了关键风险。',
+      '验证结果已汇总，边界已经确认。',
+      '输出目标是 r3-live-deepseek-login-ready-state.md。',
+    ].join('\n'));
+    const matrix = path.join(root, 'docs/r3-iteration/deepseek-login-ready-state-matrix.md');
+    const contract = path.join(root, 'src/deepseek-web-health/deepseek-login-ready-state-contract.ts');
+    const prompt = [
+      `请基于 ${matrix} 和 ${contract} 创建 Markdown 审计报告。`,
+      `请把报告保存到 ${report.path}。`,
+    ].join('\n');
+
+    const result = evaluateArtifactQualityOracle([report], root, prompt);
+
+    assert.equal(result.qualityGate.status, 'fail');
+    assert.match(result.feedbackForAI, /artifact_quality:source-grounding-missing/);
+    assert.match(result.feedbackForAI, /deepseek-login-ready-state-contract\.ts/);
+    assert.doesNotMatch(result.feedbackForAI, /expected_source_anchors=.*r3-live-deepseek-login-ready-state\.md/);
+  });
+});
+
+test('artifact quality oracle: source-backed report passes when it cites input source anchors', () => {
+  withTempWorkspace('devseek-artifact-source-grounded-', (root) => {
+    const report = writeArtifact(root, 'docs/r3-iteration/r3-live-deepseek-login-ready-state.md', [
+      '# R3-LIVE-DEEPSEEK-LOGIN-READY-STATE',
+      '',
+      '本报告依据 deepseek-login-ready-state-matrix.md 和 deepseek-login-ready-state-contract.ts 汇总。',
+      '关键事实包括 BridgeHealthCheck、loggedInLikely 和 login-state-not-send-button。',
+    ].join('\n'));
+    const matrix = path.join(root, 'docs/r3-iteration/deepseek-login-ready-state-matrix.md');
+    const contract = path.join(root, 'src/deepseek-web-health/deepseek-login-ready-state-contract.ts');
+    const prompt = [
+      `请基于 ${matrix} 和 ${contract} 创建 Markdown 审计报告。`,
+      `请把报告保存到 ${report.path}。`,
+    ].join('\n');
+
+    const result = evaluateArtifactQualityOracle([report], root, prompt);
+
+    assert.equal(result, undefined);
+  });
+});
+
 test('artifact quality oracle: explicit Chinese report requirement rejects English-only prose', () => {
   withTempWorkspace('devseek-artifact-zh-lang-', (root) => {
     const written = writeArtifact(root, 'docs/report.md', [
