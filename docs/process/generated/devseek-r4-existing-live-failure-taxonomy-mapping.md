@@ -30,7 +30,7 @@
 
 ## Source Bindings
 
-- `failure_taxonomy`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `8a8f761acfb83d2e89643c4f7cdfc7103fc1f39f7bc32d48a233e7b3c272ee89`
+- `failure_taxonomy`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `459dc5765664166f33d2c59f051b6da980e84be3edddd5052b6c95555b522f23`
 - `post_r4_nonpermission_iteration_plan`: `docs/process/devseek-post-r4-nonpermission-iteration-plan.md` -> `51623b1c2267f8d3f6fcb09b800396e5da12ea083dad5c5ed98f331b8b735555`
 - `report_20260722T105032Z`: `artifacts/agent-self-loop/2026-07-22T10-50-32-582Z/report.json` -> `e561b87ecaec153a5296bbf0b1c2d95cbbd3ebe3a8a3abad594ed2c7e361a361`
 - `report_20260722T113416Z`: `artifacts/agent-self-loop/2026-07-22T11-34-16-309Z/report.json` -> `8f248b6aed7d15e67ea94075bf527b8d335dd137b2b8698044d7e304c47678f8`
@@ -39,4 +39,4 @@
 
 ## Mapping Identity
 
-- Mapping SHA-256: `afc2d11d97bd9fde8494f3f3169b52c4ab232927c93b15886ec538d2bbc6a033`
+- Mapping SHA-256: `c11a8ee163b7c83a9c5017da080858a059e7569559584a5c5ed778b66ef36a84`

@@ -30,15 +30,15 @@
     },
     "live_qualification_request_packet": {
       "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
-      "source_sha256": "92e2868a57c050c3c23561327d932656b662f1196e9f323a5901deb054a32296",
-      "packet_sha256": "2cec877865500676f03f94075f73288aa811a98a8ad18f1297b16d8344860b3c",
+      "source_sha256": "2b7bc6e3aecb20f7b2303c9a13a5d19eb1d943e28f55cf4aef52e9c30492dfc6",
+      "packet_sha256": "e83c0f536ecfc7b0704b2186fe9a9f81ea7f7642b6ebd0b5d38c8b88db47b37c",
       "blocked_requests": 5
     },
     "doc_process_identity_reconciliation": {
       "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
-      "source_sha256": "abd9ec026b3786071d977082a3628e40ac9d6ff5277cbd773839de80268a6fc5",
-      "reconciliation_sha256": "0cb8162dfab7ac768e26bf8e2f6d4cb702d4a9a41b00de7f7bfc76f47c4622d3",
-      "current_candidate_identity_status": "deferred-unusable-until-clean-runtime"
+      "source_sha256": "0c611270778e0cf8f851e381a08c6344546a457fce2ec131e4bb978589c2fc6d",
+      "reconciliation_sha256": "0062308b89bd93c1eff593cae812d942f96ff2bb4a7b70e183030414610e9599",
+      "current_candidate_identity_status": "clean-runtime-identity-established"
     },
     "r3_live_receipts_doc": {
       "path": "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md",
@@ -46,7 +46,7 @@
     },
     "real_plugin_harness": {
       "path": "packages/vscode-extension/test/devseek-real-plugin-deepseek-harness.mjs",
-      "source_sha256": "38743a611c09ffafe41552e701a0d06bfafe6c12080ff7d6bf30f50f1342b7f0"
+      "source_sha256": "31d375ceb4b8e8fa5c1db3dc0a10693cf32c432e5a487e33db59f141f353d3e3"
     }
   },
   "rerun_policy": {
@@ -266,7 +266,8 @@
         "stale-domain-anchor",
         "quality-forbidden-scope",
         "missing-literal-anchor",
-        "generic-warranty-false-positive"
+        "generic-warranty-false-positive",
+        "source-grounding-missing"
       ],
       "default_next_action": "review-generated-artifact-quality-before-retry",
       "required_evidence_before_rerun": [
@@ -316,5 +317,5 @@
     "categories_allowing_rerun_without_analysis": 0,
     "qualification_claims": 0
   },
-  "taxonomy_sha256": "9db65a53f787a39b5b27cf7c927f263eca2cb495e077a83f8bbb8244d8fed216"
+  "taxonomy_sha256": "cf388fd30a469301feb7c720b7319b28d762572ab3a2ca9fbaeb0fd766912fd4"
 }

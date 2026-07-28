@@ -46,8 +46,8 @@
     },
     "r4_real_provider_failure_taxonomy": {
       "path": "docs/process/devseek-r4-real-provider-failure-taxonomy.json",
-      "source_sha256": "8a8f761acfb83d2e89643c4f7cdfc7103fc1f39f7bc32d48a233e7b3c272ee89",
-      "taxonomy_sha256": "9db65a53f787a39b5b27cf7c927f263eca2cb495e077a83f8bbb8244d8fed216",
+      "source_sha256": "459dc5765664166f33d2c59f051b6da980e84be3edddd5052b6c95555b522f23",
+      "taxonomy_sha256": "cf388fd30a469301feb7c720b7319b28d762572ab3a2ca9fbaeb0fd766912fd4",
       "categories": 10
     },
     "r4_authorization_and_permission_guide": {
@@ -56,8 +56,8 @@
     },
     "r4_process_artifacts_aggregate": {
       "path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
-      "source_sha256": "d686a2ed09b97f8769d434944e58a006a702c2b6ead70bd1b8b07f4ef1d1122e",
-      "aggregate_sha256": "ff50ad672151325b59de0bbbe0d17f6b2da7cb803cd428c204d99414a6247a89",
+      "source_sha256": "fb1ff47a430351e24b4ee582ad92d910bf6b2ae39a6f00f7877e1bbe106feced",
+      "aggregate_sha256": "a3e2839e2b1048835c60659918546dfb774aa1c6abfba792c5638ed7ef221d48",
       "artifact_errors": 0
     },
     "gate0_decision": {
@@ -443,5 +443,5 @@
     "ledger_writes": 0,
     "provider_actions_performed": 0
   },
-  "audit_sha256": "7af839c576c02d90b9e9cd76f1414d30a239da1c08ebfeae6a05703e16cbba29"
+  "audit_sha256": "5abe01862b6d43be47dd3f9184d9ae517ed96aaa193ea699d05a0cbd5b0474a3"
 }

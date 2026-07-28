@@ -54,8 +54,8 @@
     },
     "real_provider_failure_taxonomy": {
       "path": "docs/process/devseek-r4-real-provider-failure-taxonomy.json",
-      "source_sha256": "8a8f761acfb83d2e89643c4f7cdfc7103fc1f39f7bc32d48a233e7b3c272ee89",
-      "taxonomy_sha256": "9db65a53f787a39b5b27cf7c927f263eca2cb495e077a83f8bbb8244d8fed216",
+      "source_sha256": "459dc5765664166f33d2c59f051b6da980e84be3edddd5052b6c95555b522f23",
+      "taxonomy_sha256": "cf388fd30a469301feb7c720b7319b28d762572ab3a2ca9fbaeb0fd766912fd4",
       "categories": 10
     },
     "authorization_guide": {
@@ -174,5 +174,5 @@
     "live_runs_authorized": 0,
     "qualification_claims": 0
   },
-  "rollup_sha256": "abd12eec6402e54993a19d2918eb976d027bf5e80682870cc1032c0061a85cb1"
+  "rollup_sha256": "daa24f4e4363524f05b3ce9df0f890f2a2311133654af035a233e335240905b9"
 }

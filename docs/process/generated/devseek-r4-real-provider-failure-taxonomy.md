@@ -36,9 +36,9 @@
 | `RECOVERY_REENTRANCY_OR_LOOPING` | duplicate-recovery-start, recovery-start-after-proven-retry, looping-recovery | `guard-recovery-reentrancy-with-run-context-evidence` |
 | `RECOVERED_WRITE_FINAL_SETTLEMENT` | recovery.completed-without-settled-completed, post-write-provider-failure, quality-gate-after-recovery | `inspect-run-settlement-and-quality-gate-before-rerun` |
 | `REQUIRED_DELIVERABLE_OR_SOURCE_PATH_DRIFT` | input-source-path-classified-as-output, required-deliverable-mismatch, changedPaths-missing-target | `fix-deliverable-contract-or-path-source-classifier` |
-| `ARTIFACT_QUALITY_OR_DOMAIN_STALE` | stale-domain-anchor, quality-forbidden-scope, missing-literal-anchor, generic-warranty-false-positive | `review-generated-artifact-quality-before-retry` |
+| `ARTIFACT_QUALITY_OR_DOMAIN_STALE` | stale-domain-anchor, quality-forbidden-scope, missing-literal-anchor, generic-warranty-false-positive, source-grounding-missing | `review-generated-artifact-quality-before-retry` |
 | `HARNESS_REPORT_TIMEOUT_OR_LOG_SELECTION` | report-time-timeout, wrong-run-log-selected, bridge-status-log-selected, pollExitReason-timeout | `fix-harness-report-binding-or-timeout-diagnostics` |
 
 ## Taxonomy Identity
 
-- Taxonomy SHA-256: `9db65a53f787a39b5b27cf7c927f263eca2cb495e077a83f8bbb8244d8fed216`
+- Taxonomy SHA-256: `cf388fd30a469301feb7c720b7319b28d762572ab3a2ca9fbaeb0fd766912fd4`

@@ -35,6 +35,12 @@ test('R4 real provider failure taxonomy requires evidence analysis before rerun 
   assert.equal(actual.rerun_policy.generated_artifact_quality_required, true);
   assert.equal(actual.categories.some(category => category.category_id === 'SAFETY_INTERSTITIAL_OR_TOOL_BLOCK'), true);
   assert.equal(actual.categories.some(category => category.category_id === 'RESPONSE_CORRUPTED_OR_TRUNCATED'), true);
+  assert.ok(
+    actual.categories
+      .find(category => category.category_id === 'ARTIFACT_QUALITY_OR_DOMAIN_STALE')
+      ?.trigger_signals.includes('source-grounding-missing'),
+    'artifact quality taxonomy must classify source grounding failures before rerun',
+  );
   assert.equal(actual.categories.every(category => category.rerun_allowed_without_analysis === false), true);
   assert.equal(actual.categories.every(category => category.required_evidence_before_rerun.includes('generated-artifact-quality')), true);
   assert.equal(actual.qualification_effect, 'NONE');

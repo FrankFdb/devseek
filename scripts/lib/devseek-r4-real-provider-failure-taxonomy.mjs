@@ -79,7 +79,13 @@ const CATEGORIES = Object.freeze([
   {
     category_id: 'ARTIFACT_QUALITY_OR_DOMAIN_STALE',
     title: 'Artifact quality or stale-domain leakage',
-    trigger_signals: ['stale-domain-anchor', 'quality-forbidden-scope', 'missing-literal-anchor', 'generic-warranty-false-positive'],
+    trigger_signals: [
+      'stale-domain-anchor',
+      'quality-forbidden-scope',
+      'missing-literal-anchor',
+      'generic-warranty-false-positive',
+      'source-grounding-missing',
+    ],
     default_next_action: 'review-generated-artifact-quality-before-retry',
   },
   {
