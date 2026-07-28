@@ -68,6 +68,7 @@ const PROCESS_DOMAIN_RE = /(?:DevSeek|DeepSeek|VSIX|Provider|plugin|R[34](?:[-_\
 const WARRANTY_DOMAIN_RE = /(?:UAV|吊运|维保|保修|warranty|zc_maintenance|maintenance)/i;
 const SOURCE_BACKED_RE = /(?:基于|根据|依据|参考|读取|审计|分析|旧实现|新需求|\b(?:based on|from|according to|read|inspect|audit|source)\b|\/|\\|\.(?:md|ts|js|cpp|hpp|h|py)\b)/i;
 const FILE_TOKEN_RE = /(?:\/[^\s，。；;：:"'`<>|]+|(?:\.{0,2}\/)?[A-Za-z0-9_.@+-]+(?:\/[A-Za-z0-9_.@+-]+)*)\.(?:cpp|cxx|cc|c|hpp|hxx|hh|h|tsx|jsx|mjs|cjs|ts|js|py|java|go|rs|cs|php|rb|swift|kts|kt|scala|html|scss|sass|css|svelte|vue|bash|zsh|sh|json|ya?ml|md|markdown|txt|cmake)\b/gi;
+const PATH_TOKEN_RE = /(?:\/[^\s，。；;：:"'`<>|]+|(?:\.{1,2}\/)?[A-Za-z0-9_.@+-]+(?:\/[A-Za-z0-9_.@+-]+)+)/g;
 
 export function readWrittenMarkdownFilesForQuality(
   writtenFiles: WrittenFileEvidence[],
@@ -324,7 +325,10 @@ function extractSourceBackedPromptAnchors(prompt: string): string[] {
 
 function promptWithoutFileTokens(prompt: string): string {
   FILE_TOKEN_RE.lastIndex = 0;
-  return String(prompt || '').replace(FILE_TOKEN_RE, ' ');
+  PATH_TOKEN_RE.lastIndex = 0;
+  return String(prompt || '')
+    .replace(FILE_TOKEN_RE, ' ')
+    .replace(PATH_TOKEN_RE, ' ');
 }
 
 function inferExpectedArtifactLanguage(prompt: string): 'zh' | 'en' | undefined {

@@ -115,8 +115,10 @@ test('artifact quality oracle: warranty simulation prompt keeps current warranty
     ].join('\n'));
     const plan = path.join(root, 'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md');
     const oldCode = path.join(root, 'src/oam/src/lifting/maintenance/maintenance_old.cpp');
+    const oldDir = path.join(root, 'src/oam/src/lifting/maintenance');
     const target = path.join(root, 'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice-simulation.md');
     const prompt = [
+      `原来实现的吊运维保功能位于 ${oldDir}。`,
       `请基于 ${plan} 和 ${oldCode} 生成中文仿真测试结果。`,
       `请保存到 ${target}，文件名需要保留 simulation 标识。`,
     ].join('\n');
