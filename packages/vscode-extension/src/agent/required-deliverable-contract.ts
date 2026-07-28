@@ -47,12 +47,36 @@ export function getMissingRequiredDeliverables(
   }));
   return required.filter(deliverable => {
     const resolved = resolveEvidencePath(deliverable.path, workspaceRoot);
-    const relative = !nodePath.isAbsolute(deliverable.path);
-    const matchedWrite = written.find(file => file.resolved === resolved
-      || (!workspaceRoot && relative && file.raw.endsWith(`/${deliverable.path}`)));
+    const matchedWrite = written.find(file => deliverableWriteMatches(
+      deliverable.path,
+      resolved,
+      file,
+      workspaceRoot,
+    ));
     if (!resolved || !matchedWrite) return true;
     try { return !fs.existsSync(matchedWrite.resolved); } catch { return true; }
   });
+}
+
+function deliverableWriteMatches(
+  deliverablePath: string,
+  resolvedDeliverable: string,
+  file: { raw: string; resolved: string },
+  workspaceRoot?: string,
+): boolean {
+  if (!resolvedDeliverable || !file.resolved) return false;
+  if (file.resolved === resolvedDeliverable) return true;
+  const relative = !nodePath.isAbsolute(deliverablePath);
+  if (!workspaceRoot && relative && file.raw.endsWith(`/${deliverablePath}`)) return true;
+  return isNumberedCollisionSibling(resolvedDeliverable, file.resolved);
+}
+
+function isNumberedCollisionSibling(requiredResolved: string, writtenResolved: string): boolean {
+  const required = nodePath.parse(requiredResolved);
+  const written = nodePath.parse(writtenResolved);
+  if (required.dir !== written.dir) return false;
+  if (!required.ext || required.ext !== written.ext) return false;
+  return new RegExp(`^${escapeRegExp(required.name)}-\\d+$`).test(written.name);
 }
 
 function clauseBoundsAround(text: string, start: number, end: number): { start: number; end: number } {
@@ -110,4 +134,8 @@ function resolveEvidencePath(value: string, workspaceRoot?: string): string {
       ? nodePath.resolve(workspaceRoot, normalized)
       : nodePath.resolve(normalized);
   return resolved.replace(/\\/g, '/');
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

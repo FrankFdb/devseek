@@ -1651,23 +1651,36 @@ function assessFormalProjectQuality(content, promptText) {
   if (typeof assessRuntimeFormalProjectDocumentQuality === 'function') {
     return assessRuntimeFormalProjectDocumentQuality(content, promptText);
   }
-  const combined = String(promptText || '') + '\n' + String(content || '');
-  const required = /(?:既有|现有|原项目|大项目|正式项目|生产项目|主控|平台|遥控器|模块|接口文档|\/src\/)/i.test(combined);
+  const prompt = String(promptText || '');
+  const body = String(content || '');
+  const requiresSourceFacts = /(?:提取|列出|核对|读取)[\s\S]{0,240}(?:常量|数值|配置|字段|版本|真实(?:定义|值)|(?:定义|值))|(?:extract|list|verify|read)[\s\S]{0,240}(?:constant|value|config|field|version)|(?:源码事实|源材料锚点|事实矩阵|source\s+fact|source\s+evidence)/i.test(prompt);
+  const requiresProtocolFacts = /(?:协议|通信|通讯|topic|payload|MAVLink|MAVLINK_MSG_TUNNEL|tunnel|TunnelMsgType|命令号|字段|request|response|schema|JSON)/i.test(prompt);
+  const requiresRemoteControllerInterface = /(?:遥控器|遥控|remote\s*controller|RC).{0,120}(?:接口|交互|通信|通讯|字段|协议|topic|payload|request|response|schema|JSON)|(?:接口|交互|字段|协议|topic|payload|request|response|schema|JSON).{0,120}(?:遥控器|遥控|remote\s*controller|RC)/i.test(prompt);
+  const requiresModificationPlan = /(?:代码实现|实现代码|修改清单|原有代码修改|目标文件|新增(?:函数|类|模块|文件)|修改(?:函数|类|模块|文件)|创建(?:函数|类|模块|文件)|implement(?:ation)?\s+plan|modification\s+plan|target\s+files?)/i.test(prompt);
+  const required = requiresSourceFacts || requiresProtocolFacts || requiresRemoteControllerInterface || requiresModificationPlan;
   const hasSourceRefs = ((String(content || '').match(/(?:[\w.-]+\.(?:cpp|hpp|h|md)(?::\d+)?|src\/[\w./-]+|\/src\/[\w./-]+)/gi) || []).length >= 4);
-  const hasProtocolFacts = ((String(content || '').match(/(?:kTunnel\w*|TunnelMsgType|MAVLINK_MSG_TUNNEL|crc32|sessionId|payloadLen|totalLen|topic|UAV_EVENT|COMMAND_LONG|分片|超时|重试)/gi) || []).length >= 6);
-  const hasInterfaceDoc = /(?:遥控器|遥控|主控|平台)/i.test(combined)
+  const hasProtocolFacts = ((body.match(/(?:kTunnel\w*|TunnelMsgType|MAVLINK_MSG_TUNNEL|crc32|sessionId|payloadLen|totalLen|topic|UAV_EVENT|COMMAND_LONG|分片|超时|重试)/gi) || []).length >= 6);
+  const hasInterfaceDoc = requiresRemoteControllerInterface
     ? /(?:JSON|schema|字段|payload).{0,120}(?:示例|request|response)|(?:示例|request|response).{0,120}(?:JSON|schema|字段|payload)/i.test(content)
     : true;
-  const hasModificationPlan = /(?:代码实现|实现代码|新增|修改|创建|验证)/i.test(promptText || '')
+  const hasModificationPlan = requiresModificationPlan
     ? /(?:原有代码修改清单|修改点|需要修改|目标文件).{0,200}(?:风险|验证|回归)/is.test(content)
     : true;
   const reasons = [
-    required && !hasSourceRefs ? 'missing-source-fact-matrix' : '',
-    required && !hasProtocolFacts ? 'missing-concrete-protocol-facts' : '',
-    required && !hasInterfaceDoc ? 'missing-remote-controller-interface-doc' : '',
-    required && !hasModificationPlan ? 'missing-existing-code-modification-plan' : '',
+    requiresSourceFacts && !hasSourceRefs ? 'missing-source-fact-matrix' : '',
+    requiresProtocolFacts && !hasProtocolFacts ? 'missing-concrete-protocol-facts' : '',
+    requiresRemoteControllerInterface && !hasInterfaceDoc ? 'missing-remote-controller-interface-doc' : '',
+    requiresModificationPlan && !hasModificationPlan ? 'missing-existing-code-modification-plan' : '',
   ].filter(Boolean);
-  return { required, ok: !required || reasons.length === 0, reasons };
+  return {
+    required,
+    ok: !required || reasons.length === 0,
+    reasons,
+    requiresSourceFacts,
+    requiresProtocolFacts,
+    requiresRemoteControllerInterface,
+    requiresModificationPlan,
+  };
 }
 
 function markdownSnapshot() {

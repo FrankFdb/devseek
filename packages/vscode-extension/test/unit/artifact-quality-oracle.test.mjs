@@ -104,6 +104,29 @@ test('artifact quality oracle: historical warranty meta wording is allowed when 
   });
 });
 
+test('artifact quality oracle: warranty simulation prompt keeps current warranty anchors', () => {
+  withTempWorkspace('devseek-artifact-warranty-simulation-', (root) => {
+    const written = writeArtifact(root, 'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice-simulation-1.md', [
+      '# 维保仿真测试报告',
+      '',
+      '本报告依据 uav-warranty-reminder-plan_v1.7.md 和 maintenance_old.cpp 生成。',
+      '当前业务锚点包括 uav-warranty-reminder、maintenance_threshold_engine、维保提醒、warranty_types 和 zc_maintenance。',
+      '这些锚点是本轮维保业务事实，不是 DevSeek/R3/R4 流程交付物里的旧 case 泄漏。',
+    ].join('\n'));
+    const plan = path.join(root, 'src/oam/src/lifting/zc_maintenance/docs/uav-warranty-reminder-plan_v1.7.md');
+    const oldCode = path.join(root, 'src/oam/src/lifting/maintenance/maintenance_old.cpp');
+    const target = path.join(root, 'src/oam/src/lifting/zc_maintenance/docs/warranty-maintenance-advice-simulation.md');
+    const prompt = [
+      `请基于 ${plan} 和 ${oldCode} 生成中文仿真测试结果。`,
+      `请保存到 ${target}，文件名需要保留 simulation 标识。`,
+    ].join('\n');
+
+    const result = evaluateArtifactQualityOracle([written], root, prompt);
+
+    assert.equal(result, undefined);
+  });
+});
+
 test('artifact quality oracle: writing an input source path does not satisfy the requested output deliverable', () => {
   withTempWorkspace('devseek-artifact-deliverable-', (root) => {
     const source = writeArtifact(root, 'docs/r3-iteration/deepseek-login-ready-state-matrix.md', '# source matrix');

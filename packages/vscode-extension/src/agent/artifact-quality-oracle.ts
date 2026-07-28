@@ -64,7 +64,7 @@ const GENERIC_WARRANTY_PHRASES = Object.freeze([
   'preventive maintenance',
 ]);
 
-const PROCESS_DOMAIN_RE = /(?:DevSeek|DeepSeek|VSIX|Provider|plugin|R[34](?:[-_\s]|$)|convergence|收敛|权限|编程智能体|仿真|质量门禁|agent)/i;
+const PROCESS_DOMAIN_RE = /(?:DevSeek|DeepSeek|VSIX|Provider|plugin|R[34](?:[-_\s]|$)|convergence|收敛|权限|编程智能体|质量门禁|agent)/i;
 const WARRANTY_DOMAIN_RE = /(?:UAV|吊运|维保|保修|warranty|zc_maintenance|maintenance)/i;
 const SOURCE_BACKED_RE = /(?:基于|根据|依据|参考|读取|审计|分析|旧实现|新需求|\b(?:based on|from|according to|read|inspect|audit|source)\b|\/|\\|\.(?:md|ts|js|cpp|hpp|h|py)\b)/i;
 const FILE_TOKEN_RE = /(?:\/[^\s，。；;：:"'`<>|]+|(?:\.{0,2}\/)?[A-Za-z0-9_.@+-]+(?:\/[A-Za-z0-9_.@+-]+)*)\.(?:cpp|cxx|cc|c|hpp|hxx|hh|h|tsx|jsx|mjs|cjs|ts|js|py|java|go|rs|cs|php|rb|swift|kts|kt|scala|html|scss|sass|css|svelte|vue|bash|zsh|sh|json|ya?ml|md|markdown|txt|cmake)\b/gi;
@@ -189,7 +189,7 @@ function evaluateStaleDomainAnchorIssue(
   markdown: WrittenMarkdownQualityInput,
   userPrompt: string,
 ): ArtifactQualityIssue | undefined {
-  if (!PROCESS_DOMAIN_RE.test(userPrompt)) return undefined;
+  if (!PROCESS_DOMAIN_RE.test(promptWithoutFileTokens(userPrompt))) return undefined;
   const staleMatches = [];
   for (const artifact of markdown.artifacts) {
     for (const anchor of STALE_DOMAIN_ANCHORS) {
@@ -320,6 +320,11 @@ function extractSourceBackedPromptAnchors(prompt: string): string[] {
     if (codeToken.length >= 6) anchors.add(codeToken);
   }
   return [...anchors].slice(0, 24);
+}
+
+function promptWithoutFileTokens(prompt: string): string {
+  FILE_TOKEN_RE.lastIndex = 0;
+  return String(prompt || '').replace(FILE_TOKEN_RE, ' ');
 }
 
 function inferExpectedArtifactLanguage(prompt: string): 'zh' | 'en' | undefined {

@@ -2,6 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import {
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -13,6 +20,7 @@ execSync(`npx esbuild src/agent/required-deliverable-contract.ts --bundle --outf
 });
 const {
   extractRequiredDeliverables,
+  getMissingRequiredDeliverables,
 } = createRequire(import.meta.url)(bundlePath);
 
 test('required deliverables: based-on source files are not required outputs', () => {
@@ -40,4 +48,26 @@ test('required deliverables: explicit output file label remains required', () =>
     extractRequiredDeliverables('请生成结果。必须创建输出文件：/tmp/result.txt').map(item => item.path),
     ['/tmp/result.txt'],
   );
+});
+
+test('required deliverables: numbered collision sibling satisfies requested markdown output', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-required-deliverable-'));
+  try {
+    const docsDir = path.join(root, 'docs');
+    mkdirSync(docsDir, { recursive: true });
+    const requested = path.join(docsDir, 'warranty-maintenance-advice-simulation.md');
+    const written = path.join(docsDir, 'warranty-maintenance-advice-simulation-1.md');
+    writeFileSync(written, '# 仿真测试报告\n\n已生成。\n', 'utf8');
+    const prompt = [
+      '请生成仿真测试结果。',
+      `请保存到 ${requested}，文件名需要保留 simulation 标识。`,
+    ].join('\n');
+
+    assert.deepEqual(
+      getMissingRequiredDeliverables(prompt, [{ path: written }], root),
+      [],
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
