@@ -43,6 +43,10 @@ const {
   formatRunLogReplayReport,
 } = req(bundlePath);
 const { createDevSeekRunContext } = req(runContextBundlePath);
+const {
+  ProductRunEvidenceSession,
+  productRunEvidenceIdempotencyKey,
+} = req(path.join(rootDir, '../shared/dist/index.js'));
 
 function writeLog(lines) {
   const dir = mkdtempSync(path.join(tmpdir(), 'devseek-run-log-replay-'));
@@ -75,6 +79,46 @@ function writeProductionRunLog({ prompt, statuses = [], traceEvents = [], comple
     dir,
     logPath: path.join(dir, '.devseek', 'runs', `${runId}.log`),
   };
+}
+
+function writeWorkspaceRunLog(workspaceRoot, runId, lines) {
+  const logPath = path.join(workspaceRoot, '.devseek', 'runs', `${runId}.log`);
+  writeFileSync(logPath, `${lines.map(line => JSON.stringify(line)).join('\n')}\n`, 'utf8');
+  return logPath;
+}
+
+function recordProviderBoundaryEvidence({ workspaceRoot, runId, token, operationId, status = 'failed' }) {
+  const provider = ProductRunEvidenceSession.forWorkspace({
+    workspaceRoot,
+    runId,
+    surface: 'vscode-provider',
+    authority: { role: 'participant', token },
+  });
+  for (const type of ['provider.requested', `provider.${status}`]) {
+    const payload = {
+      operation_id: operationId,
+      boundary: 'vscode-provider-client',
+      provider: 'bridge',
+      layer: 'bridge-client',
+      status: type.slice('provider.'.length),
+      trust: 'product-runtime-observation',
+    };
+    if (type === 'provider.failed') {
+      payload.error = {
+        length: 72,
+        sha256: '0'.repeat(64),
+        preview: 'RESPONSE_CORRUPTED:incomplete-tool-block',
+      };
+    }
+    provider.record({
+      type,
+      idempotencyKey: productRunEvidenceIdempotencyKey(`run-log-replay-${type}`, {
+        runId,
+        operationId,
+      }),
+      payload,
+    });
+  }
 }
 
 function loadProductionRunEvents(logPath) {
@@ -757,6 +801,160 @@ test('run log replay detects empty provider responses and missing run completion
     assert.equal(kinds.has('missing-agent-run-completion'), true);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('run log replay detects completed runs with unresolved provider failure evidence', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-log-unresolved-provider-'));
+  const runId = 'run-log-unresolved-provider-failure';
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '复现安全拦截后的 provider 损坏工具块。',
+      traceLevel: 'debug',
+    });
+    recordProviderBoundaryEvidence({
+      workspaceRoot,
+      runId,
+      token: context.evidenceParticipantToken,
+      operationId: 'provider:interrupted-tool-block',
+    });
+    const logPath = writeWorkspaceRunLog(workspaceRoot, runId, [
+      {
+        ts: '2026-07-28T01:10:00.000Z',
+        level: 'info',
+        source: 'vscode-extension.agent',
+        phase: 'run-context',
+        event: 'agent-run-started',
+        runId,
+        data: {},
+      },
+      {
+        ts: '2026-07-28T01:10:01.000Z',
+        level: 'debug',
+        source: 'vscode-extension',
+        phase: 'payload',
+        event: 'payload-recorded',
+        runId,
+        data: {
+          name: 'extension.response.raw',
+          content: [
+            '响应损坏，已阻止执行',
+            'RESPONSE_CORRUPTED: incomplete-tool-block',
+            '执行明细失败',
+            '[TOOL:write_file {"path":"/tmp/app/docs/interrupted.md","content":"# interrupted',
+          ].join('\n'),
+        },
+      },
+      {
+        ts: '2026-07-28T01:10:02.000Z',
+        level: 'info',
+        source: 'vscode-extension.agent',
+        phase: 'run-context',
+        event: 'agent-run-completed',
+        runId,
+        data: { status: 'completed', tasksTotal: 1, tasksApplied: 1, tasksFailed: 0 },
+      },
+    ]);
+
+    const report = replayRunLog(logPath);
+    const unresolved = report.issues.find(issue => (
+      issue.kind === 'failure-status-reported-completed'
+      && /provider\.failed/.test(issue.message)
+    ));
+
+    assert.equal(report.issues.some(issue => issue.kind === 'provider-truncated-response'), true);
+    assert.equal(unresolved?.severity, 'error');
+    assert.match(unresolved?.evidence ?? '', /provider:interrupted-tool-block/);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+test('run log replay accepts completed runs after provider failure is resolved by recovery evidence', () => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-run-log-recovered-provider-'));
+  const runId = 'run-log-recovered-provider-failure';
+  try {
+    const context = createDevSeekRunContext({
+      workspaceRoot,
+      runId,
+      userPrompt: '创建 docs/recovered-provider.md，安全恢复后验证。',
+      traceLevel: 'debug',
+    });
+    recordProviderBoundaryEvidence({
+      workspaceRoot,
+      runId,
+      token: context.evidenceParticipantToken,
+      operationId: 'provider:interrupted-tool-block',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'repair',
+      state: 'started',
+      title: '安全恢复 Provider 损坏响应',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      state: 'started',
+      taskId: 'write-recovered-provider-doc',
+      taskAction: 'create',
+      taskFile: 'docs/recovered-provider.md',
+      title: '创建 recovered-provider.md',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'execute',
+      state: 'completed',
+      taskId: 'write-recovered-provider-doc',
+      taskAction: 'create',
+      taskFile: 'docs/recovered-provider.md',
+      title: '创建 recovered-provider.md',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'validate',
+      state: 'started',
+      title: '读回验证 recovered-provider.md',
+      evidenceOperationId: 'verify-recovered-provider',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'validate',
+      state: 'completed',
+      title: '读回验证通过',
+      evidenceOperationId: 'verify-recovered-provider',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'quality',
+      state: 'started',
+      title: '评估 recovered provider QualityGate',
+      evidenceOperationId: 'verify-recovered-provider',
+    });
+    context.recordAgentStatus({
+      type: 'agentStatus',
+      phase: 'quality',
+      state: 'completed',
+      title: 'recovered provider QualityGate 通过',
+      evidenceOperationId: 'verify-recovered-provider',
+    });
+    assert.equal(context.complete('completed', {
+      tasksTotal: 1,
+      tasksApplied: 1,
+      tasksFailed: 0,
+      changedPaths: ['docs/recovered-provider.md'],
+    }), 'completed');
+
+    const report = replayRunLog(path.join(workspaceRoot, '.devseek', 'runs', `${runId}.log`));
+
+    assert.equal(report.issues.some(issue => (
+      issue.kind === 'failure-status-reported-completed'
+      && /provider\.failed/.test(issue.message)
+    )), false);
+  } finally {
+    rmSync(workspaceRoot, { recursive: true, force: true });
   }
 });
 

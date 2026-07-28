@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import { ProductRunEvidenceWorkspaceReader, type RunEvidenceEvent } from '@devseek-netai/shared';
 import { hasReadOnlyAnswerEvidence } from '../agent/completion-evidence';
 import { parseFakeToolCalls } from '../agent/fake-tool-parser';
 import { isolateModelToolRequestText } from '../agent/model-tool-protocol-adapter';
@@ -510,6 +511,13 @@ export function replayRunLog(logPath: string): RunLogReplayReport {
   if (pendingBridgeRuntimeMismatch) {
     issues.push(pendingBridgeRuntimeMismatch);
   }
+
+  collectProductRunEvidenceSettlementIssues({
+    evidenceEvents: loadProductRunEvidenceEvents(absLogPath, runId),
+    agentRunCompletedSuccessfully,
+    successfulAgentRunCompletionLine,
+    issues,
+  });
 
   for (const failure of terminalFailures) {
     const output = failure.output || (failure.outputSha ? terminalOutputBySha.get(failure.outputSha) : undefined) || '';
@@ -1059,6 +1067,86 @@ function collectProviderResponseIssues(content: string, line: number, issues: Ru
       }
     }
   }
+}
+
+function collectProductRunEvidenceSettlementIssues(input: {
+  evidenceEvents: readonly RunEvidenceEvent[];
+  agentRunCompletedSuccessfully: boolean;
+  successfulAgentRunCompletionLine: number | undefined;
+  issues: RunLogReplayIssue[];
+}): void {
+  if (input.evidenceEvents.length === 0) return;
+  const resolved = collectResolvedEvidenceOperationIds(input.evidenceEvents);
+  const unresolvedProviderFailures = input.evidenceEvents
+    .filter(event => event.type === 'provider.failed')
+    .map(event => ({ event, operationId: evidenceOperationId(event) }))
+    .filter(item => item.operationId && !resolved.has(item.operationId));
+  if (unresolvedProviderFailures.length === 0) return;
+  const evidenceSettledCompleted = input.evidenceEvents.some(event => (
+    event.type === 'run.settled'
+    && stringValue(objectValue(event.payload)?.status) === 'completed'
+  ));
+  if (!input.agentRunCompletedSuccessfully && !evidenceSettledCompleted) return;
+
+  input.issues.push({
+    kind: 'failure-status-reported-completed',
+    severity: 'error',
+    line: input.successfulAgentRunCompletionLine,
+    message: 'run evidence 中仍有未被 recovery.completed 解析的 provider.failed，但运行被标记为 completed。',
+    evidence: unresolvedProviderFailures
+      .slice(0, 4)
+      .map(item => formatUnresolvedProviderFailureEvidence(item.event, item.operationId))
+      .join('；'),
+  });
+}
+
+function loadProductRunEvidenceEvents(absLogPath: string, runId: string | undefined): RunEvidenceEvent[] {
+  const workspaceRoot = inferWorkspaceRootFromRunLog(absLogPath);
+  const evidenceRunId = (runId || nodePath.basename(absLogPath).replace(/\.log$/i, '')).trim();
+  if (!workspaceRoot || !evidenceRunId) return [];
+  try {
+    const reader = ProductRunEvidenceWorkspaceReader.forWorkspace({ workspaceRoot });
+    const snapshot = reader.readSnapshot(evidenceRunId);
+    return snapshot.records.map(record => record.event);
+  } catch {
+    return [];
+  }
+}
+
+function inferWorkspaceRootFromRunLog(absLogPath: string): string | undefined {
+  const runsDir = nodePath.dirname(absLogPath);
+  if (nodePath.basename(runsDir) !== 'runs') return undefined;
+  const devseekDir = nodePath.dirname(runsDir);
+  if (nodePath.basename(devseekDir) !== '.devseek') return undefined;
+  return nodePath.dirname(devseekDir);
+}
+
+function collectResolvedEvidenceOperationIds(events: readonly RunEvidenceEvent[]): Set<string> {
+  const resolved = new Set<string>();
+  for (const event of events) {
+    if (event.type !== 'recovery.completed') continue;
+    const payload = objectValue(event.payload);
+    for (const value of stringArrayValue(payload?.resolves_operation_ids)) {
+      const operationId = value.trim();
+      if (operationId) resolved.add(operationId);
+    }
+  }
+  return resolved;
+}
+
+function evidenceOperationId(event: RunEvidenceEvent): string {
+  return stringValue(objectValue(event.payload)?.operation_id)?.trim() ?? '';
+}
+
+function formatUnresolvedProviderFailureEvidence(event: RunEvidenceEvent, operationId: string): string {
+  const payload = objectValue(event.payload);
+  const error = objectValue(payload?.error);
+  return truncateOneLine([
+    `operation=${operationId}`,
+    stringValue(payload?.boundary),
+    stringValue(payload?.provider),
+    stringValue(error?.preview),
+  ].filter(Boolean).join(' '), 220);
 }
 
 function findDuplicateFullFileWritePath(content: string): string | undefined {
