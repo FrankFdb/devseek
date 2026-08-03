@@ -50,6 +50,7 @@ devseek_governance:
 | 范围 | 状态 | 当前事实 |
 | --- | --- | --- |
 | C0 本地实现与机器裁决前置 | `completed` | 7/7 implementation requirements satisfied，repository blockers=0，local conformance=`PASSED` |
+| Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；完整 extension 测试、架构守卫和精确 VSIX T3 Surface 仿真通过 |
 | Surface 入口盘点 | `completed` | 87/87 入口受 inventory 覆盖，未知入口与未声明 legacy owner 可达性均为 0 |
 | R4 非资格本地工作 | `in_progress` | 6 个 leaf 中 5 个完成，1 个 clean-runtime leaf 受当前窗口/授权边界阻塞 |
 | 能力账本 | `in_progress` | 76 项能力：C0 的 7 项为 `wired`，C1～C14 共 69 项为 `proposed`，qualification claims=0 |
@@ -62,8 +63,8 @@ devseek_governance:
 
 | 顺序 | 任务 ID | 状态 | 依赖 | 完成条件 |
 | ---: | --- | --- | --- | --- |
-| 1 | `QUALITY-TS-01` | `in_progress` | 无 | VS Code extension `tsc --noEmit` 零错误；每个错误在正确语义 owner 修复；同类路径有回归测试 |
-| 2 | `KERNEL-02` | `pending` | `QUALITY-TS-01` | VS Code、CLI、Headless 共用唯一 Coding Kernel、TaskContract、ToolExecutor、mutation/verification/completion 语义；legacy loop 不再拥有业务决策 |
+| 1 | `QUALITY-TS-01` | `completed` | 无 | VS Code extension `tsc --noEmit` 零错误；每个错误在正确语义 owner 修复；同类路径有回归测试 |
+| 2 | `KERNEL-02` | `in_progress` | `QUALITY-TS-01` | VS Code、CLI、Headless 共用唯一 Coding Kernel、TaskContract、ToolExecutor、mutation/verification/completion 语义；legacy loop 不再拥有业务决策 |
 | 3 | `SURFACE-CONTRACT-01` | `pending` | `KERNEL-02` | 同一任务在 VS Code、CLI、Headless 产生等价的状态、工具、验证和完成结果；静态守卫防止新旁路 |
 | 4 | `CAP-C1-C14-WIRING` | `pending` | `SURFACE-CONTRACT-01` | 按 capability DAG 将 C1～C14 的 69 项能力从 `proposed` 逐项提升到可证的 `implemented/wired`；每项均有 owner、产品入口、失败恢复和机器证据 |
 | 5 | `USER-SIM-01` | `pending` | 每个产品切片 | 以用户方式覆盖安装包、真实入口、多轮任务、失败恢复和结果核验；仿真与正式资格证据严格分离 |
@@ -78,12 +79,12 @@ devseek_governance:
 
 ## 当前作业卡
 
-`QUALITY-TS-01`
+`KERNEL-02`
 
-- 范围：只修复当前 TypeScript 基线暴露的契约、类型收窄和责任归属问题。
-- 必做：审计兄弟入口，补定向回归，运行 extension 编译、单元测试、静态守卫和本地发布循环。
-- 禁止：用断言、宽泛类型、空 wrapper 或行数拆分掩盖错误。
-- 完成后：更新本文状态并领取 `KERNEL-02`，执行证据只进机器报告或归档交付物。
+- 范围：将 VS Code、CLI、Headless 的编程任务执行统一到一个可组合的 Coding Kernel；Surface 仅负责输入输出适配。
+- 必做：盘点三个 Surface 的实际入口和业务决策，固定共同 TaskContract / ToolExecutor / mutation / verification / completion 契约，迁移测试并增加防旁路静态守卫。
+- 禁止：为迁移新增第二套业务内核、保留 CLI 或 legacy loop 的独立完成判定，或按文件行数机械拆分空壳模块。
+- 完成后：更新本文状态并领取 `SURFACE-CONTRACT-01`，执行证据只进机器报告或归档交付物。
 
 ## 机器状态源
 
