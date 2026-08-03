@@ -64,12 +64,13 @@ devseek_governance:
 | 顺序 | 任务 ID | 状态 | 依赖 | 完成条件 |
 | ---: | --- | --- | --- | --- |
 | 1 | `QUALITY-TS-01` | `completed` | 无 | VS Code extension `tsc --noEmit` 零错误；每个错误在正确语义 owner 修复；同类路径有回归测试 |
-| 2 | `KERNEL-02` | `in_progress` | `QUALITY-TS-01` | VS Code、CLI、Headless 共用唯一 Coding Kernel、TaskContract、ToolExecutor、mutation/verification/completion 语义；legacy loop 不再拥有业务决策 |
-| 3 | `SURFACE-CONTRACT-01` | `pending` | `KERNEL-02` | 同一任务在 VS Code、CLI、Headless 产生等价的状态、工具、验证和完成结果；静态守卫防止新旁路 |
-| 4 | `CAP-C1-C14-WIRING` | `pending` | `SURFACE-CONTRACT-01` | 按 capability DAG 将 C1～C14 的 69 项能力从 `proposed` 逐项提升到可证的 `implemented/wired`；每项均有 owner、产品入口、失败恢复和机器证据 |
-| 5 | `USER-SIM-01` | `pending` | 每个产品切片 | 以用户方式覆盖安装包、真实入口、多轮任务、失败恢复和结果核验；仿真与正式资格证据严格分离 |
-| 6 | `TOP-AGENT-ACCEPTANCE-01` | `pending` | `CAP-C1-C14-WIRING`、`USER-SIM-01` | 按 01～09 的需求与黄金旅程，对照 Codex 和 Claude Code 在同类问题上的可观察行为；所有适用产品能力、长任务、故障恢复、结果验证和跨 Surface 验收通过 |
-| 7 | `QUAL-EXT-01` | `blocked_external` | 独立授权、受保护身份/设施、holdout 和不可变保留 | 6 个外部 blocker 由授权主体关闭，7 个 C0 exact tuple claims 可复算，机器 decision 自主达到 `PASS` |
+| 2 | `KERNEL-PREP-01` | `in_progress` | `QUALITY-TS-01` | 在不切换产品路径的前提下，按职责抽取 CLI/VS Code legacy owner，固定端口与 conformance 基线；不得新增业务内核或终态 owner |
+| 3 | `QUAL-EXT-01` | `blocked_external` | 独立授权、受保护身份/设施、holdout 和不可变保留 | 6 个外部 blocker 由授权主体关闭，7 个 C0 exact tuple claims 可复算，机器 decision 自主达到 `PASS` |
+| 4 | `KERNEL-02` | `blocked_external` | `KERNEL-PREP-01`、Gate 0=`PASS` | VS Code、CLI、Headless 共用唯一 Coding Kernel、TaskContract、ToolExecutor、mutation/verification/completion 语义；legacy loop 不再拥有业务决策 |
+| 5 | `SURFACE-CONTRACT-01` | `pending` | `KERNEL-02` | 同一任务在 VS Code、CLI、Headless 产生等价的状态、工具、验证和完成结果；静态守卫防止新旁路 |
+| 6 | `CAP-C1-C14-WIRING` | `pending` | `SURFACE-CONTRACT-01` | 按 capability DAG 将 C1～C14 的 69 项能力从 `proposed` 逐项提升到可证的 `implemented/wired`；每项均有 owner、产品入口、失败恢复和机器证据 |
+| 7 | `USER-SIM-01` | `pending` | 每个产品切片 | 以用户方式覆盖安装包、真实入口、多轮任务、失败恢复和结果核验；仿真与正式资格证据严格分离 |
+| 8 | `TOP-AGENT-ACCEPTANCE-01` | `pending` | `CAP-C1-C14-WIRING`、`USER-SIM-01` | 按 01～09 的需求与黄金旅程，对照 Codex 和 Claude Code 在同类问题上的可观察行为；所有适用产品能力、长任务、故障恢复、结果验证和跨 Surface 验收通过 |
 
 ## 伴随治理结果
 
@@ -79,12 +80,12 @@ devseek_governance:
 
 ## 当前作业卡
 
-`KERNEL-02`
+`KERNEL-PREP-01`
 
-- 范围：将 VS Code、CLI、Headless 的编程任务执行统一到一个可组合的 Coding Kernel；Surface 仅负责输入输出适配。
-- 必做：盘点三个 Surface 的实际入口和业务决策，固定共同 TaskContract / ToolExecutor / mutation / verification / completion 契约，迁移测试并增加防旁路静态守卫。
-- 禁止：为迁移新增第二套业务内核、保留 CLI 或 legacy loop 的独立完成判定，或按文件行数机械拆分空壳模块。
-- 完成后：更新本文状态并领取 `SURFACE-CONTRACT-01`，执行证据只进机器报告或归档交付物。
+- 范围：在 Gate 0 外部资格闭合前，完成不改变产品路由的责任盘点、内聚模块抽取、端口定义和 conformance 基线准备。
+- 必做：先处理 CLI 独立 parser / mutation / verifier 的混合职责，使每个 owner 有清晰输入输出和直接测试；同步盘点 VS Code/Headless 对应边界。
+- 禁止：切换 R1 产品纵切、引入第二套 Kernel、修改资格状态，或将 legacy adapter 描述为已收敛内核。
+- 完成后：保持 `KERNEL-02` 等待 Gate 0=`PASS`；执行证据只进机器报告或归档交付物。
 
 ## 机器状态源
 

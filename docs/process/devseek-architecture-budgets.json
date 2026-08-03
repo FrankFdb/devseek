@@ -27,6 +27,11 @@
     ]
   },
   "files": {
+    "packages/cli/src/index.ts": {
+      "maxLines": 1078,
+      "targetLines": 512,
+      "boundary": "CLI composition root and legacy coding-loop coordinator"
+    },
     "packages/vscode-extension/src/extension.ts": {
       "maxLines": 2060,
       "targetLines": 1024,
