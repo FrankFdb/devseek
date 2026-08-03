@@ -18,7 +18,9 @@ test('CLI composition root delegates the legacy coding workflow to a named coord
   assert.match(index, /new CliWorkspaceMutationService\(\)/);
   assert.match(index, /new CliVerificationService\(\)/);
   assert.match(index, /new CliLegacyCodingLoop\(/);
+  assert.match(index, /new CliLegacyWorkspaceContextSelector\(\)/);
   assert.match(index, /legacyCodingLoop\.execute\(/);
+  assert.match(index, /workspaceContextSelector\.select\(/);
 
   assert.doesNotMatch(index, /function runCodingLoop\b/);
   assert.doesNotMatch(index, /function buildRepairPrompt\b/);
@@ -26,15 +28,18 @@ test('CLI composition root delegates the legacy coding workflow to a named coord
   assert.doesNotMatch(index, /codingArtifactInterpreter\.interpret\(/);
   assert.doesNotMatch(index, /workspaceMutationService\.apply\(/);
   assert.doesNotMatch(index, /verificationService\.verify\(/);
+  assert.doesNotMatch(index, /function (?:selectWorkspaceContextFiles|discoverImplicitProjectContextFiles|collectContextFiles)\b/);
+  assert.doesNotMatch(index, /\b(?:readdir|stat)\s*\(/);
   assert.doesNotMatch(index, /function parse(?:FileToolCalls|UnifiedDiffs)\b/);
   assert.doesNotMatch(index, /function apply(?:FileToolCalls|UnifiedDiffs|CodingArtifacts)\b/);
   assert.doesNotMatch(index, /function (?:validateChangedFiles|runDevseekVerifier|runProjectVerifier)\b/);
   assert.doesNotMatch(index, /\bspawnSync\s*\(/);
 });
 
-test('CLI extracted owners keep provider interpretation, workspace mutation, and verification separate', () => {
+test('CLI extracted owners keep context, interpretation, mutation, and verification separate', () => {
   const interpreter = readSource('cli-coding-artifact-interpreter.ts');
   const codingLoop = readSource('cli-legacy-coding-loop.ts');
+  const contextSelector = readSource('cli-legacy-workspace-context-selector.ts');
   const mutation = readSource('cli-workspace-mutation-service.ts');
   const verification = readSource('cli-verification-service.ts');
 
@@ -47,6 +52,12 @@ test('CLI extracted owners keep provider interpretation, workspace mutation, and
   assert.match(codingLoop, /this\.verification\.verify\(/);
   assert.match(codingLoop, /function buildRepairPrompt\b/);
   assert.doesNotMatch(codingLoop, /(?:AgentApplicationService|CliSurfaceAdapter|bridgeChat)/);
+
+  assert.match(contextSelector, /class CliLegacyWorkspaceContextSelector/);
+  assert.match(contextSelector, /resolveCliWorkspacePath/);
+  assert.match(contextSelector, /\breaddir\s*\(/);
+  assert.match(contextSelector, /\bstat\s*\(/);
+  assert.doesNotMatch(contextSelector, /(?:AgentApplicationService|create_file|replace_file|spawnSync)/);
 
   assert.match(mutation, /class CliWorkspaceMutationService/);
   assert.match(mutation, /resolveCliWorkspacePath/);

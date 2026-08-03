@@ -1,8 +1,7 @@
-import type { Dirent } from 'fs';
-import { readFile, writeFile, mkdir, readdir, stat } from 'fs/promises';
+import { readFile, writeFile, mkdir } from 'fs/promises';
 import { createInterface } from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
-import { join, relative, resolve } from 'path';
+import { join, resolve } from 'path';
 import {
   AgentApplicationService,
   createProductRunEvidenceAuthorityToken,
@@ -16,10 +15,10 @@ import {
 import { bridgeCancel as callBridgeCancel, bridgeChat as callBridgeChat } from './bridge-client';
 import { CliCodingArtifactInterpreter } from './cli-coding-artifact-interpreter';
 import { CliLegacyCodingLoop } from './cli-legacy-coding-loop';
+import { CliLegacyWorkspaceContextSelector } from './cli-legacy-workspace-context-selector';
 import { CliSurfaceAdapter, createCliRunLifecycleEvent, type CliRunLifecycleStatus, type CliSurfaceKind } from './cli-surface-adapter';
 import { CliVerificationService } from './cli-verification-service';
 import { CliWorkspaceMutationService } from './cli-workspace-mutation-service';
-import { resolveCliWorkspacePath } from './cli-workspace-path';
 
 interface CliOptions {
   command: 'exec' | 'interactive' | 'help' | 'version';
@@ -36,6 +35,7 @@ const VERSION = '1.0.0';
 const codingArtifactInterpreter = new CliCodingArtifactInterpreter();
 const verificationService = new CliVerificationService();
 const workspaceMutationService = new CliWorkspaceMutationService();
+const workspaceContextSelector = new CliLegacyWorkspaceContextSelector();
 const legacyCodingLoop = new CliLegacyCodingLoop(
   codingArtifactInterpreter,
   workspaceMutationService,
@@ -121,7 +121,7 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
     emitEvent: renderEvent,
   });
 
-  const contextFiles = await selectWorkspaceContextFiles(options.cwd, prompt);
+  const contextFiles = await workspaceContextSelector.select(options.cwd, prompt);
   const command = surface.toChatCommand({
     prompt,
     request: {
@@ -474,135 +474,6 @@ function formatCliError(error: unknown): string {
   return [message, causeCode, causeMessage].filter(Boolean).join(' ');
 }
 
-async function selectWorkspaceContextFiles(cwd: string, prompt: string): Promise<string[]> {
-  const candidates = extractMentionedFilePaths(prompt);
-  const files: string[] = [];
-  for (const candidate of candidates) {
-    await addWorkspaceContextFile(cwd, candidate, files, 256 * 1024);
-  }
-
-  if (shouldAttachImplicitProjectContext(prompt)) {
-    for (const candidate of await discoverImplicitProjectContextFiles(cwd)) {
-      await addWorkspaceContextFile(cwd, candidate, files, 128 * 1024);
-    }
-  }
-
-  return [...new Set(files)].slice(0, 20);
-}
-
-function extractMentionedFilePaths(prompt: string): string[] {
-  const matches = prompt.matchAll(
-    /(?:^|[\s`'":：])((?:\/|\.{0,2}\/)?[^\s`'"<>，。；;、)）\]}]+?\.(?:cpp|cxx|cc|hpp|tsx|jsx|mjs|cjs|toml|yaml|json|java|yml|ts|js|py|rs|go|markdown|md|h|c))(?=$|[\s`'")）\]}，。；;、])/giu,
-  );
-  return [...new Set([...matches]
-    .map(match => cleanMentionedFilePath(match[1]))
-    .filter((candidate): candidate is string => Boolean(candidate)))];
-}
-
-function cleanMentionedFilePath(value: string | undefined): string {
-  return String(value || '')
-    .replace(/[)\]}>，。；;、]+$/gu, '')
-    .trim();
-}
-
-const CONTEXT_SCAN_DIRS = ['src', 'test', 'tests', 'lib', 'app'];
-const CONTEXT_MANIFESTS = [
-  'package.json',
-  'devseek.verify.json',
-  'tsconfig.json',
-  'pyproject.toml',
-  'pytest.ini',
-  'Cargo.toml',
-  'go.mod',
-  'Makefile',
-];
-const IGNORED_CONTEXT_DIRS = new Set([
-  '.devseek',
-  '.git',
-  'backups',
-  'build',
-  'coverage',
-  'dist',
-  'node_modules',
-]);
-
-function shouldAttachImplicitProjectContext(prompt: string): boolean {
-  return /\b(add|build|change|compile|debug|fix|implement|modify|project|refactor|run|test|update)\b/i.test(prompt)
-    || /代码|项目|实现|修改|修复|测试|编译|运行/.test(prompt);
-}
-
-async function discoverImplicitProjectContextFiles(cwd: string): Promise<string[]> {
-  const files: string[] = [];
-  for (const manifest of CONTEXT_MANIFESTS) {
-    await addWorkspaceContextFile(cwd, manifest, files, 128 * 1024);
-  }
-  await collectTopLevelContextFiles(cwd, files);
-  for (const dir of CONTEXT_SCAN_DIRS) {
-    await collectContextFiles(cwd, dir, files, 3);
-  }
-  return files.slice(0, 20);
-}
-
-async function collectTopLevelContextFiles(cwd: string, files: string[]): Promise<void> {
-  let entries: Dirent[];
-  try {
-    entries = await readdir(resolve(cwd), { withFileTypes: true });
-  } catch {
-    return;
-  }
-  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-    if (files.length >= 20) return;
-    if (!entry.isFile() || !isTopLevelContextFile(entry.name)) continue;
-    await addWorkspaceContextFile(cwd, entry.name, files, 128 * 1024);
-  }
-}
-
-async function collectContextFiles(cwd: string, dirRel: string, files: string[], depth: number): Promise<void> {
-  if (files.length >= 20 || depth < 0) return;
-  let entries: Dirent[];
-  try {
-    entries = await readdir(resolveCliWorkspacePath(cwd, dirRel), { withFileTypes: true });
-  } catch {
-    return;
-  }
-
-  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
-    if (files.length >= 20) return;
-    if (entry.name.startsWith('.') || IGNORED_CONTEXT_DIRS.has(entry.name)) continue;
-    const relPath = toPosixPath(join(dirRel, entry.name));
-    if (entry.isDirectory()) {
-      await collectContextFiles(cwd, relPath, files, depth - 1);
-    } else if (entry.isFile() && isContextSourceFile(relPath)) {
-      await addWorkspaceContextFile(cwd, relPath, files, 128 * 1024);
-    }
-  }
-}
-
-async function addWorkspaceContextFile(cwd: string, candidate: string, files: string[], maxBytes: number): Promise<void> {
-  let target: string;
-  try {
-    target = resolveCliWorkspacePath(cwd, candidate);
-    const info = await stat(target);
-    if (!info.isFile() || info.size > maxBytes) return;
-  } catch {
-    return;
-  }
-
-  const relPath = toPosixPath(relative(resolve(cwd), target));
-  if (!files.includes(relPath)) {
-    files.push(relPath);
-  }
-}
-
-function isTopLevelContextFile(fileName: string): boolean {
-  return CONTEXT_MANIFESTS.includes(fileName)
-    || /^(app|cli|index|main|server|spec|test)\.(cjs|js|mjs|py|ts)$/i.test(fileName);
-}
-
-function isContextSourceFile(filePath: string): boolean {
-  return /\.(c|cc|cpp|cxx|go|h|hpp|java|js|jsx|json|mjs|py|rs|ts|tsx|yaml|yml)$/i.test(filePath);
-}
-
 function extractCompletedResponse(events: readonly AgentEvent[]): string {
   for (let index = events.length - 1; index >= 0; index--) {
     const event = events[index];
@@ -624,10 +495,6 @@ function emitSyntheticEvent(
     timestamp: Date.now(),
     surface,
   } as AgentEvent);
-}
-
-function toPosixPath(value: string): string {
-  return value.split('\\').join('/');
 }
 
 async function runInteractive(options: CliOptions): Promise<number> {

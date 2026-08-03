@@ -83,7 +83,7 @@ devseek_governance:
 `KERNEL-PREP-01`
 
 - 范围：在 Gate 0 外部资格闭合前，完成不改变产品路由的责任盘点、内聚模块抽取、端口定义和 conformance 基线准备。
-- 已完成：CLI artifact interpretation、workspace mutation、verification 和 legacy coding coordination 已各有单一 owner、显式依赖、直接行为测试及防旁路静态守卫；CLI 产品入口和两轮修复语义保持不变。
+- 已完成：CLI workspace context selection、artifact interpretation、workspace mutation、verification 和 legacy coding coordination 已各有单一 owner、显式依赖、直接行为测试及防旁路静态守卫；CLI 产品入口和两轮修复语义保持不变。
 - 下一任务：盘点 VS Code、CLI、Headless 的 TaskContract、工具执行、变更回执、验证和完成判定 owner，形成 Gate 0 通过后可直接实施的唯一 Kernel 端口映射与 conformance 用例。
 - 禁止：切换 R1 产品纵切、引入第二套 Kernel、修改资格状态，或将 legacy adapter 描述为已收敛内核。
 - 完成后：保持 `KERNEL-02` 等待 Gate 0=`PASS`；执行证据只进机器报告或归档交付物。
