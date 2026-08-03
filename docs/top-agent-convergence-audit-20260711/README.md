@@ -33,7 +33,7 @@ devseek_governance:
 <!-- DEVSEEK-GOVERNANCE-STATUS:END -->
 
 - 本次复核日期：2026-08-03
-- 实现基线：`e7a36d9`（Coding Kernel 路由与 checkpoint 职责抽离）；归档基线：`2ef99cf`（20 号文档归档）
+- 实现基线：`e7a36d9`（Coding Kernel 路由与 checkpoint 职责抽离）；归档基线：`2ef99cf`；最终机器证据基线：`7d3888b`
 - 复核原则：文档声明只作索引；结论以 `docs/process` 机器源、实际代码可达性、当前工作树和本轮重跑验证为准
 
 ## 1. 本次结论
@@ -109,7 +109,7 @@ devseek_governance:
 | --- | --- | --- | --- |
 | `NOW-01` | `完成` | 审查并独立提交 Post-R4 改动 | `5c32551` 边界明确；NP-05/06/07 与实际源一致 |
 | `NOW-02` | `完成` | 重生成 Surface inventory 及受影响机器源 | 87/87 covered；无 drift；generated view 与源一致 |
-| `NOW-03` | `进行中` | 在 clean commit 上重跑 Phase 0-12 | 本地 gate 全绿；需外部或窗口授权的 gate 精确保持 `BLOCKED`，不伪造 PASS |
+| `NOW-03` | `已执行/未通过` | 在 clean tracked commit 上重跑 Phase 0-12 | 30/31 gate 通过；仅 current-candidate identity 失败，需 fresh runtime/window 授权后再闭合；不伪造 PASS |
 | `NOW-04` | `待做` | 替换失真的 process baseline | 新的简短 active process baseline 由 selector 唯一指向；`14` 降为历史证据；compact index、banner 和 hash 全部对账 |
 | `NOW-05` | `待授权` | 收口 candidate identity | 仅在 fresh 用户窗口/安装授权或 external clean receipt 下证明 exactly-one stable runtime，再重生成 R4 全链产物 |
 
@@ -152,6 +152,7 @@ devseek_governance:
 | VS Code extension full unit runner | `PASS`，153/153 suites |
 | Kernel/checkpoint focused unit | `PASS`，20/20 tests |
 | 受影响 architecture static suites | `PASS`，323/323 tests |
+| Workspace TypeScript `--noEmit` audit | `FAIL`，8 个既存基线错误分布在 agent/tool/memory/run-context/checkpoint；本轮 extension compile 与变更模块测试通过，仍需独立清债 |
 | Capability ledger | `PASS`，76 capabilities / 138 dependency edges |
 | Gate 0 decision | checker `PASS`，决策仍为 `NOT_PASSED` |
 | Post-R4 local regression manifest | `PASS`，6/6 checker tests |
@@ -163,7 +164,7 @@ devseek_governance:
 | Doc governance | `PASS`，4/4 tests；53 个受治理文档，机器清单哈希未变化 |
 | VSIX release loop | `PASS`，`1.0.0-debug.20260803.t135012.ge7a36d9`；SHA256 `c0926e30f83f83406be44957e64b542645d945ab3684690d177002d0497d4fb5`；Bridge 校验与本地安装通过 |
 | 受控用户旅程 T3 | `PASS`，写读/QG、Provider fail-closed、只读边界、C++、既有 JS 修复、最新要求覆盖旧要求共 6 场景 |
-| Phase 0-12 | `待 clean commit 重跑` |
+| Phase 0-12 | `FAIL`，30/31 passed；唯一失败为 `current-candidate-identity-probe`，报告 run id `2026-08-03T06-06-58-663Z` |
 
 受控 T3 使用真实已安装 VSIX、隔离 Extension Host 与确定性 fake Bridge，并通过测试专用消息和程序化 intent approval 驱动。它不是自然 UI、real Provider、RC smoke、T4/T5 或 qualification 证据，`qualification_effect=NONE`。
 
@@ -179,6 +180,8 @@ devseek_governance:
 - 20 R3 收尾与 R4 启动交接回执
 
 原路径保留受治理跳转页，防止历史链接失效。第 20 号文档的 R4 release manifest、rollup 和 compact index 机器绑定已同步迁入 `archive/`。
+
+其余 01～09、14～16、18～19 仍承担当前审计、目标架构、执行基线或后续任务责任；其目标尚未全部落地，因此不因“文档已写完”而归档。10～13、17、20 的原路径只保留受治理跳转页，完整正文已归档。
 
 ## 7. 文档导航
 
