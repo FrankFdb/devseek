@@ -1322,7 +1322,7 @@ ${feedbackForNextRound}${convergence.feedbackSuffix ? `\n\n${convergence.feedbac
           newContent: srResult.result,
         });
         const srDiff = roughLineDiff(currentContent, srResult.result);
-        const writtenFiles = [buildWrittenFileEvidence(task.absPath, task.action, srDiff.added, srDiff.removed)];
+        const writtenFiles = buildWrittenFileEvidenceForPaths([task.absPath], task.action, workspaceRoot.fsPath, srDiff);
         return withTaskTerminalEvidence({
           applied: true,
           path: task.absPath,

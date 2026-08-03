@@ -143,6 +143,8 @@ function buildPlannedRefs(call: ToolCall): EvidenceRef[] {
   const label = activity?.label || stringField(input, 'path', 'filePath', 'query', 'pattern', 'url', 'command') || call.name;
 
   switch (call.kind) {
+    case 'control':
+      return [{ kind: 'plan', label }];
     case 'terminal':
       return [{ kind: 'terminal', label: stringField(input, 'command', 'cmd') || call.name }];
     case 'network':

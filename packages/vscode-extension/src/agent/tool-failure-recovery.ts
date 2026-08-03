@@ -101,7 +101,9 @@ function buildRepeatedToolFailureFeedback(
     ? '当前文件快照已随工具结果返回。请基于最新内容给出精确 old_str/new_str；若结构变化较大，改用 write_file 完整重写，不能复用过期片段。'
     : failure.kind === 'terminal-guard'
       ? 'run_terminal 只用于查询、编译、运行和测试。创建、修改或删除文件必须使用 create_file/write_file/replace_in_file/delete_file。'
-      : '不要重复提交同一份损坏内容。请缩小写入范围，保持源码真实换行，并先修复写入完整性问题再验证。';
+      : failure.kind === 'terminal-capability'
+        ? '当前系统缺少该命令所需的运行时或工具。请先探测已安装的等价能力并改用可用命令；如果必须安装依赖，明确报告阻塞并请求用户授权，不得重复执行同一缺失命令。'
+        : '不要重复提交同一份损坏内容。请缩小写入范围，保持源码真实换行，并先修复写入完整性问题再验证。';
   return [
     `【系统反馈】同一工具策略已连续失败 ${rounds} 轮：${target}`,
     occurrences > 1 ? `本轮同类失败调用 ${occurrences} 次，已按一次失败策略结算。` : '',

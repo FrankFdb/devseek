@@ -442,19 +442,22 @@ class DefaultDevSeekRunContext implements DevSeekRunContext {
     if (status.phase === 'repair') {
       const targetOperationIds = this.collectRecoverableAdverseOperationIds();
       if (targetOperationIds.length === 0) return;
-      if (status.state === 'started' && !this.currentRecovery) {
-        this.recoverySequence += 1;
-        const operationId = `vscode-recovery-${this.recoverySequence}`;
-        this.currentRecovery = { operationId, targetOperationIds };
-        this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
-          target_operation_ids: targetOperationIds,
-        });
-      } else if (status.state === 'started') {
-        this.trace.info('run-context', 'duplicate-recovery-start-ignored', {
-          currentRecoveryOperationId: this.currentRecovery.operationId,
-          targetOperationIds,
-          reason: 'recovery-already-pending',
-        });
+      if (status.state === 'started') {
+        const currentRecovery = this.currentRecovery;
+        if (!currentRecovery) {
+          this.recoverySequence += 1;
+          const operationId = `vscode-recovery-${this.recoverySequence}`;
+          this.currentRecovery = { operationId, targetOperationIds };
+          this.recordOperationEvent('recovery.detected', operationId, 'detected', summary, {
+            target_operation_ids: targetOperationIds,
+          });
+        } else {
+          this.trace.info('run-context', 'duplicate-recovery-start-ignored', {
+            currentRecoveryOperationId: currentRecovery.operationId,
+            targetOperationIds,
+            reason: 'recovery-already-pending',
+          });
+        }
       }
       if ((status.state === 'failed' || status.state === 'skipped') && this.currentRecovery) {
         this.recordOperationEvent('recovery.failed', this.currentRecovery.operationId, 'failed', summary);

@@ -25,6 +25,13 @@ export interface TaskCheckpointRecord<TTask = unknown> {
   resumeReceipt?: string;
 }
 
+interface SealedTaskCheckpointRecord<TTask = unknown> extends TaskCheckpointRecord<TTask> {
+  checkpointProtocol: typeof TASK_CHECKPOINT_RESUME_PROTOCOL;
+  checkpointEpoch: number;
+  taskFingerprint: string;
+  resumeReceipt: string;
+}
+
 export interface FreshCheckpointResult<TTask = unknown> {
   checkpoint: TaskCheckpointRecord<TTask>;
   stale: false;
@@ -212,7 +219,7 @@ function normalizeFsPath(value: string | undefined): string {
 function sealCheckpointRecord<TTask>(
   record: TaskCheckpointRecord<TTask>,
   checkpointEpoch: number,
-): TaskCheckpointRecord<TTask> {
+): SealedTaskCheckpointRecord<TTask> {
   const epoch = normalizeCheckpointEpoch(checkpointEpoch);
   const taskFingerprint = buildCheckpointTaskFingerprint(record);
   return {

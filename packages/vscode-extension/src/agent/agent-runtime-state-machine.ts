@@ -131,7 +131,7 @@ function isVerified(input: AgentRuntimeStateInput, providerOutput: ProviderOutpu
   if (input.validationPassed) return true;
   if (isReadOnlyRuntimeAction(input.taskAction)) {
     return providerOutput.hasAnswerEvidence
-      || ((input.taskComplete || input.allTodosCompleted) && countEvidence(input) > 0);
+      || (Boolean(input.taskComplete || input.allTodosCompleted) && countEvidence(input) > 0);
   }
   return countEvidence(input) > 0;
 }

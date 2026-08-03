@@ -59,4 +59,19 @@ test('ToolFailureRecoveryLedger: a successful write clears stale failure history
   assert.equal(result.stopReason, undefined);
 });
 
+test('ToolFailureRecoveryLedger: missing terminal capability requires an alternate runtime or authorization', () => {
+  const ledger = new ToolFailureRecoveryLedger({ warnAfterRounds: 1 });
+  const result = ledger.recordRound([{
+    tool: 'run_terminal',
+    kind: 'terminal-capability',
+    path: 'python build.py',
+    reason: '当前系统缺少 python 运行时。',
+  }]);
+
+  assert.equal(result.warnings.length, 1);
+  assert.match(result.warnings[0], /探测已安装的等价能力/);
+  assert.match(result.warnings[0], /请求用户授权/);
+  assert.doesNotMatch(result.warnings[0], /缩小写入范围/);
+});
+
 console.log('\nTool failure recovery tests passed.\n');

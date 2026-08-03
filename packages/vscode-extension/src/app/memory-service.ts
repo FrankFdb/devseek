@@ -48,6 +48,15 @@ export interface MemoryApprovalInput {
   approvedAt?: number;
 }
 
+type NormalizedMemoryWriteProposal = Omit<
+  MemoryWriteProposal,
+  'classification' | 'provenance' | 'tags'
+> & {
+  classification: MemoryClassification;
+  provenance: MemoryProvenance;
+  tags: string[];
+};
+
 export class MemoryService {
   private readonly store: MemoryStore;
   private readonly guard: SensitiveMemoryGuard;
@@ -631,7 +640,9 @@ export function requiresPersistentMemoryApproval(input: {
   return true;
 }
 
-function normalizeMemoryWriteProposal(input: Partial<MemoryWriteProposal> & { content?: string; reason?: string }): MemoryWriteProposal {
+function normalizeMemoryWriteProposal(
+  input: Partial<MemoryWriteProposal> & { content?: string; reason?: string },
+): NormalizedMemoryWriteProposal {
   const source = input.source ?? { kind: 'agent' };
   const classified = classifyMemoryWriteProposal({ ...input, source });
   const approvalRequired = input.requiresUserApproval === true
@@ -640,7 +651,6 @@ function normalizeMemoryWriteProposal(input: Partial<MemoryWriteProposal> & { co
     input.provenance,
     source,
     approvalRequired,
-    classified.classification,
   );
   return {
     type: classified.type,

@@ -137,7 +137,7 @@ export interface ToolLoopResult {
 
 export interface ToolFailureEvidence {
   tool: string;
-  kind: 'write' | 'replace' | 'terminal-guard';
+  kind: 'write' | 'replace' | 'terminal-guard' | 'terminal-capability';
   path?: string;
   reason: string;
 }

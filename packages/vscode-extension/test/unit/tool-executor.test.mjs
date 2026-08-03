@@ -61,6 +61,23 @@ test('AgentToolExecutor: plans activity and permission', () => {
   assert.deepEqual(plan.plannedRefs, [{ kind: 'terminal', label: 'npm test' }]);
 });
 
+test('AgentToolExecutor: maps control tools to non-execution plan refs', () => {
+  const executor = new AgentToolExecutor();
+  const todoPlan = executor.plan({
+    name: 'manage_todo_list',
+    input: { todoList: [{ id: 'task-1', status: 'in-progress', title: 'Fix contract' }] },
+  });
+  const completionPlan = executor.plan({
+    name: 'task_complete',
+    input: { summary: 'Contract fixed and verified.' },
+  });
+
+  assert.equal(todoPlan.kind, 'control');
+  assert.deepEqual(todoPlan.plannedRefs, [{ kind: 'plan', label: 'manage_todo_list' }]);
+  assert.equal(completionPlan.kind, 'control');
+  assert.deepEqual(completionPlan.plannedRefs, [{ kind: 'plan', label: 'task_complete' }]);
+});
+
 test('AgentToolExecutor: rejects unregistered tools before execution', () => {
   const executor = new AgentToolExecutor();
   const plan = executor.plan(
