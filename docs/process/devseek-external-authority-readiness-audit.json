@@ -56,8 +56,8 @@
     },
     "r4_process_artifacts_aggregate": {
       "path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
-      "source_sha256": "c73113877c1c755b22c6579638cf8c5fcae8607e18df0288f737e46ed0c26ce0",
-      "aggregate_sha256": "50f1a00a34170aec2f43aa5b61c4c4194cfe6f19846b24d5ffe984e772e48a71",
+      "source_sha256": "a9d7a48c70cb83bed49d7327f67943d08bf8c5fd3ebbc79fdebbc677bf2c5cfa",
+      "aggregate_sha256": "32fa692b018d8b660a5aa3b7f3bdc11255665468a9ae03170f3d2c19fc09cf61",
       "artifact_errors": 0
     },
     "gate0_decision": {
@@ -443,5 +443,5 @@
     "ledger_writes": 0,
     "provider_actions_performed": 0
   },
-  "audit_sha256": "994b4dff2918fcd5f32e9bbf1870ece268f729f940e13dc93eb560e8855000e0"
+  "audit_sha256": "0e71fddcc884db617922b8df8f1e06bbc76af987ca1bad4af1ba62e2acd9da6a"
 }

@@ -36,14 +36,14 @@
       "generated_view_path": "docs/process/generated/devseek-current-candidate-identity.md",
       "status": "tracked-stale-deferred",
       "archive_status": "not-archived",
-      "file_sha256": "16b4f843063568c58ccf34192a762cf4637b9756523e489b2c8910172d7a559e",
-      "generated_view_sha256": "edf2be8ac9a4e29fc68ceb0b60c3cb432f71016b97387bc15f55e61d4dad2d7a",
-      "artifact_git_commit": "3331a74",
-      "candidate_source_commit": "3331a74994b42c2cbc6f3cac9a5987da609d68d1",
-      "vsix_sha256": "6b053d4d3befef5951ad02619dd5b34cab273d05c860dad5947e141abd46a53b",
-      "build_id": "20260730-t171746",
+      "file_sha256": "2a88328f5e63952b5b20a1b9fbb0399e889a8426067ef0132c904f7f08973066",
+      "generated_view_sha256": "226c6ee548b88b9536fdd8dd667761241119cdddca76c3785e166da2b1091af9",
+      "artifact_git_commit": "ce937a3",
+      "candidate_source_commit": "ce937a308c4e19b58dabc0950db1b55aa573b537",
+      "vsix_sha256": "511a1b934e871369ecd6f1e9384678ca837d12345249941eb73a6b98a7e79240",
+      "build_id": "20260803-t180230",
       "observe_status": "failed",
-      "identity_probe_sha256": "a49a26f03733fc676f6866154a8e38df53f97ee37973966ce8a7726d35bbfb23",
+      "identity_probe_sha256": "732c958866f89e6fc77f46337f87d43e86a313a64a9bff93ba7a945ea3186f83",
       "usable_for_qualification": false,
       "qualification_effect": "NONE"
     },
@@ -79,7 +79,7 @@
     {
       "path": "docs/top-agent-convergence-audit-20260711/archive/14-未完成事项与后续整体迭代计划.md",
       "status": "archived-in-place",
-      "file_sha256": "5aaf1e3eb1c6613e0cda53bdac6f4341ec8930992ec5c244b219a3a114fa0352",
+      "file_sha256": "f64bb5a55a2465618c4a06584ff98b1da689eecc6cb47f2f3009349e558213d1",
       "required_anchors_total": 7,
       "required_anchors_present": 7,
       "anchors": [
@@ -114,9 +114,9 @@
       ]
     },
     {
-      "path": "docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md",
+      "path": "docs/top-agent-convergence-audit-20260711/archive/19-GPT5.5新窗口启动与授权指令.md",
       "status": "archived-in-place",
-      "file_sha256": "46f9b93b8cdde22b37ad0ac6dc668ee78ac3f73cb841002b053d136e2cbfd71b",
+      "file_sha256": "9c8998b810b113161a4e94f49d0b5c8018bacd3095a35e56265543bf04d196b5",
       "required_anchors_total": 2,
       "required_anchors_present": 2,
       "anchors": [
@@ -148,5 +148,5 @@
     "tracked_current_identity_usable_for_qualification": 0,
     "qualification_claims": 0
   },
-  "reconciliation_sha256": "a4e7923166980b25f4866182c0b64e56113c9f9241b3835152f131a3083b81ce"
+  "reconciliation_sha256": "fd4447d67947dbd949dc4af87b8310bd11a14eddb680bea1ee7bbde67c5cd2be"
 }

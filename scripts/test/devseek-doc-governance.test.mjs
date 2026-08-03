@@ -19,13 +19,13 @@ const model = loadDocGovernanceModel(repoRoot);
 
 test('document governance model is bound to the active selector and legacy inventory', () => {
   assert.equal(model.ok, true, JSON.stringify(model.errors, null, 2));
-  assert.equal(model.summary.governed_document_count, 47);
+  assert.equal(model.summary.governed_document_count, 44);
   assert.equal(model.summary.active_baseline_count, 3);
-  assert.equal(model.summary.legacy_document_count, 44);
+  assert.equal(model.summary.legacy_document_count, 41);
   assert.equal(model.summary.asserts_gate_pass, false);
   assert.equal(model.records.some(record => (
     record.path.startsWith('docs/top-agent-convergence-audit-20260711/')
-      && /\/(?:10|11|12|13|17|20)-/u.test(record.path)
+      && /\/(?:10|11|12|13|14|15|17|18|19|20)-/u.test(record.path)
   )), false);
 
   for (const record of model.records) {
@@ -44,8 +44,8 @@ test('document governance generated status view is source-bound', () => {
 
   const validation = validateDocGovernance(repoRoot);
   assert.equal(validation.ok, true, JSON.stringify(validation.errors, null, 2));
-  assert.equal(validation.summary.frontmatter_count, 47);
-  assert.equal(validation.summary.legacy_banner_count, 44);
+  assert.equal(validation.summary.frontmatter_count, 44);
+  assert.equal(validation.summary.legacy_banner_count, 41);
   assert.equal(validation.summary.readme_status_count, 1);
 });
 

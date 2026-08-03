@@ -57,8 +57,8 @@ devseek_governance:
 | 能力账本 | `in_progress` | 76 项能力：C0 的 7 项为 `wired`，C1～C14 共 69 项为 `proposed`，qualification claims=0 |
 | Gate 0 / 后续资格 | `blocked_external` | Gate 0=`NOT_PASSED`，6 个外部 authority blocker，exact claims=0；本地工作不得自行提升资格 |
 | 顶级编程智能体综合验收 | `pending` | 尚未完成 Codex / Claude Code 同类行为对标下的黄金用户旅程、长任务、恢复与跨 Surface 等价性验收 |
-| 10～14、17、20 文档治理结果 | `completed` | 对应限定责任完成后，完整文档已归档，根目录无同名尾页 |
-| 01～09、15、16、18、19 文档收口 | `pending` | 对应产品、验证或接管责任完成后整份归档 |
+| 10～15、17～20 文档治理结果 | `completed` | 对应限定责任或历史交接责任完成后，完整文档已归档，根目录无同名尾页 |
+| 01～09、16 文档收口 | `pending` | 对应产品、验证或规范责任完成后整份归档 |
 
 ## 当前任务
 
@@ -82,13 +82,13 @@ devseek_governance:
 
 ## 当前作业卡
 
-`KERNEL-BASELINE-02`
+`QUAL-EXT-01`（`blocked_external`）
 
-- 范围：在不启动 R1 产品纵切的前提下，按 04 的单项迭代标准记录现有 CLI、VS Code 与 Headless 的 development conformance 失败基线。
-- 已完成：共享 observation contract 支持只投影 route output 已结算的维度；每个缺失维度必须有原因和证据，未解释、重复或与已观测维度冲突的不可用回执均失效关闭。CLI legacy route probe 真实执行成功修改和失败后修复，只能完整投影工具动作，TaskContract、事务级变更回执、验收映射和终态仍缺失；VS Code 当前 Kernel seam 返回的 `AgentLoopResult` 无法完整结算五个比较维度；Headless 产品入口仍缺失。34/34 owner baseline 绑定上述 probe，产品路由、product adapter 数、qualification 和 claims 均未改变。
-- 下一任务：由外部授权主体关闭 `QUAL-EXT-01` 的 6 个 blocker，使 Gate 0 机器裁决自主达到 `PASS`；在此之前不得开始 `KERNEL-02` 产品纵切。
-- 禁止：切换 R1 产品纵切、引入第二套 Kernel、修改资格状态，或将 legacy adapter 描述为已收敛内核。
-- 完成后：`KERNEL-BASELINE-02` 保持 `completed`，失败基线用于 Gate 0 通过后的原子 cutover 验收；执行证据只进机器报告或归档交付物。
+- 范围：由独立授权主体提供受保护身份、执行设施、holdout、不可变保留与可复算签名证据，关闭 Gate 0 的 6 个 external authority blocker。
+- 当前条件：仓库内 C0 implementation `7/7`、repository blocker `0`、local conformance `PASSED`；exact claims 仍为 `0`，Gate 0 仍为 `NOT_PASSED`。
+- 下一任务：外部前置真实满足后，运行既有独立 runner 与 machine decision；只有机器裁决自主达到 `PASS`，才可领取 `KERNEL-02`。
+- 禁止：由本地代码、测试、文档或人工 JSON 回填伪造外部 authority，提前开始产品 cutover，或把 development conformance 当作 qualification。
+- 停止条件：外部前置未改变时保持 `blocked_external`，不重复执行不能关闭 blocker 的本地工作。
 
 ## 机器状态源
 

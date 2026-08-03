@@ -19,7 +19,7 @@ const ARCHIVED_FAILED_IDENTITY_JSON = 'docs/process/archive/devseek-current-cand
 const ARCHIVED_FAILED_IDENTITY_MD = 'docs/process/archive/devseek-current-candidate-identity-failed-observe-20260723-t185546.md';
 const R4_RELEASE_MANIFEST_JSON = 'docs/process/devseek-r4-release-candidate-manifest.json';
 const DOC14 = 'docs/top-agent-convergence-audit-20260711/archive/14-未完成事项与后续整体迭代计划.md';
-const DOC19 = 'docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md';
+const DOC19 = 'docs/top-agent-convergence-audit-20260711/archive/19-GPT5.5新窗口启动与授权指令.md';
 
 const DOC14_ANCHORS = Object.freeze([
   '### 7.8 2026-07-23 当前窗口性能退化与 R3 live-provider 接续点',

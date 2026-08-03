@@ -25,22 +25,22 @@ devseek_governance:
 ## Machine Governance Status
 
 - generator: `devseek-doc-governance/v1`
-- active selector: `docs/process/devseek-active-baseline-selector.json` sha256=`66a5607c6f591a70f96c67b28eea18bcdca859f713753a69c75d16d5986dbe89`
-- legacy inventory: `docs/process/devseek-legacy-doc-inventory.json` sha256=`00ebceb0e899ec7e18858a3a749d0a80972a95d306eb6f18d3140da6b3720b26`
-- governed documents: `47`; active baselines: `3`; legacy/reference: `44`
+- active selector: `docs/process/devseek-active-baseline-selector.json` sha256=`7a2148a0e46e6305f7ba220749908974b3bf3f6970a19069b1b56f3e8c46f8c9`
+- legacy inventory: `docs/process/devseek-legacy-doc-inventory.json` sha256=`f8460c7576e4c826787c0af6bc3941db242ea2d59e141658e51d0aa376159d70`
+- governed documents: `44`; active baselines: `3`; legacy/reference: `41`
 - status view: `docs/process/generated/devseek-doc-governance-status.md`
 - Gate 0 / claims effect: `NONE`; this generated status does not assert qualification.
 <!-- DEVSEEK-GOVERNANCE-STATUS:END -->
 
 - 本次复核日期：2026-08-03
-- 实现基线：`e7a36d9`（Coding Kernel 路由与 checkpoint 职责抽离）；归档基线：`2ef99cf`；最终机器证据基线：`7d3888b`
+- 当前实现/测试基线：`fdf6a35`（跨 Surface conformance 失败基线）；最近 Extension 行为发布基线：`e7a36d9`；R4 最终机器证据基线：`7d3888b`
 - 复核原则：文档声明只作索引；结论以 `docs/process` 机器源、实际代码可达性、当前工作树和本轮重跑验证为准
 
 ## 1. 本次结论
 
 **最开始的最终目的尚未达成。**
 
-文档包已经完成诊断、对标、目标架构和资格方法设计，C0 本地可证地基也已接线。本轮又将 VS Code 主要执行入口与 local repair 收敛到统一的 `AgentKernelService` 应用边界，并抽离 checkpoint 持久化职责；但“单一 Coding Kernel 物理收敛、CLI/Headless 同核、C1～C14 按证据晋级、真实用户路线和密封 holdout 资格”仍未完成，因此当前不能宣称 DevSeek 已达到顶级编程智能体目标。
+文档包已经完成诊断、对标、目标架构和资格方法设计，C0 本地可证地基也已接线。VS Code 主要执行入口与 local repair 已收敛到统一的 `AgentKernelService` 应用边界，checkpoint 持久化职责已抽离，跨 Surface conformance contract 和当前失败基线也已固定；但“单一 Coding Kernel 物理收敛、CLI/Headless 同核、C1～C14 按证据晋级、真实用户路线和密封 holdout 资格”仍未完成，因此当前不能宣称 DevSeek 已达到顶级编程智能体目标。
 
 | 原始目的 | 当前判定 | 主要证据 |
 | --- | --- | --- |
@@ -149,10 +149,11 @@ devseek_governance:
 | 验证 | 结果 |
 | --- | --- |
 | VS Code extension compile | `PASS` |
-| VS Code extension full unit runner | `PASS`，153/153 suites |
+| VS Code extension full unit runner | `PASS`，158/158 suites |
+| Shared / CLI conformance baseline | `PASS`，shared 247/247 tests、CLI 52/52 tests；5 个 development fixture 和 fail-closed partial projection 已覆盖 |
 | Kernel/checkpoint focused unit | `PASS`，20/20 tests |
 | 受影响 architecture static suites | `PASS`，323/323 tests |
-| Workspace TypeScript `--noEmit` audit | `FAIL`，8 个既存基线错误分布在 agent/tool/memory/run-context/checkpoint；本轮 extension compile 与变更模块测试通过，仍需独立清债 |
+| Workspace TypeScript `--noEmit` audit | `PASS`，既存 extension 类型债务已清零 |
 | Capability ledger | `PASS`，76 capabilities / 138 dependency edges |
 | Gate 0 decision | checker `PASS`，决策仍为 `NOT_PASSED` |
 | Post-R4 local regression manifest | `PASS`，6/6 checker tests |
@@ -160,11 +161,11 @@ devseek_governance:
 | R4 process aggregate | `PASS`，11 个产物、无 stale/missing view |
 | Architecture drift budget | `PASS`，仍保留 7 个显式债务 |
 | Surface inventory | `PASS`，12/12 checker tests；87/87 covered，unknown=0 |
-| Legacy doc inventory | `PASS`，4/4 tests；50 个 legacy 文档全覆盖，archive 明确排除 |
-| Doc governance | `PASS`，4/4 tests；53 个受治理文档，机器清单哈希未变化 |
+| Legacy doc inventory | `PASS`，5/5 tests；41 个 legacy 文档全覆盖，archive 明确排除，root duplicate=0 |
+| Doc governance | `PASS`，4/4 tests；44 个受治理文档，3 个 active baseline、41 个 legacy/reference |
 | VSIX release loop | `PASS`，`1.0.0-debug.20260803.t135012.ge7a36d9`；SHA256 `c0926e30f83f83406be44957e64b542645d945ab3684690d177002d0497d4fb5`；Bridge 校验与本地安装通过 |
 | 受控用户旅程 T3 | `PASS`，写读/QG、Provider fail-closed、只读边界、C++、既有 JS 修复、最新要求覆盖旧要求共 6 场景 |
-| Phase 0-12 | `FAIL`，30/31 passed；唯一失败为 `current-candidate-identity-probe`，报告 run id `2026-08-03T06-06-58-663Z` |
+| Phase 0-12 | `FAIL`，31/32 passed；唯一失败为 `current-candidate-identity-probe`，报告 run id `2026-08-03T11-19-43-634Z` |
 
 受控 T3 使用真实已安装 VSIX、隔离 Extension Host 与确定性 fake Bridge，并通过测试专用消息和程序化 intent approval 驱动。它不是自然 UI、real Provider、RC smoke、T4/T5 或 qualification 证据，`qualification_effect=NONE`。
 
@@ -177,12 +178,15 @@ devseek_governance:
 - 12 G0-D 统一运行证据账本实施报告
 - 13 G0-C 资格证据清单与独立聚合协议实施报告
 - 14 历史 backlog、批次计划与执行回执
+- 15 历史跨窗口接管与身份复算手册
 - 17 Gate 0 本地纵切集成和接管报告
+- 18 旧架构与历史实施计划承接矩阵
+- 19 GPT-5.5 历史启动与授权文本
 - 20 R3 收尾与 R4 启动交接回执
 
-10～14、17、20 的根目录副本已彻底删除，`archive/` 是这些完成文档的唯一正文位置。第 20 号文档的 R4 release manifest、rollup 和 compact index 机器绑定也已同步迁入 `archive/`。当前状态和下一任务由 [PLAN-当前收敛迭代计划.md](PLAN-当前收敛迭代计划.md) 唯一接管，该计划不收录日志。
+10～15、17～20 的根目录副本已彻底删除，`archive/` 是这些完成文档的唯一正文位置。第 19、20 号文档的 R4 对账与 release/rollup/compact-index 机器绑定也已同步迁入 `archive/`。当前状态和下一任务由 [PLAN-当前收敛迭代计划.md](PLAN-当前收敛迭代计划.md) 唯一接管，该计划不收录日志。
 
-其余 01～09、15～16、18～19 仍承担当前审计、目标架构、执行基线或后续任务责任；其目标尚未全部落地，因此不因“文档已写完”而归档。
+其余 01～09、16 仍承担当前审计、目标架构、能力验收或工程规范责任；对应产品目标尚未全部落地，因此不因“文档已写完”而归档。
 
 ## 7. 文档导航
 
@@ -192,7 +196,7 @@ devseek_governance:
 | 对标与目标架构 | [02](02-Codex-Claude-Code-DevSeek软件架构对比.md)、[03](03-顶级编程智能体目标软件架构.md)、[08](08-决策结论与最短收敛实施方案.md) |
 | 能力、资格与治理 | [04](04-分能力专项迭代与收敛路线图.md)、[05](05-黄金用户旅程与正式项目资格方案.md)、[06](06-能力追踪与文档治理方案.md)、[16](16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md) |
 | 当前计划 | [PLAN](PLAN-当前收敛迭代计划.md) |
-| 历史 backlog 与接管 | [14](archive/14-未完成事项与后续整体迭代计划.md)、[15](15-新窗口与跨模型接管手册.md)、[18](18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)、[19](19-GPT5.5新窗口启动与授权指令.md) |
+| 历史 backlog 与接管 | [14](archive/14-未完成事项与后续整体迭代计划.md)、[15](archive/15-新窗口与跨模型接管手册.md)、[18](archive/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)、[19](archive/19-GPT5.5新窗口启动与授权指令.md) |
 | 已归档实施报告 | [archive/README.md](archive/README.md) |
 
 ## 8. 执行边界

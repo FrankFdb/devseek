@@ -5,11 +5,11 @@
 ## Summary
 
 - generator: `devseek-doc-governance/v1`
-- active selector sha256: `66a5607c6f591a70f96c67b28eea18bcdca859f713753a69c75d16d5986dbe89`
-- legacy inventory sha256: `00ebceb0e899ec7e18858a3a749d0a80972a95d306eb6f18d3140da6b3720b26`
-- governed documents: `47`
+- active selector sha256: `7a2148a0e46e6305f7ba220749908974b3bf3f6970a19069b1b56f3e8c46f8c9`
+- legacy inventory sha256: `f8460c7576e4c826787c0af6bc3941db242ea2d59e141658e51d0aa376159d70`
+- governed documents: `44`
 - active baselines: `3`
-- legacy documents: `44`
+- legacy documents: `41`
 - asserts Gate 0 pass: `false`
 
 ## Active Baselines
@@ -25,7 +25,7 @@
 | Decision | Count |
 | --- | ---: |
 | active | 3 |
-| keep | 38 |
+| keep | 35 |
 | revise | 0 |
 | supersede | 2 |
 | archive | 0 |
@@ -74,8 +74,5 @@
 | `docs/top-agent-convergence-audit-20260711/07-原需求与架构设计正确性审计.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/08-决策结论与最短收敛实施方案.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/09-文档自闭环反证审计报告.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/15-新窗口与跨模型接管手册.md` | handoff | historical | keep | supporting-ref | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` | handoff | historical | keep | supporting-ref | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md` | handoff | historical | keep | supporting-ref | `docs/architecture/01-顶级编程智能体总体架构设计.md` |
-| `docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md` | handoff | historical | keep | handoff-entry | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/README.md` | handoff | historical | keep | supporting-ref | `docs/requirements/02-顶级编程智能体需求基线.md` |

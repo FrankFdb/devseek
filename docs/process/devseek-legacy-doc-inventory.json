@@ -9,7 +9,7 @@
   "asserts_gate_pass": false,
   "active_selector": {
     "path": "docs/process/devseek-active-baseline-selector.json",
-    "selector_sha256": "66a5607c6f591a70f96c67b28eea18bcdca859f713753a69c75d16d5986dbe89",
+    "selector_sha256": "7a2148a0e46e6305f7ba220749908974b3bf3f6970a19069b1b56f3e8c46f8c9",
     "active_baseline_paths": [
       "docs/architecture/01-顶级编程智能体总体架构设计.md",
       "docs/requirements/02-顶级编程智能体需求基线.md",
@@ -323,16 +323,6 @@
       "rationale": "Retained as self-loop falsification evidence for document governance."
     },
     {
-      "path": "docs/top-agent-convergence-audit-20260711/15-新窗口与跨模型接管手册.md",
-      "source_group": "handoff",
-      "decision": "keep",
-      "relationship": "supporting-ref",
-      "supporting_for": [
-        "PROCESS-CURRENT-CONVERGENCE-PLAN"
-      ],
-      "rationale": "The active selector marks this as historical handoff guidance supporting the current convergence plan, not a second task issuer."
-    },
-    {
       "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
       "source_group": "handoff",
       "decision": "keep",
@@ -341,23 +331,6 @@
         "PROCESS-CURRENT-CONVERGENCE-PLAN"
       ],
       "rationale": "The active selector marks this as historical engineering guidance supporting the current convergence plan, not a task issuer."
-    },
-    {
-      "path": "docs/top-agent-convergence-audit-20260711/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md",
-      "source_group": "handoff",
-      "decision": "keep",
-      "relationship": "supporting-ref",
-      "supporting_for": [
-        "ARCH-01-TOP-AGENT-ARCHITECTURE-BASELINE"
-      ],
-      "rationale": "G0-01 selector marks this as supporting ARCH-01 no-resurrection routing."
-    },
-    {
-      "path": "docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md",
-      "source_group": "handoff",
-      "decision": "keep",
-      "relationship": "handoff-entry",
-      "rationale": "Retained as derived startup instruction; 15 and 14 keep authority for handoff and task issuance."
     },
     {
       "path": "docs/top-agent-convergence-audit-20260711/README.md",
@@ -370,5 +343,5 @@
       "rationale": "G0-01 selector marks this as supporting REQ-02 audit entry and applicability boundary."
     }
   ],
-  "inventory_sha256": "00ebceb0e899ec7e18858a3a749d0a80972a95d306eb6f18d3140da6b3720b26"
+  "inventory_sha256": "f8460c7576e4c826787c0af6bc3941db242ea2d59e141658e51d0aa376159d70"
 }

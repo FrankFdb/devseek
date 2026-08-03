@@ -25,10 +25,10 @@ devseek_governance:
 - 文档性质：模型无关的工程执行规范、GPT-5.5 原子作业协议与候选 Skills backlog
 - 当前状态：规范已定义；Skills 矩阵中的候选均未因本文而自动实现或取得资格
 - 审计包入口：[README.md](README.md)
-- 接管入口：[15-新窗口与跨模型接管手册.md](15-新窗口与跨模型接管手册.md)
-- 当前计划：[PLAN-当前收敛迭代计划.md](PLAN-当前收敛迭代计划.md)
-- 旧文档承接：[18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md](18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)
-- 当前首个可领取 leaf：`CLOSE-01-ACTIVE-RUNTIME-IDENTITY`；仅当 active mismatch 需要 reload/退休 stale Bridge 等用户窗口 mutation 而未获本卡 fresh 授权时 `BLOCKED`
+- 当前任务入口：[PLAN-当前收敛迭代计划.md](PLAN-当前收敛迭代计划.md)
+- 历史接管协议：[15-新窗口与跨模型接管手册.md](archive/15-新窗口与跨模型接管手册.md)
+- 历史旧文档裁决：[18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md](archive/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)
+- 当前作业卡、阻塞和授权范围只由 `PLAN` 与 `docs/process` 机器事实确定；本文不复制动态任务状态
 
 本文把 01～09 的审计、目标架构、路线图和反证结论压缩为可执行的日常工程标准，不重复竞品资料或长篇设计。DevSeek 对标 Codex/Claude 时只比较公开、可观察的软件工程行为，不臆测闭源内部架构。
 
@@ -307,9 +307,9 @@ checkpoint 最小字段：`task_id`、mode、branch/HEAD、dirty/staged/untracke
 - 04/05/06：给出 capability DAG、黄金旅程、资格与机器治理；
 - 08/09：给出最短路线和反证结果；
 - [当前计划](PLAN-当前收敛迭代计划.md)：维护完成状态、下一任务、批次依赖和验收条件；
-- [15](15-新窗口与跨模型接管手册.md)：维护当前动态接管点；
+- [15](archive/15-新窗口与跨模型接管手册.md)：保存旧 CLOSE/G0 动态接管协议，不再发放当前任务；
 - [17](archive/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md)：保存本轮静态集成检查点，不作为滚动状态 owner；
-- [18](18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)：裁决旧 requirements/architecture 的保留、废止和 atomic ID 承接；
+- [18](archive/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)：保存旧 requirements/architecture 的历史保留、废止和 atomic ID 承接；
 - 本文：维护跨批次不变的工程原则、DoD 和 Skills 候选标准。
 
-冲突顺序：实际 Git/runtime/artifact 与 `docs/process` 机器事实优先；15 的当前卡优先于 14 的后续选择；14 的依赖顺序优先于本文模板；18 撤销旧文档相对时序。任何冲突都必须显式登记，不得靠模型静默解释。
+冲突顺序：实际 Git/runtime/artifact 与 `docs/process` 机器事实优先；`PLAN` 是唯一当前任务和依赖 owner；本文只约束工程原则；归档 14/15/18/19 仅保留历史证据。任何冲突都必须显式登记，不得靠模型静默解释。
