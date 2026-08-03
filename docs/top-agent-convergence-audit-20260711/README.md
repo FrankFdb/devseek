@@ -32,117 +32,155 @@ devseek_governance:
 - Gate 0 / claims effect: `NONE`; this generated status does not assert qualification.
 <!-- DEVSEEK-GOVERNANCE-STATUS:END -->
 
-- 审计日期：2026-07-11
-- 实施检查点：2026-07-12，G0-A/B/C/D、本地非资格 runner composition root、Gate 0 machine decision contract 与 exact-VSIX controlled harness 已形成；稳定安装包与制品一致，但用户窗口仍运行旧 debug Bridge，同窗口仿真为 `NOT_RUN`
-- 审计基线：`591a266`
-- 状态：Gate 0 `NOT_PASSED`、claims=0、R1 `NOT_STARTED`；当前机器报告为 5 个 repository blocker、6 个 external-authority blocker。下一窗口使用 GPT-5.5，当前工作包是 `CLOSE-INTEGRATION-GATE0-LOCAL`，首个可领取 leaf 是 `CLOSE-01-ACTIVE-RUNTIME-IDENTITY`
+- 本次复核日期：2026-08-03
+- Git 基线：`3331a74994b42c2cbc6f3cac9a5987da609d68d1`
+- 复核原则：文档声明只作索引；结论以 `docs/process` 机器源、实际代码可达性、当前工作树和本轮重跑验证为准
 
-## 1. 文档包目的
+## 1. 本次结论
 
-本目录回答四个问题：
+**最开始的最终目的尚未达成。**
 
-1. Codex 与 Claude Code 的官方公开能力实际体现了怎样的编程智能体工作方式？
-2. DevSeek 的需求、目标架构和物理实现分别处于什么状态，为什么简单编程会随功能增加而回退？
-3. DevSeek 应建设怎样的单一软件工程执行内核，而不是继续增加互相绕过的功能分支？
-4. 如何把每项能力分别迭代到顶级，再用用户真实使用方式完成正式项目资格测试？
+文档包已经完成诊断、对标、目标架构和资格方法设计，C0 本地可证地基也已接线。但“单一 Coding Kernel 物理收敛、C1～C13 按证据晋级、真实用户路线和密封 holdout 资格”仍未完成，因此当前不能宣称 DevSeek 已达到顶级编程智能体目标。
 
-用户提出的“意图、需求、设计、实现、编译测试、发布”是重要示例，但不是固定六阶段。官方公开资料并未把 Codex 或 Claude Code 定义为瀑布式软件工厂：Claude Code 明示的是“获取上下文 → 采取行动 → 验证结果 → 根据反馈重复”，Codex 公开能力则覆盖分层项目指令、沙箱与审批、可复用 Skills、Subagents 和多种工程工作流。因此本文抽象出一套适用于 DevSeek 的完整软件工程闭环；它是基于公开机制形成的目标架构，不声称等同于竞品闭源内部实现。
+| 原始目的 | 当前判定 | 主要证据 |
+| --- | --- | --- |
+| 找出简单编程随功能增加而回退的根因 | `已完成` | 01、07、09 已形成多入口、多 owner、证据与完成权分裂的反证结论 |
+| 建立 Codex / Claude Code / DevSeek 可核验对标 | `已完成文档责任` | 02 和官方来源清单；竞品版本变化后仍需重新核验 |
+| 定义单一执行内核与完整生命周期 | `已完成设计` | 03、04、08 已定义目标、能力 DAG 和里程碑 |
+| 建立机器账本、证据协议和 fail-closed 裁决 | `本地实现完成，未取得资格` | C0 `7/7 wired`；Gate 0 local conformance `PASSED`；claims `0` |
+| 将 VS Code、CLI、Headless 切到同一 Coding Kernel | `未完成` | `extension.ts` 仍直接调用 `runAgenticLoop` 和 `runAgentLoop`；CLI 仍有独立执行编排 |
+| 让 C1～C13 产品能力达到可声明等级 | `未完成` | 能力账本中 C1～C14 共 69 项仍全部为 `proposed`，无 qualification claim |
+| 完成正式项目、真实 Provider 与 holdout 顶级资格 | `未完成` | Gate 0 `NOT_PASSED`，6 个外部 authority blocker，R1 qualification `NOT_STARTED` |
 
-## 2. 核心结论
+## 2. 当前机器事实
 
-DevSeek 的目标原则基本正确，但物理架构尚未收敛：
-
-- 同一任务会因附件、入口和会话状态进入不同执行循环。
-- VS Code 与 CLI 尚未消费同一个完整 Coding Kernel。
-- TaskContract、意图识别、权限、工具、mutation、验证、完成和 UI 事实仍有多个 owner；任务形态、验证计划、终端策略和完成证据会重复理解用户原文，必须收敛到同一个版本化语义契约。
-- deterministic 测试大量通过，但 legacy VS Code development observation buckets 仍为 `canary 0/3、medium 0/2、formal 0/1`；当前 qualification authority 为 none，因此不构成候选资格。
-- 文档把“已设计、已编码、已接入、deterministic、Surface、live”混成了“完成”。
-- 原设计不是全部错误：Headless/Surface/Provider/Evidence 方向应保留；模型完成权、多状态机、多格式写盘和错误安全边界必须废止。
-
-下一阶段总方向：
-
-> 冻结非本轮 P2/旁路式功能扩张；允许 C0、P0/P1、安全和可观测性所必需的建设。先建立一个可折叠阶段但不可替换内核的 Coding Kernel；按原子能力逐项取得资格，最后才进入正式项目测试。
-
-## 3. 文档导航
-
-| 文档 | 作用 |
+| 范围 | 2026-08-03 观测 |
 | --- | --- |
-| [01-DevSeek现状与功能回退根因审计.md](01-DevSeek现状与功能回退根因审计.md) | 需求、文档、代码、测试和 Git 历史的事实审计 |
-| [02-Codex-Claude-Code-DevSeek软件架构对比.md](02-Codex-Claude-Code-DevSeek软件架构对比.md) | 按官方公开能力对比三方架构，并标出 DevSeek 差距 |
-| [03-顶级编程智能体目标软件架构.md](03-顶级编程智能体目标软件架构.md) | DevSeek 目标组件、数据契约、状态机和完整生命周期 |
-| [04-分能力专项迭代与收敛路线图.md](04-分能力专项迭代与收敛路线图.md) | C0 运行证据/评测地基、C1～C13 实现能力组、C14 综合资格，以及原子化、依赖和退出指标 |
-| [05-黄金用户旅程与正式项目资格方案.md](05-黄金用户旅程与正式项目资格方案.md) | 行为测试阶梯、黄金集、真实配额和 holdout 正式项目方法 |
-| [06-能力追踪与文档治理方案.md](06-能力追踪与文档治理方案.md) | SSOT、能力账本、状态定义、自动生成和漂移门禁 |
-| [07-原需求与架构设计正确性审计.md](07-原需求与架构设计正确性审计.md) | 逐文件判断旧设计哪里正确、错误、过期或已被事实证伪 |
-| [08-决策结论与最短收敛实施方案.md](08-决策结论与最短收敛实施方案.md) | 四个收敛里程碑、Gate 0 顺序和 Gate 0 后的 R1-KERNEL-DG01-03 工作包 |
-| [09-文档自闭环反证审计报告.md](09-文档自闭环反证审计报告.md) | 对本包做事实、架构、可实现性、资格真实性和最少迭代的独立反证收口 |
-| [10-G0-A机器能力账本实施与迭代计划.md](10-G0-A机器能力账本实施与迭代计划.md) | G0-A 实施证据、机器账本边界及 G0-B/D/C 闭环状态 |
-| [11-G0-B签名资格协议实施报告.md](11-G0-B签名资格协议实施报告.md) | G0-B 签名计划/事件/receipt/guard 实施、攻击测试、能力状态与诚实限制 |
-| [12-G0-D统一运行证据账本实施报告.md](12-G0-D统一运行证据账本实施报告.md) | G0-D 双 head/record 链、产品纵切、legacy migration、攻击测试与非资格边界 |
-| [13-G0-C资格证据清单与独立聚合协议实施报告.md](13-G0-C资格证据清单与独立聚合协议实施报告.md) | G0-C Manifest/独立复算/retention 协议、攻击测试、零 claim 与 Gate 0 缺口 |
-| [14-未完成事项与后续整体迭代计划.md](14-未完成事项与后续整体迭代计划.md) | README 与 01～18 真值、GPT-5.5 原子 backlog、依赖 DAG、验收与停止/回滚条件 |
-| [15-新窗口与跨模型接管手册.md](15-新窗口与跨模型接管手册.md) | GPT-5.5 无聊天接管、动态 Git/Phase/VSIX/安装/用户窗口身份、首个原子作业卡与停止协议 |
-| [16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md](16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md) | 不可违反原则、全生命周期 DoD、GPT-5.5 WIP=1 作业协议、产品与 workflow Skills 候选 |
-| [17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md](17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md) | 本轮 runner/decision 架构、机器真值、exact-VSIX 与用户同窗口仿真边界、动态接管回执 |
-| [18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md](18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md) | `docs/architecture` 01～18 与 ARCH-05 的保留/废止/atomic ID 承接，以及防止旧路线复活的规则 |
-| [19-GPT5.5新窗口启动与授权指令.md](19-GPT5.5新窗口启动与授权指令.md) | 用户可直接复制给 GPT-5.5 的只读启动提示、动态回执字段与条件性 `CLOSE-01` 授权文本；不发卡、不继承授权 |
+| Capability ledger | 76 项能力、15 个域；C0 7 项全部 `wired`；C1～C14 69 项全部 `proposed`；claims=0 |
+| Gate 0 | local conformance `PASSED`；implementation `7/7`；repository blocker `0`；external blocker `6`；最终 `NOT_PASSED` |
+| Qualification runner | 19 个入口；1 个本地非资格 runner、10 个 catalog fixture、4 个 production disabled、4 个 historical disabled |
+| R4 | 6 个原始 leaf 中 5 个 completed；`R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME` 为 `BLOCKED` |
+| Candidate artifact | `3331a74` 的 VSIX 与 stable install 哈希一致，smoke `passed`；observe `failed`，不具资格效力 |
+| Post-R4 local track | NP-05/06/07 本地 manifest 检查通过，覆盖 16 个 source、17/17 anchors、8 个 local-only command；该组变更尚未提交 |
+| Surface inventory | 87 个入口分母无未知、重复或待 cutover 项；在途 `package.json` 脚本变更造成 source hash drift，checker 未全绿 |
+| Architecture budget | 防增量门禁通过，但仍有 7 个超目标热点；`agent-loop.ts` 2471 行、`extension.ts` 2061 行、WebView 5375 行 |
 
-### 3.1 唯一人工执行基线
+必须同时保留三个事实：
 
-本目录现在是后续 DevSeek 迭代的唯一人工规划与执行包，但不是已经生效的机器 Active Baseline：`G0-01～03` 仍须实现 selector、legacy inventory 和生成式 banner/status。权威分工固定为：
+1. R1～R3 的大量产品侧原子卡确实有本地测试、发包和 controlled VSIX 回执，不能抹消这些实现进展。
+2. 这些回执一直声明 `qualification_effect=NONE`，能力账本也没有将 C1～C13 提升为 `wired`，所以不能从“作业卡 PASS”推导“能力已完成”。
+3. `14` 仍是 selector 指向的 active process baseline，但头部快照停在 2026-07-22，尾部已追加到 R3/R4；Post-R4 compact index 又把它作为 historical support。这是待修复的治理冲突。
 
-- 15 复算动态身份并选择当前唯一卡；14 是唯一 backlog；16 约束每卡 DoD；17 保存本轮静态检查点；18 裁决旧文档承接；19 仅提供可复制启动文本。
-- 01～09 是审计/对标/目标/资格规范，10～13 是历史实施证据；它们都不能直接发出作业卡。
-- `docs/requirements` 与 `docs/architecture` 仅在 atomic card 明确引用时定向读取；其中所有“当前、下一轮、已完成、stable”必须先经过 18 和机器事实复核。
-- 真正的机器事实来自 `docs/process` Schema、ledger、inventory、decision report 与 checker；06 只是治理设计规范。
+## 3. 核心缺口
 
-GPT-5.5 新窗口固定按 `AGENTS → README → 15 → 14 → 16 → 18 → docs/process 机器事实 → 当前 atomic card 直接依赖` 执行。不得从旧聊天、ARCH-05 或 ARCH-18 的历史相对时序开始工作。
+### 3.1 事实与交付未收口
 
-## 4. 决策边界
+- 工作树存在一组 Post-R4 未提交代码、Schema、检查器和生成物；局部检查通过不等于交付闭环。
+- current-candidate identity 已指向 `3331a74` 安装包，R4 rollup/release manifest 仍绑定 `a034e5e`，机器源尚未在同一候选身份上对账。
+- active runtime observe 仍失败。本轮没有新的窗口、Provider、安装或外部 authority 授权，不得自行解除该 blocker。
 
-### 4.1 立即停止
+### 3.2 单内核仍是迁移态
 
-- 为单个正式项目样例继续增加领域正则或提示词特判。
-- 新增与既有循环并行的 simple、deterministic、fallback 或 Surface 编排路径。
-- 把 static grep、mock Provider 或预写正确工具调用视为产品稳定资格。
-- 在未冻结候选版本时反复消耗真实 Provider 配额。
-- 在核心基础编程纵切尚未稳定前继续扩张高级能力面。
+- VS Code 组合根仍有两条可执行 loop，附件、意图或运行态仍可影响进入哪条路径。
+- `local-execution-chat-runner` 仍可直接调用 legacy loop，CLI 也没有证明与 VS Code 共享完整 TaskContract、mutation、verification 和 completion owner。
+- 架构门禁目前主要阻止热点继续变大，还没有证明旧 loop 已删除或不可达。
 
-### 4.2 当前只允许开始
+### 3.3 产品能力和资格尚未对齐
 
-- 按 [15](15-新窗口与跨模型接管手册.md) 分别复算 handoff、implementation/Phase、artifact/stable install、active runtime 与用户窗口 receipt；短 SHA 必须先唯一解析。当前工作包是 `CLOSE-INTEGRATION-GATE0-LOCAL`，只领取其首个 leaf `CLOSE-01-ACTIVE-RUNTIME-IDENTITY`；需要用户窗口动作却未获新授权时以 `BLOCKED` 停止。
-- 仅当上述集成关闭卡 `PASS` 后，GPT-5.5 才执行 `G0-01-ACTIVE-BASELINE-SELECTOR`；本地 runner slice 已实现但仍是 nonqualification，4 个 production entrypoints 保持 disabled。
-- 申请并接入独立 protected policy、非测试职责分离身份、外部 WORM/anchor/trusted time 和必要账号/条款授权；外部 authority 缺失时保持 blocked，不以本地 fixture 替代。
-- 冻结候选后只按签名 plan 执行 Gate 0 所需 deterministic/replay/Surface/获授权 live，并由受保护 Manifest 和机器 Gate 裁决七个精确 claim tuple。
+- C1～C13 的产品实现需逐项回填“实现 owner 可达、全入口接线、失败语义、测试证据”，再由账本判定 `proposed -> implemented -> wired`。
+- Gate 0 缺少独立受保护 profile、aggregator、签名 evidence digest binding、WORM/retention、trusted time 和 7 个 exact claims。
+- R4 真实用户路线、RC smoke 和 L6 holdout 未授权或未执行，不能用 deterministic 或 controlled fake Bridge 结果替代。
 
-附件降为 Context、单一 `start/dispatch`、workspace mutation/external effect authority 和 D-G01～D-G03 cutover 都属于 **Gate 0 PASS 后**的 R1-A～D；当前不得因这些目标已经写入 03/08 而提前开始。
+## 4. 达成目标的任务基线
 
-### 4.3 最终晋级条件
+### P0 统一当前事实
 
-唯一正式资格晋级协议在 [05 第 10 节](05-黄金用户旅程与正式项目资格方案.md#10-唯一正式晋级协议)，06 只定义治理方案，机器事实位于 `docs/process` 的 ledger/profile/inventory/decision report 与 checker。简述：C0 Gate 0 先达 wired/L2，适用 C1～C13 产品能力 P0/P1 再按精确 `profile/scope/Surface/Provider/platform` claim tuple 达 L4；C14 只消费这些结果，不参与自己的前置集合。冻结候选后才跑预注册且 append-only 的 live 配额；`3/2/1` 只是 RC smoke，不是“顶级”资格或统计稳定性证明。
+| ID | 任务 | 完成条件 |
+| --- | --- | --- |
+| `NOW-01` | 审查并独立提交现有 Post-R4 在途改动 | 边界明确；NP-05/06/07 manifest、NP-08/09/10 与实际源一致；无未解释 dirty file |
+| `NOW-02` | 重生成 Surface inventory 及受影响机器源 | `verify:surface-entry-inventory` 无 drift；所有 generated view 与源一致 |
+| `NOW-03` | 在 clean commit 上重跑 Phase 0-12 | 本地 gate 全绿；需外部或窗口授权的 gate 精确标为 `BLOCKED`，不伪造 PASS |
+| `NOW-04` | 替换失真的 process baseline | 新的简短 active process baseline 由 selector 唯一指向；`14` 降为历史证据；compact index、banner 和 hash 全部对账 |
+| `NOW-05` | 收口 candidate identity | 仅在 fresh 用户窗口/安装授权或 external clean receipt 下证明 exactly-one stable runtime，再重生成 R4 全链产物 |
 
-## 5. 对标来源与限制
+### P1 完成单一 Coding Kernel 物理收敛
 
-Codex 对标只使用 OpenAI 官方公开资料；以下为代表性入口，完整逐项来源在 02：
+| ID | 任务 | 完成条件 |
+| --- | --- | --- |
+| `KERNEL-01` | 生成产品执行根与 semantic owner 可达性清单 | VS Code、CLI、Headless、Bridge 入口与 TaskContract/permission/tool/mutation/verification/completion owner 都有唯一可计算路由 |
+| `KERNEL-02` | 将 AgentKernel/Application Service 变成唯一 `start/dispatch/resume/cancel` 边界 | Surface 只投影 command/event，不构造 completion 或直接调用 Provider/tool loop |
+| `KERNEL-03` | 切除 VS Code 双 loop 和 local repair 旁路 | `extension.ts` 不再直接调用两个旧 loop；附件和任务大小只改变 Context/Budget |
+| `KERNEL-04` | 将 CLI 迁入同一 Kernel | VS Code 与 CLI 的 create/modify/repair 产生等价领域事件、mutation 和 completion evidence |
+| `KERNEL-05` | 唯一化 mutation、external effect 和 completion | persistent write 与可改源码命令走 transaction；外部副作用有 permission/idempotency/receipt；completion 只有一个领域 owner |
+| `KERNEL-06` | 删除或封死 legacy owner | 旧 loop 产品入口不可达；静态 guard 阻止第二内核、Surface bypass 和重复 owner |
 
-- [Codex use cases](https://developers.openai.com/codex/use-cases)
-- [Custom instructions with AGENTS.md](https://developers.openai.com/codex/guides/agents-md)
-- [Sandboxing](https://developers.openai.com/codex/concepts/sandboxing)
-- [Subagents](https://developers.openai.com/codex/subagents)
-- [Skills](https://developers.openai.com/codex/skills)
-- [Customization](https://learn.chatgpt.com/docs/customization/overview)
-- [Plugins](https://learn.chatgpt.com/docs/plugins)
-- [Record & Replay](https://learn.chatgpt.com/docs/extend/record-and-replay)
+### P2 将产品进展转成能力证据
 
-Claude Code 对标只使用 Anthropic 官方公开资料；以下为代表性入口：
+| ID | 任务 | 完成条件 |
+| --- | --- | --- |
+| `CAP-01` | 对 C1～C13 全部 65 项产品能力逐项反查 | 每项有 owner、入口可达性、失败/恢复语义、验证证据和真实 implementation state；不按历史卡名批量提升 |
+| `CAP-02` | 补齐 P0 黄金旅程 | D-G01～D-G10 的写入、修改、运行、失败、权限拒绝、cancel/resume、CAS 冲突在共享 conformance suite 下通过 |
+| `CAP-03` | 补齐 P1 软件工程能力 | 指令优先级、repo/symbol map、source grounding、设计影响、Provider normalization、review/delivery、memory/skills/hooks/MCP 分别有验收 profile |
+| `CAP-04` | 完成 Surface 和平台矩阵 | VS Code/CLI/Headless 与 Linux/macOS/Windows/WSL 的适用边界和降级都有机器证据 |
+| `CAP-05` | 与 Codex / Claude Code 做同题对标 | 同仓库、同任务契约、同允许工具和同评分标准；区分产品缺陷、Provider 局限和 infra 故障 |
 
-- [How Claude Code works](https://code.claude.com/docs/en/how-claude-code-works)
-- [Best practices](https://code.claude.com/docs/en/best-practices)
-- [Subagents](https://code.claude.com/docs/en/sub-agents)
-- [Hooks](https://code.claude.com/docs/en/hooks)
-- [Memory and project instructions](https://code.claude.com/docs/en/memory)
-- [Permissions and sandbox](https://code.claude.com/docs/en/permissions)
-- [Agent teams](https://code.claude.com/docs/en/agent-teams)
-- [Computer use](https://code.claude.com/docs/en/computer-use)
+### P3 完成正式资格
 
-报告只记录访问日可核实的公开行为，不推测 Codex 或 Claude Code 的闭源内部类名、数据结构或实现代码；`documented/experimental/not assessed` 必须分栏，页面、版本或适用范围变化后重新核验。
+| ID | 任务 | 完成条件 |
+| --- | --- | --- |
+| `QUAL-01` | 由外部独立 authority 闭合 EXT-01～05 | protected profile/aggregator、职责分离签名、WORM/retention、trusted time/anchor 可验证 |
+| `QUAL-02` | 冻结候选并执行 Gate 0 protected plan | 7 个 C0 exact tuple claim 有效，机器 decision 首次输出 `PASS` |
+| `QUAL-03` | 按 profile 让 C1～C13 达 L4 | 每个 claim 精确绑定 profile/scope/Surface/Provider/platform/candidate，无 veto |
+| `QUAL-04` | 执行自然 UI + real Provider RC smoke | 预注册 3/2/1，不重试直到通过；失败关闭候选；只声明 RC smoke |
+| `QUAL-05` | 执行 disjoint sealed holdout 与独立盲评 | 满足重复、随机、置信下界、安全/恢复配额和无 veto 后，才声明精确作用域 L6 |
+
+## 5. 本轮验证记录
+
+| 验证 | 结果 |
+| --- | --- |
+| VS Code extension compile | `PASS` |
+| VS Code extension full unit runner | `PASS` |
+| Capability ledger | `PASS`，76 capabilities / 138 dependency edges |
+| Gate 0 decision | checker `PASS`，决策仍为 `NOT_PASSED` |
+| Post-R4 local regression manifest | `PASS`，6/6 checker tests |
+| Post-R4 compact index | `PASS`，6/6 checker tests |
+| R4 process aggregate | `PASS`，11 个产物、无 stale/missing view |
+| Architecture drift budget | `PASS`，仍保留 7 个显式债务 |
+| Surface inventory | `FAIL`，唯一错误为 `inventory:drift-from-sources` |
+| Legacy doc inventory | `PASS`，4/4 tests；50 个 legacy 文档全覆盖，archive 明确排除 |
+| Doc governance | `PASS`，4/4 tests；53 个受治理文档，机器清单哈希未变化 |
+| Phase 0-12 | `FAIL`，29/31 passed；仅 `current-candidate-identity-probe` 与 `external-authority-readiness-audit` 失败 |
+
+## 6. 归档与文档责任
+
+本轮已将限定任务完成、机器事实已迁移、且不再作为当前生成器输入的文档移入 [archive/](archive/README.md)：
+
+- 10 G0-A 机器能力账本实施报告
+- 11 G0-B 签名资格协议实施报告
+- 12 G0-D 统一运行证据账本实施报告
+- 13 G0-C 资格证据清单与独立聚合协议实施报告
+- 17 Gate 0 本地纵切集成和接管报告
+
+原路径保留受治理跳转页，防止历史链接失效。`20-R3收尾与下一阶段任务.md` 仍被 R4 生成器按路径和哈希消费，暂不移动；先完成机器绑定迁移，再归档。
+
+## 7. 文档导航
+
+| 类别 | 文档 |
+| --- | --- |
+| 事实与反证 | [01](01-DevSeek现状与功能回退根因审计.md)、[07](07-原需求与架构设计正确性审计.md)、[09](09-文档自闭环反证审计报告.md) |
+| 对标与目标架构 | [02](02-Codex-Claude-Code-DevSeek软件架构对比.md)、[03](03-顶级编程智能体目标软件架构.md)、[08](08-决策结论与最短收敛实施方案.md) |
+| 能力、资格与治理 | [04](04-分能力专项迭代与收敛路线图.md)、[05](05-黄金用户旅程与正式项目资格方案.md)、[06](06-能力追踪与文档治理方案.md)、[16](16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md) |
+| 历史 backlog 与接管 | [14](14-未完成事项与后续整体迭代计划.md)、[15](15-新窗口与跨模型接管手册.md)、[18](18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)、[19](19-GPT5.5新窗口启动与授权指令.md)、[20](20-R3收尾与下一阶段任务.md) |
+| 已归档实施报告 | [archive/README.md](archive/README.md) |
+
+## 8. 执行边界
+
+- 冻结新的旁路 loop、Surface 编排和针对单一样例的领域特判。
+- deterministic、replay、mock Provider、controlled VSIX、安装或 Markdown 全绿都不能自行产生资格 claim。
+- 未获 fresh 授权时，不关闭或重载用户窗口、不发送 Provider prompt、不安装 VSIX、不写外部 qualification ledger。
+- 每张实现卡先对照 Codex 和 Claude Code 在同类问题上的可观察行为，再以 DevSeek 的单内核、可审计和 fail-closed 原则选择实现。
+- 完成判断只消费当前 candidate 上的机器证据，不从旧聊天、旧作业卡或文档标题继承 PASS。
+
+## 9. 对标来源与限制
+
+Codex 与 Claude Code 的完整逐项来源在 [02](02-Codex-Claude-Code-DevSeek软件架构对比.md)。本包只记录官方公开行为，不推测闭源内部实现；页面、版本或适用范围变化后必须重新核验。

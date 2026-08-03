@@ -7,6 +7,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { readJson } from '../lib/devseek-active-baseline-selector.mjs';
 import {
+  collectGovernedMarkdownPaths,
   legacyDocInventoryHash,
   renderLegacyDocInventoryMarkdown,
   validateLegacyDocInventory,
@@ -40,6 +41,20 @@ test('legacy document inventory schema and generated view are source-bound', () 
   const expectedView = renderLegacyDocInventoryMarkdown(baseInventory, repoRoot);
   const actualView = fs.readFileSync(path.join(repoRoot, generatedViewPath), 'utf8');
   assert.equal(actualView, expectedView);
+});
+
+test('legacy document inventory excludes immutable archive trees', () => {
+  const governedPaths = collectGovernedMarkdownPaths(repoRoot);
+  assert.equal(
+    governedPaths.some(docPath => docPath.includes('/archive/')),
+    false,
+  );
+  assert.ok(
+    fs.existsSync(path.join(
+      repoRoot,
+      'docs/top-agent-convergence-audit-20260711/archive/README.md',
+    )),
+  );
 });
 
 test('legacy document inventory fails closed on missing, duplicate, unknown, or ambiguous coverage', () => {

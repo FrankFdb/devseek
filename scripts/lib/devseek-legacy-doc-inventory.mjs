@@ -34,7 +34,7 @@ const RELATIONSHIPS = new Set([
 const RELATIVE_MD_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$)).+\.md$/u;
 const RELATIVE_JSON_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$)).+\.json$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
-const IGNORED_DIRECTORIES = new Set(['node_modules', 'backups', 'dist', 'media']);
+const IGNORED_DIRECTORIES = new Set(['node_modules', 'backups', 'dist', 'media', 'archive']);
 const IGNORED_FILE_SUFFIXES = ['.vsix', '.tgz'];
 
 export function legacyDocInventoryHash(inventory) {
