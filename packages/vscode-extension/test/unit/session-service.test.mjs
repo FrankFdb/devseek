@@ -55,14 +55,97 @@ test('SessionService: patches existing metadata', () => {
   assert.equal(service.getSessions()[0].messageCount, 3);
 });
 
-test('SessionService: delete removes meta and per-session keys', () => {
+test('SessionService: round-trips isolated persisted state', () => {
+  const store = createStore();
+  const service = new SessionService(store);
+  const history = [
+    { role: 'user', content: 'continue the refactor' },
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'inspect this image' },
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,abc' } },
+      ],
+    },
+  ];
+  const files = { service: '/workspace/src/service.ts' };
+  const agentState = { changedPaths: ['src/service.ts'], completed: false };
+
+  service.saveSessionHistory('a', history);
+  service.saveSessionFiles('a', files);
+  service.saveSessionSummary('a', 'Refactor is in progress.');
+  service.saveSessionAnalysisText('a', 'One owner remains.');
+  service.saveSessionAgentState('a', agentState);
+
+  history[0].content = 'mutated after save';
+  history[1].content[1].image_url.url = 'mutated';
+  files.service = '/wrong/path.ts';
+  agentState.changedPaths.push('wrong.ts');
+
+  const loaded = service.loadSessionState('a');
+  assert.equal(loaded.history[0].content, 'continue the refactor');
+  assert.equal(loaded.history[1].content[1].image_url.url, 'data:image/png;base64,abc');
+  assert.deepEqual(loaded.files, { service: '/workspace/src/service.ts' });
+  assert.equal(loaded.summary, 'Refactor is in progress.');
+  assert.equal(loaded.analysisText, 'One owner remains.');
+  assert.deepEqual(loaded.agentState, { changedPaths: ['src/service.ts'], completed: false });
+
+  loaded.history[0].content = 'mutated after load';
+  loaded.files.service = '/another/wrong/path.ts';
+  loaded.agentState.changedPaths.push('another-wrong.ts');
+  assert.equal(service.loadSessionState('a').history[0].content, 'continue the refactor');
+  assert.deepEqual(service.loadSessionState('a').files, { service: '/workspace/src/service.ts' });
+  assert.deepEqual(service.getSessionAgentState('a'), { changedPaths: ['src/service.ts'], completed: false });
+});
+
+test('SessionService: keeps state isolated between sessions', () => {
+  const service = new SessionService(createStore());
+  service.saveSessionHistory('a', [{ role: 'user', content: 'session a' }]);
+  service.saveSessionHistory('b', [{ role: 'user', content: 'session b' }]);
+  service.saveSessionFiles('a', { a: '/workspace/a.ts' });
+  service.saveSessionFiles('b', { b: '/workspace/b.ts' });
+
+  assert.deepEqual(service.loadSessionState('a').history, [{ role: 'user', content: 'session a' }]);
+  assert.deepEqual(service.loadSessionState('a').files, { a: '/workspace/a.ts' });
+  assert.deepEqual(service.loadSessionState('b').history, [{ role: 'user', content: 'session b' }]);
+  assert.deepEqual(service.loadSessionState('b').files, { b: '/workspace/b.ts' });
+});
+
+test('SessionService: delete removes meta and every persisted state field', () => {
   const store = createStore();
   const service = new SessionService(store);
   service.saveSessionMeta({ id: 'a', title: 'A', createdAt: 1 });
-  store.update('deepseek.session.a.history', ['x']);
+  service.saveSessionHistory('a', [{ role: 'user', content: 'x' }]);
+  service.saveSessionFiles('a', { x: '/workspace/x.ts' });
+  service.saveSessionSummary('a', 'summary');
+  service.saveSessionAnalysisText('a', 'analysis');
+  service.saveSessionAgentState('a', { completed: true });
   service.deleteSession('a');
   assert.deepEqual(service.getSessions(), []);
-  assert.equal(store.data.has('deepseek.session.a.history'), false);
+  for (const suffix of ['history', 'files', 'summary', 'analysisText', 'agentState']) {
+    assert.equal(store.data.has(`deepseek.session.a.${suffix}`), false, `${suffix} must be removed`);
+  }
+});
+
+test('SessionService: ignores empty session ids', () => {
+  const store = createStore();
+  const service = new SessionService(store);
+  service.saveSessionHistory('', [{ role: 'user', content: 'x' }]);
+  service.saveSessionFiles('', { x: '/workspace/x.ts' });
+  service.saveSessionSummary('', 'summary');
+  service.saveSessionAnalysisText('', 'analysis');
+  service.saveSessionAgentState('', { completed: true });
+  service.deleteSession('');
+
+  assert.deepEqual([...store.data.keys()], []);
+  assert.deepEqual(service.loadSessionState(''), {
+    history: [],
+    files: {},
+    summary: '',
+    analysisText: '',
+  });
+  assert.equal(service.getSessionSummary(''), '');
+  assert.equal(service.getSessionAgentState(''), undefined);
 });
 
 console.log('\nSession service tests passed.\n');

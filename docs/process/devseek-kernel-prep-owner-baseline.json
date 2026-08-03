@@ -197,7 +197,7 @@
     "legacy_execution_owners": 3,
     "semantic_domains": 5,
     "converged_semantic_domains": 0,
-    "source_checks": 19,
+    "source_checks": 21,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -259,6 +259,33 @@
         "reason: 'request-finished-with-active-kernel'"
       ],
       "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-session-persistence-owner",
+      "path": "packages/vscode-extension/src/app/session-service.ts",
+      "includes": [
+        "export class SessionService",
+        "loadSessionState<TAgentState",
+        "saveSessionHistory(id",
+        "saveSessionAgentState<TAgentState>",
+        "this.sessionStateKey(id, suffix)",
+        "return `deepseek.session.${id}.${suffix}`"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-session-persistence-boundary",
+      "path": "packages/vscode-extension/src/extension.ts",
+      "includes": [
+        "sessionService.saveSessionHistory(activeSessionId, history)",
+        "const state = sessionService.loadSessionState(id)",
+        "stripSessionContextPrefix(nonBridgeChatHistory).slice(-40)"
+      ],
+      "excludes": [
+        "deepseek.session."
+      ],
       "passed": true
     },
     {
@@ -404,5 +431,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "af5d2df8379b8226c17448833d3e88e8e1c127b6ec3e989616ce0bb31ea5aba6"
+  "baseline_sha256": "7b490944d7d01f5975429997279d25995786f9d2d5b3b1d17d0ebf4a29482225"
 }

@@ -3076,7 +3076,7 @@ test('Architecture: smalltalk cannot inherit restored session context or apply a
   const nonAgentGuard = src('src/app/non-agent-response-guard.ts');
   assert.match(
     ext,
-    /const initialRouteDecision = chatRouteController\.decide[\s\S]*?if \(initialRouteDecision\.intent\.mode === 'smalltalk'\)[\s\S]*?directVisibleResponsePublisher\.publish\(\{[\s\S]*?responseText:\s*reply,[\s\S]*?\}\);[\s\S]*?return;[\s\S]*?const _storedSummary/,
+    /const initialRouteDecision = chatRouteController\.decide[\s\S]*?if \(initialRouteDecision\.intent\.mode === 'smalltalk'\)[\s\S]*?directVisibleResponsePublisher\.publish\(\{[\s\S]*?responseText:\s*reply,[\s\S]*?\}\);[\s\S]*?return;[\s\S]*?getSessionService\(\)\?\.loadSessionState\(activeSessionId\)/,
     'smalltalk must return before restored session summary/history is injected',
   );
   assertContains(directVisibleResponseService, "deps.postMessage({ type: 'endResponse' })", 'direct response service must own direct-return endResponse delivery');

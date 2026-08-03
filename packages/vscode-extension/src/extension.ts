@@ -58,7 +58,7 @@ import { createEvidenceAwareMcpToolCallFactory } from './app/evidence-aware-mcp-
 import { recordApplyWorkflowEvidence } from './app/workflow-run-evidence-adapter';
 import { isProjectInitRequest, ProjectInitService, renderProjectInitDraftMarkdown } from './app/project-init-service';
 import { tryBuildReadOnlyInspectionResult } from './app/read-only-inspection-service';
-import { buildRestoredSessionLlmHistory, buildSessionLoadedPayload } from './app/session-display-service';
+import { buildRestoredSessionLlmHistory, buildSessionLoadedPayload, stripSessionContextPrefix } from './app/session-display-service';
 import { buildSessionBootstrapState } from './app/session-bootstrap-service';
 import { SessionService, type SessionMeta } from './app/session-service';
 import {
@@ -98,8 +98,6 @@ import {
   appendStructuredGenerationHint,
   buildReformatPrompt,
   buildSmalltalkReply,
-  chatContentEquals,
-  chatContentStartsWith,
   chatContentText,
   normalizeConversationFiles,
 } from './app/chat-prompt-formatting';
@@ -199,13 +197,13 @@ function getActiveEditorContextPath(): string | undefined {
 // P3-5: @git — inject git diff via VS Code git extension
 // ─────────────────────────────────────────────────────────────────────────────
 function loadAgentSessionState(sessionId = activeSessionId): AgentSessionState | undefined {
-  if (!extContext || !sessionId) return undefined;
-  return extContext.workspaceState.get<AgentSessionState>(`deepseek.session.${sessionId}.agentState`);
+  if (!sessionId) return undefined;
+  return getSessionService()?.getSessionAgentState<AgentSessionState>(sessionId);
 }
 
 function saveAgentSessionState(state: AgentSessionState | null, sessionId = activeSessionId): void {
-  if (!extContext || !sessionId) return;
-  extContext.workspaceState.update(`deepseek.session.${sessionId}.agentState`, state ?? undefined);
+  if (!sessionId) return;
+  getSessionService()?.saveSessionAgentState(sessionId, state);
 }
 
 function restoreLastAgentPathsFromSession(sessionId = activeSessionId): void {
@@ -215,9 +213,7 @@ function restoreLastAgentPathsFromSession(sessionId = activeSessionId): void {
     return;
   }
   const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-  const files = extContext?.workspaceState.get<Record<string, string>>(
-    `deepseek.session.${sessionId}.files`, {},
-  ) ?? {};
+  const files = getSessionService()?.loadSessionState(sessionId).files ?? {};
   lastAgentChangedPaths = Object.values(files)
     .map(abs => relPathFromWorkspace(wsRoot, abs))
     .filter((rel): rel is string => Boolean(rel))
@@ -388,9 +384,8 @@ async function runActiveChat(
   // LLM has the right context. This only fires once: after first injection, history is
   // non-empty and this branch is skipped going forward.
   if (!newSession && nonBridgeChatHistory.length === 0 && activeSessionId && extContext) {
-    const _storedSummary = extContext.workspaceState.get<string>(`deepseek.session.${activeSessionId}.summary`, '') ?? '';
-    const _storedHistory = extContext.workspaceState.get<ChatMessage[]>(`deepseek.session.${activeSessionId}.history`, []) ?? [];
-    nonBridgeChatHistory = buildRestoredSessionLlmHistory(_storedHistory, _storedSummary);
+    const stored = getSessionService()?.loadSessionState(activeSessionId);
+    nonBridgeChatHistory = buildRestoredSessionLlmHistory(stored?.history ?? [], stored?.summary ?? '');
   }
 
   let sessionContinuationNote = '';
@@ -1128,8 +1123,7 @@ async function runActiveChat(
         // P14: persist analysisText from this round for injection into next round's plan
         if (loopResult.analysisText) {
           lastAnalysisText = loopResult.analysisText;
-          // L2: persist to workspaceState so it survives reload (Claude Code pattern)
-          extContext?.workspaceState.update(`deepseek.session.${activeSessionId}.analysisText`, lastAnalysisText);
+          getSessionService()?.saveSessionAnalysisText(activeSessionId, lastAnalysisText);
         }
         // Persist changed paths so the next decompose knows which files were just created/modified
         if (loopResult.changedPaths && loopResult.changedPaths.length > 0) {
@@ -1767,7 +1761,7 @@ function recordTrackedChatHistory(opts: AgentChatRequest, response: string): voi
     getHistory: () => nonBridgeChatHistory,
     setHistory: (history) => { nonBridgeChatHistory = history; },
     compactAndSaveHistory,
-    getFreshSummary: (sessionId) => extContext?.workspaceState.get<string>(`deepseek.session.${sessionId}.summary`),
+    getFreshSummary: (sessionId) => getSessionService()?.getSessionSummary(sessionId),
     getSessions,
     saveSessionMeta,
     saveCurrentSession,
@@ -1795,25 +1789,14 @@ function saveSessionMeta(meta: SessionMeta): void {
 }
 
 function saveCurrentSession(): void {
-  if (!extContext || !activeSessionId) return;
+  if (!activeSessionId) return;
   if (nonBridgeChatHistory.length === 0) return;
-  // Strip summary primer pair/legacy prefix before persisting so reloads don't double-inject
-  let _histToSave = nonBridgeChatHistory;
-  if (_histToSave[0]?.role === 'user' && chatContentStartsWith(_histToSave[0]?.content, '[上次会话背景') &&
-      _histToSave[1]?.role === 'assistant' && chatContentEquals(_histToSave[1]?.content, '好的，我已了解上次的工作进展，可以继续。')) {
-    _histToSave = _histToSave.slice(2);
-  } else if (_histToSave[0]?.role === 'assistant' && (chatContentStartsWith(_histToSave[0]?.content, '【上次 session 摘要】\n') || chatContentStartsWith(_histToSave[0]?.content, '【历史摘要】\n'))) {
-    _histToSave = _histToSave.slice(1);
-  }
-  extContext.workspaceState.update(
-    `deepseek.session.${activeSessionId}.history`,
-    _histToSave.slice(-40),
-  );
+  const sessionService = getSessionService();
+  if (!sessionService) return;
+  const history = stripSessionContextPrefix(nonBridgeChatHistory).slice(-40);
+  sessionService.saveSessionHistory(activeSessionId, history);
   const filesMap = Object.fromEntries(sessionRecentFiles);
-  extContext.workspaceState.update(
-    `deepseek.session.${activeSessionId}.files`,
-    filesMap,
-  );
+  sessionService.saveSessionFiles(activeSessionId, filesMap);
   // Keep meta stats up-to-date (messageCount, fileCount, changedFiles)
   const existing = getSessions().find(s => s.id === activeSessionId);
   if (existing) {
@@ -1829,15 +1812,13 @@ function saveCurrentSession(): void {
 }
 
 function saveCurrentSessionFiles(): void {
-  if (!extContext || !activeSessionId) return;
-  extContext.workspaceState.update(
-    `deepseek.session.${activeSessionId}.files`,
-    Object.fromEntries(sessionRecentFiles),
-  );
+  if (!activeSessionId) return;
+  getSessionService()?.saveSessionFiles(activeSessionId, Object.fromEntries(sessionRecentFiles));
 }
 
 async function compactAndSaveHistory(history: ChatMessage[], sessionId: string): Promise<void> {
-  if (history.length < 4 || !extContext) return;
+  const sessionService = getSessionService();
+  if (history.length < 4 || !sessionId || !sessionService) return;
   const histText = history.slice(-30).map(m => `[${m.role}]: ${m.content.slice(0, 600)}`).join('\n');
   const compactPrompt = `你是一个 AI 编程助手会话摘要生成器。请将下面的对话历史生成一份**结构化 Markdown 摘要**，严格按以下格式输出（不要省略任何章节标题，保持 Markdown 格式）：
 
@@ -1862,7 +1843,7 @@ async function compactAndSaveHistory(history: ChatMessage[], sessionId: string):
 ${histText}`;
   try {
     const summary = await routeChat({ prompt: compactPrompt, mode: 'fast', trackHistory: false });
-    extContext.workspaceState.update(`deepseek.session.${sessionId}.summary`, summary);
+    sessionService.saveSessionSummary(sessionId, summary);
     // Extract ultra-compact digest (~150 chars) from first meaningful line of summary
     const lines = summary.split('\n').map(l => l.trim()).filter(l => l);
     const digestLine = lines.find(l => l.length > 15 && !l.startsWith('#') && !l.startsWith('-') && !l.startsWith('*'));
@@ -1892,20 +1873,19 @@ function deleteSession(id: string): void {
 }
 
 async function loadSessionIntoWebview(wv: vscode.Webview, id: string): Promise<void> {
-  if (!id || !extContext) return;
+  const sessionService = getSessionService();
+  if (!id || !sessionService) return;
   saveCurrentSession();
   activeSessionId = id;
-  getSessionService()?.setActiveSessionId(id);
-  const files = extContext.workspaceState.get<Record<string, string>>(
-    `deepseek.session.${id}.files`, {},
-  ) ?? {};
+  sessionService.setActiveSessionId(id);
+  const state = sessionService.loadSessionState(id);
   sessionRecentFiles.clear();
-  for (const [key, value] of Object.entries(files)) sessionRecentFiles.set(key, value);
-  const loadedSummary = extContext.workspaceState.get<string>(`deepseek.session.${id}.summary`, '') ?? '';
-  const loadedHistory = extContext.workspaceState.get<ChatMessage[]>(`deepseek.session.${id}.history`, []) ?? [];
+  for (const [key, value] of Object.entries(state.files)) sessionRecentFiles.set(key, value);
+  const loadedSummary = state.summary;
+  const loadedHistory = state.history;
   nonBridgeChatHistory = buildRestoredSessionLlmHistory(loadedHistory, loadedSummary);
   lastConversationFiles = [];
-  lastAnalysisText = extContext.workspaceState.get<string>(`deepseek.session.${id}.analysisText`, '') ?? '';
+  lastAnalysisText = state.analysisText;
   restoreLastAgentPathsFromSession(id);
   const loadedMeta = getSessions().find(session => session.id === id);
   postWebviewMessage(wv, buildSessionLoadedPayload({ id, history: loadedHistory, summary: loadedSummary, meta: loadedMeta }));
@@ -1923,7 +1903,6 @@ function initOrRestoreSession(): void {
   if (!extContext) return;
   const bootstrap = buildSessionBootstrapState({
     sessionService: getSessionService(),
-    workspaceState: extContext.workspaceState,
   });
   activeSessionId = bootstrap.activeSessionId;
   sessionRecentFiles.clear();
@@ -1966,8 +1945,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     pushAgentSteer: (text) => activeChatRunCoordinator.pushAgentSteer(text),
     getActiveSessionPayload: () => {
       if (!activeSessionId) return undefined;
-      const history = extContext?.workspaceState.get<ChatMessage[]>(`deepseek.session.${activeSessionId}.history`, []) ?? [];
-      const summary = extContext?.workspaceState.get<string>(`deepseek.session.${activeSessionId}.summary`, '') ?? '';
+      const state = getSessionService()?.loadSessionState(activeSessionId);
+      const history = state?.history ?? [];
+      const summary = state?.summary ?? '';
       const payload = buildSessionLoadedPayload({
         id: activeSessionId,
         history,

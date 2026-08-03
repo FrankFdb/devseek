@@ -1,3 +1,5 @@
+import type { ChatMessage } from '../llm/types';
+
 export interface SessionMeta {
   id: string;
   title: string;
@@ -16,6 +18,16 @@ export interface SessionKeyValueStore {
 
 const SESSIONS_KEY = 'devseek.sessions';
 const ACTIVE_SESSION_KEY = 'devseek.activeSessionId';
+const SESSION_STATE_SUFFIXES = ['history', 'files', 'summary', 'analysisText', 'agentState'] as const;
+type SessionStateSuffix = (typeof SESSION_STATE_SUFFIXES)[number];
+
+export interface PersistedSessionState<TAgentState = unknown> {
+  history: ChatMessage[];
+  files: Record<string, string>;
+  summary: string;
+  analysisText: string;
+  agentState?: TAgentState;
+}
 
 export class SessionService {
   constructor(
@@ -53,11 +65,79 @@ export class SessionService {
     void this.store.update(SESSIONS_KEY, sessions);
   }
 
+  loadSessionState<TAgentState = unknown>(id: string): PersistedSessionState<TAgentState> {
+    if (!id) return { history: [], files: {}, summary: '', analysisText: '' };
+    return {
+      history: cloneChatHistory(this.store.get<ChatMessage[]>(this.sessionStateKey(id, 'history'), []) ?? []),
+      files: { ...(this.store.get<Record<string, string>>(this.sessionStateKey(id, 'files'), {}) ?? {}) },
+      summary: this.store.get<string>(this.sessionStateKey(id, 'summary'), '') ?? '',
+      analysisText: this.store.get<string>(this.sessionStateKey(id, 'analysisText'), '') ?? '',
+      agentState: clonePersistedValue(this.store.get<TAgentState>(this.sessionStateKey(id, 'agentState'))),
+    };
+  }
+
+  getSessionSummary(id: string): string {
+    if (!id) return '';
+    return this.store.get<string>(this.sessionStateKey(id, 'summary'), '') ?? '';
+  }
+
+  getSessionAgentState<TAgentState>(id: string): TAgentState | undefined {
+    if (!id) return undefined;
+    return clonePersistedValue(this.store.get<TAgentState>(this.sessionStateKey(id, 'agentState')));
+  }
+
+  saveSessionHistory(id: string, history: readonly ChatMessage[]): void {
+    this.updateSessionState(id, 'history', cloneChatHistory(history));
+  }
+
+  saveSessionFiles(id: string, files: Readonly<Record<string, string>>): void {
+    this.updateSessionState(id, 'files', { ...files });
+  }
+
+  saveSessionSummary(id: string, summary: string): void {
+    this.updateSessionState(id, 'summary', summary);
+  }
+
+  saveSessionAnalysisText(id: string, analysisText: string): void {
+    this.updateSessionState(id, 'analysisText', analysisText);
+  }
+
+  saveSessionAgentState<TAgentState>(id: string, state: TAgentState | null): void {
+    this.updateSessionState(id, 'agentState', clonePersistedValue(state ?? undefined));
+  }
+
   deleteSession(id: string): void {
+    if (!id) return;
     const sessions = this.getSessions().filter(s => s.id !== id);
     void this.store.update(SESSIONS_KEY, sessions);
-    for (const suffix of ['history', 'files', 'summary', 'analysisText', 'agentState']) {
-      void this.store.update(`deepseek.session.${id}.${suffix}`, undefined);
+    for (const suffix of SESSION_STATE_SUFFIXES) {
+      void this.store.update(this.sessionStateKey(id, suffix), undefined);
     }
   }
+
+  private updateSessionState(id: string, suffix: SessionStateSuffix, value: unknown): void {
+    if (!id) return;
+    void this.store.update(this.sessionStateKey(id, suffix), value);
+  }
+
+  private sessionStateKey(id: string, suffix: SessionStateSuffix): string {
+    return `deepseek.session.${id}.${suffix}`;
+  }
+}
+
+function cloneChatHistory(history: readonly ChatMessage[]): ChatMessage[] {
+  return history.map(message => ({
+    role: message.role,
+    content: typeof message.content === 'string'
+      ? message.content
+      : message.content.map(part => ({
+        ...part,
+        ...(part.image_url ? { image_url: { ...part.image_url } } : {}),
+      })),
+  }));
+}
+
+function clonePersistedValue<T>(value: T | undefined): T | undefined {
+  if (value === undefined || value === null || typeof value !== 'object') return value;
+  return JSON.parse(JSON.stringify(value)) as T;
 }

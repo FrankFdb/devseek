@@ -14,6 +14,7 @@ const SOURCE_PATHS = Object.freeze({
   sharedBuildProfile: 'packages/shared/src/build-profile.ts',
   extension: 'packages/vscode-extension/src/extension.ts',
   activeChatRun: 'packages/vscode-extension/src/app/active-chat-run-coordinator.ts',
+  sessionService: 'packages/vscode-extension/src/app/session-service.ts',
   viewProvider: 'packages/vscode-extension/src/ui/deepseek-view-provider.ts',
   productExecutor: 'packages/vscode-extension/src/product-coding-kernel-executor.ts',
   kernelService: 'packages/vscode-extension/src/app/agent-kernel-service.ts',
@@ -55,6 +56,19 @@ const SOURCE_CHECKS = Object.freeze([
     "reason: 'superseded-before-kernel-bind'",
     "reason: 'request-finished-with-active-kernel'",
   ]),
+  check('vscode-session-persistence-owner', SOURCE_PATHS.sessionService, [
+    'export class SessionService',
+    'loadSessionState<TAgentState',
+    'saveSessionHistory(id',
+    'saveSessionAgentState<TAgentState>',
+    'this.sessionStateKey(id, suffix)',
+    'return `deepseek.session.${id}.${suffix}`',
+  ]),
+  check('vscode-session-persistence-boundary', SOURCE_PATHS.extension, [
+    'sessionService.saveSessionHistory(activeSessionId, history)',
+    'const state = sessionService.loadSessionState(id)',
+    'stripSessionContextPrefix(nonBridgeChatHistory).slice(-40)',
+  ], ['deepseek.session.']),
   check('vscode-cancel-surface-port', SOURCE_PATHS.viewProvider, [
     'cancelActiveRun: (data?: Record<string, unknown>) => void',
     "this.deps.cancelActiveRun({ reason: 'user-cancelled'",
