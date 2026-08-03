@@ -8,16 +8,17 @@
 - schema: `devseek.legacy-doc-inventory/v1`
 - scope: `top-agent-convergence`
 - asserts Gate 0 pass: `false`
-- inventory sha256: `2327cd8aa27ae51114b2d0fd7471134591ff71e1776b807bc271b999f1494fe8`
+- inventory sha256: `47a88d473446702cf9e1483ac880b3e11adc6ab48dfd5277d38595340556b13c`
 - active selector: `docs/process/devseek-active-baseline-selector.json`
 - active selector sha256: `869219726bd2b5e23a4b03ec7d9b6ea58fb02efb4903ca6672de2bbac7cb0332`
-- governed markdown documents: `53`
+- governed markdown documents: `47`
 - active baselines excluded from legacy inventory: `3`
-- inventory entries: `50/50`
+- inventory entries: `44/44`
 - missing coverage: `0`
 - unexpected coverage: `0`
 - unresolved decisions: `0`
 - supporting markdown refs with reverse coverage: `6`
+- archived numbered documents duplicated at handoff root: `0`
 
 ## Active Baselines
 
@@ -31,7 +32,7 @@
 
 | Decision | Count |
 | --- | ---: |
-| keep | 44 |
+| keep | 38 |
 | revise | 0 |
 | supersede | 2 |
 | archive | 0 |
@@ -80,16 +81,10 @@
 | `docs/top-agent-convergence-audit-20260711/07-原需求与架构设计正确性审计.md` | handoff | keep | legacy-audit-report | - | Retained as historical correctness audit evidence. |
 | `docs/top-agent-convergence-audit-20260711/08-决策结论与最短收敛实施方案.md` | handoff | keep | legacy-audit-report | - | Retained as convergence decision evidence; current atomic work still comes from 14. |
 | `docs/top-agent-convergence-audit-20260711/09-文档自闭环反证审计报告.md` | handoff | keep | legacy-audit-report | - | Retained as self-loop falsification evidence for document governance. |
-| `docs/top-agent-convergence-audit-20260711/10-G0-A机器能力账本实施与迭代计划.md` | handoff | keep | legacy-audit-report | - | Retained as historical implementation report; machine status must come from docs/process. |
-| `docs/top-agent-convergence-audit-20260711/11-G0-B签名资格协议实施报告.md` | handoff | keep | legacy-audit-report | - | Retained as historical implementation report; machine status must come from docs/process. |
-| `docs/top-agent-convergence-audit-20260711/12-G0-D统一运行证据账本实施报告.md` | handoff | keep | legacy-audit-report | - | Retained as historical implementation report; machine status must come from docs/process. |
-| `docs/top-agent-convergence-audit-20260711/13-G0-C资格证据清单与独立聚合协议实施报告.md` | handoff | keep | legacy-audit-report | - | Retained as historical implementation report; machine status must come from docs/process. |
 | `docs/top-agent-convergence-audit-20260711/15-新窗口与跨模型接管手册.md` | handoff | keep | supporting-ref | PROCESS-14-GPT55-BACKLOG-BASELINE | G0-01 selector marks this as supporting PROCESS-14 handoff procedure, not a second backlog. |
 | `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` | handoff | keep | supporting-ref | PROCESS-14-GPT55-BACKLOG-BASELINE | G0-01 selector marks this as supporting PROCESS-14 engineering rules, not a task issuer. |
-| `docs/top-agent-convergence-audit-20260711/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md` | handoff | keep | handoff-entry | - | Retained as historical integration report; dynamic identity must be recalculated, not inherited. |
 | `docs/top-agent-convergence-audit-20260711/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md` | handoff | keep | supporting-ref | ARCH-01-TOP-AGENT-ARCHITECTURE-BASELINE | G0-01 selector marks this as supporting ARCH-01 no-resurrection routing. |
 | `docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md` | handoff | keep | handoff-entry | - | Retained as derived startup instruction; 15 and 14 keep authority for handoff and task issuance. |
-| `docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md` | handoff | keep | handoff-entry | - | Retained as R3 closure and R4 seed handoff; machine status remains source-bound in docs/process and it does not assert qualification. |
 | `docs/top-agent-convergence-audit-20260711/README.md` | handoff | keep | supporting-ref | REQ-02-TOP-AGENT-REQUIREMENT-BASELINE | G0-01 selector marks this as supporting REQ-02 audit entry and applicability boundary. |
 
 This generated view is informational only. The machine source is `docs/process/devseek-legacy-doc-inventory.json`.

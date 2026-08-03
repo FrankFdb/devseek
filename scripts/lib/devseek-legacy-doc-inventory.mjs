@@ -36,6 +36,7 @@ const RELATIVE_JSON_PATH = /^(?!\/)(?!.*(?:^|\/)\.\.(?:\/|$)).+\.json$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const IGNORED_DIRECTORIES = new Set(['node_modules', 'backups', 'dist', 'media', 'archive']);
 const IGNORED_FILE_SUFFIXES = ['.vsix', '.tgz'];
+const NUMBERED_HANDOFF_DOCUMENT = /^\d{2}-.+\.md$/u;
 
 export function legacyDocInventoryHash(inventory) {
   const copy = structuredClone(inventory);
@@ -60,6 +61,10 @@ export function validateLegacyDocInventory(inventory, repoRoot = process.cwd()) 
 
   const selectorContext = loadSelectorContext(inventory, repoRoot, errors);
   const governedMarkdownPaths = collectGovernedMarkdownPaths(repoRoot);
+  const archivedRootDuplicates = collectArchivedRootDuplicates(repoRoot);
+  for (const duplicatePath of archivedRootDuplicates) {
+    errors.push(`archive:root-duplicate-${duplicatePath}`);
+  }
   const activePathSet = new Set(selectorContext.activePaths);
   const expectedInventoryPaths = governedMarkdownPaths.filter(docPath => !activePathSet.has(docPath));
   const expectedPathSet = new Set(expectedInventoryPaths);
@@ -154,6 +159,7 @@ export function validateLegacyDocInventory(inventory, repoRoot = process.cwd()) 
       decision_counts: decisionCounts,
       active_baselines: selectorContext.activeBaselines,
       supporting_markdown_ref_count: selectorContext.supportingMarkdownRefs.length,
+      archived_root_duplicate_count: archivedRootDuplicates.length,
     },
   };
 }
@@ -194,6 +200,7 @@ export function renderLegacyDocInventoryMarkdown(inventory, repoRoot = process.c
     `- unexpected coverage: \`${summary.unexpected_coverage_count}\``,
     `- unresolved decisions: \`${summary.unresolved_count}\``,
     `- supporting markdown refs with reverse coverage: \`${summary.supporting_markdown_ref_count}\``,
+    `- archived numbered documents duplicated at handoff root: \`${summary.archived_root_duplicate_count}\``,
     '',
     '## Active Baselines',
     '',
@@ -216,6 +223,22 @@ export function renderLegacyDocInventoryMarkdown(inventory, repoRoot = process.c
     'This generated view is informational only. The machine source is `docs/process/devseek-legacy-doc-inventory.json`.',
     '',
   ].join('\n');
+}
+
+export function collectArchivedRootDuplicates(repoRoot = process.cwd()) {
+  const handoffRoot = path.resolve(repoRoot, 'docs/top-agent-convergence-audit-20260711');
+  const archiveRoot = path.join(handoffRoot, 'archive');
+  if (!fs.existsSync(handoffRoot) || !fs.existsSync(archiveRoot)) return [];
+
+  const rootNames = new Set(fs.readdirSync(handoffRoot, { withFileTypes: true })
+    .filter(entry => entry.isFile() && NUMBERED_HANDOFF_DOCUMENT.test(entry.name))
+    .map(entry => entry.name));
+  return fs.readdirSync(archiveRoot, { withFileTypes: true })
+    .filter(entry => entry.isFile()
+      && NUMBERED_HANDOFF_DOCUMENT.test(entry.name)
+      && rootNames.has(entry.name))
+    .map(entry => normalizeRelativePath(path.relative(repoRoot, path.join(handoffRoot, entry.name))))
+    .sort((left, right) => left.localeCompare(right, 'en'));
 }
 
 export function collectGovernedMarkdownPaths(repoRoot = process.cwd()) {

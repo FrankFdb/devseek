@@ -323,34 +323,6 @@
       "rationale": "Retained as self-loop falsification evidence for document governance."
     },
     {
-      "path": "docs/top-agent-convergence-audit-20260711/10-G0-A机器能力账本实施与迭代计划.md",
-      "source_group": "handoff",
-      "decision": "keep",
-      "relationship": "legacy-audit-report",
-      "rationale": "Retained as historical implementation report; machine status must come from docs/process."
-    },
-    {
-      "path": "docs/top-agent-convergence-audit-20260711/11-G0-B签名资格协议实施报告.md",
-      "source_group": "handoff",
-      "decision": "keep",
-      "relationship": "legacy-audit-report",
-      "rationale": "Retained as historical implementation report; machine status must come from docs/process."
-    },
-    {
-      "path": "docs/top-agent-convergence-audit-20260711/12-G0-D统一运行证据账本实施报告.md",
-      "source_group": "handoff",
-      "decision": "keep",
-      "relationship": "legacy-audit-report",
-      "rationale": "Retained as historical implementation report; machine status must come from docs/process."
-    },
-    {
-      "path": "docs/top-agent-convergence-audit-20260711/13-G0-C资格证据清单与独立聚合协议实施报告.md",
-      "source_group": "handoff",
-      "decision": "keep",
-      "relationship": "legacy-audit-report",
-      "rationale": "Retained as historical implementation report; machine status must come from docs/process."
-    },
-    {
       "path": "docs/top-agent-convergence-audit-20260711/15-新窗口与跨模型接管手册.md",
       "source_group": "handoff",
       "decision": "keep",
@@ -371,13 +343,6 @@
       "rationale": "G0-01 selector marks this as supporting PROCESS-14 engineering rules, not a task issuer."
     },
     {
-      "path": "docs/top-agent-convergence-audit-20260711/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md",
-      "source_group": "handoff",
-      "decision": "keep",
-      "relationship": "handoff-entry",
-      "rationale": "Retained as historical integration report; dynamic identity must be recalculated, not inherited."
-    },
-    {
       "path": "docs/top-agent-convergence-audit-20260711/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md",
       "source_group": "handoff",
       "decision": "keep",
@@ -395,13 +360,6 @@
       "rationale": "Retained as derived startup instruction; 15 and 14 keep authority for handoff and task issuance."
     },
     {
-      "path": "docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md",
-      "source_group": "handoff",
-      "decision": "keep",
-      "relationship": "handoff-entry",
-      "rationale": "Retained as R3 closure and R4 seed handoff; machine status remains source-bound in docs/process and it does not assert qualification."
-    },
-    {
       "path": "docs/top-agent-convergence-audit-20260711/README.md",
       "source_group": "handoff",
       "decision": "keep",
@@ -412,5 +370,5 @@
       "rationale": "G0-01 selector marks this as supporting REQ-02 audit entry and applicability boundary."
     }
   ],
-  "inventory_sha256": "2327cd8aa27ae51114b2d0fd7471134591ff71e1776b807bc271b999f1494fe8"
+  "inventory_sha256": "47a88d473446702cf9e1483ac880b3e11adc6ab48dfd5277d38595340556b13c"
 }

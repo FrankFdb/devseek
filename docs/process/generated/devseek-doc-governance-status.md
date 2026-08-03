@@ -6,10 +6,10 @@
 
 - generator: `devseek-doc-governance/v1`
 - active selector sha256: `869219726bd2b5e23a4b03ec7d9b6ea58fb02efb4903ca6672de2bbac7cb0332`
-- legacy inventory sha256: `2327cd8aa27ae51114b2d0fd7471134591ff71e1776b807bc271b999f1494fe8`
-- governed documents: `53`
+- legacy inventory sha256: `47a88d473446702cf9e1483ac880b3e11adc6ab48dfd5277d38595340556b13c`
+- governed documents: `47`
 - active baselines: `3`
-- legacy documents: `50`
+- legacy documents: `44`
 - asserts Gate 0 pass: `false`
 
 ## Active Baselines
@@ -25,7 +25,7 @@
 | Decision | Count |
 | --- | ---: |
 | active | 3 |
-| keep | 44 |
+| keep | 38 |
 | revise | 0 |
 | supersede | 2 |
 | archive | 0 |
@@ -74,14 +74,8 @@
 | `docs/top-agent-convergence-audit-20260711/07-原需求与架构设计正确性审计.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/08-决策结论与最短收敛实施方案.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/09-文档自闭环反证审计报告.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/10-G0-A机器能力账本实施与迭代计划.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/11-G0-B签名资格协议实施报告.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/12-G0-D统一运行证据账本实施报告.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/13-G0-C资格证据清单与独立聚合协议实施报告.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/15-新窗口与跨模型接管手册.md` | handoff | historical | keep | supporting-ref | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` | handoff | historical | keep | supporting-ref | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md` | handoff | historical | keep | handoff-entry | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md` | handoff | historical | keep | supporting-ref | `docs/architecture/01-顶级编程智能体总体架构设计.md` |
 | `docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md` | handoff | historical | keep | handoff-entry | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md` | handoff | historical | keep | handoff-entry | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/README.md` | handoff | historical | keep | supporting-ref | `docs/requirements/02-顶级编程智能体需求基线.md` |

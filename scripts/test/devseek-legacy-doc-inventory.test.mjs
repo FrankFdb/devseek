@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -7,6 +8,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { readJson } from '../lib/devseek-active-baseline-selector.mjs';
 import {
+  collectArchivedRootDuplicates,
   collectGovernedMarkdownPaths,
   legacyDocInventoryHash,
   renderLegacyDocInventoryMarkdown,
@@ -22,14 +24,29 @@ const baseInventory = readJson(inventoryPath);
 test('legacy document inventory covers every governed non-active document once', () => {
   const result = validateLegacyDocInventory(baseInventory, repoRoot);
   assert.deepEqual(result.errors, []);
-  assert.equal(result.summary.governed_document_count, 53);
+  assert.equal(result.summary.governed_document_count, 47);
   assert.equal(result.summary.active_baseline_count, 3);
-  assert.equal(result.summary.expected_inventory_count, 50);
-  assert.equal(result.summary.inventoried_document_count, 50);
+  assert.equal(result.summary.expected_inventory_count, 44);
+  assert.equal(result.summary.inventoried_document_count, 44);
   assert.equal(result.summary.missing_coverage_count, 0);
   assert.equal(result.summary.unexpected_coverage_count, 0);
   assert.equal(result.summary.unresolved_count, 0);
+  assert.equal(result.summary.archived_root_duplicate_count, 0);
   assert.equal(baseInventory.inventory_sha256, legacyDocInventoryHash(baseInventory));
+});
+
+test('archived numbered handoff documents cannot keep a root redirect copy', t => {
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'devseek-archive-owner-'));
+  t.after(() => fs.rmSync(fixtureRoot, { recursive: true, force: true }));
+  const handoffRoot = path.join(fixtureRoot, 'docs/top-agent-convergence-audit-20260711');
+  const archiveRoot = path.join(handoffRoot, 'archive');
+  fs.mkdirSync(archiveRoot, { recursive: true });
+  fs.writeFileSync(path.join(handoffRoot, '20-finished.md'), 'redirect\n');
+  fs.writeFileSync(path.join(archiveRoot, '20-finished.md'), 'complete\n');
+
+  assert.deepEqual(collectArchivedRootDuplicates(fixtureRoot), [
+    'docs/top-agent-convergence-audit-20260711/20-finished.md',
+  ]);
 });
 
 test('legacy document inventory schema and generated view are source-bound', () => {

@@ -39,7 +39,7 @@
 ## Source Bindings
 
 - `R4-RELEASE-CANDIDATE-MANIFEST`: `docs/process/devseek-r4-release-candidate-manifest.json` -> `eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66`
-- `R4-DOC-PROCESS-IDENTITY-RECONCILIATION`: `docs/process/devseek-r4-doc-process-identity-reconciliation.json` -> `035e3af82e22c9d671efdf373257afcbe7c290c34907d72b8c06e1247871eae2`
+- `R4-DOC-PROCESS-IDENTITY-RECONCILIATION`: `docs/process/devseek-r4-doc-process-identity-reconciliation.json` -> `ffd8b5275257a82bc53db2c3d7ee9ae6d1b53c951fc8236e5bc171275f0a1556`
 - `R4-LIVE-QUALIFICATION-REQUEST-PACKET`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `2b7bc6e3aecb20f7b2303c9a13a5d19eb1d943e28f55cf4aef52e9c30492dfc6`
 - `R4-LIVE-USER-WAY-HOLDOUT-MATRIX`: `docs/process/devseek-r4-live-user-way-holdout-matrix.json` -> `000a82523ebeb1047518c7ca32f232d1416cfccf8ec6418599428b642ed783cf`
 - `R4-REAL-PROVIDER-FAILURE-TAXONOMY`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `459dc5765664166f33d2c59f051b6da980e84be3edddd5052b6c95555b522f23`
@@ -52,4 +52,4 @@
 
 ## Aggregate Identity
 
-- Aggregate SHA-256: `9a784bc6345f6b2581b81696d2fc0edc5e0ef05d683de4e3d6b5de02671b722d`
+- Aggregate SHA-256: `a0dd760f52bedb90948742435b426cf46dc88ae8a6c5c36f73b3c27fa954c0d6`

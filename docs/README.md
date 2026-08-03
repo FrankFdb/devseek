@@ -27,7 +27,7 @@
 | [top-agent-convergence-audit-20260711/04-分能力专项迭代与收敛路线图.md](top-agent-convergence-audit-20260711/04-分能力专项迭代与收敛路线图.md) | 能力路线 | C0 地基、C1～C13 实现域、C14 综合资格的原子晋级、指标和收敛波次 |
 | [top-agent-convergence-audit-20260711/05-黄金用户旅程与正式项目资格方案.md](top-agent-convergence-audit-20260711/05-黄金用户旅程与正式项目资格方案.md) | 测试资格 | DeepSeek Web 测试审计、黄金旅程、live 配额和 holdout |
 | [top-agent-convergence-audit-20260711/07-原需求与架构设计正确性审计.md](top-agent-convergence-audit-20260711/07-原需求与架构设计正确性审计.md) | 旧文档裁决 | 原设计正确、错误、过期和应撤销项的逐文件矩阵 |
-| [process/devseek-gate0-decision-report.json](process/devseek-gate0-decision-report.json) 与 [top-agent-convergence-audit-20260711/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md](top-agent-convergence-audit-20260711/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md) | 当前机器裁决与最近集成快照 | 新窗口仍须按 15 从 Git、process 报告、最新 Phase、artifact/install/active runtime 复算；`npm run verify:phase0-12` 的 deterministic PASS 或 3/2/1 observation 均不等于产品资格 |
+| [process/devseek-gate0-decision-report.json](process/devseek-gate0-decision-report.json) 与 [top-agent-convergence-audit-20260711/archive/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md](top-agent-convergence-audit-20260711/archive/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md) | 当前机器裁决与最近集成快照 | 新窗口仍须按 15 从 Git、process 报告、最新 Phase、artifact/install/active runtime 复算；`npm run verify:phase0-12` 的 deterministic PASS 或 3/2/1 observation 均不等于产品资格 |
 | [process/TOP_AGENT_CHANGE_GATE.md](process/TOP_AGENT_CHANGE_GATE.md) | 工程过程 | 每次变更前后的检查清单、DoD、最近变更记录 |
 | [release/CHANGELOG.md](release/CHANGELOG.md) | 发布 | 版本和未发布变更记录 |
 

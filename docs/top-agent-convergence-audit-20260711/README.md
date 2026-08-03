@@ -26,8 +26,8 @@ devseek_governance:
 
 - generator: `devseek-doc-governance/v1`
 - active selector: `docs/process/devseek-active-baseline-selector.json` sha256=`869219726bd2b5e23a4b03ec7d9b6ea58fb02efb4903ca6672de2bbac7cb0332`
-- legacy inventory: `docs/process/devseek-legacy-doc-inventory.json` sha256=`2327cd8aa27ae51114b2d0fd7471134591ff71e1776b807bc271b999f1494fe8`
-- governed documents: `53`; active baselines: `3`; legacy/reference: `50`
+- legacy inventory: `docs/process/devseek-legacy-doc-inventory.json` sha256=`47a88d473446702cf9e1483ac880b3e11adc6ab48dfd5277d38595340556b13c`
+- governed documents: `47`; active baselines: `3`; legacy/reference: `44`
 - status view: `docs/process/generated/devseek-doc-governance-status.md`
 - Gate 0 / claims effect: `NONE`; this generated status does not assert qualification.
 <!-- DEVSEEK-GOVERNANCE-STATUS:END -->
@@ -179,9 +179,9 @@ devseek_governance:
 - 17 Gate 0 本地纵切集成和接管报告
 - 20 R3 收尾与 R4 启动交接回执
 
-原路径保留受治理跳转页，防止历史链接失效。第 20 号文档的 R4 release manifest、rollup 和 compact index 机器绑定已同步迁入 `archive/`。
+10～13、17、20 的根目录副本已彻底删除，`archive/` 是这些完成文档的唯一正文位置。第 20 号文档的 R4 release manifest、rollup 和 compact index 机器绑定也已同步迁入 `archive/`。
 
-其余 01～09、14～16、18～19 仍承担当前审计、目标架构、执行基线或后续任务责任；其目标尚未全部落地，因此不因“文档已写完”而归档。10～13、17、20 的原路径只保留受治理跳转页，完整正文已归档。
+其余 01～09、14～16、18～19 仍承担当前审计、目标架构、执行基线或后续任务责任；其目标尚未全部落地，因此不因“文档已写完”而归档。
 
 ## 7. 文档导航
 
@@ -190,7 +190,7 @@ devseek_governance:
 | 事实与反证 | [01](01-DevSeek现状与功能回退根因审计.md)、[07](07-原需求与架构设计正确性审计.md)、[09](09-文档自闭环反证审计报告.md) |
 | 对标与目标架构 | [02](02-Codex-Claude-Code-DevSeek软件架构对比.md)、[03](03-顶级编程智能体目标软件架构.md)、[08](08-决策结论与最短收敛实施方案.md) |
 | 能力、资格与治理 | [04](04-分能力专项迭代与收敛路线图.md)、[05](05-黄金用户旅程与正式项目资格方案.md)、[06](06-能力追踪与文档治理方案.md)、[16](16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md) |
-| 历史 backlog 与接管 | [14](14-未完成事项与后续整体迭代计划.md)、[15](15-新窗口与跨模型接管手册.md)、[18](18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)、[19](19-GPT5.5新窗口启动与授权指令.md)、[20](20-R3收尾与下一阶段任务.md) |
+| 历史 backlog 与接管 | [14](14-未完成事项与后续整体迭代计划.md)、[15](15-新窗口与跨模型接管手册.md)、[18](18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)、[19](19-GPT5.5新窗口启动与授权指令.md) |
 | 已归档实施报告 | [archive/README.md](archive/README.md) |
 
 ## 8. 执行边界

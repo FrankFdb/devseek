@@ -20,6 +20,7 @@ import {
 const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const expected = buildR4DocProcessIdentityReconciliation({ repoRoot });
+const archivedR3HandoffCommit = '2ef99cfbf0ded6d064633cf2f0f96336d9c6a88a';
 
 test('R4 doc process identity reconciliation separates implementation, artifact, handoff, and current identity facts', () => {
   const actual = readJson('docs/process/devseek-r4-doc-process-identity-reconciliation.json');
@@ -34,7 +35,7 @@ test('R4 doc process identity reconciliation separates implementation, artifact,
   });
   assert.equal(actual.source_boundaries.product_implementation_commit, 'a034e5e050c044460fb07705639d9d41e6b193c0');
   assert.equal(actual.source_boundaries.artifact_source_commit, 'a034e5e050c044460fb07705639d9d41e6b193c0');
-  assert.equal(actual.source_boundaries.handoff_doc_commit, '02cb792b4fe86df523c7f88eb106f13394e6f3fd');
+  assert.equal(actual.source_boundaries.handoff_doc_commit, archivedR3HandoffCommit);
   assert.equal(
     actual.identity_artifacts.tracked_current_candidate_identity.artifact_git_commit,
     expected.identity_artifacts.tracked_current_candidate_identity.artifact_git_commit,
@@ -126,7 +127,7 @@ test('checker command validates R4 doc process identity reconciliation and gener
   assert.deepEqual(result.summary, {
     reconciliation_sha256: expected.reconciliation_sha256,
     artifact_source_commit: 'a034e5e050c044460fb07705639d9d41e6b193c0',
-    handoff_doc_commit: '02cb792b4fe86df523c7f88eb106f13394e6f3fd',
+    handoff_doc_commit: archivedR3HandoffCommit,
     release_candidate_manifest_commit: expected.source_boundaries.release_candidate_manifest_commit,
     tracked_current_identity_artifact: expected.identity_artifacts.tracked_current_candidate_identity.artifact_git_commit,
     archived_failed_identity_artifact: '6b09d67',

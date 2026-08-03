@@ -25,11 +25,11 @@
   "source_bindings": {
     "top_agent_followup_plan_14": {
       "path": "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md",
-      "source_sha256": "e4136d792f6c3402ab82b174ed0f8a893bbb2b6613643d1776dd13f44c8a7bb3"
+      "source_sha256": "5aaf1e3eb1c6613e0cda53bdac6f4341ec8930992ec5c244b219a3a114fa0352"
     },
     "top_agent_quality_principles_16": {
       "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
-      "source_sha256": "b49bf753b7d6424627318e3b2fa90296ac76d8d8d0e0da0fd47e5a8cc49f43ba"
+      "source_sha256": "67a2e928b35ad52de97b7f4bc63d15f51e5a36c8f299f620ad495273f171ae58"
     },
     "r3_closeout_next_phase_20": {
       "path": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md",
@@ -58,8 +58,8 @@
     },
     "r4_process_artifacts_aggregate": {
       "path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
-      "source_sha256": "08025ee3658606ebf3276802ddb531bbe5a4f8e49d19674b5dde14a83af18749",
-      "aggregate_sha256": "9a784bc6345f6b2581b81696d2fc0edc5e0ef05d683de4e3d6b5de02671b722d",
+      "source_sha256": "3eba3440e30b750dfe96927edf23cca32d1da3af219e21484fb50afa2776342e",
+      "aggregate_sha256": "a0dd760f52bedb90948742435b426cf46dc88ae8a6c5c36f73b3c27fa954c0d6",
       "artifact_errors": 0
     },
     "post_r4_local_regression_manifest": {
@@ -158,13 +158,13 @@
       "document_id": "legacy-followup-plan-14",
       "path": "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md",
       "role": "historical-unfinished-work-and-followup-plan",
-      "source_sha256": "e4136d792f6c3402ab82b174ed0f8a893bbb2b6613643d1776dd13f44c8a7bb3"
+      "source_sha256": "5aaf1e3eb1c6613e0cda53bdac6f4341ec8930992ec5c244b219a3a114fa0352"
     },
     {
       "document_id": "quality-principles-16",
       "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
       "role": "iteration-principles-quality-standards-and-skills-plan",
-      "source_sha256": "b49bf753b7d6424627318e3b2fa90296ac76d8d8d0e0da0fd47e5a8cc49f43ba"
+      "source_sha256": "67a2e928b35ad52de97b7f4bc63d15f51e5a36c8f299f620ad495273f171ae58"
     },
     {
       "document_id": "r3-handoff-20",
@@ -452,5 +452,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "index_sha256": "6f61374e5f27c23718c864b87f34c61b075fc969590aecbc3cfecb43f301da88"
+  "index_sha256": "6abf7f4f397ffa8bb71baaaca11dcf35a2179f50742c69177ced6fec3d5ad9c2"
 }

@@ -308,7 +308,7 @@ checkpoint 最小字段：`task_id`、mode、branch/HEAD、dirty/staged/untracke
 - 08/09：给出最短路线和反证结果；
 - [14](14-未完成事项与后续整体迭代计划.md)：维护未完成 backlog 和批次依赖；
 - [15](15-新窗口与跨模型接管手册.md)：维护当前动态接管点；
-- [17](17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md)：保存本轮静态集成检查点，不作为滚动状态 owner；
+- [17](archive/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md)：保存本轮静态集成检查点，不作为滚动状态 owner；
 - [18](18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)：裁决旧 requirements/architecture 的保留、废止和 atomic ID 承接；
 - 本文：维护跨批次不变的工程原则、DoD 和 Skills 候选标准。
 

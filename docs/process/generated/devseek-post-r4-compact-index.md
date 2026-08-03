@@ -71,20 +71,20 @@
 
 ## 历史支持文档
 
-- `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` (historical-unfinished-work-and-followup-plan) -> `e4136d792f6c3402ab82b174ed0f8a893bbb2b6613643d1776dd13f44c8a7bb3`
-- `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` (iteration-principles-quality-standards-and-skills-plan) -> `b49bf753b7d6424627318e3b2fa90296ac76d8d8d0e0da0fd47e5a8cc49f43ba`
+- `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` (historical-unfinished-work-and-followup-plan) -> `5aaf1e3eb1c6613e0cda53bdac6f4341ec8930992ec5c244b219a3a114fa0352`
+- `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` (iteration-principles-quality-standards-and-skills-plan) -> `67a2e928b35ad52de97b7f4bc63d15f51e5a36c8f299f620ad495273f171ae58`
 - `docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md` (r3-closeout-and-next-phase-handoff) -> `b6c675eeeddf17482508fa08f1d4a5dc011d41cb72f03d2711a85a049dc936d8`
 
 ## Source Bindings
 
-- `top_agent_followup_plan_14`: `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` -> `e4136d792f6c3402ab82b174ed0f8a893bbb2b6613643d1776dd13f44c8a7bb3`
-- `top_agent_quality_principles_16`: `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` -> `b49bf753b7d6424627318e3b2fa90296ac76d8d8d0e0da0fd47e5a8cc49f43ba`
+- `top_agent_followup_plan_14`: `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` -> `5aaf1e3eb1c6613e0cda53bdac6f4341ec8930992ec5c244b219a3a114fa0352`
+- `top_agent_quality_principles_16`: `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` -> `67a2e928b35ad52de97b7f4bc63d15f51e5a36c8f299f620ad495273f171ae58`
 - `r3_closeout_next_phase_20`: `docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md` -> `b6c675eeeddf17482508fa08f1d4a5dc011d41cb72f03d2711a85a049dc936d8`
 - `post_r4_nonpermission_plan`: `docs/process/devseek-post-r4-nonpermission-iteration-plan.md` -> `51623b1c2267f8d3f6fcb09b800396e5da12ea083dad5c5ed98f331b8b735555`
 - `r4_iteration_status_rollup`: `docs/process/devseek-r4-iteration-status-rollup.json` -> `da7e80aad3701516755218b891a09d5ed2b590fa9e7c009d9019cbfe0b14a697`
 - `r4_authorization_and_permission_guide`: `docs/process/devseek-r4-authorization-and-permission-guide.md` -> `826240c4a2cfcae0c6fb1068ed199b1ffed99d64857fd8053d70e3790f40ada5`
 - `r4_clean_runtime_limited_observation`: `docs/process/devseek-r4-clean-runtime-limited-observation.json` -> `55594ef5b5dee56d4c2c8a32b584ba955b246a2736880d91694e7b03dc36200c`
-- `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `08025ee3658606ebf3276802ddb531bbe5a4f8e49d19674b5dde14a83af18749`
+- `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `3eba3440e30b750dfe96927edf23cca32d1da3af219e21484fb50afa2776342e`
 - `post_r4_local_regression_manifest`: `docs/process/devseek-post-r4-local-regression-manifest.json` -> `c0f6b5d6840d1121ca0420b8e00df6aa2c65747725247dc42c54fe74acd61a41`
 - `post_r4_local_full_regression_checkpoint`: `docs/process/devseek-post-r4-local-full-regression-checkpoint.md` -> `a907249f6f69635b05942ad4061a8e13863cd127d35885a9f248c1fec8aa5509`
 - `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `f277e3364e8e1a386f0c02a97f09d55ac2604f650251e765f58d9b7238d46a39`
@@ -96,4 +96,4 @@
 
 ## Index Identity
 
-- Index SHA-256: `6f61374e5f27c23718c864b87f34c61b075fc969590aecbc3cfecb43f301da88`
+- Index SHA-256: `6abf7f4f397ffa8bb71baaaca11dcf35a2179f50742c69177ced6fec3d5ad9c2`
