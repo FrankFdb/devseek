@@ -197,7 +197,7 @@
     "legacy_execution_owners": 3,
     "semantic_domains": 5,
     "converged_semantic_domains": 0,
-    "source_checks": 32,
+    "source_checks": 34,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -239,8 +239,11 @@
         "productWiring: false",
         "productAdapterCount: 0",
         "export interface CodingConformanceProjectionAdapter<TRouteOutput>",
+        "export type CodingConformanceObservedProjection",
         "export function evaluateCodingConformanceFixture(",
         "Number(CODING_CONFORMANCE_PREPARATION.productAdapterCount) > 0",
+        "'development-route-replay'",
+        "code: 'unexplained-missing-dimension'",
         "'taskContract'",
         "'toolExecutions'",
         "'changeReceipts'",
@@ -271,6 +274,39 @@
       "includes": [
         "export * from './coding-conformance';",
         "export * from './coding-conformance-fixtures';"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "cli-coding-conformance-development-probe",
+      "path": "packages/cli/test/coding-conformance-development-baseline.test.mjs",
+      "includes": [
+        "CLI legacy route probe records observable actions without inventing missing conformance dimensions",
+        "adapterId: 'cli-legacy-coding-loop-development-probe'",
+        "evidenceClass: 'development-route-replay'",
+        "unavailable('taskContract'",
+        "unavailable('changeReceipts'",
+        "unavailable('verifications'",
+        "unavailable('completion'",
+        "evaluation.productRouteEvidenceComplete, false"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-coding-conformance-development-probe",
+      "path": "packages/vscode-extension/test/unit/coding-conformance-development-baseline.test.mjs",
+      "includes": [
+        "VS Code legacy Kernel seam probe records that AgentLoopResult cannot settle conformance dimensions",
+        "adapterId: 'vscode-coding-kernel-execution-development-probe'",
+        "evidenceClass: 'development-route-replay'",
+        "unavailable('taskContract'",
+        "unavailable('toolExecutions'",
+        "unavailable('changeReceipts'",
+        "unavailable('verifications'",
+        "unavailable('completion'",
+        "evaluation.productRouteEvidenceComplete, false"
       ],
       "excludes": [],
       "passed": true
@@ -581,5 +617,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "f168d863c1ca14cc22f7ca40d0debb8ed94c3c2fbfa3a5cc9e8acfd37b9aacfd"
+  "baseline_sha256": "4b73c6af6165fe797631615671bccf6d0848786cce1fefbe67eb734eb8c75aa0"
 }

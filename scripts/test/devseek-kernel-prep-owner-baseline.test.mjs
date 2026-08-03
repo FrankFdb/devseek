@@ -42,7 +42,7 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
     legacy_execution_owners: 3,
     semantic_domains: 5,
     converged_semantic_domains: 0,
-    source_checks: 32,
+    source_checks: 34,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -52,6 +52,15 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
       ['vscode-planned', 'legacy-semantic-owner'],
       ['cli-exec', 'legacy-semantic-owner'],
       ['headless-product', 'absent'],
+    ],
+  );
+  assert.deepEqual(
+    actual.source_checks
+      .filter(assertion => assertion.check_id.endsWith('coding-conformance-development-probe'))
+      .map(assertion => assertion.check_id),
+    [
+      'cli-coding-conformance-development-probe',
+      'vscode-coding-conformance-development-probe',
     ],
   );
   assert.deepEqual(actual.semantic_domains.map(domain => domain.domain_id), [

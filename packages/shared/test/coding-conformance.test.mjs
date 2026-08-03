@@ -134,6 +134,124 @@ test('cross-Surface evaluation fails closed on missing, duplicate, or semantical
   )));
 });
 
+test('development route observations expose partial facts without fabricating missing dimensions', () => {
+  const fixture = findFixture('modify-and-verify');
+  const cliObservation = observation(fixture, 'cli', 'development-route-replay');
+  cliObservation.projection = {
+    schemaVersion: fixture.schemaVersion,
+    fixtureId: fixture.fixtureId,
+    toolExecutions: structuredClone(fixture.expected.toolExecutions),
+  };
+  cliObservation.unavailableDimensions = [
+    unavailable('taskContract'),
+    unavailable('changeReceipts'),
+    unavailable('verifications'),
+    unavailable('completion'),
+  ];
+
+  const evaluation = evaluateCodingConformanceFixture(fixture, [
+    observation(fixture, 'vscode', 'fixture-self-test'),
+    cliObservation,
+    observation(fixture, 'headless', 'fixture-self-test'),
+  ]);
+  const cliResult = evaluation.surfaceResults.find(result => result.surface === 'cli');
+
+  assert.equal(evaluation.contractConformant, false);
+  assert.deepEqual(cliResult.observedDimensions, ['toolExecutions']);
+  assert.deepEqual(cliResult.missingDimensions, [
+    'taskContract',
+    'changeReceipts',
+    'verifications',
+    'completion',
+  ]);
+  assert.equal(cliResult.violations.filter(violation => violation.code === 'missing-dimension').length, 4);
+  assert.equal(cliResult.violations.some(violation => violation.code === 'unexplained-missing-dimension'), false);
+  assert.equal(evaluation.productRouteEvidenceComplete, false);
+  assert.equal(evaluation.qualificationEligible, false);
+});
+
+test('partial observations fail closed on missing, duplicate, or contradictory unavailability receipts', () => {
+  const fixture = findFixture('create-and-verify');
+  const incomplete = observation(fixture, 'cli', 'development-route-replay');
+  incomplete.projection = {
+    schemaVersion: fixture.schemaVersion,
+    fixtureId: fixture.fixtureId,
+  };
+  incomplete.unavailableDimensions = [
+    unavailable('taskContract'),
+    unavailable('toolExecutions'),
+    unavailable('changeReceipts'),
+    unavailable('verifications'),
+  ];
+  const incompleteEvaluation = evaluateCodingConformanceFixture(fixture, [
+    observation(fixture, 'vscode', 'fixture-self-test'),
+    incomplete,
+    observation(fixture, 'headless', 'fixture-self-test'),
+  ]);
+  assert.ok(incompleteEvaluation.violations.some(violation => (
+    violation.surface === 'cli'
+      && violation.dimension === 'completion'
+      && violation.code === 'unexplained-missing-dimension'
+  )));
+
+  const duplicate = observation(fixture, 'cli', 'development-route-replay');
+  duplicate.projection = {
+    schemaVersion: fixture.schemaVersion,
+    fixtureId: fixture.fixtureId,
+  };
+  duplicate.unavailableDimensions = [
+    unavailable('taskContract'),
+    unavailable('toolExecutions'),
+    unavailable('changeReceipts'),
+    unavailable('verifications'),
+    unavailable('completion'),
+    unavailable('completion'),
+  ];
+  const duplicateEvaluation = evaluateCodingConformanceFixture(fixture, [
+    observation(fixture, 'vscode', 'fixture-self-test'),
+    duplicate,
+    observation(fixture, 'headless', 'fixture-self-test'),
+  ]);
+  assert.ok(duplicateEvaluation.violations.some(violation => (
+    violation.surface === 'cli'
+      && violation.dimension === 'completion'
+      && violation.code === 'duplicate-unavailability-receipt'
+  )));
+
+  const contradictory = observation(fixture, 'cli', 'development-route-replay');
+  contradictory.unavailableDimensions = [unavailable('toolExecutions')];
+  const contradictoryEvaluation = evaluateCodingConformanceFixture(fixture, [
+    observation(fixture, 'vscode', 'fixture-self-test'),
+    contradictory,
+    observation(fixture, 'headless', 'fixture-self-test'),
+  ]);
+  assert.ok(contradictoryEvaluation.violations.some(violation => (
+    violation.surface === 'cli'
+      && violation.dimension === 'toolExecutions'
+      && violation.code === 'unavailability-for-observed-dimension'
+  )));
+
+  const invalid = observation(fixture, 'cli', 'development-route-replay');
+  invalid.projection = {
+    schemaVersion: fixture.schemaVersion,
+    fixtureId: fixture.fixtureId,
+  };
+  invalid.unavailableDimensions = [
+    { ...unavailable('taskContract'), reason: 'guess-from-terminal-prose' },
+    { ...unavailable('toolExecutions'), evidenceRefs: [] },
+    unavailable('changeReceipts'),
+    unavailable('verifications'),
+    unavailable('completion'),
+  ];
+  const invalidEvaluation = evaluateCodingConformanceFixture(fixture, [
+    observation(fixture, 'vscode', 'fixture-self-test'),
+    invalid,
+    observation(fixture, 'headless', 'fixture-self-test'),
+  ]);
+  assert.ok(invalidEvaluation.violations.some(violation => violation.code === 'invalid-unavailability-reason'));
+  assert.ok(invalidEvaluation.violations.some(violation => violation.code === 'missing-unavailability-evidence'));
+});
+
 test('self-declared product-route observations cannot bypass the zero-adapter preparation boundary', () => {
   const fixture = findFixture('verify-repair-reverify');
   const evaluation = evaluateCodingConformanceFixture(
@@ -172,5 +290,14 @@ function observation(fixture, surface, evidenceClass) {
     evidenceClass,
     sourceRefs: [`fixture:${fixture.fixtureId}:${surface}`],
     projection: structuredClone(fixture.expected),
+    unavailableDimensions: [],
+  };
+}
+
+function unavailable(dimension) {
+  return {
+    dimension,
+    reason: 'route-output-not-exposed',
+    evidenceRefs: [`route-output:${dimension}:absent`],
   };
 }

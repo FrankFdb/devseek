@@ -17,6 +17,12 @@ export const CODING_CONFORMANCE_DIMENSIONS = Object.freeze([
   'completion',
 ] as const);
 
+export const CODING_CONFORMANCE_UNAVAILABLE_REASONS = Object.freeze([
+  'route-output-not-exposed',
+  'route-evidence-incomplete',
+  'surface-not-implemented',
+] as const);
+
 export type CodingConformanceSurface = typeof CODING_CONFORMANCE_PREPARATION.requiredSurfaces[number];
 export type CodingConformanceDimension = typeof CODING_CONFORMANCE_DIMENSIONS[number];
 export type CodingTaskMode = 'explain' | 'review' | 'change' | 'release';
@@ -26,6 +32,11 @@ export type CodingVerificationStatus = 'passed' | 'failed' | 'blocked' | 'not-ru
 export type CodingAcceptanceStatus = 'passed' | 'failed' | 'blocked' | 'not-applicable';
 export type CodingToolEffect = 'read' | 'process' | 'network' | 'workspace-mutation' | 'git' | 'release';
 export type CodingDeliverableKind = 'source-change' | 'report' | 'verification-result';
+export type CodingConformanceEvidenceClass =
+  | 'fixture-self-test'
+  | 'development-route-replay'
+  | 'product-route';
+export type CodingConformanceUnavailableReason = typeof CODING_CONFORMANCE_UNAVAILABLE_REASONS[number];
 export type CodingBenchmarkBehavior =
   | 'context-scoped-contract'
   | 'structured-tool-feedback'
@@ -106,6 +117,10 @@ export interface CodingConformanceProjection {
   readonly completion: CodingCompletionProjection;
 }
 
+export type CodingConformanceObservedProjection =
+  Pick<CodingConformanceProjection, 'schemaVersion' | 'fixtureId'>
+  & Partial<Pick<CodingConformanceProjection, CodingConformanceDimension>>;
+
 export interface CodingConformanceFixture {
   readonly schemaVersion: typeof CODING_CONFORMANCE_SCHEMA_VERSION;
   readonly fixtureId: string;
@@ -123,14 +138,21 @@ export interface CodingConformanceFixture {
 export interface CodingConformanceObservation {
   readonly surface: CodingConformanceSurface;
   readonly adapterId: string;
-  readonly evidenceClass: 'fixture-self-test' | 'product-route';
+  readonly evidenceClass: CodingConformanceEvidenceClass;
   readonly sourceRefs: readonly string[];
-  readonly projection: CodingConformanceProjection;
+  readonly projection: CodingConformanceObservedProjection;
+  readonly unavailableDimensions: readonly {
+    readonly dimension: CodingConformanceDimension;
+    readonly reason: CodingConformanceUnavailableReason;
+    readonly evidenceRefs: readonly string[];
+  }[];
 }
 
 /**
  * A Surface adapter may only project facts already settled by the route it observes.
  * It must not infer missing receipts, execute effects, or construct a terminal decision.
+ * Dimensions absent from settled route output stay absent and require an explicit
+ * unavailability receipt on the returned observation.
  */
 export interface CodingConformanceProjectionAdapter<TRouteOutput> {
   readonly surface: CodingConformanceSurface;
@@ -151,6 +173,8 @@ export interface CodingConformanceSurfaceResult {
   readonly surface: CodingConformanceSurface;
   readonly contractConformant: boolean;
   readonly evidenceClass: CodingConformanceObservation['evidenceClass'] | 'missing';
+  readonly observedDimensions: readonly CodingConformanceDimension[];
+  readonly missingDimensions: readonly CodingConformanceDimension[];
   readonly violations: readonly CodingConformanceViolation[];
 }
 
@@ -167,11 +191,15 @@ export interface CodingConformanceEvaluation {
 
 export function compareCodingConformanceProjection(
   expected: CodingConformanceProjection,
-  actual: CodingConformanceProjection,
+  actual: CodingConformanceObservedProjection,
   surface?: CodingConformanceSurface,
 ): CodingConformanceViolation[] {
-  const violations = validateProjection(actual, surface);
+  const violations = isCompleteProjection(actual) ? validateProjection(actual, surface) : [];
   for (const dimension of CODING_CONFORMANCE_DIMENSIONS) {
+    if (actual[dimension] === undefined) {
+      violations.push({ surface, dimension, code: 'missing-dimension' });
+      continue;
+    }
     if (canonicalJson(expected[dimension]) !== canonicalJson(actual[dimension])) {
       violations.push({ surface, dimension, code: 'semantic-mismatch' });
     }
@@ -213,11 +241,18 @@ export function evaluateCodingConformanceFixture(
         surface,
         contractConformant: false,
         evidenceClass: 'missing' as const,
+        observedDimensions: [],
+        missingDimensions: CODING_CONFORMANCE_DIMENSIONS,
         violations: [missing],
       };
     }
 
     const surfaceViolations = compareCodingConformanceProjection(fixture.expected, observation.projection, surface);
+    const observedDimensions = observedProjectionDimensions(observation.projection);
+    const missingDimensions = CODING_CONFORMANCE_DIMENSIONS.filter(
+      dimension => !observedDimensions.includes(dimension),
+    );
+    surfaceViolations.push(...validateUnavailableDimensions(observation, missingDimensions));
     if (!nonEmpty(observation.adapterId)) {
       surfaceViolations.push({ surface, dimension: 'observation', code: 'missing-adapter-id' });
     }
@@ -229,6 +264,8 @@ export function evaluateCodingConformanceFixture(
       surface,
       contractConformant: surfaceViolations.length === 0,
       evidenceClass: observation.evidenceClass,
+      observedDimensions,
+      missingDimensions,
       violations: surfaceViolations,
     };
   });
@@ -269,6 +306,52 @@ function validateFixture(fixture: CodingConformanceFixture): CodingConformanceVi
     violations.push({ dimension: 'fixture', code: 'missing-benchmark-basis' });
   }
   violations.push(...validateProjection(fixture.expected));
+  return uniqueViolations(violations);
+}
+
+function validateUnavailableDimensions(
+  observation: CodingConformanceObservation,
+  missingDimensions: readonly CodingConformanceDimension[],
+): CodingConformanceViolation[] {
+  const violations: CodingConformanceViolation[] = [];
+  const unavailableByDimension = new Map<CodingConformanceDimension, number>();
+
+  for (const unavailable of observation.unavailableDimensions ?? []) {
+    unavailableByDimension.set(
+      unavailable.dimension,
+      (unavailableByDimension.get(unavailable.dimension) ?? 0) + 1,
+    );
+    if (!missingDimensions.includes(unavailable.dimension)) {
+      violations.push({
+        surface: observation.surface,
+        dimension: unavailable.dimension,
+        code: 'unavailability-for-observed-dimension',
+      });
+    }
+    if (!hasNonEmptyStrings(unavailable.evidenceRefs)) {
+      violations.push({
+        surface: observation.surface,
+        dimension: unavailable.dimension,
+        code: 'missing-unavailability-evidence',
+      });
+    }
+    if (!CODING_CONFORMANCE_UNAVAILABLE_REASONS.includes(unavailable.reason)) {
+      violations.push({
+        surface: observation.surface,
+        dimension: unavailable.dimension,
+        code: 'invalid-unavailability-reason',
+      });
+    }
+  }
+
+  for (const dimension of missingDimensions) {
+    const receiptCount = unavailableByDimension.get(dimension) ?? 0;
+    if (receiptCount === 0) {
+      violations.push({ surface: observation.surface, dimension, code: 'unexplained-missing-dimension' });
+    } else if (receiptCount > 1) {
+      violations.push({ surface: observation.surface, dimension, code: 'duplicate-unavailability-receipt' });
+    }
+  }
   return uniqueViolations(violations);
 }
 
@@ -354,6 +437,18 @@ function validateProjection(
 
 function strictlyIncreasing(values: readonly number[]): boolean {
   return values.every((value, index) => Number.isInteger(value) && value > 0 && (index === 0 || value > values[index - 1]));
+}
+
+function isCompleteProjection(
+  projection: CodingConformanceObservedProjection,
+): projection is CodingConformanceProjection {
+  return CODING_CONFORMANCE_DIMENSIONS.every(dimension => projection[dimension] !== undefined);
+}
+
+function observedProjectionDimensions(
+  projection: CodingConformanceObservedProjection,
+): CodingConformanceDimension[] {
+  return CODING_CONFORMANCE_DIMENSIONS.filter(dimension => projection[dimension] !== undefined);
 }
 
 function sameStringSet(left: readonly string[], right: readonly string[]): boolean {

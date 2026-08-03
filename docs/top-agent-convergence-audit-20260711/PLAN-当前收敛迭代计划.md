@@ -52,7 +52,7 @@ devseek_governance:
 | C0 本地实现与机器裁决前置 | `completed` | 7/7 implementation requirements satisfied，repository blockers=0，local conformance=`PASSED` |
 | Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；完整 extension 测试、架构守卫和精确 VSIX T3 Surface 仿真通过 |
 | Surface 入口盘点 | `completed` | 87/87 入口受 inventory 覆盖，未知入口与未声明 legacy owner 可达性均为 0 |
-| Kernel 切换前 owner baseline | `completed` | 3 条活跃产品路由均仍由 legacy semantic owner 执行；5 个核心语义域收敛数为 0；Headless 产品入口为 0；32/32 源码与默认门禁断言受保护；跨 Surface conformance 契约和 5 个 development fixture 已准备但产品 adapter 数仍为 0 |
+| Kernel 切换前 owner baseline | `completed` | 3 条活跃产品路由均仍由 legacy semantic owner 执行；5 个核心语义域收敛数为 0；Headless 产品入口为 0；34/34 源码与默认门禁断言受保护；跨 Surface conformance 契约、5 个 development fixture 和 CLI/VS Code route-output probe 已准备，但产品 adapter 数仍为 0 |
 | R4 非资格本地工作 | `in_progress` | 6 个 leaf 中 5 个完成，1 个 clean-runtime leaf 受当前窗口/授权边界阻塞 |
 | 能力账本 | `in_progress` | 76 项能力：C0 的 7 项为 `wired`，C1～C14 共 69 项为 `proposed`，qualification claims=0 |
 | Gate 0 / 后续资格 | `blocked_external` | Gate 0=`NOT_PASSED`，6 个外部 authority blocker，exact claims=0；本地工作不得自行提升资格 |
@@ -66,12 +66,13 @@ devseek_governance:
 | ---: | --- | --- | --- | --- |
 | 1 | `QUALITY-TS-01` | `completed` | 无 | VS Code extension `tsc --noEmit` 零错误；每个错误在正确语义 owner 修复；同类路径有回归测试 |
 | 2 | `KERNEL-PREP-01` | `completed` | `QUALITY-TS-01` | 在不切换产品路径的前提下，按职责抽取 CLI/VS Code legacy owner，固定端口与 conformance 基线；不得新增业务内核或终态 owner |
-| 3 | `QUAL-EXT-01` | `blocked_external` | 独立授权、受保护身份/设施、holdout 和不可变保留 | 6 个外部 blocker 由授权主体关闭，7 个 C0 exact tuple claims 可复算，机器 decision 自主达到 `PASS` |
-| 4 | `KERNEL-02` | `blocked_external` | `KERNEL-PREP-01`、Gate 0=`PASS` | VS Code、CLI、Headless 共用唯一 Coding Kernel、TaskContract、ToolExecutor、mutation/verification/completion 语义；legacy loop 不再拥有业务决策 |
-| 5 | `SURFACE-CONTRACT-01` | `pending` | `KERNEL-02` | 同一任务在 VS Code、CLI、Headless 产生等价的状态、工具、验证和完成结果；静态守卫防止新旁路 |
-| 6 | `CAP-C1-C14-WIRING` | `pending` | `SURFACE-CONTRACT-01` | 按 capability DAG 将 C1～C14 的 69 项能力从 `proposed` 逐项提升到可证的 `implemented/wired`；每项均有 owner、产品入口、失败恢复和机器证据 |
-| 7 | `USER-SIM-01` | `pending` | 每个产品切片 | 以用户方式覆盖安装包、真实入口、多轮任务、失败恢复和结果核验；仿真与正式资格证据严格分离 |
-| 8 | `TOP-AGENT-ACCEPTANCE-01` | `pending` | `CAP-C1-C14-WIRING`、`USER-SIM-01` | 按 01～09 的需求与黄金旅程，对照 Codex 和 Claude Code 在同类问题上的可观察行为；所有适用产品能力、长任务、故障恢复、结果验证和跨 Surface 验收通过 |
+| 3 | `KERNEL-BASELINE-02` | `completed` | `KERNEL-PREP-01` | development route adapter 只投影 settled output；CLI/VS Code 当前缺失维度可机器复现，Headless 缺失显式失败；不得补造产品或资格证据 |
+| 4 | `QUAL-EXT-01` | `blocked_external` | 独立授权、受保护身份/设施、holdout 和不可变保留 | 6 个外部 blocker 由授权主体关闭，7 个 C0 exact tuple claims 可复算，机器 decision 自主达到 `PASS` |
+| 5 | `KERNEL-02` | `blocked_external` | `KERNEL-PREP-01`、`KERNEL-BASELINE-02`、Gate 0=`PASS` | VS Code、CLI、Headless 共用唯一 Coding Kernel、TaskContract、ToolExecutor、mutation/verification/completion 语义；legacy loop 不再拥有业务决策 |
+| 6 | `SURFACE-CONTRACT-01` | `pending` | `KERNEL-02` | 同一任务在 VS Code、CLI、Headless 产生等价的状态、工具、验证和完成结果；静态守卫防止新旁路 |
+| 7 | `CAP-C1-C14-WIRING` | `pending` | `SURFACE-CONTRACT-01` | 按 capability DAG 将 C1～C14 的 69 项能力从 `proposed` 逐项提升到可证的 `implemented/wired`；每项均有 owner、产品入口、失败恢复和机器证据 |
+| 8 | `USER-SIM-01` | `pending` | 每个产品切片 | 以用户方式覆盖安装包、真实入口、多轮任务、失败恢复和结果核验；仿真与正式资格证据严格分离 |
+| 9 | `TOP-AGENT-ACCEPTANCE-01` | `pending` | `CAP-C1-C14-WIRING`、`USER-SIM-01` | 按 01～09 的需求与黄金旅程，对照 Codex 和 Claude Code 在同类问题上的可观察行为；所有适用产品能力、长任务、故障恢复、结果验证和跨 Surface 验收通过 |
 
 ## 伴随治理结果
 
@@ -81,13 +82,13 @@ devseek_governance:
 
 ## 当前作业卡
 
-`KERNEL-PREP-01`
+`KERNEL-BASELINE-02`
 
-- 范围：在 Gate 0 外部资格闭合前，完成不改变产品路由的责任盘点、内聚模块抽取、端口定义和 conformance 基线准备。
-- 已完成：CLI workspace context selection、artifact interpretation、workspace mutation、verification、run evidence 和 legacy coding coordination 已各有单一 owner；VS Code 请求取消、Kernel 绑定、AbortSignal 与 steer 隔离由 `ActiveChatRunCoordinator` 统一负责；会话持久化由 `SessionService` 统一负责；会话续接的文件恢复、上下文注入和新会话隔离由 `SessionContinuationProjector` 及其纯领域投影统一裁决；当前运行的变更路径由 `RunChangedPathRecorder` 投影和记录，Agent、chat 与 local execution 结算不再继承上一轮证据；敏感凭据窃取请求由 safety intent 判定，只有拒绝、合规替代、无变更和完成信号全部闭合时才进入可交付的 policy-refusal 终态；共享 conformance contract 已固定 TaskContract、工具执行、变更回执、验证和完成判定五个比较维度，5 个 development fixture 覆盖创建、修改、验证修复、权限拒绝和安全拒绝。上述职责均有显式依赖、直接行为测试及防旁路静态守卫，产品路由保持不变，product adapter 数为 0，fixture 不能产生产品或资格结论。
-- 下一任务：暂停本地迭代并等待 `QUAL-EXT-01` 的外部授权与 Gate 0 机器裁决达到 `PASS`；在此之前不得开始 `KERNEL-02` 产品纵切。
+- 范围：在不启动 R1 产品纵切的前提下，按 04 的单项迭代标准记录现有 CLI、VS Code 与 Headless 的 development conformance 失败基线。
+- 已完成：共享 observation contract 支持只投影 route output 已结算的维度；每个缺失维度必须有原因和证据，未解释、重复或与已观测维度冲突的不可用回执均失效关闭。CLI legacy route probe 真实执行成功修改和失败后修复，只能完整投影工具动作，TaskContract、事务级变更回执、验收映射和终态仍缺失；VS Code 当前 Kernel seam 返回的 `AgentLoopResult` 无法完整结算五个比较维度；Headless 产品入口仍缺失。34/34 owner baseline 绑定上述 probe，产品路由、product adapter 数、qualification 和 claims 均未改变。
+- 下一任务：由外部授权主体关闭 `QUAL-EXT-01` 的 6 个 blocker，使 Gate 0 机器裁决自主达到 `PASS`；在此之前不得开始 `KERNEL-02` 产品纵切。
 - 禁止：切换 R1 产品纵切、引入第二套 Kernel、修改资格状态，或将 legacy adapter 描述为已收敛内核。
-- 完成后：`KERNEL-PREP-01` 保持 `completed`，`KERNEL-02` 等待 Gate 0=`PASS`；执行证据只进机器报告或归档交付物。
+- 完成后：`KERNEL-BASELINE-02` 保持 `completed`，失败基线用于 Gate 0 通过后的原子 cutover 验收；执行证据只进机器报告或归档交付物。
 
 ## 机器状态源
 
