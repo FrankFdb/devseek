@@ -197,7 +197,7 @@
     "legacy_execution_owners": 3,
     "semantic_domains": 5,
     "converged_semantic_domains": 0,
-    "source_checks": 17,
+    "source_checks": 19,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -236,10 +236,43 @@
       "path": "packages/vscode-extension/src/extension.ts",
       "includes": [
         "new AgentKernelService(terminalPermissionCoordinator, productCodingKernelExecutor)",
+        "new ActiveChatRunCoordinator()",
+        "activeChatRunCoordinator.startRun({",
+        "activeRun.bindAgentKernelRun(agentKernelRun)",
         "agentKernelService.executeExploratory({",
         "agentKernelService.executePlanned({"
       ],
+      "excludes": [
+        "let activeChatAbortController",
+        "let activeAgentKernelRun",
+        "activeAgentSteerQueue"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-active-run-lifecycle-owner",
+      "path": "packages/vscode-extension/src/app/active-chat-run-coordinator.ts",
+      "includes": [
+        "export class ActiveChatRunCoordinator",
+        "cancelActiveRun(data",
+        "reason: 'superseded-before-kernel-bind'",
+        "reason: 'request-finished-with-active-kernel'"
+      ],
       "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-cancel-surface-port",
+      "path": "packages/vscode-extension/src/ui/deepseek-view-provider.ts",
+      "includes": [
+        "cancelActiveRun: (data?: Record<string, unknown>) => void",
+        "this.deps.cancelActiveRun({ reason: 'user-cancelled'"
+      ],
+      "excludes": [
+        "getActiveChatAbortController",
+        "setActiveChatAbortController",
+        "cancelActiveAgentRun"
+      ],
       "passed": true
     },
     {
@@ -371,5 +404,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "322e31c4d0aa8cc017ffb6593d0e75e1a35ec506c3dd42c12c407f5fb4d13a96"
+  "baseline_sha256": "af5d2df8379b8226c17448833d3e88e8e1c127b6ec3e989616ce0bb31ea5aba6"
 }

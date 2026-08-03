@@ -186,6 +186,7 @@ test('AgentKernelService: extension Surface does not own agent completion decisi
   const extension = readFileSync(path.join(rootDir, 'src/extension.ts'), 'utf8');
   const localExecutionRunner = readFileSync(path.join(rootDir, 'src/local-execution-chat-runner.ts'), 'utf8');
   const kernelService = readFileSync(path.join(rootDir, 'src/app/agent-kernel-service.ts'), 'utf8');
+  const activeRunCoordinator = readFileSync(path.join(rootDir, 'src/app/active-chat-run-coordinator.ts'), 'utf8');
   const productExecutor = readFileSync(path.join(rootDir, 'src/product-coding-kernel-executor.ts'), 'utf8');
 
   assert.match(extension, /new AgentKernelService\([\s\S]*productCodingKernelExecutor/);
@@ -194,7 +195,8 @@ test('AgentKernelService: extension Surface does not own agent completion decisi
   assert.match(extension, /agentKernelService\.executePlanned\(/);
   assert.match(extension, /agentKernelRun\.settleAgentLoopResult/);
   assert.match(extension, /agentKernelRun\.failRun/);
-  assert.match(extension, /activeAgentKernelRun\?\.cancelRun|cancelActiveAgentRun/);
+  assert.match(extension, /activeChatRunCoordinator\.cancelActiveRun/);
+  assert.match(activeRunCoordinator, /state\.agentKernelRun\?\.cancelRun\(data\)/);
   assert.equal(importsKernelLoop(extension), false);
   assert.doesNotMatch(extension, /await\s+runAgent(?:ic)?Loop\s*\(/u);
   assert.match(localExecutionRunner, /input\.agentKernelService\.executePlanned\(/);

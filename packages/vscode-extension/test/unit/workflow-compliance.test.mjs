@@ -3554,6 +3554,7 @@ test('R2-07E: DeepSeek Web stream correlation and recovery protocol has one shar
 test('R3-01: cancellation is Kernel/RunContext-owned and blocks post-cancel effects', () => {
   const runContext = src('src/app/run-context.ts');
   const agentKernel = src('src/app/agent-kernel-service.ts');
+  const activeRunCoordinator = src('src/app/active-chat-run-coordinator.ts');
   const terminalCoordinator = src('src/app/terminal-permission-coordinator.ts');
   const extension = src('src/extension.ts');
   const uiProvider = src('src/ui/deepseek-view-provider.ts');
@@ -3568,10 +3569,10 @@ test('R3-01: cancellation is Kernel/RunContext-owned and blocks post-cancel effe
   assertContains(runContext, 'devseek.run-cancel/v1', 'RunContext cancel payload must carry a versioned protocol');
   assertContains(agentKernel, 'cancelRun(data', 'Agent Kernel run must expose the cancellation boundary');
   assertContains(terminalCoordinator, "status === 'cancelled'", 'Terminal coordinator must route cancelled runs through RunContext.cancel');
-  assertContains(extension, 'activeAgentKernelRun', 'Extension must keep the active Kernel run for user cancellation');
-  assertContains(extension, 'cancelActiveAgentRun', 'Extension must delegate cancellation to the active Kernel run');
+  assertContains(activeRunCoordinator, 'agentKernelRun?: CancellableAgentKernelRun', 'Active run coordinator must keep the active Kernel run for user cancellation');
+  assertContains(activeRunCoordinator, 'cancelActiveRun(data', 'Active run coordinator must delegate cancellation to the active Kernel run');
   assertContains(extension, "reason: 'superseded-by-new-run'", 'A new chat request must settle the superseded agent run as cancelled');
-  assertContains(uiProvider, 'cancelActiveAgentRun({ reason:', 'Webview cancel must delegate to Kernel/RunContext owner');
+  assertContains(uiProvider, 'cancelActiveRun({ reason:', 'Webview cancel must delegate to the active run lifecycle owner');
   assertContains(toolLoop, 'cancellationRequested', 'Tool loop must check AbortSignal before dispatching work tools');
   assertContains(toolLoop, 'execute-cancelled-before-tool', 'Tool loop cancellation must be traceable');
   assertContains(runContextTest, 'R3-01 RunContext: cancel owns settlement and ignores post-cancel effects', 'R3-01 requires a RunContext cancellation oracle');
@@ -3579,6 +3580,7 @@ test('R3-01: cancellation is Kernel/RunContext-owned and blocks post-cancel effe
 
   assertDoesNotContain(uiProvider, "complete('cancelled'", 'UI surface must not directly settle run contexts');
   assertDoesNotContain(uiProvider, '.cancel({ reason:', 'UI surface must not directly cancel run contexts');
+  assertDoesNotContain(uiProvider, 'getActiveChatAbortController', 'UI surface must not coordinate AbortController state');
 });
 
 test('R2-07F: DeepSeek connector evidence is redacted and replay is explicitly non-live', () => {

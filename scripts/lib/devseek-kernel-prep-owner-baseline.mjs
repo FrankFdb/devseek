@@ -13,6 +13,8 @@ const SOURCE_PATHS = Object.freeze({
   phaseGate: 'scripts/devseek-phase0-12-verify.mjs',
   sharedBuildProfile: 'packages/shared/src/build-profile.ts',
   extension: 'packages/vscode-extension/src/extension.ts',
+  activeChatRun: 'packages/vscode-extension/src/app/active-chat-run-coordinator.ts',
+  viewProvider: 'packages/vscode-extension/src/ui/deepseek-view-provider.ts',
   productExecutor: 'packages/vscode-extension/src/product-coding-kernel-executor.ts',
   kernelService: 'packages/vscode-extension/src/app/agent-kernel-service.ts',
   kernelExecution: 'packages/vscode-extension/src/app/coding-kernel-execution.ts',
@@ -41,9 +43,22 @@ const SOURCE_CHECKS = Object.freeze([
   ], ['Headless Agent Core shared by VS Code and CLI']),
   check('vscode-kernel-composition', SOURCE_PATHS.extension, [
     'new AgentKernelService(terminalPermissionCoordinator, productCodingKernelExecutor)',
+    'new ActiveChatRunCoordinator()',
+    'activeChatRunCoordinator.startRun({',
+    'activeRun.bindAgentKernelRun(agentKernelRun)',
     'agentKernelService.executeExploratory({',
     'agentKernelService.executePlanned({',
+  ], ['let activeChatAbortController', 'let activeAgentKernelRun', 'activeAgentSteerQueue']),
+  check('vscode-active-run-lifecycle-owner', SOURCE_PATHS.activeChatRun, [
+    'export class ActiveChatRunCoordinator',
+    'cancelActiveRun(data',
+    "reason: 'superseded-before-kernel-bind'",
+    "reason: 'request-finished-with-active-kernel'",
   ]),
+  check('vscode-cancel-surface-port', SOURCE_PATHS.viewProvider, [
+    'cancelActiveRun: (data?: Record<string, unknown>) => void',
+    "this.deps.cancelActiveRun({ reason: 'user-cancelled'",
+  ], ['getActiveChatAbortController', 'setActiveChatAbortController', 'cancelActiveAgentRun']),
   check('vscode-dual-legacy-loop-adapter', SOURCE_PATHS.productExecutor, [
     "import { runAgentLoop } from './agent-loop'",
     "import { runAgenticLoop } from './agent/agentic-loop'",

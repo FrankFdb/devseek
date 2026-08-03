@@ -46,7 +46,8 @@ import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { MemoryService } from './app/memory-service';
 import { AgentDisplayPresenter } from './app/agent-display-presenter';
-import { AgentKernelService, type AgentKernelRun } from './app/agent-kernel-service';
+import { AgentKernelService } from './app/agent-kernel-service';
+import { ActiveChatRunCoordinator, type ActiveChatRunHandle } from './app/active-chat-run-coordinator';
 import { productCodingKernelExecutor } from './product-coding-kernel-executor';
 import { createDevSeekRunContext, type DevSeekRunContext, type RunContextStatus } from './app/run-context';
 import { createAgentCheckpointCallback } from './app/agent-checkpoint-callback';
@@ -117,18 +118,13 @@ let pendingEditCoordinator: PendingEditCoordinator;
 const chatRouteController = new ChatRouteController();
 const terminalPermissionCoordinator = new TerminalPermissionCoordinator();
 const agentKernelService = new AgentKernelService(terminalPermissionCoordinator, productCodingKernelExecutor);
+const activeChatRunCoordinator = new ActiveChatRunCoordinator();
 let lastConversationFiles: string[] = [];
 let lastAnalysisText = '';
 /** Workspace-relative paths of files created/modified by the last agent run */
 let lastAgentChangedPaths: string[] = [];
 /** DevSeek 当前 session 的显式对话历史；Bridge 网页侧历史不作为上下文来源。 */
 let nonBridgeChatHistory: ChatMessage[] = [];
-/** 当前正在执行的 chat 请求的 AbortController（停止按钮使用） */
-let activeChatAbortController: AbortController | null = null;
-/** 当前活跃 Agent Kernel run；取消/新请求只通过 Kernel/RunContext 结算。 */
-let activeAgentKernelRun: AgentKernelRun | null = null;
-/** 用户在 Agent 运行中输入的补充/纠偏，会在下一轮模型调用前注入。 */
-const activeAgentSteerQueue: string[] = [];
 // ── Session memory (L1a/L1b + L2) ─────────────────────────────────────────
 /** VS Code ExtensionContext，用于 workspaceState 持久化 */
 let extContext: vscode.ExtensionContext;
@@ -155,17 +151,6 @@ const evidenceAwareChatRouter = new EvidenceAwareChatRouter({
   getSessionId: () => activeSessionId,
   getTraceLevel: () => vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', 'debug'),
 });
-
-function cancelActiveAgentRun(data: Record<string, unknown> = {}): RunContextStatus | undefined {
-  const run = activeAgentKernelRun;
-  if (!run) return undefined;
-  activeAgentKernelRun = null;
-  return run.cancelRun(data);
-}
-
-function clearActiveAgentKernelRun(run: AgentKernelRun): void {
-  if (activeAgentKernelRun === run) activeAgentKernelRun = null;
-}
 
 function createFileContextService(workspaceRoot?: string): FileContextService {
   return new FileContextService({
@@ -289,14 +274,34 @@ async function runChat(
     return;
   }
 
-  // 为本次请求创建独立 AbortController，停止按钮可随时中断
-  cancelActiveAgentRun({ reason: 'superseded-by-new-run', source: 'run-chat-start' });
-  activeChatAbortController?.abort();
-  activeAgentSteerQueue.length = 0;
-  const abortCtrl = new AbortController();
-  activeChatAbortController = abortCtrl;
-  const chatSignal = abortCtrl.signal;
-  const consumeAgentSteer = (): string[] => activeAgentSteerQueue.splice(0, activeAgentSteerQueue.length);
+  const activeRun = activeChatRunCoordinator.startRun({
+    reason: 'superseded-by-new-run',
+    source: 'run-chat-start',
+  });
+  try {
+    await runActiveChat(activeRun, webview, userDisplay, prompt, newSession, mode, files, forceNoAgent, resumeFromIndex, resumeTasks, images, intentConfirmed, suppressUserMessage);
+  } finally {
+    activeRun.finish();
+  }
+}
+
+async function runActiveChat(
+  activeRun: ActiveChatRunHandle,
+  webview: vscode.Webview,
+  userDisplay: string,
+  prompt: string,
+  newSession: boolean,
+  mode: 'fast' | 'r1' | undefined,
+  files: string[] | undefined,
+  forceNoAgent: boolean | undefined,
+  resumeFromIndex: number | undefined,
+  resumeTasks: AgentTask[] | undefined,
+  images: string[] | undefined,
+  intentConfirmed: boolean,
+  suppressUserMessage: boolean,
+): Promise<void> {
+  const chatSignal = activeRun.signal;
+  const consumeAgentSteer = (): string[] => activeRun.consumeAgentSteer();
 
   let effectiveFiles = normalizeConversationFiles(files);
   const userExplicitlyAttachedFiles = effectiveFiles.length > 0;
@@ -323,7 +328,6 @@ async function runChat(
       newSession,
       suppressUserMessage,
     });
-    if (activeChatAbortController === abortCtrl) activeChatAbortController = null;
     return;
   }
 
@@ -360,10 +364,6 @@ async function runChat(
       suppressUserMessage,
     });
     if (extContext) recordIntentOutcome(initialRouteDecision.intentRoutingText, 'chat', activeSessionId, extContext);
-    if (activeChatAbortController === abortCtrl) {
-      activeChatAbortController = null;
-      activeAgentSteerQueue.length = 0;
-    }
     return;
   }
 
@@ -380,10 +380,6 @@ async function runChat(
       suppressUserMessage,
     });
     if (extContext) recordIntentOutcome(initialRouteDecision.intentRoutingText, 'chat', activeSessionId, extContext);
-    if (activeChatAbortController === abortCtrl) {
-      activeChatAbortController = null;
-      activeAgentSteerQueue.length = 0;
-    }
     return;
   }
 
@@ -509,10 +505,6 @@ async function runChat(
         },
       },
     });
-    if (activeChatAbortController === abortCtrl) {
-      activeChatAbortController = null;
-      activeAgentSteerQueue.length = 0;
-    }
     return;
   }
 
@@ -547,10 +539,6 @@ async function runChat(
       signal: chatSignal,
     }, directInspection.text);
     if (extContext) recordIntentOutcome(intentRoutingText, 'chat', activeSessionId, extContext);
-    if (activeChatAbortController === abortCtrl) {
-      activeChatAbortController = null;
-      activeAgentSteerQueue.length = 0;
-    }
     return;
   }
 
@@ -626,7 +614,7 @@ async function runChat(
         uri: file,
       })),
     });
-    activeAgentKernelRun = agentKernelRun;
+    if (!activeRun.bindAgentKernelRun(agentKernelRun)) return;
     agentRunContext = agentKernelRun.runContext;
     workflowRunContext = agentRunContext;
     const agentTraceRunId = agentRunContext.runId;
@@ -839,7 +827,7 @@ async function runChat(
           pendingEditCoordinator.scheduleAutoAccept(webview, agResult, agAutopilotHandled);
         }
         webview.postMessage({ type: 'endResponse' });
-        clearActiveAgentKernelRun(agentKernelRun);
+        activeRun.clearAgentKernelRun(agentKernelRun);
         return;
       }
 
@@ -1288,7 +1276,7 @@ async function runChat(
       pendingEditCoordinator.scheduleAutoAccept(webview, autoAcceptResult, loopAutopilotHandled);
     }
     webview.postMessage({ type: 'endResponse' });
-    clearActiveAgentKernelRun(agentKernelRun);
+    activeRun.clearAgentKernelRun(agentKernelRun);
     return;
   }
   }
@@ -1741,11 +1729,7 @@ async function runChat(
   } finally {
     // Record chat-mode outcome for learning
     if (extContext) recordIntentOutcome(intentRoutingText, intent.kind as 'chat' | 'code-change', activeSessionId, extContext);
-    // 释放 AbortController 引用，防止内存泄漏
-    if (activeChatAbortController === abortCtrl) {
-      activeChatAbortController = null;
-      activeAgentSteerQueue.length = 0;
-    }
+    // ActiveChatRunCoordinator releases cancellation and steer state in runChat.
   }
 
   webview.postMessage({ type: 'endResponse' });
@@ -1978,10 +1962,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     getActiveSessionId: () => activeSessionId,
     getLastConversationFiles: () => lastConversationFiles,
     setLastConversationFiles: (files) => { lastConversationFiles = files; },
-    getActiveChatAbortController: () => activeChatAbortController,
-    setActiveChatAbortController: (controller) => { activeChatAbortController = controller; },
-    cancelActiveAgentRun,
-    pushAgentSteer: (text) => { activeAgentSteerQueue.push(text); },
+    cancelActiveRun: (data) => { activeChatRunCoordinator.cancelActiveRun(data); },
+    pushAgentSteer: (text) => activeChatRunCoordinator.pushAgentSteer(text),
     getActiveSessionPayload: () => {
       if (!activeSessionId) return undefined;
       const history = extContext?.workspaceState.get<ChatMessage[]>(`deepseek.session.${activeSessionId}.history`, []) ?? [];

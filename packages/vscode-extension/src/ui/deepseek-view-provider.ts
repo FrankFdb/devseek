@@ -80,10 +80,8 @@ export interface DeepSeekViewProviderDeps {
   getActiveSessionId: () => string;
   getLastConversationFiles: () => string[];
   setLastConversationFiles: (files: string[]) => void;
-  getActiveChatAbortController: () => AbortController | null;
-  setActiveChatAbortController: (controller: AbortController | null) => void;
-  cancelActiveAgentRun: (data?: Record<string, unknown>) => void;
-  pushAgentSteer: (text: string) => void;
+  cancelActiveRun: (data?: Record<string, unknown>) => void;
+  pushAgentSteer: (text: string) => boolean;
   getActiveSessionPayload: () => WebviewOutboundMessage | undefined;
   loadFreshAgentCheckpoint: (maxAgeMs: number) => Promise<AgentTaskCheckpoint | undefined>;
   loadAgentCheckpoint: () => AgentTaskCheckpoint | undefined;
@@ -289,9 +287,7 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
         await this.deps.pendingEditCoordinator.undoAllWithNotice(wv);
         break;
       case 'cancel':
-        this.deps.cancelActiveAgentRun({ reason: 'user-cancelled', source: 'vscode-webview-cancel' });
-        this.deps.getActiveChatAbortController()?.abort();
-        this.deps.setActiveChatAbortController(null);
+        this.deps.cancelActiveRun({ reason: 'user-cancelled', source: 'vscode-webview-cancel' });
         this.deps.setLastConversationFiles([]);
         wv.postMessage({ type: 'contextFiles', files: [] });
         await cancel();
@@ -428,15 +424,13 @@ export class DeepSeekViewProvider implements vscode.WebviewViewProvider {
   private handleAgentSteer(wv: vscode.Webview, msg: WebviewMessage): void {
     const steerText = (msg.prompt ?? msg.text ?? '').trim();
     if (!steerText) return;
-    const controller = this.deps.getActiveChatAbortController();
-    if (!controller || controller.signal.aborted) {
-      wv.postMessage({ type: 'agentSteerRejected', text: '当前没有正在运行的 Agent 任务。' });
-      return;
-    }
     const fileNote = (msg.files && msg.files.length > 0)
       ? `\n\n【用户补充附件路径】\n${msg.files.map(f => `- ${f}`).join('\n')}`
       : '';
-    this.deps.pushAgentSteer(`${steerText}${fileNote}`);
+    if (!this.deps.pushAgentSteer(`${steerText}${fileNote}`)) {
+      wv.postMessage({ type: 'agentSteerRejected', text: '当前没有正在运行的 Agent 任务。' });
+      return;
+    }
     wv.postMessage({ type: 'agentSteerAccepted', text: msg.text ?? steerText });
   }
 
