@@ -197,7 +197,7 @@
     "legacy_execution_owners": 3,
     "semantic_domains": 5,
     "converged_semantic_domains": 0,
-    "source_checks": 24,
+    "source_checks": 26,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -326,6 +326,35 @@
         "resolveSessionContinuationFilesFromState",
         "buildAgenticSessionContextFromState",
         "shouldInjectSessionContinuationForIntent"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-run-changed-path-owner",
+      "path": "packages/vscode-extension/src/app/run-changed-path-recorder.ts",
+      "includes": [
+        "export function projectRunChangedPaths",
+        "export class RunChangedPathRecorder",
+        "openScope(workspaceRoot: string): RunChangedPathAccumulator",
+        "export class RunChangedPathAccumulator",
+        "this.deps.replaceLastChangedPaths(relativePaths)",
+        "if (relativePaths.length === 0) return relativePaths"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-run-changed-path-boundary",
+      "path": "packages/vscode-extension/src/extension.ts",
+      "includes": [
+        "new RunChangedPathRecorder({",
+        "const agRunChangedPaths = runChangedPathRecorder.record({",
+        "const currentRunChangedPaths = runChangedPathRecorder.record({",
+        "currentChatRunChangedPaths = chatRunChangedPaths.commit();"
+      ],
+      "excludes": [
+        "settleAgentLoopResult(agResult, lastAgentChangedPaths)",
+        "changedPaths: lastAgentChangedPaths.slice(0, 12)"
       ],
       "passed": true
     },
@@ -472,5 +501,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "323abfe7042bb2db8c883bb0add2a1d135a5d751f30f8a94816f07592d90f3e4"
+  "baseline_sha256": "661e4b63c55281c5d57ea34130fe48b101cb72a3c628b8274e9d3e8b7e8e78f6"
 }

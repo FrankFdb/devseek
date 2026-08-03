@@ -17,6 +17,7 @@ const SOURCE_PATHS = Object.freeze({
   sessionService: 'packages/vscode-extension/src/app/session-service.ts',
   sessionContext: 'packages/vscode-extension/src/app/agent-session-context.ts',
   sessionProjector: 'packages/vscode-extension/src/app/session-continuation-projector.ts',
+  runChangedPaths: 'packages/vscode-extension/src/app/run-changed-path-recorder.ts',
   viewProvider: 'packages/vscode-extension/src/ui/deepseek-view-provider.ts',
   productExecutor: 'packages/vscode-extension/src/product-coding-kernel-executor.ts',
   kernelService: 'packages/vscode-extension/src/app/agent-kernel-service.ts',
@@ -93,6 +94,23 @@ const SOURCE_CHECKS = Object.freeze([
     'resolveSessionContinuationFilesFromState',
     'buildAgenticSessionContextFromState',
     'shouldInjectSessionContinuationForIntent',
+  ]),
+  check('vscode-run-changed-path-owner', SOURCE_PATHS.runChangedPaths, [
+    'export function projectRunChangedPaths',
+    'export class RunChangedPathRecorder',
+    'openScope(workspaceRoot: string): RunChangedPathAccumulator',
+    'export class RunChangedPathAccumulator',
+    'this.deps.replaceLastChangedPaths(relativePaths)',
+    'if (relativePaths.length === 0) return relativePaths',
+  ]),
+  check('vscode-run-changed-path-boundary', SOURCE_PATHS.extension, [
+    'new RunChangedPathRecorder({',
+    'const agRunChangedPaths = runChangedPathRecorder.record({',
+    'const currentRunChangedPaths = runChangedPathRecorder.record({',
+    'currentChatRunChangedPaths = chatRunChangedPaths.commit();',
+  ], [
+    'settleAgentLoopResult(agResult, lastAgentChangedPaths)',
+    'changedPaths: lastAgentChangedPaths.slice(0, 12)',
   ]),
   check('vscode-cancel-surface-port', SOURCE_PATHS.viewProvider, [
     'cancelActiveRun: (data?: Record<string, unknown>) => void',

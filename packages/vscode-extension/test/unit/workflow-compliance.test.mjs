@@ -2667,6 +2667,20 @@ test('Agentic session continuation: one projection owner gates every execution p
   );
 });
 
+test('Run evidence: changed paths are projected from the current run across sibling routes', () => {
+  const ext = src('src/extension.ts');
+  const recorder = src('src/app/run-changed-path-recorder.ts');
+  assertContains(recorder, 'export function projectRunChangedPaths', 'one pure owner must normalize current-run paths');
+  assertContains(recorder, 'export class RunChangedPathRecorder', 'one application owner must replace latest run state');
+  assertContains(recorder, 'this.deps.replaceLastChangedPaths(relativePaths)', 'empty results must replace stale prior-run state');
+  assertContains(ext, 'const agRunChangedPaths = runChangedPathRecorder.record({', 'exploratory runs must record their own result');
+  assertContains(ext, 'const currentRunChangedPaths = runChangedPathRecorder.record({', 'planned runs must record their own result');
+  assertContains(ext, 'currentChatRunChangedPaths = chatRunChangedPaths.commit();', 'chat runs must settle from their own accumulated paths');
+  assertContains(ext, 'changedPaths: currentChatRunChangedPaths.slice(0, 12)', 'chat completion evidence must use current-run paths');
+  assert.doesNotMatch(ext, /settleAgentLoopResult\(agResult,\s*lastAgentChangedPaths/);
+  assert.doesNotMatch(ext, /changedPaths:\s*lastAgentChangedPaths\.slice\(0, 12\)/);
+});
+
 test('Agentic evidence: read-only terminal checks are retained as completion evidence', () => {
   const agentLoop = src('src/agent/tool-loop.ts');
   assertContains(

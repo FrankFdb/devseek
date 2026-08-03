@@ -62,6 +62,7 @@ import { buildRestoredSessionLlmHistory, buildSessionLoadedPayload, stripSession
 import { buildSessionBootstrapState } from './app/session-bootstrap-service';
 import { SessionService, type SessionMeta } from './app/session-service';
 import { SessionContinuationProjector } from './app/session-continuation-projector';
+import { RunChangedPathRecorder } from './app/run-changed-path-recorder';
 import {
   appendSessionContinuationContext,
   shouldResumeCheckpointFromPrompt,
@@ -134,6 +135,13 @@ const sessionContinuationProjector = new SessionContinuationProjector({
   getLastAgentChangedPaths: () => lastAgentChangedPaths,
   getRecentFilePaths: () => sessionRecentFiles.values(),
   getHistory: () => nonBridgeChatHistory,
+});
+const runChangedPathRecorder = new RunChangedPathRecorder({
+  replaceLastChangedPaths: (paths) => { lastAgentChangedPaths = paths; },
+  registerRecentFile: registerToMemory,
+  emitFilesCoChanged: (paths) => {
+    emitLearningEvent({ type: 'files_cochanged', paths, sessionId: activeSessionId });
+  },
 });
 // P3-5: MCP manager (singleton; initialized lazily in activate)
 const mcpManager = new McpManager();
@@ -766,22 +774,15 @@ async function runActiveChat(
           workflowMode: workflow.toolPolicyMode,
           memoryRelatedPaths: agMemoryRelatedPaths,
         });
-        if (agResult.changedPaths.length > 0) {
-          lastAgentChangedPaths = agResult.changedPaths.map(p => {
-            const fsPath = nodePath.isAbsolute(p) ? p : nodePath.join(agWsRoot, p);
-            return agWsRoot ? nodePath.relative(agWsRoot, fsPath).replace(/\\/g, '/') : p;
-          }).filter(p => p && !p.startsWith('..'));
-          emitLearningEvent({ type: 'files_cochanged', paths: lastAgentChangedPaths, sessionId: activeSessionId });
-          agResult.changedPaths.forEach(p => {
-            const absPath = nodePath.isAbsolute(p) ? p : nodePath.join(agWsRoot, p);
-            registerToMemory(absPath);
-          });
-        }
-        const agSettlement = agentKernelRun.settleAgentLoopResult(agResult, lastAgentChangedPaths);
+        const agRunChangedPaths = runChangedPathRecorder.record({
+          workspaceRoot: agWsRoot,
+          changedPaths: agResult.changedPaths,
+        });
+        const agSettlement = agentKernelRun.settleAgentLoopResult(agResult, agRunChangedPaths);
         const agDurablyCompleted = agSettlement.completed;
         if (agSettlement.refused) postAgentSettlementRefusal(webview, agentDisplayPresenter);
-        const agChangedDetails = lastAgentChangedPaths.length > 0
-          ? '\n**涉及文件（workspace 相对路径）：**\n' + lastAgentChangedPaths.map(p => `  - ${p}`).join('\n')
+        const agChangedDetails = agRunChangedPaths.length > 0
+          ? '\n**涉及文件（workspace 相对路径）：**\n' + agRunChangedPaths.map(p => `  - ${p}`).join('\n')
           : '';
         agentHistoryText = agResult.historyText
           || `**[Agentic] ${agDurablyCompleted ? '已完成' : '未完成'}（${agResult.tasksTotal} 轮）**${agChangedDetails}`;
@@ -791,7 +792,7 @@ async function runActiveChat(
         saveAgentSessionState({
           lastUserPrompt: userDisplay,
           lastSummary: agentHistoryText,
-          changedPaths: lastAgentChangedPaths.slice(0, 12),
+          changedPaths: agRunChangedPaths.slice(0, 12),
           completed: agDurablyCompleted,
           savedAt: Date.now(),
         });
@@ -1117,30 +1118,11 @@ async function runActiveChat(
           lastAnalysisText = loopResult.analysisText;
           getSessionService()?.saveSessionAnalysisText(activeSessionId, lastAnalysisText);
         }
-        // Persist changed paths so the next decompose knows which files were just created/modified
-        if (loopResult.changedPaths && loopResult.changedPaths.length > 0) {
-          const _wsRootFs = wsRoot ? (typeof wsRoot === 'string' ? wsRoot : (wsRoot as vscode.Uri).fsPath) : '';
-          lastAgentChangedPaths = loopResult.changedPaths.map(p => {
-            const fsPath = typeof p === 'string' ? p : (p as vscode.Uri).fsPath;
-            const absPath = nodePath.isAbsolute(fsPath)
-              ? fsPath
-              : (_wsRootFs ? nodePath.join(_wsRootFs, fsPath) : fsPath);
-            return _wsRootFs ? relPathFromWorkspace(_wsRootFs, absPath) : fsPath.replace(/\\/g, '/');
-          }).filter((rel): rel is string => Boolean(rel));
-          emitLearningEvent({ type: 'files_cochanged', paths: lastAgentChangedPaths, sessionId: activeSessionId });
-          // L2: register absolute paths to session memory for later resolution.
-          // changedPaths from workspace-applier are workspace-relative strings;
-          // resolve them to absolute before registering so sessionRecentFiles stores
-          // the true absolute path and subsequent requests can find the file.
-          loopResult.changedPaths.forEach(p => {
-            const fsPath = typeof p === 'string' ? p : (p as vscode.Uri).fsPath;
-            const absPath = nodePath.isAbsolute(fsPath)
-              ? fsPath
-              : (_wsRootFs ? nodePath.join(_wsRootFs, fsPath) : fsPath);
-            registerToMemory(absPath);
-          });
-        }
-        const agentSettlement = agentKernelRun.settleAgentLoopResult(loopResult);
+        const currentRunChangedPaths = runChangedPathRecorder.record({
+          workspaceRoot: wsRoot.fsPath,
+          changedPaths: loopResult.changedPaths,
+        });
+        const agentSettlement = agentKernelRun.settleAgentLoopResult(loopResult, currentRunChangedPaths);
         durableAgentSettlement = agentSettlement.status;
         const agentDurablyCompleted = agentSettlement.completed;
         if (agentSettlement.refused) postAgentSettlementRefusal(webview, agentDisplayPresenter);
@@ -1155,13 +1137,17 @@ async function runActiveChat(
         saveAgentSessionState({
           lastUserPrompt: userDisplay,
           lastSummary: agentHistoryText,
-          changedPaths: lastAgentChangedPaths.slice(0, 12),
+          changedPaths: currentRunChangedPaths.slice(0, 12),
           completed: agentDurablyCompleted,
           savedAt: Date.now(),
         });
       }
     } catch (e) {
       loopFailedForAutoAccept = true;
+      const failedRunChangedPaths = runChangedPathRecorder.record({
+        workspaceRoot: agentWorkspaceRoot,
+        changedPaths: loopResult?.changedPaths ?? [],
+      });
       const msg = (e as Error).message;
       const recovery = new ProviderRecoveryService().classify({
         providerType: getActiveProviderType(),
@@ -1218,13 +1204,13 @@ async function runActiveChat(
       saveAgentSessionState({
         lastUserPrompt: userDisplay,
         lastSummary: agentHistoryText,
-        changedPaths: [],
+        changedPaths: failedRunChangedPaths.slice(0, 12),
         completed: false,
         savedAt: Date.now(),
       });
       durableAgentSettlement = agentKernelRun.failRun({
         reason: 'agent-error',
-        changedPaths: [],
+        changedPaths: failedRunChangedPaths,
       });
     }
 
@@ -1296,6 +1282,7 @@ async function runActiveChat(
   }
 
   let chatRunContext: ReturnType<typeof createDevSeekRunContext> | undefined;
+  let currentChatRunChangedPaths: string[] = [];
   try {
     let finalPrompt = prompt;
     const config = vscode.workspace.getConfiguration('devseek');
@@ -1376,6 +1363,7 @@ async function runActiveChat(
     const chatWorkspaceRoot = workspaceRoot
       ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
       ?? process.cwd();
+    const chatRunChangedPaths = runChangedPathRecorder.openScope(chatWorkspaceRoot);
     chatRunContext = createDevSeekRunContext({
       workspaceRoot: chatWorkspaceRoot,
       source: 'vscode-extension.chat',
@@ -1491,13 +1479,15 @@ async function runActiveChat(
         onMcpToolCall: mcpManager.hasMcpTools ? createEvidenceAwareMcpToolCall(chatRunContext, webview) : undefined,
         signal: chatSignal,
         sessionId: activeSessionId,
-        onChangedPaths: (relativePaths) => { lastAgentChangedPaths = relativePaths; },
+        onChangedPaths: (paths) => { chatRunChangedPaths.add(paths); },
       });
       if (localExecutionResult.handled) {
         const requestedStatus = localExecutionResult.status ?? 'failed';
+        currentChatRunChangedPaths = chatRunChangedPaths.commit();
         const settlementStatus = terminalPermissionCoordinator.completeRunContext(chatRunContext, requestedStatus, {
           reason: 'local-execution-handled',
           terminalOutcome: requestedStatus,
+          changedPaths: currentChatRunChangedPaths,
         });
         if (requestedStatus === 'completed') {
           if (settlementStatus === 'completed' && localExecutionResult.successMessage) {
@@ -1627,6 +1617,7 @@ async function runActiveChat(
 
     if (shouldApplyToReviewQueue) {
       const firstApply = await applyGeneratedArtifactsWithPrompt(responseToApply, prompt, workflowReporter, true, async (change) => {
+        chatRunChangedPaths.add([change.path]);
         await pendingEditCoordinator.registerChange(webview, change);
       }, pathResolutionHints, {
         rollbackOnValidationFailure: false,
@@ -1658,9 +1649,13 @@ async function runActiveChat(
           pathResolutionHints,
           { rollbackOnValidationFailure: false, validationCommandRunner: chatValidationCommandRunner },
         ),
-        onAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(webview, change); },
+        onAppliedChange: async (change) => {
+          chatRunChangedPaths.add([change.path]);
+          await pendingEditCoordinator.registerChange(webview, change);
+        },
       });
       const finalApply = recoveredApply ?? firstApply;
+      chatRunChangedPaths.add(finalApply.changedPaths);
       if (shouldRunClosedLoopRepair(finalApply)) {
         await runClosedLoopRepair({
           reporter: workflowReporter,
@@ -1675,17 +1670,21 @@ async function runActiveChat(
             traceEvidenceParticipantToken: request.traceEvidenceParticipantToken ?? chatRunContext?.evidenceParticipantToken,
             onTraceEvidenceError: request.onTraceEvidenceError ?? (error => chatRunContext?.markEvidenceDegraded(error)),
           }),
-          registerAppliedChange: async (change) => { await pendingEditCoordinator.registerChange(webview, change); },
+          registerAppliedChange: async (change) => {
+            chatRunChangedPaths.add([change.path]);
+            await pendingEditCoordinator.registerChange(webview, change);
+          },
           getSessionId: () => activeSessionId,
           postVisibleDelta: (text) => { postWebviewMessage(webview, { type: 'delta', text }); },
           validationCommandRunner: chatValidationCommandRunner,
         });
       }
     }
+    currentChatRunChangedPaths = chatRunChangedPaths.commit();
     const chatSettlementStatus = terminalPermissionCoordinator.completeRunContext(chatRunContext, 'completed', {
       intent: intent.kind,
       workflow: workflow.kind,
-      changedPaths: lastAgentChangedPaths.slice(0, 12),
+      changedPaths: currentChatRunChangedPaths.slice(0, 12),
     });
     if (chatSettlementStatus !== 'completed') {
       throw new Error('运行证据结算失败；本轮回复和文件候选不能标记为完成。');
@@ -1695,6 +1694,7 @@ async function runActiveChat(
     if (chatRunContext) terminalPermissionCoordinator.completeRunContext(chatRunContext, 'failed', {
       reason: 'chat-error',
       message: msg,
+      changedPaths: currentChatRunChangedPaths.slice(0, 12),
     });
     if (msg === 'LOGIN_REQUIRED') {
       postWebviewMessage(webview, {
