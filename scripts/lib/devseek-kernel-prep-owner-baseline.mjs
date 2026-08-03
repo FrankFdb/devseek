@@ -23,6 +23,9 @@ const SOURCE_PATHS = Object.freeze({
   kernelService: 'packages/vscode-extension/src/app/agent-kernel-service.ts',
   kernelExecution: 'packages/vscode-extension/src/app/coding-kernel-execution.ts',
   taskContract: 'packages/vscode-extension/src/agent/task-contract.ts',
+  safetyIntent: 'packages/vscode-extension/src/intent/safety-intent.ts',
+  agenticLoop: 'packages/vscode-extension/src/agent/agentic-loop.ts',
+  runtimeState: 'packages/vscode-extension/src/agent/agent-runtime-state-machine.ts',
   toolExecutor: 'packages/vscode-extension/src/agent/tool-executor.ts',
   workspaceMutation: 'packages/vscode-extension/src/workspace/edit-service.ts',
   verification: 'packages/vscode-extension/src/workspace/validation-service.ts',
@@ -132,6 +135,24 @@ const SOURCE_CHECKS = Object.freeze([
   ]),
   check('vscode-task-contract-builder', SOURCE_PATHS.taskContract, [
     'export function buildTaskContract(',
+  ]),
+  check('vscode-policy-refusal-evidence-owner', SOURCE_PATHS.safetyIntent, [
+    'export function hasUnsafeSecretHarvestingRefusalEvidence',
+    'isUnsafeSecretHarvestingImplementationRequest(requestText)',
+    'runtime.workToolUsed !== true',
+    '(runtime.changedFileCount ?? 0) === 0',
+    'REFUSAL_EVIDENCE_RE.test(response)',
+    'SAFE_ALTERNATIVE_EVIDENCE_RE.test(response)',
+    'NO_MUTATION_EVIDENCE_RE.test(response)',
+  ]),
+  check('vscode-policy-refusal-projection', SOURCE_PATHS.agenticLoop, [
+    'hasUnsafeSecretHarvestingRefusalEvidence(',
+    '{ workToolUsed: sawWorkTool, changedFileCount: allWrittenFiles.length }',
+    'policyRefusalEvidenceSatisfied,',
+  ]),
+  check('vscode-policy-refusal-settlement', SOURCE_PATHS.runtimeState, [
+    'policyRefusalEvidenceSatisfied?: boolean',
+    'if (input.policyRefusalEvidenceSatisfied && hasDeliverySignal)',
   ]),
   check('vscode-tool-executor', SOURCE_PATHS.toolExecutor, [
     'export class AgentToolExecutor',

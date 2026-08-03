@@ -197,7 +197,7 @@
     "legacy_execution_owners": 3,
     "semantic_domains": 5,
     "converged_semantic_domains": 0,
-    "source_checks": 26,
+    "source_checks": 29,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -414,6 +414,42 @@
       "passed": true
     },
     {
+      "check_id": "vscode-policy-refusal-evidence-owner",
+      "path": "packages/vscode-extension/src/intent/safety-intent.ts",
+      "includes": [
+        "export function hasUnsafeSecretHarvestingRefusalEvidence",
+        "isUnsafeSecretHarvestingImplementationRequest(requestText)",
+        "runtime.workToolUsed !== true",
+        "(runtime.changedFileCount ?? 0) === 0",
+        "REFUSAL_EVIDENCE_RE.test(response)",
+        "SAFE_ALTERNATIVE_EVIDENCE_RE.test(response)",
+        "NO_MUTATION_EVIDENCE_RE.test(response)"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-policy-refusal-projection",
+      "path": "packages/vscode-extension/src/agent/agentic-loop.ts",
+      "includes": [
+        "hasUnsafeSecretHarvestingRefusalEvidence(",
+        "{ workToolUsed: sawWorkTool, changedFileCount: allWrittenFiles.length }",
+        "policyRefusalEvidenceSatisfied,"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-policy-refusal-settlement",
+      "path": "packages/vscode-extension/src/agent/agent-runtime-state-machine.ts",
+      "includes": [
+        "policyRefusalEvidenceSatisfied?: boolean",
+        "if (input.policyRefusalEvidenceSatisfied && hasDeliverySignal)"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
       "check_id": "vscode-tool-executor",
       "path": "packages/vscode-extension/src/agent/tool-executor.ts",
       "includes": [
@@ -501,5 +537,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "661e4b63c55281c5d57ea34130fe48b101cb72a3c628b8274e9d3e8b7e8e78f6"
+  "baseline_sha256": "44c4a7ef8d3f334640031205e784a781a94c93cbdea383f52641287657d09c66"
 }

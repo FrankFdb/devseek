@@ -28,6 +28,7 @@ export interface AgentRuntimeStateInput {
   terminalEvidenceCount?: number;
   validationPassed?: boolean;
   validationFailedReason?: string;
+  policyRefusalEvidenceSatisfied?: boolean;
   taskComplete?: boolean;
   allTodosCompleted?: boolean;
   failedReason?: string;
@@ -48,6 +49,9 @@ export function settleAgentRuntimeState(input: AgentRuntimeStateInput): AgentRun
   const toolRequests = input.toolRequests ?? providerOutput.toolCallCount;
   const toolExecutions = input.toolExecutions ?? 0;
   const evidenceCount = countEvidence(input);
+  const hasDeliverySignal = Boolean(
+    input.taskComplete || input.allTodosCompleted || providerOutput.okForSettlement || input.validationPassed,
+  );
 
   if (input.failedReason) {
     return failed(providerOutput, input.failedReason);
@@ -63,6 +67,14 @@ export function settleAgentRuntimeState(input: AgentRuntimeStateInput): AgentRun
       state: 'tool_requested',
       terminal: false,
       delivered: false,
+      providerOutput,
+    };
+  }
+  if (input.policyRefusalEvidenceSatisfied && hasDeliverySignal) {
+    return {
+      state: 'delivered',
+      terminal: true,
+      delivered: true,
       providerOutput,
     };
   }
@@ -90,7 +102,7 @@ export function settleAgentRuntimeState(input: AgentRuntimeStateInput): AgentRun
       providerOutput,
     };
   }
-  if (input.taskComplete || input.allTodosCompleted || providerOutput.okForSettlement || input.validationPassed) {
+  if (hasDeliverySignal) {
     return {
       state: 'delivered',
       terminal: true,

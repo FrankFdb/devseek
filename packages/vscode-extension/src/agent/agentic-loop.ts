@@ -13,6 +13,7 @@ import { type McpToolRef } from '../mcp/client';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { CppValidationPolicy } from '../validation-planner';
 import { routeTaskIntent } from '../task-intent-router';
+import { hasUnsafeSecretHarvestingRefusalEvidence } from '../intent/safety-intent';
 import {
   buildTerminalFailureRepairFeedback,
   coalesceWrittenFileEvidence,
@@ -1274,6 +1275,9 @@ export async function runAgenticLoop(
   const validationFailedReason = latestAutoQualityGate && latestAutoQualityGate.status !== 'pass'
     ? latestAutoQualityGate.summary
     : undefined;
+  const policyRefusalEvidenceSatisfied = hasUnsafeSecretHarvestingRefusalEvidence(
+    writeAuthority.currentPrompt, `${completeSummary}\n${lastProviderText}`, { workToolUsed: sawWorkTool, changedFileCount: allWrittenFiles.length },
+  );
   const finalRuntimeSettlement = settleAgentRuntimeState({
     taskAction: runtimeTaskAction,
     taskTitle: userPrompt,
@@ -1287,6 +1291,7 @@ export async function runAgenticLoop(
     terminalEvidenceCount: allTerminalEvidence.length,
     validationPassed: latestAutoQualityGate?.status === 'pass',
     validationFailedReason,
+    policyRefusalEvidenceSatisfied,
     taskComplete: hadTaskComplete,
     allTodosCompleted: currentTodos.length > 0 && currentTodos.every(todo => todo.status === 'completed'),
     failedReason: failedReason || undefined,

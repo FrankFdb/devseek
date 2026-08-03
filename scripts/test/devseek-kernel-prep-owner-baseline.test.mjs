@@ -42,7 +42,7 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
     legacy_execution_owners: 3,
     semantic_domains: 5,
     converged_semantic_domains: 0,
-    source_checks: 26,
+    source_checks: 29,
     failed_source_checks: 0,
   });
   assert.deepEqual(

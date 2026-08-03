@@ -52,7 +52,7 @@ devseek_governance:
 | C0 本地实现与机器裁决前置 | `completed` | 7/7 implementation requirements satisfied，repository blockers=0，local conformance=`PASSED` |
 | Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；完整 extension 测试、架构守卫和精确 VSIX T3 Surface 仿真通过 |
 | Surface 入口盘点 | `completed` | 87/87 入口受 inventory 覆盖，未知入口与未声明 legacy owner 可达性均为 0 |
-| Kernel 切换前 owner baseline | `completed` | 3 条活跃产品路由均仍由 legacy semantic owner 执行；5 个核心语义域收敛数为 0；Headless 产品入口为 0；26/26 源码与默认门禁断言受保护 |
+| Kernel 切换前 owner baseline | `completed` | 3 条活跃产品路由均仍由 legacy semantic owner 执行；5 个核心语义域收敛数为 0；Headless 产品入口为 0；29/29 源码与默认门禁断言受保护 |
 | R4 非资格本地工作 | `in_progress` | 6 个 leaf 中 5 个完成，1 个 clean-runtime leaf 受当前窗口/授权边界阻塞 |
 | 能力账本 | `in_progress` | 76 项能力：C0 的 7 项为 `wired`，C1～C14 共 69 项为 `proposed`，qualification claims=0 |
 | Gate 0 / 后续资格 | `blocked_external` | Gate 0=`NOT_PASSED`，6 个外部 authority blocker，exact claims=0；本地工作不得自行提升资格 |
@@ -84,7 +84,7 @@ devseek_governance:
 `KERNEL-PREP-01`
 
 - 范围：在 Gate 0 外部资格闭合前，完成不改变产品路由的责任盘点、内聚模块抽取、端口定义和 conformance 基线准备。
-- 已完成：CLI workspace context selection、artifact interpretation、workspace mutation、verification、run evidence 和 legacy coding coordination 已各有单一 owner；VS Code 请求取消、Kernel 绑定、AbortSignal 与 steer 隔离由 `ActiveChatRunCoordinator` 统一负责；会话持久化由 `SessionService` 统一负责；会话续接的文件恢复、上下文注入和新会话隔离由 `SessionContinuationProjector` 及其纯领域投影统一裁决；当前运行的变更路径由 `RunChangedPathRecorder` 投影和记录，Agent、chat 与 local execution 结算不再继承上一轮证据。上述职责均有显式依赖、直接行为测试及防旁路静态守卫，产品路由保持不变。
+- 已完成：CLI workspace context selection、artifact interpretation、workspace mutation、verification、run evidence 和 legacy coding coordination 已各有单一 owner；VS Code 请求取消、Kernel 绑定、AbortSignal 与 steer 隔离由 `ActiveChatRunCoordinator` 统一负责；会话持久化由 `SessionService` 统一负责；会话续接的文件恢复、上下文注入和新会话隔离由 `SessionContinuationProjector` 及其纯领域投影统一裁决；当前运行的变更路径由 `RunChangedPathRecorder` 投影和记录，Agent、chat 与 local execution 结算不再继承上一轮证据；敏感凭据窃取请求由 safety intent 判定，只有拒绝、合规替代、无变更和完成信号全部闭合时才进入可交付的 policy-refusal 终态。上述职责均有显式依赖、直接行为测试及防旁路静态守卫，产品路由保持不变。
 - 下一任务：基于已冻结的 owner baseline，准备 TaskContract、工具执行、变更回执、验证和完成判定的跨 Surface conformance fixture 与 adapter contract；不得把准备性接口或测试夹具记作产品接线。
 - 禁止：切换 R1 产品纵切、引入第二套 Kernel、修改资格状态，或将 legacy adapter 描述为已收敛内核。
 - 完成后：保持 `KERNEL-02` 等待 Gate 0=`PASS`；执行证据只进机器报告或归档交付物。

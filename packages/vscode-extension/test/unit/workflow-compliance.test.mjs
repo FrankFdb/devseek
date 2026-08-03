@@ -2681,6 +2681,24 @@ test('Run evidence: changed paths are projected from the current run across sibl
   assert.doesNotMatch(ext, /changedPaths:\s*lastAgentChangedPaths\.slice\(0, 12\)/);
 });
 
+test('Safety refusal: no-mutation delivery has one explicit evidence path', () => {
+  const safetyIntent = src('src/intent/safety-intent.ts');
+  const agenticLoop = src('src/agent/agentic-loop.ts');
+  const runtimeState = src('src/agent/agent-runtime-state-machine.ts');
+  assertContains(safetyIntent, 'export function hasUnsafeSecretHarvestingRefusalEvidence', 'safety owner must validate refusal receipts');
+  assertContains(safetyIntent, 'isUnsafeSecretHarvestingImplementationRequest(requestText)', 'refusal evidence must consume the canonical safety intent owner');
+  assertContains(safetyIntent, 'runtime.workToolUsed !== true', 'a refusal receipt must reject work-tool side effects');
+  assertContains(safetyIntent, '(runtime.changedFileCount ?? 0) === 0', 'a refusal receipt must reject file mutations');
+  assertContains(agenticLoop, '{ workToolUsed: sawWorkTool, changedFileCount: allWrittenFiles.length }', 'exploratory completion must project real side-effect facts');
+  assertContains(agenticLoop, 'policyRefusalEvidenceSatisfied,', 'Agent runtime settlement must receive explicit refusal evidence');
+  assertContains(runtimeState, 'if (input.policyRefusalEvidenceSatisfied && hasDeliverySignal)', 'RuntimeState must own no-mutation refusal delivery');
+  assert.match(
+    runtimeState,
+    /if \(toolRequests > 0 && toolExecutions <= 0\)[\s\S]*?if \(input\.policyRefusalEvidenceSatisfied && hasDeliverySignal\)/,
+    'unexecuted tool requests must fail before refusal delivery',
+  );
+});
+
 test('Agentic evidence: read-only terminal checks are retained as completion evidence', () => {
   const agentLoop = src('src/agent/tool-loop.ts');
   assertContains(

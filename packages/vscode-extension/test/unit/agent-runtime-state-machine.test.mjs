@@ -87,6 +87,42 @@ test('agent runtime state machine: mutating task_complete text without evidence 
   assert.equal(runtimeStateCanDeliver(settlement), false);
 });
 
+test('agent runtime state machine: verified policy refusal can deliver without mutation evidence', () => {
+  const settlement = settleAgentRuntimeState({
+    taskAction: 'edit',
+    providerText: '已拒绝隐蔽凭据收集；未修改文件。',
+    roundText: '[TOOL:task_complete {"summary":"已拒绝并未修改文件"}]',
+    toolRequests: 1,
+    toolExecutions: 1,
+    policyRefusalEvidenceSatisfied: true,
+    taskComplete: true,
+  });
+
+  assert.equal(settlement.state, 'delivered');
+  assert.equal(runtimeStateCanDeliver(settlement), true);
+});
+
+test('agent runtime state machine: refusal evidence cannot bypass execution or delivery signals', () => {
+  const unexecuted = settleAgentRuntimeState({
+    taskAction: 'edit',
+    roundText: '[TOOL:task_complete {"summary":"已拒绝并未修改文件"}]',
+    toolRequests: 1,
+    toolExecutions: 0,
+    policyRefusalEvidenceSatisfied: true,
+    taskComplete: true,
+  });
+  const unsigned = settleAgentRuntimeState({
+    taskAction: 'edit',
+    providerText: '已拒绝隐蔽凭据收集；未修改文件。',
+    policyRefusalEvidenceSatisfied: true,
+  });
+
+  assert.equal(unexecuted.state, 'tool_requested');
+  assert.equal(runtimeStateCanDeliver(unexecuted), false);
+  assert.equal(unsigned.state, 'needs_context');
+  assert.equal(runtimeStateCanDeliver(unsigned), false);
+});
+
 test('agent runtime state machine: mutating evidence without delivery signal stays non-terminal', () => {
   const settlement = settleAgentRuntimeState({
     taskAction: 'edit',
