@@ -1,9 +1,34 @@
 {
-  "version": 1,
-  "policy": "Files above their target are frozen at the recorded ceiling. A ceiling may only move down after responsibilities are extracted.",
+  "version": 2,
+  "policy": "Design principles and coherent responsibility boundaries drive refactoring. Size budgets are regression guardrails, never optimization goals. A ceiling may only move down after a named responsibility, its dependencies, and its tests are extracted.",
+  "implementationPolicy": {
+    "priorityOrder": [
+      "behavior-contract",
+      "semantic-owner",
+      "single-responsibility-boundary",
+      "dependency-direction-and-interface-segregation",
+      "testability-and-recovery",
+      "size-budget"
+    ],
+    "sizeMetricRole": "regression-guardrail-only",
+    "budgetDecreaseRequires": [
+      "named-responsibility-extracted",
+      "dependency-direction-preserved",
+      "tests-move-with-responsibility",
+      "legacy-owner-removed-or-semantic-free",
+      "sibling-bypass-guarded"
+    ],
+    "prohibitedSizeOptimizations": [
+      "delete-useful-explanations",
+      "compress-formatting",
+      "empty-wrapper-extraction",
+      "arbitrary-line-based-splitting",
+      "cyclic-or-reverse-dependency"
+    ]
+  },
   "files": {
     "packages/vscode-extension/src/extension.ts": {
-      "maxLines": 2061,
+      "maxLines": 2060,
       "targetLines": 1024,
       "boundary": "VS Code composition root and Surface Adapter"
     },

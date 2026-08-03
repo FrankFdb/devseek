@@ -2079,7 +2079,8 @@ test('Local execution failures escalate into Agent repair instead of browser upl
   assertContains(planner, 'canReplayRunOnlyPlan', 'planner must verify run-only executables still exist');
   assertContains(planner, 'repeat-replanned-build', 'planner must replan missing or rebuild repeat requests as build/run');
   assertContains(localRunner, 'buildLocalExecutionRepairTasks(localPlan, localResult, repairWsRoot)', 'local failures must build concrete repair tasks');
-  assertContains(localRunner, 'runAgentLoop(', 'local failures must enter the tool-capable agent loop');
+  assertContains(localRunner, 'agentKernelService.executePlanned({', 'local failures must enter the tool-capable Coding Kernel route');
+  assert.doesNotMatch(localRunner, /runAgentLoop\(/, 'local repair must not bypass the Coding Kernel execution boundary');
   assertContains(localRunner, '本地执行失败，进入 Agent 修复', 'UI must show the repair escalation');
   assertContains(repair, '按 Claude Code / Codex 风格处理', 'repair prompt must follow coding-agent closed-loop behavior');
   assertContains(repair, '不要依赖网页附件上传', 'repair must use local tools rather than DeepSeek browser uploads');
@@ -2645,8 +2646,8 @@ test('Agentic free-explore: follow-up turns keep same-session context', () => {
   assertContains(sessionContext, '不要泛化为分析整个 code 目录', 'follow-up context must prevent broad code-directory reinterpretation');
   assert.match(
     ext,
-    /runAgenticLoop\([\s\S]*?\}, agSessionContext, workflow\.toolPolicyMode, agMemoryRelatedPaths\)/,
-    'free-explore runAgenticLoop call must receive same-session context, workflow mode, and memory path anchors',
+    /agentKernelService\.executeExploratory\(\{[\s\S]*?sessionContextText:\s*agSessionContext,[\s\S]*?workflowMode:\s*workflow\.toolPolicyMode,[\s\S]*?memoryRelatedPaths:\s*agMemoryRelatedPaths/,
+    'free-explore Coding Kernel request must receive same-session context, workflow mode, and memory path anchors',
   );
   assert.match(
     ext,
@@ -3702,7 +3703,7 @@ test('Architecture: Phase 7 recovery uses task facts, checkpoints, and idempoten
   assert.doesNotMatch(extension, /!resumeFromIndex\b/, 'resume index 0 must not be treated as no checkpoint resume');
   assert.match(
     extension,
-    /recovery\.kind !== 'Unknown'[\s\S]*?saveAgentCheckpoint\(/,
+    /recovery\.kind !== 'Unknown'[\s\S]*?agentCheckpointService\.save\(/,
     'classified provider failures must save checkpoint instead of surfacing only a raw error',
   );
 });

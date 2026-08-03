@@ -16,7 +16,11 @@ execSync(
 );
 
 const req = createRequire(import.meta.url);
-const { DEFAULT_TASK_CHECKPOINT_KEY, TaskCheckpointStore } = req(bundlePath);
+const {
+  DEFAULT_TASK_CHECKPOINT_KEY,
+  ScopedTaskCheckpointService,
+  TaskCheckpointStore,
+} = req(bundlePath);
 
 class MemoryStorage {
   data = new Map();
@@ -74,6 +78,40 @@ test('TaskCheckpointStore: loadFresh returns current checkpoint', async () => {
 
   assert.equal(fresh.checkpoint.sessionId, 's1');
   assert.equal(fresh.stale, false);
+});
+
+test('ScopedTaskCheckpointService owns scope, clock, and callback-safe persistence', async () => {
+  const storage = new MemoryStorage();
+  let scope = { wsRootFsPath: '/repo', sessionId: 's1' };
+  const service = new ScopedTaskCheckpointService({
+    storage,
+    getScope: () => scope,
+    now: () => 1_000,
+  });
+  const { load, loadFresh, save } = service;
+
+  await save(checkpoint({ savedAt: 900 }));
+  assert.equal(load().sessionId, 's1');
+  assert.equal((await loadFresh(200)).sessionId, 's1');
+
+  scope = { wsRootFsPath: '/repo', sessionId: 's2' };
+  assert.equal(load(), undefined);
+  assert.equal(await loadFresh(200), undefined);
+  assert.equal(load(), undefined);
+});
+
+test('ScopedTaskCheckpointService maps null saves to a durable clear', async () => {
+  const storage = new MemoryStorage();
+  const service = new ScopedTaskCheckpointService({
+    storage,
+    getScope: () => ({ wsRootFsPath: '/repo', sessionId: 's1' }),
+    now: () => 1_000,
+  });
+
+  await service.save(checkpoint({ savedAt: 900 }));
+  await service.save(null);
+
+  assert.equal(service.load(), undefined);
 });
 
 test('TaskCheckpointStore: loadFresh clears checkpoint from a different workspace or session', async () => {

@@ -10,6 +10,33 @@ const budget = JSON.parse(fs.readFileSync(budgetPath, 'utf8'));
 const files = [];
 const violations = [];
 const debt = [];
+const implementationPolicy = budget.implementationPolicy ?? {};
+const priorityOrder = Array.isArray(implementationPolicy.priorityOrder)
+  ? implementationPolicy.priorityOrder
+  : [];
+const requiredDecreaseEvidence = new Set([
+  'named-responsibility-extracted',
+  'dependency-direction-preserved',
+  'tests-move-with-responsibility',
+  'legacy-owner-removed-or-semantic-free',
+  'sibling-bypass-guarded',
+]);
+const actualDecreaseEvidence = new Set(implementationPolicy.budgetDecreaseRequires ?? []);
+
+if (Number(budget.version) < 2) {
+  violations.push({ kind: 'design-first-policy-version-missing' });
+}
+if (implementationPolicy.sizeMetricRole !== 'regression-guardrail-only') {
+  violations.push({ kind: 'size-metric-role-invalid' });
+}
+if (priorityOrder.at(-1) !== 'size-budget') {
+  violations.push({ kind: 'size-budget-must-be-last-priority' });
+}
+for (const evidence of requiredDecreaseEvidence) {
+  if (!actualDecreaseEvidence.has(evidence)) {
+    violations.push({ kind: 'budget-decrease-evidence-missing', evidence });
+  }
+}
 
 for (const [relativePath, rule] of Object.entries(budget.files ?? {})) {
   const absolutePath = path.join(repoRoot, relativePath);
@@ -43,6 +70,7 @@ for (const [relativePath, rule] of Object.entries(budget.files ?? {})) {
 const report = {
   ok: violations.length === 0,
   policy: budget.policy,
+  implementationPolicy,
   budgetPath: path.relative(repoRoot, budgetPath),
   files,
   violations,

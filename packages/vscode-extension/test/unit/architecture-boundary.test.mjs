@@ -190,7 +190,10 @@ test('Phase 7: task recovery services are split from composition roots', () => {
   }
 
   const extension = read('src/extension.ts');
-  assert.match(extension, /TaskCheckpointStore/, 'extension.ts must delegate checkpoint persistence to TaskCheckpointStore');
+  const checkpoint = read('src/app/task-checkpoint-store.ts');
+  assert.match(extension, /ScopedTaskCheckpointService/, 'extension.ts must delegate scoped checkpoint persistence to its application service');
+  assert.doesNotMatch(extension, /new TaskCheckpointStore/, 'extension.ts must not construct the raw checkpoint store');
+  assert.match(checkpoint, /class ScopedTaskCheckpointService[\s\S]*?new TaskCheckpointStore/, 'the scoped checkpoint service must own raw store construction');
   assert.doesNotMatch(extension, /workspaceState\.update\(CHECKPOINT_KEY/, 'extension.ts must not write checkpoint state directly');
   assert.doesNotMatch(extension, /workspaceState\.get<AgentTaskCheckpoint>\(CHECKPOINT_KEY/, 'extension.ts must not read checkpoint state directly');
 });

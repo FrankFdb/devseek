@@ -1,6 +1,12 @@
 import { buildRequirementContract, type RequirementContract } from '../agent/requirement-contract';
 import { buildTaskContract, type TaskContract } from '../agent/task-contract';
 import type { AgentLoopResult } from '../agent/loop-types';
+import type {
+  CodingKernelExecutionPort,
+  CodingKernelExecutionRequest,
+  ExploratoryKernelExecutionInput,
+  PlannedKernelExecutionInput,
+} from './coding-kernel-execution';
 import { settleAgentLoopResult, type AgentRunSettlement } from './agent-run-settlement';
 import {
   createDevSeekRunContext,
@@ -33,7 +39,26 @@ export interface AgentKernelRun {
 export class AgentKernelService {
   constructor(
     private readonly terminalPermissions: Pick<TerminalPermissionCoordinator, 'completeRunContext'>,
+    private readonly execution: CodingKernelExecutionPort,
   ) {}
+
+  execute(request: CodingKernelExecutionRequest): Promise<AgentLoopResult> {
+    return this.execution.execute(request);
+  }
+
+  executeExploratory(request: ExploratoryKernelExecutionInput): Promise<AgentLoopResult> {
+    return this.execute({
+      ...request,
+      route: 'exploratory',
+    });
+  }
+
+  executePlanned(request: PlannedKernelExecutionInput): Promise<AgentLoopResult> {
+    return this.execute({
+      ...request,
+      route: 'planned',
+    });
+  }
 
   startRun(input: AgentKernelRunInput): AgentKernelRun {
     const taskContract = input.taskContract ?? buildTaskContract(input.userPrompt);

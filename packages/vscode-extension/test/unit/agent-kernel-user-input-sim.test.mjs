@@ -341,7 +341,11 @@ test('AgentKernel user-input simulation: agent-owned prompts enter kernel-owned 
   };
 
   try {
-    const kernel = new AgentKernelService(terminalPermissions);
+    const kernel = new AgentKernelService(terminalPermissions, {
+      async execute() {
+        throw new Error('unexpected kernel execution in settlement simulation');
+      },
+    });
     const mutatingCases = USER_INPUT_CASES.filter(scenario => scenario.workflow.useAgent);
 
     for (const scenario of mutatingCases) {

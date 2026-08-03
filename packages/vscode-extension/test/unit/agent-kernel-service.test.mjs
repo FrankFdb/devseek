@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -19,6 +19,11 @@ execSync(
 
 const req = createRequire(import.meta.url);
 const { AgentKernelService } = req(bundlePath);
+const unusedExecution = {
+  async execute() {
+    throw new Error('unexpected kernel execution in settlement-only test');
+  },
+};
 
 function readJsonl(filePath) {
   return readFileSync(filePath, 'utf8').trim().split('\n').map(line => JSON.parse(line));
@@ -35,7 +40,7 @@ test('AgentKernelService: headless create run owns TaskContract, run context, an
   };
 
   try {
-    const kernel = new AgentKernelService(terminalPermissions);
+    const kernel = new AgentKernelService(terminalPermissions, unusedExecution);
     const kernelRun = kernel.startRun({
       workspaceRoot,
       source: 'unit.agent-kernel',
@@ -88,7 +93,7 @@ test('AgentKernelService: failed settlement stays behind the kernel run boundary
   };
 
   try {
-    const kernelRun = new AgentKernelService(terminalPermissions).startRun({
+    const kernelRun = new AgentKernelService(terminalPermissions, unusedExecution).startRun({
       workspaceRoot,
       runId: 'kernel-failed-run',
       userPrompt: '无法解析的任务',
@@ -113,7 +118,7 @@ test('R3-01 AgentKernelService: cancelRun routes through the terminal settlement
   };
 
   try {
-    const kernelRun = new AgentKernelService(terminalPermissions).startRun({
+    const kernelRun = new AgentKernelService(terminalPermissions, unusedExecution).startRun({
       workspaceRoot,
       runId: 'kernel-cancel-run',
       userPrompt: '修改 src/main.ts',
@@ -141,18 +146,86 @@ test('R3-01 AgentKernelService: cancelRun routes through the terminal settlement
   }
 });
 
+test('AgentKernelService: named request contracts enforce the kernel route', async () => {
+  const requests = [];
+  const execution = {
+    async execute(request) {
+      requests.push(request);
+      return {
+        tasksTotal: 0,
+        tasksApplied: 0,
+        tasksFailed: 0,
+        changedPaths: [],
+      };
+    },
+  };
+  const kernel = new AgentKernelService({ completeRunContext() {} }, execution);
+
+  await kernel.executeExploratory({
+    route: 'legacy-bypass-attempt',
+    userPrompt: 'inspect',
+    dataFiles: [],
+    workspaceRoot: '/repo',
+    mode: 'fast',
+    callbacks: {},
+    workflowMode: 'inspect',
+  });
+  await kernel.executePlanned({
+    route: 'legacy-bypass-attempt',
+    tasks: [],
+    userPrompt: 'edit',
+    mode: 'fast',
+    workspaceRoot: { fsPath: '/repo' },
+    callbacks: {},
+  });
+
+  assert.deepEqual(requests.map(request => request.route), ['exploratory', 'planned']);
+});
+
 test('AgentKernelService: extension Surface does not own agent completion decisions', () => {
   const extension = readFileSync(path.join(rootDir, 'src/extension.ts'), 'utf8');
+  const localExecutionRunner = readFileSync(path.join(rootDir, 'src/local-execution-chat-runner.ts'), 'utf8');
   const kernelService = readFileSync(path.join(rootDir, 'src/app/agent-kernel-service.ts'), 'utf8');
+  const productExecutor = readFileSync(path.join(rootDir, 'src/product-coding-kernel-executor.ts'), 'utf8');
 
-  assert.match(extension, /new AgentKernelService\(terminalPermissionCoordinator\)/);
+  assert.match(extension, /new AgentKernelService\([\s\S]*productCodingKernelExecutor/);
   assert.match(extension, /agentKernelService\.startRun\(/);
+  assert.match(extension, /agentKernelService\.executeExploratory\(/);
+  assert.match(extension, /agentKernelService\.executePlanned\(/);
   assert.match(extension, /agentKernelRun\.settleAgentLoopResult/);
   assert.match(extension, /agentKernelRun\.failRun/);
   assert.match(extension, /activeAgentKernelRun\?\.cancelRun|cancelActiveAgentRun/);
+  assert.equal(importsKernelLoop(extension), false);
+  assert.doesNotMatch(extension, /await\s+runAgent(?:ic)?Loop\s*\(/u);
+  assert.match(localExecutionRunner, /input\.agentKernelService\.executePlanned\(/);
+  assert.equal(importsKernelLoop(localExecutionRunner), false);
+  assert.doesNotMatch(localExecutionRunner, /await\s+runAgent(?:ic)?Loop\s*\(/u);
   assert.doesNotMatch(extension, /from '\.\/app\/agent-run-settlement'/);
   assert.doesNotMatch(extension, /terminalPermissionCoordinator\.completeRunContext\(agentRunContext/);
   assert.match(kernelService, /buildTaskContract\(input\.userPrompt\)/);
   assert.match(kernelService, /createDevSeekRunContext\(\{[\s\S]*taskContract/);
+  assert.match(kernelService, /this\.execution\.execute\(request\)/);
+  assert.match(kernelService, /executeExploratory\([\s\S]*route: 'exploratory'/);
+  assert.match(kernelService, /executePlanned\([\s\S]*route: 'planned'/);
   assert.match(kernelService, /settleAgentLoopResult\(this\.terminalPermissions, this\.runContext/);
+  assert.match(productExecutor, /runExploratory: runAgenticLoop/);
+  assert.match(productExecutor, /runPlanned: runAgentLoop/);
+
+  const directImportOwners = listTypeScriptFiles(path.join(rootDir, 'src'))
+    .filter(filePath => importsKernelLoop(readFileSync(filePath, 'utf8')))
+    .map(filePath => path.relative(path.join(rootDir, 'src'), filePath).replace(/\\/g, '/'));
+  assert.deepEqual(directImportOwners, ['product-coding-kernel-executor.ts']);
 });
+
+function listTypeScriptFiles(directory) {
+  return readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    const filePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) return listTypeScriptFiles(filePath);
+    return entry.isFile() && entry.name.endsWith('.ts') ? [filePath] : [];
+  });
+}
+
+function importsKernelLoop(source) {
+  return [...source.matchAll(/import\s*\{([\s\S]*?)\}\s*from\s*['"][^'"]+['"]/gu)]
+    .some(match => /\brunAgent(?:ic)?Loop\b/u.test(match[1]));
+}

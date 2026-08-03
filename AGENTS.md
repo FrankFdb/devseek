@@ -19,6 +19,12 @@ small enough that automatic context compaction is unlikely to trigger.
   If the necessary change exposes code that violates those principles, consider
   refactoring as part of the fix instead of piling more logic onto the wrong
   boundary.
+- Treat file size, line counts, diff size, and complexity thresholds as regression
+  guardrails, never as refactoring goals. Optimize in this order: behavior contract,
+  semantic owner, single responsibility, dependency direction, testable boundary,
+  then code size. A smaller file is not an improvement when it comes from compressed
+  formatting, deleted explanations, empty wrappers, or arbitrary splitting without
+  moving a coherent responsibility and its tests.
 - For any bugfix or refactor, fix the defect class, not just the current
   screenshot or reproduction path. Audit sibling entry points, state flows,
   tool/protocol boundaries, validation, recovery, and UI delivery paths for the

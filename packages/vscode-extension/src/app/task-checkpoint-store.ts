@@ -37,6 +37,13 @@ export interface TaskCheckpointScope {
 
 export const DEFAULT_TASK_CHECKPOINT_KEY = 'devseek.agentTaskCheckpoint';
 
+export interface ScopedTaskCheckpointServiceOptions {
+  readonly storage: TaskCheckpointStorage;
+  readonly getScope: () => TaskCheckpointScope;
+  readonly key?: string;
+  readonly now?: () => number;
+}
+
 interface TaskCheckpointMeta {
   checkpointProtocol: typeof TASK_CHECKPOINT_RESUME_PROTOCOL;
   checkpointEpoch: number;
@@ -131,6 +138,30 @@ export class TaskCheckpointStore<TTask = unknown> {
   private nextCheckpointEpoch(): number {
     return normalizeCheckpointEpoch(this.storage.get<TaskCheckpointMeta>(this.metaKey)?.checkpointEpoch) + 1;
   }
+}
+
+export class ScopedTaskCheckpointService<TTask = unknown> {
+  private readonly store: TaskCheckpointStore<TTask>;
+  private readonly getScope: () => TaskCheckpointScope;
+  private readonly now: () => number;
+
+  constructor(options: ScopedTaskCheckpointServiceOptions) {
+    this.store = new TaskCheckpointStore<TTask>(options.storage, options.key);
+    this.getScope = options.getScope;
+    this.now = options.now ?? Date.now;
+  }
+
+  readonly load = (): TaskCheckpointRecord<TTask> | undefined => (
+    this.store.loadScoped(this.getScope())
+  );
+
+  readonly loadFresh = async (maxAgeMs: number): Promise<TaskCheckpointRecord<TTask> | undefined> => (
+    (await this.store.loadFresh(maxAgeMs, this.now(), this.getScope()))?.checkpoint
+  );
+
+  readonly save = async (record: TaskCheckpointRecord<TTask> | null): Promise<void> => {
+    await (record ? this.store.save(record) : this.store.clear());
+  };
 }
 
 function normalizeCheckpointRecord<TTask>(record: TaskCheckpointRecord<TTask>): TaskCheckpointRecord<TTask> {

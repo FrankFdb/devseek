@@ -236,7 +236,7 @@ test('Mutation guard: tool planning consumes policy before every execution branc
   assert.match(toolLoop, /hasEvidenceAwareToolAuthority\(toolPlan\.kind, callbacks\)/);
   assert.match(agenticLoop, /callbacks = \{ \.\.\.callbacks, executionMode: workflowMode \}/);
   assert.doesNotMatch(writeAuthority, /if \(!callbacks\.onBeforeFileWrite\) return true/);
-  assert.match(source('src/extension.ts'), /runAgenticLoop\([\s\S]*?executionMode:\s*workflow\.toolPolicyMode/);
+  assert.match(source('src/extension.ts'), /agentKernelService\.executeExploratory\(\{[\s\S]*?callbacks:\s*\{[\s\S]*?executionMode:\s*workflow\.toolPolicyMode/);
 });
 
 test('Mutation guard: participant capability is sent only through the Bridge provider envelope', () => {

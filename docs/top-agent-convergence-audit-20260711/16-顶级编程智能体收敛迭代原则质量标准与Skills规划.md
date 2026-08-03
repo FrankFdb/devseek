@@ -21,7 +21,7 @@ devseek_governance:
 
 # 顶级编程智能体收敛迭代原则、质量标准与 Skills 规划
 
-- 更新日期：2026-07-12
+- 更新日期：2026-08-03
 - 文档性质：模型无关的工程执行规范、GPT-5.5 原子作业协议与候选 Skills backlog
 - 当前状态：规范已定义；Skills 矩阵中的候选均未因本文而自动实现或取得资格
 - 审计包入口：[README.md](README.md)
@@ -52,6 +52,7 @@ devseek_governance:
 16. **元数据不是执行证据**：catalog、profile、prompt、Skill 或 runner inventory 的存在不证明语义已执行；每个声明语义必须有绑定输入、真实 executor、oracle、receipt 和 terminal evidence。
 17. **旧文档不得复活执行权**：`docs/requirements`、`docs/architecture` 和本包 01～13 中的“当前、下一轮、已完成、stable、Phase”只作历史/设计证据；任务只能由 14 发放，并按 18 路由旧内容。
 18. **授权绑定且不继承**：用户/外部授权必须绑定当前窗口、atomic ID、candidate、action/scope、有效期和撤销源；旧聊天、旧窗口、另一个 slot 或一般性“继续”不能替代高影响动作的明确授权。
+19. **设计原则优先，规模指标从属**：代码优化先确定行为契约、唯一 owner、单一职责、依赖方向和可测试边界，再查看行数、diff 和复杂度。规模预算只阻止职责回流；删说明、压格式、空壳拆分或无契约迁移不计收敛。
 
 ## 2. 生命周期质量标准与 Definition of Done
 
@@ -96,6 +97,7 @@ DoD 的最低共同部分：
 3. 定向检查 sibling entrypoint、state transition、persistence、recovery、protocol、UI 和 legacy migration。
 4. 合并重复实现，添加静态 reachability/import/mutation guard；删除被替代路径。
 5. 如果同类失败再次出现，必须提高 abstraction、Schema 或 guard 层级，不允许添加第三个样例分支。
+6. 最后才评估文件规模；只有职责、依赖和测试边界完整迁出时才下调预算，不得为过行数门而压缩表达。
 
 ### 3.3 验证、复审、提交与发布
 

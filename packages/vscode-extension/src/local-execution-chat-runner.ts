@@ -2,7 +2,6 @@ import * as nodePath from 'path';
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
 import { emitLearningEvent, getErrorFixHint } from './agent-learner';
-import { runAgentLoop } from './agent-loop';
 import { getAgentTaskDisplayTarget } from './agent-task-decomposer';
 import { classifyTerminalEvidenceCommand } from './agent/completion-evidence';
 import type { AgentLoopCallbacks } from './agent/loop-types';
@@ -33,6 +32,7 @@ import { askRepairExhaustedAction, requestManualFixGuidance } from './app/repair
 import { AgentDisplayPresenter } from './app/agent-display-presenter';
 import type { TerminalPermissionCoordinator } from './app/terminal-permission-coordinator';
 import { extendRepairRoundBudget, normalizeRepairRoundBudget } from './app/bounded-repair-policy';
+import type { AgentKernelService } from './app/agent-kernel-service';
 
 export interface LocalExecutionRouteChatOptions {
   prompt: string;
@@ -57,6 +57,7 @@ export interface LocalExecutionChatRunnerInput {
   routeChat: (opts: LocalExecutionRouteChatOptions) => Promise<string>;
   toolPolicy: ToolPolicy;
   terminalPermissionCoordinator: TerminalPermissionCoordinator;
+  agentKernelService: Pick<AgentKernelService, 'executePlanned'>;
   traceRunId: string;
   traceEvidenceParticipantToken: string;
   onTraceEvidenceError: (error: unknown) => void;
@@ -418,12 +419,12 @@ async function runAgentRepairRound(
     taskTotal: repairTasks.length,
   }));
 
-  const repairLoop = await runAgentLoop(
-    repairTasks,
-    repairPromptWithHint,
-    input.mode,
-    vscode.Uri.file(repairWsRoot),
-    buildLocalExecutionAgentCallbacks({
+  const repairLoop = await input.agentKernelService.executePlanned({
+    tasks: repairTasks,
+    userPrompt: repairPromptWithHint,
+    mode: input.mode,
+    workspaceRoot: vscode.Uri.file(repairWsRoot),
+    callbacks: buildLocalExecutionAgentCallbacks({
       webview: input.webview,
       workflowReporter: input.workflowReporter,
       workspaceRoot: repairWsRoot,
@@ -444,9 +445,9 @@ async function runAgentRepairRound(
       signal: input.signal,
       displayPresenter: repairDisplayPresenter,
     }),
-    undefined,
-    0,
-  );
+    analysisContext: undefined,
+    startFromIndex: 0,
+  });
 
   if (repairLoop.changedPaths.length > 0) {
     repairLoop.changedPaths.forEach((pathValue) => {

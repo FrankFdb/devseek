@@ -55,7 +55,7 @@
 | `NP-06` | `packages/vscode-extension/src/diagnostics/run-log-replay.ts` | settlement-replay-oracle | `5194693e8b17a4626f08a083d312e9a14c7f346281f3dc90296a11ba3b8fc534` |
 | `NP-06` | `packages/vscode-extension/test/unit/run-context.test.mjs` | run-context-recovery-oracle | `1ef4a5cb5a44e303e3544c7f3ad12ee37ff95d49138391757cf610371b55e004` |
 | `NP-06` | `packages/vscode-extension/test/unit/run-context-settlement.test.mjs` | settlement-contract-oracle | `1c864f6f64812be4cb7241bd2fe323e9d8aa111894597bb81aa4ee75f68969ef` |
-| `NP-06` | `packages/vscode-extension/test/unit/workflow-compliance.test.mjs` | workflow-static-contract-oracle | `300f1c8818b9d3c7e4798faa5ba1c29fae9e92a0f578b8dfe3e108de89c5b766` |
+| `NP-06` | `packages/vscode-extension/test/unit/workflow-compliance.test.mjs` | workflow-static-contract-oracle | `1a295b98e1cedee21ead6d1282929a45e675d5aed91cbb07cf1e91a36057d73b` |
 | `NP-07` | `packages/vscode-extension/src/agent/artifact-quality-oracle.ts` | markdown-artifact-quality-oracle | `870e91b5a4d2288a60d92c9e4c0cdee89362e431cad44ca8ff8029b72638d196` |
 | `NP-07` | `packages/vscode-extension/src/agent/completion-evidence.ts` | completion-evidence-deliverable-contract | `4951abff13260577ebc83162ed180d4816ebe3c0d8c7181959d4fb3fd5a5a60b` |
 | `NP-07` | `packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs` | artifact-quality-oracle-tests | `3c56c09899c4684eed0fa3cc4742cfde860f6b04b7a2a45ee01091ffb1320620` |
@@ -85,4 +85,4 @@
 
 ## Manifest Identity
 
-- Manifest SHA-256: `f7cdd5316ad7640251819d8c6d0621b3e92974d3f3dc58e06514b188f0fb4c8d`
+- Manifest SHA-256: `fc485676588baf42e82c0fed55c23329a5a3c552eff38c0dd8904f342df64b42`
