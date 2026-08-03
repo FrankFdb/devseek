@@ -28,9 +28,9 @@
   },
   "files": {
     "packages/cli/src/index.ts": {
-      "maxLines": 1078,
+      "maxLines": 728,
       "targetLines": 512,
-      "boundary": "CLI composition root and legacy coding-loop coordinator"
+      "boundary": "CLI composition root, process lifecycle, context selection, and evidence adapters"
     },
     "packages/vscode-extension/src/extension.ts": {
       "maxLines": 2060,
