@@ -36,9 +36,9 @@
     },
     "doc_process_identity_reconciliation": {
       "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
-      "source_sha256": "0c611270778e0cf8f851e381a08c6344546a457fce2ec131e4bb978589c2fc6d",
-      "reconciliation_sha256": "0062308b89bd93c1eff593cae812d942f96ff2bb4a7b70e183030414610e9599",
-      "current_candidate_identity_status": "clean-runtime-identity-established"
+      "source_sha256": "035e3af82e22c9d671efdf373257afcbe7c290c34907d72b8c06e1247871eae2",
+      "reconciliation_sha256": "bea678edb89b71dea235abca6216985b5f002bd94f477eeb69fe6aaad3271db6",
+      "current_candidate_identity_status": "deferred-unusable-until-clean-runtime"
     },
     "live_qualification_request_packet": {
       "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
@@ -64,11 +64,11 @@
     },
     "clean_runtime_limited_observation": {
       "path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
-      "source_sha256": "005084a18681dc69df73e10fb5922024ed31fc3df1c34ba9d5858439556e6ada",
-      "observation_sha256": "f1aa92bd3a06487bf52c61aa44389f3e4a3dd51a87500c53d385bc5c53333006",
-      "terminal_state": "COMPLETED",
-      "clean_runtime_identity_established": true,
-      "stable_runtime_count": 1
+      "source_sha256": "55594ef5b5dee56d4c2c8a32b584ba955b246a2736880d91694e7b03dc36200c",
+      "observation_sha256": "64a81e37581c96e415b2a08bf99f71795f4e44dcae9834a584a4db0abefb1c68",
+      "terminal_state": "BLOCKED",
+      "clean_runtime_identity_established": false,
+      "stable_runtime_count": 0
     }
   },
   "r4_scope": {
@@ -76,11 +76,11 @@
     "handoff_doc_commit": "02cb792b4fe86df523c7f88eb106f13394e6f3fd",
     "total_leaf_count": 6,
     "local_process_artifacts_complete_except_clean_runtime": true,
-    "clean_runtime_leaf_terminal_state": "COMPLETED",
-    "clean_runtime_limited_observation_terminal_state": "COMPLETED",
-    "clean_runtime_limited_observation_sha256": "f1aa92bd3a06487bf52c61aa44389f3e4a3dd51a87500c53d385bc5c53333006",
-    "clean_runtime_stable_runtime_count": 1,
-    "current_candidate_identity_status": "clean-runtime-identity-established",
+    "clean_runtime_leaf_terminal_state": "BLOCKED",
+    "clean_runtime_limited_observation_terminal_state": "BLOCKED",
+    "clean_runtime_limited_observation_sha256": "64a81e37581c96e415b2a08bf99f71795f4e44dcae9834a584a4db0abefb1c68",
+    "clean_runtime_stable_runtime_count": 0,
+    "current_candidate_identity_status": "deferred-unusable-until-clean-runtime",
     "gate0_status": "NOT_PASSED",
     "r1_qualification_status": "NOT_STARTED",
     "release_candidate_vsix_sha256": "027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d",
@@ -92,20 +92,23 @@
     "may_run_live_provider_test": false,
     "may_install_or_replace_extension": false,
     "may_refresh_current_candidate_identity_without_authorization": false,
-    "acceptable_next_authority": [],
+    "acceptable_next_authority": [
+      "explicit-user-clean-runtime-window-action-authorization",
+      "external-clean-candidate-identity-receipt"
+    ],
     "latest_limited_observation_path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
-    "latest_limited_observation_terminal_state": "COMPLETED",
-    "latest_limited_observation_clean_runtime_identity_established": true,
-    "blocked_until_authority": false
+    "latest_limited_observation_terminal_state": "BLOCKED",
+    "latest_limited_observation_clean_runtime_identity_established": false,
+    "blocked_until_authority": true
   },
   "leaves": [
     {
       "leaf_id": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
-      "terminal_state": "COMPLETED",
-      "implementation_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
+      "terminal_state": "BLOCKED",
+      "implementation_commit": null,
       "artifact_path": "docs/process/devseek-current-candidate-identity.json",
-      "blocker_reason": null,
-      "next_required_authority": null,
+      "blocker_reason": "existing-vscode-and-deepseek-pages-must-not-be-closed-or-reused-without-explicit-clean-runtime-authorization",
+      "next_required_authority": "explicit-user-authorization-for-clean-runtime-isolation-or-external-clean-identity-receipt",
       "qualification_effect": "NONE",
       "claims_permitted": false,
       "asserts_gate_pass": false
@@ -168,11 +171,11 @@
   ],
   "counts": {
     "r4_total_leaves": 6,
-    "completed_leaves": 6,
-    "blocked_leaves": 0,
-    "remaining_window_sensitive_leaves": 0,
+    "completed_leaves": 5,
+    "blocked_leaves": 1,
+    "remaining_window_sensitive_leaves": 1,
     "live_runs_authorized": 0,
     "qualification_claims": 0
   },
-  "rollup_sha256": "daa24f4e4363524f05b3ce9df0f890f2a2311133654af035a233e335240905b9"
+  "rollup_sha256": "84c5ed8bdf6e78aeb34d865e2c16833388bdbbc4d14d28dfbdb32e562187306f"
 }

@@ -33,9 +33,9 @@
     "r4_doc_process_identity_reconciliation": {
       "artifact_id": "R4-DOC-PROCESS-IDENTITY-RECONCILIATION",
       "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
-      "source_sha256": "0c611270778e0cf8f851e381a08c6344546a457fce2ec131e4bb978589c2fc6d",
+      "source_sha256": "035e3af82e22c9d671efdf373257afcbe7c290c34907d72b8c06e1247871eae2",
       "generated_view_path": "docs/process/generated/devseek-r4-doc-process-identity-reconciliation.md",
-      "generated_view_sha256": "89904478abcf36cb72823ed4e4da611ac6f20b2ce7123c23e0fa3639e1a7bdae",
+      "generated_view_sha256": "8123606141bf066838b85ae88df12f624253f398cdea02f5a2cebde2845a5b7b",
       "generated_view_status": "MATCHED"
     },
     "r4_live_qualification_request_packet": {
@@ -81,17 +81,17 @@
     "r4_iteration_status_rollup": {
       "artifact_id": "R4-ITERATION-STATUS-ROLLUP",
       "path": "docs/process/devseek-r4-iteration-status-rollup.json",
-      "source_sha256": "3f620ede1c0efe575a536340c3b37c04a052d76d609162416c9942747d4986b7",
+      "source_sha256": "4b0fafa0e2ed6f2eaeb80a9cb43ce1313bba6158bab44520437bcbaf397517f0",
       "generated_view_path": "docs/process/generated/devseek-r4-iteration-status-rollup.md",
-      "generated_view_sha256": "be1834e364c75e6ef7adb4092ba8f726208d4d1314409ffa870091497d1835a7",
+      "generated_view_sha256": "01a9bae24d7801c930683477b5896c285b4ad3a3c747b5dc9447097a05462758",
       "generated_view_status": "MATCHED"
     },
     "r4_clean_runtime_limited_observation": {
       "artifact_id": "R4-CLEAN-RUNTIME-LIMITED-OBSERVATION",
       "path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
-      "source_sha256": "005084a18681dc69df73e10fb5922024ed31fc3df1c34ba9d5858439556e6ada",
+      "source_sha256": "55594ef5b5dee56d4c2c8a32b584ba955b246a2736880d91694e7b03dc36200c",
       "generated_view_path": "docs/process/generated/devseek-r4-clean-runtime-limited-observation.md",
-      "generated_view_sha256": "c0873fd22b1e763f2f2cee2e25aa95b47308f76bb2b6de34e40d65220a104077",
+      "generated_view_sha256": "236ceb5ef3ac5f0b48caf6e990a08a25895cdc631f6ce2560ca0513451ddb22d",
       "generated_view_status": "MATCHED"
     },
     "r4_authorization_and_permission_guide": {
@@ -114,7 +114,7 @@
   "aggregate_scope": {
     "r4_original_leaf_count": 6,
     "process_artifacts_complete_except_clean_runtime": true,
-    "clean_runtime_terminal_state": "COMPLETED",
+    "clean_runtime_terminal_state": "BLOCKED",
     "qualification_effect": "NONE",
     "claims_permitted": false,
     "asserts_gate_pass": false,
@@ -148,12 +148,12 @@
       "artifact_id": "R4-DOC-PROCESS-IDENTITY-RECONCILIATION",
       "source_kind": "generated-json",
       "primary_path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
-      "source_sha256": "0c611270778e0cf8f851e381a08c6344546a457fce2ec131e4bb978589c2fc6d",
+      "source_sha256": "035e3af82e22c9d671efdf373257afcbe7c290c34907d72b8c06e1247871eae2",
       "schema_version": "devseek.r4-doc-process-identity-reconciliation/v1",
       "identity_hash_field": "reconciliation_sha256",
-      "identity_hash_value": "0062308b89bd93c1eff593cae812d942f96ff2bb4a7b70e183030414610e9599",
+      "identity_hash_value": "bea678edb89b71dea235abca6216985b5f002bd94f477eeb69fe6aaad3271db6",
       "generated_view_path": "docs/process/generated/devseek-r4-doc-process-identity-reconciliation.md",
-      "generated_view_sha256": "89904478abcf36cb72823ed4e4da611ac6f20b2ce7123c23e0fa3639e1a7bdae",
+      "generated_view_sha256": "8123606141bf066838b85ae88df12f624253f398cdea02f5a2cebde2845a5b7b",
       "generated_view_status": "MATCHED",
       "qualification_eligible": false,
       "qualification_effect": "NONE",
@@ -268,12 +268,12 @@
       "artifact_id": "R4-ITERATION-STATUS-ROLLUP",
       "source_kind": "generated-json",
       "primary_path": "docs/process/devseek-r4-iteration-status-rollup.json",
-      "source_sha256": "3f620ede1c0efe575a536340c3b37c04a052d76d609162416c9942747d4986b7",
+      "source_sha256": "4b0fafa0e2ed6f2eaeb80a9cb43ce1313bba6158bab44520437bcbaf397517f0",
       "schema_version": "devseek.r4-iteration-status-rollup/v1",
       "identity_hash_field": "rollup_sha256",
-      "identity_hash_value": "daa24f4e4363524f05b3ce9df0f890f2a2311133654af035a233e335240905b9",
+      "identity_hash_value": "84c5ed8bdf6e78aeb34d865e2c16833388bdbbc4d14d28dfbdb32e562187306f",
       "generated_view_path": "docs/process/generated/devseek-r4-iteration-status-rollup.md",
-      "generated_view_sha256": "be1834e364c75e6ef7adb4092ba8f726208d4d1314409ffa870091497d1835a7",
+      "generated_view_sha256": "01a9bae24d7801c930683477b5896c285b4ad3a3c747b5dc9447097a05462758",
       "generated_view_status": "MATCHED",
       "qualification_eligible": false,
       "qualification_effect": "NONE",
@@ -288,12 +288,12 @@
       "artifact_id": "R4-CLEAN-RUNTIME-LIMITED-OBSERVATION",
       "source_kind": "generated-json",
       "primary_path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
-      "source_sha256": "005084a18681dc69df73e10fb5922024ed31fc3df1c34ba9d5858439556e6ada",
+      "source_sha256": "55594ef5b5dee56d4c2c8a32b584ba955b246a2736880d91694e7b03dc36200c",
       "schema_version": "devseek.r4-clean-runtime-limited-observation/v1",
       "identity_hash_field": "observation_sha256",
-      "identity_hash_value": "f1aa92bd3a06487bf52c61aa44389f3e4a3dd51a87500c53d385bc5c53333006",
+      "identity_hash_value": "64a81e37581c96e415b2a08bf99f71795f4e44dcae9834a584a4db0abefb1c68",
       "generated_view_path": "docs/process/generated/devseek-r4-clean-runtime-limited-observation.md",
-      "generated_view_sha256": "c0873fd22b1e763f2f2cee2e25aa95b47308f76bb2b6de34e40d65220a104077",
+      "generated_view_sha256": "236ceb5ef3ac5f0b48caf6e990a08a25895cdc631f6ce2560ca0513451ddb22d",
       "generated_view_status": "MATCHED",
       "qualification_eligible": false,
       "qualification_effect": "NONE",
@@ -359,5 +359,5 @@
     "gate_assertions": 0,
     "artifact_errors": 0
   },
-  "aggregate_sha256": "a3e2839e2b1048835c60659918546dfb774aa1c6abfba792c5638ed7ef221d48"
+  "aggregate_sha256": "bb17fd9d89ac1f46235ce4a1e6f1ad04f4675d5d1a28d1da9dfb90f133ea25b8"
 }

@@ -7,12 +7,17 @@ import {
   readJson,
   sha256Object,
 } from './devseek-capability-ledger.mjs';
+import {
+  POST_R4_LOCAL_REGRESSION_MANIFEST_PATH,
+} from './devseek-post-r4-local-regression-manifest.mjs';
 
 export const POST_R4_COMPACT_INDEX_SCHEMA_VERSION = 'devseek.post-r4-compact-index/v1';
 export const POST_R4_COMPACT_INDEX_ID = 'POST-R4-COMPACT-INDEX/v1';
 export const POST_R4_COMPACT_INDEX_INTEGRITY_SCOPE = 'local-post-r4-doc-process-compact-index';
 export const POST_R4_COMPACT_INDEX_PATH = 'docs/process/devseek-post-r4-compact-index.json';
 export const POST_R4_COMPACT_INDEX_VIEW_PATH = 'docs/process/generated/devseek-post-r4-compact-index.md';
+export const POST_R4_LOCAL_FULL_REGRESSION_CHECKPOINT_PATH =
+  'docs/process/devseek-post-r4-local-full-regression-checkpoint.md';
 
 export const POST_R4_REQUIRED_SOURCE_PATHS = Object.freeze([
   'docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md',
@@ -23,6 +28,8 @@ export const POST_R4_REQUIRED_SOURCE_PATHS = Object.freeze([
   'docs/process/devseek-r4-authorization-and-permission-guide.md',
   'docs/process/devseek-r4-clean-runtime-limited-observation.json',
   'docs/process/devseek-r4-process-artifacts-aggregate.json',
+  POST_R4_LOCAL_REGRESSION_MANIFEST_PATH,
+  POST_R4_LOCAL_FULL_REGRESSION_CHECKPOINT_PATH,
   'docs/process/devseek-external-authority-requests.json',
   'docs/process/devseek-r4-live-qualification-request-packet.json',
 ]);
@@ -39,9 +46,12 @@ const JSON_SOURCE_PATHS = Object.freeze({
   rollup: 'docs/process/devseek-r4-iteration-status-rollup.json',
   cleanRuntimeObservation: 'docs/process/devseek-r4-clean-runtime-limited-observation.json',
   processArtifactsAggregate: 'docs/process/devseek-r4-process-artifacts-aggregate.json',
+  localRegressionManifest: POST_R4_LOCAL_REGRESSION_MANIFEST_PATH,
   externalAuthorityRequests: 'docs/process/devseek-external-authority-requests.json',
   liveQualificationRequestPacket: 'docs/process/devseek-r4-live-qualification-request-packet.json',
 });
+const LOCAL_REGRESSION_MANIFEST_ITEMS = Object.freeze(['NP-05', 'NP-06', 'NP-07']);
+const LOCAL_REGRESSION_MANIFEST_ANCHORS = 17;
 
 const HISTORICAL_SUPPORT_DOCUMENTS = Object.freeze([
   {
@@ -126,19 +136,19 @@ const LOCAL_STATUS_OBSERVATIONS = Object.freeze({
     note: 'Scenario language remains a scenario contract instead of a fixed product default.',
   },
   'NP-05': {
-    status_kind: 'local-replay-hardening-track',
-    evidence_path: null,
-    note: 'Provider protocol failures stay on deterministic replay paths, not live Provider reruns.',
+    status_kind: 'source-bound-local-regression-manifest',
+    evidence_path: POST_R4_LOCAL_REGRESSION_MANIFEST_PATH,
+    note: 'Provider protocol replay coverage is bound to local parser, integrity, and run-log replay anchors.',
   },
   'NP-06': {
-    status_kind: 'local-regression-pack-track',
-    evidence_path: null,
-    note: 'Recovered-write and terminal-settlement behavior remains product-side regression work only.',
+    status_kind: 'source-bound-local-regression-manifest',
+    evidence_path: POST_R4_LOCAL_REGRESSION_MANIFEST_PATH,
+    note: 'Recovered-write and terminal-settlement coverage is bound to local RunContext and workflow anchors.',
   },
   'NP-07': {
-    status_kind: 'local-oracle-expansion-track',
-    evidence_path: null,
-    note: 'Artifact quality checks remain local oracles and cannot become qualification claims.',
+    status_kind: 'source-bound-local-regression-manifest',
+    evidence_path: POST_R4_LOCAL_REGRESSION_MANIFEST_PATH,
+    note: 'Artifact quality oracle coverage is bound to local deliverable, source-grounding, and language anchors.',
   },
   'NP-08': {
     status_kind: 'this-generated-index',
@@ -146,9 +156,9 @@ const LOCAL_STATUS_OBSERVATIONS = Object.freeze({
     note: 'This compact index gives a short source-bound view over long-chain post-R4 process state.',
   },
   'NP-09': {
-    status_kind: 'verification-checkpoint-track',
-    evidence_path: null,
-    note: 'Local full regression checkpoint is a future non-live health check, not a live or install gate.',
+    status_kind: 'local-full-regression-checkpoint',
+    evidence_path: POST_R4_LOCAL_FULL_REGRESSION_CHECKPOINT_PATH,
+    note: 'Local full regression checkpoint records pure local verification and preserves the current-candidate identity authorization blocker.',
   },
   'NP-10': {
     status_kind: 'companion-readiness-audit-track',
@@ -178,6 +188,8 @@ export function loadPostR4CompactIndexSources(repoRoot = process.cwd(), override
       ?? JSON.parse(sourceContents[JSON_SOURCE_PATHS.cleanRuntimeObservation]),
     processArtifactsAggregate: overrides.processArtifactsAggregate
       ?? JSON.parse(sourceContents[JSON_SOURCE_PATHS.processArtifactsAggregate]),
+    localRegressionManifest: overrides.localRegressionManifest
+      ?? JSON.parse(sourceContents[JSON_SOURCE_PATHS.localRegressionManifest]),
     externalAuthorityRequests: overrides.externalAuthorityRequests
       ?? JSON.parse(sourceContents[JSON_SOURCE_PATHS.externalAuthorityRequests]),
     liveQualificationRequestPacket: overrides.liveQualificationRequestPacket
@@ -193,6 +205,7 @@ export function buildPostR4CompactIndex({ repoRoot = process.cwd(), sources = nu
     rollup,
     cleanRuntimeObservation,
     processArtifactsAggregate,
+    localRegressionManifest,
     externalAuthorityRequests,
     liveQualificationRequestPacket,
   } = activeSources;
@@ -261,6 +274,17 @@ export function buildPostR4CompactIndex({ repoRoot = process.cwd(), sources = nu
         aggregate_sha256: processArtifactsAggregate.aggregate_sha256,
         artifact_errors: processArtifactsAggregate.counts?.artifact_errors ?? null,
       },
+      post_r4_local_regression_manifest: {
+        ...sourceRef(JSON_SOURCE_PATHS.localRegressionManifest, sourceContents),
+        manifest_sha256: localRegressionManifest.manifest_sha256,
+        covered_nonpermission_items: localRegressionManifest.regression_scope?.covered_nonpermission_items ?? [],
+        anchor_checks: localRegressionManifest.counts?.anchor_checks ?? null,
+        anchors_present: localRegressionManifest.counts?.anchors_present ?? null,
+      },
+      post_r4_local_full_regression_checkpoint: sourceRef(
+        POST_R4_LOCAL_FULL_REGRESSION_CHECKPOINT_PATH,
+        sourceContents,
+      ),
       external_authority_requests: {
         ...sourceRef(JSON_SOURCE_PATHS.externalAuthorityRequests, sourceContents),
         request_set_sha256: externalAuthorityRequests.request_set_sha256,
@@ -554,6 +578,17 @@ function semanticValidate(index, errors) {
   }
   if (index.source_bindings?.phase_gate_source?.required_gate_present !== true) {
     errors.push('source_bindings.phase_gate_source.required_gate_present:must-be-true');
+  }
+  const localRegressionBinding = index.source_bindings?.post_r4_local_regression_manifest;
+  if (canonicalJson(localRegressionBinding?.covered_nonpermission_items ?? [])
+    !== canonicalJson(LOCAL_REGRESSION_MANIFEST_ITEMS)) {
+    errors.push('source_bindings.post_r4_local_regression_manifest.covered_nonpermission_items:must-be-NP-05-NP-06-NP-07');
+  }
+  if (localRegressionBinding?.anchor_checks !== LOCAL_REGRESSION_MANIFEST_ANCHORS) {
+    errors.push('source_bindings.post_r4_local_regression_manifest.anchor_checks:must-be-17');
+  }
+  if (localRegressionBinding?.anchors_present !== LOCAL_REGRESSION_MANIFEST_ANCHORS) {
+    errors.push('source_bindings.post_r4_local_regression_manifest.anchors_present:must-be-17');
   }
   const cleanRuntimeBranch = index.suspended_authorization_branches?.clean_runtime;
   const cleanRuntimeTerminalState = cleanRuntimeBranch?.terminal_state;

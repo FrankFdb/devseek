@@ -4,8 +4,8 @@
 
 - Observation ID: `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME-LIMITED-OBSERVATION/v1`
 - Current leaf: `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME`
-- Terminal state: `COMPLETED`
-- Clean runtime identity established: `true`
+- Terminal state: `BLOCKED`
+- Clean runtime identity established: `false`
 - Qualification effect: `NONE`
 - Claims permitted: `false`
 - Gate assertion: `false`
@@ -25,32 +25,38 @@
 
 ## 候选身份
 
-- Expected candidate source commit: `a034e5e050c044460fb07705639d9d41e6b193c0`
-- Expected VSIX SHA-256: `027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d`
-- Expected bridge path: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e/bridge/server.js`
-- Matches release candidate manifest: `true`
+- Expected candidate source commit: `3331a74994b42c2cbc6f3cac9a5987da609d68d1`
+- Expected VSIX SHA-256: `6b053d4d3befef5951ad02619dd5b34cab273d05c860dad5947e141abd46a53b`
+- Expected bridge path: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260730.t171746.g3331a74/bridge/server.js`
+- Matches release candidate manifest: `false`
 
 ## Tracked Registry 对比
 
-- Tracked artifact git commit: `a034e5e`
-- Tracked observe status: `passed`
+- Tracked artifact git commit: `3331a74`
+- Tracked observe status: `failed`
 - Tracked matches expected identity: `true`
 
 ## Runtime 观察
 
-- Stable runtime count: `1`
+- Stable runtime count: `0`
 - Isolated controlled VSIX runtime count: `0`
-- Stale debug runtime count: `0`
+- Stale debug runtime count: `1`
 - Unknown DevSeek bridge runtime count: `0`
 - Unreadable runtime identity count: `0`
-- Live runtime policy ok: `true`
+- Live runtime policy ok: `false`
 
 ## Blockers
 
+- `expected-candidate-identity-does-not-match-release-candidate-manifest`
+- `active_runtime:stable-runtime-cardinality-expected-1-got-0`
+- `active_runtime:stale-debug-runtime-active-1`
+- `clean-runtime-requires-window-action-authorization-or-external-clean-candidate-identity-receipt`
 
 ## 下一授权
 
+- `explicit-user-window-action-authorization-for-extension-activation-or-runtime-isolation`
+- `or-external-clean-candidate-identity-receipt`
 
 ## Observation Identity
 
-- Observation SHA-256: `f1aa92bd3a06487bf52c61aa44389f3e4a3dd51a87500c53d385bc5c53333006`
+- Observation SHA-256: `64a81e37581c96e415b2a08bf99f71795f4e44dcae9834a584a4db0abefb1c68`

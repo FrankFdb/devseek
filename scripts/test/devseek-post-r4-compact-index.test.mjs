@@ -45,6 +45,11 @@ test('Post-R4 compact index is source-bound and non-qualifying', () => {
   assert.equal(actual.r4_current_state.r1_qualification_status, 'NOT_STARTED');
   assert.equal(actual.counts.live_runs_authorized, 0);
   assert.equal(actual.counts.qualification_claims, 0);
+  assert.equal(
+    actual.nonpermission_queue_index.items.find(item => item.item_id === 'NP-09')
+      .local_status_observation.evidence_path,
+    'docs/process/devseek-post-r4-local-full-regression-checkpoint.md',
+  );
 
   const sourcePaths = Object.values(actual.source_bindings).map(binding => binding.path);
   for (const sourcePath of POST_R4_REQUIRED_SOURCE_PATHS) {
@@ -140,6 +145,26 @@ test('Post-R4 compact index runtime validation fails closed on source, script, o
   assertHasIndexError(
     cleanRuntimeDrift,
     'r4_current_state.clean_runtime_leaf_terminal_state:must-match-clean-runtime-branch',
+  );
+
+  const localRegressionItemDrift = structuredClone(expected);
+  localRegressionItemDrift.source_bindings.post_r4_local_regression_manifest.covered_nonpermission_items = [
+    'NP-05',
+    'NP-06',
+    'NP-08',
+  ];
+  localRegressionItemDrift.index_sha256 = '0'.repeat(64);
+  assertHasIndexError(
+    localRegressionItemDrift,
+    'source_bindings.post_r4_local_regression_manifest.covered_nonpermission_items:must-be-NP-05-NP-06-NP-07',
+  );
+
+  const localRegressionAnchorDrift = structuredClone(expected);
+  localRegressionAnchorDrift.source_bindings.post_r4_local_regression_manifest.anchors_present = 16;
+  localRegressionAnchorDrift.index_sha256 = '0'.repeat(64);
+  assertHasIndexError(
+    localRegressionAnchorDrift,
+    'source_bindings.post_r4_local_regression_manifest.anchors_present:must-be-17',
   );
 
   const noScriptSources = loadPostR4CompactIndexSources(repoRoot, {

@@ -348,8 +348,17 @@ function semanticValidate(report, errors) {
   if (report.terminal_state === 'COMPLETED' && (report.next_required_authority ?? []).length !== 0) {
     errors.push('next_required_authority:must-be-empty-when-completed');
   }
-  if (report.expected_candidate_identity?.matches_release_candidate_manifest !== true) {
-    errors.push('expected_candidate_identity.matches_release_candidate_manifest:must-be-true');
+  const matchesReleaseCandidateManifest =
+    report.expected_candidate_identity?.matches_release_candidate_manifest === true;
+  if (report.terminal_state === 'COMPLETED' && !matchesReleaseCandidateManifest) {
+    errors.push('expected_candidate_identity.matches_release_candidate_manifest:must-be-true-when-completed');
+  }
+  if (
+    report.terminal_state === 'BLOCKED'
+    && !matchesReleaseCandidateManifest
+    && !(report.blockers ?? []).includes('expected-candidate-identity-does-not-match-release-candidate-manifest')
+  ) {
+    errors.push('blockers:missing-release-candidate-manifest-mismatch');
   }
   if (report.live_runtime_observation?.full_commandline_recorded !== false
     || report.live_runtime_observation?.environment_variables_recorded !== false

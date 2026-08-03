@@ -3,7 +3,7 @@
 > Generated from local machine sources. Do not hand edit.
 
 - Adapter ID: `DEVSEEK-GATE0-EXTERNAL-AUTHORITY-ADAPTER/v1`
-- Adapter SHA-256: `4ff7dfed6201797ffffba0479d2e245ebf0775a400d72ff14895eb9b73a4bae8`
+- Adapter SHA-256: `c2f0b85a98086213a7c44005f97686d1410a5184b7b5a205d78eefa8e9023067`
 - Source status: `unconfigured`
 - Trust roots: `0`
 - Source guard coverage: `8/8`

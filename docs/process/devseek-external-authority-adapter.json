@@ -55,7 +55,7 @@
     },
     "package_json": {
       "path": "package.json",
-      "source_sha256": "fd5f50f9ea9632162061c91ea1716d69a84293c245eba197a97daa42ecc6a7b6"
+      "source_sha256": "5ed00e13226f0d56071d81db83c30fa81ef5818cf909752a205ebf4497ff9e4f"
     },
     "implementation_sources": [
       {
@@ -72,7 +72,7 @@
       },
       {
         "path": "package.json",
-        "source_sha256": "0c48c818f839625c2974fb22aa8277db0ab1a3e2dfcde9544d804f8f63837640"
+        "source_sha256": "15d66674eea541522923999edf71a178e89686e770a2e9252829508a4914e85c"
       },
       {
         "path": "scripts/devseek-external-authority-adapter-check.mjs",
@@ -80,7 +80,7 @@
       },
       {
         "path": "scripts/devseek-phase0-12-verify.mjs",
-        "source_sha256": "46999697802ec4ee0f56245cf53b211ff6f6b75e05e7e530dee060011eca6524"
+        "source_sha256": "9e4e4be9ca81af8ee7cf9129e452bc2babe158b7f8788428faed0646432491ef"
       },
       {
         "path": "scripts/lib/devseek-external-authority-adapter.mjs",
@@ -277,5 +277,5 @@
     "failure_oracles_covered": 7,
     "bypasses": 0
   },
-  "adapter_sha256": "4ff7dfed6201797ffffba0479d2e245ebf0775a400d72ff14895eb9b73a4bae8"
+  "adapter_sha256": "c2f0b85a98086213a7c44005f97686d1410a5184b7b5a205d78eefa8e9023067"
 }

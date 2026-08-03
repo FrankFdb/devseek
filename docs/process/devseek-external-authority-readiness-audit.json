@@ -26,9 +26,9 @@
   "source_bindings": {
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
-      "source_sha256": "2fe209d338bc1ef9e4eda8ca7e04d847fb7cf6943089a6fb686b960c2d7d482c",
+      "source_sha256": "f277e3364e8e1a386f0c02a97f09d55ac2604f650251e765f58d9b7238d46a39",
       "request_set_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-REQUESTS/v1",
-      "request_set_sha256": "e65721307cc11b047c3453a9f230874e6bfd80bd80c76bfac53a89e4826b3e96",
+      "request_set_sha256": "4e89d4198ca90359f8fc2b9e3f8daa4390c4953a18b2aa18b433545c84eece55",
       "blocked_requests": 5
     },
     "r4_live_qualification_request_packet": {
@@ -56,26 +56,26 @@
     },
     "r4_process_artifacts_aggregate": {
       "path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
-      "source_sha256": "fb1ff47a430351e24b4ee582ad92d910bf6b2ae39a6f00f7877e1bbe106feced",
-      "aggregate_sha256": "a3e2839e2b1048835c60659918546dfb774aa1c6abfba792c5638ed7ef221d48",
+      "source_sha256": "77ac82dbc228aef8d530d9e11a398c0352e3f8a4fd7063ac05fa62c7d126eefb",
+      "aggregate_sha256": "bb17fd9d89ac1f46235ce4a1e6f1ad04f4675d5d1a28d1da9dfb90f133ea25b8",
       "artifact_errors": 0
     },
     "gate0_decision": {
       "path": "docs/process/devseek-gate0-decision-report.json",
-      "source_sha256": "5eb780082e768611f7bfde25790a2ad41b802c5926c62e3c91b04cd3350082ad",
+      "source_sha256": "c6bce326346212d2dc4baf8f30438312ed93233e183d0abf81670c4519d4825f",
       "decision_id": "DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1",
       "qualification_status": "NOT_PASSED",
       "external_authority_blockers": 6
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "0c48c818f839625c2974fb22aa8277db0ab1a3e2dfcde9544d804f8f63837640",
+      "source_sha256": "15d66674eea541522923999edf71a178e89686e770a2e9252829508a4914e85c",
       "required_script": "verify:external-authority-readiness-audit",
       "required_script_present": true
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "46999697802ec4ee0f56245cf53b211ff6f6b75e05e7e530dee060011eca6524",
+      "source_sha256": "9e4e4be9ca81af8ee7cf9129e452bc2babe158b7f8788428faed0646432491ef",
       "required_gate": "external-authority-readiness-audit",
       "required_gate_present": true
     },
@@ -443,5 +443,5 @@
     "ledger_writes": 0,
     "provider_actions_performed": 0
   },
-  "audit_sha256": "5abe01862b6d43be47dd3f9184d9ae517ed96aaa193ea699d05a0cbd5b0474a3"
+  "audit_sha256": "a890d58362dde4603652e10dc4fb7c7193d164716fedc3cbb0afaa6267fdf00e"
 }

@@ -1,0 +1,418 @@
+{
+  "schema_version": "devseek.post-r4-local-regression-manifest/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "manifest_id": "POST-R4-LOCAL-REGRESSION-MANIFEST/v1",
+  "manifest_version": 1,
+  "source_status": "generated-source-bound-local-regression-manifest",
+  "integrity_scope": "local-post-r4-nonpermission-regression-coverage",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "observation_authority": {
+    "semantic_authority": "PostR4LocalRegressionManifest",
+    "writes_product_state": false,
+    "provider_actions": "FORBIDDEN",
+    "live_holdout_actions": "FORBIDDEN",
+    "runtime_process_observation": "FORBIDDEN",
+    "install_or_window_actions": "FORBIDDEN",
+    "secret_observation": "FORBIDDEN",
+    "qualification_ledger_writes": "FORBIDDEN"
+  },
+  "source_bindings": {
+    "post_r4_nonpermission_plan": {
+      "path": "docs/process/devseek-post-r4-nonpermission-iteration-plan.md",
+      "source_sha256": "51623b1c2267f8d3f6fcb09b800396e5da12ea083dad5c5ed98f331b8b735555"
+    },
+    "package_scripts": {
+      "path": "package.json",
+      "source_sha256": "15d66674eea541522923999edf71a178e89686e770a2e9252829508a4914e85c",
+      "required_script": "verify:post-r4-local-regression-manifest",
+      "required_script_present": true
+    },
+    "phase_gate_source": {
+      "path": "scripts/devseek-phase0-12-verify.mjs",
+      "source_sha256": "9e4e4be9ca81af8ee7cf9129e452bc2babe158b7f8788428faed0646432491ef",
+      "required_gate": "post-r4-local-regression-manifest",
+      "required_gate_present": true
+    },
+    "checker_source": {
+      "path": "scripts/devseek-post-r4-local-regression-manifest-check.mjs",
+      "source_sha256": "0a40f519beb07c5034fe4f91b94a8c052939f9d37c061a155a0c177256e567e6"
+    },
+    "oracle_source": {
+      "path": "scripts/test/devseek-post-r4-local-regression-manifest.test.mjs",
+      "source_sha256": "d28f218abbc4450944dcf0ef4c2a58730cc2c381f3176f9992db0246dc97405b"
+    }
+  },
+  "regression_scope": {
+    "covered_nonpermission_items": [
+      "NP-05",
+      "NP-06",
+      "NP-07"
+    ],
+    "local_only_product_regression": true,
+    "local_process_manifest_only": true,
+    "provider_or_window_actions_performed": false,
+    "live_rerun_performed": false,
+    "qualification_ledger_writes": false,
+    "gate0_status": "NOT_PASSED",
+    "r1_qualification_status": "NOT_STARTED"
+  },
+  "regression_tracks": [
+    {
+      "item_id": "NP-05",
+      "title": "Provider protocol replay hardening",
+      "source_status": "source-bound-local-regression-track",
+      "terminal_state": "COVERED_LOCALLY",
+      "plan_heading": "### NP-05 Provider protocol replay hardening",
+      "plan_heading_present": true,
+      "product_risk": "DeepSeek/Provider corrupted or partial tool output must stay in deterministic replay and never be settled as success.",
+      "covered_sources": [
+        {
+          "path": "packages/vscode-extension/src/agent/fake-tool-parser.ts",
+          "role": "provider-tool-text-parser",
+          "source_sha256": "82becf1a7744397b12351432bd87b68d4887e16eed0cc016ce8c76ed1215d4d5"
+        },
+        {
+          "path": "packages/vscode-extension/src/agent/provider-output-integrity.ts",
+          "role": "provider-integrity-classifier",
+          "source_sha256": "15ded0c664875f97fe9664525540bb01efbbaee53e88c5ecb2877faec7333614"
+        },
+        {
+          "path": "packages/vscode-extension/src/diagnostics/run-log-replay.ts",
+          "role": "run-log-failure-oracle",
+          "source_sha256": "5194693e8b17a4626f08a083d312e9a14c7f346281f3dc90296a11ba3b8fc534"
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/fake-tool-parser.test.mjs",
+          "role": "fake-tool-parser-replay-oracle",
+          "source_sha256": "a85b5f29791527848a200fd7cdd955384e20797423c0ee95e2b3e7598d348f8d"
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/provider-output-integrity.test.mjs",
+          "role": "provider-integrity-replay-oracle",
+          "source_sha256": "c18dcbd5872004f13dcf44822d027a631b69ac8415ce7ced58c41545fba97ce5"
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/run-log-replay.test.mjs",
+          "role": "run-log-replay-oracle",
+          "source_sha256": "929dcabf13afc594f40edbabe2bdf3a133b50d36a25ee3003abc36de5b8cf65e"
+        }
+      ],
+      "anchor_checks": [
+        {
+          "path": "packages/vscode-extension/test/unit/fake-tool-parser.test.mjs",
+          "anchor": "parses R3 live DeepSeek named-parameter tool_call envelopes",
+          "category": "named-tool-call-envelope",
+          "present": true
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/provider-output-integrity.test.mjs",
+          "anchor": "rejects safety-interstitial interrupted tool blocks as truncated",
+          "category": "safety-interstitial-truncation",
+          "present": true
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/provider-output-integrity.test.mjs",
+          "anchor": "classifies malformed DeepSeek function envelopes as executable tool calls",
+          "category": "malformed-json-tool-envelope",
+          "present": true
+        },
+        {
+          "path": "packages/vscode-extension/src/agent/provider-output-integrity.ts",
+          "anchor": "RESPONSE_CORRUPTED",
+          "category": "corrupted-provider-output",
+          "present": true
+        },
+        {
+          "path": "packages/vscode-extension/src/diagnostics/run-log-replay.ts",
+          "anchor": "failure-status-reported-completed",
+          "category": "replay-failure-not-overwritten",
+          "present": true
+        }
+      ],
+      "verification_commands": [
+        {
+          "command": "node packages/vscode-extension/test/unit/fake-tool-parser.test.mjs",
+          "execution_scope": "local-node-unit-test",
+          "live_provider_actions": "FORBIDDEN",
+          "install_or_window_actions": "FORBIDDEN",
+          "qualification_effect": "NONE",
+          "command_is_local_only": true
+        },
+        {
+          "command": "node packages/vscode-extension/test/unit/provider-output-integrity.test.mjs",
+          "execution_scope": "local-node-unit-test",
+          "live_provider_actions": "FORBIDDEN",
+          "install_or_window_actions": "FORBIDDEN",
+          "qualification_effect": "NONE",
+          "command_is_local_only": true
+        },
+        {
+          "command": "node packages/vscode-extension/test/unit/run-log-replay.test.mjs",
+          "execution_scope": "local-node-unit-test",
+          "live_provider_actions": "FORBIDDEN",
+          "install_or_window_actions": "FORBIDDEN",
+          "qualification_effect": "NONE",
+          "command_is_local_only": true
+        }
+      ],
+      "local_only_boundary": {
+        "provider_prompt_sent": false,
+        "live_provider_run_performed": false,
+        "vsix_packaged_or_installed": false,
+        "window_or_browser_action_performed": false,
+        "qualification_ledger_written": false,
+        "gate0_or_r1_status_changed": false
+      },
+      "counts": {
+        "covered_sources": 6,
+        "anchor_checks": 5,
+        "anchors_present": 5,
+        "verification_commands": 3,
+        "local_only_commands": 3
+      }
+    },
+    {
+      "item_id": "NP-06",
+      "title": "Terminal settlement and recovered-write regression pack",
+      "source_status": "source-bound-local-regression-track",
+      "terminal_state": "COVERED_LOCALLY",
+      "plan_heading": "### NP-06 Terminal settlement and recovered-write regression pack",
+      "plan_heading_present": true,
+      "product_risk": "A verified local write must not be overturned by later provider/fetch failure, duplicate recovery, or post-terminal events.",
+      "covered_sources": [
+        {
+          "path": "packages/vscode-extension/src/app/run-context.ts",
+          "role": "durable-run-settlement-owner",
+          "source_sha256": "434faf7c5951872e32e8571723e4a422c640177e1a21f1f89d7028b586fd3202"
+        },
+        {
+          "path": "packages/vscode-extension/src/app/settlement-state.ts",
+          "role": "terminal-state-policy",
+          "source_sha256": "d2bce0452613011e88e93fe15bf3c7514fd28fb4e34c8c3528673cb0541f63a0"
+        },
+        {
+          "path": "packages/vscode-extension/src/diagnostics/run-log-replay.ts",
+          "role": "settlement-replay-oracle",
+          "source_sha256": "5194693e8b17a4626f08a083d312e9a14c7f346281f3dc90296a11ba3b8fc534"
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/run-context.test.mjs",
+          "role": "run-context-recovery-oracle",
+          "source_sha256": "1ef4a5cb5a44e303e3544c7f3ad12ee37ff95d49138391757cf610371b55e004"
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/run-context-settlement.test.mjs",
+          "role": "settlement-contract-oracle",
+          "source_sha256": "1c864f6f64812be4cb7241bd2fe323e9d8aa111894597bb81aa4ee75f68969ef"
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/workflow-compliance.test.mjs",
+          "role": "workflow-static-contract-oracle",
+          "source_sha256": "300f1c8818b9d3c7e4798faa5ba1c29fae9e92a0f578b8dfe3e108de89c5b766"
+        }
+      ],
+      "anchor_checks": [
+        {
+          "path": "packages/vscode-extension/test/unit/run-context.test.mjs",
+          "anchor": "post-verification provider failure cannot overturn recovered local write completion",
+          "category": "late-provider-failure-after-local-success",
+          "present": true
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/run-context.test.mjs",
+          "anchor": "provider-failure-superseded-by-verified-local-result",
+          "category": "recovered-write-resolution",
+          "present": true
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/run-context.test.mjs",
+          "anchor": "cancel owns settlement and ignores post-cancel effects",
+          "category": "post-terminal-effect-ignored",
+          "present": true
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/run-context-settlement.test.mjs",
+          "anchor": "committed side effects complete only after verification and QualityGate pass",
+          "category": "quality-gate-required-for-mutation",
+          "present": true
+        },
+        {
+          "path": "packages/vscode-extension/src/app/run-context.ts",
+          "anchor": "completeLateProviderFailuresFromVerifiedLocalResult",
+          "category": "late-provider-failure-recovery-boundary",
+          "present": true
+        },
+        {
+          "path": "packages/vscode-extension/src/diagnostics/run-log-replay.ts",
+          "anchor": "run evidence 中仍有未被 recovery.completed",
+          "category": "unresolved-provider-failure-replay-error",
+          "present": true
+        }
+      ],
+      "verification_commands": [
+        {
+          "command": "node packages/vscode-extension/test/unit/run-context.test.mjs",
+          "execution_scope": "local-node-unit-test",
+          "live_provider_actions": "FORBIDDEN",
+          "install_or_window_actions": "FORBIDDEN",
+          "qualification_effect": "NONE",
+          "command_is_local_only": true
+        },
+        {
+          "command": "node packages/vscode-extension/test/unit/run-context-settlement.test.mjs",
+          "execution_scope": "local-node-unit-test",
+          "live_provider_actions": "FORBIDDEN",
+          "install_or_window_actions": "FORBIDDEN",
+          "qualification_effect": "NONE",
+          "command_is_local_only": true
+        },
+        {
+          "command": "node packages/vscode-extension/test/unit/workflow-compliance.test.mjs",
+          "execution_scope": "local-node-unit-test",
+          "live_provider_actions": "FORBIDDEN",
+          "install_or_window_actions": "FORBIDDEN",
+          "qualification_effect": "NONE",
+          "command_is_local_only": true
+        }
+      ],
+      "local_only_boundary": {
+        "provider_prompt_sent": false,
+        "live_provider_run_performed": false,
+        "vsix_packaged_or_installed": false,
+        "window_or_browser_action_performed": false,
+        "qualification_ledger_written": false,
+        "gate0_or_r1_status_changed": false
+      },
+      "counts": {
+        "covered_sources": 6,
+        "anchor_checks": 6,
+        "anchors_present": 6,
+        "verification_commands": 3,
+        "local_only_commands": 3
+      }
+    },
+    {
+      "item_id": "NP-07",
+      "title": "Artifact quality local oracle expansion",
+      "source_status": "source-bound-local-regression-track",
+      "terminal_state": "COVERED_LOCALLY",
+      "plan_heading": "### NP-07 Artifact quality local oracle expansion",
+      "plan_heading_present": true,
+      "product_risk": "Generated artifacts must be checked against concrete deliverables, source anchors, domain anchors, and scenario language.",
+      "covered_sources": [
+        {
+          "path": "packages/vscode-extension/src/agent/artifact-quality-oracle.ts",
+          "role": "markdown-artifact-quality-oracle",
+          "source_sha256": "870e91b5a4d2288a60d92c9e4c0cdee89362e431cad44ca8ff8029b72638d196"
+        },
+        {
+          "path": "packages/vscode-extension/src/agent/completion-evidence.ts",
+          "role": "completion-evidence-deliverable-contract",
+          "source_sha256": "4951abff13260577ebc83162ed180d4816ebe3c0d8c7181959d4fb3fd5a5a60b"
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
+          "role": "artifact-quality-oracle-tests",
+          "source_sha256": "3c56c09899c4684eed0fa3cc4742cfde860f6b04b7a2a45ee01091ffb1320620"
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/completion-evidence.test.mjs",
+          "role": "completion-evidence-tests",
+          "source_sha256": "571ff05e47604910b38ac00c1b397d848e9ef4dd97850b200b0e0b1a0a330337"
+        }
+      ],
+      "anchor_checks": [
+        {
+          "path": "packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
+          "anchor": "missing literal anchors fail the generated artifact gate",
+          "category": "missing-literal-anchor",
+          "present": true
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
+          "anchor": "stale warranty domain anchors fail DevSeek process artifacts",
+          "category": "stale-domain-anchor",
+          "present": true
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
+          "anchor": "writing an input source path does not satisfy the requested output deliverable",
+          "category": "source-path-is-not-output-target",
+          "present": true
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
+          "anchor": "generic warranty advice cannot replace source-backed warranty facts",
+          "category": "generic-warranty-false-positive",
+          "present": true
+        },
+        {
+          "path": "packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
+          "anchor": "explicit Chinese report requirement rejects English-only prose",
+          "category": "artifact-language-mismatch",
+          "present": true
+        },
+        {
+          "path": "packages/vscode-extension/src/agent/artifact-quality-oracle.ts",
+          "anchor": "source-grounding-missing",
+          "category": "source-grounding-missing",
+          "present": true
+        }
+      ],
+      "verification_commands": [
+        {
+          "command": "node packages/vscode-extension/test/unit/artifact-quality-oracle.test.mjs",
+          "execution_scope": "local-node-unit-test",
+          "live_provider_actions": "FORBIDDEN",
+          "install_or_window_actions": "FORBIDDEN",
+          "qualification_effect": "NONE",
+          "command_is_local_only": true
+        },
+        {
+          "command": "node packages/vscode-extension/test/unit/completion-evidence.test.mjs",
+          "execution_scope": "local-node-unit-test",
+          "live_provider_actions": "FORBIDDEN",
+          "install_or_window_actions": "FORBIDDEN",
+          "qualification_effect": "NONE",
+          "command_is_local_only": true
+        }
+      ],
+      "local_only_boundary": {
+        "provider_prompt_sent": false,
+        "live_provider_run_performed": false,
+        "vsix_packaged_or_installed": false,
+        "window_or_browser_action_performed": false,
+        "qualification_ledger_written": false,
+        "gate0_or_r1_status_changed": false
+      },
+      "counts": {
+        "covered_sources": 4,
+        "anchor_checks": 6,
+        "anchors_present": 6,
+        "verification_commands": 2,
+        "local_only_commands": 2
+      }
+    }
+  ],
+  "counts": {
+    "regression_tracks": 3,
+    "covered_nonpermission_items": 3,
+    "covered_sources": 16,
+    "anchor_checks": 17,
+    "anchors_present": 17,
+    "verification_commands": 8,
+    "local_only_commands": 8,
+    "live_provider_runs": 0,
+    "install_or_window_actions": 0,
+    "qualification_claims": 0,
+    "gate_pass_assertions": 0,
+    "bypasses": 0
+  },
+  "manifest_sha256": "f7cdd5316ad7640251819d8c6d0621b3e92974d3f3dc58e06514b188f0fb4c8d"
+}

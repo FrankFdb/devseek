@@ -683,11 +683,29 @@ function gitIsAncestor(ancestor, descendant) {
   return result.status === 0;
 }
 
-function isAllowedUnpackagedNonRuntimePath(relativePath) {
+function isAllowedUnpackagedNonRuntimePath(relativePath, {
+  artifactSourceCommit = null,
+  sourceRevision = null,
+} = {}) {
   const normalized = String(relativePath || '').replace(/\\/g, '/');
   return normalized.startsWith('docs/')
     || normalized.startsWith('packages/vscode-extension/test/')
-    || normalized.startsWith('scripts/test/');
+    || normalized.startsWith('scripts/test/')
+    || isAllowedUnpackagedProcessToolPath(normalized)
+    || (
+      normalized === 'package.json'
+      && rootPackageJsonOnlyScriptsDiffer({ artifactSourceCommit, sourceRevision })
+    );
+}
+
+function isAllowedUnpackagedProcessToolPath(normalized) {
+  return [
+    'scripts/devseek-phase0-12-verify.mjs',
+    'scripts/devseek-post-r4-local-regression-manifest-check.mjs',
+    'scripts/lib/devseek-post-r4-compact-index.mjs',
+    'scripts/lib/devseek-post-r4-local-regression-manifest.mjs',
+    'scripts/lib/devseek-r4-clean-runtime-limited-observation.mjs',
+  ].includes(normalized);
 }
 
 function assertVsixSourceCompatibility(artifactGitCommit) {
@@ -697,7 +715,10 @@ function assertVsixSourceCompatibility(artifactGitCommit) {
     ...gitOutputLines(['diff', '--name-only']),
     ...gitOutputLines(['diff', '--cached', '--name-only']),
   ])).sort();
-  const dirtyRuntimePaths = dirtyTrackedPaths.filter(pathName => !isAllowedUnpackagedNonRuntimePath(pathName));
+  const dirtyRuntimePaths = dirtyTrackedPaths.filter(pathName => !isAllowedUnpackagedNonRuntimePath(pathName, {
+    artifactSourceCommit,
+    sourceRevision: 'WORKTREE',
+  }));
   if (dirtyRuntimePaths.length > 0) {
     throw new Error(`VSIX source check found unpackaged runtime changes: ${dirtyRuntimePaths.join(', ')}`);
   }
@@ -713,7 +734,10 @@ function assertVsixSourceCompatibility(artifactGitCommit) {
     throw new Error(`VSIX gitCommit ${artifactGitCommit} is not an ancestor of current HEAD ${sourceHead}`);
   }
   const committedPaths = gitOutputLines(['diff', '--name-only', `${artifactSourceCommit}..${sourceHead}`]);
-  const committedRuntimePaths = committedPaths.filter(pathName => !isAllowedUnpackagedNonRuntimePath(pathName));
+  const committedRuntimePaths = committedPaths.filter(pathName => !isAllowedUnpackagedNonRuntimePath(pathName, {
+    artifactSourceCommit,
+    sourceRevision: sourceHead,
+  }));
   if (committedRuntimePaths.length > 0) {
     throw new Error(`VSIX gitCommit ${artifactGitCommit} is missing runtime source changes: ${committedRuntimePaths.join(', ')}`);
   }
@@ -738,6 +762,47 @@ function readVsixPackage(vsixPath) {
   });
   if (result.status !== 0) throw new Error(`Unable to read VSIX package.json: ${result.stderr || result.stdout}`);
   return JSON.parse(result.stdout);
+}
+
+function rootPackageJsonOnlyScriptsDiffer({ artifactSourceCommit, sourceRevision }) {
+  if (!artifactSourceCommit || !sourceRevision) return false;
+  try {
+    const artifactPackageJson = readJsonAtRevision(artifactSourceCommit, 'package.json');
+    const sourcePackageJson = sourceRevision === 'WORKTREE'
+      ? JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
+      : readJsonAtRevision(sourceRevision, 'package.json');
+    return stableStringify(withoutKey(artifactPackageJson, 'scripts'))
+      === stableStringify(withoutKey(sourcePackageJson, 'scripts'));
+  } catch {
+    return false;
+  }
+}
+
+function readJsonAtRevision(revision, relativePath) {
+  const result = cp.spawnSync('git', ['show', `${revision}:${relativePath}`], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    timeout: 10_000,
+    maxBuffer: 4 * 1024 * 1024,
+  });
+  if (result.status !== 0) throw new Error(`Unable to read ${relativePath} at ${revision}: ${result.stderr || result.stdout}`);
+  return JSON.parse(result.stdout);
+}
+
+function withoutKey(value, key) {
+  const clone = { ...(value ?? {}) };
+  delete clone[key];
+  return clone;
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value && typeof value === 'object') {
+    return `{${Object.keys(value).sort().map(key => (
+      `${JSON.stringify(key)}:${stableStringify(value[key])}`
+    )).join(',')}}`;
+  }
+  return JSON.stringify(value);
 }
 
 function normalizeExtensionIdentity(packageJson, label) {

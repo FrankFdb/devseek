@@ -57,6 +57,12 @@ const gates = [
     purpose: 'Fail closed when the Post-R4 compact index loses source bindings, promotes local process state into qualification claims, or hides blocked clean-runtime/live/external-authority branches.',
   },
   {
+    id: 'post-r4-local-regression-manifest',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:post-r4-local-regression-manifest'],
+    purpose: 'Fail closed when NP-05/NP-06/NP-07 local regression tracks lose their product test anchors, local-only command boundary, or non-qualification status.',
+  },
+  {
     id: 'profile-denominator-registry-governance',
     phases: '0-12',
     command: ['npm', 'run', 'verify:profile-denominator-registry'],
@@ -364,6 +370,7 @@ function nextActionFor(gate) {
     'architecture-drift-budget': 'Move the new responsibility into the owning service/adapter, lower the frozen ceiling after extraction, then rerun verify:architecture-drift.',
     'capability-ledger-governance': 'Fix the machine ledger, typed dependency, scoped claim target, or generated manifest at its semantic authority, then rerun verify:capability-ledger.',
     'post-r4-compact-index-governance': 'Restore the source-bound Post-R4 compact index, keep clean runtime/live/external-authority branches BLOCKED, preserve claims=0 and Gate0 NOT_PASSED, then rerun verify:post-r4-compact-index.',
+    'post-r4-local-regression-manifest': 'Restore NP-05/NP-06/NP-07 test/source anchors, keep commands local-only with no live Provider or VSIX action, preserve claims=0/Gate0 NOT_PASSED, then rerun verify:post-r4-local-regression-manifest.',
     'c0-ledger-wiring-conformance': 'Restore the single capability ledger owner, direct reader coverage, Phase reachability, and wired-state evidence before rerunning verify:c0-ledger-wiring.',
     'c0-preregistration-wiring-conformance': 'Restore production declaration coverage, single runner-root preregistration through plan/session/slot/authorization/receipt, and zero-dispatch receipt oracles before rerunning verify:c0-preregistration-wiring.',
     'c0-run-evidence-wiring-conformance': 'Restore exact product Run Evidence to qualification attempt/candidate/operation/anchor binding, preserve original oracle failures, and rerun verify:c0-run-evidence-wiring.',

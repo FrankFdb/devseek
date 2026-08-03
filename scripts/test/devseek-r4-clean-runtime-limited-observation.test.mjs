@@ -28,8 +28,14 @@ test('R4 clean runtime limited observation records the current identity boundary
   assert.equal(actual.current_leaf, 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME');
   assert.equal(actual.terminal_state, expected.terminal_state);
   assert.equal(actual.clean_runtime_identity_established, expected.clean_runtime_identity_established);
-  assert.equal(actual.expected_candidate_identity.candidate_source_commit, 'a034e5e050c044460fb07705639d9d41e6b193c0');
-  assert.equal(actual.expected_candidate_identity.matches_release_candidate_manifest, true);
+  assert.equal(
+    actual.expected_candidate_identity.candidate_source_commit,
+    expected.expected_candidate_identity.candidate_source_commit,
+  );
+  assert.equal(
+    actual.expected_candidate_identity.matches_release_candidate_manifest,
+    expected.expected_candidate_identity.matches_release_candidate_manifest,
+  );
   assert.equal(
     actual.tracked_registry_comparison.tracked_matches_expected_identity,
     expected.tracked_registry_comparison.tracked_matches_expected_identity,
@@ -125,6 +131,20 @@ test('runtime validation fails closed on false completion, secret capture, or st
     contextPromoted,
     'context_references.r4_iteration_status_rollup.expected_clean_runtime_leaf_terminal_state:must-match-terminal-state',
   );
+
+  const releaseMismatchWithoutBlocker = structuredClone(expected);
+  releaseMismatchWithoutBlocker.terminal_state = 'BLOCKED';
+  releaseMismatchWithoutBlocker.clean_runtime_identity_established = false;
+  releaseMismatchWithoutBlocker.expected_candidate_identity.matches_release_candidate_manifest = false;
+  releaseMismatchWithoutBlocker.blockers = releaseMismatchWithoutBlocker.blockers.filter(
+    blocker => blocker !== 'expected-candidate-identity-does-not-match-release-candidate-manifest',
+  );
+  releaseMismatchWithoutBlocker.counts.blockers = releaseMismatchWithoutBlocker.blockers.length;
+  releaseMismatchWithoutBlocker.observation_sha256 = '0'.repeat(64);
+  assertHasObservationError(
+    releaseMismatchWithoutBlocker,
+    'blockers:missing-release-candidate-manifest-mismatch',
+  );
 });
 
 test('checker command validates R4 clean runtime limited observation and generated view', async () => {
@@ -139,7 +159,7 @@ test('checker command validates R4 clean runtime limited observation and generat
     observation_sha256: expected.observation_sha256,
     terminal_state: expected.terminal_state,
     clean_runtime_identity_established: expected.clean_runtime_identity_established,
-    expected_candidate_source_commit: 'a034e5e050c044460fb07705639d9d41e6b193c0',
+    expected_candidate_source_commit: expected.expected_candidate_identity.candidate_source_commit,
     expected_vsix_sha256: expected.expected_candidate_identity.vsix_sha256,
     tracked_matches_expected_identity: expected.tracked_registry_comparison.tracked_matches_expected_identity,
     stable_runtime_count: expected.live_runtime_observation.stable_runtime_count,

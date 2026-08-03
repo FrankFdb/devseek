@@ -181,7 +181,7 @@
         "stable_install_package_root": { "$ref": "#/$defs/nonEmpty" },
         "expected_bridge_server_path": { "$ref": "#/$defs/nonEmpty" },
         "package_install_runtime_exact_match": { "const": true },
-        "matches_release_candidate_manifest": { "const": true }
+        "matches_release_candidate_manifest": { "type": "boolean" }
       }
     },
     "trackedRegistryComparison": {

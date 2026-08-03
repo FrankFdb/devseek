@@ -121,6 +121,8 @@
         "r4_authorization_and_permission_guide",
         "r4_clean_runtime_limited_observation",
         "r4_process_artifacts_aggregate",
+        "post_r4_local_regression_manifest",
+        "post_r4_local_full_regression_checkpoint",
         "external_authority_requests",
         "r4_live_qualification_request_packet",
         "package_scripts",
@@ -137,6 +139,47 @@
         "r4_authorization_and_permission_guide": { "$ref": "#/$defs/sourceRef" },
         "r4_clean_runtime_limited_observation": { "$ref": "#/$defs/sourceRef" },
         "r4_process_artifacts_aggregate": { "$ref": "#/$defs/sourceRef" },
+        "post_r4_local_regression_manifest": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "required": [
+                "path",
+                "manifest_sha256",
+                "covered_nonpermission_items",
+                "anchor_checks",
+                "anchors_present"
+              ],
+              "properties": {
+                "path": { "const": "docs/process/devseek-post-r4-local-regression-manifest.json" },
+                "manifest_sha256": { "$ref": "#/$defs/sha256" },
+                "covered_nonpermission_items": {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": {
+                    "enum": ["NP-05", "NP-06", "NP-07"]
+                  }
+                },
+                "anchor_checks": { "const": 17 },
+                "anchors_present": { "const": 17 }
+              }
+            }
+          ]
+        },
+        "post_r4_local_full_regression_checkpoint": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "required": ["path"],
+              "properties": {
+                "path": { "const": "docs/process/devseek-post-r4-local-full-regression-checkpoint.md" }
+              }
+            }
+          ]
+        },
         "external_authority_requests": { "$ref": "#/$defs/sourceRef" },
         "r4_live_qualification_request_packet": { "$ref": "#/$defs/sourceRef" },
         "package_scripts": {

@@ -12,13 +12,13 @@
 ## R4 叶子状态
 
 - Total leaves: `6`
-- Completed leaves: `6`
-- Blocked leaves: `0`
-- Remaining window-sensitive leaves: `0`
+- Completed leaves: `5`
+- Blocked leaves: `1`
+- Remaining window-sensitive leaves: `1`
 
 | Leaf | Terminal | Commit | Blocker |
 | --- | --- | --- | --- |
-| `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME` | `COMPLETED` | `a034e5e050c044460fb07705639d9d41e6b193c0` | `n/a` |
+| `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME` | `BLOCKED` | `n/a` | `existing-vscode-and-deepseek-pages-must-not-be-closed-or-reused-without-explicit-clean-runtime-authorization` |
 | `R4-RELEASE-CANDIDATE-MANIFEST` | `COMPLETED` | `33bd4e9685e0577b92806938919a8370ab49caa6` | `n/a` |
 | `R4-DOC-PROCESS-IDENTITY-RECONCILIATION` | `COMPLETED` | `7a5c1acfa2745d411bb3c6ac97088ef5c87efade` | `n/a` |
 | `R4-LIVE-QUALIFICATION-REQUEST-PACKET` | `COMPLETED` | `8da611877948d53854000b7258721b6d43dc8e81` | `n/a` |
@@ -27,15 +27,15 @@
 
 ## Clean Runtime 边界
 
-- Current candidate identity: `clean-runtime-identity-established`
-- Clean runtime terminal state: `COMPLETED`
+- Current candidate identity: `deferred-unusable-until-clean-runtime`
+- Clean runtime terminal state: `BLOCKED`
 - Latest limited observation: `docs/process/devseek-r4-clean-runtime-limited-observation.json`
-- Latest limited observation terminal state: `COMPLETED`
-- Clean runtime identity established: `true`
-- Stable runtime count: `1`
+- Latest limited observation terminal state: `BLOCKED`
+- Clean runtime identity established: `false`
+- Stable runtime count: `0`
 - May close existing VS Code or DeepSeek pages: `false`
 - May run live Provider test: `false`
-- Blocked until authority: `false`
+- Blocked until authority: `true`
 
 ## 资格边界
 
@@ -49,8 +49,8 @@
 
 - Authorization guide: `docs/process/devseek-r4-authorization-and-permission-guide.md`
 - Clean runtime limited observation: `docs/process/devseek-r4-clean-runtime-limited-observation.json`
-- Clean runtime observation SHA-256: `f1aa92bd3a06487bf52c61aa44389f3e4a3dd51a87500c53d385bc5c53333006`
+- Clean runtime observation SHA-256: `64a81e37581c96e415b2a08bf99f71795f4e44dcae9834a584a4db0abefb1c68`
 
 ## Rollup Identity
 
-- Rollup SHA-256: `daa24f4e4363524f05b3ce9df0f890f2a2311133654af035a233e335240905b9`
+- Rollup SHA-256: `84c5ed8bdf6e78aeb34d865e2c16833388bdbbc4d14d28dfbdb32e562187306f`

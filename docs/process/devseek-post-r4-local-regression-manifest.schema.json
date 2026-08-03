@@ -1,0 +1,369 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-post-r4-local-regression-manifest-v1.json",
+  "title": "DevSeek Post-R4 Local Regression Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "integrity",
+    "manifest_id",
+    "manifest_version",
+    "source_status",
+    "integrity_scope",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "observation_authority",
+    "source_bindings",
+    "regression_scope",
+    "regression_tracks",
+    "counts",
+    "manifest_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.post-r4-local-regression-manifest/v1" },
+    "integrity": { "$ref": "#/$defs/integrity" },
+    "manifest_id": { "const": "POST-R4-LOCAL-REGRESSION-MANIFEST/v1" },
+    "manifest_version": { "const": 1 },
+    "source_status": { "const": "generated-source-bound-local-regression-manifest" },
+    "integrity_scope": { "const": "local-post-r4-nonpermission-regression-coverage" },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "observation_authority": { "$ref": "#/$defs/observationAuthority" },
+    "source_bindings": { "$ref": "#/$defs/sourceBindings" },
+    "regression_scope": { "$ref": "#/$defs/regressionScope" },
+    "regression_tracks": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": { "$ref": "#/$defs/regressionTrack" }
+    },
+    "counts": { "$ref": "#/$defs/counts" },
+    "manifest_sha256": { "$ref": "#/$defs/sha256" }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nonEmpty": {
+      "type": "string",
+      "minLength": 1
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hash_algorithm", "canonicalization_version"],
+      "properties": {
+        "hash_algorithm": { "const": "sha256" },
+        "canonicalization_version": { "const": "devseek-canonical-json/v1" }
+      }
+    },
+    "sourceRef": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["path", "source_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "observationAuthority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semantic_authority",
+        "writes_product_state",
+        "provider_actions",
+        "live_holdout_actions",
+        "runtime_process_observation",
+        "install_or_window_actions",
+        "secret_observation",
+        "qualification_ledger_writes"
+      ],
+      "properties": {
+        "semantic_authority": { "const": "PostR4LocalRegressionManifest" },
+        "writes_product_state": { "const": false },
+        "provider_actions": { "const": "FORBIDDEN" },
+        "live_holdout_actions": { "const": "FORBIDDEN" },
+        "runtime_process_observation": { "const": "FORBIDDEN" },
+        "install_or_window_actions": { "const": "FORBIDDEN" },
+        "secret_observation": { "const": "FORBIDDEN" },
+        "qualification_ledger_writes": { "const": "FORBIDDEN" }
+      }
+    },
+    "sourceBindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "post_r4_nonpermission_plan",
+        "package_scripts",
+        "phase_gate_source",
+        "checker_source",
+        "oracle_source"
+      ],
+      "properties": {
+        "post_r4_nonpermission_plan": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "required": ["path"],
+              "properties": {
+                "path": { "const": "docs/process/devseek-post-r4-nonpermission-iteration-plan.md" }
+              }
+            }
+          ]
+        },
+        "package_scripts": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "required": ["path", "required_script", "required_script_present"],
+              "properties": {
+                "path": { "const": "package.json" },
+                "required_script": { "const": "verify:post-r4-local-regression-manifest" },
+                "required_script_present": { "const": true }
+              }
+            }
+          ]
+        },
+        "phase_gate_source": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "required": ["path", "required_gate", "required_gate_present"],
+              "properties": {
+                "path": { "const": "scripts/devseek-phase0-12-verify.mjs" },
+                "required_gate": { "const": "post-r4-local-regression-manifest" },
+                "required_gate_present": { "const": true }
+              }
+            }
+          ]
+        },
+        "checker_source": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "required": ["path"],
+              "properties": {
+                "path": { "const": "scripts/devseek-post-r4-local-regression-manifest-check.mjs" }
+              }
+            }
+          ]
+        },
+        "oracle_source": {
+          "allOf": [
+            { "$ref": "#/$defs/sourceRef" },
+            {
+              "type": "object",
+              "required": ["path"],
+              "properties": {
+                "path": { "const": "scripts/test/devseek-post-r4-local-regression-manifest.test.mjs" }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "regressionScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "covered_nonpermission_items",
+        "local_only_product_regression",
+        "local_process_manifest_only",
+        "provider_or_window_actions_performed",
+        "live_rerun_performed",
+        "qualification_ledger_writes",
+        "gate0_status",
+        "r1_qualification_status"
+      ],
+      "properties": {
+        "covered_nonpermission_items": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "enum": ["NP-05", "NP-06", "NP-07"]
+          }
+        },
+        "local_only_product_regression": { "const": true },
+        "local_process_manifest_only": { "const": true },
+        "provider_or_window_actions_performed": { "const": false },
+        "live_rerun_performed": { "const": false },
+        "qualification_ledger_writes": { "const": false },
+        "gate0_status": { "const": "NOT_PASSED" },
+        "r1_qualification_status": { "const": "NOT_STARTED" }
+      }
+    },
+    "regressionTrack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "item_id",
+        "title",
+        "source_status",
+        "terminal_state",
+        "plan_heading",
+        "plan_heading_present",
+        "product_risk",
+        "covered_sources",
+        "anchor_checks",
+        "verification_commands",
+        "local_only_boundary",
+        "counts"
+      ],
+      "properties": {
+        "item_id": {
+          "enum": ["NP-05", "NP-06", "NP-07"]
+        },
+        "title": { "$ref": "#/$defs/nonEmpty" },
+        "source_status": { "const": "source-bound-local-regression-track" },
+        "terminal_state": { "const": "COVERED_LOCALLY" },
+        "plan_heading": { "$ref": "#/$defs/nonEmpty" },
+        "plan_heading_present": { "const": true },
+        "product_risk": { "$ref": "#/$defs/nonEmpty" },
+        "covered_sources": {
+          "type": "array",
+          "minItems": 4,
+          "items": { "$ref": "#/$defs/sourceWithRole" }
+        },
+        "anchor_checks": {
+          "type": "array",
+          "minItems": 5,
+          "items": { "$ref": "#/$defs/anchorCheck" }
+        },
+        "verification_commands": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 3,
+          "items": { "$ref": "#/$defs/verificationCommand" }
+        },
+        "local_only_boundary": { "$ref": "#/$defs/localOnlyBoundary" },
+        "counts": { "$ref": "#/$defs/trackCounts" }
+      }
+    },
+    "sourceWithRole": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "role", "source_sha256"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "role": { "$ref": "#/$defs/nonEmpty" },
+        "source_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "anchorCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "anchor", "category", "present"],
+      "properties": {
+        "path": { "$ref": "#/$defs/nonEmpty" },
+        "anchor": { "$ref": "#/$defs/nonEmpty" },
+        "category": { "$ref": "#/$defs/nonEmpty" },
+        "present": { "const": true }
+      }
+    },
+    "verificationCommand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "execution_scope",
+        "live_provider_actions",
+        "install_or_window_actions",
+        "qualification_effect",
+        "command_is_local_only"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "pattern": "^node packages/vscode-extension/test/unit/[A-Za-z0-9_.-]+\\.test\\.mjs$"
+        },
+        "execution_scope": { "const": "local-node-unit-test" },
+        "live_provider_actions": { "const": "FORBIDDEN" },
+        "install_or_window_actions": { "const": "FORBIDDEN" },
+        "qualification_effect": { "const": "NONE" },
+        "command_is_local_only": { "const": true }
+      }
+    },
+    "localOnlyBoundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "provider_prompt_sent",
+        "live_provider_run_performed",
+        "vsix_packaged_or_installed",
+        "window_or_browser_action_performed",
+        "qualification_ledger_written",
+        "gate0_or_r1_status_changed"
+      ],
+      "properties": {
+        "provider_prompt_sent": { "const": false },
+        "live_provider_run_performed": { "const": false },
+        "vsix_packaged_or_installed": { "const": false },
+        "window_or_browser_action_performed": { "const": false },
+        "qualification_ledger_written": { "const": false },
+        "gate0_or_r1_status_changed": { "const": false }
+      }
+    },
+    "trackCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "covered_sources",
+        "anchor_checks",
+        "anchors_present",
+        "verification_commands",
+        "local_only_commands"
+      ],
+      "properties": {
+        "covered_sources": { "type": "integer", "minimum": 4 },
+        "anchor_checks": { "type": "integer", "minimum": 5 },
+        "anchors_present": { "type": "integer", "minimum": 5 },
+        "verification_commands": { "type": "integer", "minimum": 2, "maximum": 3 },
+        "local_only_commands": { "type": "integer", "minimum": 2, "maximum": 3 }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "regression_tracks",
+        "covered_nonpermission_items",
+        "covered_sources",
+        "anchor_checks",
+        "anchors_present",
+        "verification_commands",
+        "local_only_commands",
+        "live_provider_runs",
+        "install_or_window_actions",
+        "qualification_claims",
+        "gate_pass_assertions",
+        "bypasses"
+      ],
+      "properties": {
+        "regression_tracks": { "const": 3 },
+        "covered_nonpermission_items": { "const": 3 },
+        "covered_sources": { "const": 16 },
+        "anchor_checks": { "const": 17 },
+        "anchors_present": { "const": 17 },
+        "verification_commands": { "const": 8 },
+        "local_only_commands": { "const": 8 },
+        "live_provider_runs": { "const": 0 },
+        "install_or_window_actions": { "const": 0 },
+        "qualification_claims": { "const": 0 },
+        "gate_pass_assertions": { "const": 0 },
+        "bypasses": { "const": 0 }
+      }
+    }
+  }
+}

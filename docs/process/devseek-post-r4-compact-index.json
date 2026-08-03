@@ -41,9 +41,9 @@
     },
     "r4_iteration_status_rollup": {
       "path": "docs/process/devseek-r4-iteration-status-rollup.json",
-      "source_sha256": "3f620ede1c0efe575a536340c3b37c04a052d76d609162416c9942747d4986b7",
-      "rollup_sha256": "daa24f4e4363524f05b3ce9df0f890f2a2311133654af035a233e335240905b9",
-      "clean_runtime_leaf_terminal_state": "COMPLETED"
+      "source_sha256": "4b0fafa0e2ed6f2eaeb80a9cb43ce1313bba6158bab44520437bcbaf397517f0",
+      "rollup_sha256": "84c5ed8bdf6e78aeb34d865e2c16833388bdbbc4d14d28dfbdb32e562187306f",
+      "clean_runtime_leaf_terminal_state": "BLOCKED"
     },
     "r4_authorization_and_permission_guide": {
       "path": "docs/process/devseek-r4-authorization-and-permission-guide.md",
@@ -51,21 +51,37 @@
     },
     "r4_clean_runtime_limited_observation": {
       "path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
-      "source_sha256": "005084a18681dc69df73e10fb5922024ed31fc3df1c34ba9d5858439556e6ada",
-      "observation_sha256": "f1aa92bd3a06487bf52c61aa44389f3e4a3dd51a87500c53d385bc5c53333006",
-      "terminal_state": "COMPLETED",
-      "stable_runtime_count": 1
+      "source_sha256": "55594ef5b5dee56d4c2c8a32b584ba955b246a2736880d91694e7b03dc36200c",
+      "observation_sha256": "64a81e37581c96e415b2a08bf99f71795f4e44dcae9834a584a4db0abefb1c68",
+      "terminal_state": "BLOCKED",
+      "stable_runtime_count": 0
     },
     "r4_process_artifacts_aggregate": {
       "path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
-      "source_sha256": "fb1ff47a430351e24b4ee582ad92d910bf6b2ae39a6f00f7877e1bbe106feced",
-      "aggregate_sha256": "a3e2839e2b1048835c60659918546dfb774aa1c6abfba792c5638ed7ef221d48",
+      "source_sha256": "77ac82dbc228aef8d530d9e11a398c0352e3f8a4fd7063ac05fa62c7d126eefb",
+      "aggregate_sha256": "bb17fd9d89ac1f46235ce4a1e6f1ad04f4675d5d1a28d1da9dfb90f133ea25b8",
       "artifact_errors": 0
+    },
+    "post_r4_local_regression_manifest": {
+      "path": "docs/process/devseek-post-r4-local-regression-manifest.json",
+      "source_sha256": "877d95ceeb6cb12a19d5bdfe23ca0c85d6a1fc1c51d23ee5127425739f4dfce7",
+      "manifest_sha256": "f7cdd5316ad7640251819d8c6d0621b3e92974d3f3dc58e06514b188f0fb4c8d",
+      "covered_nonpermission_items": [
+        "NP-05",
+        "NP-06",
+        "NP-07"
+      ],
+      "anchor_checks": 17,
+      "anchors_present": 17
+    },
+    "post_r4_local_full_regression_checkpoint": {
+      "path": "docs/process/devseek-post-r4-local-full-regression-checkpoint.md",
+      "source_sha256": "a907249f6f69635b05942ad4061a8e13863cd127d35885a9f248c1fec8aa5509"
     },
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
-      "source_sha256": "2fe209d338bc1ef9e4eda8ca7e04d847fb7cf6943089a6fb686b960c2d7d482c",
-      "request_set_sha256": "e65721307cc11b047c3453a9f230874e6bfd80bd80c76bfac53a89e4826b3e96",
+      "source_sha256": "f277e3364e8e1a386f0c02a97f09d55ac2604f650251e765f58d9b7238d46a39",
+      "request_set_sha256": "4e89d4198ca90359f8fc2b9e3f8daa4390c4953a18b2aa18b433545c84eece55",
       "blocked_requests": 5
     },
     "r4_live_qualification_request_packet": {
@@ -76,13 +92,13 @@
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "0c48c818f839625c2974fb22aa8277db0ab1a3e2dfcde9544d804f8f63837640",
+      "source_sha256": "15d66674eea541522923999edf71a178e89686e770a2e9252829508a4914e85c",
       "required_script": "verify:post-r4-compact-index",
       "required_script_present": true
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "46999697802ec4ee0f56245cf53b211ff6f6b75e05e7e530dee060011eca6524",
+      "source_sha256": "9e4e4be9ca81af8ee7cf9129e452bc2babe158b7f8788428faed0646432491ef",
       "required_gate": "post-r4-compact-index-governance",
       "required_gate_present": true
     },
@@ -92,7 +108,7 @@
     },
     "oracle_source": {
       "path": "scripts/test/devseek-post-r4-compact-index.test.mjs",
-      "source_sha256": "99a1c45689aadfff4e70ddf5b8da2c4ff931f882261663286c53bd307ca09b82"
+      "source_sha256": "664e5552e93e579adf9ac22c125f7c7191e22dd29020c2c8ceca8360991cd87f"
     }
   },
   "current_authorities": [
@@ -159,13 +175,13 @@
   ],
   "r4_current_state": {
     "total_leaf_count": 6,
-    "completed_leaves": 6,
-    "blocked_leaves": 0,
-    "current_blocked_leaf": null,
-    "clean_runtime_leaf_terminal_state": "COMPLETED",
-    "clean_runtime_limited_observation_terminal_state": "COMPLETED",
-    "clean_runtime_identity_established": true,
-    "stable_runtime_count": 1,
+    "completed_leaves": 5,
+    "blocked_leaves": 1,
+    "current_blocked_leaf": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
+    "clean_runtime_leaf_terminal_state": "BLOCKED",
+    "clean_runtime_limited_observation_terminal_state": "BLOCKED",
+    "clean_runtime_identity_established": false,
+    "stable_runtime_count": 0,
     "gate0_status": "NOT_PASSED",
     "r1_qualification_status": "NOT_STARTED",
     "live_runs_authorized": 0,
@@ -174,10 +190,18 @@
   "suspended_authorization_branches": {
     "clean_runtime": {
       "leaf_id": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
-      "terminal_state": "COMPLETED",
-      "clean_runtime_identity_established": true,
-      "blockers": [],
-      "next_required_authority": [],
+      "terminal_state": "BLOCKED",
+      "clean_runtime_identity_established": false,
+      "blockers": [
+        "expected-candidate-identity-does-not-match-release-candidate-manifest",
+        "active_runtime:stable-runtime-cardinality-expected-1-got-0",
+        "active_runtime:stale-debug-runtime-active-1",
+        "clean-runtime-requires-window-action-authorization-or-external-clean-candidate-identity-receipt"
+      ],
+      "next_required_authority": [
+        "explicit-user-window-action-authorization-for-extension-activation-or-runtime-isolation",
+        "or-external-clean-candidate-identity-receipt"
+      ],
       "local_repository_may_unblock_without_new_authority": false
     },
     "r4_live_authorization_requests": [
@@ -278,7 +302,10 @@
       "live-provider-action",
       "external-authority-import"
     ],
-    "clean_runtime_recovery_authority": [],
+    "clean_runtime_recovery_authority": [
+      "explicit-user-clean-runtime-window-action-authorization",
+      "external-clean-candidate-identity-receipt"
+    ],
     "live_qualification_terms": {
       "provider": "deepseek-web",
       "execution_mode": "headed",
@@ -339,9 +366,9 @@
         "title": "Provider protocol replay hardening",
         "source_heading": "### NP-05 Provider protocol replay hardening",
         "local_status_observation": {
-          "status_kind": "local-replay-hardening-track",
-          "evidence_path": null,
-          "note": "Provider protocol failures stay on deterministic replay paths, not live Provider reruns."
+          "status_kind": "source-bound-local-regression-manifest",
+          "evidence_path": "docs/process/devseek-post-r4-local-regression-manifest.json",
+          "note": "Provider protocol replay coverage is bound to local parser, integrity, and run-log replay anchors."
         }
       },
       {
@@ -349,9 +376,9 @@
         "title": "Terminal settlement and recovered-write regression pack",
         "source_heading": "### NP-06 Terminal settlement and recovered-write regression pack",
         "local_status_observation": {
-          "status_kind": "local-regression-pack-track",
-          "evidence_path": null,
-          "note": "Recovered-write and terminal-settlement behavior remains product-side regression work only."
+          "status_kind": "source-bound-local-regression-manifest",
+          "evidence_path": "docs/process/devseek-post-r4-local-regression-manifest.json",
+          "note": "Recovered-write and terminal-settlement coverage is bound to local RunContext and workflow anchors."
         }
       },
       {
@@ -359,9 +386,9 @@
         "title": "Artifact quality local oracle expansion",
         "source_heading": "### NP-07 Artifact quality local oracle expansion",
         "local_status_observation": {
-          "status_kind": "local-oracle-expansion-track",
-          "evidence_path": null,
-          "note": "Artifact quality checks remain local oracles and cannot become qualification claims."
+          "status_kind": "source-bound-local-regression-manifest",
+          "evidence_path": "docs/process/devseek-post-r4-local-regression-manifest.json",
+          "note": "Artifact quality oracle coverage is bound to local deliverable, source-grounding, and language anchors."
         }
       },
       {
@@ -379,9 +406,9 @@
         "title": "Local full regression checkpoint",
         "source_heading": "### NP-09 Local full regression checkpoint",
         "local_status_observation": {
-          "status_kind": "verification-checkpoint-track",
-          "evidence_path": null,
-          "note": "Local full regression checkpoint is a future non-live health check, not a live or install gate."
+          "status_kind": "local-full-regression-checkpoint",
+          "evidence_path": "docs/process/devseek-post-r4-local-full-regression-checkpoint.md",
+          "note": "Local full regression checkpoint records pure local verification and preserves the current-candidate identity authorization blocker."
         }
       },
       {
@@ -413,9 +440,9 @@
     "nonpermission_queue_items": 10,
     "generated_for_items": 2,
     "r4_total_leaves": 6,
-    "r4_completed_leaves": 6,
-    "r4_blocked_leaves": 0,
-    "clean_runtime_blockers": 0,
+    "r4_completed_leaves": 5,
+    "r4_blocked_leaves": 1,
+    "clean_runtime_blockers": 4,
     "live_authorization_requests": 5,
     "live_authorization_blocked": 5,
     "external_authority_requests": 5,
@@ -425,5 +452,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "index_sha256": "a40e3247a5ba11b84609cd1f6174415b992d080c6b8af9497b2d25dca15ab170"
+  "index_sha256": "986a5e1444bae7c94622b4035796fcd8197e78531d60740986416490934dcd38"
 }
