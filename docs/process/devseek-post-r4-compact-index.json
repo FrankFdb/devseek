@@ -29,11 +29,11 @@
     },
     "top_agent_quality_principles_16": {
       "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
-      "source_sha256": "7b3449224d14360b67a114589c27086d476cec07b8f951cb7088761347d8a290"
+      "source_sha256": "b49bf753b7d6424627318e3b2fa90296ac76d8d8d0e0da0fd47e5a8cc49f43ba"
     },
     "r3_closeout_next_phase_20": {
-      "path": "docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md",
-      "source_sha256": "842c2725379c64ade18425ac1854bc14e971db55f2afc29328e705a0c7b52351"
+      "path": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md",
+      "source_sha256": "b6c675eeeddf17482508fa08f1d4a5dc011d41cb72f03d2711a85a049dc936d8"
     },
     "post_r4_nonpermission_plan": {
       "path": "docs/process/devseek-post-r4-nonpermission-iteration-plan.md",
@@ -41,8 +41,8 @@
     },
     "r4_iteration_status_rollup": {
       "path": "docs/process/devseek-r4-iteration-status-rollup.json",
-      "source_sha256": "4b0fafa0e2ed6f2eaeb80a9cb43ce1313bba6158bab44520437bcbaf397517f0",
-      "rollup_sha256": "84c5ed8bdf6e78aeb34d865e2c16833388bdbbc4d14d28dfbdb32e562187306f",
+      "source_sha256": "da7e80aad3701516755218b891a09d5ed2b590fa9e7c009d9019cbfe0b14a697",
+      "rollup_sha256": "5716a17e44c27f77ba1ad42f3742ba2b0abceff02cedd289fa2c4b1102c98294",
       "clean_runtime_leaf_terminal_state": "BLOCKED"
     },
     "r4_authorization_and_permission_guide": {
@@ -58,14 +58,14 @@
     },
     "r4_process_artifacts_aggregate": {
       "path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
-      "source_sha256": "77ac82dbc228aef8d530d9e11a398c0352e3f8a4fd7063ac05fa62c7d126eefb",
-      "aggregate_sha256": "bb17fd9d89ac1f46235ce4a1e6f1ad04f4675d5d1a28d1da9dfb90f133ea25b8",
+      "source_sha256": "08025ee3658606ebf3276802ddb531bbe5a4f8e49d19674b5dde14a83af18749",
+      "aggregate_sha256": "9a784bc6345f6b2581b81696d2fc0edc5e0ef05d683de4e3d6b5de02671b722d",
       "artifact_errors": 0
     },
     "post_r4_local_regression_manifest": {
       "path": "docs/process/devseek-post-r4-local-regression-manifest.json",
-      "source_sha256": "877d95ceeb6cb12a19d5bdfe23ca0c85d6a1fc1c51d23ee5127425739f4dfce7",
-      "manifest_sha256": "f7cdd5316ad7640251819d8c6d0621b3e92974d3f3dc58e06514b188f0fb4c8d",
+      "source_sha256": "c0f6b5d6840d1121ca0420b8e00df6aa2c65747725247dc42c54fe74acd61a41",
+      "manifest_sha256": "fc485676588baf42e82c0fed55c23329a5a3c552eff38c0dd8904f342df64b42",
       "covered_nonpermission_items": [
         "NP-05",
         "NP-06",
@@ -164,13 +164,13 @@
       "document_id": "quality-principles-16",
       "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
       "role": "iteration-principles-quality-standards-and-skills-plan",
-      "source_sha256": "7b3449224d14360b67a114589c27086d476cec07b8f951cb7088761347d8a290"
+      "source_sha256": "b49bf753b7d6424627318e3b2fa90296ac76d8d8d0e0da0fd47e5a8cc49f43ba"
     },
     {
       "document_id": "r3-handoff-20",
-      "path": "docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md",
+      "path": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md",
       "role": "r3-closeout-and-next-phase-handoff",
-      "source_sha256": "842c2725379c64ade18425ac1854bc14e971db55f2afc29328e705a0c7b52351"
+      "source_sha256": "b6c675eeeddf17482508fa08f1d4a5dc011d41cb72f03d2711a85a049dc936d8"
     }
   ],
   "r4_current_state": {
@@ -452,5 +452,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "index_sha256": "986a5e1444bae7c94622b4035796fcd8197e78531d60740986416490934dcd38"
+  "index_sha256": "6f61374e5f27c23718c864b87f34c61b075fc969590aecbc3cfecb43f301da88"
 }

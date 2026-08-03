@@ -57,7 +57,7 @@
 - `r4_live_user_way_holdout_matrix`: `docs/process/devseek-r4-live-user-way-holdout-matrix.json` -> `000a82523ebeb1047518c7ca32f232d1416cfccf8ec6418599428b642ed783cf`
 - `r4_real_provider_failure_taxonomy`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `459dc5765664166f33d2c59f051b6da980e84be3edddd5052b6c95555b522f23`
 - `r4_authorization_and_permission_guide`: `docs/process/devseek-r4-authorization-and-permission-guide.md` -> `826240c4a2cfcae0c6fb1068ed199b1ffed99d64857fd8053d70e3790f40ada5`
-- `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `77ac82dbc228aef8d530d9e11a398c0352e3f8a4fd7063ac05fa62c7d126eefb`
+- `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `08025ee3658606ebf3276802ddb531bbe5a4f8e49d19674b5dde14a83af18749`
 - `gate0_decision`: `docs/process/devseek-gate0-decision-report.json` -> `c6bce326346212d2dc4baf8f30438312ed93233e183d0abf81670c4519d4825f`
 - `package_scripts`: `package.json` -> `15d66674eea541522923999edf71a178e89686e770a2e9252829508a4914e85c`
 - `phase_gate_source`: `scripts/devseek-phase0-12-verify.mjs` -> `9e4e4be9ca81af8ee7cf9129e452bc2babe158b7f8788428faed0646432491ef`
@@ -66,4 +66,4 @@
 
 ## Audit Identity
 
-- Audit SHA-256: `a890d58362dde4603652e10dc4fb7c7193d164716fedc3cbb0afaa6267fdf00e`
+- Audit SHA-256: `827307f91e517b46c937c8c69a0ca43417ae00c101da185b51e46f3a75e2875e`

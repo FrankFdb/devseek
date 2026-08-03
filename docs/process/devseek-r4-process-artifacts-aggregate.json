@@ -25,9 +25,9 @@
     "r4_release_candidate_manifest": {
       "artifact_id": "R4-RELEASE-CANDIDATE-MANIFEST",
       "path": "docs/process/devseek-r4-release-candidate-manifest.json",
-      "source_sha256": "fe0d5a74792785a640df50be50012702a46077bebe0d8036647ed27e42182f87",
+      "source_sha256": "eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66",
       "generated_view_path": "docs/process/generated/devseek-r4-release-candidate-manifest.md",
-      "generated_view_sha256": "d95a44a0b2b39855650fe34d82d2d06a1cc9ed74a8a4f5d0c6397fedc5cb587c",
+      "generated_view_sha256": "b8c684c959545dd8bd6c0228e59df09f036416a2edc5b6b9db35f17d4fc2f3eb",
       "generated_view_status": "MATCHED"
     },
     "r4_doc_process_identity_reconciliation": {
@@ -81,9 +81,9 @@
     "r4_iteration_status_rollup": {
       "artifact_id": "R4-ITERATION-STATUS-ROLLUP",
       "path": "docs/process/devseek-r4-iteration-status-rollup.json",
-      "source_sha256": "4b0fafa0e2ed6f2eaeb80a9cb43ce1313bba6158bab44520437bcbaf397517f0",
+      "source_sha256": "da7e80aad3701516755218b891a09d5ed2b590fa9e7c009d9019cbfe0b14a697",
       "generated_view_path": "docs/process/generated/devseek-r4-iteration-status-rollup.md",
-      "generated_view_sha256": "01a9bae24d7801c930683477b5896c285b4ad3a3c747b5dc9447097a05462758",
+      "generated_view_sha256": "fedf99e612317954ef67c2b3c97636ccc42790fc99c9094c075c5bb33c701d30",
       "generated_view_status": "MATCHED"
     },
     "r4_clean_runtime_limited_observation": {
@@ -128,12 +128,12 @@
       "artifact_id": "R4-RELEASE-CANDIDATE-MANIFEST",
       "source_kind": "generated-json",
       "primary_path": "docs/process/devseek-r4-release-candidate-manifest.json",
-      "source_sha256": "fe0d5a74792785a640df50be50012702a46077bebe0d8036647ed27e42182f87",
+      "source_sha256": "eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66",
       "schema_version": "devseek.r4-release-candidate-manifest/v1",
       "identity_hash_field": "manifest_sha256",
-      "identity_hash_value": "e99ea94658683aff63f52d8b9c8992e6c90501e441571757d068d29da6c151e4",
+      "identity_hash_value": "67e4025b2743012648c36312870130a3773f0b79dc44ce9abbc4200c4dab50b3",
       "generated_view_path": "docs/process/generated/devseek-r4-release-candidate-manifest.md",
-      "generated_view_sha256": "d95a44a0b2b39855650fe34d82d2d06a1cc9ed74a8a4f5d0c6397fedc5cb587c",
+      "generated_view_sha256": "b8c684c959545dd8bd6c0228e59df09f036416a2edc5b6b9db35f17d4fc2f3eb",
       "generated_view_status": "MATCHED",
       "qualification_eligible": false,
       "qualification_effect": "NONE",
@@ -268,12 +268,12 @@
       "artifact_id": "R4-ITERATION-STATUS-ROLLUP",
       "source_kind": "generated-json",
       "primary_path": "docs/process/devseek-r4-iteration-status-rollup.json",
-      "source_sha256": "4b0fafa0e2ed6f2eaeb80a9cb43ce1313bba6158bab44520437bcbaf397517f0",
+      "source_sha256": "da7e80aad3701516755218b891a09d5ed2b590fa9e7c009d9019cbfe0b14a697",
       "schema_version": "devseek.r4-iteration-status-rollup/v1",
       "identity_hash_field": "rollup_sha256",
-      "identity_hash_value": "84c5ed8bdf6e78aeb34d865e2c16833388bdbbc4d14d28dfbdb32e562187306f",
+      "identity_hash_value": "5716a17e44c27f77ba1ad42f3742ba2b0abceff02cedd289fa2c4b1102c98294",
       "generated_view_path": "docs/process/generated/devseek-r4-iteration-status-rollup.md",
-      "generated_view_sha256": "01a9bae24d7801c930683477b5896c285b4ad3a3c747b5dc9447097a05462758",
+      "generated_view_sha256": "fedf99e612317954ef67c2b3c97636ccc42790fc99c9094c075c5bb33c701d30",
       "generated_view_status": "MATCHED",
       "qualification_eligible": false,
       "qualification_effect": "NONE",
@@ -359,5 +359,5 @@
     "gate_assertions": 0,
     "artifact_errors": 0
   },
-  "aggregate_sha256": "bb17fd9d89ac1f46235ce4a1e6f1ad04f4675d5d1a28d1da9dfb90f133ea25b8"
+  "aggregate_sha256": "9a784bc6345f6b2581b81696d2fc0edc5e0ef05d683de4e3d6b5de02671b722d"
 }

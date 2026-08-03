@@ -34,6 +34,8 @@ test('R4 release candidate manifest binds artifact source, handoff source, and r
   assert.equal(actual.source_identity.artifact_source_commit, 'a034e5e050c044460fb07705639d9d41e6b193c0');
   assert.equal(actual.source_identity.artifact_source_differs_from_handoff, true);
   assert.equal(actual.artifact_identity.primary_vsix.sha256, '027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d');
+  assert.equal(actual.artifact_identity.primary_vsix.path, 'devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix');
+  assert.equal(actual.artifact_identity.package_copy_vsix.path, 'packages/vscode-extension/devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix');
   assert.equal(actual.artifact_identity.exact_match, true);
   assert.equal(actual.current_identity_probe_boundary.status, 'deferred-not-refreshed');
   assert.equal(actual.qualification_eligible, false);

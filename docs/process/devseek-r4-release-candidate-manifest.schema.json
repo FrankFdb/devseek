@@ -137,7 +137,7 @@
         {
           "type": "object",
           "properties": {
-            "path": { "const": "devseek-netai-latest.vsix" }
+            "path": { "const": "devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix" }
           }
         }
       ]
@@ -148,7 +148,7 @@
         {
           "type": "object",
           "properties": {
-            "path": { "const": "packages/vscode-extension/devseek-netai-latest.vsix" }
+            "path": { "const": "packages/vscode-extension/devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix" }
           }
         }
       ]

@@ -24,14 +24,14 @@
   },
   "source_bindings": {
     "r3_handoff_next_phase": {
-      "path": "docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md",
-      "source_sha256": "842c2725379c64ade18425ac1854bc14e971db55f2afc29328e705a0c7b52351",
+      "path": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md",
+      "source_sha256": "b6c675eeeddf17482508fa08f1d4a5dc011d41cb72f03d2711a85a049dc936d8",
       "handoff_doc_commit": "02cb792b4fe86df523c7f88eb106f13394e6f3fd"
     },
     "release_candidate_manifest": {
       "path": "docs/process/devseek-r4-release-candidate-manifest.json",
-      "source_sha256": "fe0d5a74792785a640df50be50012702a46077bebe0d8036647ed27e42182f87",
-      "manifest_sha256": "e99ea94658683aff63f52d8b9c8992e6c90501e441571757d068d29da6c151e4",
+      "source_sha256": "eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66",
+      "manifest_sha256": "67e4025b2743012648c36312870130a3773f0b79dc44ce9abbc4200c4dab50b3",
       "artifact_source_commit": "a034e5e050c044460fb07705639d9d41e6b193c0"
     },
     "doc_process_identity_reconciliation": {
@@ -177,5 +177,5 @@
     "live_runs_authorized": 0,
     "qualification_claims": 0
   },
-  "rollup_sha256": "84c5ed8bdf6e78aeb34d865e2c16833388bdbbc4d14d28dfbdb32e562187306f"
+  "rollup_sha256": "5716a17e44c27f77ba1ad42f3742ba2b0abceff02cedd289fa2c4b1102c98294"
 }

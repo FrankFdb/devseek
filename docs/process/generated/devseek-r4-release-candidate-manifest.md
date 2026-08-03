@@ -12,16 +12,16 @@
 ## 源身份边界
 
 - Artifact source commit: `a034e5e050c044460fb07705639d9d41e6b193c0`
-- Handoff doc commit: `02cb792b4fe86df523c7f88eb106f13394e6f3fd`
+- Handoff doc commit: `2ef99cfbf0ded6d064633cf2f0f96336d9c6a88a`
 - Artifact source differs from handoff: `true`
-- Handoff doc path: `docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md`
+- Handoff doc path: `docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md`
 
 ## 候选制品
 
 | Artifact | SHA-256 | Build | Git commit | Bridge SHA-256 |
 | --- | --- | --- | --- | --- |
-| primary: `devseek-netai-latest.vsix` | `027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d` | `20260723-t193110` | `a034e5e` | `16182326e29a56f6d7711bdb4ba56759df4cfa577a51b2f67fd098bc06a8d599` |
-| package-copy: `packages/vscode-extension/devseek-netai-latest.vsix` | `027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d` | `20260723-t193110` | `a034e5e` | `16182326e29a56f6d7711bdb4ba56759df4cfa577a51b2f67fd098bc06a8d599` |
+| primary: `devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix` | `027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d` | `20260723-t193110` | `a034e5e` | `16182326e29a56f6d7711bdb4ba56759df4cfa577a51b2f67fd098bc06a8d599` |
+| package-copy: `packages/vscode-extension/devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix` | `027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d` | `20260723-t193110` | `a034e5e` | `16182326e29a56f6d7711bdb4ba56759df4cfa577a51b2f67fd098bc06a8d599` |
 
 - Primary/package-copy exact match: `true`
 
@@ -51,4 +51,4 @@
 
 ## Manifest Identity
 
-- Manifest SHA-256: `e99ea94658683aff63f52d8b9c8992e6c90501e441571757d068d29da6c151e4`
+- Manifest SHA-256: `67e4025b2743012648c36312870130a3773f0b79dc44ce9abbc4200c4dab50b3`

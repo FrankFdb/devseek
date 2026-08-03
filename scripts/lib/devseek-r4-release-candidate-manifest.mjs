@@ -13,8 +13,9 @@ export const R4_RELEASE_CANDIDATE_MANIFEST_ID = 'R4-RELEASE-CANDIDATE-MANIFEST/v
 export const R4_RELEASE_CANDIDATE_INTEGRITY_SCOPE = 'local-r4-release-candidate-manifest';
 export const R4_RELEASE_CANDIDATE_QUALIFICATION_EFFECT = 'NONE';
 
-const PRIMARY_VSIX_PATH = 'devseek-netai-latest.vsix';
-const PACKAGE_COPY_VSIX_PATH = 'packages/vscode-extension/devseek-netai-latest.vsix';
+const R4_CANDIDATE_VSIX_NAME = 'devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix';
+const PRIMARY_VSIX_PATH = R4_CANDIDATE_VSIX_NAME;
+const PACKAGE_COPY_VSIX_PATH = `packages/vscode-extension/${R4_CANDIDATE_VSIX_NAME}`;
 const CURRENT_CANDIDATE_IDENTITY_PATH = 'docs/process/devseek-current-candidate-identity.json';
 const R3_HANDOFF_DOC_PATH = 'docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md';
 const BRIDGE_ENTRY = 'extension/bridge/server.js';
