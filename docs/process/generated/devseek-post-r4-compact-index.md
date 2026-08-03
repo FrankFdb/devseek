@@ -85,15 +85,15 @@
 - `r4_authorization_and_permission_guide`: `docs/process/devseek-r4-authorization-and-permission-guide.md` -> `826240c4a2cfcae0c6fb1068ed199b1ffed99d64857fd8053d70e3790f40ada5`
 - `r4_clean_runtime_limited_observation`: `docs/process/devseek-r4-clean-runtime-limited-observation.json` -> `55594ef5b5dee56d4c2c8a32b584ba955b246a2736880d91694e7b03dc36200c`
 - `r4_process_artifacts_aggregate`: `docs/process/devseek-r4-process-artifacts-aggregate.json` -> `c73113877c1c755b22c6579638cf8c5fcae8607e18df0288f737e46ed0c26ce0`
-- `post_r4_local_regression_manifest`: `docs/process/devseek-post-r4-local-regression-manifest.json` -> `c0f6b5d6840d1121ca0420b8e00df6aa2c65747725247dc42c54fe74acd61a41`
+- `post_r4_local_regression_manifest`: `docs/process/devseek-post-r4-local-regression-manifest.json` -> `154d9a6c820bdc37a34046a0172fcedca199b77e2c8028d4a3b5a62fb0259975`
 - `post_r4_local_full_regression_checkpoint`: `docs/process/devseek-post-r4-local-full-regression-checkpoint.md` -> `a907249f6f69635b05942ad4061a8e13863cd127d35885a9f248c1fec8aa5509`
-- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `f277e3364e8e1a386f0c02a97f09d55ac2604f650251e765f58d9b7238d46a39`
+- `external_authority_requests`: `docs/process/devseek-external-authority-requests.json` -> `c51d967ed1b34b634d6c785ff3d7076e82869e1d82b3c2ba70490e4126b4a11e`
 - `r4_live_qualification_request_packet`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `2b7bc6e3aecb20f7b2303c9a13a5d19eb1d943e28f55cf4aef52e9c30492dfc6`
-- `package_scripts`: `package.json` -> `15d66674eea541522923999edf71a178e89686e770a2e9252829508a4914e85c`
-- `phase_gate_source`: `scripts/devseek-phase0-12-verify.mjs` -> `9e4e4be9ca81af8ee7cf9129e452bc2babe158b7f8788428faed0646432491ef`
+- `package_scripts`: `package.json` -> `905afe7a9db3e7f3054609040e5dac1930ca5f786ad53ba822f951ebb702637b`
+- `phase_gate_source`: `scripts/devseek-phase0-12-verify.mjs` -> `db927db5c6d2bf78ba78e62075bdde17a39c26ccdb41fef9f1847bd496b48702`
 - `checker_source`: `scripts/devseek-post-r4-compact-index-check.mjs` -> `1842d2a17af0d91a5bfd8bbb2ca042acf52b45c88c0e89872589e5300a1ce9d1`
 - `oracle_source`: `scripts/test/devseek-post-r4-compact-index.test.mjs` -> `664e5552e93e579adf9ac22c125f7c7191e22dd29020c2c8ceca8360991cd87f`
 
 ## Index Identity
 
-- Index SHA-256: `c1eb61c4bbe85ea78e3c768a08d67adb5bb52e6bf3c1ce027eb6ec59d9d575eb`
+- Index SHA-256: `cdd905192fffc823054c6fecd4b15de8429a2ab6a9a0bd46b98558e4961f2dad`

@@ -1,0 +1,399 @@
+export const CODING_CONFORMANCE_SCHEMA_VERSION = 'devseek.coding-conformance/v1';
+
+export const CODING_CONFORMANCE_PREPARATION = Object.freeze({
+  implementationState: 'contract-and-development-fixtures-only',
+  productWiring: false,
+  productAdapterCount: 0,
+  qualificationEligible: false,
+  claimsPermitted: false,
+  requiredSurfaces: ['vscode', 'cli', 'headless'] as const,
+});
+
+export const CODING_CONFORMANCE_DIMENSIONS = Object.freeze([
+  'taskContract',
+  'toolExecutions',
+  'changeReceipts',
+  'verifications',
+  'completion',
+] as const);
+
+export type CodingConformanceSurface = typeof CODING_CONFORMANCE_PREPARATION.requiredSurfaces[number];
+export type CodingConformanceDimension = typeof CODING_CONFORMANCE_DIMENSIONS[number];
+export type CodingTaskMode = 'explain' | 'review' | 'change' | 'release';
+export type CodingTerminalStatus = 'completed' | 'failed' | 'blocked' | 'cancelled';
+export type CodingReceiptStatus = 'completed' | 'failed' | 'denied';
+export type CodingVerificationStatus = 'passed' | 'failed' | 'blocked' | 'not-run';
+export type CodingAcceptanceStatus = 'passed' | 'failed' | 'blocked' | 'not-applicable';
+export type CodingToolEffect = 'read' | 'process' | 'network' | 'workspace-mutation' | 'git' | 'release';
+export type CodingDeliverableKind = 'source-change' | 'report' | 'verification-result';
+export type CodingBenchmarkBehavior =
+  | 'context-scoped-contract'
+  | 'structured-tool-feedback'
+  | 'permission-before-effect'
+  | 'workspace-receipt'
+  | 'verification-before-completion'
+  | 'bounded-repair'
+  | 'safe-refusal-no-side-effect'
+  | 'evidence-backed-settlement';
+
+export interface CodingTaskContractProjection {
+  readonly goal: string;
+  readonly mode: CodingTaskMode;
+  readonly scope: {
+    readonly include: readonly string[];
+    readonly exclude: readonly string[];
+  };
+  readonly deliverables: readonly {
+    readonly id: string;
+    readonly kind: CodingDeliverableKind;
+    readonly path?: string;
+  }[];
+  readonly constraints: readonly string[];
+  readonly acceptance: readonly {
+    readonly id: string;
+    readonly statement: string;
+  }[];
+  readonly provenanceRefs: readonly string[];
+}
+
+export interface CodingToolExecutionProjection {
+  readonly sequence: number;
+  readonly actionId: string;
+  readonly tool: string;
+  readonly effects: readonly CodingToolEffect[];
+  readonly status: CodingReceiptStatus;
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface CodingChangeReceiptProjection {
+  readonly sequence: number;
+  readonly actionId: string;
+  readonly status: 'committed' | 'rolled-back';
+  readonly paths: readonly string[];
+  readonly baselineRef: string;
+  readonly readbackRef?: string;
+  readonly rollbackRef?: string;
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface CodingVerificationProjection {
+  readonly sequence: number;
+  readonly actionId: string;
+  readonly verifier: string;
+  readonly status: CodingVerificationStatus;
+  readonly acceptanceIds: readonly string[];
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface CodingCompletionProjection {
+  readonly status: CodingTerminalStatus;
+  readonly acceptance: readonly {
+    readonly criterionId: string;
+    readonly status: CodingAcceptanceStatus;
+    readonly evidenceRefs: readonly string[];
+  }[];
+  readonly residualRisks: readonly string[];
+  readonly evidenceRefs: readonly string[];
+}
+
+export interface CodingConformanceProjection {
+  readonly schemaVersion: typeof CODING_CONFORMANCE_SCHEMA_VERSION;
+  readonly fixtureId: string;
+  readonly taskContract: CodingTaskContractProjection;
+  readonly toolExecutions: readonly CodingToolExecutionProjection[];
+  readonly changeReceipts: readonly CodingChangeReceiptProjection[];
+  readonly verifications: readonly CodingVerificationProjection[];
+  readonly completion: CodingCompletionProjection;
+}
+
+export interface CodingConformanceFixture {
+  readonly schemaVersion: typeof CODING_CONFORMANCE_SCHEMA_VERSION;
+  readonly fixtureId: string;
+  readonly title: string;
+  readonly prompt: string;
+  readonly requiredSurfaces: readonly CodingConformanceSurface[];
+  readonly benchmark: {
+    readonly competitors: readonly ['Codex', 'Claude Code'];
+    readonly sourceRef: string;
+    readonly observableBehaviors: readonly CodingBenchmarkBehavior[];
+  };
+  readonly expected: CodingConformanceProjection;
+}
+
+export interface CodingConformanceObservation {
+  readonly surface: CodingConformanceSurface;
+  readonly adapterId: string;
+  readonly evidenceClass: 'fixture-self-test' | 'product-route';
+  readonly sourceRefs: readonly string[];
+  readonly projection: CodingConformanceProjection;
+}
+
+/**
+ * A Surface adapter may only project facts already settled by the route it observes.
+ * It must not infer missing receipts, execute effects, or construct a terminal decision.
+ */
+export interface CodingConformanceProjectionAdapter<TRouteOutput> {
+  readonly surface: CodingConformanceSurface;
+  readonly adapterId: string;
+  project(input: {
+    readonly fixture: CodingConformanceFixture;
+    readonly routeOutput: TRouteOutput;
+  }): CodingConformanceObservation;
+}
+
+export interface CodingConformanceViolation {
+  readonly surface?: CodingConformanceSurface;
+  readonly dimension: CodingConformanceDimension | 'fixture' | 'observation';
+  readonly code: string;
+}
+
+export interface CodingConformanceSurfaceResult {
+  readonly surface: CodingConformanceSurface;
+  readonly contractConformant: boolean;
+  readonly evidenceClass: CodingConformanceObservation['evidenceClass'] | 'missing';
+  readonly violations: readonly CodingConformanceViolation[];
+}
+
+export interface CodingConformanceEvaluation {
+  readonly schemaVersion: typeof CODING_CONFORMANCE_SCHEMA_VERSION;
+  readonly fixtureId: string;
+  readonly contractConformant: boolean;
+  readonly productRouteEvidenceComplete: boolean;
+  readonly qualificationEligible: false;
+  readonly claimsPermitted: false;
+  readonly surfaceResults: readonly CodingConformanceSurfaceResult[];
+  readonly violations: readonly CodingConformanceViolation[];
+}
+
+export function compareCodingConformanceProjection(
+  expected: CodingConformanceProjection,
+  actual: CodingConformanceProjection,
+  surface?: CodingConformanceSurface,
+): CodingConformanceViolation[] {
+  const violations = validateProjection(actual, surface);
+  for (const dimension of CODING_CONFORMANCE_DIMENSIONS) {
+    if (canonicalJson(expected[dimension]) !== canonicalJson(actual[dimension])) {
+      violations.push({ surface, dimension, code: 'semantic-mismatch' });
+    }
+  }
+  if (actual.schemaVersion !== expected.schemaVersion) {
+    violations.push({ surface, dimension: 'observation', code: 'schema-version-mismatch' });
+  }
+  if (actual.fixtureId !== expected.fixtureId) {
+    violations.push({ surface, dimension: 'observation', code: 'fixture-id-mismatch' });
+  }
+  return uniqueViolations(violations);
+}
+
+export function evaluateCodingConformanceFixture(
+  fixture: CodingConformanceFixture,
+  observations: readonly CodingConformanceObservation[],
+): CodingConformanceEvaluation {
+  const violations = validateFixture(fixture);
+  const observationsBySurface = new Map<CodingConformanceSurface, CodingConformanceObservation>();
+
+  for (const observation of observations) {
+    if (!fixture.requiredSurfaces.includes(observation.surface)) {
+      violations.push({ surface: observation.surface, dimension: 'observation', code: 'unexpected-surface' });
+      continue;
+    }
+    if (observationsBySurface.has(observation.surface)) {
+      violations.push({ surface: observation.surface, dimension: 'observation', code: 'duplicate-surface' });
+      continue;
+    }
+    observationsBySurface.set(observation.surface, observation);
+  }
+
+  const surfaceResults = fixture.requiredSurfaces.map(surface => {
+    const observation = observationsBySurface.get(surface);
+    if (!observation) {
+      const missing: CodingConformanceViolation = { surface, dimension: 'observation', code: 'missing-surface' };
+      violations.push(missing);
+      return {
+        surface,
+        contractConformant: false,
+        evidenceClass: 'missing' as const,
+        violations: [missing],
+      };
+    }
+
+    const surfaceViolations = compareCodingConformanceProjection(fixture.expected, observation.projection, surface);
+    if (!nonEmpty(observation.adapterId)) {
+      surfaceViolations.push({ surface, dimension: 'observation', code: 'missing-adapter-id' });
+    }
+    if (!hasNonEmptyStrings(observation.sourceRefs)) {
+      surfaceViolations.push({ surface, dimension: 'observation', code: 'missing-source-refs' });
+    }
+    violations.push(...surfaceViolations);
+    return {
+      surface,
+      contractConformant: surfaceViolations.length === 0,
+      evidenceClass: observation.evidenceClass,
+      violations: surfaceViolations,
+    };
+  });
+
+  const deduplicated = uniqueViolations(violations);
+  const contractConformant = deduplicated.length === 0;
+  const productRouteEvidenceComplete = contractConformant
+    && Number(CODING_CONFORMANCE_PREPARATION.productAdapterCount) > 0
+    && surfaceResults.every(result => result.evidenceClass === 'product-route');
+
+  return {
+    schemaVersion: CODING_CONFORMANCE_SCHEMA_VERSION,
+    fixtureId: fixture.fixtureId,
+    contractConformant,
+    productRouteEvidenceComplete,
+    qualificationEligible: false,
+    claimsPermitted: false,
+    surfaceResults,
+    violations: deduplicated,
+  };
+}
+
+function validateFixture(fixture: CodingConformanceFixture): CodingConformanceViolation[] {
+  const violations: CodingConformanceViolation[] = [];
+  if (fixture.schemaVersion !== CODING_CONFORMANCE_SCHEMA_VERSION) {
+    violations.push({ dimension: 'fixture', code: 'unsupported-schema-version' });
+  }
+  if (!nonEmpty(fixture.fixtureId) || fixture.expected.fixtureId !== fixture.fixtureId) {
+    violations.push({ dimension: 'fixture', code: 'invalid-fixture-identity' });
+  }
+  if (canonicalJson(fixture.requiredSurfaces) !== canonicalJson(CODING_CONFORMANCE_PREPARATION.requiredSurfaces)) {
+    violations.push({ dimension: 'fixture', code: 'required-surface-set-mismatch' });
+  }
+  if (fixture.benchmark.competitors[0] !== 'Codex' || fixture.benchmark.competitors[1] !== 'Claude Code') {
+    violations.push({ dimension: 'fixture', code: 'benchmark-competitors-mismatch' });
+  }
+  if (!nonEmpty(fixture.benchmark.sourceRef) || fixture.benchmark.observableBehaviors.length === 0) {
+    violations.push({ dimension: 'fixture', code: 'missing-benchmark-basis' });
+  }
+  violations.push(...validateProjection(fixture.expected));
+  return uniqueViolations(violations);
+}
+
+function validateProjection(
+  projection: CodingConformanceProjection,
+  surface?: CodingConformanceSurface,
+): CodingConformanceViolation[] {
+  const violations: CodingConformanceViolation[] = [];
+  const criterionIds = projection.taskContract.acceptance.map(criterion => criterion.id);
+  const toolActionIdList = projection.toolExecutions.map(receipt => receipt.actionId);
+  const toolExecutionsByActionId = new Map(
+    projection.toolExecutions.map(receipt => [receipt.actionId, receipt] as const),
+  );
+
+  if (!nonEmpty(projection.taskContract.goal) || !hasNonEmptyStrings(projection.taskContract.provenanceRefs)) {
+    violations.push({ surface, dimension: 'taskContract', code: 'missing-goal-or-provenance' });
+  }
+  if (!uniqueNonEmpty(criterionIds) || criterionIds.length === 0) {
+    violations.push({ surface, dimension: 'taskContract', code: 'invalid-acceptance-ids' });
+  }
+  if (!uniqueNonEmpty(projection.taskContract.deliverables.map(deliverable => deliverable.id))) {
+    violations.push({ surface, dimension: 'taskContract', code: 'invalid-deliverable-ids' });
+  }
+
+  for (const receipt of projection.toolExecutions) {
+    if (!nonEmpty(receipt.actionId) || !nonEmpty(receipt.tool) || receipt.effects.length === 0 || !hasNonEmptyStrings(receipt.evidenceRefs)) {
+      violations.push({ surface, dimension: 'toolExecutions', code: 'incomplete-tool-receipt' });
+    }
+  }
+  if (new Set(toolActionIdList).size !== toolActionIdList.length) {
+    violations.push({ surface, dimension: 'toolExecutions', code: 'duplicate-action-id' });
+  }
+  if (!strictlyIncreasing(projection.toolExecutions.map(receipt => receipt.sequence))) {
+    violations.push({ surface, dimension: 'toolExecutions', code: 'invalid-sequence' });
+  }
+
+  for (const receipt of projection.changeReceipts) {
+    const toolExecution = toolExecutionsByActionId.get(receipt.actionId);
+    if (!toolExecution
+      || !uniqueNonEmpty(receipt.paths)
+      || !nonEmpty(receipt.baselineRef)
+      || !hasNonEmptyStrings(receipt.evidenceRefs)
+      || (receipt.status === 'committed' && !nonEmpty(receipt.readbackRef))
+      || (receipt.status === 'rolled-back' && !nonEmpty(receipt.rollbackRef))) {
+      violations.push({ surface, dimension: 'changeReceipts', code: 'incomplete-change-receipt' });
+    }
+    if (toolExecution && !toolExecution.effects.includes('workspace-mutation')) {
+      violations.push({ surface, dimension: 'changeReceipts', code: 'change-action-not-mutation' });
+    }
+    if (receipt.status === 'committed' && toolExecution?.status !== 'completed') {
+      violations.push({ surface, dimension: 'changeReceipts', code: 'committed-change-action-not-completed' });
+    }
+  }
+  if (!strictlyIncreasing(projection.changeReceipts.map(receipt => receipt.sequence))) {
+    violations.push({ surface, dimension: 'changeReceipts', code: 'invalid-sequence' });
+  }
+
+  for (const verification of projection.verifications) {
+    if (!toolExecutionsByActionId.has(verification.actionId)
+      || !nonEmpty(verification.verifier)
+      || !hasNonEmptyStrings(verification.acceptanceIds)
+      || !verification.acceptanceIds.every(id => criterionIds.includes(id))
+      || !hasNonEmptyStrings(verification.evidenceRefs)) {
+      violations.push({ surface, dimension: 'verifications', code: 'incomplete-verification-receipt' });
+    }
+  }
+  if (!strictlyIncreasing(projection.verifications.map(verification => verification.sequence))) {
+    violations.push({ surface, dimension: 'verifications', code: 'invalid-sequence' });
+  }
+
+  const completionCriteria = projection.completion.acceptance.map(criterion => criterion.criterionId);
+  if (!sameStringSet(criterionIds, completionCriteria)
+    || !projection.completion.acceptance.every(criterion => hasNonEmptyStrings(criterion.evidenceRefs))
+    || !hasNonEmptyStrings(projection.completion.evidenceRefs)) {
+    violations.push({ surface, dimension: 'completion', code: 'incomplete-acceptance-evidence' });
+  }
+  if (projection.completion.status === 'completed'
+    && projection.completion.acceptance.some(criterion => !['passed', 'not-applicable'].includes(criterion.status))) {
+    violations.push({ surface, dimension: 'completion', code: 'completed-with-unsettled-acceptance' });
+  }
+  return uniqueViolations(violations);
+}
+
+function strictlyIncreasing(values: readonly number[]): boolean {
+  return values.every((value, index) => Number.isInteger(value) && value > 0 && (index === 0 || value > values[index - 1]));
+}
+
+function sameStringSet(left: readonly string[], right: readonly string[]): boolean {
+  return uniqueNonEmpty(left)
+    && uniqueNonEmpty(right)
+    && canonicalJson([...left].sort()) === canonicalJson([...right].sort());
+}
+
+function uniqueNonEmpty(values: readonly string[]): boolean {
+  return hasNonEmptyStrings(values) && new Set(values).size === values.length;
+}
+
+function hasNonEmptyStrings(values: readonly string[]): boolean {
+  return values.length > 0 && values.every(nonEmpty);
+}
+
+function nonEmpty(value: string | undefined): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(sortObjectKeys(value));
+}
+
+function sortObjectKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortObjectKeys);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => [key, sortObjectKeys(child)]),
+  );
+}
+
+function uniqueViolations(violations: readonly CodingConformanceViolation[]): CodingConformanceViolation[] {
+  const seen = new Set<string>();
+  return violations.filter(violation => {
+    const key = `${violation.surface ?? ''}:${violation.dimension}:${violation.code}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}

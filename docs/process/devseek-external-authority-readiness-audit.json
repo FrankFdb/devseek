@@ -26,9 +26,9 @@
   "source_bindings": {
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
-      "source_sha256": "f277e3364e8e1a386f0c02a97f09d55ac2604f650251e765f58d9b7238d46a39",
+      "source_sha256": "c51d967ed1b34b634d6c785ff3d7076e82869e1d82b3c2ba70490e4126b4a11e",
       "request_set_id": "DEVSEEK-GATE0-EXTERNAL-AUTHORITY-REQUESTS/v1",
-      "request_set_sha256": "4e89d4198ca90359f8fc2b9e3f8daa4390c4953a18b2aa18b433545c84eece55",
+      "request_set_sha256": "d6c98e47f42db91a4548304c18f9a109659670f2145b3dfde6ab0ee7065bed43",
       "blocked_requests": 5
     },
     "r4_live_qualification_request_packet": {
@@ -62,20 +62,20 @@
     },
     "gate0_decision": {
       "path": "docs/process/devseek-gate0-decision-report.json",
-      "source_sha256": "c6bce326346212d2dc4baf8f30438312ed93233e183d0abf81670c4519d4825f",
+      "source_sha256": "85c486937e07952576931724531e3fd4d1e6dc84d58ff2a1b52c51301ee5d3f0",
       "decision_id": "DEVSEEK-GATE0-INFRASTRUCTURE-DECISION/v1",
       "qualification_status": "NOT_PASSED",
       "external_authority_blockers": 6
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "15d66674eea541522923999edf71a178e89686e770a2e9252829508a4914e85c",
+      "source_sha256": "905afe7a9db3e7f3054609040e5dac1930ca5f786ad53ba822f951ebb702637b",
       "required_script": "verify:external-authority-readiness-audit",
       "required_script_present": true
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "9e4e4be9ca81af8ee7cf9129e452bc2babe158b7f8788428faed0646432491ef",
+      "source_sha256": "db927db5c6d2bf78ba78e62075bdde17a39c26ccdb41fef9f1847bd496b48702",
       "required_gate": "external-authority-readiness-audit",
       "required_gate_present": true
     },
@@ -443,5 +443,5 @@
     "ledger_writes": 0,
     "provider_actions_performed": 0
   },
-  "audit_sha256": "8ee49ac7755be190bca53615030bd7155b815a3eb4094e32fb7797eb574c3201"
+  "audit_sha256": "994b4dff2918fcd5f32e9bbf1870ece268f729f940e13dc93eb560e8855000e0"
 }

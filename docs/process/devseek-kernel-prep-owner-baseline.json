@@ -197,7 +197,7 @@
     "legacy_execution_owners": 3,
     "semantic_domains": 5,
     "converged_semantic_domains": 0,
-    "source_checks": 29,
+    "source_checks": 32,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -229,6 +229,50 @@
       "excludes": [
         "Headless Agent Core shared by VS Code and CLI"
       ],
+      "passed": true
+    },
+    {
+      "check_id": "shared-coding-conformance-contract",
+      "path": "packages/shared/src/coding-conformance.ts",
+      "includes": [
+        "implementationState: 'contract-and-development-fixtures-only'",
+        "productWiring: false",
+        "productAdapterCount: 0",
+        "export interface CodingConformanceProjectionAdapter<TRouteOutput>",
+        "export function evaluateCodingConformanceFixture(",
+        "Number(CODING_CONFORMANCE_PREPARATION.productAdapterCount) > 0",
+        "'taskContract'",
+        "'toolExecutions'",
+        "'changeReceipts'",
+        "'verifications'",
+        "'completion'"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "shared-coding-conformance-fixtures",
+      "path": "packages/shared/src/coding-conformance-fixtures.ts",
+      "includes": [
+        "fixtureId: 'create-and-verify'",
+        "fixtureId: 'modify-and-verify'",
+        "fixtureId: 'verify-repair-reverify'",
+        "fixtureId: 'permission-denied-no-effect'",
+        "fixtureId: 'policy-refusal-no-mutation'",
+        "competitors: ['Codex', 'Claude Code']",
+        "CODING_CONFORMANCE_BENCHMARK_SOURCE"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "shared-coding-conformance-export",
+      "path": "packages/shared/src/index.ts",
+      "includes": [
+        "export * from './coding-conformance';",
+        "export * from './coding-conformance-fixtures';"
+      ],
+      "excludes": [],
       "passed": true
     },
     {
@@ -537,5 +581,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "44c4a7ef8d3f334640031205e784a781a94c93cbdea383f52641287657d09c66"
+  "baseline_sha256": "f168d863c1ca14cc22f7ca40d0debb8ed94c3c2fbfa3a5cc9e8acfd37b9aacfd"
 }

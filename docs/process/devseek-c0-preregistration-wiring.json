@@ -52,11 +52,11 @@
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "15d66674eea541522923999edf71a178e89686e770a2e9252829508a4914e85c"
+      "source_sha256": "905afe7a9db3e7f3054609040e5dac1930ca5f786ad53ba822f951ebb702637b"
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "9e4e4be9ca81af8ee7cf9129e452bc2babe158b7f8788428faed0646432491ef"
+      "source_sha256": "db927db5c6d2bf78ba78e62075bdde17a39c26ccdb41fef9f1847bd496b48702"
     },
     "checker_source": {
       "path": "scripts/devseek-c0-preregistration-wiring-check.mjs",
@@ -370,5 +370,5 @@
     "dispatch_bypasses": 0,
     "qualification_claims": 0
   },
-  "wiring_sha256": "ce67725fac9d54d226eaf12e41210589cbb73e9bccb387a40f8217715f29abc1"
+  "wiring_sha256": "08bf865ecfe4a95b4fdefac9884a44c7dc519019059c0a29d73e81aceb84aeb6"
 }

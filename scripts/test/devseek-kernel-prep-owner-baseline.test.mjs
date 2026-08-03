@@ -42,7 +42,7 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
     legacy_execution_owners: 3,
     semantic_domains: 5,
     converged_semantic_domains: 0,
-    source_checks: 29,
+    source_checks: 32,
     failed_source_checks: 0,
   });
   assert.deepEqual(
@@ -63,6 +63,16 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
   ]);
   assert.equal(actual.semantic_domains.every(domain => domain.convergence_status === 'not-converged'), true);
   assert.equal(actual.source_checks.every(assertion => assertion.passed), true);
+  assert.deepEqual(
+    actual.source_checks
+      .filter(assertion => assertion.check_id.startsWith('shared-coding-conformance'))
+      .map(assertion => assertion.check_id),
+    [
+      'shared-coding-conformance-contract',
+      'shared-coding-conformance-fixtures',
+      'shared-coding-conformance-export',
+    ],
+  );
 
   const schema = readJson(path.join(repoRoot, 'docs/process/devseek-kernel-prep-owner-baseline.schema.json'));
   const ajv = new Ajv2020({ allErrors: true, strict: true });
@@ -72,6 +82,19 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
     fs.readFileSync(path.join(repoRoot, 'docs/process/generated/devseek-kernel-prep-owner-baseline.md'), 'utf8'),
     renderKernelPrepOwnerBaselineMarkdown(actual),
   );
+});
+
+test('coding conformance preparation has no product-route imports or adapters', () => {
+  const productRoots = [
+    'packages/vscode-extension/src',
+    'packages/cli/src',
+    'packages/bridge/src',
+  ];
+  const hits = productRoots.flatMap(relativeRoot => collectTypeScriptFiles(path.join(repoRoot, relativeRoot)))
+    .filter(filePath => /CodingConformance|coding-conformance/.test(fs.readFileSync(filePath, 'utf8')))
+    .map(filePath => path.relative(repoRoot, filePath));
+
+  assert.deepEqual(hits, []);
 });
 
 test('kernel prep owner baseline fails closed when a declared legacy execution route drifts', () => {
@@ -125,4 +148,12 @@ function loadSources() {
     relativePath => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8'),
     relativePath => readJson(path.join(repoRoot, relativePath)),
   );
+}
+
+function collectTypeScriptFiles(root) {
+  return fs.readdirSync(root, { withFileTypes: true }).flatMap(entry => {
+    const entryPath = path.join(root, entry.name);
+    if (entry.isDirectory()) return collectTypeScriptFiles(entryPath);
+    return entry.isFile() && entry.name.endsWith('.ts') ? [entryPath] : [];
+  });
 }

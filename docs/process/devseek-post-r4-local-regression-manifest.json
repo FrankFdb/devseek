@@ -29,13 +29,13 @@
     },
     "package_scripts": {
       "path": "package.json",
-      "source_sha256": "15d66674eea541522923999edf71a178e89686e770a2e9252829508a4914e85c",
+      "source_sha256": "905afe7a9db3e7f3054609040e5dac1930ca5f786ad53ba822f951ebb702637b",
       "required_script": "verify:post-r4-local-regression-manifest",
       "required_script_present": true
     },
     "phase_gate_source": {
       "path": "scripts/devseek-phase0-12-verify.mjs",
-      "source_sha256": "9e4e4be9ca81af8ee7cf9129e452bc2babe158b7f8788428faed0646432491ef",
+      "source_sha256": "db927db5c6d2bf78ba78e62075bdde17a39c26ccdb41fef9f1847bd496b48702",
       "required_gate": "post-r4-local-regression-manifest",
       "required_gate_present": true
     },
@@ -189,7 +189,7 @@
         {
           "path": "packages/vscode-extension/src/app/run-context.ts",
           "role": "durable-run-settlement-owner",
-          "source_sha256": "434faf7c5951872e32e8571723e4a422c640177e1a21f1f89d7028b586fd3202"
+          "source_sha256": "6f42193b7532846c2c7bfc119b2229a45017cc2bc7a7489681a282509985e2df"
         },
         {
           "path": "packages/vscode-extension/src/app/settlement-state.ts",
@@ -214,7 +214,7 @@
         {
           "path": "packages/vscode-extension/test/unit/workflow-compliance.test.mjs",
           "role": "workflow-static-contract-oracle",
-          "source_sha256": "1a295b98e1cedee21ead6d1282929a45e675d5aed91cbb07cf1e91a36057d73b"
+          "source_sha256": "5afd92a83335ea8baac859179407d9b48450ef6f213a481e81254a134d2d72d4"
         }
       ],
       "anchor_checks": [
@@ -414,5 +414,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "manifest_sha256": "fc485676588baf42e82c0fed55c23329a5a3c552eff38c0dd8904f342df64b42"
+  "manifest_sha256": "34016b9c6f53fe482462aa8174d11d1649a0214eb02fc633ed87844e3280b671"
 }

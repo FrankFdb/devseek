@@ -52,7 +52,7 @@ devseek_governance:
 | C0 本地实现与机器裁决前置 | `completed` | 7/7 implementation requirements satisfied，repository blockers=0，local conformance=`PASSED` |
 | Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；完整 extension 测试、架构守卫和精确 VSIX T3 Surface 仿真通过 |
 | Surface 入口盘点 | `completed` | 87/87 入口受 inventory 覆盖，未知入口与未声明 legacy owner 可达性均为 0 |
-| Kernel 切换前 owner baseline | `completed` | 3 条活跃产品路由均仍由 legacy semantic owner 执行；5 个核心语义域收敛数为 0；Headless 产品入口为 0；29/29 源码与默认门禁断言受保护 |
+| Kernel 切换前 owner baseline | `completed` | 3 条活跃产品路由均仍由 legacy semantic owner 执行；5 个核心语义域收敛数为 0；Headless 产品入口为 0；32/32 源码与默认门禁断言受保护；跨 Surface conformance 契约和 5 个 development fixture 已准备但产品 adapter 数仍为 0 |
 | R4 非资格本地工作 | `in_progress` | 6 个 leaf 中 5 个完成，1 个 clean-runtime leaf 受当前窗口/授权边界阻塞 |
 | 能力账本 | `in_progress` | 76 项能力：C0 的 7 项为 `wired`，C1～C14 共 69 项为 `proposed`，qualification claims=0 |
 | Gate 0 / 后续资格 | `blocked_external` | Gate 0=`NOT_PASSED`，6 个外部 authority blocker，exact claims=0；本地工作不得自行提升资格 |
@@ -65,7 +65,7 @@ devseek_governance:
 | 顺序 | 任务 ID | 状态 | 依赖 | 完成条件 |
 | ---: | --- | --- | --- | --- |
 | 1 | `QUALITY-TS-01` | `completed` | 无 | VS Code extension `tsc --noEmit` 零错误；每个错误在正确语义 owner 修复；同类路径有回归测试 |
-| 2 | `KERNEL-PREP-01` | `in_progress` | `QUALITY-TS-01` | 在不切换产品路径的前提下，按职责抽取 CLI/VS Code legacy owner，固定端口与 conformance 基线；不得新增业务内核或终态 owner |
+| 2 | `KERNEL-PREP-01` | `completed` | `QUALITY-TS-01` | 在不切换产品路径的前提下，按职责抽取 CLI/VS Code legacy owner，固定端口与 conformance 基线；不得新增业务内核或终态 owner |
 | 3 | `QUAL-EXT-01` | `blocked_external` | 独立授权、受保护身份/设施、holdout 和不可变保留 | 6 个外部 blocker 由授权主体关闭，7 个 C0 exact tuple claims 可复算，机器 decision 自主达到 `PASS` |
 | 4 | `KERNEL-02` | `blocked_external` | `KERNEL-PREP-01`、Gate 0=`PASS` | VS Code、CLI、Headless 共用唯一 Coding Kernel、TaskContract、ToolExecutor、mutation/verification/completion 语义；legacy loop 不再拥有业务决策 |
 | 5 | `SURFACE-CONTRACT-01` | `pending` | `KERNEL-02` | 同一任务在 VS Code、CLI、Headless 产生等价的状态、工具、验证和完成结果；静态守卫防止新旁路 |
@@ -84,10 +84,10 @@ devseek_governance:
 `KERNEL-PREP-01`
 
 - 范围：在 Gate 0 外部资格闭合前，完成不改变产品路由的责任盘点、内聚模块抽取、端口定义和 conformance 基线准备。
-- 已完成：CLI workspace context selection、artifact interpretation、workspace mutation、verification、run evidence 和 legacy coding coordination 已各有单一 owner；VS Code 请求取消、Kernel 绑定、AbortSignal 与 steer 隔离由 `ActiveChatRunCoordinator` 统一负责；会话持久化由 `SessionService` 统一负责；会话续接的文件恢复、上下文注入和新会话隔离由 `SessionContinuationProjector` 及其纯领域投影统一裁决；当前运行的变更路径由 `RunChangedPathRecorder` 投影和记录，Agent、chat 与 local execution 结算不再继承上一轮证据；敏感凭据窃取请求由 safety intent 判定，只有拒绝、合规替代、无变更和完成信号全部闭合时才进入可交付的 policy-refusal 终态。上述职责均有显式依赖、直接行为测试及防旁路静态守卫，产品路由保持不变。
-- 下一任务：基于已冻结的 owner baseline，准备 TaskContract、工具执行、变更回执、验证和完成判定的跨 Surface conformance fixture 与 adapter contract；不得把准备性接口或测试夹具记作产品接线。
+- 已完成：CLI workspace context selection、artifact interpretation、workspace mutation、verification、run evidence 和 legacy coding coordination 已各有单一 owner；VS Code 请求取消、Kernel 绑定、AbortSignal 与 steer 隔离由 `ActiveChatRunCoordinator` 统一负责；会话持久化由 `SessionService` 统一负责；会话续接的文件恢复、上下文注入和新会话隔离由 `SessionContinuationProjector` 及其纯领域投影统一裁决；当前运行的变更路径由 `RunChangedPathRecorder` 投影和记录，Agent、chat 与 local execution 结算不再继承上一轮证据；敏感凭据窃取请求由 safety intent 判定，只有拒绝、合规替代、无变更和完成信号全部闭合时才进入可交付的 policy-refusal 终态；共享 conformance contract 已固定 TaskContract、工具执行、变更回执、验证和完成判定五个比较维度，5 个 development fixture 覆盖创建、修改、验证修复、权限拒绝和安全拒绝。上述职责均有显式依赖、直接行为测试及防旁路静态守卫，产品路由保持不变，product adapter 数为 0，fixture 不能产生产品或资格结论。
+- 下一任务：暂停本地迭代并等待 `QUAL-EXT-01` 的外部授权与 Gate 0 机器裁决达到 `PASS`；在此之前不得开始 `KERNEL-02` 产品纵切。
 - 禁止：切换 R1 产品纵切、引入第二套 Kernel、修改资格状态，或将 legacy adapter 描述为已收敛内核。
-- 完成后：保持 `KERNEL-02` 等待 Gate 0=`PASS`；执行证据只进机器报告或归档交付物。
+- 完成后：`KERNEL-PREP-01` 保持 `completed`，`KERNEL-02` 等待 Gate 0=`PASS`；执行证据只进机器报告或归档交付物。
 
 ## 机器状态源
 
