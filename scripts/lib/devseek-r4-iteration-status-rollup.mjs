@@ -12,7 +12,7 @@ export const R4_ITERATION_STATUS_ROLLUP_SCHEMA_VERSION = 'devseek.r4-iteration-s
 export const R4_ITERATION_STATUS_ROLLUP_ID = 'R4-ITERATION-STATUS-ROLLUP/v1';
 export const R4_ITERATION_STATUS_ROLLUP_SCOPE = 'local-r4-iteration-status-rollup';
 
-const DOC20 = 'docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md';
+const DOC20 = 'docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md';
 const RELEASE_MANIFEST = 'docs/process/devseek-r4-release-candidate-manifest.json';
 const DOC_RECONCILIATION = 'docs/process/devseek-r4-doc-process-identity-reconciliation.json';
 const LIVE_REQUEST_PACKET = 'docs/process/devseek-r4-live-qualification-request-packet.json';

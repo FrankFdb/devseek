@@ -16,10 +16,10 @@ export const R4_RELEASE_CANDIDATE_QUALIFICATION_EFFECT = 'NONE';
 const PRIMARY_VSIX_PATH = 'devseek-netai-latest.vsix';
 const PACKAGE_COPY_VSIX_PATH = 'packages/vscode-extension/devseek-netai-latest.vsix';
 const CURRENT_CANDIDATE_IDENTITY_PATH = 'docs/process/devseek-current-candidate-identity.json';
-const R3_HANDOFF_DOC_PATH = 'docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md';
+const R3_HANDOFF_DOC_PATH = 'docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md';
 const BRIDGE_ENTRY = 'extension/bridge/server.js';
 const PACKAGE_ENTRY = 'extension/package.json';
-const RECEIPT_DOC_SOURCE = 'docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md#3-本轮实现回执';
+const RECEIPT_DOC_SOURCE = 'docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md#3-本轮实现回执';
 
 const REMAINING_R4_LEAVES = Object.freeze([
   'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME',

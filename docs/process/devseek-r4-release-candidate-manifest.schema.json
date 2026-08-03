@@ -114,7 +114,7 @@
         "artifact_source_commit": { "$ref": "#/$defs/fullCommit" },
         "artifact_source_short": { "$ref": "#/$defs/commit" },
         "artifact_source_resolution": { "const": "git rev-parse <vsix.devseekBuild.gitCommit>^{commit}" },
-        "handoff_doc_path": { "const": "docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md" },
+        "handoff_doc_path": { "const": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md" },
         "handoff_doc_commit": { "$ref": "#/$defs/fullCommit" },
         "handoff_doc_short": { "$ref": "#/$defs/commit" },
         "handoff_doc_commit_resolution": { "const": "git log -1 --format=%H -- <handoff_doc_path>" },
@@ -220,7 +220,7 @@
         "status": { "const": "recorded-passed" },
         "command": { "$ref": "#/$defs/nonEmpty" },
         "evidence": { "$ref": "#/$defs/nonEmpty" },
-        "source_ref": { "const": "docs/top-agent-convergence-audit-20260711/20-R3收尾与下一阶段任务.md#3-本轮实现回执" },
+        "source_ref": { "const": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md#3-本轮实现回执" },
         "source_commit": { "$ref": "#/$defs/fullCommit" },
         "qualification_effect": { "const": "NONE" }
       }
