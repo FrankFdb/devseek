@@ -9,11 +9,11 @@
   "asserts_gate_pass": false,
   "active_selector": {
     "path": "docs/process/devseek-active-baseline-selector.json",
-    "selector_sha256": "869219726bd2b5e23a4b03ec7d9b6ea58fb02efb4903ca6672de2bbac7cb0332",
+    "selector_sha256": "66a5607c6f591a70f96c67b28eea18bcdca859f713753a69c75d16d5986dbe89",
     "active_baseline_paths": [
       "docs/architecture/01-顶级编程智能体总体架构设计.md",
       "docs/requirements/02-顶级编程智能体需求基线.md",
-      "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md"
+      "docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md"
     ]
   },
   "governed_roots": [
@@ -328,9 +328,9 @@
       "decision": "keep",
       "relationship": "supporting-ref",
       "supporting_for": [
-        "PROCESS-14-GPT55-BACKLOG-BASELINE"
+        "PROCESS-CURRENT-CONVERGENCE-PLAN"
       ],
-      "rationale": "G0-01 selector marks this as supporting PROCESS-14 handoff procedure, not a second backlog."
+      "rationale": "The active selector marks this as historical handoff guidance supporting the current convergence plan, not a second task issuer."
     },
     {
       "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
@@ -338,9 +338,9 @@
       "decision": "keep",
       "relationship": "supporting-ref",
       "supporting_for": [
-        "PROCESS-14-GPT55-BACKLOG-BASELINE"
+        "PROCESS-CURRENT-CONVERGENCE-PLAN"
       ],
-      "rationale": "G0-01 selector marks this as supporting PROCESS-14 engineering rules, not a task issuer."
+      "rationale": "The active selector marks this as historical engineering guidance supporting the current convergence plan, not a task issuer."
     },
     {
       "path": "docs/top-agent-convergence-audit-20260711/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md",
@@ -370,5 +370,5 @@
       "rationale": "G0-01 selector marks this as supporting REQ-02 audit entry and applicability boundary."
     }
   ],
-  "inventory_sha256": "47a88d473446702cf9e1483ac880b3e11adc6ab48dfd5277d38595340556b13c"
+  "inventory_sha256": "00ebceb0e899ec7e18858a3a749d0a80972a95d306eb6f18d3140da6b3720b26"
 }

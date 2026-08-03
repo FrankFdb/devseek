@@ -8,9 +8,9 @@
 - schema: `devseek.legacy-doc-inventory/v1`
 - scope: `top-agent-convergence`
 - asserts Gate 0 pass: `false`
-- inventory sha256: `47a88d473446702cf9e1483ac880b3e11adc6ab48dfd5277d38595340556b13c`
+- inventory sha256: `00ebceb0e899ec7e18858a3a749d0a80972a95d306eb6f18d3140da6b3720b26`
 - active selector: `docs/process/devseek-active-baseline-selector.json`
-- active selector sha256: `869219726bd2b5e23a4b03ec7d9b6ea58fb02efb4903ca6672de2bbac7cb0332`
+- active selector sha256: `66a5607c6f591a70f96c67b28eea18bcdca859f713753a69c75d16d5986dbe89`
 - governed markdown documents: `47`
 - active baselines excluded from legacy inventory: `3`
 - inventory entries: `44/44`
@@ -26,7 +26,7 @@
 | --- | --- |
 | requirement | `docs/requirements/02-顶级编程智能体需求基线.md` |
 | architecture | `docs/architecture/01-顶级编程智能体总体架构设计.md` |
-| process | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
+| process | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 
 ## Decision Counts
 
@@ -81,8 +81,8 @@
 | `docs/top-agent-convergence-audit-20260711/07-原需求与架构设计正确性审计.md` | handoff | keep | legacy-audit-report | - | Retained as historical correctness audit evidence. |
 | `docs/top-agent-convergence-audit-20260711/08-决策结论与最短收敛实施方案.md` | handoff | keep | legacy-audit-report | - | Retained as convergence decision evidence; current atomic work still comes from 14. |
 | `docs/top-agent-convergence-audit-20260711/09-文档自闭环反证审计报告.md` | handoff | keep | legacy-audit-report | - | Retained as self-loop falsification evidence for document governance. |
-| `docs/top-agent-convergence-audit-20260711/15-新窗口与跨模型接管手册.md` | handoff | keep | supporting-ref | PROCESS-14-GPT55-BACKLOG-BASELINE | G0-01 selector marks this as supporting PROCESS-14 handoff procedure, not a second backlog. |
-| `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` | handoff | keep | supporting-ref | PROCESS-14-GPT55-BACKLOG-BASELINE | G0-01 selector marks this as supporting PROCESS-14 engineering rules, not a task issuer. |
+| `docs/top-agent-convergence-audit-20260711/15-新窗口与跨模型接管手册.md` | handoff | keep | supporting-ref | PROCESS-CURRENT-CONVERGENCE-PLAN | The active selector marks this as historical handoff guidance supporting the current convergence plan, not a second task issuer. |
+| `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` | handoff | keep | supporting-ref | PROCESS-CURRENT-CONVERGENCE-PLAN | The active selector marks this as historical engineering guidance supporting the current convergence plan, not a task issuer. |
 | `docs/top-agent-convergence-audit-20260711/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md` | handoff | keep | supporting-ref | ARCH-01-TOP-AGENT-ARCHITECTURE-BASELINE | G0-01 selector marks this as supporting ARCH-01 no-resurrection routing. |
 | `docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md` | handoff | keep | handoff-entry | - | Retained as derived startup instruction; 15 and 14 keep authority for handoff and task issuance. |
 | `docs/top-agent-convergence-audit-20260711/README.md` | handoff | keep | supporting-ref | REQ-02-TOP-AGENT-REQUIREMENT-BASELINE | G0-01 selector marks this as supporting REQ-02 audit entry and applicability boundary. |

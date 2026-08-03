@@ -7,7 +7,7 @@ devseek_governance:
   decision: "keep"
   relationship: "supporting-ref"
   active_baselines:
-    - "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md"
+    - "docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md"
   machine_sources:
     active_selector: "docs/process/devseek-active-baseline-selector.json"
     legacy_inventory: "docs/process/devseek-legacy-doc-inventory.json"
@@ -16,7 +16,7 @@ devseek_governance:
 
 <!-- DEVSEEK-GOVERNANCE-BANNER:START -->
 > [!NOTE]
-> DevSeek governance: this document is `historical` with decision `keep` and relationship `supporting-ref`. Current authority: `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md`. Machine source: `docs/process/devseek-legacy-doc-inventory.json`.
+> DevSeek governance: this document is `historical` with decision `keep` and relationship `supporting-ref`. Current authority: `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md`. Machine source: `docs/process/devseek-legacy-doc-inventory.json`.
 <!-- DEVSEEK-GOVERNANCE-BANNER:END -->
 
 # 顶级编程智能体收敛迭代原则、质量标准与 Skills 规划
@@ -26,7 +26,7 @@ devseek_governance:
 - 当前状态：规范已定义；Skills 矩阵中的候选均未因本文而自动实现或取得资格
 - 审计包入口：[README.md](README.md)
 - 接管入口：[15-新窗口与跨模型接管手册.md](15-新窗口与跨模型接管手册.md)
-- 整体 backlog：[14-未完成事项与后续整体迭代计划.md](14-未完成事项与后续整体迭代计划.md)
+- 当前计划：[PLAN-当前收敛迭代计划.md](PLAN-当前收敛迭代计划.md)
 - 旧文档承接：[18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md](18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)
 - 当前首个可领取 leaf：`CLOSE-01-ACTIVE-RUNTIME-IDENTITY`；仅当 active mismatch 需要 reload/退休 stale Bridge 等用户窗口 mutation 而未获本卡 fresh 授权时 `BLOCKED`
 
@@ -85,7 +85,7 @@ DoD 的最低共同部分：
 
 ### 3.1 选择与基线
 
-1. 只从 [14](14-未完成事项与后续整体迭代计划.md) 领取一个明确 claimable 的原子 ID；机器 capability DAG 只复核前置、状态和证据，不发卡。
+1. 只从 [当前计划](PLAN-当前收敛迭代计划.md) 领取一个明确的作业卡；机器 capability DAG 只复核前置、状态和证据，不发卡。
 2. 写明用户结果、semantic authority、输入/输出 contract、依赖、非目标、删除项和退出证据。
 3. 固定 branch、commit、dirty state 和 applicability；仅在 release/Surface/runtime 进入本卡 scope 时分别复算 artifact、stable installed 与 active runtime identity；先确认现有用户改动。
 4. 用 Codex/Claude 同类可观察行为描述差距，但只转化为 DevSeek 的 contract/owner/test，不复制提示词。
@@ -306,7 +306,7 @@ checkpoint 最小字段：`task_id`、mode、branch/HEAD、dirty/staged/untracke
 - 03：给出目标软件架构；
 - 04/05/06：给出 capability DAG、黄金旅程、资格与机器治理；
 - 08/09：给出最短路线和反证结果；
-- [14](14-未完成事项与后续整体迭代计划.md)：维护未完成 backlog 和批次依赖；
+- [当前计划](PLAN-当前收敛迭代计划.md)：维护完成状态、下一任务、批次依赖和验收条件；
 - [15](15-新窗口与跨模型接管手册.md)：维护当前动态接管点；
 - [17](archive/17-Gate0本地纵切机器裁决用户窗口仿真与GPT5.5接管报告.md)：保存本轮静态集成检查点，不作为滚动状态 owner；
 - [18](18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md)：裁决旧 requirements/architecture 的保留、废止和 atomic ID 承接；

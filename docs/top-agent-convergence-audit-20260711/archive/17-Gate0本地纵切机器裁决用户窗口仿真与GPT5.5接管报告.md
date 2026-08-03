@@ -7,7 +7,7 @@ devseek_governance:
   decision: "keep"
   relationship: "handoff-entry"
   active_baselines:
-    - "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md"
+    - "docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md"
   machine_sources:
     active_selector: "docs/process/devseek-active-baseline-selector.json"
     legacy_inventory: "docs/process/devseek-legacy-doc-inventory.json"
@@ -16,7 +16,7 @@ devseek_governance:
 
 <!-- DEVSEEK-GOVERNANCE-BANNER:START -->
 > [!NOTE]
-> DevSeek governance: this document is `historical` with decision `keep` and relationship `handoff-entry`. Current authority: `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md`. Machine source: `docs/process/devseek-legacy-doc-inventory.json`.
+> DevSeek governance: this document is archived historical evidence. Current process authority: `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md`. Machine source: `docs/process/devseek-active-baseline-selector.json`.
 <!-- DEVSEEK-GOVERNANCE-BANNER:END -->
 
 > 归档于 2026-08-03。本文仅保留 Gate 0 本地纵切的历史集成回执；动态身份和资格状态必须现场复算。
@@ -131,7 +131,7 @@ flowchart LR
 
 ## 7. Gate 0 之后仍未完成的工作
 
-下一模型不得把“本轮 Gate 0 迭代完成”解释为“Gate 0 已 PASS”。仓库内下一原子任务、外部阻塞、R1～R4 和 Skills 的完整拆分以 [14](../14-未完成事项与后续整体迭代计划.md) 为准；GPT-5.5 的无聊天接管和首个作业卡以 [15](../15-新窗口与跨模型接管手册.md) 为准；不变工程规则以 [16](../16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md) 为准。
+下一模型不得把“本轮 Gate 0 迭代完成”解释为“Gate 0 已 PASS”。仓库内下一任务、外部阻塞和验收条件只以 [当前计划](../PLAN-当前收敛迭代计划.md) 为准；无聊天接管可参考 [15](../15-新窗口与跨模型接管手册.md)；不变工程规则可参考 [16](../16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md)。
 
 当前顺序是：
 

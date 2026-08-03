@@ -39,10 +39,10 @@
 ## Source Bindings
 
 - `R4-RELEASE-CANDIDATE-MANIFEST`: `docs/process/devseek-r4-release-candidate-manifest.json` -> `eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66`
-- `R4-DOC-PROCESS-IDENTITY-RECONCILIATION`: `docs/process/devseek-r4-doc-process-identity-reconciliation.json` -> `ffd8b5275257a82bc53db2c3d7ee9ae6d1b53c951fc8236e5bc171275f0a1556`
+- `R4-DOC-PROCESS-IDENTITY-RECONCILIATION`: `docs/process/devseek-r4-doc-process-identity-reconciliation.json` -> `5cbf35c83de806d842d5e9aebbcfd2d3411f19d0f4cc6752f4f82484ed8f8403`
 - `R4-LIVE-QUALIFICATION-REQUEST-PACKET`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `2b7bc6e3aecb20f7b2303c9a13a5d19eb1d943e28f55cf4aef52e9c30492dfc6`
 - `R4-LIVE-USER-WAY-HOLDOUT-MATRIX`: `docs/process/devseek-r4-live-user-way-holdout-matrix.json` -> `000a82523ebeb1047518c7ca32f232d1416cfccf8ec6418599428b642ed783cf`
-- `R4-REAL-PROVIDER-FAILURE-TAXONOMY`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `459dc5765664166f33d2c59f051b6da980e84be3edddd5052b6c95555b522f23`
+- `R4-REAL-PROVIDER-FAILURE-TAXONOMY`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `f600782836dcd78b8050870f72cdee8e5ae8fecfe6eab9e9410edd439e22ed35`
 - `R4-EXISTING-LIVE-FAILURE-TAXONOMY-MAPPING`: `docs/process/devseek-r4-existing-live-failure-taxonomy-mapping.json` -> `824f7c750f7e8bd7f594ade457db79781110955425adf549804656a97d14b069`
 - `R4-SCENARIO-LANGUAGE-REPLAY-CORPUS`: `docs/process/devseek-r4-scenario-language-replay-corpus.json` -> `5c7c55883595924c8720b297ba0274b1403b5b7c0b632265bb7afe42da4bcfa7`
 - `R4-ITERATION-STATUS-ROLLUP`: `docs/process/devseek-r4-iteration-status-rollup.json` -> `da7e80aad3701516755218b891a09d5ed2b590fa9e7c009d9019cbfe0b14a697`
@@ -52,4 +52,4 @@
 
 ## Aggregate Identity
 
-- Aggregate SHA-256: `a0dd760f52bedb90948742435b426cf46dc88ae8a6c5c36f73b3c27fa954c0d6`
+- Aggregate SHA-256: `50f1a00a34170aec2f43aa5b61c4c4194cfe6f19846b24d5ffe984e772e48a71`

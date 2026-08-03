@@ -36,13 +36,13 @@
     },
     "doc_process_identity_reconciliation": {
       "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
-      "source_sha256": "0c611270778e0cf8f851e381a08c6344546a457fce2ec131e4bb978589c2fc6d",
-      "reconciliation_sha256": "0062308b89bd93c1eff593cae812d942f96ff2bb4a7b70e183030414610e9599",
-      "current_candidate_identity_status": "clean-runtime-identity-established"
+      "source_sha256": "5cbf35c83de806d842d5e9aebbcfd2d3411f19d0f4cc6752f4f82484ed8f8403",
+      "reconciliation_sha256": "a4e7923166980b25f4866182c0b64e56113c9f9241b3835152f131a3083b81ce",
+      "current_candidate_identity_status": "deferred-unusable-until-clean-runtime"
     },
     "r3_live_receipts_doc": {
-      "path": "docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md",
-      "source_sha256": "e4136d792f6c3402ab82b174ed0f8a893bbb2b6613643d1776dd13f44c8a7bb3"
+      "path": "docs/top-agent-convergence-audit-20260711/archive/14-未完成事项与后续整体迭代计划.md",
+      "source_sha256": "5aaf1e3eb1c6613e0cda53bdac6f4341ec8930992ec5c244b219a3a114fa0352"
     },
     "real_plugin_harness": {
       "path": "packages/vscode-extension/test/devseek-real-plugin-deepseek-harness.mjs",
@@ -317,5 +317,5 @@
     "categories_allowing_rerun_without_analysis": 0,
     "qualification_claims": 0
   },
-  "taxonomy_sha256": "cf388fd30a469301feb7c720b7319b28d762572ab3a2ca9fbaeb0fd766912fd4"
+  "taxonomy_sha256": "716ba020f4137ac0565a45ff1ef46aaa63338c07af4aed1d07ed70527798c4c5"
 }

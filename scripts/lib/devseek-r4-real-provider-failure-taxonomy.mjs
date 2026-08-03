@@ -15,7 +15,7 @@ export const R4_REAL_PROVIDER_FAILURE_TAXONOMY_SCOPE = 'local-r4-real-provider-f
 const HOLDOUT_MATRIX = 'docs/process/devseek-r4-live-user-way-holdout-matrix.json';
 const REQUEST_PACKET = 'docs/process/devseek-r4-live-qualification-request-packet.json';
 const DOC_PROCESS_RECONCILIATION = 'docs/process/devseek-r4-doc-process-identity-reconciliation.json';
-const DOC14 = 'docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md';
+const DOC14 = 'docs/top-agent-convergence-audit-20260711/archive/14-未完成事项与后续整体迭代计划.md';
 const REAL_PLUGIN_HARNESS = 'packages/vscode-extension/test/devseek-real-plugin-deepseek-harness.mjs';
 
 const REQUIRED_EVIDENCE = Object.freeze([

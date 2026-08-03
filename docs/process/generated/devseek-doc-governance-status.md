@@ -5,8 +5,8 @@
 ## Summary
 
 - generator: `devseek-doc-governance/v1`
-- active selector sha256: `869219726bd2b5e23a4b03ec7d9b6ea58fb02efb4903ca6672de2bbac7cb0332`
-- legacy inventory sha256: `47a88d473446702cf9e1483ac880b3e11adc6ab48dfd5277d38595340556b13c`
+- active selector sha256: `66a5607c6f591a70f96c67b28eea18bcdca859f713753a69c75d16d5986dbe89`
+- legacy inventory sha256: `00ebceb0e899ec7e18858a3a749d0a80972a95d306eb6f18d3140da6b3720b26`
 - governed documents: `47`
 - active baselines: `3`
 - legacy documents: `44`
@@ -18,7 +18,7 @@
 | --- | --- | --- |
 | architecture | `docs/architecture/01-顶级编程智能体总体架构设计.md` | `ARCH-01-TOP-AGENT-ARCHITECTURE-BASELINE` |
 | requirement | `docs/requirements/02-顶级编程智能体需求基线.md` | `REQ-02-TOP-AGENT-REQUIREMENT-BASELINE` |
-| process | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` | `PROCESS-14-GPT55-BACKLOG-BASELINE` |
+| process | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` | `PROCESS-CURRENT-CONVERGENCE-PLAN` |
 
 ## Decision Counts
 
@@ -65,17 +65,17 @@
 | `docs/requirements/references/02-openai-codex.md` | requirements | reference | not-applicable | external-reference | `docs/requirements/02-顶级编程智能体需求基线.md` |
 | `docs/requirements/references/03-github-copilot.md` | requirements | reference | not-applicable | external-reference | `docs/requirements/02-顶级编程智能体需求基线.md` |
 | `docs/requirements/references/04-other-coding-agents.md` | requirements | reference | not-applicable | external-reference | `docs/requirements/02-顶级编程智能体需求基线.md` |
-| `docs/top-agent-convergence-audit-20260711/01-DevSeek现状与功能回退根因审计.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/01-DevSeek现状与功能回退根因审计.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/03-顶级编程智能体目标软件架构.md` | handoff | historical | keep | supporting-ref | `docs/architecture/01-顶级编程智能体总体架构设计.md` |
 | `docs/top-agent-convergence-audit-20260711/04-分能力专项迭代与收敛路线图.md` | handoff | historical | keep | supporting-ref | `docs/requirements/02-顶级编程智能体需求基线.md` |
-| `docs/top-agent-convergence-audit-20260711/05-黄金用户旅程与正式项目资格方案.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/07-原需求与架构设计正确性审计.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/08-决策结论与最短收敛实施方案.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/09-文档自闭环反证审计报告.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/15-新窗口与跨模型接管手册.md` | handoff | historical | keep | supporting-ref | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
-| `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` | handoff | historical | keep | supporting-ref | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/05-黄金用户旅程与正式项目资格方案.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/06-能力追踪与文档治理方案.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/07-原需求与架构设计正确性审计.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/08-决策结论与最短收敛实施方案.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/09-文档自闭环反证审计报告.md` | handoff | historical | keep | legacy-audit-report | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/15-新窗口与跨模型接管手册.md` | handoff | historical | keep | supporting-ref | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md` | handoff | historical | keep | supporting-ref | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/18-旧架构实施计划承接矩阵与GPT5.5唯一执行基线.md` | handoff | historical | keep | supporting-ref | `docs/architecture/01-顶级编程智能体总体架构设计.md` |
-| `docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md` | handoff | historical | keep | handoff-entry | `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` |
+| `docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md` | handoff | historical | keep | handoff-entry | `docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md` |
 | `docs/top-agent-convergence-audit-20260711/README.md` | handoff | historical | keep | supporting-ref | `docs/requirements/02-顶级编程智能体需求基线.md` |

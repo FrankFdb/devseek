@@ -24,7 +24,7 @@ test('active baseline selector has exactly one active owner per governed type', 
   assert.deepEqual(result.summary.active_baselines, {
     requirement: 'docs/requirements/02-顶级编程智能体需求基线.md',
     architecture: 'docs/architecture/01-顶级编程智能体总体架构设计.md',
-    process: 'docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md',
+    process: 'docs/top-agent-convergence-audit-20260711/PLAN-当前收敛迭代计划.md',
   });
   assert.equal(baseSelector.selector_sha256, activeBaselineSelectorHash(baseSelector));
 });

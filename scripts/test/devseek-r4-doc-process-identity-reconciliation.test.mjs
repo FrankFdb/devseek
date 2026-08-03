@@ -113,7 +113,10 @@ test('runtime validation fails closed on identity status drift, archive mismatch
   missingAnchor.handoff_documents[0].required_anchors_present -= 1;
   missingAnchor.handoff_documents[0].anchors[0].present = false;
   missingAnchor.reconciliation_sha256 = '0'.repeat(64);
-  assertHasReconciliationError(missingAnchor, 'handoff_documents.docs/top-agent-convergence-audit-20260711/14-');
+  assertHasReconciliationError(
+    missingAnchor,
+    'handoff_documents.docs/top-agent-convergence-audit-20260711/archive/14-',
+  );
 });
 
 test('checker command validates R4 doc process identity reconciliation and generated view', async () => {

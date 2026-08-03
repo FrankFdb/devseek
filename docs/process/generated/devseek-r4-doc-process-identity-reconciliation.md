@@ -30,8 +30,8 @@
 
 | Document | Status | SHA-256 | Anchors Present |
 | --- | --- | --- | --- |
-| `docs/top-agent-convergence-audit-20260711/14-未完成事项与后续整体迭代计划.md` | `archived-in-place` | `5aaf1e3eb1c6613e0cda53bdac6f4341ec8930992ec5c244b219a3a114fa0352` | `7/7` |
-| `docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md` | `archived-in-place` | `03be21a6cd04bd3b29f614e5669b5fe417c40ff7e9a2a8a0c0278d7e371e47a6` | `2/2` |
+| `docs/top-agent-convergence-audit-20260711/archive/14-未完成事项与后续整体迭代计划.md` | `archived-in-place` | `5aaf1e3eb1c6613e0cda53bdac6f4341ec8930992ec5c244b219a3a114fa0352` | `7/7` |
+| `docs/top-agent-convergence-audit-20260711/19-GPT5.5新窗口启动与授权指令.md` | `archived-in-place` | `46f9b93b8cdde22b37ad0ac6dc668ee78ac3f73cb841002b053d136e2cbfd71b` | `2/2` |
 
 ## 结论
 
@@ -42,4 +42,4 @@
 
 ## Reconciliation Identity
 
-- Reconciliation SHA-256: `0494ca3bf2a15101cfb125a933fe01dd66470b3a17d3c51734c38d611a5b5a06`
+- Reconciliation SHA-256: `a4e7923166980b25f4866182c0b64e56113c9f9241b3835152f131a3083b81ce`
