@@ -88,6 +88,8 @@
     "verify:c0-wiring-reconciliation": "node --test scripts/test/devseek-c0-wiring-reconciliation.test.mjs && node scripts/devseek-c0-wiring-reconciliation-check.mjs",
     "generate:surface-entry-inventory": "node scripts/devseek-surface-entry-inventory-check.mjs --write",
     "verify:surface-entry-inventory": "node --test scripts/test/devseek-surface-entry-inventory.test.mjs && node scripts/devseek-surface-entry-inventory-check.mjs",
+    "generate:kernel-prep-owner-baseline": "node scripts/devseek-kernel-prep-owner-baseline-check.mjs --write",
+    "verify:kernel-prep-owner-baseline": "node --test scripts/test/devseek-kernel-prep-owner-baseline.test.mjs && node scripts/devseek-kernel-prep-owner-baseline-check.mjs",
     "generate:capability-ledger": "node scripts/devseek-capability-ledger-check.mjs --write",
     "verify:capability-ledger": "node --test scripts/test/devseek-capability-ledger.test.mjs && node scripts/devseek-capability-ledger-check.mjs",
     "generate:qualification-protocol": "node scripts/devseek-qualification-protocol-check.mjs --write",

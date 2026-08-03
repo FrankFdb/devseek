@@ -1,0 +1,375 @@
+{
+  "schema_version": "devseek.kernel-prep-owner-baseline/v1",
+  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v1",
+  "purpose": "Freeze the real pre-cutover semantic owners and missing product surfaces without asserting a Coding Kernel qualification.",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "gate0": {
+    "status": "NOT_PASSED",
+    "passed": false,
+    "repository_blockers": 0,
+    "external_authority_blockers": 6,
+    "product_cutover_allowed": false
+  },
+  "benchmark_basis": {
+    "competitors": [
+      "Codex",
+      "Claude Code"
+    ],
+    "observable_contract": [
+      "scoped task and context understanding",
+      "structured tool action behind permission boundaries",
+      "workspace mutation with receipts",
+      "verification feedback and bounded repair",
+      "one evidence-backed completion decision across product surfaces"
+    ],
+    "source_ref": "docs/top-agent-convergence-audit-20260711/02-Codex-Claude-Code-DevSeek软件架构对比.md"
+  },
+  "product_routes": [
+    {
+      "route_id": "vscode-exploratory",
+      "surface": "vscode",
+      "current_chain": [
+        "AgentKernelService",
+        "CodingKernelExecutionService",
+        "runAgenticLoop"
+      ],
+      "status": "legacy-semantic-owner"
+    },
+    {
+      "route_id": "vscode-planned",
+      "surface": "vscode",
+      "current_chain": [
+        "AgentKernelService",
+        "CodingKernelExecutionService",
+        "runAgentLoop"
+      ],
+      "status": "legacy-semantic-owner"
+    },
+    {
+      "route_id": "cli-exec",
+      "surface": "cli",
+      "current_chain": [
+        "AgentApplicationService",
+        "CliLegacyCodingLoop"
+      ],
+      "status": "legacy-semantic-owner"
+    },
+    {
+      "route_id": "headless-product",
+      "surface": "headless",
+      "current_chain": [],
+      "status": "absent"
+    }
+  ],
+  "semantic_domains": [
+    {
+      "domain_id": "task-contract",
+      "target_port": "TaskContractPort",
+      "target_owner_count": 1,
+      "current_owner_count": 1,
+      "current_owners": [
+        {
+          "owner_id": "vscode-buildTaskContract",
+          "surfaces": [
+            "vscode"
+          ],
+          "source_ref": "packages/vscode-extension/src/agent/task-contract.ts"
+        }
+      ],
+      "missing_surfaces": [
+        "cli",
+        "headless"
+      ],
+      "convergence_status": "not-converged"
+    },
+    {
+      "domain_id": "tool-execution",
+      "target_port": "ToolExecutorPort",
+      "target_owner_count": 1,
+      "current_owner_count": 2,
+      "current_owners": [
+        {
+          "owner_id": "vscode-AgentToolExecutor",
+          "surfaces": [
+            "vscode"
+          ],
+          "source_ref": "packages/vscode-extension/src/agent/tool-executor.ts"
+        },
+        {
+          "owner_id": "cli-artifact-interpreter",
+          "surfaces": [
+            "cli"
+          ],
+          "source_ref": "packages/cli/src/cli-coding-artifact-interpreter.ts"
+        }
+      ],
+      "missing_surfaces": [
+        "headless"
+      ],
+      "convergence_status": "not-converged"
+    },
+    {
+      "domain_id": "workspace-mutation",
+      "target_port": "WorkspaceMutationPort",
+      "target_owner_count": 1,
+      "current_owner_count": 2,
+      "current_owners": [
+        {
+          "owner_id": "vscode-WorkspaceEditService",
+          "surfaces": [
+            "vscode"
+          ],
+          "source_ref": "packages/vscode-extension/src/workspace/edit-service.ts"
+        },
+        {
+          "owner_id": "cli-CliWorkspaceMutationService",
+          "surfaces": [
+            "cli"
+          ],
+          "source_ref": "packages/cli/src/cli-workspace-mutation-service.ts"
+        }
+      ],
+      "missing_surfaces": [
+        "headless"
+      ],
+      "convergence_status": "not-converged"
+    },
+    {
+      "domain_id": "verification",
+      "target_port": "VerificationPort",
+      "target_owner_count": 1,
+      "current_owner_count": 2,
+      "current_owners": [
+        {
+          "owner_id": "vscode-ValidationService",
+          "surfaces": [
+            "vscode"
+          ],
+          "source_ref": "packages/vscode-extension/src/workspace/validation-service.ts"
+        },
+        {
+          "owner_id": "cli-CliVerificationService",
+          "surfaces": [
+            "cli"
+          ],
+          "source_ref": "packages/cli/src/cli-verification-service.ts"
+        }
+      ],
+      "missing_surfaces": [
+        "headless"
+      ],
+      "convergence_status": "not-converged"
+    },
+    {
+      "domain_id": "completion-decision",
+      "target_port": "CompletionDecisionPort",
+      "target_owner_count": 1,
+      "current_owner_count": 2,
+      "current_owners": [
+        {
+          "owner_id": "vscode-TerminalPermissionCoordinator",
+          "surfaces": [
+            "vscode"
+          ],
+          "source_ref": "packages/vscode-extension/src/app/terminal-permission-coordinator.ts"
+        },
+        {
+          "owner_id": "cli-runPrompt-and-CliRunEvidence",
+          "surfaces": [
+            "cli"
+          ],
+          "source_ref": "packages/cli/src/index.ts"
+        }
+      ],
+      "missing_surfaces": [
+        "headless"
+      ],
+      "convergence_status": "not-converged"
+    }
+  ],
+  "counts": {
+    "product_routes": 4,
+    "active_product_routes": 3,
+    "headless_product_entrypoints": 0,
+    "legacy_execution_owners": 3,
+    "semantic_domains": 5,
+    "converged_semantic_domains": 0,
+    "source_checks": 17,
+    "failed_source_checks": 0
+  },
+  "source_checks": [
+    {
+      "check_id": "package-verification-entrypoint",
+      "path": "package.json",
+      "includes": [
+        "\"verify:kernel-prep-owner-baseline\""
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "default-phase-gate",
+      "path": "scripts/devseek-phase0-12-verify.mjs",
+      "includes": [
+        "id: 'kernel-prep-owner-baseline'",
+        "command: ['npm', 'run', 'verify:kernel-prep-owner-baseline']"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "shared-contract-description",
+      "path": "packages/shared/src/build-profile.ts",
+      "includes": [
+        "Shared command, event, and evidence contracts used by VS Code and CLI"
+      ],
+      "excludes": [
+        "Headless Agent Core shared by VS Code and CLI"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-kernel-composition",
+      "path": "packages/vscode-extension/src/extension.ts",
+      "includes": [
+        "new AgentKernelService(terminalPermissionCoordinator, productCodingKernelExecutor)",
+        "agentKernelService.executeExploratory({",
+        "agentKernelService.executePlanned({"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-dual-legacy-loop-adapter",
+      "path": "packages/vscode-extension/src/product-coding-kernel-executor.ts",
+      "includes": [
+        "import { runAgentLoop } from './agent-loop'",
+        "import { runAgenticLoop } from './agent/agentic-loop'",
+        "runExploratory: runAgenticLoop",
+        "runPlanned: runAgentLoop"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-route-split",
+      "path": "packages/vscode-extension/src/app/coding-kernel-execution.ts",
+      "includes": [
+        "request.route === 'exploratory'",
+        "request.route === 'planned'"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-task-contract-owner",
+      "path": "packages/vscode-extension/src/app/agent-kernel-service.ts",
+      "includes": [
+        "buildTaskContract(input.userPrompt)",
+        "settleAgentLoopResult(this.terminalPermissions, this.runContext"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-task-contract-builder",
+      "path": "packages/vscode-extension/src/agent/task-contract.ts",
+      "includes": [
+        "export function buildTaskContract("
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-tool-executor",
+      "path": "packages/vscode-extension/src/agent/tool-executor.ts",
+      "includes": [
+        "export class AgentToolExecutor"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-workspace-mutation",
+      "path": "packages/vscode-extension/src/workspace/edit-service.ts",
+      "includes": [
+        "export class WorkspaceEditService"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-verification",
+      "path": "packages/vscode-extension/src/workspace/validation-service.ts",
+      "includes": [
+        "export class ValidationService"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-completion",
+      "path": "packages/vscode-extension/src/app/terminal-permission-coordinator.ts",
+      "includes": [
+        "completeRunContext("
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "cli-legacy-composition",
+      "path": "packages/cli/src/index.ts",
+      "includes": [
+        "new CliLegacyCodingLoop(",
+        "legacyCodingLoop.execute({",
+        "CliRunEvidence.open({"
+      ],
+      "excludes": [
+        "AgentKernelService",
+        "buildTaskContract("
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "cli-legacy-loop-owner",
+      "path": "packages/cli/src/cli-legacy-coding-loop.ts",
+      "includes": [
+        "export class CliLegacyCodingLoop"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "cli-workspace-mutation",
+      "path": "packages/cli/src/cli-workspace-mutation-service.ts",
+      "includes": [
+        "export class CliWorkspaceMutationService"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "cli-verification",
+      "path": "packages/cli/src/cli-verification-service.ts",
+      "includes": [
+        "export class CliVerificationService"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "cli-completion-evidence",
+      "path": "packages/cli/src/cli-run-evidence.ts",
+      "includes": [
+        "export class CliRunEvidence",
+        "settle(status: 'completed' | 'failed' | 'cancelled')"
+      ],
+      "excludes": [],
+      "passed": true
+    }
+  ],
+  "baseline_sha256": "322e31c4d0aa8cc017ffb6593d0e75e1a35ec506c3dd42c12c407f5fb4d13a96"
+}

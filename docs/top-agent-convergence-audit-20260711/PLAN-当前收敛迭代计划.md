@@ -52,6 +52,7 @@ devseek_governance:
 | C0 本地实现与机器裁决前置 | `completed` | 7/7 implementation requirements satisfied，repository blockers=0，local conformance=`PASSED` |
 | Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；完整 extension 测试、架构守卫和精确 VSIX T3 Surface 仿真通过 |
 | Surface 入口盘点 | `completed` | 87/87 入口受 inventory 覆盖，未知入口与未声明 legacy owner 可达性均为 0 |
+| Kernel 切换前 owner baseline | `completed` | 3 条活跃产品路由均仍由 legacy semantic owner 执行；5 个核心语义域收敛数为 0；Headless 产品入口为 0；17/17 源码与默认门禁断言受保护 |
 | R4 非资格本地工作 | `in_progress` | 6 个 leaf 中 5 个完成，1 个 clean-runtime leaf 受当前窗口/授权边界阻塞 |
 | 能力账本 | `in_progress` | 76 项能力：C0 的 7 项为 `wired`，C1～C14 共 69 项为 `proposed`，qualification claims=0 |
 | Gate 0 / 后续资格 | `blocked_external` | Gate 0=`NOT_PASSED`，6 个外部 authority blocker，exact claims=0；本地工作不得自行提升资格 |
@@ -84,7 +85,7 @@ devseek_governance:
 
 - 范围：在 Gate 0 外部资格闭合前，完成不改变产品路由的责任盘点、内聚模块抽取、端口定义和 conformance 基线准备。
 - 已完成：CLI workspace context selection、artifact interpretation、workspace mutation、verification、run evidence 和 legacy coding coordination 已各有单一 owner、显式依赖、直接行为测试及防旁路静态守卫；CLI 产品入口和两轮修复语义保持不变。
-- 下一任务：盘点 VS Code、CLI、Headless 的 TaskContract、工具执行、变更回执、验证和完成判定 owner，形成 Gate 0 通过后可直接实施的唯一 Kernel 端口映射与 conformance 用例。
+- 下一任务：基于已冻结的 owner baseline，继续抽取 VS Code legacy 路径中与 Surface 无关且不改变路由的内聚职责，并准备 TaskContract、工具执行、变更回执、验证和完成判定的跨 Surface conformance 用例；不得把准备性接口记作产品接线。
 - 禁止：切换 R1 产品纵切、引入第二套 Kernel、修改资格状态，或将 legacy adapter 描述为已收敛内核。
 - 完成后：保持 `KERNEL-02` 等待 Gate 0=`PASS`；执行证据只进机器报告或归档交付物。
 
@@ -96,6 +97,7 @@ devseek_governance:
 | 能力数、implementation state、claims | `docs/process/devseek-capability-ledger.json` |
 | Gate 0、repository/external blockers | `docs/process/devseek-gate0-decision-report.json` |
 | Surface 入口覆盖 | `docs/process/devseek-surface-entry-inventory.json` |
+| Kernel 切换前 owner 与缺口 | `docs/process/devseek-kernel-prep-owner-baseline.json` |
 | R4 leaf 状态 | `docs/process/devseek-r4-iteration-status-rollup.json` |
 | 外部授权准备度 | `docs/process/devseek-external-authority-readiness-audit.json` |
 | 设计优先的架构护栏 | `docs/process/devseek-architecture-budgets.json` |

@@ -33,6 +33,12 @@ const gates = [
     purpose: 'Freeze oversized orchestration and Surface files so new fixes must move responsibility into owned boundaries.',
   },
   {
+    id: 'kernel-prep-owner-baseline',
+    phases: '0-12',
+    command: ['npm', 'run', 'verify:kernel-prep-owner-baseline'],
+    purpose: 'Fail closed when pre-cutover VS Code, CLI, or Headless owners drift, a legacy route is hidden, or local Gate 0 state is promoted into Coding Kernel cutover permission.',
+  },
+  {
     id: 'active-baseline-selector-governance',
     phases: '0-12',
     command: ['npm', 'run', 'verify:active-baseline-selector'],
@@ -368,6 +374,7 @@ function classifyGateFailure(gate) {
 function nextActionFor(gate) {
   const actions = {
     'architecture-drift-budget': 'Move the new responsibility into the owning service/adapter, lower the frozen ceiling after extraction, then rerun verify:architecture-drift.',
+    'kernel-prep-owner-baseline': 'Regenerate only after auditing every changed product route and semantic owner; keep product cutover disabled until the machine Gate 0 decision is PASS.',
     'capability-ledger-governance': 'Fix the machine ledger, typed dependency, scoped claim target, or generated manifest at its semantic authority, then rerun verify:capability-ledger.',
     'post-r4-compact-index-governance': 'Restore the source-bound Post-R4 compact index, keep clean runtime/live/external-authority branches BLOCKED, preserve claims=0 and Gate0 NOT_PASSED, then rerun verify:post-r4-compact-index.',
     'post-r4-local-regression-manifest': 'Restore NP-05/NP-06/NP-07 test/source anchors, keep commands local-only with no live Provider or VSIX action, preserve claims=0/Gate0 NOT_PASSED, then rerun verify:post-r4-local-regression-manifest.',

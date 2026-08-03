@@ -1,0 +1,128 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
+import { execFile as execFileCallback } from 'node:child_process';
+import test from 'node:test';
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
+import { canonicalJson, readJson } from '../lib/devseek-capability-ledger.mjs';
+import {
+  buildKernelPrepOwnerBaseline,
+  collectKernelPrepOwnerBaselineSources,
+  renderKernelPrepOwnerBaselineMarkdown,
+  validateKernelPrepOwnerBaseline,
+} from '../lib/devseek-kernel-prep-owner-baseline.mjs';
+
+const execFile = promisify(execFileCallback);
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const sources = loadSources();
+const expected = buildKernelPrepOwnerBaseline(sources);
+
+test('kernel prep owner baseline is source-bound and discloses every unconverged product boundary', () => {
+  const actual = readJson(path.join(repoRoot, 'docs/process/devseek-kernel-prep-owner-baseline.json'));
+
+  assert.equal(canonicalJson(actual), canonicalJson(expected));
+  assert.equal(actual.qualification_eligible, false);
+  assert.equal(actual.qualification_effect, 'NONE');
+  assert.equal(actual.claims_permitted, false);
+  assert.equal(actual.asserts_gate_pass, false);
+  assert.deepEqual(actual.gate0, {
+    status: 'NOT_PASSED',
+    passed: false,
+    repository_blockers: 0,
+    external_authority_blockers: 6,
+    product_cutover_allowed: false,
+  });
+  assert.deepEqual(actual.counts, {
+    product_routes: 4,
+    active_product_routes: 3,
+    headless_product_entrypoints: 0,
+    legacy_execution_owners: 3,
+    semantic_domains: 5,
+    converged_semantic_domains: 0,
+    source_checks: 17,
+    failed_source_checks: 0,
+  });
+  assert.deepEqual(
+    actual.product_routes.map(route => [route.route_id, route.status]),
+    [
+      ['vscode-exploratory', 'legacy-semantic-owner'],
+      ['vscode-planned', 'legacy-semantic-owner'],
+      ['cli-exec', 'legacy-semantic-owner'],
+      ['headless-product', 'absent'],
+    ],
+  );
+  assert.deepEqual(actual.semantic_domains.map(domain => domain.domain_id), [
+    'task-contract',
+    'tool-execution',
+    'workspace-mutation',
+    'verification',
+    'completion-decision',
+  ]);
+  assert.equal(actual.semantic_domains.every(domain => domain.convergence_status === 'not-converged'), true);
+  assert.equal(actual.source_checks.every(assertion => assertion.passed), true);
+
+  const schema = readJson(path.join(repoRoot, 'docs/process/devseek-kernel-prep-owner-baseline.schema.json'));
+  const ajv = new Ajv2020({ allErrors: true, strict: true });
+  addFormats(ajv);
+  assert.equal(ajv.compile(schema)(actual), true);
+  assert.equal(
+    fs.readFileSync(path.join(repoRoot, 'docs/process/generated/devseek-kernel-prep-owner-baseline.md'), 'utf8'),
+    renderKernelPrepOwnerBaselineMarkdown(actual),
+  );
+});
+
+test('kernel prep owner baseline fails closed when a declared legacy execution route drifts', () => {
+  const mutatedSources = structuredClone(sources);
+  const sourcePath = 'packages/vscode-extension/src/product-coding-kernel-executor.ts';
+  mutatedSources.sourceContents[sourcePath] = mutatedSources.sourceContents[sourcePath]
+    .replace('runPlanned: runAgentLoop,', 'runPlanned: unknownLoop,');
+
+  const mutated = buildKernelPrepOwnerBaseline(mutatedSources);
+  const result = validateKernelPrepOwnerBaseline(mutated, mutatedSources);
+
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.includes('source-check:failed-vscode-dual-legacy-loop-adapter'));
+});
+
+test('kernel prep owner baseline refuses to turn a local Gate 0 mutation into cutover permission', () => {
+  const mutatedSources = structuredClone(sources);
+  mutatedSources.gate0.qualification.status = 'PASS';
+  mutatedSources.gate0.qualification.gate_passed = true;
+
+  const mutated = buildKernelPrepOwnerBaseline(mutatedSources);
+  const result = validateKernelPrepOwnerBaseline(mutated, mutatedSources);
+
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.includes('gate0:unexpected-product-cutover-permission'));
+});
+
+test('kernel prep owner baseline checker validates the current generated artifacts', async () => {
+  const { stdout } = await execFile(
+    process.execPath,
+    ['scripts/devseek-kernel-prep-owner-baseline-check.mjs'],
+    { cwd: repoRoot },
+  );
+  const result = JSON.parse(stdout);
+
+  assert.equal(result.ok, true, JSON.stringify(result.errors, null, 2));
+  assert.deepEqual(result.summary, {
+    gate0_status: 'NOT_PASSED',
+    product_cutover_allowed: false,
+    active_product_routes: 3,
+    headless_product_entrypoints: 0,
+    legacy_execution_owners: 3,
+    converged_semantic_domains: 0,
+    failed_source_checks: 0,
+    qualification_effect: 'NONE',
+  });
+});
+
+function loadSources() {
+  return collectKernelPrepOwnerBaselineSources(
+    relativePath => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8'),
+    relativePath => readJson(path.join(repoRoot, relativePath)),
+  );
+}

@@ -1,0 +1,190 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://devseek.local/schemas/devseek-kernel-prep-owner-baseline.schema.json",
+  "title": "DevSeek Kernel Prep Owner Baseline",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "baseline_id",
+    "purpose",
+    "qualification_eligible",
+    "qualification_effect",
+    "claims_permitted",
+    "asserts_gate_pass",
+    "gate0",
+    "benchmark_basis",
+    "product_routes",
+    "semantic_domains",
+    "counts",
+    "source_checks",
+    "baseline_sha256"
+  ],
+  "properties": {
+    "schema_version": { "const": "devseek.kernel-prep-owner-baseline/v1" },
+    "baseline_id": { "const": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v1" },
+    "purpose": { "type": "string", "minLength": 1 },
+    "qualification_eligible": { "const": false },
+    "qualification_effect": { "const": "NONE" },
+    "claims_permitted": { "const": false },
+    "asserts_gate_pass": { "const": false },
+    "gate0": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "passed", "repository_blockers", "external_authority_blockers", "product_cutover_allowed"],
+      "properties": {
+        "status": { "type": "string", "minLength": 1 },
+        "passed": { "type": "boolean" },
+        "repository_blockers": { "type": "integer", "minimum": 0 },
+        "external_authority_blockers": { "type": "integer", "minimum": 0 },
+        "product_cutover_allowed": { "type": "boolean" }
+      }
+    },
+    "benchmark_basis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["competitors", "observable_contract", "source_ref"],
+      "properties": {
+        "competitors": {
+          "type": "array",
+          "prefixItems": [{ "const": "Codex" }, { "const": "Claude Code" }],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "observable_contract": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "source_ref": { "type": "string", "minLength": 1 }
+      }
+    },
+    "product_routes": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/productRoute" },
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "semantic_domains": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/semanticDomain" },
+      "minItems": 5,
+      "maxItems": 5
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product_routes",
+        "active_product_routes",
+        "headless_product_entrypoints",
+        "legacy_execution_owners",
+        "semantic_domains",
+        "converged_semantic_domains",
+        "source_checks",
+        "failed_source_checks"
+      ],
+      "properties": {
+        "product_routes": { "type": "integer", "minimum": 0 },
+        "active_product_routes": { "type": "integer", "minimum": 0 },
+        "headless_product_entrypoints": { "type": "integer", "minimum": 0 },
+        "legacy_execution_owners": { "type": "integer", "minimum": 0 },
+        "semantic_domains": { "type": "integer", "minimum": 0 },
+        "converged_semantic_domains": { "type": "integer", "minimum": 0 },
+        "source_checks": { "type": "integer", "minimum": 0 },
+        "failed_source_checks": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "source_checks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/sourceCheck" },
+      "minItems": 1
+    },
+    "baseline_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+  },
+  "$defs": {
+    "productRoute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["route_id", "surface", "current_chain", "status"],
+      "properties": {
+        "route_id": { "type": "string", "minLength": 1 },
+        "surface": { "enum": ["vscode", "cli", "headless"] },
+        "current_chain": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "status": { "enum": ["legacy-semantic-owner", "absent", "unclassified"] }
+      }
+    },
+    "semanticDomain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "domain_id",
+        "target_port",
+        "target_owner_count",
+        "current_owner_count",
+        "current_owners",
+        "missing_surfaces",
+        "convergence_status"
+      ],
+      "properties": {
+        "domain_id": { "type": "string", "minLength": 1 },
+        "target_port": { "type": "string", "minLength": 1 },
+        "target_owner_count": { "const": 1 },
+        "current_owner_count": { "type": "integer", "minimum": 0 },
+        "current_owners": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/currentOwner" },
+          "minItems": 1
+        },
+        "missing_surfaces": {
+          "type": "array",
+          "items": { "enum": ["vscode", "cli", "headless"] },
+          "uniqueItems": true
+        },
+        "convergence_status": { "const": "not-converged" }
+      }
+    },
+    "currentOwner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner_id", "surfaces", "source_ref"],
+      "properties": {
+        "owner_id": { "type": "string", "minLength": 1 },
+        "surfaces": {
+          "type": "array",
+          "items": { "enum": ["vscode", "cli", "headless"] },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "source_ref": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sourceCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["check_id", "path", "includes", "excludes", "passed"],
+      "properties": {
+        "check_id": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "includes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "excludes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "passed": { "type": "boolean" }
+      }
+    }
+  }
+}

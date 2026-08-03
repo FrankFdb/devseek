@@ -16,7 +16,7 @@ export interface BuildProfile {
 export const BUILD_PROFILES: readonly BuildProfile[] = [
   {
     id: 'shared-core',
-    description: 'Headless Agent Core shared by VS Code and CLI',
+    description: 'Shared command, event, and evidence contracts used by VS Code and CLI',
     command: 'npm run shared:build',
     requiredForPhase10: true,
   },
