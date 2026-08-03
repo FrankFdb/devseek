@@ -197,7 +197,7 @@
     "legacy_execution_owners": 3,
     "semantic_domains": 5,
     "converged_semantic_domains": 0,
-    "source_checks": 21,
+    "source_checks": 24,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -285,6 +285,47 @@
       ],
       "excludes": [
         "deepseek.session."
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-session-continuation-domain-owner",
+      "path": "packages/vscode-extension/src/app/agent-session-context.ts",
+      "includes": [
+        "export function projectSessionContinuationFromState",
+        "if (input.newSession) return { mode: 'none', restoreFiles: [], contextText: '' }",
+        "shouldInjectSessionContinuationForIntent(",
+        "mode: projectionMode("
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-session-continuation-projector",
+      "path": "packages/vscode-extension/src/app/session-continuation-projector.ts",
+      "includes": [
+        "export class SessionContinuationProjector",
+        "projectSessionContinuationFromState({",
+        "stripSessionContextPrefix(this.deps.getHistory())"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-session-continuation-boundary",
+      "path": "packages/vscode-extension/src/extension.ts",
+      "includes": [
+        "new SessionContinuationProjector({",
+        "const initialSessionProjection = sessionContinuationProjector.project({",
+        "const agSessionContext = sessionContinuationProjector.project({",
+        "const sessionContextForAgent = sessionContinuationProjector.project({",
+        "const sessionContextForChat = sessionContinuationProjector.project({"
+      ],
+      "excludes": [
+        "projectSessionContinuationFromState",
+        "resolveSessionContinuationFilesFromState",
+        "buildAgenticSessionContextFromState",
+        "shouldInjectSessionContinuationForIntent"
       ],
       "passed": true
     },
@@ -431,5 +472,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "7b490944d7d01f5975429997279d25995786f9d2d5b3b1d17d0ebf4a29482225"
+  "baseline_sha256": "323abfe7042bb2db8c883bb0add2a1d135a5d751f30f8a94816f07592d90f3e4"
 }

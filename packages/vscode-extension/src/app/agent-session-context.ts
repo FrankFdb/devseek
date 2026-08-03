@@ -6,8 +6,13 @@ import {
   filterByContextAnchors,
   hasContextAnchors,
   textMatchesContextAnchors,
+  type ContextAnchorSet,
 } from './context-relevance';
-import { shouldRestoreSessionFiles } from './session-continuation';
+import {
+  shouldInjectSessionContinuationForIntent,
+  shouldRestoreSessionFiles,
+  type SessionContinuationIntent,
+} from './session-continuation';
 
 export const AGENT_CODE_FILE_RE = /(?:^|\/)(?:Makefile|CMakeLists\.txt)$|\.(cpp|c|h|hpp|cc|cxx|ts|tsx|js|jsx|mjs|py|rs|go|java|cs|rb|php|swift|kt|scala|dart|lua|r)$/i;
 
@@ -22,10 +27,11 @@ export interface AgentSessionState {
 export interface ResolveSessionContinuationFilesInput {
   workspaceRoot: string;
   prompt: string;
-  intent?: { mode?: string; signals?: readonly string[] };
+  intent?: SessionContinuationIntent;
   state?: AgentSessionState;
   lastAgentChangedPaths: readonly string[];
   recentFilePaths: Iterable<string>;
+  currentFilePaths?: Iterable<string>;
 }
 
 export function resolveSessionContinuationFilesFromState(input: ResolveSessionContinuationFilesInput): string[] {
@@ -35,10 +41,12 @@ export function resolveSessionContinuationFilesFromState(input: ResolveSessionCo
     ...(input.state?.changedPaths ?? []),
     ...input.lastAgentChangedPaths,
   ].filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot));
-  const primaryAnchors = buildContextAnchors({
+  const primaryAnchors = buildSessionRelevanceAnchors({
     workspaceRoot: input.workspaceRoot,
     prompt: input.prompt,
-    relatedPaths: primaryRelPaths,
+    currentFilePaths: input.currentFilePaths,
+    fallbackPaths: primaryRelPaths,
+    state: input.state,
   });
 
   const candidates: string[] = [];
@@ -92,6 +100,7 @@ export interface BuildAgenticSessionContextInput {
   state?: AgentSessionState;
   lastAgentChangedPaths: readonly string[];
   recentFilePaths: Iterable<string>;
+  currentFilePaths?: Iterable<string>;
   history: readonly ChatMessage[];
 }
 
@@ -105,14 +114,12 @@ export function buildAgenticSessionContextFromState(input: BuildAgenticSessionCo
   const recentFileList = [...new Set(input.recentFilePaths)]
     .filter(Boolean)
     .filter(pathValue => isRestorableSessionPath(pathValue, input.workspaceRoot));
-  const anchors = buildContextAnchors({
+  const anchors = buildSessionRelevanceAnchors({
     workspaceRoot: input.workspaceRoot,
     prompt: input.currentPrompt,
-    relatedPaths: primaryRelatedPaths.length > 0 ? primaryRelatedPaths : recentFileList,
-    extraText: [
-      input.state?.lastUserPrompt ?? '',
-      input.state?.lastSummary ?? '',
-    ],
+    currentFilePaths: input.currentFilePaths,
+    fallbackPaths: primaryRelatedPaths.length > 0 ? primaryRelatedPaths : recentFileList,
+    state: input.state,
   });
   const shouldFilter = hasContextAnchors(anchors);
   const historySource = shouldFilter
@@ -179,6 +186,100 @@ export function buildAgenticSessionContextFromState(input: BuildAgenticSessionCo
   }
   lines.push('执行要求：若用户反馈“没有看到/找不到/不对/继续/重新编译/运行”等，先核查上一轮目标文件和目录的真实状态，再修复或验证；不要泛化为分析整个 code 目录。');
   return lines.join('\n').slice(0, 6000);
+}
+
+export type SessionContinuationProjectionMode =
+  | 'none'
+  | 'files-only'
+  | 'context-only'
+  | 'context-and-files';
+
+export interface ProjectSessionContinuationInput extends BuildAgenticSessionContextInput {
+  newSession: boolean;
+  intent?: SessionContinuationIntent;
+}
+
+export interface SessionContinuationProjection {
+  mode: SessionContinuationProjectionMode;
+  restoreFiles: string[];
+  contextText: string;
+}
+
+export function projectSessionContinuationFromState(
+  input: ProjectSessionContinuationInput,
+): SessionContinuationProjection {
+  if (input.newSession) return { mode: 'none', restoreFiles: [], contextText: '' };
+
+  const currentFilePaths = [...(input.currentFilePaths ?? [])];
+  const recentFilePaths = [...input.recentFilePaths];
+  const restoreFiles = currentFilePaths.length > 0
+    ? []
+    : resolveSessionContinuationFilesFromState({
+      workspaceRoot: input.workspaceRoot,
+      prompt: input.currentPrompt,
+      intent: input.intent,
+      state: input.state,
+      lastAgentChangedPaths: input.lastAgentChangedPaths,
+      recentFilePaths,
+      currentFilePaths,
+    });
+  const contextCandidate = buildAgenticSessionContextFromState({
+    ...input,
+    recentFilePaths,
+    currentFilePaths,
+  });
+  const contextText = shouldInjectSessionContinuationForIntent(
+    input.currentPrompt,
+    contextCandidate,
+    input.intent,
+  ) ? contextCandidate : '';
+
+  return {
+    mode: projectionMode(restoreFiles.length > 0, Boolean(contextText)),
+    restoreFiles,
+    contextText,
+  };
+}
+
+const CONTINUATION_CONTROL_TOKENS = new Set([
+  'add', 'again', 'also', 'build', 'change', 'compile', 'continue', 'create',
+  'execute', 'fix', 'implement', 'last', 'make', 'modify', 'more', 'next',
+  'please', 'previous', 'run', 'test', 'that', 'then', 'this', 'update',
+]);
+
+function buildSessionRelevanceAnchors(input: {
+  workspaceRoot: string;
+  prompt: string;
+  currentFilePaths?: Iterable<string>;
+  fallbackPaths: Iterable<string>;
+  state?: AgentSessionState;
+}): ContextAnchorSet {
+  const currentAnchors = buildContextAnchors({
+    workspaceRoot: input.workspaceRoot,
+    prompt: input.prompt,
+    relatedPaths: input.currentFilePaths,
+  });
+  const scopedCurrentAnchors = {
+    pathAnchors: currentAnchors.pathAnchors,
+    tokenAnchors: currentAnchors.tokenAnchors.filter(token => !CONTINUATION_CONTROL_TOKENS.has(token)),
+  };
+  if (hasContextAnchors(scopedCurrentAnchors)) return scopedCurrentAnchors;
+
+  return buildContextAnchors({
+    workspaceRoot: input.workspaceRoot,
+    relatedPaths: input.fallbackPaths,
+    extraText: [
+      input.state?.lastUserPrompt ?? '',
+      input.state?.lastSummary ?? '',
+    ],
+  });
+}
+
+function projectionMode(hasFiles: boolean, hasContext: boolean): SessionContinuationProjectionMode {
+  if (hasFiles && hasContext) return 'context-and-files';
+  if (hasFiles) return 'files-only';
+  if (hasContext) return 'context-only';
+  return 'none';
 }
 
 function chatMessageText(message: ChatMessage): string {

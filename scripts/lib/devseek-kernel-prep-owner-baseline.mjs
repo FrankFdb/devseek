@@ -15,6 +15,8 @@ const SOURCE_PATHS = Object.freeze({
   extension: 'packages/vscode-extension/src/extension.ts',
   activeChatRun: 'packages/vscode-extension/src/app/active-chat-run-coordinator.ts',
   sessionService: 'packages/vscode-extension/src/app/session-service.ts',
+  sessionContext: 'packages/vscode-extension/src/app/agent-session-context.ts',
+  sessionProjector: 'packages/vscode-extension/src/app/session-continuation-projector.ts',
   viewProvider: 'packages/vscode-extension/src/ui/deepseek-view-provider.ts',
   productExecutor: 'packages/vscode-extension/src/product-coding-kernel-executor.ts',
   kernelService: 'packages/vscode-extension/src/app/agent-kernel-service.ts',
@@ -69,6 +71,29 @@ const SOURCE_CHECKS = Object.freeze([
     'const state = sessionService.loadSessionState(id)',
     'stripSessionContextPrefix(nonBridgeChatHistory).slice(-40)',
   ], ['deepseek.session.']),
+  check('vscode-session-continuation-domain-owner', SOURCE_PATHS.sessionContext, [
+    'export function projectSessionContinuationFromState',
+    "if (input.newSession) return { mode: 'none', restoreFiles: [], contextText: '' }",
+    'shouldInjectSessionContinuationForIntent(',
+    'mode: projectionMode(',
+  ]),
+  check('vscode-session-continuation-projector', SOURCE_PATHS.sessionProjector, [
+    'export class SessionContinuationProjector',
+    'projectSessionContinuationFromState({',
+    'stripSessionContextPrefix(this.deps.getHistory())',
+  ]),
+  check('vscode-session-continuation-boundary', SOURCE_PATHS.extension, [
+    'new SessionContinuationProjector({',
+    'const initialSessionProjection = sessionContinuationProjector.project({',
+    'const agSessionContext = sessionContinuationProjector.project({',
+    'const sessionContextForAgent = sessionContinuationProjector.project({',
+    'const sessionContextForChat = sessionContinuationProjector.project({',
+  ], [
+    'projectSessionContinuationFromState',
+    'resolveSessionContinuationFilesFromState',
+    'buildAgenticSessionContextFromState',
+    'shouldInjectSessionContinuationForIntent',
+  ]),
   check('vscode-cancel-surface-port', SOURCE_PATHS.viewProvider, [
     'cancelActiveRun: (data?: Record<string, unknown>) => void',
     "this.deps.cancelActiveRun({ reason: 'user-cancelled'",

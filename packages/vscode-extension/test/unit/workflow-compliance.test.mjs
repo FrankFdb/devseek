@@ -2637,11 +2637,17 @@ test('Real DeepSeek harness: visible relogin waits for authenticated page state'
   assertContains(harness, 'loginStatus', 'relogin report must disclose the authenticated status evidence used before running the scenario');
 });
 
-test('Agentic free-explore: follow-up turns keep same-session context', () => {
+test('Agentic session continuation: one projection owner gates every execution path', () => {
   const ext = src('src/extension.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
   const sessionContext = src('src/app/agent-session-context.ts');
-  assertContains(ext, 'buildAgenticSessionContext', 'extension must build same-session context for free-explore agent');
+  const sessionProjector = src('src/app/session-continuation-projector.ts');
+  assertContains(ext, 'new SessionContinuationProjector({', 'extension must compose one session continuation projector');
+  assertContains(sessionProjector, 'projectSessionContinuationFromState({', 'application projector must delegate to the domain projection owner');
+  assertContains(sessionProjector, 'stripSessionContextPrefix(this.deps.getHistory())', 'application projector must remove restored display primers before projection');
+  assertContains(sessionContext, 'export function projectSessionContinuationFromState', 'session context owner must project files and context together');
+  assertContains(sessionContext, "if (input.newSession) return { mode: 'none', restoreFiles: [], contextText: '' }", 'new sessions must fail closed against inherited context');
+  assert.doesNotMatch(ext, /shouldInjectSessionContinuationForIntent|resolveSessionContinuationFilesFromState|buildAgenticSessionContextFromState/);
   assertContains(sessionContext, '这是同一个聊天 session 的后续消息', 'session context must explicitly mark follow-up messages');
   assertContains(sessionContext, '不要泛化为分析整个 code 目录', 'follow-up context must prevent broad code-directory reinterpretation');
   assert.match(

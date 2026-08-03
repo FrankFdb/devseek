@@ -61,9 +61,9 @@ import { tryBuildReadOnlyInspectionResult } from './app/read-only-inspection-ser
 import { buildRestoredSessionLlmHistory, buildSessionLoadedPayload, stripSessionContextPrefix } from './app/session-display-service';
 import { buildSessionBootstrapState } from './app/session-bootstrap-service';
 import { SessionService, type SessionMeta } from './app/session-service';
+import { SessionContinuationProjector } from './app/session-continuation-projector';
 import {
   appendSessionContinuationContext,
-  shouldInjectSessionContinuationForIntent,
   shouldResumeCheckpointFromPrompt,
 } from './app/session-continuation';
 import { ScopedTaskCheckpointService } from './app/task-checkpoint-store';
@@ -74,8 +74,6 @@ import { recordTrackedChatHistory as recordTrackedChatHistoryState } from './app
 import { createDirectVisibleResponsePublisher } from './app/direct-visible-response-service';
 import {
   AGENT_CODE_FILE_RE,
-  buildAgenticSessionContextFromState,
-  resolveSessionContinuationFilesFromState,
   type AgentSessionState,
 } from './app/agent-session-context';
 import { emitResponseMeta, injectFileHintsIntoResponse } from './ui/generated-artifact-ui';
@@ -131,6 +129,12 @@ let agentCheckpointService: ScopedTaskCheckpointService<AgentTask>;
 const sessionRecentFiles = new Map<string, string>();
 /** 当前活跃的 session ID */
 let activeSessionId = '';
+const sessionContinuationProjector = new SessionContinuationProjector({
+  getAgentState: () => loadAgentSessionState(),
+  getLastAgentChangedPaths: () => lastAgentChangedPaths,
+  getRecentFilePaths: () => sessionRecentFiles.values(),
+  getHistory: () => nonBridgeChatHistory,
+});
 // P3-5: MCP manager (singleton; initialized lazily in activate)
 const mcpManager = new McpManager();
 const confirmAgentFileWrite = createAgentFileWriteConfirmation(terminalPermissionCoordinator);
@@ -218,32 +222,6 @@ function restoreLastAgentPathsFromSession(sessionId = activeSessionId): void {
     .map(abs => relPathFromWorkspace(wsRoot, abs))
     .filter((rel): rel is string => Boolean(rel))
     .slice(0, 10);
-}
-
-function resolveSessionContinuationFiles(
-  workspaceRoot: string,
-  prompt: string,
-  intent?: { mode?: string; signals?: readonly string[] },
-): string[] {
-  return resolveSessionContinuationFilesFromState({
-    workspaceRoot,
-    prompt,
-    intent,
-    state: loadAgentSessionState(),
-    lastAgentChangedPaths,
-    recentFilePaths: sessionRecentFiles.values(),
-  });
-}
-
-function buildAgenticSessionContext(workspaceRoot: string, currentPrompt: string): string {
-  return buildAgenticSessionContextFromState({
-    workspaceRoot,
-    currentPrompt,
-    state: loadAgentSessionState(),
-    lastAgentChangedPaths,
-    recentFilePaths: sessionRecentFiles.values(),
-    history: nonBridgeChatHistory,
-  });
 }
 
 async function runChat(
@@ -388,14 +366,22 @@ async function runActiveChat(
     nonBridgeChatHistory = buildRestoredSessionLlmHistory(stored?.history ?? [], stored?.summary ?? '');
   }
 
+  const activeEditorContextPath = getActiveEditorContextPath();
+  const continuationPromptScope = detectWorkspacePathScope(prompt, effectiveFiles, activeEditorContextPath);
+  const continuationWorkspaceRoot = getTaskWorkspaceRootFsPath(prompt, [
+    ...effectiveFiles,
+    ...(continuationPromptScope.promptDir ? [continuationPromptScope.promptDir] : []),
+  ], activeEditorContextPath) ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+  const initialSessionProjection = sessionContinuationProjector.project({
+    workspaceRoot: continuationWorkspaceRoot,
+    currentPrompt: userDisplay || prompt,
+    intent: initialRouteDecision.intent,
+    currentFilePaths: effectiveFiles,
+    newSession,
+  });
   let sessionContinuationNote = '';
   if (!newSession && !userExplicitlyAttachedFiles && effectiveFiles.length === 0) {
-    const workspaceRootForContinuation = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-    const continuationFiles = resolveSessionContinuationFiles(
-      workspaceRootForContinuation,
-      prompt,
-      initialRouteDecision.intent,
-    );
+    const continuationFiles = initialSessionProjection.restoreFiles;
     if (continuationFiles.length > 0) {
       effectiveFiles = continuationFiles;
       sessionContinuationNote = `_[同一 session 续作] 已自动恢复上一轮工作文件：${toContextDisplayLabels(continuationFiles).join('、')}_\n\n`;
@@ -430,7 +416,6 @@ async function runActiveChat(
   }
   const autoDiscoveredFileSet = new Set(autoDiscoveredFiles);
 
-  const activeEditorContextPath = getActiveEditorContextPath();
   const promptScope = detectWorkspacePathScope(prompt, effectiveFiles, activeEditorContextPath);
   const pathResolutionHints = [
     ...new Set([
@@ -637,7 +622,13 @@ async function runActiveChat(
         // No code file attachments → agentic free-explore (investigate) mode
         const agWsRootPath = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath);
         const agWsRoot = agWsRootPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-        const agSessionContext = buildAgenticSessionContext(agWsRoot, userDisplay);
+        const agSessionContext = sessionContinuationProjector.project({
+          workspaceRoot: agWsRoot,
+          currentPrompt: userDisplay || prompt,
+          intent,
+          currentFilePaths: effectiveFiles,
+          newSession,
+        }).contextText;
         const agDisplayProfile = buildAgentRunDisplayProfile(prompt);
         // Non-code files (logs, csvs, etc.) are passed directly
         const dataFiles = effectiveFiles.filter(f => !AGENT_CODE_FILE_RE.test(f));
@@ -831,13 +822,14 @@ async function runActiveChat(
       let tasks: import('./agent-task-decomposer').AgentTask[];
       let _decomposeProse = '';
       const _wsFolderForContext = agentWorkspaceRoot;
-      const sessionContextForAgent = buildAgenticSessionContext(_wsFolderForContext, userDisplay);
-      const shouldInjectSessionContext = shouldInjectSessionContinuationForIntent(
-        userDisplay,
-        sessionContextForAgent,
+      const sessionContextForAgent = sessionContinuationProjector.project({
+        workspaceRoot: _wsFolderForContext,
+        currentPrompt: userDisplay || prompt,
         intent,
-      );
-      const promptForAgent = shouldInjectSessionContext
+        currentFilePaths: effectiveFiles,
+        newSession,
+      }).contextText;
+      const promptForAgent = sessionContextForAgent
         ? appendSessionContinuationContext(prompt, sessionContextForAgent)
         : prompt;
 
@@ -981,7 +973,7 @@ async function runActiveChat(
       const wsRoot = wsRootPath ? vscode.Uri.file(wsRootPath) : vscode.workspace.workspaceFolders?.[0]?.uri;
       decomposedTaskCount = tasks.length;
       if (wsRoot) {
-        const editorSessionContext = shouldInjectSessionContext
+        const editorSessionContext = sessionContextForAgent
           ? [lastAnalysisText, sessionContextForAgent].filter(Boolean).join('\n\n')
           : (lastAnalysisText || undefined);
         loopResult = await agentKernelService.executePlanned({
@@ -1459,8 +1451,14 @@ async function runActiveChat(
     }
 
     if (!newSession) {
-      const sessionContextForChat = buildAgenticSessionContext(workspaceRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '', userDisplay);
-      if (shouldInjectSessionContinuationForIntent(userDisplay, sessionContextForChat, intent)) {
+      const sessionContextForChat = sessionContinuationProjector.project({
+        workspaceRoot: workspaceRoot ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '',
+        currentPrompt: userDisplay || prompt,
+        intent,
+        currentFilePaths: effectiveFiles,
+        newSession,
+      }).contextText;
+      if (sessionContextForChat) {
         finalPrompt = appendSessionContinuationContext(finalPrompt, sessionContextForChat);
       }
     }
