@@ -28,9 +28,9 @@
   },
   "files": {
     "packages/cli/src/index.ts": {
-      "maxLines": 595,
+      "maxLines": 401,
       "targetLines": 512,
-      "boundary": "CLI composition root, process lifecycle, and evidence adapters"
+      "boundary": "CLI composition root and process lifecycle"
     },
     "packages/vscode-extension/src/extension.ts": {
       "maxLines": 2060,

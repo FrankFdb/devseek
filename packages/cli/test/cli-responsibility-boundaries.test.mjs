@@ -19,6 +19,7 @@ test('CLI composition root delegates the legacy coding workflow to a named coord
   assert.match(index, /new CliVerificationService\(\)/);
   assert.match(index, /new CliLegacyCodingLoop\(/);
   assert.match(index, /new CliLegacyWorkspaceContextSelector\(\)/);
+  assert.match(index, /CliRunEvidence\.open\(/);
   assert.match(index, /legacyCodingLoop\.execute\(/);
   assert.match(index, /workspaceContextSelector\.select\(/);
 
@@ -29,6 +30,8 @@ test('CLI composition root delegates the legacy coding workflow to a named coord
   assert.doesNotMatch(index, /workspaceMutationService\.apply\(/);
   assert.doesNotMatch(index, /verificationService\.verify\(/);
   assert.doesNotMatch(index, /function (?:selectWorkspaceContextFiles|discoverImplicitProjectContextFiles|collectContextFiles)\b/);
+  assert.doesNotMatch(index, /function (?:openCliRunEvidence|recordCliOperationEvidence|assertCliBridgeEvidenceComplete|settleCliEvidence)\b/);
+  assert.doesNotMatch(index, /(?:ProductRunEvidenceSession|createProductRunEvidenceAuthorityToken)/);
   assert.doesNotMatch(index, /\b(?:readdir|stat)\s*\(/);
   assert.doesNotMatch(index, /function parse(?:FileToolCalls|UnifiedDiffs)\b/);
   assert.doesNotMatch(index, /function apply(?:FileToolCalls|UnifiedDiffs|CodingArtifacts)\b/);
@@ -40,6 +43,7 @@ test('CLI extracted owners keep context, interpretation, mutation, and verificat
   const interpreter = readSource('cli-coding-artifact-interpreter.ts');
   const codingLoop = readSource('cli-legacy-coding-loop.ts');
   const contextSelector = readSource('cli-legacy-workspace-context-selector.ts');
+  const runEvidence = readSource('cli-run-evidence.ts');
   const mutation = readSource('cli-workspace-mutation-service.ts');
   const verification = readSource('cli-verification-service.ts');
 
@@ -58,6 +62,13 @@ test('CLI extracted owners keep context, interpretation, mutation, and verificat
   assert.match(contextSelector, /\breaddir\s*\(/);
   assert.match(contextSelector, /\bstat\s*\(/);
   assert.doesNotMatch(contextSelector, /(?:AgentApplicationService|create_file|replace_file|spawnSync)/);
+
+  assert.match(runEvidence, /class CliRunEvidence/);
+  assert.match(runEvidence, /ProductRunEvidenceSession\.forWorkspace/);
+  assert.match(runEvidence, /settleAndSeal/);
+  assert.match(runEvidence, /boundary === 'bridge-server'/);
+  assert.match(runEvidence, /type: 'evidence\.degraded'/);
+  assert.doesNotMatch(runEvidence, /(?:AgentApplicationService|CliSurfaceAdapter|bridgeChat)/);
 
   assert.match(mutation, /class CliWorkspaceMutationService/);
   assert.match(mutation, /resolveCliWorkspacePath/);

@@ -4,9 +4,7 @@ import { stdin as input, stdout as output } from 'process';
 import { join, resolve } from 'path';
 import {
   AgentApplicationService,
-  createProductRunEvidenceAuthorityToken,
   createProductRunEvidenceId,
-  ProductRunEvidenceSession,
   productRunEvidenceIdempotencyKey,
   summarizeTraceText,
   type AgentEvent,
@@ -14,8 +12,10 @@ import {
 } from '@devseek-netai/shared';
 import { bridgeCancel as callBridgeCancel, bridgeChat as callBridgeChat } from './bridge-client';
 import { CliCodingArtifactInterpreter } from './cli-coding-artifact-interpreter';
+import { formatCliError } from './cli-error';
 import { CliLegacyCodingLoop } from './cli-legacy-coding-loop';
 import { CliLegacyWorkspaceContextSelector } from './cli-legacy-workspace-context-selector';
+import { CliRunEvidence } from './cli-run-evidence';
 import { CliSurfaceAdapter, createCliRunLifecycleEvent, type CliRunLifecycleStatus, type CliSurfaceKind } from './cli-surface-adapter';
 import { CliVerificationService } from './cli-verification-service';
 import { CliWorkspaceMutationService } from './cli-workspace-mutation-service';
@@ -28,8 +28,6 @@ interface CliOptions {
   mock: boolean;
   resume: boolean;
 }
-
-type CliRunSurfaceKind = 'cli' | 'jsonl';
 
 const VERSION = '1.0.0';
 const codingArtifactInterpreter = new CliCodingArtifactInterpreter();
@@ -110,7 +108,12 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
     if (!options.mock) void callBridgeCancel(options.cwd).catch(() => {});
   });
   const runId = createProductRunEvidenceId();
-  const evidence = openCliRunEvidence(options, runId, prompt);
+  const evidence = CliRunEvidence.open({
+    workspaceRoot: options.cwd,
+    runId,
+    prompt,
+    surface: options.jsonl ? 'jsonl' : 'cli',
+  });
   const initialProviderOperationId = 'cli-provider-1';
   const service = new AgentApplicationService({
     getProviderType: () => options.mock ? 'local-api' : 'bridge',
@@ -148,7 +151,7 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
 
   try {
     await renderLifecycle('running');
-    recordCliOperationEvidence(evidence, {
+    evidence.recordOperation({
       type: 'provider.requested',
       idempotencyKey: productRunEvidenceIdempotencyKey('cli-provider-requested', { runId, attempt: 1 }),
       payload: { provider: options.mock ? 'local-api' : 'bridge', attempt: 1 },
@@ -157,23 +160,23 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
     try {
       events = await service.handle(command);
     } catch (error) {
-      recordCliOperationEvidence(evidence, {
+      evidence.recordOperation({
         type: 'provider.failed',
         idempotencyKey: productRunEvidenceIdempotencyKey('cli-provider-failed', { runId, attempt: 1 }),
         payload: { provider: options.mock ? 'local-api' : 'bridge', attempt: 1, error: summarizeTraceText(formatCliError(error)) },
       }, initialProviderOperationId, 'cli-provider-client');
       if (!options.mock && !cancellation.cancelled) {
-        assertCliBridgeEvidenceComplete(evidence, initialProviderOperationId, 'failed');
+        evidence.assertBridgeComplete(initialProviderOperationId, 'failed');
       }
       throw error;
     }
     const response = extractCompletedResponse(events);
-    recordCliOperationEvidence(evidence, {
+    evidence.recordOperation({
       type: 'provider.completed',
       idempotencyKey: productRunEvidenceIdempotencyKey('cli-provider-completed', { runId, attempt: 1 }),
       payload: { provider: options.mock ? 'local-api' : 'bridge', attempt: 1, response: summarizeTraceText(response) },
     }, initialProviderOperationId, 'cli-provider-client');
-    if (!options.mock) assertCliBridgeEvidenceComplete(evidence, initialProviderOperationId, 'completed');
+    if (!options.mock) evidence.assertBridgeComplete(initialProviderOperationId, 'completed');
     await legacyCodingLoop.execute({
       cwd: options.cwd,
       prompt,
@@ -198,10 +201,10 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
         return extractCompletedResponse(await service.handle(repairCommand));
       },
       recordOperationEvidence: (entry, operationId, boundary) => {
-        recordCliOperationEvidence(evidence, entry, operationId, boundary);
+        evidence.recordOperation(entry, operationId, boundary);
       },
       assertBridgeEvidenceComplete: (operationId, terminal) => {
-        assertCliBridgeEvidenceComplete(evidence, operationId, terminal);
+        evidence.assertBridgeComplete(operationId, terminal);
       },
       emitEvent: event => emitSyntheticEvent(surface.kind, renderEvent, event),
       formatError: formatCliError,
@@ -210,7 +213,7 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
     await appendHistory(options.cwd, prompt);
     await renderLifecycle('completed', 0);
     await surface.flush();
-    settleCliEvidence(evidence, runId, 'completed');
+    evidence.settle('completed');
     return 0;
   } catch (error) {
     let terminalError = error;
@@ -220,7 +223,7 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
       terminalError = flushError;
     }
     if (cancellation.cancelled && !options.mock) {
-      await waitForCliBridgeProviderTerminals(evidence);
+      await evidence.waitForBridgeProviderTerminals();
     }
     const exitCode = cancellation.cancelled ? cancellation.exitCode : 1;
     try {
@@ -229,7 +232,7 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
     } catch (flushError) {
       terminalError = flushError;
     }
-    settleCliEvidence(evidence, runId, cancellation.cancelled ? 'cancelled' : 'failed');
+    evidence.settle(cancellation.cancelled ? 'cancelled' : 'failed');
     console.error(`DevSeek CLI error: ${formatCliError(terminalError)}`);
     return exitCode;
   } finally {
@@ -243,50 +246,6 @@ interface CliCancellationController {
   readonly exitCode: number;
   readonly signalName: NodeJS.Signals | undefined;
   dispose(): void;
-}
-
-interface CliEvidenceContext {
-  readonly surface: CliRunSurfaceKind;
-  readonly session?: ProductRunEvidenceSession;
-  readonly participantToken: string;
-  degraded: boolean;
-  degradationRecorded: boolean;
-}
-
-function openCliRunEvidence(
-  options: CliOptions,
-  runId: string,
-  prompt: string,
-): CliEvidenceContext {
-  const surface = resolveCliRunSurfaceKind(options);
-  const ownerToken = createProductRunEvidenceAuthorityToken();
-  const participantToken = createProductRunEvidenceAuthorityToken();
-  try {
-    const session = ProductRunEvidenceSession.forWorkspace({
-      workspaceRoot: options.cwd,
-      runId,
-      surface,
-      authority: { role: 'owner', token: ownerToken, participantToken },
-      openIfMissing: true,
-      openPayload: {
-        owner_surface: surface,
-        cwd: summarizeTraceText(options.cwd),
-      },
-    });
-    session.record({
-      type: 'command.accepted',
-      idempotencyKey: productRunEvidenceIdempotencyKey('cli-command-accepted', { runId }),
-      payload: { prompt: summarizeTraceText(prompt) },
-    });
-    return { surface, session, participantToken, degraded: false, degradationRecorded: false };
-  } catch (error) {
-    console.error(`DevSeek evidence warning: ${formatCliError(error)}`);
-    return { surface, participantToken, degraded: true, degradationRecorded: false };
-  }
-}
-
-function resolveCliRunSurfaceKind(options: Pick<CliOptions, 'jsonl'>): CliRunSurfaceKind {
-  return options.jsonl ? 'jsonl' : 'cli';
 }
 
 function createCliCancellationController(onCancel?: () => void): CliCancellationController {
@@ -319,159 +278,6 @@ function createCliCancellationController(onCancel?: () => void): CliCancellation
       process.off('SIGTERM', onSigterm);
     },
   };
-}
-
-function recordCliEvidence(
-  evidence: CliEvidenceContext,
-  input: Parameters<ProductRunEvidenceSession['record']>[0],
-): void {
-  if (!evidence.session) {
-    evidence.degraded = true;
-    return;
-  }
-  try {
-    evidence.session.record(input);
-  } catch (error) {
-    markCliEvidenceDegraded(evidence, error);
-  }
-}
-
-function recordCliOperationEvidence(
-  evidence: CliEvidenceContext,
-  input: Parameters<ProductRunEvidenceSession['record']>[0],
-  operationId: string,
-  boundary?: string,
-): void {
-  const payload = input.payload && typeof input.payload === 'object' && !Array.isArray(input.payload)
-    ? input.payload
-    : {};
-  recordCliEvidence(evidence, {
-    ...input,
-    payload: {
-      ...payload,
-      operation_id: operationId,
-      ...(boundary ? { boundary } : {}),
-      status: input.type.slice(input.type.indexOf('.') + 1),
-      trust: 'product-runtime-observation',
-    },
-  });
-}
-
-function markCliEvidenceDegraded(evidence: CliEvidenceContext, error: unknown): void {
-  evidence.degraded = true;
-  const message = formatCliError(error);
-  console.error(`DevSeek evidence warning: ${message}`);
-  if (!evidence.session || evidence.degradationRecorded) return;
-  try {
-    evidence.session.record({
-      type: 'evidence.degraded',
-      idempotencyKey: productRunEvidenceIdempotencyKey('cli-evidence-degraded', { message }),
-      payload: {
-        trust: 'product-runtime-observation',
-        status: 'degraded',
-        reason: message,
-      },
-    });
-    evidence.degradationRecorded = true;
-  } catch (appendError) {
-    console.error(`DevSeek evidence warning: ${formatCliError(appendError)}`);
-  }
-}
-
-function assertCliBridgeEvidenceComplete(
-  evidence: CliEvidenceContext,
-  operationId: string,
-  expectedTerminal: 'completed' | 'failed',
-): void {
-  if (!evidence.session) return;
-  try {
-    const matching = evidence.session.readEvents().filter(event => {
-      if (!event.type.startsWith('provider.')) return false;
-      if (!event.payload || typeof event.payload !== 'object' || Array.isArray(event.payload)) return false;
-      return event.payload.operation_id === operationId && event.payload.boundary === 'bridge-server';
-    });
-    const requested = matching.filter(event => event.type === 'provider.requested').length;
-    const terminal = matching.filter(event => event.type === 'provider.completed' || event.type === 'provider.failed').length;
-    if (requested !== 1 || terminal !== 1 || matching.at(-1)?.type !== `provider.${expectedTerminal}`) {
-      markCliEvidenceDegraded(
-        evidence,
-        new Error(`Bridge evidence boundary is incomplete for ${operationId}; expected provider.${expectedTerminal}`),
-      );
-    }
-  } catch (error) {
-    markCliEvidenceDegraded(evidence, error);
-  }
-}
-
-async function waitForCliBridgeProviderTerminals(
-  evidence: CliEvidenceContext,
-  timeoutMs = 500,
-): Promise<void> {
-  if (!evidence.session) return;
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() <= deadline) {
-    try {
-      if (findPendingCliBridgeProviderOperations(evidence).length === 0) return;
-    } catch (error) {
-      markCliEvidenceDegraded(evidence, error);
-      return;
-    }
-    await new Promise(resolve => setTimeout(resolve, 10));
-  }
-}
-
-function findPendingCliBridgeProviderOperations(evidence: CliEvidenceContext): string[] {
-  if (!evidence.session) return [];
-  const states = new Map<string, { requested: boolean; terminal: boolean }>();
-  for (const event of evidence.session.readEvents()) {
-    if (!event.type.startsWith('provider.')) continue;
-    if (!event.payload || typeof event.payload !== 'object' || Array.isArray(event.payload)) continue;
-    if (event.payload.boundary !== 'bridge-server') continue;
-    const operationId = String(event.payload.operation_id || '').trim();
-    if (!operationId) continue;
-    const state = states.get(operationId) ?? { requested: false, terminal: false };
-    if (event.type === 'provider.requested') state.requested = true;
-    if (event.type === 'provider.completed' || event.type === 'provider.failed') state.terminal = true;
-    states.set(operationId, state);
-  }
-  return [...states.entries()]
-    .filter(([, state]) => state.requested && !state.terminal)
-    .map(([operationId]) => operationId);
-}
-
-function settleCliEvidence(
-  evidence: CliEvidenceContext,
-  runId: string,
-  status: 'completed' | 'failed' | 'cancelled',
-): void {
-  if (!evidence.session) return;
-  if (status === 'completed' && evidence.degraded) {
-    console.error('DevSeek evidence warning: completed settlement refused because evidence is degraded');
-    return;
-  }
-  try {
-    evidence.session.settleAndSeal({
-      status,
-      idempotencyKey: productRunEvidenceIdempotencyKey('cli-run-settled', { runId }),
-      payload: { surface: evidence.surface },
-    });
-  } catch (error) {
-    markCliEvidenceDegraded(evidence, error);
-  }
-}
-
-function formatCliError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  const cause = error && typeof error === 'object' && 'cause' in error
-    ? (error as { cause?: unknown }).cause
-    : undefined;
-  if (!cause) return message;
-
-  const causeMessage = cause instanceof Error ? cause.message : String(cause);
-  const causeCode = cause && typeof cause === 'object' && 'code' in cause
-    ? String((cause as { code?: unknown }).code)
-    : '';
-  return [message, causeCode, causeMessage].filter(Boolean).join(' ');
 }
 
 function extractCompletedResponse(events: readonly AgentEvent[]): string {
