@@ -1,5 +1,6 @@
 import { routeTaskIntent, type TaskIntentFamily, type TaskIntentRoute } from '../task-intent-router';
 import type { ExecutionMode } from './intent-types';
+import type { TaskSemanticResolutionContext } from './task-semantic-contract-service';
 
 export type OrientationRisk = 'low' | 'medium' | 'high' | 'destructive';
 export type OrientationStatus = 'ready' | 'needs-clarification' | 'needs-confirmation' | 'blocked';
@@ -23,6 +24,7 @@ export interface OrientationDecisionInput {
   knownPaths?: string[];
   authorizedExternalEffects?: boolean;
   route?: TaskIntentRoute;
+  semanticContext?: TaskSemanticResolutionContext;
 }
 
 export interface OrientationDecision {
@@ -51,7 +53,7 @@ const READ_ONLY_ALTERNATIVE_RE = /(?:解释|说明|分析|审查|查看|只读|�
 
 export function buildOrientationDecision(input: OrientationDecisionInput): OrientationDecision {
   const prompt = String(input.prompt || '').trim();
-  const route = input.route ?? routeTaskIntent(prompt);
+  const route = input.route ?? routeTaskIntent(prompt, input.semanticContext);
   const evidence: OrientationEvidence[] = [{
     kind: 'canonical-route',
     source: 'route',

@@ -181,7 +181,8 @@ test('§7 Recovery: checkpoint create facts are executed deterministically', () 
   assertContains(executor, 'task.expectedContent', 'checkpoint content fact is required before deterministic create');
   assertContains(executor, 'hasSourceClaimArtifactContract', 'source-claim artifacts bypass unverified deterministic recovery writes');
   assertContains(executor, 'authorizeAgentFileWriteContract', 'checkpoint writes must honor the current request at the final boundary');
-  assertContains(executor, 'buildTaskContract(input.userPrompt || task.desc)', 'planner descriptions cannot override the current request contract');
+  assertContains(executor, 'input.semanticContract?.taskContract', 'deterministic recovery consumes the kernel-owned semantic contract');
+  assertContains(loop, 'semanticContract: writeAuthority.semanticContract', 'the current semantic revision reaches deterministic recovery');
   assertContains(executor, 'commitTextFileProposal', 'deterministic create writes through the atomic WorkspaceEditService boundary');
   assertContains(executor, 'readFileContentFull', 'deterministic create verifies content by reading from disk');
 });
@@ -1921,22 +1922,24 @@ test('Agent planning: task shape guidance is injected before code is written', (
   const decomposer = src('src/agent-task-decomposer.ts');
   const agentLoop = src('src/agent-loop.ts');
   const agentic = src('src/agent/agentic-loop.ts');
+  const agenticPrompt = src('src/agent/agentic-system-prompt.ts');
   const guidelines = src('src/agent/engineering-guidelines.ts');
   const prompts = src('src/agent/agent-prompt-builder.ts');
   const toolProtocolPrompt = src('src/agent/tool-protocol-prompt.ts');
 
   assertContains(decomposer, 'buildTaskShapeGuidancePrompt(userPrompt)', 'Architect planner must classify task shape from the current user prompt');
   assertContains(agentLoop, 'buildTaskShapeGuidancePrompt(userPrompt)', 'generic Editor loop must preserve task shape guidance before emitting file content');
-  assertContains(agentic, 'buildTaskShapeGuidancePrompt(userPrompt)', 'Agentic loop must classify task shape from the current user prompt');
+  assertContains(agentic, "from './agentic-system-prompt'", 'Agentic loop must delegate its system prompt responsibility');
+  assertContains(agenticPrompt, 'buildTaskShapeGuidancePrompt(userPrompt)', 'Agentic prompt must classify task shape from the current user prompt');
   assertContains(guidelines, '既有大项目/正式项目', 'engineering guidelines must distinguish existing-project work');
   assertContains(guidelines, '项目级通讯链路追踪', 'engineering guidelines must require project-wide communication tracing for referenced communication modules');
   assertContains(guidelines, 'request JSON 示例', 'engineering guidelines must require request examples for interface deliverables');
   assertContains(guidelines, 'response JSON 示例', 'engineering guidelines must require response examples for interface deliverables');
   assertContains(guidelines, '独立新项目/原型/练习', 'engineering guidelines must preserve standalone task behavior');
   assertContains(prompts, 'buildReplaceInFileToolPrompt()', 'task-specific prompt must use the shared targeted-edit protocol');
-  assertContains(agentic, 'buildReplaceInFileToolPrompt()', 'Agentic prompt must use the shared targeted-edit protocol');
+  assertContains(agenticPrompt, 'buildReplaceInFileToolPrompt()', 'Agentic prompt must use the shared targeted-edit protocol');
   assertContains(prompts, 'buildFullFileWriteToolPrompt()', 'task-specific prompt must use the shared lossless full-file protocol');
-  assertContains(agentic, 'buildFullFileWriteToolPrompt()', 'Agentic prompt must use the shared lossless full-file protocol');
+  assertContains(agenticPrompt, 'buildFullFileWriteToolPrompt()', 'Agentic prompt must use the shared lossless full-file protocol');
   assertContains(toolProtocolPrompt, 'replace_in_file', 'shared tool prompt must expose targeted edits, not only full-file writes');
   assertContains(toolProtocolPrompt, '<old_str>', 'shared tool prompt must expose a quote-safe raw edit format');
   assertContains(toolProtocolPrompt, '<content><![CDATA[', 'shared tool prompt must expose a lossless multiline file format');
@@ -1982,7 +1985,9 @@ test('Agent loop: task_complete does not bypass final editedFiles accounting', (
 });
 
 test('Agent loop: read-only planning prompts do not advertise terminal execution', () => {
-  const code = src('src/agent-loop.ts');
+  const loop = src('src/agent-loop.ts');
+  const code = src('src/agent/analyze-task-prompt.ts');
+  assertContains(loop, 'buildAnalyzeTaskPrompt(', 'agent loop must delegate analyze prompt construction');
   assertContains(code, 'allowTerminalTools', 'agent analyze prompt must derive terminal visibility from execution mode');
   assertContains(code, 'hasRunnableFileExt', 'analyze compile hint must be limited to runnable source files');
   assertContains(code, 'includeTerminal: allowTerminalTools', 'read-only execution modes must hide run_terminal examples');
@@ -2121,7 +2126,7 @@ test('Agentic loop: terminal completion evidence requires successful validation 
   assertContains(toolLoop, 'isExecutableFile', 'compiler output must be checked on disk');
   assertContains(toolLoop, '验证命令未通过，不能把编译/运行/测试标记为完成', 'failed validation must be fed back to the agent');
   assertContains(code, 'buildTerminalFailureRepairFeedback', 'terminal failure prose must be converted into a repair instruction');
-  assertContains(code, 'getMissingCompletionEvidence', 'agent loop must delegate completion checks to evidence boundary');
+  assertContains(code, 'assessMissingCompletionEvidence', 'agent loop must delegate semantic completion checks to evidence boundary');
   assertContains(code, 'getAgenticBlockingTerminalFailure', 'agentic runtime must use a final settlement gate for terminal failures');
   assertContains(code, 'findBlockingTerminalFailureEvidence(terminalEvidence)', 'agentic runtime must not let failed validation evidence be hidden by provider completion prose');
   assert.match(
@@ -2148,11 +2153,13 @@ test('Agentic loop: workspace writes use ValidationService for automatic validat
 
 test('Agent run boundaries reset stale todo and pending-edit review scope', () => {
   const ext = src('src/extension.ts');
+  const presenter = src('src/ui/agent-turn-presenter.ts');
   const pending = src('src/app/pending-edit-service.ts');
   const coordinator = src('src/pending-edit-coordinator.ts');
   const webview = webviewRuntime();
   assertContains(pending, 'resetForNewScope', 'pending edit service must expose a new review-scope reset');
-  assertContains(ext, 'pendingEditCoordinator.beginReviewScope(webview)', 'agent runs must start with a fresh file-review scope');
+  assertContains(ext, 'new AgentTurnPresenter(webview, pendingEditCoordinator, agentRunContext)', 'agent runs must use the turn presenter boundary');
+  assertContains(presenter, 'this.pendingEdits.beginReviewScope(this.webview)', 'agent runs must start with a fresh file-review scope');
   assertContains(coordinator, "webview.postMessage({ type: 'todoUpdate', items: [] })", 'agent runs must clear stale visible todos at start');
   assertContains(webview, 'if (!items || !items.length)', 'webview todo handler must accept empty todo reset messages');
   assertContains(webview, "todosWidgetEl.style.display = 'none'", 'empty todo reset must hide the stale todo widget');
@@ -2205,7 +2212,7 @@ test('Agentic loop: provider failure after satisfied local evidence does not ove
   const code = src('src/agent/agentic-loop.ts');
   const settlement = src('src/agent/agentic-provider-settlement.ts');
   assertContains(code, 'settleProviderFailureFromCompletedEvidence', 'agent loop must delegate completed-evidence provider-failure settlement');
-  assertContains(settlement, 'getMissingCompletionEvidence', 'provider failure settlement must use the shared completion evidence boundary');
+  assertContains(settlement, 'assessMissingCompletionEvidence', 'provider failure settlement must use the shared semantic completion evidence boundary');
   assertContains(settlement, 'findBlockingTerminalFailureEvidence', 'provider failure settlement must preserve terminal failure authority');
   assert.match(
     code,
@@ -2229,6 +2236,7 @@ test('Agentic loop: terminal must not be used as a fallback file writer', () => 
 test('Agentic loop: markdown fallback writes C++ code blocks as real artifacts', () => {
   const code = src('src/agent/markdown-artifact-applier.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
+  const agenticPrompt = src('src/agent/agentic-system-prompt.ts');
   assertContains(code, 'promptLooksLikeCppProgram(userPrompt)', 'markdown fallback must detect C++ prompts');
   assert.match(
     code,
@@ -2236,7 +2244,8 @@ test('Agentic loop: markdown fallback writes C++ code blocks as real artifacts',
     'markdown fallback must scan cpp/cxx/cc code fences, not only c fences',
   );
   assertContains(code, "defaultCodeArtifactBasename(userPrompt)}${ext}", 'fallback path must use prompt-aware default basename and extension');
-  assertContains(agenticLoop, '创建/修改/删除文件必须调用 create_file/write_file/replace_in_file/delete_file', 'agent prompt must forbid natural-language-only file mutations');
+  assertContains(agenticLoop, "from './agentic-system-prompt'", 'agentic loop must use the owned system prompt');
+  assertContains(agenticPrompt, '创建/修改/删除文件必须调用 create_file/write_file/replace_in_file/delete_file', 'agent prompt must forbid natural-language-only file mutations');
 });
 
 test('Agentic loop: final summary never exposes backend tool transcripts', () => {
@@ -2761,12 +2770,14 @@ test('Architecture: WorkflowService selects agent entry outside extension inline
   const service = src('src/app/workflow-service.ts');
   const ext = src('src/extension.ts');
   const controller = src('src/app/chat-controller.ts');
+  const turnRouting = src('src/app/agent-turn-routing-service.ts');
   assertContains(service, 'selectWorkflow', 'workflow service must expose selectWorkflow');
   assertContains(service, 'class WorkflowStateMachine', 'workflow service must expose state machine');
   assertContains(service, 'requiresPlanReview', 'workflow service must support plan review gate');
   assertContains(service, 'confirmation-required', 'workflow service must route destructive confirmation outside agent');
   assertContains(controller, 'const workflow = selectWorkflow', 'chat controller must delegate workflow selection');
-  assertContains(ext, 'chatRouteController.decide', 'extension must delegate route selection to ChatRouteController');
+  assertContains(ext, 'decideAgentTurnRoute(chatRouteController', 'extension must delegate route selection through the turn routing boundary');
+  assertContains(turnRouting, 'controller.decide({', 'turn routing boundary must delegate the decision to ChatRouteController');
   assertContains(ext, 'if (workflow.useAgent)', 'extension must use selected workflow for agent entry');
 });
 
@@ -2792,7 +2803,7 @@ test('R1-A2: TaskIntentRouter is the canonical task-family owner for downstream 
   assertContains(router, 'terminal-validation', 'route matrix must distinguish run-only validation work');
 
   const intentRouter = src('src/intent-router.ts');
-  assertContains(intentRouter, 'routeTaskIntent(prompt)', 'legacy intent facade must delegate to TaskIntentRouter');
+  assertContains(intentRouter, 'routeTaskIntent(prompt, semanticContext)', 'legacy intent facade must delegate semantic context to TaskIntentRouter');
 
   const taskShape = src('src/agent/task-shape.ts');
   assertContains(taskShape, 'routeTaskIntent(userPrompt)', 'task-shape guidance must consume TaskIntentRouter');
@@ -2828,17 +2839,36 @@ test('R1-A2K: TaskSemanticContract is the unique local semantic owner', () => {
   const router = src('src/task-intent-router.ts');
   const governor = src('src/intent/semantic-intent-governor.ts');
   const controller = src('src/app/chat-controller.ts');
+  const semanticService = src('src/intent/task-semantic-contract-service.ts');
+  const semanticObligations = src('src/intent/task-semantic-obligations.ts');
+  const extension = src('src/extension.ts');
+  const turnRouting = src('src/app/agent-turn-routing-service.ts');
+  const sessionContext = src('src/app/agent-session-context.ts');
+  const taskLedger = src('src/agent/task-todo-ledger.ts');
   const taskContract = src('src/agent/task-contract.ts');
 
-  assertContains(semanticContract, "version: 'devseek.task-semantic-contract/v2'", 'semantic contract schema must be versioned');
+  assertContains(semanticContract, "version: 'devseek.task-semantic-contract/v3'", 'semantic contract schema must be versioned');
   assertContains(semanticContract, 'buildLocalIntentContract(prompt, {', 'semantic contract must build the local interpretation once');
+  assertContains(semanticService, 'mergeTaskSemanticContracts', 'semantic service must own cross-turn merge semantics');
+  assertContains(semanticService, 'bindProjectInstructions', 'semantic service must bind scoped project instructions');
+  assertContains(semanticObligations, 'buildDoneConditions', 'semantic obligations must own done_iff derivation');
+  assertContains(semanticContract, 'completion: TaskSemanticCompletionContract', 'semantic contract must carry done_iff');
   assertContains(classifier, 'const local = contract.intent', 'classifier must project the canonical local interpretation');
+  assertContains(classifier, 'resolveTaskSemanticContract(input)', 'classifier compatibility input must use the semantic service');
   assertDoesNotContain(classifier, '_RE =', 'classifier must not own prompt keyword rules');
   assertContains(router, 'classifyIntent(semanticContract)', 'task router must reuse the existing semantic contract');
   assertDoesNotContain(router, 'const EXTERNAL_EFFECT_RE', 'task router must not reopen external-effect interpretation');
   assertDoesNotContain(router, 'const REVIEW_RE', 'task router must not reopen review interpretation');
   assertDoesNotContain(router, 'const FAILURE_RE', 'task router must not reopen failure interpretation');
   assertContains(controller, 'governSemanticIntent(intent, input.semanticIntent)', 'controller must delegate candidate governance');
+  assertContains(controller, 'semanticContext?: TaskSemanticResolutionContext', 'controller must carry cross-turn semantic context');
+  assertContains(turnRouting, 'isLikelySessionContinuation(input.userDisplay || input.prompt)', 'session inheritance must be continuation-gated');
+  assertContains(extension, 'loadAgentSessionState()?.semanticContract', 'continued turns must load the durable semantic contract');
+  assertContains(extension, 'semanticContext: turnSemanticContext', 'both local and Provider-governed routes must receive the same semantic revision context');
+  assertContains(extension, 'semanticContract: agentSemanticContract', 'session settlement must persist the effective semantic contract');
+  assertContains(sessionContext, 'semanticContract?: TaskSemanticContract', 'session state must preserve cross-turn semantic authority');
+  assertContains(taskLedger, 'semanticContract: evidence.semanticContract', 'task settlement must consume the live semantic contract');
+  assertDoesNotContain(taskLedger, 'getMissingCompletionEvidence(', 'task settlement must not use the raw-prompt compatibility API');
   assertDoesNotContain(controller, 'function governedSemanticMode', 'controller must not own semantic merge rules');
   assertContains(governor, 'function governedSemanticMode', 'semantic governor must own candidate merge rules');
   assertContains(taskContract, 'hasDestructiveIntent(prompt)', 'TaskContract must share the destructive safety owner');
@@ -2848,7 +2878,7 @@ test('R1-A2K: TaskSemanticContract is the unique local semantic owner', () => {
 test('R2-01A: OrientationDecision owns pre-execution mode/risk/confidence evidence', () => {
   const orientation = src('src/intent/orientation-decision.ts');
   assertContains(orientation, "version: 'devseek.orientation-decision/v1'", 'orientation decision must expose a versioned contract');
-  assertContains(orientation, 'routeTaskIntent(prompt)', 'orientation decision must consume the canonical task route');
+  assertContains(orientation, 'routeTaskIntent(prompt, input.semanticContext)', 'orientation decision must preserve semantic revision context');
   assertContains(orientation, 'orientation-ambiguous-intent', 'orientation decision must guard mixed action alternatives');
   assertContains(orientation, 'orientation-target-path-not-found:', 'orientation decision must guard context-proven missing paths');
   assertContains(orientation, 'orientation-external-effect-authorization-required', 'orientation decision must guard unconfirmed external effects');
@@ -2865,6 +2895,8 @@ test('R2-01B: IntentRevisionLineage owns cross-turn correction and committed-eff
   assertContains(lineage, 'committed-effect-preserved', 'revision lineage must preserve committed effects');
   assertContains(lineage, 'rewrittenCommittedEffectIds: []', 'revision lineage must not rewrite committed effects');
   assertContains(lineage, 'lineage-permission-widening-requires-confirmation', 'revision lineage must block silent permission widening');
+  assertContains(lineage, 'semanticContractRevision', 'revision lineage must publish the effective semantic contract');
+  assertDoesNotContain(lineage, 'buildTaskContract(', 'revision lineage must not rebuild TaskContract from steer text');
   assertDoesNotContain(lineage, 'routeTaskIntent(', 'revision lineage must not bypass OrientationDecision with a second route owner');
   assertDoesNotContain(lineage, "status = 'committed'", 'revision lineage must not mutate effect receipts');
 });
@@ -2876,7 +2908,8 @@ test('R2-01C: ClarificationRisk owns high-impact questions and contract merge', 
   assertContains(clarification, 'clarification-answer-required', 'unanswered high-impact ambiguity must block execution');
   assertContains(clarification, 'low-risk-clarification-skipped', 'low-risk tasks must not ask redundant questions');
   assertContains(clarification, 'clarification-answer-merged', 'answers must be merged before execution');
-  assertContains(clarification, 'task-contract-merged', 'merged answers must produce the effective TaskContract');
+  assertContains(clarification, 'semantic-contract-merged', 'merged answers must produce the effective semantic contract');
+  assertDoesNotContain(clarification, 'buildTaskContract(', 'clarification must not rebuild TaskContract outside semantic authority');
   assertDoesNotContain(clarification, 'routeTaskIntent(', 'clarification risk must not bypass lineage with a second route owner');
 });
 
@@ -3138,7 +3171,7 @@ test('Architecture: smalltalk cannot inherit restored session context or apply a
   const nonAgentGuard = src('src/app/non-agent-response-guard.ts');
   assert.match(
     ext,
-    /const initialRouteDecision = chatRouteController\.decide[\s\S]*?if \(initialRouteDecision\.intent\.mode === 'smalltalk'\)[\s\S]*?directVisibleResponsePublisher\.publish\(\{[\s\S]*?responseText:\s*reply,[\s\S]*?\}\);[\s\S]*?return;[\s\S]*?getSessionService\(\)\?\.loadSessionState\(activeSessionId\)/,
+    /decideAgentTurnRoute\(chatRouteController,[\s\S]*?if \(initialRouteDecision\.intent\.mode === 'smalltalk'\)[\s\S]*?directVisibleResponsePublisher\.publish\(\{[\s\S]*?responseText:\s*reply,[\s\S]*?\}\);[\s\S]*?return;[\s\S]*?getSessionService\(\)\?\.loadSessionState\(activeSessionId\)/,
     'smalltalk must return before restored session summary/history is injected',
   );
   assertContains(directVisibleResponseService, "deps.postMessage({ type: 'endResponse' })", 'direct response service must own direct-return endResponse delivery');
@@ -3973,6 +4006,7 @@ test('Architecture: ARCH-16 duplicate judgment domains have explicit owners', ()
   const owners = src('src/app/judgment-owners.ts');
   const appIndex = src('src/app/index.ts');
   const extension = src('src/extension.ts');
+  const agentTurnPresenter = src('src/ui/agent-turn-presenter.ts');
   const projectRules = src('src/project-rules.ts');
   const agentLoop = src('src/agent-loop.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
@@ -3999,8 +4033,9 @@ test('Architecture: ARCH-16 duplicate judgment domains have explicit owners', ()
   assertContains(owners, "ownerModule: 'src/agent/task-state-machine.ts'", 'task state owner must be the public state machine boundary');
   assertContains(owners, "ownerModule: 'src/app/context-scope-resolver.ts'", 'context scope owner must be the resolver boundary');
   assertContains(owners, "ownerModule: 'src/app/agent-display-presenter.ts'", 'agent display owner must be the presenter boundary');
-  assertContains(extension, 'new AgentDisplayPresenter()', 'extension must present agent statuses through AgentDisplayPresenter');
-  assertContains(extension, 'agentDisplayPresenter.presentStatus(msg)', 'extension must not post raw agent status messages to the webview');
+  assertContains(extension, 'new AgentTurnPresenter(', 'extension must delegate agent status delivery to its Surface presenter');
+  assertContains(agentTurnPresenter, 'new AgentDisplayPresenter()', 'turn presenter must project statuses through AgentDisplayPresenter');
+  assertContains(agentTurnPresenter, 'this.display.presentStatus(message)', 'turn presenter must not post raw agent status messages to the webview');
   assertContains(projectRules, 'new ContextScopeResolver().resolve', 'project context assembly must be scoped before prompt assembly');
   assertContains(agentLoop, "from './agent/task-state-machine'", 'agent-loop must use the task state machine boundary');
   assertContains(agenticLoop, "from './task-state-machine'", 'agentic loop must use the task state machine boundary');
@@ -4011,6 +4046,7 @@ test('Architecture: ARCH-17 agent runs are created through RunContext', () => {
   const extension = src('src/extension.ts');
   const appIndex = src('src/app/index.ts');
   const agentKernel = src('src/app/agent-kernel-service.ts');
+  const semanticExecution = src('src/agent/semantic-execution-context.ts');
   const agentSettlement = src('src/app/agent-run-settlement.ts');
   const runContext = src('src/app/run-context.ts');
   const terminalCoordinator = src('src/app/terminal-permission-coordinator.ts');
@@ -4021,7 +4057,11 @@ test('Architecture: ARCH-17 agent runs are created through RunContext', () => {
   assertContains(runContext, 'agent-run-started', 'RunContext must record top-level run start facts');
   assertContains(runContext, 'agent-run-completed', 'RunContext must record top-level convergence facts');
   assertContains(agentKernel, 'class AgentKernelService', 'Kernel service must own agent run composition');
-  assertContains(agentKernel, 'buildTaskContract(input.userPrompt)', 'Kernel service must receive/build TaskContract before RunContext creation');
+  assertContains(agentKernel, 'resolveSemanticExecutionContext({', 'Kernel service must bind one execution semantic contract before RunContext');
+  assertContains(semanticExecution, 'resolveTaskSemanticContract(input.userPrompt)', 'semantic execution boundary must preserve the raw-prompt compatibility entry');
+  assertContains(semanticExecution, 'projectInstructionService.discover({', 'semantic execution must use the headless project-instruction owner');
+  assertDoesNotContain(semanticExecution, "from '../project-rules'", 'semantic execution must not pull the VS Code workspace facade into Kernel runtimes');
+  assertContains(agentKernel, 'input.taskContract ?? semanticContract.taskContract', 'Kernel service must project TaskContract from the semantic contract');
   assertContains(agentKernel, 'createDevSeekRunContext({', 'Kernel service must create the top-level RunContext');
   assertContains(extension, 'agentKernelService.startRun({', 'agent entry must create a top-level Kernel run');
   assertContains(extension, 'agentKernelRun.settleAgentLoopResult', 'agent entry must settle through Kernel run');
@@ -4156,7 +4196,7 @@ test('R3-02 Checkpoint resume: TaskCheckpointStore owns receipt-gated replay pro
   );
 });
 
-test('R3-03 Steering: IntentRevisionLineage owns TaskContract revision and uncommitted replan', () => {
+test('R3-03 Steering: IntentRevisionLineage owns semantic contract revision and uncommitted replan', () => {
   const lineage = src('src/intent/intent-revision-lineage.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
   const writeAuthority = src('src/agent/write-authority.ts');
@@ -4165,20 +4205,20 @@ test('R3-03 Steering: IntentRevisionLineage owns TaskContract revision and uncom
   const taskStateTests = src('test/unit/agent-loop-task-state.test.mjs');
 
   assertContains(lineage, "version: 'devseek.intent-revision-lineage/v1'", 'R3-03 must keep lineage as the revision owner');
-  assertContains(lineage, 'devseek.task-contract-revision/v1', 'R3-03 must expose a versioned TaskContract revision');
-  assertContains(lineage, 'buildTaskContract(', 'R3-03 must derive steer revisions from the canonical TaskContract owner');
+  assertContains(lineage, 'devseek.semantic-contract-revision/v1', 'R3-03 must expose a versioned semantic contract revision');
+  assertContains(lineage, 'orientation.route.semanticContract', 'R3-03 must derive steer revisions from the semantic authority');
   assertContains(lineage, 'blockedReplayEffectIds', 'R3-03 must block replay of committed effects');
   assertContains(lineage, 'replanUncommittedTasksForContractRevision', 'R3-03 must keep deterministic uncommitted-work replanning');
   assertContains(writeAuthority, 'buildIntentRevisionLineage', 'write authority must consume the lineage owner for in-flight steers');
   assertContains(writeAuthority, 'committedEffects', 'write authority must seal committed effects into steer revisions');
-  assertContains(writeAuthority, 'taskContractRevision', 'write authority must publish the current steer revision receipt');
+  assertContains(writeAuthority, 'semanticContractRevision', 'write authority must publish the current steer revision receipt');
   assertContains(writeAuthority, 'writeRevoked', 'write authority must expose steer write-revocation facts');
   assertContains(writeAuthority, 'isWriteRevokedToolAttempt', 'write authority must distinguish mutating tools from read-only exploration');
   assertContains(agenticLoop, 'hasWriteRevokedToolAttempt', 'agentic loop must settle only revoked mutating tool attempts');
   assertDoesNotContain(agenticLoop, 'writeAuthority.writeRevoked && loopRes.workToolCallsMade', 'read-only exploration must not be misclassified as revoked writes');
   assertContains(userSteer, 'consumeUserSteerTexts', 'user steer parsing must expose raw steer text for contract revision');
-  assertContains(lineageTests, 'R3-03 IntentRevisionLineage: steer creates TaskContract revision', 'R3-03 must keep the lineage oracle');
-  assertContains(taskStateTests, 'R3-03 shared write authority publishes steer TaskContract revision receipts', 'R3-03 must keep the runtime steer oracle');
+  assertContains(lineageTests, 'R3-03 IntentRevisionLineage: steer creates semantic contract revision', 'R3-03 must keep the lineage oracle');
+  assertContains(taskStateTests, 'R3-03 shared write authority publishes steer semantic contract revision receipts', 'R3-03 must keep the runtime steer oracle');
 });
 
 test('Extension apply gate: unfenced target-scoped source can enter applier', () => {

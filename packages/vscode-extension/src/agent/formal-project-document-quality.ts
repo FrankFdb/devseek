@@ -1,8 +1,9 @@
-import { buildTaskContract, hasQualityObligation, type TaskContract } from './task-contract';
+import { hasQualityObligation, type TaskContract } from './task-contract';
 import {
-  buildTaskSemanticContract,
   requiresFormalProjectQuality,
+  type TaskSemanticContract,
 } from '../task-semantic-contract';
+import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
 
 export interface FormalProjectDocumentQuality {
   required: boolean;
@@ -119,12 +120,13 @@ function isScopedSourceBackedMarkdownAudit(prompt: string, contract: TaskContrac
 export function assessFormalProjectDocumentQuality(
   text: string,
   promptText = '',
+  resolvedSemanticContract?: TaskSemanticContract,
 ): FormalProjectDocumentQuality {
   const content = String(text || '');
   const prompt = String(promptText || '');
   const combined = `${prompt}\n${content}`;
-  const contract = buildTaskContract(prompt);
-  const semanticContract = buildTaskSemanticContract(prompt);
+  const semanticContract = resolvedSemanticContract ?? resolveTaskSemanticContract(prompt);
+  const contract = semanticContract.taskContract;
   const requiresRemoteControllerInterface = hasQualityObligation(contract, 'interface-contract');
   const requiresLicenseReference = LICENSE_REFERENCE_RE.test(prompt) && hasQualityObligation(contract, 'protocol-facts');
   const requiresCommunicationChain = hasQualityObligation(contract, 'project-communication-chain');

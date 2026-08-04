@@ -2,6 +2,8 @@ import * as fs from 'fs';
 import * as nodePath from 'path';
 import type * as vscode from 'vscode';
 import type { AgentTask } from '../agent-task-decomposer';
+import type { TaskSemanticContract } from '../task-semantic-contract';
+import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
 import type { ChatMessage } from '../llm/types';
 import { roughLineDiff } from '../utils';
 import {
@@ -41,7 +43,6 @@ import {
 } from './evidence-grounding';
 import {
   authorizeMarkdownArtifactWrite,
-  buildTaskContract,
   extractCurrentUserRequest,
   getSourceClaimArtifactContractIssue,
   hasQualityObligation,
@@ -60,6 +61,7 @@ export interface MarkdownDeliverableTaskInput {
   workspaceRoot: vscode.Uri;
   effectiveAbsPath?: string;
   callbacks: AgentLoopCallbacks;
+  semanticContract?: TaskSemanticContract;
   chat: MarkdownDeliverableChat;
 }
 
@@ -169,7 +171,8 @@ export async function tryExecuteMarkdownDeliverableTask(
   }
   const evidenceStore = new EvidenceStore(input.workspaceRoot.fsPath, `markdown-${task.id || input.taskIndex}`);
   const markdownPromptText = combineUniquePromptParts(input.userPrompt, input.task.desc);
-  const baseTaskContract = buildTaskContract(markdownPromptText);
+  const baseTaskContract = input.semanticContract?.taskContract
+    ?? resolveTaskSemanticContract(markdownPromptText).taskContract;
 
   const contractIssue = getSourceClaimArtifactContractIssue(baseTaskContract);
   if (contractIssue) {
@@ -293,7 +296,7 @@ export async function tryExecuteMarkdownDeliverableTask(
       evidence,
       reason: provider.reason || 'Provider 未返回可用的完整 Markdown 报告。',
     });
-    markdown = ensureFormalInterfaceExamples(baseMarkdown, markdownPromptText) || baseMarkdown;
+    markdown = ensureFormalInterfaceExamples(baseMarkdown, markdownPromptText, input.semanticContract) || baseMarkdown;
   }
 
   if (callbacks.signal?.aborted) {
@@ -321,7 +324,7 @@ export async function tryExecuteMarkdownDeliverableTask(
       finalContent = ensureFinalNewline(markdown);
       const candidateFormalQuality = taskContract.verificationContract.exactArtifact
         ? { ok: true, reasons: [] as string[] }
-        : assessFormalProjectDocumentQuality(finalContent, markdownPromptText);
+        : assessFormalProjectDocumentQuality(finalContent, markdownPromptText, input.semanticContract);
       if (!candidateFormalQuality.ok) {
         const reason = `formal-project-quality: ${candidateFormalQuality.reasons.join(', ')}`;
         await postMarkdownStatus(input, 'failed', basename, {
@@ -371,7 +374,11 @@ export async function tryExecuteMarkdownDeliverableTask(
             return { applied: false, path: absPath, failedReason: 'Markdown deliverable repair aborted before write', evidenceRefs: evidenceStore.all(), verificationResults };
           }
           if (repaired.markdown) {
-            markdown = ensureFormalInterfaceExamples(repaired.markdown, markdownPromptText) || repaired.markdown;
+            markdown = ensureFormalInterfaceExamples(
+              repaired.markdown,
+              markdownPromptText,
+              input.semanticContract,
+            ) || repaired.markdown;
             continue;
           }
         }
@@ -513,7 +520,7 @@ export async function tryExecuteMarkdownDeliverableTask(
     });
     const finalFormalQuality = taskContract.verificationContract.exactArtifact
       ? { ok: true, reasons: [] as string[] }
-      : assessFormalProjectDocumentQuality(freshContent, markdownPromptText);
+      : assessFormalProjectDocumentQuality(freshContent, markdownPromptText, input.semanticContract);
     const sourceReadbacks = claimSpecs.length > 0
       ? [...new Set(claimSpecs.map(spec => spec.sourcePath))].map((sourcePath, index) => evidenceStore.recordFileRead({
         path: sourcePath,
@@ -652,11 +659,13 @@ async function generateProviderMarkdown(
     const normalized = ensureFormalInterfaceExamples(
       normalizeProviderMarkdown(response, taskContract),
       promptText,
+      input.semanticContract,
     );
     if (normalized) {
       const formalQuality = assessFormalProjectDocumentQuality(
         normalized,
         promptText,
+        input.semanticContract,
       );
       if (!formalQuality.ok) {
         return {
@@ -1113,9 +1122,13 @@ function normalizeProviderMarkdown(text: string, contract: TaskContract): string
   return ensureFinalNewline(trimmed);
 }
 
-function ensureFormalInterfaceExamples(markdown: string | undefined, promptText: string): string | undefined {
+function ensureFormalInterfaceExamples(
+  markdown: string | undefined,
+  promptText: string,
+  semanticContract?: TaskSemanticContract,
+): string | undefined {
   if (!markdown) return undefined;
-  const quality = assessFormalProjectDocumentQuality(markdown, promptText);
+  const quality = assessFormalProjectDocumentQuality(markdown, promptText, semanticContract);
   if (!quality.required || !quality.requiresRemoteControllerInterface) return markdown;
   if (quality.hasInterfaceRequestExample && quality.hasInterfaceResponseExample && quality.hasInterfaceFencedJsonExample) return markdown;
   const requestJson = findInlineJsonExample(markdown, 'request')

@@ -1,6 +1,9 @@
 import { buildRequirementContract, type RequirementContract } from '../agent/requirement-contract';
-import { buildTaskContract, type TaskContract } from '../agent/task-contract';
+import type { TaskContract } from '../agent/task-contract';
+import type { TaskSemanticContract } from '../task-semantic-contract';
+import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
 import type { AgentLoopResult } from '../agent/loop-types';
+import { resolveSemanticExecutionContext } from '../agent/semantic-execution-context';
 import type {
   CodingKernelExecutionPort,
   CodingKernelExecutionRequest,
@@ -24,10 +27,12 @@ export interface KernelContextRef {
 
 export interface AgentKernelRunInput extends DevSeekRunContextOptions {
   readonly contextRefs?: readonly KernelContextRef[];
+  readonly semanticRelatedPaths?: readonly string[];
 }
 
 export interface AgentKernelRun {
   readonly runContext: DevSeekRunContext;
+  readonly semanticContract: TaskSemanticContract;
   readonly taskContract: TaskContract;
   readonly requirementContract: RequirementContract;
   readonly contextRefs: readonly KernelContextRef[];
@@ -43,7 +48,10 @@ export class AgentKernelService {
   ) {}
 
   execute(request: CodingKernelExecutionRequest): Promise<AgentLoopResult> {
-    return this.execution.execute(request);
+    return this.execution.execute({
+      ...request,
+      semanticContract: request.semanticContract ?? resolveTaskSemanticContract(request.userPrompt),
+    });
   }
 
   executeExploratory(request: ExploratoryKernelExecutionInput): Promise<AgentLoopResult> {
@@ -61,7 +69,16 @@ export class AgentKernelService {
   }
 
   startRun(input: AgentKernelRunInput): AgentKernelRun {
-    const taskContract = input.taskContract ?? buildTaskContract(input.userPrompt);
+    const semanticContract = resolveSemanticExecutionContext({
+      userPrompt: input.userPrompt,
+      semanticContract: input.semanticContract,
+      workspaceRoots: [input.workspaceRoot],
+      relatedPaths: [
+        ...(input.semanticRelatedPaths ?? []),
+        ...(input.contextRefs ?? []).map(ref => ref.uri),
+      ],
+    }).semanticContract;
+    const taskContract = input.taskContract ?? semanticContract.taskContract;
     const requirementContract = input.requirementContract ?? buildRequirementContract({
       promptText: input.userPrompt,
       taskContract,
@@ -69,12 +86,14 @@ export class AgentKernelService {
     const runContext = createDevSeekRunContext({
       ...input,
       source: input.source ?? 'vscode-extension.agent-kernel',
+      semanticContract,
       taskContract,
       requirementContract,
     });
     return new DefaultAgentKernelRun(
       this.terminalPermissions,
       runContext,
+      semanticContract,
       taskContract,
       requirementContract,
       input.contextRefs ?? [],
@@ -86,6 +105,7 @@ class DefaultAgentKernelRun implements AgentKernelRun {
   constructor(
     private readonly terminalPermissions: Pick<TerminalPermissionCoordinator, 'completeRunContext'>,
     readonly runContext: DevSeekRunContext,
+    readonly semanticContract: TaskSemanticContract,
     readonly taskContract: TaskContract,
     readonly requirementContract: RequirementContract,
     readonly contextRefs: readonly KernelContextRef[],

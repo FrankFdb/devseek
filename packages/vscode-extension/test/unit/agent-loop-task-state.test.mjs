@@ -158,7 +158,7 @@ test('two-phase agent todos are delegated to the task state machine boundary', (
     /taskMessages\.push\(\.\.\.writeAuthority\.takePendingAndDrain\(\)\);\s*compactAgentLoopMessageHistory\(taskMessages\);/,
     'editor loops must compact message history before provider calls',
   );
-  assert.match(agentLoop, /createWriteAuthority\(userPrompt, callbacks\)/, 'legacy loop must share the live write-authority boundary');
+  assert.match(agentLoop, /createSemanticExecutionWriteAuthority\(\{/, 'legacy loop must share the live semantic write-authority boundary');
   assert.ok((agentLoop.match(/writeAuthority\.drainAfterProvider\(\)/g) ?? []).length >= 3, 'every legacy provider path must drain in-flight steers');
   assert.equal((agentLoop.match(/authorizeFullFileApply\(\)/g) ?? []).length, 2, 'initial and retry full-file writes must each re-authorize');
   assert.match(
@@ -409,7 +409,7 @@ test('agentic write revocation only blocks mutating tool attempts, not read-only
   ]), true);
 });
 
-test('R3-03 shared write authority publishes steer TaskContract revision receipts', () => {
+test('R3-03 shared write authority publishes steer semantic contract revision receipts', () => {
   const steer = '继续，但不要再改 old.txt，改为只创建 new.txt。';
   let polls = 0;
   const authority = createWriteAuthority('请创建 old.txt。', {
@@ -433,13 +433,14 @@ test('R3-03 shared write authority publishes steer TaskContract revision receipt
   const messages = authority.drainAfterProvider();
 
   assert.equal(messages.length, 1);
-  assert.match(messages[0].content, /devseek\.task-contract-revision\/v1/);
+  assert.match(messages[0].content, /devseek\.semantic-contract-revision\/v1/);
+  assert.match(messages[0].content, /devseek\.task-semantic-contract\/v3/);
   assert.match(messages[0].content, /effect-old-write/);
   assert.match(messages[0].content, /new\.txt/);
   assert.doesNotMatch(messages[0].content, /继续未提交任务：old\.txt/);
-  assert.equal(authority.taskContractRevision.version, 'devseek.task-contract-revision/v1');
-  assert.deepEqual(authority.taskContractRevision.blockedReplayEffectIds, ['effect-old-write']);
-  assert.ok(authority.taskContractRevision.pendingTaskHints.some(item => item.includes('new.txt')));
+  assert.equal(authority.semanticContractRevision.version, 'devseek.semantic-contract-revision/v1');
+  assert.deepEqual(authority.semanticContractRevision.blockedReplayEffectIds, ['effect-old-write']);
+  assert.ok(authority.semanticContractRevision.pendingTaskHints.some(item => item.includes('new.txt')));
 });
 
 test('two-phase agent history is evidence based, not extension-level thin summary', () => {
@@ -1031,6 +1032,7 @@ test('task todo ledger: read-only source-fact answers settle without an artifact
     ].join('\n'),
     taskComplete: true,
     workspaceRoot: '/workspace',
+    evidenceRefs: [{ kind: 'read', sourcePath }],
   });
 
   assert.equal(settled.completed, true);

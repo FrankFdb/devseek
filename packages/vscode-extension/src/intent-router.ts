@@ -1,6 +1,8 @@
 import { parseGeneratedArtifacts } from './generated-file-parser';
 import { ExecutionMode, ToolKind } from './intent/intent-types';
 import { routeTaskIntent } from './task-intent-router';
+import type { TaskSemanticContract } from './task-semantic-contract';
+import type { TaskSemanticResolutionContext } from './intent/task-semantic-contract-service';
 import { hasExplicitWorkspaceFilePath } from './workspace/path-patterns';
 
 export type ChatIntentKind = 'chat' | 'code-change';
@@ -8,6 +10,7 @@ export type AutoApplyPolicy = 'conservative' | 'balanced' | 'aggressive';
 export { ExecutionMode, ToolKind };
 
 export interface ChatIntentDecision {
+  semanticContract: TaskSemanticContract;
   kind: ChatIntentKind;
   mode: ExecutionMode;
   addStructuredHint: boolean;
@@ -40,10 +43,14 @@ const RESPONSE_DECLINE_RE = /(无法|不能|抱歉|仅供参考|示例|example|�
  * - smalltalk/qa/inspect/plan are exposed as historical "chat" to prevent
  *   accidental auto-apply while read-only agent workflows are introduced.
  */
-export function decideChatIntent(prompt: string): ChatIntentDecision {
-  const route = routeTaskIntent(prompt);
+export function decideChatIntent(
+  prompt: string,
+  semanticContext?: TaskSemanticResolutionContext,
+): ChatIntentDecision {
+  const route = routeTaskIntent(prompt, semanticContext);
 
   return {
+    semanticContract: route.semanticContract,
     kind: route.chatKind,
     mode: route.mode,
     addStructuredHint: route.chatKind === 'code-change',

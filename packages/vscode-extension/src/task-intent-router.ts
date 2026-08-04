@@ -3,11 +3,14 @@ import { classifyIntent } from './intent/intent-classifier';
 import type { ExecutionMode, IntentClassification, ToolKind } from './intent/intent-types';
 import { isMutatingExecutionMode } from './intent/execution-mode-policy';
 import {
-  buildTaskSemanticContract,
   shouldRunCppValidationForContract,
   shouldValidateNonCodeFilesForContract,
   type TaskSemanticContract,
 } from './task-semantic-contract';
+import {
+  resolveTaskSemanticContract,
+  type TaskSemanticResolutionContext,
+} from './intent/task-semantic-contract-service';
 
 export type TaskIntentFamily =
   | 'smalltalk'
@@ -73,9 +76,17 @@ export interface TaskIntentRoute {
   allowedToolKinds: ToolKind[];
 }
 
-export function routeTaskIntent(promptText: string): TaskIntentRoute {
+export function routeTaskIntent(
+  promptText: string,
+  context: TaskSemanticResolutionContext = {},
+): TaskIntentRoute {
   const prompt = String(promptText || '').trim();
-  const semanticContract = buildTaskSemanticContract(prompt);
+  const semanticContract = resolveTaskSemanticContract(prompt, context);
+  return routeTaskSemanticContract(semanticContract);
+}
+
+export function routeTaskSemanticContract(semanticContract: TaskSemanticContract): TaskIntentRoute {
+  const prompt = semanticContract.prompt;
   const classification = classifyIntent(semanticContract);
   const simpleFile = semanticContract.mutation.prohibited
     ? undefined
@@ -101,7 +112,6 @@ export function routeTaskIntent(promptText: string): TaskIntentRoute {
   const commandEvidenceRequired = !safetyRefusal && (runtimeRequired
     || semanticContract.validation.compileRequested
     || semanticContract.validation.testRequested
-    || family === 'terminal-validation'
     || (fileCheckRequired && semanticContract.validation.requested));
 
   return {
@@ -207,6 +217,7 @@ function isReadOnlyRoute(
   semanticContract: TaskSemanticContract,
 ): boolean {
   if (semanticContract.mutation.requested && !semanticContract.mutation.prohibited) return false;
+  if (semanticContract.read.requested) return true;
   if (semanticContract.kind === 'read-only') return true;
   if (classification.blockers.includes('explicit-no-change')) return true;
   return classification.mode === 'inspect' || classification.mode === 'plan';

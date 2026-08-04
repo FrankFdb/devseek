@@ -2,6 +2,8 @@ import * as fs from 'fs';
 import * as nodePath from 'path';
 import * as vscode from 'vscode';
 import type { AgentTask } from '../agent-task-decomposer';
+import type { TaskSemanticContract } from '../task-semantic-contract';
+import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
 import type { ChatMessage } from '../llm/types';
 import type { ExecutionMode } from '../intent/intent-types';
 import { buildAgenticHistoryText, buildAgenticQualityGateForHistory } from './agentic-history';
@@ -10,7 +12,6 @@ import { coalesceWrittenFileEvidence } from './completion-evidence';
 import type { AgentLoopCallbacks, AgentLoopResult } from './loop-types';
 import { tryExecuteMarkdownDeliverableTask } from './markdown-deliverable-task';
 import {
-  buildTaskContract,
   getSourceClaimArtifactContractIssue,
   hasSourceClaimArtifactContract,
 } from './task-contract';
@@ -38,6 +39,7 @@ export async function tryRunGroundedMarkdownAgenticTask(
   chatWithMessages: GroundedMarkdownChatWithMessages,
   externalEvidencePaths: readonly string[] = [],
   sessionContextText = '',
+  semanticContract?: TaskSemanticContract,
 ): Promise<AgentLoopResult | undefined> {
   if (workflowMode !== 'edit') return undefined;
   // Attachments and free-text session history are not source-claim evidence.
@@ -45,7 +47,8 @@ export async function tryRunGroundedMarkdownAgenticTask(
   // stale context could divert it into an unverified simple/generic writer.
   void externalEvidencePaths;
   void sessionContextText;
-  const contract = buildTaskContract(userPrompt);
+  const effectiveSemanticContract = semanticContract ?? resolveTaskSemanticContract(userPrompt);
+  const contract = effectiveSemanticContract.taskContract;
   // Source-claim artifact obligations are security-sensitive even when the
   // user's mutation verb is unfamiliar. Route them here or fail closed rather
   // than letting a generic writer bypass ArtifactClaim verification.
@@ -76,6 +79,7 @@ export async function tryRunGroundedMarkdownAgenticTask(
     workspaceRoot: vscode.Uri.file(workspaceRoot),
     effectiveAbsPath: absPath,
     callbacks,
+    semanticContract: effectiveSemanticContract,
     chat: async messages => (await chatWithMessages(
       messages,
       mode,
@@ -97,7 +101,14 @@ export async function tryRunGroundedMarkdownAgenticTask(
       '源码事实报告未进入受验证的 Markdown 执行器，已安全阻止通用写入回退。',
     );
   }
-  return settleGroundedMarkdownAgenticResult(userPrompt, task, workspaceRoot, callbacks, result);
+  return settleGroundedMarkdownAgenticResult(
+    userPrompt,
+    task,
+    workspaceRoot,
+    callbacks,
+    result,
+    effectiveSemanticContract,
+  );
 }
 
 async function failGroundedMarkdownRouting(
@@ -171,10 +182,11 @@ async function settleGroundedMarkdownAgenticResult(
   workspaceRoot: string,
   callbacks: AgentLoopCallbacks,
   result: TaskExecutionResult,
+  semanticContract: TaskSemanticContract,
 ): Promise<AgentLoopResult> {
   const artifactGrounding = new ArtifactGroundingCollector(callbacks, workspaceRoot);
   const settlementGrounding = artifactGrounding.captureTask(userPrompt, result);
-  const contract = buildTaskContract(userPrompt);
+  const contract = semanticContract.taskContract;
   const latest = result.verificationResults?.at(-1);
   const expectedSymbols = new Set(contract.evidenceRequirements.map(requirement => requirement.symbol));
   const writtenFiles = coalesceWrittenFileEvidence(result.writtenFiles ?? [], workspaceRoot);
@@ -190,6 +202,7 @@ async function settleGroundedMarkdownAgenticResult(
     failedReason: result.failedReason,
     terminalEvidence: result.terminalEvidence,
     workspaceRoot,
+    semanticContract,
     ...settlementGrounding,
   });
   const failed = settlement.failed || !settlement.completed;

@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as nodePath from 'path';
+import type { DirectVisibleResponsePublisher } from './direct-visible-response-service';
 
 export interface ProjectInitDraftInput {
   workspaceRoot: string;
@@ -18,6 +19,33 @@ export interface ProjectInitDraft {
 
 const RULES_REL_PATH = '.devseek/rules.md';
 const INIT_RE = /^\/init(?:\s|$)|^(?:初始化|生成|创建).*(?:devseek|项目).*(?:指令|规则)/i;
+
+export interface ProjectInitTurnInput {
+  userDisplay: string;
+  prompt: string;
+  workspaceRoot?: string;
+  publisher: DirectVisibleResponsePublisher;
+  images?: string[];
+  newSession: boolean;
+  suppressUserMessage: boolean;
+}
+
+export function tryPublishProjectInitTurn(input: ProjectInitTurnInput): boolean {
+  if (!isProjectInitRequest(input.userDisplay) && !isProjectInitRequest(input.prompt)) return false;
+  const responseText = input.workspaceRoot
+    ? renderProjectInitDraftMarkdown(new ProjectInitService().generateDraft({ workspaceRoot: input.workspaceRoot }))
+    : '请先打开一个工作区，再使用 `/init` 生成 DevSeek 项目指令草稿。';
+  input.publisher.publish({
+    userDisplay: input.userDisplay,
+    userMessagePrompt: input.prompt,
+    responsePrompt: input.prompt,
+    responseText,
+    images: input.images,
+    newSession: input.newSession,
+    suppressUserMessage: input.suppressUserMessage,
+  });
+  return true;
+}
 
 export class ProjectInitService {
   generateDraft(input: ProjectInitDraftInput): ProjectInitDraft {

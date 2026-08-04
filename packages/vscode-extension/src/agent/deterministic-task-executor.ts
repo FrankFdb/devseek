@@ -12,9 +12,10 @@ import {
 } from './isolated-artifact-write-scope';
 import {
   authorizeAgentFileWriteContract,
-  buildTaskContract,
   hasSourceClaimArtifactContract,
 } from './task-contract';
+import type { TaskSemanticContract } from '../task-semantic-contract';
+import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-service';
 
 export interface DeterministicTaskResult {
   applied: boolean;
@@ -33,11 +34,13 @@ export async function tryExecuteDeterministicCreateTask(input: {
   workspaceRoot: vscode.Uri;
   effectiveAbsPath?: string;
   userPrompt?: string;
+  semanticContract?: TaskSemanticContract;
   callbacks: AgentLoopCallbacks;
 }): Promise<DeterministicTaskResult | undefined> {
   const { task, callbacks } = input;
   if (task.action !== 'create' || task.expectedContent === undefined) return undefined;
-  const requestContract = buildTaskContract(input.userPrompt || task.desc);
+  const requestContract = input.semanticContract?.taskContract
+    ?? resolveTaskSemanticContract(input.userPrompt || task.desc).taskContract;
   // Recovery/checkpoint content is not source evidence. Source-backed Markdown
   // must fall through to the grounded executor before any bytes are written.
   if (hasSourceClaimArtifactContract(requestContract)) return undefined;

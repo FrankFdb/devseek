@@ -5,9 +5,9 @@ import type { AgentTask, AgentTaskAction } from '../agent-task-decomposer';
 import { isCanonicalPathInsideRoot } from '../workspace/path-containment';
 import type { AgentStatusEvent } from './events';
 import {
+  assessMissingCompletionEvidence,
   coalesceWrittenFileEvidence,
   findBlockingTerminalFailureEvidence,
-  getMissingCompletionEvidence,
   getUnsupportedSummaryFileClaims,
   hasReadOnlyAnswerEvidence,
   requiresCodeArtifactForEvidence,
@@ -18,6 +18,7 @@ import {
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './completion-evidence';
+import type { TaskSemanticContract } from '../task-semantic-contract';
 import type { TodoItem } from './evidence-recovery';
 import {
   runtimeStateCanDeliver,
@@ -56,6 +57,7 @@ interface TaskEvidence {
   evidenceRefs?: EvidenceRef[];
   artifactClaims?: ArtifactClaim[];
   verificationResults?: VerificationResult[];
+  semanticContract?: TaskSemanticContract;
 }
 
 interface FinalTaskEvidence {
@@ -358,11 +360,14 @@ export function appendQualityGateTodo(todos: TodoItem[], status: Extract<TodoSta
   ];
 }
 
-export function inferInitialAgenticTodos(userPrompt: string): TodoItem[] {
+export function inferInitialAgenticTodos(
+  userPrompt: string,
+  semanticContract?: TaskSemanticContract,
+): TodoItem[] {
   const taskShape = classifyAgentTaskShape(userPrompt);
   if (taskShape.shape === 'existing-project' && !taskShape.readOnlyLikely) {
-    const needsCode = requiresCodeArtifactForEvidence(userPrompt);
-    const needsCommand = requiresCommandEvidence(userPrompt)
+    const needsCode = requiresCodeArtifactForEvidence(userPrompt, semanticContract);
+    const needsCommand = requiresCommandEvidence(userPrompt, semanticContract)
       || /(?:自闭环|测试|验证|编译|运行|代码实现|实现代码|程序|compile|build|test|run|verify)/i.test(userPrompt);
     const items: LinearTodoInput[] = [
       { title: '项目调查：事实矩阵、通讯链路和集成锚点', status: 'in-progress' },
@@ -378,11 +383,11 @@ export function inferInitialAgenticTodos(userPrompt: string): TodoItem[] {
   }
 
   const items: LinearTodoInput[] = [];
-  const needsRead = requiresReadEvidence(userPrompt);
-  const needsFile = requiresFileChangeEvidence(userPrompt);
-  const needsCode = requiresCodeArtifactForEvidence(userPrompt);
-  const needsFileCheck = requiresFileCheckEvidence(userPrompt);
-  const needsCommand = !needsFileCheck && (requiresCommandEvidence(userPrompt) || /(?:程序|代码|动画|运行效果|效果)/i.test(userPrompt));
+  const needsRead = requiresReadEvidence(userPrompt, semanticContract);
+  const needsFile = requiresFileChangeEvidence(userPrompt, semanticContract);
+  const needsCode = requiresCodeArtifactForEvidence(userPrompt, semanticContract);
+  const needsFileCheck = requiresFileCheckEvidence(userPrompt, semanticContract);
+  const needsCommand = !needsFileCheck && (requiresCommandEvidence(userPrompt, semanticContract) || /(?:程序|代码|动画|运行效果|效果)/i.test(userPrompt));
   if (needsRead) {
     items.push({ title: '检查/读取目标文件', status: 'in-progress' });
   }
@@ -404,12 +409,18 @@ export function inferInitialAgenticTodos(userPrompt: string): TodoItem[] {
 function getTaskMissingCompletionEvidence(task: AgentTask, evidence: TaskEvidence): string[] {
   if (!isReadOnlyAgentTaskAction(evidence.action)) return [];
   if (evidence.action === 'respond') return [];
-  const missing = getMissingCompletionEvidence(
-    task.desc || task.file || '',
-    [{ title: task.desc || task.file || '' }],
-    evidence.writtenFiles ?? [],
-    evidence.terminalEvidence ?? [],
-  );
+  const missing = assessMissingCompletionEvidence({
+    userPrompt: task.desc || task.file || '',
+    todos: [{ title: task.desc || task.file || '' }],
+    writtenFiles: evidence.writtenFiles ?? [],
+    terminalEvidence: evidence.terminalEvidence ?? [],
+    readEvidencePaths: (evidence.evidenceRefs ?? [])
+      .filter(ref => ref.kind === 'read' && Boolean(ref.sourcePath))
+      .map(ref => ref.sourcePath as string),
+    workspaceRoot: evidence.workspaceRoot,
+    verificationResults: evidence.verificationResults,
+    semanticContract: evidence.semanticContract,
+  });
   if (!hasReadOnlyAnswerOrTerminalEvidence(evidence)) {
     missing.push('分析结论');
   }
@@ -453,9 +464,13 @@ function isRecoverableFailureKind(kind: TaskFailureKind | undefined): boolean {
 
 function getArtifactGroundingFailure(task: AgentTask, evidence: TaskEvidence): string | undefined {
   const semanticPrompt = [...new Set([task.desc, evidence.promptText].filter(Boolean))].join('\n');
-  const contract = resolveTaskContractSourcePaths(buildTaskContract(semanticPrompt), (evidence.evidenceRefs || []).flatMap(ref => (
+  const contract = resolveTaskContractSourcePaths(
+    evidence.semanticContract?.taskContract ?? buildTaskContract(semanticPrompt),
+    (evidence.evidenceRefs || []).flatMap(ref => (
     ref.sourcePath && ref.kind !== 'artifact-readback' ? [ref.sourcePath] : []
-  )), evidence.workspaceRoot);
+    )),
+    evidence.workspaceRoot,
+  );
   const requirements = contract.evidenceRequirements;
   const writesMarkdownArtifact = [task.file, task.absPath, evidence.path]
     .some(pathValue => /\.(?:md|markdown)$/i.test(String(pathValue || '')));

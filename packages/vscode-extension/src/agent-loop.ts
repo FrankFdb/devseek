@@ -53,12 +53,11 @@ import { applyGeneratedArtifactPathWithPrompt } from './workspace-applier';
 import { resolveWorkspaceWritePath } from './workspace/path-resolver';
 import { McpToolRef } from './mcp/client';
 import { getProjectRulesSync, wrapRulesAsContext, getProjectMemorySync, wrapMemoryAsContext } from './project-rules';
-import { getCommandHints } from './agent-learner';
 import {
   findFirstToolCallStart,
 } from './agent/fake-tool-parser';
 import { chatViaProvider, chatWithMessages } from './agent/loop-chat';
-import { createWriteAuthority, type WriteAuthority } from './agent/write-authority';
+import type { WriteAuthority } from './agent/write-authority';
 import { buildLocalRespondTaskMessage, buildToolsSuffix } from './agent/agent-prompt-builder';
 import { isNetworkError } from './agent/network-error';
 import {
@@ -110,11 +109,13 @@ import { shouldRequestManualReviewForRun } from './agent/manual-review-validatio
 import { decideAgentRuntimeTurn } from './agent/agent-runtime-turn-policy';
 import { WorkspaceEditService, type WorkspaceTextFileBaseline } from './workspace/edit-service';
 import { buildTaskShapeGuidancePrompt } from './agent/task-shape';
-import { routeTaskIntent } from './task-intent-router';
+import { routeTaskIntent, routeTaskSemanticContract } from './task-intent-router';
+import type { TaskSemanticContract } from './task-semantic-contract';
+import { createSemanticExecutionWriteAuthority } from './agent/semantic-execution-context';
 import { VerificationPlanner, shouldRunCppValidation } from './app/verification-planner';
 import { normalizeRepairRoundBudget } from './app/bounded-repair-policy';
 import { ValidationService } from './workspace/validation-service';
-import type { ExecutionMode } from './intent/intent-types';
+import { buildAnalyzeTaskPrompt } from './agent/analyze-task-prompt';
 import { ArtifactGroundingCollector } from './agent/artifact-grounding-lifecycle';
 import { buildAgentLoopResult } from './agent/agent-loop-result';
 import {
@@ -336,117 +337,6 @@ function applySearchReplaceBlocks(
 // ----------------------------------------------------------------
 
 /**
- * Detects required compiler/linker flags from C/C++ source content.
- * Used to automatically add -lGL -lGLU -lglut etc. when the AI compiles OpenGL programs.
- */
-function scanLibFlagsFromContent(content: string): string {
-  const flags = new Set<string>();
-  if (/^\s*#include\s+[<"][^>"]*\bGL\/(gl|glu)\.h[>"]/im.test(content))       { flags.add('-lGL'); flags.add('-lGLU'); }
-  if (/^\s*#include\s+[<"][^>"]*\bGL\/(glut|freeglut)\.h[>"]/im.test(content)) { flags.add('-lglut'); flags.add('-lGL'); flags.add('-lGLU'); }
-  if (/^\s*#include\s+[<"][^>"]*\bGLFW\/glfw3\.h[>"]/im.test(content))        { flags.add('-lglfw'); }
-  if (/^\s*#include\s+[<"][^>"]*\bglew\.h[>"]/im.test(content))               { flags.add('-lGLEW'); }
-  if (/^\s*#include\s+<(math\.h|cmath)>/im.test(content))                     { flags.add('-lm'); }
-  if (/^\s*#include\s+<pthread\.h>/im.test(content))                          { flags.add('-lpthread'); }
-  return [...flags].join(' ');
-}
-
-/**
- * Prompt for analyze/explain tasks: asks for text analysis, no code output.
- * Current file content is included so the LLM analyses the actual code.
- */
-// G3: added taskIndex/taskTotal/mcpTools so all analyze tasks receive tool definitions
-// G4: callers now always use multi-round loop regardless of exec intent
-function buildAnalyzePrompt(
-  userPrompt: string,
-  task: AgentTask,
-  currentContent: string,
-  workdirOverride?: string,
-  taskIndex: number = 1,
-  taskTotal: number = 1,
-  mcpTools?: McpToolRef[],
-  executionMode?: ExecutionMode,
-): string {
-  const taskIntent = routeTaskIntent(userPrompt);
-  const basename = nodePath.basename(task.file);
-  const ext = (basename.split('.').pop() ?? '').toLowerCase();
-  const allowTerminalTools = executionMode === 'edit' || executionMode === 'run' || executionMode === 'destructive';
-  const allowWorkspaceMutationTools = executionMode === 'edit' || executionMode === 'destructive';
-  const langMap: Record<string, string> = {
-    cpp: 'cpp', cc: 'cpp', h: 'c', c: 'c', hpp: 'cpp',
-    ts: 'typescript', js: 'javascript', py: 'python', md: 'markdown',
-  };
-  const lang = langMap[ext] ?? ext;
-
-  const contentSection = currentContent
-    ? [`【当前文件内容】`, '```' + lang, currentContent, '```', ''].join('\n')
-    : '';
-
-  // Inject project rules + AI memory if present
-  const _analyzeRules = getProjectRulesSync();
-  const _analyzeMemory = getProjectMemorySync({
-    prompt: userPrompt,
-    relatedPaths: [task.absPath ?? task.file, workdirOverride].filter((pathValue): pathValue is string => Boolean(pathValue)),
-  });
-  const _analyzeContext = [
-    _analyzeRules ? wrapRulesAsContext(_analyzeRules) : '',
-    _analyzeMemory ? wrapMemoryAsContext(_analyzeMemory) : '',
-  ].filter(Boolean).join('\n\n');
-
-  // Provide a focused hint only for runnable source-file tasks. Plan/inspect
-  // prompts often mention "执行/实现" as business context; they must not receive
-  // a bogus compile command for a directory or requirements document.
-  const hasRunnableFileExt = /^(?:c|cc|cpp|cxx|py|js)$/.test(ext);
-  const isExecTask = allowTerminalTools && hasRunnableFileExt && /编译|运行|执行|compile|build|run\b|execute/i.test(task.desc + userPrompt);
-  const taskDir = workdirOverride ?? (task.absPath ? nodePath.dirname(task.absPath) : '');
-  const workdirHint = taskDir ? `, "workdir":"${taskDir}"` : '';
-  const noExt = basename.replace(/\.[^.]+$/, '');
-  // Use absolute source/output paths — command is correct even if AI omits workdir
-  const srcArg = task.absPath ? `'${task.absPath.replace(/'/g, "'\\''")}'` : basename;
-  const exeArg = taskDir ? `'${nodePath.join(taskDir, noExt).replace(/'/g, "'\\''")}'` : noExt;
-  // Auto-detect required library flags from #include directives (e.g. -lGL -lGLU -lglut)
-  const libFlags = isExecTask ? scanLibFlagsFromContent(currentContent) : '';
-  const libFlagsSuffix = libFlags ? ` ${libFlags}` : '';
-  let defaultCmd = `gcc ${srcArg} -o ${exeArg}${libFlagsSuffix} && ${exeArg}`;
-  if (/\.cpp$|\.cc$/i.test(basename)) defaultCmd = `g++ -std=c++17 ${srcArg} -o ${exeArg}${libFlagsSuffix} && ${exeArg}`;
-  else if (/\.py$/i.test(basename)) defaultCmd = `python3 ${srcArg}`;
-  else if (/\.js$/i.test(basename)) defaultCmd = `node ${srcArg}`;
-  const learnedCmds = isExecTask ? getCommandHints('compile') : '';
-  const learnedCmdsSection = learnedCmds
-    ? `\n【已知成功命令（优先使用）】\n${learnedCmds}\n`
-    : '';
-  const execSection = isExecTask
-    ? `\n【编译/运行提示】如需执行，可直接使用 run_terminal 工具（命令中必须使用绝对路径，严禁使用相对路径，以确保不同工作目录下路径正确）：\n[TOOL:run_terminal {"command":"${defaultCmd}"${workdirHint}}]\n（命令可按需修改，必须通过工具调用执行，不要只描述步骤）\n${learnedCmdsSection}`
-    : '';
-
-  return [
-    allowTerminalTools
-      ? `你是代码分析智能体，请分析文件 ${basename}。你有完整工具访问权限，可以主动读取相关文件、搜索代码、执行命令。`
-      : `你是代码分析智能体，请分析 ${basename}。当前为只读模式，只能读取文件、搜索代码和列目录，不能执行终端命令或修改工作区。`,
-    ``,
-    _analyzeContext,
-    `【用户需求背景】`,
-    userPrompt,
-    ``,
-    `【本次任务】`,
-    `文件: ${basename}`,
-    `目标: ${task.desc}`,
-    ``,
-    contentSection,
-    execSection,
-    `【分析要求】`,
-    `- 若需要查看相关文件、搜索代码引用，请主动调用工具`,
-    `- 给出有具体证据的分析（文件路径/行号/函数名）`,
-    `- 如有具体问题，明确指出问题位置和改进建议`,
-    `- 使用简体中文回复`,
-    buildToolsSuffix(taskIndex, taskTotal, mcpTools, taskDir, {
-      includeTerminal: allowTerminalTools,
-      includeWorkspaceMutationTools: allowWorkspaceMutationTools,
-      taskIntent,
-    }),
-  ].join('\n');
-}
-
-/**
  * Editor prompt for modify/create tasks.
  *
  * CRITICAL: currentContent is injected directly so the LLM knows the exact
@@ -464,8 +354,12 @@ function buildEditorPrompt(
   analysisContext?: string,
   workdirOverride?: string,
   wsRootPath?: string,
+  semanticContract?: TaskSemanticContract,
+  projectRulesText?: string,
 ): string {
-  const taskIntent = routeTaskIntent(userPrompt);
+  const taskIntent = semanticContract
+    ? routeTaskSemanticContract(semanticContract)
+    : routeTaskIntent(userPrompt);
   const basename = nodePath.basename(task.file);
   // Use workspace-relative path (e.g. 'code/3d_sphere.cpp') so the LLM knows the real
   // directory and won't guess a wrong one (e.g. 'src/') in the output file header.
@@ -499,7 +393,7 @@ function buildEditorPrompt(
     : '';
 
   // Project rules from .devseek/rules.md — injected if present
-  const projectRules = getProjectRulesSync();
+  const projectRules = projectRulesText ?? getProjectRulesSync();
   const projectRulesSection = projectRules ? [wrapRulesAsContext(projectRules), ``].join('\n') : '';
   const projectMemory = getProjectMemorySync({
     prompt: userPrompt,
@@ -729,7 +623,18 @@ async function executeTask(
     if (deterministicResult) return deterministicResult;
 
     // G3: pass taskIndex/taskTotal/mcpTools so the prompt includes full tool definitions
-    const analyzePrompt = buildAnalyzePrompt(writeAuthority.currentPrompt, task, currentContent, analyzeWorkdir, taskIndex, allTasks.length, callbacks.mcpToolRefs, callbacks.executionMode);
+    const analyzePrompt = buildAnalyzeTaskPrompt(
+      writeAuthority.currentPrompt,
+      task,
+      currentContent,
+      analyzeWorkdir,
+      taskIndex,
+      allTasks.length,
+      callbacks.mcpToolRefs,
+      callbacks.executionMode,
+      writeAuthority.semanticContract,
+      writeAuthority.projectInstructionsText,
+    );
     let analyzeRaw = '';
 
     // G4+G5: unified multi-round tool loop for ALL analyze/explain/explore tasks.
@@ -1081,6 +986,7 @@ async function executeTask(
     workspaceRoot,
     effectiveAbsPath: earlyEffectiveAbsPath,
     userPrompt: writeAuthority.currentPrompt,
+    semanticContract: writeAuthority.semanticContract,
     callbacks,
   });
   if (deterministicCreate) return deterministicCreate;
@@ -1093,6 +999,7 @@ async function executeTask(
     workspaceRoot,
     effectiveAbsPath: earlyEffectiveAbsPath,
     callbacks,
+    semanticContract: writeAuthority.semanticContract,
     chat: async (messages) => {
       const { text } = await chatWithMessages(
         messages,
@@ -1125,6 +1032,8 @@ async function executeTask(
   const editorPrompt = buildEditorPrompt(
     writeAuthority.currentPrompt, task, allTasks, currentContent, taskIndex, allTasks.length,
     callbacks.mcpToolRefs, analysisContext, editorWorkdir, workspaceRoot.fsPath,
+    writeAuthority.semanticContract,
+    writeAuthority.projectInstructionsText,
   );
 
   // ── Multi-round mini-loop (Copilot/Cursor style) ──────────────
@@ -1940,12 +1849,19 @@ export async function runAgentLoop(
   callbacks: ExecutionScopedAgentLoopCallbacks,
   analysisContext?: string,
   startFromIndex = 0,
+  semanticContract?: TaskSemanticContract,
 ): Promise<AgentLoopResult> {
   if (!callbacks.executionMode) {
     throw new Error('agent-loop-boundary: an explicit executionMode/tool policy is required');
   }
   const executionMode = callbacks.executionMode;
-  const writeAuthority = createWriteAuthority(userPrompt, callbacks);
+  const writeAuthority = createSemanticExecutionWriteAuthority({
+    userPrompt,
+    callbacks,
+    semanticContract,
+    workspaceRoots: [workspaceRoot.fsPath],
+    relatedPaths: tasks.flatMap(task => [task.absPath, task.file]),
+  });
   callbacks = { ...writeAuthority.callbacks, executionMode };
   const policyResult = enforceAgentTaskExecutionPolicy(tasks, {
     mode: callbacks.executionMode,
@@ -2092,6 +2008,7 @@ export async function runAgentLoop(
       failedReason: result.failedReason,
       terminalEvidence: result.terminalEvidence,
       workspaceRoot: workspaceRoot.fsPath,
+      semanticContract: writeAuthority.semanticContract,
       ...taskGrounding,
     };
     if (result.terminalEvidence?.length) {
@@ -2212,7 +2129,10 @@ export async function runAgentLoop(
     // such as exitCode=139/Segmentation fault instead of stopping at compile-only.
     const wantRun = tasks.some(
       t => t.action === 'analyze' && /run_terminal|运行程序|执行程序|compile.*run|build.*run/i.test(t.desc)
-    ) || requiresRuntimeValidation(writeAuthority.currentPrompt);
+    ) || requiresRuntimeValidation(
+      writeAuthority.currentPrompt,
+      writeAuthority.semanticContract,
+    );
     legacyValidationOutcome = await runValidation(modifiedPaths, workspaceRoot, callbacks, wantRun, writeAuthority.currentPrompt, sessionHistory);
     if (legacyValidationOutcome.evidenceOperationId) verificationIds.push(legacyValidationOutcome.evidenceOperationId);
     appendValidationEvidence(allTerminalEvidence, legacyValidationOutcome);

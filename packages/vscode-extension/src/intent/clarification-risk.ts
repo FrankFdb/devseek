@@ -1,4 +1,4 @@
-import { buildTaskContract, type TaskContract } from '../agent/task-contract';
+import type { TaskSemanticContract } from '../task-semantic-contract';
 import {
   buildIntentRevisionLineage,
   type IntentRevisionLineage,
@@ -24,7 +24,7 @@ export interface ClarificationRiskEvidence {
     | 'clarification-answer-required'
     | 'clarification-answer-merged'
     | 'clarification-answer-insufficient'
-    | 'task-contract-merged';
+    | 'semantic-contract-merged';
   source: 'lineage' | 'orientation' | 'answer' | 'contract';
   value: string;
 }
@@ -41,7 +41,7 @@ export interface ClarificationRiskDecision {
   status: ClarificationRiskStatus;
   lineage: IntentRevisionLineage;
   effectiveLineage: IntentRevisionLineage;
-  taskContract: TaskContract;
+  semanticContract: TaskSemanticContract;
   clarification: {
     required: boolean;
     highImpact: boolean;
@@ -54,7 +54,6 @@ export interface ClarificationRiskDecision {
 }
 
 const PATH_RE = /(?:^|[^A-Za-z0-9_.@+~/-])((?:(?:\.{0,2}\/)?[\w.@+~-]+(?:\/[\w.@+~-]+)+|[\w.@+~-]+\.(?:cxx|cpp|cc|c|hxx|hpp|hh|h|tsx|ts|jsx|js|mjs|cjs|py|json|ya?ml|toml|xml|txt|log|csv|ini|conf|cfg|proto|graphql|sh|bash|zsh|ps1|sql|cmake|gradle|markdown|md)))(?=$|[^A-Za-z0-9_.@+~/-])/gi;
-const SOURCE_CONTEXT_PATH_RE = /\.(?:cxx|cpp|cc|c|hxx|hpp|hh|h|tsx|ts|jsx|js|mjs|cjs|py|json|ya?ml|toml|xml|ini|conf|cfg|proto|graphql|sh|bash|zsh|ps1|sql|cmake|gradle)$/i;
 
 export function buildClarificationRiskDecision(input: ClarificationRiskInput): ClarificationRiskDecision {
   const prompt = String(input.prompt || input.lineage?.effectiveRevision.prompt || '').trim();
@@ -64,6 +63,8 @@ export function buildClarificationRiskDecision(input: ClarificationRiskInput): C
     committedEffects: input.committedEffects,
     knownPaths: input.knownPaths,
     authorizedExternalEffects: input.authorizedExternalEffects,
+    currentSemanticContract: input.currentSemanticContract,
+    projectInstructions: input.projectInstructions,
   });
   const answer = normalizeAnswer(input.clarificationAnswer);
   const highImpactQuestion = buildHighImpactQuestion(lineage);
@@ -102,7 +103,7 @@ export function buildClarificationRiskDecision(input: ClarificationRiskInput): C
       status: 'blocked',
       lineage,
       effectiveLineage: lineage,
-      taskContract: lineage.effectiveRevision.orientation.route.semanticContract.taskContract,
+      semanticContract: lineage.effectiveRevision.orientation.route.semanticContract,
       clarification: {
         required: true,
         highImpact: true,
@@ -122,9 +123,10 @@ export function buildClarificationRiskDecision(input: ClarificationRiskInput): C
       knownPaths: input.knownPaths,
       authorizedExternalEffects: input.authorizedExternalEffects,
       committedEffects: input.committedEffects,
+      projectInstructions: input.projectInstructions,
     })
     : lineage;
-  const taskContract = buildMergedTaskContract(effectiveLineage);
+  const semanticContract = effectiveLineage.effectiveRevision.orientation.route.semanticContract;
   const answerDidResolve = !effectiveLineage.effectiveRevision.orientation.requiresClarification;
   const status = resolveStatus(effectiveLineage, hasHighImpactClarification, answerDidResolve);
   const blockers = uniqueStrings([
@@ -142,9 +144,9 @@ export function buildClarificationRiskDecision(input: ClarificationRiskInput): C
     });
   }
   evidence.push({
-    kind: 'task-contract-merged',
+    kind: 'semantic-contract-merged',
     source: 'contract',
-    value: taskContract.taskShapes.join('+') || 'general',
+    value: semanticContract.taskContract.taskShapes.join('+') || 'general',
   });
 
   return {
@@ -154,7 +156,7 @@ export function buildClarificationRiskDecision(input: ClarificationRiskInput): C
     status,
     lineage,
     effectiveLineage,
-    taskContract,
+    semanticContract,
     clarification: {
       required: hasHighImpactClarification && !answerDidResolve,
       highImpact: hasHighImpactClarification,
@@ -210,23 +212,6 @@ function buildHighImpactQuestion(lineage: IntentRevisionLineage): ClarificationQ
   return undefined;
 }
 
-function buildMergedTaskContract(effectiveLineage: IntentRevisionLineage): TaskContract {
-  const contract = buildTaskContract(effectiveLineage.effectiveRevision.prompt);
-  const sourcePaths = uniqueStrings([
-    ...contract.verificationContract.requiredSourcePaths,
-    ...contract.inputs,
-    ...effectiveLineage.effectiveRevision.scope.targets,
-  ].filter(isSourceContextPath).map(normalizePathToken));
-
-  return {
-    ...contract,
-    verificationContract: {
-      ...contract.verificationContract,
-      requiredSourcePaths: sourcePaths,
-    },
-  };
-}
-
 function resolveStatus(
   effectiveLineage: IntentRevisionLineage,
   hadHighImpactClarification: boolean,
@@ -257,10 +242,6 @@ function appendScopeFromLineage(answer: string, lineage: IntentRevisionLineage):
 
 function answerHasPath(answer: string): boolean {
   return collectPaths(answer).length > 0;
-}
-
-function isSourceContextPath(value: string): boolean {
-  return SOURCE_CONTEXT_PATH_RE.test(stripTrailingPunctuation(value));
 }
 
 function collectPaths(text: string): string[] {

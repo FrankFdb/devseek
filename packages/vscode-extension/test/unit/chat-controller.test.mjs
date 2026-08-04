@@ -22,6 +22,34 @@ execSync(
 const req = createRequire(import.meta.url);
 const { ChatRouteController, getIntentRoutingText } = req(bundlePath);
 
+test('ChatRouteController: continued turn inherits target and narrows validation through semantic context', () => {
+  const controller = new ChatRouteController();
+  const previous = controller.decide({
+    userDisplay: '请修改 src/cache.ts，然后编译并测试。',
+    prompt: '请修改 src/cache.ts，然后编译并测试。',
+    files: [],
+    agentEnabled: true,
+  });
+  const continued = controller.decide({
+    userDisplay: '继续修改，但不要运行或测试。',
+    prompt: '继续修改，但不要运行或测试。',
+    files: [],
+    agentEnabled: true,
+    semanticContext: {
+      previous: previous.intent.semanticContract,
+      revision: { strategy: 'merge' },
+    },
+  });
+
+  assert.equal(continued.intent.mode, 'edit');
+  assert.deepEqual(continued.intent.semanticContract.mutation.targets, ['src/cache.ts']);
+  assert.equal(continued.intent.semanticContract.validation.runProhibited, true);
+  assert.equal(continued.intent.semanticContract.validation.runRequested, false);
+  assert.equal(continued.intent.semanticContract.validation.testRequested, false);
+  assert.ok(continued.intent.semanticContract.completion.doneIff.some(item => item.kind === 'code-written'));
+  assert.ok(!continued.intent.semanticContract.completion.doneIff.some(item => item.kind === 'run-passed'));
+});
+
 test('ChatRouteController: routes by visible user text, not attached prompt content', () => {
   const controller = new ChatRouteController();
   const decision = controller.decide({

@@ -2,7 +2,7 @@
  * Unit tests for R2-01C ClarificationRisk.
  *
  * Clarification risk owns whether a question is necessary and how a user answer
- * is merged back into the executable task contract.
+ * is merged back into the executable semantic contract.
  */
 
 import { test } from 'node:test';
@@ -54,7 +54,7 @@ test('ClarificationRisk: high-impact action ambiguity blocks until the user answ
   assert.ok(decision.evidence.some(item => item.kind === 'high-impact-ambiguity-detected'));
 });
 
-test('ClarificationRisk: clarification answer becomes the effective TaskContract', () => {
+test('ClarificationRisk: clarification answer becomes the effective semantic contract', () => {
   const blocked = buildClarificationRiskDecision({
     prompt: '帮我处理 src/cache.ts：maybe fix it, or just explain the risk，按你判断来。',
     knownPaths: ['src/cache.ts'],
@@ -72,10 +72,11 @@ test('ClarificationRisk: clarification answer becomes the effective TaskContract
   assert.equal(clarified.clarification.answered, true);
   assert.equal(clarified.effectiveLineage.revisionCount, 2);
   assert.equal(clarified.effectiveLineage.effectiveRevision.orientation.mode, 'inspect');
-  assert.ok(clarified.taskContract.taskShapes.includes('inspection'));
-  assert.ok(!clarified.taskContract.deliverables.includes('source-change'));
+  assert.ok(clarified.semanticContract.taskContract.taskShapes.includes('inspection'));
+  assert.ok(!clarified.semanticContract.taskContract.deliverables.includes('source-change'));
+  assert.equal(clarified.semanticContract.mutation.prohibited, true);
   assert.ok(clarified.evidence.some(item => item.kind === 'clarification-answer-merged'));
-  assert.ok(clarified.evidence.some(item => item.kind === 'task-contract-merged'));
+  assert.ok(clarified.evidence.some(item => item.kind === 'semantic-contract-merged'));
 });
 
 test('ClarificationRisk: missing target path asks for a corrected scope and merges the answer', () => {
@@ -98,7 +99,7 @@ test('ClarificationRisk: missing target path asks for a corrected scope and merg
   assert.equal(clarified.status, 'ready');
   assert.equal(clarified.allowedToExecute, true);
   assert.equal(clarified.effectiveLineage.effectiveRevision.orientation.mode, 'inspect');
-  assert.ok(clarified.taskContract.verificationContract.requiredSourcePaths.includes('src/cache.ts'));
+  assert.ok(clarified.semanticContract.taskContract.verificationContract.requiredSourcePaths.includes('src/cache.ts'));
 });
 
 console.log('\nClarification risk tests passed.\n');

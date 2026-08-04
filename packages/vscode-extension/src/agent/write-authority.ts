@@ -2,15 +2,19 @@ import type { ChatMessage } from '../llm/types';
 import {
   buildIntentRevisionLineage,
   type IntentRevisionEffectReceipt,
-  type IntentTaskContractRevision,
+  type IntentSemanticContractRevision,
 } from '../intent/intent-revision-lineage';
+import type { TaskSemanticContract } from '../task-semantic-contract';
+import type { TaskSemanticProjectInstructionInput } from '../intent/task-semantic-contract-service';
 import type { AgentLoopCallbacks } from './loop-types';
 import { buildUserSteerMessage, consumeUserSteerTexts, userSteerRevokesWrites } from './user-steer';
 
 export interface WriteAuthority {
   readonly callbacks: AgentLoopCallbacks;
   readonly currentPrompt: string;
-  readonly taskContractRevision: IntentTaskContractRevision;
+  readonly semanticContractRevision: IntentSemanticContractRevision;
+  readonly semanticContract: TaskSemanticContract;
+  readonly projectInstructionsText: string;
   readonly writeRevoked: boolean;
   drainAfterProvider(): ChatMessage[];
   takePendingAndDrain(): ChatMessage[];
@@ -18,6 +22,8 @@ export interface WriteAuthority {
 
 export interface WriteAuthorityOptions {
   committedEffects?: () => IntentRevisionEffectReceipt[];
+  initialSemanticContract?: TaskSemanticContract;
+  projectInstructions?: TaskSemanticProjectInstructionInput;
 }
 
 const WRITE_REVOKED_MUTATION_TOOL_NAMES = new Set([
@@ -46,8 +52,12 @@ export function createWriteAuthority(
   options: WriteAuthorityOptions = {},
 ): WriteAuthority {
   let currentPrompt = initialPrompt;
-  let lineage = buildIntentRevisionLineage({ prompt: initialPrompt });
-  let taskContractRevision = lineage.taskContractRevision;
+  let lineage = buildIntentRevisionLineage({
+    prompt: initialPrompt,
+    currentSemanticContract: options.initialSemanticContract,
+    projectInstructions: options.projectInstructions,
+  });
+  let semanticContractRevision = lineage.semanticContractRevision;
   let writeRevoked = userSteerRevokesWrites(initialPrompt);
   const pendingMessages: ChatMessage[] = [];
   const drain = (): ChatMessage[] => {
@@ -58,10 +68,11 @@ export function createWriteAuthority(
         previous: lineage,
         committedEffects: options.committedEffects?.() ?? [],
         prompt: text,
+        projectInstructions: options.projectInstructions,
       });
-      taskContractRevision = lineage.taskContractRevision;
+      semanticContractRevision = lineage.semanticContractRevision;
       writeRevoked = writeRevoked || userSteerRevokesWrites(text);
-      messages.push(buildUserSteerMessage(text, { taskContractRevision }));
+      messages.push(buildUserSteerMessage(text, { semanticContractRevision }));
     }
     const updates = messages
       .map(message => typeof message.content === 'string' ? message.content.trim() : '')
@@ -81,7 +92,11 @@ export function createWriteAuthority(
   return {
     callbacks: guardedCallbacks,
     get currentPrompt() { return currentPrompt; },
-    get taskContractRevision() { return taskContractRevision; },
+    get semanticContractRevision() { return semanticContractRevision; },
+    get semanticContract() { return semanticContractRevision.semanticContract; },
+    get projectInstructionsText() {
+      return semanticContractRevision.semanticContract.context.projectInstructions.content;
+    },
     get writeRevoked() { return writeRevoked; },
     drainAfterProvider: drain,
     takePendingAndDrain: () => [...pendingMessages.splice(0), ...drain()],

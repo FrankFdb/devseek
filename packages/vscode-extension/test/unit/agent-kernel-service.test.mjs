@@ -180,6 +180,10 @@ test('AgentKernelService: named request contracts enforce the kernel route', asy
   });
 
   assert.deepEqual(requests.map(request => request.route), ['exploratory', 'planned']);
+  assert.deepEqual(
+    requests.map(request => request.semanticContract?.version),
+    ['devseek.task-semantic-contract/v3', 'devseek.task-semantic-contract/v3'],
+  );
 });
 
 test('AgentKernelService: extension Surface does not own agent completion decisions', () => {
@@ -204,9 +208,12 @@ test('AgentKernelService: extension Surface does not own agent completion decisi
   assert.doesNotMatch(localExecutionRunner, /await\s+runAgent(?:ic)?Loop\s*\(/u);
   assert.doesNotMatch(extension, /from '\.\/app\/agent-run-settlement'/);
   assert.doesNotMatch(extension, /terminalPermissionCoordinator\.completeRunContext\(agentRunContext/);
-  assert.match(kernelService, /buildTaskContract\(input\.userPrompt\)/);
+  assert.match(kernelService, /resolveSemanticExecutionContext\(\{/);
+  assert.match(kernelService, /input\.taskContract \?\? semanticContract\.taskContract/);
+  assert.doesNotMatch(kernelService, /buildTaskContract\(/);
   assert.match(kernelService, /createDevSeekRunContext\(\{[\s\S]*taskContract/);
-  assert.match(kernelService, /this\.execution\.execute\(request\)/);
+  assert.match(kernelService, /semanticContract: request\.semanticContract \?\? resolveTaskSemanticContract\(request\.userPrompt\)/);
+  assert.match(kernelService, /this\.execution\.execute\(\{/);
   assert.match(kernelService, /executeExploratory\([\s\S]*route: 'exploratory'/);
   assert.match(kernelService, /executePlanned\([\s\S]*route: 'planned'/);
   assert.match(kernelService, /settleAgentLoopResult\(this\.terminalPermissions, this\.runContext/);

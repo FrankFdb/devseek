@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../llm/types';
+import type { TaskSemanticContract } from '../task-semantic-contract';
 import { isCppBuildArtifactDirName } from '../cpp-build-layout';
 import { absPathFromWorkspaceRel, relPathFromWorkspace } from './context-discovery-service';
 import {
@@ -22,6 +23,7 @@ export interface AgentSessionState {
   changedPaths: string[];
   completed: boolean;
   savedAt: number;
+  semanticContract?: TaskSemanticContract;
 }
 
 export interface ResolveSessionContinuationFilesInput {

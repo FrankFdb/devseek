@@ -5,6 +5,7 @@ import {
 } from '../intent-router';
 import type { SemanticIntentInterpretation } from '../intent/semantic-intent';
 import { governSemanticIntent } from '../intent/semantic-intent-governor';
+import type { TaskSemanticResolutionContext } from '../intent/task-semantic-contract-service';
 import { buildToolPolicy, ToolPolicy } from './permission-service';
 import { selectWorkflow, WorkflowSelection } from './workflow-service';
 
@@ -17,6 +18,7 @@ export interface ChatRouteInput {
   intentConfirmed?: boolean;
   lookupLearnedIntent?: (text: string) => 'chat' | 'code-change' | null;
   semanticIntent?: SemanticIntentInterpretation;
+  semanticContext?: TaskSemanticResolutionContext;
   autoApplyPolicy?: AutoApplyPolicy;
 }
 
@@ -31,7 +33,7 @@ export interface ChatRouteDecision {
 export class ChatRouteController {
   decide(input: ChatRouteInput): ChatRouteDecision {
     const intentRoutingText = getIntentRoutingText(input.userDisplay, input.prompt);
-    let intent = decideChatIntent(intentRoutingText);
+    let intent = decideChatIntent(intentRoutingText, input.semanticContext);
     intent = governSemanticIntent(intent, input.semanticIntent);
 
     const learnedKind = input.lookupLearnedIntent?.(intentRoutingText) ?? null;

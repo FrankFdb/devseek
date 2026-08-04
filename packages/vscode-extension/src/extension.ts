@@ -3,7 +3,12 @@ import * as nodePath from 'path';
 import { chat, relogin, readWorkspaceFile, ensureBridgeRunning, setBridgeExtensionRoot } from './bridge-client';
 import { createProviderStatusBar, getActiveProvider, getActiveProviderType, getProviderConfigService, promptUpdateApiKey } from './llm/provider-router';
 import { type ChatMessage } from './llm/types';
-import { getProjectRules, invalidateProjectRulesCache, getProjectMemorySync, assembleProjectRulesAndMemoryContext } from './project-rules';
+import {
+  getProjectRules,
+  invalidateProjectRulesCache,
+  getProjectMemorySync,
+  assembleProjectRulesAndMemoryContext,
+} from './project-rules';
 import { getDiagnosticsContext } from './context-builder';
 import {
   applyGeneratedArtifactsWithPrompt,
@@ -28,7 +33,7 @@ import {
 } from './agent-learner';
 import { decomposeTask, getAgentTaskDisplayTarget, inferTasksFromFiles, type AgentTask } from './agent-task-decomposer';
 import { extractAnalysisFindings } from './agent/analysis-findings';
-import type { AgentLoopResult, AgentStatusMessage } from './agent/loop-types';
+import type { AgentLoopResult } from './agent/loop-types';
 import { createAgentHostToolCallbacks } from './agent/agent-host-tools';
 import { getTaskWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
 import { McpManager } from './mcp/client';
@@ -39,24 +44,24 @@ import { runClosedLoopRepair } from './app/closed-loop-repair-runner';
 import { runLocalExecutionChatIfPossible } from './local-execution-chat-runner';
 import { TerminalPermissionCoordinator } from './app/terminal-permission-coordinator';
 import { ChatRouteController } from './app/chat-controller';
+import { decideAgentTurnRoute } from './app/agent-turn-routing-service';
 import { resolveSemanticRouteDecision } from './app/semantic-route-service';
 import { ChatSessionTurnService } from './app/chat-session-turn-service';
 import { migrateLegacyDeepseekConfiguration } from './app/config-migration-service';
 import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { MemoryService } from './app/memory-service';
-import { AgentDisplayPresenter } from './app/agent-display-presenter';
 import { AgentKernelService } from './app/agent-kernel-service';
 import { ActiveChatRunCoordinator, type ActiveChatRunHandle } from './app/active-chat-run-coordinator';
 import { productCodingKernelExecutor } from './product-coding-kernel-executor';
-import { createDevSeekRunContext, type DevSeekRunContext, type RunContextStatus } from './app/run-context';
+import { createDevSeekRunContext, type RunContextStatus } from './app/run-context';
 import { createAgentCheckpointCallback } from './app/agent-checkpoint-callback';
 import { guardNonAgentResponse } from './app/non-agent-response-guard';
 import type { AgentChatRequest } from './app/agent-protocol';
 import { createAgentApplicationBridgeAdapter, EvidenceAwareChatRouter } from './app/evidence-aware-chat-router';
 import { createEvidenceAwareMcpToolCallFactory } from './app/evidence-aware-mcp-tool-call';
 import { recordApplyWorkflowEvidence } from './app/workflow-run-evidence-adapter';
-import { isProjectInitRequest, ProjectInitService, renderProjectInitDraftMarkdown } from './app/project-init-service';
+import { tryPublishProjectInitTurn } from './app/project-init-service';
 import { tryBuildReadOnlyInspectionResult } from './app/read-only-inspection-service';
 import { buildRestoredSessionLlmHistory, buildSessionLoadedPayload, stripSessionContextPrefix } from './app/session-display-service';
 import { buildSessionBootstrapState } from './app/session-bootstrap-service';
@@ -80,7 +85,7 @@ import {
 import { emitResponseMeta, injectFileHintsIntoResponse } from './ui/generated-artifact-ui';
 import { createAgentFileWriteConfirmation } from './ui/agent-file-write-confirmation';
 import { postWebviewEvent, postWebviewMessage } from './ui/webview-event-adapter';
-import { postAgentSettlementRefusal } from './ui/agent-run-settlement-presenter';
+import { AgentTurnPresenter } from './ui/agent-turn-presenter';
 import { DeepSeekViewProvider } from './ui/deepseek-view-provider';
 import type { WebviewInboundMessage } from './ui/webview-protocol';
 import { recordRealPluginHarnessProgress, registerRealPluginDeepSeekHarnessCommand } from './ui/real-plugin-harness';
@@ -298,28 +303,28 @@ async function runActiveChat(
     recordHistory: recordTrackedChatHistory,
   });
 
-  if (isProjectInitRequest(userDisplay) || isProjectInitRequest(prompt)) {
-    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    const text = root ? renderProjectInitDraftMarkdown(new ProjectInitService().generateDraft({ workspaceRoot: root })) : '请先打开一个工作区，再使用 `/init` 生成 DevSeek 项目指令草稿。';
-    directVisibleResponsePublisher.publish({
-      userDisplay,
-      userMessagePrompt: prompt,
-      responsePrompt: prompt,
-      responseText: text,
-      images,
-      newSession,
-      suppressUserMessage,
-    });
-    return;
-  }
+  if (tryPublishProjectInitTurn({
+    userDisplay,
+    prompt,
+    workspaceRoot: vscode.workspace.workspaceFolders?.[0]?.uri.fsPath,
+    publisher: directVisibleResponsePublisher,
+    images,
+    newSession,
+    suppressUserMessage,
+  })) return;
 
-  const initialRouteDecision = chatRouteController.decide({
+  const {
+    decision: initialRouteDecision,
+    semanticContext: turnSemanticContext,
+  } = decideAgentTurnRoute(chatRouteController, {
+    newSession,
     userDisplay,
     prompt,
     files: effectiveFiles,
     agentEnabled: vscode.workspace.getConfiguration('devseek').get<boolean>('agentEnabled', true),
     forceNoAgent,
     intentConfirmed,
+    loadPreviousSemanticContract: () => loadAgentSessionState()?.semanticContract,
     lookupLearnedIntent: extContext ? (text) => lookupLearnedIntent(text, extContext!) : undefined,
   });
   recordRealPluginHarnessProgress('run-chat-initial-route', {
@@ -449,6 +454,7 @@ async function runActiveChat(
     agentEnabled,
     forceNoAgent,
     intentConfirmed,
+    semanticContext: turnSemanticContext,
     mode,
     signal: chatSignal,
     lookupLearnedIntent: extContext ? (text) => lookupLearnedIntent(text, extContext!) : undefined,
@@ -566,27 +572,6 @@ async function runActiveChat(
       }
     }
 
-    pendingEditCoordinator.beginReviewScope(webview);
-    // P5: carry agentMode so webview can set isAgentMode synchronously on receipt
-    webview.postMessage({ type: 'startResponse', prompt, expectGeneratedArtifacts: true, agentMode: true });
-    // Emit the auto-discovery note as the first delta so the user knows files were found
-    if (sessionContinuationNote) {
-      postWebviewMessage(webview, { type: 'delta', text: sessionContinuationNote });
-    }
-    if (autoDiscoveredNote) {
-      postWebviewMessage(webview, { type: 'delta', text: autoDiscoveredNote });
-    }
-
-    const agentDisplayPresenter = new AgentDisplayPresenter();
-    let agentRunContext: DevSeekRunContext | undefined;
-    const postAgent = (msg: AgentStatusMessage) => {
-      agentRunContext?.recordAgentStatus(msg);
-      webview.postMessage(agentDisplayPresenter.presentStatus(msg));
-    };
-    const postAgentToolActivity = (kind: string, label: string) => {
-      agentRunContext?.recordToolActivity(kind, label);
-      webview.postMessage(agentDisplayPresenter.presentToolActivity(kind, label));
-    };
     const agentWorkspaceRoot = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath)
       ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
       ?? process.cwd();
@@ -594,6 +579,8 @@ async function runActiveChat(
       workspaceRoot: agentWorkspaceRoot,
       source: 'vscode-extension.agent',
       userPrompt: prompt,
+      semanticContract: intent.semanticContract,
+      semanticRelatedPaths: effectiveFiles,
       sessionId: activeSessionId,
       mode,
       traceLevel: vscode.workspace.getConfiguration('devseek').get<string>('traceLevel', 'debug'),
@@ -602,8 +589,12 @@ async function runActiveChat(
         uri: file,
       })),
     });
+    const agentSemanticContract = agentKernelRun.semanticContract;
     if (!activeRun.bindAgentKernelRun(agentKernelRun)) return;
-    agentRunContext = agentKernelRun.runContext;
+    const agentRunContext = agentKernelRun.runContext;
+    const agentPresenter = new AgentTurnPresenter(webview, pendingEditCoordinator, agentRunContext);
+    agentPresenter.beginResponse({ prompt, sessionContinuationNote, autoDiscoveredNote });
+    const { postStatus: postAgent, postToolActivity: postAgentToolActivity } = agentPresenter;
     workflowRunContext = agentRunContext;
     const agentTraceRunId = agentRunContext.runId;
     const agentTraceWorkspaceRoot = agentRunContext.workspaceRoot;
@@ -670,6 +661,7 @@ async function runActiveChat(
         });
         const agResult = await agentKernelService.executeExploratory({
           userPrompt: prompt,
+          semanticContract: agentKernelRun.semanticContract,
           dataFiles,
           workspaceRoot: agWsRoot,
           mode,
@@ -780,7 +772,7 @@ async function runActiveChat(
         });
         const agSettlement = agentKernelRun.settleAgentLoopResult(agResult, agRunChangedPaths);
         const agDurablyCompleted = agSettlement.completed;
-        if (agSettlement.refused) postAgentSettlementRefusal(webview, agentDisplayPresenter);
+        if (agSettlement.refused) agentPresenter.postSettlementRefusal();
         const agChangedDetails = agRunChangedPaths.length > 0
           ? '\n**涉及文件（workspace 相对路径）：**\n' + agRunChangedPaths.map(p => `  - ${p}`).join('\n')
           : '';
@@ -795,6 +787,7 @@ async function runActiveChat(
           changedPaths: agRunChangedPaths.slice(0, 12),
           completed: agDurablyCompleted,
           savedAt: Date.now(),
+          semanticContract: agentSemanticContract,
         });
         nonBridgeChatHistory.push({ role: 'user', content: userDisplay });
         nonBridgeChatHistory.push({ role: 'assistant', content: agentHistoryText });
@@ -980,6 +973,7 @@ async function runActiveChat(
         loopResult = await agentKernelService.executePlanned({
           tasks,
           userPrompt: promptForAgent,
+          semanticContract: agentKernelRun.semanticContract,
           mode,
           workspaceRoot: wsRoot,
           callbacks: {
@@ -1125,7 +1119,7 @@ async function runActiveChat(
         const agentSettlement = agentKernelRun.settleAgentLoopResult(loopResult, currentRunChangedPaths);
         durableAgentSettlement = agentSettlement.status;
         const agentDurablyCompleted = agentSettlement.completed;
-        if (agentSettlement.refused) postAgentSettlementRefusal(webview, agentDisplayPresenter);
+        if (agentSettlement.refused) agentPresenter.postSettlementRefusal();
         loopAutopilotHandled = agentDurablyCompleted
           ? pendingEditCoordinator.handleAgentAutopilot(webview, loopResult)
           : false;
@@ -1140,6 +1134,7 @@ async function runActiveChat(
           changedPaths: currentRunChangedPaths.slice(0, 12),
           completed: agentDurablyCompleted,
           savedAt: Date.now(),
+          semanticContract: agentSemanticContract,
         });
       }
     } catch (e) {
@@ -1207,6 +1202,7 @@ async function runActiveChat(
         changedPaths: failedRunChangedPaths.slice(0, 12),
         completed: false,
         savedAt: Date.now(),
+        semanticContract: agentSemanticContract,
       });
       durableAgentSettlement = agentKernelRun.failRun({
         reason: 'agent-error',

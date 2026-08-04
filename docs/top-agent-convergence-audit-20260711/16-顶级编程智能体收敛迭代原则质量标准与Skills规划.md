@@ -50,7 +50,7 @@ devseek_governance:
 14. **WIP=1、窗口=一张卡**：一个窗口只认领一个 atomic ID 和一个 semantic authority。并行只允许只读复审或无写冲突验证，提交权仍归集成 owner。
 15. **小上下文、可恢复 checkpoint**：定向读取任务直接依赖；工具输出保留必要证据。接近压缩时先记录 task id、baseline、dirty、首个失败、已改路径、验证与下一步，再切窗口，禁止重新扫全仓。
 16. **元数据不是执行证据**：catalog、profile、prompt、Skill 或 runner inventory 的存在不证明语义已执行；每个声明语义必须有绑定输入、真实 executor、oracle、receipt 和 terminal evidence。
-17. **旧文档不得复活执行权**：`docs/requirements`、`docs/architecture` 和本包 01～13 中的“当前、下一轮、已完成、stable、Phase”只作历史/设计证据；任务只能由 14 发放，并按 18 路由旧内容。
+17. **旧文档不得复活执行权**：`docs/requirements`、`docs/architecture` 和本包 01～13 中的“当前、下一轮、已完成、stable、Phase”只作历史/设计证据；当前任务只由 `PLAN-当前收敛迭代计划.md` 发放，已归档的 14/18 只保留历史计划与承接映射。
 18. **授权绑定且不继承**：用户/外部授权必须绑定当前窗口、atomic ID、candidate、action/scope、有效期和撤销源；旧聊天、旧窗口、另一个 slot 或一般性“继续”不能替代高影响动作的明确授权。
 19. **设计原则优先，规模指标从属**：代码优化先确定行为契约、唯一 owner、单一职责、依赖方向和可测试边界，再查看行数、diff 和复杂度。规模预算只阻止职责回流；删说明、压格式、空壳拆分或无契约迁移不计收敛。
 
@@ -190,7 +190,7 @@ Skill 不能：自行写盘、绕过 permission、自己宣称 task complete、�
 
 | Candidate Skill | Purpose / Input → Output | Authority 与 side effects | Evidence / Schema / tests | 依赖 | 当前状态 / 优先级 |
 | --- | --- | --- | --- | --- | --- |
-| Intent Semantic Contract | 把用户原文、会话修订、项目规则和上下文证据转成 `task_kind`、工程上下文、mutation scope、目标产物、验证/运行义务、副作用等级、完成 `done_iff` 与歧义状态；非 Web Provider 可先产出严格 JSON semantic candidate，再由 governor 合并 | TaskSemanticContract authority + semantic intent governor；解释器无工具、无写盘、无执行；禁止下游模块再以原始 prompt 生成独立意图结论；Bridge/Web 可见会话未隔离前只能跳过隐藏解释 | versioned schema；外部来源 user-input corpus 至少覆盖 smalltalk、QA、inspect、planning、review、standalone、file artifact、existing edit、run-only、external-effect、destructive、ambiguous；否定/作用域/跨轮/歧义 property tests；Bridge hidden-prompt pollution oracle；duplicate-owner static/runtime guards | ContextRef、conversation revision、project rules、非 Web LLM Provider 或隔离 semantic channel | `implemented-partial` / Priority-0，R1-A2H/R1-A2I 产品侧非资格；本地 v2 纵切已完成：`TaskSemanticContract` 是本地路由唯一 owner，classifier/router 降为投影，destructive/execution-mode policy 与 Provider candidate governor 已统一，过期下游词表权威已删除并受静态守卫；剩余：跨轮修订、项目规则、完整 mutation/产物/验证/`done_iff` 字段、外部来源 corpus、非 Web candidate 与隔离 semantic channel |
+| Intent Semantic Contract | 把用户原文、会话修订、项目规则和上下文证据转成 `task_kind`、工程上下文、mutation scope、目标产物、验证/运行义务、副作用等级、完成 `done_iff` 与歧义状态；非 Web Provider 可先产出严格 JSON semantic candidate，再由 governor 合并 | TaskSemanticContract authority + semantic intent governor；解释器无工具、无写盘、无执行；禁止下游模块再以原始 prompt 生成独立意图结论；Bridge/Web 可见会话未隔离前只能跳过隐藏解释 | versioned schema；外部来源 user-input corpus 至少覆盖 smalltalk、QA、inspect、planning、review、standalone、file artifact、existing edit、run-only、external-effect、destructive、ambiguous；否定/作用域/跨轮/歧义 property tests；Bridge hidden-prompt pollution oracle；duplicate-owner static/runtime guards | ContextRef、conversation revision、project rules、非 Web LLM Provider 或隔离 semantic channel | `implemented-partial` / Priority-0，R1-A2H/R1-A2I 产品侧非资格；v3 产品纵切已完成：`TaskSemanticContract` 统一跨轮修订、项目指令、mutation/read、产物/验证/质量义务、`done_iff` 与歧义，session、Kernel、双 loop、deterministic/fast path 只消费该契约，48 条自然输入覆盖 12 类任务；剩余：非 Web 严格 semantic candidate、隔离 semantic channel 与 hidden-prompt pollution oracle、跨 Surface 单一 Kernel 接线及更广 property/真实多轮验收 |
 | Requirement Contract | 从 `TaskSemanticContract` 与证据转成 objectives/deliverables/constraints/acceptance/applicability | Requirement Contract authority；纯计算，无副作用；不得扩大 Intent contract 的禁止项或任务形态 | versioned contract；acceptance 可执行性、隐式扩需求、固定关键词/固定文档数反例 | Intent Semantic Contract、ContextRef | `candidate-design` / Priority-0，Gate 0 后 R1-A/R2-02 |
 | Context Discovery | 从用户路径发现 repo、规则、构建、入口、依赖和外部边界 | Discovery port；默认只读，网络需授权 | EvidenceRef graph；path/symlink/large-tree/missing-rule tests | Requirement Contract、filesystem policy | `candidate-design` / Priority-1，R2 |
 | Evidence & Provenance | 把文件、命令、工具、版本和 artifact 原始事实规范化为不可变引用 | EvidenceStore authority；采集默认只读，执行动作仍经对应 authority | EvidenceRef/provenance schema；hash/read-back/stale/version/tamper tests | Run identity、Context、工具 adapters | `candidate-design` / Priority-0，R1-A |
@@ -216,7 +216,7 @@ Skill 不能：自行写盘、绕过 permission、自己宣称 task complete、�
 | Workflow Skill | 输入 → 输出 | 允许调用 / 明确禁止 | 机器门 | 当前状态 |
 | --- | --- | --- | --- | --- |
 | Baseline Resolver | repo path + handoff doc → handoff/source/Phase/artifact/stable/active runtime 分层 receipt | 只读 Git、报告、VSIX/install/process metadata；禁止 reset/clean/stash/输出 secret | short SHA 唯一解析；stale/mismatch/missing/applicability fail closed | `candidate-design`；G0-01 后评估 |
-| Atomic Card Compiler | 14 中 claimable leaf + machine state → 完整 GPT-5.5 作业卡 | 只读 docs/SSOT；禁止扩大 allowlist、领取 parent 或自动选择下一阶段 | required fields、dependency、WIP=1、no-touch、legacy mapping unmapped=0 | `candidate-design` |
+| Atomic Card Compiler | `PLAN` 当前任务 + machine state → 完整 GPT-5.5 作业卡 | 只读 docs/SSOT；禁止扩大 allowlist、领取 parent 或自动选择下一阶段 | required fields、dependency、WIP=1、no-touch、legacy mapping unmapped=0 | `candidate-design` |
 | Runner Reachability Auditor | runner inventory + entrypoints → coverage/bypass report | 定向 source graph/static checks；禁止把 catalog metadata 计 runner | inventory coverage=100%、unknown import fail | `candidate-design`；现有 checker 是组件，不是完整 Skill |
 | Gate0 Decision Inspector | decision report + source hashes → 本地/仓库/外部/claim 四栏解释 | 只读 checker；禁止生成 claim/override PASS | source-bound、const-false external trust、exact counts | `candidate-design`；现有 decision checker 是组件 |
 | Documentation Truth Reconciler | machine SSOT + migration manifest → generated status/link drift | 只改批准 generated views；禁止 Markdown 反向提升 ledger | selector unique、links valid、second generation diff=0 | `candidate-design`；G0-01～03 |
@@ -225,7 +225,7 @@ Skill 不能：自行写盘、绕过 permission、自己宣称 task complete、�
 | Same-Window Surface Auditor | exact active identity + fresh explicit authorization + prompt marker → 用户窗口证据 | 只操作隔离 probe path并恢复临时设置；禁止把隔离窗口替代、禁止资格提升 | prompt/file/command/settlement/UI/cleanup 全绑定 | `candidate-design`；当前 `NOT_RUN`、授权不继承，协议见 15/17 |
 | Handoff Generator | task/evidence/release receipts → 15 格式无聊天接管包 | 只写批准 docs/generated handoff；禁止静态自引用 hash | placeholder/stale baseline/link/drift tests | `candidate-design` |
 
-优先级：先完成当前 CLOSE 两个 leaf；再实现 G0-01～03 的 Baseline/Truth 基础，之后才评估 workflow Skill。不得为了“让 GPT-5.5 更聪明”抢占 Gate 0 repository blockers。任何 workflow Skill 只有在至少两轮人工协议重复且边界稳定后才值得产品化。
+优先级以 `PLAN-当前收敛迭代计划.md` 为唯一滚动来源；外部 Gate 0 blocker 不得由 workflow Skill 伪造关闭，也不得为了“让模型更聪明”抢占产品 Kernel、语义契约和资格 authority。任何 workflow Skill 只有在至少两轮人工协议重复且边界稳定后才值得产品化。
 
 ## 6. Skill 实施与晋级门禁
 

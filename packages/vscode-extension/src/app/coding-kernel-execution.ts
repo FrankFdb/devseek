@@ -1,6 +1,7 @@
 import type * as vscode from 'vscode';
 import type { AgentTask } from '../agent-task-decomposer';
 import type { ExecutionMode } from '../intent/intent-types';
+import type { TaskSemanticContract } from '../task-semantic-contract';
 import type {
   AgentLoopCallbacks,
   AgentLoopResult,
@@ -19,6 +20,7 @@ export interface ExploratoryKernelExecutionRequest {
   readonly sessionContextText?: string;
   readonly workflowMode: ExecutionMode;
   readonly memoryRelatedPaths?: readonly string[];
+  readonly semanticContract?: TaskSemanticContract;
 }
 
 export interface PlannedKernelExecutionRequest {
@@ -30,6 +32,7 @@ export interface PlannedKernelExecutionRequest {
   readonly callbacks: ExecutionScopedAgentLoopCallbacks;
   readonly analysisContext?: string;
   readonly startFromIndex?: number;
+  readonly semanticContract?: TaskSemanticContract;
 }
 
 export type CodingKernelExecutionRequest =
@@ -53,6 +56,7 @@ export interface CodingKernelLoopPorts {
     sessionContextText: string,
     workflowMode: ExecutionMode,
     memoryRelatedPaths: readonly string[],
+    semanticContract?: TaskSemanticContract,
   ): Promise<AgentLoopResult>;
   runPlanned(
     tasks: AgentTask[],
@@ -62,6 +66,7 @@ export interface CodingKernelLoopPorts {
     callbacks: ExecutionScopedAgentLoopCallbacks,
     analysisContext: string | undefined,
     startFromIndex: number,
+    semanticContract?: TaskSemanticContract,
   ): Promise<AgentLoopResult>;
 }
 
@@ -79,6 +84,7 @@ export class CodingKernelExecutionService implements CodingKernelExecutionPort {
         request.sessionContextText ?? '',
         request.workflowMode,
         request.memoryRelatedPaths ?? [],
+        request.semanticContract,
       );
     }
     if (request.route === 'planned') {
@@ -90,6 +96,7 @@ export class CodingKernelExecutionService implements CodingKernelExecutionPort {
         request.callbacks,
         request.analysisContext,
         request.startFromIndex ?? 0,
+        request.semanticContract,
       );
     }
     return Promise.reject(new Error('coding-kernel-execution:unsupported-route'));

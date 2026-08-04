@@ -12,16 +12,19 @@ import { stripToolCallBlocks } from './fake-tool-parser';
 import { assessFormalProjectDocumentQuality } from './formal-project-document-quality';
 import { getMissingRequiredDeliverables } from './required-deliverable-contract';
 import {
-  buildTaskContract,
   classifyArtifactWriteIntent,
   hasSourceClaimArtifactContract,
 } from './task-contract';
 import {
   routeTaskIntent,
+  routeTaskSemanticContract,
   shouldRequireRuntimeValidationForRoute,
   type TaskIntentRoute,
 } from '../task-intent-router';
 import type { VerificationResult } from './evidence-grounding';
+import type { TaskSemanticContract } from '../task-semantic-contract';
+import { hasTaskSemanticDoneCondition } from '../intent/task-semantic-obligations';
+import { isCodeArtifactPathValue } from '../artifact-path-kind';
 
 export interface CompletionTodo {
   title: string;
@@ -51,12 +54,6 @@ export function classifyTerminalEvidenceCommand(command: string): TerminalEviden
   return classifyShellCommandEvidence(command) as TerminalEvidenceKind;
 }
 
-const CODE_FILE_EXTENSIONS = new Set([
-  '.c', '.cc', '.cpp', '.cxx', '.h', '.hh', '.hpp', '.hxx',
-  '.py', '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs',
-  '.java', '.go', '.rs', '.cs', '.php', '.rb', '.swift', '.kt', '.kts', '.scala',
-  '.html', '.css', '.scss', '.sass', '.vue', '.svelte', '.sh', '.bash', '.zsh',
-]);
 const MARKDOWN_FILE_EXTENSIONS = new Set(['.md', '.markdown']);
 
 const FILE_CHANGE_RE = /(?:写|创建|新建|生成|编写|实现|开发|做(?:一个|一款)?|修复|修改|改进|改造|重构|更新|添加|删除|create|write|implement|develop|fix|repair|modify|edit|refactor|update|add|delete)/i;
@@ -113,7 +110,7 @@ const GENERIC_EVIDENCE_TODO_TITLES = new Set([
 ]);
 
 export function isCodeArtifactPath(filePath: string): boolean {
-  return CODE_FILE_EXTENSIONS.has(nodePath.extname(filePath).toLowerCase());
+  return isCodeArtifactPathValue(filePath);
 }
 
 function isMarkdownArtifactPath(filePath: string): boolean {
@@ -339,9 +336,14 @@ type CompletionEvidenceSemanticView = {
   fileCheckEvidence: boolean;
 };
 
-function buildCompletionEvidenceSemanticView(text: string): CompletionEvidenceSemanticView {
+function buildCompletionEvidenceSemanticView(
+  text: string,
+  semanticContract?: TaskSemanticContract,
+): CompletionEvidenceSemanticView {
   const intentText = stripAgentProceduralExecutionPhrases(stripGenericEvidenceTodoLines(String(text || '')));
-  const route = routeTaskIntent(intentText);
+  const route = semanticContract
+    ? routeTaskSemanticContract(semanticContract)
+    : routeTaskIntent(intentText);
   const contract = route.semanticContract;
   const readOnly = isExplicitlyReadOnlyRequestFromRoute(route, intentText);
   const commandIntentText = commandEvidenceIntentText(intentText);
@@ -358,28 +360,36 @@ function buildCompletionEvidenceSemanticView(text: string): CompletionEvidenceSe
     && (route.mutation.sourceChange || route.mutation.fileArtifact || route.mutation.targets.length > 0);
   const codeArtifact = !readOnly
     && !scopedNonCodeDeliverableOnly
-    && (routedCodeArtifact || contract.mutation.sourceChange || legacyCodeArtifact);
-  const fileChange = !readOnly && (route.mutation.requested || semanticFileChange || legacyFileChange);
+    && (contract.mutation.sourceChange || hasTaskSemanticDoneCondition(contract.completion, 'code-written')
+      || (!semanticContract && (routedCodeArtifact || legacyCodeArtifact)));
+  const fileChange = !readOnly && (
+    route.mutation.requested
+    || semanticFileChange
+    || hasTaskSemanticDoneCondition(contract.completion, 'file-written')
+    || hasTaskSemanticDoneCondition(contract.completion, 'code-written')
+    || (!semanticContract && legacyFileChange)
+  );
   const runEvidence = !readOnly && !scopedNonCodeDeliverableOnly && (
-    route.validation.runRequested
+    hasTaskSemanticDoneCondition(contract.completion, 'run-passed')
     || shouldRequireRuntimeValidationForRoute(route)
-    || RUN_EVIDENCE_RE.test(commandIntentText)
+    || (!semanticContract && RUN_EVIDENCE_RE.test(commandIntentText))
   );
   const testEvidence = !readOnly && !scopedNonCodeDeliverableOnly && (
-    route.validation.testRequested
-    || TEST_EVIDENCE_RE.test(commandIntentText)
+    hasTaskSemanticDoneCondition(contract.completion, 'test-passed')
+    || (!semanticContract && TEST_EVIDENCE_RE.test(commandIntentText))
   );
   const runtimeValidation = !readOnly && !scopedNonCodeDeliverableOnly && (
     runEvidence
     || testEvidence
-    || RUNTIME_VALIDATION_RE.test(commandIntentText)
+    || (!semanticContract && RUNTIME_VALIDATION_RE.test(commandIntentText))
   );
   const commandEvidence = !readOnly && (
     route.validation.commandEvidenceRequired
-    || route.validation.compileRequested
-    || route.validation.runRequested
-    || route.validation.testRequested
-    || COMMAND_EVIDENCE_RE.test(commandIntentText)
+    || hasTaskSemanticDoneCondition(contract.completion, 'compile-passed')
+    || hasTaskSemanticDoneCondition(contract.completion, 'run-passed')
+    || hasTaskSemanticDoneCondition(contract.completion, 'test-passed')
+    || hasTaskSemanticDoneCondition(contract.completion, 'file-check-passed')
+    || (!semanticContract && COMMAND_EVIDENCE_RE.test(commandIntentText))
   );
   const fileCheckEvidence = fileChange
     && !codeArtifact
@@ -466,23 +476,30 @@ function extractTrailingContentIntent(text: string): string {
   return match?.[1]?.trim() ?? '';
 }
 
-export function requiresFileChangeEvidence(text: string): boolean {
+export function requiresFileChangeEvidence(text: string, semanticContract?: TaskSemanticContract): boolean {
   if (!text.trim()) return false;
-  return buildCompletionEvidenceSemanticView(text).fileChange;
+  return buildCompletionEvidenceSemanticView(text, semanticContract).fileChange;
 }
 
-export function requiresCodeArtifactForEvidence(text: string): boolean {
+export function requiresCodeArtifactForEvidence(text: string, semanticContract?: TaskSemanticContract): boolean {
   if (!text.trim()) return false;
-  return buildCompletionEvidenceSemanticView(text).codeArtifact;
+  return buildCompletionEvidenceSemanticView(text, semanticContract).codeArtifact;
 }
 
-export function requiresReadEvidence(text: string): boolean {
+export function requiresReadEvidence(text: string, semanticContract?: TaskSemanticContract): boolean {
   const trimmed = text.trim();
   if (!trimmed) return false;
+  if (semanticContract) {
+    return hasTaskSemanticDoneCondition(semanticContract.completion, 'read-evidence')
+      || hasTaskSemanticDoneCondition(semanticContract.completion, 'file-content-read');
+  }
   return isExplicitlyReadOnlyRequest(trimmed) && FILE_PATH_TARGET_RE.test(trimmed) && READ_EVIDENCE_RE.test(trimmed);
 }
 
-export function requiresFileContentReadEvidence(text: string): boolean {
+export function requiresFileContentReadEvidence(text: string, semanticContract?: TaskSemanticContract): boolean {
+  if (semanticContract) {
+    return hasTaskSemanticDoneCondition(semanticContract.completion, 'file-content-read');
+  }
   return requiresReadEvidence(text) && FILE_CONTENT_EVIDENCE_RE.test(text);
 }
 
@@ -521,25 +538,25 @@ function commandEvidenceIntentText(text: string): string {
     .replace(/(?:do\s+not|don't|never|no\s+need\s+to|without)\s+[^,.;\n]*(?:compile|build|run|execute|start|test|verify|debug|install|network)[^,.;\n]*/gi, ' ');
 }
 
-export function requiresCommandEvidence(text: string): boolean {
-  return buildCompletionEvidenceSemanticView(text).commandEvidence;
+export function requiresCommandEvidence(text: string, semanticContract?: TaskSemanticContract): boolean {
+  return buildCompletionEvidenceSemanticView(text, semanticContract).commandEvidence;
 }
 
-function requiresRunEvidence(text: string): boolean {
-  return buildCompletionEvidenceSemanticView(text).runEvidence;
+function requiresRunEvidence(text: string, semanticContract?: TaskSemanticContract): boolean {
+  return buildCompletionEvidenceSemanticView(text, semanticContract).runEvidence;
 }
 
-function requiresTestEvidence(text: string): boolean {
-  return buildCompletionEvidenceSemanticView(text).testEvidence;
+function requiresTestEvidence(text: string, semanticContract?: TaskSemanticContract): boolean {
+  return buildCompletionEvidenceSemanticView(text, semanticContract).testEvidence;
 }
 
-export function requiresRuntimeValidation(text: string): boolean {
-  return buildCompletionEvidenceSemanticView(text).runtimeValidation;
+export function requiresRuntimeValidation(text: string, semanticContract?: TaskSemanticContract): boolean {
+  return buildCompletionEvidenceSemanticView(text, semanticContract).runtimeValidation;
 }
 
-export function requiresFileCheckEvidence(text: string): boolean {
+export function requiresFileCheckEvidence(text: string, semanticContract?: TaskSemanticContract): boolean {
   if (!text.trim()) return false;
-  return buildCompletionEvidenceSemanticView(text).fileCheckEvidence;
+  return buildCompletionEvidenceSemanticView(text, semanticContract).fileCheckEvidence;
 }
 
 function lastUnclearedTerminalFailure(
@@ -616,6 +633,7 @@ export function getBlockingTerminalFailure(
   todos: CompletionTodo[],
   writtenFiles: WrittenFileEvidence[],
   terminalEvidence: TerminalEvidence[],
+  semanticContract?: TaskSemanticContract,
 ): TerminalEvidence | undefined {
   if (terminalEvidence.length === 0) return undefined;
   const text = buildEvidenceText(userPrompt, todos);
@@ -625,21 +643,22 @@ export function getBlockingTerminalFailure(
     try { return fs.existsSync(f.path); } catch { return false; }
   });
   const existingCodeWrites = existingWrittenFiles.filter(f => isCodeArtifactPath(f.path));
-  const needsReadEvidence = requiresReadEvidence(userIntentText);
-  const needsCodeArtifact = requiresCodeArtifactForEvidence(evidenceIntentText);
+  const needsReadEvidence = requiresReadEvidence(userIntentText, semanticContract);
+  const needsCodeArtifact = requiresCodeArtifactForEvidence(evidenceIntentText, semanticContract);
   const needsCommand = !needsReadEvidence
-    && (requiresCommandEvidence(userIntentText) || (needsCodeArtifact && existingCodeWrites.length > 0));
+    && (requiresCommandEvidence(userIntentText, semanticContract) || (needsCodeArtifact && existingCodeWrites.length > 0));
 
   const runtimeKinds = new Set<TerminalEvidenceKind>(['run', 'test', 'compile-run']);
   const testKinds = new Set<TerminalEvidenceKind>(['test', 'run', 'compile-run']);
   const commandKinds = new Set<TerminalEvidenceKind>(['compile', 'run', 'test', 'compile-run']);
 
-  if (requiresTestEvidence(userIntentText)) {
+  if (requiresTestEvidence(userIntentText, semanticContract)) {
     const failure = lastUnclearedTerminalFailure(terminalEvidence, testKinds, testKinds);
     if (failure) return failure;
   }
-  if (requiresRunEvidence(userIntentText)
-    || (requiresRuntimeValidation(userIntentText) && !requiresTestEvidence(userIntentText))) {
+  if (requiresRunEvidence(userIntentText, semanticContract)
+    || (requiresRuntimeValidation(userIntentText, semanticContract)
+      && !requiresTestEvidence(userIntentText, semanticContract))) {
     const failure = lastUnclearedTerminalFailure(terminalEvidence, runtimeKinds, runtimeKinds);
     if (failure) return failure;
   }
@@ -681,19 +700,56 @@ export function getMissingCompletionEvidence(
   workspaceRoot?: string,
   verificationResults: VerificationResult[] = [],
 ): string[] {
+  return assessMissingCompletionEvidence({
+    userPrompt,
+    todos,
+    writtenFiles,
+    terminalEvidence,
+    readEvidencePaths,
+    workspaceRoot,
+    verificationResults,
+  });
+}
+
+export interface CompletionEvidenceAssessmentInput {
+  userPrompt: string;
+  todos: CompletionTodo[];
+  writtenFiles: WrittenFileEvidence[];
+  terminalEvidence: TerminalEvidence[];
+  readEvidencePaths?: string[];
+  workspaceRoot?: string;
+  verificationResults?: VerificationResult[];
+  semanticContract?: TaskSemanticContract;
+}
+
+export function assessMissingCompletionEvidence(input: CompletionEvidenceAssessmentInput): string[] {
+  const {
+    userPrompt,
+    todos,
+    writtenFiles,
+    terminalEvidence,
+    readEvidencePaths = [],
+    workspaceRoot,
+    verificationResults = [],
+    semanticContract,
+  } = input;
+  const effectiveSemanticContract = semanticContract ?? routeTaskIntent(userPrompt).semanticContract;
   const userIntentText = buildUserIntentEvidenceText(userPrompt);
   const scopedOriginalUserPromptOnly = isScopedNonCodeDeliverableOnlyIntent(userIntentText);
   const text = scopedOriginalUserPromptOnly
     ? userIntentText
     : buildEvidenceText(userPrompt, todos);
-  const evidenceIntentText = isExplicitlyReadOnlyRequest(userIntentText) ? userIntentText : text;
+  const evidenceIntentText = effectiveSemanticContract.kind === 'read-only'
+    || isExplicitlyReadOnlyRequest(userIntentText)
+    ? userIntentText
+    : text;
   const existingWrittenFiles = coalesceWrittenFileEvidence(writtenFiles, workspaceRoot)
     .filter(f => writtenEvidenceExists(f, workspaceRoot));
   const existingCodeWrites = existingWrittenFiles.filter(f => isCodeArtifactPath(f.path));
   const successfulEvidence = terminalEvidence.filter(e => e.ok);
   const missing: string[] = [];
-  const contract = buildTaskContract(userPrompt);
-  const needsFileChange = requiresFileChangeEvidence(evidenceIntentText);
+  const contract = effectiveSemanticContract.taskContract;
+  const needsFileChange = requiresFileChangeEvidence(evidenceIntentText, effectiveSemanticContract);
   const hasGroundedArtifactContract = hasSourceClaimArtifactContract(contract);
   if (hasGroundedArtifactContract && contract.evidenceRequirements.length === 0) {
     missing.push('未解析的交付物源码事实 claim 契约');
@@ -711,10 +767,10 @@ export function getMissingCompletionEvidence(
     }
   }
 
-  const needsCodeArtifact = requiresCodeArtifactForEvidence(evidenceIntentText);
-  const needsReadEvidence = requiresReadEvidence(userIntentText);
-  const needsFileContentReadEvidence = requiresFileContentReadEvidence(userIntentText);
-  const needsFileCheckEvidence = requiresFileCheckEvidence(userIntentText);
+  const needsCodeArtifact = requiresCodeArtifactForEvidence(evidenceIntentText, effectiveSemanticContract);
+  const needsReadEvidence = requiresReadEvidence(userIntentText, effectiveSemanticContract);
+  const needsFileContentReadEvidence = requiresFileContentReadEvidence(userIntentText, effectiveSemanticContract);
+  const needsFileCheckEvidence = requiresFileCheckEvidence(userIntentText, effectiveSemanticContract);
   if (needsCodeArtifact && existingCodeWrites.length === 0) {
     missing.push('代码修改结果');
   } else if (needsFileChange && existingWrittenFiles.length === 0) {
@@ -722,21 +778,31 @@ export function getMissingCompletionEvidence(
   }
 
   if (needsReadEvidence) {
-    const hasReadEvidence = readEvidencePaths.length > 0
-      || successfulEvidence.some(e =>
-        e.kind === 'other'
-        && (needsFileContentReadEvidence
-          ? isFileContentTerminalEvidenceCommand(e.command)
-          : isReadOnlyTerminalEvidenceCommand(e.command)),
-      );
+    const readConditions = effectiveSemanticContract.completion.doneIff.filter(condition => (
+      condition.kind === 'read-evidence' || condition.kind === 'file-content-read'
+    ));
+    const hasReadEvidence = readConditions.length > 0
+      ? readConditions.every(condition => hasReadConditionEvidence(
+        condition,
+        readEvidencePaths,
+        successfulEvidence,
+        workspaceRoot,
+      ))
+      : readEvidencePaths.length > 0
+        || successfulEvidence.some(e =>
+          e.kind === 'other'
+          && (needsFileContentReadEvidence
+            ? isFileContentTerminalEvidenceCommand(e.command)
+            : isReadOnlyTerminalEvidenceCommand(e.command)),
+        );
     if (!hasReadEvidence) missing.push(needsFileContentReadEvidence ? '文件内容读取结果' : '文件读取/检查结果');
   }
 
-  const commandEvidenceNeeded = !needsReadEvidence && requiresCommandEvidence(userIntentText);
-  if (requiresTestEvidence(userIntentText)) {
+  const commandEvidenceNeeded = !needsReadEvidence && requiresCommandEvidence(userIntentText, effectiveSemanticContract);
+  if (requiresTestEvidence(userIntentText, effectiveSemanticContract)) {
     const hasTestEvidence = successfulEvidence.some(e => e.kind === 'test' || e.kind === 'run' || e.kind === 'compile-run');
     if (!hasTestEvidence) missing.push('成功的测试/运行结果');
-  } else if (requiresRunEvidence(userIntentText)) {
+  } else if (requiresRunEvidence(userIntentText, effectiveSemanticContract)) {
     const hasRunEvidence = successfulEvidence.some(e => e.kind === 'run' || e.kind === 'test' || e.kind === 'compile-run');
     if (!hasRunEvidence) missing.push('成功的程序运行结果');
   } else if (needsFileCheckEvidence) {
@@ -754,12 +820,87 @@ export function getMissingCompletionEvidence(
     ? userPrompt
     : `${userPrompt}\n${todos.map(t => t.title).join('\n')}`;
   const missingDeliverables = existingWrittenFiles.length > 0
-    ? getMissingRequiredDeliverables(userPrompt, existingWrittenFiles, workspaceRoot)
-    : [];
+    ? semanticContract
+      ? getMissingSemanticContractDeliverables(semanticContract, existingWrittenFiles, workspaceRoot)
+      : getMissingRequiredDeliverables(userPrompt, existingWrittenFiles, workspaceRoot)
+    : semanticContract
+      ? getMissingSemanticContractDeliverables(semanticContract, existingWrittenFiles, workspaceRoot)
+      : [];
   missing.push(...missingDeliverables.map(deliverable => `指定交付文件：${deliverable.path}`));
-  missing.push(...getFormalProjectMarkdownQualityMissingEvidence(formalProjectPrompt, existingWrittenFiles, workspaceRoot));
+  missing.push(...getFormalProjectMarkdownQualityMissingEvidence(
+    formalProjectPrompt,
+    existingWrittenFiles,
+    workspaceRoot,
+    effectiveSemanticContract,
+  ));
 
   return missing;
+}
+
+function getMissingSemanticContractDeliverables(
+  semanticContract: TaskSemanticContract,
+  writtenFiles: WrittenFileEvidence[],
+  workspaceRoot?: string,
+): Array<{ path: string }> {
+  const targets = [...new Set(
+    semanticContract.obligations.artifacts
+      .map(obligation => obligation.target)
+      .filter((target): target is string => Boolean(target)),
+  )];
+  const written = writtenFiles.map(file => resolveCompletionEvidencePath(file.path, workspaceRoot));
+  return targets.filter(target => {
+    const resolvedTarget = resolveCompletionEvidencePath(target, workspaceRoot);
+    const matched = written.find(pathValue => pathValue === resolvedTarget || (
+      !nodePath.isAbsolute(target) && pathValue.endsWith(`/${target.replace(/\\/g, '/')}`)
+    ));
+    if (!matched) return true;
+    try { return !fs.existsSync(matched); } catch { return true; }
+  }).map(pathValue => ({ path: pathValue }));
+}
+
+function hasReadConditionEvidence(
+  condition: TaskSemanticContract['completion']['doneIff'][number],
+  readEvidencePaths: readonly string[],
+  terminalEvidence: readonly TerminalEvidence[],
+  workspaceRoot?: string,
+): boolean {
+  const target = condition.target;
+  const matchingReadPath = readEvidencePaths.some(pathValue => (
+    !target || completionEvidencePathsMatch(pathValue, target, workspaceRoot)
+  ));
+  if (matchingReadPath) return true;
+  return terminalEvidence.some(evidence => {
+    if (evidence.kind !== 'other') return false;
+    const commandMatchesKind = condition.kind === 'file-content-read'
+      ? isFileContentTerminalEvidenceCommand(evidence.command)
+      : isReadOnlyTerminalEvidenceCommand(evidence.command);
+    return commandMatchesKind && (!target || terminalCommandTargetsPath(evidence.command, target, workspaceRoot));
+  });
+}
+
+function completionEvidencePathsMatch(candidate: string, target: string, workspaceRoot?: string): boolean {
+  const normalizedCandidate = String(candidate || '').replace(/\\/g, '/');
+  const normalizedTarget = String(target || '').replace(/\\/g, '/').replace(/^\.\//, '');
+  if (normalizedCandidate === normalizedTarget || normalizedCandidate.endsWith(`/${normalizedTarget}`)) return true;
+  return resolveCompletionEvidencePath(normalizedCandidate, workspaceRoot)
+    === resolveCompletionEvidencePath(normalizedTarget, workspaceRoot);
+}
+
+function terminalCommandTargetsPath(command: string, target: string, workspaceRoot?: string): boolean {
+  const normalizedCommand = String(command || '').replace(/\\/g, '/');
+  const normalizedTarget = String(target || '').replace(/\\/g, '/').replace(/^\.\//, '');
+  if (normalizedCommand.includes(normalizedTarget)) return true;
+  return normalizedCommand.includes(resolveCompletionEvidencePath(normalizedTarget, workspaceRoot));
+}
+
+function resolveCompletionEvidencePath(value: string, workspaceRoot?: string): string {
+  const normalized = String(value || '').replace(/\\/g, '/');
+  const resolved = nodePath.isAbsolute(normalized)
+    ? nodePath.resolve(normalized)
+    : workspaceRoot
+      ? nodePath.resolve(workspaceRoot, normalized)
+      : nodePath.resolve(normalized);
+  return resolved.replace(/\\/g, '/');
 }
 
 const FORMAL_PROJECT_DOC_REQUEST_RE = /(?:markdown|\.md\b|文档|设计|接口文档|修改清单|事实矩阵|实施文档)/i;
@@ -776,10 +917,12 @@ function getFormalProjectMarkdownQualityMissingEvidence(
   userPrompt: string,
   existingWrittenFiles: WrittenFileEvidence[],
   workspaceRoot?: string,
+  semanticContract?: TaskSemanticContract,
 ): string[] {
   const requestsMarkdownDeliverable = FORMAL_PROJECT_DOC_REQUEST_RE.test(userPrompt)
-    && DOCUMENT_DELIVERY_ACTION_RE.test(userPrompt);
-  const baseline = assessFormalProjectDocumentQuality('', userPrompt);
+    && DOCUMENT_DELIVERY_ACTION_RE.test(userPrompt)
+    || semanticContract?.obligations.artifacts.some(obligation => obligation.kind === 'report') === true;
+  const baseline = assessFormalProjectDocumentQuality('', userPrompt, semanticContract);
 
   const markdownFiles = existingWrittenFiles.filter(f => isMarkdownArtifactPath(f.path));
   if (markdownFiles.length === 0) {
@@ -796,7 +939,7 @@ function getFormalProjectMarkdownQualityMissingEvidence(
     .join('\n\n');
   if (!markdownContent.trim()) return ['正式项目 Markdown 设计/接口文档'];
 
-  const quality = assessFormalProjectDocumentQuality(markdownContent, userPrompt);
+  const quality = assessFormalProjectDocumentQuality(markdownContent, userPrompt, semanticContract);
   if (!quality.required || quality.ok) return [];
   return quality.reasons.map(reason => FORMAL_PROJECT_REASON_LABELS[reason] ?? `正式项目文档质量：${reason}`);
 }

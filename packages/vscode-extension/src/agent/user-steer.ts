@@ -1,9 +1,9 @@
 import type { ChatMessage } from '../llm/types';
 import type { AgentLoopCallbacks } from './loop-types';
-import type { IntentTaskContractRevision } from '../intent/intent-revision-lineage';
+import type { IntentSemanticContractRevision } from '../intent/intent-revision-lineage';
 
 export interface UserSteerMessageOptions {
-  taskContractRevision?: IntentTaskContractRevision;
+  semanticContractRevision?: IntentSemanticContractRevision;
 }
 
 export function consumeUserSteerTexts(callbacks: AgentLoopCallbacks): string[] {
@@ -33,7 +33,7 @@ export function buildUserSteerMessage(text: string, options: UserSteerMessageOpt
     content: [
       '【用户实时补充/纠偏】',
       text,
-      ...renderTaskContractRevision(options.taskContractRevision),
+      ...renderSemanticContractRevision(options.semanticContractRevision),
       '',
       '请将以上内容作为当前任务的最新约束继续执行；如它与旧计划冲突，以这条补充为准。不要从头开启新任务，先调整 todo/后续步骤再继续。',
     ].join('\n'),
@@ -49,14 +49,18 @@ export function consumeUserSteerMessages(
     .map(text => buildUserSteerMessage(text, options));
 }
 
-function renderTaskContractRevision(revision: IntentTaskContractRevision | undefined): string[] {
+function renderSemanticContractRevision(revision: IntentSemanticContractRevision | undefined): string[] {
   if (!revision) return [];
+  const contract = revision.semanticContract;
   return [
     '',
-    '【TaskContract Revision】',
+    '【TaskSemanticContract Revision】',
     `protocol: ${revision.version}`,
+    `semanticProtocol: ${contract.version}`,
     `revisionId: ${revision.revisionId}`,
     `parentRevisionId: ${revision.parentRevisionId || 'none'}`,
+    `projectInstructions: ${contract.context.projectInstructions.sources.map(source => source.relPath).join(', ') || 'none'}`,
+    `doneIff: ${contract.completion.doneIff.map(condition => condition.id).join(', ') || 'none'}`,
     `sealedCommittedEffects: ${revision.preservedCommittedEffectIds.join(', ') || 'none'}`,
     `blockedReplayEffectIds: ${revision.blockedReplayEffectIds.join(', ') || 'none'}`,
     ...(revision.pendingTaskHints.length > 0 ? revision.pendingTaskHints : ['继续未提交任务：none']),

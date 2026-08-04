@@ -75,15 +75,21 @@ test('completion evidence: an explicitly named deliverable cannot be replaced by
     writeFileSync(alternative, 'new output\n');
     const deliverablePrompt = `请生成结果。必须创建输出文件：${required}`;
     const alternativeEvidence = [{ path: alternative, basename: 'alternative.txt', linesAdded: 1, linesRemoved: 0, action: 'create' }];
+    const requiredFileCheck = [{
+      command: `test -f '${required}' && sed -n '1,80p' '${required}'`,
+      kind: 'other',
+      ok: true,
+      exitCode: 0,
+    }];
 
     assert.deepEqual(
       getMissingCompletionEvidence(deliverablePrompt, [], alternativeEvidence, [], [], root),
-      [`指定交付文件：${required}`],
+      ['文件读取/检查结果', `指定交付文件：${required}`],
     );
 
     const requiredEvidence = [{ path: required, basename: 'result.txt', linesAdded: 1, linesRemoved: 0, action: 'modify' }];
     assert.deepEqual(
-      getMissingCompletionEvidence(deliverablePrompt, [], requiredEvidence, [], [], root),
+      getMissingCompletionEvidence(deliverablePrompt, [], requiredEvidence, requiredFileCheck, [], root),
       [],
     );
   } finally {
@@ -301,7 +307,7 @@ test('completion evidence: read-only user intent is not upgraded by agent no-cha
   );
   assert.deepEqual(
     getMissingCompletionEvidence(inspectPrompt, readOnlyTodos, [], [], []),
-    ['文件读取/检查结果'],
+    ['文件内容读取结果'],
   );
 });
 
@@ -325,6 +331,29 @@ test('completion evidence: existence-only read-only checks can complete with tes
   assert.equal(requiresReadEvidence(inspectPrompt), true);
   assert.equal(requiresFileContentReadEvidence(inspectPrompt), false);
   assert.deepEqual(getMissingCompletionEvidence(inspectPrompt, [], [], testEvidence, []), []);
+});
+
+test('completion evidence: every requested read target needs its own evidence', () => {
+  const inspectPrompt = '检查 a.txt 和 b.txt 是否存在，并显示文件内容，不要修改文件。';
+
+  assert.deepEqual(
+    getMissingCompletionEvidence(inspectPrompt, [], [], [], ['a.txt']),
+    ['文件内容读取结果'],
+  );
+  assert.deepEqual(
+    getMissingCompletionEvidence(inspectPrompt, [], [], [], ['a.txt', 'b.txt']),
+    [],
+  );
+  assert.deepEqual(
+    getMissingCompletionEvidence(
+      inspectPrompt,
+      [],
+      [],
+      [{ command: 'cat a.txt', kind: 'other', ok: true, exitCode: 0 }],
+      [],
+    ),
+    ['文件内容读取结果'],
+  );
 });
 
 test('completion evidence: quoted CMake planner run command is compile-run evidence', () => {
@@ -413,19 +442,25 @@ test('completion evidence: markdown file creation requires file evidence but not
     mkdirSync(path.dirname(file), { recursive: true });
     writeFileSync(file, '# Phase 5 smoke\n');
     const docsPrompt = '创建 docs/manual-phase5-smoke.md，内容为 Phase 5 smoke';
+    const fileCheckEvidence = [{
+      command: "test -f 'docs/manual-phase5-smoke.md' && sed -n '1,80p' 'docs/manual-phase5-smoke.md'",
+      kind: 'other',
+      ok: true,
+      exitCode: 0,
+    }];
 
     assert.equal(requiresFileChangeEvidence(docsPrompt), true);
     assert.equal(requiresCodeArtifactForEvidence(docsPrompt), false);
     assert.deepEqual(
       getMissingCompletionEvidence(docsPrompt, [], [], []),
-      ['文件修改结果'],
+      ['文件修改结果', '文件读取/检查结果'],
     );
     assert.deepEqual(
       getMissingCompletionEvidence(
         docsPrompt,
         [],
         [{ path: file, basename: 'manual-phase5-smoke.md', linesAdded: 1, linesRemoved: 0, action: 'create' }],
-        [],
+        fileCheckEvidence,
       ),
       [],
     );

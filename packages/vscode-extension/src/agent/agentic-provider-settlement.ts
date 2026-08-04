@@ -1,13 +1,14 @@
 import {
   coalesceWrittenFileEvidence,
+  assessMissingCompletionEvidence,
   findBlockingTerminalFailureEvidence,
   getBlockingTerminalFailure,
-  getMissingCompletionEvidence,
   getUnsupportedSummaryFileClaims,
   type CompletionTodo,
   type TerminalEvidence,
   type WrittenFileEvidence,
 } from './completion-evidence';
+import type { TaskSemanticContract } from '../task-semantic-contract';
 
 export interface ProviderFailureSettlementInput {
   promptRequiresTools: boolean;
@@ -20,6 +21,7 @@ export interface ProviderFailureSettlementInput {
   readEvidencePaths: string[];
   workspaceRoot?: string;
   completeSummary?: string;
+  semanticContract?: TaskSemanticContract;
 }
 
 export type ProviderFailureSettlement =
@@ -32,19 +34,21 @@ export function settleProviderFailureFromCompletedEvidence(
   if (input.aborted || !input.promptRequiresTools || !input.sawWorkTool) {
     return { completed: false };
   }
-  const missingEvidence = getMissingCompletionEvidence(
-    input.userPrompt,
-    input.todos,
-    input.writtenFiles,
-    input.terminalEvidence,
-    input.readEvidencePaths,
-    input.workspaceRoot,
-  );
+  const missingEvidence = assessMissingCompletionEvidence({
+    userPrompt: input.userPrompt,
+    todos: input.todos,
+    writtenFiles: input.writtenFiles,
+    terminalEvidence: input.terminalEvidence,
+    readEvidencePaths: input.readEvidencePaths,
+    workspaceRoot: input.workspaceRoot,
+    semanticContract: input.semanticContract,
+  });
   const blockingFailure = getBlockingTerminalFailure(
     input.userPrompt,
     input.todos,
     input.writtenFiles,
     input.terminalEvidence,
+    input.semanticContract,
   ) ?? findBlockingTerminalFailureEvidence(input.terminalEvidence);
   const summaryFactFailures = input.completeSummary
     ? getUnsupportedSummaryFileClaims(input.completeSummary, input.writtenFiles, input.workspaceRoot)

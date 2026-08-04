@@ -197,6 +197,7 @@ function classifyPathOccurrenceMutation(
     start,
     end,
     allOccurrences.some(item => item.index > occurrence.index && item.index < end),
+    allOccurrences,
   );
   const passive = classifyPassivePathMutation(prompt, occurrence, start, end);
   if (passive && explicitRole?.kind !== 'read') return { ...passive, mentioned: true };
@@ -327,6 +328,7 @@ function classifyExplicitPathRole(
   clauseStart: number,
   clauseEnd: number,
   hasFollowingPath: boolean,
+  allOccurrences: PathOccurrence[],
 ): { kind: 'read' | 'prohibited'; index: number } | undefined {
   const before = prompt.slice(clauseStart, occurrence.index);
   const after = prompt.slice(occurrence.index + occurrence.path.length, clauseEnd);
@@ -358,7 +360,40 @@ function classifyExplicitPathRole(
   if (afterRead) {
     return { kind: 'read', index: occurrence.index + occurrence.path.length + (afterRead.index ?? 0) };
   }
+  const coordinatedRead = resolveCoordinatedReadRole(
+    prompt,
+    occurrence,
+    clauseStart,
+    clauseEnd,
+    allOccurrences,
+  );
+  if (coordinatedRead) return coordinatedRead;
   return undefined;
+}
+
+function resolveCoordinatedReadRole(
+  prompt: string,
+  occurrence: PathOccurrence,
+  clauseStart: number,
+  clauseEnd: number,
+  allOccurrences: PathOccurrence[],
+): { kind: 'read'; index: number } | undefined {
+  const previous = allOccurrences
+    .filter(item => item.index >= clauseStart && item.index < occurrence.index)
+    .at(-1);
+  if (!previous) return undefined;
+  const connector = prompt.slice(previous.index + previous.path.length, occurrence.index);
+  if (!/^\s*(?:和|与|及|以及|、|并|&|and)\s*$/iu.test(connector)) return undefined;
+  const previousRole = classifyExplicitPathRole(
+    prompt,
+    previous,
+    clauseStart,
+    clauseEnd,
+    true,
+    allOccurrences,
+  );
+  if (previousRole?.kind !== 'read') return undefined;
+  return { kind: 'read', index: previousRole.index };
 }
 
 function classifyPassivePathMutation(
@@ -589,6 +624,33 @@ export function hasArtifactWriteIntent(promptText: string): boolean {
 
 export function hasStandaloneCodeGenerationIntent(promptText: string): boolean {
   return CODE_GENERATION_RE.test(promptText) && !CODE_GENERATION_REPORT_RE.test(promptText);
+}
+
+/** Resolve file targets whose path occurrence is explicitly bound to a read action. */
+export function resolveTaskReadTargets(promptText: string): string[] {
+  const prompt = extractCurrentUserRequest(promptText);
+  const occurrences = extractPathOccurrences(prompt);
+  return [...new Set(occurrences
+    .filter(occurrence => classifyPathOccurrenceMutation(prompt, occurrence, occurrences).readOnly)
+    .map(occurrence => occurrence.path))];
+}
+
+/** Resolve file targets whose path occurrence is explicitly bound to a mutation. */
+export function resolveTaskMutationTargets(promptText: string): string[] {
+  const prompt = extractCurrentUserRequest(promptText);
+  const occurrences = extractPathOccurrences(prompt);
+  const decisions = new Map<string, TargetMutationDecision>();
+  for (const occurrence of occurrences) {
+    const decision = classifyPathOccurrenceMutation(prompt, occurrence, occurrences);
+    const previous = decisions.get(occurrence.path);
+    if (decision.actionIndex !== undefined
+      && (previous?.actionIndex === undefined || decision.actionIndex >= previous.actionIndex)) {
+      decisions.set(occurrence.path, decision);
+    }
+  }
+  return [...decisions.entries()]
+    .filter(([, decision]) => decision.requested && !decision.prohibited)
+    .map(([pathValue]) => pathValue);
 }
 
 /** Final write-boundary authorization for Markdown artifacts named by the user. */

@@ -89,7 +89,7 @@ test('IntentRevisionLineage: committed effects are preserved instead of rewritte
   assert.deepEqual(second.effectiveRevision.scope.prohibitedTargets, ['old.txt']);
 });
 
-test('R3-03 IntentRevisionLineage: steer creates TaskContract revision and replans only uncommitted work', () => {
+test('R3-03 IntentRevisionLineage: steer creates semantic contract revision and replans only uncommitted work', () => {
   const first = buildIntentRevisionLineage({
     prompt: '请创建 old.txt 和 stale.txt，文件内容必须精确。',
   });
@@ -105,19 +105,21 @@ test('R3-03 IntentRevisionLineage: steer creates TaskContract revision and repla
     prompt: '继续，但不要再改 old.txt，改为只创建 new.txt。',
   });
 
-  assert.equal(second.taskContractRevision.version, 'devseek.task-contract-revision/v1');
-  assert.equal(second.taskContractRevision.revisionId, second.effectiveRevisionId);
-  assert.deepEqual(second.taskContractRevision.preservedCommittedEffectIds, ['effect-old-write']);
-  assert.deepEqual(second.taskContractRevision.rewrittenCommittedEffectIds, []);
-  assert.ok(second.taskContractRevision.blockedReplayEffectIds.includes('effect-old-write'));
-  assert.ok(second.taskContractRevision.pendingTaskHints.some(item => item.includes('new.txt')));
-  assert.ok(!second.taskContractRevision.pendingTaskHints.some(item => item.includes('old.txt')));
+  const revision = second.semanticContractRevision;
+  assert.equal(revision.version, 'devseek.semantic-contract-revision/v1');
+  assert.equal(revision.revisionId, second.effectiveRevisionId);
+  assert.deepEqual(revision.preservedCommittedEffectIds, ['effect-old-write']);
+  assert.deepEqual(revision.rewrittenCommittedEffectIds, []);
+  assert.ok(revision.blockedReplayEffectIds.includes('effect-old-write'));
+  assert.ok(revision.pendingTaskHints.some(item => item.includes('new.txt')));
+  assert.ok(!revision.pendingTaskHints.some(item => item.includes('old.txt')));
+  assert.deepEqual(revision.semanticContract.mutation.targets, ['new.txt']);
 
   const replanned = replanUncommittedTasksForContractRevision([
     { id: 1, title: 'Create old.txt', status: 'completed' },
     { id: 2, title: 'Rewrite old.txt again', status: 'not-started' },
     { id: 3, title: 'Create stale.txt', status: 'in-progress' },
-  ], second.taskContractRevision);
+  ], revision);
 
   assert.deepEqual(replanned.find(item => item.id === 1)?.status, 'completed');
   assert.equal(replanned.some(item => item.status !== 'completed' && item.title.includes('old.txt')), false);

@@ -14,14 +14,16 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '../../');
 const extensionSource = readFileSync(path.join(rootDir, 'src/extension.ts'), 'utf8');
+const projectInitSource = readFileSync(path.join(rootDir, 'src/app/project-init-service.ts'), 'utf8');
 
 test('VS Code direct /init response records visible history with displayPrompt', () => {
   const branch = sourceBetween(
-    'if (isProjectInitRequest(userDisplay) || isProjectInitRequest(prompt))',
-    'const initialRouteDecision = chatRouteController.decide',
+    'if (tryPublishProjectInitTurn({',
+    'decideAgentTurnRoute(chatRouteController',
   );
 
-  assert.match(branch, /directVisibleResponsePublisher\.publish\(\{[\s\S]*userDisplay,[\s\S]*userMessagePrompt:\s*prompt,[\s\S]*responsePrompt:\s*prompt,[\s\S]*responseText:\s*text/);
+  assert.match(branch, /userDisplay,[\s\S]*prompt,[\s\S]*publisher:\s*directVisibleResponsePublisher/);
+  assert.match(projectInitSource, /input\.publisher\.publish\(\{[\s\S]*userDisplay:\s*input\.userDisplay,[\s\S]*userMessagePrompt:\s*input\.prompt,[\s\S]*responsePrompt:\s*input\.prompt,[\s\S]*responseText/);
   assert.doesNotMatch(branch, /nonBridgeChatHistory\.push\(\{ role: 'user', content: prompt \}\)/);
 });
 

@@ -5,7 +5,8 @@ import {
   type OrientationEvidence,
   type OrientationRisk,
 } from './orientation-decision';
-import { buildTaskContract, type TaskContract } from '../agent/task-contract';
+import type { TaskSemanticContract } from '../task-semantic-contract';
+import type { TaskSemanticProjectInstructionInput } from './task-semantic-contract-service';
 
 export type IntentRevisionChangeKind =
   | 'initial'
@@ -58,11 +59,11 @@ export interface IntentRevision {
   evidence: IntentRevisionEvidence[];
 }
 
-export interface IntentTaskContractRevision {
-  version: 'devseek.task-contract-revision/v1';
+export interface IntentSemanticContractRevision {
+  version: 'devseek.semantic-contract-revision/v1';
   revisionId: string;
   parentRevisionId?: string;
-  taskContract: TaskContract;
+  semanticContract: TaskSemanticContract;
   pendingTargets: string[];
   prohibitedTargets: string[];
   pendingTaskHints: string[];
@@ -82,9 +83,11 @@ export interface ReplannableTaskItem {
   status: string;
 }
 
-export interface IntentRevisionLineageInput extends Omit<OrientationDecisionInput, 'route'> {
+export interface IntentRevisionLineageInput extends Omit<OrientationDecisionInput, 'route' | 'semanticContext'> {
   previous?: IntentRevisionLineage;
   committedEffects?: IntentRevisionEffectReceipt[];
+  currentSemanticContract?: TaskSemanticContract;
+  projectInstructions?: TaskSemanticProjectInstructionInput;
 }
 
 export interface IntentRevisionLineage {
@@ -96,7 +99,7 @@ export interface IntentRevisionLineage {
   committedEffects: IntentRevisionEffectReceipt[];
   preservedCommittedEffectIds: string[];
   rewrittenCommittedEffectIds: string[];
-  taskContractRevision: IntentTaskContractRevision;
+  semanticContractRevision: IntentSemanticContractRevision;
   blockers: string[];
   evidence: IntentRevisionEvidence[];
   allowedToExecute: boolean;
@@ -118,14 +121,30 @@ export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): I
     .filter(effect => effect.status === 'committed')
     .map(effect => effect.id);
 
+  const prohibitedTargets = extractProhibitedTargets(prompt);
+  const changeKinds = classifyChangeKinds(prompt, previous !== undefined, prohibitedTargets);
+  const revisionId = `rev-${previousRevisions.length + 1}`;
   const orientation = buildOrientationDecision({
     prompt,
     knownPaths: input.knownPaths,
     authorizedExternalEffects: input.authorizedExternalEffects,
+    semanticContext: {
+      current: input.currentSemanticContract,
+      previous: previousEffective?.orientation.route.semanticContract,
+      projectInstructions: input.projectInstructions,
+      revision: {
+        strategy: previous === undefined
+          ? 'initial'
+          : changeKinds.includes('correction') || changeKinds.includes('scope-reduction')
+            ? 'replace-scope'
+            : 'merge',
+        revisionId,
+        parentRevisionId: previousEffective?.id,
+        prohibitedTargets,
+      },
+    },
   });
-  const prohibitedTargets = extractProhibitedTargets(prompt);
   const targets = extractRevisionTargets(orientation, prohibitedTargets);
-  const changeKinds = classifyChangeKinds(prompt, previous !== undefined, prohibitedTargets);
   const permissionWidening = isPermissionWidening(previousEffective?.permission.risk, orientation.risk, orientation);
   const blockers = [
     ...orientation.blockers,
@@ -135,7 +154,7 @@ export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): I
   ];
   const status = resolveRevisionStatus(orientation, blockers);
   const revision: IntentRevision = {
-    id: `rev-${previousRevisions.length + 1}`,
+    id: revisionId,
     parentId: previousEffective?.id,
     prompt,
     status,
@@ -175,9 +194,9 @@ export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): I
     }),
   ];
   const allowedToExecute = status === 'active';
-  const taskContractRevision = buildIntentTaskContractRevision({
+  const semanticContractRevision = buildIntentSemanticContractRevision({
     revision,
-    taskContract: buildTaskContract(prompt),
+    semanticContract: orientation.route.semanticContract,
     committedEffects,
     preservedCommittedEffectIds,
     rewrittenCommittedEffectIds: [],
@@ -194,7 +213,7 @@ export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): I
     committedEffects,
     preservedCommittedEffectIds,
     rewrittenCommittedEffectIds: [],
-    taskContractRevision,
+    semanticContractRevision,
     blockers: [...new Set(blockers)],
     evidence,
     allowedToExecute,
@@ -203,7 +222,7 @@ export function buildIntentRevisionLineage(input: IntentRevisionLineageInput): I
 
 export function replanUncommittedTasksForContractRevision<T extends ReplannableTaskItem>(
   tasks: readonly T[],
-  revision: IntentTaskContractRevision,
+  revision: IntentSemanticContractRevision,
 ): T[] {
   const blockedTargets = new Set([
     ...revision.committedEffectTargets,
@@ -232,15 +251,15 @@ export function replanUncommittedTasksForContractRevision<T extends ReplannableT
   return replanned;
 }
 
-function buildIntentTaskContractRevision(input: {
+function buildIntentSemanticContractRevision(input: {
   revision: IntentRevision;
-  taskContract: TaskContract;
+  semanticContract: TaskSemanticContract;
   committedEffects: IntentRevisionEffectReceipt[];
   preservedCommittedEffectIds: string[];
   rewrittenCommittedEffectIds: string[];
   blockers: string[];
   allowedToExecute: boolean;
-}): IntentTaskContractRevision {
+}): IntentSemanticContractRevision {
   const committedEffects = input.committedEffects.filter(effect => effect.status === 'committed');
   const committedEffectTargets = uniquePaths(
     committedEffects.map(effect => effect.target || '').filter(Boolean),
@@ -250,14 +269,15 @@ function buildIntentTaskContractRevision(input: {
     ...input.revision.scope.prohibitedTargets,
   ].map(normalizePathToken).filter(Boolean));
   const pendingTargets = uniquePaths([
-    ...input.taskContract.deliverableTargets,
+    ...input.semanticContract.mutation.targets,
+    ...input.semanticContract.taskContract.deliverableTargets,
     ...input.revision.scope.targets,
   ]).filter(target => !blockedTargets.has(normalizePathToken(target)));
   return {
-    version: 'devseek.task-contract-revision/v1',
+    version: 'devseek.semantic-contract-revision/v1',
     revisionId: input.revision.id,
     parentRevisionId: input.revision.parentId,
-    taskContract: input.taskContract,
+    semanticContract: input.semanticContract,
     pendingTargets,
     prohibitedTargets: [...input.revision.scope.prohibitedTargets],
     pendingTaskHints: pendingTargets.map(target => `继续未提交任务：${target}`),

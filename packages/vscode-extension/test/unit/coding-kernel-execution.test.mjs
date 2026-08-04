@@ -40,6 +40,7 @@ test('CodingKernelExecutionService routes exploratory work through the single ke
     },
   };
   const callbacks = { executionMode: 'inspect' };
+  const semanticContract = { version: 3, revision: { kind: 'replace' } };
   const service = new CodingKernelExecutionService(loops);
 
   const actual = await service.execute({
@@ -52,6 +53,7 @@ test('CodingKernelExecutionService routes exploratory work through the single ke
     sessionContextText: 'session context',
     workflowMode: 'inspect',
     memoryRelatedPaths: ['src/main.ts'],
+    semanticContract,
   });
 
   assert.equal(actual, expected);
@@ -64,6 +66,7 @@ test('CodingKernelExecutionService routes exploratory work through the single ke
     'session context',
     'inspect',
     ['src/main.ts'],
+    semanticContract,
   ]]);
 });
 
@@ -82,6 +85,7 @@ test('CodingKernelExecutionService routes planned work through the same kernel p
   const tasks = [{ id: 'task-1', action: 'modify', desc: 'fix source' }];
   const workspaceRoot = { fsPath: '/workspace' };
   const callbacks = { executionMode: 'edit' };
+  const semanticContract = { version: 3, revision: { kind: 'replace' } };
   const service = new CodingKernelExecutionService(loops);
 
   const actual = await service.execute({
@@ -93,6 +97,7 @@ test('CodingKernelExecutionService routes planned work through the same kernel p
     callbacks,
     analysisContext: 'prior findings',
     startFromIndex: 2,
+    semanticContract,
   });
 
   assert.equal(actual, expected);
@@ -104,6 +109,7 @@ test('CodingKernelExecutionService routes planned work through the same kernel p
     callbacks,
     'prior findings',
     2,
+    semanticContract,
   ]]);
 });
 

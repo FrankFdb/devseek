@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import {
   ProjectInstructionService,
   wrapProjectInstructionsAsContext,
+  type ProjectInstructionResult,
 } from './app/project-instruction-service';
 import { ContextAssemblyService, type ContextSource } from './app/context-assembly-service';
 import { ContextScopeResolver } from './app/context-scope-resolver';
@@ -22,14 +23,31 @@ export async function getProjectRules(): Promise<string | null> {
 }
 
 export function getProjectRulesSync(): string | null {
-  const roots = getWorkspaceRoots();
-  if (roots.length === 0) return null;
-  const result = instructionService.discover({ workspaceRoots: roots });
+  const result = getProjectInstructionResultSync();
+  if (!result) return null;
   const key = result.sources.map(source => `${source.absPath}:${source.mtimeMs}:${source.includedChars}`).join('|');
   if (_cached !== undefined && key === _cachedKey) return _cached;
   _cached = result.content || null;
   _cachedKey = key;
   return _cached;
+}
+
+export interface ProjectInstructionLookupOptions {
+  workspaceRoots?: readonly string[];
+  targetPaths?: readonly string[];
+}
+
+export function getProjectInstructionResultSync(
+  options: ProjectInstructionLookupOptions = {},
+): ProjectInstructionResult | null {
+  const roots = options.workspaceRoots?.length
+    ? [...options.workspaceRoots]
+    : getWorkspaceRoots();
+  if (roots.length === 0) return null;
+  return instructionService.discover({
+    workspaceRoots: roots,
+    targetPaths: [...(options.targetPaths ?? [])],
+  });
 }
 
 /** 重置缓存（文件删除/重命名时用） */
