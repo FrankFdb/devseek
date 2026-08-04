@@ -134,7 +134,7 @@ test('Mutation guard: MCP tools have one authorized product boundary and honest 
   const extension = source('src/extension.ts');
   const mcpBoundary = source('src/app/evidence-aware-mcp-tool-call.ts');
   assert.equal((mcpBoundary.match(/deps\.mcpManager\.callTool\s*\(/g) ?? []).length, 1);
-  assert.equal((extension.match(/createEvidenceAwareMcpToolCall\s*\(/g) ?? []).length, 3);
+  assert.equal((extension.match(/createEvidenceAwareMcpToolCall\s*\(/g) ?? []).length, 2);
   assert.match(extension, /createEvidenceAwareMcpToolCallFactory\(\{[\s\S]*?terminalPermissions:[\s\S]*?mcpManager/);
   assert.match(mcpBoundary, /kind:\s*'mcp-tool'[\s\S]*?kind:\s*'invocation-receipt'[\s\S]*?mcp-json-rpc-call-resolved/);
   assert.match(mcpBoundary, /requestInlineConfirmation\(webview, `MCP:/);
@@ -159,10 +159,8 @@ test('Mutation guard: durable settlement controls every completed success projec
   assert.ok(agenticStart >= 0 && agenticSave > agenticStart && agenticAutopilot > agenticStart);
   assert.match(extension, /\[Agentic\] \$\{agDurablyCompleted \? '已完成' : '未完成'\}/);
 
-  const twoPhaseStart = extension.indexOf('const agentSettlement = agentKernelRun.settleAgentLoopResult');
-  const twoPhaseSave = extension.indexOf('completed: agentDurablyCompleted', twoPhaseStart);
-  const twoPhaseAutoAccept = extension.indexOf("if (!loopFailedForAutoAccept && durableAgentSettlement === 'completed')", twoPhaseStart);
-  assert.ok(twoPhaseStart >= 0 && twoPhaseSave > twoPhaseStart && twoPhaseAutoAccept > twoPhaseStart);
+  assert.doesNotMatch(extension, /const agentSettlement = agentKernelRun\.settleAgentLoopResult/);
+  assert.doesNotMatch(extension, /loopFailedForAutoAccept|durableAgentSettlement/);
   assert.doesNotMatch(extension, /from '\.\/app\/agent-run-settlement'/);
   assert.match(agentKernel, /settleAgentLoopResult\(this\.terminalPermissions, this\.runContext/);
   assert.match(agentKernel, /completeRunContext\(this\.runContext,\s*'failed'/);

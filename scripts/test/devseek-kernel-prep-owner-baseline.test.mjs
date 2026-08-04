@@ -44,19 +44,20 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
     active_product_routes: 3,
     headless_product_entrypoints: 0,
     canonical_fresh_task_routes: 1,
-    legacy_recovery_routes: 1,
-    legacy_execution_owners: 2,
+    canonical_recovery_routes: 1,
+    legacy_recovery_routes: 0,
+    legacy_execution_owners: 1,
     cross_surface_kernel_routes: 0,
     semantic_domains: 5,
     converged_semantic_domains: 0,
-    source_checks: 35,
+    source_checks: 38,
     failed_source_checks: 0,
   });
   assert.deepEqual(
     actual.product_routes.map(route => [route.route_id, route.status]),
     [
       ['vscode-fresh-task', 'canonical-surface-route'],
-      ['vscode-checkpoint-resume', 'legacy-recovery-only'],
+      ['vscode-checkpoint-resume', 'canonical-recovery-route'],
       ['cli-exec', 'legacy-semantic-owner'],
       ['headless-product', 'absent'],
     ],
@@ -113,17 +114,17 @@ test('coding conformance preparation has no product-route imports or adapters', 
   assert.deepEqual(hits, []);
 });
 
-test('kernel prep owner baseline fails closed when the legacy recovery adapter drifts', () => {
+test('kernel prep owner baseline fails closed when the canonical recovery adapter drifts', () => {
   const mutatedSources = structuredClone(sources);
   const sourcePath = 'packages/vscode-extension/src/product-coding-kernel-executor.ts';
   mutatedSources.sourceContents[sourcePath] = mutatedSources.sourceContents[sourcePath]
-    .replace('runLegacyPlanned: runAgentLoop,', 'runLegacyPlanned: unknownLoop,');
+    .replace('{ recoveryContextText: request.recoveryContextText },', "{ recoveryContextText: '' },");
 
   const mutated = buildKernelPrepOwnerBaseline(mutatedSources);
   const result = validateKernelPrepOwnerBaseline(mutated, mutatedSources);
 
   assert.equal(result.ok, false);
-  assert.ok(result.errors.includes('source-check:failed-vscode-canonical-and-legacy-recovery-adapter'));
+  assert.ok(result.errors.includes('source-check:failed-vscode-canonical-kernel-adapter'));
 });
 
 test('kernel prep owner baseline refuses to turn a local Gate 0 mutation into qualification promotion', () => {
@@ -154,8 +155,9 @@ test('kernel prep owner baseline checker validates the current generated artifac
     active_product_routes: 3,
     headless_product_entrypoints: 0,
     canonical_fresh_task_routes: 1,
-    legacy_recovery_routes: 1,
-    legacy_execution_owners: 2,
+    canonical_recovery_routes: 1,
+    legacy_recovery_routes: 0,
+    legacy_execution_owners: 1,
     cross_surface_kernel_routes: 0,
     converged_semantic_domains: 0,
     failed_source_checks: 0,

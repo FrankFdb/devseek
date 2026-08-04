@@ -468,7 +468,7 @@ test('§8.3 File edits: code directory prompts force generated code paths under 
   );
 });
 
-test('Path memory: tool callbacks use inferred workspace root instead of workspaceFolders[0]', () => {
+test('Path memory: canonical tool callbacks use inferred workspace root instead of workspaceFolders[0]', () => {
   const code = src('src/extension.ts');
   const fileContext = src('src/workspace/file-context-service.ts');
   assertContains(
@@ -476,11 +476,7 @@ test('Path memory: tool callbacks use inferred workspace root instead of workspa
     'createFileContextService(agWsRoot).readFileForAi',
     'free-explore read_file must delegate to FileContextService anchored to inferred agWsRoot',
   );
-  assertContains(
-    code,
-    'createFileContextService(wsRoot.fsPath).readFileForAi',
-    'editor read_file must delegate to FileContextService anchored to selected task workspace root',
-  );
+  assertDoesNotContain(code, 'createFileContextService(wsRoot.fsPath).readFileForAi', 'retired planned editor callbacks must not remain');
   assert.ok(
     fileContext.indexOf('nodePath.resolve(workDir, filePath)') < fileContext.indexOf('recentByBase'),
     'FileContextService must prefer task workDir before session basename memory',
@@ -494,10 +490,10 @@ test('Path memory: tool callbacks use inferred workspace root instead of workspa
     'grepWorkspace(agWsRoot, pattern, path, workDir, options)',
     'free-explore grep_search must delegate to WorkspaceGrepSearchService anchored to inferred agWsRoot',
   );
-  assertContains(
+  assertDoesNotContain(
     code,
     'grepWorkspace(wsRoot.fsPath, pattern, path, workDir, options)',
-    'editor grep_search must delegate to WorkspaceGrepSearchService anchored to selected task workspace root',
+    'retired planned grep_search callbacks must not remain beside the canonical agWsRoot boundary',
   );
   assertContains(
     fileContext,
@@ -2084,8 +2080,9 @@ test('Local execution failures escalate into Agent repair instead of browser upl
   assertContains(planner, 'canReplayRunOnlyPlan', 'planner must verify run-only executables still exist');
   assertContains(planner, 'repeat-replanned-build', 'planner must replan missing or rebuild repeat requests as build/run');
   assertContains(localRunner, 'buildLocalExecutionRepairTasks(localPlan, localResult, repairWsRoot)', 'local failures must build concrete repair tasks');
-  assertContains(localRunner, 'agentKernelService.executeLegacyPlannedTask({', 'local failures must enter the explicit legacy repair route');
-  assertContains(localRunner, "legacyReason: 'local-validation-repair'", 'legacy repair must declare its bounded compatibility reason');
+  assertContains(localRunner, 'agentKernelService.executeCanonicalTask({', 'local failures must enter the canonical Kernel route');
+  assertContains(localRunner, 'createLocalValidationKernelRecovery({', 'local repair must carry typed recovery context');
+  assertContains(localRunner, 'workflowMode: input.toolPolicy.mode', 'local repair must preserve its tool policy mode');
   assert.doesNotMatch(localRunner, /runAgentLoop\(/, 'local repair must not bypass the Coding Kernel execution boundary');
   assertContains(localRunner, '本地执行失败，进入 Agent 修复', 'UI must show the repair escalation');
   assertContains(repair, '按 Claude Code / Codex 风格处理', 'repair prompt must follow coding-agent closed-loop behavior');
@@ -2650,6 +2647,7 @@ test('Real DeepSeek harness: visible relogin waits for authenticated page state'
 test('Agentic session continuation: one projection owner gates every execution path', () => {
   const ext = src('src/extension.ts');
   const agenticLoop = src('src/agent/agentic-loop.ts');
+  const executionContext = src('src/agent/agentic-execution-context.ts');
   const sessionContext = src('src/app/agent-session-context.ts');
   const sessionProjector = src('src/app/session-continuation-projector.ts');
   assertContains(ext, 'new SessionContinuationProjector({', 'extension must compose one session continuation projector');
@@ -2670,21 +2668,22 @@ test('Agentic session continuation: one projection owner gates every execution p
     /nonBridgeChatHistory\.push\(\{ role: 'user', content: userDisplay \}\);[\s\S]*?saveCurrentSession\(\);[\s\S]*?webview\.postMessage\(\{ type: 'endResponse' \}\);[\s\S]*?return;/,
     'free-explore branch must persist session history before returning',
   );
+  assertContains(agenticLoop, 'createAgenticInitialPromptContext(', 'agentic loop must delegate initial context projection');
   assert.match(
-    agenticLoop,
-    /sessionContextText = ''[\s\S]*?【同一会话上下文】[\s\S]*?【当前用户消息】/,
-    'agentic loop must inject same-session context before the current prompt',
+    executionContext,
+    /【同一会话上下文】[\s\S]*?【当前用户消息】/,
+    'execution-context owner must inject same-session context before the current prompt',
   );
 });
 
-test('Run evidence: changed paths are projected from the current run across sibling routes', () => {
+test('Run evidence: changed paths are projected from the canonical current run', () => {
   const ext = src('src/extension.ts');
   const recorder = src('src/app/run-changed-path-recorder.ts');
   assertContains(recorder, 'export function projectRunChangedPaths', 'one pure owner must normalize current-run paths');
   assertContains(recorder, 'export class RunChangedPathRecorder', 'one application owner must replace latest run state');
   assertContains(recorder, 'this.deps.replaceLastChangedPaths(relativePaths)', 'empty results must replace stale prior-run state');
-  assertContains(ext, 'const agRunChangedPaths = runChangedPathRecorder.record({', 'exploratory runs must record their own result');
-  assertContains(ext, 'const currentRunChangedPaths = runChangedPathRecorder.record({', 'planned runs must record their own result');
+  assertContains(ext, 'const agRunChangedPaths = runChangedPathRecorder.record({', 'canonical runs must record their own result');
+  assertDoesNotContain(ext, 'const currentRunChangedPaths = runChangedPathRecorder.record({', 'retired planned runs must not own changed-path projection');
   assertContains(ext, 'currentChatRunChangedPaths = chatRunChangedPaths.commit();', 'chat runs must settle from their own accumulated paths');
   assertContains(ext, 'changedPaths: currentChatRunChangedPaths.slice(0, 12)', 'chat completion evidence must use current-run paths');
   assert.doesNotMatch(ext, /settleAgentLoopResult\(agResult,\s*lastAgentChangedPaths/);
@@ -4105,19 +4104,23 @@ test('DOC01 Kernel route: attached context cannot select a parallel executor', (
   assertContains(routeDecision, "devseek.coding-kernel-route-decision/v1", 'Kernel route decision must be versioned');
   assertContains(appIndex, "export * from './coding-kernel-route-decision';", 'Kernel route owner must be exported through app boundary');
   assertContains(routeDecision, "route: 'canonical'", 'new tasks must select the canonical loop');
-  assertContains(routeDecision, "reason: 'checkpoint-resume'", 'legacy route must be checkpoint-bound');
+  assertContains(routeDecision, "reason: 'checkpoint-resume'", 'checkpoint recovery must remain explicitly classified');
+  assertDoesNotContain(routeDecision, "route: 'legacy-planned'", 'checkpoint recovery must not select a second executor');
   assertDoesNotContain(routeDecision, 'contextFiles', 'context shape must not be an executor-selection input');
   assertContains(agentKernel, 'decideCodingKernelRoute(input)', 'AgentKernel must expose the unique route owner');
   assertContains(agentKernel, 'private execute(request: CodingKernelExecutionRequest)', 'surfaces must not submit arbitrary routes');
   assertContains(extension, 'agentKernelService.decideExecutionRoute({', 'VS Code must delegate execution routing to Kernel');
-  assertContains(extension, 'const contextFiles = [...effectiveFiles]', 'all attachment kinds must remain context');
+  assertContains(extension, 'const contextFiles = [...new Set([', 'attachments and recovery targets must remain context');
   assertContains(extension, 'agentKernelService.executeCanonicalTask({', 'all fresh tasks must use the canonical executor');
-  assertContains(extension, "legacyReason: 'checkpoint-resume'", 'VS Code legacy execution must be checkpoint-only');
-  assertContains(localRunner, "legacyReason: 'local-validation-repair'", 'local repair legacy execution must be explicitly bounded');
+  assertContains(extension, 'recovery: kernelRecovery', 'VS Code checkpoint recovery must enter the canonical request');
+  assertContains(localRunner, 'createLocalValidationKernelRecovery({', 'local repair must enter the same canonical request');
+  assertDoesNotContain(extension, 'executeLegacyPlannedTask', 'VS Code must not retain a legacy execution owner');
+  assertDoesNotContain(localRunner, 'executeLegacyPlannedTask', 'local repair must not retain a legacy execution owner');
   assertDoesNotContain(extension, 'hasCodeFiles', 'VS Code must not classify attachments to choose a loop');
   assertDoesNotContain(extension, 'AGENT_CODE_FILE_RE', 'VS Code must not use file extensions to choose a loop');
   assertDoesNotContain(extension, 'decomposeTask(', 'fresh VS Code tasks must not enter the retired Architect selector');
-  assertContains(execution, 'coding-kernel-execution:unsupported-legacy-reason', 'unknown legacy routes must fail closed');
+  assertContains(execution, 'coding-kernel-execution:unsupported-route', 'every non-canonical route must fail closed');
+  assertDoesNotContain(execution, 'runLegacyPlanned', 'Kernel execution must expose one product loop port');
 });
 
 test('Architecture: R2-02 requirement contract owns acceptance and external-boundary semantics', () => {

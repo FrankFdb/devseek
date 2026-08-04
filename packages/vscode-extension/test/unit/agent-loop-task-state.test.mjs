@@ -446,7 +446,7 @@ test('R3-03 shared write authority publishes steer semantic contract revision re
 test('canonical agent history and completion are evidence based', () => {
   const extensionSource = readFileSync(path.join(rootDir, 'src/extension.ts'), 'utf8');
 
-  assert.match(extensionSource, /agentHistoryText\s*=\s*loopResult\.historyText/, 'extension must persist agent-loop evidence history');
+  assert.match(extensionSource, /agentHistoryText\s*=\s*agResult\.historyText/, 'extension must persist canonical loop evidence history');
   assert.match(
     extensionSource,
     /const agSettlement\s*=\s*agentKernelRun\.settleAgentLoopResult\(agResult,\s*agRunChangedPaths\)/,

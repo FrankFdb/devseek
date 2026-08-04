@@ -22,8 +22,8 @@
     "baseline_sha256"
   ],
   "properties": {
-    "schema_version": { "const": "devseek.kernel-prep-owner-baseline/v2" },
-    "baseline_id": { "const": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v2" },
+    "schema_version": { "const": "devseek.kernel-prep-owner-baseline/v3" },
+    "baseline_id": { "const": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v3" },
     "purpose": { "type": "string", "minLength": 1 },
     "qualification_eligible": { "const": false },
     "qualification_effect": { "const": "NONE" },
@@ -91,6 +91,7 @@
         "active_product_routes",
         "headless_product_entrypoints",
         "canonical_fresh_task_routes",
+        "canonical_recovery_routes",
         "legacy_recovery_routes",
         "legacy_execution_owners",
         "cross_surface_kernel_routes",
@@ -104,6 +105,7 @@
         "active_product_routes": { "type": "integer", "minimum": 0 },
         "headless_product_entrypoints": { "type": "integer", "minimum": 0 },
         "canonical_fresh_task_routes": { "type": "integer", "minimum": 0 },
+        "canonical_recovery_routes": { "type": "integer", "minimum": 0 },
         "legacy_recovery_routes": { "type": "integer", "minimum": 0 },
         "legacy_execution_owners": { "type": "integer", "minimum": 0 },
         "cross_surface_kernel_routes": { "type": "integer", "minimum": 0 },
@@ -133,7 +135,7 @@
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         },
-        "status": { "enum": ["canonical-surface-route", "legacy-recovery-only", "legacy-semantic-owner", "absent", "unclassified"] }
+        "status": { "enum": ["canonical-surface-route", "canonical-recovery-route", "legacy-recovery-only", "legacy-semantic-owner", "absent", "unclassified"] }
       }
     },
     "semanticDomain": {

@@ -1,6 +1,6 @@
 {
-  "schema_version": "devseek.kernel-prep-owner-baseline/v2",
-  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v2",
+  "schema_version": "devseek.kernel-prep-owner-baseline/v3",
+  "baseline_id": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v3",
   "purpose": "Track product-route and semantic-owner convergence without asserting qualification or coupling local iteration to Gate 0.",
   "qualification_eligible": false,
   "qualification_effect": "NONE",
@@ -48,9 +48,9 @@
       "current_chain": [
         "AgentKernelService",
         "CodingKernelExecutionService",
-        "runAgentLoop"
+        "runAgenticLoop"
       ],
-      "status": "legacy-recovery-only"
+      "status": "canonical-recovery-route"
     },
     {
       "route_id": "cli-exec",
@@ -199,12 +199,13 @@
     "active_product_routes": 3,
     "headless_product_entrypoints": 0,
     "canonical_fresh_task_routes": 1,
-    "legacy_recovery_routes": 1,
-    "legacy_execution_owners": 2,
+    "canonical_recovery_routes": 1,
+    "legacy_recovery_routes": 0,
+    "legacy_execution_owners": 1,
     "cross_surface_kernel_routes": 0,
     "semantic_domains": 5,
     "converged_semantic_domains": 0,
-    "source_checks": 35,
+    "source_checks": 38,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -328,14 +329,15 @@
         "activeRun.bindAgentKernelRun(agentKernelRun)",
         "agentKernelService.decideExecutionRoute({",
         "agentKernelService.executeCanonicalTask({",
-        "agentKernelService.executeLegacyPlannedTask({"
+        "analysisContext: lastAnalysisText"
       ],
       "excludes": [
         "let activeChatAbortController",
         "let activeAgentKernelRun",
         "activeAgentSteerQueue",
         "agentKernelService.executeExploratory({",
-        "agentKernelService.executePlanned({"
+        "agentKernelService.executePlanned({",
+        "agentKernelService.executeLegacyPlannedTask({"
       ],
       "passed": true
     },
@@ -408,14 +410,14 @@
         "new SessionContinuationProjector({",
         "const initialSessionProjection = sessionContinuationProjector.project({",
         "const agSessionContext = sessionContinuationProjector.project({",
-        "const sessionContextForAgent = sessionContinuationProjector.project({",
         "const sessionContextForChat = sessionContinuationProjector.project({"
       ],
       "excludes": [
         "projectSessionContinuationFromState",
         "resolveSessionContinuationFilesFromState",
         "buildAgenticSessionContextFromState",
-        "shouldInjectSessionContinuationForIntent"
+        "shouldInjectSessionContinuationForIntent",
+        "const sessionContextForAgent = sessionContinuationProjector.project({"
       ],
       "passed": true
     },
@@ -439,12 +441,12 @@
       "includes": [
         "new RunChangedPathRecorder({",
         "const agRunChangedPaths = runChangedPathRecorder.record({",
-        "const currentRunChangedPaths = runChangedPathRecorder.record({",
         "currentChatRunChangedPaths = chatRunChangedPaths.commit();"
       ],
       "excludes": [
         "settleAgentLoopResult(agResult, lastAgentChangedPaths)",
-        "changedPaths: lastAgentChangedPaths.slice(0, 12)"
+        "changedPaths: lastAgentChangedPaths.slice(0, 12)",
+        "const currentRunChangedPaths = runChangedPathRecorder.record({"
       ],
       "passed": true
     },
@@ -463,28 +465,34 @@
       "passed": true
     },
     {
-      "check_id": "vscode-canonical-and-legacy-recovery-adapter",
+      "check_id": "vscode-canonical-kernel-adapter",
       "path": "packages/vscode-extension/src/product-coding-kernel-executor.ts",
       "includes": [
-        "import { runAgentLoop } from './agent-loop'",
         "import { runAgenticLoop } from './agent/agentic-loop'",
-        "runCanonical: runAgenticLoop",
-        "runLegacyPlanned: runAgentLoop"
+        "runCanonical: request => runAgenticLoop(",
+        "{ recoveryContextText: request.recoveryContextText },"
       ],
-      "excludes": [],
+      "excludes": [
+        "runAgentLoop",
+        "runLegacyPlanned"
+      ],
       "passed": true
     },
     {
-      "check_id": "vscode-kernel-execution-route-boundary",
+      "check_id": "vscode-canonical-recovery-execution-boundary",
       "path": "packages/vscode-extension/src/app/coding-kernel-execution.ts",
       "includes": [
-        "request.route === 'canonical'",
-        "request.route === 'legacy-planned'",
-        "request.legacyReason !== 'checkpoint-resume'",
-        "request.legacyReason !== 'local-validation-repair'",
-        "coding-kernel-execution:unsupported-legacy-reason"
+        "readonly recovery?: CodingKernelRecovery;",
+        "if (request.route !== 'canonical')",
+        "renderCodingKernelRecoveryContext(request.recovery)",
+        "getPendingKernelRecoveryTasks(request.recovery)",
+        "coding-kernel-execution:unsupported-route"
       ],
-      "excludes": [],
+      "excludes": [
+        "legacy-planned",
+        "legacyReason",
+        "runLegacyPlanned"
+      ],
       "passed": true
     },
     {
@@ -495,14 +503,58 @@
         "export function decideCodingKernelRoute(",
         "route: 'canonical'",
         "reason: 'new-task'",
-        "route: 'legacy-planned'",
         "reason: 'checkpoint-resume'",
+        "readonly analysisContext?: string;",
+        "recovery: createCheckpointKernelRecovery(input.checkpoint)",
         "coding-kernel-route:invalid-checkpoint-resume"
       ],
       "excludes": [
         "contextFiles",
         "attachments",
-        "AGENT_CODE_FILE_RE"
+        "AGENT_CODE_FILE_RE",
+        "legacy-planned"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-kernel-recovery-domain-owner",
+      "path": "packages/vscode-extension/src/app/coding-kernel-recovery.ts",
+      "includes": [
+        "CODING_KERNEL_RECOVERY_VERSION = 'devseek.coding-kernel-recovery/v1'",
+        "export function createCheckpointKernelRecovery(",
+        "export function createLocalValidationKernelRecovery(",
+        "export function getPendingKernelRecoveryTasks(",
+        "export function renderCodingKernelRecoveryContext(",
+        "export function getKernelRecoveryContextFiles(",
+        "isInsideOrEqual(normalizedRoot, candidate)"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-agentic-recovery-projection-boundary",
+      "path": "packages/vscode-extension/src/agent/agentic-loop.ts",
+      "includes": [
+        "from './agentic-execution-context';",
+        "const recoveryContextText = executionContext.recoveryContextText?.trim() ??",
+        "if (!recoveryContextText) {",
+        "createAgenticInitialPromptContext(systemPrompt, userPrompt, sessionContextText, recoveryContextText)",
+        "let totalChars = initialPromptContext.totalChars"
+      ],
+      "excludes": [],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-local-validation-canonical-recovery",
+      "path": "packages/vscode-extension/src/local-execution-chat-runner.ts",
+      "includes": [
+        "agentKernelService: Pick<AgentKernelService, 'executeCanonicalTask'>;",
+        "input.agentKernelService.executeCanonicalTask({",
+        "recovery: createLocalValidationKernelRecovery({",
+        "failedCommand: localPlan.command,"
+      ],
+      "excludes": [
+        "executeLegacyPlannedTask"
       ],
       "passed": true
     },
@@ -650,5 +702,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "2701cf1fd085f2227ee02d88fe5dbfaa56da2ff00cc34b366a27ab320a696fcd"
+  "baseline_sha256": "d962df8711b6f4e65cbc96deaccd4b3d0bb49ba131c5f62e22e44591f786df8c"
 }

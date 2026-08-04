@@ -47,17 +47,19 @@ test('CodingKernelRouteDecision keeps attachments as context, never executor sel
   }
 });
 
-test('CodingKernelRouteDecision permits the legacy loop only for valid checkpoint replay', () => {
+test('CodingKernelRouteDecision keeps checkpoint replay on the canonical route', () => {
   const tasks = [{ id: 'task-1', action: 'modify', file: 'src/main.ts', desc: 'finish edit' }];
   const decision = decideCodingKernelRoute({
-    checkpoint: { tasks, startFromIndex: 0 },
+    checkpoint: { tasks, startFromIndex: 0, analysisContext: ' prior verified finding ' },
   });
 
-  assert.equal(decision.route, 'legacy-planned');
+  assert.equal(decision.route, 'canonical');
   assert.equal(decision.reason, 'checkpoint-resume');
-  assert.notEqual(decision.checkpoint.tasks, tasks);
-  assert.deepEqual(decision.checkpoint.tasks, tasks);
-  assert.equal(decision.checkpoint.startFromIndex, 0);
+  assert.equal(decision.recovery.kind, 'checkpoint-resume');
+  assert.notEqual(decision.recovery.tasks, tasks);
+  assert.deepEqual(decision.recovery.tasks, tasks);
+  assert.equal(decision.recovery.startFromIndex, 0);
+  assert.equal(decision.recovery.analysisContext, 'prior verified finding');
 });
 
 test('CodingKernelRouteDecision fails closed on malformed checkpoint replay', () => {

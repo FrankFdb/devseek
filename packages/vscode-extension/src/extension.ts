@@ -51,9 +51,10 @@ import { buildPreExecutionInteraction } from './app/interaction-service';
 import { buildLocalAttachmentContextPrompt } from './app/local-attachment-context';
 import { MemoryService } from './app/memory-service';
 import { AgentKernelService } from './app/agent-kernel-service';
+import { getKernelRecoveryContextFiles } from './app/coding-kernel-recovery';
 import { ActiveChatRunCoordinator, type ActiveChatRunHandle } from './app/active-chat-run-coordinator';
 import { productCodingKernelExecutor } from './product-coding-kernel-executor';
-import { createDevSeekRunContext, type RunContextStatus } from './app/run-context';
+import { createDevSeekRunContext } from './app/run-context';
 import { createAgentCheckpointCallback } from './app/agent-checkpoint-callback';
 import { guardNonAgentResponse } from './app/non-agent-response-guard';
 import type { AgentChatRequest } from './app/agent-protocol';
@@ -596,10 +597,6 @@ async function runActiveChat(
     // L1a: filled inside try/catch, used after to persist agent turn in session history
     let agentHistoryText = '';
     let loopResult: AgentLoopResult | undefined;
-    let loopAutopilotHandled = false;
-    let loopFailedForAutoAccept = false;
-    let decomposedTaskCount = 0;
-    let durableAgentSettlement: RunContextStatus | undefined;
 
     try {
       const checkpointResumeTasks = resumeFromIndex !== undefined && resumeTasks && resumeTasks.length > 0
@@ -607,12 +604,15 @@ async function runActiveChat(
         : undefined;
       const kernelRoute = agentKernelService.decideExecutionRoute({
         checkpoint: checkpointResumeTasks && resumeFromIndex !== undefined
-          ? { tasks: checkpointResumeTasks, startFromIndex: resumeFromIndex }
+          ? { tasks: checkpointResumeTasks, startFromIndex: resumeFromIndex, analysisContext: lastAnalysisText }
           : undefined,
       });
-      if (kernelRoute.route === 'canonical') {
+      {
         const agWsRootPath = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath);
         const agWsRoot = agWsRootPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+        const kernelRecovery = kernelRoute.reason === 'checkpoint-resume'
+          ? kernelRoute.recovery
+          : undefined;
         const agSessionContext = sessionContinuationProjector.project({
           workspaceRoot: agWsRoot,
           currentPrompt: userDisplay || prompt,
@@ -621,36 +621,55 @@ async function runActiveChat(
           newSession,
         }).contextText;
         const agDisplayProfile = buildAgentRunDisplayProfile(prompt);
-        const contextFiles = [...effectiveFiles];
+        const contextFiles = [...new Set([
+          ...effectiveFiles,
+          ...(kernelRecovery ? getKernelRecoveryContextFiles(kernelRecovery, agWsRoot) : []),
+        ])];
         const activeEditorPath = activeEditorContextPath ?? '';
         const agMemoryRelatedPaths = [
           ...contextFiles,
           ...pathResolutionHints,
           activeEditorPath,
         ].filter((pathValue): pathValue is string => Boolean(pathValue));
-        // Free-explore mode has no Architect decomposition phase, but the UI still
-        // needs a visible beginning before the model's first tool call arrives.
-        postAgent({
-          type: 'agentStatus',
-          phase: 'plan',
-          state: 'started',
-          title: agDisplayProfile.planStartedTitle,
-          taskTotal: 0,
-          detail: agDisplayProfile.planStartedDetail,
-          progressTitle: agDisplayProfile.planStartedTitle,
-          progressDetail: agDisplayProfile.planStartedDetail,
-        });
-        postAgent({
-          type: 'agentStatus',
-          phase: 'plan',
-          state: 'completed',
-          title: agDisplayProfile.planCompletedTitle,
-          taskTotal: 0,
-          detail: agDisplayProfile.planCompletedDetail,
-          progressTitle: agDisplayProfile.planCompletedTitle,
-          progressDetail: agDisplayProfile.planCompletedDetail,
-        });
-        const agResult = await agentKernelService.executeCanonicalTask({
+        if (kernelRecovery) {
+          const remaining = kernelRecovery.tasks.length - kernelRecovery.startFromIndex;
+          postAgent({
+            type: 'agentStatus',
+            phase: 'plan',
+            state: 'completed',
+            title: `断点续传：继续 ${remaining} 个未完成任务`,
+            taskTotal: remaining,
+            detail: kernelRecovery.tasks.slice(kernelRecovery.startFromIndex).map((task, index) => (
+              `${index + 1}. [${task.action}] ${getAgentTaskDisplayTarget(task)} — ${task.desc}`
+            )).join('\n'),
+            progressTitle: '恢复任务上下文',
+            progressDetail: `已完成 ${kernelRecovery.startFromIndex} 个，继续剩余 ${remaining} 个。`,
+          });
+        } else {
+          // Free-explore mode has no Architect decomposition phase, but the UI still
+          // needs a visible beginning before the model's first tool call arrives.
+          postAgent({
+            type: 'agentStatus',
+            phase: 'plan',
+            state: 'started',
+            title: agDisplayProfile.planStartedTitle,
+            taskTotal: 0,
+            detail: agDisplayProfile.planStartedDetail,
+            progressTitle: agDisplayProfile.planStartedTitle,
+            progressDetail: agDisplayProfile.planStartedDetail,
+          });
+          postAgent({
+            type: 'agentStatus',
+            phase: 'plan',
+            state: 'completed',
+            title: agDisplayProfile.planCompletedTitle,
+            taskTotal: 0,
+            detail: agDisplayProfile.planCompletedDetail,
+            progressTitle: agDisplayProfile.planCompletedTitle,
+            progressDetail: agDisplayProfile.planCompletedDetail,
+          });
+        }
+        const agResult = loopResult = await agentKernelService.executeCanonicalTask({
           userPrompt: prompt,
           semanticContract: agentKernelRun.semanticContract,
           contextFiles,
@@ -756,6 +775,7 @@ async function runActiveChat(
           sessionContextText: agSessionContext,
           workflowMode: workflow.toolPolicyMode,
           memoryRelatedPaths: agMemoryRelatedPaths,
+          recovery: kernelRecovery,
         });
         const agRunChangedPaths = runChangedPathRecorder.record({
           workspaceRoot: agWsRoot,
@@ -802,211 +822,7 @@ async function runActiveChat(
         return;
       }
 
-      // Legacy planned execution is restricted to durable checkpoint replay.
-      const tasks = [...kernelRoute.checkpoint.tasks];
-      const checkpointStartFromIndex = kernelRoute.checkpoint.startFromIndex;
-      const sessionContextForAgent = sessionContinuationProjector.project({
-        workspaceRoot: agentWorkspaceRoot,
-        currentPrompt: userDisplay || prompt,
-        intent,
-        currentFilePaths: effectiveFiles,
-        newSession,
-      }).contextText;
-      const promptForAgent = sessionContextForAgent
-        ? appendSessionContinuationContext(prompt, sessionContextForAgent)
-        : prompt;
-      const remaining = tasks.length - checkpointStartFromIndex;
-      postAgent({
-        type: 'agentStatus',
-        phase: 'plan',
-        state: 'completed',
-        title: `断点续传：从第 ${checkpointStartFromIndex + 1} 个任务继续（共 ${tasks.length} 个）`,
-        taskTotal: tasks.length,
-        detail: `已完成 ${checkpointStartFromIndex} 个，剩余 ${remaining} 个：\n` +
-          tasks.slice(checkpointStartFromIndex).map((task, index) =>
-            `${checkpointStartFromIndex + index + 1}. [${task.action}] ${getAgentTaskDisplayTarget(task)} — ${task.desc}`).join('\n'),
-      });
-
-      // Phase-1: Editor — execute each task sequentially
-      // P2: derive workspace root from attached files (Copilot: getWorkspaceFolder per-uri)
-      // rather than blindly using workspaceFolders[0] which would be wrong in multi-root setups.
-      const wsRootPath = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath);
-      const wsRoot = wsRootPath ? vscode.Uri.file(wsRootPath) : vscode.workspace.workspaceFolders?.[0]?.uri;
-      decomposedTaskCount = tasks.length;
-      if (wsRoot) {
-        const editorSessionContext = sessionContextForAgent
-          ? [lastAnalysisText, sessionContextForAgent].filter(Boolean).join('\n\n')
-          : (lastAnalysisText || undefined);
-        loopResult = await agentKernelService.executeLegacyPlannedTask({
-          legacyReason: 'checkpoint-resume',
-          tasks,
-          userPrompt: promptForAgent,
-          semanticContract: agentKernelRun.semanticContract,
-          mode,
-          workspaceRoot: wsRoot,
-          callbacks: {
-            executionMode: workflow.toolPolicyMode,
-            traceRunId: agentTraceRunId,
-            traceWorkspaceRoot: agentTraceWorkspaceRoot,
-            traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
-            onTraceEvidenceError: error => agentRunContext?.markEvidenceDegraded(error),
-            onDelta: (delta) => {
-              if (delta.startsWith('\x00RESET\x00')) {
-                postWebviewMessage(webview, { type: 'resetResponse', text: delta.slice(7) });
-              } else {
-                postWebviewMessage(webview, { type: 'delta', text: delta });
-              }
-            },
-            onWorkflowStatus: async (s) => { postWebviewEvent(webview, { kind: 'workflow', status: s }); },
-            onAgentStatus: async (s) => { postAgent(s); },
-            onAppliedChange: async (c) => { await pendingEditCoordinator.registerChange(webview, c); },
-            onResponseMeta: async (_raw) => { /* suppressed in agent mode */ },
-            // G-tool: AI performed read/search/list — show activity chip in working area
-            onToolActivity: (kind, label) => {
-              postAgentToolActivity(kind, label);
-            },
-            // L-2: AI called manage_todo_list — push to webview todo widget
-            onTodoUpdate: (items) => { webview.postMessage({ type: 'todoUpdate', items }); },
-            onUserSteer: consumeAgentSteer,
-            // L-3: AI called task_complete — phase:done is emitted by executeFakeToolsForLoop
-            // directly via callbacks.onAgentStatus; do NOT duplicate it here.
-            onTaskComplete: (_summary) => { /* side-effect hook; phase:done handled in agent-loop */ },
-            // P3: AI called memory_write — host service validates and persists it.
-            onMemoryWrite: async (proposal) => {
-              const wsPath = wsRoot.fsPath;
-              if (wsPath) new MemoryService({ workspaceRoot: wsPath }).acceptWriteProposal(proposal);
-            },
-            // P-SEC: sensitive file protection — confirm before writing .env / *.pem / *.key etc.
-            // §8.3: also enforce user-configured devseek.protectedFiles glob list (hard block, no confirm)
-            onBeforeFileWrite: (absPath: string, context?: AgentFileWriteContext): Promise<boolean> => confirmAgentFileWrite({
-              webview,
-              absPath,
-              context,
-              workspaceRoot: wsRoot.fsPath,
-              toolPolicy,
-              trace: agentRunContext.childTrace('vscode-extension.file-write-policy'),
-            }),
-            // P3-5: MCP tools available in this session
-            mcpToolRefs: mcpManager.hasMcpTools ? mcpManager.toolRefs : undefined,
-            onMcpToolCall: mcpManager.hasMcpTools
-              ? createEvidenceAwareMcpToolCall(agentRunContext, webview)
-              : undefined,
-            // P4-1: run_terminal tool — AI can execute shell commands from agent loop
-            // G-2: replaced showWarningMessage modal with an inline confirm card in the webview
-            onTerminalCommand: async (command, workdir) => {
-              return terminalPermissionCoordinator.runCommandWithPermission({
-                webview,
-                command,
-                workdir,
-                workspaceRoot: wsRoot.fsPath,
-                mode: intent.mode,
-                toolPolicy,
-                traceRunId: agentTraceRunId,
-                traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
-                onTraceEvidenceError: error => agentRunContext?.markEvidenceDegraded(error),
-              });
-            },
-            onValidationCommand: terminalPermissionCoordinator.createValidationCommandRunner({
-              webview,
-              workspaceRoot: wsRoot.fsPath,
-              mode: intent.mode,
-              toolPolicy,
-              traceRunId: agentTraceRunId,
-              traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
-              onTraceEvidenceError: error => agentRunContext?.markEvidenceDegraded(error),
-            }),
-            // P5-3: read_file tool — AI can read workspace files during agent loop
-            // workDir = absolute path of the current task's directory (passed by executeFakeToolsForLoop).
-            // Copilot/Claude Code pattern: tool calls inherit parent task's working directory so
-            // bare filenames like "main.cpp" resolve to code/3D/main.cpp, not workspace root.
-            onReadFile: async (filePath, workDir?: string, range?: { startLine?: number; endLine?: number }) => (
-              createFileContextService(wsRoot.fsPath).readFileForAi(filePath, { workDir, ...range })
-            ),
-            // grep_search tool — AI can search workspace files for patterns
-            onGrepSearch: async (pattern: string, path?: string, _isRegexp?: boolean, workDir?: string, options?: { includePattern?: string; fileTypes?: string }) => (
-              grepWorkspace(wsRoot.fsPath, pattern, path, workDir, options)
-            ),
-            // list_dir tool — AI can explore directory structure (G9: supports absolute paths)
-            onListDir: async (path: string) => listWorkspaceDirectoryForAi(wsRoot.fsPath, path),
-            ...createAgentHostToolCallbacks({
-              workspaceRoot: wsRoot.fsPath,
-              webview,
-              terminalPermissionCoordinator,
-              runContext: agentRunContext,
-            }),
-            // Stop button support: abort in-progress LLM calls
-            signal: chatSignal,
-            // 断点续传：save/clear checkpoint after each task and on network failure
-            autopilot: vscode.workspace.getConfiguration('devseek').get<boolean>('autopilotMode', false),
-            onTaskCheckpoint: async (completedUpToIndex, remainingTasks, checkpointReason = 'progress') => {
-              agentRunContext?.recordCheckpoint(completedUpToIndex, remainingTasks.length, checkpointReason);
-              if (completedUpToIndex === null) {
-                // Loop completed successfully — clear any stale checkpoint
-                await agentCheckpointService.save(null);
-                // Tell webview to hide the checkpoint banner (if shown)
-                webview.postMessage({ type: 'agentCheckpointCleared' });
-                return;
-              }
-              // Save current progress so the user can resume later
-              await agentCheckpointService.save({
-                userPrompt: promptForAgent,
-                displayPrompt: userDisplay,
-                mode,
-                wsRootFsPath: wsRoot.fsPath,
-                allTasks: tasks,
-                startFromIndex: completedUpToIndex,
-                completedCount: completedUpToIndex,
-                savedAt: Date.now(),
-                sessionId: activeSessionId,
-              });
-              if (checkpointReason === 'paused') {
-                // Only surface a resume entry once the active run is actually paused.
-                // Progress checkpoints are internal state for reload/reconnect recovery.
-                webview.postMessage({
-                  type: 'agentCheckpointAvailable',
-                  resumeTaskIndex: completedUpToIndex,
-                  totalTasks: tasks.length,
-                  userPrompt: userDisplay,
-                  savedAt: Date.now(),
-                });
-              }
-            },
-          },
-          analysisContext: editorSessionContext,
-          startFromIndex: checkpointStartFromIndex,
-        });
-        // P14: persist analysisText from this round for injection into next round's plan
-        if (loopResult.analysisText) {
-          lastAnalysisText = loopResult.analysisText;
-          getSessionService()?.saveSessionAnalysisText(activeSessionId, lastAnalysisText);
-        }
-        const currentRunChangedPaths = runChangedPathRecorder.record({
-          workspaceRoot: wsRoot.fsPath,
-          changedPaths: loopResult.changedPaths,
-        });
-        const agentSettlement = agentKernelRun.settleAgentLoopResult(loopResult, currentRunChangedPaths);
-        durableAgentSettlement = agentSettlement.status;
-        const agentDurablyCompleted = agentSettlement.completed;
-        if (agentSettlement.refused) agentPresenter.postSettlementRefusal();
-        loopAutopilotHandled = agentDurablyCompleted
-          ? pendingEditCoordinator.handleAgentAutopilot(webview, loopResult)
-          : false;
-        agentHistoryText = loopResult.historyText
-          || `**[Agent] ${agentDurablyCompleted ? '已完成' : '未完成'}（${loopResult.tasksApplied}/${tasks.length} 个任务）**\n\n未生成可恢复的执行证据摘要。`;
-        if (agentSettlement.refused) {
-          agentHistoryText = `**[Agent] 未完成：运行证据结算失败**\n\n${agentHistoryText}`;
-        }
-        saveAgentSessionState({
-          lastUserPrompt: userDisplay,
-          lastSummary: agentHistoryText,
-          changedPaths: currentRunChangedPaths.slice(0, 12),
-          completed: agentDurablyCompleted,
-          savedAt: Date.now(),
-          semanticContract: agentSemanticContract,
-        });
-      }
     } catch (e) {
-      loopFailedForAutoAccept = true;
       const failedRunChangedPaths = runChangedPathRecorder.record({
         workspaceRoot: agentWorkspaceRoot,
         changedPaths: loopResult?.changedPaths ?? [],
@@ -1072,7 +888,7 @@ async function runActiveChat(
         savedAt: Date.now(),
         semanticContract: agentSemanticContract,
       });
-      durableAgentSettlement = agentKernelRun.failRun({
+      agentKernelRun.failRun({
         reason: 'agent-error',
         changedPaths: failedRunChangedPaths,
       });
@@ -1096,21 +912,6 @@ async function runActiveChat(
       }
     }
 
-    const autoAcceptResult = loopResult
-      ?? (loopFailedForAutoAccept ? { tasksTotal: decomposedTaskCount, tasksApplied: 0, tasksFailed: 1, changedPaths: [] } : undefined);
-    if (!loopFailedForAutoAccept && !durableAgentSettlement) {
-      durableAgentSettlement = loopResult
-        ? agentKernelRun.settleAgentLoopResult(loopResult).status
-        : agentKernelRun.failRun({
-          tasksTotal: decomposedTaskCount,
-          tasksApplied: 0,
-          tasksFailed: 0,
-          changedPaths: [],
-        });
-    }
-    if (!loopFailedForAutoAccept && durableAgentSettlement === 'completed') {
-      pendingEditCoordinator.scheduleAutoAccept(webview, autoAcceptResult, loopAutopilotHandled);
-    }
     webview.postMessage({ type: 'endResponse' });
     activeRun.clearAgentKernelRun(agentKernelRun);
     return;

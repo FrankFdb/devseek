@@ -144,7 +144,7 @@ function readTypeScriptSources(dir = path.join(rootDir, 'src'), relativeDir = 's
   return files;
 }
 
-test('Terminal evidence: both main Agent entry points propagate participant authority and degradation', () => {
+test('Terminal evidence: the canonical Agent entry point propagates participant authority and degradation', () => {
   const extensionSource = readFileSync(path.join(rootDir, 'src/extension.ts'), 'utf8');
   const tracedTerminalCalls = [...extensionSource.matchAll(
     /terminalPermissionCoordinator\.runCommandWithPermission\(\{([\s\S]*?)\n\s*\}\);/g,
@@ -152,7 +152,7 @@ test('Terminal evidence: both main Agent entry points propagate participant auth
     .map(match => match[1])
     .filter(block => block.includes('traceRunId: agentTraceRunId'));
 
-  assert.equal(tracedTerminalCalls.length, 2);
+  assert.equal(tracedTerminalCalls.length, 1);
   for (const call of tracedTerminalCalls) {
     assert.match(call, /traceEvidenceParticipantToken:\s*agentRunContext\.evidenceParticipantToken/);
     assert.match(call, /onTraceEvidenceError:\s*error\s*=>\s*agentRunContext\?\.markEvidenceDegraded\(error\)/);
@@ -234,7 +234,7 @@ test('Terminal evidence: validation execution has one injected authority and no 
   assert.match(autoValidation, /commandRunner:\s*callbacks\.onValidationCommand/);
   assert.match(workspaceApplier, /commandRunner:\s*validationCommandRunner/);
   assert.match(closedLoop, /validationCommandRunner:\s*input\.validationCommandRunner/);
-  assert.equal((extension.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 3);
+  assert.equal((extension.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 2);
   assert.doesNotMatch(viewProvider, /createValidationCommandRunner\s*\(\{/);
   assert.equal((generatedArtifacts.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 2);
   assert.equal((localRepair.match(/createValidationCommandRunner\s*\(\{/g) ?? []).length, 1);

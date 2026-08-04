@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v2';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v2';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v3';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v3';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -28,6 +28,8 @@ const SOURCE_PATHS = Object.freeze({
   kernelService: 'packages/vscode-extension/src/app/agent-kernel-service.ts',
   kernelExecution: 'packages/vscode-extension/src/app/coding-kernel-execution.ts',
   kernelRouteDecision: 'packages/vscode-extension/src/app/coding-kernel-route-decision.ts',
+  kernelRecovery: 'packages/vscode-extension/src/app/coding-kernel-recovery.ts',
+  localExecutionRunner: 'packages/vscode-extension/src/local-execution-chat-runner.ts',
   taskContract: 'packages/vscode-extension/src/agent/task-contract.ts',
   safetyIntent: 'packages/vscode-extension/src/intent/safety-intent.ts',
   agenticLoop: 'packages/vscode-extension/src/agent/agentic-loop.ts',
@@ -111,13 +113,14 @@ const SOURCE_CHECKS = Object.freeze([
     'activeRun.bindAgentKernelRun(agentKernelRun)',
     'agentKernelService.decideExecutionRoute({',
     'agentKernelService.executeCanonicalTask({',
-    'agentKernelService.executeLegacyPlannedTask({',
+    'analysisContext: lastAnalysisText',
   ], [
     'let activeChatAbortController',
     'let activeAgentKernelRun',
     'activeAgentSteerQueue',
     'agentKernelService.executeExploratory({',
     'agentKernelService.executePlanned({',
+    'agentKernelService.executeLegacyPlannedTask({',
   ]),
   check('vscode-active-run-lifecycle-owner', SOURCE_PATHS.activeChatRun, [
     'export class ActiveChatRunCoordinator',
@@ -153,13 +156,13 @@ const SOURCE_CHECKS = Object.freeze([
     'new SessionContinuationProjector({',
     'const initialSessionProjection = sessionContinuationProjector.project({',
     'const agSessionContext = sessionContinuationProjector.project({',
-    'const sessionContextForAgent = sessionContinuationProjector.project({',
     'const sessionContextForChat = sessionContinuationProjector.project({',
   ], [
     'projectSessionContinuationFromState',
     'resolveSessionContinuationFilesFromState',
     'buildAgenticSessionContextFromState',
     'shouldInjectSessionContinuationForIntent',
+    'const sessionContextForAgent = sessionContinuationProjector.project({',
   ]),
   check('vscode-run-changed-path-owner', SOURCE_PATHS.runChangedPaths, [
     'export function projectRunChangedPaths',
@@ -172,42 +175,65 @@ const SOURCE_CHECKS = Object.freeze([
   check('vscode-run-changed-path-boundary', SOURCE_PATHS.extension, [
     'new RunChangedPathRecorder({',
     'const agRunChangedPaths = runChangedPathRecorder.record({',
-    'const currentRunChangedPaths = runChangedPathRecorder.record({',
     'currentChatRunChangedPaths = chatRunChangedPaths.commit();',
   ], [
     'settleAgentLoopResult(agResult, lastAgentChangedPaths)',
     'changedPaths: lastAgentChangedPaths.slice(0, 12)',
+    'const currentRunChangedPaths = runChangedPathRecorder.record({',
   ]),
   check('vscode-cancel-surface-port', SOURCE_PATHS.viewProvider, [
     'cancelActiveRun: (data?: Record<string, unknown>) => void',
     "this.deps.cancelActiveRun({ reason: 'user-cancelled'",
   ], ['getActiveChatAbortController', 'setActiveChatAbortController', 'cancelActiveAgentRun']),
-  check('vscode-canonical-and-legacy-recovery-adapter', SOURCE_PATHS.productExecutor, [
-    "import { runAgentLoop } from './agent-loop'",
+  check('vscode-canonical-kernel-adapter', SOURCE_PATHS.productExecutor, [
     "import { runAgenticLoop } from './agent/agentic-loop'",
-    'runCanonical: runAgenticLoop',
-    'runLegacyPlanned: runAgentLoop',
-  ]),
-  check('vscode-kernel-execution-route-boundary', SOURCE_PATHS.kernelExecution, [
-    "request.route === 'canonical'",
-    "request.route === 'legacy-planned'",
-    "request.legacyReason !== 'checkpoint-resume'",
-    "request.legacyReason !== 'local-validation-repair'",
-    'coding-kernel-execution:unsupported-legacy-reason',
-  ]),
+    'runCanonical: request => runAgenticLoop(',
+    '{ recoveryContextText: request.recoveryContextText },',
+  ], ['runAgentLoop', 'runLegacyPlanned']),
+  check('vscode-canonical-recovery-execution-boundary', SOURCE_PATHS.kernelExecution, [
+    "readonly recovery?: CodingKernelRecovery;",
+    "if (request.route !== 'canonical')",
+    'renderCodingKernelRecoveryContext(request.recovery)',
+    'getPendingKernelRecoveryTasks(request.recovery)',
+    'coding-kernel-execution:unsupported-route',
+  ], ['legacy-planned', 'legacyReason', 'runLegacyPlanned']),
   check('vscode-attachment-invariant-route-owner', SOURCE_PATHS.kernelRouteDecision, [
     "CODING_KERNEL_ROUTE_DECISION_VERSION = 'devseek.coding-kernel-route-decision/v1'",
     'export function decideCodingKernelRoute(',
     "route: 'canonical'",
     "reason: 'new-task'",
-    "route: 'legacy-planned'",
     "reason: 'checkpoint-resume'",
+    'readonly analysisContext?: string;',
+    'recovery: createCheckpointKernelRecovery(input.checkpoint)',
     'coding-kernel-route:invalid-checkpoint-resume',
   ], [
     'contextFiles',
     'attachments',
     'AGENT_CODE_FILE_RE',
+    'legacy-planned',
   ]),
+  check('vscode-kernel-recovery-domain-owner', SOURCE_PATHS.kernelRecovery, [
+    "CODING_KERNEL_RECOVERY_VERSION = 'devseek.coding-kernel-recovery/v1'",
+    'export function createCheckpointKernelRecovery(',
+    'export function createLocalValidationKernelRecovery(',
+    'export function getPendingKernelRecoveryTasks(',
+    'export function renderCodingKernelRecoveryContext(',
+    'export function getKernelRecoveryContextFiles(',
+    'isInsideOrEqual(normalizedRoot, candidate)',
+  ]),
+  check('vscode-agentic-recovery-projection-boundary', SOURCE_PATHS.agenticLoop, [
+    "from './agentic-execution-context';",
+    'const recoveryContextText = executionContext.recoveryContextText?.trim() ??',
+    'if (!recoveryContextText) {',
+    'createAgenticInitialPromptContext(systemPrompt, userPrompt, sessionContextText, recoveryContextText)',
+    'let totalChars = initialPromptContext.totalChars',
+  ]),
+  check('vscode-local-validation-canonical-recovery', SOURCE_PATHS.localExecutionRunner, [
+    "agentKernelService: Pick<AgentKernelService, 'executeCanonicalTask'>;",
+    'input.agentKernelService.executeCanonicalTask({',
+    'recovery: createLocalValidationKernelRecovery({',
+    'failedCommand: localPlan.command,',
+  ], ['executeLegacyPlannedTask']),
   check('vscode-task-contract-owner', SOURCE_PATHS.kernelService, [
     'resolveSemanticExecutionContext({',
     'const taskContract = input.taskContract ?? semanticContract.taskContract',
@@ -323,8 +349,9 @@ export function buildKernelPrepOwnerBaseline(sources) {
       active_product_routes: headlessProductEntrypoints === 0 ? 3 : 4,
       headless_product_entrypoints: headlessProductEntrypoints,
       canonical_fresh_task_routes: 1,
-      legacy_recovery_routes: 1,
-      legacy_execution_owners: 2,
+      canonical_recovery_routes: 1,
+      legacy_recovery_routes: 0,
+      legacy_execution_owners: 1,
       cross_surface_kernel_routes: 0,
       semantic_domains: 5,
       converged_semantic_domains: 0,
@@ -392,6 +419,7 @@ export function validateKernelPrepOwnerBaseline(baseline, sources) {
       active_product_routes: baseline.counts?.active_product_routes ?? null,
       headless_product_entrypoints: baseline.counts?.headless_product_entrypoints ?? null,
       canonical_fresh_task_routes: baseline.counts?.canonical_fresh_task_routes ?? null,
+      canonical_recovery_routes: baseline.counts?.canonical_recovery_routes ?? null,
       legacy_recovery_routes: baseline.counts?.legacy_recovery_routes ?? null,
       legacy_execution_owners: baseline.counts?.legacy_execution_owners ?? null,
       cross_surface_kernel_routes: baseline.counts?.cross_surface_kernel_routes ?? null,
@@ -413,6 +441,8 @@ export function renderKernelPrepOwnerBaselineMarkdown(baseline) {
     `- Qualification promotion allowed: \`${baseline.gate0.qualification_promotion_allowed}\``,
     `- Qualification effect: \`${baseline.qualification_effect}\``,
     `- Headless product entrypoints: \`${baseline.counts.headless_product_entrypoints}\``,
+    `- Canonical recovery routes: \`${baseline.counts.canonical_recovery_routes}\``,
+    `- Legacy recovery routes: \`${baseline.counts.legacy_recovery_routes}\``,
     `- Legacy execution owners: \`${baseline.counts.legacy_execution_owners}\``,
     '',
     '## Product Routes',
@@ -463,8 +493,8 @@ function buildProductRoutes(headlessProductEntrypoints) {
     {
       route_id: 'vscode-checkpoint-resume',
       surface: 'vscode',
-      current_chain: ['AgentKernelService', 'CodingKernelExecutionService', 'runAgentLoop'],
-      status: 'legacy-recovery-only',
+      current_chain: ['AgentKernelService', 'CodingKernelExecutionService', 'runAgenticLoop'],
+      status: 'canonical-recovery-route',
     },
     {
       route_id: 'cli-exec',

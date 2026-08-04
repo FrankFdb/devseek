@@ -170,17 +170,23 @@ test('AgentKernelService: named request contracts enforce the kernel route', asy
     callbacks: {},
     workflowMode: 'inspect',
   });
-  await kernel.executeLegacyPlannedTask({
+  await kernel.executeCanonicalTask({
     route: 'legacy-bypass-attempt',
-    legacyReason: 'checkpoint-resume',
-    tasks: [],
     userPrompt: 'edit',
+    contextFiles: [],
     mode: 'fast',
-    workspaceRoot: { fsPath: '/repo' },
+    workspaceRoot: '/repo',
     callbacks: {},
+    workflowMode: 'edit',
+    recovery: {
+      version: 'devseek.coding-kernel-recovery/v1',
+      kind: 'checkpoint-resume',
+      tasks: [{ id: 'resume', file: 'src/main.ts', action: 'modify', desc: 'resume edit' }],
+      startFromIndex: 0,
+    },
   });
 
-  assert.deepEqual(requests.map(request => request.route), ['canonical', 'legacy-planned']);
+  assert.deepEqual(requests.map(request => request.route), ['canonical', 'canonical']);
   assert.deepEqual(
     requests.map(request => request.semanticContract?.version),
     ['devseek.task-semantic-contract/v3', 'devseek.task-semantic-contract/v3'],
@@ -198,7 +204,7 @@ test('AgentKernelService: extension Surface does not own agent completion decisi
   assert.match(extension, /agentKernelService\.startRun\(/);
   assert.match(extension, /agentKernelService\.decideExecutionRoute\(/);
   assert.match(extension, /agentKernelService\.executeCanonicalTask\(/);
-  assert.match(extension, /agentKernelService\.executeLegacyPlannedTask\(\{[\s\S]*legacyReason: 'checkpoint-resume'/);
+  assert.doesNotMatch(extension, /executeLegacyPlannedTask|legacyReason|legacy-planned/);
   assert.doesNotMatch(extension, /hasCodeFiles|AGENT_CODE_FILE_RE/);
   assert.match(extension, /agentKernelRun\.settleAgentLoopResult/);
   assert.match(extension, /agentKernelRun\.failRun/);
@@ -206,7 +212,7 @@ test('AgentKernelService: extension Surface does not own agent completion decisi
   assert.match(activeRunCoordinator, /state\.agentKernelRun\?\.cancelRun\(data\)/);
   assert.equal(importsKernelLoop(extension), false);
   assert.doesNotMatch(extension, /await\s+runAgent(?:ic)?Loop\s*\(/u);
-  assert.match(localExecutionRunner, /input\.agentKernelService\.executeLegacyPlannedTask\(\{[\s\S]*legacyReason: 'local-validation-repair'/);
+  assert.match(localExecutionRunner, /input\.agentKernelService\.executeCanonicalTask\(\{[\s\S]*createLocalValidationKernelRecovery\(\{/);
   assert.equal(importsKernelLoop(localExecutionRunner), false);
   assert.doesNotMatch(localExecutionRunner, /await\s+runAgent(?:ic)?Loop\s*\(/u);
   assert.doesNotMatch(extension, /from '\.\/app\/agent-run-settlement'/);
@@ -219,11 +225,11 @@ test('AgentKernelService: extension Surface does not own agent completion decisi
   assert.match(kernelService, /this\.execution\.execute\(\{/);
   assert.match(kernelService, /decideExecutionRoute\([\s\S]*decideCodingKernelRoute\(input\)/);
   assert.match(kernelService, /executeCanonicalTask\([\s\S]*route: 'canonical'/);
-  assert.match(kernelService, /executeLegacyPlannedTask\([\s\S]*route: 'legacy-planned'/);
+  assert.doesNotMatch(kernelService, /executeLegacyPlannedTask|legacy-planned/);
   assert.match(kernelService, /private execute\(request: CodingKernelExecutionRequest\)/);
   assert.match(kernelService, /settleAgentLoopResult\(this\.terminalPermissions, this\.runContext/);
-  assert.match(productExecutor, /runCanonical: runAgenticLoop/);
-  assert.match(productExecutor, /runLegacyPlanned: runAgentLoop/);
+  assert.match(productExecutor, /runCanonical: request => runAgenticLoop/);
+  assert.doesNotMatch(productExecutor, /runLegacyPlanned|runAgentLoop/);
 
   const directImportOwners = listTypeScriptFiles(path.join(rootDir, 'src'))
     .filter(filePath => importsKernelLoop(readFileSync(filePath, 'utf8')))

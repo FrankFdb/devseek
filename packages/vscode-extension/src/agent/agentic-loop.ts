@@ -105,6 +105,7 @@ import { QualityGateStagnationLedger } from './quality-gate-stagnation';
 import { tryRunGroundedMarkdownAgenticTask } from './grounded-markdown-agentic-task';
 import { buildAgenticSystemPrompt } from './agentic-system-prompt';
 import { createSemanticExecutionWriteAuthority } from './semantic-execution-context';
+import { createAgenticInitialPromptContext, type AgenticLoopExecutionContext } from './agentic-execution-context';
 const AGENTIC_MESSAGE_TOTAL_CHAR_BUDGET = 52_000;
 const AGENTIC_TASK_PROMPT_CHAR_BUDGET = 34_000;
 const AGENTIC_TOOL_FEEDBACK_CHAR_BUDGET = 8_000;
@@ -328,8 +329,10 @@ export async function runAgenticLoop(
   workflowMode: ExecutionMode = 'edit',
   memoryRelatedPaths: readonly string[] = [],
   semanticContract?: TaskSemanticContract,
+  executionContext: AgenticLoopExecutionContext = {},
 ): Promise<AgentLoopResult> {
   callbacks = { ...callbacks, executionMode: workflowMode };
+  const recoveryContextText = executionContext.recoveryContextText?.trim() ?? '';
   const writeAuthority = createSemanticExecutionWriteAuthority({
     userPrompt,
     callbacks,
@@ -337,18 +340,20 @@ export async function runAgenticLoop(
     workspaceRoots: [workspaceRoot],
     relatedPaths: [...contextFiles, ...memoryRelatedPaths],
   });
-  const groundedMarkdown = await tryRunGroundedMarkdownAgenticTask(
-    userPrompt,
-    workspaceRoot,
-    mode,
-    workflowMode,
-    writeAuthority.callbacks,
-    chatWithMessages,
-    contextFiles,
-    sessionContextText,
-    writeAuthority.semanticContract,
-  );
-  if (groundedMarkdown) return groundedMarkdown;
+  if (!recoveryContextText) {
+    const groundedMarkdown = await tryRunGroundedMarkdownAgenticTask(
+      userPrompt,
+      workspaceRoot,
+      mode,
+      workflowMode,
+      writeAuthority.callbacks,
+      chatWithMessages,
+      contextFiles,
+      sessionContextText,
+      writeAuthority.semanticContract,
+    );
+    if (groundedMarkdown) return groundedMarkdown;
+  }
 
   const rules = writeAuthority.projectInstructionsText || null;
   const memory = getProjectMemorySync({
@@ -387,17 +392,11 @@ export async function runAgenticLoop(
   const cppValidationPolicy = vscode.workspace
     .getConfiguration('devseek')
     .get<CppValidationPolicy>('cppValidationPolicy', 'conservative');
-  const sessionContextSection = sessionContextText.trim()
-    ? `\n\n【同一会话上下文】\n${sessionContextText.trim()}\n\n【当前用户消息】\n${userPrompt}`
-    : `\n\n${userPrompt}`;
-
   // Full conversation history (Claude Code pattern: accumulate all rounds)
-  const messages: ChatMessage[] = [
-    { role: 'user', content: systemPrompt + sessionContextSection },
-  ];
-
+  const initialPromptContext = createAgenticInitialPromptContext(systemPrompt, userPrompt, sessionContextText, recoveryContextText);
+  const messages = initialPromptContext.messages;
   let roundCount = 0;
-  let totalChars = systemPrompt.length + sessionContextSection.length;
+  let totalChars = initialPromptContext.totalChars;
   let hadTaskComplete = false;
   let completeSummary = '';
   let failedReason = '';
@@ -504,13 +503,15 @@ export async function runAgenticLoop(
     }
   }
 
-  const simpleFileResult = await tryRunSimpleFileTask({
-    userPrompt,
-    workspaceRoot,
-    callbacks: writeAuthority.callbacks,
-    cppValidationPolicy,
-  });
-  if (simpleFileResult) return simpleFileResult;
+  if (!recoveryContextText) {
+    const simpleFileResult = await tryRunSimpleFileTask({
+      userPrompt,
+      workspaceRoot,
+      callbacks: writeAuthority.callbacks,
+      cppValidationPolicy,
+    });
+    if (simpleFileResult) return simpleFileResult;
+  }
 
   const maxAgenticRounds = callbacks.autopilot ? AGENTIC_ROUNDS_AUTOPILOT : AGENTIC_ROUNDS_NORMAL;
   // Track terminal command signatures across rounds to detect and break stuck loops

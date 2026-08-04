@@ -1,10 +1,15 @@
 import type { AgentTask } from '../agent-task-decomposer';
+import {
+  createCheckpointKernelRecovery,
+  type CheckpointKernelRecovery,
+} from './coding-kernel-recovery';
 
 export const CODING_KERNEL_ROUTE_DECISION_VERSION = 'devseek.coding-kernel-route-decision/v1';
 
 export interface CodingKernelCheckpointResume {
   readonly tasks: readonly AgentTask[];
   readonly startFromIndex: number;
+  readonly analysisContext?: string;
 }
 
 export type CodingKernelRouteDecision =
@@ -15,9 +20,9 @@ export type CodingKernelRouteDecision =
     }
   | {
       readonly version: typeof CODING_KERNEL_ROUTE_DECISION_VERSION;
-      readonly route: 'legacy-planned';
+      readonly route: 'canonical';
       readonly reason: 'checkpoint-resume';
-      readonly checkpoint: CodingKernelCheckpointResume;
+      readonly recovery: CheckpointKernelRecovery;
     };
 
 export function decideCodingKernelRoute(input: {
@@ -31,23 +36,14 @@ export function decideCodingKernelRoute(input: {
     };
   }
 
-  const { tasks, startFromIndex } = input.checkpoint;
-  if (
-    tasks.length === 0
-    || !Number.isInteger(startFromIndex)
-    || startFromIndex < 0
-    || startFromIndex >= tasks.length
-  ) {
+  try {
+    return {
+      version: CODING_KERNEL_ROUTE_DECISION_VERSION,
+      route: 'canonical',
+      reason: 'checkpoint-resume',
+      recovery: createCheckpointKernelRecovery(input.checkpoint),
+    };
+  } catch {
     throw new Error('coding-kernel-route:invalid-checkpoint-resume');
   }
-
-  return {
-    version: CODING_KERNEL_ROUTE_DECISION_VERSION,
-    route: 'legacy-planned',
-    reason: 'checkpoint-resume',
-    checkpoint: {
-      tasks: [...tasks],
-      startFromIndex,
-    },
-  };
 }

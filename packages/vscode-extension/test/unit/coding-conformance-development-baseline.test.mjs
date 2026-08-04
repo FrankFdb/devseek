@@ -33,8 +33,8 @@ after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
 test('VS Code Kernel route probe records that AgentLoopResult cannot settle conformance dimensions', async () => {
   const cases = [
-    { fixtureId: 'create-and-verify', route: 'canonical' },
-    { fixtureId: 'modify-and-verify', route: 'legacy-planned' },
+    { fixtureId: 'create-and-verify', recovery: false },
+    { fixtureId: 'modify-and-verify', recovery: true },
   ];
 
   for (const routeCase of cases) {
@@ -48,23 +48,20 @@ test('VS Code Kernel route probe records that AgentLoopResult cannot settle conf
       verificationIds: ['development-verification-id'],
     };
     const service = new CodingKernelExecutionService({
-      async runCanonical(...args) {
-        calls.push({ route: 'canonical', args });
-        return expectedResult;
-      },
-      async runLegacyPlanned(...args) {
-        calls.push({ route: 'legacy-planned', args });
+      async runCanonical(request) {
+        calls.push({ route: 'canonical', request });
         return expectedResult;
       },
     });
-    const routeOutput = await service.execute(routeInput(routeCase.route, fixture));
+    const routeOutput = await service.execute(routeInput(routeCase.recovery, fixture));
     const evaluation = evaluateCodingConformanceFixture(fixture, [
       observeVsCodeRouteOutput(fixture, routeOutput),
     ]);
     const vscodeResult = evaluation.surfaceResults.find(result => result.surface === 'vscode');
 
     assert.equal(calls.length, 1, routeCase.fixtureId);
-    assert.equal(calls[0].route, routeCase.route, routeCase.fixtureId);
+    assert.equal(calls[0].route, 'canonical', routeCase.fixtureId);
+    assert.equal(Boolean(calls[0].request.recoveryContextText), routeCase.recovery, routeCase.fixtureId);
     assert.equal(routeOutput, expectedResult, routeCase.fixtureId);
     assert.equal(vscodeResult.contractConformant, false, routeCase.fixtureId);
     assert.equal(vscodeResult.evidenceClass, 'development-route-replay', routeCase.fixtureId);
@@ -86,25 +83,23 @@ test('VS Code Kernel route probe records that AgentLoopResult cannot settle conf
   }
 });
 
-function routeInput(route, fixture) {
-  if (route === 'legacy-planned') {
-    return {
-      route,
-      legacyReason: 'checkpoint-resume',
-      tasks: [{ id: 1, action: 'modify', desc: fixture.title }],
-      userPrompt: fixture.prompt,
-      mode: 'fast',
-      workspaceRoot: { fsPath: '/workspace' },
-      callbacks: { executionMode: 'edit' },
-    };
-  }
+function routeInput(recovery, fixture) {
   return {
-    route,
+    route: 'canonical',
     userPrompt: fixture.prompt,
     contextFiles: [],
     workspaceRoot: '/workspace',
     mode: 'r1',
     callbacks: { executionMode: 'edit' },
+    workflowMode: 'edit',
+    ...(recovery ? {
+      recovery: {
+        version: 'devseek.coding-kernel-recovery/v1',
+        kind: 'checkpoint-resume',
+        tasks: [{ id: 'resume', file: 'src/main.ts', action: 'modify', desc: fixture.title }],
+        startFromIndex: 0,
+      },
+    } : {}),
   };
 }
 

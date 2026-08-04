@@ -1,6 +1,7 @@
 export * from './agent-application-service';
 export * from './agent-command-surface-projection';
 export * from './agent-kernel-service';
+export * from './coding-kernel-recovery';
 export * from './coding-kernel-route-decision';
 export * from './agent-runtime-ledger';
 export * from './agent-display-presenter';

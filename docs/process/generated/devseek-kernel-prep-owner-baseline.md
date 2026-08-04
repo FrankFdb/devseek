@@ -7,14 +7,16 @@
 - Qualification promotion allowed: `false`
 - Qualification effect: `NONE`
 - Headless product entrypoints: `0`
-- Legacy execution owners: `2`
+- Canonical recovery routes: `1`
+- Legacy recovery routes: `0`
+- Legacy execution owners: `1`
 
 ## Product Routes
 
 | Surface | Route | Current chain | Status |
 | --- | --- | --- | --- |
 | vscode | vscode-fresh-task | AgentKernelService -> CodingKernelExecutionService -> runAgenticLoop | canonical-surface-route |
-| vscode | vscode-checkpoint-resume | AgentKernelService -> CodingKernelExecutionService -> runAgentLoop | legacy-recovery-only |
+| vscode | vscode-checkpoint-resume | AgentKernelService -> CodingKernelExecutionService -> runAgenticLoop | canonical-recovery-route |
 | cli | cli-exec | AgentApplicationService -> CliLegacyCodingLoop | legacy-semantic-owner |
 | headless | headless-product |  | absent |
 

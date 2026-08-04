@@ -8,7 +8,6 @@ import type {
   CanonicalKernelExecutionInput,
   CodingKernelExecutionPort,
   CodingKernelExecutionRequest,
-  LegacyPlannedKernelExecutionInput,
 } from './coding-kernel-execution';
 import {
   decideCodingKernelRoute,
@@ -60,13 +59,6 @@ export class AgentKernelService {
     return this.execute({
       ...request,
       route: 'canonical',
-    });
-  }
-
-  executeLegacyPlannedTask(request: LegacyPlannedKernelExecutionInput): Promise<AgentLoopResult> {
-    return this.execute({
-      ...request,
-      route: 'legacy-planned',
     });
   }
 

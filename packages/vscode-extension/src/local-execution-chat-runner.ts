@@ -33,6 +33,7 @@ import { AgentDisplayPresenter } from './app/agent-display-presenter';
 import type { TerminalPermissionCoordinator } from './app/terminal-permission-coordinator';
 import { extendRepairRoundBudget, normalizeRepairRoundBudget } from './app/bounded-repair-policy';
 import type { AgentKernelService } from './app/agent-kernel-service';
+import { createLocalValidationKernelRecovery } from './app/coding-kernel-recovery';
 
 export interface LocalExecutionRouteChatOptions {
   prompt: string;
@@ -57,7 +58,7 @@ export interface LocalExecutionChatRunnerInput {
   routeChat: (opts: LocalExecutionRouteChatOptions) => Promise<string>;
   toolPolicy: ToolPolicy;
   terminalPermissionCoordinator: TerminalPermissionCoordinator;
-  agentKernelService: Pick<AgentKernelService, 'executeLegacyPlannedTask'>;
+  agentKernelService: Pick<AgentKernelService, 'executeCanonicalTask'>;
   traceRunId: string;
   traceEvidenceParticipantToken: string;
   onTraceEvidenceError: (error: unknown) => void;
@@ -419,12 +420,14 @@ async function runAgentRepairRound(
     taskTotal: repairTasks.length,
   }));
 
-  const repairLoop = await input.agentKernelService.executeLegacyPlannedTask({
-    legacyReason: 'local-validation-repair',
-    tasks: repairTasks,
+  const repairContextFiles = repairTasks
+    .map(task => task.absPath)
+    .filter((absPath): absPath is string => Boolean(absPath));
+  const repairLoop = await input.agentKernelService.executeCanonicalTask({
     userPrompt: repairPromptWithHint,
+    contextFiles: repairContextFiles,
     mode: input.mode,
-    workspaceRoot: vscode.Uri.file(repairWsRoot),
+    workspaceRoot: repairWsRoot,
     callbacks: buildLocalExecutionAgentCallbacks({
       webview: input.webview,
       workflowReporter: input.workflowReporter,
@@ -446,8 +449,13 @@ async function runAgentRepairRound(
       signal: input.signal,
       displayPresenter: repairDisplayPresenter,
     }),
-    analysisContext: undefined,
-    startFromIndex: 0,
+    workflowMode: input.toolPolicy.mode,
+    memoryRelatedPaths: repairContextFiles,
+    recovery: createLocalValidationKernelRecovery({
+      tasks: repairTasks,
+      attempt: round,
+      failedCommand: localPlan.command,
+    }),
   });
 
   if (repairLoop.changedPaths.length > 0) {

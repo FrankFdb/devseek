@@ -19,7 +19,6 @@ execFileSync('npx', [
   `--outfile=${bundlePath}`,
   '--format=cjs',
   '--platform=node',
-  '--external:vscode',
 ], { cwd: rootDir, stdio: 'pipe' });
 
 const req = createRequire(import.meta.url);
@@ -27,21 +26,16 @@ const { CodingKernelExecutionService } = req(bundlePath);
 
 after(() => rmSync(tempRoot, { recursive: true, force: true }));
 
-test('CodingKernelExecutionService routes new work through the canonical kernel port', async () => {
+test('CodingKernelExecutionService sends new work through its only canonical loop port', async () => {
   const calls = [];
   const expected = result('canonical');
-  const loops = {
-    async runCanonical(...args) {
-      calls.push(args);
+  const service = new CodingKernelExecutionService({
+    async runCanonical(request) {
+      calls.push(request);
       return expected;
     },
-    async runLegacyPlanned() {
-      throw new Error('legacy planned loop must not run');
-    },
-  };
-  const callbacks = { executionMode: 'inspect' };
+  });
   const semanticContract = { version: 3, revision: { kind: 'replace' } };
-  const service = new CodingKernelExecutionService(loops);
 
   const actual = await service.execute({
     route: 'canonical',
@@ -49,7 +43,7 @@ test('CodingKernelExecutionService routes new work through the canonical kernel 
     contextFiles: ['src/main.ts', 'build.log'],
     workspaceRoot: '/workspace',
     mode: 'r1',
-    callbacks,
+    callbacks: { executionMode: 'inspect' },
     sessionContextText: 'session context',
     workflowMode: 'inspect',
     memoryRelatedPaths: ['src/main.ts'],
@@ -57,99 +51,122 @@ test('CodingKernelExecutionService routes new work through the canonical kernel 
   });
 
   assert.equal(actual, expected);
-  assert.deepEqual(calls, [[
-    'inspect the repository',
-    ['src/main.ts', 'build.log'],
-    '/workspace',
-    'r1',
-    callbacks,
-    'session context',
-    'inspect',
-    ['src/main.ts'],
-    semanticContract,
-  ]]);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].userPrompt, 'inspect the repository');
+  assert.deepEqual(calls[0].contextFiles, ['src/main.ts', 'build.log']);
+  assert.equal(calls[0].workspaceRoot, '/workspace');
+  assert.equal(calls[0].workflowMode, 'inspect');
+  assert.equal(calls[0].recoveryContextText, '');
+  assert.equal(calls[0].semanticContract, semanticContract);
 });
 
-test('CodingKernelExecutionService restricts planned work to an explicit legacy reason', async () => {
+test('recovery failure stays paused with the same pending checkpoint work', async () => {
+  const checkpoints = [];
   const calls = [];
-  const expected = result('legacy-planned');
-  const loops = {
+  const recovery = checkpointRecovery(1);
+  const service = new CodingKernelExecutionService({
+    async runCanonical(request) {
+      calls.push(request);
+      return result('recovery', 1);
+    },
+  });
+
+  await service.execute({
+    ...baseRequest(),
+    recovery,
+    callbacks: {
+      executionMode: 'edit',
+      onTaskCheckpoint: async (...args) => { checkpoints.push(args); },
+    },
+  });
+
+  assert.match(calls[0].recoveryContextText, /durable checkpoint resume/u);
+  assert.match(calls[0].recoveryContextText, /pending task/u);
+  assert.deepEqual(checkpoints, [[1, [recovery.tasks[1]], 'paused']]);
+});
+
+test('recovery success clears the durable checkpoint exactly once', async () => {
+  const checkpoints = [];
+  const service = new CodingKernelExecutionService({
     async runCanonical() {
-      throw new Error('canonical loop must not run');
+      return result('recovery');
     },
-    async runLegacyPlanned(...args) {
-      calls.push(args);
-      return expected;
-    },
-  };
-  const tasks = [{ id: 'task-1', action: 'modify', desc: 'fix source' }];
-  const workspaceRoot = { fsPath: '/workspace' };
-  const callbacks = { executionMode: 'edit' };
-  const semanticContract = { version: 3, revision: { kind: 'replace' } };
-  const service = new CodingKernelExecutionService(loops);
-
-  const actual = await service.execute({
-    route: 'legacy-planned',
-    legacyReason: 'checkpoint-resume',
-    tasks,
-    userPrompt: 'fix src/main.ts',
-    mode: 'fast',
-    workspaceRoot,
-    callbacks,
-    analysisContext: 'prior findings',
-    startFromIndex: 2,
-    semanticContract,
   });
 
-  assert.equal(actual, expected);
-  assert.deepEqual(calls, [[
-    tasks,
-    'fix src/main.ts',
-    'fast',
-    workspaceRoot,
-    callbacks,
-    'prior findings',
-    2,
-    semanticContract,
-  ]]);
-});
-
-test('CodingKernelExecutionService fails closed on an unknown route', async () => {
-  const service = new CodingKernelExecutionService({
-    async runCanonical() { return result('canonical'); },
-    async runLegacyPlanned() { return result('legacy-planned'); },
+  await service.execute({
+    ...baseRequest(),
+    recovery: checkpointRecovery(0),
+    callbacks: {
+      executionMode: 'edit',
+      onTaskCheckpoint: async (...args) => { checkpoints.push(args); },
+    },
   });
 
-  await assert.rejects(
-    service.execute({ route: 'legacy-surface-bypass' }),
-    /coding-kernel-execution:unsupported-route/u,
-  );
+  assert.deepEqual(checkpoints, [[null, [], 'completed']]);
 });
 
-test('CodingKernelExecutionService fails closed on an unknown legacy reason', async () => {
+test('recovery exception preserves pending work before propagating the error', async () => {
+  const checkpoints = [];
+  const recovery = checkpointRecovery(0);
   const service = new CodingKernelExecutionService({
-    async runCanonical() { return result('canonical'); },
-    async runLegacyPlanned() { return result('legacy-planned'); },
+    async runCanonical() {
+      throw new Error('provider disconnected');
+    },
   });
 
   await assert.rejects(
     service.execute({
-      route: 'legacy-planned',
-      legacyReason: 'fresh-task-bypass',
-      tasks: [],
-      userPrompt: 'edit',
-      workspaceRoot: { fsPath: '/workspace' },
-      callbacks: {},
+      ...baseRequest(),
+      recovery,
+      callbacks: {
+        executionMode: 'edit',
+        onTaskCheckpoint: async (...args) => { checkpoints.push(args); },
+      },
     }),
-    /coding-kernel-execution:unsupported-legacy-reason/u,
+    /provider disconnected/u,
+  );
+  assert.deepEqual(checkpoints, [[0, [...recovery.tasks], 'paused']]);
+});
+
+test('CodingKernelExecutionService fails closed on every non-canonical route', async () => {
+  const service = new CodingKernelExecutionService({
+    async runCanonical() { return result('canonical'); },
+  });
+
+  await assert.rejects(
+    service.execute({ route: 'legacy-planned' }),
+    /coding-kernel-execution:unsupported-route/u,
   );
 });
 
-function result(route) {
+function baseRequest() {
+  return {
+    route: 'canonical',
+    userPrompt: 'finish the task',
+    contextFiles: [],
+    workspaceRoot: '/workspace',
+    mode: 'fast',
+    workflowMode: 'edit',
+  };
+}
+
+function checkpointRecovery(startFromIndex) {
+  return {
+    version: 'devseek.coding-kernel-recovery/v1',
+    kind: 'checkpoint-resume',
+    tasks: [
+      { id: 'done', file: 'done.ts', action: 'modify', desc: 'done task' },
+      { id: 'pending', file: 'pending.ts', action: 'modify', desc: 'pending task' },
+    ],
+    startFromIndex,
+  };
+}
+
+function result(route, tasksFailed = 0) {
   return {
     tasksTotal: 1,
-    tasksApplied: 1,
-    tasksFailed: 0,
-    changedPaths: [`${route}.txt`],
+    tasksApplied: tasksFailed ? 0 : 1,
+    tasksFailed,
+    changedPaths: tasksFailed ? [] : [`${route}.txt`],
   };
 }
