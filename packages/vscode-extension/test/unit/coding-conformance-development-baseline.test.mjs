@@ -7,7 +7,10 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import {
+  CODING_KERNEL_REQUEST_VERSION,
   CODING_CONFORMANCE_DEVELOPMENT_FIXTURES,
+  CanonicalCodingKernel,
+  buildCodingKernelTaskContract,
   evaluateCodingConformanceFixture,
 } from '../../../shared/dist/index.js';
 
@@ -27,11 +30,11 @@ execFileSync('npx', [
 ], { cwd: extensionRoot, stdio: 'pipe' });
 
 const require = createRequire(import.meta.url);
-const { CodingKernelExecutionService } = require(bundlePath);
+const { VsCodeCodingKernelRuntimeAdapter } = require(bundlePath);
 
 after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
-test('VS Code Kernel route probe records that AgentLoopResult cannot settle conformance dimensions', async () => {
+test('VS Code canonical Kernel probe exposes task and terminal output without inventing tool receipts', async () => {
   const cases = [
     { fixtureId: 'create-and-verify', recovery: false },
     { fixtureId: 'modify-and-verify', recovery: true },
@@ -47,13 +50,13 @@ test('VS Code Kernel route probe records that AgentLoopResult cannot settle conf
       changedPaths: [...fixture.expected.changeReceipts.flatMap(receipt => receipt.paths)],
       verificationIds: ['development-verification-id'],
     };
-    const service = new CodingKernelExecutionService({
+    const kernel = new CanonicalCodingKernel(new VsCodeCodingKernelRuntimeAdapter({
       async runCanonical(request) {
         calls.push({ route: 'canonical', request });
         return expectedResult;
       },
-    });
-    const routeOutput = await service.execute(routeInput(routeCase.recovery, fixture));
+    }));
+    const routeOutput = await kernel.execute(routeInput(routeCase.recovery, fixture));
     const evaluation = evaluateCodingConformanceFixture(fixture, [
       observeVsCodeRouteOutput(fixture, routeOutput),
     ]);
@@ -62,18 +65,16 @@ test('VS Code Kernel route probe records that AgentLoopResult cannot settle conf
     assert.equal(calls.length, 1, routeCase.fixtureId);
     assert.equal(calls[0].route, 'canonical', routeCase.fixtureId);
     assert.equal(Boolean(calls[0].request.recoveryContextText), routeCase.recovery, routeCase.fixtureId);
-    assert.equal(routeOutput, expectedResult, routeCase.fixtureId);
+    assert.equal(routeOutput.result, expectedResult, routeCase.fixtureId);
     assert.equal(vscodeResult.contractConformant, false, routeCase.fixtureId);
     assert.equal(vscodeResult.evidenceClass, 'development-route-replay', routeCase.fixtureId);
-    assert.deepEqual(vscodeResult.observedDimensions, [], routeCase.fixtureId);
+    assert.deepEqual(vscodeResult.observedDimensions, ['taskContract', 'completion'], routeCase.fixtureId);
     assert.deepEqual(vscodeResult.missingDimensions, [
-      'taskContract',
       'toolExecutions',
       'changeReceipts',
       'verifications',
-      'completion',
     ], routeCase.fixtureId);
-    assert.equal(vscodeResult.violations.filter(violation => violation.code === 'missing-dimension').length, 5);
+    assert.equal(vscodeResult.violations.filter(violation => violation.code === 'missing-dimension').length, 3);
     assert.equal(vscodeResult.violations.some(violation => (
       violation.code === 'unexplained-missing-dimension'
     )), false, routeCase.fixtureId);
@@ -84,7 +85,7 @@ test('VS Code Kernel route probe records that AgentLoopResult cannot settle conf
 });
 
 function routeInput(recovery, fixture) {
-  return {
+  const runtimeContext = {
     route: 'canonical',
     userPrompt: fixture.prompt,
     contextFiles: [],
@@ -101,6 +102,25 @@ function routeInput(recovery, fixture) {
       },
     } : {}),
   };
+  return {
+    version: CODING_KERNEL_REQUEST_VERSION,
+    route: 'canonical',
+    surface: 'vscode',
+    runId: `conformance-${fixture.fixtureId}`,
+    userPrompt: fixture.prompt,
+    workspaceRoot: '/workspace',
+    taskContract: buildCodingKernelTaskContract({
+      goal: fixture.expected.taskContract.goal,
+      mode: fixture.expected.taskContract.mode,
+      include: fixture.expected.taskContract.scope.include,
+      exclude: fixture.expected.taskContract.scope.exclude,
+      deliverables: fixture.expected.taskContract.deliverables,
+      constraints: fixture.expected.taskContract.constraints,
+      acceptance: fixture.expected.taskContract.acceptance,
+      provenanceRefs: fixture.expected.taskContract.provenanceRefs,
+    }),
+    runtimeContext,
+  };
 }
 
 function observeVsCodeRouteOutput(fixture, routeOutput) {
@@ -115,14 +135,33 @@ function observeVsCodeRouteOutput(fixture, routeOutput) {
     projection: {
       schemaVersion: fixture.schemaVersion,
       fixtureId: fixture.fixtureId,
+      taskContract: projectTaskContract(routeOutput.taskContract),
+      completion: projectCompletion(routeOutput),
     },
     unavailableDimensions: [
-      unavailable('taskContract', 'route-output-not-exposed', 'agent-loop-result:no-task-contract'),
       unavailable('toolExecutions', 'route-output-not-exposed', 'agent-loop-result:no-tool-receipts'),
-      unavailable('changeReceipts', 'route-evidence-incomplete', `agent-loop-result:changed-path-count=${routeOutput.changedPaths.length}`),
-      unavailable('verifications', 'route-evidence-incomplete', `agent-loop-result:verification-id-count=${routeOutput.verificationIds?.length ?? 0}`),
-      unavailable('completion', 'route-evidence-incomplete', `agent-loop-result:task-counts=${routeOutput.tasksApplied}/${routeOutput.tasksTotal}`),
+      unavailable('changeReceipts', 'route-evidence-incomplete', `agent-loop-result:changed-path-count=${routeOutput.result.changedPaths.length}`),
+      unavailable('verifications', 'route-evidence-incomplete', `agent-loop-result:verification-id-count=${routeOutput.result.verificationIds?.length ?? 0}`),
     ],
+  };
+}
+
+function projectTaskContract(taskContract) {
+  const { version: _version, ...projection } = taskContract;
+  return projection;
+}
+
+function projectCompletion(output) {
+  const evidenceRef = `kernel-output:${output.runId}:${output.status}`;
+  return {
+    status: output.status,
+    acceptance: output.taskContract.acceptance.map(criterion => ({
+      criterionId: criterion.id,
+      status: output.status === 'completed' ? 'passed' : 'failed',
+      evidenceRefs: [evidenceRef],
+    })),
+    residualRisks: [...output.residualRisks],
+    evidenceRefs: [evidenceRef],
   };
 }
 

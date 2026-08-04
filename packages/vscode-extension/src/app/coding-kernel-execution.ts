@@ -1,3 +1,8 @@
+import type {
+  CodingKernelExecutionRequest,
+  CodingKernelRuntimeOutput,
+  CodingKernelRuntimePort,
+} from '@devseek-netai/shared';
 import type { ExecutionMode } from '../intent/intent-types';
 import type { TaskSemanticContract } from '../task-semantic-contract';
 import type { AgentLoopCallbacks, AgentLoopResult } from '../agent/loop-types';
@@ -9,11 +14,8 @@ import {
 
 type AgentRunMode = 'fast' | 'r1' | undefined;
 
-export interface CanonicalKernelExecutionRequest {
-  readonly route: 'canonical';
-  readonly userPrompt: string;
+export interface VsCodeCodingKernelRuntimeContext {
   readonly contextFiles: string[];
-  readonly workspaceRoot: string;
   readonly mode: AgentRunMode;
   readonly callbacks: AgentLoopCallbacks;
   readonly sessionContextText?: string;
@@ -23,11 +25,16 @@ export interface CanonicalKernelExecutionRequest {
   readonly recovery?: CodingKernelRecovery;
 }
 
-export type CodingKernelExecutionRequest = CanonicalKernelExecutionRequest;
-export type CanonicalKernelExecutionInput = Omit<CanonicalKernelExecutionRequest, 'route'>;
+export interface CanonicalKernelExecutionRequest extends VsCodeCodingKernelRuntimeContext {
+  readonly route: 'canonical';
+  readonly userPrompt: string;
+  readonly workspaceRoot: string;
+}
+
+export type CodingKernelExecutionInput = Omit<CanonicalKernelExecutionRequest, 'route'>;
 
 export interface CodingKernelExecutionPort {
-  execute(request: CodingKernelExecutionRequest): Promise<AgentLoopResult>;
+  execute(request: CanonicalKernelExecutionRequest): Promise<AgentLoopResult>;
 }
 
 export interface CanonicalKernelLoopRequest {
@@ -47,14 +54,16 @@ export interface CodingKernelLoopPorts {
   runCanonical(request: CanonicalKernelLoopRequest): Promise<AgentLoopResult>;
 }
 
-export class CodingKernelExecutionService implements CodingKernelExecutionPort {
+export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
+  VsCodeCodingKernelRuntimeContext,
+  AgentLoopResult
+> {
   constructor(private readonly loops: CodingKernelLoopPorts) {}
 
-  async execute(request: CodingKernelExecutionRequest): Promise<AgentLoopResult> {
-    if (request.route !== 'canonical') {
-      throw new Error('coding-kernel-execution:unsupported-route');
-    }
-
+  async executeCanonical(
+    kernelRequest: CodingKernelExecutionRequest<VsCodeCodingKernelRuntimeContext>,
+  ): Promise<CodingKernelRuntimeOutput<AgentLoopResult>> {
+    const request = kernelRequest.runtimeContext;
     const recoveryContextText = request.recovery
       ? renderCodingKernelRecoveryContext(request.recovery)
       : '';
@@ -77,9 +86,9 @@ export class CodingKernelExecutionService implements CodingKernelExecutionPort {
 
     try {
       const result = await this.loops.runCanonical({
-        userPrompt: request.userPrompt,
+        userPrompt: kernelRequest.userPrompt,
         contextFiles: [...request.contextFiles],
-        workspaceRoot: request.workspaceRoot,
+        workspaceRoot: kernelRequest.workspaceRoot,
         mode: request.mode,
         callbacks,
         sessionContextText: request.sessionContextText ?? '',
@@ -99,7 +108,12 @@ export class CodingKernelExecutionService implements CodingKernelExecutionPort {
           await originalCheckpoint(null, [], 'completed');
         }
       }
-      return result;
+      return {
+        status: result.tasksFailed > 0 ? 'failed' : 'completed',
+        result,
+        evidenceRefs: result.verificationIds ?? [],
+        residualRisks: result.manualReviewReason ? [result.manualReviewReason] : [],
+      };
     } catch (error) {
       if (request.recovery && originalCheckpoint && !terminalCheckpointEmitted) {
         await originalCheckpoint(

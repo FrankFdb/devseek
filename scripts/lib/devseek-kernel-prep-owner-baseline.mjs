@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v3';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v3';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v4';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v4';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -15,6 +15,7 @@ const SOURCE_PATHS = Object.freeze({
   sharedIndex: 'packages/shared/src/index.ts',
   sharedCodingConformance: 'packages/shared/src/coding-conformance.ts',
   sharedCodingConformanceFixtures: 'packages/shared/src/coding-conformance-fixtures.ts',
+  sharedCodingKernel: 'packages/shared/src/coding-kernel.ts',
   cliCodingConformanceProbe: 'packages/cli/test/coding-conformance-development-baseline.test.mjs',
   vscodeCodingConformanceProbe: 'packages/vscode-extension/test/unit/coding-conformance-development-baseline.test.mjs',
   extension: 'packages/vscode-extension/src/extension.ts',
@@ -27,6 +28,7 @@ const SOURCE_PATHS = Object.freeze({
   productExecutor: 'packages/vscode-extension/src/product-coding-kernel-executor.ts',
   kernelService: 'packages/vscode-extension/src/app/agent-kernel-service.ts',
   kernelExecution: 'packages/vscode-extension/src/app/coding-kernel-execution.ts',
+  kernelTaskContract: 'packages/vscode-extension/src/app/coding-kernel-task-contract.ts',
   kernelRouteDecision: 'packages/vscode-extension/src/app/coding-kernel-route-decision.ts',
   kernelRecovery: 'packages/vscode-extension/src/app/coding-kernel-recovery.ts',
   localExecutionRunner: 'packages/vscode-extension/src/local-execution-chat-runner.ts',
@@ -39,7 +41,9 @@ const SOURCE_PATHS = Object.freeze({
   verification: 'packages/vscode-extension/src/workspace/validation-service.ts',
   completion: 'packages/vscode-extension/src/app/terminal-permission-coordinator.ts',
   cliIndex: 'packages/cli/src/index.ts',
-  cliLoop: 'packages/cli/src/cli-legacy-coding-loop.ts',
+  cliProductExecutor: 'packages/cli/src/cli-product-coding-kernel.ts',
+  cliKernelRuntime: 'packages/cli/src/cli-coding-kernel-runtime.ts',
+  cliKernelTaskContract: 'packages/cli/src/cli-coding-kernel-task-contract.ts',
   cliMutation: 'packages/cli/src/cli-workspace-mutation-service.ts',
   cliVerification: 'packages/cli/src/cli-verification-service.ts',
   cliEvidence: 'packages/cli/src/cli-run-evidence.ts',
@@ -54,8 +58,19 @@ const SOURCE_CHECKS = Object.freeze([
     "command: ['npm', 'run', 'verify:kernel-prep-owner-baseline']",
   ]),
   check('shared-contract-description', SOURCE_PATHS.sharedBuildProfile, [
-    'Shared command, event, and evidence contracts used by VS Code and CLI',
+    'Shared Coding Kernel, command, event, and evidence contracts used by VS Code and CLI',
   ], ['Headless Agent Core shared by VS Code and CLI']),
+  check('shared-canonical-coding-kernel', SOURCE_PATHS.sharedCodingKernel, [
+    "CODING_KERNEL_REQUEST_VERSION = 'devseek.coding-kernel-request/v1'",
+    "CODING_KERNEL_OUTPUT_VERSION = 'devseek.coding-kernel-output/v1'",
+    "CODING_KERNEL_TASK_CONTRACT_VERSION = 'devseek.coding-kernel-task-contract/v1'",
+    'export interface CodingKernelExecutionRequest<TRuntimeContext>',
+    'export interface CodingKernelExecutionOutput<TResult>',
+    'export interface CodingKernelRuntimePort<TRuntimeContext, TResult>',
+    'export class CanonicalCodingKernel<TRuntimeContext, TResult>',
+    "if (request.route !== 'canonical')",
+    'coding-kernel-execution:unsupported-route',
+  ], ['legacy-planned', 'CliLegacyCodingLoop']),
   check('shared-coding-conformance-contract', SOURCE_PATHS.sharedCodingConformance, [
     "implementationState: 'contract-and-development-fixtures-only'",
     'productWiring: false',
@@ -84,26 +99,27 @@ const SOURCE_CHECKS = Object.freeze([
   check('shared-coding-conformance-export', SOURCE_PATHS.sharedIndex, [
     "export * from './coding-conformance';",
     "export * from './coding-conformance-fixtures';",
+    "export * from './coding-kernel';",
   ]),
   check('cli-coding-conformance-development-probe', SOURCE_PATHS.cliCodingConformanceProbe, [
-    'CLI legacy route probe records observable actions without inventing missing conformance dimensions',
-    "adapterId: 'cli-legacy-coding-loop-development-probe'",
+    'CLI canonical Kernel probe exposes settled output without inventing mutation readback receipts',
+    "adapterId: 'cli-canonical-coding-kernel-development-probe'",
     "evidenceClass: 'development-route-replay'",
-    "unavailable('taskContract'",
+    'taskContract: projectTaskContract(routeOutput.output.taskContract)',
     "unavailable('changeReceipts'",
-    "unavailable('verifications'",
-    "unavailable('completion'",
+    'verifications: projectCliVerifications(routeOutput.evidence, fixture)',
+    'completion: projectCliCompletion(routeOutput.output)',
     'evaluation.productRouteEvidenceComplete, false',
-  ]),
+  ], ['CliLegacyCodingLoop', 'cli-legacy-coding-loop']),
   check('vscode-coding-conformance-development-probe', SOURCE_PATHS.vscodeCodingConformanceProbe, [
-    'VS Code Kernel route probe records that AgentLoopResult cannot settle conformance dimensions',
+    'VS Code canonical Kernel probe exposes task and terminal output without inventing tool receipts',
     "adapterId: 'vscode-coding-kernel-execution-development-probe'",
     "evidenceClass: 'development-route-replay'",
-    "unavailable('taskContract'",
+    'taskContract: projectTaskContract(routeOutput.taskContract)',
     "unavailable('toolExecutions'",
     "unavailable('changeReceipts'",
     "unavailable('verifications'",
-    "unavailable('completion'",
+    'completion: projectCompletion(routeOutput)',
     'evaluation.productRouteEvidenceComplete, false',
   ]),
   check('vscode-kernel-composition', SOURCE_PATHS.extension, [
@@ -186,17 +202,38 @@ const SOURCE_CHECKS = Object.freeze([
     "this.deps.cancelActiveRun({ reason: 'user-cancelled'",
   ], ['getActiveChatAbortController', 'setActiveChatAbortController', 'cancelActiveAgentRun']),
   check('vscode-canonical-kernel-adapter', SOURCE_PATHS.productExecutor, [
+    'CODING_KERNEL_REQUEST_VERSION,',
+    'CanonicalCodingKernel,',
     "import { runAgenticLoop } from './agent/agentic-loop'",
+    'const runtime = new VsCodeCodingKernelRuntimeAdapter({',
     'runCanonical: request => runAgenticLoop(',
     '{ recoveryContextText: request.recoveryContextText },',
-  ], ['runAgentLoop', 'runLegacyPlanned']),
+    'const kernel = new CanonicalCodingKernel(runtime)',
+    "surface: 'vscode'",
+    'taskContract: projectVsCodeCodingKernelTaskContract({',
+  ], ['runAgentLoop', 'runLegacyPlanned', 'CodingKernelExecutionService', 'runtimeContext: request']),
   check('vscode-canonical-recovery-execution-boundary', SOURCE_PATHS.kernelExecution, [
     "readonly recovery?: CodingKernelRecovery;",
-    "if (request.route !== 'canonical')",
+    'export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<',
+    'async executeCanonical(',
     'renderCodingKernelRecoveryContext(request.recovery)',
     'getPendingKernelRecoveryTasks(request.recovery)',
-    'coding-kernel-execution:unsupported-route',
-  ], ['legacy-planned', 'legacyReason', 'runLegacyPlanned']),
+    'userPrompt: kernelRequest.userPrompt',
+    'workspaceRoot: kernelRequest.workspaceRoot',
+    "status: result.tasksFailed > 0 ? 'failed' : 'completed'",
+  ], [
+    'legacy-planned',
+    'legacyReason',
+    'runLegacyPlanned',
+    'CodingKernelExecutionService',
+    'userPrompt: request.userPrompt',
+    'workspaceRoot: request.workspaceRoot',
+  ]),
+  check('vscode-shared-kernel-task-contract', SOURCE_PATHS.kernelTaskContract, [
+    'export function projectVsCodeCodingKernelTaskContract(',
+    'return buildCodingKernelTaskContract({',
+    "provenanceRefs: ['task-semantic-contract:v3', 'surface:vscode']",
+  ], ['export class', 'runAgenticLoop', 'WorkspaceEditService']),
   check('vscode-attachment-invariant-route-owner', SOURCE_PATHS.kernelRouteDecision, [
     "CODING_KERNEL_ROUTE_DECISION_VERSION = 'devseek.coding-kernel-route-decision/v1'",
     'export function decideCodingKernelRoute(',
@@ -272,14 +309,41 @@ const SOURCE_CHECKS = Object.freeze([
   check('vscode-completion', SOURCE_PATHS.completion, [
     'completeRunContext(',
   ]),
-  check('cli-legacy-composition', SOURCE_PATHS.cliIndex, [
-    'new CliLegacyCodingLoop(',
-    'legacyCodingLoop.execute({',
+  check('cli-surface-kernel-boundary', SOURCE_PATHS.cliIndex, [
+    "import { productCliCodingKernelExecutor } from './cli-product-coding-kernel';",
+    'await productCliCodingKernelExecutor.execute({',
     'CliRunEvidence.open({',
-  ], ['AgentKernelService', 'buildTaskContract(']),
-  check('cli-legacy-loop-owner', SOURCE_PATHS.cliLoop, [
-    'export class CliLegacyCodingLoop',
+  ], [
+    'CliLegacyCodingLoop',
+    'CanonicalCodingKernel',
+    'CliCodingKernelRuntimeAdapter',
+    'CliCodingArtifactInterpreter',
+    'CliWorkspaceMutationService',
+    'CliVerificationService',
   ]),
+  check('cli-canonical-kernel-composition', SOURCE_PATHS.cliProductExecutor, [
+    'CODING_KERNEL_REQUEST_VERSION,',
+    'CanonicalCodingKernel,',
+    'const kernel = new CanonicalCodingKernel(new CliCodingKernelRuntimeAdapter(',
+    'return kernel.execute({',
+    "route: 'canonical'",
+    "surface: 'cli'",
+    'taskContract: buildCliCodingKernelTaskContract(userPrompt, contextFiles)',
+  ], ['CliLegacyCodingLoop', 'legacyCodingLoop', 'cli-legacy-coding-loop', 'AgentKernelService']),
+  check('cli-canonical-kernel-runtime-adapter', SOURCE_PATHS.cliKernelRuntime, [
+    'export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<',
+    'async executeCanonical(',
+    'this.artifactInterpreter.interpret(response)',
+    'this.workspaceMutation.apply(request.workspaceRoot, artifactProposal)',
+    'this.verification.verify(request.workspaceRoot, files, request.userPrompt)',
+    'function buildRepairPrompt(',
+    "status: 'completed'",
+  ], ['CliLegacyCodingLoop', 'legacyCodingLoop', 'AgentApplicationService']),
+  check('cli-shared-kernel-task-contract', SOURCE_PATHS.cliKernelTaskContract, [
+    'export function buildCliCodingKernelTaskContract(',
+    'return buildCodingKernelTaskContract({',
+    "provenanceRefs: ['user-prompt', 'surface:cli']",
+  ], ['export class', 'CliWorkspaceMutationService', 'CliVerificationService']),
   check('cli-workspace-mutation', SOURCE_PATHS.cliMutation, [
     'export class CliWorkspaceMutationService',
   ]),
@@ -348,11 +412,11 @@ export function buildKernelPrepOwnerBaseline(sources) {
       product_routes: 4,
       active_product_routes: headlessProductEntrypoints === 0 ? 3 : 4,
       headless_product_entrypoints: headlessProductEntrypoints,
-      canonical_fresh_task_routes: 1,
+      canonical_fresh_task_routes: 2,
       canonical_recovery_routes: 1,
       legacy_recovery_routes: 0,
-      legacy_execution_owners: 1,
-      cross_surface_kernel_routes: 0,
+      legacy_execution_owners: 0,
+      cross_surface_kernel_routes: 3,
       semantic_domains: 5,
       converged_semantic_domains: 0,
       source_checks: sourceChecks.length,
@@ -400,6 +464,12 @@ export function validateKernelPrepOwnerBaseline(baseline, sources) {
   if (baseline.counts?.headless_product_entrypoints !== 0) {
     errors.push(`headless:unexpected-product-entrypoints-${baseline.counts?.headless_product_entrypoints}`);
   }
+  if (baseline.counts?.legacy_execution_owners !== 0) {
+    errors.push(`legacy-execution-owner:unexpected-${baseline.counts?.legacy_execution_owners}`);
+  }
+  if (baseline.counts?.cross_surface_kernel_routes !== 3) {
+    errors.push(`cross-surface-kernel-routes:unexpected-${baseline.counts?.cross_surface_kernel_routes}`);
+  }
   if (baseline.counts?.converged_semantic_domains !== 0) {
     errors.push(`semantic-domain:unexpected-converged-${baseline.counts?.converged_semantic_domains}`);
   }
@@ -444,6 +514,7 @@ export function renderKernelPrepOwnerBaselineMarkdown(baseline) {
     `- Canonical recovery routes: \`${baseline.counts.canonical_recovery_routes}\``,
     `- Legacy recovery routes: \`${baseline.counts.legacy_recovery_routes}\``,
     `- Legacy execution owners: \`${baseline.counts.legacy_execution_owners}\``,
+    `- Cross-Surface Kernel routes: \`${baseline.counts.cross_surface_kernel_routes}\``,
     '',
     '## Product Routes',
     '',
@@ -487,20 +558,20 @@ function buildProductRoutes(headlessProductEntrypoints) {
     {
       route_id: 'vscode-fresh-task',
       surface: 'vscode',
-      current_chain: ['AgentKernelService', 'CodingKernelExecutionService', 'runAgenticLoop'],
-      status: 'canonical-surface-route',
+      current_chain: ['AgentKernelService', 'CanonicalCodingKernel', 'VsCodeCodingKernelRuntimeAdapter', 'runAgenticLoop'],
+      status: 'canonical-cross-surface-route',
     },
     {
       route_id: 'vscode-checkpoint-resume',
       surface: 'vscode',
-      current_chain: ['AgentKernelService', 'CodingKernelExecutionService', 'runAgenticLoop'],
+      current_chain: ['AgentKernelService', 'CanonicalCodingKernel', 'VsCodeCodingKernelRuntimeAdapter', 'runAgenticLoop'],
       status: 'canonical-recovery-route',
     },
     {
       route_id: 'cli-exec',
       surface: 'cli',
-      current_chain: ['AgentApplicationService', 'CliLegacyCodingLoop'],
-      status: 'legacy-semantic-owner',
+      current_chain: ['AgentApplicationService', 'CliProductCodingKernelExecutor', 'CanonicalCodingKernel', 'CliCodingKernelRuntimeAdapter'],
+      status: 'canonical-cross-surface-route',
     },
     {
       route_id: 'headless-product',
@@ -514,8 +585,9 @@ function buildProductRoutes(headlessProductEntrypoints) {
 function buildSemanticDomains() {
   return [
     domain('task-contract', 'TaskContractPort', [
-      owner('vscode-buildTaskContract', ['vscode'], SOURCE_PATHS.taskContract),
-    ], ['cli', 'headless']),
+      owner('shared-CodingKernelTaskContract', ['vscode', 'cli'], SOURCE_PATHS.sharedCodingKernel),
+      owner('vscode-rich-TaskSemanticContract', ['vscode'], SOURCE_PATHS.taskContract),
+    ], ['headless']),
     domain('tool-execution', 'ToolExecutorPort', [
       owner('vscode-AgentToolExecutor', ['vscode'], SOURCE_PATHS.toolExecutor),
       owner('cli-artifact-interpreter', ['cli'], 'packages/cli/src/cli-coding-artifact-interpreter.ts'),
@@ -529,6 +601,7 @@ function buildSemanticDomains() {
       owner('cli-CliVerificationService', ['cli'], SOURCE_PATHS.cliVerification),
     ], ['headless']),
     domain('completion-decision', 'CompletionDecisionPort', [
+      owner('shared-CanonicalCodingKernel-output', ['vscode', 'cli'], SOURCE_PATHS.sharedCodingKernel),
       owner('vscode-TerminalPermissionCoordinator', ['vscode'], SOURCE_PATHS.completion),
       owner('cli-runPrompt-and-CliRunEvidence', ['cli'], SOURCE_PATHS.cliIndex),
     ], ['headless']),

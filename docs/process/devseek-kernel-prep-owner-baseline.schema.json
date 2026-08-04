@@ -22,8 +22,8 @@
     "baseline_sha256"
   ],
   "properties": {
-    "schema_version": { "const": "devseek.kernel-prep-owner-baseline/v3" },
-    "baseline_id": { "const": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v3" },
+    "schema_version": { "const": "devseek.kernel-prep-owner-baseline/v4" },
+    "baseline_id": { "const": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v4" },
     "purpose": { "type": "string", "minLength": 1 },
     "qualification_eligible": { "const": false },
     "qualification_effect": { "const": "NONE" },
@@ -135,7 +135,7 @@
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         },
-        "status": { "enum": ["canonical-surface-route", "canonical-recovery-route", "legacy-recovery-only", "legacy-semantic-owner", "absent", "unclassified"] }
+        "status": { "enum": ["canonical-cross-surface-route", "canonical-surface-route", "canonical-recovery-route", "legacy-recovery-only", "legacy-semantic-owner", "absent", "unclassified"] }
       }
     },
     "semanticDomain": {

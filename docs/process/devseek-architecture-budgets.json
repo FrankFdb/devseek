@@ -28,7 +28,7 @@
   },
   "files": {
     "packages/cli/src/index.ts": {
-      "maxLines": 401,
+      "maxLines": 391,
       "targetLines": 512,
       "boundary": "CLI composition root and process lifecycle"
     },

@@ -9,6 +9,7 @@ export * from './bridge-stream-protocol';
 export * from './build-profile';
 export * from './coding-conformance';
 export * from './coding-conformance-fixtures';
+export * from './coding-kernel';
 export * from './diagnostic-logger';
 export * from './engineering-context';
 export * from './llm-types';

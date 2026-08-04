@@ -7,14 +7,19 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
+import {
+  CODING_KERNEL_REQUEST_VERSION,
+  CanonicalCodingKernel,
+  buildCodingKernelTaskContract,
+} from '../../shared/dist/index.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const cliRoot = path.resolve(testDir, '..');
-const bundleRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cli-legacy-coding-loop-'));
-const bundlePath = path.join(bundleRoot, 'legacy-coding-loop.cjs');
+const bundleRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cli-coding-kernel-runtime-'));
+const bundlePath = path.join(bundleRoot, 'coding-kernel-runtime.cjs');
 
 buildSync({
-  entryPoints: [path.join(cliRoot, 'src/cli-legacy-coding-loop.ts')],
+  entryPoints: [path.join(cliRoot, 'src/cli-coding-kernel-runtime.ts')],
   bundle: true,
   outfile: bundlePath,
   format: 'cjs',
@@ -23,7 +28,7 @@ buildSync({
 });
 
 const require = createRequire(import.meta.url);
-const { CliLegacyCodingLoop } = require(bundlePath);
+const { CliCodingKernelRuntimeAdapter } = require(bundlePath);
 
 after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
@@ -33,6 +38,7 @@ function createHarness({
   validations = [{ passed: true, summary: 'passed', evidenceRefs: ['verify:passed'] }],
   repairResult = 'repaired response',
   usesBridge = false,
+  mode = 'change',
 } = {}) {
   const interpreted = [];
   const mutations = [];
@@ -60,36 +66,53 @@ function createHarness({
       return validations[Math.min(verifications.length - 1, validations.length - 1)];
     },
   };
-  const loop = new CliLegacyCodingLoop(artifactInterpreter, workspaceMutation, verification);
-  const input = {
-    cwd: '/workspace',
-    prompt: 'Change the value, but intentionally fail the first response.',
-    response: 'initial response',
+  const prompt = 'Change the value, but intentionally fail the first response.';
+  const kernel = new CanonicalCodingKernel(new CliCodingKernelRuntimeAdapter(
+    artifactInterpreter,
+    workspaceMutation,
+    verification,
+  ));
+  const request = {
+    version: CODING_KERNEL_REQUEST_VERSION,
+    route: 'canonical',
+    surface: 'cli',
     runId: 'run-1',
-    usesBridge,
+    userPrompt: prompt,
+    workspaceRoot: '/workspace',
     signal: new AbortController().signal,
-    async requestRepair(request) {
-      repairRequests.push(request);
-      if (repairResult instanceof Error) throw repairResult;
-      return repairResult;
-    },
-    recordOperationEvidence(entry, operationId, boundary) {
-      evidence.push({ entry, operationId, boundary });
-    },
-    assertBridgeEvidenceComplete(operationId, terminal) {
-      bridgeAssertions.push({ operationId, terminal });
-    },
-    emitEvent(event) {
-      events.push(event);
-    },
-    formatError(error) {
-      return error instanceof Error ? error.message : String(error);
+    taskContract: buildCodingKernelTaskContract({
+      goal: prompt,
+      mode,
+      deliverables: [{ id: 'source', kind: 'source-change' }],
+      acceptance: [{ id: 'verified', statement: 'The change passes verification.' }],
+      provenanceRefs: ['test-prompt'],
+    }),
+    runtimeContext: {
+      response: 'initial response',
+      usesBridge,
+      async requestRepair(repairRequest) {
+        repairRequests.push(repairRequest);
+        if (repairResult instanceof Error) throw repairResult;
+        return repairResult;
+      },
+      recordOperationEvidence(entry, operationId, boundary) {
+        evidence.push({ entry, operationId, boundary });
+      },
+      assertBridgeEvidenceComplete(operationId, terminal) {
+        bridgeAssertions.push({ operationId, terminal });
+      },
+      emitEvent(event) {
+        events.push(event);
+      },
+      formatError(error) {
+        return error instanceof Error ? error.message : String(error);
+      },
     },
   };
 
   return {
-    loop,
-    input,
+    kernel,
+    request,
     interpreted,
     mutations,
     verifications,
@@ -104,10 +127,10 @@ function evidenceTypes(harness) {
   return harness.evidence.map(record => record.entry.type);
 }
 
-test('legacy CLI coding loop leaves the workspace untouched when the model proposes no artifact', async () => {
+test('canonical CLI runtime leaves the workspace untouched when the model proposes no artifact', async () => {
   const harness = createHarness({ responses: [{ candidateCount: 0 }] });
 
-  await harness.loop.execute(harness.input);
+  const output = await harness.kernel.execute(harness.request);
 
   assert.deepEqual(harness.interpreted, ['initial response']);
   assert.equal(harness.mutations.length, 0);
@@ -115,12 +138,18 @@ test('legacy CLI coding loop leaves the workspace untouched when the model propo
   assert.equal(harness.repairRequests.length, 0);
   assert.deepEqual(harness.evidence, []);
   assert.deepEqual(harness.events, []);
+  assert.equal(output.status, 'completed');
+  assert.deepEqual(output.result, {
+    attempts: 0,
+    changedPaths: [],
+    verification: { status: 'not-run', evidenceRefs: [] },
+  });
 });
 
-test('legacy CLI coding loop records one committed and verified edit', async () => {
+test('canonical CLI runtime records one committed and verified edit', async () => {
   const harness = createHarness();
 
-  await harness.loop.execute(harness.input);
+  const output = await harness.kernel.execute(harness.request);
 
   assert.equal(harness.mutations.length, 1);
   assert.equal(harness.verifications.length, 1);
@@ -140,9 +169,24 @@ test('legacy CLI coding loop records one committed and verified edit', async () 
     { type: 'validation.completed', passed: true, evidenceRefs: ['verify:passed'] },
     { type: 'qualityGate.completed', passed: true, evidenceRefs: ['verify:passed'] },
   ]);
+  assert.deepEqual(output.result.changedPaths, ['src/value.ts']);
+  assert.equal(output.result.verification.status, 'passed');
 });
 
-test('legacy CLI coding loop repairs a failed first edit and closes its recovery evidence', async () => {
+test('canonical CLI runtime fails closed when a non-mutating task proposes a workspace write', async () => {
+  const harness = createHarness({ mode: 'review' });
+
+  await assert.rejects(
+    harness.kernel.execute(harness.request),
+    /review task rejected an unexpected workspace mutation/u,
+  );
+
+  assert.equal(harness.mutations.length, 0);
+  assert.equal(harness.verifications.length, 0);
+  assert.deepEqual(evidenceTypes(harness), ['side_effect.requested', 'side_effect.failed']);
+});
+
+test('canonical CLI runtime repairs a failed first edit and closes its recovery evidence', async () => {
   const harness = createHarness({
     responses: [{ candidateCount: 1 }, { candidateCount: 1 }],
     validations: [
@@ -152,7 +196,7 @@ test('legacy CLI coding loop repairs a failed first edit and closes its recovery
     usesBridge: true,
   });
 
-  await harness.loop.execute(harness.input);
+  const output = await harness.kernel.execute(harness.request);
 
   assert.deepEqual(harness.interpreted, ['initial response', 'repaired response']);
   assert.equal(harness.mutations.length, 2);
@@ -178,9 +222,11 @@ test('legacy CLI coding loop repairs a failed first edit and closes its recovery
     resolves_operation_ids: ['cli-verification-1'],
     verification_operation_id: 'cli-verification-2',
   });
+  assert.equal(output.result.attempts, 2);
+  assert.equal(output.status, 'completed');
 });
 
-test('legacy CLI coding loop closes recovery as failed when the repair provider fails', async () => {
+test('canonical CLI runtime closes recovery as failed when the repair provider fails', async () => {
   const harness = createHarness({
     validations: [{ passed: false, summary: 'tests failed', evidenceRefs: ['verify:failed'] }],
     repairResult: new Error('repair provider unavailable'),
@@ -188,7 +234,7 @@ test('legacy CLI coding loop closes recovery as failed when the repair provider 
   });
 
   await assert.rejects(
-    harness.loop.execute(harness.input),
+    harness.kernel.execute(harness.request),
     /repair provider unavailable/,
   );
 

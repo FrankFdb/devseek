@@ -226,9 +226,10 @@ test('AgentKernelService: extension Surface does not own agent completion decisi
   assert.match(kernelService, /decideExecutionRoute\([\s\S]*decideCodingKernelRoute\(input\)/);
   assert.match(kernelService, /executeCanonicalTask\([\s\S]*route: 'canonical'/);
   assert.doesNotMatch(kernelService, /executeLegacyPlannedTask|legacy-planned/);
-  assert.match(kernelService, /private execute\(request: CodingKernelExecutionRequest\)/);
+  assert.match(kernelService, /private execute\(request: CanonicalKernelExecutionRequest\)/);
   assert.match(kernelService, /settleAgentLoopResult\(this\.terminalPermissions, this\.runContext/);
   assert.match(productExecutor, /runCanonical: request => runAgenticLoop/);
+  assert.match(productExecutor, /new CanonicalCodingKernel\(runtime\)/);
   assert.doesNotMatch(productExecutor, /runLegacyPlanned|runAgentLoop/);
 
   const directImportOwners = listTypeScriptFiles(path.join(rootDir, 'src'))

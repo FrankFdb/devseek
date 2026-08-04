@@ -11,19 +11,26 @@ function readSource(fileName) {
   return readFileSync(path.join(sourceRoot, fileName), 'utf8');
 }
 
-test('CLI composition root delegates the legacy coding workflow to a named coordinator', () => {
+test('CLI composition root delegates canonical execution to the shared Kernel', () => {
   const index = readSource('index.ts');
+  const productKernel = readSource('cli-product-coding-kernel.ts');
 
-  assert.match(index, /new CliCodingArtifactInterpreter\(\)/);
-  assert.match(index, /new CliWorkspaceMutationService\(\)/);
-  assert.match(index, /new CliVerificationService\(\)/);
-  assert.match(index, /new CliLegacyCodingLoop\(/);
   assert.match(index, /new CliLegacyWorkspaceContextSelector\(\)/);
   assert.match(index, /CliRunEvidence\.open\(/);
-  assert.match(index, /legacyCodingLoop\.execute\(/);
+  assert.match(index, /productCliCodingKernelExecutor\.execute\(/);
   assert.match(index, /workspaceContextSelector\.select\(/);
+  assert.doesNotMatch(index, /CliCodingArtifactInterpreter|CliWorkspaceMutationService|CliVerificationService/);
+  assert.doesNotMatch(index, /CanonicalCodingKernel|CliCodingKernelRuntimeAdapter/);
+
+  assert.match(productKernel, /new CliCodingArtifactInterpreter\(\)/);
+  assert.match(productKernel, /new CliWorkspaceMutationService\(\)/);
+  assert.match(productKernel, /new CliVerificationService\(\)/);
+  assert.match(productKernel, /new CanonicalCodingKernel\(new CliCodingKernelRuntimeAdapter\(/);
+  assert.match(productKernel, /return kernel\.execute\(/);
+  assert.match(productKernel, /route: 'canonical'/);
 
   assert.doesNotMatch(index, /function runCodingLoop\b/);
+  assert.doesNotMatch(index, /CliLegacyCodingLoop|legacyCodingLoop|cli-legacy-coding-loop/);
   assert.doesNotMatch(index, /function buildRepairPrompt\b/);
   assert.doesNotMatch(index, /function (?:note|close)CliRecovery\w*\b/);
   assert.doesNotMatch(index, /codingArtifactInterpreter\.interpret\(/);
@@ -39,9 +46,9 @@ test('CLI composition root delegates the legacy coding workflow to a named coord
   assert.doesNotMatch(index, /\bspawnSync\s*\(/);
 });
 
-test('CLI extracted owners keep context, interpretation, mutation, and verification separate', () => {
+test('CLI runtime adapter keeps context, interpretation, mutation, and verification separate', () => {
   const interpreter = readSource('cli-coding-artifact-interpreter.ts');
-  const codingLoop = readSource('cli-legacy-coding-loop.ts');
+  const codingRuntime = readSource('cli-coding-kernel-runtime.ts');
   const contextSelector = readSource('cli-legacy-workspace-context-selector.ts');
   const runEvidence = readSource('cli-run-evidence.ts');
   const mutation = readSource('cli-workspace-mutation-service.ts');
@@ -50,12 +57,13 @@ test('CLI extracted owners keep context, interpretation, mutation, and verificat
   assert.match(interpreter, /class CliCodingArtifactInterpreter/);
   assert.doesNotMatch(interpreter, /(?:readFile|writeFile|spawnSync)\s*\(/);
 
-  assert.match(codingLoop, /class CliLegacyCodingLoop/);
-  assert.match(codingLoop, /this\.artifactInterpreter\.interpret\(/);
-  assert.match(codingLoop, /this\.workspaceMutation\.apply\(/);
-  assert.match(codingLoop, /this\.verification\.verify\(/);
-  assert.match(codingLoop, /function buildRepairPrompt\b/);
-  assert.doesNotMatch(codingLoop, /(?:AgentApplicationService|CliSurfaceAdapter|bridgeChat)/);
+  assert.match(codingRuntime, /class CliCodingKernelRuntimeAdapter/);
+  assert.match(codingRuntime, /implements CodingKernelRuntimePort/);
+  assert.match(codingRuntime, /this\.artifactInterpreter\.interpret\(/);
+  assert.match(codingRuntime, /this\.workspaceMutation\.apply\(/);
+  assert.match(codingRuntime, /this\.verification\.verify\(/);
+  assert.match(codingRuntime, /function buildRepairPrompt\b/);
+  assert.doesNotMatch(codingRuntime, /(?:AgentApplicationService|CliSurfaceAdapter|bridgeChat)/);
 
   assert.match(contextSelector, /class CliLegacyWorkspaceContextSelector/);
   assert.match(contextSelector, /resolveCliWorkspacePath/);

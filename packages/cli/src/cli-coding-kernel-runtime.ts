@@ -1,4 +1,7 @@
 import {
+  type CodingKernelExecutionRequest,
+  type CodingKernelRuntimeOutput,
+  type CodingKernelRuntimePort,
   productRunEvidenceIdempotencyKey,
   summarizeTraceText,
   type ProductRunEvidenceRecordInput,
@@ -7,7 +10,7 @@ import type { CliCodingArtifactInterpreter } from './cli-coding-artifact-interpr
 import type { CliValidationResult, CliVerificationService } from './cli-verification-service';
 import type { CliWorkspaceMutationService } from './cli-workspace-mutation-service';
 
-export type CliCodingLoopEvent =
+export type CliCodingKernelEvent =
   | { type: 'fileChanges.proposed'; files: string[] }
   | {
     type: 'validation.completed' | 'qualityGate.completed';
@@ -22,13 +25,9 @@ export interface CliRepairRequest {
   signal: AbortSignal;
 }
 
-export interface CliLegacyCodingLoopInput {
-  cwd: string;
-  prompt: string;
+export interface CliCodingKernelRuntimeContext {
   response: string;
-  runId: string;
   usesBridge: boolean;
-  signal: AbortSignal;
   requestRepair(request: CliRepairRequest): Promise<string>;
   recordOperationEvidence(
     input: ProductRunEvidenceRecordInput,
@@ -36,8 +35,17 @@ export interface CliLegacyCodingLoopInput {
     boundary?: string,
   ): void;
   assertBridgeEvidenceComplete(operationId: string, expectedTerminal: 'completed' | 'failed'): void;
-  emitEvent(event: CliCodingLoopEvent): void;
+  emitEvent(event: CliCodingKernelEvent): void;
   formatError(error: unknown): string;
+}
+
+export interface CliCodingKernelResult {
+  readonly attempts: number;
+  readonly changedPaths: readonly string[];
+  readonly verification: {
+    readonly status: 'passed' | 'not-run';
+    readonly evidenceRefs: readonly string[];
+  };
 }
 
 interface CliRecoveryBoundary {
@@ -47,15 +55,22 @@ interface CliRecoveryBoundary {
   closed: boolean;
 }
 
-export class CliLegacyCodingLoop {
+export class CliCodingKernelRuntimeAdapter implements CodingKernelRuntimePort<
+  CliCodingKernelRuntimeContext,
+  CliCodingKernelResult
+> {
   constructor(
     private readonly artifactInterpreter: Pick<CliCodingArtifactInterpreter, 'interpret'>,
     private readonly workspaceMutation: Pick<CliWorkspaceMutationService, 'apply'>,
     private readonly verification: Pick<CliVerificationService, 'verify'>,
   ) {}
 
-  async execute(input: CliLegacyCodingLoopInput): Promise<void> {
+  async executeCanonical(
+    request: CodingKernelExecutionRequest<CliCodingKernelRuntimeContext>,
+  ): Promise<CodingKernelRuntimeOutput<CliCodingKernelResult>> {
+    const input = request.runtimeContext;
     let response = input.response;
+    const changedPaths = new Set<string>();
     let recovery: CliRecoveryBoundary | undefined;
     let recoveryExitError: unknown;
     try {
@@ -67,17 +82,46 @@ export class CliLegacyCodingLoop {
           if (recovery) {
             throw new Error('DevSeek repair response contained no workspace artifacts to validate');
           }
-          return;
+          return completedResult(attempt, changedPaths, 'not-run', []);
         }
         const sideEffectOperationId = `cli-file-write-${executionAttempt}`;
         const verificationOperationId = `cli-verification-${executionAttempt}`;
         const recoveryCorrelation: Record<string, string> = recovery
           ? { recovery_operation_id: recovery.operationId }
           : {};
+        if (request.taskContract.mode !== 'change' && request.taskContract.mode !== 'release') {
+          input.recordOperationEvidence({
+            type: 'side_effect.requested',
+            idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-requested', {
+              runId: request.runId,
+              attempt: executionAttempt,
+            }),
+            payload: {
+              kind: 'workspace-file-write',
+              attempt: executionAttempt,
+              candidate_count: candidateCount,
+              ...recoveryCorrelation,
+            },
+          }, sideEffectOperationId);
+          input.recordOperationEvidence({
+            type: 'side_effect.failed',
+            idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-failed', {
+              runId: request.runId,
+              attempt: executionAttempt,
+            }),
+            payload: {
+              kind: 'workspace-file-write',
+              attempt: executionAttempt,
+              reason: 'task-contract-does-not-authorize-workspace-mutation',
+              ...recoveryCorrelation,
+            },
+          }, sideEffectOperationId);
+          throw new Error(`DevSeek ${request.taskContract.mode} task rejected an unexpected workspace mutation`);
+        }
         input.recordOperationEvidence({
           type: 'side_effect.requested',
           idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-requested', {
-            runId: input.runId,
+            runId: request.runId,
             attempt: executionAttempt,
           }),
           payload: {
@@ -90,7 +134,7 @@ export class CliLegacyCodingLoop {
         input.recordOperationEvidence({
           type: 'side_effect.authorized',
           idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-authorized', {
-            runId: input.runId,
+            runId: request.runId,
             attempt: executionAttempt,
           }),
           payload: {
@@ -103,7 +147,7 @@ export class CliLegacyCodingLoop {
         input.recordOperationEvidence({
           type: 'side_effect.started',
           idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-started', {
-            runId: input.runId,
+            runId: request.runId,
             attempt: executionAttempt,
           }),
           payload: {
@@ -115,13 +159,13 @@ export class CliLegacyCodingLoop {
         }, sideEffectOperationId);
         let files: string[];
         try {
-          files = await this.workspaceMutation.apply(input.cwd, artifactProposal);
+          files = await this.workspaceMutation.apply(request.workspaceRoot, artifactProposal);
         } catch (error) {
           noteCliRecoveryAdverse(recovery, sideEffectOperationId);
           input.recordOperationEvidence({
             type: 'side_effect.indeterminate',
             idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-indeterminate', {
-              runId: input.runId,
+              runId: request.runId,
               attempt: executionAttempt,
             }),
             payload: {
@@ -138,7 +182,7 @@ export class CliLegacyCodingLoop {
           input.recordOperationEvidence({
             type: 'side_effect.failed',
             idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-failed', {
-              runId: input.runId,
+              runId: request.runId,
               attempt: executionAttempt,
             }),
             payload: {
@@ -153,7 +197,7 @@ export class CliLegacyCodingLoop {
         input.recordOperationEvidence({
           type: 'side_effect.committed',
           idempotencyKey: productRunEvidenceIdempotencyKey('cli-file-write-committed', {
-            runId: input.runId,
+            runId: request.runId,
             attempt: executionAttempt,
           }),
           payload: {
@@ -163,25 +207,26 @@ export class CliLegacyCodingLoop {
             ...recoveryCorrelation,
           },
         }, sideEffectOperationId);
+        for (const file of files) changedPaths.add(file);
         input.emitEvent({ type: 'fileChanges.proposed', files });
 
         input.recordOperationEvidence({
           type: 'verification.started',
           idempotencyKey: productRunEvidenceIdempotencyKey('cli-verification-started', {
-            runId: input.runId,
+            runId: request.runId,
             attempt: executionAttempt,
           }),
           payload: { attempt: executionAttempt, changed_file_count: files.length },
         }, verificationOperationId);
         let validation: CliValidationResult;
         try {
-          validation = await this.verification.verify(input.cwd, files, input.prompt);
+          validation = await this.verification.verify(request.workspaceRoot, files, request.userPrompt);
         } catch (error) {
           noteCliRecoveryAdverse(recovery, verificationOperationId);
           input.recordOperationEvidence({
             type: 'verification.failed',
             idempotencyKey: productRunEvidenceIdempotencyKey('cli-verification-settled', {
-              runId: input.runId,
+              runId: request.runId,
               attempt: executionAttempt,
             }),
             payload: {
@@ -193,7 +238,7 @@ export class CliLegacyCodingLoop {
           input.recordOperationEvidence({
             type: 'quality_gate.started',
             idempotencyKey: productRunEvidenceIdempotencyKey('cli-quality-gate-started', {
-              runId: input.runId,
+              runId: request.runId,
               attempt: executionAttempt,
             }),
             payload: { attempt: executionAttempt, changed_file_count: files.length },
@@ -201,7 +246,7 @@ export class CliLegacyCodingLoop {
           input.recordOperationEvidence({
             type: 'quality_gate.failed',
             idempotencyKey: productRunEvidenceIdempotencyKey('cli-quality-gate-settled', {
-              runId: input.runId,
+              runId: request.runId,
               attempt: executionAttempt,
             }),
             payload: { attempt: executionAttempt, passed: false, reason: 'verification-error' },
@@ -211,7 +256,7 @@ export class CliLegacyCodingLoop {
         input.recordOperationEvidence({
           type: validation.passed ? 'verification.completed' : 'verification.failed',
           idempotencyKey: productRunEvidenceIdempotencyKey('cli-verification-settled', {
-            runId: input.runId,
+            runId: request.runId,
             attempt: executionAttempt,
           }),
           payload: {
@@ -224,7 +269,7 @@ export class CliLegacyCodingLoop {
         input.recordOperationEvidence({
           type: 'quality_gate.started',
           idempotencyKey: productRunEvidenceIdempotencyKey('cli-quality-gate-started', {
-            runId: input.runId,
+            runId: request.runId,
             attempt: executionAttempt,
           }),
           payload: { attempt: executionAttempt, changed_file_count: files.length },
@@ -232,7 +277,7 @@ export class CliLegacyCodingLoop {
         input.recordOperationEvidence({
           type: validation.passed ? 'quality_gate.passed' : 'quality_gate.failed',
           idempotencyKey: productRunEvidenceIdempotencyKey('cli-quality-gate-settled', {
-            runId: input.runId,
+            runId: request.runId,
             attempt: executionAttempt,
           }),
           payload: { attempt: executionAttempt, passed: validation.passed },
@@ -250,8 +295,13 @@ export class CliLegacyCodingLoop {
 
         const recoveryOperationId = 'cli-recovery-1';
         if (validation.passed) {
-          if (recovery) closeCliRecoveryCompleted(input, recovery, verificationOperationId);
-          return;
+          if (recovery) closeCliRecoveryCompleted(request.runId, input, recovery, verificationOperationId);
+          return completedResult(
+            executionAttempt,
+            changedPaths,
+            'passed',
+            validation.evidenceRefs,
+          );
         }
         if (attempt === 1) {
           noteCliRecoveryAdverse(recovery, verificationOperationId);
@@ -266,17 +316,17 @@ export class CliLegacyCodingLoop {
         };
         input.recordOperationEvidence({
           type: 'recovery.detected',
-          idempotencyKey: productRunEvidenceIdempotencyKey('cli-recovery-detected', { runId: input.runId }),
+          idempotencyKey: productRunEvidenceIdempotencyKey('cli-recovery-detected', { runId: request.runId }),
           payload: { target_operation_ids: [verificationOperationId] },
         }, recoveryOperationId);
 
-        const repairPrompt = buildRepairPrompt(input.prompt, response, files, validation);
+        const repairPrompt = buildRepairPrompt(request.userPrompt, response, files, validation);
         const providerAttempt = attempt + 2;
         const repairProviderOperationId = `cli-provider-${providerAttempt}`;
         input.recordOperationEvidence({
           type: 'provider.requested',
           idempotencyKey: productRunEvidenceIdempotencyKey('cli-provider-requested', {
-            runId: input.runId,
+            runId: request.runId,
             attempt: providerAttempt,
           }),
           payload: { provider: 'repair', attempt: providerAttempt },
@@ -286,14 +336,14 @@ export class CliLegacyCodingLoop {
             prompt: repairPrompt,
             files,
             operationId: repairProviderOperationId,
-            signal: input.signal,
+            signal: request.signal ?? new AbortController().signal,
           });
         } catch (error) {
           noteCliRecoveryAdverse(recovery, repairProviderOperationId);
           input.recordOperationEvidence({
             type: 'provider.failed',
             idempotencyKey: productRunEvidenceIdempotencyKey('cli-provider-failed', {
-              runId: input.runId,
+              runId: request.runId,
               attempt: providerAttempt,
             }),
             payload: {
@@ -302,7 +352,7 @@ export class CliLegacyCodingLoop {
               error: summarizeTraceText(input.formatError(error)),
             },
           }, repairProviderOperationId, 'cli-provider-client');
-          if (input.usesBridge && !input.signal.aborted) {
+          if (input.usesBridge && !request.signal?.aborted) {
             input.assertBridgeEvidenceComplete(repairProviderOperationId, 'failed');
           }
           throw error;
@@ -310,7 +360,7 @@ export class CliLegacyCodingLoop {
         input.recordOperationEvidence({
           type: 'provider.completed',
           idempotencyKey: productRunEvidenceIdempotencyKey('cli-provider-completed', {
-            runId: input.runId,
+            runId: request.runId,
             attempt: providerAttempt,
           }),
           payload: {
@@ -330,6 +380,7 @@ export class CliLegacyCodingLoop {
     } finally {
       if (recovery && !recovery.closed) {
         closeCliRecoveryFailed(
+          request.runId,
           input,
           recovery,
           recoveryExitError ?? new Error('DevSeek repair exited before successful revalidation'),
@@ -345,14 +396,15 @@ function noteCliRecoveryAdverse(recovery: CliRecoveryBoundary | undefined, opera
 }
 
 function closeCliRecoveryCompleted(
-  input: CliLegacyCodingLoopInput,
+  runId: string,
+  input: CliCodingKernelRuntimeContext,
   recovery: CliRecoveryBoundary,
   verificationOperationId: string,
 ): void {
   if (recovery.closed) return;
   input.recordOperationEvidence({
     type: 'recovery.completed',
-    idempotencyKey: productRunEvidenceIdempotencyKey('cli-recovery-completed', { runId: input.runId }),
+    idempotencyKey: productRunEvidenceIdempotencyKey('cli-recovery-completed', { runId }),
     payload: {
       resolves_operation_ids: recovery.targetOperationIds,
       verification_operation_id: verificationOperationId,
@@ -362,20 +414,38 @@ function closeCliRecoveryCompleted(
 }
 
 function closeCliRecoveryFailed(
-  input: CliLegacyCodingLoopInput,
+  runId: string,
+  input: CliCodingKernelRuntimeContext,
   recovery: CliRecoveryBoundary,
   error: unknown,
 ): void {
   if (recovery.closed) return;
   input.recordOperationEvidence({
     type: 'recovery.failed',
-    idempotencyKey: productRunEvidenceIdempotencyKey('cli-recovery-failed', { runId: input.runId }),
+    idempotencyKey: productRunEvidenceIdempotencyKey('cli-recovery-failed', { runId }),
     payload: {
       unresolved_operation_ids: recovery.unresolvedOperationIds,
       reason: summarizeTraceText(input.formatError(error)),
     },
   }, recovery.operationId);
   recovery.closed = true;
+}
+
+function completedResult(
+  attempts: number,
+  changedPaths: ReadonlySet<string>,
+  status: CliCodingKernelResult['verification']['status'],
+  evidenceRefs: readonly string[],
+): CodingKernelRuntimeOutput<CliCodingKernelResult> {
+  return {
+    status: 'completed',
+    result: {
+      attempts,
+      changedPaths: [...changedPaths],
+      verification: { status, evidenceRefs: [...evidenceRefs] },
+    },
+    evidenceRefs,
+  };
 }
 
 function buildRepairPrompt(

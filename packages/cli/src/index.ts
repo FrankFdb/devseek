@@ -11,14 +11,11 @@ import {
   type LLMProvider,
 } from '@devseek-netai/shared';
 import { bridgeCancel as callBridgeCancel, bridgeChat as callBridgeChat } from './bridge-client';
-import { CliCodingArtifactInterpreter } from './cli-coding-artifact-interpreter';
 import { formatCliError } from './cli-error';
-import { CliLegacyCodingLoop } from './cli-legacy-coding-loop';
 import { CliLegacyWorkspaceContextSelector } from './cli-legacy-workspace-context-selector';
+import { productCliCodingKernelExecutor } from './cli-product-coding-kernel';
 import { CliRunEvidence } from './cli-run-evidence';
 import { CliSurfaceAdapter, createCliRunLifecycleEvent, type CliRunLifecycleStatus, type CliSurfaceKind } from './cli-surface-adapter';
-import { CliVerificationService } from './cli-verification-service';
-import { CliWorkspaceMutationService } from './cli-workspace-mutation-service';
 
 interface CliOptions {
   command: 'exec' | 'interactive' | 'help' | 'version';
@@ -30,15 +27,7 @@ interface CliOptions {
 }
 
 const VERSION = '1.0.0';
-const codingArtifactInterpreter = new CliCodingArtifactInterpreter();
-const verificationService = new CliVerificationService();
-const workspaceMutationService = new CliWorkspaceMutationService();
 const workspaceContextSelector = new CliLegacyWorkspaceContextSelector();
-const legacyCodingLoop = new CliLegacyCodingLoop(
-  codingArtifactInterpreter,
-  workspaceMutationService,
-  verificationService,
-);
 
 async function main(argv: readonly string[]): Promise<number> {
   const options = parseArgs(argv);
@@ -177,13 +166,14 @@ async function runPrompt(options: CliOptions, prompt: string): Promise<number> {
       payload: { provider: options.mock ? 'local-api' : 'bridge', attempt: 1, response: summarizeTraceText(response) },
     }, initialProviderOperationId, 'cli-provider-client');
     if (!options.mock) evidence.assertBridgeComplete(initialProviderOperationId, 'completed');
-    await legacyCodingLoop.execute({
-      cwd: options.cwd,
-      prompt,
-      response,
+    await productCliCodingKernelExecutor.execute({
+      workspaceRoot: options.cwd,
+      userPrompt: prompt,
+      contextFiles,
       runId,
-      usesBridge: !options.mock,
       signal: cancellation.signal,
+      response,
+      usesBridge: !options.mock,
       requestRepair: async request => {
         const repairCommand = surface.toChatCommand({
           prompt: request.prompt,

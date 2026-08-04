@@ -4099,6 +4099,8 @@ test('DOC01 Kernel route: attached context cannot select a parallel executor', (
   const agentKernel = src('src/app/agent-kernel-service.ts');
   const routeDecision = src('src/app/coding-kernel-route-decision.ts');
   const execution = src('src/app/coding-kernel-execution.ts');
+  const productExecutor = src('src/product-coding-kernel-executor.ts');
+  const sharedKernel = src('../shared/src/coding-kernel.ts');
   const localRunner = src('src/local-execution-chat-runner.ts');
 
   assertContains(routeDecision, "devseek.coding-kernel-route-decision/v1", 'Kernel route decision must be versioned');
@@ -4108,7 +4110,7 @@ test('DOC01 Kernel route: attached context cannot select a parallel executor', (
   assertDoesNotContain(routeDecision, "route: 'legacy-planned'", 'checkpoint recovery must not select a second executor');
   assertDoesNotContain(routeDecision, 'contextFiles', 'context shape must not be an executor-selection input');
   assertContains(agentKernel, 'decideCodingKernelRoute(input)', 'AgentKernel must expose the unique route owner');
-  assertContains(agentKernel, 'private execute(request: CodingKernelExecutionRequest)', 'surfaces must not submit arbitrary routes');
+  assertContains(agentKernel, 'private execute(request: CanonicalKernelExecutionRequest)', 'surfaces must not submit arbitrary routes');
   assertContains(extension, 'agentKernelService.decideExecutionRoute({', 'VS Code must delegate execution routing to Kernel');
   assertContains(extension, 'const contextFiles = [...new Set([', 'attachments and recovery targets must remain context');
   assertContains(extension, 'agentKernelService.executeCanonicalTask({', 'all fresh tasks must use the canonical executor');
@@ -4119,7 +4121,9 @@ test('DOC01 Kernel route: attached context cannot select a parallel executor', (
   assertDoesNotContain(extension, 'hasCodeFiles', 'VS Code must not classify attachments to choose a loop');
   assertDoesNotContain(extension, 'AGENT_CODE_FILE_RE', 'VS Code must not use file extensions to choose a loop');
   assertDoesNotContain(extension, 'decomposeTask(', 'fresh VS Code tasks must not enter the retired Architect selector');
-  assertContains(execution, 'coding-kernel-execution:unsupported-route', 'every non-canonical route must fail closed');
+  assertContains(productExecutor, 'new CanonicalCodingKernel(runtime)', 'VS Code must enter the shared product Kernel');
+  assertContains(execution, 'class VsCodeCodingKernelRuntimeAdapter', 'VS Code host behavior must remain a runtime adapter');
+  assertContains(sharedKernel, 'coding-kernel-execution:unsupported-route', 'every non-canonical route must fail closed');
   assertDoesNotContain(execution, 'runLegacyPlanned', 'Kernel execution must expose one product loop port');
 });
 

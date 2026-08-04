@@ -43,22 +43,22 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
     product_routes: 4,
     active_product_routes: 3,
     headless_product_entrypoints: 0,
-    canonical_fresh_task_routes: 1,
+    canonical_fresh_task_routes: 2,
     canonical_recovery_routes: 1,
     legacy_recovery_routes: 0,
-    legacy_execution_owners: 1,
-    cross_surface_kernel_routes: 0,
+    legacy_execution_owners: 0,
+    cross_surface_kernel_routes: 3,
     semantic_domains: 5,
     converged_semantic_domains: 0,
-    source_checks: 38,
+    source_checks: 42,
     failed_source_checks: 0,
   });
   assert.deepEqual(
     actual.product_routes.map(route => [route.route_id, route.status]),
     [
-      ['vscode-fresh-task', 'canonical-surface-route'],
+      ['vscode-fresh-task', 'canonical-cross-surface-route'],
       ['vscode-checkpoint-resume', 'canonical-recovery-route'],
-      ['cli-exec', 'legacy-semantic-owner'],
+      ['cli-exec', 'canonical-cross-surface-route'],
       ['headless-product', 'absent'],
     ],
   );
@@ -80,6 +80,8 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
   ]);
   assert.equal(actual.semantic_domains.every(domain => domain.convergence_status === 'not-converged'), true);
   assert.equal(actual.source_checks.every(assertion => assertion.passed), true);
+  assert.equal(fs.existsSync(path.join(repoRoot, 'packages/cli/src/cli-legacy-coding-loop.ts')), false);
+  assert.equal(fs.existsSync(path.join(repoRoot, 'packages/cli/test/cli-legacy-coding-loop.test.mjs')), false);
   assert.deepEqual(
     actual.source_checks
       .filter(assertion => assertion.check_id.startsWith('shared-coding-conformance'))
@@ -127,6 +129,19 @@ test('kernel prep owner baseline fails closed when the canonical recovery adapte
   assert.ok(result.errors.includes('source-check:failed-vscode-canonical-kernel-adapter'));
 });
 
+test('kernel prep owner baseline fails closed when CLI bypasses the shared canonical Kernel', () => {
+  const mutatedSources = structuredClone(sources);
+  const sourcePath = 'packages/cli/src/cli-product-coding-kernel.ts';
+  mutatedSources.sourceContents[sourcePath] = mutatedSources.sourceContents[sourcePath]
+    .replace('return kernel.execute({', 'return runtime.executeCanonical({');
+
+  const mutated = buildKernelPrepOwnerBaseline(mutatedSources);
+  const result = validateKernelPrepOwnerBaseline(mutated, mutatedSources);
+
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.includes('source-check:failed-cli-canonical-kernel-composition'));
+});
+
 test('kernel prep owner baseline refuses to turn a local Gate 0 mutation into qualification promotion', () => {
   const mutatedSources = structuredClone(sources);
   mutatedSources.gate0.qualification.status = 'PASS';
@@ -154,11 +169,11 @@ test('kernel prep owner baseline checker validates the current generated artifac
     qualification_promotion_allowed: false,
     active_product_routes: 3,
     headless_product_entrypoints: 0,
-    canonical_fresh_task_routes: 1,
+    canonical_fresh_task_routes: 2,
     canonical_recovery_routes: 1,
     legacy_recovery_routes: 0,
-    legacy_execution_owners: 1,
-    cross_surface_kernel_routes: 0,
+    legacy_execution_owners: 0,
+    cross_surface_kernel_routes: 3,
     converged_semantic_domains: 0,
     failed_source_checks: 0,
     qualification_effect: 'NONE',

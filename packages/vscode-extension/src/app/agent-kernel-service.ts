@@ -5,9 +5,9 @@ import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-se
 import type { AgentLoopResult } from '../agent/loop-types';
 import { resolveSemanticExecutionContext } from '../agent/semantic-execution-context';
 import type {
-  CanonicalKernelExecutionInput,
+  CodingKernelExecutionInput,
   CodingKernelExecutionPort,
-  CodingKernelExecutionRequest,
+  CanonicalKernelExecutionRequest,
 } from './coding-kernel-execution';
 import {
   decideCodingKernelRoute,
@@ -55,14 +55,14 @@ export class AgentKernelService {
     return decideCodingKernelRoute(input);
   }
 
-  executeCanonicalTask(request: CanonicalKernelExecutionInput): Promise<AgentLoopResult> {
+  executeCanonicalTask(request: CodingKernelExecutionInput): Promise<AgentLoopResult> {
     return this.execute({
       ...request,
       route: 'canonical',
     });
   }
 
-  private execute(request: CodingKernelExecutionRequest): Promise<AgentLoopResult> {
+  private execute(request: CanonicalKernelExecutionRequest): Promise<AgentLoopResult> {
     return this.execution.execute({
       ...request,
       semanticContract: request.semanticContract ?? resolveTaskSemanticContract(request.userPrompt),

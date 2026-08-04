@@ -7,17 +7,20 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
 import {
+  CODING_KERNEL_REQUEST_VERSION,
   CODING_CONFORMANCE_DEVELOPMENT_FIXTURES,
+  CanonicalCodingKernel,
+  buildCodingKernelTaskContract,
   evaluateCodingConformanceFixture,
 } from '../../shared/dist/index.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const cliRoot = path.resolve(testDir, '..');
 const bundleRoot = mkdtempSync(path.join(tmpdir(), 'devseek-cli-coding-conformance-'));
-const bundlePath = path.join(bundleRoot, 'legacy-coding-loop.cjs');
+const bundlePath = path.join(bundleRoot, 'coding-kernel-runtime.cjs');
 
 buildSync({
-  entryPoints: [path.join(cliRoot, 'src/cli-legacy-coding-loop.ts')],
+  entryPoints: [path.join(cliRoot, 'src/cli-coding-kernel-runtime.ts')],
   bundle: true,
   outfile: bundlePath,
   format: 'cjs',
@@ -26,11 +29,11 @@ buildSync({
 });
 
 const require = createRequire(import.meta.url);
-const { CliLegacyCodingLoop } = require(bundlePath);
+const { CliCodingKernelRuntimeAdapter } = require(bundlePath);
 
 after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
-test('CLI legacy route probe records observable actions without inventing missing conformance dimensions', async () => {
+test('CLI canonical Kernel probe exposes settled output without inventing mutation readback receipts', async () => {
   const cases = [
     {
       fixtureId: 'modify-and-verify',
@@ -49,9 +52,9 @@ test('CLI legacy route probe records observable actions without inventing missin
 
   for (const routeCase of cases) {
     const fixture = findFixture(routeCase.fixtureId);
-    const routeOutput = await runCliLegacyRoute(fixture, routeCase.validations);
+    const routeOutput = await runCliCanonicalRoute(fixture, routeCase.validations);
     const evaluation = evaluateCodingConformanceFixture(fixture, [
-      observeCliLegacyRoute(fixture, routeOutput),
+      observeCliCanonicalRoute(fixture, routeOutput),
     ]);
     const cliResult = evaluation.surfaceResults.find(result => result.surface === 'cli');
 
@@ -59,13 +62,13 @@ test('CLI legacy route probe records observable actions without inventing missin
     assert.equal(routeOutput.verifications.length, routeCase.validations.length, routeCase.fixtureId);
     assert.equal(cliResult.contractConformant, false, routeCase.fixtureId);
     assert.equal(cliResult.evidenceClass, 'development-route-replay', routeCase.fixtureId);
-    assert.deepEqual(cliResult.observedDimensions, ['toolExecutions'], routeCase.fixtureId);
-    assert.deepEqual(cliResult.missingDimensions, [
+    assert.deepEqual(cliResult.observedDimensions, [
       'taskContract',
-      'changeReceipts',
+      'toolExecutions',
       'verifications',
       'completion',
     ], routeCase.fixtureId);
+    assert.deepEqual(cliResult.missingDimensions, ['changeReceipts'], routeCase.fixtureId);
     assert.ok(cliResult.violations.some(violation => (
       violation.dimension === 'toolExecutions' && violation.code === 'semantic-mismatch'
     )), routeCase.fixtureId);
@@ -78,14 +81,14 @@ test('CLI legacy route probe records observable actions without inventing missin
   }
 });
 
-async function runCliLegacyRoute(fixture, validations) {
+async function runCliCanonicalRoute(fixture, validations) {
   const evidence = [];
   const events = [];
   const mutations = [];
   const verifications = [];
   let validationIndex = 0;
   const targetPath = fixture.expected.taskContract.scope.include[0] || 'src/value.ts';
-  const loop = new CliLegacyCodingLoop(
+  const kernel = new CanonicalCodingKernel(new CliCodingKernelRuntimeAdapter(
     { interpret: () => ({ candidateCount: 1 }) },
     {
       async apply(cwd, proposal) {
@@ -99,54 +102,75 @@ async function runCliLegacyRoute(fixture, validations) {
         return validations[Math.min(validationIndex++, validations.length - 1)];
       },
     },
-  );
+  ));
 
-  await loop.execute({
-    cwd: '/workspace',
-    prompt: fixture.prompt,
-    response: 'initial development route response',
+  const output = await kernel.execute({
+    version: CODING_KERNEL_REQUEST_VERSION,
+    route: 'canonical',
+    surface: 'cli',
     runId: `conformance-${fixture.fixtureId}`,
-    usesBridge: false,
+    userPrompt: fixture.prompt,
+    workspaceRoot: '/workspace',
     signal: new AbortController().signal,
-    async requestRepair() {
-      return 'bounded repair development route response';
-    },
-    recordOperationEvidence(entry, operationId, boundary) {
-      evidence.push({ entry, operationId, boundary });
-    },
-    assertBridgeEvidenceComplete() {},
-    emitEvent(event) {
-      events.push(event);
-    },
-    formatError(error) {
-      return error instanceof Error ? error.message : String(error);
+    taskContract: buildCodingKernelTaskContract({
+      goal: fixture.expected.taskContract.goal,
+      mode: fixture.expected.taskContract.mode,
+      include: fixture.expected.taskContract.scope.include,
+      exclude: fixture.expected.taskContract.scope.exclude,
+      deliverables: fixture.expected.taskContract.deliverables,
+      constraints: fixture.expected.taskContract.constraints,
+      acceptance: fixture.expected.taskContract.acceptance,
+      provenanceRefs: fixture.expected.taskContract.provenanceRefs,
+    }),
+    runtimeContext: {
+      response: 'initial development route response',
+      usesBridge: false,
+      async requestRepair() {
+        return 'bounded repair development route response';
+      },
+      recordOperationEvidence(entry, operationId, boundary) {
+        evidence.push({ entry, operationId, boundary });
+      },
+      assertBridgeEvidenceComplete() {},
+      emitEvent(event) {
+        events.push(event);
+      },
+      formatError(error) {
+        return error instanceof Error ? error.message : String(error);
+      },
     },
   });
 
-  return { evidence, events, mutations, verifications };
+  return { output, evidence, events, mutations, verifications };
 }
 
-function observeCliLegacyRoute(fixture, routeOutput) {
+function observeCliCanonicalRoute(fixture, routeOutput) {
   return {
     surface: 'cli',
-    adapterId: 'cli-legacy-coding-loop-development-probe',
+    adapterId: 'cli-canonical-coding-kernel-development-probe',
     evidenceClass: 'development-route-replay',
     sourceRefs: [
-      'packages/cli/src/cli-legacy-coding-loop.ts',
+      'packages/shared/src/coding-kernel.ts',
+      'packages/cli/src/cli-coding-kernel-runtime.ts',
       `development-route:${fixture.fixtureId}:cli`,
     ],
     projection: {
       schemaVersion: fixture.schemaVersion,
       fixtureId: fixture.fixtureId,
+      taskContract: projectTaskContract(routeOutput.output.taskContract),
       toolExecutions: projectSettledCliActions(routeOutput.evidence),
+      verifications: projectCliVerifications(routeOutput.evidence, fixture),
+      completion: projectCliCompletion(routeOutput.output),
     },
     unavailableDimensions: [
-      unavailable('taskContract', 'route-output-not-exposed', 'cli-loop-input-has-prompt-only'),
       unavailable('changeReceipts', 'route-evidence-incomplete', 'cli-change-event-has-paths-without-baseline-readback'),
-      unavailable('verifications', 'route-evidence-incomplete', 'cli-validation-event-has-no-acceptance-map'),
-      unavailable('completion', 'route-output-not-exposed', 'cli-loop-returns-void'),
     ],
   };
+}
+
+function projectTaskContract(taskContract) {
+  const { version: _version, ...projection } = taskContract;
+  return projection;
 }
 
 function projectSettledCliActions(evidence) {
@@ -162,14 +186,41 @@ function projectSettledCliActions(evidence) {
       sequence: index + 1,
       actionId: record.operationId,
       tool: record.entry.type.startsWith('side_effect.')
-        ? 'cli-legacy-workspace-mutation'
-        : 'cli-legacy-verification',
+        ? 'cli-workspace-mutation'
+        : 'cli-verification',
       effects: record.entry.type.startsWith('side_effect.') ? ['workspace-mutation'] : ['process'],
       status: record.entry.type.endsWith('.committed') || record.entry.type.endsWith('.completed')
         ? 'completed'
         : 'failed',
       evidenceRefs: [`run-evidence:${record.operationId}:${record.entry.type}`],
     }));
+}
+
+function projectCliVerifications(evidence, fixture) {
+  return evidence
+    .filter(record => record.entry.type === 'verification.completed' || record.entry.type === 'verification.failed')
+    .map((record, index) => ({
+      sequence: index + 1,
+      actionId: record.operationId,
+      verifier: 'cli-verification',
+      status: record.entry.type === 'verification.completed' ? 'passed' : 'failed',
+      acceptanceIds: fixture.expected.taskContract.acceptance.map(criterion => criterion.id),
+      evidenceRefs: [`run-evidence:${record.operationId}:${record.entry.type}`],
+    }));
+}
+
+function projectCliCompletion(output) {
+  const evidenceRef = `kernel-output:${output.runId}:${output.status}`;
+  return {
+    status: output.status,
+    acceptance: output.taskContract.acceptance.map(criterion => ({
+      criterionId: criterion.id,
+      status: output.status === 'completed' ? 'passed' : 'failed',
+      evidenceRefs: [evidenceRef],
+    })),
+    residualRisks: [...output.residualRisks],
+    evidenceRefs: [evidenceRef],
+  };
 }
 
 function unavailable(dimension, reason, evidenceRef) {
