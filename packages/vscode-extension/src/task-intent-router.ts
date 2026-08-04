@@ -1,7 +1,7 @@
 import { parseSimpleFileWriteRequest, type SimpleFileWriteRequest } from './agent/simple-file-intent';
 import { classifyIntent } from './intent/intent-classifier';
-import { isUnsafeSecretHarvestingImplementationRequest } from './intent/safety-intent';
 import type { ExecutionMode, IntentClassification, ToolKind } from './intent/intent-types';
+import { isMutatingExecutionMode } from './intent/execution-mode-policy';
 import {
   buildTaskSemanticContract,
   shouldRunCppValidationForContract,
@@ -73,25 +73,16 @@ export interface TaskIntentRoute {
   allowedToolKinds: ToolKind[];
 }
 
-const REVIEW_RE = /(?:审查|评审|review|code\s+review|PR\b|pull\s+request)/i;
-const FAILURE_RE = /(?:日志|失败|报错|重试|回归|QualityGate|replay|error|failed)/i;
-const EXTERNAL_EFFECT_RE = /(?:发布|上线|部署|安装插件|安装扩展|提交(?:当前)?(?:修改|变更)?|推送(?:当前)?(?:分支)?|拉取(?:最新)?代码|安装\s*(?:依赖|npm\s*包|包)|release|deploy|publish|install\s+extension|git\s+(?:commit|push|pull|fetch|merge|rebase)|commit\s+(?:changes?|current)|push\s+(?:current\s+)?branch|npm\s+(?:install|i|add|ci)|pnpm\s+(?:install|i|add)|yarn\s+(?:install|add)|pip\s+install)/i;
-const EXTERNAL_EFFECT_QUESTION_RE = /(?:如何|怎么|怎样|为什么|什么是|介绍|说明|方案|计划|how\s+to|what\s+is|why|plan|design|approach)/i;
-const BROAD_SCOPE_RE = /(整个|全部|全局|项目|仓库|系统|架构|多入口|跨平台|跨模块|模块化|runtime|workflow|provider|权限|状态机)/i;
-const COMPLEX_ACTION_RE = /(重构|改造|拆分|迁移|重写|优化架构|革命性|架构设计|refactor|re-architect|architecture)/i;
-const PLANNING_TERM_RE = /(方案|计划|设计|怎么改|如何改|重构计划|实施步骤|roadmap|plan|design|approach)/i;
-const IMPLEMENTATION_TERM_RE = /(代码|实现|修改|改造|拆分|迁移|重写|接入|落地|执行|模块化|runtime|workflow|provider|权限|状态机|code|implement|split|migrate|rewrite)/i;
-
 export function routeTaskIntent(promptText: string): TaskIntentRoute {
   const prompt = String(promptText || '').trim();
   const semanticContract = buildTaskSemanticContract(prompt);
-  const classification = classifyIntent(prompt);
+  const classification = classifyIntent(semanticContract);
   const simpleFile = semanticContract.mutation.prohibited
     ? undefined
     : parseSimpleFileWriteRequest(prompt);
-  const family = resolveTaskIntentFamily(prompt, classification, semanticContract, simpleFile);
+  const family = resolveTaskIntentFamily(classification, semanticContract, simpleFile);
   const safetyRefusal = family === 'safety-refusal';
-  const agentTaskShape = resolveAgentTaskShape(prompt, family, semanticContract);
+  const agentTaskShape = resolveAgentTaskShape(family, semanticContract);
   const chatKind = isCodeChangeRoute(family, classification.mode) ? 'code-change' : 'chat';
   const effectiveMutation: TaskIntentRoute['mutation'] = safetyRefusal
     ? {
@@ -139,7 +130,7 @@ export function routeTaskIntent(promptText: string): TaskIntentRoute {
     signals: unique([
       ...classification.signals,
       ...semanticContract.signals,
-      ...buildRouteMetaSignals(prompt),
+      ...buildRouteMetaSignals(semanticContract),
       ...buildFamilyAliasSignals(family),
       `${family}-route`,
     ]),
@@ -162,18 +153,17 @@ export function shouldValidateNonCodeFilesForRoute(route: TaskIntentRoute): bool
 }
 
 function resolveTaskIntentFamily(
-  prompt: string,
   classification: IntentClassification,
   semanticContract: TaskSemanticContract,
   simpleFile: SimpleFileWriteRequest | undefined,
 ): TaskIntentFamily {
-  if (!prompt) return 'smalltalk';
-  if (isUnsafeSecretHarvestingImplementationRequest(prompt)) return 'safety-refusal';
+  if (semanticContract.intent.context.empty) return 'smalltalk';
+  if (semanticContract.intent.context.unsafeSecretHarvesting) return 'safety-refusal';
   if (classification.mode === 'destructive' || semanticContract.kind === 'destructive') return 'destructive';
   if (simpleFile) return 'simple-file';
-  if (EXTERNAL_EFFECT_RE.test(prompt) && !EXTERNAL_EFFECT_QUESTION_RE.test(prompt)) return 'release-external-effect';
+  if (semanticContract.intent.context.externalEffect === 'requested') return 'release-external-effect';
   if (isReadOnlyRoute(classification, semanticContract)) {
-    return REVIEW_RE.test(prompt) ? 'review' : 'read-only-advisory';
+    return semanticContract.intent.context.reviewRequested ? 'review' : 'read-only-advisory';
   }
   if (classification.mode === 'smalltalk') return 'smalltalk';
   if (classification.mode === 'qa') return 'qa';
@@ -186,11 +176,7 @@ function resolveTaskIntentFamily(
     return 'standalone-program';
   }
   if (semanticContract.kind === 'file-artifact') return 'file-artifact';
-  if (classification.mode === 'edit') {
-    return EXTERNAL_EFFECT_RE.test(prompt) && !EXTERNAL_EFFECT_QUESTION_RE.test(prompt)
-      ? 'release-external-effect'
-      : 'general-edit';
-  }
+  if (classification.mode === 'edit') return 'general-edit';
   return semanticContract.mutation.prohibited ? 'read-only-advisory' : 'ambiguous';
 }
 
@@ -202,12 +188,11 @@ function isStandaloneFileArtifactRoute(semanticContract: TaskSemanticContract): 
 }
 
 function resolveAgentTaskShape(
-  prompt: string,
   family: TaskIntentFamily,
   semanticContract: TaskSemanticContract,
 ): RoutedAgentTaskShape {
   if (family === 'safety-refusal') return 'read-only-analysis';
-  if (FAILURE_RE.test(prompt)) {
+  if (semanticContract.intent.context.failureContext) {
     return 'validation-repair';
   }
   if (family === 'simple-file') return 'simple-file';
@@ -227,10 +212,6 @@ function isReadOnlyRoute(
   return classification.mode === 'inspect' || classification.mode === 'plan';
 }
 
-function isMutatingExecutionMode(mode: ExecutionMode): boolean {
-  return mode === 'edit' || mode === 'run' || mode === 'destructive';
-}
-
 function isCodeChangeRoute(family: TaskIntentFamily, mode: ExecutionMode): boolean {
   return isMutatingExecutionMode(mode)
     || family === 'release-external-effect'
@@ -243,11 +224,11 @@ function isCodeChangeRoute(family: TaskIntentFamily, mode: ExecutionMode): boole
     || family === 'general-edit';
 }
 
-function buildRouteMetaSignals(prompt: string): string[] {
+function buildRouteMetaSignals(semanticContract: TaskSemanticContract): string[] {
   const signals: string[] = [];
-  if (BROAD_SCOPE_RE.test(prompt)) signals.push('broad-scope');
-  if (COMPLEX_ACTION_RE.test(prompt)) signals.push('complex-action');
-  if (isPlanningOnlyRequest(prompt)) signals.push('planning-only-request');
+  if (semanticContract.intent.context.broadScope) signals.push('broad-scope');
+  if (semanticContract.intent.context.complexAction) signals.push('complex-action');
+  if (semanticContract.intent.context.planningOnly) signals.push('planning-only-request');
   return signals;
 }
 
@@ -256,15 +237,6 @@ function buildFamilyAliasSignals(family: TaskIntentFamily): string[] {
   if (family === 'standalone-program') return ['standalone-program-route'];
   if (family === 'existing-project-edit') return ['existing-project-route'];
   return [];
-}
-
-function isPlanningOnlyRequest(text: string): boolean {
-  const hasPlanningTerm = PLANNING_TERM_RE.test(text);
-  const actionableText = text
-    .replace(/(?:但|先|暂时|目前)?\s*(?:不要|无需|不需要|别|先不要)\s*(?:改|修改|实现|写|落地|执行|apply)?\s*(?:代码|code)?/gi, '')
-    .replace(/(?:no|without)\s+(?:code|implementation|changes?)/gi, '');
-  const hasImplementationTerm = IMPLEMENTATION_TERM_RE.test(actionableText);
-  return hasPlanningTerm && !hasImplementationTerm;
 }
 
 function unique(values: string[]): string[] {

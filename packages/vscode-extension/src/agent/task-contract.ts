@@ -1,5 +1,6 @@
 import * as nodePath from 'path';
 import type { ExactGroundedArtifactContract } from './evidence-grounding';
+import { hasDestructiveIntent } from '../intent/destructive-intent';
 
 export type TaskShape =
   | 'existing-project'
@@ -71,8 +72,6 @@ const COMMUNICATION_CHAIN_RE = /(?:通信链路|通讯链路|收发链路|端到
 const VALIDATION_RE = /(?:测试|验证|编译|运行|回归|test|verify|validation|compile|build)/i;
 const CONDITIONAL_REPAIR_RE = /(?:(?:运行|执行|测试|验证|编译|构建|run|execute|test|verify|compile|build)[^，,。；;\n]{0,80}(?:如果|若|如有|有|when|if)[^，,。；;\n]{0,40}(?:失败|错误|报错|error|fail)[^，,。；;\n]{0,40}(?:修复|修正|fix|repair)|(?:如果|若|如有|when|if)[^，,。；;\n]{0,40}(?:失败|错误|报错|error|fail)[^，,。；;\n]{0,40}(?:修复|修正|fix|repair))/i;
 const BUG_FIX_IMPLEMENTATION_RE = /(?:(?:修复|修正|解决|处理|fix|repair|resolve)[^，,。；;\n]{0,64}(?:bug|issue|问题|错误|失败|报错|异常|不工作|不生效|failing|broken)|(?:bug|issue|问题|错误|失败|报错|异常|不工作|不生效|failing|broken)[^，,。；;\n]{0,64}(?:修复|修正|解决|处理|fix|repair|resolve))/i;
-const DESTRUCTIVE_RE = /(?:删除|清空|覆盖|重置|drop|delete|remove|reset)/i;
-const NON_DESTRUCTIVE_CONTENT_DELETE_RE = /(?:删除|移除|删掉|delete|remove)[^，,。；;\n]{0,64}(?:里|中|内|里的|中的|行|内容|注释|字段|配置项|段落|语句|line|lines?|content|comment|field|statement)/i;
 const NO_SOURCE_CHANGE_RE = /(?:不要|禁止|无需|不允许|不得).{0,24}(?:修改|改动|修复|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入).{0,12}(?:源码|代码|文件)|(?:do not|don't|must not).{0,24}(?:modify|change|fix|repair|rename|move|copy|append|insert).{0,12}(?:source|code|files?)/i;
 const OUTPUT_STYLE_GUIDANCE_RE = /(?:报告正文请|正文请)[^。\n；;]{0,120}|(?:(?:技术标识符|协议名|文件路径|验收锚点|术语|专有名词)[、,，和及与\s]*){1,8}[^。\n；;]{0,80}(?:保持原文|保留原文|保持原样|不翻译|verbatim|exact)/gi;
 const ARTIFACT_WRITE_ACTION_PATTERN = '(?:(?:通过|以|用|使用)[^，,。；;\\n]{0,12}(?:md|markdown|\\.md)(?:文档|文件|报告)?[^，,。；;\\n]{0,16}(?:提供|输出|给出|返回|保存|生成|产出)|创建|新建|生成|编写|制作|做成|形成|整理成|记录|汇总(?:成|为|到|至|入)|翻译(?=[^，,。；;\\n]{0,24}(?:成|为|到|至|入|保存|输出|写入|文档|文件|报告|markdown|md))|(?:总结|摘要|概括|提取)(?=[^，,。；;\\n]{0,24}(?:成|为|到|至|入|保存|输出|写入|文档|文件|报告|markdown|md))|写入|写出|写到|保存|产出|落盘|修复|修正|解决|处理|更新|修改|改写|改动|编辑|覆盖|删除|删|移除|重命名|改名|移动|移到|挪到|挪动|复制|拷贝|追加|插入|写(?!法)|改(?!进)|输出(?=[^，,。；;\\n]{0,16}(?:到|至|为|成|入|markdown|文档|报告))|(?:提供|给出|交付)(?=[^，,。；;\\n]{0,16}(?:markdown|文档|报告))|\\b(?:create|write|compose|draft|render|record|save|generate|produce|fix|repair|resolve|update|modify|revise|replace|overwrite|edit|change|delete|remove|touch|rename|move|copy|append|insert|translate)\\b|\\bmake\\s+(?:a\\s+)?changes?\\b|\\boutput(?=[^,.;\\n]{0,20}\\b(?:to|into|as|markdown|report|document)\\b)|\\b(?:provide|deliver)(?=[^,.;\\n]{0,20}\\b(?:markdown|report|document)\\b|[^,.;\\n]{0,36}\\b(?:through|via|as)\\s+(?:an?\\s+)?(?:markdown\\s+)?(?:document|report)\\b)|\\bsummari[sz]e(?:\\s+(?:it|them|the\\s+(?:facts?|results?)))?\\s+(?:into|to|as)\\b)';
@@ -1055,7 +1054,7 @@ export function buildTaskContract(promptText: string): TaskContract {
   if (inspection) shapes.add('inspection');
   if (documentation) shapes.add('documentation');
   if (sourceChange && !standalone) shapes.add('repair');
-  const destructive = DESTRUCTIVE_RE.test(prompt) && !NON_DESTRUCTIVE_CONTENT_DELETE_RE.test(prompt);
+  const destructive = hasDestructiveIntent(prompt);
   if (destructive) shapes.add('destructive');
 
   const obligations = new Set<QualityObligation>();

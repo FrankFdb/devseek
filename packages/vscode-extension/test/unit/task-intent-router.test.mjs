@@ -196,4 +196,12 @@ test('TaskIntentRouter: terminal validation remains run-only and denies mutation
   assert.deepEqual(route.allowedToolKinds, ['read', 'search', 'diagnostics', 'network', 'control', 'plan', 'memory', 'terminal']);
 });
 
+test('TaskIntentRouter: a negated push cannot be reopened by a downstream keyword owner', () => {
+  const route = routeTaskIntent('不要推送当前分支，只检查并说明当前状态');
+
+  assert.notEqual(route.family, 'release-external-effect');
+  assert.equal(route.requiresConfirmation, false);
+  assert.equal(route.semanticContract.intent.context.externalEffect, 'none');
+});
+
 console.log('\nTask-intent-router tests passed.\n');

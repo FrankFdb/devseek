@@ -2821,6 +2821,30 @@ test('R1-A2: TaskIntentRouter is the canonical task-family owner for downstream 
   assertDoesNotContain(completion, 'buildTaskSemanticContract(intentText)', 'completion evidence must not rebuild semantic contracts from raw prompt');
 });
 
+test('R1-A2K: TaskSemanticContract is the unique local semantic owner', () => {
+  const semanticContract = src('src/task-semantic-contract.ts');
+  const localIntent = src('src/intent/local-intent-contract.ts');
+  const classifier = src('src/intent/intent-classifier.ts');
+  const router = src('src/task-intent-router.ts');
+  const governor = src('src/intent/semantic-intent-governor.ts');
+  const controller = src('src/app/chat-controller.ts');
+  const taskContract = src('src/agent/task-contract.ts');
+
+  assertContains(semanticContract, "version: 'devseek.task-semantic-contract/v2'", 'semantic contract schema must be versioned');
+  assertContains(semanticContract, 'buildLocalIntentContract(prompt, {', 'semantic contract must build the local interpretation once');
+  assertContains(classifier, 'const local = contract.intent', 'classifier must project the canonical local interpretation');
+  assertDoesNotContain(classifier, '_RE =', 'classifier must not own prompt keyword rules');
+  assertContains(router, 'classifyIntent(semanticContract)', 'task router must reuse the existing semantic contract');
+  assertDoesNotContain(router, 'const EXTERNAL_EFFECT_RE', 'task router must not reopen external-effect interpretation');
+  assertDoesNotContain(router, 'const REVIEW_RE', 'task router must not reopen review interpretation');
+  assertDoesNotContain(router, 'const FAILURE_RE', 'task router must not reopen failure interpretation');
+  assertContains(controller, 'governSemanticIntent(intent, input.semanticIntent)', 'controller must delegate candidate governance');
+  assertDoesNotContain(controller, 'function governedSemanticMode', 'controller must not own semantic merge rules');
+  assertContains(governor, 'function governedSemanticMode', 'semantic governor must own candidate merge rules');
+  assertContains(taskContract, 'hasDestructiveIntent(prompt)', 'TaskContract must share the destructive safety owner');
+  assertContains(localIntent, "version: 'devseek.local-intent-contract/v1'", 'local interpretation contract must be explicit');
+});
+
 test('R2-01A: OrientationDecision owns pre-execution mode/risk/confidence evidence', () => {
   const orientation = src('src/intent/orientation-decision.ts');
   assertContains(orientation, "version: 'devseek.orientation-decision/v1'", 'orientation decision must expose a versioned contract');

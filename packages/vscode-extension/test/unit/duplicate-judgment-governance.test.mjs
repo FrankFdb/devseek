@@ -77,6 +77,7 @@ function decisionFilesContaining(pattern) {
 test('ARCH-16 owner registry covers every duplicate-judgment domain', () => {
   const registry = readExtensionFile('src/app/judgment-owners.ts');
   const required = [
+    ['task-semantic-intent', 'src/task-semantic-contract.ts'],
     ['architecture-decision', 'src/app/judgment-owners.ts'],
     ['tool-protocol', 'src/agent/tool-registry.ts'],
     ['response-integrity', 'src/llm/providers/web-reliability.ts'],

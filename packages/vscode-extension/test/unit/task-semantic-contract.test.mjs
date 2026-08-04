@@ -25,7 +25,10 @@ const {
 test('TaskSemanticContract: standalone C++ print task is not formal-project quality work', () => {
   const contract = buildTaskSemanticContract('编写一个 C++ 程序，打印下午好');
 
-  assert.equal(contract.version, 'devseek.task-semantic-contract/v1');
+  assert.equal(contract.version, 'devseek.task-semantic-contract/v2');
+  assert.equal(contract.intent.version, 'devseek.local-intent-contract/v1');
+  assert.equal(contract.intent.taskKind, 'standalone-program');
+  assert.equal(contract.intent.mode, 'edit');
   assert.equal(contract.kind, 'standalone-code');
   assert.equal(contract.scope, 'standalone');
   assert.equal(contract.mutation.requested, true);
@@ -124,6 +127,14 @@ test('TaskSemanticContract: read-only path tokens do not become runtime validati
   assert.equal(contract.validation.requested, false);
   assert.equal(contract.validation.runRequested, false);
   assert.equal(shouldRunCppValidationForContract(contract), false);
+});
+
+test('TaskSemanticContract: negated external effects stay outside release routing', () => {
+  const contract = buildTaskSemanticContract('不要推送当前分支，只检查并说明当前状态');
+
+  assert.equal(contract.intent.context.externalEffect, 'none');
+  assert.notEqual(contract.intent.taskKind, 'external-effect');
+  assert.equal(contract.intent.requiresConfirmation, false);
 });
 
 console.log('\nTask-semantic-contract tests passed.\n');

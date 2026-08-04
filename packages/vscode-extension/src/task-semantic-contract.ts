@@ -5,6 +5,11 @@ import {
   type TaskContract,
 } from './agent/task-contract';
 import { stripAgentProceduralExecutionPhrases } from './intent/agent-procedure-text';
+import { hasDestructiveIntent } from './intent/destructive-intent';
+import {
+  buildLocalIntentContract,
+  type LocalIntentContract,
+} from './intent/local-intent-contract';
 
 export type TaskSemanticScope = 'none' | 'standalone' | 'existing-project' | 'unknown';
 
@@ -18,7 +23,7 @@ export type TaskSemanticKind =
   | 'general';
 
 export interface TaskSemanticContract {
-  version: 'devseek.task-semantic-contract/v1';
+  version: 'devseek.task-semantic-contract/v2';
   prompt: string;
   taskContract: TaskContract;
   kind: TaskSemanticKind;
@@ -42,6 +47,7 @@ export interface TaskSemanticContract {
   quality: {
     formalProjectRequired: boolean;
   };
+  intent: LocalIntentContract;
   signals: string[];
 }
 
@@ -66,8 +72,6 @@ const OUTPUT_ARTIFACT_RE = /(?:(?:输出|打印)[^，,。；;\n]{0,20}(?:文件|
 const NO_RUN_RE = /(?:不(?:要|用|需|需要|必|得|准|能)?|禁止|别|勿|请勿|未)[^，,。；;\n]{0,24}(?:运行|执行|启动|测试)|(?:do\s+not|don't|without|no)\s+(?:run|execute|start|test)/i;
 const NO_RUN_CLAUSE_RE = /(?:不(?:要|用|需|需要|必|得|准|能)?|禁止|别|勿|请勿|未)[^，,。；;\n]{0,32}(?:运行|执行|启动|测试)[^，,。；;\n]*|(?:do\s+not|don't|without|no)\s+[^,.;\n]*(?:run|execute|start|test)[^,.;\n]*/gi;
 const READ_ONLY_RE = /(?:只读|仅分析|只分析|仅讨论|只讨论|只指出|仅指出|直接回复|直接回答|当前不准备|不准备|先不要|暂不|不要落地|不需要代码|only\s+(?:explain|discuss|answer)|just\s+(?:chat|talk|discuss))/i;
-const DESTRUCTIVE_RE = /(?:删除|清空|覆盖|重置|移除|删掉|drop|delete|remove|reset|overwrite|truncate)/i;
-const NON_DESTRUCTIVE_CONTENT_DELETE_RE = /(?:删除|移除|删掉|delete|remove)[^，,。；;\n]{0,64}(?:里|中|内|里的|中的|行|内容|注释|字段|配置项|段落|语句|line|lines?|content|comment|field|statement)/i;
 const DERIVED_ARTIFACT_OUTPUT_RE = /(?:(?:读取|读出|查看|参考|根据|基于|read|from|based\s+on)[^，,。；;\n]{0,100}(?:翻译|总结|摘要|概括|提取|生成|写入|写到|保存|输出|translate|summari[sz]e|extract|generate|write|save|output)[^，,。；;\n]{0,40}(?:成|为|到|至|入|\bto\b|\binto\b|\bas\b)|(?:翻译|总结|摘要|概括|提取|translate|summari[sz]e|extract)[^，,。；;\n]{0,80}(?:成|为|到|至|入|\bto\b|\binto\b|\bas\b)|(?:复制|拷贝|copy)[^，,。；;\n]{0,40}(?:到|至|为|成|入|\bto\b|\binto\b|\bas\b))/i;
 
 export function buildTaskSemanticContract(promptText: string): TaskSemanticContract {
@@ -112,9 +116,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
   const fileArtifact = (taskContract.deliverables.includes('report') && effectivePositiveWriteAction)
     || explicitNonCodeFileWrite;
   const prohibited = NO_WRITE_RE.test(prompt) && !hasScopedWriteProhibition && !sourceChange && !fileArtifact;
-  const destructiveIntent = DESTRUCTIVE_RE.test(prompt)
-    && !NON_DESTRUCTIVE_CONTENT_DELETE_RE.test(prompt)
-    && !prohibited;
+  const destructiveIntent = hasDestructiveIntent(prompt) && !prohibited;
   const mutationRequested = (sourceChange || fileArtifact || taskContract.deliverableTargets.length > 0)
     && !prohibited;
   const validationPrompt = stripAgentProceduralExecutionPhrases(prompt);
@@ -167,43 +169,53 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     stdoutRequested ? 'stdout-requested' : '',
     fileCheckRequested ? 'file-check-requested' : '',
   ].filter(Boolean);
+  const mutation = {
+    requested: mutationRequested,
+    prohibited,
+    sourceChange,
+    fileArtifact,
+    targets: buildMutationTargets({
+      taskContractTargets: resolveSemanticMutationTargetHints({
+        prompt,
+        taskContractTargets: taskContract.deliverableTargets,
+        nonCodeTargets,
+        sourceChange,
+      }),
+      sourceTargets,
+      nonCodeTargets,
+      includeSourceTargets: sourceChange,
+      includeNonCodeTargets: fileArtifact,
+    }),
+  };
+  const validation = {
+    requested: validationRequested,
+    compileRequested,
+    runRequested,
+    testRequested,
+    runProhibited,
+    stdoutRequested,
+    fileCheckRequested,
+  };
+  const intent = buildLocalIntentContract(prompt, {
+    kind,
+    scope,
+    mutation,
+    validation,
+    semanticSignals: signals,
+  });
 
   return {
-    version: 'devseek.task-semantic-contract/v1',
+    version: 'devseek.task-semantic-contract/v2',
     prompt,
     taskContract,
     kind,
     scope,
-    mutation: {
-      requested: mutationRequested,
-      prohibited,
-      sourceChange,
-      fileArtifact,
-      targets: buildMutationTargets({
-        taskContractTargets: resolveSemanticMutationTargetHints({
-          prompt,
-          taskContractTargets: taskContract.deliverableTargets,
-          nonCodeTargets,
-          sourceChange,
-        }),
-        sourceTargets,
-        nonCodeTargets,
-        includeSourceTargets: sourceChange,
-        includeNonCodeTargets: fileArtifact,
-      }),
-    },
-    validation: {
-      requested: validationRequested,
-      compileRequested,
-      runRequested,
-      testRequested,
-      runProhibited,
-      stdoutRequested,
-      fileCheckRequested,
-    },
+    mutation,
+    validation,
     quality: {
       formalProjectRequired,
     },
+    intent,
     signals,
   };
 }

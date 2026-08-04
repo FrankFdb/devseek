@@ -204,6 +204,29 @@ export interface ArchitecturePlanRevisionGuardReport {
 
 export const JUDGMENT_OWNER_RECORDS: readonly JudgmentOwnerRecord[] = [
   {
+    id: 'task-semantic-intent',
+    phase: 1,
+    ownerModule: 'src/task-semantic-contract.ts',
+    status: 'owner-established',
+    canonicalSymbols: [
+      'TaskSemanticContract',
+      'buildTaskSemanticContract',
+    ],
+    supportingModules: [
+      'src/intent/local-intent-contract.ts',
+      'src/intent/semantic-intent-governor.ts',
+      'src/intent/semantic-intent.ts',
+      'src/intent/intent-classifier.ts',
+      'src/task-intent-router.ts',
+    ],
+    contractTests: [
+      'test/unit/task-semantic-contract.test.mjs',
+      'test/unit/semantic-intent-routing-matrix.test.mjs',
+      'test/unit/workflow-compliance.test.mjs',
+    ],
+    guardedTerms: ['semantic-intent-owner', 'local-keyword-owner', 'provider-semantic-governor'],
+  },
+  {
     id: 'architecture-decision',
     phase: 2,
     ownerModule: 'src/app/judgment-owners.ts',
