@@ -214,7 +214,7 @@
         {
           "path": "packages/vscode-extension/test/unit/workflow-compliance.test.mjs",
           "role": "workflow-static-contract-oracle",
-          "source_sha256": "5afd92a83335ea8baac859179407d9b48450ef6f213a481e81254a134d2d72d4"
+          "source_sha256": "96f6c62aa02758badcdc4ffa3e7da62460eaaec1484c3a17383d47a771f9edcb"
         }
       ],
       "anchor_checks": [
@@ -414,5 +414,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "manifest_sha256": "34016b9c6f53fe482462aa8174d11d1649a0214eb02fc633ed87844e3280b671"
+  "manifest_sha256": "8cece1628584956f1897f0d0d839820d08954e0eee65495c9ea8d3ace5b29d7b"
 }

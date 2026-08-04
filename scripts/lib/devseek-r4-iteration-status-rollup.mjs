@@ -24,15 +24,12 @@ const CLEAN_RUNTIME_OBSERVATION = 'docs/process/devseek-r4-clean-runtime-limited
 const PRODUCT_IMPLEMENTATION_COMMIT = 'a034e5e050c044460fb07705639d9d41e6b193c0';
 const HANDOFF_DOC_COMMIT = '02cb792b4fe86df523c7f88eb106f13394e6f3fd';
 const CLEAN_RUNTIME_LEAF_ID = 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME';
+const CLEAN_RUNTIME_WINDOW_AUTHORITY =
+  'explicit-user-window-action-authorization-for-extension-activation-or-runtime-isolation';
 
 const LEAFS = Object.freeze([
   {
     leaf_id: CLEAN_RUNTIME_LEAF_ID,
-    terminal_state: 'BLOCKED',
-    implementation_commit: null,
-    artifact_path: 'docs/process/devseek-current-candidate-identity.json',
-    blocker_reason: 'existing-vscode-and-deepseek-pages-must-not-be-closed-or-reused-without-explicit-clean-runtime-authorization',
-    next_required_authority: 'explicit-user-authorization-for-clean-runtime-isolation-or-external-clean-identity-receipt',
   },
   {
     leaf_id: 'R4-RELEASE-CANDIDATE-MANIFEST',
@@ -101,7 +98,10 @@ export function buildR4IterationStatusRollup({ repoRoot } = {}) {
   const completedLeaves = leaves.filter(leaf => leaf.terminal_state === 'COMPLETED').length;
   const blockedLeaves = leaves.filter(leaf => leaf.terminal_state === 'BLOCKED').length;
   const cleanRuntimeBlockedUntilAuthority = cleanRuntimeObservation.clean_runtime_identity_established !== true;
-  const remainingWindowSensitiveLeaves = cleanRuntimeBlockedUntilAuthority ? 1 : 0;
+  const acceptableNextAuthority = cleanRuntimeBlockedUntilAuthority
+    ? cleanRuntimeObservation.next_required_authority
+    : [];
+  const remainingWindowSensitiveLeaves = acceptableNextAuthority.includes(CLEAN_RUNTIME_WINDOW_AUTHORITY) ? 1 : 0;
 
   const rollup = {
     schema_version: R4_ITERATION_STATUS_ROLLUP_SCHEMA_VERSION,
@@ -177,12 +177,7 @@ export function buildR4IterationStatusRollup({ repoRoot } = {}) {
       may_run_live_provider_test: false,
       may_install_or_replace_extension: false,
       may_refresh_current_candidate_identity_without_authorization: false,
-      acceptable_next_authority: cleanRuntimeBlockedUntilAuthority
-        ? [
-          'explicit-user-clean-runtime-window-action-authorization',
-          'external-clean-candidate-identity-receipt',
-        ]
-        : [],
+      acceptable_next_authority: acceptableNextAuthority,
       latest_limited_observation_path: CLEAN_RUNTIME_OBSERVATION,
       latest_limited_observation_terminal_state: cleanRuntimeObservation.terminal_state,
       latest_limited_observation_clean_runtime_identity_established: cleanRuntimeObservation.clean_runtime_identity_established,
@@ -325,10 +320,10 @@ function buildCleanRuntimeLeaf(cleanRuntimeObservation) {
     artifact_path: 'docs/process/devseek-current-candidate-identity.json',
     blocker_reason: completed
       ? null
-      : 'existing-vscode-and-deepseek-pages-must-not-be-closed-or-reused-without-explicit-clean-runtime-authorization',
+      : cleanRuntimeObservation.blockers.join(';'),
     next_required_authority: completed
       ? null
-      : 'explicit-user-authorization-for-clean-runtime-isolation-or-external-clean-identity-receipt',
+      : cleanRuntimeObservation.next_required_authority.join(';'),
   };
 }
 
@@ -398,7 +393,8 @@ function semanticValidate(rollup, errors) {
   const blockedLeaves = (rollup.leaves ?? []).filter(leaf => leaf.terminal_state === 'BLOCKED').length;
   if (rollup.counts?.completed_leaves !== completedLeaves) errors.push('counts.completed_leaves:invalid');
   if (rollup.counts?.blocked_leaves !== blockedLeaves) errors.push('counts.blocked_leaves:invalid');
-  const expectedRemainingWindowSensitiveLeaves = rollup.clean_runtime_boundary?.blocked_until_authority === true ? 1 : 0;
+  const expectedRemainingWindowSensitiveLeaves =
+    rollup.clean_runtime_boundary?.acceptable_next_authority?.includes(CLEAN_RUNTIME_WINDOW_AUTHORITY) ? 1 : 0;
   if (rollup.counts?.remaining_window_sensitive_leaves !== expectedRemainingWindowSensitiveLeaves) {
     errors.push('counts.remaining_window_sensitive_leaves:invalid');
   }
@@ -438,13 +434,8 @@ function validateCleanRuntimeBoundary(boundary, errors) {
     errors.push('clean_runtime_boundary.blocked_until_authority:must-match-identity-state');
   }
   if (expectedBlockedUntilAuthority) {
-    for (const authority of [
-      'explicit-user-clean-runtime-window-action-authorization',
-      'external-clean-candidate-identity-receipt',
-    ]) {
-      if (!boundary?.acceptable_next_authority?.includes(authority)) {
-        errors.push(`clean_runtime_boundary.acceptable_next_authority:missing-${authority}`);
-      }
+    if ((boundary?.acceptable_next_authority ?? []).length === 0) {
+      errors.push('clean_runtime_boundary.acceptable_next_authority:required-when-blocked');
     }
   } else if ((boundary?.acceptable_next_authority ?? []).length !== 0) {
     errors.push('clean_runtime_boundary.acceptable_next_authority:must-be-empty-when-unblocked');

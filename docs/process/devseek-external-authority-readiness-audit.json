@@ -33,9 +33,9 @@
     },
     "r4_live_qualification_request_packet": {
       "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
-      "source_sha256": "2b7bc6e3aecb20f7b2303c9a13a5d19eb1d943e28f55cf4aef52e9c30492dfc6",
+      "source_sha256": "3cc1be97bab7a50fd6949d19abb797248a4e0c8f0d7e4dd237721dc650d71112",
       "packet_id": "R4-LIVE-QUALIFICATION-REQUEST-PACKET/v1",
-      "packet_sha256": "e83c0f536ecfc7b0704b2186fe9a9f81ea7f7642b6ebd0b5d38c8b88db47b37c",
+      "packet_sha256": "9318e86369586d44dfbee1d20003a501006cc3a4f569cd5a9ce9a7fad07e2ab1",
       "blocked_requests": 5
     },
     "r4_live_user_way_holdout_matrix": {
@@ -56,8 +56,8 @@
     },
     "r4_process_artifacts_aggregate": {
       "path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
-      "source_sha256": "a9d7a48c70cb83bed49d7327f67943d08bf8c5fd3ebbc79fdebbc677bf2c5cfa",
-      "aggregate_sha256": "32fa692b018d8b660a5aa3b7f3bdc11255665468a9ae03170f3d2c19fc09cf61",
+      "source_sha256": "e691205eb101de07f1eb785a7b778c19e6a9f2c0982f83859669a41a3111d953",
+      "aggregate_sha256": "77f0b02c90ed0f09471530985523bcd3bec646595d56c935870f3838fc0532b0",
       "artifact_errors": 0
     },
     "gate0_decision": {
@@ -443,5 +443,5 @@
     "ledger_writes": 0,
     "provider_actions_performed": 0
   },
-  "audit_sha256": "0e71fddcc884db617922b8df8f1e06bbc76af987ca1bad4af1ba62e2acd9da6a"
+  "audit_sha256": "38bd17881d0ed1318244ca9455e7493c650184c107f4b1fc3e810f125b127675"
 }

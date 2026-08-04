@@ -36,14 +36,14 @@
       "generated_view_path": "docs/process/generated/devseek-current-candidate-identity.md",
       "status": "tracked-stale-deferred",
       "archive_status": "not-archived",
-      "file_sha256": "2a88328f5e63952b5b20a1b9fbb0399e889a8426067ef0132c904f7f08973066",
-      "generated_view_sha256": "226c6ee548b88b9536fdd8dd667761241119cdddca76c3785e166da2b1091af9",
-      "artifact_git_commit": "ce937a3",
-      "candidate_source_commit": "ce937a308c4e19b58dabc0950db1b55aa573b537",
-      "vsix_sha256": "511a1b934e871369ecd6f1e9384678ca837d12345249941eb73a6b98a7e79240",
-      "build_id": "20260803-t180230",
-      "observe_status": "failed",
-      "identity_probe_sha256": "732c958866f89e6fc77f46337f87d43e86a313a64a9bff93ba7a945ea3186f83",
+      "file_sha256": "80a68b5207f65625458b18320c15e1b89514125d7e77d1b3f7f2928c585b294e",
+      "generated_view_sha256": "0fa1d6ab155a6aaeca49d70210bd7d718e13524966a1635aee23798abd669aec",
+      "artifact_git_commit": "4f8a567",
+      "candidate_source_commit": "4f8a56797090079914b4d921b56d9c34fe4d2abc",
+      "vsix_sha256": "68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc",
+      "build_id": "20260804-t093020",
+      "observe_status": "passed",
+      "identity_probe_sha256": "c629bfa4bdf1c7a1843a34e6c5e1277c6260dc5829072510c933b5a14664eafd",
       "usable_for_qualification": false,
       "qualification_effect": "NONE"
     },
@@ -148,5 +148,5 @@
     "tracked_current_identity_usable_for_qualification": 0,
     "qualification_claims": 0
   },
-  "reconciliation_sha256": "fd4447d67947dbd949dc4af87b8310bd11a14eddb680bea1ee7bbde67c5cd2be"
+  "reconciliation_sha256": "4f2eb41679a06db946395724b627c33f07767ea890032fa67ec834d4bf4df505"
 }

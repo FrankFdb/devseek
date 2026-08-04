@@ -12,7 +12,7 @@
 
 - Artifact source commit: `a034e5e050c044460fb07705639d9d41e6b193c0`
 - VSIX SHA-256: `027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d`
-- Current candidate identity: `clean-runtime-identity-established`
+- Current candidate identity: `deferred-unusable-until-clean-runtime`
 - Clean runtime identity required: `true`
 - Gate0: `NOT_PASSED`
 - R1 qualification: `NOT_STARTED`
@@ -41,15 +41,15 @@
 
 | Source | SHA-256 |
 | --- | --- |
-| `release_candidate_manifest: docs/process/devseek-r4-release-candidate-manifest.json` | `fe0d5a74792785a640df50be50012702a46077bebe0d8036647ed27e42182f87` |
-| `doc_process_identity_reconciliation: docs/process/devseek-r4-doc-process-identity-reconciliation.json` | `0c611270778e0cf8f851e381a08c6344546a457fce2ec131e4bb978589c2fc6d` |
-| `external_authority_requests: docs/process/devseek-external-authority-requests.json` | `2fe209d338bc1ef9e4eda8ca7e04d847fb7cf6943089a6fb686b960c2d7d482c` |
-| `external_authority_adapter: docs/process/devseek-external-authority-adapter.json` | `01af27ecc332681df0aa4bd5842fd95b1f5467bfc92da06aa10a6043e751fc1c` |
-| `gate0_decision: docs/process/devseek-gate0-decision-report.json` | `5eb780082e768611f7bfde25790a2ad41b802c5926c62e3c91b04cd3350082ad` |
+| `release_candidate_manifest: docs/process/devseek-r4-release-candidate-manifest.json` | `eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66` |
+| `doc_process_identity_reconciliation: docs/process/devseek-r4-doc-process-identity-reconciliation.json` | `c12e92c4a13ba7f24c27afe0b915582968b90d094c08ec9c49e140608335831c` |
+| `external_authority_requests: docs/process/devseek-external-authority-requests.json` | `c51d967ed1b34b634d6c785ff3d7076e82869e1d82b3c2ba70490e4126b4a11e` |
+| `external_authority_adapter: docs/process/devseek-external-authority-adapter.json` | `17821b07799c048b9136fbcc374cb7ff0f476f1e62927f2322044a6f20da7e18` |
+| `gate0_decision: docs/process/devseek-gate0-decision-report.json` | `85c486937e07952576931724531e3fd4d1e6dc84d58ff2a1b52c51301ee5d3f0` |
 | `milestone_profiles: docs/process/devseek-milestone-profiles.json` | `f1e4cc06825f62dfbf57a50995c9c3a5e6c604d6296de04c98bf56c0b8800b61` |
 | `qualification_profiles: docs/process/devseek-qualification-profiles.json` | `1504f7b069f2fc41159433a7937eef9e3c19386111946f351f9703442d65a4bf` |
 | `qualification_runner_inventory: docs/process/devseek-qualification-runner-inventory.json` | `d63eecb1952844f0c07314aeedcf0701220a51a787c2bc91e4362d85582eb786` |
 
 ## Packet Identity
 
-- Packet SHA-256: `e83c0f536ecfc7b0704b2186fe9a9f81ea7f7642b6ebd0b5d38c8b88db47b37c`
+- Packet SHA-256: `9318e86369586d44dfbee1d20003a501006cc3a4f569cd5a9ce9a7fad07e2ab1`

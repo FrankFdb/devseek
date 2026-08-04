@@ -14,11 +14,11 @@
 - Total leaves: `6`
 - Completed leaves: `5`
 - Blocked leaves: `1`
-- Remaining window-sensitive leaves: `1`
+- Remaining window-sensitive leaves: `0`
 
 | Leaf | Terminal | Commit | Blocker |
 | --- | --- | --- | --- |
-| `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME` | `BLOCKED` | `n/a` | `existing-vscode-and-deepseek-pages-must-not-be-closed-or-reused-without-explicit-clean-runtime-authorization` |
+| `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME` | `BLOCKED` | `n/a` | `expected-candidate-identity-does-not-match-release-candidate-manifest` |
 | `R4-RELEASE-CANDIDATE-MANIFEST` | `COMPLETED` | `33bd4e9685e0577b92806938919a8370ab49caa6` | `n/a` |
 | `R4-DOC-PROCESS-IDENTITY-RECONCILIATION` | `COMPLETED` | `7a5c1acfa2745d411bb3c6ac97088ef5c87efade` | `n/a` |
 | `R4-LIVE-QUALIFICATION-REQUEST-PACKET` | `COMPLETED` | `8da611877948d53854000b7258721b6d43dc8e81` | `n/a` |
@@ -32,7 +32,7 @@
 - Latest limited observation: `docs/process/devseek-r4-clean-runtime-limited-observation.json`
 - Latest limited observation terminal state: `BLOCKED`
 - Clean runtime identity established: `false`
-- Stable runtime count: `0`
+- Stable runtime count: `1`
 - May close existing VS Code or DeepSeek pages: `false`
 - May run live Provider test: `false`
 - Blocked until authority: `true`
@@ -49,8 +49,8 @@
 
 - Authorization guide: `docs/process/devseek-r4-authorization-and-permission-guide.md`
 - Clean runtime limited observation: `docs/process/devseek-r4-clean-runtime-limited-observation.json`
-- Clean runtime observation SHA-256: `64a81e37581c96e415b2a08bf99f71795f4e44dcae9834a584a4db0abefb1c68`
+- Clean runtime observation SHA-256: `29e06308972f10b332db1583d9205b60df19326afada277dc7be4a350271aa1d`
 
 ## Rollup Identity
 
-- Rollup SHA-256: `5716a17e44c27f77ba1ad42f3742ba2b0abceff02cedd289fa2c4b1102c98294`
+- Rollup SHA-256: `7745a352d6c14f2a6d2e7d14c6cd967d1adf3b42d2eae2cd83f3b47ab4aae183`

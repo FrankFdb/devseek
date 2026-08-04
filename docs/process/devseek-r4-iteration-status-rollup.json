@@ -25,7 +25,7 @@
   "source_bindings": {
     "r3_handoff_next_phase": {
       "path": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md",
-      "source_sha256": "b6c675eeeddf17482508fa08f1d4a5dc011d41cb72f03d2711a85a049dc936d8",
+      "source_sha256": "712e09e938fa8718f44ab32c320f1937e28d8d635f736a936346494099dfc10e",
       "handoff_doc_commit": "02cb792b4fe86df523c7f88eb106f13394e6f3fd"
     },
     "release_candidate_manifest": {
@@ -36,14 +36,14 @@
     },
     "doc_process_identity_reconciliation": {
       "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
-      "source_sha256": "035e3af82e22c9d671efdf373257afcbe7c290c34907d72b8c06e1247871eae2",
-      "reconciliation_sha256": "bea678edb89b71dea235abca6216985b5f002bd94f477eeb69fe6aaad3271db6",
+      "source_sha256": "c12e92c4a13ba7f24c27afe0b915582968b90d094c08ec9c49e140608335831c",
+      "reconciliation_sha256": "4f2eb41679a06db946395724b627c33f07767ea890032fa67ec834d4bf4df505",
       "current_candidate_identity_status": "deferred-unusable-until-clean-runtime"
     },
     "live_qualification_request_packet": {
       "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
-      "source_sha256": "2b7bc6e3aecb20f7b2303c9a13a5d19eb1d943e28f55cf4aef52e9c30492dfc6",
-      "packet_sha256": "e83c0f536ecfc7b0704b2186fe9a9f81ea7f7642b6ebd0b5d38c8b88db47b37c",
+      "source_sha256": "3cc1be97bab7a50fd6949d19abb797248a4e0c8f0d7e4dd237721dc650d71112",
+      "packet_sha256": "9318e86369586d44dfbee1d20003a501006cc3a4f569cd5a9ce9a7fad07e2ab1",
       "blocked_requests": 5
     },
     "live_user_way_holdout_matrix": {
@@ -54,8 +54,8 @@
     },
     "real_provider_failure_taxonomy": {
       "path": "docs/process/devseek-r4-real-provider-failure-taxonomy.json",
-      "source_sha256": "459dc5765664166f33d2c59f051b6da980e84be3edddd5052b6c95555b522f23",
-      "taxonomy_sha256": "cf388fd30a469301feb7c720b7319b28d762572ab3a2ca9fbaeb0fd766912fd4",
+      "source_sha256": "f600782836dcd78b8050870f72cdee8e5ae8fecfe6eab9e9410edd439e22ed35",
+      "taxonomy_sha256": "716ba020f4137ac0565a45ff1ef46aaa63338c07af4aed1d07ed70527798c4c5",
       "categories": 10
     },
     "authorization_guide": {
@@ -64,11 +64,11 @@
     },
     "clean_runtime_limited_observation": {
       "path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
-      "source_sha256": "55594ef5b5dee56d4c2c8a32b584ba955b246a2736880d91694e7b03dc36200c",
-      "observation_sha256": "64a81e37581c96e415b2a08bf99f71795f4e44dcae9834a584a4db0abefb1c68",
+      "source_sha256": "125df55105b1b677f7b9ec299c08dac5457f5c8a050b1a19810cea388de4a6bb",
+      "observation_sha256": "29e06308972f10b332db1583d9205b60df19326afada277dc7be4a350271aa1d",
       "terminal_state": "BLOCKED",
       "clean_runtime_identity_established": false,
-      "stable_runtime_count": 0
+      "stable_runtime_count": 1
     }
   },
   "r4_scope": {
@@ -78,8 +78,8 @@
     "local_process_artifacts_complete_except_clean_runtime": true,
     "clean_runtime_leaf_terminal_state": "BLOCKED",
     "clean_runtime_limited_observation_terminal_state": "BLOCKED",
-    "clean_runtime_limited_observation_sha256": "64a81e37581c96e415b2a08bf99f71795f4e44dcae9834a584a4db0abefb1c68",
-    "clean_runtime_stable_runtime_count": 0,
+    "clean_runtime_limited_observation_sha256": "29e06308972f10b332db1583d9205b60df19326afada277dc7be4a350271aa1d",
+    "clean_runtime_stable_runtime_count": 1,
     "current_candidate_identity_status": "deferred-unusable-until-clean-runtime",
     "gate0_status": "NOT_PASSED",
     "r1_qualification_status": "NOT_STARTED",
@@ -93,8 +93,7 @@
     "may_install_or_replace_extension": false,
     "may_refresh_current_candidate_identity_without_authorization": false,
     "acceptable_next_authority": [
-      "explicit-user-clean-runtime-window-action-authorization",
-      "external-clean-candidate-identity-receipt"
+      "explicit-authority-to-freeze-latest-candidate-or-restore-frozen-release-candidate-runtime"
     ],
     "latest_limited_observation_path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
     "latest_limited_observation_terminal_state": "BLOCKED",
@@ -107,8 +106,8 @@
       "terminal_state": "BLOCKED",
       "implementation_commit": null,
       "artifact_path": "docs/process/devseek-current-candidate-identity.json",
-      "blocker_reason": "existing-vscode-and-deepseek-pages-must-not-be-closed-or-reused-without-explicit-clean-runtime-authorization",
-      "next_required_authority": "explicit-user-authorization-for-clean-runtime-isolation-or-external-clean-identity-receipt",
+      "blocker_reason": "expected-candidate-identity-does-not-match-release-candidate-manifest",
+      "next_required_authority": "explicit-authority-to-freeze-latest-candidate-or-restore-frozen-release-candidate-runtime",
       "qualification_effect": "NONE",
       "claims_permitted": false,
       "asserts_gate_pass": false
@@ -173,9 +172,9 @@
     "r4_total_leaves": 6,
     "completed_leaves": 5,
     "blocked_leaves": 1,
-    "remaining_window_sensitive_leaves": 1,
+    "remaining_window_sensitive_leaves": 0,
     "live_runs_authorized": 0,
     "qualification_claims": 0
   },
-  "rollup_sha256": "5716a17e44c27f77ba1ad42f3742ba2b0abceff02cedd289fa2c4b1102c98294"
+  "rollup_sha256": "7745a352d6c14f2a6d2e7d14c6cd967d1adf3b42d2eae2cd83f3b47ab4aae183"
 }

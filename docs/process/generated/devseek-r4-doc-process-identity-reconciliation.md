@@ -18,7 +18,7 @@
 
 | Identity | Status | Artifact | VSIX SHA-256 | Observe | Usable For Qualification |
 | --- | --- | --- | --- | --- | --- |
-| tracked-current-candidate: `docs/process/devseek-current-candidate-identity.json` | `tracked-stale-deferred` | `ce937a3` | `511a1b934e871369ecd6f1e9384678ca837d12345249941eb73a6b98a7e79240` | `failed` | `false` |
+| tracked-current-candidate: `docs/process/devseek-current-candidate-identity.json` | `tracked-stale-deferred` | `4f8a567` | `68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc` | `passed` | `false` |
 | archived-failed-observe: `docs/process/archive/devseek-current-candidate-identity-failed-observe-20260723-t185546.json` | `archived-failed-observe` | `6b09d67` | `49a0479c8c436dac7a5eb6e5b68c71e42b30e3e8dae05973b65f864c9813c086` | `failed` | `false` |
 | release-candidate-manifest: `docs/process/devseek-r4-release-candidate-manifest.json` | `current-local-release-smoke-reference` | `a034e5e050c044460fb07705639d9d41e6b193c0` | `027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d` | `n/a` | `false` |
 
@@ -42,4 +42,4 @@
 
 ## Reconciliation Identity
 
-- Reconciliation SHA-256: `fd4447d67947dbd949dc4af87b8310bd11a14eddb680bea1ee7bbde67c5cd2be`
+- Reconciliation SHA-256: `4f2eb41679a06db946395724b627c33f07767ea890032fa67ec834d4bf4df505`

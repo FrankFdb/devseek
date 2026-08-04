@@ -18,6 +18,14 @@ export const R4_CLEAN_RUNTIME_LIMITED_OBSERVATION_SCHEMA_VERSION = 'devseek.r4-c
 export const R4_CLEAN_RUNTIME_LIMITED_OBSERVATION_ID = 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME-LIMITED-OBSERVATION/v1';
 export const R4_CLEAN_RUNTIME_LIMITED_OBSERVATION_SCOPE = 'local-r4-clean-runtime-limited-observation';
 
+const REFRESH_CURRENT_IDENTITY_AUTHORITY =
+  'refresh-current-candidate-identity-registry-from-current-artifact-install-and-runtime';
+const RELEASE_CANDIDATE_SELECTION_AUTHORITY =
+  'explicit-authority-to-freeze-latest-candidate-or-restore-frozen-release-candidate-runtime';
+const CLEAN_RUNTIME_WINDOW_AUTHORITY =
+  'explicit-user-window-action-authorization-for-extension-activation-or-runtime-isolation';
+const EXTERNAL_CLEAN_IDENTITY_AUTHORITY = 'external-clean-candidate-identity-receipt';
+
 const AUTHORIZATION_GUIDE = 'docs/process/devseek-r4-authorization-and-permission-guide.md';
 const CURRENT_IDENTITY = 'docs/process/devseek-current-candidate-identity.json';
 const RELEASE_MANIFEST = 'docs/process/devseek-r4-release-candidate-manifest.json';
@@ -49,6 +57,11 @@ export function buildR4CleanRuntimeLimitedObservation({ repoRoot, homeDir } = {}
     trackedIdentityMatchesExpected,
     expectedMatchesReleaseCandidate,
     liveRuntimeResult,
+  });
+  const nextRequiredAuthority = deriveR4CleanRuntimeNextAuthority({
+    trackedIdentityMatchesExpected,
+    expectedMatchesReleaseCandidate,
+    liveRuntimePolicyOk: liveRuntimeResult.ok,
   });
   const terminalState = cleanRuntimeIdentityEstablished ? 'COMPLETED' : 'BLOCKED';
 
@@ -146,12 +159,7 @@ export function buildR4CleanRuntimeLimitedObservation({ repoRoot, homeDir } = {}
       network_or_live_holdout_observed: false,
     },
     blockers,
-    next_required_authority: cleanRuntimeIdentityEstablished
-      ? []
-      : [
-        'explicit-user-window-action-authorization-for-extension-activation-or-runtime-isolation',
-        'or-external-clean-candidate-identity-receipt',
-      ],
+    next_required_authority: cleanRuntimeIdentityEstablished ? [] : nextRequiredAuthority,
     counts: {
       blockers: blockers.length,
       stable_runtime_count: liveRuntimeResult.summary.stable_runtime_count,
@@ -296,6 +304,20 @@ function buildBlockers({
   return [...new Set(blockers)];
 }
 
+export function deriveR4CleanRuntimeNextAuthority({
+  trackedIdentityMatchesExpected,
+  expectedMatchesReleaseCandidate,
+  liveRuntimePolicyOk,
+}) {
+  const authority = [];
+  if (!trackedIdentityMatchesExpected) authority.push(REFRESH_CURRENT_IDENTITY_AUTHORITY);
+  if (!expectedMatchesReleaseCandidate) authority.push(RELEASE_CANDIDATE_SELECTION_AUTHORITY);
+  if (!liveRuntimePolicyOk) {
+    authority.push(CLEAN_RUNTIME_WINDOW_AUTHORITY, EXTERNAL_CLEAN_IDENTITY_AUTHORITY);
+  }
+  return authority;
+}
+
 function semanticValidate(report, errors) {
   if (report.schema_version !== R4_CLEAN_RUNTIME_LIMITED_OBSERVATION_SCHEMA_VERSION) errors.push('schema_version:invalid');
   if (report.observation_id !== R4_CLEAN_RUNTIME_LIMITED_OBSERVATION_ID) errors.push('observation_id:invalid');
@@ -347,6 +369,16 @@ function semanticValidate(report, errors) {
   }
   if (report.terminal_state === 'COMPLETED' && (report.next_required_authority ?? []).length !== 0) {
     errors.push('next_required_authority:must-be-empty-when-completed');
+  }
+  const expectedNextAuthority = deriveR4CleanRuntimeNextAuthority({
+    trackedIdentityMatchesExpected:
+      report.tracked_registry_comparison?.tracked_matches_expected_identity === true,
+    expectedMatchesReleaseCandidate:
+      report.expected_candidate_identity?.matches_release_candidate_manifest === true,
+    liveRuntimePolicyOk: report.live_runtime_observation?.live_runtime_policy_ok === true,
+  });
+  if (canonicalJson(report.next_required_authority ?? []) !== canonicalJson(expectedNextAuthority)) {
+    errors.push('next_required_authority:must-match-observed-blockers');
   }
   const matchesReleaseCandidateManifest =
     report.expected_candidate_identity?.matches_release_candidate_manifest === true;

@@ -173,6 +173,16 @@ test('runtime validation fails closed on clean-runtime drift, window action expa
     blockedStateDrift,
     'clean_runtime_boundary.blocked_until_authority:must-match-identity-state',
   );
+
+  const missingNextAuthority = structuredClone(expected);
+  missingNextAuthority.clean_runtime_boundary.acceptable_next_authority = [];
+  missingNextAuthority.rollup_sha256 = '0'.repeat(64);
+  if (expected.clean_runtime_boundary.blocked_until_authority) {
+    assertHasRollupError(
+      missingNextAuthority,
+      'clean_runtime_boundary.acceptable_next_authority:required-when-blocked',
+    );
+  }
 });
 
 test('checker command validates R4 iteration status rollup and generated view', async () => {

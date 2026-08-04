@@ -13,6 +13,7 @@ import {
 } from '../lib/devseek-capability-ledger.mjs';
 import {
   buildR4CleanRuntimeLimitedObservation,
+  deriveR4CleanRuntimeNextAuthority,
   renderR4CleanRuntimeLimitedObservationMarkdown,
   validateR4CleanRuntimeLimitedObservation,
 } from '../lib/devseek-r4-clean-runtime-limited-observation.mjs';
@@ -73,6 +74,29 @@ test('generated R4 clean runtime observation view is source-bound and Chinese-re
   assert.match(actualView, /## 上下文引用/u);
   assert.match(actualView, /## Runtime 观察/u);
   assert.match(actualView, /## 下一授权/u);
+});
+
+test('next authority distinguishes candidate selection from runtime window authorization', () => {
+  assert.deepEqual(deriveR4CleanRuntimeNextAuthority({
+    trackedIdentityMatchesExpected: true,
+    expectedMatchesReleaseCandidate: false,
+    liveRuntimePolicyOk: true,
+  }), [
+    'explicit-authority-to-freeze-latest-candidate-or-restore-frozen-release-candidate-runtime',
+  ]);
+  assert.deepEqual(deriveR4CleanRuntimeNextAuthority({
+    trackedIdentityMatchesExpected: true,
+    expectedMatchesReleaseCandidate: true,
+    liveRuntimePolicyOk: false,
+  }), [
+    'explicit-user-window-action-authorization-for-extension-activation-or-runtime-isolation',
+    'external-clean-candidate-identity-receipt',
+  ]);
+  assert.deepEqual(deriveR4CleanRuntimeNextAuthority({
+    trackedIdentityMatchesExpected: true,
+    expectedMatchesReleaseCandidate: true,
+    liveRuntimePolicyOk: true,
+  }), []);
 });
 
 test('schema rejects claim promotion, window authority expansion, and live run authorization', () => {
@@ -144,6 +168,14 @@ test('runtime validation fails closed on false completion, secret capture, or st
   assertHasObservationError(
     releaseMismatchWithoutBlocker,
     'blockers:missing-release-candidate-manifest-mismatch',
+  );
+
+  const staleNextAuthority = structuredClone(expected);
+  staleNextAuthority.next_required_authority = ['explicit-user-window-action-authorization'];
+  staleNextAuthority.observation_sha256 = '0'.repeat(64);
+  assertHasObservationError(
+    staleNextAuthority,
+    'next_required_authority:must-match-observed-blockers',
   );
 });
 

@@ -32,8 +32,8 @@ devseek_governance:
 - Gate 0 / claims effect: `NONE`; this generated status does not assert qualification.
 <!-- DEVSEEK-GOVERNANCE-STATUS:END -->
 
-- 本次复核日期：2026-08-03
-- 当前实现/测试基线：`fdf6a35`（跨 Surface conformance 失败基线）；最近 Extension 行为发布基线：`e7a36d9`；R4 最终机器证据基线：`7d3888b`
+- 本次复核日期：2026-08-04
+- 当前 Extension 行为候选：`4f8a567`（Intent Semantic Contract 本地 v2 纵切）；冻结 R4 候选仍为 `a034e5e`，两者不得混同
 - 复核原则：文档声明只作索引；结论以 `docs/process` 机器源、实际代码可达性、当前工作树和本轮重跑验证为准
 
 ## 1. 本次结论
@@ -54,31 +54,32 @@ devseek_governance:
 
 ## 2. 当前机器事实
 
-| 范围 | 2026-08-03 观测 |
+| 范围 | 2026-08-04 观测 |
 | --- | --- |
 | Capability ledger | 76 项能力、15 个域；C0 7 项全部 `wired`；C1～C14 69 项全部 `proposed`；claims=0 |
 | Gate 0 | local conformance `PASSED`；implementation `7/7`；repository blocker `0`；external blocker `6`；最终 `NOT_PASSED` |
 | Qualification runner | 19 个入口；1 个本地非资格 runner、10 个 catalog fixture、4 个 production disabled、4 个 historical disabled |
-| R4 | 6 个原始 leaf 中 5 个 completed；`R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME` 为 `BLOCKED` |
-| Frozen R4 candidate | release manifest 已固定到不可变 `a034e5e` VSIX；current-candidate snapshot 仍记录 `3331a74` 且 observe `failed`，两者都不具资格效力 |
-| Current local development receipt | `e7a36d9` VSIX 已编译、打包、校验 Bridge、安装并完成受控 T3 六场景；它不是 R4 候选身份或 qualification receipt |
+| R4 | 6 个原始 leaf 中 5 个 completed；current artifact/install/runtime 已精确绑定且 stable runtime=1、window-sensitive=0；clean-runtime 仅因最新候选与冻结候选不一致而 `BLOCKED` |
+| Frozen R4 candidate | release manifest 固定到不可变 `a034e5e` VSIX；current-candidate 为 `4f8a567`、observe=`passed`，但不匹配冻结清单；两者都不具资格效力 |
+| Current local development receipt | `4f8a567` VSIX 已编译、打包、校验 Bridge、安装并完成 current identity 11/11 与本地用户闭环；真实 DeepSeek 用例按前置条件跳过，不是 qualification receipt |
 | Post-R4 local track | NP-05/06/07 manifest 已在 `5c32551` 提交；检查覆盖 16 个 source、17/17 anchors、8 个 local-only command，6/6 通过 |
 | Surface inventory | 87 个入口分母全部 covered，无 unknown、重复或待 cutover；source hash 对账通过 |
-| Architecture budget | 设计优先门禁通过，仍有 7 个明确债务热点；`extension.ts` 2058 行、`agent-loop.ts` 2471 行、WebView 5375 行；大小只作回退护栏 |
+| Architecture budget | 设计优先门禁通过，仍有 7 个明确债务热点；Extension 受控总量 2018 行；大小只作回退护栏，不替代职责、依赖和 owner 判定 |
 
 必须同时保留三个事实：
 
 1. R1～R3 的大量产品侧原子卡确实有本地测试、发包和 controlled VSIX 回执，不能抹消这些实现进展。
 2. 这些回执一直声明 `qualification_effect=NONE`，能力账本也没有将 C1～C14 提升为 `wired`，所以不能从“作业卡 PASS”推导“能力已完成”。
-3. `14` 仍是 selector 指向的 active process baseline，但头部快照停在 2026-07-22，尾部已追加到 R3/R4；Post-R4 compact index 又把它作为 historical support。这是待修复的治理冲突。
+3. 当前 process baseline 已由简短 `PLAN-当前收敛迭代计划.md` 唯一承接；14 号只保留历史回执并已归档，计划与日志责任不再混写。
 
 ## 3. 核心缺口
 
 ### 3.1 事实与交付状态
 
 - Post-R4 NP-05/06/07、Coding Kernel 路由重构和 20 号文档归档均已分别提交，便于按责任边界审计。
-- R4 release manifest 现固定使用不可变 `a034e5e` 制品，不再随 `devseek-netai-latest.vsix` 漂移；current-candidate identity 是另一条 `3331a74` 失败观测快照，不得混为同一候选。
-- active runtime observe 仍失败。本轮没有新的窗口、Provider、安装或外部 authority 授权，不得自行解除该 blocker。
+- R4 release manifest 固定使用不可变 `a034e5e` 制品，不随 `devseek-netai-latest.vsix` 漂移；current-candidate identity 已刷新为 `4f8a567` 成功观察，但仍不是冻结候选。
+- active runtime observe 已闭合为 exactly-one stable runtime；当前唯一 R4 blocker 是候选选择，需要显式决定新建版本化冻结清单或恢复原冻结候选，不能用窗口授权继续掩盖该差异。
+- 外部资格前置满足后执行一次 headed DeepSeek 路径的操作授权已收到；受保护 profile、独立身份/签名、WORM/retention、trusted time/anchor 等前置未满足，因此真实路径仍未执行。
 
 ### 3.2 单内核仍是迁移态
 
@@ -109,9 +110,10 @@ devseek_governance:
 | --- | --- | --- | --- |
 | `NOW-01` | `完成` | 审查并独立提交 Post-R4 改动 | `5c32551` 边界明确；NP-05/06/07 与实际源一致 |
 | `NOW-02` | `完成` | 重生成 Surface inventory 及受影响机器源 | 87/87 covered；无 drift；generated view 与源一致 |
-| `NOW-03` | `已执行/未通过` | 在 clean tracked commit 上重跑 Phase 0-12 | 30/31 gate 通过；仅 current-candidate identity 失败，需 fresh runtime/window 授权后再闭合；不伪造 PASS |
-| `NOW-04` | `待做` | 替换失真的 process baseline | 新的简短 active process baseline 由 selector 唯一指向；`14` 降为历史证据；compact index、banner 和 hash 全部对账 |
-| `NOW-05` | `待授权` | 收口 candidate identity | 仅在 fresh 用户窗口/安装授权或 external clean receipt 下证明 exactly-one stable runtime，再重生成 R4 全链产物 |
+| `NOW-03` | `完成` | 在 current identity 刷新后重跑 Phase 0-12 | 32/32 gate 通过；deterministic=`passed`；real CLI/plugin Provider 均为 `not-run`，不产生资格效力 |
+| `NOW-04` | `完成` | 替换失真的 process baseline | 当前 PLAN 由 selector 唯一指向；14 降为历史归档；计划不再承载执行日志 |
+| `NOW-05` | `部分完成/待决策` | 收口 candidate identity | exactly-one stable runtime 已证明；仍需显式选择新冻结候选或恢复 `a034e5e`，不得静默改写 manifest |
+| `NOW-06` | `完成` | 收敛本地 Intent Semantic Contract owner | v2 contract、destructive/execution-mode policy、Provider candidate governor 为唯一语义边界；下游重复词表删除并受回归守卫 |
 
 ### P1 完成单一 Coding Kernel 物理收敛
 
@@ -150,9 +152,11 @@ devseek_governance:
 | --- | --- |
 | VS Code extension compile | `PASS` |
 | VS Code extension full unit runner | `PASS`，158/158 suites |
+| Intent/routing focused matrix | `PASS`，524/524；否定 external-effect 与 duplicate-owner 反例受保护 |
+| Natural intent UI corpus | `PASS`，48/48，12 类任务各 4 条自然输入 |
 | Shared / CLI conformance baseline | `PASS`，shared 247/247 tests、CLI 52/52 tests；5 个 development fixture 和 fail-closed partial projection 已覆盖 |
 | Kernel/checkpoint focused unit | `PASS`，20/20 tests |
-| 受影响 architecture static suites | `PASS`，323/323 tests |
+| 受影响 architecture static suites | `PASS`，325/325 tests |
 | Workspace TypeScript `--noEmit` audit | `PASS`，既存 extension 类型债务已清零 |
 | Capability ledger | `PASS`，76 capabilities / 138 dependency edges |
 | Gate 0 decision | checker `PASS`，决策仍为 `NOT_PASSED` |
@@ -163,9 +167,10 @@ devseek_governance:
 | Surface inventory | `PASS`，12/12 checker tests；87/87 covered，unknown=0 |
 | Legacy doc inventory | `PASS`，5/5 tests；41 个 legacy 文档全覆盖，archive 明确排除，root duplicate=0 |
 | Doc governance | `PASS`，4/4 tests；44 个受治理文档，3 个 active baseline、41 个 legacy/reference |
-| VSIX release loop | `PASS`，`1.0.0-debug.20260803.t135012.ge7a36d9`；SHA256 `c0926e30f83f83406be44957e64b542645d945ab3684690d177002d0497d4fb5`；Bridge 校验与本地安装通过 |
-| 受控用户旅程 T3 | `PASS`，写读/QG、Provider fail-closed、只读边界、C++、既有 JS 修复、最新要求覆盖旧要求共 6 场景 |
-| Phase 0-12 | `FAIL`，31/32 passed；唯一失败为 `current-candidate-identity-probe`，报告 run id `2026-08-03T11-19-43-634Z` |
+| VSIX release loop | `PASS`，`1.0.0-debug.20260804.t093020.g4f8a567`；SHA256 `68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc`；Bridge 校验、本地安装和 exactly-one runtime identity 通过 |
+| 本地用户闭环 | `PASS`，8 个 static/local create/modify/multiturn/repair/multi-file 场景；3 个 real DeepSeek 场景因资格前置未满足而显式跳过 |
+| Current candidate identity | `PASS`，11/11；stable=1、stale/unknown/unreadable=0；qualification effect=`NONE` |
+| Phase 0-12 | `PASS`，32/32；run id `2026-08-04T02-04-10-060Z`；Gate 0 仍为 `NOT_PASSED` |
 
 受控 T3 使用真实已安装 VSIX、隔离 Extension Host 与确定性 fake Bridge，并通过测试专用消息和程序化 intent approval 驱动。它不是自然 UI、real Provider、RC smoke、T4/T5 或 qualification 证据，`qualification_effect=NONE`。
 

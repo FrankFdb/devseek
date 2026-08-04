@@ -29,7 +29,7 @@
     },
     "top_agent_quality_principles_16": {
       "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
-      "source_sha256": "e9bd37b2e82cb904b1db6ab93fe180db54b220d4592e6bcf8d88002f39219bbf"
+      "source_sha256": "4c087b4378f07e385795a26989820be69904c90ada6f7ea415365b69efb28ea6"
     },
     "r3_closeout_next_phase_20": {
       "path": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md",
@@ -41,8 +41,8 @@
     },
     "r4_iteration_status_rollup": {
       "path": "docs/process/devseek-r4-iteration-status-rollup.json",
-      "source_sha256": "da7e80aad3701516755218b891a09d5ed2b590fa9e7c009d9019cbfe0b14a697",
-      "rollup_sha256": "5716a17e44c27f77ba1ad42f3742ba2b0abceff02cedd289fa2c4b1102c98294",
+      "source_sha256": "1f508f30a3b6e0070385e6174ab44f406c94aa7dbd082588a879a657821ec387",
+      "rollup_sha256": "7745a352d6c14f2a6d2e7d14c6cd967d1adf3b42d2eae2cd83f3b47ab4aae183",
       "clean_runtime_leaf_terminal_state": "BLOCKED"
     },
     "r4_authorization_and_permission_guide": {
@@ -51,21 +51,21 @@
     },
     "r4_clean_runtime_limited_observation": {
       "path": "docs/process/devseek-r4-clean-runtime-limited-observation.json",
-      "source_sha256": "55594ef5b5dee56d4c2c8a32b584ba955b246a2736880d91694e7b03dc36200c",
-      "observation_sha256": "64a81e37581c96e415b2a08bf99f71795f4e44dcae9834a584a4db0abefb1c68",
+      "source_sha256": "125df55105b1b677f7b9ec299c08dac5457f5c8a050b1a19810cea388de4a6bb",
+      "observation_sha256": "29e06308972f10b332db1583d9205b60df19326afada277dc7be4a350271aa1d",
       "terminal_state": "BLOCKED",
-      "stable_runtime_count": 0
+      "stable_runtime_count": 1
     },
     "r4_process_artifacts_aggregate": {
       "path": "docs/process/devseek-r4-process-artifacts-aggregate.json",
-      "source_sha256": "a9d7a48c70cb83bed49d7327f67943d08bf8c5fd3ebbc79fdebbc677bf2c5cfa",
-      "aggregate_sha256": "32fa692b018d8b660a5aa3b7f3bdc11255665468a9ae03170f3d2c19fc09cf61",
+      "source_sha256": "e691205eb101de07f1eb785a7b778c19e6a9f2c0982f83859669a41a3111d953",
+      "aggregate_sha256": "77f0b02c90ed0f09471530985523bcd3bec646595d56c935870f3838fc0532b0",
       "artifact_errors": 0
     },
     "post_r4_local_regression_manifest": {
       "path": "docs/process/devseek-post-r4-local-regression-manifest.json",
-      "source_sha256": "154d9a6c820bdc37a34046a0172fcedca199b77e2c8028d4a3b5a62fb0259975",
-      "manifest_sha256": "34016b9c6f53fe482462aa8174d11d1649a0214eb02fc633ed87844e3280b671",
+      "source_sha256": "2df085df2b9581786f1c70d053f41460b40b855c8f343a751431ec906e6a44e3",
+      "manifest_sha256": "8cece1628584956f1897f0d0d839820d08954e0eee65495c9ea8d3ace5b29d7b",
       "covered_nonpermission_items": [
         "NP-05",
         "NP-06",
@@ -86,8 +86,8 @@
     },
     "r4_live_qualification_request_packet": {
       "path": "docs/process/devseek-r4-live-qualification-request-packet.json",
-      "source_sha256": "2b7bc6e3aecb20f7b2303c9a13a5d19eb1d943e28f55cf4aef52e9c30492dfc6",
-      "packet_sha256": "e83c0f536ecfc7b0704b2186fe9a9f81ea7f7642b6ebd0b5d38c8b88db47b37c",
+      "source_sha256": "3cc1be97bab7a50fd6949d19abb797248a4e0c8f0d7e4dd237721dc650d71112",
+      "packet_sha256": "9318e86369586d44dfbee1d20003a501006cc3a4f569cd5a9ce9a7fad07e2ab1",
       "blocked_requests": 5
     },
     "package_scripts": {
@@ -164,7 +164,7 @@
       "document_id": "quality-principles-16",
       "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
       "role": "iteration-principles-quality-standards-and-skills-plan",
-      "source_sha256": "e9bd37b2e82cb904b1db6ab93fe180db54b220d4592e6bcf8d88002f39219bbf"
+      "source_sha256": "4c087b4378f07e385795a26989820be69904c90ada6f7ea415365b69efb28ea6"
     },
     {
       "document_id": "r3-handoff-20",
@@ -181,7 +181,7 @@
     "clean_runtime_leaf_terminal_state": "BLOCKED",
     "clean_runtime_limited_observation_terminal_state": "BLOCKED",
     "clean_runtime_identity_established": false,
-    "stable_runtime_count": 0,
+    "stable_runtime_count": 1,
     "gate0_status": "NOT_PASSED",
     "r1_qualification_status": "NOT_STARTED",
     "live_runs_authorized": 0,
@@ -193,14 +193,10 @@
       "terminal_state": "BLOCKED",
       "clean_runtime_identity_established": false,
       "blockers": [
-        "expected-candidate-identity-does-not-match-release-candidate-manifest",
-        "active_runtime:stable-runtime-cardinality-expected-1-got-0",
-        "active_runtime:stale-debug-runtime-active-1",
-        "clean-runtime-requires-window-action-authorization-or-external-clean-candidate-identity-receipt"
+        "expected-candidate-identity-does-not-match-release-candidate-manifest"
       ],
       "next_required_authority": [
-        "explicit-user-window-action-authorization-for-extension-activation-or-runtime-isolation",
-        "or-external-clean-candidate-identity-receipt"
+        "explicit-authority-to-freeze-latest-candidate-or-restore-frozen-release-candidate-runtime"
       ],
       "local_repository_may_unblock_without_new_authority": false
     },
@@ -303,8 +299,7 @@
       "external-authority-import"
     ],
     "clean_runtime_recovery_authority": [
-      "explicit-user-clean-runtime-window-action-authorization",
-      "external-clean-candidate-identity-receipt"
+      "explicit-authority-to-freeze-latest-candidate-or-restore-frozen-release-candidate-runtime"
     ],
     "live_qualification_terms": {
       "provider": "deepseek-web",
@@ -442,7 +437,7 @@
     "r4_total_leaves": 6,
     "r4_completed_leaves": 5,
     "r4_blocked_leaves": 1,
-    "clean_runtime_blockers": 4,
+    "clean_runtime_blockers": 1,
     "live_authorization_requests": 5,
     "live_authorization_blocked": 5,
     "external_authority_requests": 5,
@@ -452,5 +447,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "index_sha256": "97bfa9c38b8cc43451a41a963f9d0a7bbb6e71876b7b2e4de3c24f515d9a1dc9"
+  "index_sha256": "6b30c6dab7705f3283ce43d42743cb6378621e378b94057a0417a006a54f9de2"
 }
