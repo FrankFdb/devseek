@@ -1,0 +1,157 @@
+{
+  "schema_version": "devseek.r4-release-candidate-manifest/v1",
+  "integrity": {
+    "hash_algorithm": "sha256",
+    "canonicalization_version": "devseek-canonical-json/v1"
+  },
+  "manifest_id": "R4-RELEASE-CANDIDATE-MANIFEST/v1",
+  "manifest_version": 1,
+  "source_status": "verified-local-artifact-and-recorded-smoke",
+  "integrity_scope": "local-r4-release-candidate-manifest",
+  "qualification_eligible": false,
+  "qualification_effect": "NONE",
+  "claims_permitted": false,
+  "asserts_gate_pass": false,
+  "observation_authority": {
+    "semantic_authority": "R4ReleaseCandidateManifest",
+    "writes_product_state": false,
+    "provider_actions": "FORBIDDEN",
+    "live_holdout_actions": "FORBIDDEN",
+    "runtime_process_observation": "FORBIDDEN",
+    "install_or_window_actions": "FORBIDDEN",
+    "secret_observation": "FORBIDDEN"
+  },
+  "source_identity": {
+    "artifact_source_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
+    "artifact_source_short": "a034e5e",
+    "artifact_source_resolution": "git rev-parse <vsix.devseekBuild.gitCommit>^{commit}",
+    "handoff_doc_path": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md",
+    "handoff_doc_commit": "2ef99cfbf0ded6d064633cf2f0f96336d9c6a88a",
+    "handoff_doc_short": "2ef99cf",
+    "handoff_doc_commit_resolution": "git log -1 --format=%H -- <handoff_doc_path>",
+    "artifact_source_differs_from_handoff": true
+  },
+  "artifact_identity": {
+    "primary_vsix": {
+      "path": "devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix",
+      "sha256": "027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d",
+      "package_identity": {
+        "publisher": "devseek-netai",
+        "name": "devseek-netai",
+        "version": "1.0.0-debug.20260723.t193110.ga034e5e",
+        "devseekBuild": {
+          "baseVersion": "1.0.0",
+          "channel": "debug",
+          "buildId": "20260723-t193110",
+          "gitCommit": "a034e5e",
+          "packagedAt": "2026-07-23T11:31:10.995Z"
+        }
+      },
+      "packaged_bridge_server_sha256": "16182326e29a56f6d7711bdb4ba56759df4cfa577a51b2f67fd098bc06a8d599"
+    },
+    "package_copy_vsix": {
+      "path": "packages/vscode-extension/devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix",
+      "sha256": "027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d",
+      "package_identity": {
+        "publisher": "devseek-netai",
+        "name": "devseek-netai",
+        "version": "1.0.0-debug.20260723.t193110.ga034e5e",
+        "devseekBuild": {
+          "baseVersion": "1.0.0",
+          "channel": "debug",
+          "buildId": "20260723-t193110",
+          "gitCommit": "a034e5e",
+          "packagedAt": "2026-07-23T11:31:10.995Z"
+        }
+      },
+      "packaged_bridge_server_sha256": "16182326e29a56f6d7711bdb4ba56759df4cfa577a51b2f67fd098bc06a8d599"
+    },
+    "exact_match": true
+  },
+  "verification_receipts": [
+    {
+      "receipt_id": "r3-focused-verification",
+      "receipt_kind": "recorded-local-test",
+      "status": "recorded-passed",
+      "command": "node --test packages/vscode-extension/test/unit/run-context.test.mjs packages/vscode-extension/test/unit/workflow-compliance.test.mjs packages/vscode-extension/test/unit/fake-tool-parser.test.mjs packages/vscode-extension/test/unit/provider-output-integrity.test.mjs packages/vscode-extension/test/unit/web-reliability.test.mjs packages/vscode-extension/test/unit/run-log-replay.test.mjs packages/vscode-extension/test/unit/agent-loop-task-state.test.mjs",
+      "evidence": "tests 528/528",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md#3-本轮实现回执",
+      "source_commit": "2ef99cfbf0ded6d064633cf2f0f96336d9c6a88a",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "r3-full-verification",
+      "receipt_kind": "recorded-local-test",
+      "status": "recorded-passed",
+      "command": "npm run compile --workspace=packages/vscode-extension && npm run test --workspace=packages/vscode-extension && git diff --check -- changed runtime files",
+      "evidence": "compile PASS; Suites 151/151; diff check PASS",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md#3-本轮实现回执",
+      "source_commit": "2ef99cfbf0ded6d064633cf2f0f96336d9c6a88a",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "r3-package-debug",
+      "receipt_kind": "recorded-local-smoke",
+      "status": "recorded-passed",
+      "command": "npm run extension:package:debug",
+      "evidence": "package devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix; vsix_sha256 027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md#3-本轮实现回执",
+      "source_commit": "2ef99cfbf0ded6d064633cf2f0f96336d9c6a88a",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "r3-packaged-bridge",
+      "receipt_kind": "recorded-local-smoke",
+      "status": "recorded-passed",
+      "command": "npm run verify:packaged-bridge",
+      "evidence": "packaged bridge server SHA-256 16182326e29a56f6d7711bdb4ba56759df4cfa577a51b2f67fd098bc06a8d599",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md#3-本轮实现回执",
+      "source_commit": "2ef99cfbf0ded6d064633cf2f0f96336d9c6a88a",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "r3-local-vsix-install",
+      "receipt_kind": "recorded-local-install",
+      "status": "recorded-passed",
+      "command": "code --install-extension /home/ff/work/devseek_netai/devseek-netai-latest.vsix --force",
+      "evidence": "local VSIX install PASS",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md#3-本轮实现回执",
+      "source_commit": "2ef99cfbf0ded6d064633cf2f0f96336d9c6a88a",
+      "qualification_effect": "NONE"
+    },
+    {
+      "receipt_id": "r3-controlled-vsix-self-loop",
+      "receipt_kind": "recorded-controlled-harness",
+      "status": "recorded-passed",
+      "command": "npm run test:controlled-vsix --workspace=packages/vscode-extension -- --scenario normal",
+      "evidence": "PASS exact-head; artifactSourceCommit=a034e5e050c044460fb07705639d9d41e6b193c0; build=20260723-t193110",
+      "source_ref": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md#3-本轮实现回执",
+      "source_commit": "2ef99cfbf0ded6d064633cf2f0f96336d9c6a88a",
+      "qualification_effect": "NONE"
+    }
+  ],
+  "current_identity_probe_boundary": {
+    "path": "docs/process/devseek-current-candidate-identity.json",
+    "status": "deferred-not-refreshed",
+    "authority_to_refresh": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
+    "reason": "Clean runtime identity requires separate user authorization; this manifest does not inspect live bridge processes or rewrite candidate identity artifacts."
+  },
+  "r4_leaf_context": {
+    "current_leaf": "R4-RELEASE-CANDIDATE-MANIFEST",
+    "closure_effect": "closes release candidate manifest only",
+    "remaining_leaves": [
+      "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
+      "R4-LIVE-QUALIFICATION-REQUEST-PACKET",
+      "R4-LIVE-USER-WAY-HOLDOUT-MATRIX",
+      "R4-DOC-PROCESS-IDENTITY-RECONCILIATION",
+      "R4-REAL-PROVIDER-FAILURE-TAXONOMY"
+    ]
+  },
+  "counts": {
+    "vsix_artifacts": 2,
+    "verification_receipts": 6,
+    "remaining_r4_leaves": 5,
+    "qualification_claims": 0
+  },
+  "manifest_sha256": "67e4025b2743012648c36312870130a3773f0b79dc44ce9abbc4200c4dab50b3"
+}

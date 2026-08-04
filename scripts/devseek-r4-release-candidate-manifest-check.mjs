@@ -10,6 +10,7 @@ import {
 import {
   buildR4ReleaseCandidateManifest,
   renderR4ReleaseCandidateManifestMarkdown,
+  validateArchivedR4ReleaseCandidate,
   validateR4ReleaseCandidateManifest,
 } from './lib/devseek-r4-release-candidate-manifest.mjs';
 
@@ -24,6 +25,8 @@ const paths = {
 
 const errors = unknownArguments.map(argument => `argument:unsupported-${argument}`);
 let registry = null;
+const archiveValidation = validateArchivedR4ReleaseCandidate({ repoRoot });
+errors.push(...archiveValidation.errors.map(error => `archive:${error}`));
 
 if (write && errors.length === 0) {
   try {
@@ -63,6 +66,7 @@ if (registry) {
 const result = {
   ok: errors.length === 0,
   summary: validationResult?.summary ?? null,
+  archived_predecessor: archiveValidation.summary,
   manifest_sha256: registry?.manifest_sha256 ?? null,
   errors,
 };

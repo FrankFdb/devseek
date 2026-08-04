@@ -7,6 +7,11 @@ import {
   canonicalJson,
   sha256Object,
 } from './devseek-capability-ledger.mjs';
+import {
+  comparableVsixIdentity,
+  packageIdentityFromPackageJson,
+  readVsixIdentity,
+} from './devseek-vsix-artifact-identity.mjs';
 
 export const CURRENT_CANDIDATE_IDENTITY_SCHEMA_VERSION = 'devseek.current-candidate-identity/v1';
 export const CURRENT_CANDIDATE_IDENTITY_PROBE_ID = 'DEVSEEK-GATE0-CURRENT-CANDIDATE-IDENTITY/v1';
@@ -16,8 +21,6 @@ export const RELEASE_STATE_SCHEMA_VERSION = 'devseek.release-state/v1';
 
 const PRIMARY_VSIX_PATH = 'devseek-netai-latest.vsix';
 const PACKAGE_COPY_VSIX_PATH = 'packages/vscode-extension/devseek-netai-latest.vsix';
-const BRIDGE_ENTRY = 'extension/bridge/server.js';
-const PACKAGE_ENTRY = 'extension/package.json';
 
 export function currentCandidateIdentityHash(report) {
   return sha256Object(withoutKeys(report, ['identity_probe_sha256']), report?.integrity);
@@ -329,18 +332,6 @@ export function renderCurrentCandidateIdentityMarkdown(report) {
   return `${lines.join('\n').replace(/\n+$/u, '')}\n`;
 }
 
-function readVsixIdentity(vsixPath, repoRoot) {
-  const packageJson = JSON.parse(readVsixEntry(vsixPath, PACKAGE_ENTRY).toString('utf8'));
-  const packageIdentity = packageIdentityFromPackageJson(packageJson);
-  const bridgeBuffer = readVsixEntry(vsixPath, BRIDGE_ENTRY);
-  return {
-    path: path.relative(repoRoot, vsixPath),
-    sha256: sha256File(vsixPath),
-    package_identity: packageIdentity,
-    packaged_bridge_server_sha256: sha256Buffer(bridgeBuffer),
-  };
-}
-
 function buildReleaseState({
   repoRoot,
   primaryVsix,
@@ -399,7 +390,7 @@ function releaseSmokePassed({
   packageCopyVsix,
   stableInstall,
 }) {
-  return canonicalJson(artifactComparableIdentity(primaryVsix)) === canonicalJson(artifactComparableIdentity(packageCopyVsix))
+  return canonicalJson(comparableVsixIdentity(primaryVsix)) === canonicalJson(comparableVsixIdentity(packageCopyVsix))
     && canonicalJson(stableInstall.package_identity) === canonicalJson(primaryVsix.package_identity)
     && stableInstall.installed_bridge_server_sha256 === primaryVsix.packaged_bridge_server_sha256;
 }
@@ -446,18 +437,6 @@ function releaseArtifactSummary(vsixIdentity) {
   };
 }
 
-function readVsixEntry(vsixPath, entryPath) {
-  if (!fs.existsSync(vsixPath)) throw new Error(`vsix:missing:${vsixPath}`);
-  const result = cp.spawnSync('unzip', ['-p', vsixPath, entryPath], {
-    encoding: 'buffer',
-    maxBuffer: 32 * 1024 * 1024,
-  });
-  if (result.status !== 0) {
-    throw new Error(`vsix:read-entry:${entryPath}:${String(result.stderr ?? '').trim() || result.status}`);
-  }
-  return result.stdout;
-}
-
 function readStableInstallIdentity(homeDir, expectedPackageIdentity) {
   const packageRoot = path.join(homeDir, '.vscode', 'extensions', extensionDirectoryName(expectedPackageIdentity));
   const packageJsonPath = path.join(packageRoot, 'package.json');
@@ -470,26 +449,6 @@ function readStableInstallIdentity(homeDir, expectedPackageIdentity) {
     package_identity: packageIdentityFromPackageJson(packageJson),
     installed_bridge_server_sha256: sha256File(bridgeServerPath),
   };
-}
-
-function packageIdentityFromPackageJson(packageJson) {
-  const devseekBuild = packageJson?.devseekBuild ?? {};
-  const identity = {
-    publisher: requiredString(packageJson?.publisher, 'package.publisher'),
-    name: requiredString(packageJson?.name, 'package.name'),
-    version: requiredString(packageJson?.version, 'package.version'),
-    devseekBuild: {
-      baseVersion: requiredString(devseekBuild.baseVersion, 'package.devseekBuild.baseVersion'),
-      channel: requiredString(devseekBuild.channel, 'package.devseekBuild.channel'),
-      buildId: requiredString(devseekBuild.buildId, 'package.devseekBuild.buildId'),
-      gitCommit: requiredString(devseekBuild.gitCommit, 'package.devseekBuild.gitCommit'),
-      packagedAt: requiredString(devseekBuild.packagedAt, 'package.devseekBuild.packagedAt'),
-    },
-  };
-  if (!/^[a-f0-9]{7,64}$/u.test(identity.devseekBuild.gitCommit)) {
-    throw new Error('package.devseekBuild.gitCommit:invalid');
-  }
-  return identity;
 }
 
 function semanticValidate(report, errors) {
@@ -524,7 +483,7 @@ function semanticValidate(report, errors) {
   if (!copy?.package_identity?.devseekBuild?.gitCommit) {
     errors.push('artifact_identity.package_copy_vsix.package_identity.devseekBuild.gitCommit:required');
   }
-  if (primary && copy && canonicalJson(artifactComparableIdentity(primary)) !== canonicalJson(artifactComparableIdentity(copy))) {
+  if (primary && copy && canonicalJson(comparableVsixIdentity(primary)) !== canonicalJson(comparableVsixIdentity(copy))) {
     errors.push('artifact_identity:primary-and-package-copy-mismatch');
   }
   if (report.artifact_identity?.exact_match !== true) {
@@ -694,14 +653,6 @@ function projectRuntimeProcess(process) {
 function artifactRow(label, artifact) {
   const build = artifact.package_identity.devseekBuild;
   return `| ${label}: \`${artifact.path}\` | \`${artifact.sha256}\` | \`${build.buildId}\` | \`${build.gitCommit}\` | \`${artifact.packaged_bridge_server_sha256}\` |`;
-}
-
-function artifactComparableIdentity(artifact) {
-  return {
-    sha256: artifact.sha256,
-    package_identity: artifact.package_identity,
-    packaged_bridge_server_sha256: artifact.packaged_bridge_server_sha256,
-  };
 }
 
 function hasEvidenceRefs(value) {

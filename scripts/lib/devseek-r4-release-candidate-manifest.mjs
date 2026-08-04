@@ -7,28 +7,33 @@ import {
   sha256Object,
   SUPPORTED_INTEGRITY,
 } from './devseek-capability-ledger.mjs';
+import {
+  assertR4FrozenCandidateIdentity,
+  buildR4ReleaseCandidateVersionLineage,
+  R4_CANDIDATE_VERIFICATION_RECEIPTS,
+  R4_FROZEN_CANDIDATE,
+  R4_REMAINING_LEAVES_AT_FREEZE,
+  R4_VERIFICATION_RECORD,
+  validateR4VerificationRecordSource,
+} from './devseek-r4-release-candidate-freeze.mjs';
+import {
+  R4_RELEASE_CANDIDATE_PREDECESSOR,
+  validateArchivedR4ReleaseCandidate,
+} from './devseek-r4-release-candidate-history.mjs';
+import {
+  comparableVsixIdentity,
+  readVsixIdentity,
+} from './devseek-vsix-artifact-identity.mjs';
 
-export const R4_RELEASE_CANDIDATE_MANIFEST_SCHEMA_VERSION = 'devseek.r4-release-candidate-manifest/v1';
-export const R4_RELEASE_CANDIDATE_MANIFEST_ID = 'R4-RELEASE-CANDIDATE-MANIFEST/v1';
+export { validateArchivedR4ReleaseCandidate };
+
+export const R4_RELEASE_CANDIDATE_MANIFEST_SCHEMA_VERSION = 'devseek.r4-release-candidate-manifest/v2';
+export const R4_RELEASE_CANDIDATE_MANIFEST_ID = 'R4-RELEASE-CANDIDATE-MANIFEST/v2';
 export const R4_RELEASE_CANDIDATE_INTEGRITY_SCOPE = 'local-r4-release-candidate-manifest';
 export const R4_RELEASE_CANDIDATE_QUALIFICATION_EFFECT = 'NONE';
 
-const R4_CANDIDATE_VSIX_NAME = 'devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix';
-const PRIMARY_VSIX_PATH = R4_CANDIDATE_VSIX_NAME;
-const PACKAGE_COPY_VSIX_PATH = `packages/vscode-extension/${R4_CANDIDATE_VSIX_NAME}`;
-const CURRENT_CANDIDATE_IDENTITY_PATH = 'docs/process/devseek-current-candidate-identity.json';
-const R3_HANDOFF_DOC_PATH = 'docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md';
-const BRIDGE_ENTRY = 'extension/bridge/server.js';
-const PACKAGE_ENTRY = 'extension/package.json';
-const RECEIPT_DOC_SOURCE = 'docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md#3-本轮实现回执';
-
-const REMAINING_R4_LEAVES = Object.freeze([
-  'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME',
-  'R4-LIVE-QUALIFICATION-REQUEST-PACKET',
-  'R4-LIVE-USER-WAY-HOLDOUT-MATRIX',
-  'R4-DOC-PROCESS-IDENTITY-RECONCILIATION',
-  'R4-REAL-PROVIDER-FAILURE-TAXONOMY',
-]);
+const PRIMARY_VSIX_PATH = R4_FROZEN_CANDIDATE.vsix_name;
+const PACKAGE_COPY_VSIX_PATH = `packages/vscode-extension/${R4_FROZEN_CANDIDATE.vsix_name}`;
 
 export function r4ReleaseCandidateManifestHash(manifest) {
   return sha256Object(withoutKeys(manifest, ['manifest_sha256']), manifest?.integrity);
@@ -37,26 +42,51 @@ export function r4ReleaseCandidateManifestHash(manifest) {
 export function buildR4ReleaseCandidateManifest({ repoRoot } = {}) {
   if (!repoRoot) throw new Error('repoRoot is required');
 
+  const predecessorValidation = validateArchivedR4ReleaseCandidate({ repoRoot });
+  if (!predecessorValidation.ok) {
+    throw new Error(`predecessor-archive:${predecessorValidation.errors.join(',')}`);
+  }
+
   const primaryVsix = readVsixIdentity(path.join(repoRoot, PRIMARY_VSIX_PATH), repoRoot);
   const packageCopyVsix = readVsixIdentity(path.join(repoRoot, PACKAGE_COPY_VSIX_PATH), repoRoot);
   const artifactGitCommit = primaryVsix.package_identity.devseekBuild.gitCommit;
   const artifactSourceCommit = resolveGitCommit(repoRoot, artifactGitCommit);
-  const handoffDocCommit = resolveLastCommitForPath(repoRoot, R3_HANDOFF_DOC_PATH);
-  const handoffDocText = readGitFile(repoRoot, handoffDocCommit, R3_HANDOFF_DOC_PATH);
+  const currentIdentityPath = path.join(repoRoot, R4_FROZEN_CANDIDATE.current_identity_path);
+  const currentIdentity = readJsonFile(currentIdentityPath);
+  const verificationRecordText = readGitFile(
+    repoRoot,
+    R4_VERIFICATION_RECORD.commit,
+    R4_VERIFICATION_RECORD.path,
+  );
 
-  const artifactComparable = artifactComparableIdentity(primaryVsix);
-  const copyComparable = artifactComparableIdentity(packageCopyVsix);
+  assertR4FrozenCandidateIdentity({
+    artifactSourceCommit,
+    primaryVsix,
+    packageCopyVsix,
+    currentIdentity,
+    currentIdentityFileSha256: sha256File(currentIdentityPath),
+  });
+
+  const artifactComparable = comparableVsixIdentity(primaryVsix);
+  const copyComparable = comparableVsixIdentity(packageCopyVsix);
   const manifest = {
     schema_version: R4_RELEASE_CANDIDATE_MANIFEST_SCHEMA_VERSION,
     integrity: SUPPORTED_INTEGRITY,
     manifest_id: R4_RELEASE_CANDIDATE_MANIFEST_ID,
-    manifest_version: 1,
-    source_status: 'verified-local-artifact-and-recorded-smoke',
+    manifest_version: 2,
+    source_status: 'user-authorized-versioned-local-candidate-freeze',
     integrity_scope: R4_RELEASE_CANDIDATE_INTEGRITY_SCOPE,
     qualification_eligible: false,
     qualification_effect: R4_RELEASE_CANDIDATE_QUALIFICATION_EFFECT,
     claims_permitted: false,
     asserts_gate_pass: false,
+    selection_boundary: {
+      authorization: 'explicit-user-authorization',
+      scope: 'local-versioned-r4-candidate-freeze-only',
+      predecessor_mutation: 'FORBIDDEN',
+      external_qualification_authority: false,
+      qualification_effect: 'NONE',
+    },
     observation_authority: {
       semantic_authority: 'R4ReleaseCandidateManifest',
       writes_product_state: false,
@@ -66,47 +96,59 @@ export function buildR4ReleaseCandidateManifest({ repoRoot } = {}) {
       install_or_window_actions: 'FORBIDDEN',
       secret_observation: 'FORBIDDEN',
     },
+    version_lineage: buildR4ReleaseCandidateVersionLineage(R4_RELEASE_CANDIDATE_PREDECESSOR),
     source_identity: {
       artifact_source_commit: artifactSourceCommit,
       artifact_source_short: artifactGitCommit,
       artifact_source_resolution: 'git rev-parse <vsix.devseekBuild.gitCommit>^{commit}',
-      handoff_doc_path: R3_HANDOFF_DOC_PATH,
-      handoff_doc_commit: handoffDocCommit,
-      handoff_doc_short: handoffDocCommit.slice(0, 7),
-      handoff_doc_commit_resolution: 'git log -1 --format=%H -- <handoff_doc_path>',
-      artifact_source_differs_from_handoff: artifactSourceCommit !== handoffDocCommit,
+      verification_record_path: R4_VERIFICATION_RECORD.path,
+      verification_record_ref: R4_VERIFICATION_RECORD.ref,
+      verification_record_commit: R4_VERIFICATION_RECORD.commit,
+      current_candidate_identity_path: R4_FROZEN_CANDIDATE.current_identity_path,
+      current_candidate_identity_file_sha256: sha256File(currentIdentityPath),
+      current_candidate_identity_probe_sha256: currentIdentity.identity_probe_sha256,
+      artifact_source_matches_current_identity: artifactSourceCommit === currentIdentity.source_identity.candidate_source_commit,
     },
     artifact_identity: {
       primary_vsix: primaryVsix,
       package_copy_vsix: packageCopyVsix,
       exact_match: canonicalJson(artifactComparable) === canonicalJson(copyComparable),
     },
-    verification_receipts: buildVerificationReceipts({
-      primaryVsix,
-      artifactSourceCommit,
-      handoffDocCommit,
-    }),
+    verification_receipts: R4_CANDIDATE_VERIFICATION_RECEIPTS.map(receipt => ({
+      ...receipt,
+      status: 'recorded-passed',
+      source_ref: R4_VERIFICATION_RECORD.ref,
+      source_commit: R4_VERIFICATION_RECORD.commit,
+      qualification_effect: 'NONE',
+    })),
     current_identity_probe_boundary: {
-      path: CURRENT_CANDIDATE_IDENTITY_PATH,
-      status: 'deferred-not-refreshed',
-      authority_to_refresh: 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME',
-      reason: 'Clean runtime identity requires separate user authorization; this manifest does not inspect live bridge processes or rewrite candidate identity artifacts.',
+      path: R4_FROZEN_CANDIDATE.current_identity_path,
+      status: 'verified-current-candidate',
+      identity_probe_sha256: currentIdentity.identity_probe_sha256,
+      identity_source_sha256: sha256File(currentIdentityPath),
+      candidate_source_commit: currentIdentity.source_identity.candidate_source_commit,
+      artifact_source_matches_current_identity: true,
+      stable_runtime_count: currentIdentity.counts.active_runtime_identities,
+      observe_status: currentIdentity.release_state.observe.status,
+      qualification_effect: 'NONE',
+      reason: 'Tracked current identity already proves artifact, stable install, and exactly-one local runtime for this candidate; the manifest performs no live observation.',
     },
     r4_leaf_context: {
       current_leaf: 'R4-RELEASE-CANDIDATE-MANIFEST',
-      closure_effect: 'closes release candidate manifest only',
-      remaining_leaves: [...REMAINING_R4_LEAVES],
+      closure_effect: 'version-selects the local R4 candidate without adding qualification authority',
+      remaining_leaves_at_freeze: [...R4_REMAINING_LEAVES_AT_FREEZE],
     },
     counts: {
       vsix_artifacts: 2,
-      verification_receipts: 6,
-      remaining_r4_leaves: REMAINING_R4_LEAVES.length,
+      historical_candidates: 1,
+      verification_receipts: R4_CANDIDATE_VERIFICATION_RECEIPTS.length,
+      remaining_r4_leaves_at_freeze: R4_REMAINING_LEAVES_AT_FREEZE.length,
       qualification_claims: 0,
     },
     manifest_sha256: '',
   };
 
-  validateHandoffReceiptSource(handoffDocText, manifest).forEach(error => {
+  validateR4VerificationRecordSource(verificationRecordText, manifest).forEach(error => {
     throw new Error(error);
   });
   manifest.manifest_sha256 = r4ReleaseCandidateManifestHash(manifest);
@@ -116,11 +158,7 @@ export function buildR4ReleaseCandidateManifest({ repoRoot } = {}) {
 export function validateR4ReleaseCandidateManifest(report, { repoRoot } = {}) {
   const errors = [];
   if (!isObject(report)) {
-    return {
-      ok: false,
-      errors: ['manifest:expected-object'],
-      summary: null,
-    };
+    return { ok: false, errors: ['manifest:expected-object'], summary: null };
   }
 
   semanticValidate(report, errors);
@@ -131,9 +169,8 @@ export function validateR4ReleaseCandidateManifest(report, { repoRoot } = {}) {
   } catch (error) {
     errors.push(`source:build:${error.message}`);
   }
-
   if (expected && canonicalJson(report) !== canonicalJson(expected)) {
-    errors.push('manifest:expected-current-artifact-and-handoff-source-binding');
+    errors.push('manifest:expected-frozen-candidate-version-and-source-bindings');
   }
 
   return {
@@ -147,6 +184,7 @@ export function renderR4ReleaseCandidateManifestMarkdown(report) {
   const primary = report.artifact_identity.primary_vsix;
   const copy = report.artifact_identity.package_copy_vsix;
   const source = report.source_identity;
+  const lineage = report.version_lineage;
   const lines = [
     '# DevSeek R4 Release Candidate Manifest',
     '',
@@ -154,17 +192,27 @@ export function renderR4ReleaseCandidateManifestMarkdown(report) {
     '',
     `- Manifest ID: \`${report.manifest_id}\``,
     `- Source status: \`${report.source_status}\``,
+    `- Selection scope: \`${report.selection_boundary.scope}\``,
     `- Qualification effect: \`${report.qualification_effect}\``,
     `- Claims permitted: \`${report.claims_permitted}\``,
     `- Gate assertion: \`${report.asserts_gate_pass}\``,
     `- Live/runtime/provider actions: \`${report.observation_authority.live_holdout_actions}/${report.observation_authority.runtime_process_observation}/${report.observation_authority.provider_actions}\``,
     '',
+    '## 版本链',
+    '',
+    `- Predecessor: \`${lineage.predecessor_manifest_id}\``,
+    `- Historical candidate: \`${lineage.predecessor_candidate_source_commit}\``,
+    `- Archive status: \`${lineage.predecessor_status}\``,
+    `- Archived manifest: \`${lineage.predecessor_manifest_path}\``,
+    `- Archived manifest file SHA-256: \`${lineage.predecessor_manifest_file_sha256}\``,
+    `- Mutation policy: \`${lineage.mutation_policy}\``,
+    '',
     '## 源身份边界',
     '',
     `- Artifact source commit: \`${source.artifact_source_commit}\``,
-    `- Handoff doc commit: \`${source.handoff_doc_commit}\``,
-    `- Artifact source differs from handoff: \`${source.artifact_source_differs_from_handoff}\``,
-    `- Handoff doc path: \`${source.handoff_doc_path}\``,
+    `- Verification record: \`${source.verification_record_ref}\` @ \`${source.verification_record_commit}\``,
+    `- Current identity: \`${source.current_candidate_identity_path}\``,
+    `- Artifact source matches current identity: \`${source.artifact_source_matches_current_identity}\``,
     '',
     '## 候选制品',
     '',
@@ -177,24 +225,27 @@ export function renderR4ReleaseCandidateManifestMarkdown(report) {
     '',
     '## 记录型验证回执',
     '',
-    '| Receipt | Status | Command | Evidence |',
+    '| Receipt | Status | Scope | Evidence |',
     '| --- | --- | --- | --- |',
     ...report.verification_receipts.map(receipt => (
-      `| \`${receipt.receipt_id}\` | \`${receipt.status}\` | \`${receipt.command}\` | ${escapeTableText(receipt.evidence)} |`
+      `| \`${receipt.receipt_id}\` | \`${receipt.status}\` | \`${receipt.verification_scope}\` | ${escapeTableText(receipt.evidence)} |`
     )),
     '',
     '## Current Candidate Identity 边界',
     '',
     `- Path: \`${report.current_identity_probe_boundary.path}\``,
     `- Status: \`${report.current_identity_probe_boundary.status}\``,
-    `- Authority to refresh: \`${report.current_identity_probe_boundary.authority_to_refresh}\``,
+    `- Candidate source commit: \`${report.current_identity_probe_boundary.candidate_source_commit}\``,
+    `- Stable runtime count: \`${report.current_identity_probe_boundary.stable_runtime_count}\``,
+    `- Observe status: \`${report.current_identity_probe_boundary.observe_status}\``,
+    `- Qualification effect: \`${report.current_identity_probe_boundary.qualification_effect}\``,
     `- Reason: ${report.current_identity_probe_boundary.reason}`,
     '',
     '## R4 叶子状态',
     '',
     `- Current leaf: \`${report.r4_leaf_context.current_leaf}\``,
     `- Closure effect: \`${report.r4_leaf_context.closure_effect}\``,
-    `- Remaining leaves: \`${report.r4_leaf_context.remaining_leaves.join(', ')}\``,
+    `- Remaining leaves at freeze: \`${report.r4_leaf_context.remaining_leaves_at_freeze.join(', ')}\``,
     '',
     '## Manifest Identity',
     '',
@@ -207,100 +258,37 @@ export function renderR4ReleaseCandidateManifestMarkdown(report) {
 export function summarizeR4ReleaseCandidateManifest(report) {
   return {
     manifest_sha256: report.manifest_sha256,
+    manifest_version: report.manifest_version,
     artifact_source_commit: report.source_identity.artifact_source_commit,
-    handoff_doc_commit: report.source_identity.handoff_doc_commit,
-    artifact_source_differs_from_handoff: report.source_identity.artifact_source_differs_from_handoff,
     primary_vsix_sha256: report.artifact_identity.primary_vsix.sha256,
     package_copy_exact_match: report.artifact_identity.exact_match,
+    predecessor_candidate_source_commit: report.version_lineage.predecessor_candidate_source_commit,
+    predecessor_status: report.version_lineage.predecessor_status,
     verification_receipts: report.verification_receipts.length,
+    current_identity_status: report.current_identity_probe_boundary.status,
     current_leaf: report.r4_leaf_context.current_leaf,
-    remaining_r4_leaves: report.r4_leaf_context.remaining_leaves.length,
+    remaining_r4_leaves_at_freeze: report.r4_leaf_context.remaining_leaves_at_freeze.length,
     qualification_effect: report.qualification_effect,
     claims_permitted: report.claims_permitted,
     asserts_gate_pass: report.asserts_gate_pass,
   };
 }
 
-function buildVerificationReceipts({
-  primaryVsix,
-  artifactSourceCommit,
-  handoffDocCommit,
-}) {
-  const build = primaryVsix.package_identity.devseekBuild;
-  return [
-    {
-      receipt_id: 'r3-focused-verification',
-      receipt_kind: 'recorded-local-test',
-      status: 'recorded-passed',
-      command: 'node --test packages/vscode-extension/test/unit/run-context.test.mjs packages/vscode-extension/test/unit/workflow-compliance.test.mjs packages/vscode-extension/test/unit/fake-tool-parser.test.mjs packages/vscode-extension/test/unit/provider-output-integrity.test.mjs packages/vscode-extension/test/unit/web-reliability.test.mjs packages/vscode-extension/test/unit/run-log-replay.test.mjs packages/vscode-extension/test/unit/agent-loop-task-state.test.mjs',
-      evidence: 'tests 528/528',
-      source_ref: RECEIPT_DOC_SOURCE,
-      source_commit: handoffDocCommit,
-      qualification_effect: 'NONE',
-    },
-    {
-      receipt_id: 'r3-full-verification',
-      receipt_kind: 'recorded-local-test',
-      status: 'recorded-passed',
-      command: 'npm run compile --workspace=packages/vscode-extension && npm run test --workspace=packages/vscode-extension && git diff --check -- changed runtime files',
-      evidence: 'compile PASS; Suites 151/151; diff check PASS',
-      source_ref: RECEIPT_DOC_SOURCE,
-      source_commit: handoffDocCommit,
-      qualification_effect: 'NONE',
-    },
-    {
-      receipt_id: 'r3-package-debug',
-      receipt_kind: 'recorded-local-smoke',
-      status: 'recorded-passed',
-      command: 'npm run extension:package:debug',
-      evidence: `package devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix; vsix_sha256 ${primaryVsix.sha256}`,
-      source_ref: RECEIPT_DOC_SOURCE,
-      source_commit: handoffDocCommit,
-      qualification_effect: 'NONE',
-    },
-    {
-      receipt_id: 'r3-packaged-bridge',
-      receipt_kind: 'recorded-local-smoke',
-      status: 'recorded-passed',
-      command: 'npm run verify:packaged-bridge',
-      evidence: `packaged bridge server SHA-256 ${primaryVsix.packaged_bridge_server_sha256}`,
-      source_ref: RECEIPT_DOC_SOURCE,
-      source_commit: handoffDocCommit,
-      qualification_effect: 'NONE',
-    },
-    {
-      receipt_id: 'r3-local-vsix-install',
-      receipt_kind: 'recorded-local-install',
-      status: 'recorded-passed',
-      command: 'code --install-extension /home/ff/work/devseek_netai/devseek-netai-latest.vsix --force',
-      evidence: 'local VSIX install PASS',
-      source_ref: RECEIPT_DOC_SOURCE,
-      source_commit: handoffDocCommit,
-      qualification_effect: 'NONE',
-    },
-    {
-      receipt_id: 'r3-controlled-vsix-self-loop',
-      receipt_kind: 'recorded-controlled-harness',
-      status: 'recorded-passed',
-      command: 'npm run test:controlled-vsix --workspace=packages/vscode-extension -- --scenario normal',
-      evidence: `PASS exact-head; artifactSourceCommit=${artifactSourceCommit}; build=${build.buildId}`,
-      source_ref: RECEIPT_DOC_SOURCE,
-      source_commit: handoffDocCommit,
-      qualification_effect: 'NONE',
-    },
-  ];
-}
-
 function semanticValidate(report, errors) {
   if (report.schema_version !== R4_RELEASE_CANDIDATE_MANIFEST_SCHEMA_VERSION) errors.push('schema_version:invalid');
   if (report.manifest_id !== R4_RELEASE_CANDIDATE_MANIFEST_ID) errors.push('manifest_id:invalid');
-  if (report.manifest_version !== 1) errors.push('manifest_version:must-be-1');
-  if (report.source_status !== 'verified-local-artifact-and-recorded-smoke') errors.push('source_status:invalid');
+  if (report.manifest_version !== 2) errors.push('manifest_version:must-be-2');
+  if (report.source_status !== 'user-authorized-versioned-local-candidate-freeze') errors.push('source_status:invalid');
   if (report.integrity_scope !== R4_RELEASE_CANDIDATE_INTEGRITY_SCOPE) errors.push('integrity_scope:invalid');
   if (report.qualification_eligible !== false) errors.push('qualification_eligible:must-be-false');
   if (report.qualification_effect !== R4_RELEASE_CANDIDATE_QUALIFICATION_EFFECT) errors.push('qualification_effect:must-be-NONE');
   if (report.claims_permitted !== false) errors.push('claims_permitted:must-be-false');
   if (report.asserts_gate_pass !== false) errors.push('asserts_gate_pass:must-be-false');
+  if (report.selection_boundary?.authorization !== 'explicit-user-authorization') errors.push('selection_boundary.authorization:invalid');
+  if (report.selection_boundary?.scope !== 'local-versioned-r4-candidate-freeze-only') errors.push('selection_boundary.scope:invalid');
+  if (report.selection_boundary?.predecessor_mutation !== 'FORBIDDEN') errors.push('selection_boundary.predecessor_mutation:must-be-FORBIDDEN');
+  if (report.selection_boundary?.external_qualification_authority !== false) errors.push('selection_boundary.external_qualification_authority:must-be-false');
+  if (report.selection_boundary?.qualification_effect !== 'NONE') errors.push('selection_boundary.qualification_effect:must-be-NONE');
   if (report.observation_authority?.semantic_authority !== 'R4ReleaseCandidateManifest') {
     errors.push('observation_authority.semantic_authority:invalid');
   }
@@ -312,44 +300,66 @@ function semanticValidate(report, errors) {
       errors.push(`observation_authority.${field}:must-be-FORBIDDEN`);
     }
   }
-  if (!isFullCommit(report.source_identity?.artifact_source_commit)) {
+  const expectedLineage = buildR4ReleaseCandidateVersionLineage(R4_RELEASE_CANDIDATE_PREDECESSOR);
+  if (canonicalJson(report.version_lineage) !== canonicalJson(expectedLineage)) {
+    errors.push('version_lineage:invalid-or-predecessor-mutated');
+  }
+  if (report.source_identity?.artifact_source_commit !== R4_FROZEN_CANDIDATE.source_commit) {
     errors.push('source_identity.artifact_source_commit:invalid');
   }
-  if (!isFullCommit(report.source_identity?.handoff_doc_commit)) {
-    errors.push('source_identity.handoff_doc_commit:invalid');
+  if (report.source_identity?.verification_record_path !== R4_VERIFICATION_RECORD.path
+    || report.source_identity?.verification_record_ref !== R4_VERIFICATION_RECORD.ref
+    || report.source_identity?.verification_record_commit !== R4_VERIFICATION_RECORD.commit) {
+    errors.push('source_identity.verification_record:invalid');
   }
-  if (report.source_identity?.artifact_source_differs_from_handoff !== true) {
-    errors.push('source_identity.artifact_source_differs_from_handoff:must-be-true');
+  if (report.source_identity?.current_candidate_identity_path !== R4_FROZEN_CANDIDATE.current_identity_path
+    || report.source_identity?.current_candidate_identity_file_sha256 !== R4_FROZEN_CANDIDATE.current_identity_file_sha256
+    || report.source_identity?.current_candidate_identity_probe_sha256 !== R4_FROZEN_CANDIDATE.current_identity_probe_sha256
+    || report.source_identity?.artifact_source_matches_current_identity !== true) {
+    errors.push('source_identity.current_candidate_identity:invalid');
   }
-  if (report.source_identity?.handoff_doc_path !== R3_HANDOFF_DOC_PATH) {
-    errors.push('source_identity.handoff_doc_path:invalid');
-  }
-  if (report.artifact_identity?.exact_match !== true) {
-    errors.push('artifact_identity.exact_match:must-be-true');
+  if (report.artifact_identity?.primary_vsix?.path !== PRIMARY_VSIX_PATH
+    || report.artifact_identity?.package_copy_vsix?.path !== PACKAGE_COPY_VSIX_PATH
+    || report.artifact_identity?.primary_vsix?.sha256 !== R4_FROZEN_CANDIDATE.vsix_sha256
+    || report.artifact_identity?.package_copy_vsix?.sha256 !== R4_FROZEN_CANDIDATE.vsix_sha256
+    || report.artifact_identity?.exact_match !== true) {
+    errors.push('artifact_identity:frozen-candidate-mismatch');
   }
   const primary = report.artifact_identity?.primary_vsix;
   const copy = report.artifact_identity?.package_copy_vsix;
-  if (primary && copy && canonicalJson(artifactComparableIdentity(primary)) !== canonicalJson(artifactComparableIdentity(copy))) {
+  if (primary && copy && canonicalJson(comparableVsixIdentity(primary)) !== canonicalJson(comparableVsixIdentity(copy))) {
     errors.push('artifact_identity:primary-and-package-copy-mismatch');
   }
-  if (report.current_identity_probe_boundary?.status !== 'deferred-not-refreshed') {
-    errors.push('current_identity_probe_boundary.status:must-be-deferred-not-refreshed');
-  }
-  if (report.current_identity_probe_boundary?.authority_to_refresh !== 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME') {
-    errors.push('current_identity_probe_boundary.authority_to_refresh:invalid');
+  const identityBoundary = report.current_identity_probe_boundary;
+  if (identityBoundary?.status !== 'verified-current-candidate'
+    || identityBoundary?.identity_probe_sha256 !== R4_FROZEN_CANDIDATE.current_identity_probe_sha256
+    || identityBoundary?.identity_source_sha256 !== R4_FROZEN_CANDIDATE.current_identity_file_sha256
+    || identityBoundary?.candidate_source_commit !== R4_FROZEN_CANDIDATE.source_commit
+    || identityBoundary?.artifact_source_matches_current_identity !== true
+    || identityBoundary?.stable_runtime_count !== 1
+    || identityBoundary?.observe_status !== 'passed'
+    || identityBoundary?.qualification_effect !== 'NONE') {
+    errors.push('current_identity_probe_boundary:invalid');
   }
   if (report.r4_leaf_context?.current_leaf !== 'R4-RELEASE-CANDIDATE-MANIFEST') {
     errors.push('r4_leaf_context.current_leaf:invalid');
   }
-  if (!Array.isArray(report.r4_leaf_context?.remaining_leaves)
-    || canonicalJson(report.r4_leaf_context.remaining_leaves) !== canonicalJson([...REMAINING_R4_LEAVES])) {
-    errors.push('r4_leaf_context.remaining_leaves:invalid');
+  if (!Array.isArray(report.r4_leaf_context?.remaining_leaves_at_freeze)
+    || canonicalJson(report.r4_leaf_context.remaining_leaves_at_freeze) !== canonicalJson([...R4_REMAINING_LEAVES_AT_FREEZE])) {
+    errors.push('r4_leaf_context.remaining_leaves_at_freeze:invalid');
+  }
+  if (report.counts?.vsix_artifacts !== 2) errors.push('counts.vsix_artifacts:must-be-2');
+  if (report.counts?.historical_candidates !== 1) errors.push('counts.historical_candidates:must-be-1');
+  if (report.counts?.verification_receipts !== R4_CANDIDATE_VERIFICATION_RECEIPTS.length) errors.push('counts.verification_receipts:invalid');
+  if (report.counts?.remaining_r4_leaves_at_freeze !== R4_REMAINING_LEAVES_AT_FREEZE.length) {
+    errors.push('counts.remaining_r4_leaves_at_freeze:invalid');
   }
   if (report.counts?.qualification_claims !== 0) errors.push('counts.qualification_claims:must-be-0');
-  if (report.counts?.verification_receipts !== 6) errors.push('counts.verification_receipts:must-be-6');
-  if (report.counts?.remaining_r4_leaves !== REMAINING_R4_LEAVES.length) errors.push('counts.remaining_r4_leaves:invalid');
   for (const receipt of report.verification_receipts ?? []) {
     if (receipt.status !== 'recorded-passed') errors.push(`verification_receipts.${receipt.receipt_id}.status:must-be-recorded-passed`);
+    if (receipt.source_ref !== R4_VERIFICATION_RECORD.ref || receipt.source_commit !== R4_VERIFICATION_RECORD.commit) {
+      errors.push(`verification_receipts.${receipt.receipt_id}.source:invalid`);
+    }
     if (receipt.qualification_effect !== 'NONE') errors.push(`verification_receipts.${receipt.receipt_id}.qualification_effect:must-be-NONE`);
   }
   const computedHash = r4ReleaseCandidateManifestHash(report);
@@ -360,83 +370,15 @@ function semanticValidate(report, errors) {
   }
 }
 
-function validateHandoffReceiptSource(handoffDocText, manifest) {
-  const errors = [];
-  const primary = manifest.artifact_identity.primary_vsix;
-  const requiredSnippets = [
-    'R4-RELEASE-CANDIDATE-MANIFEST',
-    manifest.source_identity.artifact_source_commit,
-    primary.sha256,
-    'npm run extension:package:debug',
-    'npm run verify:packaged-bridge',
-    'code --install-extension /home/ff/work/devseek_netai/devseek-netai-latest.vsix --force',
-    'npm run test:controlled-vsix --workspace=packages/vscode-extension -- --scenario normal',
-  ];
-  for (const snippet of requiredSnippets) {
-    if (!handoffDocText.includes(snippet)) {
-      errors.push(`handoff-doc:missing-snippet:${snippet}`);
-    }
-  }
-  return errors;
-}
-
-function readVsixIdentity(vsixPath, repoRoot) {
-  const packageJson = JSON.parse(readVsixEntry(vsixPath, PACKAGE_ENTRY).toString('utf8'));
-  const packageIdentity = packageIdentityFromPackageJson(packageJson);
-  const bridgeBuffer = readVsixEntry(vsixPath, BRIDGE_ENTRY);
-  return {
-    path: path.relative(repoRoot, vsixPath),
-    sha256: sha256File(vsixPath),
-    package_identity: packageIdentity,
-    packaged_bridge_server_sha256: sha256Buffer(bridgeBuffer),
-  };
-}
-
-function readVsixEntry(vsixPath, entryPath) {
-  if (!fs.existsSync(vsixPath)) throw new Error(`vsix:missing:${vsixPath}`);
-  const result = cp.spawnSync('unzip', ['-p', vsixPath, entryPath], {
-    encoding: 'buffer',
-    maxBuffer: 32 * 1024 * 1024,
-  });
-  if (result.status !== 0) {
-    throw new Error(`vsix:read-entry:${entryPath}:${String(result.stderr ?? '').trim() || result.status}`);
-  }
-  return result.stdout;
-}
-
-function packageIdentityFromPackageJson(packageJson) {
-  const devseekBuild = packageJson?.devseekBuild ?? {};
-  const identity = {
-    publisher: requiredString(packageJson?.publisher, 'package.publisher'),
-    name: requiredString(packageJson?.name, 'package.name'),
-    version: requiredString(packageJson?.version, 'package.version'),
-    devseekBuild: {
-      baseVersion: requiredString(devseekBuild.baseVersion, 'package.devseekBuild.baseVersion'),
-      channel: requiredString(devseekBuild.channel, 'package.devseekBuild.channel'),
-      buildId: requiredString(devseekBuild.buildId, 'package.devseekBuild.buildId'),
-      gitCommit: requiredString(devseekBuild.gitCommit, 'package.devseekBuild.gitCommit'),
-      packagedAt: requiredString(devseekBuild.packagedAt, 'package.devseekBuild.packagedAt'),
-    },
-  };
-  if (!/^[a-f0-9]{7,64}$/u.test(identity.devseekBuild.gitCommit)) {
-    throw new Error('package.devseekBuild.gitCommit:invalid');
-  }
-  return identity;
-}
-
 function resolveGitCommit(repoRoot, commit) {
   return git(repoRoot, ['rev-parse', `${commit}^{commit}`]);
 }
 
-function resolveLastCommitForPath(repoRoot, relativePath) {
-  return git(repoRoot, ['log', '-1', '--format=%H', '--', relativePath]);
-}
-
 function readGitFile(repoRoot, commit, relativePath) {
-  return git(repoRoot, ['show', `${commit}:${relativePath}`]);
+  return git(repoRoot, ['show', `${commit}:${relativePath}`], { trim: false });
 }
 
-function git(repoRoot, args) {
+function git(repoRoot, args, { trim = true } = {}) {
   const result = cp.spawnSync('git', args, {
     cwd: repoRoot,
     encoding: 'utf8',
@@ -445,15 +387,7 @@ function git(repoRoot, args) {
   if (result.status !== 0) {
     throw new Error(`git:${args.join(' ')}:${String(result.stderr ?? '').trim() || result.status}`);
   }
-  return result.stdout.trim();
-}
-
-function artifactComparableIdentity(artifact) {
-  return {
-    sha256: artifact?.sha256,
-    package_identity: artifact?.package_identity,
-    packaged_bridge_server_sha256: artifact?.packaged_bridge_server_sha256,
-  };
+  return trim ? result.stdout.trim() : result.stdout;
 }
 
 function artifactRow(label, artifact) {
@@ -465,17 +399,16 @@ function escapeTableText(value) {
   return String(value).replace(/\|/gu, '\\|');
 }
 
+function readJsonFile(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+}
+
 function sha256Buffer(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
 function sha256File(filePath) {
   return sha256Buffer(fs.readFileSync(filePath));
-}
-
-function requiredString(value, field) {
-  if (typeof value !== 'string' || value.length === 0) throw new Error(`${field}:required`);
-  return value;
 }
 
 function withoutKeys(value, keys) {
@@ -489,8 +422,4 @@ function withoutKeys(value, keys) {
 
 function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function isFullCommit(value) {
-  return typeof value === 'string' && /^[a-f0-9]{40}$/u.test(value);
 }

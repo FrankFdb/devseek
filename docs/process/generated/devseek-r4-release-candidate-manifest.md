@@ -2,53 +2,66 @@
 
 ## 摘要
 
-- Manifest ID: `R4-RELEASE-CANDIDATE-MANIFEST/v1`
-- Source status: `verified-local-artifact-and-recorded-smoke`
+- Manifest ID: `R4-RELEASE-CANDIDATE-MANIFEST/v2`
+- Source status: `user-authorized-versioned-local-candidate-freeze`
+- Selection scope: `local-versioned-r4-candidate-freeze-only`
 - Qualification effect: `NONE`
 - Claims permitted: `false`
 - Gate assertion: `false`
 - Live/runtime/provider actions: `FORBIDDEN/FORBIDDEN/FORBIDDEN`
 
+## 版本链
+
+- Predecessor: `R4-RELEASE-CANDIDATE-MANIFEST/v1`
+- Historical candidate: `a034e5e050c044460fb07705639d9d41e6b193c0`
+- Archive status: `immutable-history`
+- Archived manifest: `docs/process/archive/r4-release-candidates/v1-a034e5e/manifest.json`
+- Archived manifest file SHA-256: `eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66`
+- Mutation policy: `byte-for-byte-predecessor-preservation`
+
 ## 源身份边界
 
-- Artifact source commit: `a034e5e050c044460fb07705639d9d41e6b193c0`
-- Handoff doc commit: `2ef99cfbf0ded6d064633cf2f0f96336d9c6a88a`
-- Artifact source differs from handoff: `true`
-- Handoff doc path: `docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md`
+- Artifact source commit: `4f8a56797090079914b4d921b56d9c34fe4d2abc`
+- Verification record: `docs/top-agent-convergence-audit-20260711/README.md#5-本轮验证记录` @ `8f30f1b79285c2e2141cbbcacf69b30969487768`
+- Current identity: `docs/process/devseek-current-candidate-identity.json`
+- Artifact source matches current identity: `true`
 
 ## 候选制品
 
 | Artifact | SHA-256 | Build | Git commit | Bridge SHA-256 |
 | --- | --- | --- | --- | --- |
-| primary: `devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix` | `027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d` | `20260723-t193110` | `a034e5e` | `16182326e29a56f6d7711bdb4ba56759df4cfa577a51b2f67fd098bc06a8d599` |
-| package-copy: `packages/vscode-extension/devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix` | `027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d` | `20260723-t193110` | `a034e5e` | `16182326e29a56f6d7711bdb4ba56759df4cfa577a51b2f67fd098bc06a8d599` |
+| primary: `devseek-netai-1.0.0-debug.20260804.t093020.g4f8a567.vsix` | `68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc` | `20260804-t093020` | `4f8a567` | `c3b99805a6e63636a735d74477ba98648741d485ab0c3fc720b4de8d778d572f` |
+| package-copy: `packages/vscode-extension/devseek-netai-1.0.0-debug.20260804.t093020.g4f8a567.vsix` | `68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc` | `20260804-t093020` | `4f8a567` | `c3b99805a6e63636a735d74477ba98648741d485ab0c3fc720b4de8d778d572f` |
 
 - Primary/package-copy exact match: `true`
 
 ## 记录型验证回执
 
-| Receipt | Status | Command | Evidence |
+| Receipt | Status | Scope | Evidence |
 | --- | --- | --- | --- |
-| `r3-focused-verification` | `recorded-passed` | `node --test packages/vscode-extension/test/unit/run-context.test.mjs packages/vscode-extension/test/unit/workflow-compliance.test.mjs packages/vscode-extension/test/unit/fake-tool-parser.test.mjs packages/vscode-extension/test/unit/provider-output-integrity.test.mjs packages/vscode-extension/test/unit/web-reliability.test.mjs packages/vscode-extension/test/unit/run-log-replay.test.mjs packages/vscode-extension/test/unit/agent-loop-task-state.test.mjs` | tests 528/528 |
-| `r3-full-verification` | `recorded-passed` | `npm run compile --workspace=packages/vscode-extension && npm run test --workspace=packages/vscode-extension && git diff --check -- changed runtime files` | compile PASS; Suites 151/151; diff check PASS |
-| `r3-package-debug` | `recorded-passed` | `npm run extension:package:debug` | package devseek-netai-1.0.0-debug.20260723.t193110.ga034e5e.vsix; vsix_sha256 027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d |
-| `r3-packaged-bridge` | `recorded-passed` | `npm run verify:packaged-bridge` | packaged bridge server SHA-256 16182326e29a56f6d7711bdb4ba56759df4cfa577a51b2f67fd098bc06a8d599 |
-| `r3-local-vsix-install` | `recorded-passed` | `code --install-extension /home/ff/work/devseek_netai/devseek-netai-latest.vsix --force` | local VSIX install PASS |
-| `r3-controlled-vsix-self-loop` | `recorded-passed` | `npm run test:controlled-vsix --workspace=packages/vscode-extension -- --scenario normal` | PASS exact-head; artifactSourceCommit=a034e5e050c044460fb07705639d9d41e6b193c0; build=20260723-t193110 |
+| `extension-full-unit-runner` | `recorded-passed` | `vscode-extension-full-unit-runner` | PASS; 158/158 suites |
+| `intent-routing-focused-matrix` | `recorded-passed` | `intent-routing-focused-matrix` | PASS; 524/524 tests |
+| `natural-intent-ui-corpus` | `recorded-passed` | `natural-intent-ui-corpus` | PASS; 48/48 scenarios |
+| `architecture-static-suites` | `recorded-passed` | `affected-architecture-static-suites` | PASS; 325/325 tests |
+| `vsix-release-loop` | `recorded-passed` | `package-bridge-install-and-exactly-one-runtime` | PASS; devseek-netai-1.0.0-debug.20260804.t093020.g4f8a567.vsix; sha256 68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc |
+| `phase0-12-local-regression` | `recorded-passed` | `phase0-12-deterministic-and-local-gates` | PASS; 32/32; Gate 0 remains NOT_PASSED |
 
 ## Current Candidate Identity 边界
 
 - Path: `docs/process/devseek-current-candidate-identity.json`
-- Status: `deferred-not-refreshed`
-- Authority to refresh: `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME`
-- Reason: Clean runtime identity requires separate user authorization; this manifest does not inspect live bridge processes or rewrite candidate identity artifacts.
+- Status: `verified-current-candidate`
+- Candidate source commit: `4f8a56797090079914b4d921b56d9c34fe4d2abc`
+- Stable runtime count: `1`
+- Observe status: `passed`
+- Qualification effect: `NONE`
+- Reason: Tracked current identity already proves artifact, stable install, and exactly-one local runtime for this candidate; the manifest performs no live observation.
 
 ## R4 叶子状态
 
 - Current leaf: `R4-RELEASE-CANDIDATE-MANIFEST`
-- Closure effect: `closes release candidate manifest only`
-- Remaining leaves: `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME, R4-LIVE-QUALIFICATION-REQUEST-PACKET, R4-LIVE-USER-WAY-HOLDOUT-MATRIX, R4-DOC-PROCESS-IDENTITY-RECONCILIATION, R4-REAL-PROVIDER-FAILURE-TAXONOMY`
+- Closure effect: `version-selects the local R4 candidate without adding qualification authority`
+- Remaining leaves at freeze: `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME`
 
 ## Manifest Identity
 
-- Manifest SHA-256: `67e4025b2743012648c36312870130a3773f0b79dc44ce9abbc4200c4dab50b3`
+- Manifest SHA-256: `0fda85f4ad71f13d6410d61f5249e327b299642cfee17226f708f979e12bed1b`
