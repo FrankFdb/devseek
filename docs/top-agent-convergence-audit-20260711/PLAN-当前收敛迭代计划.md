@@ -50,7 +50,7 @@ devseek_governance:
 | 范围 | 状态 | 当前事实 |
 | --- | --- | --- |
 | C0 本地实现与机器裁决前置 | `completed` | 7/7 implementation requirements satisfied，repository blockers=0，local conformance=`PASSED` |
-| Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；162/162 extension 套件、架构守卫、48/48 自然输入与 8 步 Webview 人工输入仿真通过；精确 VSIX T3 Surface 仿真继续作为发版门禁 |
+| Extension 类型与候选包基线 | `completed` | TypeScript 基线零错误；162/162 extension 套件、架构守卫、48/48 自然输入、8 步 Webview 人工输入与精确 VSIX T3 Surface 仿真通过；T3 继续作为发版门禁 |
 | Surface 入口盘点 | `completed` | 87/87 入口受 inventory 覆盖，未知入口与未声明 legacy owner 可达性均为 0 |
 | Kernel owner 收敛基线 | `completed` | v3 将本地产品迭代与资格晋级解耦；3 条活跃路由中 VS Code fresh-task canonical route=1、canonical recovery route=1、legacy recovery route=0、CLI legacy route=1；legacy execution owner=1、跨 Surface Kernel route=0、5 个核心语义域收敛数=0、Headless 产品入口=0；38/38 源码与默认门禁断言通过 |
 | 01：VS Code 新任务与恢复路由收敛 | `completed` | `AgentKernelService` 统一决定 fresh/checkpoint 路由；附件只作为 Context；durable checkpoint 与 local validation repair 均通过 typed recovery 输入进入 canonical loop，失败保留待办、成功唯一清除 checkpoint；产品 adapter 不再拥有 `runLegacyPlanned` |
@@ -80,7 +80,7 @@ devseek_governance:
 | 11 | `KERNEL-02` | `in_progress` | `KERNEL-PREP-01`、`KERNEL-BASELINE-02`、`DOC01-KERNEL-OWNER-02C` | VS Code、CLI、Headless 共用唯一 Coding Kernel、TaskContract、ToolExecutor、mutation/verification/completion 语义；legacy loop 不再拥有业务决策；本地产品收敛不依赖 Gate 0 资格状态 |
 | 12 | `SURFACE-CONTRACT-01` | `pending` | `KERNEL-02` | 同一任务在 VS Code、CLI、Headless 产生等价的状态、工具、验证和完成结果；静态守卫防止新旁路 |
 | 13 | `CAP-C1-C14-WIRING` | `pending` | `SURFACE-CONTRACT-01` | 按 capability DAG 将 C1～C14 的 69 项能力从 `proposed` 逐项提升到可证的 `implemented/wired`；每项均有 owner、产品入口、失败恢复和机器证据 |
-| 14 | `USER-SIM-01` | `in_progress` | 每个产品切片 | 以用户方式覆盖安装包、真实入口、多轮任务、失败恢复和结果核验；当前自然输入与 Webview/Kernel 恢复仿真已通过，真实安装包多轮恢复和 real Provider 仍待相应前置 |
+| 14 | `USER-SIM-01` | `in_progress` | 每个产品切片 | 以用户方式覆盖安装包、真实入口、多轮任务、失败恢复和结果核验；当前自然输入、Webview/Kernel 恢复仿真及精确 VSIX 单轮写入/读回/QualityGate 已通过，真实安装包多轮恢复和 real Provider 仍待相应前置 |
 | 15 | `QUAL-EXT-01` | `blocked_external` | 独立授权、受保护身份/设施、holdout 和不可变保留 | 6 个外部 blocker 由授权主体关闭，7 个 C0 exact tuple claims 可复算，机器 decision 自主达到 `PASS`；只约束资格晋级，不阻塞本地产品迭代 |
 | 16 | `TOP-AGENT-ACCEPTANCE-01` | `pending` | `CAP-C1-C14-WIRING`、`USER-SIM-01` | 按 01～09 的需求与黄金旅程，对照 Codex 和 Claude Code 在同类问题上的可观察行为；所有适用产品能力、长任务、故障恢复、结果验证和跨 Surface 验收通过 |
 

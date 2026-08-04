@@ -64,8 +64,8 @@
     },
     "post_r4_local_regression_manifest": {
       "path": "docs/process/devseek-post-r4-local-regression-manifest.json",
-      "source_sha256": "bb47d8534d55dccbdb383f5ac84a6b5e064829b949b276cd40db60c8de334e1b",
-      "manifest_sha256": "bfa839731f3cdfef33e2a0c06c5491e87a71ea9b48d24ccd02745b285f851814",
+      "source_sha256": "0a01bbfef0403b179ea5a4d818041ac586b7bf83792201c26a0978d7458fd25f",
+      "manifest_sha256": "38e35463c355f76301bce7490ac06530eedfa5607b4698f53751a064a5869344",
       "covered_nonpermission_items": [
         "NP-05",
         "NP-06",
@@ -441,5 +441,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "index_sha256": "92abb502cc4c8dfff83ceca9995cfc3d831e6bc41b02349f5ad46c9aea2e6987"
+  "index_sha256": "6e8eac85b7f631285339d1b7394f07a69ff4c92049a1af8e916e9dec71d85e2b"
 }
