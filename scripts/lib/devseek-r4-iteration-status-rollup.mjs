@@ -21,7 +21,6 @@ const FAILURE_TAXONOMY = 'docs/process/devseek-r4-real-provider-failure-taxonomy
 const AUTHORIZATION_GUIDE = 'docs/process/devseek-r4-authorization-and-permission-guide.md';
 const CLEAN_RUNTIME_OBSERVATION = 'docs/process/devseek-r4-clean-runtime-limited-observation.json';
 
-const PRODUCT_IMPLEMENTATION_COMMIT = 'a034e5e050c044460fb07705639d9d41e6b193c0';
 const HANDOFF_DOC_COMMIT = '02cb792b4fe86df523c7f88eb106f13394e6f3fd';
 const CLEAN_RUNTIME_LEAF_ID = 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME';
 const CLEAN_RUNTIME_WINDOW_AUTHORITY =
@@ -157,7 +156,7 @@ export function buildR4IterationStatusRollup({ repoRoot } = {}) {
       }),
     },
     r4_scope: {
-      product_implementation_commit: PRODUCT_IMPLEMENTATION_COMMIT,
+      product_implementation_commit: releaseManifest.source_identity.artifact_source_commit,
       handoff_doc_commit: HANDOFF_DOC_COMMIT,
       total_leaf_count: LEAFS.length,
       local_process_artifacts_complete_except_clean_runtime: true,
@@ -350,6 +349,10 @@ function semanticValidate(rollup, errors) {
     }
   }
   if (rollup.r4_scope?.total_leaf_count !== LEAFS.length) errors.push('r4_scope.total_leaf_count:invalid');
+  if (rollup.r4_scope?.product_implementation_commit
+    !== rollup.source_bindings?.release_candidate_manifest?.artifact_source_commit) {
+    errors.push('r4_scope.product_implementation_commit:must-match-release-candidate-manifest');
+  }
   if (rollup.r4_scope?.local_process_artifacts_complete_except_clean_runtime !== true) {
     errors.push('r4_scope.local_process_artifacts_complete_except_clean_runtime:must-be-true');
   }
@@ -387,7 +390,12 @@ function semanticValidate(rollup, errors) {
     errors.push('r4_scope.scenario_language_source:must-be-scenario-contract');
   }
   validateCleanRuntimeBoundary(rollup.clean_runtime_boundary, errors);
-  validateLeaves(rollup.leaves, rollup.clean_runtime_boundary, errors);
+  validateLeaves(
+    rollup.leaves,
+    rollup.clean_runtime_boundary,
+    rollup.r4_scope?.product_implementation_commit,
+    errors,
+  );
   if (rollup.counts?.r4_total_leaves !== LEAFS.length) errors.push('counts.r4_total_leaves:invalid');
   const completedLeaves = (rollup.leaves ?? []).filter(leaf => leaf.terminal_state === 'COMPLETED').length;
   const blockedLeaves = (rollup.leaves ?? []).filter(leaf => leaf.terminal_state === 'BLOCKED').length;
@@ -442,7 +450,7 @@ function validateCleanRuntimeBoundary(boundary, errors) {
   }
 }
 
-function validateLeaves(leaves, cleanRuntimeBoundary, errors) {
+function validateLeaves(leaves, cleanRuntimeBoundary, productImplementationCommit, errors) {
   const leafById = new Map();
   for (const leaf of leaves ?? []) {
     if (leafById.has(leaf.leaf_id)) errors.push(`leaves.${leaf.leaf_id}:duplicate`);
@@ -458,7 +466,7 @@ function validateLeaves(leaves, cleanRuntimeBoundary, errors) {
       continue;
     }
     if (expectedLeaf.leaf_id === CLEAN_RUNTIME_LEAF_ID) {
-      validateCleanRuntimeLeaf(actual, cleanRuntimeBoundary, errors);
+      validateCleanRuntimeLeaf(actual, cleanRuntimeBoundary, productImplementationCommit, errors);
       continue;
     }
     if (actual.terminal_state !== expectedLeaf.terminal_state) {
@@ -470,13 +478,13 @@ function validateLeaves(leaves, cleanRuntimeBoundary, errors) {
   }
 }
 
-function validateCleanRuntimeLeaf(leaf, cleanRuntimeBoundary, errors) {
+function validateCleanRuntimeLeaf(leaf, cleanRuntimeBoundary, productImplementationCommit, errors) {
   const expectedTerminalState = cleanRuntimeBoundary?.latest_limited_observation_terminal_state;
   if (leaf.terminal_state !== expectedTerminalState) {
     errors.push(`leaves.${CLEAN_RUNTIME_LEAF_ID}.terminal_state:must-match-clean-runtime-observation`);
   }
   if (leaf.terminal_state === 'COMPLETED') {
-    if (leaf.implementation_commit !== PRODUCT_IMPLEMENTATION_COMMIT) {
+    if (leaf.implementation_commit !== productImplementationCommit) {
       errors.push(`leaves.${CLEAN_RUNTIME_LEAF_ID}.implementation_commit:invalid`);
     }
     if (leaf.blocker_reason !== null) errors.push(`leaves.${CLEAN_RUNTIME_LEAF_ID}.blocker_reason:must-be-null`);

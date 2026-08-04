@@ -38,18 +38,18 @@
 
 ## Source Bindings
 
-- `R4-RELEASE-CANDIDATE-MANIFEST`: `docs/process/devseek-r4-release-candidate-manifest.json` -> `eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66`
-- `R4-DOC-PROCESS-IDENTITY-RECONCILIATION`: `docs/process/devseek-r4-doc-process-identity-reconciliation.json` -> `c12e92c4a13ba7f24c27afe0b915582968b90d094c08ec9c49e140608335831c`
-- `R4-LIVE-QUALIFICATION-REQUEST-PACKET`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `3cc1be97bab7a50fd6949d19abb797248a4e0c8f0d7e4dd237721dc650d71112`
+- `R4-RELEASE-CANDIDATE-MANIFEST`: `docs/process/devseek-r4-release-candidate-manifest.json` -> `8c051ecfbb718820332804f4cc690f26a54d2e243e26f91d030acbde5b94ea82`
+- `R4-DOC-PROCESS-IDENTITY-RECONCILIATION`: `docs/process/devseek-r4-doc-process-identity-reconciliation.json` -> `7fc3945f48a41aaf4911609a9c600e5bdf9c2c4e0f7e8a4e4964d3066734d34c`
+- `R4-LIVE-QUALIFICATION-REQUEST-PACKET`: `docs/process/devseek-r4-live-qualification-request-packet.json` -> `8efb7b899a44b81ab3965e757ec5a38549da4369512a9150f4c2628f6dba4fc7`
 - `R4-LIVE-USER-WAY-HOLDOUT-MATRIX`: `docs/process/devseek-r4-live-user-way-holdout-matrix.json` -> `000a82523ebeb1047518c7ca32f232d1416cfccf8ec6418599428b642ed783cf`
 - `R4-REAL-PROVIDER-FAILURE-TAXONOMY`: `docs/process/devseek-r4-real-provider-failure-taxonomy.json` -> `f600782836dcd78b8050870f72cdee8e5ae8fecfe6eab9e9410edd439e22ed35`
 - `R4-EXISTING-LIVE-FAILURE-TAXONOMY-MAPPING`: `docs/process/devseek-r4-existing-live-failure-taxonomy-mapping.json` -> `824f7c750f7e8bd7f594ade457db79781110955425adf549804656a97d14b069`
 - `R4-SCENARIO-LANGUAGE-REPLAY-CORPUS`: `docs/process/devseek-r4-scenario-language-replay-corpus.json` -> `5c7c55883595924c8720b297ba0274b1403b5b7c0b632265bb7afe42da4bcfa7`
-- `R4-ITERATION-STATUS-ROLLUP`: `docs/process/devseek-r4-iteration-status-rollup.json` -> `1f508f30a3b6e0070385e6174ab44f406c94aa7dbd082588a879a657821ec387`
-- `R4-CLEAN-RUNTIME-LIMITED-OBSERVATION`: `docs/process/devseek-r4-clean-runtime-limited-observation.json` -> `125df55105b1b677f7b9ec299c08dac5457f5c8a050b1a19810cea388de4a6bb`
+- `R4-ITERATION-STATUS-ROLLUP`: `docs/process/devseek-r4-iteration-status-rollup.json` -> `fdf9c7be0c9043508596f0ff3b09f830dd61dc94292ffe9929aa5d687180e5c1`
+- `R4-CLEAN-RUNTIME-LIMITED-OBSERVATION`: `docs/process/devseek-r4-clean-runtime-limited-observation.json` -> `3ff09be8b82f423f999560dfeef22c1967ae778bb020e132bb275cb90b16d63c`
 - `R4-AUTHORIZATION-AND-PERMISSION-GUIDE`: `docs/process/devseek-r4-authorization-and-permission-guide.md` -> `826240c4a2cfcae0c6fb1068ed199b1ffed99d64857fd8053d70e3790f40ada5`
 - `POST-R4-NONPERMISSION-ITERATION-PLAN`: `docs/process/devseek-post-r4-nonpermission-iteration-plan.md` -> `51623b1c2267f8d3f6fcb09b800396e5da12ea083dad5c5ed98f331b8b735555`
 
 ## Aggregate Identity
 
-- Aggregate SHA-256: `77f0b02c90ed0f09471530985523bcd3bec646595d56c935870f3838fc0532b0`
+- Aggregate SHA-256: `6fbef9bfa0f6d83abc5e7cf6c6c803df2b8cabab13ab3716fdce521755fb271e`

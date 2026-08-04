@@ -54,7 +54,7 @@ devseek_governance:
 | Surface 入口盘点 | `completed` | 87/87 入口受 inventory 覆盖，未知入口与未声明 legacy owner 可达性均为 0 |
 | Kernel 切换前 owner baseline | `completed` | 3 条活跃产品路由均仍由 legacy semantic owner 执行；5 个核心语义域收敛数为 0；Headless 产品入口为 0；34/34 源码与默认门禁断言受保护；跨 Surface conformance 契约、5 个 development fixture 和 CLI/VS Code route-output probe 已准备，但产品 adapter 数仍为 0 |
 | Intent Semantic Contract 本地收敛 | `completed` | `TaskSemanticContract/v2` 是本地词法路由唯一 owner；classifier/router 仅投影 contract；Provider candidate 由 governor 限权合并；否定副作用和 duplicate-owner 守卫通过。完整跨轮/项目规则/done_iff/隔离 semantic channel 仍属 16 号后续责任 |
-| R4 非资格本地工作 | `in_progress` | 6 个 leaf 中 5 个完成；当前候选 artifact/install/runtime 精确一致且 stable runtime=1、window-sensitive leaf=0；clean-runtime leaf 仅因最新开发候选 `4f8a567` 与冻结候选 `a034e5e` 不同而保持 `BLOCKED` |
+| R4 非资格本地工作 | `completed` | v2 清单冻结 `4f8a567`；原 `a034e5e` v1 JSON/schema/view 按字节归档；当前候选 artifact/install/runtime 精确一致，stable runtime=1；6/6 leaf completed、blocked=0、qualification effect=`NONE` |
 | 能力账本 | `in_progress` | 76 项能力：C0 的 7 项为 `wired`，C1～C14 共 69 项为 `proposed`，qualification claims=0 |
 | Gate 0 / 后续资格 | `blocked_external` | Gate 0=`NOT_PASSED`，6 个外部 authority blocker，exact claims=0；本地工作不得自行提升资格 |
 | 顶级编程智能体综合验收 | `pending` | 尚未完成 Codex / Claude Code 同类行为对标下的黄金用户旅程、长任务、恢复与跨 Surface 等价性验收 |
@@ -69,7 +69,7 @@ devseek_governance:
 | 2 | `KERNEL-PREP-01` | `completed` | `QUALITY-TS-01` | 在不切换产品路径的前提下，按职责抽取 CLI/VS Code legacy owner，固定端口与 conformance 基线；不得新增业务内核或终态 owner |
 | 3 | `KERNEL-BASELINE-02` | `completed` | `KERNEL-PREP-01` | development route adapter 只投影 settled output；CLI/VS Code 当前缺失维度可机器复现，Headless 缺失显式失败；不得补造产品或资格证据 |
 | 4 | `INTENT-CONTRACT-02` | `completed` | 16 号 Priority-0 产品侧非资格切片 | 统一本地 intent contract、destructive policy、execution-mode policy 和 Provider candidate governor；删除 classifier/router/chat-controller 的重复词表或合并权威；全量 extension、自然输入、静态 owner 守卫和本地用户闭环通过 |
-| 5 | `R4-CANDIDATE-DECISION-01` | `blocked_external` | 显式候选选择授权 | 二选一：按新版本清单正式冻结最新开发候选，或恢复并观察原冻结候选；禁止静默改写不可变 `a034e5e` 清单，也不得把任一路径提升为资格声明 |
+| 5 | `R4-CANDIDATE-DECISION-01` | `completed` | 显式候选选择授权 | `R4-RELEASE-CANDIDATE-MANIFEST/v2` 冻结 `4f8a567`；v1 `a034e5e` 历史候选字节不变；clean-runtime 与 6/6 rollup 完成且未产生资格声明 |
 | 6 | `QUAL-EXT-01` | `blocked_external` | 独立授权、受保护身份/设施、holdout 和不可变保留 | 6 个外部 blocker 由授权主体关闭，7 个 C0 exact tuple claims 可复算，机器 decision 自主达到 `PASS` |
 | 7 | `KERNEL-02` | `blocked_external` | `KERNEL-PREP-01`、`KERNEL-BASELINE-02`、Gate 0=`PASS` | VS Code、CLI、Headless 共用唯一 Coding Kernel、TaskContract、ToolExecutor、mutation/verification/completion 语义；legacy loop 不再拥有业务决策 |
 | 8 | `SURFACE-CONTRACT-01` | `pending` | `KERNEL-02` | 同一任务在 VS Code、CLI、Headless 产生等价的状态、工具、验证和完成结果；静态守卫防止新旁路 |
@@ -85,13 +85,12 @@ devseek_governance:
 
 ## 当前作业卡
 
-`R4-CANDIDATE-DECISION-01`（`blocked_external`）
+`QUAL-EXT-01`（`blocked_external`）
 
-- 当前条件：运行时刷新授权已执行；最新 artifact/install/runtime 精确一致，稳定 Bridge 唯一，现有 VS Code 窗口和 DeepSeek 页面未关闭，未发起真实 Provider 请求。
-- 所需决策：明确授权“建立新版本冻结清单并冻结最新候选”或“恢复原 `a034e5e` 冻结候选完成旧 R4 clean-runtime 观察”。
-- 资格边界：该决策只处理非资格 R4 候选身份；Gate 0 仍需独立 authority 提供受保护 profile、职责分离身份与签名、WORM/retention、trusted time/anchor 和可复算 exact claims。
+- 当前条件：R4 非资格本地工作 6/6 完成；Gate 0 仍为 `NOT_PASSED`，6 个外部 authority blocker 未关闭，exact claims=0。
+- 接下来需要：独立 authority 提供受保护 profile、职责分离身份与签名、WORM/retention、trusted time/anchor 和可复算 exact claims，使机器 decision 自主达到 `PASS`。
 - Headed 条件：已收到“外部资格前置满足后可执行一次 headed DeepSeek 真实用户路径并保留窗口/页面”的操作授权；前置未满足前保持未执行。
-- 禁止：静默改写冻结清单、把当前稳定运行时当作 qualification、或用本地文档/fixture 代替外部 authority。
+- 禁止：把 R4 6/6、本地稳定运行时、deterministic/fixture 或用户操作授权解释为 qualification authority。
 
 ## 机器状态源
 

@@ -24,16 +24,16 @@
   "source_bindings": {
     "release_candidate_manifest": {
       "path": "docs/process/devseek-r4-release-candidate-manifest.json",
-      "source_sha256": "eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66",
-      "manifest_sha256": "67e4025b2743012648c36312870130a3773f0b79dc44ce9abbc4200c4dab50b3",
-      "artifact_source_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
-      "vsix_sha256": "027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d"
+      "source_sha256": "8c051ecfbb718820332804f4cc690f26a54d2e243e26f91d030acbde5b94ea82",
+      "manifest_sha256": "0fda85f4ad71f13d6410d61f5249e327b299642cfee17226f708f979e12bed1b",
+      "artifact_source_commit": "4f8a56797090079914b4d921b56d9c34fe4d2abc",
+      "vsix_sha256": "68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc"
     },
     "doc_process_identity_reconciliation": {
       "path": "docs/process/devseek-r4-doc-process-identity-reconciliation.json",
-      "source_sha256": "c12e92c4a13ba7f24c27afe0b915582968b90d094c08ec9c49e140608335831c",
-      "reconciliation_sha256": "4f2eb41679a06db946395724b627c33f07767ea890032fa67ec834d4bf4df505",
-      "current_candidate_identity_status": "deferred-unusable-until-clean-runtime"
+      "source_sha256": "7fc3945f48a41aaf4911609a9c600e5bdf9c2c4e0f7e8a4e4964d3066734d34c",
+      "reconciliation_sha256": "71a6dd570f3f9bd875673abeeff5e56de2518b1a808603b40292e7a65b699b46",
+      "current_candidate_identity_status": "clean-runtime-identity-established"
     },
     "external_authority_requests": {
       "path": "docs/process/devseek-external-authority-requests.json",
@@ -76,10 +76,10 @@
     }
   },
   "candidate_scope": {
-    "release_candidate_manifest_sha256": "67e4025b2743012648c36312870130a3773f0b79dc44ce9abbc4200c4dab50b3",
-    "artifact_source_commit": "a034e5e050c044460fb07705639d9d41e6b193c0",
-    "vsix_sha256": "027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d",
-    "current_candidate_identity_status": "deferred-unusable-until-clean-runtime",
+    "release_candidate_manifest_sha256": "0fda85f4ad71f13d6410d61f5249e327b299642cfee17226f708f979e12bed1b",
+    "artifact_source_commit": "4f8a56797090079914b4d921b56d9c34fe4d2abc",
+    "vsix_sha256": "68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc",
+    "current_candidate_identity_status": "clean-runtime-identity-established",
     "clean_runtime_identity_required": true,
     "clean_runtime_identity_authority": "R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME",
     "repository_current_identity_may_substitute": false
@@ -180,5 +180,5 @@
     "live_runs_authorized": 0,
     "qualification_claims": 0
   },
-  "packet_sha256": "9318e86369586d44dfbee1d20003a501006cc3a4f569cd5a9ce9a7fad07e2ab1"
+  "packet_sha256": "cbfffa9c37d274471a6a0c58eaf76420e17d36ab329f799a3f31ad71aab977ee"
 }

@@ -33,7 +33,7 @@ devseek_governance:
 <!-- DEVSEEK-GOVERNANCE-STATUS:END -->
 
 - 本次复核日期：2026-08-04
-- 当前 Extension 行为候选：`4f8a567`（Intent Semantic Contract 本地 v2 纵切）；冻结 R4 候选仍为 `a034e5e`，两者不得混同
+- 当前 Extension 行为候选与 R4 v2 冻结候选：`4f8a567`（Intent Semantic Contract 本地 v2 纵切）；原 `a034e5e` v1 清单保留为历史不可变候选
 - 复核原则：文档声明只作索引；结论以 `docs/process` 机器源、实际代码可达性、当前工作树和本轮重跑验证为准
 
 ## 1. 本次结论
@@ -59,8 +59,8 @@ devseek_governance:
 | Capability ledger | 76 项能力、15 个域；C0 7 项全部 `wired`；C1～C14 69 项全部 `proposed`；claims=0 |
 | Gate 0 | local conformance `PASSED`；implementation `7/7`；repository blocker `0`；external blocker `6`；最终 `NOT_PASSED` |
 | Qualification runner | 19 个入口；1 个本地非资格 runner、10 个 catalog fixture、4 个 production disabled、4 个 historical disabled |
-| R4 | 6 个原始 leaf 中 5 个 completed；current artifact/install/runtime 已精确绑定且 stable runtime=1、window-sensitive=0；clean-runtime 仅因最新候选与冻结候选不一致而 `BLOCKED` |
-| Frozen R4 candidate | release manifest 固定到不可变 `a034e5e` VSIX；current-candidate 为 `4f8a567`、observe=`passed`，但不匹配冻结清单；两者都不具资格效力 |
+| R4 | 6/6 原始 leaf completed，blocked=0；current artifact/install/runtime 与 v2 冻结候选精确绑定，stable runtime=1、window-sensitive leaf=0 |
+| Frozen R4 candidate | 当前 `R4-RELEASE-CANDIDATE-MANIFEST/v2` 冻结 `4f8a567` VSIX；原 `a034e5e` v1 JSON/schema/view 以固定文件哈希归档为历史不可变候选；两者均无资格效力 |
 | Current local development receipt | `4f8a567` VSIX 已编译、打包、校验 Bridge、安装并完成 current identity 11/11 与本地用户闭环；真实 DeepSeek 用例按前置条件跳过，不是 qualification receipt |
 | Post-R4 local track | NP-05/06/07 manifest 已在 `5c32551` 提交；检查覆盖 16 个 source、17/17 anchors、8 个 local-only command，6/6 通过 |
 | Surface inventory | 87 个入口分母全部 covered，无 unknown、重复或待 cutover；source hash 对账通过 |
@@ -77,8 +77,8 @@ devseek_governance:
 ### 3.1 事实与交付状态
 
 - Post-R4 NP-05/06/07、Coding Kernel 路由重构和 20 号文档归档均已分别提交，便于按责任边界审计。
-- R4 release manifest 固定使用不可变 `a034e5e` 制品，不随 `devseek-netai-latest.vsix` 漂移；current-candidate identity 已刷新为 `4f8a567` 成功观察，但仍不是冻结候选。
-- active runtime observe 已闭合为 exactly-one stable runtime；当前唯一 R4 blocker 是候选选择，需要显式决定新建版本化冻结清单或恢复原冻结候选，不能用窗口授权继续掩盖该差异。
+- R4 v2 release manifest 已按显式授权冻结 `4f8a567`，并绑定具名 VSIX、current-candidate identity 与已提交验证回执；后续 `latest` 漂移不能静默改写该版本。
+- 原 `a034e5e` v1 清单、schema 和可读视图已迁入版本化历史目录并受字节哈希守卫；active runtime observe 为 exactly-one stable runtime，R4 6/6 leaf 已完成。
 - 外部资格前置满足后执行一次 headed DeepSeek 路径的操作授权已收到；受保护 profile、独立身份/签名、WORM/retention、trusted time/anchor 等前置未满足，因此真实路径仍未执行。
 
 ### 3.2 单内核仍是迁移态
@@ -91,7 +91,7 @@ devseek_governance:
 
 - C1～C14 的产品实现需逐项回填“实现 owner 可达、全入口接线、失败语义、测试证据”，再由账本判定 `proposed -> implemented -> wired`。
 - Gate 0 缺少独立受保护 profile、aggregator、签名 evidence digest binding、WORM/retention、trusted time 和 7 个 exact claims。
-- R4 真实用户路线、RC smoke 和 L6 holdout 未授权或未执行，不能用 deterministic 或 controlled fake Bridge 结果替代。
+- R4 headed 真实用户路线已获得“外部资格前置满足后执行一次并保留窗口/页面”的条件授权；前置尚未满足，RC smoke 和 L6 holdout 均未执行，不能用 deterministic 或 controlled fake Bridge 结果替代。
 
 ### 3.4 迭代代码实现准则
 
@@ -112,7 +112,7 @@ devseek_governance:
 | `NOW-02` | `完成` | 重生成 Surface inventory 及受影响机器源 | 87/87 covered；无 drift；generated view 与源一致 |
 | `NOW-03` | `完成` | 在 current identity 刷新后重跑 Phase 0-12 | 32/32 gate 通过；deterministic=`passed`；real CLI/plugin Provider 均为 `not-run`，不产生资格效力 |
 | `NOW-04` | `完成` | 替换失真的 process baseline | 当前 PLAN 由 selector 唯一指向；14 降为历史归档；计划不再承载执行日志 |
-| `NOW-05` | `部分完成/待决策` | 收口 candidate identity | exactly-one stable runtime 已证明；仍需显式选择新冻结候选或恢复 `a034e5e`，不得静默改写 manifest |
+| `NOW-05` | `完成` | 收口 candidate identity | v2 清单冻结 `4f8a567`；current artifact/install/runtime 精确一致；clean-runtime completed；`a034e5e` v1 按字节归档且不可变 |
 | `NOW-06` | `完成` | 收敛本地 Intent Semantic Contract owner | v2 contract、destructive/execution-mode policy、Provider candidate governor 为唯一语义边界；下游重复词表删除并受回归守卫 |
 
 ### P1 完成单一 Coding Kernel 物理收敛
@@ -160,6 +160,9 @@ devseek_governance:
 | Workspace TypeScript `--noEmit` audit | `PASS`，既存 extension 类型债务已清零 |
 | Capability ledger | `PASS`，76 capabilities / 138 dependency edges |
 | Gate 0 decision | checker `PASS`，决策仍为 `NOT_PASSED` |
+| External authority readiness | `PASS`，10/10 请求均保持精确 blocker 与可执行下一授权动作；approved=0、local-unblockable=0、live runs=0 |
+| R4 versioned candidate manifest | `PASS`，v2 冻结 `4f8a567`；v1 `a034e5e` JSON/schema/view 与两份 VSIX 字节哈希受守卫 |
+| R4 iteration rollup | `PASS`，6/6 completed、0 blocked；clean-runtime=`COMPLETED`；qualification effect=`NONE` |
 | Post-R4 local regression manifest | `PASS`，6/6 checker tests |
 | Post-R4 compact index | `PASS`，6/6 checker tests |
 | R4 process aggregate | `PASS`，11 个产物、无 stale/missing view |
@@ -170,7 +173,7 @@ devseek_governance:
 | VSIX release loop | `PASS`，`1.0.0-debug.20260804.t093020.g4f8a567`；SHA256 `68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc`；Bridge 校验、本地安装和 exactly-one runtime identity 通过 |
 | 本地用户闭环 | `PASS`，8 个 static/local create/modify/multiturn/repair/multi-file 场景；3 个 real DeepSeek 场景因资格前置未满足而显式跳过 |
 | Current candidate identity | `PASS`，11/11；stable=1、stale/unknown/unreadable=0；qualification effect=`NONE` |
-| Phase 0-12 | `PASS`，32/32；run id `2026-08-04T02-04-10-060Z`；Gate 0 仍为 `NOT_PASSED` |
+| Phase 0-12 | `PASS`，32/32；run id `2026-08-04T03-14-57-152Z`；Gate 0 仍为 `NOT_PASSED` |
 
 受控 T3 使用真实已安装 VSIX、隔离 Extension Host 与确定性 fake Bridge，并通过测试专用消息和程序化 intent approval 驱动。它不是自然 UI、real Provider、RC smoke、T4/T5 或 qualification 证据，`qualification_effect=NONE`。
 

@@ -44,6 +44,10 @@ export function buildR4DocProcessIdentityReconciliation({ repoRoot } = {}) {
   if (!repoRoot) throw new Error('repoRoot is required');
 
   const releaseManifest = readJson(path.join(repoRoot, R4_RELEASE_MANIFEST_JSON));
+  const predecessorManifest = readJson(path.join(
+    repoRoot,
+    releaseManifest.version_lineage.predecessor_manifest_path,
+  ));
   const trackedCurrentIdentity = readIdentityArtifact({
     repoRoot,
     jsonPath: CURRENT_IDENTITY_JSON,
@@ -109,7 +113,7 @@ export function buildR4DocProcessIdentityReconciliation({ repoRoot } = {}) {
     source_boundaries: {
       product_implementation_commit: releaseManifest.source_identity.artifact_source_commit,
       artifact_source_commit: releaseManifest.source_identity.artifact_source_commit,
-      handoff_doc_commit: releaseManifest.source_identity.handoff_doc_commit,
+      handoff_doc_commit: predecessorManifest.source_identity.handoff_doc_commit,
       release_candidate_manifest_path: R4_RELEASE_MANIFEST_JSON,
       release_candidate_manifest_commit: resolveLastCommitForPath(repoRoot, R4_RELEASE_MANIFEST_JSON),
       release_candidate_manifest_sha256: releaseManifest.manifest_sha256,

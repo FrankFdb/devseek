@@ -20,6 +20,7 @@ import {
 const execFile = promisify(execFileCallback);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const expected = buildR4LiveQualificationRequestPacket({ repoRoot });
+const currentCandidateCommit = '4f8a56797090079914b4d921b56d9c34fe4d2abc';
 
 test('R4 live qualification request packet blocks qualification until explicit live, candidate, profile, evidence, and import authority exist', () => {
   const actual = readJson('docs/process/devseek-r4-live-qualification-request-packet.json');
@@ -32,7 +33,7 @@ test('R4 live qualification request packet blocks qualification until explicit l
     live_runs_authorized: 0,
     qualification_claims: 0,
   });
-  assert.equal(actual.candidate_scope.artifact_source_commit, 'a034e5e050c044460fb07705639d9d41e6b193c0');
+  assert.equal(actual.candidate_scope.artifact_source_commit, currentCandidateCommit);
   assert.equal(
     actual.candidate_scope.current_candidate_identity_status,
     expected.candidate_scope.current_candidate_identity_status,
@@ -118,7 +119,7 @@ test('checker command validates R4 live qualification request packet and generat
   assert.equal(result.ok, true, JSON.stringify(result.errors, null, 2));
   assert.deepEqual(result.summary, {
     packet_sha256: expected.packet_sha256,
-    artifact_source_commit: 'a034e5e050c044460fb07705639d9d41e6b193c0',
+    artifact_source_commit: currentCandidateCommit,
     vsix_sha256: expected.candidate_scope.vsix_sha256,
     current_candidate_identity_status: expected.candidate_scope.current_candidate_identity_status,
     gate0_status: 'NOT_PASSED',

@@ -10,9 +10,9 @@
 
 ## 候选与资格边界
 
-- Artifact source commit: `a034e5e050c044460fb07705639d9d41e6b193c0`
-- VSIX SHA-256: `027ef950a79a576444eaf3075d689b44ef0af8bec3d22df65ca61ed2cc1df19d`
-- Current candidate identity: `deferred-unusable-until-clean-runtime`
+- Artifact source commit: `4f8a56797090079914b4d921b56d9c34fe4d2abc`
+- VSIX SHA-256: `68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc`
+- Current candidate identity: `clean-runtime-identity-established`
 - Clean runtime identity required: `true`
 - Gate0: `NOT_PASSED`
 - R1 qualification: `NOT_STARTED`
@@ -41,8 +41,8 @@
 
 | Source | SHA-256 |
 | --- | --- |
-| `release_candidate_manifest: docs/process/devseek-r4-release-candidate-manifest.json` | `eb93f971f1dcd877dbde75a032919c7d02389661aaaed6429b0bd34943091c66` |
-| `doc_process_identity_reconciliation: docs/process/devseek-r4-doc-process-identity-reconciliation.json` | `c12e92c4a13ba7f24c27afe0b915582968b90d094c08ec9c49e140608335831c` |
+| `release_candidate_manifest: docs/process/devseek-r4-release-candidate-manifest.json` | `8c051ecfbb718820332804f4cc690f26a54d2e243e26f91d030acbde5b94ea82` |
+| `doc_process_identity_reconciliation: docs/process/devseek-r4-doc-process-identity-reconciliation.json` | `7fc3945f48a41aaf4911609a9c600e5bdf9c2c4e0f7e8a4e4964d3066734d34c` |
 | `external_authority_requests: docs/process/devseek-external-authority-requests.json` | `c51d967ed1b34b634d6c785ff3d7076e82869e1d82b3c2ba70490e4126b4a11e` |
 | `external_authority_adapter: docs/process/devseek-external-authority-adapter.json` | `17821b07799c048b9136fbcc374cb7ff0f476f1e62927f2322044a6f20da7e18` |
 | `gate0_decision: docs/process/devseek-gate0-decision-report.json` | `85c486937e07952576931724531e3fd4d1e6dc84d58ff2a1b52c51301ee5d3f0` |
@@ -52,4 +52,4 @@
 
 ## Packet Identity
 
-- Packet SHA-256: `9318e86369586d44dfbee1d20003a501006cc3a4f569cd5a9ce9a7fad07e2ab1`
+- Packet SHA-256: `cbfffa9c37d274471a6a0c58eaf76420e17d36ab329f799a3f31ad71aab977ee`

@@ -12,13 +12,13 @@
 ## R4 叶子状态
 
 - Total leaves: `6`
-- Completed leaves: `5`
-- Blocked leaves: `1`
+- Completed leaves: `6`
+- Blocked leaves: `0`
 - Remaining window-sensitive leaves: `0`
 
 | Leaf | Terminal | Commit | Blocker |
 | --- | --- | --- | --- |
-| `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME` | `BLOCKED` | `n/a` | `expected-candidate-identity-does-not-match-release-candidate-manifest` |
+| `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME` | `COMPLETED` | `4f8a56797090079914b4d921b56d9c34fe4d2abc` | `n/a` |
 | `R4-RELEASE-CANDIDATE-MANIFEST` | `COMPLETED` | `33bd4e9685e0577b92806938919a8370ab49caa6` | `n/a` |
 | `R4-DOC-PROCESS-IDENTITY-RECONCILIATION` | `COMPLETED` | `7a5c1acfa2745d411bb3c6ac97088ef5c87efade` | `n/a` |
 | `R4-LIVE-QUALIFICATION-REQUEST-PACKET` | `COMPLETED` | `8da611877948d53854000b7258721b6d43dc8e81` | `n/a` |
@@ -27,15 +27,15 @@
 
 ## Clean Runtime 边界
 
-- Current candidate identity: `deferred-unusable-until-clean-runtime`
-- Clean runtime terminal state: `BLOCKED`
+- Current candidate identity: `clean-runtime-identity-established`
+- Clean runtime terminal state: `COMPLETED`
 - Latest limited observation: `docs/process/devseek-r4-clean-runtime-limited-observation.json`
-- Latest limited observation terminal state: `BLOCKED`
-- Clean runtime identity established: `false`
+- Latest limited observation terminal state: `COMPLETED`
+- Clean runtime identity established: `true`
 - Stable runtime count: `1`
 - May close existing VS Code or DeepSeek pages: `false`
 - May run live Provider test: `false`
-- Blocked until authority: `true`
+- Blocked until authority: `false`
 
 ## 资格边界
 
@@ -49,8 +49,8 @@
 
 - Authorization guide: `docs/process/devseek-r4-authorization-and-permission-guide.md`
 - Clean runtime limited observation: `docs/process/devseek-r4-clean-runtime-limited-observation.json`
-- Clean runtime observation SHA-256: `29e06308972f10b332db1583d9205b60df19326afada277dc7be4a350271aa1d`
+- Clean runtime observation SHA-256: `c9c6f7d5637e6453530937fa11db110a6725388bc6e84550679b1aebf0b78a56`
 
 ## Rollup Identity
 
-- Rollup SHA-256: `7745a352d6c14f2a6d2e7d14c6cd967d1adf3b42d2eae2cd83f3b47ab4aae183`
+- Rollup SHA-256: `16869238e0a2f6488a3c967a1313313ed53d28029f88eca8f4b75b751d73ba02`

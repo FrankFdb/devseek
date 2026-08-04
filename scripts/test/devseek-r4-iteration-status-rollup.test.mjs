@@ -43,6 +43,10 @@ test('R4 iteration status rollup counts six original leaves without adding a new
   assert.match(actual.r4_scope.clean_runtime_limited_observation_sha256, /^[a-f0-9]{64}$/u);
   assert.equal(actual.r4_scope.clean_runtime_stable_runtime_count, expected.r4_scope.clean_runtime_stable_runtime_count);
   assert.equal(actual.r4_scope.current_candidate_identity_status, expected.r4_scope.current_candidate_identity_status);
+  assert.equal(
+    actual.r4_scope.product_implementation_commit,
+    actual.source_bindings.release_candidate_manifest.artifact_source_commit,
+  );
   assert.equal(actual.r4_scope.gate0_status, 'NOT_PASSED');
   assert.equal(actual.r4_scope.r1_qualification_status, 'NOT_STARTED');
   assert.equal(actual.r4_scope.scenario_language_source, 'scenario-contract');
@@ -83,6 +87,9 @@ test('R4 iteration status rollup counts six original leaves without adding a new
   const expectedCleanRuntime = expected.leaves.find(leaf => leaf.leaf_id === 'R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME');
   assert.equal(cleanRuntime.terminal_state, expectedCleanRuntime.terminal_state);
   assert.equal(cleanRuntime.implementation_commit, expectedCleanRuntime.implementation_commit);
+  if (cleanRuntime.terminal_state === 'COMPLETED') {
+    assert.equal(cleanRuntime.implementation_commit, actual.r4_scope.product_implementation_commit);
+  }
   assert.equal(
     actual.leaves.filter(leaf => leaf.terminal_state === 'COMPLETED').length,
     expected.counts.completed_leaves,
@@ -156,6 +163,14 @@ test('runtime validation fails closed on clean-runtime drift, window action expa
     expected.counts.completed_leaves === 6 ? 5 : expected.counts.completed_leaves + 1;
   staleCounts.rollup_sha256 = '0'.repeat(64);
   assertHasRollupError(staleCounts, 'counts.completed_leaves:invalid');
+
+  const candidateOwnerDrift = structuredClone(expected);
+  candidateOwnerDrift.r4_scope.product_implementation_commit = '0'.repeat(40);
+  candidateOwnerDrift.rollup_sha256 = '0'.repeat(64);
+  assertHasRollupError(
+    candidateOwnerDrift,
+    'r4_scope.product_implementation_commit:must-match-release-candidate-manifest',
+  );
 
   const cleanRuntimeObservationCompleted = structuredClone(expected);
   cleanRuntimeObservationCompleted.r4_scope.clean_runtime_limited_observation_terminal_state =

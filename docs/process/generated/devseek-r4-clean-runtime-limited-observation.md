@@ -4,8 +4,8 @@
 
 - Observation ID: `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME-LIMITED-OBSERVATION/v1`
 - Current leaf: `R4-CANDIDATE-IDENTITY-CLEAN-RUNTIME`
-- Terminal state: `BLOCKED`
-- Clean runtime identity established: `false`
+- Terminal state: `COMPLETED`
+- Clean runtime identity established: `true`
 - Qualification effect: `NONE`
 - Claims permitted: `false`
 - Gate assertion: `false`
@@ -28,7 +28,7 @@
 - Expected candidate source commit: `4f8a56797090079914b4d921b56d9c34fe4d2abc`
 - Expected VSIX SHA-256: `68b360307e4104909829d9e6f921757520f535cf79a33eff77f4b69590849ecc`
 - Expected bridge path: `/home/ff/.vscode/extensions/devseek-netai.devseek-netai-1.0.0-debug.20260804.t093020.g4f8a567/bridge/server.js`
-- Matches release candidate manifest: `false`
+- Matches release candidate manifest: `true`
 
 ## Tracked Registry 对比
 
@@ -47,12 +47,10 @@
 
 ## Blockers
 
-- `expected-candidate-identity-does-not-match-release-candidate-manifest`
 
 ## 下一授权
 
-- `explicit-authority-to-freeze-latest-candidate-or-restore-frozen-release-candidate-runtime`
 
 ## Observation Identity
 
-- Observation SHA-256: `29e06308972f10b332db1583d9205b60df19326afada277dc7be4a350271aa1d`
+- Observation SHA-256: `c9c6f7d5637e6453530937fa11db110a6725388bc6e84550679b1aebf0b78a56`
