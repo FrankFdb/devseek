@@ -31,8 +31,7 @@ import {
   initAgentLearner, clearLearnerSession, emitLearningEvent,
   getCommandHints,
 } from './agent-learner';
-import { decomposeTask, getAgentTaskDisplayTarget, inferTasksFromFiles, type AgentTask } from './agent-task-decomposer';
-import { extractAnalysisFindings } from './agent/analysis-findings';
+import { getAgentTaskDisplayTarget, type AgentTask } from './agent-task-decomposer';
 import type { AgentLoopResult } from './agent/loop-types';
 import { createAgentHostToolCallbacks } from './agent/agent-host-tools';
 import { getTaskWorkspaceRootFsPath, resolveWorkspaceFileUri } from './workspace-roots';
@@ -78,10 +77,7 @@ import { resolveProviderStatusResponse } from './app/provider-status-service';
 import { PendingEditCoordinator } from './pending-edit-coordinator';
 import { recordTrackedChatHistory as recordTrackedChatHistoryState } from './app/chat-history-tracker';
 import { createDirectVisibleResponsePublisher } from './app/direct-visible-response-service';
-import {
-  AGENT_CODE_FILE_RE,
-  type AgentSessionState,
-} from './app/agent-session-context';
+import type { AgentSessionState } from './app/agent-session-context';
 import { emitResponseMeta, injectFileHintsIntoResponse } from './ui/generated-artifact-ui';
 import { createAgentFileWriteConfirmation } from './ui/agent-file-write-confirmation';
 import { postWebviewEvent, postWebviewMessage } from './ui/webview-event-adapter';
@@ -90,7 +86,6 @@ import { DeepSeekViewProvider } from './ui/deepseek-view-provider';
 import type { WebviewInboundMessage } from './ui/webview-protocol';
 import { recordRealPluginHarnessProgress, registerRealPluginDeepSeekHarnessCommand } from './ui/real-plugin-harness';
 import { buildAgentRunDisplayProfile } from './agent/agent-run-display';
-import { enforceAgentTaskExecutionPolicy } from './agent/task-execution-policy';
 import { discoverFilesFromDirectoryPrompt, relPathFromWorkspace, toContextDisplayLabels } from './app/context-discovery-service';
 import { TaskHistoryUiService } from './app/task-history-ui-service';
 import { registerExtensionCommands } from './ui/extension-command-registration';
@@ -610,15 +605,12 @@ async function runActiveChat(
       const checkpointResumeTasks = resumeFromIndex !== undefined && resumeTasks && resumeTasks.length > 0
         ? resumeTasks
         : undefined;
-      // ── Agentic routing: no code files → free-explore loop (Claude Code style) ──
-      // This mirrors Copilot's principle: "no Working Set → no Architect phase".
-      // The LLM drives tool exploration directly; we skip decomposeTask entirely.
-      const hasCodeFiles = effectiveFiles.some(f => AGENT_CODE_FILE_RE.test(f));
-      // The kernel exploratory route handles investigation, pure code creation, and mixed data-file tasks.
-      // It can self-route through read, exploration, planning, and write tools as needed.
-      // Only skip to Architect+Editor when user explicitly attached code files to edit.
-      if (!hasCodeFiles && !checkpointResumeTasks) {
-        // No code file attachments → agentic free-explore (investigate) mode
+      const kernelRoute = agentKernelService.decideExecutionRoute({
+        checkpoint: checkpointResumeTasks && resumeFromIndex !== undefined
+          ? { tasks: checkpointResumeTasks, startFromIndex: resumeFromIndex }
+          : undefined,
+      });
+      if (kernelRoute.route === 'canonical') {
         const agWsRootPath = getTaskWorkspaceRootFsPath(prompt, pathResolutionHints, activeEditorContextPath);
         const agWsRoot = agWsRootPath ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
         const agSessionContext = sessionContinuationProjector.project({
@@ -629,11 +621,10 @@ async function runActiveChat(
           newSession,
         }).contextText;
         const agDisplayProfile = buildAgentRunDisplayProfile(prompt);
-        // Non-code files (logs, csvs, etc.) are passed directly
-        const dataFiles = effectiveFiles.filter(f => !AGENT_CODE_FILE_RE.test(f));
+        const contextFiles = [...effectiveFiles];
         const activeEditorPath = activeEditorContextPath ?? '';
         const agMemoryRelatedPaths = [
-          ...dataFiles,
+          ...contextFiles,
           ...pathResolutionHints,
           activeEditorPath,
         ].filter((pathValue): pathValue is string => Boolean(pathValue));
@@ -659,10 +650,10 @@ async function runActiveChat(
           progressTitle: agDisplayProfile.planCompletedTitle,
           progressDetail: agDisplayProfile.planCompletedDetail,
         });
-        const agResult = await agentKernelService.executeExploratory({
+        const agResult = await agentKernelService.executeCanonicalTask({
           userPrompt: prompt,
           semanticContract: agentKernelRun.semanticContract,
-          dataFiles,
+          contextFiles,
           workspaceRoot: agWsRoot,
           mode,
           callbacks: {
@@ -811,13 +802,11 @@ async function runActiveChat(
         return;
       }
 
-      // Phase-0: Architect — decompose the task into a per-file plan
-      // (Skipped when resuming from a checkpoint — tasks are already known.)
-      let tasks: import('./agent-task-decomposer').AgentTask[];
-      let _decomposeProse = '';
-      const _wsFolderForContext = agentWorkspaceRoot;
+      // Legacy planned execution is restricted to durable checkpoint replay.
+      const tasks = [...kernelRoute.checkpoint.tasks];
+      const checkpointStartFromIndex = kernelRoute.checkpoint.startFromIndex;
       const sessionContextForAgent = sessionContinuationProjector.project({
-        workspaceRoot: _wsFolderForContext,
+        workspaceRoot: agentWorkspaceRoot,
         currentPrompt: userDisplay || prompt,
         intent,
         currentFilePaths: effectiveFiles,
@@ -826,139 +815,17 @@ async function runActiveChat(
       const promptForAgent = sessionContextForAgent
         ? appendSessionContinuationContext(prompt, sessionContextForAgent)
         : prompt;
-
-      if (resumeFromIndex !== undefined && checkpointResumeTasks) {
-        // ── Resume path: restore tasks from checkpoint, skip LLM decompose ──
-        tasks = checkpointResumeTasks;
-        const remaining = tasks.length - resumeFromIndex;
-        postAgent({
-          type: 'agentStatus',
-          phase: 'plan',
-          state: 'completed',
-          title: `断点续传：从第 ${resumeFromIndex + 1} 个任务继续（共 ${tasks.length} 个）`,
-          taskTotal: tasks.length,
-          detail: `已完成 ${resumeFromIndex} 个，剩余 ${remaining} 个：\n` +
-            tasks.slice(resumeFromIndex).map((t, i) =>
-              `${resumeFromIndex + i + 1}. [${t.action}] ${getAgentTaskDisplayTarget(t)} — ${t.desc}`).join('\n'),
-        });
-      } else {
-        // ── Normal path: call LLM to decompose the task ──
-        postAgent({ type: 'agentStatus', phase: 'plan', state: 'started', title: '分析任务，正在生成执行计划…', taskTotal: effectiveFiles.length });
-
-        // P14: inject analysis findings from prior round, plus recently changed paths so
-        // follow-up requests (e.g. "compile and run") target the right files.
-        // Augment with session-memory files (workspaceState-restored) so follow-up requests
-        // after restart resolve file paths without explicit re-attachment (Claude Code pattern).
-        const _wsFolder0 = agentWorkspaceRoot;
-        const _sessionRelPaths = _wsFolder0
-          ? [...new Set(sessionRecentFiles.values())]
-              .filter(abs => abs.startsWith(_wsFolder0 + nodePath.sep) || abs.startsWith(_wsFolder0 + '/'))
-              .map(abs => nodePath.relative(_wsFolder0, abs).replace(/\\/g, '/'))
-              .filter(rel => rel && !rel.startsWith('..') && !lastAgentChangedPaths.includes(rel))
-              .slice(0, 8)
-          : [];
-        const _allRecentPaths = [...lastAgentChangedPaths, ..._sessionRelPaths].filter(Boolean);
-        const priorFindings: import('./agent-task-decomposer').AnalysisFindings | undefined =
-          (lastAnalysisText || _allRecentPaths.length > 0)
-            ? {
-                issues: lastAnalysisText ? extractAnalysisFindings(lastAnalysisText).issues : [],
-                recentlyChangedPaths: _allRecentPaths.length > 0 ? _allRecentPaths : undefined,
-              }
-            : undefined;
-        const decomposeResult = await decomposeTask(
-          promptForAgent, effectiveFiles, mode,
-          (progress) => {
-            postAgent({ type: 'agentStatus', phase: 'plan', state: 'started', title: progress });
-          },
-          priorFindings,
-          // Agent internals must not inherit the DeepSeek web page's implicit
-          // browser-side history. DevSeek injects only explicit current-session
-          // context into the prompt it builds.
-          async (p, m) => routeChat({
-            prompt: p,
-            mode: m,
-            newSession: true,
-            trackHistory: false,
-            traceRunId: agentTraceRunId,
-            traceWorkspaceRoot: agentTraceWorkspaceRoot,
-            traceEvidenceParticipantToken: agentRunContext.evidenceParticipantToken,
-            onTraceEvidenceError: error => agentRunContext?.markEvidenceDegraded(error),
-          }),
-          // Active editor file: used as path anchor when no files are attached and no
-          // explicit path is in the prompt. Mirrors Copilot's per-file context behaviour.
-          activeEditorContextPath,
-        );
-
-        tasks = decomposeResult.ok
-          ? decomposeResult.tasks
-          : decomposeResult.fallbackAllowed === false
-            ? []
-            : inferTasksFromFiles(effectiveFiles, promptForAgent);
-        _decomposeProse = decomposeResult.prose ?? '';
-        const taskPolicyResult = enforceAgentTaskExecutionPolicy(tasks, {
-          mode: workflow.toolPolicyMode,
-          userPrompt: promptForAgent,
-        });
-        if (taskPolicyResult.changed) {
-          tasks = taskPolicyResult.tasks;
-          postAgent({
-            type: 'agentStatus',
-            phase: 'plan',
-            state: 'started',
-            title: '已按权限模式调整任务计划',
-            taskTotal: tasks.length,
-            detail: taskPolicyResult.reason,
-          });
-        }
-
-        // If tasks is empty (decompose failed or produced no tasks), show an error
-        // but keep the Working area visible so user sees what was attempted.
-        // Copilot pattern: fallback gracefully rather than disappearing silently.
-        if (tasks.length === 0) {
-          const errMsg = decomposeResult.error ?? '未识别到子任务';
-          postAgent({ type: 'agentStatus', phase: 'plan', state: 'failed', title: '任务计划生成失败', taskTotal: 0, detail: errMsg });
-          let errDelta = `_[Agent] 未能生成执行计划（${errMsg}）。建议尝试：_\n\n- 重新表述或简化需求  \n- 确保选中相关代码或文件\n- 检查工作区文件是否可访问\n\n**DeepSeek 反馈：**`;
-          if (decomposeResult.raw?.trim()) {
-            errDelta += `\n\n\`\`\`\n${decomposeResult.raw.slice(0, 1500).trim()}\n\`\`\``;
-          } else {
-            errDelta += '（无详细信息）';
-          }
-          postWebviewMessage(webview, { type: 'error', text: errDelta, loginRequired: false });
-          postAgent({ type: 'agentStatus', phase: 'done', state: 'failed', title: '执行结束（无可执行计划）', detail: 'Agent 模式已终止；请先解决计划生成失败原因后重试' });
-          agentKernelRun.failRun({
-            reason: 'plan-generation-failed',
-            detail: errMsg,
-          });
-          webview.postMessage({ type: 'endResponse' });
-          return;
-        }
-
-        postAgent({
-          type: 'agentStatus',
-          phase: 'plan',
-          state: 'completed',
-          title: `任务计划已生成：${tasks.length} 个子任务`,
-          taskTotal: tasks.length,
-          detail: tasks.map((t, i) => `${i + 1}. [${t.action}] ${getAgentTaskDisplayTarget(t)} — ${t.desc}`).join('\n'),
-          // G-1: planning reasoning — use AI prose from decompose only (no fallback to user prompt)
-          planningText: _decomposeProse ? _decomposeProse.split('\n')[0].slice(0, 120) : '',
-          planningDetail: _decomposeProse,
-        });
-
-        // Phase B: emit transitional announcement prose between plan and execution.
-        // The first meaningful sentence(s) the AI wrote before the JSON plan is shown as
-        // an inline prose bubble — gives users "now I understand, here is what I'll do" context.
-        if (_decomposeProse?.trim()) {
-          const _bLines = _decomposeProse.split('\n').filter(l => {
-            const s = l.trim();
-            return s.length > 15 && !s.startsWith('{') && !s.startsWith('[') && !s.match(/^\d+\.\s*\[/);
-          });
-          if (_bLines.length > 0) {
-            const _announcement = _bLines.slice(0, 3).join(' ').slice(0, 300);
-            postWebviewMessage(webview, { type: 'agentAnnouncement', text: _announcement });
-          }
-        }
-      }
+      const remaining = tasks.length - checkpointStartFromIndex;
+      postAgent({
+        type: 'agentStatus',
+        phase: 'plan',
+        state: 'completed',
+        title: `断点续传：从第 ${checkpointStartFromIndex + 1} 个任务继续（共 ${tasks.length} 个）`,
+        taskTotal: tasks.length,
+        detail: `已完成 ${checkpointStartFromIndex} 个，剩余 ${remaining} 个：\n` +
+          tasks.slice(checkpointStartFromIndex).map((task, index) =>
+            `${checkpointStartFromIndex + index + 1}. [${task.action}] ${getAgentTaskDisplayTarget(task)} — ${task.desc}`).join('\n'),
+      });
 
       // Phase-1: Editor — execute each task sequentially
       // P2: derive workspace root from attached files (Copilot: getWorkspaceFolder per-uri)
@@ -970,7 +837,8 @@ async function runActiveChat(
         const editorSessionContext = sessionContextForAgent
           ? [lastAnalysisText, sessionContextForAgent].filter(Boolean).join('\n\n')
           : (lastAnalysisText || undefined);
-        loopResult = await agentKernelService.executePlanned({
+        loopResult = await agentKernelService.executeLegacyPlannedTask({
+          legacyReason: 'checkpoint-resume',
           tasks,
           userPrompt: promptForAgent,
           semanticContract: agentKernelRun.semanticContract,
@@ -1105,7 +973,7 @@ async function runActiveChat(
             },
           },
           analysisContext: editorSessionContext,
-          startFromIndex: resumeFromIndex ?? 0,
+          startFromIndex: checkpointStartFromIndex,
         });
         // P14: persist analysisText from this round for injection into next round's plan
         if (loopResult.analysisText) {

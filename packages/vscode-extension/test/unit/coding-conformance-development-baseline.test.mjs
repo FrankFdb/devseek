@@ -31,10 +31,10 @@ const { CodingKernelExecutionService } = require(bundlePath);
 
 after(() => rmSync(bundleRoot, { recursive: true, force: true }));
 
-test('VS Code legacy Kernel seam probe records that AgentLoopResult cannot settle conformance dimensions', async () => {
+test('VS Code Kernel route probe records that AgentLoopResult cannot settle conformance dimensions', async () => {
   const cases = [
-    { fixtureId: 'create-and-verify', route: 'exploratory' },
-    { fixtureId: 'modify-and-verify', route: 'planned' },
+    { fixtureId: 'create-and-verify', route: 'canonical' },
+    { fixtureId: 'modify-and-verify', route: 'legacy-planned' },
   ];
 
   for (const routeCase of cases) {
@@ -45,21 +45,21 @@ test('VS Code legacy Kernel seam probe records that AgentLoopResult cannot settl
       tasksApplied: 1,
       tasksFailed: 0,
       changedPaths: [...fixture.expected.changeReceipts.flatMap(receipt => receipt.paths)],
-      verificationIds: ['legacy-verification-id'],
+      verificationIds: ['development-verification-id'],
     };
     const service = new CodingKernelExecutionService({
-      async runExploratory(...args) {
-        calls.push({ route: 'exploratory', args });
+      async runCanonical(...args) {
+        calls.push({ route: 'canonical', args });
         return expectedResult;
       },
-      async runPlanned(...args) {
-        calls.push({ route: 'planned', args });
+      async runLegacyPlanned(...args) {
+        calls.push({ route: 'legacy-planned', args });
         return expectedResult;
       },
     });
     const routeOutput = await service.execute(routeInput(routeCase.route, fixture));
     const evaluation = evaluateCodingConformanceFixture(fixture, [
-      observeVsCodeLegacyRoute(fixture, routeOutput),
+      observeVsCodeRouteOutput(fixture, routeOutput),
     ]);
     const vscodeResult = evaluation.surfaceResults.find(result => result.surface === 'vscode');
 
@@ -87,9 +87,10 @@ test('VS Code legacy Kernel seam probe records that AgentLoopResult cannot settl
 });
 
 function routeInput(route, fixture) {
-  if (route === 'planned') {
+  if (route === 'legacy-planned') {
     return {
       route,
+      legacyReason: 'checkpoint-resume',
       tasks: [{ id: 1, action: 'modify', desc: fixture.title }],
       userPrompt: fixture.prompt,
       mode: 'fast',
@@ -100,14 +101,14 @@ function routeInput(route, fixture) {
   return {
     route,
     userPrompt: fixture.prompt,
-    dataFiles: [],
+    contextFiles: [],
     workspaceRoot: '/workspace',
     mode: 'r1',
     callbacks: { executionMode: 'edit' },
   };
 }
 
-function observeVsCodeLegacyRoute(fixture, routeOutput) {
+function observeVsCodeRouteOutput(fixture, routeOutput) {
   return {
     surface: 'vscode',
     adapterId: 'vscode-coding-kernel-execution-development-probe',

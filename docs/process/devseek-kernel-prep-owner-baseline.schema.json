@@ -12,6 +12,7 @@
     "qualification_effect",
     "claims_permitted",
     "asserts_gate_pass",
+    "iteration_policy",
     "gate0",
     "benchmark_basis",
     "product_routes",
@@ -21,23 +22,32 @@
     "baseline_sha256"
   ],
   "properties": {
-    "schema_version": { "const": "devseek.kernel-prep-owner-baseline/v1" },
-    "baseline_id": { "const": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v1" },
+    "schema_version": { "const": "devseek.kernel-prep-owner-baseline/v2" },
+    "baseline_id": { "const": "DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v2" },
     "purpose": { "type": "string", "minLength": 1 },
     "qualification_eligible": { "const": false },
     "qualification_effect": { "const": "NONE" },
     "claims_permitted": { "const": false },
     "asserts_gate_pass": { "const": false },
+    "iteration_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["local_product_convergence_allowed", "qualification_promotion_requires_gate0"],
+      "properties": {
+        "local_product_convergence_allowed": { "const": true },
+        "qualification_promotion_requires_gate0": { "const": true }
+      }
+    },
     "gate0": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["status", "passed", "repository_blockers", "external_authority_blockers", "product_cutover_allowed"],
+      "required": ["status", "passed", "repository_blockers", "external_authority_blockers", "qualification_promotion_allowed"],
       "properties": {
         "status": { "type": "string", "minLength": 1 },
         "passed": { "type": "boolean" },
         "repository_blockers": { "type": "integer", "minimum": 0 },
         "external_authority_blockers": { "type": "integer", "minimum": 0 },
-        "product_cutover_allowed": { "type": "boolean" }
+        "qualification_promotion_allowed": { "type": "boolean" }
       }
     },
     "benchmark_basis": {
@@ -80,7 +90,10 @@
         "product_routes",
         "active_product_routes",
         "headless_product_entrypoints",
+        "canonical_fresh_task_routes",
+        "legacy_recovery_routes",
         "legacy_execution_owners",
+        "cross_surface_kernel_routes",
         "semantic_domains",
         "converged_semantic_domains",
         "source_checks",
@@ -90,7 +103,10 @@
         "product_routes": { "type": "integer", "minimum": 0 },
         "active_product_routes": { "type": "integer", "minimum": 0 },
         "headless_product_entrypoints": { "type": "integer", "minimum": 0 },
+        "canonical_fresh_task_routes": { "type": "integer", "minimum": 0 },
+        "legacy_recovery_routes": { "type": "integer", "minimum": 0 },
         "legacy_execution_owners": { "type": "integer", "minimum": 0 },
+        "cross_surface_kernel_routes": { "type": "integer", "minimum": 0 },
         "semantic_domains": { "type": "integer", "minimum": 0 },
         "converged_semantic_domains": { "type": "integer", "minimum": 0 },
         "source_checks": { "type": "integer", "minimum": 0 },
@@ -117,7 +133,7 @@
           "items": { "type": "string", "minLength": 1 },
           "uniqueItems": true
         },
-        "status": { "enum": ["legacy-semantic-owner", "absent", "unclassified"] }
+        "status": { "enum": ["canonical-surface-route", "legacy-recovery-only", "legacy-semantic-owner", "absent", "unclassified"] }
       }
     },
     "semanticDomain": {

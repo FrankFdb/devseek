@@ -10,10 +10,10 @@ import type {
 
 type AgentRunMode = 'fast' | 'r1' | undefined;
 
-export interface ExploratoryKernelExecutionRequest {
-  readonly route: 'exploratory';
+export interface CanonicalKernelExecutionRequest {
+  readonly route: 'canonical';
   readonly userPrompt: string;
-  readonly dataFiles: string[];
+  readonly contextFiles: string[];
   readonly workspaceRoot: string;
   readonly mode: AgentRunMode;
   readonly callbacks: AgentLoopCallbacks;
@@ -23,8 +23,11 @@ export interface ExploratoryKernelExecutionRequest {
   readonly semanticContract?: TaskSemanticContract;
 }
 
-export interface PlannedKernelExecutionRequest {
-  readonly route: 'planned';
+export type LegacyPlannedExecutionReason = 'checkpoint-resume' | 'local-validation-repair';
+
+export interface LegacyPlannedKernelExecutionRequest {
+  readonly route: 'legacy-planned';
+  readonly legacyReason: LegacyPlannedExecutionReason;
   readonly tasks: AgentTask[];
   readonly userPrompt: string;
   readonly mode: AgentRunMode;
@@ -36,20 +39,20 @@ export interface PlannedKernelExecutionRequest {
 }
 
 export type CodingKernelExecutionRequest =
-  | ExploratoryKernelExecutionRequest
-  | PlannedKernelExecutionRequest;
+  | CanonicalKernelExecutionRequest
+  | LegacyPlannedKernelExecutionRequest;
 
-export type ExploratoryKernelExecutionInput = Omit<ExploratoryKernelExecutionRequest, 'route'>;
-export type PlannedKernelExecutionInput = Omit<PlannedKernelExecutionRequest, 'route'>;
+export type CanonicalKernelExecutionInput = Omit<CanonicalKernelExecutionRequest, 'route'>;
+export type LegacyPlannedKernelExecutionInput = Omit<LegacyPlannedKernelExecutionRequest, 'route'>;
 
 export interface CodingKernelExecutionPort {
   execute(request: CodingKernelExecutionRequest): Promise<AgentLoopResult>;
 }
 
 export interface CodingKernelLoopPorts {
-  runExploratory(
+  runCanonical(
     userPrompt: string,
-    dataFiles: string[],
+    contextFiles: string[],
     workspaceRoot: string,
     mode: AgentRunMode,
     callbacks: AgentLoopCallbacks,
@@ -58,7 +61,7 @@ export interface CodingKernelLoopPorts {
     memoryRelatedPaths: readonly string[],
     semanticContract?: TaskSemanticContract,
   ): Promise<AgentLoopResult>;
-  runPlanned(
+  runLegacyPlanned(
     tasks: AgentTask[],
     userPrompt: string,
     mode: AgentRunMode,
@@ -74,10 +77,10 @@ export class CodingKernelExecutionService implements CodingKernelExecutionPort {
   constructor(private readonly loops: CodingKernelLoopPorts) {}
 
   execute(request: CodingKernelExecutionRequest): Promise<AgentLoopResult> {
-    if (request.route === 'exploratory') {
-      return this.loops.runExploratory(
+    if (request.route === 'canonical') {
+      return this.loops.runCanonical(
         request.userPrompt,
-        request.dataFiles,
+        request.contextFiles,
         request.workspaceRoot,
         request.mode,
         request.callbacks,
@@ -87,8 +90,14 @@ export class CodingKernelExecutionService implements CodingKernelExecutionPort {
         request.semanticContract,
       );
     }
-    if (request.route === 'planned') {
-      return this.loops.runPlanned(
+    if (request.route === 'legacy-planned') {
+      if (
+        request.legacyReason !== 'checkpoint-resume'
+        && request.legacyReason !== 'local-validation-repair'
+      ) {
+        return Promise.reject(new Error('coding-kernel-execution:unsupported-legacy-reason'));
+      }
+      return this.loops.runLegacyPlanned(
         request.tasks,
         request.userPrompt,
         request.mode,

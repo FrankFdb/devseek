@@ -161,17 +161,18 @@ test('AgentKernelService: named request contracts enforce the kernel route', asy
   };
   const kernel = new AgentKernelService({ completeRunContext() {} }, execution);
 
-  await kernel.executeExploratory({
+  await kernel.executeCanonicalTask({
     route: 'legacy-bypass-attempt',
     userPrompt: 'inspect',
-    dataFiles: [],
+    contextFiles: [],
     workspaceRoot: '/repo',
     mode: 'fast',
     callbacks: {},
     workflowMode: 'inspect',
   });
-  await kernel.executePlanned({
+  await kernel.executeLegacyPlannedTask({
     route: 'legacy-bypass-attempt',
+    legacyReason: 'checkpoint-resume',
     tasks: [],
     userPrompt: 'edit',
     mode: 'fast',
@@ -179,7 +180,7 @@ test('AgentKernelService: named request contracts enforce the kernel route', asy
     callbacks: {},
   });
 
-  assert.deepEqual(requests.map(request => request.route), ['exploratory', 'planned']);
+  assert.deepEqual(requests.map(request => request.route), ['canonical', 'legacy-planned']);
   assert.deepEqual(
     requests.map(request => request.semanticContract?.version),
     ['devseek.task-semantic-contract/v3', 'devseek.task-semantic-contract/v3'],
@@ -195,15 +196,17 @@ test('AgentKernelService: extension Surface does not own agent completion decisi
 
   assert.match(extension, /new AgentKernelService\([\s\S]*productCodingKernelExecutor/);
   assert.match(extension, /agentKernelService\.startRun\(/);
-  assert.match(extension, /agentKernelService\.executeExploratory\(/);
-  assert.match(extension, /agentKernelService\.executePlanned\(/);
+  assert.match(extension, /agentKernelService\.decideExecutionRoute\(/);
+  assert.match(extension, /agentKernelService\.executeCanonicalTask\(/);
+  assert.match(extension, /agentKernelService\.executeLegacyPlannedTask\(\{[\s\S]*legacyReason: 'checkpoint-resume'/);
+  assert.doesNotMatch(extension, /hasCodeFiles|AGENT_CODE_FILE_RE/);
   assert.match(extension, /agentKernelRun\.settleAgentLoopResult/);
   assert.match(extension, /agentKernelRun\.failRun/);
   assert.match(extension, /activeChatRunCoordinator\.cancelActiveRun/);
   assert.match(activeRunCoordinator, /state\.agentKernelRun\?\.cancelRun\(data\)/);
   assert.equal(importsKernelLoop(extension), false);
   assert.doesNotMatch(extension, /await\s+runAgent(?:ic)?Loop\s*\(/u);
-  assert.match(localExecutionRunner, /input\.agentKernelService\.executePlanned\(/);
+  assert.match(localExecutionRunner, /input\.agentKernelService\.executeLegacyPlannedTask\(\{[\s\S]*legacyReason: 'local-validation-repair'/);
   assert.equal(importsKernelLoop(localExecutionRunner), false);
   assert.doesNotMatch(localExecutionRunner, /await\s+runAgent(?:ic)?Loop\s*\(/u);
   assert.doesNotMatch(extension, /from '\.\/app\/agent-run-settlement'/);
@@ -214,11 +217,13 @@ test('AgentKernelService: extension Surface does not own agent completion decisi
   assert.match(kernelService, /createDevSeekRunContext\(\{[\s\S]*taskContract/);
   assert.match(kernelService, /semanticContract: request\.semanticContract \?\? resolveTaskSemanticContract\(request\.userPrompt\)/);
   assert.match(kernelService, /this\.execution\.execute\(\{/);
-  assert.match(kernelService, /executeExploratory\([\s\S]*route: 'exploratory'/);
-  assert.match(kernelService, /executePlanned\([\s\S]*route: 'planned'/);
+  assert.match(kernelService, /decideExecutionRoute\([\s\S]*decideCodingKernelRoute\(input\)/);
+  assert.match(kernelService, /executeCanonicalTask\([\s\S]*route: 'canonical'/);
+  assert.match(kernelService, /executeLegacyPlannedTask\([\s\S]*route: 'legacy-planned'/);
+  assert.match(kernelService, /private execute\(request: CodingKernelExecutionRequest\)/);
   assert.match(kernelService, /settleAgentLoopResult\(this\.terminalPermissions, this\.runContext/);
-  assert.match(productExecutor, /runExploratory: runAgenticLoop/);
-  assert.match(productExecutor, /runPlanned: runAgentLoop/);
+  assert.match(productExecutor, /runCanonical: runAgenticLoop/);
+  assert.match(productExecutor, /runLegacyPlanned: runAgentLoop/);
 
   const directImportOwners = listTypeScriptFiles(path.join(rootDir, 'src'))
     .filter(filePath => importsKernelLoop(readFileSync(filePath, 'utf8')))

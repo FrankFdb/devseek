@@ -5,11 +5,16 @@ import { resolveTaskSemanticContract } from '../intent/task-semantic-contract-se
 import type { AgentLoopResult } from '../agent/loop-types';
 import { resolveSemanticExecutionContext } from '../agent/semantic-execution-context';
 import type {
+  CanonicalKernelExecutionInput,
   CodingKernelExecutionPort,
   CodingKernelExecutionRequest,
-  ExploratoryKernelExecutionInput,
-  PlannedKernelExecutionInput,
+  LegacyPlannedKernelExecutionInput,
 } from './coding-kernel-execution';
+import {
+  decideCodingKernelRoute,
+  type CodingKernelRouteDecision,
+  type CodingKernelCheckpointResume,
+} from './coding-kernel-route-decision';
 import { settleAgentLoopResult, type AgentRunSettlement } from './agent-run-settlement';
 import {
   createDevSeekRunContext,
@@ -47,24 +52,28 @@ export class AgentKernelService {
     private readonly execution: CodingKernelExecutionPort,
   ) {}
 
-  execute(request: CodingKernelExecutionRequest): Promise<AgentLoopResult> {
+  decideExecutionRoute(input: { readonly checkpoint?: CodingKernelCheckpointResume }): CodingKernelRouteDecision {
+    return decideCodingKernelRoute(input);
+  }
+
+  executeCanonicalTask(request: CanonicalKernelExecutionInput): Promise<AgentLoopResult> {
+    return this.execute({
+      ...request,
+      route: 'canonical',
+    });
+  }
+
+  executeLegacyPlannedTask(request: LegacyPlannedKernelExecutionInput): Promise<AgentLoopResult> {
+    return this.execute({
+      ...request,
+      route: 'legacy-planned',
+    });
+  }
+
+  private execute(request: CodingKernelExecutionRequest): Promise<AgentLoopResult> {
     return this.execution.execute({
       ...request,
       semanticContract: request.semanticContract ?? resolveTaskSemanticContract(request.userPrompt),
-    });
-  }
-
-  executeExploratory(request: ExploratoryKernelExecutionInput): Promise<AgentLoopResult> {
-    return this.execute({
-      ...request,
-      route: 'exploratory',
-    });
-  }
-
-  executePlanned(request: PlannedKernelExecutionInput): Promise<AgentLoopResult> {
-    return this.execute({
-      ...request,
-      route: 'planned',
     });
   }
 

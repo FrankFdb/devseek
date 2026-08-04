@@ -3,17 +3,18 @@
 # DevSeek Kernel Prep Owner Baseline
 
 - Gate 0: `NOT_PASSED`
-- Product cutover allowed: `false`
+- Local product convergence allowed: `true`
+- Qualification promotion allowed: `false`
 - Qualification effect: `NONE`
 - Headless product entrypoints: `0`
-- Legacy execution owners: `3`
+- Legacy execution owners: `2`
 
 ## Product Routes
 
 | Surface | Route | Current chain | Status |
 | --- | --- | --- | --- |
-| vscode | vscode-exploratory | AgentKernelService -> CodingKernelExecutionService -> runAgenticLoop | legacy-semantic-owner |
-| vscode | vscode-planned | AgentKernelService -> CodingKernelExecutionService -> runAgentLoop | legacy-semantic-owner |
+| vscode | vscode-fresh-task | AgentKernelService -> CodingKernelExecutionService -> runAgenticLoop | canonical-surface-route |
+| vscode | vscode-checkpoint-resume | AgentKernelService -> CodingKernelExecutionService -> runAgentLoop | legacy-recovery-only |
 | cli | cli-exec | AgentApplicationService -> CliLegacyCodingLoop | legacy-semantic-owner |
 | headless | headless-product |  | absent |
 
@@ -27,4 +28,4 @@
 | verification | vscode-ValidationService, cli-CliVerificationService | headless | 1 | not-converged |
 | completion-decision | vscode-TerminalPermissionCoordinator, cli-runPrompt-and-CliRunEvidence | headless | 1 | not-converged |
 
-This is a non-qualification, pre-cutover architecture baseline. It does not assert a unified Coding Kernel or Gate 0 pass.
+This is a non-qualification architecture convergence baseline. It does not assert a unified cross-Surface Coding Kernel or Gate 0 pass.

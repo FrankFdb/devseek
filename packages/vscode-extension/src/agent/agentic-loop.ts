@@ -1,9 +1,8 @@
 /**
- * Agentic free-explore loop.
+ * Canonical agentic loop.
  *
- * This module owns the Claude Code/Codex-style ReAct loop used when there are
- * no explicit code attachments. Keeping it out of agent-loop.ts prevents the
- * two-phase Architect+Editor pipeline from sharing stateful tool-loop concerns.
+ * This module owns the Claude Code/Codex-style ReAct loop used for every new
+ * task. Attached files contribute context; they never select another executor.
  */
 
 import * as vscode from 'vscode';
@@ -280,9 +279,8 @@ function normalizeAgenticAutoValidation(input: {
 }
 
 // ----------------------------------------------------------------
-// Agentic free-explore loop (Claude Code style)
-// Used when user has no code file attachments — skips Architect+Editor
-// two-phase pipeline and lets the LLM drive exploration directly.
+// Canonical agentic loop (Claude Code/Codex style)
+// New tasks share one executor regardless of attached context shape.
 // ----------------------------------------------------------------
 
 /** Normal mode ≈ Copilot's toolCallLimit ~25; autopilot mode ≈ Copilot's ~200. */
@@ -319,10 +317,10 @@ function buildRepeatedContextToolFeedback(tool: ReturnType<typeof parseFakeToolC
   ].join('\n');
 }
 
-/** Agentic free-explore loop: Claude Code-style single-phase ReAct cycle. */
+/** Canonical agentic loop: a single-phase tool cycle for every new task. */
 export async function runAgenticLoop(
   userPrompt: string,
-  dataFiles: string[],          // non-code files attached by user (.log/.csv/etc.)
+  contextFiles: string[],
   workspaceRoot: string,
   mode: 'fast' | 'r1' | undefined,
   callbacks: AgentLoopCallbacks,
@@ -337,7 +335,7 @@ export async function runAgenticLoop(
     callbacks,
     semanticContract,
     workspaceRoots: [workspaceRoot],
-    relatedPaths: [...dataFiles, ...memoryRelatedPaths],
+    relatedPaths: [...contextFiles, ...memoryRelatedPaths],
   });
   const groundedMarkdown = await tryRunGroundedMarkdownAgenticTask(
     userPrompt,
@@ -346,7 +344,7 @@ export async function runAgenticLoop(
     workflowMode,
     writeAuthority.callbacks,
     chatWithMessages,
-    dataFiles,
+    contextFiles,
     sessionContextText,
     writeAuthority.semanticContract,
   );
@@ -355,7 +353,7 @@ export async function runAgenticLoop(
   const rules = writeAuthority.projectInstructionsText || null;
   const memory = getProjectMemorySync({
     prompt: userPrompt,
-    relatedPaths: [...new Set([...dataFiles, ...memoryRelatedPaths].filter(Boolean))],
+    relatedPaths: [...new Set([...contextFiles, ...memoryRelatedPaths].filter(Boolean))],
   });
 
   const effectiveTaskIntent = routeTaskSemanticContract(
@@ -364,7 +362,7 @@ export async function runAgenticLoop(
   const systemPrompt = buildAgenticSystemPrompt(
     userPrompt,
     workspaceRoot,
-    dataFiles,
+    contextFiles,
     callbacks.mcpToolRefs,
     rules ?? undefined,
     memory ?? undefined,

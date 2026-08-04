@@ -57,7 +57,7 @@ export interface LocalExecutionChatRunnerInput {
   routeChat: (opts: LocalExecutionRouteChatOptions) => Promise<string>;
   toolPolicy: ToolPolicy;
   terminalPermissionCoordinator: TerminalPermissionCoordinator;
-  agentKernelService: Pick<AgentKernelService, 'executePlanned'>;
+  agentKernelService: Pick<AgentKernelService, 'executeLegacyPlannedTask'>;
   traceRunId: string;
   traceEvidenceParticipantToken: string;
   onTraceEvidenceError: (error: unknown) => void;
@@ -419,7 +419,8 @@ async function runAgentRepairRound(
     taskTotal: repairTasks.length,
   }));
 
-  const repairLoop = await input.agentKernelService.executePlanned({
+  const repairLoop = await input.agentKernelService.executeLegacyPlannedTask({
+    legacyReason: 'local-validation-repair',
     tasks: repairTasks,
     userPrompt: repairPromptWithHint,
     mode: input.mode,

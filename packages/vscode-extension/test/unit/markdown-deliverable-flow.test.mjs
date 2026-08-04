@@ -921,7 +921,7 @@ for (const scenario of [
   {
     name: 'explicit grounded report remains on verifier with unrelated session context',
     setup(workspace) {
-      return { dataFiles: [], sessionContextText: '上一轮讨论的是无关的普通文档，请继续当前明确任务。' };
+      return { contextFiles: [], sessionContextText: '上一轮讨论的是无关的普通文档，请继续当前明确任务。' };
     },
   },
   {
@@ -929,7 +929,7 @@ for (const scenario of [
     setup(workspace) {
       const attachment = path.join(workspace.root, 'notes.log');
       writeFileSync(attachment, 'untrusted supplemental note: timeout=30000\n');
-      return { dataFiles: [attachment], sessionContextText: '' };
+      return { contextFiles: [attachment], sessionContextText: '' };
     },
   },
 ]) {
@@ -946,7 +946,7 @@ for (const scenario of [
     try {
       const result = await runAgenticLoop(
         workspace.prompt,
-        routeInput.dataFiles,
+        routeInput.contextFiles,
         workspace.root,
         'fast',
         io.callbacks,

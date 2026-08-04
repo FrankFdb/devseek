@@ -29,7 +29,7 @@
     },
     "top_agent_quality_principles_16": {
       "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
-      "source_sha256": "4c087b4378f07e385795a26989820be69904c90ada6f7ea415365b69efb28ea6"
+      "source_sha256": "364d23269905679c8025018cbde33ac2438c7643e5e8729473d6ec24ad2249f8"
     },
     "r3_closeout_next_phase_20": {
       "path": "docs/top-agent-convergence-audit-20260711/archive/20-R3收尾与下一阶段任务.md",
@@ -64,8 +64,8 @@
     },
     "post_r4_local_regression_manifest": {
       "path": "docs/process/devseek-post-r4-local-regression-manifest.json",
-      "source_sha256": "2df085df2b9581786f1c70d053f41460b40b855c8f343a751431ec906e6a44e3",
-      "manifest_sha256": "8cece1628584956f1897f0d0d839820d08954e0eee65495c9ea8d3ace5b29d7b",
+      "source_sha256": "bb47d8534d55dccbdb383f5ac84a6b5e064829b949b276cd40db60c8de334e1b",
+      "manifest_sha256": "bfa839731f3cdfef33e2a0c06c5491e87a71ea9b48d24ccd02745b285f851814",
       "covered_nonpermission_items": [
         "NP-05",
         "NP-06",
@@ -164,7 +164,7 @@
       "document_id": "quality-principles-16",
       "path": "docs/top-agent-convergence-audit-20260711/16-顶级编程智能体收敛迭代原则质量标准与Skills规划.md",
       "role": "iteration-principles-quality-standards-and-skills-plan",
-      "source_sha256": "4c087b4378f07e385795a26989820be69904c90ada6f7ea415365b69efb28ea6"
+      "source_sha256": "364d23269905679c8025018cbde33ac2438c7643e5e8729473d6ec24ad2249f8"
     },
     {
       "document_id": "r3-handoff-20",
@@ -441,5 +441,5 @@
     "gate_pass_assertions": 0,
     "bypasses": 0
   },
-  "index_sha256": "b03aae2038d186b205ee2207324597cf9fa632a38369f65d95651c8e0733485f"
+  "index_sha256": "92abb502cc4c8dfff83ceca9995cfc3d831e6bc41b02349f5ad46c9aea2e6987"
 }

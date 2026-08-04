@@ -33,7 +33,7 @@
       "boundary": "CLI composition root and process lifecycle"
     },
     "packages/vscode-extension/src/extension.ts": {
-      "maxLines": 2014,
+      "maxLines": 1882,
       "targetLines": 1024,
       "boundary": "VS Code composition root and Surface Adapter"
     },

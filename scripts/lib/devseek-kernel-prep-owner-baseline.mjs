@@ -3,8 +3,8 @@ import {
   sha256Object,
 } from './devseek-capability-ledger.mjs';
 
-export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v1';
-export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v1';
+export const KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION = 'devseek.kernel-prep-owner-baseline/v2';
+export const KERNEL_PREP_OWNER_BASELINE_ID = 'DEVSEEK-KERNEL-PREP-OWNER-BASELINE/v2';
 
 const SOURCE_PATHS = Object.freeze({
   gate0: 'docs/process/devseek-gate0-decision-report.json',
@@ -27,6 +27,7 @@ const SOURCE_PATHS = Object.freeze({
   productExecutor: 'packages/vscode-extension/src/product-coding-kernel-executor.ts',
   kernelService: 'packages/vscode-extension/src/app/agent-kernel-service.ts',
   kernelExecution: 'packages/vscode-extension/src/app/coding-kernel-execution.ts',
+  kernelRouteDecision: 'packages/vscode-extension/src/app/coding-kernel-route-decision.ts',
   taskContract: 'packages/vscode-extension/src/agent/task-contract.ts',
   safetyIntent: 'packages/vscode-extension/src/intent/safety-intent.ts',
   agenticLoop: 'packages/vscode-extension/src/agent/agentic-loop.ts',
@@ -93,7 +94,7 @@ const SOURCE_CHECKS = Object.freeze([
     'evaluation.productRouteEvidenceComplete, false',
   ]),
   check('vscode-coding-conformance-development-probe', SOURCE_PATHS.vscodeCodingConformanceProbe, [
-    'VS Code legacy Kernel seam probe records that AgentLoopResult cannot settle conformance dimensions',
+    'VS Code Kernel route probe records that AgentLoopResult cannot settle conformance dimensions',
     "adapterId: 'vscode-coding-kernel-execution-development-probe'",
     "evidenceClass: 'development-route-replay'",
     "unavailable('taskContract'",
@@ -108,9 +109,16 @@ const SOURCE_CHECKS = Object.freeze([
     'new ActiveChatRunCoordinator()',
     'activeChatRunCoordinator.startRun({',
     'activeRun.bindAgentKernelRun(agentKernelRun)',
+    'agentKernelService.decideExecutionRoute({',
+    'agentKernelService.executeCanonicalTask({',
+    'agentKernelService.executeLegacyPlannedTask({',
+  ], [
+    'let activeChatAbortController',
+    'let activeAgentKernelRun',
+    'activeAgentSteerQueue',
     'agentKernelService.executeExploratory({',
     'agentKernelService.executePlanned({',
-  ], ['let activeChatAbortController', 'let activeAgentKernelRun', 'activeAgentSteerQueue']),
+  ]),
   check('vscode-active-run-lifecycle-owner', SOURCE_PATHS.activeChatRun, [
     'export class ActiveChatRunCoordinator',
     'cancelActiveRun(data',
@@ -174,18 +182,35 @@ const SOURCE_CHECKS = Object.freeze([
     'cancelActiveRun: (data?: Record<string, unknown>) => void',
     "this.deps.cancelActiveRun({ reason: 'user-cancelled'",
   ], ['getActiveChatAbortController', 'setActiveChatAbortController', 'cancelActiveAgentRun']),
-  check('vscode-dual-legacy-loop-adapter', SOURCE_PATHS.productExecutor, [
+  check('vscode-canonical-and-legacy-recovery-adapter', SOURCE_PATHS.productExecutor, [
     "import { runAgentLoop } from './agent-loop'",
     "import { runAgenticLoop } from './agent/agentic-loop'",
-    'runExploratory: runAgenticLoop',
-    'runPlanned: runAgentLoop',
+    'runCanonical: runAgenticLoop',
+    'runLegacyPlanned: runAgentLoop',
   ]),
-  check('vscode-route-split', SOURCE_PATHS.kernelExecution, [
-    "request.route === 'exploratory'",
-    "request.route === 'planned'",
+  check('vscode-kernel-execution-route-boundary', SOURCE_PATHS.kernelExecution, [
+    "request.route === 'canonical'",
+    "request.route === 'legacy-planned'",
+    "request.legacyReason !== 'checkpoint-resume'",
+    "request.legacyReason !== 'local-validation-repair'",
+    'coding-kernel-execution:unsupported-legacy-reason',
+  ]),
+  check('vscode-attachment-invariant-route-owner', SOURCE_PATHS.kernelRouteDecision, [
+    "CODING_KERNEL_ROUTE_DECISION_VERSION = 'devseek.coding-kernel-route-decision/v1'",
+    'export function decideCodingKernelRoute(',
+    "route: 'canonical'",
+    "reason: 'new-task'",
+    "route: 'legacy-planned'",
+    "reason: 'checkpoint-resume'",
+    'coding-kernel-route:invalid-checkpoint-resume',
+  ], [
+    'contextFiles',
+    'attachments',
+    'AGENT_CODE_FILE_RE',
   ]),
   check('vscode-task-contract-owner', SOURCE_PATHS.kernelService, [
-    'buildTaskContract(input.userPrompt)',
+    'resolveSemanticExecutionContext({',
+    'const taskContract = input.taskContract ?? semanticContract.taskContract',
     'settleAgentLoopResult(this.terminalPermissions, this.runContext',
   ]),
   check('vscode-task-contract-builder', SOURCE_PATHS.taskContract, [
@@ -264,17 +289,21 @@ export function buildKernelPrepOwnerBaseline(sources) {
   const baseline = {
     schema_version: KERNEL_PREP_OWNER_BASELINE_SCHEMA_VERSION,
     baseline_id: KERNEL_PREP_OWNER_BASELINE_ID,
-    purpose: 'Freeze the real pre-cutover semantic owners and missing product surfaces without asserting a Coding Kernel qualification.',
+    purpose: 'Track product-route and semantic-owner convergence without asserting qualification or coupling local iteration to Gate 0.',
     qualification_eligible: false,
     qualification_effect: 'NONE',
     claims_permitted: false,
     asserts_gate_pass: false,
+    iteration_policy: {
+      local_product_convergence_allowed: true,
+      qualification_promotion_requires_gate0: true,
+    },
     gate0: {
       status: sources.gate0.qualification?.status ?? 'UNKNOWN',
       passed: sources.gate0.qualification?.gate_passed === true,
       repository_blockers: Number(sources.gate0.counts?.repository_pending_blockers ?? -1),
       external_authority_blockers: Number(sources.gate0.counts?.external_authority_blockers ?? -1),
-      product_cutover_allowed: sources.gate0.qualification?.gate_passed === true,
+      qualification_promotion_allowed: sources.gate0.qualification?.gate_passed === true,
     },
     benchmark_basis: {
       competitors: ['Codex', 'Claude Code'],
@@ -293,7 +322,10 @@ export function buildKernelPrepOwnerBaseline(sources) {
       product_routes: 4,
       active_product_routes: headlessProductEntrypoints === 0 ? 3 : 4,
       headless_product_entrypoints: headlessProductEntrypoints,
-      legacy_execution_owners: 3,
+      canonical_fresh_task_routes: 1,
+      legacy_recovery_routes: 1,
+      legacy_execution_owners: 2,
+      cross_surface_kernel_routes: 0,
       semantic_domains: 5,
       converged_semantic_domains: 0,
       source_checks: sourceChecks.length,
@@ -329,8 +361,14 @@ export function validateKernelPrepOwnerBaseline(baseline, sources) {
   for (const assertion of baseline.source_checks ?? []) {
     if (assertion.passed !== true) errors.push(`source-check:failed-${assertion.check_id}`);
   }
-  if (baseline.gate0?.passed !== false || baseline.gate0?.product_cutover_allowed !== false) {
-    errors.push('gate0:unexpected-product-cutover-permission');
+  if (baseline.gate0?.passed !== false || baseline.gate0?.qualification_promotion_allowed !== false) {
+    errors.push('gate0:unexpected-qualification-promotion-permission');
+  }
+  if (baseline.iteration_policy?.local_product_convergence_allowed !== true) {
+    errors.push('iteration-policy:local-product-convergence-must-remain-allowed');
+  }
+  if (baseline.iteration_policy?.qualification_promotion_requires_gate0 !== true) {
+    errors.push('iteration-policy:qualification-promotion-must-require-gate0');
   }
   if (baseline.counts?.headless_product_entrypoints !== 0) {
     errors.push(`headless:unexpected-product-entrypoints-${baseline.counts?.headless_product_entrypoints}`);
@@ -349,10 +387,14 @@ export function validateKernelPrepOwnerBaseline(baseline, sources) {
     errors,
     summary: {
       gate0_status: baseline.gate0?.status ?? null,
-      product_cutover_allowed: baseline.gate0?.product_cutover_allowed ?? null,
+      local_product_convergence_allowed: baseline.iteration_policy?.local_product_convergence_allowed ?? null,
+      qualification_promotion_allowed: baseline.gate0?.qualification_promotion_allowed ?? null,
       active_product_routes: baseline.counts?.active_product_routes ?? null,
       headless_product_entrypoints: baseline.counts?.headless_product_entrypoints ?? null,
+      canonical_fresh_task_routes: baseline.counts?.canonical_fresh_task_routes ?? null,
+      legacy_recovery_routes: baseline.counts?.legacy_recovery_routes ?? null,
       legacy_execution_owners: baseline.counts?.legacy_execution_owners ?? null,
+      cross_surface_kernel_routes: baseline.counts?.cross_surface_kernel_routes ?? null,
       converged_semantic_domains: baseline.counts?.converged_semantic_domains ?? null,
       failed_source_checks: baseline.counts?.failed_source_checks ?? null,
       qualification_effect: baseline.qualification_effect ?? null,
@@ -367,7 +409,8 @@ export function renderKernelPrepOwnerBaselineMarkdown(baseline) {
     '# DevSeek Kernel Prep Owner Baseline',
     '',
     `- Gate 0: \`${baseline.gate0.status}\``,
-    `- Product cutover allowed: \`${baseline.gate0.product_cutover_allowed}\``,
+    `- Local product convergence allowed: \`${baseline.iteration_policy.local_product_convergence_allowed}\``,
+    `- Qualification promotion allowed: \`${baseline.gate0.qualification_promotion_allowed}\``,
     `- Qualification effect: \`${baseline.qualification_effect}\``,
     `- Headless product entrypoints: \`${baseline.counts.headless_product_entrypoints}\``,
     `- Legacy execution owners: \`${baseline.counts.legacy_execution_owners}\``,
@@ -388,7 +431,7 @@ export function renderKernelPrepOwnerBaselineMarkdown(baseline) {
       `| ${domain.domain_id} | ${domain.current_owners.map(owner => owner.owner_id).join(', ')} | ${domain.missing_surfaces.join(', ') || '-'} | ${domain.target_owner_count} | ${domain.convergence_status} |`
     )),
     '',
-    'This is a non-qualification, pre-cutover architecture baseline. It does not assert a unified Coding Kernel or Gate 0 pass.',
+    'This is a non-qualification architecture convergence baseline. It does not assert a unified cross-Surface Coding Kernel or Gate 0 pass.',
     '',
   ];
   return lines.join('\n');
@@ -412,16 +455,16 @@ function sourceCheckPassed(assertion, source) {
 function buildProductRoutes(headlessProductEntrypoints) {
   return [
     {
-      route_id: 'vscode-exploratory',
+      route_id: 'vscode-fresh-task',
       surface: 'vscode',
       current_chain: ['AgentKernelService', 'CodingKernelExecutionService', 'runAgenticLoop'],
-      status: 'legacy-semantic-owner',
+      status: 'canonical-surface-route',
     },
     {
-      route_id: 'vscode-planned',
+      route_id: 'vscode-checkpoint-resume',
       surface: 'vscode',
       current_chain: ['AgentKernelService', 'CodingKernelExecutionService', 'runAgentLoop'],
-      status: 'legacy-semantic-owner',
+      status: 'legacy-recovery-only',
     },
     {
       route_id: 'cli-exec',

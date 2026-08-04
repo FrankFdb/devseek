@@ -27,16 +27,16 @@ const { CodingKernelExecutionService } = req(bundlePath);
 
 after(() => rmSync(tempRoot, { recursive: true, force: true }));
 
-test('CodingKernelExecutionService routes exploratory work through the single kernel port', async () => {
+test('CodingKernelExecutionService routes new work through the canonical kernel port', async () => {
   const calls = [];
-  const expected = result('exploratory');
+  const expected = result('canonical');
   const loops = {
-    async runExploratory(...args) {
+    async runCanonical(...args) {
       calls.push(args);
       return expected;
     },
-    async runPlanned() {
-      throw new Error('planned loop must not run');
+    async runLegacyPlanned() {
+      throw new Error('legacy planned loop must not run');
     },
   };
   const callbacks = { executionMode: 'inspect' };
@@ -44,9 +44,9 @@ test('CodingKernelExecutionService routes exploratory work through the single ke
   const service = new CodingKernelExecutionService(loops);
 
   const actual = await service.execute({
-    route: 'exploratory',
+    route: 'canonical',
     userPrompt: 'inspect the repository',
-    dataFiles: ['build.log'],
+    contextFiles: ['src/main.ts', 'build.log'],
     workspaceRoot: '/workspace',
     mode: 'r1',
     callbacks,
@@ -59,7 +59,7 @@ test('CodingKernelExecutionService routes exploratory work through the single ke
   assert.equal(actual, expected);
   assert.deepEqual(calls, [[
     'inspect the repository',
-    ['build.log'],
+    ['src/main.ts', 'build.log'],
     '/workspace',
     'r1',
     callbacks,
@@ -70,14 +70,14 @@ test('CodingKernelExecutionService routes exploratory work through the single ke
   ]]);
 });
 
-test('CodingKernelExecutionService routes planned work through the same kernel port', async () => {
+test('CodingKernelExecutionService restricts planned work to an explicit legacy reason', async () => {
   const calls = [];
-  const expected = result('planned');
+  const expected = result('legacy-planned');
   const loops = {
-    async runExploratory() {
-      throw new Error('exploratory loop must not run');
+    async runCanonical() {
+      throw new Error('canonical loop must not run');
     },
-    async runPlanned(...args) {
+    async runLegacyPlanned(...args) {
       calls.push(args);
       return expected;
     },
@@ -89,7 +89,8 @@ test('CodingKernelExecutionService routes planned work through the same kernel p
   const service = new CodingKernelExecutionService(loops);
 
   const actual = await service.execute({
-    route: 'planned',
+    route: 'legacy-planned',
+    legacyReason: 'checkpoint-resume',
     tasks,
     userPrompt: 'fix src/main.ts',
     mode: 'fast',
@@ -115,13 +116,32 @@ test('CodingKernelExecutionService routes planned work through the same kernel p
 
 test('CodingKernelExecutionService fails closed on an unknown route', async () => {
   const service = new CodingKernelExecutionService({
-    async runExploratory() { return result('exploratory'); },
-    async runPlanned() { return result('planned'); },
+    async runCanonical() { return result('canonical'); },
+    async runLegacyPlanned() { return result('legacy-planned'); },
   });
 
   await assert.rejects(
     service.execute({ route: 'legacy-surface-bypass' }),
     /coding-kernel-execution:unsupported-route/u,
+  );
+});
+
+test('CodingKernelExecutionService fails closed on an unknown legacy reason', async () => {
+  const service = new CodingKernelExecutionService({
+    async runCanonical() { return result('canonical'); },
+    async runLegacyPlanned() { return result('legacy-planned'); },
+  });
+
+  await assert.rejects(
+    service.execute({
+      route: 'legacy-planned',
+      legacyReason: 'fresh-task-bypass',
+      tasks: [],
+      userPrompt: 'edit',
+      workspaceRoot: { fsPath: '/workspace' },
+      callbacks: {},
+    }),
+    /coding-kernel-execution:unsupported-legacy-reason/u,
   );
 });
 

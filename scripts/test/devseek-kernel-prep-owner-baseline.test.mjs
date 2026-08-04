@@ -28,28 +28,35 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
   assert.equal(actual.qualification_effect, 'NONE');
   assert.equal(actual.claims_permitted, false);
   assert.equal(actual.asserts_gate_pass, false);
+  assert.deepEqual(actual.iteration_policy, {
+    local_product_convergence_allowed: true,
+    qualification_promotion_requires_gate0: true,
+  });
   assert.deepEqual(actual.gate0, {
     status: 'NOT_PASSED',
     passed: false,
     repository_blockers: 0,
     external_authority_blockers: 6,
-    product_cutover_allowed: false,
+    qualification_promotion_allowed: false,
   });
   assert.deepEqual(actual.counts, {
     product_routes: 4,
     active_product_routes: 3,
     headless_product_entrypoints: 0,
-    legacy_execution_owners: 3,
+    canonical_fresh_task_routes: 1,
+    legacy_recovery_routes: 1,
+    legacy_execution_owners: 2,
+    cross_surface_kernel_routes: 0,
     semantic_domains: 5,
     converged_semantic_domains: 0,
-    source_checks: 34,
+    source_checks: 35,
     failed_source_checks: 0,
   });
   assert.deepEqual(
     actual.product_routes.map(route => [route.route_id, route.status]),
     [
-      ['vscode-exploratory', 'legacy-semantic-owner'],
-      ['vscode-planned', 'legacy-semantic-owner'],
+      ['vscode-fresh-task', 'canonical-surface-route'],
+      ['vscode-checkpoint-resume', 'legacy-recovery-only'],
       ['cli-exec', 'legacy-semantic-owner'],
       ['headless-product', 'absent'],
     ],
@@ -106,20 +113,20 @@ test('coding conformance preparation has no product-route imports or adapters', 
   assert.deepEqual(hits, []);
 });
 
-test('kernel prep owner baseline fails closed when a declared legacy execution route drifts', () => {
+test('kernel prep owner baseline fails closed when the legacy recovery adapter drifts', () => {
   const mutatedSources = structuredClone(sources);
   const sourcePath = 'packages/vscode-extension/src/product-coding-kernel-executor.ts';
   mutatedSources.sourceContents[sourcePath] = mutatedSources.sourceContents[sourcePath]
-    .replace('runPlanned: runAgentLoop,', 'runPlanned: unknownLoop,');
+    .replace('runLegacyPlanned: runAgentLoop,', 'runLegacyPlanned: unknownLoop,');
 
   const mutated = buildKernelPrepOwnerBaseline(mutatedSources);
   const result = validateKernelPrepOwnerBaseline(mutated, mutatedSources);
 
   assert.equal(result.ok, false);
-  assert.ok(result.errors.includes('source-check:failed-vscode-dual-legacy-loop-adapter'));
+  assert.ok(result.errors.includes('source-check:failed-vscode-canonical-and-legacy-recovery-adapter'));
 });
 
-test('kernel prep owner baseline refuses to turn a local Gate 0 mutation into cutover permission', () => {
+test('kernel prep owner baseline refuses to turn a local Gate 0 mutation into qualification promotion', () => {
   const mutatedSources = structuredClone(sources);
   mutatedSources.gate0.qualification.status = 'PASS';
   mutatedSources.gate0.qualification.gate_passed = true;
@@ -128,7 +135,7 @@ test('kernel prep owner baseline refuses to turn a local Gate 0 mutation into cu
   const result = validateKernelPrepOwnerBaseline(mutated, mutatedSources);
 
   assert.equal(result.ok, false);
-  assert.ok(result.errors.includes('gate0:unexpected-product-cutover-permission'));
+  assert.ok(result.errors.includes('gate0:unexpected-qualification-promotion-permission'));
 });
 
 test('kernel prep owner baseline checker validates the current generated artifacts', async () => {
@@ -142,10 +149,14 @@ test('kernel prep owner baseline checker validates the current generated artifac
   assert.equal(result.ok, true, JSON.stringify(result.errors, null, 2));
   assert.deepEqual(result.summary, {
     gate0_status: 'NOT_PASSED',
-    product_cutover_allowed: false,
+    local_product_convergence_allowed: true,
+    qualification_promotion_allowed: false,
     active_product_routes: 3,
     headless_product_entrypoints: 0,
-    legacy_execution_owners: 3,
+    canonical_fresh_task_routes: 1,
+    legacy_recovery_routes: 1,
+    legacy_execution_owners: 2,
+    cross_surface_kernel_routes: 0,
     converged_semantic_domains: 0,
     failed_source_checks: 0,
     qualification_effect: 'NONE',

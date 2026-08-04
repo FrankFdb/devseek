@@ -443,29 +443,24 @@ test('R3-03 shared write authority publishes steer semantic contract revision re
   assert.ok(authority.semanticContractRevision.pendingTaskHints.some(item => item.includes('new.txt')));
 });
 
-test('two-phase agent history is evidence based, not extension-level thin summary', () => {
+test('canonical agent history and completion are evidence based', () => {
   const extensionSource = readFileSync(path.join(rootDir, 'src/extension.ts'), 'utf8');
 
   assert.match(extensionSource, /agentHistoryText\s*=\s*loopResult\.historyText/, 'extension must persist agent-loop evidence history');
   assert.match(
     extensionSource,
-    /state:\s*'failed',\s*title:\s*'任务计划生成失败'/,
-    'plan generation failure must be recorded as failed, never completed',
+    /const agSettlement\s*=\s*agentKernelRun\.settleAgentLoopResult\(agResult,\s*agRunChangedPaths\)/,
+    'fresh canonical tasks must settle from loop evidence through the Kernel run boundary',
   );
   assert.match(
     extensionSource,
-    /agentKernelRun\.failRun\(\{[\s\S]{0,160}reason:\s*'plan-generation-failed'/,
-    'plan generation failure must close the run context as failed through the convergence boundary',
+    /const agDurablyCompleted\s*=\s*agSettlement\.completed/,
+    'display and persistence must use the durable settlement result',
   );
   assert.doesNotMatch(
     extensionSource,
-    /state:\s*'completed',\s*title:\s*'任务计划生成失败'/,
-    'plan failure status must not be reported as completed',
-  );
-  assert.doesNotMatch(
-    extensionSource,
-    /phase:\s*'done',\s*state:\s*'completed',\s*title:\s*'执行结束（无可执行计划）'/,
-    'no-plan terminal status must not be reported as completed',
+    /completed:\s*(?:true|agResult\.tasksFailed\s*===\s*0)/,
+    'extension must not infer completion without Kernel evidence settlement',
   );
   assert.doesNotMatch(
     extensionSource,

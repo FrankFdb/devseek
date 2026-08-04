@@ -10,7 +10,7 @@ import { buildFullFileWriteToolPrompt, buildReplaceInFileToolPrompt } from './to
 export function buildAgenticSystemPrompt(
   userPrompt: string,
   workspaceRoot: string,
-  dataFiles: string[],
+  contextFiles: string[],
   mcpTools?: McpToolRef[],
   projectRulesText?: string,
   projectMemoryText?: string,
@@ -20,8 +20,8 @@ export function buildAgenticSystemPrompt(
   const taskIntent = resolvedTaskIntent ?? routeTaskIntent(userPrompt);
   const rulesSection = projectRulesText ? `\n${wrapRulesAsContext(projectRulesText)}\n` : '';
   const memSection = projectMemoryText ? `\n${wrapMemoryAsContext(projectMemoryText)}\n` : '';
-  const filesSection = dataFiles.length > 0
-    ? `\n【已附加文件】\n${dataFiles.map(file => `- ${file}`).join('\n')}\n`
+  const filesSection = contextFiles.length > 0
+    ? `\n【上下文文件】\n${contextFiles.map(file => `- ${file}`).join('\n')}\n`
     : '';
 
   let mcpSection = '';
