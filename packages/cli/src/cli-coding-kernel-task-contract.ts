@@ -6,9 +6,9 @@ import {
 
 const RELEASE_REQUEST_RE = /(?:\brelease\b|\bpublish\b|\bpackage\b|\bdeploy\b|发布|发版|打包|部署)/iu;
 const REVIEW_REQUEST_RE = /(?:\breview\b|\baudit\b|\binspect\b|\banaly[sz]e\b|审查|审计|检查|分析)/iu;
-const CHANGE_REQUEST_RE = /(?:\bcreate\b|\bwrite\b|\bimplement\b|\bfix\b|\brepair\b|\bmodify\b|\bupdate\b|\brefactor\b|\bapply\b|\bpatch\b|创建|编写|实现|修复|修改|更新|重构|应用|打补丁)/iu;
+const CHANGE_REQUEST_RE = /(?:\badd\b|\bcreate\b|\bwrite\b|\bimplement\b|\bfix\b|\brepair\b|\brecover(?:y)?\b|\bmodify\b|\bupdate\b|\brefactor\b|\bapply\b|\bpatch\b|添加|新增|创建|编写|实现|修复|恢复|修改|更新|重构|应用|打补丁)/iu;
 const NON_MUTATING_REQUEST_RE = /(?:\breview\b|\baudit\b|\binspect\b|\banaly[sz]e\b|\bexplain\b|\bdescribe\b|\bhow\b|\bwhy\b|\bwhat\b|审查|审计|检查|分析|解释|说明|如何|为什么|什么)/iu;
-const MUTATION_VERB_PATTERN = '(release|publish|package|deploy|create|write|implement|fix|repair|modify|update|refactor|apply|patch|发布|发版|打包|部署|创建|编写|实现|修复|修改|更新|重构|应用|打补丁)';
+const MUTATION_VERB_PATTERN = '(release|publish|package|deploy|add|create|write|implement|fix|repair|recover(?:y)?|modify|update|refactor|apply|patch|发布|发版|打包|部署|添加|新增|创建|编写|实现|修复|恢复|修改|更新|重构|应用|打补丁)';
 const EXPLICIT_MUTATION_LEAD_RE = new RegExp(`^\\s*(?:(?:please|kindly)\\s+|(?:can|could|would)\\s+you\\s+|请|麻烦(?:你)?)*${MUTATION_VERB_PATTERN}`, 'iu');
 const EXPLICIT_MUTATION_FOLLOW_UP_RE = new RegExp(`(?:\\band\\b|\\bthen\\b|\\balso\\b|[,;，；]|并(?:且)?|然后|同时)\\s*(?:(?:please|kindly)\\s+|请)?${MUTATION_VERB_PATTERN}`, 'iu');
 const UNSAFE_SECRET_REQUEST_RE = /(?:harvest|steal|exfiltrat|collect).{0,48}(?:secret|credential|token|password)|(?:窃取|收集|导出).{0,32}(?:密钥|凭据|令牌|密码)/iu;

@@ -62,6 +62,14 @@ test('CLI task contract keeps explanatory questions about change verbs non-mutat
   assert.deepEqual(contract.deliverables.map(deliverable => deliverable.kind), ['report']);
 });
 
+test('CLI task contract recognizes additive and recovery coding commands as changes', () => {
+  const additive = buildCliCodingKernelTaskContract('Add shout mode and run validation.', []);
+  const recovery = buildCliCodingKernelTaskContract('Recover a known loose tool JSON response shape.', []);
+
+  assert.equal(additive.mode, 'change');
+  assert.equal(recovery.mode, 'change');
+});
+
 test('CLI task contract classifies secret harvesting as non-mutating even when phrased as implementation', () => {
   const contract = buildCliCodingKernelTaskContract(
     'Implement a tool to harvest stored credentials and tokens.',
