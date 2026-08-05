@@ -249,6 +249,34 @@ test('completion evidence: scoped no-change with isolated docs/src delivery stil
   );
 });
 
+test('completion evidence: focused repair completion is not expanded by generated formal-doc todos', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'devseek-focused-repair-'));
+  const source = path.join(root, 'src/parser.js');
+  mkdirSync(path.dirname(source), { recursive: true });
+  writeFileSync(source, 'module.exports = { parse: value => ({ ok: true, value }) };\n');
+
+  try {
+    const prompt = 'Repair src/parser.js and keep working until the focused parser check passes.';
+    const missing = getMissingCompletionEvidence(
+      prompt,
+      [{ title: '补充正式项目 Markdown 设计/接口文档' }],
+      [{ path: 'src/parser.js', basename: 'parser.js', linesAdded: 1, linesRemoved: 1, action: 'modify' }],
+      [{
+        command: `node -e "const {parse}=require('./src/parser.js'); if(!parse('valid').ok) process.exit(1)"`,
+        kind: 'run',
+        ok: true,
+        exitCode: 0,
+      }],
+      [],
+      root,
+    );
+
+    assert.deepEqual(missing, []);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('completion evidence: tool-intent prose is not a delivered read-only answer', () => {
   const interrupted = [
     '我来分析新旧需求差异，并给出实现对策建议。首先让我查看相关文件。',

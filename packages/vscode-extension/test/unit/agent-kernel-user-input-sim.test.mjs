@@ -93,7 +93,7 @@ const USER_INPUT_CASES = [
     prompt: '修复 packages/vscode-extension/src/app/workflow-service.ts 中明显的小问题',
     route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'existing-project' },
     workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: true },
+    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
     mutation: {
       requested: true,
       sourceChange: true,
@@ -162,7 +162,7 @@ const USER_INPUT_CASES = [
     prompt: '把 src/a.ts 移动到 src/b.ts',
     route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'existing-project' },
     workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: true },
+    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
     mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: ['src/a.ts', 'src/b.ts'] },
   },
   {
@@ -170,7 +170,7 @@ const USER_INPUT_CASES = [
     prompt: '解释这个报错并修复 packages/vscode-extension/src/task-intent-router.ts',
     route: { family: 'existing-project-edit', chatKind: 'code-change', mode: 'edit', shape: 'validation-repair' },
     workflow: { kind: 'edit-agent', useAgent: true, toolPolicy: 'edit' },
-    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: true },
+    validation: { runtimeRequired: false, fileCheckRequired: false, formalProjectRequired: false },
     mutation: {
       requested: true,
       sourceChange: true,
@@ -247,7 +247,7 @@ const USER_INPUT_CASES = [
     prompt: '运行 npm test，如果失败请修复',
     route: { family: 'terminal-validation', chatKind: 'code-change', mode: 'run', shape: 'validation-repair' },
     workflow: { kind: 'run-agent', useAgent: true, toolPolicy: 'run' },
-    validation: { runtimeRequired: true, fileCheckRequired: false, formalProjectRequired: true },
+    validation: { runtimeRequired: true, fileCheckRequired: false, formalProjectRequired: false },
     mutation: { requested: true, sourceChange: true, fileArtifact: false, targets: [] },
   },
   {

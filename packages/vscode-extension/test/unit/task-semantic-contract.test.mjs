@@ -120,6 +120,34 @@ test('TaskSemanticContract v3: enumerated design and code delivery keeps formal 
   assert.ok(contract.completion.doneIff.some(item => item.kind === 'formal-project-quality-passed'));
 });
 
+test('TaskSemanticContract v3: focused single-file repairs do not inherit formal document quality', () => {
+  const prompts = [
+    'Repair src/parser.js and keep working until the focused parser check passes.',
+    '修复 src/parser.js，并持续工作直到聚焦的 parser 检查通过。',
+  ];
+
+  for (const prompt of prompts) {
+    const contract = buildTaskSemanticContract(prompt);
+    assert.equal(contract.kind, 'existing-project-code');
+    assert.equal(contract.scope, 'existing-project');
+    assert.equal(contract.mutation.sourceChange, true);
+    assert.equal(contract.validation.requested, true);
+    assert.equal(contract.quality.formalProjectRequired, false);
+    assert.ok(contract.completion.doneIff.some(item => item.kind === 'code-validation-passed'));
+    assert.ok(!contract.completion.doneIff.some(item => item.kind === 'formal-project-quality-passed'));
+  }
+});
+
+test('TaskSemanticContract v3: broad project refactors retain formal source quality', () => {
+  const contract = buildTaskSemanticContract(
+    'Refactor the workflow state machine across the project code and run its tests.',
+  );
+
+  assert.equal(contract.scope, 'existing-project');
+  assert.equal(contract.quality.formalProjectRequired, true);
+  assert.ok(contract.completion.doneIff.some(item => item.kind === 'formal-project-quality-passed'));
+});
+
 test('TaskSemanticContract: test requests require runtime validation unless prohibited', () => {
   const contract = buildTaskSemanticContract('请修改 /tmp/project/code/shape_manager，然后编译和测试，看结果');
   const noRunContract = buildTaskSemanticContract('请修改 /tmp/project/code/shape_manager，然后编译和测试，但不要运行或测试');
@@ -356,7 +384,7 @@ test('TaskSemanticContract v3: replace-scope drops superseded target obligations
 });
 
 test('TaskSemanticContract v3: replace-scope does not leak formal-project quality into standalone work', () => {
-  const previous = resolveTaskSemanticContract('请修改 src/old.ts 并验证现有项目实现。');
+  const previous = resolveTaskSemanticContract('请修改 src/old.ts 及跨模块 workflow 状态机，并验证整个项目实现。');
   const replacement = resolveTaskSemanticContract('更正：改为创建 .devseek-new/probe.js，不要运行。', {
     previous,
     revision: { strategy: 'replace-scope', prohibitedTargets: ['src/old.ts'] },

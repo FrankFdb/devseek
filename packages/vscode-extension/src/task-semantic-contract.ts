@@ -129,6 +129,7 @@ const READ_REQUEST_RE = /(?:读取|读出|查看|检查|确认|分析|提取|显
 const READ_CONTENT_RE = /(?:文件内容|内容|第一行|首行|真实值|常量值|显示|读出|提取|告诉我[^，,。；;\n]{0,20}(?:行|内容|值)|(?:show|display|read|extract)[^,.;\n]{0,28}(?:content|line|value)|(?:content|first\s+line|actual\s+value))/i;
 const DERIVED_ARTIFACT_OUTPUT_RE = /(?:(?:读取|读出|查看|参考|根据|基于|read|from|based\s+on)[^，,。；;\n]{0,100}(?:翻译|总结|摘要|概括|提取|生成|写入|写到|保存|输出|translate|summari[sz]e|extract|generate|write|save|output)[^，,。；;\n]{0,40}(?:成|为|到|至|入|\bto\b|\binto\b|\bas\b)|(?:翻译|总结|摘要|概括|提取|translate|summari[sz]e|extract)[^，,。；;\n]{0,80}(?:成|为|到|至|入|\bto\b|\binto\b|\bas\b)|(?:复制|拷贝|copy)[^，,。；;\n]{0,40}(?:到|至|为|成|入|\bto\b|\binto\b|\bas\b))/i;
 const DEVSEEK_ISOLATED_ARTIFACT_PATH_RE = /(?:^|\/)\.devseek[^/]*(?:\/|$)/i;
+const PROJECT_SCALE_QUALITY_RE = /(?:正式项目|生产项目|正式源码|正式集成|主线(?:代码|源码)|项目级|跨模块|跨入口|整个(?:项目|仓库|系统)|全部(?:项目|仓库|系统)|全(?:项目|仓库|系统)|project[- ]wide|production\s+project|across\s+(?:the\s+)?(?:project|repository|codebase)|(?:entire|whole)\s+(?:project|repository|codebase)|cross[- ]module)/i;
 
 export function buildTaskSemanticContract(promptText: string): TaskSemanticContract {
   const prompt = String(promptText || '').trim();
@@ -207,7 +208,7 @@ export function buildTaskSemanticContract(promptText: string): TaskSemanticContr
     && READ_REQUEST_RE.test(prompt)
     && readTargets.length > 0;
   const readContentRequested = readRequested && READ_CONTENT_RE.test(prompt);
-  const rawFormalProjectRequired = requiresFormalProjectQualityFromTaskContract(taskContract);
+  const rawFormalProjectRequired = requiresFormalProjectQualityFromTaskContract(taskContract, prompt);
   const readOnlyIntent = (READ_ONLY_RE.test(prompt)
       || readRequested
       || (prohibited && !compileRequested && !runRequested && !testRequested))
@@ -371,18 +372,20 @@ export function shouldValidateNonCodeFilesForContract(contract: TaskSemanticCont
   );
 }
 
-function requiresFormalProjectQualityFromTaskContract(taskContract: TaskContract): boolean {
+function requiresFormalProjectQualityFromTaskContract(taskContract: TaskContract, prompt: string): boolean {
+  const hasExplicitDocumentDelivery = taskContract.taskShapes.includes('documentation')
+    && taskContract.deliverables.includes('report');
+  const hasSourceAndDocumentDelivery = hasExplicitDocumentDelivery
+    && taskContract.deliverables.includes('source-change');
+  const hasProjectScaleQualityObligation = hasQualityObligation(taskContract, 'protocol-facts')
+    || hasQualityObligation(taskContract, 'interface-contract')
+    || hasQualityObligation(taskContract, 'project-communication-chain');
+
   return taskContract.taskShapes.includes('existing-project')
     && !taskContract.taskShapes.includes('standalone')
-    && taskContract.qualityObligations.length > 0
-    && (
-      hasQualityObligation(taskContract, 'source-evidence')
-      || hasQualityObligation(taskContract, 'protocol-facts')
-      || hasQualityObligation(taskContract, 'interface-contract')
-      || hasQualityObligation(taskContract, 'modification-plan')
-      || hasQualityObligation(taskContract, 'project-communication-chain')
-      || hasQualityObligation(taskContract, 'validation')
-    );
+    && (hasSourceAndDocumentDelivery
+      || hasProjectScaleQualityObligation
+      || PROJECT_SCALE_QUALITY_RE.test(prompt));
 }
 
 function resolveKind(input: {
