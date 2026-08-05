@@ -1223,6 +1223,10 @@ function bindControlledPromptContract({
     && priorRequests.every(request => request.bound === true && request.promptContract?.bound === true);
   const sameRun = Boolean(runId) && Boolean(expectedRunId) && runId === expectedRunId;
   const expectedRounds = Array.from({ length: expectedFeedbackRound }, (_, index) => index + 1);
+  const systemFeedbackMarker = '【系统反馈】';
+  const systemFeedbackIndex = text.lastIndexOf(systemFeedbackMarker);
+  const executedToolSummaryIndex = text.lastIndexOf('[DevSeek 已执行工具请求摘要]');
+  const systemFeedbackContinuation = mode === 'incremental' && systemFeedbackIndex >= 0;
   const roundsBound = mode === 'incremental'
     ? feedbackRounds.length === 1 && feedbackRounds[0] === expectedFeedbackRound
     : feedbackRounds.length === expectedRounds.length
@@ -1246,6 +1250,14 @@ function bindControlledPromptContract({
       ['repair prompt target file is bound to the expected scenario file', repairTargetBound],
       ['repair prompt carries the previous failure context', text.includes('上次应用失败：')],
     ]
+    : systemFeedbackContinuation
+    ? [
+      ['system feedback follows an executed-tool summary', executedToolSummaryIndex >= 0 && executedToolSummaryIndex < systemFeedbackIndex],
+      ['system feedback body is non-empty', text.slice(systemFeedbackIndex + systemFeedbackMarker.length).trim().length > 0],
+      ...(expectedTargetRelativePath
+        ? [['system feedback remains scoped to the expected target', text.includes(expectedTargetRelativePath)]]
+        : []),
+    ]
     : [
       [`tool-feedback rounds are continuous through Round ${expectedFeedbackRound}`, roundsBound],
       [`Round ${expectedFeedbackRound} contains non-empty tool feedback`, hasFeedbackBody],
@@ -1262,7 +1274,9 @@ function bindControlledPromptContract({
     contractVersion: 'devseek.controlled-prompt-binding/v1',
     expected: {
       ordinal,
-      kind: mode === 'repair-scoped' ? 'repair-retry' : 'tool-feedback',
+      kind: mode === 'repair-scoped'
+        ? 'repair-retry'
+        : systemFeedbackContinuation ? 'system-feedback' : 'tool-feedback',
       modes: ['full', 'incremental', 'repair-scoped'],
       runId: expectedRunId,
       priorBoundRequests: ordinal - 1,
@@ -1277,6 +1291,7 @@ function bindControlledPromptContract({
       runId,
       priorRequestCount: priorRequests.length,
       priorBoundRequestCount: priorRequests.filter(request => request.bound === true).length,
+      continuationKind: systemFeedbackContinuation ? 'system-feedback' : mode === 'repair-scoped' ? 'repair-scoped' : 'tool-feedback',
       feedbackBodyLength: lastMarkerIndex >= 0
         ? text.slice(lastMarkerIndex + lastMarker.length).trim().length
         : 0,
@@ -1287,6 +1302,8 @@ function bindControlledPromptContract({
       ? failed[0]
       : mode === 'repair-scoped'
         ? 'Scoped repair request is bound to the current run and target file.'
+        : systemFeedbackContinuation
+          ? 'System repair feedback is bound to the prior tool execution and expected target.'
         : `Continuous tool-feedback Round ${expectedFeedbackRound} is bound to the initial intent.`,
   };
 }
@@ -1351,6 +1368,7 @@ function runPromptContractSelfTest(expectedPrompt) {
   }];
   const validRoundTwoText = `${incrementalPromptPrefix}[助手]\n[DevSeek 已执行工具请求摘要]\n\n[工具结果 Round 1]\nself-test tool result`;
   const validFullRoundTwoText = `${validInitialText}\n\n[助手]\n[DevSeek 已执行工具请求摘要]\n\n[工具结果 Round 1]\nself-test tool result`;
+  const validSystemFeedbackText = `${incrementalPromptPrefix}[助手]\n[DevSeek 已执行工具请求摘要]\n\n【系统反馈】target.txt verification failed; repair and reverify.`;
   const validRepairText = [
     '你是编程智能体。任务：修复目标文件并自测',
     '上次应用失败：未检测到可应用的目标文件变更：target.txt',
@@ -1490,6 +1508,30 @@ function runPromptContractSelfTest(expectedPrompt) {
         promptText: validFullRoundTwoText,
         ordinal: 2,
         expectedPrompt,
+        runId,
+        priorRequests: validPrior,
+      }),
+    },
+    {
+      name: 'system-feedback-round-two',
+      expectedBound: true,
+      binding: bindControlledPromptContract({
+        promptText: validSystemFeedbackText,
+        ordinal: 2,
+        expectedPrompt,
+        expectedTargetRelativePath: 'target.txt',
+        runId,
+        priorRequests: validPrior,
+      }),
+    },
+    {
+      name: 'system-feedback-wrong-target',
+      expectedBound: false,
+      binding: bindControlledPromptContract({
+        promptText: validSystemFeedbackText.replace('target.txt', 'other.txt'),
+        ordinal: 2,
+        expectedPrompt,
+        expectedTargetRelativePath: 'target.txt',
         runId,
         priorRequests: validPrior,
       }),
@@ -1803,6 +1845,9 @@ async function startControlledBridge({ token, workspaceDir, runtimeIdentity, sce
           mode: body.mode || 'fast',
           promptLength: promptText.length,
           promptSha256: sha256Text(promptText),
+          ...(process.env.DEVSEEK_CONTROLLED_VSIX_DEBUG_PROMPTS === '1'
+            ? { controlledPromptText: promptText }
+            : {}),
           expected: promptContract.expected,
           observed: promptContract.observed,
           bound: promptContract.bound,

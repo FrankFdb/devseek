@@ -432,6 +432,14 @@ export class TerminalPermissionCoordinator {
             evidenceRefs,
           };
         }
+        if (result.outcome === 'failed') {
+          return {
+            status: 'failed',
+            result: result.output,
+            errorCode: 'terminal-command-failed',
+            evidenceRefs,
+          };
+        }
         return {
           status: 'completed',
           result: result.output,

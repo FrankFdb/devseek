@@ -184,7 +184,7 @@
     "cross_surface_kernel_routes": 4,
     "semantic_domains": 5,
     "converged_semantic_domains": 5,
-    "source_checks": 65,
+    "source_checks": 66,
     "failed_source_checks": 0
   },
   "source_checks": [
@@ -589,6 +589,7 @@
       "path": "packages/vscode-extension/test/unit/coding-conformance-development-baseline.test.mjs",
       "includes": [
         "VS Code canonical Kernel probe exposes semantically conformant settled product output",
+        "VS Code product projection correlates internal host receipt ids to canonical tool actions",
         "adapterId: 'vscode-coding-kernel-execution-product-output'",
         "routeOutput.result.codingConformance",
         "vscodeResult.evidenceClass, 'product-route'",
@@ -599,6 +600,22 @@
         "unavailable('toolExecutions'",
         "unavailable('changeReceipts'",
         "unavailable('verifications'"
+      ],
+      "passed": true
+    },
+    {
+      "check_id": "vscode-coding-conformance-receipt-correlation",
+      "path": "packages/vscode-extension/src/app/vscode-coding-conformance-correlation.ts",
+      "includes": [
+        "export function correlateVsCodeCodingConformanceReceipts",
+        "candidate.effects.includes('workspace-mutation')",
+        "candidate.effects.includes('process')",
+        "uniqueEvidenceOwner(",
+        "verificationStatusCompatible("
+      ],
+      "excludes": [
+        "CODING_CONFORMANCE_DEVELOPMENT_FIXTURES",
+        "evaluateCodingConformanceFixture"
       ],
       "passed": true
     },
@@ -1195,5 +1212,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "24ca68648cc972521cf0d17f50118afd53e263e4b48be7dfe74622509af59cda"
+  "baseline_sha256": "75013a3f6f952a64fd01107fede552d0a810a65bc8939d411c79c2149f886967"
 }

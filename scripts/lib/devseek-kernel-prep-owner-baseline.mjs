@@ -26,6 +26,7 @@ const SOURCE_PATHS = Object.freeze({
   sharedCompletion: 'packages/shared/src/coding-completion.ts',
   cliCodingConformanceProbe: 'packages/cli/test/coding-conformance-development-baseline.test.mjs',
   vscodeCodingConformanceProbe: 'packages/vscode-extension/test/unit/coding-conformance-development-baseline.test.mjs',
+  vscodeCodingConformanceCorrelation: 'packages/vscode-extension/src/app/vscode-coding-conformance-correlation.ts',
   extension: 'packages/vscode-extension/src/extension.ts',
   activeChatRun: 'packages/vscode-extension/src/app/active-chat-run-coordinator.ts',
   sessionService: 'packages/vscode-extension/src/app/session-service.ts',
@@ -321,6 +322,7 @@ const SOURCE_CHECKS = Object.freeze([
   ]),
   check('vscode-coding-conformance-product-output-probe', SOURCE_PATHS.vscodeCodingConformanceProbe, [
     'VS Code canonical Kernel probe exposes semantically conformant settled product output',
+    'VS Code product projection correlates internal host receipt ids to canonical tool actions',
     "adapterId: 'vscode-coding-kernel-execution-product-output'",
     'routeOutput.result.codingConformance',
     "vscodeResult.evidenceClass, 'product-route'",
@@ -330,6 +332,16 @@ const SOURCE_CHECKS = Object.freeze([
     "unavailable('toolExecutions'",
     "unavailable('changeReceipts'",
     "unavailable('verifications'",
+  ]),
+  check('vscode-coding-conformance-receipt-correlation', SOURCE_PATHS.vscodeCodingConformanceCorrelation, [
+    'export function correlateVsCodeCodingConformanceReceipts',
+    "candidate.effects.includes('workspace-mutation')",
+    "candidate.effects.includes('process')",
+    'uniqueEvidenceOwner(',
+    'verificationStatusCompatible(',
+  ], [
+    'CODING_CONFORMANCE_DEVELOPMENT_FIXTURES',
+    'evaluateCodingConformanceFixture',
   ]),
   check('headless-coding-conformance-product-probe', SOURCE_PATHS.headlessProductProbe, [
     'Headless product entry settles five coding fixtures from isolated real workspaces',

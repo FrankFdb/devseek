@@ -14,6 +14,7 @@ import {
   type CodingKernelRecovery,
 } from './coding-kernel-recovery';
 import { VsCodeCompletionAdapter } from './coding-completion-adapter';
+import { correlateVsCodeCodingConformanceReceipts } from './vscode-coding-conformance-correlation';
 
 type AgentRunMode = 'fast' | 'r1' | undefined;
 
@@ -109,12 +110,17 @@ export class VsCodeCodingKernelRuntimeAdapter implements CodingKernelRuntimePort
         result,
         cancelled: kernelRequest.signal?.aborted === true,
       });
-      const codingConformance: CodingConformanceProjection = projectSettledCodingConformanceRun({
-        fixtureId: kernelRequest.runId,
-        taskContract: kernelRequest.taskContract,
+      const conformanceReceipts = correlateVsCodeCodingConformanceReceipts({
         toolExecutions: result.toolExecutionReceipts ?? [],
         changeReceipts: result.changeReceipts ?? [],
         verifications: result.verificationReceipts ?? [],
+      });
+      const codingConformance: CodingConformanceProjection = projectSettledCodingConformanceRun({
+        fixtureId: kernelRequest.runId,
+        taskContract: kernelRequest.taskContract,
+        toolExecutions: conformanceReceipts.toolExecutions,
+        changeReceipts: conformanceReceipts.changeReceipts,
+        verifications: conformanceReceipts.verifications,
         completion: completionDecision,
       });
       const settledResult: AgentLoopResult = { ...result, completionDecision, codingConformance };

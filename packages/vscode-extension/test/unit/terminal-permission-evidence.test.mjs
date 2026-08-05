@@ -728,6 +728,32 @@ test('Terminal evidence: prepared command cannot dispatch before canonical execu
   assert.equal(owner.settleAndSeal({ status: 'cancelled', idempotencyKey: 'settlement:cancelled' }).head.sealed, true);
 });
 
+test('Terminal evidence: a nonzero tool command settles as failed instead of completed', async t => {
+  const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-evidence-'));
+  t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));
+  const runId = 'terminal-tool-nonzero-failed';
+  const { owner, participantToken } = openRun(workspaceRoot, runId);
+  const evidenceErrors = [];
+  const coordinator = new TerminalPermissionCoordinator();
+
+  const prepared = await coordinator.prepareToolExecutionWithPermission(inputFor({
+    workspaceRoot,
+    runId,
+    participantToken,
+    command: 'node -e "process.exit(7)"',
+    policy: allowTerminalPolicy,
+    evidenceErrors,
+  }));
+  const result = await prepared.execute();
+
+  assert.equal(prepared.authority.status, 'authorized');
+  assert.equal(result.status, 'failed');
+  assert.equal(result.errorCode, 'terminal-command-failed');
+  assert.ok(result.evidenceRefs.some(ref => ref.endsWith(':failed')));
+  assert.deepEqual(evidenceErrors, []);
+  assert.equal(owner.settleAndSeal({ status: 'failed', idempotencyKey: 'settlement:failed' }).head.sealed, true);
+});
+
 test('Terminal evidence: denied prepared command never exposes a process effect', async t => {
   const workspaceRoot = mkdtempSync(path.join(tmpdir(), 'devseek-terminal-evidence-'));
   t.after(() => rmSync(workspaceRoot, { recursive: true, force: true }));

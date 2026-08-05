@@ -125,16 +125,47 @@ function hasNegatedWritePrefix(beforeAction: string): boolean {
 }
 
 function findClauseBounds(text: string, index: number): { start: number; end: number } {
-  const sentenceDelimiters = [...text.matchAll(/[.!?！？](?=\s|$)/g)].map(match => match.index ?? -1);
-  const start = Math.max(
-    ...ARTIFACT_CLAUSE_DELIMITERS.map(delimiter => text.lastIndexOf(delimiter, index)),
-    ...sentenceDelimiters.filter(candidate => candidate < index),
-  ) + 1;
-  const following = ARTIFACT_CLAUSE_DELIMITERS
-    .map(delimiter => text.indexOf(delimiter, index))
-    .filter(candidate => candidate >= 0)
-    .concat(sentenceDelimiters.filter(candidate => candidate >= index));
+  const delimiters = collectTopLevelClauseDelimiters(text);
+  const start = Math.max(-1, ...delimiters.filter(candidate => candidate < index)) + 1;
+  const following = delimiters.filter(candidate => candidate >= index);
   return { start, end: following.length > 0 ? Math.min(...following) : text.length };
+}
+
+function collectTopLevelClauseDelimiters(text: string): number[] {
+  const bracketPairs = new Map<string, string>([['(', ')'], ['[', ']'], ['{', '}']]);
+  const pairedOpeners = new Set<number>();
+  const pairingStack: Array<{ char: string; index: number }> = [];
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (bracketPairs.has(char)) {
+      pairingStack.push({ char, index });
+      continue;
+    }
+    const opener = pairingStack.at(-1);
+    if (opener && bracketPairs.get(opener.char) === char) {
+      pairingStack.pop();
+      pairedOpeners.add(opener.index);
+    }
+  }
+
+  const delimiters: number[] = [];
+  const nestingStack: string[] = [];
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (pairedOpeners.has(index)) {
+      nestingStack.push(bracketPairs.get(char)!);
+      continue;
+    }
+    if (nestingStack.at(-1) === char) {
+      nestingStack.pop();
+      continue;
+    }
+    if (nestingStack.length > 0) continue;
+    const artifactDelimiter = ARTIFACT_CLAUSE_DELIMITERS.some(delimiter => delimiter === char);
+    const sentenceDelimiter = /[.!?！？]/u.test(char) && (index === text.length - 1 || /\s/u.test(text[index + 1]));
+    if (artifactDelimiter || sentenceDelimiter) delimiters.push(index);
+  }
+  return delimiters;
 }
 
 interface PathOccurrence {

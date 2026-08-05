@@ -553,6 +553,7 @@ test('file-write authorization covers neutral, prohibited, exclusive, and correc
     ],
     ['Only create config.json; do not create other files.', 'config.json', 'extra.txt'],
     ['Fix src/math.js so add(2, 3) returns 5; do not modify other files.', 'src/math.js', 'src/other.js'],
+    ['Fix add(a, b) in src/math.js, do not modify other files, and verify add(2, 3) returns 5.', 'src/math.js', 'src/other.js'],
   ]) {
     assert.equal(decide(prompt, `${root}/${primary}`).allowed, true, prompt);
     assert.equal(decide(prompt, `${root}/${extra}`).reason, 'artifact-other-file-write-prohibited', prompt);

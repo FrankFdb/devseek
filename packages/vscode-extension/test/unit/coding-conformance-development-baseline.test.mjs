@@ -87,6 +87,46 @@ test('VS Code canonical Kernel probe exposes semantically conformant settled pro
   }
 });
 
+test('VS Code product projection correlates internal host receipt ids to canonical tool actions', async () => {
+  const fixture = findFixture('create-and-verify');
+  const loopResult = buildDevelopmentLoopResult(fixture);
+  const mutationEvidence = 'vscode-mutation-correlation:create';
+  loopResult.toolExecutionReceipts = loopResult.toolExecutionReceipts.map(receipt => ({
+    ...receipt,
+    actionId: `vscode-tool-${receipt.sequence}-${receipt.tool}`,
+    evidenceRefs: receipt.effects.includes('workspace-mutation')
+      ? [...receipt.evidenceRefs, mutationEvidence]
+      : receipt.evidenceRefs,
+  }));
+  loopResult.changeReceipts = loopResult.changeReceipts.map(receipt => ({
+    ...receipt,
+    actionId: `vscode-text-transaction-${receipt.sequence}`,
+    evidenceRefs: [...receipt.evidenceRefs, mutationEvidence],
+  }));
+  loopResult.verificationReceipts = loopResult.verificationReceipts.map(receipt => ({
+    ...receipt,
+    actionId: `vscode-auto-validation-${receipt.sequence}`,
+  }));
+  const kernel = new CanonicalCodingKernel(new VsCodeCodingKernelRuntimeAdapter({
+    async runCanonical() {
+      return loopResult;
+    },
+  }));
+
+  const output = await kernel.execute(routeInput(false, fixture));
+  const projection = output.result.codingConformance;
+  const mutationTool = projection.toolExecutions.find(receipt => receipt.effects.includes('workspace-mutation'));
+  const processTool = projection.toolExecutions.find(receipt => receipt.effects.includes('process'));
+  assert.equal(projection.changeReceipts[0].actionId, mutationTool.actionId);
+  assert.equal(projection.verifications[0].actionId, processTool.actionId);
+  assert.equal(loopResult.changeReceipts[0].actionId, 'vscode-text-transaction-1');
+  assert.equal(loopResult.verificationReceipts[0].actionId, 'vscode-auto-validation-1');
+
+  const evaluation = evaluateCodingConformanceFixture(fixture, [observeVsCodeRouteOutput(fixture, output)]);
+  const vscodeResult = evaluation.surfaceResults.find(result => result.surface === 'vscode');
+  assert.equal(vscodeResult.contractConformant, true, JSON.stringify(vscodeResult.violations));
+});
+
 function buildDevelopmentLoopResult(fixture) {
   const runId = `conformance-${fixture.fixtureId}`;
   const toolExecutionReceipts = fixture.expected.toolExecutions.map(receipt => ({
