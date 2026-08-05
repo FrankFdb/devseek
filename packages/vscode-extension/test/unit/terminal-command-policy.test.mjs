@@ -152,6 +152,32 @@ test('TerminalCommandPolicy: Python syntax and workspace script runs are validat
   assert.equal(decision.reason, 'validation-command');
 });
 
+test('TerminalCommandPolicy: assertion-only Node inline checks are validation commands', () => {
+  const command = `node -e "const { add } = require('./src/math.js'); if (add(2, 3) !== 5) process.exit(1); console.log('ADD_OK')"`;
+  const decision = decideTerminalCommandPermission({ command, workspaceRoot });
+
+  assert.equal(decision.risk, 'validation');
+  assert.equal(decision.reason, 'validation-command');
+});
+
+test('TerminalCommandPolicy: Node inline snippets retain a narrow side-effect boundary', () => {
+  const counterexamples = [
+    `node -e "console.log('no assertion')"`,
+    `node -e "require('fs').writeFileSync('result.txt', 'bad'); process.exit(1)"`,
+    `node -e "require('child_process').execSync('touch result.txt'); process.exit(1)"`,
+    `node -e "require('https').get('https://example.com'); process.exit(1)"`,
+    `node -e "eval('console.log(1)'); process.exit(1)"`,
+  ];
+
+  assert.equal(
+    decideTerminalCommandPermission({ command: counterexamples[0], workspaceRoot }).risk,
+    'unknown',
+  );
+  for (const command of counterexamples.slice(1)) {
+    assert.equal(decideTerminalCommandPermission({ command, workspaceRoot }).risk, 'mutating', command);
+  }
+});
+
 test('TerminalCommandPolicy: arbitrary Python snippets remain outside validation', () => {
   const decision = decideTerminalCommandPermission({
     command: "python3 -c 'import os; os.system(\"echo hi\")'",

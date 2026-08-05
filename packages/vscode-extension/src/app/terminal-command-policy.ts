@@ -32,6 +32,8 @@ const GIT_READ_ONLY_COMMANDS = new Set([
 
 const DESTRUCTIVE_RE = /(?:^|[;&|]\s*)(?:sudo\s+)?(?:rm\s+-[^\s]*r[^\s]*f|dd\s+|mkfs\b)|\bgit\s+(?:reset\s+--hard|clean\s+-[^\s]*f)/i;
 const MUTATING_RE = /(?:^|[;&|]\s*)(?:touch|mkdir|cp|mv|rm|chmod|chown|ln|truncate)\b|\bgit\s+(?:add|apply|checkout|commit|merge|pull|push|rebase|reset|restore|stash|switch)\b|\b(?:npm|pnpm|yarn|bun)\s+(?:install|add|remove|update|upgrade)\b|\b(?:pip|pip3|python3?\s+-m\s+pip)\s+install\b|\b(?:python3?|node)\s+-e\s+[\s\S]*(?:writeFile|appendFile|mkdirSync|rmSync|open\()/i;
+const NODE_INLINE_SIDE_EFFECT_RE = /\b(?:require|import)\s*\(\s*['"](?:node:)?(?:child_process|cluster|dgram|fs(?:\/promises)?|http|https|net|tls|worker_threads)['"]\s*\)|\b(?:appendFile|chmod|chown|copyFile|createWriteStream|link|mkdir|rename|rm|rmdir|symlink|truncate|unlink|writeFile)(?:Sync)?\s*\(|\bprocess\.(?:abort|chdir|kill|setegid|seteuid|setgid|setgroups|setuid)\s*\(|\b(?:eval|Function)\s*\(/i;
+const NODE_INLINE_ASSERTION_RE = /\b(?:assert(?:\.\w+)?\s*\(|process\.exit\s*\(\s*[1-9]\d*\s*\)|throw\s+new\s+(?:Error|TypeError|RangeError)\s*\()/;
 const PYTHON_FILE_WRITE_RE = /\bpython3?\s+-c\s+["'][\s\S]*(?:\bopen\(\s*["'][^"']+["']\s*,\s*["'][^"']*[wax+]|Path\(\s*["'][^"']+["']\s*\)\.write_(?:text|bytes)\s*\()/i;
 const IN_PLACE_EDIT_RE = /\bsed\b(?=[^;&|]*\s-i(?:\b|[^\s;&|]*))|\bperl\b(?=[^;&|]*\s-[^\s;&|]*p)(?=[^;&|]*\s-[^\s;&|]*i)/i;
 const COMMAND_SUBSTITUTION_RE = /[`$]\(/;
@@ -49,6 +51,9 @@ export function decideTerminalCommandPermission(input: TerminalCommandPermission
   if (!command) return decision('unknown', 'empty-command');
 
   if (DESTRUCTIVE_RE.test(command)) return decision('destructive', 'destructive-command');
+  if (isNodeInlineCommand(command) && NODE_INLINE_SIDE_EFFECT_RE.test(command)) {
+    return decision('mutating', 'node-inline-side-effect');
+  }
   if (hasShellWriteRedirection(command) || hasAllowlistedCommandSideEffect(command) || hasValidationWrapperSideEffect(command) || PYTHON_FILE_WRITE_RE.test(command) || IN_PLACE_EDIT_RE.test(command) || MUTATING_RE.test(command)) {
     return decision('mutating', 'mutating-command');
   }
@@ -259,7 +264,10 @@ function isValidationSegment(rawSegment: string, workspaceRoot?: string, workdir
   if (['npm', 'pnpm', 'yarn', 'bun'].includes(command)) {
     return /\b(?:test|run\s+(?:test|build|compile|lint|typecheck))\b/i.test(segment) && !hasValidationWrapperSideEffect(segment);
   }
-  if (command === 'node') return /\bnode\s+(?:--test\b|(?:\.\/)?test\/|[\w./-]+\.test\.(?:mjs|cjs|js))\b/i.test(segment);
+  if (command === 'node') {
+    return /\bnode\s+(?:--test\b|(?:\.\/)?test\/|[\w./-]+\.test\.(?:mjs|cjs|js))\b/i.test(segment)
+      || isNodeInlineValidationSegment(segment);
+  }
   if (/^python3?$/.test(command)) return isPythonValidationSegment(segment, workspaceRoot, workdir);
   if (['pytest', 'ctest'].includes(command)) return true;
   if (command === 'go') return /\bgo\s+test\b/i.test(segment);
@@ -297,6 +305,21 @@ function isPythonValidationSegment(segment: string, workspaceRoot?: string, work
   if (/^\s*python3?\s+-/.test(commandText)) return false;
   const script = args.find(arg => /\.py$/i.test(cleanToken(arg)));
   return !!script && isWorkspacePythonPath(script, workspaceRoot, workdir);
+}
+
+function isNodeInlineCommand(command: string): boolean {
+  return /(?:^|[;&|]\s*)node\s+(?:--input-type=\S+\s+)?(?:-e|--eval)(?:\s|=)/i.test(command);
+}
+
+function isNodeInlineValidationSegment(segment: string): boolean {
+  const words = splitShellWords(stripLeadingAssignments(segment));
+  const evalIndex = words.findIndex(word => word === '-e' || word === '--eval');
+  const code = evalIndex >= 0 ? words[evalIndex + 1] ?? '' : '';
+  if (!code || NODE_INLINE_SIDE_EFFECT_RE.test(code)) return false;
+
+  // Inline JavaScript is only a validation route when it carries an explicit
+  // failing assertion. Plain snippets remain outside the unattended boundary.
+  return NODE_INLINE_ASSERTION_RE.test(code);
 }
 
 function isWorkspacePythonPath(rawPath: string, workspaceRoot?: string, workdir?: string): boolean {
