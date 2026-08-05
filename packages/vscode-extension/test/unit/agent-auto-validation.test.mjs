@@ -72,6 +72,39 @@ test('Agent auto validation: successful project validation becomes completion ev
   assert.deepEqual(activities, [{ kind: 'terminal', label: '自动验证: npm run compile' }]);
 });
 
+test('Agent auto validation preserves Kernel acceptance identities in its receipt', async () => {
+  const acceptance = [
+    { id: 'quality-1', statement: 'Satisfy the source-evidence obligation.' },
+    { id: 'quality-2', statement: 'Satisfy the validation obligation.' },
+  ];
+  const result = await runAgentAutoValidationForWrites(
+    [{ path: '/repo/src/main.py', basename: 'main.py', linesAdded: 2, linesRemoved: 0, action: 'create' }],
+    '/repo',
+    '创建 src/main.py 并自测',
+    makeCallbacks([], []),
+    'conservative',
+    {
+      verificationAcceptance: acceptance,
+      validationService: {
+        validateWorkspaceChanges: async () => ({
+          ran: true,
+          ok: true,
+          command: 'python3 src/main.py',
+          exitCode: 0,
+          output: 'ok',
+          cwd: '/repo',
+        }),
+      },
+    },
+  );
+
+  assert.equal(result.verificationReceipt.status, 'passed');
+  assert.deepEqual(
+    result.verificationReceipt.acceptance.map(item => [item.criterionId, item.status]),
+    [['quality-1', 'passed'], ['quality-2', 'passed']],
+  );
+});
+
 test('Agent auto validation: passing verifier cannot settle a weak requirement oracle', async () => {
   const root = mkdtempSync(path.join(tmpdir(), 'devseek-auto-weak-requirement-'));
   const target = path.join(root, 'report.md');

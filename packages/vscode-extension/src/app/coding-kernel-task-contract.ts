@@ -4,6 +4,7 @@ import {
   type CodingTaskMode,
 } from '@devseek-netai/shared';
 import type { TaskContract } from '../agent/task-contract';
+import { projectTaskContractAcceptance } from '../agent/task-contract-acceptance';
 import type { ExecutionMode } from '../intent/intent-types';
 
 export interface VsCodeCodingKernelTaskContractInput {
@@ -24,12 +25,7 @@ export function projectVsCodeCodingKernelTaskContract(
         ...(deliverableTargets[index] ? { path: deliverableTargets[index] } : {}),
       }))
     : [{ id: 'response', kind: 'report' as const }];
-  const acceptance = input.taskContract.qualityObligations.length > 0
-    ? input.taskContract.qualityObligations.map((obligation, index) => ({
-        id: `quality-${index + 1}`,
-        statement: `Satisfy the ${obligation} obligation.`,
-      }))
-    : [{ id: 'requested-outcome', statement: 'Complete the requested outcome within the declared scope.' }];
+  const acceptance = projectTaskContractAcceptance(input.taskContract);
 
   return buildCodingKernelTaskContract({
     goal: input.taskContract.objectives.join('\n') || input.userPrompt,

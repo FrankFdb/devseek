@@ -63,9 +63,9 @@ import type { EvidenceRef } from './tool-executor';
 import { chatWithMessages } from './loop-chat';
 import { hasWriteRevokedToolAttempt } from './write-authority';
 import {
-  buildAgenticVerificationAcceptance,
   extractPlanningTodoItems,
 } from './agentic-planning';
+import { projectTaskContractAcceptance } from './task-contract-acceptance';
 import { getAgenticBlockingTerminalFailure } from './agentic-execution-evidence';
 import {
   analyzeTerminalEvidence,
@@ -472,7 +472,7 @@ export async function runAgenticLoop(
       callbacks: writeAuthority.callbacks,
       cppValidationPolicy,
       options: {
-        verificationAcceptance: buildAgenticVerificationAcceptance(writeAuthority.semanticContract),
+        verificationAcceptance: projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
       },
     });
     if (simpleFileResult) return simpleFileResult;
@@ -726,7 +726,7 @@ export async function runAgenticLoop(
           cppValidationPolicy,
           {
             qualityWrittenFiles: allWrittenFiles,
-            verificationAcceptance: buildAgenticVerificationAcceptance(writeAuthority.semanticContract),
+            verificationAcceptance: projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
           },
         );
         if (autoValidation.verificationReceipt) allVerificationReceipts.push(autoValidation.verificationReceipt);
@@ -1001,7 +1001,7 @@ export async function runAgenticLoop(
       cppValidationPolicy,
       {
         qualityWrittenFiles: allWrittenFiles,
-        verificationAcceptance: buildAgenticVerificationAcceptance(writeAuthority.semanticContract),
+        verificationAcceptance: projectTaskContractAcceptance(writeAuthority.semanticContract.taskContract),
       },
     );
     if (autoValidation.verificationReceipt) allVerificationReceipts.push(autoValidation.verificationReceipt);

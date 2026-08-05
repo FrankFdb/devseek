@@ -1,16 +1,4 @@
-import type { CodingVerificationCriterion } from '@devseek-netai/shared';
-import type { TaskSemanticContract } from '../task-semantic-contract';
 import type { TodoItem } from './evidence-recovery';
-
-export function buildAgenticVerificationAcceptance(
-  semanticContract: TaskSemanticContract,
-): CodingVerificationCriterion[] {
-  return semanticContract.taskContract.qualityObligations.flatMap((obligation, index) => (
-    obligation === 'validation'
-      ? [{ id: `quality-${index + 1}`, statement: 'Satisfy the validation obligation.' }]
-      : []
-  ));
-}
 
 export function extractPlanningTodoItems(text: string): TodoItem[] {
   const lines = text.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
