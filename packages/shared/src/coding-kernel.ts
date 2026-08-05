@@ -1,5 +1,6 @@
 import type {
   CodingDeliverableKind,
+  CodingTaskContractProjection,
   CodingTaskMode,
   CodingTerminalStatus,
 } from './coding-conformance';
@@ -158,6 +159,21 @@ export function buildCodingKernelTaskContract(
     constraints: uniqueNonEmpty(input.constraints ?? []),
     acceptance,
     provenanceRefs,
+  });
+}
+
+export function projectCodingKernelTaskContract(
+  contract: CodingKernelTaskContract,
+): CodingTaskContractProjection {
+  const snapshot = snapshotTaskContract(contract);
+  return Object.freeze({
+    goal: snapshot.goal,
+    mode: snapshot.mode,
+    scope: snapshot.scope,
+    deliverables: snapshot.deliverables,
+    constraints: snapshot.constraints,
+    acceptance: snapshot.acceptance,
+    provenanceRefs: snapshot.provenanceRefs,
   });
 }
 

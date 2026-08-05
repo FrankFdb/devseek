@@ -7,6 +7,7 @@ import {
   CODING_CONFORMANCE_PREPARATION,
   compareCodingConformanceProjection,
   evaluateCodingConformanceFixture,
+  validateCodingConformanceProjection,
 } from '../dist/index.js';
 
 test('coding conformance catalog freezes five Codex and Claude Code observable behavior fixtures', () => {
@@ -36,11 +37,11 @@ test('coding conformance catalog freezes five Codex and Claude Code observable b
   }
 });
 
-test('fixture self-tests prove the adapter contract without claiming product wiring or qualification', () => {
+test('fixture self-tests prove the adapter contract without claiming complete product wiring or qualification', () => {
   assert.deepEqual(CODING_CONFORMANCE_PREPARATION, {
-    implementationState: 'contract-and-development-fixtures-only',
-    productWiring: false,
-    productAdapterCount: 0,
+    implementationState: 'headless-product-route-wired',
+    productWiring: true,
+    productAdapterCount: 1,
     qualificationEligible: false,
     claimsPermitted: false,
     requiredSurfaces: ['vscode', 'cli', 'headless'],
@@ -56,6 +57,21 @@ test('fixture self-tests prove the adapter contract without claiming product wir
     assert.equal(evaluation.qualificationEligible, false);
     assert.equal(evaluation.claimsPermitted, false);
   }
+});
+
+test('public projection validation fails closed on incomplete and malformed runtime evidence', () => {
+  const fixture = findFixture('create-and-verify');
+  const incomplete = structuredClone(fixture.expected);
+  delete incomplete.changeReceipts;
+  const malformed = structuredClone(fixture.expected);
+  malformed.toolExecutions = 'terminal prose';
+
+  assert.ok(validateCodingConformanceProjection(incomplete, 'headless').some(violation => (
+    violation.dimension === 'changeReceipts' && violation.code === 'missing-dimension'
+  )));
+  assert.ok(validateCodingConformanceProjection(malformed, 'headless').some(violation => (
+    violation.dimension === 'observation' && violation.code === 'invalid-projection-shape'
+  )));
 });
 
 test('projection comparison rejects stale changes and missing verification instead of accepting terminal prose', () => {
@@ -252,7 +268,7 @@ test('partial observations fail closed on missing, duplicate, or contradictory u
   assert.ok(invalidEvaluation.violations.some(violation => violation.code === 'missing-unavailability-evidence'));
 });
 
-test('self-declared product-route observations cannot bypass the zero-adapter preparation boundary', () => {
+test('self-declared product-route observations cannot bypass the incomplete adapter preparation boundary', () => {
   const fixture = findFixture('verify-repair-reverify');
   const evaluation = evaluateCodingConformanceFixture(
     fixture,

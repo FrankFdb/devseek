@@ -298,13 +298,14 @@
       "check_id": "shared-coding-conformance-contract",
       "path": "packages/shared/src/coding-conformance.ts",
       "includes": [
-        "implementationState: 'contract-and-development-fixtures-only'",
-        "productWiring: false",
-        "productAdapterCount: 0",
+        "implementationState: 'headless-product-route-wired'",
+        "productWiring: true",
+        "productAdapterCount: 1",
         "export interface CodingConformanceProjectionAdapter<TRouteOutput>",
         "export type CodingConformanceObservedProjection",
+        "export function validateCodingConformanceProjection(",
         "export function evaluateCodingConformanceFixture(",
-        "Number(CODING_CONFORMANCE_PREPARATION.productAdapterCount) > 0",
+        "Number(CODING_CONFORMANCE_PREPARATION.productAdapterCount) === fixture.requiredSurfaces.length",
         "'development-route-replay'",
         "code: 'unexplained-missing-dimension'",
         "'taskContract'",
@@ -369,10 +370,14 @@
       "includes": [
         "export class HeadlessCodingKernelExecutor<TRuntimeContext, TResult>",
         "this.kernel = new CanonicalCodingKernel(runtime)",
-        "return this.kernel.execute({",
+        "const output = await this.kernel.execute({",
         "route: 'canonical'",
         "surface: 'headless'",
-        "taskContract: input.taskContract"
+        "taskContract: input.taskContract",
+        "validateCodingConformanceProjection(snapshot, 'headless')",
+        "projectCodingKernelTaskContract(output.taskContract)",
+        "terminal-status-mismatch",
+        "completion-evidence-mismatch"
       ],
       "excludes": [
         "from 'vscode'",
@@ -386,7 +391,10 @@
       "path": "packages/headless/test/headless-coding-kernel.test.mjs",
       "includes": [
         "Headless product entry delegates one immutable request to the shared canonical Kernel",
-        "assert.equal(calls[0].surface, 'headless')",
+        "assert.equal(calls.every(call => call.surface === 'headless'), true)",
+        "evidenceClass: 'product-route'",
+        "CODING_CONFORMANCE_DIMENSIONS",
+        "Headless product entry fails closed on incomplete or drifted conformance evidence",
         "coding-kernel-execution:cancelled-before-start"
       ],
       "excludes": [],
@@ -889,5 +897,5 @@
       "passed": true
     }
   ],
-  "baseline_sha256": "60dcc4b83c4c5d8c0608ada6320ec5c4d5f2331152accb621f8402a729262e8b"
+  "baseline_sha256": "b4fe739fe3d8de5ff477f95e0eae316d44458b372048fa7e28501db6eeb4aaa5"
 }

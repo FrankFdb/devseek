@@ -1,9 +1,9 @@
 export const CODING_CONFORMANCE_SCHEMA_VERSION = 'devseek.coding-conformance/v1';
 
 export const CODING_CONFORMANCE_PREPARATION = Object.freeze({
-  implementationState: 'contract-and-development-fixtures-only',
-  productWiring: false,
-  productAdapterCount: 0,
+  implementationState: 'headless-product-route-wired',
+  productWiring: true,
+  productAdapterCount: 1,
   qualificationEligible: false,
   claimsPermitted: false,
   requiredSurfaces: ['vscode', 'cli', 'headless'] as const,
@@ -189,15 +189,45 @@ export interface CodingConformanceEvaluation {
   readonly violations: readonly CodingConformanceViolation[];
 }
 
+export function validateCodingConformanceProjection(
+  projection: CodingConformanceObservedProjection,
+  surface?: CodingConformanceSurface,
+): CodingConformanceViolation[] {
+  if (!projection || typeof projection !== 'object') {
+    return [{ surface, dimension: 'observation', code: 'invalid-projection' }];
+  }
+
+  const violations: CodingConformanceViolation[] = [];
+  if (projection.schemaVersion !== CODING_CONFORMANCE_SCHEMA_VERSION) {
+    violations.push({ surface, dimension: 'observation', code: 'unsupported-schema-version' });
+  }
+  if (!nonEmpty(projection.fixtureId)) {
+    violations.push({ surface, dimension: 'observation', code: 'invalid-fixture-identity' });
+  }
+  for (const dimension of CODING_CONFORMANCE_DIMENSIONS) {
+    if (projection[dimension] === undefined) {
+      violations.push({ surface, dimension, code: 'missing-dimension' });
+    }
+  }
+
+  if (isCompleteProjection(projection)) {
+    try {
+      violations.push(...validateProjection(projection, surface));
+    } catch {
+      violations.push({ surface, dimension: 'observation', code: 'invalid-projection-shape' });
+    }
+  }
+  return uniqueViolations(violations);
+}
+
 export function compareCodingConformanceProjection(
   expected: CodingConformanceProjection,
   actual: CodingConformanceObservedProjection,
   surface?: CodingConformanceSurface,
 ): CodingConformanceViolation[] {
-  const violations = isCompleteProjection(actual) ? validateProjection(actual, surface) : [];
+  const violations = validateCodingConformanceProjection(actual, surface);
   for (const dimension of CODING_CONFORMANCE_DIMENSIONS) {
     if (actual[dimension] === undefined) {
-      violations.push({ surface, dimension, code: 'missing-dimension' });
       continue;
     }
     if (canonicalJson(expected[dimension]) !== canonicalJson(actual[dimension])) {
@@ -273,7 +303,7 @@ export function evaluateCodingConformanceFixture(
   const deduplicated = uniqueViolations(violations);
   const contractConformant = deduplicated.length === 0;
   const productRouteEvidenceComplete = contractConformant
-    && Number(CODING_CONFORMANCE_PREPARATION.productAdapterCount) > 0
+    && Number(CODING_CONFORMANCE_PREPARATION.productAdapterCount) === fixture.requiredSurfaces.length
     && surfaceResults.every(result => result.evidenceClass === 'product-route');
 
   return {

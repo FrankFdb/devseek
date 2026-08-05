@@ -103,7 +103,7 @@ test('kernel prep owner baseline is source-bound and discloses every unconverged
   );
 });
 
-test('product Surfaces do not bypass the canonical Kernel through conformance-only adapters', () => {
+test('product Surfaces do not use conformance fixtures or evaluators as execution routes', () => {
   const productRoots = [
     'packages/vscode-extension/src',
     'packages/cli/src',
@@ -111,7 +111,10 @@ test('product Surfaces do not bypass the canonical Kernel through conformance-on
     'packages/headless/src',
   ];
   const hits = productRoots.flatMap(relativeRoot => collectTypeScriptFiles(path.join(repoRoot, relativeRoot)))
-    .filter(filePath => /CodingConformance|coding-conformance/.test(fs.readFileSync(filePath, 'utf8')))
+    .filter(filePath => (
+      /CODING_CONFORMANCE_DEVELOPMENT_FIXTURES|evaluateCodingConformanceFixture|CodingConformanceProjectionAdapter/
+        .test(fs.readFileSync(filePath, 'utf8'))
+    ))
     .map(filePath => path.relative(repoRoot, filePath));
 
   assert.deepEqual(hits, []);
@@ -121,7 +124,7 @@ test('kernel prep owner baseline fails closed when Headless bypasses the shared 
   const mutatedSources = structuredClone(sources);
   const sourcePath = 'packages/headless/src/headless-coding-kernel.ts';
   mutatedSources.sourceContents[sourcePath] = mutatedSources.sourceContents[sourcePath]
-    .replace('return this.kernel.execute({', 'return this.runtime.executeCanonical({');
+    .replace('const output = await this.kernel.execute({', 'const output = await this.runtime.executeCanonical({');
 
   const mutated = buildKernelPrepOwnerBaseline(mutatedSources);
   const result = validateKernelPrepOwnerBaseline(mutated, mutatedSources);
